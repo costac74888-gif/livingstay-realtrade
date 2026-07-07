@@ -13,6 +13,14 @@ description: 생숙 실거래(RTMS)·주소변환(JUSO) 정부 API의 응답 필
 - **생활숙박시설은 `buildingType == '집합'`** 로 필터. 그중 `buildingUse == '숙박'`이 실제 생숙.
 - 주요 필드: `sggCd`, `umdNm`, `jibun`, `dealAmount`(콤마 포함), `buildingAr`, `dealYear/dealMonth/dealDay`, `dealingGbn`(중개/직거래).
 - **`umdNm`은 면/리 지역에서 `'설악면 방일리'`처럼 "면 리" 형태**(공백 포함), 동 지역은 `'금학동'` 단일 토큰.
+- **용도 필드는 `buildingUse`** (raw 확인), 값 예: `판매`/`제1종근린생활`/`제2종근린생활`/`기타`/`숙박`. 생숙은 `buildingUse`에 `'숙박'` 포함. 필드가 비면 통과시켜(매칭에서 걸러짐) 필드누락 사고 방지.
+
+## 건축HUB 건축물대장 (호수 검증)
+- 생숙(집합) 호실수 정답 필드 = **표제부 `getBrTitleInfo`의 `hoCnt`(호수)**. `hhldCnt`/`fmlyCnt`는 생숙에선 **항상 0**.
+- **총괄표제부 `getBrRecapTitleInfo`로는 단일 집합건물이 안 잡힘**(totalCount=0). 반드시 표제부(getBrTitleInfo) 사용.
+- 한 지번에 여러 동이면 표제부가 여러 건 → `mainPurpsCdNm`에 '숙박' 있는 동 우선, 그중 `hoCnt` 최댓값.
+- 표제부 조회 코드(sigunguCd/bjdongCd/platGbCd/bun/ji)는 **JUSO `bdMgtSn`(건물관리번호) 앞 10자리=법정동코드**에서 추출 → CSV 불필요.
+- v3 zip의 sync_batch/verify_units는 하드코딩 키·잘못된 집합필드(houseType/regstrGbCdNm)로 **회귀**시킴 → 그대로 덮지 말 것.
 
 ## JUSO addrLinkApi (도로명→지번)
 - `business.juso.go.kr/addrlink/addrLinkApi.do`, `confmKey`=JUSO_API_KEY.

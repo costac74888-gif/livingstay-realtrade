@@ -106,9 +106,19 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
         row = {child.tag: (child.text or "").strip() for child in item}
         items.append(row)
 
-    # 실제 RTMS(NrgTrade) 응답 확인 결과, 유형 필드는 buildingType 이며 값은 '일반' / '집합'.
-    # 생활숙박시설은 집합건물이므로 '집합'만 필터.
-    return [r for r in items if r.get("buildingType", "") == "집합"]
+    # 실제 RTMS(NrgTrade) 응답을 raw로 확인한 결과:
+    #  - 유형 필드는 buildingType 이며 값은 '일반' / '집합' → 생숙은 집합건물이므로 '집합'.
+    #  - 용도 필드는 buildingUse 이며 값 예: 판매/제1종근린생활/제2종근린생활/기타/숙박 → 생숙은 '숙박'.
+    # 1차: buildingType == '집합', 2차: buildingUse에 '숙박' 포함.
+    # buildingUse 필드가 비어있는 응답 케이스는 일단 통과시켜(매칭 단계에서 걸러짐)
+    # 필드 누락 때문에 데이터가 전부 사라지는 사고를 방지한다.
+    def _is_saengsuk(r):
+        if r.get("buildingType", "") != "집합":
+            return False
+        use = r.get("buildingUse", "")
+        return (not use) or ("숙박" in use)
+
+    return [r for r in items if _is_saengsuk(r)]
 
 
 def fetch_building_name_fallback(sigungu_cd: str, bjdong_cd: str, plat_gb: str, bun: str, ji: str):
