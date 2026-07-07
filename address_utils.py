@@ -11,11 +11,12 @@ address_utils.py — 주소 변환 유틸 2가지
    시군구명 텍스트 → sggCd(시군구코드 5자리) 변환에도 사용.
 """
 
+import os
 import re
 import requests
 import pandas as pd
 
-JUSO_API_KEY = "여기에_juso.go.kr_승인키"
+JUSO_API_KEY = os.environ.get("JUSO_API_KEY", "")
 JUSO_URL = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
 
 

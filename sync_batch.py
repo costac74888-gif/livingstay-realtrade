@@ -20,6 +20,7 @@ python sync_batch.py --months 36    # 최근 36개월 백필 (최초 1회 대량
 """
 
 import argparse
+import os
 import time
 from datetime import datetime
 from xml.etree import ElementTree as ET
@@ -30,11 +31,11 @@ from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun
 
 # ------------------------------------------------------------------
-# 설정값 — 실제 키/경로로 교체 필요
+# 설정값 — API 키는 Replit Secrets(환경변수)에서 읽음
 # ------------------------------------------------------------------
-RTMS_SERVICE_KEY = "여기에_RTMS_서비스키"
-BLD_SERVICE_KEY = "여기에_건축HUB_서비스키"
-BJDONG_CODE_CSV = "법정동코드 전체자료.csv"   # code.go.kr 다운로드 파일 경로
+RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
+BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
+BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")   # code.go.kr 다운로드 파일 경로
 
 RTMS_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade"
 BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
@@ -105,9 +106,9 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
         row = {child.tag: (child.text or "").strip() for child in item}
         items.append(row)
 
-    # 유형 태그명은 실제 응답을 한 번 찍어보고 정확히 맞춰야 함 (문서상 표기가 케이스마다 다름)
-    return [r for r in items if r.get("houseType", r.get("regstrGbCdNm", "")) == "집합"
-            or r.get("bldGbCdNm", "") == "집합"]
+    # 실제 RTMS(NrgTrade) 응답 확인 결과, 유형 필드는 buildingType 이며 값은 '일반' / '집합'.
+    # 생활숙박시설은 집합건물이므로 '집합'만 필터.
+    return [r for r in items if r.get("buildingType", "") == "집합"]
 
 
 def fetch_building_name_fallback(sigungu_cd: str, bjdong_cd: str, plat_gb: str, bun: str, ji: str):

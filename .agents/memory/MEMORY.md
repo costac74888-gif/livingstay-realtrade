@@ -1,0 +1,1 @@
+- [LivingStay 공공데이터 API 매칭](livingstay-gov-apis.md) — RTMS 유형필드=buildingType('집합'), JUSO admCd[:5]=시군구코드(CSV 불필요), umdNm은 emd+li 공백제거 매칭
