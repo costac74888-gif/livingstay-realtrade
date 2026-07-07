@@ -2,8 +2,5 @@ flask
 requests
 pandas
 openpyxl
-flask
-gunicorn
-openpyxl
-pandas
-requests
+psycopg2-binary
+psycopg2-binary

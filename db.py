@@ -11,15 +11,34 @@ transactions     : 배치 수집으로 쌓이는 실거래 (매매) 데이터
 sync_log         : 배치 실행 이력 (언제, 몇 건, 성공/실패)
 """
 
-import sqlite3
-import os
+# -*- coding: utf-8 -*-
+"""
+db.py — PostgreSQL(Replit 제공 DB) 초기화 및 공용 DB 함수
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "livingstay.db")
+Replit에서 왼쪽 메뉴 "Database" 탭 → "Create a database" (Postgres) 를 누르면
+DATABASE_URL 환경변수(Secret)가 자동으로 주입됩니다. 이 파일은 그 환경변수를 읽어서 접속합니다.
+
+테이블 구성
+------------------------------------------------------------
+master_buildings : 첨부 마스터파일(전국 생숙 현황) 원본을 그대로 적재
+                    → 건물명 확정의 "정답지" 역할
+transactions     : 배치 수집으로 쌓이는 실거래 (매매) 데이터
+                    → 게시판/검색 화면이 읽는 테이블
+sync_log         : 배치 실행 이력 (언제, 몇 건, 성공/실패)
+"""
+
+import os
+import psycopg2
+import psycopg2.extras
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """
+    DATABASE_URL 환경변수(Replit Secrets에 자동 등록됨)로 접속.
+    RealDictCursor를 써서 기존 sqlite3.Row처럼 row["컬럼명"]으로 접근 가능하게 함.
+    """
+    database_url = os.environ["DATABASE_URL"]  # Replit Database 탭에서 Postgres 생성 시 자동 주입
+    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
 
 
@@ -29,7 +48,7 @@ def init_db():
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS master_buildings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         building_name TEXT NOT NULL,
         road_address TEXT NOT NULL,
         jibun_address TEXT,           -- 도로명→지번 변환 결과 (배치가 채움)
@@ -44,7 +63,7 @@ def init_db():
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         building_name TEXT,           -- 매칭 성공 시 마스터파일 건물명 (NULL이면 미매칭)
         address TEXT NOT NULL,        -- 법정동 + 지번 조합 표시용 주소
         area REAL,                    -- 건물면적(㎡)
@@ -56,15 +75,15 @@ def init_db():
         jibun TEXT,
         match_source TEXT,            -- 'master' | 'buildinghub' | 'unmatched'
         raw_key TEXT UNIQUE,          -- 중복 적재 방지용 (sgg_cd+umd_nm+jibun+deal_date+price)
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TIMESTAMP DEFAULT NOW()
     )
     """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sync_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        started_at TEXT,
-        finished_at TEXT,
+        id SERIAL PRIMARY KEY,
+        started_at TIMESTAMP,
+        finished_at TIMESTAMP,
         regions_processed INTEGER,
         rows_inserted INTEGER,
         rows_matched_master INTEGER,
@@ -81,9 +100,11 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_address ON transactions(address)")
 
     conn.commit()
+    cur.close()
     conn.close()
 
 
 if __name__ == "__main__":
     init_db()
-    print(f"DB 초기화 완료 → {DB_PATH}")
+    print("DB 초기화 완료 (PostgreSQL)")
+

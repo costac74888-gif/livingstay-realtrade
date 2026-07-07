@@ -38,11 +38,11 @@ def get_transactions():
     params = []
 
     if q:
-        where.append("(building_name LIKE ? OR address LIKE ?)")
+        where.append("(building_name LIKE %s OR address LIKE %s)")
         params += [f"%{q}%", f"%{q}%"]
 
     if region and region != "전체":
-        where.append("address LIKE ?")
+        where.append("address LIKE %s")
         params.append(f"%{region}%")
 
     where_sql = " AND ".join(where)
@@ -58,9 +58,10 @@ def get_transactions():
         FROM transactions
         WHERE {where_sql}
         ORDER BY deal_date DESC, id DESC
-        LIMIT ? OFFSET ?
+        LIMIT %s OFFSET %s
     """, params + [size, offset])
     rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
     conn.close()
 
     return jsonify({"total": total, "page": page, "size": size, "items": rows})
@@ -72,6 +73,7 @@ def get_regions():
     cur = conn.cursor()
     cur.execute("SELECT address FROM transactions")
     rows = cur.fetchall()
+    cur.close()
     conn.close()
 
     # 주소 첫 토큰(시/도) 기준 집계 — 필요시 시/군/구 단위로 세분화 가능
@@ -92,6 +94,7 @@ def health():
     cur = conn.cursor()
     cur.execute("SELECT * FROM sync_log ORDER BY id DESC LIMIT 1")
     last = cur.fetchone()
+    cur.close()
     conn.close()
     return jsonify(dict(last) if last else {"status": "no sync yet"})
 

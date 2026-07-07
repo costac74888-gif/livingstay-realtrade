@@ -71,8 +71,8 @@ def prepare_master_addresses(bjdong: BjdongMap):
 
             cur.execute("""
                 UPDATE master_buildings
-                SET jibun_address = ?, sgg_cd = ?, umd_nm = ?, jibun = ?
-                WHERE id = ?
+                SET jibun_address = %s, sgg_cd = %s, umd_nm = %s, jibun = %s
+                WHERE id = %s
             """, (f"{si_do} {sgg_nm} {umd_nm} {jibun_str}", sgg_cd, umd_nm, jibun_str, row["id"]))
             updated += 1
         except Exception as e:
@@ -80,6 +80,7 @@ def prepare_master_addresses(bjdong: BjdongMap):
         time.sleep(REQUEST_SLEEP)
 
     conn.commit()
+    cur.close()
     conn.close()
     print(f"[STEP1] 주소 보강 완료: {updated}/{len(targets)}건")
 
@@ -175,7 +176,7 @@ def sync_transactions(months: int, bjdong: BjdongMap):
                 # 1) 마스터파일과 매칭 시도 (건물명 확정)
                 cur.execute("""
                     SELECT building_name FROM master_buildings
-                    WHERE sgg_cd=? AND umd_nm=? AND jibun=?
+                    WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
                 """, (sgg_cd, umd_nm, jibun))
                 m_row = cur.fetchone()
 
@@ -205,10 +206,11 @@ def sync_transactions(months: int, bjdong: BjdongMap):
 
                 try:
                     cur.execute("""
-                        INSERT OR IGNORE INTO transactions
+                        INSERT INTO transactions
                         (building_name, address, area, price, deal_date, deal_type,
                          sgg_cd, umd_nm, jibun, match_source, raw_key)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (raw_key) DO NOTHING
                     """, (building_name, f"{umd_nm} {jibun}", float(area or 0), int(price or 0),
                           deal_date, deal_type, sgg_cd, umd_nm, jibun, match_source, raw_key))
                     if cur.rowcount:
@@ -221,10 +223,11 @@ def sync_transactions(months: int, bjdong: BjdongMap):
     cur.execute("""
         INSERT INTO sync_log (started_at, finished_at, regions_processed, rows_inserted,
                                rows_matched_master, rows_matched_buildinghub, rows_unmatched, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (datetime.now().isoformat(), datetime.now().isoformat(), len(sgg_list), inserted,
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (datetime.now(), datetime.now(), len(sgg_list), inserted,
           matched_master, matched_bld, unmatched, "success"))
     conn.commit()
+    cur.close()
     conn.close()
 
     print(f"[STEP2] 완료 — 신규 {inserted}건 (마스터매칭 {matched_master} / 건축HUB보완 {matched_bld} / 미매칭제외 {unmatched})")

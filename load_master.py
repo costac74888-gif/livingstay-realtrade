@@ -44,7 +44,7 @@ def load_master_file(xlsx_path: str):
 
         cur.execute("""
             INSERT INTO master_buildings (building_name, road_address, sgg_text, units, biz_units)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (building_name, road_address, sgg_text, units, biz_units))
         inserted += 1
 
@@ -53,6 +53,7 @@ def load_master_file(xlsx_path: str):
     # 배치 대상 시군구 목록 미리 확인
     cur.execute("SELECT sgg_text, COUNT(*) c FROM master_buildings GROUP BY sgg_text ORDER BY c DESC")
     regions = cur.fetchall()
+    cur.close()
     conn.close()
 
     print(f"마스터 건물 {inserted}건 적재 완료")
