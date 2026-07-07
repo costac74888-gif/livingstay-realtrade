@@ -44,14 +44,31 @@ REQUEST_SLEEP = 0.15  # 공공데이터 API 과호출 방지용 딜레이(초)
 
 
 # ------------------------------------------------------------------
-# STEP 1. 마스터파일 주소 보강 (도로명 → 지번/법정동코드)
+# 매칭키 정규화 — RTMS umdNm은 면/리 지역에서 '설악면 방일리'처럼 공백이 있으므로
+# 마스터/실거래 양쪽 모두 공백을 제거해 비교한다.
 # ------------------------------------------------------------------
-def prepare_master_addresses(bjdong: BjdongMap):
+def _norm_umd(s: str) -> str:
+    return (s or "").replace(" ", "")
+
+
+# ------------------------------------------------------------------
+# STEP 1. 마스터파일 주소 보강 (도로명 → 지번/시군구코드)
+#   * JUSO 행정동코드(admCd) 앞 5자리 = 시군구코드(=RTMS sggCd) → 법정동코드 CSV 불필요.
+#   * umd_nm 은 emdNm+liNm 을 공백제거해 저장(면/리 지역 매칭률 향상).
+# ------------------------------------------------------------------
+def prepare_master_addresses(region_kw: str | None = None):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT id, road_address, sgg_text FROM master_buildings WHERE jibun IS NULL")
+    if region_kw:
+        cur.execute(
+            "SELECT id, road_address, sgg_text FROM master_buildings "
+            "WHERE jibun IS NULL AND road_address LIKE %s",
+            (f"%{region_kw}%",),
+        )
+    else:
+        cur.execute("SELECT id, road_address, sgg_text FROM master_buildings WHERE jibun IS NULL")
     targets = cur.fetchall()
-    print(f"[STEP1] 주소 변환 대상 {len(targets)}건")
+    print(f"[STEP1] 주소 변환 대상 {len(targets)}건" + (f" (지역='{region_kw}')" if region_kw else ""))
 
     updated = 0
     for row in targets:
@@ -61,12 +78,12 @@ def prepare_master_addresses(bjdong: BjdongMap):
                 continue
             si_do = juso.get("siNm", "")
             sgg_nm = juso.get("sggNm", "")
-            umd_nm = juso.get("emdNm", "")
+            sgg_cd = (juso.get("admCd", "") or "")[:5] or None
+            umd_nm = _norm_umd(juso.get("emdNm", "") + juso.get("liNm", ""))
             bun = juso.get("lnbrMnnm", "0")
             ji = juso.get("lnbrSlno", "0")
             jibun_str = f"{bun}-{ji}" if ji not in ("0", "", None) else bun
 
-            sgg_cd = bjdong.find_sgg_cd(si_do, sgg_nm)
             if not sgg_cd:
                 continue
 
@@ -142,14 +159,17 @@ def fetch_building_name_fallback(sigungu_cd: str, bjdong_cd: str, plat_gb: str, 
     return row.get("bldNm") or None
 
 
-def sync_transactions(months: int, bjdong: BjdongMap):
+def sync_transactions(months: int, bjdong=None, sgg_filter=None):
     conn = get_conn()
     cur = conn.cursor()
 
     # 마스터에 존재하는 (매칭 준비 완료된) 시군구만 대상으로
     cur.execute("SELECT DISTINCT sgg_cd FROM master_buildings WHERE sgg_cd IS NOT NULL")
     sgg_list = [r["sgg_cd"] for r in cur.fetchall()]
-    print(f"[STEP2] 배치 대상 시군구 {len(sgg_list)}개, 최근 {months}개월")
+    if sgg_filter:
+        sgg_list = [s for s in sgg_list if s in sgg_filter]
+    print(f"[STEP2] 배치 대상 시군구 {len(sgg_list)}개, 최근 {months}개월"
+          + (f" (sgg 한정: {sorted(sgg_filter)})" if sgg_filter else ""))
 
     deal_ymds = []
     today = datetime.today()
@@ -177,18 +197,19 @@ def sync_transactions(months: int, bjdong: BjdongMap):
                 jibun = t.get("jibun", "")
                 if not umd_nm or not jibun:
                     continue
+                umd_key = _norm_umd(umd_nm)  # 마스터 umd_nm(공백제거)과 맞추기 위한 매칭키
 
                 deal_date = f"{t.get('dealYear','')}-{t.get('dealMonth','').zfill(2)}-{t.get('dealDay','').zfill(2)}"
                 price = t.get("dealAmount", "0").replace(",", "")
                 area = t.get("buildingAr", t.get("totalFloorAr", "0"))
                 deal_type = t.get("dealingGbn", "")
-                raw_key = f"{sgg_cd}|{umd_nm}|{jibun}|{deal_date}|{price}"
+                raw_key = f"{sgg_cd}|{umd_key}|{jibun}|{deal_date}|{price}"
 
                 # 1) 마스터파일과 매칭 시도 (건물명 확정)
                 cur.execute("""
                     SELECT building_name FROM master_buildings
                     WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
-                """, (sgg_cd, umd_nm, jibun))
+                """, (sgg_cd, umd_key, jibun))
                 m_row = cur.fetchone()
 
                 building_name = None
@@ -198,6 +219,10 @@ def sync_transactions(months: int, bjdong: BjdongMap):
                     building_name = m_row["building_name"]
                     match_source = "master"
                     matched_master += 1
+                elif bjdong is None:
+                    # 법정동코드 CSV 미제공 → 건축HUB 보완 생략, 미매칭으로 처리
+                    unmatched += 1
+                    continue
                 else:
                     # 2) 매칭 실패 → 건축HUB 표제부로 보완 (신규 준공 등 마스터에 없는 건물)
                     bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
@@ -247,10 +272,22 @@ def sync_transactions(months: int, bjdong: BjdongMap):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--months", type=int, default=3, help="최근 N개월 수집 (기본 3, 최초 백필 시 --months 36 권장)")
+    parser.add_argument("--region", default=None, help="STEP1 주소보강을 특정 지역(도로명주소 키워드)만 수행 (예: 서귀포시)")
+    parser.add_argument("--sgg", default=None, help="STEP2를 특정 시군구코드만 수행, 콤마구분 (예: 50130,41220)")
     args = parser.parse_args()
 
     init_db()
-    bjdong_map = BjdongMap(BJDONG_CODE_CSV)
 
-    prepare_master_addresses(bjdong_map)
-    sync_transactions(months=args.months, bjdong=bjdong_map)
+    # 법정동코드 CSV는 '건축HUB 보완'(마스터에 없는 신축 건물명 확정)에만 필요.
+    # 파일이 없으면 마스터 매칭만 수행한다 (JUSO admCd로 시군구코드를 얻으므로 CSV 없이도 동작).
+    bjdong_map = None
+    if os.path.exists(BJDONG_CODE_CSV):
+        bjdong_map = BjdongMap(BJDONG_CODE_CSV)
+        print(f"[SETUP] 법정동코드 CSV 로드 → 건축HUB 보완 활성화 ({BJDONG_CODE_CSV})")
+    else:
+        print("[SETUP] 법정동코드 CSV 없음 → 마스터 매칭만 수행(건축HUB 보완 생략)")
+
+    sgg_filter = set(s.strip() for s in args.sgg.split(",")) if args.sgg else None
+
+    prepare_master_addresses(region_kw=args.region)
+    sync_transactions(months=args.months, bjdong=bjdong_map, sgg_filter=sgg_filter)

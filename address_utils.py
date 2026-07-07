@@ -25,11 +25,17 @@ def road_to_jibun(road_address: str) -> dict | None:
     도로명주소 문자열을 넣으면 지번주소 관련 정보를 반환한다.
     반환 예: {"siNm":"경기도","sggNm":"가평군","emdNm":"청평면","lnbrMnnm":"123","lnbrSlno":"4", ...}
     """
+    # 마스터 주소에는 도로명 뒤에 층수/동/법정동 꼬리표가 붙어있는 경우가 많다.
+    # 예) "경기도 수원시 팔달구 갓매산로19번길 27-4, 2~9층 (매산로2가)"  ← 쉼표로 시작
+    #     "서울 강서구 마곡중앙로 40(마곡동)"                          ← 쉼표 없이 괄호만
+    # JUSO는 이런 꼬리표가 있으면 totalCount=0을 반환하므로 순수 도로명만 남긴다.
+    keyword = road_address.split(",")[0]
+    keyword = re.sub(r"\([^)]*\)\s*$", "", keyword).strip()  # 끝의 (법정동) 괄호 제거
     params = {
         "confmKey": JUSO_API_KEY,
         "currentPage": 1,
         "countPerPage": 1,
-        "keyword": road_address,
+        "keyword": keyword,
         "resultType": "json",
     }
     resp = requests.get(JUSO_URL, params=params, timeout=10)

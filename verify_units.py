@@ -103,10 +103,13 @@ def fetch_title_hocnt(sigungu_cd, bjdong_cd, plat_gb, bun, ji, bld_nm=""):
     return hoc(best), best
 
 
-def verify(csv_path: str, min_units: int):
+def verify(csv_path: str, min_units: int, offset: int = 0, limit: int | None = None):
     df = pd.read_csv(csv_path)
-    df = df[df["unit_est"].isna()]  # 호수 정보 자체가 없던 건만 재검증
-    print(f"재검증 대상(호수 미기재): {len(df)}건")
+    df = df[df["unit_est"].isna()].reset_index(drop=True)  # 호수 정보 자체가 없던 건만 재검증
+    total = len(df)
+    df = df.iloc[offset:offset + limit] if limit is not None else df.iloc[offset:]
+    end = offset + len(df)
+    print(f"재검증 대상(호수 미기재): 전체 {total}건 중 [{offset}:{end}] = {len(df)}건 처리")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -145,18 +148,28 @@ def verify(csv_path: str, min_units: int):
 
             confirmed_units, _raw = title
             if confirmed_units >= min_units:
+                # 재실행 시 중복 등록 방지
                 cur.execute(
-                    """
-                    INSERT INTO master_buildings
-                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (building_name, road_address, f"{si_do} {sgg_nm}".strip(),
-                     sigungu_cd, umd_nm, jibun_str, confirmed_units),
+                    "SELECT 1 FROM master_buildings WHERE road_address=%s AND building_name=%s",
+                    (road_address, building_name),
                 )
-                rescued += 1
-                results.append({"road_address": road_address, "building_name": building_name,
-                                "status": "구제됨(재등록)", "confirmed_units": confirmed_units})
+                if cur.fetchone():
+                    results.append({"road_address": road_address, "building_name": building_name,
+                                    "status": "이미등록됨", "confirmed_units": confirmed_units})
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO master_buildings
+                            (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (building_name, road_address, f"{si_do} {sgg_nm}".strip(),
+                         sigungu_cd, umd_nm, jibun_str, confirmed_units),
+                    )
+                    conn.commit()  # 청크 도중 강제종료돼도 구제분 보존 (증분 커밋)
+                    rescued += 1
+                    results.append({"road_address": road_address, "building_name": building_name,
+                                    "status": "구제됨(재등록)", "confirmed_units": confirmed_units})
             else:
                 results.append({"road_address": road_address, "building_name": building_name,
                                 "status": "제외확정", "confirmed_units": confirmed_units})
@@ -169,13 +182,16 @@ def verify(csv_path: str, min_units: int):
     cur.close()
     conn.close()
 
-    pd.DataFrame(results).to_csv("verify_result.csv", index=False, encoding="utf-8-sig")
-    print(f"검증 완료 — 구제(재등록): {rescued}건 / 결과 저장: verify_result.csv")
+    out = f"verify_result_{offset}_{end}.csv"
+    pd.DataFrame(results).to_csv(out, index=False, encoding="utf-8-sig")
+    print(f"검증 완료 — 구제(재등록): {rescued}건 / 결과 저장: {out}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("csv_path", help="load_master.py가 생성한 excluded_small_buildings.csv")
     parser.add_argument("--min-units", type=int, default=30)
+    parser.add_argument("--offset", type=int, default=0, help="재검증 대상 목록에서 시작 인덱스")
+    parser.add_argument("--limit", type=int, default=None, help="이번 실행에서 처리할 건수 (청크 크기)")
     args = parser.parse_args()
-    verify(args.csv_path, args.min_units)
+    verify(args.csv_path, args.min_units, offset=args.offset, limit=args.limit)
