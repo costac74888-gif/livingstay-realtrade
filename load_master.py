@@ -21,6 +21,17 @@ def extract_sgg_text(addr: str):
     return None
 
 
+def safe_int(v):
+    """호수/영업신고호수 칸에 '2~3층', '-', '없음' 등 비숫자 값이 섞여 있어
+    정수로 못 바꾸면 None을 반환한다 (행 자체는 살림)."""
+    if pd.isna(v):
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
 def load_master_file(xlsx_path: str):
     init_db()
 
@@ -39,8 +50,8 @@ def load_master_file(xlsx_path: str):
         road_address = str(row["road_address"]).strip()
         building_name = str(row["building_name"]).strip()
         sgg_text = extract_sgg_text(road_address)
-        units = int(row["units"]) if pd.notna(row.get("units")) else None
-        biz_units = int(row["biz_units"]) if pd.notna(row.get("biz_units")) else None
+        units = safe_int(row.get("units"))
+        biz_units = safe_int(row.get("biz_units"))
 
         cur.execute("""
             INSERT INTO master_buildings (building_name, road_address, sgg_text, units, biz_units)
