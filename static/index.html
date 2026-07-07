@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>생숙실거래 — 생활형숙박시설 실거래가</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B222C; --ink-soft:#4B5563; --paper:#E9EDEC; --card:#FFFFFF;
+    --brass:#B4863F; --brass-soft:#EADFC9; --brick:#B54B3C; --line:#D3D6D2;
+    --radius:14px; --shadow: 0 1px 2px rgba(27,34,44,.04), 0 8px 24px rgba(27,34,44,.06);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased;}
+
+  header{
+    position:sticky; top:0; z-index:20; background:var(--ink); color:#fff;
+    padding:14px 28px; display:flex; align-items:center; gap:20px; border-bottom:3px solid var(--brass);
+  }
+  .logo{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px; display:flex; align-items:center; gap:8px;}
+  .logo .key{width:20px; height:20px; border-radius:5px; background:var(--brass); position:relative;}
+  .logo .key::after{content:""; position:absolute; right:4px; top:50%; transform:translateY(-50%); width:6px; height:6px; border-radius:50%; background:var(--ink);}
+  .searchbar{
+    flex:1; max-width:460px; display:flex; align-items:center; gap:8px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); border-radius:999px; padding:4px 6px 4px 16px;
+  }
+  .searchbar input{
+    flex:1; background:transparent; border:none; outline:none; color:#fff; font-size:13.5px; font-family:'Inter',sans-serif;
+  }
+  .searchbar input::placeholder{color:rgba(255,255,255,.5);}
+  .searchbar button{
+    background:var(--brass); color:var(--ink); border:none; border-radius:999px; padding:8px 16px;
+    font-weight:700; font-size:12.5px; cursor:pointer; font-family:'Space Grotesk',sans-serif;
+  }
+  .navlinks{margin-left:auto; display:flex; gap:22px; font-size:13px; color:rgba(255,255,255,.75);}
+
+  .region-tabs{background:var(--card); border-bottom:1px solid var(--line); padding:0 20px;}
+  .region-tabs .inner{max-width:1180px; margin:0 auto; display:flex; gap:4px; overflow-x:auto;}
+  .rtab{flex:0 0 auto; font-family:'Space Grotesk',sans-serif; font-size:13.5px; font-weight:600; color:var(--ink-soft);
+        padding:13px 16px; border-bottom:3px solid transparent; cursor:pointer; white-space:nowrap;}
+  .rtab .n{font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:600; color:var(--ink-soft); margin-left:5px;}
+  .rtab.active{color:var(--ink); border-bottom-color:var(--brass);}
+  .rtab.active .n{color:var(--brass);}
+
+  .layout{max-width:1180px; margin:24px auto; padding:0 20px 60px;}
+  .results-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px;}
+  .results-head h2{font-family:'Space Grotesk',sans-serif; font-size:20px; margin:0;}
+  .results-head .count{color:var(--ink-soft); font-size:13px; margin-left:8px;}
+  .sort{font-size:12.5px; color:var(--ink-soft); border:1px solid var(--line); border-radius:8px; padding:6px 10px; background:#fff;}
+
+  .ticket{
+    display:grid; grid-template-columns:1fr 108px 190px; background:var(--card); border-radius:var(--radius);
+    box-shadow:var(--shadow); margin-bottom:14px; position:relative; overflow:hidden;
+  }
+  .stub-left{padding:18px 20px;}
+  .bld-name{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:16.5px; margin:0 0 4px;}
+  .addr{font-size:12.5px; color:var(--ink-soft); margin:0 0 10px;}
+  .badges{display:flex; gap:6px; flex-wrap:wrap;}
+  .badge{font-size:10.5px; font-family:'JetBrains Mono',monospace; padding:3px 8px; border-radius:6px; font-weight:600;}
+  .badge.type-brk{background:#FBEDEA; color:var(--brick);}
+  .badge.type-med{background:var(--brass-soft); color:#7a5a22;}
+  .badge.src{background:#EEF1F3; color:var(--ink-soft);}
+
+  .perforation{
+    position:relative; border-left:1px dashed var(--line); border-right:1px dashed var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 6px;
+  }
+  .perforation::before, .perforation::after{content:""; position:absolute; width:16px; height:16px; border-radius:50%; background:var(--paper); left:50%; transform:translateX(-50%);}
+  .perforation::before{top:-8px;} .perforation::after{bottom:-8px;}
+  .area-val{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px;}
+  .area-lbl{font-size:10px; color:var(--ink-soft); margin-top:2px;}
+
+  .stub-right{padding:18px 16px 18px 18px; display:flex; flex-direction:column; justify-content:center; gap:6px; position:relative;}
+  .price{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:19px; color:var(--ink);}
+  .price small{font-size:11px; font-weight:600; color:var(--ink-soft); margin-left:3px;}
+  .deal-date{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-soft);}
+  .barcode{position:absolute; right:0; top:0; bottom:0; width:14px;
+    background-image:repeating-linear-gradient(to right, var(--ink) 0 1.5px, transparent 1.5px 3px, var(--ink) 3px 4px, transparent 4px 7px); opacity:.85;}
+
+  .empty-state{text-align:center; padding:60px 20px; color:var(--ink-soft);}
+  .empty-state .big{font-family:'Space Grotesk',sans-serif; font-size:17px; color:var(--ink); margin-bottom:6px;}
+  .loading{text-align:center; padding:40px; color:var(--ink-soft); font-family:'JetBrains Mono',monospace; font-size:13px;}
+  .pager{display:flex; justify-content:center; gap:8px; margin-top:20px;}
+  .pager button{
+    border:1px solid var(--line); background:#fff; border-radius:8px; padding:7px 14px; font-size:12.5px; cursor:pointer;
+  }
+  .pager button:disabled{opacity:.4; cursor:not-allowed;}
+  .pager .cur{font-family:'JetBrains Mono',monospace; font-size:12.5px; align-self:center; color:var(--ink-soft);}
+
+  @media (max-width: 860px){
+    .navlinks{display:none;}
+    .ticket{grid-template-columns:1fr;}
+    .perforation{border-left:none;border-right:none;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);flex-direction:row;gap:10px;padding:8px 16px;}
+    .perforation::before{left:-8px; top:50%; transform:translateY(-50%);}
+    .perforation::after{left:auto; right:-8px; top:50%; transform:translateY(-50%);}
+    .stub-right{flex-direction:row; justify-content:space-between; align-items:center;}
+    .barcode{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span class="key"></span>생숙실거래</div>
+  <div class="searchbar">
+    <input id="searchInput" type="text" placeholder="건물명 또는 주소 검색 — 예) 오션마크레지던스, 해운대구" />
+    <button id="searchBtn">검색</button>
+  </div>
+  <div class="navlinks"><span>실거래</span><span>지도</span></div>
+</header>
+
+<nav class="region-tabs"><div class="inner" id="regionTabs"></div></nav>
+
+<div class="layout">
+  <div class="results-head">
+    <h2>전국 생숙 실거래<span class="count" id="resultCount"></span></h2>
+    <select class="sort" id="sortSelect">
+      <option value="deal_date_desc">최신순</option>
+      <option value="price_desc">가격 높은순</option>
+      <option value="area_desc">면적 넓은순</option>
+    </select>
+  </div>
+
+  <div id="board"><div class="loading">불러오는 중…</div></div>
+  <div class="pager" id="pager"></div>
+</div>
+
+<script>
+const API_BASE = "";  // 같은 Replit 서버에서 서빙하면 비워둠. 분리 배포 시 API 도메인 입력.
+
+let state = { q: "", region: "전체", page: 1, size: 20 };
+
+async function loadRegions() {
+  const res = await fetch(`${API_BASE}/api/regions`);
+  const data = await res.json();
+  const wrap = document.getElementById("regionTabs");
+  wrap.innerHTML = "";
+  data.forEach(r => {
+    const el = document.createElement("div");
+    el.className = "rtab" + (r.region === state.region ? " active" : "");
+    el.innerHTML = `${r.region}<span class="n">${r.count}</span>`;
+    el.addEventListener("click", () => { state.region = r.region; state.page = 1; loadRegions(); loadBoard(); });
+    wrap.appendChild(el);
+  });
+}
+
+function ticketHTML(t) {
+  const typeClass = t.deal_type === "직거래" ? "type-brk" : "type-med";
+  const srcLabel = t.match_source === "master" ? "" :
+                   t.match_source === "buildinghub" ? '<span class="badge src">건축물대장 보완</span>' : "";
+  return `
+    <div class="ticket">
+      <div class="stub-left">
+        <p class="bld-name">${t.building_name ?? "(건물명 미확인)"}</p>
+        <p class="addr">${t.address}</p>
+        <div class="badges">
+          <span class="badge ${typeClass}">${t.deal_type || "-"}</span>
+          ${srcLabel}
+        </div>
+      </div>
+      <div class="perforation">
+        <span class="area-val">${Number(t.area).toFixed(1)}</span>
+        <span class="area-lbl">㎡ 전용</span>
+      </div>
+      <div class="stub-right">
+        <div class="price">${(t.price / 10000).toFixed(2)}<small>억원</small></div>
+        <div class="deal-date">${t.deal_date}</div>
+        <div class="barcode"></div>
+      </div>
+    </div>`;
+}
+
+async function loadBoard() {
+  const board = document.getElementById("board");
+  board.innerHTML = `<div class="loading">불러오는 중…</div>`;
+
+  const params = new URLSearchParams({
+    q: state.q, region: state.region === "전체" ? "" : state.region,
+    page: state.page, size: state.size
+  });
+  const res = await fetch(`${API_BASE}/api/transactions?${params}`);
+  const data = await res.json();
+
+  document.getElementById("resultCount").textContent = `총 ${data.total}건`;
+
+  if (data.items.length === 0) {
+    board.innerHTML = `
+      <div class="empty-state">
+        <div class="big">일치하는 거래가 없습니다</div>
+        검색어나 지역 조건을 조정해보세요. 배치 수집은 하루 1회 갱신됩니다.
+      </div>`;
+    document.getElementById("pager").innerHTML = "";
+    return;
+  }
+
+  let sorted = [...data.items];
+  if (state.sort === "price_desc") sorted.sort((a,b)=>b.price-a.price);
+  else if (state.sort === "area_desc") sorted.sort((a,b)=>b.area-a.area);
+
+  board.innerHTML = sorted.map(ticketHTML).join("");
+
+  const totalPages = Math.max(Math.ceil(data.total / state.size), 1);
+  const pager = document.getElementById("pager");
+  pager.innerHTML = `
+    <button ${state.page<=1?"disabled":""} id="prevPage">이전</button>
+    <span class="cur">${state.page} / ${totalPages}</span>
+    <button ${state.page>=totalPages?"disabled":""} id="nextPage">다음</button>`;
+  document.getElementById("prevPage")?.addEventListener("click", ()=>{ state.page--; loadBoard(); });
+  document.getElementById("nextPage")?.addEventListener("click", ()=>{ state.page++; loadBoard(); });
+}
+
+document.getElementById("searchBtn").addEventListener("click", () => {
+  state.q = document.getElementById("searchInput").value.trim();
+  state.page = 1;
+  loadBoard();
+});
+document.getElementById("searchInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("searchBtn").click();
+});
+document.getElementById("sortSelect").addEventListener("change", (e) => {
+  state.sort = e.target.value; loadBoard();
+});
+
+loadRegions();
+loadBoard();
+</script>
+
+</body>
+</html>
