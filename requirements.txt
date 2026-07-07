@@ -2,3 +2,8 @@ flask
 requests
 pandas
 openpyxl
+flask
+gunicorn
+openpyxl
+pandas
+requests
