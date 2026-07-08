@@ -13,6 +13,7 @@ address_utils.py — 주소 변환 유틸 2가지
 
 import os
 import re
+import zipfile
 import requests
 import pandas as pd
 
@@ -49,40 +50,90 @@ def road_to_jibun(road_address: str) -> dict | None:
 
 
 class BjdongMap:
-    """법정동코드 전체자료(code.go.kr) 로 만든 매핑 테이블"""
+    """
+    법정동코드 전체자료(code.go.kr) 로 만든 매핑 테이블.
+
+    실제 파일 형식 (주의: CSV가 아니라 탭 구분 .txt, 컬럼 3개뿐)
+    ------------------------------------------------------------
+    법정동코드(10자리)   법정동명(시도+시군구+읍면동이 공백으로 합쳐진 한 컬럼)   폐지여부
+    예) 4111000000   경기도 수원시            존재   ← 시군구 레벨(구 없는 상위 코드, 조회 대상 아님)
+        4111100000   경기도 수원시 장안구      존재   ← 실제 조회 대상(구 단위)
+        4111010100   경기도 수원시 장안구 파장동  존재   ← 읍면동 레벨
+
+    세종특별자치시처럼 구 없이 시도=시군구가 같은 경우도 있어(코드가 '000'으로 안 끝남),
+    단순히 토큰 개수로 구분하지 않고 "이 이름으로 시작하는 더 하위 항목이 있는가"로
+    실제 조회 가능한 최말단 시군구만 골라낸다.
+    """
+
+    @staticmethod
+    def _resolve_path(path: str) -> str:
+        """code.go.kr에서 받은 파일이 .zip 그대로여도 자동으로 압축을 풀어서 .txt 경로를 반환한다."""
+        if not path.lower().endswith(".zip"):
+            return path
+        extract_dir = path[:-4] + "_extracted"
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(path) as zf:
+            names = [n for n in zf.namelist() if n.lower().endswith((".txt", ".csv"))]
+            if not names:
+                raise FileNotFoundError(f"{path} 안에 .txt/.csv 파일이 없습니다")
+            zf.extract(names[0], extract_dir)
+            return os.path.join(extract_dir, names[0])
 
     def __init__(self, csv_path: str):
-        df = pd.read_csv(csv_path, dtype=str, encoding="cp949")
+        csv_path = self._resolve_path(csv_path)
+        df = pd.read_csv(csv_path, sep="\t", dtype=str, encoding="cp949")
         df = df[df["폐지여부"] == "존재"].copy()
         df["sggCd"] = df["법정동코드"].str[:5]
         df["bjdongCd"] = df["법정동코드"].str[5:10]
-        self.df = df[["sggCd", "bjdongCd", "시도명", "시군구명", "읍면동명"]]
+        self.df = df[["법정동코드", "법정동명", "sggCd", "bjdongCd"]]
+
+        sgg_rows = self.df[self.df["bjdongCd"] == "00000"].copy()
+        # 시도 전체를 가리키는 상위 placeholder(예: '서울특별시' 단독, sggCd가 '000'으로 끝남) 제외
+        sgg_rows = sgg_rows[~sgg_rows["sggCd"].str.endswith("000")]
+
+        names = sgg_rows["법정동명"].tolist()
+        name_set = set(names)
+
+        def has_child(name):
+            # 이 이름 뒤에 공백+무언가가 붙은 더 하위 항목이 있으면 이건 상위(구가 있는 시) → 조회 대상 아님
+            return any((n != name) and n.startswith(name + " ") for n in name_set)
+
+        leaf_rows = sgg_rows[~sgg_rows["법정동명"].apply(has_child)]
+
+        self._sgg_text_map = dict(zip(leaf_rows["sggCd"], leaf_rows["법정동명"]))
+        self._all_sgg_rows = sgg_rows  # 상위코드 포함 전체 (find_sgg_cd에서 이름 매칭용)
 
     def find_sgg_cd(self, si_do: str, sgg_nm: str) -> str | None:
-        cand = self.df[(self.df["시도명"] == si_do) & (self.df["시군구명"] == sgg_nm)]
-        if cand.empty:
-            return None
-        return cand.iloc[0]["sggCd"]
+        """'경기도'+'수원시' 처럼 넘어와도, 실제로는 '경기도 수원시 장안구'급 leaf 코드가 필요할 수 있어
+        일단 이름이 포함되는 leaf 항목을 우선 반환한다."""
+        target_prefix = f"{si_do} {sgg_nm}".strip() if sgg_nm else si_do
+        # leaf 중 정확히 일치
+        for cd, name in self._sgg_text_map.items():
+            if name == target_prefix:
+                return cd
+        # leaf 중 이 이름으로 시작하는 첫 항목 (구 단위까지 내려가야 하는 경우)
+        for cd, name in self._sgg_text_map.items():
+            if name.startswith(target_prefix):
+                return cd
+        return None
 
     def find_bjdong_cd(self, sgg_cd: str, umd_nm: str) -> str | None:
-        cand = self.df[(self.df["sggCd"] == sgg_cd) & (self.df["읍면동명"] == umd_nm)]
-        if cand.empty:
-            cand = self.df[(self.df["sggCd"] == sgg_cd) & (self.df["읍면동명"].str.startswith(umd_nm[:2]))]
-        if cand.empty:
+        cand = self.df[(self.df["sggCd"] == sgg_cd) & (self.df["bjdongCd"] != "00000")]
+        last_token = cand["법정동명"].str.split().str[-1]
+        match = cand[last_token == umd_nm]
+        if match.empty:
+            match = cand[last_token.str.startswith(umd_nm[:2], na=False)]
+        if match.empty:
             return None
-        return cand.iloc[0]["bjdongCd"]
+        return match.iloc[0]["bjdongCd"]
 
     def all_sgg_codes(self) -> list[str]:
-        """전국 시군구 코드 전체 목록 (전국 발굴 배치의 순회 대상)"""
-        return sorted(self.df["sggCd"].dropna().unique().tolist())
+        """전국 실제 조회 가능한(구가 있으면 구 단위까지 내려간) 시군구 코드 목록"""
+        return sorted(self._sgg_text_map.keys())
 
     def sgg_text(self, sgg_cd: str) -> str | None:
-        """시군구코드 → '경기도 수원시' 형태 텍스트 (역방향 조회)"""
-        cand = self.df[self.df["sggCd"] == sgg_cd]
-        if cand.empty:
-            return None
-        row = cand.iloc[0]
-        return f"{row['시도명']} {row['시군구명']}"
+        """시군구코드 → '경기도 수원시 장안구' 형태 텍스트"""
+        return self._sgg_text_map.get(sgg_cd)
 
 
 def parse_jibun(jibun: str):

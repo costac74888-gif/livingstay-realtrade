@@ -1,1 +1,2 @@
 - [LivingStay 공공데이터 API 매칭](livingstay-gov-apis.md) — RTMS 유형필드=buildingType('집합'), JUSO admCd[:5]=시군구코드(CSV 불필요), umdNm은 emd+li 공백제거 매칭
+- [LivingStay Claude-zip 선택 병합](livingstay-zip-merges.md) — 새 vN zip은 매번 우리 수정(env/JUSO괄호/health/favorites NULL/index.html)을 되돌림; 유지 목록 + 법정동파일 형식(탭.txt, 256 시군구)
