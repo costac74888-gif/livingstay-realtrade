@@ -66,6 +66,8 @@ def init_db():
         id SERIAL PRIMARY KEY,
         building_name TEXT,           -- 매칭 성공 시 마스터파일 건물명 (NULL이면 미매칭)
         address TEXT NOT NULL,        -- 법정동 + 지번 조합 표시용 주소
+        si_do TEXT,                   -- 시/도 (계층 검색용, 마스터의 sgg_text에서 분리)
+        sgg_nm TEXT,                  -- 시/군/구 (계층 검색용)
         area REAL,                    -- 건물면적(㎡)
         price INTEGER,                -- 거래금액(만원)
         deal_date TEXT,               -- 계약년월일 YYYY-MM-DD
@@ -78,6 +80,10 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )
     """)
+
+    # 기존에 이미 만들어진 DB(컬럼 없이 생성됐던 경우)에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS si_do TEXT")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sgg_nm TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sync_log (

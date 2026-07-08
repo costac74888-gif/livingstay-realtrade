@@ -207,18 +207,23 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
 
                 # 1) 마스터파일과 매칭 시도 (건물명 확정)
                 cur.execute("""
-                    SELECT building_name FROM master_buildings
+                    SELECT building_name, sgg_text FROM master_buildings
                     WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
                 """, (sgg_cd, umd_key, jibun))
                 m_row = cur.fetchone()
 
                 building_name = None
                 match_source = "unmatched"
+                si_do_val, sgg_nm_val = None, None  # 시/군구 계층 검색용
 
                 if m_row:
                     building_name = m_row["building_name"]
                     match_source = "master"
                     matched_master += 1
+                    if m_row["sgg_text"]:
+                        parts = m_row["sgg_text"].split(" ", 1)
+                        si_do_val = parts[0] if len(parts) > 0 else None
+                        sgg_nm_val = parts[1] if len(parts) > 1 else None
                 elif bjdong is None:
                     # 법정동코드 CSV 미제공 → 건축HUB 보완 생략, 미매칭으로 처리
                     unmatched += 1
@@ -243,11 +248,12 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
                 try:
                     cur.execute("""
                         INSERT INTO transactions
-                        (building_name, address, area, price, deal_date, deal_type,
+                        (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
                          sgg_cd, umd_nm, jibun, match_source, raw_key)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (raw_key) DO NOTHING
-                    """, (building_name, f"{umd_nm} {jibun}", float(area or 0), int(price or 0),
+                    """, (building_name, f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
+                          float(area or 0), int(price or 0),
                           deal_date, deal_type, sgg_cd, umd_nm, jibun, match_source, raw_key))
                     if cur.rowcount:
                         inserted += 1
