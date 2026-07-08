@@ -56,10 +56,12 @@ def init_db():
         sgg_cd TEXT,                  -- 법정동코드 앞5자리 (배치가 채움)
         umd_nm TEXT,                  -- 법정동명 (배치가 채움, 매칭 키)
         jibun TEXT,                   -- 지번 (배치가 채움, 매칭 키)
-        units INTEGER,                -- 호수(세대수)
-        biz_units INTEGER             -- 영업신고호수
+        units INTEGER,                -- 호수(세대수) — 정보용, 필터 기준 아님
+        biz_units INTEGER,            -- 영업신고호수
+        source TEXT DEFAULT 'original' -- 'original'(첨부 마스터파일) | 'api_discovered'(전국 발굴 배치)
     )
     """)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'original'")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
@@ -104,6 +106,50 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_address ON transactions(address)")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    _ensure_raw_key_unique_constraint()
+
+
+def _ensure_raw_key_unique_constraint():
+    """
+    raw_key에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
+    CREATE TABLE IF NOT EXISTS로 예전에 이미 만들어진 테이블은 스키마에 UNIQUE가 적혀 있어도
+    실제 테이블엔 반영 안 됐을 수 있어(IF NOT EXISTS는 이름만 봄) 별도로 확인/적용한다.
+    1) 남아있는 중복 raw_key를 먼저 정리(가장 최근 id만 남김)
+    2) 제약이 이미 있으면 건너뛰고, 없으면 추가
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM transactions a USING transactions b
+        WHERE a.raw_key = b.raw_key AND a.id < b.id
+    """)
+    deleted = cur.rowcount
+
+    cur.execute("""
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'transactions'
+          AND tc.constraint_type = 'UNIQUE'
+          AND kcu.column_name = 'raw_key'
+    """)
+    exists = cur.fetchone()
+
+    if not exists:
+        cur.execute("""
+            ALTER TABLE transactions
+            ADD CONSTRAINT transactions_raw_key_unique UNIQUE (raw_key)
+        """)
+        print(f"raw_key UNIQUE 제약 신규 적용 완료 (중복 {deleted}건 사전 정리)")
+    else:
+        print(f"raw_key UNIQUE 제약 이미 존재({exists['constraint_name']}) — 중복 {deleted}건만 정리")
 
     conn.commit()
     cur.close()

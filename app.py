@@ -121,6 +121,54 @@ def get_years():
     return jsonify({"years": years, "current_year": str(datetime.now().year)})
 
 
+@app.route("/api/favorites")
+def get_favorites():
+    """
+    관심단지 전용 조회 — /api/transactions의 size 상한(200)과 무관하게
+    저장된 관심단지 키(building_name|address) 전체를 한 번에 정확히 조회한다.
+    쿼리파라미터: keys = "건물명|주소" 쌍을 쉼표(,)로 연결
+    """
+    raw_keys = request.args.get("keys", "").strip()
+    if not raw_keys:
+        return jsonify({"items": [], "total": 0})
+
+    pairs = []
+    for token in raw_keys.split(","):
+        if "|" not in token:
+            continue
+        name, addr = token.split("|", 1)
+        pairs.append((name, addr))
+
+    if not pairs:
+        return jsonify({"items": [], "total": 0})
+
+    conn = get_conn()
+    cur = conn.cursor()
+    # 미매칭 거래는 building_name이 NULL이고, 프론트 favKey는 이를 문자열 "null"로 저장한다.
+    # SQL에서 = 'null'은 실제 NULL과 매칭되지 않으므로 그런 항목은 IS NULL로 조회한다.
+    conditions = []
+    params = []
+    for name, addr in pairs:
+        if name in ("null", "undefined", ""):
+            conditions.append("(building_name IS NULL AND address = %s)")
+            params.append(addr)
+        else:
+            conditions.append("(building_name = %s AND address = %s)")
+            params.extend([name, addr])
+    conditions = " OR ".join(conditions)
+    cur.execute(f"""
+        SELECT building_name, address, si_do, sgg_nm, umd_nm, jibun,
+               area, price, deal_date, deal_type, match_source
+        FROM transactions
+        WHERE {conditions}
+        ORDER BY deal_date DESC, id DESC
+    """, params)
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"items": rows, "total": len(rows)})
+
+
 @app.route("/api/health")
 def health():
     conn = get_conn()

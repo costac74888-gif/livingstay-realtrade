@@ -179,6 +179,13 @@ function getFavorites(){
   try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; }
 }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
+function formatPrice(manwon){
+  const p = Math.round(Number(manwon) || 0);
+  const eok = Math.floor(p / 10000);
+  const man = p % 10000;
+  if (eok > 0) return man > 0 ? `${eok}억${man}` : `${eok}억`;
+  return `${man}만원`;
+}
 function isFav(item){ return getFavorites().includes(favKey(item)); }
 function toggleFav(item){
   let favs = getFavorites();
@@ -244,7 +251,7 @@ function rowHTML(t){
       <td class="col-name">${t.building_name ?? "(건물명 미확인)"}</td>
       <td class="col-addr">${t.si_do||''} ${t.sgg_nm||''} ${t.umd_nm||''} ${t.jibun||''}</td>
       <td class="col-num">${Number(t.area).toFixed(1)} ㎡</td>
-      <td class="col-price">${(t.price/10000).toFixed(2)} 억원</td>
+      <td class="col-price">${formatPrice(t.price)}</td>
       <td class="col-date">${t.deal_date}</td>
       <td>${typeTag}${srcTag}</td>
     </tr>`;
@@ -269,10 +276,13 @@ async function loadBoard(){
 
   if (state.favOnly){
     const favs = getFavorites();
-    const res = await fetch(`/api/transactions?size=200&year=all`);
-    const data = await res.json();
-    items = data.items.filter(t => favs.includes(favKey(t)));
-    total = items.length;
+    if (favs.length === 0){
+      items = []; total = 0;
+    } else {
+      const res = await fetch(`/api/favorites?keys=${encodeURIComponent(favs.join(","))}`);
+      const data = await res.json();
+      items = data.items; total = data.total;
+    }
   } else {
     const params = new URLSearchParams({
       q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm,

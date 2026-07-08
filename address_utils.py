@@ -72,6 +72,18 @@ class BjdongMap:
             return None
         return cand.iloc[0]["bjdongCd"]
 
+    def all_sgg_codes(self) -> list[str]:
+        """전국 시군구 코드 전체 목록 (전국 발굴 배치의 순회 대상)"""
+        return sorted(self.df["sggCd"].dropna().unique().tolist())
+
+    def sgg_text(self, sgg_cd: str) -> str | None:
+        """시군구코드 → '경기도 수원시' 형태 텍스트 (역방향 조회)"""
+        cand = self.df[self.df["sggCd"] == sgg_cd]
+        if cand.empty:
+            return None
+        row = cand.iloc[0]
+        return f"{row['시도명']} {row['시군구명']}"
+
 
 def parse_jibun(jibun: str):
     """'751-3' → ('0','751','3')  /  '산 12-1' → ('1','12','1')"""

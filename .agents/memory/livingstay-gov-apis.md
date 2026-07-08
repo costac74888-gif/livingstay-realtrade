@@ -41,3 +41,9 @@ description: 생숙 실거래(RTMS)·주소변환(JUSO) 정부 API의 응답 필
 - '호수 미기재'로 제외된 건의 대부분은 시골 펜션/빌라(표제부 totalCount=0)로 정당 제외이나, 일부는 엑셀 호수 누락으로 잘못 제외된 대형 생숙 타워 → verify로 구제해야 함. 신뢰 기준은 DB `master_buildings` 카운트(CSV 합계 아님).
 
 **Why:** 이 필드명/코드 규칙은 응답을 실제로 찍어봐야만 알 수 있고 정부 문서 표기와 다름. 매칭률 손실의 주원인이 umdNm 형식 차이였음.
+
+## 전국 발굴 배치 (discover_new_buildings.py)
+- **전국 신규 생숙 발굴은 법정동코드 CSV(`법정동코드 전체자료.csv`, cp949)가 필수** — `BjdongMap.all_sgg_codes()`로 순회할 전국 시군구 목록의 유일한 출처. CSV 없으면 `--list-only`부터 `FileNotFoundError`. (지역 한정 `sync_batch.py`만 CSV-free)
+- 등록 판정: RTMS `buildingType=='집합' & buildingUse=='숙박'` → 표제부(getBrTitleInfo) `mainPurpsCdNm`에 '생활숙박시설' 포함 시 등록(호텔/콘도 제외). 호수(hoCnt)는 필터 아닌 정보용. 30실 게이트 폐기.
+- 진행상황은 `discover_progress(sgg_cd, deal_ymd)` 테이블로 재실행 스킵, 건별 즉시 commit(환경 강제종료 대비).
+- `master_buildings.source`: 'original'(엑셀) vs 'api_discovered'(발굴). raw_key DB UNIQUE 제약은 db.py `_ensure_raw_key_unique_constraint()`가 중복정리 후 부여.
