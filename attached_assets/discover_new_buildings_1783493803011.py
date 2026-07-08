@@ -47,21 +47,14 @@ import requests
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun
 
-RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
-BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
+RTMS_SERVICE_KEY = os.environ["RTMS_SERVICE_KEY"]
+BLD_SERVICE_KEY = os.environ["BLD_SERVICE_KEY"]
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 
 RTMS_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade"
 BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
 
 REQUEST_SLEEP = 0.15
-
-
-# RTMS umdNm은 면/리 지역에서 '설악면 방일리'처럼 공백이 있으므로 공백을 제거해
-# raw_key를 만든다. sync_batch.py의 _norm_umd와 반드시 동일한 규칙이어야
-# 두 배치가 같은 거래에 대해 같은 raw_key를 만들어 중복 적재가 생기지 않는다.
-def _norm_umd(s: str) -> str:
-    return (s or "").replace(" ", "")
 
 
 def init_progress_table():
@@ -202,7 +195,6 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
             # sync_batch.py와 반드시 동일한 방식으로 순번을 매겨야, 나중에 sync_batch가
             # 같은 달을 다시 훑을 때 raw_key가 어긋나지 않고 정확히 이어진다.
-            # (같은 지번·날·가격의 여러 호실이 "중복"으로 뭉개지지 않도록 층+발생순번 포함)
             occurrence_counter = {}
 
             for t in trades:
@@ -216,15 +208,15 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 area = t.get("buildingAr", t.get("totalFloorAr", "0"))
                 deal_type = t.get("dealingGbn", "")
                 floor_val = (t.get("floor") or t.get("flrNo") or "").strip()
-                umd_key = _norm_umd(umd_nm)  # sync_batch.py와 동일하게 공백 제거한 값으로 키 생성
-                base_key = f"{sgg_cd}|{umd_key}|{jibun}|{deal_date}|{price}|{floor_val}"
+
+                base_key = f"{sgg_cd}|{umd_nm}|{jibun}|{deal_date}|{price}|{floor_val}"
                 occurrence_counter[base_key] = occurrence_counter.get(base_key, 0) + 1
                 raw_key = f"{base_key}|{occurrence_counter[base_key]}"
 
                 checked += 1
 
                 if already_in_master(cur, sgg_cd, umd_nm, jibun):
-                    continue  # 이미 아는 건물 → sync_batch.py가 알아서 처리, 여기선 스킵
+                    continue  # 이미 아는 건물 → sync_batch.py가 이 거래를 포함해 알아서 처리
 
                 bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
                 if not bjdong_cd:
@@ -259,13 +251,12 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
                 cur.execute("""
                     INSERT INTO transactions
-                        (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
-                         floor, sgg_cd, umd_nm, jibun, match_source, raw_key)
+                        (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type, floor,
+                         sgg_cd, umd_nm, jibun, match_source, raw_key)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'api_discovered', %s)
                     ON CONFLICT (raw_key) DO NOTHING
                 """, (title["bld_nm"], f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
-                      float(area or 0), int(price or 0), deal_date, deal_type,
-                      floor_val,
+                      float(area or 0), int(price or 0), deal_date, deal_type, floor_val,
                       sgg_cd, umd_nm, jibun, raw_key))
                 if cur.rowcount:
                     new_transactions += 1
