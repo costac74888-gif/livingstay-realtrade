@@ -249,12 +249,13 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
                     cur.execute("""
                         INSERT INTO transactions
                         (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
-                         sgg_cd, umd_nm, jibun, match_source, raw_key)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         floor, sgg_cd, umd_nm, jibun, match_source, raw_key)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (raw_key) DO NOTHING
                     """, (building_name, f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
                           float(area or 0), int(price or 0),
-                          deal_date, deal_type, sgg_cd, umd_nm, jibun, match_source, raw_key))
+                          deal_date, deal_type, (t.get("floor") or "").strip(),
+                          sgg_cd, umd_nm, jibun, match_source, raw_key))
                     if cur.rowcount:
                         inserted += 1
                 except Exception as e:

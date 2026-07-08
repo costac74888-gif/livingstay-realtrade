@@ -77,6 +77,7 @@ def init_db():
         sgg_cd TEXT,
         umd_nm TEXT,
         jibun TEXT,
+        floor TEXT,                   -- 층 (RTMS 응답의 floor 필드, 정보용)
         match_source TEXT,            -- 'master' | 'buildinghub' | 'unmatched'
         raw_key TEXT UNIQUE,          -- 중복 적재 방지용 (sgg_cd+umd_nm+jibun+deal_date+price)
         created_at TIMESTAMP DEFAULT NOW()
@@ -86,6 +87,7 @@ def init_db():
     # 기존에 이미 만들어진 DB(컬럼 없이 생성됐던 경우)에도 안전하게 컬럼 추가 (데이터 보존)
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS si_do TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sgg_nm TEXT")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS floor TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sync_log (

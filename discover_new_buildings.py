@@ -244,11 +244,12 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 cur.execute("""
                     INSERT INTO transactions
                         (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
-                         sgg_cd, umd_nm, jibun, match_source, raw_key)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'api_discovered', %s)
+                         floor, sgg_cd, umd_nm, jibun, match_source, raw_key)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'api_discovered', %s)
                     ON CONFLICT (raw_key) DO NOTHING
                 """, (title["bld_nm"], f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
                       float(area or 0), int(price or 0), deal_date, deal_type,
+                      (t.get("floor") or "").strip(),
                       sgg_cd, umd_nm, jibun, raw_key))
                 if cur.rowcount:
                     new_transactions += 1

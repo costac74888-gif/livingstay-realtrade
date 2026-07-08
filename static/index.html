@@ -34,10 +34,7 @@
     position:sticky; top:0; z-index:30;
   }
   .brand{display:flex; align-items:center; gap:10px; padding-right:16px; border-right:1px solid var(--line);}
-  .brand-mark{width:34px; height:34px; flex:0 0 auto;}
-  .brand-text{line-height:1.2;}
-  .brand-text .name{font-weight:700; font-size:15px; color:var(--ink);}
-  .brand-text .sub{font-size:11px; color:var(--ink-soft); letter-spacing:.02em;}
+  .brand-mark-img{height:34px; width:auto; display:block;}
   .page-title{font-size:15px; font-weight:600; color:var(--ink-soft);}
   .header-right{margin-left:auto; font-size:12px; color:var(--ink-soft);}
 
@@ -59,10 +56,17 @@
   }
   .btn-search:hover{background:#000;}
   .search-row2{
-    display:flex; align-items:center; gap:18px; margin-top:12px; padding-top:12px;
-    border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft);
+    display:flex; align-items:center; gap:14px; margin-top:12px; padding-top:12px;
+    border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap;
   }
   .search-row2 label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+  .fav-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--brass-tint); color:var(--brass-dark); border:1px solid #EAD9B8;
+    border-radius:999px; padding:4px 10px 4px 12px; font-size:12px; font-weight:600;
+  }
+  .fav-chip .x{cursor:pointer; color:var(--ink-soft); font-weight:400; margin-left:2px;}
+  .fav-chip .x:hover{color:var(--brick);}
 
   .results-panel{max-width:1240px; margin:16px auto 60px; padding:0 20px;}
   .results-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px;}
@@ -108,7 +112,6 @@
     .btn-search{grid-column:span 2;}
     table.data-table{font-size:12px;}
     td.col-addr{display:none;}
-    .brand-text .sub{display:none;}
   }
 </style>
 </head>
@@ -116,15 +119,7 @@
 
 <header>
   <div class="brand">
-    <svg class="brand-mark" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2" y="2" width="44" height="44" rx="10" fill="#16202E"/>
-      <path d="M24 9 L40 22 H35 V37 H13 V22 H9 Z" fill="#B4863F"/>
-      <path d="M18.5 25.5 L22.5 29.5 L30 21" stroke="#16202E" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <div class="brand-text">
-      <div class="name">홈스퀘어부동산</div>
-      <div class="sub">HOME SQUARE</div>
-    </div>
+    <img src="/static/logo.png" alt="홈스퀘어부동산" class="brand-mark-img" />
   </div>
   <div class="page-title">생활형숙박시설 실거래 조회</div>
   <div class="header-right" id="healthStatus"></div>
@@ -158,6 +153,7 @@
     <div class="search-row2">
       <label><input type="checkbox" id="chkFavOnly"> 관심단지만 보기</label>
       <span id="favCountLabel"></span>
+      <div id="favChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
     </div>
   </div>
 </div>
@@ -172,6 +168,11 @@
 
 <script>
 const FAV_KEY = "livingstay_favorites";
+// 관리자 모드: URL에 ?admin=1 을 붙이면 50개까지, 아니면 일반 사용자 5개 제한
+// (아직 로그인/계정 시스템이 없어 임시로 URL 파라미터로 구분 — 나중에 계정 붙이면 서버 권한으로 교체 권장)
+const IS_ADMIN = new URLSearchParams(location.search).get("admin") === "1";
+const MAX_FAVORITES = IS_ADMIN ? 50 : 5;
+
 let regionTree = {};
 let state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"", page:1, size:20, favOnly:false };
 
@@ -179,23 +180,49 @@ function getFavorites(){
   try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; }
 }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
-function formatPrice(manwon){
-  const p = Math.round(Number(manwon) || 0);
-  const eok = Math.floor(p / 10000);
-  const man = p % 10000;
-  if (eok > 0) return man > 0 ? `${eok}억${man}` : `${eok}억`;
-  return `${man}만원`;
-}
 function isFav(item){ return getFavorites().includes(favKey(item)); }
 function toggleFav(item){
   let favs = getFavorites();
   const k = favKey(item);
-  favs = favs.includes(k) ? favs.filter(x=>x!==k) : [...favs, k];
+  if (favs.includes(k)){
+    favs = favs.filter(x=>x!==k);
+  } else {
+    if (favs.length >= MAX_FAVORITES){
+      alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
+      return false;
+    }
+    favs = [...favs, k];
+  }
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
   updateFavCountLabel();
+  renderFavChips();
+  return true;
+}
+function removeFav(key){
+  const favs = getFavorites().filter(x=>x!==key);
+  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  updateFavCountLabel();
+  renderFavChips();
+  loadBoard();
 }
 function updateFavCountLabel(){
-  document.getElementById("favCountLabel").textContent = `저장된 관심단지 ${getFavorites().length}개`;
+  document.getElementById("favCountLabel").textContent =
+    `저장된 관심단지 ${getFavorites().length}/${MAX_FAVORITES}개`;
+}
+function renderFavChips(){
+  const wrap = document.getElementById("favChips");
+  wrap.textContent = "";
+  getFavorites().forEach(k => {
+    const chip = document.createElement("span");
+    chip.className = "fav-chip";
+    chip.append("★ " + k.split("|")[0]);
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "✕";
+    x.addEventListener("click", () => removeFav(k));
+    chip.appendChild(x);
+    wrap.appendChild(chip);
+  });
 }
 
 async function loadRegions(){
@@ -245,13 +272,15 @@ function rowHTML(t){
   const fav = isFav(t);
   const typeTag = t.deal_type === "직거래" ? `<span class="tag brk">직거래</span>` : `<span class="tag med">중개거래</span>`;
   const srcTag = t.match_source === "buildinghub" ? `<span class="tag src">건축물대장 보완</span>` : "";
+  const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
   return `
     <tr>
       <td class="col-star ${fav?'on':''}" onclick="handleStarClick(this)">${fav?'★':'☆'}</td>
       <td class="col-name">${t.building_name ?? "(건물명 미확인)"}</td>
       <td class="col-addr">${t.si_do||''} ${t.sgg_nm||''} ${t.umd_nm||''} ${t.jibun||''}</td>
       <td class="col-num">${Number(t.area).toFixed(1)} ㎡</td>
-      <td class="col-price">${formatPrice(t.price)}</td>
+      <td class="col-num">${t.floor || '-'}</td>
+      <td class="col-price">${priceFormatted}</td>
       <td class="col-date">${t.deal_date}</td>
       <td>${typeTag}${srcTag}</td>
     </tr>`;
@@ -263,7 +292,8 @@ function handleStarClick(td){
   const idx = [...tr.parentElement.children].indexOf(tr);
   const item = lastItems[idx];
   if(!item) return;
-  toggleFav(item);
+  const ok = toggleFav(item);
+  if (ok === false) return;  // 상한 초과 시 표시 변경 안 함
   td.classList.toggle("on");
   td.textContent = td.classList.contains("on") ? "★" : "☆";
 }
@@ -304,7 +334,7 @@ async function loadBoard(){
 
   board.innerHTML = `
     <table class="data-table">
-      <thead><tr><th></th><th>건물명</th><th>주소</th><th>면적</th><th>거래금액</th><th>계약일</th><th>거래유형</th></tr></thead>
+      <thead><tr><th></th><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
       <tbody>${items.map(rowHTML).join("")}</tbody>
     </table>`;
 
@@ -358,6 +388,7 @@ async function loadHealth(){
   await loadRegions();
   await loadYears();
   updateFavCountLabel();
+  renderFavChips();
   loadHealth();
   loadBoard();
 })();
