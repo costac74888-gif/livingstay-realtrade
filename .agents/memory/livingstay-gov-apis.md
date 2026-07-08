@@ -47,3 +47,8 @@ description: 생숙 실거래(RTMS)·주소변환(JUSO) 정부 API의 응답 필
 - 등록 판정: RTMS `buildingType=='집합' & buildingUse=='숙박'` → 표제부(getBrTitleInfo) `mainPurpsCdNm`에 '생활숙박시설' 포함 시 등록(호텔/콘도 제외). 호수(hoCnt)는 필터 아닌 정보용. 30실 게이트 폐기.
 - 진행상황은 `discover_progress(sgg_cd, deal_ymd)` 테이블로 재실행 스킵, 건별 즉시 commit(환경 강제종료 대비).
 - `master_buildings.source`: 'original'(엑셀) vs 'api_discovered'(발굴). raw_key DB UNIQUE 제약은 db.py `_ensure_raw_key_unique_constraint()`가 중복정리 후 부여.
+
+## umdNm → bjdongCd 매칭 (BjdongMap.find_bjdong_cd)
+- RTMS `umdNm`은 면/리 지역에서 `'사천면 사천진리'`처럼 면+리가 공백으로 합쳐진 형태 → **마지막 토큰 하나만 비교하면 실패**.
+- 그렇다고 **문자열 그대로 `endswith(umd_nm)` 하면 `'교동'`이 `'서교동'`에도 걸리는 접미사 오매칭** 발생(현 데이터 기준 시군구 109곳, 단일토큰 읍면동의 약 2.68%가 충돌). 반드시 **토큰 단위 tail 비교**(`법정동명.split()[-n:] == umd_nm.split()`)로 할 것.
+- **Why:** 문자열 접미사 매칭은 조용히 잘못된 bjdongCd를 반환하고 첫 행을 임의로 선택 → 건축물대장 조회가 엉뚱한 동으로 감. 토큰 tail 비교는 동/면+리 둘 다 정확히 잡으면서 오매칭을 막음.
