@@ -44,10 +44,11 @@ description: 생숙 실거래(RTMS)·주소변환(JUSO) 정부 API의 응답 필
 
 ## 전국 발굴 배치 (discover_new_buildings.py)
 - **전국 신규 생숙 발굴은 법정동코드 CSV(`법정동코드 전체자료.csv`, cp949)가 필수** — `BjdongMap.all_sgg_codes()`로 순회할 전국 시군구 목록의 유일한 출처. CSV 없으면 `--list-only`부터 `FileNotFoundError`. (지역 한정 `sync_batch.py`만 CSV-free)
-- 등록 판정: RTMS `buildingType=='집합' & buildingUse=='숙박'` → 생숙 확정 판정. 호수(hoCnt)는 필터 아닌 정보용. 30실 게이트 폐기.
-- **⚠️ 생숙 판별은 표제부(getBrTitleInfo)로 불가능**: 생숙·일반호텔·관광호텔 전부 표제부 `mainPurpsCdNm`=`etcPurps`=`'숙박시설'`로만 나옴. '생활숙박시설' 문자열이 표제부엔 아예 없음. → 표제부에서 '생활숙박시설' 찾는 필터는 **영원히 0건**(조용한 전량 거부 버그).
-- **생활숙박시설 구분은 오직 층별개요(getBrFlrOulnInfo)에 있음**: 층마다 `mainPurpsCdNm`=`'생활숙박시설'`, `etcPurps`=`'숙박시설(생활숙박시설(N호))'`. 신규 발굴 시 후보 건물마다 층별개요를 한 번 더 조회해 '생활숙박' 포함 여부로 판정해야 함(호출 1건 추가 → 발굴 배치 느려짐).
-- **Why:** 표제부는 '숙박시설' 대분류만 담고 생숙/일반/관광 세분류는 층별 세부용도에만 존재. 실제 마스터 생숙(휴스테이·수아하우스 등) 표제부를 찍어 확인함.
+- 등록 판정: RTMS `buildingType=='집합' & buildingUse=='숙박'` → 생숙 후보. 호수(hoCnt)는 필터 아닌 정보용. **30실 게이트 폐기**(discover·verify_units·개념상 load_master 모두 해당).
+- **⚠️ 생숙 판별은 표제부(getBrTitleInfo)만으로는 불안정**: 표제부 `mainPurpsCdNm`/`etcPurps` 표기가 건물마다 들쭉날쭉하다. 일부 생숙은 `etcPurps='숙박시설(생활숙박시설...)'`로 명시(예: 경희마크329)되지만, 많은 실제 생숙은 그냥 `'숙박시설'`로만 나와(예: 휴스테이·수아하우스) 표제부에서 '생활숙박' 문자열로만 거르면 그 건들을 **조용히 전량 거부**한다.
+- **신뢰 가능한 판별 기준은 층별개요(getBrFlrOulnInfo)**: 층마다 `mainPurpsCdNm`=`'생활숙박시설'`(또는 `etcPurps='숙박시설(생활숙박시설(N호))'`)로 일관되게 찍힌다. → 하이브리드: 표제부에 '생활숙박' 있으면 통과(호출 절약), 없으면 그때만 층별개요 1건 추가 조회해 판정.
+- **판별 로직은 `building_registry.py`(fetch_building_title + is_living_stay) 한 곳에만** 둔다. discover·verify_units가 각자 따로 구현하다 한쪽만 고쳐지는 드리프트가 이 프로젝트에서 반복됐음 → 반드시 공용 모듈 import로 통일.
+- **Why:** 표제부는 '숙박시설' 대분류를 담되 생숙/일반/관광 세분류 표기가 일관되지 않고, 세분류는 층별 세부용도에 일관되게 존재. 실제 마스터 생숙(휴스테이·경희마크329 등) 표제부를 직접 찍어 확인함.
 - 진행상황은 `discover_progress(sgg_cd, deal_ymd)` 테이블로 재실행 스킵, 건별 즉시 commit(환경 강제종료 대비).
 - `master_buildings.source`: 'original'(엑셀) vs 'api_discovered'(발굴). raw_key DB UNIQUE 제약은 db.py `_ensure_raw_key_unique_constraint()`가 중복정리 후 부여.
 

@@ -48,14 +48,12 @@ import requests
 
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun
+from building_registry import fetch_building_title, is_living_stay
 
 RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
-BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 
 RTMS_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade"
-BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
-BLD_FLR_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrFlrOulnInfo"
 
 REQUEST_SLEEP = 0.15
 
@@ -125,68 +123,6 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
     return [r for r in items if r.get("buildingType", "") == "집합" and r.get("buildingUse", "") == "숙박"]
 
 
-def fetch_building_title(sigungu_cd: str, bjdong_cd: str, plat_gb: str, bun: str, ji: str):
-    """표제부 조회 → (건물명, 호수, 주용도, 도로명주소) 반환. 없으면 None."""
-    params = {
-        "serviceKey": BLD_SERVICE_KEY,
-        "sigunguCd": sigungu_cd,
-        "bjdongCd": bjdong_cd,
-        "platGbCd": plat_gb,
-        "bun": bun.zfill(4),
-        "ji": ji.zfill(4),
-        "numOfRows": 5,
-        "pageNo": 1,
-    }
-    resp = requests.get(BLD_TITLE_URL, params=params, timeout=15)
-    resp.raise_for_status()
-    root = ET.fromstring(resp.content)
-    items = root.findall(".//item")
-    if not items:
-        return None
-    row = {child.tag: (child.text or "").strip() for child in items[0]}
-    return {
-        "bld_nm": row.get("bldNm", "").strip(),
-        "ho_cnt": int(row.get("hoCnt", 0) or 0),
-        "main_purps": row.get("mainPurpsCdNm", ""),
-        "etc_purps": row.get("etcPurps", ""),
-        "new_plat_plc": row.get("newPlatPlc", "").strip(),
-        "plat_plc": row.get("platPlc", "").strip(),
-    }
-
-
-def is_living_stay(sigungu_cd: str, bjdong_cd: str, plat_gb: str, bun: str, ji: str, title: dict) -> bool:
-    """생활숙박시설(생숙) 여부 판정.
-
-    표제부(getBrTitleInfo)의 주용도/기타용도에는 '숙박시설'까지만 나오고 생숙/일반호텔/
-    관광호텔 구분이 없는 경우가 많다(예: 휴스테이). 반대로 어떤 건물은 표제부 기타용도에
-    '숙박시설(생활숙박시설)'처럼 표기된다(예: 경희마크329). 층별개요(getBrFlrOulnInfo)에는
-    층마다 주용도='생활숙박시설'로 일관되게 찍히므로 이것이 유일하게 신뢰 가능한 판별 기준이다.
-
-    표제부에 이미 '생활숙박' 표기가 있으면 그대로 통과(호출 절약), 없으면 층별개요를 조회해 확인.
-    """
-    if "생활숙박" in (title.get("main_purps", "") or "") or "생활숙박" in (title.get("etc_purps", "") or ""):
-        return True
-
-    params = {
-        "serviceKey": BLD_SERVICE_KEY,
-        "sigunguCd": sigungu_cd,
-        "bjdongCd": bjdong_cd,
-        "platGbCd": plat_gb,
-        "bun": bun.zfill(4),
-        "ji": ji.zfill(4),
-        "numOfRows": 100,
-        "pageNo": 1,
-    }
-    resp = requests.get(BLD_FLR_URL, params=params, timeout=15)
-    resp.raise_for_status()
-    root = ET.fromstring(resp.content)
-    for it in root.findall(".//item"):
-        d = {child.tag: (child.text or "").strip() for child in it}
-        if "생활숙박" in d.get("mainPurpsCdNm", "") or "생활숙박" in d.get("etcPurps", ""):
-            return True
-    return False
-
-
 def already_in_master(cur, sgg_cd, umd_nm, jibun) -> bool:
     cur.execute("""
         SELECT 1 FROM master_buildings WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
@@ -241,6 +177,7 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
             # 같은 달을 다시 훑을 때 raw_key가 어긋나지 않고 정확히 이어진다.
             # (같은 지번·날·가격의 여러 호실이 "중복"으로 뭉개지지 않도록 층+발생순번 포함)
             occurrence_counter = {}
+            month_had_error = False  # 대장 API가 한 번이라도 실패하면 이 달은 처리완료로 찍지 않는다
 
             for t in trades:
                 umd_nm = t.get("umdNm", "")
@@ -270,9 +207,9 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 plat_gb, bun, ji = parse_jibun(jibun)
                 try:
                     title = fetch_building_title(sgg_cd, bjdong_cd, plat_gb, bun, ji)
-                    time.sleep(REQUEST_SLEEP)
                 except Exception as e:
                     print(f"  표제부 조회 실패: {e}")
+                    month_had_error = True
                     continue
 
                 if not title or not title["bld_nm"]:
@@ -280,9 +217,9 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
                 try:
                     living_stay = is_living_stay(sgg_cd, bjdong_cd, plat_gb, bun, ji, title)
-                    time.sleep(REQUEST_SLEEP)
                 except Exception as e:
                     print(f"  층별개요 조회 실패: {e}")
+                    month_had_error = True
                     continue
 
                 if not living_stay:
@@ -317,7 +254,10 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 conn.commit()  # 건별 즉시 커밋 — 중간에 죽어도 여기까지는 보존
                 print(f"  신규 등록: {title['bld_nm']} ({sgg_text} {umd_nm} {jibun}) — {title['ho_cnt']}실")
 
-            mark_processed(sgg_cd, deal_ymd)
+            if not month_had_error:
+                mark_processed(sgg_cd, deal_ymd)
+            else:
+                print(f"  ⚠ 대장 API 실패가 있어 {sgg_cd} {deal_ymd} 는 처리완료로 찍지 않음(다음 실행 때 재시도)")
 
     conn.commit()
     cur.close()
