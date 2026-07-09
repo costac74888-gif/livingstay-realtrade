@@ -68,6 +68,9 @@
     background:var(--brass-tint); color:var(--brass-dark); border:1px solid #EAD9B8;
     border-radius:999px; padding:4px 10px 4px 12px; font-size:12px; font-weight:600;
   }
+  .fav-chip .label{cursor:pointer;}
+  .fav-chip.active{background:var(--brass); color:#fff; border-color:var(--brass-dark);}
+  .fav-chip.active .x{color:rgba(255,255,255,.85);}
   .fav-chip .x{cursor:pointer; color:var(--ink-soft); font-weight:400; margin-left:2px;}
   .fav-chip .x:hover{color:var(--brick);}
 
@@ -251,7 +254,7 @@ const IS_ADMIN = new URLSearchParams(location.search).get("admin") === "1";
 const MAX_FAVORITES = IS_ADMIN ? 50 : 5;
 
 let regionTree = {};
-let state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"", lodging_type:"생활", page:1, size:20, favOnly:false };
+let state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"", lodging_type:"생활", page:1, size:20, favOnly:false, favKey:null };
 
 function getFavorites(){
   try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; }
@@ -261,8 +264,10 @@ function isFav(item){ return getFavorites().includes(favKey(item)); }
 function toggleFav(item){
   let favs = getFavorites();
   const k = favKey(item);
+  let clearedActiveFilter = false;
   if (favs.includes(k)){
     favs = favs.filter(x=>x!==k);
+    if (state.favKey === k){ state.favKey = null; state.favOnly = false; clearedActiveFilter = true; }
   } else {
     if (favs.length >= MAX_FAVORITES){
       alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
@@ -273,11 +278,13 @@ function toggleFav(item){
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
   updateFavCountLabel();
   renderFavChips();
+  if (clearedActiveFilter){ document.getElementById("chkFavOnly").checked = false; loadBoard(); }
   return true;
 }
 function removeFav(key){
   const favs = getFavorites().filter(x=>x!==key);
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  if (state.favKey === key){ state.favKey = null; state.favOnly = false; }
   updateFavCountLabel();
   renderFavChips();
   loadBoard();
@@ -299,15 +306,32 @@ function renderFavChips(){
   favs.forEach(k => {
     const name = k.split("|")[0];
     const chip = document.createElement("span");
-    chip.className = "fav-chip";
-    chip.appendChild(document.createTextNode("★ " + name));
+    chip.className = "fav-chip" + (state.favKey === k ? " active" : "");
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = "★ " + name;
+    label.title = "이 관심단지만 보기";
+    label.addEventListener("click", () => filterToFav(k));
+    chip.appendChild(label);
     const x = document.createElement("span");
     x.className = "x";
     x.textContent = "✕";
-    x.addEventListener("click", () => removeFav(k));
+    x.addEventListener("click", (e) => { e.stopPropagation(); removeFav(k); });
     chip.appendChild(x);
     wrap.appendChild(chip);
   });
+}
+
+function filterToFav(key){
+  if (state.favOnly && state.favKey === key){
+    state.favOnly = false; state.favKey = null;
+  } else {
+    state.favOnly = true; state.favKey = key;
+  }
+  document.getElementById("chkFavOnly").checked = false;
+  state.page = 1;
+  renderFavChips();
+  loadBoard();
 }
 
 async function loadRegions(){
@@ -396,7 +420,7 @@ async function loadBoard(){
   let items = [], total = 0;
 
   if (state.favOnly){
-    const favs = getFavorites();
+    const favs = state.favKey ? [state.favKey] : getFavorites();
     if (favs.length === 0){
       items = []; total = 0;
     } else {
@@ -457,7 +481,8 @@ document.getElementById("selLodgingType").addEventListener("change", e=>{
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
 });
 document.getElementById("chkFavOnly").addEventListener("change", e=>{
-  state.favOnly = e.target.checked; state.page = 1; loadBoard();
+  state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
+  renderFavChips(); loadBoard();
 });
 document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.q = document.getElementById("inputQ").value.trim();
