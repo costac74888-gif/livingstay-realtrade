@@ -20,10 +20,6 @@ args = "Start application"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Discover National"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Verify Units"
 
 [[workflows.workflow]]
@@ -37,17 +33,6 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[[workflows.workflow]]
-name = "Discover National"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "BJDONG_CODE_CSV=\"법정동코드_전체자료.zip\" bash -c \"python -u sync_batch.py --months 12 && python -u discover_new_buildings.py --region-offset 0 --region-limit 256 --months 12\""
 
 [[workflows.workflow]]
 name = "Verify Units"
