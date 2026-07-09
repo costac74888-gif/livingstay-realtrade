@@ -12,12 +12,10 @@ discover_new_buildings.py : 마스터에 "아직 없는" 지역까지 전국을 
 등록 기준 (중요 — 호실 수는 필터가 아니라 정보용)
 ------------------------------------------------------------
 ① RTMS 상업업무용 매매 조회 → buildingType=='집합' AND buildingUse=='숙박'
-② 그 지번으로 건축HUB 표제부(getBrTitleInfo) 조회 → 건물명·호실수 확보
-③ 생숙 여부 판정 (is_living_stay):
-   - 표제부 주용도/기타용도에 '생활숙박' 표기가 있으면 통과 (예: 경희마크329)
-   - 없으면 층별개요(getBrFlrOulnInfo)를 조회해 층별 용도에 '생활숙박'이 있는지 확인
-     (표제부엔 '숙박시설'까지만 나오는 생숙이 많음 — 예: 휴스테이. 층별개요가 유일하게 일관됨)
-   → 생숙 O: 등록 / 생숙 X: 제외 (관광호텔·일반숙박 등)
+② 그 지번으로 건축HUB 표제부(getBrTitleInfo) 조회
+③ 응답의 주용도(mainPurpsCdNm)에 '생활숙박시설' 문자열이 포함되는가?
+   → 포함 O: 등록 (호텔/콘도가 아니라 생숙임이 문서로 확인됨)
+   → 포함 X: 제외 (관광숙박시설=호텔 등, 집합+숙박이어도 생숙이 아닐 수 있음)
    호실 수(hoCnt)는 등록 여부와 무관하게 항상 같이 저장 — 참고 정보일 뿐
 
 실행 환경 특성 반영 (장시간 실행이 끊기는 문제 대응)
@@ -48,21 +46,15 @@ import requests
 
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun
-from building_registry import is_living_stay
 
-RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
+RTMS_SERVICE_KEY = os.environ["RTMS_SERVICE_KEY"]
+BLD_SERVICE_KEY = os.environ["BLD_SERVICE_KEY"]
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 
 RTMS_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade"
+BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
 
 REQUEST_SLEEP = 0.15
-
-
-# RTMS umdNm은 면/리 지역에서 '설악면 방일리'처럼 공백이 있으므로 공백을 제거해
-# raw_key를 만든다. sync_batch.py의 _norm_umd와 반드시 동일한 규칙이어야
-# 두 배치가 같은 거래에 대해 같은 raw_key를 만들어 중복 적재가 생기지 않는다.
-def _norm_umd(s: str) -> str:
-    return (s or "").replace(" ", "")
 
 
 def init_progress_table():
@@ -123,6 +115,34 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
     return [r for r in items if r.get("buildingType", "") == "집합" and r.get("buildingUse", "") == "숙박"]
 
 
+def fetch_building_title(sigungu_cd: str, bjdong_cd: str, plat_gb: str, bun: str, ji: str):
+    """표제부 조회 → (건물명, 호수, 주용도, 도로명주소) 반환. 없으면 None."""
+    params = {
+        "serviceKey": BLD_SERVICE_KEY,
+        "sigunguCd": sigungu_cd,
+        "bjdongCd": bjdong_cd,
+        "platGbCd": plat_gb,
+        "bun": bun.zfill(4),
+        "ji": ji.zfill(4),
+        "numOfRows": 5,
+        "pageNo": 1,
+    }
+    resp = requests.get(BLD_TITLE_URL, params=params, timeout=15)
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    items = root.findall(".//item")
+    if not items:
+        return None
+    row = {child.tag: (child.text or "").strip() for child in items[0]}
+    return {
+        "bld_nm": row.get("bldNm", "").strip(),
+        "ho_cnt": int(row.get("hoCnt", 0) or 0),
+        "main_purps": row.get("mainPurpsCdNm", ""),
+        "new_plat_plc": row.get("newPlatPlc", "").strip(),
+        "plat_plc": row.get("platPlc", "").strip(),
+    }
+
+
 def already_in_master(cur, sgg_cd, umd_nm, jibun) -> bool:
     cur.execute("""
         SELECT 1 FROM master_buildings WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
@@ -175,9 +195,7 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
             # sync_batch.py와 반드시 동일한 방식으로 순번을 매겨야, 나중에 sync_batch가
             # 같은 달을 다시 훑을 때 raw_key가 어긋나지 않고 정확히 이어진다.
-            # (같은 지번·날·가격의 여러 호실이 "중복"으로 뭉개지지 않도록 층+발생순번 포함)
             occurrence_counter = {}
-            month_had_error = False  # 대장 API가 한 번이라도 실패하면 이 달은 처리완료로 찍지 않는다
 
             for t in trades:
                 umd_nm = t.get("umdNm", "")
@@ -190,15 +208,15 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 area = t.get("buildingAr", t.get("totalFloorAr", "0"))
                 deal_type = t.get("dealingGbn", "")
                 floor_val = (t.get("floor") or t.get("flrNo") or "").strip()
-                umd_key = _norm_umd(umd_nm)  # sync_batch.py와 동일하게 공백 제거한 값으로 키 생성
-                base_key = f"{sgg_cd}|{umd_key}|{jibun}|{deal_date}|{price}|{floor_val}"
+
+                base_key = f"{sgg_cd}|{umd_nm}|{jibun}|{deal_date}|{price}|{floor_val}"
                 occurrence_counter[base_key] = occurrence_counter.get(base_key, 0) + 1
                 raw_key = f"{base_key}|{occurrence_counter[base_key]}"
 
                 checked += 1
 
                 if already_in_master(cur, sgg_cd, umd_nm, jibun):
-                    continue  # 이미 아는 건물 → sync_batch.py가 알아서 처리, 여기선 스킵
+                    continue  # 이미 아는 건물 → sync_batch.py가 이 거래를 포함해 알아서 처리
 
                 bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
                 if not bjdong_cd:
@@ -206,34 +224,26 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
                 plat_gb, bun, ji = parse_jibun(jibun)
                 try:
-                    verdict, title, reason = is_living_stay(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+                    title = fetch_building_title(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+                    time.sleep(REQUEST_SLEEP)
                 except Exception as e:
-                    print(f"  대장 조회 실패: {e}")
-                    month_had_error = True
+                    print(f"  표제부 조회 실패: {e}")
                     continue
-
-                if verdict is None:
-                    # title None = 집합 표제부 미등록(생숙 아님, 재시도 불필요)
-                    # title 있음 = 층별개요 조회 실패 → 다음 실행에서 재시도
-                    if title is not None:
-                        month_had_error = True
-                    continue
-                if verdict is False:
-                    rejected_use += 1
-                    continue  # 집합+숙박이지만 호텔/콘도 등 → 생숙 아님
 
                 if not title or not title["bld_nm"]:
                     continue
 
+                if "생활숙박시설" not in title["main_purps"]:
+                    rejected_use += 1
+                    continue  # 집합+숙박이지만 호텔/콘도 등 → 생숙 아님
+
                 sgg_text = bjdong.sgg_text(sgg_cd) or ""
                 road_address = title["new_plat_plc"] or title["plat_plc"] or f"{sgg_text} {umd_nm} {jibun}"
 
-                # verdict is True 여기 도달 = is_living_stay가 '생활숙박시설'로 확정한 경우뿐 →
-                # lodging_type='생활'로 바로 태깅해 기본 '생숙만' 필터에서 숨지 않게 한다.
                 cur.execute("""
                     INSERT INTO master_buildings
-                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source, lodging_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'api_discovered', '생활')
+                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'api_discovered')
                 """, (title["bld_nm"], road_address, sgg_text, sgg_cd, umd_nm, jibun, title["ho_cnt"]))
                 new_buildings += 1
 
@@ -241,13 +251,12 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
                 cur.execute("""
                     INSERT INTO transactions
-                        (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
-                         floor, sgg_cd, umd_nm, jibun, lodging_type, match_source, raw_key)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '생활', 'api_discovered', %s)
+                        (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type, floor,
+                         sgg_cd, umd_nm, jibun, match_source, raw_key)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'api_discovered', %s)
                     ON CONFLICT (raw_key) DO NOTHING
                 """, (title["bld_nm"], f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
-                      float(area or 0), int(price or 0), deal_date, deal_type,
-                      floor_val,
+                      float(area or 0), int(price or 0), deal_date, deal_type, floor_val,
                       sgg_cd, umd_nm, jibun, raw_key))
                 if cur.rowcount:
                     new_transactions += 1
@@ -255,10 +264,7 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 conn.commit()  # 건별 즉시 커밋 — 중간에 죽어도 여기까지는 보존
                 print(f"  신규 등록: {title['bld_nm']} ({sgg_text} {umd_nm} {jibun}) — {title['ho_cnt']}실")
 
-            if not month_had_error:
-                mark_processed(sgg_cd, deal_ymd)
-            else:
-                print(f"  ⚠ 대장 API 실패가 있어 {sgg_cd} {deal_ymd} 는 처리완료로 찍지 않음(다음 실행 때 재시도)")
+            mark_processed(sgg_cd, deal_ymd)
 
     conn.commit()
     cur.close()

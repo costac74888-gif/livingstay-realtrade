@@ -43,7 +43,7 @@
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
     box-shadow:var(--shadow); padding:18px 20px;
   }
-  .search-grid{display:grid; grid-template-columns: 0.9fr 1fr 1fr 1.1fr 0.9fr 0.9fr auto; gap:10px; align-items:end;}
+  .search-grid{display:grid; grid-template-columns: 0.9fr 1fr 1fr 1fr 1.2fr 0.9fr auto; gap:10px; align-items:end;}
   .field label{display:block; font-size:11.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;}
   .field select, .field input[type=text]{
     width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
@@ -55,23 +55,6 @@
     padding:9px 22px; font-weight:600; font-size:13.5px; cursor:pointer; white-space:nowrap;
   }
   .btn-search:hover{background:#000;}
-  .btn-submit-open{background:#fff;border:1px solid var(--line,#d9dee3);color:var(--ink-soft,#5a6470);
-    border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;}
-  .btn-submit-open:hover{background:#f4f6f8;}
-  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(20,24,28,.45);
-    z-index:50;align-items:center;justify-content:center;}
-  .modal-card{background:#fff;border-radius:14px;padding:24px;width:min(420px,92vw);
-    box-shadow:0 12px 40px rgba(0,0,0,.2);}
-  .modal-card h3{margin:0 0 4px;font-size:18px;}
-  .modal-card p.sub{margin:0 0 16px;color:var(--ink-soft,#5a6470);font-size:13px;line-height:1.5;}
-  .modal-card label{display:block;font-size:13px;margin:12px 0 4px;color:var(--ink-soft,#5a6470);}
-  .modal-card input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--line,#d9dee3);
-    border-radius:8px;font-size:14px;}
-  .modal-actions{display:flex;gap:8px;margin-top:18px;}
-  .modal-actions button{flex:1;padding:10px;border-radius:8px;font-size:14px;cursor:pointer;border:none;}
-  #btnSubmitBuilding{background:#1a1d21;color:#fff;}
-  #btnCloseSubmit{background:#eef1f3;color:var(--ink-soft,#5a6470);}
-  #submitResult{display:none;margin-top:14px;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.5;}
   .search-row2{
     display:flex; align-items:center; gap:14px; margin-top:12px; padding-top:12px;
     border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap;
@@ -82,8 +65,6 @@
     background:var(--brass-tint); color:var(--brass-dark); border:1px solid #EAD9B8;
     border-radius:999px; padding:4px 10px 4px 12px; font-size:12px; font-weight:600;
   }
-  .fav-chip .name{cursor:pointer;}
-  .fav-chip .name:hover{text-decoration:underline;}
   .fav-chip .x{cursor:pointer; color:var(--ink-soft); font-weight:400; margin-left:2px;}
   .fav-chip .x:hover{color:var(--brick);}
 
@@ -102,7 +83,6 @@
     font-size:11.5px; color:var(--ink-soft); font-weight:600;
     padding:10px 12px; text-align:left; white-space:nowrap;
   }
-  table.data-table thead th.num{text-align:right;}
   table.data-table tbody td{padding:11px 12px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:middle;}
   table.data-table tbody tr:last-child td{border-bottom:none;}
   table.data-table tbody tr:hover{background:#FAFBFC;}
@@ -183,7 +163,28 @@
       <label><input type="checkbox" id="chkFavOnly"> 관심단지만 보기</label>
       <span id="favCountLabel"></span>
       <div id="favChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
-      <button id="btnOpenSubmit" class="btn-submit-open" style="margin-left:auto;">+ 내 건물 추가 요청</button>
+      <button id="btnOpenSubmit" style="margin-left:auto; background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 추가 요청</button>
+    </div>
+  </div>
+</div>
+
+<div id="submitModal" style="display:none; position:fixed; inset:0; background:rgba(22,32,46,.45); z-index:50; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:14px; padding:26px 28px; width:420px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,.25);">
+    <h3 style="margin:0 0 6px; font-size:16px;">내 건물을 생숙 목록에 추가</h3>
+    <p style="margin:0 0 16px; font-size:12.5px; color:var(--ink-soft); line-height:1.6;">
+      도로명주소를 입력하시면 건축물대장을 실시간 조회해서 생활숙박시설이 맞는지 바로 확인합니다.
+      확인되면 즉시 목록에 반영되고, 아니면 사유를 안내해드립니다.
+    </p>
+    <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">도로명주소 *</label>
+    <input id="submitAddress" type="text" placeholder="예) 경기도 수원시 팔달구 매산로1가 24"
+      style="width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; margin-bottom:10px;" />
+    <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">건물명 (선택 — 비워두면 건축물대장 명칭 사용)</label>
+    <input id="submitNameHint" type="text" placeholder="예) 오션마크레지던스"
+      style="width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; margin-bottom:14px;" />
+    <div id="submitResult" style="font-size:12.5px; margin-bottom:12px; display:none; padding:10px 12px; border-radius:8px;"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="btnCloseSubmit" style="background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer;">닫기</button>
+      <button id="btnSubmitBuilding" style="background:var(--ink); color:#fff; border:none; border-radius:8px; padding:8px 18px; font-size:13px; font-weight:600; cursor:pointer;">확인 요청</button>
     </div>
   </div>
 </div>
@@ -194,23 +195,6 @@
   </div>
   <div id="board"><div class="loading">불러오는 중…</div></div>
   <div class="pager" id="pager"></div>
-</div>
-
-<div class="modal-backdrop" id="submitModal">
-  <div class="modal-card">
-    <h3>내 건물 추가 요청</h3>
-    <p class="sub">목록에 없는 생활숙박시설이라면 도로명주소를 입력해주세요.
-      건축물대장을 실시간으로 조회해 생활숙박시설로 확인되면 바로 목록에 추가됩니다.</p>
-    <label>도로명주소 <span style="color:#B3453A">*</span></label>
-    <input type="text" id="submitAddress" placeholder="예) 강원특별자치도 강릉시 창해로 320" />
-    <label>건물명 (선택)</label>
-    <input type="text" id="submitNameHint" placeholder="예) 세인트존스호텔 생활숙박" />
-    <div id="submitResult"></div>
-    <div class="modal-actions">
-      <button id="btnCloseSubmit">닫기</button>
-      <button id="btnSubmitBuilding">검증 후 추가</button>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -258,37 +242,11 @@ function updateFavCountLabel(){
 }
 function renderFavChips(){
   const wrap = document.getElementById("favChips");
-  wrap.textContent = "";
-  getFavorites().forEach(k => {
-    const chip = document.createElement("span");
-    chip.className = "fav-chip";
-    const label = document.createElement("span");
-    label.className = "name";
-    label.textContent = "★ " + k.split("|")[0];
-    label.title = "이 관심단지 실거래만 보기";
-    label.addEventListener("click", () => showFav(k));
-    chip.appendChild(label);
-    const x = document.createElement("span");
-    x.className = "x";
-    x.textContent = "✕";
-    x.title = "관심단지에서 삭제";
-    x.addEventListener("click", () => removeFav(k));
-    chip.appendChild(x);
-    wrap.appendChild(chip);
-  });
-}
-function showFav(key){
-  const name = key.split("|")[0];
-  state.q = name;
-  state.si_do = ""; state.sgg_nm = ""; state.umd_nm = "";
-  state.favOnly = false; state.page = 1;
-  document.getElementById("inputQ").value = name;
-  document.getElementById("selSiDo").value = "";
-  document.getElementById("selSggNm").value = "";
-  document.getElementById("selUmdNm").value = "";
-  const favChk = document.getElementById("chkFavOnly");
-  if (favChk) favChk.checked = false;
-  loadBoard();
+  const favs = getFavorites();
+  wrap.innerHTML = favs.map(k => {
+    const name = k.split("|")[0];
+    return `<span class="fav-chip">★ ${name}<span class="x" onclick="removeFav('${k.replace(/'/g,"\\'")}')">✕</span></span>`;
+  }).join("");
 }
 
 async function loadRegions(){
@@ -334,20 +292,19 @@ async function loadYears(){
   state.year = sel.value;
 }
 
-function escAttr(s){ return String(s ?? "").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function rowHTML(t){
   const fav = isFav(t);
   const typeTag = t.deal_type === "직거래" ? `<span class="tag brk">직거래</span>` : `<span class="tag med">중개거래</span>`;
-  const lodgingColors = { "생활":"med", "호텔":"brk", "콘도":"src" };
+  const lodgingColors = { "생활": "med", "호텔": "brk", "콘도": "src" };
   const lodgingClass = lodgingColors[t.lodging_type] || "src";
   const lodgingTag = t.lodging_type
-    ? ` <span class="tag ${lodgingClass}" title="${escAttr(t.lodging_type_detail)}">${escAttr(t.lodging_type)}</span>`
+    ? `<span class="tag ${lodgingClass}" title="${(t.lodging_type_detail||'').replace(/"/g,'&quot;')}">${t.lodging_type}</span>`
     : "";
   const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
   return `
     <tr>
       <td class="col-star ${fav?'on':''}" onclick="handleStarClick(this)">${fav?'★':'☆'}</td>
-      <td class="col-name">${t.building_name ?? "(건물명 미확인)"}${lodgingTag}</td>
+      <td class="col-name">${t.building_name ?? "(건물명 미확인)"} ${lodgingTag}</td>
       <td class="col-addr">${t.si_do||''} ${t.sgg_nm||''} ${t.umd_nm||''} ${t.jibun||''}</td>
       <td class="col-num">${Number(t.area).toFixed(1)} ㎡</td>
       <td class="col-num">${t.floor || '-'}</td>
@@ -405,7 +362,7 @@ async function loadBoard(){
 
   board.innerHTML = `
     <table class="data-table">
-      <thead><tr><th></th><th>건물명</th><th>주소</th><th class="num">면적</th><th class="num">층</th><th class="num">거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+      <thead><tr><th></th><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
       <tbody>${items.map(rowHTML).join("")}</tbody>
     </table>`;
 
@@ -453,7 +410,7 @@ async function loadHealth(){
     const res = await fetch("/api/health");
     const h = await res.json();
     if (h.finished_at){
-      document.getElementById("healthStatus").textContent = `최근 갱신: ${String(h.finished_at).slice(0,16).replace('T',' ')} · 누적 ${h.total_transactions ?? '-'}건`;
+      document.getElementById("healthStatus").textContent = `최근 갱신: ${String(h.finished_at).slice(0,16).replace('T',' ')} · 누적 ${h.rows_inserted ?? '-'}건`;
     }
   } catch(e){}
 }
@@ -475,9 +432,6 @@ document.getElementById("btnOpenSubmit").addEventListener("click", () => {
 });
 document.getElementById("btnCloseSubmit").addEventListener("click", () => {
   submitModal.style.display = "none";
-});
-submitModal.addEventListener("click", (e) => {
-  if (e.target === submitModal) submitModal.style.display = "none";
 });
 document.getElementById("btnSubmitBuilding").addEventListener("click", async () => {
   const road_address = document.getElementById("submitAddress").value.trim();

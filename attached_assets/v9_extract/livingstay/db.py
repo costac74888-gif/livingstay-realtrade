@@ -58,16 +58,28 @@ def init_db():
         jibun TEXT,                   -- 지번 (배치가 채움, 매칭 키)
         units INTEGER,                -- 호수(세대수) — 정보용, 필터 기준 아님
         biz_units INTEGER,            -- 영업신고호수
-        source TEXT DEFAULT 'original', -- 'original' | 'api_discovered' | 'verify_rescued' | 'sync_verified' | 'user_submitted'
-        verified_at TIMESTAMP,         -- is_living_stay로 실검증된 시각 (NULL이면 미검증 → 재분류 대상)
-        lodging_type TEXT,             -- '생활' | '호텔' | '콘도' (reclassify가 채움, NULL이면 미분류)
-        lodging_type_detail TEXT       -- 건축물대장 원문 용도 표기 (분류 근거, 화면 배지 툴팁용)
+        source TEXT DEFAULT 'original', -- 내부 이력용(원본/발굴/구제/사용자제출 등) — 화면엔 노출 안 함
+        verified_at TIMESTAMP          -- 이 시점 기준으로 "생활숙박시설" 확인 완료. NULL이면 미검증(구 데이터)
     )
     """)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'original'")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP")
-    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type TEXT")
-    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type_detail TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type TEXT")       # '생활'|'호텔'|'콘도'
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type_detail TEXT")  # 건축물대장 원문 표기
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS building_requests (
+        id SERIAL PRIMARY KEY,
+        road_address TEXT NOT NULL,
+        building_name_hint TEXT,        -- 사용자가 참고로 적어준 이름(선택)
+        requester_note TEXT,
+        status TEXT DEFAULT 'pending',  -- pending | verified | rejected | error
+        reject_reason TEXT,
+        master_building_id INTEGER,     -- 검증 통과 시 생성된 master_buildings.id
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        processed_at TIMESTAMP
+    )
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
@@ -80,19 +92,19 @@ def init_db():
         price INTEGER,                -- 거래금액(만원)
         deal_date TEXT,               -- 계약년월일 YYYY-MM-DD
         deal_type TEXT,               -- 중개거래 / 직거래
+        lodging_type TEXT,            -- '생활'|'호텔'|'콘도' (매칭된 건물 기준)
+        lodging_type_detail TEXT,     -- 건축물대장 원문 표기 (툴팁 표시용)
+        floor TEXT,                   -- 층 (RTMS 응답의 층 정보, 정보용)
         sgg_cd TEXT,
         umd_nm TEXT,
         jibun TEXT,
-        floor TEXT,                   -- 층 (RTMS 응답의 floor 필드, 정보용)
-        lodging_type TEXT,            -- '생활' | '호텔' | '콘도' (매칭된 건물 기준, reclassify가 채움)
-        lodging_type_detail TEXT,     -- 건축물대장 원문 용도 표기 (배지 툴팁용)
         match_source TEXT,            -- 'master' | 'buildinghub' | 'unmatched'
         raw_key TEXT UNIQUE,          -- 중복 적재 방지용 (sgg_cd+umd_nm+jibun+deal_date+price)
         created_at TIMESTAMP DEFAULT NOW()
     )
     """)
 
-    # 기존에 이미 만들어진 DB(컬럼 없이 생성됐던 경우)에도 안전하게 컬럼 추가 (데이터 보존)
+    # 기존에 이미 만들어진 DB(컬럼 없이 생성됐던 경우)에도 안전하게 컬럼 추가
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS si_do TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sgg_nm TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS floor TEXT")
@@ -114,20 +126,6 @@ def init_db():
     )
     """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS building_requests (
-        id SERIAL PRIMARY KEY,
-        road_address TEXT NOT NULL,        -- 사용자가 입력한 도로명주소
-        building_name_hint TEXT,           -- 사용자가 적어준 건물명 (참고용)
-        requester_note TEXT,               -- 사용자 메모
-        status TEXT DEFAULT 'pending',     -- pending | verified | rejected
-        reject_reason TEXT,                -- 생숙 아님 / 조회실패 등 사유
-        master_building_id INTEGER,        -- 검증 통과 시 편입된 master_buildings.id
-        created_at TIMESTAMP DEFAULT NOW(),
-        processed_at TIMESTAMP
-    )
-    """)
-
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -143,20 +141,22 @@ def init_db():
 def _ensure_raw_key_unique_constraint():
     """
     raw_key에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
-    CREATE TABLE IF NOT EXISTS로 예전에 이미 만들어진 테이블은 스키마에 UNIQUE가 적혀 있어도
-    실제 테이블엔 반영 안 됐을 수 있어(IF NOT EXISTS는 이름만 봄) 별도로 확인/적용한다.
-    1) 남아있는 중복 raw_key를 먼저 정리(가장 최근 id만 남김)
+    테이블이 CREATE TABLE IF NOT EXISTS로 예전에 이미 만들어진 경우, 스키마에 UNIQUE가
+    적혀 있어도 실제 테이블엔 반영 안 됐을 수 있어(IF NOT EXISTS는 이름만 봄) 별도로 확인/적용한다.
+    1) 혹시 남아있는 중복 raw_key를 먼저 정리(가장 최근 id만 남김)
     2) 제약이 이미 있으면 건너뛰고, 없으면 추가
     """
     conn = get_conn()
     cur = conn.cursor()
 
+    # 1) 중복 제거 (raw_key별로 가장 최근 1건만 남김)
     cur.execute("""
         DELETE FROM transactions a USING transactions b
         WHERE a.raw_key = b.raw_key AND a.id < b.id
     """)
     deleted = cur.rowcount
 
+    # 2) raw_key 컬럼에 이미 유니크 제약/인덱스가 있는지 이름과 무관하게 확인
     cur.execute("""
         SELECT tc.constraint_name
         FROM information_schema.table_constraints tc

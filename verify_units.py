@@ -123,11 +123,13 @@ def verify(csv_path: str, offset: int = 0, limit: int | None = None):
                 results.append({"road_address": road_address, "building_name": building_name,
                                 "status": "이미등록됨", "confirmed_units": confirmed_units})
             else:
+                # verdict True = 생숙 확정(위에서 None/False는 이미 continue)
+                # → lodging_type='생활'로 태깅해 기본 '생숙만' 필터에서 숨지 않게 한다.
                 cur.execute(
                     """
                     INSERT INTO master_buildings
-                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'verify_rescued')
+                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source, lodging_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'verify_rescued', '생활')
                     """,
                     (building_name, road_address, f"{si_do} {sgg_nm}".strip(),
                      sigungu_cd, umd_nm, jibun_str, confirmed_units),
