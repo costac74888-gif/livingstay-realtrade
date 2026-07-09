@@ -128,9 +128,9 @@ def get_regions():
 def get_years():
     """
     실거래 연도 목록 (기간 필터 드롭다운용).
-    - 실제 데이터에 존재하는 연도는 항상 유지 (과거 데이터 연도가 목록에서 사라지지 않음)
-    - 기본으로 "현재년-2 ~ 현재년"도 항상 포함 (아직 그 해 데이터가 없어도 선택지로 보이도록)
-    - 미래 연도는 실제 거래가 생기는 시점에 자동으로 추가됨 (하드코딩 아님)
+    - 실제 데이터에 존재하는 연도만 노출 (데이터 없는 연도는 드롭다운에서 제외)
+    - 데이터가 하나도 없으면 현재 연도만 표시
+    - 새 연도 데이터가 들어오면 자동으로 목록에 추가됨 (하드코딩 아님)
     """
     conn = get_conn()
     cur = conn.cursor()
@@ -140,8 +140,7 @@ def get_years():
     conn.close()
 
     current_year = datetime.now().year
-    default_years = {str(current_year - 2), str(current_year - 1), str(current_year)}
-    years = sorted(data_years | default_years, reverse=True)
+    years = sorted(data_years, reverse=True) if data_years else [str(current_year)]
 
     return jsonify({"years": years, "current_year": str(current_year)})
 

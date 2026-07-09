@@ -122,6 +122,7 @@
   .footer-meta{text-align:right;}
   .footer-meta p{font-size:11.5px; line-height:1.75; margin:0 0 3px;}
   .footer-copy{margin-top:8px; color:#6B7480;}
+  .m-only{display:none;}
 
   @media (max-width: 980px){
     .search-grid{grid-template-columns:1fr 1fr;}
@@ -130,6 +131,44 @@
     td.col-addr{display:none;}
     .footer-inner{flex-direction:column;}
     .footer-meta{text-align:left;}
+  }
+
+  @media (max-width: 700px){
+    /* 헤더: 로고+회사명 한 줄, 타이틀은 아랫줄에 가로로 */
+    header{flex-wrap:wrap; padding:10px 14px; gap:6px 10px;}
+    .brand{border-right:none; padding-right:0;}
+    .brand-mark-img{height:28px;}
+    .brand-text .name{white-space:nowrap; font-size:14px;}
+    .header-right{margin-left:auto; font-size:10.5px; text-align:right; max-width:46%; line-height:1.4;}
+    .page-title{order:3; flex-basis:100%; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+
+    /* 목록: 표 대신 2단 카드형 */
+    table.data-table{display:block; border:none; box-shadow:none; background:transparent;}
+    table.data-table thead{display:none;}
+    table.data-table tbody{display:block;}
+    table.data-table tbody tr{
+      display:grid;
+      grid-template-columns:30px minmax(0,1fr) max-content max-content max-content;
+      grid-template-areas:
+        "star name name name price"
+        "star addr addr addr addr"
+        "star area floor type date";
+      align-items:center; gap:3px 8px;
+      background:var(--card); border:1px solid var(--line); border-radius:10px;
+      box-shadow:var(--shadow); padding:10px 12px; margin-bottom:10px;
+    }
+    table.data-table tbody tr:hover{background:var(--card);}
+    table.data-table tbody td{display:block; border:none; padding:0;}
+    td.col-star{grid-area:star; width:auto; font-size:18px;}
+    td.col-name{grid-area:name; font-size:13.5px;}
+    td.col-price{grid-area:price; font-size:14px; justify-self:end;}
+    td.col-price .m-only{font-size:10.5px; font-weight:400; color:var(--ink-soft); margin-left:2px;}
+    td.col-addr{grid-area:addr; display:block; font-size:12px; white-space:normal;}
+    td.col-area{grid-area:area; font-size:11.5px; color:var(--ink-soft); text-align:left;}
+    td.col-floor{grid-area:floor; font-size:11.5px; color:var(--ink-soft); text-align:left;}
+    td.col-type{grid-area:type;}
+    td.col-date{grid-area:date; font-size:11px; justify-self:end;}
+    .m-only{display:inline;}
   }
 </style>
 </head>
@@ -259,7 +298,7 @@
 <footer class="site-footer">
   <div class="footer-inner">
     <div class="footer-col">
-      <img class="footer-logo" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
+      <img class="footer-logo" src="/static/home_stay_logo_white.png" alt="HOME &amp; STAY">
       <p class="footer-desc">전국 생활숙박시설 실거래가 조회 서비스</p>
     </div>
     <div class="footer-col footer-meta">
@@ -419,11 +458,11 @@ function rowHTML(t, idx){
       <td class="col-star ${fav?'on':''}" onclick="handleStarClick(this)">${fav?'★':'☆'}</td>
       <td class="col-name">${t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)"} ${lodgingTag}</td>
       <td class="col-addr">${escapeHtml(t.si_do||'')} ${escapeHtml(t.sgg_nm||'')} ${escapeHtml(t.umd_nm||'')} ${escapeHtml(t.jibun||'')}</td>
-      <td class="col-num">${Number(t.area).toFixed(1)} ㎡</td>
-      <td class="col-num">${t.floor || '-'}</td>
-      <td class="col-price">${priceFormatted}</td>
+      <td class="col-num col-area">${Number(t.area).toFixed(1)} ㎡</td>
+      <td class="col-num col-floor">${t.floor ? t.floor + '<span class="m-only">층</span>' : '-'}</td>
+      <td class="col-price">${priceFormatted}<span class="m-only">만원</span></td>
       <td class="col-date">${t.deal_date}</td>
-      <td>${typeTag}</td>
+      <td class="col-type">${typeTag}</td>
     </tr>`;
 }
 
