@@ -127,6 +127,15 @@ def init_db():
         processed_at TIMESTAMP
     )
     """)
+    # 용도 정정 요청(correction)까지 지원하도록 컬럼 확장 (기존 DB에도 안전하게 추가)
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS request_type TEXT DEFAULT 'new'")   # 'new'(신규 추가) | 'correction'(용도 정정)
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS target_sgg_cd TEXT")                # 정정 대상 건물 식별용
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS target_umd_nm TEXT")
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS target_jibun TEXT")
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS suggested_lodging_type TEXT")       # 사용자가 제안한 값 (참고용, 신뢰 안 함)
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS verified_lodging_type TEXT")        # 우리가 재검증해 확정한 값
+    cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS changed BOOLEAN DEFAULT FALSE")     # 정정 요청 시 실제로 값이 바뀌었는지
+    cur.execute("ALTER TABLE building_requests ALTER COLUMN road_address DROP NOT NULL")                    # 정정 요청은 도로명주소가 없으므로
 
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
