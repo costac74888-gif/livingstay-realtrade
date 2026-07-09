@@ -61,7 +61,7 @@ def reclassify(force: bool, dry_run: bool):
     targets = cur.fetchall()
     print(f"재분류 대상: {len(targets)}건 (force={force})")
 
-    counts = {"생활": 0, "호텔": 0, "콘도": 0, "미확인": 0}
+    counts = {"생활": 0, "호텔": 0, "콘도": 0, "복합(병기)": 0, "미확인": 0}
 
     for row in targets:
         plat_gb, bun, ji = parse_jibun_simple(row["jibun"])
@@ -77,7 +77,7 @@ def reclassify(force: bool, dry_run: bool):
             counts["미확인"] += 1
             continue
 
-        key = label or "미확인"
+        key = "복합(병기)" if (label and "·" in label) else (label or "미확인")
         counts[key] += 1
         print(f"  [{key}] {row['building_name']} ({row['umd_nm']} {row['jibun']}) — {(detail or '')[:60]}")
 

@@ -22,6 +22,10 @@ args = "Start application"
 task = "workflow.run"
 args = "Verify Units"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Reclassify"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -41,6 +45,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -u verify_units.py excluded_small_buildings.csv"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Reclassify"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "BJDONG_CODE_CSV=\"attached_assets/법정동코드_전체자료_1783490670267.zip\" python -u reclassify_buildings.py --force --dry-run 2>&1 | tee /tmp/reclassify_dryrun.log"
 
 [workflows.workflow.metadata]
 outputType = "console"

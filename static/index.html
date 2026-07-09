@@ -117,6 +117,7 @@
   .tag.brk{background:var(--brick-tint); color:var(--brick);}
   .tag.med{background:var(--brass-tint); color:var(--brass-dark);}
   .tag.src{background:#EEF1F3; color:var(--ink-soft); margin-left:4px;}
+  .tag.mixed{background:#EAE2F8; color:#5B3FA0; margin-left:4px;}
 
   .empty-state, .loading{text-align:center; padding:50px 20px; color:var(--ink-soft); font-size:13px;
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);}
@@ -168,9 +169,10 @@
         <label>용도</label>
         <select id="selLodgingType">
           <option value="생활" selected>생숙만</option>
-          <option value="">전체(생숙+호텔+콘도)</option>
+          <option value="">전체(생숙+호텔+콘도+복합)</option>
           <option value="호텔">호텔만</option>
           <option value="콘도">콘도만</option>
+          <option value="복합">복합용도만 (예: 호텔·콘도)</option>
         </select>
       </div>
       <div class="field">
@@ -339,7 +341,8 @@ function rowHTML(t){
   const fav = isFav(t);
   const typeTag = t.deal_type === "직거래" ? `<span class="tag brk">직거래</span>` : `<span class="tag med">중개거래</span>`;
   const lodgingColors = { "생활":"med", "호텔":"brk", "콘도":"src" };
-  const lodgingClass = lodgingColors[t.lodging_type] || "src";
+  const isCombined = String(t.lodging_type || "").includes("·");
+  const lodgingClass = isCombined ? "mixed" : (lodgingColors[t.lodging_type] || "src");
   const lodgingTag = t.lodging_type
     ? ` <span class="tag ${lodgingClass}" title="${escAttr(t.lodging_type_detail)}">${escAttr(t.lodging_type)}</span>`
     : "";

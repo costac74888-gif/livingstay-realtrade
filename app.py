@@ -59,7 +59,11 @@ def get_transactions():
     if year and year != "all":
         where.append("deal_date LIKE %s")
         params.append(f"{year}-%")
-    if lodging_type:
+    if lodging_type == "복합":
+        # '호텔·콘도'처럼 여러 용도가 병기된 건물만 (백엔드가 LIKE '%·%'로 처리)
+        where.append("lodging_type LIKE %s")
+        params.append("%·%")
+    elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
 
