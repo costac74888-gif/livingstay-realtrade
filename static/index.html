@@ -115,18 +115,28 @@
   .pager button:disabled{opacity:.4; cursor:not-allowed;}
   .pager .cur{font-family:'JetBrains Mono',monospace; font-size:12.5px; align-self:center; color:var(--ink-soft);}
 
+  .site-footer{background:var(--ink); color:#8892A0; margin-top:40px; padding:30px 20px;}
+  .footer-inner{max-width:1240px; margin:0 auto; display:flex; justify-content:space-between; align-items:flex-start; gap:30px; flex-wrap:wrap;}
+  .footer-logo{height:28px; width:auto; display:block; margin-bottom:10px;}
+  .footer-desc{font-size:12.5px; color:#AEB6C0; margin:0;}
+  .footer-meta{text-align:right;}
+  .footer-meta p{font-size:11.5px; line-height:1.75; margin:0 0 3px;}
+  .footer-copy{margin-top:8px; color:#6B7480;}
+
   @media (max-width: 980px){
     .search-grid{grid-template-columns:1fr 1fr;}
     .btn-search{grid-column:span 2;}
     table.data-table{font-size:12px;}
     td.col-addr{display:none;}
+    .footer-inner{flex-direction:column;}
+    .footer-meta{text-align:left;}
   }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="brand">
+  <div class="brand" id="brandHome" title="홈으로 (전체 보기)" style="cursor:pointer;">
     <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
     <div class="brand-text">
       <div class="name">홈앤스테이</div>
@@ -246,6 +256,20 @@
   <div class="pager" id="pager"></div>
 </div>
 
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-col">
+      <img class="footer-logo" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
+      <p class="footer-desc">전국 생활숙박시설 실거래가 조회 서비스</p>
+    </div>
+    <div class="footer-col footer-meta">
+      <p>데이터 출처 · 국토교통부 실거래가 공개시스템, 건축물대장</p>
+      <p>실거래가 정보는 참고용이며, 실제 거래 시 반드시 원문 자료를 확인하시기 바랍니다.</p>
+      <p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY). All rights reserved.</p>
+    </div>
+  </div>
+</footer>
+
 <script>
 const FAV_KEY = "livingstay_favorites";
 // 관리자 모드: URL에 ?admin=1 을 붙이면 50개까지, 아니면 일반 사용자 5개 제한
@@ -255,6 +279,7 @@ const MAX_FAVORITES = IS_ADMIN ? 50 : 5;
 
 let regionTree = {};
 let state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"", lodging_type:"생활", page:1, size:20, favOnly:false, favKey:null };
+let defaultYear = "";
 
 function getFavorites(){
   try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; }
@@ -375,6 +400,7 @@ async function loadYears(){
   sel.innerHTML = opts.join("");
   sel.value = data.years.includes(data.current_year) ? data.current_year : "all";
   state.year = sel.value;
+  defaultYear = sel.value;
 }
 
 function rowHTML(t, idx){
@@ -489,6 +515,23 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.page = 1;
   loadBoard();
 });
+function resetToHome(){
+  const yearSel = document.getElementById("selYear");
+  const y = defaultYear || yearSel.value || "all";
+  state.si_do=""; state.sgg_nm=""; state.umd_nm=""; state.q="";
+  state.lodging_type="생활"; state.year=y;
+  state.favOnly=false; state.favKey=null; state.page=1;
+  document.getElementById("selSiDo").value="";
+  refreshSggOptions();
+  document.getElementById("selLodgingType").value="생활";
+  yearSel.value=y;
+  document.getElementById("inputQ").value="";
+  document.getElementById("chkFavOnly").checked=false;
+  renderFavChips();
+  loadBoard();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+document.getElementById("brandHome").addEventListener("click", resetToHome);
 document.getElementById("inputQ").addEventListener("keydown", e=>{
   if (e.key === "Enter") document.getElementById("btnSearch").click();
 });
