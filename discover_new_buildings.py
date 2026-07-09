@@ -47,7 +47,7 @@ from xml.etree import ElementTree as ET
 import requests
 
 from db import get_conn, init_db
-from address_utils import road_to_jibun, BjdongMap, parse_jibun
+from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import is_living_stay
 
 RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
@@ -59,10 +59,9 @@ REQUEST_SLEEP = 0.15
 
 
 # RTMS umdNm은 면/리 지역에서 '설악면 방일리'처럼 공백이 있으므로 공백을 제거해
-# raw_key를 만든다. sync_batch.py의 _norm_umd와 반드시 동일한 규칙이어야
-# 두 배치가 같은 거래에 대해 같은 raw_key를 만들어 중복 적재가 생기지 않는다.
-def _norm_umd(s: str) -> str:
-    return (s or "").replace(" ", "")
+# raw_key를 만든다. 정규화는 address_utils.normalize_umd_nm 하나로 통일하므로
+# sync_batch와 자동으로 동일한 규칙이 되어 두 배치가 같은 raw_key를 만든다(중복 적재 방지).
+_norm_umd = normalize_umd_nm
 
 
 def init_progress_table():

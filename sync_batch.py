@@ -28,7 +28,7 @@ from xml.etree import ElementTree as ET
 import requests
 
 from db import get_conn, init_db
-from address_utils import road_to_jibun, BjdongMap, parse_jibun
+from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
 
 # ------------------------------------------------------------------
@@ -47,9 +47,9 @@ REQUEST_SLEEP = 0.15  # 공공데이터 API 과호출 방지용 딜레이(초)
 # ------------------------------------------------------------------
 # 매칭키 정규화 — RTMS umdNm은 면/리 지역에서 '설악면 방일리'처럼 공백이 있으므로
 # 마스터/실거래 양쪽 모두 공백을 제거해 비교한다.
+# 정규화 규칙은 address_utils.normalize_umd_nm 하나로 통일한다(로컬 재구현 금지).
 # ------------------------------------------------------------------
-def _norm_umd(s: str) -> str:
-    return (s or "").replace(" ", "")
+_norm_umd = normalize_umd_nm
 
 
 # ------------------------------------------------------------------

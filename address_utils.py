@@ -49,6 +49,18 @@ def road_to_jibun(road_address: str) -> dict | None:
     return juso_list[0]  # rn(도로명), emdNm(법정읍면동), lnbrMnnm(지번본번), lnbrSlno(지번부번), admCd(행정동코드) 등
 
 
+def normalize_umd_nm(s: str) -> str:
+    """읍/면/동(+리) 이름을 매칭키로 정규화하는 **유일한** 표준 함수.
+
+    RTMS·JUSO는 면/리 지역을 '봉평면 면온리'처럼 공백을 넣어 주지만, 마스터 저장·
+    매칭은 공백 없는 '봉평면면온리'로 통일한다. sync_batch / discover_new_buildings /
+    submit-building / request-correction / find_bjdong_cd — 동이름을 비교하거나 키로
+    쓰는 모든 코드는 반드시 이 함수 하나만 써야 한다(각자 .replace(" ","") 하지 말 것).
+    한쪽만 규칙이 어긋나면 면/리 지역에서 조용히 매칭 실패가 재발한다.
+    """
+    return "".join((s or "").split())
+
+
 class BjdongMap:
     """
     법정동코드 전체자료(code.go.kr) 로 만든 매핑 테이블.
@@ -131,7 +143,7 @@ class BjdongMap:
           토큰 경계를 지키는 '조합 == 질의' 정확일치라 오매칭을 막는다.
         """
         cand = self.df[(self.df["sggCd"] == sgg_cd) & (self.df["bjdongCd"] != "00000")]
-        q = umd_nm.replace(" ", "").strip()
+        q = normalize_umd_nm(umd_nm)
         if not q:
             return None
 
