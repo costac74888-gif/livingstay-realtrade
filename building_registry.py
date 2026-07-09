@@ -54,22 +54,42 @@ def _title_row_to_dict(row: dict) -> dict:
 
 
 def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
-    """표제부(getBrTitleInfo) 조회 → 이 지번에 선 '모든 동'의 raw dict 리스트. 없으면 []"""
-    params = {
-        "serviceKey": BLD_SERVICE_KEY,
-        "sigunguCd": sigungu_cd,
-        "bjdongCd": bjdong_cd,
-        "platGbCd": plat_gb,
-        "bun": bun.zfill(4),
-        "ji": ji.zfill(4),
-        "numOfRows": 50,
-        "pageNo": 1,
-    }
-    resp = requests.get(BLD_TITLE_URL, params=params, timeout=15)
-    resp.raise_for_status()
-    root = ET.fromstring(resp.content)
-    items = root.findall(".//item")
-    return [{c.tag: (c.text or "").strip() for c in it} for it in items]
+    """표제부(getBrTitleInfo) 조회 → 이 지번에 선 '모든 동'의 raw dict 리스트. 없으면 []
+
+    용도 병기는 '지번 내 전체 동'을 봐야 정확하므로, totalCount만큼 페이징해서
+    한 페이지(numOfRows) 초과분(예: 동 50개 초과 대단지)도 빠짐없이 모은다.
+    """
+    rows = []
+    page = 1
+    num = 100
+    while True:
+        params = {
+            "serviceKey": BLD_SERVICE_KEY,
+            "sigunguCd": sigungu_cd,
+            "bjdongCd": bjdong_cd,
+            "platGbCd": plat_gb,
+            "bun": bun.zfill(4),
+            "ji": ji.zfill(4),
+            "numOfRows": num,
+            "pageNo": page,
+        }
+        resp = requests.get(BLD_TITLE_URL, params=params, timeout=15)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        items = root.findall(".//item")
+        rows.extend({c.tag: (c.text or "").strip() for c in it} for it in items)
+
+        total_txt = root.findtext(".//totalCount")
+        try:
+            total = int(total_txt) if total_txt else len(rows)
+        except ValueError:
+            total = len(rows)
+
+        if not items or len(rows) >= total or page >= 20:
+            break
+        page += 1
+        time.sleep(REQUEST_SLEEP)
+    return rows
 
 
 def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
@@ -88,34 +108,49 @@ def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
 
 def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     """층별개요(getBrFlrOulnInfo) 조회 → 각 층의 주용도/상세용도 리스트.
-    조회 자체 실패 시 None(재시도 필요) — '층에 생숙 없음'(빈 리스트)과 구분한다."""
-    params = {
-        "serviceKey": BLD_SERVICE_KEY,
-        "sigunguCd": sigungu_cd,
-        "bjdongCd": bjdong_cd,
-        "platGbCd": plat_gb,
-        "bun": bun.zfill(4),
-        "ji": ji.zfill(4),
-        "numOfRows": 100,
-        "pageNo": 1,
-    }
-    try:
-        resp = requests.get(BLD_FLOOR_URL, params=params, timeout=15)
-        resp.raise_for_status()
-    except Exception:
-        return None  # 조회 실패 — "생숙 아님"과 구분해서 나중에 재시도 가능하게 함
-
-    root = ET.fromstring(resp.content)
-    items = root.findall(".//item")
+    조회 자체 실패 시 None(재시도 필요) — '층에 생숙 없음'(빈 리스트)과 구분한다.
+    층수가 많은 대형 건물도 빠짐없이 보도록 totalCount만큼 페이징한다."""
     floors = []
-    for item in items:
-        row = {child.tag: (child.text or "").strip() for child in item}
-        floors.append({
-            "flr_gb_nm": row.get("flrGbCdNm", ""),
-            "flr_no_nm": row.get("flrNoNm", ""),
-            "main_purps": row.get("mainPurpsCdNm", ""),
-            "etc_purps": row.get("etcPurps", ""),
-        })
+    page = 1
+    num = 100
+    while True:
+        params = {
+            "serviceKey": BLD_SERVICE_KEY,
+            "sigunguCd": sigungu_cd,
+            "bjdongCd": bjdong_cd,
+            "platGbCd": plat_gb,
+            "bun": bun.zfill(4),
+            "ji": ji.zfill(4),
+            "numOfRows": num,
+            "pageNo": page,
+        }
+        try:
+            resp = requests.get(BLD_FLOOR_URL, params=params, timeout=15)
+            resp.raise_for_status()
+        except Exception:
+            return None  # 조회 실패 — "생숙 아님"과 구분해서 나중에 재시도 가능하게 함
+
+        root = ET.fromstring(resp.content)
+        items = root.findall(".//item")
+        for item in items:
+            row = {child.tag: (child.text or "").strip() for child in item}
+            floors.append({
+                "flr_gb_nm": row.get("flrGbCdNm", ""),
+                "flr_no_nm": row.get("flrNoNm", ""),
+                "main_purps": row.get("mainPurpsCdNm", ""),
+                "etc_purps": row.get("etcPurps", ""),
+            })
+
+        total_txt = root.findtext(".//totalCount")
+        try:
+            total = int(total_txt) if total_txt else len(floors)
+        except ValueError:
+            total = len(floors)
+
+        if not items or len(floors) >= total or page >= 20:
+            break
+        page += 1
+        time.sleep(REQUEST_SLEEP)
     return floors
 
 

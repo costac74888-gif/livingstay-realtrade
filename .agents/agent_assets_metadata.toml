@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "cieGKEWeS3VwuJKZbzvvk"
+uri = "file://신마스터_생활숙박시설현황_20260709.xlsx"
+type = "table"
+title = "신마스터 생활숙박시설 현황 (474건 · 2026-07-09 업데이트)"

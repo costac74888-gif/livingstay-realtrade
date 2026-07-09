@@ -108,9 +108,121 @@ def reclassify(force: bool, dry_run: bool):
         print(f"  {k}: {v}건")
 
 
+def reclassify_unmatched(dry_run: bool):
+    """마스터에 없는(=lodging_type이 비어있는) 실거래 건물을 건축물대장으로 분류해서 라벨을 붙인다.
+
+    '아난티'처럼 RTMS 실거래엔 있지만 생숙 마스터 목록엔 없는 건물이 대상.
+    같은 지번(sgg_cd+umd_nm+jibun)의 건축물대장을 한 번만 조회해서, 그 위치의
+    '아직 라벨 없는' 실거래에만 반영한다(이미 라벨된 실거래는 건드리지 않음).
+    """
+    bjdong = BjdongMap(BJDONG_CODE_CSV)
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT sgg_cd, umd_nm, jibun,
+               COUNT(*) AS cnt,
+               MIN(building_name) AS building_name
+        FROM transactions
+        WHERE lodging_type IS NULL
+          AND sgg_cd IS NOT NULL AND umd_nm IS NOT NULL AND jibun IS NOT NULL
+        GROUP BY sgg_cd, umd_nm, jibun
+        ORDER BY cnt DESC
+    """)
+    targets = cur.fetchall()
+    print(f"미매칭 실거래 위치: {len(targets)}곳 (라벨 없는 실거래를 건축물대장으로 분류)")
+
+    counts = {"생활": 0, "호텔": 0, "콘도": 0, "복합(병기)": 0, "미확인": 0}
+    updated_tx = 0
+
+    for row in targets:
+        plat_gb, bun, ji = parse_jibun_simple(row["jibun"])
+        bjdong_cd = bjdong.find_bjdong_cd(row["sgg_cd"], row["umd_nm"])
+        if not bjdong_cd:
+            counts["미확인"] += 1
+            continue
+
+        try:
+            label, detail, title, reason = classify_lodging_type(row["sgg_cd"], bjdong_cd, plat_gb, bun, ji)
+        except Exception as e:
+            print(f"  분류 실패 ({row['building_name']} {row['umd_nm']} {row['jibun']}): {e}")
+            counts["미확인"] += 1
+            continue
+
+        key = "복합(병기)" if (label and "·" in label) else (label or "미확인")
+        counts[key] += 1
+        print(f"  [{key}] {row['building_name']} ({row['umd_nm']} {row['jibun']}, {row['cnt']}건) — {(detail or '')[:60]}")
+
+        if not dry_run and label:
+            # 이 지번의 '아직 라벨 없는' 실거래에만 반영 (이미 라벨된 매칭 실거래는 보존)
+            cur.execute("""
+                UPDATE transactions
+                SET lodging_type = %s, lodging_type_detail = %s
+                WHERE sgg_cd = %s AND umd_nm = %s AND jibun = %s AND lodging_type IS NULL
+            """, (label, detail, row["sgg_cd"], row["umd_nm"], row["jibun"]))
+            updated_tx += cur.rowcount
+            conn.commit()
+
+        time.sleep(0.1)
+
+    cur.close()
+    conn.close()
+
+    mode = "(시뮬레이션만 — 실제 반영 안 함)" if dry_run else ""
+    print(f"\n미매칭 실거래 분류 완료 {mode}  (라벨 반영 실거래 {updated_tx}건)")
+    for k, v in counts.items():
+        print(f"  {k}: {v}건")
+
+
+def export_new_master():
+    """건축물대장 용도가 반영된 master_buildings를 '신마스터' 엑셀로 내보낸다.
+    파일명에 업데이트일(YYYYMMDD)을 붙여 이력 관리가 되게 한다."""
+    from datetime import datetime
+    import openpyxl
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT road_address, building_name, units, biz_units,
+               lodging_type, lodging_type_detail, verified_at
+        FROM master_buildings
+        ORDER BY building_name
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    today = datetime.now().strftime("%Y%m%d")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "신마스터"
+    ws.append([f"생활숙박시설 신마스터 (건축물대장 용도 반영) — 총 {len(rows)}건 · 업데이트일 {today}"])
+    ws.append(["소재지", "건물명", "호수", "영업신고호수", "용도", "용도상세(대장원문)", "검증일"])
+    for r in rows:
+        va = r["verified_at"].strftime("%Y-%m-%d") if r["verified_at"] else ""
+        ws.append([
+            r["road_address"], r["building_name"], r["units"], r["biz_units"],
+            r["lodging_type"] or "미확인", r["lodging_type_detail"] or "", va,
+        ])
+
+    fname = f"신마스터_생활숙박시설현황_{today}.xlsx"
+    wb.save(fname)
+    print(f"신마스터 저장: {fname} ({len(rows)}건)")
+    return fname
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true", help="이미 분류된 건물까지 전부 재검증")
     parser.add_argument("--dry-run", action="store_true", help="실제 반영 없이 결과만 출력")
+    parser.add_argument("--unmatched", action="store_true", help="마스터에 없는 미매칭 실거래 건물도 건축물대장으로 분류/라벨")
+    parser.add_argument("--export", action="store_true", help="완료 후 신마스터 엑셀(업데이트일 포함) 내보내기")
     args = parser.parse_args()
-    reclassify(args.force, args.dry_run)
+
+    # 아무 대상 플래그도 없거나 --force면 마스터 재분류를 먼저 수행 (기존 동작 유지)
+    if args.force or not (args.unmatched or args.export):
+        reclassify(args.force, args.dry_run)
+    if args.unmatched:
+        reclassify_unmatched(args.dry_run)
+    if args.export:
+        export_new_master()
