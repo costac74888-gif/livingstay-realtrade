@@ -42,7 +42,7 @@ import pandas as pd
 
 from db import get_conn
 from address_utils import road_to_jibun
-from building_registry import fetch_building_title, is_living_stay
+from building_registry import is_living_stay
 
 REQUEST_SLEEP = 0.15
 
@@ -97,17 +97,19 @@ def verify(csv_path: str, offset: int = 0, limit: int | None = None):
             umd_nm = (juso.get("emdNm", "") + juso.get("liNm", "")).replace(" ", "")
             jibun_str = f"{bun}-{ji}" if ji not in ("0", "", None) else bun
 
-            title = fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
-            if not title:
+            # 30실 게이트 폐기 → 크기와 무관하게 '집합 생활숙박시설'이면 구제한다.
+            # 표제부만으로는 생숙/일반호텔 구분이 안 되므로(휴스테이 등) 층별개요까지 확인.
+            # is_living_stay가 표제부를 내부에서 조회하므로 별도 fetch_building_title 불필요.
+            verdict, title, reason = is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+            if verdict is None:
+                status = "대장조회실패(정보없음)" if title is None else "층별개요조회실패(재시도)"
                 results.append({"road_address": road_address, "building_name": building_name,
-                                "status": "대장조회실패(정보없음)", "confirmed_units": None})
+                                "status": status, "confirmed_units": None})
                 continue
 
             confirmed_units = title["ho_cnt"]  # 호수는 정보용으로만 저장 (게이트 아님)
 
-            # 30실 게이트 폐기 → 크기와 무관하게 '집합 생활숙박시설'이면 구제한다.
-            # 표제부만으로는 생숙/일반호텔 구분이 안 되므로(휴스테이 등) 층별개요까지 확인.
-            if not is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji, title):
+            if verdict is False:
                 results.append({"road_address": road_address, "building_name": building_name,
                                 "status": "제외확정(생숙아님)", "confirmed_units": confirmed_units})
                 continue

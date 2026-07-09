@@ -17,7 +17,7 @@ import zipfile
 import requests
 import pandas as pd
 
-JUSO_API_KEY = os.environ.get("JUSO_API_KEY", "")
+JUSO_API_KEY = os.environ["JUSO_API_KEY"]
 JUSO_URL = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
 
 
@@ -26,17 +26,11 @@ def road_to_jibun(road_address: str) -> dict | None:
     도로명주소 문자열을 넣으면 지번주소 관련 정보를 반환한다.
     반환 예: {"siNm":"경기도","sggNm":"가평군","emdNm":"청평면","lnbrMnnm":"123","lnbrSlno":"4", ...}
     """
-    # 마스터 주소에는 도로명 뒤에 층수/동/법정동 꼬리표가 붙어있는 경우가 많다.
-    # 예) "경기도 수원시 팔달구 갓매산로19번길 27-4, 2~9층 (매산로2가)"  ← 쉼표로 시작
-    #     "서울 강서구 마곡중앙로 40(마곡동)"                          ← 쉼표 없이 괄호만
-    # JUSO는 이런 꼬리표가 있으면 totalCount=0을 반환하므로 순수 도로명만 남긴다.
-    keyword = road_address.split(",")[0]
-    keyword = re.sub(r"\([^)]*\)\s*$", "", keyword).strip()  # 끝의 (법정동) 괄호 제거
     params = {
         "confmKey": JUSO_API_KEY,
         "currentPage": 1,
         "countPerPage": 1,
-        "keyword": keyword,
+        "keyword": road_address,
         "resultType": "json",
     }
     resp = requests.get(JUSO_URL, params=params, timeout=10)
@@ -121,28 +115,19 @@ class BjdongMap:
         """
         umd_nm은 '청운동'처럼 동 하나일 수도, '사천면 사천진리'처럼 면+리가
         합쳐진 형태일 수도 있다(RTMS가 면/리 지역에서 이렇게 줌 — 강릉 사례로 확인됨).
-        게다가 호출자마다 표기가 다르다:
-          - sync/discover 는 RTMS 원본('봉평면 면온리', 공백 있음)을 넘기고
-          - cleanup/재검증 은 master에 저장된 정규화값('봉평면면온리', 공백 없음)을 넘긴다.
-        그래서 **양쪽 다 공백을 제거**한 뒤, "법정동명의 뒤쪽 토큰들을 공백 없이 이어붙인
-        후보(뒤에서 1·2·3토큰)"와 정확히 일치하는지 비교한다.
-        - 마지막 토큰 하나만 비교하면 면+리 지역에서 실패 → 뒤쪽 여러 토큰 조합까지 본다.
-        - 문자열 endswith 비교는 '교동'이 '서교동'에 걸리는 접미사 오매칭을 낸다 →
-          토큰 경계를 지키는 '조합 == 질의' 정확일치라 오매칭을 막는다.
+        마지막 토큰 하나만 비교하면 면+리 지역에서 매칭 실패하므로,
+        "법정동명이 umd_nm으로 끝나는가"로 비교해 두 경우 다 정확히 잡는다.
         """
         cand = self.df[(self.df["sggCd"] == sgg_cd) & (self.df["bjdongCd"] != "00000")]
-        q = umd_nm.replace(" ", "").strip()
-        if not q:
-            return None
+        umd_nm = umd_nm.strip()
 
-        def tail_matches(name: str) -> bool:
-            toks = name.split()
-            for k in range(1, min(3, len(toks)) + 1):
-                if "".join(toks[-k:]) == q:
-                    return True
-            return False
-
-        match = cand[cand["법정동명"].apply(tail_matches)]
+        match = cand[cand["법정동명"].str.endswith(umd_nm)]
+        if match.empty:
+            # 공백 유무 등 미세한 표기 차이 대비 — 마지막 토큰만이라도 일치하는지 완화 매칭
+            last_token = umd_nm.split()[-1] if " " in umd_nm else umd_nm
+            match = cand[cand["법정동명"].str.split().str[-1] == last_token]
+        if match.empty:
+            match = cand[cand["법정동명"].str.split().str[-1].str.startswith(umd_nm[:2], na=False)]
         if match.empty:
             return None
         return match.iloc[0]["bjdongCd"]
