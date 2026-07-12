@@ -58,3 +58,7 @@ BJDONG_CODE_CSV = "법정동코드_전체자료.zip"
 [deployment]
 deploymentTarget = "autoscale"
 run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "app:app"]
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
