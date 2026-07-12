@@ -143,8 +143,14 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
     conn = get_conn()
     cur = conn.cursor()
 
-    # 마스터에 존재하는 (매칭 준비 완료된) 시군구만 대상으로
-    cur.execute("SELECT DISTINCT sgg_cd FROM master_buildings WHERE sgg_cd IS NOT NULL")
+    # 마스터에 존재하는 (매칭 준비 완료된) 시군구만 대상으로.
+    # 마스터 건물이 많은 지역(=거래 데이터가 몰린 곳)부터 처리해 초반에 대부분의 데이터를 확보한다.
+    cur.execute("""
+        SELECT sgg_cd FROM master_buildings
+        WHERE sgg_cd IS NOT NULL
+        GROUP BY sgg_cd
+        ORDER BY COUNT(*) DESC
+    """)
     sgg_list = [r["sgg_cd"] for r in cur.fetchall()]
     if sgg_filter:
         sgg_list = [s for s in sgg_list if s in sgg_filter]
@@ -280,6 +286,11 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
                 except Exception as e:
                     print(f"  적재 실패: {e}")
 
+        # 지역별 커밋: 장시간 백필 중 진행 상황을 즉시 반영하고,
+        # 중간에 중단되어도 직전 지역까지는 안전하게 보존한다.
+        conn.commit()
+        print(f"  [진행] {sgg_cd} 완료 — 누적 신규 {inserted}건 (마스터매칭 {matched_master})", flush=True)
+
     conn.commit()
 
     cur.execute("""
@@ -300,6 +311,8 @@ if __name__ == "__main__":
     parser.add_argument("--months", type=int, default=3, help="최근 N개월 수집 (기본 3, 최초 백필 시 --months 36 권장)")
     parser.add_argument("--region", default=None, help="STEP1 주소보강을 특정 지역(도로명주소 키워드)만 수행 (예: 서귀포시)")
     parser.add_argument("--sgg", default=None, help="STEP2를 특정 시군구코드만 수행, 콤마구분 (예: 50130,41220)")
+    parser.add_argument("--master-only", action="store_true",
+                        help="마스터에 이미 있는 건물만 매칭(건축HUB 검증 생략) — 빠른 백필용")
     args = parser.parse_args()
 
     init_db()
@@ -307,7 +320,9 @@ if __name__ == "__main__":
     # 법정동코드 CSV는 '건축HUB 보완'(마스터에 없는 신축 건물명 확정)에만 필요.
     # 파일이 없으면 마스터 매칭만 수행한다 (JUSO admCd로 시군구코드를 얻으므로 CSV 없이도 동작).
     bjdong_map = None
-    if os.path.exists(BJDONG_CODE_CSV):
+    if args.master_only:
+        print("[SETUP] --master-only → 마스터 매칭만 수행(건축HUB 검증 생략, 빠른 모드)")
+    elif os.path.exists(BJDONG_CODE_CSV):
         bjdong_map = BjdongMap(BJDONG_CODE_CSV)
         print(f"[SETUP] 법정동코드 CSV 로드 → 건축HUB 보완 활성화 ({BJDONG_CODE_CSV})")
     else:

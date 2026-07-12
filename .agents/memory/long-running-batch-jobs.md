@@ -20,3 +20,21 @@ set it as a console workflow, then poll progress from the DB / marker file betwe
 
 **Why:** the bash tool caps at 120s and background processes get reaped, so neither
 direct bash nor nohup can carry a multi-hour job. Only a workflow can.
+
+# Monitoring a batch job by row count: commit visibility trap
+
+If a long backfill commits **only once at the very end**, its inserted rows stay
+inside the open transaction and are **invisible to any other DB connection** (e.g. a
+`psql COUNT(*)` you run to watch progress). Symptom: the job is healthy and clearly
+making API calls, but your external row-count measurements read `+0` for many
+minutes — looking exactly like a stall/deadlock when nothing is actually wrong.
+
+**How to apply:** for any multi-region / multi-batch backfill, `conn.commit()` at the
+end of **each batch (per region, per N rows)**, not once at the end. This makes
+progress observable from a separate connection, and means a crash/restart loses at
+most one batch instead of the whole run. When a job looks stalled, first confirm
+whether monitoring reads committed data before assuming the job itself is stuck.
+
+**Why:** a single terminal commit cost hours of debugging a non-existent stall — the
+`sync_batch.py` 60-month backfill was fetching and inserting correctly the whole time;
+row count only moved once per-region commits were added.

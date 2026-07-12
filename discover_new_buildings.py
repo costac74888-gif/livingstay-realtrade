@@ -129,7 +129,7 @@ def already_in_master(cur, sgg_cd, umd_nm, jibun) -> bool:
     return cur.fetchone() is not None
 
 
-def discover(region_offset: int, region_limit: int, months: int, list_only: bool):
+def discover(region_offset: int, region_limit: int, months: int, list_only: bool, sgg_filter=None):
     init_db()
     init_progress_table()
     bjdong = BjdongMap(BJDONG_CODE_CSV)
@@ -139,8 +139,12 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
     if list_only:
         return
 
-    target_codes = all_codes[region_offset: region_offset + region_limit]
-    print(f"이번 실행 대상: {len(target_codes)}개 (offset={region_offset})")
+    if sgg_filter:
+        target_codes = [c for c in all_codes if c in sgg_filter]
+        print(f"이번 실행 대상(sgg 한정): {len(target_codes)}개 → {target_codes}")
+    else:
+        target_codes = all_codes[region_offset: region_offset + region_limit]
+        print(f"이번 실행 대상: {len(target_codes)}개 (offset={region_offset})")
 
     deal_ymds = []
     today = datetime.today()
@@ -273,6 +277,8 @@ if __name__ == "__main__":
     parser.add_argument("--region-limit", type=int, default=20, help="한 번에 처리할 시군구 개수")
     parser.add_argument("--months", type=int, default=3)
     parser.add_argument("--list-only", action="store_true", help="전국 시군구 개수만 확인하고 종료")
+    parser.add_argument("--sgg", type=str, default="", help="특정 시군구 코드만 처리(쉼표구분). 지정 시 offset/limit 무시")
     args = parser.parse_args()
 
-    discover(args.region_offset, args.region_limit, args.months, args.list_only)
+    sgg_filter = set(s.strip() for s in args.sgg.split(",") if s.strip()) or None
+    discover(args.region_offset, args.region_limit, args.months, args.list_only, sgg_filter)
