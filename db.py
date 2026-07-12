@@ -282,6 +282,31 @@ def init_db():
     cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP")
     cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS listings (
+        id SERIAL PRIMARY KEY,
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),  -- 건물 (FK)
+        agent_id INTEGER REFERENCES agents(id),   -- 중개사 (FK, NULL 허용 — 소유주 직접 등록 대비)
+        deal_type TEXT NOT NULL,                  -- 매매 | 전세 | 월세
+        price INTEGER,                            -- 매매가 또는 보증금(만원 단위)
+        monthly_rent INTEGER,                     -- 월세인 경우 월 임대료(만원 단위), 그 외 NULL
+        floor TEXT,
+        area REAL,                                -- 전용면적(㎡)
+        status TEXT DEFAULT 'active',             -- active | completed | hidden
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id)")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS price INTEGER")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS monthly_rent INTEGER")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS floor TEXT")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS area REAL")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
