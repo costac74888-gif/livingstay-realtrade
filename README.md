@@ -79,6 +79,24 @@ python sync_batch.py --months 3
 - `GET /api/transactions?q=오션마크레지던스` → 검색 결과 확인
 - `GET /api/regions` → 지역 탭 집계 확인
 
+### 8-1. 배포 후 스모크 체크 (홈페이지가 실제로 뜨는지 확인)
+로컬 검증(`smoke` 워크플로우)은 Flask 테스트 클라이언트로 앱을 in-process 검사할 뿐,
+실제 배포된 서버·프록시·기동 명령까지 통과했는지는 확인하지 못합니다.
+프로덕션 설정이 바뀌면 로컬은 통과해도 배포된 화면이 깨질 수 있으므로,
+**배포 직후** 아래를 한 번 실행해 라이브 URL을 직접 때려 확인하세요:
+
+```bash
+# 배포된 도메인 대상 (권장)
+SMOKE_BASE_URL=https://livingstay-realtrade.replit.app python tests/smoke_test.py
+
+# 또는 현재 개발 도메인(REPLIT_DEV_DOMAIN) 대상
+SMOKE_LIVE=1 python tests/smoke_test.py
+```
+
+`/`, `/static/css/main.css`, `/static/js/main.js` 세 경로가 각각 HTTP 200 +
+기대 content-type을 돌려주는지 검사하며, 하나라도 어긋나면 exit 1로 실패합니다.
+(플래그 없이 `python tests/smoke_test.py` 만 실행하면 기존처럼 로컬 모드입니다.)
+
 ## 9. PostgreSQL로 바꾸면서 달라진 점 (참고)
 - 로컬 SQLite 파일(`livingstay.db`) 대신 Replit이 관리하는 PostgreSQL을 씁니다.
 - **재배포해도 데이터가 유지됩니다.** (SQLite 방식의 가장 큰 리스크였던 부분 해결)
