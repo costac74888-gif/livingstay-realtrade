@@ -71,6 +71,8 @@ def init_db():
     # 지도 표시용 좌표 (geocode_buildings.py 가 카카오 주소검색으로 채움, NULL 허용)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION")
+    # 정원제 슬롯 최대 정원 (건물당 중개사 노출 좌석 수, 기본 3석)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS slot_capacity INTEGER DEFAULT 3")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
@@ -259,10 +261,33 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS slots (
+        id SERIAL PRIMARY KEY,
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),  -- 건물 (FK)
+        agent_id INTEGER NOT NULL REFERENCES agents(id),                      -- 중개사 (FK)
+        status TEXT DEFAULT 'active',        -- active | waiting | expired
+        queue_position INTEGER,              -- status='waiting'일 때 대기 순번, active면 NULL
+        monthly_fee INTEGER,                 -- 월 회비(원 단위)
+        started_at TIMESTAMP,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
+    cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS queue_position INTEGER")
+    cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS monthly_fee INTEGER")
+    cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS started_at TIMESTAMP")
+    cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP")
+    cur.execute("ALTER TABLE slots ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_address ON transactions(address)")
+    # 건물별 슬롯 조회(정원 충족 여부 확인)용 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_slots_building ON slots(master_building_id)")
 
     conn.commit()
     cur.close()
