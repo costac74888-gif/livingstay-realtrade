@@ -68,6 +68,9 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type_detail TEXT")
+    # 지도 표시용 좌표 (geocode_buildings.py 가 카카오 주소검색으로 채움, NULL 허용)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (

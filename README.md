@@ -14,6 +14,15 @@
 | `RTMS_SERVICE_KEY` | data.go.kr 발급키 (Decoding 키) | data.go.kr |
 | `BLD_SERVICE_KEY` | 위와 동일한 키 (같은 계정 키 재사용) | data.go.kr |
 | `JUSO_API_KEY` | 주소 API 승인키 | juso.go.kr |
+| `KAKAO_REST_API_KEY` | 카카오 REST API 키 (지도 좌표 변환용) | developers.kakao.com |
+
+> **`KAKAO_REST_API_KEY` 발급 방법** (지도 표시용 좌표를 채우는 `geocode_buildings.py` 에 필요)
+> 1. [developers.kakao.com](https://developers.kakao.com) 로그인 → **내 애플리케이션** → 앱 생성(또는 기존 앱 선택)
+> 2. **앱 키** 화면에서 **REST API 키** 값을 복사
+> 3. 왼쪽 메뉴 🔒 **Secrets** 에 `KAKAO_REST_API_KEY` 라는 이름으로 그 값을 등록
+> 4. 등록 후 `python geocode_buildings.py` 실행 (아래 5-4 참고)
+>
+> 카카오 로컬 API(주소 검색)는 무료이며 별도 요금이 없습니다. (일일 호출 한도만 존재)
 
 > 현재 `sync_batch.py` / `address_utils.py` 상단에는 이 키들이 상수(플레이스홀더 문자열)로
 > 적혀 있습니다. Secrets 등록 후에는 아래처럼 `os.environ`으로 바꿔서 쓰는 걸 권장합니다:
@@ -42,6 +51,10 @@ python load_master.py "생활숙박시설현황_전국통합_가나다순_최종
 
 # 3) 최근 3년치 백필 (시간 꽤 걸림 — 57개 시군구 × 36개월 = 약 2,000회 API 호출)
 python sync_batch.py --months 36
+
+# 4) 지도 표시용 좌표(위경도) 채우기 (KAKAO_REST_API_KEY 등록 후)
+python geocode_buildings.py            # 좌표 없는 건물 전체 처리
+# python geocode_buildings.py --limit 20   # 최초엔 20건만 테스트해봐도 됨
 ```
 
 ## 6. 서버 실행
