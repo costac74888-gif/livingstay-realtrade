@@ -27,6 +27,10 @@ args = "Verify Units"
 task = "workflow.run"
 args = "Fast Sync"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "smoke"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -60,6 +64,17 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -u sync_batch.py --months 60 --master-only"
+
+[[workflows.workflow]]
+name = "smoke"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python tests/smoke_test.py"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [[ports]]
 localPort = 5000
