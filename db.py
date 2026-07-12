@@ -307,6 +307,43 @@ def init_db():
     cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mileage_missions (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL,              -- 예: photo_exterior, admin_consent (UNIQUE는 helper에서 안전하게 부여)
+        title TEXT NOT NULL,             -- 예: 건물 외관 사진
+        points INTEGER NOT NULL,
+        tier TEXT DEFAULT 'basic',       -- basic | top | top2 (★, ★★ 구분)
+        active BOOLEAN DEFAULT TRUE
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE mileage_missions ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'basic'")
+    cur.execute("ALTER TABLE mileage_missions ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mileage_submissions (
+        id SERIAL PRIMARY KEY,
+        agent_id INTEGER NOT NULL REFERENCES agents(id),                 -- 중개사 (FK)
+        mission_id INTEGER NOT NULL REFERENCES mileage_missions(id),     -- 미션 (FK)
+        master_building_id INTEGER REFERENCES master_buildings(id),      -- 건물 (FK, NULL 허용)
+        photo_urls TEXT,                 -- JSON 문자열로 여러 장 저장(우선 TEXT, 나중에 JSONB 검토)
+        status TEXT DEFAULT 'pending',   -- pending | verified | rejected
+        points_awarded INTEGER,
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        reviewed_at TIMESTAMP,
+        reviewed_by INTEGER REFERENCES admin_users(id)                   -- 검토한 관리자 (FK)
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS master_building_id INTEGER REFERENCES master_buildings(id)")
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS photo_urls TEXT")
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'")
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS points_awarded INTEGER")
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP")
+    cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES admin_users(id)")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -323,6 +360,8 @@ def init_db():
     _ensure_raw_key_unique_constraint()
     _ensure_admin_email_unique_constraint()
     _ensure_agents_unique_constraints()
+    _ensure_mileage_missions_code_unique_constraint()
+    _seed_mileage_missions()
 
 
 def _ensure_raw_key_unique_constraint():
@@ -461,6 +500,99 @@ def _ensure_agents_unique_constraints():
     conn.commit()
     cur.close()
     conn.close()
+
+
+def _ensure_mileage_missions_code_unique_constraint():
+    """
+    mileage_missions.code에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
+    (_ensure_agents_unique_constraints()와 같은 패턴)
+    - 중복 code가 있으면 정책 데이터를 함부로 지우지 않고 경고만 출력하고 건너뛴다.
+    - 제약이 이미 있으면 skip, 없으면 add. (재실행 안전)
+    - 이 제약은 _seed_mileage_missions()의 ON CONFLICT (code) 동작에 필요하므로 시드보다 먼저 실행된다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT code, COUNT(*) AS c
+        FROM mileage_missions
+        WHERE code IS NOT NULL
+        GROUP BY code
+        HAVING COUNT(*) > 1
+    """)
+    dups = cur.fetchall()
+
+    cur.execute("""
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'mileage_missions'
+          AND tc.constraint_type = 'UNIQUE'
+          AND kcu.column_name = 'code'
+    """)
+    exists = cur.fetchone()
+
+    if exists:
+        print(f"mileage_missions.code UNIQUE 제약 이미 존재({exists['constraint_name']})")
+    elif dups:
+        print(f"[경고] mileage_missions.code 중복 {len(dups)}건 발견 — 데이터 자동 삭제하지 않고 UNIQUE 제약 부여를 건너뜁니다. 수동 정리 후 재실행하세요.")
+    else:
+        cur.execute("ALTER TABLE mileage_missions ADD CONSTRAINT mileage_missions_code_unique UNIQUE (code)")
+        print("mileage_missions.code UNIQUE 제약 신규 적용 완료")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _seed_mileage_missions():
+    """
+    미션 정의(정책 테이블) 초기 데이터를 삽입한다.
+    - code 기준 ON CONFLICT DO NOTHING이라 이미 있으면 중복 삽입되지 않는다 (재실행 안전).
+    - ON CONFLICT (code)는 code UNIQUE 제약이 있어야 동작한다. 보통은
+      _ensure_mileage_missions_code_unique_constraint()에서 미리 걸리지만,
+      레거시 중복 데이터 때문에 제약 부여가 건너뛰어졌을 수 있으므로 여기서도
+      제약 존재를 먼저 확인하고, 없으면 시드를 안전하게 건너뛴다(에러로 init_db 중단 방지).
+    """
+    missions = [
+        ("photo_exterior", "건물 외관 사진", 20, "basic"),
+        ("photo_building_id", "건축물 표시(문패·집합건축물대장 확인용)", 20, "basic"),
+        ("gps_tag", "GPS 좌표 태깅", 10, "basic"),
+        ("operation_type_check", "운영 형태 확인", 15, "basic"),
+        ("management_office_info", "관리사무소·법인 안내판", 10, "basic"),
+        ("surroundings_memo", "주변 환경 메모", 5, "basic"),
+        ("admin_consent", "건물 관리자 개인정보 이용동의 수집", 150, "top"),
+        ("biz_license_confirm", "숙박업 영업신고증 확인", 220, "top2"),
+    ]
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 1
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'mileage_missions'
+          AND tc.constraint_type = 'UNIQUE'
+          AND kcu.column_name = 'code'
+    """)
+    if not cur.fetchone():
+        print("[경고] mileage_missions.code UNIQUE 제약이 없어 시드를 건너뜁니다. code 중복 정리 후 재실행하세요.")
+        cur.close()
+        conn.close()
+        return
+
+    cur.executemany("""
+        INSERT INTO mileage_missions (code, title, points, tier)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (code) DO NOTHING
+    """, missions)
+    inserted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"mileage_missions 시드 완료 (신규 {inserted}건 삽입, 총 {len(missions)}건 정의)")
 
 
 if __name__ == "__main__":
