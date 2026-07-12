@@ -368,6 +368,109 @@ function openCorrectionModal(idx){
 document.getElementById("btnCloseCorrection").addEventListener("click", () => {
   correctionModal.style.display = "none";
 });
+
+// ---------- 카카오맵 ----------
+const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+const LODGING_LABELS = { "생활": "생활숙박시설", "호텔": "분양형호텔", "콘도": "콘도" };
+const DEFAULT_MARKER_COLOR = "#9AA5B1";
+
+// lodging_type이 '생활·호텔'처럼 복합이면 맨 앞 용도 색을 쓰고, 값이 없으면 회색.
+function markerColor(lodgingType){
+  if (!lodgingType) return DEFAULT_MARKER_COLOR;
+  return LODGING_COLORS[lodgingType.split("·")[0]] || DEFAULT_MARKER_COLOR;
+}
+function lodgingLabelKo(lodgingType){
+  if (!lodgingType) return "미분류";
+  return lodgingType.split("·").map(t => LODGING_LABELS[t] || t).join("·");
+}
+
+let kakaoMap = null;
+let currentInfoWindow = null;
+
+async function initMap(){
+  const container = document.getElementById("map");
+  if (!container) return;
+
+  kakaoMap = new kakao.maps.Map(container, {
+    center: new kakao.maps.LatLng(36.2, 127.9), // 대한민국 중앙 근처
+    level: 13,                                   // 전국이 한눈에 보이는 확대 수준
+  });
+
+  let items = [];
+  try {
+    const res = await fetch("/api/buildings-geo");
+    const data = await res.json();
+    items = data.items || [];
+  } catch(e){
+    console.error("[MAP] 건물 좌표 로드 실패:", e);
+    return;
+  }
+
+  let placed = 0;
+  items.forEach(b => {
+    if (b.lat == null || b.lng == null) return;
+    const color = markerColor(b.lodging_type);
+    const pos = new kakao.maps.LatLng(b.lat, b.lng);
+    const el = document.createElement("div");
+    el.style.cssText = `width:14px; height:14px; border-radius:50%; background:${color};` +
+      `border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer;`;
+    el.title = b.building_name || "";
+    const overlay = new kakao.maps.CustomOverlay({
+      position: pos, content: el, xAnchor: 0.5, yAnchor: 0.5, clickable: true,
+    });
+    overlay.setMap(kakaoMap);
+    el.addEventListener("click", () => openBuildingInfo(b, pos));
+    placed++;
+  });
+
+  const countLabel = document.getElementById("mapCount");
+  if (countLabel) countLabel.textContent = `(${placed}개 건물)`;
+  console.log(`[MAP] 카카오맵 마커 ${placed}개 표시 완료 (전체 ${items.length}건)`);
+}
+
+async function openBuildingInfo(b, pos){
+  if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+
+  const name = escapeHtml(b.building_name || "(건물명 미확인)");
+  const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
+
+  let dealHtml = `<div style="color:#8a94a0;">실거래 이력 없음</div>`;
+  try {
+    const params = new URLSearchParams({ q: b.building_name || "", size: 1, page: 1 });
+    const res = await fetch(`/api/transactions?${params}`);
+    const data = await res.json();
+    const t = (data.items || [])[0];
+    if (t){
+      const price = Number(t.price || 0).toLocaleString('ko-KR');
+      const area = t.area != null ? Number(t.area).toFixed(1) + "㎡" : "-";
+      const floor = t.floor ? t.floor + "층" : "-";
+      const dealType = escapeHtml(t.deal_type || "-");
+      dealHtml = `
+        <div style="margin-top:2px; line-height:1.7;">
+          <div><b style="color:#B4863F;">${price}만원</b> · ${escapeHtml(t.deal_date || "")}</div>
+          <div>${floor} · 전용 ${area} · ${dealType}</div>
+        </div>`;
+    }
+  } catch(e){
+    dealHtml = `<div style="color:#B3453A;">실거래 조회 오류</div>`;
+  }
+
+  const content = `
+    <div style="padding:10px 12px; min-width:170px; max-width:240px; font-size:12.5px; color:#16202E; font-family:'Noto Sans KR',sans-serif;">
+      <div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name}</div>
+      <div style="color:#6b7683; margin-bottom:4px;">${typeKo}</div>
+      ${dealHtml}
+    </div>`;
+  currentInfoWindow = new kakao.maps.InfoWindow({ position: pos, content, removable: true });
+  currentInfoWindow.open(kakaoMap);
+}
+
+// SDK를 autoload=false로 불렀으므로 명시적으로 로드한 뒤 초기화한다.
+if (window.kakao && window.kakao.maps){
+  kakao.maps.load(initMap);
+} else {
+  console.warn("[MAP] 카카오맵 SDK가 로드되지 않았습니다 — appkey/도메인 등록 상태를 확인하세요.");
+}
 document.getElementById("btnSubmitCorrection").addEventListener("click", async () => {
   if (!correctionTarget) return;
   const suggested_lodging_type = document.getElementById("correctionSuggestedType").value;

@@ -18,6 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JS_KEY}}&autoload=false"></script>
 </head>
 <body>
 
@@ -31,6 +32,20 @@
   <div class="page-title">전국숙박시설실거래가조회</div>
   <div class="header-right" id="healthStatus"></div>
 </header>
+
+<div class="map-panel" style="max-width:1200px; margin:18px auto 0; padding:0 20px;">
+  <div class="panel-card" style="background:#fff; border-radius:14px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,.05);">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+      <h2 style="margin:0; font-size:16px; color:var(--ink);">전국 숙박시설 지도 <span id="mapCount" style="font-size:13px; color:var(--ink-soft); font-weight:500;"></span></h2>
+      <div style="display:flex; gap:14px; font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap;">
+        <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#378ADD; display:inline-block;"></i>생활숙박시설</span>
+        <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#7F77DD; display:inline-block;"></i>분양형호텔</span>
+        <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#639922; display:inline-block;"></i>콘도</span>
+      </div>
+    </div>
+    <div id="map" style="width:100%; height:500px; border-radius:10px; overflow:hidden;"></div>
+  </div>
+</div>
 
 <div class="search-panel">
   <div class="panel-card">

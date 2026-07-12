@@ -17,7 +17,8 @@ GET /api/regions               → 계층형 지역 트리 (시도 > 시군구 >
 GET /api/health                → 배치 마지막 실행 시각/건수 확인용
 """
 
-from flask import Flask, request, jsonify, send_from_directory
+import os
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime
@@ -68,7 +69,14 @@ init_db()
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    # 정적 index.html을 읽어 카카오맵 JS 키만 서버에서 주입해 서빙한다.
+    # (프론트 소스에 키를 직접 박지 않고, 환경변수/시크릿에서 안전하게 넣는다.)
+    kakao_js_key = os.environ.get("KAKAO_JS_KEY", "")
+    html_path = os.path.join(app.static_folder, "index.html")
+    with open(html_path, encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("{{KAKAO_JS_KEY}}", kakao_js_key)
+    return Response(html, mimetype="text/html")
 
 
 @app.route("/api/transactions")
@@ -131,6 +139,23 @@ def get_transactions():
     conn.close()
 
     return jsonify({"total": total, "page": page, "size": size, "items": rows})
+
+
+@app.route("/api/buildings-geo")
+def get_buildings_geo():
+    """지도 마커용 — 좌표(lat/lng)가 있는 마스터 건물 전부."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, building_name, lat, lng, lodging_type
+        FROM master_buildings
+        WHERE lat IS NOT NULL AND lng IS NOT NULL
+        ORDER BY id
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": len(rows), "items": rows})
 
 
 @app.route("/api/regions")
