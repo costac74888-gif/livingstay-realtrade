@@ -379,8 +379,10 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
 
 
 RETRY_ABORT_AFTER = 15     # 연속 429가 이만큼 쌓이면 '쿼터 소진'으로 보고 라운드 조기 종료
-RETRY_ROUND_BACKOFF0 = 60.0    # 조기 종료 후 다음 라운드까지 대기 시작값(초)
-RETRY_ROUND_BACKOFF_MAX = 3600.0  # 라운드간 대기 상한(초, 1시간)
+# 국토부 API 일일 쿼터는 보통 자정 기준으로 리셋된다. 쿼터가 소진된 상태에서 자주 두드려봐야
+# 429만 쌓이므로, 라운드 사이 대기를 '시간 단위'로 크게 둬서 하루 1~2번만 시도하게 한다.
+RETRY_ROUND_BACKOFF0 = 43200.0    # 조기 종료 후 다음 라운드까지 대기 시작값(초, 12시간)
+RETRY_ROUND_BACKOFF_MAX = 86400.0  # 라운드간 대기 상한(초, 24시간)
 
 
 def _retry_round(cur, conn, bjdong, stats, item_sleep):
@@ -430,8 +432,9 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
 
     라운드 단위로 동작한다: 한 라운드는 큐를 한 번 훑으며 성공분을 채운다.
     API 일일 쿼터가 소진돼 연속 429가 몰리면 라운드를 조기 종료하고, 다음 라운드까지
-    대기시간을 2배씩 늘리는 exponential backoff(최대 1시간)로 기다렸다 다시 시도한다.
-    큐가 빌 때까지 반복 → 쿼터가 회복되는 대로 '천천히' 채워지는 저우선순위 백그라운드용.
+    대기시간을 2배씩 늘리는 exponential backoff(12시간→최대 24시간)로 기다렸다 다시 시도한다.
+    → 쿼터가 소진된 동안은 하루 1~2번만 두드리고, 쿼터가 살아있는 라운드는 곧바로 이어서
+    큐를 최대한 비운다. 큐가 빌 때까지 반복하는 저우선순위 백그라운드용.
     loop=False면 한 라운드만 돌고 끝낸다(테스트/수동용).
     """
     conn = get_conn()
@@ -462,7 +465,7 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
 
         if quota_exhausted or resolved == 0:
             # 쿼터가 회복될 때까지 점점 더 오래 대기(지수 증가)
-            print(f"[RETRY] {round_backoff/60:.1f}분 후 다음 라운드 재개", flush=True)
+            print(f"[RETRY] {round_backoff/3600:.1f}시간 후 다음 라운드 재개", flush=True)
             time.sleep(round_backoff)
             round_backoff = min(round_backoff * 2, RETRY_ROUND_BACKOFF_MAX)
         else:

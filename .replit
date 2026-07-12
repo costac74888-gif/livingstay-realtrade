@@ -25,10 +25,6 @@ args = "Verify Units"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Fast Sync"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "smoke"
 
 [[workflows.workflow.tasks]]
@@ -38,6 +34,10 @@ args = "api"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Backfill Retry"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Fast Sync"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -61,17 +61,6 @@ args = "python -u verify_units.py excluded_small_buildings.csv"
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[workflows.workflow]]
-name = "Fast Sync"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python -u sync_batch.py --months 60 --master-only"
 
 [[workflows.workflow]]
 name = "smoke"
@@ -102,6 +91,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "nice -n 19 python -u sync_batch.py --retry-failures --master-only --sleep 0.8"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Fast Sync"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -u sync_batch.py --months 60 --master-only"
 
 [workflows.workflow.metadata]
 outputType = "console"
