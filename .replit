@@ -31,6 +31,10 @@ args = "Fast Sync"
 task = "workflow.run"
 args = "smoke"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "api"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -72,6 +76,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python tests/smoke_test.py"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "api"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python tests/api_test.py"
 
 [workflows.workflow.metadata]
 isValidation = true
