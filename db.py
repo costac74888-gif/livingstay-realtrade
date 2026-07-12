@@ -157,6 +157,33 @@ def init_db():
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS agents (
+        id SERIAL PRIMARY KEY,
+        office_name TEXT NOT NULL,          -- 중개사무소명
+        owner_name TEXT NOT NULL,           -- 대표자명
+        reg_number TEXT NOT NULL,           -- 중개사무소 등록번호 (UNIQUE는 _ensure_agents_unique_constraints()에서 안전하게 부여)
+        biz_reg_number TEXT,                -- 사업자등록번호
+        phone TEXT,
+        email TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',      -- pending | approved | rejected | suspended
+        subdomain_slug TEXT,                -- 승인 시 발급되는 개별페이지 경로 (UNIQUE는 helper에서 부여)
+        intro_text TEXT,                    -- 자기소개(선택)
+        created_at TIMESTAMP DEFAULT NOW(),
+        approved_at TIMESTAMP,
+        approved_by INTEGER REFERENCES admin_users(id)   -- 승인한 관리자 (admin_users.id 참조 FK)
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS biz_reg_number TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS phone TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS subdomain_slug TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS intro_text TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -168,6 +195,7 @@ def init_db():
 
     _ensure_raw_key_unique_constraint()
     _ensure_admin_email_unique_constraint()
+    _ensure_agents_unique_constraints()
 
 
 def _ensure_raw_key_unique_constraint():
@@ -253,6 +281,55 @@ def _ensure_admin_email_unique_constraint():
             ADD CONSTRAINT admin_users_email_unique UNIQUE (email)
         """)
         print("admin_users.email UNIQUE 제약 신규 적용 완료")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _ensure_agents_unique_constraints():
+    """
+    agents.reg_number, agents.subdomain_slug에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
+    (_ensure_admin_email_unique_constraint()와 같은 패턴)
+    - 중복 값이 있으면 계정/신청 데이터를 함부로 지우지 않고 경고만 출력하고 건너뛴다.
+    - 제약이 이미 있으면 skip, 없으면 add. (재실행 안전)
+    - subdomain_slug는 NULL 허용(미승인 상태)이며, PostgreSQL UNIQUE는 NULL 다중 허용이라 문제 없음.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    targets = [
+        ("reg_number", "agents_reg_number_unique"),
+        ("subdomain_slug", "agents_subdomain_slug_unique"),
+    ]
+    for column, constraint_name in targets:
+        cur.execute(f"""
+            SELECT {column} AS v, COUNT(*) AS c
+            FROM agents
+            WHERE {column} IS NOT NULL
+            GROUP BY {column}
+            HAVING COUNT(*) > 1
+        """)
+        dups = cur.fetchall()
+
+        cur.execute("""
+            SELECT tc.constraint_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'agents'
+              AND tc.constraint_type = 'UNIQUE'
+              AND kcu.column_name = %s
+        """, (column,))
+        exists = cur.fetchone()
+
+        if exists:
+            print(f"agents.{column} UNIQUE 제약 이미 존재({exists['constraint_name']})")
+        elif dups:
+            print(f"[경고] agents.{column} 중복 {len(dups)}건 발견 — 데이터 자동 삭제하지 않고 UNIQUE 제약 부여를 건너뜁니다. 수동 정리 후 재실행하세요.")
+        else:
+            cur.execute(f"ALTER TABLE agents ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
+            print(f"agents.{column} UNIQUE 제약 신규 적용 완료")
 
     conn.commit()
     cur.close()
