@@ -23,6 +23,10 @@ args = "Start application"
 task = "workflow.run"
 args = "Verify Units"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Discover Buildings"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -45,6 +49,17 @@ args = "python -u verify_units.py excluded_small_buildings.csv"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "Discover Buildings"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash run_5yr_backfill.sh"
 
 [[ports]]
 localPort = 5000
