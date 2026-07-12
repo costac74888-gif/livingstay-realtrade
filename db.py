@@ -209,6 +209,56 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS applications (
+        id SERIAL PRIMARY KEY,
+        applicant_type TEXT NOT NULL,            -- 'agent' | 'operator'
+        office_or_company_name TEXT NOT NULL,    -- 중개사무소명 또는 업체명 공용
+        owner_name TEXT NOT NULL,
+        reg_number TEXT,                         -- 중개사무소 등록번호 (agent만 해당)
+        biz_reg_number TEXT,                     -- 사업자등록번호 (공용)
+        category TEXT,                           -- 업종 (operator만: 위탁운영/청소/세탁/용품/대출상담사/인테리어)
+        phone TEXT NOT NULL,
+        email TEXT NOT NULL,
+        website_url TEXT,
+        preferred_region TEXT,                   -- 희망 지역(선택)
+        preferred_building TEXT,                 -- 희망 건물(선택)
+        intro_text TEXT,                         -- 자기소개(선택, agent 주로)
+        doc_license_url TEXT,                    -- 공인중개사 자격증 사본 (agent)
+        doc_office_reg_url TEXT,                 -- 중개사무소 등록증 사본 (agent)
+        doc_biz_reg_url TEXT,                    -- 사업자등록증 사본 (공용)
+        doc_business_card_url TEXT,              -- 명함 (operator)
+        doc_biz_license_url TEXT,                -- 영업허가증 (operator, 업종별 조건부)
+        status TEXT DEFAULT 'submitted',         -- submitted | reviewing | approved | rejected
+        reject_reason TEXT,
+        linked_agent_id INTEGER REFERENCES agents(id),        -- 승인 시 반영된 agents.id (FK)
+        linked_operator_id INTEGER REFERENCES operators(id),  -- 승인 시 반영된 operators.id (FK)
+        reviewed_by INTEGER REFERENCES admin_users(id),       -- 검토한 관리자 (admin_users.id FK)
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        reviewed_at TIMESTAMP
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reg_number TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS biz_reg_number TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS category TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS website_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_region TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_building TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS intro_text TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_license_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_office_reg_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_biz_reg_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_business_card_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_biz_license_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'submitted'")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reject_reason TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_agent_id INTEGER REFERENCES agents(id)")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_operator_id INTEGER REFERENCES operators(id)")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES admin_users(id)")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
