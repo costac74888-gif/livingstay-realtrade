@@ -1,1 +1,1 @@
-- [flask-limiter testing](flask-limiter-testing.md) — memory-store counter persists across bursts + fixed-window ~2x boundary makes "exact Nth=429" tests flaky; restart to reset, needs ProxyFix behind Replit proxy.
+- [flask-limiter on Replit](flask-limiter-testing.md) — key rate limits on LEFTMOST X-Forwarded-For (edge strips spoofed XFF); ProxyFix(x_for=1) is wrong (→127.0.0.1, shared counter); memory:// is per-process; --reuse-port can leave orphan master; fixed-window bursts ~2x.
