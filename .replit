@@ -5,6 +5,7 @@ packages = ["glibcLocales"]
 
 [agent]
 expertMode = true
+integrations = ["github:1.0.0"]
 
 [workflows]
 runButton = "Project"
