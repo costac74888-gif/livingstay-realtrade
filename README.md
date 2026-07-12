@@ -20,7 +20,11 @@
 > 1. [developers.kakao.com](https://developers.kakao.com) 로그인 → **내 애플리케이션** → 앱 생성(또는 기존 앱 선택)
 > 2. **앱 키** 화면에서 **REST API 키** 값을 복사
 > 3. 왼쪽 메뉴 🔒 **Secrets** 에 `KAKAO_REST_API_KEY` 라는 이름으로 그 값을 등록
-> 4. 등록 후 `python geocode_buildings.py` 실행 (아래 5-4 참고)
+> 4. ⚠️ **카카오맵(지도/로컬) 서비스 활성화** — 이 앱에서 카카오맵을 켜야 주소검색 API가 동작합니다.
+>    - 내 애플리케이션 → 해당 앱 → 왼쪽 메뉴 **카카오맵**(또는 **제품 설정 → 카카오맵**)
+>    - **활성화 설정 → ON** 으로 변경 후 저장
+>    - 켜지 않으면 API가 `403 NotAuthorizedError: disabled OPEN_MAP_AND_LOCAL service` 를 돌려줍니다.
+> 5. 등록·활성화 후 `python geocode_buildings.py` 실행 (아래 5-4 참고)
 >
 > 카카오 로컬 API(주소 검색)는 무료이며 별도 요금이 없습니다. (일일 호출 한도만 존재)
 
