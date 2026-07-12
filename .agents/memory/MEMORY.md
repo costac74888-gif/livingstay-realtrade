@@ -1,2 +1,3 @@
 - [flask-limiter on Replit](flask-limiter-testing.md) — key rate limits on LEFTMOST X-Forwarded-For (edge strips spoofed XFF); ProxyFix(x_for=1) is wrong (→127.0.0.1, shared counter); memory:// is per-process; --reuse-port can leave orphan master; fixed-window bursts ~2x.
+- [RTMS backfill 429 & retry](rtms-backfill-retry.md) — data.go.kr RTMS 429s once daily quota is burnt; retry backs off BETWEEN rounds (not per-item) via sync_failures queue; run detached `--retry-failures`.
 - [Untracking files on Replit](git-untrack-on-replit.md) — agent is blocked from `git rm --cached` (even in a project task); adding .gitignore does NOT untrack already-committed files; the USER must run `git rm -r --cached . && git add .` in the Shell.

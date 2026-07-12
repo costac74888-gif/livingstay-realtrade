@@ -35,6 +35,10 @@ args = "smoke"
 task = "workflow.run"
 args = "api"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backfill Retry"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -90,6 +94,17 @@ args = "python tests/api_test.py"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "Backfill Retry"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "nice -n 19 python -u sync_batch.py --retry-failures --master-only --sleep 0.8"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 5000
