@@ -38,31 +38,47 @@ REQUEST_SLEEP = 0.1   # 카카오 API 과호출 방지용 딜레이(초)
 REQUEST_TIMEOUT = 10  # 개별 호출 타임아웃(초)
 
 
+def _clean_road_address(road_address: str) -> str:
+    """
+    마스터 주소는 도로명주소 뒤에 층/동/호/법정동 정보가 쉼표로 붙어 있다.
+      예) '경기도 수원시 팔달구 갓매산로19번길 27-4, 2~9층 (매산로2가)'
+    카카오 주소검색은 이런 꼬리표가 붙으면 '검색결과 없음'을 돌려주므로,
+    첫 쉼표 앞부분(순수 도로명주소)만 잘라서 보낸다.
+    """
+    return road_address.split(",")[0].strip()
+
+
+def _query_kakao(query: str):
+    """카카오 주소검색 1회 호출 → (lat, lng) 또는 결과 없으면 None."""
+    headers = {"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"}
+    resp = requests.get(
+        KAKAO_ADDRESS_URL, headers=headers, params={"query": query},
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    docs = resp.json().get("documents", [])
+    if not docs:
+        return None
+    doc = docs[0]
+    # 카카오는 x=경도(lng), y=위도(lat) 를 문자열로 준다.
+    try:
+        return float(doc["y"]), float(doc["x"])  # (lat, lng)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def geocode_address(road_address: str):
     """
     도로명주소 한 건을 카카오 주소검색으로 조회해 (lat, lng) 튜플을 돌려준다.
     검색 결과가 없거나 오류가 나면 None 을 돌려준다(=이 건물은 건너뜀).
+    1차: 층/동/호 꼬리표를 제거한 순수 도로명주소로 검색(성공률 대폭 향상)
+    2차: 그래도 없으면 원본 주소로 한 번 더 시도(폴백)
     """
-    headers = {"Authorization": f"KakaoAK {KAKAO_REST_API_KEY}"}
-    params = {"query": road_address}
-    resp = requests.get(
-        KAKAO_ADDRESS_URL, headers=headers, params=params, timeout=REQUEST_TIMEOUT
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
-    docs = data.get("documents", [])
-    if not docs:
-        return None
-
-    doc = docs[0]
-    # 카카오는 x=경도(lng), y=위도(lat) 를 문자열로 준다.
-    try:
-        lng = float(doc["x"])
-        lat = float(doc["y"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    return lat, lng
+    cleaned = _clean_road_address(road_address)
+    result = _query_kakao(cleaned)
+    if result is None and cleaned != road_address:
+        result = _query_kakao(road_address)
+    return result
 
 
 def geocode_buildings(limit: int | None = None):
