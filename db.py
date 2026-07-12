@@ -140,6 +140,23 @@ def init_db():
     cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS changed BOOLEAN DEFAULT FALSE")     # 정정 요청 시 실제로 값이 바뀌었는지
     cur.execute("ALTER TABLE building_requests ALTER COLUMN road_address DROP NOT NULL")                    # 정정 요청은 도로명주소가 없으므로
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_users (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,               -- 로그인 아이디 (UNIQUE 제약은 _ensure_admin_email_unique_constraint()에서 안전하게 부여)
+        password_hash TEXT NOT NULL,       -- werkzeug generate_password_hash() 결과 (절대 평문 저장 금지)
+        name TEXT,                         -- 표시용 이름
+        role TEXT DEFAULT 'operator',      -- 'super_admin' | 'operator'
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_login_at TIMESTAMP            -- 마지막 로그인 시각 (로그인 API가 채움)
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS name TEXT")
+    cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'operator'")
+    cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -150,6 +167,7 @@ def init_db():
     conn.close()
 
     _ensure_raw_key_unique_constraint()
+    _ensure_admin_email_unique_constraint()
 
 
 def _ensure_raw_key_unique_constraint():
@@ -188,6 +206,53 @@ def _ensure_raw_key_unique_constraint():
         print(f"raw_key UNIQUE 제약 신규 적용 완료 (중복 {deleted}건 사전 정리)")
     else:
         print(f"raw_key UNIQUE 제약 이미 존재({exists['constraint_name']}) — 중복 {deleted}건만 정리")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _ensure_admin_email_unique_constraint():
+    """
+    admin_users.email에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
+    (_ensure_raw_key_unique_constraint()와 같은 패턴)
+    CREATE TABLE IF NOT EXISTS로 예전에 UNIQUE 없이 만들어진 테이블에도 확실히 반영되게 한다.
+    1) 중복 email이 있는지 먼저 확인 — 있으면 계정을 함부로 지우지 않고(사용자 데이터 보호)
+       경고만 출력하고 제약 부여를 건너뛴다 (raw_key와 달리 자동 삭제하지 않음).
+    2) 제약이 이미 있으면 건너뛰고, 없으면 추가.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT LOWER(email) AS email_l, COUNT(*) AS c
+        FROM admin_users
+        GROUP BY LOWER(email)
+        HAVING COUNT(*) > 1
+    """)
+    dups = cur.fetchall()
+
+    cur.execute("""
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'admin_users'
+          AND tc.constraint_type = 'UNIQUE'
+          AND kcu.column_name = 'email'
+    """)
+    exists = cur.fetchone()
+
+    if exists:
+        print(f"admin_users.email UNIQUE 제약 이미 존재({exists['constraint_name']})")
+    elif dups:
+        print(f"[경고] admin_users.email 중복 {len(dups)}건 발견 — 계정 자동 삭제하지 않고 UNIQUE 제약 부여를 건너뜁니다. 수동 정리 후 재실행하세요.")
+    else:
+        cur.execute("""
+            ALTER TABLE admin_users
+            ADD CONSTRAINT admin_users_email_unique UNIQUE (email)
+        """)
+        print("admin_users.email UNIQUE 제약 신규 적용 완료")
 
     conn.commit()
     cur.close()
