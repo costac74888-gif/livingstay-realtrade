@@ -184,6 +184,31 @@ def init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS operators (
+        id SERIAL PRIMARY KEY,
+        company_name TEXT NOT NULL,         -- 업체명
+        owner_name TEXT NOT NULL,           -- 대표자명
+        category TEXT NOT NULL,             -- 위탁운영 | 청소 | 세탁 | 용품 | 대출상담사 | 인테리어
+        biz_reg_number TEXT,                -- 사업자등록번호
+        phone TEXT,
+        email TEXT NOT NULL,
+        website_url TEXT,
+        status TEXT DEFAULT 'pending',      -- pending | approved | rejected | suspended
+        created_at TIMESTAMP DEFAULT NOW(),
+        approved_at TIMESTAMP,
+        approved_by INTEGER REFERENCES admin_users(id)   -- 승인한 관리자 (admin_users.id 참조 FK)
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS biz_reg_number TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS phone TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS website_url TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
