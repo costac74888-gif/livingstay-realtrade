@@ -313,6 +313,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_address ON transactions(address)")
     # 건물별 슬롯 조회(정원 충족 여부 확인)용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_slots_building ON slots(master_building_id)")
+    # 건물별 매물 조회용 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_listings_building ON listings(master_building_id)")
 
     conn.commit()
     cur.close()
