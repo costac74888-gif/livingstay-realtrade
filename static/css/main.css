@@ -305,6 +305,18 @@
 .admin-btn-primary{ background:var(--brass); border-color:var(--brass); color:#fff; font-weight:700; }
 .admin-btn-primary:hover{ background:var(--brass-dark); border-color:var(--brass-dark); color:#fff; }
 
+.admin-modal-overlay{
+  position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center;
+  background:rgba(22,32,46,.55); padding:20px;
+}
+.admin-modal-overlay[hidden]{ display:none; }
+.admin-modal-card{
+  width:100%; max-width:360px; background:#fff; border-radius:12px; padding:24px;
+  box-shadow:0 12px 40px rgba(0,0,0,.25);
+}
+.admin-modal-title{ margin:0 0 16px; font-size:18px; color:var(--ink); }
+.admin-modal-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+
 /* --- 레이아웃 --- */
 .admin-layout{ display:flex; min-height:100vh; background:#F5F6F8; }
 .admin-sidebar{

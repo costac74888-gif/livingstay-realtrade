@@ -22,7 +22,6 @@ import os
 import re
 import io
 import time
-import hmac
 import hashlib
 import secrets as _secrets
 from functools import wraps
@@ -1051,10 +1050,9 @@ def request_correction():
 
 
 # ============================================================
-# 관리자(E화면) — 임시 접근키 보호 + 건물마스터 CRUD
-# F(정식 로그인)가 아직 없어 admin_users 대신 단일 접근키(ADMIN_ACCESS_KEY)로
-# 보호한다. 접근키가 일치하면 서명된 세션 쿠키에 admin=True를 저장한다.
-# F 구현 시 이 접근키 방식을 admin_users 정식 로그인으로 교체할 예정.
+# 관리자(E화면) — admin_users 기반 이메일/비밀번호 로그인 + 건물마스터 CRUD
+# 로그인 성공 시 서명된 세션 쿠키에 admin=True, admin_user_id=행 id를 저장한다.
+# require_admin 및 /api/admin/* 나머지 API는 session["admin"] 여부만 확인한다.
 # ============================================================
 
 def require_admin(f):
@@ -1877,20 +1875,72 @@ def admin_login_page():
 @app.route("/api/admin/login", methods=["POST"])
 @limiter.limit("5 per minute; 30 per hour")
 def admin_login():
+    """admin_users 테이블 기반 이메일/비밀번호 로그인.
+    실패 시 이메일 존재 여부를 드러내지 않도록 통일된 메시지로 401을 반환한다."""
     data = request.get_json(force=True, silent=True) or {}
-    key = (data.get("access_key") or "").strip()
-    expected = os.environ.get("ADMIN_ACCESS_KEY", "")
-    # 상수 시간 비교로 타이밍 공격 방지 (키 미설정 시엔 항상 실패)
-    if expected and hmac.compare_digest(key, expected):
-        session["admin"] = True
-        session.permanent = True
-        return jsonify({"ok": True})
-    return jsonify({"ok": False, "message": "접근키가 올바르지 않습니다."}), 401
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+    if not email or not password:
+        return fail
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, password_hash FROM admin_users WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
+            return fail
+        cur.execute("UPDATE admin_users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    session["admin"] = True
+    session["admin_user_id"] = row["id"]
+    session.permanent = True
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/logout", methods=["POST"])
 def admin_logout():
     session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/password", methods=["PUT"])
+@require_admin
+@limiter.limit("5 per minute; 20 per hour")
+def admin_change_password():
+    """관리자 비밀번호 변경 — 로그인 필요. 현재 비밀번호 확인 후 새 비밀번호로 교체."""
+    admin_id = session.get("admin_user_id")
+    if not admin_id:
+        return jsonify({"ok": False, "message": "다시 로그인해주세요."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    current_pw = data.get("current_password") or ""
+    new_pw = data.get("new_password") or ""
+    if len(new_pw) < 8:
+        return jsonify({"ok": False, "message": "새 비밀번호는 8자 이상이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password_hash FROM admin_users WHERE id = %s", (admin_id,))
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], current_pw):
+            return jsonify({"ok": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 401
+        cur.execute(
+            "UPDATE admin_users SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), admin_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
     return jsonify({"ok": True})
 
 

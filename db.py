@@ -30,6 +30,7 @@ sync_log         : 배치 실행 이력 (언제, 몇 건, 성공/실패)
 import os
 import psycopg2
 import psycopg2.extras
+from werkzeug.security import generate_password_hash
 
 
 def get_conn():
@@ -520,6 +521,7 @@ def init_db():
     _ensure_mileage_missions_code_unique_constraint()
     _ensure_users_unique_constraints()
     _seed_mileage_missions()
+    _seed_admin_user()
 
 
 def _ensure_raw_key_unique_constraint():
@@ -801,6 +803,32 @@ def _seed_mileage_missions():
     cur.close()
     conn.close()
     print(f"mileage_missions 시드 완료 (신규 {inserted}건 삽입, 총 {len(missions)}건 정의)")
+
+
+def _seed_admin_user():
+    """
+    최초 관리자 계정 1건을 시드한다 (email='ADMIN' / password='ADMIN').
+    - admin_users에 행이 하나라도 있으면 아무것도 하지 않는다(기존 계정 절대 덮어쓰기 금지).
+    - 완전히 비어 있을 때만 딱 1건 생성한다 (재실행 안전).
+    - 초기 비밀번호는 반드시 로그인 후 '비밀번호 변경'으로 교체하도록 안내한다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # WHERE NOT EXISTS로 "테이블이 완전히 비었을 때만" 원자적으로 1건 삽입한다.
+        # (동시 초기화 시에도 경쟁 상태 없이 안전 — 이미 행이 있으면 0건 삽입)
+        cur.execute(
+            """INSERT INTO admin_users (email, password_hash, name, role)
+               SELECT %s, %s, %s, %s
+               WHERE NOT EXISTS (SELECT 1 FROM admin_users)""",
+            ("ADMIN", generate_password_hash("ADMIN"), "관리자", "super_admin"),
+        )
+        conn.commit()
+        if cur.rowcount:
+            print("admin_users 초기 계정 시드 완료 (email='ADMIN' / 초기 비밀번호 'ADMIN' — 로그인 후 반드시 변경하세요)")
+    finally:
+        cur.close()
+        conn.close()
 
 
 if __name__ == "__main__":

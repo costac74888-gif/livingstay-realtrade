@@ -12,13 +12,21 @@
     <div class="admin-login-card">
       <div class="admin-login-brand">HOME &amp; STAY</div>
       <h1 class="admin-login-title">관리자 페이지</h1>
-      <p class="admin-login-sub">접근키를 입력하세요.</p>
+      <p class="admin-login-sub">아이디(이메일)와 비밀번호를 입력하세요.</p>
       <form id="loginForm" class="admin-login-form" autocomplete="off">
         <input
-          id="accessKey"
+          id="adminEmail"
+          type="text"
+          class="admin-input"
+          placeholder="아이디(이메일)"
+          autocomplete="username"
+          required
+        />
+        <input
+          id="adminPassword"
           type="password"
           class="admin-input"
-          placeholder="접근키"
+          placeholder="비밀번호"
           autocomplete="current-password"
           required
         />
@@ -36,7 +44,8 @@
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const key = document.getElementById("accessKey").value;
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value;
       msg.textContent = "";
       btn.disabled = true;
       btn.textContent = "확인 중…";
@@ -44,7 +53,7 @@
         const res = await fetch("/api/admin/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ access_key: key }),
+          body: JSON.stringify({ email, password }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) {

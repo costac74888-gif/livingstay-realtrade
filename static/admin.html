@@ -30,6 +30,7 @@
       </nav>
       <div class="admin-sb-foot">
         <a href="/" class="admin-sb-link">← 사이트로</a>
+        <button id="changePwBtn" class="admin-sb-link">비밀번호 변경</button>
         <button id="logoutBtn" class="admin-sb-link admin-logout">로그아웃</button>
       </div>
     </aside>
@@ -37,6 +38,22 @@
     <main class="admin-main">
       <div id="grid"></div>
     </main>
+  </div>
+
+  <div id="pwModal" class="admin-modal-overlay" hidden>
+    <div class="admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="pwModalTitle">
+      <h2 id="pwModalTitle" class="admin-modal-title">비밀번호 변경</h2>
+      <form id="pwForm" class="admin-login-form" autocomplete="off">
+        <input id="pwCurrent" type="password" class="admin-input" placeholder="현재 비밀번호" autocomplete="current-password" required />
+        <input id="pwNew" type="password" class="admin-input" placeholder="새 비밀번호 (8자 이상)" autocomplete="new-password" required />
+        <input id="pwNew2" type="password" class="admin-input" placeholder="새 비밀번호 확인" autocomplete="new-password" required />
+        <div class="admin-modal-actions">
+          <button type="button" id="pwCancel" class="admin-btn">취소</button>
+          <button type="submit" id="pwSubmit" class="admin-btn admin-btn-primary">변경</button>
+        </div>
+      </form>
+      <div id="pwMsg" class="admin-login-msg" role="alert"></div>
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -47,6 +64,65 @@
         await fetch("/api/admin/logout", { method: "POST" });
       } catch (e) {}
       window.location.href = "/admin/login";
+    });
+
+    // 비밀번호 변경 모달
+    const pwModal = document.getElementById("pwModal");
+    const pwForm = document.getElementById("pwForm");
+    const pwMsg = document.getElementById("pwMsg");
+    const pwSubmit = document.getElementById("pwSubmit");
+
+    function openPwModal() {
+      pwForm.reset();
+      pwMsg.textContent = "";
+      pwModal.hidden = false;
+    }
+    function closePwModal() {
+      pwModal.hidden = true;
+    }
+
+    document.getElementById("changePwBtn").addEventListener("click", openPwModal);
+    document.getElementById("pwCancel").addEventListener("click", closePwModal);
+    pwModal.addEventListener("click", (e) => {
+      if (e.target === pwModal) closePwModal();
+    });
+
+    pwForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const current = document.getElementById("pwCurrent").value;
+      const next = document.getElementById("pwNew").value;
+      const next2 = document.getElementById("pwNew2").value;
+      pwMsg.textContent = "";
+      if (next.length < 8) {
+        pwMsg.textContent = "새 비밀번호는 8자 이상이어야 합니다.";
+        return;
+      }
+      if (next !== next2) {
+        pwMsg.textContent = "새 비밀번호가 서로 일치하지 않습니다.";
+        return;
+      }
+      pwSubmit.disabled = true;
+      pwSubmit.textContent = "변경 중…";
+      try {
+        const res = await fetch("/api/admin/password", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password: current, new_password: next }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          pwMsg.style.color = "";
+          alert("비밀번호가 변경되었습니다. 다시 로그인해주세요.");
+          window.location.href = "/admin/login";
+          return;
+        }
+        pwMsg.textContent = data.message || "비밀번호 변경에 실패했습니다.";
+      } catch (err) {
+        pwMsg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+      } finally {
+        pwSubmit.disabled = false;
+        pwSubmit.textContent = "변경";
+      }
     });
 
     // 메뉴별 그리드 설정 — 같은 DataGrid에 컬럼 정의만 바꿔 그대로 재사용한다.
