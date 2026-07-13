@@ -1010,9 +1010,10 @@ function buildingPanelSkeleton(){
 }
 
 function bStat(label, value){
+  // value/label은 내부에서 escape → 호출부에서 별도 escapeHtml 불필요(누락 시 XSS 방지)
   return `<div style="flex:1; min-width:100px;">
-    <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:3px;">${label}</div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--ink);">${value}</div>
+    <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:3px;">${escapeHtml(String(label))}</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--ink);">${escapeHtml(String(value))}</div>
   </div>`;
 }
 
@@ -1046,6 +1047,14 @@ async function loadBuildingHeader(id){
   const favKeyStr = favKey(favItem); // 관심저장과 동일한 키 규칙으로 알림도 저장한다
   const canFav = b.address != null && b.address !== "";
 
+  // 표제부 백필값 — 헤더 요약에도 반영 (없으면 "-")
+  const useAprShort = (b.use_apr_day != null && b.use_apr_day !== "")
+    ? String(b.use_apr_day).slice(0, 7).replace("-", ".") : "-";
+  const pkngTxt = (b.tot_pkng_cnt != null && b.tot_pkng_cnt !== "")
+    ? Number(b.tot_pkng_cnt).toLocaleString("ko-KR") + "대" : "-";
+  const flrTxt = (b.grnd_flr_cnt != null || b.ugrnd_flr_cnt != null)
+    ? `${b.grnd_flr_cnt != null ? b.grnd_flr_cnt : "-"} / ${b.ugrnd_flr_cnt != null ? b.ugrnd_flr_cnt : "-"}` : "-";
+
   headerCard.innerHTML = `
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
@@ -1058,13 +1067,13 @@ async function loadBuildingHeader(id){
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
     </div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
-      ${bStat("주용도1", escapeHtml(use1))}
-      ${bStat("주용도2", escapeHtml(use2))}
-      ${bStat("준공월", "-")}
+      ${bStat("주용도1", use1)}
+      ${bStat("주용도2", use2)}
+      ${bStat("준공월", useAprShort)}
       ${bStat("총 호실", units)}
       ${bStat("영업신고 호수", bizUnits)}
-      ${bStat("총주차", "-")}
-      ${bStat("층수(지상/지하)", "-")}
+      ${bStat("총주차", pkngTxt)}
+      ${bStat("층수(지상/지하)", flrTxt)}
     </div>`;
 
   // 헤더 액션 버튼 배선 — 관심저장/실거래알림 상태 동기화 + 공유

@@ -585,3 +585,41 @@
   .auth-btn{ padding:6px 10px; font-size:12px; }
   .auth-username{ font-size:12px; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 }
+
+/* 좌측 패널 하단 회사정보 푸터 */
+.side-footer{ margin-top:auto; padding:14px 16px 16px; border-top:1px solid var(--line); }
+.side-footer-links{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:11.5px; }
+.side-footer-links a{ color:var(--ink-soft); text-decoration:none; font-weight:600; cursor:pointer; }
+.side-footer-links a:hover{ color:var(--brass-dark); }
+.side-footer-sep{ color:#C9D0D8; font-size:10px; }
+.side-footer-legal{ margin:8px 0 0; font-size:10px; line-height:1.65; color:#9AA5B1; }
+
+/* 회사소개 모달 */
+.company-modal-backdrop{
+  position:fixed; inset:0; background:rgba(22,32,46,.55); z-index:2000;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.company-modal{
+  position:relative; width:100%; max-width:440px; background:#fff; border-radius:16px;
+  padding:32px 28px 26px; box-shadow:0 24px 60px rgba(22,32,46,.28);
+}
+.company-modal-close{
+  position:absolute; top:14px; right:16px; background:none; border:none;
+  font-size:26px; line-height:1; color:var(--ink-soft); cursor:pointer;
+}
+.company-modal-close:hover{ color:var(--ink); }
+.company-modal-brand{
+  text-align:center; font-size:12px; font-weight:700; letter-spacing:.14em;
+  color:var(--brass); margin-bottom:4px;
+}
+.company-modal-logo{ display:block; height:34px; width:auto; margin:0 auto 14px; }
+.company-modal-title{ text-align:center; font-size:20px; font-weight:700; color:var(--ink); margin:0 0 18px; }
+.company-intro{ margin:0; }
+.company-intro p{ margin:0 0 12px; font-size:13.5px; line-height:1.8; color:#2C3744; }
+.company-intro p:last-child{ margin-bottom:0; }
+.company-info{ margin:0; }
+.company-info .ci-row{ display:flex; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.company-info .ci-row:last-child{ border-bottom:none; }
+.company-info dt{ flex:0 0 96px; color:var(--ink-soft); font-weight:600; }
+.company-info dd{ margin:0; color:var(--ink); font-weight:500; line-height:1.5; }
+.company-info dd a{ color:var(--brass-dark); text-decoration:none; }

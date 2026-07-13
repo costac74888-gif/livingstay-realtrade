@@ -73,6 +73,17 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION")
     # 정원제 슬롯 최대 정원 (건물당 중개사 노출 좌석 수, 기본 3석)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS slot_capacity INTEGER DEFAULT 3")
+    # 건축물대장 표제부(getBrTitleInfo) 백필값 — backfill_title_info.py가 채운다.
+    # 값이 NULL이면 건물 상세 화면에서 "-"로 표시된다.
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS use_apr_day TEXT")        # 사용승인일(준공) YYYY-MM-DD
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS tot_pkng_cnt INTEGER")    # 총주차대수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS grnd_flr_cnt INTEGER")    # 지상층수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS ugrnd_flr_cnt INTEGER")   # 지하층수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS tot_area DOUBLE PRECISION")  # 연면적(㎡)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS plat_area DOUBLE PRECISION") # 대지면적(㎡)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS hhld_cnt INTEGER")        # 세대수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS strct_nm TEXT")           # 구조
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS title_backfilled_at TIMESTAMP")  # 표제부 백필 시각(재시도/커버리지 추적)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (

@@ -224,6 +224,8 @@ def get_building(building_id):
     cur.execute("""
         SELECT mb.building_name, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
                mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
+               mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,
+               mb.tot_area, mb.plat_area, mb.hhld_cnt, mb.strct_nm,
                lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
@@ -1088,6 +1090,18 @@ def notices_page():
 def mypage_page():
     """마이페이지 — 로그인 여부는 /api/auth/me로 클라이언트에서 판단한다."""
     return _serve_static_html("mypage.html")
+
+
+@app.route("/terms")
+def terms_page():
+    """이용약관 페이지 (정적)."""
+    return _serve_static_html("terms.html")
+
+
+@app.route("/privacy")
+def privacy_page():
+    """개인정보처리방침 페이지 (정적)."""
+    return _serve_static_html("privacy.html")
 
 
 # =====================================================================

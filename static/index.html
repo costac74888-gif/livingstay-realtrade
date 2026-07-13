@@ -186,6 +186,18 @@
       <div class="side-soon">준비 중입니다</div>
     </section>
 
+    <!-- 좌측 패널 하단 회사 정보 푸터 -->
+    <div class="side-footer">
+      <nav class="side-footer-links">
+        <a href="#" id="footerCompanyLink" role="button">회사소개</a>
+        <span class="side-footer-sep">|</span>
+        <a href="/terms">이용약관</a>
+        <span class="side-footer-sep">|</span>
+        <a href="/privacy">개인정보처리방침</a>
+      </nav>
+      <p class="side-footer-legal">홈앤스테이</p>
+    </div>
+
   </aside>
 
   <!-- 지도 위 우측 하단 범례 -->
@@ -194,6 +206,19 @@
     <span class="lg"><i style="background:#378ADD;"></i>생활숙박시설</span>
     <span class="lg"><i style="background:#7F77DD;"></i>분양형호텔</span>
     <span class="lg"><i style="background:#639922;"></i>콘도</span>
+  </div>
+</div>
+
+<!-- 회사소개 모달 -->
+<div class="company-modal-backdrop" id="companyModal" style="display:none;">
+  <div class="company-modal" role="dialog" aria-modal="true" aria-labelledby="companyModalTitle">
+    <button class="company-modal-close" id="companyModalClose" aria-label="닫기">&times;</button>
+    <img class="company-modal-logo" src="/static/home_stay_logo.png" alt="홈앤스테이 HOME &amp; STAY" />
+    <h2 class="company-modal-title" id="companyModalTitle">회사소개</h2>
+    <div class="company-intro">
+      <p>제이앤제이프로퍼티 주식회사(대표 조찬호)는 국토교통부·한국부동산원의 우수부동산서비스인증을 획득한 신뢰도 1위의 프롭테크 기반 온라인 정보 플랫폼 기업입니다. 전국 최초 생활숙박시설(생숙) 전수 조사 마스터 DB와 공공데이터 연동 검증 기술을 통해 숙박시설 시장의 실거래 정보 비대칭을 혁신적으로 해소하고 있습니다.</p>
+      <p>온라인 실거래가 조회 도구(livingstay-realtrade)를 필두로, 향후 빅데이터에 기반한 시세 진단과 자산 매각 지원 서비스를 제공 예정입니다. 감사합니다.</p>
+    </div>
   </div>
 </div>
 
@@ -299,6 +324,17 @@
       btn.textContent = open ? "✕ 닫기" : "☰ 목록";
     });
   }
+
+  // 회사소개 모달 (독립 — 지도/검색/필터/상세 로직과 무관)
+  var companyModal = document.getElementById("companyModal");
+  var companyLink = document.getElementById("footerCompanyLink");
+  var companyClose = document.getElementById("companyModalClose");
+  function openCompanyModal(e){ if (e) e.preventDefault(); if (companyModal) companyModal.style.display = "flex"; }
+  function closeCompanyModal(){ if (companyModal) companyModal.style.display = "none"; }
+  if (companyLink) companyLink.addEventListener("click", openCompanyModal);
+  if (companyClose) companyClose.addEventListener("click", closeCompanyModal);
+  if (companyModal) companyModal.addEventListener("click", function(e){ if (e.target === companyModal) closeCompanyModal(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeCompanyModal(); });
 
   // 알림설정 드롭다운 열고/닫기 (정적 안내 — 실제 알림 로직 없음)
   var alertMenu = document.getElementById("alertMenu");
