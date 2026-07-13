@@ -228,6 +228,9 @@
   .side-sub{font-size:10.5px; font-weight:500; color:var(--ink-soft);}
   .side-updated{font-size:10.5px; color:var(--ink-soft); margin:-4px 0 10px; line-height:1.4;}
   .side-updated:empty{display:none;}
+  .side-all-link{display:block; text-align:center; margin-top:8px; padding:8px; font-size:12px; font-weight:600;
+    color:var(--brass-dark); background:var(--brass-tint); border-radius:8px; text-decoration:none;}
+  .side-all-link:hover{background:#F3E6CE;}
   .side-chart-wrap{position:relative; height:150px;}
   .side-legend{display:flex; gap:14px; margin-top:9px; font-size:10.5px; color:var(--ink-soft);}
   .side-legend i{display:inline-block; width:9px; height:9px; margin-right:4px; vertical-align:middle;}

@@ -44,6 +44,7 @@
           </div>
         </div>
       </div>
+      <a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>
       <a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>
       <a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>
     </nav>
@@ -160,6 +161,7 @@
       <div class="side-updated" id="healthStatus"></div>
       <div id="sideTxList" class="side-list"><div class="side-empty">불러오는 중…</div></div>
       <button id="btnMoreTx" class="side-more" style="display:none;">더보기 (20건)</button>
+      <a href="/transactions" class="side-all-link">전체 실거래 보기 →</a>
     </section>
 
     <section class="side-card">
@@ -279,14 +281,6 @@
       <button id="btnSubmitCorrection" style="background:var(--ink); color:#fff; border:none; border-radius:8px; padding:8px 18px; font-size:13px; font-weight:600; cursor:pointer;">재검증 요청</button>
     </div>
   </div>
-</div>
-
-<div class="results-panel">
-  <div class="results-head">
-    <h2>실거래 목록<span class="count" id="resultCount"></span></h2>
-  </div>
-  <div id="board"><div class="loading">불러오는 중…</div></div>
-  <div class="pager" id="pager"></div>
 </div>
 
 <footer class="site-footer">

@@ -1092,6 +1092,12 @@ def mypage_page():
     return _serve_static_html("mypage.html")
 
 
+@app.route("/transactions")
+def transactions_page():
+    """실거래목록 전용 페이지 (검색 필터 + 게시판, /api/transactions 재사용)."""
+    return _serve_static_html("transactions.html")
+
+
 @app.route("/terms")
 def terms_page():
     """이용약관 페이지 (정적)."""

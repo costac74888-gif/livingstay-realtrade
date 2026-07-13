@@ -218,6 +218,8 @@ function handleStarClick(td){
 
 async function loadBoard(){
   const board = document.getElementById("board");
+  // 큰 실거래 게시판은 /transactions 전용 페이지로 분리됨 — 지도 홈에는 #board가 없으므로 no-op.
+  if (!board) return;
   board.innerHTML = `<div class="loading">불러오는 중…</div>`;
 
   let items = [], total = 0;
