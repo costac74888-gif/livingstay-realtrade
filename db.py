@@ -371,6 +371,27 @@ def init_db():
     )
     """)
 
+    # 일반 회원 — 이메일/비밀번호 또는 카카오 소셜 로그인. (관리자 admin_users와는 별개 테이블)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT,                        -- 로그인 아이디. UNIQUE는 _ensure_users_unique_constraints()에서 부여
+        password_hash TEXT,                -- werkzeug 해시. 카카오 전용 가입자는 NULL(비밀번호 없음)
+        name TEXT,                         -- 표시용 이름/닉네임
+        provider TEXT DEFAULT 'email',     -- 'email' | 'kakao'
+        kakao_id TEXT,                     -- 카카오 회원번호. UNIQUE는 helper에서 부여(NULL 허용)
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_login_at TIMESTAMP            -- 마지막 로그인 시각 (로그인 시 갱신)
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT 'email'")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS kakao_id TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -390,6 +411,7 @@ def init_db():
     _ensure_admin_email_unique_constraint()
     _ensure_agents_unique_constraints()
     _ensure_mileage_missions_code_unique_constraint()
+    _ensure_users_unique_constraints()
     _seed_mileage_missions()
 
 
@@ -525,6 +547,56 @@ def _ensure_agents_unique_constraints():
         else:
             cur.execute(f"ALTER TABLE agents ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
             print(f"agents.{column} UNIQUE 제약 신규 적용 완료")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _ensure_users_unique_constraints():
+    """
+    users.email, users.kakao_id에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
+    (_ensure_agents_unique_constraints()와 같은 패턴)
+    - 중복 값이 있으면 회원 계정을 함부로 지우지 않고(사용자 데이터 보호) 경고만 출력하고 건너뛴다.
+    - 제약이 이미 있으면 skip, 없으면 add. (재실행 안전)
+    - email은 대소문자 무시 중복 확인(LOWER). kakao_id는 NULL 허용이며 PostgreSQL UNIQUE는 NULL 다중 허용이라 문제 없음.
+      (이메일 가입자는 kakao_id가 NULL이라 서로 충돌하지 않음)
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    targets = [
+        ("email", "LOWER(email)", "users_email_unique", "email"),
+        ("kakao_id", "kakao_id", "users_kakao_id_unique", "kakao_id"),
+    ]
+    for label, dup_expr, constraint_name, column in targets:
+        cur.execute(f"""
+            SELECT {dup_expr} AS v, COUNT(*) AS c
+            FROM users
+            WHERE {column} IS NOT NULL
+            GROUP BY {dup_expr}
+            HAVING COUNT(*) > 1
+        """)
+        dups = cur.fetchall()
+
+        cur.execute("""
+            SELECT tc.constraint_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'users'
+              AND tc.constraint_type = 'UNIQUE'
+              AND kcu.column_name = %s
+        """, (column,))
+        exists = cur.fetchone()
+
+        if exists:
+            print(f"users.{label} UNIQUE 제약 이미 존재({exists['constraint_name']})")
+        elif dups:
+            print(f"[경고] users.{label} 중복 {len(dups)}건 발견 — 계정 자동 삭제하지 않고 UNIQUE 제약 부여를 건너뜁니다. 수동 정리 후 재실행하세요.")
+        else:
+            cur.execute(f"ALTER TABLE users ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
+            print(f"users.{label} UNIQUE 제약 신규 적용 완료")
 
     conn.commit()
     cur.close()
