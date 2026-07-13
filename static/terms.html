@@ -35,12 +35,32 @@
   </header>
   <main class="legal-wrap">
     <h1 class="legal-title">이용약관</h1>
-    <p class="legal-updated">빌드리머스 · 대표 조혜성</p>
-    <div class="legal-body">
-      <div class="legal-placeholder">
-        약관 본문은 준비 중입니다. (원본 페이지 연결 후 반영 예정)
-      </div>
+    <p class="legal-updated" id="legalUpdated">빌드리머스 · 대표 조혜성</p>
+    <div class="legal-body" id="legalBody">
+      <div class="legal-placeholder">약관 본문을 불러오는 중입니다…</div>
     </div>
   </main>
+  <script>
+    // 본문은 DB(legal_documents)에서 공개 API로 로드한다. 관리자가 admin.html에서
+    // 수정·저장하면 별도 배포 없이 이 페이지에 즉시 반영된다.
+    fetch("/api/legal/terms")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var body = document.getElementById("legalBody");
+        if (d && d.ok && d.content) {
+          body.innerHTML = d.content;
+          if (d.updated_at) {
+            document.getElementById("legalUpdated").textContent =
+              "빌드리머스 · 대표 조혜성 · 최종 개정일 " + d.updated_at;
+          }
+        } else {
+          body.innerHTML = '<div class="legal-placeholder">약관 본문을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+        }
+      })
+      .catch(function () {
+        document.getElementById("legalBody").innerHTML =
+          '<div class="legal-placeholder">약관 본문을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+      });
+  </script>
 </body>
 </html>

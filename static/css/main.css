@@ -671,3 +671,25 @@
 .company-info dt{ flex:0 0 96px; color:var(--ink-soft); font-weight:600; }
 .company-info dd{ margin:0; color:var(--ink); font-weight:500; line-height:1.5; }
 .company-info dd a{ color:var(--brass-dark); text-decoration:none; }
+
+/* ---- 관리자 약관 관리 (legal_documents 편집) ---- */
+.legal-admin{ max-width:900px; }
+.legal-admin-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.legal-admin-title{ margin:0; font-size:20px; font-weight:800; color:var(--ink); }
+.legal-preview-link{ font-size:13px; color:var(--brass-dark); text-decoration:none; font-weight:600; }
+.legal-preview-link:hover{ text-decoration:underline; }
+.legal-tabs{ display:flex; gap:6px; margin-bottom:12px; border-bottom:1px solid var(--line); }
+.legal-tab{ appearance:none; border:none; background:none; cursor:pointer; padding:9px 16px;
+  font-size:14px; font-weight:600; color:var(--ink-soft); border-bottom:2px solid transparent; margin-bottom:-1px; }
+.legal-tab:hover{ color:var(--ink); }
+.legal-tab.is-active{ color:var(--brass-dark); border-bottom-color:var(--brass); }
+.legal-admin-hint{ margin:0 0 10px; font-size:12.5px; color:var(--ink-soft); }
+.legal-textarea{ width:100%; min-height:460px; box-sizing:border-box; padding:14px 16px;
+  border:1px solid var(--line); border-radius:8px; font-family:"D2Coding","Consolas","Menlo",monospace;
+  font-size:13px; line-height:1.7; color:var(--ink); resize:vertical; background:#fff; }
+.legal-textarea:focus{ outline:none; border-color:var(--brass); }
+.legal-textarea:disabled{ background:#F7F5F1; color:var(--ink-soft); }
+.legal-admin-actions{ display:flex; align-items:center; gap:14px; margin-top:12px; flex-wrap:wrap; }
+.legal-meta{ font-size:12.5px; color:var(--ink-soft); }
+.legal-msg{ font-size:13px; font-weight:600; flex:1 1 auto; }
+.legal-admin-actions .admin-btn-primary{ margin-left:auto; }

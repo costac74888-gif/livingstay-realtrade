@@ -498,6 +498,17 @@ def init_db():
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
 
+    # 약관/개인정보처리방침 — 관리자가 admin.html에서 직접 수정하는 DB 기반 법적 문서.
+    # doc_type은 'terms'(이용약관) 또는 'privacy'(개인정보처리방침) 두 값만 사용한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS legal_documents (
+        id SERIAL PRIMARY KEY,
+        doc_type TEXT UNIQUE NOT NULL,       -- 'terms' | 'privacy'
+        content TEXT NOT NULL,               -- 본문 (줄바꿈 포함 plain text 또는 간단한 HTML)
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -522,6 +533,7 @@ def init_db():
     _ensure_users_unique_constraints()
     _seed_mileage_missions()
     _seed_admin_user()
+    _seed_legal_documents()
 
 
 def _ensure_raw_key_unique_constraint():
@@ -826,6 +838,102 @@ def _seed_admin_user():
         conn.commit()
         if cur.rowcount:
             print("admin_users 초기 계정 시드 완료 (email='ADMIN' / 초기 비밀번호 'ADMIN' — 로그인 후 반드시 변경하세요)")
+    finally:
+        cur.close()
+        conn.close()
+
+
+_LEGAL_TERMS_SEED = """<h2>제1조 (목적)</h2>
+<p>이 약관은 빌드리머스(이하 "회사")가 제공하는 생활숙박시설·분양형호텔·콘도 실거래가 조회 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+
+<h2>제2조 (정의)</h2>
+<ul>
+<li>"서비스"란 회사가 제공하는 전국 생활숙박시설 등의 실거래가 정보 조회 및 관련 부가 서비스를 말합니다.</li>
+<li>"이용자"란 이 약관에 따라 회사가 제공하는 서비스를 이용하는 회원 및 비회원을 말합니다.</li>
+<li>"회원"이란 회사에 개인정보를 제공하여 회원등록을 한 자로서, 서비스를 지속적으로 이용할 수 있는 자를 말합니다.</li>
+</ul>
+
+<h2>제3조 (약관의 효력 및 변경)</h2>
+<p>이 약관은 서비스 화면에 게시하거나 기타의 방법으로 이용자에게 공지함으로써 효력이 발생합니다. 회사는 관련 법령을 위배하지 않는 범위에서 이 약관을 변경할 수 있으며, 변경된 약관은 공지와 동시에 효력이 발생합니다.</p>
+
+<h2>제4조 (서비스의 제공)</h2>
+<p>회사는 국토교통부 실거래가 공개시스템 등 공공데이터를 기반으로 실거래가 정보를 제공합니다. 제공되는 정보는 참고용이며, 실제 거래 시점의 가격 및 조건과 다를 수 있습니다. 회사는 정보의 정확성·완전성을 보장하지 않으며, 이를 근거로 한 이용자의 판단과 그 결과에 대해 책임지지 않습니다.</p>
+
+<h2>제5조 (이용자의 의무)</h2>
+<ul>
+<li>이용자는 서비스를 이용함에 있어 관련 법령 및 이 약관의 규정을 준수하여야 합니다.</li>
+<li>이용자는 서비스에서 제공하는 정보를 회사의 사전 동의 없이 영리 목적으로 복제·배포·가공하여서는 안 됩니다.</li>
+<li>이용자는 서비스의 안정적 운영을 방해하는 행위를 하여서는 안 됩니다.</li>
+</ul>
+
+<h2>제6조 (면책조항)</h2>
+<p>회사는 천재지변, 공공데이터 제공기관의 사정, 기타 불가항력으로 인하여 서비스를 제공할 수 없는 경우 그 책임이 면제됩니다. 회사는 이용자가 서비스에 게재한 정보·자료의 신뢰도, 정확성 등에 대하여 책임지지 않습니다.</p>
+
+<h2>제7조 (분쟁의 해결)</h2>
+<p>이 약관과 관련하여 회사와 이용자 간에 발생한 분쟁에 대하여는 대한민국 법을 준거법으로 하며, 분쟁으로 인한 소송은 관할 법원에 제기합니다.</p>
+
+<h2>부칙</h2>
+<p>이 약관은 2026년부터 시행합니다.</p>
+<p>서비스 제공자: 빌드리머스 · 대표 조혜성</p>"""
+
+
+_LEGAL_PRIVACY_SEED = """<h2>1. 개인정보의 처리 목적</h2>
+<p>빌드리머스(이하 "회사")는 다음의 목적을 위하여 개인정보를 처리합니다. 처리한 개인정보는 다음의 목적 이외의 용도로는 이용되지 않으며, 이용 목적이 변경되는 경우에는 별도의 동의를 받는 등 필요한 조치를 이행합니다.</p>
+<ul>
+<li>회원 가입 및 관리</li>
+<li>서비스 제공 및 문의 응대</li>
+<li>관심 단지 알림 등 이용자 맞춤형 서비스 제공</li>
+</ul>
+
+<h2>2. 처리하는 개인정보 항목</h2>
+<ul>
+<li>필수항목: 이메일, 이름, 비밀번호(암호화하여 저장)</li>
+<li>소셜 로그인 이용 시: 카카오 계정 식별자 및 프로필 정보</li>
+<li>자동 수집 항목: 접속 IP, 쿠키, 서비스 이용 기록</li>
+</ul>
+
+<h2>3. 개인정보의 처리 및 보유 기간</h2>
+<p>회사는 법령에 따른 개인정보 보유·이용기간 또는 정보주체로부터 개인정보를 수집 시에 동의받은 보유·이용기간 내에서 개인정보를 처리·보유합니다. 회원 탈퇴 시 관계 법령에서 정한 기간을 제외하고 지체 없이 파기합니다.</p>
+
+<h2>4. 개인정보의 제3자 제공</h2>
+<p>회사는 정보주체의 개인정보를 제1조에서 명시한 범위 내에서만 처리하며, 정보주체의 동의, 법률의 특별한 규정 등 개인정보 보호법에 해당하는 경우에만 개인정보를 제3자에게 제공합니다.</p>
+
+<h2>5. 개인정보의 파기 절차 및 방법</h2>
+<p>회사는 개인정보 보유기간의 경과, 처리목적 달성 등 개인정보가 불필요하게 되었을 때에는 지체 없이 해당 개인정보를 파기합니다. 전자적 파일 형태의 정보는 복구 불가능한 방법으로 삭제합니다.</p>
+
+<h2>6. 정보주체의 권리·의무 및 행사 방법</h2>
+<p>정보주체는 회사에 대해 언제든지 개인정보 열람·정정·삭제·처리정지 요구 등의 권리를 행사할 수 있습니다.</p>
+
+<h2>7. 개인정보의 안전성 확보 조치</h2>
+<p>회사는 개인정보의 안전성 확보를 위해 비밀번호 암호화, 접근권한 관리, 접속기록의 보관 등 관리적·기술적 보호조치를 시행하고 있습니다.</p>
+
+<h2>8. 개인정보 보호책임자</h2>
+<ul>
+<li>개인정보 보호책임자: 조혜성 (빌드리머스 대표)</li>
+</ul>
+
+<h2>부칙</h2>
+<p>이 개인정보처리방침은 2026년부터 시행합니다.</p>"""
+
+
+def _seed_legal_documents():
+    """
+    이용약관/개인정보처리방침 초기 본문을 시드한다.
+    - doc_type 기준 ON CONFLICT DO NOTHING이라 이미 있으면 절대 덮어쓰지 않는다(관리자 수정 내용 보존).
+    - 완전히 새 행일 때만 삽입된다 (재실행 안전).
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.executemany("""
+            INSERT INTO legal_documents (doc_type, content)
+            VALUES (%s, %s)
+            ON CONFLICT (doc_type) DO NOTHING
+        """, [("terms", _LEGAL_TERMS_SEED), ("privacy", _LEGAL_PRIVACY_SEED)])
+        inserted = cur.rowcount
+        conn.commit()
+        if inserted:
+            print(f"legal_documents 시드 완료 (신규 {inserted}건 삽입)")
     finally:
         cur.close()
         conn.close()

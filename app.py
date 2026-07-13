@@ -1104,8 +1104,87 @@ def terms_page():
 
 @app.route("/privacy")
 def privacy_page():
-    """개인정보처리방침 페이지 (정적)."""
+    """개인정보처리방침 페이지 — 뼈대는 정적, 본문은 /api/legal/privacy에서 로드."""
     return _serve_static_html("privacy.html")
+
+
+# ---- 약관/개인정보처리방침 (legal_documents) ----
+# doc_type은 'terms' 또는 'privacy' 두 값만 허용한다.
+_LEGAL_DOC_TYPES = ("terms", "privacy")
+
+
+@app.route("/api/legal/<doc_type>")
+def public_legal_get(doc_type):
+    """공개 조회 — 인증 불필요. /terms, /privacy 페이지가 본문을 채울 때 사용."""
+    if doc_type not in _LEGAL_DOC_TYPES:
+        return jsonify({"ok": False, "message": "존재하지 않는 문서입니다."}), 404
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT content, to_char(updated_at, 'YYYY-MM-DD') AS updated_at "
+            "FROM legal_documents WHERE doc_type = %s",
+            [doc_type],
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "존재하지 않는 문서입니다."}), 404
+    return jsonify({"ok": True, "doc_type": doc_type,
+                    "content": row["content"], "updated_at": row["updated_at"]})
+
+
+@app.route("/api/admin/legal/<doc_type>")
+@require_admin
+def admin_legal_get(doc_type):
+    """관리자 조회 — 현재 저장된 본문 반환."""
+    if doc_type not in _LEGAL_DOC_TYPES:
+        return jsonify({"ok": False, "message": "존재하지 않는 문서입니다."}), 404
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT content, to_char(updated_at, 'YYYY-MM-DD HH24:MI') AS updated_at "
+            "FROM legal_documents WHERE doc_type = %s",
+            [doc_type],
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "존재하지 않는 문서입니다."}), 404
+    return jsonify({"ok": True, "doc_type": doc_type,
+                    "content": row["content"], "updated_at": row["updated_at"]})
+
+
+@app.route("/api/admin/legal/<doc_type>", methods=["PUT"])
+@require_admin
+def admin_legal_update(doc_type):
+    """관리자 저장 — content 통째로 교체. 없으면 새로 만든다(upsert)."""
+    if doc_type not in _LEGAL_DOC_TYPES:
+        return jsonify({"ok": False, "message": "존재하지 않는 문서입니다."}), 404
+    data = request.get_json(force=True, silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"ok": False, "message": "본문은 비울 수 없습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO legal_documents (doc_type, content, updated_at)
+               VALUES (%s, %s, NOW())
+               ON CONFLICT (doc_type)
+               DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()""",
+            [doc_type, content],
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 # =====================================================================
