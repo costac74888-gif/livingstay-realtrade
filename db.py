@@ -360,6 +360,17 @@ def init_db():
     cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP")
     cur.execute("ALTER TABLE mileage_submissions ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES admin_users(id)")
 
+    # 방문 기록(페이지뷰) — 통계 대시보드용. 개인정보 최소수집: 원본 IP 대신 salt 해시만 저장.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS page_views (
+        id SERIAL PRIMARY KEY,
+        path TEXT NOT NULL,                -- 조회한 사용자 페이지 경로 (/ , /building/<id> 등)
+        ip_hash TEXT,                      -- sha256(방문자IP + 고정 salt) — 원본 IP는 저장 안 함
+        user_agent TEXT,                   -- 브라우저 UA 문자열 (참고용)
+        viewed_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -368,6 +379,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_slots_building ON slots(master_building_id)")
     # 건물별 매물 조회용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_listings_building ON listings(master_building_id)")
+    # 통계(일별 방문 집계)용 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_page_views_viewed_at ON page_views(viewed_at)")
 
     conn.commit()
     cur.close()

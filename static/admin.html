@@ -15,14 +15,14 @@
         <span class="admin-sb-sub">관리자</span>
       </div>
       <nav class="admin-menu">
-        <button class="admin-menu-item is-active" data-menu="buildings">건물마스터</button>
+        <button class="admin-menu-item is-active" data-menu="stats">통계 대시보드</button>
+        <button class="admin-menu-item" data-menu="buildings">건물마스터</button>
         <button class="admin-menu-item" data-menu="applications">신청승인</button>
         <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
         <button class="admin-menu-item" data-menu="requests">수정요청 이력</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
-        <button class="admin-menu-item is-disabled" disabled>통계대시보드 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>유료화 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>권한로그 <span class="admin-soon">준비 중</span></button>
@@ -38,6 +38,7 @@
     </main>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="/static/js/admin.js"></script>
   <script>
     document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -215,21 +216,197 @@
 
     const mount = document.getElementById("grid");
     let currentGrid = null;
+    let statsCharts = [];
+
+    function destroyStatsCharts() {
+      statsCharts.forEach((c) => { try { c.destroy(); } catch (e) {} });
+      statsCharts = [];
+    }
+
+    // 브랜드 컬러 팔레트 (GOLD/BLACK 계열)
+    const BRAND = {
+      brass: "#B4863F", brassSoft: "rgba(180,134,63,0.18)", ink: "#16202E",
+      palette: ["#B4863F", "#16202E", "#C9A063", "#5A6B7B", "#8A6D3B", "#A9B4BF", "#D8C29A", "#3C4A5A", "#E0D2B4", "#7E8A96"],
+    };
+
+    async function showStats(menuKey) {
+      destroyStatsCharts();
+      mount.innerHTML = `<div class="stats-loading">통계를 불러오는 중…</div>`;
+      let data;
+      try {
+        const res = await fetch("/api/admin/stats");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("stats fetch failed");
+        data = await res.json();
+      } catch (e) {
+        mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        return;
+      }
+      renderStats(data);
+    }
+
+    function num(n) { return (n || 0).toLocaleString("ko-KR"); }
+
+    function renderStats(d) {
+      const m = d.members || {};
+      const ag = m.agent || { pending: 0, approved: 0, rejected: 0 };
+      const op = m.operator || { pending: 0, approved: 0, rejected: 0 };
+      const tx = (d.transactions && d.transactions.monthly) || [];
+      const totalTx = tx.reduce((s, r) => s + (r.count || 0), 0);
+      const totalBld = ((d.buildings && d.buildings.by_type) || []).reduce((s, r) => s + (r.count || 0), 0);
+      const collectStart = (d.views && d.views.collect_start) || "-";
+
+      mount.innerHTML = `
+        <div class="stats-head">
+          <h2 class="stats-title">통계 대시보드</h2>
+          <p class="stats-sub">매출 통계는 결제기능 도입 후 제공됩니다.</p>
+        </div>
+
+        <div class="stats-kpi-row">
+          <div class="stats-kpi"><span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">최근 12개월 거래</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">승인 운영업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
+        </div>
+
+        <div class="stats-grid">
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">실거래 추이 <span class="stats-card-hint">최근 12개월 · 막대=거래건수, 선=거래금액(만원)</span></h3>
+            <div class="stats-chart-box"><canvas id="chartTx"></canvas></div>
+          </section>
+
+          <section class="stats-card">
+            <h3 class="stats-card-title">용도별 건물 분포</h3>
+            <div class="stats-chart-box"><canvas id="chartType"></canvas></div>
+          </section>
+
+          <section class="stats-card">
+            <h3 class="stats-card-title">시·도별 건물 TOP 10</h3>
+            <div class="stats-chart-box"><canvas id="chartSido"></canvas></div>
+          </section>
+
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">회원 상태별 현황</h3>
+            <div class="stats-member-wrap">
+              <div class="stats-member-group">
+                <h4 class="stats-member-title">중개사</h4>
+                <div class="stats-member-cards">
+                  <div class="stats-mcard stats-mcard-wait"><span class="stats-mcard-num">${num(ag.pending)}</span><span class="stats-mcard-label">대기중</span></div>
+                  <div class="stats-mcard stats-mcard-ok"><span class="stats-mcard-num">${num(ag.approved)}</span><span class="stats-mcard-label">승인됨</span></div>
+                  <div class="stats-mcard stats-mcard-no"><span class="stats-mcard-num">${num(ag.rejected)}</span><span class="stats-mcard-label">반려됨</span></div>
+                </div>
+              </div>
+              <div class="stats-member-group">
+                <h4 class="stats-member-title">운영업체</h4>
+                <div class="stats-member-cards">
+                  <div class="stats-mcard stats-mcard-wait"><span class="stats-mcard-num">${num(op.pending)}</span><span class="stats-mcard-label">대기중</span></div>
+                  <div class="stats-mcard stats-mcard-ok"><span class="stats-mcard-num">${num(op.approved)}</span><span class="stats-mcard-label">승인됨</span></div>
+                  <div class="stats-mcard stats-mcard-no"><span class="stats-mcard-num">${num(op.rejected)}</span><span class="stats-mcard-label">반려됨</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">일별 방문자 추이 <span class="stats-card-hint">데이터 수집 시작: ${dgEscape(collectStart)}부터 (이전 기록은 없습니다)</span></h3>
+            <div class="stats-chart-box"><canvas id="chartViews"></canvas></div>
+            <div id="statsTopPaths" class="stats-toppaths"></div>
+          </section>
+        </div>
+      `;
+
+      const commonOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: BRAND.ink } } } };
+
+      // 실거래 추이 (막대+선 콤보)
+      statsCharts.push(new Chart(document.getElementById("chartTx"), {
+        data: {
+          labels: tx.map((r) => r.month),
+          datasets: [
+            { type: "bar", label: "거래건수", data: tx.map((r) => r.count), backgroundColor: BRAND.brassSoft, borderColor: BRAND.brass, borderWidth: 1, yAxisID: "y", order: 2 },
+            { type: "line", label: "거래금액(만원)", data: tx.map((r) => r.amount), borderColor: BRAND.ink, backgroundColor: BRAND.ink, tension: 0.3, yAxisID: "y1", order: 1 },
+          ],
+        },
+        options: Object.assign({}, commonOpts, {
+          scales: {
+            y: { position: "left", beginAtZero: true, title: { display: true, text: "건수" }, ticks: { color: BRAND.ink } },
+            y1: { position: "right", beginAtZero: true, title: { display: true, text: "금액(만원)" }, grid: { drawOnChartArea: false }, ticks: { color: BRAND.ink } },
+            x: { ticks: { color: BRAND.ink } },
+          },
+        }),
+      }));
+
+      // 용도별 건물 분포 (도넛)
+      const byType = (d.buildings && d.buildings.by_type) || [];
+      statsCharts.push(new Chart(document.getElementById("chartType"), {
+        type: "doughnut",
+        data: {
+          labels: byType.map((r) => r.lodging_type),
+          datasets: [{ data: byType.map((r) => r.count), backgroundColor: BRAND.palette, borderColor: "#fff", borderWidth: 2 }],
+        },
+        options: Object.assign({}, commonOpts, { cutout: "58%" }),
+      }));
+
+      // 시도별 TOP10 (가로 막대)
+      const bySido = (d.buildings && d.buildings.by_sido) || [];
+      statsCharts.push(new Chart(document.getElementById("chartSido"), {
+        type: "bar",
+        data: {
+          labels: bySido.map((r) => r.sido),
+          datasets: [{ label: "건물 수", data: bySido.map((r) => r.count), backgroundColor: BRAND.brass }],
+        },
+        options: Object.assign({}, commonOpts, {
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true, ticks: { color: BRAND.ink } }, y: { ticks: { color: BRAND.ink } } },
+        }),
+      }));
+
+      // 일별 방문자 추이 (선)
+      const daily = (d.views && d.views.daily) || [];
+      statsCharts.push(new Chart(document.getElementById("chartViews"), {
+        type: "line",
+        data: {
+          labels: daily.map((r) => r.day.slice(5)),
+          datasets: [{ label: "일별 방문(페이지뷰)", data: daily.map((r) => r.count), borderColor: BRAND.brass, backgroundColor: BRAND.brassSoft, fill: true, tension: 0.3, pointRadius: 3 }],
+        },
+        options: Object.assign({}, commonOpts, {
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0, color: BRAND.ink } }, x: { ticks: { color: BRAND.ink } } },
+        }),
+      }));
+
+      // 오늘 경로별 조회수 상위 5
+      const top = (d.views && d.views.top_paths) || [];
+      const topEl = document.getElementById("statsTopPaths");
+      if (top.length) {
+        topEl.innerHTML = `<div class="stats-toppaths-title">오늘 인기 경로 TOP 5</div>` +
+          top.map((r) => `<div class="stats-toppath-row"><span class="stats-toppath-path">${dgEscape(r.path)}</span><span class="stats-toppath-cnt">${num(r.count)}회</span></div>`).join("");
+      } else {
+        topEl.innerHTML = `<div class="stats-toppaths-title">오늘 인기 경로 TOP 5</div><div class="stats-toppath-empty">아직 오늘 방문 기록이 없습니다.</div>`;
+      }
+    }
+
     function showGrid(menuKey) {
       const cfg = GRID_CONFIGS[menuKey];
       if (!cfg) return;
+      destroyStatsCharts();
       currentGrid = new DataGrid(Object.assign({ mount: mount, idField: "id", pageSize: 50 }, cfg));
+    }
+
+    function showView(menuKey) {
+      if (menuKey === "stats") { showStats(menuKey); return; }
+      showGrid(menuKey);
     }
 
     document.querySelectorAll(".admin-menu-item[data-menu]").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
         btn.classList.add("is-active");
-        showGrid(btn.getAttribute("data-menu"));
+        showView(btn.getAttribute("data-menu"));
       });
     });
 
-    showGrid("buildings");
+    showView("stats");
   </script>
 </body>
 </html>

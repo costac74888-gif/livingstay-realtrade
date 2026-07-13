@@ -23,6 +23,7 @@ import re
 import io
 import time
 import hmac
+import hashlib
 from functools import wraps
 from urllib.parse import quote
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
@@ -73,6 +74,65 @@ def ratelimit_handler(e):
         jsonify({"message": "너무 많은 요청입니다. 잠시 후 다시 시도해주세요."}),
         429,
     )
+
+# 방문 기록(page_views)용 고정 salt — 원본 IP를 그대로 저장하지 않고 해시할 때 쓴다.
+# 코드에 평문 salt를 박지 않으려고 FLASK_SECRET_KEY를 재사용(이미 시크릿). 없으면 폴백.
+_PAGE_VIEW_SALT = os.environ.get("FLASK_SECRET_KEY", "") or "livingstay_pageview_salt_v1"
+
+
+def _record_page_view(path, resp_status):
+    """실제 사용자 페이지(GET·200)만 page_views에 1건 기록한다.
+    개인정보 최소수집: 방문자 IP는 원본 저장 없이 sha256(IP+salt)로만 남긴다.
+    통계 기록 실패가 절대 실서비스 요청을 죽이지 않도록 전 구간을 try/except로 감싼다."""
+    conn = None
+    cur = None
+    try:
+        ip = get_client_ip() or ""
+        ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
+        ua = (request.headers.get("User-Agent") or "")[:500]
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO page_views (path, ip_hash, user_agent) VALUES (%s, %s, %s)",
+            [path[:500], ip_hash, ua],
+        )
+        conn.commit()
+    except Exception:
+        # 통계 때문에 사용자 요청이 실패하면 안 된다 → 조용히 무시.
+        pass
+    finally:
+        # 예외가 나도 커서/커넥션은 반드시 정리해 연결 누수를 막는다.
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+@app.after_request
+def _log_page_view(resp):
+    """사용자 페이지 조회만 집계: GET·200이고 /api·/admin·/static 이 아닌 경로.
+    (실제 집계 대상: /, /building/<id>, /apply/agent, /apply/operator 등)"""
+    try:
+        if request.method == "GET" and resp.status_code == 200:
+            path = request.path or "/"
+            excluded = any(
+                path == p or path.startswith(p + "/")
+                for p in ("/api", "/admin", "/static")
+            )
+            # 정적 자산(favicon.ico, .js, .css 등)도 페이지 조회가 아니므로 제외
+            is_asset = "." in path.rsplit("/", 1)[-1]
+            if not excluded and not is_asset:
+                _record_page_view(path, resp.status_code)
+    except Exception:
+        pass
+    return resp
+
 
 # 앱 부팅 시 스키마를 보장한다 (building_requests 정정 컬럼 등).
 # init_db는 CREATE/ALTER ... IF NOT EXISTS라 여러 번 호출해도 안전(멱등).
@@ -1767,6 +1827,128 @@ def admin_building_requests_list():
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/stats")
+@require_admin
+def admin_stats():
+    """관리자 통계 대시보드용 집계(매출 제외). 기존 데이터 집계 + 방문 기록.
+    모든 항목을 한 번에 반환한다. 빈 구간(0인 달/날)도 채워서 그래프가 끊기지 않게 한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # 1) 실거래: 최근 12개월 월별 거래건수·거래금액(만원) 합계 — 0인 달도 채움
+    cur.execute("""
+        WITH months AS (
+            SELECT to_char(gs, 'YYYY-MM') AS ym
+            FROM generate_series(
+                date_trunc('month', CURRENT_DATE) - INTERVAL '11 months',
+                date_trunc('month', CURRENT_DATE),
+                INTERVAL '1 month'
+            ) AS gs
+        )
+        SELECT m.ym AS month,
+               COUNT(t.id) AS count,
+               COALESCE(SUM(t.price), 0) AS amount
+        FROM months m
+        LEFT JOIN transactions t ON substring(t.deal_date, 1, 7) = m.ym
+        GROUP BY m.ym
+        ORDER BY m.ym
+    """)
+    tx_monthly = [
+        {"month": r["month"], "count": int(r["count"]), "amount": int(r["amount"])}
+        for r in cur.fetchall()
+    ]
+
+    # 2) 용도별(생활/호텔/콘도) 건물 수 분포
+    cur.execute("""
+        SELECT COALESCE(NULLIF(lodging_type, ''), '미분류') AS lodging_type, COUNT(*) AS count
+        FROM master_buildings
+        GROUP BY COALESCE(NULLIF(lodging_type, ''), '미분류')
+        ORDER BY count DESC
+    """)
+    building_by_type = [{"lodging_type": r["lodging_type"], "count": int(r["count"])} for r in cur.fetchall()]
+
+    # 3) 시/도별 건물 수 상위 10 (master_buildings.sgg_text의 첫 토큰 = 시/도)
+    cur.execute("""
+        SELECT split_part(sgg_text, ' ', 1) AS sido, COUNT(*) AS count
+        FROM master_buildings
+        WHERE sgg_text IS NOT NULL AND sgg_text <> ''
+        GROUP BY split_part(sgg_text, ' ', 1)
+        ORDER BY count DESC
+        LIMIT 10
+    """)
+    building_by_sido = [{"sido": r["sido"], "count": int(r["count"])} for r in cur.fetchall()]
+
+    # 4) 회원 현황 — 대기중/반려됨은 applications 파이프라인, 승인됨은 실제 등록된 agents/operators 수
+    def _member_stats(applicant_type, member_table):
+        cur.execute(
+            "SELECT COUNT(*) c FROM applications WHERE applicant_type=%s AND status='submitted'",
+            [applicant_type],
+        )
+        pending = int(cur.fetchone()["c"])
+        cur.execute(
+            "SELECT COUNT(*) c FROM applications WHERE applicant_type=%s AND status='rejected'",
+            [applicant_type],
+        )
+        rejected = int(cur.fetchone()["c"])
+        cur.execute(f"SELECT COUNT(*) c FROM {member_table}")
+        approved = int(cur.fetchone()["c"])
+        return {"pending": pending, "approved": approved, "rejected": rejected}
+
+    members = {
+        "agent": _member_stats("agent", "agents"),
+        "operator": _member_stats("operator", "operators"),
+    }
+
+    # 운영업체 업종별(6개 카테고리) 건수
+    cur.execute("""
+        SELECT COALESCE(NULLIF(category, ''), '미지정') AS category, COUNT(*) AS count
+        FROM operators
+        GROUP BY COALESCE(NULLIF(category, ''), '미지정')
+        ORDER BY count DESC
+    """)
+    operator_by_category = [{"category": r["category"], "count": int(r["count"])} for r in cur.fetchall()]
+
+    # 5) 방문: 최근 14일 일별 페이지뷰 — 0인 날도 채움
+    cur.execute("""
+        WITH days AS (
+            SELECT generate_series(CURRENT_DATE - 13, CURRENT_DATE, INTERVAL '1 day')::date AS d
+        )
+        SELECT to_char(days.d, 'YYYY-MM-DD') AS day, COUNT(pv.id) AS count
+        FROM days
+        LEFT JOIN page_views pv ON pv.viewed_at::date = days.d
+        GROUP BY days.d
+        ORDER BY days.d
+    """)
+    views_daily = [{"day": r["day"], "count": int(r["count"])} for r in cur.fetchall()]
+
+    # 경로별 조회수 상위 5 (오늘 기준)
+    cur.execute("""
+        SELECT path, COUNT(*) AS count
+        FROM page_views
+        WHERE viewed_at::date = CURRENT_DATE
+        GROUP BY path
+        ORDER BY count DESC
+        LIMIT 5
+    """)
+    views_top_paths = [{"path": r["path"], "count": int(r["count"])} for r in cur.fetchall()]
+
+    # 방문 데이터 수집 시작일 (없으면 오늘) — "언제부터 쌓였는지" 안내문구용
+    cur.execute("SELECT to_char(MIN(viewed_at), 'YYYY-MM-DD') AS d FROM page_views")
+    row = cur.fetchone()
+    collect_start = row["d"] if row and row["d"] else datetime.now().strftime("%Y-%m-%d")
+
+    cur.close()
+    conn.close()
+
+    return jsonify({
+        "transactions": {"monthly": tx_monthly},
+        "buildings": {"by_type": building_by_type, "by_sido": building_by_sido},
+        "members": members,
+        "operators": {"by_category": operator_by_category},
+        "views": {"daily": views_daily, "top_paths": views_top_paths, "collect_start": collect_start},
+    })
 
 
 @app.route("/api/health")

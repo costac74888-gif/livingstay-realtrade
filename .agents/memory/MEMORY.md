@@ -4,3 +4,4 @@
 - [Kakao Maps JS SDK](kakao-maps-js-sdk.md) — blank map + "SDK not loaded" = Referer/domain not registered in Kakao console (sdk.js 401 domain mismatched), NOT a bad key; user must add dev+prod domains. Verify via curl -H Referer.
 - [RTMS backfill 429 & retry](rtms-backfill-retry.md) — data.go.kr RTMS 429s once daily quota is burnt; retry backs off BETWEEN rounds (not per-item) via sync_failures queue; run detached `--retry-failures`.
 - [Untracking files on Replit](git-untrack-on-replit.md) — agent is blocked from `git rm --cached` (even in a project task); adding .gitignore does NOT untrack already-committed files; the USER must run `git rm -r --cached . && git add .` in the Shell.
+- [Screenshotting auth-gated admin](screenshot-admin-preview.md) — headless screenshot tool has no session cookie → /admin redirects to login; to verify visually, drop a temp static HTML in static/ that inlines the real API JSON + same render code, screenshot, then delete.

@@ -391,3 +391,44 @@
   .admin-menu-item{ width:auto; }
   .admin-main{ padding:16px; }
 }
+
+/* ===== 관리자 통계 대시보드 ===== */
+.stats-loading{ padding:48px 0; text-align:center; color:var(--ink-soft); font-size:15px; }
+.stats-head{ margin-bottom:18px; }
+.stats-title{ margin:0 0 4px; font-size:22px; color:var(--ink); }
+.stats-sub{ margin:0; font-size:13px; color:var(--ink-soft); }
+.stats-kpi-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+.stats-kpi{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:4px; }
+.stats-kpi-label{ font-size:13px; color:var(--ink-soft); }
+.stats-kpi-val{ font-size:28px; font-weight:800; color:var(--brass); line-height:1.1; }
+.stats-kpi-unit{ font-size:12px; color:var(--ink-soft); }
+.stats-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+.stats-card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; }
+.stats-card-wide{ grid-column:1 / -1; }
+.stats-card-title{ margin:0 0 14px; font-size:15px; color:var(--ink); font-weight:700; }
+.stats-card-hint{ font-size:12px; color:var(--ink-soft); font-weight:400; margin-left:6px; }
+.stats-chart-box{ position:relative; height:280px; }
+.stats-card .stats-chart-box{ height:260px; }
+/* 회원 상태별 카드 */
+.stats-member-wrap{ display:grid; grid-template-columns:repeat(2,1fr); gap:20px; }
+.stats-member-title{ margin:0 0 10px; font-size:14px; color:var(--ink-soft); font-weight:600; }
+.stats-member-cards{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.stats-mcard{ border-radius:10px; padding:16px 8px; text-align:center; display:flex; flex-direction:column; gap:4px; border:1px solid transparent; }
+.stats-mcard-num{ font-size:26px; font-weight:800; line-height:1.1; }
+.stats-mcard-label{ font-size:12px; }
+.stats-mcard-wait{ background:#FFF4E0; border-color:#F0E0C0; color:#9A6B12; }
+.stats-mcard-ok{ background:#E4F5EA; border-color:#CBE9D5; color:#1E7C43; }
+.stats-mcard-no{ background:#FBE7E7; border-color:#F0D2D2; color:#B5322E; }
+/* 오늘 인기 경로 */
+.stats-toppaths{ margin-top:16px; border-top:1px solid var(--line); padding-top:12px; }
+.stats-toppaths-title{ font-size:13px; font-weight:700; color:var(--ink); margin-bottom:8px; }
+.stats-toppath-row{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+.stats-toppath-row:last-child{ border-bottom:0; }
+.stats-toppath-path{ color:var(--ink); font-family:monospace; }
+.stats-toppath-cnt{ color:var(--brass); font-weight:700; }
+.stats-toppath-empty{ font-size:13px; color:var(--ink-soft); padding:6px 0; }
+@media (max-width:900px){
+  .stats-kpi-row{ grid-template-columns:repeat(2,1fr); }
+  .stats-grid{ grid-template-columns:1fr; }
+  .stats-member-wrap{ grid-template-columns:1fr; }
+}
