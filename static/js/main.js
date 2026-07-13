@@ -466,11 +466,18 @@ async function openBuildingInfo(b, pos){
 }
 
 // SDK를 autoload=false로 불렀으므로 명시적으로 로드한 뒤 초기화한다.
-if (window.kakao && window.kakao.maps){
-  kakao.maps.load(initMap);
-} else {
-  console.warn("[MAP] 카카오맵 SDK가 로드되지 않았습니다 — appkey/도메인 등록 상태를 확인하세요.");
-}
+// SDK 스크립트 로드가 살짝 늦을 수 있어 잠시 폴링하며 기다린다.
+(function waitForKakao(retries){
+  if (window.kakao && window.kakao.maps){
+    kakao.maps.load(initMap);
+    return;
+  }
+  if (retries <= 0){
+    console.warn("[MAP] 카카오맵 SDK가 로드되지 않았습니다 — appkey/도메인 등록 상태를 확인하세요.");
+    return;
+  }
+  setTimeout(function(){ waitForKakao(retries - 1); }, 200);
+})(30); // 최대 약 6초 대기
 document.getElementById("btnSubmitCorrection").addEventListener("click", async () => {
   if (!correctionTarget) return;
   const suggested_lodging_type = document.getElementById("correctionSuggestedType").value;
