@@ -709,6 +709,89 @@ def apply_agent():
     return jsonify({"ok": True, "id": new_id})
 
 
+@app.route("/apply/operator")
+def apply_operator_page():
+    """운영업체 등록신청(D화면) 정적 폼 HTML 서빙.
+
+    apply_agent_page()과 동일하게, 카카오맵이 필요 없는 단순 정적 폼이므로
+    키 주입 없이 그대로 서빙한다.
+    """
+    html_path = os.path.join(app.static_folder, "apply_operator.html")
+    with open(html_path, encoding="utf-8") as f:
+        html = f.read()
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+# 운영업체 업종: 이 6개만 허용한다(operators.category와 동일 기준).
+OPERATOR_CATEGORIES = {"위탁운영", "청소", "세탁", "용품", "대출상담사", "인테리어"}
+
+
+@app.route("/api/apply/operator", methods=["POST"])
+@limiter.limit("3 per minute; 10 per hour")
+def apply_operator():
+    """운영업체 등록신청 접수 API.
+
+    apply/agent와 동일한 구조로 텍스트 항목만 받아 applications 테이블에
+    applicant_type='operator', status='submitted'로 INSERT한다. 서류(명함/영업
+    허가증 등)는 이번엔 미사용이라 doc_* 및 reg_number/intro_text는 NULL로 둔다.
+    """
+    data = request.get_json(force=True) or {}
+
+    office_or_company_name = (data.get("office_or_company_name") or "").strip()
+    owner_name = (data.get("owner_name") or "").strip()
+    category = (data.get("category") or "").strip()
+    biz_reg_number = (data.get("biz_reg_number") or "").strip()
+    phone = (data.get("phone") or "").strip()
+    email = (data.get("email") or "").strip()
+    website_url = (data.get("website_url") or "").strip()
+    preferred_region = (data.get("preferred_region") or "").strip()
+
+    # 필수값 검증
+    missing = []
+    if not office_or_company_name:
+        missing.append("업체명")
+    if not owner_name:
+        missing.append("대표자")
+    if not category:
+        missing.append("업종")
+    if not phone:
+        missing.append("연락처")
+    if not email:
+        missing.append("이메일")
+    if missing:
+        return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
+
+    # 업종은 허용된 6개 중 하나만
+    if category not in OPERATOR_CATEGORIES:
+        return jsonify({"ok": False, "message": "업종은 다음 중 하나여야 합니다: " + ", ".join(sorted(OPERATOR_CATEGORIES))}), 400
+
+    # 간단한 이메일 형식 체크 (apply/agent와 동일 정규식)
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO applications
+            (applicant_type, office_or_company_name, owner_name, category,
+             biz_reg_number, phone, email, website_url, preferred_region, status,
+             reg_number, intro_text, doc_business_card_url, doc_biz_license_url)
+        VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
+                NULL, NULL, NULL, NULL)
+        RETURNING id
+    """, (office_or_company_name, owner_name, category,
+          biz_reg_number or None, phone, email,
+          website_url or None, preferred_region or None))
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"ok": True, "id": new_id})
+
+
 @app.route("/api/request-correction", methods=["POST"])
 @limiter.limit("3 per minute; 10 per hour")
 def request_correction():
