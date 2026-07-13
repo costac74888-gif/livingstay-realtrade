@@ -282,6 +282,7 @@ def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
                 si_do_val = parts[0] if len(parts) > 0 else None
                 sgg_nm_val = parts[1] if len(parts) > 1 else None
 
+        tx_address = f"{umd_nm} {jibun}"
         try:
             cur.execute("""
                 INSERT INTO transactions
@@ -289,14 +290,49 @@ def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
                  floor, sgg_cd, umd_nm, jibun, lodging_type, lodging_type_detail, match_source, raw_key)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (raw_key) DO NOTHING
-            """, (building_name, f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
+                RETURNING id
+            """, (building_name, tx_address, si_do_val, sgg_nm_val,
                   float(area or 0), int(price or 0),
                   deal_date, deal_type, floor_val,
                   sgg_cd, umd_nm, jibun, lodging_type_val, lodging_type_detail_val, match_source, raw_key))
-            if cur.rowcount:
+            new_row = cur.fetchone()  # ON CONFLICT 로 스킵되면 None (기존 거래 → 알림 없음)
+            if new_row:
                 stats["inserted"] += 1
+                # 방금 삽입된 신규 실거래 → 이 (건물명, 주소)를 구독한 회원에게 알림 생성.
+                _notify_subscribers(cur, new_row["id"], building_name, tx_address,
+                                    int(price or 0), deal_date, floor_val)
         except Exception as e:
             print(f"  적재 실패: {e}")
+
+
+def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, floor_val):
+    """방금 삽입된 실거래(tx_id)에 대해, 같은 (건물명, 주소)를 구독 중인 회원마다
+    notifications 를 1건씩 만든다. 같은 거래로 같은 사용자에게 이미 만든 알림이 있으면
+    (user_id, transaction_id) 유니크 제약으로 자동 스킵된다."""
+    try:
+        # 구독 매칭: 주소 일치 + (건물명 NULL끼리 or 건물명 일치)
+        cur.execute("""
+            SELECT user_id FROM user_alert_subscriptions
+            WHERE address = %s
+              AND ((building_name IS NULL AND %s IS NULL) OR building_name = %s)
+        """, (address, building_name, building_name))
+        subs = cur.fetchall()
+        if not subs:
+            return
+        name_disp = building_name or address
+        title = f"{name_disp}에 새 실거래가 등록됐어요"
+        floor_txt = f" · {floor_val}층" if floor_val else ""
+        body = f"{price:,}만원 · {deal_date}{floor_txt}"
+        for s in subs:
+            cur.execute("""
+                INSERT INTO notifications
+                    (user_id, title, body, building_name, address, transaction_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, transaction_id) DO NOTHING
+            """, (s["user_id"], title, body, building_name, address, tx_id))
+    except Exception as e:
+        # 알림 생성 실패가 실거래 적재를 막지 않도록 방어(로그만 남김).
+        print(f"  알림 생성 실패(tx {tx_id}): {e}")
 
 
 def sync_transactions(months: int, bjdong=None, sgg_filter=None):

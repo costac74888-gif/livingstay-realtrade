@@ -424,6 +424,50 @@ def init_db():
         "ON user_favorites (user_id, COALESCE(building_name, ''), address)"
     )
 
+    # 실거래 알림 구독 — user_favorites 와 구조는 같지만 별도 테이블(관심저장과 독립적으로
+    # 켜고 끌 수 있어야 함). 새 실거래가 들어오면 sync_batch 가 이 구독을 조회해 notifications 를 만든다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user_alert_subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        building_name TEXT,                -- 매칭 성공 시 건물명, 미매칭이면 NULL
+        address TEXT NOT NULL,             -- transactions.address 와 동일 규칙(법정동+지번)
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_alert_subs_user ON user_alert_subscriptions(user_id)")
+    # 새 실거래 매칭 조회용(주소+건물명) 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_alert_subs_match ON user_alert_subscriptions(address)")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_alert_subs "
+        "ON user_alert_subscriptions (user_id, COALESCE(building_name, ''), address)"
+    )
+
+    # 알림함 — 새 실거래 발생 시 구독자별로 1건씩 쌓인다. 헤더 벨 아이콘이 읽어간다.
+    #   transaction_id: 어떤 실거래로 만든 알림인지(같은 거래로 같은 사용자에게 중복 생성 방지).
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        body TEXT,
+        building_name TEXT,
+        address TEXT,
+        transaction_id INTEGER,            -- 원본 실거래 id (수동 생성 알림이면 NULL)
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    # 헤더 벨: 안읽음 우선 + 최신순 조회용 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC)")
+    # 같은 거래로 같은 사용자에게 알림 중복 생성 방지.
+    #   transaction_id 가 NULL(수동 생성)인 행은 Postgres 에서 NULL 끼리 서로 다르게 취급되어
+    #   유니크 제약에 걸리지 않는다 → 전체 유니크 인덱스로 둬도 문제없음(부분 인덱스면 ON CONFLICT 불가).
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_tx "
+        "ON notifications (user_id, transaction_id)"
+    )
+
     # 지자체(시군구)별 생활숙박시설 담당부서·연락처 (엑셀 원본 그대로 적재)
     # region_name_raw 는 가공하지 않은 엑셀 '지자체' 값 그대로 보존한다("진주시(중복)" 포함).
     # 매칭은 address_utils.match_authority_contact() 가 이 원본을 정규화해서 수행한다.

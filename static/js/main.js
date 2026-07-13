@@ -71,21 +71,29 @@ function updateFavCountLabel(){
     `저장된 관심단지 ${getFavorites().length}/${MAX_FAVORITES}개`;
 }
 
-// 실거래 알림 구독 — 아직 서버 발송 로직은 없고, 브라우저(localStorage)에만 켜짐/꺼짐을
-// 저장해 둔다. 관심저장과 동일한 키(building_name|address)를 써서 나중에 서버 알림과
-// 연결하기 쉽게 한다.
-const ALERT_KEY = "livingstay_alerts";
-function getAlerts(){
-  try { return JSON.parse(localStorage.getItem(ALERT_KEY) || "[]"); } catch(e){ return []; }
+// 실거래 알림 구독 — 서버(user_alert_subscriptions)에 저장한다. 로그인 상태에서만 동작하고,
+// 비로그인 시 클릭하면 로그인 안내. 관심저장과 동일한 키(building_name|address)를 쓴다.
+//   alertKeySet: 서버에서 내려받은 내 구독 키 집합(로그인 시 로드). B패널 버튼 상태 판정용.
+const ALERT_KEY = "livingstay_alerts";           // 비로그인 때 담아둔 값 → 로그인 시 migrate
+let alertKeySet = new Set();
+let alertsLoaded = false;
+function isAlertOn(key){ return alertKeySet.has(key); }
+// 서버에서 내 알림구독 목록을 받아 alertKeySet 을 채운다(로그인 상태에서만).
+function loadServerAlerts(cb){
+  if (!window.__livingstayLoggedIn){ alertKeySet = new Set(); alertsLoaded = true; if (cb) cb(); return; }
+  fetch("/api/alerts/mine", { credentials: "same-origin" })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d && d.ok && Array.isArray(d.keys)) alertKeySet = new Set(d.keys);
+      alertsLoaded = true;
+      if (cb) cb();
+    })
+    .catch(function(){ alertsLoaded = true; if (cb) cb(); });
 }
-function isAlertOn(key){ return getAlerts().includes(key); }
-function toggleAlert(key){
-  let list = getAlerts();
-  if (list.includes(key)) list = list.filter(x => x !== key);
-  else list = [...list, key];
-  localStorage.setItem(ALERT_KEY, JSON.stringify(list));
-  return list.includes(key);
-}
+// 로그인 직후 auth.js 가 호출 → 구독 목록 다시 로드 후 열려있는 B패널 버튼 갱신.
+window.refreshAlertsUI = function(){
+  loadServerAlerts(function(){ if (typeof window.__syncOpenAlertBtn === "function") window.__syncOpenAlertBtn(); });
+};
 
 function escapeHtml(v){
   return String(v ?? "").replace(/[&<>"']/g, c => (
@@ -1119,10 +1127,32 @@ async function loadBuildingHeader(id){
     alertBtn.classList.toggle("on", on);
     alertBtn.querySelector(".b-icon-label").textContent = on ? "알림켜짐" : "실거래알림";
   }
+  // 헤더 알림 새로고침(refreshAlertsUI) 시 현재 열린 B패널 버튼을 다시 그리기 위한 훅.
+  window.__syncOpenAlertBtn = function(){ if (canFav) syncAlertBtn(); };
   if (canFav){
+    // 서버 구독 목록이 아직 로드 전이면 로드 후 버튼 상태 반영.
+    if (window.__livingstayLoggedIn && !alertsLoaded) loadServerAlerts(syncAlertBtn);
     syncFavBtn(); syncAlertBtn();
     favBtn.addEventListener("click", () => { const ok = toggleFav(favItem); if (ok !== false) syncFavBtn(); });
-    alertBtn.addEventListener("click", () => { toggleAlert(favKeyStr); syncAlertBtn(); });
+    alertBtn.addEventListener("click", () => {
+      if (!window.__livingstayLoggedIn){ alert("실거래 알림은 로그인이 필요합니다."); return; }
+      const wasOn = alertKeySet.has(favKeyStr);
+      // 낙관적 업데이트 → 서버 반영. 실패하면 되돌린다.
+      if (wasOn) alertKeySet.delete(favKeyStr); else alertKeySet.add(favKeyStr);
+      syncAlertBtn();
+      fetch("/api/alerts/mine", {
+        method: wasOn ? "DELETE" : "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ building_name: favItem.building_name, address: favItem.address })
+      })
+      .then(function(r){ if (!r.ok) throw new Error("fail"); })
+      .catch(function(){
+        if (wasOn) alertKeySet.add(favKeyStr); else alertKeySet.delete(favKeyStr);
+        syncAlertBtn();
+        alert("알림 설정에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      });
+    });
   } else {
     [favBtn, alertBtn].forEach(btn => {
       btn.disabled = true;

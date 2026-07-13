@@ -1608,6 +1608,261 @@ def favorites_migrate():
     return jsonify({"ok": True, "keys": merged})
 
 
+# =====================================================================
+# 실거래 알림 구독(user_alert_subscriptions) — user_favorites 와 동일 패턴.
+#   관심저장과 독립적으로 켜고 끌 수 있는 별도 테이블. 새 실거래가 들어오면
+#   sync_batch.py 가 이 구독을 조회해 notifications 를 만든다.
+# =====================================================================
+
+@app.route("/api/alerts/mine")
+def alerts_mine():
+    """로그인 회원의 실거래 알림 구독 목록 + 각 단지 최신 실거래가 + building_id."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT us.building_name, us.address, us.created_at,
+                   lt.price, lt.deal_date, lt.area, lt.floor, lt.deal_type,
+                   lt.lodging_type, lt.lodging_type_detail,
+                   bid.id AS building_id
+            FROM user_alert_subscriptions us
+            LEFT JOIN LATERAL (
+                SELECT t.price, t.deal_date, t.area, t.floor, t.deal_type,
+                       t.lodging_type, t.lodging_type_detail
+                FROM transactions t
+                WHERE ((us.building_name IS NULL AND t.building_name IS NULL)
+                       OR t.building_name = us.building_name)
+                  AND t.address = us.address
+                ORDER BY t.deal_date DESC, t.id DESC
+                LIMIT 1
+            ) lt ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT mb.id
+                FROM transactions t2
+                JOIN master_buildings mb
+                  ON mb.sgg_cd = t2.sgg_cd AND mb.umd_nm = t2.umd_nm AND mb.jibun = t2.jibun
+                WHERE ((us.building_name IS NULL AND t2.building_name IS NULL)
+                       OR t2.building_name = us.building_name)
+                  AND t2.address = us.address
+                ORDER BY (mb.building_name = us.building_name) DESC NULLS LAST, mb.id
+                LIMIT 1
+            ) bid ON TRUE
+            WHERE us.user_id = %s
+            ORDER BY us.created_at DESC, us.id DESC
+        """, (u["id"],))
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    # 프론트가 구독 여부 판정에 쓰는 favKey 목록도 함께 내려준다.
+    keys = [f"{(r['building_name'] if r['building_name'] is not None else 'null')}|{r['address']}" for r in rows]
+    return jsonify({"ok": True, "items": rows, "keys": keys, "total": len(rows)})
+
+
+@app.route("/api/alerts/mine", methods=["POST"])
+def alerts_mine_add():
+    """실거래 알림 구독 1건 추가 — 이미 있으면 무시(중복 스킵)."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    name = _norm_fav_name(data.get("building_name"))
+    addr = (data.get("address") or "").strip()
+    if not addr:
+        return jsonify({"ok": False, "message": "주소가 필요합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO user_alert_subscriptions (user_id, building_name, address) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
+            (u["id"], name, addr),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alerts/mine", methods=["DELETE"])
+def alerts_mine_remove():
+    """실거래 알림 구독 1건 삭제."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    name = _norm_fav_name(data.get("building_name"))
+    addr = (data.get("address") or "").strip()
+    if not addr:
+        return jsonify({"ok": False, "message": "주소가 필요합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM user_alert_subscriptions "
+            "WHERE user_id = %s AND COALESCE(building_name,'') = COALESCE(%s,'') AND address = %s",
+            (u["id"], name, addr),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alerts/migrate", methods=["POST"])
+def alerts_migrate():
+    """로그인 직후 1회 호출용. localStorage 알림구독(favKey 배열)을 서버로 이관하고,
+    합쳐진 최종 구독키 목록을 돌려준다(프론트가 localStorage를 이 값으로 동기화)."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    keys = data.get("keys") or []
+    pairs = []
+    if isinstance(keys, list):
+        for token in keys:
+            if not isinstance(token, str) or "|" not in token:
+                continue
+            name, addr = token.split("|", 1)
+            addr = addr.strip()
+            if not addr:
+                continue
+            pairs.append((_norm_fav_name(name), addr))
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        for name, addr in pairs:
+            cur.execute(
+                "INSERT INTO user_alert_subscriptions (user_id, building_name, address) VALUES (%s, %s, %s) "
+                "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
+                (u["id"], name, addr),
+            )
+        conn.commit()
+        cur.execute(
+            "SELECT building_name, address FROM user_alert_subscriptions "
+            "WHERE user_id = %s ORDER BY created_at ASC, id ASC",
+            (u["id"],),
+        )
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+    merged = [f"{(r['building_name'] if r['building_name'] is not None else 'null')}|{r['address']}" for r in rows]
+    return jsonify({"ok": True, "keys": merged})
+
+
+# =====================================================================
+# 알림함(notifications) — 헤더 벨 아이콘. 새 실거래 발생 시 sync_batch 가 쌓아둔다.
+# =====================================================================
+
+@app.route("/api/notifications/mine")
+def notifications_mine():
+    """최근 알림 목록 — 안읽음 우선, 최신순, 최대 30개. 클릭 이동용 building_id 포함."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT n.id, n.title, n.body, n.building_name, n.address,
+                   n.is_read, n.created_at,
+                   bid.id AS building_id
+            FROM notifications n
+            LEFT JOIN LATERAL (
+                SELECT mb.id
+                FROM transactions t2
+                JOIN master_buildings mb
+                  ON mb.sgg_cd = t2.sgg_cd AND mb.umd_nm = t2.umd_nm AND mb.jibun = t2.jibun
+                WHERE ((n.building_name IS NULL AND t2.building_name IS NULL)
+                       OR t2.building_name = n.building_name)
+                  AND t2.address = n.address
+                ORDER BY (mb.building_name = n.building_name) DESC NULLS LAST, mb.id
+                LIMIT 1
+            ) bid ON TRUE
+            WHERE n.user_id = %s
+            ORDER BY n.is_read ASC, n.created_at DESC, n.id DESC
+            LIMIT 30
+        """, (u["id"],))
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": rows, "total": len(rows)})
+
+
+@app.route("/api/notifications/unread-count")
+def notifications_unread_count():
+    """헤더 벨 뱃지용 안 읽은 알림 개수."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM notifications WHERE user_id = %s AND is_read = FALSE",
+            (u["id"],),
+        )
+        c = cur.fetchone()["c"]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "count": c})
+
+
+@app.route("/api/notifications/mine/read-all", methods=["POST"])
+def notifications_read_all():
+    """전체 읽음 처리."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE notifications SET is_read = TRUE WHERE user_id = %s AND is_read = FALSE",
+            (u["id"],),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/notifications/mine/read", methods=["POST"])
+def notifications_read_one():
+    """알림 1건 읽음 처리 — 항목 클릭 시 사용."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    nid = data.get("id")
+    if not isinstance(nid, int):
+        try:
+            nid = int(nid)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "message": "알림 id가 필요합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE notifications SET is_read = TRUE WHERE id = %s AND user_id = %s",
+            (nid, u["id"]),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/admin/login")
 def admin_login_page():
     return _serve_static_html("admin_login.html")

@@ -108,6 +108,29 @@
       .catch(function () { /* 이관 실패해도 로컬 관심단지는 그대로 → 무시 */ });
   }
 
+  // 실거래 알림 구독도 동일하게 이관: 비로그인 때 localStorage(livingstay_alerts)에 담아둔
+  // 구독 키를 서버로 옮기고, 이후엔 서버가 소스오브트루스가 된다(로컬은 정리).
+  function syncAlerts() {
+    var keys = [];
+    try { keys = JSON.parse(localStorage.getItem("livingstay_alerts") || "[]"); } catch (e) { keys = []; }
+    if (!Array.isArray(keys)) keys = [];
+    fetch("/api/alerts/migrate", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keys: keys })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) {
+          // 서버가 소스오브트루스 → 로컬 알림구독 캐시는 비운다(중복 이관 방지).
+          try { localStorage.removeItem("livingstay_alerts"); } catch (e) {}
+          if (typeof window.refreshAlertsUI === "function") window.refreshAlertsUI();
+        }
+      })
+      .catch(function () { /* 이관 실패해도 무시 */ });
+  }
+
   function refreshMe() {
     fetch("/api/auth/me", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
@@ -121,10 +144,16 @@
           if (migrated !== "1") {
             try { sessionStorage.setItem("livingstay_fav_migrated", "1"); } catch (e) {}
             syncFavorites();
+            syncAlerts();
+          } else if (typeof window.refreshAlertsUI === "function") {
+            // 이미 이관은 끝난 세션 → 알림구독 목록만 다시 로드해 B패널 버튼 상태 반영.
+            window.refreshAlertsUI();
           }
+          if (typeof window.startNotifPolling === "function") window.startNotifPolling();
         } else {
           window.__livingstayLoggedIn = false;
           try { sessionStorage.removeItem("livingstay_fav_migrated"); } catch (e) {}
+          if (typeof window.stopNotifPolling === "function") window.stopNotifPolling();
           renderLoggedOut();
         }
       })
