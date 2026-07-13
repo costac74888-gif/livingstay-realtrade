@@ -33,7 +33,12 @@ Facts you can only discover by querying Postgres, not by reading code.
 
 - **`umd_nm` spacing differs between the two tables**: transactions store
   `"손양면 동호리"` (space) while master stores `"손양면동호리"` (no space).
-  Strip spaces on both sides before comparing.
+  Strip spaces on both sides before comparing (`REPLACE(umd_nm,' ','')`).
+  **Safety-critical:** any query that attributes transactions to a master building
+  by jibun-key (`sgg_cd`+`umd_nm`+`jibun`) MUST normalize umd_nm, or it undercounts.
+  For a delete/reference guard this is a data-integrity bug — an exact-match guard
+  returns 0 for a spaced variant and lets you orphan real 실거래 (verified: spaced
+  을지로5가/77-2/11140 → exact match=0 but normalized=11). Guards should over-match.
 
 - **`lodging_type` values** (both tables): `생활`, `호텔`, `콘도`, plus 복합 forms
   like `생활·호텔`, `호텔·콘도`. UI/backend convention: dropdown value `복합`

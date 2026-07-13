@@ -1124,10 +1124,14 @@ def admin_buildings_delete(building_id):
     listing_cnt = cur.fetchone()["c"]
     cur.execute("SELECT COUNT(*) c FROM slots WHERE master_building_id=%s", [building_id])
     slot_cnt = cur.fetchone()["c"]
-    # 참조 실거래(transactions) — 지번키(sgg_cd+umd_nm+jibun) 매칭, 없으면 건물명
+    # 참조 실거래(transactions) — 지번키(sgg_cd+umd_nm+jibun) 매칭, 없으면 건물명.
+    # umd_nm은 마스터/실거래 간 띄어쓰기 표기가 다를 수 있어(예: '강동면 정동진리' vs
+    # '강동면정동진리') REPLACE로 공백을 제거해 정규화 매칭한다. 삭제 가드는 참조를
+    # 놓쳐 고아 데이터를 만드는 것보다 넉넉히 잡는 편이 안전하다.
     if b["sgg_cd"] and b["umd_nm"] and b["jibun"]:
         cur.execute(
-            "SELECT COUNT(*) c FROM transactions WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s",
+            "SELECT COUNT(*) c FROM transactions "
+            "WHERE sgg_cd=%s AND REPLACE(umd_nm,' ','')=REPLACE(%s,' ','') AND jibun=%s",
             [b["sgg_cd"], b["umd_nm"], b["jibun"]],
         )
         tx_cnt = cur.fetchone()["c"]
