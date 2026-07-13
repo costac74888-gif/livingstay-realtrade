@@ -325,19 +325,31 @@ def get_monthly_trend():
     where = ["deal_date IS NOT NULL", "substring(deal_date, 1, 7) >= %s"]
     params = [start_ym]
 
-    # 선택적 building_id → 건물명으로 실거래 필터(하위호환: 없으면 전체 집계).
+    # 선택적 building_id → 해당 건물의 실거래만 집계(하위호환: 없거나 정수 아니면 전체 집계).
+    # 정확도: A화면 마커(get_buildings_geo)와 동일한 키 전략을 쓴다.
+    #   - 지번키(sgg_cd+umd_nm+jibun)가 모두 있으면 지번으로 정확 매칭
+    #     (건물명은 유니크 키가 아니라 동명 건물 거래가 섞일 수 있어 지번을 우선).
+    #   - 셋 중 하나라도 NULL이면 예외적으로 건물명 매칭('-' 플레이스홀더는 제외).
     # 정수가 아닌 값은 무시하고 전체 집계로 폴백해 500(정수 캐스팅 오류)을 막는다.
     building_id = request.args.get("building_id", "").strip()
     if building_id.isdigit():
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT building_name FROM master_buildings WHERE id = %s", [int(building_id)])
+        cur.execute("""
+            SELECT building_name, sgg_cd, umd_nm, jibun
+            FROM master_buildings WHERE id = %s
+        """, [int(building_id)])
         b = cur.fetchone()
         cur.close()
         conn.close()
-        # 건물이 없거나 건물명이 비어 있으면 매칭되는 거래가 없도록 처리(0으로 채워 반환)
-        where.append("building_name = %s")
-        params.append((b["building_name"] if b else None) or "\x00")
+        if b and b["sgg_cd"] and b["umd_nm"] and b["jibun"]:
+            where.append("sgg_cd = %s AND umd_nm = %s AND jibun = %s")
+            params += [b["sgg_cd"], b["umd_nm"], b["jibun"]]
+        else:
+            # 지번키 불완전 → 건물명 폴백. 건물 미존재/이름 없음/'-'는 매칭 0으로 처리.
+            name = (b["building_name"] if b else None) or ""
+            where.append("building_name = %s")
+            params.append(name if name and name != "-" else "\x00")
 
     conn = get_conn()
     cur = conn.cursor()

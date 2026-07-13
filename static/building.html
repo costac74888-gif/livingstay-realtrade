@@ -1,56 +1,154 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>건물 상세 · HOME &amp; STAY</title>
-  <style>
-    :root { --brass:#B4863F; --ink:#16202E; --muted:#6b7683; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:'Noto Sans KR',sans-serif; color:var(--ink); background:#F7F5F1; }
-    header { background:var(--ink); color:#fff; padding:14px 20px; }
-    header a { color:var(--brass); text-decoration:none; font-size:13px; }
-    header .brand { font-weight:800; letter-spacing:1px; }
-    main { max-width:720px; margin:0 auto; padding:24px 20px; }
-    h1 { font-size:22px; margin:0 0 4px; }
-    .type { color:var(--muted); margin-bottom:20px; }
-    .grid { display:grid; grid-template-columns:140px 1fr; gap:10px 16px; font-size:14px; }
-    .grid dt { color:var(--muted); }
-    .grid dd { margin:0; font-weight:600; }
-    .err { color:#b4403f; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>건물 상세 — 홈앤스테이</title>
+<meta name="description" content="숙박시설 실거래 상세 — 건물 정보 및 최근 실거래 추세." />
+<link rel="icon" href="/static/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
 </head>
 <body>
-  <header>
-    <span class="brand">HOME &amp; STAY</span>
-    &nbsp;·&nbsp;<a href="/">← 지도로 돌아가기</a>
-  </header>
-  <main id="app">
-    <p>불러오는 중…</p>
-  </main>
 
-  <script>
-    const LODGING_KO = { "생활":"생활숙박시설", "호텔":"호텔", "콘도":"콘도미니엄" };
-    function lodgingKo(v){ if(!v) return "-"; if(v.includes("·")) return v.split("·").map(x=>LODGING_KO[x]||x).join("·"); return LODGING_KO[v]||v; }
-    function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+<header>
+  <a class="brand" href="/" title="홈으로 (전체 보기)" style="cursor:pointer; text-decoration:none;">
+    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
+    <div class="brand-text">
+      <div class="name">홈앤스테이</div>
+    </div>
+  </a>
+  <div class="page-title">건물 상세</div>
+  <div class="header-right"><a href="/" style="color:var(--brass-dark); text-decoration:none; font-weight:600;">← 지도로 돌아가기</a></div>
+</header>
 
-    const id = Number(location.pathname.split("/").pop());
-    const app = document.getElementById("app");
+<div class="search-panel" style="max-width:840px; margin-bottom:40px;">
 
-    fetch("/api/building/" + id)
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(b => {
-        app.innerHTML = `
-          <h1>${esc(b.building_name || "(건물명 미확인)")}</h1>
-          <div class="type">${esc(lodgingKo(b.lodging_type))}${b.lodging_type_detail ? " · " + esc(b.lodging_type_detail) : ""}</div>
-          <dl class="grid">
-            <dt>도로명주소</dt><dd>${esc(b.road_address || "-")}</dd>
-            <dt>총 호실</dt><dd>${b.units != null ? esc(b.units) + "실" : "-"}</dd>
-            <dt>영업신고 호수</dt><dd>${b.biz_units != null ? esc(b.biz_units) + "실" : "-"}</dd>
-            <dt>좌표</dt><dd>${b.lat != null && b.lng != null ? esc(b.lat) + ", " + esc(b.lng) : "-"}</dd>
-          </dl>`;
-      })
-      .catch(() => { app.innerHTML = '<p class="err">건물 정보를 불러오지 못했습니다.</p>'; });
-  </script>
+  <!-- 상단 안내문구 -->
+  <div style="font-size:12px; color:var(--ink-soft); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:9px 12px; margin-bottom:14px;">
+    현재 매매 실거래 기준이며, 전세/월세 데이터는 추후 추가 예정입니다.
+  </div>
+
+  <!-- 헤더 카드: 건물 정보 -->
+  <div class="panel-card" id="headerCard">
+    <div style="font-size:13px; color:var(--ink-soft); padding:6px 0;">불러오는 중…</div>
+  </div>
+
+  <!-- 실거래추세 카드 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div class="side-card-title">실거래추세 <span class="side-sub">최근 12개월</span></div>
+    <div class="side-chart-wrap" style="height:240px;"><canvas id="trendChart"></canvas></div>
+    <div class="side-legend">
+      <span><i class="lg-bar"></i>거래건수</span>
+      <span><i class="lg-line"></i>거래금액(억)</span>
+    </div>
+    <div id="trendEmpty" class="side-empty" style="display:none;">최근 12개월 실거래 내역이 없습니다.</div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+  // 지도 마커와 동일한 용도 색상(main.js LODGING_COLORS와 일치)
+  const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+  const DEFAULT_MARKER_COLOR = "#9AA5B1";
+  const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
+  function markerColor(v){ if(!v) return DEFAULT_MARKER_COLOR; return LODGING_COLORS[v.split("·")[0]] || DEFAULT_MARKER_COLOR; }
+  function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+  const buildingId = Number(location.pathname.split("/").pop());
+  const headerCard = document.getElementById("headerCard");
+
+  function stat(label, value){
+    return `<div style="flex:1; min-width:110px;">
+      <div style="font-size:11.5px; color:var(--ink-soft); font-weight:600; margin-bottom:3px;">${label}</div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:700; color:var(--ink);">${value}</div>
+    </div>`;
+  }
+
+  async function loadBuilding(){
+    let b;
+    try {
+      const res = await fetch("/api/building/" + buildingId);
+      if (!res.ok) throw new Error(res.status);
+      b = await res.json();
+    } catch(e){
+      headerCard.innerHTML = `<div class="side-empty">건물 정보를 불러오지 못했습니다.</div>`;
+      return;
+    }
+    const color = markerColor(b.lodging_type);
+    const badge = `<span style="display:inline-block; font-size:11px; font-weight:700; color:#fff; background:${color}; padding:3px 10px; border-radius:6px; vertical-align:middle;">${esc(badgeLabel(b.lodging_type))}</span>`;
+    const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
+    const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
+
+    headerCard.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+        <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0;">${esc(b.building_name || "(건물명 미확인)")}</h1>
+        ${badge}
+      </div>
+      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:4px;">${esc(b.road_address || "주소 미확인")}</div>
+      ${b.lodging_type_detail ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:16px;">${esc(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:16px;"></div>`}
+      <div style="display:flex; gap:16px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:14px;">
+        ${stat("총 호실", units)}
+        ${stat("영업신고 호수", bizUnits)}
+      </div>`;
+  }
+
+  async function loadTrendChart(){
+    const canvas = document.getElementById("trendChart");
+    if (!canvas || typeof Chart === "undefined") return;
+    let items = [];
+    try {
+      const res = await fetch("/api/monthly-trend?building_id=" + buildingId);
+      const data = await res.json();
+      items = data.items || [];
+    } catch(e){ console.error("[상세] 추세 로드 실패:", e); return; }
+
+    if (!items.length || items.every(i => !i.count)){
+      canvas.style.display = "none";
+      document.getElementById("trendEmpty").style.display = "block";
+      return;
+    }
+
+    // 메인 페이지 좌측 패널(main.js loadTrendChart)과 동일한 Chart.js 설정을 재사용
+    const labels = items.map(i => i.ym.slice(2).replace("-", "/")); // 25/08
+    const counts = items.map(i => i.count);
+    const sums = items.map(i => Math.round((i.sum_price || 0) / 10000)); // 만원 → 억원
+
+    new Chart(canvas, {
+      data: {
+        labels,
+        datasets: [
+          { type:"bar", label:"거래건수", data:counts, yAxisID:"y",
+            backgroundColor:"#B4863F", borderRadius:3, order:2 },
+          { type:"line", label:"거래금액(억)", data:sums, yAxisID:"y1",
+            borderColor:"#378ADD", backgroundColor:"#378ADD", borderWidth:2,
+            pointRadius:2, tension:.3, order:1 },
+        ],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:"index", intersect:false },
+        plugins:{
+          legend:{ display:false },
+          tooltip:{ callbacks:{ label:(c)=> c.dataset.type === "line"
+            ? ` 거래금액 ${c.parsed.y.toLocaleString('ko-KR')}억`
+            : ` 거래건수 ${c.parsed.y.toLocaleString('ko-KR')}건` } },
+        },
+        scales:{
+          x:{ grid:{ display:false }, ticks:{ font:{ size:9 } } },
+          y:{ position:"left", beginAtZero:true, ticks:{ font:{ size:9 }, precision:0 }, grid:{ color:"#EEF1F3" } },
+          y1:{ position:"right", beginAtZero:true, ticks:{ font:{ size:9 } }, grid:{ display:false } },
+        },
+      },
+    });
+  }
+
+  loadBuilding();
+  loadTrendChart();
+</script>
 </body>
 </html>
