@@ -928,20 +928,7 @@ function buildingPanelSkeleton(){
       <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left;">← 전체 목록으로</button>
     </section>
 
-    <section class="side-card">
-      <div class="side-card-title">실거래목록 <span class="side-sub" id="bTxTotalLabel"></span></div>
-      <div id="bTxTableWrap" style="overflow-x:auto;"><div class="side-empty">불러오는 중…</div></div>
-      <div id="bTxMoreWrap" style="display:none; text-align:center; margin-top:12px;">
-        <button id="bTxMore" class="side-more" style="width:auto; padding:7px 18px; margin-top:0;">더보기</button>
-      </div>
-    </section>
-
     <section class="side-card" id="bHeaderCard">
-      <div class="side-empty">불러오는 중…</div>
-    </section>
-
-    <section class="side-card" id="bAdminCard">
-      <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
       <div class="side-empty">불러오는 중…</div>
     </section>
 
@@ -966,6 +953,11 @@ function buildingPanelSkeleton(){
     <section class="side-card">
       <div class="side-card-title">전속중개사</div>
       <div id="bAgentBox"><div class="side-empty">불러오는 중…</div></div>
+    </section>
+
+    <section class="side-card" id="bAdminCard">
+      <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
+      <div class="side-empty">불러오는 중…</div>
     </section>
 
     <section class="side-card">
