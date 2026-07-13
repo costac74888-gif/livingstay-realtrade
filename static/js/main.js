@@ -661,7 +661,7 @@ async function openBuildingInfo(b, pos){
   });
 
   const detailLink = (b.id != null)
-    ? `<div style="margin-top:6px;"><a href="/building/${b.id}" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a></div>`
+    ? `<div style="margin-top:6px;"><a href="/building/${b.id}" onclick="return window.openBuildingDetail(${b.id});" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a></div>`
     : "";
 
   const content = `
@@ -848,8 +848,352 @@ async function loadSideFavorites(){
   box.innerHTML = ordered.map((t, i) => renderSideTx(t, i + 1)).join("");
 }
 
-document.getElementById("btnMoreTx")?.addEventListener("click", () => loadSideTx(20));
+/* ================= 건물 상세: 좌측 패널 전환 ================= */
+/* /building/<id> 를 별도 페이지로 이동하지 않고, 지도는 그대로 둔 채
+   좌측 패널(.side-panel) 내용만 건물 상세로 통째로 교체한다.
+   (static/building.html에 있던 HTML/차트 코드를 그대로 가져와 사용) */
 
-loadTrendChart();
-loadSideTx(5);
-loadSideFavorites();
+// 기본(홈) 좌측 패널의 원본 HTML을 최초 1회 저장해두고, "전체 목록으로" 복귀 시 되돌린다.
+const DEFAULT_SIDE_PANEL_HTML = document.querySelector(".side-panel").innerHTML;
+
+function initDefaultSidePanel(){
+  document.getElementById("btnMoreTx")?.addEventListener("click", () => loadSideTx(20));
+  loadTrendChart();
+  loadSideTx(5);
+  loadSideFavorites();
+}
+
+// 건물 상세 전용 상태/차트
+let buildingDetailChart = null;
+const B_TX_SIZE = 10;
+let bTxPage = 1, bTxTotal = 0;
+
+const B_LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
+function detailBadgeLabel(v){
+  if (!v) return "미분류";
+  return v.split("·").map(x => B_LODGING_BADGE[x] || x).join("·");
+}
+
+function buildingPanelSkeleton(){
+  return `
+    <section class="side-card">
+      <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left;">← 전체 목록으로</button>
+    </section>
+
+    <section class="side-card" id="bHeaderCard">
+      <div class="side-empty">불러오는 중…</div>
+    </section>
+
+    <section class="side-card" id="bAdminCard">
+      <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
+      <div class="side-empty">불러오는 중…</div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">실거래추세 <span class="side-sub">최근 12개월</span></div>
+      <div class="side-chart-wrap"><canvas id="bTrendChart"></canvas></div>
+      <div class="side-legend">
+        <span><i class="lg-bar"></i>거래건수</span>
+        <span><i class="lg-line"></i>거래금액(억)</span>
+      </div>
+      <div id="bTrendEmpty" class="side-empty" style="display:none;">최근 12개월 실거래 내역이 없습니다.</div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">실거래목록 <span class="side-sub" id="bTxTotalLabel"></span></div>
+      <div id="bTxTableWrap" style="overflow-x:auto;"><div class="side-empty">불러오는 중…</div></div>
+      <div id="bTxPager" style="display:none; align-items:center; justify-content:center; gap:10px; margin-top:12px;">
+        <button id="bTxPrev" class="side-more" style="width:auto; padding:6px 12px; margin-top:0;">← 이전</button>
+        <span id="bTxPageInfo" style="font-size:11.5px; color:var(--ink-soft); font-family:'JetBrains Mono',monospace;"></span>
+        <button id="bTxNext" class="side-more" style="width:auto; padding:6px 12px; margin-top:0;">다음 →</button>
+      </div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">전속중개사</div>
+      <div id="bAgentBox"><div class="side-empty">불러오는 중…</div></div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">위탁운영</div>
+      <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
+        <div style="font-size:22px; margin-bottom:6px;">🏨</div>
+        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">위탁운영 지원업체를 찾고 있습니다</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 운영을 맡아줄 파트너를 모집합니다.</div>
+        <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;">지원업체로 등록하세요</button>
+      </div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">하우스키핑</div>
+      <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
+        <div style="font-size:22px; margin-bottom:6px;">🧹</div>
+        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">하우스키핑 지원업체를 찾고 있습니다</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 객실관리를 맡아줄 파트너를 모집합니다.</div>
+        <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;">지원업체로 등록하세요</button>
+      </div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">금융</div>
+      <div style="text-align:center; padding:14px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">
+        <div style="font-size:22px; margin-bottom:6px;">💰</div>
+        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">대출상담사를 찾고 계신가요?</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">매입·잔금 대출 상담 전문가를 연결해 드립니다.</div>
+        <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">대출상담 문의하기</button>
+      </div>
+    </section>`;
+}
+
+function bStat(label, value){
+  return `<div style="flex:1; min-width:100px;">
+    <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:3px;">${label}</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--ink);">${value}</div>
+  </div>`;
+}
+
+async function loadBuildingHeader(id){
+  const headerCard = document.getElementById("bHeaderCard");
+  const adminCard = document.getElementById("bAdminCard");
+  let b;
+  try {
+    const res = await fetch("/api/building/" + id);
+    if (!res.ok) throw new Error(res.status);
+    b = await res.json();
+  } catch(e){
+    headerCard.innerHTML = `<div class="side-empty">건물 정보를 불러오지 못했습니다.</div>`;
+    return;
+  }
+
+  const color = markerColor(b.lodging_type);
+  const badge = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(detailBadgeLabel(b.lodging_type))}</span>`;
+  const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
+  const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
+  const bName = b.building_name || "(건물명 미확인)";
+
+  headerCard.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+      <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
+      ${badge}
+    </div>
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">${escapeHtml(b.road_address || "주소 미확인")}</div>
+    ${b.lodging_type_detail ? `<div style="font-size:11px; color:var(--ink-soft); margin-bottom:14px;">${escapeHtml(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:14px;"></div>`}
+    <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
+      ${bStat("총 호실", units)}
+      ${bStat("영업신고 호수", bizUnits)}
+    </div>`;
+
+  // [2] 행정 · 숙박업영업신고율 카드
+  let rateDisplay;
+  if (b.biz_units != null && b.units != null && Number(b.units) > 0){
+    rateDisplay = Math.round(Number(b.biz_units) / Number(b.units) * 100) + "%";
+  } else {
+    rateDisplay = "확인 불가";
+  }
+  const mailSubject = encodeURIComponent(`영업신고 의뢰 문의 (${bName})`);
+  adminCard.innerHTML = `
+    <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
+    <div style="text-align:center; padding:6px 0 12px;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:var(--brass-dark); line-height:1.1;">${rateDisplay}</div>
+      <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">총 호실 ${units} · 영업신고 ${bizUnits}</div>
+    </div>
+    <a href="mailto:info@home-and-stay.com?subject=${mailSubject}" class="side-more" style="display:block; text-align:center; text-decoration:none; margin-top:0;">영업신고 의뢰하기</a>`;
+
+  renderBuildingAgent(b.agent);
+}
+
+function renderBuildingAgent(agent){
+  const box = document.getElementById("bAgentBox");
+  if (!box) return;
+  if (agent){
+    box.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>
+        <div style="flex:1; min-width:130px;">
+          <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
+        </div>
+        ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(agent.phone)}</a>` : ""}
+      </div>`;
+  } else {
+    box.innerHTML = `
+      <div style="text-align:center; padding:16px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">
+        <div style="font-size:24px; margin-bottom:6px;">🔎</div>
+        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">이 건물의 전속 중개사를 찾고 있습니다</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물을 전담할 중개사무소를 모집합니다.</div>
+        <a href="/apply/agent" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; text-decoration:none;">중개사 회원 신청</a>
+      </div>`;
+  }
+}
+
+async function loadBuildingTrend(id){
+  const canvas = document.getElementById("bTrendChart");
+  if (!canvas || typeof Chart === "undefined") return;
+  let items = [];
+  try {
+    const res = await fetch("/api/monthly-trend?building_id=" + id);
+    const data = await res.json();
+    items = data.items || [];
+  } catch(e){ console.error("[상세] 추세 로드 실패:", e); return; }
+
+  if (!items.length || items.every(i => !i.count)){
+    canvas.style.display = "none";
+    const empty = document.getElementById("bTrendEmpty");
+    if (empty) empty.style.display = "block";
+    return;
+  }
+
+  const labels = items.map(i => i.ym.slice(2).replace("-", "/"));
+  const counts = items.map(i => i.count);
+  const sums = items.map(i => Math.round((i.sum_price || 0) / 10000));
+
+  buildingDetailChart = new Chart(canvas, {
+    data: {
+      labels,
+      datasets: [
+        { type:"bar", label:"거래건수", data:counts, yAxisID:"y",
+          backgroundColor:"#B4863F", borderRadius:3, order:2 },
+        { type:"line", label:"거래금액(억)", data:sums, yAxisID:"y1",
+          borderColor:"#378ADD", backgroundColor:"#378ADD", borderWidth:2,
+          pointRadius:2, tension:.3, order:1 },
+      ],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:"index", intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label:(c)=> c.dataset.type === "line"
+          ? ` 거래금액 ${c.parsed.y.toLocaleString('ko-KR')}억`
+          : ` 거래건수 ${c.parsed.y.toLocaleString('ko-KR')}건` } },
+      },
+      scales:{
+        x:{ grid:{ display:false }, ticks:{ font:{ size:9 } } },
+        y:{ position:"left", beginAtZero:true, ticks:{ font:{ size:9 }, precision:0 }, grid:{ color:"#EEF1F3" } },
+        y1:{ position:"right", beginAtZero:true, ticks:{ font:{ size:9 } }, grid:{ display:false } },
+      },
+    },
+  });
+}
+
+function bTxAddr(t){
+  return [t.si_do, t.sgg_nm, t.umd_nm, t.jibun].filter(Boolean).map(escapeHtml).join(" ");
+}
+function bDealTypeTag(v){
+  return v === "직거래"
+    ? `<span class="tag brk">직거래</span>`
+    : `<span class="tag med">중개거래</span>`;
+}
+
+async function loadBuildingTx(id){
+  const wrap = document.getElementById("bTxTableWrap");
+  const pager = document.getElementById("bTxPager");
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
+  let data;
+  try {
+    const res = await fetch(`/api/transactions?building_id=${id}&page=${bTxPage}&size=${B_TX_SIZE}`);
+    data = await res.json();
+  } catch(e){
+    wrap.innerHTML = `<div class="side-empty">실거래 목록을 불러오지 못했습니다.</div>`;
+    return;
+  }
+  const items = data.items || [];
+  bTxTotal = data.total || 0;
+  const totalLabel = document.getElementById("bTxTotalLabel");
+  if (totalLabel) totalLabel.textContent = bTxTotal ? `총 ${bTxTotal.toLocaleString('ko-KR')}건` : "";
+
+  if (!items.length){
+    wrap.innerHTML = `<div class="side-empty">실거래 이력이 없습니다.</div>`;
+    if (pager) pager.style.display = "none";
+    return;
+  }
+
+  const rows = items.map(t => `
+    <tr>
+      <td class="col-name">${t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)"}</td>
+      <td class="col-addr">${bTxAddr(t)}</td>
+      <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
+      <td class="col-num col-floor">${t.floor ? escapeHtml(String(t.floor)) + "층" : "-"}</td>
+      <td class="col-price">${t.price != null ? Number(t.price).toLocaleString('ko-KR') : "-"}</td>
+      <td class="col-date">${escapeHtml(t.deal_date || "-")}</td>
+      <td class="col-type">${bDealTypeTag(t.deal_type)}</td>
+    </tr>`).join("");
+
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  const lastPage = Math.max(Math.ceil(bTxTotal / B_TX_SIZE), 1);
+  const pageInfo = document.getElementById("bTxPageInfo");
+  if (pageInfo) pageInfo.textContent = `${bTxPage} / ${lastPage}`;
+  const prev = document.getElementById("bTxPrev");
+  const next = document.getElementById("bTxNext");
+  if (prev) prev.disabled = (bTxPage <= 1);
+  if (next) next.disabled = (bTxPage >= lastPage);
+  if (pager) pager.style.display = "flex";
+}
+
+// 좌측 패널을 건물 상세로 교체하고 데이터를 채운다.
+function renderBuildingPanel(id){
+  const panel = document.querySelector(".side-panel");
+  if (!panel) return;
+  if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
+  if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
+
+  panel.innerHTML = buildingPanelSkeleton();
+  panel.scrollTop = 0;
+  panel.classList.add("open"); // 모바일에서도 상세가 보이도록 패널을 펼친다
+
+  document.getElementById("btnBackToList").addEventListener("click", () => {
+    history.pushState({}, "", "/");
+    restoreDefaultPanel();
+  });
+  document.getElementById("bTxPrev").addEventListener("click", () => {
+    if (bTxPage > 1){ bTxPage--; loadBuildingTx(id); }
+  });
+  document.getElementById("bTxNext").addEventListener("click", () => {
+    if (bTxPage < Math.ceil(bTxTotal / B_TX_SIZE)){ bTxPage++; loadBuildingTx(id); }
+  });
+
+  bTxPage = 1;
+  bTxTotal = 0;
+  loadBuildingHeader(id);
+  loadBuildingTrend(id);
+  loadBuildingTx(id);
+}
+
+// 기본(홈) 좌측 패널로 되돌린다.
+function restoreDefaultPanel(){
+  const panel = document.querySelector(".side-panel");
+  if (!panel) return;
+  if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
+  if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
+  panel.classList.remove("open");
+  panel.innerHTML = DEFAULT_SIDE_PANEL_HTML;
+  initDefaultSidePanel();
+}
+
+// InfoWindow "상세보기 →" 클릭 → 페이지 이동 없이 패널 전환 + URL만 교체
+window.openBuildingDetail = function(id){
+  history.pushState({ buildingId: id }, "", "/building/" + id);
+  if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+  renderBuildingPanel(id);
+  return false;
+};
+
+// 브라우저 뒤로/앞으로 가기 대응
+window.addEventListener("popstate", () => {
+  const m = location.pathname.match(/^\/building\/(\d+)/);
+  if (m) renderBuildingPanel(Number(m[1]));
+  else restoreDefaultPanel();
+});
+
+// 최초 로드: 기본 패널 초기화 후, URL이 /building/<id>면 자동으로 상세를 연다.
+initDefaultSidePanel();
+(function(){
+  const m = location.pathname.match(/^\/building\/(\d+)/);
+  if (m) renderBuildingPanel(Number(m[1]));
+})();

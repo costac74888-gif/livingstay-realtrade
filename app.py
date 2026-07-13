@@ -74,8 +74,7 @@ def ratelimit_handler(e):
 init_db()
 
 
-@app.route("/")
-def index():
+def _serve_app_shell():
     # 정적 index.html을 읽어 카카오맵 JS 키만 서버에서 주입해 서빙한다.
     # (프론트 소스에 키를 직접 박지 않고, 환경변수/시크릿에서 안전하게 넣는다.)
     kakao_js_key = os.environ.get("KAKAO_JS_KEY", "")
@@ -90,31 +89,21 @@ def index():
     return resp
 
 
+@app.route("/")
+def index():
+    return _serve_app_shell()
+
+
 @app.route("/building/<int:building_id>")
 def building_page(building_id):
-    """건물 상세페이지(B화면) HTML 서빙.
+    """건물 상세 — 별도 페이지가 아니라 홈화면(index.html)을 그대로 서빙한다.
 
-    index()와 동일한 방식으로 static/building.html을 읽어 카카오맵 JS 키만
-    서버에서 주입해 서빙한다. 존재하지 않는 building_id면 404.
+    상세 내용은 프런트(main.js renderBuildingPanel)에서 좌측 패널 안에 그린다.
+    새로고침/공유 링크로 /building/<id>에 직접 들어와도 index.html이 로드되며,
+    main.js가 URL을 확인해 자동으로 해당 건물 상세를 좌측 패널에 표시한다.
+    (static/building.html은 롤백 대비 남겨두되 더 이상 서빙하지 않는다.)
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [building_id])
-    exists = cur.fetchone()
-    cur.close()
-    conn.close()
-    if not exists:
-        abort(404)
-
-    kakao_js_key = os.environ.get("KAKAO_JS_KEY", "")
-    html_path = os.path.join(app.static_folder, "building.html")
-    with open(html_path, encoding="utf-8") as f:
-        html = f.read()
-    html = html.replace("{{KAKAO_JS_KEY}}", quote(kakao_js_key, safe=""))
-    html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
-    resp = Response(html, mimetype="text/html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    return _serve_app_shell()
 
 
 @app.route("/api/building/<int:building_id>")
