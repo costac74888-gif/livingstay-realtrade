@@ -109,6 +109,10 @@
     .tx-filter-grid{ grid-template-columns:1fr 1fr; }
     .tx-filter-grid .btn-search{ grid-column:1 / -1; }
   }
+  @media (max-width: 520px){
+    /* 좁은 폰: 필터를 한 줄에 하나씩 — 셀렉트가 눌리지 않게 */
+    .tx-filter-grid{ grid-template-columns:1fr; }
+  }
 </style>
 
 <script>

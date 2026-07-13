@@ -77,8 +77,7 @@
     </div>
   </div>
 
-  <!-- 모바일 전용: 좌측 패널 토글 버튼 -->
-  <button class="panel-toggle" id="btnTogglePanel">☰ 목록</button>
+  <!-- (좌측 패널 토글 버튼은 헤더 좌측으로 이동 — header.js, window.HEADER_LEFT_TOGGLE) -->
 
   <!-- 지도 위 좌측 플로팅 패널 -->
   <aside class="side-panel">
@@ -227,14 +226,7 @@
    - 회사소개 모달
    - 상단 검색바 접기/펼치기 */
 (function(){
-  var btn = document.getElementById("btnTogglePanel");
-  var panel = document.querySelector(".side-panel");
-  if (btn && panel){
-    btn.addEventListener("click", function(){
-      var open = panel.classList.toggle("open");
-      btn.textContent = open ? "✕ 닫기" : "☰ 목록";
-    });
-  }
+  // (좌측 패널 '목록' 토글은 헤더로 이동 → header.js에서 처리)
 
   // 회사소개 모달 (독립 — 지도/검색/필터/상세 로직과 무관)
   var companyModal = document.getElementById("companyModal");
@@ -259,7 +251,7 @@
   }
 })();
 </script>
-<script>window.PAGE_TITLE = "전국숙박시설실거래가조회"; window.HEADER_BRAND_INPLACE = true;</script>
+<script>window.PAGE_TITLE = "전국숙박시설실거래가조회"; window.HEADER_BRAND_INPLACE = true; window.HEADER_LEFT_TOGGLE = true;</script>
 <script src="/static/js/header.js"></script>
 <script src="/static/js/main.js"></script>
 <script src="/static/js/auth.js"></script>

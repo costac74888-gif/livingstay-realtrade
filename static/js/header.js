@@ -34,29 +34,42 @@
     ? '<div class="brand" id="brandHome" title="홈으로 (전체 보기)" style="cursor:pointer;">' + brandInner + '</div>'
     : '<a class="brand" id="brandHome" href="/" title="홈으로" style="text-decoration:none;">' + brandInner + '</a>';
 
+  // ---- (지도 페이지 전용) 좌측 '목록' 토글 버튼 — window.HEADER_LEFT_TOGGLE=true 일 때만 ----
+  // index.html의 좌측 패널(.side-panel)을 열고닫는다. 모바일에서 지도 위 플로팅 버튼이
+  // 지도 컨트롤과 겹치는 문제를 피하려 헤더 좌측(로고 옆)으로 옮긴 것.
+  var listToggleHtml = window.HEADER_LEFT_TOGGLE
+    ? '<button type="button" class="header-list-toggle" id="btnTogglePanel" aria-label="목록 열기">☰ <span class="htoggle-label">목록</span></button>'
+    : '';
+
   // ---- 헤더 본문 (로고 + 페이지타이틀 + 알림 드롭다운 + 메뉴 + 로그인영역) ----
+  // 벨(🔔)은 자주 쓰므로 모바일에서도 항상 노출. 나머지 메뉴(실거래목록/공지/마이페이지/로그인)는
+  // 좁은 화면에서 햄버거(☰) 드롭다운(.header-menu)으로 접는다.
   host.innerHTML =
+    listToggleHtml +
     brandHtml +
     '<div class="page-title">' + esc(title) + '</div>' +
     '<div class="header-actions">' +
-      '<nav class="header-nav">' +
-        '<div class="hnav-dropdown" id="alertMenu">' +
-          '<button type="button" class="hnav-btn" id="alertMenuBtn" aria-haspopup="true" aria-expanded="false">🔔 <span class="hnav-label">알림</span><span class="notif-badge" id="notifBadge" hidden>0</span> ▾</button>' +
-          '<div class="hnav-panel hnav-panel-notif" id="alertMenuPanel" role="menu">' +
-            '<div class="notif-head">' +
-              '<span class="hnav-panel-title">알림</span>' +
-              '<button type="button" class="notif-readall" id="notifReadAll">모두 읽음</button>' +
-            '</div>' +
-            '<div class="notif-list" id="notifList">' +
-              '<div class="notif-empty">로그인하면 관심건물의 새 실거래 알림을 받아볼 수 있어요.</div>' +
-            '</div>' +
+      '<div class="hnav-dropdown" id="alertMenu">' +
+        '<button type="button" class="hnav-btn" id="alertMenuBtn" aria-haspopup="true" aria-expanded="false">🔔 <span class="hnav-label">알림</span><span class="notif-badge" id="notifBadge" hidden>0</span> ▾</button>' +
+        '<div class="hnav-panel hnav-panel-notif" id="alertMenuPanel" role="menu">' +
+          '<div class="notif-head">' +
+            '<span class="hnav-panel-title">알림</span>' +
+            '<button type="button" class="notif-readall" id="notifReadAll">모두 읽음</button>' +
+          '</div>' +
+          '<div class="notif-list" id="notifList">' +
+            '<div class="notif-empty">로그인하면 관심건물의 새 실거래 알림을 받아볼 수 있어요.</div>' +
           '</div>' +
         '</div>' +
-        '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
-        '<a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>' +
-        '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
-      '</nav>' +
-      '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +
+      '</div>' +
+      '<button type="button" class="hamburger-btn" id="hamburgerBtn" aria-label="메뉴" aria-haspopup="true" aria-expanded="false">☰</button>' +
+      '<div class="header-menu" id="headerMenu">' +
+        '<nav class="header-nav">' +
+          '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
+          '<a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>' +
+          '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
+        '</nav>' +
+        '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +
+      '</div>' +
     '</div>';
 
   // ---- 로그인/회원가입 모달 (auth.js가 제어) — 없을 때만 body에 주입(중복 방지) ----
@@ -106,6 +119,36 @@
   setHeaderH();
   window.addEventListener("resize", setHeaderH);
   window.addEventListener("load", setHeaderH);
+
+  // ---- (지도 페이지) 좌측 '목록' 토글 — .side-panel 열고닫기 (레이아웃 전용) ----
+  var listToggleBtn = document.getElementById("btnTogglePanel");
+  if (listToggleBtn) {
+    listToggleBtn.addEventListener("click", function () {
+      var panel = document.querySelector(".side-panel");
+      if (!panel) return;
+      var open = panel.classList.toggle("open");
+      listToggleBtn.innerHTML = open
+        ? '✕ <span class="htoggle-label">닫기</span>'
+        : '☰ <span class="htoggle-label">목록</span>';
+    });
+  }
+
+  // ---- 모바일 햄버거 메뉴 토글 (실거래목록/공지/마이페이지/로그인 묶음) ----
+  var hamburgerBtn = document.getElementById("hamburgerBtn");
+  var headerMenu = document.getElementById("headerMenu");
+  if (hamburgerBtn && headerMenu) {
+    hamburgerBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = headerMenu.classList.toggle("open");
+      hamburgerBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", function (e) {
+      if (!headerMenu.contains(e.target) && e.target !== hamburgerBtn) {
+        headerMenu.classList.remove("open");
+        hamburgerBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
 
   // ---- 알림함(헤더 벨) — 로그인 상태에서만 안읽은 개수 뱃지 + 최근 알림 드롭다운 ----
   var alertMenu = document.getElementById("alertMenu");

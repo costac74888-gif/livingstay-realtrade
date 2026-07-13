@@ -52,6 +52,14 @@
   }
   .notice-item.open .notice-body { display:block; }
   .notice-empty { text-align:center; padding:48px 12px; color:var(--ink-soft); }
+  @media (max-width: 520px){
+    /* 좁은 폰: 제목이 길어도 날짜/화살표가 짓눌리지 않게 줄바꿈 허용 */
+    .notice-head { flex-wrap:wrap; gap:4px 8px; }
+    .notice-title { flex:1 1 100%; order:1; font-size:14.5px; }
+    .notice-pin { order:0; }
+    .notice-date { order:2; }
+    .notice-arrow { order:3; margin-left:auto; }
+  }
 </style>
 
 <script>
