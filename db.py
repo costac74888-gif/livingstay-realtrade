@@ -392,6 +392,19 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
 
+    # 지자체(시군구)별 생활숙박시설 담당부서·연락처 (엑셀 원본 그대로 적재)
+    # region_name_raw 는 가공하지 않은 엑셀 '지자체' 값 그대로 보존한다("진주시(중복)" 포함).
+    # 매칭은 address_utils.match_authority_contact() 가 이 원본을 정규화해서 수행한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_authority_contacts (
+        id SERIAL PRIMARY KEY,
+        region_name_raw TEXT NOT NULL,     -- 엑셀 '지자체' 원본 그대로
+        dept TEXT,                         -- 담당부서
+        phone TEXT,                        -- 전화번호
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")

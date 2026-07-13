@@ -193,6 +193,168 @@ class BjdongMap:
         return self._sgg_text_map.get(sgg_cd)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 지자체 담당부서·연락처 매칭
+#   lodging_authority_contacts.region_name_raw(엑셀 원본, 예: "경기도광주시",
+#   "광주시남구", "강릉시", "진주시(중복)", "경기도")
+#     ↔ master_buildings.sgg_text(예: "경기도 평택시", "광주광역시 남구",
+#        "경기도 수원시 장안구", "대구광역시 동구")
+#
+# 정확도가 최우선. 매칭이 모호하면(후보 2개 이상 & 값이 서로 다름) 추측하지 않고
+# None 을 돌려준다("확인중"이 틀린 연락처보다 낫다).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 시도 이름의 모든 표기를 하나의 '캐논(핵심 이름)'으로 통일한다. 양쪽(엑셀 원본 /
+# 마스터 sgg_text)을 같은 캐논으로 환산해야 "충남"(엑셀)과 "충청남도"(마스터)가,
+# "대구시"(엑셀)와 "대구광역시"(마스터)가 같은 시도로 매칭된다.
+SIDO_CANON = {
+    "서울": "서울", "서울시": "서울", "서울특별시": "서울",
+    "부산": "부산", "부산시": "부산", "부산광역시": "부산",
+    "대구": "대구", "대구시": "대구", "대구광역시": "대구",
+    "인천": "인천", "인천시": "인천", "인천광역시": "인천",
+    "광주": "광주", "광주시": "광주", "광주광역시": "광주",
+    "대전": "대전", "대전시": "대전", "대전광역시": "대전",
+    "울산": "울산", "울산시": "울산", "울산광역시": "울산",
+    "세종": "세종", "세종시": "세종", "세종특별자치시": "세종",
+    "경기": "경기", "경기도": "경기",
+    "강원": "강원", "강원도": "강원", "강원특별자치도": "강원",
+    "충북": "충북", "충청북도": "충북",
+    "충남": "충남", "충청남도": "충남",
+    "전북": "전북", "전라북도": "전북", "전북특별자치도": "전북",
+    "전남": "전남", "전라남도": "전남",
+    "경북": "경북", "경상북도": "경북",
+    "경남": "경남", "경상남도": "경남",
+    "제주": "제주", "제주도": "제주", "제주특별자치도": "제주",
+}
+
+# 엑셀 원본 앞부분에서 떼어낼 시도 표기(긴 것부터). 붙여쓰기('경기도광주시')·
+# 광역시 축약('대구시')·풀네임('인천광역시') 모두 커버한다.
+_SIDO_PREFIXES = sorted(SIDO_CANON.keys(), key=len, reverse=True)
+
+
+def _strip_region_parens(s: str) -> str:
+    """'진주시(중복)' → '진주시' 처럼 괄호 주석(반각/전각)을 제거한다."""
+    return re.sub(r"[\(（][^)）]*[\)）]", "", s or "")
+
+
+def _looks_like_sgg(rest: str) -> bool:
+    """시도를 떼어낸 나머지가 시군구/구로 보이는지(=시/군/구로 끝나고 2글자 이상).
+
+    '제주시'에서 '제주'를 떼면 '시'만 남는데 이건 시군구가 아니므로 시도 분리를
+    거부해야 한다(제주시는 '제주도'가 아니라 제주도 안의 '제주시' 시군구다)."""
+    return len(rest) >= 2 and rest[-1] in ("시", "군", "구")
+
+
+def parse_authority_region(raw: str):
+    """엑셀 지자체 원본 → (시도캐논 or None, 시군구핵심 문자열).
+
+    - 시도가 안 붙은 행('강릉시')        → (None, '강릉시')
+    - 시도+시군구('경기도광주시')        → ('경기', '광주시')
+    - 광역시+구('대구시동구','광주시남구') → ('대구','동구'), ('광주','남구')
+    - 시도 전용 행('경기도','부산시')    → ('경기',''), ('부산','')  ← 폴백용
+    """
+    s = _strip_region_parens(raw)
+    s = "".join(s.split())  # 모든 공백 제거
+    for pref in _SIDO_PREFIXES:
+        if s.startswith(pref):
+            rest = s[len(pref):]
+            # 나머지가 비었으면(시도 전용 폴백행) 또는 시군구로 보이면 시도 분리 확정.
+            # 아니면(예: '제주시'→'시') 이 접두어는 오분리이므로 건너뛴다.
+            if rest == "" or _looks_like_sgg(rest):
+                return SIDO_CANON[pref], rest
+    return None, s
+
+
+def parse_master_region(sgg_text: str):
+    """마스터 sgg_text → (시도캐논, [로컬후보...] 구체→상위 순).
+
+    - '경기도 평택시'        → ('경기', ['평택시'])
+    - '대구광역시 동구'      → ('대구', ['동구'])
+    - '경기도 수원시 장안구' → ('경기', ['수원시장안구', '수원시'])   ← 구 전용 없으면 시로 폴백
+    - '서울 강남구'          → ('서울', ['강남구'])
+    """
+    toks = (sgg_text or "").split()
+    if not toks:
+        return None, []
+    sido = SIDO_CANON.get(toks[0]) or sido_core(toks[0])
+    rest = toks[1:]
+    if not rest:
+        return sido, []
+    if len(rest) >= 2:
+        return sido, ["".join(rest), rest[0]]
+    return sido, [rest[0]]
+
+
+def build_authority_index(rows):
+    """담당부서 매칭용 인덱스를 만든다.
+
+    rows: [{'region_name_raw','dept','phone'}, ...] (DB lodging_authority_contacts 또는 엑셀)
+    반환: dict(specific / nosido / fallback)
+      - specific[(sido, local)] = set of (dept, phone)   시도+시군구가 명시된 행
+      - nosido[local]           = set of (sido or None, dept, phone)  시도 없는 행
+      - fallback[sido]          = set of (dept, phone)   시도 전용 대표행
+    값이 set 이라 완전히 동일한 중복행('진주시' vs '진주시(중복)')은 자동으로 1개로 합쳐진다.
+    """
+    specific, nosido, fallback = {}, {}, {}
+    for r in rows:
+        sido, local = parse_authority_region(r.get("region_name_raw"))
+        dept = r.get("dept")
+        phone = r.get("phone")
+        if local == "":
+            if sido:
+                fallback.setdefault(sido, set()).add((dept, phone))
+        elif sido:
+            specific.setdefault((sido, local), set()).add((dept, phone))
+        else:
+            nosido.setdefault(local, set()).add((sido, dept, phone))
+    return {"specific": specific, "nosido": nosido, "fallback": fallback}
+
+
+def match_authority_contact(sgg_text: str, index: dict):
+    """master_buildings.sgg_text 하나를 담당부서 인덱스와 매칭.
+
+    반환: (dept, phone, how)  또는  (None, None, reason)
+      how: 'sido+local' | 'nosido' | 'fallback:시도'
+      reason: 'no_master' | 'no_match' | 'ambiguous'
+    구체(시군구) 매칭을 먼저 시도하고, 없을 때만 시도 전용(fallback)으로 내려간다.
+    후보가 서로 다른 값 2개 이상이면 추측하지 않고 None.
+    """
+    sido, cands = parse_master_region(sgg_text)
+    if not cands and not sido:
+        return (None, None, "no_master")
+
+    specific = index["specific"]
+    nosido = index["nosido"]
+    fallback = index["fallback"]
+
+    for local in cands:
+        # (a) 시도+시군구 정확 매칭
+        vals = specific.get((sido, local)) if sido else None
+        if vals:
+            if len(vals) == 1:
+                dept, phone = next(iter(vals))
+                return (dept, phone, "sido+local")
+            return (None, None, "ambiguous")
+        # (b) 시도가 생략된 엑셀행(시군구명만)과 매칭
+        vals = nosido.get(local)
+        if vals:
+            distinct = {(d, p) for (_s, d, p) in vals}
+            if len(distinct) == 1:
+                dept, phone = next(iter(distinct))
+                return (dept, phone, "nosido")
+            return (None, None, "ambiguous")
+
+    # (c) 시군구 전용 행이 없을 때만 시도 대표(폴백) 사용
+    if sido and sido in fallback:
+        vals = fallback[sido]
+        if len(vals) == 1:
+            dept, phone = next(iter(vals))
+            return (dept, phone, f"fallback:{sido}")
+        return (None, None, "ambiguous")
+
+    return (None, None, "no_match")
+
+
 def parse_jibun(jibun: str):
     """'751-3' → ('0','751','3')  /  '산 12-1' → ('1','12','1')"""
     jibun = jibun.strip()
