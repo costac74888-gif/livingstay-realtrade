@@ -425,7 +425,8 @@ function resetMapView(){
 
 // 실거래 상세(가격·날짜 / 층·전용면적·거래유형) HTML — 클릭 InfoWindow와
 // 호버 툴팁이 공유하는 단일 렌더러. 내용이 어긋나지 않도록 한 곳에서만 만든다.
-// d: {price, deal_date, floor, area, deal_type}. price가 null/undefined면 '실거래 이력 없음'.
+// d: {price, deal_date, floor, area, deal_type, exact}. price가 null/undefined면 '실거래 이력 없음'.
+// exact === false면 같은 필지의 대체(참고) 거래이므로 '(필지 내 참고가)' 안내를 덧붙인다.
 function dealDetailHtml(d){
   if (!d || d.price == null){
     return `<div style="color:#8a94a0;">실거래 이력 없음</div>`;
@@ -435,10 +436,14 @@ function dealDetailHtml(d){
   const floor = d.floor ? escapeHtml(String(d.floor)) + "층" : "-";
   const area = d.area != null ? Number(d.area).toFixed(1) + "㎡" : "-";
   const dealType = escapeHtml(d.deal_type || "-");
+  const refNote = (d.exact === false)
+    ? `<div style="color:#8a94a0; font-size:11px; margin-top:1px;">(필지 내 참고가)</div>`
+    : "";
   return (
     `<div style="margin-top:2px; line-height:1.7;">` +
       `<div><b style="color:#B4863F;">${price}만원</b> · ${date}</div>` +
       `<div>${floor} · 전용 ${area} · ${dealType}</div>` +
+      refNote +
     `</div>`
   );
 }
@@ -459,6 +464,7 @@ function hoverTooltipContent(b){
   const dealHtml = dealDetailHtml({
     price: b.latest_price, deal_date: b.latest_deal_date,
     floor: b.latest_floor, area: b.latest_area, deal_type: b.latest_deal_type,
+    exact: b.latest_price_exact,
   });
   return (
     `<div style="padding:8px 10px; min-width:150px; max-width:230px; font-size:12px;` +
@@ -571,6 +577,13 @@ async function loadMapMarkers(filters = {}, opts = {}){
       priceLine.textContent = Number(b.latest_price).toLocaleString('ko-KR') + "만원";
       priceLine.style.cssText = "font-size:10.5px; font-weight:600; opacity:.96;";
       label.appendChild(priceLine);
+      // 같은 필지의 대체(참고) 거래이면 확정 거래와 구분되게 작은 안내를 덧붙인다.
+      if (b.latest_price_exact === false){
+        const refLine = document.createElement("div");
+        refLine.textContent = "(필지 내 참고가)";
+        refLine.style.cssText = "font-size:9px; font-weight:500; opacity:.9;";
+        label.appendChild(refLine);
+      }
     }
     label.style.display = "none"; // 초기 숨김 — 확대 레벨에 따라 updateMarkerLabels가 토글
     wrap.appendChild(el);
@@ -638,22 +651,14 @@ async function openBuildingInfo(b, pos){
   const name = escapeHtml(b.building_name || "(건물명 미확인)");
   const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
 
-  let dealHtml = `<div style="color:#8a94a0;">실거래 이력 없음</div>`;
-  try {
-    const params = new URLSearchParams({ q: b.building_name || "", size: 1, page: 1 });
-    const res = await fetch(`/api/transactions?${params}`);
-    const data = await res.json();
-    const t = (data.items || [])[0];
-    if (t){
-      // 호버 툴팁과 동일한 렌더러로 내용 일치 보장.
-      dealHtml = dealDetailHtml({
-        price: t.price, deal_date: t.deal_date,
-        floor: t.floor, area: t.area, deal_type: t.deal_type,
-      });
-    }
-  } catch(e){
-    dealHtml = `<div style="color:#B3453A;">실거래 조회 오류</div>`;
-  }
+  // 호버 툴팁·상시 라벨과 동일하게 buildings-geo의 latest_* 값을 그대로 쓴다.
+  // (지번+건물명 우선순위로 계산된 값이라 이름 검색보다 정확하고, latest_price_exact로
+  //  '확정 거래' vs '필지 내 참고가'를 구분해 안내가 세 곳에서 일치한다.)
+  const dealHtml = dealDetailHtml({
+    price: b.latest_price, deal_date: b.latest_deal_date,
+    floor: b.latest_floor, area: b.latest_area, deal_type: b.latest_deal_type,
+    exact: b.latest_price_exact,
+  });
 
   const content = `
     <div style="padding:10px 12px; min-width:170px; max-width:240px; font-size:12.5px; color:#16202E; font-family:'Noto Sans KR',sans-serif;">

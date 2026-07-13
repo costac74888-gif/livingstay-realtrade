@@ -40,6 +40,19 @@ Facts you can only discover by querying Postgres, not by reading code.
   → SQL `lodging_type LIKE '%·%'`; any other value → exact `=` match (so `생활`
   does NOT include `생활·호텔`). Keep map and board using the identical rule.
 
+- **One `(sgg_cd, umd_nm, jibun)` parcel can hold MANY distinct master buildings.**
+  Resort/condo complexes (동/호 units) and name-variant duplicates share a jibun
+  (e.g. 스카이썬 / 스카이썬(이든프롭스); 본재 / 파르마 스테이). Matching latest
+  transaction by jibun ALONE cross-contaminates (one 필지's tx spreads to all its
+  buildings) — 7 parcels w/ tx = 16 buildings; 17 dup groups = 44 buildings total.
+  **Fix (in use):** `/api/buildings-geo` LATERAL keeps the jibun WHERE but ranks
+  `ORDER BY (t.building_name = mb.building_name) DESC NULLS LAST, t.deal_date DESC`
+  → exact-name tx first, else the parcel's latest as a reference. Response exposes
+  `latest_price_exact` (COALESCE(...,FALSE)); FALSE = same-parcel 참고가, shown in
+  UI as "(필지 내 참고가)" on hover tooltip + label + InfoWindow (all render from
+  the same latest_* payload). **Why:** jibun is NOT a unique building key here;
+  true disambiguation would need 동/호 or a building id we don't have.
+
 - Rough counts (2026-07): 476 buildings have lat/lng; 서울 prefix ≈ 40,
   강원특별자치도 ≈ 101, 콘도 = 6, 복합 = 12. Useful as a sanity check when
   verifying map filters.

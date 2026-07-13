@@ -210,16 +210,24 @@ def get_buildings_geo():
     #   - 지번 3개 컬럼이 모두 있으면 지번으로 정확 매칭.
     #   - 셋 중 하나라도 NULL이라 지번 매칭이 불가능하면, 예외적으로 건물명으로
     #     한 번 더 시도하되 "-" 같은 플레이스홀더 이름은 제외한다.
+    # 같은 지번에 여러 건물(동/호로 구분되는 단지)이 있으면 서로 다른 건물의 거래가
+    # 섞일 수 있으므로, 지번이 같은 후보 안에서 건물명(t.building_name = mb.building_name)
+    # 까지 정확히 일치하는 거래를 최우선으로 고르고(name_exact DESC), 그런 거래가
+    # 없으면 그 지번의 최신 거래를 대체값으로 쓴다(그다음 deal_date DESC).
+    #   - latest_price_exact=TRUE  : 건물명까지 정확히 일치한 확정 거래
+    #   - latest_price_exact=FALSE : 같은 필지의 대체(참고) 거래
     # N+1 방지를 위해 LEFT JOIN LATERAL로 건물당 최신 1행만 조회하고,
     # 실거래 이력이 없으면 latest_price/latest_deal_date가 NULL로 반환된다.
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.lat, mb.lng, mb.lodging_type,
                lt.price AS latest_price, lt.deal_date AS latest_deal_date,
                lt.floor AS latest_floor, lt.area AS latest_area,
-               lt.deal_type AS latest_deal_type
+               lt.deal_type AS latest_deal_type,
+               COALESCE(lt.name_exact, FALSE) AS latest_price_exact
         FROM master_buildings mb
         LEFT JOIN LATERAL (
-            SELECT t.price, t.deal_date, t.floor, t.area, t.deal_type
+            SELECT t.price, t.deal_date, t.floor, t.area, t.deal_type,
+                   (t.building_name = mb.building_name) AS name_exact
             FROM transactions t
             WHERE (
                     mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
@@ -232,7 +240,7 @@ def get_buildings_geo():
                     AND mb.building_name <> '-'
                     AND t.building_name = mb.building_name
                   )
-            ORDER BY t.deal_date DESC
+            ORDER BY (t.building_name = mb.building_name) DESC NULLS LAST, t.deal_date DESC
             LIMIT 1
         ) lt ON TRUE
         WHERE {where_sql}
