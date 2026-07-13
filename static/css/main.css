@@ -500,6 +500,36 @@
 .b-info-table tbody th{ text-align:left; color:var(--ink-soft); font-weight:600; white-space:nowrap; width:34%; }
 .b-info-table tbody td{ color:var(--ink); font-weight:600; }
 
+/* B패널 실거래목록 전용 표 — table-layout:fixed로 가로 스크롤 없이 패널 폭에 맞춘다.
+   (A화면 게시판의 .data-table과 분리하기 위해 별도 클래스) */
+.b-tx-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+.b-tx-table thead th{
+  background:#F8F9FA; border-bottom:1px solid var(--line);
+  font-size:10.5px; color:var(--ink-soft); font-weight:600;
+  padding:7px 5px; text-align:left; line-height:1.25;
+}
+.b-tx-table thead th.ta-r{ text-align:right; }
+.b-tx-table tbody td{ padding:7px 5px; border-bottom:1px solid var(--line); font-size:11px; vertical-align:middle; }
+.b-tx-table tbody tr:last-child td{ border-bottom:none; }
+.b-tx-table tbody tr:hover{ background:#FAFBFC; }
+.b-tx-table .col-date{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.b-tx-table .col-area{ font-family:'JetBrains Mono',monospace; text-align:right; white-space:nowrap; }
+.b-tx-table .col-floor{ font-family:'JetBrains Mono',monospace; text-align:right; white-space:nowrap; }
+.b-tx-table .col-price{ font-family:'JetBrains Mono',monospace; font-weight:700; text-align:right; white-space:nowrap; }
+.b-tx-table .col-type{ text-align:right; white-space:nowrap; }
+.b-tx-table .col-type .tag{ font-size:10px; padding:2px 6px; }
+.b-tx-table .c-date{ width:24%; }
+.b-tx-table .c-area{ width:19%; }
+.b-tx-table .c-floor{ width:10%; }
+.b-tx-table .c-price{ width:27%; }
+.b-tx-table .c-type{ width:20%; }
+
+/* B패널 건축정보(표제부) 2열 그리드 */
+.b-bldg-grid{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.b-bldg-cell{ background:var(--card); padding:8px 10px; }
+.b-bldg-k{ font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:2px; }
+.b-bldg-v{ font-size:12.5px; color:var(--ink); font-weight:700; }
+
 .auth-modal-backdrop{
   position:fixed; inset:0; background:rgba(22,32,46,.55); z-index:2000;
   display:flex; align-items:center; justify-content:center; padding:20px;

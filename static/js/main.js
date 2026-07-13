@@ -994,6 +994,18 @@ function buildingPanelSkeleton(){
         <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">매입·잔금 대출 상담 전문가를 연결해 드립니다.</div>
         <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">대출상담 문의하기</button>
       </div>
+    </section>
+
+    <section class="side-card" id="bBldgInfoCard">
+      <div class="side-card-title">건축정보 <span class="side-sub">표제부</span></div>
+      <div class="side-empty">불러오는 중…</div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">상거래정보 <span class="side-sub">주변 상가업소</span></div>
+      <div class="side-soon">준비 중
+        <div class="side-soon-desc">주변 상가업소 정보를 준비하고 있습니다.</div>
+      </div>
     </section>`;
 }
 
@@ -1039,8 +1051,7 @@ async function loadBuildingHeader(id){
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${badge}
     </div>
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">${escapeHtml(b.road_address || "주소 미확인")}</div>
-    ${b.lodging_type_detail ? `<div style="font-size:11px; color:var(--ink-soft); margin-bottom:12px;">${escapeHtml(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:12px;"></div>`}
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">${escapeHtml(b.road_address || "주소 미확인")}</div>
     <div class="b-actions">
       <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">🔔<span class="b-icon-label">실거래알림</span></button>
       <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">⭐<span class="b-icon-label">관심저장</span></button>
@@ -1131,6 +1142,32 @@ async function loadBuildingHeader(id){
     <a href="mailto:info@home-and-stay.com?subject=${mailSubject}" class="side-more" style="display:block; text-align:center; text-decoration:none; margin-top:0;">영업신고 의뢰하기</a>`;
 
   renderBuildingAgent(b.agent, id, bName);
+
+  // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
+  // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.
+  const bldgInfoCard = document.getElementById("bBldgInfoCard");
+  if (bldgInfoCard){
+    const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
+    const fmtTxt = (v) => (v != null && v !== "") ? escapeHtml(String(v)) : "-";
+    const pairs = [
+      ["연면적", fmtNum(b.tot_area, " ㎡")],
+      ["대지면적", fmtNum(b.plat_area, " ㎡")],
+      ["세대수", fmtNum(b.hhld_cnt, "세대")],
+      ["준공월", fmtTxt(b.use_apr_day)],
+      ["구조", fmtTxt(b.strct_nm)],
+      ["지상층수", fmtNum(b.grnd_flr_cnt, "층")],
+      ["지하층수", fmtNum(b.ugrnd_flr_cnt, "층")],
+      ["총주차대수", fmtNum(b.tot_pkng_cnt, "대")],
+    ];
+    const cells = pairs.map(([k, v]) => `
+      <div class="b-bldg-cell">
+        <div class="b-bldg-k">${k}</div>
+        <div class="b-bldg-v">${v}</div>
+      </div>`).join("");
+    bldgInfoCard.innerHTML = `
+      <div class="side-card-title">건축정보 <span class="side-sub">표제부</span></div>
+      <div class="b-bldg-grid">${cells}</div>`;
+  }
 }
 
 function renderBuildingAgent(agent, buildingId, buildingName){
@@ -1250,18 +1287,21 @@ async function loadBuildingTx(id){
   }
 
   // 건물명·주소는 이미 헤더에 있으므로 목록에서는 생략하고 일자·전용·층·금액·종류만 보여준다.
+  // 패널 폭이 좁아 계약일은 YY.MM.DD로 압축하고, 표는 b-tx-table(table-layout:fixed)로 가로 스크롤을 막는다.
+  const fmtDealDate = (d) => d ? escapeHtml(d.slice(2).replace(/-/g, ".")) : "-";
   const rows = items.map(t => `
     <tr>
-      <td class="col-date">${escapeHtml(t.deal_date || "-")}</td>
-      <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
-      <td class="col-num col-floor">${t.floor ? escapeHtml(String(t.floor)) + "층" : "-"}</td>
+      <td class="col-date">${fmtDealDate(t.deal_date)}</td>
+      <td class="col-area">${t.area != null ? Number(t.area).toFixed(1) : "-"}</td>
+      <td class="col-floor">${t.floor ? escapeHtml(String(t.floor)) + "층" : "-"}</td>
       <td class="col-price">${t.price != null ? Number(t.price).toLocaleString('ko-KR') : "-"}</td>
       <td class="col-type">${bDealTypeTag(t.deal_type)}</td>
     </tr>`).join("");
 
   wrap.innerHTML = `
-    <table class="data-table">
-      <thead><tr><th>계약일</th><th>전용</th><th>층</th><th>거래금액 (만원)</th><th>거래유형</th></tr></thead>
+    <table class="b-tx-table">
+      <colgroup><col class="c-date"><col class="c-area"><col class="c-floor"><col class="c-price"><col class="c-type"></colgroup>
+      <thead><tr><th>계약일</th><th class="ta-r">전용㎡</th><th class="ta-r">층</th><th class="ta-r">거래금액(만원)</th><th class="ta-r">유형</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 
