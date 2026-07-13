@@ -13,11 +13,23 @@ function getFavorites(){
 }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
 function isFav(item){ return getFavorites().includes(favKey(item)); }
+// 로그인 상태(auth.js가 window.__livingstayLoggedIn 을 세팅)일 때만 서버에도 반영한다.
+// 비로그인 사용자는 지금처럼 localStorage만 사용 → 하위호환 유지.
+function serverFavSync(method, item){
+  if (!window.__livingstayLoggedIn) return;
+  fetch("/api/favorites/mine", {
+    method: method,
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ building_name: item.building_name, address: item.address })
+  }).catch(function(){ /* 서버 반영 실패해도 localStorage는 이미 갱신됨 → 무시 */ });
+}
 function toggleFav(item){
   let favs = getFavorites();
   const k = favKey(item);
   let clearedActiveFilter = false;
-  if (favs.includes(k)){
+  const wasFav = favs.includes(k);
+  if (wasFav){
     favs = favs.filter(x=>x!==k);
     if (state.favKey === k){ state.favKey = null; state.favOnly = false; clearedActiveFilter = true; }
   } else {
@@ -28,6 +40,7 @@ function toggleFav(item){
     favs = [...favs, k];
   }
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  serverFavSync(wasFav ? "DELETE" : "POST", item);
   updateFavCountLabel();
   renderFavChips();
   if (typeof loadSideFavorites === "function") loadSideFavorites();
@@ -37,12 +50,22 @@ function toggleFav(item){
 function removeFav(key){
   const favs = getFavorites().filter(x=>x!==key);
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  const sep = key.indexOf("|");
+  if (sep >= 0){
+    serverFavSync("DELETE", { building_name: key.slice(0, sep), address: key.slice(sep + 1) });
+  }
   if (state.favKey === key){ state.favKey = null; state.favOnly = false; }
   updateFavCountLabel();
   renderFavChips();
   if (typeof loadSideFavorites === "function") loadSideFavorites();
   loadBoard();
 }
+// 로그인 직후 migrate 로 localStorage가 갱신됐을 때 auth.js가 호출 → 관심 UI 다시 그린다.
+window.refreshFavoritesUI = function(){
+  if (typeof updateFavCountLabel === "function") updateFavCountLabel();
+  if (typeof renderFavChips === "function") renderFavChips();
+  if (typeof loadSideFavorites === "function") loadSideFavorites();
+};
 function updateFavCountLabel(){
   document.getElementById("favCountLabel").textContent =
     `저장된 관심단지 ${getFavorites().length}/${MAX_FAVORITES}개`;

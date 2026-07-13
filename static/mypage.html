@@ -88,6 +88,11 @@
         '</div>' +
       '</div>';
 
+    // 내 관심단지 (GET /api/favorites/mine 로 비동기 로드)
+    html +=
+      sectionTitle("내 관심단지") +
+      '<div id="myFavList"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
+
     // (a) 이름 변경
     html +=
       sectionTitle("이름 변경") +
@@ -127,6 +132,84 @@
     document.getElementById("logoutBtn").addEventListener("click", doLogout);
     document.getElementById("withdrawBtn").addEventListener("click", openWithdrawModal);
     if (isEmail) document.getElementById("pwSaveBtn").addEventListener("click", doChangePassword);
+    loadMyFavorites();
+  }
+
+  // ── 내 관심단지 ─────────────────────────────────────────────
+  function favEmptyHtml(msg){
+    return '<div style="text-align:center; padding:22px 12px; color:var(--ink-soft); font-size:13px; border:1px dashed var(--line); border-radius:8px;">' + escapeHtml(msg) + '</div>';
+  }
+
+  function fmtPrice(p){
+    if (p == null) return "실거래 정보 없음";
+    return Number(p).toLocaleString() + "만";
+  }
+
+  function renderFavRow(t){
+    var name = (t.building_name && String(t.building_name).length) ? t.building_name : "이름 미상 단지";
+    var addr = t.address || "";
+    var bid = (t.building_id != null) ? String(t.building_id) : "";
+    var dataName = (t.building_name == null) ? "" : t.building_name;
+    var clickable = bid ? "cursor:pointer;" : "cursor:default;";
+    return '' +
+      '<div class="myfav-item" data-bid="' + escapeHtml(bid) + '" ' +
+           'style="display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
+        '<div style="flex:1; min-width:0;">' +
+          '<div style="font-size:14px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
+          '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
+        '</div>' +
+        '<div style="font-size:14px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">' + escapeHtml(fmtPrice(t.price)) + '</div>' +
+        '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
+                'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:4px;">★</button>' +
+      '</div>';
+  }
+
+  function loadMyFavorites(){
+    var box = document.getElementById("myFavList");
+    if (!box) return;
+    fetch("/api/favorites/mine", { credentials: "same-origin" })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d || !d.ok){ box.innerHTML = favEmptyHtml("관심단지를 불러오지 못했습니다."); return; }
+        var items = d.items || [];
+        if (!items.length){ box.innerHTML = favEmptyHtml("저장된 관심단지가 없습니다."); return; }
+        box.innerHTML = items.map(renderFavRow).join("");
+        Array.prototype.forEach.call(box.querySelectorAll(".myfav-item"), function(row){
+          row.addEventListener("click", function(){
+            var bid = row.getAttribute("data-bid");
+            if (bid) window.location.href = "/building/" + bid;
+          });
+        });
+        Array.prototype.forEach.call(box.querySelectorAll(".myfav-remove"), function(btn){
+          btn.addEventListener("click", function(e){
+            e.stopPropagation();
+            removeMyFavorite(btn.getAttribute("data-name"), btn.getAttribute("data-addr"), btn);
+          });
+        });
+      })
+      .catch(function(){ box.innerHTML = favEmptyHtml("네트워크 오류가 발생했습니다."); });
+  }
+
+  function removeMyFavorite(name, addr, btn){
+    if (btn) btn.disabled = true;
+    fetch("/api/favorites/mine", {
+      method: "DELETE", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ building_name: name || null, address: addr })
+    })
+      .then(function(){
+        // 지도 화면과 어긋나지 않도록 localStorage에서도 같은 키를 제거한다.
+        try {
+          var keys = JSON.parse(localStorage.getItem("livingstay_favorites") || "[]");
+          var k = (name && name.length ? name : "null") + "|" + addr;
+          if (Array.isArray(keys)){
+            keys = keys.filter(function(x){ return x !== k; });
+            localStorage.setItem("livingstay_favorites", JSON.stringify(keys));
+          }
+        } catch(e){}
+        loadMyFavorites();
+      })
+      .catch(function(){ if (btn) btn.disabled = false; });
   }
 
   function doSaveName(){

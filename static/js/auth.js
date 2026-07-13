@@ -85,14 +85,50 @@
     if (loginBtn) loginBtn.addEventListener("click", openModal);
   }
 
+  // localStorage 관심단지(favKey 배열)를 서버로 이관 → 응답(합쳐진 최종 목록)으로 localStorage 재동기화.
+  // migrate 는 없는 것만 채우므로(중복 스킵) 여러 번 호출돼도 안전하지만,
+  // 브라우저 세션당 1회만(로그인 직후) 돌도록 sessionStorage 플래그로 가드한다.
+  function syncFavorites() {
+    var keys = [];
+    try { keys = JSON.parse(localStorage.getItem("livingstay_favorites") || "[]"); } catch (e) { keys = []; }
+    if (!Array.isArray(keys)) keys = [];
+    fetch("/api/favorites/migrate", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keys: keys })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok && Array.isArray(d.keys)) {
+          try { localStorage.setItem("livingstay_favorites", JSON.stringify(d.keys)); } catch (e) {}
+          if (typeof window.refreshFavoritesUI === "function") window.refreshFavoritesUI();
+        }
+      })
+      .catch(function () { /* 이관 실패해도 로컬 관심단지는 그대로 → 무시 */ });
+  }
+
   function refreshMe() {
     fetch("/api/auth/me", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d && d.logged_in) renderLoggedIn(d);
-        else renderLoggedOut();
+        if (d && d.logged_in) {
+          window.__livingstayLoggedIn = true;
+          renderLoggedIn(d);
+          // 로그인 직후(이 세션 첫 확인) 1회만 관심단지 이관.
+          var migrated;
+          try { migrated = sessionStorage.getItem("livingstay_fav_migrated"); } catch (e) { migrated = "1"; }
+          if (migrated !== "1") {
+            try { sessionStorage.setItem("livingstay_fav_migrated", "1"); } catch (e) {}
+            syncFavorites();
+          }
+        } else {
+          window.__livingstayLoggedIn = false;
+          try { sessionStorage.removeItem("livingstay_fav_migrated"); } catch (e) {}
+          renderLoggedOut();
+        }
       })
-      .catch(function () { renderLoggedOut(); });
+      .catch(function () { window.__livingstayLoggedIn = false; renderLoggedOut(); });
   }
 
   function doLogout() {

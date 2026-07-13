@@ -405,6 +405,25 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
 
+    # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
+    #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).
+    #   - (user_id, building_name, address) 조합은 유일(중복 저장 방지). NULL 비교 이슈를 피하려고
+    #     COALESCE(building_name,'') 를 쓰는 표현식 UNIQUE 인덱스로 부여한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user_favorites (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        building_name TEXT,                -- 매칭 성공 시 건물명, 미매칭이면 NULL
+        address TEXT NOT NULL,             -- 법정동+지번 조합 표시용 주소 (transactions.address와 동일)
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id)")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_favorites "
+        "ON user_favorites (user_id, COALESCE(building_name, ''), address)"
+    )
+
     # 지자체(시군구)별 생활숙박시설 담당부서·연락처 (엑셀 원본 그대로 적재)
     # region_name_raw 는 가공하지 않은 엑셀 '지자체' 값 그대로 보존한다("진주시(중복)" 포함).
     # 매칭은 address_utils.match_authority_contact() 가 이 원본을 정규화해서 수행한다.
