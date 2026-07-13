@@ -344,8 +344,22 @@
 .dg-table tbody tr:hover{ background:var(--brass-tint); }
 .dg-empty{ text-align:center; color:var(--ink-soft); padding:32px 0 !important; }
 .dg-col-actions{ white-space:nowrap; width:1%; }
-.dg-icon-btn{ padding:5px 10px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:12px; cursor:pointer; color:var(--ink); }
+.dg-icon-btn{ padding:5px 10px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:12px; cursor:pointer; color:var(--ink); margin-right:6px; }
+.dg-icon-btn:last-child{ margin-right:0; }
 .dg-icon-btn:hover{ border-color:var(--brass); color:var(--brass); }
+.dg-icon-btn.dg-approve{ border-color:var(--brass); color:#fff; background:var(--brass); font-weight:700; }
+.dg-icon-btn.dg-approve:hover{ background:var(--brass-dark); border-color:var(--brass-dark); }
+.dg-icon-btn.dg-reject{ border-color:#D9534F; color:#D9534F; }
+.dg-icon-btn.dg-reject:hover{ background:#D9534F; color:#fff; }
+.dg-filter{ max-width:150px; }
+/* 상태 뱃지 */
+.dg-badge{ display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; white-space:nowrap; }
+.dg-badge-wait{ background:#FFF4E0; color:#9A6B12; }
+.dg-badge-ok{ background:#E4F5EA; color:#1E7C43; }
+.dg-badge-no{ background:#FBE7E7; color:#B5322E; }
+/* 위험(반려 등) 버튼 */
+.admin-btn-danger{ background:#D9534F; border-color:#D9534F; color:#fff; font-weight:700; }
+.admin-btn-danger:hover{ background:#C0392B; border-color:#C0392B; color:#fff; }
 .dg-del:hover{ border-color:var(--brick); color:var(--brick); }
 .dg-pager{ display:flex; align-items:center; justify-content:center; gap:14px; margin-top:16px; }
 .dg-pageinfo{ color:var(--ink-soft); font-size:13px; }

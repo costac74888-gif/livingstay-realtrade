@@ -44,12 +44,18 @@ class DataGrid {
   constructor(config) {
     this.cfg = Object.assign(
       {
-        idField: "id", pageSize: 50, title: "", allowAdd: true, allowDelete: true,
+        idField: "id", pageSize: 50, title: "", allowAdd: true, allowEdit: true, allowDelete: true,
         searchPlaceholder: "건물명·주소 검색", entityLabel: "건물",
+        filters: [], rowActions: [],
       },
       config
     );
-    this.state = { q: "", sort: "id", order: "asc", page: 1 };
+    // 관리 열은 수정/삭제/커스텀 액션 중 하나라도 있을 때만 그린다.
+    this.hasActions = !!(this.cfg.allowEdit || this.cfg.allowDelete || (this.cfg.rowActions && this.cfg.rowActions.length));
+    this.state = { q: "", sort: "id", order: "asc", page: 1, filters: {} };
+    (this.cfg.filters || []).forEach((f) => {
+      this.state.filters[f.key] = f.default != null ? f.default : "";
+    });
     this.total = 0;
     this.items = [];
     this._build();
@@ -83,6 +89,10 @@ class DataGrid {
       <div class="dg-toolbar">
         <input class="admin-input dg-search" type="search" placeholder="${dgEscape(c.searchPlaceholder)}" />
         <button class="admin-btn dg-search-btn">검색</button>
+        ${(c.filters || []).map((f) => `
+          <select class="admin-input dg-filter" data-filter="${dgEscape(f.key)}">
+            ${(f.options || []).map((o) => `<option value="${dgEscape(o.value)}" ${String(this.state.filters[f.key]) === String(o.value) ? "selected" : ""}>${dgEscape(o.label)}</option>`).join("")}
+          </select>`).join("")}
         <span class="dg-count"></span>
       </div>
       <div class="dg-table-wrap">
@@ -112,6 +122,13 @@ class DataGrid {
         this.reload();
       }
     });
+    el.querySelectorAll(".dg-filter").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        this.state.filters[sel.getAttribute("data-filter")] = sel.value;
+        this.state.page = 1;
+        this.reload();
+      });
+    });
     const addBtn = el.querySelector(".dg-add");
     if (addBtn) addBtn.addEventListener("click", () => this.openForm(null));
     if (c.exportUrl) {
@@ -128,7 +145,7 @@ class DataGrid {
       if (this.state.sort === col.key) arrow = this.state.order === "asc" ? " ▲" : " ▼";
       return `<th class="dg-sortable" data-key="${dgEscape(col.key)}">${dgEscape(col.label)}${arrow}</th>`;
     });
-    ths.push(`<th class="dg-col-actions">관리</th>`);
+    if (this.hasActions) ths.push(`<th class="dg-col-actions">관리</th>`);
     this.$headRow.innerHTML = ths.join("");
     this.$headRow.querySelectorAll(".dg-sortable").forEach((th) => {
       th.addEventListener("click", () => {
@@ -153,6 +170,9 @@ class DataGrid {
       order: s.order,
       page: s.page,
       size: this.cfg.pageSize,
+    });
+    Object.keys(s.filters).forEach((k) => {
+      if (s.filters[k] !== "" && s.filters[k] != null) params.set(k, s.filters[k]);
     });
     let res;
     try {
@@ -179,7 +199,7 @@ class DataGrid {
   }
 
   _bodyMessage(text) {
-    const span = this.tableColumns().length + 1;
+    const span = this.tableColumns().length + (this.hasActions ? 1 : 0);
     this.$body.innerHTML = `<tr><td class="dg-empty" colspan="${span}">${dgEscape(text)}</td></tr>`;
   }
 
@@ -200,15 +220,20 @@ class DataGrid {
         return `<td>${cell}</td>`;
       });
       const id = row[this.cfg.idField];
-      const delBtn = this.cfg.allowDelete
-        ? `<button class="dg-icon-btn dg-del" data-id="${dgEscape(id)}">삭제</button>`
-        : "";
-      tds.push(
-        `<td class="dg-col-actions">
-           <button class="dg-icon-btn dg-edit" data-id="${dgEscape(id)}">수정</button>
-           ${delBtn}
-         </td>`
-      );
+      if (this.hasActions) {
+        const editBtn = this.cfg.allowEdit
+          ? `<button class="dg-icon-btn dg-edit" data-id="${dgEscape(id)}">수정</button>`
+          : "";
+        const delBtn = this.cfg.allowDelete
+          ? `<button class="dg-icon-btn dg-del" data-id="${dgEscape(id)}">삭제</button>`
+          : "";
+        // 커스텀 액션(예: 승인/반려) — hidden(row)이 true면 그 행에선 숨긴다.
+        const acts = (this.cfg.rowActions || [])
+          .map((a, i) => (typeof a.hidden === "function" && a.hidden(row)) ? "" :
+            `<button class="dg-icon-btn ${dgEscape(a.className || "")}" data-act="${i}" data-id="${dgEscape(id)}">${dgEscape(a.label)}</button>`)
+          .join("");
+        tds.push(`<td class="dg-col-actions">${editBtn}${acts}${delBtn}</td>`);
+      }
       return `<tr>${tds.join("")}</tr>`;
     });
     this.$body.innerHTML = rows.join("");
@@ -221,6 +246,14 @@ class DataGrid {
     });
     this.$body.querySelectorAll(".dg-del").forEach((b) => {
       b.addEventListener("click", () => this.remove(b.getAttribute("data-id")));
+    });
+    this.$body.querySelectorAll("[data-act]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const id = b.getAttribute("data-id");
+        const row = this.items.find((r) => String(r[this.cfg.idField]) === String(id));
+        const action = this.cfg.rowActions[Number(b.getAttribute("data-act"))];
+        if (action && typeof action.onClick === "function") action.onClick(row, this);
+      });
     });
   }
 
@@ -243,6 +276,9 @@ class DataGrid {
       q: this.state.q,
       sort: this.state.sort,
       order: this.state.order,
+    });
+    Object.keys(this.state.filters).forEach((k) => {
+      if (this.state.filters[k] !== "" && this.state.filters[k] != null) params.set(k, this.state.filters[k]);
     });
     window.location.href = this.cfg.exportUrl + "?" + params.toString();
   }
@@ -357,4 +393,51 @@ class DataGrid {
       window.alert("네트워크 오류가 발생했습니다.");
     }
   }
+}
+
+/*
+ * dgPromptModal — 사유 입력 등 짧은 텍스트를 받는 재사용 모달.
+ * 확인 시 입력값(문자열)을, 취소/닫기 시 null을 resolve한다.
+ * required가 true면 빈 값으로 확인을 못 누른다.
+ */
+function dgPromptModal(opts) {
+  const o = Object.assign(
+    { title: "입력", label: "내용", placeholder: "", required: true, submitLabel: "확인", submitClass: "admin-btn-primary" },
+    opts || {}
+  );
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "admin-modal-overlay";
+    overlay.innerHTML = `
+      <div class="admin-modal" role="dialog" aria-modal="true">
+        <div class="admin-modal-head">
+          <h3>${dgEscape(o.title)}</h3>
+          <button class="admin-modal-close" aria-label="닫기">×</button>
+        </div>
+        <form class="admin-modal-body">
+          <label class="admin-form-row">
+            <span class="admin-form-label">${dgEscape(o.label)}${o.required ? ' <em class="req">*</em>' : ""}</span>
+            <textarea class="admin-input dg-prompt-input" rows="3" placeholder="${dgEscape(o.placeholder)}"></textarea>
+          </label>
+        </form>
+        <div class="admin-modal-msg" role="alert"></div>
+        <div class="admin-modal-foot">
+          <button class="admin-btn admin-modal-cancel" type="button">취소</button>
+          <button class="admin-btn ${dgEscape(o.submitClass)} admin-modal-ok" type="button">${dgEscape(o.submitLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector(".dg-prompt-input");
+    const msgBox = overlay.querySelector(".admin-modal-msg");
+    input.focus();
+    const done = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector(".admin-modal-close").addEventListener("click", () => done(null));
+    overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => done(null));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) done(null); });
+    overlay.querySelector(".admin-modal-ok").addEventListener("click", () => {
+      const v = input.value.trim();
+      if (o.required && !v) { msgBox.textContent = `${o.label}은(는) 필수입니다.`; return; }
+      done(v);
+    });
+  });
 }

@@ -1518,6 +1518,257 @@ def admin_transactions_export():
     return resp
 
 
+# ---- 신청 승인 큐 (applications, 모두 require_admin) ----
+# C/D 화면에서 들어온 중개사/운영업체 신청을 관리자가 승인/반려한다.
+# 데이터 정확성 관련: 승인 시 agents/operators로 실제 INSERT되므로 중복 검사 후에만 상태를 바꾼다.
+ADMIN_APP_SORT = {"id": "id", "created_at": "submitted_at", "submitted_at": "submitted_at"}
+
+
+def _admin_app_filters():
+    """신청 목록/엑셀 공용: sort_expr, order, WHERE절, 파라미터.
+    상태 기본값은 submitted(대기중), status=all이면 전체. applicant_type로 유형 필터.
+    검색어는 업체명/대표자/이메일 부분일치."""
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "id").strip()
+    sort_expr = ADMIN_APP_SORT.get(sort_key, "id")
+    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    conds, params = [], []
+    status = (request.args.get("status") or "submitted").strip()
+    if status and status != "all":
+        conds.append("status = %s")
+        params.append(status)
+    atype = (request.args.get("applicant_type") or "all").strip()
+    if atype in ("agent", "operator"):
+        conds.append("applicant_type = %s")
+        params.append(atype)
+    if q:
+        conds.append("(office_or_company_name ILIKE %s OR owner_name ILIKE %s OR email ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    where = " AND ".join(conds) if conds else "1=1"
+    return sort_expr, order, where, params
+
+
+@app.route("/api/admin/applications")
+@require_admin
+def admin_applications_list():
+    sort_expr, order, where_sql, params = _admin_app_filters()
+    page, size, offset = _admin_paging()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM applications WHERE {where_sql}", params)
+    total = cur.fetchone()["c"]
+    cur.execute(f"""
+        SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
+               category, phone, email, preferred_region, status, reject_reason,
+               to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
+        FROM applications
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, id ASC
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/applications/<int:app_id>/approve", methods=["POST"])
+@require_admin
+def admin_applications_approve(app_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM applications WHERE id=%s", [app_id])
+    ap = cur.fetchone()
+    if not ap:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+    if ap["status"] != "submitted":
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "이미 처리된 신청입니다."}), 400
+
+    atype = ap["applicant_type"]
+    try:
+        if atype == "agent":
+            # 등록번호(reg_number) 중복이면 승인 불가 — applications 상태는 그대로 둔다.
+            cur.execute("SELECT id FROM agents WHERE reg_number=%s", [ap["reg_number"]])
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "이미 등록된 중개사무소입니다."}), 400
+            cur.execute("""
+                INSERT INTO agents
+                    (office_name, owner_name, reg_number, biz_reg_number,
+                     phone, email, status, subdomain_slug, approved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'approved', NULL, NOW())
+                RETURNING id
+            """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
+                  ap["biz_reg_number"], ap["phone"], ap["email"]])
+            created_id = cur.fetchone()["id"]
+            cur.execute(
+                "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_agent_id=%s WHERE id=%s",
+                [created_id, app_id],
+            )
+        elif atype == "operator":
+            # 운영업체는 이메일 기준 중복 검사. category는 NOT NULL이라 값이 없으면 승인 불가.
+            if not (ap["category"] or "").strip():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "업종 정보가 없어 승인할 수 없습니다."}), 400
+            cur.execute("SELECT id FROM operators WHERE email=%s", [ap["email"]])
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "이미 등록된 운영업체입니다."}), 400
+            cur.execute("""
+                INSERT INTO operators
+                    (company_name, owner_name, category, biz_reg_number,
+                     phone, email, website_url, status, approved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', NOW())
+                RETURNING id
+            """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
+                  ap["biz_reg_number"], ap["phone"], ap["email"], ap["website_url"]])
+            created_id = cur.fetchone()["id"]
+            cur.execute(
+                "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_operator_id=%s WHERE id=%s",
+                [created_id, app_id],
+            )
+        else:
+            cur.close()
+            conn.close()
+            return jsonify({"ok": False, "message": "알 수 없는 신청 유형입니다."}), 400
+    except Exception:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "승인 처리 중 오류가 발생했습니다."}), 400
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "created_id": created_id})
+
+
+@app.route("/api/admin/applications/<int:app_id>/reject", methods=["POST"])
+@require_admin
+def admin_applications_reject(app_id):
+    data = request.get_json(force=True, silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"ok": False, "message": "반려 사유(reason)는 필수입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT status FROM applications WHERE id=%s", [app_id])
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+    if row["status"] != "submitted":
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "이미 처리된 신청입니다."}), 400
+    cur.execute(
+        "UPDATE applications SET status='rejected', reject_reason=%s, reviewed_at=NOW() WHERE id=%s",
+        [reason, app_id],
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/applications/export.xlsx")
+@require_admin
+def admin_applications_export():
+    sort_expr, order, where_sql, params = _admin_app_filters()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
+               category, phone, email, preferred_region, status, reject_reason,
+               to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
+        FROM applications
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, id ASC
+    """, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    type_kr = {"agent": "중개사", "operator": "지원업체"}
+    status_kr = {"submitted": "대기중", "approved": "승인됨", "rejected": "반려됨"}
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "신청"
+    ws.append(["ID", "신청유형", "이름/업체명", "대표자", "등록번호", "업종",
+               "연락처", "이메일", "희망지역", "상태", "반려사유", "신청일"])
+    for r in rows:
+        ws.append([
+            r["id"], type_kr.get(r["applicant_type"], r["applicant_type"]),
+            r["office_or_company_name"], r["owner_name"], r["reg_number"],
+            r["category"], r["phone"], r["email"], r["preferred_region"],
+            status_kr.get(r["status"], r["status"]), r["reject_reason"], r["submitted_at"],
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp.headers["Content-Disposition"] = "attachment; filename=applications.xlsx"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+# ---- 수정요청 이력 (building_requests, 읽기 전용) ----
+# submit_building()에서 건축물대장 재검증으로 이미 자동 승인/거절되므로 관리자 액션은 없다.
+# 모니터링용으로 이력만 정렬/검색해서 보여준다.
+ADMIN_BREQ_SORT = {
+    "id": "id", "created_at": "created_at", "processed_at": "processed_at", "status": "status",
+}
+
+
+def _admin_breq_filters():
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "id").strip()
+    sort_expr = ADMIN_BREQ_SORT.get(sort_key, "id")
+    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    where, params = "1=1", []
+    if q:
+        where = "(road_address ILIKE %s OR building_name_hint ILIKE %s)"
+        params = [f"%{q}%", f"%{q}%"]
+    return sort_expr, order, where, params
+
+
+@app.route("/api/admin/building-requests")
+@require_admin
+def admin_building_requests_list():
+    sort_expr, order, where_sql, params = _admin_breq_filters()
+    page, size, offset = _admin_paging()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM building_requests WHERE {where_sql}", params)
+    total = cur.fetchone()["c"]
+    cur.execute(f"""
+        SELECT id, request_type, road_address, building_name_hint, status,
+               reject_reason, verified_lodging_type,
+               to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
+               to_char(processed_at, 'YYYY-MM-DD HH24:MI') AS processed_at
+        FROM building_requests
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, id ASC
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
 @app.route("/api/health")
 def health():
     conn = get_conn()

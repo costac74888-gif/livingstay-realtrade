@@ -16,11 +16,11 @@
       </div>
       <nav class="admin-menu">
         <button class="admin-menu-item is-active" data-menu="buildings">건물마스터</button>
-        <button class="admin-menu-item is-disabled" disabled>신청승인 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item" data-menu="applications">신청승인</button>
         <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
-        <button class="admin-menu-item is-disabled" disabled>수정요청 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item" data-menu="requests">수정요청 이력</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>통계대시보드 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
@@ -88,6 +88,106 @@
           { key: "area", label: "면적(㎡)", editable: true, type: "number" },
           { key: "status", label: "상태", sortable: true, editable: true, type: "select", options: ["active", "completed", "hidden"] },
           { key: "created_at", label: "등록일", sortable: true },
+        ],
+      },
+      // 신청승인: C/D에서 들어온 중개사/운영업체 신청 큐. 승인 시 agents/operators로 INSERT.
+      // 추가/수정/삭제 없음 — 대기중 행에서만 "승인"/"반려" 커스텀 액션.
+      applications: {
+        endpoint: "/api/admin/applications",
+        exportUrl: "/api/admin/applications/export.xlsx",
+        title: "신청 승인",
+        entityLabel: "신청",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        searchPlaceholder: "업체명·대표자·이메일 검색",
+        filters: [
+          { key: "status", default: "submitted", options: [
+            { value: "submitted", label: "대기중" },
+            { value: "approved", label: "승인됨" },
+            { value: "rejected", label: "반려됨" },
+            { value: "all", label: "전체 상태" },
+          ] },
+          { key: "applicant_type", default: "all", options: [
+            { value: "all", label: "전체 유형" },
+            { value: "agent", label: "중개사" },
+            { value: "operator", label: "지원업체" },
+          ] },
+        ],
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "applicant_type", label: "신청유형", render: (v) => v === "agent" ? "중개사" : (v === "operator" ? "지원업체" : dgEscape(v)) },
+          { key: "office_or_company_name", label: "이름/업체명" },
+          { key: "owner_name", label: "대표자" },
+          { key: "phone", label: "연락처" },
+          { key: "email", label: "이메일" },
+          { key: "preferred_region", label: "희망지역" },
+          { key: "submitted_at", label: "신청일", sortable: true },
+          { key: "status", label: "상태", render: (v) => {
+            const m = { submitted: ["대기중", "wait"], approved: ["승인됨", "ok"], rejected: ["반려됨", "no"] };
+            const x = m[v] || [v, ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+        ],
+        rowActions: [
+          {
+            label: "승인", className: "dg-approve",
+            hidden: (row) => row.status !== "submitted",
+            onClick: async (row, grid) => {
+              const name = row.office_or_company_name || "";
+              if (!window.confirm(`'${name}' 신청을 승인할까요? 승인하면 정식 등록됩니다.`)) return;
+              try {
+                const res = await fetch(`${grid.cfg.endpoint}/${row.id}/approve`, { method: "POST" });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) { grid.reload(); return; }
+                window.alert(data.message || "승인에 실패했습니다.");
+              } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+          {
+            label: "반려", className: "dg-reject",
+            hidden: (row) => row.status !== "submitted",
+            onClick: async (row, grid) => {
+              const reason = await dgPromptModal({
+                title: "신청 반려", label: "반려 사유",
+                placeholder: "반려 사유를 입력하세요", submitLabel: "반려", submitClass: "admin-btn-danger",
+              });
+              if (reason == null) return;
+              try {
+                const res = await fetch(`${grid.cfg.endpoint}/${row.id}/reject`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ reason }),
+                });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) { grid.reload(); return; }
+                window.alert(data.message || "반려에 실패했습니다.");
+              } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+        ],
+      },
+      // 수정요청 이력: submit_building()에서 건축물대장 재검증으로 자동 처리됨 → 읽기 전용 모니터링.
+      requests: {
+        endpoint: "/api/admin/building-requests",
+        title: "수정요청 이력",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        searchPlaceholder: "주소·건물명 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "request_type", label: "요청유형", render: (v) => v === "new" ? "신규 등록" : (v === "correction" ? "정정 요청" : dgEscape(v)) },
+          { key: "road_address", label: "주소" },
+          { key: "building_name_hint", label: "건물명" },
+          { key: "status", label: "상태", sortable: true, render: (v) => {
+            const m = { pending: ["대기중", "wait"], verified: ["확인됨", "ok"], rejected: ["거절됨", "no"] };
+            const x = m[v] || [v, ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+          { key: "reject_reason", label: "거절사유" },
+          { key: "processed_at", label: "처리일시", sortable: true },
         ],
       },
       // 실거래: 공공데이터 원본 — 삭제 없음, 이상치 정정만. 수정 시 사유(reason) 필수 → admin_edit_log 기록.
