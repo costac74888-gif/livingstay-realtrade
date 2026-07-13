@@ -30,6 +30,7 @@ function toggleFav(item){
   localStorage.setItem(FAV_KEY, JSON.stringify(favs));
   updateFavCountLabel();
   renderFavChips();
+  if (typeof loadSideFavorites === "function") loadSideFavorites();
   if (clearedActiveFilter){ document.getElementById("chkFavOnly").checked = false; loadBoard(); }
   return true;
 }
@@ -39,6 +40,7 @@ function removeFav(key){
   if (state.favKey === key){ state.favKey = null; state.favOnly = false; }
   updateFavCountLabel();
   renderFavChips();
+  if (typeof loadSideFavorites === "function") loadSideFavorites();
   loadBoard();
 }
 function updateFavCountLabel(){
@@ -519,3 +521,127 @@ document.getElementById("btnSubmitCorrection").addEventListener("click", async (
     resultBox.textContent = "요청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
   }
 });
+
+/* ================= 좌측 사이드 패널 (지도/검색/게시판과 독립) ================= */
+let sideTrendChart = null;
+
+async function loadTrendChart(){
+  const canvas = document.getElementById("trendChart");
+  if (!canvas || typeof Chart === "undefined") return;
+  let items = [];
+  try {
+    const res = await fetch("/api/monthly-trend");
+    const data = await res.json();
+    items = data.items || [];
+  } catch(e){ console.error("[SIDE] 추세 로드 실패:", e); return; }
+
+  const labels = items.map(i => i.ym.slice(2).replace("-", "/")); // 25/08
+  const counts = items.map(i => i.count);
+  const sums = items.map(i => Math.round((i.sum_price || 0) / 10000)); // 만원 → 억원
+
+  sideTrendChart = new Chart(canvas, {
+    data: {
+      labels,
+      datasets: [
+        { type:"bar", label:"거래건수", data:counts, yAxisID:"y",
+          backgroundColor:"#B4863F", borderRadius:3, order:2 },
+        { type:"line", label:"거래금액(억)", data:sums, yAxisID:"y1",
+          borderColor:"#378ADD", backgroundColor:"#378ADD", borderWidth:2,
+          pointRadius:2, tension:.3, order:1 },
+      ],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:"index", intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label:(c)=> c.dataset.type === "line"
+          ? ` 거래금액 ${c.parsed.y.toLocaleString('ko-KR')}억`
+          : ` 거래건수 ${c.parsed.y.toLocaleString('ko-KR')}건` } },
+      },
+      scales:{
+        x:{ grid:{ display:false }, ticks:{ font:{ size:9 } } },
+        y:{ position:"left", beginAtZero:true, ticks:{ font:{ size:9 }, precision:0 }, grid:{ color:"#EEF1F3" } },
+        y1:{ position:"right", beginAtZero:true, ticks:{ font:{ size:9 } }, grid:{ display:false } },
+      },
+    },
+  });
+}
+
+function renderSideTx(t, rank){
+  const name = escapeHtml(t.building_name || "(건물명 미확인)");
+  const price = Number(t.price || 0).toLocaleString('ko-KR');
+  const region = escapeHtml([t.sgg_nm, t.umd_nm].filter(Boolean).join(" "));
+  const metaRight = t.deal_date ? ` · ${escapeHtml(t.deal_date)}` : "";
+  const rankHtml = rank ? `<span class="st-rank">${rank}</span>` : "";
+  return `<div class="side-tx">
+    <div class="st-left">
+      <div class="st-name">${rankHtml}${name}</div>
+      <div class="st-meta">${region}${metaRight}</div>
+    </div>
+    <div class="st-price">${price}<span style="font-size:10px;">만</span></div>
+  </div>`;
+}
+
+async function loadSideTx(size){
+  const box = document.getElementById("sideTxList");
+  const moreBtn = document.getElementById("btnMoreTx");
+  if (!box) return;
+  box.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
+  let items = [];
+  try {
+    const res = await fetch(`/api/transactions?size=${size}&page=1`);
+    const data = await res.json();
+    items = data.items || [];
+  } catch(e){
+    box.innerHTML = `<div class="side-empty">불러오기 오류</div>`;
+    return;
+  }
+  if (!items.length){
+    box.innerHTML = `<div class="side-empty">실거래 내역이 없습니다.</div>`;
+    if (moreBtn) moreBtn.style.display = "none";
+    return;
+  }
+  box.innerHTML = items.map(t => renderSideTx(t)).join("");
+  if (moreBtn) moreBtn.style.display = (size <= 5) ? "block" : "none";
+}
+
+async function loadSideFavorites(){
+  const box = document.getElementById("sideFavList");
+  if (!box) return;
+  const favKeys = (typeof getFavorites === "function" ? getFavorites() : [])
+    .slice().reverse().slice(0, 5); // 최근 저장 우선, 최대 5개
+  if (!favKeys.length){
+    box.innerHTML = `<div class="side-empty">저장된 관심물건이 없습니다.<br>목록에서 ☆를 눌러 추가하세요.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
+  let items = [];
+  try {
+    const res = await fetch(`/api/favorites?keys=${encodeURIComponent(favKeys.join(","))}`);
+    const data = await res.json();
+    items = data.items || [];
+  } catch(e){
+    box.innerHTML = `<div class="side-empty">불러오기 오류</div>`;
+    return;
+  }
+  // 저장 순서(최근 우선)를 유지하려고 favKeys 순서대로 재정렬한다.
+  // /api/favorites는 deal_date DESC 정렬 → 관심키별 첫 항목(최신 거래)을 유지한다.
+  const byKey = {};
+  items.forEach(t => {
+    const key = `${t.building_name}|${t.address}`;
+    if (!(key in byKey)) byKey[key] = t;
+  });
+  const ordered = favKeys.map(k => byKey[k]).filter(Boolean);
+  if (!ordered.length){
+    box.innerHTML = `<div class="side-empty">관심물건 정보를 찾을 수 없습니다.</div>`;
+    return;
+  }
+  box.innerHTML = ordered.map((t, i) => renderSideTx(t, i + 1)).join("");
+}
+
+document.getElementById("btnMoreTx")?.addEventListener("click", () => loadSideTx(20));
+
+loadTrendChart();
+loadSideTx(5);
+loadSideFavorites();

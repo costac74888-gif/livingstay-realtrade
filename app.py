@@ -167,6 +167,51 @@ def get_buildings_geo():
     return jsonify({"total": len(rows), "items": rows})
 
 
+@app.route("/api/monthly-trend")
+def get_monthly_trend():
+    """
+    최근 12개월 월별 실거래 집계 (좌측 패널 '실거래추세' 콤보차트용).
+    - count     : 월별 거래건수 (막대)
+    - sum_price : 월별 거래금액 합계, 만원 단위 (선)
+    데이터가 없는 달은 0으로 채워 항상 12개 버킷을 반환한다.
+    """
+    now = datetime.now()
+    # 이번 달부터 11개월 전까지 12개 버킷(YYYY-MM) 생성
+    months = []
+    y, m = now.year, now.month
+    for _ in range(12):
+        months.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()  # 과거 → 최근 순
+    start_ym = months[0]
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT substring(deal_date, 1, 7) AS ym,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(price), 0) AS sum_price
+        FROM transactions
+        WHERE deal_date IS NOT NULL
+          AND substring(deal_date, 1, 7) >= %s
+        GROUP BY ym
+    """, [start_ym])
+    agg = {r["ym"]: {"cnt": r["cnt"], "sum_price": int(r["sum_price"] or 0)} for r in cur.fetchall()}
+    cur.close()
+    conn.close()
+
+    items = [{
+        "ym": ym,
+        "count": agg.get(ym, {}).get("cnt", 0),
+        "sum_price": agg.get(ym, {}).get("sum_price", 0),
+    } for ym in months]
+
+    return jsonify({"items": items})
+
+
 @app.route("/api/regions")
 def get_regions():
     """시도 > 시군구 > 읍면동 계층 트리 (계층 검색 드롭다운용)"""
