@@ -479,6 +479,14 @@ async function initMap(){
     level: MAP_DEFAULT_LEVEL,
   });
 
+  // 풀스크린 레이아웃 대응 — 컨테이너 크기가 폰트 로드/헤더 높이 반영/창 크기변경으로
+  // 바뀌면 지도 타일이 회색으로 남으므로 렌더를 다시 맞춘다.
+  // (relayout은 렌더 갱신일 뿐 — 마커·검색·API 로직에는 영향 없음)
+  const relayoutMap = () => { if (kakaoMap) kakaoMap.relayout(); };
+  window.addEventListener("resize", relayoutMap);
+  window.addEventListener("load", () => setTimeout(relayoutMap, 120));
+  setTimeout(relayoutMap, 300);
+
   // 최초 로드 — 전체 건물, 기본 시야 유지(bounds 강제 안 함)
   await loadMapMarkers({}, { fit: false });
 }

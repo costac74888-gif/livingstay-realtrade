@@ -11,6 +11,9 @@
     --brick-tint:#FBEBE9;
     --radius:10px;
     --shadow: 0 1px 2px rgba(22,32,46,.05), 0 4px 14px rgba(22,32,46,.06);
+    --header-h:63px;
+    --stage-gap:12px;
+    --panel-w:300px;
   }
   *{box-sizing:border-box;}
   body{
@@ -162,11 +165,55 @@
     .m-only{display:inline;}
   }
 
-  /* ===== 좌측 사이드 패널 (지도 좌측) ===== */
-  .map-layout{max-width:1240px; margin:18px auto 0; padding:0 20px; display:flex; gap:16px; align-items:flex-start;}
-  .side-panel{flex:0 0 280px; width:280px; display:flex; flex-direction:column; gap:12px;}
-  .map-wrap{flex:1 1 auto; min-width:0;}
-  .side-card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:13px 14px; box-shadow:0 2px 10px rgba(0,0,0,.04);}
+  /* ===== 지도 풀스크린 + 플로팅 오버레이 ===== */
+  .map-stage{
+    position:relative; width:100%;
+    height:calc(100vh - var(--header-h));
+    height:calc(100dvh - var(--header-h));
+    overflow:hidden; background:#E9EDF0;
+  }
+  #map{position:absolute; inset:0; width:100%; height:100%;}
+  #mapEmpty{z-index:5;}
+
+  /* 상단 검색바 (지도 위 떠 있음) */
+  .map-searchbar{
+    position:absolute; top:var(--stage-gap);
+    left:calc(var(--panel-w) + var(--stage-gap) * 2);
+    right:var(--stage-gap); z-index:15;
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 4px 18px rgba(22,32,46,.14); padding:12px 14px;
+  }
+  .map-searchbar .search-row2{margin-top:10px; padding-top:10px;}
+
+  /* 좌측 플로팅 패널 (흰색 카드, 세로 스크롤) */
+  .side-panel{
+    position:absolute; top:var(--stage-gap); left:var(--stage-gap);
+    bottom:var(--stage-gap); width:var(--panel-w); z-index:20;
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    box-shadow:0 6px 24px rgba(22,32,46,.16);
+    overflow-y:auto; display:flex; flex-direction:column;
+  }
+  .side-card{
+    background:transparent; border:none; box-shadow:none; border-radius:0;
+    padding:14px 16px; border-bottom:1px solid var(--line);
+  }
+  .side-card:last-child{border-bottom:none;}
+
+  /* 범례 (우측 하단 떠 있음) */
+  .map-legend{
+    position:absolute; bottom:var(--stage-gap); right:var(--stage-gap); z-index:15;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    box-shadow:0 2px 10px rgba(22,32,46,.12); padding:8px 12px;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    font-size:12px; color:var(--ink-soft); max-width:calc(100% - 24px);
+  }
+  .map-legend .map-legend-title{font-weight:700; color:var(--ink); font-size:12.5px;}
+  .map-legend #mapCount{font-weight:500; color:var(--ink-soft);}
+  .map-legend .lg{display:inline-flex; align-items:center; gap:5px;}
+  .map-legend .lg i{width:11px; height:11px; border-radius:50%; display:inline-block;}
+
+  /* 모바일 전용 패널 토글 버튼 (데스크톱 숨김) */
+  .panel-toggle{display:none;}
   .side-card-title{font-size:13px; font-weight:700; color:var(--ink); margin-bottom:10px; display:flex; align-items:baseline; gap:6px;}
   .side-sub{font-size:10.5px; font-weight:500; color:var(--ink-soft);}
   .side-chart-wrap{position:relative; height:150px;}
@@ -188,7 +235,20 @@
   .side-soon-desc{font-size:10.5px; font-weight:400; color:#9AA5B1; margin-top:5px;}
 
   @media (max-width: 980px){
-    .map-layout{flex-direction:column;}
-    .map-wrap{width:100%; order:1;}
-    .side-panel{width:100%; flex-basis:auto; order:2;}
+    /* 검색바: 전체 폭으로 */
+    .map-searchbar{left:var(--stage-gap);}
+    /* 좌측 패널: 기본 접힘, 버튼 눌러야 펼쳐짐 */
+    .side-panel{
+      width:88%; max-width:340px; z-index:25;
+      bottom:calc(var(--stage-gap) + 56px);
+      transform:translateX(-115%); transition:transform .25s ease;
+    }
+    .side-panel.open{transform:translateX(0);}
+    .panel-toggle{
+      display:inline-flex; align-items:center; gap:6px;
+      position:absolute; left:var(--stage-gap); bottom:var(--stage-gap); z-index:30;
+      background:var(--ink); color:#fff; border:none; border-radius:999px;
+      padding:11px 18px; font-size:13px; font-weight:600; cursor:pointer;
+      box-shadow:0 4px 14px rgba(0,0,0,.28);
+    }
   }

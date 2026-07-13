@@ -33,7 +33,57 @@
   <div class="header-right" id="healthStatus"></div>
 </header>
 
-<div class="map-layout">
+<div class="map-stage">
+  <div id="map"></div>
+  <div id="mapEmpty" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; background:rgba(255,255,255,.85); font-size:14px; color:var(--ink-soft); font-weight:600; text-align:center; padding:0 16px;">검색 결과가 없습니다</div>
+
+  <!-- 지도 위 상단 검색바 -->
+  <div class="map-searchbar">
+    <div class="search-grid">
+      <div class="field">
+        <label>시/도</label>
+        <select id="selSiDo"><option value="">전체</option></select>
+      </div>
+      <div class="field">
+        <label>시/군/구</label>
+        <select id="selSggNm"><option value="">전체</option></select>
+      </div>
+      <div class="field">
+        <label>읍/면/동</label>
+        <select id="selUmdNm"><option value="">전체</option></select>
+      </div>
+      <div class="field">
+        <label>건물명 / 주소 검색</label>
+        <input type="text" id="inputQ" placeholder="예) 오션마크레지던스" />
+      </div>
+      <div class="field">
+        <label>용도</label>
+        <select id="selLodgingType">
+          <option value="" selected>전체(생숙+호텔+콘도+복합)</option>
+          <option value="생활">생숙</option>
+          <option value="호텔">호텔</option>
+          <option value="콘도">콘도</option>
+          <option value="복합">복합(예: 호텔·콘도)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>검색기간</label>
+        <select id="selYear"></select>
+      </div>
+      <button class="btn-search" id="btnSearch">검색</button>
+    </div>
+    <div class="search-row2">
+      <label><input type="checkbox" id="chkFavOnly"> 관심단지만 보기</label>
+      <span id="favCountLabel"></span>
+      <div id="favChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      <button id="btnOpenSubmit" style="margin-left:auto; background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 수정 요청</button>
+    </div>
+  </div>
+
+  <!-- 모바일 전용: 좌측 패널 토글 버튼 -->
+  <button class="panel-toggle" id="btnTogglePanel">☰ 목록</button>
+
+  <!-- 지도 위 좌측 플로팅 패널 -->
   <aside class="side-panel">
 
     <section class="side-card">
@@ -78,65 +128,12 @@
 
   </aside>
 
-  <div class="map-wrap">
-    <div class="panel-card" style="background:#fff; border-radius:14px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,.05);">
-      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-        <h2 style="margin:0; font-size:16px; color:var(--ink);">전국 숙박시설 지도 <span id="mapCount" style="font-size:13px; color:var(--ink-soft); font-weight:500;"></span></h2>
-        <div style="display:flex; gap:14px; font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap;">
-          <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#378ADD; display:inline-block;"></i>생활숙박시설</span>
-          <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#7F77DD; display:inline-block;"></i>분양형호텔</span>
-          <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#639922; display:inline-block;"></i>콘도</span>
-        </div>
-      </div>
-      <div style="position:relative;">
-        <div id="map" style="width:100%; height:500px; border-radius:10px; overflow:hidden;"></div>
-        <div id="mapEmpty" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; background:rgba(255,255,255,.85); border-radius:10px; font-size:14px; color:var(--ink-soft); font-weight:600; text-align:center; padding:0 16px;">검색 결과가 없습니다</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="search-panel">
-  <div class="panel-card">
-    <div class="search-grid">
-      <div class="field">
-        <label>시/도</label>
-        <select id="selSiDo"><option value="">전체</option></select>
-      </div>
-      <div class="field">
-        <label>시/군/구</label>
-        <select id="selSggNm"><option value="">전체</option></select>
-      </div>
-      <div class="field">
-        <label>읍/면/동</label>
-        <select id="selUmdNm"><option value="">전체</option></select>
-      </div>
-      <div class="field">
-        <label>건물명 / 주소 검색</label>
-        <input type="text" id="inputQ" placeholder="예) 오션마크레지던스" />
-      </div>
-      <div class="field">
-        <label>용도</label>
-        <select id="selLodgingType">
-          <option value="" selected>전체(생숙+호텔+콘도+복합)</option>
-          <option value="생활">생숙</option>
-          <option value="호텔">호텔</option>
-          <option value="콘도">콘도</option>
-          <option value="복합">복합(예: 호텔·콘도)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>검색기간</label>
-        <select id="selYear"></select>
-      </div>
-      <button class="btn-search" id="btnSearch">검색</button>
-    </div>
-    <div class="search-row2">
-      <label><input type="checkbox" id="chkFavOnly"> 관심단지만 보기</label>
-      <span id="favCountLabel"></span>
-      <div id="favChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
-      <button id="btnOpenSubmit" style="margin-left:auto; background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 수정 요청</button>
-    </div>
+  <!-- 지도 위 우측 하단 범례 -->
+  <div class="map-legend">
+    <span class="map-legend-title">전국 숙박시설 지도 <span id="mapCount"></span></span>
+    <span class="lg"><i style="background:#378ADD;"></i>생활숙박시설</span>
+    <span class="lg"><i style="background:#7F77DD;"></i>분양형호텔</span>
+    <span class="lg"><i style="background:#639922;"></i>콘도</span>
   </div>
 </div>
 
@@ -221,6 +218,29 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* 레이아웃 전용 스크립트 — 지도/검색/API 로직과 무관.
+   1) 헤더 실제 높이를 재서 지도(map-stage) 높이 계산에 반영
+   2) 모바일에서 좌측 패널 접기/펼치기 토글 */
+(function(){
+  function setHeaderH(){
+    var h = document.querySelector("header");
+    if (h) document.documentElement.style.setProperty("--header-h", h.offsetHeight + "px");
+  }
+  setHeaderH();
+  window.addEventListener("resize", setHeaderH);
+  window.addEventListener("load", setHeaderH);
+
+  var btn = document.getElementById("btnTogglePanel");
+  var panel = document.querySelector(".side-panel");
+  if (btn && panel){
+    btn.addEventListener("click", function(){
+      var open = panel.classList.toggle("open");
+      btn.textContent = open ? "✕ 닫기" : "☰ 목록";
+    });
+  }
+})();
+</script>
 <script src="/static/js/main.js"></script>
 
 </body>
