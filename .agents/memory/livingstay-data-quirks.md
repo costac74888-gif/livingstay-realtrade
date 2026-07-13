@@ -13,14 +13,19 @@ Facts you can only discover by querying Postgres, not by reading code.
   **Why:** the two tables were populated from different sources; any feature that
   filters BOTH the map and the board by region must bridge this shape mismatch.
   **How to apply:** to filter the map by the board's region params →
-  `si_do` = `sgg_text LIKE 'si_do%'` (prefix), `sgg_nm` = `sgg_text LIKE '%sgg_nm%'`,
-  `umd_nm` = `REPLACE(umd_nm,' ','') ILIKE '%...%'`.
+  `sgg_nm` = `sgg_text LIKE '%sgg_nm%'`, `umd_nm` = `REPLACE(umd_nm,' ','') ILIKE '%...%'`,
+  and for `si_do` use the suffix-stripped core-name equality below (NOT a prefix).
 
-- **`transactions.si_do` is dirty: both `"서울"` AND `"서울특별시"` exist** as
-  distinct values (region dropdown from /api/regions therefore shows both).
-  Prefix-matching `sgg_text LIKE '서울%'` absorbs both on the map, but the board
-  uses exact `si_do =`, so map vs board counts under 서울 can differ slightly.
-  **Why:** upstream RTMS data inconsistency, not a bug in our code.
+- **`si_do` notation varies on BOTH sides, so prefix matching silently drops rows.**
+  `transactions.si_do` has both `"서울"` (10) and `"서울특별시"` (623);
+  `master_buildings.sgg_text` has both `"서울 강남구"` (2) and `"서울특별시 …"` (38).
+  A `LIKE '서울특별시%'` filter (the common dropdown pick) MISSES the 2 `"서울 강남구"`
+  buildings. **Fix (in use):** strip the admin suffix from both sides and compare
+  cores for equality — `re.sub(r"(특별자치도|특별자치시|특별시|광역시|도|시)$","",si_do)`
+  vs `regexp_replace(split_part(sgg_text,' ',1),'(…same…)$','')`. Both "서울" and
+  "서울특별시" then resolve to core "서울" → all 40 Seoul buildings.
+  **Why:** upstream RTMS data inconsistency; longest-suffix-first order avoids
+  wrongly stripping "시"/"도" from names like "서울특별시".
 
 - **`umd_nm` spacing differs between the two tables**: transactions store
   `"손양면 동호리"` (space) while master stores `"손양면동호리"` (no space).
