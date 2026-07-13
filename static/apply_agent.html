@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>중개사 회원신청 — 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 중개사 회원신청. 숙박시설·호텔·콘도 전문 중개사무소 회원 모집." />
+<link rel="icon" href="/static/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/" title="홈으로" style="text-decoration:none;">
+    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
+    <div class="brand-text">
+      <div class="name">홈앤스테이</div>
+    </div>
+  </a>
+  <div class="page-title">중개사 회원신청</div>
+</header>
+
+<div class="search-panel" style="max-width:640px; padding-bottom:40px;">
+
+  <div style="margin:16px 0 6px;">
+    <a href="/" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+  </div>
+
+  <div class="panel-card">
+    <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 6px;">중개사 회원신청</h1>
+    <p style="font-size:13px; color:var(--ink-soft); margin:0 0 16px;">숙박시설·호텔·콘도 전문 중개사무소 회원을 모집합니다. 아래 정보를 입력해주세요.</p>
+
+    <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
+      <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">📎 서류 제출 안내</div>
+      <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">자격증·중개사무소등록증·사업자등록증 사본은 제출 후 담당자 안내에 따라 이메일로 별도 첨부해주세요.</div>
+    </div>
+
+    <form id="applyForm" autocomplete="off">
+      <div class="field" style="margin-bottom:14px;">
+        <label>중개사무소명 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="office_or_company_name" placeholder="예) 홈앤스테이공인중개사사무소" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>대표자 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="owner_name" placeholder="예) 홍길동" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>등록번호 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="reg_number" placeholder="중개사무소 등록번호" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>사업자등록번호</label>
+        <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>연락처 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="phone" placeholder="예) 010-1234-5678" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>이메일 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="email" placeholder="예) agent@example.com" />
+      </div>
+      <div class="field" style="margin-bottom:20px;">
+        <label>희망지역 (선택)</label>
+        <select id="preferred_region">
+          <option value="">선택 안 함</option>
+        </select>
+      </div>
+
+      <div id="formError" style="display:none; font-size:13px; color:var(--brick); background:var(--brick-tint); border:1px solid #F0CFCB; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
+
+      <button type="submit" class="btn-search" id="submitBtn" style="width:100%; padding:12px;">신청하기</button>
+    </form>
+
+    <div id="successBox" style="display:none; text-align:center; padding:24px 12px;">
+      <div style="font-size:40px; margin-bottom:12px;">✅</div>
+      <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:8px;">신청이 접수되었습니다.</div>
+      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.6;">검토 후 담당자가 연락드리겠습니다.<br>자격증·등록증 사본은 담당자 안내에 따라 이메일로 별도 첨부해주세요.</div>
+      <a href="/" class="side-more" style="display:inline-block; width:auto; margin-top:20px; padding:9px 24px; text-decoration:none;">← 홈으로</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SIDO_LIST = ["서울특별시","부산광역시","대구광역시","인천광역시","광주광역시","대전광역시","울산광역시","세종특별자치시","경기도","강원특별자치도","충청북도","충청남도","전북특별자치도","전라남도","경상북도","경상남도","제주특별자치도"];
+  const regionSel = document.getElementById("preferred_region");
+  SIDO_LIST.forEach(s => {
+    const o = document.createElement("option");
+    o.value = s; o.textContent = s;
+    regionSel.appendChild(o);
+  });
+
+  const form = document.getElementById("applyForm");
+  const errBox = document.getElementById("formError");
+  const submitBtn = document.getElementById("submitBtn");
+
+  function showError(msg){
+    errBox.textContent = msg;
+    errBox.style.display = "block";
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errBox.style.display = "none";
+
+    const payload = {
+      office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
+      owner_name: document.getElementById("owner_name").value.trim(),
+      reg_number: document.getElementById("reg_number").value.trim(),
+      biz_reg_number: document.getElementById("biz_reg_number").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
+      email: document.getElementById("email").value.trim(),
+      preferred_region: document.getElementById("preferred_region").value,
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "접수 중…";
+
+    let data;
+    try {
+      const res = await fetch("/api/apply/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      data = await res.json();
+      if (!res.ok || !data.ok){
+        showError((data && data.message) || "신청 접수에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "신청하기";
+        return;
+      }
+    } catch(err){
+      showError("네트워크 오류로 신청에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "신청하기";
+      return;
+    }
+
+    form.style.display = "none";
+    document.getElementById("successBox").style.display = "block";
+  });
+</script>
+</body>
+</html>
