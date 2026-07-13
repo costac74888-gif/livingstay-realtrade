@@ -421,13 +421,24 @@ function resetMapView(){
   kakaoMap.setCenter(new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng));
 }
 
-// 마커 라벨 텍스트: 최근 실거래가 있으면 '건물명 · N만원', 없으면 건물명만.
-function buildLabelText(b){
-  const name = b.building_name || "(건물명 미확인)";
-  if (b.latest_price != null){
-    return `${name} · ${Number(b.latest_price).toLocaleString('ko-KR')}만원`;
+// 실거래 상세(가격·날짜 / 층·전용면적·거래유형) HTML — 클릭 InfoWindow와
+// 호버 툴팁이 공유하는 단일 렌더러. 내용이 어긋나지 않도록 한 곳에서만 만든다.
+// d: {price, deal_date, floor, area, deal_type}. price가 null/undefined면 '실거래 이력 없음'.
+function dealDetailHtml(d){
+  if (!d || d.price == null){
+    return `<div style="color:#8a94a0;">실거래 이력 없음</div>`;
   }
-  return name;
+  const price = Number(d.price).toLocaleString('ko-KR');
+  const date = escapeHtml(d.deal_date || "");
+  const floor = d.floor ? escapeHtml(String(d.floor)) + "층" : "-";
+  const area = d.area != null ? Number(d.area).toFixed(1) + "㎡" : "-";
+  const dealType = escapeHtml(d.deal_type || "-");
+  return (
+    `<div style="margin-top:2px; line-height:1.7;">` +
+      `<div><b style="color:#B4863F;">${price}만원</b> · ${date}</div>` +
+      `<div>${floor} · 전용 ${area} · ${dealType}</div>` +
+    `</div>`
+  );
 }
 
 // 현재 확대 레벨을 보고 모든 마커 라벨을 표시/숨김 (LABEL_MAX_LEVEL 이하일 때만 표시).
@@ -438,24 +449,15 @@ function updateMarkerLabels(){
   mapLabels.forEach(l => { l.style.display = show ? "block" : "none"; });
 }
 
-// 호버 미리보기 툴팁 내용 — buildings-geo의 latest_price/latest_deal_date로 채우고,
-// 층·면적·거래유형처럼 buildings-geo에 없는 값은 '-'로 표시한다.
-// (호버는 가벼운 미리보기 — 클릭 시 열리는 고정 InfoWindow와 역할이 다르다)
+// 호버 미리보기 툴팁 내용 — buildings-geo의 latest_* 필드로 클릭 InfoWindow와
+// 동일한 렌더러(dealDetailHtml)를 써서 가격·날짜·층·면적·거래유형을 완전하게 채운다.
 function hoverTooltipContent(b){
   const name = escapeHtml(b.building_name || "(건물명 미확인)");
   const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
-  let dealHtml;
-  if (b.latest_price != null){
-    const price = Number(b.latest_price).toLocaleString('ko-KR');
-    const date = escapeHtml(b.latest_deal_date || "");
-    dealHtml =
-      `<div style="margin-top:2px; line-height:1.6;">` +
-        `<div><b style="color:#B4863F;">${price}만원</b> · ${date}</div>` +
-        `<div>- · 전용 - · -</div>` +
-      `</div>`;
-  } else {
-    dealHtml = `<div style="color:#8a94a0;">실거래 이력 없음</div>`;
-  }
+  const dealHtml = dealDetailHtml({
+    price: b.latest_price, deal_date: b.latest_deal_date,
+    floor: b.latest_floor, area: b.latest_area, deal_type: b.latest_deal_type,
+  });
   return (
     `<div style="padding:8px 10px; min-width:150px; max-width:230px; font-size:12px;` +
     ` color:#16202E; font-family:'Noto Sans KR',sans-serif; background:#fff;` +
@@ -471,10 +473,12 @@ function hoverTooltipContent(b){
 function showHoverTooltip(b, pos){
   if (!kakaoMap) return;
   const el = document.createElement("div");
+  // 마커 위쪽으로 충분히 띄워 상시 라벨 칩(점 위 ~45px)을 가리지 않게 한다.
+  el.style.transform = "translateY(-52px)";
   el.innerHTML = hoverTooltipContent(b);
   if (!hoverTooltip){
     hoverTooltip = new kakao.maps.CustomOverlay({
-      position: pos, content: el, xAnchor: 0.5, yAnchor: 1.4, clickable: false, zIndex: 9999,
+      position: pos, content: el, xAnchor: 0.5, yAnchor: 1, clickable: false, zIndex: 9999,
     });
   } else {
     hoverTooltip.setContent(el);
@@ -523,18 +527,29 @@ async function loadMapMarkers(filters = {}, opts = {}){
       `border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer;`;
     el.title = b.building_name || "";
 
-    // 점 위에 '건물명(+최근 실거래가)' 라벨을 절대배치로 얹는다.
+    // 점 위에 '건물명 + 실거래가' 칩 라벨을 절대배치로 얹는다.
     // 래퍼는 점과 동일한 14x14라 앵커(0.5/0.5)가 그대로 유지되어 점 위치는 안 바뀐다.
     const wrap = document.createElement("div");
     wrap.style.cssText = "position:relative; width:14px; height:14px;";
+
+    // 칩 라벨 — 배경은 마커 점과 같은 색, 글자는 흰색(대비용 그림자 포함).
     const label = document.createElement("div");
-    label.textContent = buildLabelText(b);
     label.style.cssText =
       "position:absolute; left:50%; bottom:100%; transform:translate(-50%,-6px);" +
-      "white-space:nowrap; background:rgba(255,255,255,.96); color:#16202E;" +
-      "font-size:11px; font-weight:600; line-height:1.2; padding:2px 6px;" +
-      "border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.25); pointer-events:none;" +
-      "font-family:'Noto Sans KR',sans-serif;";
+      `background:${color}; color:#fff;` +
+      "padding:3px 7px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3);" +
+      "white-space:nowrap; text-align:center; line-height:1.25; pointer-events:none;" +
+      "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;";
+    const nameLine = document.createElement("div");
+    nameLine.textContent = b.building_name || "(건물명 미확인)";
+    nameLine.style.cssText = "font-size:11px; font-weight:700;";
+    label.appendChild(nameLine);
+    if (b.latest_price != null){
+      const priceLine = document.createElement("div");
+      priceLine.textContent = Number(b.latest_price).toLocaleString('ko-KR') + "만원";
+      priceLine.style.cssText = "font-size:10.5px; font-weight:600; opacity:.96;";
+      label.appendChild(priceLine);
+    }
     label.style.display = "none"; // 초기 숨김 — 확대 레벨에 따라 updateMarkerLabels가 토글
     wrap.appendChild(el);
     wrap.appendChild(label);
@@ -596,6 +611,7 @@ async function initMap(){
 
 async function openBuildingInfo(b, pos){
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+  hideHoverTooltip(); // 같은 마커에 호버 툴팁 + InfoWindow가 동시에 뜨지 않게 닫는다.
 
   const name = escapeHtml(b.building_name || "(건물명 미확인)");
   const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
@@ -607,15 +623,11 @@ async function openBuildingInfo(b, pos){
     const data = await res.json();
     const t = (data.items || [])[0];
     if (t){
-      const price = Number(t.price || 0).toLocaleString('ko-KR');
-      const area = t.area != null ? Number(t.area).toFixed(1) + "㎡" : "-";
-      const floor = t.floor ? t.floor + "층" : "-";
-      const dealType = escapeHtml(t.deal_type || "-");
-      dealHtml = `
-        <div style="margin-top:2px; line-height:1.7;">
-          <div><b style="color:#B4863F;">${price}만원</b> · ${escapeHtml(t.deal_date || "")}</div>
-          <div>${floor} · 전용 ${area} · ${dealType}</div>
-        </div>`;
+      // 호버 툴팁과 동일한 렌더러로 내용 일치 보장.
+      dealHtml = dealDetailHtml({
+        price: t.price, deal_date: t.deal_date,
+        floor: t.floor, area: t.area, deal_type: t.deal_type,
+      });
     }
   } catch(e){
     dealHtml = `<div style="color:#B3453A;">실거래 조회 오류</div>`;
