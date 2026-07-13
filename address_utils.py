@@ -61,6 +61,31 @@ def normalize_umd_nm(s: str) -> str:
     return "".join((s or "").split())
 
 
+# 시도 표기 편차('서울' vs '서울특별시', '강원도' vs '강원특별자치도' 등)를 흡수하기 위한
+# 공통 규칙. 지도(/api/buildings-geo)와 게시판(/api/transactions)이 반드시 이 한 쌍을
+# 함께 써야 두 API의 지역 매칭이 어긋나지 않는다.
+SIDO_SUFFIX_RE = r"(특별자치도|특별자치시|특별시|광역시|도|시)$"
+
+
+def sido_core(si_do: str) -> str:
+    """시도 이름에서 행정접미사를 떼어낸 '핵심 이름'을 반환한다(예: '서울특별시'→'서울').
+
+    긴 접미사부터 매칭되도록 정규식 순서를 잡아 '서울특별시'에서 '시'만 잘리는 일을 막는다.
+    """
+    return re.sub(SIDO_SUFFIX_RE, "", (si_do or "").strip())
+
+
+def sido_match_clause(column_expr: str) -> str:
+    """주어진 시도 컬럼/식을 코어 이름으로 정규화해 %s 파라미터와 정확 비교하는 SQL 조건.
+
+    파라미터에는 반드시 sido_core(si_do) 결과를 넣어야 한다. 정규식은 코드 상수라
+    인젝션 위험이 없으며, 넘어오는 시도 값은 여전히 %s 로 바인딩된다.
+    예) sido_match_clause("si_do")                       → 게시판(transactions.si_do)
+        sido_match_clause("split_part(sgg_text,' ',1)")  → 지도(master_buildings.sgg_text 첫 토큰)
+    """
+    return f"regexp_replace({column_expr}, '{SIDO_SUFFIX_RE}', '') = %s"
+
+
 class BjdongMap:
     """
     법정동코드 전체자료(code.go.kr) 로 만든 매핑 테이블.

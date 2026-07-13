@@ -16,16 +16,20 @@ Facts you can only discover by querying Postgres, not by reading code.
   `sgg_nm` = `sgg_text LIKE '%sgg_nm%'`, `umd_nm` = `REPLACE(umd_nm,' ','') ILIKE '%...%'`,
   and for `si_do` use the suffix-stripped core-name equality below (NOT a prefix).
 
-- **`si_do` notation varies on BOTH sides, so prefix matching silently drops rows.**
+- **`si_do` notation varies on BOTH sides, so any region filter must normalize.**
   `transactions.si_do` has both `"서울"` (10) and `"서울특별시"` (623);
   `master_buildings.sgg_text` has both `"서울 강남구"` (2) and `"서울특별시 …"` (38).
-  A `LIKE '서울특별시%'` filter (the common dropdown pick) MISSES the 2 `"서울 강남구"`
-  buildings. **Fix (in use):** strip the admin suffix from both sides and compare
-  cores for equality — `re.sub(r"(특별자치도|특별자치시|특별시|광역시|도|시)$","",si_do)`
-  vs `regexp_replace(split_part(sgg_text,' ',1),'(…same…)$','')`. Both "서울" and
-  "서울특별시" then resolve to core "서울" → all 40 Seoul buildings.
-  **Why:** upstream RTMS data inconsistency; longest-suffix-first order avoids
-  wrongly stripping "시"/"도" from names like "서울특별시".
+  A prefix `LIKE '서울특별시%'` filter (the common dropdown pick) MISSES the 2
+  `"서울 강남구"` buildings, and an exact `si_do =` on the board splits Seoul 623/10.
+  **Fix (in use):** ONE shared pair in `address_utils.py` — `sido_core(si_do)`
+  strips the admin suffix, `sido_match_clause(col_expr)` returns the matching SQL
+  (`regexp_replace(col, SIDO_SUFFIX_RE, '') = %s`). BOTH `/api/buildings-geo`
+  (col = `split_part(sgg_text,' ',1)`) and `/api/transactions` (col = `si_do`)
+  call this pair, so "서울"/"서울특별시" both resolve to core "서울".
+  **Why:** upstream RTMS inconsistency; the two endpoints used to diverge (prefix
+  vs exact), so keep them on the shared helper — never re-add per-endpoint si_do
+  logic. Longest-suffix-first order avoids wrongly stripping "시"/"도".
+  **Verified totals:** map 서울=40; board 서울="서울특별시"=633 (=623+10).
 
 - **`umd_nm` spacing differs between the two tables**: transactions store
   `"손양면 동호리"` (space) while master stores `"손양면동호리"` (no space).
