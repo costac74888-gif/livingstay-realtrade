@@ -202,7 +202,14 @@ def get_buildings_geo():
 
     conn = get_conn()
     cur = conn.cursor()
-    # 각 건물의 '가장 최근 실거래가'를 건물명 기준으로 1건만 붙인다.
+    # 각 건물의 '가장 최근 실거래가'를 지번(sgg_cd+umd_nm+jibun) 기준으로 1건만 붙인다.
+    # 건물명 매칭은 마스터에 건물명이 "-"처럼 여러 건물이 공유하는 플레이스홀더로
+    # 채워진 경우, "-"인 실거래 1건이 "-" 이름의 모든 건물에 잘못 붙는 버그가 있어
+    # 지번 튜플 매칭으로 대체한다(sync_batch.py가 transactions에 적재할 때 쓰는
+    # (sgg_cd, 정규화 umd_nm, jibun)과 동일한 키).
+    #   - 지번 3개 컬럼이 모두 있으면 지번으로 정확 매칭.
+    #   - 셋 중 하나라도 NULL이라 지번 매칭이 불가능하면, 예외적으로 건물명으로
+    #     한 번 더 시도하되 "-" 같은 플레이스홀더 이름은 제외한다.
     # N+1 방지를 위해 LEFT JOIN LATERAL로 건물당 최신 1행만 조회하고,
     # 실거래 이력이 없으면 latest_price/latest_deal_date가 NULL로 반환된다.
     cur.execute(f"""
@@ -214,7 +221,17 @@ def get_buildings_geo():
         LEFT JOIN LATERAL (
             SELECT t.price, t.deal_date, t.floor, t.area, t.deal_type
             FROM transactions t
-            WHERE t.building_name = mb.building_name
+            WHERE (
+                    mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
+                    AND t.sgg_cd = mb.sgg_cd
+                    AND t.umd_nm = mb.umd_nm
+                    AND t.jibun  = mb.jibun
+                  )
+               OR (
+                    (mb.sgg_cd IS NULL OR mb.umd_nm IS NULL OR mb.jibun IS NULL)
+                    AND mb.building_name <> '-'
+                    AND t.building_name = mb.building_name
+                  )
             ORDER BY t.deal_date DESC
             LIMIT 1
         ) lt ON TRUE
