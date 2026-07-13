@@ -31,6 +31,21 @@
   </div>
   <div class="page-title">전국숙박시설실거래가조회</div>
   <div class="header-actions">
+    <nav class="header-nav">
+      <div class="hnav-dropdown" id="alertMenu">
+        <button type="button" class="hnav-btn" id="alertMenuBtn" aria-haspopup="true" aria-expanded="false">🔔 <span class="hnav-label">알림설정</span> ▾</button>
+        <div class="hnav-panel" id="alertMenuPanel" role="menu">
+          <div class="hnav-panel-title">알림 설정</div>
+          <div class="hnav-opt">
+            <span>관심건물 실거래 발생 시</span>
+            <span class="hnav-badge">준비중</span>
+          </div>
+          <div class="hnav-note">저장한 관심건물에 새 실거래가 등록되면 알려드립니다. (준비 중인 기능입니다.)</div>
+        </div>
+      </div>
+      <a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>
+      <a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>
+    </nav>
     <div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>
     <div class="header-right" id="healthStatus"></div>
   </div>
@@ -282,6 +297,23 @@
     btn.addEventListener("click", function(){
       var open = panel.classList.toggle("open");
       btn.textContent = open ? "✕ 닫기" : "☰ 목록";
+    });
+  }
+
+  // 알림설정 드롭다운 열고/닫기 (정적 안내 — 실제 알림 로직 없음)
+  var alertMenu = document.getElementById("alertMenu");
+  var alertMenuBtn = document.getElementById("alertMenuBtn");
+  if (alertMenu && alertMenuBtn){
+    alertMenuBtn.addEventListener("click", function(e){
+      e.stopPropagation();
+      var open = alertMenu.classList.toggle("open");
+      alertMenuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", function(e){
+      if (!alertMenu.contains(e.target)){
+        alertMenu.classList.remove("open");
+        alertMenuBtn.setAttribute("aria-expanded", "false");
+      }
     });
   }
 

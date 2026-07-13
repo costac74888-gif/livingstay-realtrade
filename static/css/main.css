@@ -448,6 +448,58 @@
 .auth-btn-ghost{ background:transparent; color:var(--ink-soft); border-color:var(--line); }
 .auth-btn-ghost:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
 
+/* 헤더 네비게이션 (알림설정 / 공지사항 / 마이페이지) */
+.header-nav{ display:flex; align-items:center; gap:6px; }
+.hnav-btn{
+  font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:600;
+  color:var(--ink-soft); background:transparent; border:1px solid transparent;
+  border-radius:8px; padding:7px 10px; cursor:pointer; text-decoration:none;
+  white-space:nowrap; transition:background .15s, color .15s, border-color .15s;
+}
+.hnav-btn:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
+.hnav-dropdown{ position:relative; }
+.hnav-panel{
+  display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:1200;
+  min-width:230px; background:#fff; border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 8px 26px rgba(0,0,0,.14); padding:12px 14px;
+}
+.hnav-dropdown.open .hnav-panel{ display:block; }
+.hnav-panel-title{ font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:10px; }
+.hnav-opt{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  font-size:13px; color:var(--ink); padding:6px 0;
+}
+.hnav-badge{
+  font-size:10.5px; font-weight:700; color:var(--brass-dark);
+  background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:6px; padding:2px 7px;
+}
+.hnav-note{ font-size:11.5px; color:var(--ink-soft); line-height:1.5; margin-top:6px; }
+@media (max-width:720px){
+  .hnav-btn{ padding:6px 7px; font-size:12px; }
+  .hnav-btn .hnav-label{ display:none; }
+}
+
+/* 건물 상세 — 헤더 액션 이모지 버튼 (실거래알림 / 관심저장 / 공유) */
+.b-actions{ display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap; }
+.b-icon-btn{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:'Noto Sans KR',sans-serif; font-size:12px; font-weight:600;
+  color:var(--ink-soft); background:#fff; border:1px solid var(--line);
+  border-radius:8px; padding:6px 11px; cursor:pointer;
+  transition:background .15s, color .15s, border-color .15s;
+}
+.b-icon-btn:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
+.b-icon-btn.on{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
+.b-icon-btn.disabled, .b-icon-btn:disabled{ opacity:.5; cursor:not-allowed; }
+.b-icon-btn.disabled:hover, .b-icon-btn:disabled:hover{ background:#fff; color:var(--ink-soft); border-color:var(--line); }
+
+/* 건물 상세 — 정보/행정운영/금융 표 */
+.b-info-table{ width:100%; font-size:12.5px; border-collapse:collapse; }
+.b-info-table th, .b-info-table td{ padding:6px 8px; }
+.b-info-table thead th{ text-align:left; color:var(--ink-soft); font-weight:600; white-space:nowrap; border-bottom:1px solid var(--line); }
+.b-info-table tbody th{ text-align:left; color:var(--ink-soft); font-weight:600; white-space:nowrap; width:34%; }
+.b-info-table tbody td{ color:var(--ink); font-weight:600; }
+
 .auth-modal-backdrop{
   position:fixed; inset:0; background:rgba(22,32,46,.55); z-index:2000;
   display:flex; align-items:center; justify-content:center; padding:20px;

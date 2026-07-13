@@ -71,3 +71,7 @@ Facts you can only discover by querying Postgres, not by reading code.
 - Rough counts (2026-07): 476 buildings have lat/lng; 서울 prefix ≈ 40,
   강원특별자치도 ≈ 101, 콘도 = 6, 복합 = 12. Useful as a sanity check when
   verifying map filters.
+
+## /api/transactions size 상한 200
+- `/api/transactions`는 요청당 `size = min(size, 200)`으로 상한이 걸려 있다. "더보기"류로 size를 계속 키우는 방식은 200건 초과 건물에서 무한 루프(버튼이 계속 남고 더 안 불러옴)가 된다.
+- **적용:** 건물 상세 실거래목록처럼 누적 표시가 필요하면 200건씩 페이지를 이어 받아 합산 후 slice 하라. 관심단지 전용 조회는 별도 엔드포인트(size 상한 무관)가 이미 존재.

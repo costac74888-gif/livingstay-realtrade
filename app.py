@@ -198,10 +198,28 @@ def get_building(building_id):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT building_name, road_address, lodging_type, lodging_type_detail,
-               units, biz_units, lat, lng
-        FROM master_buildings
-        WHERE id = %s
+        SELECT mb.building_name, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
+               mb.units, mb.biz_units, mb.lat, mb.lng,
+               lt.address AS address
+        FROM master_buildings mb
+        LEFT JOIN LATERAL (
+            SELECT t.address
+            FROM transactions t
+            WHERE (
+                    mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
+                    AND t.sgg_cd = mb.sgg_cd
+                    AND t.umd_nm = mb.umd_nm
+                    AND t.jibun  = mb.jibun
+                  )
+               OR (
+                    (mb.sgg_cd IS NULL OR mb.umd_nm IS NULL OR mb.jibun IS NULL)
+                    AND mb.building_name <> '-'
+                    AND t.building_name = mb.building_name
+                  )
+            ORDER BY (t.building_name = mb.building_name) DESC NULLS LAST, t.deal_date DESC
+            LIMIT 1
+        ) lt ON TRUE
+        WHERE mb.id = %s
     """, [building_id])
     row = cur.fetchone()
     if not row:
@@ -387,10 +405,11 @@ def get_buildings_geo():
                lt.price AS latest_price, lt.deal_date AS latest_deal_date,
                lt.floor AS latest_floor, lt.area AS latest_area,
                lt.deal_type AS latest_deal_type,
-               COALESCE(lt.name_exact, FALSE) AS latest_price_exact
+               COALESCE(lt.name_exact, FALSE) AS latest_price_exact,
+               lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
-            SELECT t.price, t.deal_date, t.floor, t.area, t.deal_type,
+            SELECT t.price, t.deal_date, t.floor, t.area, t.deal_type, t.address,
                    (t.building_name = mb.building_name) AS name_exact
             FROM transactions t
             WHERE (
@@ -754,6 +773,8 @@ def apply_agent():
     biz_reg_number = (data.get("biz_reg_number") or "").strip()
     phone = (data.get("phone") or "").strip()
     email = (data.get("email") or "").strip()
+    # 희망지역 → 희망건물로 변경. 구버전 호환을 위해 preferred_region도 함께 받아둔다.
+    preferred_building = (data.get("preferred_building") or "").strip()
     preferred_region = (data.get("preferred_region") or "").strip()
 
     # 필수값 검증
@@ -780,13 +801,14 @@ def apply_agent():
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
-             biz_reg_number, phone, email, preferred_region, status,
+             biz_reg_number, phone, email, preferred_region, preferred_building, status,
              intro_text, doc_license_url, doc_office_reg_url, doc_biz_reg_url)
-        VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, 'submitted',
+        VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
                 NULL, NULL, NULL, NULL)
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
-          biz_reg_number or None, phone, email, preferred_region or None))
+          biz_reg_number or None, phone, email, preferred_region or None,
+          preferred_building or None))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1017,6 +1039,18 @@ def _serve_static_html(filename):
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/notices")
+def notices_page():
+    """공지사항 페이지 (현재는 정적 안내만)."""
+    return _serve_static_html("notices.html")
+
+
+@app.route("/mypage")
+def mypage_page():
+    """마이페이지 — 로그인 여부는 /api/auth/me로 클라이언트에서 판단한다."""
+    return _serve_static_html("mypage.html")
 
 
 # =====================================================================
@@ -1896,7 +1930,7 @@ def admin_applications_list():
     total = cur.fetchone()["c"]
     cur.execute(f"""
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
-               category, phone, email, preferred_region, status, reject_reason,
+               category, phone, email, preferred_region, preferred_building, status, reject_reason,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
         WHERE {where_sql}
@@ -2024,7 +2058,7 @@ def admin_applications_export():
     cur = conn.cursor()
     cur.execute(f"""
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
-               category, phone, email, preferred_region, status, reject_reason,
+               category, phone, email, preferred_region, preferred_building, status, reject_reason,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
         WHERE {where_sql}
@@ -2041,12 +2075,13 @@ def admin_applications_export():
     ws = wb.active
     ws.title = "신청"
     ws.append(["ID", "신청유형", "이름/업체명", "대표자", "등록번호", "업종",
-               "연락처", "이메일", "희망지역", "상태", "반려사유", "신청일"])
+               "연락처", "이메일", "희망지역", "희망건물", "상태", "반려사유", "신청일"])
     for r in rows:
         ws.append([
             r["id"], type_kr.get(r["applicant_type"], r["applicant_type"]),
             r["office_or_company_name"], r["owner_name"], r["reg_number"],
             r["category"], r["phone"], r["email"], r["preferred_region"],
+            r["preferred_building"],
             status_kr.get(r["status"], r["status"]), r["reject_reason"], r["submitted_at"],
         ])
     buf = io.BytesIO()

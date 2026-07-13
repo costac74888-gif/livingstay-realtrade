@@ -143,16 +143,20 @@
   }
 
   // 카카오 로그인 실패 시 홈으로 ?login_error=1 붙여 돌아옴 → 안내 후 URL 정리
+  // 마이페이지 등에서 ?login=1 로 들어오면 로그인 모달을 자동으로 연다.
   function checkLoginError() {
     try {
       var params = new URLSearchParams(window.location.search);
-      if (params.get("login_error")) {
+      var hadLoginError = !!params.get("login_error");
+      var wantLogin = !!params.get("login");
+      if (hadLoginError || wantLogin) {
         params.delete("login_error");
+        params.delete("login");
         var qs = params.toString();
         var clean = window.location.pathname + (qs ? "?" + qs : "");
         window.history.replaceState({}, "", clean);
         openModal();
-        showError("카카오 로그인에 실패했습니다. 다시 시도해주세요.");
+        if (hadLoginError) showError("카카오 로그인에 실패했습니다. 다시 시도해주세요.");
       }
     } catch (err) { /* URLSearchParams 미지원 등 → 무시 */ }
   }

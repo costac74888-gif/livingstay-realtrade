@@ -47,6 +47,23 @@ function updateFavCountLabel(){
   document.getElementById("favCountLabel").textContent =
     `저장된 관심단지 ${getFavorites().length}/${MAX_FAVORITES}개`;
 }
+
+// 실거래 알림 구독 — 아직 서버 발송 로직은 없고, 브라우저(localStorage)에만 켜짐/꺼짐을
+// 저장해 둔다. 관심저장과 동일한 키(building_name|address)를 써서 나중에 서버 알림과
+// 연결하기 쉽게 한다.
+const ALERT_KEY = "livingstay_alerts";
+function getAlerts(){
+  try { return JSON.parse(localStorage.getItem(ALERT_KEY) || "[]"); } catch(e){ return []; }
+}
+function isAlertOn(key){ return getAlerts().includes(key); }
+function toggleAlert(key){
+  let list = getAlerts();
+  if (list.includes(key)) list = list.filter(x => x !== key);
+  else list = [...list, key];
+  localStorage.setItem(ALERT_KEY, JSON.stringify(list));
+  return list.includes(key);
+}
+
 function escapeHtml(v){
   return String(v ?? "").replace(/[&<>"']/g, c => (
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
@@ -661,7 +678,21 @@ async function openBuildingInfo(b, pos){
   });
 
   const detailLink = (b.id != null)
-    ? `<div style="margin-top:6px;"><a href="/building/${b.id}" onclick="return window.openBuildingDetail(${b.id});" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a></div>`
+    ? `<a href="/building/${b.id}" onclick="return window.openBuildingDetail(${b.id});" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a>`
+    : "";
+
+  // ★ 관심저장 — 좌측 목록과 동일한 favKey(building_name|address)를 써서 어디서 눌러도
+  // 같은 관심단지로 저장/해제된다. 거래이력이 없어 address가 없는 건물은 별을 숨긴다.
+  const canFav = b.address != null && b.address !== "";
+  const favActive = canFav && isFav({ building_name: b.building_name, address: b.address });
+  const favBtn = canFav
+    ? `<button type="button" id="infoFavBtn" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(b.address)}"
+         onclick="return window.toggleFavFromInfo(this);"
+         style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
+         ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
+    : "";
+  const actionRow = (favBtn || detailLink)
+    ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">${favBtn}${detailLink}</div>`
     : "";
 
   const content = `
@@ -669,11 +700,26 @@ async function openBuildingInfo(b, pos){
       <div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name}</div>
       <div style="color:#6b7683; margin-bottom:4px;">${typeKo}</div>
       ${dealHtml}
-      ${detailLink}
+      ${actionRow}
     </div>`;
   currentInfoWindow = new kakao.maps.InfoWindow({ position: pos, content, removable: true });
   currentInfoWindow.open(kakaoMap);
 }
+
+// InfoWindow 내용은 문자열이라 클릭 핸들러를 인라인으로 붙인다. 버튼의 data 속성에서
+// building_name/address를 읽어 좌측 목록과 동일한 toggleFav를 호출하고 별 표시만 갱신한다.
+window.toggleFavFromInfo = function(btn){
+  const item = {
+    building_name: btn.getAttribute("data-name"),
+    address: btn.getAttribute("data-address"),
+  };
+  const ok = toggleFav(item);
+  if (ok === false) return false; // 상한 초과 시 표시 변경 안 함
+  const active = isFav(item);
+  btn.textContent = active ? "★ 관심저장됨" : "☆ 관심저장";
+  btn.style.color = active ? "#B4863F" : "#8a94a0";
+  return false;
+};
 
 // SDK를 autoload=false로 불렀으므로 명시적으로 로드한 뒤 초기화한다.
 // SDK 스크립트 로드가 살짝 늦을 수 있어 잠시 폴링하며 기다린다.
@@ -865,8 +911,10 @@ function initDefaultSidePanel(){
 
 // 건물 상세 전용 상태/차트
 let buildingDetailChart = null;
-const B_TX_SIZE = 10;
-let bTxPage = 1, bTxTotal = 0;
+// 실거래목록은 페이지네이션 대신 "더보기" 방식: 처음 5건 → 누를 때마다 20건씩 더 불러온다.
+const B_TX_INITIAL = 5;
+const B_TX_STEP = 20;
+let bTxShown = B_TX_INITIAL, bTxTotal = 0;
 
 const B_LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
 function detailBadgeLabel(v){
@@ -902,10 +950,8 @@ function buildingPanelSkeleton(){
     <section class="side-card">
       <div class="side-card-title">실거래목록 <span class="side-sub" id="bTxTotalLabel"></span></div>
       <div id="bTxTableWrap" style="overflow-x:auto;"><div class="side-empty">불러오는 중…</div></div>
-      <div id="bTxPager" style="display:none; align-items:center; justify-content:center; gap:10px; margin-top:12px;">
-        <button id="bTxPrev" class="side-more" style="width:auto; padding:6px 12px; margin-top:0;">← 이전</button>
-        <span id="bTxPageInfo" style="font-size:11.5px; color:var(--ink-soft); font-family:'JetBrains Mono',monospace;"></span>
-        <button id="bTxNext" class="side-more" style="width:auto; padding:6px 12px; margin-top:0;">다음 →</button>
+      <div id="bTxMoreWrap" style="display:none; text-align:center; margin-top:12px;">
+        <button id="bTxMore" class="side-more" style="width:auto; padding:7px 18px; margin-top:0;">더보기</button>
       </div>
     </section>
 
@@ -935,7 +981,13 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card">
-      <div class="side-card-title">금융</div>
+      <div class="side-card-title">금융 <span class="side-sub">대출상품</span></div>
+      <div style="overflow-x:auto; margin-bottom:12px;">
+        <table class="b-info-table">
+          <thead><tr><th>금융기관</th><th>최저이율</th><th>취급지역</th><th>바로가기</th></tr></thead>
+          <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
+        </table>
+      </div>
       <div style="text-align:center; padding:14px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">
         <div style="font-size:22px; margin-bottom:6px;">💰</div>
         <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">대출상담사를 찾고 계신가요?</div>
@@ -971,38 +1023,106 @@ async function loadBuildingHeader(id){
   const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
   const bName = b.building_name || "(건물명 미확인)";
 
+  // 주용도1/2 — lodging_type("호텔·콘도")을 분리해 전체 명칭으로 표시. 없으면 "-".
+  const useParts = (b.lodging_type || "").split("·").filter(Boolean);
+  const use1 = useParts[0] ? (LODGING_LABELS[useParts[0]] || useParts[0]) : "-";
+  const use2 = useParts[1] ? (LODGING_LABELS[useParts[1]] || useParts[1]) : "-";
+
+  // 관심저장/실거래알림은 좌측 목록과 동일한 키(building_name|address)를 사용. address가
+  // 없는(=거래이력 없는) 건물은 두 버튼을 비활성화한다.
+  const favItem = { building_name: b.building_name, address: b.address };
+  const favKeyStr = favKey(favItem); // 관심저장과 동일한 키 규칙으로 알림도 저장한다
+  const canFav = b.address != null && b.address !== "";
+
   headerCard.innerHTML = `
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${badge}
     </div>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">${escapeHtml(b.road_address || "주소 미확인")}</div>
-    ${b.lodging_type_detail ? `<div style="font-size:11px; color:var(--ink-soft); margin-bottom:14px;">${escapeHtml(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:14px;"></div>`}
+    ${b.lodging_type_detail ? `<div style="font-size:11px; color:var(--ink-soft); margin-bottom:12px;">${escapeHtml(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:12px;"></div>`}
+    <div class="b-actions">
+      <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">🔔<span class="b-icon-label">실거래알림</span></button>
+      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">⭐<span class="b-icon-label">관심저장</span></button>
+      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
+    </div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
+      ${bStat("주용도1", escapeHtml(use1))}
+      ${bStat("주용도2", escapeHtml(use2))}
+      ${bStat("준공월", "-")}
       ${bStat("총 호실", units)}
       ${bStat("영업신고 호수", bizUnits)}
+      ${bStat("총주차", "-")}
+      ${bStat("층수(지상/지하)", "-")}
     </div>`;
 
-  // [2] 행정 · 숙박업영업신고율 카드
+  // 헤더 액션 버튼 배선 — 관심저장/실거래알림 상태 동기화 + 공유
+  const alertBtn = document.getElementById("bAlertBtn");
+  const favBtn = document.getElementById("bFavBtn");
+  const shareBtn = document.getElementById("bShareBtn");
+  function syncFavBtn(){
+    const on = canFav && isFav(favItem);
+    favBtn.classList.toggle("on", on);
+    favBtn.querySelector(".b-icon-label").textContent = on ? "저장됨" : "관심저장";
+  }
+  function syncAlertBtn(){
+    const on = canFav && isAlertOn(favKeyStr);
+    alertBtn.classList.toggle("on", on);
+    alertBtn.querySelector(".b-icon-label").textContent = on ? "알림켜짐" : "실거래알림";
+  }
+  if (canFav){
+    syncFavBtn(); syncAlertBtn();
+    favBtn.addEventListener("click", () => { const ok = toggleFav(favItem); if (ok !== false) syncFavBtn(); });
+    alertBtn.addEventListener("click", () => { toggleAlert(favKeyStr); syncAlertBtn(); });
+  } else {
+    [favBtn, alertBtn].forEach(btn => {
+      btn.disabled = true;
+      btn.classList.add("disabled");
+      btn.title = "실거래 이력이 있는 건물만 이용할 수 있습니다";
+    });
+  }
+  shareBtn.addEventListener("click", async () => {
+    const url = location.href;
+    const shareData = { title: `${bName} 실거래 · 홈앤스테이`, url };
+    if (navigator.share){
+      try { await navigator.share(shareData); } catch(e){ /* 사용자가 취소 */ }
+    } else if (navigator.clipboard){
+      try { await navigator.clipboard.writeText(url); alert("링크가 복사되었습니다."); }
+      catch(e){ prompt("아래 주소를 복사하세요:", url); }
+    } else {
+      prompt("아래 주소를 복사하세요:", url);
+    }
+  });
+
+  // [2] 행정운영 표 — 숙박업 영업신고 현황을 표로 정리. 담당부처/연락처는 준비중.
   let rateDisplay;
   if (b.biz_units != null && b.units != null && Number(b.units) > 0){
     rateDisplay = Math.round(Number(b.biz_units) / Number(b.units) * 100) + "%";
   } else {
     rateDisplay = "확인 불가";
   }
+  const notReported = (b.units != null && b.biz_units != null)
+    ? Math.max(Number(b.units) - Number(b.biz_units), 0).toLocaleString('ko-KR') + "실"
+    : "-";
   const mailSubject = encodeURIComponent(`영업신고 의뢰 문의 (${bName})`);
   adminCard.innerHTML = `
-    <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
-    <div style="text-align:center; padding:6px 0 12px;">
-      <div style="font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:var(--brass-dark); line-height:1.1;">${rateDisplay}</div>
-      <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">총 호실 ${units} · 영업신고 ${bizUnits}</div>
-    </div>
+    <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
+    <table class="b-info-table" style="margin-bottom:12px;">
+      <tbody>
+        <tr><th>신고율</th><td>${rateDisplay}</td></tr>
+        <tr><th>호실수</th><td>${units}</td></tr>
+        <tr><th>신고</th><td>${bizUnits}</td></tr>
+        <tr><th>미신고</th><td>${notReported}</td></tr>
+        <tr><th>담당부처</th><td style="color:var(--ink-soft);">준비중</td></tr>
+        <tr><th>연락처</th><td style="color:var(--ink-soft);">준비중</td></tr>
+      </tbody>
+    </table>
     <a href="mailto:info@home-and-stay.com?subject=${mailSubject}" class="side-more" style="display:block; text-align:center; text-decoration:none; margin-top:0;">영업신고 의뢰하기</a>`;
 
-  renderBuildingAgent(b.agent);
+  renderBuildingAgent(b.agent, id, bName);
 }
 
-function renderBuildingAgent(agent){
+function renderBuildingAgent(agent, buildingId, buildingName){
   const box = document.getElementById("bAgentBox");
   if (!box) return;
   if (agent){
@@ -1021,7 +1141,7 @@ function renderBuildingAgent(agent){
         <div style="font-size:24px; margin-bottom:6px;">🔎</div>
         <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">이 건물의 전속 중개사를 찾고 있습니다</div>
         <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물을 전담할 중개사무소를 모집합니다.</div>
-        <a href="/apply/agent" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; text-decoration:none;">중개사 회원 신청</a>
+        <a href="/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; text-decoration:none;">이 건물에 전속중개사로 신청하기</a>
       </div>`;
   }
 }
@@ -1076,9 +1196,6 @@ async function loadBuildingTrend(id){
   });
 }
 
-function bTxAddr(t){
-  return [t.si_do, t.sgg_nm, t.umd_nm, t.jibun].filter(Boolean).map(escapeHtml).join(" ");
-}
 function bDealTypeTag(v){
   return v === "직거래"
     ? `<span class="tag brk">직거래</span>`
@@ -1087,53 +1204,57 @@ function bDealTypeTag(v){
 
 async function loadBuildingTx(id){
   const wrap = document.getElementById("bTxTableWrap");
-  const pager = document.getElementById("bTxPager");
+  const moreWrap = document.getElementById("bTxMoreWrap");
   if (!wrap) return;
   wrap.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
-  let data;
+
+  // /api/transactions 는 요청당 size 상한이 200이라, 목표 건수(bTxShown)가 200을 넘으면
+  // 200건씩 여러 페이지를 이어 받아 합친 뒤 앞에서 bTxShown개만 보여준다.
+  let items = [];
+  bTxTotal = 0;
   try {
-    const res = await fetch(`/api/transactions?building_id=${id}&page=${bTxPage}&size=${B_TX_SIZE}`);
-    data = await res.json();
+    const size = Math.min(bTxShown, 200);
+    let page = 1;
+    while (true){
+      const res = await fetch(`/api/transactions?building_id=${id}&page=${page}&size=${size}`);
+      const data = await res.json();
+      bTxTotal = data.total || 0;
+      const batch = data.items || [];
+      items = items.concat(batch);
+      if (items.length >= bTxShown || items.length >= bTxTotal || batch.length < size) break;
+      page++;
+    }
   } catch(e){
     wrap.innerHTML = `<div class="side-empty">실거래 목록을 불러오지 못했습니다.</div>`;
     return;
   }
-  const items = data.items || [];
-  bTxTotal = data.total || 0;
+  items = items.slice(0, bTxShown);
   const totalLabel = document.getElementById("bTxTotalLabel");
   if (totalLabel) totalLabel.textContent = bTxTotal ? `총 ${bTxTotal.toLocaleString('ko-KR')}건` : "";
 
   if (!items.length){
     wrap.innerHTML = `<div class="side-empty">실거래 이력이 없습니다.</div>`;
-    if (pager) pager.style.display = "none";
+    if (moreWrap) moreWrap.style.display = "none";
     return;
   }
 
+  // 건물명·주소는 이미 헤더에 있으므로 목록에서는 생략하고 일자·전용·층·금액·종류만 보여준다.
   const rows = items.map(t => `
     <tr>
-      <td class="col-name">${t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)"}</td>
-      <td class="col-addr">${bTxAddr(t)}</td>
+      <td class="col-date">${escapeHtml(t.deal_date || "-")}</td>
       <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
       <td class="col-num col-floor">${t.floor ? escapeHtml(String(t.floor)) + "층" : "-"}</td>
       <td class="col-price">${t.price != null ? Number(t.price).toLocaleString('ko-KR') : "-"}</td>
-      <td class="col-date">${escapeHtml(t.deal_date || "-")}</td>
       <td class="col-type">${bDealTypeTag(t.deal_type)}</td>
     </tr>`).join("");
 
   wrap.innerHTML = `
     <table class="data-table">
-      <thead><tr><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+      <thead><tr><th>계약일</th><th>전용</th><th>층</th><th>거래금액 (만원)</th><th>거래유형</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 
-  const lastPage = Math.max(Math.ceil(bTxTotal / B_TX_SIZE), 1);
-  const pageInfo = document.getElementById("bTxPageInfo");
-  if (pageInfo) pageInfo.textContent = `${bTxPage} / ${lastPage}`;
-  const prev = document.getElementById("bTxPrev");
-  const next = document.getElementById("bTxNext");
-  if (prev) prev.disabled = (bTxPage <= 1);
-  if (next) next.disabled = (bTxPage >= lastPage);
-  if (pager) pager.style.display = "flex";
+  if (moreWrap) moreWrap.style.display = (items.length < bTxTotal) ? "block" : "none";
 }
 
 // 좌측 패널을 건물 상세로 교체하고 데이터를 채운다.
@@ -1151,14 +1272,12 @@ function renderBuildingPanel(id){
     history.pushState({}, "", "/");
     restoreDefaultPanel();
   });
-  document.getElementById("bTxPrev").addEventListener("click", () => {
-    if (bTxPage > 1){ bTxPage--; loadBuildingTx(id); }
-  });
-  document.getElementById("bTxNext").addEventListener("click", () => {
-    if (bTxPage < Math.ceil(bTxTotal / B_TX_SIZE)){ bTxPage++; loadBuildingTx(id); }
+  document.getElementById("bTxMore").addEventListener("click", () => {
+    bTxShown += B_TX_STEP;
+    loadBuildingTx(id);
   });
 
-  bTxPage = 1;
+  bTxShown = B_TX_INITIAL;
   bTxTotal = 0;
   loadBuildingHeader(id);
   loadBuildingTrend(id);
