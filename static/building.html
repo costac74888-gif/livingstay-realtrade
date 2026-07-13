@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>건물 상세 · HOME &amp; STAY</title>
+  <style>
+    :root { --brass:#B4863F; --ink:#16202E; --muted:#6b7683; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:'Noto Sans KR',sans-serif; color:var(--ink); background:#F7F5F1; }
+    header { background:var(--ink); color:#fff; padding:14px 20px; }
+    header a { color:var(--brass); text-decoration:none; font-size:13px; }
+    header .brand { font-weight:800; letter-spacing:1px; }
+    main { max-width:720px; margin:0 auto; padding:24px 20px; }
+    h1 { font-size:22px; margin:0 0 4px; }
+    .type { color:var(--muted); margin-bottom:20px; }
+    .grid { display:grid; grid-template-columns:140px 1fr; gap:10px 16px; font-size:14px; }
+    .grid dt { color:var(--muted); }
+    .grid dd { margin:0; font-weight:600; }
+    .err { color:#b4403f; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="brand">HOME &amp; STAY</span>
+    &nbsp;·&nbsp;<a href="/">← 지도로 돌아가기</a>
+  </header>
+  <main id="app">
+    <p>불러오는 중…</p>
+  </main>
+
+  <script>
+    const LODGING_KO = { "생활":"생활숙박시설", "호텔":"호텔", "콘도":"콘도미니엄" };
+    function lodgingKo(v){ if(!v) return "-"; if(v.includes("·")) return v.split("·").map(x=>LODGING_KO[x]||x).join("·"); return LODGING_KO[v]||v; }
+    function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+    const id = Number(location.pathname.split("/").pop());
+    const app = document.getElementById("app");
+
+    fetch("/api/building/" + id)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(b => {
+        app.innerHTML = `
+          <h1>${esc(b.building_name || "(건물명 미확인)")}</h1>
+          <div class="type">${esc(lodgingKo(b.lodging_type))}${b.lodging_type_detail ? " · " + esc(b.lodging_type_detail) : ""}</div>
+          <dl class="grid">
+            <dt>도로명주소</dt><dd>${esc(b.road_address || "-")}</dd>
+            <dt>총 호실</dt><dd>${b.units != null ? esc(b.units) + "실" : "-"}</dd>
+            <dt>영업신고 호수</dt><dd>${b.biz_units != null ? esc(b.biz_units) + "실" : "-"}</dd>
+            <dt>좌표</dt><dd>${b.lat != null && b.lng != null ? esc(b.lat) + ", " + esc(b.lng) : "-"}</dd>
+          </dl>`;
+      })
+      .catch(() => { app.innerHTML = '<p class="err">건물 정보를 불러오지 못했습니다.</p>'; });
+  </script>
+</body>
+</html>

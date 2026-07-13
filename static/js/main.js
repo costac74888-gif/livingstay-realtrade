@@ -660,11 +660,16 @@ async function openBuildingInfo(b, pos){
     exact: b.latest_price_exact,
   });
 
+  const detailLink = (b.id != null)
+    ? `<div style="margin-top:6px;"><a href="/building/${b.id}" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a></div>`
+    : "";
+
   const content = `
     <div style="padding:10px 12px; min-width:170px; max-width:240px; font-size:12.5px; color:#16202E; font-family:'Noto Sans KR',sans-serif;">
       <div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name}</div>
       <div style="color:#6b7683; margin-bottom:4px;">${typeKo}</div>
       ${dealHtml}
+      ${detailLink}
     </div>`;
   currentInfoWindow = new kakao.maps.InfoWindow({ position: pos, content, removable: true });
   currentInfoWindow.open(kakaoMap);
