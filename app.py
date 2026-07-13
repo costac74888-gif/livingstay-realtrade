@@ -128,11 +128,30 @@ def get_building(building_id):
         WHERE id = %s
     """, [building_id])
     row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "not found"}), 404
+
+    # 전속중개사: 이 건물의 활성 매물(status='active') 중 agent가 연결된 것을 agents와 JOIN.
+    # 없으면 agent: null. 여러 건이면 최근 갱신 순 1건.
+    cur.execute("""
+        SELECT a.office_name, a.owner_name, a.phone
+        FROM listings l
+        JOIN agents a ON a.id = l.agent_id
+        WHERE l.master_building_id = %s
+          AND l.status = 'active'
+          AND l.agent_id IS NOT NULL
+        ORDER BY l.updated_at DESC NULLS LAST, l.id DESC
+        LIMIT 1
+    """, [building_id])
+    agent_row = cur.fetchone()
     cur.close()
     conn.close()
-    if not row:
-        return jsonify({"error": "not found"}), 404
-    return jsonify(dict(row))
+
+    result = dict(row)
+    result["agent"] = dict(agent_row) if agent_row else None
+    return jsonify(result)
 
 
 @app.route("/api/transactions")
@@ -173,6 +192,29 @@ def get_transactions():
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
+
+    # 선택적 building_id → 해당 건물의 실거래만(get_buildings_geo/get_monthly_trend와 동일 전략).
+    #   - 지번키(sgg_cd+umd_nm+jibun)가 모두 있으면 지번 정확 매칭(동명 건물 오염 방지)
+    #   - 셋 중 하나라도 NULL이면 building_name 폴백('-'/미존재/빈값은 0매칭 처리)
+    #   - 정수가 아니거나 없으면 기존 동작(q/지역/연도 등) 그대로 유지(하위호환)
+    building_id = request.args.get("building_id", "").strip()
+    if building_id.isdigit():
+        mconn = get_conn()
+        mcur = mconn.cursor()
+        mcur.execute("""
+            SELECT building_name, sgg_cd, umd_nm, jibun
+            FROM master_buildings WHERE id = %s
+        """, [int(building_id)])
+        b = mcur.fetchone()
+        mcur.close()
+        mconn.close()
+        if b and b["sgg_cd"] and b["umd_nm"] and b["jibun"]:
+            where.append("sgg_cd = %s AND umd_nm = %s AND jibun = %s")
+            params += [b["sgg_cd"], b["umd_nm"], b["jibun"]]
+        else:
+            name = (b["building_name"] if b else None) or ""
+            where.append("building_name = %s")
+            params.append(name if name and name != "-" else "\x00")
 
     where_sql = " AND ".join(where)
 

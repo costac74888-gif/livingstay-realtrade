@@ -47,6 +47,49 @@
     <div id="trendEmpty" class="side-empty" style="display:none;">최근 12개월 실거래 내역이 없습니다.</div>
   </div>
 
+  <!-- 실거래목록 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div class="side-card-title">실거래목록 <span class="side-sub" id="txTotalLabel"></span></div>
+    <div id="txTableWrap" style="overflow-x:auto;">
+      <div class="side-empty">불러오는 중…</div>
+    </div>
+    <div id="txPager" style="display:none; align-items:center; justify-content:center; gap:14px; margin-top:12px;">
+      <button id="txPrev" class="side-more" style="width:auto; padding:6px 16px; margin-top:0;">← 이전</button>
+      <span id="txPageInfo" style="font-size:12px; color:var(--ink-soft); font-family:'JetBrains Mono',monospace;"></span>
+      <button id="txNext" class="side-more" style="width:auto; padding:6px 16px; margin-top:0;">다음 →</button>
+    </div>
+  </div>
+
+  <!-- 전속중개사 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div class="side-card-title">전속중개사</div>
+    <div id="agentBox"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
+  <!-- 위탁운영·하우스키핑 CTA -->
+  <div class="panel-card" style="margin-top:14px; border-left:4px solid #639922;">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="font-size:26px; line-height:1;">🧹</div>
+      <div style="flex:1; min-width:200px;">
+        <div style="font-size:14px; font-weight:700; color:var(--ink); margin-bottom:3px;">위탁운영·하우스키핑 지원업체를 찾고 있습니다</div>
+        <div style="font-size:12px; color:var(--ink-soft);">이 건물의 운영·객실관리를 맡아줄 파트너를 모집합니다.</div>
+      </div>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;">지원업체로 등록하기</button>
+    </div>
+  </div>
+
+  <!-- 금융 CTA -->
+  <div class="panel-card" style="margin-top:14px; margin-bottom:40px; border-left:4px solid var(--brass);">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="font-size:26px; line-height:1;">💰</div>
+      <div style="flex:1; min-width:200px;">
+        <div style="font-size:14px; font-weight:700; color:var(--ink); margin-bottom:3px;">대출상담사를 찾고 계신가요?</div>
+        <div style="font-size:12px; color:var(--ink-soft);">매입·잔금 대출 상담을 도와드릴 전문가를 연결해 드립니다.</div>
+      </div>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">대출상담 문의하기</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -95,6 +138,31 @@
         ${stat("총 호실", units)}
         ${stat("영업신고 호수", bizUnits)}
       </div>`;
+
+    renderAgent(b.agent);
+  }
+
+  function renderAgent(agent){
+    const box = document.getElementById("agentBox");
+    if (agent){
+      box.innerHTML = `
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <div style="width:44px; height:44px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:20px;">🏢</div>
+          <div style="flex:1; min-width:180px;">
+            <div style="font-size:15px; font-weight:700; color:var(--ink);">${esc(agent.office_name || "-")}</div>
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">대표 ${esc(agent.owner_name || "-")}</div>
+          </div>
+          ${agent.phone ? `<a href="tel:${esc(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:8px 16px; text-decoration:none; text-align:center;">📞 ${esc(agent.phone)}</a>` : ""}
+        </div>`;
+    } else {
+      box.innerHTML = `
+        <div style="text-align:center; padding:18px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">
+          <div style="font-size:26px; margin-bottom:6px;">🔎</div>
+          <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">이 건물의 전속 중개사를 찾고 있습니다</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">이 건물을 전담할 중개사무소를 모집합니다.</div>
+          <button class="side-more" style="width:auto; margin-top:0; padding:8px 18px;">중개사 회원 신청</button>
+        </div>`;
+    }
   }
 
   async function loadTrendChart(){
@@ -147,8 +215,75 @@
     });
   }
 
+  // 실거래목록 (board 테이블과 동일 컬럼/스타일 재사용, 페이지네이션 포함)
+  const TX_SIZE = 10;
+  let txPage = 1, txTotal = 0;
+
+  function txAddr(t){
+    return [t.si_do, t.sgg_nm, t.umd_nm, t.jibun].filter(Boolean).map(esc).join(" ");
+  }
+  function dealTypeTag(v){
+    return v === "직거래"
+      ? `<span class="tag brk">직거래</span>`
+      : `<span class="tag med">중개거래</span>`;
+  }
+
+  async function loadTx(){
+    const wrap = document.getElementById("txTableWrap");
+    const pager = document.getElementById("txPager");
+    wrap.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
+    let data;
+    try {
+      const res = await fetch(`/api/transactions?building_id=${buildingId}&page=${txPage}&size=${TX_SIZE}`);
+      data = await res.json();
+    } catch(e){
+      wrap.innerHTML = `<div class="side-empty">실거래 목록을 불러오지 못했습니다.</div>`;
+      return;
+    }
+    const items = data.items || [];
+    txTotal = data.total || 0;
+    document.getElementById("txTotalLabel").textContent = txTotal ? `총 ${txTotal.toLocaleString('ko-KR')}건` : "";
+
+    if (!items.length){
+      wrap.innerHTML = `<div class="side-empty">실거래 이력이 없습니다.</div>`;
+      pager.style.display = "none";
+      return;
+    }
+
+    const rows = items.map(t => `
+      <tr>
+        <td class="col-name">${t.building_name != null ? esc(t.building_name) : "(건물명 미확인)"}</td>
+        <td class="col-addr">${txAddr(t)}</td>
+        <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
+        <td class="col-num col-floor">${t.floor ? esc(t.floor) + "층" : "-"}</td>
+        <td class="col-price">${t.price != null ? Number(t.price).toLocaleString('ko-KR') : "-"}</td>
+        <td class="col-date">${esc(t.deal_date || "-")}</td>
+        <td class="col-type">${dealTypeTag(t.deal_type)}</td>
+      </tr>`).join("");
+
+    wrap.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    const lastPage = Math.max(Math.ceil(txTotal / TX_SIZE), 1);
+    document.getElementById("txPageInfo").textContent = `${txPage} / ${lastPage}`;
+    document.getElementById("txPrev").disabled = (txPage <= 1);
+    document.getElementById("txNext").disabled = (txPage >= lastPage);
+    pager.style.display = "flex";
+  }
+
+  document.getElementById("txPrev").addEventListener("click", () => {
+    if (txPage > 1){ txPage--; loadTx(); }
+  });
+  document.getElementById("txNext").addEventListener("click", () => {
+    if (txPage < Math.ceil(txTotal / TX_SIZE)){ txPage++; loadTx(); }
+  });
+
   loadBuilding();
   loadTrendChart();
+  loadTx();
 </script>
 </body>
 </html>
