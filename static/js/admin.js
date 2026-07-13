@@ -13,6 +13,10 @@
  *   idField:     행 식별 키 (기본 "id")
  *   title:       화면 제목
  *   pageSize:    페이지당 행수 (기본 50)
+ *   allowAdd:    "+ 추가" 버튼 노출 (기본 true)
+ *   allowDelete: 행별 "삭제" 버튼 노출 (기본 true)
+ *   searchPlaceholder: 검색창 안내문구 (기본 "건물명·주소 검색")
+ *   entityLabel: 모달 제목/삭제확인에 쓰는 대상 이름 (기본 "건물")
  *   columns: [{
  *     key, label,
  *     sortable:  헤더 클릭 정렬 허용
@@ -38,7 +42,13 @@ function dgEscape(v) {
 
 class DataGrid {
   constructor(config) {
-    this.cfg = Object.assign({ idField: "id", pageSize: 50, title: "" }, config);
+    this.cfg = Object.assign(
+      {
+        idField: "id", pageSize: 50, title: "", allowAdd: true, allowDelete: true,
+        searchPlaceholder: "건물명·주소 검색", entityLabel: "건물",
+      },
+      config
+    );
     this.state = { q: "", sort: "id", order: "asc", page: 1 };
     this.total = 0;
     this.items = [];
@@ -67,11 +77,11 @@ class DataGrid {
         <h2 class="dg-title">${dgEscape(c.title)}</h2>
         <div class="dg-actions">
           ${c.exportUrl ? `<button class="admin-btn dg-export">엑셀 다운로드</button>` : ""}
-          <button class="admin-btn admin-btn-primary dg-add">+ 추가</button>
+          ${c.allowAdd ? `<button class="admin-btn admin-btn-primary dg-add">+ 추가</button>` : ""}
         </div>
       </div>
       <div class="dg-toolbar">
-        <input class="admin-input dg-search" type="search" placeholder="건물명·주소 검색" />
+        <input class="admin-input dg-search" type="search" placeholder="${dgEscape(c.searchPlaceholder)}" />
         <button class="admin-btn dg-search-btn">검색</button>
         <span class="dg-count"></span>
       </div>
@@ -102,7 +112,8 @@ class DataGrid {
         this.reload();
       }
     });
-    el.querySelector(".dg-add").addEventListener("click", () => this.openForm(null));
+    const addBtn = el.querySelector(".dg-add");
+    if (addBtn) addBtn.addEventListener("click", () => this.openForm(null));
     if (c.exportUrl) {
       el.querySelector(".dg-export").addEventListener("click", () => this.exportXlsx());
     }
@@ -189,10 +200,13 @@ class DataGrid {
         return `<td>${cell}</td>`;
       });
       const id = row[this.cfg.idField];
+      const delBtn = this.cfg.allowDelete
+        ? `<button class="dg-icon-btn dg-del" data-id="${dgEscape(id)}">삭제</button>`
+        : "";
       tds.push(
         `<td class="dg-col-actions">
            <button class="dg-icon-btn dg-edit" data-id="${dgEscape(id)}">수정</button>
-           <button class="dg-icon-btn dg-del" data-id="${dgEscape(id)}">삭제</button>
+           ${delBtn}
          </td>`
       );
       return `<tr>${tds.join("")}</tr>`;
@@ -267,7 +281,7 @@ class DataGrid {
     overlay.innerHTML = `
       <div class="admin-modal" role="dialog" aria-modal="true">
         <div class="admin-modal-head">
-          <h3>${isEdit ? "건물 수정" : "건물 추가"}</h3>
+          <h3>${dgEscape(this.cfg.entityLabel)} ${isEdit ? "수정" : "추가"}</h3>
           <button class="admin-modal-close" aria-label="닫기">×</button>
         </div>
         <form class="admin-modal-body">${inputs}</form>
@@ -329,7 +343,7 @@ class DataGrid {
   async remove(id) {
     const row = this.items.find((r) => String(r[this.cfg.idField]) === String(id));
     const label = row && row.building_name ? `'${row.building_name}' ` : "";
-    if (!window.confirm(`${label}건물을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`${label}${this.cfg.entityLabel}을(를) 삭제할까요? 되돌릴 수 없습니다.`)) return;
     try {
       const res = await fetch(this.itemUrl(id), { method: "DELETE" });
       if (res.status === 401) { window.location.href = "/admin/login"; return; }

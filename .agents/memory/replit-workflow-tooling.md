@@ -17,3 +17,15 @@ description: Non-obvious behaviors of configureWorkflow/removeWorkflow when stop
   **Why:** matters for any long-running backfill/sync framed as "runs overnight". In the
   workspace it only runs while the repl is awake, and multiple auto-start workflows will contend
   for the same external API on wake.
+
+- ORPHAN PROCESSES accumulate across restarts and are the first thing to suspect when
+  (a) code edits don't take effect / routes randomly 404, or (b) every DB query & HTTP request
+  times out (rc=124). Two flavors seen: `gunicorn --reuse-port` leaves old MASTERS bound to
+  :5000 (kernel load-balances between old+new → stale code served intermittently as 404s); and
+  a sync/backfill workflow can leave DUPLICATE `sync_batch.py` processes running concurrently
+  (2x DB write load → total write contention, reads still OK).
+  **How to apply:** `ps -eo pid,etime,cmd | grep -E "[g]unicorn|[s]ync_batch"`, `kill -9` the
+  extra/older PIDs, then run verification in that clean window. For DB-heavy verification, kill
+  the sync workers FIRST (they're idempotent/resumable), test, then `restart_workflow` them.
+  Prefer Flask `test_client` in a SEPARATE process (needs `PYTHONPATH=/home/runner/workspace`)
+  to sidestep the single busy gunicorn worker entirely.

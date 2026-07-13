@@ -1206,6 +1206,318 @@ def admin_buildings_export():
     return resp
 
 
+# ---- 매물(listings) 관리 (모두 require_admin) ----
+# 정렬 허용 컬럼 화이트리스트 → 실제 SQL 표현식 매핑 (인젝션 방지, 없으면 l.id 폴백)
+ADMIN_LST_SORT = {
+    "id": "l.id", "deal_type": "l.deal_type", "price": "l.price",
+    "status": "l.status", "created_at": "l.created_at",
+}
+# 수정 가능한 컬럼 → 값 형변환 종류
+ADMIN_LST_EDITABLE = {
+    "deal_type": "text", "price": "int", "monthly_rent": "int",
+    "floor": "text", "area": "float", "status": "text",
+}
+
+
+def _parse_float_or_none(v):
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _clean_typed_value(kind, v):
+    """editable 화이트리스트의 종류(int/float/text)에 맞춰 DB 저장형으로 정규화."""
+    if kind == "int":
+        return _parse_int_or_none(v)
+    if kind == "float":
+        return _parse_float_or_none(v)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
+
+
+def _admin_paging():
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        size = min(max(int(request.args.get("size", 50)), 1), 200)
+    except (ValueError, TypeError):
+        size = 50
+    return page, size, (page - 1) * size
+
+
+def _admin_lst_filters():
+    """매물 목록/엑셀 공용: sort_expr, order, WHERE절, 파라미터. 검색은 건물ID로 필터."""
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "id").strip()
+    sort_expr = ADMIN_LST_SORT.get(sort_key, "l.id")
+    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    where = "1=1"
+    params = []
+    if q.isdigit():
+        where = "l.master_building_id = %s"
+        params = [int(q)]
+    return sort_expr, order, where, params
+
+
+@app.route("/api/admin/listings")
+@require_admin
+def admin_listings_list():
+    sort_expr, order, where_sql, params = _admin_lst_filters()
+    page, size, offset = _admin_paging()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM listings l WHERE {where_sql}", params)
+    total = cur.fetchone()["c"]
+    # sort_expr/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
+    cur.execute(f"""
+        SELECT l.id, l.master_building_id, mb.building_name,
+               l.deal_type, l.price, l.monthly_rent, l.floor, l.area, l.status,
+               to_char(l.created_at, 'YYYY-MM-DD') AS created_at
+        FROM listings l
+        LEFT JOIN master_buildings mb ON mb.id = l.master_building_id
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, l.id ASC
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/listings/<int:listing_id>", methods=["PUT"])
+@require_admin
+def admin_listings_update(listing_id):
+    data = request.get_json(force=True, silent=True) or {}
+    sets, vals = [], []
+    for c, kind in ADMIN_LST_EDITABLE.items():
+        if c in data:
+            sets.append(f"{c} = %s")
+            vals.append(_clean_typed_value(kind, data.get(c)))
+    if not sets:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM listings WHERE id=%s", [listing_id])
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 매물입니다."}), 404
+    sets.append("updated_at = NOW()")
+    vals.append(listing_id)
+    cur.execute(f"UPDATE listings SET {', '.join(sets)} WHERE id = %s", vals)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/listings/<int:listing_id>", methods=["DELETE"])
+@require_admin
+def admin_listings_delete(listing_id):
+    # 매물은 다른 테이블이 참조하지 않으므로 참조 무결성 이슈 없이 바로 삭제한다.
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM listings WHERE id=%s RETURNING id", [listing_id])
+    deleted = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not deleted:
+        return jsonify({"ok": False, "message": "존재하지 않는 매물입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/listings/export.xlsx")
+@require_admin
+def admin_listings_export():
+    sort_expr, order, where_sql, params = _admin_lst_filters()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT l.id, l.master_building_id, mb.building_name,
+               l.deal_type, l.price, l.monthly_rent, l.floor, l.area, l.status,
+               to_char(l.created_at, 'YYYY-MM-DD') AS created_at
+        FROM listings l
+        LEFT JOIN master_buildings mb ON mb.id = l.master_building_id
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, l.id ASC
+    """, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "매물"
+    ws.append(["ID", "건물ID", "건물명", "거래유형", "가격(만원)", "월세(만원)",
+               "층", "면적(㎡)", "상태", "등록일"])
+    for r in rows:
+        ws.append([
+            r["id"], r["master_building_id"], r["building_name"], r["deal_type"],
+            r["price"], r["monthly_rent"], r["floor"], r["area"],
+            r["status"], r["created_at"],
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp.headers["Content-Disposition"] = "attachment; filename=listings.xlsx"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+# ---- 실거래(transactions) 관리 (모두 require_admin) ----
+# 실거래는 공공데이터 원본이라 삭제는 만들지 않고, 이상치 정정용 수정만 허용한다.
+# 수정 시 반드시 사유(reason)를 받아 admin_edit_log에 필드 단위로 남긴다.
+ADMIN_TX_SORT = {"id": "id", "deal_date": "deal_date", "price": "price", "area": "area"}
+ADMIN_TX_EDITABLE = {
+    "price": "int", "area": "float", "floor": "text",
+    "deal_type": "text", "deal_date": "text",
+}
+
+
+def _admin_tx_filters():
+    """실거래 목록/엑셀 공용: sort_expr, order, WHERE절, 파라미터. 검색은 건물명·주소."""
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "id").strip()
+    sort_expr = ADMIN_TX_SORT.get(sort_key, "id")
+    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    where = "1=1"
+    params = []
+    if q:
+        where = "(building_name ILIKE %s OR address ILIKE %s)"
+        params = [f"%{q}%", f"%{q}%"]
+    return sort_expr, order, where, params
+
+
+@app.route("/api/admin/transactions")
+@require_admin
+def admin_transactions_list():
+    sort_expr, order, where_sql, params = _admin_tx_filters()
+    page, size, offset = _admin_paging()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM transactions WHERE {where_sql}", params)
+    total = cur.fetchone()["c"]
+    cur.execute(f"""
+        SELECT id, building_name, address, area, floor, price, deal_date, deal_type
+        FROM transactions
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, id ASC
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/transactions/<int:tx_id>", methods=["PUT"])
+@require_admin
+def admin_transactions_update(tx_id):
+    data = request.get_json(force=True, silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"ok": False, "message": "수정 사유(reason)는 필수입니다."}), 400
+    # 계약일은 관리자 오입력 방지를 위해 YYYY-MM-DD 형식만 허용한다(데이터 오염 방지).
+    if "deal_date" in data:
+        dd = (str(data.get("deal_date") or "")).strip()
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dd):
+            return jsonify({"ok": False, "message": "계약일은 YYYY-MM-DD 형식이어야 합니다."}), 400
+    # 수정 요청된 편집 컬럼만 추린다.
+    changes = {}
+    for c, kind in ADMIN_TX_EDITABLE.items():
+        if c in data:
+            changes[c] = _clean_typed_value(kind, data.get(c))
+    if not changes:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT {', '.join(changes.keys())} FROM transactions WHERE id=%s",
+        [tx_id],
+    )
+    old = cur.fetchone()
+    if not old:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 실거래입니다."}), 404
+    # 실제로 값이 달라진 필드만 로그로 남긴다.
+    logged = 0
+    for field, new_val in changes.items():
+        old_val = old[field]
+        if str(old_val) == str(new_val):
+            continue
+        cur.execute(
+            """INSERT INTO admin_edit_log
+               (table_name, record_id, field, old_value, new_value, reason, admin)
+               VALUES (%s, %s, %s, %s, %s, %s, TRUE)""",
+            ["transactions", tx_id, field,
+             None if old_val is None else str(old_val),
+             None if new_val is None else str(new_val),
+             reason],
+        )
+        logged += 1
+    sets = [f"{c} = %s" for c in changes]
+    vals = list(changes.values()) + [tx_id]
+    cur.execute(f"UPDATE transactions SET {', '.join(sets)} WHERE id = %s", vals)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "logged": logged})
+
+
+@app.route("/api/admin/transactions/export.xlsx")
+@require_admin
+def admin_transactions_export():
+    sort_expr, order, where_sql, params = _admin_tx_filters()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT id, building_name, address, area, floor, price, deal_date, deal_type
+        FROM transactions
+        WHERE {where_sql}
+        ORDER BY {sort_expr} {order}, id ASC
+    """, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "실거래"
+    ws.append(["ID", "건물명", "주소", "면적(㎡)", "층", "거래금액(만원)",
+               "계약일", "거래유형"])
+    for r in rows:
+        ws.append([
+            r["id"], r["building_name"], r["address"], r["area"], r["floor"],
+            r["price"], r["deal_date"], r["deal_type"],
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp.headers["Content-Disposition"] = "attachment; filename=transactions.xlsx"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/health")
 def health():
     conn = get_conn()

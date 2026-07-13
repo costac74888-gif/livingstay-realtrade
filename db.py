@@ -307,6 +307,22 @@ def init_db():
     cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE listings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
 
+    # 관리자 수정 감사 로그 — 실거래(공공데이터 원본)처럼 함부로 고치면 안 되는 값을
+    # 정정할 때 old/new 값과 사유(reason)를 필드 단위로 남긴다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_edit_log (
+        id SERIAL PRIMARY KEY,
+        table_name TEXT NOT NULL,        -- 수정 대상 테이블명 (예: transactions)
+        record_id INTEGER NOT NULL,      -- 수정된 행의 id
+        field TEXT NOT NULL,             -- 수정된 컬럼명
+        old_value TEXT,                  -- 수정 전 값 (문자열로 보관)
+        new_value TEXT,                  -- 수정 후 값 (문자열로 보관)
+        reason TEXT NOT NULL,            -- 관리자가 입력한 수정 사유 (필수)
+        admin BOOLEAN DEFAULT TRUE,      -- 관리자 권한으로 수정했는지 여부
+        edited_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS mileage_missions (
         id SERIAL PRIMARY KEY,

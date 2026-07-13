@@ -18,8 +18,8 @@
         <button class="admin-menu-item is-active" data-menu="buildings">건물마스터</button>
         <button class="admin-menu-item is-disabled" disabled>신청승인 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
-        <button class="admin-menu-item is-disabled" disabled>매물관리 <span class="admin-soon">준비 중</span></button>
-        <button class="admin-menu-item is-disabled" disabled>실거래관리 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item" data-menu="listings">매물관리</button>
+        <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
         <button class="admin-menu-item is-disabled" disabled>수정요청 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>통계대시보드 <span class="admin-soon">준비 중</span></button>
@@ -47,29 +47,89 @@
       window.location.href = "/admin/login";
     });
 
-    // 건물마스터 그리드 — 컬럼 정의만 바꾸면 다른 테이블에도 그대로 재사용 가능.
-    new DataGrid({
-      mount: document.getElementById("grid"),
-      endpoint: "/api/admin/buildings",
-      exportUrl: "/api/admin/buildings/export.xlsx",
-      title: "건물마스터",
-      idField: "id",
-      pageSize: 50,
-      columns: [
-        { key: "id", label: "ID", sortable: true },
-        { key: "building_name", label: "건물명", sortable: true, editable: true, required: true },
-        { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
-        { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
-        { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
-        { key: "biz_units", label: "영업신고호수", sortable: true, editable: true, type: "number" },
-        { key: "sgg_text", label: "시군구", editable: true },
-        { key: "umd_nm", label: "읍면동", editable: true },
-        { key: "jibun", label: "지번", editable: true },
-        { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
-        { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
-        { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
-      ],
+    // 메뉴별 그리드 설정 — 같은 DataGrid에 컬럼 정의만 바꿔 그대로 재사용한다.
+    const GRID_CONFIGS = {
+      buildings: {
+        endpoint: "/api/admin/buildings",
+        exportUrl: "/api/admin/buildings/export.xlsx",
+        title: "건물마스터",
+        entityLabel: "건물",
+        searchPlaceholder: "건물명·주소 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명", sortable: true, editable: true, required: true },
+          { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
+          { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
+          { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
+          { key: "biz_units", label: "영업신고호수", sortable: true, editable: true, type: "number" },
+          { key: "sgg_text", label: "시군구", editable: true },
+          { key: "umd_nm", label: "읍면동", editable: true },
+          { key: "jibun", label: "지번", editable: true },
+          { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
+          { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
+          { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
+        ],
+      },
+      // 매물: 신규 추가는 이번엔 생략(C/D 승인 이후 흐름에서 생성) — 수정/삭제/정렬/검색/엑셀만.
+      listings: {
+        endpoint: "/api/admin/listings",
+        exportUrl: "/api/admin/listings/export.xlsx",
+        title: "매물관리",
+        entityLabel: "매물",
+        allowAdd: false,
+        searchPlaceholder: "건물ID로 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명" },
+          { key: "deal_type", label: "거래유형", sortable: true, editable: true, type: "select", options: ["매매", "전세", "월세"] },
+          { key: "price", label: "가격(만원)", sortable: true, editable: true, type: "number" },
+          { key: "monthly_rent", label: "월세(만원)", editable: true, type: "number" },
+          { key: "floor", label: "층", editable: true },
+          { key: "area", label: "면적(㎡)", editable: true, type: "number" },
+          { key: "status", label: "상태", sortable: true, editable: true, type: "select", options: ["active", "completed", "hidden"] },
+          { key: "created_at", label: "등록일", sortable: true },
+        ],
+      },
+      // 실거래: 공공데이터 원본 — 삭제 없음, 이상치 정정만. 수정 시 사유(reason) 필수 → admin_edit_log 기록.
+      transactions: {
+        endpoint: "/api/admin/transactions",
+        exportUrl: "/api/admin/transactions/export.xlsx",
+        title: "실거래관리",
+        entityLabel: "실거래",
+        allowAdd: false,
+        allowDelete: false,
+        searchPlaceholder: "건물명·주소 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명" },
+          { key: "address", label: "주소" },
+          { key: "area", label: "면적(㎡)", sortable: true, editable: true, type: "number" },
+          { key: "floor", label: "층", editable: true },
+          { key: "price", label: "거래금액(만원)", sortable: true, editable: true, type: "number" },
+          { key: "deal_date", label: "계약일", sortable: true, editable: true },
+          { key: "deal_type", label: "거래유형", editable: true },
+          { key: "reason", label: "수정 사유", editable: true, required: true, hideInTable: true },
+        ],
+      },
+    };
+
+    const mount = document.getElementById("grid");
+    let currentGrid = null;
+    function showGrid(menuKey) {
+      const cfg = GRID_CONFIGS[menuKey];
+      if (!cfg) return;
+      currentGrid = new DataGrid(Object.assign({ mount: mount, idField: "id", pageSize: 50 }, cfg));
+    }
+
+    document.querySelectorAll(".admin-menu-item[data-menu]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        showGrid(btn.getAttribute("data-menu"));
+      });
     });
+
+    showGrid("buildings");
   </script>
 </body>
 </html>
