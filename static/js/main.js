@@ -395,6 +395,8 @@ let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(오버레이) 목록
 let mapLabels = [];                   // 마커 옆 '건물명+최근가' 라벨 요소 목록(줌 토글용)
 let hoverTooltip = null;              // 마커 호버용 공용 미리보기 툴팁(오버레이)
+let hoverHideTimer = null;            // 호버 툴팁 지연 숨김 타이머(간격 통과 시 깜빡임 방지)
+let hoverCurrentKey = null;          // 현재 툴팁이 가리키는 마커 키(같은 마커 재진입 시 재생성 방지)
 const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
 const MAP_DEFAULT_CENTER = { lat: 36.35, lng: 127.8 }; // 상단 속초 글자가 잘리지 않도록 소폭 상향
 const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이는 확대 수준
@@ -472,6 +474,13 @@ function hoverTooltipContent(b){
 
 function showHoverTooltip(b, pos){
   if (!kakaoMap) return;
+  // 숨김 예약이 걸려 있으면 취소 — 인접 마커 사이 간격을 지나며 재진입한 경우.
+  if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
+  // 같은 마커에 다시 진입한 것이면 재생성하지 않는다(재생성 시 깜빡임의 원인).
+  const key = pos.getLat() + "," + pos.getLng();
+  if (hoverTooltip && hoverCurrentKey === key && hoverTooltip.getMap()) return;
+  hoverCurrentKey = key;
+
   const el = document.createElement("div");
   // 마커 위쪽으로 충분히 띄워 상시 라벨 칩(점 위 ~45px)을 가리지 않게 한다.
   el.style.transform = "translateY(-52px)";
@@ -490,8 +499,18 @@ function showHoverTooltip(b, pos){
   hoverTooltip.setMap(kakaoMap);
 }
 
-function hideHoverTooltip(){
-  if (hoverTooltip) hoverTooltip.setMap(null);
+// immediate=true면 즉시 숨김(클릭 등). 기본은 짧게 지연해 숨긴다 — 조밀하게 붙은
+// 마커 사이 1~2px 간격을 지날 때 숨김→표시가 반복되며 떨리는 현상을 막는다.
+// 지연 중 다른 마커로 재진입하면 showHoverTooltip에서 타이머를 취소한다.
+function hideHoverTooltip(immediate){
+  if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
+  const doHide = () => {
+    if (hoverTooltip) hoverTooltip.setMap(null);
+    hoverCurrentKey = null;
+    hoverHideTimer = null;
+  };
+  if (immediate === true){ doHide(); return; }
+  hoverHideTimer = setTimeout(doHide, 140);
 }
 
 // filters: {q, si_do, sgg_nm, umd_nm, lodging_type}
@@ -614,7 +633,7 @@ async function initMap(){
 
 async function openBuildingInfo(b, pos){
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-  hideHoverTooltip(); // 같은 마커에 호버 툴팁 + InfoWindow가 동시에 뜨지 않게 닫는다.
+  hideHoverTooltip(true); // 같은 마커에 호버 툴팁 + InfoWindow가 동시에 뜨지 않게 즉시 닫는다.
 
   const name = escapeHtml(b.building_name || "(건물명 미확인)");
   const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
