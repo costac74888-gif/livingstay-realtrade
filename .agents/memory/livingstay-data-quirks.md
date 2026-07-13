@@ -53,6 +53,16 @@ Facts you can only discover by querying Postgres, not by reading code.
   the same latest_* payload). **Why:** jibun is NOT a unique building key here;
   true disambiguation would need 동/호 or a building id we don't have.
 
+- **data.go.kr 숙박업 API (15155124, `apis.data.go.kr/1741000/lodgings/info`) 지역 필터
+  = `cond[OPN_ATMY_GRP_CD::EQ]` (개방자치단체코드).** 코드 단위는 **기초자치단체(시/군/구)**,
+  총 261개 = 시/도전체 `_ALL` 17개 + 개별 244개. 광역시 자치구·군은 각각 별도 코드지만,
+  **도 산하 큰 시의 일반구(행정구)는 시 코드 하나로 통합**(예: 안양시 3830000이 만안/동안 포함,
+  응답 MNG_NO 앞자리로만 구가 갈림). **3830000 = 경기안양시 (평택 아님!); 평택시 = 3910000.**
+  업태 구분 필드 = `BZSTAT_SE_NM`(생활숙박업 값 = `"숙박업(생활)"`) — 요청 필터 없음, client-side.
+  영업상태 = `cond[SALS_STTS_CD::EQ]` (01영업/02휴업/03폐업/04취소·말소/05제외·전출/06기타).
+  참고문서 xlsx 다운로드: `/cmm/cmm/fileDownload.do?atchFileId=<FILE_id>&fileDetailSn=1`
+  (FILE_id는 상세페이지 `fn_fileDownload(...)` 호출에서 추출). serviceKey는 RTMS와 동일 키를 params로 전달.
+
 - Rough counts (2026-07): 476 buildings have lat/lng; 서울 prefix ≈ 40,
   강원특별자치도 ≈ 101, 콘도 = 6, 복합 = 12. Useful as a sanity check when
   verifying map filters.
