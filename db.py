@@ -381,7 +381,8 @@ def init_db():
         provider TEXT DEFAULT 'email',     -- 'email' | 'kakao'
         kakao_id TEXT,                     -- 카카오 회원번호. UNIQUE는 helper에서 부여(NULL 허용)
         created_at TIMESTAMP DEFAULT NOW(),
-        last_login_at TIMESTAMP            -- 마지막 로그인 시각 (로그인 시 갱신)
+        last_login_at TIMESTAMP,           -- 마지막 로그인 시각 (로그인 시 갱신)
+        status TEXT DEFAULT 'active'       -- 'active' | 'withdrawn'(회원탈퇴 소프트삭제)
     )
     """)
     # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
@@ -391,6 +392,7 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS kakao_id TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
 
     # 지자체(시군구)별 생활숙박시설 담당부서·연락처 (엑셀 원본 그대로 적재)
     # region_name_raw 는 가공하지 않은 엑셀 '지자체' 값 그대로 보존한다("진주시(중복)" 포함).

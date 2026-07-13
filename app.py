@@ -1113,7 +1113,7 @@ def current_user():
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, email, name, provider FROM users WHERE id = %s",
+            "SELECT id, email, name, provider FROM users WHERE id = %s AND status <> 'withdrawn'",
             (uid,),
         )
         return cur.fetchone()
@@ -1179,12 +1179,13 @@ def auth_login():
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, password_hash FROM users WHERE LOWER(email) = %s",
+            "SELECT id, password_hash, status FROM users WHERE LOWER(email) = %s",
             (email,),
         )
         row = cur.fetchone()
-        # 카카오 전용 가입자(password_hash NULL)는 이메일 로그인 불가 → 동일 메시지로 통일.
-        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
+        # 카카오 전용 가입자(password_hash NULL)·탈퇴 계정은 이메일 로그인 불가 → 동일 메시지로 통일.
+        if (not row or not row["password_hash"] or row.get("status") == "withdrawn"
+                or not check_password_hash(row["password_hash"], password)):
             return jsonify({"ok": False, "message": fail_msg}), 401
         cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
         conn.commit()
@@ -1218,6 +1219,84 @@ def auth_me():
         "email": u.get("email"),
         "provider": u.get("provider"),
     })
+
+
+@app.route("/api/auth/me", methods=["PUT"])
+@limiter.limit("5 per minute; 20 per hour")
+def auth_update_name():
+    """이름 변경 — 로그인 필요. 이메일/카카오 공통. name만 바꾼다."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "message": "이름을 입력해주세요."}), 400
+    if len(name) > 50:
+        return jsonify({"ok": False, "message": "이름은 50자 이하로 입력해주세요."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET name = %s WHERE id = %s", (name, u["id"]))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "name": name, "email": u.get("email"), "provider": u.get("provider")})
+
+
+@app.route("/api/auth/password", methods=["PUT"])
+@limiter.limit("5 per minute; 20 per hour")
+def auth_change_password():
+    """비밀번호 변경 — 로그인 필요, 이메일 계정만. 현재 비밀번호 확인 후 교체."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if u.get("provider") != "email":
+        return jsonify({"ok": False, "message": "카카오 로그인 계정은 비밀번호 변경이 필요 없습니다."}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    current_pw = data.get("current_password") or ""
+    new_pw = data.get("new_password") or ""
+    if len(new_pw) < 8:
+        return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password_hash FROM users WHERE id = %s", (u["id"],))
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], current_pw):
+            return jsonify({"ok": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 401
+        cur.execute(
+            "UPDATE users SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), u["id"]),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/me", methods=["DELETE"])
+@limiter.limit("5 per minute; 20 per hour")
+def auth_withdraw():
+    """회원탈퇴 — 로그인 필요. 완전삭제 대신 status='withdrawn' 소프트삭제 후 세션 초기화."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET status = 'withdrawn' WHERE id = %s", (u["id"],))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    session.pop("user_id", None)
+    session.pop("kakao_oauth_state", None)
+    return jsonify({"ok": True})
 
 
 # ---- 카카오 소셜 로그인 (OAuth 2.0 Authorization Code) ----
@@ -1316,8 +1395,12 @@ def kakao_callback():
     cur = conn.cursor()
     try:
         # kakao_id 기준 upsert: 있으면 로그인(마지막 로그인 갱신), 없으면 신규 생성.
-        cur.execute("SELECT id FROM users WHERE kakao_id = %s", (kakao_id,))
+        cur.execute("SELECT id, status FROM users WHERE kakao_id = %s", (kakao_id,))
         row = cur.fetchone()
+        if row and row.get("status") == "withdrawn":
+            # 탈퇴한 카카오 계정은 자동 부활시키지 않는다(로그인 차단).
+            conn.rollback()
+            return redirect("/?login_error=1")
         if row:
             uid = row["id"]
             cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (uid,))

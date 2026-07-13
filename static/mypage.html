@@ -46,31 +46,183 @@
 
   var PROVIDER_KR = { email: "이메일", kakao: "카카오" };
 
+  var CURRENT = null;
+
+  function sectionTitle(t){
+    return '<div style="font-size:14px; font-weight:700; color:var(--ink); margin:26px 0 12px;">' + escapeHtml(t) + '</div>';
+  }
+  function fieldLabel(t){
+    return '<label style="display:block; font-size:12.5px; color:var(--ink-soft); margin:0 0 5px;">' + escapeHtml(t) + '</label>';
+  }
+  var INPUT_STYLE = 'width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;';
+  var MSG_STYLE = 'font-size:12.5px; margin-top:8px; min-height:16px;';
+
+  function showMsg(id, text, ok){
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text || "";
+    el.style.color = ok ? "var(--brass-dark)" : "var(--brick)";
+  }
+
   function renderLoggedIn(d){
+    CURRENT = d;
     var name = escapeHtml(d.name || "회원");
     var email = escapeHtml(d.email || "-");
     var provider = PROVIDER_KR[d.provider] || (d.provider || "-");
-    document.getElementById("myBody").innerHTML =
+    var isEmail = (d.provider === "email");
+
+    var html =
       '<div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">' +
         '<div style="width:52px; height:52px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:24px;">👤</div>' +
         '<div>' +
-          '<div style="font-size:17px; font-weight:700; color:var(--ink);">' + name + '</div>' +
+          '<div id="profileName" style="font-size:17px; font-weight:700; color:var(--ink);">' + name + '</div>' +
           '<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(provider) + ' 로그인</div>' +
         '</div>' +
       '</div>' +
       '<div style="border-top:1px solid var(--line); padding-top:16px;">' +
-        '<div style="display:flex; justify-content:space-between; padding:9px 0; font-size:13.5px;">' +
-          '<span style="color:var(--ink-soft);">이름</span><span style="color:var(--ink); font-weight:600;">' + name + '</span>' +
-        '</div>' +
         '<div style="display:flex; justify-content:space-between; padding:9px 0; font-size:13.5px;">' +
           '<span style="color:var(--ink-soft);">이메일</span><span style="color:var(--ink); font-weight:600;">' + email + '</span>' +
         '</div>' +
         '<div style="display:flex; justify-content:space-between; padding:9px 0; font-size:13.5px;">' +
           '<span style="color:var(--ink-soft);">로그인 방식</span><span style="color:var(--ink); font-weight:600;">' + escapeHtml(provider) + '</span>' +
         '</div>' +
-      '</div>' +
-      '<button id="logoutBtn" class="btn-search" style="width:100%; padding:12px; margin-top:22px; background:#fff; color:var(--brick); border:1px solid #F0CFCB;">로그아웃</button>';
+      '</div>';
+
+    // (a) 이름 변경
+    html +=
+      sectionTitle("이름 변경") +
+      fieldLabel("이름") +
+      '<input id="nameInput" type="text" value="' + name + '" maxlength="50" style="' + INPUT_STYLE + '" />' +
+      '<div id="nameMsg" style="' + MSG_STYLE + '"></div>' +
+      '<button id="nameSaveBtn" class="btn-search" style="width:100%; padding:11px; margin-top:6px;">이름 저장</button>';
+
+    // (b) 비밀번호 변경 (이메일 계정만)
+    if (isEmail){
+      html +=
+        sectionTitle("비밀번호 변경") +
+        fieldLabel("현재 비밀번호") +
+        '<input id="curPw" type="password" autocomplete="current-password" style="' + INPUT_STYLE + ' margin-bottom:10px;" />' +
+        fieldLabel("새 비밀번호 (8자 이상)") +
+        '<input id="newPw" type="password" autocomplete="new-password" style="' + INPUT_STYLE + '" />' +
+        '<div id="pwMsg" style="' + MSG_STYLE + '"></div>' +
+        '<button id="pwSaveBtn" class="btn-search" style="width:100%; padding:11px; margin-top:6px;">비밀번호 변경</button>';
+    } else {
+      html +=
+        sectionTitle("비밀번호") +
+        '<div style="font-size:13px; color:var(--ink-soft); background:var(--brass-tint); border-radius:8px; padding:12px 14px;">카카오 계정으로 로그인 중입니다. 비밀번호 변경이 필요 없습니다.</div>';
+    }
+
+    // 로그아웃
+    html +=
+      '<button id="logoutBtn" class="btn-search" style="width:100%; padding:12px; margin-top:26px; background:#fff; color:var(--ink); border:1px solid var(--line);">로그아웃</button>';
+
+    // (c) 회원탈퇴
+    html +=
+      '<div style="border-top:1px solid var(--line); margin-top:26px; padding-top:18px;">' +
+        '<button id="withdrawBtn" style="width:100%; padding:11px; background:transparent; color:var(--brick); border:1px solid #F0CFCB; border-radius:8px; font-size:13.5px; font-family:inherit; cursor:pointer;">회원탈퇴</button>' +
+      '</div>';
+
+    document.getElementById("myBody").innerHTML = html;
+    document.getElementById("nameSaveBtn").addEventListener("click", doSaveName);
     document.getElementById("logoutBtn").addEventListener("click", doLogout);
+    document.getElementById("withdrawBtn").addEventListener("click", openWithdrawModal);
+    if (isEmail) document.getElementById("pwSaveBtn").addEventListener("click", doChangePassword);
+  }
+
+  function doSaveName(){
+    var btn = document.getElementById("nameSaveBtn");
+    var name = (document.getElementById("nameInput").value || "").trim();
+    if (!name){ showMsg("nameMsg", "이름을 입력해주세요.", false); return; }
+    btn.disabled = true;
+    fetch("/api/auth/me", {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name })
+    })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        btn.disabled = false;
+        if (res.ok && res.j.ok){
+          showMsg("nameMsg", "이름이 변경되었습니다.", true);
+          var pn = document.getElementById("profileName");
+          if (pn) pn.textContent = res.j.name;
+        } else {
+          showMsg("nameMsg", (res.j && res.j.message) || "변경에 실패했습니다.", false);
+        }
+      })
+      .catch(function(){ btn.disabled = false; showMsg("nameMsg", "네트워크 오류가 발생했습니다.", false); });
+  }
+
+  function doChangePassword(){
+    var btn = document.getElementById("pwSaveBtn");
+    var cur = document.getElementById("curPw").value || "";
+    var nw = document.getElementById("newPw").value || "";
+    if (nw.length < 8){ showMsg("pwMsg", "새 비밀번호는 8자 이상이어야 합니다.", false); return; }
+    btn.disabled = true;
+    fetch("/api/auth/password", {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: cur, new_password: nw })
+    })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        btn.disabled = false;
+        if (res.ok && res.j.ok){
+          showMsg("pwMsg", "비밀번호가 변경되었습니다.", true);
+          document.getElementById("curPw").value = "";
+          document.getElementById("newPw").value = "";
+        } else {
+          showMsg("pwMsg", (res.j && res.j.message) || "변경에 실패했습니다.", false);
+        }
+      })
+      .catch(function(){ btn.disabled = false; showMsg("pwMsg", "네트워크 오류가 발생했습니다.", false); });
+  }
+
+  function openWithdrawModal(){
+    var overlay = document.createElement("div");
+    overlay.id = "withdrawOverlay";
+    overlay.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px;";
+    overlay.innerHTML =
+      '<div style="background:#fff; border-radius:14px; max-width:360px; width:100%; padding:26px 22px; box-shadow:0 12px 40px rgba(0,0,0,.25);">' +
+        '<div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:10px;">회원탈퇴</div>' +
+        '<div style="font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin-bottom:20px;">정말 탈퇴하시겠습니까?<br>이 작업은 되돌릴 수 없습니다.</div>' +
+        '<div id="withdrawMsg" style="font-size:12.5px; color:var(--brick); min-height:16px; margin-bottom:8px;"></div>' +
+        '<div style="display:flex; gap:10px;">' +
+          '<button id="withdrawCancel" style="flex:1; padding:11px; background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; cursor:pointer;">취소</button>' +
+          '<button id="withdrawConfirm" style="flex:1; padding:11px; background:var(--brick); color:#fff; border:none; border-radius:8px; font-size:14px; font-family:inherit; cursor:pointer;">탈퇴하기</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", function(e){ if (e.target === overlay) closeWithdrawModal(); });
+    document.getElementById("withdrawCancel").addEventListener("click", closeWithdrawModal);
+    document.getElementById("withdrawConfirm").addEventListener("click", doWithdraw);
+  }
+
+  function closeWithdrawModal(){
+    var o = document.getElementById("withdrawOverlay");
+    if (o) o.parentNode.removeChild(o);
+  }
+
+  function doWithdraw(){
+    var btn = document.getElementById("withdrawConfirm");
+    btn.disabled = true;
+    fetch("/api/auth/me", { method: "DELETE", credentials: "same-origin" })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        if (res.ok && res.j.ok){
+          alert("회원탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.");
+          window.location.href = "/";
+        } else {
+          btn.disabled = false;
+          var m = document.getElementById("withdrawMsg");
+          if (m) m.textContent = (res.j && res.j.message) || "탈퇴에 실패했습니다.";
+        }
+      })
+      .catch(function(){
+        btn.disabled = false;
+        var m = document.getElementById("withdrawMsg");
+        if (m) m.textContent = "네트워크 오류가 발생했습니다.";
+      });
   }
 
   function renderLoggedOut(){
