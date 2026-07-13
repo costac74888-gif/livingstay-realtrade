@@ -14,22 +14,7 @@
 </head>
 <body>
 
-<header>
-  <a class="brand" href="/" title="홈으로" style="text-decoration:none;">
-    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
-    <div class="brand-text">
-      <div class="name">홈앤스테이</div>
-    </div>
-  </a>
-  <div class="page-title">실거래목록</div>
-  <div class="header-actions">
-    <nav class="header-nav">
-      <a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>
-      <a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>
-      <a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>
-    </nav>
-  </div>
-</header>
+<header id="siteHeader"></header>
 
 <div class="tx-page">
   <div style="margin:16px 0 6px;">
@@ -262,6 +247,9 @@
     loadBoard();
   })();
 </script>
+<script>window.PAGE_TITLE = "실거래목록";</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
 
 </body>
 </html>

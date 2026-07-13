@@ -14,22 +14,7 @@
 </head>
 <body>
 
-<header>
-  <a class="brand" href="/" title="홈으로" style="text-decoration:none;">
-    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
-    <div class="brand-text">
-      <div class="name">홈앤스테이</div>
-    </div>
-  </a>
-  <div class="page-title">마이페이지</div>
-  <div class="header-actions">
-    <nav class="header-nav">
-      <a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>
-      <a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>
-      <a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>
-    </nav>
-  </div>
-</header>
+<header id="siteHeader"></header>
 
 <div class="search-panel" style="max-width:560px; padding-bottom:40px;">
   <div style="margin:16px 0 6px;">
@@ -329,15 +314,21 @@
     var btn = document.getElementById("logoutBtn");
     if (btn) btn.disabled = true;
     fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
-      .then(function(){ renderLoggedOut(); })
-      .catch(function(){ renderLoggedOut(); });
+      // 헤더(auth.js)를 소스오브트루스로 다시 맞춘다 → livingstay:auth 이벤트로 본문도 동기화.
+      .then(function(){ if (window.livingstayRefreshAuth) window.livingstayRefreshAuth(); else renderLoggedOut(); })
+      .catch(function(){ if (window.livingstayRefreshAuth) window.livingstayRefreshAuth(); else renderLoggedOut(); });
   }
 
-  fetch("/api/auth/me", { credentials: "same-origin" })
-    .then(function(r){ return r.json(); })
-    .then(function(d){ if (d && d.logged_in) renderLoggedIn(d); else renderLoggedOut(); })
-    .catch(function(){ renderLoggedOut(); });
+  // 인증 상태는 헤더(auth.js)가 소스오브트루스 — livingstay:auth 이벤트로 본문을 렌더한다.
+  // (헤더 로그인/로그아웃과 본문이 항상 일치하도록. auth.js가 로드 시 refreshMe로 최초 1회 발행)
+  window.addEventListener("livingstay:auth", function(e){
+    var d = (e && e.detail) || {};
+    if (d.loggedIn && d.user) renderLoggedIn(d.user); else renderLoggedOut();
+  });
 </script>
+<script>window.PAGE_TITLE = "마이페이지";</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
 
 </body>
 </html>

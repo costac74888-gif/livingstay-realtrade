@@ -14,15 +14,7 @@
 </head>
 <body>
 
-<header>
-  <a class="brand" href="/" title="홈으로" style="text-decoration:none;">
-    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
-    <div class="brand-text">
-      <div class="name">홈앤스테이</div>
-    </div>
-  </a>
-  <div class="page-title">중개사 회원신청</div>
-</header>
+<header id="siteHeader"></header>
 
 <div class="search-panel" style="max-width:640px; padding-bottom:40px;">
 
@@ -152,5 +144,8 @@
     document.getElementById("successBox").style.display = "block";
   });
 </script>
+<script>window.PAGE_TITLE = "중개사 회원신청";</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
 </body>
 </html>

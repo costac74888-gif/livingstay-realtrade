@@ -131,6 +131,17 @@
       .catch(function () { /* 이관 실패해도 무시 */ });
   }
 
+  // 로그인 상태가 바뀔 때마다 페이지에 알린다(예: 마이페이지 본문 동기화).
+  // 헤더 밖의 UI가 헤더 auth 상태를 소스오브트루스로 삼도록 하는 용도 — 헤더만 쓰는
+  // 페이지에서는 아무도 구독하지 않으므로 부작용이 없다.
+  function emitAuthChange(loggedIn, user) {
+    try {
+      window.dispatchEvent(new CustomEvent("livingstay:auth", {
+        detail: { loggedIn: !!loggedIn, user: user || null }
+      }));
+    } catch (e) { /* CustomEvent 미지원 → 무시 */ }
+  }
+
   function refreshMe() {
     fetch("/api/auth/me", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
@@ -150,15 +161,20 @@
             window.refreshAlertsUI();
           }
           if (typeof window.startNotifPolling === "function") window.startNotifPolling();
+          emitAuthChange(true, d);
         } else {
           window.__livingstayLoggedIn = false;
           try { sessionStorage.removeItem("livingstay_fav_migrated"); } catch (e) {}
           if (typeof window.stopNotifPolling === "function") window.stopNotifPolling();
           renderLoggedOut();
+          emitAuthChange(false, null);
         }
       })
-      .catch(function () { window.__livingstayLoggedIn = false; renderLoggedOut(); });
+      .catch(function () { window.__livingstayLoggedIn = false; renderLoggedOut(); emitAuthChange(false, null); });
   }
+
+  // 헤더 밖 페이지(마이페이지 등)에서 로그아웃/로그인 후 헤더+상태를 다시 맞추도록 노출.
+  window.livingstayRefreshAuth = refreshMe;
 
   function doLogout() {
     fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
