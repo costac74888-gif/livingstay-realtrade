@@ -46,7 +46,8 @@ def main():
     gwangju = {"경기광주시": 0, "광주광역시": 0}
 
     for sgg, cnt in master:
-        dept, phone, how = match_authority_contact(sgg, index)
+        dept, phone, source = match_authority_contact(sgg, index)
+        how = source
         if dept is not None:
             matched_sgg.append((sgg, cnt, dept, phone, how))
             matched_buildings += cnt

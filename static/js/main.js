@@ -1105,6 +1105,17 @@ async function loadBuildingHeader(id){
     ? Math.max(Number(b.units) - Number(b.biz_units), 0).toLocaleString('ko-KR') + "실"
     : "-";
   const mailSubject = encodeURIComponent(`영업신고 의뢰 문의 (${bName})`);
+
+  // 담당부처/연락처: 매칭된 경우만 표시. 시/도 대표 폴백이면 부서명 뒤에 작은 회색 꼬리표.
+  const authMatched = b.authority_dept != null && b.authority_dept !== "";
+  const fallbackTag = (b.authority_source === "fallback")
+    ? ` <span style="color:var(--ink-soft); font-size:12px;">(시/도 대표)</span>` : "";
+  const deptCell = authMatched
+    ? `${escapeHtml(b.authority_dept)}${fallbackTag}`
+    : `<span style="color:var(--ink-soft);">확인중</span>`;
+  const phoneCell = authMatched
+    ? ((b.authority_phone && b.authority_phone !== "-") ? escapeHtml(b.authority_phone) : "-")
+    : `<span style="color:var(--ink-soft);">확인중</span>`;
   adminCard.innerHTML = `
     <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
     <table class="b-info-table" style="margin-bottom:12px;">
@@ -1113,8 +1124,8 @@ async function loadBuildingHeader(id){
         <tr><th>호실수</th><td>${units}</td></tr>
         <tr><th>신고</th><td>${bizUnits}</td></tr>
         <tr><th>미신고</th><td>${notReported}</td></tr>
-        <tr><th>담당부처</th><td style="color:var(--ink-soft);">준비중</td></tr>
-        <tr><th>연락처</th><td style="color:var(--ink-soft);">준비중</td></tr>
+        <tr><th>담당부처</th><td>${deptCell}</td></tr>
+        <tr><th>연락처</th><td>${phoneCell}</td></tr>
       </tbody>
     </table>
     <a href="mailto:info@home-and-stay.com?subject=${mailSubject}" class="side-more" style="display:block; text-align:center; text-decoration:none; margin-top:0;">영업신고 의뢰하기</a>`;

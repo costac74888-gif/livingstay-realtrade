@@ -34,7 +34,10 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime
 from db import get_conn, init_db
-from address_utils import normalize_umd_nm, sido_core, sido_match_clause
+from address_utils import (
+    normalize_umd_nm, sido_core, sido_match_clause,
+    build_authority_index, match_authority_contact,
+)
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -192,6 +195,27 @@ def building_page(building_id):
     return _serve_app_shell()
 
 
+_AUTHORITY_INDEX = None
+
+
+def get_authority_index():
+    """lodging_authority_contacts(135행)로 담당부서 매칭 인덱스를 1회 만들어 캐시한다.
+
+    데이터가 정적(엑셀 적재본)이고 gunicorn 자동 리로드가 없어 프로세스 단위 캐시로 충분.
+    적재를 다시 하면(load_authority_contacts.py) 앱을 재시작해야 새 값이 반영된다.
+    """
+    global _AUTHORITY_INDEX
+    if _AUTHORITY_INDEX is None:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT region_name_raw, dept, phone FROM lodging_authority_contacts")
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        _AUTHORITY_INDEX = build_authority_index(rows)
+    return _AUTHORITY_INDEX
+
+
 @app.route("/api/building/<int:building_id>")
 def get_building(building_id):
     """건물 상세페이지용 단건 조회 — master_buildings 기준."""
@@ -199,7 +223,7 @@ def get_building(building_id):
     cur = conn.cursor()
     cur.execute("""
         SELECT mb.building_name, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
-               mb.units, mb.biz_units, mb.lat, mb.lng,
+               mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
                lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
@@ -245,6 +269,19 @@ def get_building(building_id):
 
     result = dict(row)
     result["agent"] = dict(agent_row) if agent_row else None
+
+    # 담당부처/연락처: sgg_text를 지자체 담당부서 인덱스와 매칭.
+    #   source='exact'(시군구 전용) | 'fallback'(시도 대표) → 화면에서 "(시/도 대표)" 꼬리표 판단용.
+    #   매칭 실패면 dept=phone=None → 화면은 "확인중" 유지.
+    #   매칭/인덱스 조회가 어떤 이유로 실패해도 건물 상세 전체가 죽지 않도록 방어(담당부처만 확인중).
+    try:
+        dept, phone, source = match_authority_contact(result.get("sgg_text"), get_authority_index())
+    except Exception:
+        app.logger.exception("담당부서 매칭 실패 (building_id=%s)", building_id)
+        dept, phone, source = None, None, None
+    result["authority_dept"] = dept
+    result["authority_phone"] = phone
+    result["authority_source"] = source if dept is not None else None
     return jsonify(result)
 
 

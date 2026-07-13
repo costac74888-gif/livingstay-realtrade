@@ -313,11 +313,14 @@ def build_authority_index(rows):
 def match_authority_contact(sgg_text: str, index: dict):
     """master_buildings.sgg_text 하나를 담당부서 인덱스와 매칭.
 
-    반환: (dept, phone, how)  또는  (None, None, reason)
-      how: 'sido+local' | 'nosido' | 'fallback:시도'
-      reason: 'no_master' | 'no_match' | 'ambiguous'
+    반환: (dept, phone, source)
+      매칭 성공: source = 'exact'    → 시군구 전용 행에서 온 정확 매칭
+                 source = 'fallback' → 해당 시군구 전용 행이 없어 시/도 대표행으로 채운 값
+      매칭 실패: dept=phone=None,  source = 'no_master' | 'no_match' | 'ambiguous'
+
+    화면(B화면 행정운영 표)은 source=='fallback'일 때만 "(시/도 대표)" 꼬리표를 붙인다.
     구체(시군구) 매칭을 먼저 시도하고, 없을 때만 시도 전용(fallback)으로 내려간다.
-    후보가 서로 다른 값 2개 이상이면 추측하지 않고 None.
+    후보가 서로 다른 값 2개 이상이면 추측하지 않고 None(=확인중).
     """
     sido, cands = parse_master_region(sgg_text)
     if not cands and not sido:
@@ -333,7 +336,7 @@ def match_authority_contact(sgg_text: str, index: dict):
         if vals:
             if len(vals) == 1:
                 dept, phone = next(iter(vals))
-                return (dept, phone, "sido+local")
+                return (dept, phone, "exact")
             return (None, None, "ambiguous")
         # (b) 시도가 생략된 엑셀행(시군구명만)과 매칭
         vals = nosido.get(local)
@@ -341,7 +344,7 @@ def match_authority_contact(sgg_text: str, index: dict):
             distinct = {(d, p) for (_s, d, p) in vals}
             if len(distinct) == 1:
                 dept, phone = next(iter(distinct))
-                return (dept, phone, "nosido")
+                return (dept, phone, "exact")
             return (None, None, "ambiguous")
 
     # (c) 시군구 전용 행이 없을 때만 시도 대표(폴백) 사용
@@ -349,7 +352,7 @@ def match_authority_contact(sgg_text: str, index: dict):
         vals = fallback[sido]
         if len(vals) == 1:
             dept, phone = next(iter(vals))
-            return (dept, phone, f"fallback:{sido}")
+            return (dept, phone, "fallback")
         return (None, None, "ambiguous")
 
     return (None, None, "no_match")

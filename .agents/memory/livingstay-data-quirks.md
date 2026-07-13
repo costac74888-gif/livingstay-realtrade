@@ -72,6 +72,14 @@ Facts you can only discover by querying Postgres, not by reading code.
   강원특별자치도 ≈ 101, 콘도 = 6, 복합 = 12. Useful as a sanity check when
   verifying map filters.
 
+## 지자체 담당부서(담당부처/연락처) 매칭 — 애매하면 반드시 null
+- 출처: 사용자가 올린 엑셀(지자체/담당부서/전화번호 ~135행) → `lodging_authority_contacts`에 원본 그대로 적재(TRUNCATE+INSERT). 전화번호가 `"-"`인 행도 있으니 원본 그대로 표시.
+- master `sgg_text`(공백구분 `"{시도} {시군구} [{구}]"`)를 엑셀 지자체명(붙여쓰기/시도생략 혼재)과 매칭. `address_utils.py`의 `build_authority_index`+`match_authority_contact`가 우선순위 (a)`(sido,local)` 정확 → (b)시도생략행 → (c)시도 대표 fallback.
+- **결정: 후보가 복수이고 값이 상충하면 추측하지 말고 `ambiguous`→null(화면 "확인중").** 동일값은 set으로 자동 병합(진주시 중복 OK), 상충(대전 중구 등)은 차단.
+  **Why:** 데이터 정확성이 중요한 서비스 — 잘못된 관공서 연락처 노출은 오매칭 중 최악. 매칭률보다 오매칭 0을 우선한다.
+  **How to apply:** source 값은 'exact'/'fallback'만 화면 표시(fallback이면 부서명 뒤 "(시/도 대표)" 회색 꼬리표), 그 외(no_master/no_match/ambiguous)는 dept=phone=None. 광주(경기광주시 vs 광주광역시)는 시도 분기로 안 섞임 — 새 지역 추가 시 이 케이스 회귀 확인.
+- 인덱스는 `app.py` 모듈 캐시(`_AUTHORITY_INDEX` lazy). 엑셀 재적재 후에는 **앱 재시작**해야 반영(gunicorn 자동 리로드 없음).
+
 ## /api/transactions size 상한 200
 - `/api/transactions`는 요청당 `size = min(size, 200)`으로 상한이 걸려 있다. "더보기"류로 size를 계속 키우는 방식은 200건 초과 건물에서 무한 루프(버튼이 계속 남고 더 안 불러옴)가 된다.
 - **적용:** 건물 상세 실거래목록처럼 누적 표시가 필요하면 200건씩 페이지를 이어 받아 합산 후 slice 하라. 관심단지 전용 조회는 별도 엔드포인트(size 상한 무관)가 이미 존재.
