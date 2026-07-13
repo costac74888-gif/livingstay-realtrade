@@ -179,11 +179,21 @@
   .map-searchbar{
     position:absolute; top:var(--stage-gap);
     left:calc(var(--panel-w) + var(--stage-gap) * 2);
-    right:var(--stage-gap); z-index:15;
+    right:calc(var(--stage-gap) + 108px); z-index:15;
     background:var(--card); border:1px solid var(--line); border-radius:12px;
     box-shadow:0 4px 18px rgba(22,32,46,.14); padding:12px 14px;
   }
+  .map-searchbar.collapsed{display:none;}
   .map-searchbar .search-row2{margin-top:10px; padding-top:10px;}
+
+  /* 검색바 접기/펼치기 버튼 (지도 우측 상단, 데스크톱·모바일 공통) */
+  .searchbar-toggle{
+    position:absolute; top:var(--stage-gap); right:var(--stage-gap); z-index:16;
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--ink); color:#fff; border:none; border-radius:999px;
+    padding:10px 16px; font-size:13px; font-weight:600; cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.28);
+  }
 
   /* 좌측 플로팅 패널 (흰색 카드, 세로 스크롤) */
   .side-panel{

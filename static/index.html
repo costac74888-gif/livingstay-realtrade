@@ -37,8 +37,11 @@
   <div id="map"></div>
   <div id="mapEmpty" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; background:rgba(255,255,255,.85); font-size:14px; color:var(--ink-soft); font-weight:600; text-align:center; padding:0 16px;">검색 결과가 없습니다</div>
 
-  <!-- 지도 위 상단 검색바 -->
-  <div class="map-searchbar">
+  <!-- 지도 우측 상단: 검색바 접기/펼치기 버튼 -->
+  <button class="searchbar-toggle" id="btnToggleSearch">🔍 검색</button>
+
+  <!-- 지도 위 상단 검색바 (기본 접힘) -->
+  <div class="map-searchbar collapsed">
     <div class="search-grid">
       <div class="field">
         <label>시/도</label>
@@ -237,6 +240,17 @@
     btn.addEventListener("click", function(){
       var open = panel.classList.toggle("open");
       btn.textContent = open ? "✕ 닫기" : "☰ 목록";
+    });
+  }
+
+  // 상단 검색바 접기/펼치기 (기본 접힘). 필터 값/검색 동작은 건드리지 않고
+  // 순수하게 보이기/숨기기만 토글한다 — 좌측 패널 토글과 동일한 방식.
+  var sbBtn = document.getElementById("btnToggleSearch");
+  var searchbar = document.querySelector(".map-searchbar");
+  if (sbBtn && searchbar){
+    sbBtn.addEventListener("click", function(){
+      var open = !searchbar.classList.toggle("collapsed");
+      sbBtn.textContent = open ? "✕ 닫기" : "🔍 검색";
     });
   }
 })();
