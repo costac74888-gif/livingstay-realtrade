@@ -30,8 +30,49 @@
     </div>
   </div>
   <div class="page-title">전국숙박시설실거래가조회</div>
-  <div class="header-right" id="healthStatus"></div>
+  <div class="header-actions">
+    <div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>
+    <div class="header-right" id="healthStatus"></div>
+  </div>
 </header>
+
+<!-- 로그인/회원가입 모달 (auth.js가 제어) -->
+<div class="auth-modal-backdrop" id="authModal" style="display:none;">
+  <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+    <button class="auth-modal-close" id="authModalClose" aria-label="닫기">&times;</button>
+    <div class="auth-brand">HOME &amp; STAY</div>
+    <h2 class="auth-modal-title" id="authModalTitle">로그인</h2>
+
+    <div class="auth-error" id="authError" style="display:none;"></div>
+
+    <form id="authForm" autocomplete="on">
+      <div class="auth-field" id="authNameField" style="display:none;">
+        <label for="authName">이름</label>
+        <input type="text" id="authName" placeholder="이름 또는 닉네임" autocomplete="name" />
+      </div>
+      <div class="auth-field">
+        <label for="authEmail">이메일</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" required />
+      </div>
+      <div class="auth-field">
+        <label for="authPassword">비밀번호</label>
+        <input type="password" id="authPassword" placeholder="비밀번호 (8자 이상)" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="auth-submit" id="authSubmit">로그인</button>
+    </form>
+
+    <div class="auth-switch">
+      <span id="authSwitchText">아직 회원이 아니신가요?</span>
+      <a href="#" id="authSwitchLink">회원가입</a>
+    </div>
+
+    <div class="auth-divider"><span>또는</span></div>
+
+    <a href="/auth/kakao/start" class="auth-kakao" id="authKakaoBtn">
+      <span class="auth-kakao-icon">💬</span> 카카오로 3초 로그인
+    </a>
+  </div>
+</div>
 
 <div class="map-stage">
   <div id="map"></div>
@@ -257,6 +298,7 @@
 })();
 </script>
 <script src="/static/js/main.js"></script>
+<script src="/static/js/auth.js"></script>
 
 </body>
 </html>

@@ -24,8 +24,11 @@ import io
 import time
 import hmac
 import hashlib
+import secrets as _secrets
 from functools import wraps
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+import requests
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -40,6 +43,23 @@ app = Flask(__name__, static_folder="static")
 # 관리자 세션(서명된 쿠키) 서명 키. FLASK_SECRET_KEY가 없으면 세션이 유지되지
 # 않아 관리자 로그인이 동작하지 않으므로 Secrets에 반드시 등록되어 있어야 한다.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "")
+if not app.secret_key:
+    # 세션 쿠키는 이 키로 서명된다. 빈 키면 누구나 세션(회원/관리자)을 위조할 수
+    # 있으므로 로그인 기능의 신뢰가 붕괴된다. 없으면 기동 자체를 중단한다.
+    raise RuntimeError(
+        "FLASK_SECRET_KEY가 설정되지 않았습니다. Secrets에 등록 후 다시 실행하세요."
+    )
+
+# 세션 쿠키 보안 플래그.
+#  - HTTPONLY: JS(document.cookie)에서 세션 쿠키를 읽지 못하게 하여 XSS 탈취 방지.
+#  - SECURE: HTTPS로만 전송(리플릿은 dev/prod 모두 HTTPS).
+#  - SAMESITE=Lax: 카카오 OAuth 콜백처럼 외부에서 되돌아오는 top-level GET 이동에는
+#    쿠키가 실려야 state(CSRF) 검증이 가능하므로 Strict가 아닌 Lax를 사용한다.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 
 def get_client_ip():
@@ -997,6 +1017,263 @@ def _serve_static_html(filename):
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+# =====================================================================
+# 일반 회원(users) 인증 — 이메일/비밀번호 + 카카오 소셜 로그인
+# 관리자(admin_users / session["admin"])와는 완전히 분리된 세션 키를 쓴다.
+#   - 일반 회원 세션 키: session["user_id"]
+#   - 관리자 세션 키   : session["admin"]
+# =====================================================================
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _valid_email(email):
+    return bool(email) and len(email) <= 254 and _EMAIL_RE.match(email) is not None
+
+
+def current_user():
+    """세션의 user_id로 현재 로그인한 일반 회원 행을 돌려준다. 없으면 None."""
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, email, name, provider FROM users WHERE id = %s",
+            (uid,),
+        )
+        return cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/auth/signup", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour")
+def auth_signup():
+    """이메일 회원가입 → 성공 시 자동 로그인."""
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    name = (data.get("name") or "").strip()
+
+    if not _valid_email(email):
+        return jsonify({"ok": False, "message": "올바른 이메일 형식이 아닙니다."}), 400
+    if len(password) < 8:
+        return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
+    if not name:
+        return jsonify({"ok": False, "message": "이름을 입력해주세요."}), 400
+
+    pw_hash = generate_password_hash(password)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 이메일 중복 확인 (대소문자 무시). DB UNIQUE 제약도 있지만 친절한 메시지를 위해 먼저 확인.
+        cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": "이미 가입된 이메일입니다."}), 400
+        cur.execute(
+            """INSERT INTO users (email, password_hash, name, provider, last_login_at)
+               VALUES (%s, %s, %s, 'email', NOW()) RETURNING id""",
+            (email, pw_hash, name),
+        )
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        # DB UNIQUE 제약 위반 등 → 중복으로 간주(경합 상황 대비)
+        return jsonify({"ok": False, "message": "이미 가입된 이메일입니다."}), 400
+    finally:
+        cur.close()
+        conn.close()
+
+    session["user_id"] = new_id
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour")
+def auth_login():
+    """이메일/비밀번호 로그인. 실패 시 계정 존재 여부를 노출하지 않도록 메시지를 통일한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    fail_msg = "이메일 또는 비밀번호가 올바르지 않습니다."
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, password_hash FROM users WHERE LOWER(email) = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        # 카카오 전용 가입자(password_hash NULL)는 이메일 로그인 불가 → 동일 메시지로 통일.
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
+            return jsonify({"ok": False, "message": fail_msg}), 401
+        cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
+        conn.commit()
+        uid = row["id"]
+    finally:
+        cur.close()
+        conn.close()
+
+    session["user_id"] = uid
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    """일반 회원 로그아웃 — 관리자 세션은 건드리지 않고 회원 키만 제거한다."""
+    session.pop("user_id", None)
+    session.pop("kakao_oauth_state", None)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auth/me")
+def auth_me():
+    """로그인 상태 조회. 프런트 헤더가 로그인/로그아웃 표시를 결정하는 데 쓴다."""
+    u = current_user()
+    if not u:
+        return jsonify({"logged_in": False})
+    return jsonify({
+        "logged_in": True,
+        "name": u.get("name"),
+        "email": u.get("email"),
+        "provider": u.get("provider"),
+    })
+
+
+# ---- 카카오 소셜 로그인 (OAuth 2.0 Authorization Code) ----
+
+_KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize"
+_KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
+_KAKAO_USERME_URL = "https://kapi.kakao.com/v2/user/me"
+
+
+def _kakao_redirect_uri():
+    """콜백 URL을 현재 요청 호스트 기준으로 만든다(https 강제).
+    카카오 개발자센터의 'Redirect URI'에 이 값이 정확히 등록돼 있어야 한다.
+    (개발 도메인·배포 도메인 두 개를 모두 등록하면 양쪽에서 동작)"""
+    host = request.host
+    return f"https://{host}/auth/kakao/callback"
+
+
+@app.route("/auth/kakao/start")
+def kakao_start():
+    """카카오 인증 페이지로 리다이렉트. CSRF 방지용 state를 세션에 저장한다."""
+    client_id = os.environ.get("KAKAO_REST_API_KEY", "")
+    if not client_id:
+        return redirect("/?login_error=1")
+    state = _secrets.token_urlsafe(24)
+    session["kakao_oauth_state"] = state
+    params = {
+        "client_id": client_id,
+        "redirect_uri": _kakao_redirect_uri(),
+        "response_type": "code",
+        "state": state,
+    }
+    return redirect(f"{_KAKAO_AUTHORIZE_URL}?{urlencode(params)}")
+
+
+@app.route("/auth/kakao/callback")
+def kakao_callback():
+    """카카오 콜백: code→token→사용자정보→users upsert→세션 저장→홈으로.
+    어떤 단계든 실패/거부 시 에러 페이지 대신 홈으로 리다이렉트(?login_error=1)."""
+    # 사용자가 동의 취소하면 error 파라미터가 붙어 돌아온다.
+    if request.args.get("error"):
+        return redirect("/?login_error=1")
+
+    # CSRF: 세션에 저장한 state와 콜백 state가 일치해야 한다. (1회용 → 즉시 제거)
+    expected_state = session.pop("kakao_oauth_state", None)
+    if not expected_state or request.args.get("state") != expected_state:
+        return redirect("/?login_error=1")
+
+    code = request.args.get("code")
+    if not code:
+        return redirect("/?login_error=1")
+
+    client_id = os.environ.get("KAKAO_REST_API_KEY", "")
+    client_secret = os.environ.get("KAKAO_CLIENT_SECRET", "")  # 선택: 카카오 콘솔에서 'client_secret' 사용 설정 시에만 필요
+    if not client_id:
+        return redirect("/?login_error=1")
+
+    try:
+        token_data = {
+            "grant_type": "authorization_code",
+            "client_id": client_id,
+            "redirect_uri": _kakao_redirect_uri(),
+            "code": code,
+        }
+        if client_secret:
+            token_data["client_secret"] = client_secret
+        tok = requests.post(
+            _KAKAO_TOKEN_URL,
+            data=token_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded;charset=utf-8"},
+            timeout=10,
+        )
+        tok.raise_for_status()
+        access_token = tok.json().get("access_token")
+        if not access_token:
+            return redirect("/?login_error=1")
+
+        me = requests.get(
+            _KAKAO_USERME_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        me.raise_for_status()
+        me_json = me.json()
+    except Exception:
+        return redirect("/?login_error=1")
+
+    kakao_id = str(me_json.get("id") or "").strip()
+    if not kakao_id:
+        return redirect("/?login_error=1")
+    account = me_json.get("kakao_account") or {}
+    profile = account.get("profile") or {}
+    email = (account.get("email") or "").strip().lower() or None
+    nickname = (profile.get("nickname") or "").strip() or "카카오회원"
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # kakao_id 기준 upsert: 있으면 로그인(마지막 로그인 갱신), 없으면 신규 생성.
+        cur.execute("SELECT id FROM users WHERE kakao_id = %s", (kakao_id,))
+        row = cur.fetchone()
+        if row:
+            uid = row["id"]
+            cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (uid,))
+        else:
+            # 이메일이 이미 이메일가입으로 존재하면 충돌 방지를 위해 email은 비우고 카카오 계정으로 신규 생성.
+            email_to_store = email
+            if email_to_store:
+                cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email_to_store,))
+                if cur.fetchone():
+                    email_to_store = None
+            cur.execute(
+                """INSERT INTO users (email, password_hash, name, provider, kakao_id, last_login_at)
+                   VALUES (%s, NULL, %s, 'kakao', %s, NOW()) RETURNING id""",
+                (email_to_store, nickname, kakao_id),
+            )
+            uid = cur.fetchone()["id"]
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        return redirect("/?login_error=1")
+    finally:
+        cur.close()
+        conn.close()
+
+    session["user_id"] = uid
+    session.permanent = True
+    return redirect("/")
 
 
 @app.route("/admin/login")
