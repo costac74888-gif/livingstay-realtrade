@@ -21,3 +21,9 @@
   - 여러 작은 수정은 한 번에 몰아서 처리 가능. 단 서로 다른 파일/기능이 섞이면 커밋 메시지에 각각 구분해서 기재.
   - 스크린샷은 **레이아웃이 크게 바뀔 때만** 첨부. 사소한 문구 변경은 텍스트 보고로 충분.
 - 체크포인트: 에이전트는 커밋을 직접 만들 수 없음 → 작업 시작 시 "직전 자동 커밋 HEAD가 롤백 지점"임을 사용자에게 안내.
+- GitHub push 자동화 (2026-07-13부터 적용):
+  - 매 작업 완료(체크포인트 커밋) 시 사용자에게 묻지 말고 자동으로 `git push origin main` 실행.
+  - push 후 반드시 `git log origin/main --oneline`으로 origin/main이 방금 커밋까지 올라갔는지 검증 후 "완료" 보고. 검증 없이 "push했다"고만 말하지 않음.
+  - 인증 오류(자격증명 프록시 실패, 권한 만료 등)로 실패 시 조용히 넘어가지 말고 명확히 실패 보고 + "Git 패널에서 GitHub 재연결 후 Push 버튼 클릭" 안내.
+  - 매 작업 보고 마지막 줄에 "✅ GitHub push 완료 (커밋: xxxxxxx)" 또는 "⚠️ push 실패 — 재연결 필요" 중 하나 명시.
+  - remote: origin = https://github.com/costac74888-gif/livingstay-realtrade (branch: main).
