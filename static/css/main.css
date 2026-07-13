@@ -28,7 +28,7 @@
     position:sticky; top:0; z-index:30;
   }
   .brand{display:flex; align-items:center; gap:10px; padding-right:16px; border-right:1px solid var(--line);}
-  .brand-mark-img{height:20px; width:auto; display:block;}
+  .brand-mark-img{height:30px; width:auto; display:block;}
   .brand-text{line-height:1.2;}
   .brand-text .name{font-weight:700; font-size:15px; color:#8a8f98;}
   .brand-text .sub{font-size:10.5px; color:var(--ink-soft); letter-spacing:.04em;}
@@ -131,7 +131,7 @@
     /* 헤더: 로고+회사명 한 줄, 타이틀은 아랫줄에 가로로 */
     header{flex-wrap:wrap; padding:10px 14px; gap:6px 10px;}
     .brand{border-right:none; padding-right:0;}
-    .brand-mark-img{height:18px;}
+    .brand-mark-img{height:26px;}
     .brand-text .name{white-space:nowrap; font-size:14px;}
     .header-right{margin-left:auto; font-size:10.5px; text-align:right; max-width:46%; line-height:1.4;}
     .page-title{order:3; flex-basis:100%; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
