@@ -300,6 +300,15 @@ class DataGrid {
             )
             .join("");
           control = `<select class="admin-input" data-key="${dgEscape(col.key)}">${opts}</select>`;
+        } else if (col.type === "boolean") {
+          // 불리언: true/false 값을 보내되 화면에는 사람이 읽는 라벨을 보여준다.
+          const on = val === true || String(val) === "true";
+          control = `<select class="admin-input" data-key="${dgEscape(col.key)}">
+            <option value="false" ${!on ? "selected" : ""}>${dgEscape(col.falseLabel || "아니오")}</option>
+            <option value="true" ${on ? "selected" : ""}>${dgEscape(col.trueLabel || "예")}</option>
+          </select>`;
+        } else if (col.type === "textarea") {
+          control = `<textarea class="admin-input" rows="6" data-key="${dgEscape(col.key)}" ${col.required ? "required" : ""}>${dgEscape(val)}</textarea>`;
         } else {
           const t = col.type === "number" ? "number" : "text";
           control = `<input class="admin-input" type="${t}" data-key="${dgEscape(col.key)}" value="${dgEscape(val)}" ${col.required ? "required" : ""} />`;

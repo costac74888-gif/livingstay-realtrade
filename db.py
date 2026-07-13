@@ -405,6 +405,22 @@ def init_db():
     )
     """)
 
+    # 공지사항 — 관리자가 등록하고 공개 페이지(/notices)가 읽는다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS notices (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        is_pinned BOOLEAN DEFAULT FALSE,     -- 상단 고정 여부 (고정글이 최신글보다 먼저 노출)
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -415,6 +431,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_listings_building ON listings(master_building_id)")
     # 통계(일별 방문 집계)용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_page_views_viewed_at ON page_views(viewed_at)")
+    # 공지사항 정렬(고정 우선 → 최신순)용 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_notices_order ON notices(is_pinned DESC, created_at DESC)")
 
     conn.commit()
     cur.close()

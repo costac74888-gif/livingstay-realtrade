@@ -21,6 +21,7 @@
         <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
+        <button class="admin-menu-item" data-menu="notices">공지사항 관리</button>
         <button class="admin-menu-item" data-menu="requests">수정요청 이력</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
@@ -210,6 +211,21 @@
           { key: "deal_date", label: "계약일", sortable: true, editable: true },
           { key: "deal_type", label: "거래유형", editable: true },
           { key: "reason", label: "수정 사유", editable: true, required: true, hideInTable: true },
+        ],
+      },
+      // 공지사항: 관리자가 직접 작성/수정/삭제. 기본 정렬은 서버에서 고정 우선 → 최신순.
+      notices: {
+        endpoint: "/api/admin/notices",
+        title: "공지사항 관리",
+        entityLabel: "공지",
+        searchPlaceholder: "제목·본문 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "title", label: "제목", sortable: true, editable: true, required: true },
+          { key: "body", label: "본문", editable: true, required: true, type: "textarea", hideInTable: true },
+          { key: "is_pinned", label: "고정", sortable: true, editable: true, type: "boolean", trueLabel: "고정", falseLabel: "일반",
+            render: (v) => v ? `<span class="dg-badge dg-badge-ok">고정</span>` : "일반" },
+          { key: "created_at", label: "등록일", sortable: true },
         ],
       },
     };

@@ -1926,6 +1926,165 @@ def admin_transactions_export():
     return resp
 
 
+# ---- 공지사항(notices) 관리 (모두 require_admin) ----
+# 정렬 허용 컬럼 화이트리스트 (SQL 인젝션 방지 — 없으면 기본 정렬로 폴백)
+ADMIN_NOTICE_SORT = {
+    "id": "id", "title": "title", "is_pinned": "is_pinned", "created_at": "created_at",
+}
+
+
+def _admin_notice_filters():
+    """공지 목록 공용: sort_expr, order, WHERE절, 파라미터. 검색은 제목·본문."""
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "").strip()
+    sort_expr = ADMIN_NOTICE_SORT.get(sort_key)
+    order = "DESC" if (request.args.get("order") or "").strip().lower() == "desc" else "ASC"
+    where = "1=1"
+    params = []
+    if q:
+        where = "(title ILIKE %s OR body ILIKE %s)"
+        params = [f"%{q}%", f"%{q}%"]
+    return sort_expr, order, where, params
+
+
+def _parse_bool(v):
+    """폼/JSON에서 온 다양한 표기('true','1','on', True 등)를 파이썬 bool로."""
+    if isinstance(v, bool):
+        return v
+    return str(v).strip().lower() in ("1", "true", "yes", "on", "y")
+
+
+@app.route("/api/admin/notices")
+@require_admin
+def admin_notices_list():
+    sort_expr, order, where_sql, params = _admin_notice_filters()
+    page, size, offset = _admin_paging()
+    # 명시 정렬이 있으면 그걸 우선하되, 기본은 항상 '고정 우선 → 최신순'.
+    order_sql = f"{sort_expr} {order}, id DESC" if sort_expr else "is_pinned DESC, created_at DESC, id DESC"
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM notices WHERE {where_sql}", params)
+    total = cur.fetchone()["c"]
+    cur.execute(f"""
+        SELECT id, title, body, is_pinned,
+               to_char(created_at, 'YYYY-MM-DD') AS created_at,
+               to_char(updated_at, 'YYYY-MM-DD') AS updated_at
+        FROM notices
+        WHERE {where_sql}
+        ORDER BY {order_sql}
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/notices", methods=["POST"])
+@require_admin
+def admin_notices_create():
+    data = request.get_json(force=True, silent=True) or {}
+    title = (data.get("title") or "").strip()
+    body = (data.get("body") or "").strip()
+    if not title or not body:
+        return jsonify({"ok": False, "message": "제목과 본문은 필수입니다."}), 400
+    is_pinned = _parse_bool(data.get("is_pinned"))
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO notices (title, body, is_pinned) VALUES (%s, %s, %s) RETURNING id",
+        [title, body, is_pinned],
+    )
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/api/admin/notices/<int:notice_id>", methods=["PUT"])
+@require_admin
+def admin_notices_update(notice_id):
+    data = request.get_json(force=True, silent=True) or {}
+    sets, vals = [], []
+    if "title" in data:
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"ok": False, "message": "제목은 비울 수 없습니다."}), 400
+        sets.append("title = %s")
+        vals.append(title)
+    if "body" in data:
+        body = (data.get("body") or "").strip()
+        if not body:
+            return jsonify({"ok": False, "message": "본문은 비울 수 없습니다."}), 400
+        sets.append("body = %s")
+        vals.append(body)
+    if "is_pinned" in data:
+        sets.append("is_pinned = %s")
+        vals.append(_parse_bool(data.get("is_pinned")))
+    if not sets:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM notices WHERE id=%s", [notice_id])
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 공지입니다."}), 404
+    sets.append("updated_at = NOW()")
+    vals.append(notice_id)
+    cur.execute(f"UPDATE notices SET {', '.join(sets)} WHERE id = %s", vals)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/notices/<int:notice_id>", methods=["DELETE"])
+@require_admin
+def admin_notices_delete(notice_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM notices WHERE id=%s RETURNING id", [notice_id])
+    deleted = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not deleted:
+        return jsonify({"ok": False, "message": "존재하지 않는 공지입니다."}), 404
+    return jsonify({"ok": True})
+
+
+# ---- 공지사항 공개 API (로그인 불필요) ----
+@app.route("/api/notices")
+def get_notices():
+    """공개 공지 목록 — 고정 우선 → 최신순. {total, page, size, items} 형태."""
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        size = min(max(int(request.args.get("size", 10)), 1), 100)
+    except (ValueError, TypeError):
+        size = 10
+    offset = (page - 1) * size
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) c FROM notices")
+    total = cur.fetchone()["c"]
+    cur.execute("""
+        SELECT id, title, body, is_pinned,
+               to_char(created_at, 'YYYY-MM-DD') AS created_at
+        FROM notices
+        ORDER BY is_pinned DESC, created_at DESC, id DESC
+        LIMIT %s OFFSET %s
+    """, [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
 # ---- 신청 승인 큐 (applications, 모두 require_admin) ----
 # C/D 화면에서 들어온 중개사/운영업체 신청을 관리자가 승인/반려한다.
 # 데이터 정확성 관련: 승인 시 agents/operators로 실제 INSERT되므로 중복 검사 후에만 상태를 바꾼다.
