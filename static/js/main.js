@@ -234,6 +234,7 @@ document.getElementById("selUmdNm").addEventListener("change", e=>{ state.umd_nm
 document.getElementById("selYear").addEventListener("change", e=>{ state.year = e.target.value; });
 document.getElementById("selLodgingType").addEventListener("change", e=>{
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
+  loadMapMarkers(mapFiltersFromState(), { fit: true });
 });
 document.getElementById("chkFavOnly").addEventListener("change", e=>{
   state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
@@ -243,6 +244,7 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.q = document.getElementById("inputQ").value.trim();
   state.page = 1;
   loadBoard();
+  loadMapMarkers(mapFiltersFromState(), { fit: true });
 });
 function resetToHome(){
   const yearSel = document.getElementById("selYear");
@@ -258,6 +260,8 @@ function resetToHome(){
   document.getElementById("chkFavOnly").checked=false;
   renderFavChips();
   loadBoard();
+  resetMapView();
+  loadMapMarkers({}, { fit: false });   // 지도도 전체 476개로 복귀
   window.scrollTo({top:0, behavior:"smooth"});
 }
 document.getElementById("brandHome").addEventListener("click", resetToHome);
@@ -388,19 +392,45 @@ function lodgingLabelKo(lodgingType){
 
 let kakaoMap = null;
 let currentInfoWindow = null;
+let mapOverlays = [];                 // 현재 지도에 찍힌 마커(오버레이) 목록
+const MAP_DEFAULT_CENTER = { lat: 36.2, lng: 127.9 }; // 대한민국 중앙 근처
+const MAP_DEFAULT_LEVEL = 13;         // 전국이 한눈에 보이는 확대 수준
 
-async function initMap(){
-  const container = document.getElementById("map");
-  if (!container) return;
+// 검색폼(state)에서 지도용 필터만 추출한다. 기간(year)은 건물 위치와
+// 무관하므로 지도에는 적용하지 않는다(게시판 전용).
+function mapFiltersFromState(){
+  return {
+    q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm,
+    umd_nm: state.umd_nm, lodging_type: state.lodging_type,
+  };
+}
 
-  kakaoMap = new kakao.maps.Map(container, {
-    center: new kakao.maps.LatLng(36.2, 127.9), // 대한민국 중앙 근처
-    level: 13,                                   // 전국이 한눈에 보이는 확대 수준
+function clearMapMarkers(){
+  mapOverlays.forEach(o => o.setMap(null));
+  mapOverlays = [];
+}
+
+function resetMapView(){
+  if (!kakaoMap) return;
+  kakaoMap.setLevel(MAP_DEFAULT_LEVEL);
+  kakaoMap.setCenter(new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng));
+}
+
+// filters: {q, si_do, sgg_nm, umd_nm, lodging_type}
+// opts.fit: true면 결과가 다 보이도록 bounds에 맞춰 확대/이동
+async function loadMapMarkers(filters = {}, opts = {}){
+  if (!kakaoMap) return;
+  const emptyEl = document.getElementById("mapEmpty");
+
+  const params = new URLSearchParams();
+  ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
+    if (filters[k]) params.set(k, filters[k]);
   });
+  const qs = params.toString();
 
   let items = [];
   try {
-    const res = await fetch("/api/buildings-geo");
+    const res = await fetch(`/api/buildings-geo${qs ? "?" + qs : ""}`);
     const data = await res.json();
     items = data.items || [];
   } catch(e){
@@ -408,6 +438,8 @@ async function initMap(){
     return;
   }
 
+  clearMapMarkers();
+  const bounds = new kakao.maps.LatLngBounds();
   let placed = 0;
   items.forEach(b => {
     if (b.lat == null || b.lng == null) return;
@@ -422,12 +454,33 @@ async function initMap(){
     });
     overlay.setMap(kakaoMap);
     el.addEventListener("click", () => openBuildingInfo(b, pos));
+    mapOverlays.push(overlay);
+    bounds.extend(pos);
     placed++;
   });
 
   const countLabel = document.getElementById("mapCount");
   if (countLabel) countLabel.textContent = `(${placed}개 건물)`;
-  console.log(`[MAP] 카카오맵 마커 ${placed}개 표시 완료 (전체 ${items.length}건)`);
+
+  if (emptyEl) emptyEl.style.display = (placed === 0) ? "flex" : "none";
+
+  if (placed > 0 && opts.fit === true){
+    kakaoMap.setBounds(bounds);
+  }
+  console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
+}
+
+async function initMap(){
+  const container = document.getElementById("map");
+  if (!container) return;
+
+  kakaoMap = new kakao.maps.Map(container, {
+    center: new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng),
+    level: MAP_DEFAULT_LEVEL,
+  });
+
+  // 최초 로드 — 전체 건물, 기본 시야 유지(bounds 강제 안 함)
+  await loadMapMarkers({}, { fit: false });
 }
 
 async function openBuildingInfo(b, pos){

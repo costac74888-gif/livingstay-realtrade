@@ -152,15 +152,57 @@ def get_transactions():
 
 @app.route("/api/buildings-geo")
 def get_buildings_geo():
-    """지도 마커용 — 좌표(lat/lng)가 있는 마스터 건물 전부."""
+    """지도 마커용 — 좌표(lat/lng)가 있는 마스터 건물.
+
+    선택적 필터(지역/건물명/용도)를 /api/transactions와 동일한 파라미터
+    이름으로 지원한다. 단, 기간(year)은 건물 위치와 무관하므로 지도에는
+    적용하지 않는다(게시판 전용).
+
+    master_buildings에는 si_do/sgg_nm 컬럼이 없고 sgg_text('서울특별시 서초구')
+    와 umd_nm만 있으므로:
+      - si_do  : sgg_text 접두어 매칭('서울' → '서울특별시 …'도 포함)
+      - sgg_nm : sgg_text 포함 매칭
+      - umd_nm : 공백 유무 차이('손양면 동호리' vs '손양면동호리')를 흡수하기
+                 위해 공백 제거 후 포함 매칭
+    """
+    q = request.args.get("q", "").strip()
+    si_do = request.args.get("si_do", "").strip()
+    sgg_nm = request.args.get("sgg_nm", "").strip()
+    umd_nm = request.args.get("umd_nm", "").strip()
+    lodging_type = request.args.get("lodging_type", "").strip()
+
+    where = ["lat IS NOT NULL", "lng IS NOT NULL"]
+    params = []
+
+    if q:
+        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if si_do:
+        where.append("sgg_text LIKE %s")
+        params.append(f"{si_do}%")
+    if sgg_nm:
+        where.append("sgg_text LIKE %s")
+        params.append(f"%{sgg_nm}%")
+    if umd_nm:
+        where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
+        params.append(f"%{umd_nm.replace(' ', '')}%")
+    if lodging_type == "복합":
+        where.append("lodging_type LIKE %s")
+        params.append("%·%")
+    elif lodging_type:
+        where.append("lodging_type = %s")
+        params.append(lodging_type)
+
+    where_sql = " AND ".join(where)
+
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(f"""
         SELECT id, building_name, lat, lng, lodging_type
         FROM master_buildings
-        WHERE lat IS NOT NULL AND lng IS NOT NULL
+        WHERE {where_sql}
         ORDER BY id
-    """)
+    """, params)
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()

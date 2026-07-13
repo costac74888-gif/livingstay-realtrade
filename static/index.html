@@ -88,7 +88,10 @@
           <span style="display:inline-flex; align-items:center; gap:5px;"><i style="width:11px; height:11px; border-radius:50%; background:#639922; display:inline-block;"></i>콘도</span>
         </div>
       </div>
-      <div id="map" style="width:100%; height:500px; border-radius:10px; overflow:hidden;"></div>
+      <div style="position:relative;">
+        <div id="map" style="width:100%; height:500px; border-radius:10px; overflow:hidden;"></div>
+        <div id="mapEmpty" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; background:rgba(255,255,255,.85); border-radius:10px; font-size:14px; color:var(--ink-soft); font-weight:600; text-align:center; padding:0 16px;">검색 결과가 없습니다</div>
+      </div>
     </div>
   </div>
 </div>
