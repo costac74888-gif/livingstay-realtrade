@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>관리자 로그인 · 홈앤스테이</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+  <div class="admin-login-wrap">
+    <div class="admin-login-card">
+      <div class="admin-login-brand">HOME &amp; STAY</div>
+      <h1 class="admin-login-title">관리자 페이지</h1>
+      <p class="admin-login-sub">접근키를 입력하세요.</p>
+      <form id="loginForm" class="admin-login-form" autocomplete="off">
+        <input
+          id="accessKey"
+          type="password"
+          class="admin-input"
+          placeholder="접근키"
+          autocomplete="current-password"
+          required
+        />
+        <button type="submit" class="admin-btn admin-btn-primary" id="loginBtn">로그인</button>
+      </form>
+      <div id="loginMsg" class="admin-login-msg" role="alert"></div>
+      <a href="/" class="admin-login-home">← 홈으로</a>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("loginForm");
+    const msg = document.getElementById("loginMsg");
+    const btn = document.getElementById("loginBtn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const key = document.getElementById("accessKey").value;
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "확인 중…";
+      try {
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_key: key }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          window.location.href = "/admin";
+          return;
+        }
+        msg.textContent = data.message || "로그인에 실패했습니다.";
+      } catch (err) {
+        msg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "로그인";
+      }
+    });
+  </script>
+</body>
+</html>

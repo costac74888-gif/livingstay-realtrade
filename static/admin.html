@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>관리자 · 홈앤스테이</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+  <div class="admin-layout">
+    <aside class="admin-sidebar">
+      <div class="admin-sb-brand">
+        <span class="admin-sb-logo">HOME &amp; STAY</span>
+        <span class="admin-sb-sub">관리자</span>
+      </div>
+      <nav class="admin-menu">
+        <button class="admin-menu-item is-active" data-menu="buildings">건물마스터</button>
+        <button class="admin-menu-item is-disabled" disabled>신청승인 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>매물관리 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>실거래관리 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>수정요청 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>통계대시보드 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>유료화 <span class="admin-soon">준비 중</span></button>
+        <button class="admin-menu-item is-disabled" disabled>권한로그 <span class="admin-soon">준비 중</span></button>
+      </nav>
+      <div class="admin-sb-foot">
+        <a href="/" class="admin-sb-link">← 사이트로</a>
+        <button id="logoutBtn" class="admin-sb-link admin-logout">로그아웃</button>
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <div id="grid"></div>
+    </main>
+  </div>
+
+  <script src="/static/js/admin.js"></script>
+  <script>
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      try {
+        await fetch("/api/admin/logout", { method: "POST" });
+      } catch (e) {}
+      window.location.href = "/admin/login";
+    });
+
+    // 건물마스터 그리드 — 컬럼 정의만 바꾸면 다른 테이블에도 그대로 재사용 가능.
+    new DataGrid({
+      mount: document.getElementById("grid"),
+      endpoint: "/api/admin/buildings",
+      exportUrl: "/api/admin/buildings/export.xlsx",
+      title: "건물마스터",
+      idField: "id",
+      pageSize: 50,
+      columns: [
+        { key: "id", label: "ID", sortable: true },
+        { key: "building_name", label: "건물명", sortable: true, editable: true, required: true },
+        { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
+        { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
+        { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
+        { key: "biz_units", label: "영업신고호수", sortable: true, editable: true, type: "number" },
+        { key: "sgg_text", label: "시군구", editable: true },
+        { key: "umd_nm", label: "읍면동", editable: true },
+        { key: "jibun", label: "지번", editable: true },
+        { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
+        { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
+        { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
+      ],
+    });
+  </script>
+</body>
+</html>

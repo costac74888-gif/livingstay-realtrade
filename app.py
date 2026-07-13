@@ -20,9 +20,12 @@ GET /api/health                → 배치 마지막 실행 시각/건수 확인�
 
 import os
 import re
+import io
 import time
+import hmac
+from functools import wraps
 from urllib.parse import quote
-from flask import Flask, request, jsonify, send_from_directory, Response, abort
+from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime
@@ -33,6 +36,9 @@ from address_utils import normalize_umd_nm, sido_core, sido_match_clause
 SERVER_BOOT_V = str(int(time.time()))
 
 app = Flask(__name__, static_folder="static")
+# 관리자 세션(서명된 쿠키) 서명 키. FLASK_SECRET_KEY가 없으면 세션이 유지되지
+# 않아 관리자 로그인이 동작하지 않으므로 Secrets에 반드시 등록되어 있어야 한다.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "")
 
 
 def get_client_ip():
@@ -901,6 +907,299 @@ def request_correction():
         "lodging_type": label,
         "message": message,
     })
+
+
+# ============================================================
+# 관리자(E화면) — 임시 접근키 보호 + 건물마스터 CRUD
+# F(정식 로그인)가 아직 없어 admin_users 대신 단일 접근키(ADMIN_ACCESS_KEY)로
+# 보호한다. 접근키가 일치하면 서명된 세션 쿠키에 admin=True를 저장한다.
+# F 구현 시 이 접근키 방식을 admin_users 정식 로그인으로 교체할 예정.
+# ============================================================
+
+def require_admin(f):
+    """세션에 admin=True가 없으면 차단한다.
+    /api/admin/* 요청은 401 JSON, 그 외(/admin/*)는 /admin/login으로 리다이렉트."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("admin"):
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+            return redirect("/admin/login")
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def _serve_static_html(filename):
+    """정적 HTML을 no-cache 헤더와 함께 서빙 (apply 페이지들과 동일 방식)."""
+    html_path = os.path.join(app.static_folder, filename)
+    with open(html_path, encoding="utf-8") as fp:
+        html = fp.read()
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/admin/login")
+def admin_login_page():
+    return _serve_static_html("admin_login.html")
+
+
+@app.route("/api/admin/login", methods=["POST"])
+@limiter.limit("5 per minute; 30 per hour")
+def admin_login():
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("access_key") or "").strip()
+    expected = os.environ.get("ADMIN_ACCESS_KEY", "")
+    # 상수 시간 비교로 타이밍 공격 방지 (키 미설정 시엔 항상 실패)
+    if expected and hmac.compare_digest(key, expected):
+        session["admin"] = True
+        session.permanent = True
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "message": "접근키가 올바르지 않습니다."}), 401
+
+
+@app.route("/api/admin/logout", methods=["POST"])
+def admin_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.route("/admin")
+@app.route("/admin/")
+@require_admin
+def admin_page():
+    return _serve_static_html("admin.html")
+
+
+# ---- 건물마스터 CRUD (모두 require_admin) ----
+# 정렬 허용 컬럼 화이트리스트 (SQL 인젝션 방지 — 목록에 없으면 id로 폴백)
+ADMIN_BLD_SORT = {"id", "building_name", "road_address", "units", "biz_units", "lodging_type"}
+# 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
+ADMIN_BLD_EDITABLE = [
+    "building_name", "road_address", "jibun_address", "sgg_text", "sgg_cd",
+    "umd_nm", "jibun", "units", "biz_units", "lodging_type", "lodging_type_detail",
+]
+ADMIN_BLD_INT_COLS = {"units", "biz_units"}
+
+
+def _parse_int_or_none(v):
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _clean_bld_value(col, v):
+    """편집 컬럼 값을 DB 저장형으로 정규화 (숫자 컬럼은 int/None, 그 외 문자열/None)."""
+    if col in ADMIN_BLD_INT_COLS:
+        return _parse_int_or_none(v)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
+
+
+def _admin_bld_filters():
+    """목록/엑셀 공용: q, sort, order, WHERE절, 파라미터를 계산."""
+    q = (request.args.get("q") or "").strip()
+    sort = (request.args.get("sort") or "id").strip()
+    if sort not in ADMIN_BLD_SORT:
+        sort = "id"
+    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    where = "1=1"
+    params = []
+    if q:
+        where = "(building_name ILIKE %s OR road_address ILIKE %s)"
+        params = [f"%{q}%", f"%{q}%"]
+    return q, sort, order, where, params
+
+
+@app.route("/api/admin/buildings")
+@require_admin
+def admin_buildings_list():
+    q, sort, order, where_sql, params = _admin_bld_filters()
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        size = min(max(int(request.args.get("size", 50)), 1), 200)
+    except (ValueError, TypeError):
+        size = 50
+    offset = (page - 1) * size
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM master_buildings WHERE {where_sql}", params)
+    total = cur.fetchone()["c"]
+    # sort/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
+    cur.execute(f"""
+        SELECT id, building_name, road_address, jibun_address, sgg_text,
+               sgg_cd, umd_nm, jibun, units, biz_units, lodging_type, lodging_type_detail
+        FROM master_buildings
+        WHERE {where_sql}
+        ORDER BY {sort} {order}, id ASC
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/buildings", methods=["POST"])
+@require_admin
+def admin_buildings_create():
+    data = request.get_json(force=True, silent=True) or {}
+    building_name = (data.get("building_name") or "").strip()
+    road_address = (data.get("road_address") or "").strip()
+    if not building_name or not road_address:
+        return jsonify({"ok": False, "message": "건물명과 도로명주소는 필수입니다."}), 400
+    cols, vals = [], []
+    for c in ADMIN_BLD_EDITABLE:
+        if c in data or c in ("building_name", "road_address"):
+            cols.append(c)
+            vals.append(_clean_bld_value(c, data.get(c)))
+    collist = ", ".join(cols)
+    placeholders = ", ".join(["%s"] * len(vals))
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO master_buildings ({collist}) VALUES ({placeholders}) RETURNING id",
+        vals,
+    )
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/api/admin/buildings/<int:building_id>", methods=["PUT"])
+@require_admin
+def admin_buildings_update(building_id):
+    data = request.get_json(force=True, silent=True) or {}
+    sets, vals = [], []
+    for c in ADMIN_BLD_EDITABLE:
+        if c in data:
+            # 필수 컬럼을 빈값으로 지우려는 시도는 막는다.
+            if c in ("building_name", "road_address") and not (str(data.get(c) or "").strip()):
+                return jsonify({"ok": False, "message": "건물명과 도로명주소는 비울 수 없습니다."}), 400
+            sets.append(f"{c} = %s")
+            vals.append(_clean_bld_value(c, data.get(c)))
+    if not sets:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [building_id])
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+    vals.append(building_id)
+    cur.execute(f"UPDATE master_buildings SET {', '.join(sets)} WHERE id = %s", vals)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/buildings/<int:building_id>", methods=["DELETE"])
+@require_admin
+def admin_buildings_delete(building_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT sgg_cd, umd_nm, jibun, building_name FROM master_buildings WHERE id=%s",
+        [building_id],
+    )
+    b = cur.fetchone()
+    if not b:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+    # 참조 매물(listings) / 슬롯(slots) — master_building_id FK
+    cur.execute("SELECT COUNT(*) c FROM listings WHERE master_building_id=%s", [building_id])
+    listing_cnt = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) c FROM slots WHERE master_building_id=%s", [building_id])
+    slot_cnt = cur.fetchone()["c"]
+    # 참조 실거래(transactions) — 지번키(sgg_cd+umd_nm+jibun) 매칭, 없으면 건물명
+    if b["sgg_cd"] and b["umd_nm"] and b["jibun"]:
+        cur.execute(
+            "SELECT COUNT(*) c FROM transactions WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s",
+            [b["sgg_cd"], b["umd_nm"], b["jibun"]],
+        )
+        tx_cnt = cur.fetchone()["c"]
+    elif b["building_name"] and b["building_name"] != "-":
+        cur.execute(
+            "SELECT COUNT(*) c FROM transactions WHERE building_name=%s",
+            [b["building_name"]],
+        )
+        tx_cnt = cur.fetchone()["c"]
+    else:
+        tx_cnt = 0
+    if listing_cnt or slot_cnt or tx_cnt:
+        parts = []
+        if listing_cnt:
+            parts.append(f"매물 {listing_cnt}건")
+        if slot_cnt:
+            parts.append(f"슬롯 {slot_cnt}건")
+        if tx_cnt:
+            parts.append(f"실거래 {tx_cnt}건")
+        cur.close()
+        conn.close()
+        return jsonify({
+            "ok": False,
+            "message": "연결된 " + ", ".join(parts) + "이(가) 있어 삭제할 수 없습니다.",
+        }), 400
+    cur.execute("DELETE FROM master_buildings WHERE id=%s", [building_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/buildings/export.xlsx")
+@require_admin
+def admin_buildings_export():
+    q, sort, order, where_sql, params = _admin_bld_filters()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT id, building_name, road_address, sgg_text, umd_nm, jibun,
+               units, biz_units, lodging_type, lodging_type_detail
+        FROM master_buildings
+        WHERE {where_sql}
+        ORDER BY {sort} {order}, id ASC
+    """, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "건물마스터"
+    headers = ["ID", "건물명", "도로명주소", "시군구", "읍면동", "지번",
+               "호실수", "영업신고호수", "용도", "용도상세"]
+    ws.append(headers)
+    for r in rows:
+        ws.append([
+            r["id"], r["building_name"], r["road_address"], r["sgg_text"],
+            r["umd_nm"], r["jibun"], r["units"], r["biz_units"],
+            r["lodging_type"], r["lodging_type_detail"],
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp.headers["Content-Disposition"] = "attachment; filename=buildings.xlsx"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 @app.route("/api/health")
