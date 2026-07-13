@@ -202,11 +202,22 @@ def get_buildings_geo():
 
     conn = get_conn()
     cur = conn.cursor()
+    # 각 건물의 '가장 최근 실거래가'를 건물명 기준으로 1건만 붙인다.
+    # N+1 방지를 위해 LEFT JOIN LATERAL로 건물당 최신 1행만 조회하고,
+    # 실거래 이력이 없으면 latest_price/latest_deal_date가 NULL로 반환된다.
     cur.execute(f"""
-        SELECT id, building_name, lat, lng, lodging_type
-        FROM master_buildings
+        SELECT mb.id, mb.building_name, mb.lat, mb.lng, mb.lodging_type,
+               lt.price AS latest_price, lt.deal_date AS latest_deal_date
+        FROM master_buildings mb
+        LEFT JOIN LATERAL (
+            SELECT t.price, t.deal_date
+            FROM transactions t
+            WHERE t.building_name = mb.building_name
+            ORDER BY t.deal_date DESC
+            LIMIT 1
+        ) lt ON TRUE
         WHERE {where_sql}
-        ORDER BY id
+        ORDER BY mb.id
     """, params)
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
