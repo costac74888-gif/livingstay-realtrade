@@ -705,11 +705,14 @@ async function openBuildingInfo(b, pos){
     : "";
 
   // ★ 관심저장 — 좌측 목록과 동일한 favKey(building_name|address)를 써서 어디서 눌러도
-  // 같은 관심단지로 저장/해제된다. 거래이력이 없어 address가 없는 건물은 별을 숨긴다.
-  const canFav = b.address != null && b.address !== "";
-  const favActive = canFav && isFav({ building_name: b.building_name, address: b.address });
+  // 같은 관심단지로 저장/해제된다. 실거래가 있으면 실거래 지번주소(b.address)를 그대로 써
+  // 좌측 목록과 키가 일치하고, 실거래가 없어 지번주소가 없으면 마스터 도로명주소로
+  // 폴백해 거래이력과 무관하게 주소만 있으면 버튼이 활성화된다.
+  const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
+  const canFav = favAddr !== "";
+  const favActive = canFav && isFav({ building_name: b.building_name, address: favAddr });
   const favBtn = canFav
-    ? `<button type="button" id="infoFavBtn" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(b.address)}"
+    ? `<button type="button" id="infoFavBtn" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}"
          onclick="return window.toggleFavFromInfo(this);"
          style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
          ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
@@ -1066,9 +1069,12 @@ async function loadBuildingHeader(id){
 
   // 관심저장/실거래알림은 좌측 목록과 동일한 키(building_name|address)를 사용. address가
   // 없는(=거래이력 없는) 건물은 두 버튼을 비활성화한다.
-  const favItem = { building_name: b.building_name, address: b.address };
+  // 실거래 지번주소(b.address)가 있으면 그대로(좌측 목록과 키 일치), 없으면 마스터
+  // 도로명주소(b.road_address)로 폴백 → 거래이력 없어도 주소만 있으면 버튼 활성화.
+  const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
+  const favItem = { building_name: b.building_name, address: favAddr };
   const favKeyStr = favKey(favItem); // 관심저장과 동일한 키 규칙으로 알림도 저장한다
-  const canFav = b.address != null && b.address !== "";
+  const canFav = favAddr !== "";
 
   // 표제부 백필값 — 헤더 요약에도 반영 (없으면 "-")
   const useAprShort = (b.use_apr_day != null && b.use_apr_day !== "")
