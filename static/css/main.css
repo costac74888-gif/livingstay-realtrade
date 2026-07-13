@@ -545,7 +545,7 @@
 .auth-modal-close:hover{ color:var(--ink); }
 .auth-brand{
   text-align:center; font-size:12px; font-weight:700; letter-spacing:.14em;
-  color:var(--brass); margin-bottom:4px;
+  color:var(--ink); margin-bottom:4px;
 }
 .auth-modal-title{ text-align:center; font-size:20px; font-weight:700; color:var(--ink); margin:0 0 20px; }
 .auth-error{

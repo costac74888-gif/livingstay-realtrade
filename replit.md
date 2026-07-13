@@ -6,7 +6,8 @@
 - 스택: Flask + PostgreSQL, 프런트는 정적 HTML/CSS/JS (`static/`), 지도는 Kakao Maps JS SDK.
 - 데이터: 국토교통부 RTMS 실거래가(매매) + 건축물대장(master_buildings). `sync_batch.py`로 시군구별 배치 수집.
 - 배포: https://livingstay-realtrade.replit.app
-- 브랜드 컬러: GOLD/BLACK 계열 — brass `#B4863F`(변수 `--brass`), ink `#16202E`.
+- 브랜드 컬러: 액센트는 brass `#B4863F`(변수 `--brass`), ink `#16202E`.
+- **로고 기본: 화이트 배경 · 검정 글자(B&W on white)**. 상단/모달/법적 페이지 로고 모두 흑백 기준. 골드 로고는 사용하지 않음(`static/home_stay_logo.png`가 흑백 버전, 골드 원본은 `home_stay_logo_gold_backup.png`).
 - 주요 파일: `app.py`(라우트/API), `static/index.html`(메인 지도), `static/building.html`(건물 상세), `static/js/main.js`, `static/css/main.css`, `db.py`(RealDictCursor).
 
 ## 실행/검증
