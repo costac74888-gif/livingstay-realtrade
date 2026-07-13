@@ -393,6 +393,9 @@ function lodgingLabelKo(lodgingType){
 let kakaoMap = null;
 let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(오버레이) 목록
+let mapLabels = [];                   // 마커 옆 '건물명+최근가' 라벨 요소 목록(줌 토글용)
+let hoverTooltip = null;              // 마커 호버용 공용 미리보기 툴팁(오버레이)
+const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
 const MAP_DEFAULT_CENTER = { lat: 36.2, lng: 127.9 }; // 대한민국 중앙 근처
 const MAP_DEFAULT_LEVEL = 13;         // 전국이 한눈에 보이는 확대 수준
 
@@ -408,12 +411,80 @@ function mapFiltersFromState(){
 function clearMapMarkers(){
   mapOverlays.forEach(o => o.setMap(null));
   mapOverlays = [];
+  mapLabels = [];
+  hideHoverTooltip();
 }
 
 function resetMapView(){
   if (!kakaoMap) return;
   kakaoMap.setLevel(MAP_DEFAULT_LEVEL);
   kakaoMap.setCenter(new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng));
+}
+
+// 마커 라벨 텍스트: 최근 실거래가 있으면 '건물명 · N만원', 없으면 건물명만.
+function buildLabelText(b){
+  const name = b.building_name || "(건물명 미확인)";
+  if (b.latest_price != null){
+    return `${name} · ${Number(b.latest_price).toLocaleString('ko-KR')}만원`;
+  }
+  return name;
+}
+
+// 현재 확대 레벨을 보고 모든 마커 라벨을 표시/숨김 (LABEL_MAX_LEVEL 이하일 때만 표시).
+// 축소된 전국뷰에서는 라벨이 겹쳐 지저분해지므로 숨긴다.
+function updateMarkerLabels(){
+  if (!kakaoMap) return;
+  const show = kakaoMap.getLevel() <= LABEL_MAX_LEVEL;
+  mapLabels.forEach(l => { l.style.display = show ? "block" : "none"; });
+}
+
+// 호버 미리보기 툴팁 내용 — buildings-geo의 latest_price/latest_deal_date로 채우고,
+// 층·면적·거래유형처럼 buildings-geo에 없는 값은 '-'로 표시한다.
+// (호버는 가벼운 미리보기 — 클릭 시 열리는 고정 InfoWindow와 역할이 다르다)
+function hoverTooltipContent(b){
+  const name = escapeHtml(b.building_name || "(건물명 미확인)");
+  const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
+  let dealHtml;
+  if (b.latest_price != null){
+    const price = Number(b.latest_price).toLocaleString('ko-KR');
+    const date = escapeHtml(b.latest_deal_date || "");
+    dealHtml =
+      `<div style="margin-top:2px; line-height:1.6;">` +
+        `<div><b style="color:#B4863F;">${price}만원</b> · ${date}</div>` +
+        `<div>- · 전용 - · -</div>` +
+      `</div>`;
+  } else {
+    dealHtml = `<div style="color:#8a94a0;">실거래 이력 없음</div>`;
+  }
+  return (
+    `<div style="padding:8px 10px; min-width:150px; max-width:230px; font-size:12px;` +
+    ` color:#16202E; font-family:'Noto Sans KR',sans-serif; background:#fff;` +
+    ` border:1px solid #e2e6ea; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.18);` +
+    ` pointer-events:none;">` +
+      `<div style="font-weight:700; font-size:13px; margin-bottom:2px;">${name}</div>` +
+      `<div style="color:#6b7683; margin-bottom:2px;">${typeKo}</div>` +
+      dealHtml +
+    `</div>`
+  );
+}
+
+function showHoverTooltip(b, pos){
+  if (!kakaoMap) return;
+  const el = document.createElement("div");
+  el.innerHTML = hoverTooltipContent(b);
+  if (!hoverTooltip){
+    hoverTooltip = new kakao.maps.CustomOverlay({
+      position: pos, content: el, xAnchor: 0.5, yAnchor: 1.4, clickable: false, zIndex: 9999,
+    });
+  } else {
+    hoverTooltip.setContent(el);
+    hoverTooltip.setPosition(pos);
+  }
+  hoverTooltip.setMap(kakaoMap);
+}
+
+function hideHoverTooltip(){
+  if (hoverTooltip) hoverTooltip.setMap(null);
 }
 
 // filters: {q, si_do, sgg_nm, umd_nm, lodging_type}
@@ -445,16 +516,41 @@ async function loadMapMarkers(filters = {}, opts = {}){
     if (b.lat == null || b.lng == null) return;
     const color = markerColor(b.lodging_type);
     const pos = new kakao.maps.LatLng(b.lat, b.lng);
+
+    // 기존 마커 원(색상 점) — 디자인 그대로 유지
     const el = document.createElement("div");
     el.style.cssText = `width:14px; height:14px; border-radius:50%; background:${color};` +
       `border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer;`;
     el.title = b.building_name || "";
+
+    // 점 위에 '건물명(+최근 실거래가)' 라벨을 절대배치로 얹는다.
+    // 래퍼는 점과 동일한 14x14라 앵커(0.5/0.5)가 그대로 유지되어 점 위치는 안 바뀐다.
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative; width:14px; height:14px;";
+    const label = document.createElement("div");
+    label.textContent = buildLabelText(b);
+    label.style.cssText =
+      "position:absolute; left:50%; bottom:100%; transform:translate(-50%,-6px);" +
+      "white-space:nowrap; background:rgba(255,255,255,.96); color:#16202E;" +
+      "font-size:11px; font-weight:600; line-height:1.2; padding:2px 6px;" +
+      "border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.25); pointer-events:none;" +
+      "font-family:'Noto Sans KR',sans-serif;";
+    label.style.display = "none"; // 초기 숨김 — 확대 레벨에 따라 updateMarkerLabels가 토글
+    wrap.appendChild(el);
+    wrap.appendChild(label);
+
     const overlay = new kakao.maps.CustomOverlay({
-      position: pos, content: el, xAnchor: 0.5, yAnchor: 0.5, clickable: true,
+      position: pos, content: wrap, xAnchor: 0.5, yAnchor: 0.5, clickable: true,
     });
     overlay.setMap(kakaoMap);
+
+    // 클릭 = 고정 InfoWindow(기존 동작 유지), 호버 = 가벼운 미리보기 툴팁
     el.addEventListener("click", () => openBuildingInfo(b, pos));
+    wrap.addEventListener("mouseenter", () => showHoverTooltip(b, pos));
+    wrap.addEventListener("mouseleave", hideHoverTooltip);
+
     mapOverlays.push(overlay);
+    mapLabels.push(label);
     bounds.extend(pos);
     placed++;
   });
@@ -467,6 +563,10 @@ async function loadMapMarkers(filters = {}, opts = {}){
   if (placed > 0 && opts.fit === true){
     kakaoMap.setBounds(bounds);
   }
+
+  // 새로 만든 라벨들의 표시 여부를 현재 확대 레벨 기준으로 즉시 반영
+  updateMarkerLabels();
+
   console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
 }
 
@@ -478,6 +578,9 @@ async function initMap(){
     center: new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng),
     level: MAP_DEFAULT_LEVEL,
   });
+
+  // 확대/축소 시 마커 라벨 표시 여부 토글 (축소된 전국뷰에서는 라벨 숨김)
+  kakao.maps.event.addListener(kakaoMap, "zoom_changed", updateMarkerLabels);
 
   // 풀스크린 레이아웃 대응 — 컨테이너 크기가 폰트 로드/헤더 높이 반영/창 크기변경으로
   // 바뀌면 지도 타일이 회색으로 남으므로 렌더를 다시 맞춘다.
