@@ -55,6 +55,11 @@
       </div>
       <button class="btn-search" id="btnSearch">검색</button>
     </div>
+    <div class="tx-favbar">
+      <label><input type="checkbox" id="chkFavOnly"> 관심단지만 보기</label>
+      <span id="favCountLabel"></span>
+      <div id="favChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+    </div>
   </div>
 
   <div class="results-head" style="margin-top:18px;">
@@ -94,6 +99,12 @@
     padding:10px 22px; font-size:13.5px; font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap;
   }
   .tx-filter-grid .btn-search:hover{ background:var(--brass-dark); }
+  .tx-favbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); }
+  .tx-favbar label{ display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:600; color:var(--ink); white-space:nowrap; }
+  .clickable-row{ cursor:pointer; }
+  .clickable-row:hover{ background:var(--bg-soft, #f6f4ef); }
+  .clickable-row .row-link{ color:inherit; text-decoration:none; }
+  .clickable-row:hover .row-link{ color:var(--brass-dark); text-decoration:underline; }
   @media (max-width: 900px){
     .tx-filter-grid{ grid-template-columns:1fr 1fr; }
     .tx-filter-grid .btn-search{ grid-column:1 / -1; }
@@ -102,7 +113,19 @@
 
 <script>
   let regionTree = {};
-  const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", page:1, size:20 };
+  const FAV_KEY = "livingstay_favorites";
+  const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", page:1, size:20, favOnly:false, favKey:null };
+
+  // 관심단지: 지도 홈과 동일한 localStorage 키를 그대로 읽는다(서버 로그인 여부와 무관).
+  function getFavorites(){ try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; } }
+  function serverFavSync(method, item){
+    if (!window.__livingstayLoggedIn) return;
+    fetch("/api/favorites/mine", {
+      method: method, credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ building_name: item.building_name, address: item.address })
+    }).catch(function(){});
+  }
 
   function escapeHtml(v){
     return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
@@ -163,9 +186,18 @@
     const lodgingLabel = t.lodging_type || "미확인";
     const lodgingTag = `<span class="tag ${lodgingClass}">${escapeHtml(lodgingLabel)}</span>`;
     const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
+    const nameText = t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)";
+    // master_building_id가 있으면 건물 상세 페이지로 이동하는 일반 링크(<a href>)로 만든다.
+    const mbid = t.master_building_id;
+    const clickable = mbid != null && mbid !== "";
+    const href = clickable ? `/building/${Number(mbid)}` : null;
+    const nameCell = clickable
+      ? `<a href="${href}" class="row-link" onclick="event.stopPropagation()">${nameText}</a> ${lodgingTag}`
+      : `${nameText} ${lodgingTag}`;
+    const trAttrs = clickable ? ` class="clickable-row" onclick="location.href='${href}'"` : "";
     return `
-      <tr>
-        <td class="col-name">${t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)"} ${lodgingTag}</td>
+      <tr${trAttrs}>
+        <td class="col-name">${nameCell}</td>
         <td class="col-addr">${escapeHtml(t.si_do||'')} ${escapeHtml(t.sgg_nm||'')} ${escapeHtml(t.umd_nm||'')} ${escapeHtml(t.jibun||'')}</td>
         <td class="col-num col-area">${Number(t.area).toFixed(1)} ㎡</td>
         <td class="col-num col-floor">${t.floor ? escapeHtml(t.floor) + '<span class="m-only">층</span>' : '-'}</td>
@@ -179,16 +211,28 @@
     const board = document.getElementById("board");
     board.innerHTML = `<div class="loading">불러오는 중…</div>`;
 
-    const params = new URLSearchParams({
-      q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm,
-      year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size
-    });
-
     let items = [], total = 0;
     try {
-      const res = await fetch(`/api/transactions?${params}`);
-      const data = await res.json();
-      items = data.items || []; total = data.total || 0;
+      if (state.favOnly){
+        // 관심단지만 보기 — localStorage 관심키 전체를 /api/favorites로 한 번에 조회.
+        // (지도 홈과 동일 방식: 관심 전체를 한 화면에 표시 → 페이지네이션과 자연스럽게 맞물림)
+        const favs = getFavorites();
+        if (favs.length === 0){
+          items = []; total = 0;
+        } else {
+          const res = await fetch(`/api/favorites?keys=${encodeURIComponent(favs.join(","))}`);
+          const data = await res.json();
+          items = data.items || []; total = data.total || 0;
+        }
+      } else {
+        const params = new URLSearchParams({
+          q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm,
+          year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size
+        });
+        const res = await fetch(`/api/transactions?${params}`);
+        const data = await res.json();
+        items = data.items || []; total = data.total || 0;
+      }
     } catch (e) {
       board.innerHTML = `<div class="empty-state"><div class="big">목록을 불러오지 못했습니다</div>잠시 후 다시 시도해주세요.</div>`;
       document.getElementById("pager").innerHTML = "";
@@ -198,7 +242,9 @@
     document.getElementById("resultCount").textContent = `총 ${total.toLocaleString('ko-KR')}건`;
 
     if (items.length === 0){
-      board.innerHTML = `<div class="empty-state"><div class="big">일치하는 거래가 없습니다</div>검색 조건을 조정해보세요.</div>`;
+      board.innerHTML = state.favOnly
+        ? `<div class="empty-state"><div class="big">저장된 관심단지 거래가 없습니다</div>목록에서 건물을 관심단지로 추가해보세요.</div>`
+        : `<div class="empty-state"><div class="big">일치하는 거래가 없습니다</div>검색 조건을 조정해보세요.</div>`;
       document.getElementById("pager").innerHTML = "";
       return;
     }
@@ -209,8 +255,12 @@
         <tbody>${items.map(rowHTML).join("")}</tbody>
       </table>`;
 
-    const totalPages = Math.max(Math.ceil(total / state.size), 1);
     const pager = document.getElementById("pager");
+    if (state.favOnly){
+      pager.innerHTML = "";   // 관심단지 전체를 한 번에 표시 → 페이지네이션 없음
+      return;
+    }
+    const totalPages = Math.max(Math.ceil(total / state.size), 1);
     pager.innerHTML = `
       <button ${state.page<=1?"disabled":""} id="prevPage">이전</button>
       <span class="cur">${state.page} / ${totalPages}</span>
@@ -220,6 +270,61 @@
     if (prev) prev.addEventListener("click", ()=>{ state.page--; loadBoard(); window.scrollTo({top:0, behavior:"smooth"}); });
     if (next) next.addEventListener("click", ()=>{ state.page++; loadBoard(); window.scrollTo({top:0, behavior:"smooth"}); });
   }
+
+  function renderFavChips(){
+    const wrap = document.getElementById("favChips");
+    if (!wrap) return;
+    const favs = getFavorites();
+    const label = document.getElementById("favCountLabel");
+    if (label) label.textContent = favs.length ? `저장된 관심단지 ${favs.length}개` : "저장된 관심단지가 없습니다";
+    wrap.innerHTML = "";
+    favs.forEach(k => {
+      const name = k.split("|")[0];
+      const chip = document.createElement("span");
+      chip.className = "fav-chip";
+      const lbl = document.createElement("span");
+      lbl.className = "label";
+      lbl.textContent = "★ " + (name && name !== "null" && name !== "undefined" ? name : "(건물명 미확인)");
+      lbl.title = "이 건물명으로 검색";
+      lbl.addEventListener("click", () => filterToFav(k));
+      chip.appendChild(lbl);
+      const x = document.createElement("span");
+      x.className = "x";
+      x.textContent = "✕";
+      x.addEventListener("click", (e) => { e.stopPropagation(); removeFav(k); });
+      chip.appendChild(x);
+      wrap.appendChild(chip);
+    });
+  }
+
+  // 칩 클릭 → 그 건물명을 검색창에 채워 필터링(지도 페이지 filterToFav와 동일한 취지).
+  function filterToFav(key){
+    const name = key.split("|")[0];
+    const q = (name && name !== "null" && name !== "undefined") ? name : "";
+    const input = document.getElementById("inputQ");
+    if (input) input.value = q;
+    state.q = q.trim();
+    state.favOnly = false;
+    state.favKey = null;
+    const chk = document.getElementById("chkFavOnly");
+    if (chk) chk.checked = false;
+    state.page = 1;
+    renderFavChips();
+    loadBoard();
+  }
+
+  function removeFav(key){
+    const favs = getFavorites().filter(x => x !== key);
+    localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+    const sep = key.indexOf("|");
+    if (sep >= 0) serverFavSync("DELETE", { building_name: key.slice(0, sep), address: key.slice(sep + 1) });
+    state.page = 1;
+    renderFavChips();
+    loadBoard();
+  }
+
+  // 로그인 직후 auth.js가 localStorage 관심키를 migrate 하면 칩을 다시 그린다.
+  window.refreshFavoritesUI = function(){ renderFavChips(); if (state.favOnly) loadBoard(); };
 
   document.getElementById("selSiDo").addEventListener("change", e=>{
     state.si_do = e.target.value; state.sgg_nm=""; state.umd_nm="";
@@ -232,6 +337,10 @@
   document.getElementById("selUmdNm").addEventListener("change", e=>{ state.umd_nm = e.target.value; });
   document.getElementById("selYear").addEventListener("change", e=>{ state.year = e.target.value; });
   document.getElementById("selLodgingType").addEventListener("change", e=>{ state.lodging_type = e.target.value; });
+  document.getElementById("chkFavOnly").addEventListener("change", e=>{
+    state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
+    renderFavChips(); loadBoard();
+  });
 
   function runSearch(){
     state.q = document.getElementById("inputQ").value.trim();
@@ -244,6 +353,7 @@
   (async function init(){
     await loadRegions();
     await loadYears();
+    renderFavChips();
     loadBoard();
   })();
 </script>

@@ -239,6 +239,9 @@
   .side-list{display:flex; flex-direction:column;}
   .side-tx{display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid var(--line);}
   .side-tx:last-child{border-bottom:none;}
+  .side-tx.is-clickable{cursor:pointer; margin:0 -8px; padding-left:8px; padding-right:8px; border-radius:6px; transition:background .12s;}
+  .side-tx.is-clickable:hover{background:var(--bg-soft, #f6f4ef);}
+  .side-tx.is-clickable:hover .st-name{color:var(--brass-dark);}
   .side-tx .st-name{font-size:12px; font-weight:600; color:var(--ink); line-height:1.35;}
   .side-tx .st-rank{color:var(--brass-dark); font-weight:700; margin-right:2px;}
   .side-tx .st-meta{font-size:10.5px; color:var(--ink-soft); margin-top:2px;}

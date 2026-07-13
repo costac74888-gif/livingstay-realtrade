@@ -864,7 +864,13 @@ function renderSideTx(t, rank){
   const region = escapeHtml([t.sgg_nm, t.umd_nm].filter(Boolean).join(" "));
   const metaRight = t.deal_date ? ` · ${escapeHtml(t.deal_date)}` : "";
   const rankHtml = rank ? `<span class="st-rank">${rank}</span>` : "";
-  return `<div class="side-tx">
+  // master_building_id가 있으면 건물상세 좌측패널 전환(페이지 이동 없이) — 기존 로직 재사용.
+  const mbid = t.master_building_id;
+  const clickable = mbid != null && mbid !== "";
+  const clickAttrs = clickable
+    ? ` class="side-tx is-clickable" onclick="openBuildingDetail(${Number(mbid)}); return false;" title="건물 상세 보기"`
+    : ` class="side-tx"`;
+  return `<div${clickAttrs}>
     <div class="st-left">
       <div class="st-name">${rankHtml}${name}</div>
       <div class="st-meta">${region}${metaRight}</div>

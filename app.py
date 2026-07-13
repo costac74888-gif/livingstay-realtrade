@@ -356,10 +356,19 @@ def get_transactions():
     cur.execute(f"SELECT COUNT(*) c FROM transactions WHERE {where_sql}", params)
     total = cur.fetchone()["c"]
 
+    # master_building_id: 각 거래의 지번키(sgg_cd+umd_nm+jibun)로 master_buildings를
+    # 역매칭(get_buildings_geo/get_monthly_trend와 동일한 지번 정확 매칭 전략).
+    #   - 세 키가 모두 있고 대응 건물이 있으면 그 건물 id, 없으면 NULL.
+    #   - 필터/정렬/페이지네이션(where_sql/ORDER BY/LIMIT)에는 영향 없음.
     cur.execute(f"""
         SELECT building_name, address, si_do, sgg_nm, umd_nm, jibun, sgg_cd,
                area, price, deal_date, deal_type, floor,
-               lodging_type, lodging_type_detail, match_source
+               lodging_type, lodging_type_detail, match_source,
+               (SELECT mb.id FROM master_buildings mb
+                 WHERE mb.sgg_cd = transactions.sgg_cd
+                   AND mb.umd_nm = transactions.umd_nm
+                   AND mb.jibun = transactions.jibun
+                 ORDER BY mb.id LIMIT 1) AS master_building_id
         FROM transactions
         WHERE {where_sql}
         ORDER BY deal_date DESC, id DESC
@@ -635,7 +644,12 @@ def get_favorites():
     cur.execute(f"""
         SELECT building_name, address, si_do, sgg_nm, umd_nm, jibun, sgg_cd,
                area, price, deal_date, deal_type, floor,
-               lodging_type, lodging_type_detail, match_source
+               lodging_type, lodging_type_detail, match_source,
+               (SELECT mb.id FROM master_buildings mb
+                 WHERE mb.sgg_cd = transactions.sgg_cd
+                   AND mb.umd_nm = transactions.umd_nm
+                   AND mb.jibun = transactions.jibun
+                 ORDER BY mb.id LIMIT 1) AS master_building_id
         FROM transactions
         WHERE {conditions}
         ORDER BY deal_date DESC, id DESC
