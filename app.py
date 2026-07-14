@@ -674,6 +674,40 @@ def get_favorites():
     return jsonify({"items": rows, "total": len(rows)})
 
 
+def _fill_master_coords(cur, master_id, road_address):
+    """신규 master_buildings 행에 카카오 지오코딩(geocode_buildings.geocode_address)으로
+    lat/lng을 채운다. 이미 열려 있는 커서를 받아 UPDATE만 수행하고 커밋은 호출측에 맡긴다.
+
+    주소 미인식/카카오 API 오류/키 미설정 등으로 실패해도 예외를 밖으로 던지지 않아
+    건물 등록 자체는 막지 않는다(좌표만 NULL로 남기고 넘어감)."""
+    if not road_address:
+        return
+    try:
+        from geocode_buildings import geocode_address
+        result = geocode_address(road_address)
+        if not result:
+            return
+        lat, lng = result
+        # 보조 UPDATE는 SAVEPOINT로 감싼다. UPDATE 자체가 DB 오류를 내도
+        # 메인 INSERT 트랜잭션이 aborted 상태로 오염되지 않아, 호출측 commit이
+        # 정상 진행되고 건물 등록은 좌표 NULL로라도 유지된다.
+        cur.execute("SAVEPOINT geocode_sp")
+        try:
+            cur.execute(
+                "UPDATE master_buildings SET lat=%s, lng=%s WHERE id=%s",
+                (lat, lng, master_id),
+            )
+            cur.execute("RELEASE SAVEPOINT geocode_sp")
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT geocode_sp")
+            raise
+    except Exception as e:
+        app.logger.warning(
+            "신규 건물 지오코딩 실패(등록은 계속) id=%s: %s / %s",
+            master_id, road_address, e,
+        )
+
+
 @app.route("/api/submit-building", methods=["POST"])
 @limiter.limit("3 per minute; 10 per hour")
 def submit_building():
@@ -784,6 +818,8 @@ def submit_building():
             RETURNING id
         """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str, title["ho_cnt"], label, detail))
         master_id = cur.fetchone()["id"]
+        # 신규 편입 건물의 좌표를 도로명주소로 즉시 채운다(실패해도 등록은 계속).
+        _fill_master_coords(cur, master_id, road_addr_final)
 
     mismatch_note = ""
     if suggested_lodging_type and suggested_lodging_type != label:
@@ -2270,6 +2306,8 @@ def admin_buildings_create():
         vals,
     )
     new_id = cur.fetchone()["id"]
+    # 신규 건물의 좌표를 도로명주소로 즉시 채운다(실패해도 등록은 계속).
+    _fill_master_coords(cur, new_id, road_address)
     conn.commit()
     cur.close()
     conn.close()
