@@ -43,6 +43,17 @@ from address_utils import (
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
 
+# 정적 JS/CSS 자산에 배포마다 바뀌는 버전 쿼리스트링(?v=SERVER_BOOT_V)을 붙여
+# 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
+# 하드코딩하지 않고 서버 기동 시각(=배포마다 갱신)을 재사용한다.
+_ASSET_VER_RE = re.compile(r'(src|href)="(/static/(?:js|css)/[^"?]+\.(?:js|css))"')
+
+
+def _inject_asset_version(html):
+    return _ASSET_VER_RE.sub(
+        lambda m: f'{m.group(1)}="{m.group(2)}?v={SERVER_BOOT_V}"', html
+    )
+
 app = Flask(__name__, static_folder="static")
 # 관리자 세션(서명된 쿠키) 서명 키. FLASK_SECRET_KEY가 없으면 세션이 유지되지
 # 않아 관리자 로그인이 동작하지 않으므로 Secrets에 반드시 등록되어 있어야 한다.
@@ -173,6 +184,7 @@ def _serve_app_shell():
         html = f.read()
     html = html.replace("{{KAKAO_JS_KEY}}", quote(kakao_js_key, safe=""))
     html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
+    html = _inject_asset_version(html)
     resp = Response(html, mimetype="text/html")
     # 진입 HTML은 캐시하지 않아 항상 최신 SDK URL(_v)을 받도록 한다.
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -805,6 +817,7 @@ def apply_agent_page():
     html_path = os.path.join(app.static_folder, "apply_agent.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
+    html = _inject_asset_version(html)
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
@@ -881,6 +894,7 @@ def apply_operator_page():
     html_path = os.path.join(app.static_folder, "apply_operator.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
+    html = _inject_asset_version(html)
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
@@ -1089,6 +1103,7 @@ def _serve_static_html(filename):
     html_path = os.path.join(app.static_folder, filename)
     with open(html_path, encoding="utf-8") as fp:
         html = fp.read()
+    html = _inject_asset_version(html)
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
