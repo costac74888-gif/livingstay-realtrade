@@ -509,6 +509,15 @@ def init_db():
     )
     """)
 
+    # 앱 메타(키-값) — 관리 작업의 마지막 실행 기록 등 소소한 상태 저장용
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS app_meta (
+        key TEXT PRIMARY KEY,               -- 예: 'geocode_last_run'
+        value TEXT,                         -- 자유 형식(문자열/숫자)
+        updated_at TIMESTAMP DEFAULT NOW()  -- 마지막 갱신 시각
+    )
+    """)
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")

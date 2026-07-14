@@ -24,6 +24,7 @@
         <button class="admin-menu-item" data-menu="notices">공지사항 관리</button>
         <button class="admin-menu-item" data-menu="legal">약관 관리</button>
         <button class="admin-menu-item" data-menu="requests">수정요청 이력</button>
+        <button class="admin-menu-item" data-menu="geocode">지도 좌표 채우기</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>유료화 <span class="admin-soon">준비 중</span></button>
@@ -600,9 +601,85 @@
       selectLegalTab("terms");
     }
 
+    // ---- 지도 좌표 채우기 ----
+    // 운영 DB는 배포된 앱만 쓸 수 있으므로, 배포에 포함된 data/building_coords.json
+    // 좌표를 id 기준으로 주입한다. 여러 번 눌러도 안전(idempotent).
+    async function loadGeocodeStatus() {
+      const box = document.getElementById("geoStatus");
+      if (!box) return;
+      box.textContent = "현황 불러오는 중…";
+      try {
+        const res = await fetch("/api/admin/geocode/status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "현황을 불러오지 못했습니다."; return; }
+        const pct = d.total ? ((d.with_geo / d.total) * 100).toFixed(1) : "0.0";
+        const last = d.last_run
+          ? `마지막 실행: ${dgEscape(d.last_run)}${d.last_run_at ? ` · ${dgEscape(d.last_run_at)}` : ""}`
+          : "마지막 실행: 아직 실행된 적 없음";
+        box.innerHTML =
+          `<div class="geo-stat-row"><b>좌표 확보:</b> ${num(d.with_geo)} / ${num(d.total)}건 (${pct}%)</div>` +
+          `<div class="geo-stat-row"><b>데이터 파일 좌표:</b> ${d.seed_count == null ? "파일 없음" : num(d.seed_count) + "건"}</div>` +
+          `<div class="geo-stat-row geo-stat-last">${last}</div>`;
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runGeocode() {
+      const btn = document.getElementById("geoRunBtn");
+      const msg = document.getElementById("geoMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "실행 중…";
+      try {
+        const res = await fetch("/api/admin/geocode", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = `완료: ${d.message}. 지도(메인 페이지)에 바로 반영됩니다.`;
+          loadGeocodeStatus();
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "좌표 채우기 실행";
+      }
+    }
+
+    function showGeocode() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">지도 좌표 채우기</h2>
+          </div>
+          <p class="legal-admin-hint">
+            배포된 앱이 <code>data/building_coords.json</code>의 좌표를 건물 id 기준으로
+            지도(<code>master_buildings</code>)에 채웁니다. 여러 번 눌러도 안전하며(중복 실행해도
+            결과 동일), 실제로 값이 바뀐 건수만 표시됩니다. 실행 후 메인 지도에 즉시 반영됩니다.
+          </p>
+          <div id="geoStatus" class="geo-status"></div>
+          <div class="legal-admin-actions">
+            <span id="geoMsg" class="legal-msg" role="alert"></span>
+            <button id="geoRunBtn" class="admin-btn admin-btn-primary">좌표 채우기 실행</button>
+          </div>
+        </div>
+      `;
+      document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
+      loadGeocodeStatus();
+    }
+
     function showView(menuKey) {
       if (menuKey === "stats") { showStats(menuKey); return; }
       if (menuKey === "legal") { showLegal(); return; }
+      if (menuKey === "geocode") { showGeocode(); return; }
       showGrid(menuKey);
     }
 

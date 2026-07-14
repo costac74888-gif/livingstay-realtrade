@@ -757,3 +757,9 @@
 .legal-meta{ font-size:12.5px; color:var(--ink-soft); }
 .legal-msg{ font-size:13px; font-weight:600; flex:1 1 auto; }
 .legal-admin-actions .admin-btn-primary{ margin-left:auto; }
+
+/* 관리자 · 지도 좌표 채우기 */
+.geo-status{ margin:14px 0 4px; padding:14px 16px; background:#F7F5F1; border:1px solid #E7E2D8; border-radius:10px; }
+.geo-stat-row{ font-size:14px; color:var(--ink); line-height:1.9; }
+.geo-stat-row.geo-stat-last{ margin-top:6px; font-size:12.5px; color:var(--ink-soft); }
+.legal-admin-hint code{ background:#EFEBE3; padding:1px 5px; border-radius:4px; font-size:12.5px; }
