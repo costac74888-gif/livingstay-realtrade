@@ -272,16 +272,14 @@ def get_building(building_id):
         conn.close()
         return jsonify({"error": "not found"}), 404
 
-    # 전속중개사: 이 건물의 활성 매물(status='active') 중 agent가 연결된 것을 agents와 JOIN.
-    # 없으면 agent: null. 여러 건이면 최근 갱신 순 1건.
+    # 전속중개사: agent_buildings에 이 건물이 등록된 approved 중개사 기준 (여러 건이면 최근 갱신 순 1건).
     cur.execute("""
-        SELECT a.office_name, a.owner_name, a.phone
-        FROM listings l
-        JOIN agents a ON a.id = l.agent_id
-        WHERE l.master_building_id = %s
-          AND l.status = 'active'
-          AND l.agent_id IS NOT NULL
-        ORDER BY l.updated_at DESC NULLS LAST, l.id DESC
+        SELECT a.office_name, a.owner_name, a.phone, a.subdomain_slug
+        FROM agent_buildings ab
+        JOIN agents a ON a.id = ab.agent_id
+        WHERE ab.master_building_id = %s
+          AND a.status = 'approved'
+        ORDER BY ab.updated_at DESC NULLS LAST, ab.id DESC
         LIMIT 1
     """, [building_id])
     agent_row = cur.fetchone()
@@ -2117,6 +2115,57 @@ def require_agent(f):
 @app.route("/agent/login")
 def agent_login_page():
     return _serve_static_html("agent_login.html")
+
+
+@app.route("/agent/<slug>")
+def agent_profile_page(slug):
+    """중개사 공개 프로필 페이지. Flask는 정적 룰(/agent/login)을 우선 매칭하므로 충돌 없음."""
+    return _serve_static_html("agent_profile.html")
+
+
+@app.route("/api/agent/profile/<slug>")
+def agent_public_profile(slug):
+    """중개사 공개 프로필 API — 인증 불필요. approved 상태만 노출."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, office_name, owner_name, phone, photo_url, intro_text
+        FROM agents
+        WHERE subdomain_slug = %s AND status = 'approved'
+    """, [slug])
+    agent = cur.fetchone()
+    if not agent:
+        cur.close()
+        conn.close()
+        return jsonify({"error": "not found"}), 404
+    cur.execute("""
+        SELECT ab.master_building_id, mb.building_name, mb.lodging_type,
+               COALESCE(ab.sale_count, 0)      AS sale_count,
+               COALESCE(ab.jeonse_count, 0)    AS jeonse_count,
+               COALESCE(ab.wolse_count, 0)     AS wolse_count,
+               COALESCE(ab.shortterm_count, 0) AS shortterm_count
+        FROM agent_buildings ab
+        JOIN master_buildings mb ON mb.id = ab.master_building_id
+        WHERE ab.agent_id = %s
+        ORDER BY mb.building_name
+    """, [agent["id"]])
+    buildings = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    total_listings = sum(
+        b["sale_count"] + b["jeonse_count"] + b["wolse_count"] + b["shortterm_count"]
+        for b in buildings
+    )
+    return jsonify({
+        "office_name": agent["office_name"],
+        "owner_name": agent["owner_name"],
+        "phone": agent["phone"],
+        "photo_url": agent["photo_url"],
+        "intro_text": agent["intro_text"],
+        "buildings": buildings,
+        "building_count": len(buildings),
+        "total_listings": total_listings,
+    })
 
 
 @app.route("/api/agent/login", methods=["POST"])
