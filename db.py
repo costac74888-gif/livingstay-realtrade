@@ -546,6 +546,30 @@ def init_db():
     )
     """)
 
+    # 사이트 팝업/상단배너 — 관리자가 admin.html "팝업관리"에서 등록,
+    # 공개 API(/api/popups/active)가 조건에 맞는 1건을 골라 header.js가 표시한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS site_popups (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,                     -- 관리용 제목 (사용자에게는 미노출)
+        start_at TIMESTAMP,                      -- 게재 시작 (NULL이면 즉시)
+        end_at TIMESTAMP,                        -- 게재 종료 (NULL이면 무기한)
+        show_desktop BOOLEAN DEFAULT TRUE,       -- 데스크톱 노출
+        show_mobile BOOLEAN DEFAULT TRUE,        -- 모바일 노출
+        scope TEXT DEFAULT 'all',                -- 'all'(전체 페이지) | 'home_only'(홈만)
+        audience TEXT DEFAULT 'all',             -- 'all' | 'logged_in'(로그인 회원만)
+        display_type TEXT DEFAULT 'popup',       -- 'popup'(모달) | 'top_banner'(상단배너)
+        image_ref TEXT,                          -- Object Storage 참조 키 (popups/…)
+        link_url TEXT,                           -- 클릭 시 이동 URL (없으면 링크 없음)
+        open_new_tab BOOLEAN DEFAULT TRUE,       -- 링크 새 창 열기
+        width_px INTEGER DEFAULT 400,            -- 팝업 너비(px)
+        close_mode TEXT DEFAULT 'close',         -- 'close'(닫기만) | 'hide_today'(오늘 하루 안 보기)
+        is_active BOOLEAN DEFAULT TRUE,          -- 게재중/중지 토글
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     # 앱 메타(키-값) — 관리 작업의 마지막 실행 기록 등 소소한 상태 저장용
     cur.execute("""
     CREATE TABLE IF NOT EXISTS app_meta (

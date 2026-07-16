@@ -80,6 +80,26 @@ def is_valid_doc_ref(ref, applicant_type=None, allowed_doc_types=None):
     return True
 
 
+# ---- 사이트 팝업 이미지 (관리자 업로드, 공개 서빙) ----
+# 서류(applications/…)와 달리 사이트 방문자 모두에게 보여야 하므로
+# 앱의 공개 프록시 라우트(/api/popups/image/<key>)로 서빙한다.
+POPUP_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+POPUP_REF_RE = re.compile(r"^popups/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+
+
+def build_popup_key(ext):
+    return f"popups/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_popup_ref(ref):
+    return bool(ref) and bool(POPUP_REF_RE.match(ref))
+
+
+def download_bytes(key):
+    """Object Storage에서 객체 바이트를 내려받는다(팝업 이미지 공개 프록시용)."""
+    return get_client().download_as_bytes(key)
+
+
 def upload_doc(key, data):
     get_client().upload_from_bytes(key, data)
 

@@ -22,6 +22,7 @@
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
         <button class="admin-menu-item" data-menu="notices">공지사항 관리</button>
+        <button class="admin-menu-item" data-menu="popups">팝업관리</button>
         <button class="admin-menu-item" data-menu="legal">약관 관리</button>
         <button class="admin-menu-item" data-menu="requests">수정요청 이력</button>
         <button class="admin-menu-item" data-menu="geocode">지도 좌표 채우기</button>
@@ -826,12 +827,285 @@
       loadTxSyncStatus();
     }
 
+    // ---- 팝업관리 ----
+    // 이미지 업로드가 필요해 DataGrid 폼 대신 전용 목록+모달을 쓴다(API는 E-1과 같은 CRUD 패턴).
+    function popupPeriodText(p) {
+      const s = p.start_at || "";
+      const e = p.end_at || "";
+      if (!s && !e) return "상시";
+      return `${s || "즉시"} ~ ${e || "무기한"}`;
+    }
+
+    function popupLiveBadge(p) {
+      if (!p.is_active) return `<span class="dg-badge dg-badge-no">중지</span>`;
+      const now = new Date();
+      const s = p.start_at ? new Date(p.start_at.replace(" ", "T")) : null;
+      const e = p.end_at ? new Date(p.end_at.replace(" ", "T")) : null;
+      if (s && now < s) return `<span class="dg-badge dg-badge-wait">대기</span>`;
+      if (e && now > e) return `<span class="dg-badge dg-badge-no">종료</span>`;
+      return `<span class="dg-badge dg-badge-ok">게재중</span>`;
+    }
+
+    async function loadPopupList() {
+      const body = document.getElementById("popupListBody");
+      if (!body) return;
+      body.innerHTML = `<tr><td class="dg-empty" colspan="6">불러오는 중…</td></tr>`;
+      let d;
+      try {
+        const res = await fetch("/api/admin/popups");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        d = await res.json();
+      } catch (e) {
+        body.innerHTML = `<tr><td class="dg-empty" colspan="6">목록을 불러오지 못했습니다.</td></tr>`;
+        return;
+      }
+      const items = d.items || [];
+      if (!items.length) {
+        body.innerHTML = `<tr><td class="dg-empty" colspan="6">등록된 팝업이 없습니다. "+ 팝업 추가"로 만들어보세요.</td></tr>`;
+        return;
+      }
+      body.innerHTML = items.map((p) => `
+        <tr>
+          <td>${p.id}</td>
+          <td>${dgEscape(p.title)}</td>
+          <td>${p.display_type === "top_banner" ? "상단배너" : "팝업"}</td>
+          <td>${dgEscape(popupPeriodText(p))}</td>
+          <td>${[p.show_desktop ? "PC" : "", p.show_mobile ? "모바일" : ""].filter(Boolean).join("·") || "—"}</td>
+          <td>${popupLiveBadge(p)}
+            <button class="dg-icon-btn popup-toggle" data-id="${p.id}" data-active="${p.is_active ? 1 : 0}">${p.is_active ? "중지" : "게재"}</button>
+            <button class="dg-icon-btn popup-edit" data-id="${p.id}">수정</button>
+            <button class="dg-icon-btn popup-del" data-id="${p.id}">삭제</button>
+          </td>
+        </tr>`).join("");
+      body.querySelectorAll(".popup-edit").forEach((b) => b.addEventListener("click", () => {
+        const row = items.find((x) => String(x.id) === b.getAttribute("data-id"));
+        openPopupForm(row);
+      }));
+      body.querySelectorAll(".popup-del").forEach((b) => b.addEventListener("click", async () => {
+        const row = items.find((x) => String(x.id) === b.getAttribute("data-id"));
+        if (!window.confirm(`'${row ? row.title : ""}' 팝업을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+        try {
+          const res = await fetch(`/api/admin/popups/${b.getAttribute("data-id")}`, { method: "DELETE" });
+          const dd = await res.json().catch(() => ({}));
+          if (res.ok && dd.ok) { loadPopupList(); return; }
+          window.alert(dd.message || "삭제에 실패했습니다.");
+        } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      }));
+      body.querySelectorAll(".popup-toggle").forEach((b) => b.addEventListener("click", async () => {
+        const next = b.getAttribute("data-active") !== "1";
+        try {
+          const res = await fetch(`/api/admin/popups/${b.getAttribute("data-id")}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: next }),
+          });
+          const dd = await res.json().catch(() => ({}));
+          if (res.ok && dd.ok) { loadPopupList(); return; }
+          window.alert(dd.message || "변경에 실패했습니다.");
+        } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      }));
+    }
+
+    function openPopupForm(row) {
+      const isEdit = !!row;
+      const v = (k, def) => (isEdit && row[k] != null ? row[k] : def);
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true" style="max-height:90vh; overflow-y:auto;">
+          <div class="admin-modal-head">
+            <h3>팝업 ${isEdit ? "수정" : "추가"}</h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <form class="admin-modal-body">
+            <label class="admin-form-row">
+              <span class="admin-form-label">제목(관리용) <em class="req">*</em></span>
+              <input class="admin-input" id="ppTitle" value="${dgEscape(v("title", ""))}" placeholder="예: 7월 오픈기념 이벤트" />
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">게재 시작일시</span>
+              <input class="admin-input" id="ppStart" type="datetime-local" value="${dgEscape((v("start_at", "") || "").replace(" ", "T"))}" />
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">게재 종료일시</span>
+              <input class="admin-input" id="ppEnd" type="datetime-local" value="${dgEscape((v("end_at", "") || "").replace(" ", "T"))}" />
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">대상 기기</span>
+              <span>
+                <label style="margin-right:14px;"><input type="checkbox" id="ppDesktop" ${v("show_desktop", true) ? "checked" : ""} /> PC</label>
+                <label><input type="checkbox" id="ppMobile" ${v("show_mobile", true) ? "checked" : ""} /> 모바일</label>
+              </span>
+            </div>
+            <label class="admin-form-row">
+              <span class="admin-form-label">노출 범위</span>
+              <select class="admin-input" id="ppScope">
+                <option value="all" ${v("scope", "all") === "all" ? "selected" : ""}>전체 페이지</option>
+                <option value="home_only" ${v("scope", "all") === "home_only" ? "selected" : ""}>홈화면만</option>
+              </select>
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">노출 대상</span>
+              <select class="admin-input" id="ppAudience">
+                <option value="all" ${v("audience", "all") === "all" ? "selected" : ""}>전체 방문자</option>
+                <option value="logged_in" ${v("audience", "all") === "logged_in" ? "selected" : ""}>로그인 회원만</option>
+              </select>
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">형태</span>
+              <select class="admin-input" id="ppType">
+                <option value="popup" ${v("display_type", "popup") === "popup" ? "selected" : ""}>팝업(모달)</option>
+                <option value="top_banner" ${v("display_type", "popup") === "top_banner" ? "selected" : ""}>상단배너</option>
+              </select>
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">이미지 <em class="req">*</em></span>
+              <span>
+                <input type="file" id="ppFile" accept=".jpg,.jpeg,.png" />
+                <div id="ppUpMsg" style="font-size:12px; color:var(--ink-soft); margin-top:4px;"></div>
+                <img id="ppPreview" src="${isEdit && row.image_ref ? "/api/popups/image/" + dgEscape(row.image_ref) : ""}"
+                     style="margin-top:8px; max-width:220px; max-height:160px; border:1px solid #eee; ${isEdit && row.image_ref ? "" : "display:none;"}" alt="미리보기" />
+              </span>
+            </div>
+            <label class="admin-form-row">
+              <span class="admin-form-label">링크 URL</span>
+              <input class="admin-input" id="ppLink" value="${dgEscape(v("link_url", "") || "")}" placeholder="https://… 또는 /notices (없으면 비워두세요)" />
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">링크 열기</span>
+              <label><input type="checkbox" id="ppNewTab" ${v("open_new_tab", true) ? "checked" : ""} /> 새 창(탭)에서 열기</label>
+            </div>
+            <label class="admin-form-row">
+              <span class="admin-form-label">팝업 너비(px)</span>
+              <input class="admin-input" id="ppWidth" type="number" min="200" max="1200" value="${dgEscape(v("width_px", 400))}" />
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">닫기 옵션</span>
+              <select class="admin-input" id="ppClose">
+                <option value="close" ${v("close_mode", "close") === "close" ? "selected" : ""}>닫기 버튼만</option>
+                <option value="hide_today" ${v("close_mode", "close") === "hide_today" ? "selected" : ""}>"오늘 하루 안 보기" 포함</option>
+              </select>
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">게재 상태</span>
+              <label><input type="checkbox" id="ppActive" ${v("is_active", true) ? "checked" : ""} /> 게재중</label>
+            </div>
+          </form>
+          <div class="admin-modal-msg" role="alert"></div>
+          <div class="admin-modal-foot">
+            <button class="admin-btn admin-modal-cancel" type="button">취소</button>
+            <button class="admin-btn admin-btn-primary admin-modal-save" type="button">${isEdit ? "저장" : "추가"}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+      let imageRef = isEdit ? (row.image_ref || "") : "";
+      const upMsg = overlay.querySelector("#ppUpMsg");
+      const preview = overlay.querySelector("#ppPreview");
+      overlay.querySelector("#ppFile").addEventListener("change", async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        upMsg.style.color = "";
+        upMsg.textContent = "업로드 중…";
+        const fd = new FormData();
+        fd.append("file", f);
+        try {
+          const res = await fetch("/api/admin/popups/upload-image", { method: "POST", body: fd });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) {
+            imageRef = d.image_ref;
+            preview.src = d.image_url;
+            preview.style.display = "";
+            upMsg.style.color = "#1a7f37";
+            upMsg.textContent = "업로드 완료";
+          } else {
+            upMsg.style.color = "#b3261e";
+            upMsg.textContent = d.message || "업로드에 실패했습니다.";
+          }
+        } catch (err) {
+          upMsg.style.color = "#b3261e";
+          upMsg.textContent = "네트워크 오류가 발생했습니다.";
+        }
+      });
+
+      const msgBox = overlay.querySelector(".admin-modal-msg");
+      const saveBtn = overlay.querySelector(".admin-modal-save");
+      saveBtn.addEventListener("click", async () => {
+        const g = (id) => overlay.querySelector(id);
+        const payload = {
+          title: g("#ppTitle").value.trim(),
+          start_at: g("#ppStart").value,
+          end_at: g("#ppEnd").value,
+          show_desktop: g("#ppDesktop").checked,
+          show_mobile: g("#ppMobile").checked,
+          scope: g("#ppScope").value,
+          audience: g("#ppAudience").value,
+          display_type: g("#ppType").value,
+          image_ref: imageRef,
+          link_url: g("#ppLink").value.trim(),
+          open_new_tab: g("#ppNewTab").checked,
+          width_px: g("#ppWidth").value,
+          close_mode: g("#ppClose").value,
+          is_active: g("#ppActive").checked,
+        };
+        if (!payload.title) { msgBox.textContent = "제목(관리용)은 필수입니다."; return; }
+        if (!payload.image_ref) { msgBox.textContent = "이미지를 업로드해주세요."; return; }
+        if (!payload.show_desktop && !payload.show_mobile) { msgBox.textContent = "대상 기기를 하나 이상 선택해주세요."; return; }
+        saveBtn.disabled = true;
+        const prevText = saveBtn.textContent;
+        saveBtn.textContent = "저장 중…";
+        try {
+          const url = isEdit ? `/api/admin/popups/${row.id}` : "/api/admin/popups";
+          const res = await fetch(url, {
+            method: isEdit ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) { close(); loadPopupList(); return; }
+          msgBox.textContent = d.message || "저장에 실패했습니다.";
+        } catch (e) {
+          msgBox.textContent = "네트워크 오류가 발생했습니다.";
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = prevText;
+        }
+      });
+    }
+
+    function showPopups() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="dg-header">
+          <h2 class="dg-title">팝업관리</h2>
+          <div class="dg-actions">
+            <button class="admin-btn admin-btn-primary" id="popupAddBtn">+ 팝업 추가</button>
+          </div>
+        </div>
+        <p class="legal-admin-hint">사이트 방문자에게 보이는 팝업/상단배너를 관리합니다. 여러 개가 게재중이면 <b>가장 최근에 등록한 1개만</b> 노출됩니다.</p>
+        <div class="dg-table-wrap">
+          <table class="dg-table">
+            <thead><tr><th>ID</th><th>제목(관리용)</th><th>형태</th><th>게재 기간</th><th>기기</th><th>상태 / 관리</th></tr></thead>
+            <tbody id="popupListBody"></tbody>
+          </table>
+        </div>
+      `;
+      document.getElementById("popupAddBtn").addEventListener("click", () => openPopupForm(null));
+      loadPopupList();
+    }
+
     function showView(menuKey) {
       stopTxSyncPolling();
       if (menuKey === "stats") { showStats(menuKey); return; }
       if (menuKey === "legal") { showLegal(); return; }
       if (menuKey === "geocode") { showGeocode(); return; }
       if (menuKey === "txsync") { showTxSync(); return; }
+      if (menuKey === "popups") { showPopups(); return; }
       showGrid(menuKey);
     }
 

@@ -254,4 +254,113 @@
       });
     }
   }
+
+  // ---- 사이트 팝업/상단배너 (관리자 "팝업관리"에서 등록) ----
+  // 서버(/api/popups/active)가 기간·기기·로그인대상을 걸러 1건만 주고,
+  // scope(home_only)와 닫기 기록(세션/오늘하루)은 여기서 판단한다.
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  }
+
+  function popupDismissed(p) {
+    try {
+      if (sessionStorage.getItem("popupClosed_" + p.id) === "1") return true;
+      if (localStorage.getItem("popupHideDay_" + p.id) === todayStr()) return true;
+    } catch (e) { /* 스토리지 차단 환경이면 그냥 보여준다 */ }
+    return false;
+  }
+
+  function buildPopupImage(p) {
+    var img = document.createElement("img");
+    img.src = p.image_url;
+    img.alt = "안내";
+    img.style.cssText = "display:block; width:100%; height:auto;";
+    if (!p.link_url) return img;
+    var a = document.createElement("a");
+    a.href = p.link_url;
+    if (p.open_new_tab) { a.target = "_blank"; a.rel = "noopener"; }
+    a.appendChild(img);
+    return a;
+  }
+
+  function dismissBtn(label, onClick) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.style.cssText = "background:none; border:none; cursor:pointer; font-size:13px; color:#fff; padding:6px 10px;";
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function showSitePopup(p) {
+    var overlay = document.createElement("div");
+    overlay.id = "sitePopupOverlay";
+    overlay.style.cssText =
+      "position:fixed; inset:0; z-index:10050; background:rgba(0,0,0,0.45);" +
+      "display:flex; align-items:center; justify-content:center; padding:16px;";
+    var box = document.createElement("div");
+    box.style.cssText =
+      "width:" + p.width_px + "px; max-width:92vw; max-height:88vh; overflow:auto;" +
+      "background:#fff; border-radius:8px; box-shadow:0 12px 40px rgba(0,0,0,0.35);";
+    box.appendChild(buildPopupImage(p));
+    var bar = document.createElement("div");
+    bar.style.cssText = "display:flex; justify-content:flex-end; gap:4px; background:#16202E;";
+    function remove(hideToday) {
+      try {
+        if (hideToday) localStorage.setItem("popupHideDay_" + p.id, todayStr());
+        else sessionStorage.setItem("popupClosed_" + p.id, "1");
+      } catch (e) {}
+      overlay.remove();
+    }
+    if (p.close_mode === "hide_today") {
+      bar.appendChild(dismissBtn("오늘 하루 안 보기", function () { remove(true); }));
+    }
+    bar.appendChild(dismissBtn("닫기 ✕", function () { remove(false); }));
+    box.appendChild(bar);
+    overlay.appendChild(box);
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) remove(false); });
+    document.body.appendChild(overlay);
+  }
+
+  function showSiteBanner(p) {
+    var bar = document.createElement("div");
+    bar.id = "siteTopBanner";
+    bar.style.cssText =
+      "position:relative; z-index:10040; background:#16202E; display:flex;" +
+      "align-items:center; justify-content:center; gap:8px; padding:0;";
+    var inner = document.createElement("div");
+    inner.style.cssText = "width:" + p.width_px + "px; max-width:100%;";
+    inner.appendChild(buildPopupImage(p));
+    bar.appendChild(inner);
+    var btns = document.createElement("div");
+    btns.style.cssText = "position:absolute; right:8px; top:50%; transform:translateY(-50%); display:flex; gap:2px;" +
+      "background:rgba(22,32,46,0.7); border-radius:6px;";
+    function remove(hideToday) {
+      try {
+        if (hideToday) localStorage.setItem("popupHideDay_" + p.id, todayStr());
+        else sessionStorage.setItem("popupClosed_" + p.id, "1");
+      } catch (e) {}
+      bar.remove();
+      setHeaderH();
+    }
+    if (p.close_mode === "hide_today") {
+      btns.appendChild(dismissBtn("오늘 하루 안 보기", function () { remove(true); }));
+    }
+    btns.appendChild(dismissBtn("✕", function () { remove(false); }));
+    bar.appendChild(btns);
+    document.body.insertBefore(bar, document.body.firstChild);
+  }
+
+  fetch("/api/popups/active", { credentials: "same-origin" })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var p = d && d.popup;
+      if (!p || !p.image_url) return;
+      if (p.scope === "home_only" && location.pathname !== "/") return;
+      if (popupDismissed(p)) return;
+      if (p.display_type === "top_banner") showSiteBanner(p);
+      else showSitePopup(p);
+    })
+    .catch(function () { /* 팝업은 부가 기능 — 실패해도 페이지에 영향 없음 */ });
 })();

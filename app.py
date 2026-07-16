@@ -3866,6 +3866,286 @@ def admin_notices_delete(notice_id):
     return jsonify({"ok": True})
 
 
+# ============================================================
+# 사이트 팝업/상단배너 (site_popups)
+# 관리자 CRUD + 이미지 업로드(Object Storage) + 공개 조회/이미지 프록시.
+# 표시 로직은 static/js/header.js가 담당한다.
+# ============================================================
+
+_POPUP_SCOPES = {"all", "home_only"}
+_POPUP_AUDIENCES = {"all", "logged_in"}
+_POPUP_DISPLAY_TYPES = {"popup", "top_banner"}
+_POPUP_CLOSE_MODES = {"close", "hide_today"}
+
+
+def _parse_popup_ts(value, label):
+    """'YYYY-MM-DD HH:MM'(또는 T 구분, 초 포함) 문자열 → datetime. 빈 값은 None."""
+    s = (value or "").strip().replace("T", " ")
+    if not s:
+        return None, None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt), None
+        except ValueError:
+            continue
+    return None, f"{label} 형식이 올바르지 않습니다. (예: 2026-07-16 09:00)"
+
+
+def _validate_popup_payload(data):
+    """POST/PUT 공통 검증 — 정상이면 (필드 dict, None), 오류면 (None, 메시지)."""
+    title = (data.get("title") or "").strip()
+    if not title:
+        return None, "제목(관리용)은 필수입니다."
+    start_at, err = _parse_popup_ts(data.get("start_at"), "게재 시작일시")
+    if err:
+        return None, err
+    end_at, err = _parse_popup_ts(data.get("end_at"), "게재 종료일시")
+    if err:
+        return None, err
+    if start_at and end_at and end_at <= start_at:
+        return None, "게재 종료일시는 시작일시보다 뒤여야 합니다."
+    scope = (data.get("scope") or "all").strip()
+    audience = (data.get("audience") or "all").strip()
+    display_type = (data.get("display_type") or "popup").strip()
+    close_mode = (data.get("close_mode") or "close").strip()
+    if scope not in _POPUP_SCOPES or audience not in _POPUP_AUDIENCES \
+            or display_type not in _POPUP_DISPLAY_TYPES or close_mode not in _POPUP_CLOSE_MODES:
+        return None, "선택 값이 올바르지 않습니다."
+    image_ref = (data.get("image_ref") or "").strip()
+    if not image_ref:
+        return None, "이미지를 업로드해주세요."
+    if not storage_util.is_valid_popup_ref(image_ref):
+        return None, "이미지 참조가 올바르지 않습니다. 파일을 다시 업로드해주세요."
+    link_url = (data.get("link_url") or "").strip()
+    if link_url and not (link_url.startswith("http://") or link_url.startswith("https://")
+                         or (link_url.startswith("/") and not link_url.startswith("//"))):
+        return None, "링크 URL은 http(s):// 또는 /로 시작해야 합니다."
+    try:
+        width_px = int(data.get("width_px") or 400)
+    except (ValueError, TypeError):
+        return None, "너비(px)는 숫자여야 합니다."
+    width_px = min(max(width_px, 200), 1200)
+    return {
+        "title": title,
+        "start_at": start_at,
+        "end_at": end_at,
+        "show_desktop": _parse_bool(data.get("show_desktop", True)),
+        "show_mobile": _parse_bool(data.get("show_mobile", True)),
+        "scope": scope,
+        "audience": audience,
+        "display_type": display_type,
+        "image_ref": image_ref,
+        "link_url": link_url or None,
+        "open_new_tab": _parse_bool(data.get("open_new_tab", True)),
+        "width_px": width_px,
+        "close_mode": close_mode,
+        "is_active": _parse_bool(data.get("is_active", True)),
+    }, None
+
+
+def _popup_row_to_dict(r):
+    d = dict(r)
+    for k in ("start_at", "end_at", "created_at", "updated_at"):
+        if d.get(k):
+            d[k] = d[k].strftime("%Y-%m-%d %H:%M")
+    return d
+
+
+@app.route("/api/admin/popups")
+@require_admin
+def admin_popups_list():
+    q = (request.args.get("q") or "").strip()
+    page, size, offset = _admin_paging()
+    where = "TRUE"
+    params = []
+    if q:
+        where = "title ILIKE %s"
+        params.append(f"%{q}%")
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) c FROM site_popups WHERE {where}", params)
+    total = cur.fetchone()["c"]
+    cur.execute(f"""
+        SELECT * FROM site_popups
+        WHERE {where}
+        ORDER BY id DESC
+        LIMIT %s OFFSET %s
+    """, params + [size, offset])
+    items = [_popup_row_to_dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/popups", methods=["POST"])
+@require_admin
+def admin_popups_create():
+    data = request.get_json(force=True, silent=True) or {}
+    fields, err = _validate_popup_payload(data)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cols = list(fields.keys())
+    cur.execute(
+        f"INSERT INTO site_popups ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))}) RETURNING id",
+        [fields[c] for c in cols],
+    )
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/api/admin/popups/<int:popup_id>", methods=["PUT"])
+@require_admin
+def admin_popups_update(popup_id):
+    data = request.get_json(force=True, silent=True) or {}
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM site_popups WHERE id=%s", [popup_id])
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 팝업입니다."}), 404
+    # 부분 수정 지원 — 안 넘어온 필드는 기존 값 유지한 채 전체 재검증.
+    merged = {
+        "title": data.get("title", row["title"]),
+        "start_at": data.get("start_at", row["start_at"].strftime("%Y-%m-%d %H:%M") if row["start_at"] else ""),
+        "end_at": data.get("end_at", row["end_at"].strftime("%Y-%m-%d %H:%M") if row["end_at"] else ""),
+        "show_desktop": data.get("show_desktop", row["show_desktop"]),
+        "show_mobile": data.get("show_mobile", row["show_mobile"]),
+        "scope": data.get("scope", row["scope"]),
+        "audience": data.get("audience", row["audience"]),
+        "display_type": data.get("display_type", row["display_type"]),
+        "image_ref": data.get("image_ref", row["image_ref"]),
+        "link_url": data.get("link_url", row["link_url"] or ""),
+        "open_new_tab": data.get("open_new_tab", row["open_new_tab"]),
+        "width_px": data.get("width_px", row["width_px"]),
+        "close_mode": data.get("close_mode", row["close_mode"]),
+        "is_active": data.get("is_active", row["is_active"]),
+    }
+    fields, err = _validate_popup_payload(merged)
+    if err:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": err}), 400
+    sets = ", ".join(f"{c} = %s" for c in fields) + ", updated_at = NOW()"
+    cur.execute(f"UPDATE site_popups SET {sets} WHERE id = %s", list(fields.values()) + [popup_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/popups/<int:popup_id>", methods=["DELETE"])
+@require_admin
+def admin_popups_delete(popup_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM site_popups WHERE id=%s RETURNING id", [popup_id])
+    deleted = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not deleted:
+        return jsonify({"ok": False, "message": "존재하지 않는 팝업입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/popups/upload-image", methods=["POST"])
+@require_admin
+def admin_popups_upload_image():
+    """팝업 이미지 업로드 — C/D 서류 업로드와 동일한 검증(확장자·5MB·매직바이트)."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.POPUP_IMAGE_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG, PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다. 실제 JPG/PNG 이미지만 업로드해주세요."}), 400
+    key = storage_util.build_popup_key(ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("팝업 이미지 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+    return jsonify({"ok": True, "image_ref": key, "image_url": f"/api/popups/image/{key}"})
+
+
+# ---- 팝업 공개 API (로그인 불필요) ----
+
+def _is_mobile_ua(ua):
+    """User-Agent로 모바일 여부를 대략 판별한다(완벽할 필요 없음 — 노출 필터용)."""
+    ua = (ua or "").lower()
+    return any(t in ua for t in ("mobile", "android", "iphone", "ipad", "ipod"))
+
+
+@app.route("/api/popups/active")
+def get_active_popup():
+    """현재 노출 대상 팝업 1건(최신 등록순)을 반환. 없으면 popup: null.
+
+    기기(User-Agent)·기간·audience는 서버에서 거르고,
+    scope(home_only)는 현재 경로를 아는 프런트(header.js)가 판단한다.
+    """
+    is_mobile = _is_mobile_ua(request.headers.get("User-Agent"))
+    device_col = "show_mobile" if is_mobile else "show_desktop"
+    logged_in = bool(session.get("user_id"))
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT id, scope, display_type, image_ref, link_url, open_new_tab,
+               width_px, close_mode
+        FROM site_popups
+        WHERE is_active = TRUE
+          AND {device_col} = TRUE
+          AND (start_at IS NULL OR start_at <= NOW())
+          AND (end_at IS NULL OR end_at >= NOW())
+          AND (audience = 'all' OR %s)
+        ORDER BY id DESC
+        LIMIT 1
+    """, [logged_in])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return jsonify({"ok": True, "popup": None})
+    return jsonify({"ok": True, "popup": {
+        "id": row["id"],
+        "scope": row["scope"],
+        "display_type": row["display_type"],
+        "image_url": f"/api/popups/image/{row['image_ref']}",
+        "link_url": row["link_url"],
+        "open_new_tab": bool(row["open_new_tab"]),
+        "width_px": row["width_px"] or 400,
+        "close_mode": row["close_mode"],
+    }})
+
+
+@app.route("/api/popups/image/<path:key>")
+def get_popup_image(key):
+    """팝업 이미지 공개 프록시 — popups/… 형식 키만 허용(서류 등 다른 객체 접근 차단)."""
+    if not storage_util.is_valid_popup_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    mime = "image/png" if ext == "png" else "image/jpeg"
+    resp = Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
 # ---- 공지사항 공개 API (로그인 불필요) ----
 @app.route("/api/notices")
 def get_notices():
