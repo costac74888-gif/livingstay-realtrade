@@ -1070,6 +1070,9 @@ function buildingPanelSkeleton(){
       <div id="bTxMoreWrap" style="display:none; text-align:center; margin-top:12px;">
         <button id="bTxMore" class="side-more" style="width:auto; padding:7px 18px; margin-top:0;">더보기</button>
       </div>
+      <div style="text-align:center; margin-top:8px;">
+        <a id="bTxAllLink" class="side-more" style="display:none; width:auto; padding:7px 18px; margin-top:0; text-decoration:none;" href="/transactions">이 건물 전체 실거래 보기 →</a>
+      </div>
     </section>
 
     <section class="side-card">
@@ -1161,6 +1164,13 @@ async function loadBuildingHeader(id){
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
   const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
   const bName = b.building_name || "(건물명 미확인)";
+
+  // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
+  const txAllLink = document.getElementById("bTxAllLink");
+  if (txAllLink && b.building_name){
+    txAllLink.href = "/transactions?q=" + encodeURIComponent(b.building_name);
+    txAllLink.style.display = "inline-block";
+  }
 
   // 주용도1/2 — lodging_type("호텔·콘도")을 분리해 전체 명칭으로 표시. 없으면 "-".
   const useParts = (b.lodging_type || "").split("·").filter(Boolean);

@@ -630,10 +630,10 @@
 .b-tx-table .col-price{ font-family:'JetBrains Mono',monospace; font-weight:700; text-align:right; white-space:nowrap; }
 .b-tx-table .col-type{ text-align:right; white-space:nowrap; }
 .b-tx-table .col-type .tag{ font-size:10px; padding:2px 6px; }
-.b-tx-table .c-date{ width:24%; }
-.b-tx-table .c-area{ width:19%; }
+.b-tx-table .c-date{ width:27%; }
+.b-tx-table .c-area{ width:17%; }
 .b-tx-table .c-floor{ width:10%; }
-.b-tx-table .c-price{ width:27%; }
+.b-tx-table .c-price{ width:26%; }
 .b-tx-table .c-type{ width:20%; }
 
 /* B패널 건축정보(표제부) 2열 그리드 */

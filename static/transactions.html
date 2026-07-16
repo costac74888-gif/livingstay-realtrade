@@ -358,6 +358,13 @@
     await loadRegions();
     await loadYears();
     renderFavChips();
+    // B패널 "이 건물 전체 실거래 보기"에서 넘어온 경우 ?q= 값으로 자동 검색 1회 실행.
+    const urlQ = new URLSearchParams(location.search).get("q");
+    if (urlQ){
+      const input = document.getElementById("inputQ");
+      if (input) input.value = urlQ;
+      state.q = urlQ.trim();
+    }
     loadBoard();
   })();
 </script>
