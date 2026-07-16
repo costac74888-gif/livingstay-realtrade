@@ -9,6 +9,7 @@
 - 브랜드 컬러: 액센트는 brass `#B4863F`(변수 `--brass`), ink `#16202E`.
 - **로고 기본: 화이트 배경 · 검정 글자(B&W on white)**. 상단/모달/법적 페이지 로고 모두 흑백 기준. 골드 로고는 사용하지 않음(`static/home_stay_logo.png`가 흑백 버전, 골드 원본은 `home_stay_logo_gold_backup.png`).
 - 주요 파일: `app.py`(라우트/API), `static/index.html`(메인 지도), `static/building.html`(건물 상세), `static/js/main.js`, `static/css/main.css`, `db.py`(RealDictCursor).
+- 관리자 실거래 동기화: `/admin` "실거래 동기화" 버튼 → `POST /api/admin/sync-transactions`가 `sync_runner.py`를 독립 프로세스로 실행(`sync_batch.py --master-only`), 상태는 `app_meta('tx_sync_status')` + `GET /api/admin/sync-status`. 중복 실행/30분 재실행 제한은 DB에서 전역 강제.
 
 ## 실행/검증
 - 앱: `Start application` 워크플로우 (gunicorn, 자동 리로드 없음 → `app.py` 수정 시 재시작 필요).
