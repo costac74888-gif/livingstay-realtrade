@@ -803,6 +803,84 @@
       }
     }
 
+    // ---- 과거 데이터 백필 ----
+    let backfillTimer = null;
+
+    function stopBackfillPolling() {
+      if (backfillTimer) { clearInterval(backfillTimer); backfillTimer = null; }
+    }
+
+    function renderBackfillStatus(d) {
+      const box = document.getElementById("backfillStatus");
+      const btn = document.getElementById("backfillRunBtn");
+      if (!box || !btn) { stopBackfillPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 가장 오래된 계약일 ${d.min_deal_date ? dgEscape(d.min_deal_date) : "-"}</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 백필 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")}${d.months ? " · " + num(d.months) + "개월치" : ""})</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행 신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"} (실시간)</div>`);
+      } else if (d.state === "done") {
+        rows.push(`<div class="geo-stat-row"><b>마지막 백필:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · 완료${d.months ? " (" + num(d.months) + "개월치)" : ""}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 백필 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+        if (d.started_at) rows.push(`<div class="geo-stat-row">시작 ${dgEscape(d.started_at)}${d.finished_at ? " ~ " + dgEscape(d.finished_at) : ""}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "백필 실행 중…" : "과거 데이터 백필 실행";
+      if (!d.running) stopBackfillPolling();
+    }
+
+    async function loadBackfillStatus() {
+      const box = document.getElementById("backfillStatus");
+      if (!box) { stopBackfillPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/backfill-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderBackfillStatus(d);
+        if (d.running && !backfillTimer) {
+          backfillTimer = setInterval(loadBackfillStatus, 5000);
+        }
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBackfill() {
+      if (!confirm("2020년 1월부터 현재까지 전체 기간을 다시 수집합니다.\n국토부 API 사용량이 많아 하루 1회만 실행할 수 있습니다. 진행할까요?")) return;
+      const btn = document.getElementById("backfillRunBtn");
+      const msg = document.getElementById("backfillMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-backfill", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = d.message || "백필을 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(하루 1회)을 초과했습니다. 내일 다시 시도해 주세요." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "과거 데이터 백필 실행";
+        }
+        loadBackfillStatus();
+        if (!backfillTimer) backfillTimer = setInterval(loadBackfillStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "과거 데이터 백필 실행";
+      }
+    }
+
     function showTxSync() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -822,9 +900,28 @@
             <button id="txSyncRunBtn" class="admin-btn admin-btn-primary">실거래 동기화 실행</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">과거 데이터 백필</h2>
+          </div>
+          <p class="legal-admin-hint">
+            <b>2020년 1월부터 현재까지</b> 전체 기간의 실거래가를 수집합니다(개월 수는 자동 계산).
+            기간이 길어 수십 분~수 시간 걸릴 수 있고, 국토부 API 일일 사용량을 초과하면
+            남은 건은 실패 큐에 쌓여 다음 실행 때 이어서 수집됩니다.
+            이미 있는 거래는 건너뛰므로 중복되지 않습니다.
+            (실행 제한: <b>하루 1회</b> — 국토부 API 사용량 보호)
+          </p>
+          <div id="backfillStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="backfillMsg" class="legal-msg" role="alert"></span>
+            <button id="backfillRunBtn" class="admin-btn admin-btn-primary">과거 데이터 백필 실행</button>
+          </div>
+        </div>
       `;
       document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
+      document.getElementById("backfillRunBtn").addEventListener("click", runBackfill);
       loadTxSyncStatus();
+      loadBackfillStatus();
     }
 
     // ---- 팝업관리 ----
@@ -1101,6 +1198,7 @@
 
     function showView(menuKey) {
       stopTxSyncPolling();
+      stopBackfillPolling();
       if (menuKey === "stats") { showStats(menuKey); return; }
       if (menuKey === "legal") { showLegal(); return; }
       if (menuKey === "geocode") { showGeocode(); return; }

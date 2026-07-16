@@ -13,6 +13,7 @@ running 상태를 기록한 뒤 이 스크립트를 '독립 프로세스'로 띄
 - 에러 메시지에 공공데이터 API 키가 노출되지 않도록 가린다
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -24,7 +25,7 @@ from datetime import datetime
 
 from db import get_conn
 
-META_KEY = "tx_sync_status"
+META_KEY = "tx_sync_status"  # --meta-key 인자로 변경 가능(과거 데이터 백필은 tx_backfill_status)
 TIMEOUT_SEC = 3 * 3600      # 최대 실행 3시간
 HEARTBEAT_SEC = 30
 
@@ -98,6 +99,15 @@ def _tx_count():
 
 
 def main():
+    global META_KEY
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--meta-key", default=META_KEY,
+                        help="상태를 기록할 app_meta 키 (기본 tx_sync_status)")
+    parser.add_argument("--months", type=int, default=None,
+                        help="sync_batch.py 에 전달할 --months (미지정 시 전달 안 함 → 기본 3개월)")
+    args = parser.parse_args()
+    META_KEY = args.meta_key
+
     status = _read_status()
     if not status or status.get("state") != "running":
         print("[runner] running 상태가 아니므로 종료합니다.")
@@ -109,8 +119,11 @@ def main():
     error = None
 
     try:
+        cmd = [sys.executable, "-u", "sync_batch.py", "--master-only"]
+        if args.months and args.months > 0:
+            cmd += ["--months", str(int(args.months))]
         proc = subprocess.Popen(
-            [sys.executable, "-u", "sync_batch.py", "--master-only"],
+            cmd,
             cwd=base_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
 

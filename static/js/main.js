@@ -877,13 +877,20 @@ async function loadTrendChart(){
   const canvas = document.getElementById("trendChart");
   if (!canvas || typeof Chart === "undefined") return;
   let items = [];
+  let granularity = "month";
   try {
     const res = await fetch("/api/monthly-trend");
     const data = await res.json();
     items = data.items || [];
+    granularity = data.granularity || "month";
   } catch(e){ console.error("[SIDE] 추세 로드 실패:", e); return; }
 
-  const labels = items.map(i => i.ym.slice(2).replace("-", "/")); // 25/08
+  // 월 "2025-08"→"25/08", 분기 "2025-Q1"→"25Q1"
+  const labels = items.map(i => granularity === "quarter"
+    ? i.ym.slice(2).replace("-", "")
+    : i.ym.slice(2).replace("-", "/"));
+  const noteEl = document.getElementById("trendGranularityNote");
+  if (noteEl) noteEl.textContent = granularity === "quarter" ? "분기별 표시 (기간 24개월 초과)" : "";
   const counts = items.map(i => i.count);
   const sums = items.map(i => Math.round((i.sum_price || 0) / 10000)); // 만원 → 억원
 
@@ -1081,13 +1088,13 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card">
-      <div class="side-card-title">실거래추세 <span class="side-sub">최근 12개월</span></div>
+      <div class="side-card-title">실거래추세 <span class="side-sub" id="bTrendGranularityNote"></span></div>
       <div class="side-chart-wrap"><canvas id="bTrendChart"></canvas></div>
       <div class="side-legend">
         <span><i class="lg-bar"></i>거래건수</span>
         <span><i class="lg-line"></i>거래금액(억)</span>
       </div>
-      <div id="bTrendEmpty" class="side-empty" style="display:none;">최근 12개월 실거래 내역이 없습니다.</div>
+      <div id="bTrendEmpty" class="side-empty" style="display:none;">실거래 내역이 없습니다.</div>
     </section>
 
     <section class="side-card">
@@ -1489,10 +1496,12 @@ async function loadBuildingTrend(id){
   const canvas = document.getElementById("bTrendChart");
   if (!canvas || typeof Chart === "undefined") return;
   let items = [];
+  let granularity = "month";
   try {
     const res = await fetch("/api/monthly-trend?building_id=" + id);
     const data = await res.json();
     items = data.items || [];
+    granularity = data.granularity || "month";
   } catch(e){ console.error("[상세] 추세 로드 실패:", e); return; }
 
   if (!items.length || items.every(i => !i.count)){
@@ -1502,7 +1511,12 @@ async function loadBuildingTrend(id){
     return;
   }
 
-  const labels = items.map(i => i.ym.slice(2).replace("-", "/"));
+  const noteEl = document.getElementById("bTrendGranularityNote");
+  if (noteEl) noteEl.textContent = granularity === "quarter" ? "분기별 표시 (기간 24개월 초과)" : "";
+  // 월 "2025-08"→"25/08", 분기 "2025-Q1"→"25Q1"
+  const labels = items.map(i => granularity === "quarter"
+    ? i.ym.slice(2).replace("-", "")
+    : i.ym.slice(2).replace("-", "/"));
   const counts = items.map(i => i.count);
   const sums = items.map(i => Math.round((i.sum_price || 0) / 10000));
 

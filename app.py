@@ -608,29 +608,23 @@ def get_buildings_geo():
 @app.route("/api/monthly-trend")
 def get_monthly_trend():
     """
-    최근 12개월 월별 실거래 집계 (좌측 패널 '실거래추세' 콤보차트용).
-    - count     : 월별 거래건수 (막대)
-    - sum_price : 월별 거래금액 합계, 만원 단위 (선)
-    데이터가 없는 달은 0으로 채워 항상 12개 버킷을 반환한다.
+    실거래 추세 집계 (좌측 패널 '실거래추세' 콤보차트용).
+    - count     : 버킷별 거래건수 (막대)
+    - sum_price : 버킷별 거래금액 합계, 만원 단위 (선)
+    시작월은 실제 데이터의 최소 계약월(하한 2020-01)이며, 기간이 24개월을
+    초과하면 분기("YYYY-Qn") 버킷으로 집계한다(응답 granularity: month|quarter).
+    빈 버킷은 0으로 채우고, 데이터가 전혀 없으면 최근 12개월 0버킷을 반환한다.
 
     선택적 building_id가 있으면 해당 건물(master_buildings.building_name)의
     실거래만 집계하고, 없으면 기존처럼 전체를 집계한다(하위호환).
     """
     now = datetime.now()
-    # 이번 달부터 11개월 전까지 12개 버킷(YYYY-MM) 생성
-    months = []
-    y, m = now.year, now.month
-    for _ in range(12):
-        months.append(f"{y:04d}-{m:02d}")
-        m -= 1
-        if m == 0:
-            m = 12
-            y -= 1
-    months.reverse()  # 과거 → 최근 순
-    start_ym = months[0]
+    # 집계 시작월은 '실제 데이터의 최소 계약월'로 하되, 백필 목표 범위(2020-01) 이전은 잘라낸다.
+    # 데이터가 전혀 없으면 기존처럼 최근 12개월 버킷(전부 0)을 돌려준다(하위호환).
+    TREND_FLOOR_YM = "2020-01"
 
     where = ["deal_date IS NOT NULL", "substring(deal_date, 1, 7) >= %s"]
-    params = [start_ym]
+    params = [TREND_FLOOR_YM]
 
     # 선택적 building_id → 해당 건물의 실거래만 집계(하위호환: 없거나 정수 아니면 전체 집계).
     # 정확도: A화면 마커(get_buildings_geo)와 동일한 키 전략을 쓴다.
@@ -654,9 +648,13 @@ def get_monthly_trend():
             params += [b["sgg_cd"], b["umd_nm"], b["jibun"]]
         else:
             # 지번키 불완전 → 건물명 폴백. 건물 미존재/이름 없음/'-'는 매칭 0으로 처리.
+            # (기존 "\x00" 플레이스홀더는 psycopg2가 NUL 거부로 500을 내던 버그라 FALSE 조건으로 교체)
             name = (b["building_name"] if b else None) or ""
-            where.append("building_name = %s")
-            params.append(name if name and name != "-" else "\x00")
+            if name and name != "-":
+                where.append("building_name = %s")
+                params.append(name)
+            else:
+                where.append("FALSE")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -672,13 +670,65 @@ def get_monthly_trend():
     cur.close()
     conn.close()
 
+    now_ym = f"{now.year:04d}-{now.month:02d}"
+
+    def _month_range(start_ym_, end_ym_):
+        """start~end(포함) YYYY-MM 목록 (과거 → 최근)."""
+        sy, sm = int(start_ym_[:4]), int(start_ym_[5:7])
+        ey, em = int(end_ym_[:4]), int(end_ym_[5:7])
+        out = []
+        while (sy, sm) <= (ey, em):
+            out.append(f"{sy:04d}-{sm:02d}")
+            sm += 1
+            if sm == 13:
+                sm = 1
+                sy += 1
+        return out
+
+    if agg:
+        start_ym = min(agg.keys())  # 쿼리에서 이미 2020-01 이전은 제외됨
+        if start_ym > now_ym:  # 미래 계약일만 있는 극단 케이스 방어
+            start_ym = now_ym
+    else:
+        # 데이터 없음 → 기존과 동일하게 최근 12개월(전부 0)
+        y, m = now.year, now.month
+        m -= 11
+        while m <= 0:
+            m += 12
+            y -= 1
+        start_ym = f"{y:04d}-{m:02d}"
+
+    months = _month_range(start_ym, now_ym)
+
+    if len(months) > 24:
+        # 24개월 초과 → 분기별(3개월) 버킷으로 자동 전환. 라벨은 "2025-Q1" 형식.
+        def _q(ym):
+            return f"{ym[:4]}-Q{(int(ym[5:7]) - 1) // 3 + 1}"
+        qagg = {}
+        for ym, v in agg.items():
+            k = _q(ym)
+            cur_v = qagg.setdefault(k, {"cnt": 0, "sum_price": 0})
+            cur_v["cnt"] += v["cnt"]
+            cur_v["sum_price"] += v["sum_price"]
+        quarters = []
+        for ym in months:
+            k = _q(ym)
+            if not quarters or quarters[-1] != k:
+                quarters.append(k)
+        items = [{
+            "ym": q,
+            "count": qagg.get(q, {}).get("cnt", 0),
+            "sum_price": qagg.get(q, {}).get("sum_price", 0),
+        } for q in quarters]
+        return jsonify({"items": items, "granularity": "quarter"})
+
     items = [{
         "ym": ym,
         "count": agg.get(ym, {}).get("cnt", 0),
         "sum_price": agg.get(ym, {}).get("sum_price", 0),
     } for ym in months]
 
-    return jsonify({"items": items})
+    return jsonify({"items": items, "granularity": "month"})
 
 
 @app.route("/api/regions")
@@ -3178,6 +3228,149 @@ def admin_sync_status():
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
         "tx_total": row["c"],
         "max_deal_date": (row["md"].strftime("%Y-%m-%d") if hasattr(row["md"], "strftime") else row["md"]) if row["md"] else None,
+    })
+
+
+# ---- 과거 데이터 백필 (관리자 버튼) ----
+# 2020-01 부터 현재까지 개월 수를 계산해 sync_batch --months 로 전체 기간을 재수집.
+# 상태는 별도 키(tx_backfill_status)에 기록 — 일반 동기화와 독립적으로 진행/표시.
+# 국토부 API 일일 쿼터 보호를 위해 성공(done) 후 24시간 재실행 금지(DB 기준 전역 강제).
+_BACKFILL_META_KEY = "tx_backfill_status"
+_BACKFILL_FROM = "2020-01"
+
+
+def _backfill_months():
+    """2020-01 부터 이번 달까지의 개월 수 (예: 2026-07 → 79)."""
+    now = datetime.now()
+    return (now.year - 2020) * 12 + now.month
+
+
+@app.route("/api/admin/sync-backfill", methods=["POST"])
+@require_admin
+@limiter.limit("1 per day")
+def admin_backfill_run():
+    """과거 데이터 백필 시작. 실행 중이면 409, 24시간 내 완료 이력 있으면 429."""
+    months = _backfill_months()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM transactions")
+        tx_before = cur.fetchone()["c"]
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "tx_before": tx_before,
+            "inserted": None,
+            "error": None,
+            "months": months,
+            "target_from": _BACKFILL_FROM,
+        }
+        # 원자적 잠금 — sync-transactions 와 동일 패턴, 단 done 차단은 24시간
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '24 hours')
+        """, (_BACKFILL_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        prev_state = None
+        if not acquired:
+            cur.execute("SELECT value FROM app_meta WHERE key = %s", (_BACKFILL_META_KEY,))
+            prev = cur.fetchone()
+            try:
+                prev_state = json.loads(prev["value"]).get("state") if prev and prev["value"] else None
+            except (TypeError, ValueError):
+                prev_state = None
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        if prev_state == "done":
+            return jsonify({"ok": False, "message": "백필이 완료된 지 24시간이 지나지 않았습니다. 내일 다시 시도해 주세요."}), 429
+        return jsonify({"ok": False, "message": "이미 백필이 실행 중입니다. 완료 후 다시 시도해 주세요."}), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_runner.py"),
+             "--meta-key", _BACKFILL_META_KEY, "--months", str(months)],
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],
+                       "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (_BACKFILL_META_KEY, json.dumps(status, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "백필 프로세스를 시작하지 못했습니다."}), 500
+
+    return jsonify({"ok": True, "message": f"과거 데이터 백필을 시작했습니다 ({_BACKFILL_FROM}~현재, {months}개월).",
+                    "months": months, "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/backfill-status")
+@require_admin
+def admin_backfill_status():
+    """과거 데이터 백필 진행상황 (sync-status 와 동일한 응답 형태)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c, MIN(deal_date) AS mind FROM transactions")
+        row = cur.fetchone()
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BACKFILL_META_KEY,))
+        meta = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    status = None
+    if meta and meta["value"]:
+        try:
+            status = json.loads(meta["value"])
+        except (TypeError, ValueError):
+            status = None
+
+    running = bool(status and status.get("state") == "running")
+    stale = False
+    if running and meta["updated_at"]:
+        age = (datetime.now() - meta["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            running, stale = False, True
+
+    inserted = status.get("inserted") if status else None
+    if running and status.get("tx_before") is not None:
+        inserted = max(0, row["c"] - status["tx_before"])
+
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": ("stale" if stale else (status.get("state") if status else None)),
+        "started_at": (status.get("started_at") if status else None),
+        "finished_at": (status.get("finished_at") if status else None),
+        "inserted": inserted,
+        "months": (status.get("months") if status else None),
+        "target_from": (status.get("target_from") if status else None) or _BACKFILL_FROM,
+        "error": ((status.get("error") if status else None)
+                  or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
+        "tx_total": row["c"],
+        "min_deal_date": (row["mind"].strftime("%Y-%m-%d") if hasattr(row["mind"], "strftime") else row["mind"]) if row["mind"] else None,
     })
 
 
