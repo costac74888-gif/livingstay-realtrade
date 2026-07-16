@@ -19,7 +19,7 @@
 <div class="search-panel" style="max-width:640px; padding-bottom:40px;">
 
   <div style="margin:16px 0 6px;">
-    <a href="/" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+    <a href="/" class="home-link" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
   </div>
 
   <div class="panel-card">
@@ -100,7 +100,7 @@
       <div style="font-size:40px; margin-bottom:12px;">✅</div>
       <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:8px;">신청이 접수되었습니다.</div>
       <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.6;">검토 후 담당자가 연락드리겠습니다.</div>
-      <a href="/" class="side-more" style="display:inline-block; width:auto; margin-top:20px; padding:9px 24px; text-decoration:none;">← 홈으로</a>
+      <a href="/" class="side-more home-link" style="display:inline-block; width:auto; margin-top:20px; padding:9px 24px; text-decoration:none;">← 홈으로</a>
     </div>
   </div>
 </div>
@@ -123,6 +123,14 @@
       const box = document.getElementById("buildingNotice");
       box.textContent = `🏢 「${bName}」 건물에서 신청하셨습니다. 아래에서 업종을 선택해 신청을 완료해주세요.`;
       box.style.display = "block";
+    }
+  })();
+
+  // ?building_id= 로 진입한 경우 "← 홈으로" 링크를 해당 건물 상세로 돌려보낸다.
+  (function(){
+    const bid = (new URLSearchParams(location.search).get("building_id") || "").trim();
+    if (bid && /^\d+$/.test(bid)) {
+      document.querySelectorAll("a.home-link").forEach(a => { a.href = "/building/" + bid; });
     }
   })();
 
@@ -217,6 +225,7 @@
     }
 
     form.style.display = "none";
+    document.getElementById("buildingNotice").style.display = "none";
     document.getElementById("successBox").style.display = "block";
   });
 </script>
