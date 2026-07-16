@@ -1191,8 +1191,6 @@ async function loadBuildingHeader(id){
   const notReported = (b.units != null && b.biz_units != null)
     ? Math.max(Number(b.units) - Number(b.biz_units), 0).toLocaleString('ko-KR') + "실"
     : "-";
-  const mailSubject = encodeURIComponent(`영업신고 의뢰 문의 (${bName})`);
-
   // 담당부처/연락처: 매칭된 경우만 표시. 시/도 대표 폴백이면 부서명 뒤에 작은 회색 꼬리표.
   const authMatched = b.authority_dept != null && b.authority_dept !== "";
   const fallbackTag = (b.authority_source === "fallback")
@@ -1215,7 +1213,9 @@ async function loadBuildingHeader(id){
         <tr><th>연락처</th><td>${phoneCell}</td></tr>
       </tbody>
     </table>
-    <a href="mailto:info@home-and-stay.com?subject=${mailSubject}" class="side-more" style="display:block; text-align:center; text-decoration:none; margin-top:0;">영업신고 의뢰하기</a>`;
+    <a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer" style="display:block; margin-top:0;" title="숙박업등록·위탁운영 무료 상담 신청">
+      <img src="/static/banner_biz_report.png" alt="우수부동산서비스인증 — 숙박업등록·위탁운영 의뢰하기, 무료 상담 신청" style="display:block; width:100%; height:auto; border-radius:10px;" />
+    </a>`;
 
   renderBuildingAgent(b.agent, id, bName);
 
