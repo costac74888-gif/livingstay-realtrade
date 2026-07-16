@@ -1127,7 +1127,7 @@ function buildingPanelSkeleton(){
       <div class="side-empty">불러오는 중…</div>
     </section>
 
-    <section class="side-card">
+    <section class="side-card" id="bStoresCard">
       <div class="side-card-title">상거래정보 <span class="side-sub">주변 상가업소</span></div>
       <div class="side-soon">준비 중
         <div class="side-soon-desc">주변 상가업소 정보를 준비하고 있습니다.</div>
@@ -1338,6 +1338,64 @@ async function loadBuildingHeader(id){
     bldgInfoCard.innerHTML = `
       <div class="side-card-title">건축정보 <span class="side-sub">표제부</span></div>
       <div class="b-bldg-grid">${cells}</div>`;
+  }
+
+  // 상거래정보(이 건물의 상가업소) — 실패/0건이면 기존 "준비 중" 카드 유지
+  loadBuildingStores(id);
+}
+
+// 상거래정보 카드 — /api/building/<id>/nearby-stores 로 이 건물(지번)의
+// 상가업소를 업종별 요약 + 층별 목록으로 그린다. 최대 15개 먼저 보여주고 "더보기".
+async function loadBuildingStores(buildingId){
+  const card = document.getElementById("bStoresCard");
+  if (!card) return;
+  let data;
+  try {
+    const res = await fetch(`/api/building/${buildingId}/nearby-stores`);
+    if (!res.ok) return; // 실패 → "준비 중" 유지
+    data = await res.json();
+  } catch(e){ return; }
+  if (!data || !data.available || !Array.isArray(data.stores) || data.stores.length === 0) return;
+
+  const summary = (data.categories || [])
+    .map(c => `${escapeHtml(c.category)} <b>${Number(c.count).toLocaleString('ko-KR')}</b>`)
+    .join(" · ");
+
+  const rowHtml = (s) => {
+    let floorTxt = "";
+    if (s.floor !== "" && s.floor != null){
+      const n = Number(s.floor);
+      floorTxt = isNaN(n) ? String(s.floor) : (n < 0 ? `지하 ${Math.abs(n)}층` : `${n}층`);
+    }
+    return `
+      <div style="display:flex; align-items:center; gap:8px; padding:6px 2px; border-bottom:1px solid var(--line, #eee); font-size:12.5px;">
+        <span style="flex:0 0 52px; color:var(--brass-dark); font-weight:700;">${floorTxt ? escapeHtml(floorTxt) : "-"}</span>
+        <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink);">${escapeHtml(s.name)}</span>
+        <span style="flex:0 0 auto; color:var(--ink-soft); font-size:11.5px;">${escapeHtml(s.category || "")}</span>
+      </div>`;
+  };
+
+  const FIRST = 15;
+  const first = data.stores.slice(0, FIRST).map(rowHtml).join("");
+  const rest = data.stores.slice(FIRST).map(rowHtml).join("");
+
+  card.innerHTML = `
+    <div class="side-card-title">상거래정보 <span class="side-sub">건물 내 상가업소 ${Number(data.total).toLocaleString('ko-KR')}곳</span></div>
+    ${summary ? `<div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px; line-height:1.6;">${summary}</div>` : ""}
+    <div style="max-height:280px; overflow-y:auto;">
+      <div>${first}</div>
+      ${rest ? `<div id="bStoresRest" style="display:none;">${rest}</div>` : ""}
+    </div>
+    ${rest ? `<button type="button" class="side-more" id="bStoresMoreBtn">더보기 (${data.stores.length - FIRST}곳)</button>` : ""}
+    <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">출처: 소상공인시장진흥공단 상가(상권)정보</div>`;
+
+  const moreBtn = document.getElementById("bStoresMoreBtn");
+  if (moreBtn){
+    moreBtn.addEventListener("click", () => {
+      const restBox = document.getElementById("bStoresRest");
+      if (restBox) restBox.style.display = "";
+      moreBtn.remove();
+    });
   }
 }
 

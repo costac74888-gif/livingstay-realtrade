@@ -50,6 +50,9 @@ def _title_row_to_dict(row: dict) -> dict:
         "etc_purps": row.get("etcPurps", ""),
         "new_plat_plc": row.get("newPlatPlc", "").strip(),
         "plat_plc": row.get("platPlc", "").strip(),
+        # 관리건축물대장PK — 주의: 상가업소정보의 25자리 건물관리번호(bldMngNo)와는
+        # 다른 번호라 storeListInBuilding 키로 못 씀(store_info_util.py 참고)
+        "mgm_bldrgst_pk": row.get("mgmBldrgstPk", "").strip(),
     }
 
 

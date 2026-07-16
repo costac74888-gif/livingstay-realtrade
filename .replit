@@ -21,10 +21,6 @@ args = "Start application"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Verify Units"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "smoke"
 
 [[workflows.workflow.tasks]]
@@ -39,6 +35,10 @@ args = "Backfill Retry"
 task = "workflow.run"
 args = "Fast Sync"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Verify Units"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -50,17 +50,6 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[[workflows.workflow]]
-name = "Verify Units"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python -u verify_units.py excluded_small_buildings.csv"
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[workflows.workflow]]
 name = "smoke"
@@ -102,6 +91,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -u sync_batch.py --months 60 --master-only"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Verify Units"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -u verify_units.py excluded_small_buildings.csv"
 
 [workflows.workflow.metadata]
 outputType = "console"

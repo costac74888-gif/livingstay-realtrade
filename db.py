@@ -85,6 +85,7 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS hhld_cnt INTEGER")        # 세대수
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS strct_nm TEXT")           # 구조
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS title_backfilled_at TIMESTAMP")  # 표제부 백필 시각(재시도/커버리지 추적)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS mgm_bldrgst_pk TEXT")    # 관리건축물대장PK(표제부 mgmBldrgstPk. 상가업소 조회 키로는 못 씀 — store_info_util.py 참고)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (

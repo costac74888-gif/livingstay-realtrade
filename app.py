@@ -45,7 +45,9 @@ from db import get_conn, init_db
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
     build_authority_index, match_authority_contact,
+    BjdongMap, parse_jibun,
 )
+from store_info_util import build_pnu, get_stores_by_pnu
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -316,6 +318,95 @@ def get_building(building_id):
     result["authority_phone"] = phone
     result["authority_source"] = source if dept is not None else None
     return jsonify(result)
+
+
+# ── 상거래정보(주변 상가업소) ───────────────────────────────────────────
+# 법정동코드 매핑은 zip 로딩이 무거워서 앱 프로세스당 1회만 lazy 로딩한다.
+_bjdong_map = None
+_bjdong_lock = threading.Lock()
+
+
+def _get_bjdong_map():
+    global _bjdong_map
+    if _bjdong_map is None:
+        with _bjdong_lock:
+            if _bjdong_map is None:
+                _bjdong_map = BjdongMap(os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip"))
+    return _bjdong_map
+
+
+# 건물별 상가업소 결과 1시간 메모리 캐시 — 같은 건물 반복 조회 시 외부 API 호출 절약.
+# (gunicorn 워커별 캐시. 정확성보다 호출량 절감 목적이라 워커 간 공유 안 해도 충분)
+_STORES_CACHE_TTL = 3600
+_STORES_CACHE_TTL_EMPTY = 300  # 실패/0건은 일시 장애일 수 있어 5분만 캐시(곧 재시도)
+_stores_cache = {}
+_stores_cache_lock = threading.Lock()
+
+
+@app.route("/api/building/<int:building_id>/nearby-stores")
+def get_building_nearby_stores(building_id):
+    """이 건물(지번, PNU 기준)의 상가업소 목록 — 업종별 개수 + 층별 목록.
+
+    키가 없거나(pnu 산출 불가) 조회 실패/0건이면 {"available": False} —
+    화면은 기존 "준비 중" 카드를 유지한다.
+    """
+    now = time.time()
+    with _stores_cache_lock:
+        hit = _stores_cache.get(building_id)
+        if hit:
+            ttl = _STORES_CACHE_TTL if hit[1].get("available") else _STORES_CACHE_TTL_EMPTY
+            if now - hit[0] < ttl:
+                return jsonify(hit[1])
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT sgg_cd, umd_nm, jibun FROM master_buildings WHERE id = %s",
+        [building_id],
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+
+    payload = {"available": False, "total": 0, "categories": [], "stores": []}
+    try:
+        if row["sgg_cd"] and row["umd_nm"] and row["jibun"]:
+            bjd = _get_bjdong_map().find_bjdong_cd(row["sgg_cd"], row["umd_nm"])
+            if bjd:
+                plat_gb, bun, ji = parse_jibun(row["jibun"])
+                pnu = build_pnu(row["sgg_cd"], bjd, plat_gb, bun, ji)
+                stores = get_stores_by_pnu(pnu) if pnu else []
+                if stores:
+                    counts = {}
+                    for s in stores:
+                        cat = s["category"] or "기타"
+                        counts[cat] = counts.get(cat, 0) + 1
+                    categories = sorted(counts.items(), key=lambda kv: -kv[1])
+
+                    def _floor_sort_key(s):
+                        f = s["floor"]
+                        try:
+                            return (0, int(f))
+                        except (ValueError, TypeError):
+                            return (1, 0)  # 층 정보 없는 업소는 뒤로
+
+                    stores_sorted = sorted(stores, key=_floor_sort_key)
+                    payload = {
+                        "available": True,
+                        "total": len(stores),
+                        "categories": [{"category": c, "count": n} for c, n in categories],
+                        "stores": stores_sorted,
+                    }
+    except Exception:
+        # 상거래정보는 부가 정보 — 실패해도 500 내지 말고 "준비 중" 유지
+        app.logger.exception("상가업소 조회 실패 (building_id=%s)", building_id)
+        payload = {"available": False, "total": 0, "categories": [], "stores": []}
+
+    with _stores_cache_lock:
+        _stores_cache[building_id] = (now, payload)
+    return jsonify(payload)
 
 
 @app.route("/api/transactions")

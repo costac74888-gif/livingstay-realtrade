@@ -89,10 +89,15 @@ def _extract(rep):
         "plat_area": _to_float(rep.get("platArea")),
         "hhld_cnt": _to_int(rep.get("hhldCnt")),
         "strct_nm": (rep.get("strctCdNm") or "").strip() or None,
+        # 관리건축물대장PK(건물관리번호) — 상가업소정보(storeListInBuilding) 조회 키
+        "mgm_bldrgst_pk": (rep.get("mgmBldrgstPk") or "").strip() or None,
     }
 
 
-def run(limit=None, ids=None, only_missing=True, sleep=0.2):
+def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False):
+    """pk_only=True — 보강 모드: 이미 표제부가 채워진 건물도 포함해
+    mgm_bldrgst_pk IS NULL 인 건물만 대상으로 그 컬럼 하나만 채운다.
+    (전체 표제부 재조회 없이 건물관리번호만 추가 확보하는 용도)"""
     init_db()
     bjdong = BjdongMap(BJDONG_CSV)
     conn = get_conn()
@@ -103,6 +108,8 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2):
     if ids:
         where.append("id = ANY(%s)")
         params.append(ids)
+    elif pk_only:
+        where.append("mgm_bldrgst_pk IS NULL")
     elif only_missing:
         where.append("title_backfilled_at IS NULL")
     sql = f"SELECT id, building_name, sgg_cd, umd_nm, jibun FROM master_buildings WHERE {' AND '.join(where)} ORDER BY id"
@@ -112,7 +119,8 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2):
     targets = cur.fetchall()
 
     total = len(targets)
-    print(f"[시작] 대상 {total}건 (only_missing={only_missing and not ids}, limit={limit})", flush=True)
+    mode = "pk_only" if pk_only else f"only_missing={only_missing and not ids}"
+    print(f"[시작] 대상 {total}건 ({mode}, limit={limit})", flush=True)
 
     n_ok = n_empty = n_skip = n_err = 0
     consec_err = 0
@@ -123,9 +131,12 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2):
             bjd = bjdong.find_bjdong_cd(b["sgg_cd"], b["umd_nm"])
             if not bjd:
                 n_skip += 1
-                cur.execute(
-                    "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
-                )
+                if not pk_only:
+                    # pk_only 보강 모드에선 title_backfilled_at을 건드리지 않는다
+                    # (표제부 미백필 건물을 '백필 완료'로 오기록하지 않기 위함)
+                    cur.execute(
+                        "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
+                    )
                 print(f"  [{i}/{total}] SKIP id={bid} {name} — bjdong_cd 못찾음(umd={b['umd_nm']})", flush=True)
                 continue
             plat_gb, bun, ji = parse_jibun(b["jibun"])
@@ -134,30 +145,44 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2):
             rep = _pick_representative(rows)
             if not rep:
                 n_empty += 1
-                cur.execute(
-                    "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
-                )
+                if not pk_only:
+                    cur.execute(
+                        "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
+                    )
                 print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부 없음", flush=True)
                 continue
             vals = _extract(rep)
-            cur.execute(
-                """UPDATE master_buildings SET
-                     use_apr_day=%(use_apr_day)s, tot_pkng_cnt=%(tot_pkng_cnt)s,
-                     grnd_flr_cnt=%(grnd_flr_cnt)s, ugrnd_flr_cnt=%(ugrnd_flr_cnt)s,
-                     tot_area=%(tot_area)s, plat_area=%(plat_area)s,
-                     hhld_cnt=%(hhld_cnt)s, strct_nm=%(strct_nm)s,
-                     title_backfilled_at=NOW()
-                   WHERE id=%(id)s""",
-                {**vals, "id": bid},
-            )
-            n_ok += 1
-            print(
-                f"  [{i}/{total}] OK   id={bid} {name} — 준공={vals['use_apr_day']} "
-                f"연면적={vals['tot_area']} 대지={vals['plat_area']} 세대={vals['hhld_cnt']} "
-                f"지상/지하={vals['grnd_flr_cnt']}/{vals['ugrnd_flr_cnt']} 주차={vals['tot_pkng_cnt']} "
-                f"구조={vals['strct_nm']}",
-                flush=True,
-            )
+            if pk_only:
+                if vals["mgm_bldrgst_pk"]:
+                    cur.execute(
+                        "UPDATE master_buildings SET mgm_bldrgst_pk=%s WHERE id=%s",
+                        (vals["mgm_bldrgst_pk"], bid),
+                    )
+                    n_ok += 1
+                    print(f"  [{i}/{total}] OK   id={bid} {name} — pk={vals['mgm_bldrgst_pk']}", flush=True)
+                else:
+                    n_empty += 1
+                    print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부에 mgmBldrgstPk 없음", flush=True)
+            else:
+                cur.execute(
+                    """UPDATE master_buildings SET
+                         use_apr_day=%(use_apr_day)s, tot_pkng_cnt=%(tot_pkng_cnt)s,
+                         grnd_flr_cnt=%(grnd_flr_cnt)s, ugrnd_flr_cnt=%(ugrnd_flr_cnt)s,
+                         tot_area=%(tot_area)s, plat_area=%(plat_area)s,
+                         hhld_cnt=%(hhld_cnt)s, strct_nm=%(strct_nm)s,
+                         mgm_bldrgst_pk=COALESCE(%(mgm_bldrgst_pk)s, mgm_bldrgst_pk),
+                         title_backfilled_at=NOW()
+                       WHERE id=%(id)s""",
+                    {**vals, "id": bid},
+                )
+                n_ok += 1
+                print(
+                    f"  [{i}/{total}] OK   id={bid} {name} — 준공={vals['use_apr_day']} "
+                    f"연면적={vals['tot_area']} 대지={vals['plat_area']} 세대={vals['hhld_cnt']} "
+                    f"지상/지하={vals['grnd_flr_cnt']}/{vals['ugrnd_flr_cnt']} 주차={vals['tot_pkng_cnt']} "
+                    f"구조={vals['strct_nm']} pk={vals['mgm_bldrgst_pk']}",
+                    flush=True,
+                )
         except Exception as e:
             n_err += 1
             consec_err += 1
@@ -185,10 +210,13 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--ids", type=str, default=None, help="쉼표구분 id 목록")
     ap.add_argument("--all", action="store_true", help="이미 백필된 건도 재조회")
+    ap.add_argument("--fill-pk", action="store_true",
+                    help="보강 모드: mgm_bldrgst_pk가 NULL인 건물만 대상으로 건물관리번호만 채움")
     ap.add_argument("--sleep", type=float, default=0.2)
     args = ap.parse_args()
     ids = [int(x) for x in args.ids.split(",") if x.strip()] if args.ids else None
-    run(limit=args.limit, ids=ids, only_missing=not args.all, sleep=args.sleep)
+    run(limit=args.limit, ids=ids, only_missing=not args.all, sleep=args.sleep,
+        pk_only=args.fill_pk)
 
 
 if __name__ == "__main__":
