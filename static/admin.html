@@ -221,7 +221,21 @@
                 const res = await fetch(`${grid.cfg.endpoint}/${row.id}/approve`, { method: "POST" });
                 if (res.status === 401) { window.location.href = "/admin/login"; return; }
                 const data = await res.json().catch(() => ({}));
-                if (res.ok && data.ok) { grid.reload(); return; }
+                if (res.ok && data.ok) {
+                  if (typeof data.sms_sent !== "undefined") {
+                    if (data.sms_sent) {
+                      window.alert("승인 완료 — 임시비밀번호가 문자로 발송되었습니다.");
+                    } else {
+                      window.alert(
+                        "승인 완료 — 문자 발송 실패. 아래 임시비밀번호를 직접 전달하세요: "
+                        + (data.temp_password || "(없음)")
+                        + "\n(사유: " + (data.sms_message || "알 수 없음") + ")"
+                      );
+                    }
+                  }
+                  grid.reload();
+                  return;
+                }
                 window.alert(data.message || "승인에 실패했습니다.");
               } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
             },

@@ -197,6 +197,24 @@ def init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_hash TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS photo_url TEXT")
+
+    # 중개사별 담당(취급) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS agent_buildings (
+        id SERIAL PRIMARY KEY,
+        agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+        sale_count INTEGER DEFAULT 0,        -- 매매
+        jeonse_count INTEGER DEFAULT 0,      -- 전세
+        wolse_count INTEGER DEFAULT 0,       -- 월세
+        shortterm_count INTEGER DEFAULT 0,   -- 단기
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT agent_buildings_agent_building_unique UNIQUE (agent_id, master_building_id)
+    )
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS operators (

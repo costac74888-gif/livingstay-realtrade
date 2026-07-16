@@ -32,6 +32,9 @@ from functools import wraps
 from urllib.parse import quote, urlencode
 import requests
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from sms_util import send_sms
+from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
 from flask_limiter import Limiter
@@ -2093,6 +2096,98 @@ def admin_change_password():
     return jsonify({"ok": True})
 
 
+# ============================================================
+# 중개사(agents) 로그인 — 승인된 중개사만. admin 로그인과 같은 패턴.
+# 세션에 agent_id 저장. require_agent 로 보호.
+# ============================================================
+
+def require_agent(f):
+    """세션에 agent_id가 없으면 차단한다.
+    /api/* 요청은 401 JSON, 그 외는 /agent/login으로 리다이렉트."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("agent_id"):
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+            return redirect("/agent/login")
+        return f(*args, **kwargs)
+    return wrapper
+
+
+@app.route("/agent/login")
+def agent_login_page():
+    return _serve_static_html("agent_login.html")
+
+
+@app.route("/api/agent/login", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour")
+def agent_login():
+    """agents 테이블 기반 이메일/비밀번호 로그인. status='approved'만 허용.
+    실패 시 이메일 존재 여부를 드러내지 않도록 통일된 메시지로 401을 반환한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+    if not email or not password:
+        return fail
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, password_hash, status FROM agents WHERE LOWER(email) = LOWER(%s)",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
+            return fail
+        if row["status"] != "approved":
+            return jsonify({"ok": False, "message": "승인된 중개사 계정이 아닙니다."}), 403
+    finally:
+        cur.close()
+        conn.close()
+
+    session["agent_id"] = row["id"]
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/logout", methods=["POST"])
+def agent_logout():
+    session.pop("agent_id", None)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/password", methods=["PUT"])
+@require_agent
+@limiter.limit("5 per minute; 20 per hour")
+def agent_change_password():
+    """중개사 비밀번호 변경 — 현재 비밀번호 확인 후 교체 (admin/mypage와 같은 패턴)."""
+    agent_id = session.get("agent_id")
+    data = request.get_json(force=True, silent=True) or {}
+    current_pw = data.get("current_password") or ""
+    new_pw = data.get("new_password") or ""
+    if len(new_pw) < 8:
+        return jsonify({"ok": False, "message": "새 비밀번호는 8자 이상이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password_hash FROM agents WHERE id = %s", (agent_id,))
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], current_pw):
+            return jsonify({"ok": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 401
+        cur.execute(
+            "UPDATE agents SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), agent_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 # ---- 지도 좌표 채우기 (배포 후 운영 DB에 좌표 주입용) ----
 # 에이전트/개발자는 운영(production) DB에 직접 쓸 수 없으므로, 개발에서 확보한
 # 좌표를 data/building_coords.json 으로 배포에 포함시키고, 관리자가 이 API를
@@ -3129,6 +3224,9 @@ def admin_applications_approve(app_id):
         return jsonify({"ok": False, "message": "이미 처리된 신청입니다."}), 400
 
     atype = ap["applicant_type"]
+    temp_pw = None
+    sms_sent = False
+    sms_msg = None
     try:
         if atype == "agent":
             # 등록번호(reg_number) 중복이면 승인 불가 — applications 상태는 그대로 둔다.
@@ -3137,15 +3235,51 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "이미 등록된 중개사무소입니다."}), 400
-            cur.execute("""
-                INSERT INTO agents
-                    (office_name, owner_name, reg_number, biz_reg_number,
-                     phone, email, status, subdomain_slug, approved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'approved', NULL, NOW())
-                RETURNING id
-            """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                  ap["biz_reg_number"], ap["phone"], ap["email"]])
-            created_id = cur.fetchone()["id"]
+            # subdomain_slug: 전화번호 숫자만 추출, 중복이면 -2, -3 … 붙여 유니크화.
+            # 동시 승인 경쟁 대비: SAVEPOINT + UNIQUE 충돌 시 새 slug로 재시도(최대 5회).
+            base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"agent{app_id}"
+            # 임시 비밀번호(랜덤 8자리 영숫자) — 해시만 저장
+            alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+            temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
+            pw_hash = generate_password_hash(temp_pw)
+            created_id = None
+            n = 2
+            slug = base_slug
+            for _attempt in range(5):
+                # 다음 빈 slug 후보 탐색
+                while True:
+                    cur.execute("SELECT 1 FROM agents WHERE subdomain_slug=%s", [slug])
+                    if not cur.fetchone():
+                        break
+                    slug = f"{base_slug}-{n}"
+                    n += 1
+                cur.execute("SAVEPOINT sp_agent_insert")
+                try:
+                    cur.execute("""
+                        INSERT INTO agents
+                            (office_name, owner_name, reg_number, biz_reg_number,
+                             phone, email, status, subdomain_slug, password_hash, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
+                        RETURNING id
+                    """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
+                          ap["biz_reg_number"], ap["phone"], ap["email"], slug, pw_hash])
+                    created_id = cur.fetchone()["id"]
+                    cur.execute("RELEASE SAVEPOINT sp_agent_insert")
+                    break
+                except psycopg2_errors.UniqueViolation as ue:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_agent_insert")
+                    cname = getattr(getattr(ue, "diag", None), "constraint_name", "") or ""
+                    if "slug" in cname:
+                        # 동시 승인으로 slug 선점됨 — 다음 후보로 재시도
+                        slug = f"{base_slug}-{n}"
+                        n += 1
+                        continue
+                    raise  # reg_number 등 다른 UNIQUE 충돌은 일반 오류로 처리
+            if created_id is None:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "페이지 주소(slug) 발급에 실패했습니다. 다시 시도해주세요."}), 409
             cur.execute(
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_agent_id=%s WHERE id=%s",
                 [created_id, app_id],
@@ -3179,6 +3313,7 @@ def admin_applications_approve(app_id):
             conn.close()
             return jsonify({"ok": False, "message": "알 수 없는 신청 유형입니다."}), 400
     except Exception:
+        app.logger.exception("신청 승인 처리 실패 (application id=%s)", app_id)
         conn.rollback()
         cur.close()
         conn.close()
@@ -3187,6 +3322,22 @@ def admin_applications_approve(app_id):
     conn.commit()
     cur.close()
     conn.close()
+
+    if atype == "agent":
+        # 승인 완료 후 문자 발송 — 실패해도 승인은 이미 확정(예외 없음, (ok, msg) 반환)
+        domain = request.host_url.rstrip("/")
+        sms_body = (
+            f"[홈앤스테이] 중개사 승인 완료. 로그인ID(이메일): {ap['email']} / "
+            f"임시비밀번호: {temp_pw} / 로그인: {domain}/agent/login — "
+            f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
+        )
+        sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
+        resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg}
+        if not sms_sent:
+            # 평문 임시비번은 문자 발송 실패 시에만 반환(관리자가 수동 전달하도록)
+            resp["temp_password"] = temp_pw
+        return jsonify(resp)
+
     return jsonify({"ok": True, "created_id": created_id})
 
 
