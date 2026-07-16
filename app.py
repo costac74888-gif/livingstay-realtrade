@@ -34,6 +34,7 @@ import requests
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from sms_util import send_sms
+import storage_util
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
@@ -876,6 +877,74 @@ def apply_agent_page():
     return resp
 
 
+def _handle_apply_upload(applicant_type, allowed_doc_types):
+    """C/D 신청서 서류 업로드 공통 처리.
+
+    - multipart/form-data: file(파일) + doc_type(문서 종류)
+    - 확장자 pdf/jpg/jpeg/png, 파일당 5MB, 매직 바이트로 실제 내용 검증
+    - 저장 후 내부 참조 키(applications/{type}/{uuid}/{doc_type}.{ext})를 반환.
+      URL이 아니므로 서명 없이는 외부에서 접근할 수 없다.
+    """
+    f = request.files.get("file")
+    doc_type = (request.form.get("doc_type") or "").strip()
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    if doc_type not in allowed_doc_types:
+        return jsonify({"ok": False, "message": "허용되지 않은 문서 종류입니다."}), 400
+
+    filename = f.filename
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in storage_util.ALLOWED_EXTENSIONS:
+        return jsonify({"ok": False, "message": "PDF, JPG, PNG 파일만 업로드할 수 있습니다."}), 400
+
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다. 실제 PDF/JPG/PNG 파일만 업로드해주세요."}), 400
+
+    key = storage_util.build_doc_key(applicant_type, doc_type, ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("서류 업로드 실패 (%s/%s)", applicant_type, doc_type)
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+
+    return jsonify({"ok": True, "doc_ref": key})
+
+
+@app.route("/api/apply/agent/upload", methods=["POST"])
+@limiter.limit("10 per hour")
+def apply_agent_upload():
+    """중개사 신청 서류 업로드 (비로그인, IP 기준 rate limit)."""
+    return _handle_apply_upload("agent", storage_util.AGENT_DOC_TYPES)
+
+
+@app.route("/api/apply/operator/upload", methods=["POST"])
+@limiter.limit("10 per hour")
+def apply_operator_upload():
+    """운영업체 신청 서류 업로드 (비로그인, IP 기준 rate limit)."""
+    return _handle_apply_upload("operator", storage_util.OPERATOR_DOC_TYPES)
+
+
+def _clean_doc_ref(value, applicant_type, doc_type):
+    """신청서 제출 시 넘어온 서류 참조 키 검증.
+
+    - 빈 값이면 None (서류는 선택 항목)
+    - 우리가 발급한 키 형식이 아니거나, 실제 스토리지에 없으면 에러 문자열 반환
+    """
+    ref = (value or "").strip()
+    if not ref:
+        return None, None
+    if not storage_util.is_valid_doc_ref(ref, applicant_type, {doc_type}):
+        return None, "서류 참조가 올바르지 않습니다. 파일을 다시 업로드해주세요."
+    if not storage_util.doc_exists(ref):
+        return None, "업로드된 서류를 찾을 수 없습니다. 파일을 다시 업로드해주세요."
+    return ref, None
+
+
 @app.route("/api/apply/agent", methods=["POST"])
 @limiter.limit("3 per minute; 10 per hour")
 def apply_agent():
@@ -916,6 +985,16 @@ def apply_agent():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
 
+    # 서류 참조 키 검증 (선택 항목 — 없으면 NULL)
+    doc_refs = {}
+    for field, doc_type in (("doc_license_url", "license"),
+                            ("doc_office_reg_url", "office_reg"),
+                            ("doc_biz_reg_url", "biz_reg")):
+        ref, err = _clean_doc_ref(data.get(field), "agent", doc_type)
+        if err:
+            return jsonify({"ok": False, "message": err}), 400
+        doc_refs[field] = ref
+
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
@@ -924,11 +1003,13 @@ def apply_agent():
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
              intro_text, doc_license_url, doc_office_reg_url, doc_biz_reg_url)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, NULL, NULL)
+                NULL, %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
-          preferred_building or None))
+          preferred_building or None,
+          doc_refs["doc_license_url"], doc_refs["doc_office_reg_url"],
+          doc_refs["doc_biz_reg_url"]))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1000,6 +1081,15 @@ def apply_operator():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
 
+    # 서류 참조 키 검증 (선택 항목 — 영업허가증은 업종별 조건부라 없어도 제출 가능)
+    doc_refs = {}
+    for field, doc_type in (("doc_business_card_url", "business_card"),
+                            ("doc_biz_license_url", "biz_license")):
+        ref, err = _clean_doc_ref(data.get(field), "operator", doc_type)
+        if err:
+            return jsonify({"ok": False, "message": err}), 400
+        doc_refs[field] = ref
+
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
@@ -1008,11 +1098,12 @@ def apply_operator():
              biz_reg_number, phone, email, website_url, preferred_region, status,
              reg_number, intro_text, doc_business_card_url, doc_biz_license_url)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, NULL, NULL)
+                NULL, NULL, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
-          website_url or None, preferred_region or None))
+          website_url or None, preferred_region or None,
+          doc_refs["doc_business_card_url"], doc_refs["doc_biz_license_url"]))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -3756,6 +3847,8 @@ def admin_applications_list():
     cur.execute(f"""
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
                category, phone, email, preferred_region, preferred_building, status, reject_reason,
+               doc_license_url, doc_office_reg_url, doc_biz_reg_url,
+               doc_business_card_url, doc_biz_license_url,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
         WHERE {where_sql}
@@ -3766,6 +3859,47 @@ def admin_applications_list():
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+# 신청서 doc_type → applications 테이블 컬럼 매핑 (관리자 서류 열람용 화이트리스트)
+_APP_DOC_COLUMNS = {
+    "license": "doc_license_url",
+    "office_reg": "doc_office_reg_url",
+    "biz_reg": "doc_biz_reg_url",
+    "business_card": "doc_business_card_url",
+    "biz_license": "doc_biz_license_url",
+}
+
+
+@app.route("/api/admin/applications/<int:app_id>/doc-url")
+@require_admin
+def admin_application_doc_url(app_id):
+    """신청 서류의 서명된 임시 열람 URL(5분) 발급 — 관리자 전용.
+
+    doc 파라미터는 화이트리스트(_APP_DOC_COLUMNS)로만 컬럼을 선택하므로
+    임의 컬럼/키 접근이 불가능하다.
+    """
+    doc_type = (request.args.get("doc") or "").strip()
+    col = _APP_DOC_COLUMNS.get(doc_type)
+    if not col:
+        return jsonify({"ok": False, "message": "알 수 없는 문서 종류입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT {col} AS ref FROM applications WHERE id=%s", [app_id])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "신청 내역을 찾을 수 없습니다."}), 404
+    ref = row["ref"]
+    if not ref or not storage_util.is_valid_doc_ref(ref):
+        return jsonify({"ok": False, "message": "첨부된 서류가 없습니다."}), 404
+    try:
+        url = storage_util.signed_get_url(ref, ttl_sec=300)
+    except Exception:
+        app.logger.exception("서명 URL 발급 실패 (application %s, %s)", app_id, doc_type)
+        return jsonify({"ok": False, "message": "서류 열람 URL 발급에 실패했습니다."}), 500
+    return jsonify({"ok": True, "url": url})
 
 
 @app.route("/api/admin/applications/<int:app_id>/approve", methods=["POST"])

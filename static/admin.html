@@ -203,6 +203,21 @@
           { key: "phone", label: "연락처" },
           { key: "email", label: "이메일" },
           { key: "preferred_region", label: "희망지역" },
+          // 첨부 서류: 있는 문서만 "보기" 링크 노출. 클릭 시 관리자 전용 서명 URL(5분)을
+          // 발급받아 새 탭으로 연다 (window.adminOpenAppDoc — 아래 정의).
+          { key: "id", label: "서류", render: (v, row) => {
+            const docs = [
+              ["license", "자격증", row.doc_license_url],
+              ["office_reg", "등록증", row.doc_office_reg_url],
+              ["biz_reg", "사업자", row.doc_biz_reg_url],
+              ["business_card", "명함", row.doc_business_card_url],
+              ["biz_license", "영업허가", row.doc_biz_license_url],
+            ].filter((d) => d[2]);
+            if (!docs.length) return '<span style="color:var(--ink-soft);">—</span>';
+            return docs.map((d) =>
+              `<a href="#" onclick="adminOpenAppDoc(event, ${row.id}, '${d[0]}')" style="margin-right:6px; white-space:nowrap;">${dgEscape(d[1])}</a>`
+            ).join("");
+          } },
           { key: "submitted_at", label: "신청일", sortable: true },
           { key: "status", label: "상태", render: (v) => {
             const m = { submitted: ["대기중", "wait"], approved: ["승인됨", "ok"], rejected: ["반려됨", "no"] };
@@ -501,6 +516,23 @@
       destroyStatsCharts();
       currentGrid = new DataGrid(Object.assign({ mount: mount, idField: "id", pageSize: 50 }, cfg));
     }
+
+    // ---- 신청 서류 열람: 관리자 전용 서명 URL(5분)을 발급받아 새 탭으로 연다 ----
+    window.adminOpenAppDoc = async function(ev, appId, docType) {
+      ev.preventDefault();
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/doc-url?doc=${encodeURIComponent(docType)}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok && d.url) {
+          window.open(d.url, "_blank", "noopener");
+        } else {
+          window.alert(d.message || "서류 열람 URL 발급에 실패했습니다.");
+        }
+      } catch (e) {
+        window.alert("네트워크 오류가 발생했습니다.");
+      }
+    };
 
     // ---- 약관 관리 (이용약관 / 개인정보처리방침) ----
     // 각 문서를 큰 textarea로 편집하고 "저장"하면 /api/admin/legal/<type> PUT로 즉시 반영된다.
