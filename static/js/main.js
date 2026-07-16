@@ -506,9 +506,11 @@ function updateMarkerLabels(){
   mapLabels.forEach(l => { l.style.display = show ? "block" : "none"; });
 }
 
-// 호버 미리보기 툴팁 내용 — buildings-geo의 latest_* 필드로 클릭 InfoWindow와
-// 동일한 렌더러(dealDetailHtml)를 써서 가격·날짜·층·면적·거래유형을 완전하게 채운다.
-function hoverTooltipContent(b){
+// ★ 마커 정보 내용 공용 빌더 — 호버 툴팁과 클릭 InfoWindow가 완전히 동일한
+// 내용(건물명·용도·최근 실거래 + ☆관심저장 버튼 + "상세보기 →" 링크)을 쓰도록
+// 한 곳에서 HTML을 만든다. 두 곳의 내용이 갈라지며 "이중 마커"처럼 느껴지던
+// 문제를 없애기 위한 단일 소스.
+function buildingInfoInnerHtml(b){
   const name = escapeHtml(b.building_name || "(건물명 미확인)");
   const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
   const dealHtml = dealDetailHtml({
@@ -516,14 +518,42 @@ function hoverTooltipContent(b){
     floor: b.latest_floor, area: b.latest_area, deal_type: b.latest_deal_type,
     exact: b.latest_price_exact,
   });
+
+  const detailLink = (b.id != null)
+    ? `<a href="/building/${b.id}" onclick="return window.openBuildingDetail(${b.id});" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a>`
+    : "";
+
+  // 관심저장 — 좌측 목록과 동일한 favKey(building_name|address). 실거래 지번주소
+  // 우선, 없으면 마스터 도로명주소 폴백(거래이력 없어도 주소만 있으면 활성화).
+  const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
+  const canFav = favAddr !== "";
+  const favActive = canFav && isFav({ building_name: b.building_name, address: favAddr });
+  const favBtn = canFav
+    ? `<button type="button" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}"
+         onclick="return window.toggleFavFromInfo(this);"
+         style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
+         ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
+    : "";
+  const actionRow = (favBtn || detailLink)
+    ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">${favBtn}${detailLink}</div>`
+    : "";
+
   return (
-    `<div style="padding:8px 10px; min-width:150px; max-width:230px; font-size:12px;` +
+    `<div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name}</div>` +
+    `<div style="color:#6b7683; margin-bottom:4px;">${typeKo}</div>` +
+    dealHtml +
+    actionRow
+  );
+}
+
+// 호버 미리보기 툴팁 내용 — 클릭 InfoWindow와 완전히 동일한 내용을 공용 빌더로
+// 생성한다(버튼 포함, 클릭 가능). 카드 테두리/그림자만 툴팁 고유 스타일.
+function hoverTooltipContent(b){
+  return (
+    `<div style="padding:10px 12px; min-width:170px; max-width:240px; font-size:12.5px;` +
     ` color:#16202E; font-family:'Noto Sans KR',sans-serif; background:#fff;` +
-    ` border:1px solid #e2e6ea; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.18);` +
-    ` pointer-events:none;">` +
-      `<div style="font-weight:700; font-size:13px; margin-bottom:2px;">${name}</div>` +
-      `<div style="color:#6b7683; margin-bottom:2px;">${typeKo}</div>` +
-      dealHtml +
+    ` border:1px solid #e2e6ea; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.18);">` +
+      buildingInfoInnerHtml(b) +
     `</div>`
   );
 }
@@ -540,13 +570,17 @@ function showHoverTooltip(b, pos){
   const el = document.createElement("div");
   // 마커 위쪽으로 충분히 띄워 상시 라벨 칩(점 위 ~45px)을 가리지 않게 한다.
   el.style.transform = "translateY(-52px)";
-  // 툴팁 전체를 마우스 이벤트 대상에서 제외한다. 이게 없으면 툴팁이 순간적으로
-  // 마커와 겹칠 때 mouseleave→mouseenter가 반복되며 툴팁이 떨리는(깜빡이는) 현상 발생.
-  el.style.pointerEvents = "none";
   el.innerHTML = hoverTooltipContent(b);
+  // 툴팁 안의 ☆관심저장·상세보기 버튼을 실제로 누를 수 있어야 하므로
+  // pointer-events를 살려 두고, 대신 툴팁 자체에 mouseenter/mouseleave를 걸어
+  // 마커→툴팁으로 마우스가 이동하는 동안 숨김 타이머를 취소한다(떨림 방지 겸용).
+  el.addEventListener("mouseenter", () => {
+    if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
+  });
+  el.addEventListener("mouseleave", hideHoverTooltip);
   if (!hoverTooltip){
     hoverTooltip = new kakao.maps.CustomOverlay({
-      position: pos, content: el, xAnchor: 0.5, yAnchor: 1, clickable: false, zIndex: 9999,
+      position: pos, content: el, xAnchor: 0.5, yAnchor: 1, clickable: true, zIndex: 9999,
     });
   } else {
     hoverTooltip.setContent(el);
@@ -698,45 +732,11 @@ async function openBuildingInfo(b, pos){
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
   hideHoverTooltip(true); // 같은 마커에 호버 툴팁 + InfoWindow가 동시에 뜨지 않게 즉시 닫는다.
 
-  const name = escapeHtml(b.building_name || "(건물명 미확인)");
-  const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
-
-  // 호버 툴팁·상시 라벨과 동일하게 buildings-geo의 latest_* 값을 그대로 쓴다.
-  // (지번+건물명 우선순위로 계산된 값이라 이름 검색보다 정확하고, latest_price_exact로
-  //  '확정 거래' vs '필지 내 참고가'를 구분해 안내가 세 곳에서 일치한다.)
-  const dealHtml = dealDetailHtml({
-    price: b.latest_price, deal_date: b.latest_deal_date,
-    floor: b.latest_floor, area: b.latest_area, deal_type: b.latest_deal_type,
-    exact: b.latest_price_exact,
-  });
-
-  const detailLink = (b.id != null)
-    ? `<a href="/building/${b.id}" onclick="return window.openBuildingDetail(${b.id});" style="color:#B4863F; font-weight:700; text-decoration:none;">상세보기 →</a>`
-    : "";
-
-  // ★ 관심저장 — 좌측 목록과 동일한 favKey(building_name|address)를 써서 어디서 눌러도
-  // 같은 관심단지로 저장/해제된다. 실거래가 있으면 실거래 지번주소(b.address)를 그대로 써
-  // 좌측 목록과 키가 일치하고, 실거래가 없어 지번주소가 없으면 마스터 도로명주소로
-  // 폴백해 거래이력과 무관하게 주소만 있으면 버튼이 활성화된다.
-  const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
-  const canFav = favAddr !== "";
-  const favActive = canFav && isFav({ building_name: b.building_name, address: favAddr });
-  const favBtn = canFav
-    ? `<button type="button" id="infoFavBtn" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}"
-         onclick="return window.toggleFavFromInfo(this);"
-         style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
-         ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
-    : "";
-  const actionRow = (favBtn || detailLink)
-    ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">${favBtn}${detailLink}</div>`
-    : "";
-
+  // ★ 내용은 호버 툴팁과 완전히 동일한 공용 빌더(buildingInfoInnerHtml)로 생성.
+  // 클릭 InfoWindow는 "고정" 역할만 다르다(마우스를 치워도 유지, X로 닫기).
   const content = `
     <div style="padding:10px 12px; min-width:170px; max-width:240px; font-size:12.5px; color:#16202E; font-family:'Noto Sans KR',sans-serif;">
-      <div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name}</div>
-      <div style="color:#6b7683; margin-bottom:4px;">${typeKo}</div>
-      ${dealHtml}
-      ${actionRow}
+      ${buildingInfoInnerHtml(b)}
     </div>`;
   currentInfoWindow = new kakao.maps.InfoWindow({ position: pos, content, removable: true });
   currentInfoWindow.open(kakaoMap);
@@ -1426,6 +1426,7 @@ function restoreDefaultPanel(){
 window.openBuildingDetail = function(id){
   history.pushState({ buildingId: id }, "", "/building/" + id);
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+  hideHoverTooltip(true); // 호버 툴팁에서 눌러 들어온 경우 툴팁도 즉시 닫는다.
   renderBuildingPanel(id);
   return false;
 };
