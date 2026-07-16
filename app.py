@@ -2420,6 +2420,98 @@ def agent_building_search():
     return jsonify({"items": items})
 
 
+# ============================================================
+# 운영업체(operators) 로그인 — 승인된 운영업체만. agent 로그인과 같은 패턴.
+# 세션에 operator_id 저장. require_operator 로 보호.
+# ============================================================
+
+def require_operator(f):
+    """세션에 operator_id가 없으면 차단한다.
+    /api/* 요청은 401 JSON, 그 외는 /operator/login으로 리다이렉트."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("operator_id"):
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+            return redirect("/operator/login")
+        return f(*args, **kwargs)
+    return wrapper
+
+
+@app.route("/operator/login")
+def operator_login_page():
+    return _serve_static_html("operator_login.html")
+
+
+@app.route("/api/operator/login", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour")
+def operator_login():
+    """operators 테이블 기반 이메일/비밀번호 로그인. status='approved'만 허용.
+    실패 시 이메일 존재 여부를 드러내지 않도록 통일된 메시지로 401을 반환한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+    if not email or not password:
+        return fail
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, password_hash, status FROM operators WHERE LOWER(email) = LOWER(%s)",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
+            return fail
+        if row["status"] != "approved":
+            return jsonify({"ok": False, "message": "승인된 운영업체 계정이 아닙니다."}), 403
+    finally:
+        cur.close()
+        conn.close()
+
+    session["operator_id"] = row["id"]
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/logout", methods=["POST"])
+def operator_logout():
+    session.pop("operator_id", None)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/password", methods=["PUT"])
+@require_operator
+@limiter.limit("5 per minute; 20 per hour")
+def operator_change_password():
+    """운영업체 비밀번호 변경 — 현재 비밀번호 확인 후 교체 (agent와 같은 패턴)."""
+    operator_id = session.get("operator_id")
+    data = request.get_json(force=True, silent=True) or {}
+    current_pw = data.get("current_password") or ""
+    new_pw = data.get("new_password") or ""
+    if len(new_pw) < 8:
+        return jsonify({"ok": False, "message": "새 비밀번호는 8자 이상이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password_hash FROM operators WHERE id = %s", (operator_id,))
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], current_pw):
+            return jsonify({"ok": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 401
+        cur.execute(
+            "UPDATE operators SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), operator_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 # ---- 지도 좌표 채우기 (배포 후 운영 DB에 좌표 주입용) ----
 # 에이전트/개발자는 운영(production) DB에 직접 쓸 수 없으므로, 개발에서 확보한
 # 좌표를 data/building_coords.json 으로 배포에 포함시키고, 관리자가 이 API를
@@ -3527,15 +3619,51 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "이미 등록된 운영업체입니다."}), 400
-            cur.execute("""
-                INSERT INTO operators
-                    (company_name, owner_name, category, biz_reg_number,
-                     phone, email, website_url, status, approved_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', NOW())
-                RETURNING id
-            """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
-                  ap["biz_reg_number"], ap["phone"], ap["email"], ap["website_url"]])
-            created_id = cur.fetchone()["id"]
+            # subdomain_slug + 임시비밀번호 — agent 승인 로직과 완전히 동일한 패턴.
+            base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"operator{app_id}"
+            alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+            temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
+            pw_hash = generate_password_hash(temp_pw)
+            created_id = None
+            n = 2
+            slug = base_slug
+            for _attempt in range(5):
+                # 다음 빈 slug 후보 탐색
+                while True:
+                    cur.execute("SELECT 1 FROM operators WHERE subdomain_slug=%s", [slug])
+                    if not cur.fetchone():
+                        break
+                    slug = f"{base_slug}-{n}"
+                    n += 1
+                cur.execute("SAVEPOINT sp_operator_insert")
+                try:
+                    cur.execute("""
+                        INSERT INTO operators
+                            (company_name, owner_name, category, biz_reg_number,
+                             phone, email, website_url, status, subdomain_slug,
+                             password_hash, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
+                        RETURNING id
+                    """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
+                          ap["biz_reg_number"], ap["phone"], ap["email"], ap["website_url"],
+                          slug, pw_hash])
+                    created_id = cur.fetchone()["id"]
+                    cur.execute("RELEASE SAVEPOINT sp_operator_insert")
+                    break
+                except psycopg2_errors.UniqueViolation as ue:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_operator_insert")
+                    cname = getattr(getattr(ue, "diag", None), "constraint_name", "") or ""
+                    if "slug" in cname:
+                        # 동시 승인으로 slug 선점됨 — 다음 후보로 재시도
+                        slug = f"{base_slug}-{n}"
+                        n += 1
+                        continue
+                    raise
+            if created_id is None:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "페이지 주소(slug) 발급에 실패했습니다. 다시 시도해주세요."}), 409
             cur.execute(
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_operator_id=%s WHERE id=%s",
                 [created_id, app_id],
@@ -3555,14 +3683,21 @@ def admin_applications_approve(app_id):
     cur.close()
     conn.close()
 
-    if atype == "agent":
+    if atype in ("agent", "operator"):
         # 승인 완료 후 문자 발송 — 실패해도 승인은 이미 확정(예외 없음, (ok, msg) 반환)
         domain = request.host_url.rstrip("/")
-        sms_body = (
-            f"[홈앤스테이] 중개사 승인 완료. 로그인ID(이메일): {ap['email']} / "
-            f"임시비밀번호: {temp_pw} / 로그인: {domain}/agent/login — "
-            f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
-        )
+        if atype == "agent":
+            sms_body = (
+                f"[홈앤스테이] 중개사 승인 완료. 로그인ID(이메일): {ap['email']} / "
+                f"임시비밀번호: {temp_pw} / 로그인: {domain}/agent/login — "
+                f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
+            )
+        else:
+            sms_body = (
+                f"[홈앤스테이] 운영업체 승인 완료. 로그인ID(이메일): {ap['email']} / "
+                f"임시비밀번호: {temp_pw} / 로그인: {domain}/operator/login — "
+                f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
+            )
         sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
         resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg}
         if not sms_sent:

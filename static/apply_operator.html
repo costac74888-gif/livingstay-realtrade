@@ -31,6 +31,8 @@
       <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">명함·영업허가증(업종별 조건부) 사본은 제출 후 담당자 안내에 따라 이메일로 별도 첨부해주세요.</div>
     </div>
 
+    <div id="buildingNotice" style="display:none; font-size:13px; color:var(--ink); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
+
     <form id="applyForm" autocomplete="off">
       <div class="field" style="margin-bottom:14px;">
         <label>업체명 <span style="color:var(--brick);">*</span></label>
@@ -97,6 +99,18 @@
     o.value = s; o.textContent = s;
     regionSel.appendChild(o);
   });
+
+  // B화면 위탁운영/하우스키핑 카드에서 ?building_id=&building_name= 으로 진입한 경우 안내 문구 표시
+  // (agent 신청 링크와 동일 패턴 — 실제 업종(category) 선택은 이 폼 안에서 함)
+  (function(){
+    const params = new URLSearchParams(location.search);
+    const bName = (params.get("building_name") || "").trim();
+    if (bName) {
+      const box = document.getElementById("buildingNotice");
+      box.textContent = `🏢 「${bName}」 건물에서 신청하셨습니다. 아래에서 업종을 선택해 신청을 완료해주세요.`;
+      box.style.display = "block";
+    }
+  })();
 
   const form = document.getElementById("applyForm");
   const errBox = document.getElementById("formError");

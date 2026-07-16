@@ -1008,7 +1008,7 @@ function buildingPanelSkeleton(){
         <div style="font-size:22px; margin-bottom:6px;">🏨</div>
         <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">위탁운영 지원업체를 찾고 있습니다</div>
         <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 운영을 맡아줄 파트너를 모집합니다.</div>
-        <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;">지원업체로 등록하세요</button>
+        <a id="lnkOperatorApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
       </div>
     </section>
 
@@ -1018,7 +1018,7 @@ function buildingPanelSkeleton(){
         <div style="font-size:22px; margin-bottom:6px;">🧹</div>
         <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">하우스키핑 지원업체를 찾고 있습니다</div>
         <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 객실관리를 맡아줄 파트너를 모집합니다.</div>
-        <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;">지원업체로 등록하세요</button>
+        <a id="lnkHousekeepingApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
       </div>
     </section>
 
@@ -1218,6 +1218,14 @@ async function loadBuildingHeader(id){
     </a>`;
 
   renderBuildingAgent(b.agent, id, bName);
+
+  // 위탁운영/하우스키핑 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
+  // (실제 업종(category) 선택은 신청폼 안에서 함 — agent 신청 링크와 동일 패턴)
+  const operApplyHref = `/apply/operator?building_id=${id != null ? encodeURIComponent(id) : ""}&building_name=${encodeURIComponent(bName || "")}`;
+  ["lnkOperatorApply", "lnkHousekeepingApply"].forEach((lid) => {
+    const a = document.getElementById(lid);
+    if (a) a.href = operApplyHref;
+  });
 
   // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
   // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.

@@ -240,6 +240,24 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
+    # 운영업체 로그인/공개페이지용 (agents와 동일 패턴, UNIQUE는 helper에서 안전하게 부여)
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS password_hash TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS photo_url TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS intro_text TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS subdomain_slug TEXT")
+
+    # 운영업체별 담당 건물 (agent_buildings와 동일 패턴)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS operator_buildings (
+        id SERIAL PRIMARY KEY,
+        operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+        note TEXT,                           -- 선택 (예: 담당 구역)
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT operator_buildings_operator_building_unique UNIQUE (operator_id, master_building_id)
+    )
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (
@@ -556,6 +574,7 @@ def init_db():
     _ensure_raw_key_unique_constraint()
     _ensure_admin_email_unique_constraint()
     _ensure_agents_unique_constraints()
+    _ensure_operators_unique_constraints()
     _ensure_mileage_missions_code_unique_constraint()
     _ensure_users_unique_constraints()
     _seed_mileage_missions()
@@ -695,6 +714,54 @@ def _ensure_agents_unique_constraints():
         else:
             cur.execute(f"ALTER TABLE agents ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
             print(f"agents.{column} UNIQUE 제약 신규 적용 완료")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _ensure_operators_unique_constraints():
+    """
+    operators.subdomain_slug에 DB 레벨 UNIQUE 제약을 안전하게 부여한다.
+    (_ensure_agents_unique_constraints()와 같은 패턴)
+    - 중복 값이 있으면 데이터를 지우지 않고 경고만 출력하고 건너뛴다.
+    - 제약이 이미 있으면 skip, 없으면 add. (재실행 안전)
+    - subdomain_slug는 NULL 허용(미승인 상태)이며, PostgreSQL UNIQUE는 NULL 다중 허용이라 문제 없음.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    targets = [
+        ("subdomain_slug", "operators_subdomain_slug_unique"),
+    ]
+    for column, constraint_name in targets:
+        cur.execute(f"""
+            SELECT {column} AS v, COUNT(*) AS c
+            FROM operators
+            WHERE {column} IS NOT NULL
+            GROUP BY {column}
+            HAVING COUNT(*) > 1
+        """)
+        dups = cur.fetchall()
+
+        cur.execute("""
+            SELECT tc.constraint_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'operators'
+              AND tc.constraint_type = 'UNIQUE'
+              AND kcu.column_name = %s
+        """, (column,))
+        exists = cur.fetchone()
+
+        if exists:
+            print(f"operators.{column} UNIQUE 제약 이미 존재({exists['constraint_name']})")
+        elif dups:
+            print(f"[경고] operators.{column} 중복 {len(dups)}건 발견 — 데이터 자동 삭제하지 않고 UNIQUE 제약 부여를 건너뜁니다. 수동 정리 후 재실행하세요.")
+        else:
+            cur.execute(f"ALTER TABLE operators ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
+            print(f"operators.{column} UNIQUE 제약 신규 적용 완료")
 
     conn.commit()
     cur.close()
