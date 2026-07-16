@@ -714,9 +714,12 @@ async function initMap(){
   });
 
   // 확대/축소(+/-) 버튼 — 휠/핀치줌이 불안정할 때를 위한 명시적 컨트롤.
-  // 우측 중앙(RIGHT)에 배치: 우측 상단(검색 버튼)·우측 하단(범례)과 겹치지 않는다.
-  // 카카오 기본 스타일 그대로 사용 (커스터마이징 없음).
-  kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+  // 우측 하단(BOTTOMRIGHT)에 배치하되, 같은 자리의 범례박스(.map-legend)와
+  // 겹치지 않도록 범례 높이만큼 bottom 오프셋을 JS로 계산해 위로 띄운다.
+  // (우측 상단은 "🔍 검색" 버튼 자리라 비워둔다)
+  kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.BOTTOMRIGHT);
+  liftZoomControlAboveLegend();
+  window.addEventListener("resize", () => setTimeout(liftZoomControlAboveLegend, 150));
 
   // 확대/축소 시 마커 라벨 표시 여부 토글 (축소된 전국뷰에서는 라벨 숨김)
   kakao.maps.event.addListener(kakaoMap, "zoom_changed", updateMarkerLabels);
@@ -731,6 +734,30 @@ async function initMap(){
 
   // 최초 로드 — 전체 건물, 기본 시야 유지(bounds 강제 안 함)
   await loadMapMarkers({}, { fit: false });
+}
+
+// 줌 컨트롤을 우측 하단 범례박스(.map-legend) 높이 + 여백만큼 위로 띄워 겹침을 막는다.
+// SDK DOM에 클래스가 없어 "확대" 버튼(title="확대")에서 절대배치 래퍼를 거슬러 찾는다.
+// 컨트롤 렌더가 살짝 늦을 수 있어 잠시 재시도. 범례는 폭에 따라 줄바꿈되어
+// 높이가 변하므로(모바일) 실제 offsetHeight로 매번 계산.
+function liftZoomControlAboveLegend(attempt){
+  attempt = attempt || 0;
+  const mapEl = document.getElementById("map");
+  if (!mapEl) return;
+  const btn = mapEl.querySelector('button[title="확대"]');
+  let wrap = btn ? btn.parentElement : null;
+  while (wrap && wrap !== mapEl && getComputedStyle(wrap).position !== "absolute"){
+    wrap = wrap.parentElement;
+  }
+  if (!btn || !wrap || wrap === mapEl){
+    if (attempt < 15) setTimeout(() => liftZoomControlAboveLegend(attempt + 1), 200);
+    return;
+  }
+  const legend = document.querySelector(".map-legend");
+  const lift = (legend ? legend.offsetHeight : 0) + 12 + 12; // 범례 높이 + 범례 bottom 여백(12px) + 간격(12px)
+  wrap.style.top = "auto"; // SDK가 남긴 inline top을 지워야 bottom이 적용된다
+  wrap.style.bottom = lift + "px";
+  console.log(`[MAP] 줌 컨트롤을 범례 위로 ${lift}px 올림`);
 }
 
 async function openBuildingInfo(b, pos){
