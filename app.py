@@ -283,11 +283,24 @@ def get_building(building_id):
         LIMIT 1
     """, [building_id])
     agent_row = cur.fetchone()
+
+    # 담당 운영업체: operator_buildings에 이 건물이 등록된 approved 운영업체 목록.
+    # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 표시한다.
+    cur.execute("""
+        SELECT o.company_name, o.category, o.subdomain_slug
+        FROM operator_buildings ob
+        JOIN operators o ON o.id = ob.operator_id
+        WHERE ob.master_building_id = %s
+          AND o.status = 'approved'
+        ORDER BY ob.updated_at DESC NULLS LAST, ob.id DESC
+    """, [building_id])
+    operator_rows = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
 
     result = dict(row)
     result["agent"] = dict(agent_row) if agent_row else None
+    result["operators"] = operator_rows
 
     # 담당부처/연락처: sgg_text를 지자체 담당부서 인덱스와 매칭.
     #   source='exact'(시군구 전용) | 'fallback'(시도 대표) → 화면에서 "(시/도 대표)" 꼬리표 판단용.
@@ -2510,6 +2523,230 @@ def operator_change_password():
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+# ---- 운영업체 공개 프로필 + 대시보드(본인 데이터 관리) — agent와 동일 패턴 ----
+# 차이점: 매물 개수(매매/전세/월세/단기임대) 개념 없음. "담당 단지 + 메모(note)"만 관리.
+
+@app.route("/operator/<slug>")
+def operator_profile_page(slug):
+    """운영업체 공개 프로필 페이지. Flask는 정적 룰(/operator/login, /operator/dashboard)을 우선 매칭하므로 충돌 없음."""
+    return _serve_static_html("operator_profile.html")
+
+
+@app.route("/api/operator/profile/<slug>")
+def operator_public_profile(slug):
+    """운영업체 공개 프로필 API — 인증 불필요. approved 상태만 노출."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, company_name, owner_name, category, phone, photo_url, intro_text
+            FROM operators
+            WHERE subdomain_slug = %s AND status = 'approved'
+        """, [slug])
+        op = cur.fetchone()
+        if not op:
+            return jsonify({"error": "not found"}), 404
+        cur.execute("""
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note
+            FROM operator_buildings ob
+            JOIN master_buildings mb ON mb.id = ob.master_building_id
+            WHERE ob.operator_id = %s
+            ORDER BY mb.building_name
+        """, [op["id"]])
+        buildings = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "company_name": op["company_name"],
+        "owner_name": op["owner_name"],
+        "category": op["category"],
+        "phone": op["phone"],
+        "photo_url": op["photo_url"],
+        "intro_text": op["intro_text"],
+        "buildings": buildings,
+        "building_count": len(buildings),
+    })
+
+
+@app.route("/operator/dashboard")
+@require_operator
+def operator_dashboard_page():
+    return _serve_static_html("operator_dashboard.html")
+
+
+@app.route("/api/operator/me")
+@require_operator
+def operator_me():
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT company_name, owner_name, category, phone, photo_url, intro_text, subdomain_slug
+            FROM operators WHERE id = %s
+        """, [operator_id])
+        me = cur.fetchone()
+        if not me:
+            return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+        cur.execute("""
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note
+            FROM operator_buildings ob
+            JOIN master_buildings mb ON mb.id = ob.master_building_id
+            WHERE ob.operator_id = %s
+            ORDER BY mb.building_name
+        """, [operator_id])
+        buildings = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    out = dict(me)
+    out["buildings"] = buildings
+    return jsonify(out)
+
+
+@app.route("/api/operator/me", methods=["PUT"])
+@require_operator
+def operator_me_update():
+    """phone / photo_url / intro_text 부분 업데이트 — 전달된 키만 수정 (agent와 동일 패턴)."""
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    allowed = ["phone", "photo_url", "intro_text"]
+    sets, params = [], []
+    for k in allowed:
+        if k in data:
+            v = data.get(k)
+            if v is not None and not isinstance(v, str):
+                return jsonify({"ok": False, "message": f"{k} 값이 올바르지 않습니다."}), 400
+            v = (v or "").strip() or None
+            if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
+                return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            sets.append(f"{k} = %s")
+            params.append(v)
+    if not sets:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    params.append(operator_id)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE operators SET {', '.join(sets)} WHERE id = %s", params)
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/buildings", methods=["POST"])
+@require_operator
+def operator_building_add():
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mbid = int(data.get("master_building_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
+    note = data.get("note")
+    if note is not None and not isinstance(note, str):
+        return jsonify({"ok": False, "message": "메모 값이 올바르지 않습니다."}), 400
+    note = (note or "").strip() or None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        try:
+            cur.execute(
+                "INSERT INTO operator_buildings (operator_id, master_building_id, note) VALUES (%s, %s, %s)",
+                [operator_id, mbid, note],
+            )
+            conn.commit()
+        except psycopg2_errors.UniqueViolation:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "이미 등록된 단지입니다."}), 400
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/buildings/<int:mbid>", methods=["DELETE"])
+@require_operator
+def operator_building_delete(mbid):
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM operator_buildings WHERE operator_id = %s AND master_building_id = %s",
+            [operator_id, mbid],
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not deleted:
+        return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/buildings/<int:mbid>/note", methods=["PUT"])
+@require_operator
+def operator_building_note(mbid):
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    note = data.get("note")
+    if note is not None and not isinstance(note, str):
+        return jsonify({"ok": False, "message": "메모 값이 올바르지 않습니다."}), 400
+    note = (note or "").strip() or None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE operator_buildings
+            SET note = %s, updated_at = NOW()
+            WHERE operator_id = %s AND master_building_id = %s
+        """, [note, operator_id, mbid])
+        updated = cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not updated:
+        return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/buildings/search")
+@require_operator
+def operator_building_search():
+    """단지관리 모달용 건물명 검색 — 이미 등록된 건물은 already_added 표시 (agent와 동일)."""
+    operator_id = session["operator_id"]
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"items": []})
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+                   (ob.id IS NOT NULL) AS already_added
+            FROM master_buildings mb
+            LEFT JOIN operator_buildings ob
+              ON ob.master_building_id = mb.id AND ob.operator_id = %s
+            WHERE mb.building_name ILIKE %s AND mb.building_name <> '-'
+            ORDER BY mb.building_name
+            LIMIT 20
+        """, [operator_id, f"%{q}%"])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"items": items})
 
 
 # ---- 지도 좌표 채우기 (배포 후 운영 DB에 좌표 주입용) ----

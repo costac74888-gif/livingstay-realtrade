@@ -1004,21 +1004,25 @@ function buildingPanelSkeleton(){
 
     <section class="side-card">
       <div class="side-card-title">위탁운영</div>
-      <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
-        <div style="font-size:22px; margin-bottom:6px;">🏨</div>
-        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">위탁운영 지원업체를 찾고 있습니다</div>
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 운영을 맡아줄 파트너를 모집합니다.</div>
-        <a id="lnkOperatorApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
+      <div id="bOperatorBox">
+        <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
+          <div style="font-size:22px; margin-bottom:6px;">🏨</div>
+          <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">위탁운영 지원업체를 찾고 있습니다</div>
+          <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 운영을 맡아줄 파트너를 모집합니다.</div>
+          <a id="lnkOperatorApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
+        </div>
       </div>
     </section>
 
     <section class="side-card">
       <div class="side-card-title">하우스키핑</div>
-      <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
-        <div style="font-size:22px; margin-bottom:6px;">🧹</div>
-        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">하우스키핑 지원업체를 찾고 있습니다</div>
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 객실관리를 맡아줄 파트너를 모집합니다.</div>
-        <a id="lnkHousekeepingApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
+      <div id="bHousekeepingBox">
+        <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
+          <div style="font-size:22px; margin-bottom:6px;">🧹</div>
+          <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">하우스키핑 지원업체를 찾고 있습니다</div>
+          <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 객실관리를 맡아줄 파트너를 모집합니다.</div>
+          <a id="lnkHousekeepingApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
+        </div>
       </div>
     </section>
 
@@ -1227,6 +1231,9 @@ async function loadBuildingHeader(id){
     if (a) a.href = operApplyHref;
   });
 
+  // 담당 운영업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
+  renderBuildingOperators(b.operators);
+
   // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
   // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.
   const bldgInfoCard = document.getElementById("bBldgInfoCard");
@@ -1252,6 +1259,31 @@ async function loadBuildingHeader(id){
       <div class="side-card-title">건축정보 <span class="side-sub">표제부</span></div>
       <div class="b-bldg-grid">${cells}</div>`;
   }
+}
+
+// 위탁운영/하우스키핑 카드 — 이 건물의 담당 운영업체(operator_buildings 등록 + approved)가
+// 있으면 유치(모집) 문구 대신 업체명 + "프로필 보기 →" 링크를 보여준다. 없으면 기본 HTML 유지.
+//   위탁운영 카드 ← category '위탁운영'
+//   하우스키핑 카드 ← category '청소' | '세탁' | '용품'
+function renderBuildingOperators(operators){
+  const ops = Array.isArray(operators) ? operators : [];
+  const pick = (cats) => ops.find(o => cats.includes(o.category));
+  const paint = (boxId, op) => {
+    if (!op) return; // 담당 업체 없음 → 기존 유치 카드 그대로
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    box.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏨</div>
+        <div style="flex:1; min-width:130px;">
+          <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(op.category || "")} 담당 업체</div>
+        </div>
+      </div>
+      ${op.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/operator/${encodeURIComponent(op.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
+  };
+  paint("bOperatorBox", pick(["위탁운영"]));
+  paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]));
 }
 
 function renderBuildingAgent(agent, buildingId, buildingName){

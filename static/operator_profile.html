@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>운영업체 프로필 — 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 지원업체(운영업체) 프로필 — 업체 정보 및 담당 단지 현황." />
+<link rel="icon" href="/static/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header id="siteHeader"></header>
+
+<div class="search-panel" style="max-width:720px; padding-bottom:40px;">
+
+  <div style="margin:16px 0 6px;">
+    <a href="/" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+  </div>
+
+  <div id="profileWrap">
+    <div class="panel-card"><div style="font-size:13px; color:var(--ink-soft); padding:6px 0;">불러오는 중…</div></div>
+  </div>
+
+</div>
+
+<script>
+  // 지도 마커와 동일한 용도 색상(main.js LODGING_COLORS와 일치)
+  const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+  const DEFAULT_MARKER_COLOR = "#9AA5B1";
+  const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
+  function markerColor(v){ if(!v) return DEFAULT_MARKER_COLOR; return LODGING_COLORS[v.split("·")[0]] || DEFAULT_MARKER_COLOR; }
+  function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+  const slug = decodeURIComponent(location.pathname.split("/").pop());
+  const wrap = document.getElementById("profileWrap");
+
+  function renderNotFound(){
+    wrap.innerHTML = `
+      <div class="panel-card" style="text-align:center; padding:40px 20px;">
+        <div style="font-size:34px; margin-bottom:10px;">🔍</div>
+        <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:6px;">존재하지 않는 페이지입니다</div>
+        <div style="font-size:13px; color:var(--ink-soft); margin-bottom:18px;">주소가 잘못되었거나, 아직 승인되지 않은 운영업체 페이지입니다.</div>
+        <a href="/" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:8px 18px; text-decoration:none;">홈으로 이동</a>
+      </div>`;
+  }
+
+  function render(p){
+    const photo = p.photo_url
+      ? `<img src="${esc(p.photo_url)}" alt="${esc(p.company_name)}" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:1px solid #E4DCCB;" />`
+      : `<div style="width:72px; height:72px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:32px;">🏨</div>`;
+
+    const categoryBadge = p.category
+      ? `<span style="display:inline-block; font-size:11.5px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:3px 10px; border-radius:6px;">${esc(p.category)}</span>`
+      : "";
+
+    const introSection = (p.intro_text || "").trim()
+      ? `<div class="panel-card" style="margin-top:14px;">
+           <div class="side-card-title">소개</div>
+           <div style="font-size:13.5px; color:var(--ink); line-height:1.7; white-space:pre-wrap;">${esc(p.intro_text)}</div>
+         </div>`
+      : "";
+
+    const buildings = (p.buildings || []).map(b => {
+      const color = markerColor(b.lodging_type);
+      return `
+        <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <a href="/building/${b.master_building_id}" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
+            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
+          </div>
+          ${(b.note || "").trim() ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">📝 ${esc(b.note)}</div>` : ""}
+        </div>`;
+    }).join("");
+
+    const buildingSection = `
+      <div class="panel-card" style="margin-top:14px;">
+        <div class="side-card-title">담당 단지 <span class="side-sub">${p.building_count}개</span></div>
+        ${buildings || `<div class="side-empty">아직 등록된 담당 단지가 없습니다.</div>`}
+      </div>`;
+
+    wrap.innerHTML = `
+      <div class="panel-card">
+        <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+          ${photo}
+          <div style="flex:1; min-width:200px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="font-size:19px; font-weight:700; color:var(--ink);">${esc(p.company_name || "-")}</div>
+              ${categoryBadge}
+            </div>
+            <div style="font-size:13px; color:var(--ink-soft); margin-top:3px;">대표 ${esc(p.owner_name || "-")}</div>
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-top:5px;">담당 단지 ${p.building_count}개</div>
+          </div>
+          ${p.phone ? `<a href="tel:${esc(p.phone)}" class="side-more" style="width:auto; margin-top:0; padding:9px 18px; text-decoration:none; text-align:center;">📞 ${esc(p.phone)}</a>` : ""}
+        </div>
+      </div>
+      ${introSection}
+      ${buildingSection}`;
+  }
+
+  (async () => {
+    try {
+      const res = await fetch("/api/operator/profile/" + encodeURIComponent(slug));
+      if (!res.ok) { renderNotFound(); return; }
+      const data = await res.json();
+      document.title = `${data.company_name || "운영업체"} — 홈앤스테이`;
+      render(data);
+    } catch(e) {
+      console.error("[운영업체 프로필] 로드 실패:", e);
+      renderNotFound();
+    }
+  })();
+</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
+</body>
+</html>
