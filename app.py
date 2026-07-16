@@ -2237,6 +2237,189 @@ def agent_change_password():
     return jsonify({"ok": True})
 
 
+# ---- 중개사 대시보드(본인 데이터 관리) — 전부 require_agent, session["agent_id"] 스코프 ----
+
+@app.route("/agent/dashboard")
+@require_agent
+def agent_dashboard_page():
+    return _serve_static_html("agent_dashboard.html")
+
+
+@app.route("/api/agent/me")
+@require_agent
+def agent_me():
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug
+            FROM agents WHERE id = %s
+        """, [agent_id])
+        me = cur.fetchone()
+        if not me:
+            return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+        cur.execute("""
+            SELECT ab.master_building_id, mb.building_name, mb.lodging_type,
+                   COALESCE(ab.sale_count, 0)      AS sale_count,
+                   COALESCE(ab.jeonse_count, 0)    AS jeonse_count,
+                   COALESCE(ab.wolse_count, 0)     AS wolse_count,
+                   COALESCE(ab.shortterm_count, 0) AS shortterm_count
+            FROM agent_buildings ab
+            JOIN master_buildings mb ON mb.id = ab.master_building_id
+            WHERE ab.agent_id = %s
+            ORDER BY mb.building_name
+        """, [agent_id])
+        buildings = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    out = dict(me)
+    out["buildings"] = buildings
+    return jsonify(out)
+
+
+@app.route("/api/agent/me", methods=["PUT"])
+@require_agent
+def agent_me_update():
+    """phone / photo_url / intro_text 부분 업데이트 — 전달된 키만 수정."""
+    agent_id = session["agent_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    allowed = ["phone", "photo_url", "intro_text"]
+    sets, params = [], []
+    for k in allowed:
+        if k in data:
+            v = data.get(k)
+            if v is not None and not isinstance(v, str):
+                return jsonify({"ok": False, "message": f"{k} 값이 올바르지 않습니다."}), 400
+            v = (v or "").strip() or None
+            if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
+                return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            sets.append(f"{k} = %s")
+            params.append(v)
+    if not sets:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    params.append(agent_id)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE agents SET {', '.join(sets)} WHERE id = %s", params)
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/buildings", methods=["POST"])
+@require_agent
+def agent_building_add():
+    agent_id = session["agent_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mbid = int(data.get("master_building_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        try:
+            cur.execute(
+                "INSERT INTO agent_buildings (agent_id, master_building_id) VALUES (%s, %s)",
+                [agent_id, mbid],
+            )
+            conn.commit()
+        except psycopg2_errors.UniqueViolation:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "이미 등록된 단지입니다."}), 400
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/buildings/<int:mbid>", methods=["DELETE"])
+@require_agent
+def agent_building_delete(mbid):
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM agent_buildings WHERE agent_id = %s AND master_building_id = %s",
+            [agent_id, mbid],
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not deleted:
+        return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/buildings/<int:mbid>/counts", methods=["PUT"])
+@require_agent
+def agent_building_counts(mbid):
+    agent_id = session["agent_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    fields = ["sale_count", "jeonse_count", "wolse_count", "shortterm_count"]
+    values = []
+    for k in fields:
+        v = data.get(k)
+        if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+            return jsonify({"ok": False, "message": "매물 수는 0 이상의 정수여야 합니다."}), 400
+        values.append(v)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE agent_buildings
+            SET sale_count=%s, jeonse_count=%s, wolse_count=%s, shortterm_count=%s, updated_at=NOW()
+            WHERE agent_id = %s AND master_building_id = %s
+        """, values + [agent_id, mbid])
+        updated = cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not updated:
+        return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/buildings/search")
+@require_agent
+def agent_building_search():
+    """단지관리 모달용 건물명 검색 — 이미 등록된 건물은 already_added 표시."""
+    agent_id = session["agent_id"]
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"items": []})
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+                   (ab.id IS NOT NULL) AS already_added
+            FROM master_buildings mb
+            LEFT JOIN agent_buildings ab
+              ON ab.master_building_id = mb.id AND ab.agent_id = %s
+            WHERE mb.building_name ILIKE %s AND mb.building_name <> '-'
+            ORDER BY mb.building_name
+            LIMIT 20
+        """, [agent_id, f"%{q}%"])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"items": items})
+
+
 # ---- 지도 좌표 채우기 (배포 후 운영 DB에 좌표 주입용) ----
 # 에이전트/개발자는 운영(production) DB에 직접 쓸 수 없으므로, 개발에서 확보한
 # 좌표를 data/building_coords.json 으로 배포에 포함시키고, 관리자가 이 API를

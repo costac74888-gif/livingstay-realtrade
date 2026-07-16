@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>중개사 대시보드 — 홈앤스테이</title>
+<link rel="icon" href="/static/favicon.ico" sizes="any" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/" title="홈으로" style="cursor:pointer; text-decoration:none;">
+    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
+    <div class="brand-text"><div class="name">홈앤스테이</div></div>
+  </a>
+  <div class="page-title">중개사 대시보드</div>
+  <div class="header-right"><button id="btnLogout" class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">로그아웃</button></div>
+</header>
+
+<div class="search-panel" style="max-width:720px; padding-bottom:40px;">
+
+  <!-- 상단: 내 정보 -->
+  <div class="panel-card" style="margin-top:16px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:200px;">
+        <div id="meOffice" style="font-size:18px; font-weight:700; color:var(--ink);">불러오는 중…</div>
+        <div id="meOwner" style="font-size:13px; color:var(--ink-soft); margin-top:3px;"></div>
+      </div>
+      <a id="lnkProfile" href="#" target="_blank" rel="noopener" style="font-size:12.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">내 프로필 보기 →</a>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+      <button id="btnEditProfile" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">프로필 수정</button>
+      <button id="btnChangePw" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">비밀번호 변경</button>
+    </div>
+  </div>
+
+  <!-- 전속단지 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+      <div class="side-card-title" style="margin-bottom:0;">전속 단지 <span class="side-sub" id="bldCount"></span></div>
+      <button id="btnAddBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
+    </div>
+    <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
+</div>
+
+<!-- 프로필 수정 모달 -->
+<div class="admin-modal-overlay" id="mProfile" hidden>
+  <div class="admin-modal">
+    <div class="admin-modal-head"><h3>프로필 수정</h3><button class="admin-modal-close" data-close="mProfile">×</button></div>
+    <div class="admin-modal-body">
+      <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
+      <div class="field"><label>사진 URL (http(s)://…)</label><input type="text" id="fPhoto" placeholder="예) https://example.com/photo.jpg" /></div>
+      <div class="field"><label>소개글</label><textarea id="fIntro" rows="5" style="width:100%; font:inherit; font-size:13px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; resize:vertical;"></textarea></div>
+    </div>
+    <div class="admin-modal-msg" id="msgProfile"></div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mProfile">취소</button>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 18px; background:var(--brass); color:#fff; border-color:var(--brass);" id="btnSaveProfile">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 비밀번호 변경 모달 -->
+<div class="admin-modal-overlay" id="mPw" hidden>
+  <div class="admin-modal">
+    <div class="admin-modal-head"><h3>비밀번호 변경</h3><button class="admin-modal-close" data-close="mPw">×</button></div>
+    <div class="admin-modal-body">
+      <div class="field"><label>현재 비밀번호</label><input type="password" id="fPwCur" autocomplete="current-password" /></div>
+      <div class="field"><label>새 비밀번호 (8자 이상)</label><input type="password" id="fPwNew" autocomplete="new-password" /></div>
+      <div class="field"><label>새 비밀번호 확인</label><input type="password" id="fPwNew2" autocomplete="new-password" /></div>
+    </div>
+    <div class="admin-modal-msg" id="msgPw"></div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mPw">취소</button>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 18px; background:var(--brass); color:#fff; border-color:var(--brass);" id="btnSavePw">변경</button>
+    </div>
+  </div>
+</div>
+
+<!-- 매물현황 수정 모달 -->
+<div class="admin-modal-overlay" id="mCounts" hidden>
+  <div class="admin-modal">
+    <div class="admin-modal-head"><h3 id="countsTitle">매물현황 수정</h3><button class="admin-modal-close" data-close="mCounts">×</button></div>
+    <div class="admin-modal-body">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="field"><label>매매</label><input type="number" id="fSale" min="0" step="1" /></div>
+        <div class="field"><label>전세</label><input type="number" id="fJeonse" min="0" step="1" /></div>
+        <div class="field"><label>월세</label><input type="number" id="fWolse" min="0" step="1" /></div>
+        <div class="field"><label>단기임대</label><input type="number" id="fShort" min="0" step="1" /></div>
+      </div>
+    </div>
+    <div class="admin-modal-msg" id="msgCounts"></div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mCounts">취소</button>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 18px; background:var(--brass); color:#fff; border-color:var(--brass);" id="btnSaveCounts">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 단지 추가 모달 -->
+<div class="admin-modal-overlay" id="mAdd" hidden>
+  <div class="admin-modal">
+    <div class="admin-modal-head"><h3>단지 추가</h3><button class="admin-modal-close" data-close="mAdd">×</button></div>
+    <div class="admin-modal-body">
+      <div class="field"><label>건물명 검색 (2자 이상)</label><input type="text" id="fSearch" placeholder="예) 오션스위트" autocomplete="off" /></div>
+      <div id="searchResults" style="max-height:280px; overflow-y:auto;"></div>
+    </div>
+    <div class="admin-modal-msg" id="msgAdd"></div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mAdd">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
+function markerColor(v){ if(!v) return "#9AA5B1"; return LODGING_COLORS[v.split("·")[0]] || "#9AA5B1"; }
+function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
+
+let ME = null;
+
+function openModal(id){ document.getElementById(id).hidden = false; }
+function closeModal(id){ document.getElementById(id).hidden = true; }
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.close)));
+document.querySelectorAll(".admin-modal-overlay").forEach(ov => ov.addEventListener("click", e => { if (e.target === ov) ov.hidden = true; }));
+
+async function api(url, opts){
+  const res = await fetch(url, Object.assign({ headers: { "Content-Type": "application/json" } }, opts));
+  if (res.status === 401){ location.href = "/agent/login"; throw new Error("unauthenticated"); }
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+function countBadges(b){
+  const items = [["매매", b.sale_count], ["전세", b.jeonse_count], ["월세", b.wolse_count], ["단기임대", b.shortterm_count]];
+  const out = items.filter(([,n]) => Number(n) > 0)
+    .map(([label, n]) => `<span style="display:inline-block; font-size:11.5px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:3px 9px; border-radius:6px;">${label} ${n}건</span>`)
+    .join(" ");
+  return out || `<span style="font-size:11.5px; color:var(--ink-soft);">등록 매물 없음</span>`;
+}
+
+function render(){
+  document.getElementById("meOffice").textContent = ME.office_name || "-";
+  document.getElementById("meOwner").textContent = "대표 " + (ME.owner_name || "-");
+  const lnk = document.getElementById("lnkProfile");
+  if (ME.subdomain_slug){ lnk.href = "/agent/" + encodeURIComponent(ME.subdomain_slug); lnk.style.display = ""; }
+  else lnk.style.display = "none";
+
+  const list = document.getElementById("bldList");
+  document.getElementById("bldCount").textContent = (ME.buildings || []).length + "개";
+  if (!(ME.buildings || []).length){
+    list.innerHTML = `<div class="side-empty">등록된 전속 단지가 없습니다. 위의 [+ 단지 추가] 버튼으로 등록해보세요.</div>`;
+    return;
+  }
+  list.innerHTML = ME.buildings.map(b => `
+    <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:7px;">
+        <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
+        <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
+        <span style="flex:1;"></span>
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">${countBadges(b)}</div>
+    </div>`).join("");
+}
+
+async function load(){
+  const { ok, data } = await api("/api/agent/me");
+  if (!ok){ document.getElementById("meOffice").textContent = "정보를 불러오지 못했습니다."; return; }
+  ME = data;
+  render();
+}
+
+// ---- 프로필 수정 ----
+document.getElementById("btnEditProfile").addEventListener("click", () => {
+  document.getElementById("fPhone").value = ME.phone || "";
+  document.getElementById("fPhoto").value = ME.photo_url || "";
+  document.getElementById("fIntro").value = ME.intro_text || "";
+  document.getElementById("msgProfile").textContent = "";
+  openModal("mProfile");
+});
+document.getElementById("btnSaveProfile").addEventListener("click", async () => {
+  const body = {
+    phone: document.getElementById("fPhone").value,
+    photo_url: document.getElementById("fPhoto").value,
+    intro_text: document.getElementById("fIntro").value,
+  };
+  const { ok, data } = await api("/api/agent/me", { method: "PUT", body: JSON.stringify(body) });
+  if (!ok){ document.getElementById("msgProfile").textContent = data.message || "저장에 실패했습니다."; return; }
+  closeModal("mProfile");
+  await load();
+});
+
+// ---- 비밀번호 변경 ----
+document.getElementById("btnChangePw").addEventListener("click", () => {
+  ["fPwCur","fPwNew","fPwNew2"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("msgPw").textContent = "";
+  openModal("mPw");
+});
+document.getElementById("btnSavePw").addEventListener("click", async () => {
+  const cur = document.getElementById("fPwCur").value;
+  const nw = document.getElementById("fPwNew").value;
+  const nw2 = document.getElementById("fPwNew2").value;
+  const msg = document.getElementById("msgPw");
+  if (nw.length < 8){ msg.textContent = "새 비밀번호는 8자 이상이어야 합니다."; return; }
+  if (nw !== nw2){ msg.textContent = "새 비밀번호가 서로 일치하지 않습니다."; return; }
+  const { ok, data } = await api("/api/agent/password", { method: "PUT", body: JSON.stringify({ current_password: cur, new_password: nw }) });
+  if (!ok){ msg.textContent = data.message || "변경에 실패했습니다."; return; }
+  closeModal("mPw");
+  alert("비밀번호가 변경되었습니다.");
+});
+
+// ---- 매물현황 수정 ----
+let countsTarget = null;
+window.openCounts = function(mbid){
+  const b = (ME.buildings || []).find(x => x.master_building_id === mbid);
+  if (!b) return;
+  countsTarget = mbid;
+  document.getElementById("countsTitle").textContent = `매물현황 수정 — ${b.building_name || ""}`;
+  document.getElementById("fSale").value = b.sale_count;
+  document.getElementById("fJeonse").value = b.jeonse_count;
+  document.getElementById("fWolse").value = b.wolse_count;
+  document.getElementById("fShort").value = b.shortterm_count;
+  document.getElementById("msgCounts").textContent = "";
+  openModal("mCounts");
+};
+document.getElementById("btnSaveCounts").addEventListener("click", async () => {
+  const msg = document.getElementById("msgCounts");
+  const vals = {};
+  const pairs = [["sale_count","fSale"],["jeonse_count","fJeonse"],["wolse_count","fWolse"],["shortterm_count","fShort"]];
+  for (const [k, id] of pairs){
+    const raw = document.getElementById(id).value.trim();
+    const n = Number(raw);
+    if (raw === "" || !Number.isInteger(n) || n < 0){ msg.textContent = "매물 수는 0 이상의 정수로 입력해주세요."; return; }
+    vals[k] = n;
+  }
+  const { ok, data } = await api(`/api/agent/buildings/${countsTarget}/counts`, { method: "PUT", body: JSON.stringify(vals) });
+  if (!ok){ msg.textContent = data.message || "저장에 실패했습니다."; return; }
+  closeModal("mCounts");
+  await load();
+});
+
+// ---- 단지 삭제 ----
+window.delBuilding = async function(mbid){
+  const b = (ME.buildings || []).find(x => x.master_building_id === mbid);
+  if (!confirm(`'${(b && b.building_name) || "이 단지"}'를 전속 단지에서 삭제할까요?`)) return;
+  const { ok, data } = await api(`/api/agent/buildings/${mbid}`, { method: "DELETE" });
+  if (!ok){ alert(data.message || "삭제에 실패했습니다."); return; }
+  await load();
+};
+
+// ---- 단지 추가 ----
+document.getElementById("btnAddBld").addEventListener("click", () => {
+  document.getElementById("fSearch").value = "";
+  document.getElementById("searchResults").innerHTML = "";
+  document.getElementById("msgAdd").textContent = "";
+  openModal("mAdd");
+  document.getElementById("fSearch").focus();
+});
+let searchTimer = null;
+document.getElementById("fSearch").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doSearch, 300);
+});
+async function doSearch(){
+  const q = document.getElementById("fSearch").value.trim();
+  const box = document.getElementById("searchResults");
+  if (q.length < 2){ box.innerHTML = ""; return; }
+  const { ok, data } = await api("/api/agent/buildings/search?q=" + encodeURIComponent(q));
+  if (!ok){ box.innerHTML = `<div class="side-empty">검색에 실패했습니다.</div>`; return; }
+  const items = data.items || [];
+  if (!items.length){ box.innerHTML = `<div class="side-empty">검색 결과가 없습니다.</div>`; return; }
+  box.innerHTML = items.map(it => `
+    <div style="display:flex; align-items:center; gap:8px; padding:9px 4px; border-bottom:1px solid #F0EBDF;">
+      <span style="display:inline-block; font-size:10px; font-weight:700; color:#fff; background:${markerColor(it.lodging_type)}; padding:2px 7px; border-radius:5px;">${esc(badgeLabel(it.lodging_type))}</span>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:13.5px; font-weight:600; color:var(--ink);">${esc(it.building_name)}</div>
+        <div style="font-size:11.5px; color:var(--ink-soft);">${esc([it.sgg_text, it.umd_nm].filter(Boolean).join(" "))}</div>
+      </div>
+      ${it.already_added
+        ? `<span style="font-size:11.5px; color:var(--ink-soft);">이미 등록됨</span>`
+        : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="addBuilding(${it.id})">추가</button>`}
+    </div>`).join("");
+}
+window.addBuilding = async function(mbid){
+  const msg = document.getElementById("msgAdd");
+  const { ok, data } = await api("/api/agent/buildings", { method: "POST", body: JSON.stringify({ master_building_id: mbid }) });
+  if (!ok){ msg.textContent = data.message || "추가에 실패했습니다."; return; }
+  msg.textContent = "";
+  await load();
+  await doSearch(); // "이미 등록됨" 상태 갱신
+};
+
+// ---- 로그아웃 ----
+document.getElementById("btnLogout").addEventListener("click", async () => {
+  try { await fetch("/api/agent/logout", { method: "POST" }); } catch(e){}
+  location.href = "/agent/login";
+});
+
+load();
+</script>
+</body>
+</html>
