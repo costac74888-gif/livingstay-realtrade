@@ -949,11 +949,59 @@ async function loadSideFavorites(){
 // 기본(홈) 좌측 패널의 원본 HTML을 최초 1회 저장해두고, "전체 목록으로" 복귀 시 되돌린다.
 const DEFAULT_SIDE_PANEL_HTML = document.querySelector(".side-panel").innerHTML;
 
+// ---- 메인 좌측 패널: 행정(전국 신고율) + 위탁정보/하우스키핑/금융(등록 업체 수) 집계 ----
+async function loadSideStats(){
+  const regBox = document.getElementById("sideRegRate");
+  if (regBox){
+    try {
+      const res = await fetch("/api/stats/registration-rate");
+      const d = await res.json();
+      if (res.ok && d.ok && d.rate !== null){
+        regBox.classList.remove("side-soon");
+        regBox.innerHTML =
+          `<div style="font-size:20px; font-weight:700; color:var(--brass-dark);">전국 ${d.rate}%</div>` +
+          `<div style="font-size:12px; color:var(--ink-soft); margin-top:3px;">총 ${d.buildings.toLocaleString()}개 건물 · ${d.total_units.toLocaleString()}실 중 ${d.biz_units.toLocaleString()}실 신고</div>`;
+      } else {
+        regBox.textContent = "신고율 데이터를 불러오지 못했습니다.";
+      }
+    } catch(e){
+      regBox.textContent = "신고율 데이터를 불러오지 못했습니다.";
+    }
+  }
+
+  const opBoxes = {
+    consign: document.getElementById("sideOpConsign"),
+    housekeeping: document.getElementById("sideOpHousekeeping"),
+    finance: document.getElementById("sideOpFinance"),
+  };
+  if (opBoxes.consign || opBoxes.housekeeping || opBoxes.finance){
+    let counts = null;
+    try {
+      const res = await fetch("/api/stats/operator-counts");
+      const d = await res.json();
+      if (res.ok && d.ok) counts = d;
+    } catch(e){ /* 아래 공통 처리 */ }
+    Object.keys(opBoxes).forEach((k) => {
+      const box = opBoxes[k];
+      if (!box) return;
+      if (!counts){ box.textContent = "업체 정보를 불러오지 못했습니다."; return; }
+      const n = counts[k] || 0;
+      if (n > 0){
+        box.classList.remove("side-soon");
+        box.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 업체 ${n}곳</div>`;
+      } else {
+        box.textContent = "준비 중입니다"; // 기존 카드 문구 유지 (업체 0곳)
+      }
+    });
+  }
+}
+
 function initDefaultSidePanel(){
   document.getElementById("btnMoreTx")?.addEventListener("click", () => loadSideTx(20));
   loadTrendChart();
   loadSideTx(5);
   loadSideFavorites();
+  loadSideStats();
 }
 
 // 건물 상세 전용 상태/차트

@@ -4321,6 +4321,64 @@ def admin_stats():
     })
 
 
+# ---- 메인화면 좌측 패널용 공개 집계 API (인증 불필요, 읽기 전용) ----
+
+@app.route("/api/stats/registration-rate")
+def stats_registration_rate():
+    """전국 숙박업 영업신고율 집계 — master_buildings 전체 기준.
+
+    rate = SUM(biz_units) / SUM(units) * 100 (소수 1자리)
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) AS buildings,
+               COALESCE(SUM(units), 0) AS total_units,
+               COALESCE(SUM(biz_units), 0) AS biz_units
+        FROM master_buildings
+    """)
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    total_units = int(row["total_units"])
+    biz_units = int(row["biz_units"])
+    rate = round(biz_units / total_units * 100, 1) if total_units > 0 else None
+    return jsonify({
+        "ok": True,
+        "buildings": row["buildings"],
+        "total_units": total_units,
+        "biz_units": biz_units,
+        "rate": rate,
+    })
+
+
+@app.route("/api/stats/operator-counts")
+def stats_operator_counts():
+    """승인(approved)된 운영업체 수 — 메인 좌측 패널 카드용 그룹 집계.
+
+    - consign(위탁정보): 위탁운영
+    - housekeeping(하우스키핑): 청소 + 세탁 + 용품
+    - finance(금융): 대출상담사
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT category, COUNT(*) AS c
+        FROM operators
+        WHERE status = 'approved'
+        GROUP BY category
+    """)
+    by_cat = {r["category"]: r["c"] for r in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "consign": by_cat.get("위탁운영", 0),
+        "housekeeping": by_cat.get("청소", 0) + by_cat.get("세탁", 0) + by_cat.get("용품", 0),
+        "finance": by_cat.get("대출상담사", 0),
+    })
+
+
 @app.route("/api/health")
 def health():
     conn = get_conn()
