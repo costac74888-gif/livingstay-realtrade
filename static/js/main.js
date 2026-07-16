@@ -713,6 +713,11 @@ async function initMap(){
     level: MAP_DEFAULT_LEVEL,
   });
 
+  // 확대/축소(+/-) 버튼 — 휠/핀치줌이 불안정할 때를 위한 명시적 컨트롤.
+  // 우측 중앙(RIGHT)에 배치: 우측 상단(검색 버튼)·우측 하단(범례)과 겹치지 않는다.
+  // 카카오 기본 스타일 그대로 사용 (커스터마이징 없음).
+  kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+
   // 확대/축소 시 마커 라벨 표시 여부 토글 (축소된 전국뷰에서는 라벨 숨김)
   kakao.maps.event.addListener(kakaoMap, "zoom_changed", updateMarkerLabels);
 
