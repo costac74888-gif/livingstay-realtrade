@@ -569,7 +569,10 @@ function showHoverTooltip(b, pos){
 
   const el = document.createElement("div");
   // 마커 위쪽으로 충분히 띄워 상시 라벨 칩(점 위 ~45px)을 가리지 않게 한다.
-  el.style.transform = "translateY(-52px)";
+  // translateY 대신 아래쪽 padding으로 띄우면, 그 여백이 요소 히트영역에 포함돼
+  // 마커→툴팁 사이 간격을 마우스가 지나가도 mouseleave가 발생하지 않는
+  // 보이지 않는 "다리" 역할을 한다(툴팁이 클릭 전에 사라지는 문제 방지).
+  el.style.paddingBottom = "52px";
   el.innerHTML = hoverTooltipContent(b);
   // 툴팁 안의 ☆관심저장·상세보기 버튼을 실제로 누를 수 있어야 하므로
   // pointer-events를 살려 두고, 대신 툴팁 자체에 mouseenter/mouseleave를 걸어
@@ -578,6 +581,11 @@ function showHoverTooltip(b, pos){
     if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
   });
   el.addEventListener("mouseleave", hideHoverTooltip);
+  // 다리(padding) 영역은 시각적으로 비어 있지만 마커 점 위를 덮으므로,
+  // 그 영역을 클릭하면 마커를 클릭한 것과 동일하게 상세 InfoWindow를 연다.
+  el.addEventListener("click", (e) => {
+    if (e.target === el) openBuildingInfo(b, pos);
+  });
   if (!hoverTooltip){
     hoverTooltip = new kakao.maps.CustomOverlay({
       position: pos, content: el, xAnchor: 0.5, yAnchor: 1, clickable: true, zIndex: 9999,
@@ -600,7 +608,9 @@ function hideHoverTooltip(immediate){
     hoverHideTimer = null;
   };
   if (immediate === true){ doHide(); return; }
-  hoverHideTimer = setTimeout(doHide, 140);
+  // 380ms: 떨림 방지(짧은 이탈 무시)를 유지하면서, 마커→툴팁→"상세보기"까지
+  // 마우스를 천천히 옮겨도 끊기지 않을 만큼의 여유를 준다.
+  hoverHideTimer = setTimeout(doHide, 380);
 }
 
 // filters: {q, si_do, sgg_nm, umd_nm, lodging_type}
@@ -744,20 +754,36 @@ function liftZoomControlAboveLegend(attempt){
   attempt = attempt || 0;
   const mapEl = document.getElementById("map");
   if (!mapEl) return;
-  const btn = mapEl.querySelector('button[title="확대"]');
+  // SDK 버전에 따라 확대 버튼이 button[title] / img[alt] / 기타 형태로 렌더될 수 있어
+  // 여러 선택자를 순서대로 시도한다.
+  const btn = mapEl.querySelector('button[title="확대"]')
+    || mapEl.querySelector('img[alt="확대"]')
+    || mapEl.querySelector('[title*="확대"]')
+    || mapEl.querySelector('[alt*="확대"]');
   let wrap = btn ? btn.parentElement : null;
   while (wrap && wrap !== mapEl && getComputedStyle(wrap).position !== "absolute"){
     wrap = wrap.parentElement;
   }
   if (!btn || !wrap || wrap === mapEl){
-    if (attempt < 15) setTimeout(() => liftZoomControlAboveLegend(attempt + 1), 200);
+    if (attempt < 15){ setTimeout(() => liftZoomControlAboveLegend(attempt + 1), 200); return; }
+    console.warn("[MAP] 줌 컨트롤 버튼을 찾지 못함 — SDK DOM 구조 변경 가능성. 기본 위치 유지");
     return;
   }
   const legend = document.querySelector(".map-legend");
-  const lift = (legend ? legend.offsetHeight : 0) + 12 + 12; // 범례 높이 + 범례 bottom 여백(12px) + 간격(12px)
-  wrap.style.top = "auto"; // SDK가 남긴 inline top을 지워야 bottom이 적용된다
-  wrap.style.bottom = lift + "px";
-  console.log(`[MAP] 줌 컨트롤을 범례 위로 ${lift}px 올림`);
+  let lift = (legend ? legend.offsetHeight : 0) + 12 + 12; // 범례 높이 + 범례 bottom 여백(12px) + 간격(12px)
+  // 방어: 범례 높이가 비정상적으로 크게 계산돼도(레이아웃 깨짐 등)
+  // 컨트롤이 지도 밖으로 밀려나지 않도록 상한을 둔다.
+  const maxLift = Math.max(24, mapEl.offsetHeight - 120); // 지도 위쪽 120px는 항상 남긴다
+  lift = Math.min(lift, 240, maxLift);
+  // 주의: wrap의 offsetParent가 높이 0인 요소일 수 있어(bottom 기준이 지도가 아님)
+  // bottom 지정 시 화면 밖으로 밀려난다 → 지도 실좌표 기준으로 top을 직접 계산한다.
+  const mapRect = mapEl.getBoundingClientRect();
+  const parentRect = wrap.offsetParent ? wrap.offsetParent.getBoundingClientRect() : mapRect;
+  const topPx = (mapRect.bottom - lift - wrap.offsetHeight) - parentRect.top;
+  wrap.style.bottom = "auto";
+  wrap.style.top = topPx + "px";
+  const r = wrap.getBoundingClientRect();
+  console.log(`[MAP] 줌 컨트롤을 범례 위로 ${lift}px 올림 — wrap rect: x=${Math.round(r.x)}, y=${Math.round(r.y)}, w=${Math.round(r.width)}, h=${Math.round(r.height)}, 화면(${window.innerWidth}x${window.innerHeight})`);
 }
 
 async function openBuildingInfo(b, pos){

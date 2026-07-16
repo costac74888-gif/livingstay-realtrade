@@ -26,3 +26,10 @@ description: Why the Kakao Maps JS SDK fails to load in the browser even with a 
   instead via: sdk.js returns 200 for the dev Referer + the marker-count log firing, then ask the USER
   to confirm framing in their own browser (they see tiles fine). For pure map-framing/visual-tuning tasks
   the user is the only reliable visual verifier here.
+
+## 컨트롤 위치 이동 시 offsetParent 함정
+Kakao 컨트롤(ZoomControl 등)의 absolute 래퍼는 offsetParent가 높이 0인 요소일 수 있어
+`style.bottom`을 주면 지도 기준이 아니라 그 0높이 요소 기준으로 적용돼 화면 위 밖(y<0)으로 날아간다.
+**How to apply:** 위치 조정은 `bottom` 대신 지도 `getBoundingClientRect()` 기준으로 `top`을 직접 계산하고,
+적용 후 `getBoundingClientRect()` 실측을 콘솔에 남겨 화면 안인지 확인한다. 스크린샷 도구 환경은
+카카오 타일/스프라이트 CDN을 못 불러와 지도가 회백색으로 나오므로 시각 확인 대신 rect 로그로 검증.
