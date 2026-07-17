@@ -200,6 +200,7 @@ def init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_hash TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS photo_url TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS admin_tag TEXT")  # 관리자 태그(일괄 관리용)
 
     # 중개사별 담당(취급) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
     cur.execute("""
@@ -246,6 +247,7 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS photo_url TEXT")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS intro_text TEXT")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS subdomain_slug TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS admin_tag TEXT")  # 관리자 태그(일괄 관리용)
 
     # 운영업체별 담당 건물 (agent_buildings와 동일 패턴)
     cur.execute("""
@@ -449,6 +451,22 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_agreed_at TIMESTAMP")      # [필수] 이용약관 동의 시각
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_agreed_at TIMESTAMP")    # [필수] 개인정보 수집·이용 동의 시각
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_agreed_at TIMESTAMP")  # [선택] 마케팅 수신 동의 시각(미동의 NULL)
+    # 일괄 관리(관리자) — 포인트 잔액 + 관리자 태그
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_tag TEXT")
+
+    # 포인트 변경 이력(감사로그) — 양수=지급, 음수=차감. 삭제하지 않고 계속 쌓는다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS point_transactions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount INTEGER NOT NULL,                          -- 양수=지급, 음수=차감 (0 금지 — 앱에서 검증)
+        reason TEXT NOT NULL,                             -- 지급/차감 사유 (필수)
+        admin_id INTEGER REFERENCES admin_users(id),      -- 처리한 관리자
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_point_tx_user ON point_transactions(user_id, created_at DESC)")
 
     # 매물 의뢰(일반 회원 → 중개사 라우팅) — users 테이블 뒤에 생성해야 FK가 성립한다.
     # 라우팅 우선순위: exclusive(그 건물 전속 중개사) > region(같은 시군구 활동 중개사) > house(하우스 계정).

@@ -1364,8 +1364,61 @@
     const MEMBER_STATUS_BADGE = {
       active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"],
       suspended: ["정지", "no"], deleted: ["탈퇴", "no"],
+      withdrawn: ["탈퇴", "no"], inactive: ["비활성", "no"],
     };
     let membersState = { group: "all", q: "", page: 1, size: 50 };
+    // 선택 상태 — key "type:id" → {type, id}. 목록을 다시 그리면 초기화된다.
+    let membersSelected = new Map();
+
+    // 여러 입력 필드를 받는 간단 모달 (dgPromptModal 확장판) — 확인 시 {key: 값}, 취소 시 null
+    function memberFormModal(opts) {
+      return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.className = "admin-modal-overlay";
+        overlay.innerHTML = `
+          <div class="admin-modal" role="dialog" aria-modal="true">
+            <div class="admin-modal-head">
+              <h3>${dgEscape(opts.title)}</h3>
+              <button class="admin-modal-close" aria-label="닫기">×</button>
+            </div>
+            <form class="admin-modal-body">
+              ${(opts.fields || []).map((f) => `
+                <label class="admin-form-row">
+                  <span class="admin-form-label">${dgEscape(f.label)}${f.required ? ' <em class="req">*</em>' : ""}</span>
+                  ${f.type === "textarea"
+                    ? `<textarea class="admin-input" rows="3" data-key="${dgEscape(f.key)}" placeholder="${dgEscape(f.placeholder || "")}"></textarea>`
+                    : `<input class="admin-input" type="${f.type === "number" ? "number" : "text"}" data-key="${dgEscape(f.key)}" placeholder="${dgEscape(f.placeholder || "")}" />`}
+                </label>`).join("")}
+            </form>
+            <div class="admin-modal-msg" role="alert"></div>
+            <div class="admin-modal-foot">
+              <button class="admin-btn admin-modal-cancel" type="button">취소</button>
+              <button class="admin-btn ${dgEscape(opts.submitClass || "admin-btn-primary")} admin-modal-ok" type="button">${dgEscape(opts.submitLabel || "확인")}</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const msgBox = overlay.querySelector(".admin-modal-msg");
+        const first = overlay.querySelector("[data-key]");
+        if (first) first.focus();
+        const done = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector(".admin-modal-close").addEventListener("click", () => done(null));
+        overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => done(null));
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) done(null); });
+        overlay.querySelector(".admin-modal-ok").addEventListener("click", () => {
+          const out = {};
+          for (const f of opts.fields || []) {
+            const v = overlay.querySelector(`[data-key="${f.key}"]`).value.trim();
+            if (f.required && !v) { msgBox.textContent = `${f.label}은(는) 필수입니다.`; return; }
+            out[f.key] = v;
+          }
+          if (typeof opts.validate === "function") {
+            const errMsg = opts.validate(out);
+            if (errMsg) { msgBox.textContent = errMsg; return; }
+          }
+          done(out);
+        });
+      });
+    }
 
     async function loadMembers() {
       const s = membersState;
@@ -1391,6 +1444,8 @@
         if (el) el.textContent = (d.counts && d.counts[g.key] != null) ? d.counts[g.key].toLocaleString("ko-KR") : "0";
       });
 
+      membersSelected = new Map();  // 목록이 바뀌면 선택 초기화 (다른 페이지의 유령 선택 방지)
+
       const rows = (d.items || []).map((r) => {
         const typeLabel = MEMBER_TYPE_LABEL[r.member_type] || r.member_type;
         const badge = r.member_type === "pending"
@@ -1401,13 +1456,22 @@
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button>`
           : `<span style="color:var(--ink-soft);">—</span>`;
+        const pointsCell = r.member_type === "general"
+          ? (Number(r.points) || 0).toLocaleString("ko-KR") + "P"
+          : `<span style="color:var(--ink-soft);">-</span>`;
+        const tagCell = r.admin_tag
+          ? `<span class="dg-badge">${dgEscape(r.admin_tag)}</span>`
+          : `<span style="color:var(--ink-soft);">-</span>`;
         return `<tr>
+          <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" /></td>
           <td>${dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
           <td>${badge}</td>
           <td>${dgEscape(r.group_label || "-") || "-"}</td>
           <td>${dgEscape(r.created_at || "-")}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
+          <td>${tagCell}</td>
+          <td style="text-align:right;">${pointsCell}</td>
           <td><span style="color:var(--ink-soft);">-</span></td>
           <td style="white-space:nowrap;">${actions}</td>
         </tr>`;
@@ -1415,12 +1479,22 @@
 
       const totalPages = Math.max(1, Math.ceil((d.total || 0) / s.size));
       listEl.innerHTML = `
+        <div id="membersBulkBar" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; margin-bottom:10px; background:var(--panel, #f4f1ea); border:1px solid var(--line, #ddd); border-radius:8px;">
+          <strong id="membersBulkCount" style="font-size:13px;"></strong>
+          <button class="admin-btn" id="bulkApproveBtn">승인</button>
+          <button class="admin-btn" id="bulkRejectBtn">반려</button>
+          <button class="admin-btn" id="bulkTagBtn">태그지정</button>
+          <button class="admin-btn" id="bulkMsgBtn">메시지</button>
+          <button class="admin-btn" id="bulkPointsBtn">포인트</button>
+          <button class="admin-btn admin-btn-danger" id="bulkDeactivateBtn">비활성화</button>
+        </div>
         <table class="dg-table">
           <thead><tr>
+            <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>그룹</th>
-            <th>가입일</th><th>상태</th><th>매물의뢰</th><th>작업</th>
+            <th>가입일</th><th>상태</th><th>태그</th><th>포인트</th><th>매물의뢰</th><th>작업</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="8" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="11" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pagination" style="display:flex; align-items:center; gap:10px; padding:12px 4px;">
           <button class="admin-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>이전</button>
@@ -1431,6 +1505,191 @@
       const next = document.getElementById("membersNext");
       if (prev) prev.addEventListener("click", () => { membersState.page -= 1; loadMembers(); });
       if (next) next.addEventListener("click", () => { membersState.page += 1; loadMembers(); });
+      wireMemberSelection();
+    }
+
+    // ---- 일괄 선택/액션 바 ----
+    function selectedList() { return Array.from(membersSelected.values()); }
+
+    function updateBulkBar() {
+      const bar = document.getElementById("membersBulkBar");
+      if (!bar) return;
+      const sel = selectedList();
+      bar.style.display = sel.length ? "flex" : "none";
+      const cnt = document.getElementById("membersBulkCount");
+      if (cnt) cnt.textContent = `${sel.length}명 선택됨`;
+      const hasPending = sel.some((x) => x.type === "pending");
+      const onlyPending = hasPending && sel.every((x) => x.type === "pending");
+      // 승인/반려는 승인대기만 선택했을 때 활성화
+      const ap = document.getElementById("bulkApproveBtn");
+      const rj = document.getElementById("bulkRejectBtn");
+      if (ap) ap.disabled = !onlyPending;
+      if (rj) rj.disabled = !onlyPending;
+      // 태그/메시지/포인트/비활성화는 승인대기가 섞이면 비활성화 (정식 회원 대상 기능)
+      const nonPending = sel.length && !hasPending;
+      const onlyGeneral = nonPending && sel.every((x) => x.type === "general");
+      const tg = document.getElementById("bulkTagBtn");
+      const mg = document.getElementById("bulkMsgBtn");
+      const pt = document.getElementById("bulkPointsBtn");
+      const da = document.getElementById("bulkDeactivateBtn");
+      if (tg) tg.disabled = !nonPending;
+      if (mg) mg.disabled = !nonPending;
+      if (pt) pt.disabled = !onlyGeneral;
+      if (da) da.disabled = !nonPending;
+    }
+
+    function wireMemberSelection() {
+      const checks = Array.from(document.querySelectorAll(".member-check"));
+      const all = document.getElementById("membersCheckAll");
+      const syncOne = (cb) => {
+        const key = cb.dataset.type + ":" + cb.dataset.id;
+        if (cb.checked) membersSelected.set(key, { type: cb.dataset.type, id: Number(cb.dataset.id) });
+        else membersSelected.delete(key);
+      };
+      checks.forEach((cb) => cb.addEventListener("change", () => {
+        syncOne(cb);
+        if (all) all.checked = checks.length > 0 && checks.every((c) => c.checked);
+        updateBulkBar();
+      }));
+      if (all) all.addEventListener("change", () => {
+        checks.forEach((cb) => { cb.checked = all.checked; syncOne(cb); });
+        updateBulkBar();
+      });
+      const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener("click", fn); };
+      on("bulkApproveBtn", bulkApprove);
+      on("bulkRejectBtn", bulkReject);
+      on("bulkTagBtn", bulkTag);
+      on("bulkMsgBtn", bulkMessage);
+      on("bulkPointsBtn", bulkPoints);
+      on("bulkDeactivateBtn", bulkDeactivate);
+      updateBulkBar();
+    }
+
+    async function bulkCall(url, payload) {
+      const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401) { window.location.href = "/admin/login"; return null; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        window.alert(data.message || "처리에 실패했습니다.");
+        return null;
+      }
+      return data;
+    }
+
+    async function bulkApprove() {
+      const ids = selectedList().filter((x) => x.type === "pending");
+      if (!ids.length) return;
+      if (!window.confirm(`선택한 ${ids.length}건의 신청을 모두 승인할까요?`)) return;
+      const d = await bulkCall("/api/admin/members/bulk-approve", { ids });
+      if (!d) return;
+      // 문자 발송 실패 건은 임시비밀번호를 직접 전달해야 하므로 알림에 표시
+      const smsFails = (d.results || []).filter((r) => r.ok && r.sms_sent === false);
+      let msg = `일괄 승인 완료 — 성공 ${d.success}건 / 실패 ${d.failed}건`;
+      if (smsFails.length) {
+        msg += "\n\n[문자 발송 실패 — 임시비밀번호 직접 전달 필요]\n"
+          + smsFails.map((r) => `신청 #${r.id}: ${r.temp_password || "(없음)"}`).join("\n");
+      }
+      const fails = (d.results || []).filter((r) => !r.ok);
+      if (fails.length) msg += "\n\n[실패 사유]\n" + fails.map((r) => `신청 #${r.id}: ${r.message}`).join("\n");
+      window.alert(msg);
+      loadMembers();
+    }
+
+    async function bulkReject() {
+      const ids = selectedList().filter((x) => x.type === "pending");
+      if (!ids.length) return;
+      const reason = await dgPromptModal({
+        title: `일괄 반려 (${ids.length}건)`, label: "반려 사유",
+        placeholder: "반려 사유를 입력하세요 (선택한 모든 신청에 동일하게 적용)",
+        submitLabel: "반려", submitClass: "admin-btn-danger",
+      });
+      if (reason == null) return;
+      const d = await bulkCall("/api/admin/members/bulk-reject", { ids, reason });
+      if (!d) return;
+      window.alert(`일괄 반려 완료 — 성공 ${d.success}건 / 실패 ${d.failed}건`);
+      loadMembers();
+    }
+
+    async function bulkTag() {
+      const ids = selectedList().filter((x) => x.type !== "pending");
+      if (!ids.length) return;
+      const out = await memberFormModal({
+        title: `태그 지정 (${ids.length}명)`,
+        fields: [{ key: "tag", label: "태그", placeholder: "예: VIP, 관심고객 — 비워두면 태그 해제", required: false }],
+        submitLabel: "지정",
+      });
+      if (out == null) return;
+      const d = await bulkCall("/api/admin/members/bulk-tag", { ids, tag: out.tag });
+      if (!d) return;
+      window.alert(`태그 ${out.tag ? "지정" : "해제"} 완료 — ${d.success}명 적용`);
+      loadMembers();
+    }
+
+    async function bulkMessage() {
+      const sel = selectedList().filter((x) => x.type !== "pending");
+      if (!sel.length) return;
+      const smsIds = sel.filter((x) => x.type === "agent" || x.type === "operator");
+      const notifyIds = sel.filter((x) => x.type === "general");
+      const fields = [];
+      if (notifyIds.length) fields.push({ key: "title", label: `알림 제목 (일반회원 ${notifyIds.length}명 인앱알림)`, required: true });
+      fields.push({
+        key: "message",
+        label: smsIds.length && notifyIds.length
+          ? `내용 (중개사·운영업체 ${smsIds.length}명 SMS + 일반회원 인앱알림 본문)`
+          : (smsIds.length ? `SMS 내용 (${smsIds.length}명 발송)` : "알림 내용"),
+        type: "textarea", required: true,
+      });
+      const out = await memberFormModal({ title: "일괄 메시지", fields, submitLabel: "발송" });
+      if (out == null) return;
+      let report = [];
+      if (smsIds.length) {
+        const d = await bulkCall("/api/admin/members/bulk-sms", { ids: smsIds, message: out.message });
+        if (d) report.push(`SMS: 성공 ${d.success}건 / 실패 ${d.failed}건`);
+        else report.push("SMS: 발송 실패");
+      }
+      if (notifyIds.length) {
+        const d = await bulkCall("/api/admin/members/bulk-notify", { ids: notifyIds, title: out.title, body: out.message });
+        if (d) report.push(`인앱알림: ${d.success}건 생성`);
+        else report.push("인앱알림: 생성 실패");
+      }
+      if (report.length) window.alert(report.join("\n"));
+      loadMembers();
+    }
+
+    async function bulkPoints() {
+      const ids = selectedList().filter((x) => x.type === "general");
+      if (!ids.length) return;
+      const out = await memberFormModal({
+        title: `포인트 지급/차감 (${ids.length}명)`,
+        fields: [
+          { key: "amount", label: "포인트 (양수=지급, 음수=차감)", type: "number", placeholder: "예: 1000 또는 -500", required: true },
+          { key: "reason", label: "사유", type: "textarea", placeholder: "예: 이벤트 보상", required: true },
+        ],
+        submitLabel: "적용",
+        validate: (v) => {
+          const n = Number(v.amount);
+          if (!Number.isInteger(n) || n === 0) return "포인트는 0이 아닌 정수여야 합니다.";
+          return null;
+        },
+      });
+      if (out == null) return;
+      const d = await bulkCall("/api/admin/members/bulk-points", { ids, amount: Number(out.amount), reason: out.reason });
+      if (!d) return;
+      window.alert(`포인트 처리 완료 — ${d.success}명 적용 (${Number(out.amount) > 0 ? "+" : ""}${Number(out.amount).toLocaleString("ko-KR")}P)`);
+      loadMembers();
+    }
+
+    async function bulkDeactivate() {
+      const ids = selectedList().filter((x) => x.type !== "pending");
+      if (!ids.length) return;
+      if (!window.confirm(`선택한 ${ids.length}명을 비활성화할까요?\n\n· 일반회원 → 탈퇴 처리\n· 중개사/운영업체 → 로그인·공개페이지 차단\n(계정 정보는 삭제되지 않고 상태만 변경됩니다)`)) return;
+      const d = await bulkCall("/api/admin/members/bulk-deactivate", { ids });
+      if (!d) return;
+      window.alert(`비활성화 완료 — ${d.success}명 처리`);
+      loadMembers();
     }
 
     // 승인/반려 — 신청승인 메뉴와 동일한 기존 API 호출 (로직 재사용, 처리 자체는 서버 기존 코드)

@@ -4875,25 +4875,29 @@ def admin_applications_list():
 _MEMBER_GROUPS = {"all", "general", "agent", "operator", "pending"}
 
 # 그룹별 SELECT — UNION ALL 을 위해 컬럼 구성을 통일한다.
-# (id, member_type, name, email, group_label, phone, status, applicant_type, created_at)
+# (id, member_type, name, email, group_label, phone, status, applicant_type, created_at, admin_tag, points)
+# agent/operator 는 inactive(일괄 비활성화)도 목록에 보여야 관리자가 상태를 확인할 수 있다.
 _MEMBER_SELECTS = {
     "general": """
         SELECT id, 'general' AS member_type, COALESCE(name, '-') AS name, email,
                '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
-               NULL AS applicant_type, created_at
+               NULL AS applicant_type, created_at,
+               admin_tag, COALESCE(points, 0) AS points
         FROM users
     """,
     "agent": """
         SELECT id, 'agent' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
-               NULL AS applicant_type, created_at
-        FROM agents WHERE status = 'approved'
+               NULL AS applicant_type, created_at,
+               admin_tag, NULL::integer AS points
+        FROM agents WHERE status IN ('approved', 'inactive')
     """,
     "operator": """
         SELECT id, 'operator' AS member_type, owner_name AS name, email,
                (category || ' · ' || company_name) AS group_label, phone, status,
-               NULL AS applicant_type, created_at
-        FROM operators WHERE status = 'approved'
+               NULL AS applicant_type, created_at,
+               admin_tag, NULL::integer AS points
+        FROM operators WHERE status IN ('approved', 'inactive')
     """,
     "pending": """
         SELECT id, 'pending' AS member_type, owner_name AS name, email,
@@ -4902,7 +4906,8 @@ _MEMBER_SELECTS = {
                        THEN (category || ' · ' || office_or_company_name)
                    ELSE office_or_company_name
                END AS group_label, phone, status,
-               applicant_type, submitted_at AS created_at
+               applicant_type, submitted_at AS created_at,
+               NULL AS admin_tag, NULL::integer AS points
         FROM applications WHERE status = 'submitted'
     """,
 }
@@ -4952,7 +4957,7 @@ def admin_members_list():
 
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
-               m.status, m.applicant_type,
+               m.status, m.applicant_type, m.admin_tag, m.points,
                to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
         FROM ({union_sql}) m
         {group_filter}
@@ -4963,6 +4968,288 @@ def admin_members_list():
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "counts": counts, "items": items})
+
+
+# ---- 회원 일괄 관리 (아임웹 스타일) ----
+# 프런트는 선택된 행마다 {type: member_type, id: 원본 테이블 id}를 보낸다.
+_BULK_MEMBER_TABLES = {"general": "users", "agent": "agents", "operator": "operators"}
+
+
+def _bulk_parse_ids(data, allowed_types):
+    """요청 본문의 ids 배열을 [(type, int id)] 로 정규화. 잘못된 항목은 무시하지 않고 오류."""
+    raw = data.get("ids")
+    if not isinstance(raw, list) or not raw:
+        return None, "ids 배열이 비어 있습니다."
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None, "ids 항목 형식이 잘못되었습니다."
+        t = item.get("type")
+        try:
+            i = int(item.get("id"))
+        except (TypeError, ValueError):
+            return None, "ids 항목의 id가 숫자가 아닙니다."
+        if t not in allowed_types:
+            return None, f"허용되지 않는 회원유형입니다: {t}"
+        out.append((t, i))
+    if len(out) > 500:
+        return None, "한 번에 500명까지만 처리할 수 있습니다."
+    return out, None
+
+
+@app.route("/api/admin/members/bulk-approve", methods=["POST"])
+@require_admin
+def admin_members_bulk_approve():
+    """승인대기(pending) 선택 건 일괄 승인 — 기존 단건 승인 함수를 그대로 반복 호출(로직 재사용)."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids, err = _bulk_parse_ids(data, {"pending"})
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    results = []
+    ok_count = 0
+    for _t, app_id in ids:
+        try:
+            resp = admin_applications_approve(app_id)
+            # view 함수는 Response 또는 (Response, status) 튜플을 반환한다.
+            if isinstance(resp, tuple):
+                body, status = resp[0].get_json(), resp[1]
+            else:
+                body, status = resp.get_json(), 200
+        except Exception:
+            app.logger.exception("일괄 승인 중 오류 (application id=%s)", app_id)
+            body, status = {"ok": False, "message": "처리 중 오류"}, 500
+        item = {"id": app_id, "ok": bool(status == 200 and body.get("ok"))}
+        if item["ok"]:
+            ok_count += 1
+            for k in ("sms_sent", "sms_message", "temp_password"):
+                if k in (body or {}):
+                    item[k] = body[k]
+        else:
+            item["message"] = (body or {}).get("message", "승인 실패")
+        results.append(item)
+    return jsonify({"ok": True, "success": ok_count, "failed": len(ids) - ok_count, "results": results})
+
+
+@app.route("/api/admin/members/bulk-reject", methods=["POST"])
+@require_admin
+def admin_members_bulk_reject():
+    """승인대기 선택 건 일괄 반려 — 기존 단건 반려 함수 재사용. reason은 본문에서 공유."""
+    data = request.get_json(force=True, silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"ok": False, "message": "반려 사유(reason)는 필수입니다."}), 400
+    ids, err = _bulk_parse_ids(data, {"pending"})
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    results = []
+    ok_count = 0
+    for _t, app_id in ids:
+        try:
+            # admin_applications_reject 는 request.get_json()에서 reason을 읽는데,
+            # 이 요청 본문에 이미 reason이 들어 있으므로 그대로 재사용된다.
+            resp = admin_applications_reject(app_id)
+            if isinstance(resp, tuple):
+                body, status = resp[0].get_json(), resp[1]
+            else:
+                body, status = resp.get_json(), 200
+        except Exception:
+            app.logger.exception("일괄 반려 중 오류 (application id=%s)", app_id)
+            body, status = {"ok": False, "message": "처리 중 오류"}, 500
+        item = {"id": app_id, "ok": bool(status == 200 and body.get("ok"))}
+        if not item["ok"]:
+            item["message"] = (body or {}).get("message", "반려 실패")
+        else:
+            ok_count += 1
+        results.append(item)
+    return jsonify({"ok": True, "success": ok_count, "failed": len(ids) - ok_count, "results": results})
+
+
+@app.route("/api/admin/members/bulk-tag", methods=["POST"])
+@require_admin
+def admin_members_bulk_tag():
+    """선택 회원들의 admin_tag 일괄 지정. tag를 빈 값으로 보내면 태그 해제(NULL)."""
+    data = request.get_json(force=True, silent=True) or {}
+    tag = (data.get("tag") or "").strip() or None
+    if tag and len(tag) > 50:
+        return jsonify({"ok": False, "message": "태그는 50자 이내로 입력해주세요."}), 400
+    ids, err = _bulk_parse_ids(data, set(_BULK_MEMBER_TABLES))
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    by_type = {}
+    for t, i in ids:
+        by_type.setdefault(t, []).append(i)
+    conn = get_conn()
+    cur = conn.cursor()
+    updated = 0
+    try:
+        for t, id_list in by_type.items():
+            table = _BULK_MEMBER_TABLES[t]
+            cur.execute(f"UPDATE {table} SET admin_tag=%s WHERE id = ANY(%s)", [tag, id_list])
+            updated += cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("일괄 태그 지정 실패")
+        return jsonify({"ok": False, "message": "태그 지정 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
+
+
+@app.route("/api/admin/members/bulk-sms", methods=["POST"])
+@require_admin
+@limiter.limit("3 per hour")
+def admin_members_bulk_sms():
+    """중개사/운영업체 선택 대상에게 커스텀 문구 SMS 일괄 발송 (남용 방지 3회/시간)."""
+    data = request.get_json(force=True, silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"ok": False, "message": "보낼 메시지를 입력해주세요."}), 400
+    if len(message) > 2000:
+        return jsonify({"ok": False, "message": "메시지는 2000자 이내로 입력해주세요."}), 400
+    ids, err = _bulk_parse_ids(data, {"agent", "operator"})
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    by_type = {}
+    for t, i in ids:
+        by_type.setdefault(t, []).append(i)
+    conn = get_conn()
+    cur = conn.cursor()
+    targets = []
+    for t, id_list in by_type.items():
+        table = _BULK_MEMBER_TABLES[t]
+        cur.execute(f"SELECT id, phone FROM {table} WHERE id = ANY(%s)", [id_list])
+        for r in cur.fetchall():
+            targets.append((t, r["id"], r["phone"]))
+    cur.close()
+    conn.close()
+    ok_count = 0
+    results = []
+    for t, mid, phone in targets:
+        if not (phone or "").strip():
+            results.append({"type": t, "id": mid, "ok": False, "message": "전화번호 없음"})
+            continue
+        sent, msg = send_sms(phone, message)
+        if sent:
+            ok_count += 1
+        results.append({"type": t, "id": mid, "ok": bool(sent), "message": msg})
+    return jsonify({"ok": True, "success": ok_count, "failed": len(ids) - ok_count, "results": results})
+
+
+@app.route("/api/admin/members/bulk-notify", methods=["POST"])
+@require_admin
+def admin_members_bulk_notify():
+    """일반회원 선택 대상에게 인앱 알림(notifications) 일괄 생성 — 공지성이라 건물 정보는 NULL."""
+    data = request.get_json(force=True, silent=True) or {}
+    title = (data.get("title") or "").strip()
+    body = (data.get("body") or "").strip() or None
+    if not title:
+        return jsonify({"ok": False, "message": "알림 제목을 입력해주세요."}), 400
+    if len(title) > 200:
+        return jsonify({"ok": False, "message": "제목은 200자 이내로 입력해주세요."}), 400
+    ids, err = _bulk_parse_ids(data, {"general"})
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    user_ids = [i for _t, i in ids]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 존재하는 회원에게만 생성 (탈퇴/삭제된 id는 자동 제외)
+        cur.execute("""
+            INSERT INTO notifications (user_id, title, body)
+            SELECT id, %s, %s FROM users WHERE id = ANY(%s)
+        """, [title, body, user_ids])
+        created = cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("일괄 알림 생성 실패")
+        return jsonify({"ok": False, "message": "알림 생성 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "success": created, "failed": len(user_ids) - created})
+
+
+@app.route("/api/admin/members/bulk-points", methods=["POST"])
+@require_admin
+def admin_members_bulk_points():
+    """일반회원 포인트 일괄 지급/차감 — 단일 트랜잭션 + point_transactions 감사로그."""
+    data = request.get_json(force=True, silent=True) or {}
+    amount = data.get("amount")
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount == 0:
+        return jsonify({"ok": False, "message": "포인트(amount)는 0이 아닌 정수여야 합니다."}), 400
+    if abs(amount) > 10_000_000:
+        return jsonify({"ok": False, "message": "한 번에 처리할 수 있는 포인트는 ±1,000만 이내입니다."}), 400
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"ok": False, "message": "사유(reason)는 필수입니다."}), 400
+    ids, err = _bulk_parse_ids(data, {"general"})
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    user_ids = [i for _t, i in ids]
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 잔액 가감 + 이력 기록을 한 트랜잭션으로 — 중간 실패 시 전체 롤백.
+        cur.execute("""
+            UPDATE users SET points = COALESCE(points, 0) + %s
+            WHERE id = ANY(%s)
+            RETURNING id
+        """, [amount, user_ids])
+        updated_ids = [r["id"] for r in cur.fetchall()]
+        if updated_ids:
+            cur.execute("""
+                INSERT INTO point_transactions (user_id, amount, reason, admin_id)
+                SELECT unnest(%s::int[]), %s, %s, %s
+            """, [updated_ids, amount, reason, admin_id])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("일괄 포인트 처리 실패")
+        return jsonify({"ok": False, "message": "포인트 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "success": len(updated_ids), "failed": len(user_ids) - len(updated_ids)})
+
+
+@app.route("/api/admin/members/bulk-deactivate", methods=["POST"])
+@require_admin
+def admin_members_bulk_deactivate():
+    """일괄 비활성화(소프트 삭제) — DELETE 없이 상태값만 변경.
+    users → 'withdrawn'(기존 회원탈퇴와 동일), agents/operators → 'inactive'(로그인·공개프로필 차단)."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids, err = _bulk_parse_ids(data, set(_BULK_MEMBER_TABLES))
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    by_type = {}
+    for t, i in ids:
+        by_type.setdefault(t, []).append(i)
+    conn = get_conn()
+    cur = conn.cursor()
+    updated = 0
+    try:
+        if by_type.get("general"):
+            cur.execute("UPDATE users SET status='withdrawn' WHERE id = ANY(%s)", [by_type["general"]])
+            updated += cur.rowcount
+        if by_type.get("agent"):
+            cur.execute("UPDATE agents SET status='inactive' WHERE id = ANY(%s)", [by_type["agent"]])
+            updated += cur.rowcount
+        if by_type.get("operator"):
+            cur.execute("UPDATE operators SET status='inactive' WHERE id = ANY(%s)", [by_type["operator"]])
+            updated += cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("일괄 비활성화 실패")
+        return jsonify({"ok": False, "message": "비활성화 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
 
 
 # 신청서 doc_type → applications 테이블 컬럼 매핑 (관리자 서류 열람용 화이트리스트)
