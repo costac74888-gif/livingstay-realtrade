@@ -1648,7 +1648,8 @@ def auth_login():
         conn.close()
 
     session["user_id"] = uid
-    session.permanent = True
+    # "로그인 상태 유지" 체크 시에만 31일 유지(permanent), 아니면 브라우저 세션 쿠키(닫으면 만료).
+    session.permanent = bool(data.get("remember"))
     return jsonify({"ok": True})
 
 

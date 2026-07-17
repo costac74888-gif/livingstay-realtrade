@@ -89,8 +89,14 @@
           '</div>' +
           '<div class="auth-field">' +
             '<label for="authPassword">비밀번호</label>' +
-            '<input type="password" id="authPassword" placeholder="비밀번호 (8자 이상)" autocomplete="current-password" required />' +
+            '<div class="auth-pw-wrap">' +
+              '<input type="password" id="authPassword" placeholder="비밀번호 (8자 이상)" autocomplete="current-password" required />' +
+              '<button type="button" class="auth-pw-toggle" id="authPwToggle" aria-label="비밀번호 표시" aria-pressed="false" title="비밀번호 표시">👁</button>' +
+            '</div>' +
           '</div>' +
+          '<label class="auth-remember" id="authRememberRow">' +
+            '<input type="checkbox" id="authRemember" /> 로그인 상태 유지 (31일)' +
+          '</label>' +
           '<div class="auth-consent" id="authConsent" style="display:none;">' +
             '<label class="auth-consent-row auth-consent-all">' +
               '<input type="checkbox" id="agreeAll" /> <b>전체 동의</b>' +

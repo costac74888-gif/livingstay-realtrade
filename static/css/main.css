@@ -693,6 +693,21 @@
   border-radius:8px; font-size:14px; font-family:'Noto Sans KR',sans-serif; background:#fff; color:var(--ink);
 }
 .auth-field input:focus{ outline:2px solid var(--brass-tint); border-color:var(--brass); }
+/* 비밀번호 눈표시 토글 + '로그인 상태 유지' 체크박스 */
+.auth-pw-wrap{ position:relative; }
+.auth-pw-wrap input{ padding-right:40px; }
+.auth-pw-toggle{
+  position:absolute; top:50%; right:6px; transform:translateY(-50%);
+  width:30px; height:30px; border:none; background:transparent;
+  font-size:15px; line-height:1; cursor:pointer; color:var(--ink-soft);
+  display:inline-flex; align-items:center; justify-content:center; border-radius:6px;
+}
+.auth-pw-toggle:hover{ background:var(--bg-soft, #f6f4ef); }
+.auth-remember{
+  display:flex; align-items:center; gap:7px; margin:-4px 0 14px;
+  font-size:12px; font-weight:500; color:var(--ink-soft); cursor:pointer;
+}
+.auth-remember input{ accent-color:var(--brass); }
 .auth-submit{
   width:100%; padding:12px; margin-top:4px; background:var(--ink); color:#fff; border:none;
   border-radius:8px; font-size:14px; font-weight:600; font-family:'Noto Sans KR',sans-serif; cursor:pointer;

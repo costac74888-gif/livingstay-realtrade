@@ -20,6 +20,26 @@
   var switchText = document.getElementById("authSwitchText");
   var switchLink = document.getElementById("authSwitchLink");
   var closeBtn = document.getElementById("authModalClose");
+  var pwToggle = document.getElementById("authPwToggle");
+  var rememberRow = document.getElementById("authRememberRow");
+  var rememberInput = document.getElementById("authRemember");
+
+  // ---- 비밀번호 눈표시(👁) 토글 — 로그인/회원가입 공용 입력창 하나에 적용 ----
+  function setPwVisible(visible) {
+    if (!pwToggle || !passwordInput) return;
+    passwordInput.type = visible ? "text" : "password";
+    pwToggle.textContent = visible ? "🙈" : "👁";
+    pwToggle.setAttribute("aria-pressed", visible ? "true" : "false");
+    var label = visible ? "비밀번호 숨기기" : "비밀번호 표시";
+    pwToggle.setAttribute("aria-label", label);
+    pwToggle.title = label;
+  }
+  if (pwToggle) {
+    pwToggle.addEventListener("click", function () {
+      setPwVisible(passwordInput.type === "password");
+      passwordInput.focus();
+    });
+  }
 
   var mode = "login"; // "login" | "signup"
 
@@ -105,6 +125,7 @@
       switchText.textContent = "이미 회원이신가요?";
       switchLink.textContent = "로그인";
       passwordInput.setAttribute("autocomplete", "new-password");
+      if (rememberRow) rememberRow.style.display = "none"; // 상태 유지는 로그인 전용
       if (consentBox) consentBox.style.display = "";
       resetConsent();
     } else {
@@ -114,6 +135,7 @@
       switchText.textContent = "아직 회원이 아니신가요?";
       switchLink.textContent = "회원가입";
       passwordInput.setAttribute("autocomplete", "current-password");
+      if (rememberRow) rememberRow.style.display = "";
       if (consentBox) consentBox.style.display = "none";
     }
     updateSubmitState();
@@ -121,6 +143,7 @@
 
   function openModal() {
     clearError();
+    setPwVisible(false); // 열 때마다 비밀번호는 가림 상태로 초기화
     setMode("login");
     modal.style.display = "flex";
     setTimeout(function () { emailInput.focus(); }, 50);
@@ -269,7 +292,7 @@
           terms: !!(agreeTerms && agreeTerms.checked),
           privacy: !!(agreePrivacy && agreePrivacy.checked),
           marketing: !!(agreeMarketing && agreeMarketing.checked) }
-      : { email: email, password: password };
+      : { email: email, password: password, remember: !!(rememberInput && rememberInput.checked) };
 
     submitBtn.disabled = true;
     fetch(url, {
