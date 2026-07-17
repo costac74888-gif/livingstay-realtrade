@@ -15,5 +15,6 @@
 - [Admin auth model](admin-auth.md) — /admin uses admin_users email/pw (session["admin"]+admin_user_id); seed ADMIN/ADMIN only when table fully empty (atomic WHERE NOT EXISTS); login rate-limited so avoid rapid re-login in tests (resets on app restart).
 - [prod map 0 buildings / prod data lag](prod-geo-empty.md) — phone hits prod URL with a SEPARATE prod DB: empty map (NULL lat/lng) and 표제부 "-" are prod-wide data-lag issues, not mobile CSS; dev backfills never reach prod.
 - [소상공인 상가업소 API](sbiz-store-api.md) — storeListInBuilding 키는 25자리 bldMngNo(≠표제부 mgmBldrgstPk); 건물 조회는 storeListInPnu(PNU 19자리); type=json은 403 → XML만.
+- [Kakao map view tuning](kakao-map-view-tuning.md) — headless screenshot browser blocks dapi.kakao.com SDK; tune center/level via canvas sim with 1px≈2^(L-3)m; mobile default 35.8/127.6 lv13.
 - [mobile header hamburger](mobile-header-hamburger.md) — header.js: bell(#alertMenu) always visible in .header-actions; nav+auth in .header-menu collapsed to #hamburgerBtn ≤520px; index-only left list-toggle via window.HEADER_LEFT_TOGGLE (toggles .side-panel); notif panel position:fixed ≤520px.
 - [header.js modal ID collisions](apply-pages-id-collision.md) — header.js injects modal IDs (agreeTerms 등) into every page; page-local widgets must namespace IDs or auth.js double-binds.

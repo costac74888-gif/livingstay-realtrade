@@ -450,6 +450,20 @@ let hoverCurrentKey = null;          // 현재 툴팁이 가리키는 마커 키
 const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
 const MAP_DEFAULT_CENTER = { lat: 36.35, lng: 126.9 }; // 좌측 사이드패널이 지도 위에 겹쳐 한반도가 왼쪽으로 밀려 보이므로 중심 경도를 서쪽으로 낮춰 가로 중앙 정렬(일본 과다 노출 완화)
 const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이는 확대 수준
+// 모바일(좁은 세로 화면) 전용 초기뷰 — 세로로 길어 같은 값이면 속초·제주가 잘리므로 별도 값 사용.
+// PC 값(MAP_DEFAULT_CENTER/LEVEL)은 그대로 두고 폭 480px 이하일 때만 적용된다.
+const MAP_MOBILE_MAX_WIDTH = 480;
+const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.8, lng: 127.6 }; // 모바일은 사이드패널이 지도를 가리지 않으므로 한반도 실제 중심 경도 사용. 위도는 상단 검색버튼을 피해 약간 북쪽 치우침(작은 폰에서도 제주 남단이 하단에 걸치는 정도)
+const MAP_DEFAULT_LEVEL_MOBILE = 13;  // 속초~제주가 세로로 한 화면에 들어오는 축소 수준 (레벨 12는 제주 잘림)
+
+function isMobileMapViewport(){
+  return window.matchMedia(`(max-width: ${MAP_MOBILE_MAX_WIDTH}px)`).matches;
+}
+function mapDefaultView(){
+  return isMobileMapViewport()
+    ? { center: MAP_DEFAULT_CENTER_MOBILE, level: MAP_DEFAULT_LEVEL_MOBILE }
+    : { center: MAP_DEFAULT_CENTER, level: MAP_DEFAULT_LEVEL };
+}
 
 // 검색폼(state)에서 지도용 필터만 추출한다. 기간(year)은 건물 위치와
 // 무관하므로 지도에는 적용하지 않는다(게시판 전용).
@@ -469,8 +483,9 @@ function clearMapMarkers(){
 
 function resetMapView(){
   if (!kakaoMap) return;
-  kakaoMap.setLevel(MAP_DEFAULT_LEVEL);
-  kakaoMap.setCenter(new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng));
+  const dv = mapDefaultView();
+  kakaoMap.setLevel(dv.level);
+  kakaoMap.setCenter(new kakao.maps.LatLng(dv.center.lat, dv.center.lng));
 }
 
 // 실거래 상세(가격·날짜 / 층·전용면적·거래유형) HTML — 클릭 InfoWindow와
@@ -718,9 +733,10 @@ async function initMap(){
   const container = document.getElementById("map");
   if (!container) return;
 
+  const dv = mapDefaultView();
   kakaoMap = new kakao.maps.Map(container, {
-    center: new kakao.maps.LatLng(MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng),
-    level: MAP_DEFAULT_LEVEL,
+    center: new kakao.maps.LatLng(dv.center.lat, dv.center.lng),
+    level: dv.level,
   });
 
   // 확대/축소(+/-) 버튼 — 휠/핀치줌이 불안정할 때를 위한 명시적 컨트롤.
