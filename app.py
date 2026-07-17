@@ -3307,6 +3307,160 @@ def admin_geocode_run():
     })
 
 
+# ---- 건축정보(표제부) 채우기 (배포 후 운영 DB에 표제부 주입용) ----
+# 좌표 채우기와 완전히 같은 패턴: 개발에서 백필한 표제부 값을
+# data/building_title_info.json 으로 배포에 포함시키고, 관리자가 이 API를
+# 호출하면 배포된 앱(=운영 DB 연결)이 id 기준으로 컬럼을 채운다.
+_TITLE_INFO_JSON_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "building_title_info.json"
+)
+
+
+def _title_info_int(v):
+    return None if v is None else int(v)
+
+
+def _title_info_float(v):
+    return None if v is None else float(v)
+
+
+def _title_info_text(v):
+    return None if v is None else str(v)
+
+
+def _load_title_info_seed():
+    """data/building_title_info.json → [(id, use_apr_day, ...), ...] (형식 오류 행은 건너뜀)."""
+    with open(_TITLE_INFO_JSON_PATH, encoding="utf-8") as fp:
+        rows = json.load(fp)
+    out = []
+    for r in rows:
+        try:
+            out.append((
+                int(r["id"]),
+                _title_info_text(r.get("use_apr_day")),
+                _title_info_int(r.get("tot_pkng_cnt")),
+                _title_info_int(r.get("grnd_flr_cnt")),
+                _title_info_int(r.get("ugrnd_flr_cnt")),
+                _title_info_float(r.get("tot_area")),
+                _title_info_float(r.get("plat_area")),
+                _title_info_int(r.get("hhld_cnt")),
+                _title_info_text(r.get("strct_nm")),
+                _title_info_text(r.get("mgm_bldrgst_pk")),
+            ))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def _title_info_counts(cur):
+    cur.execute("""
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE use_apr_day IS NOT NULL
+                                   OR grnd_flr_cnt IS NOT NULL
+                                   OR tot_area IS NOT NULL) AS with_title
+        FROM master_buildings
+    """)
+    return cur.fetchone()
+
+
+@app.route("/api/admin/backfill-title-info/status")
+@require_admin
+def admin_title_info_status():
+    """표제부(건축정보) 확보 현황 + 마지막 실행 기록 반환 (관리자 화면 표시용)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        s = _title_info_counts(cur)
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = 'title_info_last_run'")
+        meta = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    try:
+        seed_count = len(_load_title_info_seed())
+    except Exception:
+        seed_count = None
+    return jsonify({
+        "ok": True,
+        "total": s["total"],
+        "with_title": s["with_title"],
+        "seed_count": seed_count,
+        "last_run": (meta["value"] if meta else None),
+        "last_run_at": (
+            meta["updated_at"].strftime("%Y-%m-%d %H:%M")
+            if meta and meta["updated_at"] else None
+        ),
+    })
+
+
+@app.route("/api/admin/backfill-title-info", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_title_info_run():
+    """data/building_title_info.json 의 표제부 값을 master_buildings 에 id 기준으로 주입.
+    값이 실제로 바뀐 행만 세어 반환(재실행 시 0건 → 이미 최신)."""
+    try:
+        seed = _load_title_info_seed()
+    except FileNotFoundError:
+        return jsonify({"ok": False, "message": "건축정보 데이터 파일(data/building_title_info.json)을 찾을 수 없습니다."}), 500
+    except (json.JSONDecodeError, ValueError):
+        return jsonify({"ok": False, "message": "건축정보 데이터 파일 형식이 올바르지 않습니다(JSON 파싱 실패)."}), 500
+    if not seed:
+        return jsonify({"ok": False, "message": "건축정보 데이터가 비어 있습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 값이 실제로 달라지는 행만 UPDATE → 재실행 시 0건이 나와 idempotent 확인 가능
+        execute_values(cur, """
+            UPDATE master_buildings AS m
+            SET use_apr_day = v.use_apr_day,
+                tot_pkng_cnt = v.tot_pkng_cnt,
+                grnd_flr_cnt = v.grnd_flr_cnt,
+                ugrnd_flr_cnt = v.ugrnd_flr_cnt,
+                tot_area = v.tot_area,
+                plat_area = v.plat_area,
+                hhld_cnt = v.hhld_cnt,
+                strct_nm = v.strct_nm,
+                mgm_bldrgst_pk = v.mgm_bldrgst_pk
+            FROM (VALUES %s) AS v(id, use_apr_day, tot_pkng_cnt, grnd_flr_cnt,
+                                  ugrnd_flr_cnt, tot_area, plat_area, hhld_cnt,
+                                  strct_nm, mgm_bldrgst_pk)
+            WHERE m.id = v.id
+              AND (m.use_apr_day IS DISTINCT FROM v.use_apr_day
+                   OR m.tot_pkng_cnt IS DISTINCT FROM v.tot_pkng_cnt
+                   OR m.grnd_flr_cnt IS DISTINCT FROM v.grnd_flr_cnt
+                   OR m.ugrnd_flr_cnt IS DISTINCT FROM v.ugrnd_flr_cnt
+                   OR m.tot_area IS DISTINCT FROM v.tot_area
+                   OR m.plat_area IS DISTINCT FROM v.plat_area
+                   OR m.hhld_cnt IS DISTINCT FROM v.hhld_cnt
+                   OR m.strct_nm IS DISTINCT FROM v.strct_nm
+                   OR m.mgm_bldrgst_pk IS DISTINCT FROM v.mgm_bldrgst_pk)
+        """, seed, template=(
+            "(%s, %s::text, %s::integer, %s::integer, %s::integer, "
+            "%s::double precision, %s::double precision, %s::integer, %s::text, %s::text)"
+        ))
+        updated = cur.rowcount
+        s = _title_info_counts(cur)
+        summary = f"{updated}건 갱신 (표제부 확보 {s['with_title']}/{s['total']}건)"
+        cur.execute("""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES ('title_info_last_run', %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        """, (summary,))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "with_title": s["with_title"],
+        "total": s["total"],
+        "message": summary,
+    })
+
+
 # ---- 실거래 동기화 (관리자 버튼) ----
 # 배포된 앱(=운영 DB 연결)에서 sync_runner.py 를 '독립 프로세스'로 띄운다.
 # - 요청은 즉시 202 반환(웹 타임아웃 방지), 진행상황은 app_meta('tx_sync_status')에 기록.

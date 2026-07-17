@@ -786,6 +786,58 @@
       }
     }
 
+    // ---- 건축정보(표제부) 채우기 ----
+    // 좌표 채우기와 같은 패턴: 배포에 포함된 data/building_title_info.json 값을
+    // id 기준으로 master_buildings 표제부 컬럼에 주입한다. 여러 번 눌러도 안전(idempotent).
+    async function loadTitleInfoStatus() {
+      const box = document.getElementById("titleInfoStatus");
+      if (!box) return;
+      box.textContent = "현황 불러오는 중…";
+      try {
+        const res = await fetch("/api/admin/backfill-title-info/status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "현황을 불러오지 못했습니다."; return; }
+        const pct = d.total ? ((d.with_title / d.total) * 100).toFixed(1) : "0.0";
+        const last = d.last_run
+          ? `마지막 실행: ${dgEscape(d.last_run)}${d.last_run_at ? ` · ${dgEscape(d.last_run_at)}` : ""}`
+          : "마지막 실행: 아직 실행된 적 없음";
+        box.innerHTML =
+          `<div class="geo-stat-row"><b>표제부 확보:</b> ${num(d.with_title)} / ${num(d.total)}건 (${pct}%)</div>` +
+          `<div class="geo-stat-row"><b>데이터 파일 건축정보:</b> ${d.seed_count == null ? "파일 없음" : num(d.seed_count) + "건"}</div>` +
+          `<div class="geo-stat-row geo-stat-last">${last}</div>`;
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runTitleInfoBackfill() {
+      const btn = document.getElementById("titleInfoRunBtn");
+      const msg = document.getElementById("titleInfoMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "실행 중…";
+      try {
+        const res = await fetch("/api/admin/backfill-title-info", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = `완료: ${d.message}. 건물 상세(건축정보)에 바로 반영됩니다.`;
+          loadTitleInfoStatus();
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "건축정보 채우기 실행";
+      }
+    }
+
     function showGeocode() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -804,9 +856,27 @@
             <button id="geoRunBtn" class="admin-btn admin-btn-primary">좌표 채우기 실행</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px;">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">건축정보 채우기</h2>
+          </div>
+          <p class="legal-admin-hint">
+            배포된 앱이 <code>data/building_title_info.json</code>의 표제부(사용승인일·층수·면적 등)를
+            건물 id 기준으로 <code>master_buildings</code>에 채웁니다. 여러 번 눌러도 안전하며
+            (중복 실행해도 결과 동일), 실제로 값이 바뀐 건수만 표시됩니다. 실행 후 건물 상세
+            화면의 건축정보에 즉시 반영됩니다.
+          </p>
+          <div id="titleInfoStatus" class="geo-status"></div>
+          <div class="legal-admin-actions">
+            <span id="titleInfoMsg" class="legal-msg" role="alert"></span>
+            <button id="titleInfoRunBtn" class="admin-btn admin-btn-primary">건축정보 채우기 실행</button>
+          </div>
+        </div>
       `;
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
+      document.getElementById("titleInfoRunBtn").addEventListener("click", runTitleInfoBackfill);
       loadGeocodeStatus();
+      loadTitleInfoStatus();
     }
 
     // ---- 실거래 동기화 ----
