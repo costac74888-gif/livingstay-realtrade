@@ -462,10 +462,12 @@ def init_db():
         contact_phone TEXT NOT NULL,      -- 중개사가 연락할 번호
         routed_agent_id INTEGER REFERENCES agents(id),  -- 배정된 대표 중개사 (없으면 NULL)
         routed_reason TEXT,               -- exclusive | region | house
-        status TEXT DEFAULT 'submitted',
+        status TEXT DEFAULT 'submitted',  -- submitted(신규) | in_progress(처리중) | done(완료) — 중개사만 순방향 변경 가능
         created_at TIMESTAMP DEFAULT NOW()
     )
     """)
+    # 기존 DB에도 안전하게 컬럼 추가 — 관리자 전용 메모(중개사에게는 노출 안 함)
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS admin_note TEXT")
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

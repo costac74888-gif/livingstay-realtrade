@@ -173,6 +173,44 @@
           { key: "created_at", label: "등록일", sortable: true },
         ],
       },
+      // 매물의뢰: 회원이 접수한 매물의뢰. 관리자는 조회 + 비고(admin_note)만 수정 가능,
+      // status는 배정된 중개사만 변경(여기서는 배지로 읽기전용 표시).
+      listing_requests: {
+        endpoint: "/api/admin/listing-requests",
+        title: "매물의뢰",
+        entityLabel: "매물의뢰",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        searchPlaceholder: "건물명·연락처·중개사 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명" },
+          { key: "contact_phone", label: "의뢰자 연락처" },
+          { key: "deal_type", label: "거래유형" },
+          { key: "desired_price", label: "희망가" },
+          { key: "routed_reason", label: "전달구분", render: (v) => {
+            const m = { exclusive: ["전속", "ok"], region: ["관할", "wait"], house: ["제휴", "no"] };
+            const x = m[v] || [v || "-", ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+          { key: "agent_office_name", label: "전달받은 중개사", render: (v, row) => {
+            if (!v) return '<span style="color:var(--ink-soft);">—</span>';
+            return `${dgEscape(v)}${row.agent_phone ? `<br><span style="color:var(--ink-soft); font-size:12px;">${dgEscape(row.agent_phone)}</span>` : ""}`;
+          } },
+          { key: "status", label: "상태", sortable: true, render: (v) => {
+            const m = { submitted: ["신규", "wait"], in_progress: ["처리중", ""], done: ["완료", "ok"] };
+            const x = m[v] || [v || "-", ""];
+            const style = x[1] === "" ? ' style="background:#E8F0FE; color:#1A5DB8;"' : "";
+            return `<span class="dg-badge${x[1] ? ` dg-badge-${x[1]}` : ""}"${style}>${dgEscape(x[0])}</span>`;
+          } },
+          { key: "admin_note", label: "비고", render: (v, row) => {
+            const txt = v ? dgEscape(v) : '<span style="color:var(--ink-soft);">메모 입력</span>';
+            return `<a href="#" onclick="adminEditLeadNote(event, ${row.id})" title="클릭해서 비고 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${txt}</a>`;
+          } },
+          { key: "created_at", label: "접수일", sortable: true },
+        ],
+      },
       // 신청승인: C/D에서 들어온 중개사/운영업체 신청 큐. 승인 시 agents/operators로 INSERT.
       // 추가/수정/삭제 없음 — 대기중 행에서만 "승인"/"반려" 커스텀 액션.
       applications: {
@@ -518,6 +556,52 @@
       destroyStatsCharts();
       currentGrid = new DataGrid(Object.assign({ mount: mount, idField: "id", pageSize: 50 }, cfg));
     }
+
+    // ---- 매물관리: "매물" / "매물의뢰" 서브탭 ----
+    // 매물관리 메뉴 하나에 두 그리드를 담는다. 탭 클릭 시 아래 gridMount에만 새 그리드를 그린다.
+    let listingsSubTab = "listings";
+    function showListings() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-tabs" style="margin-bottom:14px;">
+          <button class="admin-btn lst-subtab" data-sub="listings">매물</button>
+          <button class="admin-btn lst-subtab" data-sub="listing_requests">매물의뢰</button>
+        </div>
+        <div id="listingsSubMount"></div>`;
+      const subMount = document.getElementById("listingsSubMount");
+      const activate = (key) => {
+        listingsSubTab = key;
+        mount.querySelectorAll(".lst-subtab").forEach((b) => {
+          const on = b.getAttribute("data-sub") === key;
+          b.classList.toggle("admin-btn-primary", on);
+        });
+        currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
+      };
+      mount.querySelectorAll(".lst-subtab").forEach((b) => {
+        b.addEventListener("click", () => activate(b.getAttribute("data-sub")));
+      });
+      activate(listingsSubTab);
+    }
+
+    // 매물의뢰 비고(admin_note) 인라인 수정 — 클릭 → prompt → PUT(admin_note만 전송)
+    window.adminEditLeadNote = async function(ev, reqId) {
+      ev.preventDefault();
+      const row = (currentGrid && currentGrid.items || []).find((r) => r.id === reqId) || {};
+      const cur = row.admin_note || "";
+      const next = window.prompt("비고(관리자 메모)를 입력하세요. 비우면 삭제됩니다.", cur);
+      if (next === null) return; // 취소
+      try {
+        const res = await fetch(`/api/admin/listing-requests/${reqId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_note: next }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) { currentGrid.reload(); return; }
+        window.alert(d.message || "비고 저장에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    };
 
     // ---- 신청 서류 열람: 관리자 전용 서명 URL(5분)을 발급받아 새 탭으로 연다 ----
     window.adminOpenAppDoc = async function(ev, appId, docType) {
@@ -1363,6 +1447,7 @@
       if (menuKey === "legal") { showLegal(); return; }
       if (menuKey === "geocode") { showGeocode(); return; }
       if (menuKey === "txsync") { showTxSync(); return; }
+      if (menuKey === "listings") { showListings(); return; }
       if (menuKey === "popups") { showPopups(); return; }
       showGrid(menuKey);
     }

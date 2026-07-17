@@ -188,8 +188,25 @@ async function load(){
   render();
 }
 
-// ---- 받은 매물의뢰 (읽기 전용 목록) ----
+// ---- 받은 매물의뢰 (상태 배지 + 처리 버튼) ----
 const LEAD_REASON = { exclusive: "전속", region: "지역", house: "하우스" };
+const LEAD_STATUS = {
+  submitted:   { label: "신규",   bg: "#FFF4E0", color: "#9A6B12" },
+  in_progress: { label: "처리중", bg: "#E8F0FE", color: "#1A5DB8" },
+  done:        { label: "완료",   bg: "#E4F5EA", color: "#1E7C43" },
+};
+function leadStatusBadge(status){
+  const s = LEAD_STATUS[status] || { label: status || "-", bg: "#EEE", color: "#555" };
+  return `<span style="display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; background:${s.bg}; color:${s.color};">${esc(s.label)}</span>`;
+}
+// 현재 상태에 따라 다음 단계 버튼만 노출: 신규→"처리 시작", 처리중→"완료 처리", 완료→없음
+function leadActionBtn(l){
+  if (l.status === "submitted")
+    return `<button class="btn btn-sm" data-lead-act="in_progress" data-lead-id="${l.id}" style="font-size:12px; padding:4px 12px;">처리 시작</button>`;
+  if (l.status === "in_progress")
+    return `<button class="btn btn-sm btn-primary" data-lead-act="done" data-lead-id="${l.id}" style="font-size:12px; padding:4px 12px;">완료 처리</button>`;
+  return "";
+}
 async function loadLeads(){
   const box = document.getElementById("leadList");
   try {
@@ -207,17 +224,46 @@ async function loadLeads(){
           <a href="/building/${l.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(l.building_name || "-")}</a>
           <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(l.deal_type)}</span>
           <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[l.routed_reason] || l.routed_reason || "-")} 배정</span>
+          ${leadStatusBadge(l.status)}
           <span style="flex:1;"></span>
           <span style="font-size:12px; color:var(--ink-soft);">${esc(l.created_at || "")}</span>
         </div>
-        <div style="font-size:13px; color:var(--ink);">
-          희망가: ${esc(l.desired_price || "-")} · 연락처: <a href="tel:${esc(l.contact_phone || "")}" style="color:var(--brass-dark); font-weight:600; text-decoration:none;">${esc(l.contact_phone || "-")}</a>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:13px; color:var(--ink);">
+            희망가: ${esc(l.desired_price || "-")} · 연락처: <a href="tel:${esc(l.contact_phone || "")}" style="color:var(--brass-dark); font-weight:600; text-decoration:none;">${esc(l.contact_phone || "-")}</a>
+          </div>
+          <span style="flex:1;"></span>
+          ${leadActionBtn(l)}
         </div>
       </div>`).join("");
   } catch(e) {
     box.innerHTML = `<div class="side-empty">매물의뢰를 불러오지 못했습니다.</div>`;
   }
 }
+// 처리 버튼 클릭 → 상태 변경 API → 목록 갱신
+document.getElementById("leadList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-lead-act]");
+  if (!btn) return;
+  const act = btn.getAttribute("data-lead-act");
+  const id = btn.getAttribute("data-lead-id");
+  const label = act === "done" ? "완료 처리" : "처리 시작";
+  if (!window.confirm(`이 매물의뢰를 '${label}' 상태로 변경할까요?`)) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/agent/leads/${id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: act }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok) { loadLeads(); return; }
+    window.alert(d.message || "상태 변경에 실패했습니다.");
+    btn.disabled = false;
+  } catch(err) {
+    window.alert("네트워크 오류가 발생했습니다.");
+    btn.disabled = false;
+  }
+});
 
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {

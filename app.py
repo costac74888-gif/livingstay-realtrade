@@ -2710,6 +2710,44 @@ def agent_leads():
     return jsonify({"items": items})
 
 
+# 매물의뢰 상태 진행 순서 — 순방향만 허용(건너뛰기 가능, 역방향 금지). 관리자 API로는 변경 불가.
+_LEAD_STATUS_ORDER = {"submitted": 0, "in_progress": 1, "done": 2}
+
+
+@app.route("/api/agent/leads/<int:lead_id>/status", methods=["PUT"])
+@require_agent
+def agent_lead_update_status(lead_id):
+    """내게 배정된 매물의뢰의 상태 변경 — submitted → in_progress → done 순방향만."""
+    agent_id = session["agent_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    new_status = (data.get("status") or "").strip()
+    if new_status not in _LEAD_STATUS_ORDER:
+        return jsonify({"ok": False, "message": "잘못된 상태값입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 행 잠금(FOR UPDATE)으로 동시 요청을 직렬화 — 순방향-only 규칙이 경쟁 상황에서도 깨지지 않게 한다.
+        cur.execute("SELECT routed_agent_id, status FROM listing_requests WHERE id = %s FOR UPDATE", [lead_id])
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "존재하지 않는 의뢰입니다."}), 404
+        if row["routed_agent_id"] != agent_id:
+            # 다른 중개사에게 배정된 건은 수정 불가.
+            conn.rollback()
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        cur_rank = _LEAD_STATUS_ORDER.get(row["status"], 0)
+        if _LEAD_STATUS_ORDER[new_status] <= cur_rank:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "상태는 순방향(신규→처리중→완료)으로만 변경할 수 있습니다."}), 400
+        cur.execute("UPDATE listing_requests SET status = %s WHERE id = %s", [new_status, lead_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "status": new_status})
+
+
 # ============================================================
 # 매물의뢰 접수 + 중개사 라우팅
 #   ① exclusive: 그 건물을 agent_buildings에 등록한 approved 중개사 (최근 갱신순 1명)
@@ -3960,6 +3998,80 @@ def admin_listings_export():
     resp.headers["Content-Disposition"] = "attachment; filename=listings.xlsx"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+# ---- 매물의뢰(listing_requests) 관리 (모두 require_admin) ----
+# 관리자는 조회 + 비고(admin_note) 수정만 가능. status는 중개사 API에서만 변경(여기서는 읽기전용).
+_ADMIN_LREQ_SORT = {"id": "lr.id", "created_at": "lr.created_at", "status": "lr.status"}
+
+
+@app.route("/api/admin/listing-requests")
+@require_admin
+def admin_listing_requests_list():
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "id").strip()
+    sort_expr = _ADMIN_LREQ_SORT.get(sort_key, "lr.id")
+    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    page, size, offset = _admin_paging()
+    where = "1=1"
+    params = []
+    if q:
+        where = "(mb.building_name ILIKE %s OR lr.contact_phone ILIKE %s OR a.office_name ILIKE %s)"
+        like = f"%{q}%"
+        params = [like, like, like]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            SELECT COUNT(*) c
+            FROM listing_requests lr
+            LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            WHERE {where}
+        """, params)
+        total = cur.fetchone()["c"]
+        # sort_expr/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
+        cur.execute(f"""
+            SELECT lr.id, lr.master_building_id, mb.building_name,
+                   lr.deal_type, lr.desired_price, lr.contact_phone,
+                   lr.routed_reason, lr.status, lr.admin_note,
+                   a.office_name AS agent_office_name, a.phone AS agent_phone,
+                   to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+            FROM listing_requests lr
+            LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            WHERE {where}
+            ORDER BY {sort_expr} {order}, lr.id ASC
+            LIMIT %s OFFSET %s
+        """, params + [size, offset])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/listing-requests/<int:req_id>", methods=["PUT"])
+@require_admin
+def admin_listing_requests_update(req_id):
+    """관리자 수정은 admin_note만 허용 — status 등 다른 필드는 값이 와도 무시한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    if "admin_note" not in data:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다. (비고만 수정 가능)"}), 400
+    note = data.get("admin_note")
+    note = str(note).strip() if note is not None else None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM listing_requests WHERE id = %s", [req_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 의뢰입니다."}), 404
+        cur.execute("UPDATE listing_requests SET admin_note = %s WHERE id = %s", [note or None, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 # ---- 실거래(transactions) 관리 (모두 require_admin) ----
