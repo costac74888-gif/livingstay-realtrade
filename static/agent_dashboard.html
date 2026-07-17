@@ -47,6 +47,14 @@
     <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
   </div>
 
+  <!-- 받은 매물의뢰 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+      <div class="side-card-title" style="margin-bottom:0;">받은 매물의뢰 <span class="side-sub" id="leadCount"></span></div>
+    </div>
+    <div id="leadList"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
 </div>
 
 <!-- 프로필 수정 모달 -->
@@ -180,6 +188,37 @@ async function load(){
   render();
 }
 
+// ---- 받은 매물의뢰 (읽기 전용 목록) ----
+const LEAD_REASON = { exclusive: "전속", region: "지역", house: "하우스" };
+async function loadLeads(){
+  const box = document.getElementById("leadList");
+  try {
+    const { ok, data } = await api("/api/agent/leads");
+    if (!ok) throw new Error("leads fetch failed");
+    const items = data.items || [];
+    document.getElementById("leadCount").textContent = items.length + "건";
+    if (!items.length){
+      box.innerHTML = `<div class="side-empty">아직 받은 매물의뢰가 없습니다.</div>`;
+      return;
+    }
+    box.innerHTML = items.map(l => `
+      <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+          <a href="/building/${l.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(l.building_name || "-")}</a>
+          <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(l.deal_type)}</span>
+          <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[l.routed_reason] || l.routed_reason || "-")} 배정</span>
+          <span style="flex:1;"></span>
+          <span style="font-size:12px; color:var(--ink-soft);">${esc(l.created_at || "")}</span>
+        </div>
+        <div style="font-size:13px; color:var(--ink);">
+          희망가: ${esc(l.desired_price || "-")} · 연락처: <a href="tel:${esc(l.contact_phone || "")}" style="color:var(--brass-dark); font-weight:600; text-decoration:none;">${esc(l.contact_phone || "-")}</a>
+        </div>
+      </div>`).join("");
+  } catch(e) {
+    box.innerHTML = `<div class="side-empty">매물의뢰를 불러오지 못했습니다.</div>`;
+  }
+}
+
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {
   document.getElementById("fPhone").value = ME.phone || "";
@@ -307,6 +346,7 @@ document.getElementById("btnLogout").addEventListener("click", async () => {
 });
 
 load();
+loadLeads();
 </script>
 </body>
 </html>

@@ -450,6 +450,23 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_agreed_at TIMESTAMP")    # [필수] 개인정보 수집·이용 동의 시각
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_agreed_at TIMESTAMP")  # [선택] 마케팅 수신 동의 시각(미동의 NULL)
 
+    # 매물 의뢰(일반 회원 → 중개사 라우팅) — users 테이블 뒤에 생성해야 FK가 성립한다.
+    # 라우팅 우선순위: exclusive(그 건물 전속 중개사) > region(같은 시군구 활동 중개사) > house(하우스 계정).
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS listing_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),              -- 의뢰한 회원 (로그인 필수)
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
+        deal_type TEXT NOT NULL,          -- 매매 | 전세 | 월세 | 단기임대
+        desired_price TEXT,               -- 희망가 자유입력 (예: "1억 2천")
+        contact_phone TEXT NOT NULL,      -- 중개사가 연락할 번호
+        routed_agent_id INTEGER REFERENCES agents(id),  -- 배정된 대표 중개사 (없으면 NULL)
+        routed_reason TEXT,               -- exclusive | region | house
+        status TEXT DEFAULT 'submitted',
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).
     #   - (user_id, building_name, address) 조합은 유일(중복 저장 방지). NULL 비교 이슈를 피하려고

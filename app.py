@@ -2684,6 +2684,159 @@ def agent_building_search():
     return jsonify({"items": items})
 
 
+@app.route("/api/agent/leads")
+@require_agent
+def agent_leads():
+    """나에게 배정된 매물의뢰 목록 — routed_agent_id = 내 agent_id."""
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT lr.id, lr.deal_type, lr.desired_price, lr.contact_phone,
+                   lr.routed_reason, lr.status,
+                   mb.id AS master_building_id, mb.building_name,
+                   to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+            FROM listing_requests lr
+            JOIN master_buildings mb ON mb.id = lr.master_building_id
+            WHERE lr.routed_agent_id = %s
+            ORDER BY lr.created_at DESC, lr.id DESC
+            LIMIT 200
+        """, [agent_id])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"items": items})
+
+
+# ============================================================
+# 매물의뢰 접수 + 중개사 라우팅
+#   ① exclusive: 그 건물을 agent_buildings에 등록한 approved 중개사 (최근 갱신순 1명)
+#   ② region   : 같은 sgg_text 지역에 건물을 등록한 approved 중개사들 (전원 SMS, 대표 1명 저장)
+#   ③ house    : 하우스 계정(홈스퀘어부동산중개법인)
+# ============================================================
+
+_LISTING_DEAL_TYPES = {"매매", "전세", "월세", "단기임대"}
+_PHONE_RE = re.compile(r"^0\d{1,2}-?\d{3,4}-?\d{4}$")
+_HOUSE_OFFICE_NAME = "홈스퀘어부동산중개법인"
+
+
+@app.route("/api/listing-requests", methods=["POST"])
+@limiter.limit("5 per hour")
+def create_listing_request():
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mb_id = int(data.get("master_building_id") or 0)
+    except (TypeError, ValueError):
+        mb_id = 0
+    deal_type = (data.get("deal_type") or "").strip()
+    desired_price = (data.get("desired_price") or "").strip()[:100]
+    contact_phone = (data.get("contact_phone") or "").strip()
+
+    if not mb_id:
+        return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
+    if deal_type not in _LISTING_DEAL_TYPES:
+        return jsonify({"ok": False, "message": "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."}), 400
+    if not _PHONE_RE.match(contact_phone):
+        return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, building_name, sgg_text FROM master_buildings WHERE id = %s", [mb_id])
+        bld = cur.fetchone()
+        if not bld:
+            return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
+
+        routed_agent_id = None
+        routed_reason = None
+        notify_agents = []  # [{id, phone, office_name}] — SMS 수신 대상
+
+        # ① 전속(exclusive): 그 건물 담당 approved 중개사 중 최근 갱신 1명
+        cur.execute("""
+            SELECT a.id, a.phone, a.office_name
+            FROM agent_buildings ab
+            JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
+            WHERE ab.master_building_id = %s
+            ORDER BY ab.updated_at DESC NULLS LAST, ab.id DESC
+            LIMIT 1
+        """, [mb_id])
+        row = cur.fetchone()
+        if row:
+            routed_agent_id = row["id"]
+            routed_reason = "exclusive"
+            notify_agents = [dict(row)]
+        else:
+            # ② 지역(region): 같은 시군구에 건물을 등록한 approved 중개사들 (하우스 계정 제외)
+            sgg = (bld["sgg_text"] or "").strip()
+            if sgg:
+                cur.execute("""
+                    SELECT a.id, a.phone, a.office_name, MAX(ab.updated_at) AS last_active
+                    FROM agent_buildings ab
+                    JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
+                    JOIN master_buildings mb ON mb.id = ab.master_building_id
+                    WHERE mb.sgg_text = %s AND a.office_name <> %s
+                    GROUP BY a.id, a.phone, a.office_name
+                    ORDER BY last_active DESC NULLS LAST
+                """, [sgg, _HOUSE_OFFICE_NAME])
+                rows = cur.fetchall()
+                if rows:
+                    routed_agent_id = rows[0]["id"]
+                    routed_reason = "region"
+                    notify_agents = [dict(r) for r in rows]
+            if routed_agent_id is None:
+                # ③ 하우스 계정 — 없으면 routed_agent_id NULL로라도 접수는 저장
+                routed_reason = "house"
+                cur.execute("""
+                    SELECT id, phone, office_name FROM agents
+                    WHERE office_name = %s AND status = 'approved'
+                    ORDER BY id LIMIT 1
+                """, [_HOUSE_OFFICE_NAME])
+                row = cur.fetchone()
+                if row:
+                    routed_agent_id = row["id"]
+                    notify_agents = [dict(row)]
+
+        cur.execute("""
+            INSERT INTO listing_requests
+                (user_id, master_building_id, deal_type, desired_price, contact_phone,
+                 routed_agent_id, routed_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
+              routed_agent_id, routed_reason])
+        req_id = cur.fetchone()["id"]
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    # SMS 알림 — 실패해도 접수 자체는 성공 처리 (send_sms는 예외를 던지지 않음)
+    sms_body = (
+        f"[홈앤스테이] 매물의뢰 접수 — {bld['building_name']} / {deal_type}"
+        + (f" / 희망가 {desired_price}" if desired_price else "")
+        + f" / 연락처 {contact_phone}"
+    )
+    sms_results = []
+    for ag in notify_agents:
+        if ag.get("phone"):
+            sent, msg = send_sms(ag["phone"], sms_body)
+        else:
+            sent, msg = False, "중개사 전화번호 없음"
+        sms_results.append({"agent_id": ag["id"], "sent": sent, "message": msg})
+
+    return jsonify({
+        "ok": True, "id": req_id,
+        "routed_reason": routed_reason, "routed_agent_id": routed_agent_id,
+        "notified": len([r for r in sms_results if r["sent"]]),
+    })
+
+
 # ============================================================
 # 운영업체(operators) 로그인 — 승인된 운영업체만. agent 로그인과 같은 패턴.
 # 세션에 operator_id 저장. require_operator 로 보호.
