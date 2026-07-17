@@ -470,9 +470,10 @@
 .auth-btn-ghost{ background:transparent; color:var(--ink-soft); border-color:var(--line); }
 .auth-btn-ghost:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
 
-/* 지도 위 '목록' 토글 플로팅 버튼 (index 전용 — 검색 버튼 바로 아래. 데스크톱 숨김, ≤980px에서만 노출) */
+/* 지도 위 '목록' 토글 플로팅 버튼 (index 전용 — 좌측 상단. side-panel이 좌측에서 열리므로
+   버튼도 좌측에 두고, 우측 상단 "🔍 검색" 버튼과 좌우 균형을 맞춘다. 데스크톱 숨김, ≤980px에서만 노출) */
 .map-list-toggle{
-  position:absolute; top:calc(var(--stage-gap) + 48px); right:var(--stage-gap); z-index:16;
+  position:absolute; top:var(--stage-gap); left:var(--stage-gap); z-index:16;
   display:none; align-items:center; gap:5px;
   font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:600;
   color:#fff; background:var(--ink); border:none; border-radius:999px;
@@ -594,6 +595,19 @@
   /* 목록 토글(지도 플로팅)은 라벨까지 표시, 살짝 축소 */
   .map-list-toggle{ padding:8px 13px; font-size:12.5px; }
 }
+
+/* 건물 상세 — 상단바: 좌측 "← 전체 목록으로" + 우측 원형 ✕ 닫기 버튼 */
+.b-panel-topbar{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.b-close-btn{
+  flex:0 0 auto; width:34px; height:34px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:var(--ink); color:#fff; border:none;
+  font-size:15px; line-height:1; cursor:pointer;
+  box-shadow:0 3px 10px rgba(0,0,0,.25);
+}
+.b-close-btn:hover{ filter:brightness(1.15); }
 
 /* 건물 상세 — 헤더 액션 이모지 버튼 (실거래알림 / 관심저장 / 공유) */
 .b-actions{ display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap; }

@@ -1121,8 +1121,9 @@ function detailBadgeLabel(v){
 
 function buildingPanelSkeleton(){
   return `
-    <section class="side-card">
-      <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left;">← 전체 목록으로</button>
+    <section class="side-card b-panel-topbar">
+      <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto;">← 전체 목록으로</button>
+      <button id="btnCloseBuilding" class="b-close-btn" aria-label="건물 상세 닫기" title="닫기">✕</button>
     </section>
 
     <section class="side-card" id="bHeaderCard">
@@ -1666,10 +1667,13 @@ function renderBuildingPanel(id){
   panel.scrollTop = 0;
   panel.classList.add("open"); // 모바일에서도 상세가 보이도록 패널을 펼친다
 
-  document.getElementById("btnBackToList").addEventListener("click", () => {
+  // "← 전체 목록으로" 링크와 우측 상단 ✕ 버튼 모두 동일 동작: 기본 패널 복귀 + URL "/"
+  const closeDetail = () => {
     history.pushState({}, "", "/");
     restoreDefaultPanel();
-  });
+  };
+  document.getElementById("btnBackToList").addEventListener("click", closeDetail);
+  document.getElementById("btnCloseBuilding").addEventListener("click", closeDetail);
   document.getElementById("bTxMore").addEventListener("click", () => {
     bTxShown += B_TX_STEP;
     loadBuildingTx(id);
