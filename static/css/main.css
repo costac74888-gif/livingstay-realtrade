@@ -470,14 +470,16 @@
 .auth-btn-ghost{ background:transparent; color:var(--ink-soft); border-color:var(--line); }
 .auth-btn-ghost:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
 
-/* 헤더 좌측 지도 '목록' 토글 (index 전용 — 데스크톱 숨김, ≤980px에서만 노출) */
-.header-list-toggle{
+/* 지도 위 '목록' 토글 플로팅 버튼 (index 전용 — 검색 버튼 바로 아래. 데스크톱 숨김, ≤980px에서만 노출) */
+.map-list-toggle{
+  position:absolute; top:calc(var(--stage-gap) + 48px); right:var(--stage-gap); z-index:16;
   display:none; align-items:center; gap:5px;
   font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:600;
   color:#fff; background:var(--ink); border:none; border-radius:999px;
-  padding:8px 14px; cursor:pointer; white-space:nowrap;
+  padding:10px 16px; cursor:pointer; white-space:nowrap;
+  box-shadow:0 4px 14px rgba(0,0,0,.28);
 }
-.header-list-toggle:hover{ filter:brightness(1.12); }
+.map-list-toggle:hover{ filter:brightness(1.12); }
 
 /* 모바일 햄버거 버튼 (기본 숨김, ≤520px에서만 노출) */
 .hamburger-btn{
@@ -551,9 +553,9 @@
   .hnav-btn .hnav-label{ display:none; }
 }
 
-/* 태블릿~모바일: 지도 '목록' 토글을 헤더 좌측에 노출 (기존 플로팅 버튼은 헤더로 이동) */
+/* 태블릿~모바일: 지도 '목록' 토글 플로팅 버튼 노출 (데스크톱은 좌측 패널 상시 노출이라 불필요) */
 @media (max-width:980px){
-  .header-list-toggle{ display:inline-flex; }
+  .map-list-toggle{ display:inline-flex; }
 }
 
 /* 모바일: 헤더를 한 줄로 정돈 — [로고 | 공백 | 🔔 | ☰]. 나머지 메뉴는 햄버거 드롭다운 */
@@ -589,8 +591,8 @@
     left:12px; right:12px; width:auto; max-width:none;
   }
 
-  /* 목록 토글은 라벨까지 표시(공간 충분), 살짝 축소 */
-  .header-list-toggle{ padding:7px 12px; font-size:12.5px; }
+  /* 목록 토글(지도 플로팅)은 라벨까지 표시, 살짝 축소 */
+  .map-list-toggle{ padding:8px 13px; font-size:12.5px; }
 }
 
 /* 건물 상세 — 헤더 액션 이모지 버튼 (실거래알림 / 관심저장 / 공유) */

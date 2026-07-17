@@ -1010,6 +1010,8 @@ async function loadSideFavorites(){
 const DEFAULT_SIDE_PANEL_HTML = document.querySelector(".side-panel").innerHTML;
 
 // ---- 메인 좌측 패널: 행정(전국 신고율) + 위탁정보/하우스키핑/금융(등록 업체 수) 집계 ----
+// 등록 수가 이 값 미만이면 숫자를 노출하지 않고 모집 문구만 보여준다 (전속중개사/위탁/하우스키핑/금융 공통)
+const SIDE_COUNT_THRESHOLD = 10;
 async function loadSideStats(){
   const regBox = document.getElementById("sideRegRate");
   if (regBox){
@@ -1030,6 +1032,7 @@ async function loadSideStats(){
   }
 
   // 전속중개사 카드 — 승인된 중개사 수 (하우스 계정 제외, 공개 API)
+  // 노출 기준: SIDE_COUNT_THRESHOLD(10) 미만이면 숫자를 감추고 모집 문구만 노출 (내부 정보 취급)
   const agentBox = document.getElementById("sideAgentCount");
   if (agentBox){
     try {
@@ -1037,11 +1040,11 @@ async function loadSideStats(){
       const d = await res.json();
       if (res.ok && d.ok){
         const n = d.count || 0;
-        if (n > 0){
+        if (n >= SIDE_COUNT_THRESHOLD){
           agentBox.classList.remove("side-soon");
           agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 전속중개사 ${n}명</div>`;
         } else {
-          agentBox.textContent = "등록된 전속중개사가 없습니다. 등록되면 여기에 노출됩니다.";
+          agentBox.textContent = "건물별 전속중개사를 모집하고 있습니다.";
         }
       } else {
         agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
@@ -1068,11 +1071,12 @@ async function loadSideStats(){
       if (!box) return;
       if (!counts){ box.textContent = "업체 정보를 불러오지 못했습니다."; return; }
       const n = counts[k] || 0;
-      if (n > 0){
+      if (n >= SIDE_COUNT_THRESHOLD){
         box.classList.remove("side-soon");
         box.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 업체 ${n}곳</div>`;
       } else {
-        box.textContent = "현재 등록업체 0개 (등록되면 노출 시작)";
+        // 10곳 미만이면 실제 숫자는 감추고 모집 문구만 (내부 정보 취급)
+        box.textContent = "지원업체를 찾고 있습니다.";
       }
     });
   }
