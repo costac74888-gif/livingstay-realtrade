@@ -4444,6 +4444,98 @@ def admin_applications_list():
     return jsonify({"total": total, "page": page, "size": size, "items": items})
 
 
+# ---- 회원관리(통합 뷰): users/agents/operators/applications 를 한 목록으로 ----
+# 읽기 전용 조회 API. 승인/반려 처리는 기존 /api/admin/applications/<id>/approve|reject 를
+# 프런트에서 그대로 재사용한다(여기서 중복 구현하지 않음).
+_MEMBER_GROUPS = {"all", "general", "agent", "operator", "pending"}
+
+# 그룹별 SELECT — UNION ALL 을 위해 컬럼 구성을 통일한다.
+# (id, member_type, name, email, group_label, phone, status, applicant_type, created_at)
+_MEMBER_SELECTS = {
+    "general": """
+        SELECT id, 'general' AS member_type, COALESCE(name, '-') AS name, email,
+               '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
+               NULL AS applicant_type, created_at
+        FROM users
+    """,
+    "agent": """
+        SELECT id, 'agent' AS member_type, owner_name AS name, email,
+               office_name AS group_label, phone, status,
+               NULL AS applicant_type, created_at
+        FROM agents WHERE status = 'approved'
+    """,
+    "operator": """
+        SELECT id, 'operator' AS member_type, owner_name AS name, email,
+               (category || ' · ' || company_name) AS group_label, phone, status,
+               NULL AS applicant_type, created_at
+        FROM operators WHERE status = 'approved'
+    """,
+    "pending": """
+        SELECT id, 'pending' AS member_type, owner_name AS name, email,
+               office_or_company_name AS group_label, phone, status,
+               applicant_type, submitted_at AS created_at
+        FROM applications WHERE status = 'submitted'
+    """,
+}
+
+
+@app.route("/api/admin/members")
+@require_admin
+def admin_members_list():
+    group = (request.args.get("group") or "all").strip()
+    if group not in _MEMBER_GROUPS:
+        return jsonify({"ok": False, "message": "group은 all|general|agent|operator|pending 중 하나여야 합니다."}), 400
+    q = (request.args.get("q") or "").strip()
+    page, size, offset = _admin_paging()
+
+    union_sql = " UNION ALL ".join(_MEMBER_SELECTS.values())
+    where = []
+    params = []
+    if q:
+        where.append("(m.name ILIKE %s OR m.email ILIKE %s)")
+        like = f"%{q}%"
+        params += [like, like]
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # 그룹별 인원수 (검색어 적용 — 목록 숫자와 일치하도록)
+    cur.execute(f"""
+        SELECT m.member_type, COUNT(*) AS c
+        FROM ({union_sql}) m
+        {where_sql}
+        GROUP BY m.member_type
+    """, params)
+    counts = {r["member_type"]: r["c"] for r in cur.fetchall()}
+    for k in ("general", "agent", "operator", "pending"):
+        counts.setdefault(k, 0)
+    counts["all"] = sum(counts.values())
+
+    group_filter = where_sql
+    group_params = list(params)
+    if group != "all":
+        group_filter = (group_filter + (" AND " if group_filter else " WHERE ")) + "m.member_type = %s"
+        group_params.append(group)
+
+    cur.execute(f"SELECT COUNT(*) AS c FROM ({union_sql}) m {group_filter}", group_params)
+    total = cur.fetchone()["c"]
+
+    cur.execute(f"""
+        SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
+               m.status, m.applicant_type,
+               to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM ({union_sql}) m
+        {group_filter}
+        ORDER BY m.created_at DESC NULLS LAST, m.member_type, m.id DESC
+        LIMIT %s OFFSET %s
+    """, group_params + [size, offset])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "counts": counts, "items": items})
+
+
 # 신청서 doc_type → applications 테이블 컬럼 매핑 (관리자 서류 열람용 화이트리스트)
 _APP_DOC_COLUMNS = {
     "license": "doc_license_url",

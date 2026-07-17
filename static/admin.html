@@ -18,6 +18,7 @@
         <button class="admin-menu-item is-active" data-menu="stats">통계 대시보드</button>
         <button class="admin-menu-item" data-menu="buildings">건물마스터</button>
         <button class="admin-menu-item" data-menu="applications">신청승인</button>
+        <button class="admin-menu-item" data-menu="members">회원관리</button>
         <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
@@ -1196,10 +1197,169 @@
       loadPopupList();
     }
 
+    // ---- 회원관리: users/agents/operators/applications 통합 조회 뷰 ----
+    // 조회는 /api/admin/members, 승인대기 행의 승인/반려는 기존 신청승인 API를 그대로 호출.
+    const MEMBER_GROUPS = [
+      { key: "all", label: "전체" },
+      { key: "general", label: "일반회원" },
+      { key: "agent", label: "중개사" },
+      { key: "operator", label: "운영업체" },
+      { key: "pending", label: "승인대기" },
+    ];
+    const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영업체", pending: "승인대기" };
+    const MEMBER_STATUS_BADGE = {
+      active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"],
+      suspended: ["정지", "no"], deleted: ["탈퇴", "no"],
+    };
+    let membersState = { group: "all", q: "", page: 1, size: 50 };
+
+    async function loadMembers() {
+      const s = membersState;
+      const listEl = document.getElementById("membersList");
+      if (!listEl) return;
+      listEl.innerHTML = `<div class="stats-loading">불러오는 중…</div>`;
+      let d;
+      try {
+        const params = new URLSearchParams({ group: s.group, page: s.page, size: s.size });
+        if (s.q) params.set("q", s.q);
+        const res = await fetch(`/api/admin/members?${params}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("members fetch failed");
+        d = await res.json();
+      } catch (e) {
+        listEl.innerHTML = `<div class="stats-loading">회원 목록을 불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        return;
+      }
+
+      // 그룹 필터 버튼의 인원수 갱신
+      MEMBER_GROUPS.forEach((g) => {
+        const el = document.getElementById(`memberCount_${g.key}`);
+        if (el) el.textContent = (d.counts && d.counts[g.key] != null) ? d.counts[g.key].toLocaleString("ko-KR") : "0";
+      });
+
+      const rows = (d.items || []).map((r) => {
+        const typeLabel = MEMBER_TYPE_LABEL[r.member_type] || r.member_type;
+        const badge = r.member_type === "pending"
+          ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영업체" : "")}</span>`
+          : dgEscape(typeLabel);
+        const st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
+        const actions = r.member_type === "pending"
+          ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
+             <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button>`
+          : `<span style="color:var(--ink-soft);">—</span>`;
+        return `<tr>
+          <td>${dgEscape(r.name || "-")}</td>
+          <td>${dgEscape(r.email || "-")}</td>
+          <td>${badge}</td>
+          <td>${dgEscape(r.group_label || "-") || "-"}</td>
+          <td>${dgEscape(r.created_at || "-")}</td>
+          <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
+          <td><span style="color:var(--ink-soft);">-</span></td>
+          <td style="white-space:nowrap;">${actions}</td>
+        </tr>`;
+      }).join("");
+
+      const totalPages = Math.max(1, Math.ceil((d.total || 0) / s.size));
+      listEl.innerHTML = `
+        <table class="dg-table">
+          <thead><tr>
+            <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>그룹</th>
+            <th>가입일</th><th>상태</th><th>매물의뢰</th><th>작업</th>
+          </tr></thead>
+          <tbody>${rows || `<tr><td colspan="8" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+        </table>
+        <div class="dg-pagination" style="display:flex; align-items:center; gap:10px; padding:12px 4px;">
+          <button class="admin-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>이전</button>
+          <span style="font-size:13px;">${s.page} / ${totalPages} 페이지 · 총 ${(d.total || 0).toLocaleString("ko-KR")}명</span>
+          <button class="admin-btn" id="membersNext" ${s.page >= totalPages ? "disabled" : ""}>다음</button>
+        </div>`;
+      const prev = document.getElementById("membersPrev");
+      const next = document.getElementById("membersNext");
+      if (prev) prev.addEventListener("click", () => { membersState.page -= 1; loadMembers(); });
+      if (next) next.addEventListener("click", () => { membersState.page += 1; loadMembers(); });
+    }
+
+    // 승인/반려 — 신청승인 메뉴와 동일한 기존 API 호출 (로직 재사용, 처리 자체는 서버 기존 코드)
+    window.memberApprove = async function (appId, btn) {
+      if (!window.confirm("이 신청을 승인할까요? 승인하면 정식 등록됩니다.")) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/approve`, { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          if (typeof data.sms_sent !== "undefined") {
+            if (data.sms_sent) window.alert("승인 완료 — 임시비밀번호가 문자로 발송되었습니다.");
+            else window.alert("승인 완료 — 문자 발송 실패. 아래 임시비밀번호를 직접 전달하세요: "
+              + (data.temp_password || "(없음)") + "\n(사유: " + (data.sms_message || "알 수 없음") + ")");
+          }
+          loadMembers();
+          return;
+        }
+        window.alert(data.message || "승인에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      finally { btn.disabled = false; }
+    };
+    window.memberReject = async function (appId, btn) {
+      const reason = await dgPromptModal({
+        title: "신청 반려", label: "반려 사유",
+        placeholder: "반려 사유를 입력하세요", submitLabel: "반려", submitClass: "admin-btn-danger",
+      });
+      if (reason == null) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/reject`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) { loadMembers(); return; }
+        window.alert(data.message || "반려에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      finally { btn.disabled = false; }
+    };
+
+    function showMembers() {
+      destroyStatsCharts();
+      membersState = { group: "all", q: "", page: 1, size: 50 };
+      mount.innerHTML = `
+        <div class="stats-head" style="margin-bottom:14px;">
+          <h2 class="stats-title">회원관리</h2>
+          <p class="stats-sub">일반회원·중개사·운영업체·승인대기 신청을 한 화면에서 조회합니다. 승인/반려는 신청승인과 동일하게 처리됩니다.</p>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;" id="membersGroupBar">
+          ${MEMBER_GROUPS.map((g) => `
+            <button class="admin-btn member-group-btn ${g.key === "all" ? "admin-btn-primary" : ""}" data-group="${g.key}">
+              ${g.label} <span id="memberCount_${g.key}" style="font-weight:700;">…</span>
+            </button>`).join("")}
+        </div>
+        <div style="display:flex; gap:8px; margin-bottom:12px; max-width:420px;">
+          <input type="text" id="membersSearch" class="admin-input" placeholder="이름·이메일 검색" style="flex:1;" />
+          <button class="admin-btn" id="membersSearchBtn">검색</button>
+        </div>
+        <div id="membersList"></div>`;
+      document.querySelectorAll(".member-group-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".member-group-btn").forEach((b) => b.classList.remove("admin-btn-primary"));
+          btn.classList.add("admin-btn-primary");
+          membersState.group = btn.getAttribute("data-group");
+          membersState.page = 1;
+          loadMembers();
+        });
+      });
+      const searchInput = document.getElementById("membersSearch");
+      const doSearch = () => { membersState.q = searchInput.value.trim(); membersState.page = 1; loadMembers(); };
+      document.getElementById("membersSearchBtn").addEventListener("click", doSearch);
+      searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+      loadMembers();
+    }
+
     function showView(menuKey) {
       stopTxSyncPolling();
       stopBackfillPolling();
       if (menuKey === "stats") { showStats(menuKey); return; }
+      if (menuKey === "members") { showMembers(); return; }
       if (menuKey === "legal") { showLegal(); return; }
       if (menuKey === "geocode") { showGeocode(); return; }
       if (menuKey === "txsync") { showTxSync(); return; }
