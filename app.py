@@ -605,6 +605,80 @@ def get_buildings_geo():
     return jsonify({"total": len(rows), "items": rows})
 
 
+# 실거래 추이 집계의 공통 상수/로직 — /api/monthly-trend(A/B화면)와
+# /api/admin/stats(관리자 대시보드)가 동일하게 공유한다(중복 방지).
+TREND_FLOOR_YM = "2020-01"  # 백필 목표 하한 — 이 이전 계약월은 집계에서 제외
+
+
+def _trend_bucket_items(agg, now):
+    """월별 집계 dict를 추이 차트용 버킷 목록으로 변환한다.
+
+    agg: {"YYYY-MM": {"cnt": int, "sum_price": int}} (TREND_FLOOR_YM 이전은 이미 제외된 상태)
+    반환: (items, granularity)
+      - items: [{"ym": "YYYY-MM"|"YYYY-Qn", "count": int, "sum_price": int}, ...] (과거→최근, 빈 버킷 0)
+      - granularity: "month" | "quarter" (기간이 24개월 초과면 분기로 자동 전환)
+    데이터가 전혀 없으면 최근 12개월(전부 0) month 버킷을 반환한다(하위호환).
+    """
+    now_ym = f"{now.year:04d}-{now.month:02d}"
+
+    def _month_range(start_ym_, end_ym_):
+        """start~end(포함) YYYY-MM 목록 (과거 → 최근)."""
+        sy, sm = int(start_ym_[:4]), int(start_ym_[5:7])
+        ey, em = int(end_ym_[:4]), int(end_ym_[5:7])
+        out = []
+        while (sy, sm) <= (ey, em):
+            out.append(f"{sy:04d}-{sm:02d}")
+            sm += 1
+            if sm == 13:
+                sm = 1
+                sy += 1
+        return out
+
+    if agg:
+        start_ym = min(agg.keys())
+        if start_ym > now_ym:  # 미래 계약일만 있는 극단 케이스 방어
+            start_ym = now_ym
+    else:
+        # 데이터 없음 → 기존과 동일하게 최근 12개월(전부 0)
+        y, m = now.year, now.month
+        m -= 11
+        while m <= 0:
+            m += 12
+            y -= 1
+        start_ym = f"{y:04d}-{m:02d}"
+
+    months = _month_range(start_ym, now_ym)
+
+    if len(months) > 24:
+        # 24개월 초과 → 분기별(3개월) 버킷으로 자동 전환. 라벨은 "2025-Q1" 형식.
+        def _q(ym):
+            return f"{ym[:4]}-Q{(int(ym[5:7]) - 1) // 3 + 1}"
+        qagg = {}
+        for ym, v in agg.items():
+            k = _q(ym)
+            cur_v = qagg.setdefault(k, {"cnt": 0, "sum_price": 0})
+            cur_v["cnt"] += v["cnt"]
+            cur_v["sum_price"] += v["sum_price"]
+        quarters = []
+        for ym in months:
+            k = _q(ym)
+            if not quarters or quarters[-1] != k:
+                quarters.append(k)
+        items = [{
+            "ym": q,
+            "count": qagg.get(q, {}).get("cnt", 0),
+            "sum_price": qagg.get(q, {}).get("sum_price", 0),
+        } for q in quarters]
+        return items, "quarter"
+
+    items = [{
+        "ym": ym,
+        "count": agg.get(ym, {}).get("cnt", 0),
+        "sum_price": agg.get(ym, {}).get("sum_price", 0),
+    } for ym in months]
+    return items, "month"
+
+
 @app.route("/api/monthly-trend")
 def get_monthly_trend():
     """
@@ -619,10 +693,8 @@ def get_monthly_trend():
     실거래만 집계하고, 없으면 기존처럼 전체를 집계한다(하위호환).
     """
     now = datetime.now()
-    # 집계 시작월은 '실제 데이터의 최소 계약월'로 하되, 백필 목표 범위(2020-01) 이전은 잘라낸다.
-    # 데이터가 전혀 없으면 기존처럼 최근 12개월 버킷(전부 0)을 돌려준다(하위호환).
-    TREND_FLOOR_YM = "2020-01"
-
+    # 집계 시작월은 '실제 데이터의 최소 계약월'로 하되, 백필 목표 범위(TREND_FLOOR_YM) 이전은 잘라낸다.
+    # 버킷 계산(월/분기 전환 포함)은 _trend_bucket_items 공용 헬퍼 사용.
     where = ["deal_date IS NOT NULL", "substring(deal_date, 1, 7) >= %s"]
     params = [TREND_FLOOR_YM]
 
@@ -670,65 +742,8 @@ def get_monthly_trend():
     cur.close()
     conn.close()
 
-    now_ym = f"{now.year:04d}-{now.month:02d}"
-
-    def _month_range(start_ym_, end_ym_):
-        """start~end(포함) YYYY-MM 목록 (과거 → 최근)."""
-        sy, sm = int(start_ym_[:4]), int(start_ym_[5:7])
-        ey, em = int(end_ym_[:4]), int(end_ym_[5:7])
-        out = []
-        while (sy, sm) <= (ey, em):
-            out.append(f"{sy:04d}-{sm:02d}")
-            sm += 1
-            if sm == 13:
-                sm = 1
-                sy += 1
-        return out
-
-    if agg:
-        start_ym = min(agg.keys())  # 쿼리에서 이미 2020-01 이전은 제외됨
-        if start_ym > now_ym:  # 미래 계약일만 있는 극단 케이스 방어
-            start_ym = now_ym
-    else:
-        # 데이터 없음 → 기존과 동일하게 최근 12개월(전부 0)
-        y, m = now.year, now.month
-        m -= 11
-        while m <= 0:
-            m += 12
-            y -= 1
-        start_ym = f"{y:04d}-{m:02d}"
-
-    months = _month_range(start_ym, now_ym)
-
-    if len(months) > 24:
-        # 24개월 초과 → 분기별(3개월) 버킷으로 자동 전환. 라벨은 "2025-Q1" 형식.
-        def _q(ym):
-            return f"{ym[:4]}-Q{(int(ym[5:7]) - 1) // 3 + 1}"
-        qagg = {}
-        for ym, v in agg.items():
-            k = _q(ym)
-            cur_v = qagg.setdefault(k, {"cnt": 0, "sum_price": 0})
-            cur_v["cnt"] += v["cnt"]
-            cur_v["sum_price"] += v["sum_price"]
-        quarters = []
-        for ym in months:
-            k = _q(ym)
-            if not quarters or quarters[-1] != k:
-                quarters.append(k)
-        items = [{
-            "ym": q,
-            "count": qagg.get(q, {}).get("cnt", 0),
-            "sum_price": qagg.get(q, {}).get("sum_price", 0),
-        } for q in quarters]
-        return jsonify({"items": items, "granularity": "quarter"})
-
-    items = [{
-        "ym": ym,
-        "count": agg.get(ym, {}).get("cnt", 0),
-        "sum_price": agg.get(ym, {}).get("sum_price", 0),
-    } for ym in months]
-
-    return jsonify({"items": items, "granularity": "month"})
+    items, granularity = _trend_bucket_items(agg, now)
+    return jsonify({"items": items, "granularity": granularity})
 
 
 @app.route("/api/regions")
@@ -5598,28 +5613,33 @@ def admin_stats():
     conn = get_conn()
     cur = conn.cursor()
 
-    # 1) 실거래: 최근 12개월 월별 거래건수·거래금액(만원) 합계 — 0인 달도 채움
+    # 1) 실거래 추이 — /api/monthly-trend(A/B화면)와 동일한 가변 기간 로직 공유:
+    #    실제 MIN(계약월)(하한 TREND_FLOOR_YM)부터 현재까지, 24개월 초과 시 분기 버킷 자동 전환.
+    #    빈 버킷 0 채움은 _trend_bucket_items가 처리한다.
+    now = datetime.now()
     cur.execute("""
-        WITH months AS (
-            SELECT to_char(gs, 'YYYY-MM') AS ym
-            FROM generate_series(
-                date_trunc('month', CURRENT_DATE) - INTERVAL '11 months',
-                date_trunc('month', CURRENT_DATE),
-                INTERVAL '1 month'
-            ) AS gs
-        )
-        SELECT m.ym AS month,
-               COUNT(t.id) AS count,
-               COALESCE(SUM(t.price), 0) AS amount
-        FROM months m
-        LEFT JOIN transactions t ON substring(t.deal_date, 1, 7) = m.ym
-        GROUP BY m.ym
-        ORDER BY m.ym
-    """)
+        SELECT substring(deal_date, 1, 7) AS ym,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(price), 0) AS sum_price
+        FROM transactions
+        WHERE deal_date IS NOT NULL AND substring(deal_date, 1, 7) >= %s
+        GROUP BY ym
+    """, [TREND_FLOOR_YM])
+    agg = {r["ym"]: {"cnt": r["cnt"], "sum_price": int(r["sum_price"] or 0)} for r in cur.fetchall()}
+    trend_items, trend_granularity = _trend_bucket_items(agg, now)
     tx_monthly = [
-        {"month": r["month"], "count": int(r["count"]), "amount": int(r["amount"])}
-        for r in cur.fetchall()
+        {"month": it["ym"], "count": int(it["count"]), "amount": int(it["sum_price"])}
+        for it in trend_items
     ]
+
+    # KPI "최근 12개월 거래"는 기존 의미 유지 — 추이 버킷(전체 기간/분기)과 무관하게
+    # 월별 원집계(agg)에서 최근 12개월 건수만 합산한다.
+    y12, m12 = now.year, now.month - 11
+    while m12 <= 0:
+        m12 += 12
+        y12 -= 1
+    last12_floor = f"{y12:04d}-{m12:02d}"
+    tx_last12_count = sum(v["cnt"] for ym, v in agg.items() if ym >= last12_floor)
 
     # 2) 용도별(생활/호텔/콘도) 건물 수 분포
     cur.execute("""
@@ -5704,7 +5724,11 @@ def admin_stats():
     conn.close()
 
     return jsonify({
-        "transactions": {"monthly": tx_monthly},
+        "transactions": {
+            "monthly": tx_monthly,
+            "granularity": trend_granularity,
+            "last12_count": tx_last12_count,
+        },
         "buildings": {"by_type": building_by_type, "by_sido": building_by_sido},
         "members": members,
         "operators": {"by_category": operator_by_category},

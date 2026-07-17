@@ -416,7 +416,13 @@
       const ag = m.agent || { pending: 0, approved: 0, rejected: 0 };
       const op = m.operator || { pending: 0, approved: 0, rejected: 0 };
       const tx = (d.transactions && d.transactions.monthly) || [];
-      const totalTx = tx.reduce((s, r) => s + (r.count || 0), 0);
+      const txGranularity = (d.transactions && d.transactions.granularity) || "month";
+      const totalTx = (d.transactions && typeof d.transactions.last12_count === "number")
+        ? d.transactions.last12_count
+        : tx.reduce((s, r) => s + (r.count || 0), 0);
+      const txHint = (txGranularity === "quarter")
+        ? `전체 기간 분기별 표시(24개월 초과, ${tx.length}개 분기) · 막대=거래건수, 선=거래금액(만원)`
+        : `최근 ${tx.length}개월 · 막대=거래건수, 선=거래금액(만원)`;
       const totalBld = ((d.buildings && d.buildings.by_type) || []).reduce((s, r) => s + (r.count || 0), 0);
       const collectStart = (d.views && d.views.collect_start) || "-";
 
@@ -435,7 +441,7 @@
 
         <div class="stats-grid">
           <section class="stats-card stats-card-wide">
-            <h3 class="stats-card-title">실거래 추이 <span class="stats-card-hint">최근 12개월 · 막대=거래건수, 선=거래금액(만원)</span></h3>
+            <h3 class="stats-card-title">실거래 추이 <span class="stats-card-hint">${txHint}</span></h3>
             <div class="stats-chart-box"><canvas id="chartTx"></canvas></div>
           </section>
 
