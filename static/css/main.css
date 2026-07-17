@@ -678,6 +678,20 @@
 }
 .auth-submit:hover{ background:#0E1721; }
 .auth-submit:disabled{ opacity:.6; cursor:not-allowed; }
+/* 회원가입 동의 체크박스 블록 */
+.auth-consent{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:12px 0 14px; }
+.auth-consent-row{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink); padding:4px 0; cursor:pointer; }
+.auth-consent-row input[type="checkbox"]{ width:15px; height:15px; accent-color:var(--brass); flex:0 0 auto; cursor:pointer; }
+.auth-consent-all{ font-size:13px; }
+.auth-consent-sep{ border-top:1px solid var(--line); margin:6px 0; }
+.auth-consent .agree-tag{ color:var(--brass-dark); font-weight:700; font-size:11.5px; }
+.auth-consent .agree-tag-opt{ color:var(--ink-soft); }
+.auth-consent a{ color:var(--brass-dark); font-weight:600; text-decoration:underline; }
+.auth-consent-privacy{ display:flex; align-items:center; justify-content:space-between; gap:6px; cursor:default; }
+.auth-consent-privacy label{ display:flex; align-items:center; gap:7px; cursor:pointer; }
+.auth-consent-toggle{ background:none; border:none; color:var(--ink-soft); font-size:11.5px; cursor:pointer; padding:2px 4px; flex:0 0 auto; }
+.auth-consent-detail{ background:#F7F8FA; border:1px solid var(--line); border-radius:6px; padding:9px 11px; margin:4px 0 6px; font-size:11.5px; line-height:1.65; color:var(--ink-soft); }
+
 .auth-switch{ text-align:center; font-size:12.5px; color:var(--ink-soft); margin-top:16px; }
 .auth-switch a{ color:var(--brass-dark); font-weight:600; text-decoration:none; margin-left:6px; }
 .auth-switch a:hover{ text-decoration:underline; }

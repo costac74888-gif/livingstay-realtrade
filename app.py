@@ -1551,6 +1551,12 @@ def auth_signup():
     if not name:
         return jsonify({"ok": False, "message": "이름을 입력해주세요."}), 400
 
+    # 법적 동의 재검증 — 클라이언트 체크박스와 무관하게 서버에서도 필수 3개를 강제.
+    # (만 14세 이상 / 이용약관 / 개인정보 수집·이용. 하나라도 빠지면 400)
+    if not (data.get("age14") is True and data.get("terms") is True and data.get("privacy") is True):
+        return jsonify({"ok": False, "message": "필수 약관(만 14세 이상, 이용약관, 개인정보 수집·이용)에 모두 동의해주세요."}), 400
+    marketing = data.get("marketing") is True  # 선택 동의 — 체크한 경우에만 시각 기록
+
     pw_hash = generate_password_hash(password)
     conn = get_conn()
     cur = conn.cursor()
@@ -1560,9 +1566,12 @@ def auth_signup():
         if cur.fetchone():
             return jsonify({"ok": False, "message": "이미 가입된 이메일입니다."}), 400
         cur.execute(
-            """INSERT INTO users (email, password_hash, name, provider, last_login_at)
-               VALUES (%s, %s, %s, 'email', NOW()) RETURNING id""",
-            (email, pw_hash, name),
+            """INSERT INTO users (email, password_hash, name, provider, last_login_at,
+                                  terms_agreed_at, privacy_agreed_at, marketing_agreed_at)
+               VALUES (%s, %s, %s, 'email', NOW(),
+                       NOW(), NOW(), CASE WHEN %s THEN NOW() ELSE NULL END)
+               RETURNING id""",
+            (email, pw_hash, name, marketing),
         )
         new_id = cur.fetchone()["id"]
         conn.commit()

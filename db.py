@@ -442,6 +442,10 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
+    # 법적 동의 이력 (이메일 회원가입 시 기록. 카카오 간편가입은 추후 별도 적용 예정이라 NULL 허용)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_agreed_at TIMESTAMP")      # [필수] 이용약관 동의 시각
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_agreed_at TIMESTAMP")    # [필수] 개인정보 수집·이용 동의 시각
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_agreed_at TIMESTAMP")  # [선택] 마케팅 수신 동의 시각(미동의 NULL)
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

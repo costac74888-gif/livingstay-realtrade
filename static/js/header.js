@@ -97,6 +97,34 @@
             '<label for="authPassword">비밀번호</label>' +
             '<input type="password" id="authPassword" placeholder="비밀번호 (8자 이상)" autocomplete="current-password" required />' +
           '</div>' +
+          '<div class="auth-consent" id="authConsent" style="display:none;">' +
+            '<label class="auth-consent-row auth-consent-all">' +
+              '<input type="checkbox" id="agreeAll" /> <b>전체 동의</b>' +
+            '</label>' +
+            '<div class="auth-consent-sep"></div>' +
+            '<label class="auth-consent-row">' +
+              '<input type="checkbox" id="agreeAge14" class="agree-required" /> <span class="agree-tag">[필수]</span> 만 14세 이상입니다' +
+            '</label>' +
+            '<label class="auth-consent-row">' +
+              '<input type="checkbox" id="agreeTerms" class="agree-required" /> <span class="agree-tag">[필수]</span> <a href="/terms" target="_blank" rel="noopener">이용약관</a> 동의' +
+            '</label>' +
+            '<div class="auth-consent-row auth-consent-privacy">' +
+              '<label>' +
+                '<input type="checkbox" id="agreePrivacy" class="agree-required" /> <span class="agree-tag">[필수]</span> 개인정보 수집·이용 동의' +
+              '</label>' +
+              '<button type="button" class="auth-consent-toggle" id="privacyToggle" aria-expanded="false" aria-controls="privacyDetail">펼치기 ▾</button>' +
+            '</div>' +
+            '<div class="auth-consent-detail" id="privacyDetail" style="display:none;">' +
+              '수집항목: 이메일, 비밀번호(암호화 저장), 이름<br/>' +
+              '수집목적: 회원 가입 및 본인 확인, 서비스 이용(관심단지 저장·실거래알림 등) 제공<br/>' +
+              '보유·이용기간: 회원 탈퇴 시까지(탈퇴 후 관계법령에 따라 필요한 경우 별도 보관)<br/>' +
+              '동의 거부 권리 및 불이익: 위 동의는 회원가입을 위한 필수 항목으로, 동의하지 않으실 경우 회원가입이 제한됩니다.<br/>' +
+              '<a href="/privacy" target="_blank" rel="noopener">개인정보처리방침 전문</a>' +
+            '</div>' +
+            '<label class="auth-consent-row">' +
+              '<input type="checkbox" id="agreeMarketing" /> <span class="agree-tag agree-tag-opt">[선택]</span> 마케팅 정보(이메일) 수신 동의' +
+            '</label>' +
+          '</div>' +
           '<button type="submit" class="auth-submit" id="authSubmit">로그인</button>' +
         '</form>' +
         '<div class="auth-switch">' +

@@ -23,6 +23,62 @@
 
   var mode = "login"; // "login" | "signup"
 
+  // ---- 회원가입 동의 체크박스 (header.js 가 마크업 주입) ----
+  var consentBox = document.getElementById("authConsent");
+  var agreeAll = document.getElementById("agreeAll");
+  var agreeAge14 = document.getElementById("agreeAge14");
+  var agreeTerms = document.getElementById("agreeTerms");
+  var agreePrivacy = document.getElementById("agreePrivacy");
+  var agreeMarketing = document.getElementById("agreeMarketing");
+  var privacyToggle = document.getElementById("privacyToggle");
+  var privacyDetail = document.getElementById("privacyDetail");
+
+  function requiredAgreed() {
+    return !!(agreeAge14 && agreeAge14.checked && agreeTerms.checked && agreePrivacy.checked);
+  }
+  // 가입 모드에서는 필수 3개(만14세·이용약관·개인정보) 모두 체크해야 가입하기 활성화.
+  function updateSubmitState() {
+    if (!submitBtn) return;
+    submitBtn.disabled = (mode === "signup") && !requiredAgreed();
+  }
+  function syncAgreeAll() {
+    if (agreeAll) {
+      agreeAll.checked = requiredAgreed() && !!(agreeMarketing && agreeMarketing.checked);
+    }
+    updateSubmitState();
+  }
+  if (consentBox) {
+    if (agreeAll) agreeAll.addEventListener("change", function () {
+      var v = agreeAll.checked;
+      agreeAge14.checked = v; agreeTerms.checked = v; agreePrivacy.checked = v;
+      if (agreeMarketing) agreeMarketing.checked = v;
+      updateSubmitState();
+    });
+    [agreeAge14, agreeTerms, agreePrivacy, agreeMarketing].forEach(function (el) {
+      if (el) el.addEventListener("change", syncAgreeAll);
+    });
+    // 체크박스 라벨 안의 링크(/terms 등) 클릭 시 체크 토글 없이 새 탭만 열리도록.
+    consentBox.querySelectorAll("a").forEach(function (a) {
+      a.addEventListener("click", function (ev) { ev.stopPropagation(); });
+    });
+    if (privacyToggle && privacyDetail) {
+      privacyToggle.addEventListener("click", function () {
+        var open = privacyDetail.style.display !== "none";
+        privacyDetail.style.display = open ? "none" : "block";
+        privacyToggle.textContent = open ? "펼치기 ▾" : "접기 ▴";
+        privacyToggle.setAttribute("aria-expanded", open ? "false" : "true");
+      });
+    }
+  }
+  function resetConsent() {
+    if (!consentBox) return;
+    [agreeAll, agreeAge14, agreeTerms, agreePrivacy, agreeMarketing].forEach(function (el) {
+      if (el) el.checked = false;
+    });
+    if (privacyDetail) privacyDetail.style.display = "none";
+    if (privacyToggle) { privacyToggle.textContent = "펼치기 ▾"; privacyToggle.setAttribute("aria-expanded", "false"); }
+  }
+
   function escapeHtml(s) {
     if (s == null) return "";
     return String(s)
@@ -49,6 +105,8 @@
       switchText.textContent = "이미 회원이신가요?";
       switchLink.textContent = "로그인";
       passwordInput.setAttribute("autocomplete", "new-password");
+      if (consentBox) consentBox.style.display = "";
+      resetConsent();
     } else {
       titleEl.textContent = "로그인";
       nameField.style.display = "none";
@@ -56,7 +114,9 @@
       switchText.textContent = "아직 회원이 아니신가요?";
       switchLink.textContent = "회원가입";
       passwordInput.setAttribute("autocomplete", "current-password");
+      if (consentBox) consentBox.style.display = "none";
     }
+    updateSubmitState();
   }
 
   function openModal() {
@@ -197,10 +257,18 @@
       showError("이름을 입력해주세요.");
       return;
     }
+    if (mode === "signup" && !requiredAgreed()) {
+      showError("필수 약관에 모두 동의해주세요.");
+      return;
+    }
 
     var url = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
     var body = mode === "signup"
-      ? { email: email, password: password, name: name }
+      ? { email: email, password: password, name: name,
+          age14: !!(agreeAge14 && agreeAge14.checked),
+          terms: !!(agreeTerms && agreeTerms.checked),
+          privacy: !!(agreePrivacy && agreePrivacy.checked),
+          marketing: !!(agreeMarketing && agreeMarketing.checked) }
       : { email: email, password: password };
 
     submitBtn.disabled = true;
@@ -220,7 +288,7 @@
         }
       })
       .catch(function () { showError("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요."); })
-      .finally(function () { submitBtn.disabled = false; });
+      .finally(function () { updateSubmitState(); });
   }
 
   // 카카오 로그인 실패 시 홈으로 ?login_error=1 붙여 돌아옴 → 안내 후 URL 정리
