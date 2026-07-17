@@ -91,9 +91,28 @@
         </div>
       </div>
 
+      <div class="auth-consent" id="applyConsent">
+        <label class="auth-consent-row">
+          <input type="checkbox" id="applyAgreeTerms" /> <span class="agree-tag">[필수]</span>&nbsp;<a href="/terms" target="_blank" rel="noopener">이용약관</a>&nbsp;동의
+        </label>
+        <div class="auth-consent-row auth-consent-privacy">
+          <label>
+            <input type="checkbox" id="applyAgreePrivacy" /> <span class="agree-tag">[필수]</span>&nbsp;개인정보 수집·이용 동의
+          </label>
+          <button type="button" class="auth-consent-toggle" id="applyPrivacyToggle" aria-expanded="false" aria-controls="applyPrivacyDetail">펼치기 ▾</button>
+        </div>
+        <div class="auth-consent-detail" id="applyPrivacyDetail" style="display:none;">
+          수집항목: 대표자명, 연락처, 이메일, 사업자등록번호(또는 중개사 등록번호), 희망지역/희망건물<br/>
+          수집목적: 신청 심사 및 승인 여부 결정, 승인 시 계정 발급 및 안내 문자(SMS) 발송, 서비스 제공<br/>
+          보유·이용기간: 반려 시 즉시 파기, 승인 시 회원(중개사/운영업체) 자격 유지 기간까지<br/>
+          동의 거부 권리 및 불이익: 위 동의는 신청 심사를 위한 필수 항목으로, 동의하지 않으실 경우 신청이 제한됩니다.<br/>
+          <a href="/privacy" target="_blank" rel="noopener">개인정보처리방침 전문</a>
+        </div>
+      </div>
+
       <div id="formError" style="display:none; font-size:13px; color:var(--brick); background:var(--brick-tint); border:1px solid #F0CFCB; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
 
-      <button type="submit" class="btn-search" id="submitBtn" style="width:100%; padding:12px;">신청하기</button>
+      <button type="submit" class="btn-search" id="submitBtn" style="width:100%; padding:12px;" disabled>신청하기</button>
     </form>
 
     <div id="successBox" style="display:none; text-align:center; padding:24px 12px;">
@@ -137,6 +156,24 @@
   const form = document.getElementById("applyForm");
   const errBox = document.getElementById("formError");
   const submitBtn = document.getElementById("submitBtn");
+
+  // ---- 법적 동의: 필수 2개(이용약관·개인정보) 모두 체크해야 신청하기 활성화 ----
+  const applyAgreeTerms = document.getElementById("applyAgreeTerms");
+  const applyAgreePrivacy = document.getElementById("applyAgreePrivacy");
+  const applyPrivacyToggle = document.getElementById("applyPrivacyToggle");
+  const applyPrivacyDetail = document.getElementById("applyPrivacyDetail");
+  function consentOk(){ return applyAgreeTerms.checked && applyAgreePrivacy.checked; }
+  function updateSubmitState(){ submitBtn.disabled = !consentOk(); }
+  applyAgreeTerms.addEventListener("change", updateSubmitState);
+  applyAgreePrivacy.addEventListener("change", updateSubmitState);
+  // 라벨 안 링크(/terms, /privacy) 클릭 시 체크 토글 없이 새 탭만 열리도록
+  document.querySelectorAll("#applyConsent a").forEach(a => a.addEventListener("click", ev => ev.stopPropagation()));
+  applyPrivacyToggle.addEventListener("click", () => {
+    const open = applyPrivacyDetail.style.display !== "none";
+    applyPrivacyDetail.style.display = open ? "none" : "block";
+    applyPrivacyToggle.textContent = open ? "펼치기 ▾" : "접기 ▴";
+    applyPrivacyToggle.setAttribute("aria-expanded", open ? "false" : "true");
+  });
 
   // 서류 업로드: 파일 선택 즉시 업로드 API로 올리고, 반환된 참조 키를 보관했다가
   // 신청 제출 시 doc_*_url 필드로 함께 전송한다.
@@ -185,8 +222,14 @@
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     errBox.style.display = "none";
+    if (!consentOk()){
+      showError("필수 약관(이용약관, 개인정보 수집·이용)에 모두 동의해주세요.");
+      return;
+    }
 
     const payload = {
+      terms: applyAgreeTerms.checked,
+      privacy: applyAgreePrivacy.checked,
       office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
       owner_name: document.getElementById("owner_name").value.trim(),
       category: document.getElementById("category").value,
@@ -213,13 +256,13 @@
       data = await res.json();
       if (!res.ok || !data.ok){
         showError((data && data.message) || "신청 접수에 실패했습니다. 잠시 후 다시 시도해주세요.");
-        submitBtn.disabled = false;
+        updateSubmitState();
         submitBtn.textContent = "신청하기";
         return;
       }
     } catch(err){
       showError("네트워크 오류로 신청에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      submitBtn.disabled = false;
+      updateSubmitState();
       submitBtn.textContent = "신청하기";
       return;
     }

@@ -309,6 +309,9 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES admin_users(id)")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP")
+    # 법적 동의 이력 (신청 시 필수 동의 시각 — 기존 행은 NULL 허용)
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS terms_agreed_at TIMESTAMP")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS privacy_agreed_at TIMESTAMP")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS slots (

@@ -1122,6 +1122,10 @@ def apply_agent():
     if missing:
         return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
 
+    # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
+    if data.get("terms") is not True or data.get("privacy") is not True:
+        return jsonify({"ok": False, "message": "필수 약관(이용약관, 개인정보 수집·이용)에 모두 동의해주세요."}), 400
+
     # 간단한 이메일 형식 체크 (@ 앞뒤로 내용, . 포함)
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
@@ -1142,9 +1146,10 @@ def apply_agent():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
-             intro_text, doc_license_url, doc_office_reg_url, doc_biz_reg_url)
+             intro_text, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
+             terms_agreed_at, privacy_agreed_at)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, %s, %s, %s)
+                NULL, %s, %s, %s, NOW(), NOW())
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
@@ -1214,6 +1219,10 @@ def apply_operator():
     if missing:
         return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
 
+    # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
+    if data.get("terms") is not True or data.get("privacy") is not True:
+        return jsonify({"ok": False, "message": "필수 약관(이용약관, 개인정보 수집·이용)에 모두 동의해주세요."}), 400
+
     # 업종은 허용된 6개 중 하나만
     if category not in OPERATOR_CATEGORIES:
         return jsonify({"ok": False, "message": "업종은 다음 중 하나여야 합니다: " + ", ".join(sorted(OPERATOR_CATEGORIES))}), 400
@@ -1237,9 +1246,10 @@ def apply_operator():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, category,
              biz_reg_number, phone, email, website_url, preferred_region, status,
-             reg_number, intro_text, doc_business_card_url, doc_biz_license_url)
+             reg_number, intro_text, doc_business_card_url, doc_biz_license_url,
+             terms_agreed_at, privacy_agreed_at)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s)
+                NULL, NULL, %s, %s, NOW(), NOW())
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,

@@ -16,3 +16,4 @@
 - [prod map 0 buildings](prod-geo-empty.md) — "(0개 건물)"/empty map ONLY on phone = prod DB has master_buildings with NULL lat/lng (buildings-geo needs lat/lng NOT NULL); phone hits prod URL, desktop hits dev preview — not a mobile CSS bug.
 - [소상공인 상가업소 API](sbiz-store-api.md) — storeListInBuilding 키는 25자리 bldMngNo(≠표제부 mgmBldrgstPk); 건물 조회는 storeListInPnu(PNU 19자리); type=json은 403 → XML만.
 - [mobile header hamburger](mobile-header-hamburger.md) — header.js: bell(#alertMenu) always visible in .header-actions; nav+auth in .header-menu collapsed to #hamburgerBtn ≤520px; index-only left list-toggle via window.HEADER_LEFT_TOGGLE (toggles .side-panel); notif panel position:fixed ≤520px.
+- [header.js modal ID collisions](apply-pages-id-collision.md) — header.js injects modal IDs (agreeTerms 등) into every page; page-local widgets must namespace IDs or auth.js double-binds.
