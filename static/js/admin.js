@@ -52,7 +52,13 @@ class DataGrid {
     );
     // 관리 열은 수정/삭제/커스텀 액션 중 하나라도 있을 때만 그린다.
     this.hasActions = !!(this.cfg.allowEdit || this.cfg.allowDelete || (this.cfg.rowActions && this.cfg.rowActions.length));
-    this.state = { q: "", sort: "id", order: "asc", page: 1, filters: {} };
+    this.state = {
+      q: "",
+      sort: this.cfg.defaultSort || "id",
+      order: this.cfg.defaultOrder || "asc",
+      page: 1,
+      filters: {},
+    };
     (this.cfg.filters || []).forEach((f) => {
       this.state.filters[f.key] = f.default != null ? f.default : "";
     });

@@ -4262,9 +4262,10 @@ ADMIN_TX_EDITABLE = {
 def _admin_tx_filters():
     """실거래 목록/엑셀 공용: sort_expr, order, WHERE절, 파라미터. 검색은 건물명·주소."""
     q = (request.args.get("q") or "").strip()
-    sort_key = (request.args.get("sort") or "id").strip()
-    sort_expr = ADMIN_TX_SORT.get(sort_key, "id")
-    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    # 기본 정렬: 계약일 최신순(deal_date DESC). sort/order 파라미터로 기존처럼 변경 가능.
+    sort_key = (request.args.get("sort") or "deal_date").strip()
+    sort_expr = ADMIN_TX_SORT.get(sort_key, "deal_date")
+    order = "ASC" if (request.args.get("order") or "desc").strip().lower() == "asc" else "DESC"
     where = "1=1"
     params = []
     if q:
