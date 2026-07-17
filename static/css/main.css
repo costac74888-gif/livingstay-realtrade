@@ -257,6 +257,10 @@
   @media (max-width: 980px){
     /* 검색바: 전체 폭으로 */
     .map-searchbar{left:var(--stage-gap);}
+    /* 패널이 열려 있는 동안엔 우측 상단 "🔍 검색" 플로팅 버튼 숨김 —
+       건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라
+       ✕가 묻혀 안 보이는 문제 방지 (패널 닫으면 다시 표시, 데스크톱 무관) */
+    body:has(.side-panel.open) .searchbar-toggle{display:none;}
     /* 좌측 패널: 기본 접힘, 버튼 눌러야 펼쳐짐 */
     .side-panel{
       width:88%; max-width:340px; z-index:25;
