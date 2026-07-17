@@ -85,6 +85,12 @@
   <!-- 지도 위 좌측 플로팅 패널 -->
   <aside class="side-panel">
 
+    <!-- 모바일 전용 상단바: 우측 ✕로 패널 닫기 (기존 플로팅 토글 버튼에 위임) -->
+    <div class="side-panel-mobilebar">
+      <button type="button" class="b-close-btn" id="sidePanelClose" aria-label="목록 패널 닫기" title="닫기"
+        onclick="document.getElementById('btnTogglePanel').click()">✕</button>
+    </div>
+
     <section class="side-card">
       <div class="side-card-title">실거래추세 <span class="side-sub" id="trendGranularityNote"></span></div>
       <div class="side-chart-wrap"><canvas id="trendChart"></canvas></div>

@@ -613,6 +613,12 @@
 }
 .b-close-btn:hover{ filter:brightness(1.15); }
 
+/* 홈(기본) 좌측패널 모바일 전용 상단바 — 우측 ✕로 패널 닫기(#btnTogglePanel 위임) */
+.side-panel-mobilebar{ display:none; }
+@media (max-width:980px){
+  .side-panel-mobilebar{ display:flex; justify-content:flex-end; margin-bottom:10px; }
+}
+
 /* 건물 상세 — 헤더 액션 이모지 버튼 (실거래알림 / 관심저장 / 공유) */
 .b-actions{ display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap; }
 .b-icon-btn{
