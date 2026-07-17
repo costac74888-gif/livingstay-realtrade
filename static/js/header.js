@@ -167,6 +167,12 @@
   if (hamburgerBtn && headerMenu) {
     hamburgerBtn.addEventListener("click", function (e) {
       e.stopPropagation();
+      // 모바일 폭(520px 이하 — 햄버거가 보이는 구간)에서는 드롭다운 대신 전체 메뉴 페이지로 이동.
+      // 데스크톱 폭에서는 기존 드롭다운 동작 그대로 유지(변경 없음).
+      if (window.matchMedia && window.matchMedia("(max-width: 520px)").matches) {
+        window.location.href = "/menu";
+        return;
+      }
       var open = headerMenu.classList.toggle("open");
       hamburgerBtn.setAttribute("aria-expanded", open ? "true" : "false");
     });

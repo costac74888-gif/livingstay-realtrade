@@ -1410,6 +1410,12 @@ def notices_page():
     return _serve_static_html("notices.html")
 
 
+@app.route("/menu")
+def menu_page():
+    """모바일 전용 전체 메뉴 페이지 (햄버거 버튼에서 진입)."""
+    return _serve_static_html("menu.html")
+
+
 @app.route("/mypage")
 def mypage_page():
     """마이페이지 — 로그인 여부는 /api/auth/me로 클라이언트에서 판단한다."""

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>전체 메뉴 — 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 전체 메뉴." />
+<link rel="icon" href="/static/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header id="siteHeader"></header>
+
+<div class="search-panel" style="max-width:640px; padding-bottom:48px;">
+  <div style="margin:16px 0 6px;">
+    <a href="/" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+  </div>
+
+  <!-- 로그인 상태 카드 -->
+  <div class="panel-card" style="margin-bottom:14px;">
+    <div id="menuUserBox" style="display:flex; align-items:center; gap:12px;">
+      <div style="flex:none; width:44px; height:44px; border-radius:50%; background:var(--brass-tint, #F4EDDF); display:flex; align-items:center; justify-content:center; font-size:20px;">👤</div>
+      <div style="flex:1; min-width:0;">
+        <div id="menuUserName" style="font-size:16px; font-weight:700; color:var(--ink);">확인 중…</div>
+        <div id="menuUserEmail" style="font-size:12.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+      </div>
+      <button type="button" id="menuLoginBtn" style="display:none; flex:none; background:var(--ink); color:#fff; border:none; border-radius:8px; padding:9px 18px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit;">로그인</button>
+    </div>
+  </div>
+
+  <!-- 바로가기 -->
+  <div class="panel-card" style="margin-bottom:14px;">
+    <h2 class="menu-sec-title">바로가기</h2>
+    <a class="menu-link" href="/">🗺️ 지도 홈</a>
+    <a class="menu-link" href="/transactions">📋 실거래목록</a>
+    <a class="menu-link" href="/notices">📢 공지사항</a>
+    <a class="menu-link" href="/mypage" id="menuMypageLink" style="display:none;">👤 마이페이지</a>
+  </div>
+
+  <!-- 신청하기 -->
+  <div class="panel-card" style="margin-bottom:14px;">
+    <h2 class="menu-sec-title">신청하기</h2>
+    <a class="menu-link" href="/apply/agent">🏢 중개사 회원신청</a>
+    <a class="menu-link" href="/apply/operator">🛎️ 운영업체 등록신청</a>
+  </div>
+
+  <!-- 약관/정책 -->
+  <div class="panel-card" style="margin-bottom:14px;">
+    <h2 class="menu-sec-title">약관/정책</h2>
+    <a class="menu-link" href="/terms">이용약관</a>
+    <a class="menu-link" href="/privacy">개인정보처리방침</a>
+    <a class="menu-link" href="#" id="menuCompanyLink" role="button">회사소개</a>
+  </div>
+
+  <!-- 로그아웃 -->
+  <div id="menuLogoutWrap" style="display:none; margin-top:6px;">
+    <button type="button" id="menuLogoutBtn" style="width:100%; background:#fff; color:var(--ink-soft); border:1px solid var(--line); border-radius:10px; padding:13px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;">로그아웃</button>
+  </div>
+</div>
+
+<!-- 회사소개 모달 (index.html과 동일 마크업 재사용) -->
+<div class="company-modal-backdrop" id="companyModal" style="display:none;">
+  <div class="company-modal" role="dialog" aria-modal="true" aria-labelledby="companyModalTitle">
+    <button class="company-modal-close" id="companyModalClose" aria-label="닫기">&times;</button>
+    <img class="company-modal-logo" src="/static/home_stay_logo.png" alt="홈앤스테이 HOME &amp; STAY" />
+    <h2 class="company-modal-title" id="companyModalTitle">회사소개</h2>
+    <div class="company-intro">
+      <p>빌드리머스(대표 조혜성)는 국토교통부·한국부동산원의 우수부동산서비스인증을 획득한 신뢰있는 프롭테크 기반 온라인 정보 플랫폼 기업입니다. 전국 최초 생활숙박시설(생숙) 전수 조사 마스터 DB와 공공데이터 연동 검증 기술을 통해 숙박시설 시장의 실거래 정보 비대칭을 혁신적으로 해소하고 있습니다.</p>
+      <p>온라인 실거래가 조회 도구(livingstay-realtrade)를 필두로, 향후 빅데이터에 기반한 시세 진단과 자산 매각 지원 서비스를 제공 예정입니다. 감사합니다.</p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .menu-sec-title { font-size:13px; font-weight:700; color:var(--ink-soft); margin:0 0 8px; letter-spacing:.02em; }
+  .menu-link {
+    display:flex; align-items:center; gap:8px;
+    padding:13px 4px; font-size:15px; font-weight:500; color:var(--ink);
+    text-decoration:none; border-bottom:1px solid var(--line, #e8eaed);
+  }
+  .menu-link:last-child { border-bottom:none; }
+  .menu-link:active { background:var(--brass-tint, #F4EDDF); }
+</style>
+
+<script>
+/* 전체 메뉴 페이지 — 상태 표시는 auth.js가 쏘는 livingstay:auth 이벤트를 단일 소스로 사용.
+   로그인 버튼은 헤더의 #authLoginBtn(로그인 모달), 로그아웃은 헤더의 로그아웃과 동일 API 사용. */
+(function(){
+  function renderState(loggedIn, user){
+    var nameEl = document.getElementById("menuUserName");
+    var emailEl = document.getElementById("menuUserEmail");
+    var loginBtn = document.getElementById("menuLoginBtn");
+    var mypage = document.getElementById("menuMypageLink");
+    var logoutWrap = document.getElementById("menuLogoutWrap");
+    if (loggedIn && user) {
+      nameEl.textContent = (user.name || "회원") + "님";
+      emailEl.textContent = user.email || "";
+      loginBtn.style.display = "none";
+      mypage.style.display = "flex";
+      logoutWrap.style.display = "block";
+    } else {
+      nameEl.textContent = "게스트";
+      emailEl.textContent = "로그인하고 관심단지를 저장해보세요.";
+      loginBtn.style.display = "block";
+      mypage.style.display = "none";
+      logoutWrap.style.display = "none";
+    }
+  }
+  window.addEventListener("livingstay:auth", function(e){
+    renderState(e.detail && e.detail.loggedIn, e.detail && e.detail.user);
+  });
+
+  document.getElementById("menuLoginBtn").addEventListener("click", function(){
+    // auth.js가 헤더에 그려둔 로그인 버튼을 눌러 기존 로그인 모달을 그대로 연다.
+    var btn = document.getElementById("authLoginBtn");
+    if (btn) btn.click();
+  });
+  document.getElementById("menuLogoutBtn").addEventListener("click", function(){
+    fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
+      .then(function(){ if (window.livingstayRefreshAuth) window.livingstayRefreshAuth(); renderState(false, null); })
+      .catch(function(){ if (window.livingstayRefreshAuth) window.livingstayRefreshAuth(); });
+  });
+
+  // 회사소개 모달 (index.html과 동일 동작)
+  var companyModal = document.getElementById("companyModal");
+  var companyLink = document.getElementById("menuCompanyLink");
+  var companyClose = document.getElementById("companyModalClose");
+  function openCompanyModal(e){ if (e) e.preventDefault(); companyModal.style.display = "flex"; }
+  function closeCompanyModal(){ companyModal.style.display = "none"; }
+  companyLink.addEventListener("click", openCompanyModal);
+  companyClose.addEventListener("click", closeCompanyModal);
+  companyModal.addEventListener("click", function(e){ if (e.target === companyModal) closeCompanyModal(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeCompanyModal(); });
+})();
+</script>
+<script>window.PAGE_TITLE = "전체 메뉴";</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
+
+</body>
+</html>
