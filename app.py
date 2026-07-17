@@ -4743,7 +4743,11 @@ _MEMBER_SELECTS = {
     """,
     "pending": """
         SELECT id, 'pending' AS member_type, owner_name AS name, email,
-               office_or_company_name AS group_label, phone, status,
+               CASE
+                   WHEN applicant_type = 'operator' AND category IS NOT NULL AND category <> ''
+                       THEN (category || ' · ' || office_or_company_name)
+                   ELSE office_or_company_name
+               END AS group_label, phone, status,
                applicant_type, submitted_at AS created_at
         FROM applications WHERE status = 'submitted'
     """,
@@ -5296,6 +5300,23 @@ def stats_registration_rate():
         "biz_units": biz_units,
         "rate": rate,
     })
+
+
+@app.route("/api/stats/agent-count")
+def stats_agent_count():
+    """승인(approved)된 전속중개사 수 — 메인 좌측 패널 카드용 (하우스 계정 제외)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) AS c
+        FROM agents
+        WHERE status = 'approved'
+          AND office_name <> '홈스퀘어부동산중개법인'
+    """)
+    n = cur.fetchone()["c"]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "count": n})
 
 
 @app.route("/api/stats/operator-counts")

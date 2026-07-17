@@ -1029,6 +1029,28 @@ async function loadSideStats(){
     }
   }
 
+  // 전속중개사 카드 — 승인된 중개사 수 (하우스 계정 제외, 공개 API)
+  const agentBox = document.getElementById("sideAgentCount");
+  if (agentBox){
+    try {
+      const res = await fetch("/api/stats/agent-count");
+      const d = await res.json();
+      if (res.ok && d.ok){
+        const n = d.count || 0;
+        if (n > 0){
+          agentBox.classList.remove("side-soon");
+          agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 전속중개사 ${n}명</div>`;
+        } else {
+          agentBox.textContent = "등록된 전속중개사가 없습니다. 등록되면 여기에 노출됩니다.";
+        }
+      } else {
+        agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
+      }
+    } catch(e){
+      agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
+    }
+  }
+
   const opBoxes = {
     consign: document.getElementById("sideOpConsign"),
     housekeeping: document.getElementById("sideOpHousekeeping"),
@@ -1050,7 +1072,7 @@ async function loadSideStats(){
         box.classList.remove("side-soon");
         box.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 업체 ${n}곳</div>`;
       } else {
-        box.textContent = "준비 중입니다"; // 기존 카드 문구 유지 (업체 0곳)
+        box.textContent = "현재 등록업체 0개 (등록되면 노출 시작)";
       }
     });
   }

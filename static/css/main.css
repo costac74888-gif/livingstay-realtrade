@@ -251,6 +251,8 @@
   .side-empty{font-size:11.5px; color:var(--ink-soft); padding:12px 4px; text-align:center; line-height:1.6;}
   .side-soon{font-size:12px; font-weight:600; color:var(--ink-soft); background:#F8F9FA; border:1px dashed var(--line); border-radius:8px; padding:14px; text-align:center;}
   .side-soon-desc{font-size:10.5px; font-weight:400; color:#9AA5B1; margin-top:5px;}
+  .side-apply-banner{display:block; margin-top:8px; padding:7px 12px; font-size:12px; font-weight:700; color:var(--brass-dark); background:#FBF6ED; border:1px solid #EADFC8; border-radius:8px; text-align:center; text-decoration:none;}
+  .side-apply-banner:hover{background:#F5EDDD;}
 
   @media (max-width: 980px){
     /* 검색바: 전체 폭으로 */
