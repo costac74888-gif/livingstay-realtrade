@@ -347,43 +347,31 @@ def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, fl
 def _send_tx_email(to_email, name_disp, deal_type, area, price, floor_val, deal_date):
     """신규 실거래 이메일 발송 — 실패해도 예외를 던지지 않는다(인앱 알림은 이미 생성됨)."""
     try:
-        from email_util import send_email
-
-        def esc(v):
-            return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    if v is not None else "-")
+        from email_util import render_newsletter_email, send_email
 
         try:
             area_txt = f"{float(area):g}㎡" if area not in (None, "", 0) else "-"
         except (TypeError, ValueError):
-            area_txt = esc(area)
-        rows = [
-            ("건물명", esc(name_disp)),
-            ("거래유형", esc(deal_type or "-")),
-            ("전용면적", esc(area_txt)),
-            ("가격", f"{int(price):,}만원" if price else "-"),
-            ("층", esc(f"{floor_val}층" if floor_val else "-")),
-            ("계약일", esc(deal_date or "-")),
-        ]
-        tr = "".join(
-            f'<tr><td style="padding:8px 12px;border:1px solid #e5e0d8;background:#faf8f4;'
-            f'color:#6b6257;font-size:13px;white-space:nowrap;">{k}</td>'
-            f'<td style="padding:8px 12px;border:1px solid #e5e0d8;color:#16202E;'
-            f'font-size:13px;font-weight:600;">{v}</td></tr>'
-            for k, v in rows
+            area_txt = str(area) if area else "-"
+        tx = {
+            "building_name": name_disp,
+            "deal_type": deal_type or "-",
+            "area_text": area_txt,
+            "price_text": f"{int(price):,}만원" if price else "-",
+            "floor": floor_val if floor_val else "-",
+            "deal_date": deal_date or "-",
+            # 이번달 평균은 추후 콘텐츠 작업에서 채움
+        }
+        has_content, html = render_newsletter_email(
+            unsubscribe_link="https://homenstay.com/mypage",  # 마이페이지 '실거래 이메일 알림 받기' 토글
+            greeting_line="관심 단지에 새로운 실거래가 등록됐어요.",
+            transactions=[tx],
+            news_items=None,      # 추후 별도 작업
+            agent_info=None,      # 추후 별도 작업
+            operator_info=None,   # 추후 별도 작업
         )
-        html = (
-            '<div style="font-family:\'Apple SD Gothic Neo\',\'Malgun Gothic\',sans-serif;'
-            'max-width:520px;margin:0 auto;padding:24px 16px;">'
-            '<div style="font-size:13px;letter-spacing:2px;color:#16202E;font-weight:700;'
-            'margin-bottom:6px;">HOME &amp; STAY</div>'
-            f'<h2 style="font-size:17px;color:#16202E;margin:0 0 16px;">새로운 실거래가 등록 — {esc(name_disp)}</h2>'
-            f'<table style="border-collapse:collapse;width:100%;">{tr}</table>'
-            '<p style="font-size:12px;color:#9a9184;margin-top:18px;">'
-            '이 메일은 홈앤스테이 관심단지 실거래 알림 설정에 따라 발송되었습니다. '
-            '수신을 원치 않으시면 마이페이지에서 "실거래 이메일 알림 받기"를 꺼주세요.</p>'
-            '</div>'
-        )
+        if not has_content:
+            return  # 보낼 콘텐츠 없음 → 발송 스킵
         subject = f"[홈앤스테이] 새로운 실거래가 등록 — {name_disp}"
         ok, msg = send_email(to_email, subject, html)
         if not ok:
