@@ -85,6 +85,17 @@
       sectionTitle("내 관심단지") +
       '<div id="myFavList"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
 
+    // 알림 설정 — 실거래 이메일 알림 (인앱 🔔 알림은 항상 발송)
+    var emailAlertOn = (d.email_alert_enabled !== false);
+    html +=
+      sectionTitle("알림 설정") +
+      '<label style="display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); cursor:pointer;">' +
+        '<input type="checkbox" id="emailAlertChk"' + (emailAlertOn ? ' checked' : '') + ' style="accent-color:var(--brass);" /> ' +
+        '실거래 이메일 알림 받기' +
+      '</label>' +
+      '<div style="font-size:12px; color:var(--ink-soft); margin-top:5px;">관심단지에 새 실거래가 등록되면 이메일로 알려드립니다. 꺼도 사이트 내 🔔 알림은 계속 옵니다.</div>' +
+      '<div id="emailAlertMsg" style="' + MSG_STYLE + '"></div>';
+
     // (a) 이름 변경
     html +=
       sectionTitle("이름 변경") +
@@ -121,6 +132,7 @@
 
     document.getElementById("myBody").innerHTML = html;
     document.getElementById("nameSaveBtn").addEventListener("click", doSaveName);
+    document.getElementById("emailAlertChk").addEventListener("change", doToggleEmailAlert);
     document.getElementById("logoutBtn").addEventListener("click", doLogout);
     document.getElementById("withdrawBtn").addEventListener("click", openWithdrawModal);
     if (isEmail) document.getElementById("pwSaveBtn").addEventListener("click", doChangePassword);
@@ -226,6 +238,32 @@
         }
       })
       .catch(function(){ btn.disabled = false; showMsg("nameMsg", "네트워크 오류가 발생했습니다.", false); });
+  }
+
+  function doToggleEmailAlert(){
+    var chk = document.getElementById("emailAlertChk");
+    var enabled = !!chk.checked;
+    chk.disabled = true;
+    fetch("/api/auth/email-alert", {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: enabled })
+    })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        chk.disabled = false;
+        if (res.ok && res.j.ok){
+          showMsg("emailAlertMsg", enabled ? "이메일 알림을 켰습니다." : "이메일 알림을 껐습니다.", true);
+        } else {
+          chk.checked = !enabled; // 실패 시 원상복구
+          showMsg("emailAlertMsg", (res.j && res.j.message) || "변경에 실패했습니다.", false);
+        }
+      })
+      .catch(function(){
+        chk.disabled = false;
+        chk.checked = !enabled;
+        showMsg("emailAlertMsg", "네트워크 오류가 발생했습니다.", false);
+      });
   }
 
   function doChangePassword(){

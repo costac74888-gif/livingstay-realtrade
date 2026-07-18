@@ -453,6 +453,8 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_agreed_at TIMESTAMP")  # [선택] 마케팅 수신 동의 시각(미동의 NULL)
     # 일괄 관리(관리자) — 포인트 잔액 + 관리자 태그
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0")
+    # 실거래 이메일 알림 수신 여부 (기본 켜짐 — 마이페이지에서 끌 수 있음)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_alert_enabled BOOLEAN DEFAULT TRUE")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_tag TEXT")
 
     # 포인트 변경 이력(감사로그) — 양수=지급, 음수=차감. 삭제하지 않고 계속 쌓는다.

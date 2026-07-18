@@ -1557,7 +1557,8 @@ def current_user():
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, email, name, provider FROM users WHERE id = %s AND status <> 'withdrawn'",
+            "SELECT id, email, name, provider, COALESCE(email_alert_enabled, TRUE) AS email_alert_enabled"
+            " FROM users WHERE id = %s AND status <> 'withdrawn'",
             (uid,),
         )
         return cur.fetchone()
@@ -1672,6 +1673,7 @@ def auth_me():
         "name": u.get("name"),
         "email": u.get("email"),
         "provider": u.get("provider"),
+        "email_alert_enabled": bool(u.get("email_alert_enabled", True)),
     })
 
 
@@ -1698,6 +1700,29 @@ def auth_update_name():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "name": name, "email": u.get("email"), "provider": u.get("provider")})
+
+
+@app.route("/api/auth/email-alert", methods=["PUT"])
+@limiter.limit("10 per minute")
+def auth_update_email_alert():
+    """실거래 이메일 알림 수신 여부 변경 — 로그인 필요. 인앱 알림에는 영향 없음."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    raw = data.get("enabled")
+    if not isinstance(raw, bool):
+        return jsonify({"ok": False, "message": "enabled 값은 true/false여야 합니다."}), 400
+    enabled = raw
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET email_alert_enabled = %s WHERE id = %s", (enabled, u["id"]))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "email_alert_enabled": enabled})
 
 
 @app.route("/api/auth/password", methods=["PUT"])

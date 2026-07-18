@@ -300,21 +300,26 @@ def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
                 stats["inserted"] += 1
                 # 방금 삽입된 신규 실거래 → 이 (건물명, 주소)를 구독한 회원에게 알림 생성.
                 _notify_subscribers(cur, new_row["id"], building_name, tx_address,
-                                    int(price or 0), deal_date, floor_val)
+                                    int(price or 0), deal_date, floor_val,
+                                    deal_type=deal_type, area=area)
         except Exception as e:
             print(f"  적재 실패: {e}")
 
 
-def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, floor_val):
+def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, floor_val,
+                        deal_type=None, area=None):
     """방금 삽입된 실거래(tx_id)에 대해, 같은 (건물명, 주소)를 구독 중인 회원마다
     notifications 를 1건씩 만든다. 같은 거래로 같은 사용자에게 이미 만든 알림이 있으면
-    (user_id, transaction_id) 유니크 제약으로 자동 스킵된다."""
+    (user_id, transaction_id) 유니크 제약으로 자동 스킵된다.
+    인앱 알림이 새로 만들어진 사용자에게는 이메일도 함께 발송한다(실패해도 알림은 유지)."""
     try:
-        # 구독 매칭: 주소 일치 + (건물명 NULL끼리 or 건물명 일치)
+        # 구독 매칭: 주소 일치 + (건물명 NULL끼리 or 건물명 일치) — 대상 기준은 기존 그대로.
         cur.execute("""
-            SELECT user_id FROM user_alert_subscriptions
-            WHERE address = %s
-              AND ((building_name IS NULL AND %s IS NULL) OR building_name = %s)
+            SELECT s.user_id, u.email, COALESCE(u.email_alert_enabled, TRUE) AS email_alert_enabled
+            FROM user_alert_subscriptions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.address = %s
+              AND ((s.building_name IS NULL AND %s IS NULL) OR s.building_name = %s)
         """, (address, building_name, building_name))
         subs = cur.fetchall()
         if not subs:
@@ -329,10 +334,62 @@ def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, fl
                     (user_id, title, body, building_name, address, transaction_id)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id, transaction_id) DO NOTHING
+                RETURNING id
             """, (s["user_id"], title, body, building_name, address, tx_id))
+            created = cur.fetchone()  # 중복(이미 알림 있음)이면 None → 이메일도 스킵
+            if created and s.get("email") and s.get("email_alert_enabled"):
+                _send_tx_email(s["email"], name_disp, deal_type, area, price, floor_val, deal_date)
     except Exception as e:
         # 알림 생성 실패가 실거래 적재를 막지 않도록 방어(로그만 남김).
         print(f"  알림 생성 실패(tx {tx_id}): {e}")
+
+
+def _send_tx_email(to_email, name_disp, deal_type, area, price, floor_val, deal_date):
+    """신규 실거래 이메일 발송 — 실패해도 예외를 던지지 않는다(인앱 알림은 이미 생성됨)."""
+    try:
+        from email_util import send_email
+
+        def esc(v):
+            return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    if v is not None else "-")
+
+        try:
+            area_txt = f"{float(area):g}㎡" if area not in (None, "", 0) else "-"
+        except (TypeError, ValueError):
+            area_txt = esc(area)
+        rows = [
+            ("건물명", esc(name_disp)),
+            ("거래유형", esc(deal_type or "-")),
+            ("전용면적", esc(area_txt)),
+            ("가격", f"{int(price):,}만원" if price else "-"),
+            ("층", esc(f"{floor_val}층" if floor_val else "-")),
+            ("계약일", esc(deal_date or "-")),
+        ]
+        tr = "".join(
+            f'<tr><td style="padding:8px 12px;border:1px solid #e5e0d8;background:#faf8f4;'
+            f'color:#6b6257;font-size:13px;white-space:nowrap;">{k}</td>'
+            f'<td style="padding:8px 12px;border:1px solid #e5e0d8;color:#16202E;'
+            f'font-size:13px;font-weight:600;">{v}</td></tr>'
+            for k, v in rows
+        )
+        html = (
+            '<div style="font-family:\'Apple SD Gothic Neo\',\'Malgun Gothic\',sans-serif;'
+            'max-width:520px;margin:0 auto;padding:24px 16px;">'
+            '<div style="font-size:13px;letter-spacing:2px;color:#16202E;font-weight:700;'
+            'margin-bottom:6px;">HOME &amp; STAY</div>'
+            f'<h2 style="font-size:17px;color:#16202E;margin:0 0 16px;">새로운 실거래가 등록 — {esc(name_disp)}</h2>'
+            f'<table style="border-collapse:collapse;width:100%;">{tr}</table>'
+            '<p style="font-size:12px;color:#9a9184;margin-top:18px;">'
+            '이 메일은 홈앤스테이 관심단지 실거래 알림 설정에 따라 발송되었습니다. '
+            '수신을 원치 않으시면 마이페이지에서 "실거래 이메일 알림 받기"를 꺼주세요.</p>'
+            '</div>'
+        )
+        subject = f"[홈앤스테이] 새로운 실거래가 등록 — {name_disp}"
+        ok, msg = send_email(to_email, subject, html)
+        if not ok:
+            print(f"  이메일 발송 실패({to_email}): {msg}")
+    except Exception as e:
+        print(f"  이메일 발송 중 오류({to_email}): {e}")
 
 
 def sync_transactions(months: int, bjdong=None, sgg_filter=None):
