@@ -13,6 +13,8 @@
 - 중개사 계정: 신청 승인 시 subdomain_slug(전화번호 기반)+임시비밀번호 발급, 알리고 SMS 안내(`sms_util.py`, ALIGO_API_KEY/ALIGO_USER_ID/ALIGO_SENDER). 로그인 `/agent/login` → `POST /api/agent/login`(approved만), `require_agent`, `PUT /api/agent/password`.
 - 관리자 실거래 동기화: `/admin` "실거래 동기화" 버튼 → `POST /api/admin/sync-transactions`가 `sync_runner.py`를 독립 프로세스로 실행(`sync_batch.py --master-only`), 상태는 `app_meta('tx_sync_status')` + `GET /api/admin/sync-status`. 중복 실행/30분 재실행 제한은 DB에서 전역 강제.
 
+- **스키마 변경 규칙**: `db.py`의 테이블/컬럼/제약/시드를 바꾸면 반드시 `db.py`의 `SCHEMA_VERSION` 상수를 함께 올려야 함. (부팅 시 app_meta의 schema_version이 같으면 DDL 전체를 건너뛰는 빠른 경로가 있어, 버전을 안 올리면 새 스키마가 DB에 반영되지 않음.)
+
 ## 실행/검증
 - 앱: `Start application` 워크플로우 (gunicorn, 자동 리로드 없음 → `app.py` 수정 시 재시작 필요).
 - 테스트: `python tests/smoke_test.py`, `python tests/api_test.py`.

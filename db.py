@@ -43,9 +43,29 @@ def get_conn():
     return conn
 
 
+# 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
+# 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
+SCHEMA_VERSION = "2026-07-18-1"
+
+
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
+
+    # 빠른 경로: 스키마 버전이 이미 최신이면 DDL 전체를 건너뛴다.
+    # 이유: ALTER TABLE은 (변경이 없어도) 테이블 잠금을 잡아서, 배치 동기화가 도는 동안
+    # 부팅이 잠금 대기에 걸려 재배포/재시작이 오래 걸렸음. 버전이 같으면 즉시 리턴.
+    try:
+        cur.execute("SELECT value FROM app_meta WHERE key = 'schema_version'")
+        row = cur.fetchone()
+        if row and row["value"] == SCHEMA_VERSION:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return
+        conn.rollback()
+    except Exception:
+        conn.rollback()  # app_meta가 아직 없으면 아래 전체 DDL 실행으로 진행
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS master_buildings (
@@ -651,6 +671,18 @@ def init_db():
     _seed_mileage_missions()
     _seed_admin_user()
     _seed_legal_documents()
+
+    # 전체 DDL/시드가 무사히 끝났을 때만 버전을 기록 → 다음 부팅부터 빠른 경로로 건너뜀
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES ('schema_version', %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """, (SCHEMA_VERSION,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"스키마 버전 {SCHEMA_VERSION} 기록 완료 — 다음 부팅부터 DDL 건너뜀")
 
 
 def _ensure_raw_key_unique_constraint():
