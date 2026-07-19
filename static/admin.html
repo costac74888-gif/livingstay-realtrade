@@ -419,8 +419,9 @@
       const op = m.operator || { pending: 0, approved: 0, rejected: 0 };
       const tx = (d.transactions && d.transactions.monthly) || [];
       const txGranularity = (d.transactions && d.transactions.granularity) || "month";
-      const totalTx = (d.transactions && typeof d.transactions.last12_count === "number")
-        ? d.transactions.last12_count
+      // KPI는 실거래관리 목록과 동일한 "누적 거래" 수(transactions 전체 행 수)를 표시한다.
+      const totalTx = (d.transactions && typeof d.transactions.total_count === "number")
+        ? d.transactions.total_count
         : tx.reduce((s, r) => s + (r.count || 0), 0);
       const txHint = (txGranularity === "quarter")
         ? `전체 기간 분기별 표시(24개월 초과, ${tx.length}개 분기) · 막대=거래건수, 선=거래금액(만원)`
@@ -436,7 +437,7 @@
 
         <div class="stats-kpi-row">
           <div class="stats-kpi"><span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span></div>
-          <div class="stats-kpi"><span class="stats-kpi-label">최근 12개월 거래</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">누적 거래</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 운영업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
         </div>

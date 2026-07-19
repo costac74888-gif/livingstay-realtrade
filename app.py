@@ -5670,6 +5670,11 @@ def admin_stats():
     last12_floor = f"{y12:04d}-{m12:02d}"
     tx_last12_count = sum(v["cnt"] for ym, v in agg.items() if ym >= last12_floor)
 
+    # KPI "누적 거래" — 실거래관리 목록과 동일 기준(transactions 전체 행 수).
+    # 데이터가 늘어나면 이 값과 추이 그래프가 함께 갱신된다.
+    cur.execute("SELECT COUNT(*) AS c FROM transactions")
+    tx_total_count = int(cur.fetchone()["c"])
+
     # 2) 용도별(생활/호텔/콘도) 건물 수 분포
     cur.execute("""
         SELECT COALESCE(NULLIF(lodging_type, ''), '미분류') AS lodging_type, COUNT(*) AS count
@@ -5757,6 +5762,7 @@ def admin_stats():
             "monthly": tx_monthly,
             "granularity": trend_granularity,
             "last12_count": tx_last12_count,
+            "total_count": tx_total_count,
         },
         "buildings": {"by_type": building_by_type, "by_sido": building_by_sido},
         "members": members,
