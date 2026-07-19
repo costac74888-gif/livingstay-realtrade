@@ -251,9 +251,6 @@
   .side-empty{font-size:11.5px; color:var(--ink-soft); padding:12px 4px; text-align:center; line-height:1.6;}
   .side-soon{font-size:12px; font-weight:600; color:var(--ink-soft); background:#F8F9FA; border:1px dashed var(--line); border-radius:8px; padding:14px; text-align:center;}
   .side-soon-desc{font-size:10.5px; font-weight:400; color:#9AA5B1; margin-top:5px;}
-  .side-soon-row{display:inline-flex; align-items:center; gap:7px; max-width:100%;}
-  .side-soon-icon{width:20px; height:20px; flex:0 0 20px; color:var(--brass); position:relative; top:-1px;}
-  .side-soon-text{min-width:0; white-space:normal; word-break:keep-all; text-align:left;}
   .side-apply-banner{display:block; margin-top:8px; padding:7px 12px; font-size:12px; font-weight:700; color:var(--brass-dark); background:#FBF6ED; border:1px solid #EADFC8; border-radius:8px; text-align:center; text-decoration:none;}
   .side-apply-banner:hover{background:#F5EDDD;}
 

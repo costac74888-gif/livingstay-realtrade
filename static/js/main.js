@@ -1047,19 +1047,6 @@ async function loadSideStats(){
     }
   }
 
-  // 빈 상태(모집중) 박스: Lucide 아이콘(stroke) + 문구 가로 배치
-  const SIDE_ICONS = {
-    agent: '<path d="M12 12h.01"/><path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M22 13a18.15 18.15 0 0 1-20 0"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
-    consign: '<path d="M10 22v-6.57"/><path d="M12 11h.01"/><path d="M12 7h.01"/><path d="M14 15.43V22"/><path d="M15 16a5 5 0 0 0-6 0"/><path d="M16 11h.01"/><path d="M16 7h.01"/><path d="M8 11h.01"/><path d="M8 7h.01"/><rect x="4" y="2" width="16" height="20" rx="2"/>',
-    housekeeping: '<path d="m16 22-1-4"/><path d="M19 14a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2h-3a1 1 0 0 1-1-1V4a2 2 0 0 0-4 0v5a1 1 0 0 1-1 1H6a2 2 0 0 0-2 2v1a1 1 0 0 0 1 1"/><path d="M19 14H5l-1.973 6.767A1 1 0 0 0 4 22h16a1 1 0 0 0 .973-1.233z"/><path d="m8 22 1-4"/>',
-    finance: '<path d="M10 18v-7"/><path d="M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/>',
-  };
-  function sideEmptyHTML(iconKey, text){
-    return `<span class="side-soon-row">` +
-      `<svg class="side-soon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SIDE_ICONS[iconKey]}</svg>` +
-      `<span class="side-soon-text">${text}</span></span>`;
-  }
-
   // 전속중개사 카드 — 승인된 중개사 수 (하우스 계정 제외, 공개 API)
   // 노출 기준: SIDE_COUNT_THRESHOLD(10) 미만이면 숫자를 감추고 모집 문구만 노출 (내부 정보 취급)
   const agentBox = document.getElementById("sideAgentCount");
@@ -1073,7 +1060,9 @@ async function loadSideStats(){
           agentBox.classList.remove("side-soon");
           agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 전속중개사 ${n}명</div>`;
         } else {
-          agentBox.innerHTML = sideEmptyHTML("agent", "건물별 전속중개사를 모집하고 있습니다.");
+          agentBox.classList.remove("side-soon");
+          agentBox.innerHTML = recruitBoxHTML("agent");
+          hideAdjacentApplyBanner(agentBox);
         }
       } else {
         agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
@@ -1105,10 +1094,78 @@ async function loadSideStats(){
         box.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 업체 ${n}곳</div>`;
       } else {
         // 10곳 미만이면 실제 숫자는 감추고 모집 문구만 (내부 정보 취급)
-        box.innerHTML = sideEmptyHTML(k, "지원업체를 찾고 있습니다.");
+        box.classList.remove("side-soon");
+        box.innerHTML = (k === "finance") ? financeEmptyHTML() : recruitBoxHTML(k);
+        hideAdjacentApplyBanner(box);
       }
     });
   }
+}
+
+// 모집 박스에 자체 신청 버튼이 있으므로, 바로 아래 배너형 신청 링크는 중복이라 숨긴다 (A화면 전용)
+function hideAdjacentApplyBanner(box){
+  const next = box.nextElementSibling;
+  if (next && next.classList && next.classList.contains("side-apply-banner")) next.style.display = "none";
+}
+
+// ---- 공통 모집(빈 상태) 박스 컴포넌트 — A화면(메인 좌측패널)과 B화면(건물상세)이 함께 사용 ----
+// kind: agent | consign | housekeeping | finance
+// opts: { href(버튼 링크 재정의), btnText(버튼 문구 재정의), linkId(버튼 a태그 id — B화면 동적 href 주입용) }
+function recruitBoxHTML(kind, opts = {}){
+  const KINDS = {
+    agent: {
+      bg: "var(--brass-tint)", border: "#EAD9B8", icon: "🔎", iconSize: 24, pad: "16px 12px",
+      title: "건물별 전속중개사를 모집하고 있습니다",
+      desc: "건물별 담당 중개사무소를 모집합니다.",
+      btnText: "전속중개사로 신청하기", href: "/apply/agent", btnStyle: "",
+    },
+    consign: {
+      bg: "#EEF6E6", border: "#CFE4B8", icon: "🏨", iconSize: 22, pad: "14px 12px",
+      title: "위탁운영 지원업체를 찾고 있습니다",
+      desc: "건물별 운영을 맡아줄 파트너를 모집합니다.",
+      btnText: "지원업체로 신청하기", href: "/apply/operator",
+      btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
+    },
+    housekeeping: {
+      bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 22, pad: "14px 12px",
+      title: "하우스키핑 지원업체를 찾고 있습니다",
+      desc: "건물별 객실관리를 맡아줄 파트너를 모집합니다.",
+      btnText: "지원업체로 신청하기", href: "/apply/operator",
+      btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
+    },
+    finance: {
+      bg: "var(--brass-tint)", border: "#EAD9B8", icon: "💰", iconSize: 22, pad: "14px 12px",
+      title: "대출상담사를 찾고 계신가요?",
+      desc: "매입·잔금 대출 상담 전문가를 연결해 드립니다.",
+      btnText: "대출상담 문의하기", href: null, btnStyle: "",
+    },
+  };
+  const k = KINDS[kind];
+  if (!k) return "";
+  const btnText = opts.btnText || k.btnText;
+  const href = (opts.href !== undefined) ? opts.href : k.href;
+  const btn = href
+    ? `<a ${opts.linkId ? `id="${opts.linkId}" ` : ""}href="${href}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; text-decoration:none; ${k.btnStyle}">${btnText}</a>`
+    : `<button class="side-more" style="width:auto; margin-top:0; padding:7px 16px; ${k.btnStyle}">${btnText}</button>`;
+  return `
+    <div style="text-align:center; padding:${k.pad}; background:${k.bg}; border:1px dashed ${k.border}; border-radius:8px;">
+      <div style="font-size:${k.iconSize}px; margin-bottom:6px;">${k.icon}</div>
+      <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">${k.title}</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">${k.desc}</div>
+      ${btn}
+    </div>`;
+}
+
+// 금융 섹션 빈 상태: "등록된 대출상품 없음" 표 + 대출상담 모집 박스 (A/B 공통)
+function financeEmptyHTML(){
+  return `
+    <div style="overflow-x:auto; margin-bottom:12px;">
+      <table class="b-info-table">
+        <thead><tr><th>금융기관</th><th>최저이율</th><th>취급지역</th><th>바로가기</th></tr></thead>
+        <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
+      </table>
+    </div>
+    ${recruitBoxHTML("finance")}`;
 }
 
 function initDefaultSidePanel(){
@@ -1175,42 +1232,17 @@ function buildingPanelSkeleton(){
 
     <section class="side-card">
       <div class="side-card-title">위탁운영</div>
-      <div id="bOperatorBox">
-        <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
-          <div style="font-size:22px; margin-bottom:6px;">🏨</div>
-          <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">위탁운영 지원업체를 찾고 있습니다</div>
-          <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 운영을 맡아줄 파트너를 모집합니다.</div>
-          <a id="lnkOperatorApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
-        </div>
-      </div>
+      <div id="bOperatorBox">${recruitBoxHTML("consign", { linkId: "lnkOperatorApply" })}</div>
     </section>
 
     <section class="side-card">
       <div class="side-card-title">하우스키핑</div>
-      <div id="bHousekeepingBox">
-        <div style="text-align:center; padding:14px 12px; background:#EEF6E6; border:1px dashed #CFE4B8; border-radius:8px;">
-          <div style="font-size:22px; margin-bottom:6px;">🧹</div>
-          <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">하우스키핑 지원업체를 찾고 있습니다</div>
-          <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물의 객실관리를 맡아줄 파트너를 모집합니다.</div>
-          <a id="lnkHousekeepingApply" href="/apply/operator" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8; text-decoration:none;">지원업체로 신청하기</a>
-        </div>
-      </div>
+      <div id="bHousekeepingBox">${recruitBoxHTML("housekeeping", { linkId: "lnkHousekeepingApply" })}</div>
     </section>
 
     <section class="side-card">
       <div class="side-card-title">금융 <span class="side-sub">대출상품</span></div>
-      <div style="overflow-x:auto; margin-bottom:12px;">
-        <table class="b-info-table">
-          <thead><tr><th>금융기관</th><th>최저이율</th><th>취급지역</th><th>바로가기</th></tr></thead>
-          <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
-        </table>
-      </div>
-      <div style="text-align:center; padding:14px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">
-        <div style="font-size:22px; margin-bottom:6px;">💰</div>
-        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">대출상담사를 찾고 계신가요?</div>
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">매입·잔금 대출 상담 전문가를 연결해 드립니다.</div>
-        <button class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">대출상담 문의하기</button>
-      </div>
+      ${financeEmptyHTML()}
     </section>
 
     <section class="side-card" id="bBldgInfoCard">
@@ -1537,13 +1569,10 @@ function renderBuildingAgent(agent, buildingId, buildingName){
       </div>
       ${agent.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
   } else {
-    box.innerHTML = `
-      <div style="text-align:center; padding:16px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">
-        <div style="font-size:24px; margin-bottom:6px;">🔎</div>
-        <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">이 건물의 전속 중개사를 찾고 있습니다</div>
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">이 건물을 전담할 중개사무소를 모집합니다.</div>
-        <a href="/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; text-decoration:none;">이 건물에 전속중개사로 신청하기</a>
-      </div>`;
+    box.innerHTML = recruitBoxHTML("agent", {
+      href: `/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`,
+      btnText: "이 건물에 전속중개사로 신청하기",
+    });
   }
 }
 
