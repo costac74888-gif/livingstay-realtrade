@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>운영업체 프로필 — 홈앤스테이</title>
+<title>숙박시설 실거래가 . 홈앤스테이</title>
 <meta name="description" content="홈앤스테이 지원업체(운영업체) 프로필 — 업체 정보 및 담당 단지 현황." />
 <link rel="icon" href="/static/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png" />
@@ -107,7 +107,7 @@
       const res = await fetch("/api/operator/profile/" + encodeURIComponent(slug));
       if (!res.ok) { renderNotFound(); return; }
       const data = await res.json();
-      document.title = `${data.company_name || "운영업체"} — 홈앤스테이`;
+      document.title = `${data.company_name || "홈앤스테이"} | 숙박시설 실거래가 . 홈앤스테이`;
       render(data);
     } catch(e) {
       console.error("[운영업체 프로필] 로드 실패:", e);
