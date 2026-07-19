@@ -1047,6 +1047,19 @@ async function loadSideStats(){
     }
   }
 
+  // 빈 상태(모집중) 박스: Lucide 아이콘(stroke) + 문구 가로 배치
+  const SIDE_ICONS = {
+    agent: '<path d="M12 12h.01"/><path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M22 13a18.15 18.15 0 0 1-20 0"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
+    consign: '<path d="M10 22v-6.57"/><path d="M12 11h.01"/><path d="M12 7h.01"/><path d="M14 15.43V22"/><path d="M15 16a5 5 0 0 0-6 0"/><path d="M16 11h.01"/><path d="M16 7h.01"/><path d="M8 11h.01"/><path d="M8 7h.01"/><rect x="4" y="2" width="16" height="20" rx="2"/>',
+    housekeeping: '<path d="m16 22-1-4"/><path d="M19 14a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2h-3a1 1 0 0 1-1-1V4a2 2 0 0 0-4 0v5a1 1 0 0 1-1 1H6a2 2 0 0 0-2 2v1a1 1 0 0 0 1 1"/><path d="M19 14H5l-1.973 6.767A1 1 0 0 0 4 22h16a1 1 0 0 0 .973-1.233z"/><path d="m8 22 1-4"/>',
+    finance: '<path d="M10 18v-7"/><path d="M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/>',
+  };
+  function sideEmptyHTML(iconKey, text){
+    return `<span class="side-soon-row">` +
+      `<svg class="side-soon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SIDE_ICONS[iconKey]}</svg>` +
+      `<span class="side-soon-text">${text}</span></span>`;
+  }
+
   // 전속중개사 카드 — 승인된 중개사 수 (하우스 계정 제외, 공개 API)
   // 노출 기준: SIDE_COUNT_THRESHOLD(10) 미만이면 숫자를 감추고 모집 문구만 노출 (내부 정보 취급)
   const agentBox = document.getElementById("sideAgentCount");
@@ -1060,7 +1073,7 @@ async function loadSideStats(){
           agentBox.classList.remove("side-soon");
           agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 전속중개사 ${n}명</div>`;
         } else {
-          agentBox.textContent = "건물별 전속중개사를 모집하고 있습니다.";
+          agentBox.innerHTML = sideEmptyHTML("agent", "건물별 전속중개사를 모집하고 있습니다.");
         }
       } else {
         agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
@@ -1092,7 +1105,7 @@ async function loadSideStats(){
         box.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 업체 ${n}곳</div>`;
       } else {
         // 10곳 미만이면 실제 숫자는 감추고 모집 문구만 (내부 정보 취급)
-        box.textContent = "지원업체를 찾고 있습니다.";
+        box.innerHTML = sideEmptyHTML(k, "지원업체를 찾고 있습니다.");
       }
     });
   }
