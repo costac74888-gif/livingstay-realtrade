@@ -1,0 +1,13 @@
+{
+  "name": "홈앤스테이 (HOME & STAY)",
+  "short_name": "홈앤스테이",
+  "description": "전국 생활숙박시설·분양형호텔·콘도 실거래가 조회",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "/static/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

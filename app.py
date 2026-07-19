@@ -205,6 +205,18 @@ def index():
     return _serve_app_shell()
 
 
+@app.route("/manifest.json")
+def pwa_manifest():
+    """PWA 매니페스트 — 루트 경로로 서빙 (모든 페이지의 <link rel="manifest">가 참조)."""
+    return send_from_directory(app.static_folder, "manifest.json", mimetype="application/manifest+json")
+
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    """브라우저가 관성적으로 루트 /favicon.ico를 요청하는 경우 대응."""
+    return send_from_directory(os.path.join(app.static_folder, "img"), "favicon.ico")
+
+
 @app.route("/building/<int:building_id>")
 def building_page(building_id):
     """건물 상세 — 별도 페이지가 아니라 홈화면(index.html)을 그대로 서빙한다.
