@@ -28,7 +28,7 @@
 
     <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
       <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">📎 서류 제출 안내</div>
-      <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">명함·영업허가증(업종별 조건부) 사본을 아래에서 바로 첨부할 수 있습니다. (PDF·JPG·PNG, 파일당 5MB 이하)</div>
+      <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">사업자등록증·명함·영업허가증(업종별 조건부) 사본을 아래에서 바로 첨부할 수 있습니다. (PDF·JPG·PNG, 파일당 5MB 이하)</div>
     </div>
 
     <div id="buildingNotice" style="display:none; font-size:13px; color:var(--ink); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
@@ -79,6 +79,11 @@
 
       <div style="border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px;">
         <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (선택 · PDF/JPG/PNG, 5MB 이하)</div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>사업자등록증</label>
+          <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
         <div class="field" style="margin-bottom:12px;">
           <label>명함</label>
           <input type="file" class="doc-input" data-doc-type="business_card" accept=".pdf,.jpg,.jpeg,.png" />
@@ -177,7 +182,7 @@
 
   // 서류 업로드: 파일 선택 즉시 업로드 API로 올리고, 반환된 참조 키를 보관했다가
   // 신청 제출 시 doc_*_url 필드로 함께 전송한다.
-  const DOC_FIELD_MAP = { business_card: "doc_business_card_url", biz_license: "doc_biz_license_url" };
+  const DOC_FIELD_MAP = { biz_reg: "doc_biz_reg_url", business_card: "doc_business_card_url", biz_license: "doc_biz_license_url" };
   const docRefs = {};
   document.querySelectorAll(".doc-input").forEach((input) => {
     const statusEl = input.parentElement.querySelector(".doc-status");

@@ -1248,7 +1248,8 @@ def apply_operator():
 
     # 서류 참조 키 검증 (선택 항목 — 영업허가증은 업종별 조건부라 없어도 제출 가능)
     doc_refs = {}
-    for field, doc_type in (("doc_business_card_url", "business_card"),
+    for field, doc_type in (("doc_biz_reg_url", "biz_reg"),
+                            ("doc_business_card_url", "business_card"),
                             ("doc_biz_license_url", "biz_license")):
         ref, err = _clean_doc_ref(data.get(field), "operator", doc_type)
         if err:
@@ -1261,15 +1262,16 @@ def apply_operator():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, category,
              biz_reg_number, phone, email, website_url, preferred_region, status,
-             reg_number, intro_text, doc_business_card_url, doc_biz_license_url,
-             terms_agreed_at, privacy_agreed_at)
+             reg_number, intro_text, doc_biz_reg_url, doc_business_card_url,
+             doc_biz_license_url, terms_agreed_at, privacy_agreed_at)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s, NOW(), NOW())
+                NULL, NULL, %s, %s, %s, NOW(), NOW())
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
           website_url or None, preferred_region or None,
-          doc_refs["doc_business_card_url"], doc_refs["doc_biz_license_url"]))
+          doc_refs["doc_biz_reg_url"], doc_refs["doc_business_card_url"],
+          doc_refs["doc_biz_license_url"]))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
