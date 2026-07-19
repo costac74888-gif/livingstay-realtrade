@@ -714,8 +714,6 @@ async function loadMapMarkers(filters = {}, opts = {}){
     placed++;
   });
 
-  const countLabel = document.getElementById("mapCount");
-  if (countLabel) countLabel.textContent = `(${placed}개 건물)`;
 
   if (emptyEl) emptyEl.style.display = (placed === 0) ? "flex" : "none";
 
@@ -1753,8 +1751,20 @@ window.addEventListener("popstate", () => {
   else restoreDefaultPanel();
 });
 
+// 지도 상단 라벨: 전체 실거래 건수 (실시간 — 백필/동기화로 계속 늘어나므로 매 로드마다 서버 조회)
+async function loadTxCountLabel(){
+  const el = document.getElementById("mapCount");
+  if (!el) return;
+  try {
+    const res = await fetch("/api/tx-count");
+    const d = await res.json();
+    if (typeof d.count === "number") el.textContent = `(실거래 ${d.count.toLocaleString()}건)`;
+  } catch(e){ console.error("[지도] 실거래 건수 로드 실패:", e); }
+}
+
 // 최초 로드: 기본 패널 초기화 후, URL이 /building/<id>면 자동으로 상세를 연다.
 initDefaultSidePanel();
+loadTxCountLabel();
 (function(){
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) renderBuildingPanel(Number(m[1]));

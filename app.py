@@ -746,6 +746,19 @@ def get_monthly_trend():
     return jsonify({"items": items, "granularity": granularity})
 
 
+@app.route("/api/tx-count")
+def get_tx_count():
+    """전체 실거래 건수 (실시간 COUNT — 관리자 대시보드 '누적 거래' KPI와 동일 기준).
+    메인 지도 상단 '실거래 N건' 표시에 사용. 백필/동기화로 늘어나므로 매 로드마다 조회."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS c FROM transactions")
+    count = int(cur.fetchone()["c"])
+    cur.close()
+    conn.close()
+    return jsonify({"count": count})
+
+
 @app.route("/api/regions")
 def get_regions():
     """시도 > 시군구 > 읍면동 계층 트리 (계층 검색 드롭다운용)"""
