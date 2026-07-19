@@ -423,9 +423,9 @@
       const totalTx = (d.transactions && typeof d.transactions.total_count === "number")
         ? d.transactions.total_count
         : tx.reduce((s, r) => s + (r.count || 0), 0);
-      // "최근 12개월 거래"는 계약일 기준 최근 12개월 건수(의도된 설계 — 누적과 다름).
-      const last12Tx = (d.transactions && typeof d.transactions.last12_count === "number")
-        ? d.transactions.last12_count : 0;
+      // 라벨은 실제 가장 오래된 계약월(earliest_ym) 기준으로 자동 갱신 (백필 진행 시 자동 반영)
+      const earliestYm = (d.transactions && d.transactions.earliest_ym) || null;
+      const totalTxLabel = earliestYm ? `${earliestYm} 이후 거래` : "누적 거래";
       const txRecent24 = (d.transactions && d.transactions.recent24) || [];
       const totalBld = ((d.buildings && d.buildings.by_type) || []).reduce((s, r) => s + (r.count || 0), 0);
       const collectStart = (d.views && d.views.collect_start) || "-";
@@ -438,8 +438,7 @@
 
         <div class="stats-kpi-row">
           <div class="stats-kpi"><span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span></div>
-          <div class="stats-kpi"><span class="stats-kpi-label">누적 거래</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
-          <div class="stats-kpi"><span class="stats-kpi-label">최근 12개월 거래</span><span class="stats-kpi-val">${num(last12Tx)}</span><span class="stats-kpi-unit">건</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">${totalTxLabel}</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 운영업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
         </div>

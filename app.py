@@ -5670,10 +5670,13 @@ def admin_stats():
     last12_floor = f"{y12:04d}-{m12:02d}"
     tx_last12_count = sum(v["cnt"] for ym, v in agg.items() if ym >= last12_floor)
 
-    # KPI "누적 거래" — 실거래관리 목록과 동일 기준(transactions 전체 행 수).
-    # 데이터가 늘어나면 이 값과 추이 그래프가 함께 갱신된다.
-    cur.execute("SELECT COUNT(*) AS c FROM transactions")
-    tx_total_count = int(cur.fetchone()["c"])
+    # KPI "누적 거래" — 실거래관리 목록과 동일 기준(transactions 전체 행 수, 실시간 COUNT).
+    # earliest_ym: 가장 오래된 계약월(YYYY.MM). 백필로 과거 데이터가 늘면 라벨/값이 자동 갱신된다.
+    # deal_date는 TEXT('YYYY-MM-DD') — ISO 형식이라 MIN이 사전순=시간순으로 동작한다.
+    cur.execute("SELECT COUNT(*) AS c, replace(left(MIN(deal_date), 7), '-', '.') AS earliest FROM transactions")
+    _row = cur.fetchone()
+    tx_total_count = int(_row["c"])
+    tx_earliest_ym = _row["earliest"]
 
     # 그래프 토글 "최근 2년"용 — 최근 24개월 월별 버킷(빈 달 0 채움).
     y24, m24 = now.year, now.month - 23
@@ -5777,8 +5780,9 @@ def admin_stats():
         "transactions": {
             "monthly": tx_monthly,
             "granularity": trend_granularity,
-            "last12_count": tx_last12_count,
+            "last12_count": tx_last12_count,  # (레거시) 현재 UI 미사용 — 하위호환용 유지
             "total_count": tx_total_count,
+            "earliest_ym": tx_earliest_ym,
             "recent24": tx_recent24,
         },
         "buildings": {"by_type": building_by_type, "by_sido": building_by_sido},
