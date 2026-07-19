@@ -5675,6 +5675,22 @@ def admin_stats():
     cur.execute("SELECT COUNT(*) AS c FROM transactions")
     tx_total_count = int(cur.fetchone()["c"])
 
+    # 그래프 토글 "최근 2년"용 — 최근 24개월 월별 버킷(빈 달 0 채움).
+    y24, m24 = now.year, now.month - 23
+    while m24 <= 0:
+        m24 += 12
+        y24 -= 1
+    tx_recent24 = []
+    y, m = y24, m24
+    while (y, m) <= (now.year, now.month):
+        ym = f"{y:04d}-{m:02d}"
+        v = agg.get(ym, {"cnt": 0, "sum_price": 0})
+        tx_recent24.append({"month": ym, "count": int(v["cnt"]), "amount": int(v["sum_price"])})
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
     # 2) 용도별(생활/호텔/콘도) 건물 수 분포
     cur.execute("""
         SELECT COALESCE(NULLIF(lodging_type, ''), '미분류') AS lodging_type, COUNT(*) AS count
@@ -5763,6 +5779,7 @@ def admin_stats():
             "granularity": trend_granularity,
             "last12_count": tx_last12_count,
             "total_count": tx_total_count,
+            "recent24": tx_recent24,
         },
         "buildings": {"by_type": building_by_type, "by_sido": building_by_sido},
         "members": members,

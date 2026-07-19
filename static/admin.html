@@ -419,13 +419,14 @@
       const op = m.operator || { pending: 0, approved: 0, rejected: 0 };
       const tx = (d.transactions && d.transactions.monthly) || [];
       const txGranularity = (d.transactions && d.transactions.granularity) || "month";
-      // KPI는 실거래관리 목록과 동일한 "누적 거래" 수(transactions 전체 행 수)를 표시한다.
+      // KPI "누적 거래"는 실거래관리 목록과 동일 기준(transactions 전체 행 수).
       const totalTx = (d.transactions && typeof d.transactions.total_count === "number")
         ? d.transactions.total_count
         : tx.reduce((s, r) => s + (r.count || 0), 0);
-      const txHint = (txGranularity === "quarter")
-        ? `전체 기간 분기별 표시(24개월 초과, ${tx.length}개 분기) · 막대=거래건수, 선=거래금액(만원)`
-        : `최근 ${tx.length}개월 · 막대=거래건수, 선=거래금액(만원)`;
+      // "최근 12개월 거래"는 계약일 기준 최근 12개월 건수(의도된 설계 — 누적과 다름).
+      const last12Tx = (d.transactions && typeof d.transactions.last12_count === "number")
+        ? d.transactions.last12_count : 0;
+      const txRecent24 = (d.transactions && d.transactions.recent24) || [];
       const totalBld = ((d.buildings && d.buildings.by_type) || []).reduce((s, r) => s + (r.count || 0), 0);
       const collectStart = (d.views && d.views.collect_start) || "-";
 
@@ -438,13 +439,20 @@
         <div class="stats-kpi-row">
           <div class="stats-kpi"><span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">누적 거래</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">최근 12개월 거래</span><span class="stats-kpi-val">${num(last12Tx)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 운영업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
         </div>
 
         <div class="stats-grid">
           <section class="stats-card stats-card-wide">
-            <h3 class="stats-card-title">실거래 추이 <span class="stats-card-hint">${txHint}</span></h3>
+            <h3 class="stats-card-title" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              실거래 추이 <span class="stats-card-hint" id="txHint"></span>
+              <span style="margin-left:auto; display:inline-flex; gap:4px;">
+                <button type="button" class="stats-toggle-btn" id="txToggleAll">전체 기간</button>
+                <button type="button" class="stats-toggle-btn" id="txToggleRecent">최근 2년</button>
+              </span>
+            </h3>
             <div class="stats-chart-box"><canvas id="chartTx"></canvas></div>
           </section>
 
@@ -490,23 +498,42 @@
 
       const commonOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: BRAND.ink } } } };
 
-      // 실거래 추이 (막대+선 콤보)
-      statsCharts.push(new Chart(document.getElementById("chartTx"), {
-        data: {
-          labels: tx.map((r) => r.month),
-          datasets: [
-            { type: "bar", label: "거래건수", data: tx.map((r) => r.count), backgroundColor: BRAND.brassSoft, borderColor: BRAND.brass, borderWidth: 1, yAxisID: "y", order: 2 },
-            { type: "line", label: "거래금액(만원)", data: tx.map((r) => r.amount), borderColor: BRAND.ink, backgroundColor: BRAND.ink, tension: 0.3, yAxisID: "y1", order: 1 },
-          ],
-        },
-        options: Object.assign({}, commonOpts, {
-          scales: {
-            y: { position: "left", beginAtZero: true, title: { display: true, text: "건수" }, ticks: { color: BRAND.ink } },
-            y1: { position: "right", beginAtZero: true, title: { display: true, text: "금액(만원)" }, grid: { drawOnChartArea: false }, ticks: { color: BRAND.ink } },
-            x: { ticks: { color: BRAND.ink } },
+      // 실거래 추이 (막대+선 콤보) — "전체 기간"/"최근 2년" 토글로 데이터 교체
+      let txChart = null;
+      function renderTxChart(mode) {
+        const rows = (mode === "recent") ? txRecent24 : tx;
+        const hintEl = document.getElementById("txHint");
+        if (hintEl) {
+          hintEl.textContent = (mode === "recent")
+            ? `최근 ${rows.length}개월 · 막대=거래건수, 선=거래금액(만원)`
+            : ((txGranularity === "quarter")
+              ? `전체 기간 분기별 표시(24개월 초과, ${rows.length}개 분기) · 막대=거래건수, 선=거래금액(만원)`
+              : `전체 기간 ${rows.length}개월 · 막대=거래건수, 선=거래금액(만원)`);
+        }
+        document.getElementById("txToggleAll").classList.toggle("is-active", mode !== "recent");
+        document.getElementById("txToggleRecent").classList.toggle("is-active", mode === "recent");
+        if (txChart) { txChart.destroy(); statsCharts = statsCharts.filter((c) => c !== txChart); }
+        txChart = new Chart(document.getElementById("chartTx"), {
+          data: {
+            labels: rows.map((r) => r.month),
+            datasets: [
+              { type: "bar", label: "거래건수", data: rows.map((r) => r.count), backgroundColor: BRAND.brassSoft, borderColor: BRAND.brass, borderWidth: 1, yAxisID: "y", order: 2 },
+              { type: "line", label: "거래금액(만원)", data: rows.map((r) => r.amount), borderColor: BRAND.ink, backgroundColor: BRAND.ink, tension: 0.3, yAxisID: "y1", order: 1 },
+            ],
           },
-        }),
-      }));
+          options: Object.assign({}, commonOpts, {
+            scales: {
+              y: { position: "left", beginAtZero: true, title: { display: true, text: "건수" }, ticks: { color: BRAND.ink } },
+              y1: { position: "right", beginAtZero: true, title: { display: true, text: "금액(만원)" }, grid: { drawOnChartArea: false }, ticks: { color: BRAND.ink } },
+              x: { ticks: { color: BRAND.ink } },
+            },
+          }),
+        });
+        statsCharts.push(txChart);
+      }
+      document.getElementById("txToggleAll").addEventListener("click", () => renderTxChart("all"));
+      document.getElementById("txToggleRecent").addEventListener("click", () => renderTxChart("recent"));
+      renderTxChart("all");
 
       // 용도별 건물 분포 (도넛)
       const byType = (d.buildings && d.buildings.by_type) || [];
