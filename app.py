@@ -6558,7 +6558,8 @@ def admin_applications_approve(app_id):
 
     if atype == "loan_consultant":
         # 승인 시 로그인 계정(이메일 ID + 임시비밀번호)도 함께 안내 — agent/operator와 동일 패턴
-        domain = request.host_url.rstrip("/")
+        # 링크 도메인은 관리자 접속 주소(request.host_url)가 아닌 고정 공개 URL 사용
+        domain = os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com").rstrip("/")
         sms_body = (
             f"[홈앤스테이] 대출상담사 승인 완료. 로그인ID(이메일): {ap['email']} / "
             f"임시비밀번호: {temp_pw} / 로그인: {domain}/loan-consultant/login — "
@@ -6575,7 +6576,8 @@ def admin_applications_approve(app_id):
 
     if atype in ("agent", "operator"):
         # 승인 완료 후 문자 발송 — 실패해도 승인은 이미 확정(예외 없음, (ok, msg) 반환)
-        domain = request.host_url.rstrip("/")
+        # 링크 도메인은 관리자 접속 주소(request.host_url)가 아닌 고정 공개 URL 사용
+        domain = os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com").rstrip("/")
         if atype == "agent":
             sms_body = (
                 f"[홈앤스테이] 중개사 승인 완료. 로그인ID(이메일): {ap['email']} / "

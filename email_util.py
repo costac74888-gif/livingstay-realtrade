@@ -176,7 +176,7 @@ def send_email(to, subject, html_body):
                 "Content-Type": "application/json",
             },
             json={
-                "from": from_email,
+                "from": f"홈앤스테이 <{from_email}>",
                 "to": [to_addr],
                 "subject": subject,
                 "html": html_body,
