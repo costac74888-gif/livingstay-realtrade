@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>파트너 등록 안내 . 홈앤스테이</title>
-<meta name="description" content="홈앤스테이 중개사·운영지원업체 파트너 등록 안내. 매물의뢰 자동배정, 무료 공개 프로필, 등록비 없음." />
+<meta name="description" content="홈앤스테이 중개사·운영지원업체·금융(대출상담) 파트너 등록 안내. 매물의뢰 자동배정, 무료 공개 프로필, 등록비 없음." />
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
@@ -13,6 +13,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<style>
+.partner-cat-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+@media (max-width: 640px){ .partner-cat-grid{ grid-template-columns:1fr; } }
+.partner-cat-card{ display:flex; flex-direction:column; align-items:flex-start; gap:8px; border:1px solid var(--line); border-radius:12px; padding:16px 14px; text-decoration:none; background:#fff; transition:border-color .15s, box-shadow .15s; }
+.partner-cat-card:hover{ border-color:var(--brass); box-shadow:0 2px 10px rgba(180,134,63,.15); }
+.partner-cat-card:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
+.partner-cat-icon{ width:42px; height:42px; border-radius:10px; background:var(--brass-tint, #F4EDDF); display:flex; align-items:center; justify-content:center; font-size:22px; }
+.partner-cat-title{ font-size:15px; font-weight:700; color:var(--ink); }
+.partner-cat-desc{ font-size:12.5px; color:var(--ink-soft); line-height:1.55; flex:1; }
+.partner-cat-more{ font-size:13px; font-weight:700; color:var(--brass-dark, #8a6a2f); }
+</style>
 </head>
 <body>
 
@@ -28,8 +39,33 @@
   <div class="panel-card" style="margin-bottom:14px; background:var(--ink); border:none;">
     <div style="padding:6px 2px;">
       <img src="/static/home_stay_logo.png" alt="HOME &amp; STAY" style="height:30px; background:#fff; border-radius:6px; padding:3px 8px; display:block; margin-bottom:14px;">
-      <h1 style="font-size:21px; font-weight:700; color:#fff; margin:0 0 8px; line-height:1.4;">생활숙박시설<br>중개사·운영지원업체이신가요?</h1>
+      <h1 style="font-size:21px; font-weight:700; color:#fff; margin:0 0 8px; line-height:1.4;">생활숙박시설<br>중개사·운영지원업체·금융 파트너이신가요?</h1>
       <p style="font-size:13.5px; color:rgba(255,255,255,.75); margin:0; line-height:1.6;">홈앤스테이 파트너로 등록하고, 전국 생숙·분양형호텔·콘도 소유주와 바로 연결되세요.</p>
+    </div>
+  </div>
+
+  <!-- 분야 선택 허브 -->
+  <div class="panel-card" style="margin-bottom:14px;">
+    <h2 class="menu-sec-title" style="margin-bottom:12px;">분야를 선택하세요</h2>
+    <div class="partner-cat-grid">
+      <a class="partner-cat-card" href="/apply/agent">
+        <div class="partner-cat-icon" aria-hidden="true">🤝</div>
+        <div class="partner-cat-title">담당중개사</div>
+        <div class="partner-cat-desc">생숙 매매·임대 중개를 전문으로 하시나요?</div>
+        <div class="partner-cat-more">자세히 보기 →</div>
+      </a>
+      <a class="partner-cat-card" href="/operators">
+        <div class="partner-cat-icon" aria-hidden="true">🛎️</div>
+        <div class="partner-cat-title">운영지원업체</div>
+        <div class="partner-cat-desc">위탁운영·하우스키핑으로 생숙 관리를 대행하시나요?</div>
+        <div class="partner-cat-more">자세히 보기 →</div>
+      </a>
+      <a class="partner-cat-card" href="/loan-partners">
+        <div class="partner-cat-icon" aria-hidden="true">🏦</div>
+        <div class="partner-cat-title">금융·대출상담</div>
+        <div class="partner-cat-desc">생숙 담보대출 상담을 전문으로 하시나요?</div>
+        <div class="partner-cat-more">자세히 보기 →</div>
+      </a>
     </div>
   </div>
 
@@ -62,12 +98,9 @@
     </div>
   </div>
 
-  <!-- 등록 버튼 -->
+  <!-- 안내 -->
   <div class="panel-card">
-    <h2 class="menu-sec-title" style="margin-bottom:12px;">지금 등록하기</h2>
-    <a href="/apply/agent" style="display:block; text-align:center; background:var(--brass); color:#fff; border-radius:10px; padding:14px 16px; font-size:15px; font-weight:700; text-decoration:none; margin-bottom:10px;">🏢 중개사로 등록하기</a>
-    <a href="/apply/operator" style="display:block; text-align:center; background:var(--ink); color:#fff; border-radius:10px; padding:14px 16px; font-size:15px; font-weight:700; text-decoration:none;">🛎️ 운영지원업체로 등록하기</a>
-    <p style="font-size:12px; color:var(--ink-soft); margin:12px 0 0; text-align:center;">신청 후 관리자 승인 시 문자로 로그인 안내를 드립니다.</p>
+    <p style="font-size:12px; color:var(--ink-soft); margin:0; text-align:center;">신청 후 관리자 승인 시 문자로 안내를 드립니다.</p>
   </div>
 
 </div>
