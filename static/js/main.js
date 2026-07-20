@@ -1766,9 +1766,13 @@ function renderBuildingAgent(agent, buildingId, buildingName){
   const box = document.getElementById("bAgentBox");
   if (!box) return;
   if (agent){
+    // 프로필 사진(photo_src)이 있으면 원형 썸네일, 없으면 기존 🏢 아이콘 (아실 스타일)
+    const avatar = agent.photo_src
+      ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>🏢</div>'">`
+      : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
     box.innerHTML = `
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>
+        ${avatar}
         <div style="flex:1; min-width:130px;">
           <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
           <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>

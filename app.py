@@ -294,7 +294,7 @@ def get_building(building_id):
 
     # 전속중개사: agent_buildings에 이 건물이 등록된 approved 중개사 기준 (여러 건이면 최근 갱신 순 1건).
     cur.execute("""
-        SELECT a.office_name, a.owner_name, a.phone, a.subdomain_slug
+        SELECT a.id, a.office_name, a.owner_name, a.phone, a.subdomain_slug, a.photo_url
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         WHERE ab.master_building_id = %s
@@ -319,7 +319,13 @@ def get_building(building_id):
     conn.close()
 
     result = dict(row)
-    result["agent"] = dict(agent_row) if agent_row else None
+    if agent_row:
+        agent_d = dict(agent_row)
+        # 스토리지 키는 노출하지 않고, 사진이 있으면 공개 프록시 URL만 내려준다.
+        agent_d["photo_src"] = f"/api/partners/agent-photo/{agent_d['id']}" if agent_d.pop("photo_url", None) else None
+        result["agent"] = agent_d
+    else:
+        result["agent"] = None
     result["operators"] = operator_rows
 
     # 담당부처/연락처: sgg_text를 지자체 담당부서 인덱스와 매칭.
@@ -1180,6 +1186,12 @@ def _handle_apply_upload(applicant_type, allowed_doc_types):
 @limiter.limit("10 per hour")
 def apply_agent_upload():
     """중개사 신청 서류 업로드 (비로그인, IP 기준 rate limit)."""
+    # 여권용 사진은 화면에 <img>로 노출되므로 이미지 파일만 허용 (PDF 차단 — 운영업체 로고와 동일)
+    if (request.form.get("doc_type") or "").strip() == "photo":
+        f = request.files.get("file")
+        ext = f.filename.rsplit(".", 1)[-1].lower() if f and f.filename and "." in f.filename else ""
+        if ext not in storage_util.LOGO_EXTENSIONS:
+            return jsonify({"ok": False, "message": "사진은 JPG 또는 PNG 이미지 파일만 업로드할 수 있습니다."}), 400
     return _handle_apply_upload("agent", storage_util.AGENT_DOC_TYPES)
 
 
@@ -1232,6 +1244,9 @@ def apply_agent():
     # 희망지역 → 희망건물로 변경. 구버전 호환을 위해 preferred_region도 함께 받아둔다.
     preferred_building = (data.get("preferred_building") or "").strip()
     preferred_region = (data.get("preferred_region") or "").strip()
+    # 건물 상세(B화면)에서 진입 시 함께 오는 희망건물 id — 숫자가 아니면 무시
+    raw_bid = str(data.get("preferred_building_id") or "").strip()
+    preferred_building_id = int(raw_bid) if raw_bid.isdigit() else None
 
     # 필수값 검증
     missing = []
@@ -1260,7 +1275,8 @@ def apply_agent():
     doc_refs = {}
     for field, doc_type in (("doc_license_url", "license"),
                             ("doc_office_reg_url", "office_reg"),
-                            ("doc_biz_reg_url", "biz_reg")):
+                            ("doc_biz_reg_url", "biz_reg"),
+                            ("doc_photo_url", "photo")):
         ref, err = _clean_doc_ref(data.get(field), "agent", doc_type)
         if err:
             return jsonify({"ok": False, "message": err}), 400
@@ -1268,20 +1284,29 @@ def apply_agent():
 
     conn = get_conn()
     cur = conn.cursor()
+
+    # 희망건물 id는 실제 건물마스터에 있는 것만 저장 (없으면 조용히 NULL — 이름은 별도 보존)
+    if preferred_building_id is not None:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [preferred_building_id])
+        if not cur.fetchone():
+            preferred_building_id = None
+
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
              intro_text, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
+             doc_photo_url, preferred_building_id,
              terms_agreed_at, privacy_agreed_at)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, %s, %s, %s, NOW(), NOW())
+                NULL, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
           preferred_building or None,
           doc_refs["doc_license_url"], doc_refs["doc_office_reg_url"],
-          doc_refs["doc_biz_reg_url"]))
+          doc_refs["doc_biz_reg_url"], doc_refs["doc_photo_url"],
+          preferred_building_id))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1524,6 +1549,29 @@ def partners_operator_logo(operator_id):
     conn.close()
     key = (row or {}).get("logo_url")
     if not key or not storage_util.is_valid_doc_ref(key, "operator", {"logo"}):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    mime = "image/png" if ext == "png" else "image/jpeg"
+    resp = Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+@app.route("/api/partners/agent-photo/<int:agent_id>")
+def partners_agent_photo(agent_id):
+    """승인 중개사 프로필 사진 공개 프록시 — 운영업체 로고 프록시와 동일 패턴."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT photo_url FROM agents WHERE id=%s AND status='approved'", [agent_id])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    key = (row or {}).get("photo_url")
+    if not key or not storage_util.is_valid_doc_ref(key, "agent", {"photo"}):
         abort(404)
     try:
         data = storage_util.download_bytes(key)
@@ -5405,7 +5453,7 @@ def admin_applications_list():
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
                category, phone, email, preferred_region, preferred_building, status, reject_reason,
                doc_license_url, doc_office_reg_url, doc_biz_reg_url,
-               doc_business_card_url, doc_biz_license_url, doc_logo_url,
+               doc_business_card_url, doc_biz_license_url, doc_logo_url, doc_photo_url,
                linked_operator_id,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
@@ -5809,6 +5857,7 @@ _APP_DOC_COLUMNS = {
     "biz_reg": "doc_biz_reg_url",
     "business_card": "doc_business_card_url",
     "biz_license": "doc_biz_license_url",
+    "photo": "doc_photo_url",
 }
 
 
@@ -5954,11 +6003,13 @@ def admin_applications_approve(app_id):
                     cur.execute("""
                         INSERT INTO agents
                             (office_name, owner_name, reg_number, biz_reg_number,
-                             phone, email, status, subdomain_slug, password_hash, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
+                             phone, email, status, subdomain_slug, password_hash,
+                             photo_url, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                          ap["biz_reg_number"], ap["phone"], ap["email"], slug, pw_hash])
+                          ap["biz_reg_number"], ap["phone"], ap["email"], slug, pw_hash,
+                          ap.get("doc_photo_url")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_agent_insert")
                     break
@@ -5980,6 +6031,34 @@ def admin_applications_approve(app_id):
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_agent_id=%s WHERE id=%s",
                 [created_id, app_id],
             )
+            # 희망건물(preferred_building_id)이 있으면 담당중개사 자동 배정.
+            # 이미 그 건물에 approved 담당중개사가 있으면 조용히 건너뛴다
+            # (관리자는 필요 시 건물 상세에서 기존 담당중개사 카드로 확인).
+            pref_bid = ap.get("preferred_building_id")
+            if pref_bid:
+                # 동시 승인 경쟁(TOCTOU) 방지: 건물 단위 어드바이저리 락으로
+                # "기존 담당 확인 → 배정" 구간을 직렬화한다 (트랜잭션 종료 시 자동 해제).
+                cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911001, pref_bid])
+                cur.execute("""
+                    SELECT 1
+                    FROM agent_buildings ab
+                    JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
+                    WHERE ab.master_building_id = %s
+                    LIMIT 1
+                """, [pref_bid])
+                if not cur.fetchone():
+                    cur.execute("SAVEPOINT sp_agent_assign")
+                    try:
+                        cur.execute("""
+                            INSERT INTO agent_buildings (agent_id, master_building_id)
+                            VALUES (%s, %s)
+                            ON CONFLICT ON CONSTRAINT agent_buildings_agent_building_unique DO NOTHING
+                        """, [created_id, pref_bid])
+                        cur.execute("RELEASE SAVEPOINT sp_agent_assign")
+                    except Exception:
+                        # 건물 삭제 등으로 실패해도 승인 자체는 유지 (자동 배정은 부가 기능)
+                        cur.execute("ROLLBACK TO SAVEPOINT sp_agent_assign")
+                        app.logger.exception("승인 시 담당건물 자동 배정 실패 (application=%s, building=%s)", app_id, pref_bid)
         elif atype == "operator":
             # 운영업체는 이메일 기준 중복 검사. category는 NOT NULL이라 값이 없으면 승인 불가.
             if not (ap["category"] or "").strip():

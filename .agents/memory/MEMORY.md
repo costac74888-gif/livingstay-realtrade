@@ -18,4 +18,5 @@
 - [Kakao map view tuning](kakao-map-view-tuning.md) — headless screenshot browser blocks dapi.kakao.com SDK; tune center/level via canvas sim with 1px≈2^(L-3)m; mobile default 35.8/127.6 lv13.
 - [init_db schema-version fast path](initdb-schema-version-fastpath.md) — boot skips all DDL when app_meta.schema_version matches; ANY db.py schema change MUST bump SCHEMA_VERSION or it never applies.
 - [mobile header hamburger](mobile-header-hamburger.md) — header.js: bell(#alertMenu) always visible in .header-actions; nav+auth in .header-menu collapsed to #hamburgerBtn ≤520px; index-only left list-toggle via window.HEADER_LEFT_TOGGLE (toggles .side-panel); notif panel position:fixed ≤520px.
+- [DDL blocked by sync workflows](ddl-blocked-by-sync-workflows.md) — FK DDL on master_buildings queues behind sync workflows' locks AND stalls app boot; kill blocker+waiters, run init_db manually.
 - [header.js modal ID collisions](apply-pages-id-collision.md) — header.js injects modal IDs (agreeTerms 등) into every page; page-local widgets must namespace IDs or auth.js double-binds.

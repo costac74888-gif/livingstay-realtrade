@@ -274,6 +274,7 @@
               ["biz_reg", "사업자", row.doc_biz_reg_url],
               ["business_card", "명함", row.doc_business_card_url],
               ["biz_license", "영업허가", row.doc_biz_license_url],
+              ["photo", "사진", row.doc_photo_url],
             ].filter((d) => d[2]);
             if (!docs.length) return '<span style="color:var(--ink-soft);">—</span>';
             return docs.map((d) =>

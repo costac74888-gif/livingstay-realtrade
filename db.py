@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-4"
+SCHEMA_VERSION = "2026-07-20-5"
 
 
 def init_db():
@@ -376,6 +376,10 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS privacy_agreed_at TIMESTAMP")
     # 대출상담사(applicant_type='loan_consultant') 승인 시 연결되는 loan_consultants.id
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_loan_consultant_id INTEGER REFERENCES loan_consultants(id)")
+    # 건물 상세(B화면)에서 신청 시 담아오는 희망건물 id — 승인 시 agent_buildings 자동 배정용
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_building_id INTEGER REFERENCES master_buildings(id)")
+    # 중개사 여권용 사진 (선택 · Object Storage 참조 키 — applications/agent/{uuid}/photo.{ext})
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_photo_url TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS slots (
