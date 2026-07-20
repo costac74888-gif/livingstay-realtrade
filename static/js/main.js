@@ -21,7 +21,13 @@ function serverFavSync(method, item){
     method: method,
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ building_name: item.building_name, address: item.address })
+    body: JSON.stringify({
+      building_name: item.building_name,
+      address: item.address,
+      // 저장 시점에 이미 알고 있는 master_buildings.id를 함께 저장 —
+      // 실거래 없는 건물도 마이페이지에서 상세 링크가 끊기지 않게 한다.
+      building_id: (item.building_id != null ? item.building_id : undefined)
+    })
   }).catch(function(){ /* 서버 반영 실패해도 localStorage는 이미 갱신됨 → 무시 */ });
 }
 function toggleFav(item){
@@ -544,7 +550,7 @@ function buildingInfoInnerHtml(b){
   const canFav = favAddr !== "";
   const favActive = canFav && isFav({ building_name: b.building_name, address: favAddr });
   const favBtn = canFav
-    ? `<button type="button" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}"
+    ? `<button type="button" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}" data-bid="${b.id != null ? b.id : ""}"
          onclick="return window.toggleFavFromInfo(this);"
          style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
          ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
@@ -817,9 +823,11 @@ async function openBuildingInfo(b, pos){
 // InfoWindow 내용은 문자열이라 클릭 핸들러를 인라인으로 붙인다. 버튼의 data 속성에서
 // building_name/address를 읽어 좌측 목록과 동일한 toggleFav를 호출하고 별 표시만 갱신한다.
 window.toggleFavFromInfo = function(btn){
+  const bidAttr = btn.getAttribute("data-bid");
   const item = {
     building_name: btn.getAttribute("data-name"),
     address: btn.getAttribute("data-address"),
+    building_id: (bidAttr && /^\d+$/.test(bidAttr)) ? Number(bidAttr) : undefined,
   };
   const ok = toggleFav(item);
   if (ok === false) return false; // 상한 초과 시 표시 변경 안 함
@@ -939,7 +947,11 @@ async function loadTrendChart(){
 
 function renderSideTx(t, rank){
   const name = escapeHtml(t.building_name || "(건물명 미확인)");
-  const price = Number(t.price || 0).toLocaleString('ko-KR');
+  // 실거래 없는 관심단지(master fallback)는 가격 대신 "실거래 없음" 표기
+  const hasPrice = t.price != null && t.price !== "";
+  const priceHtml = hasPrice
+    ? `${Number(t.price).toLocaleString('ko-KR')}<span style="font-size:10px;">만</span>`
+    : `<span style="font-size:11px; color:var(--ink-soft); font-weight:400;">실거래 없음</span>`;
   const region = escapeHtml([t.sgg_nm, t.umd_nm].filter(Boolean).join(" "));
   const metaRight = t.deal_date ? ` · ${escapeHtml(t.deal_date)}` : "";
   const rankHtml = rank ? `<span class="st-rank">${rank}</span>` : "";
@@ -954,7 +966,7 @@ function renderSideTx(t, rank){
       <div class="st-name">${rankHtml}${name}</div>
       <div class="st-meta">${region}${metaRight}</div>
     </div>
-    <div class="st-price">${price}<span style="font-size:10px;">만</span></div>
+    <div class="st-price">${priceHtml}</div>
   </div>`;
 }
 
@@ -1400,7 +1412,7 @@ async function loadBuildingHeader(id){
   // 실거래 지번주소(b.address)가 있으면 그대로(좌측 목록과 키 일치), 없으면 마스터
   // 도로명주소(b.road_address)로 폴백 → 거래이력 없어도 주소만 있으면 버튼 활성화.
   const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
-  const favItem = { building_name: b.building_name, address: favAddr };
+  const favItem = { building_name: b.building_name, address: favAddr, building_id: b.id };
   const favKeyStr = favKey(favItem); // 관심저장과 동일한 키 규칙으로 알림도 저장한다
   const canFav = favAddr !== "";
 

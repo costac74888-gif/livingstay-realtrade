@@ -91,3 +91,8 @@ Facts you can only discover by querying Postgres, not by reading code.
   **Why:** bldNm만 보면 이름 있는 건물도 "명칭 없음"으로 오판해 임시명 처리됨.
   **How to apply:** 명칭 결정은 `building_registry.resolve_api_building_name()` 사용
   (bldNm → dongNm 폴백, "101동"/"A동" 같은 단순 동 라벨은 제외).
+
+- **관심단지(user_favorites)의 건물 링크는 저장 시점 id가 1순위.** favKey(건물명|주소)만으로는
+  실거래 없는 건물이 transactions 역매칭에 걸리지 않아 링크가 끊긴다.
+  **How to apply:** 관심저장 UI에 building_id가 있으면 반드시 POST에 함께 넘기고,
+  조회 fallback은 road_address 일치 또는 REPLACE(umd_nm||jibun,' ','') 비교를 쓴다.

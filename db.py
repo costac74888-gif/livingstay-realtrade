@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-1"
+SCHEMA_VERSION = "2026-07-20-2"
 
 
 def init_db():
@@ -109,6 +109,14 @@ def init_db():
     # 정식 명칭 미확정 표시 — API(건축물대장)에 건물명이 없어 "읍면동 지번" 임시명으로 등록된 건물은 TRUE.
     # 기본값 FALSE: 기존 건물들은 이미 확정된 명칭을 갖고 있으므로, TRUE는 submit_building()이 명시적으로만 세팅한다.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS name_pending BOOLEAN DEFAULT FALSE")
+    # 1회성 백필(멱등) — 이름이 무의미한 기존 행("(이름 미상)"/"-"/빈값)은 "읍면동 지번"
+    # 임시명으로 바꾸고 name_pending=TRUE. 운영 DB에도 배포 부팅 시 자동 적용된다.
+    cur.execute("""
+        UPDATE master_buildings
+        SET building_name = umd_nm || ' ' || jibun, name_pending = TRUE
+        WHERE TRIM(COALESCE(building_name, '')) IN ('', '-', '(이름 미상)')
+          AND umd_nm IS NOT NULL AND jibun IS NOT NULL
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS transactions (
@@ -527,6 +535,9 @@ def init_db():
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id)")
+    # 관심저장 시점에 프론트가 알고 있는 master_buildings.id를 직접 저장 —
+    # 실거래가 없는 건물도 마이페이지/홈 위젯에서 상세 링크가 끊기지 않게 한다.
+    cur.execute("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS master_building_id INTEGER")
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_favorites "
         "ON user_favorites (user_id, COALESCE(building_name, ''), address)"

@@ -872,6 +872,35 @@ def get_favorites():
         ORDER BY deal_date DESC, id DESC
     """, params)
     rows = [dict(r) for r in cur.fetchall()]
+
+    # 실거래가 없는 관심단지 fallback — transactions에서 못 찾은 키는 master_buildings를
+    # 직접 매칭(도로명주소 일치 또는 "읍면동+지번" 공백제거 비교)해 거래 없이도
+    # 이름/지역/상세링크(master_building_id)를 돌려준다. (홈 좌측 관심단지 위젯용)
+    covered = {(r["building_name"], r["address"]) for r in rows}
+    for name, addr in pairs:
+        norm_name = None if name in ("null", "undefined", "") else name
+        if (norm_name, addr) in covered:
+            continue
+        cur.execute("""
+            SELECT id, building_name, sgg_text, umd_nm, jibun
+            FROM master_buildings
+            WHERE road_address = %s
+               OR REPLACE(umd_nm || jibun, ' ', '') = REPLACE(%s, ' ', '')
+            ORDER BY (building_name = %s) DESC NULLS LAST, id
+            LIMIT 1
+        """, (addr, addr, norm_name))
+        mb = cur.fetchone()
+        if not mb:
+            continue
+        rows.append({
+            "building_name": norm_name, "address": addr,
+            "si_do": None, "sgg_nm": mb["sgg_text"], "umd_nm": mb["umd_nm"],
+            "jibun": mb["jibun"], "sgg_cd": None,
+            "area": None, "price": None, "deal_date": None, "deal_type": None,
+            "floor": None, "lodging_type": None, "lodging_type_detail": None,
+            "match_source": "master_fallback",
+            "master_building_id": mb["id"],
+        })
     cur.close()
     conn.close()
     return jsonify({"items": rows, "total": len(rows)})
@@ -1010,7 +1039,7 @@ def submit_building():
     # 같은 지번의 건물이 이미 신마스터에 있으면 중복 INSERT 대신 검증값으로 갱신한다
     # (같은 주소를 여러 번 요청해도 마스터 키가 중복되지 않도록).
     cur.execute(
-        "SELECT id FROM master_buildings WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s",
+        "SELECT id, building_name FROM master_buildings WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s",
         (sgg_cd, umd_nm, jibun_str),
     )
     existing = cur.fetchone()
@@ -1029,6 +1058,16 @@ def submit_building():
                 SET building_name=%s, name_pending=FALSE
                 WHERE id=%s AND name_pending IS TRUE
             """, (api_bld_nm, master_id))
+        else:
+            # 안전장치: API 명칭이 여전히 없더라도, 기존 이름이 "(이름 미상)"/"-"/빈값처럼
+            # 무의미하면 최소한 "읍면동 지번" 임시명으로 바꾸고 name_pending=TRUE 유지.
+            existing_name = (existing["building_name"] or "").strip()
+            if existing_name in ("", "-", "(이름 미상)"):
+                cur.execute("""
+                    UPDATE master_buildings
+                    SET building_name=%s, name_pending=TRUE
+                    WHERE id=%s
+                """, (f"{umd_nm} {jibun_str}", master_id))
     else:
         cur.execute("""
             INSERT INTO master_buildings
@@ -2022,13 +2061,16 @@ def favorites_mine():
     cur = conn.cursor()
     try:
         # lt: 관심키(건물명+주소)에 해당하는 최신 실거래 1건.
-        # bid: 같은 관심키의 거래가 속한 마스터 건물 id (지번 튜플로 master_buildings 역매칭,
-        #      같은 지번에 여러 동이면 건물명이 정확히 일치하는 것을 우선).
+        # building_id 결정 순서(실거래 비의존):
+        #   1) uf.master_building_id — 저장 시점에 프론트가 넘긴 건물 id (가장 확실)
+        #   2) bid: 거래 경유 역매칭 (기존 저장분 하위호환)
+        #   3) bid2: master_buildings 직접 매칭 — 도로명주소 일치 또는
+        #      "읍면동+지번" 조합이 uf.address와 일치(공백 제거 비교) → 실거래 없어도 링크됨
         cur.execute("""
             SELECT uf.building_name, uf.address, uf.created_at,
                    lt.price, lt.deal_date, lt.area, lt.floor, lt.deal_type,
                    lt.lodging_type, lt.lodging_type_detail,
-                   bid.id AS building_id
+                   COALESCE(uf.master_building_id, bid.id, bid2.id) AS building_id
             FROM user_favorites uf
             LEFT JOIN LATERAL (
                 SELECT t.price, t.deal_date, t.area, t.floor, t.deal_type,
@@ -2051,6 +2093,14 @@ def favorites_mine():
                 ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
                 LIMIT 1
             ) bid ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT mb.id
+                FROM master_buildings mb
+                WHERE mb.road_address = uf.address
+                   OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', '')
+                ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
+                LIMIT 1
+            ) bid2 ON TRUE
             WHERE uf.user_id = %s
             ORDER BY uf.created_at DESC, uf.id DESC
         """, (u["id"],))
@@ -2072,14 +2122,30 @@ def favorites_mine_add():
     addr = (data.get("address") or "").strip()
     if not addr:
         return jsonify({"ok": False, "message": "주소가 필요합니다."}), 400
+    # 프론트가 알고 있는 master_buildings.id — 실거래 없는 건물도 상세 링크 유지용(선택값)
+    bid = data.get("building_id")
+    try:
+        bid = int(bid) if bid is not None else None
+        if bid is not None and bid <= 0:
+            bid = None
+    except (TypeError, ValueError):
+        bid = None
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # 표현식 UNIQUE 인덱스(uq_user_favorites) 기준으로 원자적 dedup — 동시요청 안전
+        if bid is not None:
+            # 존재하는 건물 id만 저장(임의 값 방지)
+            cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", (bid,))
+            if not cur.fetchone():
+                bid = None
+        # 표현식 UNIQUE 인덱스(uq_user_favorites) 기준으로 원자적 dedup — 동시요청 안전.
+        # 이미 저장된 관심단지에 building_id 없이 남아 있으면 이번 값으로 채워준다(백필).
         cur.execute(
-            "INSERT INTO user_favorites (user_id, building_name, address) VALUES (%s, %s, %s) "
-            "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
-            (u["id"], name, addr),
+            "INSERT INTO user_favorites (user_id, building_name, address, master_building_id) "
+            "VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO UPDATE "
+            "SET master_building_id = COALESCE(user_favorites.master_building_id, EXCLUDED.master_building_id)",
+            (u["id"], name, addr, bid),
         )
         conn.commit()
     finally:
