@@ -1692,6 +1692,117 @@ def loan_consultants_list_page():
 
 # ---- 파트너 소개 (공개, /partner 페이지) ----
 
+@app.route("/partners-directory")
+def partners_directory_page():
+    """파트너 소개 게시판 (공개) — 로고 없이 텍스트/표 기반 (상표권 이슈 회피)."""
+    return _serve_static_html("partners_directory.html")
+
+
+@app.route("/api/partners/directory")
+def partners_directory_api():
+    """승인 + 노출중(approved & is_visible) 파트너 전체 목록 — /partners-directory 게시판용.
+
+    타입별 정렬(요구사항):
+      - 중개사/운영지원업체: priority_score DESC → 담당건물수 DESC → 승인일 DESC
+      - 대출상담사:          priority_score DESC → 승인일 DESC
+    서비스지역:
+      - 중개사/운영지원업체: 담당 건물들의 시도(sgg_text 첫 토큰) 목록, 없으면 신청서 희망지역
+      - 대출상담사: 신청서 희망지역, 없으면 '전국'
+    """
+    def _safe_url(u):
+        # javascript:/data: 등 위험 스킴 차단 — http(s)만 링크로 노출
+        u = (u or "").strip()
+        return u if u.lower().startswith(("http://", "https://")) else None
+
+    conn = get_conn()
+    cur = conn.cursor()
+    items = []
+    try:
+        cur.execute("""
+            SELECT a.office_name AS name, a.phone, a.subdomain_slug AS slug,
+                   COALESCE(a.priority_score, 0) AS priority_score, a.approved_at,
+                   (SELECT COUNT(*) FROM agent_buildings ab WHERE ab.agent_id = a.id) AS building_count,
+                   (SELECT string_agg(DISTINCT split_part(mb.sgg_text, ' ', 1), ', ')
+                      FROM agent_buildings ab JOIN master_buildings mb ON mb.id = ab.master_building_id
+                     WHERE ab.agent_id = a.id AND mb.sgg_text IS NOT NULL) AS region_bld,
+                   (SELECT ap.preferred_region FROM applications ap
+                     WHERE ap.linked_agent_id = a.id ORDER BY ap.id DESC LIMIT 1) AS region_app
+            FROM agents a
+            WHERE a.status = 'approved' AND COALESCE(a.is_visible, TRUE)
+            ORDER BY COALESCE(a.priority_score, 0) DESC, building_count DESC,
+                     a.approved_at DESC NULLS LAST, a.id DESC
+        """)
+        for r in cur.fetchall():
+            items.append({
+                "type": "agent",
+                "name": r["name"],
+                "region": r["region_bld"] or r["region_app"] or "-",
+                "phone": format_phone(r["phone"]) if r["phone"] else None,
+                "website": None,
+                "tags": [],
+                "building_count": r["building_count"],
+                "license_number": None,
+                "link": f"/agent/{r['slug']}" if r["slug"] else None,
+            })
+
+        cur.execute("""
+            SELECT o.company_name AS name, o.phone, o.subdomain_slug AS slug, o.category,
+                   o.website_url,
+                   COALESCE(o.priority_score, 0) AS priority_score, o.approved_at,
+                   (SELECT COUNT(*) FROM operator_buildings ob WHERE ob.operator_id = o.id) AS building_count,
+                   (SELECT string_agg(DISTINCT split_part(mb.sgg_text, ' ', 1), ', ')
+                      FROM operator_buildings ob JOIN master_buildings mb ON mb.id = ob.master_building_id
+                     WHERE ob.operator_id = o.id AND mb.sgg_text IS NOT NULL) AS region_bld,
+                   (SELECT ap.preferred_region FROM applications ap
+                     WHERE ap.linked_operator_id = o.id ORDER BY ap.id DESC LIMIT 1) AS region_app
+            FROM operators o
+            WHERE o.status = 'approved' AND COALESCE(o.is_visible, TRUE)
+            ORDER BY COALESCE(o.priority_score, 0) DESC, building_count DESC,
+                     o.approved_at DESC NULLS LAST, o.id DESC
+        """)
+        for r in cur.fetchall():
+            items.append({
+                "type": "operator",
+                "name": r["name"],
+                "region": r["region_bld"] or r["region_app"] or "-",
+                "phone": format_phone(r["phone"]) if r["phone"] else None,
+                "website": _safe_url(r["website_url"]),
+                "tags": [t for t in [(r["category"] or "").strip()] if t],
+                "building_count": r["building_count"],
+                "license_number": None,
+                "link": f"/operator/{r['slug']}" if r["slug"] else None,
+            })
+
+        cur.execute("""
+            SELECT lc.office_name AS name, lc.owner_name, lc.phone, lc.subdomain_slug AS slug,
+                   lc.license_number, lc.consultant_products,
+                   COALESCE(lc.priority_score, 0) AS priority_score, lc.approved_at,
+                   (SELECT ap.preferred_region FROM applications ap
+                     WHERE ap.linked_loan_consultant_id = lc.id ORDER BY ap.id DESC LIMIT 1) AS region_app
+            FROM loan_consultants lc
+            WHERE lc.status = 'approved' AND COALESCE(lc.is_visible, TRUE)
+            ORDER BY COALESCE(lc.priority_score, 0) DESC, lc.approved_at DESC NULLS LAST, lc.id DESC
+        """)
+        for r in cur.fetchall():
+            products = [p.strip() for p in (r["consultant_products"] or "").split(",") if p.strip()]
+            items.append({
+                "type": "loan",
+                "name": r["name"],
+                "region": r["region_app"] or "전국",
+                "phone": format_phone(r["phone"]) if r["phone"] else None,
+                "website": None,
+                "tags": products,
+                "building_count": None,  # 대출상담사는 담당건물 대신 등록번호 뱃지
+                "license_number": r["license_number"],
+                # 대출상담사는 개별 공개 프로필 페이지가 없어 전체 목록 페이지로 연결
+                "link": "/loan-consultants",
+            })
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
 @app.route("/api/partners/operators")
 def partners_operators_list():
     """로고가 등록된 승인 운영지원업체 공개 목록 — /partner '등록된 파트너' 섹션용.

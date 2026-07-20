@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>파트너 소개 · 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 등록 파트너 소개 — 담당중개사, 운영지원업체, 금융·대출상담 파트너 목록." />
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+<style>
+.pd-tabs{ display:flex; gap:6px; flex-wrap:wrap; }
+.pd-tab{ font-size:12.5px; font-weight:700; padding:7px 13px; border-radius:18px; border:1px solid var(--line); background:#fff; color:var(--ink-soft); cursor:pointer; }
+.pd-tab.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
+.pd-search{ flex:1; min-width:150px; max-width:240px; font-size:13px; padding:7px 11px; border:1px solid var(--line); border-radius:8px; }
+.pd-toolbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:space-between; margin-bottom:12px; }
+
+.pd-badge{ display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:10px; white-space:nowrap; }
+.pd-badge.agent{ background:var(--brass-tint); color:var(--brass-dark); }
+.pd-badge.operator{ background:#16202E; color:#E8D9BC; }
+.pd-badge.loan{ background:#EAF2FB; color:#1E5FA8; }
+.pd-tag{ display:inline-block; font-size:11px; padding:2px 8px; border-radius:10px; background:#F1F3F6; color:var(--ink-soft); font-weight:600; margin:1px 2px 1px 0; }
+.pd-lic{ display:inline-block; font-size:11px; font-weight:700; color:#1E5FA8; background:#EAF2FB; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+.pd-bcount{ font-size:12px; font-weight:600; color:var(--ink); white-space:nowrap; }
+.pd-more{ font-size:12px; font-weight:700; color:var(--brass-dark); text-decoration:none; white-space:nowrap; }
+.pd-more:hover{ text-decoration:underline; }
+
+/* PC 테이블 — 진한 헤더 + 흰 글씨 (관리자 화면 톤) */
+.pd-table{ width:100%; border-collapse:collapse; font-size:13px; }
+.pd-table thead th{ background:var(--ink); color:#fff; font-size:12px; font-weight:700; text-align:left; padding:10px 12px; white-space:nowrap; }
+.pd-table thead th:first-child{ border-radius:8px 0 0 0; }
+.pd-table thead th:last-child{ border-radius:0 8px 0 0; }
+.pd-table tbody td{ padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:middle; color:var(--ink); }
+.pd-table tbody tr:hover{ background:var(--brass-tint); }
+.pd-name{ font-weight:700; }
+
+/* 모바일 카드 */
+.pd-cards{ display:none; }
+.pd-card{ border:1px solid var(--line); border-radius:12px; padding:13px 14px; background:#fff; margin-bottom:10px; }
+.pd-card-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pd-card-name{ font-size:14.5px; font-weight:700; color:var(--ink); flex:1; min-width:120px; }
+.pd-card-row{ font-size:12.5px; color:var(--ink-soft); margin-top:6px; }
+.pd-card-row b{ color:var(--ink); font-weight:600; }
+@media (max-width: 640px){
+  .pd-table-wrap{ display:none; }
+  .pd-cards{ display:block; }
+}
+</style>
+</head>
+<body>
+
+<header id="siteHeader"></header>
+
+<div class="search-panel" style="max-width:960px; padding-bottom:48px;">
+  <div style="margin:16px 0 6px;">
+    <a href="/partner" class="home-link" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 파트너 안내로</a>
+  </div>
+
+  <div class="panel-card" style="margin-bottom:14px;">
+    <h1 style="font-size:19px; font-weight:700; color:var(--ink); margin:0 0 6px;">파트너 소개</h1>
+    <p style="font-size:13px; color:var(--ink-soft); margin:0; line-height:1.6;">
+      홈앤스테이에 등록·승인된 파트너 목록입니다. 담당중개사 · 운영지원업체 · 금융(대출상담) 파트너를 확인하실 수 있습니다.
+    </p>
+  </div>
+
+  <div class="panel-card">
+    <div class="pd-toolbar">
+      <div class="pd-tabs" id="pdTabs">
+        <button class="pd-tab on" data-type="all">전체</button>
+        <button class="pd-tab" data-type="agent">담당중개사</button>
+        <button class="pd-tab" data-type="operator">운영지원업체</button>
+        <button class="pd-tab" data-type="loan">금융·대출상담</button>
+      </div>
+      <input class="pd-search" id="pdSearch" type="search" placeholder="서비스지역 검색 (예: 인천)" />
+    </div>
+
+    <div id="pdBody">
+      <div class="side-empty" style="padding:24px 0; text-align:center; color:var(--ink-soft); font-size:13px;">불러오는 중…</div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
+<script>
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+const TYPE_LABEL = { agent:"중개사", operator:"운영지원", loan:"금융·대출" };
+let ALL_ITEMS = [];
+let curType = "all";
+let curQuery = "";
+
+function badge(t){ return `<span class="pd-badge ${t}">${TYPE_LABEL[t] || t}</span>`; }
+function safeUrl(u){ u = String(u || "").trim(); return /^https?:\/\//i.test(u) ? u : null; }
+
+function manageCell(it){
+  if (it.type === "loan") {
+    return it.license_number ? `<span class="pd-lic">등록번호: ${esc(it.license_number)}</span>` : "-";
+  }
+  const n = it.building_count || 0;
+  return n > 0 ? `<span class="pd-bcount">${n}개 건물 관리 중</span>` : `<span style="color:var(--ink-soft);">-</span>`;
+}
+
+function tagsCell(it){
+  if (!it.tags || !it.tags.length) return "";
+  return it.tags.slice(0, 4).map(t => `<span class="pd-tag">${esc(t)}</span>`).join("");
+}
+
+function render(){
+  const box = document.getElementById("pdBody");
+  const q = curQuery.trim();
+  const items = ALL_ITEMS.filter(it =>
+    (curType === "all" || it.type === curType) &&
+    (!q || String(it.region || "").includes(q))
+  );
+
+  if (!items.length){
+    box.innerHTML = `<div style="padding:34px 0; text-align:center; color:var(--ink-soft); font-size:13.5px;">파트너 모집 중입니다.</div>`;
+    return;
+  }
+
+  const rows = items.map(it => `
+    <tr>
+      <td class="pd-name">${esc(it.name || "-")}</td>
+      <td>${badge(it.type)}</td>
+      <td style="font-size:12.5px;">${esc(it.region || "-")}</td>
+      <td style="font-size:12.5px; white-space:nowrap;">${it.phone ? `<a href="tel:${esc(it.phone)}" style="color:var(--ink); text-decoration:none;">${esc(it.phone)}</a>` : "-"}</td>
+      <td style="font-size:12.5px;">${safeUrl(it.website) ? `<a href="${esc(safeUrl(it.website))}" target="_blank" rel="noopener noreferrer" style="color:var(--brass-dark);">홈페이지</a>` : "-"}</td>
+      <td>${tagsCell(it) || `<span style="color:var(--ink-soft);">-</span>`}</td>
+      <td>${manageCell(it)}</td>
+      <td>${it.link ? `<a class="pd-more" href="${esc(it.link)}">자세히 보기 →</a>` : "-"}</td>
+    </tr>`).join("");
+
+  const cards = items.map(it => `
+    <div class="pd-card">
+      <div class="pd-card-top">
+        <div class="pd-card-name">${esc(it.name || "-")}</div>
+        ${badge(it.type)}
+      </div>
+      <div class="pd-card-row"><b>서비스지역</b> · ${esc(it.region || "-")}</div>
+      ${it.phone ? `<div class="pd-card-row"><b>연락처</b> · <a href="tel:${esc(it.phone)}" style="color:var(--ink-soft);">${esc(it.phone)}</a></div>` : ""}
+      ${safeUrl(it.website) ? `<div class="pd-card-row"><b>홈페이지</b> · <a href="${esc(safeUrl(it.website))}" target="_blank" rel="noopener noreferrer" style="color:var(--brass-dark);">바로가기</a></div>` : ""}
+      ${(it.tags && it.tags.length) ? `<div class="pd-card-row">${tagsCell(it)}</div>` : ""}
+      <div class="pd-card-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:9px;">
+        <span>${manageCell(it)}</span>
+        ${it.link ? `<a class="pd-more" href="${esc(it.link)}">자세히 보기 →</a>` : ""}
+      </div>
+    </div>`).join("");
+
+  box.innerHTML = `
+    <div class="pd-table-wrap" style="overflow-x:auto;">
+      <table class="pd-table">
+        <thead><tr>
+          <th>상호</th><th>업종</th><th>서비스지역</th><th>연락처</th><th>홈페이지</th><th>전문분야</th><th>담당 현황</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="pd-cards">${cards}</div>`;
+}
+
+document.getElementById("pdTabs").addEventListener("click", e => {
+  const btn = e.target.closest(".pd-tab");
+  if (!btn) return;
+  document.querySelectorAll(".pd-tab").forEach(b => b.classList.toggle("on", b === btn));
+  curType = btn.dataset.type;
+  render();
+});
+document.getElementById("pdSearch").addEventListener("input", e => {
+  curQuery = e.target.value || "";
+  render();
+});
+
+(function initFromParams(){
+  const sp = new URLSearchParams(location.search);
+  const t = sp.get("type");
+  if (t && TYPE_LABEL[t]) {
+    curType = t;
+    document.querySelectorAll(".pd-tab").forEach(b => b.classList.toggle("on", b.dataset.type === t));
+  }
+  const q = sp.get("q");
+  if (q) { curQuery = q; document.getElementById("pdSearch").value = q; }
+})();
+
+(async function load(){
+  try {
+    const res = await fetch("/api/partners/directory");
+    const d = await res.json();
+    if (res.ok && d.ok && Array.isArray(d.items)) ALL_ITEMS = d.items;
+  } catch(e){}
+  render();
+})();
+</script>
+</body>
+</html>
