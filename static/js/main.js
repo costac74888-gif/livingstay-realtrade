@@ -1133,21 +1133,21 @@ function recruitBoxHTML(kind, opts = {}){
       bg: "#EEF6E6", border: "#CFE4B8", icon: "🏨", iconSize: 22, pad: "14px 12px",
       title: "위탁운영 지원업체를 찾고 있습니다",
       desc: "건물별 운영을 맡아줄 파트너를 모집합니다.",
-      btnText: "지원업체로 신청하기", href: "/operators",
+      btnText: "지원업체로 신청하기", href: "/partner",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
     },
     housekeeping: {
       bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 22, pad: "14px 12px",
       title: "운영지원업체를 찾고 있습니다",
       desc: "건물별 객실관리를 맡아줄 파트너를 모집합니다.",
-      btnText: "지원업체로 신청하기", href: "/operators",
+      btnText: "지원업체로 신청하기", href: "/partner",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
     },
     finance: {
       bg: "var(--brass-tint)", border: "#EAD9B8", icon: "💰", iconSize: 22, pad: "14px 12px",
       title: "금융 파트너(대출상담사)를 모집합니다",
       desc: "매입·잔금 대출 상담을 맡아줄 금감원 등록 대출상담사를 모집합니다.",
-      btnText: "대출상담사로 등록하기", href: "/loan-partners", btnStyle: "",
+      btnText: "대출상담사로 등록하기", href: "/partner", btnStyle: "",
     },
   };
   const k = KINDS[kind];
