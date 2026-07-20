@@ -60,8 +60,21 @@
     <div class="admin-modal-head"><h3>프로필 수정</h3><button class="admin-modal-close" data-close="mProfile">×</button></div>
     <div class="admin-modal-body">
       <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
-      <div class="field"><label>사진 URL (http(s)://…)</label><input type="text" id="fPhoto" placeholder="예) https://example.com/photo.jpg" /></div>
-      <div class="field"><label>소개글</label><textarea id="fIntro" rows="5" style="width:100%; font:inherit; font-size:13px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; resize:vertical;"></textarea></div>
+      <div class="field">
+        <label>상담 가능 상품 (해당 항목 모두 선택)</label>
+        <div id="fProducts" style="display:flex; flex-direction:column; gap:7px; padding:10px 12px; border:1px solid var(--line); border-radius:8px;">
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:7px 9px; border-radius:6px; cursor:pointer;">
+            <input type="checkbox" value="생활숙박시설 담보대출" /> 생활숙박시설 담보대출 <span style="font-size:11px; font-weight:600;">(추천)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" value="주택담보대출" /> 주택담보대출</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" value="전세대출" /> 전세대출</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" value="사업자대출" /> 사업자대출</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" value="정책자금·채무조정" /> 정책자금·채무조정</label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" value="차량담보대출" /> 차량담보대출</label>
+        </div>
+      </div>
+      <div class="field"><label>카카오톡 상담 링크 (선택)</label><input type="text" id="fKakao" placeholder="예) https://open.kakao.com/o/…" /></div>
+      <div class="field"><label>한줄소개 (선택, 최대 100자)</label><input type="text" id="fIntro" maxlength="100" placeholder="예) 생활숙박시설 담보대출 전문 상담사입니다." /></div>
     </div>
     <div class="admin-modal-msg" id="msgProfile"></div>
     <div class="admin-modal-foot">
@@ -142,15 +155,23 @@ document.getElementById("btnToggleVisible").addEventListener("click", async () =
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {
   document.getElementById("fPhone").value = formatPhone(ME.phone || "");
-  document.getElementById("fPhoto").value = ME.photo_url || "";
+  const selected = (ME.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
+  document.querySelectorAll("#fProducts input[type=checkbox]").forEach(cb => { cb.checked = selected.includes(cb.value); });
+  document.getElementById("fKakao").value = ME.kakao_chat_url || "";
   document.getElementById("fIntro").value = ME.intro_text || "";
   document.getElementById("msgProfile").textContent = "";
   openModal("mProfile");
 });
 document.getElementById("btnSaveProfile").addEventListener("click", async () => {
+  const kakao = document.getElementById("fKakao").value.trim();
+  if (kakao && !/^https?:\/\/.+/.test(kakao)){
+    document.getElementById("msgProfile").textContent = "카카오톡 상담 링크는 http(s)://로 시작하는 URL이어야 합니다.";
+    return;
+  }
   const body = {
     phone: document.getElementById("fPhone").value,
-    photo_url: document.getElementById("fPhoto").value,
+    consultant_products: Array.from(document.querySelectorAll("#fProducts input[type=checkbox]:checked")).map(cb => cb.value),
+    kakao_chat_url: kakao,
     intro_text: document.getElementById("fIntro").value,
   };
   const { ok, data } = await api("/api/loan-consultant/me", { method: "PUT", body: JSON.stringify(body) });

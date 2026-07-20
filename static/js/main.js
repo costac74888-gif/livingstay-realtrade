@@ -1750,16 +1750,30 @@ async function loadBuildingLoanConsultants(){
     if (res.ok && d.ok && Array.isArray(d.items)) items = d.items;
   } catch(e){ return; }
   if (!items.length) return;
-  box.innerHTML = items.map((c) => `
-    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--line, #eee);">
-      <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>
-      <div style="flex:1; min-width:130px;">
-        <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(c.owner_name || "-")} 대출상담사</div>
-        <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(c.office_name || "-")}</div>
+  box.innerHTML = items.map((c) => {
+    const products = String(c.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
+    const tags = products.length
+      ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">${products.map(p =>
+          `<span style="font-size:11px; padding:2px 8px; border-radius:10px; background:${p === "생활숙박시설 담보대출" ? "var(--brass-tint)" : "#F1F3F6"}; color:${p === "생활숙박시설 담보대출" ? "var(--brass-dark)" : "var(--ink-soft)"}; font-weight:600;">${escapeHtml(p)}</span>`).join("")}</div>`
+      : "";
+    return `
+    <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>
+        <div style="flex:1; min-width:130px;">
+          <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(c.owner_name || "-")} 대출상담사</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(c.office_name || "-")}</div>
+        </div>
+        ${c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a>` : ""}
       </div>
-      ${c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a>` : ""}
-    </div>`).join("") + `
-    <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">금융감독원 등록 대출모집인 확인 후 등록된 상담사입니다.</div>`;
+      ${c.license_number ? `<div style="margin-top:7px;"><span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:#1E5FA8; background:#EAF2FB; padding:3px 9px; border-radius:10px;">✓ 금융감독원 등록 대출모집인 (등록번호: ${escapeHtml(c.license_number)})</span></div>` : ""}
+      ${c.intro_text ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">${escapeHtml(c.intro_text)}</div>` : ""}
+      ${tags}
+      ${c.kakao_chat_url ? `<div style="margin-top:8px;"><a href="${escapeHtml(c.kakao_chat_url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:7px 14px; border-radius:8px; text-decoration:none;">💬 카카오톡 상담하기</a></div>` : ""}
+    </div>`;
+  }).join("") + `
+    <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
+    <div style="margin-top:8px; text-align:right;"><a href="/loan-consultants" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">전체 대출상담사 보기 →</a></div>`;
 }
 
 function renderBuildingAgent(agent, buildingId, buildingName){

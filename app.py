@@ -69,6 +69,17 @@ def _inject_asset_version(html):
     )
 
 app = Flask(__name__, static_folder="static")
+
+# 대출상담사 '상담 가능 상품' 허용 목록 — 프로필 체크박스/B화면 태그 공통 기준.
+# 순서 = 노출 순서 (생활숙박시설 담보대출이 항상 최상단).
+LOAN_CONSULTANT_PRODUCTS = [
+    "생활숙박시설 담보대출",
+    "주택담보대출",
+    "전세대출",
+    "사업자대출",
+    "정책자금·채무조정",
+    "차량담보대출",
+]
 # 관리자 세션(서명된 쿠키) 서명 키. FLASK_SECRET_KEY가 없으면 세션이 유지되지
 # 않아 관리자 로그인이 동작하지 않으므로 Secrets에 반드시 등록되어 있어야 한다.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "")
@@ -1629,22 +1640,49 @@ def loan_consultants_list():
     """승인된 대출상담사 공개 목록 — B화면 '금융' 카드에서 사용.
 
     연락처(phone)는 상담 연결 목적상 노출한다 (중개사 카드와 동일 정책).
-    license_number 원문은 공개하지 않는다.
+    license_number는 '금융감독원 등록 대출모집인' 뱃지 표기용으로 포함.
+    정렬: priority_score DESC(유료 우선노출 자리, 현재 전부 0), 나머지는 RANDOM() — 3명만 반환.
     """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT office_name, owner_name, phone, subdomain_slug
+        SELECT office_name, owner_name, phone, subdomain_slug,
+               license_number, consultant_products, kakao_chat_url, intro_text
         FROM loan_consultants
         WHERE status = 'approved'
           AND COALESCE(is_visible, TRUE)
-        ORDER BY approved_at DESC NULLS LAST, id DESC
-        LIMIT 10
+        ORDER BY COALESCE(priority_score, 0) DESC, RANDOM()
+        LIMIT 3
     """)
     items = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/loan-consultants/all")
+def loan_consultants_list_all():
+    """승인된 대출상담사 전체 공개 목록 — /loan-consultants 전체 목록 페이지에서 사용."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT office_name, owner_name, phone, subdomain_slug,
+               license_number, consultant_products, kakao_chat_url, intro_text
+        FROM loan_consultants
+        WHERE status = 'approved'
+          AND COALESCE(is_visible, TRUE)
+        ORDER BY COALESCE(priority_score, 0) DESC, approved_at DESC NULLS LAST, id DESC
+    """)
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/loan-consultants")
+def loan_consultants_list_page():
+    """전체 대출상담사 목록 페이지 (공개)."""
+    return _serve_static_html("loan_consultants_list.html")
 
 
 # ---- 파트너 소개 (공개, /partner 페이지) ----
@@ -3845,7 +3883,8 @@ def loan_consultant_me():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug,
+            SELECT office_name, owner_name, phone, intro_text, subdomain_slug,
+                   consultant_products, kakao_chat_url,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM loan_consultants WHERE id = %s
         """, [lc_id])
@@ -3861,12 +3900,25 @@ def loan_consultant_me():
 @app.route("/api/loan-consultant/me", methods=["PUT"])
 @require_loan_consultant
 def loan_consultant_me_update():
-    """phone / photo_url / intro_text 부분 업데이트 — 전달된 키만 수정 (agent와 동일 패턴)."""
+    """phone / intro_text / consultant_products / kakao_chat_url 부분 업데이트 — 전달된 키만 수정."""
     lc_id = session["loan_consultant_id"]
     data = request.get_json(force=True, silent=True) or {}
-    allowed = ["phone", "photo_url", "intro_text"]
     sets, params = [], []
-    for k in allowed:
+    # 상담 가능 상품 — 허용 목록 내 다중 선택, 콤마구분 텍스트로 저장
+    if "consultant_products" in data:
+        v = data.get("consultant_products")
+        if v is None:
+            v = []
+        if not isinstance(v, list) or any(not isinstance(x, str) for x in v):
+            return jsonify({"ok": False, "message": "상담 가능 상품 값이 올바르지 않습니다."}), 400
+        invalid = [x for x in v if x not in LOAN_CONSULTANT_PRODUCTS]
+        if invalid:
+            return jsonify({"ok": False, "message": "허용되지 않은 상담 상품이 포함되어 있습니다."}), 400
+        # 허용 목록 순서대로 정렬해 저장 (생활숙박시설 담보대출이 항상 앞)
+        ordered = [p for p in LOAN_CONSULTANT_PRODUCTS if p in v]
+        sets.append("consultant_products = %s")
+        params.append(",".join(ordered) or None)
+    for k in ["phone", "intro_text", "kakao_chat_url"]:
         if k in data:
             v = data.get(k)
             if v is not None and not isinstance(v, str):
@@ -3877,8 +3929,10 @@ def loan_consultant_me_update():
                 v = _digits_only(v) or None
                 if v and not _validate_phone_digits(v):
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
-            if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
-                return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            if k == "kakao_chat_url" and v and not (v.startswith("http://") or v.startswith("https://")):
+                return jsonify({"ok": False, "message": "카카오톡 상담 링크는 http(s)://로 시작하는 URL이어야 합니다."}), 400
+            if k == "intro_text" and v and len(v) > 100:
+                return jsonify({"ok": False, "message": "한줄소개는 100자 이내로 입력해주세요."}), 400
             sets.append(f"{k} = %s")
             params.append(v)
     if not sets:

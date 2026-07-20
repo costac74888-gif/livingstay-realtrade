@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-7"
+SCHEMA_VERSION = "2026-07-20-8"
 
 
 def init_db():
@@ -327,6 +327,10 @@ def init_db():
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS logo_url TEXT")  # 파트너 로고(이번엔 스키마만 준비)
     # 노출 여부 — agents.is_visible과 동일 개념 (본인 토글)
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
+    # 상담 가능 상품(콤마구분 텍스트) / 카카오톡 상담 링크 / 유료 우선노출용 점수(현재 미사용, 기본 0)
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS consultant_products TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS kakao_chat_url TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (
