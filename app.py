@@ -1595,6 +1595,12 @@ def partner_page():
     return _serve_static_html("partner.html")
 
 
+@app.route("/operators")
+def operators_landing_page():
+    """위탁운영업체 이메일 아웃바운드용 랜딩 페이지 (?company=업체명 개인화)."""
+    return _serve_static_html("operators.html")
+
+
 @app.route("/privacy")
 def privacy_page():
     """개인정보처리방침 페이지 — 뼈대는 정적, 본문은 /api/legal/privacy에서 로드."""
