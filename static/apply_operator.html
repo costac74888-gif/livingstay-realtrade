@@ -28,7 +28,7 @@
     <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 6px;">운영지원업체 등록신청</h1>
     <p style="font-size:13px; color:var(--ink-soft); margin:0 0 16px;">위탁운영·청소·세탁·용품·인테리어 협력업체를 모집합니다. 아래 정보를 입력해주세요. (대출상담사는 <a href="/loan-partners" style="color:var(--brass-dark); font-weight:600;">대출상담사 등록신청</a>에서 별도로 받습니다)</p>
 
-    <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
+    <div id="applyGuideBox" style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
       <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">📎 서류 제출 안내</div>
       <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">사업자등록증·명함·영업허가증(업종별 조건부) 사본을 아래에서 바로 첨부할 수 있습니다. (PDF·JPG·PNG, 파일당 5MB 이하)</div>
     </div>
@@ -36,6 +36,30 @@
     <div id="buildingNotice" style="display:none; font-size:13px; color:var(--ink); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
 
     <form id="applyForm" autocomplete="off">
+      <div style="border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:20px;">
+        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하 · 사업자등록증은 필수)</div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
+          <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>명함</label>
+          <input type="file" class="doc-input" data-doc-type="business_card" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>영업허가증 (업종별 조건부 — 없으면 비워두셔도 됩니다)</label>
+          <input type="file" class="doc-input" data-doc-type="biz_license" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>로고 이미지 (선택 · JPG/PNG) — 승인 시 파트너 소개 섹션에 로고가 노출됩니다</label>
+          <input type="file" class="doc-input" data-doc-type="logo" accept=".jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+      </div>
+
       <div class="field" style="margin-bottom:14px;">
         <label>업체명 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="office_or_company_name" placeholder="예) 홈앤스테이위탁운영" />
@@ -76,30 +100,6 @@
         <select id="preferred_region">
           <option value="">선택 안 함</option>
         </select>
-      </div>
-
-      <div style="border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px;">
-        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하 · 사업자등록증은 필수)</div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
-          <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>명함</label>
-          <input type="file" class="doc-input" data-doc-type="business_card" accept=".pdf,.jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>영업허가증 (업종별 조건부 — 없으면 비워두셔도 됩니다)</label>
-          <input type="file" class="doc-input" data-doc-type="biz_license" accept=".pdf,.jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
-        <div class="field" style="margin-bottom:0;">
-          <label>로고 이미지 (선택 · JPG/PNG) — 승인 시 파트너 소개 섹션에 로고가 노출됩니다</label>
-          <input type="file" class="doc-input" data-doc-type="logo" accept=".jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
       </div>
 
       <div class="auth-consent" id="applyConsent">
@@ -297,6 +297,9 @@
 
     form.style.display = "none";
     document.getElementById("buildingNotice").style.display = "none";
+    // 완료 화면에서는 상단 안내 박스도 숨긴다
+    const guideBox = document.getElementById("applyGuideBox");
+    if (guideBox) guideBox.style.display = "none";
     document.getElementById("successBox").style.display = "block";
   });
 </script>

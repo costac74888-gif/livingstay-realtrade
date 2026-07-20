@@ -28,12 +28,37 @@
     <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 6px;">중개사 회원신청</h1>
     <p style="font-size:13px; color:var(--ink-soft); margin:0 0 16px;">숙박시설·호텔·콘도 전문 중개사무소 회원을 모집합니다. 아래 정보를 입력해주세요.</p>
 
-    <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
+    <div id="applyGuideBox" style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
       <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">📎 서류 제출 안내</div>
       <div style="font-size:12.5px; color:var(--ink); line-height:1.55;"><b>사업자등록증·중개사무소등록증 사본 첨부는 필수</b>입니다. 자격증·사진은 선택입니다. (PDF·JPG·PNG, 파일당 5MB 이하)</div>
     </div>
 
     <form id="applyForm" autocomplete="off">
+      <div style="border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:20px;">
+        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하)</div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>자격증 (선택)</label>
+          <input type="file" class="doc-input" data-doc-type="license" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>중개사무소등록증 <span style="color:var(--brick);">*</span></label>
+          <input type="file" class="doc-input" data-doc-type="office_reg" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
+          <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>여권용 사진 (선택 · JPG/PNG)</label>
+          <input type="file" class="doc-input" data-doc-type="photo" accept=".jpg,.jpeg,.png" />
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:5px;">회사 로고가 아닌 <b>본인 얼굴이 나온 사진</b>을 올려주세요. 승인 시 건물 상세의 담당중개사 카드에 프로필 사진으로 표시됩니다.</div>
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+      </div>
+
       <div class="field" style="margin-bottom:14px;">
         <label>중개사무소명 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="office_or_company_name" placeholder="예) 홈앤스테이공인중개사사무소" />
@@ -64,31 +89,6 @@
         <div id="preferredBuildingHint" style="display:none; font-size:12px; color:var(--brass-dark); margin-top:6px;"></div>
         <!-- 건물 상세(B화면)에서 진입 시 ?building_id= 값이 채워지는 숨은 필드 — 승인 시 담당중개사 자동 배정에 사용 -->
         <input type="hidden" id="preferred_building_id" value="" />
-      </div>
-
-      <div style="border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px;">
-        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하)</div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>자격증 (선택)</label>
-          <input type="file" class="doc-input" data-doc-type="license" accept=".pdf,.jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>중개사무소등록증 <span style="color:var(--brick);">*</span></label>
-          <input type="file" class="doc-input" data-doc-type="office_reg" accept=".pdf,.jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
-          <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
-        <div class="field" style="margin-bottom:0;">
-          <label>여권용 사진 (선택 · JPG/PNG)</label>
-          <input type="file" class="doc-input" data-doc-type="photo" accept=".jpg,.jpeg,.png" />
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:5px;">회사 로고가 아닌 <b>본인 얼굴이 나온 사진</b>을 올려주세요. 승인 시 건물 상세의 담당중개사 카드에 프로필 사진으로 표시됩니다.</div>
-          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
-        </div>
       </div>
 
       <div class="auth-consent" id="applyConsent">
@@ -290,6 +290,9 @@
     }
 
     form.style.display = "none";
+    // 완료 화면에서는 상단 안내 박스도 숨긴다
+    const guideBox = document.getElementById("applyGuideBox");
+    if (guideBox) guideBox.style.display = "none";
     document.getElementById("successBox").style.display = "block";
   });
 </script>

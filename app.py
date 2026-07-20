@@ -34,6 +34,7 @@ import requests
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from sms_util import send_sms
+from email_util import send_email
 import storage_util
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
@@ -1269,6 +1270,58 @@ def _validate_biz_reg_digits(d):
     return len(d) == 10
 
 
+_APPLICANT_TYPE_KR = {"agent": "중개사", "operator": "운영지원업체", "loan_consultant": "대출상담사"}
+
+
+def _send_application_received_email(applicant_type, company_name, to_email):
+    """신청 접수 직후 안내 이메일 발송 — 실패해도 접수 처리에는 영향 없음(예외 삼킴)."""
+    try:
+        type_kr = _APPLICANT_TYPE_KR.get(applicant_type, applicant_type)
+        received_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+        html = f"""
+        <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:520px; margin:0 auto; color:#16202E;">
+          <h2 style="font-size:18px; border-bottom:2px solid #B4863F; padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
+          <p style="font-size:15px; font-weight:700;">신청이 접수되었습니다.</p>
+          <table style="font-size:14px; border-collapse:collapse; margin:12px 0;">
+            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">신청유형</td><td>{type_kr}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">업체명</td><td>{company_name}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">접수일시</td><td>{received_at}</td></tr>
+          </table>
+          <p style="font-size:13px; color:#6b7280;">검토 후 담당자가 연락드리겠습니다. 승인 결과는 문자와 이메일로 안내됩니다.</p>
+        </div>
+        """
+        ok, msg = send_email(to_email, "[홈앤스테이] 신청이 접수되었습니다", html)
+        if not ok:
+            app.logger.warning("신청 접수 이메일 발송 실패 (%s, %s): %s", applicant_type, to_email, msg)
+    except Exception:
+        app.logger.exception("신청 접수 이메일 발송 중 오류 (%s, %s)", applicant_type, to_email)
+
+
+def _send_approval_email(applicant_type, to_email, login_id, temp_pw, login_url):
+    """승인 완료 이메일(SMS와 동일 내용) — 실패해도 승인 처리에는 영향 없음. (ok, msg) 반환."""
+    try:
+        type_kr = _APPLICANT_TYPE_KR.get(applicant_type, applicant_type)
+        html = f"""
+        <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:520px; margin:0 auto; color:#16202E;">
+          <h2 style="font-size:18px; border-bottom:2px solid #B4863F; padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
+          <p style="font-size:15px; font-weight:700;">{type_kr} 승인이 완료되었습니다.</p>
+          <table style="font-size:14px; border-collapse:collapse; margin:12px 0;">
+            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">로그인 ID(이메일)</td><td>{login_id}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">임시비밀번호</td><td><b>{temp_pw}</b></td></tr>
+            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">로그인</td><td><a href="{login_url}">{login_url}</a></td></tr>
+          </table>
+          <p style="font-size:13px; color:#B00020; font-weight:600;">최초 로그인 후 반드시 비밀번호를 변경해주세요.</p>
+        </div>
+        """
+        ok, msg = send_email(to_email, "[홈앤스테이] 승인되었습니다 — 로그인 안내", html)
+        if not ok:
+            app.logger.warning("승인 이메일 발송 실패 (%s, %s): %s", applicant_type, to_email, msg)
+        return ok, msg
+    except Exception as e:
+        app.logger.exception("승인 이메일 발송 중 오류 (%s, %s)", applicant_type, to_email)
+        return False, str(e)
+
+
 @app.route("/api/apply/agent", methods=["POST"])
 @limiter.limit("3 per minute; 10 per hour")
 def apply_agent():
@@ -1369,6 +1422,9 @@ def apply_agent():
     conn.commit()
     cur.close()
     conn.close()
+
+    # 접수 안내 이메일 — 실패해도 접수는 이미 확정
+    _send_application_received_email("agent", office_or_company_name, email)
 
     return jsonify({"ok": True, "id": new_id})
 
@@ -1484,6 +1540,9 @@ def apply_operator():
     cur.close()
     conn.close()
 
+    # 접수 안내 이메일 — 실패해도 접수는 이미 확정
+    _send_application_received_email("operator", office_or_company_name, email)
+
     return jsonify({"ok": True, "id": new_id})
 
 
@@ -1558,6 +1617,9 @@ def apply_loan():
     conn.commit()
     cur.close()
     conn.close()
+
+    # 접수 안내 이메일 — 실패해도 접수는 이미 확정
+    _send_application_received_email("loan_consultant", office_or_company_name, email)
 
     return jsonify({"ok": True, "id": new_id})
 
@@ -5780,21 +5842,21 @@ _MEMBER_SELECTS = {
     "general": """
         SELECT id, 'general' AS member_type, COALESCE(name, '-') AS name, email,
                '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
-               NULL AS applicant_type, created_at,
+               NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
                admin_tag, COALESCE(points, 0) AS points
         FROM users
     """,
     "agent": """
         SELECT id, 'agent' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
-               NULL AS applicant_type, created_at,
+               NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points
         FROM agents WHERE status IN ('approved', 'inactive')
     """,
     "operator": """
         SELECT id, 'operator' AS member_type, owner_name AS name, email,
                (category || ' · ' || company_name) AS group_label, phone, status,
-               NULL AS applicant_type, created_at,
+               NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points
         FROM operators WHERE status IN ('approved', 'inactive')
     """,
@@ -5805,7 +5867,7 @@ _MEMBER_SELECTS = {
                        THEN (category || ' · ' || office_or_company_name)
                    ELSE office_or_company_name
                END AS group_label, phone, status,
-               applicant_type, submitted_at AS created_at,
+               applicant_type, submitted_at AS created_at, NULL::timestamp AS approved_at,
                NULL AS admin_tag, NULL::integer AS points
         FROM applications WHERE status = 'submitted'
     """,
@@ -5857,7 +5919,8 @@ def admin_members_list():
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
                m.status, m.applicant_type, m.admin_tag, m.points,
-               to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+               to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
+               to_char(m.approved_at, 'YYYY-MM-DD HH24:MI') AS approved_at
         FROM ({union_sql}) m
         {group_filter}
         ORDER BY m.created_at DESC NULLS LAST, m.member_type, m.id DESC
@@ -6502,7 +6565,9 @@ def admin_applications_approve(app_id):
             f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
         )
         sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
-        resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg}
+        # 승인 이메일도 함께 발송 (SMS와 동일 내용) — 실패해도 승인은 확정
+        email_sent, _ = _send_approval_email("loan_consultant", ap["email"], ap["email"], temp_pw, f"{domain}/loan-consultant/login")
+        resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg, "email_sent": email_sent}
         if not sms_sent:
             # 문자 실패 시 관리자 화면에서 임시비밀번호를 직접 전달할 수 있게 응답에 포함
             resp["temp_password"] = temp_pw
@@ -6524,7 +6589,10 @@ def admin_applications_approve(app_id):
                 f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
             )
         sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
-        resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg}
+        # 승인 이메일도 함께 발송 (SMS와 동일 내용) — 실패해도 승인은 확정
+        login_path = "/agent/login" if atype == "agent" else "/operator/login"
+        email_sent, _ = _send_approval_email(atype, ap["email"], ap["email"], temp_pw, f"{domain}{login_path}")
+        resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg, "email_sent": email_sent}
         if not sms_sent:
             # 평문 임시비번은 문자 발송 실패 시에만 반환(관리자가 수동 전달하도록)
             resp["temp_password"] = temp_pw

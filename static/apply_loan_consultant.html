@@ -28,7 +28,7 @@
     <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 6px;">대출상담사 등록신청</h1>
     <p style="font-size:13px; color:var(--ink-soft); margin:0 0 16px;">생활숙박시설 매입·잔금 담보대출 상담을 맡아줄 금융 파트너를 모집합니다. 아래 정보를 입력해주세요.</p>
 
-    <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
+    <div id="applyGuideBox" style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
       <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">✅ 승인 안내</div>
       <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">금융감독원 대출모집인 통합조회(<a href="https://www.loanconsultant.or.kr" target="_blank" rel="noopener noreferrer" style="color:var(--brass-dark); font-weight:600;">loanconsultant.or.kr</a>)에서 등록 여부가 확인된 후 승인됩니다.</div>
     </div>
@@ -176,6 +176,9 @@
     }
 
     form.style.display = "none";
+    // 완료 화면에서는 상단 안내 박스도 숨긴다
+    const guideBox = document.getElementById("applyGuideBox");
+    if (guideBox) guideBox.style.display = "none";
     document.getElementById("successBox").style.display = "block";
   });
 </script>

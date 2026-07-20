@@ -1645,6 +1645,7 @@
           <td>${badge}</td>
           <td>${dgEscape(r.group_label || "-") || "-"}</td>
           <td>${dgEscape(r.created_at || "-")}</td>
+          <td>${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
           <td>${tagCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
@@ -1668,9 +1669,9 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>그룹</th>
-            <th>가입일</th><th>상태</th><th>태그</th><th>포인트</th><th>매물의뢰</th><th>작업</th>
+            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th>포인트</th><th>매물의뢰</th><th>작업</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="11" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="12" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pagination" style="display:flex; align-items:center; gap:10px; padding:12px 4px;">
           <button class="admin-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>이전</button>
