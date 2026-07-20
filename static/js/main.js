@@ -1415,6 +1415,7 @@ async function loadBuildingHeader(id){
   headerCard.innerHTML = `
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
+      ${b.name_pending ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
       ${badge}
     </div>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">${escapeHtml(b.road_address || "주소 미확인")}</div>

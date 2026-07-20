@@ -21,6 +21,7 @@ discover_new_buildings.py, verify_units.py, sync_batch.py, app.py, cleanup_unver
 """
 
 import os
+import re
 import time
 from xml.etree import ElementTree as ET
 
@@ -54,6 +55,29 @@ def _title_row_to_dict(row: dict) -> dict:
         # 다른 번호라 storeListInBuilding 키로 못 씀(store_info_util.py 참고)
         "mgm_bldrgst_pk": row.get("mgmBldrgstPk", "").strip(),
     }
+
+
+# "101동", "A동", "가동", "본동" 같은 단순 동 표기 — 건물명으로 쓸 수 없는 값
+_DONG_LABEL_RE = re.compile(r"^\s*(?:[A-Za-z가-힣]{1,2}|\d{1,4})\s*동\s*$")
+
+
+def resolve_api_building_name(title: dict | None) -> str:
+    """건축물대장 표제부에서 '건물 명칭'을 결정한다.
+
+    1순위 bldNm. 비어 있으면 dongNm을 후보로 쓰되, "101동"/"A동" 같은
+    단순 동 라벨은 명칭이 아니므로 제외한다. (경희마크 329처럼 bldNm이 비고
+    dongNm에 실제 명칭이 적힌 대장이 실존한다.)
+    확인 실패 시 빈 문자열 반환 — 호출부가 임시명(name_pending) 처리한다.
+    """
+    if not title:
+        return ""
+    bld_nm = (title.get("bld_nm") or "").strip()
+    if bld_nm:
+        return bld_nm
+    dong_nm = (title.get("dong_nm") or "").strip()
+    if dong_nm and not _DONG_LABEL_RE.match(dong_nm):
+        return dong_nm
+    return ""
 
 
 def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):

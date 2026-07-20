@@ -143,9 +143,16 @@
         title: "건물마스터",
         entityLabel: "건물",
         searchPlaceholder: "건물명·주소 검색",
+        filters: [
+          { key: "name_pending", default: "", options: [
+            { value: "", label: "전체 명칭상태" },
+            { value: "1", label: "명칭 미확정만" },
+          ] },
+        ],
         columns: [
           { key: "id", label: "ID", sortable: true },
-          { key: "building_name", label: "건물명", sortable: true, editable: true, required: true },
+          { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
+            render: (v, row) => `${dgEscape(v || "")}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}` },
           { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
           { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
           { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
@@ -334,13 +341,23 @@
         allowEdit: false,
         allowDelete: false,
         searchPlaceholder: "주소·건물명 검색",
+        filters: [
+          { key: "status", default: "all", options: [
+            { value: "all", label: "전체 상태" },
+            { value: "pending", label: "대기중" },
+            { value: "verified", label: "확인됨" },
+            { value: "rejected", label: "거절됨" },
+            { value: "name_review", label: "명칭 확인 필요" },
+          ] },
+        ],
         columns: [
           { key: "id", label: "ID", sortable: true },
           { key: "request_type", label: "요청유형", render: (v) => v === "new" ? "신규 등록" : (v === "correction" ? "정정 요청" : dgEscape(v)) },
           { key: "road_address", label: "주소" },
           { key: "building_name_hint", label: "건물명" },
+          { key: "suggested_building_name", label: "제안 명칭" },
           { key: "status", label: "상태", sortable: true, render: (v) => {
-            const m = { pending: ["대기중", "wait"], verified: ["확인됨", "ok"], rejected: ["거절됨", "no"] };
+            const m = { pending: ["대기중", "wait"], verified: ["확인됨", "ok"], rejected: ["거절됨", "no"], name_review: ["명칭 확인 필요", "wait"] };
             const x = m[v] || [v, ""];
             return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
           } },

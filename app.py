@@ -260,7 +260,7 @@ def get_building(building_id):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT mb.building_name, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
+        SELECT mb.building_name, mb.name_pending, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
                mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
                mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,
                mb.tot_area, mb.plat_area, mb.hhld_cnt, mb.strct_nm,
@@ -923,7 +923,7 @@ def submit_building():
          판정 불가 시 사유와 함께 거절 (요청 기록에 남김)
     """
     from address_utils import road_to_jibun, BjdongMap, parse_jibun
-    from building_registry import classify_lodging_type
+    from building_registry import classify_lodging_type, resolve_api_building_name
     import os as _os
 
     data = request.get_json(force=True) or {}
@@ -994,7 +994,16 @@ def submit_building():
                      f"집합건축물(생숙/호텔/콘도)이 맞는지 다시 확인해주세요.")
 
     # 검증 통과 → 사용자가 뭐라고 골랐든 상관없이, 여기서 확정된 label만 반영
-    building_name = building_name_hint or title["bld_nm"] or "(이름 미상)"
+    # 건물명도 동일 원칙: API(건축물대장) 명칭이 있으면 무조건 그것으로 확정하고
+    # 사용자 입력(building_name_hint)은 building_requests에 참고용으로만 남긴다.
+    # API 명칭이 없으면 "읍면동 지번" 임시명으로 등록하고 name_pending=TRUE 표시.
+    api_bld_nm = resolve_api_building_name(title)
+    if api_bld_nm:
+        building_name = api_bld_nm
+        name_pending = False
+    else:
+        building_name = f"{umd_nm} {jibun_str}"
+        name_pending = True
     sgg_text = f"{si_do} {sgg_nm}".strip()
     road_addr_final = title["new_plat_plc"] or title["plat_plc"] or road_address
 
@@ -1012,14 +1021,22 @@ def submit_building():
             SET lodging_type=%s, lodging_type_detail=%s, verified_at=NOW()
             WHERE id=%s
         """, (label, detail, master_id))
+        # 임시명(name_pending) 상태였던 건물이 재제출로 API 명칭이 확인되면 그때 확정한다.
+        # (관리자가 손질한 기존 확정 명칭은 덮어쓰지 않도록 name_pending=TRUE인 경우에만.)
+        if api_bld_nm:
+            cur.execute("""
+                UPDATE master_buildings
+                SET building_name=%s, name_pending=FALSE
+                WHERE id=%s AND name_pending IS TRUE
+            """, (api_bld_nm, master_id))
     else:
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source,
-                 lodging_type, lodging_type_detail, verified_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, NOW())
+                 lodging_type, lodging_type_detail, verified_at, name_pending)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, NOW(), %s)
             RETURNING id
-        """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str, title["ho_cnt"], label, detail))
+        """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str, title["ho_cnt"], label, detail, name_pending))
         master_id = cur.fetchone()["id"]
         # 신규 편입 건물의 좌표를 도로명주소로 즉시 채운다(실패해도 등록은 계속).
         _fill_master_coords(cur, master_id, road_addr_final)
@@ -1321,7 +1338,7 @@ def request_correction():
     "확인되어 반영됨", 다르면 "확인해봤지만 제안하신 내용과는 다릅니다"로 응답한다.
     """
     from address_utils import BjdongMap, parse_jibun
-    from building_registry import classify_lodging_type
+    from building_registry import classify_lodging_type, resolve_api_building_name
     import os as _os
 
     data = request.get_json(force=True) or {}
@@ -1329,6 +1346,7 @@ def request_correction():
     umd_nm = (data.get("umd_nm") or "").strip()
     jibun = (data.get("jibun") or "").strip()
     suggested_lodging_type = (data.get("suggested_lodging_type") or "").strip()
+    suggested_building_name = (data.get("suggested_building_name") or "").strip()
     requester_note = (data.get("requester_note") or "").strip()
 
     if not (sgg_cd and umd_nm and jibun):
@@ -1339,9 +1357,10 @@ def request_correction():
 
     cur.execute("""
         INSERT INTO building_requests
-            (request_type, target_sgg_cd, target_umd_nm, target_jibun, suggested_lodging_type, requester_note)
-        VALUES ('correction', %s, %s, %s, %s, %s) RETURNING id
-    """, (sgg_cd, umd_nm, jibun, suggested_lodging_type, requester_note))
+            (request_type, target_sgg_cd, target_umd_nm, target_jibun, suggested_lodging_type,
+             suggested_building_name, requester_note)
+        VALUES ('correction', %s, %s, %s, %s, %s, %s) RETURNING id
+    """, (sgg_cd, umd_nm, jibun, suggested_lodging_type, suggested_building_name, requester_note))
     request_id = cur.fetchone()["id"]
     conn.commit()
 
@@ -1360,7 +1379,7 @@ def request_correction():
     umd_key = normalize_umd_nm(umd_nm)
 
     cur.execute("""
-        SELECT id, building_name, lodging_type FROM master_buildings
+        SELECT id, building_name, lodging_type, name_pending FROM master_buildings
         WHERE sgg_cd=%s AND REPLACE(umd_nm, ' ', '')=%s AND jibun=%s
     """, (sgg_cd, umd_key, jibun))
     building = cur.fetchone()
@@ -1386,6 +1405,32 @@ def request_correction():
     old_label = building["lodging_type"]
     changed = (label != old_label)
 
+    # 건물명 수정요청 처리 — 사용자 제안명을 그대로 반영하지 않고,
+    # 이번 재조회에서 함께 받아온 건축물대장 명칭(title["bld_nm"])으로만 확정한다.
+    api_bld_nm = resolve_api_building_name(title)
+    name_changed = False
+    name_review = False
+    name_message = ""
+    if suggested_building_name:
+        if api_bld_nm:
+            if api_bld_nm != (building["building_name"] or ""):
+                cur.execute("""
+                    UPDATE master_buildings SET building_name=%s, name_pending=FALSE
+                    WHERE id=%s
+                """, (api_bld_nm, building["id"]))
+                name_changed = True
+                name_message = f" 건물명은 건축물대장에서 '{api_bld_nm}'(으)로 확인되어 반영했습니다."
+            else:
+                if building.get("name_pending"):
+                    cur.execute("UPDATE master_buildings SET name_pending=FALSE WHERE id=%s",
+                                (building["id"],))
+                name_message = f" 건물명은 건축물대장 확인 결과 기존 명칭 '{api_bld_nm}'이 맞습니다."
+        else:
+            # API에 명칭이 없음 → 제안명은 기록만 하고 마스터는 그대로(지번 임시명 유지).
+            # 관리자 수정요청 이력에 '명칭 확인 필요'로 노출된다.
+            name_review = True
+            name_message = " 제안하신 건물명은 건축물대장에서 확인되지 않아, 관리자 확인 후 반영 예정입니다."
+
     if changed:
         cur.execute("""
             UPDATE master_buildings SET lodging_type=%s, lodging_type_detail=%s, verified_at=NOW()
@@ -1396,11 +1441,13 @@ def request_correction():
             WHERE sgg_cd=%s AND REPLACE(umd_nm, ' ', '')=%s AND jibun=%s
         """, (label, detail, sgg_cd, umd_key, jibun))
 
+    # 명칭 미확인 건은 'name_review' 상태로 남겨 관리자 이력에서 "명칭 확인 필요"로 노출한다.
+    final_status = "name_review" if name_review else "verified"
     cur.execute("""
         UPDATE building_requests
-        SET status='verified', verified_lodging_type=%s, changed=%s, master_building_id=%s, processed_at=NOW()
+        SET status=%s, verified_lodging_type=%s, changed=%s, master_building_id=%s, processed_at=NOW()
         WHERE id=%s
-    """, (label, changed, building["id"], request_id))
+    """, (final_status, label, changed or name_changed, building["id"], request_id))
     conn.commit()
     cur.close()
     conn.close()
@@ -1411,10 +1458,13 @@ def request_correction():
         message = f"건축물대장을 다시 확인했지만, 기존 라벨 '{old_label or '미확인'}'이 맞는 것으로 확인됐습니다."
         if suggested_lodging_type and suggested_lodging_type != label:
             message += f" (제안하신 '{suggested_lodging_type}'과는 다릅니다.)"
+    message += name_message
 
     return jsonify({
-        "status": "verified",
+        "status": final_status,
         "changed": changed,
+        "name_changed": name_changed,
+        "name_review": name_review,
         "lodging_type": label,
         "message": message,
     })
@@ -3910,6 +3960,9 @@ def _admin_bld_filters():
     if q:
         where = "(building_name ILIKE %s OR road_address ILIKE %s)"
         params = [f"%{q}%", f"%{q}%"]
+    # 명칭 미확정 건물만 필터 (관리자 주기 점검용)
+    if (request.args.get("name_pending") or "").strip() == "1":
+        where += " AND name_pending IS TRUE"
     return q, sort, order, where, params
 
 
@@ -3932,7 +3985,7 @@ def admin_buildings_list():
     total = cur.fetchone()["c"]
     # sort/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
     cur.execute(f"""
-        SELECT id, building_name, road_address, jibun_address, sgg_text,
+        SELECT id, building_name, name_pending, road_address, jibun_address, sgg_text,
                sgg_cd, umd_nm, jibun, units, biz_units, lodging_type, lodging_type_detail
         FROM master_buildings
         WHERE {where_sql}
@@ -5713,6 +5766,13 @@ def _admin_breq_filters():
     if q:
         where = "(road_address ILIKE %s OR building_name_hint ILIKE %s)"
         params = [f"%{q}%", f"%{q}%"]
+    # 상태 필터 (예: name_review = 명칭 확인 필요 건만) — 허용값만 통과
+    st = (request.args.get("status") or "").strip()
+    if st not in ("pending", "verified", "rejected", "name_review"):
+        st = ""
+    if st:
+        where += " AND status = %s"
+        params.append(st)
     return sort_expr, order, where, params
 
 
@@ -5726,7 +5786,7 @@ def admin_building_requests_list():
     cur.execute(f"SELECT COUNT(*) c FROM building_requests WHERE {where_sql}", params)
     total = cur.fetchone()["c"]
     cur.execute(f"""
-        SELECT id, request_type, road_address, building_name_hint, status,
+        SELECT id, request_type, road_address, building_name_hint, suggested_building_name, status,
                reject_reason, verified_lodging_type,
                to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
                to_char(processed_at, 'YYYY-MM-DD HH24:MI') AS processed_at

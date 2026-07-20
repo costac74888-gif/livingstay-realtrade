@@ -85,3 +85,9 @@ Facts you can only discover by querying Postgres, not by reading code.
 - **적용:** 건물 상세 실거래목록처럼 누적 표시가 필요하면 200건씩 페이지를 이어 받아 합산 후 slice 하라. 관심단지 전용 조회는 별도 엔드포인트(size 상한 무관)가 이미 존재.
 
 - psycopg2는 파라미터 문자열에 NUL(\x00)을 거부(ValueError) — "절대 매칭 안 되는 플레이스홀더"로 "\x00"을 쓰면 500. 매칭 0을 원하면 WHERE FALSE 조건을 쓸 것.
+
+- **건축물대장 표제부의 건물명은 `bldNm`에만 있는 게 아니다.** 경희마크 329처럼
+  `bldNm`이 비고 `dongNm`에 실제 명칭이 적힌 대장이 실존한다.
+  **Why:** bldNm만 보면 이름 있는 건물도 "명칭 없음"으로 오판해 임시명 처리됨.
+  **How to apply:** 명칭 결정은 `building_registry.resolve_api_building_name()` 사용
+  (bldNm → dongNm 폴백, "101동"/"A동" 같은 단순 동 라벨은 제외).
