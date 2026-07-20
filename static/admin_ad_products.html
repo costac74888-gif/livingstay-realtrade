@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>광고상품 안내 · 관리자 · 홈앤스테이</title>
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <style>
+    body{ background:#F4F5F7; }
+    .adp-wrap{ max-width:720px; margin:0 auto; padding:24px 16px 48px; }
+    .adp-card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:14px; }
+    .adp-badge{ display:inline-block; font-size:11px; font-weight:700; padding:3px 10px; border-radius:10px; background:var(--brass-tint); color:var(--brass-dark); }
+    .adp-table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+    .adp-table th, .adp-table td{ border:1px solid var(--line); padding:9px 12px; text-align:left; vertical-align:top; }
+    .adp-table th{ background:#F8F9FB; font-weight:700; color:var(--ink); width:130px; }
+  </style>
+</head>
+<body>
+<div class="adp-wrap">
+  <div style="margin-bottom:14px;">
+    <a href="/admin" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 관리자 홈으로</a>
+  </div>
+
+  <div class="adp-card">
+    <span class="adp-badge">관리자 전용 · 내부 참고용</span>
+    <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:10px 0 6px;">광고상품 안내</h1>
+    <p style="font-size:13px; color:var(--ink-soft); margin:0; line-height:1.6;">
+      아직 판매 기능은 없으며, 파트너 화면(마이페이지·신청서·랜딩페이지 등) 어디에도 노출되지 않는 내부 정보 페이지입니다.
+    </p>
+  </div>
+
+  <div class="adp-card">
+    <h2 style="font-size:16px; font-weight:700; color:var(--ink); margin:0 0 4px;">우선노출 (건물별 / 전체)</h2>
+    <table class="adp-table">
+      <tr><th>대상</th><td>담당중개사 · 운영지원업체 · 대출상담사 (3분야 공통)</td></tr>
+      <tr><th>내용</th><td>건물당(또는 전체 목록에서) <strong>최대 2자리까지 유료 우선노출</strong> 가능,<br>나머지 1자리는 <strong>무료 랜덤 노출</strong></td></tr>
+      <tr><th>동작 방식</th><td>노출 정렬은 priority_score 높은 순 → 동점은 랜덤. 유료 파트너에 점수를 부여하면 해당 파트너가 항상 먼저 노출되고, 나머지 자리는 무료 파트너 중 랜덤으로 채워집니다. (현재는 전원 0점 = 전체 랜덤)</td></tr>
+      <tr><th>가격</th><td><strong>추후 결정</strong></td></tr>
+    </table>
+  </div>
+</div>
+</body>
+</html>

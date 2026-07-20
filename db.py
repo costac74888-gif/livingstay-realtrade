@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-8"
+SCHEMA_VERSION = "2026-07-20-9"
 
 
 def init_db():
@@ -237,6 +237,8 @@ def init_db():
     # 노출 여부 — status(관리자 승인)와 별개로 본인이 켜고 끄는 스위치.
     # FALSE면: B화면 카드 미노출 + 매물의뢰(K) 라우팅 대상에서 제외 (등록 데이터는 유지)
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
+    # 유료 우선노출용 점수 (현재 미사용, 기본 0 — loan_consultants.priority_score와 동일 패턴)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
 
     # 중개사별 담당(취급) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
     cur.execute("""
@@ -288,6 +290,8 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS logo_url TEXT")
     # 노출 여부 — agents.is_visible과 동일 개념 (본인 토글, FALSE면 B화면 카드 미노출)
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
+    # 유료 우선노출용 점수 (현재 미사용, 기본 0 — loan_consultants.priority_score와 동일 패턴)
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
 
     # 운영업체별 담당 건물 (agent_buildings와 동일 패턴)
     cur.execute("""

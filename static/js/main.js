@@ -1611,7 +1611,7 @@ async function loadBuildingHeader(id){
       <img src="/static/banner_biz_report.png" alt="우수부동산서비스인증 — 숙박업등록·위탁운영 의뢰하기, 무료 상담 신청" style="display:block; width:100%; height:auto; border-radius:10px;" />
     </a>`;
 
-  renderBuildingAgent(b.agent, id, bName);
+  renderBuildingAgents(b.agents || (b.agent ? [b.agent] : []), id, bName);
 
   // 위탁운영/운영지원업체(하우스키핑) 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
   // (실제 업종(category) 선택은 신청폼 안에서 함 — agent 신청 링크와 동일 패턴)
@@ -1718,20 +1718,23 @@ async function loadBuildingStores(buildingId){
 //   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
 function renderBuildingOperators(operators){
   const ops = Array.isArray(operators) ? operators : [];
-  const pick = (cats) => ops.find(o => cats.includes(o.category));
-  const paint = (boxId, op) => {
-    if (!op) return; // 담당 업체 없음 → 기존 유치 카드 그대로
+  // 카드별 최대 3곳 — 서버가 priority_score DESC, RANDOM() 순으로 내려주므로 앞에서 3개만 자른다
+  const pick = (cats) => ops.filter(o => cats.includes(o.category)).slice(0, 3);
+  const paint = (boxId, picked) => {
+    if (!picked.length) return; // 담당 업체 없음 → 기존 유치 카드 그대로
     const box = document.getElementById(boxId);
     if (!box) return;
-    box.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏨</div>
-        <div style="flex:1; min-width:130px;">
-          <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(op.category || "")} 담당 업체</div>
+    box.innerHTML = picked.map((op) => `
+      <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee);">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏨</div>
+          <div style="flex:1; min-width:130px;">
+            <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(op.category || "")} 담당 업체</div>
+          </div>
         </div>
-      </div>
-      ${op.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/operator/${encodeURIComponent(op.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
+        ${op.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/operator/${encodeURIComponent(op.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}
+      </div>`).join("");
   };
   paint("bOperatorBox", pick(["위탁운영"]));
   paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]));
@@ -1776,24 +1779,30 @@ async function loadBuildingLoanConsultants(){
     <div style="margin-top:8px; text-align:right;"><a href="/loan-consultants" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">전체 대출상담사 보기 →</a></div>`;
 }
 
-function renderBuildingAgent(agent, buildingId, buildingName){
+function renderBuildingAgents(agents, buildingId, buildingName){
   const box = document.getElementById("bAgentBox");
   if (!box) return;
-  if (agent){
-    // 프로필 사진(photo_src)이 있으면 원형 썸네일, 없으면 기존 🏢 아이콘 (아실 스타일)
-    const avatar = agent.photo_src
-      ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>🏢</div>'">`
-      : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
-    box.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        ${avatar}
-        <div style="flex:1; min-width:130px;">
-          <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
+  const list = Array.isArray(agents) ? agents : [];
+  if (list.length){
+    // 최대 3명 카드 스택 — 기존 단일 카드 스타일을 세로로 나열 (서버가 priority_score DESC, RANDOM()으로 최대 3명 반환)
+    box.innerHTML = list.map((agent) => {
+      // 프로필 사진(photo_src)이 있으면 원형 썸네일, 없으면 기존 🏢 아이콘 (아실 스타일)
+      const avatar = agent.photo_src
+        ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>🏢</div>'">`
+        : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
+      return `
+      <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee);">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          ${avatar}
+          <div style="flex:1; min-width:130px;">
+            <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
+          </div>
+          ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
         </div>
-        ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
-      </div>
-      ${agent.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
+        ${agent.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}
+      </div>`;
+    }).join("");
   } else {
     box.innerHTML = recruitBoxHTML("agent", {
       href: `/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`,

@@ -304,7 +304,9 @@ def get_building(building_id):
         conn.close()
         return jsonify({"error": "not found"}), 404
 
-    # 전속중개사: agent_buildings에 이 건물이 등록된 approved 중개사 기준 (여러 건이면 최근 갱신 순 1건).
+    # 전속중개사: agent_buildings에 이 건물이 등록된 approved 중개사 — 최대 3명.
+    # 정렬: priority_score DESC(유료 우선노출 자리, 현재 전부 0) → 동점자는 RANDOM().
+    # 단일 쿼리 한 줄로 처리해야 전원 0점일 때도 매번 완전 랜덤이 된다 (2단계 분리 금지).
     cur.execute("""
         SELECT a.id, a.office_name, a.owner_name, a.phone, a.subdomain_slug, a.photo_url
         FROM agent_buildings ab
@@ -312,13 +314,14 @@ def get_building(building_id):
         WHERE ab.master_building_id = %s
           AND a.status = 'approved'
           AND COALESCE(a.is_visible, TRUE)
-        ORDER BY ab.updated_at DESC NULLS LAST, ab.id DESC
-        LIMIT 1
+        ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
+        LIMIT 3
     """, [building_id])
-    agent_row = cur.fetchone()
+    agent_rows = cur.fetchall()
 
     # 담당 운영업체: operator_buildings에 이 건물이 등록된 approved 운영업체 목록.
-    # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 표시한다.
+    # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 최대 3곳씩 표시한다.
+    # 정렬은 중개사와 동일하게 priority_score DESC, RANDOM() (카드별 LIMIT은 화면에서 적용).
     cur.execute("""
         SELECT o.company_name, o.category, o.subdomain_slug
         FROM operator_buildings ob
@@ -326,20 +329,22 @@ def get_building(building_id):
         WHERE ob.master_building_id = %s
           AND o.status = 'approved'
           AND COALESCE(o.is_visible, TRUE)
-        ORDER BY ob.updated_at DESC NULLS LAST, ob.id DESC
+        ORDER BY COALESCE(o.priority_score, 0) DESC, RANDOM()
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
 
     result = dict(row)
-    if agent_row:
-        agent_d = dict(agent_row)
+    agents_list = []
+    for r in agent_rows:
+        agent_d = dict(r)
         # 스토리지 키는 노출하지 않고, 사진이 있으면 공개 프록시 URL만 내려준다.
         agent_d["photo_src"] = f"/api/partners/agent-photo/{agent_d['id']}" if agent_d.pop("photo_url", None) else None
-        result["agent"] = agent_d
-    else:
-        result["agent"] = None
+        agents_list.append(agent_d)
+    result["agents"] = agents_list
+    # 하위호환: 단일 agent를 쓰던 기존 코드용 (첫 번째 = 최우선 노출)
+    result["agent"] = agents_list[0] if agents_list else None
     result["operators"] = operator_rows
 
     # 담당부처/연락처: sgg_text를 지자체 담당부서 인덱스와 매칭.
@@ -4727,6 +4732,13 @@ def admin_backfill_log():
 @require_admin
 def admin_page():
     return _serve_static_html("admin.html")
+
+
+@app.route("/admin/ad-products")
+@require_admin
+def admin_ad_products_page():
+    """광고상품 안내 (관리자 전용 참고용 정보 페이지 — 판매 기능/파트너 노출 없음)."""
+    return _serve_static_html("admin_ad_products.html")
 
 
 # ---- 건물마스터 CRUD (모두 require_admin) ----
