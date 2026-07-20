@@ -1127,6 +1127,11 @@
       if (!box || !btn) { stopBackfillPolling(); return; }
       const rows = [];
       rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 가장 오래된 계약일 ${d.min_deal_date ? dgEscape(d.min_deal_date) : "-"}</div>`);
+      if (d.api_calls_limit) {
+        const used = d.api_calls_today || 0;
+        const atCap = used >= d.api_calls_limit;
+        rows.push(`<div class="geo-stat-row"${atCap ? ' style="color:#b3261e"' : ""}><b>오늘 API 사용량:</b> ${num(used)} / ${num(d.api_calls_limit)}건${atCap ? " · 일일 한도 도달 (내일 자동 재개)" : ""}</div>`);
+      }
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 백필 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")}${d.months ? " · " + num(d.months) + "개월치" : ""})</div>`);
         rows.push(`<div class="geo-stat-row"><b>이번 실행 신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"} (실시간)</div>`);

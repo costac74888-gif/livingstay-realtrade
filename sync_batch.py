@@ -47,6 +47,55 @@ REQUEST_SLEEP = 0.15  # STEP1 JUSO 주소변환용 딜레이(초)
 # CLI --sleep 로 조정 (권장 0.5~1.0). sync_transactions()가 실행 시 덮어쓴다.
 RTMS_SLEEP = 0.5
 
+# ------------------------------------------------------------------
+# 일일 소프트 캡 — 국토부 RTMS 일일 쿼터(10,000건)를 백필이 다 태우면
+# 그날 다른 기능(용도확인, 동기화 테스트 등)이 막히므로, 백필은 스스로
+# 8,000건에서 멈춰 2,000건을 항상 남겨둔다. 카운터는 app_meta(DB)에
+# 날짜별로 저장 → 프로세스 재시작/동시 실행(Fast Sync + Backfill Retry)에도
+# 하나의 카운터를 공유하고, 날짜가 바뀌면 자동으로 0부터 다시 시작한다.
+# ------------------------------------------------------------------
+MAX_DAILY_BACKFILL_CALLS = 8000          # 조정 시 이 상수만 변경
+DAILY_CALLS_META_KEY = "rtms_daily_calls"
+
+
+def _daily_calls_today(cur):
+    """오늘 날짜 기준 누적 RTMS 호출 수. 날짜가 다르면(=어제 기록) 0."""
+    cur.execute("SELECT value FROM app_meta WHERE key=%s", (DAILY_CALLS_META_KEY,))
+    row = cur.fetchone()
+    if not row or not row["value"]:
+        return 0
+    try:
+        data = json.loads(row["value"])
+        if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+            return int(data.get("count", 0))
+    except (TypeError, ValueError):
+        pass
+    return 0
+
+
+def _bump_daily_calls(cur, conn):
+    """RTMS 호출 1건을 카운터에 더하고(원자적 UPSERT) 오늘 누적값을 반환.
+    날짜가 바뀌었으면 1부터 다시 시작한다."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    fresh = json.dumps({"date": today, "count": 1})
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET
+            value = CASE
+                WHEN (app_meta.value::jsonb ->> 'date') = %s
+                THEN jsonb_build_object(
+                        'date', %s,
+                        'count', COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) + 1
+                     )::text
+                ELSE EXCLUDED.value
+            END,
+            updated_at = NOW()
+        RETURNING (value::jsonb ->> 'count')::int AS count
+    """, (DAILY_CALLS_META_KEY, fresh, today, today))
+    count = cur.fetchone()["count"]
+    conn.commit()
+    return count
+
 
 class RateLimitError(Exception):
     """RTMS API가 429 Too Many Requests를 반환했을 때 발생. 재시도 대상."""
@@ -461,14 +510,26 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
 
     stats = {"inserted": 0, "matched_master": 0, "matched_bld": 0, "unmatched": 0}
     rate_limited = 0
+    capped = False  # 일일 소프트 캡 도달로 중단됐는지
 
     for sgg_cd in sgg_list:
+        if capped:
+            break
         skipped = 0
         for deal_ymd in deal_ymds:
             # 체크포인트에 완료로 기록된 (시군구, 월)은 건너뜀 (이어서 진행)
             if progress_key and deal_ymd in done.get(sgg_cd, set()):
                 skipped += 1
                 continue
+            # 일일 소프트 캡: 호출 '전에' 확인 → 정확히 한도에서 멈춘다.
+            # 남은 (시군구,월)은 체크포인트에 미기록 상태 그대로 → 내일 이어서 진행.
+            used = _daily_calls_today(cur)
+            if used >= MAX_DAILY_BACKFILL_CALLS:
+                print(f"[CAP] 오늘 RTMS 호출 {used}건 — 일일 한도({MAX_DAILY_BACKFILL_CALLS}건) 도달, "
+                      f"백필을 중단합니다. 체크포인트가 저장되어 있어 다음 실행에서 이어서 진행됩니다.", flush=True)
+                capped = True
+                break
+            _bump_daily_calls(cur, conn)
             try:
                 trades = fetch_nrg_trade(sgg_cd, deal_ymd)
             except RateLimitError as e:
@@ -504,12 +565,18 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
 
     conn.commit()
 
-    # 전체 순회를 끝까지 마쳤으면 체크포인트 초기화 → 다음 전체 재실행은 처음부터
-    if progress_key:
+    # 전체 순회를 끝까지 마쳤을 때만 체크포인트 초기화 → 다음 전체 재실행은 처음부터.
+    # 캡 도달로 중단된 경우는 체크포인트를 보존해 다음날 이어서 진행한다.
+    if progress_key and not capped:
         _clear_progress(cur, conn, progress_key)
         print(f"[RESUME] 전체 완료 — 체크포인트({progress_key}) 초기화", flush=True)
 
-    note = f"rate_limited={rate_limited}" if rate_limited else None
+    note_parts = []
+    if rate_limited:
+        note_parts.append(f"rate_limited={rate_limited}")
+    if capped:
+        note_parts.append(f"daily_cap={MAX_DAILY_BACKFILL_CALLS}")
+    note = " ".join(note_parts) or None
     cur.execute("""
         INSERT INTO sync_log (started_at, finished_at, regions_processed, rows_inserted,
                                rows_matched_master, rows_matched_buildinghub, rows_unmatched, status, note)
@@ -520,7 +587,7 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
     cur.close()
     conn.close()
 
-    print(f"[STEP2] 완료 — 신규 {stats['inserted']}건 "
+    print(f"[STEP2] {'일일 한도 도달로 중단' if capped else '완료'} — 신규 {stats['inserted']}건 "
           f"(마스터매칭 {stats['matched_master']} / 건축HUB보완 {stats['matched_bld']} / "
           f"미매칭제외 {stats['unmatched']} / 429실패 {rate_limited})")
 
@@ -545,6 +612,14 @@ def _retry_round(cur, conn, bjdong, stats, item_sleep):
 
     for it in items:
         sgg_cd, deal_ymd = it["sgg_cd"], it["deal_ymd"]
+        # 일일 소프트 캡 — 도달 시 '쿼터 소진'과 동일하게 라운드 조기 종료 →
+        # 상위 루프의 backoff 대기(12~24시간) 후 다음날(카운터 리셋) 이어서 진행.
+        used = _daily_calls_today(cur)
+        if used >= MAX_DAILY_BACKFILL_CALLS:
+            print(f"  [CAP] 오늘 RTMS 호출 {used}건 — 일일 한도({MAX_DAILY_BACKFILL_CALLS}건) 도달, "
+                  f"라운드 조기 종료(실패큐 보존, 다음 라운드에서 재개)", flush=True)
+            return resolved, True
+        _bump_daily_calls(cur, conn)
         try:
             trades = fetch_nrg_trade(sgg_cd, deal_ymd)
         except RateLimitError:

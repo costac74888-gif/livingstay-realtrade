@@ -4643,6 +4643,9 @@ def admin_backfill_status():
         row = cur.fetchone()
         cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BACKFILL_META_KEY,))
         meta = cur.fetchone()
+        # 오늘 사용한 RTMS API 호출 수 (sync_batch가 app_meta에 날짜별로 기록)
+        from sync_batch import _daily_calls_today, MAX_DAILY_BACKFILL_CALLS
+        api_calls_today = _daily_calls_today(cur)
     finally:
         cur.close()
         conn.close()
@@ -4677,6 +4680,8 @@ def admin_backfill_status():
         "error": ((status.get("error") if status else None)
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
         "tx_total": row["c"],
+        "api_calls_today": api_calls_today,
+        "api_calls_limit": MAX_DAILY_BACKFILL_CALLS,
         "min_deal_date": (row["mind"].strftime("%Y-%m-%d") if hasattr(row["mind"], "strftime") else row["mind"]) if row["mind"] else None,
         "has_log": bool(status and status.get("log_file")
                         and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), status["log_file"]))),
