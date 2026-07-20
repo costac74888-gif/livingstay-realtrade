@@ -3862,6 +3862,38 @@ _BACKFILL_META_KEY = "tx_backfill_status"
 _BACKFILL_FROM = "2020-01"
 
 
+def _warn_if_jobs_running_at_boot():
+    """[재배포 추적용] 서버 부팅 시점에 실행 중(running)인 백필/동기화가 있으면 경고 로그.
+    재배포 자체를 막을 수는 없지만, '재배포 때 백필이 돌고 있었다'는 기록을 남겨
+    이후 실패/중단 원인 추적을 돕는다. 부팅을 절대 막지 않도록 예외는 전부 무시."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT key, value, updated_at FROM app_meta WHERE key IN (%s, %s)",
+                        (_SYNC_META_KEY, _BACKFILL_META_KEY))
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+            conn.close()
+        for r in rows:
+            try:
+                st = json.loads(r["value"]) if r["value"] else None
+            except (TypeError, ValueError):
+                st = None
+            if st and st.get("state") == "running":
+                label = "백필" if r["key"] == _BACKFILL_META_KEY else "실거래 동기화"
+                print(f"[boot-warning] 서버 부팅 시점에 {label}이(가) 실행 중 상태였습니다 "
+                      f"(run_id={st.get('run_id')}, 시작 {st.get('started_at')}, "
+                      f"마지막 하트비트 {r['updated_at']}). 재배포로 프로세스가 중단됐을 수 있습니다.",
+                      flush=True)
+    except Exception as e:
+        print(f"[boot-warning] 실행중 작업 확인 실패(무시): {e}", flush=True)
+
+
+_warn_if_jobs_running_at_boot()  # gunicorn 부팅(모듈 임포트) 시점에 1회 실행
+
+
 def _backfill_months():
     """2020-01 부터 이번 달까지의 개월 수 (예: 2026-07 → 79)."""
     now = datetime.now()
@@ -4005,7 +4037,53 @@ def admin_backfill_status():
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
         "tx_total": row["c"],
         "min_deal_date": (row["mind"].strftime("%Y-%m-%d") if hasattr(row["mind"], "strftime") else row["mind"]) if row["mind"] else None,
+        "has_log": bool(status and status.get("log_file")
+                        and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), status["log_file"]))),
     })
+
+
+@app.route("/api/admin/backfill-log")
+@require_admin
+def admin_backfill_log():
+    """마지막 백필 실행 로그의 마지막 50줄 — 실패 원인 확인용.
+    로그 파일 경로는 서버가 기록한 상태(log_file)에서만 가져온다(경로 조작 불가)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", (_BACKFILL_META_KEY,))
+        meta = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    status = None
+    if meta and meta["value"]:
+        try:
+            status = json.loads(meta["value"])
+        except (TypeError, ValueError):
+            status = None
+    log_rel = (status or {}).get("log_file")
+    if not log_rel:
+        return jsonify({"ok": False, "message": "이 실행에는 로그 파일 정보가 없습니다(로그 기능 도입 전 실행)."}), 404
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logs_dir = os.path.join(base_dir, "logs")
+    path = os.path.normpath(os.path.join(base_dir, log_rel))
+    if os.path.commonpath([logs_dir, path]) != logs_dir:
+        return jsonify({"ok": False, "message": "잘못된 로그 경로입니다."}), 400
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "message": "로그 파일이 없습니다(재배포로 파일이 사라졌을 수 있습니다)."}), 404
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except OSError as e:
+        return jsonify({"ok": False, "message": f"로그를 읽지 못했습니다: {e}"}), 500
+    tail = [ln.rstrip("\n") for ln in lines[-50:]]
+    # 혹시 남았을 수 있는 API 키 가림 (러너도 가리지만 이중 안전장치)
+    text = "\n".join(tail)
+    for key_name in ("RTMS_SERVICE_KEY", "BLD_SERVICE_KEY", "STORE_INFO_SERVICE_KEY"):
+        val = os.environ.get(key_name, "")
+        if val:
+            text = text.replace(val, "***")
+    return jsonify({"ok": True, "log_file": log_rel, "total_lines": len(lines), "tail": text})
 
 
 @app.route("/admin")
