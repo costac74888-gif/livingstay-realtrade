@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>숙박시설 실거래가 . 홈앤스테이</title>
-<meta name="description" content="홈앤스테이 지원업체(운영업체) 프로필 — 업체 정보 및 담당 단지 현황." />
+<meta name="description" content="홈앤스테이 지원업체(운영지원업체) 프로필 — 업체 정보 및 담당 단지 현황." />
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
@@ -47,7 +47,7 @@
       <div class="panel-card" style="text-align:center; padding:40px 20px;">
         <div style="font-size:34px; margin-bottom:10px;">🔍</div>
         <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:6px;">존재하지 않는 페이지입니다</div>
-        <div style="font-size:13px; color:var(--ink-soft); margin-bottom:18px;">주소가 잘못되었거나, 아직 승인되지 않은 운영업체 페이지입니다.</div>
+        <div style="font-size:13px; color:var(--ink-soft); margin-bottom:18px;">주소가 잘못되었거나, 아직 승인되지 않은 운영지원업체 페이지입니다.</div>
         <a href="/" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:8px 18px; text-decoration:none;">홈으로 이동</a>
       </div>`;
   }
@@ -113,7 +113,7 @@
       document.title = `${data.company_name || "홈앤스테이"} | 숙박시설 실거래가 . 홈앤스테이`;
       render(data);
     } catch(e) {
-      console.error("[운영업체 프로필] 로드 실패:", e);
+      console.error("[운영지원업체 프로필] 로드 실패:", e);
       renderNotFound();
     }
   })();

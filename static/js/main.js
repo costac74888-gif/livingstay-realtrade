@@ -1035,8 +1035,8 @@ async function loadSideFavorites(){
 // 기본(홈) 좌측 패널의 원본 HTML을 최초 1회 저장해두고, "전체 목록으로" 복귀 시 되돌린다.
 const DEFAULT_SIDE_PANEL_HTML = document.querySelector(".side-panel").innerHTML;
 
-// ---- 메인 좌측 패널: 행정(전국 신고율) + 위탁정보/하우스키핑/금융(등록 업체 수) 집계 ----
-// 등록 수가 이 값 미만이면 숫자를 노출하지 않고 모집 문구만 보여준다 (전속중개사/위탁/하우스키핑/금융 공통)
+// ---- 메인 좌측 패널: 행정(전국 신고율) + 위탁정보/운영지원업체(하우스키핑)/금융(등록 업체 수) 집계 ----
+// 등록 수가 이 값 미만이면 숫자를 노출하지 않고 모집 문구만 보여준다 (전속중개사/위탁/운영지원업체(하우스키핑)/금융 공통)
 const SIDE_COUNT_THRESHOLD = 10;
 async function loadSideStats(){
   const regBox = document.getElementById("sideRegRate");
@@ -1138,7 +1138,7 @@ function recruitBoxHTML(kind, opts = {}){
     },
     housekeeping: {
       bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 22, pad: "14px 12px",
-      title: "하우스키핑 지원업체를 찾고 있습니다",
+      title: "운영지원업체를 찾고 있습니다",
       desc: "건물별 객실관리를 맡아줄 파트너를 모집합니다.",
       btnText: "지원업체로 신청하기", href: "/apply/operator",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
@@ -1345,7 +1345,7 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card">
-      <div class="side-card-title">하우스키핑</div>
+      <div class="side-card-title">운영지원업체</div>
       <div id="bHousekeepingBox">${recruitBoxHTML("housekeeping", { linkId: "lnkHousekeepingApply" })}</div>
     </section>
 
@@ -1613,7 +1613,7 @@ async function loadBuildingHeader(id){
 
   renderBuildingAgent(b.agent, id, bName);
 
-  // 위탁운영/하우스키핑 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
+  // 위탁운영/운영지원업체(하우스키핑) 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
   // (실제 업종(category) 선택은 신청폼 안에서 함 — agent 신청 링크와 동일 패턴)
   const operApplyHref = `/apply/operator?building_id=${id != null ? encodeURIComponent(id) : ""}&building_name=${encodeURIComponent(bName || "")}`;
   ["lnkOperatorApply", "lnkHousekeepingApply"].forEach((lid) => {
@@ -1621,7 +1621,7 @@ async function loadBuildingHeader(id){
     if (a) a.href = operApplyHref;
   });
 
-  // 담당 운영업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
+  // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
   renderBuildingOperators(b.operators);
 
   // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
@@ -1709,10 +1709,10 @@ async function loadBuildingStores(buildingId){
   }
 }
 
-// 위탁운영/하우스키핑 카드 — 이 건물의 담당 운영업체(operator_buildings 등록 + approved)가
+// 위탁운영/운영지원업체(하우스키핑) 카드 — 이 건물의 담당 운영지원업체(operator_buildings 등록 + approved)가
 // 있으면 유치(모집) 문구 대신 업체명 + "프로필 보기 →" 링크를 보여준다. 없으면 기본 HTML 유지.
 //   위탁운영 카드 ← category '위탁운영'
-//   하우스키핑 카드 ← category '청소' | '세탁' | '용품'
+//   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
 function renderBuildingOperators(operators){
   const ops = Array.isArray(operators) ? operators : [];
   const pick = (cats) => ops.find(o => cats.includes(o.category));

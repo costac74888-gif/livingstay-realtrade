@@ -3179,7 +3179,7 @@ def operator_login():
         if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
             return fail
         if row["status"] != "approved":
-            return jsonify({"ok": False, "message": "승인된 운영업체 계정이 아닙니다."}), 403
+            return jsonify({"ok": False, "message": "승인된 운영지원업체 계정이 아닙니다."}), 403
     finally:
         cur.close()
         conn.close()
@@ -5766,7 +5766,7 @@ def admin_applications_approve(app_id):
             if cur.fetchone():
                 cur.close()
                 conn.close()
-                return jsonify({"ok": False, "message": "이미 등록된 운영업체입니다."}), 400
+                return jsonify({"ok": False, "message": "이미 등록된 운영지원업체입니다."}), 400
             # subdomain_slug + 임시비밀번호 — agent 승인 로직과 완전히 동일한 패턴.
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"operator{app_id}"
             alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -5842,7 +5842,7 @@ def admin_applications_approve(app_id):
             )
         else:
             sms_body = (
-                f"[홈앤스테이] 운영업체 승인 완료. 로그인ID(이메일): {ap['email']} / "
+                f"[홈앤스테이] 운영지원업체 승인 완료. 로그인ID(이메일): {ap['email']} / "
                 f"임시비밀번호: {temp_pw} / 로그인: {domain}/operator/login — "
                 f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
             )

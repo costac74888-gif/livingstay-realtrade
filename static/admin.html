@@ -226,7 +226,7 @@
           { key: "created_at", label: "접수일", sortable: true },
         ],
       },
-      // 신청승인: C/D에서 들어온 중개사/운영업체 신청 큐. 승인 시 agents/operators로 INSERT.
+      // 신청승인: C/D에서 들어온 중개사/운영지원업체 신청 큐. 승인 시 agents/operators로 INSERT.
       // 추가/수정/삭제 없음 — 대기중 행에서만 "승인"/"반려" 커스텀 액션.
       applications: {
         endpoint: "/api/admin/applications",
@@ -458,7 +458,7 @@
       loadPartnerBuildingCounts();
     }
 
-    // 파트너(중개사/운영업체)별 담당 건물 수 — 무료 캡 대비 현황
+    // 파트너(중개사/운영지원업체)별 담당 건물 수 — 무료 캡 대비 현황
     async function loadPartnerBuildingCounts() {
       const wrap = document.getElementById("pbcWrap");
       if (!wrap) return;
@@ -488,7 +488,7 @@
             <thead><tr><th>ID</th><th>업체명</th><th>연락처</th><th>상태</th><th>담당 건물 수</th></tr></thead>
             <tbody>${trs}</tbody></table></div>`;
       };
-      wrap.innerHTML = table(d.agents || [], "중개사") + table(d.operators || [], "운영업체");
+      wrap.innerHTML = table(d.agents || [], "중개사") + table(d.operators || [], "운영지원업체");
     }
 
     function num(n) { return (n || 0).toLocaleString("ko-KR"); }
@@ -520,7 +520,7 @@
           <div class="stats-kpi"><span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">${totalTxLabel}</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
-          <div class="stats-kpi"><span class="stats-kpi-label">승인 운영업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">승인 운영지원업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
         </div>
 
         <div class="stats-grid">
@@ -557,7 +557,7 @@
                 </div>
               </div>
               <div class="stats-member-group">
-                <h4 class="stats-member-title">운영업체</h4>
+                <h4 class="stats-member-title">운영지원업체</h4>
                 <div class="stats-member-cards">
                   <div class="stats-mcard stats-mcard-wait"><span class="stats-mcard-num">${num(op.pending)}</span><span class="stats-mcard-label">대기중</span></div>
                   <div class="stats-mcard stats-mcard-ok"><span class="stats-mcard-num">${num(op.approved)}</span><span class="stats-mcard-label">승인됨</span></div>
@@ -1498,10 +1498,10 @@
       { key: "all", label: "전체" },
       { key: "general", label: "일반회원" },
       { key: "agent", label: "중개사" },
-      { key: "operator", label: "운영업체" },
+      { key: "operator", label: "운영지원업체" },
       { key: "pending", label: "승인대기" },
     ];
-    const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영업체", pending: "승인대기" };
+    const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", pending: "승인대기" };
     const MEMBER_STATUS_BADGE = {
       active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"],
       suspended: ["정지", "no"], deleted: ["탈퇴", "no"],
@@ -1590,7 +1590,7 @@
       const rows = (d.items || []).map((r) => {
         const typeLabel = MEMBER_TYPE_LABEL[r.member_type] || r.member_type;
         const badge = r.member_type === "pending"
-          ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영업체" : "")}</span>`
+          ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영지원업체" : "")}</span>`
           : dgEscape(typeLabel);
         const st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
         const actions = r.member_type === "pending"
@@ -1779,7 +1779,7 @@
       fields.push({
         key: "message",
         label: smsIds.length && notifyIds.length
-          ? `내용 (중개사·운영업체 ${smsIds.length}명 SMS + 일반회원 인앱알림 본문)`
+          ? `내용 (중개사·운영지원업체 ${smsIds.length}명 SMS + 일반회원 인앱알림 본문)`
           : (smsIds.length ? `SMS 내용 (${smsIds.length}명 발송)` : "알림 내용"),
         type: "textarea", required: true,
       });
@@ -1826,7 +1826,7 @@
     async function bulkDeactivate() {
       const ids = selectedList().filter((x) => x.type !== "pending");
       if (!ids.length) return;
-      if (!window.confirm(`선택한 ${ids.length}명을 비활성화할까요?\n\n· 일반회원 → 탈퇴 처리\n· 중개사/운영업체 → 로그인·공개페이지 차단\n(계정 정보는 삭제되지 않고 상태만 변경됩니다)`)) return;
+      if (!window.confirm(`선택한 ${ids.length}명을 비활성화할까요?\n\n· 일반회원 → 탈퇴 처리\n· 중개사/운영지원업체 → 로그인·공개페이지 차단\n(계정 정보는 삭제되지 않고 상태만 변경됩니다)`)) return;
       const d = await bulkCall("/api/admin/members/bulk-deactivate", { ids });
       if (!d) return;
       window.alert(`비활성화 완료 — ${d.success}명 처리`);
@@ -1880,7 +1880,7 @@
       mount.innerHTML = `
         <div class="stats-head" style="margin-bottom:14px;">
           <h2 class="stats-title">회원관리</h2>
-          <p class="stats-sub">일반회원·중개사·운영업체·승인대기 신청을 한 화면에서 조회합니다. 승인/반려는 신청승인과 동일하게 처리됩니다.</p>
+          <p class="stats-sub">일반회원·중개사·운영지원업체·승인대기 신청을 한 화면에서 조회합니다. 승인/반려는 신청승인과 동일하게 처리됩니다.</p>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;" id="membersGroupBar">
           ${MEMBER_GROUPS.map((g) => `
