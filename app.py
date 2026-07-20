@@ -52,6 +52,10 @@ from store_info_util import build_pnu, get_stores_by_pnu
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
 
+# 파트너(중개사/운영업체) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
+# 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
+MAX_FREE_BUILDINGS = 5
+
 # 정적 JS/CSS 자산에 배포마다 바뀌는 버전 쿼리스트링(?v=SERVER_BOOT_V)을 붙여
 # 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
 # 하드코딩하지 않고 서버 기동 시각(=배포마다 갱신)을 재사용한다.
@@ -2670,6 +2674,13 @@ def agent_building_add():
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        # 무료 캡: 담당 건물 수가 MAX_FREE_BUILDINGS 이상이면 추가 등록 차단(안내만, 결제 미도입)
+        cur.execute("SELECT COUNT(*) c FROM agent_buildings WHERE agent_id = %s", [agent_id])
+        if cur.fetchone()["c"] >= MAX_FREE_BUILDINGS:
+            return jsonify({
+                "ok": False,
+                "message": f"무료 등록 가능 건물 수({MAX_FREE_BUILDINGS}개)를 초과했습니다. 추가 등록은 준비 중입니다.",
+            }), 400
         try:
             cur.execute(
                 "INSERT INTO agent_buildings (agent_id, master_building_id) VALUES (%s, %s)",
@@ -3205,6 +3216,13 @@ def operator_building_add():
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        # 무료 캡: 담당 건물 수가 MAX_FREE_BUILDINGS 이상이면 추가 등록 차단(안내만, 결제 미도입)
+        cur.execute("SELECT COUNT(*) c FROM operator_buildings WHERE operator_id = %s", [operator_id])
+        if cur.fetchone()["c"] >= MAX_FREE_BUILDINGS:
+            return jsonify({
+                "ok": False,
+                "message": f"무료 등록 가능 건물 수({MAX_FREE_BUILDINGS}개)를 초과했습니다. 추가 등록은 준비 중입니다.",
+            }), 400
         try:
             cur.execute(
                 "INSERT INTO operator_buildings (operator_id, master_building_id, note) VALUES (%s, %s, %s)",
@@ -4294,6 +4312,7 @@ def admin_listing_requests_list():
             SELECT lr.id, lr.master_building_id, mb.building_name,
                    lr.deal_type, lr.desired_price, lr.contact_phone,
                    lr.routed_reason, lr.status, lr.admin_note,
+                   (lr.status = 'submitted' AND lr.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
                    a.office_name AS agent_office_name, a.phone AS agent_phone,
                    to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr
@@ -4308,6 +4327,38 @@ def admin_listing_requests_list():
         cur.close()
         conn.close()
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/partner-building-counts")
+@require_admin
+def admin_partner_building_counts():
+    """중개사/운영업체별 담당 건물 수 목록 (무료 캡 대비 현황 파악용)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT a.id, a.office_name AS name, a.phone, a.status,
+                   COUNT(ab.master_building_id) AS building_count
+            FROM agents a
+            LEFT JOIN agent_buildings ab ON ab.agent_id = a.id
+            GROUP BY a.id, a.office_name, a.phone, a.status
+            ORDER BY building_count DESC, a.id ASC
+        """)
+        agents = [dict(r) for r in cur.fetchall()]
+        cur.execute("""
+            SELECT o.id, o.company_name AS name, o.phone, o.status,
+                   COUNT(ob.master_building_id) AS building_count
+            FROM operators o
+            LEFT JOIN operator_buildings ob ON ob.operator_id = o.id
+            GROUP BY o.id, o.company_name, o.phone, o.status
+            ORDER BY building_count DESC, o.id ASC
+        """)
+        operators = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "max_free_buildings": MAX_FREE_BUILDINGS,
+                    "agents": agents, "operators": operators})
 
 
 @app.route("/api/admin/listing-requests/<int:req_id>", methods=["PUT"])

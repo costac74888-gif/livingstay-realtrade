@@ -203,11 +203,14 @@
             if (!v) return '<span style="color:var(--ink-soft);">—</span>';
             return `${dgEscape(v)}${row.agent_phone ? `<br><span style="color:var(--ink-soft); font-size:12px;">${dgEscape(row.agent_phone)}</span>` : ""}`;
           } },
-          { key: "status", label: "상태", sortable: true, render: (v) => {
+          { key: "status", label: "상태", sortable: true, render: (v, row) => {
             const m = { submitted: ["신규", "wait"], in_progress: ["처리중", ""], done: ["완료", "ok"] };
             const x = m[v] || [v || "-", ""];
             const style = x[1] === "" ? ' style="background:#E8F0FE; color:#1A5DB8;"' : "";
-            return `<span class="dg-badge${x[1] ? ` dg-badge-${x[1]}` : ""}"${style}>${dgEscape(x[0])}</span>`;
+            let html = `<span class="dg-badge${x[1] ? ` dg-badge-${x[1]}` : ""}"${style}>${dgEscape(x[0])}</span>`;
+            // 배정 후 7일 넘게 submitted 상태면 "응답 지연" 표시 (자동 재배정은 다음 단계)
+            if (row.is_delayed) html += ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;" title="배정 후 7일 경과, 중개사 미응답">⏰ 응답 지연</span>';
+            return html;
           } },
           { key: "admin_note", label: "비고", render: (v, row) => {
             const txt = v ? dgEscape(v) : '<span style="color:var(--ink-soft);">메모 입력</span>';
@@ -414,6 +417,40 @@
         return;
       }
       renderStats(data);
+      loadPartnerBuildingCounts();
+    }
+
+    // 파트너(중개사/운영업체)별 담당 건물 수 — 무료 캡 대비 현황
+    async function loadPartnerBuildingCounts() {
+      const wrap = document.getElementById("pbcWrap");
+      if (!wrap) return;
+      let d;
+      try {
+        const res = await fetch("/api/admin/partner-building-counts");
+        if (!res.ok) throw new Error("fetch failed");
+        d = await res.json();
+      } catch (e) {
+        wrap.innerHTML = '<div class="stats-loading">담당 건물 수를 불러오지 못했습니다.</div>';
+        return;
+      }
+      const cap = d.max_free_buildings || 5;
+      const capEl = document.getElementById("pbcCap");
+      if (capEl) capEl.textContent = cap;
+      const stBadge = (s) => s === "approved" ? '<span class="dg-badge dg-badge-ok">승인</span>'
+        : (s === "pending" ? '<span class="dg-badge dg-badge-wait">대기</span>' : `<span class="dg-badge dg-badge-no">${dgEscape(s || "-")}</span>`);
+      const table = (rows, label) => {
+        if (!rows.length) return `<div class="stats-member-group"><h4 class="stats-member-title">${label}</h4><div class="stats-loading">등록된 ${label}가 없습니다.</div></div>`;
+        const trs = rows.map((r) => {
+          const full = r.building_count >= cap;
+          const cnt = `<b style="color:${full ? "#B3261E" : "var(--ink)"};">${r.building_count}</b> / ${cap}${full ? ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;">캡 도달</span>' : ""}`;
+          return `<tr><td>${r.id}</td><td>${dgEscape(r.name || "-")}</td><td>${dgEscape(r.phone || "-")}</td><td>${stBadge(r.status)}</td><td>${cnt}</td></tr>`;
+        }).join("");
+        return `<div class="stats-member-group"><h4 class="stats-member-title">${label}</h4>
+          <table class="dg-table" style="width:100%; font-size:13px;">
+            <thead><tr><th>ID</th><th>업체명</th><th>연락처</th><th>상태</th><th>담당 건물 수</th></tr></thead>
+            <tbody>${trs}</tbody></table></div>`;
+      };
+      wrap.innerHTML = table(d.agents || [], "중개사") + table(d.operators || [], "운영업체");
     }
 
     function num(n) { return (n || 0).toLocaleString("ko-KR"); }
@@ -490,6 +527,11 @@
                 </div>
               </div>
             </div>
+          </section>
+
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">파트너별 담당 건물 수 <span class="stats-card-hint">무료 등록 상한: <b id="pbcCap">-</b>개 (초과 등록은 준비 중)</span></h3>
+            <div id="pbcWrap" class="stats-member-wrap"><div class="stats-loading">불러오는 중…</div></div>
           </section>
 
           <section class="stats-card stats-card-wide">
