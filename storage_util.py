@@ -32,12 +32,15 @@ MAX_FILE_BYTES = 5 * 1024 * 1024  # 파일당 5MB
 
 # 신청 유형별 허용 doc_type (applications 테이블의 doc_* 컬럼과 1:1 매핑)
 AGENT_DOC_TYPES = {"license", "office_reg", "biz_reg"}
-OPERATOR_DOC_TYPES = {"biz_reg", "business_card", "biz_license"}
+OPERATOR_DOC_TYPES = {"biz_reg", "business_card", "biz_license", "logo"}
+
+# 로고는 화면에 <img>로 노출되므로 이미지 확장자만 허용한다 (PDF 불가).
+LOGO_EXTENSIONS = {"jpg", "jpeg", "png"}
 
 # 신청서 제출 시 넘어오는 참조 키가 우리가 발급한 형식인지 검증하는 정규식.
 DOC_REF_RE = re.compile(
     r"^applications/(agent|operator)/[0-9a-f]{32}/"
-    r"(license|office_reg|biz_reg|business_card|biz_license)\.(pdf|jpg|jpeg|png)$"
+    r"(license|office_reg|biz_reg|business_card|biz_license|logo)\.(pdf|jpg|jpeg|png)$"
 )
 
 

@@ -90,9 +90,14 @@
           <input type="file" class="doc-input" data-doc-type="business_card" accept=".pdf,.jpg,.jpeg,.png" />
           <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
         </div>
-        <div class="field" style="margin-bottom:0;">
+        <div class="field" style="margin-bottom:12px;">
           <label>영업허가증 (업종별 조건부 — 없으면 비워두셔도 됩니다)</label>
           <input type="file" class="doc-input" data-doc-type="biz_license" accept=".pdf,.jpg,.jpeg,.png" />
+          <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>로고 이미지 (선택 · JPG/PNG) — 승인 시 파트너 소개 섹션에 로고가 노출됩니다</label>
+          <input type="file" class="doc-input" data-doc-type="logo" accept=".jpg,.jpeg,.png" />
           <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
         </div>
       </div>
@@ -183,7 +188,7 @@
 
   // 서류 업로드: 파일 선택 즉시 업로드 API로 올리고, 반환된 참조 키를 보관했다가
   // 신청 제출 시 doc_*_url 필드로 함께 전송한다.
-  const DOC_FIELD_MAP = { biz_reg: "doc_biz_reg_url", business_card: "doc_business_card_url", biz_license: "doc_biz_license_url" };
+  const DOC_FIELD_MAP = { biz_reg: "doc_biz_reg_url", business_card: "doc_business_card_url", biz_license: "doc_biz_license_url", logo: "doc_logo_url" };
   const docRefs = {};
   document.querySelectorAll(".doc-input").forEach((input) => {
     const statusEl = input.parentElement.querySelector(".doc-status");

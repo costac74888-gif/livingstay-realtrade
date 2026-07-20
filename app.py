@@ -1187,6 +1187,12 @@ def apply_agent_upload():
 @limiter.limit("10 per hour")
 def apply_operator_upload():
     """운영업체 신청 서류 업로드 (비로그인, IP 기준 rate limit)."""
+    # 로고는 화면에 <img>로 노출되므로 이미지 파일만 허용 (PDF 차단)
+    if (request.form.get("doc_type") or "").strip() == "logo":
+        f = request.files.get("file")
+        ext = f.filename.rsplit(".", 1)[-1].lower() if f and f.filename and "." in f.filename else ""
+        if ext not in storage_util.LOGO_EXTENSIONS:
+            return jsonify({"ok": False, "message": "로고는 JPG 또는 PNG 이미지 파일만 업로드할 수 있습니다."}), 400
     return _handle_apply_upload("operator", storage_util.OPERATOR_DOC_TYPES)
 
 
@@ -1357,7 +1363,8 @@ def apply_operator():
     doc_refs = {}
     for field, doc_type in (("doc_biz_reg_url", "biz_reg"),
                             ("doc_business_card_url", "business_card"),
-                            ("doc_biz_license_url", "biz_license")):
+                            ("doc_biz_license_url", "biz_license"),
+                            ("doc_logo_url", "logo")):
         ref, err = _clean_doc_ref(data.get(field), "operator", doc_type)
         if err:
             return jsonify({"ok": False, "message": err}), 400
@@ -1370,15 +1377,15 @@ def apply_operator():
             (applicant_type, office_or_company_name, owner_name, category,
              biz_reg_number, phone, email, website_url, preferred_region, status,
              reg_number, intro_text, doc_biz_reg_url, doc_business_card_url,
-             doc_biz_license_url, terms_agreed_at, privacy_agreed_at)
+             doc_biz_license_url, doc_logo_url, terms_agreed_at, privacy_agreed_at)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s, %s, NOW(), NOW())
+                NULL, NULL, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
           website_url or None, preferred_region or None,
           doc_refs["doc_biz_reg_url"], doc_refs["doc_business_card_url"],
-          doc_refs["doc_biz_license_url"]))
+          doc_refs["doc_biz_license_url"], doc_refs["doc_logo_url"]))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1476,6 +1483,57 @@ def loan_consultants_list():
     cur.close()
     conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+# ---- 파트너 소개 (공개, /partner 페이지) ----
+
+@app.route("/api/partners/operators")
+def partners_operators_list():
+    """로고가 등록된 승인 운영지원업체 공개 목록 — /partner '등록된 파트너' 섹션용.
+
+    로고 없는 승인 업체는 시각 노출 대상이 아니므로 제외한다.
+    로고 이미지는 스토리지 키를 직접 노출하지 않고 프록시(/api/partners/operator-logo/<id>)로 서빙.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, company_name, subdomain_slug
+        FROM operators
+        WHERE status = 'approved' AND logo_url IS NOT NULL AND logo_url <> ''
+        ORDER BY approved_at DESC NULLS LAST, id DESC
+        LIMIT 24
+    """)
+    items = [{
+        "company_name": r["company_name"],
+        "subdomain_slug": r["subdomain_slug"],
+        "logo_src": f"/api/partners/operator-logo/{r['id']}",
+    } for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/partners/operator-logo/<int:operator_id>")
+def partners_operator_logo(operator_id):
+    """승인 업체 로고 이미지 공개 프록시 — 승인 + 로고 보유 업체만 서빙 (팝업 이미지 프록시와 동일 패턴)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT logo_url FROM operators WHERE id=%s AND status='approved'", [operator_id])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    key = (row or {}).get("logo_url")
+    if not key or not storage_util.is_valid_doc_ref(key, "operator", {"logo"}):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    mime = "image/png" if ext == "png" else "image/jpeg"
+    resp = Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
 
 
 @app.route("/api/request-correction", methods=["POST"])
@@ -5341,7 +5399,8 @@ def admin_applications_list():
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
                category, phone, email, preferred_region, preferred_building, status, reject_reason,
                doc_license_url, doc_office_reg_url, doc_biz_reg_url,
-               doc_business_card_url, doc_biz_license_url,
+               doc_business_card_url, doc_biz_license_url, doc_logo_url,
+               linked_operator_id,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
         WHERE {where_sql}
@@ -5778,6 +5837,66 @@ def admin_application_doc_url(app_id):
     return jsonify({"ok": True, "url": url})
 
 
+@app.route("/api/admin/operators/<int:operator_id>/logo", methods=["PUT"])
+@require_admin
+def admin_operator_logo_put(operator_id):
+    """운영지원업체 로고 등록/수정/삭제 (건물마스터 수정처럼 PUT).
+
+    - multipart/form-data + file: 이미지(JPG/PNG, 5MB 이하) 업로드 후 logo_url 갱신
+    - JSON {"clear": true}: 로고 제거 (파트너 소개 섹션에서 내려감)
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM operators WHERE id=%s", [operator_id])
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "존재하지 않는 업체입니다."}), 404
+
+    f = request.files.get("file")
+    if not f:
+        data = request.get_json(silent=True) or {}
+        if data.get("clear") is True:
+            cur.execute("UPDATE operators SET logo_url=NULL WHERE id=%s", [operator_id])
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"ok": True, "logo_url": None})
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "로고 파일을 첨부하거나 {\"clear\": true}를 보내주세요."}), 400
+
+    ext = f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "로고는 JPG 또는 PNG 이미지 파일만 업로드할 수 있습니다."}), 400
+    data_bytes = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data_bytes) > storage_util.MAX_FILE_BYTES:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data_bytes) < 16 or not storage_util.check_magic_bytes(data_bytes, ext):
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다. 실제 JPG/PNG 파일만 업로드해주세요."}), 400
+
+    key = storage_util.build_doc_key("operator", "logo", ext)
+    try:
+        storage_util.upload_doc(key, data_bytes)
+    except Exception:
+        app.logger.exception("운영업체 로고 업로드 실패 (operator_id=%s)", operator_id)
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+
+    cur.execute("UPDATE operators SET logo_url=%s WHERE id=%s", [key, operator_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "logo_url": key})
+
+
 @app.route("/api/admin/applications/<int:app_id>/approve", methods=["POST"])
 @require_admin
 def admin_applications_approve(app_id):
@@ -5888,12 +6007,12 @@ def admin_applications_approve(app_id):
                         INSERT INTO operators
                             (company_name, owner_name, category, biz_reg_number,
                              phone, email, website_url, status, subdomain_slug,
-                             password_hash, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
+                             password_hash, logo_url, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
                           ap["biz_reg_number"], ap["phone"], ap["email"], ap["website_url"],
-                          slug, pw_hash])
+                          slug, pw_hash, ap.get("doc_logo_url")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_operator_insert")
                     break

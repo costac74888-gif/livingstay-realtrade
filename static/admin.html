@@ -318,6 +318,31 @@
             },
           },
           {
+            // 승인된 운영지원업체: 신청 때 로고를 안 올렸어도 나중에 등록/수정 가능 (PUT /api/admin/operators/<id>/logo)
+            label: "로고", className: "dg-edit",
+            hidden: (row) => !(row.applicant_type === "operator" && row.status === "approved" && row.linked_operator_id),
+            onClick: async (row) => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".jpg,.jpeg,.png";
+              input.onchange = async () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) { window.alert("파일 크기는 5MB 이하여야 합니다."); return; }
+                const fd = new FormData();
+                fd.append("file", file);
+                try {
+                  const res = await fetch(`/api/admin/operators/${row.linked_operator_id}/logo`, { method: "PUT", body: fd });
+                  if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                  const data = await res.json().catch(() => ({}));
+                  if (res.ok && data.ok) { window.alert("로고가 등록되었습니다. /partner 파트너 소개에 노출됩니다."); return; }
+                  window.alert(data.message || "로고 등록에 실패했습니다.");
+                } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+              };
+              input.click();
+            },
+          },
+          {
             label: "반려", className: "dg-reject",
             hidden: (row) => row.status !== "submitted",
             onClick: async (row, grid) => {
