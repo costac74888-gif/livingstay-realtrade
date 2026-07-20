@@ -3870,17 +3870,20 @@ def _backfill_months():
 
 @app.route("/api/admin/sync-backfill", methods=["POST"])
 @require_admin
-@limiter.limit("1 per day")
+@limiter.limit("6 per hour")
 def admin_backfill_run():
-    """과거 데이터 백필 시작. 실행 중이면 409, 24시간 내 완료 이력 있으면 429."""
+    """과거 데이터 백필 시작. 실행 중이면 409, 24시간 내 완료 이력 있으면 429.
+    '1일 1회' 강제는 DB 잠금(성공 done 후 24시간)으로만 한다 — 실패(failed)로
+    끝난 경우엔 당일 재시도를 허용해야 하므로 요청 자체를 하루 1회로 막지 않는다."""
     months = _backfill_months()
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute("SELECT COUNT(*) AS c FROM transactions")
         tx_before = cur.fetchone()["c"]
+        run_id = _secrets.token_hex(8)
         status = {
-            "run_id": _secrets.token_hex(8),
+            "run_id": run_id,
             "state": "running",
             "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "finished_at": None,
@@ -3889,6 +3892,7 @@ def admin_backfill_run():
             "error": None,
             "months": months,
             "target_from": _BACKFILL_FROM,
+            "log_file": f"logs/backfill_{run_id}.log",
         }
         # 원자적 잠금 — sync-transactions 와 동일 패턴, 단 done 차단은 24시간
         cur.execute(f"""
@@ -3921,12 +3925,19 @@ def admin_backfill_run():
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     try:
-        proc = subprocess.Popen(
-            [sys.executable, "-u", os.path.join(base_dir, "sync_runner.py"),
-             "--meta-key", _BACKFILL_META_KEY, "--months", str(months)],
-            cwd=base_dir, start_new_session=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        # 러너 출력(하위 sync_batch 출력 포함)을 파일로 남겨 실패 원인을 추적한다.
+        log_dir = os.path.join(base_dir, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_fh = open(os.path.join(log_dir, f"backfill_{run_id}.log"), "a", encoding="utf-8")
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "-u", os.path.join(base_dir, "sync_runner.py"),
+                 "--meta-key", _BACKFILL_META_KEY, "--months", str(months)],
+                cwd=base_dir, start_new_session=True,
+                stdout=log_fh, stderr=subprocess.STDOUT,
+            )
+        finally:
+            log_fh.close()  # 자식이 fd 를 상속했으므로 부모 쪽 핸들은 닫아도 된다
         threading.Thread(target=proc.wait, daemon=True).start()
     except Exception as e:
         status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],

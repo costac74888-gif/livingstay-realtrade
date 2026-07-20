@@ -129,7 +129,12 @@ def main():
 
         def _reader():
             for line in proc.stdout:
-                tail.append(line.rstrip())
+                line = line.rstrip()
+                tail.append(line)
+                # 하위 프로세스 출력을 그대로 러너 stdout으로 흘려보낸다.
+                # (app.py가 러너 stdout을 logs/backfill_{run_id}.log 로 리다이렉트하면
+                #  실패 원인 추적용 전체 로그가 파일로 남는다.)
+                print(_redact(line), flush=True)
         t = threading.Thread(target=_reader, daemon=True)
         t.start()
 
