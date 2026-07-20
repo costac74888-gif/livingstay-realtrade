@@ -10,6 +10,8 @@
 - **로고 기본: 화이트 배경 · 검정 글자(B&W on white)**. 상단/모달/법적 페이지 로고 모두 흑백 기준. 골드 로고는 사용하지 않음(`static/home_stay_logo.png`가 흑백 버전, 골드 원본은 `home_stay_logo_gold_backup.png`).
 - 주요 파일: `app.py`(라우트/API), `static/index.html`(메인 지도), `static/js/main.js`, `static/css/main.css`, `db.py`(RealDictCursor).
 - **주의: `static/building.html`은 레거시(실서비스 미사용)**. 실제 건물상세(B화면)는 `/building/<id>` 진입 시 index의 `main.js`가 그리는 좌측패널 — B화면 작업은 반드시 `main.js`의 `renderBuildingPanel()`/`renderBuildingAgent()` 쪽을 수정해야 반영됨.
+- 파트너 노출 토글: agents/operators/loan_consultants에 `is_visible`(기본 TRUE). 각 대시보드에서 노출중지/재개 (`PUT /api/{agent|operator|loan-consultant}/visibility`). FALSE면 B화면 카드·/api/loan-consultants 목록에서 숨김 + 매물의뢰 라우팅(전속/지역) 제외(하우스 폴백은 항상 배정).
+- 대출상담사 계정: 승인 시 임시비밀번호 생성+SMS 안내(로그인 ID=이메일), 로그인 `/loan-consultant/login` → `POST /api/loan-consultant/login`(approved만), 대시보드 `/loan-consultant/dashboard`(프로필/비밀번호/노출 토글).
 - 중개사 계정: 신청 승인 시 subdomain_slug(전화번호 기반)+임시비밀번호 발급, 알리고 SMS 안내(`sms_util.py`, ALIGO_API_KEY/ALIGO_USER_ID/ALIGO_SENDER). 로그인 `/agent/login` → `POST /api/agent/login`(approved만), `require_agent`, `PUT /api/agent/password`.
 - 관리자 실거래 동기화: `/admin` "실거래 동기화" 버튼 → `POST /api/admin/sync-transactions`가 `sync_runner.py`를 독립 프로세스로 실행(`sync_batch.py --master-only`), 상태는 `app_meta('tx_sync_status')` + `GET /api/admin/sync-status`. 중복 실행/30분 재실행 제한은 DB에서 전역 강제.
 

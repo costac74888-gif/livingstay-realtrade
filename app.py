@@ -299,6 +299,7 @@ def get_building(building_id):
         JOIN agents a ON a.id = ab.agent_id
         WHERE ab.master_building_id = %s
           AND a.status = 'approved'
+          AND COALESCE(a.is_visible, TRUE)
         ORDER BY ab.updated_at DESC NULLS LAST, ab.id DESC
         LIMIT 1
     """, [building_id])
@@ -312,6 +313,7 @@ def get_building(building_id):
         JOIN operators o ON o.id = ob.operator_id
         WHERE ob.master_building_id = %s
           AND o.status = 'approved'
+          AND COALESCE(o.is_visible, TRUE)
         ORDER BY ob.updated_at DESC NULLS LAST, ob.id DESC
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
@@ -1501,6 +1503,7 @@ def loan_consultants_list():
         SELECT office_name, owner_name, phone, subdomain_slug
         FROM loan_consultants
         WHERE status = 'approved'
+          AND COALESCE(is_visible, TRUE)
         ORDER BY approved_at DESC NULLS LAST, id DESC
         LIMIT 10
     """)
@@ -2954,7 +2957,8 @@ def agent_me():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug
+            SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug,
+                   COALESCE(is_visible, TRUE) AS is_visible
             FROM agents WHERE id = %s
         """, [agent_id])
         me = cur.fetchone()
@@ -3010,6 +3014,25 @@ def agent_me_update():
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/agent/visibility", methods=["PUT"])
+@require_agent
+def agent_visibility_update():
+    """노출 여부 토글 — 본인 세션 기준. is_visible만 갱신 (status와 무관)."""
+    data = request.get_json(force=True, silent=True) or {}
+    v = data.get("is_visible")
+    if not isinstance(v, bool):
+        return jsonify({"ok": False, "message": "is_visible 값은 true/false여야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE agents SET is_visible = %s WHERE id = %s", (v, session["agent_id"]))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "is_visible": v})
 
 
 @app.route("/api/agent/buildings", methods=["POST"])
@@ -3245,6 +3268,7 @@ def create_listing_request():
             FROM agent_buildings ab
             JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
             WHERE ab.master_building_id = %s
+              AND COALESCE(a.is_visible, TRUE)
             ORDER BY ab.updated_at DESC NULLS LAST, ab.id DESC
             LIMIT 1
         """, [mb_id])
@@ -3263,6 +3287,7 @@ def create_listing_request():
                     JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
                     JOIN master_buildings mb ON mb.id = ab.master_building_id
                     WHERE mb.sgg_text = %s AND a.office_name <> %s
+                      AND COALESCE(a.is_visible, TRUE)
                     GROUP BY a.id, a.phone, a.office_name
                     ORDER BY last_active DESC NULLS LAST
                 """, [sgg, _HOUSE_OFFICE_NAME])
@@ -3496,7 +3521,8 @@ def operator_me():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT company_name, owner_name, category, phone, photo_url, intro_text, subdomain_slug
+            SELECT company_name, owner_name, category, phone, photo_url, intro_text, subdomain_slug,
+                   COALESCE(is_visible, TRUE) AS is_visible
             FROM operators WHERE id = %s
         """, [operator_id])
         me = cur.fetchone()
@@ -3548,6 +3574,194 @@ def operator_me_update():
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/operator/visibility", methods=["PUT"])
+@require_operator
+def operator_visibility_update():
+    """노출 여부 토글 — 본인 세션 기준. is_visible만 갱신 (agent와 동일 패턴)."""
+    data = request.get_json(force=True, silent=True) or {}
+    v = data.get("is_visible")
+    if not isinstance(v, bool):
+        return jsonify({"ok": False, "message": "is_visible 값은 true/false여야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE operators SET is_visible = %s WHERE id = %s", (v, session["operator_id"]))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "is_visible": v})
+
+
+# ============================================================
+# 대출상담사 로그인/대시보드 — agent/operator와 동일 패턴.
+# 세션에 loan_consultant_id 저장. require_loan_consultant 로 보호.
+# ============================================================
+
+def require_loan_consultant(f):
+    """세션에 loan_consultant_id가 없으면 차단한다.
+    /api/* 요청은 401 JSON, 그 외는 /loan-consultant/login으로 리다이렉트."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("loan_consultant_id"):
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+            return redirect("/loan-consultant/login")
+        return f(*args, **kwargs)
+    return wrapper
+
+
+@app.route("/loan-consultant/login")
+def loan_consultant_login_page():
+    return _serve_static_html("loan_consultant_login.html")
+
+
+@app.route("/api/loan-consultant/login", methods=["POST"])
+@limiter.limit("5 per minute; 20 per hour")
+def loan_consultant_login():
+    """loan_consultants 테이블 기반 이메일/비밀번호 로그인. status='approved'만 허용."""
+    data = request.get_json(force=True, silent=True) or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+    if not email or not password:
+        return fail
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, password_hash, status FROM loan_consultants WHERE LOWER(email) = LOWER(%s)",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
+            return fail
+        if row["status"] != "approved":
+            return jsonify({"ok": False, "message": "승인된 대출상담사 계정이 아닙니다."}), 403
+    finally:
+        cur.close()
+        conn.close()
+
+    session["loan_consultant_id"] = row["id"]
+    session.permanent = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/logout", methods=["POST"])
+def loan_consultant_logout():
+    session.pop("loan_consultant_id", None)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/password", methods=["PUT"])
+@require_loan_consultant
+@limiter.limit("5 per minute; 20 per hour")
+def loan_consultant_change_password():
+    """대출상담사 비밀번호 변경 — 현재 비밀번호 확인 후 교체 (agent와 같은 패턴)."""
+    lc_id = session.get("loan_consultant_id")
+    data = request.get_json(force=True, silent=True) or {}
+    current_pw = data.get("current_password") or ""
+    new_pw = data.get("new_password") or ""
+    if len(new_pw) < 8:
+        return jsonify({"ok": False, "message": "새 비밀번호는 8자 이상이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password_hash FROM loan_consultants WHERE id = %s", (lc_id,))
+        row = cur.fetchone()
+        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], current_pw):
+            return jsonify({"ok": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 401
+        cur.execute(
+            "UPDATE loan_consultants SET password_hash = %s WHERE id = %s",
+            (generate_password_hash(new_pw), lc_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/loan-consultant/dashboard")
+@require_loan_consultant
+def loan_consultant_dashboard_page():
+    return _serve_static_html("loan_consultant_dashboard.html")
+
+
+@app.route("/api/loan-consultant/me")
+@require_loan_consultant
+def loan_consultant_me():
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug,
+                   COALESCE(is_visible, TRUE) AS is_visible
+            FROM loan_consultants WHERE id = %s
+        """, [lc_id])
+        me = cur.fetchone()
+        if not me:
+            return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify(dict(me))
+
+
+@app.route("/api/loan-consultant/me", methods=["PUT"])
+@require_loan_consultant
+def loan_consultant_me_update():
+    """phone / photo_url / intro_text 부분 업데이트 — 전달된 키만 수정 (agent와 동일 패턴)."""
+    lc_id = session["loan_consultant_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    allowed = ["phone", "photo_url", "intro_text"]
+    sets, params = [], []
+    for k in allowed:
+        if k in data:
+            v = data.get(k)
+            if v is not None and not isinstance(v, str):
+                return jsonify({"ok": False, "message": f"{k} 값이 올바르지 않습니다."}), 400
+            v = (v or "").strip() or None
+            if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
+                return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            sets.append(f"{k} = %s")
+            params.append(v)
+    if not sets:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    params.append(lc_id)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE loan_consultants SET {', '.join(sets)} WHERE id = %s", params)
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/visibility", methods=["PUT"])
+@require_loan_consultant
+def loan_consultant_visibility_update():
+    """노출 여부 토글 — 본인 세션 기준. is_visible만 갱신 (agent와 동일 패턴)."""
+    data = request.get_json(force=True, silent=True) or {}
+    v = data.get("is_visible")
+    if not isinstance(v, bool):
+        return jsonify({"ok": False, "message": "is_visible 값은 true/false여야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE loan_consultants SET is_visible = %s WHERE id = %s", (v, session["loan_consultant_id"]))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "is_visible": v})
 
 
 @app.route("/api/operator/buildings", methods=["POST"])
@@ -6133,6 +6347,10 @@ def admin_applications_approve(app_id):
                 return jsonify({"ok": False, "message": "이미 등록된 대출상담사입니다."}), 400
             # subdomain_slug — agent 승인 로직과 동일 패턴 (전화번호 기반, 충돌 시 -2, -3 …)
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"loan{app_id}"
+            # 임시 비밀번호(랜덤 8자리 영숫자) — agent/operator와 동일 패턴, 해시만 저장
+            alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+            temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
+            pw_hash = generate_password_hash(temp_pw)
             created_id = None
             n = 2
             slug = base_slug
@@ -6148,11 +6366,11 @@ def admin_applications_approve(app_id):
                     cur.execute("""
                         INSERT INTO loan_consultants
                             (office_name, owner_name, license_number, biz_reg_number,
-                             phone, email, status, subdomain_slug, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, NOW())
+                             phone, email, status, subdomain_slug, password_hash, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                          ap["biz_reg_number"], ap["phone"], ap["email"], slug])
+                          ap["biz_reg_number"], ap["phone"], ap["email"], slug, pw_hash])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_loan_insert")
                     break
@@ -6189,13 +6407,19 @@ def admin_applications_approve(app_id):
     conn.close()
 
     if atype == "loan_consultant":
-        # 대출상담사는 로그인 계정 없이 승인 안내만 발송 (임시비밀번호 없음)
+        # 승인 시 로그인 계정(이메일 ID + 임시비밀번호)도 함께 안내 — agent/operator와 동일 패턴
+        domain = request.host_url.rstrip("/")
         sms_body = (
-            f"[홈앤스테이] 대출상담사 승인 완료. {ap['owner_name']}님이 금융 파트너로 "
-            f"등록되었습니다. 상담 리드 연결 시 입력하신 연락처로 안내드립니다."
+            f"[홈앤스테이] 대출상담사 승인 완료. 로그인ID(이메일): {ap['email']} / "
+            f"임시비밀번호: {temp_pw} / 로그인: {domain}/loan-consultant/login — "
+            f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
         )
         sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
-        return jsonify({"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg})
+        resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg}
+        if not sms_sent:
+            # 문자 실패 시 관리자 화면에서 임시비밀번호를 직접 전달할 수 있게 응답에 포함
+            resp["temp_password"] = temp_pw
+        return jsonify(resp)
 
     if atype in ("agent", "operator"):
         # 승인 완료 후 문자 발송 — 실패해도 승인은 이미 확정(예외 없음, (ok, msg) 반환)

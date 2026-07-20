@@ -39,9 +39,11 @@
       </div>
       <a id="lnkProfile" href="#" target="_blank" rel="noopener" style="font-size:12.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">내 프로필 보기 →</a>
     </div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
       <button id="btnEditProfile" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">프로필 수정</button>
       <button id="btnChangePw" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">비밀번호 변경</button>
+      <button id="btnToggleVisible" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">…</button>
+      <span id="visBadge" style="display:none; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:12px;"></span>
     </div>
   </div>
 
@@ -141,7 +143,18 @@ async function api(url, opts){
   return { ok: res.ok, data };
 }
 
+function renderVisibility(){
+  const on = ME.is_visible !== false;
+  const btn = document.getElementById("btnToggleVisible");
+  const badge = document.getElementById("visBadge");
+  btn.textContent = on ? "노출중지" : "노출 재개";
+  badge.style.display = "inline-block";
+  if (on){ badge.textContent = "노출중"; badge.style.background = "#E4F5EA"; badge.style.color = "#1E7C43"; }
+  else { badge.textContent = "노출중지됨"; badge.style.background = "#FBEAEA"; badge.style.color = "#B23A3A"; }
+}
+
 function render(){
+  renderVisibility();
   document.getElementById("meCompany").textContent = ME.company_name || "-";
   const cat = document.getElementById("meCategory");
   if (ME.category){ cat.textContent = ME.category; cat.style.display = "inline-block"; }
@@ -176,6 +189,16 @@ async function load(){
   ME = data;
   render();
 }
+
+// ---- 노출중지/재개 토글 ----
+document.getElementById("btnToggleVisible").addEventListener("click", async () => {
+  const next = !(ME.is_visible !== false);
+  if (!next && !confirm("노출을 중지하면 신규 매물의뢰/리드가 더 이상 배정되지 않습니다. 계속하시겠습니까?")) return;
+  const { ok, data } = await api("/api/operator/visibility", { method: "PUT", body: JSON.stringify({ is_visible: next }) });
+  if (!ok){ alert(data.message || "변경에 실패했습니다."); return; }
+  ME.is_visible = data.is_visible;
+  renderVisibility();
+});
 
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {

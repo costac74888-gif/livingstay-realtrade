@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>숙박시설 실거래가 . 홈앤스테이</title>
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/" title="홈으로" style="cursor:pointer; text-decoration:none;">
+    <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
+    <div class="brand-text"><div class="name">홈앤스테이</div></div>
+  </a>
+  <div class="page-title">대출상담사 대시보드</div>
+  <div class="header-right"><button id="btnLogout" class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">로그아웃</button></div>
+</header>
+
+<div class="search-panel" style="max-width:720px; padding-bottom:40px;">
+
+  <!-- 상단: 내 정보 -->
+  <div class="panel-card" style="margin-top:16px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:200px;">
+        <div id="meOffice" style="font-size:18px; font-weight:700; color:var(--ink);">불러오는 중…</div>
+        <div id="meOwner" style="font-size:13px; color:var(--ink-soft); margin-top:3px;"></div>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
+      <button id="btnEditProfile" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">프로필 수정</button>
+      <button id="btnChangePw" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">비밀번호 변경</button>
+      <button id="btnToggleVisible" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">…</button>
+      <span id="visBadge" style="display:none; font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:12px;"></span>
+    </div>
+  </div>
+
+  <!-- 안내 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div class="side-card-title" style="margin-bottom:6px;">노출 안내</div>
+    <div style="font-size:13px; color:var(--ink-soft); line-height:1.6;">
+      노출중 상태에서는 건물 상세의 금융 카드와 대출상담사 목록에 내 정보가 표시되고 상담 리드가 연결됩니다.<br />
+      노출을 중지하면 신규 리드가 더 이상 배정되지 않으며, 등록 정보는 그대로 유지됩니다.
+    </div>
+  </div>
+
+</div>
+
+<!-- 프로필 수정 모달 -->
+<div class="admin-modal-overlay" id="mProfile" hidden>
+  <div class="admin-modal">
+    <div class="admin-modal-head"><h3>프로필 수정</h3><button class="admin-modal-close" data-close="mProfile">×</button></div>
+    <div class="admin-modal-body">
+      <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
+      <div class="field"><label>사진 URL (http(s)://…)</label><input type="text" id="fPhoto" placeholder="예) https://example.com/photo.jpg" /></div>
+      <div class="field"><label>소개글</label><textarea id="fIntro" rows="5" style="width:100%; font:inherit; font-size:13px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; resize:vertical;"></textarea></div>
+    </div>
+    <div class="admin-modal-msg" id="msgProfile"></div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mProfile">취소</button>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 18px; background:var(--brass); color:#fff; border-color:var(--brass);" id="btnSaveProfile">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 비밀번호 변경 모달 -->
+<div class="admin-modal-overlay" id="mPw" hidden>
+  <div class="admin-modal">
+    <div class="admin-modal-head"><h3>비밀번호 변경</h3><button class="admin-modal-close" data-close="mPw">×</button></div>
+    <div class="admin-modal-body">
+      <div class="field"><label>현재 비밀번호</label><input type="password" id="fPwCur" autocomplete="current-password" /></div>
+      <div class="field"><label>새 비밀번호 (8자 이상)</label><input type="password" id="fPwNew" autocomplete="new-password" /></div>
+      <div class="field"><label>새 비밀번호 확인</label><input type="password" id="fPwNew2" autocomplete="new-password" /></div>
+    </div>
+    <div class="admin-modal-msg" id="msgPw"></div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mPw">취소</button>
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 18px; background:var(--brass); color:#fff; border-color:var(--brass);" id="btnSavePw">변경</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+let ME = null;
+
+function openModal(id){ document.getElementById(id).hidden = false; }
+function closeModal(id){ document.getElementById(id).hidden = true; }
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.close)));
+document.querySelectorAll(".admin-modal-overlay").forEach(ov => ov.addEventListener("click", e => { if (e.target === ov) ov.hidden = true; }));
+
+async function api(url, opts){
+  const res = await fetch(url, Object.assign({ headers: { "Content-Type": "application/json" } }, opts));
+  if (res.status === 401){ location.href = "/loan-consultant/login"; throw new Error("unauthenticated"); }
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+function renderVisibility(){
+  const on = ME.is_visible !== false;
+  const btn = document.getElementById("btnToggleVisible");
+  const badge = document.getElementById("visBadge");
+  btn.textContent = on ? "노출중지" : "노출 재개";
+  badge.style.display = "inline-block";
+  if (on){ badge.textContent = "노출중"; badge.style.background = "#E4F5EA"; badge.style.color = "#1E7C43"; }
+  else { badge.textContent = "노출중지됨"; badge.style.background = "#FBEAEA"; badge.style.color = "#B23A3A"; }
+}
+
+function render(){
+  renderVisibility();
+  document.getElementById("meOffice").textContent = ME.office_name || "-";
+  document.getElementById("meOwner").textContent = (ME.owner_name || "-") + " 상담사";
+}
+
+async function load(){
+  const { ok, data } = await api("/api/loan-consultant/me");
+  if (!ok){ document.getElementById("meOffice").textContent = "정보를 불러오지 못했습니다."; return; }
+  ME = data;
+  render();
+}
+
+// ---- 노출중지/재개 토글 ----
+document.getElementById("btnToggleVisible").addEventListener("click", async () => {
+  const next = !(ME.is_visible !== false);
+  if (!next && !confirm("노출을 중지하면 신규 매물의뢰/리드가 더 이상 배정되지 않습니다. 계속하시겠습니까?")) return;
+  const { ok, data } = await api("/api/loan-consultant/visibility", { method: "PUT", body: JSON.stringify({ is_visible: next }) });
+  if (!ok){ alert(data.message || "변경에 실패했습니다."); return; }
+  ME.is_visible = data.is_visible;
+  renderVisibility();
+});
+
+// ---- 프로필 수정 ----
+document.getElementById("btnEditProfile").addEventListener("click", () => {
+  document.getElementById("fPhone").value = ME.phone || "";
+  document.getElementById("fPhoto").value = ME.photo_url || "";
+  document.getElementById("fIntro").value = ME.intro_text || "";
+  document.getElementById("msgProfile").textContent = "";
+  openModal("mProfile");
+});
+document.getElementById("btnSaveProfile").addEventListener("click", async () => {
+  const body = {
+    phone: document.getElementById("fPhone").value,
+    photo_url: document.getElementById("fPhoto").value,
+    intro_text: document.getElementById("fIntro").value,
+  };
+  const { ok, data } = await api("/api/loan-consultant/me", { method: "PUT", body: JSON.stringify(body) });
+  if (!ok){ document.getElementById("msgProfile").textContent = data.message || "저장에 실패했습니다."; return; }
+  closeModal("mProfile");
+  await load();
+});
+
+// ---- 비밀번호 변경 ----
+document.getElementById("btnChangePw").addEventListener("click", () => {
+  ["fPwCur","fPwNew","fPwNew2"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("msgPw").textContent = "";
+  openModal("mPw");
+});
+document.getElementById("btnSavePw").addEventListener("click", async () => {
+  const cur = document.getElementById("fPwCur").value;
+  const nw = document.getElementById("fPwNew").value;
+  const nw2 = document.getElementById("fPwNew2").value;
+  const msg = document.getElementById("msgPw");
+  if (nw.length < 8){ msg.textContent = "새 비밀번호는 8자 이상이어야 합니다."; return; }
+  if (nw !== nw2){ msg.textContent = "새 비밀번호가 서로 일치하지 않습니다."; return; }
+  const { ok, data } = await api("/api/loan-consultant/password", { method: "PUT", body: JSON.stringify({ current_password: cur, new_password: nw }) });
+  if (!ok){ msg.textContent = data.message || "변경에 실패했습니다."; return; }
+  closeModal("mPw");
+  alert("비밀번호가 변경되었습니다.");
+});
+
+// ---- 로그아웃 ----
+document.getElementById("btnLogout").addEventListener("click", async () => {
+  try { await fetch("/api/loan-consultant/logout", { method: "POST" }); } catch(e){}
+  location.href = "/loan-consultant/login";
+});
+
+load();
+</script>
+</body>
+</html>

@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-5"
+SCHEMA_VERSION = "2026-07-20-6"
 
 
 def init_db():
@@ -234,6 +234,9 @@ def init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS photo_url TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS admin_tag TEXT")  # 관리자 태그(일괄 관리용)
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS logo_url TEXT")  # 파트너 로고(이번엔 스키마만 준비)
+    # 노출 여부 — status(관리자 승인)와 별개로 본인이 켜고 끄는 스위치.
+    # FALSE면: B화면 카드 미노출 + 매물의뢰(K) 라우팅 대상에서 제외 (등록 데이터는 유지)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
 
     # 중개사별 담당(취급) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
     cur.execute("""
@@ -283,6 +286,8 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS admin_tag TEXT")  # 관리자 태그(일괄 관리용)
     # 파트너 소개 섹션용 로고 (Object Storage 참조 키 — applications/operator/{uuid}/logo.{ext})
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS logo_url TEXT")
+    # 노출 여부 — agents.is_visible과 동일 개념 (본인 토글, FALSE면 B화면 카드 미노출)
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
 
     # 운영업체별 담당 건물 (agent_buildings와 동일 패턴)
     cur.execute("""
@@ -320,6 +325,8 @@ def init_db():
     )
     """)
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS logo_url TEXT")  # 파트너 로고(이번엔 스키마만 준비)
+    # 노출 여부 — agents.is_visible과 동일 개념 (본인 토글)
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (

@@ -8,3 +8,5 @@ Rule: an `ALTER TABLE ... ADD COLUMN ... REFERENCES master_buildings(id)` (or an
 **Why:** observed init_db stall indefinitely after a SCHEMA_VERSION bump; pg_stat_activity showed 3 stacked DDL waiters behind one sync session's AccessShareLock.
 
 **How to apply:** before applying schema changes with FK references to hot tables, check pg_locks/pg_blocking_pids; if blocked, `pg_terminate_backend` the sync session (scripts are retry-safe via failure queue) and kill stacked waiters, then run init_db manually and restart the app. Consider `SET lock_timeout` to fail fast instead of queueing.
+
+**Safe path while syncs run:** for small DDL not touching master_buildings (e.g. ALTER on agents/operators), apply it manually with `SET lock_timeout='5s'` and then `UPDATE app_meta SET value=SCHEMA_VERSION WHERE key='schema_version'` so the app boots via the fast path without re-running full DDL.
