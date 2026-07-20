@@ -30,6 +30,7 @@
 
 </div>
 
+<script src="/static/js/format_util.js"></script>
 <script>
   // 지도 마커와 동일한 용도 색상(main.js LODGING_COLORS와 일치)
   const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
@@ -106,7 +107,7 @@
             <div style="font-size:13px; color:var(--ink-soft); margin-top:3px;">대표 ${esc(p.owner_name || "-")}</div>
             <div style="font-size:12.5px; color:var(--ink-soft); margin-top:5px;">총 ${p.building_count}개 단지 · ${p.total_listings}건 매물</div>
           </div>
-          ${p.phone ? `<a href="tel:${esc(p.phone)}" class="side-more" style="width:auto; margin-top:0; padding:9px 18px; text-decoration:none; text-align:center;">📞 ${esc(p.phone)}</a>` : ""}
+          ${p.phone ? `<a href="tel:${esc(p.phone)}" class="side-more" style="width:auto; margin-top:0; padding:9px 18px; text-decoration:none; text-align:center;">📞 ${esc(window.formatPhone ? formatPhone(p.phone) : p.phone)}</a>` : ""}
         </div>
       </div>
       ${introSection}

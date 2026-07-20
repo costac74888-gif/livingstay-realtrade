@@ -30,7 +30,7 @@
 
     <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
       <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">📎 서류 제출 안내</div>
-      <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">자격증·중개사무소등록증·사업자등록증 사본을 아래에서 바로 첨부할 수 있습니다. (PDF·JPG·PNG, 파일당 5MB 이하)</div>
+      <div style="font-size:12.5px; color:var(--ink); line-height:1.55;"><b>사업자등록증·중개사무소등록증 사본 첨부는 필수</b>입니다. 자격증·사진은 선택입니다. (PDF·JPG·PNG, 파일당 5MB 이하)</div>
     </div>
 
     <form id="applyForm" autocomplete="off">
@@ -47,7 +47,7 @@
         <input type="text" id="reg_number" placeholder="중개사무소 등록번호" />
       </div>
       <div class="field" style="margin-bottom:14px;">
-        <label>사업자등록번호</label>
+        <label>사업자등록번호 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890" />
       </div>
       <div class="field" style="margin-bottom:14px;">
@@ -67,19 +67,19 @@
       </div>
 
       <div style="border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px;">
-        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (선택 · PDF/JPG/PNG, 5MB 이하)</div>
+        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하)</div>
         <div class="field" style="margin-bottom:12px;">
-          <label>자격증</label>
+          <label>자격증 (선택)</label>
           <input type="file" class="doc-input" data-doc-type="license" accept=".pdf,.jpg,.jpeg,.png" />
           <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
         </div>
         <div class="field" style="margin-bottom:12px;">
-          <label>중개사무소등록증</label>
+          <label>중개사무소등록증 <span style="color:var(--brick);">*</span></label>
           <input type="file" class="doc-input" data-doc-type="office_reg" accept=".pdf,.jpg,.jpeg,.png" />
           <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
         </div>
         <div class="field" style="margin-bottom:12px;">
-          <label>사업자등록증</label>
+          <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
           <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
           <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
         </div>
@@ -228,14 +228,35 @@
       return;
     }
 
+    // 번호류는 하이픈·공백을 제거하고 숫자만 전송 (서버도 동일하게 정규화 저장)
+    const digitsOnly = (s) => (s || "").replace(/\D/g, "");
+    const bizDigits = digitsOnly(document.getElementById("biz_reg_number").value);
+    const phoneDigits = digitsOnly(document.getElementById("phone").value);
+    if (bizDigits.length !== 10){
+      showError("사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)");
+      return;
+    }
+    if (phoneDigits.length < 10 || phoneDigits.length > 11){
+      showError("전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)");
+      return;
+    }
+    if (!docRefs["biz_reg"]){
+      showError("사업자등록증 사본 첨부는 필수입니다.");
+      return;
+    }
+    if (!docRefs["office_reg"]){
+      showError("중개사무소등록증 사본 첨부는 필수입니다.");
+      return;
+    }
+
     const payload = {
       terms: applyAgreeTerms.checked,
       privacy: applyAgreePrivacy.checked,
       office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
       owner_name: document.getElementById("owner_name").value.trim(),
-      reg_number: document.getElementById("reg_number").value.trim(),
-      biz_reg_number: document.getElementById("biz_reg_number").value.trim(),
-      phone: document.getElementById("phone").value.trim(),
+      reg_number: digitsOnly(document.getElementById("reg_number").value),
+      biz_reg_number: bizDigits,
+      phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
       preferred_building: document.getElementById("preferred_building").value.trim(),
       preferred_building_id: document.getElementById("preferred_building_id").value.trim(),

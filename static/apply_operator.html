@@ -56,7 +56,7 @@
         </select>
       </div>
       <div class="field" style="margin-bottom:14px;">
-        <label>사업자등록번호</label>
+        <label>사업자등록번호 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890" />
       </div>
       <div class="field" style="margin-bottom:14px;">
@@ -79,9 +79,9 @@
       </div>
 
       <div style="border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px;">
-        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (선택 · PDF/JPG/PNG, 5MB 이하)</div>
+        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하 · 사업자등록증은 필수)</div>
         <div class="field" style="margin-bottom:12px;">
-          <label>사업자등록증</label>
+          <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
           <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
           <div class="doc-status" style="display:none; font-size:12px; margin-top:5px;"></div>
         </div>
@@ -238,14 +238,31 @@
       return;
     }
 
+    // 번호류는 하이픈·공백을 제거하고 숫자만 전송 (서버도 동일하게 정규화 저장)
+    const digitsOnly = (s) => (s || "").replace(/\D/g, "");
+    const bizDigits = digitsOnly(document.getElementById("biz_reg_number").value);
+    const phoneDigits = digitsOnly(document.getElementById("phone").value);
+    if (bizDigits.length !== 10){
+      showError("사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)");
+      return;
+    }
+    if (phoneDigits.length < 10 || phoneDigits.length > 11){
+      showError("전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)");
+      return;
+    }
+    if (!docRefs["biz_reg"]){
+      showError("사업자등록증 사본 첨부는 필수입니다.");
+      return;
+    }
+
     const payload = {
       terms: applyAgreeTerms.checked,
       privacy: applyAgreePrivacy.checked,
       office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
       owner_name: document.getElementById("owner_name").value.trim(),
       category: document.getElementById("category").value,
-      biz_reg_number: document.getElementById("biz_reg_number").value.trim(),
-      phone: document.getElementById("phone").value.trim(),
+      biz_reg_number: bizDigits,
+      phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
       website_url: document.getElementById("website_url").value.trim(),
       preferred_region: document.getElementById("preferred_region").value,

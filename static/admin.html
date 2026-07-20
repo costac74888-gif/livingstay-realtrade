@@ -67,6 +67,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="/static/js/format_util.js"></script>
   <script src="/static/js/admin.js"></script>
   <script>
     document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -208,7 +209,7 @@
           } },
           { key: "agent_office_name", label: "전달받은 중개사", render: (v, row) => {
             if (!v) return '<span style="color:var(--ink-soft);">—</span>';
-            return `${dgEscape(v)}${row.agent_phone ? `<br><span style="color:var(--ink-soft); font-size:12px;">${dgEscape(row.agent_phone)}</span>` : ""}`;
+            return `${dgEscape(v)}${row.agent_phone ? `<br><span style="color:var(--ink-soft); font-size:12px;">${dgEscape(formatPhone(row.agent_phone))}</span>` : ""}`;
           } },
           { key: "status", label: "상태", sortable: true, render: (v, row) => {
             const m = { submitted: ["신규", "wait"], in_progress: ["처리중", ""], done: ["완료", "ok"] };
@@ -256,7 +257,8 @@
           { key: "applicant_type", label: "신청유형", render: (v) => v === "agent" ? "중개사" : (v === "operator" ? "지원업체" : (v === "loan_consultant" ? "대출상담사" : dgEscape(v))) },
           { key: "office_or_company_name", label: "이름/업체명" },
           { key: "owner_name", label: "대표자" },
-          { key: "phone", label: "연락처" },
+          { key: "phone", label: "연락처", render: (v) => v ? dgEscape(formatPhone(v)) : '<span style="color:var(--ink-soft);">—</span>' },
+          { key: "biz_reg_number", label: "사업자번호", render: (v) => v ? dgEscape(formatBizRegNumber(v)) : '<span style="color:var(--ink-soft);">—</span>' },
           { key: "email", label: "이메일" },
           { key: "preferred_region", label: "희망지역" },
           // 대출상담사 행: 대출모집인 등록번호 + 금감원 통합조회 링크 (승인 전 확인용)

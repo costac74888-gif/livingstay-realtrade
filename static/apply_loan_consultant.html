@@ -127,14 +127,27 @@
       return;
     }
 
+    // 번호류는 하이픈·공백을 제거하고 숫자만 전송 (서버도 동일하게 정규화 저장)
+    const digitsOnly = (s) => (s || "").replace(/\D/g, "");
+    const bizDigits = digitsOnly(document.getElementById("biz_reg_number").value);
+    const phoneDigits = digitsOnly(document.getElementById("phone").value);
+    if (bizDigits && bizDigits.length !== 10){
+      showError("사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)");
+      return;
+    }
+    if (phoneDigits.length < 10 || phoneDigits.length > 11){
+      showError("전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)");
+      return;
+    }
+
     const payload = {
       terms: applyAgreeTerms.checked,
       privacy: applyAgreePrivacy.checked,
       office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
       owner_name: document.getElementById("owner_name").value.trim(),
       license_number: document.getElementById("license_number").value.trim(),
-      biz_reg_number: document.getElementById("biz_reg_number").value.trim(),
-      phone: document.getElementById("phone").value.trim(),
+      biz_reg_number: bizDigits,
+      phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
     };
 

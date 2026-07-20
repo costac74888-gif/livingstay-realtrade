@@ -1757,7 +1757,7 @@ async function loadBuildingLoanConsultants(){
         <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(c.owner_name || "-")} 대출상담사</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(c.office_name || "-")}</div>
       </div>
-      ${c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(c.phone)}</a>` : ""}
+      ${c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a>` : ""}
     </div>`).join("") + `
     <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">금융감독원 등록 대출모집인 확인 후 등록된 상담사입니다.</div>`;
 }
@@ -1777,7 +1777,7 @@ function renderBuildingAgent(agent, buildingId, buildingName){
           <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
           <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
         </div>
-        ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(agent.phone)}</a>` : ""}
+        ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
       </div>
       ${agent.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
   } else {

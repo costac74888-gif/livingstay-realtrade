@@ -132,6 +132,7 @@
   </div>
 </div>
 
+<script src="/static/js/format_util.js"></script>
 <script>
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
@@ -294,7 +295,7 @@ document.getElementById("btnToggleVisible").addEventListener("click", async () =
 
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {
-  document.getElementById("fPhone").value = ME.phone || "";
+  document.getElementById("fPhone").value = formatPhone(ME.phone || "");
   document.getElementById("fPhoto").value = ME.photo_url || "";
   document.getElementById("fIntro").value = ME.intro_text || "";
   document.getElementById("msgProfile").textContent = "";

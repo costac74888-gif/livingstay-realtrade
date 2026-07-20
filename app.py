@@ -1226,6 +1226,49 @@ def _clean_doc_ref(value, applicant_type, doc_type):
     return ref, None
 
 
+# ---- 번호 정규화/표시 헬퍼 (전화번호·사업자등록번호·중개사무소등록번호 공통 규칙) ----
+# 저장: 숫자만 남긴다. 표시: format_phone()/format_biz_reg_number()로 하이픈 포함 재포맷.
+
+def _digits_only(s):
+    """숫자 이외 문자(하이픈·공백 등)를 전부 제거한다."""
+    return re.sub(r"\D", "", s or "")
+
+
+def format_phone(p):
+    """숫자만 저장된 전화번호를 하이픈 포함 표시용으로 포맷한다 (실패 시 원문 반환)."""
+    d = _digits_only(p)
+    if not d:
+        return p or ""
+    if d.startswith("02"):
+        if len(d) == 9:
+            return f"{d[:2]}-{d[2:5]}-{d[5:]}"
+        if len(d) == 10:
+            return f"{d[:2]}-{d[2:6]}-{d[6:]}"
+    if len(d) == 10:
+        return f"{d[:3]}-{d[3:6]}-{d[6:]}"
+    if len(d) == 11:
+        return f"{d[:3]}-{d[3:7]}-{d[7:]}"
+    return p or ""
+
+
+def format_biz_reg_number(b):
+    """숫자만 저장된 사업자등록번호(10자리)를 000-00-00000 형태로 포맷한다."""
+    d = _digits_only(b)
+    if len(d) == 10:
+        return f"{d[:3]}-{d[3:5]}-{d[5:]}"
+    return b or ""
+
+
+def _validate_phone_digits(d):
+    """숫자만 남긴 전화번호가 10~11자리인지 검사."""
+    return 10 <= len(d) <= 11
+
+
+def _validate_biz_reg_digits(d):
+    """숫자만 남긴 사업자등록번호가 10자리인지 검사."""
+    return len(d) == 10
+
+
 @app.route("/api/apply/agent", methods=["POST"])
 @limiter.limit("3 per minute; 10 per hour")
 def apply_agent():
@@ -1239,9 +1282,10 @@ def apply_agent():
 
     office_or_company_name = (data.get("office_or_company_name") or "").strip()
     owner_name = (data.get("owner_name") or "").strip()
-    reg_number = (data.get("reg_number") or "").strip()
-    biz_reg_number = (data.get("biz_reg_number") or "").strip()
-    phone = (data.get("phone") or "").strip()
+    # 번호류는 하이픈·공백 입력 여부와 무관하게 숫자만 남겨 저장 (표시할 때 재포맷)
+    reg_number = _digits_only(data.get("reg_number"))
+    biz_reg_number = _digits_only(data.get("biz_reg_number"))
+    phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
     # 희망지역 → 희망건물로 변경. 구버전 호환을 위해 preferred_region도 함께 받아둔다.
     preferred_building = (data.get("preferred_building") or "").strip()
@@ -1258,12 +1302,20 @@ def apply_agent():
         missing.append("대표자")
     if not reg_number:
         missing.append("등록번호")
+    if not biz_reg_number:
+        missing.append("사업자등록번호")
     if not phone:
         missing.append("연락처")
     if not email:
         missing.append("이메일")
     if missing:
         return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
+
+    # 번호 형식 검증 (숫자만 남긴 기준)
+    if not _validate_biz_reg_digits(biz_reg_number):
+        return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
+    if not _validate_phone_digits(phone):
+        return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
 
     # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
     if data.get("terms") is not True or data.get("privacy") is not True:
@@ -1273,7 +1325,7 @@ def apply_agent():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
 
-    # 서류 참조 키 검증 (선택 항목 — 없으면 NULL)
+    # 서류 참조 키 검증 — 사업자등록증·중개사무소등록증은 필수, 나머지는 선택
     doc_refs = {}
     for field, doc_type in (("doc_license_url", "license"),
                             ("doc_office_reg_url", "office_reg"),
@@ -1283,6 +1335,10 @@ def apply_agent():
         if err:
             return jsonify({"ok": False, "message": err}), 400
         doc_refs[field] = ref
+    if not doc_refs["doc_biz_reg_url"]:
+        return jsonify({"ok": False, "message": "사업자등록증 사본 첨부는 필수입니다."}), 400
+    if not doc_refs["doc_office_reg_url"]:
+        return jsonify({"ok": False, "message": "중개사무소등록증 사본 첨부는 필수입니다."}), 400
 
     conn = get_conn()
     cur = conn.cursor()
@@ -1353,8 +1409,8 @@ def apply_operator():
     office_or_company_name = (data.get("office_or_company_name") or "").strip()
     owner_name = (data.get("owner_name") or "").strip()
     category = (data.get("category") or "").strip()
-    biz_reg_number = (data.get("biz_reg_number") or "").strip()
-    phone = (data.get("phone") or "").strip()
+    biz_reg_number = _digits_only(data.get("biz_reg_number"))
+    phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
     website_url = (data.get("website_url") or "").strip()
     preferred_region = (data.get("preferred_region") or "").strip()
@@ -1367,12 +1423,20 @@ def apply_operator():
         missing.append("대표자")
     if not category:
         missing.append("업종")
+    if not biz_reg_number:
+        missing.append("사업자등록번호")
     if not phone:
         missing.append("연락처")
     if not email:
         missing.append("이메일")
     if missing:
         return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
+
+    # 번호 형식 검증 (숫자만 남긴 기준)
+    if not _validate_biz_reg_digits(biz_reg_number):
+        return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
+    if not _validate_phone_digits(phone):
+        return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
 
     # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
     if data.get("terms") is not True or data.get("privacy") is not True:
@@ -1386,7 +1450,7 @@ def apply_operator():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
 
-    # 서류 참조 키 검증 (선택 항목 — 영업허가증은 업종별 조건부라 없어도 제출 가능)
+    # 서류 참조 키 검증 — 사업자등록증은 필수, 나머지(명함/영업허가증/로고)는 선택
     doc_refs = {}
     for field, doc_type in (("doc_biz_reg_url", "biz_reg"),
                             ("doc_business_card_url", "business_card"),
@@ -1396,6 +1460,8 @@ def apply_operator():
         if err:
             return jsonify({"ok": False, "message": err}), 400
         doc_refs[field] = ref
+    if not doc_refs["doc_biz_reg_url"]:
+        return jsonify({"ok": False, "message": "사업자등록증 사본 첨부는 필수입니다."}), 400
 
     conn = get_conn()
     cur = conn.cursor()
@@ -1447,8 +1513,8 @@ def apply_loan():
     office_or_company_name = (data.get("office_or_company_name") or "").strip()
     owner_name = (data.get("owner_name") or "").strip()
     license_number = (data.get("license_number") or "").strip()
-    biz_reg_number = (data.get("biz_reg_number") or "").strip()
-    phone = (data.get("phone") or "").strip()
+    biz_reg_number = _digits_only(data.get("biz_reg_number"))
+    phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
 
     missing = []
@@ -1464,6 +1530,12 @@ def apply_loan():
         missing.append("이메일")
     if missing:
         return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
+
+    # 번호 형식 검증 — 전화번호는 필수, 사업자등록번호는 선택(입력 시에만 검사)
+    if not _validate_phone_digits(phone):
+        return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
+    if biz_reg_number and not _validate_biz_reg_digits(biz_reg_number):
+        return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
 
     # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
     if data.get("terms") is not True or data.get("privacy") is not True:
@@ -2998,6 +3070,11 @@ def agent_me_update():
             if v is not None and not isinstance(v, str):
                 return jsonify({"ok": False, "message": f"{k} 값이 올바르지 않습니다."}), 400
             v = (v or "").strip() or None
+            if k == "phone":
+                # 하이픈 유무와 무관하게 숫자만 저장 + 자릿수 검증 (표시할 때 재포맷)
+                v = _digits_only(v) or None
+                if v and not _validate_phone_digits(v):
+                    return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
             sets.append(f"{k} = %s")
@@ -3558,6 +3635,11 @@ def operator_me_update():
             if v is not None and not isinstance(v, str):
                 return jsonify({"ok": False, "message": f"{k} 값이 올바르지 않습니다."}), 400
             v = (v or "").strip() or None
+            if k == "phone":
+                # 하이픈 유무와 무관하게 숫자만 저장 + 자릿수 검증 (표시할 때 재포맷)
+                v = _digits_only(v) or None
+                if v and not _validate_phone_digits(v):
+                    return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
             sets.append(f"{k} = %s")
@@ -3727,6 +3809,11 @@ def loan_consultant_me_update():
             if v is not None and not isinstance(v, str):
                 return jsonify({"ok": False, "message": f"{k} 값이 올바르지 않습니다."}), 400
             v = (v or "").strip() or None
+            if k == "phone":
+                # 하이픈 유무와 무관하게 숫자만 저장 + 자릿수 검증 (표시할 때 재포맷)
+                v = _digits_only(v) or None
+                if v and not _validate_phone_digits(v):
+                    return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
             sets.append(f"{k} = %s")
@@ -5665,7 +5752,7 @@ def admin_applications_list():
     total = cur.fetchone()["c"]
     cur.execute(f"""
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
-               category, phone, email, preferred_region, preferred_building, status, reject_reason,
+               biz_reg_number, category, phone, email, preferred_region, preferred_building, status, reject_reason,
                doc_license_url, doc_office_reg_url, doc_biz_reg_url,
                doc_business_card_url, doc_biz_license_url, doc_logo_url, doc_photo_url,
                linked_operator_id,
@@ -6221,8 +6308,8 @@ def admin_applications_approve(app_id):
                              photo_url, approved_at)
                         VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
                         RETURNING id
-                    """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                          ap["biz_reg_number"], ap["phone"], ap["email"], slug, pw_hash,
+                    """, [ap["office_or_company_name"], ap["owner_name"], _digits_only(ap["reg_number"]) or ap["reg_number"],
+                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
                           ap.get("doc_photo_url")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_agent_insert")
@@ -6310,7 +6397,7 @@ def admin_applications_approve(app_id):
                         VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
-                          ap["biz_reg_number"], ap["phone"], ap["email"], ap["website_url"],
+                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], ap["website_url"],
                           slug, pw_hash, ap.get("doc_logo_url")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_operator_insert")
@@ -6370,7 +6457,7 @@ def admin_applications_approve(app_id):
                         VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                          ap["biz_reg_number"], ap["phone"], ap["email"], slug, pw_hash])
+                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_loan_insert")
                     break
@@ -6483,7 +6570,7 @@ def admin_applications_export():
     cur = conn.cursor()
     cur.execute(f"""
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
-               category, phone, email, preferred_region, preferred_building, status, reject_reason,
+               biz_reg_number, category, phone, email, preferred_region, preferred_building, status, reject_reason,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
         WHERE {where_sql}
@@ -6499,16 +6586,24 @@ def admin_applications_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "신청"
-    ws.append(["ID", "신청유형", "이름/업체명", "대표자", "등록번호", "업종",
+    ws.append(["ID", "신청유형", "이름/업체명", "대표자", "등록번호", "사업자등록번호", "업종",
                "연락처", "이메일", "희망지역", "희망건물", "상태", "반려사유", "신청일"])
     for r in rows:
+        # 번호류는 하이픈 포함 문자열로 넣어 엑셀이 숫자로 오인해 앞 0이 사라지는 것을 방지
         ws.append([
             r["id"], type_kr.get(r["applicant_type"], r["applicant_type"]),
-            r["office_or_company_name"], r["owner_name"], r["reg_number"],
-            r["category"], r["phone"], r["email"], r["preferred_region"],
+            r["office_or_company_name"], r["owner_name"],
+            str(r["reg_number"]) if r["reg_number"] else None,
+            format_biz_reg_number(r["biz_reg_number"]) if r["biz_reg_number"] else None,
+            r["category"], format_phone(r["phone"]), r["email"], r["preferred_region"],
             r["preferred_building"],
             status_kr.get(r["status"], r["status"]), r["reject_reason"], r["submitted_at"],
         ])
+    # 등록번호(E)/사업자등록번호(F)/연락처(H) 컬럼은 셀 서식도 텍스트로 고정
+    for row_cells in ws.iter_rows(min_row=2):
+        row_cells[4].number_format = "@"
+        row_cells[5].number_format = "@"
+        row_cells[7].number_format = "@"
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
