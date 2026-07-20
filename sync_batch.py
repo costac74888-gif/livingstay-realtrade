@@ -20,6 +20,7 @@ python sync_batch.py --months 36    # 최근 36개월 백필 (최초 1회 대량
 """
 
 import argparse
+import json
 import os
 import time
 from datetime import datetime
@@ -85,6 +86,45 @@ def _record_failure(cur, sgg_cd, deal_ymd, reason):
 
 def _clear_failure(cur, sgg_cd, deal_ymd):
     cur.execute("DELETE FROM sync_failures WHERE sgg_cd=%s AND deal_ymd=%s", (sgg_cd, deal_ymd))
+
+
+# ------------------------------------------------------------------
+# 진행 체크포인트(app_meta) — 장시간 백필이 중간에 죽어도(재배포 등)
+# 다음 실행에서 완료된 (시군구, 거래년월)을 건너뛰고 이어서 진행하기 위한 기록.
+# --progress-key 를 지정한 실행(관리자 백필)에서만 동작하며, 완료된 항목을
+# 명시적 ymd 목록으로 저장하므로 날짜가 바뀌어 개월 수가 달라져도 안전하다.
+# ------------------------------------------------------------------
+def _load_progress(cur, key):
+    """체크포인트 로드 → {sgg_cd: set(deal_ymd)}. 없거나 깨졌으면 빈 dict."""
+    cur.execute("SELECT value FROM app_meta WHERE key=%s", (key,))
+    row = cur.fetchone()
+    if not row or not row["value"]:
+        return {}
+    try:
+        done = json.loads(row["value"]).get("done", {})
+        return {sgg: set(ymds) for sgg, ymds in done.items() if isinstance(ymds, list)}
+    except (TypeError, ValueError, AttributeError):
+        return {}
+
+
+def _save_progress(cur, conn, key, done, sgg_cd, deal_ymd):
+    """(sgg_cd, deal_ymd) 완료를 기록하고 즉시 커밋(중단 시점까지 보존)."""
+    done.setdefault(sgg_cd, set()).add(deal_ymd)
+    payload = json.dumps({
+        "done": {sgg: sorted(ymds) for sgg, ymds in done.items()},
+        "last": {"sgg_cd": sgg_cd, "deal_ymd": deal_ymd},
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }, ensure_ascii=False)
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """, (key, payload))
+    conn.commit()
+
+
+def _clear_progress(cur, conn, key):
+    cur.execute("DELETE FROM app_meta WHERE key=%s", (key,))
+    conn.commit()
 
 
 # ------------------------------------------------------------------
@@ -380,11 +420,19 @@ def _send_tx_email(to_email, name_disp, deal_type, area, price, floor_val, deal_
         print(f"  이메일 발송 중 오류({to_email}): {e}")
 
 
-def sync_transactions(months: int, bjdong=None, sgg_filter=None):
+def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=None):
     conn = get_conn()
     cur = conn.cursor()
     _ensure_failures_table(cur)
     conn.commit()
+
+    # 진행 체크포인트 로드 — 이전 실행(중단분)이 남긴 완료 목록이 있으면 이어서 진행
+    done = {}
+    if progress_key:
+        done = _load_progress(cur, progress_key)
+        done_total = sum(len(v) for v in done.values())
+        if done_total:
+            print(f"[RESUME] 체크포인트 발견({progress_key}) — 완료된 (시군구,월) {done_total}건은 건너뛰고 이어서 진행", flush=True)
 
     # 마스터에 존재하는 (매칭 준비 완료된) 시군구만 대상으로.
     # 마스터 건물이 많은 지역(=거래 데이터가 몰린 곳)부터 처리해 초반에 대부분의 데이터를 확보한다.
@@ -415,33 +463,51 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None):
     rate_limited = 0
 
     for sgg_cd in sgg_list:
+        skipped = 0
         for deal_ymd in deal_ymds:
+            # 체크포인트에 완료로 기록된 (시군구, 월)은 건너뜀 (이어서 진행)
+            if progress_key and deal_ymd in done.get(sgg_cd, set()):
+                skipped += 1
+                continue
             try:
                 trades = fetch_nrg_trade(sgg_cd, deal_ymd)
             except RateLimitError as e:
                 # 429 → 실패 큐에 남겨두고 계속 진행. 나중에 --retry-failures 가 backoff로 재시도.
+                # 실패큐가 이 (시군구,월)을 책임지므로 체크포인트에는 '처리됨'으로 기록한다.
                 print(f"  RTMS 429 과호출 → 실패큐 등록 ({sgg_cd}, {deal_ymd})")
                 _record_failure(cur, sgg_cd, deal_ymd, "429")
                 conn.commit()
                 rate_limited += 1
+                if progress_key:
+                    _save_progress(cur, conn, progress_key, done, sgg_cd, deal_ymd)
                 time.sleep(RTMS_SLEEP)
                 continue
             except Exception as e:
+                # 일시 오류(네트워크 등)는 체크포인트에 기록하지 않음 → 다음 실행에서 재시도
                 print(f"  RTMS 조회 실패 ({sgg_cd}, {deal_ymd}): {e}")
                 time.sleep(RTMS_SLEEP)
                 continue
 
             _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats)
             _clear_failure(cur, sgg_cd, deal_ymd)  # 성공 시 실패큐에서 제거
+            if progress_key:
+                # 거래 적재와 체크포인트를 함께 커밋 → 중단돼도 "완료 지점"이 정확히 남는다
+                _save_progress(cur, conn, progress_key, done, sgg_cd, deal_ymd)
             time.sleep(RTMS_SLEEP)
 
         # 지역별 커밋: 장시간 백필 중 진행 상황을 즉시 반영하고,
         # 중간에 중단되어도 직전 지역까지는 안전하게 보존한다.
         conn.commit()
         print(f"  [진행] {sgg_cd} 완료 — 누적 신규 {stats['inserted']}건 "
-              f"(마스터매칭 {stats['matched_master']})", flush=True)
+              f"(마스터매칭 {stats['matched_master']})"
+              + (f" [체크포인트로 {skipped}개월 건너뜀]" if skipped else ""), flush=True)
 
     conn.commit()
+
+    # 전체 순회를 끝까지 마쳤으면 체크포인트 초기화 → 다음 전체 재실행은 처음부터
+    if progress_key:
+        _clear_progress(cur, conn, progress_key)
+        print(f"[RESUME] 전체 완료 — 체크포인트({progress_key}) 초기화", flush=True)
 
     note = f"rate_limited={rate_limited}" if rate_limited else None
     cur.execute("""
@@ -574,6 +640,9 @@ if __name__ == "__main__":
                         help="RTMS 요청간 딜레이(초). 429 방지용, 권장 0.5~1.0 (기본 0.5)")
     parser.add_argument("--retry-failures", action="store_true",
                         help="실패 큐(sync_failures)에 쌓인 429 실패분만 골라 backoff 재시도 (저우선순위 백그라운드용)")
+    parser.add_argument("--progress-key", default=None,
+                        help="진행 체크포인트를 기록할 app_meta 키 (예: tx_backfill_progress). "
+                             "지정 시 중단 후 재실행에서 완료 지점 다음부터 이어서 진행")
     args = parser.parse_args()
 
     # __main__ 블록은 모듈 스코프이므로 아래 대입은 전역 RTMS_SLEEP을 갱신한다.
@@ -601,4 +670,5 @@ if __name__ == "__main__":
         retry_failed_requests(bjdong=bjdong_map, base_sleep=(args.sleep or 1.0))
     else:
         prepare_master_addresses(region_kw=args.region)
-        sync_transactions(months=args.months, bjdong=bjdong_map, sgg_filter=sgg_filter)
+        sync_transactions(months=args.months, bjdong=bjdong_map, sgg_filter=sgg_filter,
+                          progress_key=args.progress_key)

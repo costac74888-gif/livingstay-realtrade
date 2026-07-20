@@ -105,6 +105,8 @@ def main():
                         help="상태를 기록할 app_meta 키 (기본 tx_sync_status)")
     parser.add_argument("--months", type=int, default=None,
                         help="sync_batch.py 에 전달할 --months (미지정 시 전달 안 함 → 기본 3개월)")
+    parser.add_argument("--progress-key", default=None,
+                        help="sync_batch.py 에 전달할 진행 체크포인트 키 (예: tx_backfill_progress)")
     args = parser.parse_args()
     META_KEY = args.meta_key
 
@@ -122,6 +124,8 @@ def main():
         cmd = [sys.executable, "-u", "sync_batch.py", "--master-only"]
         if args.months and args.months > 0:
             cmd += ["--months", str(int(args.months))]
+        if args.progress_key:
+            cmd += ["--progress-key", args.progress_key]
         proc = subprocess.Popen(
             cmd,
             cwd=base_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,

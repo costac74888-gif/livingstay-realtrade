@@ -3964,7 +3964,8 @@ def admin_backfill_run():
         try:
             proc = subprocess.Popen(
                 [sys.executable, "-u", os.path.join(base_dir, "sync_runner.py"),
-                 "--meta-key", _BACKFILL_META_KEY, "--months", str(months)],
+                 "--meta-key", _BACKFILL_META_KEY, "--months", str(months),
+                 "--progress-key", "tx_backfill_progress"],
                 cwd=base_dir, start_new_session=True,
                 stdout=log_fh, stderr=subprocess.STDOUT,
             )

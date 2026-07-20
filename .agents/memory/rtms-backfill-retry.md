@@ -27,3 +27,7 @@ If you ever run multiple workers or overlap with scheduled sync, add
 
 **Operational:** deal_date is TEXT 'YYYY-MM-DD' (year = LEFT(deal_date,4)). `--sleep`
 (0.5–1.0s) spaces requests to avoid tripping 429 in the first place.
+
+## 백필 이어하기 체크포인트 (2026-07-20)
+- 백필은 `--progress-key`(opt-in, 관리자 백필만)로 app_meta에 완료 (sgg,ymd)를 **명시적 set**으로 저장 — sgg_list가 COUNT DESC 정렬이라 실행 간 순서가 불안정하므로 인덱스 기반 재개는 금지.
+- **Why:** 429는 sync_failures 큐가 재시도를 책임지므로 체크포인트상 '완료'로 기록; 비429 예외만 미기록(다음 실행 재시도). 전체 완료 시 키 삭제.
