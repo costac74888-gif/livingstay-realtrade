@@ -11,11 +11,11 @@ address_utils.py — 주소 변환 유틸 2가지
    시군구명 텍스트 → sggCd(시군구코드 5자리) 변환에도 사용.
 """
 
+import csv
 import os
 import re
 import zipfile
 import requests
-import pandas as pd
 
 JUSO_API_KEY = os.environ.get("JUSO_API_KEY", "")
 JUSO_URL = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
@@ -117,28 +117,34 @@ class BjdongMap:
             return os.path.join(extract_dir, names[0])
 
     def __init__(self, csv_path: str):
+        # pandas 없이 표준 csv 모듈로 파싱한다 — 배포 이미지에서 pandas(+numpy, ~150MB)를
+        # 빼고 부팅 시 임포트 시간(~1초)을 줄이기 위함. 파일은 탭 구분 · cp949 인코딩.
         csv_path = self._resolve_path(csv_path)
-        df = pd.read_csv(csv_path, sep="\t", dtype=str, encoding="cp949")
-        df = df[df["폐지여부"] == "존재"].copy()
-        df["sggCd"] = df["법정동코드"].str[:5]
-        df["bjdongCd"] = df["법정동코드"].str[5:10]
-        self.df = df[["법정동코드", "법정동명", "sggCd", "bjdongCd"]]
+        rows = []  # (법정동코드, 법정동명, sggCd, bjdongCd) — 파일 순서 유지
+        with open(csv_path, encoding="cp949", newline="") as f:
+            reader = csv.DictReader(f, delimiter="\t")
+            for r in reader:
+                if (r.get("폐지여부") or "").strip() != "존재":
+                    continue
+                code = (r.get("법정동코드") or "").strip()
+                name = (r.get("법정동명") or "").strip()
+                if len(code) < 10 or not name:
+                    continue
+                rows.append((code, name, code[:5], code[5:10]))
+        self._rows = rows
 
-        sgg_rows = self.df[self.df["bjdongCd"] == "00000"].copy()
-        # 시도 전체를 가리키는 상위 placeholder(예: '서울특별시' 단독, sggCd가 '000'으로 끝남) 제외
-        sgg_rows = sgg_rows[~sgg_rows["sggCd"].str.endswith("000")]
+        # 시군구 행(bjdongCd='00000') — 시도 전체 placeholder(sggCd가 '000'으로 끝남) 제외
+        sgg_rows = [(sgg, name) for (_, name, sgg, bj) in rows
+                    if bj == "00000" and not sgg.endswith("000")]
 
-        names = sgg_rows["법정동명"].tolist()
-        name_set = set(names)
+        name_set = {name for _, name in sgg_rows}
 
         def has_child(name):
             # 이 이름 뒤에 공백+무언가가 붙은 더 하위 항목이 있으면 이건 상위(구가 있는 시) → 조회 대상 아님
             return any((n != name) and n.startswith(name + " ") for n in name_set)
 
-        leaf_rows = sgg_rows[~sgg_rows["법정동명"].apply(has_child)]
-
-        self._sgg_text_map = dict(zip(leaf_rows["sggCd"], leaf_rows["법정동명"]))
-        self._all_sgg_rows = sgg_rows  # 상위코드 포함 전체 (find_sgg_cd에서 이름 매칭용)
+        self._sgg_text_map = {sgg: name for sgg, name in sgg_rows if not has_child(name)}
+        self._all_sgg_rows = sgg_rows  # 상위코드 포함 전체 (참고용)
 
     def find_sgg_cd(self, si_do: str, sgg_nm: str) -> str | None:
         """'경기도'+'수원시' 처럼 넘어와도, 실제로는 '경기도 수원시 장안구'급 leaf 코드가 필요할 수 있어
@@ -167,7 +173,6 @@ class BjdongMap:
         - 문자열 endswith 비교는 '교동'이 '서교동'에 걸리는 접미사 오매칭을 낸다 →
           토큰 경계를 지키는 '조합 == 질의' 정확일치라 오매칭을 막는다.
         """
-        cand = self.df[(self.df["sggCd"] == sgg_cd) & (self.df["bjdongCd"] != "00000")]
         q = normalize_umd_nm(umd_nm)
         if not q:
             return None
@@ -179,10 +184,11 @@ class BjdongMap:
                     return True
             return False
 
-        match = cand[cand["법정동명"].apply(tail_matches)]
-        if match.empty:
-            return None
-        return match.iloc[0]["bjdongCd"]
+        # 파일 순서를 유지한 채 첫 매칭을 반환 (기존 pandas iloc[0]과 동일한 동작)
+        for (_, name, sgg, bj) in self._rows:
+            if sgg == sgg_cd and bj != "00000" and tail_matches(name):
+                return bj
+        return None
 
     def all_sgg_codes(self) -> list[str]:
         """전국 실제 조회 가능한(구가 있으면 구 단위까지 내려간) 시군구 코드 목록"""

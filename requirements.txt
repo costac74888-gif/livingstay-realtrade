@@ -1,7 +1,6 @@
 flask
 flask-limiter
 requests
-pandas
 openpyxl
 psycopg2-binary
 gunicorn
