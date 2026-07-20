@@ -1746,6 +1746,12 @@ def partner_page():
     return _serve_static_html("partner.html")
 
 
+@app.route("/agents")
+def agents_landing_page():
+    """담당중개사 아웃바운드/소개용 랜딩 페이지 (?company=업체명 개인화)."""
+    return _serve_static_html("agents.html")
+
+
 @app.route("/operators")
 def operators_landing_page():
     """위탁운영업체 이메일 아웃바운드용 랜딩 페이지 (?company=업체명 개인화)."""
