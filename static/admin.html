@@ -364,6 +364,27 @@
           { key: "reject_reason", label: "거절사유" },
           { key: "processed_at", label: "처리일시", sortable: true },
         ],
+        rowActions: [
+          {
+            label: "제안명 승인", className: "dg-approve",
+            hidden: (row) => row.status !== "name_review" || !row.suggested_building_name || !row.master_building_id,
+            onClick: async (row, grid) => {
+              const nm = row.suggested_building_name || "";
+              if (!window.confirm(`제안된 건물명 '${nm}'(으)로 확정할까요?\n건물마스터의 이름이 바뀌고 '명칭 확인중' 표시가 해제됩니다.`)) return;
+              try {
+                const res = await fetch(`${grid.cfg.endpoint}/${row.id}/approve-name`, { method: "POST" });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) {
+                  window.alert(`승인 완료 — 건물명이 '${data.building_name}'(으)로 확정되었습니다.`);
+                  grid.reload();
+                } else {
+                  window.alert(data.message || "승인에 실패했습니다.");
+                }
+              } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+        ],
       },
       // 실거래: 공공데이터 원본 — 삭제 없음, 이상치 정정만. 수정 시 사유(reason) 필수 → admin_edit_log 기록.
       transactions: {

@@ -261,6 +261,7 @@ def get_building(building_id):
     cur = conn.cursor()
     cur.execute("""
         SELECT mb.building_name, mb.name_pending, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
+               mb.sgg_cd, mb.umd_nm, mb.jibun,
                mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
                mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,
                mb.tot_area, mb.plat_area, mb.hhld_cnt, mb.strct_nm,
@@ -1089,14 +1090,33 @@ def submit_building():
         SET status='verified', verified_lodging_type=%s, master_building_id=%s, processed_at=NOW()
         WHERE id=%s
     """, (label, master_id, request_id))
+    # 응답 문구/필드는 추정값이 아니라 DB에 실제 저장된 최종 상태를 기준으로 한다.
+    # (기존 건물이 이미 확정명인데 이번 API 응답만 비어 있는 경우 등 분기 오류 방지.)
+    cur.execute("SELECT building_name, name_pending FROM master_buildings WHERE id=%s", (master_id,))
+    final = cur.fetchone()
+    building_name = final["building_name"]
+    name_pending = bool(final["name_pending"])
     conn.commit()
     cur.close()
     conn.close()
 
+    # 명칭 미확정(name_pending)이면 이름까지 확정된 것처럼 오해하지 않도록 문구를 분리한다.
+    if name_pending:
+        result_message = (
+            f"용도는 '{label}'(으)로 확인되어 등록되었습니다.{mismatch_note} "
+            f"건물명은 아직 공식 확인 전이라 임시로 '{building_name}'으로 표시됩니다. "
+            f"정확한 명칭을 아신다면 건물상세 페이지에서 '건물명 제안하기'로 알려주세요. "
+            f"다음 실거래 갱신부터 이 건물의 거래가 표시됩니다."
+        )
+    else:
+        result_message = (
+            f"'{building_name}'이(가) '{label}'(으)로 확인되어 등록되었습니다.{mismatch_note} "
+            f"다음 실거래 갱신부터 이 건물의 거래가 표시됩니다."
+        )
     return jsonify({
         "status": "verified",
-        "message": f"'{building_name}'이(가) '{label}'(으)로 확인되어 등록되었습니다.{mismatch_note} "
-                    f"다음 실거래 갱신부터 이 건물의 거래가 표시됩니다.",
+        "message": result_message,
+        "name_pending": name_pending,
         "building_name": building_name,
         "lodging_type": label,
         "units": title["ho_cnt"],
@@ -5853,7 +5873,7 @@ def admin_building_requests_list():
     total = cur.fetchone()["c"]
     cur.execute(f"""
         SELECT id, request_type, road_address, building_name_hint, suggested_building_name, status,
-               reject_reason, verified_lodging_type,
+               master_building_id, reject_reason, verified_lodging_type,
                to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
                to_char(processed_at, 'YYYY-MM-DD HH24:MI') AS processed_at
         FROM building_requests
@@ -5865,6 +5885,44 @@ def admin_building_requests_list():
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/building-requests/<int:req_id>/approve-name", methods=["POST"])
+@require_admin
+def admin_building_request_approve_name(req_id):
+    """'명칭 확인 필요'(name_review) 건 승인 — 사용자가 제안한 건물명을 마스터에 확정
+    (building_name=제안값, name_pending=FALSE)하고 요청 상태를 verified로 바꾼다.
+    두 UPDATE를 한 트랜잭션으로 처리해 큐와 마스터가 어긋나지 않게 한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, status, suggested_building_name, master_building_id "
+            "FROM building_requests WHERE id=%s FOR UPDATE", (req_id,))
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 요청입니다."}), 404
+        if req["status"] != "name_review":
+            return jsonify({"ok": False, "message": "명칭 확인 필요 상태의 요청만 승인할 수 있습니다."}), 400
+        name = (req["suggested_building_name"] or "").strip()
+        if not name:
+            return jsonify({"ok": False, "message": "제안된 건물명이 없습니다."}), 400
+        if not req["master_building_id"]:
+            return jsonify({"ok": False, "message": "대상 건물이 연결되어 있지 않습니다."}), 400
+        cur.execute(
+            "UPDATE master_buildings SET building_name=%s, name_pending=FALSE WHERE id=%s",
+            (name, req["master_building_id"]))
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "대상 건물을 찾을 수 없습니다."}), 404
+        cur.execute(
+            "UPDATE building_requests SET status='verified', changed=TRUE, processed_at=NOW() WHERE id=%s",
+            (req_id,))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "building_name": name})
 
 
 @app.route("/api/admin/stats")

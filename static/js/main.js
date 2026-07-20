@@ -1431,6 +1431,20 @@ async function loadBuildingHeader(id){
       ${badge}
     </div>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">${escapeHtml(b.road_address || "주소 미확인")}</div>
+    ${b.name_pending && b.sgg_cd && b.umd_nm && b.jibun ? `
+    <div id="bNameSuggest" style="margin:-4px 0 12px;">
+      <button type="button" id="bNameSuggestOpen" style="background:none; border:none; padding:0; cursor:pointer; font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:underline;">✏️ 건물명 제안하기</button>
+      <div id="bNameSuggestBox" style="display:none; margin-top:8px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:#fbfaf7;">
+        <div style="font-size:12.5px; font-weight:600; color:var(--ink); margin-bottom:7px;">정확한 건물명을 알고 계신가요?</div>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="bNameSuggestInput" maxlength="60" placeholder="예: ○○스테이 서천"
+                 style="flex:1; min-width:0; border:1px solid var(--line); border-radius:7px; padding:7px 9px; font-size:13px;">
+          <button type="button" id="bNameSuggestSubmit"
+                  style="border:none; border-radius:7px; background:var(--brass); color:#fff; font-size:12.5px; font-weight:700; padding:7px 12px; cursor:pointer; white-space:nowrap;">제안하기</button>
+        </div>
+        <div id="bNameSuggestMsg" style="display:none; margin-top:7px; font-size:12px;"></div>
+      </div>
+    </div>` : ""}
     <div class="b-actions">
       <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">🔔<span class="b-icon-label">실거래알림</span></button>
       <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">⭐<span class="b-icon-label">관심저장</span></button>
@@ -1445,6 +1459,61 @@ async function loadBuildingHeader(id){
       ${bStat("총주차", pkngTxt)}
       ${bStat("층수(지상/지하)", flrTxt)}
     </div>`;
+
+  // 건물명 제안하기(명칭 미확정 건물 전용) — 기존 /api/request-correction의
+  // suggested_building_name 파라미터를 그대로 재사용한다(새 엔드포인트 없음).
+  const nameSuggestOpen = document.getElementById("bNameSuggestOpen");
+  if (nameSuggestOpen){
+    const boxEl = document.getElementById("bNameSuggestBox");
+    const inputEl = document.getElementById("bNameSuggestInput");
+    const submitEl = document.getElementById("bNameSuggestSubmit");
+    const msgEl = document.getElementById("bNameSuggestMsg");
+    nameSuggestOpen.addEventListener("click", () => {
+      const open = boxEl.style.display !== "none";
+      boxEl.style.display = open ? "none" : "block";
+      if (!open) inputEl.focus();
+    });
+    const showMsg = (text, ok) => {
+      msgEl.style.display = "block";
+      msgEl.style.color = ok ? "#2F7D52" : "#B3453A";
+      msgEl.textContent = text;
+    };
+    const doSubmit = async () => {
+      const name = inputEl.value.trim();
+      if (!name){ showMsg("건물명을 입력해주세요.", false); inputEl.focus(); return; }
+      submitEl.disabled = true;
+      showMsg("제안을 접수하고 있습니다…", true);
+      try {
+        const res = await fetch("/api/request-correction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sgg_cd: b.sgg_cd, umd_nm: b.umd_nm, jibun: b.jibun,
+            suggested_building_name: name,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.status === "verified" || data.status === "name_review")){
+          // 즉시 반영되는 것처럼 오해하지 않도록 고정 문구(관리자 확인 후 반영).
+          if (data.name_changed){
+            showMsg("✓ " + (data.message || "건축물대장에서 명칭이 확인되어 반영되었습니다."), true);
+            setTimeout(() => renderBuildingPanel(id), 1800);
+          } else {
+            showMsg("✓ 제안이 접수됐습니다. 확인 후 반영되며, 영업일 기준 1~2일 정도 소요될 수 있습니다.", true);
+            inputEl.value = "";
+          }
+        } else {
+          showMsg(data.message || "제안 접수에 실패했습니다. 잠시 후 다시 시도해주세요.", false);
+          submitEl.disabled = false;
+        }
+      } catch(e){
+        showMsg("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", false);
+        submitEl.disabled = false;
+      }
+    };
+    submitEl.addEventListener("click", doSubmit);
+    inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") doSubmit(); });
+  }
 
   // 헤더 액션 버튼 배선 — 관심저장/실거래알림 상태 동기화 + 공유
   const alertBtn = document.getElementById("bAlertBtn");
