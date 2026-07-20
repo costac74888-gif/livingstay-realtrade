@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-6"
+SCHEMA_VERSION = "2026-07-20-7"
 
 
 def init_db():
@@ -930,24 +930,26 @@ def _ensure_operators_unique_constraints():
 
 def _ensure_loan_consultants_unique_constraints():
     """
-    loan_consultants.license_number, loan_consultants.subdomain_slug에 DB 레벨 UNIQUE 제약을
-    안전하게 부여한다. (_ensure_agents_unique_constraints()와 같은 패턴)
+    loan_consultants.license_number, loan_consultants.subdomain_slug, loan_consultants.email에
+    DB 레벨 UNIQUE 제약을 안전하게 부여한다. (_ensure_agents_unique_constraints()와 같은 패턴)
     - 중복 값이 있으면 데이터를 지우지 않고 경고만 출력하고 건너뛴다.
     - 제약이 이미 있으면 skip, 없으면 add. (재실행 안전)
+    - email은 대소문자 무시(LOWER)로 중복 확인.
     """
     conn = get_conn()
     cur = conn.cursor()
 
     targets = [
-        ("license_number", "loan_consultants_license_number_unique"),
-        ("subdomain_slug", "loan_consultants_subdomain_slug_unique"),
+        ("license_number", "license_number", "loan_consultants_license_number_unique"),
+        ("subdomain_slug", "subdomain_slug", "loan_consultants_subdomain_slug_unique"),
+        ("email", "LOWER(email)", "loan_consultants_email_unique"),
     ]
-    for column, constraint_name in targets:
+    for column, dup_expr, constraint_name in targets:
         cur.execute(f"""
-            SELECT {column} AS v, COUNT(*) AS c
+            SELECT {dup_expr} AS v, COUNT(*) AS c
             FROM loan_consultants
             WHERE {column} IS NOT NULL
-            GROUP BY {column}
+            GROUP BY {dup_expr}
             HAVING COUNT(*) > 1
         """)
         dups = cur.fetchall()

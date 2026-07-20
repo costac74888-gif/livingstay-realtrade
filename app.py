@@ -3777,7 +3777,8 @@ def loan_consultant_login():
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, password_hash, status FROM loan_consultants WHERE LOWER(email) = LOWER(%s)",
+            "SELECT id, password_hash, status FROM loan_consultants WHERE LOWER(email) = LOWER(%s) "
+            "ORDER BY approved_at DESC NULLS LAST, id DESC LIMIT 1",
             (email,),
         )
         row = cur.fetchone()
@@ -6495,6 +6496,12 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "이미 등록된 대출상담사입니다."}), 400
+            # 이메일(로그인 ID) 중복도 승인 전에 차단 — 대소문자 무시
+            cur.execute("SELECT id FROM loan_consultants WHERE LOWER(email)=LOWER(%s)", [ap["email"]])
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "이미 등록된 이메일의 대출상담사가 있습니다."}), 400
             # subdomain_slug — agent 승인 로직과 동일 패턴 (전화번호 기반, 충돌 시 -2, -3 …)
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"loan{app_id}"
             # 임시 비밀번호(랜덤 8자리 영숫자) — agent/operator와 동일 패턴, 해시만 저장
