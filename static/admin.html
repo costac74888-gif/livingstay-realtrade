@@ -21,8 +21,8 @@
       </div>
       <nav class="admin-menu">
         <button class="admin-menu-item is-active" data-menu="stats">통계 대시보드</button>
+        <button class="admin-menu-item" data-menu="revenue">매출관리</button>
         <button class="admin-menu-item" data-menu="buildings">건물마스터</button>
-        <button class="admin-menu-item" data-menu="applications">신청승인</button>
         <button class="admin-menu-item" data-menu="members">회원관리</button>
         <button class="admin-menu-item is-disabled" disabled>회원·슬롯 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
@@ -548,7 +548,7 @@
       mount.innerHTML = `
         <div class="stats-head">
           <h2 class="stats-title">통계 대시보드</h2>
-          <p class="stats-sub">매출 통계는 결제기능 도입 후 제공됩니다.</p>
+          <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
 
         <div class="stats-kpi-row">
@@ -556,6 +556,7 @@
           <div class="stats-kpi"><span class="stats-kpi-label">${totalTxLabel}</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 운영지원업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">이번달 매출</span><span class="stats-kpi-val">${num((d.revenue && d.revenue.month_total) || 0)}</span><span class="stats-kpi-unit">원</span></div>
         </div>
 
         <div class="stats-grid">
@@ -1534,9 +1535,13 @@
       { key: "general", label: "일반회원" },
       { key: "agent", label: "중개사" },
       { key: "operator", label: "운영지원업체" },
+      { key: "loan_consultant", label: "대출상담사" },
       { key: "pending", label: "승인대기" },
     ];
-    const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", pending: "승인대기" };
+    const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사", pending: "승인대기" };
+    const MEMBER_PARTNER_TYPES = ["agent", "operator", "loan_consultant"];
+    const AD_PRODUCT_LABEL = { building_slot: "담당건물 추가", priority_exposure: "우선노출" };
+    const AD_STATUS_BADGE = { "대기": "wait", "완료": "ok", "만료": "no" };
     const MEMBER_STATUS_BADGE = {
       active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"],
       suspended: ["정지", "no"], deleted: ["탈퇴", "no"],
@@ -1573,6 +1578,13 @@
             </div>
           </div>`;
         document.body.appendChild(overlay);
+        // 수정 모드 등 초기값 주입 (opts.initialValues = { key: 값 })
+        if (opts.initialValues) {
+          Object.entries(opts.initialValues).forEach(([k, v]) => {
+            const el = overlay.querySelector(`[data-key="${k}"]`);
+            if (el) el.value = v == null ? "" : v;
+          });
+        }
         const msgBox = overlay.querySelector(".admin-modal-msg");
         const first = overlay.querySelector("[data-key]");
         if (first) first.focus();
@@ -1625,13 +1637,30 @@
       const rows = (d.items || []).map((r) => {
         const typeLabel = MEMBER_TYPE_LABEL[r.member_type] || r.member_type;
         const badge = r.member_type === "pending"
-          ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영지원업체" : "")}</span>`
+          ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영지원업체" : (r.applicant_type === "loan_consultant" ? "·대출상담사" : ""))}</span>`
           : dgEscape(typeLabel);
         const st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
+        const isPartner = MEMBER_PARTNER_TYPES.includes(r.member_type);
+        const docsBtn = (isPartner || r.member_type === "pending")
+          ? `<button class="dg-icon-btn" onclick="memberDocs('${r.member_type}', ${r.id})">서류</button>`
+          : "";
         const actions = r.member_type === "pending"
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
-             <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button>`
-          : `<span style="color:var(--ink-soft);">—</span>`;
+             <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
+          : (docsBtn || `<span style="color:var(--ink-soft);">—</span>`);
+        // 광고 컬럼 — 파트너(중개사/운영지원업체/대출상담사)만. 클릭 시 이력/입력 팝업.
+        let adCell = '<span style="color:var(--ink-soft);">-</span>';
+        if (isPartner) {
+          const a = r.ads;
+          const inner = (a && a.latest)
+            ? `<b>${dgEscape(AD_PRODUCT_LABEL[a.latest.product_type] || a.latest.product_type)}</b>
+               <span style="white-space:nowrap;">${dgEscape(a.latest.start_date || "?")}~${dgEscape(a.latest.end_date || "")}</span>
+               · ${(a.latest.amount || 0).toLocaleString("ko-KR")}원
+               <span class="dg-badge dg-badge-${AD_STATUS_BADGE[a.latest.payment_status] || ""}">${dgEscape(a.latest.payment_status)}</span>
+               ${a.count > 1 ? `<span style="color:var(--ink-soft);"> 외 ${a.count - 1}건</span>` : ""}`
+            : '<span style="color:var(--ink-soft);">기록 없음 · 추가 +</span>';
+          adCell = `<a href="#" onclick="memberAds(event, '${r.member_type}', ${r.id}, '${encodeURIComponent(r.name || "")}')" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); display:inline-block;">${inner}</a>`;
+        }
         const pointsCell = r.member_type === "general"
           ? (Number(r.points) || 0).toLocaleString("ko-KR") + "P"
           : `<span style="color:var(--ink-soft);">-</span>`;
@@ -1649,7 +1678,7 @@
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
           <td>${tagCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
-          <td><span style="color:var(--ink-soft);">-</span></td>
+          <td style="min-width:220px;">${adCell}</td>
           <td style="white-space:nowrap;">${actions}</td>
         </tr>`;
       }).join("");
@@ -1669,7 +1698,7 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>그룹</th>
-            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th>포인트</th><th>매물의뢰</th><th>작업</th>
+            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th>포인트</th><th style="min-width:220px;">광고</th><th>작업</th>
           </tr></thead>
           <tbody>${rows || `<tr><td colspan="12" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
@@ -1910,6 +1939,238 @@
       finally { btn.disabled = false; }
     };
 
+    // ---- 첨부서류 목록 모달 — 신청 시 올린 서류를 회원관리에서 바로 열람/다운로드 ----
+    window.memberDocs = async function (memberType, memberId) {
+      let d;
+      try {
+        const res = await fetch(`/api/admin/members/${encodeURIComponent(memberType)}/${memberId}/docs`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        d = await res.json();
+        if (!res.ok || !d.ok) { window.alert(d.message || "서류를 불러오지 못했습니다."); return; }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); return; }
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      const docsHtml = (d.docs || []).length
+        ? d.docs.map((x) => `
+            <li style="margin:6px 0;">
+              <a href="#" onclick="adminOpenAppDoc(event, ${d.app_id}, '${dgEscape(x.doc)}')" style="font-weight:600;">
+                ${dgEscape(x.label)}</a>
+              <span style="color:var(--ink-soft); font-size:12px;"> — 클릭 시 새 탭에서 열람/다운로드 (5분 임시 링크)</span>
+            </li>`).join("")
+        : `<li style="color:var(--ink-soft);">${dgEscape(d.message || "첨부된 서류가 없습니다.")}</li>`;
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true">
+          <div class="admin-modal-head">
+            <h3>첨부서류${d.applicant_name ? ` — ${dgEscape(d.applicant_name)}` : ""}</h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body">
+            ${d.submitted_at ? `<p style="font-size:12px; color:var(--ink-soft); margin:0 0 8px;">신청일: ${dgEscape(d.submitted_at)}</p>` : ""}
+            <ul style="margin:0; padding-left:18px; font-size:14px;">${docsHtml}</ul>
+          </div>
+          <div class="admin-modal-foot"><button class="admin-btn admin-modal-cancel" type="button">닫기</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector(".admin-modal-close").addEventListener("click", () => overlay.remove());
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => overlay.remove());
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    };
+
+    // ---- 광고(매출 기록) 팝업 — 이력 리스트 + 신규추가/수정/삭제 ----
+    window.memberAds = function (ev, partnerType, partnerId, encName) {
+      ev.preventDefault();
+      const name = decodeURIComponent(encName || "");
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true" style="max-width:640px; width:94%;">
+          <div class="admin-modal-head">
+            <h3>광고/매출 기록 — ${dgEscape(name)} <span style="font-size:12px; color:var(--ink-soft);">(${dgEscape(MEMBER_TYPE_LABEL[partnerType] || partnerType)})</span></h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body" id="adsModalBody" style="max-height:60vh; overflow:auto;">
+            <div class="stats-loading">불러오는 중…</div>
+          </div>
+          <div class="admin-modal-msg" role="alert"></div>
+          <div class="admin-modal-foot">
+            <button class="admin-btn admin-btn-primary" id="adsAddBtn" type="button">+ 신규추가</button>
+            <button class="admin-btn admin-modal-cancel" type="button">닫기</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => { overlay.remove(); loadMembers(); };  // 닫을 때 목록 갱신(광고 컬럼 반영)
+      overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+      const body = overlay.querySelector("#adsModalBody");
+      const msg = overlay.querySelector(".admin-modal-msg");
+
+      async function reload() {
+        body.innerHTML = `<div class="stats-loading">불러오는 중…</div>`;
+        let d;
+        try {
+          const res = await fetch(`/api/admin/revenue-records?partner_type=${encodeURIComponent(partnerType)}&partner_id=${partnerId}`);
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          d = await res.json();
+          if (!res.ok || !d.ok) throw new Error();
+        } catch (e) { body.innerHTML = `<div class="stats-loading">기록을 불러오지 못했습니다.</div>`; return; }
+        window._adsItems = d.items || [];
+        if (!window._adsItems.length) {
+          body.innerHTML = `<p style="color:var(--ink-soft); font-size:14px; margin:8px 0;">아직 기록이 없습니다. "신규추가"로 첫 기록을 입력하세요.</p>`;
+          return;
+        }
+        body.innerHTML = `
+          <table class="dg-table" style="font-size:13px;">
+            <thead><tr><th>상품</th><th>기간</th><th style="text-align:right;">금액(원)</th><th>상태</th><th>메모</th><th>작업</th></tr></thead>
+            <tbody>${window._adsItems.map((r) => `
+              <tr>
+                <td>${dgEscape(AD_PRODUCT_LABEL[r.product_type] || r.product_type)}</td>
+                <td style="white-space:nowrap;">${dgEscape(r.start_date)} ~ ${dgEscape(r.end_date || "미정")}</td>
+                <td style="text-align:right;">${(r.amount || 0).toLocaleString("ko-KR")}</td>
+                <td><span class="dg-badge dg-badge-${AD_STATUS_BADGE[r.payment_status] || ""}">${dgEscape(r.payment_status)}</span></td>
+                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${dgEscape(r.memo || "")}">${dgEscape(r.memo || "-")}</td>
+                <td style="white-space:nowrap;">
+                  <button class="dg-icon-btn" data-ads-edit="${r.id}">수정</button>
+                  <button class="dg-icon-btn dg-reject" data-ads-del="${r.id}">삭제</button>
+                </td>
+              </tr>`).join("")}</tbody>
+          </table>`;
+        body.querySelectorAll("[data-ads-edit]").forEach((b) => b.addEventListener("click", () => {
+          const rec = window._adsItems.find((x) => x.id === Number(b.dataset.adsEdit));
+          if (rec) openForm(rec);
+        }));
+        body.querySelectorAll("[data-ads-del]").forEach((b) => b.addEventListener("click", async () => {
+          if (!window.confirm("이 매출 기록을 삭제할까요? (장부에서 완전히 제거됩니다)")) return;
+          try {
+            const res = await fetch(`/api/admin/revenue-records/${b.dataset.adsDel}`, { method: "DELETE" });
+            const x = await res.json().catch(() => ({}));
+            if (!res.ok || !x.ok) { msg.textContent = x.message || "삭제에 실패했습니다."; return; }
+            msg.textContent = "";
+            reload();
+          } catch (e) { msg.textContent = "네트워크 오류가 발생했습니다."; }
+        }));
+      }
+
+      async function openForm(rec) {
+        const out = await memberFormModal({
+          title: rec ? "매출 기록 수정" : "매출 기록 추가",
+          submitLabel: rec ? "수정" : "추가",
+          initialValues: rec ? {
+            product_type: rec.product_type, start_date: rec.start_date,
+            end_date: rec.end_date || "", amount: rec.amount,
+            payment_status: rec.payment_status, memo: rec.memo || "",
+          } : null,
+          fields: [
+            { key: "product_type", label: "상품 (building_slot=담당건물 추가 / priority_exposure=우선노출)", required: true, placeholder: "building_slot 또는 priority_exposure" },
+            { key: "start_date", label: "시작일 (YYYY-MM-DD)", required: true, placeholder: "2026-07-01" },
+            { key: "end_date", label: "종료일 (YYYY-MM-DD, 비우면 미정)", placeholder: "2026-12-31" },
+            { key: "amount", label: "금액 (원, 숫자만)", required: true, type: "number", placeholder: "500000" },
+            { key: "payment_status", label: "상태 (대기/완료/만료)", required: true, placeholder: "대기" },
+            { key: "memo", label: "메모 (선택)", placeholder: "계좌이체 7/20 확인" },
+          ],
+          validate: (o) => {
+            if (!["building_slot", "priority_exposure"].includes(o.product_type)) return "상품은 building_slot 또는 priority_exposure로 입력하세요.";
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(o.start_date)) return "시작일은 YYYY-MM-DD 형식으로 입력하세요.";
+            if (o.end_date && !/^\d{4}-\d{2}-\d{2}$/.test(o.end_date)) return "종료일은 YYYY-MM-DD 형식으로 입력하세요.";
+            if (!/^\d+$/.test(o.amount)) return "금액은 0 이상의 숫자만 입력하세요.";
+            if (!["대기", "완료", "만료"].includes(o.payment_status)) return "상태는 대기/완료/만료 중 하나로 입력하세요.";
+            return null;
+          },
+        });
+        if (!out) return;
+        const payload = {
+          product_type: out.product_type, start_date: out.start_date, end_date: out.end_date || "",
+          amount: Number(out.amount), payment_status: out.payment_status, memo: out.memo || "",
+        };
+        try {
+          let res;
+          if (rec) {
+            res = await fetch(`/api/admin/revenue-records/${rec.id}`, {
+              method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+            });
+          } else {
+            res = await fetch("/api/admin/revenue-records", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ partner_type: partnerType, partner_id: partnerId, ...payload }),
+            });
+          }
+          const x = await res.json().catch(() => ({}));
+          if (!res.ok || !x.ok) { msg.textContent = x.message || "저장에 실패했습니다."; return; }
+          msg.textContent = "";
+          reload();
+        } catch (e) { msg.textContent = "네트워크 오류가 발생했습니다."; }
+      }
+
+      overlay.querySelector("#adsAddBtn").addEventListener("click", () => openForm(null));
+      reload();
+    };
+
+    // ---- 매출관리: revenue_records 월별·상품별·파트너유형별 집계 ----
+    async function showRevenue() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="stats-head" style="margin-bottom:14px;">
+          <h2 class="stats-title">매출관리</h2>
+          <p class="stats-sub">회원관리의 "광고" 컬럼에서 입력한 매출 기록(수동 장부)을 월별·상품별·파트너유형별로 집계합니다. 매출 합계는 결제상태 '완료' 기준입니다.</p>
+        </div>
+        <div id="revenueWrap"><div class="stats-loading">집계를 불러오는 중…</div></div>`;
+      const wrap = document.getElementById("revenueWrap");
+      let d;
+      try {
+        const res = await fetch("/api/admin/revenue-summary");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        d = await res.json();
+        if (!res.ok || !d.ok) throw new Error();
+      } catch (e) { wrap.innerHTML = `<div class="stats-loading">집계를 불러오지 못했습니다.</div>`; return; }
+      const rows = d.rows || [];
+      if (!rows.length) {
+        wrap.innerHTML = `<p style="color:var(--ink-soft); font-size:14px;">아직 매출 기록이 없습니다. 회원관리 → 광고 컬럼에서 첫 기록을 입력하세요.</p>`;
+        return;
+      }
+      // 월별 소계 계산
+      const byMonth = new Map();
+      rows.forEach((r) => {
+        const m = byMonth.get(r.ym) || { done: 0, pending: 0, cnt: 0 };
+        m.done += r.amount_done; m.pending += r.amount_pending; m.cnt += r.cnt;
+        byMonth.set(r.ym, m);
+      });
+      const totalDone = rows.reduce((s, r) => s + r.amount_done, 0);
+      const totalPending = rows.reduce((s, r) => s + r.amount_pending, 0);
+      const won = (n) => (n || 0).toLocaleString("ko-KR");
+      let html = `
+        <div class="stats-kpi-row" style="margin-bottom:16px;">
+          <div class="stats-kpi"><span class="stats-kpi-label">누적 매출 (완료)</span><span class="stats-kpi-val">${won(totalDone)}</span><span class="stats-kpi-unit">원</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">입금 대기</span><span class="stats-kpi-val">${won(totalPending)}</span><span class="stats-kpi-unit">원</span></div>
+        </div>
+        <table class="dg-table" style="font-size:13px;">
+          <thead><tr><th>월</th><th>파트너유형</th><th>상품</th><th style="text-align:right;">건수</th><th style="text-align:right;">매출(완료, 원)</th><th style="text-align:right;">대기(원)</th></tr></thead>
+          <tbody>`;
+      let lastYm = null;
+      rows.forEach((r) => {
+        if (lastYm !== null && r.ym !== lastYm) {
+          const m = byMonth.get(lastYm);
+          html += `<tr style="background:#F8F6F1; font-weight:700;"><td>${dgEscape(lastYm)} 소계</td><td></td><td></td><td style="text-align:right;">${won(m.cnt)}</td><td style="text-align:right;">${won(m.done)}</td><td style="text-align:right;">${won(m.pending)}</td></tr>`;
+        }
+        html += `<tr>
+          <td>${dgEscape(r.ym)}</td>
+          <td>${dgEscape(MEMBER_TYPE_LABEL[r.partner_type] || r.partner_type)}</td>
+          <td>${dgEscape(AD_PRODUCT_LABEL[r.product_type] || r.product_type)}</td>
+          <td style="text-align:right;">${won(r.cnt)}</td>
+          <td style="text-align:right;">${won(r.amount_done)}</td>
+          <td style="text-align:right; color:var(--ink-soft);">${won(r.amount_pending)}</td>
+        </tr>`;
+        lastYm = r.ym;
+      });
+      if (lastYm !== null) {
+        const m = byMonth.get(lastYm);
+        html += `<tr style="background:#F8F6F1; font-weight:700;"><td>${dgEscape(lastYm)} 소계</td><td></td><td></td><td style="text-align:right;">${won(m.cnt)}</td><td style="text-align:right;">${won(m.done)}</td><td style="text-align:right;">${won(m.pending)}</td></tr>`;
+      }
+      html += `<tr style="background:var(--brass-tint, #F3EAD9); font-weight:700;"><td>합계</td><td></td><td></td><td style="text-align:right;">${won(rows.reduce((s, r) => s + r.cnt, 0))}</td><td style="text-align:right;">${won(totalDone)}</td><td style="text-align:right;">${won(totalPending)}</td></tr>`;
+      html += `</tbody></table>`;
+      wrap.innerHTML = html;
+    }
+
     function showMembers() {
       destroyStatsCharts();
       membersState = { group: "all", q: "", page: 1, size: 50 };
@@ -1949,6 +2210,7 @@
       stopTxSyncPolling();
       stopBackfillPolling();
       if (menuKey === "stats") { showStats(menuKey); return; }
+      if (menuKey === "revenue") { showRevenue(); return; }
       if (menuKey === "members") { showMembers(); return; }
       if (menuKey === "legal") { showLegal(); return; }
       if (menuKey === "geocode") { showGeocode(); return; }

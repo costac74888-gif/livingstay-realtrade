@@ -5900,7 +5900,7 @@ def admin_applications_list():
 # ---- 회원관리(통합 뷰): users/agents/operators/applications 를 한 목록으로 ----
 # 읽기 전용 조회 API. 승인/반려 처리는 기존 /api/admin/applications/<id>/approve|reject 를
 # 프런트에서 그대로 재사용한다(여기서 중복 구현하지 않음).
-_MEMBER_GROUPS = {"all", "general", "agent", "operator", "pending"}
+_MEMBER_GROUPS = {"all", "general", "agent", "operator", "loan_consultant", "pending"}
 
 # 그룹별 SELECT — UNION ALL 을 위해 컬럼 구성을 통일한다.
 # (id, member_type, name, email, group_label, phone, status, applicant_type, created_at, admin_tag, points)
@@ -5927,6 +5927,13 @@ _MEMBER_SELECTS = {
                admin_tag, NULL::integer AS points
         FROM operators WHERE status IN ('approved', 'inactive')
     """,
+    "loan_consultant": """
+        SELECT id, 'loan_consultant' AS member_type, owner_name AS name, email,
+               office_name AS group_label, phone, status,
+               NULL AS applicant_type, created_at, approved_at,
+               admin_tag, NULL::integer AS points
+        FROM loan_consultants WHERE status IN ('approved', 'inactive')
+    """,
     "pending": """
         SELECT id, 'pending' AS member_type, owner_name AS name, email,
                CASE
@@ -5946,7 +5953,7 @@ _MEMBER_SELECTS = {
 def admin_members_list():
     group = (request.args.get("group") or "all").strip()
     if group not in _MEMBER_GROUPS:
-        return jsonify({"ok": False, "message": "group은 all|general|agent|operator|pending 중 하나여야 합니다."}), 400
+        return jsonify({"ok": False, "message": "group은 all|general|agent|operator|loan_consultant|pending 중 하나여야 합니다."}), 400
     q = (request.args.get("q") or "").strip()
     page, size, offset = _admin_paging()
 
@@ -5970,7 +5977,7 @@ def admin_members_list():
         GROUP BY m.member_type
     """, params)
     counts = {r["member_type"]: r["c"] for r in cur.fetchall()}
-    for k in ("general", "agent", "operator", "pending"):
+    for k in ("general", "agent", "operator", "loan_consultant", "pending"):
         counts.setdefault(k, 0)
     counts["all"] = sum(counts.values())
 
@@ -5994,14 +6001,296 @@ def admin_members_list():
         LIMIT %s OFFSET %s
     """, group_params + [size, offset])
     items = [dict(r) for r in cur.fetchall()]
+
+    # 광고(revenue_records) 요약 — 현재 페이지의 파트너 행에만 배치 조회로 붙인다.
+    partner_keys = [(it["member_type"], it["id"]) for it in items
+                    if it["member_type"] in ("agent", "operator", "loan_consultant")]
+    ads_map = {}
+    if partner_keys:
+        types = [t for t, _ in partner_keys]
+        ids_ = [i for _, i in partner_keys]
+        cur.execute("""
+            SELECT partner_type, partner_id, product_type, payment_status, amount,
+                   to_char(start_date, 'YY.MM.DD') AS start_date,
+                   to_char(end_date, 'YY.MM.DD') AS end_date
+            FROM revenue_records
+            WHERE (partner_type, partner_id) IN (
+                SELECT unnest(%s::text[]), unnest(%s::int[])
+            )
+            ORDER BY start_date DESC, id DESC
+        """, [types, ids_])
+        for r in cur.fetchall():
+            k = (r["partner_type"], r["partner_id"])
+            entry = ads_map.setdefault(k, {"count": 0, "latest": None})
+            entry["count"] += 1
+            if entry["latest"] is None:
+                entry["latest"] = {
+                    "product_type": r["product_type"], "payment_status": r["payment_status"],
+                    "amount": int(r["amount"] or 0), "start_date": r["start_date"], "end_date": r["end_date"],
+                }
+    for it in items:
+        it["ads"] = ads_map.get((it["member_type"], it["id"]))
+
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "counts": counts, "items": items})
 
 
+# ---- 회원 첨부서류 목록 (신청 시 올린 서류 → 승인 후에도 회원관리에서 열람) ----
+# 승인된 회원은 applications.linked_*_id 로 원 신청서를 역추적한다.
+_MEMBER_LINK_COLUMNS = {
+    "agent": "linked_agent_id",
+    "operator": "linked_operator_id",
+    "loan_consultant": "linked_loan_consultant_id",
+}
+_DOC_LABELS = {
+    "license": "자격증",
+    "office_reg": "중개사무소 등록증",
+    "biz_reg": "사업자등록증",
+    "business_card": "명함",
+    "biz_license": "영업허가증",
+    "photo": "여권용 사진",
+}
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/docs")
+@require_admin
+def admin_member_docs(member_type, member_id):
+    """회원의 신청 첨부서류 목록. 다운로드 URL은 기존 doc-url API(5분 서명)를 재사용한다.
+
+    member_type='pending'이면 member_id가 곧 applications.id.
+    승인된 회원(agent/operator/loan_consultant)은 linked_*_id로 최신 신청서를 찾는다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    if member_type == "pending":
+        cur.execute("SELECT * FROM applications WHERE id=%s", [member_id])
+    elif member_type in _MEMBER_LINK_COLUMNS:
+        col = _MEMBER_LINK_COLUMNS[member_type]
+        cur.execute(f"SELECT * FROM applications WHERE {col}=%s ORDER BY id DESC LIMIT 1", [member_id])
+    else:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "서류가 있는 회원유형이 아닙니다."}), 400
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return jsonify({"ok": True, "app_id": None, "docs": [],
+                        "message": "연결된 신청서가 없습니다. (구버전 가입 등)"})
+    docs = []
+    for doc_key, col in _APP_DOC_COLUMNS.items():
+        if row.get(col):
+            docs.append({"doc": doc_key, "label": _DOC_LABELS.get(doc_key, doc_key)})
+    return jsonify({
+        "ok": True, "app_id": row["id"], "docs": docs,
+        "applicant_name": row.get("office_or_company_name") or row.get("owner_name"),
+        "submitted_at": row["submitted_at"].strftime("%Y-%m-%d %H:%M") if row.get("submitted_at") else None,
+    })
+
+
+# ---- 매출/광고 장부 (revenue_records) — 결제 연동 전 수동 기록 ----
+_REVENUE_PARTNER_TYPES = {"agent", "operator", "loan_consultant"}
+_REVENUE_PRODUCT_TYPES = {"building_slot", "priority_exposure"}
+_REVENUE_STATUSES = {"대기", "완료", "만료"}
+_REVENUE_PARTNER_TABLES = {"agent": "agents", "operator": "operators", "loan_consultant": "loan_consultants"}
+
+
+def _revenue_validate(data, partial=False):
+    """생성/수정 공통 검증. partial=True면 보낸 필드만 검사. (필드명, 값) dict 또는 오류 문자열."""
+    out = {}
+    def has(k):
+        return k in data
+    if not partial or has("product_type"):
+        pt = (data.get("product_type") or "").strip()
+        if pt not in _REVENUE_PRODUCT_TYPES:
+            return None, "product_type은 building_slot|priority_exposure 중 하나여야 합니다."
+        out["product_type"] = pt
+    if not partial or has("start_date"):
+        sd = (data.get("start_date") or "").strip()
+        try:
+            datetime.strptime(sd, "%Y-%m-%d")
+        except ValueError:
+            return None, "start_date는 YYYY-MM-DD 형식이어야 합니다."
+        out["start_date"] = sd
+    if has("end_date"):
+        ed = (data.get("end_date") or "").strip()
+        if ed:
+            try:
+                datetime.strptime(ed, "%Y-%m-%d")
+            except ValueError:
+                return None, "end_date는 YYYY-MM-DD 형식이어야 합니다."
+            out["end_date"] = ed
+        else:
+            out["end_date"] = None
+    if not partial or has("amount"):
+        amt = data.get("amount")
+        if not isinstance(amt, int) or isinstance(amt, bool) or amt < 0 or amt > 1_000_000_000:
+            return None, "amount는 0 이상 10억 이하의 정수(원)여야 합니다."
+        out["amount"] = amt
+    if not partial or has("payment_status"):
+        st = (data.get("payment_status") or "대기").strip()
+        if st not in _REVENUE_STATUSES:
+            return None, "payment_status는 대기|완료|만료 중 하나여야 합니다."
+        out["payment_status"] = st
+    if has("memo"):
+        memo = (data.get("memo") or "").strip()
+        if len(memo) > 500:
+            return None, "메모는 500자 이내로 입력해주세요."
+        out["memo"] = memo or None
+    return out, None
+
+
+@app.route("/api/admin/revenue-records")
+@require_admin
+def admin_revenue_records_list():
+    """특정 파트너의 매출 기록 이력 (최신순)."""
+    partner_type = (request.args.get("partner_type") or "").strip()
+    if partner_type not in _REVENUE_PARTNER_TYPES:
+        return jsonify({"ok": False, "message": "partner_type이 잘못되었습니다."}), 400
+    try:
+        partner_id = int(request.args.get("partner_id") or "")
+    except ValueError:
+        return jsonify({"ok": False, "message": "partner_id가 잘못되었습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, partner_type, partner_id, product_type,
+               to_char(start_date, 'YYYY-MM-DD') AS start_date,
+               to_char(end_date, 'YYYY-MM-DD') AS end_date,
+               amount, payment_status, memo,
+               to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM revenue_records
+        WHERE partner_type=%s AND partner_id=%s
+        ORDER BY start_date DESC, id DESC
+    """, [partner_type, partner_id])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/admin/revenue-records", methods=["POST"])
+@require_admin
+def admin_revenue_records_create():
+    data = request.get_json(force=True, silent=True) or {}
+    partner_type = (data.get("partner_type") or "").strip()
+    if partner_type not in _REVENUE_PARTNER_TYPES:
+        return jsonify({"ok": False, "message": "partner_type이 잘못되었습니다."}), 400
+    try:
+        partner_id = int(data.get("partner_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "partner_id가 잘못되었습니다."}), 400
+    fields, err = _revenue_validate(data, partial=False)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 파트너 존재 검증 (다형 참조라 FK가 없으므로 애플리케이션에서 확인)
+        cur.execute(f"SELECT id FROM {_REVENUE_PARTNER_TABLES[partner_type]} WHERE id=%s", [partner_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 파트너입니다."}), 404
+        cur.execute("""
+            INSERT INTO revenue_records
+                (partner_type, partner_id, product_type, start_date, end_date, amount, payment_status, memo, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, [partner_type, partner_id, fields["product_type"], fields["start_date"],
+              fields.get("end_date"), fields["amount"], fields.get("payment_status", "대기"),
+              fields.get("memo"), session.get("admin_user_id")])
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("매출 기록 생성 실패")
+        return jsonify({"ok": False, "message": "매출 기록 저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/api/admin/revenue-records/<int:rec_id>", methods=["PUT"])
+@require_admin
+def admin_revenue_records_update(rec_id):
+    data = request.get_json(force=True, silent=True) or {}
+    fields, err = _revenue_validate(data, partial=True)
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    if not fields:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    sets = [f"{k}=%s" for k in fields]
+    params = list(fields.values()) + [rec_id]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE revenue_records SET {', '.join(sets)} WHERE id=%s", params)
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "기록을 찾을 수 없습니다."}), 404
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("매출 기록 수정 실패 (id=%s)", rec_id)
+        return jsonify({"ok": False, "message": "매출 기록 수정 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/revenue-records/<int:rec_id>", methods=["DELETE"])
+@require_admin
+def admin_revenue_records_delete(rec_id):
+    """오입력 정정용 삭제 (장부이므로 신중히 — 프런트에서 확인창 필수)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM revenue_records WHERE id=%s", [rec_id])
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "기록을 찾을 수 없습니다."}), 404
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("매출 기록 삭제 실패 (id=%s)", rec_id)
+        return jsonify({"ok": False, "message": "매출 기록 삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/revenue-summary")
+@require_admin
+def admin_revenue_summary():
+    """매출관리 화면용 집계 — 월(start_date 기준)×상품×파트너유형별 건수/금액.
+    '완료'만 매출로 집계하고, '대기' 금액은 참고용으로 함께 반환한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT to_char(start_date, 'YYYY-MM') AS ym, partner_type, product_type,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(amount) FILTER (WHERE payment_status='완료'), 0) AS amount_done,
+               COALESCE(SUM(amount) FILTER (WHERE payment_status='대기'), 0) AS amount_pending
+        FROM revenue_records
+        GROUP BY ym, partner_type, product_type
+        ORDER BY ym DESC, partner_type, product_type
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r["amount_done"] = int(r["amount_done"])
+        r["amount_pending"] = int(r["amount_pending"])
+        r["cnt"] = int(r["cnt"])
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "rows": rows})
+
+
 # ---- 회원 일괄 관리 (아임웹 스타일) ----
 # 프런트는 선택된 행마다 {type: member_type, id: 원본 테이블 id}를 보낸다.
-_BULK_MEMBER_TABLES = {"general": "users", "agent": "agents", "operator": "operators"}
+_BULK_MEMBER_TABLES = {"general": "users", "agent": "agents", "operator": "operators", "loan_consultant": "loan_consultants"}
 
 
 def _bulk_parse_ids(data, allowed_types):
@@ -6137,7 +6426,7 @@ def admin_members_bulk_sms():
         return jsonify({"ok": False, "message": "보낼 메시지를 입력해주세요."}), 400
     if len(message) > 2000:
         return jsonify({"ok": False, "message": "메시지는 2000자 이내로 입력해주세요."}), 400
-    ids, err = _bulk_parse_ids(data, {"agent", "operator"})
+    ids, err = _bulk_parse_ids(data, {"agent", "operator", "loan_consultant"})
     if err:
         return jsonify({"ok": False, "message": err}), 400
     by_type = {}
@@ -6269,6 +6558,9 @@ def admin_members_bulk_deactivate():
             updated += cur.rowcount
         if by_type.get("operator"):
             cur.execute("UPDATE operators SET status='inactive' WHERE id = ANY(%s)", [by_type["operator"]])
+            updated += cur.rowcount
+        if by_type.get("loan_consultant"):
+            cur.execute("UPDATE loan_consultants SET status='inactive' WHERE id = ANY(%s)", [by_type["loan_consultant"]])
             updated += cur.rowcount
         conn.commit()
     except Exception:
@@ -6988,6 +7280,15 @@ def admin_stats():
     row = cur.fetchone()
     collect_start = row["d"] if row and row["d"] else datetime.now().strftime("%Y-%m-%d")
 
+    # 6) 이번달 매출 — revenue_records 중 결제 '완료' + start_date가 이번달인 합계(원)
+    cur.execute("""
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM revenue_records
+        WHERE payment_status = '완료'
+          AND to_char(start_date, 'YYYY-MM') = to_char(CURRENT_DATE, 'YYYY-MM')
+    """)
+    revenue_month_total = int(cur.fetchone()["total"])
+
     cur.close()
     conn.close()
 
@@ -7004,6 +7305,7 @@ def admin_stats():
         "members": members,
         "operators": {"by_category": operator_by_category},
         "views": {"daily": views_daily, "top_paths": views_top_paths, "collect_start": collect_start},
+        "revenue": {"month_total": revenue_month_total},
     })
 
 

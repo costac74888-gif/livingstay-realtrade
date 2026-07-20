@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-9"
+SCHEMA_VERSION = "2026-07-20-10"
 
 
 def init_db():
@@ -395,6 +395,26 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_building_id INTEGER REFERENCES master_buildings(id)")
     # 중개사 여권용 사진 (선택 · Object Storage 참조 키 — applications/agent/{uuid}/photo.{ext})
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_photo_url TEXT")
+
+    # 매출/광고 장부 — 결제 연동 전 관리자 수동 기록 (계좌이체 확인 후 입력).
+    # partner_type+partner_id 로 agents/operators/loan_consultants 를 가리킨다 (다형 참조라 FK 없음).
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS revenue_records (
+        id SERIAL PRIMARY KEY,
+        partner_type TEXT NOT NULL CHECK (partner_type IN ('agent', 'operator', 'loan_consultant')),
+        partner_id INTEGER NOT NULL,
+        product_type TEXT NOT NULL CHECK (product_type IN ('building_slot', 'priority_exposure')),
+        start_date DATE NOT NULL,
+        end_date DATE,                       -- NULL 허용(무기한/미정)
+        amount INTEGER NOT NULL DEFAULT 0,   -- 원 단위
+        payment_status TEXT NOT NULL DEFAULT '대기' CHECK (payment_status IN ('대기', '완료', '만료')),
+        memo TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        created_by INTEGER REFERENCES admin_users(id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_revenue_partner ON revenue_records (partner_type, partner_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_revenue_start ON revenue_records (start_date)")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS slots (
