@@ -64,6 +64,9 @@
         '</nav>' +
         '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +
       '</div>' +
+      // 파트너등록 CTA — 로그인 여부와 무관하게 항상 노출. 모바일(≤520px)에서는
+      // 햄버거 → /menu 안에 동일 항목이 있으므로 헤더에서는 숨긴다(CSS .partner-cta).
+      '<a class="partner-cta" href="/partner">🤝 파트너등록</a>' +
     '</div>';
 
   // ---- 로그인/회원가입 모달 (auth.js가 제어) — 없을 때만 body에 주입(중복 방지) ----

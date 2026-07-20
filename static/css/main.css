@@ -498,6 +498,16 @@
 /* 메뉴 묶음(네비 + 로그인) — 데스크톱 인라인, 모바일 드롭다운 */
 .header-menu{ display:flex; align-items:center; gap:14px; }
 
+/* 파트너등록 CTA — 로그인 버튼 우측, 데스크톱 전용 (모바일은 /menu 안에 동일 항목) */
+.partner-cta{
+  font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:700;
+  color:var(--brass-dark, #8a6a2f); background:var(--brass-tint, #F4EDDF);
+  border:1px solid #EAD9B8; border-radius:8px; padding:8px 12px;
+  text-decoration:none; white-space:nowrap;
+  transition:background .15s, color .15s, border-color .15s;
+}
+.partner-cta:hover{ background:var(--brass); border-color:var(--brass); color:#fff; }
+
 /* 헤더 네비게이션 (알림설정 / 공지사항 / 마이페이지) */
 .header-nav{ display:flex; align-items:center; gap:6px; }
 .hnav-btn{
@@ -572,6 +582,9 @@
   .header-actions{ margin-left:auto; gap:8px; }
 
   .hamburger-btn{ display:inline-flex; }
+
+  /* 파트너등록 CTA는 데스크톱 전용 — 모바일은 햄버거(/menu)의 '파트너' 섹션에 동일 항목 */
+  .partner-cta{ display:none; }
 
   /* 실거래목록/공지/마이페이지/로그인 → 햄버거 드롭다운으로 */
   .header-menu{
