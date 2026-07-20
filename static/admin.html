@@ -248,16 +248,23 @@
             { value: "all", label: "전체 유형" },
             { value: "agent", label: "중개사" },
             { value: "operator", label: "지원업체" },
+            { value: "loan_consultant", label: "대출상담사" },
           ] },
         ],
         columns: [
           { key: "id", label: "ID", sortable: true },
-          { key: "applicant_type", label: "신청유형", render: (v) => v === "agent" ? "중개사" : (v === "operator" ? "지원업체" : dgEscape(v)) },
+          { key: "applicant_type", label: "신청유형", render: (v) => v === "agent" ? "중개사" : (v === "operator" ? "지원업체" : (v === "loan_consultant" ? "대출상담사" : dgEscape(v))) },
           { key: "office_or_company_name", label: "이름/업체명" },
           { key: "owner_name", label: "대표자" },
           { key: "phone", label: "연락처" },
           { key: "email", label: "이메일" },
           { key: "preferred_region", label: "희망지역" },
+          // 대출상담사 행: 대출모집인 등록번호 + 금감원 통합조회 링크 (승인 전 확인용)
+          { key: "reg_number", label: "등록번호", render: (v, row) => {
+            if (row.applicant_type !== "loan_consultant") return v ? dgEscape(v) : '<span style="color:var(--ink-soft);">—</span>';
+            const num = v ? dgEscape(v) : '<span style="color:var(--brick);">(없음)</span>';
+            return `${num}<br><a href="https://www.loanconsultant.or.kr" target="_blank" rel="noopener noreferrer" style="font-size:11px; white-space:nowrap;">금감원 조회 ↗</a>`;
+          } },
           // 첨부 서류: 있는 문서만 "보기" 링크 노출. 클릭 시 관리자 전용 서명 URL(5분)을
           // 발급받아 새 탭으로 연다 (window.adminOpenAppDoc — 아래 정의).
           { key: "id", label: "서류", render: (v, row) => {

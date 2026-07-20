@@ -1300,8 +1300,10 @@ def apply_operator_page():
     return resp
 
 
-# 운영업체 업종: 이 6개만 허용한다(operators.category와 동일 기준).
-OPERATOR_CATEGORIES = {"위탁운영", "청소", "세탁", "용품", "대출상담사", "인테리어"}
+# 운영지원업체 업종: 이 5개만 허용한다(operators.category와 동일 기준).
+# '대출상담사'는 별도 엔티티(loan_consultants)로 분리되어 신규 신청은 /apply/loan 으로 받는다.
+# (기존 operators 테이블의 대출상담사 행은 데이터 보존 차원에서 그대로 둔다)
+OPERATOR_CATEGORIES = {"위탁운영", "청소", "세탁", "용품", "인테리어"}
 
 
 @app.route("/api/apply/operator", methods=["POST"])
@@ -1383,6 +1385,97 @@ def apply_operator():
     conn.close()
 
     return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/apply/loan")
+def apply_loan_page():
+    """대출상담사 등록신청 정적 폼 HTML 서빙 (apply_agent_page()와 동일 패턴)."""
+    html_path = os.path.join(app.static_folder, "apply_loan_consultant.html")
+    with open(html_path, encoding="utf-8") as f:
+        html = f.read()
+    html = _inject_asset_version(html)
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/api/apply/loan", methods=["POST"])
+@limiter.limit("3 per minute; 10 per hour")
+def apply_loan():
+    """대출상담사 등록신청 접수 API.
+
+    apply/agent와 동일 구조로 applications 테이블에 applicant_type='loan_consultant',
+    status='submitted'로 INSERT한다. 대출모집인 등록번호는 applications.reg_number
+    컬럼을 재사용해 저장한다 (관리자가 loanconsultant.or.kr에서 조회 후 승인).
+    """
+    data = request.get_json(force=True) or {}
+
+    office_or_company_name = (data.get("office_or_company_name") or "").strip()
+    owner_name = (data.get("owner_name") or "").strip()
+    license_number = (data.get("license_number") or "").strip()
+    biz_reg_number = (data.get("biz_reg_number") or "").strip()
+    phone = (data.get("phone") or "").strip()
+    email = (data.get("email") or "").strip()
+
+    missing = []
+    if not office_or_company_name:
+        missing.append("소속 회사명")
+    if not owner_name:
+        missing.append("성명")
+    if not license_number:
+        missing.append("대출모집인 등록번호")
+    if not phone:
+        missing.append("연락처")
+    if not email:
+        missing.append("이메일")
+    if missing:
+        return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
+
+    # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
+    if data.get("terms") is not True or data.get("privacy") is not True:
+        return jsonify({"ok": False, "message": "필수 약관(이용약관, 개인정보 수집·이용)에 모두 동의해주세요."}), 400
+
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO applications
+            (applicant_type, office_or_company_name, owner_name, reg_number,
+             biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW())
+        RETURNING id
+    """, (office_or_company_name, owner_name, license_number,
+          biz_reg_number or None, phone, email))
+    new_id = cur.fetchone()["id"]
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/api/loan-consultants")
+def loan_consultants_list():
+    """승인된 대출상담사 공개 목록 — B화면 '금융' 카드에서 사용.
+
+    연락처(phone)는 상담 연결 목적상 노출한다 (중개사 카드와 동일 정책).
+    license_number 원문은 공개하지 않는다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT office_name, owner_name, phone, subdomain_slug
+        FROM loan_consultants
+        WHERE status = 'approved'
+        ORDER BY approved_at DESC NULLS LAST, id DESC
+        LIMIT 10
+    """)
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": items})
 
 
 @app.route("/api/request-correction", methods=["POST"])
@@ -1599,6 +1692,12 @@ def partner_page():
 def operators_landing_page():
     """위탁운영업체 이메일 아웃바운드용 랜딩 페이지 (?company=업체명 개인화)."""
     return _serve_static_html("operators.html")
+
+
+@app.route("/loan-partners")
+def loan_partners_landing_page():
+    """대출상담사(금융 파트너) 아웃바운드용 랜딩 페이지 (?company=업체명 개인화)."""
+    return _serve_static_html("loan_partners.html")
 
 
 @app.route("/privacy")
@@ -5219,7 +5318,7 @@ def _admin_app_filters():
         conds.append("status = %s")
         params.append(status)
     atype = (request.args.get("applicant_type") or "all").strip()
-    if atype in ("agent", "operator"):
+    if atype in ("agent", "operator", "loan_consultant"):
         conds.append("applicant_type = %s")
         params.append(atype)
     if q:
@@ -5816,6 +5915,60 @@ def admin_applications_approve(app_id):
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_operator_id=%s WHERE id=%s",
                 [created_id, app_id],
             )
+        elif atype == "loan_consultant":
+            # 대출상담사: 대출모집인 등록번호(reg_number 컬럼 재사용) 중복이면 승인 불가.
+            # 관리자는 loanconsultant.or.kr에서 등록 여부 확인 후 승인하는 것이 전제.
+            if not (ap["reg_number"] or "").strip():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "대출모집인 등록번호가 없어 승인할 수 없습니다."}), 400
+            cur.execute("SELECT id FROM loan_consultants WHERE license_number=%s", [ap["reg_number"]])
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "이미 등록된 대출상담사입니다."}), 400
+            # subdomain_slug — agent 승인 로직과 동일 패턴 (전화번호 기반, 충돌 시 -2, -3 …)
+            base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"loan{app_id}"
+            created_id = None
+            n = 2
+            slug = base_slug
+            for _attempt in range(5):
+                while True:
+                    cur.execute("SELECT 1 FROM loan_consultants WHERE subdomain_slug=%s", [slug])
+                    if not cur.fetchone():
+                        break
+                    slug = f"{base_slug}-{n}"
+                    n += 1
+                cur.execute("SAVEPOINT sp_loan_insert")
+                try:
+                    cur.execute("""
+                        INSERT INTO loan_consultants
+                            (office_name, owner_name, license_number, biz_reg_number,
+                             phone, email, status, subdomain_slug, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, NOW())
+                        RETURNING id
+                    """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
+                          ap["biz_reg_number"], ap["phone"], ap["email"], slug])
+                    created_id = cur.fetchone()["id"]
+                    cur.execute("RELEASE SAVEPOINT sp_loan_insert")
+                    break
+                except psycopg2_errors.UniqueViolation as ue:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_loan_insert")
+                    cname = getattr(getattr(ue, "diag", None), "constraint_name", "") or ""
+                    if "slug" in cname:
+                        slug = f"{base_slug}-{n}"
+                        n += 1
+                        continue
+                    raise
+            if created_id is None:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "페이지 주소(slug) 발급에 실패했습니다. 다시 시도해주세요."}), 409
+            cur.execute(
+                "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_loan_consultant_id=%s WHERE id=%s",
+                [created_id, app_id],
+            )
         else:
             cur.close()
             conn.close()
@@ -5830,6 +5983,15 @@ def admin_applications_approve(app_id):
     conn.commit()
     cur.close()
     conn.close()
+
+    if atype == "loan_consultant":
+        # 대출상담사는 로그인 계정 없이 승인 안내만 발송 (임시비밀번호 없음)
+        sms_body = (
+            f"[홈앤스테이] 대출상담사 승인 완료. {ap['owner_name']}님이 금융 파트너로 "
+            f"등록되었습니다. 상담 리드 연결 시 입력하신 연락처로 안내드립니다."
+        )
+        sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
+        return jsonify({"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg})
 
     if atype in ("agent", "operator"):
         # 승인 완료 후 문자 발송 — 실패해도 승인은 이미 확정(예외 없음, (ok, msg) 반환)
@@ -6232,8 +6394,8 @@ def stats_operator_counts():
     """승인(approved)된 운영업체 수 — 메인 좌측 패널 카드용 그룹 집계.
 
     - consign(위탁정보): 위탁운영
-    - housekeeping(하우스키핑): 청소 + 세탁 + 용품
-    - finance(금융): 대출상담사
+    - housekeeping(운영지원): 청소 + 세탁 + 용품
+    - finance(금융): loan_consultants 테이블(별도 엔티티) 기준
     """
     conn = get_conn()
     cur = conn.cursor()
@@ -6244,13 +6406,15 @@ def stats_operator_counts():
         GROUP BY category
     """)
     by_cat = {r["category"]: r["c"] for r in cur.fetchall()}
+    cur.execute("SELECT COUNT(*) AS c FROM loan_consultants WHERE status = 'approved'")
+    loan_cnt = cur.fetchone()["c"]
     cur.close()
     conn.close()
     return jsonify({
         "ok": True,
         "consign": by_cat.get("위탁운영", 0),
         "housekeeping": by_cat.get("청소", 0) + by_cat.get("세탁", 0) + by_cat.get("용품", 0),
-        "finance": by_cat.get("대출상담사", 0),
+        "finance": loan_cnt,
     })
 
 

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>숙박시설 실거래가 . 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 대출상담사 등록신청. 생활숙박시설 담보대출 상담 금융 파트너 모집." />
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header id="siteHeader"></header>
+
+<div class="search-panel" style="max-width:640px; padding-bottom:40px;">
+
+  <div style="margin:16px 0 6px;">
+    <a href="/" class="home-link" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+  </div>
+
+  <div class="panel-card">
+    <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 6px;">대출상담사 등록신청</h1>
+    <p style="font-size:13px; color:var(--ink-soft); margin:0 0 16px;">생활숙박시설 매입·잔금 담보대출 상담을 맡아줄 금융 파트너를 모집합니다. 아래 정보를 입력해주세요.</p>
+
+    <div style="background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:12px 14px; margin-bottom:20px;">
+      <div style="font-size:13px; font-weight:700; color:var(--brass-dark); margin-bottom:4px;">✅ 승인 안내</div>
+      <div style="font-size:12.5px; color:var(--ink); line-height:1.55;">금융감독원 대출모집인 통합조회(<a href="https://www.loanconsultant.or.kr" target="_blank" rel="noopener noreferrer" style="color:var(--brass-dark); font-weight:600;">loanconsultant.or.kr</a>)에서 등록 여부가 확인된 후 승인됩니다.</div>
+    </div>
+
+    <form id="applyForm" autocomplete="off">
+      <div class="field" style="margin-bottom:14px;">
+        <label>소속 회사명 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="office_or_company_name" placeholder="예) OO은행 / OO금융서비스" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>성명 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="owner_name" placeholder="예) 홍길동" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>대출모집인 등록번호 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="license_number" placeholder="금융감독원 대출모집인 등록번호" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>사업자등록번호</label>
+        <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890 (선택)" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>연락처 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="phone" placeholder="예) 010-1234-5678" />
+      </div>
+      <div class="field" style="margin-bottom:20px;">
+        <label>이메일 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="email" placeholder="예) loan@example.com" />
+      </div>
+
+      <div class="auth-consent" id="applyConsent">
+        <label class="auth-consent-row">
+          <input type="checkbox" id="applyAgreeTerms" /> <span class="agree-tag">[필수]</span>&nbsp;<a href="/terms" target="_blank" rel="noopener">이용약관</a>&nbsp;동의
+        </label>
+        <div class="auth-consent-row auth-consent-privacy">
+          <label>
+            <input type="checkbox" id="applyAgreePrivacy" /> <span class="agree-tag">[필수]</span>&nbsp;개인정보 수집·이용 동의
+          </label>
+          <button type="button" class="auth-consent-toggle" id="applyPrivacyToggle" aria-expanded="false" aria-controls="applyPrivacyDetail">펼치기 ▾</button>
+        </div>
+        <div class="auth-consent-detail" id="applyPrivacyDetail" style="display:none;">
+          수집항목: 성명, 연락처, 이메일, 대출모집인 등록번호, 사업자등록번호(선택)<br/>
+          수집목적: 신청 심사(금융감독원 대출모집인 등록 여부 확인) 및 승인 여부 결정, 승인 시 안내 문자(SMS) 발송, 서비스 제공<br/>
+          보유·이용기간: 반려 시 즉시 파기, 승인 시 금융 파트너(대출상담사) 자격 유지 기간까지<br/>
+          동의 거부 권리 및 불이익: 위 동의는 신청 심사를 위한 필수 항목으로, 동의하지 않으실 경우 신청이 제한됩니다.<br/>
+          <a href="/privacy" target="_blank" rel="noopener">개인정보처리방침 전문</a>
+        </div>
+      </div>
+
+      <div id="formError" style="display:none; font-size:13px; color:var(--brick); background:var(--brick-tint); border:1px solid #F0CFCB; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
+
+      <button type="submit" class="btn-search" id="submitBtn" style="width:100%; padding:12px;" disabled>신청하기</button>
+    </form>
+
+    <div id="successBox" style="display:none; text-align:center; padding:24px 12px;">
+      <div style="font-size:40px; margin-bottom:12px;">✅</div>
+      <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:8px;">신청이 접수되었습니다.</div>
+      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.6;">금융감독원 대출모집인 통합조회에서 등록 여부 확인 후<br/>승인 결과를 문자로 안내드립니다.</div>
+      <a href="/" class="side-more home-link" style="display:inline-block; width:auto; margin-top:20px; padding:9px 24px; text-decoration:none;">← 홈으로</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById("applyForm");
+  const errBox = document.getElementById("formError");
+  const submitBtn = document.getElementById("submitBtn");
+
+  // ---- 법적 동의: 필수 2개(이용약관·개인정보) 모두 체크해야 신청하기 활성화 ----
+  const applyAgreeTerms = document.getElementById("applyAgreeTerms");
+  const applyAgreePrivacy = document.getElementById("applyAgreePrivacy");
+  const applyPrivacyToggle = document.getElementById("applyPrivacyToggle");
+  const applyPrivacyDetail = document.getElementById("applyPrivacyDetail");
+  function consentOk(){ return applyAgreeTerms.checked && applyAgreePrivacy.checked; }
+  function updateSubmitState(){ submitBtn.disabled = !consentOk(); }
+  applyAgreeTerms.addEventListener("change", updateSubmitState);
+  applyAgreePrivacy.addEventListener("change", updateSubmitState);
+  document.querySelectorAll("#applyConsent a").forEach(a => a.addEventListener("click", ev => ev.stopPropagation()));
+  applyPrivacyToggle.addEventListener("click", () => {
+    const open = applyPrivacyDetail.style.display !== "none";
+    applyPrivacyDetail.style.display = open ? "none" : "block";
+    applyPrivacyToggle.textContent = open ? "펼치기 ▾" : "접기 ▴";
+    applyPrivacyToggle.setAttribute("aria-expanded", open ? "false" : "true");
+  });
+
+  function showError(msg){
+    errBox.textContent = msg;
+    errBox.style.display = "block";
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errBox.style.display = "none";
+    if (!consentOk()){
+      showError("필수 약관(이용약관, 개인정보 수집·이용)에 모두 동의해주세요.");
+      return;
+    }
+
+    const payload = {
+      terms: applyAgreeTerms.checked,
+      privacy: applyAgreePrivacy.checked,
+      office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
+      owner_name: document.getElementById("owner_name").value.trim(),
+      license_number: document.getElementById("license_number").value.trim(),
+      biz_reg_number: document.getElementById("biz_reg_number").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
+      email: document.getElementById("email").value.trim(),
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "접수 중…";
+
+    let data;
+    try {
+      const res = await fetch("/api/apply/loan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      data = await res.json();
+      if (!res.ok || !data.ok){
+        showError((data && data.message) || "신청 접수에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        updateSubmitState();
+        submitBtn.textContent = "신청하기";
+        return;
+      }
+    } catch(err){
+      showError("네트워크 오류로 신청에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      updateSubmitState();
+      submitBtn.textContent = "신청하기";
+      return;
+    }
+
+    form.style.display = "none";
+    document.getElementById("successBox").style.display = "block";
+  });
+</script>
+<script>window.PAGE_TITLE = "대출상담사 등록신청";</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
+</body>
+</html>

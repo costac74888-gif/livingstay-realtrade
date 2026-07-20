@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-20-2"
+SCHEMA_VERSION = "2026-07-20-3"
 
 
 def init_db():
@@ -294,6 +294,29 @@ def init_db():
     )
     """)
 
+    # 대출상담사 — 위탁운영/청소 등 운영지원업체(operators)와 완전히 분리된 별도 엔티티.
+    # agents 테이블과 동일 패턴 (승인 시 slug/임시비밀번호 발급 가능 구조).
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS loan_consultants (
+        id SERIAL PRIMARY KEY,
+        office_name TEXT NOT NULL,          -- 소속 회사/법인명
+        owner_name TEXT NOT NULL,           -- 상담사 성명
+        license_number TEXT NOT NULL,       -- 대출모집인 등록번호 (UNIQUE는 helper에서 안전하게 부여)
+        biz_reg_number TEXT,                -- 사업자등록번호(선택)
+        phone TEXT,
+        email TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',      -- pending | approved | rejected | suspended
+        subdomain_slug TEXT,                -- 승인 시 발급 (UNIQUE는 helper에서 부여)
+        intro_text TEXT,
+        password_hash TEXT,
+        photo_url TEXT,
+        admin_tag TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        approved_at TIMESTAMP,
+        approved_by INTEGER REFERENCES admin_users(id)
+    )
+    """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (
         id SERIAL PRIMARY KEY,
@@ -346,6 +369,8 @@ def init_db():
     # 법적 동의 이력 (신청 시 필수 동의 시각 — 기존 행은 NULL 허용)
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS terms_agreed_at TIMESTAMP")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS privacy_agreed_at TIMESTAMP")
+    # 대출상담사(applicant_type='loan_consultant') 승인 시 연결되는 loan_consultants.id
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_loan_consultant_id INTEGER REFERENCES loan_consultants(id)")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS slots (
@@ -681,6 +706,7 @@ def init_db():
     _ensure_admin_email_unique_constraint()
     _ensure_agents_unique_constraints()
     _ensure_operators_unique_constraints()
+    _ensure_loan_consultants_unique_constraints()
     _ensure_mileage_missions_code_unique_constraint()
     _ensure_users_unique_constraints()
     _seed_mileage_missions()
@@ -880,6 +906,54 @@ def _ensure_operators_unique_constraints():
         else:
             cur.execute(f"ALTER TABLE operators ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
             print(f"operators.{column} UNIQUE 제약 신규 적용 완료")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _ensure_loan_consultants_unique_constraints():
+    """
+    loan_consultants.license_number, loan_consultants.subdomain_slug에 DB 레벨 UNIQUE 제약을
+    안전하게 부여한다. (_ensure_agents_unique_constraints()와 같은 패턴)
+    - 중복 값이 있으면 데이터를 지우지 않고 경고만 출력하고 건너뛴다.
+    - 제약이 이미 있으면 skip, 없으면 add. (재실행 안전)
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    targets = [
+        ("license_number", "loan_consultants_license_number_unique"),
+        ("subdomain_slug", "loan_consultants_subdomain_slug_unique"),
+    ]
+    for column, constraint_name in targets:
+        cur.execute(f"""
+            SELECT {column} AS v, COUNT(*) AS c
+            FROM loan_consultants
+            WHERE {column} IS NOT NULL
+            GROUP BY {column}
+            HAVING COUNT(*) > 1
+        """)
+        dups = cur.fetchall()
+
+        cur.execute("""
+            SELECT tc.constraint_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = 'loan_consultants'
+              AND tc.constraint_type = 'UNIQUE'
+              AND kcu.column_name = %s
+        """, (column,))
+        exists = cur.fetchone()
+
+        if exists:
+            print(f"loan_consultants.{column} UNIQUE 제약 이미 존재({exists['constraint_name']})")
+        elif dups:
+            print(f"[경고] loan_consultants.{column} 중복 {len(dups)}건 발견 — 데이터 자동 삭제하지 않고 UNIQUE 제약 부여를 건너뜁니다. 수동 정리 후 재실행하세요.")
+        else:
+            cur.execute(f"ALTER TABLE loan_consultants ADD CONSTRAINT {constraint_name} UNIQUE ({column})")
+            print(f"loan_consultants.{column} UNIQUE 제약 신규 적용 완료")
 
     conn.commit()
     cur.close()

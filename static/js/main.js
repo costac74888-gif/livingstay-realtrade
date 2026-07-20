@@ -1145,9 +1145,9 @@ function recruitBoxHTML(kind, opts = {}){
     },
     finance: {
       bg: "var(--brass-tint)", border: "#EAD9B8", icon: "💰", iconSize: 22, pad: "14px 12px",
-      title: "대출상담사를 찾고 계신가요?",
-      desc: "매입·잔금 대출 상담 전문가를 연결해 드립니다.",
-      btnText: "대출상담 문의하기", href: null, btnStyle: "",
+      title: "금융 파트너(대출상담사)를 모집합니다",
+      desc: "매입·잔금 대출 상담을 맡아줄 금감원 등록 대출상담사를 모집합니다.",
+      btnText: "대출상담사로 등록하기", href: "/apply/loan", btnStyle: "",
     },
   };
   const k = KINDS[kind];
@@ -1350,8 +1350,8 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card">
-      <div class="side-card-title">금융 <span class="side-sub">대출상품</span></div>
-      ${financeEmptyHTML()}
+      <div class="side-card-title">금융 <span class="side-sub">대출상담</span></div>
+      <div id="bFinanceBox">${financeEmptyHTML()}</div>
     </section>
 
     <section class="side-card" id="bBldgInfoCard">
@@ -1624,6 +1624,9 @@ async function loadBuildingHeader(id){
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
   renderBuildingOperators(b.operators);
 
+  // 금융 카드 — 승인된 대출상담사(loan_consultants)가 있으면 상담사 카드로 교체
+  loadBuildingLoanConsultants();
+
   // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
   // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.
   const bldgInfoCard = document.getElementById("bBldgInfoCard");
@@ -1732,6 +1735,31 @@ function renderBuildingOperators(operators){
   };
   paint("bOperatorBox", pick(["위탁운영"]));
   paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]));
+}
+
+// 금융 카드 — 승인된 대출상담사(loan_consultants 테이블, 전역) 목록을 불러와
+// 있으면 "등록 대출상품 없음" 빈 상태 대신 상담사 카드(성명/소속/전화)로 교체.
+// 없거나 실패하면 기존 financeEmptyHTML(모집 박스) 유지.
+async function loadBuildingLoanConsultants(){
+  const box = document.getElementById("bFinanceBox");
+  if (!box) return;
+  let items = [];
+  try {
+    const res = await fetch("/api/loan-consultants");
+    const d = await res.json();
+    if (res.ok && d.ok && Array.isArray(d.items)) items = d.items;
+  } catch(e){ return; }
+  if (!items.length) return;
+  box.innerHTML = items.map((c) => `
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid var(--line, #eee);">
+      <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>
+      <div style="flex:1; min-width:130px;">
+        <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(c.owner_name || "-")} 대출상담사</div>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(c.office_name || "-")}</div>
+      </div>
+      ${c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(c.phone)}</a>` : ""}
+    </div>`).join("") + `
+    <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">금융감독원 등록 대출모집인 확인 후 등록된 상담사입니다.</div>`;
 }
 
 function renderBuildingAgent(agent, buildingId, buildingName){
