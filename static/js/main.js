@@ -1181,6 +1181,102 @@ const B_TX_INITIAL = 5;
 const B_TX_STEP = 20;
 let bTxShown = B_TX_INITIAL, bTxTotal = 0;
 
+let bCurrentName = ""; // 현재 열린 건물상세의 건물명 (매물 내놓기 모달용)
+
+// ── 매물 내놓기 모달 (B화면) ──────────────────────────────────
+// 제출 시 기존 POST /api/listing-requests 호출 (로그인 필수, 서버가 중개사 라우팅+SMS 처리)
+function openListingRequestModal(buildingId, buildingName){
+  document.getElementById("listingReqOverlay")?.remove();
+  const ov = document.createElement("div");
+  ov.id = "listingReqOverlay";
+  ov.style.cssText = "position:fixed; inset:0; background:rgba(22,32,46,.45); z-index:3000; display:flex; align-items:center; justify-content:center; padding:16px;";
+  const FLD = "width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; font-family:inherit;";
+  ov.innerHTML = `
+    <div style="background:#fff; border-radius:14px; width:100%; max-width:400px; padding:22px 20px; box-shadow:0 10px 40px rgba(0,0,0,.2);" role="dialog" aria-modal="true">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="font-size:16px; font-weight:800; color:var(--ink);">매물 내놓기</div>
+        <button id="lrClose" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--ink-soft);" aria-label="닫기">×</button>
+      </div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px;">${escapeHtml(buildingName)}</div>
+      <div id="lrForm">
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">거래유형</div>
+        <div id="lrDealTypes" style="display:flex; gap:6px; margin-bottom:12px;">
+          ${["매매","전세","월세","단기임대"].map((t,i) => `<button type="button" data-dt="${t}" class="side-more" style="flex:1; margin-top:0; padding:8px 0; ${i===0 ? "background:var(--brass); color:#fff; border-color:var(--brass);" : ""}">${t}</button>`).join("")}
+        </div>
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">희망가 <span style="font-weight:400; color:var(--ink-soft);">(선택)</span></div>
+        <input id="lrPrice" type="text" maxlength="100" placeholder="예) 1억 2천 / 보증금 1000·월 60" style="${FLD} margin-bottom:12px;" />
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처</div>
+        <input id="lrPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD}" />
+        <div id="lrMsg" style="font-size:12px; color:var(--brick); min-height:16px; margin-top:6px;"></div>
+        <button id="lrSubmit" class="btn-search" style="width:100%; padding:12px; margin-top:6px;">매물의뢰 접수하기</button>
+      </div>
+      <div id="lrDone" style="display:none; text-align:center; padding:18px 4px;">
+        <div style="font-size:34px; margin-bottom:10px;">✅</div>
+        <div style="font-size:14.5px; font-weight:700; color:var(--ink); margin-bottom:6px;">매물의뢰가 접수됐습니다</div>
+        <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.6;">담당 중개사가 곧 연락드립니다.<br/>접수 현황은 마이페이지에서 확인할 수 있습니다.</div>
+        <button id="lrDoneClose" class="side-more" style="width:auto; padding:8px 22px; margin-top:14px;">닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  let dealType = "매매";
+  ov.querySelectorAll("#lrDealTypes button").forEach((b) => {
+    b.addEventListener("click", () => {
+      dealType = b.dataset.dt;
+      ov.querySelectorAll("#lrDealTypes button").forEach((x) => {
+        const on = x === b;
+        x.style.background = on ? "var(--brass)" : "";
+        x.style.color = on ? "#fff" : "";
+        x.style.borderColor = on ? "var(--brass)" : "";
+      });
+    });
+  });
+  const close = () => ov.remove();
+  ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+  ov.querySelector("#lrClose").addEventListener("click", close);
+  ov.querySelector("#lrDoneClose").addEventListener("click", close);
+
+  ov.querySelector("#lrSubmit").addEventListener("click", async () => {
+    const msg = ov.querySelector("#lrMsg");
+    const phone = ov.querySelector("#lrPhone").value.trim();
+    if (!/^0\d{1,2}-?\d{3,4}-?\d{4}$/.test(phone)){
+      msg.textContent = "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678";
+      return;
+    }
+    msg.textContent = "";
+    const btn = ov.querySelector("#lrSubmit");
+    btn.disabled = true; btn.textContent = "접수 중…";
+    try {
+      const res = await fetch("/api/listing-requests", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          master_building_id: buildingId,
+          deal_type: dealType,
+          desired_price: ov.querySelector("#lrPrice").value.trim(),
+          contact_phone: phone,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 401){
+        close();
+        if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+        return;
+      }
+      if (!res.ok || d.ok === false){
+        msg.textContent = d.message || "접수에 실패했습니다. 잠시 후 다시 시도해주세요.";
+        btn.disabled = false; btn.textContent = "매물의뢰 접수하기";
+        return;
+      }
+      ov.querySelector("#lrForm").style.display = "none";
+      ov.querySelector("#lrDone").style.display = "block";
+    } catch(e){
+      msg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+      btn.disabled = false; btn.textContent = "매물의뢰 접수하기";
+    }
+  });
+}
+
 const B_LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
 function detailBadgeLabel(v){
   if (!v) return "미분류";
@@ -1190,7 +1286,10 @@ function detailBadgeLabel(v){
 function buildingPanelSkeleton(){
   return `
     <section class="side-card b-panel-topbar">
-      <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto;">← 전체 목록으로</button>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto;">← 전체 목록으로</button>
+        <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:7px 14px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700;">매물 내놓기</button>
+      </div>
     </section>
 
     <section class="side-card" id="bHeaderCard">
@@ -1282,6 +1381,7 @@ async function loadBuildingHeader(id){
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
   const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
   const bName = b.building_name || "(건물명 미확인)";
+  bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
 
   // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
   const txAllLink = document.getElementById("bTxAllLink");
@@ -1712,6 +1812,14 @@ function renderBuildingPanel(id){
     restoreDefaultPanel();
   };
   document.getElementById("btnBackToList").addEventListener("click", closeDetail);
+  document.getElementById("btnListingRequest").addEventListener("click", () => {
+    if (!window.__livingstayLoggedIn){
+      if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+      else location.href = "/?login=1";
+      return;
+    }
+    openListingRequestModal(id, bCurrentName || "");
+  });
   document.getElementById("bTxMore").addEventListener("click", () => {
     bTxShown += B_TX_STEP;
     loadBuildingTx(id);

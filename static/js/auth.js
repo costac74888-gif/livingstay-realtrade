@@ -258,6 +258,8 @@
 
   // 헤더 밖 페이지(마이페이지 등)에서 로그아웃/로그인 후 헤더+상태를 다시 맞추도록 노출.
   window.livingstayRefreshAuth = refreshMe;
+  // 다른 스크립트(예: B화면 "매물 내놓기")에서 로그인 모달을 직접 열 수 있게 노출.
+  window.livingstayOpenLogin = openModal;
 
   function doLogout() {
     fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })

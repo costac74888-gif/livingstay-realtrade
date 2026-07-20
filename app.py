@@ -2949,6 +2949,31 @@ def create_listing_request():
     })
 
 
+@app.route("/api/listing-requests/mine")
+def my_listing_requests():
+    """내가 접수한 매물의뢰 목록 — 마이페이지 '매물의뢰 현황'용 (건물명/거래유형/상태)."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT lr.id, lr.deal_type, lr.desired_price, lr.status,
+                   to_char(lr.created_at, 'YYYY-MM-DD') AS created_date,
+                   mb.id AS building_id, mb.building_name
+            FROM listing_requests lr
+            JOIN master_buildings mb ON mb.id = lr.master_building_id
+            WHERE lr.user_id = %s
+            ORDER BY lr.created_at DESC
+        """, [user["id"]])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
 # ============================================================
 # 운영업체(operators) 로그인 — 승인된 운영업체만. agent 로그인과 같은 패턴.
 # 세션에 operator_id 저장. require_operator 로 보호.
