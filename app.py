@@ -1476,6 +1476,12 @@ def terms_page():
     return _serve_static_html("terms.html")
 
 
+@app.route("/partner")
+def partner_page():
+    """파트너(중개사·운영업체) 등록 안내 페이지."""
+    return _serve_static_html("partner.html")
+
+
 @app.route("/privacy")
 def privacy_page():
     """개인정보처리방침 페이지 — 뼈대는 정적, 본문은 /api/legal/privacy에서 로드."""

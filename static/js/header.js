@@ -135,6 +135,9 @@
         '<a href="/auth/kakao/start" class="auth-kakao" id="authKakaoBtn">' +
           '<span class="auth-kakao-icon">💬</span> 카카오로 3초 로그인' +
         '</a>' +
+        '<div class="auth-partner-link" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line, #e5e8ec); text-align:center;">' +
+          '<a href="/partner" style="font-size:12.5px; color:var(--ink-soft, #6b7684); text-decoration:none;">중개사・운영업체이신가요? <b style="color:var(--brass, #B4863F);">파트너 등록 안내 →</b></a>' +
+        '</div>' +
       '</div>';
     document.body.appendChild(modal);
   }
