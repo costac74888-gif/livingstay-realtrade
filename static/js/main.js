@@ -1068,7 +1068,7 @@ async function loadSideStats(){
         const n = d.count || 0;
         if (n >= SIDE_COUNT_THRESHOLD){
           agentBox.classList.remove("side-soon");
-          agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 전속중개사 ${n}명</div>`;
+          agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 담당중개사 ${n}명</div>`;
         } else {
           agentBox.classList.remove("side-soon");
           agentBox.innerHTML = recruitBoxHTML("agent");
@@ -1125,9 +1125,9 @@ function recruitBoxHTML(kind, opts = {}){
   const KINDS = {
     agent: {
       bg: "var(--brass-tint)", border: "#EAD9B8", icon: "🔎", iconSize: 24, pad: "16px 12px",
-      title: "건물별 전속중개사를 모집하고 있습니다",
+      title: "건물별 담당중개사를 모집하고 있습니다",
       desc: "건물별 담당 중개사무소를 모집합니다.",
-      btnText: "전속중개사로 신청하기", href: "/apply/agent", btnStyle: "",
+      btnText: "담당중개사로 신청하기", href: "/apply/agent", btnStyle: "",
     },
     consign: {
       bg: "#EEF6E6", border: "#CFE4B8", icon: "🏨", iconSize: 22, pad: "14px 12px",
@@ -1330,7 +1330,7 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card">
-      <div class="side-card-title">전속중개사</div>
+      <div class="side-card-title">담당중개사</div>
       <div id="bAgentBox"><div class="side-empty">불러오는 중…</div></div>
     </section>
 
@@ -1779,7 +1779,7 @@ function renderBuildingAgent(agent, buildingId, buildingName){
   } else {
     box.innerHTML = recruitBoxHTML("agent", {
       href: `/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`,
-      btnText: "이 건물에 전속중개사로 신청하기",
+      btnText: "이 건물에 담당중개사로 신청하기",
     });
   }
 }
