@@ -3536,15 +3536,25 @@ def create_listing_request():
     desired_price = (data.get("desired_price") or "").strip()[:100]
     contact_phone = (data.get("contact_phone") or "").strip()
 
-    # 거래유형별 구조화 희망가(만원 단위 정수, 선택) — 단기임대는 자유텍스트만 사용
-    def _to_krw(v):
+    # 거래유형별 구조화 희망가(만원 단위 정수, 선택) — 단기임대는 자유텍스트만 사용.
+    # 값이 전달됐는데 정수가 아니거나 범위(1~1억 만원)를 벗어나면 400 (조용한 유실 방지).
+    def _parse_krw(field, allowed):
+        v = data.get(field)
+        if v is None or v == "":
+            return None, None
+        if not allowed:
+            return None, f"{field}는 이 거래유형에서 사용할 수 없습니다."
         try:
             n = int(v)
         except (TypeError, ValueError):
-            return None
-        return n if 0 < n <= 100_000_000 else None
-    price_krw = _to_krw(data.get("price_krw")) if deal_type in ("매매", "전세", "월세") else None
-    monthly_rent_krw = _to_krw(data.get("monthly_rent_krw")) if deal_type == "월세" else None
+            return None, "희망가는 만원 단위 숫자로 입력해주세요."
+        if not (0 < n <= 100_000_000):
+            return None, "희망가 숫자 범위가 올바르지 않습니다. (1~1억 만원)"
+        return n, None
+    price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
+    monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
+    if err1 or err2:
+        return jsonify({"ok": False, "message": err1 or err2}), 400
 
     if not mb_id:
         return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
