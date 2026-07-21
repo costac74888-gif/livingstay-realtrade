@@ -1618,7 +1618,7 @@ async function loadBuildingHeader(id){
   }
   shareBtn.addEventListener("click", async () => {
     const url = location.href;
-    const shareData = { title: `${bName} | 숙박시설 실거래가 . 홈앤스테이`, url };
+    const shareData = { title: `${bName} | 숙박시설 실거래가 & 위탁운영 플랫폼 . 홈앤스테이`, url };
     if (navigator.share){
       try { await navigator.share(shareData); } catch(e){ /* 사용자가 취소 */ }
     } else if (navigator.clipboard){

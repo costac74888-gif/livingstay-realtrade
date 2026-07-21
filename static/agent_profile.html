@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>숙박시설 실거래가 . 홈앤스테이</title>
+<title>숙박시설 실거래가 &amp; 위탁운영 플랫폼 . 홈앤스테이</title>
 <meta name="description" content="홈앤스테이 담당중개사 프로필 — 사무소 정보 및 전속 단지 매물 현황." />
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
@@ -120,7 +120,7 @@
       const res = await fetch("/api/agent/profile/" + encodeURIComponent(slug));
       if (!res.ok) { renderNotFound(); return; }
       const data = await res.json();
-      document.title = `${data.office_name || "홈앤스테이"} | 숙박시설 실거래가 . 홈앤스테이`;
+      document.title = `${data.office_name || "홈앤스테이"} | 숙박시설 실거래가 & 위탁운영 플랫폼 . 홈앤스테이`;
       render(data);
     } catch(e) {
       console.error("[중개사 프로필] 로드 실패:", e);
