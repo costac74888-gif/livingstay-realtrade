@@ -14,7 +14,7 @@
 - [Detached bg jobs from gunicorn](detached-bg-jobs-gunicorn.md) — long admin jobs need detached Popen(start_new_session)+DB heartbeat+run_id fencing; worker threads die on gunicorn WORKER TIMEOUT; DB-side guards beat memory:// limiter on autoscale.
 - [Admin auth model](admin-auth.md) — /admin uses admin_users email/pw (session["admin"]+admin_user_id); seed ADMIN/ADMIN only when table fully empty (atomic WHERE NOT EXISTS); login rate-limited so avoid rapid re-login in tests (resets on app restart).
 - [prod map 0 buildings / prod data lag](prod-geo-empty.md) — phone hits prod URL with a SEPARATE prod DB: empty map (NULL lat/lng) and 표제부 "-" are prod-wide data-lag issues, not mobile CSS; dev backfills never reach prod.
-- [소상공인 상가업소 API](sbiz-store-api.md) — storeListInBuilding 키는 25자리 bldMngNo(≠표제부 mgmBldrgstPk); 건물 조회는 storeListInPnu(PNU 19자리); type=json은 403 → XML만.
+- [소상공인 상가업소 API](sbiz-store-api.md) — storeListInBuilding 키는 25자리 bldMngNo(≠표제부 mgmBldrgstPk); 건물 조회는 storeListInPnu(PNU 19자리); type=json은 403 → XML만.; 중개사표준데이터 필드/한도/키반영지연도 같은 파일
 - [Kakao map view tuning](kakao-map-view-tuning.md) — headless screenshot browser blocks dapi.kakao.com SDK; tune center/level via canvas sim with 1px≈2^(L-3)m; mobile default 35.8/127.6 lv13.
 - [init_db schema-version fast path](initdb-schema-version-fastpath.md) — boot skips all DDL when app_meta.schema_version matches; ANY db.py schema change MUST bump SCHEMA_VERSION or it never applies.
 - [mobile header hamburger](mobile-header-hamburger.md) — header.js: bell(#alertMenu) always visible in .header-actions; nav+auth in .header-menu collapsed to #hamburgerBtn ≤520px; index-only left list-toggle via window.HEADER_LEFT_TOGGLE (toggles .side-panel); notif panel position:fixed ≤520px.

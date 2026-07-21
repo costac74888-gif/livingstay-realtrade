@@ -5126,6 +5126,310 @@ def admin_buildings_export():
     return resp
 
 
+# ---- 중개업소 데이터 동기화 + 인근 중개업소 후보 (모두 require_admin) ----
+# 공공데이터포털 '전국공인중개사사무소표준데이터' (일일 쿼터 1,000건 — sync_brokers.py가
+# 소프트 캡 900에서 멈추고 체크포인트로 다음날 이어서 수집). 후보 리스트는 '생성'만 하며
+# 자동 이메일·SMS 발송은 하지 않는다(사람이 검토 후 수동 진행).
+_BROKER_SYNC_META_KEY = "broker_sync_status"
+_BROKER_DAILY_CAP = 900   # sync_brokers.MAX_DAILY_CALLS 와 동일 값 유지
+
+
+@app.route("/api/admin/sync-brokers", methods=["POST"])
+@require_admin
+@limiter.limit("4 per hour")
+def admin_broker_sync_run():
+    """중개업소 데이터 동기화 시작 — 실거래 동기화와 동일한 잠금/러너 패턴."""
+    if not os.environ.get("DATA_GO_KR_BROKER_API_KEY"):
+        return jsonify({"ok": False, "message": "DATA_GO_KR_BROKER_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "processed": None,
+            "completed": None,
+            "calls_today": None,
+            "error": None,
+        }
+        # 실행 중(하트비트 생존) 차단 + 성공 후 30분 재실행 금지 (실거래 동기화와 동일)
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '30 minutes')
+        """, (_BROKER_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        prev_state = None
+        if not acquired:
+            cur.execute("SELECT value FROM app_meta WHERE key = %s", (_BROKER_SYNC_META_KEY,))
+            prev = cur.fetchone()
+            try:
+                prev_state = json.loads(prev["value"]).get("state") if prev and prev["value"] else None
+            except (TypeError, ValueError):
+                prev_state = None
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        if prev_state == "done":
+            return jsonify({"ok": False, "message": "직전 동기화가 완료된 지 30분이 지나지 않았습니다. 잠시 후 다시 시도해 주세요."}), 429
+        return jsonify({"ok": False, "message": "이미 동기화가 실행 중입니다. 완료 후 다시 시도해 주세요."}), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_brokers.py"),
+             "--status-key", _BROKER_SYNC_META_KEY],
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],
+                       "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (_BROKER_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "동기화 프로세스를 시작하지 못했습니다."}), 500
+
+    return jsonify({"ok": True, "message": "중개업소 데이터 동기화를 시작했습니다.", "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/broker-sync-status")
+@require_admin
+def admin_broker_sync_status():
+    """중개업소 동기화 진행상황 + 수집 현황 + 오늘 남은 호출 수."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM broker_registry")
+        total = cur.fetchone()["c"]
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BROKER_SYNC_META_KEY,))
+        meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'broker_daily_calls'")
+        calls_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'broker_sync_progress'")
+        prog_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'broker_last_sync'")
+        last_row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    calls_today = 0
+    if calls_row and calls_row["value"]:
+        try:
+            d = json.loads(calls_row["value"])
+            if d.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                calls_today = int(d.get("count", 0))
+        except (TypeError, ValueError):
+            pass
+
+    progress = None
+    if prog_row and prog_row["value"]:
+        try:
+            progress = json.loads(prog_row["value"])
+        except (TypeError, ValueError):
+            progress = None
+
+    last_sync = None
+    if last_row and last_row["value"]:
+        try:
+            last_sync = json.loads(last_row["value"])
+        except (TypeError, ValueError):
+            last_sync = None
+
+    status = None
+    if meta and meta["value"]:
+        try:
+            status = json.loads(meta["value"])
+        except (TypeError, ValueError):
+            status = None
+
+    running = bool(status and status.get("state") == "running")
+    stale = False
+    if running and meta["updated_at"]:
+        age = (datetime.now() - meta["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            running, stale = False, True
+
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": ("stale" if stale else (status.get("state") if status else None)),
+        "started_at": (status.get("started_at") if status else None),
+        "finished_at": (status.get("finished_at") if status else None),
+        "processed": (status.get("processed") if status else None),
+        "completed": (status.get("completed") if status else None),
+        "error": ((status.get("error") if status else None)
+                  or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
+        "broker_total": total,
+        "calls_today": calls_today,
+        "calls_remaining": max(0, _BROKER_DAILY_CAP - calls_today),
+        "daily_cap": _BROKER_DAILY_CAP,
+        "progress": progress,       # {"next_page":N,"total_count":M} — 미완이면 존재
+        "last_sync": last_sync,     # {"finished_at":...,"total":...}
+    })
+
+
+# 하버사인 거리(km) SQL — master_buildings 좌표(%s lat, %s lng) 기준.
+_HAVERSINE_KM = """
+    6371 * acos(LEAST(1.0,
+        cos(radians(%s)) * cos(radians(br.lat)) * cos(radians(br.lng) - radians(%s))
+        + sin(radians(%s)) * sin(radians(br.lat))
+    ))
+"""
+
+
+def _broker_candidates_query(building_id, radius_km):
+    """건물 좌표 기준 반경 내 중개업소 목록 조회. (building dict, rows) 반환."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT mb.id, mb.building_name, mb.road_address, mb.lat, mb.lng,
+                   EXISTS (SELECT 1 FROM agent_buildings ab WHERE ab.master_building_id = mb.id) AS has_agent
+            FROM master_buildings mb WHERE mb.id = %s
+        """, (building_id,))
+        bld = cur.fetchone()
+        if not bld:
+            return None, None
+        if bld["lat"] is None or bld["lng"] is None:
+            return bld, []
+        lat, lng = float(bld["lat"]), float(bld["lng"])
+        # 1차 바운딩박스(인덱스 활용) → 2차 하버사인 정밀 필터
+        deg = radius_km / 111.0
+        cur.execute(f"""
+            SELECT br.office_name, br.reg_number, br.road_address, br.jibun_address,
+                   br.phone, br.reg_date, br.owner_name, br.homepage_url,
+                   ROUND(({_HAVERSINE_KM})::numeric, 2) AS distance_km
+            FROM broker_registry br
+            WHERE br.lat IS NOT NULL AND br.lng IS NOT NULL
+              AND br.lat BETWEEN %s AND %s
+              AND br.lng BETWEEN %s AND %s
+              AND ({_HAVERSINE_KM}) <= %s
+            ORDER BY distance_km ASC, br.office_name ASC
+            LIMIT 300
+        """, (lat, lng, lat,
+              lat - deg, lat + deg, lng - deg * 1.3, lng + deg * 1.3,
+              lat, lng, lat, radius_km))
+        return bld, cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _parse_radius(raw):
+    try:
+        r = float(raw or 2)
+    except (TypeError, ValueError):
+        r = 2.0
+    return min(5.0, max(0.5, r))
+
+
+@app.route("/api/admin/broker-candidates")
+@require_admin
+def admin_broker_candidates():
+    """건물 좌표 기준 반경 내 중개업소 후보(거리순). 후보 '생성'만 — 자동 발송 없음."""
+    building_id = request.args.get("building_id", type=int)
+    if not building_id:
+        return jsonify({"ok": False, "message": "building_id가 필요합니다."}), 400
+    radius_km = _parse_radius(request.args.get("radius_km"))
+    bld, rows = _broker_candidates_query(building_id, radius_km)
+    if bld is None:
+        return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+    return jsonify({
+        "ok": True,
+        "building": {"id": bld["id"], "building_name": bld["building_name"],
+                     "road_address": bld["road_address"],
+                     "has_coords": bld["lat"] is not None and bld["lng"] is not None,
+                     "has_agent": bld["has_agent"]},
+        "radius_km": radius_km,
+        "items": rows,
+    })
+
+
+@app.route("/api/admin/buildings-without-agent")
+@require_admin
+def admin_buildings_without_agent():
+    """담당중개사(agent_buildings)가 없는 건물 목록 — 후보 매칭 대상 선택용."""
+    q = (request.args.get("q") or "").strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        params = []
+        where = """NOT EXISTS (SELECT 1 FROM agent_buildings ab
+                               WHERE ab.master_building_id = mb.id)"""
+        if q:
+            where += " AND (mb.building_name ILIKE %s OR mb.road_address ILIKE %s)"
+            params += [f"%{q}%", f"%{q}%"]
+        cur.execute(f"""
+            SELECT mb.id, mb.building_name, mb.road_address, mb.sgg_text,
+                   (mb.lat IS NOT NULL AND mb.lng IS NOT NULL) AS has_coords
+            FROM master_buildings mb
+            WHERE {where}
+            ORDER BY mb.building_name ASC
+            LIMIT 100
+        """, params)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": rows})
+
+
+@app.route("/api/admin/broker-candidates/export.xlsx")
+@require_admin
+def admin_broker_candidates_export():
+    building_id = request.args.get("building_id", type=int)
+    if not building_id:
+        return jsonify({"ok": False, "message": "building_id가 필요합니다."}), 400
+    radius_km = _parse_radius(request.args.get("radius_km"))
+    bld, rows = _broker_candidates_query(building_id, radius_km)
+    if bld is None:
+        return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "인근 중개업소 후보"
+    ws.append([f"건물: {bld['building_name']} ({bld['road_address'] or '-'}) · 반경 {radius_km}km"])
+    ws.append(["업소명", "거리(km)", "전화번호", "홈페이지", "등록일자",
+               "대표자", "개설등록번호", "도로명주소", "지번주소"])
+    for r in (rows or []):
+        ws.append([
+            r["office_name"], float(r["distance_km"]), r["phone"] or "", r["homepage_url"] or "",
+            r["reg_date"] or "", r["owner_name"] or "", r["reg_number"],
+            r["road_address"] or "", r["jibun_address"] or "",
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp.headers["Content-Disposition"] = f"attachment; filename=broker_candidates_{building_id}.xlsx"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 # ---- 매물(listings) 관리 (모두 require_admin) ----
 # 정렬 허용 컬럼 화이트리스트 → 실제 SQL 표현식 매핑 (인젝션 방지, 없으면 l.id 폴백)
 ADMIN_LST_SORT = {

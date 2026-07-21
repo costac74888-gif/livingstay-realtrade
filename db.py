@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-21-3"
+SCHEMA_VERSION = "2026-07-21-4"
 
 
 def init_db():
@@ -599,6 +599,29 @@ def init_db():
     # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
+
+    # 전국공인중개사사무소 표준데이터(공공데이터포털) 수집본 — 인근 중개업소 후보 매칭용.
+    # 수집은 sync_brokers.py(일일 1,000건 쿼터 체크포인트 방식), 매칭은 하버사인 거리 계산.
+    # reg_number(개설등록번호)가 유일키 — 재수집 시 UPSERT로 갱신.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS broker_registry (
+        id SERIAL PRIMARY KEY,
+        office_name TEXT NOT NULL,         -- 사무소명
+        reg_number TEXT NOT NULL UNIQUE,   -- 개설등록번호
+        road_address TEXT,                 -- 소재지도로명주소
+        jibun_address TEXT,                -- 소재지지번주소
+        phone TEXT,                        -- 전화번호
+        reg_date TEXT,                     -- 개설등록일자 (YYYY-MM-DD)
+        owner_name TEXT,                   -- 대표자명
+        lat DOUBLE PRECISION,              -- 위도
+        lng DOUBLE PRECISION,              -- 경도
+        homepage_url TEXT,                 -- 홈페이지주소
+        source_updated_at TEXT,            -- 데이터기준일자
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_latlng ON broker_registry(lat, lng)")
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

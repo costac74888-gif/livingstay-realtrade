@@ -8,3 +8,8 @@ description: 건물 단위 상가업소 조회의 키/포맷 함정 — mgmBldrg
 - 이 API는 `type=json` 지정 시 게이트웨이가 403 Forbidden(같은 키로 XML은 200). storeListInRadius도 403. 반드시 XML 파싱.
 - 강원도는 신코드(51xxx)로 조회해야 함(42xxx는 NODATA). resultCode 03=NODATA_ERROR.
 - 헬퍼: store_info_util.py (실패 시 빈 리스트 — 화면은 "준비 중" 유지).
+
+## 전국공인중개사사무소표준데이터 (data.go.kr)
+- 신규 발급 키는 resultCode=30(SERVICE KEY IS NOT REGISTERED)이 최대 ~1시간 지속될 수 있음 — 코드 문제 아님, 대기 후 재시도.
+- 실제 응답 필드: medOfficeNm, estblRegNo, estblRegYmd, lctnRoadNmAddr, lctnLotnoAddr, telno, hmpgAddr, rprsvNm, latitude, longitude, crtrYmd.
+- 전체 약 6.8만건 = 68회 호출(1,000행/호출)로 하루 안에 전량 수집 가능(일일 한도 1,000회). 좌표(lat/lng)는 약 40%만 존재.
