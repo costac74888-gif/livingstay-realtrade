@@ -34,6 +34,7 @@
         <button class="admin-menu-item" data-menu="geocode">지도 좌표 채우기</button>
         <button class="admin-menu-item" data-menu="txsync">실거래 동기화</button>
         <button class="admin-menu-item" data-menu="brokers">인근 중개업소 후보</button>
+        <button class="admin-menu-item" data-menu="lodgings">미등록 위탁운영 후보</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
         <a class="admin-menu-item" href="/admin/ad-products" style="display:block; text-decoration:none; box-sizing:border-box; width:100%;">광고상품 안내</a>
@@ -1493,6 +1494,172 @@
       searchNoAgentBuildings();
     }
 
+    // ---- 숙박업 영업신고 동기화 + 미등록 위탁운영 후보 ----
+    let lodgingSyncTimer = null;
+    function stopLodgingSyncPolling() {
+      if (lodgingSyncTimer) { clearInterval(lodgingSyncTimer); lodgingSyncTimer = null; }
+    }
+
+    function renderLodgingSyncStatus(d) {
+      const box = document.getElementById("lodgingSyncStatus");
+      const btn = document.getElementById("lodgingSyncRunBtn");
+      if (!box || !btn) { stopLodgingSyncPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집된 생활숙박업 사업장:</b> 총 ${num(d.lodging_total)}건</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
+      if (d.progress && d.progress.next_page) {
+        const tot = d.progress.total_count ? ` / 전체 약 ${num(d.progress.total_count)}건` : "";
+        rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 다음 페이지 ${num(d.progress.next_page)}${tot} — 미완(다음 실행 때 이어서 수집)</div>`);
+      }
+      if (d.last_sync && d.last_sync.finished_at) {
+        rows.push(`<div class="geo-stat-row"><b>마지막 전체 수집 완료:</b> ${dgEscape(d.last_sync.finished_at)}</div>`);
+      }
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전체 수집 완료" : "일일 한도로 일시 중단(다음 실행 때 이어서)";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행 처리:</b> ${d.processed == null ? "-" : num(d.processed) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "영업신고 데이터 동기화";
+      if (!d.running) stopLodgingSyncPolling();
+    }
+
+    async function loadLodgingSyncStatus() {
+      const box = document.getElementById("lodgingSyncStatus");
+      if (!box) { stopLodgingSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/lodging-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderLodgingSyncStatus(d);
+        if (d.running && !lodgingSyncTimer) lodgingSyncTimer = setInterval(loadLodgingSyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runLodgingSync() {
+      const btn = document.getElementById("lodgingSyncRunBtn");
+      const msg = document.getElementById("lodgingSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-lodgings", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "동기화를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "영업신고 데이터 동기화";
+        }
+        loadLodgingSyncStatus();
+        if (!lodgingSyncTimer) lodgingSyncTimer = setInterval(loadLodgingSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "영업신고 데이터 동기화";
+      }
+    }
+
+    async function loadLodgingCandidates() {
+      const q = document.getElementById("lodgingSearch").value.trim();
+      const box = document.getElementById("lodgingCandBox");
+      box.innerHTML = `<div class="geo-stat-row">조회 중…</div>`;
+      try {
+        const res = await fetch("/api/admin/unregistered-lodging-candidates?q=" + encodeURIComponent(q));
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
+        const head = `<div class="geo-stat-row" style="margin-bottom:8px"><b>미등록 후보 ${num(d.total)}곳</b> (표시 최대 300곳 · 객실수 많은 순)
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/unregistered-lodging-candidates/export.xlsx?q=${encodeURIComponent(q)}">엑셀 다운로드</a></div>`;
+        if (!d.items.length) { box.innerHTML = head + `<div class="geo-stat-row">조건에 맞는 후보가 없습니다. (동기화가 아직 다 안 됐다면 데이터가 부족할 수 있습니다)</div>`; return; }
+        const rows = d.items.map((r) => `
+          <tr>
+            <td>${dgEscape(r.biz_name)}</td>
+            <td style="text-align:right">${r.room_count ? num(r.room_count) + "실" : `<span style="color:#aab;">-</span>`}</td>
+            <td>${brokerCell(r.phone)}</td>
+            <td>${brokerCell(r.road_address || r.jibun_address)}</td>
+            <td>${brokerCell(r.permit_date)}</td>
+            <td><button type="button" class="admin-btn lodging-copy-btn" data-name="${dgEscape(r.biz_name)}">링크 복사</button></td>
+          </tr>`).join("");
+        box.innerHTML = head + `
+          <div style="overflow-x:auto">
+          <table class="dg-table" style="width:100%">
+            <thead><tr><th>사업장명</th><th>객실수</th><th>전화번호</th><th>주소</th><th>인허가일</th><th>제안 링크</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+          <p class="legal-admin-hint" style="margin-top:8px">※ 이 목록은 후보 '생성'용입니다 — 자동 발송되지 않으며, 연락은 검토 후 직접 진행해 주세요.</p>`;
+        box.querySelectorAll(".lodging-copy-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const link = window.location.origin + "/operators?company=" + encodeURIComponent(btn.getAttribute("data-name"));
+            try {
+              await navigator.clipboard.writeText(link);
+              btn.textContent = "복사됨!";
+            } catch (e) {
+              window.prompt("아래 링크를 복사하세요:", link);
+            }
+            setTimeout(() => { btn.textContent = "링크 복사"; }, 1500);
+          });
+        });
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    function showLodgings() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">숙박업 영업신고 데이터 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            행정안전부 <b>숙박업 조회서비스</b>(지방행정 인허가데이터)를 수집합니다.
+            위생업태가 <b>숙박업(생활)</b>인 사업장만 저장하며, 일일 한도(캡 8,000호출)에 도달하면
+            체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
+          </p>
+          <div id="lodgingSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="lodgingSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="lodgingSyncRunBtn" class="admin-btn admin-btn-primary">영업신고 데이터 동기화</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">미등록 위탁운영 후보</h2>
+          </div>
+          <p class="legal-admin-hint">
+            영업상태가 <b>영업/정상</b>인 생활숙박업 사업장 중, 아직 홈앤스테이 운영업체(operators)로
+            등록되지 않은 곳입니다. 객실수가 많은 순으로 표시합니다.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <input id="lodgingSearch" class="dg-input" placeholder="사업장명/주소 검색" style="min-width:220px">
+            <button id="lodgingSearchBtn" class="admin-btn">검색</button>
+          </div>
+          <div id="lodgingCandBox"></div>
+        </div>
+      `;
+      document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
+      document.getElementById("lodgingSearchBtn").addEventListener("click", loadLodgingCandidates);
+      document.getElementById("lodgingSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadLodgingCandidates(); });
+      loadLodgingSyncStatus();
+      loadLodgingCandidates();
+    }
+
     // ---- 팝업관리 ----
     // 이미지 업로드가 필요해 DataGrid 폼 대신 전용 목록+모달을 쓴다(API는 E-1과 같은 CRUD 패턴).
     function popupPeriodText(p) {
@@ -2515,6 +2682,7 @@
       if (menuKey === "geocode") { showGeocode(); return; }
       if (menuKey === "txsync") { showTxSync(); return; }
       if (menuKey === "brokers") { showBrokers(); return; }
+      if (menuKey === "lodgings") { showLodgings(); return; }
       if (menuKey === "listings") { showListings(); return; }
       if (menuKey === "popups") { showPopups(); return; }
       showGrid(menuKey);

@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-21-4"
+SCHEMA_VERSION = "2026-07-21-5"
 
 
 def init_db():
@@ -622,6 +622,33 @@ def init_db():
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_latlng ON broker_registry(lat, lng)")
+
+    # 행안부 '문화_숙박업 조회서비스'(apis.data.go.kr/1741000/lodgings/info) 수집본.
+    # 수집은 sync_lodgings.py — 위생업태 '숙박업(생활)'만 저장. permit_number(관리번호) 유일키 UPSERT.
+    # road_norm: 도로명주소 정규화(도로명+건물번호 prefix) — master_buildings 주소 매칭용.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_registry (
+        id SERIAL PRIMARY KEY,
+        biz_name TEXT NOT NULL,            -- 사업장명 (BPLC_NM)
+        permit_number TEXT NOT NULL UNIQUE,-- 관리번호 (MNG_NO)
+        road_address TEXT,                 -- 도로명주소 (ROAD_NM_ADDR)
+        jibun_address TEXT,                -- 지번주소 (LOTNO_ADDR)
+        permit_date TEXT,                  -- 인허가일자 (LCPMT_YMD)
+        biz_status_name TEXT,              -- 영업상태명 (SALS_STTS_NM: 영업/정상, 폐업 등)
+        biz_status_detail TEXT,            -- 상세영업상태명 (DTL_SALS_STTS_NM)
+        room_count INTEGER,                -- 객실수 = 한실(KSRM_CNT)+양실(WSRM_CNT)
+        hygiene_type TEXT,                 -- 위생업태명 (SNTTN_BZSTAT_NM)
+        phone TEXT,                        -- 전화번호 (TELNO)
+        road_norm TEXT,                    -- 정규화 주소(도로명+건물번호)
+        biz_name_norm TEXT,                -- 정규화 사업장명 (operators 매칭용)
+        source_updated_at TEXT,            -- 데이터갱신일자 (DAT_UPDT_PNT)
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_road_norm ON lodging_registry(road_norm)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_status ON lodging_registry(biz_status_name)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_name_norm ON lodging_registry(biz_name_norm)")
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

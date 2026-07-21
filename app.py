@@ -36,6 +36,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sms_util import send_sms
 from email_util import send_email
 import storage_util
+import addr_norm
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
@@ -332,6 +333,56 @@ def get_building(building_id):
         ORDER BY COALESCE(o.priority_score, 0) DESC, RANDOM()
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
+
+    # 숙박업 영업신고(행안부) — 이 건물 주소(도로명+건물번호 정규화)로 매칭된 '영업/정상' 사업장.
+    # 정렬: 등록 운영업체(operators approved+노출중)와 상호가 매칭되면 priority_score DESC 우선 →
+    #       그 안/미등록끼리는 매번 랜덤. 신고율 = 영업/정상 객실수 합 / 총 세대수(units).
+    lodgings = []
+    lodging_room_total = 0
+    try:
+        road_norm = addr_norm.normalize_road_prefix(row["road_address"])
+        if road_norm:
+            cur.execute("""
+                SELECT lr.biz_name, lr.permit_date, lr.room_count, lr.biz_name_norm
+                FROM lodging_registry lr
+                WHERE lr.road_norm = %s
+                  AND lr.biz_status_name = '영업/정상'
+            """, [road_norm])
+            lr_rows = cur.fetchall()
+            op_map = {}
+            if lr_rows:
+                # 상호 정규화명 → 등록 운영업체(노출중, priority 최고) 매핑
+                cur.execute("""
+                    SELECT o.company_name, o.subdomain_slug,
+                           COALESCE(o.priority_score, 0) AS priority_score
+                    FROM operators o
+                    WHERE o.status = 'approved' AND COALESCE(o.is_visible, TRUE)
+                """)
+                for o in cur.fetchall():
+                    norm = addr_norm.normalize_name(o["company_name"])
+                    if norm and (norm not in op_map
+                                 or o["priority_score"] > op_map[norm]["priority_score"]):
+                        op_map[norm] = dict(o)
+            import random as _random
+            for r in lr_rows:
+                d = dict(r)
+                norm = d.pop("biz_name_norm", None) or addr_norm.normalize_name(d["biz_name"])
+                op = op_map.get(norm) if norm else None
+                d["registered"] = op is not None
+                d["operator_slug"] = op["subdomain_slug"] if op else None
+                d["_prio"] = op["priority_score"] if op else -1
+                d["_rand"] = _random.random()
+                lodging_room_total += int(d.get("room_count") or 0)
+                lodgings.append(d)
+            # 등록 운영업체(priority DESC) 최상단 → 나머지는 매번 랜덤
+            lodgings.sort(key=lambda d: (-int(d["registered"]), -d["_prio"], d["_rand"]))
+            for d in lodgings:
+                d.pop("_prio", None)
+                d.pop("_rand", None)
+    except Exception:
+        app.logger.exception("영업신고 매칭 실패 (building_id=%s)", building_id)
+        lodgings = []
+        lodging_room_total = 0
     cur.close()
     conn.close()
 
@@ -346,6 +397,13 @@ def get_building(building_id):
     # 하위호환: 단일 agent를 쓰던 기존 코드용 (첫 번째 = 최우선 노출)
     result["agent"] = agents_list[0] if agents_list else None
     result["operators"] = operator_rows
+    # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율(영업 객실수 합 / 총 세대수)
+    result["lodgings"] = lodgings
+    result["lodging_room_total"] = lodging_room_total
+    units = result.get("units")
+    result["lodging_report_rate"] = (
+        round(lodging_room_total * 100.0 / units, 1) if units and lodging_room_total else None
+    )
 
     # 담당부처/연락처: sgg_text를 지자체 담당부서 인덱스와 매칭.
     #   source='exact'(시군구 전용) | 'fallback'(시도 대표) → 화면에서 "(시/도 대표)" 꼬리표 판단용.
@@ -5426,6 +5484,264 @@ def admin_broker_candidates_export():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     resp.headers["Content-Disposition"] = f"attachment; filename=broker_candidates_{building_id}.xlsx"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+# ---- 숙박업 영업신고(행안부 문화_숙박업 조회서비스) 동기화 + 미등록 위탁운영 후보 ----
+# 일일 쿼터 10,000건 — sync_lodgings.py가 소프트 캡 8,000에서 멈추고 체크포인트로 이어서 수집.
+# 후보 리스트는 '생성'만 하며 자동 이메일·SMS 발송은 하지 않는다.
+_LODGING_SYNC_META_KEY = "lodging_sync_status"
+_LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
+
+# 영업 중으로 인정하는 영업상태명 — 정확히 '영업/정상'만 (휴업/폐업/취소/말소/만료/정지/중지/제외/삭제/전출/기타 전부 제외)
+_LODGING_ACTIVE_STATUS = "영업/정상"
+
+
+@app.route("/api/admin/sync-lodgings", methods=["POST"])
+@require_admin
+@limiter.limit("4 per hour")
+def admin_lodging_sync_run():
+    """영업신고 데이터 동기화 시작 — 중개업소 동기화와 동일한 잠금/러너 패턴."""
+    if not os.environ.get("DATA_GO_KR_BROKER_API_KEY"):
+        return jsonify({"ok": False, "message": "DATA_GO_KR_BROKER_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "processed": None,
+            "completed": None,
+            "calls_today": None,
+            "error": None,
+        }
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '30 minutes')
+        """, (_LODGING_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        prev_state = None
+        if not acquired:
+            cur.execute("SELECT value FROM app_meta WHERE key = %s", (_LODGING_SYNC_META_KEY,))
+            prev = cur.fetchone()
+            try:
+                prev_state = json.loads(prev["value"]).get("state") if prev and prev["value"] else None
+            except (TypeError, ValueError):
+                prev_state = None
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        if prev_state == "done":
+            return jsonify({"ok": False, "message": "직전 동기화가 완료된 지 30분이 지나지 않았습니다. 잠시 후 다시 시도해 주세요."}), 429
+        return jsonify({"ok": False, "message": "이미 동기화가 실행 중입니다. 완료 후 다시 시도해 주세요."}), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_lodgings.py"),
+             "--status-key", _LODGING_SYNC_META_KEY],
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],
+                       "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (_LODGING_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "동기화 프로세스를 시작하지 못했습니다."}), 500
+
+    return jsonify({"ok": True, "message": "영업신고 데이터 동기화를 시작했습니다.", "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/lodging-sync-status")
+@require_admin
+def admin_lodging_sync_status():
+    """영업신고 동기화 진행상황 + 수집 현황 + 오늘 남은 호출 수."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
+        total = cur.fetchone()["c"]
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_LODGING_SYNC_META_KEY,))
+        meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'lodging_daily_calls'")
+        calls_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'lodging_sync_progress'")
+        prog_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'lodging_last_sync'")
+        last_row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    calls_today = 0
+    if calls_row and calls_row["value"]:
+        try:
+            d = json.loads(calls_row["value"])
+            if d.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                calls_today = int(d.get("count", 0))
+        except (TypeError, ValueError):
+            pass
+
+    progress = last_sync = status = None
+    try:
+        progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        last_sync = json.loads(last_row["value"]) if last_row and last_row["value"] else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        status = json.loads(meta["value"]) if meta and meta["value"] else None
+    except (TypeError, ValueError):
+        pass
+
+    running = bool(status and status.get("state") == "running")
+    stale = False
+    if running and meta["updated_at"]:
+        age = (datetime.now() - meta["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            running, stale = False, True
+
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": ("stale" if stale else (status.get("state") if status else None)),
+        "started_at": (status.get("started_at") if status else None),
+        "finished_at": (status.get("finished_at") if status else None),
+        "processed": (status.get("processed") if status else None),
+        "completed": (status.get("completed") if status else None),
+        "error": ((status.get("error") if status else None)
+                  or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
+        "lodging_total": total,
+        "calls_today": calls_today,
+        "calls_remaining": max(0, _LODGING_DAILY_CAP - calls_today),
+        "daily_cap": _LODGING_DAILY_CAP,
+        "progress": progress,
+        "last_sync": last_sync,
+    })
+
+
+def _approved_operator_name_norms(cur):
+    """approved 운영업체의 (정규화명 → 목록) 매핑. 미등록 후보 판정/B화면 매칭 공용."""
+    cur.execute("""
+        SELECT o.id, o.company_name, o.phone, o.subdomain_slug,
+               COALESCE(o.priority_score, 0) AS priority_score,
+               COALESCE(o.is_visible, TRUE) AS is_visible
+        FROM operators o
+        WHERE o.status = 'approved'
+    """)
+    mapping = {}
+    for r in cur.fetchall():
+        norm = addr_norm.normalize_name(r["company_name"])
+        if norm:
+            mapping.setdefault(norm, []).append(dict(r))
+    return mapping
+
+
+@app.route("/api/admin/unregistered-lodging-candidates")
+@require_admin
+def admin_unregistered_lodging_candidates():
+    """operators에 등록되지 않은 '영업/정상' 생활숙박업 사업장 목록 — 위탁운영 유치 후보."""
+    q = (request.args.get("q") or "").strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        op_norms = list(_approved_operator_name_norms(cur).keys())
+        params = [_LODGING_ACTIVE_STATUS]
+        where = "lr.biz_status_name = %s"
+        if op_norms:
+            where += " AND (lr.biz_name_norm IS NULL OR NOT (lr.biz_name_norm = ANY(%s)))"
+            params.append(op_norms)
+        if q:
+            where += " AND (lr.biz_name ILIKE %s OR lr.road_address ILIKE %s)"
+            params += [f"%{q}%", f"%{q}%"]
+        cur.execute(f"""
+            SELECT lr.biz_name, lr.permit_number, lr.road_address, lr.jibun_address,
+                   lr.permit_date, lr.biz_status_name, lr.biz_status_detail,
+                   lr.room_count, lr.phone
+            FROM lodging_registry lr
+            WHERE {where}
+            ORDER BY lr.room_count DESC NULLS LAST, lr.biz_name ASC
+            LIMIT 300
+        """, params)
+        rows = cur.fetchall()
+        cur.execute(f"SELECT COUNT(*) AS c FROM lodging_registry lr WHERE {where}", params)
+        total = cur.fetchone()["c"]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": rows, "total": total})
+
+
+@app.route("/api/admin/unregistered-lodging-candidates/export.xlsx")
+@require_admin
+def admin_unregistered_lodging_export():
+    q = (request.args.get("q") or "").strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        op_norms = list(_approved_operator_name_norms(cur).keys())
+        params = [_LODGING_ACTIVE_STATUS]
+        where = "lr.biz_status_name = %s"
+        if op_norms:
+            where += " AND (lr.biz_name_norm IS NULL OR NOT (lr.biz_name_norm = ANY(%s)))"
+            params.append(op_norms)
+        if q:
+            where += " AND (lr.biz_name ILIKE %s OR lr.road_address ILIKE %s)"
+            params += [f"%{q}%", f"%{q}%"]
+        cur.execute(f"""
+            SELECT lr.biz_name, lr.permit_number, lr.road_address, lr.jibun_address,
+                   lr.permit_date, lr.room_count, lr.phone
+            FROM lodging_registry lr
+            WHERE {where}
+            ORDER BY lr.room_count DESC NULLS LAST, lr.biz_name ASC
+            LIMIT 3000
+        """, params)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "미등록 위탁운영 후보"
+    ws.append(["사업장명", "객실수", "전화번호", "인허가일자", "관리번호", "도로명주소", "지번주소"])
+    for r in rows:
+        ws.append([r["biz_name"], r["room_count"] or 0, r["phone"] or "",
+                   r["permit_date"] or "", r["permit_number"],
+                   r["road_address"] or "", r["jibun_address"] or ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = Response(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp.headers["Content-Disposition"] = "attachment; filename=unregistered_lodging_candidates.xlsx"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 

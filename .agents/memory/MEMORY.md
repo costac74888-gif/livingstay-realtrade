@@ -21,5 +21,6 @@
 - [DDL blocked by sync workflows](ddl-blocked-by-sync-workflows.md) — FK DDL on master_buildings queues behind sync workflows' locks AND stalls app boot; kill blocker+waiters, run init_db manually.
 - [번호 저장·표시 규칙](number-normalization.md) — 전화/사업자번호는 DB에 숫자만 저장, 표시만 format_phone/format_biz_reg_number(JS: format_util.js)로 하이픈 재조립; 엑셀은 문자열+@서식으로 앞0 보존.
 - [emailed credentials vs test cleanup](emailed-credentials-cleanup.md) — if a test sent real temp-password email/SMS to the user, don't delete the created account; deleted account looks like a login bug.
+- [행안부 숙박업 API](mois-lodging-api.md) — lodgings/info는 numOfRows 무시하고 항상 100행/페이지; 완료 판정은 실제 응답 길이 기준, 업태 필터 없어 전 페이지 스캔 필수.
 - [header.js modal ID collisions](apply-pages-id-collision.md) — header.js injects modal IDs (agreeTerms 등) into every page; page-local widgets must namespace IDs or auth.js double-binds.
 - [Deploy slimming: prod-only requirements](deploy-prod-requirements.md) — requirements.txt drives deploy install; keep heavy dev-only libs (pandas) out and rewrite boot-path usage with stdlib; dev keeps them installed.

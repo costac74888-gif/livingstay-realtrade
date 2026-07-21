@@ -1629,16 +1629,38 @@ async function loadBuildingHeader(id){
     }
   });
 
-  // [2] 행정운영 표 — 숙박업 영업신고 현황을 표로 정리. 담당부처/연락처는 준비중.
+  // [2] 행정운영 표 — 행안부 영업신고 데이터(영업/정상만) 기반.
+  //     신고율 = 영업 중 객실수 합 / 총 호실수(units). 데이터 미수집이면 "확인 불가".
+  const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
+  const roomTotal = Number(b.lodging_room_total || 0);
   let rateDisplay;
-  if (b.biz_units != null && b.units != null && Number(b.units) > 0){
-    rateDisplay = Math.round(Number(b.biz_units) / Number(b.units) * 100) + "%";
+  if (b.lodging_report_rate != null){
+    rateDisplay = Math.round(Number(b.lodging_report_rate)) + "%";
+  } else if (b.units != null && Number(b.units) > 0 && lodgings.length === 0){
+    rateDisplay = "0%";
   } else {
     rateDisplay = "확인 불가";
   }
-  const notReported = (b.units != null && b.biz_units != null)
-    ? Math.max(Number(b.units) - Number(b.biz_units), 0).toLocaleString('ko-KR') + "실"
+  const reportedRooms = roomTotal > 0 ? roomTotal.toLocaleString('ko-KR') + "실" : "-";
+  const notReported = (b.units != null && Number(b.units) > 0)
+    ? Math.max(Number(b.units) - roomTotal, 0).toLocaleString('ko-KR') + "실"
     : "-";
+  // 영업신고 사업장 목록 — 서버가 이미 등록운영업체(priority 순) → 미등록(랜덤)으로 정렬해서 내려줌
+  const lodgingRows = lodgings.map((l) => {
+    const name = l.registered && l.operator_slug
+      ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}" style="color:var(--brass-dark); font-weight:600; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
+      : escapeHtml(l.biz_name);
+    const badge = l.registered
+      ? ` <span style="font-size:11px; color:#fff; background:var(--brass); border-radius:4px; padding:1px 5px; vertical-align:1px;">등록업체</span>`
+      : "";
+    const rooms = (l.room_count != null && Number(l.room_count) > 0)
+      ? Number(l.room_count).toLocaleString('ko-KR') + "실" : "-";
+    return `<tr><td style="text-align:left;">${name}${badge}</td><td style="white-space:nowrap;">${rooms}</td></tr>`;
+  }).join("");
+  const lodgingListHtml = lodgings.length
+    ? `<div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:10px 0 4px;">영업 중 신고업소 ${lodgings.length}곳</div>
+       <table class="b-info-table" style="margin-bottom:12px;"><tbody>${lodgingRows}</tbody></table>`
+    : "";
   // 담당부처/연락처: 매칭된 경우만 표시. 시/도 대표 폴백이면 부서명 뒤에 작은 회색 꼬리표.
   const authMatched = b.authority_dept != null && b.authority_dept !== "";
   const fallbackTag = (b.authority_source === "fallback")
@@ -1655,12 +1677,13 @@ async function loadBuildingHeader(id){
       <tbody>
         <tr><th>신고율</th><td>${rateDisplay}</td></tr>
         <tr><th>호실수</th><td>${units}</td></tr>
-        <tr><th>신고</th><td>${bizUnits}</td></tr>
+        <tr><th>신고</th><td>${reportedRooms}</td></tr>
         <tr><th>미신고</th><td>${notReported}</td></tr>
         <tr><th>담당부처</th><td>${deptCell}</td></tr>
         <tr><th>연락처</th><td>${phoneCell}</td></tr>
       </tbody>
     </table>
+    ${lodgingListHtml}
     <a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer" style="display:block; margin-top:0;" title="숙박업등록·위탁운영 무료 상담 신청">
       <img src="/static/banner_biz_report.png" alt="우수부동산서비스인증 — 숙박업등록·위탁운영 의뢰하기, 무료 상담 신청" style="display:block; width:100%; height:auto; border-radius:10px;" />
     </a>`;
