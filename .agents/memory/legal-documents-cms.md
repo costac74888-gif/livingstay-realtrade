@@ -18,3 +18,5 @@ description: How 이용약관/개인정보처리방침 are stored, edited by adm
 
 **신뢰 경계:** 공개 페이지가 content를 innerHTML로 렌더 → 저장 본문은 관리자 신뢰 입력으로 간주.
 관리자 계정 탈취까지 방어하려면 저장 시 HTML allowlist sanitizer가 후속 하드닝 포인트(현재 미적용).
+
+**개정 전파(2026-07-21):** 시드만 바꾸면 기존 DB 행은 안 바뀜. `_LEGAL_PREV_SEED_MD5`에 직전 시드 md5를 넣으면 부팅 시(전체 init 경로) "관리자 무수정 원문"인 행만 새 시드로 자동 교체(멱등, 수정본 보존). 개정 시: 새 본문 반영 + 직전 시드 md5 갱신 + SCHEMA_VERSION 인상 필수(빠른 경로가 시드 함수 자체를 건너뜀).
