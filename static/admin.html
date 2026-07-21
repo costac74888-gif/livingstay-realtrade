@@ -1656,6 +1656,10 @@
 
       membersSelected = new Map();  // 목록이 바뀌면 선택 초기화 (다른 페이지의 유령 선택 방지)
 
+      // 메모 인라인 수정용 현재값 캐시 (prompt 초기값)
+      window.__memberRowsCache = {};
+      (d.items || []).forEach((r) => { window.__memberRowsCache[r.member_type + ":" + r.id] = r.admin_memo || ""; });
+
       const rows = (d.items || []).map((r) => {
         const typeLabel = MEMBER_TYPE_LABEL[r.member_type] || r.member_type;
         const badge = r.member_type === "pending"
@@ -1689,8 +1693,13 @@
         const tagCell = r.admin_tag
           ? `<span class="dg-badge">${dgEscape(r.admin_tag)}</span>`
           : `<span style="color:var(--ink-soft);">-</span>`;
+        // 메모(비고) — 매물의뢰 비고와 동일한 인라인 수정 패턴 (승인대기 행은 수정 불가)
+        const memoTxt = r.admin_memo ? dgEscape(r.admin_memo) : '<span style="color:var(--ink-soft);">메모 추가 +</span>';
+        const memoCell = r.member_type === "pending"
+          ? '<span style="color:var(--ink-soft);">-</span>'
+          : `<a href="#" onclick="adminEditMemberMemo(event, '${r.member_type}', ${r.id})" title="클릭해서 메모 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); white-space:pre-line;">${memoTxt}</a>`;
         return `<tr>
-          <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" /></td>
+          <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
           <td>${dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
           <td>${badge}</td>
@@ -1699,6 +1708,7 @@
           <td>${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
           <td>${tagCell}</td>
+          <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
           <td style="min-width:220px;">${adCell}</td>
           <td style="white-space:nowrap;">${actions}</td>
@@ -1715,14 +1725,15 @@
           <button class="admin-btn" id="bulkMsgBtn">메시지</button>
           <button class="admin-btn" id="bulkPointsBtn">포인트</button>
           <button class="admin-btn admin-btn-danger" id="bulkDeactivateBtn">비활성화</button>
+          <button class="admin-btn" id="bulkReactivateBtn" style="display:none;">재활성화</button>
         </div>
         <table class="dg-table">
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>그룹</th>
-            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th>포인트</th><th style="min-width:220px;">광고</th><th>작업</th>
+            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>작업</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="12" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="13" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pagination" style="display:flex; align-items:center; gap:10px; padding:12px 4px;">
           <button class="admin-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>이전</button>
@@ -1760,10 +1771,23 @@
       const mg = document.getElementById("bulkMsgBtn");
       const pt = document.getElementById("bulkPointsBtn");
       const da = document.getElementById("bulkDeactivateBtn");
+      const ra = document.getElementById("bulkReactivateBtn");
       if (tg) tg.disabled = !nonPending;
       if (mg) mg.disabled = !nonPending;
       if (pt) pt.disabled = !onlyGeneral;
-      if (da) da.disabled = !nonPending;
+      // 비활성화/재활성화 전환 — 선택된 회원의 상태로 판단.
+      // 전부 비활성(탈퇴/비활성)이면 재활성화 버튼만, 전부 정상이면 비활성화 버튼만, 섞이면 둘 다 비활성.
+      const isInactive = (x) => x.status === "withdrawn" || x.status === "inactive";
+      const nonPendingSel = sel.filter((x) => x.type !== "pending");
+      const allInactive = nonPending && nonPendingSel.every(isInactive);
+      const allActive = nonPending && nonPendingSel.every((x) => !isInactive(x));
+      if (da && ra) {
+        da.style.display = allInactive ? "none" : "";
+        ra.style.display = allInactive ? "" : "none";
+        da.disabled = !(nonPending && allActive);
+        ra.disabled = !(nonPending && allInactive);
+        if (nonPending && !allActive && !allInactive) { da.style.display = ""; ra.style.display = ""; }
+      }
     }
 
     function wireMemberSelection() {
@@ -1771,7 +1795,7 @@
       const all = document.getElementById("membersCheckAll");
       const syncOne = (cb) => {
         const key = cb.dataset.type + ":" + cb.dataset.id;
-        if (cb.checked) membersSelected.set(key, { type: cb.dataset.type, id: Number(cb.dataset.id) });
+        if (cb.checked) membersSelected.set(key, { type: cb.dataset.type, id: Number(cb.dataset.id), status: cb.dataset.status || "" });
         else membersSelected.delete(key);
       };
       checks.forEach((cb) => cb.addEventListener("change", () => {
@@ -1790,6 +1814,7 @@
       on("bulkMsgBtn", bulkMessage);
       on("bulkPointsBtn", bulkPoints);
       on("bulkDeactivateBtn", bulkDeactivate);
+      on("bulkReactivateBtn", bulkReactivate);
       updateBulkBar();
     }
 
@@ -1914,11 +1939,47 @@
       const ids = selectedList().filter((x) => x.type !== "pending");
       if (!ids.length) return;
       if (!window.confirm(`선택한 ${ids.length}명을 비활성화할까요?\n\n· 일반회원 → 탈퇴 처리\n· 중개사/운영지원업체 → 로그인·공개페이지 차단\n(계정 정보는 삭제되지 않고 상태만 변경됩니다)`)) return;
-      const d = await bulkCall("/api/admin/members/bulk-deactivate", { ids });
+      // 사유 입력 — 입력하면 해당 회원의 메모(admin_memo)에 날짜와 함께 자동 기록
+      const reason = window.prompt("비활성화 사유를 입력하세요. (메모에 자동 기록 — 비워두면 기록 없이 진행)", "");
+      if (reason === null) return; // 취소
+      const d = await bulkCall("/api/admin/members/bulk-deactivate", { ids, reason: reason.trim() });
       if (!d) return;
       window.alert(`비활성화 완료 — ${d.success}명 처리`);
       loadMembers();
     }
+
+    async function bulkReactivate() {
+      const ids = selectedList().filter((x) => x.type !== "pending");
+      if (!ids.length) return;
+      if (!window.confirm(`선택한 ${ids.length}명을 재활성화할까요?\n\n· 일반회원 → 탈퇴 취소(정상 복구)\n· 중개사/운영지원업체/대출상담사 → 로그인·공개페이지 복구(승인 상태)`)) return;
+      const d = await bulkCall("/api/admin/members/bulk-reactivate", { ids });
+      if (!d) return;
+      window.alert(`재활성화 완료 — ${d.success}명 처리`);
+      loadMembers();
+    }
+
+    // 회원 메모(admin_memo) 인라인 수정 — 매물의뢰 비고와 동일 패턴 (클릭 → prompt → PUT)
+    window.adminEditMemberMemo = async function (ev, memberType, memberId) {
+      ev.preventDefault();
+      // 현재 값은 목록 데이터에서 찾기 어렵지 않게 링크 텍스트 대신 서버 값 재사용 위해 행 캐시 사용
+      const cache = window.__memberRowsCache || {};
+      const cur = cache[memberType + ":" + memberId] || "";
+      const next = window.prompt("메모(관리자 비고)를 입력하세요. 비우면 삭제됩니다.", cur);
+      if (next === null) return;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/memo`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_memo: next }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { window.alert(d.message || "메모 저장에 실패했습니다."); return; }
+        loadMembers();
+      } catch (e) {
+        window.alert("메모 저장 중 오류가 발생했습니다.");
+      }
+    };
 
     // 승인/반려 — 신청승인 메뉴와 동일한 기존 API 호출 (로직 재사용, 처리 자체는 서버 기존 코드)
     window.memberApprove = async function (appId, btn) {

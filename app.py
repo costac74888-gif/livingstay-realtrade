@@ -6053,28 +6053,28 @@ _MEMBER_SELECTS = {
         SELECT id, 'general' AS member_type, COALESCE(name, '-') AS name, email,
                '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
                NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
-               admin_tag, COALESCE(points, 0) AS points
+               admin_tag, COALESCE(points, 0) AS points, admin_memo
         FROM users
     """,
     "agent": """
         SELECT id, 'agent' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
-               admin_tag, NULL::integer AS points
+               admin_tag, NULL::integer AS points, admin_memo
         FROM agents WHERE status IN ('approved', 'inactive')
     """,
     "operator": """
         SELECT id, 'operator' AS member_type, owner_name AS name, email,
                (category || ' · ' || company_name) AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
-               admin_tag, NULL::integer AS points
+               admin_tag, NULL::integer AS points, admin_memo
         FROM operators WHERE status IN ('approved', 'inactive')
     """,
     "loan_consultant": """
         SELECT id, 'loan_consultant' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
-               admin_tag, NULL::integer AS points
+               admin_tag, NULL::integer AS points, admin_memo
         FROM loan_consultants WHERE status IN ('approved', 'inactive')
     """,
     "pending": """
@@ -6085,7 +6085,7 @@ _MEMBER_SELECTS = {
                    ELSE office_or_company_name
                END AS group_label, phone, status,
                applicant_type, submitted_at AS created_at, NULL::timestamp AS approved_at,
-               NULL AS admin_tag, NULL::integer AS points
+               NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo
         FROM applications WHERE status = 'submitted'
     """,
 }
@@ -6135,7 +6135,7 @@ def admin_members_list():
 
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
-               m.status, m.applicant_type, m.admin_tag, m.points,
+               m.status, m.applicant_type, m.admin_tag, m.points, m.admin_memo,
                to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
                to_char(m.approved_at, 'YYYY-MM-DD HH24:MI') AS approved_at
         FROM ({union_sql}) m
@@ -6681,29 +6681,38 @@ def admin_members_bulk_points():
 @require_admin
 def admin_members_bulk_deactivate():
     """일괄 비활성화(소프트 삭제) — DELETE 없이 상태값만 변경.
-    users → 'withdrawn'(기존 회원탈퇴와 동일), agents/operators → 'inactive'(로그인·공개프로필 차단)."""
+    users → 'withdrawn'(기존 회원탈퇴와 동일), agents/operators → 'inactive'(로그인·공개프로필 차단).
+    reason(선택)이 오면 각 회원의 admin_memo에 '[날짜] 사유' 형태로 이어붙인다."""
     data = request.get_json(force=True, silent=True) or {}
     ids, err = _bulk_parse_ids(data, set(_BULK_MEMBER_TABLES))
     if err:
         return jsonify({"ok": False, "message": err}), 400
+    reason = (data.get("reason") or "").strip()[:500]
+    memo_line = None
+    if reason:
+        from datetime import date
+        memo_line = f"[{date.today().isoformat()}] {reason}"
     by_type = {}
     for t, i in ids:
         by_type.setdefault(t, []).append(i)
+    # 상태값: 일반회원은 탈퇴(withdrawn), 파트너는 비활성(inactive)
+    new_status = {"general": "withdrawn", "agent": "inactive", "operator": "inactive", "loan_consultant": "inactive"}
     conn = get_conn()
     cur = conn.cursor()
     updated = 0
     try:
-        if by_type.get("general"):
-            cur.execute("UPDATE users SET status='withdrawn' WHERE id = ANY(%s)", [by_type["general"]])
-            updated += cur.rowcount
-        if by_type.get("agent"):
-            cur.execute("UPDATE agents SET status='inactive' WHERE id = ANY(%s)", [by_type["agent"]])
-            updated += cur.rowcount
-        if by_type.get("operator"):
-            cur.execute("UPDATE operators SET status='inactive' WHERE id = ANY(%s)", [by_type["operator"]])
-            updated += cur.rowcount
-        if by_type.get("loan_consultant"):
-            cur.execute("UPDATE loan_consultants SET status='inactive' WHERE id = ANY(%s)", [by_type["loan_consultant"]])
+        for t, id_list in by_type.items():
+            table = _BULK_MEMBER_TABLES[t]
+            if memo_line:
+                cur.execute(
+                    f"""UPDATE {table}
+                        SET status=%s,
+                            admin_memo = CASE WHEN admin_memo IS NULL OR admin_memo = '' THEN %s
+                                              ELSE admin_memo || E'\\n' || %s END
+                        WHERE id = ANY(%s)""",
+                    [new_status[t], memo_line, memo_line, id_list])
+            else:
+                cur.execute(f"UPDATE {table} SET status=%s WHERE id = ANY(%s)", [new_status[t], id_list])
             updated += cur.rowcount
         conn.commit()
     except Exception:
@@ -6714,6 +6723,70 @@ def admin_members_bulk_deactivate():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
+
+
+@app.route("/api/admin/members/bulk-reactivate", methods=["POST"])
+@require_admin
+def admin_members_bulk_reactivate():
+    """일괄 재활성화 — bulk-deactivate의 반대.
+    users → 'active'(탈퇴 취소), agents/operators/loan_consultants → 'approved'(로그인·공개페이지 복구)."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids, err = _bulk_parse_ids(data, set(_BULK_MEMBER_TABLES))
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    by_type = {}
+    for t, i in ids:
+        by_type.setdefault(t, []).append(i)
+    new_status = {"general": "active", "agent": "approved", "operator": "approved", "loan_consultant": "approved"}
+    # 비활성 상태였던 계정만 복구 — 승인대기/반려 등 다른 상태를 실수로 '승인'으로 바꾸지 않도록 방어
+    prev_status = {"general": "withdrawn", "agent": "inactive", "operator": "inactive", "loan_consultant": "inactive"}
+    conn = get_conn()
+    cur = conn.cursor()
+    updated = 0
+    try:
+        for t, id_list in by_type.items():
+            table = _BULK_MEMBER_TABLES[t]
+            cur.execute(f"UPDATE {table} SET status=%s WHERE id = ANY(%s) AND status=%s",
+                        [new_status[t], id_list, prev_status[t]])
+            updated += cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("일괄 재활성화 실패")
+        return jsonify({"ok": False, "message": "재활성화 처리 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/memo", methods=["PUT"])
+@require_admin
+def admin_member_memo_put(member_type, member_id):
+    """회원 메모(admin_memo) 수정 — 빈 값이면 삭제. 매물의뢰 비고와 동일 패턴."""
+    table = _BULK_MEMBER_TABLES.get(member_type)
+    if not table:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    if "admin_memo" not in data:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다. (admin_memo)"}), 400
+    memo = (data.get("admin_memo") or "").strip()[:2000] or None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE {table} SET admin_memo=%s WHERE id=%s", [memo, member_id])
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "회원을 찾을 수 없습니다."}), 404
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("회원 메모 수정 실패")
+        return jsonify({"ok": False, "message": "메모 저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 # 신청서 doc_type → applications 테이블 컬럼 매핑 (관리자 서류 열람용 화이트리스트)
