@@ -1211,16 +1211,31 @@ function openListingRequestModal(buildingId, buildingName){
       </div>
       <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px;">${escapeHtml(buildingName)}</div>
       <div id="lrForm">
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">의뢰인</div>
+        <input id="lrName" type="text" readonly value="" placeholder="로그인 정보에서 자동 표시" style="${FLD} margin-bottom:12px; background:#F6F5F2; color:var(--ink-soft);" />
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">거래유형</div>
         <div id="lrDealTypes" style="display:flex; gap:6px; margin-bottom:12px;">
           ${["매매","전세","월세","단기임대"].map((t,i) => `<button type="button" data-dt="${t}" class="side-more" style="flex:1; margin-top:0; padding:8px 0; ${i===0 ? "background:var(--brass); color:#fff; border-color:var(--brass);" : ""}">${t}</button>`).join("")}
         </div>
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">희망가 <span style="font-weight:400; color:var(--ink-soft);">(선택)</span></div>
-        <input id="lrPrice" type="text" maxlength="100" placeholder="예) 1억 2천 / 보증금 1000·월 60" style="${FLD} margin-bottom:12px;" />
+        <div id="lrPriceSale">
+          <input id="lrSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" style="${FLD} margin-bottom:12px;" />
+        </div>
+        <div id="lrPriceJeonse" style="display:none;">
+          <input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} margin-bottom:12px;" />
+        </div>
+        <div id="lrPriceWolse" style="display:none; gap:6px; margin-bottom:12px;">
+          <input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} flex:1;" />
+          <input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" style="${FLD} flex:1;" />
+        </div>
+        <div id="lrPriceShort" style="display:none;">
+          <input id="lrShortPrice" type="text" maxlength="100" placeholder="예) 1박 8만원 / 주 단위 협의" style="${FLD} margin-bottom:12px;" />
+        </div>
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처</div>
         <input id="lrPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD}" />
         <div id="lrMsg" style="font-size:12px; color:var(--brick); min-height:16px; margin-top:6px;"></div>
         <button id="lrSubmit" class="btn-search" style="width:100%; padding:12px; margin-top:6px;">매물의뢰 접수하기</button>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.55; margin-top:10px; padding:8px 10px; background:#F4F1EA; border-radius:8px;">담당중개사가 있으면 그쪽으로, 없으면 같은 지역 등록중개사에게, 그것도 없으면 홈스퀘어 중개법인으로 자동 배정됩니다.</div>
       </div>
       <div id="lrDone" style="display:none; text-align:center; padding:18px 4px;">
         <div style="font-size:34px; margin-bottom:10px;">✅</div>
@@ -1231,10 +1246,24 @@ function openListingRequestModal(buildingId, buildingName){
     </div>`;
   document.body.appendChild(ov);
 
+  // 의뢰인 이름 자동 표시 (로그인 정보, 읽기전용)
+  fetch("/api/auth/me", { credentials: "same-origin" })
+    .then((r) => r.json())
+    .then((d) => { if (d && d.logged_in && d.name) ov.querySelector("#lrName").value = d.name; })
+    .catch(() => {});
+
   let dealType = "매매";
+  const PRICE_BOXES = { "매매": "lrPriceSale", "전세": "lrPriceJeonse", "월세": "lrPriceWolse", "단기임대": "lrPriceShort" };
+  function showPriceBox(){
+    Object.entries(PRICE_BOXES).forEach(([dt, id]) => {
+      const el = ov.querySelector("#" + id);
+      el.style.display = (dt === dealType) ? (dt === "월세" ? "flex" : "block") : "none";
+    });
+  }
   ov.querySelectorAll("#lrDealTypes button").forEach((b) => {
     b.addEventListener("click", () => {
       dealType = b.dataset.dt;
+      showPriceBox();
       ov.querySelectorAll("#lrDealTypes button").forEach((x) => {
         const on = x === b;
         x.style.background = on ? "var(--brass)" : "";
@@ -1255,6 +1284,29 @@ function openListingRequestModal(buildingId, buildingName){
       msg.textContent = "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678";
       return;
     }
+    // 거래유형별 구조화 희망가 → 숫자값 + 사람이 읽는 문자열(desired_price) 동시 구성
+    const numVal = (id) => {
+      const v = parseInt(ov.querySelector("#" + id).value, 10);
+      return (Number.isFinite(v) && v > 0) ? v : null;
+    };
+    const fmt = (n) => n.toLocaleString("ko-KR");
+    let priceKrw = null, monthlyRentKrw = null, desiredPrice = "";
+    if (dealType === "매매"){
+      priceKrw = numVal("lrSalePrice");
+      if (priceKrw) desiredPrice = `매매가 ${fmt(priceKrw)}만원`;
+    } else if (dealType === "전세"){
+      priceKrw = numVal("lrJeonseDeposit");
+      if (priceKrw) desiredPrice = `보증금 ${fmt(priceKrw)}만원`;
+    } else if (dealType === "월세"){
+      priceKrw = numVal("lrWolseDeposit");
+      monthlyRentKrw = numVal("lrWolseRent");
+      const parts = [];
+      if (priceKrw) parts.push(`보증금 ${fmt(priceKrw)}만원`);
+      if (monthlyRentKrw) parts.push(`월세 ${fmt(monthlyRentKrw)}만원`);
+      desiredPrice = parts.join("·");
+    } else {
+      desiredPrice = ov.querySelector("#lrShortPrice").value.trim();
+    }
     msg.textContent = "";
     const btn = ov.querySelector("#lrSubmit");
     btn.disabled = true; btn.textContent = "접수 중…";
@@ -1265,7 +1317,9 @@ function openListingRequestModal(buildingId, buildingName){
         body: JSON.stringify({
           master_building_id: buildingId,
           deal_type: dealType,
-          desired_price: ov.querySelector("#lrPrice").value.trim(),
+          desired_price: desiredPrice,
+          price_krw: priceKrw,
+          monthly_rent_krw: monthlyRentKrw,
           contact_phone: phone,
         }),
       });

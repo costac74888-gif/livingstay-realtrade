@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-21-1"
+SCHEMA_VERSION = "2026-07-21-2"
 
 
 def init_db():
@@ -579,7 +579,9 @@ def init_db():
         user_id INTEGER NOT NULL REFERENCES users(id),              -- 의뢰한 회원 (로그인 필수)
         master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
         deal_type TEXT NOT NULL,          -- 매매 | 전세 | 월세 | 단기임대
-        desired_price TEXT,               -- 희망가 자유입력 (예: "1억 2천")
+        desired_price TEXT,               -- 희망가 사람이 읽는 문자열 (예: "매매가 12,000만원") — 호환성 유지
+        price_krw INTEGER,                -- 매매가 또는 보증금 (만원 단위 숫자) — 단기임대는 NULL
+        monthly_rent_krw INTEGER,         -- 월세 (만원 단위 숫자) — 월세 유형에서만 사용
         contact_phone TEXT NOT NULL,      -- 중개사가 연락할 번호
         routed_agent_id INTEGER REFERENCES agents(id),  -- 배정된 대표 중개사 (없으면 NULL)
         routed_reason TEXT,               -- exclusive | region | house
@@ -589,6 +591,9 @@ def init_db():
     """)
     # 기존 DB에도 안전하게 컬럼 추가 — 관리자 전용 메모(중개사에게는 노출 안 함)
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS admin_note TEXT")
+    # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

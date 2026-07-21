@@ -3536,6 +3536,16 @@ def create_listing_request():
     desired_price = (data.get("desired_price") or "").strip()[:100]
     contact_phone = (data.get("contact_phone") or "").strip()
 
+    # 거래유형별 구조화 희망가(만원 단위 정수, 선택) — 단기임대는 자유텍스트만 사용
+    def _to_krw(v):
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return None
+        return n if 0 < n <= 100_000_000 else None
+    price_krw = _to_krw(data.get("price_krw")) if deal_type in ("매매", "전세", "월세") else None
+    monthly_rent_krw = _to_krw(data.get("monthly_rent_krw")) if deal_type == "월세" else None
+
     if not mb_id:
         return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
     if deal_type not in _LISTING_DEAL_TYPES:
@@ -3553,23 +3563,24 @@ def create_listing_request():
 
         routed_agent_id = None
         routed_reason = None
-        notify_agents = []  # [{id, phone, office_name}] — SMS 수신 대상
+        notify_agents = []  # [{id, phone, office_name}] — SMS 수신 대상 (첫 번째가 배정자)
 
-        # ① 전속(exclusive): 그 건물 담당 approved 중개사 중 최근 갱신 1명
+        # ① 전속(exclusive): 그 건물 담당 approved 중개사들.
+        #    선정 기준을 건물카드 노출 로직과 동일하게 priority_score DESC → RANDOM() 으로 통일.
+        #    첫 번째 1명만 routed_agent_id(상태변경 권한), 나머지는 참고용 알림만 발송.
         cur.execute("""
             SELECT a.id, a.phone, a.office_name
             FROM agent_buildings ab
             JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
             WHERE ab.master_building_id = %s
               AND COALESCE(a.is_visible, TRUE)
-            ORDER BY ab.updated_at DESC NULLS LAST, ab.id DESC
-            LIMIT 1
+            ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
         """, [mb_id])
-        row = cur.fetchone()
-        if row:
-            routed_agent_id = row["id"]
+        rows = cur.fetchall()
+        if rows:
+            routed_agent_id = rows[0]["id"]
             routed_reason = "exclusive"
-            notify_agents = [dict(row)]
+            notify_agents = [dict(r) for r in rows]
         else:
             # ② 지역(region): 같은 시군구에 건물을 등록한 approved 중개사들 (하우스 계정 제외)
             sgg = (bld["sgg_text"] or "").strip()
@@ -3605,11 +3616,11 @@ def create_listing_request():
         cur.execute("""
             INSERT INTO listing_requests
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
-                 routed_agent_id, routed_reason)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                 routed_agent_id, routed_reason, price_krw, monthly_rent_krw)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
-              routed_agent_id, routed_reason])
+              routed_agent_id, routed_reason, price_krw, monthly_rent_krw])
         req_id = cur.fetchone()["id"]
         conn.commit()
     finally:
@@ -3624,8 +3635,14 @@ def create_listing_request():
     )
     sms_results = []
     for ag in notify_agents:
+        # 배정자(routed_agent_id)에게는 배정 문자, 나머지 담당중개사에게는 참고용 문자만.
+        # (상태변경 권한은 배정자 1명에게만 있음)
+        if ag["id"] == routed_agent_id:
+            body = sms_body + " / 대시보드에서 확인해주세요"
+        else:
+            body = "[참고용] " + sms_body + " / 다른 담당중개사에게 배정되었습니다"
         if ag.get("phone"):
-            sent, msg = send_sms(ag["phone"], sms_body)
+            sent, msg = send_sms(ag["phone"], body)
         else:
             sent, msg = False, "중개사 전화번호 없음"
         sms_results.append({"agent_id": ag["id"], "sent": sent, "message": msg})

@@ -731,6 +731,23 @@
           const on = b.getAttribute("data-sub") === key;
           b.classList.toggle("admin-btn-primary", on);
         });
+        // 매물의뢰 탭에는 자동 배정 규칙 안내를 그리드 위에 표시
+        const note = (key === "listing_requests")
+          ? `<div style="font-size:12.5px; color:#5B6472; line-height:1.6; background:#F4F1EA; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+               <b>자동 배정 규칙</b> — 접수 시 배정사유(routed_reason)별 처리:
+               <b>exclusive</b>: 해당 건물의 담당중개사 중 우선순위(priority_score 높은 순, 동점은 무작위) 1명에게 배정, 나머지 담당중개사에게는 참고용 SMS만 발송 ·
+               <b>region</b>: 담당중개사가 없으면 같은 시군구에 건물을 등록한 중개사 중 1명에게 배정 ·
+               <b>house</b>: 지역 중개사도 없으면 홈스퀘어 중개법인(하우스 계정)으로 배정. 상태변경 권한은 배정된 1명에게만 있습니다.
+             </div>`
+          : "";
+        // 탭 전환 시 이전 안내문 제거 후, 매물의뢰 탭이면 그리드 위에 삽입
+        subMount.parentNode.querySelectorAll(".lst-route-note").forEach((n) => n.remove());
+        if (note) {
+          const wrap = document.createElement("div");
+          wrap.className = "lst-route-note";
+          wrap.innerHTML = note;
+          subMount.parentNode.insertBefore(wrap, subMount);
+        }
         currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
       };
       mount.querySelectorAll(".lst-subtab").forEach((b) => {
