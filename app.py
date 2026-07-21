@@ -3676,9 +3676,11 @@ def my_listing_requests():
         cur.execute("""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.status,
                    to_char(lr.created_at, 'YYYY-MM-DD') AS created_date,
-                   mb.id AS building_id, mb.building_name
+                   mb.id AS building_id, mb.building_name,
+                   a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN agents a ON a.id = lr.routed_agent_id
             WHERE lr.user_id = %s
             ORDER BY lr.created_at DESC
         """, [user["id"]])
