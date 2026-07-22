@@ -5186,6 +5186,7 @@ ADMIN_BLD_SORT = {"id", "building_name", "road_address", "units", "biz_units", "
 ADMIN_BLD_EDITABLE = [
     "building_name", "road_address", "jibun_address", "sgg_text", "sgg_cd",
     "umd_nm", "jibun", "units", "biz_units", "lodging_type", "lodging_type_detail",
+    "building_status", "completion_expected_date",
 ]
 ADMIN_BLD_INT_COLS = {"units", "biz_units"}
 
@@ -5313,6 +5314,15 @@ def admin_buildings_update(building_id):
         return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
     vals.append(building_id)
     cur.execute(f"UPDATE master_buildings SET {', '.join(sets)} WHERE id = %s", vals)
+
+    # building_status가 '완공'으로 바뀌는 요청이면, 분양권 건수를 매매로 자동 합산
+    if data.get("building_status") == "완공":
+        cur.execute("""
+            UPDATE agent_buildings
+            SET sale_count = sale_count + presale_count, presale_count = 0
+            WHERE master_building_id = %s AND presale_count > 0
+        """, [building_id])
+
     conn.commit()
     cur.close()
     conn.close()
