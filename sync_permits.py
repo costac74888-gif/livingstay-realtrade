@@ -99,6 +99,8 @@ def _fetch_page(key, sgg, bjd, page):
     params = {"serviceKey": key, "sigunguCd": sgg, "bjdongCd": bjd,
               "numOfRows": str(NUM_ROWS), "pageNo": str(page), "_type": "json"}
     r = requests.get(API_URL, params=params, timeout=30)
+    if r.status_code != 200:
+        print(f"[HTTP {r.status_code}] 응답 본문: {r.text[:1000]}")
     r.raise_for_status()
     d = r.json()
     header = d.get("response", {}).get("header", {})
