@@ -1874,6 +1874,7 @@ function renderBuildingAgents(agents, buildingId, buildingName){
           <div style="flex:1; min-width:130px;">
             <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
             <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
+            ${agent.intro_title ? `<div style="font-size:12px; color:var(--brass-dark); font-weight:600; margin-top:3px;">${escapeHtml(agent.intro_title)}</div>` : ""}
           </div>
           ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
         </div>

@@ -58,6 +58,14 @@
         <label>이메일 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="email" placeholder="예) agent@example.com" />
       </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>소개글 제목 (선택)</label>
+        <input type="text" id="intro_title" maxlength="16" placeholder="예) 현장 10년 전문 중개사" />
+        <div style="display:flex; justify-content:space-between; gap:8px; margin-top:6px;">
+          <div style="font-size:12px; color:var(--ink-soft);">이 문구는 건물상세 페이지의 담당중개사 배너에 그대로 노출됩니다 (최대 16자)</div>
+          <div id="introTitleCount" style="font-size:12px; color:var(--ink-soft); flex-shrink:0;">0/16자</div>
+        </div>
+      </div>
       <div class="field" style="margin-bottom:20px;">
         <label>희망건물 (선택)</label>
         <input type="text" id="preferred_building" placeholder="예) 홈앤스테이레지던스" />
@@ -127,6 +135,13 @@
 <script>
   // 건물 상세 패널에서 "이 건물에 전속중개사로 신청하기"로 들어오면
   // ?building_name=... 파라미터로 희망건물을 자동 채우고 읽기전용으로 잠근다.
+  // 소개글 제목 실시간 글자수 카운터 (maxlength=16으로 초과 입력 자체를 차단)
+  const introTitleInput = document.getElementById("intro_title");
+  const introTitleCount = document.getElementById("introTitleCount");
+  introTitleInput.addEventListener("input", () => {
+    introTitleCount.textContent = introTitleInput.value.length + "/16자";
+  });
+
   const buildingInput = document.getElementById("preferred_building");
   const buildingHint = document.getElementById("preferredBuildingHint");
   (function prefillBuilding(){
@@ -258,6 +273,7 @@
       biz_reg_number: bizDigits,
       phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
+      intro_title: document.getElementById("intro_title").value.trim(),
       preferred_building: document.getElementById("preferred_building").value.trim(),
       preferred_building_id: document.getElementById("preferred_building_id").value.trim(),
     };

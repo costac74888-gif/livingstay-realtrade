@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-22-1"
+SCHEMA_VERSION = "2026-07-22-2"
 
 
 def init_db():
@@ -227,6 +227,8 @@ def init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS subdomain_slug TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS intro_text TEXT")
+    # 소개글 제목(16자 이내) — 건물상세(B화면) 담당중개사 배너에 노출되는 짧은 문구 (intro_text와 별개)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS intro_title TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES admin_users(id)")
@@ -378,6 +380,7 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_region TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_building TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS intro_text TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS intro_title TEXT")  # 소개글 제목(16자, agent)
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_license_url TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_office_reg_url TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_biz_reg_url TEXT")

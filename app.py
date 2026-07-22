@@ -310,7 +310,7 @@ def get_building(building_id):
     # 정렬: priority_score DESC(유료 우선노출 자리, 현재 전부 0) → 동점자는 RANDOM().
     # 단일 쿼리 한 줄로 처리해야 전원 0점일 때도 매번 완전 랜덤이 된다 (2단계 분리 금지).
     cur.execute("""
-        SELECT a.id, a.office_name, a.owner_name, a.phone, a.subdomain_slug, a.photo_url
+        SELECT a.id, a.office_name, a.owner_name, a.phone, a.subdomain_slug, a.photo_url, a.intro_title
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         WHERE ab.master_building_id = %s
@@ -1431,6 +1431,10 @@ def apply_agent():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    # 소개글 제목(선택) — 건물상세 배너 노출용, 16자 이내
+    intro_title = (data.get("intro_title") or "").strip()
+    if len(intro_title) > 16:
+        return jsonify({"ok": False, "message": "소개글 제목은 16자 이내로 입력해주세요."}), 400
     # 희망지역 → 희망건물로 변경. 구버전 호환을 위해 preferred_region도 함께 받아둔다.
     preferred_building = (data.get("preferred_building") or "").strip()
     preferred_region = (data.get("preferred_region") or "").strip()
@@ -1497,15 +1501,15 @@ def apply_agent():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
-             intro_text, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
+             intro_text, intro_title, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
              doc_photo_url, preferred_building_id,
              terms_agreed_at, privacy_agreed_at)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, %s, %s, %s, %s, %s, NOW(), NOW())
+                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
-          preferred_building or None,
+          preferred_building or None, intro_title or None,
           doc_refs["doc_license_url"], doc_refs["doc_office_reg_url"],
           doc_refs["doc_biz_reg_url"], doc_refs["doc_photo_url"],
           preferred_building_id))
@@ -3323,7 +3327,7 @@ def agent_me():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug,
+            SELECT office_name, owner_name, phone, photo_url, intro_text, intro_title, subdomain_slug,
                    email, reg_number, biz_reg_number, status,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM agents WHERE id = %s
@@ -3395,7 +3399,7 @@ def agent_me_update():
     """부분 업데이트 — 전달된 키만 수정. 등록번호류 변경 시 재승인 대기 전환."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
-    allowed = ["phone", "photo_url", "intro_text", "office_name", "owner_name", "email",
+    allowed = ["phone", "photo_url", "intro_text", "intro_title", "office_name", "owner_name", "email",
                "reg_number", "biz_reg_number"]
     sets, params = [], []
     license_changes = {}
@@ -3412,6 +3416,8 @@ def agent_me_update():
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            if k == "intro_title" and v and len(v) > 16:
+                return jsonify({"ok": False, "message": "소개글 제목은 16자 이내로 입력해주세요."}), 400
             if k in ("office_name", "owner_name") and not v:
                 return jsonify({"ok": False, "message": ("중개사무소명" if k == "office_name" else "대표자명") + "은(는) 비울 수 없습니다."}), 400
             if k == "email":
@@ -7870,12 +7876,12 @@ def admin_applications_approve(app_id):
                         INSERT INTO agents
                             (office_name, owner_name, reg_number, biz_reg_number,
                              phone, email, status, subdomain_slug, password_hash,
-                             photo_url, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
+                             photo_url, intro_title, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], _digits_only(ap["reg_number"]) or ap["reg_number"],
                           _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
-                          ap.get("doc_photo_url")])
+                          ap.get("doc_photo_url"), ap.get("intro_title")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_agent_insert")
                     break
