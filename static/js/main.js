@@ -1867,18 +1867,28 @@ function renderBuildingAgents(agents, buildingId, buildingName){
       const avatar = agent.photo_src
         ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>🏢</div>'">`
         : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
+      // 이 건물 한정 매물 건수 배지 4개 — 값이 0이어도 표시 (agent_buildings 기준)
+      const cnt = (v) => (v == null ? 0 : v);
+      const badge = (label, v) => `<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:3px 8px; border-radius:10px;">${label}(${cnt(v)})</span>`;
+      const badges = `<div style="display:flex; gap:5px; flex-wrap:wrap;">
+        ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
+      </div>`;
       return `
-      <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee);">
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
+        <div style="display:flex; align-items:flex-start; gap:12px;">
           ${avatar}
-          <div style="flex:1; min-width:130px;">
-            <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
-            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
-            ${agent.intro_title ? `<div style="font-size:12px; color:var(--brass-dark); font-weight:600; margin-top:3px;">${escapeHtml(agent.intro_title)}</div>` : ""}
+          <div style="flex:1; min-width:0;">
+            ${badges}
+            ${agent.intro_title ? `<div style="font-size:12px; color:var(--brass-dark); font-weight:600; margin-top:6px;">${escapeHtml(agent.intro_title)}</div>` : ""}
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:6px;">
+              <div style="min-width:0;">
+                <div style="font-size:15px; font-weight:800; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
+                <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
+              </div>
+              ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center; flex-shrink:0;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
+            </div>
           </div>
-          ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
         </div>
-        ${agent.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}
       </div>`;
     }).join("");
   } else {
