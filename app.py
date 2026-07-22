@@ -327,7 +327,7 @@ def get_building(building_id):
     # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 최대 3곳씩 표시한다.
     # 정렬은 중개사와 동일하게 priority_score DESC, RANDOM() (카드별 LIMIT은 화면에서 적용).
     cur.execute("""
-        SELECT o.company_name, o.category, o.subdomain_slug, o.intro_text
+        SELECT o.company_name, o.category, o.subdomain_slug, o.intro_text, o.phone, o.website_url
         FROM operator_buildings ob
         JOIN operators o ON o.id = ob.operator_id
         WHERE ob.master_building_id = %s

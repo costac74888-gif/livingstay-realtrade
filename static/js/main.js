@@ -1699,7 +1699,7 @@ async function loadBuildingHeader(id){
   });
 
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
-  renderBuildingOperators(b.operators, id, bName);
+  renderBuildingOperators(b.operators);
 
   // 금융 카드 — 이 건물에 연결된(loan_consultant_buildings) 승인 대출상담사가 있으면 상담사 카드로 교체,
   // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
@@ -1791,30 +1791,34 @@ async function loadBuildingStores(buildingId){
 }
 
 // 위탁운영/운영지원업체(하우스키핑) 카드 — 이 건물의 담당 운영지원업체(operator_buildings 등록 + approved)가
-// 있으면 유치(모집) 문구 대신 업체명 + "프로필 보기 →" 링크를 보여준다. 없으면 기본 HTML 유지.
+// 있으면 유치(모집) 문구 대신 업체 정보 카드를 보여준다. 없으면 기본 HTML 유지.
 //   위탁운영 카드 ← category '위탁운영'
 //   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
-function renderBuildingOperators(operators, buildingId, buildingName){
+// 프로필 이동 없이 카드 안에서 정보 완결: 1행 상호 / 2행 업종 / 3행 전화 / 4행 홈페이지(있을 때만)
+function renderBuildingOperators(operators){
   const ops = Array.isArray(operators) ? operators : [];
   // 카드별 최대 3곳 — 서버가 priority_score DESC, RANDOM() 순으로 내려주므로 앞에서 3개만 자른다
   const pick = (cats) => ops.filter(o => cats.includes(o.category)).slice(0, 3);
-  // 프로필 페이지 "홈으로"가 이 건물로 돌아오도록 건물 컨텍스트 파라미터 부착
-  const ctx = `?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
   const paint = (boxId, picked) => {
     if (!picked.length) return; // 담당 업체 없음 → 기존 유치 카드 그대로
     const box = document.getElementById(boxId);
     if (!box) return;
-    box.innerHTML = picked.map((op) => `
+    box.innerHTML = picked.map((op) => {
+      // 홈페이지 링크는 http/https만 허용 (링크 인젝션 차단)
+      const siteUrl = /^https?:\/\//i.test(String(op.website_url || "")) ? op.website_url : null;
+      return `
       <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee);">
-        <div style="display:flex; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:flex-start; gap:12px;">
           <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">🏨</div>
           <div style="flex:1; min-width:0;">
             <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>
-            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(op.intro_text || `${op.category || ""} 담당 업체`)}</div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(op.category || "-")}</div>
+            ${op.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(op.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(op.phone) : op.phone)}</a></div>` : ""}
+            ${siteUrl ? `<div style="margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><a href="${escapeHtml(siteUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">🔗 홈페이지 바로가기</a></div>` : ""}
           </div>
         </div>
-        ${op.subdomain_slug ? `<div style="margin-top:6px; text-align:right;"><a href="/operator/${encodeURIComponent(op.subdomain_slug)}${ctx}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}
-      </div>`).join("");
+      </div>`;
+    }).join("");
   };
   paint("bOperatorBox", pick(["위탁운영"]));
   paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]));
@@ -1840,43 +1844,23 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
     return;
   }
   box.innerHTML = items.map((c) => {
-    const products = String(c.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
-    const tags = products.length
-      ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">${products.map(p =>
-          `<span style="font-size:11px; padding:2px 8px; border-radius:10px; background:${p === "생활숙박시설 담보대출" ? "var(--brass-tint)" : "#F1F3F6"}; color:${p === "생활숙박시설 담보대출" ? "var(--brass-dark)" : "var(--ink-soft)"}; font-weight:600;">${escapeHtml(p)}</span>`).join("")}</div>`
-      : "";
     const avatar = c.logo_src
       ? `<img src="${escapeHtml(c.logo_src)}" alt="로고" style="width:40px; height:40px; border-radius:50%; object-fit:cover; background:#fff; border:1px solid var(--line, #eee);" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>💰</div>'" />`
       : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>`;
-    // 3번째 줄: 등록번호 배지가 있으면 배지만, 없으면 intro_text 한 줄(말줄임) — 둘 중 하나만
-    const line3 = c.license_number
-      ? `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:#1E5FA8; background:#EAF2FB; padding:3px 9px; border-radius:10px;">✓ 금융감독원 등록 대출모집인 (등록번호: ${escapeHtml(c.license_number)})</span></div>`
-      : (c.intro_text ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.intro_text)}</div>` : "");
-    // 4번째 줄: 상품 태그 + 전화/카카오 버튼을 같은 줄에 배치해 줄 수 절약
+    // 프로필 이동 없이 4줄 완결: 1행 상호 / 2행 (상담사명) 대출상담사 / 3행 전화 / 4행 카카오(있을 때만)
     // 카카오 링크는 http/https만 허용 (javascript: 등 링크 인젝션 차단)
     const kakaoUrl = /^https?:\/\//i.test(String(c.kakao_chat_url || "")) ? c.kakao_chat_url : null;
-    const btns = [
-      c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center; flex-shrink:0;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a>` : "",
-      kakaoUrl ? `<a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:5px 10px; border-radius:8px; text-decoration:none; flex-shrink:0;">💬 카카오톡</a>` : "",
-    ].filter(Boolean).join("");
-    // 태그 영역은 한 줄 고정(nowrap + overflow hidden) — 카드 전체 4줄 상한 보장
-    const line4 = (tags || btns)
-      ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px;">
-           <div style="display:flex; flex-wrap:nowrap; gap:4px; min-width:0; overflow:hidden;">${tags}</div>
-           <div style="display:flex; gap:6px; flex-shrink:0;">${btns}</div>
-         </div>`
-      : "";
     return `
     <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
-      <div style="display:flex; align-items:center; gap:12px;">
+      <div style="display:flex; align-items:flex-start; gap:12px;">
         ${avatar}
         <div style="flex:1; min-width:0;">
           <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>
           <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사</div>
+          ${c.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(c.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a></div>` : ""}
+          ${kakaoUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:5px 10px; border-radius:8px; text-decoration:none;">💬 카카오톡 상담하기</a></div>` : ""}
         </div>
       </div>
-      ${line3}
-      ${line4}
     </div>`;
   }).join("") + `
     <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
@@ -1905,13 +1889,10 @@ function renderBuildingAgents(agents, buildingId, buildingName){
         <div style="display:flex; align-items:flex-start; gap:12px;">
           ${avatar}
           <div style="flex:1; min-width:0;">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-              <div style="font-size:14px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(agent.office_name || "-")}</div>
-              ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center; flex-shrink:0;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
-            </div>
-            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(agent.owner_name || "-")}) 공인중개사</div>
+            <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
             ${badges}
-            ${agent.intro_title ? `<div style="font-size:12px; color:var(--brass-dark); font-weight:600; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(agent.intro_title)}</div>` : ""}
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">(${escapeHtml(agent.owner_name || "-")}) 공인중개사</div>
+            ${agent.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a></div>` : ""}
           </div>
         </div>
       </div>`;
