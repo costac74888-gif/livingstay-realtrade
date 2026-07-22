@@ -51,11 +51,9 @@ NUM_ROWS = 100
 # ⚠️ 아래 4개 값(오른쪽)이 추정값입니다 — --probe로 실제 원본 JSON을 확인한 뒤
 #    실제 키 이름으로 반드시 수정하세요. 왼쪽(우리 쪽 이름)은 그대로 둬도 됩니다.
 FIELD_MAP = {
-    "허가일": "pmsDay",
-    "착공예정일": "stcnsPsDay",
-    "실제착공일": "stcnsDay",
-    "취소구분": "psCancelGbCdNm",
-    "허가취소일": "psCancelDay",
+    "허가일": "archPmsDay",
+    "착공예정일": "stcnsSchedDay",
+    "실제착공일": "realStcnsDay",
 }
 
 
@@ -171,7 +169,7 @@ def run(args, status_key=None, run_id=None):
 
     processed = 0
     found_run = 0
-    counts = {"허가": 0, "착공": 0, "취소_제외": 0, "미분류": 0}
+    counts = {"허가": 0, "착공": 0, "미분류": 0}
 
     while prog["idx"] < len(dongs):
         if args.limit and processed >= args.limit:
@@ -207,11 +205,6 @@ def run(args, status_key=None, run_id=None):
             for it in items:
                 purps_text = f"{it.get('mainPurpsCdNm') or ''} {it.get('etcPurps') or ''}".strip()
                 if "숙박" not in purps_text and "생활숙박" not in purps_text:
-                    continue
-
-                cancel_gb = (it.get(FIELD_MAP["취소구분"]) or "").strip()
-                if cancel_gb and "취소" in cancel_gb:
-                    counts["취소_제외"] += 1
                     continue
 
                 hoCnt = it.get("hoCnt") or it.get("hhldCnt")
