@@ -46,7 +46,7 @@ API_URL = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo"
 KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 기존 계정 공용 인증키 재사용 (sync_brhub.py와 동일)
 CODES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bjdong_codes.json")
 PROGRESS_KEY = "permits_progress"
-NUM_ROWS = 100
+NUM_ROWS = 10
 
 # ⚠️ 아래 4개 값(오른쪽)이 추정값입니다 — --probe로 실제 원본 JSON을 확인한 뒤
 #    실제 키 이름으로 반드시 수정하세요. 왼쪽(우리 쪽 이름)은 그대로 둬도 됩니다.
