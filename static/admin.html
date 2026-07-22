@@ -1856,20 +1856,25 @@
           const bg = (bld && tint) ? " style=\"background:#faf6ee\"" : "";
           return `
           <tr${bg}>
-            <td style="font-weight:600">${r.matched_building_name ? dgEscape(r.matched_building_name) : `<span style="color:#aab;">-</span>`}</td>
+            <td style="font-weight:600"><span class="lodging-clamp2">${r.matched_building_name ? dgEscape(r.matched_building_name) : `<span style="color:#aab;">-</span>`}</span></td>
             <td style="text-align:right">${r.building_total_units != null ? num(r.building_total_units) + "실" : `<span style="color:#aab;">-</span>`}</td>
-            <td>${dgEscape(r.biz_name)}</td>
+            <td><span class="lodging-clamp2">${dgEscape(r.biz_name)}</span></td>
             <td style="text-align:right">${r.room_count ? num(r.room_count) + "실" : `<span style="color:#aab;">-</span>`}</td>
-            <td>${brokerCell(r.phone)}</td>
-            <td style="min-width:260px">${brokerCell(r.road_address || r.jibun_address)}</td>
+            <td style="white-space:nowrap">${brokerCell(r.phone)}</td>
+            <td style="min-width:220px; max-width:280px">${brokerCell(r.road_address || r.jibun_address)}</td>
             <td style="white-space:nowrap">${brokerCell(r.permit_date)}</td>
             <td><button type="button" class="admin-btn lodging-copy-btn" data-name="${dgEscape(r.biz_name)}">링크 복사</button></td>
           </tr>`;
         }).join("");
         box.innerHTML = head + `
-          <div style="overflow-x:auto">
-          <table class="dg-table" style="width:100%; min-width:1080px">
-            <thead><tr><th>건물명</th><th>총호실수</th><th>사업장명</th><th>영업신고호실수</th><th>전화번호</th><th>주소</th><th>인허가일</th><th>제안 링크</th></tr></thead>
+          <div class="lodging-cand-scroll">
+          <table class="dg-table lodging-cand-table" style="width:100%; min-width:1400px">
+            <thead><tr>
+              <th style="width:190px">건물명</th><th style="width:80px">총호실수</th>
+              <th style="width:190px">사업장명</th><th style="width:100px">영업신고호실수</th>
+              <th style="width:120px">전화번호</th><th>주소</th>
+              <th style="width:95px">인허가일</th><th style="width:95px">제안 링크</th>
+            </tr></thead>
             <tbody>${rows}</tbody>
           </table></div>
           <p class="legal-admin-hint" style="margin-top:8px">※ 이 목록은 후보 '생성'용입니다 — 자동 발송되지 않으며, 연락은 검토 후 직접 진행해 주세요.</p>`;
@@ -1893,7 +1898,7 @@
     function showLodgings() {
       destroyStatsCharts();
       mount.innerHTML = `
-        <div class="legal-admin">
+        <div class="legal-admin" style="max-width:none">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">미등록 위탁운영 후보</h2>
           </div>

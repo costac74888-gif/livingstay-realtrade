@@ -842,6 +842,14 @@
 .geo-stat-row.geo-stat-last{ margin-top:6px; font-size:12.5px; color:var(--ink-soft); }
 .legal-admin-hint code{ background:#EFEBE3; padding:1px 5px; border-radius:4px; font-size:12.5px; }
 
+/* 관리자 · 미등록 위탁운영 후보 테이블 */
+.lodging-cand-scroll{ overflow:auto; max-height:calc(100vh - 260px); background:var(--card);
+  border:1px solid var(--line); border-radius:12px; }
+.lodging-cand-scroll .dg-table thead th{ position:sticky; top:0; z-index:2; }
+.lodging-clamp2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; word-break:break-all; }
+.lodging-cand-table td{ vertical-align:top; }
+
 /* ---- 신청서 서류 드래그앤드롭 (doc_dropzone.js) ---- */
 .doc-dropzone {
   display: flex;
