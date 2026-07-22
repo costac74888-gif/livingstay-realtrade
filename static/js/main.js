@@ -1701,8 +1701,9 @@ async function loadBuildingHeader(id){
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
   renderBuildingOperators(b.operators);
 
-  // 금융 카드 — 승인된 대출상담사(loan_consultants)가 있으면 상담사 카드로 교체
-  loadBuildingLoanConsultants();
+  // 금융 카드 — 이 건물에 연결된(loan_consultant_buildings) 승인 대출상담사가 있으면 상담사 카드로 교체,
+  // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
+  renderBuildingLoanConsultants(b.loan_consultants, id, bName);
 
   // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
   // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.
@@ -1817,29 +1818,38 @@ function renderBuildingOperators(operators){
   paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]));
 }
 
-// 금융 카드 — 승인된 대출상담사(loan_consultants 테이블, 전역) 목록을 불러와
-// 있으면 "등록 대출상품 없음" 빈 상태 대신 상담사 카드(성명/소속/전화)로 교체.
-// 없거나 실패하면 기존 financeEmptyHTML(모집 박스) 유지.
-async function loadBuildingLoanConsultants(){
+// 금융/대출상담 카드 — 이 건물에 연결된 담당 대출상담사(loan_consultant_buildings 등록 + approved)
+// 목록을 카드로 그린다 (renderBuildingOperators 패턴). 없으면 "등록 대출상품 없음" 표 +
+// "이 건물에 대출상담사로 신청하기" 모집 박스 표시 (다른 파트너 카드들과 동일 흐름).
+function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
   const box = document.getElementById("bFinanceBox");
   if (!box) return;
-  let items = [];
-  try {
-    const res = await fetch("/api/loan-consultants");
-    const d = await res.json();
-    if (res.ok && d.ok && Array.isArray(d.items)) items = d.items;
-  } catch(e){ return; }
-  if (!items.length) return;
+  const items = Array.isArray(consultants) ? consultants : [];
+  if (!items.length){
+    const applyHref = `/apply/loan?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
+    box.innerHTML = `
+      <div style="overflow-x:auto; margin-bottom:12px;">
+        <table class="b-info-table">
+          <thead><tr><th>금융기관</th><th>최저이율</th><th>취급지역</th><th>바로가기</th></tr></thead>
+          <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
+        </table>
+      </div>
+      ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기" })}`;
+    return;
+  }
   box.innerHTML = items.map((c) => {
     const products = String(c.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
     const tags = products.length
       ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">${products.map(p =>
           `<span style="font-size:11px; padding:2px 8px; border-radius:10px; background:${p === "생활숙박시설 담보대출" ? "var(--brass-tint)" : "#F1F3F6"}; color:${p === "생활숙박시설 담보대출" ? "var(--brass-dark)" : "var(--ink-soft)"}; font-weight:600;">${escapeHtml(p)}</span>`).join("")}</div>`
       : "";
+    const avatar = c.logo_src
+      ? `<img src="${escapeHtml(c.logo_src)}" alt="로고" style="width:40px; height:40px; border-radius:50%; object-fit:cover; background:#fff; border:1px solid var(--line, #eee);" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>💰</div>'" />`
+      : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>`;
     return `
     <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
       <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>
+        ${avatar}
         <div style="flex:1; min-width:130px;">
           <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(c.owner_name || "-")} 대출상담사</div>
           <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(c.office_name || "-")}</div>

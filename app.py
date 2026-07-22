@@ -337,6 +337,27 @@ def get_building(building_id):
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
 
+    # 담당 대출상담사: loan_consultant_buildings에 이 건물이 등록된 approved 상담사 (최대 3명).
+    # 중개사와 동일하게 priority_score DESC, RANDOM() 정렬.
+    cur.execute("""
+        SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
+               lc.logo_url, lc.intro_text, lc.consultant_products,
+               lc.kakao_chat_url, lc.license_number
+        FROM loan_consultant_buildings lcb
+        JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id
+        WHERE lcb.master_building_id = %s
+          AND lc.status = 'approved'
+          AND COALESCE(lc.is_visible, TRUE)
+        ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
+        LIMIT 3
+    """, [building_id])
+    loan_consultant_rows = []
+    for r in cur.fetchall():
+        d = dict(r)
+        # 스토리지 키/원본 URL은 노출하지 않고 공개 프록시 URL만 내려준다 (agent 사진과 동일 정책)
+        d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
+        loan_consultant_rows.append(d)
+
     # 숙박업 영업신고(행안부) — 이 건물 주소(도로명+건물번호 정규화)로 매칭된 '영업/정상' 사업장.
     # 정렬: 등록 운영업체(operators approved+노출중)와 상호가 매칭되면 priority_score DESC 우선 →
     #       그 안/미등록끼리는 매번 랜덤. 신고율 = 영업/정상 객실수 합 / 총 세대수(units).
@@ -413,6 +434,7 @@ def get_building(building_id):
     # 하위호환: 단일 agent를 쓰던 기존 코드용 (첫 번째 = 최우선 노출)
     result["agent"] = agents_list[0] if agents_list else None
     result["operators"] = operator_rows
+    result["loan_consultants"] = loan_consultant_rows
     # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율(영업 객실수 합 / 총 세대수)
     result["lodgings"] = lodgings
     result["lodging_room_total"] = lodging_room_total
@@ -1672,6 +1694,9 @@ def apply_loan():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    # 건물상세(B화면)에서 진입 시 희망건물 — agent 신청과 동일 패턴 (승인 시 담당건물 자동 등록)
+    raw_bid = str(data.get("preferred_building_id") or "").strip()
+    preferred_building_id = int(raw_bid) if raw_bid.isdigit() else None
 
     missing = []
     if not office_or_company_name:
@@ -1702,14 +1727,20 @@ def apply_loan():
 
     conn = get_conn()
     cur = conn.cursor()
+    # 존재하지 않는 건물 id는 조용히 버린다 (agent 신청과 동일)
+    if preferred_building_id is not None:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [preferred_building_id])
+        if not cur.fetchone():
+            preferred_building_id = None
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
-             biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at)
-        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW())
+             biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at,
+             preferred_building_id)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s)
         RETURNING id
     """, (office_or_company_name, owner_name, license_number,
-          biz_reg_number or None, phone, email))
+          biz_reg_number or None, phone, email, preferred_building_id))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1934,6 +1965,24 @@ def partners_operator_logo(operator_id):
     resp = Response(data, mimetype=mime)
     resp.headers["Cache-Control"] = "public, max-age=3600"
     return resp
+
+
+@app.route("/api/partners/loan-consultant-logo/<int:lc_id>")
+def partners_loan_consultant_logo(lc_id):
+    """승인 대출상담사 로고 공개 프록시 — 운영업체 로고 프록시와 동일 패턴.
+
+    대시보드에서 외부 URL로 등록한 로고는 그대로 리다이렉트, 그 외(스토리지 키 미지원)는 404.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT logo_url FROM loan_consultants WHERE id=%s AND status='approved'", [lc_id])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    key = (row or {}).get("logo_url")
+    if key and (key.startswith("http://") or key.startswith("https://")):
+        return redirect(key)
+    abort(404)
 
 
 @app.route("/api/partners/agent-photo/<int:agent_id>")
@@ -8115,6 +8164,21 @@ def admin_applications_approve(app_id):
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_loan_consultant_id=%s WHERE id=%s",
                 [created_id, app_id],
             )
+            # 희망건물(preferred_building_id)이 있으면 담당건물 자동 등록 — agent 승인과 동일 패턴.
+            # 실패해도 승인 자체는 유지 (자동 등록은 부가 기능)
+            pref_bid = ap.get("preferred_building_id")
+            if pref_bid:
+                cur.execute("SAVEPOINT sp_loan_assign")
+                try:
+                    cur.execute("""
+                        INSERT INTO loan_consultant_buildings (loan_consultant_id, master_building_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT ON CONSTRAINT loan_consultant_buildings_unique DO NOTHING
+                    """, [created_id, pref_bid])
+                    cur.execute("RELEASE SAVEPOINT sp_loan_assign")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_loan_assign")
+                    app.logger.exception("승인 시 대출상담사 담당건물 자동 등록 실패 (application=%s, building=%s)", app_id, pref_bid)
         else:
             cur.close()
             conn.close()
