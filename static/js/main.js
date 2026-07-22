@@ -432,7 +432,7 @@ document.getElementById("btnCloseCorrection").addEventListener("click", () => {
 });
 
 // ---------- 카카오맵 ----------
-const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922", "미분류": "#D9A441" };
 const LODGING_LABELS = { "생활": "생활숙박시설", "호텔": "분양형호텔", "콘도": "콘도" };
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
