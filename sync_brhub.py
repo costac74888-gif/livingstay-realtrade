@@ -34,8 +34,9 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
-from datetime import date
+from datetime import date, datetime
 
 import requests
 
@@ -43,6 +44,8 @@ from db import get_conn
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from address_utils import normalize_umd_nm
 from building_registry import _find_categories, _combine_labels
+# 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 완전히 동일한 로직을 재사용
+from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
 API_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
 KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"
@@ -121,19 +124,10 @@ def _load_existing_keys(cur):
     return triple, roads, jibuns
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=0, help="이번 실행에서 처리할 법정동 수 (0=일일캡까지)")
-    ap.add_argument("--daily-cap", type=int, default=8000)
-    ap.add_argument("--sleep", type=float, default=0.2)
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--reset", action="store_true", help="체크포인트 초기화 후 처음부터")
-    ap.add_argument("--start-idx", type=int, default=-1, help="(테스트용) 이번 실행만 이 인덱스부터")
-    args = ap.parse_args()
-
+def run(args, status_key=None, run_id=None):
     key = os.environ.get(KEY_ENV)
     if not key:
-        print(f"환경변수 {KEY_ENV} 없음"); sys.exit(1)
+        raise RuntimeError(f"환경변수 {KEY_ENV} 가 설정되어 있지 않습니다.")
 
     sgg_map, dongs = _load_codes()
     conn = get_conn()
@@ -164,6 +158,10 @@ def main():
         if prog["calls_today"] >= args.daily_cap:
             print(f"일일캡({args.daily_cap}) 도달 — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
             break
+        # run_id 펜싱: 다른 실행이 상태를 가져갔으면 즉시 중단 (split-brain 방지)
+        if status_key and run_id and not _still_owner(cur, status_key, run_id):
+            print("[brhub] 다른 실행이 상태를 가져갔습니다 — 이 실행을 중단합니다.")
+            raise RuntimeError("동기화 소유권 상실(다른 실행이 시작됨)")
 
         code, dong_name = dongs[prog["idx"]]
         sgg_cd, bjd_cd = code[:5], code[5:]
@@ -268,8 +266,72 @@ def main():
     print(f"\n[종료] 법정동 {prog['idx']}/{len(dongs)} 처리, 오늘 호출 {prog['calls_today']}, "
           f"이번 실행 발견 {found_run}건 (누적 {prog.get('found_total', 0)}건)")
     print("  분류:", counts)
+    completed = prog["idx"] >= len(dongs)
+    calls_today = prog["calls_today"]
     cur.close()
     conn.close()
+    return completed, processed, found_run, calls_today
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--limit", type=int, default=0, help="이번 실행에서 처리할 법정동 수 (0=일일캡까지)")
+    ap.add_argument("--daily-cap", type=int, default=8000)
+    ap.add_argument("--sleep", type=float, default=0.2)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--reset", action="store_true", help="체크포인트 초기화 후 처음부터")
+    ap.add_argument("--start-idx", type=int, default=-1, help="(테스트용) 이번 실행만 이 인덱스부터")
+    ap.add_argument("--status-key", default=None, help="관리자 버튼 실행용 app_meta 상태 키")
+    args = ap.parse_args()
+
+    run_id = None
+    stop_beat = threading.Event()
+    if args.status_key:
+        status = _read_status(args.status_key)
+        if not status or status.get("state") != "running":
+            print("[brhub] running 상태가 아니므로 종료합니다.")
+            return
+        run_id = status.get("run_id") or ""
+
+        def _beat():
+            while not stop_beat.wait(HEARTBEAT_SEC):
+                try:
+                    _touch(args.status_key, run_id)
+                except Exception:
+                    pass
+        threading.Thread(target=_beat, daemon=True).start()
+
+    error = None
+    completed, processed, found_run, calls_today = False, 0, 0, None
+    try:
+        completed, processed, found_run, calls_today = run(
+            args, status_key=args.status_key, run_id=run_id)
+    except Exception as e:
+        key = os.environ.get(KEY_ENV, "")
+        error = (str(e).replace(key, "***") if key else str(e))[:500]
+        print(f"[brhub] 실패: {error}")
+
+    if args.status_key and run_id is not None:
+        stop_beat.set()
+        status = _read_status(args.status_key) or {}
+        status.update({
+            "state": "failed" if error else "done",
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "processed": processed,
+            "found": found_run,
+            "completed": (None if error else completed),
+            "calls_today": calls_today,
+            "error": error,
+        })
+        for attempt in range(3):
+            try:
+                _write_status(args.status_key, status, run_id)
+                break
+            except Exception as e:
+                print(f"[brhub] 상태 저장 실패({attempt + 1}/3): {e}")
+                time.sleep(5)
+    if error and not args.status_key:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
