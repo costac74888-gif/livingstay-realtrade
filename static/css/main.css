@@ -841,3 +841,28 @@
 .geo-stat-row{ font-size:14px; color:var(--ink); line-height:1.9; }
 .geo-stat-row.geo-stat-last{ margin-top:6px; font-size:12.5px; color:var(--ink-soft); }
 .legal-admin-hint code{ background:#EFEBE3; padding:1px 5px; border-radius:4px; font-size:12.5px; }
+
+/* ---- 신청서 서류 드래그앤드롭 (doc_dropzone.js) ---- */
+.doc-dropzone {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 14px;
+  border: 1.5px dashed var(--line);
+  border-radius: 10px;
+  background: #fafaf8;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.doc-dropzone:hover { border-color: var(--brass); background: #fcf9f3; }
+.doc-dropzone-over { border-color: var(--brass); background: #f7f0e3; }
+.doc-dropzone-done { border-color: #1E7C43; border-style: solid; background: #f2faf5; }
+.doc-dropzone-done .doc-dropzone-text { color: #1E7C43; font-weight: 700; }
+.doc-dropzone-icon { font-size: 17px; }
+.doc-dropzone-text { font-size: 12.5px; color: var(--ink-soft); }
+.doc-input-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  opacity: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}

@@ -2293,15 +2293,22 @@
         const badge = r.member_type === "pending"
           ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영지원업체" : (r.applicant_type === "loan_consultant" ? "·대출상담사" : ""))}</span>`
           : dgEscape(typeLabel);
-        const st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
+        let st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
         const isPartner = MEMBER_PARTNER_TYPES.includes(r.member_type);
+        // 파트너가 본인 정보수정(등록번호류)으로 pending 전환된 경우 — 신규 신청과 구분 배지
+        const isReReview = isPartner && r.status === "pending";
+        if (isReReview) {
+          st = (r.admin_memo || "").includes("[본인수정]") ? ["정보변경 재검토", "wait"] : ["승인대기", "wait"];
+        }
         const docsBtn = (isPartner || r.member_type === "pending")
           ? `<button class="dg-icon-btn" onclick="memberDocs('${r.member_type}', ${r.id})">서류</button>`
           : "";
         const actions = r.member_type === "pending"
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
-          : (docsBtn || `<span style="color:var(--ink-soft);">—</span>`);
+          : (isReReview
+            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn}`
+            : (docsBtn || `<span style="color:var(--ink-soft);">—</span>`));
         // 광고 컬럼 — 파트너(중개사/운영지원업체/대출상담사)만. 클릭 시 이력/입력 팝업.
         let adCell = '<span style="color:var(--ink-soft);">-</span>';
         if (isPartner) {
@@ -2627,6 +2634,19 @@
           return;
         }
         window.alert(data.message || "승인에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      finally { btn.disabled = false; }
+    };
+    // 파트너 본인수정(등록번호류)으로 pending 전환된 회원의 인라인 재승인 — 계정 유지, SMS 없음
+    window.memberReapprove = async function (memberType, memberId, btn) {
+      if (!window.confirm("변경된 등록정보를 확인하셨나요? 재승인하면 다시 정상 노출됩니다.")) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/re-approve`, { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) { loadMembers(); return; }
+        window.alert(data.message || "재승인에 실패했습니다.");
       } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
       finally { btn.disabled = false; }
     };

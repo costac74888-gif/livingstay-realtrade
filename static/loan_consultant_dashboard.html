@@ -59,6 +59,10 @@
   <div class="admin-modal">
     <div class="admin-modal-head"><h3>프로필 수정</h3><button class="admin-modal-close" data-close="mProfile">×</button></div>
     <div class="admin-modal-body">
+      <div class="field"><label>소속(회사/지점)명</label><input type="text" id="fOffice" placeholder="예) OO금융 서울지점" /></div>
+      <div class="field"><label>이름</label><input type="text" id="fOwner" placeholder="예) 홍길동" /></div>
+      <div class="field"><label>이메일 (로그인 ID)</label><input type="text" id="fEmail" placeholder="예) lc@example.com" /></div>
+      <div class="field"><label>로고 URL (선택, http(s)://…)</label><input type="text" id="fLogo" placeholder="예) https://example.com/logo.png" /></div>
       <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
       <div class="field">
         <label>상담 가능 상품 (해당 항목 모두 선택)</label>
@@ -75,6 +79,11 @@
       </div>
       <div class="field"><label>카카오톡 상담 링크 (선택)</label><input type="text" id="fKakao" placeholder="예) https://open.kakao.com/o/…" /></div>
       <div class="field"><label>한줄소개 (선택, 최대 100자)</label><input type="text" id="fIntro" maxlength="100" placeholder="예) 생활숙박시설 담보대출 전문 상담사입니다." /></div>
+      <div style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
+        <div style="font-size:12.5px; color:var(--brick); margin-bottom:10px;">⚠ 아래 등록번호를 변경하면 재검토(승인 대기) 상태로 전환되며, 재승인 전까지 노출이 중단됩니다.</div>
+        <div class="field"><label>대출상담사 등록번호</label><input type="text" id="fLicense" placeholder="숫자만 입력" /></div>
+        <div class="field"><label>사업자등록번호 (선택)</label><input type="text" id="fBizNo" placeholder="예) 123-45-67890" /></div>
+      </div>
     </div>
     <div class="admin-modal-msg" id="msgProfile"></div>
     <div class="admin-modal-foot">
@@ -154,6 +163,12 @@ document.getElementById("btnToggleVisible").addEventListener("click", async () =
 
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {
+  document.getElementById("fOffice").value = ME.office_name || "";
+  document.getElementById("fOwner").value = ME.owner_name || "";
+  document.getElementById("fEmail").value = ME.email || "";
+  document.getElementById("fLogo").value = ME.logo_url || "";
+  document.getElementById("fLicense").value = ME.license_number || "";
+  document.getElementById("fBizNo").value = formatBizRegNumber(ME.biz_reg_number || "");
   document.getElementById("fPhone").value = formatPhone(ME.phone || "");
   const selected = (ME.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
   document.querySelectorAll("#fProducts input[type=checkbox]").forEach(cb => { cb.checked = selected.includes(cb.value); });
@@ -169,6 +184,12 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
     return;
   }
   const body = {
+    office_name: document.getElementById("fOffice").value,
+    owner_name: document.getElementById("fOwner").value,
+    email: document.getElementById("fEmail").value,
+    logo_url: document.getElementById("fLogo").value,
+    license_number: document.getElementById("fLicense").value,
+    biz_reg_number: document.getElementById("fBizNo").value,
     phone: document.getElementById("fPhone").value,
     consultant_products: Array.from(document.querySelectorAll("#fProducts input[type=checkbox]:checked")).map(cb => cb.value),
     kakao_chat_url: kakao,
@@ -177,6 +198,9 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
   const { ok, data } = await api("/api/loan-consultant/me", { method: "PUT", body: JSON.stringify(body) });
   if (!ok){ document.getElementById("msgProfile").textContent = data.message || "저장에 실패했습니다."; return; }
   closeModal("mProfile");
+  if (data.reapproval_required){
+    alert("등록번호가 변경되어 재검토(승인 대기) 상태로 전환되었습니다.\n관리자 재승인 후 다시 정상 노출됩니다.");
+  }
   await load();
 });
 

@@ -63,9 +63,17 @@
   <div class="admin-modal">
     <div class="admin-modal-head"><h3>프로필 수정</h3><button class="admin-modal-close" data-close="mProfile">×</button></div>
     <div class="admin-modal-body">
+      <div class="field"><label>업체명</label><input type="text" id="fCompany" placeholder="예) 홈앤스테이운영" /></div>
+      <div class="field"><label>대표자명</label><input type="text" id="fOwner" placeholder="예) 홍길동" /></div>
+      <div class="field"><label>이메일</label><input type="text" id="fEmail" placeholder="예) operator@example.com" /></div>
       <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
       <div class="field"><label>사진 URL (http(s)://…)</label><input type="text" id="fPhoto" placeholder="예) https://example.com/photo.jpg" /></div>
+      <div class="field"><label>로고 URL (http(s)://…)</label><input type="text" id="fLogo" placeholder="예) https://example.com/logo.png" /></div>
       <div class="field"><label>소개글</label><textarea id="fIntro" rows="5" style="width:100%; font:inherit; font-size:13px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; resize:vertical;"></textarea></div>
+      <div style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
+        <div style="font-size:12.5px; color:var(--brick); margin-bottom:10px;">⚠ 아래 사업자등록번호를 변경하면 재검토(승인 대기) 상태로 전환되며, 재승인 전까지 노출이 중단됩니다.</div>
+        <div class="field"><label>사업자등록번호</label><input type="text" id="fBizNo" placeholder="예) 123-45-67890" /></div>
+      </div>
     </div>
     <div class="admin-modal-msg" id="msgProfile"></div>
     <div class="admin-modal-foot">
@@ -203,21 +211,38 @@ document.getElementById("btnToggleVisible").addEventListener("click", async () =
 
 // ---- 프로필 수정 ----
 document.getElementById("btnEditProfile").addEventListener("click", () => {
+  document.getElementById("fCompany").value = ME.company_name || "";
+  document.getElementById("fOwner").value = ME.owner_name || "";
+  document.getElementById("fEmail").value = ME.email || "";
   document.getElementById("fPhone").value = formatPhone(ME.phone || "");
   document.getElementById("fPhoto").value = ME.photo_url || "";
+  const lg = ME.logo_url || "";
+  document.getElementById("fLogo").value = /^https?:\/\//.test(lg) ? lg : "";
   document.getElementById("fIntro").value = ME.intro_text || "";
+  document.getElementById("fBizNo").value = formatBizRegNumber(ME.biz_reg_number || "");
   document.getElementById("msgProfile").textContent = "";
   openModal("mProfile");
 });
 document.getElementById("btnSaveProfile").addEventListener("click", async () => {
   const body = {
+    company_name: document.getElementById("fCompany").value,
+    owner_name: document.getElementById("fOwner").value,
+    email: document.getElementById("fEmail").value,
     phone: document.getElementById("fPhone").value,
     photo_url: document.getElementById("fPhoto").value,
     intro_text: document.getElementById("fIntro").value,
+    biz_reg_number: document.getElementById("fBizNo").value,
   };
+  // 로고는 URL을 새로 입력한 경우에만 전송 (관리자 업로드 스토리지 로고 보존)
+  const logoVal = document.getElementById("fLogo").value.trim();
+  const prevLogo = /^https?:\/\//.test(ME.logo_url || "") ? ME.logo_url : "";
+  if (logoVal !== prevLogo) body.logo_url = logoVal;
   const { ok, data } = await api("/api/operator/me", { method: "PUT", body: JSON.stringify(body) });
   if (!ok){ document.getElementById("msgProfile").textContent = data.message || "저장에 실패했습니다."; return; }
   closeModal("mProfile");
+  if (data.reapproval_required){
+    alert("사업자등록번호가 변경되어 재검토(승인 대기) 상태로 전환되었습니다.\n관리자 재승인 후 다시 정상 노출됩니다.");
+  }
   await load();
 });
 

@@ -1914,6 +1914,9 @@ def partners_operator_logo(operator_id):
     cur.close()
     conn.close()
     key = (row or {}).get("logo_url")
+    if key and (key.startswith("http://") or key.startswith("https://")):
+        # 대시보드에서 외부 URL로 직접 등록한 로고 — 스토리지 키가 아니므로 그대로 리다이렉트
+        return redirect(key)
     if not key or not storage_util.is_valid_doc_ref(key, "operator", {"logo"}):
         abort(404)
     try:
@@ -3321,6 +3324,7 @@ def agent_me():
     try:
         cur.execute("""
             SELECT office_name, owner_name, phone, photo_url, intro_text, subdomain_slug,
+                   email, reg_number, biz_reg_number, status,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM agents WHERE id = %s
         """, [agent_id])
@@ -3347,14 +3351,54 @@ def agent_me():
     return jsonify(out)
 
 
+# 정부 인허가 기반 등록번호 필드 — 본인 수정 시 재승인 대기 전환 대상 (3개 파트너 공통 규칙)
+_PARTNER_LICENSE_FIELDS = {
+    "agents": {"reg_number": "중개사무소 등록번호", "biz_reg_number": "사업자등록번호"},
+    "operators": {"biz_reg_number": "사업자등록번호"},
+    "loan_consultants": {"license_number": "대출모집인 등록번호", "biz_reg_number": "사업자등록번호"},
+}
+
+
+def _reapply_if_license_changed(cur, table, row_id, license_changes):
+    """등록번호류 필드가 실제로 달라졌으면 status='pending' 전환 + admin_memo 기록용 SET 절 반환.
+
+    license_changes: {필드명: 새 값(숫자 정규화)} — 요청에 포함된 인허가 필드만.
+    반환: (extra_sets, extra_params, 재승인 전환 여부)
+    3개 PUT 라우트(agent/operator/loan_consultant _me_update)가 공통 재사용.
+    """
+    field_labels = _PARTNER_LICENSE_FIELDS[table]
+    fields = [f for f in field_labels if f in license_changes]
+    if not fields:
+        return [], [], False
+    cur.execute(f"SELECT {', '.join(fields)} FROM {table} WHERE id = %s", [row_id])
+    old_row = cur.fetchone() or {}
+    notes = []
+    for f in fields:
+        old_v = _digits_only(old_row.get(f) or "") or (old_row.get(f) or "").strip()
+        new_v = license_changes[f] or ""
+        if old_v != new_v:
+            notes.append(f"[본인수정] {field_labels[f]} 변경 — 재검토 필요 (변경 전: {old_v or '없음'} → 변경 후: {new_v or '없음'})")
+    if not notes:
+        return [], [], False
+    memo = "\n".join(notes)
+    extra_sets = [
+        "status = 'pending'",
+        "admin_memo = CASE WHEN admin_memo IS NULL OR admin_memo = '' THEN %s "
+        "ELSE admin_memo || E'\\n' || %s END",
+    ]
+    return extra_sets, [memo, memo], True
+
+
 @app.route("/api/agent/me", methods=["PUT"])
 @require_agent
 def agent_me_update():
-    """phone / photo_url / intro_text 부분 업데이트 — 전달된 키만 수정."""
+    """부분 업데이트 — 전달된 키만 수정. 등록번호류 변경 시 재승인 대기 전환."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
-    allowed = ["phone", "photo_url", "intro_text"]
+    allowed = ["phone", "photo_url", "intro_text", "office_name", "owner_name", "email",
+               "reg_number", "biz_reg_number"]
     sets, params = [], []
+    license_changes = {}
     for k in allowed:
         if k in data:
             v = data.get(k)
@@ -3368,20 +3412,37 @@ def agent_me_update():
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            if k in ("office_name", "owner_name") and not v:
+                return jsonify({"ok": False, "message": ("중개사무소명" if k == "office_name" else "대표자명") + "은(는) 비울 수 없습니다."}), 400
+            if k == "email":
+                if not v or not _EMAIL_RE.match(v):
+                    return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
+                v = v.lower()
+            if k in ("reg_number", "biz_reg_number"):
+                v = _digits_only(v) or None
+                if not v:
+                    return jsonify({"ok": False, "message": ("중개사무소 등록번호" if k == "reg_number" else "사업자등록번호") + "는 비울 수 없습니다."}), 400
+                if k == "biz_reg_number" and len(v) != 10:
+                    return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
+                license_changes[k] = v
             sets.append(f"{k} = %s")
             params.append(v)
     if not sets:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
-    params.append(agent_id)
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute(f"UPDATE agents SET {', '.join(sets)} WHERE id = %s", params)
+        extra_sets, extra_params, reapproval = _reapply_if_license_changed(cur, "agents", agent_id, license_changes)
+        cur.execute(f"UPDATE agents SET {', '.join(sets + extra_sets)} WHERE id = %s",
+                    params + extra_params + [agent_id])
         conn.commit()
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 다른 계정에서 사용 중인 이메일 또는 등록번호입니다."}), 400
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "reapproval_required": reapproval})
 
 
 @app.route("/api/agent/visibility", methods=["PUT"])
@@ -3918,7 +3979,8 @@ def operator_me():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT company_name, owner_name, category, phone, photo_url, intro_text, subdomain_slug,
+            SELECT company_name, owner_name, category, phone, photo_url, logo_url, intro_text, subdomain_slug,
+                   email, biz_reg_number, status,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM operators WHERE id = %s
         """, [operator_id])
@@ -3944,11 +4006,12 @@ def operator_me():
 @app.route("/api/operator/me", methods=["PUT"])
 @require_operator
 def operator_me_update():
-    """phone / photo_url / intro_text 부분 업데이트 — 전달된 키만 수정 (agent와 동일 패턴)."""
+    """부분 업데이트 — 전달된 키만 수정 (agent와 동일 패턴). 사업자등록번호 변경 시 재승인 대기 전환."""
     operator_id = session["operator_id"]
     data = request.get_json(force=True, silent=True) or {}
-    allowed = ["phone", "photo_url", "intro_text"]
+    allowed = ["phone", "photo_url", "logo_url", "intro_text", "company_name", "owner_name", "email", "biz_reg_number"]
     sets, params = [], []
+    license_changes = {}
     for k in allowed:
         if k in data:
             v = data.get(k)
@@ -3960,22 +4023,39 @@ def operator_me_update():
                 v = _digits_only(v) or None
                 if v and not _validate_phone_digits(v):
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
-            if k == "photo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
-                return jsonify({"ok": False, "message": "사진 URL은 http(s)://로 시작해야 합니다."}), 400
+            if k in ("photo_url", "logo_url") and v and not (v.startswith("http://") or v.startswith("https://")):
+                return jsonify({"ok": False, "message": ("사진" if k == "photo_url" else "로고") + " URL은 http(s)://로 시작해야 합니다."}), 400
+            if k in ("company_name", "owner_name") and not v:
+                return jsonify({"ok": False, "message": ("업체명" if k == "company_name" else "대표자명") + "은(는) 비울 수 없습니다."}), 400
+            if k == "email":
+                if not v or not _EMAIL_RE.match(v):
+                    return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
+                v = v.lower()
+            if k == "biz_reg_number":
+                v = _digits_only(v) or None
+                if not v:
+                    return jsonify({"ok": False, "message": "사업자등록번호는 비울 수 없습니다."}), 400
+                if len(v) != 10:
+                    return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
+                license_changes[k] = v
             sets.append(f"{k} = %s")
             params.append(v)
     if not sets:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
-    params.append(operator_id)
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute(f"UPDATE operators SET {', '.join(sets)} WHERE id = %s", params)
+        extra_sets, extra_params, reapproval = _reapply_if_license_changed(cur, "operators", operator_id, license_changes)
+        cur.execute(f"UPDATE operators SET {', '.join(sets + extra_sets)} WHERE id = %s",
+                    params + extra_params + [operator_id])
         conn.commit()
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 다른 계정에서 사용 중인 이메일 또는 사업자등록번호입니다."}), 400
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "reapproval_required": reapproval})
 
 
 @app.route("/api/operator/visibility", methods=["PUT"])
@@ -4105,6 +4185,7 @@ def loan_consultant_me():
         cur.execute("""
             SELECT office_name, owner_name, phone, intro_text, subdomain_slug,
                    consultant_products, kakao_chat_url,
+                   email, license_number, biz_reg_number, logo_url, status,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM loan_consultants WHERE id = %s
         """, [lc_id])
@@ -4138,7 +4219,9 @@ def loan_consultant_me_update():
         ordered = [p for p in LOAN_CONSULTANT_PRODUCTS if p in v]
         sets.append("consultant_products = %s")
         params.append(",".join(ordered) or None)
-    for k in ["phone", "intro_text", "kakao_chat_url"]:
+    license_changes = {}
+    for k in ["phone", "intro_text", "kakao_chat_url", "office_name", "owner_name", "email",
+              "logo_url", "license_number", "biz_reg_number"]:
         if k in data:
             v = data.get(k)
             if v is not None and not isinstance(v, str):
@@ -4153,20 +4236,43 @@ def loan_consultant_me_update():
                 return jsonify({"ok": False, "message": "카카오톡 상담 링크는 http(s)://로 시작하는 URL이어야 합니다."}), 400
             if k == "intro_text" and v and len(v) > 100:
                 return jsonify({"ok": False, "message": "한줄소개는 100자 이내로 입력해주세요."}), 400
+            if k == "logo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
+                return jsonify({"ok": False, "message": "로고 URL은 http(s)://로 시작해야 합니다."}), 400
+            if k in ("office_name", "owner_name") and not v:
+                return jsonify({"ok": False, "message": ("소속 회사/법인명" if k == "office_name" else "상담사 성명") + "은(는) 비울 수 없습니다."}), 400
+            if k == "email":
+                if not v or not _EMAIL_RE.match(v):
+                    return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
+                v = v.lower()
+            if k == "license_number":
+                v = _digits_only(v) or None
+                if not v:
+                    return jsonify({"ok": False, "message": "대출모집인 등록번호는 비울 수 없습니다."}), 400
+                license_changes[k] = v
+            if k == "biz_reg_number":
+                # 대출상담사 사업자등록번호는 선택 항목 — 비우는 것도 허용(변경으로 간주해 재검토 대상)
+                v = _digits_only(v) or None
+                if v and len(v) != 10:
+                    return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
+                license_changes[k] = v
             sets.append(f"{k} = %s")
             params.append(v)
     if not sets:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
-    params.append(lc_id)
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute(f"UPDATE loan_consultants SET {', '.join(sets)} WHERE id = %s", params)
+        extra_sets, extra_params, reapproval = _reapply_if_license_changed(cur, "loan_consultants", lc_id, license_changes)
+        cur.execute(f"UPDATE loan_consultants SET {', '.join(sets + extra_sets)} WHERE id = %s",
+                    params + extra_params + [lc_id])
         conn.commit()
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 사용 중인 이메일 또는 등록번호입니다."}), 400
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "reapproval_required": reapproval})
 
 
 @app.route("/api/loan-consultant/visibility", methods=["PUT"])
@@ -6850,21 +6956,21 @@ _MEMBER_SELECTS = {
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo
-        FROM agents WHERE status IN ('approved', 'inactive')
+        FROM agents WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "operator": """
         SELECT id, 'operator' AS member_type, owner_name AS name, email,
                (category || ' · ' || company_name) AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo
-        FROM operators WHERE status IN ('approved', 'inactive')
+        FROM operators WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "loan_consultant": """
         SELECT id, 'loan_consultant' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo
-        FROM loan_consultants WHERE status IN ('approved', 'inactive')
+        FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "pending": """
         SELECT id, 'pending' AS member_type, owner_name AS name, email,
@@ -7312,6 +7418,38 @@ def admin_members_bulk_reject():
             ok_count += 1
         results.append(item)
     return jsonify({"ok": True, "success": ok_count, "failed": len(ids) - ok_count, "results": results})
+
+
+_PARTNER_MEMBER_TABLES = {"agent": "agents", "operator": "operators", "loan_consultant": "loan_consultants"}
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/re-approve", methods=["POST"])
+@require_admin
+def admin_member_reapprove(member_type, member_id):
+    """본인 정보수정으로 pending 전환된 파트너를 인라인 재승인 (계정·slug 유지, SMS 없음)."""
+    table = _PARTNER_MEMBER_TABLES.get(member_type)
+    if not table:
+        return jsonify({"ok": False, "message": "member_type은 agent|operator|loan_consultant 중 하나여야 합니다."}), 400
+    memo = f"[재검토 승인] {datetime.now().strftime('%Y-%m-%d')}"
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            UPDATE {table}
+               SET status = 'approved', approved_at = NOW(), approved_by = %s,
+                   admin_memo = CASE WHEN admin_memo IS NULL OR admin_memo = '' THEN %s
+                                     ELSE admin_memo || E'\\n' || %s END
+             WHERE id = %s AND status = 'pending'
+            RETURNING id
+        """, [session.get("admin_user_id"), memo, memo, member_id])
+        row = cur.fetchone()
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "재승인 대상(pending 상태)이 아닙니다."}), 404
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/members/bulk-tag", methods=["POST"])
