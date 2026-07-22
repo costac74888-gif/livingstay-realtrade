@@ -23,4 +23,5 @@
 - [emailed credentials vs test cleanup](emailed-credentials-cleanup.md) — if a test sent real temp-password email/SMS to the user, don't delete the created account; deleted account looks like a login bug.
 - [행안부 숙박업 API](mois-lodging-api.md) — lodgings/info는 numOfRows 무시하고 항상 100행/페이지; 완료 판정은 실제 응답 길이 기준, 업태 필터 없어 전 페이지 스캔 필수.
 - [header.js modal ID collisions](apply-pages-id-collision.md) — header.js injects modal IDs (agreeTerms 등) into every page; page-local widgets must namespace IDs or auth.js double-binds.
+- [건축HUB 전국 표제부 스캔](brhub-bulk-scan.md) — recap API는 누락 심각(표제부 전수만 신뢰); HUB는 2026 신 법정동코드(12*) 모름 → 폐지 29*/46* 코드로 치환 조회.
 - [Deploy slimming: prod-only requirements](deploy-prod-requirements.md) — requirements.txt drives deploy install; keep heavy dev-only libs (pandas) out and rewrite boot-path usage with stdlib; dev keeps them installed.

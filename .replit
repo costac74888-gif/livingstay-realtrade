@@ -43,6 +43,10 @@ args = "Verify Units"
 task = "workflow.run"
 args = "Fill PK"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "BRHUB Sync"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -120,6 +124,14 @@ args = "python -u backfill_title_info.py --fill-pk --sleep 0.2"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "BRHUB Sync"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "nice -n 19 python -u sync_brhub.py --sleep 0.15"
 
 [[ports]]
 localPort = 5000
