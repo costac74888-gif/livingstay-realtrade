@@ -20,3 +20,8 @@ session cookie. Any page behind `@require_admin` (session-based) redirects to
 
 **Why:** never weaken/bypass real auth just to get a screenshot. This reproduces the
 true layout with real data without touching the auth surface.
+
+## curl로 관리자 API 테스트
+- 관리자 API를 curl로 검증할 땐 로그인 대신 서명 쿠키를 직접 발급:
+  `SecureCookieSessionInterface().get_signing_serializer(app).dumps({"admin": True, "admin_user_id": 1})` → `curl -b "session=<값>"`.
+- **Why:** 로그인 rate limit·비밀번호 미상 문제를 우회하고, 재시작 없이 곧바로 인증 요청 테스트 가능.
