@@ -42,7 +42,7 @@ from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from address_utils import normalize_umd_nm
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
-API_URL = "http://apis.data.go.kr/1613000/ArchPmsService_v2/getApBasisOulnInfo"
+API_URL = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo"
 KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 기존 계정 공용 인증키 재사용 (sync_brhub.py와 동일)
 CODES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bjdong_codes.json")
 PROGRESS_KEY = "permits_progress"
