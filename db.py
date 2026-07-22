@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-21-5"
+SCHEMA_VERSION = "2026-07-22-1"
 
 
 def init_db():
@@ -640,13 +640,16 @@ def init_db():
         hygiene_type TEXT,                 -- 위생업태명 (SNTTN_BZSTAT_NM)
         phone TEXT,                        -- 전화번호 (TELNO)
         road_norm TEXT,                    -- 정규화 주소(도로명+건물번호)
+        jibun_norm TEXT,                   -- 정규화 지번주소(동/읍/면+번지) — 도로명 매칭 실패 시 2차 매칭용
         biz_name_norm TEXT,                -- 정규화 사업장명 (operators 매칭용)
         source_updated_at TEXT,            -- 데이터갱신일자 (DAT_UPDT_PNT)
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     )
     """)
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS jibun_norm TEXT")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_road_norm ON lodging_registry(road_norm)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_jibun_norm ON lodging_registry(jibun_norm)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_status ON lodging_registry(biz_status_name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_name_norm ON lodging_registry(biz_name_norm)")
 

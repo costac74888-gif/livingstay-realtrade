@@ -24,7 +24,7 @@ from datetime import datetime
 
 import requests
 
-from addr_norm import normalize_name, normalize_road_prefix
+from addr_norm import normalize_name, normalize_road_prefix, normalize_jibun_prefix
 from db import get_conn
 
 API_URL = "https://apis.data.go.kr/1741000/lodgings/info"
@@ -226,8 +226,8 @@ def _upsert(cur, it):
         INSERT INTO lodging_registry
             (biz_name, permit_number, road_address, jibun_address, permit_date,
              biz_status_name, biz_status_detail, room_count, hygiene_type, phone,
-             road_norm, biz_name_norm, source_updated_at, updated_at)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+             road_norm, jibun_norm, biz_name_norm, source_updated_at, updated_at)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
             road_address = EXCLUDED.road_address,
@@ -239,6 +239,7 @@ def _upsert(cur, it):
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
+            jibun_norm = EXCLUDED.jibun_norm,
             biz_name_norm = EXCLUDED.biz_name_norm,
             source_updated_at = EXCLUDED.source_updated_at,
             updated_at = NOW()
@@ -249,6 +250,7 @@ def _upsert(cur, it):
           room_count, hygiene,
           (it.get("TELNO") or "").strip() or None,
           normalize_road_prefix(road_address),
+          normalize_jibun_prefix(jibun_address),
           normalize_name(biz_name),
           (it.get("DAT_UPDT_PNT") or "").strip() or None))
     return True

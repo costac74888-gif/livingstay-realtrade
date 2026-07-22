@@ -96,3 +96,9 @@ Facts you can only discover by querying Postgres, not by reading code.
   실거래 없는 건물이 transactions 역매칭에 걸리지 않아 링크가 끊긴다.
   **How to apply:** 관심저장 UI에 building_id가 있으면 반드시 POST에 함께 넘기고,
   조회 fallback은 road_address 일치 또는 REPLACE(umd_nm||jibun,' ','') 비교를 쓴다.
+
+## 숙박업 매칭 2단계 (2026-07-22)
+- master_buildings 일부(특히 부산·제주·서초·중구)는 원본에 도로명이 없어 road_address에 지번주소가 그대로 들어감 → 도로명 정규화(normalize_road_prefix)가 None이라 매칭 불가.
+- 해결: lodging_registry.jibun_norm(지번 정규화 키) 2차 매칭 — 1차 road_norm 0건일 때만. 건물 쪽 키는 jibun_address 우선, NULL이면 지번형 road_address 폴백(get_building_jibun_key).
+- **Why:** 재수집 없이 매칭 키만 추가하면 전국 49개 건물이 살아남(476 중 road 335 + jibun 49 + 미매칭 92).
+- 운영 반영 절차: Publish(스키마 diff로 jibun_norm 컬럼 생성) → 실서비스 /admin 숙박업 동기화 재실행(업서트가 jibun_norm 채움). dev의 backfill은 운영에 전파되지 않음.

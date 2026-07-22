@@ -53,6 +53,71 @@ def normalize_road_prefix(addr):
     return s.lower() or None
 
 
+# 지번주소에서 '동/읍/면/리/가 + 번지'까지만 남기기 위한 패턴:
+# 예) "부산광역시 동구 초량동 1213-5 3층" → "... 초량동 1213-5"
+_JIBUN_PREFIX_RE = re.compile(
+    r"^(.*?[가-힣0-9]+(?:동|읍|면|리|가)\s*(?:산\s*)?\d+(?:-\d+)?)"
+)
+
+# road_address가 실제로는 지번 형식인지 판별용:
+# 도로명(로/길/대로+번호)이 없고 '동/읍/면/리/가 + 숫자(-숫자)?'로 끝나는 경우
+_JIBUN_LIKE_RE = re.compile(
+    r"[가-힣0-9]+(?:동|읍|면|리|가)\s*(?:산\s*)?\d+(?:-\d+)?(?:번지)?\s*$"
+)
+
+
+def normalize_jibun_prefix(addr):
+    """지번주소 → 정규화 매칭 키(jibun_norm). 실패 시 None.
+
+    1) 괄호부 제거 → '동/읍/면/리/가 + 번지' prefix 추출
+    2) 광역명 표기 통일 (도로명과 동일한 _REGION_ALIASES 재사용)
+    3) 공백/특수문자 제거, 소문자 반환
+    """
+    if not addr:
+        return None
+    s = str(addr).strip()
+    s = re.sub(r"[(\[].*?[)\]]", "", s)  # 괄호부(법정동 병기 등) 제거
+    s = re.sub(r"번지", "", s)
+    m = _JIBUN_PREFIX_RE.match(s)
+    if not m:
+        return None
+    s = m.group(1)
+    for old, new in _REGION_ALIASES:
+        if s.startswith(old):
+            s = new + s[len(old):]
+            break
+    s = re.sub(r"[^0-9가-힣A-Za-z-]", "", s)
+    return s.lower() or None
+
+
+def is_jibun_like(addr):
+    """road_address가 도로명 없이 지번 형식인지 판별."""
+    if not addr:
+        return False
+    s = str(addr).strip()
+    if _ROAD_PREFIX_RE.match(s):
+        return False
+    return bool(_JIBUN_LIKE_RE.search(re.sub(r"[(\[].*?[)\]]", "", s)))
+
+
+def get_building_jibun_key(row):
+    """건물(master_buildings) 행에서 지번 매칭 키 결정.
+
+    1순위: jibun_address → normalize_jibun_prefix
+    2순위: jibun_address 없고 road_address가 지번 형식이면 road_address 사용
+    3순위: None
+    """
+    jibun = row.get("jibun_address") if hasattr(row, "get") else row["jibun_address"]
+    if jibun:
+        key = normalize_jibun_prefix(jibun)
+        if key:
+            return key
+    road = row.get("road_address") if hasattr(row, "get") else row["road_address"]
+    if road and is_jibun_like(road):
+        return normalize_jibun_prefix(road)
+    return None
+
+
 def normalize_name(name):
     """업체명/사업장명 정규화 — operators.company_name ↔ lodging_registry.biz_name 매칭용."""
     if not name:

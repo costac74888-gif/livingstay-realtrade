@@ -273,7 +273,8 @@ def get_building(building_id):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT mb.building_name, mb.name_pending, mb.road_address, mb.lodging_type, mb.lodging_type_detail,
+        SELECT mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
+               mb.lodging_type, mb.lodging_type_detail,
                mb.sgg_cd, mb.umd_nm, mb.jibun,
                mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
                mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,
@@ -340,6 +341,7 @@ def get_building(building_id):
     lodgings = []
     lodging_room_total = 0
     try:
+        lr_rows = []
         road_norm = addr_norm.normalize_road_prefix(row["road_address"])
         if road_norm:
             cur.execute("""
@@ -349,6 +351,18 @@ def get_building(building_id):
                   AND lr.biz_status_name = '영업/정상'
             """, [road_norm])
             lr_rows = cur.fetchall()
+        if not lr_rows:
+            # 2차: 도로명 매칭 실패(도로명 없는 건물 등) 시 지번 정규화 키로 매칭
+            jibun_key = addr_norm.get_building_jibun_key(row)
+            if jibun_key:
+                cur.execute("""
+                    SELECT lr.biz_name, lr.permit_date, lr.room_count, lr.biz_name_norm
+                    FROM lodging_registry lr
+                    WHERE lr.jibun_norm = %s
+                      AND lr.biz_status_name = '영업/정상'
+                """, [jibun_key])
+                lr_rows = cur.fetchall()
+        if lr_rows:
             op_map = {}
             if lr_rows:
                 # 상호 정규화명 → 등록 운영업체(노출중, priority 최고) 매핑
