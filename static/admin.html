@@ -1029,6 +1029,7 @@
         `콘도 ${num(t.condo || 0)}`,
         `병기 ${num(t.mixed || 0)}`,
         `미분류 ${num(t.unclassified || 0)}`,
+        `복합제외 ${num(t.excluded || 0)}`,
       ];
       const rows = [];
       rows.push(`<div class="geo-stat-row"><b>수집된 건물(brhub_bulk):</b> 총 ${num(d.brhub_total)}건 (${typeParts.join(" · ")})</div>`);

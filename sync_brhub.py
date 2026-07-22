@@ -150,7 +150,7 @@ def run(args, status_key=None, run_id=None):
 
     processed = 0
     found_run = 0
-    counts = {"생활": 0, "호텔": 0, "콘도": 0, "병기": 0, "미분류": 0}
+    counts = {"생활": 0, "호텔": 0, "콘도": 0, "병기": 0, "미분류": 0, "복합제외": 0}
 
     while prog["idx"] < len(dongs):
         if args.limit and processed >= args.limit:
@@ -188,7 +188,8 @@ def run(args, status_key=None, run_id=None):
                 if (it.get("regstrGbCdNm") or "").strip() != "집합":
                     continue
                 purps_text = f"{it.get('mainPurpsCdNm') or ''} {it.get('etcPurps') or ''}".strip()
-                if "숙박" not in purps_text:
+                # '숙박' 없이 '호텔'/'콘도'만 표기된 대장(예: 주용도 '관광호텔')도 후보로 통과
+                if not any(k in purps_text for k in ("숙박", "호텔", "콘도")):
                     continue
 
                 jibun = _jibun_from_bunji(it.get("bun"), it.get("ji"))
@@ -207,16 +208,30 @@ def run(args, status_key=None, run_id=None):
                 if jn and jn in jibuns:
                     continue
 
-                cats = _find_categories(purps_text)
-                # '생활형숙박시설'(메종드리치190 등) 변형 표기 보강
-                if "생활형숙박" in purps_text or "생활숙박" in purps_text:
-                    cats = set(cats) | {"생활"}
-                if cats:
-                    label = _combine_labels(cats)
-                    counts["병기" if "·" in label else label] += 1
+                # 1차 게이트(사용자 지시 2026-07-22): 주용도(mainPurpsCdNm)가 숙박 계열이어야만
+                # 분류 파이프라인 진행. 다른 대분류(업무/판매/공동주택 등)에 숙박이 기타용도로만
+                # 낀 복합시설은 mixed_use_excluded로 태깅해 자동 분류·노출 대상에서 제외.
+                # (주용도가 비어있는 예외는 '생활숙박' 명시가 있을 때만 통과)
+                main_purps = (it.get("mainPurpsCdNm") or "").strip()
+                gate_ok = any(k in main_purps for k in ("숙박", "호텔", "콘도")) or (
+                    not main_purps and ("생활숙박" in purps_text or "생활형숙박" in purps_text))
+
+                if not gate_ok:
+                    label = "mixed_use_excluded"
+                    detail_text = ("[복합용도-자동제외] " + purps_text)[:500]
+                    counts["복합제외"] += 1
                 else:
-                    label = None  # 미분류 — 층별개요 2차 검증 대상
-                    counts["미분류"] += 1
+                    detail_text = purps_text[:500] or None
+                    cats = _find_categories(purps_text)
+                    # '생활형숙박시설'(메종드리치190 등) 변형 표기 보강
+                    if "생활형숙박" in purps_text or "생활숙박" in purps_text:
+                        cats = set(cats) | {"생활"}
+                    if cats:
+                        label = _combine_labels(cats)
+                        counts["병기" if "·" in label else label] += 1
+                    else:
+                        label = None  # 미분류 — 층별개요 2차 검증 대상
+                        counts["미분류"] += 1
 
                 bld_nm = (it.get("bldNm") or "").strip() or "-"
                 units = int(it.get("hoCnt") or 0) or None
@@ -235,7 +250,7 @@ def run(args, status_key=None, run_id=None):
                           (str(it.get("useAprDay") or "").strip() or None),
                           float(it.get("totArea") or 0) or None, float(it.get("platArea") or 0) or None,
                           int(it.get("grndFlrCnt") or 0) or None, int(it.get("ugrndFlrCnt") or 0) or None,
-                          label, purps_text[:500] or None))
+                          label, detail_text))
                 found_run += 1
                 prog["found_total"] = prog.get("found_total", 0) + 1
                 # 신규분도 중복 셋에 추가 (같은 실행 내 재발견 방지)

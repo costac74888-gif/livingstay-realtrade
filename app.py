@@ -640,7 +640,9 @@ def get_buildings_geo():
     umd_nm = request.args.get("umd_nm", "").strip()
     lodging_type = request.args.get("lodging_type", "").strip()
 
-    where = ["lat IS NOT NULL", "lng IS NOT NULL"]
+    # mixed_use_excluded: 복합시설(주용도≠숙박) 자동 제외 — 지도/사이트 노출 금지
+    where = ["lat IS NOT NULL", "lng IS NOT NULL",
+             "lodging_type IS DISTINCT FROM 'mixed_use_excluded'"]
     params = []
 
     if q:
@@ -982,8 +984,9 @@ def get_favorites():
         cur.execute("""
             SELECT id, building_name, sgg_text, umd_nm, jibun
             FROM master_buildings
-            WHERE road_address = %s
-               OR REPLACE(umd_nm || jibun, ' ', '') = REPLACE(%s, ' ', '')
+            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+              AND (road_address = %s
+               OR REPLACE(umd_nm || jibun, ' ', '') = REPLACE(%s, ' ', ''))
             ORDER BY (building_name = %s) DESC NULLS LAST, id
             LIMIT 1
         """, (addr, addr, norm_name))
@@ -4995,10 +4998,11 @@ def _admin_bld_filters():
     if sort not in ADMIN_BLD_SORT:
         sort = "id"
     order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
-    where = "1=1"
+    # 복합시설 자동 제외분은 건물마스터 목록/엑셀에도 표시하지 않는다 (DB에는 보존)
+    where = "lodging_type IS DISTINCT FROM 'mixed_use_excluded'"
     params = []
     if q:
-        where = "(building_name ILIKE %s OR road_address ILIKE %s)"
+        where += " AND (building_name ILIKE %s OR road_address ILIKE %s)"
         params = [f"%{q}%", f"%{q}%"]
     # 명칭 미확정 건물만 필터 (관리자 주기 점검용)
     if (request.args.get("name_pending") or "").strip() == "1":
@@ -5769,6 +5773,7 @@ def admin_brhub_sync_status():
                      WHEN lodging_type = '생활' THEN 'living_stay'
                      WHEN lodging_type = '호텔' THEN 'hotel'
                      WHEN lodging_type = '콘도' THEN 'condo'
+                     WHEN lodging_type = 'mixed_use_excluded' THEN 'excluded'
                      ELSE 'other'
                    END AS k, COUNT(*) AS c
             FROM master_buildings WHERE source = 'brhub_bulk' GROUP BY 1
@@ -8346,6 +8351,7 @@ def stats_registration_rate():
                COALESCE(SUM(units), 0) AS total_units,
                COALESCE(SUM(biz_units), 0) AS biz_units
         FROM master_buildings
+        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
     """)
     row = cur.fetchone()
     cur.close()
