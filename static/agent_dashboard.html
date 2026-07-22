@@ -50,7 +50,17 @@
       <div class="side-card-title" style="margin-bottom:0;">전속 단지 <span class="side-sub" id="bldCount"></span></div>
       <button id="btnAddBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
     </div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
+      전속 단지는 최대 5개까지 무료로 등록하실 수 있어요 :) 더 많은 단지를 등록하고 싶으시면
+      곧 선보일 우선노출 상품을 통해 추가 등록하실 수 있도록 준비 중이니 조금만 기다려주세요!
+    </div>
     <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
+  <!-- 매물관리 요약 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div class="side-card-title" style="margin-bottom:4px;">매물관리</div>
+    <div id="listingSummary"><div class="side-empty">불러오는 중…</div></div>
   </div>
 
   <!-- 받은 매물의뢰 -->
@@ -178,6 +188,47 @@ function countBadges(b){
   return out || `<span style="font-size:11.5px; color:var(--ink-soft);">등록 매물 없음</span>`;
 }
 
+// 매물관리 요약: 전속단지 전체 합계 + 건물별 상세 표 (agent_buildings 값 그대로 — 수정은 각 단지의 [매물현황 수정] 버튼)
+function renderListingSummary(){
+  const box = document.getElementById("listingSummary");
+  if (!box) return;
+  const blds = ME.buildings || [];
+  if (!blds.length){
+    box.innerHTML = `<div class="side-empty">전속 단지를 등록하면 매물 현황이 여기에 표시됩니다.</div>`;
+    return;
+  }
+  const n = (v) => Number(v) || 0;
+  const sum = blds.reduce((acc, b) => ({
+    sale: acc.sale + n(b.sale_count), jeonse: acc.jeonse + n(b.jeonse_count),
+    wolse: acc.wolse + n(b.wolse_count), short: acc.short + n(b.shortterm_count),
+  }), { sale: 0, jeonse: 0, wolse: 0, short: 0 });
+  const chip = (label, v) => `<span style="display:inline-block; font-size:12.5px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:5px 12px; border-radius:8px;">${label} ${v}건</span>`;
+  const rows = blds.map(b => `
+    <tr>
+      <td style="padding:8px 10px; border-bottom:1px solid #F0EBDF; font-weight:600;">${esc(b.building_name || "-")}</td>
+      <td style="padding:8px 10px; border-bottom:1px solid #F0EBDF; text-align:right;">${n(b.sale_count)}</td>
+      <td style="padding:8px 10px; border-bottom:1px solid #F0EBDF; text-align:right;">${n(b.jeonse_count)}</td>
+      <td style="padding:8px 10px; border-bottom:1px solid #F0EBDF; text-align:right;">${n(b.wolse_count)}</td>
+      <td style="padding:8px 10px; border-bottom:1px solid #F0EBDF; text-align:right;">${n(b.shortterm_count)}</td>
+    </tr>`).join("");
+  box.innerHTML = `
+    <div style="display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px;">
+      ${chip("매매", sum.sale)}${chip("전세", sum.jeonse)}${chip("월세", sum.wolse)}${chip("단기", sum.short)}
+    </div>
+    <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead><tr>
+        <th style="text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); color:var(--ink-soft); font-size:12px;">단지명</th>
+        <th style="text-align:right; padding:7px 10px; border-bottom:1px solid var(--line); color:var(--ink-soft); font-size:12px;">매매</th>
+        <th style="text-align:right; padding:7px 10px; border-bottom:1px solid var(--line); color:var(--ink-soft); font-size:12px;">전세</th>
+        <th style="text-align:right; padding:7px 10px; border-bottom:1px solid var(--line); color:var(--ink-soft); font-size:12px;">월세</th>
+        <th style="text-align:right; padding:7px 10px; border-bottom:1px solid var(--line); color:var(--ink-soft); font-size:12px;">단기</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div style="font-size:12px; color:var(--ink-soft); margin-top:7px;">건수 수정은 위 [전속 단지] 목록의 <b>매물현황 수정</b> 버튼을 이용해주세요.</div>`;
+}
+
 function renderVisibility(){
   const on = ME.is_visible !== false;
   const btn = document.getElementById("btnToggleVisible");
@@ -198,6 +249,7 @@ function render(){
 
   const list = document.getElementById("bldList");
   document.getElementById("bldCount").textContent = (ME.buildings || []).length + "개";
+  renderListingSummary();
   if (!(ME.buildings || []).length){
     list.innerHTML = `<div class="side-empty">등록된 전속 단지가 없습니다. 위의 [+ 단지 추가] 버튼으로 등록해보세요.</div>`;
     return;
