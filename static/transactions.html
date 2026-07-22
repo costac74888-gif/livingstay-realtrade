@@ -291,8 +291,8 @@
       const lbl = document.createElement("span");
       lbl.className = "label";
       lbl.textContent = "★ " + (name && name !== "null" && name !== "undefined" ? name : "(건물명 미확인)");
-      lbl.title = "이 건물명으로 검색";
-      lbl.addEventListener("click", () => filterToFav(k));
+      lbl.title = "이 건물의 상세 페이지로 이동";
+      lbl.addEventListener("click", () => goToFavBuilding(k, chip));
       chip.appendChild(lbl);
       const x = document.createElement("span");
       x.className = "x";
@@ -303,7 +303,45 @@
     });
   }
 
-  // 칩 클릭 → 그 건물명을 검색창에 채워 필터링(지도 페이지 filterToFav와 동일한 취지).
+  // 칩 클릭 → 건물 id를 찾아 건물상세(지도 포함) 페이지로 이동.
+  // favKey는 "건물명|주소"뿐이라 id가 없으므로 /api/buildings-geo?q=건물명으로 조회 후,
+  // 여러 건이면 주소 포함 비교로 고르고, 0건이면 기존 페이지 내 필터링(filterToFav)으로 폴백.
+  async function goToFavBuilding(key, chipEl){
+    const sep = key.indexOf("|");
+    const name = sep >= 0 ? key.slice(0, sep) : key;
+    const addr = sep >= 0 ? key.slice(sep + 1) : "";
+    if (!name || name === "null" || name === "undefined") { filterToFav(key); return; }
+    if (chipEl) chipEl.style.cursor = "progress";
+    let items = [];
+    try {
+      const res = await fetch("/api/buildings-geo?q=" + encodeURIComponent(name));
+      const data = await res.json();
+      items = data.items || data.buildings || (Array.isArray(data) ? data : []);
+    } catch (e) { items = []; }
+    if (chipEl) chipEl.style.cursor = "";
+    let picked = null;
+    if (items.length === 1) {
+      picked = items[0];
+    } else if (items.length > 1) {
+      // 주소 포함 비교: favKey 주소와 후보의 road_address/최근거래 address가 서로 포함 관계면 매칭
+      const norm = (s) => String(s || "").replace(/\s+/g, "");
+      const a = norm(addr);
+      if (a) {
+        picked = items.find((b) => {
+          const r = norm(b.road_address), t = norm(b.address);
+          return (r && (a.includes(r) || r.includes(a))) || (t && (a.includes(t) || t.includes(a)));
+        }) || null;
+      }
+      if (!picked) picked = items[0]; // 주소 매칭 실패 시 첫 번째 후보
+    }
+    if (picked && picked.id != null) {
+      window.location.href = "/building/" + picked.id;
+    } else {
+      filterToFav(key); // 0건 — 건물 삭제/미매칭 대비 폴백
+    }
+  }
+
+  // 폴백용: 그 건물명을 검색창에 채워 이 페이지 안에서 필터링.
   function filterToFav(key){
     const name = key.split("|")[0];
     const q = (name && name !== "null" && name !== "undefined") ? name : "";
