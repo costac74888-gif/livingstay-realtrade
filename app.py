@@ -5329,6 +5329,28 @@ def admin_buildings_update(building_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/pending-completion")
+@require_admin
+def admin_pending_completion():
+    """building_status가 완공이 아니면서 추정 완공일이 지난 건물 —
+    표제부가 아직 안 붙었는지 확인 필요한 목록."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, building_name, road_address, building_status,
+               permit_day, actual_start_day, completion_expected_date
+        FROM master_buildings
+        WHERE building_status != '완공'
+          AND completion_expected_date IS NOT NULL
+          AND completion_expected_date <= CURRENT_DATE
+        ORDER BY completion_expected_date ASC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"count": len(rows), "buildings": rows})
+
+
 @app.route("/api/admin/buildings/<int:building_id>", methods=["DELETE"])
 @require_admin
 def admin_buildings_delete(building_id):
