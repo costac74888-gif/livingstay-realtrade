@@ -5940,6 +5940,59 @@ def _approved_operator_name_norms(cur):
     return mapping
 
 
+def _building_norm_maps(cur):
+    """master_buildings의 도로명/지번 정규화 키 → (건물명, 총호실수) 매핑.
+
+    미등록 위탁운영 후보 목록에서 사업장 주소를 건물과 매칭하기 위한 것으로,
+    B화면 2차 매칭과 동일한 정규화(addr_norm)를 사용한다.
+    """
+    cur.execute("""
+        SELECT building_name, units, road_address, jibun_address
+        FROM master_buildings
+    """)
+    road_map, jibun_map = {}, {}
+    for b in cur.fetchall():
+        info = (b["building_name"], b["units"])
+        rk = addr_norm.normalize_road_prefix(b["road_address"])
+        if rk and rk not in road_map:
+            road_map[rk] = info
+        jk = addr_norm.get_building_jibun_key(b)
+        if jk and jk not in jibun_map:
+            jibun_map[jk] = info
+    return road_map, jibun_map
+
+
+def _annotate_and_sort_candidates(rows, road_map, jibun_map):
+    """후보 행에 matched_building_name/building_total_units를 붙이고
+    건물 총호실수 DESC → 사업장 객실수 DESC → 사업장명 ASC로 정렬해 반환."""
+    items = []
+    for r in rows:
+        d = dict(r)
+        # 저장된 정규화 키(road_norm/jibun_norm) 우선, 없으면 주소에서 즉석 계산 (B화면 2차 매칭과 동일 순서)
+        info = None
+        rk = d.get("road_norm") or addr_norm.normalize_road_prefix(d.get("road_address"))
+        if rk:
+            info = road_map.get(rk)
+        if info is None:
+            jk = d.get("jibun_norm") \
+                or addr_norm.normalize_jibun_prefix(d.get("jibun_address")) \
+                or (addr_norm.normalize_jibun_prefix(d.get("road_address"))
+                    if addr_norm.is_jibun_like(d.get("road_address")) else None)
+            if jk:
+                info = jibun_map.get(jk)
+        d.pop("road_norm", None)
+        d.pop("jibun_norm", None)
+        d["matched_building_name"] = info[0] if info else None
+        d["building_total_units"] = info[1] if info else None
+        items.append(d)
+    items.sort(key=lambda d: (
+        -(d["building_total_units"] if d["building_total_units"] is not None else -1),
+        -(d["room_count"] if d.get("room_count") is not None else -1),
+        d.get("biz_name") or "",
+    ))
+    return items
+
+
 @app.route("/api/admin/unregistered-lodging-candidates")
 @require_admin
 def admin_unregistered_lodging_candidates():
@@ -5957,22 +6010,24 @@ def admin_unregistered_lodging_candidates():
         if q:
             where += " AND (lr.biz_name ILIKE %s OR lr.road_address ILIKE %s)"
             params += [f"%{q}%", f"%{q}%"]
+        # 건물 매칭 후 '건물 총호실수' 기준으로 정렬해야 하므로 조건에 맞는 행을
+        # 전부 가져와 파이썬에서 매칭·정렬 후 300개만 자른다 (선제한 금지 — 정렬 왜곡 방지).
         cur.execute(f"""
             SELECT lr.biz_name, lr.permit_number, lr.road_address, lr.jibun_address,
                    lr.permit_date, lr.biz_status_name, lr.biz_status_detail,
-                   lr.room_count, lr.phone
+                   lr.room_count, lr.phone, lr.road_norm, lr.jibun_norm
             FROM lodging_registry lr
             WHERE {where}
-            ORDER BY lr.room_count DESC NULLS LAST, lr.biz_name ASC
-            LIMIT 300
         """, params)
         rows = cur.fetchall()
         cur.execute(f"SELECT COUNT(*) AS c FROM lodging_registry lr WHERE {where}", params)
         total = cur.fetchone()["c"]
+        road_map, jibun_map = _building_norm_maps(cur)
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True, "items": rows, "total": total})
+    items = _annotate_and_sort_candidates(rows, road_map, jibun_map)[:300]
+    return jsonify({"ok": True, "items": items, "total": total})
 
 
 @app.route("/api/admin/unregistered-lodging-candidates/export.xlsx")
@@ -5991,26 +6046,29 @@ def admin_unregistered_lodging_export():
         if q:
             where += " AND (lr.biz_name ILIKE %s OR lr.road_address ILIKE %s)"
             params += [f"%{q}%", f"%{q}%"]
+        # 전수 조회 → 매칭·새 기준 정렬 후 상한(3000) 적용 (선제한 시 정렬 왜곡)
         cur.execute(f"""
             SELECT lr.biz_name, lr.permit_number, lr.road_address, lr.jibun_address,
-                   lr.permit_date, lr.room_count, lr.phone
+                   lr.permit_date, lr.room_count, lr.phone, lr.road_norm, lr.jibun_norm
             FROM lodging_registry lr
             WHERE {where}
-            ORDER BY lr.room_count DESC NULLS LAST, lr.biz_name ASC
-            LIMIT 3000
         """, params)
         rows = cur.fetchall()
+        road_map, jibun_map = _building_norm_maps(cur)
     finally:
         cur.close()
         conn.close()
+    items = _annotate_and_sort_candidates(rows, road_map, jibun_map)[:3000]
 
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
     ws.title = "미등록 위탁운영 후보"
-    ws.append(["사업장명", "객실수", "전화번호", "인허가일자", "관리번호", "도로명주소", "지번주소"])
-    for r in rows:
-        ws.append([r["biz_name"], r["room_count"] or 0, r["phone"] or "",
+    ws.append(["건물명", "총호실수", "사업장명", "영업신고호실수", "전화번호", "인허가일자", "관리번호", "도로명주소", "지번주소"])
+    for r in items:
+        ws.append([r["matched_building_name"] or "-",
+                   r["building_total_units"] if r["building_total_units"] is not None else "-",
+                   r["biz_name"], r["room_count"] or 0, r["phone"] or "",
                    r["permit_date"] or "", r["permit_number"],
                    r["road_address"] or "", r["jibun_address"] or ""])
     buf = io.BytesIO()

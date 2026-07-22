@@ -1845,22 +1845,31 @@
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         const d = await res.json().catch(() => ({}));
         if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
-        const head = `<div class="geo-stat-row" style="margin-bottom:8px"><b>미등록 후보 ${num(d.total)}곳</b> (표시 최대 300곳 · 객실수 많은 순)
+        const head = `<div class="geo-stat-row" style="margin-bottom:8px"><b>미등록 후보 ${num(d.total)}곳</b> (표시 최대 300곳 · 건물 총호실수 → 사업장 객실수 많은 순)
           <a class="admin-btn" style="margin-left:8px" href="/api/admin/unregistered-lodging-candidates/export.xlsx?q=${encodeURIComponent(q)}">엑셀 다운로드</a></div>`;
         if (!d.items.length) { box.innerHTML = head + `<div class="geo-stat-row">조건에 맞는 후보가 없습니다. (동기화가 아직 다 안 됐다면 데이터가 부족할 수 있습니다)</div>`; return; }
-        const rows = d.items.map((r) => `
-          <tr>
+        // 같은 건물이 연속되는 행은 옅은 배경색으로 그룹핑 (건물 바뀔 때마다 tint 토글)
+        let prevBld = null, tint = false;
+        const rows = d.items.map((r) => {
+          const bld = r.matched_building_name || "";
+          if (bld !== prevBld) { tint = !tint; prevBld = bld; }
+          const bg = (bld && tint) ? " style=\"background:#faf6ee\"" : "";
+          return `
+          <tr${bg}>
+            <td style="font-weight:600">${r.matched_building_name ? dgEscape(r.matched_building_name) : `<span style="color:#aab;">-</span>`}</td>
+            <td style="text-align:right">${r.building_total_units != null ? num(r.building_total_units) + "실" : `<span style="color:#aab;">-</span>`}</td>
             <td>${dgEscape(r.biz_name)}</td>
             <td style="text-align:right">${r.room_count ? num(r.room_count) + "실" : `<span style="color:#aab;">-</span>`}</td>
             <td>${brokerCell(r.phone)}</td>
-            <td>${brokerCell(r.road_address || r.jibun_address)}</td>
-            <td>${brokerCell(r.permit_date)}</td>
+            <td style="min-width:260px">${brokerCell(r.road_address || r.jibun_address)}</td>
+            <td style="white-space:nowrap">${brokerCell(r.permit_date)}</td>
             <td><button type="button" class="admin-btn lodging-copy-btn" data-name="${dgEscape(r.biz_name)}">링크 복사</button></td>
-          </tr>`).join("");
+          </tr>`;
+        }).join("");
         box.innerHTML = head + `
           <div style="overflow-x:auto">
-          <table class="dg-table" style="width:100%">
-            <thead><tr><th>사업장명</th><th>객실수</th><th>전화번호</th><th>주소</th><th>인허가일</th><th>제안 링크</th></tr></thead>
+          <table class="dg-table" style="width:100%; min-width:1080px">
+            <thead><tr><th>건물명</th><th>총호실수</th><th>사업장명</th><th>영업신고호실수</th><th>전화번호</th><th>주소</th><th>인허가일</th><th>제안 링크</th></tr></thead>
             <tbody>${rows}</tbody>
           </table></div>
           <p class="legal-admin-hint" style="margin-top:8px">※ 이 목록은 후보 '생성'용입니다 — 자동 발송되지 않으며, 연락은 검토 후 직접 진행해 주세요.</p>`;
@@ -1891,7 +1900,7 @@
           <div id="lodgingLastSync" class="geo-status" style="margin-bottom:10px">불러오는 중…</div>
           <p class="legal-admin-hint">
             영업상태가 <b>영업/정상</b>인 생활숙박업 사업장 중, 아직 홈앤스테이 운영업체(operators)로
-            등록되지 않은 곳입니다. 객실수가 많은 순으로 표시합니다.
+            등록되지 않은 곳입니다. 건물 총호실수 → 사업장 객실수가 많은 순으로 표시합니다.
           </p>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
             <input id="lodgingSearch" class="dg-input" placeholder="사업장명/주소 검색" style="min-width:220px">
