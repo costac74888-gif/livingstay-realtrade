@@ -4305,159 +4305,147 @@ def operator_building_search():
     return jsonify({"items": items})
 
 
-# ---- 지도 좌표 채우기 (배포 후 운영 DB에 좌표 주입용) ----
-# 에이전트/개발자는 운영(production) DB에 직접 쓸 수 없으므로, 개발에서 확보한
-# 좌표를 data/building_coords.json 으로 배포에 포함시키고, 관리자가 이 API를
-# 호출하면 배포된 앱(=운영 DB 연결)이 id 기준으로 lat/lng 를 채운다.
-# id 기준 UPDATE라 여러 번 눌러도 결과가 동일한 idempotent 작업이다.
-_COORDS_JSON_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "data", "building_coords.json"
-)
+# ---- 지도 좌표 채우기 / 건축정보 채우기 (실시간 API 러너) ----
+# (2026-07-22) 기존 data/building_coords.json·building_title_info.json 주입 방식 제거.
+# 각 스크립트를 실거래/숙박업 동기화와 동일한 잠금/러너 패턴(detached Popen +
+# app_meta 상태 + run_id 펜싱 + 30초 하트비트)으로 직접 실행한다.
+# - 좌표: geocode_buildings.py (카카오맵 주소검색 API, lat/lng NULL 건물만 → 기존 좌표 재작업 없음)
+# - 건축정보: backfill_title_info.py (건축HUB 표제부 API, title_backfilled_at NULL 건물만)
+_GEOCODE_META_KEY = "geocode_sync_status"
+_TITLE_INFO_META_KEY = "title_info_sync_status"
+_APP_STARTED_AT = datetime.now()  # 배포/재시작 시각 추정(워커 부팅 시각) — 배너 "배포 후 미실행" 판정용
 
 
-def _load_coords_seed():
-    """data/building_coords.json → [(id, lat, lng), ...] (형식 오류 행은 건너뜀)."""
-    with open(_COORDS_JSON_PATH, encoding="utf-8") as fp:
-        rows = json.load(fp)
-    out = []
-    for r in rows:
-        try:
-            out.append((int(r["id"]), float(r["lat"]), float(r["lng"])))
-        except (KeyError, TypeError, ValueError):
-            continue
-    return out
-
-
-@app.route("/api/admin/geocode/status")
-@require_admin
-def admin_geocode_status():
-    """좌표 확보 현황 + 마지막 실행 기록 반환 (관리자 화면 표시용)."""
+def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=30):
+    """공통 detached 러너 시작: app_meta 원자 잠금 → Popen(start_new_session).
+    반환 (acquired, http_status, payload)."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
-            SELECT COUNT(*) AS total,
-                   COUNT(*) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS with_geo
-            FROM master_buildings
-        """)
-        s = cur.fetchone()
-        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = 'geocode_last_run'")
-        meta = cur.fetchone()
-    finally:
-        cur.close()
-        conn.close()
-    try:
-        seed_count = len(_load_coords_seed())
-    except Exception:
-        seed_count = None
-    return jsonify({
-        "ok": True,
-        "total": s["total"],
-        "with_geo": s["with_geo"],
-        "seed_count": seed_count,
-        "last_run": (meta["value"] if meta else None),
-        "last_run_at": (
-            meta["updated_at"].strftime("%Y-%m-%d %H:%M")
-            if meta and meta["updated_at"] else None
-        ),
-    })
-
-
-@app.route("/api/admin/geocode", methods=["POST"])
-@require_admin
-@limiter.limit("6 per hour")
-def admin_geocode_run():
-    """data/building_coords.json 의 좌표를 master_buildings 에 id 기준으로 주입.
-    값이 실제로 바뀐 행만 세어 반환(재실행 시 0건 → 이미 최신)."""
-    try:
-        seed = _load_coords_seed()
-    except FileNotFoundError:
-        return jsonify({"ok": False, "message": "좌표 데이터 파일(data/building_coords.json)을 찾을 수 없습니다."}), 500
-    except (json.JSONDecodeError, ValueError):
-        return jsonify({"ok": False, "message": "좌표 데이터 파일 형식이 올바르지 않습니다(JSON 파싱 실패)."}), 500
-    if not seed:
-        return jsonify({"ok": False, "message": "좌표 데이터가 비어 있습니다."}), 400
-
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        # 값이 실제로 달라지는 행만 UPDATE → 재실행 시 0건이 나와 idempotent 확인 가능
-        execute_values(cur, """
-            UPDATE master_buildings AS m
-            SET lat = v.lat, lng = v.lng
-            FROM (VALUES %s) AS v(id, lat, lng)
-            WHERE m.id = v.id
-              AND (m.lat IS DISTINCT FROM v.lat OR m.lng IS DISTINCT FROM v.lng)
-        """, seed, template="(%s, %s::double precision, %s::double precision)")
-        updated = cur.rowcount
-        cur.execute("""
-            SELECT COUNT(*) AS total,
-                   COUNT(*) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS with_geo
-            FROM master_buildings
-        """)
-        s = cur.fetchone()
-        summary = f"{updated}건 갱신 (좌표 확보 {s['with_geo']}/{s['total']}건)"
-        cur.execute("""
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "error": None,
+        }
+        cur.execute(f"""
             INSERT INTO app_meta (key, value, updated_at)
-            VALUES ('geocode_last_run', %s, NOW())
+            VALUES (%s, %s, NOW())
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        """, (summary,))
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(done_cooldown_min)} minutes')
+        """, (meta_key, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        prev_state = None
+        if not acquired:
+            cur.execute("SELECT value FROM app_meta WHERE key = %s", (meta_key,))
+            prev = cur.fetchone()
+            try:
+                prev_state = json.loads(prev["value"]).get("state") if prev and prev["value"] else None
+            except (TypeError, ValueError):
+                prev_state = None
         conn.commit()
     finally:
         cur.close()
         conn.close()
+
+    if not acquired:
+        if prev_state == "done":
+            return False, 429, {"ok": False, "message": f"직전 실행이 완료된 지 {int(done_cooldown_min)}분이 지나지 않았습니다. 잠시 후 다시 시도해 주세요."}
+        return False, 409, {"ok": False, "message": "이미 실행 중입니다. 완료 후 다시 시도해 주세요."}
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, script_name)] + list(script_args),
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],
+                       "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (meta_key, json.dumps(status, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return False, 500, {"ok": False, "message": "프로세스를 시작하지 못했습니다."}
+    return True, 202, {"ok": True, "started_at": status["started_at"]}
+
+
+def _read_sync_status_row(cur, meta_key):
+    """meta_key 상태 JSON + 하트비트 끊김(stale) 판정. 없으면 None."""
+    cur.execute("""
+        SELECT value, updated_at,
+               EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age
+        FROM app_meta WHERE key = %s
+    """, (meta_key,))
+    meta = cur.fetchone()
+    if not meta or not meta["value"]:
+        return None
+    try:
+        status = json.loads(meta["value"])
+    except (TypeError, ValueError):
+        return None
+    if (status.get("state") == "running" and meta["age"] is not None
+            and float(meta["age"]) > _SYNC_STALE_MIN * 60):
+        status["state"] = "stale"
+    if meta["updated_at"]:
+        status["status_updated_at"] = meta["updated_at"].strftime("%Y-%m-%d %H:%M")
+    return status
+
+
+@app.route("/api/admin/geocode-buildings", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_geocode_run():
+    """카카오맵 API 실시간 지오코딩 시작 — lat/lng가 NULL인 건물만 대상."""
+    if not os.environ.get("KAKAO_REST_API_KEY"):
+        return jsonify({"ok": False, "message": "KAKAO_REST_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    ok, code, payload = _start_detached_sync(
+        _GEOCODE_META_KEY, "geocode_buildings.py",
+        ["--status-key", _GEOCODE_META_KEY], done_cooldown_min=5)
+    if ok:
+        payload["message"] = "좌표 채우기를 시작했습니다."
+    return jsonify(payload), code
+
+
+@app.route("/api/admin/geocode-status")
+@require_admin
+def admin_geocode_status():
+    """좌표 확보 현황 + 실행 상태 (관리자 화면 표시용)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS with_geo,
+                   COUNT(*) FILTER (WHERE lat IS NULL
+                                      AND road_address IS NOT NULL AND road_address <> '') AS missing
+            FROM master_buildings
+        """)
+        s = cur.fetchone()
+        status = _read_sync_status_row(cur, _GEOCODE_META_KEY)
+    finally:
+        cur.close()
+        conn.close()
     return jsonify({
         "ok": True,
-        "updated": updated,
-        "with_geo": s["with_geo"],
         "total": s["total"],
-        "message": summary,
+        "with_geo": s["with_geo"],
+        "missing": s["missing"],
+        "status": status,
     })
-
-
-# ---- 건축정보(표제부) 채우기 (배포 후 운영 DB에 표제부 주입용) ----
-# 좌표 채우기와 완전히 같은 패턴: 개발에서 백필한 표제부 값을
-# data/building_title_info.json 으로 배포에 포함시키고, 관리자가 이 API를
-# 호출하면 배포된 앱(=운영 DB 연결)이 id 기준으로 컬럼을 채운다.
-_TITLE_INFO_JSON_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "data", "building_title_info.json"
-)
-
-
-def _title_info_int(v):
-    return None if v is None else int(v)
-
-
-def _title_info_float(v):
-    return None if v is None else float(v)
-
-
-def _title_info_text(v):
-    return None if v is None else str(v)
-
-
-def _load_title_info_seed():
-    """data/building_title_info.json → [(id, use_apr_day, ...), ...] (형식 오류 행은 건너뜀)."""
-    with open(_TITLE_INFO_JSON_PATH, encoding="utf-8") as fp:
-        rows = json.load(fp)
-    out = []
-    for r in rows:
-        try:
-            out.append((
-                int(r["id"]),
-                _title_info_text(r.get("use_apr_day")),
-                _title_info_int(r.get("tot_pkng_cnt")),
-                _title_info_int(r.get("grnd_flr_cnt")),
-                _title_info_int(r.get("ugrnd_flr_cnt")),
-                _title_info_float(r.get("tot_area")),
-                _title_info_float(r.get("plat_area")),
-                _title_info_int(r.get("hhld_cnt")),
-                _title_info_text(r.get("strct_nm")),
-                _title_info_text(r.get("mgm_bldrgst_pk")),
-            ))
-        except (KeyError, TypeError, ValueError):
-            continue
-    return out
 
 
 def _title_info_counts(cur):
@@ -4465,107 +4453,97 @@ def _title_info_counts(cur):
         SELECT COUNT(*) AS total,
                COUNT(*) FILTER (WHERE use_apr_day IS NOT NULL
                                    OR grnd_flr_cnt IS NOT NULL
-                                   OR tot_area IS NOT NULL) AS with_title
+                                   OR tot_area IS NOT NULL) AS with_title,
+               COUNT(*) FILTER (WHERE title_backfilled_at IS NULL
+                                  AND sgg_cd IS NOT NULL AND umd_nm IS NOT NULL
+                                  AND jibun IS NOT NULL) AS missing
         FROM master_buildings
     """)
     return cur.fetchone()
-
-
-@app.route("/api/admin/backfill-title-info/status")
-@require_admin
-def admin_title_info_status():
-    """표제부(건축정보) 확보 현황 + 마지막 실행 기록 반환 (관리자 화면 표시용)."""
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        s = _title_info_counts(cur)
-        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = 'title_info_last_run'")
-        meta = cur.fetchone()
-    finally:
-        cur.close()
-        conn.close()
-    try:
-        seed_count = len(_load_title_info_seed())
-    except Exception:
-        seed_count = None
-    return jsonify({
-        "ok": True,
-        "total": s["total"],
-        "with_title": s["with_title"],
-        "seed_count": seed_count,
-        "last_run": (meta["value"] if meta else None),
-        "last_run_at": (
-            meta["updated_at"].strftime("%Y-%m-%d %H:%M")
-            if meta and meta["updated_at"] else None
-        ),
-    })
 
 
 @app.route("/api/admin/backfill-title-info", methods=["POST"])
 @require_admin
 @limiter.limit("6 per hour")
 def admin_title_info_run():
-    """data/building_title_info.json 의 표제부 값을 master_buildings 에 id 기준으로 주입.
-    값이 실제로 바뀐 행만 세어 반환(재실행 시 0건 → 이미 최신)."""
-    try:
-        seed = _load_title_info_seed()
-    except FileNotFoundError:
-        return jsonify({"ok": False, "message": "건축정보 데이터 파일(data/building_title_info.json)을 찾을 수 없습니다."}), 500
-    except (json.JSONDecodeError, ValueError):
-        return jsonify({"ok": False, "message": "건축정보 데이터 파일 형식이 올바르지 않습니다(JSON 파싱 실패)."}), 500
-    if not seed:
-        return jsonify({"ok": False, "message": "건축정보 데이터가 비어 있습니다."}), 400
+    """건축HUB 표제부 API 실시간 백필 시작 — 미백필(title_backfilled_at NULL) 건물만 대상."""
+    if not os.environ.get("BLD_SERVICE_KEY"):
+        return jsonify({"ok": False, "message": "BLD_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    ok, code, payload = _start_detached_sync(
+        _TITLE_INFO_META_KEY, "backfill_title_info.py",
+        ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.2"], done_cooldown_min=5)
+    if ok:
+        payload["message"] = "건축정보 채우기를 시작했습니다."
+    return jsonify(payload), code
 
+
+@app.route("/api/admin/title-info-status")
+@require_admin
+def admin_title_info_status():
+    """표제부(건축정보) 확보 현황 + 실행 상태 (관리자 화면 표시용)."""
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # 값이 실제로 달라지는 행만 UPDATE → 재실행 시 0건이 나와 idempotent 확인 가능
-        execute_values(cur, """
-            UPDATE master_buildings AS m
-            SET use_apr_day = v.use_apr_day,
-                tot_pkng_cnt = v.tot_pkng_cnt,
-                grnd_flr_cnt = v.grnd_flr_cnt,
-                ugrnd_flr_cnt = v.ugrnd_flr_cnt,
-                tot_area = v.tot_area,
-                plat_area = v.plat_area,
-                hhld_cnt = v.hhld_cnt,
-                strct_nm = v.strct_nm,
-                mgm_bldrgst_pk = v.mgm_bldrgst_pk
-            FROM (VALUES %s) AS v(id, use_apr_day, tot_pkng_cnt, grnd_flr_cnt,
-                                  ugrnd_flr_cnt, tot_area, plat_area, hhld_cnt,
-                                  strct_nm, mgm_bldrgst_pk)
-            WHERE m.id = v.id
-              AND (m.use_apr_day IS DISTINCT FROM v.use_apr_day
-                   OR m.tot_pkng_cnt IS DISTINCT FROM v.tot_pkng_cnt
-                   OR m.grnd_flr_cnt IS DISTINCT FROM v.grnd_flr_cnt
-                   OR m.ugrnd_flr_cnt IS DISTINCT FROM v.ugrnd_flr_cnt
-                   OR m.tot_area IS DISTINCT FROM v.tot_area
-                   OR m.plat_area IS DISTINCT FROM v.plat_area
-                   OR m.hhld_cnt IS DISTINCT FROM v.hhld_cnt
-                   OR m.strct_nm IS DISTINCT FROM v.strct_nm
-                   OR m.mgm_bldrgst_pk IS DISTINCT FROM v.mgm_bldrgst_pk)
-        """, seed, template=(
-            "(%s, %s::text, %s::integer, %s::integer, %s::integer, "
-            "%s::double precision, %s::double precision, %s::integer, %s::text, %s::text)"
-        ))
-        updated = cur.rowcount
         s = _title_info_counts(cur)
-        summary = f"{updated}건 갱신 (표제부 확보 {s['with_title']}/{s['total']}건)"
-        cur.execute("""
-            INSERT INTO app_meta (key, value, updated_at)
-            VALUES ('title_info_last_run', %s, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        """, (summary,))
-        conn.commit()
+        status = _read_sync_status_row(cur, _TITLE_INFO_META_KEY)
     finally:
         cur.close()
         conn.close()
     return jsonify({
         "ok": True,
-        "updated": updated,
-        "with_title": s["with_title"],
         "total": s["total"],
-        "message": summary,
+        "with_title": s["with_title"],
+        "missing": s["missing"],
+        "status": status,
+    })
+
+
+@app.route("/api/admin/datasync-overview")
+@require_admin
+def admin_datasync_overview():
+    """'데이터 동기화' 페이지 배너용 — 배포(재시작) 후 미실행/대기 항목 요약.
+    배포 시각은 별도 기록이 없어 웹 워커 부팅 시각(_APP_STARTED_AT)으로 대체 추정한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE lat IS NULL
+                                      AND road_address IS NOT NULL AND road_address <> '') AS missing_geo,
+                   COUNT(*) FILTER (WHERE title_backfilled_at IS NULL
+                                      AND sgg_cd IS NOT NULL AND umd_nm IS NOT NULL
+                                      AND jibun IS NOT NULL) AS missing_title
+            FROM master_buildings
+        """)
+        c = cur.fetchone()
+        cur.execute("SELECT key, updated_at FROM app_meta WHERE key = ANY(%s)",
+                    (["brhub_sync_status", "tx_sync_status",
+                      "broker_sync_status", "lodging_sync_status"],))
+        metas = {r["key"]: r["updated_at"] for r in cur.fetchall()}
+    finally:
+        cur.close()
+        conn.close()
+
+    labels = [
+        ("brhub_sync_status", "건물수집"),
+        ("tx_sync_status", "실거래 동기화"),
+        ("broker_sync_status", "중개업소 동기화"),
+        ("lodging_sync_status", "숙박업 동기화"),
+    ]
+    stale_syncs = []
+    for key, label in labels:
+        ts = metas.get(key)
+        if ts is None or ts < _APP_STARTED_AT:
+            stale_syncs.append({
+                "key": key,
+                "label": label,
+                "last_run_at": ts.strftime("%Y-%m-%d %H:%M") if ts else None,
+            })
+    return jsonify({
+        "ok": True,
+        "missing_geo": c["missing_geo"],
+        "missing_title": c["missing_title"],
+        "stale_syncs": stale_syncs,
+        "booted_at": _APP_STARTED_AT.strftime("%Y-%m-%d %H:%M"),
     })
 
 

@@ -21,11 +21,16 @@ python geocode_buildings.py --limit 20 # 앞의 20건만 (최초 테스트용)
 
 import argparse
 import os
+import sys
+import threading
 import time
+from datetime import datetime
 
 import requests
 
 from db import get_conn
+# 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 동일한 로직 재사용
+from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
 # ------------------------------------------------------------------
 # 설정값 — 카카오 REST API 키는 Replit Secrets(환경변수)에서 읽음
@@ -81,11 +86,10 @@ def geocode_address(road_address: str):
     return result
 
 
-def geocode_buildings(limit: int | None = None):
+def geocode_buildings(limit: int | None = None, status_key=None, run_id=None):
     if not KAKAO_REST_API_KEY:
-        print("[중단] 환경변수 KAKAO_REST_API_KEY 가 없습니다. "
-              "Replit Secrets 에 카카오 REST API 키를 먼저 등록하세요. (README 2번 항목 참고)")
-        return
+        raise RuntimeError("환경변수 KAKAO_REST_API_KEY 가 없습니다. "
+                           "Replit Secrets 에 카카오 REST API 키를 먼저 등록하세요.")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -112,6 +116,10 @@ def geocode_buildings(limit: int | None = None):
 
     updated = skipped = 0
     for i, row in enumerate(targets, start=1):
+        # run_id 펜싱: 다른 실행이 상태를 가져갔으면 즉시 중단 (split-brain 방지)
+        if status_key and run_id and i % 20 == 0 and not _still_owner(cur, status_key, run_id):
+            print("[중단] 상태 소유권을 잃었습니다(다른 실행 감지). 종료합니다.")
+            break
         bld_id = row["id"]
         name = row["building_name"]
         addr = row["road_address"]
@@ -160,12 +168,67 @@ def geocode_buildings(limit: int | None = None):
 
     cur.close()
     conn.close()
+    return updated, skipped, total_targets, with_coord, total_all
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None,
                         help="앞에서 N건만 처리 (최초 테스트용, 생략 시 전체)")
+    parser.add_argument("--status-key", default=None,
+                        help="관리자 버튼 실행용 app_meta 상태 키")
     args = parser.parse_args()
 
-    geocode_buildings(limit=args.limit)
+    run_id = None
+    stop_beat = threading.Event()
+    if args.status_key:
+        status = _read_status(args.status_key)
+        if not status or status.get("state") != "running":
+            print("[geocode] running 상태가 아니므로 종료합니다.")
+            return
+        run_id = status.get("run_id") or ""
+
+        def _beat():
+            while not stop_beat.wait(HEARTBEAT_SEC):
+                try:
+                    _touch(args.status_key, run_id)
+                except Exception:
+                    pass
+        threading.Thread(target=_beat, daemon=True).start()
+
+    error = None
+    updated = skipped = targets = with_coord = total_all = None
+    try:
+        updated, skipped, targets, with_coord, total_all = geocode_buildings(
+            limit=args.limit, status_key=args.status_key, run_id=run_id)
+    except Exception as e:
+        error = (str(e).replace(KAKAO_REST_API_KEY, "***")
+                 if KAKAO_REST_API_KEY else str(e))[:500]
+        print(f"[geocode] 실패: {error}")
+
+    if args.status_key and run_id is not None:
+        stop_beat.set()
+        status = _read_status(args.status_key) or {}
+        status.update({
+            "state": "failed" if error else "done",
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "updated": updated,
+            "skipped": skipped,
+            "targets": targets,
+            "with_geo": with_coord,
+            "total": total_all,
+            "error": error,
+        })
+        for attempt in range(3):
+            try:
+                _write_status(args.status_key, status, run_id)
+                break
+            except Exception as e:
+                print(f"[geocode] 상태 저장 실패({attempt + 1}/3): {e}")
+                time.sleep(5)
+    if error and not args.status_key:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
