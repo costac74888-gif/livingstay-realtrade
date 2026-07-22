@@ -1699,7 +1699,7 @@ async function loadBuildingHeader(id){
   });
 
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
-  renderBuildingOperators(b.operators);
+  renderBuildingOperators(b.operators, id, bName);
 
   // 금융 카드 — 이 건물에 연결된(loan_consultant_buildings) 승인 대출상담사가 있으면 상담사 카드로 교체,
   // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
@@ -1794,24 +1794,26 @@ async function loadBuildingStores(buildingId){
 // 있으면 유치(모집) 문구 대신 업체명 + "프로필 보기 →" 링크를 보여준다. 없으면 기본 HTML 유지.
 //   위탁운영 카드 ← category '위탁운영'
 //   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
-function renderBuildingOperators(operators){
+function renderBuildingOperators(operators, buildingId, buildingName){
   const ops = Array.isArray(operators) ? operators : [];
   // 카드별 최대 3곳 — 서버가 priority_score DESC, RANDOM() 순으로 내려주므로 앞에서 3개만 자른다
   const pick = (cats) => ops.filter(o => cats.includes(o.category)).slice(0, 3);
+  // 프로필 페이지 "홈으로"가 이 건물로 돌아오도록 건물 컨텍스트 파라미터 부착
+  const ctx = `?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
   const paint = (boxId, picked) => {
     if (!picked.length) return; // 담당 업체 없음 → 기존 유치 카드 그대로
     const box = document.getElementById(boxId);
     if (!box) return;
     box.innerHTML = picked.map((op) => `
       <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee);">
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏨</div>
-          <div style="flex:1; min-width:130px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">🏨</div>
+          <div style="flex:1; min-width:0;">
             <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>
-            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(op.category || "")} 담당 업체</div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(op.intro_text || `${op.category || ""} 담당 업체`)}</div>
           </div>
         </div>
-        ${op.subdomain_slug ? `<div style="margin-top:8px; text-align:right;"><a href="/operator/${encodeURIComponent(op.subdomain_slug)}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}
+        ${op.subdomain_slug ? `<div style="margin-top:6px; text-align:right;"><a href="/operator/${encodeURIComponent(op.subdomain_slug)}${ctx}" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}
       </div>`).join("");
   };
   paint("bOperatorBox", pick(["위탁운영"]));
@@ -1846,20 +1848,35 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
     const avatar = c.logo_src
       ? `<img src="${escapeHtml(c.logo_src)}" alt="로고" style="width:40px; height:40px; border-radius:50%; object-fit:cover; background:#fff; border:1px solid var(--line, #eee);" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>💰</div>'" />`
       : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>`;
+    // 3번째 줄: 등록번호 배지가 있으면 배지만, 없으면 intro_text 한 줄(말줄임) — 둘 중 하나만
+    const line3 = c.license_number
+      ? `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:#1E5FA8; background:#EAF2FB; padding:3px 9px; border-radius:10px;">✓ 금융감독원 등록 대출모집인 (등록번호: ${escapeHtml(c.license_number)})</span></div>`
+      : (c.intro_text ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.intro_text)}</div>` : "");
+    // 4번째 줄: 상품 태그 + 전화/카카오 버튼을 같은 줄에 배치해 줄 수 절약
+    // 카카오 링크는 http/https만 허용 (javascript: 등 링크 인젝션 차단)
+    const kakaoUrl = /^https?:\/\//i.test(String(c.kakao_chat_url || "")) ? c.kakao_chat_url : null;
+    const btns = [
+      c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center; flex-shrink:0;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a>` : "",
+      kakaoUrl ? `<a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:5px 10px; border-radius:8px; text-decoration:none; flex-shrink:0;">💬 카카오톡</a>` : "",
+    ].filter(Boolean).join("");
+    // 태그 영역은 한 줄 고정(nowrap + overflow hidden) — 카드 전체 4줄 상한 보장
+    const line4 = (tags || btns)
+      ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px;">
+           <div style="display:flex; flex-wrap:nowrap; gap:4px; min-width:0; overflow:hidden;">${tags}</div>
+           <div style="display:flex; gap:6px; flex-shrink:0;">${btns}</div>
+         </div>`
+      : "";
     return `
     <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:12px;">
         ${avatar}
-        <div style="flex:1; min-width:130px;">
-          <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(c.owner_name || "-")} 대출상담사</div>
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(c.office_name || "-")}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사</div>
         </div>
-        ${c.phone ? `<a href="tel:${escapeHtml(c.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a>` : ""}
       </div>
-      ${c.license_number ? `<div style="margin-top:7px;"><span style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:#1E5FA8; background:#EAF2FB; padding:3px 9px; border-radius:10px;">✓ 금융감독원 등록 대출모집인 (등록번호: ${escapeHtml(c.license_number)})</span></div>` : ""}
-      ${c.intro_text ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">${escapeHtml(c.intro_text)}</div>` : ""}
-      ${tags}
-      ${c.kakao_chat_url ? `<div style="margin-top:8px;"><a href="${escapeHtml(c.kakao_chat_url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:7px 14px; border-radius:8px; text-decoration:none;">💬 카카오톡 상담하기</a></div>` : ""}
+      ${line3}
+      ${line4}
     </div>`;
   }).join("") + `
     <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
@@ -1877,10 +1894,10 @@ function renderBuildingAgents(agents, buildingId, buildingName){
       const avatar = agent.photo_src
         ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>🏢</div>'">`
         : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
-      // 이 건물 한정 매물 건수 배지 4개 — 값이 0이어도 표시 (agent_buildings 기준)
+      // 이 건물 한정 매물 건수 배지 4개 — 값이 0이어도 표시, 한 줄 고정 (agent_buildings 기준)
       const cnt = (v) => (v == null ? 0 : v);
-      const badge = (label, v) => `<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:3px 8px; border-radius:10px;">${label}(${cnt(v)})</span>`;
-      const badges = `<div style="display:flex; gap:5px; flex-wrap:wrap;">
+      const badge = (label, v) => `<span style="display:inline-flex; align-items:center; font-size:10.5px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:3px 6px; border-radius:10px; white-space:nowrap;">${label}(${cnt(v)})</span>`;
+      const badges = `<div style="display:flex; gap:4px; margin-top:6px;">
         ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
       </div>`;
       return `
@@ -1888,15 +1905,13 @@ function renderBuildingAgents(agents, buildingId, buildingName){
         <div style="display:flex; align-items:flex-start; gap:12px;">
           ${avatar}
           <div style="flex:1; min-width:0;">
-            ${badges}
-            ${agent.intro_title ? `<div style="font-size:12px; color:var(--brass-dark); font-weight:600; margin-top:6px;">${escapeHtml(agent.intro_title)}</div>` : ""}
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:6px;">
-              <div style="min-width:0;">
-                <div style="font-size:15px; font-weight:800; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
-                <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">대표 ${escapeHtml(agent.owner_name || "-")}</div>
-              </div>
-              ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; text-decoration:none; text-align:center; flex-shrink:0;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <div style="font-size:14px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(agent.office_name || "-")}</div>
+              ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center; flex-shrink:0;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a>` : ""}
             </div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(agent.owner_name || "-")}) 공인중개사</div>
+            ${badges}
+            ${agent.intro_title ? `<div style="font-size:12px; color:var(--brass-dark); font-weight:600; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(agent.intro_title)}</div>` : ""}
           </div>
         </div>
       </div>`;

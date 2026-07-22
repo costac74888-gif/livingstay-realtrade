@@ -21,7 +21,7 @@
 <div class="search-panel" style="max-width:720px; padding-bottom:40px;">
 
   <div style="margin:16px 0 6px;">
-    <a href="/" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+    <a href="/" id="homeLink" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
   </div>
 
   <div id="profileWrap">
@@ -43,13 +43,19 @@
   const slug = decodeURIComponent(location.pathname.split("/").pop());
   const wrap = document.getElementById("profileWrap");
 
+  // 건물상세(B화면)에서 진입한 경우 "홈으로"가 해당 건물로 돌아가도록 (그 외 진입은 기존대로 메인)
+  const _qs = new URLSearchParams(location.search);
+  const _fromBuildingId = /^\d+$/.test(_qs.get("building_id") || "") ? _qs.get("building_id") : null;
+  const homeHref = _fromBuildingId ? `/building/${_fromBuildingId}` : "/";
+  (function(){ const l = document.getElementById("homeLink"); if (l) l.href = homeHref; })();
+
   function renderNotFound(){
     wrap.innerHTML = `
       <div class="panel-card" style="text-align:center; padding:40px 20px;">
         <div style="font-size:34px; margin-bottom:10px;">🔍</div>
         <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:6px;">존재하지 않는 페이지입니다</div>
         <div style="font-size:13px; color:var(--ink-soft); margin-bottom:18px;">주소가 잘못되었거나, 아직 승인되지 않은 중개사 페이지입니다.</div>
-        <a href="/" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:8px 18px; text-decoration:none;">홈으로 이동</a>
+        <a href="${homeHref}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:8px 18px; text-decoration:none;">홈으로 이동</a>
       </div>`;
   }
 
