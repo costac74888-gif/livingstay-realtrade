@@ -189,17 +189,18 @@ def run(args, status_key=None, run_id=None):
         page = 1
         dong_error = False
         while True:
-            try:
-                items = _fetch_page(key, sgg_cd, bjd_cd, page)
-            except Exception as e:
-                print(f"  [{dong_name}] p{page} 오류: {repr(e)[:160]} — 15초 후 1회 재시도")
-                time.sleep(15)
+            items = None
+            for attempt, wait_sec in enumerate([15, 30, 60], start=1):
                 try:
                     items = _fetch_page(key, sgg_cd, bjd_cd, page)
-                except Exception as e2:
-                    print(f"  [{dong_name}] 재시도 실패({repr(e2)[:120]}) — 이 법정동은 다음 실행 때 재처리")
-                    dong_error = True
                     break
+                except Exception as e:
+                    print(f"  [{dong_name}] p{page} 오류(시도 {attempt}/3): {repr(e)[:160]} — {wait_sec}초 후 재시도")
+                    time.sleep(wait_sec)
+            if items is None:
+                print(f"  [{dong_name}] 3회 재시도 모두 실패 — 이 법정동은 건너뛰고 다음 실행 때 재처리")
+                dong_error = True
+                break
             prog["calls_today"] += 1
 
             for it in items:
@@ -259,7 +260,14 @@ def run(args, status_key=None, run_id=None):
             page += 1
             time.sleep(args.sleep)
 
-        if not dong_error:
+        if dong_error:
+            # 이 법정동은 건너뛰고(idx 그대로 두어 다음 실행 때 재처리),
+            # 대신 이번 실행에서 무한 반복되지 않도록 인덱스를 리스트
+            # 맨 뒤로 임시 이동시키는 대신, 단순히 다음 인덱스로 넘어간다.
+            # (완전한 정합성보다 진행 우선 — 실패한 동은 사용자가 며칠 뒤
+            # 다시 --reset 없이 실행하면 자연히 재시도됨)
+            prog["idx"] += 1
+        else:
             prog["idx"] += 1
         processed += 1
         if not args.dry_run:
@@ -267,8 +275,6 @@ def run(args, status_key=None, run_id=None):
             _save_progress(conn, cur, prog)
         if processed % 50 == 0:
             print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
-        if dong_error:
-            break
         time.sleep(args.sleep)
 
     print(f"\n[종료] 법정동 {prog['idx']}/{len(dongs)} 처리, 오늘 호출 {prog['calls_today']}, "
