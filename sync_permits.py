@@ -33,7 +33,7 @@ import os
 import sys
 import threading
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import requests
 
@@ -235,17 +235,32 @@ def run(args, status_key=None, run_id=None):
                 bld_nm = (it.get("bldNm") or "").strip() or "-"
                 units = int(hoCnt or 0) or None
 
+                # 완공예정일 추정 — 실제착공일(우선) 또는 착공예정일 기준 +900일(약 30개월,
+                # 생숙 표준 공사기간 추정치). 둘 다 없으면 추정 불가로 NULL.
+                base_date_str = actual_start or expected_start
+                completion_est = None
+                if base_date_str and len(str(base_date_str)) == 8:
+                    try:
+                        base_dt = datetime.strptime(str(base_date_str), "%Y%m%d")
+                        completion_est = (base_dt + timedelta(days=900)).date().isoformat()
+                    except ValueError:
+                        completion_est = None
+
                 if args.dry_run:
                     print(f"  [발견] {dong_name} | {bld_nm} | {status} | 허가일={permit_day} "
-                          f"착공예정={expected_start} 실제착공={actual_start} | {units}호")
+                          f"착공예정={expected_start} 실제착공={actual_start} | 완공추정={completion_est} | {units}호")
                 else:
                     cur.execute("""
                         INSERT INTO master_buildings
                             (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
-                             units, source, building_status, lodging_type, lodging_type_detail)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s)
+                             units, source, building_status, lodging_type, lodging_type_detail,
+                             permit_day, actual_start_day, completion_expected_date)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s,%s,%s,%s)
                     """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
-                          units, status, purps_text[:500] or None))
+                          units, status, purps_text[:500] or None,
+                          str(permit_day) if permit_day else None,
+                          str(actual_start) if actual_start else None,
+                          completion_est))
                 found_run += 1
                 prog["found_total"] = prog.get("found_total", 0) + 1
                 if jibun:
