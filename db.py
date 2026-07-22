@@ -108,6 +108,8 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS mgm_bldrgst_pk TEXT")    # 관리건축물대장PK(표제부 mgmBldrgstPk. 상가업소 조회 키로는 못 씀 — store_info_util.py 참고)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_status TEXT DEFAULT '완공'")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS completion_expected_date DATE")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS permit_day TEXT")        # 건축허가일(YYYYMMDD)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS actual_start_day TEXT")  # 실제착공일(YYYYMMDD)
     # 정식 명칭 미확정 표시 — API(건축물대장)에 건물명이 없어 "읍면동 지번" 임시명으로 등록된 건물은 TRUE.
     # 기본값 FALSE: 기존 건물들은 이미 확정된 명칭을 갖고 있으므로, TRUE는 submit_building()이 명시적으로만 세팅한다.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS name_pending BOOLEAN DEFAULT FALSE")
