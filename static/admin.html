@@ -1387,6 +1387,59 @@
     // ---- 데이터 동기화 통합 페이지 ----
     // UI 배치 순서 = 권장 실행 순서(건물 생성 → 정보 보강 → 거래/외부 데이터 연결).
     // 자동 체이닝 아님 — 각 버튼은 개별 수동 실행. 기존 라우트는 그대로 호출한다.
+    async function loadPendingCompletion() {
+      const statusBox = document.getElementById("pendingCompletionStatus");
+      const listBox = document.getElementById("pendingCompletionList");
+      if (!statusBox || !listBox) return;
+      try {
+        const res = await fetch("/api/admin/pending-completion");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if (!data.count) {
+          statusBox.textContent = "표제부 확인 대기 중인 건물이 없습니다";
+          listBox.innerHTML = "";
+          return;
+        }
+        statusBox.textContent = `표제부 확인 대기 중인 건물 ${data.count.toLocaleString("ko-KR")}건`;
+        const esc = (v) => String(v == null ? "-" : v)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const rows = data.buildings.map((b) => `
+          <tr>
+            <td>${esc(b.building_name)}</td>
+            <td>${esc(b.road_address)}</td>
+            <td>${esc(b.building_status)}</td>
+            <td>${esc(b.completion_expected_date)}</td>
+            <td><button class="admin-btn admin-btn-primary pc-complete-btn" data-id="${b.id}">완공으로 전환</button></td>
+          </tr>`).join("");
+        listBox.innerHTML = `
+          <table class="admin-table" style="width:100%">
+            <thead><tr><th>건물명</th><th>주소</th><th>건물상태</th><th>완공추정일</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+        listBox.querySelectorAll(".pc-complete-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            if (!confirm("이 건물을 '완공' 상태로 전환할까요? (분양권 건수는 매매로 자동 합산됩니다)")) return;
+            btn.disabled = true;
+            try {
+              const r = await fetch(`/api/admin/buildings/${btn.dataset.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ building_status: "완공" }),
+              });
+              const d = await r.json().catch(() => ({}));
+              if (!r.ok || d.ok === false) throw new Error(d.message || "HTTP " + r.status);
+              loadPendingCompletion();
+            } catch (e) {
+              alert("전환 실패: " + e.message);
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (e) {
+        statusBox.textContent = "목록을 불러오지 못했습니다: " + e.message;
+      }
+    }
+
     function showDataSync() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -1512,6 +1565,18 @@
             <button id="lodgingSyncRunBtn" class="admin-btn admin-btn-primary">영업신고 데이터 동기화</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecPendingCompletion">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">완공 대기 중</h2>
+          </div>
+          <p class="legal-admin-hint">
+            준공 전(허가·착공) 상태로 등록된 건물 중 <b>추정 완공일이 이미 지난</b> 건물 목록입니다.
+            표제부(건축물대장)가 아직 안 붙었는지 확인한 뒤, 실제로 완공되었으면
+            "완공으로 전환"을 눌러주세요. (전환 시 담당중개사 분양권 건수는 매매로 자동 합산됩니다)
+          </p>
+          <div id="pendingCompletionStatus" class="geo-status">현황 불러오는 중…</div>
+          <div id="pendingCompletionList" style="margin-top:10px"></div>
+        </div>
       `;
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
@@ -1520,6 +1585,7 @@
       document.getElementById("backfillRunBtn").addEventListener("click", runBackfill);
       document.getElementById("brokerSyncRunBtn").addEventListener("click", runBrokerSync);
       document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
+      loadPendingCompletion();
       loadDataSyncBanner();
       loadBrhubSyncStatus();
       loadGeocodeStatus();
