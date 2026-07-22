@@ -1856,7 +1856,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
         ${avatar}
         <div style="flex:1; min-width:0;">
           <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사 · 취급지역: ${escapeHtml(c.service_region || "전국")}</div>
           ${c.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(c.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a></div>` : ""}
           ${kakaoUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:5px 10px; border-radius:8px; text-decoration:none;">💬 카카오톡 상담하기</a></div>` : ""}
         </div>

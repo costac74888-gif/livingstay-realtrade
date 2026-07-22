@@ -81,6 +81,14 @@ LOAN_CONSULTANT_PRODUCTS = [
     "정책자금·채무조정",
     "차량담보대출",
 ]
+# 대출상담사 '취급지역' 허용 목록 — 신청서/프로필 콤보박스·B화면 배지 공통 기준.
+# 순서 = 노출 순서 (전국 → 수도권 → 시도 가나다순). 표기는 addr_norm.py의
+# _REGION_ALIASES 축약형과 통일. "수도권"은 서울·경기·인천 묶음 특수값(그대로 저장).
+LOAN_SERVICE_REGIONS = [
+    "전국", "수도권",
+    "강원", "경기", "경남", "경북", "광주", "대구", "대전", "부산", "서울",
+    "세종", "울산", "인천", "전남", "전북", "제주", "충남", "충북",
+]
 # 관리자 세션(서명된 쿠키) 서명 키. FLASK_SECRET_KEY가 없으면 세션이 유지되지
 # 않아 관리자 로그인이 동작하지 않으므로 Secrets에 반드시 등록되어 있어야 한다.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "")
@@ -342,7 +350,7 @@ def get_building(building_id):
     cur.execute("""
         SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
                lc.logo_url, lc.intro_text, lc.consultant_products,
-               lc.kakao_chat_url, lc.license_number
+               lc.kakao_chat_url, lc.license_number, lc.service_region
         FROM loan_consultant_buildings lcb
         JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id
         WHERE lcb.master_building_id = %s
@@ -1588,7 +1596,12 @@ def apply_operator():
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
     website_url = (data.get("website_url") or "").strip()
+    # 희망지역 → 희망건물로 변경 (agent 신청과 동일 패턴).
+    # 구버전 호환을 위해 preferred_region도 함께 받아둔다 (컬럼/기존 데이터 유지).
+    preferred_building = (data.get("preferred_building") or "").strip()
     preferred_region = (data.get("preferred_region") or "").strip()
+    raw_bid = str(data.get("preferred_building_id") or "").strip()
+    preferred_building_id = int(raw_bid) if raw_bid.isdigit() else None
 
     # 필수값 검증
     missing = []
@@ -1640,20 +1653,27 @@ def apply_operator():
 
     conn = get_conn()
     cur = conn.cursor()
+    # 존재하지 않는 건물 id는 조용히 버린다 (agent 신청과 동일)
+    if preferred_building_id is not None:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [preferred_building_id])
+        if not cur.fetchone():
+            preferred_building_id = None
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, category,
              biz_reg_number, phone, email, website_url, preferred_region, status,
              reg_number, intro_text, doc_biz_reg_url, doc_business_card_url,
-             doc_biz_license_url, doc_logo_url, terms_agreed_at, privacy_agreed_at)
+             doc_biz_license_url, doc_logo_url, terms_agreed_at, privacy_agreed_at,
+             preferred_building, preferred_building_id)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s, %s, %s, NOW(), NOW())
+                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
           website_url or None, preferred_region or None,
           doc_refs["doc_biz_reg_url"], doc_refs["doc_business_card_url"],
-          doc_refs["doc_biz_license_url"], doc_refs["doc_logo_url"]))
+          doc_refs["doc_biz_license_url"], doc_refs["doc_logo_url"],
+          preferred_building or None, preferred_building_id))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1677,6 +1697,33 @@ def apply_loan_page():
     return resp
 
 
+@app.route("/api/buildings/search")
+@limiter.limit("30 per minute")
+def public_building_search():
+    """공개 건물명 검색 — 신청서(중개사/운영업체) 희망건물 자동완성용. 로그인 불필요.
+
+    이름/소속만 반환하고 already_added 같은 계정 종속 정보는 없다.
+    """
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"items": []})
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, building_name, sgg_text, umd_nm
+            FROM master_buildings
+            WHERE building_name ILIKE %s AND building_name <> '-'
+            ORDER BY building_name
+            LIMIT 10
+        """, [f"%{q}%"])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"items": items})
+
+
 @app.route("/api/apply/loan", methods=["POST"])
 @limiter.limit("3 per minute; 10 per hour")
 def apply_loan():
@@ -1697,6 +1744,9 @@ def apply_loan():
     # 건물상세(B화면)에서 진입 시 희망건물 — agent 신청과 동일 패턴 (승인 시 담당건물 자동 등록)
     raw_bid = str(data.get("preferred_building_id") or "").strip()
     preferred_building_id = int(raw_bid) if raw_bid.isdigit() else None
+    # 취급지역 — 허용 목록(LOAN_SERVICE_REGIONS) 내 값만 저장. applications에는
+    # preferred_region 컬럼을 재사용해 담고, 승인 시 loan_consultants.service_region으로 복사.
+    service_region = (data.get("service_region") or "").strip()
 
     missing = []
     if not office_or_company_name:
@@ -1709,8 +1759,12 @@ def apply_loan():
         missing.append("연락처")
     if not email:
         missing.append("이메일")
+    if not service_region:
+        missing.append("취급지역")
     if missing:
         return jsonify({"ok": False, "message": "필수 항목을 입력해주세요: " + ", ".join(missing)}), 400
+    if service_region not in LOAN_SERVICE_REGIONS:
+        return jsonify({"ok": False, "message": "취급지역은 다음 중 하나여야 합니다: " + ", ".join(LOAN_SERVICE_REGIONS)}), 400
 
     # 번호 형식 검증 — 전화번호는 필수, 사업자등록번호는 선택(입력 시에만 검사)
     if not _validate_phone_digits(phone):
@@ -1736,11 +1790,11 @@ def apply_loan():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at,
-             preferred_building_id)
-        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s)
+             preferred_building_id, preferred_region)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, license_number,
-          biz_reg_number or None, phone, email, preferred_building_id))
+          biz_reg_number or None, phone, email, preferred_building_id, service_region))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -4241,7 +4295,7 @@ def loan_consultant_me():
     try:
         cur.execute("""
             SELECT office_name, owner_name, phone, intro_text, subdomain_slug,
-                   consultant_products, kakao_chat_url,
+                   consultant_products, kakao_chat_url, service_region,
                    email, license_number, biz_reg_number, logo_url, status,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM loan_consultants WHERE id = %s
@@ -4276,6 +4330,16 @@ def loan_consultant_me_update():
         ordered = [p for p in LOAN_CONSULTANT_PRODUCTS if p in v]
         sets.append("consultant_products = %s")
         params.append(",".join(ordered) or None)
+    # 취급지역 — 허용 목록 내 값만 (신청서와 동일 검증)
+    if "service_region" in data:
+        v = data.get("service_region")
+        if v is not None and not isinstance(v, str):
+            return jsonify({"ok": False, "message": "취급지역 값이 올바르지 않습니다."}), 400
+        v = (v or "").strip()
+        if not v or v not in LOAN_SERVICE_REGIONS:
+            return jsonify({"ok": False, "message": "취급지역은 다음 중 하나여야 합니다: " + ", ".join(LOAN_SERVICE_REGIONS)}), 400
+        sets.append("service_region = %s")
+        params.append(v)
     license_changes = {}
     for k in ["phone", "intro_text", "kakao_chat_url", "office_name", "owner_name", "email",
               "logo_url", "license_number", "biz_reg_number"]:
@@ -8100,6 +8164,21 @@ def admin_applications_approve(app_id):
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_operator_id=%s WHERE id=%s",
                 [created_id, app_id],
             )
+            # 희망건물(preferred_building_id)이 있으면 담당건물 자동 등록 — agent/LC 승인과 동일 패턴.
+            # 실패해도 승인 자체는 유지 (자동 등록은 부가 기능)
+            pref_bid = ap.get("preferred_building_id")
+            if pref_bid:
+                cur.execute("SAVEPOINT sp_op_assign")
+                try:
+                    cur.execute("""
+                        INSERT INTO operator_buildings (operator_id, master_building_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT ON CONSTRAINT operator_buildings_operator_building_unique DO NOTHING
+                    """, [created_id, pref_bid])
+                    cur.execute("RELEASE SAVEPOINT sp_op_assign")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_op_assign")
+                    app.logger.exception("승인 시 운영업체 담당건물 자동 등록 실패 (application=%s, building=%s)", app_id, pref_bid)
         elif atype == "loan_consultant":
             # 대출상담사: 대출모집인 등록번호(reg_number 컬럼 재사용) 중복이면 승인 불가.
             # 관리자는 loanconsultant.or.kr에서 등록 여부 확인 후 승인하는 것이 전제.
@@ -8136,14 +8215,19 @@ def admin_applications_approve(app_id):
                     n += 1
                 cur.execute("SAVEPOINT sp_loan_insert")
                 try:
+                    # 취급지역 — 신청서의 preferred_region(재사용 컬럼)을 복사, 허용값 외/미입력은 NULL(=전국 표시)
+                    _sr = (ap.get("preferred_region") or "").strip()
+                    service_region = _sr if _sr in LOAN_SERVICE_REGIONS else None
                     cur.execute("""
                         INSERT INTO loan_consultants
                             (office_name, owner_name, license_number, biz_reg_number,
-                             phone, email, status, subdomain_slug, password_hash, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW())
+                             phone, email, status, subdomain_slug, password_hash, approved_at,
+                             service_region)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW(), %s)
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash])
+                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
+                          service_region])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_loan_insert")
                     break

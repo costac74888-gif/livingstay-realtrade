@@ -77,6 +77,11 @@
           <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" value="차량담보대출" /> 차량담보대출</label>
         </div>
       </div>
+      <div class="field">
+        <label>취급지역</label>
+        <select id="fRegion"></select>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">이 지역 기준으로 취급지역 배지가 노출됩니다</div>
+      </div>
       <div class="field"><label>카카오톡 상담 링크 (선택)</label><input type="text" id="fKakao" placeholder="예) https://open.kakao.com/o/…" /></div>
       <div class="field"><label>한줄소개 (선택, 최대 100자)</label><input type="text" id="fIntro" maxlength="100" placeholder="예) 생활숙박시설 담보대출 전문 상담사입니다." /></div>
       <div style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
@@ -115,6 +120,17 @@
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
 let ME = null;
+
+// 취급지역 옵션 — 서버 LOAN_SERVICE_REGIONS와 동일 (전국 → 수도권 → 시도 가나다순)
+const LOAN_SERVICE_REGIONS = ["전국","수도권","강원","경기","경남","경북","광주","대구","대전","부산","서울","세종","울산","인천","전남","전북","제주","충남","충북"];
+(function(){
+  const sel = document.getElementById("fRegion");
+  LOAN_SERVICE_REGIONS.forEach(r => {
+    const o = document.createElement("option");
+    o.value = r; o.textContent = r;
+    sel.appendChild(o);
+  });
+})();
 
 function openModal(id){ document.getElementById(id).hidden = false; }
 function closeModal(id){ document.getElementById(id).hidden = true; }
@@ -173,6 +189,7 @@ document.getElementById("btnEditProfile").addEventListener("click", () => {
   const selected = (ME.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
   document.querySelectorAll("#fProducts input[type=checkbox]").forEach(cb => { cb.checked = selected.includes(cb.value); });
   document.getElementById("fKakao").value = ME.kakao_chat_url || "";
+  document.getElementById("fRegion").value = ME.service_region || "전국";
   document.getElementById("fIntro").value = ME.intro_text || "";
   document.getElementById("msgProfile").textContent = "";
   openModal("mProfile");
@@ -193,6 +210,7 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
     phone: document.getElementById("fPhone").value,
     consultant_products: Array.from(document.querySelectorAll("#fProducts input[type=checkbox]:checked")).map(cb => cb.value),
     kakao_chat_url: kakao,
+    service_region: document.getElementById("fRegion").value,
     intro_text: document.getElementById("fIntro").value,
   };
   const { ok, data } = await api("/api/loan-consultant/me", { method: "PUT", body: JSON.stringify(body) });

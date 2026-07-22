@@ -54,9 +54,16 @@
         <label>연락처 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="phone" placeholder="예) 010-1234-5678" />
       </div>
-      <div class="field" style="margin-bottom:20px;">
+      <div class="field" style="margin-bottom:14px;">
         <label>이메일 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="email" placeholder="예) loan@example.com" />
+      </div>
+      <div class="field" style="margin-bottom:20px;">
+        <label>취급지역 <span style="color:var(--brick);">*</span></label>
+        <select id="service_region">
+          <option value="">선택해주세요</option>
+        </select>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">이 지역 기준으로 취급지역 배지가 노출됩니다</div>
       </div>
 
       <!-- 건물 상세(B화면)에서 진입 시 ?building_id= 값이 채워지는 숨은 필드 — 승인 시 담당건물 자동 등록에 사용 -->
@@ -99,6 +106,15 @@
   const form = document.getElementById("applyForm");
   const errBox = document.getElementById("formError");
   const submitBtn = document.getElementById("submitBtn");
+
+  // 취급지역 옵션 — 서버 LOAN_SERVICE_REGIONS와 동일 (전국 → 수도권 → 시도 가나다순)
+  const LOAN_SERVICE_REGIONS = ["전국","수도권","강원","경기","경남","경북","광주","대구","대전","부산","서울","세종","울산","인천","전남","전북","제주","충남","충북"];
+  const regionSel = document.getElementById("service_region");
+  LOAN_SERVICE_REGIONS.forEach(r => {
+    const o = document.createElement("option");
+    o.value = r; o.textContent = r;
+    regionSel.appendChild(o);
+  });
 
   // ?building_id= 가 있을 때만 숨은 필드에 채워 제출 데이터에 포함 (승인 시 자동 등록용) — agent 신청과 동일 패턴
   (function(){
@@ -158,6 +174,10 @@
       showError("전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)");
       return;
     }
+    if (!regionSel.value){
+      showError("취급지역을 선택해주세요.");
+      return;
+    }
 
     const payload = {
       terms: applyAgreeTerms.checked,
@@ -169,6 +189,7 @@
       phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
       preferred_building_id: document.getElementById("preferred_building_id").value.trim(),
+      service_region: regionSel.value,
     };
 
     submitBtn.disabled = true;
