@@ -224,6 +224,30 @@ def _fetch_page(key, page, num_rows):
     return items, total
 
 
+def _is_429(exc):
+    """HTTP 429(속도 제한) 오류인지 판별."""
+    resp = getattr(exc, "response", None)
+    return getattr(resp, "status_code", None) == 429
+
+
+def _fetch_page_retry(key, page, num_rows):
+    """_fetch_page 1회 재시도 래퍼 (sync_brhub.py와 동일 패턴).
+    - 일반 오류(타임아웃 등): 15초 대기 후 1회 재시도
+    - 429(속도 제한): 45초 대기 후 1회 재시도
+    - 재시도도 실패하면 예외를 그대로 전파(체크포인트는 호출부에서 보존됨)
+    반환: (items, total, saw_429)"""
+    try:
+        items, total = _fetch_page(key, page, num_rows)
+        return items, total, False
+    except Exception as e:
+        saw_429 = _is_429(e)
+        wait = 45 if saw_429 else 15
+        print(f"[brokers] 페이지 {page} 오류: {_redact(repr(e))[:160]} — {wait}초 후 1회 재시도")
+        time.sleep(wait)
+        items, total = _fetch_page(key, page, num_rows)
+        return items, total, saw_429
+
+
 def _upsert(cur, item):
     """1행 UPSERT. reg_number 없으면 지번/도로명주소+상호로 대체키 생성(데이터 유실 방지)."""
     row = {f: _pick(item, f) for f in FIELD_CANDIDATES}
@@ -289,7 +313,11 @@ def sync_brokers(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
 
             calls_today = _bump_daily_calls(cur, conn)
             print(f"[brokers] 페이지 {page} 호출 (오늘 {calls_today}/{max_calls})")
-            items, total = _fetch_page(key, page, num_rows)
+            items, total, saw_429 = _fetch_page_retry(key, page, num_rows)
+            if saw_429:
+                # 속도 제한을 맞았으므로 이후 요청 간격을 2배로(최대 10초) 늘려 재발 방지
+                sleep_sec = min(max(sleep_sec, 0.1) * 2, 10.0)
+                print(f"[brokers] 429 감지 — 이후 요청 간격을 {sleep_sec:.1f}초로 늘립니다")
             if total:
                 total_count = total
 
