@@ -907,6 +907,19 @@ def get_tx_count():
     return jsonify({"count": count})
 
 
+@app.route("/api/building-count")
+def get_building_count():
+    """전체 생숙 단지 수 (실시간 COUNT — 복합용도 자동제외 건물은 제외).
+    아웃바운드 랜딩페이지(agents/operators/loan_partners) '전국 N개 단지' 표시에 사용."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'")
+    count = int(cur.fetchone()["c"])
+    cur.close()
+    conn.close()
+    return jsonify({"count": count})
+
+
 @app.route("/api/regions")
 def get_regions():
     """시도 > 시군구 > 읍면동 계층 트리 (계층 검색 드롭다운용)"""
