@@ -297,8 +297,7 @@ document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
     const type = el.dataset.lodgingType;
     state.lodging_type = type;
     state.page = 1;
-    document.getElementById("selLodgingType").value =
-      (type === "미분류" || type === "준공전") ? "" : type;  // 드롭다운엔 없는 값이라 초기화만
+    document.getElementById("selLodgingType").value = type;  // 드롭다운에도 동일 옵션 추가됨
     loadBoard();
     loadMapMarkers(mapFiltersFromState(), { fit: true });
   });
