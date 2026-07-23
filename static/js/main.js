@@ -454,7 +454,8 @@ const LODGING_LABELS = { "생활": "생활숙박시설", "호텔": "분양형호
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 // lodging_type이 '생활·호텔'처럼 복합이면 맨 앞 용도 색을 쓰고, 값이 없으면 회색.
-function markerColor(lodgingType){
+function markerColor(lodgingType, buildingStatus){
+  if (buildingStatus && buildingStatus !== "완공") return "#9AA5B1";  // 준공전
   if (!lodgingType) return LODGING_COLORS["미분류"];  // NULL(미분류)은 연노랑
   return LODGING_COLORS[lodgingType.split("·")[0]] || LODGING_COLORS["미분류"];
 }
@@ -681,7 +682,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
   let placed = 0;
   items.forEach(b => {
     if (b.lat == null || b.lng == null) return;
-    const color = markerColor(b.lodging_type);
+    const color = markerColor(b.lodging_type, b.building_status);
     const pos = new kakao.maps.LatLng(b.lat, b.lng);
 
     // 기존 마커 원(색상 점) — 디자인 그대로 유지
@@ -1474,7 +1475,7 @@ async function loadBuildingHeader(id){
   }
 
   const isPreCompletion = b.building_status && b.building_status !== "완공";
-  const color = isPreCompletion ? "#9AA5B1" : markerColor(b.lodging_type);
+  const color = isPreCompletion ? "#9AA5B1" : markerColor(b.lodging_type, b.building_status);
   const badgeLabelText = isPreCompletion
     ? `🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}`
     : escapeHtml(detailBadgeLabel(b.lodging_type));
