@@ -307,7 +307,7 @@ def main():
     ap.add_argument("--probe", action="store_true", help="법정동 1곳만 조회해 원본 필드명 확인 (DB 안 씀)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--daily-cap", type=int, default=8000)
-    ap.add_argument("--sleep", type=float, default=0.2)
+    ap.add_argument("--sleep", type=float, default=1.5)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--reset", action="store_true")
     ap.add_argument("--status-key", default=None)
