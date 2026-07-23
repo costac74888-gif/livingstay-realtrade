@@ -5521,7 +5521,7 @@ def admin_run_backfill_permits():
     완료 후 이 라우트는 지워도 됨."""
     import sys, subprocess
     dry = request.args.get("dry_run") == "1"
-    cmd = [sys.executable, "backfill_permits.py"] + (["--dry-run"] if dry else [])
+    cmd = [sys.executable, "-u", "backfill_permits.py"] + (["--dry-run"] if dry else [])
     log_path = "/tmp/backfill_permits_log.txt"
     with open(log_path, "w") as f:
         subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
