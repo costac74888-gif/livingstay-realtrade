@@ -1150,8 +1150,19 @@ function recruitBoxHTML(kind, opts = {}){
       btnText: "대출상담사로 등록하기", href: "/partner", btnStyle: "",
     },
   };
-  const k = KINDS[kind];
+  const PRE_COMPLETION_OVERRIDE = {
+    agent: { title: "🏗 준공 전 선점 기회", desc: "이 프로젝트의 첫 담당중개사가 되어보세요." },
+    consign: { title: "🏗 준공 전 선점 기회", desc: "이 프로젝트의 첫 위탁운영 파트너가 되어보세요." },
+    housekeeping: { title: "🏗 준공 전 선점 기회", desc: "이 프로젝트의 첫 운영지원 파트너가 되어보세요." },
+    finance: { title: "🏗 준공 전 선점 기회", desc: "이 프로젝트의 첫 대출상담 파트너가 되어보세요." },
+  };
+  let k = KINDS[kind];
   if (!k) return "";
+  if (opts.preCompletion && PRE_COMPLETION_OVERRIDE[kind]) {
+    k = Object.assign({}, k, PRE_COMPLETION_OVERRIDE[kind], {
+      bg: "#F1F2F4", border: "#C7CCD1",  // 회색 포인트(준공전 전용 색과 통일)
+    });
+  }
   const btnText = opts.btnText || k.btnText;
   const href = (opts.href !== undefined) ? opts.href : k.href;
   const btn = href
@@ -1701,7 +1712,7 @@ async function loadBuildingHeader(id){
       </a>`;
   }
 
-  renderBuildingAgents(b.agents || (b.agent ? [b.agent] : []), id, bName);
+  renderBuildingAgents(b.agents || (b.agent ? [b.agent] : []), id, bName, b.building_status);
 
   // 위탁운영/운영지원업체(하우스키핑) 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
   // (실제 업종(category) 선택은 신청폼 안에서 함 — agent 신청 링크와 동일 패턴)
@@ -1712,11 +1723,11 @@ async function loadBuildingHeader(id){
   });
 
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
-  renderBuildingOperators(b.operators);
+  renderBuildingOperators(b.operators, b.building_status);
 
   // 금융 카드 — 이 건물에 연결된(loan_consultant_buildings) 승인 대출상담사가 있으면 상담사 카드로 교체,
   // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
-  renderBuildingLoanConsultants(b.loan_consultants, id, bName);
+  renderBuildingLoanConsultants(b.loan_consultants, id, bName, b.building_status);
 
   // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
   // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.
@@ -1810,14 +1821,20 @@ async function loadBuildingStores(buildingId){
 //   위탁운영 카드 ← category '위탁운영'
 //   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
 // 프로필 이동 없이 카드 안에서 정보 완결: 1행 상호 / 2행 업종 / 3행 전화 / 4행 홈페이지(있을 때만)
-function renderBuildingOperators(operators){
+function renderBuildingOperators(operators, buildingStatus){
   const ops = Array.isArray(operators) ? operators : [];
+  const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   // 카드별 최대 3곳 — 서버가 priority_score DESC, RANDOM() 순으로 내려주므로 앞에서 3개만 자른다
   const pick = (cats) => ops.filter(o => cats.includes(o.category)).slice(0, 3);
-  const paint = (boxId, picked) => {
-    if (!picked.length) return; // 담당 업체 없음 → 기존 유치 카드 그대로
+  const paint = (boxId, picked, kind) => {
     const box = document.getElementById(boxId);
     if (!box) return;
+    if (!picked.length) {
+      if (isPreCompletion) {
+        box.innerHTML = recruitBoxHTML(kind, { preCompletion: true });
+      }
+      return; // 완공 건물이고 담당 업체 없음 → 기존 유치 카드 그대로(변경 없음)
+    }
     box.innerHTML = picked.map((op) => {
       // 홈페이지 링크는 http/https만 허용 (링크 인젝션 차단)
       const siteUrl = /^https?:\/\//i.test(String(op.website_url || "")) ? op.website_url : null;
@@ -1835,16 +1852,17 @@ function renderBuildingOperators(operators){
       </div>`;
     }).join("");
   };
-  paint("bOperatorBox", pick(["위탁운영"]));
-  paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]));
+  paint("bOperatorBox", pick(["위탁운영"]), "consign");
+  paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]), "housekeeping");
 }
 
 // 금융/대출상담 카드 — 이 건물에 연결된 담당 대출상담사(loan_consultant_buildings 등록 + approved)
 // 목록을 카드로 그린다 (renderBuildingOperators 패턴). 없으면 "등록 대출상품 없음" 표 +
 // "이 건물에 대출상담사로 신청하기" 모집 박스 표시 (다른 파트너 카드들과 동일 흐름).
-function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
+function renderBuildingLoanConsultants(consultants, buildingId, buildingName, buildingStatus){
   const box = document.getElementById("bFinanceBox");
   if (!box) return;
+  const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   const items = Array.isArray(consultants) ? consultants : [];
   if (!items.length){
     const applyHref = `/apply/loan?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
@@ -1855,7 +1873,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
           <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
         </table>
       </div>
-      ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기" })}`;
+      ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기", preCompletion: isPreCompletion })}`;
     return;
   }
   box.innerHTML = items.map((c) => {
@@ -1882,7 +1900,8 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName){
     <div style="margin-top:8px; text-align:right;"><a href="/loan-consultants" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">전체 대출상담사 보기 →</a></div>`;
 }
 
-function renderBuildingAgents(agents, buildingId, buildingName){
+function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
+  const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   const box = document.getElementById("bAgentBox");
   if (!box) return;
   const list = Array.isArray(agents) ? agents : [];
@@ -1916,6 +1935,7 @@ function renderBuildingAgents(agents, buildingId, buildingName){
     box.innerHTML = recruitBoxHTML("agent", {
       href: `/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`,
       btnText: "이 건물에 담당중개사로 신청하기",
+      preCompletion: isPreCompletion,
     });
   }
 }
