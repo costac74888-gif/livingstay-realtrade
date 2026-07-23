@@ -5514,6 +5514,18 @@ def admin_backup_export():
     return resp
 
 
+@app.route("/api/admin/run-backfill-permits", methods=["POST"])
+@require_admin
+def admin_run_backfill_permits():
+    """일회성 — 기존 permit_pipeline 14건 면적정보 보강. 완료 후
+    이 라우트는 지워도 됨."""
+    import subprocess
+    dry = request.args.get("dry_run") == "1"
+    cmd = ["python", "backfill_permits.py"] + (["--dry-run"] if dry else [])
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    return jsonify({"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode})
+
+
 # ---- 중개업소 데이터 동기화 + 인근 중개업소 후보 (모두 require_admin) ----
 # 공공데이터포털 '전국공인중개사사무소표준데이터' (일일 쿼터 1,000건 — sync_brokers.py가
 # 소프트 캡 900에서 멈추고 체크포인트로 다음날 이어서 수집). 후보 리스트는 '생성'만 하며
