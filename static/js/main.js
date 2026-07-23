@@ -1442,8 +1442,12 @@ async function loadBuildingHeader(id){
     return;
   }
 
-  const color = markerColor(b.lodging_type);
-  const badge = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(detailBadgeLabel(b.lodging_type))}</span>`;
+  const isPreCompletion = b.building_status && b.building_status !== "완공";
+  const color = isPreCompletion ? "#9AA5B1" : markerColor(b.lodging_type);
+  const badgeLabelText = isPreCompletion
+    ? `🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}`
+    : escapeHtml(detailBadgeLabel(b.lodging_type));
+  const badge = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${badgeLabelText}</span>`;
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
   const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
   const bName = b.building_name || "(건물명 미확인)";
@@ -1471,8 +1475,10 @@ async function loadBuildingHeader(id){
   const canFav = favAddr !== "";
 
   // 표제부 백필값 — 헤더 요약에도 반영 (없으면 "-")
-  const useAprShort = (b.use_apr_day != null && b.use_apr_day !== "")
-    ? String(b.use_apr_day).slice(0, 7).replace("-", ".") : "-";
+  const useAprShort = isPreCompletion
+    ? "준공전"
+    : (b.use_apr_day != null && b.use_apr_day !== ""
+        ? String(b.use_apr_day).slice(0, 7).replace("-", ".") : "-");
   const pkngTxt = (b.tot_pkng_cnt != null && b.tot_pkng_cnt !== "")
     ? Number(b.tot_pkng_cnt).toLocaleString("ko-KR") + "대" : "-";
   const flrTxt = (b.grnd_flr_cnt != null || b.ugrnd_flr_cnt != null)
