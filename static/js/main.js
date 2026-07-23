@@ -292,6 +292,24 @@ document.getElementById("selLodgingType").addEventListener("change", e=>{
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
   loadMapMarkers(mapFiltersFromState(), { fit: true });
 });
+document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
+  el.addEventListener("click", () => {
+    const type = el.dataset.lodgingType;
+    state.lodging_type = type;
+    state.page = 1;
+    document.getElementById("selLodgingType").value =
+      (type === "미분류" || type === "준공전") ? "" : type;  // 드롭다운엔 없는 값이라 초기화만
+    loadBoard();
+    loadMapMarkers(mapFiltersFromState(), { fit: true });
+  });
+});
+document.getElementById("mapLegendTitle").addEventListener("click", () => {
+  state.lodging_type = "";
+  state.page = 1;
+  document.getElementById("selLodgingType").value = "";
+  loadBoard();
+  loadMapMarkers({}, { fit: false });
+});
 document.getElementById("chkFavOnly").addEventListener("change", e=>{
   state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
   renderFavChips(); loadBoard();

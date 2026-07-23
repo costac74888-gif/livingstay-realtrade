@@ -694,6 +694,10 @@ def get_buildings_geo():
     if lodging_type == "복합":
         where.append("lodging_type LIKE %s")
         params.append("%·%")
+    elif lodging_type == "미분류":
+        where.append("lodging_type IS NULL")
+    elif lodging_type == "준공전":
+        where.append("building_status != '완공'")
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
