@@ -725,6 +725,7 @@ def get_buildings_geo():
     # 실거래 이력이 없으면 latest_price/latest_deal_date가 NULL로 반환된다.
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.road_address, mb.lat, mb.lng, mb.lodging_type,
+               mb.building_status,
                lt.price AS latest_price, lt.deal_date AS latest_deal_date,
                lt.floor AS latest_floor, lt.area AS latest_area,
                lt.deal_type AS latest_deal_type,
