@@ -438,9 +438,12 @@ const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 // lodging_type이 '생활·호텔'처럼 복합이면 맨 앞 용도 색을 쓰고, 값이 없으면 회색.
 function markerColor(lodgingType){
-  if (!lodgingType) return DEFAULT_MARKER_COLOR;
-  return LODGING_COLORS[lodgingType.split("·")[0]] || DEFAULT_MARKER_COLOR;
+  if (!lodgingType) return LODGING_COLORS["미분류"];  // NULL(미분류)은 연노랑
+  return LODGING_COLORS[lodgingType.split("·")[0]] || LODGING_COLORS["미분류"];
 }
+// DEFAULT_MARKER_COLOR(회색)는 이제 "준공전" 배지 전용으로만 남겨둠
+// (headerCard의 isPreCompletion 분기에서 이미 "#9AA5B1"로 별도 하드코딩해서
+// 쓰고 있으므로 이 변경과 충돌 없음)
 function lodgingLabelKo(lodgingType){
   if (!lodgingType) return "미분류";
   return lodgingType.split("·").map(t => LODGING_LABELS[t] || t).join("·");
