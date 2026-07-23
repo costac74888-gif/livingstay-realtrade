@@ -42,7 +42,7 @@ from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime
+from datetime import datetime, timedelta
 from db import get_conn, init_db
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
@@ -4631,6 +4631,28 @@ def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=3
     return True, 202, {"ok": True, "started_at": status["started_at"]}
 
 
+def _kst_label(ts):
+    """UTC 시각(문자열 'YYYY-MM-DD HH:MM[:SS]' 또는 datetime)을 화면 표시용
+    KST(+9) 문자열로 변환하고 '(KST)' 라벨을 붙인다. 표시 전용 —
+    DB 저장값/비교 로직(24시간 제한 등)은 그대로 UTC를 쓴다."""
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        dt, fmt = ts, "%Y-%m-%d %H:%M"
+    else:
+        s = str(ts).strip()
+        dt = None
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                break
+            except ValueError:
+                continue
+        if dt is None:
+            return ts  # 형식을 모르면 원본 그대로
+    return (dt + timedelta(hours=9)).strftime(fmt) + " (KST)"
+
+
 def _read_sync_status_row(cur, meta_key):
     """meta_key 상태 JSON + 하트비트 끊김(stale) 판정. 없으면 None."""
     cur.execute("""
@@ -4649,7 +4671,10 @@ def _read_sync_status_row(cur, meta_key):
             and float(meta["age"]) > _SYNC_STALE_MIN * 60):
         status["state"] = "stale"
     if meta["updated_at"]:
-        status["status_updated_at"] = meta["updated_at"].strftime("%Y-%m-%d %H:%M")
+        status["status_updated_at"] = _kst_label(meta["updated_at"])
+    for k in ("started_at", "finished_at"):
+        if status.get(k):
+            status[k] = _kst_label(status[k])
     return status
 
 
@@ -4784,14 +4809,14 @@ def admin_datasync_overview():
             stale_syncs.append({
                 "key": key,
                 "label": label,
-                "last_run_at": ts.strftime("%Y-%m-%d %H:%M") if ts else None,
+                "last_run_at": _kst_label(ts) if ts else None,
             })
     return jsonify({
         "ok": True,
         "missing_geo": c["missing_geo"],
         "missing_title": c["missing_title"],
         "stale_syncs": stale_syncs,
-        "booted_at": _APP_STARTED_AT.strftime("%Y-%m-%d %H:%M"),
+        "booted_at": _kst_label(_APP_STARTED_AT),
     })
 
 
@@ -4925,8 +4950,8 @@ def admin_sync_status():
         "ok": True,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
-        "started_at": (status.get("started_at") if status else None),
-        "finished_at": (status.get("finished_at") if status else None),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
         "inserted": inserted,
         "error": ((status.get("error") if status else None)
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
@@ -5113,8 +5138,8 @@ def admin_backfill_status():
         "ok": True,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
-        "started_at": (status.get("started_at") if status else None),
-        "finished_at": (status.get("finished_at") if status else None),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
         "inserted": inserted,
         "months": (status.get("months") if status else None),
         "target_from": (status.get("target_from") if status else None) or _BACKFILL_FROM,
@@ -5686,8 +5711,8 @@ def admin_broker_sync_status():
         "ok": True,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
-        "started_at": (status.get("started_at") if status else None),
-        "finished_at": (status.get("finished_at") if status else None),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
         "processed": (status.get("processed") if status else None),
         "completed": (status.get("completed") if status else None),
         "error": ((status.get("error") if status else None)
@@ -5697,7 +5722,8 @@ def admin_broker_sync_status():
         "calls_remaining": max(0, _BROKER_DAILY_CAP - calls_today),
         "daily_cap": _BROKER_DAILY_CAP,
         "progress": progress,       # {"next_page":N,"total_count":M} — 미완이면 존재
-        "last_sync": last_sync,     # {"finished_at":...,"total":...}
+        "last_sync": (dict(last_sync, finished_at=_kst_label(last_sync.get("finished_at")))
+                      if last_sync else None),  # {"finished_at":...,"total":...}
     })
 
 
@@ -5984,8 +6010,8 @@ def admin_lodging_sync_status():
         "ok": True,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
-        "started_at": (status.get("started_at") if status else None),
-        "finished_at": (status.get("finished_at") if status else None),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
         "processed": (status.get("processed") if status else None),
         "completed": (status.get("completed") if status else None),
         "error": ((status.get("error") if status else None)
@@ -5995,7 +6021,8 @@ def admin_lodging_sync_status():
         "calls_remaining": max(0, _LODGING_DAILY_CAP - calls_today),
         "daily_cap": _LODGING_DAILY_CAP,
         "progress": progress,
-        "last_sync": last_sync,
+        "last_sync": (dict(last_sync, finished_at=_kst_label(last_sync.get("finished_at")))
+                      if last_sync else None),
     })
 
 
@@ -6152,8 +6179,8 @@ def admin_brhub_sync_status():
         "ok": True,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
-        "started_at": (status.get("started_at") if status else None),
-        "finished_at": (status.get("finished_at") if status else None),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
         "processed": (status.get("processed") if status else None),
         "found": (status.get("found") if status else None),
         "completed": (status.get("completed") if status else None),
@@ -6300,8 +6327,8 @@ def admin_permits_sync_status():
         "ok": True,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
-        "started_at": (status.get("started_at") if status else None),
-        "finished_at": (status.get("finished_at") if status else None),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
         "processed": (status.get("processed") if status else None),
         "found": (status.get("found") if status else None),
         "completed": (status.get("completed") if status else None),
