@@ -5517,13 +5517,26 @@ def admin_backup_export():
 @app.route("/api/admin/run-backfill-permits", methods=["POST"])
 @require_admin
 def admin_run_backfill_permits():
-    """일회성 — 기존 permit_pipeline 14건 면적정보 보강. 완료 후
-    이 라우트는 지워도 됨."""
-    import subprocess
+    """일회성 — 기존 permit_pipeline 14건 면적정보 보강.
+    완료 후 이 라우트는 지워도 됨."""
+    import sys, subprocess
     dry = request.args.get("dry_run") == "1"
-    cmd = ["python", "backfill_permits.py"] + (["--dry-run"] if dry else [])
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    return jsonify({"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode})
+    cmd = [sys.executable, "backfill_permits.py"] + (["--dry-run"] if dry else [])
+    log_path = "/tmp/backfill_permits_log.txt"
+    with open(log_path, "w") as f:
+        subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+    return jsonify({"ok": True, "message": "백그라운드로 시작했습니다. 몇 초 후 /api/admin/backfill-permits-log 로 결과 확인하세요."})
+
+
+@app.route("/api/admin/backfill-permits-log")
+@require_admin
+def admin_backfill_permits_log():
+    """위 작업의 실행 로그 확인용."""
+    try:
+        with open("/tmp/backfill_permits_log.txt") as f:
+            return jsonify({"log": f.read()})
+    except FileNotFoundError:
+        return jsonify({"log": "(아직 실행 안 됨)"})
 
 
 # ---- 중개업소 데이터 동기화 + 인근 중개업소 후보 (모두 require_admin) ----
