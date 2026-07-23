@@ -46,6 +46,7 @@ from address_utils import normalize_umd_nm
 from building_registry import _find_categories, _combine_labels
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 완전히 동일한 로직을 재사용
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
+from geocode_buildings import geocode_buildings
 
 API_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
 KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"
@@ -347,6 +348,17 @@ def main():
                 time.sleep(5)
     if error and not args.status_key:
         sys.exit(1)
+
+    # 이번 실행에서 새 건물을 발견했으면(dry-run 제외), 좌표 채우기를
+    # 이어서 자동 실행 — 사람이 매번 버튼을 따로 안 눌러도 되게 함.
+    # 실패해도 건물수집 자체의 성공/실패 상태에는 영향 안 주도록 별도 예외처리.
+    if not error and not args.dry_run and found_run > 0:
+        print(f"\n[brhub] 신규 건물 {found_run}건 발견 — 좌표 채우기 이어서 실행합니다.")
+        try:
+            geocode_buildings(limit=None, status_key=None, run_id=None)
+        except Exception as e:
+            print(f"[brhub] 좌표 채우기 자동 실행 실패(건물수집 자체는 정상 완료됨): "
+                  f"{repr(e)[:200]}")
 
 
 if __name__ == "__main__":
