@@ -232,7 +232,9 @@ def run(args, status_key=None, run_id=None):
                 status = "착공" if actual_start else "허가"
                 counts[status] += 1
 
-                bld_nm = (it.get("bldNm") or "").strip() or "-"
+                bld_nm = (it.get("bldNm") or "").strip()
+                if not bld_nm:
+                    bld_nm = road_address or plat_plc or f"{sgg_text} {umd_raw} {jibun or ''}".strip()
                 units = int(hoCnt or 0) or None
 
                 # 완공예정일 추정 — 실제착공일(우선) 또는 착공예정일 기준 +900일(약 30개월,
@@ -254,13 +256,22 @@ def run(args, status_key=None, run_id=None):
                         INSERT INTO master_buildings
                             (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
                              units, source, building_status, lodging_type, lodging_type_detail,
-                             permit_day, actual_start_day, completion_expected_date)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s,%s,%s,%s)
+                             permit_day, actual_start_day, completion_expected_date,
+                             tot_area, plat_area, arch_area, bc_rat, vl_rat, hhld_cnt, tot_pkng_cnt)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s,%s,%s,%s,
+                                %s,%s,%s,%s,%s,%s,%s)
                     """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
                           units, status, purps_text[:500] or None,
                           str(permit_day) if permit_day else None,
                           str(actual_start) if actual_start else None,
-                          completion_est))
+                          completion_est,
+                          it.get("totArea") or None,
+                          it.get("platArea") or None,
+                          it.get("archArea") or None,
+                          it.get("bcRat") or None,
+                          it.get("vlRat") or None,
+                          it.get("hhldCnt") or None,
+                          it.get("totPkngCnt") or None))
                 found_run += 1
                 prog["found_total"] = prog.get("found_total", 0) + 1
                 if jibun:

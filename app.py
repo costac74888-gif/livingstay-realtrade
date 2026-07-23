@@ -284,6 +284,8 @@ def get_building(building_id):
         SELECT mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
                mb.lodging_type, mb.lodging_type_detail,
                mb.building_status, mb.completion_expected_date,
+               mb.permit_day, mb.actual_start_day,
+               mb.arch_area, mb.bc_rat, mb.vl_rat,
                mb.sgg_cd, mb.umd_nm, mb.jibun,
                mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
                mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,

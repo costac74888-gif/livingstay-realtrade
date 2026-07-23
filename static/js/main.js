@@ -1404,6 +1404,11 @@ function buildingPanelSkeleton(){
       <div id="bTrendEmpty" class="side-empty" style="display:none;">실거래 내역이 없습니다.</div>
     </section>
 
+    <section class="side-card" id="bTimelineCard" style="display:none;">
+      <div class="side-card-title">진행단계 <span class="side-sub">건축인허가</span></div>
+      <div id="bTimelineBody"></div>
+    </section>
+
     <section class="side-card">
       <div class="side-card-title">실거래목록 <span class="side-sub" id="bTxTotalLabel"></span></div>
       <div id="bTxTableWrap" style="overflow-x:auto;"><div class="side-empty">불러오는 중…</div></div>
@@ -1494,7 +1499,9 @@ async function loadBuildingHeader(id){
 
   // 주용도1/2 — lodging_type("호텔·콘도")을 분리해 전체 명칭으로 표시. 없으면 "-".
   const useParts = (b.lodging_type || "").split("·").filter(Boolean);
-  const use1 = useParts[0] ? (LODGING_LABELS[useParts[0]] || useParts[0]) : "-";
+  const use1 = useParts[0]
+    ? (LODGING_LABELS[useParts[0]] || useParts[0])
+    : (b.lodging_type_detail ? escapeHtml(b.lodging_type_detail).slice(0, 30) : "-");
   const use2 = useParts[1] ? (LODGING_LABELS[useParts[1]] || useParts[1]) : "-";
 
   // 관심저장/실거래알림은 좌측 목록과 동일한 키(building_name|address)를 사용. address가
@@ -1672,6 +1679,30 @@ async function loadBuildingHeader(id){
       <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
       <div class="side-empty">준공 전입니다. 사용승인 후 영업신고 정보가 표시됩니다.</div>
     `;
+
+    // 진행단계 타임라인 — 건축허가 → 착공 → 사용승인 (준공전 건물만 노출)
+    const tlCard = document.getElementById("bTimelineCard");
+    const tlBody = document.getElementById("bTimelineBody");
+    if (tlCard && tlBody) {
+      const fmtDay8 = (v) => {
+        const s = (v == null) ? "" : String(v).trim();
+        return /^\d{8}$/.test(s) ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : "-";
+      };
+      const steps = [
+        { label: "건축허가", date: fmtDay8(b.permit_day),       done: !!(b.permit_day) },
+        { label: "착공",     date: fmtDay8(b.actual_start_day), done: !!(b.actual_start_day) },
+        { label: "사용승인", date: "-",                          done: false }, // 완공 전이므로 항상 미도달
+      ];
+      const cells = steps.map((s, i) => `
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
+          ${i > 0 ? `<div style="position:absolute; top:9px; left:-50%; width:100%; height:2px; background:${s.done ? "#378ADD" : "#D5DAE0"};"></div>` : ""}
+          <div style="position:relative; z-index:1; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; background:${s.done ? "#378ADD" : "#C7CCD1"};">${s.done ? "✓" : ""}</div>
+          <div style="margin-top:6px; font-size:12px; font-weight:700; color:${s.done ? "var(--ink)" : "var(--ink-soft)"};">${s.label}</div>
+          <div style="margin-top:2px; font-size:11.5px; font-family:'JetBrains Mono',monospace; color:var(--ink-soft);">${s.date}</div>
+        </div>`).join("");
+      tlBody.innerHTML = `<div style="display:flex; align-items:flex-start; padding:6px 4px 2px;">${cells}</div>`;
+      tlCard.style.display = "";
+    }
   } else {
     // [2] 행정운영 표 — 행안부 영업신고 데이터(영업/정상만) 기반.
     //     신고율 = 영업 중 객실수 합 / 총 호실수(units). 데이터 미수집이면 "확인 불가".
@@ -1756,7 +1787,16 @@ async function loadBuildingHeader(id){
   if (bldgInfoCard){
     const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
     const fmtTxt = (v) => (v != null && v !== "") ? escapeHtml(String(v)) : "-";
-    const pairs = [
+    const isPreC = b.building_status && b.building_status !== "완공";
+    const pairs = isPreC ? [
+      ["대지면적", fmtNum(b.plat_area, " ㎡")],
+      ["연면적", fmtNum(b.tot_area, " ㎡")],
+      ["건축면적", fmtNum(b.arch_area, " ㎡")],
+      ["건폐율", fmtNum(b.bc_rat, "%")],
+      ["용적률", fmtNum(b.vl_rat, "%")],
+      ["세대수", fmtNum(b.hhld_cnt, "세대")],
+      ["총주차대수", fmtNum(b.tot_pkng_cnt, "대")],
+    ] : [
       ["연면적", fmtNum(b.tot_area, " ㎡")],
       ["대지면적", fmtNum(b.plat_area, " ㎡")],
       ["세대수", fmtNum(b.hhld_cnt, "세대")],
@@ -1772,7 +1812,7 @@ async function loadBuildingHeader(id){
         <div class="b-bldg-v">${v}</div>
       </div>`).join("");
     bldgInfoCard.innerHTML = `
-      <div class="side-card-title">건축정보 <span class="side-sub">표제부</span></div>
+      <div class="side-card-title">건축정보 <span class="side-sub">${isPreC ? "건축인허가" : "표제부"}</span></div>
       <div class="b-bldg-grid">${cells}</div>`;
   }
 
