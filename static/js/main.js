@@ -290,7 +290,7 @@ document.getElementById("selUmdNm").addEventListener("change", e=>{ state.umd_nm
 document.getElementById("selYear").addEventListener("change", e=>{ state.year = e.target.value; });
 document.getElementById("selLodgingType").addEventListener("change", e=>{
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
-  loadMapMarkers(mapFiltersFromState(), { fit: true });
+  loadMapMarkers(mapFiltersFromState(), { fit: false });
 });
 document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
   el.addEventListener("click", () => {
@@ -299,7 +299,7 @@ document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
     state.page = 1;
     document.getElementById("selLodgingType").value = type;  // 드롭다운에도 동일 옵션 추가됨
     loadBoard();
-    loadMapMarkers(mapFiltersFromState(), { fit: true });
+    loadMapMarkers(mapFiltersFromState(), { fit: false });
   });
 });
 document.getElementById("mapLegendTitle").addEventListener("click", () => {
@@ -317,7 +317,7 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.q = document.getElementById("inputQ").value.trim();
   state.page = 1;
   loadBoard();
-  loadMapMarkers(mapFiltersFromState(), { fit: true });
+  loadMapMarkers(mapFiltersFromState(), { fit: false });
 });
 function resetToHome(){
   const yearSel = document.getElementById("selYear");
