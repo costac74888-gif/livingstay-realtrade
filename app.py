@@ -5452,6 +5452,60 @@ def admin_buildings_export():
     return resp
 
 
+@app.route("/api/admin/backup-export")
+@require_admin
+def admin_backup_export():
+    """핵심 테이블 10개 + 스키마 스냅샷을 zip으로 묶어 다운로드."""
+    import csv
+    import zipfile
+    from datetime import date
+
+    TABLES = [
+        "master_buildings", "agents", "operators", "loan_consultants",
+        "agent_buildings", "operator_buildings", "loan_consultant_buildings",
+        "transactions", "lodging_registry", "broker_registry",
+    ]
+    conn = get_conn()
+    cur = conn.cursor()
+    today = date.today().isoformat()
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for table in TABLES:
+            cur.execute(f"SELECT * FROM {table}")
+            rows = cur.fetchall()
+            csv_buf = io.StringIO()
+            if rows:
+                writer = csv.DictWriter(csv_buf, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow(dict(r))
+            zf.writestr(f"{table}_{today}.csv", csv_buf.getvalue())
+
+        cur.execute("""
+            SELECT table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            ORDER BY table_name, ordinal_position
+        """)
+        schema_rows = cur.fetchall()
+        schema_txt = "\n".join(
+            f"{r['table_name']}.{r['column_name']} ({r['data_type']})"
+            for r in schema_rows
+        )
+        zf.writestr(f"schema_snapshot_{today}.txt", schema_txt)
+
+    cur.close()
+    conn.close()
+    zip_buffer.seek(0)
+    resp = Response(zip_buffer.read(), mimetype="application/zip")
+    resp.headers["Content-Disposition"] = (
+        f"attachment; filename=homenstay_backup_{today}.zip"
+    )
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 # ---- 중개업소 데이터 동기화 + 인근 중개업소 후보 (모두 require_admin) ----
 # 공공데이터포털 '전국공인중개사사무소표준데이터' (일일 쿼터 1,000건 — sync_brokers.py가
 # 소프트 캡 900에서 멈추고 체크포인트로 다음날 이어서 수집). 후보 리스트는 '생성'만 하며

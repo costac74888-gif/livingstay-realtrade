@@ -1670,6 +1670,20 @@
           <div id="pendingCompletionStatus" class="geo-status">현황 불러오는 중…</div>
           <div id="pendingCompletionList" style="margin-top:10px"></div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBackup">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">데이터 백업</h2>
+          </div>
+          <p class="legal-admin-hint">
+            핵심 테이블 10개(건물마스터·파트너·실거래·숙박업·중개업소 등) CSV와
+            스키마 스냅샷을 zip 파일 하나로 다운로드합니다.
+            <b>운영 데이터 백업은 반드시 운영 사이트의 관리자 페이지에서 눌러주세요</b>
+            (개발 미리보기에서 누르면 개발 DB가 백업됩니다).
+          </p>
+          <div class="legal-admin-actions">
+            <a href="/api/admin/backup-export" class="admin-btn admin-btn-primary" style="text-decoration:none;">📦 전체 데이터 백업(zip 다운로드)</a>
+          </div>
+        </div>
       `;
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
