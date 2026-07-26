@@ -2769,7 +2769,7 @@
           ? `<button class="dg-icon-btn" onclick="memberDocs('${r.member_type}', ${r.id})">서류</button>`
           : "";
         const dashBtn = (r.member_type === "agent")
-          ? `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">대시보드</a>`
+          ? `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">마이페이지</a>`
           : "";
         const actions = r.member_type === "pending"
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>

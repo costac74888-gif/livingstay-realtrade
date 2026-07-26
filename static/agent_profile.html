@@ -32,7 +32,6 @@
 
 <script src="/static/js/format_util.js"></script>
 <script>
-  // 지도 마커와 동일한 용도 색상(main.js LODGING_COLORS와 일치)
   const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
   const DEFAULT_MARKER_COLOR = "#9AA5B1";
   const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
@@ -43,7 +42,6 @@
   const slug = decodeURIComponent(location.pathname.split("/").pop());
   const wrap = document.getElementById("profileWrap");
 
-  // 건물상세(B화면)에서 진입한 경우 "홈으로"가 해당 건물로 돌아가도록 (그 외 진입은 기존대로 메인)
   const _qs = new URLSearchParams(location.search);
   const _fromBuildingId = /^\d+$/.test(_qs.get("building_id") || "") ? _qs.get("building_id") : null;
   const homeHref = _fromBuildingId ? `/building/${_fromBuildingId}` : "/";
@@ -102,6 +100,18 @@
         ${buildings || `<div class="side-empty">아직 등록된 전속 단지가 없습니다.</div>`}
       </div>`;
 
+    const repSection = (p.office_phone || p.office_address || p.reg_number)
+      ? `<div class="panel-card" style="margin-top:14px;">
+           <div class="side-card-title">대표</div>
+           <table style="width:100%; font-size:13.5px; border-collapse:collapse; margin-top:6px;">
+             <tr><td style="padding:5px 10px 5px 0; color:var(--ink-soft); white-space:nowrap; vertical-align:top;">대표</td><td>${esc(p.owner_name || "-")}</td></tr>
+             ${p.office_phone ? `<tr><td style="padding:5px 10px 5px 0; color:var(--ink-soft); white-space:nowrap; vertical-align:top;">대표번호</td><td><a href="tel:${esc(p.office_phone)}" style="color:var(--brass-dark); text-decoration:none;">${esc(window.formatPhone ? formatPhone(p.office_phone) : p.office_phone)}</a></td></tr>` : ""}
+             ${p.office_address ? `<tr><td style="padding:5px 10px 5px 0; color:var(--ink-soft); white-space:nowrap; vertical-align:top;">소재지</td><td>${esc(p.office_address)}</td></tr>` : ""}
+             ${p.reg_number ? `<tr><td style="padding:5px 10px 5px 0; color:var(--ink-soft); white-space:nowrap; vertical-align:top;">등록번호</td><td>${esc(p.reg_number)}</td></tr>` : ""}
+           </table>
+         </div>`
+      : "";
+
     wrap.innerHTML = `
       <div class="panel-card">
         <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
@@ -112,11 +122,11 @@
             <div style="font-size:12.5px; color:var(--ink-soft); margin-top:5px;">총 ${p.building_count}개 단지 · ${p.total_listings}건 매물</div>
           </div>
           ${p.phone ? `<div>휴대전화: <a href="tel:${esc(p.phone)}" style="color:var(--brass-dark); text-decoration:none;">${esc(window.formatPhone ? formatPhone(p.phone) : p.phone)}</a></div>` : ""}
-          ${p.office_phone ? `<div>사무실 전화: <a href="tel:${esc(p.office_phone)}" style="color:var(--brass-dark); text-decoration:none;">${esc(window.formatPhone ? formatPhone(p.office_phone) : p.office_phone)}</a></div>` : ""}
         </div>
       </div>
       ${introSection}
       ${buildingSection}
+      ${repSection}
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:12px; text-align:center;">이 정보는 파트너가 등록한 내용이며, 회사가 보증하지 않습니다.</div>`;
   }
 

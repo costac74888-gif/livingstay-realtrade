@@ -21,7 +21,7 @@
     <img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">
     <div class="brand-text"><div class="name">홈앤스테이</div></div>
   </a>
-  <div class="page-title">중개사 대시보드</div>
+  <div class="page-title">중개사 마이페이지</div>
   <div class="header-right"><button id="btnLogout" class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">로그아웃</button></div>
 </header>
 
@@ -87,7 +87,9 @@
       <div style="background:#F7F5F0; border-radius:10px; padding:14px; margin-bottom:14px;">
         <div class="side-card-title" style="margin-bottom:10px;">연락처</div>
         <div class="field"><label>이메일</label><input type="text" id="fEmail" placeholder="예) agent@example.com" /></div>
-        <div class="field" style="margin-bottom:0;"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
+        <div class="field"><label>휴대전화</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
+        <div class="field"><label>사무실 전화 (선택)</label><input type="text" id="fOfficePhone" placeholder="예) 031-221-0540" /></div>
+        <div class="field" style="margin-bottom:0;"><label>소재지 (선택)</label><input type="text" id="fOfficeAddress" placeholder="예) 경기도 수원시 팔달구 세지로152번길 3" /></div>
       </div>
 
       <div style="background:#F7F5F0; border-radius:10px; padding:14px; margin-bottom:14px;">
@@ -341,6 +343,8 @@ document.getElementById("btnEditProfile").addEventListener("click", () => {
   document.getElementById("fOwner").value = ME.owner_name || "";
   document.getElementById("fEmail").value = ME.email || "";
   document.getElementById("fPhone").value = formatPhone(ME.phone || "");
+  document.getElementById("fOfficePhone").value = formatPhone(ME.office_phone || "");
+  document.getElementById("fOfficeAddress").value = ME.office_address || "";
   document.getElementById("fIntroTitle").value = ME.intro_title || "";
   document.getElementById("fIntroTitleCount").textContent = (ME.intro_title || "").length + "/16자";
   document.getElementById("fIntro").value = ME.intro_text || "";
@@ -355,6 +359,8 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
     owner_name: document.getElementById("fOwner").value,
     email: document.getElementById("fEmail").value,
     phone: document.getElementById("fPhone").value,
+    office_phone: document.getElementById("fOfficePhone").value,
+    office_address: document.getElementById("fOfficeAddress").value,
     intro_title: document.getElementById("fIntroTitle").value.trim(),
     intro_text: document.getElementById("fIntro").value,
     reg_number: document.getElementById("fRegNo").value,

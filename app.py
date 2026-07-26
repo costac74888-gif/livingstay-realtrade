@@ -3659,6 +3659,8 @@ def agent_public_profile(slug):
         "owner_name": agent["owner_name"],
         "phone": agent["phone"],
         "office_phone": agent["office_phone"],
+        "office_address": agent["office_address"],
+        "reg_number": agent["reg_number"],
         "photo_url": agent["photo_url"],
         "intro_text": agent["intro_text"],
         "buildings": buildings,
@@ -3772,7 +3774,7 @@ def _agent_me_data(agent_id):
     try:
         cur.execute("""
             SELECT office_name, owner_name, phone, photo_url, intro_text, intro_title, subdomain_slug,
-                   email, reg_number, biz_reg_number, status,
+                   email, reg_number, biz_reg_number, status, office_address, office_phone,
                    COALESCE(is_visible, TRUE) AS is_visible
             FROM agents WHERE id = %s
         """, [agent_id])
