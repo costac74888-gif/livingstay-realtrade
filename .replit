@@ -145,7 +145,7 @@ PUBLIC_BASE_URL = "https://homenstay.com"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "app:app"]
+run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--preload", "app:app"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
