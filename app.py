@@ -8988,6 +8988,75 @@ def admin_members_bulk_reactivate():
     return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
 
 
+@app.route("/api/admin/members/bulk-delete", methods=["POST"])
+@require_admin
+def admin_members_bulk_delete():
+    """회원 완전 삭제 — 되돌릴 수 없음. 연관 데이터까지 함께 정리한다.
+    - pending(승인대기): applications 행 자체 삭제
+    - agent: mileage_submissions/slots/listings(agent_id) 삭제,
+      listing_requests.routed_agent_id는 NULL 처리(요청 이력은 보존),
+      applications.linked_agent_id인 신청서 삭제, 마지막 agents 삭제
+      (agent_buildings는 ON DELETE CASCADE로 자동 정리됨)
+    - operator: applications.linked_operator_id 삭제 후 operators 삭제
+      (operator_buildings는 CASCADE)
+    - loan_consultant: applications.linked_loan_consultant_id 삭제 후
+      loan_consultants 삭제 (loan_consultant_buildings는 CASCADE)
+    - general(일반회원): listing_requests(user_id) 삭제 후 users 삭제
+      (point_transactions 등은 CASCADE)
+    반드시 하나의 트랜잭션으로 처리하고 실패 시 전체 롤백.
+    안전장치: 요청 본문에 confirm="삭제" 가 정확히 와야만 실행 (아니면 400).
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    if (data.get("confirm") or "") != "삭제":
+        return jsonify({"ok": False, "message": "삭제 확인 문구가 일치하지 않습니다."}), 400
+    ids, err = _bulk_parse_ids(data, {"general", "agent", "operator", "loan_consultant", "pending"})
+    if err:
+        return jsonify({"ok": False, "message": err}), 400
+    by_type = {}
+    for t, i in ids:
+        by_type.setdefault(t, []).append(i)
+    conn = get_conn()
+    cur = conn.cursor()
+    deleted = 0
+    try:
+        if by_type.get("pending"):
+            cur.execute("DELETE FROM applications WHERE id = ANY(%s)", [by_type["pending"]])
+            deleted += cur.rowcount
+        if by_type.get("agent"):
+            aid = by_type["agent"]
+            cur.execute("DELETE FROM mileage_submissions WHERE agent_id = ANY(%s)", [aid])
+            cur.execute("DELETE FROM slots WHERE agent_id = ANY(%s)", [aid])
+            cur.execute("DELETE FROM listings WHERE agent_id = ANY(%s)", [aid])
+            cur.execute("UPDATE listing_requests SET routed_agent_id=NULL WHERE routed_agent_id = ANY(%s)", [aid])
+            cur.execute("DELETE FROM applications WHERE linked_agent_id = ANY(%s)", [aid])
+            cur.execute("DELETE FROM agents WHERE id = ANY(%s)", [aid])
+            deleted += cur.rowcount
+        if by_type.get("operator"):
+            oid = by_type["operator"]
+            cur.execute("DELETE FROM applications WHERE linked_operator_id = ANY(%s)", [oid])
+            cur.execute("DELETE FROM operators WHERE id = ANY(%s)", [oid])
+            deleted += cur.rowcount
+        if by_type.get("loan_consultant"):
+            lid = by_type["loan_consultant"]
+            cur.execute("DELETE FROM applications WHERE linked_loan_consultant_id = ANY(%s)", [lid])
+            cur.execute("DELETE FROM loan_consultants WHERE id = ANY(%s)", [lid])
+            deleted += cur.rowcount
+        if by_type.get("general"):
+            uid = by_type["general"]
+            cur.execute("DELETE FROM listing_requests WHERE user_id = ANY(%s)", [uid])
+            cur.execute("DELETE FROM users WHERE id = ANY(%s)", [uid])
+            deleted += cur.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("회원 일괄 삭제 실패")
+        return jsonify({"ok": False, "message": "삭제 중 오류가 발생했습니다. 연관된 다른 데이터가 남아있을 수 있습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "success": deleted, "failed": len(ids) - deleted})
+
+
 @app.route("/api/admin/members/<member_type>/<int:member_id>/memo", methods=["PUT"])
 @require_admin
 def admin_member_memo_put(member_type, member_id):

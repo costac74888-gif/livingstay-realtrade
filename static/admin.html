@@ -2826,6 +2826,7 @@
           <button class="admin-btn" id="bulkPointsBtn">포인트</button>
           <button class="admin-btn admin-btn-danger" id="bulkDeactivateBtn">비활성화</button>
           <button class="admin-btn" id="bulkReactivateBtn" style="display:none;">재활성화</button>
+          <button class="admin-btn admin-btn-danger" id="bulkDeleteBtn" style="background:#7a1f1f;">삭제</button>
         </div>
         <table class="dg-table">
           <thead><tr>
@@ -2915,6 +2916,7 @@
       on("bulkPointsBtn", bulkPoints);
       on("bulkDeactivateBtn", bulkDeactivate);
       on("bulkReactivateBtn", bulkReactivate);
+      on("bulkDeleteBtn", bulkDelete);
       updateBulkBar();
     }
 
@@ -3055,6 +3057,25 @@
       const d = await bulkCall("/api/admin/members/bulk-reactivate", { ids });
       if (!d) return;
       window.alert(`재활성화 완료 — ${d.success}명 처리`);
+      loadMembers();
+    }
+
+    async function bulkDelete() {
+      const ids = selectedList();
+      if (!ids.length) return;
+      const typeCount = {};
+      ids.forEach((x) => { typeCount[x.type] = (typeCount[x.type] || 0) + 1; });
+      const summary = Object.entries(typeCount).map(([t, n]) => `${t}: ${n}건`).join(", ");
+      if (!window.confirm(
+        `선택한 ${ids.length}건을 완전히 삭제합니다 (${summary}).\n\n` +
+        `⚠️ 되돌릴 수 없습니다. 계정, 신청서, 매물, 슬롯 등 연관 데이터가 함께 삭제됩니다.\n` +
+        `정말 진행하시겠습니까?`
+      )) return;
+      const typed = window.prompt(`정말 삭제하려면 "삭제"라고 정확히 입력하세요.`, "");
+      if (typed !== "삭제") { window.alert("입력이 일치하지 않아 취소되었습니다."); return; }
+      const d = await bulkCall("/api/admin/members/bulk-delete", { ids, confirm: "삭제" });
+      if (!d) return;
+      window.alert(`삭제 완료 — 성공 ${d.success}건 / 실패 ${d.failed}건`);
       loadMembers();
     }
 
