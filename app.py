@@ -3897,6 +3897,35 @@ def agent_visibility_update():
     return jsonify({"ok": True, "is_visible": v})
 
 
+def _reassign_house_requests_for_building(cur, agent_id, mbid):
+    """agent_buildings에 건물이 새로 추가됐을 때, 그 건물(exclusive) 또는
+    같은 시군구(region)에서 'house'(하우스 계정=홈스퀘어 중개법인)로
+    배정돼 있던 매물의뢰를 이 중개사에게 재배정한다. 재배정된 건수 반환."""
+    cur.execute("SELECT sgg_text FROM master_buildings WHERE id=%s", [mbid])
+    row = cur.fetchone()
+    sgg = (row["sgg_text"] or "").strip() if row else ""
+
+    cur.execute("""
+        SELECT id, master_building_id FROM listing_requests
+        WHERE routed_reason = 'house'
+          AND (master_building_id = %s
+               OR master_building_id IN (
+                    SELECT id FROM master_buildings WHERE sgg_text = %s AND %s <> ''
+               ))
+    """, [mbid, sgg, sgg])
+    rows = cur.fetchall()
+    if not rows:
+        return 0
+    ids = [r["id"] for r in rows]
+    cur.execute("""
+        UPDATE listing_requests
+        SET routed_agent_id = %s,
+            routed_reason = CASE WHEN master_building_id = %s THEN 'exclusive' ELSE 'region' END
+        WHERE id = ANY(%s)
+    """, [agent_id, mbid, ids])
+    return len(ids)
+
+
 @app.route("/api/agent/buildings", methods=["POST"])
 @require_agent
 def agent_building_add():
@@ -3908,6 +3937,7 @@ def agent_building_add():
         return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
     conn = get_conn()
     cur = conn.cursor()
+    reassigned_count = 0
     try:
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
@@ -3924,6 +3954,7 @@ def agent_building_add():
                 "INSERT INTO agent_buildings (agent_id, master_building_id) VALUES (%s, %s)",
                 [agent_id, mbid],
             )
+            reassigned_count = _reassign_house_requests_for_building(cur, agent_id, mbid)
             conn.commit()
         except psycopg2_errors.UniqueViolation:
             conn.rollback()
@@ -3931,7 +3962,14 @@ def agent_building_add():
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True})
+    if reassigned_count:
+        cur2 = get_conn().cursor()
+        cur2.execute("SELECT phone FROM agents WHERE id=%s", [agent_id])
+        ph = cur2.fetchone()
+        cur2.connection.close()
+        if ph and ph["phone"]:
+            send_sms(ph["phone"], f"[홈앤스테이] 대기 중이던 매물의뢰 {reassigned_count}건이 배정되었습니다. 대시보드에서 확인해주세요.")
+    return jsonify({"ok": True, "reassigned": reassigned_count})
 
 
 @app.route("/api/agent/buildings/<int:mbid>", methods=["DELETE"])
@@ -9240,6 +9278,7 @@ def admin_applications_approve(app_id):
     temp_pw = None
     sms_sent = False
     sms_msg = None
+    reassigned_leads = 0
     try:
         if atype == "agent":
             # 등록번호(reg_number) 중복이면 승인 불가 — applications 상태는 그대로 둔다.
@@ -9322,6 +9361,8 @@ def admin_applications_approve(app_id):
                             VALUES (%s, %s)
                             ON CONFLICT ON CONSTRAINT agent_buildings_agent_building_unique DO NOTHING
                         """, [created_id, pref_bid])
+                        if cur.rowcount > 0:
+                            reassigned_leads = _reassign_house_requests_for_building(cur, created_id, pref_bid)
                         cur.execute("RELEASE SAVEPOINT sp_agent_assign")
                     except Exception:
                         # 건물 삭제 등으로 실패해도 승인 자체는 유지 (자동 배정은 부가 기능)
@@ -9540,6 +9581,8 @@ def admin_applications_approve(app_id):
         login_path = "/agent/login" if atype == "agent" else "/operator/login"
         email_sent, _ = _send_approval_email(atype, ap["email"], ap["email"], temp_pw, f"{domain}{login_path}")
         resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg, "email_sent": email_sent}
+        if atype == "agent":
+            resp["reassigned_leads"] = reassigned_leads
         if not sms_sent:
             # 평문 임시비번은 문자 발송 실패 시에만 반환(관리자가 수동 전달하도록)
             resp["temp_password"] = temp_pw
