@@ -3889,9 +3889,8 @@ def agent_me_update():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        extra_sets, extra_params, reapproval = _reapply_if_license_changed(cur, "agents", agent_id, license_changes)
-        cur.execute(f"UPDATE agents SET {', '.join(sets + extra_sets)} WHERE id = %s",
-                    params + extra_params + [agent_id])
+        cur.execute(f"UPDATE agents SET {', '.join(sets)} WHERE id = %s",
+                    params + [agent_id])
         conn.commit()
     except psycopg2_errors.UniqueViolation:
         conn.rollback()
@@ -3902,7 +3901,7 @@ def agent_me_update():
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True, "reapproval_required": reapproval})
+    return jsonify({"ok": True})
 
 
 @app.route("/api/agent/visibility", methods=["PUT"])
