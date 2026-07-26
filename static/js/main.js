@@ -1987,7 +1987,8 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
             <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
             ${badges}
             <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">(${escapeHtml(agent.owner_name || "-")}) 공인중개사</div>
-            ${agent.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(agent.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</a></div>` : ""}
+            ${agent.phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">📱 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</div>` : ""}
+            ${agent.office_phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">☎️ ${escapeHtml(window.formatPhone ? formatPhone(agent.office_phone) : agent.office_phone)}</div>` : ""}
           </div>
         </div>
       </div>`;

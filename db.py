@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-26-1"
+SCHEMA_VERSION = "2026-07-26-2"
 
 
 def init_db():
@@ -256,8 +256,9 @@ def init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
     # 유료 우선노출용 점수 (현재 미사용, 기본 0 — loan_consultants.priority_score와 동일 패턴)
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS office_phone TEXT")  # 사무실 유선전화(선택)
 
-    # 중개사별 담당(취급) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
+    # 중개사별 담당(취육) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS agent_buildings (
         id SERIAL PRIMARY KEY,

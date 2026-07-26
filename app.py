@@ -322,7 +322,8 @@ def get_building(building_id):
     # 단일 쿼리 한 줄로 처리해야 전원 0점일 때도 매번 완전 랜덤이 된다 (2단계 분리 금지).
     # 매물 건수(sale/jeonse/wolse/shortterm_count)는 agent_buildings 기준 = "이 건물 한정" 값 (중개사 통산치 아님).
     cur.execute("""
-        SELECT a.id, a.office_name, a.owner_name, a.phone, a.subdomain_slug, a.photo_url, a.intro_title,
+        SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
+               a.subdomain_slug, a.photo_url, a.intro_title,
                ab.sale_count, ab.jeonse_count, ab.wolse_count, ab.shortterm_count
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
@@ -3329,7 +3330,8 @@ def agent_public_profile(slug):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, office_name, owner_name, phone, photo_url, intro_text
+        SELECT id, office_name, owner_name, phone, office_phone, photo_url, intro_text,
+               reg_number, office_address
         FROM agents
         WHERE subdomain_slug = %s AND status = 'approved'
     """, [slug])
@@ -3360,6 +3362,7 @@ def agent_public_profile(slug):
         "office_name": agent["office_name"],
         "owner_name": agent["owner_name"],
         "phone": agent["phone"],
+        "office_phone": agent["office_phone"],
         "photo_url": agent["photo_url"],
         "intro_text": agent["intro_text"],
         "buildings": buildings,
@@ -3526,7 +3529,7 @@ def agent_me_update():
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
     allowed = ["phone", "photo_url", "intro_text", "intro_title", "office_name", "owner_name", "email",
-               "reg_number", "biz_reg_number"]
+               "reg_number", "biz_reg_number", "office_address", "office_phone"]
     sets, params = [], []
     license_changes = {}
     for k in allowed:
