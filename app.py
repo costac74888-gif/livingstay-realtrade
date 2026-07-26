@@ -5198,6 +5198,42 @@ def admin_backfill_log():
     return jsonify({"ok": True, "log_file": log_rel, "total_lines": len(lines), "tail": text})
 
 
+@app.route("/api/admin/reset-backfill-checkpoint", methods=["POST"])
+@require_admin
+def admin_reset_backfill_checkpoint():
+    """일회성 — 과거 데이터 백필 체크포인트(tx_backfill_progress)만 초기화.
+    2024-01 이전 월들이 '0건 매칭인 채 완료'로 기록돼 영구 건너뛰기되는 문제 해결용.
+    - 삭제 대상: app_meta 의 'tx_backfill_progress' 키 하나뿐 (다른 키·transactions 무관)
+    - 백필 실행 중에는 거부(실행 중 프로세스가 체크포인트를 다시 저장하므로)
+    완료 후 이 라우트는 지워도 됨."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BACKFILL_META_KEY,))
+        meta = cur.fetchone()
+        status = None
+        if meta and meta["value"]:
+            try:
+                status = json.loads(meta["value"])
+            except (TypeError, ValueError):
+                status = None
+        if status and status.get("state") == "running" and meta["updated_at"]:
+            age = (datetime.now() - meta["updated_at"]).total_seconds()
+            if age <= _SYNC_STALE_MIN * 60:
+                return jsonify({"ok": False,
+                                "message": "백필이 실행 중입니다. 완료(또는 실패) 후 다시 시도해 주세요."}), 409
+        cur.execute("DELETE FROM app_meta WHERE key = %s", ("tx_backfill_progress",))
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if deleted:
+        return jsonify({"ok": True, "message": "백필 체크포인트(tx_backfill_progress)를 초기화했습니다. "
+                                               "다음 백필 실행 시 2020-01부터 전 기간을 다시 조회합니다."})
+    return jsonify({"ok": True, "message": "체크포인트가 이미 없습니다(초기화할 것 없음)."})
+
+
 @app.route("/admin")
 @app.route("/admin/")
 @require_admin
