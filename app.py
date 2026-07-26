@@ -8181,6 +8181,27 @@ _DOC_LABELS = {
 }
 
 
+def _resolve_member_application_row(member_type, member_id):
+    """member_type='pending'이면 member_id가 곧 applications.id.
+    승인된 회원(agent/operator/loan_consultant)은 linked_*_id로 최신 신청서를 찾는다.
+    반환: (row_or_None, error_response_or_None). row가 None이고 error도 None이면
+    '유형은 맞지만 연결된 신청서가 없음'(구버전 가입 등) 상태.
+    """
+    if member_type not in _MEMBER_LINK_COLUMNS and member_type != "pending":
+        return None, (jsonify({"ok": False, "message": "서류가 있는 회원유형이 아닙니다."}), 400)
+    conn = get_conn()
+    cur = conn.cursor()
+    if member_type == "pending":
+        cur.execute("SELECT * FROM applications WHERE id=%s", [member_id])
+    else:
+        col = _MEMBER_LINK_COLUMNS[member_type]
+        cur.execute(f"SELECT * FROM applications WHERE {col}=%s ORDER BY id DESC LIMIT 1", [member_id])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row, None
+
+
 @app.route("/api/admin/members/<member_type>/<int:member_id>/docs")
 @require_admin
 def admin_member_docs(member_type, member_id):
@@ -8189,20 +8210,9 @@ def admin_member_docs(member_type, member_id):
     member_type='pending'이면 member_id가 곧 applications.id.
     승인된 회원(agent/operator/loan_consultant)은 linked_*_id로 최신 신청서를 찾는다.
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    if member_type == "pending":
-        cur.execute("SELECT * FROM applications WHERE id=%s", [member_id])
-    elif member_type in _MEMBER_LINK_COLUMNS:
-        col = _MEMBER_LINK_COLUMNS[member_type]
-        cur.execute(f"SELECT * FROM applications WHERE {col}=%s ORDER BY id DESC LIMIT 1", [member_id])
-    else:
-        cur.close()
-        conn.close()
-        return jsonify({"ok": False, "message": "서류가 있는 회원유형이 아닙니다."}), 400
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    row, err = _resolve_member_application_row(member_type, member_id)
+    if err:
+        return err
     if not row:
         return jsonify({"ok": True, "app_id": None, "docs": [],
                         "message": "연결된 신청서가 없습니다. (구버전 가입 등)"})
@@ -8215,6 +8225,64 @@ def admin_member_docs(member_type, member_id):
         "applicant_name": row.get("office_or_company_name") or row.get("owner_name"),
         "submitted_at": row["submitted_at"].strftime("%Y-%m-%d %H:%M") if row.get("submitted_at") else None,
     })
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/docs.zip")
+@require_admin
+def admin_member_docs_zip(member_type, member_id):
+    """회원이 신청 시 올린 첨부서류 전체를 zip 하나로 묶어 다운로드.
+
+    zip 파일명은 회원관리 목록의 "닉네임(이름)"과 동일한 값(owner_name, 없으면
+    업체명)을 사용한다. 압축 내부 파일명은 "서류라벨.확장자"로 구성하고,
+    같은 라벨이 중복되면 뒤에 (2), (3)…을 붙인다.
+    """
+    row, err = _resolve_member_application_row(member_type, member_id)
+    if err:
+        return err
+    if not row:
+        return jsonify({"ok": False, "message": "연결된 신청서가 없습니다. (구버전 가입 등)"}), 404
+
+    entries = []  # (ref, label)
+    for doc_key, col in _APP_DOC_COLUMNS.items():
+        ref = row.get(col)
+        if ref and storage_util.is_valid_doc_ref(ref):
+            entries.append((ref, _DOC_LABELS.get(doc_key, doc_key)))
+    if not entries:
+        return jsonify({"ok": False, "message": "첨부된 서류가 없습니다."}), 404
+
+    import zipfile
+    zip_buffer = io.BytesIO()
+    used_names = {}
+    added = 0
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for ref, label in entries:
+            ext = ref.rsplit(".", 1)[-1].lower() if "." in ref else "bin"
+            base_name = f"{label}.{ext}"
+            n = used_names.get(base_name, 0)
+            entry_name = base_name if n == 0 else f"{label}({n + 1}).{ext}"
+            used_names[base_name] = n + 1
+            try:
+                data = storage_util.download_bytes(ref)
+            except Exception:
+                app.logger.exception("서류 zip 다운로드 중 개별 파일 실패 (%s, ref=%s)", member_id, ref)
+                continue
+            zf.writestr(entry_name, data)
+            added += 1
+    if added == 0:
+        return jsonify({"ok": False, "message": "서류 파일을 불러오지 못했습니다. 잠시 후 다시 시도해주세요."}), 500
+
+    zip_buffer.seek(0)
+    nickname = (row.get("owner_name") or row.get("office_or_company_name") or f"applicant_{row['id']}").strip()
+    # 파일시스템/헤더에 위험한 문자만 최소한으로 치환 (한글은 그대로 두고 RFC5987로 인코딩)
+    safe_nickname = re.sub(r'[\\/:*?"<>|]', "_", nickname) or "서류"
+    ascii_fallback = re.sub(r"[^A-Za-z0-9_.-]", "_", safe_nickname) or "documents"
+    encoded = quote(f"{safe_nickname}.zip", safe="")
+    resp = Response(zip_buffer.read(), mimetype="application/zip")
+    resp.headers["Content-Disposition"] = (
+        f"attachment; filename=\"{ascii_fallback}.zip\"; filename*=UTF-8''{encoded}"
+    )
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 # ---- 매출/광고 장부 (revenue_records) — 결제 연동 전 수동 기록 ----

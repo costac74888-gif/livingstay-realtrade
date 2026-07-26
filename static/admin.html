@@ -2735,7 +2735,7 @@
         <table class="dg-table">
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
-            <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>그룹</th>
+            <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>상호</th>
             <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>작업</th>
           </tr></thead>
           <tbody>${rows || `<tr><td colspan="13" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
@@ -3059,6 +3059,9 @@
               <span style="color:var(--ink-soft); font-size:12px;"> — 클릭 시 새 탭에서 열람/다운로드 (5분 임시 링크)</span>
             </li>`).join("")
         : `<li style="color:var(--ink-soft);">${dgEscape(d.message || "첨부된 서류가 없습니다.")}</li>`;
+      const zipBtnHtml = (d.docs || []).length
+        ? `<a class="admin-btn admin-btn-primary" href="/api/admin/members/${encodeURIComponent(memberType)}/${memberId}/docs.zip" style="text-decoration:none;">전체 압축 다운로드(zip)</a>`
+        : "";
       overlay.innerHTML = `
         <div class="admin-modal" role="dialog" aria-modal="true">
           <div class="admin-modal-head">
@@ -3069,7 +3072,7 @@
             ${d.submitted_at ? `<p style="font-size:12px; color:var(--ink-soft); margin:0 0 8px;">신청일: ${dgEscape(d.submitted_at)}</p>` : ""}
             <ul style="margin:0; padding-left:18px; font-size:14px;">${docsHtml}</ul>
           </div>
-          <div class="admin-modal-foot"><button class="admin-btn admin-modal-cancel" type="button">닫기</button></div>
+          <div class="admin-modal-foot">${zipBtnHtml}<button class="admin-btn admin-modal-cancel" type="button">닫기</button></div>
         </div>`;
       document.body.appendChild(overlay);
       overlay.querySelector(".admin-modal-close").addEventListener("click", () => overlay.remove());
