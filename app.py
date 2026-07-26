@@ -3827,9 +3827,7 @@ def agent_me_update():
                 v = v.lower()
             if k in ("reg_number", "biz_reg_number"):
                 v = _digits_only(v) or None
-                if not v:
-                    return jsonify({"ok": False, "message": ("중개사무소 등록번호" if k == "reg_number" else "사업자등록번호") + "는 비울 수 없습니다."}), 400
-                if k == "biz_reg_number" and len(v) != 10:
+                if v and k == "biz_reg_number" and len(v) != 10:
                     return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
                 license_changes[k] = v
             sets.append(f"{k} = %s")

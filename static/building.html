@@ -157,7 +157,7 @@
           </div>
           ${agent.phone ? `<a href="tel:${esc(agent.phone)}" class="side-more" style="width:auto; margin-top:0; padding:8px 16px; text-decoration:none; text-align:center;">📞 ${esc(agent.phone)}</a>` : ""}
         </div>
-        ${agent.subdomain_slug ? `<div style="margin-top:10px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}" style="font-size:12.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
+        ${agent.subdomain_slug ? `<div style="margin-top:10px; text-align:right;"><a href="/agent/${encodeURIComponent(agent.subdomain_slug)}?building_id=${buildingId}" style="font-size:12.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">프로필 보기 →</a></div>` : ""}`;
     } else {
       box.innerHTML = `
         <div style="text-align:center; padding:18px 12px; background:var(--brass-tint); border:1px dashed #EAD9B8; border-radius:8px;">

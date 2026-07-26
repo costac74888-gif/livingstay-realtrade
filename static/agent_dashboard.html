@@ -81,7 +81,6 @@
       <div class="field"><label>대표자명</label><input type="text" id="fOwner" placeholder="예) 홍길동" /></div>
       <div class="field"><label>이메일</label><input type="text" id="fEmail" placeholder="예) agent@example.com" /></div>
       <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
-      <div class="field"><label>사진 URL (http(s)://…)</label><input type="text" id="fPhoto" placeholder="예) https://example.com/photo.jpg" /></div>
       <div class="field">
         <label>소개글 제목</label>
         <input type="text" id="fIntroTitle" maxlength="16" placeholder="예) 현장 10년 전문 중개사" />
@@ -366,7 +365,6 @@ document.getElementById("btnEditProfile").addEventListener("click", () => {
   document.getElementById("fOwner").value = ME.owner_name || "";
   document.getElementById("fEmail").value = ME.email || "";
   document.getElementById("fPhone").value = formatPhone(ME.phone || "");
-  document.getElementById("fPhoto").value = ME.photo_url || "";
   document.getElementById("fIntroTitle").value = ME.intro_title || "";
   document.getElementById("fIntroTitleCount").textContent = (ME.intro_title || "").length + "/16자";
   document.getElementById("fIntro").value = ME.intro_text || "";
@@ -381,7 +379,6 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
     owner_name: document.getElementById("fOwner").value,
     email: document.getElementById("fEmail").value,
     phone: document.getElementById("fPhone").value,
-    photo_url: document.getElementById("fPhoto").value,
     intro_title: document.getElementById("fIntroTitle").value.trim(),
     intro_text: document.getElementById("fIntro").value,
     reg_number: document.getElementById("fRegNo").value,
