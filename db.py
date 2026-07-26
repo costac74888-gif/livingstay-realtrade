@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-26-4"
+SCHEMA_VERSION = "2026-07-26-5"
 
 
 def init_db():
@@ -200,6 +200,7 @@ def init_db():
     cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS verified_lodging_type TEXT")        # 우리가 재검증해 확정한 값
     cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS changed BOOLEAN DEFAULT FALSE")     # 정정 요청 시 실제로 값이 바뀌었는지
     cur.execute("ALTER TABLE building_requests ALTER COLUMN road_address DROP NOT NULL")                    # 정정 요청은 도로명주소가 없으므로
+    cur.execute("ALTER TABLE agents ALTER COLUMN reg_number DROP NOT NULL")
     cur.execute("ALTER TABLE building_requests ADD COLUMN IF NOT EXISTS suggested_building_name TEXT")      # 사용자가 제안한 건물명 (API 재조회로 미확인 시 기록만, status='name_review')
 
     cur.execute("""

@@ -2758,35 +2758,48 @@ def auth_signup():
 @app.route("/api/auth/login", methods=["POST"])
 @limiter.limit("5 per minute; 20 per hour")
 def auth_login():
-    """이메일/비밀번호 로그인. 실패 시 계정 존재 여부를 노출하지 않도록 메시지를 통일한다."""
+    """이메일/비밀번호 로그인 — 일반회원 → 중개사 → 운영업체 → 대출상담사 순으로
+    비밀번호가 일치하는 계정을 찾아 로그인시킨다. 실패 시 계정 존재 여부를
+    노출하지 않도록 메시지를 통일한다."""
     data = request.get_json(force=True, silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     fail_msg = "이메일 또는 비밀번호가 올바르지 않습니다."
+    if not email or not password:
+        return jsonify({"ok": False, "message": fail_msg}), 401
 
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT id, password_hash, status FROM users WHERE LOWER(email) = %s",
-            (email,),
-        )
+        cur.execute("SELECT id, password_hash, status FROM users WHERE LOWER(email) = %s", (email,))
         row = cur.fetchone()
-        # 카카오 전용 가입자(password_hash NULL)·탈퇴 계정은 이메일 로그인 불가 → 동일 메시지로 통일.
-        if (not row or not row["password_hash"] or row.get("status") == "withdrawn"
-                or not check_password_hash(row["password_hash"], password)):
-            return jsonify({"ok": False, "message": fail_msg}), 401
-        cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
-        conn.commit()
-        uid = row["id"]
+        if (row and row["password_hash"] and row.get("status") != "withdrawn"
+                and check_password_hash(row["password_hash"], password)):
+            cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
+            conn.commit()
+            session["user_id"] = row["id"]
+            session.permanent = bool(data.get("remember"))
+            return jsonify({"ok": True})
+
+        partner_tables = [
+            ("agents", "agent_id", "/agent/dashboard"),
+            ("operators", "operator_id", "/operator/dashboard"),
+            ("loan_consultants", "loan_consultant_id", "/loan-consultant/dashboard"),
+        ]
+        for table, session_key, redirect_url in partner_tables:
+            cur.execute(f"SELECT id, password_hash, status FROM {table} WHERE LOWER(email) = %s", (email,))
+            prow = cur.fetchone()
+            if prow and prow["password_hash"] and check_password_hash(prow["password_hash"], password):
+                if prow["status"] != "approved":
+                    return jsonify({"ok": False, "message": "아직 승인 대기 중이거나 비활성화된 계정입니다. 승인 완료 후 다시 시도해주세요."}), 403
+                session[session_key] = prow["id"]
+                session.permanent = bool(data.get("remember"))
+                return jsonify({"ok": True, "redirect": redirect_url})
+
+        return jsonify({"ok": False, "message": fail_msg}), 401
     finally:
         cur.close()
         conn.close()
-
-    session["user_id"] = uid
-    # "로그인 상태 유지" 체크 시에만 31일 유지(permanent), 아니면 브라우저 세션 쿠키(닫으면 만료).
-    session.permanent = bool(data.get("remember"))
-    return jsonify({"ok": True})
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -3872,6 +3885,9 @@ def agent_me_update():
     except psycopg2_errors.UniqueViolation:
         conn.rollback()
         return jsonify({"ok": False, "message": "이미 다른 계정에서 사용 중인 이메일 또는 등록번호입니다."}), 400
+    except psycopg2_errors.NotNullViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "필수 항목이 비어 있어 저장할 수 없습니다."}), 400
     finally:
         cur.close()
         conn.close()
@@ -4051,8 +4067,6 @@ def agent_building_search():
     return jsonify({"items": items})
 
 
-@app.route("/api/agent/leads")
-@require_agent
 def _agent_leads_data(agent_id):
     """매물의뢰 목록 조회 — agent_leads() 라우트와 관리자 열람 라우트 공용."""
     conn = get_conn()
@@ -9281,6 +9295,11 @@ def admin_applications_approve(app_id):
     reassigned_leads = 0
     try:
         if atype == "agent":
+            cur.execute("SELECT id FROM agents WHERE LOWER(email)=LOWER(%s)", [ap["email"]])
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": False, "message": "이미 등록된 이메일입니다. (같은 이메일로는 중개사 계정을 두 개 이상 만들 수 없습니다)"}), 400
             # 등록번호(reg_number) 중복이면 승인 불가 — applications 상태는 그대로 둔다.
             cur.execute("SELECT id FROM agents WHERE reg_number=%s", [ap["reg_number"]])
             if cur.fetchone():

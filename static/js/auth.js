@@ -307,7 +307,8 @@
       .then(function (res) {
         if (res.ok && res.data && res.data.ok) {
           closeModal();
-          refreshMe();
+          if (res.data.redirect) { window.location.href = res.data.redirect; }
+          else { refreshMe(); }
         } else {
           showError((res.data && res.data.message) || "요청을 처리하지 못했습니다.");
         }
