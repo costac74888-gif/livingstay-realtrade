@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-26-3"
+SCHEMA_VERSION = "2026-07-26-4"
 
 
 def init_db():
@@ -434,6 +434,11 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_building_id INTEGER REFERENCES master_buildings(id)")
     # 중개사 여권용 사진 (선택 · Object Storage 참조 키 — applications/agent/{uuid}/photo.{ext})
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_photo_url TEXT")
+    # 단지부동산(상가정보 API 배치 동기화) — 업종대분류 "부동산" 업소 상호를 콤마 join 하여 저장.
+    # NULL = 아직 조회 안 됨, "" = 조회했으나 부동산 업소 없음
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS realty_store_name TEXT")
+    # 마지막 상가정보 API 조회 시각 — NULL이면 미조회, 오래된 순으로 재조회 우선
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS realty_checked_at TIMESTAMP")
     # 신청서 수정/취소용 이메일 링크 토큰 — 신청 접수 시 1회 발급, URL-safe 랜덤 문자열.
     # status가 'submitted'(검토 시작 전)일 때만 이 토큰으로 본인 신청 내용을 조회·수정·취소할 수 있다.
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS edit_token TEXT")

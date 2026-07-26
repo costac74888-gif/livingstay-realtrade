@@ -6808,6 +6808,7 @@ def admin_brhub_sync_status():
 
 
 _PERMITS_SYNC_META_KEY = "permits_sync_status"
+_REALTY_SYNC_META_KEY  = "realty_stores_sync_status"
 
 
 @app.route("/api/admin/sync-permits", methods=["POST"])
@@ -6953,6 +6954,142 @@ def admin_permits_sync_status():
         "calls_remaining": max(0, _BRHUB_DAILY_CAP - calls_today),
         "daily_cap": _BRHUB_DAILY_CAP,
     })
+
+
+@app.route("/api/admin/run-realty-sync", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_realty_sync_run():
+    """단지부동산(상가정보 API) 배치 동기화 시작 — permits 버튼과 동일한 잠금/러너 패턴."""
+    if not os.environ.get("STORE_INFO_SERVICE_KEY"):
+        return jsonify({"ok": False, "message": "STORE_INFO_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None, "processed": None, "updated": None,
+            "calls_today": None, "completed": None, "error": None,
+        }
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '30 minutes')
+        """, (_REALTY_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        prev_state = None
+        if not acquired:
+            cur.execute("SELECT value FROM app_meta WHERE key = %s", (_REALTY_SYNC_META_KEY,))
+            prev = cur.fetchone()
+            try:
+                prev_state = json.loads(prev["value"]).get("state") if prev and prev["value"] else None
+            except (TypeError, ValueError):
+                prev_state = None
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        if prev_state == "done":
+            return jsonify({"ok": False, "message": "직전 동기화가 완료된 지 30분이 지나지 않았습니다."}), 429
+        return jsonify({"ok": False, "message": "이미 동기화가 실행 중입니다."}), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_realty_stores.py"),
+             "--status-key", _REALTY_SYNC_META_KEY],
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],
+                       "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        conn = get_conn(); cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (_REALTY_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "동기화 프로세스를 시작하지 못했습니다."}), 500
+
+    return jsonify({"ok": True, "message": "단지부동산 동기화를 시작했습니다.",
+                    "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/realty-sync-status")
+@require_admin
+def admin_realty_sync_status():
+    """단지부동산 동기화 진행상황 — 확보 건수/전체 + 실행 상태."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings")
+        total = cur.fetchone()["c"]
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE realty_checked_at IS NOT NULL")
+        checked = cur.fetchone()["c"]
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_REALTY_SYNC_META_KEY,))
+        meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", (PROGRESS_KEY_REALTY,))
+        prog_row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    status = progress = None
+    try:
+        status = json.loads(meta["value"]) if meta and meta["value"] else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
+    except (TypeError, ValueError):
+        pass
+
+    running = bool(status and status.get("state") == "running")
+    stale = False
+    if running and meta and meta["updated_at"]:
+        age = (datetime.now() - meta["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            running, stale = False, True
+
+    calls_today = 0
+    if progress and progress.get("calls_date") == datetime.now().strftime("%Y-%m-%d"):
+        try:
+            calls_today = int(progress.get("calls_today") or 0)
+        except (TypeError, ValueError):
+            pass
+
+    pct = round(checked / total * 100, 1) if total else 0
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": ("stale" if stale else (status.get("state") if status else None)),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
+        "processed": (status.get("processed") if status else None),
+        "updated": (status.get("updated") if status else None),
+        "completed": (status.get("completed") if status else None),
+        "error": ((status.get("error") if status else None)
+                  or ("이전 실행이 비정상 종료된 것으로 보입니다. 다시 실행할 수 있습니다." if stale else None)),
+        "checked": checked, "total": total, "percent": pct,
+        "calls_today": calls_today,
+    })
+
+
+# 상수: sync_realty_stores.py와 동일한 progress 키
+PROGRESS_KEY_REALTY = "realty_stores_progress"
 
 
 def _approved_operator_name_norms(cur):

@@ -1329,6 +1329,83 @@
       }
     }
 
+    // ---- 단지부동산(상가정보) 동기화 ----
+    let realtySyncTimer = null;
+    function stopRealtySyncPolling() {
+      if (realtySyncTimer) { clearInterval(realtySyncTimer); realtySyncTimer = null; }
+    }
+
+    function renderRealtySyncStatus(d) {
+      const box = document.getElementById("realtySyncStatus");
+      const btn = document.getElementById("realtySyncRunBtn");
+      if (!box || !btn) { stopRealtySyncPolling(); return; }
+      const pct = d.percent ?? 0;
+      const bar = `<div style="height:6px;background:#eee;border-radius:4px;margin:6px 0 2px;">
+        <div style="height:6px;background:var(--brass);border-radius:4px;width:${Math.min(pct,100)}%"></div></div>`;
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>확보 현황:</b> ${num(d.checked)}건 / 전체 ${num(d.total)}건 (${pct}%)${bar}</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전체 완료(재순회 시작)" : "일일 한도 도달 — 다음 실행 때 이어서";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 처리 ${d.processed == null ? "-" : num(d.processed) + "건"} · UPDATE ${d.updated == null ? "-" : num(d.updated) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음 (셸 직접 실행분은 DB에 반영됨)</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "상가정보 동기화 실행";
+      if (!d.running) stopRealtySyncPolling();
+    }
+
+    async function loadRealtySyncStatus() {
+      const box = document.getElementById("realtySyncStatus");
+      if (!box) { stopRealtySyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/realty-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderRealtySyncStatus(d);
+        if (d.running && !realtySyncTimer) realtySyncTimer = setInterval(loadRealtySyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runRealtySync() {
+      const btn = document.getElementById("realtySyncRunBtn");
+      const msg = document.getElementById("realtySyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/run-realty-sync", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "동기화를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "상가정보 동기화 실행";
+        }
+        loadRealtySyncStatus();
+        if (!realtySyncTimer) realtySyncTimer = setInterval(loadRealtySyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "상가정보 동기화 실행";
+      }
+    }
+
     // ---- 준공전 건물수집(인허가) ----
     let permitsSyncTimer = null;
     function stopPermitsSyncPolling() {
@@ -1770,6 +1847,22 @@
             <button id="brokerGeoRunBtn" class="admin-btn admin-btn-primary">좌표 채우기 실행</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecRealty">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑧ 단지부동산(상가정보) 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            소상공인시장진흥공단 <b>상가정보 API(storeListInPnu)</b>로 각 건물의 입주
+            부동산 중개업소를 조회해 건물마스터에 저장합니다. 건당 평균 3초 소요 — 하루
+            300건씩 며칠에 나눠 백그라운드로 진행합니다. 완료 후 건물목록 "단지부동산" 컬럼에
+            표시됩니다. (실행 제한: 시간당 2회)
+          </p>
+          <div id="realtySyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="realtySyncMsg" class="legal-msg" role="alert"></span>
+            <button id="realtySyncRunBtn" class="admin-btn admin-btn-primary">상가정보 동기화 실행</button>
+          </div>
+        </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecLodging">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">⑨ 숙박업 영업신고 동기화</h2>
@@ -1837,6 +1930,8 @@
       document.getElementById("brokerGeoRunBtn").addEventListener("click", runBrokerGeocode);
       document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
       document.getElementById("permitsSyncRunBtn").addEventListener("click", runPermitsSync);
+      document.getElementById("realtySyncRunBtn").addEventListener("click", runRealtySync);
+      loadRealtySyncStatus();
       loadPermitsSyncStatus();
       loadPendingCompletion();
       loadDataSyncBanner();
