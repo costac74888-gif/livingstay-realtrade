@@ -3720,10 +3720,29 @@ def agent_dashboard_page():
     return _serve_static_html("agent_dashboard.html")
 
 
-@app.route("/api/agent/me")
-@require_agent
-def agent_me():
-    agent_id = session["agent_id"]
+@app.route("/admin/preview/agent/<int:agent_id>")
+@require_admin
+def admin_preview_agent_page(agent_id):
+    return _serve_static_html("agent_dashboard.html")
+
+
+@app.route("/api/admin/preview/agent/<int:agent_id>")
+@require_admin
+def admin_preview_agent_me(agent_id):
+    data = _agent_me_data(agent_id)
+    if data is None:
+        return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+    return jsonify(data)
+
+
+@app.route("/api/admin/preview/agent/<int:agent_id>/leads")
+@require_admin
+def admin_preview_agent_leads(agent_id):
+    return jsonify(_agent_leads_data(agent_id))
+
+
+def _agent_me_data(agent_id):
+    """중개사 대시보드 데이터 조회 — agent_me() 라우트와 관리자 열람 라우트 공용."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -3735,7 +3754,7 @@ def agent_me():
         """, [agent_id])
         me = cur.fetchone()
         if not me:
-            return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+            return None
         cur.execute("""
             SELECT ab.master_building_id, mb.building_name, mb.lodging_type,
                    COALESCE(ab.sale_count, 0)      AS sale_count,
@@ -3753,7 +3772,16 @@ def agent_me():
         conn.close()
     out = dict(me)
     out["buildings"] = buildings
-    return jsonify(out)
+    return out
+
+
+@app.route("/api/agent/me")
+@require_agent
+def agent_me():
+    data = _agent_me_data(session["agent_id"])
+    if data is None:
+        return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+    return jsonify(data)
 
 
 # 정부 인허가 기반 등록번호 필드 — 본인 수정 시 재승인 대기 전환 대상 (3개 파트너 공통 규칙)
@@ -3987,9 +4015,8 @@ def agent_building_search():
 
 @app.route("/api/agent/leads")
 @require_agent
-def agent_leads():
-    """나에게 배정된 매물의뢰 목록 — routed_agent_id = 내 agent_id."""
-    agent_id = session["agent_id"]
+def _agent_leads_data(agent_id):
+    """매물의뢰 목록 조회 — agent_leads() 라우트와 관리자 열람 라우트 공용."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -4008,7 +4035,14 @@ def agent_leads():
     finally:
         cur.close()
         conn.close()
-    return jsonify({"items": items})
+    return {"items": items}
+
+
+@app.route("/api/agent/leads")
+@require_agent
+def agent_leads():
+    """나에게 배정된 매물의뢰 목록 — routed_agent_id = 내 agent_id."""
+    return jsonify(_agent_leads_data(session["agent_id"]))
 
 
 # 매물의뢰 상태 진행 순서 — 순방향만 허용(건너뛰기 가능, 역방향 금지). 관리자 API로는 변경 불가.

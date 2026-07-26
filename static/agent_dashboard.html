@@ -25,6 +25,10 @@
   <div class="header-right"><button id="btnLogout" class="side-more" style="width:auto; margin-top:0; padding:7px 16px;">로그아웃</button></div>
 </header>
 
+<div id="previewBanner" style="display:none; background:#7a1f1f; color:#fff; text-align:center; font-size:13px; font-weight:700; padding:8px; position:sticky; top:0; z-index:100;">
+  🔒 관리자 열람 모드 — 읽기 전용입니다 (수정 불가)
+</div>
+
 <div class="search-panel" style="max-width:720px; padding-bottom:40px;">
 
   <!-- 상단: 내 정보 -->
@@ -158,6 +162,9 @@ const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘�
 function markerColor(v){ if(!v) return "#9AA5B1"; return LODGING_COLORS[v.split("·")[0]] || "#9AA5B1"; }
 function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
 
+const PREVIEW_AGENT_ID = (location.pathname.match(/^\/admin\/preview\/agent\/(\d+)/) || [])[1] || null;
+const PREVIEW_MODE = !!PREVIEW_AGENT_ID;
+
 let ME = null;
 
 function openModal(id){ document.getElementById(id).hidden = false; }
@@ -210,15 +217,15 @@ function render(){
         <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
         <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
         <span style="flex:1;"></span>
-        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
-        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>
+        ${PREVIEW_MODE ? "" : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>`}
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">${countBadges(b)}</div>
     </div>`).join("");
 }
 
 async function load(){
-  const { ok, data } = await api("/api/agent/me");
+  const { ok, data } = await api(PREVIEW_MODE ? `/api/admin/preview/agent/${PREVIEW_AGENT_ID}` : "/api/agent/me");
   if (!ok){ document.getElementById("meOffice").textContent = "정보를 불러오지 못했습니다."; return; }
   ME = data;
   render();
@@ -237,6 +244,7 @@ function leadStatusBadge(status){
 }
 // 현재 상태에 따라 다음 단계 버튼만 노출: 신규→"처리 시작", 처리중→"완료 처리", 완료→없음
 function leadActionBtn(l){
+  if (PREVIEW_MODE) return "";
   if (l.status === "submitted")
     return `<button class="btn btn-sm" data-lead-act="in_progress" data-lead-id="${l.id}" style="font-size:12px; padding:4px 12px;">처리 시작</button>`;
   if (l.status === "in_progress")
@@ -246,7 +254,7 @@ function leadActionBtn(l){
 async function loadLeads(){
   const box = document.getElementById("leadList");
   try {
-    const { ok, data } = await api("/api/agent/leads");
+    const { ok, data } = await api(PREVIEW_MODE ? `/api/admin/preview/agent/${PREVIEW_AGENT_ID}/leads` : "/api/agent/leads");
     if (!ok) throw new Error("leads fetch failed");
     const items = data.items || [];
     document.getElementById("leadCount").textContent = items.length + "건";
@@ -450,11 +458,31 @@ window.addBuilding = async function(mbid){
   await doSearch(); // "이미 등록됨" 상태 갱신
 };
 
+// ---- 미리보기 모드 초기화 ----
+if (PREVIEW_MODE) {
+  document.getElementById("previewBanner").style.display = "block";
+  ["btnEditProfile", "btnChangePw", "btnToggleVisible", "btnAddBld"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+  const logoutBtn = document.getElementById("btnLogout");
+  if (logoutBtn) {
+    const lnk = document.createElement("a");
+    lnk.href = "/admin#members";
+    lnk.textContent = "← 회원관리로 돌아가기";
+    lnk.className = logoutBtn.className;
+    lnk.style.cssText = "width:auto; margin-top:0; padding:7px 16px; text-decoration:none; display:inline-block;";
+    logoutBtn.replaceWith(lnk);
+  }
+}
+
 // ---- 로그아웃 ----
-document.getElementById("btnLogout").addEventListener("click", async () => {
-  try { await fetch("/api/agent/logout", { method: "POST" }); } catch(e){}
-  location.href = "/agent/login";
-});
+if (!PREVIEW_MODE) {
+  document.getElementById("btnLogout").addEventListener("click", async () => {
+    try { await fetch("/api/agent/logout", { method: "POST" }); } catch(e){}
+    location.href = "/agent/login";
+  });
+}
 
 load();
 loadLeads();
