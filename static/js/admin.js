@@ -146,16 +146,41 @@ class DataGrid {
   _renderHead() {
     const cols = this.tableColumns();
     const ths = cols.map((col) => {
-      if (!col.sortable) return `<th>${dgEscape(col.label)}</th>`;
+      if (!col.sortable && !col.clientSort) return `<th>${dgEscape(col.label)}</th>`;
       let arrow = "";
-      if (this.state.sort === col.key) arrow = this.state.order === "asc" ? " ▲" : " ▼";
-      return `<th class="dg-sortable" data-key="${dgEscape(col.key)}">${dgEscape(col.label)}${arrow}</th>`;
+      if (this._clientSortKey === col.key) {
+        arrow = this._clientSortOrder === "asc" ? " ▲" : " ▼";
+      } else if (this.state.sort === col.key) {
+        arrow = this.state.order === "asc" ? " ▲" : " ▼";
+      }
+      return `<th class="dg-sortable" data-key="${dgEscape(col.key)}" data-client="${col.clientSort ? "1" : "0"}">${dgEscape(col.label)}${arrow}</th>`;
     });
     if (this.hasActions) ths.push(`<th class="dg-col-actions">관리</th>`);
     this.$headRow.innerHTML = ths.join("");
     this.$headRow.querySelectorAll(".dg-sortable").forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-key");
+        const isClient = th.getAttribute("data-client") === "1";
+        if (isClient) {
+          // 서버로 안 가고, 현재 페이지에 이미 로드된 items만 재정렬
+          if (this._clientSortKey === key) {
+            this._clientSortOrder = this._clientSortOrder === "asc" ? "desc" : "asc";
+          } else {
+            this._clientSortKey = key;
+            this._clientSortOrder = "asc";
+          }
+          this.state.sort = null; // 서버 정렬 상태와 헷갈리지 않게 해제
+          const dir = this._clientSortOrder === "asc" ? 1 : -1;
+          this.items.sort((a, b) => {
+            const av = (a[key] || "").toString();
+            const bv = (b[key] || "").toString();
+            return av.localeCompare(bv, "ko") * dir;
+          });
+          this._renderHead();
+          this._renderBody();
+          return;
+        }
+        this._clientSortKey = null; // 서버 정렬로 전환 시 클라이언트 정렬 표시 해제
         if (this.state.sort === key) {
           this.state.order = this.state.order === "asc" ? "desc" : "asc";
         } else {
