@@ -5860,6 +5860,217 @@ def _broker_candidates_query(building_id, radius_km):
         conn.close()
 
 
+def _broker_exact_match_query(building_id):
+    """건물 주소와 도로명/지번이 정확히 일치하는 중개업소만 조회."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, building_name, road_address, jibun_address
+            FROM master_buildings WHERE id = %s
+        """, (building_id,))
+        bld = cur.fetchone()
+        if not bld:
+            return None, []
+        road_key = addr_norm.normalize_road_prefix(bld["road_address"])
+        jibun_key = addr_norm.normalize_jibun_prefix(bld["jibun_address"] or bld["road_address"])
+        if not road_key and not jibun_key:
+            return bld, []
+        cur.execute("""
+            SELECT office_name, reg_number, road_address, jibun_address,
+                   phone, reg_date, owner_name, homepage_url
+            FROM broker_registry
+            WHERE (road_norm = %s AND %s IS NOT NULL)
+               OR (jibun_norm = %s AND %s IS NOT NULL)
+            ORDER BY office_name ASC
+        """, (road_key, road_key, jibun_key, jibun_key))
+        return bld, cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/admin/broker-exact-match")
+@require_admin
+def admin_broker_exact_match():
+    building_id = request.args.get("building_id", type=int)
+    if not building_id:
+        return jsonify({"ok": False, "message": "building_id가 필요합니다."}), 400
+    bld, rows = _broker_exact_match_query(building_id)
+    if bld is None:
+        return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+    return jsonify({
+        "ok": True,
+        "building_name": bld["building_name"],
+        "road_address": bld["road_address"],
+        "count": len(rows),
+        "items": [dict(r) for r in rows],
+    })
+
+
+@app.route("/api/admin/broker-exact-match/export.xlsx")
+@require_admin
+def admin_broker_exact_match_export():
+    building_id = request.args.get("building_id", type=int)
+    if not building_id:
+        return jsonify({"ok": False, "message": "building_id가 필요합니다."}), 400
+    bld, rows = _broker_exact_match_query(building_id)
+    if bld is None:
+        return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+
+    from openpyxl import Workbook
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "건물 입주 중개업소"
+    ws.append([f"건물: {bld['building_name']} ({bld['road_address'] or '-'})"])
+    ws.append(["업소명", "등록번호", "도로명주소", "지번주소", "전화번호",
+               "등록일자", "대표자명", "홈페이지"])
+    for r in rows:
+        ws.append([r["office_name"], r["reg_number"], r["road_address"],
+                   r["jibun_address"], r["phone"], r["reg_date"],
+                   r["owner_name"], r["homepage_url"]])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      as_attachment=True, download_name=f"{bld['building_name']}_입주중개업소.xlsx")
+
+
+@app.route("/api/admin/broker-registry/export.xlsx")
+@require_admin
+def admin_broker_registry_export():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT office_name, reg_number, road_address, jibun_address,
+               phone, reg_date, owner_name, homepage_url, lat, lng
+        FROM broker_registry
+        ORDER BY office_name
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from openpyxl import Workbook
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "중개업소 전체"
+    ws.append(["업소명", "등록번호", "도로명주소", "지번주소", "전화번호",
+               "등록일자", "대표자명", "홈페이지", "위도", "경도"])
+    for r in rows:
+        ws.append([r["office_name"], r["reg_number"], r["road_address"],
+                   r["jibun_address"], r["phone"], r["reg_date"],
+                   r["owner_name"], r["homepage_url"], r["lat"], r["lng"]])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      as_attachment=True, download_name="중개업소_전체.xlsx")
+
+
+@app.route("/api/admin/lodging-registry/export.xlsx")
+@require_admin
+def admin_lodging_registry_export():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT biz_name, road_address, jibun_address, room_count,
+               biz_status_name, permit_date, phone, hygiene_type
+        FROM lodging_registry
+        ORDER BY biz_name
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from openpyxl import Workbook
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "숙박업 영업신고 전체"
+    ws.append(["사업장명", "도로명주소", "지번주소", "객실수", "영업상태",
+               "인허가일자", "전화번호", "위생업태"])
+    for r in rows:
+        ws.append([r["biz_name"], r["road_address"], r["jibun_address"],
+                   r["room_count"], r["biz_status_name"], r["permit_date"],
+                   r["phone"], r["hygiene_type"]])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      as_attachment=True, download_name="숙박업영업신고_전체.xlsx")
+
+
+@app.route("/api/admin/sync-progress-summary")
+@require_admin
+def admin_sync_progress_summary():
+    """통계 대시보드용 — 각 수집 파이프라인의 진행률을 한 번에 반환."""
+    import json as _json
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT key, value FROM app_meta WHERE key = ANY(%s)",
+                    (["brhub_progress", "permits_progress"],))
+        metas = {}
+        for r in cur.fetchall():
+            try:
+                metas[r["key"]] = _json.loads(r["value"])
+            except (TypeError, ValueError):
+                metas[r["key"]] = {}
+
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE source='brhub_bulk'")
+        brhub_found = cur.fetchone()["c"]
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE source='permit_pipeline'")
+        permits_found = cur.fetchone()["c"]
+
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE lat IS NOT NULL) AS have,
+                   COUNT(*) AS total
+            FROM broker_registry
+        """)
+        br_geo = cur.fetchone()
+
+        cur.execute("SELECT COUNT(*) AS c FROM broker_registry")
+        broker_total = cur.fetchone()["c"]
+        cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
+        lodging_total = cur.fetchone()["c"]
+        cur.execute("SELECT COUNT(*) AS c FROM transactions")
+        tx_total = cur.fetchone()["c"]
+    finally:
+        cur.close()
+        conn.close()
+
+    TOTAL_DONGS = 20276
+    brhub_m = metas.get("brhub_progress", {})
+    permits_m = metas.get("permits_progress", {})
+
+    def pct(idx, total):
+        return round((idx / total) * 100, 1) if total else 0
+
+    return jsonify({
+        "ok": True,
+        "brhub": {
+            "idx": brhub_m.get("idx", 0), "total_dongs": TOTAL_DONGS,
+            "percent": pct(brhub_m.get("idx", 0), TOTAL_DONGS),
+            "found": brhub_found,
+        },
+        "permits": {
+            "idx": permits_m.get("idx", 0), "total_dongs": TOTAL_DONGS,
+            "percent": pct(permits_m.get("idx", 0), TOTAL_DONGS),
+            "found": permits_found,
+        },
+        "broker_geo": {
+            "have": br_geo["have"], "total": br_geo["total"],
+            "percent": pct(br_geo["have"], br_geo["total"]),
+        },
+        "broker_total": broker_total,
+        "lodging_total": lodging_total,
+        "tx_total": tx_total,
+    })
+
+
 def _parse_radius(raw):
     try:
         r = float(raw or 2)

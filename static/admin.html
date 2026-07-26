@@ -17,6 +17,7 @@
     <aside class="admin-sidebar">
       <div class="admin-sb-brand">
         <span class="admin-sb-logo">HOME &amp; STAY</span>
+        <span id="envBadge" style="display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:6px;"></span>
         <span class="admin-sb-sub">관리자</span>
       </div>
       <nav class="admin-menu">
@@ -551,6 +552,7 @@
           <h2 class="stats-title">통계 대시보드</h2>
           <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
+        <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
 
         <div class="stats-kpi-row">
           <div class="stats-kpi"><span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span></div>
@@ -559,6 +561,13 @@
           <div class="stats-kpi"><span class="stats-kpi-label">승인 운영지원업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">이번달 매출</span><span class="stats-kpi-val">${num((d.revenue && d.revenue.month_total) || 0)}</span><span class="stats-kpi-unit">원</span></div>
         </div>
+
+        <section class="stats-card stats-card-wide" id="syncProgressCard">
+          <h3 class="stats-card-title">데이터 수집 현황</h3>
+          <div id="syncProgressGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-top:10px;">
+            불러오는 중…
+          </div>
+        </section>
 
         <div class="stats-grid">
           <section class="stats-card stats-card-wide">
@@ -1790,6 +1799,44 @@
       loadPermitsSyncStatus();
       loadPendingCompletion();
       loadDataSyncBanner();
+      fetch("/api/admin/sync-progress-summary").then(r => r.json()).then(d => {
+        if (!d.ok) return;
+        const grid = document.getElementById("syncProgressGrid");
+        if (!grid) return;
+        const bar = (pct) => `<div style="background:#eee; border-radius:4px; height:6px; margin-top:6px;">
+          <div style="background:var(--brass-dark, #B4863F); height:100%; border-radius:4px; width:${Math.min(pct,100)}%;"></div>
+        </div>`;
+        grid.innerHTML = `
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">건물수집(brhub)</div>
+            <div style="font-size:15px; font-weight:700;">${d.brhub.found}건 · ${d.brhub.percent}%</div>
+            ${bar(d.brhub.percent)}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.brhub.idx}/${d.brhub.total_dongs}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">준공전 건물수집</div>
+            <div style="font-size:15px; font-weight:700;">${d.permits.found}건 · ${d.permits.percent}%</div>
+            ${bar(d.permits.percent)}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.permits.idx}/${d.permits.total_dongs}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">중개업소 좌표</div>
+            <div style="font-size:15px; font-weight:700;">${d.broker_geo.have}/${d.broker_geo.total} · ${d.broker_geo.percent}%</div>
+            ${bar(d.broker_geo.percent)}
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">중개업소 전체</div>
+            <div style="font-size:15px; font-weight:700;">${d.broker_total.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">숙박업 영업신고</div>
+            <div style="font-size:15px; font-weight:700;">${d.lodging_total.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">실거래(RTMS)</div>
+            <div style="font-size:15px; font-weight:700;">${d.tx_total.toLocaleString()}건</div>
+          </div>`;
+      }).catch(() => {});
       loadBrhubSyncStatus();
       loadGeocodeStatus();
       loadTitleInfoStatus();
@@ -1918,6 +1965,39 @@
       return v ? dgEscape(v) : `<span style="color:#aab;">정보없음</span>`;
     }
 
+    async function loadBrokerExactMatch(buildingId) {
+      const box = document.getElementById("brokerExactBox");
+      if (!box) return;
+      box.innerHTML = `<div class="geo-stat-row">정확매칭 조회 중…</div>`;
+      try {
+        const res = await fetch(`/api/admin/broker-exact-match?building_id=${buildingId}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "조회에 실패했습니다."; return; }
+        if (!d.count) {
+          box.innerHTML = `<div class="geo-stat-row"><b>정확매칭 0곳</b> — 이 건물 주소와 정확히 일치하는 중개업소가 없습니다.</div>`;
+          return;
+        }
+        const rows = d.items.map((r) => `
+          <tr>
+            <td>${dgEscape(r.office_name)}</td>
+            <td>${brokerCell(r.phone)}</td>
+            <td>${dgEscape(r.road_address || "-")}</td>
+            <td>${brokerCell(r.reg_date)}</td>
+            <td>${dgEscape(r.owner_name || "-")}</td>
+          </tr>`).join("");
+        box.innerHTML = `<div class="geo-stat-row" style="margin-bottom:8px"><b>정확매칭 ${num(d.count)}곳</b> — ${dgEscape(d.building_name)} (${dgEscape(d.road_address || "-")})
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-exact-match/export.xlsx?building_id=${buildingId}">정확매칭 결과 엑셀 다운로드</a></div>
+          <div style="overflow-x:auto">
+          <table class="dg-table" style="width:100%">
+            <thead><tr><th>업소명</th><th>전화번호</th><th>도로명주소</th><th>등록일자</th><th>대표자</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>`;
+      } catch (e) {
+        box.textContent = "조회 중 오류가 발생했습니다.";
+      }
+    }
+
     async function loadBrokerCandidates() {
       if (!brokerSelectedBuilding) return;
       const radius = document.getElementById("brokerRadius").value;
@@ -1929,7 +2009,9 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok || !d.ok) { box.textContent = d.message || "조회에 실패했습니다."; return; }
         const head = `<div class="geo-stat-row" style="margin-bottom:8px"><b>${dgEscape(d.building.building_name || "")}</b> (${dgEscape(d.building.road_address || "-")}) · 반경 ${d.radius_km}km · 후보 ${num(d.items.length)}곳
-          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-candidates/export.xlsx?building_id=${d.building.id}&radius_km=${encodeURIComponent(radius)}">엑셀 다운로드</a></div>`;
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-candidates/export.xlsx?building_id=${d.building.id}&radius_km=${encodeURIComponent(radius)}">엑셀 다운로드</a>
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-registry/export.xlsx">중개업소 전체 다운로드</a>
+          <button type="button" class="admin-btn" style="margin-left:8px" onclick="loadBrokerExactMatch(${d.building.id})">이 건물 입주 중개업소만 보기</button></div>`;
         if (!d.building.has_coords) { box.innerHTML = head + `<div class="geo-stat-row" style="color:#b3261e">이 건물은 좌표(lat/lng)가 없어 인근 조회를 할 수 없습니다. '지도 좌표 채우기'를 먼저 실행해 주세요.</div>`; return; }
         if (!d.items.length) { box.innerHTML = head + `<div class="geo-stat-row">반경 내 수집된 중개업소가 없습니다. (동기화가 아직 다 안 됐다면 데이터가 부족할 수 있습니다)</div>`; return; }
         const rows = d.items.map((r) => `
@@ -2016,6 +2098,7 @@
           </div>
           <div id="brokerBldList" style="max-height:220px;overflow-y:auto;margin-bottom:12px"></div>
           <div id="brokerCandBox"></div>
+          <div id="brokerExactBox" style="margin-top:16px;"></div>
         </div>
       `;
       document.getElementById("brokerBldSearchBtn").addEventListener("click", searchNoAgentBuildings);
@@ -3250,5 +3333,15 @@
     showView("stats");
   </script>
   <script src="/static/js/pw_toggle.js"></script>
+<script>
+(function(){
+  const badge = document.getElementById("envBadge");
+  if (!badge) return;
+  const isProd = /homenstay\.com$|livingstay-realtrade\.replit\.app$/.test(location.hostname);
+  badge.textContent = isProd ? "🔴 운영" : "⚪ 개발";
+  badge.style.background = isProd ? "#FDE8E8" : "#EEE";
+  badge.style.color = isProd ? "#C0392B" : "#666";
+})();
+</script>
 </body>
 </html>

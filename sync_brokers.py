@@ -27,6 +27,7 @@ from datetime import datetime
 import requests
 
 from db import get_conn
+from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 
 API_URL = "https://api.data.go.kr/openapi/tn_pubr_public_med_office_api"
 SERVICE_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"
@@ -266,8 +267,9 @@ def _upsert(cur, item):
     cur.execute("""
         INSERT INTO broker_registry
             (office_name, reg_number, road_address, jibun_address, phone, reg_date,
-             owner_name, lat, lng, homepage_url, source_updated_at, updated_at)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+             owner_name, lat, lng, homepage_url, source_updated_at, updated_at,
+             road_norm, jibun_norm)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,%s)
         ON CONFLICT (reg_number) DO UPDATE SET
             office_name = EXCLUDED.office_name,
             road_address = EXCLUDED.road_address,
@@ -279,10 +281,14 @@ def _upsert(cur, item):
             lng = COALESCE(EXCLUDED.lng, broker_registry.lng),
             homepage_url = EXCLUDED.homepage_url,
             source_updated_at = EXCLUDED.source_updated_at,
-            updated_at = NOW()
+            updated_at = NOW(),
+            road_norm = EXCLUDED.road_norm,
+            jibun_norm = EXCLUDED.jibun_norm
     """, (row["office_name"], row["reg_number"], row["road_address"], row["jibun_address"],
           row["phone"], row["reg_date"], row["owner_name"], lat, lng,
-          row["homepage_url"], row["source_updated_at"]))
+          row["homepage_url"], row["source_updated_at"],
+          normalize_road_prefix(row["road_address"]),
+          normalize_jibun_prefix(row["jibun_address"] or row["road_address"])))
     return True
 
 

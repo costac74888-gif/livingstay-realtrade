@@ -656,6 +656,10 @@ def init_db():
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_latlng ON broker_registry(lat, lng)")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS road_norm TEXT")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS jibun_norm TEXT")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_road_norm ON broker_registry(road_norm)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_jibun_norm ON broker_registry(jibun_norm)")
 
     # 행안부 '문화_숙박업 조회서비스'(apis.data.go.kr/1741000/lodgings/info) 수집본.
     # 수집은 sync_lodgings.py — 위생업태 '숙박업(생활)'만 저장. permit_number(관리번호) 유일키 UPSERT.
