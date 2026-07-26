@@ -157,12 +157,14 @@
           { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
             render: (v, row) => `${dgEscape(v || "")}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}` },
           { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
+          { key: "matched_broker_name", label: "단지부동산(입주부동산)",
+            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
           { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
           { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
           { key: "biz_units", label: "영업신고호수", sortable: true, editable: true, type: "number" },
-          { key: "sgg_text", label: "시군구", editable: true },
-          { key: "umd_nm", label: "읍면동", editable: true },
-          { key: "jibun", label: "지번", editable: true },
+          { key: "sgg_text", label: "시군구", sortable: true, editable: true },
+          { key: "umd_nm", label: "읍면동", sortable: true, editable: true },
+          { key: "jibun", label: "지번", sortable: true, editable: true },
           { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
           { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
           { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
@@ -625,6 +627,45 @@
           </section>
         </div>
       `;
+
+      fetch("/api/admin/sync-progress-summary").then(r => r.json()).then(d => {
+        if (!d.ok) return;
+        const grid = document.getElementById("syncProgressGrid");
+        if (!grid) return;
+        const bar = (pct) => `<div style="background:#eee; border-radius:4px; height:6px; margin-top:6px;">
+          <div style="background:var(--brass-dark, #B4863F); height:100%; border-radius:4px; width:${Math.min(pct,100)}%;"></div>
+        </div>`;
+        grid.innerHTML = `
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">건물수집(brhub)</div>
+            <div style="font-size:15px; font-weight:700;">${d.brhub.found}건 · ${d.brhub.percent}%</div>
+            ${bar(d.brhub.percent)}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.brhub.idx}/${d.brhub.total_dongs}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">준공전 건물수집</div>
+            <div style="font-size:15px; font-weight:700;">${d.permits.found}건 · ${d.permits.percent}%</div>
+            ${bar(d.permits.percent)}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.permits.idx}/${d.permits.total_dongs}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">중개업소 좌표</div>
+            <div style="font-size:15px; font-weight:700;">${d.broker_geo.have}/${d.broker_geo.total} · ${d.broker_geo.percent}%</div>
+            ${bar(d.broker_geo.percent)}
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">중개업소 전체</div>
+            <div style="font-size:15px; font-weight:700;">${d.broker_total.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">숙박업 영업신고</div>
+            <div style="font-size:15px; font-weight:700;">${d.lodging_total.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">실거래(RTMS)</div>
+            <div style="font-size:15px; font-weight:700;">${d.tx_total.toLocaleString()}건</div>
+          </div>`;
+      }).catch(() => {});
 
       const commonOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: BRAND.ink } } } };
 
@@ -1799,44 +1840,6 @@
       loadPermitsSyncStatus();
       loadPendingCompletion();
       loadDataSyncBanner();
-      fetch("/api/admin/sync-progress-summary").then(r => r.json()).then(d => {
-        if (!d.ok) return;
-        const grid = document.getElementById("syncProgressGrid");
-        if (!grid) return;
-        const bar = (pct) => `<div style="background:#eee; border-radius:4px; height:6px; margin-top:6px;">
-          <div style="background:var(--brass-dark, #B4863F); height:100%; border-radius:4px; width:${Math.min(pct,100)}%;"></div>
-        </div>`;
-        grid.innerHTML = `
-          <div>
-            <div style="font-size:12px; color:var(--ink-soft);">건물수집(brhub)</div>
-            <div style="font-size:15px; font-weight:700;">${d.brhub.found}건 · ${d.brhub.percent}%</div>
-            ${bar(d.brhub.percent)}
-            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.brhub.idx}/${d.brhub.total_dongs}</div>
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--ink-soft);">준공전 건물수집</div>
-            <div style="font-size:15px; font-weight:700;">${d.permits.found}건 · ${d.permits.percent}%</div>
-            ${bar(d.permits.percent)}
-            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.permits.idx}/${d.permits.total_dongs}</div>
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--ink-soft);">중개업소 좌표</div>
-            <div style="font-size:15px; font-weight:700;">${d.broker_geo.have}/${d.broker_geo.total} · ${d.broker_geo.percent}%</div>
-            ${bar(d.broker_geo.percent)}
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--ink-soft);">중개업소 전체</div>
-            <div style="font-size:15px; font-weight:700;">${d.broker_total.toLocaleString()}건</div>
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--ink-soft);">숙박업 영업신고</div>
-            <div style="font-size:15px; font-weight:700;">${d.lodging_total.toLocaleString()}건</div>
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--ink-soft);">실거래(RTMS)</div>
-            <div style="font-size:15px; font-weight:700;">${d.tx_total.toLocaleString()}건</div>
-          </div>`;
-      }).catch(() => {});
       loadBrhubSyncStatus();
       loadGeocodeStatus();
       loadTitleInfoStatus();

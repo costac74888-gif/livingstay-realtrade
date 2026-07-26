@@ -5300,7 +5300,8 @@ def admin_ad_products_page():
 
 # ---- 건물마스터 CRUD (모두 require_admin) ----
 # 정렬 허용 컬럼 화이트리스트 (SQL 인젝션 방지 — 목록에 없으면 id로 폴백)
-ADMIN_BLD_SORT = {"id", "building_name", "road_address", "units", "biz_units", "lodging_type"}
+ADMIN_BLD_SORT = {"id", "building_name", "road_address", "units", "biz_units", "lodging_type",
+                   "sgg_text", "umd_nm", "jibun"}
 # 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
 ADMIN_BLD_EDITABLE = [
     "building_name", "road_address", "jibun_address", "sgg_text", "sgg_cd",
@@ -5377,6 +5378,40 @@ def admin_buildings_list():
     items = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
+
+    # 단지부동산(이 건물 주소와 정확히 일치하는 중개업소명) — 현재
+    # 페이지(최대 200건) 한정으로 매칭, 없으면 빈 값. 서버사이드 정렬은
+    # 지원하지 않음(정규화 매칭이라 DB 컬럼 정렬 불가 — 클라이언트에서
+    # 필요시 텍스트 정렬만 가능).
+    if items:
+        road_key_map, jibun_key_map = {}, {}
+        for it in items:
+            rk = addr_norm.normalize_road_prefix(it.get("road_address"))
+            jk = addr_norm.normalize_jibun_prefix(it.get("jibun_address") or it.get("road_address"))
+            if rk:
+                road_key_map.setdefault(rk, []).append(it)
+            if jk:
+                jibun_key_map.setdefault(jk, []).append(it)
+        rkeys, jkeys = list(road_key_map.keys()), list(jibun_key_map.keys())
+        if rkeys or jkeys:
+            conn2 = get_conn()
+            cur2 = conn2.cursor()
+            cur2.execute("""
+                SELECT office_name, road_norm, jibun_norm
+                FROM broker_registry
+                WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+            """, (rkeys, jkeys))
+            for br in cur2.fetchall():
+                targets = road_key_map.get(br["road_norm"], []) + jibun_key_map.get(br["jibun_norm"], [])
+                for t in targets:
+                    names = t.setdefault("_broker_names", [])
+                    if br["office_name"] not in names:
+                        names.append(br["office_name"])
+            cur2.close()
+            conn2.close()
+        for it in items:
+            it["matched_broker_name"] = ", ".join(it.pop("_broker_names", [])) or None
+
     return jsonify({"total": total, "page": page, "size": size, "items": items})
 
 
