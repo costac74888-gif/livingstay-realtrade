@@ -35,6 +35,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 
+import psycopg2
 import requests
 
 from db import get_conn
@@ -188,6 +189,7 @@ def run(args, status_key=None, run_id=None):
 
         page = 1
         dong_error = False
+        dong_rows = []      # INSERT params collected this dong (for reconnect replay)
         while True:
             items = None
             for attempt, wait_sec in enumerate([15, 30, 60], start=1):
@@ -252,28 +254,24 @@ def run(args, status_key=None, run_id=None):
                     print(f"  [발견] {dong_name} | {bld_nm} | {status} | 허가일={permit_day} "
                           f"착공예정={expected_start} 실제착공={actual_start} | 완공추정={completion_est} | {units}호")
                 else:
-                    cur.execute("""
-                        INSERT INTO master_buildings
-                            (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
-                             units, source, building_status, lodging_type, lodging_type_detail,
-                             permit_day, actual_start_day, completion_expected_date,
-                             tot_area, plat_area, arch_area, bc_rat, vl_rat, hhld_cnt, tot_pkng_cnt)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s,%s,%s,%s,
-                                %s,%s,%s,%s,%s,%s,%s)
-                    """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
-                          units, status, purps_text[:500] or None,
-                          str(permit_day) if permit_day else None,
-                          str(actual_start) if actual_start else None,
-                          completion_est,
-                          it.get("totArea") or None,
-                          it.get("platArea") or None,
-                          it.get("archArea") or None,
-                          it.get("bcRat") or None,
-                          it.get("vlRat") or None,
-                          it.get("hhldCnt") or None,
-                          it.get("totPkngCnt") or None))
+                    source_key = f"permit|{sgg_cd}|{bjd_cd}|{it.get('bun') or ''}|{it.get('ji') or ''}"
+                    row_params = (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
+                                  units, status, purps_text[:500] or None,
+                                  str(permit_day) if permit_day else None,
+                                  str(actual_start) if actual_start else None,
+                                  completion_est,
+                                  it.get("totArea") or None,
+                                  it.get("platArea") or None,
+                                  it.get("archArea") or None,
+                                  it.get("bcRat") or None,
+                                  it.get("vlRat") or None,
+                                  it.get("hhldCnt") or None,
+                                  it.get("totPkngCnt") or None,
+                                  source_key)
+                    dong_rows.append(row_params)
                 found_run += 1
                 prog["found_total"] = prog.get("found_total", 0) + 1
+                # 중복 방지용 키를 동일 법정동 내 중복 적재를 막기 위해 미리 메모리에 추가.
                 if jibun:
                     triple.add((sgg_cd, umd_key, jibun))
                 if rn:
@@ -286,19 +284,43 @@ def run(args, status_key=None, run_id=None):
             page += 1
             time.sleep(args.sleep)
 
-        if dong_error:
-            # 이 법정동은 건너뛰고(idx 그대로 두어 다음 실행 때 재처리),
-            # 대신 이번 실행에서 무한 반복되지 않도록 인덱스를 리스트
-            # 맨 뒤로 임시 이동시키는 대신, 단순히 다음 인덱스로 넘어간다.
-            # (완전한 정합성보다 진행 우선 — 실패한 동은 사용자가 며칠 뒤
-            # 다시 --reset 없이 실행하면 자연히 재시도됨)
-            prog["idx"] += 1
-        else:
-            prog["idx"] += 1
+        prog["idx"] += 1
         processed += 1
         if not args.dry_run:
-            conn.commit()
-            _save_progress(conn, cur, prog)
+            INSERT_SQL = ("INSERT INTO master_buildings"
+                          " (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,"
+                          "  units, source, building_status, lodging_type, lodging_type_detail,"
+                          "  permit_day, actual_start_day, completion_expected_date,"
+                          "  tot_area, plat_area, arch_area, bc_rat, vl_rat, hhld_cnt, tot_pkng_cnt, source_key)"
+                          " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s,%s,%s,%s,"
+                          "         %s,%s,%s,%s,%s,%s,%s,%s)"
+                          " ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO NOTHING")
+
+            def _do_commit(c, u, rows, p):
+                for rp in rows:
+                    u.execute(INSERT_SQL, rp)
+                c.commit()
+                _save_progress(c, u, p)
+
+            if dong_rows:
+                try:
+                    _do_commit(conn, cur, dong_rows, prog)
+                except (psycopg2.OperationalError, psycopg2.InterfaceError) as ssl_err:
+                    print(f"  [재접속] DB 연결 끊김({repr(ssl_err)[:120]}) — 재접속 후 {dong_name} 재시도")
+                    try:
+                        try: cur.close()
+                        except Exception: pass
+                        try: conn.close()
+                        except Exception: pass
+                        conn = get_conn()
+                        cur = conn.cursor()
+                        _do_commit(conn, cur, dong_rows, prog)
+                        print(f"  [재접속 성공] {dong_name} 커밋 완료")
+                    except Exception as retry_err:
+                        print(f"  [재접속 실패] {dong_name}: {repr(retry_err)[:200]}")
+                        raise
+            else:
+                _save_progress(conn, cur, prog)
         if processed % 50 == 0:
             print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
         time.sleep(args.sleep)
