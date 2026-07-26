@@ -4721,6 +4721,53 @@ def admin_geocode_status():
     })
 
 
+_GEOCODE_BROKERS_META_KEY = "geocode_brokers_status"
+
+
+@app.route("/api/admin/geocode-brokers", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_geocode_brokers_run():
+    """카카오맵 API로 broker_registry 좌표 채우기 시작 — lat NULL 행만 대상."""
+    if not os.environ.get("KAKAO_REST_API_KEY"):
+        return jsonify({"ok": False, "message": "KAKAO_REST_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    ok, code, payload = _start_detached_sync(
+        _GEOCODE_BROKERS_META_KEY, "geocode_brokers.py",
+        ["--status-key", _GEOCODE_BROKERS_META_KEY], done_cooldown_min=5)
+    if ok:
+        payload["message"] = "중개업소 좌표 채우기를 시작했습니다."
+    return jsonify(payload), code
+
+
+@app.route("/api/admin/geocode-brokers-status")
+@require_admin
+def admin_geocode_brokers_status():
+    """중개업소 좌표 확보 현황 + 실행 상태 (관리자 화면 표시용)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS total,
+                   COUNT(lat) AS with_geo,
+                   COUNT(*) FILTER (WHERE lat IS NULL
+                                      AND road_address IS NOT NULL
+                                      AND road_address <> '') AS missing
+            FROM broker_registry
+        """)
+        s = cur.fetchone()
+        status = _read_sync_status_row(cur, _GEOCODE_BROKERS_META_KEY)
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "total": s["total"],
+        "with_geo": s["with_geo"],
+        "missing": s["missing"],
+        "status": status,
+    })
+
+
 def _title_info_counts(cur):
     cur.execute("""
         SELECT COUNT(*) AS total,

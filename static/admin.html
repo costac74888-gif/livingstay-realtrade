@@ -987,6 +987,84 @@
       }
     }
 
+    // ---- 중개업소 좌표 채우기 (geocode_brokers.py, 카카오맵 API) ----
+    let brokerGeoTimer = null;
+    function stopBrokerGeoPolling() {
+      if (brokerGeoTimer) { clearInterval(brokerGeoTimer); brokerGeoTimer = null; }
+    }
+
+    function renderBrokerGeocodeStatus(d) {
+      const box = document.getElementById("brokerGeoStatus");
+      const btn = document.getElementById("brokerGeoRunBtn");
+      if (!box || !btn) { stopBrokerGeoPolling(); return; }
+      const pct = d.total ? ((d.with_geo / d.total) * 100).toFixed(1) : "0.0";
+      const rows = [
+        `<div class="geo-stat-row"><b>좌표 확보:</b> ${num(d.with_geo)} / ${num(d.total)}건 (${pct}%)</div>`,
+        `<div class="geo-stat-row"><b>좌표 대기(미확보):</b> ${num(d.missing)}건</div>`,
+      ];
+      const s = d.status || {};
+      const running = s.state === "running";
+      if (running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+        if (!brokerGeoTimer) brokerGeoTimer = setInterval(loadBrokerGeocodeStatus, 5000);
+      } else {
+        stopBrokerGeoPolling();
+        if (s.state === "done") {
+          rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · 성공 ${num(s.updated || 0)}건 / 건너뜀 ${num(s.skipped || 0)}건</div>`);
+        } else if (s.state === "failed" || s.state === "stale") {
+          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+        } else {
+          rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+        }
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = running;
+      btn.textContent = running ? "실행 중…" : "좌표 채우기 실행";
+    }
+
+    async function loadBrokerGeocodeStatus() {
+      const box = document.getElementById("brokerGeoStatus");
+      if (!box) { stopBrokerGeoPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/geocode-brokers-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "현황을 불러오지 못했습니다."; return; }
+        renderBrokerGeocodeStatus(d);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBrokerGeocode() {
+      const btn = document.getElementById("brokerGeoRunBtn");
+      const msg = document.getElementById("brokerGeoMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/geocode-brokers", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = d.message || "좌표 채우기를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "좌표 채우기 실행";
+        }
+        loadBrokerGeocodeStatus();
+        if (!brokerGeoTimer) brokerGeoTimer = setInterval(loadBrokerGeocodeStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "좌표 채우기 실행";
+      }
+    }
+
     // ---- 건축정보(표제부) 채우기 (건축HUB API 실시간, 백그라운드 러너) ----
     // 미백필(title_backfilled_at NULL) 건물만 대상.
     let titleInfoTimer = null;
@@ -1627,9 +1705,24 @@
             <button id="brokerSyncRunBtn" class="admin-btn admin-btn-primary">중개업소 데이터 동기화</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBrokerGeo">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑦ 중개업소 좌표 채우기</h2>
+          </div>
+          <p class="legal-admin-hint">
+            수집된 중개업소의 도로명주소를 카카오맵 API로 조회해 위경도(lat/lng)를 채웁니다.
+            좌표가 있어야 건물 상세 화면의 <b>인근 중개업소 후보</b> 검색이 정상 작동합니다.
+            (실행 제한: 시간당 6회 / 도로명주소가 없는 행은 자동 제외)
+          </p>
+          <div id="brokerGeoStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="brokerGeoMsg" class="legal-msg" role="alert"></span>
+            <button id="brokerGeoRunBtn" class="admin-btn admin-btn-primary">좌표 채우기 실행</button>
+          </div>
+        </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecLodging">
           <div class="legal-admin-head">
-            <h2 class="legal-admin-title">⑦ 숙박업 영업신고 동기화</h2>
+            <h2 class="legal-admin-title">⑨ 숙박업 영업신고 동기화</h2>
           </div>
           <p class="legal-admin-hint">
             행정안전부 <b>숙박업 조회서비스</b>(지방행정 인허가데이터)를 수집합니다.
@@ -1645,7 +1738,7 @@
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecPermits">
           <div class="legal-admin-head">
-            <h2 class="legal-admin-title">⑧ 준공전 건물수집(인허가)</h2>
+            <h2 class="legal-admin-title">⑩ 준공전 건물수집(인허가)</h2>
           </div>
           <p class="legal-admin-hint">
             국토교통부 <b>건축인허가정보 API</b>로 전국 준공 전 생활숙박시설 프로젝트(허가·착공 단계)를
@@ -1691,6 +1784,7 @@
       document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
       document.getElementById("backfillRunBtn").addEventListener("click", runBackfill);
       document.getElementById("brokerSyncRunBtn").addEventListener("click", runBrokerSync);
+      document.getElementById("brokerGeoRunBtn").addEventListener("click", runBrokerGeocode);
       document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
       document.getElementById("permitsSyncRunBtn").addEventListener("click", runPermitsSync);
       loadPermitsSyncStatus();
@@ -1702,6 +1796,7 @@
       loadTxSyncStatus();
       loadBackfillStatus();
       loadBrokerSyncStatus();
+      loadBrokerGeocodeStatus();
       loadLodgingSyncStatus();
     }
 
