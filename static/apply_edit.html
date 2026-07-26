@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>신청 내용 수정 · 홈앤스테이</title>
+<meta name="robots" content="noindex, nofollow" />
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header id="siteHeader"></header>
+
+<div class="search-panel" style="max-width:640px; padding-bottom:40px;">
+
+  <div style="margin:16px 0 6px;">
+    <a href="/" class="home-link" style="font-size:13px; color:var(--ink-soft); text-decoration:none;">← 홈으로</a>
+  </div>
+
+  <div class="panel-card">
+
+    <div id="loadingBox" style="text-align:center; padding:40px 12px; color:var(--ink-soft); font-size:14px;">불러오는 중…</div>
+
+    <div id="notFoundBox" style="display:none; text-align:center; padding:32px 12px;">
+      <div style="font-size:36px; margin-bottom:12px;">🔍</div>
+      <div style="font-size:15px; font-weight:700; color:var(--ink); margin-bottom:8px;">신청 내역을 찾을 수 없습니다</div>
+      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.6;">링크가 잘못되었거나 만료되었을 수 있습니다.</div>
+    </div>
+
+    <div id="lockedBox" style="display:none; text-align:center; padding:32px 12px;">
+      <div style="font-size:36px; margin-bottom:12px;">🔒</div>
+      <div id="lockedStatus" style="font-size:15px; font-weight:700; color:var(--ink); margin-bottom:8px;"></div>
+      <div style="font-size:13.5px; color:var(--ink-soft); line-height:1.6;">이미 검토가 시작되어 더 이상 신청 내용을 수정·취소할 수 없습니다.<br/>변경이 필요하시면 담당자에게 직접 연락해주세요.</div>
+    </div>
+
+    <div id="cancelledSuccessBox" style="display:none; text-align:center; padding:32px 12px;">
+      <div style="font-size:36px; margin-bottom:12px;">✅</div>
+      <div style="font-size:15px; font-weight:700; color:var(--ink); margin-bottom:8px;">신청이 취소되었습니다.</div>
+      <a href="/" class="side-more home-link" style="display:inline-block; width:auto; margin-top:16px; padding:9px 24px; text-decoration:none;">← 홈으로</a>
+    </div>
+
+    <div id="editWrap" style="display:none;">
+      <h1 id="pageTitle" style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 6px;">신청 내용 수정</h1>
+      <p style="font-size:13px; color:var(--ink-soft); margin:0 0 20px;">검토가 시작되기 전까지 신청 내용을 직접 수정하거나 취소하실 수 있습니다.</p>
+
+      <form id="editForm" autocomplete="off">
+        <div class="field" style="margin-bottom:14px;">
+          <label id="lblCompanyName">업체명/중개사무소명 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="office_or_company_name" />
+        </div>
+        <div class="field" style="margin-bottom:14px;">
+          <label id="lblOwnerName">대표자 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="owner_name" />
+        </div>
+
+        <!-- agent 전용 -->
+        <div class="field agent-only" style="display:none; margin-bottom:14px;">
+          <label>등록번호 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="reg_number" />
+        </div>
+        <!-- operator 전용 -->
+        <div class="field operator-only" style="display:none; margin-bottom:14px;">
+          <label>업종 <span style="color:var(--brick);">*</span></label>
+          <select id="category">
+            <option value="위탁운영">위탁운영</option>
+            <option value="청소">청소</option>
+            <option value="세탁">세탁</option>
+            <option value="용품">용품</option>
+            <option value="인테리어">인테리어</option>
+          </select>
+        </div>
+        <!-- loan_consultant 전용 -->
+        <div class="field loan-only" style="display:none; margin-bottom:14px;">
+          <label>대출모집인 등록번호 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="license_number" />
+        </div>
+        <div class="field loan-only" style="display:none; margin-bottom:14px;">
+          <label>취급지역 <span style="color:var(--brick);">*</span></label>
+          <select id="service_region"></select>
+        </div>
+
+        <div class="field agent-or-operator-only" style="display:none; margin-bottom:14px;">
+          <label>사업자등록번호 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890" />
+        </div>
+        <div class="field loan-only" style="display:none; margin-bottom:14px;">
+          <label>사업자등록번호 (선택)</label>
+          <input type="text" id="biz_reg_number_loan" placeholder="예) 123-45-67890" />
+        </div>
+
+        <div class="field" style="margin-bottom:14px;">
+          <label>연락처 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="phone" placeholder="예) 010-1234-5678" />
+        </div>
+        <div class="field" style="margin-bottom:14px;">
+          <label>이메일 <span style="color:var(--brick);">*</span></label>
+          <input type="text" id="email" />
+        </div>
+
+        <div class="field operator-only" style="display:none; margin-bottom:14px;">
+          <label>홈페이지 (선택)</label>
+          <input type="text" id="website_url" />
+        </div>
+        <div class="field agent-only" style="display:none; margin-bottom:14px;">
+          <label>소개글 제목 (선택)</label>
+          <input type="text" id="intro_title" maxlength="16" />
+        </div>
+        <div class="field agent-or-operator-only" style="display:none; margin-bottom:20px;">
+          <label>희망건물 (선택)</label>
+          <input type="text" id="preferred_building" />
+        </div>
+
+        <div id="formError" style="display:none; font-size:13px; color:var(--brick); background:var(--brick-tint); border:1px solid #F0CFCB; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
+        <div id="formSuccess" style="display:none; font-size:13px; color:var(--brass-dark); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
+
+        <button type="submit" class="btn-search" id="saveBtn" style="width:100%; padding:12px; margin-bottom:10px;">수정 내용 저장</button>
+        <button type="button" id="cancelAppBtn" style="width:100%; padding:12px; background:#fff; border:1px solid var(--brick); color:var(--brick); border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;">신청 취소하기</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const token = location.pathname.replace(/\/+$/, "").split("/").pop();
+  const API = "/api/applications/token/" + encodeURIComponent(token);
+
+  const TYPE_KR = { agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" };
+  const LOAN_REGIONS = ["서울·경기", "인천", "강원", "충청", "대전", "대구", "광주", "부산", "제주"];
+  (function fillRegionSelect(){
+    const sel = document.getElementById("service_region");
+    LOAN_REGIONS.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r; opt.textContent = r;
+      sel.appendChild(opt);
+    });
+  })();
+
+  const loadingBox = document.getElementById("loadingBox");
+  const notFoundBox = document.getElementById("notFoundBox");
+  const lockedBox = document.getElementById("lockedBox");
+  const editWrap = document.getElementById("editWrap");
+  const cancelledSuccessBox = document.getElementById("cancelledSuccessBox");
+
+  let currentType = null;
+
+  function showSection(el){ el.style.display = "block"; }
+  function hideAll(){
+    [loadingBox, notFoundBox, lockedBox, editWrap, cancelledSuccessBox].forEach(el => el.style.display = "none");
+  }
+
+  function applyTypeVisibility(type){
+    document.querySelectorAll(".agent-only").forEach(el => el.style.display = (type === "agent") ? "block" : "none");
+    document.querySelectorAll(".operator-only").forEach(el => el.style.display = (type === "operator") ? "block" : "none");
+    document.querySelectorAll(".loan-only").forEach(el => el.style.display = (type === "loan_consultant") ? "block" : "none");
+    document.querySelectorAll(".agent-or-operator-only").forEach(el => el.style.display = (type === "agent" || type === "operator") ? "block" : "none");
+    document.getElementById("lblCompanyName").firstChild.textContent = (type === "agent") ? "중개사무소명 " : "업체명/소속회사명 ";
+    document.getElementById("lblOwnerName").firstChild.textContent = (type === "loan_consultant") ? "성명 " : "대표자 ";
+  }
+
+  async function load(){
+    hideAll();
+    showSection(loadingBox);
+    if (!token || token.length < 10){
+      hideAll(); showSection(notFoundBox);
+      return;
+    }
+    let res, json;
+    try {
+      res = await fetch(API);
+      json = await res.json();
+    } catch(e){
+      hideAll(); showSection(notFoundBox);
+      return;
+    }
+    if (!res.ok || !json.ok){
+      hideAll(); showSection(notFoundBox);
+      return;
+    }
+    if (!json.editable){
+      hideAll();
+      document.getElementById("lockedStatus").textContent = "현재 상태: " + (json.status_kr || json.status);
+      showSection(lockedBox);
+      return;
+    }
+
+    currentType = json.data.applicant_type;
+    applyTypeVisibility(currentType);
+    document.getElementById("pageTitle").textContent = TYPE_KR[currentType] ? (TYPE_KR[currentType] + " 신청 내용 수정") : "신청 내용 수정";
+
+    const d = json.data;
+    document.getElementById("office_or_company_name").value = d.office_or_company_name || "";
+    document.getElementById("owner_name").value = d.owner_name || "";
+    document.getElementById("phone").value = d.phone || d.phone_digits || "";
+    document.getElementById("email").value = d.email || "";
+    if (currentType === "agent"){
+      document.getElementById("reg_number").value = d.reg_number || "";
+      document.getElementById("biz_reg_number").value = d.biz_reg_number || d.biz_reg_number_digits || "";
+      document.getElementById("intro_title").value = d.intro_title || "";
+      document.getElementById("preferred_building").value = d.preferred_building || "";
+    } else if (currentType === "operator"){
+      document.getElementById("category").value = d.category || "위탁운영";
+      document.getElementById("biz_reg_number").value = d.biz_reg_number || d.biz_reg_number_digits || "";
+      document.getElementById("website_url").value = d.website_url || "";
+      document.getElementById("preferred_building").value = d.preferred_building || "";
+    } else if (currentType === "loan_consultant"){
+      document.getElementById("license_number").value = d.reg_number || "";
+      document.getElementById("service_region").value = d.preferred_region || "";
+      document.getElementById("biz_reg_number_loan").value = d.biz_reg_number || d.biz_reg_number_digits || "";
+    }
+
+    hideAll();
+    showSection(editWrap);
+  }
+
+  function digitsOnly(s){ return (s || "").replace(/\D/g, ""); }
+  function showError(msg){
+    const el = document.getElementById("formError");
+    el.textContent = msg; el.style.display = "block";
+    document.getElementById("formSuccess").style.display = "none";
+  }
+  function showSuccess(msg){
+    const el = document.getElementById("formSuccess");
+    el.textContent = msg; el.style.display = "block";
+    document.getElementById("formError").style.display = "none";
+  }
+
+  document.getElementById("editForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    document.getElementById("formError").style.display = "none";
+    document.getElementById("formSuccess").style.display = "none";
+
+    const payload = {
+      office_or_company_name: document.getElementById("office_or_company_name").value.trim(),
+      owner_name: document.getElementById("owner_name").value.trim(),
+      phone: digitsOnly(document.getElementById("phone").value),
+      email: document.getElementById("email").value.trim(),
+    };
+    if (currentType === "agent"){
+      payload.reg_number = digitsOnly(document.getElementById("reg_number").value);
+      payload.biz_reg_number = digitsOnly(document.getElementById("biz_reg_number").value);
+      payload.intro_title = document.getElementById("intro_title").value.trim();
+      payload.preferred_building = document.getElementById("preferred_building").value.trim();
+    } else if (currentType === "operator"){
+      payload.category = document.getElementById("category").value;
+      payload.biz_reg_number = digitsOnly(document.getElementById("biz_reg_number").value);
+      payload.website_url = document.getElementById("website_url").value.trim();
+      payload.preferred_building = document.getElementById("preferred_building").value.trim();
+    } else if (currentType === "loan_consultant"){
+      payload.license_number = document.getElementById("license_number").value.trim();
+      payload.service_region = document.getElementById("service_region").value;
+      payload.biz_reg_number = digitsOnly(document.getElementById("biz_reg_number_loan").value);
+    }
+
+    const saveBtn = document.getElementById("saveBtn");
+    saveBtn.disabled = true;
+    saveBtn.textContent = "저장 중…";
+    try {
+      const res = await fetch(API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok){
+        showError((data && data.message) || "저장에 실패했습니다.");
+      } else {
+        showSuccess("수정되었습니다.");
+      }
+    } catch(err){
+      showError("네트워크 오류로 저장에 실패했습니다.");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "수정 내용 저장";
+    }
+  });
+
+  document.getElementById("cancelAppBtn").addEventListener("click", async () => {
+    if (!confirm("정말 신청을 취소하시겠습니까? 취소 후에는 되돌릴 수 없습니다.")) return;
+    const btn = document.getElementById("cancelAppBtn");
+    btn.disabled = true;
+    btn.textContent = "취소 처리 중…";
+    try {
+      const res = await fetch(API, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok){
+        alert((data && data.message) || "취소에 실패했습니다.");
+        btn.disabled = false;
+        btn.textContent = "신청 취소하기";
+        return;
+      }
+      hideAll();
+      showSection(cancelledSuccessBox);
+    } catch(err){
+      alert("네트워크 오류로 취소에 실패했습니다.");
+      btn.disabled = false;
+      btn.textContent = "신청 취소하기";
+    }
+  });
+
+  load();
+</script>
+<script>window.PAGE_TITLE = "신청 내용 수정";</script>
+<script src="/static/js/header.js"></script>
+</body>
+</html>

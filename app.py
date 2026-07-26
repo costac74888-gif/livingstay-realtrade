@@ -1418,11 +1418,25 @@ def _validate_biz_reg_digits(d):
 _APPLICANT_TYPE_KR = {"agent": "중개사", "operator": "운영지원업체", "loan_consultant": "대출상담사"}
 
 
-def _send_application_received_email(applicant_type, company_name, to_email):
-    """신청 접수 직후 안내 이메일 발송 — 실패해도 접수 처리에는 영향 없음(예외 삼킴)."""
+def _send_application_received_email(applicant_type, company_name, to_email, edit_token=None):
+    """신청 접수 직후 안내 이메일 발송 — 실패해도 접수 처리에는 영향 없음(예외 삼킴).
+
+    edit_token이 있으면, 검토 시작 전(status='submitted')까지 본인이 직접
+    신청 내용을 수정하거나 취소할 수 있는 링크를 함께 안내한다.
+    """
     try:
         type_kr = _APPLICANT_TYPE_KR.get(applicant_type, applicant_type)
         received_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+        edit_link_html = ""
+        if edit_token:
+            domain = os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com").rstrip("/")
+            edit_url = f"{domain}/apply/edit/{edit_token}"
+            edit_link_html = f"""
+          <div style="margin:16px 0; padding:12px 14px; background:#F7F2E8; border:1px solid #EAD9B8; border-radius:8px;">
+            <p style="font-size:13px; color:#16202E; margin:0 0 8px;">신청 내용을 잘못 입력하셨거나 취소를 원하시면, 검토가 시작되기 전까지 아래 링크에서 직접 수정·취소하실 수 있습니다.</p>
+            <a href="{edit_url}" style="font-size:13px; color:#B4863F; font-weight:700;">신청 내용 수정·취소하기</a>
+          </div>
+            """
         html = f"""
         <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:520px; margin:0 auto; color:#16202E;">
           <h2 style="font-size:18px; border-bottom:2px solid #B4863F; padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
@@ -1433,6 +1447,7 @@ def _send_application_received_email(applicant_type, company_name, to_email):
             <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">접수일시</td><td>{received_at}</td></tr>
           </table>
           <p style="font-size:13px; color:#6b7280;">검토 후 담당자가 연락드리겠습니다. 승인 결과는 문자와 이메일로 안내됩니다.</p>
+          {edit_link_html}
         </div>
         """
         ok, msg = send_email(to_email, "[홈앤스테이] 신청이 접수되었습니다", html)
@@ -1551,29 +1566,30 @@ def apply_agent():
         if not cur.fetchone():
             preferred_building_id = None
 
+    edit_token = _secrets.token_urlsafe(32)
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
              intro_text, intro_title, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
              doc_photo_url, preferred_building_id,
-             terms_agreed_at, privacy_agreed_at)
+             terms_agreed_at, privacy_agreed_at, edit_token)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s)
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
           preferred_building or None, intro_title or None,
           doc_refs["doc_license_url"], doc_refs["doc_office_reg_url"],
           doc_refs["doc_biz_reg_url"], doc_refs["doc_photo_url"],
-          preferred_building_id))
+          preferred_building_id, edit_token))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
     conn.close()
 
-    # 접수 안내 이메일 — 실패해도 접수는 이미 확정
-    _send_application_received_email("agent", office_or_company_name, email)
+    # 접수 안내 이메일(수정/취소 링크 포함) — 실패해도 접수는 이미 확정
+    _send_application_received_email("agent", office_or_company_name, email, edit_token)
 
     return jsonify({"ok": True, "id": new_id})
 
@@ -1680,29 +1696,30 @@ def apply_operator():
         cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [preferred_building_id])
         if not cur.fetchone():
             preferred_building_id = None
+    edit_token = _secrets.token_urlsafe(32)
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, category,
              biz_reg_number, phone, email, website_url, preferred_region, status,
              reg_number, intro_text, doc_biz_reg_url, doc_business_card_url,
              doc_biz_license_url, doc_logo_url, terms_agreed_at, privacy_agreed_at,
-             preferred_building, preferred_building_id)
+             preferred_building, preferred_building_id, edit_token)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
           website_url or None, preferred_region or None,
           doc_refs["doc_biz_reg_url"], doc_refs["doc_business_card_url"],
           doc_refs["doc_biz_license_url"], doc_refs["doc_logo_url"],
-          preferred_building or None, preferred_building_id))
+          preferred_building or None, preferred_building_id, edit_token))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
     conn.close()
 
-    # 접수 안내 이메일 — 실패해도 접수는 이미 확정
-    _send_application_received_email("operator", office_or_company_name, email)
+    # 접수 안내 이메일(수정/취소 링크 포함) — 실패해도 접수는 이미 확정
+    _send_application_received_email("operator", office_or_company_name, email, edit_token)
 
     return jsonify({"ok": True, "id": new_id})
 
@@ -1808,24 +1825,279 @@ def apply_loan():
         cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [preferred_building_id])
         if not cur.fetchone():
             preferred_building_id = None
+    edit_token = _secrets.token_urlsafe(32)
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at,
-             preferred_building_id, preferred_region)
-        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s)
+             preferred_building_id, preferred_region, edit_token)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, license_number,
-          biz_reg_number or None, phone, email, preferred_building_id, service_region))
+          biz_reg_number or None, phone, email, preferred_building_id, service_region, edit_token))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
     conn.close()
 
-    # 접수 안내 이메일 — 실패해도 접수는 이미 확정
-    _send_application_received_email("loan_consultant", office_or_company_name, email)
+    # 접수 안내 이메일(수정/취소 링크 포함) — 실패해도 접수는 이미 확정
+    _send_application_received_email("loan_consultant", office_or_company_name, email, edit_token)
 
     return jsonify({"ok": True, "id": new_id})
+
+
+# ---- 신청서 본인 수정/취소 (이메일 링크, 비로그인) ----
+# 접수 이메일에 담긴 edit_token으로만 접근 가능. status가 'submitted'(검토 시작 전)일
+# 때만 수정·취소를 허용한다 — 관리자가 이미 검토를 시작(reviewing/approved/rejected)했다면
+# 데이터 정합성을 위해 더 이상 신청자 임의 변경을 허용하지 않는다.
+
+_APPLICATION_EDITABLE_STATUSES = {"submitted"}
+
+_APPLICATION_STATUS_KR = {
+    "submitted": "검토 대기중",
+    "reviewing": "검토중",
+    "approved": "승인 완료",
+    "rejected": "반려",
+    "cancelled": "취소됨",
+}
+
+
+def _application_public_dict(row):
+    """토큰 조회 응답용으로 필요한 필드만 추린다 (내부 관리용 컬럼 제외)."""
+    d = {
+        "applicant_type": row["applicant_type"],
+        "office_or_company_name": row["office_or_company_name"],
+        "owner_name": row["owner_name"],
+        "phone": format_phone(row.get("phone")) if row.get("phone") else "",
+        "phone_digits": row.get("phone") or "",
+        "email": row.get("email") or "",
+        "website_url": row.get("website_url") or "",
+        "intro_title": row.get("intro_title") or "",
+        "preferred_building": row.get("preferred_building") or "",
+        "preferred_building_id": row.get("preferred_building_id"),
+        "category": row.get("category") or "",
+        "reg_number": row.get("reg_number") or "",
+        "biz_reg_number": format_biz_reg_number(row.get("biz_reg_number")) if row.get("biz_reg_number") else "",
+        "biz_reg_number_digits": row.get("biz_reg_number") or "",
+        "preferred_region": row.get("preferred_region") or "",
+        "docs": {
+            k: bool(row.get(k)) for k in (
+                "doc_license_url", "doc_office_reg_url", "doc_biz_reg_url", "doc_photo_url",
+                "doc_business_card_url", "doc_biz_license_url", "doc_logo_url",
+            )
+        },
+    }
+    return d
+
+
+@app.route("/api/applications/token/<token>", methods=["GET"])
+@limiter.limit("30 per hour")
+def get_application_by_token(token):
+    token = (token or "").strip()
+    if not token:
+        return jsonify({"ok": False, "message": "잘못된 접근입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM applications WHERE edit_token=%s", [token])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "신청 내역을 찾을 수 없습니다. 링크가 만료되었을 수 있습니다."}), 404
+
+    editable = row["status"] in _APPLICATION_EDITABLE_STATUSES
+    return jsonify({
+        "ok": True,
+        "editable": editable,
+        "status": row["status"],
+        "status_kr": _APPLICATION_STATUS_KR.get(row["status"], row["status"]),
+        "data": _application_public_dict(row),
+    })
+
+
+def _revalidate_application_fields(applicant_type, data, is_update=True):
+    """apply_agent/apply_operator/apply_loan의 검증 로직과 동일 기준으로 재검증한다.
+    (ok, fields_dict_or_error_message) 반환. fields_dict의 키는 실제 컬럼명 기준.
+    """
+    office_or_company_name = (data.get("office_or_company_name") or "").strip()
+    owner_name = (data.get("owner_name") or "").strip()
+    phone = _digits_only(data.get("phone"))
+    email = (data.get("email") or "").strip()
+
+    missing = []
+    if not office_or_company_name:
+        missing.append("업체명/중개사무소명")
+    if not owner_name:
+        missing.append("대표자/성명")
+    if not phone:
+        missing.append("연락처")
+    if not email:
+        missing.append("이메일")
+
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) if email else True:
+        return False, "이메일 형식이 올바르지 않습니다."
+    if phone and not _validate_phone_digits(phone):
+        return False, "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"
+
+    fields = {
+        "office_or_company_name": office_or_company_name,
+        "owner_name": owner_name,
+        "phone": phone,
+        "email": email,
+    }
+
+    if applicant_type == "agent":
+        reg_number = _digits_only(data.get("reg_number"))
+        biz_reg_number = _digits_only(data.get("biz_reg_number"))
+        intro_title = (data.get("intro_title") or "").strip()[:16]
+        preferred_building = (data.get("preferred_building") or "").strip()
+        if not reg_number:
+            missing.append("등록번호")
+        if not biz_reg_number:
+            missing.append("사업자등록번호")
+        elif not _validate_biz_reg_digits(biz_reg_number):
+            return False, "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"
+        fields.update({
+            "reg_number": reg_number, "biz_reg_number": biz_reg_number,
+            "intro_title": intro_title or None, "preferred_building": preferred_building or None,
+        })
+    elif applicant_type == "operator":
+        category = (data.get("category") or "").strip()
+        biz_reg_number = _digits_only(data.get("biz_reg_number"))
+        website_url = (data.get("website_url") or "").strip()
+        preferred_building = (data.get("preferred_building") or "").strip()
+        if category and category not in OPERATOR_CATEGORIES:
+            return False, "업종은 다음 중 하나여야 합니다: " + ", ".join(sorted(OPERATOR_CATEGORIES))
+        if not category:
+            missing.append("업종")
+        if not biz_reg_number:
+            missing.append("사업자등록번호")
+        elif not _validate_biz_reg_digits(biz_reg_number):
+            return False, "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"
+        fields.update({
+            "category": category, "biz_reg_number": biz_reg_number,
+            "website_url": website_url or None, "preferred_building": preferred_building or None,
+        })
+    elif applicant_type == "loan_consultant":
+        license_number = (data.get("license_number") or data.get("reg_number") or "").strip()
+        biz_reg_number = _digits_only(data.get("biz_reg_number"))
+        service_region = (data.get("service_region") or data.get("preferred_region") or "").strip()
+        if not license_number:
+            missing.append("대출모집인 등록번호")
+        if not service_region:
+            missing.append("취급지역")
+        elif service_region not in LOAN_SERVICE_REGIONS:
+            return False, "취급지역은 다음 중 하나여야 합니다: " + ", ".join(LOAN_SERVICE_REGIONS)
+        if biz_reg_number and not _validate_biz_reg_digits(biz_reg_number):
+            return False, "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"
+        fields.update({
+            "reg_number": license_number, "biz_reg_number": biz_reg_number or None,
+            "preferred_region": service_region,
+        })
+    else:
+        return False, "알 수 없는 신청유형입니다."
+
+    if missing:
+        return False, "필수 항목을 입력해주세요: " + ", ".join(missing)
+
+    return True, fields
+
+
+@app.route("/api/applications/token/<token>", methods=["PUT"])
+@limiter.limit("20 per hour")
+def update_application_by_token(token):
+    token = (token or "").strip()
+    if not token:
+        return jsonify({"ok": False, "message": "잘못된 접근입니다."}), 400
+    data = request.get_json(force=True) or {}
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM applications WHERE edit_token=%s", [token])
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "신청 내역을 찾을 수 없습니다."}), 404
+    if row["status"] not in _APPLICATION_EDITABLE_STATUSES:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "이미 검토가 시작되어 더 이상 수정할 수 없습니다. 문의사항은 담당자에게 연락해주세요."}), 409
+
+    ok, result = _revalidate_application_fields(row["applicant_type"], data)
+    if not ok:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": result}), 400
+    fields = result
+
+    # 서류 재첨부(선택) — 넘어온 것만 검증 후 반영, 안 넘어오면 기존 값 유지
+    if row["applicant_type"] == "agent":
+        doc_field_map = {"doc_license_url": "license", "doc_office_reg_url": "office_reg",
+                          "doc_biz_reg_url": "biz_reg", "doc_photo_url": "photo"}
+    elif row["applicant_type"] == "operator":
+        doc_field_map = {"doc_biz_reg_url": "biz_reg", "doc_business_card_url": "business_card",
+                          "doc_biz_license_url": "biz_license", "doc_logo_url": "logo"}
+    else:
+        doc_field_map = {}
+    for field, doc_type in doc_field_map.items():
+        if field in data:
+            ref, err = _clean_doc_ref(data.get(field), row["applicant_type"], doc_type)
+            if err:
+                cur.close(); conn.close()
+                return jsonify({"ok": False, "message": err}), 400
+            if ref:
+                fields[field] = ref
+
+    # 희망건물 id — 넘어왔고 실제 존재할 때만 갱신
+    raw_bid = str(data.get("preferred_building_id") or "").strip()
+    if raw_bid.isdigit():
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [int(raw_bid)])
+        if cur.fetchone():
+            fields["preferred_building_id"] = int(raw_bid)
+
+    set_sql = ", ".join(f"{k}=%s" for k in fields)
+    params = list(fields.values()) + [token]
+    cur.execute(f"UPDATE applications SET {set_sql} WHERE edit_token=%s", params)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "message": "수정되었습니다."})
+
+
+@app.route("/api/applications/token/<token>", methods=["DELETE"])
+@limiter.limit("20 per hour")
+def cancel_application_by_token(token):
+    token = (token or "").strip()
+    if not token:
+        return jsonify({"ok": False, "message": "잘못된 접근입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT status FROM applications WHERE edit_token=%s", [token])
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "신청 내역을 찾을 수 없습니다."}), 404
+    if row["status"] not in _APPLICATION_EDITABLE_STATUSES:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "이미 검토가 시작되어 더 이상 취소할 수 없습니다. 문의사항은 담당자에게 연락해주세요."}), 409
+    cur.execute("UPDATE applications SET status='cancelled', reviewed_at=NOW() WHERE edit_token=%s", [token])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "message": "신청이 취소되었습니다."})
+
+
+@app.route("/apply/edit/<token>")
+def apply_edit_page(token):
+    """신청 내용 수정·취소 페이지(D화면 변형) — 접수 이메일의 링크로만 진입.
+    apply_agent_page()와 동일하게 정적 HTML을 그대로 서빙하고, 실제 데이터는
+    클라이언트 JS가 URL의 token으로 /api/applications/token/<token>을 호출해 채운다.
+    """
+    html_path = os.path.join(app.static_folder, "apply_edit.html")
+    with open(html_path, encoding="utf-8") as f:
+        html = f.read()
+    html = _inject_asset_version(html)
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 @app.route("/api/loan-consultants")
