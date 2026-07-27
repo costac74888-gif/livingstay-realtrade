@@ -118,8 +118,19 @@ function renderFavChips(){
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = "★ " + name;
-    label.title = "이 관심단지만 보기";
-    label.addEventListener("click", () => filterToFav(k));
+    label.title = "건물 상세 보기";
+    label.addEventListener("click", async () => {
+      try {
+        const res = await fetch(`/api/favorites?keys=${encodeURIComponent(k)}`);
+        const data = await res.json();
+        const item = (data.items || [])[0];
+        if (item && item.master_building_id) {
+          openBuildingDetail(item.master_building_id);
+          return;
+        }
+      } catch(e){ /* fall through */ }
+      filterToFav(k);
+    });
     chip.appendChild(label);
     const x = document.createElement("span");
     x.className = "x";
