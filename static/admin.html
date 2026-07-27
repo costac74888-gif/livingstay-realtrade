@@ -284,7 +284,8 @@
             ].filter((d) => d[2]);
             if (!docs.length) return '<span style="color:var(--ink-soft);">—</span>';
             return docs.map((d) =>
-              `<a href="#" onclick="adminOpenAppDoc(event, ${row.id}, '${d[0]}')" style="margin-right:6px; white-space:nowrap;">${dgEscape(d[1])}</a>`
+              `<a href="#" onclick="adminOpenAppDoc(event, ${row.id}, '${d[0]}')" style="margin-right:4px; white-space:nowrap;">${dgEscape(d[1])}</a>` +
+              `<a href="#" onclick="adminDownloadAppDoc(${row.id}, '${d[0]}', '${dgEscape(d[1])}'); return false;" style="margin-right:8px; font-size:12px; color:var(--brass-dark); white-space:nowrap;">⬇</a>`
             ).join("");
           } },
           { key: "submitted_at", label: "신청일", sortable: true },
@@ -825,6 +826,28 @@
         if (res.ok && d.ok) { currentGrid.reload(); return; }
         window.alert(d.message || "비고 저장에 실패했습니다.");
       } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    };
+
+    // ---- 신청 서류 다운로드: 서명 URL로 Blob 받아 강제 다운로드 ----
+    window.adminDownloadAppDoc = async function(appId, docType, label) {
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/doc-url?doc=${encodeURIComponent(docType)}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { window.alert(d.message || "다운로드 URL 발급에 실패했습니다."); return; }
+        const fileRes = await fetch(d.url);
+        const blob = await fileRes.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = label || "서류";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (e) {
+        window.alert("다운로드 중 오류가 발생했습니다.");
+      }
     };
 
     // ---- 신청 서류 열람: 관리자 전용 서명 URL(5분)을 발급받아 새 탭으로 연다 ----

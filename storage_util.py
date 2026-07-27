@@ -103,8 +103,21 @@ def download_bytes(key):
     return get_client().download_as_bytes(key)
 
 
+_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+}
+
+
 def upload_doc(key, data):
-    get_client().upload_from_bytes(key, data)
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    content_type = _CONTENT_TYPES.get(ext, "application/octet-stream")
+    # Replit Client.upload_from_bytes()는 content_type 인자를 노출하지 않으므로
+    # 내부 GCS Blob(_Client__object)의 upload_from_string()을 직접 호출해 지정한다.
+    client = get_client()
+    client._Client__object(key).upload_from_string(data, content_type=content_type)
 
 
 def doc_exists(key):
