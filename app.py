@@ -10235,5 +10235,60 @@ def health():
     return jsonify(data)
 
 
+def _resume_interrupted_sync_jobs():
+    """서버 재시작(Republish 등) 직후, 재시작 전에 'running' 상태로 남아
+    있던 모든 데이터 동기화 작업을 자동으로 재개한다. 관리자가 일일이
+    화면을 열어서 다시 누를 필요 없게 하기 위함. 각 스크립트는 자체
+    체크포인트/일일캡 로직을 갖고 있어서, 더 할 게 없으면 스스로 조용히
+    종료한다 — 여기서는 무조건 재기동만 시도하면 된다.
+    gunicorn 멀티 워커 환경에서도 _start_detached_sync의 조건부 UPDATE(락)
+    덕분에 한 워커만 실제로 기동하므로 안전하다."""
+    jobs = [
+        (_GEOCODE_META_KEY,       "geocode_buildings.py",    ["--status-key", _GEOCODE_META_KEY]),
+        (_TITLE_INFO_META_KEY,    "backfill_title_info.py",  ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.2"]),
+        (_GEOCODE_BROKERS_META_KEY, "geocode_brokers.py",    ["--status-key", _GEOCODE_BROKERS_META_KEY]),
+        (_SYNC_META_KEY,          "sync_runner.py",          []),
+        (_BACKFILL_META_KEY,      "sync_runner.py",          ["--meta-key", _BACKFILL_META_KEY, "--months", "60", "--progress-key", "tx_backfill_progress"]),
+        (_BROKER_SYNC_META_KEY,   "sync_brokers.py",         ["--status-key", _BROKER_SYNC_META_KEY]),
+        (_LODGING_SYNC_META_KEY,  "sync_lodgings.py",        ["--status-key", _LODGING_SYNC_META_KEY]),
+        (_BRHUB_SYNC_META_KEY,    "sync_brhub.py",           ["--status-key", _BRHUB_SYNC_META_KEY]),
+        (_PERMITS_SYNC_META_KEY,  "sync_permits.py",         ["--status-key", _PERMITS_SYNC_META_KEY]),
+        (_REALTY_SYNC_META_KEY,   "sync_realty_stores.py",   ["--status-key", _REALTY_SYNC_META_KEY]),
+    ]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        for meta_key, script_name, script_args in jobs:
+            try:
+                cur.execute("SELECT value FROM app_meta WHERE key=%s", (meta_key,))
+                row = cur.fetchone()
+                state = None
+                if row and row["value"]:
+                    try:
+                        state = json.loads(row["value"]).get("state")
+                    except (TypeError, ValueError):
+                        state = None
+                if state != "running":
+                    continue  # 재시작 전에 실행 중이 아니었으면 스킵
+                # 잠금 해제: "running" → "interrupted" 로 바꿔 _start_detached_sync가 진입할 수 있게 함
+                cur.execute("""
+                    UPDATE app_meta
+                       SET value      = jsonb_set(value::jsonb, '{state}', '"interrupted"')::text,
+                           updated_at = NOW()
+                     WHERE key = %s
+                """, (meta_key,))
+                conn.commit()
+                ok, code, payload = _start_detached_sync(meta_key, script_name, script_args)
+                app.logger.info("[auto-resume] %s → %s (ok=%s)", meta_key, script_name, ok)
+            except Exception:
+                app.logger.exception("[auto-resume] %s 재개 시도 중 오류(무시)", meta_key)
+    finally:
+        cur.close()
+        conn.close()
+
+
+_resume_interrupted_sync_jobs()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
