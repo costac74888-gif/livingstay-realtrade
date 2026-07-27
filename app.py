@@ -1458,19 +1458,24 @@ def _send_application_received_email(applicant_type, company_name, to_email, edi
 
 
 def _send_approval_email(applicant_type, to_email, login_id, temp_pw, login_url):
-    """승인 완료 이메일(SMS와 동일 내용) — 실패해도 승인 처리에는 영향 없음. (ok, msg) 반환."""
+    """승인 완료 이메일(SMS와 동일 내용) — 실패해도 승인 처리에는 영향 없음. (ok, msg) 반환.
+    temp_pw가 None이면 '가입 시 설정한 비밀번호로 로그인' 안내로 대체한다."""
     try:
         type_kr = _APPLICANT_TYPE_KR.get(applicant_type, applicant_type)
+        pw_row = (f'<tr><td style="padding:4px 12px 4px 0; color:#6b7280;">임시비밀번호</td><td><b>{temp_pw}</b></td></tr>'
+                  if temp_pw else "")
+        pw_notice = ("최초 로그인 후 반드시 비밀번호를 변경해주세요." if temp_pw
+                     else "가입 신청 시 설정하신 비밀번호로 로그인해주세요.")
         html = f"""
         <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; max-width:520px; margin:0 auto; color:#16202E;">
           <h2 style="font-size:18px; border-bottom:2px solid #B4863F; padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
           <p style="font-size:15px; font-weight:700;">{type_kr} 승인이 완료되었습니다.</p>
           <table style="font-size:14px; border-collapse:collapse; margin:12px 0;">
             <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">로그인 ID(이메일)</td><td>{login_id}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">임시비밀번호</td><td><b>{temp_pw}</b></td></tr>
+            {pw_row}
             <tr><td style="padding:4px 12px 4px 0; color:#6b7280;">로그인</td><td><a href="{login_url}">{login_url}</a></td></tr>
           </table>
-          <p style="font-size:13px; color:#B00020; font-weight:600;">최초 로그인 후 반드시 비밀번호를 변경해주세요.</p>
+          <p style="font-size:13px; color:#B00020; font-weight:600;">{pw_notice}</p>
         </div>
         """
         ok, msg = send_email(to_email, "[홈앤스테이] 승인되었습니다 — 로그인 안내", html)
@@ -1500,7 +1505,13 @@ def apply_agent():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    password = (data.get("password") or "")
+    if len(password) < 8:
+        return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
+    apply_password_hash = generate_password_hash(password)
     office_address = (data.get("office_address") or "").strip()
+    if not office_address:
+        return jsonify({"ok": False, "message": "소재지를 입력해주세요."}), 400
     # 소개글 제목(선택) — 건물상세 배너 노출용, 16자 이내
     intro_title = (data.get("intro_title") or "").strip()
     if len(intro_title) > 16:
@@ -1585,16 +1596,16 @@ def apply_agent():
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
              intro_text, intro_title, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
              doc_photo_url, preferred_building_id,
-             terms_agreed_at, privacy_agreed_at, office_address, edit_token)
+             terms_agreed_at, privacy_agreed_at, office_address, edit_token, password_hash)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
           preferred_building or None, intro_title or None,
           doc_refs["doc_license_url"], doc_refs["doc_office_reg_url"],
           doc_refs["doc_biz_reg_url"], doc_refs["doc_photo_url"],
-          preferred_building_id, office_address or None, edit_token))
+          preferred_building_id, office_address or None, edit_token, apply_password_hash))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1645,7 +1656,13 @@ def apply_operator():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    password = (data.get("password") or "")
+    if len(password) < 8:
+        return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
+    apply_password_hash = generate_password_hash(password)
     office_address = (data.get("office_address") or "").strip()
+    if not office_address:
+        return jsonify({"ok": False, "message": "소재지를 입력해주세요."}), 400
     website_url = (data.get("website_url") or "").strip()
     # 희망지역 → 희망건물로 변경 (agent 신청과 동일 패턴).
     # 구버전 호환을 위해 preferred_region도 함께 받아둔다 (컬럼/기존 데이터 유지).
@@ -1716,16 +1733,16 @@ def apply_operator():
              biz_reg_number, phone, email, website_url, preferred_region, status,
              reg_number, intro_text, doc_biz_reg_url, doc_business_card_url,
              doc_biz_license_url, doc_logo_url, terms_agreed_at, privacy_agreed_at,
-             preferred_building, preferred_building_id, office_address, edit_token)
+             preferred_building, preferred_building_id, office_address, edit_token, password_hash)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s, %s)
+                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
           website_url or None, preferred_region or None,
           doc_refs["doc_biz_reg_url"], doc_refs["doc_business_card_url"],
           doc_refs["doc_biz_license_url"], doc_refs["doc_logo_url"],
-          preferred_building or None, preferred_building_id, office_address or None, edit_token))
+          preferred_building or None, preferred_building_id, office_address or None, edit_token, apply_password_hash))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1793,6 +1810,10 @@ def apply_loan():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    password = (data.get("password") or "")
+    if len(password) < 8:
+        return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
+    apply_password_hash = generate_password_hash(password)
     office_address = (data.get("office_address") or "").strip()
     # 건물상세(B화면)에서 진입 시 희망건물 — agent 신청과 동일 패턴 (승인 시 담당건물 자동 등록)
     raw_bid = str(data.get("preferred_building_id") or "").strip()
@@ -1844,11 +1865,11 @@ def apply_loan():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at,
-             preferred_building_id, preferred_region, office_address, edit_token)
-        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s, %s)
+             preferred_building_id, preferred_region, office_address, edit_token, password_hash)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, license_number,
-          biz_reg_number or None, phone, email, preferred_building_id, service_region, office_address or None, edit_token))
+          biz_reg_number or None, phone, email, preferred_building_id, service_region, office_address or None, edit_token, apply_password_hash))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -4475,7 +4496,7 @@ def operator_public_profile(slug):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id, company_name, owner_name, category, phone, photo_url, intro_text
+            SELECT id, company_name, owner_name, category, phone, photo_url, logo_url, intro_text
             FROM operators
             WHERE subdomain_slug = %s AND status = 'approved'
         """, [slug])
@@ -4498,7 +4519,7 @@ def operator_public_profile(slug):
         "owner_name": op["owner_name"],
         "category": op["category"],
         "phone": op["phone"],
-        "photo_url": op["photo_url"],
+        "logo_src": f"/api/partners/operator-logo/{op['id']}" if op["logo_url"] else None,
         "intro_text": op["intro_text"],
         "buildings": buildings,
         "building_count": len(buildings),
@@ -4539,6 +4560,7 @@ def operator_me():
         cur.close()
         conn.close()
     out = dict(me)
+    out["logo_src"] = f"/api/partners/operator-logo/{operator_id}" if out.get("logo_url") else None
     out["buildings"] = buildings
     return jsonify(out)
 
@@ -4615,6 +4637,39 @@ def operator_visibility_update():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "is_visible": v})
+
+
+@app.route("/api/operator/logo", methods=["POST"])
+@require_operator
+def operator_logo_upload():
+    """마이페이지에서 로고 업로드/교체 — 신청서 업로드와 동일한 검증."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다."}), 400
+    key = storage_util.build_doc_key("operator", "logo", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("운영업체 로고 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다."}), 500
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE operators SET logo_url=%s WHERE id=%s", [key, operator_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "logo_src": f"/api/partners/operator-logo/{operator_id}"})
 
 
 # ============================================================
@@ -9358,10 +9413,14 @@ def admin_applications_approve(app_id):
             # subdomain_slug: 전화번호 숫자만 추출, 중복이면 -2, -3 … 붙여 유니크화.
             # 동시 승인 경쟁 대비: SAVEPOINT + UNIQUE 충돌 시 새 slug로 재시도(최대 5회).
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"agent{app_id}"
-            # 임시 비밀번호(랜덤 8자리 영숫자) — 해시만 저장
-            alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
-            temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
-            pw_hash = generate_password_hash(temp_pw)
+            # 비밀번호: 신청 시 설정했으면 그걸 그대로 사용, 없으면 임시 발급
+            if ap.get("password_hash"):
+                pw_hash = ap["password_hash"]
+                temp_pw = None
+            else:
+                alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+                temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
+                pw_hash = generate_password_hash(temp_pw)
             created_id = None
             n = 2
             slug = base_slug
@@ -9447,11 +9506,15 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "이미 등록된 운영지원업체입니다."}), 400
-            # subdomain_slug + 임시비밀번호 — agent 승인 로직과 완전히 동일한 패턴.
+            # subdomain_slug + 비밀번호 — agent 승인 로직과 완전히 동일한 패턴.
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"operator{app_id}"
-            alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
-            temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
-            pw_hash = generate_password_hash(temp_pw)
+            if ap.get("password_hash"):
+                pw_hash = ap["password_hash"]
+                temp_pw = None
+            else:
+                alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+                temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
+                pw_hash = generate_password_hash(temp_pw)
             created_id = None
             n = 2
             slug = base_slug
@@ -9531,10 +9594,14 @@ def admin_applications_approve(app_id):
                 return jsonify({"ok": False, "message": "이미 등록된 이메일의 대출상담사가 있습니다."}), 400
             # subdomain_slug — agent 승인 로직과 동일 패턴 (전화번호 기반, 충돌 시 -2, -3 …)
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"loan{app_id}"
-            # 임시 비밀번호(랜덤 8자리 영숫자) — agent/operator와 동일 패턴, 해시만 저장
-            alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
-            temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
-            pw_hash = generate_password_hash(temp_pw)
+            # 비밀번호: 신청 시 설정했으면 그걸 그대로 사용, 없으면 임시 발급
+            if ap.get("password_hash"):
+                pw_hash = ap["password_hash"]
+                temp_pw = None
+            else:
+                alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+                temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
+                pw_hash = generate_password_hash(temp_pw)
             created_id = None
             n = 2
             slug = base_slug
@@ -9616,14 +9683,15 @@ def admin_applications_approve(app_id):
         domain = os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com").rstrip("/")
         sms_body = (
             f"[홈앤스테이] 대출상담사 승인 완료. 로그인ID(이메일): {ap['email']} / "
-            f"임시비밀번호: {temp_pw} / 로그인: {domain}/loan-consultant/login — "
-            f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
+            + (f"임시비밀번호: {temp_pw} / 로그인: {domain}/loan-consultant/login — "
+               f"최초 로그인 후 반드시 비밀번호를 변경해주세요." if temp_pw
+               else f"가입 시 설정한 비밀번호로 로그인해주세요: {domain}/loan-consultant/login")
         )
         sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
         # 승인 이메일도 함께 발송 (SMS와 동일 내용) — 실패해도 승인은 확정
         email_sent, _ = _send_approval_email("loan_consultant", ap["email"], ap["email"], temp_pw, f"{domain}/loan-consultant/login")
         resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg, "email_sent": email_sent}
-        if not sms_sent:
+        if not sms_sent and temp_pw:
             # 문자 실패 시 관리자 화면에서 임시비밀번호를 직접 전달할 수 있게 응답에 포함
             resp["temp_password"] = temp_pw
         return jsonify(resp)
@@ -9635,14 +9703,16 @@ def admin_applications_approve(app_id):
         if atype == "agent":
             sms_body = (
                 f"[홈앤스테이] 중개사 승인 완료. 로그인ID(이메일): {ap['email']} / "
-                f"임시비밀번호: {temp_pw} / 로그인: {domain}/agent/login — "
-                f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
+                + (f"임시비밀번호: {temp_pw} / 로그인: {domain}/agent/login — "
+                   f"최초 로그인 후 반드시 비밀번호를 변경해주세요." if temp_pw
+                   else f"가입 시 설정한 비밀번호로 로그인해주세요: {domain}/agent/login")
             )
         else:
             sms_body = (
                 f"[홈앤스테이] 운영지원업체 승인 완료. 로그인ID(이메일): {ap['email']} / "
-                f"임시비밀번호: {temp_pw} / 로그인: {domain}/operator/login — "
-                f"최초 로그인 후 반드시 비밀번호를 변경해주세요."
+                + (f"임시비밀번호: {temp_pw} / 로그인: {domain}/operator/login — "
+                   f"최초 로그인 후 반드시 비밀번호를 변경해주세요." if temp_pw
+                   else f"가입 시 설정한 비밀번호로 로그인해주세요: {domain}/operator/login")
             )
         sms_sent, sms_msg = send_sms(ap["phone"], sms_body)
         # 승인 이메일도 함께 발송 (SMS와 동일 내용) — 실패해도 승인은 확정
@@ -9651,7 +9721,7 @@ def admin_applications_approve(app_id):
         resp = {"ok": True, "created_id": created_id, "sms_sent": sms_sent, "sms_message": sms_msg, "email_sent": email_sent}
         if atype == "agent":
             resp["reassigned_leads"] = reassigned_leads
-        if not sms_sent:
+        if not sms_sent and temp_pw:
             # 평문 임시비번은 문자 발송 실패 시에만 반환(관리자가 수동 전달하도록)
             resp["temp_password"] = temp_pw
         return jsonify(resp)

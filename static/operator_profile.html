@@ -55,8 +55,8 @@
   }
 
   function render(p){
-    const photo = p.photo_url
-      ? `<img src="${esc(p.photo_url)}" alt="${esc(p.company_name)}" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:1px solid #E4DCCB;" />`
+    const photo = p.logo_src
+      ? `<img src="${esc(p.logo_src)}" alt="${esc(p.company_name)}" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:1px solid #E4DCCB;" />`
       : `<div style="width:72px; height:72px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:32px;">🏨</div>`;
 
     const categoryBadge = p.category

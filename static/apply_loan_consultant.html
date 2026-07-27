@@ -55,6 +55,14 @@
         <input type="text" id="email" placeholder="예) loan@example.com" />
       </div>
       <div class="field" style="margin-bottom:14px;">
+        <label>비밀번호 <span style="color:var(--brick);">*</span></label>
+        <input type="password" id="applyPassword" placeholder="8자 이상" autocomplete="new-password" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>비밀번호 확인 <span style="color:var(--brick);">*</span></label>
+        <input type="password" id="applyPasswordConfirm" placeholder="비밀번호를 한번 더 입력해주세요" autocomplete="new-password" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
         <label>소재지 (선택)</label>
         <div style="display:flex; gap:8px;">
           <input type="text" id="office_address" placeholder="주소찾기를 눌러주세요" readonly style="flex:1; background:#F7F5F0; cursor:pointer;" onclick="openAddressSearch()" />
@@ -180,6 +188,10 @@
       showError("취급지역을 선택해주세요.");
       return;
     }
+    const pw = document.getElementById("applyPassword").value;
+    const pwConfirm = document.getElementById("applyPasswordConfirm").value;
+    if (pw.length < 8) { showError("비밀번호는 8자 이상이어야 합니다."); return; }
+    if (pw !== pwConfirm) { showError("비밀번호가 일치하지 않습니다."); return; }
 
     const payload = {
       terms: applyAgreeTerms.checked,
@@ -190,6 +202,7 @@
       biz_reg_number: bizDigits,
       phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
+      password: pw,
       office_address: document.getElementById("office_address").value,
       preferred_building_id: document.getElementById("preferred_building_id").value.trim(),
       service_region: regionSel.value,

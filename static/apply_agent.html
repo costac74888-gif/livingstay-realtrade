@@ -54,7 +54,15 @@
         <input type="text" id="email" placeholder="예) agent@example.com" />
       </div>
       <div class="field" style="margin-bottom:14px;">
-        <label>소재지 (선택)</label>
+        <label>비밀번호 <span style="color:var(--brick);">*</span></label>
+        <input type="password" id="applyPassword" placeholder="8자 이상" autocomplete="new-password" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>비밀번호 확인 <span style="color:var(--brick);">*</span></label>
+        <input type="password" id="applyPasswordConfirm" placeholder="비밀번호를 한번 더 입력해주세요" autocomplete="new-password" />
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>소재지 <span style="color:var(--brick);">*</span></label>
         <div style="display:flex; gap:8px;">
           <input type="text" id="office_address" placeholder="주소찾기를 눌러주세요" readonly style="flex:1; background:#F7F5F0; cursor:pointer;" onclick="openAddressSearch()" />
           <button type="button" class="side-more" style="width:auto; margin-top:0; padding:0 16px; flex-shrink:0;" onclick="openAddressSearch()">주소찾기</button>
@@ -303,6 +311,12 @@
       showError("중개사무소등록증 사본 첨부는 필수입니다.");
       return;
     }
+    const pw = document.getElementById("applyPassword").value;
+    const pwConfirm = document.getElementById("applyPasswordConfirm").value;
+    if (pw.length < 8) { showError("비밀번호는 8자 이상이어야 합니다."); return; }
+    if (pw !== pwConfirm) { showError("비밀번호가 일치하지 않습니다."); return; }
+    const officeAddress = document.getElementById("office_address").value.trim();
+    if (!officeAddress) { showError("소재지를 입력해주세요. (주소찾기 버튼 이용)"); return; }
 
     const payload = {
       terms: applyAgreeTerms.checked,
@@ -313,6 +327,7 @@
       biz_reg_number: bizDigits,
       phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
+      password: pw,
       office_address: document.getElementById("office_address").value,
       intro_title: document.getElementById("intro_title").value.trim(),
       preferred_building: document.getElementById("preferred_building").value.trim(),
