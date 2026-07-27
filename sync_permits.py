@@ -47,14 +47,15 @@ API_URL = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo"
 KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 기존 계정 공용 인증키 재사용 (sync_brhub.py와 동일)
 CODES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bjdong_codes.json")
 PROGRESS_KEY = "permits_progress"
-NUM_ROWS = 10
+NUM_ROWS = 100  # 10→100으로 변경(수집 속도 10배 개선, 2026-07-27 --probe로 실제 응답 확인)
 
-# ⚠️ 아래 4개 값(오른쪽)이 추정값입니다 — --probe로 실제 원본 JSON을 확인한 뒤
-#    실제 키 이름으로 반드시 수정하세요. 왼쪽(우리 쪽 이름)은 그대로 둬도 됩니다.
+# 아래 필드명은 --probe(2026-07-27)로 실제 API 응답을 확인해 검증된 값입니다.
+# ArchPmsHubService/getApBasisOulnInfo 응답 키 이름:
 FIELD_MAP = {
-    "허가일": "archPmsDay",
-    "착공예정일": "stcnsSchedDay",
-    "실제착공일": "realStcnsDay",
+    "허가일": "archPmsDay",        # 건축허가일 (YYYYMMDD)
+    "착공예정일": "stcnsSchedDay",  # 착공예정일 (YYYYMMDD)
+    "실제착공일": "realStcnsDay",   # 실제착공일 (YYYYMMDD)
+    "사용승인일": "useAprDay",      # 사용승인(준공)일 — 값이 있으면 이미 완공된 건물
 }
 
 
@@ -214,6 +215,11 @@ def run(args, status_key=None, run_id=None):
                 if not hoCnt:
                     continue
 
+                # 사용승인일(useAprDay)이 있으면 이미 완공된 건물 → 준공전 파이프라인 제외
+                use_apr = (it.get(FIELD_MAP["사용승인일"]) or "").strip()
+                if use_apr:
+                    continue
+
                 jibun = _jibun_from_bunji(it.get("bun"), it.get("ji"))
                 umd_key = normalize_umd_nm(umd_raw)
                 plat_plc = (it.get("platPlc") or "").strip() or None
@@ -228,9 +234,9 @@ def run(args, status_key=None, run_id=None):
                 if jn and jn in jibuns:
                     continue
 
-                actual_start = it.get(FIELD_MAP["실제착공일"])
-                expected_start = it.get(FIELD_MAP["착공예정일"])
-                permit_day = it.get(FIELD_MAP["허가일"])
+                actual_start = (it.get(FIELD_MAP["실제착공일"]) or "").strip() or None
+                expected_start = (it.get(FIELD_MAP["착공예정일"]) or "").strip() or None
+                permit_day = (it.get(FIELD_MAP["허가일"]) or "").strip() or None
                 status = "착공" if actual_start else "허가"
                 counts[status] += 1
 
@@ -294,7 +300,22 @@ def run(args, status_key=None, run_id=None):
                           "  tot_area, plat_area, arch_area, bc_rat, vl_rat, hhld_cnt, tot_pkng_cnt, source_key)"
                           " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'permit_pipeline',%s,NULL,%s,%s,%s,%s,"
                           "         %s,%s,%s,%s,%s,%s,%s,%s)"
-                          " ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO NOTHING")
+                          " ON CONFLICT (source_key) WHERE source_key IS NOT NULL"
+                          " DO UPDATE SET"
+                          "   building_name=EXCLUDED.building_name,"
+                          "   building_status=EXCLUDED.building_status,"
+                          "   permit_day=EXCLUDED.permit_day,"
+                          "   actual_start_day=EXCLUDED.actual_start_day,"
+                          "   completion_expected_date=EXCLUDED.completion_expected_date,"
+                          "   units=EXCLUDED.units,"
+                          "   tot_area=EXCLUDED.tot_area,"
+                          "   plat_area=EXCLUDED.plat_area,"
+                          "   arch_area=EXCLUDED.arch_area,"
+                          "   bc_rat=EXCLUDED.bc_rat,"
+                          "   vl_rat=EXCLUDED.vl_rat,"
+                          "   hhld_cnt=EXCLUDED.hhld_cnt,"
+                          "   tot_pkng_cnt=EXCLUDED.tot_pkng_cnt,"
+                          "   lodging_type_detail=EXCLUDED.lodging_type_detail")
 
             def _do_commit(c, u, rows, p):
                 for rp in rows:
