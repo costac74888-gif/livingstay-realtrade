@@ -2794,12 +2794,15 @@
         const dashBtn = (r.member_type === "agent")
           ? `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">마이페이지</a>`
           : "";
+        const badgeBtn = (r.member_type === "agent")
+          ? `<button class="dg-icon-btn" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}')">단지마크</button>`
+          : "";
         const actions = r.member_type === "pending"
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
           : (isReReview
-            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn} ${dashBtn}`
-            : ((docsBtn || dashBtn) ? `${docsBtn} ${dashBtn}` : `<span style="color:var(--ink-soft);">—</span>`));
+            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn} ${dashBtn} ${badgeBtn}`
+            : ((docsBtn || dashBtn || badgeBtn) ? `${docsBtn} ${dashBtn} ${badgeBtn}` : `<span style="color:var(--ink-soft);">—</span>`));
         // 광고 컬럼 — 파트너(중개사/운영지원업체/대출상담사)만. 클릭 시 이력/입력 팝업.
         let adCell = '<span style="color:var(--ink-soft);">-</span>';
         if (isPartner) {
@@ -3183,6 +3186,46 @@
     };
 
     // ---- 첨부서류 목록 모달 — 신청 시 올린 서류를 회원관리에서 바로 열람/다운로드 ----
+    window.openPriorityBadgeModal = async function(agentId, agentName) {
+      const res = await fetch(`/api/admin/agents/${agentId}/buildings`);
+      if (res.status === 401) { window.location.href = "/admin/login"; return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { window.alert(d.message || "조회 실패"); return; }
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      const rows = (d.buildings || []).map(b => `
+        <li style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line);">
+          <span>${dgEscape(b.building_name)}</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" ${b.has_priority_badge ? "checked" : ""}
+              onchange="togglePriorityBadge(${agentId}, ${b.master_building_id}, this.checked)" />
+            단지마크
+          </label>
+        </li>`).join("") || `<li style="color:var(--ink-soft);">등록된 전속단지가 없습니다.</li>`;
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true">
+          <div class="admin-modal-head">
+            <h3>단지마크 부여 — ${dgEscape(agentName)}</h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body"><ul style="list-style:none; margin:0; padding:0;">${rows}</ul></div>
+          <div class="admin-modal-foot"><button class="admin-btn admin-modal-cancel" type="button">닫기</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector(".admin-modal-close").addEventListener("click", () => overlay.remove());
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => overlay.remove());
+    };
+
+    window.togglePriorityBadge = async function(agentId, mbid, checked) {
+      const res = await fetch(`/api/admin/agent-buildings/${agentId}/${mbid}/priority-badge`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: checked }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) window.alert(d.message || "변경 실패");
+    };
+
     window.memberDocs = async function (memberType, memberId) {
       let d;
       try {

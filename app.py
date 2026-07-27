@@ -324,13 +324,14 @@ def get_building(building_id):
     cur.execute("""
         SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
                a.subdomain_slug, a.photo_url, a.intro_title,
-               ab.sale_count, ab.jeonse_count, ab.wolse_count, ab.shortterm_count
+               ab.sale_count, ab.jeonse_count, ab.wolse_count, ab.shortterm_count,
+               COALESCE(ab.has_priority_badge, FALSE) AS has_priority_badge
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         WHERE ab.master_building_id = %s
           AND a.status = 'approved'
           AND COALESCE(a.is_visible, TRUE)
-        ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
+        ORDER BY COALESCE(ab.has_priority_badge, FALSE) DESC, COALESCE(a.priority_score, 0) DESC, RANDOM()
         LIMIT 3
     """, [building_id])
     agent_rows = cur.fetchall()
@@ -8555,6 +8556,47 @@ def _resolve_member_application_row(member_type, member_id):
     cur.close()
     conn.close()
     return row, None
+
+
+@app.route("/api/admin/agents/<int:agent_id>/buildings")
+@require_admin
+def admin_agent_buildings(agent_id):
+    """해당 중개사의 전속단지 목록 + 단지마크 부여 상태 — 단지마크 부여 모달용."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT mb.id AS master_building_id, mb.building_name,
+               COALESCE(ab.has_priority_badge, FALSE) AS has_priority_badge
+        FROM agent_buildings ab
+        JOIN master_buildings mb ON mb.id = ab.master_building_id
+        WHERE ab.agent_id = %s
+        ORDER BY mb.building_name
+    """, [agent_id])
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "buildings": rows})
+
+
+@app.route("/api/admin/agent-buildings/<int:agent_id>/<int:mbid>/priority-badge", methods=["PUT"])
+@require_admin
+def admin_agent_building_priority_badge(agent_id, mbid):
+    """관리자가 특정 중개사·건물 조합에 단지마크(우선노출)를 켜고 끈다."""
+    data = request.get_json(force=True, silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE agent_buildings SET has_priority_badge=%s WHERE agent_id=%s AND master_building_id=%s",
+        [enabled, agent_id, mbid],
+    )
+    updated = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not updated:
+        return jsonify({"ok": False, "message": "해당 전속단지를 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/members/<member_type>/<int:member_id>/docs")
