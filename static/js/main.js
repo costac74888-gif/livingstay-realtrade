@@ -1986,7 +1986,7 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
         : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
       // 이 건물 한정 매물 건수 배지 4개 — 값이 0이어도 표시, 한 줄 고정 (agent_buildings 기준)
       const cnt = (v) => (v == null ? 0 : v);
-      const badge = (label, v) => `<span style="display:inline-flex; align-items:center; font-size:10.5px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:3px 6px; border-radius:10px; white-space:nowrap;">${label}(${cnt(v)})</span>`;
+      const badge = (label, v) => `<span style="display:inline-flex; align-items:center; font-size:8.4px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">${label}(${cnt(v)})</span>`;
       const badges = `<div style="display:flex; gap:4px; margin-top:6px;">
         ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
       </div>`;
@@ -1995,10 +1995,15 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
         <div style="display:flex; align-items:flex-start; gap:12px;">
           ${avatar}
           <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
+            ${agent.subdomain_slug
+              ? `<a href="/agent/${encodeURIComponent(agent.subdomain_slug)}?building_id=${buildingId}" style="font-size:14px; font-weight:600; color:var(--ink); text-decoration:none;">${escapeHtml(agent.office_name || "-")}</a>`
+              : `<div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>`}
             ${badges}
             <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">(${escapeHtml(agent.owner_name || "-")}) 공인중개사</div>
-            ${agent.phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">📱 ${escapeHtml(window.formatPhone ? formatPhone(agent.phone) : agent.phone)}</div>` : ""}
+            ${agent.phone ? `<div style="display:flex; gap:10px; margin-top:4px;">
+              <a href="tel:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">📞 전화</a>
+              <a href="sms:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">💬 문자</a>
+            </div>` : ""}
             ${agent.office_phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">☎️ ${escapeHtml(window.formatPhone ? formatPhone(agent.office_phone) : agent.office_phone)}</div>` : ""}
           </div>
         </div>
