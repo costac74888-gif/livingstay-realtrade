@@ -4170,11 +4170,20 @@ def agent_leads():
 # 매물의뢰 상태 진행 순서 — 순방향만 허용(건너뛰기 가능, 역방향 금지). 관리자 API로는 변경 불가.
 _LEAD_STATUS_ORDER = {"submitted": 0, "in_progress": 1, "done": 2}
 
+_DEAL_TYPE_COUNT_COLUMN = {
+    "매매": "sale_count",
+    "전세": "jeonse_count",
+    "월세": "wolse_count",
+    "단기임대": "shortterm_count",
+}
+
 
 @app.route("/api/agent/leads/<int:lead_id>/status", methods=["PUT"])
 @require_agent
 def agent_lead_update_status(lead_id):
-    """내게 배정된 매물의뢰의 상태 변경 — submitted → in_progress → done 순방향만."""
+    """내게 배정된 매물의뢰의 상태 변경 — submitted → in_progress → done 순방향만.
+    in_progress 전환 시 전속단지 매물현황(+1), done 전환 시(-1) 자동 반영 —
+    [매물현황 수정]에서 수기로 등록한 값과 같은 컬럼을 공유해 합산된다."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
     new_status = (data.get("status") or "").strip()
@@ -4184,7 +4193,10 @@ def agent_lead_update_status(lead_id):
     cur = conn.cursor()
     try:
         # 행 잠금(FOR UPDATE)으로 동시 요청을 직렬화 — 순방향-only 규칙이 경쟁 상황에서도 깨지지 않게 한다.
-        cur.execute("SELECT routed_agent_id, status FROM listing_requests WHERE id = %s FOR UPDATE", [lead_id])
+        cur.execute("""
+            SELECT routed_agent_id, status, master_building_id, deal_type
+            FROM listing_requests WHERE id = %s FOR UPDATE
+        """, [lead_id])
         row = cur.fetchone()
         if not row:
             conn.rollback()
@@ -4198,6 +4210,18 @@ def agent_lead_update_status(lead_id):
             conn.rollback()
             return jsonify({"ok": False, "message": "상태는 순방향(신규→처리중→완료)으로만 변경할 수 있습니다."}), 400
         cur.execute("UPDATE listing_requests SET status = %s WHERE id = %s", [new_status, lead_id])
+
+        col = _DEAL_TYPE_COUNT_COLUMN.get(row["deal_type"])
+        if col and new_status == "in_progress":
+            cur.execute(
+                f"UPDATE agent_buildings SET {col} = {col} + 1 WHERE agent_id=%s AND master_building_id=%s",
+                [agent_id, row["master_building_id"]],
+            )
+        elif col and new_status == "done":
+            cur.execute(
+                f"UPDATE agent_buildings SET {col} = GREATEST({col} - 1, 0) WHERE agent_id=%s AND master_building_id=%s",
+                [agent_id, row["master_building_id"]],
+            )
         conn.commit()
     finally:
         cur.close()
