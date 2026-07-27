@@ -67,6 +67,7 @@
           <input type="text" id="office_address" placeholder="주소찾기를 눌러주세요" readonly style="flex:1; background:#F7F5F0; cursor:pointer;" onclick="openAddressSearch()" />
           <button type="button" class="side-more" style="width:auto; margin-top:0; padding:0 16px; flex-shrink:0;" onclick="openAddressSearch()">주소찾기</button>
         </div>
+        <input type="text" id="office_address_detail" placeholder="상세주소 입력 (동·호수 등)" style="margin-top:6px;" />
       </div>
       <div class="field" style="margin-bottom:14px;">
         <label>소개글 제목 (선택)</label>
@@ -328,7 +329,7 @@
       phone: phoneDigits,
       email: document.getElementById("email").value.trim(),
       password: pw,
-      office_address: document.getElementById("office_address").value,
+      office_address: [document.getElementById("office_address").value, document.getElementById("office_address_detail").value.trim()].filter(Boolean).join(" "),
       intro_title: document.getElementById("intro_title").value.trim(),
       preferred_building: document.getElementById("preferred_building").value.trim(),
       preferred_building_id: document.getElementById("preferred_building_id").value.trim(),
@@ -378,6 +379,7 @@
     new daum.Postcode({
       oncomplete: function(d){
         document.getElementById("office_address").value = d.roadAddress || d.jibunAddress;
+        document.getElementById("office_address_detail").focus();
       }
     }).open();
   }

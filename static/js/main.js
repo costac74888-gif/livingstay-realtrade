@@ -1734,14 +1734,11 @@ async function loadBuildingHeader(id){
     // 영업신고 사업장 목록 — 서버가 이미 등록운영업체(priority 순) → 미등록(랜덤)으로 정렬해서 내려줌
     const lodgingRows = lodgings.map((l) => {
       const name = l.registered && l.operator_slug
-        ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}" style="color:var(--brass-dark); font-weight:600; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
+        ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}" style="display:inline-block; font-size:12.5px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 8px; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
         : escapeHtml(l.biz_name);
-      const badge = l.registered
-        ? ` <span style="font-size:11px; color:#fff; background:var(--brass); border-radius:4px; padding:1px 5px; vertical-align:1px;">등록업체</span>`
-        : "";
       const rooms = (l.room_count != null && Number(l.room_count) > 0)
         ? Number(l.room_count).toLocaleString('ko-KR') + "실" : "-";
-      return `<tr><td style="text-align:left;">${name}${badge}</td><td style="white-space:nowrap;">${rooms}</td></tr>`;
+      return `<tr><td style="text-align:left;">${name}</td><td style="white-space:nowrap;">${rooms}</td></tr>`;
     }).join("");
     const lodgingListHtml = lodgings.length
       ? `<div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:10px 0 4px;">영업 중 신고업소 ${lodgings.length}곳</div>
