@@ -1912,7 +1912,9 @@ function renderBuildingOperators(operators, buildingStatus){
         <div style="display:flex; align-items:flex-start; gap:12px;">
           <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">🏨</div>
           <div style="flex:1; min-width:0;">
-            <div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>
+            ${op.subdomain_slug
+              ? `<a href="/operator/${encodeURIComponent(op.subdomain_slug)}" style="display:inline-block; font-size:13px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 8px; text-decoration:none;">${escapeHtml(op.company_name || "-")}</a>`
+              : `<div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>`}
             <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(op.category || "-")}</div>
             ${op.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(op.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(op.phone) : op.phone)}</a></div>` : ""}
             ${siteUrl ? `<div style="margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><a href="${escapeHtml(siteUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">🔗 홈페이지 바로가기</a></div>` : ""}
