@@ -1987,6 +1987,15 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
       const badges = `<div style="display:flex; gap:4px; margin-top:6px;">
         ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
       </div>`;
+      const priorityBadge = agent.has_priority_badge
+        ? `<div style="width:30px; text-align:center; flex-shrink:0;">
+             <div style="font-size:8.5px; font-weight:700; color:var(--brass-dark); margin-bottom:1px;">단지</div>
+             <svg width="22" height="22" viewBox="0 0 24 24" style="display:block; margin:0 auto;">
+               <circle cx="12" cy="12" r="10" fill="var(--brass-tint)" stroke="var(--brass-dark)" stroke-width="1.6" />
+               <path d="M15.5 8.5 L11 11 L8.5 15.5 L13 13 Z" fill="var(--brass-dark)" />
+             </svg>
+           </div>`
+        : "";
       return `
       <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
         <div style="display:flex; align-items:flex-start; gap:12px;">
@@ -1996,13 +2005,13 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
               ? `<a href="/agent/${encodeURIComponent(agent.subdomain_slug)}?building_id=${buildingId}" style="font-size:14px; font-weight:600; color:var(--ink); text-decoration:none;">${escapeHtml(agent.office_name || "-")}</a>`
               : `<div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>`}
             ${badges}
-            <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">(${escapeHtml(agent.owner_name || "-")}) 공인중개사</div>
-            ${agent.phone ? `<div style="display:flex; gap:10px; margin-top:4px;">
+            ${agent.phone ? `<div style="display:flex; gap:24px; margin-top:6px;">
               <a href="tel:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">📞 전화</a>
               <a href="sms:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">💬 문자</a>
             </div>` : ""}
             ${agent.office_phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">☎️ ${escapeHtml(window.formatPhone ? formatPhone(agent.office_phone) : agent.office_phone)}</div>` : ""}
           </div>
+          ${priorityBadge}
         </div>
       </div>`;
     }).join("");
