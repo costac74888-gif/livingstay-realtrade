@@ -5983,7 +5983,7 @@ def admin_buildings_export():
     cur = conn.cursor()
     cur.execute(f"""
         SELECT id, building_name, road_address, sgg_text, umd_nm, jibun,
-               units, biz_units, lodging_type, lodging_type_detail
+               units, biz_units, lodging_type, lodging_type_detail, realty_store_name
         FROM master_buildings
         WHERE {where_sql}
         ORDER BY {sort} {order}, id ASC
@@ -5996,12 +5996,12 @@ def admin_buildings_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "건물마스터"
-    headers = ["ID", "건물명", "도로명주소", "시군구", "읍면동", "지번",
+    headers = ["ID", "건물명", "도로명주소", "단지부동산(입주부동산)", "시군구", "읍면동", "지번",
                "호실수", "영업신고호수", "용도", "용도상세"]
     ws.append(headers)
     for r in rows:
         ws.append([
-            r["id"], r["building_name"], r["road_address"], r["sgg_text"],
+            r["id"], r["building_name"], r["road_address"], r["realty_store_name"], r["sgg_text"],
             r["umd_nm"], r["jibun"], r["units"], r["biz_units"],
             r["lodging_type"], r["lodging_type_detail"],
         ])
