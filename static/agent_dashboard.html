@@ -34,6 +34,11 @@
   <!-- 상단: 내 정보 -->
   <div class="panel-card" style="margin-top:16px;">
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div style="position:relative; flex-shrink:0;" title="클릭하여 프로필 사진 변경">
+        <img id="meAvatarImg" src="" alt="" style="display:none; width:56px; height:56px; border-radius:50%; object-fit:cover; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();" />
+        <div id="meAvatarIcon" style="width:56px; height:56px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:26px; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();">🏢</div>
+        <input type="file" id="avatarFileInput" accept="image/jpeg,image/png" style="display:none;" />
+      </div>
       <div style="flex:1; min-width:200px;">
         <div id="meOffice" style="font-size:18px; font-weight:700; color:var(--ink);">불러오는 중…</div>
         <div id="meOwner" style="font-size:13px; color:var(--ink-soft); margin-top:3px;"></div>
@@ -77,7 +82,10 @@
     <div class="admin-modal-body">
 
       <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--line);">
-        <div style="width:64px; height:64px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:28px; flex-shrink:0;">🏢</div>
+        <div style="position:relative; flex-shrink:0;" title="클릭하여 프로필 사진 변경">
+          <img id="modalAvatarImg" src="" alt="" style="display:none; width:64px; height:64px; border-radius:50%; object-fit:cover; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();" />
+          <div id="modalAvatarIcon" style="width:64px; height:64px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();">🏢</div>
+        </div>
         <div style="flex:1; min-width:0;">
           <div class="field" style="margin-bottom:8px;"><label>중개사무소명</label><input type="text" id="fOffice" placeholder="예) 홈앤스테이공인중개사사무소" /></div>
           <div class="field" style="margin-bottom:0;"><label>대표자명</label><input type="text" id="fOwner" placeholder="예) 홍길동" /></div>
@@ -215,8 +223,26 @@ function renderVisibility(){
   else { badge.textContent = "노출중지됨"; badge.style.background = "#FBEAEA"; badge.style.color = "#B23A3A"; }
 }
 
+function renderAvatar(){
+  const img = document.getElementById("meAvatarImg");
+  const icon = document.getElementById("meAvatarIcon");
+  const mImg = document.getElementById("modalAvatarImg");
+  const mIcon = document.getElementById("modalAvatarIcon");
+  if (ME.photo_src){
+    const src = ME.photo_src + "?t=" + Date.now();
+    img.src = src; img.style.display = "block"; icon.style.display = "none";
+    if (mImg){ mImg.src = src; mImg.style.display = "block"; }
+    if (mIcon) mIcon.style.display = "none";
+  } else {
+    img.style.display = "none"; icon.style.display = "flex";
+    if (mImg) mImg.style.display = "none";
+    if (mIcon) mIcon.style.display = "flex";
+  }
+}
+
 function render(){
   renderVisibility();
+  renderAvatar();
   document.getElementById("meOffice").textContent = ME.office_name || "-";
   document.getElementById("meOwner").textContent = "대표 " + (ME.owner_name || "-");
   const lnk = document.getElementById("lnkProfile");
@@ -494,6 +520,28 @@ if (PREVIEW_MODE) {
     logoutBtn.replaceWith(lnk);
   }
 }
+
+// ---- 프로필 사진 업로드 ----
+document.getElementById("avatarFileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res = await fetch("/api/agent/photo", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok || !data.ok){
+      alert(data.message || "사진 업로드에 실패했습니다.");
+      return;
+    }
+    ME.photo_src = data.photo_src;
+    renderAvatar();
+  } catch(err){
+    alert("네트워크 오류로 업로드에 실패했습니다.");
+  } finally {
+    e.target.value = "";
+  }
+});
 
 // ---- 로그아웃 ----
 if (!PREVIEW_MODE) {

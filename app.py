@@ -1500,6 +1500,7 @@ def apply_agent():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    office_address = (data.get("office_address") or "").strip()
     # 소개글 제목(선택) — 건물상세 배너 노출용, 16자 이내
     intro_title = (data.get("intro_title") or "").strip()
     if len(intro_title) > 16:
@@ -1584,16 +1585,16 @@ def apply_agent():
              biz_reg_number, phone, email, preferred_region, preferred_building, status,
              intro_text, intro_title, doc_license_url, doc_office_reg_url, doc_biz_reg_url,
              doc_photo_url, preferred_building_id,
-             terms_agreed_at, privacy_agreed_at, edit_token)
+             terms_agreed_at, privacy_agreed_at, office_address, edit_token)
         VALUES ('agent', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s)
+                NULL, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, reg_number,
           biz_reg_number or None, phone, email, preferred_region or None,
           preferred_building or None, intro_title or None,
           doc_refs["doc_license_url"], doc_refs["doc_office_reg_url"],
           doc_refs["doc_biz_reg_url"], doc_refs["doc_photo_url"],
-          preferred_building_id, edit_token))
+          preferred_building_id, office_address or None, edit_token))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1644,6 +1645,7 @@ def apply_operator():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    office_address = (data.get("office_address") or "").strip()
     website_url = (data.get("website_url") or "").strip()
     # 희망지역 → 희망건물로 변경 (agent 신청과 동일 패턴).
     # 구버전 호환을 위해 preferred_region도 함께 받아둔다 (컬럼/기존 데이터 유지).
@@ -1714,16 +1716,16 @@ def apply_operator():
              biz_reg_number, phone, email, website_url, preferred_region, status,
              reg_number, intro_text, doc_biz_reg_url, doc_business_card_url,
              doc_biz_license_url, doc_logo_url, terms_agreed_at, privacy_agreed_at,
-             preferred_building, preferred_building_id, edit_token)
+             preferred_building, preferred_building_id, office_address, edit_token)
         VALUES ('operator', %s, %s, %s, %s, %s, %s, %s, %s, 'submitted',
-                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s)
+                NULL, NULL, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, category,
           biz_reg_number or None, phone, email,
           website_url or None, preferred_region or None,
           doc_refs["doc_biz_reg_url"], doc_refs["doc_business_card_url"],
           doc_refs["doc_biz_license_url"], doc_refs["doc_logo_url"],
-          preferred_building or None, preferred_building_id, edit_token))
+          preferred_building or None, preferred_building_id, office_address or None, edit_token))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -1791,6 +1793,7 @@ def apply_loan():
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
+    office_address = (data.get("office_address") or "").strip()
     # 건물상세(B화면)에서 진입 시 희망건물 — agent 신청과 동일 패턴 (승인 시 담당건물 자동 등록)
     raw_bid = str(data.get("preferred_building_id") or "").strip()
     preferred_building_id = int(raw_bid) if raw_bid.isdigit() else None
@@ -1841,11 +1844,11 @@ def apply_loan():
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
              biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at,
-             preferred_building_id, preferred_region, edit_token)
-        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s)
+             preferred_building_id, preferred_region, office_address, edit_token)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s, %s)
         RETURNING id
     """, (office_or_company_name, owner_name, license_number,
-          biz_reg_number or None, phone, email, preferred_building_id, service_region, edit_token))
+          biz_reg_number or None, phone, email, preferred_building_id, service_region, office_address or None, edit_token))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -3661,7 +3664,7 @@ def agent_public_profile(slug):
         "office_phone": agent["office_phone"],
         "office_address": agent["office_address"],
         "reg_number": agent["reg_number"],
-        "photo_url": agent["photo_url"],
+        "photo_src": f"/api/partners/agent-photo/{agent['id']}" if agent["photo_url"] else None,
         "intro_text": agent["intro_text"],
         "buildings": buildings,
         "building_count": len(buildings),
@@ -3797,6 +3800,7 @@ def _agent_me_data(agent_id):
         cur.close()
         conn.close()
     out = dict(me)
+    out["photo_src"] = f"/api/partners/agent-photo/{agent_id}" if out.get("photo_url") else None
     out["buildings"] = buildings
     return out
 
@@ -3808,6 +3812,39 @@ def agent_me():
     if data is None:
         return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
     return jsonify(data)
+
+
+@app.route("/api/agent/photo", methods=["POST"])
+@require_agent
+def agent_photo_upload():
+    """마이페이지에서 프로필 사진 업로드/교체 — 신청서 업로드와 동일한 검증."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다. 실제 JPG/PNG 이미지만 업로드해주세요."}), 400
+    key = storage_util.build_doc_key("agent", "photo", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("중개사 프로필 사진 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE agents SET photo_url=%s WHERE id=%s", [key, agent_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "photo_src": f"/api/partners/agent-photo/{agent_id}"})
 
 
 # 정부 인허가 기반 등록번호 필드 — 본인 수정 시 재승인 대기 전환 대상 (3개 파트너 공통 규칙)
@@ -9342,12 +9379,12 @@ def admin_applications_approve(app_id):
                         INSERT INTO agents
                             (office_name, owner_name, reg_number, biz_reg_number,
                              phone, email, status, subdomain_slug, password_hash,
-                             photo_url, intro_title, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, NOW())
+                             photo_url, intro_title, office_address, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], _digits_only(ap["reg_number"]) or ap["reg_number"],
                           _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
-                          ap.get("doc_photo_url"), ap.get("intro_title")])
+                          ap.get("doc_photo_url"), ap.get("intro_title"), ap.get("office_address")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_agent_insert")
                     break
@@ -9432,12 +9469,12 @@ def admin_applications_approve(app_id):
                         INSERT INTO operators
                             (company_name, owner_name, category, biz_reg_number,
                              phone, email, website_url, status, subdomain_slug,
-                             password_hash, logo_url, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
+                             password_hash, logo_url, office_address, approved_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, NOW())
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
                           _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], ap["website_url"],
-                          slug, pw_hash, ap.get("doc_logo_url")])
+                          slug, pw_hash, ap.get("doc_logo_url"), ap.get("office_address")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_operator_insert")
                     break
@@ -9517,12 +9554,12 @@ def admin_applications_approve(app_id):
                         INSERT INTO loan_consultants
                             (office_name, owner_name, license_number, biz_reg_number,
                              phone, email, status, subdomain_slug, password_hash, approved_at,
-                             service_region)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW(), %s)
+                             service_region, office_address)
+                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW(), %s, %s)
                         RETURNING id
                     """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
                           _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
-                          service_region])
+                          service_region, ap.get("office_address")])
                     created_id = cur.fetchone()["id"]
                     cur.execute("RELEASE SAVEPOINT sp_loan_insert")
                     break

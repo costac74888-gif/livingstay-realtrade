@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-26-6"
+SCHEMA_VERSION = "2026-07-27-1"
 
 
 def init_db():
@@ -420,6 +420,9 @@ def init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_business_card_url TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_biz_license_url TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_logo_url TEXT")  # 로고 이미지(선택, 운영지원업체)
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS office_address TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS office_address TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS office_address TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'submitted'")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS reject_reason TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_agent_id INTEGER REFERENCES agents(id)")
