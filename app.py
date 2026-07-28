@@ -7347,11 +7347,29 @@ def admin_permits_sync_run():
             return jsonify({"ok": False, "message": "직전 동기화가 완료된 지 30분이 지나지 않았습니다. 잠시 후 다시 시도해 주세요."}), 429
         return jsonify({"ok": False, "message": "이미 동기화가 실행 중입니다. 완료 후 다시 시도해 주세요."}), 409
 
+    # reset=true 이면 permits_progress 체크포인트를 초기화해 처음부터 재수집한다.
+    # 필터 버그 수정 후 이미 건너뛴 법정동을 재처리할 때 사용.
+    do_reset = request.json.get("reset") if request.is_json else False
+    if do_reset:
+        conn2 = get_conn()
+        cur2 = conn2.cursor()
+        try:
+            cur2.execute(
+                "DELETE FROM app_meta WHERE key = 'permits_progress'"
+            )
+            conn2.commit()
+        finally:
+            cur2.close()
+            conn2.close()
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    cmd = [sys.executable, "-u", os.path.join(base_dir, "sync_permits.py"),
+           "--status-key", _PERMITS_SYNC_META_KEY]
+    if do_reset:
+        cmd.append("--reset")
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-u", os.path.join(base_dir, "sync_permits.py"),
-             "--status-key", _PERMITS_SYNC_META_KEY],
+            cmd,
             cwd=base_dir, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )

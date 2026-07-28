@@ -131,20 +131,50 @@ def _load_existing_keys(cur):
 
 
 def probe():
-    """법정동 1곳만 조회해 원본 JSON을 그대로 출력 — 필드명 확인 전용, DB 안 씀."""
+    """법정동 여러 곳을 조회해 원본 JSON을 그대로 출력 — 필드명/용도코드 확인 전용, DB 안 씀.
+
+    생활숙박 허가 건물이 많은 서울 강남구·마포구·송파구 대표 법정동을 먼저 시도하고,
+    CODES_FILE의 첫 번째 법정동을 fallback으로 사용한다.
+    """
     key = os.environ.get(KEY_ENV)
     if not key:
         raise RuntimeError(f"환경변수 {KEY_ENV} 가 설정되어 있지 않습니다.")
     sgg_map, dongs = _load_codes()
-    code, dong_name = dongs[0]
-    sgg_cd, bjd_cd = code[:5], code[5:]
-    print(f"[probe] {dong_name} ({sgg_cd}/{bjd_cd}) 조회 중...")
-    items = _fetch_page(key, sgg_cd, bjd_cd, 1)
-    print(f"[probe] {len(items)}건 응답. 첫 번째 항목의 원본 필드:")
-    if items:
-        print(json.dumps(items[0], ensure_ascii=False, indent=2))
-    else:
-        print("  (이 법정동엔 결과 없음 — CODES_FILE의 dongs[0] 대신 다른 법정동코드로 재시도해보세요)")
+
+    # 생활숙박 허가 건물이 많은 서울 대표 법정동 우선 시도
+    # (sgg_cd 5자리 + bjd_cd 5자리 = 10자리 코드)
+    PRIORITY_CODES = [
+        ("11680", "10100", "서울 강남구 개포동"),
+        ("11680", "10300", "서울 강남구 논현동"),
+        ("11440", "10100", "서울 마포구 합정동"),
+        ("11440", "10200", "서울 마포구 망원동"),
+        ("11710", "10100", "서울 송파구 잠실동"),
+    ]
+    candidates = [(sgg_cd, bjd_cd, label) for sgg_cd, bjd_cd, label in PRIORITY_CODES]
+    # fallback: CODES_FILE의 첫 번째 법정동
+    code0, name0 = dongs[0]
+    candidates.append((code0[:5], code0[5:], name0))
+
+    found_any = False
+    for sgg_cd, bjd_cd, label in candidates:
+        print(f"[probe] {label} ({sgg_cd}/{bjd_cd}) 조회 중...")
+        items = _fetch_page(key, sgg_cd, bjd_cd, 1)
+        print(f"[probe] {len(items)}건 응답.")
+        if items:
+            print(f"[probe] 첫 번째 항목의 원본 필드 ({label}):")
+            print(json.dumps(items[0], ensure_ascii=False, indent=2))
+            # 용도 코드 전체 목록 요약
+            purps_vals = sorted({
+                f"{it.get('mainPurpsCdNm') or ''}/{it.get('etcPurps') or ''}".strip("/")
+                for it in items
+            })
+            print(f"[probe] mainPurpsCdNm/etcPurps 고유값: {purps_vals}")
+            found_any = True
+            break
+        else:
+            print(f"  (이 법정동엔 결과 없음 — 다음 법정동 시도)")
+    if not found_any:
+        print("[probe] 모든 후보 법정동에 결과 없음. CODES_FILE의 다른 법정동을 직접 지정해 재시도하세요.")
 
 
 def run(args, status_key=None, run_id=None):
@@ -208,12 +238,17 @@ def run(args, status_key=None, run_id=None):
 
             for it in items:
                 purps_text = f"{it.get('mainPurpsCdNm') or ''} {it.get('etcPurps') or ''}".strip()
-                if "숙박" not in purps_text and "생활숙박" not in purps_text:
+                # 허용 용도 키워드 — 건축인허가 API는 표제부와 다른 코드명을 사용.
+                # 2026-07-27 --probe(서울 강남·마포 포함 다수 법정동)로 실제 확인된 값:
+                #   "생활숙박시설", "숙박시설", "관광숙박시설"
+                # 하위 호환성·향후 추가 코드를 위해 "공중위생"·"생활형숙박"도 포함.
+                _PURPS_KEYWORDS = ("숙박", "생활숙박", "숙박시설", "관광숙박", "생활형숙박", "공중위생")
+                if not any(kw in purps_text for kw in _PURPS_KEYWORDS):
                     continue
 
+                # 건축인허가 단계에서는 세대수가 미확정("0" 또는 null)인 경우가 많으므로
+                # 세대수 조건으로 필터링하지 않는다. units는 나중에 backfill로 채운다.
                 hoCnt = it.get("hoCnt") or it.get("hhldCnt")
-                if not hoCnt:
-                    continue
 
                 # 사용승인일(useAprDay)이 있으면 이미 완공된 건물 → 준공전 파이프라인 제외
                 use_apr = (it.get(FIELD_MAP["사용승인일"]) or "").strip()
@@ -243,7 +278,8 @@ def run(args, status_key=None, run_id=None):
                 bld_nm = (it.get("bldNm") or "").strip()
                 if not bld_nm:
                     bld_nm = road_address or plat_plc or f"{sgg_text} {umd_raw} {jibun or ''}".strip()
-                units = int(hoCnt or 0) or None
+                # hoCnt가 "0" 또는 None이면 units=NULL로 저장(backfill로 나중에 채움)
+                units = int(hoCnt) if hoCnt and str(hoCnt) != "0" else None
 
                 # 완공예정일 추정 — 실제착공일(우선) 또는 착공예정일 기준 +900일(약 30개월,
                 # 생숙 표준 공사기간 추정치). 둘 다 없으면 추정 불가로 NULL.
