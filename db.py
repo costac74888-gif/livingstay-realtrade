@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-28-1"
+SCHEMA_VERSION = "2026-07-28-2"
 
 
 def init_db():
@@ -97,7 +97,11 @@ def init_db():
     # 건축물대장 표제부(getBrTitleInfo) 백필값 — backfill_title_info.py가 채운다.
     # 값이 NULL이면 건물 상세 화면에서 "-"로 표시된다.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS use_apr_day TEXT")        # 사용승인일(준공) YYYY-MM-DD
-    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS tot_pkng_cnt INTEGER")    # 총주차대수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS tot_pkng_cnt INTEGER")    # 총주차대수(레거시)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS indr_auto_utcnt INTEGER")  # 옥내자주식대수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS oudr_auto_utcnt INTEGER")  # 옥외자주식대수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS indr_mech_utcnt INTEGER")  # 옥내기계식대수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS oudr_mech_utcnt INTEGER")  # 옥외기계식대수
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS grnd_flr_cnt INTEGER")    # 지상층수
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS ugrnd_flr_cnt INTEGER")   # 지하층수
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS tot_area DOUBLE PRECISION")  # 연면적(㎡)
