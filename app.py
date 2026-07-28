@@ -4992,10 +4992,20 @@ def loan_consultant_me():
         me = cur.fetchone()
         if not me:
             return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
+        cur.execute("""
+            SELECT lcb.master_building_id, mb.building_name
+            FROM loan_consultant_buildings lcb
+            JOIN master_buildings mb ON mb.id = lcb.master_building_id
+            WHERE lcb.loan_consultant_id = %s
+            ORDER BY mb.building_name
+        """, [lc_id])
+        buildings = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
         conn.close()
-    return jsonify(dict(me))
+    out = dict(me)
+    out["buildings"] = buildings
+    return jsonify(out)
 
 
 @app.route("/api/loan-consultant/me", methods=["PUT"])
