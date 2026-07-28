@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>홈앤스테이 대출상담사 프로필</title>
+<meta name="description" content="홈앤스테이 대출상담사 프로필 — 상담사 정보 및 담당 단지 현황." />
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+
+<header id="siteHeader"></header>
+
+<div class="search-panel" style="max-width:720px; padding-bottom:40px;">
+  <div id="profileWrap">
+    <div class="panel-card"><div style="font-size:13px; color:var(--ink-soft); padding:6px 0;">불러오는 중…</div></div>
+  </div>
+</div>
+
+<script src="/static/js/format_util.js"></script>
+<script>
+  const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+  const LODGING_BADGE  = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
+  function markerColor(v){ if(!v) return "#9AA5B1"; return LODGING_COLORS[v.split("·")[0]] || "#9AA5B1"; }
+  function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+  const slug = decodeURIComponent(location.pathname.split("/").pop());
+  const wrap = document.getElementById("profileWrap");
+
+  const _qs = new URLSearchParams(location.search);
+  const _fromBuildingId = /^\d+$/.test(_qs.get("building_id") || "") ? _qs.get("building_id") : null;
+  const homeHref = _fromBuildingId ? `/building/${_fromBuildingId}` : "/";
+
+  function renderNotFound(){
+    wrap.innerHTML = `
+      <div class="panel-card" style="text-align:center; padding:40px 20px;">
+        <div style="font-size:34px; margin-bottom:10px;">🔍</div>
+        <div style="font-size:16px; font-weight:700; color:var(--ink); margin-bottom:6px;">존재하지 않는 페이지입니다</div>
+        <div style="font-size:13px; color:var(--ink-soft); margin-bottom:18px;">주소가 잘못되었거나, 아직 승인되지 않은 대출상담사 페이지입니다.</div>
+        <a href="${homeHref}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:8px 18px; text-decoration:none;">홈으로 이동</a>
+      </div>`;
+  }
+
+  function render(p){
+    const photo = p.logo_src
+      ? `<img src="${esc(p.logo_src)}" alt="${esc(p.office_name)}" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:1px solid #E4DCCB;" />`
+      : `<div style="width:72px; height:72px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:32px;">💰</div>`;
+
+    const introSection = (p.intro_text || "").trim()
+      ? `<div class="panel-card" style="margin-top:14px;">
+           <div class="side-card-title">소개</div>
+           <div style="font-size:13.5px; color:var(--ink); line-height:1.7; white-space:pre-wrap;">${esc(p.intro_text)}</div>
+         </div>`
+      : "";
+
+    const products = (p.consultant_products || "").split(",").map(s => s.trim()).filter(Boolean);
+    const productsSection = products.length
+      ? `<div class="panel-card" style="margin-top:14px;">
+           <div class="side-card-title">상담 가능 상품</div>
+           <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:8px;">
+             ${products.map(pr => `<span style="display:inline-block; font-size:12.5px; font-weight:600; color:var(--brass-dark); background:var(--brass-tint); padding:5px 12px; border-radius:20px;">${esc(pr)}</span>`).join("")}
+           </div>
+         </div>`
+      : "";
+
+    const kakaoBtn = p.kakao_chat_url
+      ? `<div style="margin-top:12px;">
+           <a href="${esc(p.kakao_chat_url)}" target="_blank" rel="noopener noreferrer"
+              style="display:inline-flex; align-items:center; gap:6px; font-size:13.5px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:10px 20px; border-radius:10px; text-decoration:none;">
+             💛 카카오톡 상담하기
+           </a>
+         </div>`
+      : "";
+
+    const buildings = (p.buildings || []).map(b => `
+      <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <a href="/building/${b.master_building_id}" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
+          <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
+        </div>
+      </div>`).join("");
+
+    const buildingSection = `
+      <div class="panel-card" style="margin-top:14px;">
+        <div class="side-card-title">담당 단지 <span class="side-sub">${p.building_count}개</span></div>
+        ${buildings || `<div class="side-empty">아직 등록된 담당 단지가 없습니다.</div>`}
+      </div>`;
+
+    wrap.innerHTML = `
+      <div style="margin-top:12px; margin-bottom:4px;">
+        <a href="${homeHref}" style="font-size:13px; color:var(--brass-dark); text-decoration:none;">← ${_fromBuildingId ? "건물 상세로 돌아가기" : "홈으로"}</a>
+      </div>
+      <div class="panel-card">
+        <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+          ${photo}
+          <div style="flex:1; min-width:200px;">
+            <div style="font-size:19px; font-weight:700; color:var(--ink);">${esc(p.office_name || "-")}</div>
+            <div style="font-size:13px; color:var(--ink-soft); margin-top:3px;">(${esc(p.owner_name || "-")}) 대출상담사</div>
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">취급지역: ${esc(p.service_region || "전국")}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
+            ${p.phone ? `<a href="tel:${esc(p.phone)}" class="side-more" style="width:auto; margin-top:0; padding:9px 18px; text-decoration:none; text-align:center;">📞 ${esc(window.formatPhone ? formatPhone(p.phone) : p.phone)}</a>` : ""}
+          </div>
+        </div>
+        ${kakaoBtn}
+      </div>
+      ${introSection}
+      ${productsSection}
+      ${buildingSection}
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:12px; text-align:center;">이 정보는 파트너가 등록한 내용이며, 회사가 보증하지 않습니다.</div>`;
+  }
+
+  (async () => {
+    try {
+      const res = await fetch("/api/loan-consultant/profile/" + encodeURIComponent(slug));
+      if (!res.ok) { renderNotFound(); return; }
+      const data = await res.json();
+      document.title = `${data.office_name || "홈앤스테이"} | 대출상담사 프로필 . 홈앤스테이`;
+      render(data);
+    } catch(e) {
+      console.error("[대출상담사 프로필] 로드 실패:", e);
+      renderNotFound();
+    }
+  })();
+</script>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
+</body>
+</html>

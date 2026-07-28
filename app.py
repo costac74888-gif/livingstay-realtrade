@@ -4847,6 +4847,54 @@ def require_loan_consultant(f):
     return wrapper
 
 
+@app.route("/loan-consultant/<slug>")
+def loan_consultant_profile_page(slug):
+    """대출상담사 공개 프로필 페이지. Flask는 정적 룰(/loan-consultant/login, /loan-consultant/dashboard)을 우선 매칭하므로 충돌 없음."""
+    return _serve_static_html("loan_consultant_profile.html")
+
+
+@app.route("/api/loan-consultant/profile/<slug>")
+def loan_consultant_public_profile(slug):
+    """대출상담사 공개 프로필 API — 인증 불필요. approved 상태만 노출."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, office_name, owner_name, phone, logo_url, intro_text,
+                   consultant_products, kakao_chat_url, service_region, license_number
+            FROM loan_consultants
+            WHERE subdomain_slug = %s AND status = 'approved'
+        """, [slug])
+        lc = cur.fetchone()
+        if not lc:
+            return jsonify({"error": "not found"}), 404
+        cur.execute("""
+            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type
+            FROM loan_consultant_buildings lcb
+            JOIN master_buildings mb ON mb.id = lcb.master_building_id
+            WHERE lcb.loan_consultant_id = %s
+            ORDER BY mb.building_name
+        """, [lc["id"]])
+        buildings = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    kakao_url = lc["kakao_chat_url"] if (lc["kakao_chat_url"] or "").startswith(("http://", "https://")) else None
+    return jsonify({
+        "office_name": lc["office_name"],
+        "owner_name": lc["owner_name"],
+        "phone": lc["phone"],
+        "logo_src": f"/api/partners/loan-consultant-logo/{lc['id']}" if lc["logo_url"] else None,
+        "intro_text": lc["intro_text"],
+        "consultant_products": lc["consultant_products"],
+        "kakao_chat_url": kakao_url,
+        "service_region": lc["service_region"],
+        "license_number": lc["license_number"],
+        "buildings": buildings,
+        "building_count": len(buildings),
+    })
+
+
 @app.route("/loan-consultant/login")
 def loan_consultant_login_page():
     return _serve_static_html("loan_consultant_login.html")
@@ -4996,7 +5044,7 @@ def loan_consultant_me_update():
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "kakao_chat_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "카카오톡 상담 링크는 http(s)://로 시작하는 URL이어야 합니다."}), 400
-            if k == "intro_text" and v and len(v) > 100:
+            if k == "intro_text" and v and len(v) > 500:
                 return jsonify({"ok": False, "message": "한줄소개는 100자 이내로 입력해주세요."}), 400
             if k == "logo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "로고 URL은 http(s)://로 시작해야 합니다."}), 400
