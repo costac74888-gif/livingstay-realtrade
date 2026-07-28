@@ -1209,15 +1209,10 @@ function recruitBoxHTML(kind, opts = {}){
     </div>`;
 }
 
-// 금융 섹션 빈 상태: "등록된 대출상품 없음" 표 + 대출상담 모집 박스 (A/B 공통)
+// 금융 섹션 빈 상태: 문구 + 대출상담 모집 박스 (A/B 공통)
 function financeEmptyHTML(){
   return `
-    <div style="overflow-x:auto; margin-bottom:12px;">
-      <table class="b-info-table">
-        <thead><tr><th>금융기관</th><th>최저이율</th><th>취급지역</th><th>바로가기</th></tr></thead>
-        <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
-      </table>
-    </div>
+    <div style="text-align:center; color:var(--ink-soft); padding:14px; font-size:13px;">등록된 대출상담사가 없습니다.</div>
     ${recruitBoxHTML("finance")}`;
 }
 
@@ -1949,48 +1944,61 @@ function renderBuildingOperators(operators, buildingStatus){
   paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]), "housekeeping");
 }
 
-// 금융/대출상담 카드 — 이 건물에 연결된 담당 대출상담사(loan_consultant_buildings 등록 + approved)
-// 목록을 카드로 그린다 (renderBuildingOperators 패턴). 없으면 "등록 대출상품 없음" 표 +
-// "이 건물에 대출상담사로 신청하기" 모집 박스 표시 (다른 파트너 카드들과 동일 흐름).
+// 금융/대출상담 카드 — registered:true(담당단지 등록) 상단 골드, registered:false(지역매칭) 더보기
 function renderBuildingLoanConsultants(consultants, buildingId, buildingName, buildingStatus){
   const box = document.getElementById("bFinanceBox");
   if (!box) return;
   const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   const items = Array.isArray(consultants) ? consultants : [];
+  const applyHref = `/apply/loan?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
+
   if (!items.length){
-    const applyHref = `/apply/loan?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
     box.innerHTML = `
-      <div style="overflow-x:auto; margin-bottom:12px;">
-        <table class="b-info-table">
-          <thead><tr><th>금융기관</th><th>최저이율</th><th>취급지역</th><th>바로가기</th></tr></thead>
-          <tbody><tr><td colspan="4" style="text-align:center; color:var(--ink-soft); padding:14px;">등록된 대출상품이 없습니다.</td></tr></tbody>
-        </table>
-      </div>
+      <div style="text-align:center; color:var(--ink-soft); padding:14px; font-size:13px;">등록된 대출상담사가 없습니다.</div>
       ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기", preCompletion: isPreCompletion })}`;
     return;
   }
-  box.innerHTML = items.map((c) => {
+
+  const registered = items.filter(c => c.registered);
+  const regional   = items.filter(c => !c.registered);
+
+  const mkCard = (c, isGold) => {
     const avatar = c.logo_src
-      ? `<img src="${escapeHtml(c.logo_src)}" alt="로고" style="width:40px; height:40px; border-radius:50%; object-fit:cover; background:#fff; border:1px solid var(--line, #eee);" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>💰</div>'" />`
-      : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">💰</div>`;
-    // 프로필 이동 없이 4줄 완결: 1행 상호 / 2행 (상담사명) 대출상담사 / 3행 전화 / 4행 카카오(있을 때만)
-    // 카카오 링크는 http/https만 허용 (javascript: 등 링크 인젝션 차단)
+      ? `<img src="${escapeHtml(c.logo_src)}" alt="로고" style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:#fff;border:1px solid var(--line,#eee);" onerror="this.outerHTML='<div style=&quot;width:40px;height:40px;border-radius:50%;background:var(--brass-tint);color:var(--brass-dark);display:flex;align-items:center;justify-content:center;font-size:18px;&quot;>💰</div>'" />`
+      : `<div style="width:40px;height:40px;border-radius:50%;background:var(--brass-tint);color:var(--brass-dark);display:flex;align-items:center;justify-content:center;font-size:18px;">💰</div>`;
     const kakaoUrl = /^https?:\/\//i.test(String(c.kakao_chat_url || "")) ? c.kakao_chat_url : null;
-    return `
-    <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
-      <div style="display:flex; align-items:flex-start; gap:12px;">
-        ${avatar}
-        <div style="flex:1; min-width:0;">
-          <div style="font-size:14px; font-weight:600; color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사 · 취급지역: ${escapeHtml(c.service_region || "전국")}</div>
-          ${c.phone ? `<div style="margin-top:6px;"><a href="tel:${escapeHtml(c.phone)}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 10px; font-size:12px; text-decoration:none; text-align:center;">📞 ${escapeHtml(window.formatPhone ? formatPhone(c.phone) : c.phone)}</a></div>` : ""}
-          ${kakaoUrl ? `<div style="margin-top:6px;"><a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:#3C1E1E; background:#FEE500; padding:5px 10px; border-radius:8px; text-decoration:none;">💬 카카오톡 상담하기</a></div>` : ""}
-        </div>
-      </div>
-    </div>`;
-  }).join("") + `
-    <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
-    <div style="margin-top:8px; text-align:right;"><a href="/loan-consultants" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">전체 대출상담사 보기 →</a></div>`;
+    const wrap = isGold
+      ? `style="background:var(--brass-tint);border-radius:10px;padding:10px;margin-bottom:6px;"`
+      : `style="padding:10px 0;border-bottom:1px solid var(--line,#eee);"`;
+    const nameEl = isGold && c.subdomain_slug
+      ? `<a href="/loan-consultant/${encodeURIComponent(c.subdomain_slug)}" style="font-size:14px;font-weight:700;color:var(--brass-dark);text-decoration:none;">${escapeHtml(c.office_name || "-")}</a>`
+      : `<div style="font-size:14px;font-weight:600;color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>`;
+    const products = c.consultant_products
+      ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(c.consultant_products)}</div>` : "";
+    const contactRow = c.phone ? `
+      <div style="display:flex;gap:16px;margin-top:6px;">
+        <a href="tel:${escapeHtml(c.phone)}" style="font-size:12px;color:var(--brass-dark);text-decoration:none;" onclick="event.stopPropagation();">📞 전화</a>
+        <a href="sms:${escapeHtml(c.phone)}" style="font-size:12px;color:var(--brass-dark);text-decoration:none;" onclick="event.stopPropagation();">💬 문자</a>
+        ${isGold && kakaoUrl ? `<a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:700;color:#3C1E1E;background:#FEE500;padding:3px 8px;border-radius:6px;text-decoration:none;">💛 카카오</a>` : ""}
+      </div>` : "";
+    return `<div ${wrap}><div style="display:flex;align-items:flex-start;gap:12px;">${avatar}<div style="flex:1;min-width:0;">${nameEl}${products}<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사 · ${escapeHtml(c.service_region || "전국")}</div>${contactRow}</div></div></div>`;
+  };
+
+  let html = registered.map(c => mkCard(c, true)).join("");
+
+  if (regional.length){
+    const mId = `lcMore_${buildingId ?? 0}`;
+    const cId = `lcMoreC_${buildingId ?? 0}`;
+    html += `
+    <button id="${mId}" class="side-more" style="width:100%;margin-top:6px;font-size:12px;"
+      onclick="const c=document.getElementById('${cId}'),b=document.getElementById('${mId}');if(c.hidden){c.hidden=false;b.textContent='지역 상담사 접기';}else{c.hidden=true;b.textContent='지역 취급 상담사 더보기 (${regional.length}명)';}">지역 취급 상담사 더보기 (${regional.length}명)</button>
+    <div id="${cId}" hidden>${regional.map(c => mkCard(c, false)).join("")}</div>`;
+  }
+
+  html += `
+    <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
+    <div style="margin-top:8px;text-align:right;"><a href="/loan-consultants" style="font-size:12px;font-weight:600;color:var(--brass-dark);text-decoration:none;">전체 대출상담사 보기 →</a></div>`;
+  box.innerHTML = html;
 }
 
 function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
@@ -2012,11 +2020,12 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
         ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
       </div>`;
       const priorityBadge = agent.has_priority_badge
-        ? `<div style="width:30px; text-align:center; flex-shrink:0;">
-             <div style="font-size:8.5px; font-weight:700; color:var(--brass-dark); margin-bottom:1px;">단지</div>
-             <svg width="22" height="22" viewBox="0 0 24 24" style="display:block; margin:0 auto;">
-               <circle cx="12" cy="12" r="10" fill="var(--brass-tint)" stroke="var(--brass-dark)" stroke-width="1.6" />
-               <path d="M15.5 8.5 L11 11 L8.5 15.5 L13 13 Z" fill="var(--brass-dark)" />
+        ? `<div style="width:45px; text-align:center; flex-shrink:0;">
+             <div style="font-size:9.5px; font-weight:700; color:var(--brass-dark); margin-bottom:1px;">단지</div>
+             <svg width="33" height="33" viewBox="0 0 24 24" style="display:block; margin:0 auto;">
+               <circle cx="12" cy="12" r="10" fill="#000" stroke="#fff" stroke-width="1.8" />
+               <path d="M16 8 L12.8 11.2 L8 16 L11.2 12.8 Z" fill="#fff" />
+               <circle cx="12" cy="12" r="1.6" fill="#000" />
              </svg>
            </div>`
         : "";

@@ -414,8 +414,9 @@ def get_building(building_id):
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
 
-    # 담당 대출상담사: loan_consultant_buildings에 이 건물이 등록된 approved 상담사 (최대 3명).
-    # 중개사와 동일하게 priority_score DESC, RANDOM() 정렬.
+    # 담당 대출상담사 — 두 단계로 수집:
+    # 1) loan_consultant_buildings 정확매칭 → registered=True (최대 3명)
+    # 2) service_region 지역매칭 → registered=False (이미 등록된 ID 제외, 최대 5명)
     cur.execute("""
         SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
                lc.logo_url, lc.intro_text, lc.consultant_products,
@@ -431,8 +432,45 @@ def get_building(building_id):
     loan_consultant_rows = []
     for r in cur.fetchall():
         d = dict(r)
-        # 스토리지 키/원본 URL은 노출하지 않고 공개 프록시 URL만 내려준다 (agent 사진과 동일 정책)
         d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
+        d["registered"] = True
+        loan_consultant_rows.append(d)
+
+    # 지역매칭 — 건물의 sgg_cd 앞 2자리로 시도 판별 후 취급지역 일치 상담사 추가
+    _PROV_SGG = {
+        "11": "서울", "26": "부산", "27": "대구", "28": "인천", "29": "광주",
+        "30": "대전", "31": "울산", "36": "세종", "41": "경기", "42": "강원",
+        "43": "충북", "44": "충남", "45": "전북", "46": "전남", "47": "경북",
+        "48": "경남", "50": "제주",
+    }
+    _SUDO = {"11", "28", "41"}
+    sgg_cd = str(building.get("sgg_cd") or "")
+    prov_prefix = sgg_cd[:2]
+    prov_nm = _PROV_SGG.get(prov_prefix)
+    region_match = ["전국"]
+    if prov_prefix in _SUDO:
+        region_match.append("수도권")
+    if prov_nm:
+        region_match.append(prov_nm)
+    reg_ids = [d["id"] for d in loan_consultant_rows]
+    excl = f"AND lc.id NOT IN ({','.join(['%s']*len(reg_ids))})" if reg_ids else ""
+    region_ph = ",".join(["%s"] * len(region_match))
+    cur.execute(f"""
+        SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
+               lc.logo_url, lc.intro_text, lc.consultant_products,
+               lc.kakao_chat_url, lc.license_number, lc.service_region
+        FROM loan_consultants lc
+        WHERE lc.status = 'approved'
+          AND COALESCE(lc.is_visible, TRUE)
+          AND lc.service_region IN ({region_ph})
+          {excl}
+        ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
+        LIMIT 5
+    """, region_match + reg_ids)
+    for r in cur.fetchall():
+        d = dict(r)
+        d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
+        d["registered"] = False
         loan_consultant_rows.append(d)
 
     # 숙박업 영업신고(행안부) — 이 건물 주소(도로명+건물번호 정규화)로 매칭된 '영업/정상' 사업장.
@@ -5016,6 +5054,90 @@ def loan_consultant_visibility_update():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "is_visible": v})
+
+
+@app.route("/api/loan-consultant/buildings", methods=["POST"])
+@require_loan_consultant
+def loan_consultant_building_add():
+    lc_id = session["loan_consultant_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mbid = int(data.get("master_building_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        cur.execute("SELECT COUNT(*) c FROM loan_consultant_buildings WHERE loan_consultant_id = %s", [lc_id])
+        if cur.fetchone()["c"] >= MAX_FREE_BUILDINGS:
+            return jsonify({
+                "ok": False,
+                "message": f"무료 등록 가능 건물 수({MAX_FREE_BUILDINGS}개)를 초과했습니다.",
+            }), 400
+        try:
+            cur.execute(
+                "INSERT INTO loan_consultant_buildings (loan_consultant_id, master_building_id) VALUES (%s, %s)",
+                [lc_id, mbid],
+            )
+            conn.commit()
+        except psycopg2_errors.UniqueViolation:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "이미 등록된 단지입니다."}), 400
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/buildings/<int:mbid>", methods=["DELETE"])
+@require_loan_consultant
+def loan_consultant_building_delete(mbid):
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM loan_consultant_buildings WHERE loan_consultant_id = %s AND master_building_id = %s",
+            [lc_id, mbid],
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not deleted:
+        return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/buildings/search")
+@require_loan_consultant
+def loan_consultant_building_search():
+    lc_id = session["loan_consultant_id"]
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"items": []})
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+                   (lcb.id IS NOT NULL) AS already_added
+            FROM master_buildings mb
+            LEFT JOIN loan_consultant_buildings lcb
+              ON lcb.master_building_id = mb.id AND lcb.loan_consultant_id = %s
+            WHERE mb.building_name ILIKE %s AND mb.building_name <> '-'
+            ORDER BY mb.building_name
+            LIMIT 20
+        """, [lc_id, f"%{q}%"])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"items": items})
 
 
 @app.route("/api/operator/buildings", methods=["POST"])

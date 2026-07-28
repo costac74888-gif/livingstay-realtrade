@@ -52,6 +52,36 @@
     </div>
   </div>
 
+  <!-- 담당 단지 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+      <div class="side-card-title" style="margin-bottom:0;">담당 단지 <span class="side-sub" id="lcBldCount"></span></div>
+      <button id="btnAddLcBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
+    </div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
+      담당 단지로 등록하면 해당 건물 상세의 금융 카드 상단에 강조 표시됩니다. 최대 5개까지 무료로 등록하실 수 있어요.
+    </div>
+    <div id="lcBldList"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
+</div>
+
+<!-- 담당 단지 추가 모달 -->
+<div class="admin-modal-overlay" id="mLcAdd" hidden>
+  <div class="admin-modal" style="max-width:480px;">
+    <div class="admin-modal-head"><h3>담당 단지 추가</h3><button class="admin-modal-close" data-close="mLcAdd">×</button></div>
+    <div class="admin-modal-body">
+      <div class="field" style="margin-bottom:10px;">
+        <label>건물명 검색 (2자 이상)</label>
+        <input type="text" id="lcFSearch" placeholder="예) 경희마크" autocomplete="off" />
+      </div>
+      <div id="lcSearchResults"></div>
+      <div class="admin-modal-msg" id="msgLcAdd"></div>
+    </div>
+    <div class="admin-modal-foot">
+      <button class="side-more" style="width:auto; margin-top:0; padding:8px 16px;" data-close="mLcAdd">닫기</button>
+    </div>
+  </div>
 </div>
 
 <!-- 프로필 수정 모달 -->
@@ -118,6 +148,10 @@
 <script src="/static/js/format_util.js"></script>
 <script>
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
+const LODGING_BADGE  = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
+function markerColor(v){ if(!v) return "#9AA5B1"; return LODGING_COLORS[v.split("·")[0]] || "#9AA5B1"; }
+function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
 
 let ME = null;
 
@@ -158,6 +192,26 @@ function render(){
   renderVisibility();
   document.getElementById("meOffice").textContent = ME.office_name || "-";
   document.getElementById("meOwner").textContent = (ME.owner_name || "-") + " 상담사";
+  renderLcBuildings();
+}
+
+function renderLcBuildings(){
+  const list = document.getElementById("lcBldList");
+  const blds = ME.buildings || [];
+  document.getElementById("lcBldCount").textContent = blds.length + "개";
+  if (!blds.length){
+    list.innerHTML = `<div class="side-empty">등록된 담당 단지가 없습니다. 위의 [+ 단지 추가] 버튼으로 등록해보세요.</div>`;
+    return;
+  }
+  list.innerHTML = blds.map(b => `
+    <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
+        <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
+        <span style="flex:1;"></span>
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delLcBuilding(${b.master_building_id})">삭제</button>
+      </div>
+    </div>`).join("");
 }
 
 async function load(){
@@ -240,6 +294,59 @@ document.getElementById("btnSavePw").addEventListener("click", async () => {
   closeModal("mPw");
   alert("비밀번호가 변경되었습니다.");
 });
+
+// ---- 담당 단지 추가/삭제 ----
+window.delLcBuilding = async function(mbid){
+  const b = (ME.buildings || []).find(x => x.master_building_id === mbid);
+  if (!confirm(`'${(b && b.building_name) || "이 단지"}'를 담당 단지에서 삭제할까요?`)) return;
+  const { ok, data } = await api(`/api/loan-consultant/buildings/${mbid}`, { method: "DELETE" });
+  if (!ok){ alert(data.message || "삭제에 실패했습니다."); return; }
+  await load();
+};
+
+document.getElementById("btnAddLcBld").addEventListener("click", () => {
+  document.getElementById("lcFSearch").value = "";
+  document.getElementById("lcSearchResults").innerHTML = "";
+  document.getElementById("msgLcAdd").textContent = "";
+  openModal("mLcAdd");
+  document.getElementById("lcFSearch").focus();
+});
+
+let lcSearchTimer = null;
+document.getElementById("lcFSearch").addEventListener("input", () => {
+  clearTimeout(lcSearchTimer);
+  lcSearchTimer = setTimeout(doLcSearch, 300);
+});
+
+async function doLcSearch(){
+  const q = document.getElementById("lcFSearch").value.trim();
+  const box = document.getElementById("lcSearchResults");
+  if (q.length < 2){ box.innerHTML = ""; return; }
+  const { ok, data } = await api("/api/loan-consultant/buildings/search?q=" + encodeURIComponent(q));
+  if (!ok){ box.innerHTML = `<div class="side-empty">검색에 실패했습니다.</div>`; return; }
+  const items = data.items || [];
+  if (!items.length){ box.innerHTML = `<div class="side-empty">검색 결과가 없습니다.</div>`; return; }
+  box.innerHTML = items.map(it => `
+    <div style="display:flex; align-items:center; gap:8px; padding:9px 4px; border-bottom:1px solid #F0EBDF;">
+      <span style="display:inline-block; font-size:10px; font-weight:700; color:#fff; background:${markerColor(it.lodging_type)}; padding:2px 7px; border-radius:5px;">${esc(badgeLabel(it.lodging_type))}</span>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:13.5px; font-weight:600; color:var(--ink);">${esc(it.building_name)}</div>
+        <div style="font-size:11.5px; color:var(--ink-soft);">${esc([it.sgg_text, it.umd_nm].filter(Boolean).join(" "))}</div>
+      </div>
+      ${it.already_added
+        ? `<span style="font-size:11.5px; color:var(--ink-soft);">이미 등록됨</span>`
+        : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="addLcBuilding(${it.id})">추가</button>`}
+    </div>`).join("");
+}
+
+window.addLcBuilding = async function(mbid){
+  const msg = document.getElementById("msgLcAdd");
+  const { ok, data } = await api("/api/loan-consultant/buildings", { method: "POST", body: JSON.stringify({ master_building_id: mbid }) });
+  if (!ok){ msg.textContent = data.message || "추가에 실패했습니다."; return; }
+  msg.textContent = "";
+  await load();
+  await doLcSearch();
+};
 
 // ---- 로그아웃 ----
 document.getElementById("btnLogout").addEventListener("click", async () => {
