@@ -1799,7 +1799,15 @@ async function loadBuildingHeader(id){
     const fmtFlr = (g, u) => (g != null || u != null)
       ? `${g != null ? g : "-"}층 / ${u != null ? u : "-"}층` : "-";
     const isPreC = b.building_status && b.building_status !== "완공";
+    const fmtDayPlus3Y = (v) => {
+      if (!v) return "-";
+      const d = new Date(String(v).slice(0, 10));
+      if (isNaN(d)) return "-";
+      d.setFullYear(d.getFullYear() + 3);
+      return d.toISOString().slice(0, 10).replace(/-/g, ".");
+    };
     const pairs = [
+      ["명칭",        fmtTxt(b.building_name)],
       ["호수",        fmtNum(b.units, "호")],
       ["대지면적",    fmtNum(b.plat_area, " ㎡")],
       ["건축면적",    fmtNum(b.arch_area, " ㎡")],
@@ -1820,8 +1828,8 @@ async function loadBuildingHeader(id){
       ["건축허가일",  fmtDay(b.permit_day)],
       ["착공일",      fmtDay(b.actual_start_day)],
       ["사용승인일",  fmtDay(b.use_apr_day)],
-      ["정기점검(시작)", fmtDay(b.last_inspection_start_day)],
       ["정기점검(완료)", fmtDay(b.last_inspection_submit_day)],
+      ["정기점검유효일", fmtDayPlus3Y(b.last_inspection_submit_day)],
       ["점검기관",    fmtTxt(b.last_inspection_agency)],
     ];
     const cells = pairs.map(([k, v]) => `
