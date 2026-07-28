@@ -2019,20 +2019,14 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
       const badges = `<div style="display:flex; gap:4px; margin-top:6px;">
         ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
       </div>`;
-      const priorityBadge = agent.has_priority_badge
-        ? `<div style="width:45px; text-align:center; flex-shrink:0;">
-             <div style="font-size:9.5px; font-weight:700; color:var(--brass-dark); margin-bottom:1px;">단지</div>
-             <svg width="33" height="33" viewBox="0 0 24 24" style="display:block; margin:0 auto;">
-               <circle cx="12" cy="12" r="10" fill="#000" stroke="#fff" stroke-width="1.8" />
-               <path d="M16 8 L12.8 11.2 L8 16 L11.2 12.8 Z" fill="#fff" />
-               <circle cx="12" cy="12" r="1.6" fill="#000" />
-             </svg>
-           </div>`
-        : "";
+      const avatarWrap = `<div style="position:relative; flex-shrink:0;">
+        ${avatar}
+        ${agent.has_priority_badge ? `<span style="position:absolute; top:-7px; left:-6px; display:inline-flex; align-items:center; gap:2px; font-size:10px; font-weight:700; color:#fff; background:var(--brass-dark); padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">🧭 단지</span>` : ""}
+      </div>`;
       return `
       <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
         <div style="display:flex; align-items:flex-start; gap:12px;">
-          ${avatar}
+          ${avatarWrap}
           <div style="flex:1; min-width:0;">
             ${agent.subdomain_slug
               ? `<a href="/agent/${encodeURIComponent(agent.subdomain_slug)}?building_id=${buildingId}" style="font-size:14px; font-weight:600; color:var(--ink); text-decoration:none;">${escapeHtml(agent.office_name || "-")}</a>`
@@ -2044,7 +2038,6 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
             </div>` : ""}
             ${agent.office_phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">☎️ ${escapeHtml(window.formatPhone ? formatPhone(agent.office_phone) : agent.office_phone)}</div>` : ""}
           </div>
-          ${priorityBadge}
         </div>
       </div>`;
     }).join("");
