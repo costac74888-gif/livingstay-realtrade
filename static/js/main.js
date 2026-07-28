@@ -1973,15 +1973,13 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
     const nameEl = isGold && c.subdomain_slug
       ? `<a href="/loan-consultant/${encodeURIComponent(c.subdomain_slug)}" style="font-size:14px;font-weight:700;color:var(--brass-dark);text-decoration:none;">${escapeHtml(c.office_name || "-")}</a>`
       : `<div style="font-size:14px;font-weight:600;color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>`;
-    const products = c.consultant_products
-      ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(c.consultant_products)}</div>` : "";
     const contactRow = c.phone ? `
-      <div style="display:flex;gap:16px;margin-top:6px;">
-        <a href="tel:${escapeHtml(c.phone)}" style="font-size:12px;color:var(--brass-dark);text-decoration:none;" onclick="event.stopPropagation();">📞 전화</a>
-        <a href="sms:${escapeHtml(c.phone)}" style="font-size:12px;color:var(--brass-dark);text-decoration:none;" onclick="event.stopPropagation();">💬 문자</a>
-        ${isGold && kakaoUrl ? `<a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:700;color:#3C1E1E;background:#FEE500;padding:3px 8px;border-radius:6px;text-decoration:none;">💛 카카오</a>` : ""}
+      <div style="display:flex;gap:14px;margin-top:6px;">
+        <a href="tel:${escapeHtml(c.phone)}" style="font-size:18px;text-decoration:none;" onclick="event.stopPropagation();" aria-label="전화">📞</a>
+        <a href="sms:${escapeHtml(c.phone)}" style="font-size:18px;text-decoration:none;" onclick="event.stopPropagation();" aria-label="문자">💬</a>
+        ${isGold && kakaoUrl ? `<a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:18px;text-decoration:none;" aria-label="카카오">💛</a>` : ""}
       </div>` : "";
-    return `<div ${wrap}><div style="display:flex;align-items:flex-start;gap:12px;">${avatar}<div style="flex:1;min-width:0;">${nameEl}${products}<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">(${escapeHtml(c.owner_name || "-")}) 대출상담사 · ${escapeHtml(c.service_region || "전국")}</div>${contactRow}</div></div></div>`;
+    return `<div ${wrap}><div style="display:flex;align-items:center;gap:12px;">${avatar}<div style="flex:1;min-width:0;">${nameEl}</div>${contactRow}</div></div>`;
   };
 
   let html = registered.map(c => mkCard(c, true)).join("");
