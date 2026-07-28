@@ -1795,12 +1795,12 @@ async function loadBuildingHeader(id){
   if (bldgInfoCard){
     const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
     const fmtTxt = (v) => (v != null && v !== "") ? escapeHtml(String(v)) : "-";
-    const fmtDay = (v) => (v != null && v !== "") ? String(v).slice(0, 7).replace(/-/g, ".") : "-";
+    const fmtDay = (v) => (v != null && v !== "") ? String(v).slice(0, 10).replace(/-/g, ".") : "-";
     const fmtFlr = (g, u) => (g != null || u != null)
       ? `${g != null ? g : "-"}층 / ${u != null ? u : "-"}층` : "-";
     const isPreC = b.building_status && b.building_status !== "완공";
     const pairs = [
-      ["세대수",      fmtNum(b.hhld_cnt, "세대")],
+      ["호수",        fmtNum(b.units, "호")],
       ["대지면적",    fmtNum(b.plat_area, " ㎡")],
       ["건축면적",    fmtNum(b.arch_area, " ㎡")],
       ["연면적",      fmtNum(b.tot_area, " ㎡")],
