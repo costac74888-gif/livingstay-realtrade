@@ -429,8 +429,11 @@ def get_building(building_id):
         ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
         LIMIT 3
     """, [building_id])
+    _lc_exact_rows = cur.fetchall()
+    app.logger.warning("[LC-DEBUG] building_id=%r (type=%s)", building_id, type(building_id).__name__)
+    app.logger.warning("[LC-DEBUG] 정확매칭 결과 %d건: %r", len(_lc_exact_rows), [dict(r) for r in _lc_exact_rows])
     loan_consultant_rows = []
-    for r in cur.fetchall():
+    for r in _lc_exact_rows:
         d = dict(r)
         d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
         d["registered"] = True
