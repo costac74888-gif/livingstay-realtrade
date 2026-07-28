@@ -119,6 +119,40 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     return rows
 
 
+def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+    """지역지구구역(getBrJijiguInfo) — 용도지역/지구/구역 목록."""
+    params = {
+        "serviceKey": BLD_SERVICE_KEY,
+        "sigunguCd": sigungu_cd, "bjdongCd": bjdong_cd,
+        "platGbCd": plat_gb, "bun": bun.zfill(4), "ji": ji.zfill(4),
+        "numOfRows": 20, "pageNo": 1,
+    }
+    resp = requests.get(
+        "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo",
+        params=params, timeout=10,
+    )
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
+
+
+def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+    """정기점검이력(getMaintenanceHistory) — 점검기관·시작일·제출일 목록."""
+    params = {
+        "serviceKey": os.environ.get("BLD_INSPECTION_SERVICE_KEY", ""),
+        "sigunguCd": sigungu_cd, "bjdongCd": bjdong_cd,
+        "platGbCd": plat_gb, "bun": bun.zfill(4), "ji": ji.zfill(4),
+        "numOfRows": 20, "pageNo": 1,
+    }
+    resp = requests.get(
+        "https://apis.data.go.kr/1613000/MtnChkHubService/getMaintenanceHistory",
+        params=params, timeout=10,
+    )
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
+
+
 def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     """표제부 조회 → 대표 동 dict 1개 반환(없으면 None).
 

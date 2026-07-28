@@ -50,6 +50,7 @@ from address_utils import (
     BjdongMap, parse_jibun,
 )
 from store_info_util import build_pnu, get_stores_by_pnu
+import building_registry
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -290,6 +291,10 @@ def get_building(building_id):
                mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
                mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,
                mb.tot_area, mb.plat_area, mb.hhld_cnt, mb.strct_nm,
+               mb.heit, mb.ride_use_elvt_cnt, mb.emgen_use_elvt_cnt, mb.main_purps_nm,
+               mb.jiyuk_nm, mb.jigu_nm, mb.guyuk_nm,
+               mb.last_inspection_agency, mb.last_inspection_start_day, mb.last_inspection_submit_day,
+               mb.detail_fetched_at,
                lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
@@ -316,6 +321,61 @@ def get_building(building_id):
         cur.close()
         conn.close()
         return jsonify({"error": "not found"}), 404
+
+    building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
+
+    # 즉시조회+캐싱: detail_fetched_at이 없는 건물의 첫 방문 때 표제부·지역지구구역·정기점검을 API로 가져와 DB에 저장.
+    # 실패해도 페이지 자체는 정상 렌더링 — 다음 방문 때 자동 재시도(detail_fetched_at을 안 남김).
+    if (not building.get("detail_fetched_at")
+            and building.get("sgg_cd") and building.get("umd_nm") and building.get("jibun")):
+        try:
+            bjd = _get_bjdong_map().find_bjdong_cd(building["sgg_cd"], building["umd_nm"])
+            if bjd:
+                plat_gb, bun, ji = parse_jibun(building["jibun"])
+                rows_title = building_registry._fetch_title_rows(building["sgg_cd"], bjd, plat_gb, bun, ji)
+                rep = max(rows_title, key=lambda r: int(r.get("hoCnt") or 0)) if rows_title else None
+                jj_rows = building_registry.fetch_jijigu_rows(building["sgg_cd"], bjd, plat_gb, bun, ji) if rep else []
+                insp_rows = building_registry.fetch_maintenance_history(building["sgg_cd"], bjd, plat_gb, bun, ji)
+
+                updates = {"detail_fetched_at": datetime.now()}
+                if rep:
+                    updates.update({
+                        "plat_area":          _to_float(rep.get("platArea")),
+                        "arch_area":          _to_float(rep.get("archArea")),
+                        "tot_area":           _to_float(rep.get("totArea")),
+                        "bc_rat":             _to_float(rep.get("bcRat")),
+                        "vl_rat":             _to_float(rep.get("vlRat")),
+                        "heit":               _to_float(rep.get("heit")),
+                        "grnd_flr_cnt":       _to_int(rep.get("grndFlrCnt")),
+                        "ugrnd_flr_cnt":      _to_int(rep.get("ugrndFlrCnt")),
+                        "ride_use_elvt_cnt":  _to_int(rep.get("rideUseElvtCnt")),
+                        "emgen_use_elvt_cnt": _to_int(rep.get("emgenUseElvtCnt")),
+                        "main_purps_nm":      rep.get("mainPurpsCdNm") or None,
+                        "strct_nm":           rep.get("strctCdNm") or None,
+                        "hhld_cnt":           _to_int(rep.get("hhldCnt")),
+                        "tot_pkng_cnt":       _to_int(rep.get("totPkngCnt")),
+                        "use_apr_day":        _fmt_date(rep.get("useAprDay")),
+                        "permit_day":         _fmt_date(rep.get("pmsDay")),
+                        "actual_start_day":   _fmt_date(rep.get("stcnsDay")),
+                    })
+                if jj_rows:
+                    updates["jiyuk_nm"]  = next((r.get("jiyukNm")  for r in jj_rows if r.get("jiyukNm")),  None)
+                    updates["jigu_nm"]   = next((r.get("jiguNm")   for r in jj_rows if r.get("jiguNm")),   None)
+                    updates["guyuk_nm"]  = next((r.get("guyukNm")  for r in jj_rows if r.get("guyukNm")),  None)
+                if insp_rows:
+                    latest = max(insp_rows, key=lambda r: r.get("chkStrtDay") or "")
+                    updates["last_inspection_agency"]     = latest.get("chkCoNm") or None
+                    updates["last_inspection_start_day"]  = _fmt_date(latest.get("chkStrtDay"))
+                    updates["last_inspection_submit_day"] = _fmt_date(latest.get("submitDe"))
+
+                set_sql = ", ".join(f"{k}=%s" for k in updates)
+                cur.execute(f"UPDATE master_buildings SET {set_sql} WHERE id=%s",
+                            list(updates.values()) + [building_id])
+                conn.commit()
+                building.update(updates)
+        except Exception:
+            app.logger.warning("건축정보 즉시조회 실패 (building_id=%s) — 다음 방문 때 재시도",
+                               building_id, exc_info=True)
 
     # 전속중개사: agent_buildings에 이 건물이 등록된 approved 중개사 — 최대 3명.
     # 정렬: priority_score DESC(유료 우선노출 자리, 현재 전부 0) → 동점자는 RANDOM().
@@ -378,7 +438,7 @@ def get_building(building_id):
     lodging_room_total = 0
     try:
         lr_rows = []
-        road_norm = addr_norm.normalize_road_prefix(row["road_address"])
+        road_norm = addr_norm.normalize_road_prefix(building["road_address"])
         if road_norm:
             cur.execute("""
                 SELECT lr.biz_name, lr.permit_date, lr.room_count, lr.biz_name_norm
@@ -389,7 +449,7 @@ def get_building(building_id):
             lr_rows = cur.fetchall()
         if not lr_rows:
             # 2차: 도로명 매칭 실패(도로명 없는 건물 등) 시 지번 정규화 키로 매칭
-            jibun_key = addr_norm.get_building_jibun_key(row)
+            jibun_key = addr_norm.get_building_jibun_key(building)
             if jibun_key:
                 cur.execute("""
                     SELECT lr.biz_name, lr.permit_date, lr.room_count, lr.biz_name_norm
@@ -436,7 +496,7 @@ def get_building(building_id):
     cur.close()
     conn.close()
 
-    result = dict(row)
+    result = building
     agents_list = []
     for r in agent_rows:
         agent_d = dict(r)
@@ -475,6 +535,36 @@ def get_building(building_id):
 # 법정동코드 매핑은 zip 로딩이 무거워서 앱 프로세스당 1회만 lazy 로딩한다.
 _bjdong_map = None
 _bjdong_lock = threading.Lock()
+
+
+def _to_int(v):
+    if v is None or str(v).strip() == "":
+        return None
+    try:
+        return int(float(str(v).replace(",", "").strip()))
+    except (ValueError, TypeError):
+        return None
+
+
+def _to_float(v):
+    if v is None or str(v).strip() == "":
+        return None
+    try:
+        return float(str(v).replace(",", "").strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _fmt_date(v):
+    """'20231130' → '2023-11-30'. 형식이 다르면 원문 그대로(공백은 None)."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    if len(s) == 8 and s.isdigit():
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    return s
 
 
 def _get_bjdong_map():

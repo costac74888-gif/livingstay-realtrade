@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-27-3"
+SCHEMA_VERSION = "2026-07-28-1"
 
 
 def init_db():
@@ -113,6 +113,17 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS arch_area DOUBLE PRECISION")  # 건축면적(㎡)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS bc_rat DOUBLE PRECISION")     # 건폐율(%)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS vl_rat DOUBLE PRECISION")     # 용적률(%)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS heit DOUBLE PRECISION")           # 건물높이(m)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS ride_use_elvt_cnt INTEGER")       # 승용승강기 수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS emgen_use_elvt_cnt INTEGER")      # 비상승강기 수
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS main_purps_nm TEXT")              # 주용도명
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS jiyuk_nm TEXT")                   # 용도지역명
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS jigu_nm TEXT")                    # 용도지구명
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS guyuk_nm TEXT")                   # 용도구역명
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS last_inspection_agency TEXT")     # 최근 정기점검 기관
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS last_inspection_start_day TEXT")  # 점검시작일 YYYY-MM-DD
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS last_inspection_submit_day TEXT") # 점검제출일 YYYY-MM-DD
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS detail_fetched_at TIMESTAMP")     # 즉시조회 캐싱 시각
     # 정식 명칭 미확정 표시 — API(건축물대장)에 건물명이 없어 "읍면동 지번" 임시명으로 등록된 건물은 TRUE.
     # 기본값 FALSE: 기존 건물들은 이미 확정된 명칭을 갖고 있으므로, TRUE는 submit_building()이 명시적으로만 세팅한다.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS name_pending BOOLEAN DEFAULT FALSE")

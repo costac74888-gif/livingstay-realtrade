@@ -1795,24 +1795,33 @@ async function loadBuildingHeader(id){
   if (bldgInfoCard){
     const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
     const fmtTxt = (v) => (v != null && v !== "") ? escapeHtml(String(v)) : "-";
+    const fmtDay = (v) => (v != null && v !== "") ? String(v).slice(0, 7).replace(/-/g, ".") : "-";
+    const fmtFlr = (g, u) => (g != null || u != null)
+      ? `${g != null ? g : "-"}층 / ${u != null ? u : "-"}층` : "-";
     const isPreC = b.building_status && b.building_status !== "완공";
-    const pairs = isPreC ? [
-      ["대지면적", fmtNum(b.plat_area, " ㎡")],
-      ["연면적", fmtNum(b.tot_area, " ㎡")],
-      ["건축면적", fmtNum(b.arch_area, " ㎡")],
-      ["건폐율", fmtNum(b.bc_rat, "%")],
-      ["용적률", fmtNum(b.vl_rat, "%")],
-      ["세대수", fmtNum(b.hhld_cnt, "세대")],
-      ["총주차대수", fmtNum(b.tot_pkng_cnt, "대")],
-    ] : [
-      ["연면적", fmtNum(b.tot_area, " ㎡")],
-      ["대지면적", fmtNum(b.plat_area, " ㎡")],
-      ["세대수", fmtNum(b.hhld_cnt, "세대")],
-      ["준공월", fmtTxt(b.use_apr_day)],
-      ["구조", fmtTxt(b.strct_nm)],
-      ["지상층수", fmtNum(b.grnd_flr_cnt, "층")],
-      ["지하층수", fmtNum(b.ugrnd_flr_cnt, "층")],
-      ["총주차대수", fmtNum(b.tot_pkng_cnt, "대")],
+    const pairs = [
+      ["세대수",      fmtNum(b.hhld_cnt, "세대")],
+      ["대지면적",    fmtNum(b.plat_area, " ㎡")],
+      ["건축면적",    fmtNum(b.arch_area, " ㎡")],
+      ["연면적",      fmtNum(b.tot_area, " ㎡")],
+      ["건폐율",      fmtNum(b.bc_rat, "%")],
+      ["용적률",      fmtNum(b.vl_rat, "%")],
+      ["지상/지하층수", fmtFlr(b.grnd_flr_cnt, b.ugrnd_flr_cnt)],
+      ["높이",        fmtNum(b.heit, " m")],
+      ["용도지역",    fmtTxt(b.jiyuk_nm)],
+      ["지구",        fmtTxt(b.jigu_nm)],
+      ["구역",        fmtTxt(b.guyuk_nm)],
+      ["주용도",      fmtTxt(b.main_purps_nm)],
+      ["구조",        fmtTxt(b.strct_nm)],
+      ["총주차대수",  fmtNum(b.tot_pkng_cnt, "대")],
+      ["승용승강기",  fmtNum(b.ride_use_elvt_cnt, "대")],
+      ["비상승강기",  fmtNum(b.emgen_use_elvt_cnt, "대")],
+      ["건축허가일",  fmtDay(b.permit_day)],
+      ["착공일",      fmtDay(b.actual_start_day)],
+      ["사용승인일",  fmtDay(b.use_apr_day)],
+      ["정기점검(시작)", fmtDay(b.last_inspection_start_day)],
+      ["정기점검(완료)", fmtDay(b.last_inspection_submit_day)],
+      ["점검기관",    fmtTxt(b.last_inspection_agency)],
     ];
     const cells = pairs.map(([k, v]) => `
       <div class="b-bldg-cell">
