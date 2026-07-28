@@ -115,7 +115,13 @@ def _fetch_page(key, sgg, bjd, page):
 
 
 def _load_existing_keys(cur):
-    """기존 master_buildings의 중복 판별 키 3종 셋 (sync_brhub.py와 동일 로직)."""
+    """기존 master_buildings의 중복 판별 키 4종 셋.
+
+    triple/roads/jibuns — 전체 master_buildings 기반 (sync_brhub.py와 동일).
+    completed_sgg_jibun — source != 'permit_pipeline'인 완공 건물의 (sgg_cd, jibun) 2중 키.
+      주소 형식 불일치(시도 축약·끝 번지 차이)로 triple 매칭이 실패해도
+      이 2중 키가 추가로 걸러낸다.
+    """
     cur.execute("SELECT sgg_cd, umd_nm, jibun, road_address, jibun_address FROM master_buildings")
     triple, roads, jibuns = set(), set(), set()
     for r in cur.fetchall():
@@ -127,7 +133,16 @@ def _load_existing_keys(cur):
         jn = normalize_jibun_prefix(r["jibun_address"] or r["road_address"])
         if jn:
             jibuns.add(jn)
-    return triple, roads, jibuns
+
+    # 완공 건물 (비permit) 의 (sgg_cd, jibun) 2중 키 — umd_nm 없이 느슨하게 매칭
+    cur.execute("""
+        SELECT sgg_cd, jibun FROM master_buildings
+        WHERE source != 'permit_pipeline'
+          AND sgg_cd IS NOT NULL AND jibun IS NOT NULL AND jibun != ''
+    """)
+    completed_sgg_jibun = {(r["sgg_cd"], r["jibun"]) for r in cur.fetchall()}
+
+    return triple, roads, jibuns, completed_sgg_jibun
 
 
 def probe():
@@ -195,7 +210,7 @@ def run(args, status_key=None, run_id=None):
         print(f"오늘 호출 {prog['calls_today']}회 — 일일캡({args.daily_cap}) 도달, 내일 재실행하세요.")
         return False, 0, 0, prog["calls_today"]
 
-    triple, roads, jibuns = _load_existing_keys(cur)
+    triple, roads, jibuns, completed_sgg_jibun = _load_existing_keys(cur)
     print(f"[시작] 법정동 {prog['idx']}/{len(dongs)}부터, 오늘 호출 {prog['calls_today']}/{args.daily_cap}, "
           f"기존 건물 키 {len(triple)}개")
 
@@ -241,9 +256,13 @@ def run(args, status_key=None, run_id=None):
                 # 허용 용도 키워드 — 건축인허가 API는 표제부와 다른 코드명을 사용.
                 # 2026-07-27 --probe(서울 강남·마포 포함 다수 법정동)로 실제 확인된 값:
                 #   "생활숙박시설", "숙박시설", "관광숙박시설"
-                # 하위 호환성·향후 추가 코드를 위해 "공중위생"·"생활형숙박"도 포함.
-                _PURPS_KEYWORDS = ("숙박", "생활숙박", "숙박시설", "관광숙박", "생활형숙박", "공중위생")
+                # "숙박" 단독·"공중위생"은 일반숙박(모텔·여관)·빌라 오염 원인이므로 제거.
+                _PURPS_KEYWORDS = ("생활숙박", "숙박시설", "관광숙박", "생활형숙박")
                 if not any(kw in purps_text for kw in _PURPS_KEYWORDS):
+                    continue
+                # 일반숙박·고시원 등 제외 패턴
+                _PURPS_EXCLUDE = ("일반숙박", "여관", "모텔", "고시원")
+                if any(ex in purps_text for ex in _PURPS_EXCLUDE):
                     continue
 
                 # 건축인허가 단계에서는 세대수가 미확정("0" 또는 null)인 경우가 많으므로
@@ -255,11 +274,27 @@ def run(args, status_key=None, run_id=None):
                 if use_apr:
                     continue
 
+                # 허가일 5년 컷오프 — API 데이터 누락으로 useAprDay가 없어도
+                # 허가일로부터 5년 이상 경과한 건물은 이미 완공됐을 가능성이 높으므로 제외.
+                # (장기미준공·사업 취소 건물도 함께 제거)
+                _permit_day_raw = (it.get(FIELD_MAP["허가일"]) or "").strip()
+                if _permit_day_raw and len(_permit_day_raw) == 8:
+                    try:
+                        _pd = datetime.strptime(_permit_day_raw, "%Y%m%d").date()
+                        if (date.today() - _pd).days > 365 * 5:
+                            continue
+                    except ValueError:
+                        pass
+
                 jibun = _jibun_from_bunji(it.get("bun"), it.get("ji"))
                 umd_key = normalize_umd_nm(umd_raw)
                 plat_plc = (it.get("platPlc") or "").strip() or None
                 road_address = plat_plc or f"{sgg_text} {umd_raw} {jibun or ''}".strip()
 
+                # 완공 건물 대조 — source != 'permit_pipeline'인 건물의 (sgg_cd, jibun) 2중 키.
+                # triple/address 정규화 불일치를 우회하는 보조 체크.
+                if jibun and (sgg_cd, jibun) in completed_sgg_jibun:
+                    continue
                 if jibun and (sgg_cd, umd_key, jibun) in triple:
                     continue
                 rn = normalize_road_prefix(road_address)
