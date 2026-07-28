@@ -2017,9 +2017,9 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
       const badges = `<div style="display:flex; gap:4px; margin-top:6px;">
         ${badge("매매", agent.sale_count)}${badge("전세", agent.jeonse_count)}${badge("월세", agent.wolse_count)}${badge("단기", agent.shortterm_count)}
       </div>`;
-      const avatarWrap = `<div style="position:relative; flex-shrink:0;">
+      const avatarWrap = `<div style="position:relative; flex-shrink:0; padding-bottom:${agent.has_priority_badge ? "14" : "0"}px;">
         ${avatar}
-        ${agent.has_priority_badge ? `<span style="position:absolute; top:-7px; left:-6px; display:inline-flex; align-items:center; gap:2px; font-size:10px; font-weight:700; color:#fff; background:var(--brass-dark); padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">🧭 단지</span>` : ""}
+        ${agent.has_priority_badge ? `<span style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:2px; font-size:9.5px; font-weight:700; color:#fff; background:var(--brass-dark); padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">🧭 단지</span>` : ""}
       </div>`;
       return `
       <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
