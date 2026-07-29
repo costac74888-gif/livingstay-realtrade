@@ -482,6 +482,7 @@ let kakaoMap = null;
 let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(오버레이) 목록
 let mapLabels = [];                   // 마커 옆 '건물명+최근가' 라벨 요소 목록(줌 토글용)
+let mapLabelsByKey = {};              // "lat,lng" → 라벨 요소 — 호버 중 해당 라벨 숨김에 사용
 let hoverTooltip = null;              // 마커 호버용 공용 미리보기 툴팁(오버레이)
 let hoverHideTimer = null;            // 호버 툴팁 지연 숨김 타이머(간격 통과 시 깜빡임 방지)
 let hoverCurrentKey = null;          // 현재 툴팁이 가리키는 마커 키(같은 마커 재진입 시 재생성 방지)
@@ -516,6 +517,7 @@ function clearMapMarkers(){
   mapOverlays.forEach(o => o.setMap(null));
   mapOverlays = [];
   mapLabels = [];
+  mapLabelsByKey = {};
   hideHoverTooltip();
 }
 
@@ -618,7 +620,15 @@ function showHoverTooltip(b, pos){
   // 같은 마커에 다시 진입한 것이면 재생성하지 않는다(재생성 시 깜빡임의 원인).
   const key = pos.getLat() + "," + pos.getLng();
   if (hoverTooltip && hoverCurrentKey === key && hoverTooltip.getMap()) return;
+  // 이전 마커의 라벨 칩을 복원한다(다른 마커로 이동한 경우).
+  if (hoverCurrentKey && hoverCurrentKey !== key){
+    const prevLabel = mapLabelsByKey[hoverCurrentKey];
+    if (prevLabel) prevLabel.style.display = (kakaoMap.getLevel() <= LABEL_MAX_LEVEL) ? "block" : "none";
+  }
   hoverCurrentKey = key;
+  // 현재 마커의 라벨 칩을 숨긴다 — 툴팁과 이중으로 겹치지 않게.
+  const curLabel = mapLabelsByKey[key];
+  if (curLabel) curLabel.style.display = "none";
 
   const el = document.createElement("div");
   // 마커 위쪽으로 충분히 띄워 상시 라벨 칩(점 위 ~45px)을 가리지 않게 한다.
@@ -657,6 +667,11 @@ function hideHoverTooltip(immediate){
   if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
   const doHide = () => {
     if (hoverTooltip) hoverTooltip.setMap(null);
+    // 숨겼던 라벨 칩을 현재 줌 레벨 기준으로 복원한다.
+    if (hoverCurrentKey){
+      const lbl = mapLabelsByKey[hoverCurrentKey];
+      if (lbl) lbl.style.display = (kakaoMap && kakaoMap.getLevel() <= LABEL_MAX_LEVEL) ? "block" : "none";
+    }
     hoverCurrentKey = null;
     hoverHideTimer = null;
   };
@@ -748,6 +763,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
     mapOverlays.push(overlay);
     mapLabels.push(label);
+    mapLabelsByKey[b.lat + "," + b.lng] = label;  // 호버 중 라벨 숨김용
     bounds.extend(pos);
     placed++;
   });
