@@ -274,13 +274,24 @@ def run(args, status_key=None, run_id=None):
                 if use_apr:
                     continue
 
-                # 허가일 5년 컷오프 — API 데이터 누락으로 useAprDay가 없어도
-                # 허가일로부터 5년 이상 경과한 건물은 이미 완공됐을 가능성이 높으므로 제외.
-                # (장기미준공·사업 취소 건물도 함께 제거)
-                _permit_day_raw = (it.get(FIELD_MAP["허가일"]) or "").strip()
-                if _permit_day_raw and len(_permit_day_raw) == 8:
+                # 준공예정일 1년 컷오프 — 착공일(실제 또는 예정) + 900일로 추정한
+                # 완공예정일이 1년 이상 지났으면 이미 완공됐거나 사업 취소 가능성이
+                # 높으므로 제외. 착공 정보가 없으면 허가일 5년 컷오프로 폴백.
+                _actual_raw   = (it.get(FIELD_MAP["실제착공일"]) or "").strip()
+                _expected_raw = (it.get(FIELD_MAP["착공예정일"]) or "").strip()
+                _start_raw    = _actual_raw or _expected_raw
+                _permit_raw   = (it.get(FIELD_MAP["허가일"]) or "").strip()
+                _one_yr_ago   = date.today() - timedelta(days=365)
+                if _start_raw and len(_start_raw) == 8:
                     try:
-                        _pd = datetime.strptime(_permit_day_raw, "%Y%m%d").date()
+                        _comp_est = (datetime.strptime(_start_raw, "%Y%m%d") + timedelta(days=900)).date()
+                        if _comp_est < _one_yr_ago:
+                            continue
+                    except ValueError:
+                        pass
+                elif _permit_raw and len(_permit_raw) == 8:
+                    try:
+                        _pd = datetime.strptime(_permit_raw, "%Y%m%d").date()
                         if (date.today() - _pd).days > 365 * 5:
                             continue
                     except ValueError:

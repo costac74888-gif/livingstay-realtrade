@@ -5,9 +5,11 @@
 이미 수집된 permit_pipeline 건물 중 아래 조건에 해당하는 건물을 삭제합니다.
 
 삭제 조건 (OR):
-  1. 허가일(permit_day)이 현재 기준 5년 이상 경과 — 오래된 오픈 퍼밋
-  2. 동일 (sgg_cd, jibun)으로 source != 'permit_pipeline'인 완공 건물이 존재
-  3. lodging_type_detail에 오염 키워드 포함
+  1. 사용승인일(use_apr_day)이 있음 — 표제부에서 사용승인 확인 = 실제 완공
+  2. 완공예정일(completion_expected_date)이 현재 기준 1년 이상 경과
+  3. 허가일(permit_day)이 현재 기준 5년 이상 경과 (착공 정보 없는 경우의 폴백)
+  4. 동일 (sgg_cd, jibun)으로 source != 'permit_pipeline'인 완공 건물이 존재
+  5. lodging_type_detail에 오염 키워드 포함
      ("일반숙박", "여관", "모텔", "고시원", "공중위생")
 
 사용법:
@@ -29,6 +31,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 CUTOFF_YEARS = 5
 CUTOFF_DATE = date.today() - timedelta(days=365 * CUTOFF_YEARS)
+COMPLETION_CUTOFF = date.today() - timedelta(days=365)  # 완공예정일 1년 초과 컷오프
 
 CONTAMINATED_KEYWORDS = ("일반숙박", "여관", "모텔", "고시원", "공중위생")
 
@@ -42,10 +45,37 @@ def get_conn():
 
 def fetch_targets(cur) -> list[dict]:
     """삭제 대상 건물 목록과 삭제 사유를 반환."""
-    # 1) 허가일 5년 초과
-    cur.execute("""
-        SELECT id, building_name, sgg_cd, jibun, permit_day, building_status,
-               lodging_type_detail, sgg_text
+
+    # 공통 컬럼 선택 (모든 쿼리에서 동일)
+    _cols = ("id, building_name, sgg_cd, jibun, permit_day, use_apr_day, "
+             "completion_expected_date, building_status, lodging_type_detail, sgg_text")
+
+    # 1) 사용승인일(use_apr_day) 있음 — 표제부에서 사용승인 확인 = 실제 완공
+    cur.execute(f"""
+        SELECT {_cols}
+        FROM master_buildings
+        WHERE building_status IN ('허가', '착공')
+          AND source = 'permit_pipeline'
+          AND use_apr_day IS NOT NULL AND use_apr_day != ''
+        ORDER BY use_apr_day
+    """)
+    has_apr = {row["id"]: dict(row) | {"reason": f"사용승인일({row['use_apr_day']}) 있음"} for row in cur.fetchall()}
+
+    # 2) 완공예정일 1년 초과 — 착공일+900일 추정이 1년 이상 지남
+    cur.execute(f"""
+        SELECT {_cols}
+        FROM master_buildings
+        WHERE building_status IN ('허가', '착공')
+          AND source = 'permit_pipeline'
+          AND completion_expected_date IS NOT NULL
+          AND completion_expected_date::date < %s
+        ORDER BY completion_expected_date
+    """, (COMPLETION_CUTOFF.isoformat(),))
+    old_completion = {row["id"]: dict(row) | {"reason": f"완공예정일({row['completion_expected_date']}) 1년 초과"} for row in cur.fetchall()}
+
+    # 3) 허가일 5년 초과 (착공 정보 없는 건물의 폴백)
+    cur.execute(f"""
+        SELECT {_cols}
         FROM master_buildings
         WHERE building_status IN ('허가', '착공')
           AND source = 'permit_pipeline'
@@ -55,9 +85,10 @@ def fetch_targets(cur) -> list[dict]:
     """, (CUTOFF_DATE.isoformat(),))
     old_permit = {row["id"]: dict(row) | {"reason": f"허가일({row['permit_day']}) 5년 초과"} for row in cur.fetchall()}
 
-    # 2) 완공 건물 중복 (sgg_cd + jibun 일치)
-    cur.execute("""
+    # 4) 완공 건물 중복 (sgg_cd + jibun 일치)
+    cur.execute(f"""
         SELECT pp.id, pp.building_name, pp.sgg_cd, pp.jibun, pp.permit_day,
+               pp.use_apr_day, pp.completion_expected_date,
                pp.building_status, pp.lodging_type_detail, pp.sgg_text
         FROM master_buildings pp
         WHERE pp.building_status IN ('허가', '착공')
@@ -71,10 +102,9 @@ def fetch_targets(cur) -> list[dict]:
     """)
     dup_completed = {row["id"]: dict(row) | {"reason": "완공 건물 중복(sgg_cd+jibun)"} for row in cur.fetchall()}
 
-    # 3) 오염 키워드
-    cur.execute("""
-        SELECT id, building_name, sgg_cd, jibun, permit_day, building_status,
-               lodging_type_detail, sgg_text
+    # 5) 오염 키워드
+    cur.execute(f"""
+        SELECT {_cols}
         FROM master_buildings
         WHERE building_status IN ('허가', '착공')
           AND source = 'permit_pipeline'
@@ -85,7 +115,7 @@ def fetch_targets(cur) -> list[dict]:
 
     # 병합 (id 기준 dedup, 사유 누적)
     merged: dict[int, dict] = {}
-    for source_dict in (old_permit, dup_completed, contaminated):
+    for source_dict in (has_apr, old_completion, old_permit, dup_completed, contaminated):
         for bid, row in source_dict.items():
             if bid in merged:
                 merged[bid]["reason"] += " / " + row["reason"]
@@ -115,7 +145,8 @@ def print_summary(targets: list[dict], total_pipeline: int):
 def list_targets_csv(targets: list[dict]):
     writer = csv.DictWriter(sys.stdout, fieldnames=[
         "id", "building_name", "sgg_text", "sgg_cd", "jibun",
-        "permit_day", "building_status", "lodging_type_detail", "reason"
+        "permit_day", "use_apr_day", "completion_expected_date",
+        "building_status", "lodging_type_detail", "reason"
     ])
     writer.writeheader()
     for t in targets:
