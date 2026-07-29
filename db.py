@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-28-2"
+SCHEMA_VERSION = "2026-07-29-1"
 
 
 def init_db():
@@ -868,6 +868,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_address ON transactions(address)")
+    # LATERAL 서브쿼리 최적화: 지도 마커 API가 건물마다 최근 실거래가를 조회할 때 사용
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_sgg_umd_jibun ON transactions(sgg_cd, umd_nm, jibun, deal_date DESC)")
     # 건물별 슬롯 조회(정원 충족 여부 확인)용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_slots_building ON slots(master_building_id)")
     # 건물별 매물 조회용 인덱스
