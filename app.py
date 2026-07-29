@@ -276,6 +276,66 @@ def get_authority_index():
     return _AUTHORITY_INDEX
 
 
+def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
+    """건물 첫 방문 시 표제부·지역지구구역·정기점검을 백그라운드로 조회해
+    캐싱한다. 요청 스레드를 안 막기 위해 별도 스레드에서 실행됨 — 이번
+    방문자는 못 보고, 다음 방문자부터 채워진 값을 본다."""
+    try:
+        bjd = _get_bjdong_map().find_bjdong_cd(sgg_cd, umd_nm)
+        if not bjd:
+            return
+        plat_gb, bun, ji = parse_jibun(jibun)
+        rows_title = building_registry._fetch_title_rows(sgg_cd, bjd, plat_gb, bun, ji)
+        rep = max(rows_title, key=lambda r: int(r.get("hoCnt") or 0)) if rows_title else None
+        jj_rows = building_registry.fetch_jijigu_rows(sgg_cd, bjd, plat_gb, bun, ji) if rep else []
+        insp_rows = building_registry.fetch_maintenance_history(sgg_cd, bjd, plat_gb, bun, ji)
+
+        updates = {"detail_fetched_at": datetime.now()}
+        if rep:
+            updates.update({
+                "plat_area":          _to_float(rep.get("platArea")),
+                "arch_area":          _to_float(rep.get("archArea")),
+                "tot_area":           _to_float(rep.get("totArea")),
+                "bc_rat":             _to_float(rep.get("bcRat")),
+                "vl_rat":             _to_float(rep.get("vlRat")),
+                "heit":               _to_float(rep.get("heit")),
+                "grnd_flr_cnt":       _to_int(rep.get("grndFlrCnt")),
+                "ugrnd_flr_cnt":      _to_int(rep.get("ugrndFlrCnt")),
+                "ride_use_elvt_cnt":  _to_int(rep.get("rideUseElvtCnt")),
+                "emgen_use_elvt_cnt": _to_int(rep.get("emgenUseElvtCnt")),
+                "main_purps_nm":      rep.get("mainPurpsCdNm") or None,
+                "strct_nm":           rep.get("strctCdNm") or None,
+                "hhld_cnt":           _to_int(rep.get("hhldCnt")),
+                "indr_auto_utcnt":    _to_int(rep.get("indrAutoUtcnt")),
+                "oudr_auto_utcnt":    _to_int(rep.get("oudrAutoUtcnt")),
+                "indr_mech_utcnt":    _to_int(rep.get("indrMechUtcnt")),
+                "oudr_mech_utcnt":    _to_int(rep.get("oudrMechUtcnt")),
+                "use_apr_day":        _fmt_date(rep.get("useAprDay")),
+                "permit_day":         _fmt_date(rep.get("pmsDay")),
+                "actual_start_day":   _fmt_date(rep.get("stcnsDay")),
+            })
+        if jj_rows:
+            updates["jiyuk_nm"]  = next((r.get("jiyukNm")  for r in jj_rows if r.get("jiyukNm")),  None)
+            updates["jigu_nm"]   = next((r.get("jiguNm")   for r in jj_rows if r.get("jiguNm")),   None)
+            updates["guyuk_nm"]  = next((r.get("guyukNm")  for r in jj_rows if r.get("guyukNm")),  None)
+        if insp_rows:
+            latest = max(insp_rows, key=lambda r: r.get("chkStrtDay") or "")
+            updates["last_inspection_agency"]     = latest.get("chkCoNm") or None
+            updates["last_inspection_start_day"]  = _fmt_date(latest.get("chkStrtDay"))
+            updates["last_inspection_submit_day"] = _fmt_date(latest.get("submitDe"))
+
+        conn = get_conn()
+        cur = conn.cursor()
+        set_sql = ", ".join(f"{k}=%s" for k in updates)
+        cur.execute(f"UPDATE master_buildings SET {set_sql} WHERE id=%s",
+                    list(updates.values()) + [building_id])
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception:
+        app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
+
+
 @app.route("/api/building/<int:building_id>")
 def get_building(building_id):
     """건물 상세페이지용 단건 조회 — master_buildings 기준."""
@@ -325,61 +385,16 @@ def get_building(building_id):
 
     building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
 
-    # 즉시조회+캐싱: detail_fetched_at이 없는 건물의 첫 방문 때 표제부·지역지구구역·정기점검을 API로 가져와 DB에 저장.
-    # 실패해도 페이지 자체는 정상 렌더링 — 다음 방문 때 자동 재시도(detail_fetched_at을 안 남김).
+    # 첫 방문 시 표제부·지역지구구역·정기점검을 백그라운드 스레드로 조회해 캐싱.
+    # 요청 스레드를 블로킹하지 않으므로 이번 방문자는 "-"로 보이고,
+    # 다음 방문자부터 채워진 값을 본다.
     if (not building.get("detail_fetched_at")
             and building.get("sgg_cd") and building.get("umd_nm") and building.get("jibun")):
-        try:
-            bjd = _get_bjdong_map().find_bjdong_cd(building["sgg_cd"], building["umd_nm"])
-            if bjd:
-                plat_gb, bun, ji = parse_jibun(building["jibun"])
-                rows_title = building_registry._fetch_title_rows(building["sgg_cd"], bjd, plat_gb, bun, ji)
-                rep = max(rows_title, key=lambda r: int(r.get("hoCnt") or 0)) if rows_title else None
-                jj_rows = building_registry.fetch_jijigu_rows(building["sgg_cd"], bjd, plat_gb, bun, ji) if rep else []
-                insp_rows = building_registry.fetch_maintenance_history(building["sgg_cd"], bjd, plat_gb, bun, ji)
-
-                updates = {"detail_fetched_at": datetime.now()}
-                if rep:
-                    updates.update({
-                        "plat_area":          _to_float(rep.get("platArea")),
-                        "arch_area":          _to_float(rep.get("archArea")),
-                        "tot_area":           _to_float(rep.get("totArea")),
-                        "bc_rat":             _to_float(rep.get("bcRat")),
-                        "vl_rat":             _to_float(rep.get("vlRat")),
-                        "heit":               _to_float(rep.get("heit")),
-                        "grnd_flr_cnt":       _to_int(rep.get("grndFlrCnt")),
-                        "ugrnd_flr_cnt":      _to_int(rep.get("ugrndFlrCnt")),
-                        "ride_use_elvt_cnt":  _to_int(rep.get("rideUseElvtCnt")),
-                        "emgen_use_elvt_cnt": _to_int(rep.get("emgenUseElvtCnt")),
-                        "main_purps_nm":      rep.get("mainPurpsCdNm") or None,
-                        "strct_nm":           rep.get("strctCdNm") or None,
-                        "hhld_cnt":           _to_int(rep.get("hhldCnt")),
-                        "indr_auto_utcnt":    _to_int(rep.get("indrAutoUtcnt")),
-                        "oudr_auto_utcnt":    _to_int(rep.get("oudrAutoUtcnt")),
-                        "indr_mech_utcnt":    _to_int(rep.get("indrMechUtcnt")),
-                        "oudr_mech_utcnt":    _to_int(rep.get("oudrMechUtcnt")),
-                        "use_apr_day":        _fmt_date(rep.get("useAprDay")),
-                        "permit_day":         _fmt_date(rep.get("pmsDay")),
-                        "actual_start_day":   _fmt_date(rep.get("stcnsDay")),
-                    })
-                if jj_rows:
-                    updates["jiyuk_nm"]  = next((r.get("jiyukNm")  for r in jj_rows if r.get("jiyukNm")),  None)
-                    updates["jigu_nm"]   = next((r.get("jiguNm")   for r in jj_rows if r.get("jiguNm")),   None)
-                    updates["guyuk_nm"]  = next((r.get("guyukNm")  for r in jj_rows if r.get("guyukNm")),  None)
-                if insp_rows:
-                    latest = max(insp_rows, key=lambda r: r.get("chkStrtDay") or "")
-                    updates["last_inspection_agency"]     = latest.get("chkCoNm") or None
-                    updates["last_inspection_start_day"]  = _fmt_date(latest.get("chkStrtDay"))
-                    updates["last_inspection_submit_day"] = _fmt_date(latest.get("submitDe"))
-
-                set_sql = ", ".join(f"{k}=%s" for k in updates)
-                cur.execute(f"UPDATE master_buildings SET {set_sql} WHERE id=%s",
-                            list(updates.values()) + [building_id])
-                conn.commit()
-                building.update(updates)
-        except Exception:
-            app.logger.warning("건축정보 즉시조회 실패 (building_id=%s) — 다음 방문 때 재시도",
-                               building_id, exc_info=True)
+        threading.Thread(
+            target=_fetch_and_cache_building_detail,
+            args=(building_id, building["sgg_cd"], building["umd_nm"], building["jibun"]),
+            daemon=True,
+        ).start()
 
     # 전속중개사: agent_buildings에 이 건물이 등록된 approved 중개사 — 최대 3명.
     # 정렬: priority_score DESC(유료 우선노출 자리, 현재 전부 0) → 동점자는 RANDOM().
