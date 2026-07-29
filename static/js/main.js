@@ -328,7 +328,8 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.q = document.getElementById("inputQ").value.trim();
   state.page = 1;
   loadBoard();
-  loadMapMarkers(mapFiltersFromState(), { fit: false });
+  // q(건물명·주소)로 검색하면 결과가 현재 뷰 밖에 있을 수 있으므로 fit:true로 지도를 맞춤
+  loadMapMarkers(mapFiltersFromState(), { fit: !!state.q });
 });
 function resetToHome(){
   const yearSel = document.getElementById("selYear");
