@@ -7,7 +7,7 @@
 삭제 조건 (OR):
   1. 사용승인일(use_apr_day)이 있음 — 표제부에서 사용승인 확인 = 실제 완공
   2. 완공예정일(completion_expected_date)이 현재 기준 1년 이상 경과
-  3. 허가일(permit_day)이 현재 기준 5년 이상 경과 (착공 정보 없는 경우의 폴백)
+  3. 허가일(permit_day)이 현재 기준 2년 이상 경과 (착공 정보 없는 경우의 폴백)
   4. 동일 (sgg_cd, jibun)으로 source != 'permit_pipeline'인 완공 건물이 존재
   5. lodging_type_detail에 오염 키워드 포함
      ("일반숙박", "여관", "모텔", "고시원", "공중위생")
@@ -29,7 +29,7 @@ import psycopg2.extras
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-CUTOFF_YEARS = 5
+CUTOFF_YEARS = 2
 CUTOFF_DATE = date.today() - timedelta(days=365 * CUTOFF_YEARS)
 COMPLETION_CUTOFF = date.today() - timedelta(days=365)  # 완공예정일 1년 초과 컷오프
 

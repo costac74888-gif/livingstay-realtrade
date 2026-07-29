@@ -7461,6 +7461,66 @@ def admin_permits_sync_status():
     })
 
 
+@app.route("/api/admin/permits-cleanup", methods=["POST"])
+@require_admin
+def admin_permits_cleanup():
+    """permit_pipeline 건물 중 이미 완공됐거나 오염된 건물 삭제.
+    조건: ① use_apr_day 있음  ② completion_expected_date 1년 초과
+          ③ permit_day 2년 초과(착공정보 없는 폴백)  ④ (sgg_cd,jibun) 완공 중복  ⑤ 오염 키워드
+    dry_run=true(기본)이면 삭제 없이 대상 건수만 반환.
+    """
+    dry_run = request.json.get("dry_run", True) if request.is_json else True
+    from datetime import date as _d, timedelta as _td
+    cutoff_permit     = (_d.today() - _td(days=365 * 2)).isoformat()
+    cutoff_completion = (_d.today() - _td(days=365)).isoformat()
+    kws = [f"%{k}%" for k in ("일반숙박", "여관", "모텔", "고시원", "공중위생")]
+    conn = get_conn()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id FROM master_buildings
+            WHERE building_status IN ('허가','착공')
+              AND source = 'permit_pipeline'
+              AND (
+                (use_apr_day IS NOT NULL AND use_apr_day != '')
+                OR (completion_expected_date IS NOT NULL
+                    AND completion_expected_date::date < %s)
+                OR (permit_day IS NOT NULL
+                    AND to_date(permit_day,'YYYYMMDD') < %s::date)
+                OR EXISTS (
+                    SELECT 1 FROM master_buildings c
+                    WHERE c.source != 'permit_pipeline'
+                      AND c.sgg_cd = master_buildings.sgg_cd
+                      AND c.jibun = master_buildings.jibun
+                )
+                OR lodging_type_detail ILIKE ANY(%s)
+              )
+        """, (cutoff_completion, cutoff_permit, kws))
+        ids = [r["id"] for r in cur.fetchall()]
+        if dry_run or not ids:
+            conn.commit()
+            return jsonify({
+                "ok": True, "dry_run": dry_run,
+                "target_count": len(ids), "deleted": 0,
+                "message": f"삭제 대상 {len(ids)}건 (dry_run — 실제 삭제 없음)" if dry_run
+                           else "삭제할 건물이 없습니다.",
+            })
+        cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (ids,))
+        deleted = cur.rowcount
+        conn.commit()
+        return jsonify({
+            "ok": True, "dry_run": False,
+            "target_count": len(ids), "deleted": deleted,
+            "message": f"{deleted}건 삭제 완료.",
+        })
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "message": str(exc)[:300]}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/admin/run-realty-sync", methods=["POST"])
 @require_admin
 @limiter.limit("2 per hour")

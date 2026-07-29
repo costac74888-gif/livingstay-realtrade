@@ -292,7 +292,7 @@ def run(args, status_key=None, run_id=None):
                 elif _permit_raw and len(_permit_raw) == 8:
                     try:
                         _pd = datetime.strptime(_permit_raw, "%Y%m%d").date()
-                        if (date.today() - _pd).days > 365 * 5:
+                        if (date.today() - _pd).days > 365 * 2:
                             continue
                     except ValueError:
                         pass

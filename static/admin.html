@@ -1507,6 +1507,39 @@
       }
     }
 
+    // ---- 준공전 건물 정리(오염·완공 건물 삭제) ----
+    async function runPermitsCleanup(dryRun) {
+      const msg     = document.getElementById("permitsCleanupMsg");
+      const dryBtn  = document.getElementById("permitsCleanupDryBtn");
+      const execBtn = document.getElementById("permitsCleanupExecBtn");
+      msg.textContent = "";
+      dryBtn.disabled = execBtn.disabled = true;
+      msg.style.color = "#555";
+      msg.textContent = dryRun ? "대상 건수 계산 중…" : "삭제 실행 중…";
+      try {
+        const res = await fetch("/api/admin/permits-cleanup", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ dry_run: dryRun }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = dryRun ? "#1a5fa8" : "#1a7f37";
+          msg.textContent = d.message;
+          if (!dryRun) { loadPendingCompletion(); loadPermitsSyncStatus(); }
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "오류가 발생했습니다.";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      } finally {
+        dryBtn.disabled = execBtn.disabled = false;
+      }
+    }
+
     // ---- 실거래 동기화 ----
     // 배포된 앱(=운영 DB)에서 sync_batch.py --master-only 를 백그라운드로 실행.
     // 시작 후에는 몇 초 간격 폴링으로 진행상황(신규 적재 건수)을 자동 갱신한다.
@@ -1927,6 +1960,11 @@
             "완공으로 전환"을 눌러주세요. (전환 시 담당중개사 분양권 건수는 매매로 자동 합산됩니다)
           </p>
           <div id="pendingCompletionStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions" style="margin-top:10px">
+            <span id="permitsCleanupMsg" class="legal-msg" role="alert"></span>
+            <button id="permitsCleanupDryBtn"  class="admin-btn admin-btn-secondary">정리 대상 미리보기</button>
+            <button id="permitsCleanupExecBtn" class="admin-btn" style="background:#b3261e;color:#fff;">오염 건물 삭제 실행</button>
+          </div>
           <div id="pendingCompletionList" style="margin-top:10px"></div>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecBackup">
@@ -1953,6 +1991,8 @@
       document.getElementById("brokerGeoRunBtn").addEventListener("click", runBrokerGeocode);
       document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
       document.getElementById("permitsSyncRunBtn").addEventListener("click", runPermitsSync);
+      document.getElementById("permitsCleanupDryBtn").addEventListener("click", () => runPermitsCleanup(true));
+      document.getElementById("permitsCleanupExecBtn").addEventListener("click", () => runPermitsCleanup(false));
       document.getElementById("realtySyncRunBtn").addEventListener("click", runRealtySync);
       loadRealtySyncStatus();
       loadPermitsSyncStatus();
