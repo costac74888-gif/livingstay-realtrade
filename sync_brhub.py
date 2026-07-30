@@ -175,7 +175,7 @@ def run(args, status_key=None, run_id=None):
 
     processed = 0
     found_run = 0
-    counts = {"생활": 0, "호텔": 0, "콘도": 0, "병기": 0, "미분류": 0, "복합제외": 0}
+    counts = {"생활": 0, "관광": 0, "일반": 0, "복합": 0, "미분류": 0, "복합제외": 0}
 
     def _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name):
         """items 리스트를 필터·분류·INSERT. found_run·counts는 클로저로 접근."""
@@ -217,7 +217,7 @@ def run(args, status_key=None, run_id=None):
                     cats = set(cats) | {"생활"}
                 if cats:
                     label = _combine_labels(cats)
-                    counts["병기" if "·" in label else label] += 1
+                    counts["복합" if label == "복합" else label] += 1
                 else:
                     label = None
                     counts["미분류"] += 1

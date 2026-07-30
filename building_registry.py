@@ -215,45 +215,57 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     return floors
 
 
+# 관광숙박시설 세부유형 키워드 — 순서 중요(더 구체적인 표현을 먼저 검사).
+_TOURIST_SUBTYPE_KEYWORDS = [
+    "의료관광호텔", "수상관광호텔", "한국전통호텔", "가족호텔",
+    "소형호텔", "관광호텔", "호스텔", "휴양콘도미니엄",
+]
+
+
+def extract_tourist_subtype(text):
+    """관광숙박시설 세부유형(8종) 텍스트 파싱. 못 찾으면 None.
+    건축주가 인허가 신청 시 용도란에 괄호로 세부유형을 적는 관행이 있어
+    (예: '숙박시설(호스텔)'), 표제부/층별개요의 원문에서 그대로 추출한다."""
+    for kw in _TOURIST_SUBTYPE_KEYWORDS:
+        if kw in text:
+            return kw
+    return None
+
+
 def _find_categories(text):
-    """텍스트에 생활/호텔/콘도 키워드가 각각 있는지 집합으로 반환(동시에 여러 개 가능)."""
+    """텍스트에 생활/관광/일반 키워드가 각각 있는지 집합으로 반환(동시에 여러 개 가능).
+    '관광'은 호텔·콘도 전체를 아우르는 상위 카테고리 — 세부유형은 별도로
+    extract_tourist_subtype()에서 뽑는다. '일반숙박시설'은 더 이상 '호텔'로
+    잘못 합쳐지지 않고 독립 카테고리('일반')로 분류한다."""
     found = set()
     if "생활숙박시설" in text:
         found.add("생활")
-    if "휴양콘도미니엄" in text:
-        found.add("콘도")
-    # 호텔 판정 주의: "관광숙박시설"은 호텔업과 휴양콘도미니엄업을 모두 포함하는 **상위 분류명**이다.
-    # 그래서 "관광숙박시설(휴양콘도미니엄)"은 순수 콘도인데, 여기서 "관광숙박시설"만 보고 호텔로
-    # 잡으면 콘도가 '호텔·콘도'로 오분류된다(아폴리스/골드훼미리/스카이콘도 등에서 실제 발생).
-    # 따라서 (1) 구체적 호텔 표기("관광호텔"/"일반숙박시설")가 있거나,
-    #        (2) 콘도 표기 없이 상위명 "관광숙박시설"만 있을 때에만 호텔로 본다.
-    if "관광호텔" in text or "일반숙박시설" in text:
-        found.add("호텔")
-    elif "관광숙박시설" in text and "휴양콘도미니엄" not in text:
-        found.add("호텔")
+    if "일반숙박시설" in text:
+        found.add("일반")
+    if any(kw in text for kw in _TOURIST_SUBTYPE_KEYWORDS) or "관광숙박시설" in text:
+        found.add("관광")
     return found
 
 
-_CATEGORY_ORDER = ["생활", "호텔", "콘도"]  # 병기할 때 항상 이 순서로 표기 (예: "호텔·콘도")
+_CATEGORY_ORDER = ["생활", "관광", "일반"]
 
 
 def _combine_labels(categories):
-    """카테고리 집합을 '호텔·콘도'처럼 정해진 순서로 병기한 문자열로 만든다.
-    '혼재'라고 뭉뚱그리지 않고 실제 해당하는 라벨을 그대로 보여주기 위함."""
-    return "·".join(c for c in _CATEGORY_ORDER if c in categories)
+    """카테고리가 2개 이상 섞이면 '복합'으로 뭉뚱그린다 — 예전처럼 '생활·호텔'
+    식으로 개별 병기하지 않음 (복합/미분류는 하나의 버킷)."""
+    return "복합" if len(categories) > 1 else next(iter(categories))
 
 
 def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     """
-    이 지번의 건물을 생활/호텔/콘도로 분류한다 (표제부 → 필요시 층별개요 순).
-    한 건물에 2가지 이상 용도가 동시에 있으면 '혼재'로 뭉뚱그리지 않고
-    "호텔·콘도"처럼 실제 해당 라벨을 정해진 순서(생활→호텔→콘도)로 병기한다.
-    (표제부 기타용도에 "관광호텔,휴양콘도미니엄"이 나란히 적힌 빌라쥬 드 아난티류,
-     또는 층마다 용도가 다른 건물 등)
+    이 지번의 건물을 생활/관광/일반/복합으로 분류한다 (표제부 → 필요시 층별개요 순).
+    2개 이상 카테고리가 섞이면 '복합'으로 통합 반환한다.
+    관광숙박시설인 경우 세부유형(관광호텔/호스텔/휴양콘도미니엄 등)도 함께 반환한다.
 
-    반환값: (label, detail, title정보 dict 또는 None, 판정근거)
-      label: '생활' | '호텔' | '콘도' | '호텔·콘도' 등 병기 조합 | None(판정불가)
-      detail: 건축물대장에 실제로 적힌 원문 표기 — 화면 배지 툴팁에 근거로 그대로 보여주는 용도.
+    반환값: (label, detail, subtype, title정보 dict 또는 None, 판정근거)
+      label:   '생활' | '관광' | '일반' | '복합' | None(판정불가)
+      detail:  건축물대장에 실제로 적힌 원문 표기 — 화면 배지 툴팁용.
+      subtype: 관광숙박시설 세부유형 문자열(관광호텔/호스텔/휴양콘도미니엄 등), 해당 없으면 None.
 
     표제부에서 확정되면 층별개요는 조회하지 않는다(불필요한 대기 제거).
     """
@@ -261,7 +273,7 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     time.sleep(REQUEST_SLEEP)
 
     if not rows:
-        return None, "", None, "표제부 없음(집합 표제부 미등록 추정)"
+        return None, "", None, None, "표제부 없음(집합 표제부 미등록 추정)"
 
     # 대표 동(숙박 우선, hoCnt 최댓값) — 반환용 title dict (ho_cnt 등 부가정보)
     lodging = [r for r in rows if "숙박" in (r.get("mainPurpsCdNm", "") or "")]
@@ -269,8 +281,6 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     title = _title_row_to_dict(max(pool, key=_hocnt))
 
     # 카테고리는 '이 지번의 모든 동'을 훑어 합친다.
-    # 아난티 앳 부산(호텔 동 + 콘도 동이 한 지번에 나란히 선 복합단지)처럼
-    # 대표 동 하나만 보면 한쪽 용도를 놓치므로, 반드시 전 동을 합쳐야 "호텔·콘도" 병기가 된다.
     categories = set()
     detail_parts = []
     for r in rows:
@@ -284,17 +294,25 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     combined = " / ".join(detail_parts) if detail_parts else f"{title['main_purps']} {title['etc_purps']}".strip()
 
     # 1차: 표제부(전 동)에서 바로 확인
-    if len(categories) == 1:
-        return next(iter(categories)), combined, title, "표제부에서 확인"
-    if len(categories) > 1:
-        return _combine_labels(categories), combined, title, "표제부의 여러 동/용도를 합쳐 병기"
+    if len(categories) >= 1:
+        subtype = None
+        if "관광" in categories:
+            for r in rows:
+                etc = r.get("etcPurps", "")
+                text = f"{r.get('mainPurpsCdNm', '')} {etc}".strip()
+                subtype = extract_tourist_subtype(text)
+                if subtype:
+                    break
+        if len(categories) == 1:
+            return next(iter(categories)), combined, subtype, title, "표제부에서 확인"
+        return _combine_labels(categories), combined, subtype, title, "표제부의 여러 동/용도가 섞여 복합으로 분류"
 
     # 2차: 표제부만으론 판정 안 됨 → 층별개요 추가 조회, 전 층을 훑어 카테고리 집합을 모은다
     floors = fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
     time.sleep(REQUEST_SLEEP)
 
     if floors is None:
-        return None, combined, title, "층별개요 조회 실패(재시도 필요)"
+        return None, combined, None, title, "층별개요 조회 실패(재시도 필요)"
 
     all_categories = set()
     floor_detail_parts = []
@@ -306,12 +324,19 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
 
     full_detail = (combined + " / " + " / ".join(sorted(set(floor_detail_parts)))).strip(" /")
 
-    if len(all_categories) == 1:
-        return next(iter(all_categories)), full_detail, title, "층별개요에서 확인"
-    if len(all_categories) > 1:
-        return _combine_labels(all_categories), full_detail, title, "층별개요에 여러 용도가 섞여 있음"
+    if len(all_categories) >= 1:
+        subtype = None
+        if "관광" in all_categories:
+            for f in floors:
+                floor_text = f"{f['main_purps']} {f['etc_purps']}".strip()
+                subtype = extract_tourist_subtype(floor_text)
+                if subtype:
+                    break
+        if len(all_categories) == 1:
+            return next(iter(all_categories)), full_detail, subtype, title, "층별개요에서 확인"
+        return _combine_labels(all_categories), full_detail, subtype, title, "층별개요에 여러 용도가 섞여 복합으로 분류"
 
-    return None, full_detail, title, "표제부·층별개요 모두 판정 불가(용도 표기 없음)"
+    return None, full_detail, None, title, "표제부·층별개요 모두 판정 불가(용도 표기 없음)"
 
 
 def is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
@@ -326,7 +351,7 @@ def is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
       - None  : 표제부 없음 / 층별개요 조회 실패 / 판정불가 (나중에 재시도 필요, '아니다'와 다름)
                 title is None 여부로 '표제부 자체 없음'과 '조회는 됐으나 판정불가'를 구분할 수 있다.
     """
-    label, _detail, title, reason = classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    label, _detail, _subtype, title, reason = classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
     if label == "생활":
         return True, title, reason
     if label:  # '호텔','콘도', 또는 '호텔·콘도' 등 병기 라벨 전부 생숙 아님으로 축약

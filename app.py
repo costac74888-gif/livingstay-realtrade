@@ -343,7 +343,7 @@ def get_building(building_id):
     cur = conn.cursor()
     cur.execute("""
         SELECT mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
-               mb.lodging_type, mb.lodging_type_detail,
+               mb.lodging_type, mb.lodging_type_detail, mb.lodging_subtype,
                mb.building_status, mb.completion_expected_date,
                mb.permit_day, mb.actual_start_day,
                mb.arch_area, mb.bc_rat, mb.vl_rat,
@@ -739,9 +739,8 @@ def get_transactions():
         where.append("deal_date LIKE %s")
         params.append(f"{year}-%")
     if lodging_type == "복합":
-        # '호텔·콘도'처럼 여러 용도가 병기된 건물만 (백엔드가 LIKE '%·%'로 처리)
-        where.append("lodging_type LIKE %s")
-        params.append("%·%")
+        where.append("lodging_type = %s")
+        params.append("복합")
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
@@ -844,8 +843,8 @@ def get_buildings_geo():
         where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
         params.append(f"%{umd_nm.replace(' ', '')}%")
     if lodging_type == "복합":
-        where.append("lodging_type LIKE %s")
-        params.append("%·%")
+        where.append("lodging_type = %s")
+        params.append("복합")
     elif lodging_type == "미분류":
         where.append("lodging_type IS NULL")
     elif lodging_type == "준공전":
@@ -1317,7 +1316,7 @@ def submit_building():
     plat_gb, bun2, ji2 = parse_jibun(jibun_str)
 
     try:
-        label, detail, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun2, ji2)
+        label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun2, ji2)
     except Exception as e:
         return fail(f"건축물대장 조회 중 오류: {e}")
 
@@ -1350,9 +1349,9 @@ def submit_building():
         master_id = existing["id"]
         cur.execute("""
             UPDATE master_buildings
-            SET lodging_type=%s, lodging_type_detail=%s, verified_at=NOW()
+            SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW()
             WHERE id=%s
-        """, (label, detail, master_id))
+        """, (label, detail, subtype, master_id))
         # 임시명(name_pending) 상태였던 건물이 재제출로 API 명칭이 확인되면 그때 확정한다.
         # (관리자가 손질한 기존 확정 명칭은 덮어쓰지 않도록 name_pending=TRUE인 경우에만.)
         if api_bld_nm:
@@ -1375,10 +1374,10 @@ def submit_building():
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source,
-                 lodging_type, lodging_type_detail, verified_at, name_pending)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, NOW(), %s)
+                 lodging_type, lodging_type_detail, lodging_subtype, verified_at, name_pending)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, %s, NOW(), %s)
             RETURNING id
-        """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str, title["ho_cnt"], label, detail, name_pending))
+        """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str, title["ho_cnt"], label, detail, subtype, name_pending))
         master_id = cur.fetchone()["id"]
         # 신규 편입 건물의 좌표를 도로명주소로 즉시 채운다(실패해도 등록은 계속).
         _fill_master_coords(cur, master_id, road_addr_final)
@@ -2608,7 +2607,7 @@ def request_correction():
     plat_gb, bun, ji = parse_jibun(jibun)
 
     try:
-        label, detail, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+        label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji)
     except Exception as e:
         return fail(f"건축물대장 재조회 중 오류: {e}")
 
@@ -2646,9 +2645,9 @@ def request_correction():
 
     if changed:
         cur.execute("""
-            UPDATE master_buildings SET lodging_type=%s, lodging_type_detail=%s, verified_at=NOW()
+            UPDATE master_buildings SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW()
             WHERE id=%s
-        """, (label, detail, building["id"]))
+        """, (label, detail, subtype, building["id"]))
         cur.execute("""
             UPDATE transactions SET lodging_type=%s, lodging_type_detail=%s
             WHERE sgg_cd=%s AND REPLACE(umd_nm, ' ', '')=%s AND jibun=%s

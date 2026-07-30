@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-29-1"
+SCHEMA_VERSION = "2026-07-31-1"
 
 
 def init_db():
@@ -81,14 +81,28 @@ def init_db():
         biz_units INTEGER,            -- 영업신고호수
         source TEXT DEFAULT 'original', -- 'original' | 'api_discovered' | 'verify_rescued' | 'sync_verified' | 'user_submitted'
         verified_at TIMESTAMP,         -- is_living_stay로 실검증된 시각 (NULL이면 미검증 → 재분류 대상)
-        lodging_type TEXT,             -- '생활' | '호텔' | '콘도' (reclassify가 채움, NULL이면 미분류)
-        lodging_type_detail TEXT       -- 건축물대장 원문 용도 표기 (분류 근거, 화면 배지 툴팁용)
+        lodging_type TEXT,             -- '생활'|'관광'|'일반'|'복합' (reclassify가 채움, NULL이면 미분류)
+        lodging_type_detail TEXT,      -- 건축물대장 원문 용도 표기 (분류 근거, 화면 배지 툴팁용)
+        lodging_subtype TEXT           -- 관광숙박시설 세부유형(관광호텔/호스텔/휴양콘도미니엄 등), 해당없으면 NULL
     )
     """)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'original'")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type_detail TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_subtype TEXT")
+    # 기존 '호텔'/'콘도'/병기 데이터를 새 체계로 이관 (lodging_type_detail 원문은 보존).
+    cur.execute("""
+        UPDATE master_buildings
+        SET lodging_type = '관광'
+        WHERE lodging_type IN ('호텔', '콘도', '호텔·콘도', '콘도·호텔')
+    """)
+    # 나머지 '·' 병기(생활·호텔 등)는 복합으로 통합.
+    cur.execute("""
+        UPDATE master_buildings
+        SET lodging_type = '복합'
+        WHERE lodging_type LIKE '%·%'
+    """)
     # 지도 표시용 좌표 (geocode_buildings.py 가 카카오 주소검색으로 채움, NULL 허용)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION")
