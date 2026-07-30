@@ -1489,6 +1489,123 @@ function bStat(label, value){
   </div>`;
 }
 
+// ---- 건축정보 카드 공유 렌더러 + 백그라운드 폴링 ----
+let _detailPollTimer        = null;
+let _detailPollBuildingId   = null;
+
+function _cancelDetailPoll(){
+  if (_detailPollTimer !== null){ clearTimeout(_detailPollTimer); _detailPollTimer = null; }
+  _detailPollBuildingId = null;
+}
+
+// bBldgInfoCard + bTimelineCard(준공전)을 렌더. loadBuildingHeader와 폴링 콜백이 공유.
+function _renderDetailCards(b){
+  const bldgInfoCard = document.getElementById("bBldgInfoCard");
+  if (!bldgInfoCard) return;
+  const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
+  const fmtTxt = (v) => (v != null && v !== "") ? escapeHtml(String(v)) : "-";
+  const fmtDay = (v) => (v != null && v !== "") ? String(v).slice(0, 10).replace(/-/g, ".") : "-";
+  const fmtFlr = (g, u) => (g != null || u != null)
+    ? `${g != null ? g : "-"}층 / ${u != null ? u : "-"}층` : "-";
+  const isPreC = b.building_status && b.building_status !== "완공";
+  const fmtDayPlus3Y = (v) => {
+    if (!v) return "-";
+    const d = new Date(String(v).slice(0, 10));
+    if (isNaN(d)) return "-";
+    d.setFullYear(d.getFullYear() + 3);
+    return d.toISOString().slice(0, 10).replace(/-/g, ".");
+  };
+  const pairs = [
+    ["명칭",          fmtTxt(b.building_name)],
+    ["호수",          fmtNum(b.units, "호")],
+    ["대지면적",      fmtNum(b.plat_area, " ㎡")],
+    ["건축면적",      fmtNum(b.arch_area, " ㎡")],
+    ["연면적",        fmtNum(b.tot_area, " ㎡")],
+    ["건폐율",        fmtNum(b.bc_rat, "%")],
+    ["용적률",        fmtNum(b.vl_rat, "%")],
+    ["지상/지하층수", fmtFlr(b.grnd_flr_cnt, b.ugrnd_flr_cnt)],
+    ["높이",          fmtNum(b.heit, " m")],
+    ["용도지역",      fmtTxt(b.jiyuk_nm)],
+    ["지구",          fmtTxt(b.jigu_nm)],
+    ["구역",          fmtTxt(b.guyuk_nm)],
+    ["주용도",        fmtTxt(b.main_purps_nm)],
+    ["구조",          fmtTxt(b.strct_nm)],
+    ["자주식 주차",   fmtNum((b.indr_auto_utcnt ?? 0) + (b.oudr_auto_utcnt ?? 0) || null, "대")],
+    ["기계식 주차",   fmtNum((b.indr_mech_utcnt ?? 0) + (b.oudr_mech_utcnt ?? 0) || null, "대")],
+    ["승용승강기",    fmtNum(b.ride_use_elvt_cnt, "대")],
+    ["비상승강기",    fmtNum(b.emgen_use_elvt_cnt, "대")],
+    ["건축허가일",    fmtDay(b.permit_day)],
+    ["착공일",        fmtDay(b.actual_start_day)],
+    ["사용승인일",    fmtDay(b.use_apr_day)],
+    ["정기점검(완료)", fmtDay(b.last_inspection_submit_day)],
+    ["정기점검유효일", fmtDayPlus3Y(b.last_inspection_submit_day)],
+    ["점검기관",      fmtTxt(b.last_inspection_agency)],
+  ];
+  const cells = pairs.map(([k, v]) => `
+    <div class="b-bldg-cell">
+      <div class="b-bldg-k">${k}</div>
+      <div class="b-bldg-v">${v}</div>
+    </div>`).join("");
+  const hint = b.detail_fetched_at ? ""
+    : ` <span style="font-size:11px;color:#8a94a0;font-weight:500;margin-left:4px;">조회 중…</span>`;
+  bldgInfoCard.innerHTML = `
+    <div class="side-card-title">건축정보 <span class="side-sub">${isPreC ? "건축인허가" : "표제부"}</span>${hint}</div>
+    <div class="b-bldg-grid">${cells}</div>`;
+
+  // 타임라인(준공전 전용)
+  if (isPreC){
+    const tlCard = document.getElementById("bTimelineCard");
+    const tlBody = document.getElementById("bTimelineBody");
+    if (tlCard && tlBody){
+      const fmtDay8 = (v) => {
+        const s = (v == null) ? "" : String(v).trim();
+        return /^\d{8}$/.test(s) ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : "-";
+      };
+      const steps = [
+        { label: "건축허가", date: fmtDay8(b.permit_day),       done: !!(b.permit_day) },
+        { label: "착공",     date: fmtDay8(b.actual_start_day), done: !!(b.actual_start_day) },
+        { label: "사용승인", date: "-",                          done: false },
+      ];
+      const tcells = steps.map((s, i) => `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative;">
+          ${i > 0 ? `<div style="position:absolute;top:9px;left:-50%;width:100%;height:2px;background:${s.done ? "#378ADD" : "#D5DAE0"};"></div>` : ""}
+          <div style="position:relative;z-index:1;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;background:${s.done ? "#378ADD" : "#C7CCD1"};">${s.done ? "✓" : ""}</div>
+          <div style="margin-top:6px;font-size:12px;font-weight:700;color:${s.done ? "var(--ink)" : "var(--ink-soft)"};">${s.label}</div>
+          <div style="margin-top:2px;font-size:11.5px;font-family:'JetBrains Mono',monospace;color:var(--ink-soft);">${s.date}</div>
+        </div>`).join("");
+      tlBody.innerHTML = `<div style="display:flex;align-items:flex-start;padding:6px 4px 2px;">${tcells}</div>`;
+      tlCard.style.display = "";
+    }
+  }
+}
+
+// 백그라운드 조회 완료까지 폴링 — detail_fetched_at이 채워지면 카드 자동 갱신.
+function _startDetailPoll(buildingId){
+  _cancelDetailPoll();
+  _detailPollBuildingId = buildingId;
+  const MAX_TRIES  = 12;   // 최대 60초 (5s × 12)
+  const INTERVAL   = 5000;
+  let tries = 0;
+  async function poll(){
+    if (_detailPollBuildingId !== buildingId) return; // 다른 건물 열림 → 중단
+    tries++;
+    try {
+      const res = await fetch("/api/building/" + buildingId);
+      if (res.ok){
+        const fresh = await res.json();
+        if (_detailPollBuildingId !== buildingId) return;
+        if (fresh.detail_fetched_at){
+          _detailPollBuildingId = null;
+          _renderDetailCards(fresh);
+          return;
+        }
+      }
+    } catch(e){ /* 네트워크 오류 — 다음 회차에 재시도 */ }
+    if (tries < MAX_TRIES) _detailPollTimer = setTimeout(poll, INTERVAL);
+  }
+  _detailPollTimer = setTimeout(poll, INTERVAL);
+}
+
 async function loadBuildingHeader(id){
   const headerCard = document.getElementById("bHeaderCard");
   const adminCard = document.getElementById("bAdminCard");
@@ -1703,29 +1820,7 @@ async function loadBuildingHeader(id){
       <div class="side-empty">준공 전입니다. 사용승인 후 영업신고 정보가 표시됩니다.</div>
     `;
 
-    // 진행단계 타임라인 — 건축허가 → 착공 → 사용승인 (준공전 건물만 노출)
-    const tlCard = document.getElementById("bTimelineCard");
-    const tlBody = document.getElementById("bTimelineBody");
-    if (tlCard && tlBody) {
-      const fmtDay8 = (v) => {
-        const s = (v == null) ? "" : String(v).trim();
-        return /^\d{8}$/.test(s) ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : "-";
-      };
-      const steps = [
-        { label: "건축허가", date: fmtDay8(b.permit_day),       done: !!(b.permit_day) },
-        { label: "착공",     date: fmtDay8(b.actual_start_day), done: !!(b.actual_start_day) },
-        { label: "사용승인", date: "-",                          done: false }, // 완공 전이므로 항상 미도달
-      ];
-      const cells = steps.map((s, i) => `
-        <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
-          ${i > 0 ? `<div style="position:absolute; top:9px; left:-50%; width:100%; height:2px; background:${s.done ? "#378ADD" : "#D5DAE0"};"></div>` : ""}
-          <div style="position:relative; z-index:1; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; background:${s.done ? "#378ADD" : "#C7CCD1"};">${s.done ? "✓" : ""}</div>
-          <div style="margin-top:6px; font-size:12px; font-weight:700; color:${s.done ? "var(--ink)" : "var(--ink-soft)"};">${s.label}</div>
-          <div style="margin-top:2px; font-size:11.5px; font-family:'JetBrains Mono',monospace; color:var(--ink-soft);">${s.date}</div>
-        </div>`).join("");
-      tlBody.innerHTML = `<div style="display:flex; align-items:flex-start; padding:6px 4px 2px;">${cells}</div>`;
-      tlCard.style.display = "";
-    }
+    // 타임라인은 _renderDetailCards()가 담당 (폴링 갱신과 공유)
   } else {
     // [2] 행정운영 표 — 행안부 영업신고 데이터(영업/정상만) 기반.
     //     신고율 = 영업 중 객실수 합 / 총 호실수(units). 데이터 미수집이면 "확인 불가".
@@ -1801,57 +1896,12 @@ async function loadBuildingHeader(id){
   // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
   renderBuildingLoanConsultants(b.loan_consultants, id, bName, b.building_status);
 
-  // 건축정보(표제부) — 표제부 백필 전까지는 값이 없어 "-"로 표시. 백엔드가 아래 필드를
-  // /api/building/<id> 응답에 채우면 코드 수정 없이 자동으로 값이 나타난다.
-  const bldgInfoCard = document.getElementById("bBldgInfoCard");
-  if (bldgInfoCard){
-    const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
-    const fmtTxt = (v) => (v != null && v !== "") ? escapeHtml(String(v)) : "-";
-    const fmtDay = (v) => (v != null && v !== "") ? String(v).slice(0, 10).replace(/-/g, ".") : "-";
-    const fmtFlr = (g, u) => (g != null || u != null)
-      ? `${g != null ? g : "-"}층 / ${u != null ? u : "-"}층` : "-";
-    const isPreC = b.building_status && b.building_status !== "완공";
-    const fmtDayPlus3Y = (v) => {
-      if (!v) return "-";
-      const d = new Date(String(v).slice(0, 10));
-      if (isNaN(d)) return "-";
-      d.setFullYear(d.getFullYear() + 3);
-      return d.toISOString().slice(0, 10).replace(/-/g, ".");
-    };
-    const pairs = [
-      ["명칭",        fmtTxt(b.building_name)],
-      ["호수",        fmtNum(b.units, "호")],
-      ["대지면적",    fmtNum(b.plat_area, " ㎡")],
-      ["건축면적",    fmtNum(b.arch_area, " ㎡")],
-      ["연면적",      fmtNum(b.tot_area, " ㎡")],
-      ["건폐율",      fmtNum(b.bc_rat, "%")],
-      ["용적률",      fmtNum(b.vl_rat, "%")],
-      ["지상/지하층수", fmtFlr(b.grnd_flr_cnt, b.ugrnd_flr_cnt)],
-      ["높이",        fmtNum(b.heit, " m")],
-      ["용도지역",    fmtTxt(b.jiyuk_nm)],
-      ["지구",        fmtTxt(b.jigu_nm)],
-      ["구역",        fmtTxt(b.guyuk_nm)],
-      ["주용도",      fmtTxt(b.main_purps_nm)],
-      ["구조",        fmtTxt(b.strct_nm)],
-      ["자주식 주차", fmtNum((b.indr_auto_utcnt ?? 0) + (b.oudr_auto_utcnt ?? 0) || null, "대")],
-      ["기계식 주차", fmtNum((b.indr_mech_utcnt ?? 0) + (b.oudr_mech_utcnt ?? 0) || null, "대")],
-      ["승용승강기",  fmtNum(b.ride_use_elvt_cnt, "대")],
-      ["비상승강기",  fmtNum(b.emgen_use_elvt_cnt, "대")],
-      ["건축허가일",  fmtDay(b.permit_day)],
-      ["착공일",      fmtDay(b.actual_start_day)],
-      ["사용승인일",  fmtDay(b.use_apr_day)],
-      ["정기점검(완료)", fmtDay(b.last_inspection_submit_day)],
-      ["정기점검유효일", fmtDayPlus3Y(b.last_inspection_submit_day)],
-      ["점검기관",    fmtTxt(b.last_inspection_agency)],
-    ];
-    const cells = pairs.map(([k, v]) => `
-      <div class="b-bldg-cell">
-        <div class="b-bldg-k">${k}</div>
-        <div class="b-bldg-v">${v}</div>
-      </div>`).join("");
-    bldgInfoCard.innerHTML = `
-      <div class="side-card-title">건축정보 <span class="side-sub">${isPreC ? "건축인허가" : "표제부"}</span></div>
-      <div class="b-bldg-grid">${cells}</div>`;
+  // 건축정보(표제부) + 타임라인 — _renderDetailCards 공유 렌더러로 그린다.
+  // detail_fetched_at이 없으면 "조회 중…" 힌트가 표시되고 폴링이 자동 시작된다.
+  _renderDetailCards(b);
+  if (!b.detail_fetched_at
+      && b.sgg_cd && b.umd_nm && b.jibun) {
+    _startDetailPoll(id);
   }
 
   // 상거래정보(이 건물의 상가업소) — 실패/0건이면 기존 "준비 중" 카드 유지
@@ -2202,6 +2252,7 @@ async function loadBuildingTx(id, buildingStatus){
 function renderBuildingPanel(id){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  _cancelDetailPoll(); // 이전 건물의 폴링이 살아있으면 즉시 중단
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
 
