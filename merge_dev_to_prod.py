@@ -154,13 +154,20 @@ def merge_transactions(dev_cur, prod_conn, prod_cur, dry_run):
     prod_raw_keys = {r[0] for r in prod_cur.fetchall()}
     print(f"  운영 DB 기존 거래: {len(prod_raw_keys)}건")
 
-    # TX_COLS 중 실제 존재하는 컬럼만 사용 (운영 스키마 방어)
+    # 개발·운영 두 DB에 공통으로 존재하는 컬럼만 사용 (id, created_at 제외)
+    EXCLUDE = {"id", "created_at"}
     dev_cur.execute("""
         SELECT column_name FROM information_schema.columns
         WHERE table_name='transactions' ORDER BY ordinal_position
     """)
-    dev_tx_cols_all = [r[0] for r in dev_cur.fetchall()]
-    tx_cols = [c for c in TX_COLS if c in dev_tx_cols_all]
+    dev_cols = {r[0] for r in dev_cur.fetchall()} - EXCLUDE
+    prod_cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name='transactions' ORDER BY ordinal_position
+    """)
+    prod_cols = {r[0] for r in prod_cur.fetchall()} - EXCLUDE
+    tx_cols = sorted(dev_cols & prod_cols)   # 교집합, 정렬로 순서 고정
+    print(f"  병합 컬럼 ({len(tx_cols)}개): {', '.join(tx_cols)}")
 
     dev_cur.execute(f"SELECT {', '.join(tx_cols)} FROM transactions WHERE raw_key IS NOT NULL")
     dev_rows = dev_cur.fetchall()
@@ -187,7 +194,7 @@ def merge_transactions(dev_cur, prod_conn, prod_cur, dry_run):
         prod_cur.executemany(insert_sql, batch)
         inserted += sum(1 for _ in batch)  # rowcount not reliable for executemany
         prod_conn.commit()
-        print(f"  진행: {min(i + batch_size, len(new_rows))}/{len(new_rows)}건", end="\r")
+        print(f"  진행: {min(i + batch_size, len(new_rows))}/{len(new_rows)}건", flush=True)
 
     print(f"\n  ✅ 실제 INSERT 완료: {inserted}건")
     return inserted
