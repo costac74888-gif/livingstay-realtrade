@@ -31,6 +31,7 @@ sync_brhub.py — 건축HUB 표제부(getBrTitleInfo)로 전국 '집합건물 + 
 """
 
 import argparse
+import concurrent.futures
 import json
 import os
 import sys
@@ -125,6 +126,27 @@ def _load_existing_keys(cur):
     return triple, roads, jibuns
 
 
+def _fetch_all_dong_pages(key, sgg_cd, bjd_cd, sleep_s):
+    """한 법정동의 전체 페이지를 조회해 (items, pages_used, error_str|None) 반환.
+    pages_used = 성공한 API 호출 수. 재시도 실패 시 items=None."""
+    all_items, page = [], 1
+    while True:
+        try:
+            rows = _fetch_page(key, sgg_cd, bjd_cd, page)
+        except Exception as e:
+            time.sleep(15)
+            try:
+                rows = _fetch_page(key, sgg_cd, bjd_cd, page)
+            except Exception as e2:
+                return None, page - 1, repr(e2)[:160]
+        all_items.extend(rows)
+        if len(rows) < NUM_ROWS:
+            return all_items, page, None
+        page += 1
+        if sleep_s > 0:
+            time.sleep(sleep_s)
+
+
 def run(args, status_key=None, run_id=None):
     key = os.environ.get(KEY_ENV)
     if not key:
@@ -153,131 +175,131 @@ def run(args, status_key=None, run_id=None):
     found_run = 0
     counts = {"생활": 0, "호텔": 0, "콘도": 0, "병기": 0, "미분류": 0, "복합제외": 0}
 
-    while prog["idx"] < len(dongs):
-        if args.limit and processed >= args.limit:
-            break
-        if prog["calls_today"] >= args.daily_cap:
-            print(f"일일캡({args.daily_cap}) 도달 — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
-            break
-        # run_id 펜싱: 다른 실행이 상태를 가져갔으면 즉시 중단 (split-brain 방지)
-        if status_key and run_id and not _still_owner(cur, status_key, run_id):
-            print("[brhub] 다른 실행이 상태를 가져갔습니다 — 이 실행을 중단합니다.")
-            raise RuntimeError("동기화 소유권 상실(다른 실행이 시작됨)")
+    def _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name):
+        """items 리스트를 필터·분류·INSERT. found_run·counts는 클로저로 접근."""
+        nonlocal found_run
+        for it in items:
+            if (it.get("regstrGbCdNm") or "").strip() != "집합":
+                continue
+            purps_text = f"{it.get('mainPurpsCdNm') or ''} {it.get('etcPurps') or ''}".strip()
+            if not any(k in purps_text for k in ("숙박", "호텔", "콘도")):
+                continue
 
-        code, dong_name = dongs[prog["idx"]]
-        sgg_cd, bjd_cd = code[:5], code[5:]
-        sgg_text = sgg_map.get(sgg_cd, "")
-        umd_raw = dong_name[len(sgg_text):].strip() if sgg_text and dong_name.startswith(sgg_text) else dong_name.split()[-1]
+            jibun = _jibun_from_bunji(it.get("bun"), it.get("ji"))
+            umd_key = normalize_umd_nm(umd_raw)
+            plat_plc = (it.get("platPlc") or "").strip() or None
+            new_plat = (it.get("newPlatPlc") or "").strip() or None
+            road_address = new_plat or plat_plc or f"{sgg_text} {umd_raw} {jibun or ''}".strip()
 
-        page = 1
-        dong_error = False
-        while True:
-            try:
-                items = _fetch_page(key, sgg_cd, bjd_cd, page)
-            except Exception as e:
-                print(f"  [{dong_name}] p{page} 오류: {repr(e)[:160]} — 15초 후 1회 재시도")
-                time.sleep(15)
-                try:
-                    items = _fetch_page(key, sgg_cd, bjd_cd, page)
-                except Exception as e2:
-                    print(f"  [{dong_name}] 재시도 실패({repr(e2)[:120]}) — 이 법정동은 다음 실행 때 재처리")
+            if jibun and (sgg_cd, umd_key, jibun) in triple:
+                continue
+            rn = normalize_road_prefix(road_address)
+            if rn and rn in roads:
+                continue
+            jn = normalize_jibun_prefix(plat_plc or road_address)
+            if jn and jn in jibuns:
+                continue
+
+            main_purps = (it.get("mainPurpsCdNm") or "").strip()
+            gate_ok = any(k in main_purps for k in ("숙박", "호텔", "콘도")) or (
+                not main_purps and ("생활숙박" in purps_text or "생활형숙박" in purps_text))
+
+            if not gate_ok:
+                label = "mixed_use_excluded"
+                detail_text = ("[복합용도-자동제외] " + purps_text)[:500]
+                counts["복합제외"] += 1
+            else:
+                detail_text = purps_text[:500] or None
+                cats = _find_categories(purps_text)
+                if "생활형숙박" in purps_text or "생활숙박" in purps_text:
+                    cats = set(cats) | {"생활"}
+                if cats:
+                    label = _combine_labels(cats)
+                    counts["병기" if "·" in label else label] += 1
+                else:
+                    label = None
+                    counts["미분류"] += 1
+
+            bld_nm = (it.get("bldNm") or "").strip() or "-"
+            units = int(it.get("hoCnt") or 0) or None
+
+            if args.dry_run:
+                print(f"  [발견] {dong_name} | {bld_nm} | {label or '미분류'} | {purps_text[:60]} | {units}호")
+            else:
+                cur.execute("""
+                    INSERT INTO master_buildings
+                        (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
+                         units, hhld_cnt, use_apr_day, tot_area, plat_area,
+                         grnd_flr_cnt, ugrnd_flr_cnt, source, lodging_type, lodging_type_detail)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'brhub_bulk',%s,%s)
+                """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
+                      units, int(it.get("hhldCnt") or 0) or None,
+                      (str(it.get("useAprDay") or "").strip() or None),
+                      float(it.get("totArea") or 0) or None, float(it.get("platArea") or 0) or None,
+                      int(it.get("grndFlrCnt") or 0) or None, int(it.get("ugrndFlrCnt") or 0) or None,
+                      label, detail_text))
+            found_run += 1
+            prog["found_total"] = prog.get("found_total", 0) + 1
+            if jibun:
+                triple.add((sgg_cd, umd_key, jibun))
+            if rn:
+                roads.add(rn)
+            if jn:
+                jibuns.add(jn)
+
+    workers = getattr(args, "workers", 4)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        while prog["idx"] < len(dongs):
+            if args.limit and processed >= args.limit:
+                break
+            if prog["calls_today"] >= args.daily_cap:
+                print(f"일일캡({args.daily_cap}) 도달 — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
+                break
+            if status_key and run_id and not _still_owner(cur, status_key, run_id):
+                print("[brhub] 다른 실행이 상태를 가져갔습니다 — 이 실행을 중단합니다.")
+                raise RuntimeError("동기화 소유권 상실(다른 실행이 시작됨)")
+
+            # 배치 크기: WORKERS개 동을 동시 조회
+            batch_size = min(workers, len(dongs) - prog["idx"])
+            if args.limit:
+                batch_size = min(batch_size, args.limit - processed)
+            if batch_size <= 0:
+                break
+            batch = dongs[prog["idx"] : prog["idx"] + batch_size]
+
+            # 병렬 fetch (페이지 조회는 스레드풀, 처리는 순서대로 메인 스레드)
+            fetch_jobs = []
+            for code, dong_name in batch:
+                sgg_cd_b, bjd_cd_b = code[:5], code[5:]
+                f = pool.submit(_fetch_all_dong_pages, key, sgg_cd_b, bjd_cd_b, args.sleep)
+                fetch_jobs.append((f, code, dong_name, sgg_cd_b, bjd_cd_b))
+
+            dong_error = False
+            for f, code, dong_name, sgg_cd, bjd_cd in fetch_jobs:
+                items, pages_used, error = f.result()
+                prog["calls_today"] += pages_used + (1 if error and pages_used == 0 else 0)
+
+                sgg_text = sgg_map.get(sgg_cd, "")
+                umd_raw = (dong_name[len(sgg_text):].strip()
+                           if sgg_text and dong_name.startswith(sgg_text)
+                           else dong_name.split()[-1])
+
+                if error or items is None:
+                    print(f"  [{dong_name}] 오류: {error} — 이 법정동은 다음 실행 때 재처리")
                     dong_error = True
                     break
-            prog["calls_today"] += 1
 
-            for it in items:
-                if (it.get("regstrGbCdNm") or "").strip() != "집합":
-                    continue
-                purps_text = f"{it.get('mainPurpsCdNm') or ''} {it.get('etcPurps') or ''}".strip()
-                # '숙박' 없이 '호텔'/'콘도'만 표기된 대장(예: 주용도 '관광호텔')도 후보로 통과
-                if not any(k in purps_text for k in ("숙박", "호텔", "콘도")):
-                    continue
+                _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name)
+                prog["idx"] += 1
+                processed += 1
+                if not args.dry_run:
+                    conn.commit()
+                    _save_progress(conn, cur, prog)
 
-                jibun = _jibun_from_bunji(it.get("bun"), it.get("ji"))
-                umd_key = normalize_umd_nm(umd_raw)
-                plat_plc = (it.get("platPlc") or "").strip() or None
-                new_plat = (it.get("newPlatPlc") or "").strip() or None
-                road_address = new_plat or plat_plc or f"{sgg_text} {umd_raw} {jibun or ''}".strip()
-
-                # 중복 3중 체크
-                if jibun and (sgg_cd, umd_key, jibun) in triple:
-                    continue
-                rn = normalize_road_prefix(road_address)
-                if rn and rn in roads:
-                    continue
-                jn = normalize_jibun_prefix(plat_plc or road_address)  # 기존 키 로딩과 동일한 폴백(대칭성)
-                if jn and jn in jibuns:
-                    continue
-
-                # 1차 게이트(사용자 지시 2026-07-22): 주용도(mainPurpsCdNm)가 숙박 계열이어야만
-                # 분류 파이프라인 진행. 다른 대분류(업무/판매/공동주택 등)에 숙박이 기타용도로만
-                # 낀 복합시설은 mixed_use_excluded로 태깅해 자동 분류·노출 대상에서 제외.
-                # (주용도가 비어있는 예외는 '생활숙박' 명시가 있을 때만 통과)
-                main_purps = (it.get("mainPurpsCdNm") or "").strip()
-                gate_ok = any(k in main_purps for k in ("숙박", "호텔", "콘도")) or (
-                    not main_purps and ("생활숙박" in purps_text or "생활형숙박" in purps_text))
-
-                if not gate_ok:
-                    label = "mixed_use_excluded"
-                    detail_text = ("[복합용도-자동제외] " + purps_text)[:500]
-                    counts["복합제외"] += 1
-                else:
-                    detail_text = purps_text[:500] or None
-                    cats = _find_categories(purps_text)
-                    # '생활형숙박시설'(메종드리치190 등) 변형 표기 보강
-                    if "생활형숙박" in purps_text or "생활숙박" in purps_text:
-                        cats = set(cats) | {"생활"}
-                    if cats:
-                        label = _combine_labels(cats)
-                        counts["병기" if "·" in label else label] += 1
-                    else:
-                        label = None  # 미분류 — 층별개요 2차 검증 대상
-                        counts["미분류"] += 1
-
-                bld_nm = (it.get("bldNm") or "").strip() or "-"
-                units = int(it.get("hoCnt") or 0) or None
-
-                if args.dry_run:
-                    print(f"  [발견] {dong_name} | {bld_nm} | {label or '미분류'} | {purps_text[:60]} | {units}호")
-                else:
-                    cur.execute("""
-                        INSERT INTO master_buildings
-                            (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
-                             units, hhld_cnt, use_apr_day, tot_area, plat_area,
-                             grnd_flr_cnt, ugrnd_flr_cnt, source, lodging_type, lodging_type_detail)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'brhub_bulk',%s,%s)
-                    """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
-                          units, int(it.get("hhldCnt") or 0) or None,
-                          (str(it.get("useAprDay") or "").strip() or None),
-                          float(it.get("totArea") or 0) or None, float(it.get("platArea") or 0) or None,
-                          int(it.get("grndFlrCnt") or 0) or None, int(it.get("ugrndFlrCnt") or 0) or None,
-                          label, detail_text))
-                found_run += 1
-                prog["found_total"] = prog.get("found_total", 0) + 1
-                # 신규분도 중복 셋에 추가 (같은 실행 내 재발견 방지)
-                if jibun:
-                    triple.add((sgg_cd, umd_key, jibun))
-                if rn:
-                    roads.add(rn)
-                if jn:
-                    jibuns.add(jn)
-
-            if len(items) < NUM_ROWS:  # 실제 응답 건수 기준 완료 판정
+            if processed % 50 == 0:
+                print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
+            if dong_error:
                 break
-            page += 1
-            time.sleep(args.sleep)
-
-        if not dong_error:
-            prog["idx"] += 1
-        processed += 1
-        if not args.dry_run:
-            conn.commit()
-            _save_progress(conn, cur, prog)
-        if processed % 50 == 0:
-            print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
-        if dong_error:
-            break
-        time.sleep(args.sleep)
 
     print(f"\n[종료] 법정동 {prog['idx']}/{len(dongs)} 처리, 오늘 호출 {prog['calls_today']}, "
           f"이번 실행 발견 {found_run}건 (누적 {prog.get('found_total', 0)}건)")
@@ -293,6 +315,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="이번 실행에서 처리할 법정동 수 (0=일일캡까지)")
     ap.add_argument("--daily-cap", type=int, default=8000)
+    ap.add_argument("--workers", type=int, default=4,
+                    help="동시 법정동 조회 스레드 수 (기본 4)")
     ap.add_argument("--sleep", type=float, default=0.2)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--reset", action="store_true", help="체크포인트 초기화 후 처음부터")
