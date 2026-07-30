@@ -10404,6 +10404,9 @@ def admin_stats():
     """)
     building_by_type = [{"lodging_type": r["lodging_type"], "count": int(r["count"])} for r in cur.fetchall()]
 
+    cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE building_status IN ('허가', '착공')")
+    building_pre_completion_count = int(cur.fetchone()["c"])
+
     # 3) 시/도별 건물 수 상위 10 (master_buildings.sgg_text의 첫 토큰 = 시/도)
     cur.execute("""
         SELECT split_part(sgg_text, ' ', 1) AS sido, COUNT(*) AS count
@@ -10495,7 +10498,8 @@ def admin_stats():
             "earliest_ym": tx_earliest_ym,
             "recent24": tx_recent24,
         },
-        "buildings": {"by_type": building_by_type, "by_sido": building_by_sido},
+        "buildings": {"by_type": building_by_type, "by_sido": building_by_sido,
+                      "pre_completion_count": building_pre_completion_count},
         "members": members,
         "operators": {"by_category": operator_by_category},
         "views": {"daily": views_daily, "top_paths": views_top_paths, "collect_start": collect_start},
