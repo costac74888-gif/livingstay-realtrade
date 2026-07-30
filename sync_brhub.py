@@ -165,7 +165,9 @@ def run(args, status_key=None, run_id=None):
         prog["calls_today"] = 0
     if prog["calls_today"] >= args.daily_cap:
         print(f"오늘 호출 {prog['calls_today']}회 — 일일캡({args.daily_cap}) 도달, 내일 재실행하세요.")
-        return
+        cur.close()
+        conn.close()
+        return False, 0, 0, prog["calls_today"]
 
     triple, roads, jibuns = _load_existing_keys(cur)
     print(f"[시작] 법정동 {prog['idx']}/{len(dongs)}부터, 오늘 호출 {prog['calls_today']}/{args.daily_cap}, "
