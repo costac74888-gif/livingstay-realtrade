@@ -28,7 +28,7 @@
 
   // ---- 로고(브랜드) : index는 제자리초기화 버튼, 그 외 페이지는 홈 링크 ----
   var brandInner =
-    '<img class="brand-mark-img" src="/static/home_stay_logo.png" alt="HOME &amp; STAY">' +
+    '<img class="brand-mark-img" src="/static/home_stay_share.png" alt="HOME &amp; STAY">' +
     '<div class="brand-text"><div class="name">홈앤스테이</div></div>';
   var brandHtml = inplace
     ? '<div class="brand" id="brandHome" title="홈으로 (전체 보기)" style="cursor:pointer;">' + brandInner + '</div>'
