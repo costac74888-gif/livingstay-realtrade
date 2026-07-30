@@ -460,7 +460,7 @@ document.getElementById("btnCloseCorrection").addEventListener("click", () => {
 });
 
 // ---------- 카카오맵 ----------
-const LODGING_COLORS = { "생활": "#378ADD", "관광": "#7F77DD", "일반": "#B5651D", "복합": "#8A6FBF", "미분류": "#D9A441" };
+const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#B39DDB" };
 const LODGING_LABELS = { "생활": "생활숙박시설", "관광": "관광숙박시설", "일반": "일반숙박시설", "복합": "복합", "미분류": "미분류" };
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 

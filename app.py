@@ -10394,11 +10394,13 @@ def admin_stats():
             m = 1
             y += 1
 
-    # 2) 용도별(생활/호텔/콘도) 건물 수 분포
+    # 2) 용도별 건물 수 분포 — NULL·미분류·기타 구값은 모두 '복합' 버킷으로 합산
     cur.execute("""
-        SELECT COALESCE(NULLIF(lodging_type, ''), '미분류') AS lodging_type, COUNT(*) AS count
+        SELECT
+            CASE WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type ELSE '복합' END AS lodging_type,
+            COUNT(*) AS count
         FROM master_buildings
-        GROUP BY COALESCE(NULLIF(lodging_type, ''), '미분류')
+        GROUP BY 1
         ORDER BY count DESC
     """)
     building_by_type = [{"lodging_type": r["lodging_type"], "count": int(r["count"])} for r in cur.fetchall()]
@@ -10485,6 +10487,17 @@ def admin_stats():
     """)
     revenue_month_total = int(cur.fetchone()["total"])
 
+    # 거래 5분류 집계 — NULL·기타 구값은 '복합' 버킷으로 합산
+    cur.execute("""
+        SELECT
+            CASE WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type ELSE '복합' END AS lodging_type,
+            COUNT(*) AS count
+        FROM transactions
+        GROUP BY 1
+        ORDER BY count DESC
+    """)
+    tx_by_type = [{"lodging_type": r["lodging_type"], "count": int(r["count"])} for r in cur.fetchall()]
+
     cur.close()
     conn.close()
 
@@ -10496,6 +10509,7 @@ def admin_stats():
             "total_count": tx_total_count,
             "earliest_ym": tx_earliest_ym,
             "recent24": tx_recent24,
+            "by_type": tx_by_type,
         },
         "buildings": {"by_type": building_by_type, "by_sido": building_by_sido,
                       "pre_completion_count": building_pre_completion_count},

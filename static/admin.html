@@ -565,11 +565,20 @@
                 const byType = (d.buildings && d.buildings.by_type) || [];
                 const find = (name) => (byType.find(r => r.lodging_type === name) || {}).count || 0;
                 const preCompletion = (d.buildings && d.buildings.pre_completion_count) || 0;
-                return `생숙 ${num(find("생활"))} · 호텔 ${num(find("호텔"))} · 콘도 ${num(find("콘도"))} · 미분류 ${num(find("미분류"))} · 준공전 ${num(preCompletion)}`;
+                return `생숙 ${num(find("생활"))} · 관광숙박 ${num(find("관광"))} · 일반숙박 ${num(find("일반"))} · 복합 ${num(find("복합"))} · 준공전 ${num(preCompletion)}`;
               })()}
             </div>
           </div>
-          <div class="stats-kpi"><span class="stats-kpi-label">${totalTxLabel}</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span></div>
+          <div class="stats-kpi">
+            <span class="stats-kpi-label">${totalTxLabel}</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span>
+            <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px; line-height:1.6;">
+              ${(() => {
+                const byType = (d.transactions && d.transactions.by_type) || [];
+                const find = (name) => (byType.find(r => r.lodging_type === name) || {}).count || 0;
+                return `생숙 ${num(find("생활"))} · 관광숙박 ${num(find("관광"))} · 일반숙박 ${num(find("일반"))} · 복합 ${num(find("복합"))}`;
+              })()}
+            </div>
+          </div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">승인 운영지원업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
           <div class="stats-kpi"><span class="stats-kpi-label">이번달 매출</span><span class="stats-kpi-val">${num((d.revenue && d.revenue.month_total) || 0)}</span><span class="stats-kpi-unit">원</span></div>
