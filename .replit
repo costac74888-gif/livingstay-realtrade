@@ -47,6 +47,14 @@ args = "Fill PK"
 task = "workflow.run"
 args = "BRHUB Sync"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Merge Dev→Prod (dry-run)"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Merge Dev→Prod (실제반영)"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -132,6 +140,22 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "nice -n 19 python -u sync_brhub.py --sleep 0.15"
+
+[[workflows.workflow]]
+name = "Merge Dev→Prod (dry-run)"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -u merge_dev_to_prod.py --dry-run"
+
+[[workflows.workflow]]
+name = "Merge Dev→Prod (실제반영)"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -u merge_dev_to_prod.py"
 
 [[ports]]
 localPort = 5000
