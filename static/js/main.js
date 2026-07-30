@@ -1290,7 +1290,12 @@ function openListingRequestModal(buildingId, buildingName){
         <input id="lrPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD}" />
         <div id="lrMsg" style="font-size:12px; color:var(--brick); min-height:16px; margin-top:6px;"></div>
         <button id="lrSubmit" class="btn-search" style="width:100%; padding:12px; margin-top:6px;">매물의뢰 접수하기</button>
-        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.55; margin-top:10px; padding:8px 10px; background:#F4F1EA; border-radius:8px;">담당중개사가 있으면 그쪽으로, 없으면 같은 지역 등록중개사에게, 그것도 없으면 홈스퀘어 중개법인으로 자동 배정됩니다.</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.7; margin-top:10px; padding:10px 12px; background:#F4F1EA; border-radius:8px;">
+          <div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>
+          -매물의뢰는 단지부동산, 인근부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>
+          -홈앤스테이는 부동산중개사무소가 아니며 중개행위에 관여하지 않고, 중개수수료를 받지 않습니다.<br><br>
+          -"매물의뢰"는 매물내놓기 무료서비스이며, 중개의뢰는 배정된 중개사를 통하여 별도로 상담을 진행하여 주시기 바랍니다.
+        </div>
       </div>
       <div id="lrDone" style="display:none; text-align:center; padding:18px 4px;">
         <div style="font-size:34px; margin-bottom:10px;">✅</div>
