@@ -133,23 +133,32 @@ def _is_429(exc):
 
 
 def _fetch_all_dong_pages(key, sgg_cd, bjd_cd, sleep_s):
-    """한 법정동의 전체 페이지를 조회해 (items, pages_used, error_str|None) 반환.
+    """한 법정동의 전체 페이지를 조회해 (items, pages_used, error_str|None, saw_429) 반환.
     pages_used = 성공한 API 호출 수. 재시도 실패 시 items=None.
-    429(속도 제한): 45초 대기 후 1회 재시도. 그 외 오류: 15초 대기 후 재시도."""
-    all_items, page = [], 1
+    429(속도 제한): 60 → 120 → 180초 대기로 최대 3회 재시도.
+    그 외 오류: 15초 대기 후 1회 재시도."""
+    all_items, page, saw_429 = [], 1, False
     while True:
-        try:
-            rows = _fetch_page(key, sgg_cd, bjd_cd, page)
-        except Exception as e:
-            wait = 45 if _is_429(e) else 15
-            time.sleep(wait)
+        last_exc = None
+        for attempt in range(3):
             try:
                 rows = _fetch_page(key, sgg_cd, bjd_cd, page)
-            except Exception as e2:
-                return None, page - 1, repr(e2)[:160]
+                last_exc = None
+                break
+            except Exception as e:
+                last_exc = e
+                is_r429 = _is_429(e)
+                if is_r429:
+                    saw_429 = True
+                if attempt < 2:
+                    wait = 60 * (attempt + 1) if is_r429 else 15
+                    print(f"    재시도 {attempt + 1}/2 — {'429 속도제한' if is_r429 else '오류'}, {wait}초 대기…")
+                    time.sleep(wait)
+        if last_exc is not None:
+            return None, page - 1, repr(last_exc)[:160], saw_429
         all_items.extend(rows)
         if len(rows) < NUM_ROWS:
-            return all_items, page, None
+            return all_items, page, None, saw_429
         page += 1
         if sleep_s > 0:
             time.sleep(sleep_s)
@@ -263,6 +272,7 @@ def run(args, status_key=None, run_id=None):
     stop_reason = None
     consecutive_fails = 0
     FAIL_STREAK_LIMIT = 5
+    current_sleep = args.sleep  # 429 감지 시 adaptive하게 늘어남
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         while prog["idx"] < len(dongs):
             if args.limit and processed >= args.limit:
@@ -288,13 +298,18 @@ def run(args, status_key=None, run_id=None):
             fetch_jobs = []
             for code, dong_name in batch:
                 sgg_cd_b, bjd_cd_b = code[:5], code[5:]
-                f = pool.submit(_fetch_all_dong_pages, key, sgg_cd_b, bjd_cd_b, args.sleep)
+                f = pool.submit(_fetch_all_dong_pages, key, sgg_cd_b, bjd_cd_b, current_sleep)
                 fetch_jobs.append((f, code, dong_name, sgg_cd_b, bjd_cd_b))
 
             circuit_break = False
             for f, code, dong_name, sgg_cd, bjd_cd in fetch_jobs:
-                items, pages_used, error = f.result()
+                items, pages_used, error, saw_429 = f.result()
                 prog["calls_today"] += pages_used + (1 if error and pages_used == 0 else 0)
+
+                # 429 감지 시 이후 동 간 딜레이를 adaptive하게 늘린다
+                if saw_429:
+                    current_sleep = min(max(current_sleep, 0.5) * 2, 10.0)
+                    print(f"  [429 감지] 이후 동 간 딜레이를 {current_sleep:.1f}초로 늘립니다")
 
                 sgg_text = sgg_map.get(sgg_cd, "")
                 umd_raw = (dong_name[len(sgg_text):].strip()
@@ -320,6 +335,9 @@ def run(args, status_key=None, run_id=None):
                         circuit_break = True
                         stop_reason = "consecutive_failures"
                         break
+                    # 동 간 딜레이 적용 (오류 동 포함 — 다음 동 요청 전 숨 고르기)
+                    if current_sleep > 0:
+                        time.sleep(current_sleep)
                     continue
 
                 consecutive_fails = 0
@@ -329,6 +347,9 @@ def run(args, status_key=None, run_id=None):
                 if not args.dry_run:
                     conn.commit()
                     _save_progress(conn, cur, prog)
+                # 동 간 딜레이 적용 — 페이지 간 sleep과 별개로, 동과 동 사이에 쉰다
+                if current_sleep > 0:
+                    time.sleep(current_sleep)
 
             if processed % 50 == 0:
                 print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
@@ -353,7 +374,8 @@ def main():
     ap.add_argument("--daily-cap", type=int, default=8000)
     ap.add_argument("--workers", type=int, default=1,
                     help="동시 법정동 조회 스레드 수 (기본 4)")
-    ap.add_argument("--sleep", type=float, default=0.2)
+    ap.add_argument("--sleep", type=float, default=1.0,
+                        help="동 간 기본 딜레이(초). 429 감지 시 자동으로 늘어남. (기본: 1.0)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--reset", action="store_true", help="체크포인트 초기화 후 처음부터")
     ap.add_argument("--start-idx", type=int, default=-1, help="(테스트용) 이번 실행만 이 인덱스부터")

@@ -139,7 +139,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "nice -n 19 python -u sync_brhub.py --sleep 0.15"
+args = "nice -n 19 python -u sync_brhub.py --sleep 1.0"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[workflows.workflow]]
 name = "Merge Dev→Prod (dry-run)"
