@@ -7370,6 +7370,8 @@ def admin_brhub_sync_status():
         "checkpoint_idx": (progress.get("idx") if progress else 0) or 0,
         "total_dongs": _brhub_total_dongs(),
         "found_total": (progress.get("found_total") if progress else 0) or 0,
+        "failed_dongs": (progress.get("failed_dongs") if progress else None) or [],
+        "stop_reason": (status.get("stop_reason") if status else None),
         "calls_today": calls_today,
         "calls_remaining": max(0, _BRHUB_DAILY_CAP - calls_today),
         "daily_cap": _BRHUB_DAILY_CAP,

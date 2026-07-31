@@ -252,12 +252,17 @@ def run(args, status_key=None, run_id=None):
                 jibuns.add(jn)
 
     workers = getattr(args, "workers", 4)
+    stop_reason = None
+    consecutive_fails = 0
+    FAIL_STREAK_LIMIT = 5
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         while prog["idx"] < len(dongs):
             if args.limit and processed >= args.limit:
+                stop_reason = "limit"
                 break
             if prog["calls_today"] >= args.daily_cap:
                 print(f"일일캡({args.daily_cap}) 도달 — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
+                stop_reason = "daily_cap"
                 break
             if status_key and run_id and not _still_owner(cur, status_key, run_id):
                 print("[brhub] 다른 실행이 상태를 가져갔습니다 — 이 실행을 중단합니다.")
@@ -278,7 +283,7 @@ def run(args, status_key=None, run_id=None):
                 f = pool.submit(_fetch_all_dong_pages, key, sgg_cd_b, bjd_cd_b, args.sleep)
                 fetch_jobs.append((f, code, dong_name, sgg_cd_b, bjd_cd_b))
 
-            dong_error = False
+            circuit_break = False
             for f, code, dong_name, sgg_cd, bjd_cd in fetch_jobs:
                 items, pages_used, error = f.result()
                 prog["calls_today"] += pages_used + (1 if error and pages_used == 0 else 0)
@@ -289,10 +294,27 @@ def run(args, status_key=None, run_id=None):
                            else dong_name.split()[-1])
 
                 if error or items is None:
-                    print(f"  [{dong_name}] 오류: {error} — 이 법정동은 다음 실행 때 재처리")
-                    dong_error = True
-                    break
+                    print(f"  [{dong_name}] 오류: {error} — 이 법정동은 건너뛰고 계속 진행합니다")
+                    failed = prog.setdefault("failed_dongs", [])
+                    failed.append({"code": code, "name": dong_name,
+                                   "error": (error or "")[:200],
+                                   "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+                    prog["failed_dongs"] = failed[-50:]  # 최근 50건만 보관(무한 증가 방지)
+                    prog["idx"] += 1  # 건너뛰고 다음 법정동으로 — 전체 중단하지 않는다
+                    processed += 1
+                    consecutive_fails += 1
+                    if not args.dry_run:
+                        conn.commit()
+                        _save_progress(conn, cur, prog)
+                    if consecutive_fails >= FAIL_STREAK_LIMIT:
+                        print(f"[brhub] 연속 {FAIL_STREAK_LIMIT}개 법정동 실패 — "
+                              f"API 자체 문제일 수 있어 이번 실행을 중단합니다.")
+                        circuit_break = True
+                        stop_reason = "consecutive_failures"
+                        break
+                    continue
 
+                consecutive_fails = 0
                 _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name)
                 prog["idx"] += 1
                 processed += 1
@@ -302,17 +324,19 @@ def run(args, status_key=None, run_id=None):
 
             if processed % 50 == 0:
                 print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
-            if dong_error:
+            if circuit_break:
                 break
+        else:
+            stop_reason = "completed"
 
     print(f"\n[종료] 법정동 {prog['idx']}/{len(dongs)} 처리, 오늘 호출 {prog['calls_today']}, "
-          f"이번 실행 발견 {found_run}건 (누적 {prog.get('found_total', 0)}건)")
+          f"이번 실행 발견 {found_run}건 (누적 {prog.get('found_total', 0)}건), 중단사유={stop_reason}")
     print("  분류:", counts)
     completed = prog["idx"] >= len(dongs)
     calls_today = prog["calls_today"]
     cur.close()
     conn.close()
-    return completed, processed, found_run, calls_today
+    return completed, processed, found_run, calls_today, stop_reason
 
 
 def main():
@@ -346,9 +370,9 @@ def main():
         threading.Thread(target=_beat, daemon=True).start()
 
     error = None
-    completed, processed, found_run, calls_today = False, 0, 0, None
+    completed, processed, found_run, calls_today, stop_reason = False, 0, 0, None, None
     try:
-        completed, processed, found_run, calls_today = run(
+        completed, processed, found_run, calls_today, stop_reason = run(
             args, status_key=args.status_key, run_id=run_id)
     except Exception as e:
         key = os.environ.get(KEY_ENV, "")
@@ -365,6 +389,7 @@ def main():
             "found": found_run,
             "completed": (None if error else completed),
             "calls_today": calls_today,
+            "stop_reason": (None if error else stop_reason),
             "error": error,
         })
         for attempt in range(3):
