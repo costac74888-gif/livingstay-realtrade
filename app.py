@@ -565,12 +565,29 @@ def get_building(building_id):
     result["agent"] = agents_list[0] if agents_list else None
     result["operators"] = operator_rows
     result["loan_consultants"] = loan_consultant_rows
-    # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율(영업 객실수 합 / 총 세대수)
+    # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율
     result["lodgings"] = lodgings
-    result["lodging_room_total"] = lodging_room_total
-    units = result.get("units")
+    result["lodging_room_total"] = lodging_room_total  # 영업신고 목록의 객실수 합계 (행정 카드 목록 표시용)
+    units     = result.get("units")       # master_buildings.units    — 총 호실(단일 소스)
+    biz_units = result.get("biz_units")   # master_buildings.biz_units — 영업신고호수(단일 소스)
+    # 신고율·미신고: DB에 저장하지 않고 응답 시점에 biz_units/units 기준으로 즉시 계산
+    # (두 위치 — 헤더카드·행정 블록 — 모두 이 값을 재사용하여 불일치 방지)
     result["lodging_report_rate"] = (
-        round(lodging_room_total * 100.0 / units, 1) if units and lodging_room_total else None
+        round(biz_units * 100.0 / units) if (units and biz_units is not None) else None
+    )
+    result["lodging_unreported"] = (
+        (units - biz_units) if (units is not None and biz_units is not None) else None
+    )
+    # 총주차대수: 자주식(옥내+옥외) + 기계식(옥내+옥외) — 기존 4개 컬럼 합산, 표시 시점만 계산
+    ia = result.get("indr_auto_utcnt"); oa = result.get("oudr_auto_utcnt")
+    im = result.get("indr_mech_utcnt"); om = result.get("oudr_mech_utcnt")
+    auto_p = ((ia or 0) + (oa or 0)) if (ia is not None or oa is not None) else None
+    mech_p = ((im or 0) + (om or 0)) if (im is not None or om is not None) else None
+    result["auto_pkng_cnt"]  = auto_p   # 자주식 합계
+    result["mech_pkng_cnt"]  = mech_p   # 기계식 합계
+    result["total_pkng_cnt"] = (
+        (auto_p or 0) + (mech_p or 0)
+        if (auto_p is not None or mech_p is not None) else None
     )
 
     # 담당부처/연락처: sgg_text를 지자체 담당부서 인덱스와 매칭.
