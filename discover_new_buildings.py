@@ -48,7 +48,7 @@ import requests
 
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
-from building_registry import is_living_stay
+from building_registry import classify_lodging_type
 
 RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
@@ -209,21 +209,18 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
                 plat_gb, bun, ji = parse_jibun(jibun)
                 try:
-                    verdict, title, reason = is_living_stay(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+                    label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji)
                 except Exception as e:
                     print(f"  대장 조회 실패: {e}")
                     month_had_error = True
                     continue
 
-                if verdict is None:
-                    # title None = 집합 표제부 미등록(생숙 아님, 재시도 불필요)
+                if label is None:
+                    # title None = 집합 표제부 미등록(숙박시설 아님, 재시도 불필요)
                     # title 있음 = 층별개요 조회 실패 → 다음 실행에서 재시도
                     if title is not None:
                         month_had_error = True
                     continue
-                if verdict is False:
-                    rejected_use += 1
-                    continue  # 집합+숙박이지만 호텔/콘도 등 → 생숙 아님
 
                 if not title or not title["bld_nm"]:
                     continue
@@ -231,13 +228,14 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                 sgg_text = bjdong.sgg_text(sgg_cd) or ""
                 road_address = title["new_plat_plc"] or title["plat_plc"] or f"{sgg_text} {umd_nm} {jibun}"
 
-                # verdict is True 여기 도달 = is_living_stay가 '생활숙박시설'로 확정한 경우뿐 →
-                # lodging_type='생활'로 바로 태깅해 기본 '생숙만' 필터에서 숨지 않게 한다.
+                # label 있으면 생활/관광/일반/복합 어느 유형이든 마스터에 등록한다.
                 cur.execute("""
                     INSERT INTO master_buildings
-                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source, lodging_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'api_discovered', '생활')
-                """, (title["bld_nm"], road_address, sgg_text, sgg_cd, umd_nm, jibun, title["ho_cnt"]))
+                        (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun,
+                         units, source, lodging_type, lodging_type_detail, lodging_subtype)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'api_discovered', %s, %s, %s)
+                """, (title["bld_nm"], road_address, sgg_text, sgg_cd, umd_nm, jibun,
+                      title["ho_cnt"], label, detail, subtype))
                 new_buildings += 1
 
                 si_do_val, sgg_nm_val = (sgg_text.split(" ", 1) + [None])[:2] if sgg_text else (None, None)
@@ -246,12 +244,12 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                     INSERT INTO transactions
                         (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
                          floor, sgg_cd, umd_nm, jibun, lodging_type, match_source, raw_key)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '생활', 'api_discovered', %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'api_discovered', %s)
                     ON CONFLICT (raw_key) DO NOTHING
                 """, (title["bld_nm"], f"{umd_nm} {jibun}", si_do_val, sgg_nm_val,
                       float(area or 0), int(price or 0), deal_date, deal_type,
                       floor_val,
-                      sgg_cd, umd_nm, jibun, raw_key))
+                      sgg_cd, umd_nm, jibun, label, raw_key))
                 if cur.rowcount:
                     new_transactions += 1
 

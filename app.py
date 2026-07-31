@@ -7308,8 +7308,9 @@ def admin_brhub_sync_status():
     })
 
 
-_PERMITS_SYNC_META_KEY = "permits_sync_status"
-_REALTY_SYNC_META_KEY  = "realty_stores_sync_status"
+_PERMITS_SYNC_META_KEY     = "permits_sync_status"
+_REALTY_SYNC_META_KEY      = "realty_stores_sync_status"
+_RECLASSIFY_META_KEY       = "reclassify_unclassified_status"
 
 
 @app.route("/api/admin/sync-permits", methods=["POST"])
@@ -7669,6 +7670,88 @@ def admin_realty_sync_status():
 
 # 상수: sync_realty_stores.py와 동일한 progress 키
 PROGRESS_KEY_REALTY = "realty_stores_progress"
+
+# ── 미분류 건물 재분류 배치 ──────────────────────────────────────
+
+@app.route("/api/admin/run-reclassify-unclassified", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_reclassify_unclassified_run():
+    """미분류 건물 재판정 배치 시작 — realty-sync와 동일한 잠금/러너 패턴."""
+    ok, code, payload = _start_detached_sync(
+        _RECLASSIFY_META_KEY,
+        "reclassify_unclassified.py",
+        ["--status-key", _RECLASSIFY_META_KEY],
+        done_cooldown_min=5,
+    )
+    if not ok:
+        return jsonify(payload), code
+    return jsonify({"ok": True, "message": "미분류 건물 재판정을 시작했습니다.",
+                    "started_at": payload["started_at"]}), 202
+
+
+@app.route("/api/admin/reclassify-unclassified-status")
+@require_admin
+def admin_reclassify_unclassified_status():
+    """미분류 건물 재판정 진행상황."""
+    conn = get_conn()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM master_buildings
+            WHERE (lodging_type IS NULL OR lodging_type = '')
+              AND sgg_cd IS NOT NULL AND umd_nm IS NOT NULL AND jibun IS NOT NULL
+        """)
+        unclassified = cur.fetchone()["c"]
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_RECLASSIFY_META_KEY,))
+        meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'reclassify_unclassified_progress'")
+        prog_row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    status = progress = None
+    try:
+        status = json.loads(meta["value"]) if meta and meta["value"] else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
+    except (TypeError, ValueError):
+        pass
+
+    running = bool(status and status.get("state") == "running")
+    stale = False
+    if running and meta and meta["updated_at"]:
+        age = (datetime.now() - meta["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            running, stale = False, True
+
+    calls_today = 0
+    if progress and progress.get("calls_date") == datetime.now().strftime("%Y-%m-%d"):
+        try:
+            calls_today = int(progress.get("calls_today") or 0)
+        except (TypeError, ValueError):
+            pass
+
+    updated_total = int((progress or {}).get("updated_total") or 0)
+
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": ("stale" if stale else (status.get("state") if status else None)),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
+        "processed": (status.get("processed") if status else None),
+        "updated": (status.get("updated") if status else None),
+        "completed": (status.get("completed") if status else None),
+        "error": ((status.get("error") if status else None)
+                  or ("이전 실행이 비정상 종료된 것으로 보입니다. 다시 실행할 수 있습니다." if stale else None)),
+        "unclassified": unclassified,
+        "updated_total": updated_total,
+        "calls_today": calls_today,
+    })
 
 
 def _approved_operator_name_norms(cur):
@@ -10636,8 +10719,9 @@ def _resume_interrupted_sync_jobs():
         (_BROKER_SYNC_META_KEY,   "sync_brokers.py",         ["--status-key", _BROKER_SYNC_META_KEY]),
         (_LODGING_SYNC_META_KEY,  "sync_lodgings.py",        ["--status-key", _LODGING_SYNC_META_KEY]),
         (_BRHUB_SYNC_META_KEY,    "sync_brhub.py",           ["--status-key", _BRHUB_SYNC_META_KEY]),
-        (_PERMITS_SYNC_META_KEY,  "sync_permits.py",         ["--status-key", _PERMITS_SYNC_META_KEY]),
-        (_REALTY_SYNC_META_KEY,   "sync_realty_stores.py",   ["--status-key", _REALTY_SYNC_META_KEY]),
+        (_PERMITS_SYNC_META_KEY,  "sync_permits.py",              ["--status-key", _PERMITS_SYNC_META_KEY]),
+        (_REALTY_SYNC_META_KEY,   "sync_realty_stores.py",        ["--status-key", _REALTY_SYNC_META_KEY]),
+        (_RECLASSIFY_META_KEY,    "reclassify_unclassified.py",   ["--status-key", _RECLASSIFY_META_KEY]),
     ]
     conn = get_conn()
     cur = conn.cursor()

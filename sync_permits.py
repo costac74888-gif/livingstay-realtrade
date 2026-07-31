@@ -257,12 +257,14 @@ def run(args, status_key=None, run_id=None):
                 # 2026-07-27 --probe(서울 강남·마포 포함 다수 법정동)로 실제 확인된 값:
                 #   "생활숙박시설", "숙박시설", "관광숙박시설"
                 # "숙박" 단독·"공중위생"은 일반숙박(모텔·여관)·빌라 오염 원인이므로 제거.
-                _PURPS_KEYWORDS = ("생활숙박", "숙박시설", "관광숙박", "생활형숙박")
+                _PURPS_KEYWORDS = ("생활숙박", "숙박시설", "관광숙박", "생활형숙박", "일반숙박시설")
                 if not any(kw in purps_text for kw in _PURPS_KEYWORDS):
                     continue
-                # 일반숙박·고시원 등 제외 패턴
-                _PURPS_EXCLUDE = ("일반숙박", "여관", "모텔", "고시원")
+                # 일반숙박(모텔·여관)·고시원 제외 — "일반숙박시설"은 합법 법정 용어이므로 통과
+                _PURPS_EXCLUDE = ("여관", "모텔", "고시원")
                 if any(ex in purps_text for ex in _PURPS_EXCLUDE):
+                    continue
+                if "일반숙박" in purps_text and "일반숙박시설" not in purps_text:
                     continue
 
                 # 건축인허가 단계에서는 세대수가 미확정("0" 또는 null)인 경우가 많으므로
