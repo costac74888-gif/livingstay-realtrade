@@ -126,15 +126,23 @@ def _load_existing_keys(cur):
     return triple, roads, jibuns
 
 
+def _is_429(exc):
+    """HTTP 429(속도 제한) 오류인지 판별."""
+    resp = getattr(exc, "response", None)
+    return getattr(resp, "status_code", None) == 429
+
+
 def _fetch_all_dong_pages(key, sgg_cd, bjd_cd, sleep_s):
     """한 법정동의 전체 페이지를 조회해 (items, pages_used, error_str|None) 반환.
-    pages_used = 성공한 API 호출 수. 재시도 실패 시 items=None."""
+    pages_used = 성공한 API 호출 수. 재시도 실패 시 items=None.
+    429(속도 제한): 45초 대기 후 1회 재시도. 그 외 오류: 15초 대기 후 재시도."""
     all_items, page = [], 1
     while True:
         try:
             rows = _fetch_page(key, sgg_cd, bjd_cd, page)
         except Exception as e:
-            time.sleep(15)
+            wait = 45 if _is_429(e) else 15
+            time.sleep(wait)
             try:
                 rows = _fetch_page(key, sgg_cd, bjd_cd, page)
             except Exception as e2:
@@ -251,7 +259,7 @@ def run(args, status_key=None, run_id=None):
             if jn:
                 jibuns.add(jn)
 
-    workers = getattr(args, "workers", 4)
+    workers = getattr(args, "workers", 1)
     stop_reason = None
     consecutive_fails = 0
     FAIL_STREAK_LIMIT = 5
@@ -343,7 +351,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="이번 실행에서 처리할 법정동 수 (0=일일캡까지)")
     ap.add_argument("--daily-cap", type=int, default=8000)
-    ap.add_argument("--workers", type=int, default=4,
+    ap.add_argument("--workers", type=int, default=1,
                     help="동시 법정동 조회 스레드 수 (기본 4)")
     ap.add_argument("--sleep", type=float, default=0.2)
     ap.add_argument("--dry-run", action="store_true")
