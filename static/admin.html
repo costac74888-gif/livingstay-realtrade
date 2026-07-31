@@ -484,17 +484,24 @@
     async function showStats(menuKey) {
       destroyStatsCharts();
       mount.innerHTML = `<div class="stats-loading">통계를 불러오는 중…</div>`;
-      let data;
+      let data, mapBld;
       try {
-        const res = await fetch("/api/admin/stats");
+        // /api/building-count : 지도 필터 기준 용도별 건수 (mixed_use_excluded 제외)
+        // /api/admin/stats    : 대시보드 집계 (mixed_use_excluded 포함)
+        // 두 숫자 차이(복합 불일치)를 화면에 명시하기 위해 병렬 로드
+        const [res, bldRes] = await Promise.all([
+          fetch("/api/admin/stats"),
+          fetch("/api/building-count"),
+        ]);
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         if (!res.ok) throw new Error("stats fetch failed");
         data = await res.json();
+        mapBld = bldRes.ok ? await bldRes.json() : {};
       } catch (e) {
         mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
         return;
       }
-      renderStats(data);
+      renderStats(data, mapBld);
       loadPartnerBuildingCounts();
     }
 
@@ -533,7 +540,8 @@
 
     function num(n) { return (n || 0).toLocaleString("ko-KR"); }
 
-    function renderStats(d) {
+    function renderStats(d, mapBld) {
+      mapBld = mapBld || {};
       const m = d.members || {};
       const ag = m.agent || { pending: 0, approved: 0, rejected: 0 };
       const op = m.operator || { pending: 0, approved: 0, rejected: 0 };
@@ -565,7 +573,15 @@
                 const byType = (d.buildings && d.buildings.by_type) || [];
                 const find = (name) => (byType.find(r => r.lodging_type === name) || {}).count || 0;
                 const preCompletion = (d.buildings && d.buildings.pre_completion_count) || 0;
-                return `생숙 ${num(find("생활"))} · 관광숙박 ${num(find("관광"))} · 일반숙박 ${num(find("일반"))} · 복합 ${num(find("복합"))} · 준공전 ${num(preCompletion)}`;
+                // 지도 복합: mixed_use_excluded 제외한 실제 복합 건수 (/api/building-count 기준)
+                const mapComplex  = (mapBld.by_type && mapBld.by_type["복합"]) || 0;
+                const dashComplex = find("복합");
+                const hiddenComplex = Math.max(0, dashComplex - mapComplex);
+                const complexNote = mapComplex > 0
+                  ? `<small style="color:var(--ink-soft); font-size:10px; margin-left:3px;">(지도표시 ${num(mapComplex)}건 · 지도미노출 ${num(hiddenComplex)}건)</small>`
+                  : "";
+                const preNote = `<small style="color:var(--ink-soft); font-size:10px; margin-left:3px;">※ 지도에서는 '미분류'로 표시됨</small>`;
+                return `생숙 ${num(find("생활"))} · 관광숙박 ${num(find("관광"))} · 일반숙박 ${num(find("일반"))} · 복합 ${num(dashComplex)}${complexNote} · 준공전 ${num(preCompletion)}${preNote}`;
               })()}
             </div>
           </div>
