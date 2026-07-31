@@ -465,10 +465,12 @@ const LODGING_LABELS = { "생활": "생활숙박시설", "관광": "관광숙박
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 function markerColor(lodgingType, buildingStatus){
-  if (buildingStatus && buildingStatus !== "완공") return "#9AA5B1";  // 준공전
-  if (!lodgingType) return LODGING_COLORS["미분류"];  // NULL(미분류)은 회색
-  if (lodgingType.includes("·")) return LODGING_COLORS["복합"];  // 혼합 타입(생활·관광 등)은 복합 색
-  return LODGING_COLORS[lodgingType] || LODGING_COLORS["미분류"];
+  // 4분류 확정 타입 우선 — 준공전 상태여도 타입색 표시
+  if (lodgingType && lodgingType.includes("·")) return LODGING_COLORS["복합"];
+  if (lodgingType && LODGING_COLORS[lodgingType]) return LODGING_COLORS[lodgingType];
+  // 확정 타입 없을 때만 준공전(회색) 확인
+  if (buildingStatus && buildingStatus !== "완공") return "#9AA5B1";
+  return LODGING_COLORS["미분류"];
 }
 // DEFAULT_MARKER_COLOR(회색)는 이제 "준공전" 배지 전용으로만 남겨둠
 // (headerCard의 isPreCompletion 분기에서 이미 "#9AA5B1"로 별도 하드코딩해서
@@ -1634,7 +1636,7 @@ async function loadBuildingHeader(id){
     : "";
   const badge = hasType || isPreCompletion
     ? `${typeBadge}${preBadge}`
-    : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["복합"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">복합</span>`;
+    : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["미분류"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">미분류</span>`;
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
   const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
   const bName = b.building_name || "(건물명 미확인)";
