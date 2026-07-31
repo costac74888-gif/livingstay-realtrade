@@ -252,8 +252,8 @@ def main():
     ap.add_argument("--probe",      action="store_true", help="3건 원본 결과 확인 후 종료 (DB 안 씀)")
     ap.add_argument("--dry-run",    action="store_true", help="UPDATE 없이 결과만 출력")
     ap.add_argument("--limit",      type=int, default=0, help="처리 건수 상한 (0=무제한)")
-    ap.add_argument("--daily-cap",  type=int, default=200, dest="daily_cap",
-                    help="일일 처리 건수 상한 (기본 200)")
+    ap.add_argument("--daily-cap",  type=int, default=1000, dest="daily_cap",
+                    help="일일 처리 건수 상한 (기본 1000)")
     ap.add_argument("--sleep",      type=float, default=0.5,
                     help="API 호출 간 대기 초 (기본 0.5)")
     ap.add_argument("--reset",      action="store_true", help="체크포인트 초기화 후 처음부터")
