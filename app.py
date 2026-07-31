@@ -7252,7 +7252,7 @@ def admin_brhub_sync_run():
             WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
                    OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
               AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
-                   OR app_meta.updated_at < NOW() - INTERVAL '30 minutes')
+                   OR app_meta.updated_at < NOW() - INTERVAL '5 minutes')
         """, (_BRHUB_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
         acquired = cur.rowcount > 0
         prev_state = None
