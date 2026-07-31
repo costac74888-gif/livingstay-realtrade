@@ -1349,6 +1349,9 @@
           const recent = d.failed_dongs.slice(-5).map(f => dgEscape(`${f.name}: ${f.error}`)).join(" / ");
           rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패한 법정동(누적 ${d.failed_dongs.length}건, 최근 5건):</b> ${recent}</div>`);
         }
+        if (d.cooldowns && d.cooldowns.length) {
+          rows.push(`<div class="geo-stat-row" style="color:#8a6d00"><b>연속실패 쿨다운 발생:</b> ${d.cooldowns.length}회 (5분씩 자동 대기 후 재개됨, 마지막: ${dgEscape(d.cooldowns[d.cooldowns.length - 1].at)})</div>`);
+        }
       } else if (d.state === "failed" || d.state === "stale") {
         rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
         rows.push(`<div class="geo-stat-row">체크포인트가 저장되어 있어 다시 실행하면 이어서 수집합니다.</div>`);

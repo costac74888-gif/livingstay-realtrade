@@ -301,7 +301,6 @@ def run(args, status_key=None, run_id=None):
                 f = pool.submit(_fetch_all_dong_pages, key, sgg_cd_b, bjd_cd_b, current_sleep)
                 fetch_jobs.append((f, code, dong_name, sgg_cd_b, bjd_cd_b))
 
-            circuit_break = False
             for f, code, dong_name, sgg_cd, bjd_cd in fetch_jobs:
                 items, pages_used, error, saw_429 = f.result()
                 prog["calls_today"] += pages_used + (1 if error and pages_used == 0 else 0)
@@ -330,11 +329,16 @@ def run(args, status_key=None, run_id=None):
                         conn.commit()
                         _save_progress(conn, cur, prog)
                     if consecutive_fails >= FAIL_STREAK_LIMIT:
+                        cooldowns = prog.setdefault("cooldowns", [])
+                        cooldowns.append({"idx": prog["idx"],
+                                          "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+                        prog["cooldowns"] = cooldowns[-20:]  # 최근 20건만 보관
                         print(f"[brhub] 연속 {FAIL_STREAK_LIMIT}개 법정동 실패 — "
-                              f"API 자체 문제일 수 있어 이번 실행을 중단합니다.")
-                        circuit_break = True
-                        stop_reason = "consecutive_failures"
-                        break
+                              f"프로세스는 종료하지 않고 5분 쉬었다가 이어서 진행합니다.")
+                        time.sleep(300)  # 5분 대기
+                        consecutive_fails = 0
+                        current_sleep = args.sleep  # 딜레이도 기본값으로 리셋 (5분이면 순간제한이 풀렸을 가능성이 높음)
+                        continue
                     # 동 간 딜레이 적용 (오류 동 포함 — 다음 동 요청 전 숨 고르기)
                     if current_sleep > 0:
                         time.sleep(current_sleep)
@@ -353,8 +357,6 @@ def run(args, status_key=None, run_id=None):
 
             if processed % 50 == 0:
                 print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
-            if circuit_break:
-                break
         else:
             stop_reason = "completed"
 
