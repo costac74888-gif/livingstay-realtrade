@@ -59,6 +59,11 @@
     .notice-date { order:2; }
     .notice-arrow { order:3; margin-left:auto; }
   }
+  .notice-attachment-link {
+    display:inline-block; font-size:13px; font-weight:600;
+    color:var(--brass, #B4863F); text-decoration:none;
+  }
+  .notice-attachment-link:hover { text-decoration:underline; }
 </style>
 
 <script>
@@ -66,6 +71,13 @@
     return String(v ?? "").replace(/[&<>"']/g, c => (
       {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
     ));
+  }
+
+  function linkify(escapedText){
+    return escapedText.replace(
+      /(https?:\/\/[^\s<]+)/g,
+      (url) => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`
+    );
   }
 
   function renderEmpty(){
@@ -87,7 +99,8 @@
           <span class="notice-date">${escapeHtml(n.created_at || "")}</span>
           <span class="notice-arrow">▾</span>
         </button>
-        <div class="notice-body">${escapeHtml(n.body)}</div>
+        <div class="notice-body">${linkify(escapeHtml(n.body))}</div>
+        ${n.attachment_url ? `<div style="padding:0 4px 18px;"><a href="${n.attachment_url}" target="_blank" rel="noopener" class="notice-attachment-link">📎 첨부파일(PDF) 다운로드</a></div>` : ""}
       </div>`;
   }
 

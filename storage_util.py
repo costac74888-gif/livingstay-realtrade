@@ -98,6 +98,19 @@ def is_valid_popup_ref(ref):
     return bool(ref) and bool(POPUP_REF_RE.match(ref))
 
 
+# ---- 공지사항 첨부파일 (관리자 업로드, 공개 서빙) ----
+NOTICE_ATTACHMENT_EXTENSIONS = {"pdf"}
+NOTICE_ATTACHMENT_REF_RE = re.compile(r"^notices/[0-9a-f]{32}\.pdf$")
+
+
+def build_notice_attachment_key(ext):
+    return f"notices/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_notice_attachment_ref(ref):
+    return bool(ref) and bool(NOTICE_ATTACHMENT_REF_RE.match(ref))
+
+
 def download_bytes(key):
     """Object Storage에서 객체 바이트를 내려받는다(팝업 이미지 공개 프록시용)."""
     return get_client().download_as_bytes(key)

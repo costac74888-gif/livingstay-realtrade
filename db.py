@@ -833,6 +833,7 @@ def init_db():
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS attachment_key TEXT")
 
     # 약관/개인정보처리방침 — 관리자가 admin.html에서 직접 수정하는 DB 기반 법적 문서.
     # doc_type은 'terms'(이용약관) 또는 'privacy'(개인정보처리방침) 두 값만 사용한다.

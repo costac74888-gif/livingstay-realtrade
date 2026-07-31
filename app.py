@@ -8465,11 +8465,14 @@ def admin_notices_create():
     if not title or not body:
         return jsonify({"ok": False, "message": "제목과 본문은 필수입니다."}), 400
     is_pinned = _parse_bool(data.get("is_pinned"))
+    attachment_key = (data.get("attachment_key") or "").strip() or None
+    if attachment_key and not storage_util.is_valid_notice_attachment_ref(attachment_key):
+        return jsonify({"ok": False, "message": "첨부파일 정보가 올바르지 않습니다."}), 400
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO notices (title, body, is_pinned) VALUES (%s, %s, %s) RETURNING id",
-        [title, body, is_pinned],
+        "INSERT INTO notices (title, body, is_pinned, attachment_key) VALUES (%s, %s, %s, %s) RETURNING id",
+        [title, body, is_pinned, attachment_key],
     )
     new_id = cur.fetchone()["id"]
     conn.commit()
@@ -8498,6 +8501,12 @@ def admin_notices_update(notice_id):
     if "is_pinned" in data:
         sets.append("is_pinned = %s")
         vals.append(_parse_bool(data.get("is_pinned")))
+    if "attachment_key" in data:
+        attachment_key = (data.get("attachment_key") or "").strip() or None
+        if attachment_key and not storage_util.is_valid_notice_attachment_ref(attachment_key):
+            return jsonify({"ok": False, "message": "첨부파일 정보가 올바르지 않습니다."}), 400
+        sets.append("attachment_key = %s")
+        vals.append(attachment_key)
     if not sets:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
     conn = get_conn()
@@ -8746,6 +8755,32 @@ def admin_popups_upload_image():
     return jsonify({"ok": True, "image_ref": key, "image_url": f"/api/popups/image/{key}"})
 
 
+@app.route("/api/admin/notices/upload-attachment", methods=["POST"])
+@require_admin
+def admin_notices_upload_attachment():
+    """공지사항 첨부 PDF 업로드 — 팝업 이미지 업로드와 동일한 검증 패턴, PDF 전용."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.NOTICE_ATTACHMENT_EXTENSIONS:
+        return jsonify({"ok": False, "message": "PDF 파일만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다. 실제 PDF 파일만 업로드해주세요."}), 400
+    key = storage_util.build_notice_attachment_key(ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("공지 첨부파일 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+    return jsonify({"ok": True, "attachment_key": key})
+
+
 # ---- 팝업 공개 API (로그인 불필요) ----
 
 def _is_mobile_ua(ua):
@@ -8811,6 +8846,21 @@ def get_popup_image(key):
     return resp
 
 
+@app.route("/api/notices/attachment/<path:key>")
+def get_notice_attachment(key):
+    """공지 첨부 PDF 공개 다운로드 — notices/… 형식 키만 허용."""
+    if not storage_util.is_valid_notice_attachment_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    resp = Response(data, mimetype="application/pdf")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    resp.headers["Content-Disposition"] = "inline; filename=notice_attachment.pdf"
+    return resp
+
+
 # ---- 공지사항 공개 API (로그인 불필요) ----
 @app.route("/api/notices")
 def get_notices():
@@ -8829,13 +8879,20 @@ def get_notices():
     cur.execute("SELECT COUNT(*) c FROM notices")
     total = cur.fetchone()["c"]
     cur.execute("""
-        SELECT id, title, body, is_pinned,
+        SELECT id, title, body, is_pinned, attachment_key,
                to_char(created_at, 'YYYY-MM-DD') AS created_at
         FROM notices
         ORDER BY is_pinned DESC, created_at DESC, id DESC
         LIMIT %s OFFSET %s
     """, [size, offset])
-    items = [dict(r) for r in cur.fetchall()]
+    items = []
+    for r in cur.fetchall():
+        row = dict(r)
+        row["attachment_url"] = (
+            f"/api/notices/attachment/{row['attachment_key']}"
+            if row.get("attachment_key") else None
+        )
+        items.append(row)
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "items": items})

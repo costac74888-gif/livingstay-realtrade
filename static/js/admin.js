@@ -321,28 +321,35 @@ class DataGrid {
     const inputs = fields
       .map((col) => {
         const val = isEdit && row[col.key] != null ? row[col.key] : "";
+        const initVal = (!isEdit && typeof col.default === "function") ? col.default() : val;
         let control;
-        if (col.type === "select") {
+        if (col.type === "file") {
+          const existing = isEdit && row[col.key] ? row[col.key] : "";
+          control = `
+            <input type="file" accept="application/pdf" class="admin-input" data-filekey="${dgEscape(col.key)}" />
+            ${existing ? `<div class="admin-form-hint">현재 첨부됨 (새 파일을 선택하면 교체, 비워두면 유지)</div>` : ""}
+            <input type="hidden" data-key="${dgEscape(col.key)}" value="${dgEscape(existing)}" />`;
+        } else if (col.type === "select") {
           const opts = ['<option value="">(선택 안 함)</option>']
             .concat(
               (col.options || []).map(
-                (o) => `<option value="${dgEscape(o)}" ${String(val) === String(o) ? "selected" : ""}>${dgEscape(o)}</option>`
+                (o) => `<option value="${dgEscape(o)}" ${String(initVal) === String(o) ? "selected" : ""}>${dgEscape(o)}</option>`
               )
             )
             .join("");
           control = `<select class="admin-input" data-key="${dgEscape(col.key)}">${opts}</select>`;
         } else if (col.type === "boolean") {
           // 불리언: true/false 값을 보내되 화면에는 사람이 읽는 라벨을 보여준다.
-          const on = val === true || String(val) === "true";
+          const on = initVal === true || String(initVal) === "true";
           control = `<select class="admin-input" data-key="${dgEscape(col.key)}">
             <option value="false" ${!on ? "selected" : ""}>${dgEscape(col.falseLabel || "아니오")}</option>
             <option value="true" ${on ? "selected" : ""}>${dgEscape(col.trueLabel || "예")}</option>
           </select>`;
         } else if (col.type === "textarea") {
-          control = `<textarea class="admin-input" rows="6" data-key="${dgEscape(col.key)}" ${col.required ? "required" : ""}>${dgEscape(val)}</textarea>`;
+          control = `<textarea class="admin-input" rows="6" data-key="${dgEscape(col.key)}" ${col.required ? "required" : ""}>${dgEscape(initVal)}</textarea>`;
         } else {
           const t = col.type === "number" ? "number" : "text";
-          control = `<input class="admin-input" type="${t}" data-key="${dgEscape(col.key)}" value="${dgEscape(val)}" ${col.required ? "required" : ""} />`;
+          control = `<input class="admin-input" type="${t}" data-key="${dgEscape(col.key)}" value="${dgEscape(initVal)}" ${col.required ? "required" : ""} />`;
         }
         return `
           <label class="admin-form-row">
@@ -378,6 +385,24 @@ class DataGrid {
     const saveBtn = overlay.querySelector(".admin-modal-save");
     saveBtn.addEventListener("click", async () => {
       const payload = {};
+      // 파일 업로드 먼저 처리 — 업로드 성공 시 반환된 키를 payload에 세팅
+      const fileInputs = overlay.querySelectorAll("[data-filekey]");
+      for (const fi of fileInputs) {
+        if (fi.files && fi.files[0]) {
+          const uploadCol = fields.find((c) => c.key === fi.getAttribute("data-filekey"));
+          if (uploadCol && uploadCol.uploadEndpoint) {
+            const fd = new FormData();
+            fd.append("file", fi.files[0]);
+            const upRes = await fetch(uploadCol.uploadEndpoint, { method: "POST", body: fd });
+            const upData = await upRes.json().catch(() => ({}));
+            if (!upRes.ok || !upData.ok) {
+              msgBox.textContent = upData.message || "파일 업로드에 실패했습니다.";
+              return;
+            }
+            payload[uploadCol.key] = upData.attachment_key;
+          }
+        }
+      }
       overlay.querySelectorAll("[data-key]").forEach((inp) => {
         payload[inp.getAttribute("data-key")] = inp.value;
       });
