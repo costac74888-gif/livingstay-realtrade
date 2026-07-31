@@ -312,6 +312,10 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     time.sleep(REQUEST_SLEEP)
 
     if floors is None:
+        # 층별개요 조회 실패 — 하지만 표제부에 이미 '숙박' 용도 행이 확인됐다면
+        # 일반숙박 폴백을 적용해 None으로 남기지 않는다.
+        if lodging:
+            return "일반", combined, None, title, "층별개요 조회 실패 → 숙박 용도 확인으로 일반숙박 폴백"
         return None, combined, None, title, "층별개요 조회 실패(재시도 필요)"
 
     all_categories = set()
@@ -335,6 +339,12 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         if len(all_categories) == 1:
             return next(iter(all_categories)), full_detail, subtype, title, "층별개요에서 확인"
         return _combine_labels(all_categories), full_detail, subtype, title, "층별개요에 여러 용도가 섞여 복합으로 분류"
+
+    # 표제부·층별개요 텍스트에서 생활/관광/일반 키워드를 찾지 못했지만,
+    # 표제부에 '숙박' 용도 행이 있었다면 일반숙박으로 폴백한다.
+    # (여관·모텔처럼 건축물대장에 세부유형 없이 '숙박시설'만 기재되는 경우)
+    if lodging:
+        return "일반", full_detail, None, title, "표제부·층별개요 판정 불가 → 숙박 용도 확인으로 일반숙박 폴백"
 
     return None, full_detail, None, title, "표제부·층별개요 모두 판정 불가(용도 표기 없음)"
 

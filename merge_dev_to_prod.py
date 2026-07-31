@@ -147,18 +147,19 @@ def merge_buildings(dev_cur, prod_conn, prod_cur, dry_run):
 
 def sync_lodging_types(dev_cur, prod_conn, prod_cur, dry_run):
     """
-    brhub_bulk 재분류 결과를 운영 DB에 반영.
-    개발 DB의 brhub_bulk 건물 중 lodging_type이 확정된 것만 골라
-    운영 DB에서 자연키로 매칭 후, 운영에 값이 없는 행만 업데이트.
+    개발 DB의 lodging_type 분류 결과를 운영 DB에 반영.
+    소스(brhub_bulk/original 등) 무관하게 lodging_type이 확정된 건물을 조회해
+    운영 DB에서 자연키(road_address 또는 sgg_cd+umd_nm+jibun)로 매칭 후,
+    운영에 값이 없는 행만 업데이트한다(안전장치 — 기존 값 덮어쓰지 않음).
     """
-    print("\n[3] lodging_type 동기화 (brhub_bulk 재분류 결과)...")
+    print("\n[3] lodging_type 동기화 (전체 소스 재분류 결과)...")
 
     dev_cur.execute("""
         SELECT id, road_address, sgg_cd, umd_nm, jibun,
                lodging_type, lodging_type_detail, lodging_subtype
         FROM master_buildings
-        WHERE source = 'brhub_bulk'
-          AND lodging_type IS NOT NULL AND lodging_type != ''
+        WHERE lodging_type IS NOT NULL AND lodging_type != ''
+          AND lodging_type != 'mixed_use_excluded'
     """)
     dev_rows = dev_cur.fetchall()
     print(f"  개발 DB 대상 건물: {len(dev_rows)}건")
