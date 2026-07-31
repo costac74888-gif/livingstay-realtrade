@@ -460,13 +460,14 @@ document.getElementById("btnCloseCorrection").addEventListener("click", () => {
 });
 
 // ---------- 카카오맵 ----------
-const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#B39DDB" };
+const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#BDBDBD" };
 const LODGING_LABELS = { "생활": "생활숙박시설", "관광": "관광숙박시설", "일반": "일반숙박시설", "복합": "복합", "미분류": "미분류" };
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 function markerColor(lodgingType, buildingStatus){
   if (buildingStatus && buildingStatus !== "완공") return "#9AA5B1";  // 준공전
-  if (!lodgingType) return LODGING_COLORS["미분류"];  // NULL(미분류)은 연노랑
+  if (!lodgingType) return LODGING_COLORS["미분류"];  // NULL(미분류)은 회색
+  if (lodgingType.includes("·")) return LODGING_COLORS["복합"];  // 혼합 타입(생활·관광 등)은 복합 색
   return LODGING_COLORS[lodgingType] || LODGING_COLORS["미분류"];
 }
 // DEFAULT_MARKER_COLOR(회색)는 이제 "준공전" 배지 전용으로만 남겨둠
