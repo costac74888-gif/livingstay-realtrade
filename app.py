@@ -1075,19 +1075,27 @@ def get_building_count():
     conn = get_conn()
     cur = conn.cursor()
 
-    # 용도별 건물 수 — 통계 대시보드와 동일 쿼리
+    # 용도별 건물 수 — 지도 필터와 동일한 기준 (클릭 결과와 숫자 일치 보장)
+    # mixed_use_excluded: 지도 노출 금지 → 범례에도 카운트 제외
+    # 복합: lodging_type = '복합' 또는 '·' 포함 (지도 복합 필터와 동일)
+    # 미분류: NULL 또는 '' (준공전은 별도 집계하지 않음 — 범례에 없는 항목)
     cur.execute("""
         SELECT
             CASE
-                WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type
-                WHEN building_status IN ('허가', '착공')      THEN '준공전'
-                ELSE '복합'
+                WHEN lodging_type = '생활'                               THEN '생활'
+                WHEN lodging_type = '관광'                               THEN '관광'
+                WHEN lodging_type = '일반'                               THEN '일반'
+                WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
+                WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
+                ELSE NULL   -- mixed_use_excluded 등 → 제외
             END AS t,
             COUNT(*) AS c
         FROM master_buildings
+        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
         GROUP BY 1
     """)
-    by_type = {r["t"]: int(r["c"]) for r in cur.fetchall()}
+    by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}
+    # total: mixed_use_excluded 제외 건물 수 (범례에 표시할 건물 수와 동일)
     total = sum(by_type.values())
 
     # 실거래 건수
