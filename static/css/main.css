@@ -219,8 +219,11 @@
   }
   .map-legend .map-legend-title{font-weight:700; color:var(--ink); font-size:12.5px;}
   .map-legend #mapCount{font-weight:500; color:var(--ink-soft);}
-  .map-legend .lg{display:inline-flex; align-items:center; gap:5px;}
+  .map-legend .lg{display:inline-flex; align-items:center; gap:5px; padding:3px 6px; border-radius:6px; transition:background .12s;}
+  .map-legend .lg:hover{background:rgba(0,0,0,.05);}
+  .map-legend .lg.active{background:rgba(0,0,0,.09); font-weight:700; color:var(--ink);}
   .map-legend .lg i{width:11px; height:11px; border-radius:50%; display:inline-block;}
+  .map-legend .lg-count{font-size:10.5px; color:var(--ink-soft); font-weight:500;}
 
   /* 모바일 전용 패널 토글 버튼 (데스크톱 숨김) */
   .panel-toggle{display:none;}

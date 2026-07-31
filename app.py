@@ -1063,15 +1063,40 @@ def get_tx_count():
 
 @app.route("/api/building-count")
 def get_building_count():
-    """전체 생숙 단지 수 (실시간 COUNT — 복합용도 자동제외 건물은 제외).
-    아웃바운드 랜딩페이지(agents/operators/loan_partners) '전국 N개 단지' 표시에 사용."""
+    """전체 생숙 단지 수 + 용도별 분포 + 실거래 건수.
+
+    by_type: 통계 대시보드와 동일한 분류 기준
+      - '생활' / '관광' / '일반' : 해당 lodging_type
+      - '준공전'                  : building_status IN ('허가','착공')
+      - '복합'                    : 나머지 전부(mixed_use_excluded·NULL·실제복합 포함)
+    count   : 통계 대시보드의 '등록 건물' 총수 (분류 합계)
+    tx_count: 현재 실거래 건수
+    """
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'")
-    count = int(cur.fetchone()["c"])
+
+    # 용도별 건물 수 — 통계 대시보드와 동일 쿼리
+    cur.execute("""
+        SELECT
+            CASE
+                WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type
+                WHEN building_status IN ('허가', '착공')      THEN '준공전'
+                ELSE '복합'
+            END AS t,
+            COUNT(*) AS c
+        FROM master_buildings
+        GROUP BY 1
+    """)
+    by_type = {r["t"]: int(r["c"]) for r in cur.fetchall()}
+    total = sum(by_type.values())
+
+    # 실거래 건수
+    cur.execute("SELECT COUNT(*) AS c FROM transactions")
+    tx_count = int(cur.fetchone()["c"])
+
     cur.close()
     conn.close()
-    return jsonify({"count": count})
+    return jsonify({"count": total, "by_type": by_type, "tx_count": tx_count})
 
 
 @app.route("/api/regions")

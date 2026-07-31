@@ -302,12 +302,20 @@ document.getElementById("selLodgingType").addEventListener("change", e=>{
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
   loadMapMarkers(mapFiltersFromState(), { fit: false });
 });
+function _setLegendActive(type) {
+  document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
+    el.classList.toggle("active", el.dataset.lodgingType === type && type !== "");
+  });
+}
 document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
   el.addEventListener("click", () => {
     const type = el.dataset.lodgingType;
-    state.lodging_type = type;
+    // 이미 선택된 항목을 다시 클릭하면 필터 해제
+    const toggle = state.lodging_type === type ? "" : type;
+    state.lodging_type = toggle;
     state.page = 1;
-    document.getElementById("selLodgingType").value = type;  // 드롭다운에도 동일 옵션 추가됨
+    document.getElementById("selLodgingType").value = toggle;
+    _setLegendActive(toggle);
     loadBoard();
     loadMapMarkers(mapFiltersFromState(), { fit: false });
   });
@@ -316,6 +324,7 @@ document.getElementById("mapLegendTitle").addEventListener("click", () => {
   state.lodging_type = "";
   state.page = 1;
   document.getElementById("selLodgingType").value = "";
+  _setLegendActive("");
   loadBoard();
   loadMapMarkers({}, { fit: false });
 });
@@ -778,6 +787,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
   // 새로 만든 라벨들의 표시 여부를 현재 확대 레벨 기준으로 즉시 반영
   updateMarkerLabels();
+
 
   console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
 }
@@ -2325,20 +2335,46 @@ window.addEventListener("popstate", () => {
   else restoreDefaultPanel();
 });
 
-// 지도 상단 라벨: 전체 실거래 건수 (실시간 — 백필/동기화로 계속 늘어나므로 매 로드마다 서버 조회)
-async function loadTxCountLabel(){
-  const el = document.getElementById("mapCount");
-  if (!el) return;
+// 범례 타이틀 + 용도별 건물 수 — 통계 대시보드와 동일한 집계 기준
+// by_type 매핑: 생활·관광·일반·준공전·복합(나머지 전부)
+// 범례의 '복합' 항목 = 실제복합 + mixed_use_excluded + NULL(대시보드 기준과 동일)
+// 범례의 '미분류' 항목은 숫자를 표시하지 않는다 (대시보드에 없는 카테고리).
+async function loadBuildingCountLabel(){
+  const countEl = document.getElementById("mapCount");
   try {
-    const res = await fetch("/api/tx-count");
+    const res = await fetch("/api/building-count");
     const d = await res.json();
-    if (typeof d.count === "number") el.textContent = `(실거래 ${d.count.toLocaleString()}건)`;
-  } catch(e){ console.error("[지도] 실거래 건수 로드 실패:", e); }
+
+    // 타이틀: "1,399건/실거래 10,726건"
+    if (countEl && typeof d.count === "number") {
+      const bldStr = d.count.toLocaleString("ko-KR") + "건";
+      const txStr  = typeof d.tx_count === "number"
+        ? "/실거래 " + d.tx_count.toLocaleString("ko-KR") + "건"
+        : "";
+      countEl.textContent = `(${bldStr}${txStr})`;
+    }
+
+    // 범례 항목별 숫자 (대시보드 기준 by_type)
+    if (d.by_type) {
+      document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
+        const type = el.dataset.lodgingType;
+        if (type === "미분류") return;           // 대시보드에 없는 카테고리는 숫자 없음
+        const cnt = d.by_type[type] || 0;
+        let cntEl = el.querySelector(".lg-count");
+        if (!cntEl) {
+          cntEl = document.createElement("span");
+          cntEl.className = "lg-count";
+          el.appendChild(cntEl);
+        }
+        cntEl.textContent = cnt ? cnt.toLocaleString("ko-KR") : "";
+      });
+    }
+  } catch(e){ console.error("[지도] 건물 건수 로드 실패:", e); }
 }
 
 // 최초 로드: 기본 패널 초기화 후, URL이 /building/<id>면 자동으로 상세를 연다.
 initDefaultSidePanel();
-loadTxCountLabel();
+loadBuildingCountLabel();
 (function(){
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) renderBuildingPanel(Number(m[1]));
