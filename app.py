@@ -1901,6 +1901,17 @@ def apply_operator():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
 
+    # 이미 등록된(승인된) 운영지원업체 이메일이면 신청 접수 자체를 막는다 —
+    # 승인 시점이 아니라 신청 시점에 본인이 바로 알 수 있어야 함.
+    conn_chk = get_conn()
+    cur_chk = conn_chk.cursor()
+    cur_chk.execute("SELECT 1 FROM operators WHERE LOWER(email)=LOWER(%s)", [email])
+    already_exists = cur_chk.fetchone() is not None
+    cur_chk.close()
+    conn_chk.close()
+    if already_exists:
+        return jsonify({"ok": False, "message": "이미 등록된 이메일입니다. 같은 이메일로는 운영지원업체 계정을 두 개 이상 만들 수 없습니다. 기존 계정으로 로그인해주세요."}), 400
+
     # 서류 참조 키 검증 — 사업자등록증은 필수, 나머지(명함/영업허가증/로고)는 선택
     doc_refs = {}
     for field, doc_type in (("doc_biz_reg_url", "biz_reg"),
@@ -2047,6 +2058,16 @@ def apply_loan():
 
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
+
+    # 이미 등록된(승인된) 대출상담사 이메일이면 신청 접수 자체를 막는다.
+    conn_chk = get_conn()
+    cur_chk = conn_chk.cursor()
+    cur_chk.execute("SELECT 1 FROM loan_consultants WHERE LOWER(email)=LOWER(%s)", [email])
+    already_exists = cur_chk.fetchone() is not None
+    cur_chk.close()
+    conn_chk.close()
+    if already_exists:
+        return jsonify({"ok": False, "message": "이미 등록된 이메일입니다. 같은 이메일로는 대출상담사 계정을 두 개 이상 만들 수 없습니다. 기존 계정으로 로그인해주세요."}), 400
 
     conn = get_conn()
     cur = conn.cursor()
