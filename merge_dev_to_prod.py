@@ -145,6 +145,86 @@ def merge_buildings(dev_cur, prod_conn, prod_cur, dry_run):
     return inserted, 0
 
 
+def sync_lodging_types(dev_cur, prod_conn, prod_cur, dry_run):
+    """
+    brhub_bulk 재분류 결과를 운영 DB에 반영.
+    개발 DB의 brhub_bulk 건물 중 lodging_type이 확정된 것만 골라
+    운영 DB에서 자연키로 매칭 후, 운영에 값이 없는 행만 업데이트.
+    """
+    print("\n[3] lodging_type 동기화 (brhub_bulk 재분류 결과)...")
+
+    dev_cur.execute("""
+        SELECT id, road_address, sgg_cd, umd_nm, jibun,
+               lodging_type, lodging_type_detail, lodging_subtype
+        FROM master_buildings
+        WHERE source = 'brhub_bulk'
+          AND lodging_type IS NOT NULL AND lodging_type != ''
+    """)
+    dev_rows = dev_cur.fetchall()
+    print(f"  개발 DB 대상 건물: {len(dev_rows)}건")
+
+    # 운영 DB 자연키 → (prod_id, lodging_type) 맵 구성
+    prod_cur.execute("""
+        SELECT id, road_address, sgg_cd, umd_nm, jibun, lodging_type
+        FROM master_buildings
+    """)
+    prod_by_road   = {}   # road_address → (id, lodging_type)
+    prod_by_triple = {}   # (sgg_cd, umd_nm, jibun) → (id, lodging_type)
+    for pid, road, sgg_cd, umd_nm, jibun, lt in prod_cur.fetchall():
+        if road:
+            prod_by_road[road.strip()] = (pid, lt)
+        if sgg_cd and umd_nm and jibun:
+            prod_by_triple[(sgg_cd.strip(), umd_nm.strip(), jibun.strip())] = (pid, lt)
+
+    matched = []   # (prod_id, lodging_type, lodging_type_detail, lodging_subtype)
+    skipped = 0
+    not_found = 0
+
+    for row in dev_rows:
+        _, road, sgg_cd, umd_nm, jibun, dev_lt, dev_detail, dev_sub = row
+        road    = (road    or "").strip()
+        sgg_cd  = (sgg_cd  or "").strip()
+        umd_nm  = (umd_nm  or "").strip()
+        jibun   = (jibun   or "").strip()
+
+        hit = prod_by_road.get(road) or (
+            prod_by_triple.get((sgg_cd, umd_nm, jibun)) if sgg_cd and umd_nm and jibun else None
+        )
+        if hit is None:
+            not_found += 1
+            continue
+
+        prod_id, prod_lt = hit
+        if prod_lt and prod_lt.strip():   # 운영에 이미 값 있으면 건드리지 않음
+            skipped += 1
+            continue
+
+        matched.append((prod_id, dev_lt, dev_detail, dev_sub))
+
+    print(f"  → 매칭 성공(업데이트 대상): {len(matched)}건")
+    print(f"  → 이미 값 있어서 스킵:       {skipped}건")
+    print(f"  → 운영에서 건물 못 찾음:      {not_found}건")
+
+    if dry_run:
+        return len(matched), skipped, not_found
+
+    # 실제 반영
+    updated = 0
+    for prod_id, lt, detail, sub in matched:
+        prod_cur.execute("""
+            UPDATE master_buildings
+            SET lodging_type        = %s,
+                lodging_type_detail = %s,
+                lodging_subtype     = %s
+            WHERE id = %s
+              AND (lodging_type IS NULL OR lodging_type = '')
+        """, (lt, detail, sub, prod_id))
+        updated += prod_cur.rowcount
+    prod_conn.commit()
+    print(f"  ✅ 실제 UPDATE 완료: {updated}건")
+    return updated, skipped, not_found
+
+
 def merge_transactions(dev_cur, prod_conn, prod_cur, dry_run):
     """transactions: raw_key unique 인덱스 기준 INSERT ON CONFLICT DO NOTHING."""
     print("\n[2] transactions 병합 시작...")
@@ -219,10 +299,16 @@ def main():
     try:
         b_new, b_upd = merge_buildings(dev_cur, prod_conn, prod_cur, args.dry_run)
         tx_new = merge_transactions(dev_cur, prod_conn, prod_cur, args.dry_run)
+        lt_updated, lt_skipped, lt_missing = sync_lodging_types(
+            dev_cur, prod_conn, prod_cur, args.dry_run
+        )
 
         print("\n=== 최종 요약 ===")
-        print(f"  master_buildings 신규: {b_new}건")
-        print(f"  transactions   신규: {tx_new}건")
+        print(f"  master_buildings 신규:          {b_new}건")
+        print(f"  transactions 신규:              {tx_new}건")
+        print(f"  lodging_type 업데이트:          {lt_updated}건")
+        print(f"  lodging_type 스킵(이미 값 있음): {lt_skipped}건")
+        print(f"  lodging_type 매칭 실패:          {lt_missing}건")
         if args.dry_run:
             print("\n  ※ dry-run 모드 — DB는 변경되지 않았습니다.")
             print("  ※ 결과가 상식적이면 --dry-run 없이 다시 실행하세요.")
