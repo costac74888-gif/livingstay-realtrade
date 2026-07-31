@@ -219,8 +219,10 @@ def run(args, status_key=None, run_id=None):
                     label = _combine_labels(cats)
                     counts["복합" if label == "복합" else label] += 1
                 else:
-                    label = None
-                    counts["미분류"] += 1
+                    # gate 통과(숙박/호텔/콘도)했지만 생활·관광 세부유형 없음
+                    # → 일반숙박시설(여관·모텔·펜션 등)로 분류
+                    label = "일반"
+                    counts["일반"] += 1
 
             bld_nm = (it.get("bldNm") or "").strip() or "-"
             units = int(it.get("hoCnt") or 0) or None
