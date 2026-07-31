@@ -35,7 +35,7 @@ DAILY_CALLS_META_KEY = "lodging_daily_calls"
 PROGRESS_META_KEY = "lodging_sync_progress"
 LAST_SYNC_META_KEY = "lodging_last_sync"
 
-TARGET_HYGIENE = "숙박업(생활)"
+TARGET_HYGIENES = {"숙박업(생활)", "숙박업(일반)"}
 
 NUM_ROWS_DEFAULT = 1000
 SLEEP_DEFAULT = 0.3
@@ -232,9 +232,9 @@ def _to_int(v):
 
 
 def _upsert(cur, it):
-    """숙박업(생활)만 1행 UPSERT. 저장 시 True."""
+    """숙박업(생활)·숙박업(일반) 1행 UPSERT. 저장 시 True."""
     hygiene = (it.get("SNTTN_BZSTAT_NM") or it.get("BZSTAT_SE_NM") or "").strip()
-    if hygiene != TARGET_HYGIENE:
+    if hygiene not in TARGET_HYGIENES:
         return False
     biz_name = (it.get("BPLC_NM") or "").strip()
     if not biz_name:

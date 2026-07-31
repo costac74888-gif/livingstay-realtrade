@@ -7901,8 +7901,8 @@ def admin_unregistered_lodging_candidates():
     cur = conn.cursor()
     try:
         op_norms = list(_approved_operator_name_norms(cur).keys())
-        params = [_LODGING_ACTIVE_STATUS]
-        where = "lr.biz_status_name = %s"
+        params = [_LODGING_ACTIVE_STATUS, "숙박업(생활)"]
+        where = "lr.biz_status_name = %s AND lr.hygiene_type = %s"
         if op_norms:
             where += " AND (lr.biz_name_norm IS NULL OR NOT (lr.biz_name_norm = ANY(%s)))"
             params.append(op_norms)
@@ -7937,8 +7937,8 @@ def admin_unregistered_lodging_export():
     cur = conn.cursor()
     try:
         op_norms = list(_approved_operator_name_norms(cur).keys())
-        params = [_LODGING_ACTIVE_STATUS]
-        where = "lr.biz_status_name = %s"
+        params = [_LODGING_ACTIVE_STATUS, "숙박업(생활)"]
+        where = "lr.biz_status_name = %s AND lr.hygiene_type = %s"
         if op_norms:
             where += " AND (lr.biz_name_norm IS NULL OR NOT (lr.biz_name_norm = ANY(%s)))"
             params.append(op_norms)
@@ -7980,6 +7980,87 @@ def admin_unregistered_lodging_export():
     resp.headers["Content-Disposition"] = "attachment; filename=unregistered_lodging_candidates.xlsx"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/api/admin/unmatched-building-candidates")
+@require_admin
+def admin_unmatched_building_candidates():
+    """master_buildings에 매칭 안 되는 '영업/정상' 일반숙박업 사업장 —
+    신규 건물 등록 후보. 이미 처리(등록/무시)된 건은 제외."""
+    q = (request.args.get("q") or "").strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        params = [_LODGING_ACTIVE_STATUS, "숙박업(일반)"]
+        where = "lr.biz_status_name = %s AND lr.hygiene_type = %s AND lr.applied_building_id IS NULL AND lr.dismissed_at IS NULL"
+        if q:
+            where += " AND (lr.biz_name ILIKE %s OR lr.road_address ILIKE %s)"
+            params += [f"%{q}%", f"%{q}%"]
+        cur.execute(f"""
+            SELECT lr.biz_name, lr.permit_number, lr.road_address, lr.jibun_address,
+                   lr.permit_date, lr.biz_status_name, lr.biz_status_detail,
+                   lr.room_count, lr.phone, lr.road_norm, lr.jibun_norm
+            FROM lodging_registry lr
+            WHERE {where}
+        """, params)
+        rows = cur.fetchall()
+        road_map, jibun_map = _building_norm_maps(cur)
+    finally:
+        cur.close()
+        conn.close()
+    items = _annotate_and_sort_candidates(rows, road_map, jibun_map)
+    # 이미 master_buildings에 매칭되는 건 후보에서 제외 (진짜 '신규'만 남긴다)
+    items = [it for it in items if not it.get("matched_building_name")][:300]
+    return jsonify({"ok": True, "items": items, "total": len(items)})
+
+
+@app.route("/api/admin/unmatched-building-candidates/<permit_number>/create-building", methods=["POST"])
+@require_admin
+def admin_create_building_from_lodging(permit_number):
+    """후보 사업장을 master_buildings에 신규 건물로 등록."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT biz_name, road_address, jibun_address, room_count
+        FROM lodging_registry WHERE permit_number = %s
+    """, [permit_number])
+    lr = cur.fetchone()
+    if not lr:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "사업장을 찾을 수 없습니다."}), 404
+    if not lr["road_address"]:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "도로명주소가 없어 건물로 등록할 수 없습니다."}), 400
+    # units(총호실)는 채우지 않는다 — room_count는 영업신고 호실수이지 총호실수가 아님.
+    # biz_units에만 저장해야 호실/영업신고 정합성이 유지된다.
+    cur.execute("""
+        INSERT INTO master_buildings (building_name, road_address, jibun_address, biz_units, source, lodging_type)
+        VALUES (%s, %s, %s, %s, 'user_submitted', '일반')
+        RETURNING id
+    """, [lr["biz_name"], lr["road_address"], lr["jibun_address"], lr["room_count"]])
+    new_id = cur.fetchone()["id"]
+    cur.execute("UPDATE lodging_registry SET applied_building_id = %s WHERE permit_number = %s",
+                [new_id, permit_number])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "building_id": new_id})
+
+
+@app.route("/api/admin/unmatched-building-candidates/<permit_number>/dismiss", methods=["POST"])
+@require_admin
+def admin_dismiss_building_candidate(permit_number):
+    """후보를 무시(건물로 등록하지 않고 목록에서만 제외)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE lodging_registry SET dismissed_at = NOW() WHERE permit_number = %s", [permit_number])
+    found = cur.rowcount > 0
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not found:
+        return jsonify({"ok": False, "message": "사업장을 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True})
 
 
 # ---- 매물(listings) 관리 (모두 require_admin) ----
@@ -8859,6 +8940,33 @@ def get_notice_attachment(key):
     resp.headers["Cache-Control"] = "public, max-age=3600"
     resp.headers["Content-Disposition"] = "inline; filename=notice_attachment.pdf"
     return resp
+
+
+@app.route("/api/lodging-national-stats")
+def get_lodging_national_stats():
+    """lodging_registry 집계 — 업태별 영업중 사업장 수·객실수 합계.
+    월간리포트/대시보드에서 '전국 공식통계 대비 플랫폼 수집 현황' 비교용."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT hygiene_type, COUNT(*) AS biz_count, COALESCE(SUM(room_count), 0) AS room_total
+        FROM lodging_registry
+        WHERE biz_status_name = %s
+        GROUP BY hygiene_type
+        ORDER BY room_total DESC
+    """, [_LODGING_ACTIVE_STATUS])
+    by_type = [{"hygiene_type": r["hygiene_type"], "biz_count": int(r["biz_count"]),
+                "room_total": int(r["room_total"])} for r in cur.fetchall()]
+    cur.execute("SELECT MAX(updated_at) AS u FROM lodging_registry")
+    last_row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "by_type": by_type,
+        "source": "행정안전부 문화_숙박업 조회서비스(lodgings/info)",
+        "last_updated": last_row["u"].isoformat() if last_row and last_row["u"] else None,
+    })
 
 
 # ---- 공지사항 공개 API (로그인 불필요) ----

@@ -738,6 +738,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_jibun_norm ON lodging_registry(jibun_norm)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_status ON lodging_registry(biz_status_name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_name_norm ON lodging_registry(biz_name_norm)")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS applied_building_id INTEGER REFERENCES master_buildings(id)")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP")
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).
