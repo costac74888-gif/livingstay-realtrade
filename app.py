@@ -7239,7 +7239,7 @@ def admin_brhub_sync_status():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE source = 'brhub_bulk'")
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE source IN ('brhub_bulk', 'api_discovered')")
         total = cur.fetchone()["c"]
         cur.execute("""
             SELECT CASE
@@ -7251,7 +7251,7 @@ def admin_brhub_sync_status():
                      WHEN lodging_type = 'mixed_use_excluded' THEN 'excluded'
                      ELSE 'other'
                    END AS k, COUNT(*) AS c
-            FROM master_buildings WHERE source = 'brhub_bulk' GROUP BY 1
+            FROM master_buildings WHERE source IN ('brhub_bulk', 'api_discovered') GROUP BY 1
         """)
         by_type = {r["k"]: r["c"] for r in cur.fetchall()}
         cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BRHUB_SYNC_META_KEY,))

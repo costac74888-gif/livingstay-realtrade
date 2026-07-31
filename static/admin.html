@@ -1306,7 +1306,8 @@
         `복합제외 ${num(t.excluded || 0)}`,
       ];
       const rows = [];
-      rows.push(`<div class="geo-stat-row"><b>수집된 건물(brhub_bulk):</b> 총 ${num(d.brhub_total)}건 (${typeParts.join(" · ")})</div>`);
+      rows.push(`<div class="geo-stat-row"><b>수집된 건물(전국수집+실거래발견):</b> 총 ${num(d.brhub_total)}건 (${typeParts.join(" · ")})</div>`);
+      rows.push(`<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">※ 전국 대량수집(brhub_bulk) + 실거래로 새로 발견된 건물(api_discovered)만 포함 — 준공전 파이프라인·사용자 제출 등 다른 경로로 등록된 건물은 이 숫자에서 제외됩니다.</div>`);
       rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 법정동 ${num(d.checkpoint_idx)} / ${num(d.total_dongs)}곳${d.checkpoint_idx >= d.total_dongs ? " — 전국 완료" : " — 미완(다음 실행 때 이어서 수집)"}</div>`);
       rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
       if (d.running) {
