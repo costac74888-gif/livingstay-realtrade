@@ -468,8 +468,7 @@ function markerColor(lodgingType, buildingStatus){
   // 4분류 확정 타입 우선 — 준공전 상태여도 타입색 표시
   if (lodgingType && lodgingType.includes("·")) return LODGING_COLORS["복합"];
   if (lodgingType && LODGING_COLORS[lodgingType]) return LODGING_COLORS[lodgingType];
-  // 확정 타입 없을 때만 준공전(회색) 확인
-  if (buildingStatus && buildingStatus !== "완공") return "#9AA5B1";
+  // 확정 타입 없으면 미분류 — 준공전 여부와 무관하게 회색(배지로 상태 표시)
   return LODGING_COLORS["미분류"];
 }
 // DEFAULT_MARKER_COLOR(회색)는 이제 "준공전" 배지 전용으로만 남겨둠
