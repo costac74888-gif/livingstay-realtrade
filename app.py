@@ -739,7 +739,7 @@ def get_transactions():
         where.append("deal_date LIKE %s")
         params.append(f"{year}-%")
     if lodging_type == "복합":
-        where.append("(lodging_type = '복합' OR lodging_type LIKE '%·%')")
+        where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "미분류":
         where.append("(lodging_type IS NULL OR lodging_type = '')")
     elif lodging_type:
@@ -844,7 +844,7 @@ def get_buildings_geo():
         where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
         params.append(f"%{umd_nm.replace(' ', '')}%")
     if lodging_type == "복합":
-        where.append("(lodging_type = '복합' OR lodging_type LIKE '%·%')")
+        where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "미분류":
         where.append("(lodging_type IS NULL OR lodging_type = '')")
     elif lodging_type:
