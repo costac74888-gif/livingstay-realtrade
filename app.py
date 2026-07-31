@@ -7243,13 +7243,12 @@ def admin_brhub_sync_status():
         total = cur.fetchone()["c"]
         cur.execute("""
             SELECT CASE
-                     WHEN lodging_type IS NULL THEN 'unclassified'
-                     WHEN lodging_type LIKE '%%·%%' THEN 'mixed'
                      WHEN lodging_type = '생활' THEN 'living_stay'
-                     WHEN lodging_type = '호텔' THEN 'hotel'
-                     WHEN lodging_type = '콘도' THEN 'condo'
+                     WHEN lodging_type = '관광' THEN 'tourist'
+                     WHEN lodging_type = '일반' THEN 'general'
                      WHEN lodging_type = 'mixed_use_excluded' THEN 'excluded'
-                     ELSE 'other'
+                     WHEN building_status IN ('허가', '착공') THEN 'pre_completion'
+                     ELSE 'unclassified'
                    END AS k, COUNT(*) AS c
             FROM master_buildings WHERE source IN ('brhub_bulk', 'api_discovered') GROUP BY 1
         """)
@@ -10477,10 +10476,14 @@ def admin_stats():
             m = 1
             y += 1
 
-    # 2) 용도별 건물 수 분포 — NULL·미분류·기타 구값은 모두 '복합' 버킷으로 합산
+    # 2) 용도별 건물 수 분포 — 확정 라벨 우선 → 준공전 → 복합
     cur.execute("""
         SELECT
-            CASE WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type ELSE '복합' END AS lodging_type,
+            CASE
+                WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type
+                WHEN building_status IN ('허가', '착공') THEN '준공전'
+                ELSE '복합'
+            END AS lodging_type,
             COUNT(*) AS count
         FROM master_buildings
         GROUP BY 1

@@ -1624,11 +1624,16 @@ async function loadBuildingHeader(id){
   }
 
   const isPreCompletion = b.building_status && b.building_status !== "완공";
-  const color = isPreCompletion ? "#9AA5B1" : markerColor(b.lodging_type, b.building_status);
-  const badgeLabelText = isPreCompletion
-    ? `🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}`
-    : escapeHtml(detailBadgeLabel(b.lodging_type, b.lodging_subtype));
-  const badge = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${badgeLabelText}</span>`;
+  const hasType = !!(b.lodging_type && b.lodging_type !== "mixed_use_excluded");
+  const typeBadge = hasType
+    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, "완공")}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(detailBadgeLabel(b.lodging_type, b.lodging_subtype))}</span>`
+    : "";
+  const preBadge = isPreCompletion
+    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:#9AA5B1; padding:2px 9px; border-radius:6px; vertical-align:middle; margin-left:${hasType ? "5px" : "0"};">🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}</span>`
+    : "";
+  const badge = hasType || isPreCompletion
+    ? `${typeBadge}${preBadge}`
+    : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["복합"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">복합</span>`;
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
   const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
   const bName = b.building_name || "(건물명 미확인)";
