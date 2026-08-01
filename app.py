@@ -435,7 +435,11 @@ def get_building(building_id):
             WHERE sr.expires_at > NOW()
               AND a.status = 'approved'
               AND COALESCE(a.is_visible, TRUE)
-              AND a.id NOT IN (SELECT agent_id FROM agent_buildings WHERE master_building_id = %s)
+              AND a.id NOT IN (
+                  SELECT agent_id FROM agent_buildings
+                  WHERE master_building_id = %s AND has_priority_badge
+                    AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+              )
             ORDER BY RANDOM()
             LIMIT %s
         """, [building_id, building_id, 3 - len(agent_rows)])
@@ -453,9 +457,10 @@ def get_building(building_id):
           AND COALESCE(a.is_visible, TRUE)
           AND NOT (ab.has_priority_badge
                    AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW()))
+          AND a.id NOT IN %s
         ORDER BY RANDOM()
         LIMIT 20
-    """, [building_id])
+    """, [building_id, tuple(r["id"] for r in agent_rows) or (-1,)])
     more_agent_rows = cur.fetchall()
 
     # 담당 운영업체: operator_buildings에 이 건물이 등록된 approved 운영업체 목록.
