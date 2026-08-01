@@ -4694,10 +4694,19 @@ def _agent_leads_data(agent_id):
         cur.execute("""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.contact_phone,
                    lr.routed_reason, lr.status,
+                   CASE
+                     WHEN lr.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
+                          AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+                       THEN 'premium'
+                     WHEN lr.routed_reason = 'exclusive' THEN 'free'
+                     ELSE lr.routed_reason
+                   END AS routed_tier,
                    mb.id AS master_building_id, mb.building_name,
                    to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN agent_buildings ab
+              ON ab.master_building_id = lr.master_building_id AND ab.agent_id = lr.routed_agent_id
             WHERE lr.routed_agent_id = %s
             ORDER BY lr.created_at DESC, lr.id DESC
             LIMIT 200
@@ -4786,10 +4795,19 @@ def _agent_buy_requests_data(agent_id):
         cur.execute("""
             SELECT br.id, br.deal_type, br.desired_price, br.contact_phone,
                    br.routed_reason, br.status,
+                   CASE
+                     WHEN br.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
+                          AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+                       THEN 'premium'
+                     WHEN br.routed_reason = 'exclusive' THEN 'free'
+                     ELSE br.routed_reason
+                   END AS routed_tier,
                    mb.id AS master_building_id, mb.building_name,
                    to_char(br.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
             FROM buy_requests br
             JOIN master_buildings mb ON mb.id = br.master_building_id
+            LEFT JOIN agent_buildings ab
+              ON ab.master_building_id = br.master_building_id AND ab.agent_id = br.routed_agent_id
             WHERE br.routed_agent_id = %s
             ORDER BY br.created_at DESC, br.id DESC
             LIMIT 200
@@ -8838,12 +8856,21 @@ def admin_listing_requests_list():
             SELECT lr.id, lr.master_building_id, mb.building_name,
                    lr.deal_type, lr.desired_price, lr.contact_phone,
                    lr.routed_reason, lr.status, lr.admin_note,
+                   CASE
+                     WHEN lr.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
+                          AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+                       THEN 'premium'
+                     WHEN lr.routed_reason = 'exclusive' THEN 'free'
+                     ELSE lr.routed_reason
+                   END AS routed_tier,
                    (lr.status = 'submitted' AND lr.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
                    a.office_name AS agent_office_name, a.phone AS agent_phone,
                    to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            LEFT JOIN agent_buildings ab
+              ON ab.master_building_id = lr.master_building_id AND ab.agent_id = lr.routed_agent_id
             WHERE {where}
             ORDER BY {sort_expr} {order}, lr.id ASC
             LIMIT %s OFFSET %s

@@ -423,7 +423,7 @@ async function load(){
 }
 
 // ---- 받은 매물의뢰 (상태 배지 + 처리 버튼) ----
-const LEAD_REASON = { exclusive: "전속", region: "지역", house: "하우스" };
+const LEAD_REASON = { premium: "단지", free: "무료", region: "지역", house: "하우스" };
 const LEAD_STATUS = {
   submitted:   { label: "신규",   bg: "#FFF4E0", color: "#9A6B12" },
   in_progress: { label: "처리중", bg: "#E8F0FE", color: "#1A5DB8" },
@@ -458,7 +458,7 @@ async function loadLeads(){
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
           <a href="/building/${l.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(l.building_name || "-")}</a>
           <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(l.deal_type)}</span>
-          <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[l.routed_reason] || l.routed_reason || "-")} 배정</span>
+          <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[l.routed_tier || l.routed_reason] || l.routed_reason || "-")} 배정</span>
           ${leadStatusBadge(l.status)}
           <span style="flex:1;"></span>
           <span style="font-size:12px; color:var(--ink-soft);">${esc(l.created_at || "")}</span>
@@ -719,7 +719,7 @@ async function loadBuyRequests(){
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
           <a href="/building/${r.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(r.building_name || "-")}</a>
           <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(r.deal_type)}</span>
-          <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[r.routed_reason] || r.routed_reason || "-")} 배정</span>
+          <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[r.routed_tier || r.routed_reason] || r.routed_reason || "-")} 배정</span>
           ${leadStatusBadge(r.status)}
           <span style="flex:1;"></span>
           <span style="font-size:12px; color:var(--ink-soft);">${esc(r.created_at || "")}</span>
