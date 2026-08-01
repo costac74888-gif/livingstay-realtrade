@@ -1454,7 +1454,7 @@ function openBuyRequestModal(buildingId, buildingName){
           <div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>
           -매수의뢰는 단지부동산, 지역부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>
           -홈앤스테이는 부동산중개사무소가 아니며 중개행위에 관여하지 않고, 중개수수료를 받지 않습니다.<br><br>
-          -"매수의뢰"는 매물내놓기 무료서비스이며, 중개의뢰는 배정된 중개사를 통하여 별도로 상담을 진행하여 주시기 바랍니다.
+          -"매수의뢰"는 무료서비스이며, 중개의뢰는 배정된 중개사를 통하여 별도로 상담을 진행하여 주시기 바랍니다.
         </div>
       </div>
       <div id="brDone" style="display:none; text-align:center; padding:18px 4px;">
