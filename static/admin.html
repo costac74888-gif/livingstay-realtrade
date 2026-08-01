@@ -2658,11 +2658,23 @@
           <td>${dgEscape((r.expires_at||"").slice(0,10))}</td>
           <td>${new Date(r.expires_at) > new Date() ? "적용중" : "종료"}</td>
           <td>${r.reminder_sent ? "발송함" : "-"}</td>
+          <td>
+            <button type="button" class="admin-btn" onclick="togglePaid('${r.kind}', ${r.agent_id}, ${r.kind === 'building' ? r.master_building_id : 'null'})">
+              ${r.is_paid ? "유료✓" : "무료체험"}
+            </button>
+          </td>
         </tr>`).join("");
       box.innerHTML = `<table class="dg-table" style="width:100%">
-        <thead><tr><th>구분</th><th>중개사</th><th>대상</th><th>부여일</th><th>만료일</th><th>상태</th><th>발송</th></tr></thead>
-        <tbody>${rows || "<tr><td colspan=7>없음</td></tr>"}</tbody></table>`;
+        <thead><tr><th>구분</th><th>중개사</th><th>대상</th><th>부여일</th><th>만료일</th><th>상태</th><th>발송</th><th>유료전환</th></tr></thead>
+        <tbody>${rows || "<tr><td colspan=8>없음</td></tr>"}</tbody></table>`;
     }
+    window.togglePaid = async function(kind, agentId, mbid){
+      await fetch("/api/admin/premium-status/toggle-paid", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, agent_id: agentId, master_building_id: mbid })
+      });
+      loadPremiumStatus();
+    };
     function showPremiumStatus() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -3153,7 +3165,7 @@
           <td>${dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
           <td>${badge}</td>
-          <td>${dgEscape(r.group_label || "-") || "-"}${r.member_type === "agent" ? `<div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">단지 ${(r.free_cnt||0) + (r.premium_cnt||0)}(뱃지 ${r.premium_cnt||0}) · 지역 ${r.region_cnt||0}</div>` : ""}</td>
+          <td>${dgEscape(r.group_label || "-") || "-"}</td>
           <td>${dgEscape(r.created_at || "-")}</td>
           <td>${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
@@ -3161,6 +3173,8 @@
           <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
           <td style="min-width:220px;">${adCell}</td>
+          <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0})</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap; font-size:12.5px;">${(r.member_type === "agent" && r.region_sgg) ? `${dgEscape(r.region_sgg)} <span style="color:var(--ink-soft);">(${r.region_bld_cnt||0}/20)</span>${r.region_active ? "" : ' <span style="color:var(--brick);">종료</span>'}` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap;">${actions}</td>
         </tr>`;
       }).join("");
@@ -3182,7 +3196,7 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>상호</th>
-            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>작업</th>
+            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>단지</th><th>지역</th><th>작업</th>
           </tr></thead>
           <tbody>${rows || `<tr><td colspan="13" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>

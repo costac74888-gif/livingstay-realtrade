@@ -53,14 +53,14 @@
     </div>
   </div>
 
-  <!-- 전속단지 -->
+  <!-- 담당단지 -->
   <div class="panel-card" style="margin-top:14px;">
     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
-      <div class="side-card-title" style="margin-bottom:0;">전속 단지 <span class="side-sub" id="bldCount"></span></div>
+      <div class="side-card-title" style="margin-bottom:0;">담당 단지 <span class="side-sub" id="bldCount"></span></div>
       <button id="btnAddBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
     </div>
     <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
-      전속 단지는 최대 10개까지 등록하실 수 있어요
+      담당 단지는 최대 10개까지 등록하실 수 있어요
     </div>
     <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
   </div>
@@ -299,7 +299,7 @@ function render(){
   const list = document.getElementById("bldList");
   document.getElementById("bldCount").textContent = (ME.buildings || []).length + "개";
   if (!(ME.buildings || []).length){
-    list.innerHTML = `<div class="side-empty">등록된 전속 단지가 없습니다. 위의 [+ 단지 추가] 버튼으로 등록해보세요.</div>`;
+    list.innerHTML = `<div class="side-empty">등록된 담당 단지가 없습니다. 위의 [+ 단지 추가] 버튼으로 등록해보세요.</div>`;
     return;
   }
   list.innerHTML = ME.buildings.map(b => `
@@ -602,7 +602,7 @@ document.getElementById("btnSaveCounts").addEventListener("click", async () => {
 // ---- 단지 삭제 ----
 window.delBuilding = async function(mbid){
   const b = (ME.buildings || []).find(x => x.master_building_id === mbid);
-  if (!confirm(`'${(b && b.building_name) || "이 단지"}'를 전속 단지에서 삭제할까요?`)) return;
+  if (!confirm(`'${(b && b.building_name) || "이 단지"}'를 담당 단지에서 삭제할까요?`)) return;
   const { ok, data } = await api(`/api/agent/buildings/${mbid}`, { method: "DELETE" });
   if (!ok){ alert(data.message || "삭제에 실패했습니다."); return; }
   await load();

@@ -4264,6 +4264,55 @@ def agent_visibility_update():
     return jsonify({"ok": True, "is_visible": v})
 
 
+def _route_lead(cur, mb_id):
+    """매물의뢰/매수의뢰 배정 대상 선정.
+    ① 이 건물에 담당단지로 등록된 중개사 중 유료(is_paid)가 있으면
+       유료만, 없으면 전체(무료체험 포함)에서 배정.
+    ② ①에서 못 찾으면, 이 건물을 담당단지로 선택한 지역Master 중
+       유료가 있으면 유료만, 없으면 전체(무료체험 포함)에서 배정.
+    ③ 그래도 없으면 하우스 계정.
+    반환: (routed_agent_id, routed_reason, notify_agents)
+    """
+    cur.execute("""
+        SELECT a.id, a.phone, a.office_name, COALESCE(ab.is_paid, FALSE) AS is_paid
+        FROM agent_buildings ab
+        JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
+        WHERE ab.master_building_id = %s AND COALESCE(a.is_visible, TRUE)
+        ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
+    """, [mb_id])
+    rows = cur.fetchall()
+    if rows:
+        paid_rows = [r for r in rows if r["is_paid"]]
+        pool = paid_rows if paid_rows else rows
+        return pool[0]["id"], "exclusive", [dict(r) for r in pool]
+
+    cur.execute("""
+        SELECT a.id, a.phone, a.office_name, COALESCE(sr.is_paid, FALSE) AS is_paid
+        FROM agent_region_buildings arb
+        JOIN agent_service_regions sr ON sr.agent_id = arb.agent_id
+        JOIN agents a ON a.id = arb.agent_id AND a.status = 'approved'
+        WHERE arb.master_building_id = %s
+          AND sr.expires_at > NOW()
+          AND COALESCE(a.is_visible, TRUE)
+        ORDER BY RANDOM()
+    """, [mb_id])
+    rows = cur.fetchall()
+    if rows:
+        paid_rows = [r for r in rows if r["is_paid"]]
+        pool = paid_rows if paid_rows else rows
+        return pool[0]["id"], "region", [dict(r) for r in pool]
+
+    cur.execute("""
+        SELECT id, phone, office_name FROM agents
+        WHERE office_name = %s AND status = 'approved'
+        ORDER BY id LIMIT 1
+    """, [_HOUSE_OFFICE_NAME])
+    row = cur.fetchone()
+    if row:
+        return row["id"], "house", [dict(row)]
+    return None, "house", []
+
+
 def _reassign_house_requests_for_building(cur, agent_id, mbid):
     """agent_buildings에 건물이 새로 추가됐을 때, 그 건물(exclusive) 또는
     같은 시군구(region)에서 'house'(하우스 계정=홈스퀘어 중개법인)로
@@ -4930,57 +4979,7 @@ def create_listing_request():
         if not bld:
             return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
 
-        routed_agent_id = None
-        routed_reason = None
-        notify_agents = []  # [{id, phone, office_name}] — SMS 수신 대상 (첫 번째가 배정자)
-
-        # ① 전속(exclusive): 그 건물 담당 approved 중개사들.
-        #    선정 기준을 건물카드 노출 로직과 동일하게 priority_score DESC → RANDOM() 으로 통일.
-        #    첫 번째 1명만 routed_agent_id(상태변경 권한), 나머지는 참고용 알림만 발송.
-        cur.execute("""
-            SELECT a.id, a.phone, a.office_name
-            FROM agent_buildings ab
-            JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
-            WHERE ab.master_building_id = %s
-              AND COALESCE(a.is_visible, TRUE)
-            ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
-        """, [mb_id])
-        rows = cur.fetchall()
-        if rows:
-            routed_agent_id = rows[0]["id"]
-            routed_reason = "exclusive"
-            notify_agents = [dict(r) for r in rows]
-        else:
-            # ② 지역(region): 같은 시군구에 건물을 등록한 approved 중개사들 (하우스 계정 제외)
-            sgg = (bld["sgg_text"] or "").strip()
-            if sgg:
-                cur.execute("""
-                    SELECT a.id, a.phone, a.office_name, MAX(ab.updated_at) AS last_active
-                    FROM agent_buildings ab
-                    JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
-                    JOIN master_buildings mb ON mb.id = ab.master_building_id
-                    WHERE mb.sgg_text = %s AND a.office_name <> %s
-                      AND COALESCE(a.is_visible, TRUE)
-                    GROUP BY a.id, a.phone, a.office_name
-                    ORDER BY last_active DESC NULLS LAST
-                """, [sgg, _HOUSE_OFFICE_NAME])
-                rows = cur.fetchall()
-                if rows:
-                    routed_agent_id = rows[0]["id"]
-                    routed_reason = "region"
-                    notify_agents = [dict(r) for r in rows]
-            if routed_agent_id is None:
-                # ③ 하우스 계정 — 없으면 routed_agent_id NULL로라도 접수는 저장
-                routed_reason = "house"
-                cur.execute("""
-                    SELECT id, phone, office_name FROM agents
-                    WHERE office_name = %s AND status = 'approved'
-                    ORDER BY id LIMIT 1
-                """, [_HOUSE_OFFICE_NAME])
-                row = cur.fetchone()
-                if row:
-                    routed_agent_id = row["id"]
-                    notify_agents = [dict(row)]
+        routed_agent_id, routed_reason, notify_agents = _route_lead(cur, mb_id)
 
         cur.execute("""
             INSERT INTO listing_requests
@@ -5073,51 +5072,7 @@ def create_buy_request():
         if not bld:
             return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
 
-        routed_agent_id = None
-        routed_reason = None
-        notify_agents = []
-
-        cur.execute("""
-            SELECT a.id, a.phone, a.office_name
-            FROM agent_buildings ab
-            JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
-            WHERE ab.master_building_id = %s AND COALESCE(a.is_visible, TRUE)
-            ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
-        """, [mb_id])
-        rows = cur.fetchall()
-        if rows:
-            routed_agent_id = rows[0]["id"]
-            routed_reason = "exclusive"
-            notify_agents = [dict(r) for r in rows]
-        else:
-            sgg = (bld["sgg_text"] or "").strip()
-            if sgg:
-                cur.execute("""
-                    SELECT a.id, a.phone, a.office_name, MAX(ab.updated_at) AS last_active
-                    FROM agent_buildings ab
-                    JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
-                    JOIN master_buildings mb ON mb.id = ab.master_building_id
-                    WHERE mb.sgg_text = %s AND a.office_name <> %s
-                      AND COALESCE(a.is_visible, TRUE)
-                    GROUP BY a.id, a.phone, a.office_name
-                    ORDER BY last_active DESC NULLS LAST
-                """, [sgg, _HOUSE_OFFICE_NAME])
-                rows = cur.fetchall()
-                if rows:
-                    routed_agent_id = rows[0]["id"]
-                    routed_reason = "region"
-                    notify_agents = [dict(r) for r in rows]
-            if routed_agent_id is None:
-                routed_reason = "house"
-                cur.execute("""
-                    SELECT id, phone, office_name FROM agents
-                    WHERE office_name = %s AND status = 'approved'
-                    ORDER BY id LIMIT 1
-                """, [_HOUSE_OFFICE_NAME])
-                row = cur.fetchone()
-                if row:
-                    routed_agent_id = row["id"]
-                    notify_agents = [dict(row)]
+        routed_agent_id, routed_reason, notify_agents = _route_lead(cur, mb_id)
 
         cur.execute("""
             INSERT INTO buy_requests
@@ -9809,17 +9764,24 @@ def admin_members_list():
         for r in cur.fetchall():
             agent_tier_map[r["agent_id"]] = {"free_cnt": int(r["free_cnt"]), "premium_cnt": int(r["premium_cnt"])}
         cur.execute("""
-            SELECT agent_id, COUNT(*) AS c FROM agent_service_regions
-            WHERE agent_id = ANY(%s) AND expires_at > NOW() GROUP BY agent_id
+            SELECT sr.agent_id, sr.sgg_text, sr.expires_at,
+                   (SELECT COUNT(*) FROM agent_region_buildings arb WHERE arb.agent_id = sr.agent_id) AS bld_cnt
+            FROM agent_service_regions sr
+            WHERE sr.agent_id = ANY(%s)
         """, [agent_ids])
         for r in cur.fetchall():
-            agent_tier_map.setdefault(r["agent_id"], {"free_cnt": 0, "premium_cnt": 0})["region_cnt"] = int(r["c"])
+            t = agent_tier_map.setdefault(r["agent_id"], {"free_cnt": 0, "premium_cnt": 0})
+            t["region_sgg"] = r["sgg_text"]
+            t["region_bld_cnt"] = int(r["bld_cnt"])
+            t["region_active"] = r["expires_at"] > datetime.now()
     for it in items:
         if it["member_type"] == "agent":
             t = agent_tier_map.get(it["id"], {"free_cnt": 0, "premium_cnt": 0})
             it["free_cnt"] = t.get("free_cnt", 0)
             it["premium_cnt"] = t.get("premium_cnt", 0)
-            it["region_cnt"] = t.get("region_cnt", 0)
+            it["region_sgg"] = t.get("region_sgg")
+            it["region_bld_cnt"] = t.get("region_bld_cnt", 0)
+            it["region_active"] = t.get("region_active", False)
 
     # 중개사 등급 서브통계 (탭 상단에 "무료전용/단지뱃지보유/지역Master보유"로 표시)
     cur.execute("""
@@ -9974,7 +9936,9 @@ def admin_premium_status():
     cur.execute("""
         SELECT 'building' AS kind, a.office_name, mb.building_name AS target,
                ab.premium_granted_at AS granted_at, ab.premium_expires_at AS expires_at,
-               ab.reminder_sent_at
+               ab.reminder_sent_at,
+               ab.agent_id, ab.master_building_id,
+               COALESCE(ab.is_paid, FALSE) AS is_paid
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         JOIN master_buildings mb ON mb.id = ab.master_building_id
@@ -9982,7 +9946,9 @@ def admin_premium_status():
         UNION ALL
         SELECT 'region' AS kind, a.office_name, sr.sgg_text AS target,
                sr.granted_at, sr.expires_at,
-               sr.reminder_sent_at
+               sr.reminder_sent_at,
+               sr.agent_id, NULL AS master_building_id,
+               COALESCE(sr.is_paid, FALSE) AS is_paid
         FROM agent_service_regions sr
         JOIN agents a ON a.id = sr.agent_id
         ORDER BY expires_at ASC
@@ -9994,7 +9960,44 @@ def admin_premium_status():
         r["granted_at"] = r["granted_at"].isoformat() if r["granted_at"] else None
         r["expires_at"] = r["expires_at"].isoformat() if r["expires_at"] else None
         r["reminder_sent"] = bool(r.get("reminder_sent_at"))
+        r["is_paid"] = bool(r.get("is_paid"))
     return jsonify({"ok": True, "items": rows})
+
+
+@app.route("/api/admin/premium-status/toggle-paid", methods=["POST"])
+@require_admin
+def admin_toggle_paid():
+    """단지뱃지/지역Master의 유료전환 여부를 관리자가 수동으로 토글
+    (결제 시스템 도입 전 임시 스위치)."""
+    data = request.get_json(force=True, silent=True) or {}
+    kind = data.get("kind")
+    agent_id = data.get("agent_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if kind == "building":
+            mbid = data.get("master_building_id")
+            cur.execute("SELECT is_paid FROM agent_buildings WHERE agent_id=%s AND master_building_id=%s",
+                        [agent_id, mbid])
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"ok": False, "message": "대상을 찾을 수 없습니다."}), 404
+            cur.execute("UPDATE agent_buildings SET is_paid=%s WHERE agent_id=%s AND master_building_id=%s",
+                        [not row["is_paid"], agent_id, mbid])
+        elif kind == "region":
+            cur.execute("SELECT is_paid FROM agent_service_regions WHERE agent_id=%s", [agent_id])
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"ok": False, "message": "대상을 찾을 수 없습니다."}), 404
+            cur.execute("UPDATE agent_service_regions SET is_paid=%s WHERE agent_id=%s",
+                        [not row["is_paid"], agent_id])
+        else:
+            return jsonify({"ok": False, "message": "kind는 building|region 이어야 합니다."}), 400
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/agents/<int:agent_id>/buildings")
