@@ -36,6 +36,7 @@
         <button class="admin-menu-item" data-menu="brokers">인근 중개업소 후보</button>
         <button class="admin-menu-item" data-menu="lodgings">미등록 위탁운영 후보</button>
         <button class="admin-menu-item" data-menu="new-buildings">신규건물 후보(일반숙박)</button>
+        <button class="admin-menu-item" data-menu="premium-status">단지뱃지·지역Master 현황</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
         <a class="admin-menu-item" href="/admin/ad-products" style="display:block; text-decoration:none; box-sizing:border-box; width:100%;">광고상품 안내</a>
@@ -2641,6 +2642,37 @@
       }
     }
 
+    async function loadPremiumStatus() {
+      const box = document.getElementById("premiumStatusBox");
+      box.innerHTML = `<div class="geo-stat-row">조회 중…</div>`;
+      const res = await fetch("/api/admin/premium-status");
+      if (res.status === 401) { window.location.href = "/admin/login"; return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
+      const rows = d.items.map((r) => `
+        <tr>
+          <td>${r.kind === "building" ? "단지뱃지" : "지역Master"}</td>
+          <td>${dgEscape(r.office_name || "-")}</td>
+          <td>${dgEscape(r.target || "-")}</td>
+          <td>${dgEscape((r.granted_at||"").slice(0,10))}</td>
+          <td>${dgEscape((r.expires_at||"").slice(0,10))}</td>
+          <td>${new Date(r.expires_at) > new Date() ? "적용중" : "종료"}</td>
+        </tr>`).join("");
+      box.innerHTML = `<table class="dg-table" style="width:100%">
+        <thead><tr><th>구분</th><th>중개사</th><th>대상</th><th>부여일</th><th>만료일</th><th>상태</th></tr></thead>
+        <tbody>${rows || "<tr><td colspan=6>없음</td></tr>"}</tbody></table>`;
+    }
+    function showPremiumStatus() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin" style="max-width:none">
+          <div class="legal-admin-head"><h2 class="legal-admin-title">단지뱃지·지역Master 현황</h2></div>
+          <p class="legal-admin-hint">만료 임박/만료된 대상은 추후 별도 이메일 안내 대상 추출에 활용하세요.</p>
+          <div id="premiumStatusBox"></div>
+        </div>`;
+      loadPremiumStatus();
+    }
+
     function showNewBuildingCandidates() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -3779,6 +3811,7 @@
       if (menuKey === "brokers") { showBrokers(); return; }
       if (menuKey === "lodgings") { showLodgings(); return; }
       if (menuKey === "new-buildings") { showNewBuildingCandidates(); return; }
+      if (menuKey === "premium-status") { showPremiumStatus(); return; }
       if (menuKey === "listings") { showListings(); return; }
       if (menuKey === "popups") { showPopups(); return; }
       showGrid(menuKey);

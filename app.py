@@ -58,6 +58,8 @@ SERVER_BOOT_V = str(int(time.time()))
 # 파트너(중개사/운영업체) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
 # 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
 MAX_FREE_BUILDINGS = 5
+AGENT_TRIAL_BUILDING_CAP = 15   # 중개사 한정 트라이얼 기간 단지 등록 한도
+AGENT_TRIAL_REGION_CAP = 25     # 중개사 담당 지역(시군구) 등록 한도
 
 # 정적 JS/CSS 자산에 배포마다 바뀌는 버전 쿼리스트링(?v=SERVER_BOOT_V)을 붙여
 # 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
@@ -404,16 +406,38 @@ def get_building(building_id):
         SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
                a.subdomain_slug, a.photo_url, a.intro_title,
                ab.sale_count, ab.jeonse_count, ab.wolse_count, ab.shortterm_count,
-               COALESCE(ab.has_priority_badge, FALSE) AS has_priority_badge
+               (COALESCE(ab.has_priority_badge, FALSE)
+                AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS has_priority_badge
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         WHERE ab.master_building_id = %s
           AND a.status = 'approved'
           AND COALESCE(a.is_visible, TRUE)
-        ORDER BY COALESCE(ab.has_priority_badge, FALSE) DESC, COALESCE(a.priority_score, 0) DESC, RANDOM()
+        ORDER BY (COALESCE(ab.has_priority_badge, FALSE)
+                  AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) DESC,
+                 COALESCE(a.priority_score, 0) DESC, RANDOM()
         LIMIT 3
     """, [building_id])
     agent_rows = cur.fetchall()
+
+    # 지역Master 보충: 전속 3명 미만일 때 해당 시군구 지역담당 중개사로 빈 자리를 채운다
+    if len(agent_rows) < 3:
+        cur.execute("""
+            SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
+                   a.subdomain_slug, a.photo_url, a.intro_title,
+                   NULL AS sale_count, NULL AS jeonse_count, NULL AS wolse_count, NULL AS shortterm_count,
+                   FALSE AS has_priority_badge, TRUE AS is_region_agent
+            FROM agent_service_regions sr
+            JOIN agents a ON a.id = sr.agent_id
+            WHERE sr.sgg_text = %s
+              AND sr.expires_at > NOW()
+              AND a.status = 'approved'
+              AND COALESCE(a.is_visible, TRUE)
+              AND a.id NOT IN (SELECT agent_id FROM agent_buildings WHERE master_building_id = %s)
+            ORDER BY RANDOM()
+            LIMIT %s
+        """, [building.get("sgg_text") or "", building_id, 3 - len(agent_rows)])
+        agent_rows = list(agent_rows) + list(cur.fetchall())
 
     # 담당 운영업체: operator_buildings에 이 건물이 등록된 approved 운영업체 목록.
     # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 최대 3곳씩 표시한다.
@@ -4026,7 +4050,10 @@ def _agent_me_data(agent_id):
                    COALESCE(ab.sale_count, 0)      AS sale_count,
                    COALESCE(ab.jeonse_count, 0)    AS jeonse_count,
                    COALESCE(ab.wolse_count, 0)     AS wolse_count,
-                   COALESCE(ab.shortterm_count, 0) AS shortterm_count
+                   COALESCE(ab.shortterm_count, 0) AS shortterm_count,
+                   ab.premium_granted_at,
+                   (COALESCE(ab.has_priority_badge, FALSE)
+                    AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS has_priority_badge
             FROM agent_buildings ab
             JOIN master_buildings mb ON mb.id = ab.master_building_id
             WHERE ab.agent_id = %s
@@ -4244,12 +4271,12 @@ def agent_building_add():
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
-        # 무료 캡: 담당 건물 수가 MAX_FREE_BUILDINGS 이상이면 추가 등록 차단(안내만, 결제 미도입)
+        # 트라이얼 캡: 중개사는 15개까지(운영업체/대출상담사는 MAX_FREE_BUILDINGS=5 그대로, 안 건드림)
         cur.execute("SELECT COUNT(*) c FROM agent_buildings WHERE agent_id = %s", [agent_id])
-        if cur.fetchone()["c"] >= MAX_FREE_BUILDINGS:
+        if cur.fetchone()["c"] >= AGENT_TRIAL_BUILDING_CAP:
             return jsonify({
                 "ok": False,
-                "message": f"무료 등록 가능 건물 수({MAX_FREE_BUILDINGS}개)를 초과했습니다. 추가 등록은 준비 중입니다.",
+                "message": f"무료 등록 가능 건물 수({AGENT_TRIAL_BUILDING_CAP}개)를 초과했습니다. 추가 등록은 준비 중입니다.",
             }), 400
         try:
             cur.execute(
@@ -4272,6 +4299,88 @@ def agent_building_add():
         if ph and ph["phone"]:
             send_sms(ph["phone"], f"[홈앤스테이] 대기 중이던 매물의뢰 {reassigned_count}건이 배정되었습니다. 대시보드에서 확인해주세요.")
     return jsonify({"ok": True, "reassigned": reassigned_count})
+
+
+@app.route("/api/agent/buildings/<int:mbid>/claim-premium", methods=["POST"])
+@require_agent
+def agent_building_claim_premium(mbid):
+    """전속 단지를 3개월 무료 프리미엄으로 즉시 승격 — 단지당 1회 한정."""
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT premium_granted_at FROM agent_buildings WHERE agent_id=%s AND master_building_id=%s",
+        [agent_id, mbid])
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "본인의 전속 단지만 신청할 수 있습니다."}), 400
+    if row["premium_granted_at"]:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "이미 이 단지는 프리미엄 혜택을 사용했습니다."}), 400
+    cur.execute("""
+        UPDATE agent_buildings
+        SET has_priority_badge = TRUE, premium_granted_at = NOW(),
+            premium_expires_at = NOW() + INTERVAL '3 months'
+        WHERE agent_id=%s AND master_building_id=%s
+    """, [agent_id, mbid])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/service-regions", methods=["POST"])
+@require_agent
+def agent_service_region_claim():
+    """시군구 단위 지역Master를 3개월 무료로 즉시 등록 — 지역당 1회 한정, 최대 25개."""
+    agent_id = session["agent_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    sgg = (data.get("sgg_text") or "").strip()
+    if not sgg:
+        return jsonify({"ok": False, "message": "지역을 입력해주세요."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM agent_service_regions WHERE agent_id=%s AND sgg_text=%s", [agent_id, sgg])
+    if cur.fetchone():
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "이미 이 지역은 신청한 적이 있습니다."}), 400
+    cur.execute("SELECT COUNT(*) c FROM agent_service_regions WHERE agent_id=%s", [agent_id])
+    if cur.fetchone()["c"] >= AGENT_TRIAL_REGION_CAP:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": f"담당 지역은 최대 {AGENT_TRIAL_REGION_CAP}개까지 등록할 수 있습니다."}), 400
+    cur.execute("""
+        INSERT INTO agent_service_regions (agent_id, sgg_text, expires_at)
+        VALUES (%s, %s, NOW() + INTERVAL '3 months')
+    """, [agent_id, sgg])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/tier-status")
+@require_agent
+def agent_tier_status():
+    """대시보드에서 버튼 상태(신청가능/적용중/만료) 판단용."""
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT master_building_id, premium_granted_at, premium_expires_at "
+        "FROM agent_buildings WHERE agent_id=%s AND premium_granted_at IS NOT NULL", [agent_id])
+    buildings = [dict(r) for r in cur.fetchall()]
+    cur.execute(
+        "SELECT sgg_text, granted_at, expires_at FROM agent_service_regions WHERE agent_id=%s", [agent_id])
+    regions = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    for r in buildings + regions:
+        for k in ("premium_granted_at", "premium_expires_at", "granted_at", "expires_at"):
+            if k in r and r[k]:
+                r[k] = r[k].isoformat()
+    return jsonify({"ok": True, "buildings": buildings, "regions": regions})
 
 
 @app.route("/api/agent/buildings/<int:mbid>", methods=["DELETE"])
@@ -9473,6 +9582,34 @@ def _resolve_member_application_row(member_type, member_id):
     cur.close()
     conn.close()
     return row, None
+
+
+@app.route("/api/admin/premium-status")
+@require_admin
+def admin_premium_status():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 'building' AS kind, a.office_name, mb.building_name AS target,
+               ab.premium_granted_at AS granted_at, ab.premium_expires_at AS expires_at
+        FROM agent_buildings ab
+        JOIN agents a ON a.id = ab.agent_id
+        JOIN master_buildings mb ON mb.id = ab.master_building_id
+        WHERE ab.premium_granted_at IS NOT NULL
+        UNION ALL
+        SELECT 'region' AS kind, a.office_name, sr.sgg_text AS target,
+               sr.granted_at, sr.expires_at
+        FROM agent_service_regions sr
+        JOIN agents a ON a.id = sr.agent_id
+        ORDER BY expires_at ASC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    for r in rows:
+        r["granted_at"] = r["granted_at"].isoformat() if r["granted_at"] else None
+        r["expires_at"] = r["expires_at"].isoformat() if r["expires_at"] else None
+    return jsonify({"ok": True, "items": rows})
 
 
 @app.route("/api/admin/agents/<int:agent_id>/buildings")
