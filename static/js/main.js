@@ -1572,9 +1572,9 @@ function buildingPanelSkeleton(){
   return `
     <section class="side-card b-panel-topbar">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-        <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto;">← 전체 목록으로</button>
-        <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:7px 14px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700;">매물 내놓기</button>
-        <button id="btnBuyRequest" class="side-more" style="margin-top:0; width:auto; padding:7px 14px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700;">매수의뢰</button>
+        <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto; white-space:nowrap; font-size:12px; padding:6px 10px;">← 전체목록</button>
+        <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700; white-space:nowrap; font-size:12px;">매물내놓기</button>
+        <button id="btnBuyRequest" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700; white-space:nowrap; font-size:12px;">매수의뢰</button>
       </div>
     </section>
 
@@ -2019,9 +2019,13 @@ async function loadBuildingHeader(id){
     const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
     const roomTotal = Number(b.lodging_room_total || 0);
     let rateDisplay;
+    const _adminUnits = b.units != null ? Number(b.units) : 0;
     if (b.lodging_report_rate != null){
       rateDisplay = Math.round(Number(b.lodging_report_rate)) + "%";
-    } else if (b.units != null && Number(b.units) > 0 && lodgings.length === 0){
+    } else if (roomTotal > 0 && _adminUnits > 0){
+      // lodging_room_total(행안부 합산)로 즉석 계산 — 헤더 신고율과 동일 소스
+      rateDisplay = Math.round(roomTotal * 100 / _adminUnits) + "%";
+    } else if (_adminUnits > 0 && lodgings.length === 0){
       rateDisplay = "0%";
     } else {
       rateDisplay = "확인 불가";
