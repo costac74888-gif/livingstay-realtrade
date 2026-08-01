@@ -73,6 +73,14 @@
     <div id="leadList"><div class="side-empty">불러오는 중…</div></div>
   </div>
 
+  <!-- 받은 매수의뢰 -->
+  <div class="panel-card" style="margin-top:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+      <div class="side-card-title" style="margin-bottom:0;">받은 매수의뢰 <span class="side-sub" id="buyReqCount"></span></div>
+    </div>
+    <div id="buyReqList"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
 </div>
 
 <!-- 프로필 수정 모달 -->
@@ -503,6 +511,73 @@ window.addBuilding = async function(mbid){
   await doSearch(); // "이미 등록됨" 상태 갱신
 };
 
+// ---- 받은 매수의뢰 (상태 배지 + 처리 버튼) ----
+function buyReqActionBtn(r){
+  if (PREVIEW_MODE) return "";
+  if (r.status === "submitted")
+    return `<button class="btn btn-sm" data-buyreq-act="in_progress" data-buyreq-id="${r.id}" style="font-size:12px; padding:4px 12px;">처리 시작</button>`;
+  if (r.status === "in_progress")
+    return `<button class="btn btn-sm btn-primary" data-buyreq-act="done" data-buyreq-id="${r.id}" style="font-size:12px; padding:4px 12px;">완료 처리</button>`;
+  return "";
+}
+async function loadBuyRequests(){
+  const box = document.getElementById("buyReqList");
+  try {
+    const { ok, data } = await api(PREVIEW_MODE ? `/api/admin/preview/agent/${PREVIEW_AGENT_ID}/buy-requests` : "/api/agent/buy-requests");
+    if (!ok) throw new Error("buy-requests fetch failed");
+    const items = data.items || [];
+    document.getElementById("buyReqCount").textContent = items.length + "건";
+    if (!items.length){
+      box.innerHTML = `<div class="side-empty">아직 받은 매수의뢰가 없습니다.</div>`;
+      return;
+    }
+    box.innerHTML = items.map(r => `
+      <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+          <a href="/building/${r.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(r.building_name || "-")}</a>
+          <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(r.deal_type)}</span>
+          <span style="display:inline-block; font-size:11px; color:var(--ink-soft);">${esc(LEAD_REASON[r.routed_reason] || r.routed_reason || "-")} 배정</span>
+          ${leadStatusBadge(r.status)}
+          <span style="flex:1;"></span>
+          <span style="font-size:12px; color:var(--ink-soft);">${esc(r.created_at || "")}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:13px; color:var(--ink);">
+            희망가: ${esc(r.desired_price || "-")} · 연락처: <a href="tel:${esc(r.contact_phone || "")}" style="color:var(--brass-dark); font-weight:600; text-decoration:none;">${esc(r.contact_phone || "-")}</a>
+          </div>
+          <span style="flex:1;"></span>
+          ${buyReqActionBtn(r)}
+        </div>
+      </div>`).join("");
+  } catch(e) {
+    box.innerHTML = `<div class="side-empty">매수의뢰를 불러오지 못했습니다.</div>`;
+  }
+}
+// 처리 버튼 클릭 → 상태 변경 API → 목록 갱신
+document.getElementById("buyReqList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-buyreq-act]");
+  if (!btn) return;
+  const act = btn.getAttribute("data-buyreq-act");
+  const id = btn.getAttribute("data-buyreq-id");
+  const label = act === "done" ? "완료 처리" : "처리 시작";
+  if (!window.confirm(`이 매수의뢰를 '${label}' 상태로 변경할까요?`)) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/agent/buy-requests/${id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: act }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok) { loadBuyRequests(); return; }
+    window.alert(d.message || "상태 변경에 실패했습니다.");
+    btn.disabled = false;
+  } catch(err) {
+    window.alert("네트워크 오류가 발생했습니다.");
+    btn.disabled = false;
+  }
+});
+
 // ---- 미리보기 모드 초기화 ----
 if (PREVIEW_MODE) {
   document.getElementById("previewBanner").style.display = "block";
@@ -553,6 +628,7 @@ if (!PREVIEW_MODE) {
 
 load();
 loadLeads();
+loadBuyRequests();
 </script>
   <script src="/static/js/pw_toggle.js"></script>
 </body>

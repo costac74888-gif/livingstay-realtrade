@@ -4445,6 +4445,77 @@ def agent_lead_update_status(lead_id):
     return jsonify({"ok": True, "status": new_status})
 
 
+def _agent_buy_requests_data(agent_id):
+    """매수의뢰 목록 조회 — agent_buy_requests() 라우트와 관리자 열람 라우트 공용."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT br.id, br.deal_type, br.desired_price, br.contact_phone,
+                   br.routed_reason, br.status,
+                   mb.id AS master_building_id, mb.building_name,
+                   to_char(br.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+            FROM buy_requests br
+            JOIN master_buildings mb ON mb.id = br.master_building_id
+            WHERE br.routed_agent_id = %s
+            ORDER BY br.created_at DESC, br.id DESC
+            LIMIT 200
+        """, [agent_id])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return {"items": items}
+
+
+@app.route("/api/agent/buy-requests")
+@require_agent
+def agent_buy_requests():
+    """나에게 배정된 매수의뢰 목록 — routed_agent_id = 내 agent_id."""
+    return jsonify(_agent_buy_requests_data(session["agent_id"]))
+
+
+@app.route("/api/agent/buy-requests/<int:req_id>/status", methods=["PUT"])
+@require_agent
+def agent_buy_request_update_status(req_id):
+    """내게 배정된 매수의뢰의 상태 변경 — submitted → in_progress → done 순방향만."""
+    agent_id = session["agent_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    new_status = (data.get("status") or "").strip()
+    if new_status not in _LEAD_STATUS_ORDER:
+        return jsonify({"ok": False, "message": "잘못된 상태값입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT routed_agent_id, status
+            FROM buy_requests WHERE id = %s FOR UPDATE
+        """, [req_id])
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "존재하지 않는 의뢰입니다."}), 404
+        if row["routed_agent_id"] != agent_id:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        cur_rank = _LEAD_STATUS_ORDER.get(row["status"], 0)
+        if _LEAD_STATUS_ORDER[new_status] <= cur_rank:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "상태는 순방향(신규→처리중→완료)으로만 변경할 수 있습니다."}), 400
+        cur.execute("UPDATE buy_requests SET status = %s WHERE id = %s", [new_status, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/admin/preview/agent/<int:agent_id>/buy-requests")
+@require_admin
+def admin_preview_agent_buy_requests(agent_id):
+    return jsonify(_agent_buy_requests_data(agent_id))
+
+
 # ============================================================
 # 매물의뢰 접수 + 중개사 라우팅
 #   ① exclusive: 그 건물을 agent_buildings에 등록한 approved 중개사 (최근 갱신순 1명)

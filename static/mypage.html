@@ -89,6 +89,11 @@
       sectionTitle("매물의뢰 현황") +
       '<div id="myListingReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
 
+    // 매수의뢰 현황 (GET /api/buy-requests/mine)
+    html +=
+      sectionTitle("매수의뢰 현황") +
+      '<div id="myBuyReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
+
     // 알림 설정 — 실거래 이메일 알림 (인앱 🔔 알림은 항상 발송)
     var emailAlertOn = (d.email_alert_enabled !== false);
     html +=
@@ -142,6 +147,7 @@
     if (isEmail) document.getElementById("pwSaveBtn").addEventListener("click", doChangePassword);
     loadMyFavorites();
     loadMyListingRequests();
+    loadMyBuyRequests();
   }
 
   // ── 매물의뢰 현황 ─────────────────────────────────────────────
@@ -184,6 +190,46 @@
       })
       .catch(function () {
         box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매물의뢰 현황을 불러오지 못했습니다.</div>';
+      });
+  }
+
+  // ── 매수의뢰 현황 ─────────────────────────────────────────────
+  function loadMyBuyRequests(){
+    var box = document.getElementById("myBuyReqs");
+    if (!box) return;
+    fetch("/api/buy-requests/mine", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var items = (d && d.items) || [];
+        if (!items.length){
+          box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매수의뢰가 없습니다.<br/>건물 상세화면의 "매수 희망" 버튼으로 의뢰할 수 있습니다.</div>';
+          return;
+        }
+        box.innerHTML = items.map(function (it) {
+          var st = LR_STATUS_LABEL[it.status] || it.status;
+          var color = LR_STATUS_COLOR[it.status] || "var(--ink-soft)";
+          var agentHtml;
+          if (it.agent_office_name) {
+            var officeName = escapeHtml(it.agent_office_name);
+            agentHtml = it.agent_slug
+              ? '담당 <a href="/agent/' + encodeURIComponent(it.agent_slug) + '" style="color:var(--brass); font-weight:700; text-decoration:none; border-bottom:1px dashed var(--brass);">' + officeName + '</a>'
+              : '담당 <span style="font-weight:700;">' + officeName + '</span>';
+          } else {
+            agentHtml = '<span style="color:var(--ink-soft);">담당자 배정 중</span>';
+          }
+          return '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line);">' +
+            '<div style="min-width:0;">' +
+              '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
+              '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
+                (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
+              '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
+            '</div>' +
+            '<span style="flex:0 0 auto; font-size:11.5px; font-weight:700; color:' + color + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px;">' + st + '</span>' +
+          '</div>';
+        }).join("");
+      })
+      .catch(function () {
+        box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매수의뢰 현황을 불러오지 못했습니다.</div>';
       });
   }
 
