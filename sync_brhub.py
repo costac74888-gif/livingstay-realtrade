@@ -224,9 +224,9 @@ def run(args, status_key=None, run_id=None):
                 not main_purps and ("생활숙박" in purps_text or "생활형숙박" in purps_text))
 
             if not gate_ok:
-                label = "mixed_use_excluded"
-                detail_text = ("[복합용도-자동제외] " + purps_text)[:500]
-                counts["복합제외"] += 1
+                label = "복합"
+                detail_text = ("[복합용도] " + purps_text)[:500]
+                counts["복합"] += 1
             else:
                 detail_text = purps_text[:500] or None
                 cats = _find_categories(purps_text)

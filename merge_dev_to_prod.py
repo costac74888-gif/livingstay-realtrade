@@ -159,7 +159,6 @@ def sync_lodging_types(dev_cur, prod_conn, prod_cur, dry_run):
                lodging_type, lodging_type_detail, lodging_subtype
         FROM master_buildings
         WHERE lodging_type IS NOT NULL AND lodging_type != ''
-          AND lodging_type != 'mixed_use_excluded'
     """)
     dev_rows = dev_cur.fetchall()
     print(f"  개발 DB 대상 건물: {len(dev_rows)}건")
