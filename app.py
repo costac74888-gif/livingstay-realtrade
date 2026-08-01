@@ -58,8 +58,9 @@ SERVER_BOOT_V = str(int(time.time()))
 # 파트너(중개사/운영업체) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
 # 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
 MAX_FREE_BUILDINGS = 5
-AGENT_TRIAL_BUILDING_CAP = 15   # 중개사 한정 트라이얼 기간 단지 등록 한도
-AGENT_TRIAL_REGION_CAP = 25     # 중개사 담당 지역(시군구) 등록 한도
+AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
+AGENT_TRIAL_REGION_CAP = 20     # 중개사 담당 지역(시군구) 등록 한도 (25 → 20)
+REGION_SLOT_CAP = 20            # 시군구 하나당 지역Master로 등록 가능한 중개사 수
 
 # 정적 JS/CSS 자산에 배포마다 바뀌는 버전 쿼리스트링(?v=SERVER_BOOT_V)을 붙여
 # 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
@@ -4053,7 +4054,20 @@ def _agent_me_data(agent_id):
                    COALESCE(ab.shortterm_count, 0) AS shortterm_count,
                    ab.premium_granted_at,
                    (COALESCE(ab.has_priority_badge, FALSE)
-                    AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS has_priority_badge
+                    AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS has_priority_badge,
+                   (SELECT EXISTS(
+                       SELECT 1 FROM agent_buildings ab2
+                       WHERE ab2.master_building_id = ab.master_building_id
+                         AND ab2.agent_id <> ab.agent_id
+                         AND ab2.has_priority_badge
+                         AND (ab2.premium_expires_at IS NULL OR ab2.premium_expires_at > NOW())
+                   )) AS occupied_by_other,
+                   (SELECT EXISTS(
+                       SELECT 1 FROM premium_waitlist pw
+                       WHERE pw.master_building_id = ab.master_building_id
+                         AND pw.agent_id = ab.agent_id
+                         AND pw.notified_at IS NULL
+                   )) AS on_waitlist
             FROM agent_buildings ab
             JOIN master_buildings mb ON mb.id = ab.master_building_id
             WHERE ab.agent_id = %s
@@ -4318,12 +4332,24 @@ def agent_building_claim_premium(mbid):
     if row["premium_granted_at"]:
         cur.close(); conn.close()
         return jsonify({"ok": False, "message": "이미 이 단지는 프리미엄 혜택을 사용했습니다."}), 400
+    # 독점 체크 — 이 건물에 다른 중개사가 이미 활성 프리미엄을 갖고 있으면 차단
+    cur.execute("""
+        SELECT 1 FROM agent_buildings
+        WHERE master_building_id=%s AND agent_id<>%s
+          AND has_priority_badge
+          AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+    """, [mbid, agent_id])
+    if cur.fetchone():
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "이미 다른 부동산이 입점한 단지입니다."}), 400
     cur.execute("""
         UPDATE agent_buildings
         SET has_priority_badge = TRUE, premium_granted_at = NOW(),
             premium_expires_at = NOW() + INTERVAL '3 months'
         WHERE agent_id=%s AND master_building_id=%s
     """, [agent_id, mbid])
+    # 대기 알림 목록 초기화 — 새 입점자가 생겼으므로 기존 waitlist는 더 이상 유효하지 않음
+    cur.execute("DELETE FROM premium_waitlist WHERE master_building_id=%s", [mbid])
     conn.commit()
     cur.close()
     conn.close()
@@ -4350,6 +4376,11 @@ def agent_service_region_claim():
     if cur.fetchone()["c"] >= AGENT_TRIAL_REGION_CAP:
         cur.close(); conn.close()
         return jsonify({"ok": False, "message": f"담당 지역은 최대 {AGENT_TRIAL_REGION_CAP}개까지 등록할 수 있습니다."}), 400
+    # 시군구당 슬롯 캡 — 이 지역에 이미 등록된 중개사 수
+    cur.execute("SELECT COUNT(*) c FROM agent_service_regions WHERE sgg_text=%s", [sgg])
+    if cur.fetchone()["c"] >= REGION_SLOT_CAP:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": f"이 지역은 이미 정원({REGION_SLOT_CAP}명)이 찼습니다."}), 400
     cur.execute("""
         INSERT INTO agent_service_regions (agent_id, sgg_text, expires_at)
         VALUES (%s, %s, NOW() + INTERVAL '3 months')
@@ -4357,6 +4388,52 @@ def agent_service_region_claim():
     conn.commit()
     cur.close()
     conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/agent/sgg-options")
+@require_agent
+def agent_sgg_options():
+    """master_buildings의 실제 시군구 값 목록 — 지역Master 등록 시
+    자유텍스트 대신 이 값들 중에서만 고르게 해서 오타로 인한
+    매칭 실패를 막는다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT sgg_text FROM master_buildings
+        WHERE sgg_text IS NOT NULL AND sgg_text <> ''
+        ORDER BY sgg_text
+    """)
+    options = [r["sgg_text"] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "options": options})
+
+
+@app.route("/api/agent/buildings/<int:mbid>/notify-me", methods=["POST"])
+@require_agent
+def agent_building_notify_me(mbid):
+    """단지부동산 대기 알림 등록 — 해당 단지에 다른 부동산이 입점해 있을 때
+    자리가 나면 이메일로 알려준다."""
+    agent_id = session["agent_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM agent_buildings WHERE agent_id=%s AND master_building_id=%s",
+        [agent_id, mbid])
+    if not cur.fetchone():
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "본인의 전속 단지만 알림 등록할 수 있습니다."}), 400
+    try:
+        cur.execute("""
+            INSERT INTO premium_waitlist (agent_id, master_building_id)
+            VALUES (%s, %s)
+            ON CONFLICT (agent_id, master_building_id) DO NOTHING
+        """, [agent_id, mbid])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
     return jsonify({"ok": True})
 
 
@@ -9688,6 +9765,32 @@ def admin_premium_status():
                                   f"'{r['sgg_text']}' 지역Master", r["expires_at"]):
             cur2.execute("UPDATE agent_service_regions SET reminder_sent_at=NOW() "
                          "WHERE agent_id=%s AND sgg_text=%s", [r["agent_id"], r["sgg_text"]])
+    # 단지부동산 대기자 알림 — 기존 입점 프리미엄이 만료되어 자리가 생긴 경우
+    cur2.execute("""
+        SELECT pw.agent_id, pw.master_building_id, mb.building_name, a.office_name, a.email
+        FROM premium_waitlist pw
+        JOIN agents a ON a.id = pw.agent_id
+        JOIN master_buildings mb ON mb.id = pw.master_building_id
+        WHERE pw.notified_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM agent_buildings ab2
+              WHERE ab2.master_building_id = pw.master_building_id
+                AND ab2.has_priority_badge
+                AND (ab2.premium_expires_at IS NULL OR ab2.premium_expires_at > NOW())
+          )
+    """)
+    for r in cur2.fetchall():
+        if r["email"]:
+            subj = f"[홈앤스테이] '{r['building_name']}' 단지부동산 자리가 생겼습니다"
+            body = (f"<p>{r['office_name']} 담당자님,</p>"
+                    f"<p>알림 신청하신 <b>'{r['building_name']}'</b> 단지의 기존 입점 부동산이 퇴장했습니다.</p>"
+                    f"<p>지금 대시보드에서 단지부동산을 신청하실 수 있습니다.</p>")
+            ok2, _ = send_email(r["email"], subj, body)
+            if ok2:
+                cur2.execute(
+                    "UPDATE premium_waitlist SET notified_at=NOW() "
+                    "WHERE agent_id=%s AND master_building_id=%s",
+                    [r["agent_id"], r["master_building_id"]])
     conn2.commit()
     cur2.close()
     conn2.close()

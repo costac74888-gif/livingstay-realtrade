@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-01-2"
+SCHEMA_VERSION = "2026-08-01-3"
 
 
 def init_db():
@@ -321,6 +321,17 @@ def init_db():
         )
     """)
     cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS premium_waitlist (
+            id SERIAL PRIMARY KEY,
+            agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+            master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            notified_at TIMESTAMP,
+            CONSTRAINT premium_waitlist_unique UNIQUE (agent_id, master_building_id)
+        )
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS operators (

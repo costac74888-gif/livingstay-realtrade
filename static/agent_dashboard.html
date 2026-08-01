@@ -60,7 +60,7 @@
       <button id="btnAddBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
     </div>
     <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
-      전속 단지는 최대 15개까지 등록하실 수 있어요
+      전속 단지는 최대 10개까지 등록하실 수 있어요
     </div>
     <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
   </div>
@@ -69,10 +69,10 @@
   <div class="panel-card" style="margin-top:14px;">
     <div class="side-card-title" style="margin-bottom:4px;">담당 지역</div>
     <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
-      시·군·구 단위로 해당 지역 전체를 대표하는 중개사로 등록할 수 있어요 (최대 25개)
+      시·군·구 단위로 해당 지역 전체를 대표하는 중개사로 등록할 수 있어요 (최대 20개)
     </div>
     <div style="display:flex; gap:6px; margin-bottom:8px;">
-      <input id="regionInput" class="admin-input" placeholder="예: 경기도 평택시" style="flex:1;">
+      <select id="regionInput" class="admin-input" style="flex:1;"><option value="">지역 선택…</option></select>
       <button id="btnClaimRegion" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">지역 등록</button>
     </div>
     <div id="regionList"></div>
@@ -282,11 +282,15 @@ function render(){
         <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
         <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
         <span style="flex:1;"></span>
-        ${b.premium_granted_at
-          ? (b.has_priority_badge
-              ? `<span style="font-size:11px; font-weight:700; color:var(--brass-dark);">🧭 단지뱃지 적용중</span>`
-              : `<span style="font-size:11px; color:var(--ink-soft);">단지뱃지 종료</span>`)
-          : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brass-dark);" onclick="claimPremium(${b.master_building_id})">단지뱃지 신청</button>`}
+        ${b.occupied_by_other
+          ? (b.on_waitlist
+              ? `<span style="font-size:11px; color:var(--ink-soft);">🔔 알림신청완료</span>`
+              : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--ink-soft); border-color:var(--ink-soft);" onclick="notifyMe(${b.master_building_id})">🔔 단지신청알림</button>`)
+          : (b.premium_granted_at
+              ? (b.has_priority_badge
+                  ? `<span style="font-size:11px; font-weight:700; color:var(--brass-dark);">🧭 단지뱃지 적용중</span>`
+                  : `<span style="font-size:11px; color:var(--ink-soft);">단지뱃지 종료</span>`)
+              : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brass-dark);" onclick="claimPremium(${b.master_building_id})">단지뱃지 신청</button>`)}
         ${PREVIEW_MODE ? "" : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
         <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>`}
       </div>
@@ -295,10 +299,21 @@ function render(){
 }
 
 async function claimPremium(mbid){
-  if (!confirm("이 단지에 단지뱃지를 신청할까요? 지금 신청하시면 3개월간 무료로 적용됩니다.")) return;
+  const msg = "단지부동산 신청 안내\n\n"
+    + "1. 한 단지에는 1개 부동산만 입점할 수 있습니다 (선착순)\n"
+    + "2. 입점 시 해당 단지 담당중개사 영역 최상단에 고정 노출됩니다\n"
+    + "3. 잔여기간은 이후 정식 전환 시 그대로 이어서 적용됩니다\n\n"
+    + "지금 신청하시면 3개월간 무료로 적용됩니다. 신청하시겠습니까?";
+  if (!confirm(msg)) return;
   const { ok, data } = await api(`/api/agent/buildings/${mbid}/claim-premium`, { method: "POST" });
   if (ok) { alert("적용되었습니다."); load(); }
   else alert(data.message || "신청에 실패했습니다.");
+}
+
+async function notifyMe(mbid){
+  const { ok, data } = await api(`/api/agent/buildings/${mbid}/notify-me`, { method: "POST" });
+  if (ok) { alert("자리가 생기면 이메일로 알려드립니다."); load(); }
+  else alert(data.message || "등록에 실패했습니다.");
 }
 
 document.getElementById("btnClaimRegion").addEventListener("click", async () => {
@@ -325,12 +340,27 @@ async function loadRegions(){
   }).join("");
 }
 
+async function loadSggOptions(){
+  const { ok, data } = await api("/api/agent/sgg-options");
+  if (!ok) return;
+  const sel = document.getElementById("regionInput");
+  if (!sel) return;
+  // 기존 옵션 제거 후 다시 채움 (중복 방지)
+  while (sel.options.length > 1) sel.remove(1);
+  data.options.forEach(sgg => {
+    const opt = document.createElement("option");
+    opt.value = sgg; opt.textContent = sgg;
+    sel.appendChild(opt);
+  });
+}
+
 async function load(){
   const { ok, data } = await api(PREVIEW_MODE ? `/api/admin/preview/agent/${PREVIEW_AGENT_ID}` : "/api/agent/me");
   if (!ok){ document.getElementById("meOffice").textContent = "정보를 불러오지 못했습니다."; return; }
   ME = data;
   render();
   loadRegions();
+  loadSggOptions();
 }
 
 // ---- 받은 매물의뢰 (상태 배지 + 처리 버튼) ----
