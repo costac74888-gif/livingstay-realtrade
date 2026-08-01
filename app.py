@@ -8891,8 +8891,8 @@ def get_active_popup():
         FROM site_popups
         WHERE is_active = TRUE
           AND {device_col} = TRUE
-          AND (start_at IS NULL OR start_at <= NOW())
-          AND (end_at IS NULL OR end_at >= NOW())
+          AND (start_at IS NULL OR start_at <= (NOW() AT TIME ZONE 'Asia/Seoul'))
+          AND (end_at IS NULL OR end_at >= (NOW() AT TIME ZONE 'Asia/Seoul'))
           AND (audience = 'all' OR %s)
         ORDER BY id DESC
         LIMIT 1
