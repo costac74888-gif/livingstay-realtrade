@@ -1198,7 +1198,7 @@ function recruitBoxHTML(kind, opts = {}){
     housekeeping: {
       bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 22, pad: "14px 12px",
       title: "운영지원업체를 찾고 있습니다",
-      desc: "건물별 객실관리를 맡아줄 파트너를 모집합니다.",
+      desc: "청소 · 세탁 · 용품 · 소독 · 세무 · 인테리어 등 운영지원 파트너를 모집합니다.",
       btnText: "지원업체로 신청하기", href: "/partner",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
     },
