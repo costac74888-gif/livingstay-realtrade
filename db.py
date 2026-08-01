@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-07-31-1"
+SCHEMA_VERSION = "2026-08-01-1"
 
 
 def init_db():
@@ -681,6 +681,25 @@ def init_db():
     # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
+
+    # 매수의뢰(일반 회원 → 중개사 라우팅) — listing_requests와 동일 구조, 매수자 측 요청.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS buy_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
+        deal_type TEXT NOT NULL,
+        desired_price TEXT,
+        price_krw INTEGER,
+        monthly_rent_krw INTEGER,
+        contact_phone TEXT NOT NULL,
+        routed_agent_id INTEGER REFERENCES agents(id),
+        routed_reason TEXT,
+        status TEXT DEFAULT 'submitted',
+        admin_note TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
 
     # 전국공인중개사사무소 표준데이터(공공데이터포털) 수집본 — 인근 중개업소 후보 매칭용.
     # 수집은 sync_brokers.py(일일 1,000건 쿼터 체크포인트 방식), 매칭은 하버사인 거리 계산.

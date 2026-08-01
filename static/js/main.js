@@ -1300,7 +1300,7 @@ function openListingRequestModal(buildingId, buildingName){
         <button id="lrSubmit" class="btn-search" style="width:100%; padding:12px; margin-top:6px;">매물의뢰 접수하기</button>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.7; margin-top:10px; padding:10px 12px; background:#F4F1EA; border-radius:8px;">
           <div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>
-          -매물의뢰는 단지부동산, 인근부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>
+          -매물의뢰는 단지부동산, 지역부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>
           -홈앤스테이는 부동산중개사무소가 아니며 중개행위에 관여하지 않고, 중개수수료를 받지 않습니다.<br><br>
           -"매물의뢰"는 매물내놓기 무료서비스이며, 중개의뢰는 배정된 중개사를 통하여 별도로 상담을 진행하여 주시기 바랍니다.
         </div>
@@ -1411,6 +1411,156 @@ function openListingRequestModal(buildingId, buildingName){
   });
 }
 
+// ── 매수의뢰 모달 (B화면) ────────────────────────────────────
+function openBuyRequestModal(buildingId, buildingName){
+  document.getElementById("buyReqOverlay")?.remove();
+  const ov = document.createElement("div");
+  ov.id = "buyReqOverlay";
+  ov.style.cssText = "position:fixed; inset:0; background:rgba(22,32,46,.45); z-index:3000; display:flex; align-items:center; justify-content:center; padding:16px;";
+  const FLD = "width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:13.5px; font-family:inherit;";
+  ov.innerHTML = `
+    <div style="background:#fff; border-radius:14px; width:100%; max-width:400px; padding:22px 20px; box-shadow:0 10px 40px rgba(0,0,0,.2);" role="dialog" aria-modal="true">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="font-size:16px; font-weight:800; color:var(--ink);">매수의뢰</div>
+        <button id="brClose" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--ink-soft);" aria-label="닫기">×</button>
+      </div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px;">${escapeHtml(buildingName)}</div>
+      <div id="brForm">
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">의뢰인</div>
+        <input id="brName" type="text" readonly value="" placeholder="로그인 정보에서 자동 표시" style="${FLD} margin-bottom:12px; background:#F6F5F2; color:var(--ink-soft);" />
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">거래유형</div>
+        <div id="brDealTypes" style="display:flex; gap:6px; margin-bottom:12px;">
+          ${["매매","전세","월세","단기임대"].map((t,i) => `<button type="button" data-dt="${t}" class="side-more" style="flex:1; margin-top:0; padding:8px 0; ${i===0 ? "background:#3B7DD8; color:#fff; border-color:#3B7DD8;" : ""}">${t}</button>`).join("")}
+        </div>
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">희망가 <span style="font-weight:400; color:var(--ink-soft);">(선택)</span></div>
+        <div id="brPriceSale">
+          <input id="brSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" style="${FLD} margin-bottom:12px;" />
+        </div>
+        <div id="brPriceJeonse" style="display:none;">
+          <input id="brJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} margin-bottom:12px;" />
+        </div>
+        <div id="brPriceWolse" style="display:none; gap:6px; margin-bottom:12px;">
+          <input id="brWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} flex:1;" />
+          <input id="brWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" style="${FLD} flex:1;" />
+        </div>
+        <div id="brPriceShort" style="display:none;">
+          <input id="brShortPrice" type="text" maxlength="100" placeholder="예) 1박 8만원 / 주 단위 협의" style="${FLD} margin-bottom:12px;" />
+        </div>
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처</div>
+        <input id="brPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD}" />
+        <div id="brMsg" style="font-size:12px; color:var(--brick); min-height:16px; margin-top:6px;"></div>
+        <button id="brSubmit" class="btn-search" style="width:100%; padding:12px; margin-top:6px; background:#3B7DD8; border-color:#3B7DD8;">매수의뢰 접수하기</button>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.7; margin-top:10px; padding:10px 12px; background:#F4F1EA; border-radius:8px;">
+          <div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>
+          -매수의뢰는 단지부동산, 지역부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>
+          -홈앤스테이는 부동산중개사무소가 아니며 중개행위에 관여하지 않고, 중개수수료를 받지 않습니다.<br><br>
+          -"매수의뢰"는 매물내놓기 무료서비스이며, 중개의뢰는 배정된 중개사를 통하여 별도로 상담을 진행하여 주시기 바랍니다.
+        </div>
+      </div>
+      <div id="brDone" style="display:none; text-align:center; padding:18px 4px;">
+        <div style="font-size:34px; margin-bottom:10px;">✅</div>
+        <div style="font-size:14.5px; font-weight:700; color:var(--ink); margin-bottom:6px;">매수의뢰가 접수됐습니다</div>
+        <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.6;">담당 중개사가 곧 연락드립니다.<br/>접수 현황은 마이페이지에서 확인할 수 있습니다.</div>
+        <button id="brDoneClose" class="side-more" style="width:auto; padding:8px 22px; margin-top:14px;">닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  fetch("/api/auth/me", { credentials: "same-origin" })
+    .then((r) => r.json())
+    .then((d) => { if (d && d.logged_in && d.name) ov.querySelector("#brName").value = d.name; })
+    .catch(() => {});
+
+  let dealType = "매매";
+  const PRICE_BOXES = { "매매": "brPriceSale", "전세": "brPriceJeonse", "월세": "brPriceWolse", "단기임대": "brPriceShort" };
+  function showPriceBox(){
+    Object.entries(PRICE_BOXES).forEach(([dt, id]) => {
+      const el = ov.querySelector("#" + id);
+      el.style.display = (dt === dealType) ? (dt === "월세" ? "flex" : "block") : "none";
+    });
+  }
+  ov.querySelectorAll("#brDealTypes button").forEach((b) => {
+    b.addEventListener("click", () => {
+      dealType = b.dataset.dt;
+      showPriceBox();
+      ov.querySelectorAll("#brDealTypes button").forEach((x) => {
+        const on = x === b;
+        x.style.background = on ? "#3B7DD8" : "";
+        x.style.color = on ? "#fff" : "";
+        x.style.borderColor = on ? "#3B7DD8" : "";
+      });
+    });
+  });
+  const close = () => ov.remove();
+  ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+  ov.querySelector("#brClose").addEventListener("click", close);
+  ov.querySelector("#brDoneClose").addEventListener("click", close);
+
+  ov.querySelector("#brSubmit").addEventListener("click", async () => {
+    const msg = ov.querySelector("#brMsg");
+    const phone = ov.querySelector("#brPhone").value.trim();
+    if (!/^0\d{1,2}-?\d{3,4}-?\d{4}$/.test(phone)){
+      msg.textContent = "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678";
+      return;
+    }
+    const numVal = (id) => {
+      const v = parseInt(ov.querySelector("#" + id).value, 10);
+      return (Number.isFinite(v) && v > 0) ? v : null;
+    };
+    const fmt = (n) => n.toLocaleString("ko-KR");
+    let priceKrw = null, monthlyRentKrw = null, desiredPrice = "";
+    if (dealType === "매매"){
+      priceKrw = numVal("brSalePrice");
+      if (priceKrw) desiredPrice = `매매가 ${fmt(priceKrw)}만원`;
+    } else if (dealType === "전세"){
+      priceKrw = numVal("brJeonseDeposit");
+      if (priceKrw) desiredPrice = `보증금 ${fmt(priceKrw)}만원`;
+    } else if (dealType === "월세"){
+      priceKrw = numVal("brWolseDeposit");
+      monthlyRentKrw = numVal("brWolseRent");
+      const parts = [];
+      if (priceKrw) parts.push(`보증금 ${fmt(priceKrw)}만원`);
+      if (monthlyRentKrw) parts.push(`월세 ${fmt(monthlyRentKrw)}만원`);
+      desiredPrice = parts.join("·");
+    } else {
+      desiredPrice = ov.querySelector("#brShortPrice").value.trim();
+    }
+    msg.textContent = "";
+    const btn = ov.querySelector("#brSubmit");
+    btn.disabled = true; btn.textContent = "접수 중…";
+    try {
+      const res = await fetch("/api/buy-requests", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          master_building_id: buildingId,
+          deal_type: dealType,
+          desired_price: desiredPrice,
+          price_krw: priceKrw,
+          monthly_rent_krw: monthlyRentKrw,
+          contact_phone: phone,
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 401){
+        close();
+        if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+        return;
+      }
+      if (!res.ok || d.ok === false){
+        msg.textContent = d.message || "접수에 실패했습니다. 잠시 후 다시 시도해주세요.";
+        btn.disabled = false; btn.textContent = "매수의뢰 접수하기";
+        return;
+      }
+      ov.querySelector("#brForm").style.display = "none";
+      ov.querySelector("#brDone").style.display = "block";
+    } catch(e){
+      msg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+      btn.disabled = false; btn.textContent = "매수의뢰 접수하기";
+    }
+  });
+}
+
 const B_LODGING_BADGE = { "생활": "생숙", "관광": "관광숙박", "일반": "일반숙박", "복합": "복합" };
 function detailBadgeLabel(v, subtype){
   if (!v) return "미분류";
@@ -1424,6 +1574,7 @@ function buildingPanelSkeleton(){
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto;">← 전체 목록으로</button>
         <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:7px 14px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700;">매물 내놓기</button>
+        <button id="btnBuyRequest" class="side-more" style="margin-top:0; width:auto; padding:7px 14px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700;">매수의뢰</button>
       </div>
     </section>
 
@@ -1677,8 +1828,11 @@ async function loadBuildingHeader(id){
     ? "준공전"
     : (b.use_apr_day != null && b.use_apr_day !== ""
         ? String(b.use_apr_day).slice(0, 7).replace("-", ".") : "-");
-  const pkngTxt = (b.tot_pkng_cnt != null && b.tot_pkng_cnt !== "")
-    ? Number(b.tot_pkng_cnt).toLocaleString("ko-KR") + "대" : "-";
+  const _autoP = (b.indr_auto_utcnt ?? 0) + (b.oudr_auto_utcnt ?? 0);
+  const _mechP = (b.indr_mech_utcnt ?? 0) + (b.oudr_mech_utcnt ?? 0);
+  const _calcPkng = _autoP + _mechP;
+  const pkngTxt = _calcPkng > 0 ? _calcPkng.toLocaleString("ko-KR") + "대"
+    : (b.tot_pkng_cnt != null && b.tot_pkng_cnt !== "" ? Number(b.tot_pkng_cnt).toLocaleString("ko-KR") + "대" : "-");
   const flrTxt = (b.grnd_flr_cnt != null || b.ugrnd_flr_cnt != null)
     ? `${b.grnd_flr_cnt != null ? b.grnd_flr_cnt : "-"} / ${b.ugrnd_flr_cnt != null ? b.ugrnd_flr_cnt : "-"}` : "-";
 
@@ -2291,6 +2445,14 @@ function renderBuildingPanel(id){
       return;
     }
     openListingRequestModal(id, bCurrentName || "");
+  });
+  document.getElementById("btnBuyRequest").addEventListener("click", () => {
+    if (!window.__livingstayLoggedIn){
+      if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+      else location.href = "/?login=1";
+      return;
+    }
+    openBuyRequestModal(id, bCurrentName || "");
   });
   document.getElementById("bTxMore").addEventListener("click", () => {
     bTxShown += B_TX_STEP;
