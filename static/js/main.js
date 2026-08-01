@@ -2075,7 +2075,7 @@ async function loadBuildingHeader(id){
       </a>`;
   }
 
-  renderBuildingAgents(b.agents || (b.agent ? [b.agent] : []), id, bName, b.building_status);
+  renderBuildingAgents(b.agents || (b.agent ? [b.agent] : []), b.more_agents || [], id, bName, b.building_status);
 
   // 위탁운영/운영지원업체(하우스키핑) 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
   // (실제 업종(category) 선택은 신청폼 안에서 함 — agent 신청 링크와 동일 패턴)
@@ -2261,7 +2261,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
   box.innerHTML = html;
 }
 
-function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
+function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buildingStatus){
   const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   const box = document.getElementById("bAgentBox");
   if (!box) return;
@@ -2310,6 +2310,18 @@ function renderBuildingAgents(agents, buildingId, buildingName, buildingStatus){
       btnText: "이 건물에 담당중개사로 신청하기",
       preCompletion: isPreCompletion,
     });
+  }
+  if (moreAgents && moreAgents.length) {
+    const moreHtml = moreAgents.map(agent => `
+      <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee); display:flex; align-items:center; gap:10px;">
+        <div style="flex:1; min-width:0; font-size:13px; color:var(--ink);">${escapeHtml(agent.office_name || "-")}</div>
+        ${agent.phone ? `<a href="tel:${escapeHtml(agent.phone)}" style="font-size:11.5px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">📞 전화</a>` : ""}
+      </div>`).join("");
+    box.innerHTML += `
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer; font-size:12.5px; color:var(--ink-soft); padding:6px 0;">등록된 부동산 더보기 (${moreAgents.length})</summary>
+        <div style="margin-top:4px;">${moreHtml}</div>
+      </details>`;
   }
 }
 

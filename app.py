@@ -403,20 +403,20 @@ def get_building(building_id):
     # 정렬: priority_score DESC(유료 우선노출 자리, 현재 전부 0) → 동점자는 RANDOM().
     # 단일 쿼리 한 줄로 처리해야 전원 0점일 때도 매번 완전 랜덤이 된다 (2단계 분리 금지).
     # 매물 건수(sale/jeonse/wolse/shortterm_count)는 agent_buildings 기준 = "이 건물 한정" 값 (중개사 통산치 아님).
+    # 1차: 프리미엄(단지뱃지) 보유 중개사만 — 무료등록 중개사는 메인 3자리에 노출 안 함
     cur.execute("""
         SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
                a.subdomain_slug, a.photo_url, a.intro_title,
                ab.sale_count, ab.jeonse_count, ab.wolse_count, ab.shortterm_count,
-               (COALESCE(ab.has_priority_badge, FALSE)
-                AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS has_priority_badge
+               TRUE AS has_priority_badge
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         WHERE ab.master_building_id = %s
           AND a.status = 'approved'
           AND COALESCE(a.is_visible, TRUE)
-        ORDER BY (COALESCE(ab.has_priority_badge, FALSE)
-                  AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) DESC,
-                 COALESCE(a.priority_score, 0) DESC, RANDOM()
+          AND ab.has_priority_badge
+          AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+        ORDER BY COALESCE(a.priority_score, 0) DESC, RANDOM()
         LIMIT 3
     """, [building_id])
     agent_rows = cur.fetchall()
@@ -439,6 +439,23 @@ def get_building(building_id):
             LIMIT %s
         """, [building.get("sgg_text") or "", building_id, 3 - len(agent_rows)])
         agent_rows = list(agent_rows) + list(cur.fetchall())
+
+    # 무료등록 중개사 — 메인 3자리에는 안 넣고 "더보기"용으로 따로 모은다
+    cur.execute("""
+        SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
+               a.subdomain_slug, a.photo_url, a.intro_title,
+               ab.sale_count, ab.jeonse_count, ab.wolse_count, ab.shortterm_count
+        FROM agent_buildings ab
+        JOIN agents a ON a.id = ab.agent_id
+        WHERE ab.master_building_id = %s
+          AND a.status = 'approved'
+          AND COALESCE(a.is_visible, TRUE)
+          AND NOT (ab.has_priority_badge
+                   AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW()))
+        ORDER BY RANDOM()
+        LIMIT 20
+    """, [building_id])
+    more_agent_rows = cur.fetchall()
 
     # 담당 운영업체: operator_buildings에 이 건물이 등록된 approved 운영업체 목록.
     # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 최대 3곳씩 표시한다.
@@ -588,6 +605,12 @@ def get_building(building_id):
     result["agents"] = agents_list
     # 하위호환: 단일 agent를 쓰던 기존 코드용 (첫 번째 = 최우선 노출)
     result["agent"] = agents_list[0] if agents_list else None
+    more_agents_list = []
+    for r in more_agent_rows:
+        agent_d = dict(r)
+        agent_d["photo_src"] = f"/api/partners/agent-photo/{agent_d['id']}" if agent_d.pop("photo_url", None) else None
+        more_agents_list.append(agent_d)
+    result["more_agents"] = more_agents_list
     result["operators"] = operator_rows
     result["loan_consultants"] = loan_consultant_rows
     # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율
