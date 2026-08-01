@@ -1239,7 +1239,6 @@ function recruitBoxHTML(kind, opts = {}){
 // 금융 섹션 빈 상태: 문구 + 대출상담 모집 박스 (A/B 공통)
 function financeEmptyHTML(){
   return `
-    <div style="text-align:center; color:var(--ink-soft); padding:14px; font-size:13px;">등록된 대출상담사가 없습니다.</div>
     ${recruitBoxHTML("finance")}`;
 }
 
@@ -2042,7 +2041,6 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
 
   if (!items.length){
     box.innerHTML = `
-      <div style="text-align:center; color:var(--ink-soft); padding:14px; font-size:13px;">등록된 대출상담사가 없습니다.</div>
       ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기", preCompletion: isPreCompletion })}`;
     return;
   }
