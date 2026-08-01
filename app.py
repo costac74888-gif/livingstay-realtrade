@@ -1855,7 +1855,7 @@ def apply_operator_page():
 # 운영지원업체 업종: 이 5개만 허용한다(operators.category와 동일 기준).
 # '대출상담사'는 별도 엔티티(loan_consultants)로 분리되어 신규 신청은 /apply/loan 으로 받는다.
 # (기존 operators 테이블의 대출상담사 행은 데이터 보존 차원에서 그대로 둔다)
-OPERATOR_CATEGORIES = {"위탁운영", "청소", "세탁", "용품", "소독", "세무", "인테리어"}
+OPERATOR_CATEGORIES = {"위탁", "청소", "세탁", "소독", "세무", "인테리어"}
 
 
 @app.route("/api/apply/operator", methods=["POST"])
@@ -9541,9 +9541,70 @@ def admin_members_list():
     for it in items:
         it["ads"] = ads_map.get((it["member_type"], it["id"]))
 
+    agent_ids = [it["id"] for it in items if it["member_type"] == "agent"]
+    agent_tier_map = {}
+    if agent_ids:
+        cur.execute("""
+            SELECT a.id AS agent_id,
+                   COUNT(ab.*) FILTER (WHERE NOT COALESCE(ab.has_priority_badge, FALSE)
+                                         OR ab.premium_expires_at <= NOW()) AS free_cnt,
+                   COUNT(ab.*) FILTER (WHERE ab.has_priority_badge
+                                         AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS premium_cnt
+            FROM agents a
+            LEFT JOIN agent_buildings ab ON ab.agent_id = a.id
+            WHERE a.id = ANY(%s)
+            GROUP BY a.id
+        """, [agent_ids])
+        for r in cur.fetchall():
+            agent_tier_map[r["agent_id"]] = {"free_cnt": int(r["free_cnt"]), "premium_cnt": int(r["premium_cnt"])}
+        cur.execute("""
+            SELECT agent_id, COUNT(*) AS c FROM agent_service_regions
+            WHERE agent_id = ANY(%s) AND expires_at > NOW() GROUP BY agent_id
+        """, [agent_ids])
+        for r in cur.fetchall():
+            agent_tier_map.setdefault(r["agent_id"], {"free_cnt": 0, "premium_cnt": 0})["region_cnt"] = int(r["c"])
+    for it in items:
+        if it["member_type"] == "agent":
+            t = agent_tier_map.get(it["id"], {"free_cnt": 0, "premium_cnt": 0})
+            it["free_cnt"] = t.get("free_cnt", 0)
+            it["premium_cnt"] = t.get("premium_cnt", 0)
+            it["region_cnt"] = t.get("region_cnt", 0)
+
+    # 중개사 등급 서브통계 (탭 상단에 "무료전용/단지뱃지보유/지역Master보유"로 표시)
+    cur.execute("""
+        SELECT
+          COUNT(*) FILTER (WHERE b.premium_cnt = 0 AND r.region_cnt = 0) AS free_only,
+          COUNT(*) FILTER (WHERE b.premium_cnt > 0) AS has_premium,
+          COUNT(*) FILTER (WHERE r.region_cnt > 0) AS has_region
+        FROM agents a
+        LEFT JOIN (
+          SELECT agent_id, COUNT(*) AS premium_cnt FROM agent_buildings
+          WHERE has_priority_badge AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+          GROUP BY agent_id
+        ) b ON b.agent_id = a.id
+        LEFT JOIN (
+          SELECT agent_id, COUNT(*) AS region_cnt FROM agent_service_regions
+          WHERE expires_at > NOW() GROUP BY agent_id
+        ) r ON r.agent_id = a.id
+        WHERE a.status IN ('approved', 'inactive', 'pending')
+    """)
+    agent_tier_stats = dict(cur.fetchone())
+
+    # 운영업체 업종별 카운트
+    cur.execute("""
+        SELECT COALESCE(NULLIF(category, ''), '미지정') AS category, COUNT(*) AS count
+        FROM operators WHERE status IN ('approved', 'inactive', 'pending')
+        GROUP BY COALESCE(NULLIF(category, ''), '미지정')
+        ORDER BY count DESC
+    """)
+    operator_category_stats = [{"category": r["category"], "count": int(r["count"])} for r in cur.fetchall()]
+
     cur.close()
     conn.close()
-    return jsonify({"total": total, "page": page, "size": size, "counts": counts, "items": items})
+    return jsonify({"total": total, "page": page, "size": size, "counts": counts,
+                     "agent_tier_stats": agent_tier_stats,
+                     "operator_category_stats": operator_category_stats,
+                     "items": items})
 
 
 # ---- 회원 첨부서류 목록 (신청 시 올린 서류 → 승인 후에도 회원관리에서 열람) ----
@@ -9587,18 +9648,64 @@ def _resolve_member_application_row(member_type, member_id):
 @app.route("/api/admin/premium-status")
 @require_admin
 def admin_premium_status():
+    from email_util import send_email
+
+    def _send_expiry_reminder(kind, agent_id, office_name, email, target_label, expires_at):
+        if not email:
+            return False
+        subject = f"[홈앤스테이] {target_label} 이용기간이 곧 종료됩니다"
+        body = (f"<p>{office_name} 담당자님,</p>"
+                f"<p><b>{target_label}</b>의 이용기간이 <b>{expires_at.strftime('%Y-%m-%d')}</b>에 종료될 예정입니다.</p>"
+                f"<p>계속 이용을 원하시면 홈앤스테이로 문의해주세요.</p>")
+        ok, _ = send_email(email, subject, body)
+        return ok
+
+    conn2 = get_conn()
+    cur2 = conn2.cursor()
+    cur2.execute("""
+        SELECT ab.agent_id, ab.master_building_id, mb.building_name, a.office_name, a.email, ab.premium_expires_at
+        FROM agent_buildings ab
+        JOIN agents a ON a.id = ab.agent_id
+        JOIN master_buildings mb ON mb.id = ab.master_building_id
+        WHERE ab.premium_expires_at IS NOT NULL
+          AND ab.premium_expires_at BETWEEN NOW() AND NOW() + INTERVAL '30 days'
+          AND ab.reminder_sent_at IS NULL
+    """)
+    for r in cur2.fetchall():
+        if _send_expiry_reminder("building", r["agent_id"], r["office_name"], r["email"],
+                                  f"'{r['building_name']}' 단지뱃지", r["premium_expires_at"]):
+            cur2.execute("UPDATE agent_buildings SET reminder_sent_at=NOW() "
+                         "WHERE agent_id=%s AND master_building_id=%s", [r["agent_id"], r["master_building_id"]])
+    cur2.execute("""
+        SELECT sr.agent_id, sr.sgg_text, a.office_name, a.email, sr.expires_at
+        FROM agent_service_regions sr
+        JOIN agents a ON a.id = sr.agent_id
+        WHERE sr.expires_at BETWEEN NOW() AND NOW() + INTERVAL '30 days'
+          AND sr.reminder_sent_at IS NULL
+    """)
+    for r in cur2.fetchall():
+        if _send_expiry_reminder("region", r["agent_id"], r["office_name"], r["email"],
+                                  f"'{r['sgg_text']}' 지역Master", r["expires_at"]):
+            cur2.execute("UPDATE agent_service_regions SET reminder_sent_at=NOW() "
+                         "WHERE agent_id=%s AND sgg_text=%s", [r["agent_id"], r["sgg_text"]])
+    conn2.commit()
+    cur2.close()
+    conn2.close()
+
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         SELECT 'building' AS kind, a.office_name, mb.building_name AS target,
-               ab.premium_granted_at AS granted_at, ab.premium_expires_at AS expires_at
+               ab.premium_granted_at AS granted_at, ab.premium_expires_at AS expires_at,
+               ab.reminder_sent_at
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         JOIN master_buildings mb ON mb.id = ab.master_building_id
         WHERE ab.premium_granted_at IS NOT NULL
         UNION ALL
         SELECT 'region' AS kind, a.office_name, sr.sgg_text AS target,
-               sr.granted_at, sr.expires_at
+               sr.granted_at, sr.expires_at,
+               sr.reminder_sent_at
         FROM agent_service_regions sr
         JOIN agents a ON a.id = sr.agent_id
         ORDER BY expires_at ASC
@@ -9609,6 +9716,7 @@ def admin_premium_status():
     for r in rows:
         r["granted_at"] = r["granted_at"].isoformat() if r["granted_at"] else None
         r["expires_at"] = r["expires_at"].isoformat() if r["expires_at"] else None
+        r["reminder_sent"] = bool(r.get("reminder_sent_at"))
     return jsonify({"ok": True, "items": rows})
 
 

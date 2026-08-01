@@ -308,6 +308,7 @@ def init_db():
     cur.execute("ALTER TABLE agent_buildings ADD COLUMN IF NOT EXISTS has_priority_badge BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE agent_buildings ADD COLUMN IF NOT EXISTS premium_granted_at TIMESTAMP")
     cur.execute("ALTER TABLE agent_buildings ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP")
+    cur.execute("ALTER TABLE agent_buildings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS agent_service_regions (
@@ -319,6 +320,7 @@ def init_db():
             CONSTRAINT agent_service_regions_unique UNIQUE (agent_id, sgg_text)
         )
     """)
+    cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS operators (
@@ -356,6 +358,8 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
     # 유료 우선노출용 점수 (현재 미사용, 기본 0 — loan_consultants.priority_score와 동일 패턴)
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
+    # 업종명 정리: '위탁운영' → '위탁' (idempotent — 이미 '위탁'이면 아무 일도 안 일어남)
+    cur.execute("UPDATE operators SET category='위탁' WHERE category='위탁운영'")
 
     # 운영업체별 담당 건물 (agent_buildings와 동일 패턴)
     cur.execute("""
