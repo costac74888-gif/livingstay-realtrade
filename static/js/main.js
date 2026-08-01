@@ -1230,8 +1230,7 @@ function recruitBoxHTML(kind, opts = {}){
   return `
     <div style="text-align:center; padding:${k.pad}; background:${k.bg}; border:1px dashed ${k.border}; border-radius:8px;">
       <div style="font-size:${k.iconSize}px; margin-bottom:6px;">${k.icon}</div>
-      <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:4px;">${k.title}</div>
-      <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;">${k.desc}</div>
+      <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">${k.title}</div>
       ${btn}
     </div>`;
 }
