@@ -1784,6 +1784,11 @@ async function loadBuildingHeader(id){
     return;
   }
 
+  // 건물 상세가 열릴 때 지도를 해당 마커 위치로 이동 (관심단지·즐겨찾기 포함 모든 진입 경로)
+  if (typeof kakaoMap !== "undefined" && kakaoMap && b.lat != null && b.lng != null) {
+    kakaoMap.panTo(new kakao.maps.LatLng(Number(b.lat), Number(b.lng)));
+  }
+
   const isPreCompletion = b.building_status && b.building_status !== "완공";
   const hasType = !!(b.lodging_type && b.lodging_type !== "mixed_use_excluded");
   const typeBadge = hasType
@@ -1796,7 +1801,20 @@ async function loadBuildingHeader(id){
     ? `${typeBadge}${preBadge}`
     : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["미분류"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">미분류</span>`;
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
-  const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
+  // 영업신고 호수: 행안부 lodgings 합산값(행정운영 '신고'와 동일 소스) 우선, 없으면 master_buildings.biz_units fallback
+  const lodgingRoomTotal = (b.lodging_room_total != null && Number(b.lodging_room_total) > 0)
+    ? Number(b.lodging_room_total) : null;
+  const bizUnitsNum = b.biz_units != null ? Number(b.biz_units) : null;
+  const effectiveBizUnits = lodgingRoomTotal ?? bizUnitsNum;
+  const bizUnits = effectiveBizUnits != null ? effectiveBizUnits.toLocaleString('ko-KR') + "실" : "-";
+  // 신고율: lodging_report_rate 또는 effectiveBizUnits / units 즉석 계산
+  const unitsNum = b.units != null ? Number(b.units) : null;
+  let headerRate = "-";
+  if (b.lodging_report_rate != null) {
+    headerRate = Math.round(Number(b.lodging_report_rate)) + "%";
+  } else if (effectiveBizUnits != null && unitsNum && unitsNum > 0) {
+    headerRate = Math.round(effectiveBizUnits * 100 / unitsNum) + "%";
+  }
   const bName = b.building_name || "(건물명 미확인)";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
 
@@ -1868,6 +1886,7 @@ async function loadBuildingHeader(id){
       ${bStat("준공월", useAprShort)}
       ${bStat("총 호실", units)}
       ${bStat("영업신고 호수", bizUnits)}
+      ${bStat("신고율", headerRate)}
       ${bStat("총주차", pkngTxt)}
       ${bStat("층수(지상/지하)", flrTxt)}
     </div>`;
