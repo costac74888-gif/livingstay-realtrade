@@ -3176,7 +3176,7 @@
           <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
           <td style="min-width:220px;">${adCell}</td>
-          <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0})</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${(r.member_type === "agent" && r.region_sgg) ? `${dgEscape(r.region_sgg)} <span style="color:var(--ink-soft);">(${r.region_bld_cnt||0}/20)</span>${r.region_active ? "" : ' <span style="color:var(--brick);">종료</span>'}` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap;">${actions}</td>
         </tr>`;

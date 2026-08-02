@@ -13,6 +13,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<style>
+  .agent-tabbar{ display:flex; gap:4px; margin:18px 0 14px; border-bottom:1px solid var(--line); }
+  .agent-tab{
+    padding:10px 18px; font-size:14px; font-weight:600; color:var(--ink-soft);
+    background:none; border:none; border-bottom:2px solid transparent;
+    cursor:pointer; margin-bottom:-1px;
+  }
+  .agent-tab:hover{ color:var(--ink); }
+  .agent-tab.is-active{ color:var(--brass-dark); border-bottom-color:var(--brass); }
+  .agent-tabpanel{ display:none; }
+  .agent-tabpanel.is-active{ display:block; }
+  .badge-meter{
+    display:flex; align-items:center; gap:10px; padding:14px 16px;
+    background:var(--brass-tint); border-radius:var(--radius); margin-bottom:14px;
+  }
+  .badge-meter .num{ font-size:22px; font-weight:800; color:var(--brass-dark); }
+</style>
 </head>
 <body>
 
@@ -29,7 +46,7 @@
   🔒 관리자 열람 모드 — 읽기 전용입니다 (수정 불가)
 </div>
 
-<div class="search-panel" style="max-width:720px; padding-bottom:40px;">
+<div class="search-panel" style="max-width:900px; padding-bottom:40px;">
 
   <!-- 상단: 내 정보 -->
   <div class="panel-card" style="margin-top:16px;">
@@ -53,56 +70,87 @@
     </div>
   </div>
 
-  <!-- 담당단지 -->
-  <div class="panel-card" style="margin-top:14px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
-      <div class="side-card-title" style="margin-bottom:0;">담당 단지 <span class="side-sub" id="bldCount"></span></div>
-      <button id="btnAddBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
-    </div>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
-      담당 단지는 최대 10개까지 등록하실 수 있어요
-    </div>
-    <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
+  <!-- 탭바 -->
+  <div class="agent-tabbar">
+    <button class="agent-tab is-active" data-tab="buildings">담당 단지</button>
+    <button class="agent-tab" data-tab="region">담당 지역</button>
+    <button class="agent-tab" data-tab="billing">결제관리</button>
+    <button class="agent-tab" data-tab="leads">받은 의뢰</button>
   </div>
 
-  <!-- 담당 지역 -->
-  <div class="panel-card" style="margin-top:14px;">
-    <div class="side-card-title" style="margin-bottom:4px;">담당 지역</div>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
-      시·군·구 단위로 해당 지역을 1개 등록하고, 그 안에서 담당단지를 최대 20개까지 선택할 수 있어요
-    </div>
-    <div id="regionClaimBox">
-      <div style="display:flex; gap:6px; margin-bottom:8px;">
-        <select id="regionInput" class="admin-input" style="flex:1;"><option value="">지역 선택…</option></select>
-        <button id="btnClaimRegion" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">지역 등록</button>
+  <!-- 탭: 담당단지 -->
+  <div class="agent-tabpanel is-active" data-tabpanel="buildings">
+    <div class="panel-card" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+        <div class="side-card-title" style="margin-bottom:0;">담당 단지 <span class="side-sub" id="bldCount"></span></div>
+        <button id="btnAddBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
       </div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
+        담당 단지는 최대 10개까지 등록하실 수 있어요
+      </div>
+      <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
     </div>
-    <div id="regionActiveBox" style="display:none;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-        <div id="regionActiveLabel" style="font-size:13.5px; font-weight:700;"></div>
-        <div style="display:flex; gap:6px;">
-          <button id="btnAddRegionBld" class="side-more" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px;">+ 담당단지 추가</button>
-          <button id="btnChangeRegion" class="side-more" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px; color:var(--ink-soft);">지역변경</button>
+  </div>
+
+  <!-- 탭: 담당 지역 -->
+  <div class="agent-tabpanel" data-tabpanel="region">
+    <div class="panel-card" style="margin-top:14px;">
+      <div class="side-card-title" style="margin-bottom:4px;">담당 지역</div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
+        시·군·구 단위로 해당 지역을 1개 등록하고, 그 안에서 담당단지를 최대 20개까지 선택할 수 있어요
+      </div>
+      <div id="regionClaimBox">
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <select id="regionInput" class="admin-input" style="flex:1;"><option value="">지역 선택…</option></select>
+          <button id="btnClaimRegion" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">지역 등록</button>
         </div>
       </div>
-      <div id="regionBldList"></div>
+      <div id="regionActiveBox" style="display:none;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div id="regionActiveLabel" style="font-size:13.5px; font-weight:700;"></div>
+          <div style="display:flex; gap:6px;">
+            <button id="btnAddRegionBld" class="side-more" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px;">+ 담당단지 추가</button>
+            <button id="btnChangeRegion" class="side-more" style="width:auto; margin-top:0; padding:6px 12px; font-size:12px; color:var(--ink-soft);">지역변경</button>
+          </div>
+        </div>
+        <div id="regionBldList"></div>
+      </div>
     </div>
   </div>
 
-  <!-- 받은 매물의뢰 -->
-  <div class="panel-card" style="margin-top:14px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
-      <div class="side-card-title" style="margin-bottom:0;">받은 매물의뢰 <span class="side-sub" id="leadCount"></span></div>
+  <!-- 탭: 결제관리 -->
+  <div class="agent-tabpanel" data-tabpanel="billing">
+    <div class="panel-card" style="margin-top:14px;">
+      <div class="side-card-title">결제관리</div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 14px;">
+        실제 결제 기능은 준비 중입니다. 현재는 3개월 무료체험 기간이 적용되고 있어요.
+      </div>
+      <div class="badge-meter">
+        <div class="num" id="badgeMeterNum">-/5</div>
+        <div style="font-size:13px; color:var(--ink);">골드뱃지(단지뱃지) 보유 현황</div>
+      </div>
+      <div class="side-card-title" style="font-size:14px; margin-top:18px;">적용 중인 혜택</div>
+      <div id="billingList"><div class="side-empty">불러오는 중…</div></div>
     </div>
-    <div id="leadList"><div class="side-empty">불러오는 중…</div></div>
   </div>
 
-  <!-- 받은 매수의뢰 -->
-  <div class="panel-card" style="margin-top:14px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
-      <div class="side-card-title" style="margin-bottom:0;">받은 매수의뢰 <span class="side-sub" id="buyReqCount"></span></div>
+  <!-- 탭: 받은 의뢰 -->
+  <div class="agent-tabpanel" data-tabpanel="leads">
+    <!-- 받은 매물의뢰 -->
+    <div class="panel-card" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+        <div class="side-card-title" style="margin-bottom:0;">받은 매물의뢰 <span class="side-sub" id="leadCount"></span></div>
+      </div>
+      <div id="leadList"><div class="side-empty">불러오는 중…</div></div>
     </div>
-    <div id="buyReqList"><div class="side-empty">불러오는 중…</div></div>
+
+    <!-- 받은 매수의뢰 -->
+    <div class="panel-card" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+        <div class="side-card-title" style="margin-bottom:0;">받은 매수의뢰 <span class="side-sub" id="buyReqCount"></span></div>
+      </div>
+      <div id="buyReqList"><div class="side-empty">불러오는 중…</div></div>
+    </div>
   </div>
 
 </div>
@@ -812,6 +860,41 @@ if (!PREVIEW_MODE) {
 load();
 loadLeads();
 loadBuyRequests();
+
+// ---- 탭 전환 ----
+document.querySelectorAll(".agent-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".agent-tab").forEach(b => b.classList.remove("is-active"));
+    document.querySelectorAll(".agent-tabpanel").forEach(p => p.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    document.querySelector(`.agent-tabpanel[data-tabpanel="${btn.dataset.tab}"]`).classList.add("is-active");
+    if (btn.dataset.tab === "billing") loadBilling();
+  });
+});
+
+async function loadBilling(){
+  const { ok, data } = await api("/api/agent/tier-status");
+  if (!ok) return;
+  const premiumBlds = (data.buildings || []).filter(b =>
+    b.premium_expires_at && new Date(b.premium_expires_at) > new Date());
+  document.getElementById("badgeMeterNum").textContent = `${premiumBlds.length}/5`;
+  const box = document.getElementById("billingList");
+  const rows = [];
+  premiumBlds.forEach(b => {
+    rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
+      <span>🧭 ${esc(b.building_name || "단지")}</span>
+      <span style="color:var(--ink-soft);">${new Date(b.premium_expires_at).toLocaleDateString("ko-KR")}까지</span>
+    </div>`);
+  });
+  (data.regions || []).forEach(r => {
+    const active = new Date(r.expires_at) > new Date();
+    rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
+      <span>📍 ${esc(r.sgg_text)} (지역Master)</span>
+      <span style="color:${active ? 'var(--ink-soft)' : 'var(--brick)'};">${active ? new Date(r.expires_at).toLocaleDateString("ko-KR") + "까지" : "종료"}</span>
+    </div>`);
+  });
+  box.innerHTML = rows.length ? rows.join("") : `<div class="side-empty">현재 적용 중인 혜택이 없습니다.</div>`;
+}
 </script>
   <script src="/static/js/pw_toggle.js"></script>
 </body>
