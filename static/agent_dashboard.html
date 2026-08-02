@@ -150,14 +150,14 @@
         실제 결제 기능은 아직 준비 중이며, 현재는 <b>3개월 무료체험</b>
         기간이 적용되고 있습니다.
         <ul>
-          <li>단지뱃지·지역Master 모두 신청 시점부터 3개월간 무료로 유지됩니다</li>
-          <li>골드뱃지(단지뱃지)는 1인당 최대 5개까지 보유할 수 있습니다</li>
+          <li>단지뱃지(골드)·지역뱃지(실버) 모두 신청 시점부터 3개월간 무료로 유지됩니다</li>
+          <li>단지뱃지(골드)는 1인당 최대 5개까지 보유할 수 있습니다</li>
           <li>무료체험 종료 후 유료 전환 안내는 별도 이메일로 발송될 예정입니다</li>
         </ul>
       </div>
       <div class="badge-meter">
         <div class="num" id="badgeMeterNum">-/5</div>
-        <div style="font-size:13px; color:var(--ink);">골드뱃지(단지뱃지) 보유 현황</div>
+        <div style="font-size:13px; color:var(--ink);">단지뱃지(골드) 보유 현황</div>
       </div>
       <div class="side-card-title" style="font-size:14px; margin-top:18px;">적용 중인 혜택</div>
       <div id="billingList"><div class="side-empty">불러오는 중…</div></div>
@@ -938,7 +938,7 @@ async function loadBilling(){
   (data.regions || []).forEach(r => {
     const active = new Date(r.expires_at) > new Date();
     rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
-      <span>📍 ${esc(r.sgg_text)} (지역Master)</span>
+      <span>📍 ${esc(r.sgg_text)} (지역뱃지(실버))</span>
       <span style="color:${active ? 'var(--ink-soft)' : 'var(--brick)'};">${active ? new Date(r.expires_at).toLocaleDateString("ko-KR") + "까지" : "종료"}</span>
     </div>`);
   });
