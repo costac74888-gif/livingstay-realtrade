@@ -83,7 +83,7 @@
     <button class="agent-tab" data-tab="leads-buy">받은 매수의뢰</button>
     <button class="agent-tab" data-tab="buildings">담당 단지</button>
     <button class="agent-tab" data-tab="region">담당 지역</button>
-    <button class="agent-tab" data-tab="billing">결제관리</button>
+    <button class="agent-tab" data-tab="billing">뱃지기한</button>
   </div>
 
   <!-- 탭: 담당단지 -->
@@ -145,7 +145,7 @@
   <!-- 탭: 결제관리 -->
   <div class="agent-tabpanel" data-tabpanel="billing">
     <div class="panel-card" style="margin-top:14px;">
-      <div class="side-card-title">결제관리</div>
+      <div class="side-card-title">뱃지기한</div>
       <div class="agent-guide">
         실제 결제 기능은 아직 준비 중이며, 현재는 <b>3개월 무료체험</b>
         기간이 적용되고 있습니다.
@@ -931,7 +931,7 @@ async function loadBilling(){
   const rows = [];
   premiumBlds.forEach(b => {
     rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
-      <span>🧭 ${esc(b.building_name || "단지")}</span>
+      <span>🧭 ${esc(b.building_name || "이름 미상 단지")}</span>
       <span style="color:var(--ink-soft);">${new Date(b.premium_expires_at).toLocaleDateString("ko-KR")}까지</span>
     </div>`);
   });

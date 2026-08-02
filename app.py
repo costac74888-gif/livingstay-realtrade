@@ -4660,9 +4660,13 @@ def agent_tier_status():
     agent_id = session["agent_id"]
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT master_building_id, premium_granted_at, premium_expires_at "
-        "FROM agent_buildings WHERE agent_id=%s AND premium_granted_at IS NOT NULL", [agent_id])
+    cur.execute("""
+        SELECT ab.master_building_id, ab.premium_granted_at, ab.premium_expires_at,
+               mb.building_name
+        FROM agent_buildings ab
+        JOIN master_buildings mb ON mb.id = ab.master_building_id
+        WHERE ab.agent_id=%s AND ab.premium_granted_at IS NOT NULL
+    """, [agent_id])
     buildings = [dict(r) for r in cur.fetchall()]
     cur.execute(
         "SELECT sgg_text, granted_at, expires_at FROM agent_service_regions WHERE agent_id=%s", [agent_id])
