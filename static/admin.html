@@ -1576,6 +1576,9 @@
       rows.push(`<div class="geo-stat-row"><b>수집된 준공전 건물:</b> 총 ${num(d.permits_total)}건${statusParts.length ? " (" + statusParts.join(" · ") + ")" : ""}</div>`);
       rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 법정동 ${num(d.checkpoint_idx)} / ${num(d.total_dongs)}곳${d.checkpoint_idx >= d.total_dongs ? " — 전국 완료" : " — 미완(다음 실행 때 이어서 수집)"}</div>`);
       rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
+      if (d.db_reconnect_events && d.db_reconnect_events.length) {
+        rows.push(`<div class="geo-stat-row" style="color:#8a6d00"><b>DB 재접속 대기 발생:</b> ${d.db_reconnect_events.length}회 (마지막: ${dgEscape(d.db_reconnect_events[d.db_reconnect_events.length - 1].at)})</div>`);
+      }
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
       } else if (d.state === "done") {

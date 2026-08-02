@@ -7231,6 +7231,7 @@ def admin_broker_sync_status():
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
         "broker_total": total,
         "calls_today": calls_today,
+        "db_reconnect_events": (progress.get("db_reconnect_events") if progress else None) or [],
         "calls_remaining": max(0, _BROKER_DAILY_CAP - calls_today),
         "daily_cap": _BROKER_DAILY_CAP,
         "progress": progress,       # {"next_page":N,"total_count":M} — 미완이면 존재

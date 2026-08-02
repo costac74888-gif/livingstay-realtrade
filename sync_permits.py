@@ -411,19 +411,35 @@ def run(args, status_key=None, run_id=None):
                 try:
                     _do_commit(conn, cur, dong_rows, prog)
                 except (psycopg2.OperationalError, psycopg2.InterfaceError) as ssl_err:
-                    print(f"  [재접속] DB 연결 끊김({repr(ssl_err)[:120]}) — 재접속 후 {dong_name} 재시도")
-                    try:
-                        try: cur.close()
-                        except Exception: pass
-                        try: conn.close()
-                        except Exception: pass
-                        conn = get_conn()
-                        cur = conn.cursor()
-                        _do_commit(conn, cur, dong_rows, prog)
-                        print(f"  [재접속 성공] {dong_name} 커밋 완료")
-                    except Exception as retry_err:
-                        print(f"  [재접속 실패] {dong_name}: {repr(retry_err)[:200]}")
-                        raise
+                    print(f"  [재접속] DB 연결 끊김({repr(ssl_err)[:120]}) — 재접속 시도 시작")
+                    committed = False
+                    for cycle in range(5):
+                        for wait_sec in (10, 30, 60):
+                            time.sleep(wait_sec)
+                            try:
+                                try: cur.close()
+                                except Exception: pass
+                                try: conn.close()
+                                except Exception: pass
+                                conn = get_conn()
+                                cur = conn.cursor()
+                                _do_commit(conn, cur, dong_rows, prog)
+                                print(f"  [재접속 성공] {dong_name} 커밋 완료 (사이클 {cycle + 1})")
+                                committed = True
+                                break
+                            except (psycopg2.OperationalError, psycopg2.InterfaceError) as retry_err:
+                                print(f"  [재접속 실패] {dong_name}: {repr(retry_err)[:160]} — {wait_sec}초 대기 후 재시도")
+                        if committed:
+                            break
+                        events = prog.setdefault("db_reconnect_events", [])
+                        events.append({"idx": prog["idx"],
+                                        "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+                        prog["db_reconnect_events"] = events[-20:]
+                        print(f"  [재접속] {cycle + 1}사이클(3회) 모두 실패 — 프로세스는 종료하지 않고 5분 더 쉬었다가 재시도합니다.")
+                        time.sleep(300)
+                    if not committed:
+                        print(f"  [재접속 최종 실패] {dong_name}: 5사이클(약 30분) 시도 후에도 DB 연결 불가 — 이번 실행을 중단합니다.")
+                        raise ssl_err
             else:
                 _save_progress(conn, cur, prog)
         if processed % 50 == 0:
