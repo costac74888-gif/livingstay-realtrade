@@ -3935,13 +3935,35 @@ def agent_public_profile(slug):
                COALESCE(ab.sale_count, 0)      AS sale_count,
                COALESCE(ab.jeonse_count, 0)    AS jeonse_count,
                COALESCE(ab.wolse_count, 0)     AS wolse_count,
-               COALESCE(ab.shortterm_count, 0) AS shortterm_count
+               COALESCE(ab.shortterm_count, 0) AS shortterm_count,
+               (COALESCE(ab.has_priority_badge, FALSE)
+                AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS is_premium
         FROM agent_buildings ab
         JOIN master_buildings mb ON mb.id = ab.master_building_id
         WHERE ab.agent_id = %s
         ORDER BY mb.building_name
     """, [agent["id"]])
     buildings = [dict(r) for r in cur.fetchall()]
+    for b in buildings:
+        b["badge_type"] = "premium" if b["is_premium"] else None
+
+    cur.execute("""
+        SELECT arb.master_building_id, mb.building_name, mb.lodging_type,
+               0 AS sale_count, 0 AS jeonse_count, 0 AS wolse_count, 0 AS shortterm_count
+        FROM agent_region_buildings arb
+        JOIN agent_service_regions sr ON sr.agent_id = arb.agent_id
+        JOIN master_buildings mb ON mb.id = arb.master_building_id
+        WHERE arb.agent_id = %s AND sr.expires_at > NOW()
+        ORDER BY mb.building_name
+    """, [agent["id"]])
+    existing_ids = {b["master_building_id"] for b in buildings}
+    for r in cur.fetchall():
+        if r["master_building_id"] in existing_ids:
+            continue
+        row = dict(r)
+        row["badge_type"] = "region"
+        buildings.append(row)
+
     cur.close()
     conn.close()
     total_listings = sum(
