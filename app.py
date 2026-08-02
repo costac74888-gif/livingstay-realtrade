@@ -8086,6 +8086,7 @@ def admin_permits_sync_status():
         "total_dongs": _brhub_total_dongs(),
         "found_total": (progress.get("found_total") if progress else 0) or 0,
         "calls_today": calls_today,
+        "db_reconnect_events": (progress.get("db_reconnect_events") if progress else None) or [],
         "calls_remaining": max(0, _BRHUB_DAILY_CAP - calls_today),
         "daily_cap": _BRHUB_DAILY_CAP,
     })
