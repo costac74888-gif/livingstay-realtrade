@@ -11112,6 +11112,8 @@ def admin_applications_approve(app_id):
                     FROM agent_buildings ab
                     JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
                     WHERE ab.master_building_id = %s
+                      AND COALESCE(ab.has_priority_badge, FALSE) = TRUE
+                      AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
                     LIMIT 1
                 """, [pref_bid])
                 if not cur.fetchone():
