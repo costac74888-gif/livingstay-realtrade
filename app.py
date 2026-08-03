@@ -1885,7 +1885,7 @@ def apply_operator_page():
 # 운영지원업체 업종: 이 5개만 허용한다(operators.category와 동일 기준).
 # '대출상담사'는 별도 엔티티(loan_consultants)로 분리되어 신규 신청은 /apply/loan 으로 받는다.
 # (기존 operators 테이블의 대출상담사 행은 데이터 보존 차원에서 그대로 둔다)
-OPERATOR_CATEGORIES = {"위탁", "청소", "세탁", "소독", "세무", "인테리어"}
+OPERATOR_CATEGORIES = {"위탁", "청소", "세탁", "용품", "소독", "세무", "인테리어"}
 
 
 @app.route("/api/apply/operator", methods=["POST"])
