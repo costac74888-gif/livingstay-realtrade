@@ -3167,13 +3167,22 @@
           sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">무료전용 ${d.agent_tier_stats.free_only} · 단지뱃지(골드) ${d.agent_tier_stats.has_premium} · 지역뱃지(실버) ${d.agent_tier_stats.has_region}</div>`;
         }
       }
-      // 운영지원업체 탭 서브텍스트 — 업종별 분포
+      // 운영지원업체 탭 서브텍스트 — 7개 업종 전부 표시(0 포함)
       if (d.operator_category_stats) {
         const opBtn = document.querySelector(".member-group-btn[data-group='operator']");
         if (opBtn) {
           let sub = opBtn.querySelector(".member-tier-sub");
           if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; opBtn.appendChild(sub); }
           sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">${d.operator_category_stats.map(c => `${c.category} ${c.count}`).join(" · ")}</div>`;
+        }
+      }
+      // 대출상담사 탭 서브텍스트 — 세부유형 분포
+      if (d.lc_tier_stats) {
+        const lcBtn = document.querySelector(".member-group-btn[data-group='loan_consultant']");
+        if (lcBtn) {
+          let sub = lcBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; lcBtn.appendChild(sub); }
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">무료전용 ${d.lc_tier_stats.free_only} · 단지뱃지(골드) ${d.lc_tier_stats.has_badge} · 지역뱃지(실버) ${d.lc_tier_stats.has_region}</div>`;
         }
       }
 

@@ -9929,20 +9929,29 @@ def admin_members_list():
     """)
     agent_tier_stats = dict(cur.fetchone())
 
-    # 운영업체 업종별 카운트
+    # 운영업체 업종별 카운트 — 7개 업종 전부 표시(0 포함)
+    _OP_CAT_ORDER = ["위탁", "청소", "세탁", "용품", "소독", "세무", "인테리어"]
     cur.execute("""
         SELECT COALESCE(NULLIF(category, ''), '미지정') AS category, COUNT(*) AS count
         FROM operators WHERE status IN ('approved', 'inactive', 'pending')
         GROUP BY COALESCE(NULLIF(category, ''), '미지정')
-        ORDER BY count DESC
     """)
-    operator_category_stats = [{"category": r["category"], "count": int(r["count"])} for r in cur.fetchall()]
+    _cat_counts = {r["category"]: int(r["count"]) for r in cur.fetchall()}
+    operator_category_stats = [{"category": c, "count": _cat_counts.get(c, 0)} for c in _OP_CAT_ORDER]
+    for cat, cnt in _cat_counts.items():
+        if cat not in _OP_CAT_ORDER:
+            operator_category_stats.append({"category": cat, "count": cnt})
+
+    # 대출상담사 세부유형 통계 (뱃지·지역 시스템 미도입 — 전원 무료전용으로 계상)
+    cur.execute("SELECT COUNT(*) AS c FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')")
+    lc_tier_stats = {"free_only": int(cur.fetchone()["c"]), "has_badge": 0, "has_region": 0}
 
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "counts": counts,
                      "agent_tier_stats": agent_tier_stats,
                      "operator_category_stats": operator_category_stats,
+                     "lc_tier_stats": lc_tier_stats,
                      "items": items})
 
 
