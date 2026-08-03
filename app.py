@@ -1808,17 +1808,6 @@ def apply_agent():
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
 
-    # 이미 등록된(승인된) 중개사 이메일이면 신청 접수 자체를 막는다 —
-    # 승인 시점이 아니라 신청 시점에 본인이 바로 알 수 있어야 함.
-    conn_chk = get_conn()
-    cur_chk = conn_chk.cursor()
-    cur_chk.execute("SELECT 1 FROM agents WHERE LOWER(email)=LOWER(%s)", [email])
-    already_exists = cur_chk.fetchone() is not None
-    cur_chk.close()
-    conn_chk.close()
-    if already_exists:
-        return jsonify({"ok": False, "message": "이미 등록된 이메일입니다. 같은 이메일로는 중개사 계정을 두 개 이상 만들 수 없습니다. 기존 계정으로 로그인해주세요."}), 400
-
     # 서류 참조 키 검증 — 사업자등록증·중개사무소등록증은 필수, 나머지는 선택
     doc_refs = {}
     for field, doc_type in (("doc_license_url", "license"),
@@ -1959,17 +1948,6 @@ def apply_operator():
     # 간단한 이메일 형식 체크 (apply/agent와 동일 정규식)
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
-
-    # 이미 등록된(승인된) 운영지원업체 이메일이면 신청 접수 자체를 막는다 —
-    # 승인 시점이 아니라 신청 시점에 본인이 바로 알 수 있어야 함.
-    conn_chk = get_conn()
-    cur_chk = conn_chk.cursor()
-    cur_chk.execute("SELECT 1 FROM operators WHERE LOWER(email)=LOWER(%s)", [email])
-    already_exists = cur_chk.fetchone() is not None
-    cur_chk.close()
-    conn_chk.close()
-    if already_exists:
-        return jsonify({"ok": False, "message": "이미 등록된 이메일입니다. 같은 이메일로는 운영지원업체 계정을 두 개 이상 만들 수 없습니다. 기존 계정으로 로그인해주세요."}), 400
 
     # 서류 참조 키 검증 — 사업자등록증은 필수, 나머지(명함/영업허가증/로고)는 선택
     doc_refs = {}
@@ -11305,11 +11283,6 @@ def admin_applications_approve(app_id):
     reassigned_leads = 0
     try:
         if atype == "agent":
-            cur.execute("SELECT id FROM agents WHERE LOWER(email)=LOWER(%s)", [ap["email"]])
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                return jsonify({"ok": False, "message": "이 신청의 이메일은 이미 다른 중개사 계정에 등록되어 있어 승인할 수 없습니다. 반려 처리해주세요."}), 400
             # 등록번호(reg_number) 중복이면 승인 불가 — applications 상태는 그대로 둔다.
             cur.execute("SELECT id FROM agents WHERE reg_number=%s", [ap["reg_number"]])
             if cur.fetchone():
@@ -11404,16 +11377,11 @@ def admin_applications_approve(app_id):
                         cur.execute("ROLLBACK TO SAVEPOINT sp_agent_assign")
                         app.logger.exception("승인 시 담당건물 자동 배정 실패 (application=%s, building=%s)", app_id, pref_bid)
         elif atype == "operator":
-            # 운영업체는 이메일 기준 중복 검사. category는 NOT NULL이라 값이 없으면 승인 불가.
+            # category는 NOT NULL이라 값이 없으면 승인 불가.
             if not (ap["category"] or "").strip():
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "업종 정보가 없어 승인할 수 없습니다."}), 400
-            cur.execute("SELECT id FROM operators WHERE email=%s", [ap["email"]])
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                return jsonify({"ok": False, "message": "이미 등록된 운영지원업체입니다."}), 400
             # subdomain_slug + 비밀번호 — agent 승인 로직과 완전히 동일한 패턴.
             base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"operator{app_id}"
             if ap.get("password_hash"):
