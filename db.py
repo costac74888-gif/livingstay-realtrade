@@ -400,6 +400,15 @@ def init_db():
     cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS premium_granted_at TIMESTAMP")
     cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP")
     cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_service_areas (
+            id SERIAL PRIMARY KEY,
+            operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+            region_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            CONSTRAINT operator_service_areas_unique UNIQUE (operator_id, region_name)
+        )
+    """)
 
     # 운영업체 지역Master 테이블 (중개사 agent_service_regions / agent_region_buildings와 동일 패턴)
     cur.execute("""
@@ -470,6 +479,21 @@ def init_db():
     cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS premium_granted_at TIMESTAMP")
     cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP")
     cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS loan_consultant_service_areas (
+        id SERIAL PRIMARY KEY,
+        loan_consultant_id INTEGER NOT NULL REFERENCES loan_consultants(id) ON DELETE CASCADE,
+        region_name TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT loan_consultant_service_areas_unique UNIQUE (loan_consultant_id, region_name)
+    )
+    """)
+    # 기존 단일 취급지역(service_region) 값을 다중선택 테이블로 1회 이관(idempotent)
+    cur.execute("""
+        INSERT INTO loan_consultant_service_areas (loan_consultant_id, region_name)
+        SELECT id, COALESCE(NULLIF(service_region, ''), '전국') FROM loan_consultants
+        ON CONFLICT (loan_consultant_id, region_name) DO NOTHING
+    """)
     # 관리자 메모(비고) — 회원관리 목록에서 인라인 수정 + 비활성화 사유 자동 누적
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_memo TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS admin_memo TEXT")

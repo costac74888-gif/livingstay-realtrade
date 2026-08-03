@@ -80,7 +80,7 @@
   <div class="agent-tabbar">
     <button class="agent-tab is-active" data-tab="leads">받은 상담</button>
     <button class="agent-tab" data-tab="buildings">담당 단지</button>
-    <button class="agent-tab" data-tab="billing">뱃지기한</button>
+    <button class="agent-tab" data-tab="region">담당 지역</button>
   </div>
 
   <!-- 탭: 받은 상담 (기본 탭) -->
@@ -109,17 +109,15 @@
     </div>
   </div>
 
-  <!-- 탭: 뱃지기한 -->
-  <div class="agent-tabpanel" data-tabpanel="billing">
+  <!-- 탭: 담당 지역 -->
+  <div class="agent-tabpanel" data-tabpanel="region">
     <div class="panel-card">
-      <div class="side-card-title">뱃지기한</div>
+      <div class="side-card-title">담당 지역</div>
       <div class="agent-guide">
-        실제 결제 기능은 아직 준비 중이며, 현재는 3개월 무료체험 기간이
-        적용되고 있습니다.
+        전국 또는 여러 개의 광역시·도를 동시에 선택할 수 있습니다.
+        선택한 지역의 건물 상세페이지에 취급 상담사로 노출됩니다.
       </div>
-      <div class="badge-meter"><div class="num" id="badgeMeterNum">-/5</div>
-        <div style="font-size:13px; color:var(--ink);">골드뱃지(단지뱃지) 보유 현황</div></div>
-      <div id="billingList"></div>
+      <div id="lcRegionOptions" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
     </div>
   </div>
 
@@ -291,7 +289,7 @@ document.querySelectorAll(".agent-tab").forEach(btn => {
     btn.classList.add("is-active");
     document.querySelector(`.agent-tabpanel[data-tabpanel="${btn.dataset.tab}"]`).classList.add("is-active");
     if (btn.dataset.tab === "leads") loadLcLeads();
-    if (btn.dataset.tab === "billing") loadLcBilling();
+    if (btn.dataset.tab === "region") loadLcRegions();
   });
 });
 
@@ -313,18 +311,26 @@ window.lcSetStatus = async function(id, status){
     method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status})});
   loadLcLeads();
 };
-async function loadLcBilling(){
-  const res = await fetch("/api/loan-consultant/tier-status");
+async function loadLcRegions(){
+  const res = await fetch("/api/loan-consultant/service-areas/mine");
   const d = await res.json().catch(()=>({}));
   if (!d.ok) return;
-  document.getElementById("badgeMeterNum").textContent = `${d.buildings.length}/5`;
-  const box = document.getElementById("billingList");
-  box.innerHTML = d.buildings.length ? d.buildings.map(b => `
-    <div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
-      <span>🧭 ${esc(b.building_name)}</span>
-      <span style="color:var(--ink-soft);">${new Date(b.premium_expires_at).toLocaleDateString("ko-KR")}까지</span>
-    </div>`).join("") : `<div class="side-empty">적용 중인 혜택이 없습니다.</div>`;
+  const box = document.getElementById("lcRegionOptions");
+  box.innerHTML = d.options.map(opt => {
+    const active = d.regions.includes(opt);
+    return `<button type="button" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; ${active ? 'background:var(--brass-dark); color:#fff;' : ''}" onclick="toggleLcRegion('${opt}', ${active})">${opt}</button>`;
+  }).join("");
 }
+window.toggleLcRegion = async function(region, isActive){
+  if (isActive) {
+    await fetch(`/api/loan-consultant/service-areas/${encodeURIComponent(region)}`, { method: "DELETE" });
+  } else {
+    await fetch("/api/loan-consultant/service-areas", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ region_name: region }) });
+  }
+  loadLcRegions();
+};
 
 // ---- 노출중지/재개 토글 ----
 document.getElementById("btnToggleVisible").addEventListener("click", async () => {

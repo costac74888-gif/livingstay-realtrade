@@ -59,8 +59,7 @@ SERVER_BOOT_V = str(int(time.time()))
 # 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
 MAX_FREE_BUILDINGS = 5
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
-LOAN_PREMIUM_BADGE_CAP = 5      # 대출상담사 1인당 골드뱃지(단지뱃지) 총 보유 한도
-OPERATOR_PREMIUM_BADGE_CAP = 5  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도
+OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
 OPERATOR_REGION_BUILDING_CAP = 20  # 지역 안에서 담당단지로 선택 가능한 건물 수
 OPERATOR_REGION_SLOT_CAP = 20      # 시군구 하나당 등록 가능한 운영업체 수(업종 무관 공유)
@@ -484,15 +483,21 @@ def get_building(building_id):
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
 
+    _o_sgg_cd = str(building.get("sgg_cd") or "")
+    _o_prov_prefix = _o_sgg_cd[:2]
+    _o_prov_nm = _PROV_SGG_MAP.get(_o_prov_prefix)
+    _o_region_match = ["전국"]
+    if _o_prov_prefix in _SUDO_PREFIXES:
+        _o_region_match.append("수도권")
+    if _o_prov_nm:
+        _o_region_match.append(_o_prov_nm)
     cur.execute("""
-        SELECT o.company_name, o.category, o.subdomain_slug, o.phone
-        FROM operator_region_buildings orb
-        JOIN operator_service_regions osr ON osr.operator_id = orb.operator_id
-        JOIN operators o ON o.id = orb.operator_id
-        WHERE orb.master_building_id = %s AND osr.expires_at > NOW()
+        SELECT DISTINCT o.company_name, o.category, o.subdomain_slug, o.phone
+        FROM operator_service_areas osa
+        JOIN operators o ON o.id = osa.operator_id
+        WHERE osa.region_name = ANY(%s)
           AND o.status = 'approved' AND COALESCE(o.is_visible, TRUE)
-        ORDER BY RANDOM()
-    """, [building_id])
+    """, [_o_region_match])
     operator_region_rows = [dict(r) for r in cur.fetchall()]
 
     operator_by_category = []
@@ -559,7 +564,10 @@ def get_building(building_id):
         FROM loan_consultants lc
         WHERE lc.status = 'approved'
           AND COALESCE(lc.is_visible, TRUE)
-          AND lc.service_region IN ({region_ph})
+          AND EXISTS (
+              SELECT 1 FROM loan_consultant_service_areas lsa
+              WHERE lsa.loan_consultant_id = lc.id AND lsa.region_name IN ({region_ph})
+          )
           {excl}
         ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
         LIMIT 5
@@ -4353,13 +4361,20 @@ def _route_lead(cur, mb_id):
     return None, "house", []
 
 
+_PROV_SGG_MAP = {
+    "11": "서울", "26": "부산", "27": "대구", "28": "인천", "29": "광주",
+    "30": "대전", "31": "울산", "36": "세종", "41": "경기", "42": "강원",
+    "43": "충북", "44": "충남", "45": "전북", "46": "전남", "47": "경북",
+    "48": "경남", "50": "제주",
+}
+_SUDO_PREFIXES = {"11", "28", "41"}
+
+
 def _route_loan_lead(cur, mb_id):
-    """대출상담 배정. ①담당단지(전속) 유료우선→전체 ②취급지역(service_region)
-    유료우선→전체. LOAN_SERVICE_REGIONS 값과 건물 시/도 표기가 정확히
-    매핑되는지는 반영 후 반드시 실제 데이터로 확인할 것."""
+    """대출상담 배정. ①담당단지(전속) 등록자 우선(선착순 랜덤)
+    ②없으면 다중선택 지역(전국/광역시·도) 매칭. 단지뱃지 개념 없음."""
     cur.execute("""
-        SELECT lc.id, lc.phone, lc.office_name,
-               COALESCE(lcb.is_paid, FALSE) AS is_paid
+        SELECT lc.id, lc.phone, lc.office_name
         FROM loan_consultant_buildings lcb
         JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id AND lc.status = 'approved'
         WHERE lcb.master_building_id = %s AND COALESCE(lc.is_visible, TRUE)
@@ -4367,20 +4382,27 @@ def _route_loan_lead(cur, mb_id):
     """, [mb_id])
     rows = cur.fetchall()
     if rows:
-        paid = [r for r in rows if r["is_paid"]]
-        pool = paid if paid else rows
-        return pool[0]["id"], "exclusive"
+        return rows[0]["id"], "exclusive"
 
-    cur.execute("SELECT sgg_text FROM master_buildings WHERE id=%s", [mb_id])
+    cur.execute("SELECT sgg_cd FROM master_buildings WHERE id=%s", [mb_id])
     b = cur.fetchone()
-    sido = (b["sgg_text"] or "").split()[0] if b and b["sgg_text"] else ""
+    sgg_cd = str((b["sgg_cd"] if b else "") or "")
+    prov_prefix = sgg_cd[:2]
+    prov_nm = _PROV_SGG_MAP.get(prov_prefix)
+    region_match = ["전국"]
+    if prov_prefix in _SUDO_PREFIXES:
+        region_match.append("수도권")
+    if prov_nm:
+        region_match.append(prov_nm)
+
     cur.execute("""
-        SELECT id, phone, office_name FROM loan_consultants
-        WHERE status = 'approved' AND COALESCE(is_visible, TRUE)
-          AND (service_region IS NULL OR service_region = '' OR service_region = '전국'
-               OR %s LIKE service_region || '%%')
+        SELECT DISTINCT lc.id, lc.phone, lc.office_name
+        FROM loan_consultant_service_areas lsa
+        JOIN loan_consultants lc ON lc.id = lsa.loan_consultant_id
+            AND lc.status = 'approved' AND COALESCE(lc.is_visible, TRUE)
+        WHERE lsa.region_name = ANY(%s)
         ORDER BY RANDOM()
-    """, [sido])
+    """, [region_match])
     rows = cur.fetchall()
     if rows:
         return rows[0]["id"], "region"
@@ -4388,8 +4410,8 @@ def _route_loan_lead(cur, mb_id):
 
 
 def _route_operator_lead(cur, mb_id, category):
-    """운영업체 상담 배정. 반드시 같은 category 안에서만 매칭한다
-    (업종이 다른 업체에게 잘못 배정되지 않도록)."""
+    """운영업체 상담 배정. ①담당단지(전속) 유료우선→전체(업종
+    일치) ②없으면 다중선택 지역(전국/광역시·도, 업종 일치)."""
     cur.execute("""
         SELECT o.id, o.phone, o.company_name, COALESCE(ob.is_paid, FALSE) AS is_paid
         FROM operator_buildings ob
@@ -4403,14 +4425,25 @@ def _route_operator_lead(cur, mb_id, category):
         pool = paid if paid else rows
         return pool[0]["id"], "exclusive"
 
+    cur.execute("SELECT sgg_cd FROM master_buildings WHERE id=%s", [mb_id])
+    b = cur.fetchone()
+    sgg_cd = str((b["sgg_cd"] if b else "") or "")
+    prov_prefix = sgg_cd[:2]
+    prov_nm = _PROV_SGG_MAP.get(prov_prefix)
+    region_match = ["전국"]
+    if prov_prefix in _SUDO_PREFIXES:
+        region_match.append("수도권")
+    if prov_nm:
+        region_match.append(prov_nm)
+
     cur.execute("""
-        SELECT o.id, o.phone, o.company_name
-        FROM operator_region_buildings orb
-        JOIN operator_service_regions osr ON osr.operator_id = orb.operator_id
-        JOIN operators o ON o.id = orb.operator_id AND o.status = 'approved' AND o.category = %s
-        WHERE orb.master_building_id = %s AND osr.expires_at > NOW() AND COALESCE(o.is_visible, TRUE)
+        SELECT DISTINCT o.id, o.phone, o.company_name
+        FROM operator_service_areas osa
+        JOIN operators o ON o.id = osa.operator_id
+            AND o.status = 'approved' AND o.category = %s AND COALESCE(o.is_visible, TRUE)
+        WHERE osa.region_name = ANY(%s)
         ORDER BY RANDOM()
-    """, [category, mb_id])
+    """, [category, region_match])
     rows = cur.fetchall()
     if rows:
         return rows[0]["id"], "region"
@@ -6054,6 +6087,56 @@ def operator_tier_status():
     return jsonify({"ok": True, "buildings": buildings, "regions": regions, "region_buildings": region_buildings})
 
 
+@app.route("/api/loan-consultant/service-areas/mine")
+@require_loan_consultant
+def loan_consultant_service_areas_mine():
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT region_name FROM loan_consultant_service_areas WHERE loan_consultant_id=%s ORDER BY region_name", [lc_id])
+    regions = [r["region_name"] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "regions": regions, "options": LOAN_SERVICE_REGIONS})
+
+
+@app.route("/api/loan-consultant/service-areas", methods=["POST"])
+@require_loan_consultant
+def loan_consultant_service_area_add():
+    lc_id = session["loan_consultant_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    region = (data.get("region_name") or "").strip()
+    if region not in LOAN_SERVICE_REGIONS:
+        return jsonify({"ok": False, "message": "올바른 지역을 선택해주세요."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO loan_consultant_service_areas (loan_consultant_id, region_name)
+            VALUES (%s, %s) ON CONFLICT (loan_consultant_id, region_name) DO NOTHING
+        """, [lc_id, region])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/service-areas/<path:region_name>", methods=["DELETE"])
+@require_loan_consultant
+def loan_consultant_service_area_remove(region_name):
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM loan_consultant_service_areas WHERE loan_consultant_id=%s AND region_name=%s",
+        [lc_id, region_name])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/loan-consultant/buildings", methods=["POST"])
 @require_loan_consultant
 def loan_consultant_building_add():
@@ -6089,49 +6172,6 @@ def loan_consultant_building_add():
         conn.close()
     return jsonify({"ok": True})
 
-
-@app.route("/api/loan-consultant/buildings/<int:mbid>/claim-premium", methods=["POST"])
-@require_loan_consultant
-def loan_consultant_building_claim_premium(mbid):
-    """전속 단지를 3개월 무료 단지뱃지로 즉시 승격 — 단지당 1회 한정, 건물 전체 독점."""
-    lc_id = session["loan_consultant_id"]
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT premium_granted_at FROM loan_consultant_buildings WHERE loan_consultant_id=%s AND master_building_id=%s",
-            [lc_id, mbid])
-        row = cur.fetchone()
-        if not row:
-            return jsonify({"ok": False, "message": "본인의 담당 단지만 신청할 수 있습니다."}), 400
-        if row["premium_granted_at"]:
-            return jsonify({"ok": False, "message": "이미 이 단지는 단지뱃지 혜택을 사용했습니다."}), 400
-        cur.execute("""
-            SELECT 1 FROM loan_consultant_buildings
-            WHERE master_building_id=%s AND loan_consultant_id<>%s
-              AND has_priority_badge
-              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
-        """, [mbid, lc_id])
-        if cur.fetchone():
-            return jsonify({"ok": False, "message": "이미 다른 상담사가 입점한 단지입니다."}), 400
-        cur.execute("""
-            SELECT COUNT(*) c FROM loan_consultant_buildings
-            WHERE loan_consultant_id=%s AND has_priority_badge
-              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
-        """, [lc_id])
-        if cur.fetchone()["c"] >= LOAN_PREMIUM_BADGE_CAP:
-            return jsonify({"ok": False, "message": f"단지뱃지는 최대 {LOAN_PREMIUM_BADGE_CAP}개까지 보유할 수 있습니다."}), 400
-        cur.execute("""
-            UPDATE loan_consultant_buildings
-            SET has_priority_badge = TRUE, premium_granted_at = NOW(),
-                premium_expires_at = NOW() + INTERVAL '3 months'
-            WHERE loan_consultant_id=%s AND master_building_id=%s
-        """, [lc_id, mbid])
-        conn.commit()
-    finally:
-        cur.close()
-        conn.close()
-    return jsonify({"ok": True})
 
 
 @app.route("/api/loan-consultant/buildings/<int:mbid>", methods=["DELETE"])
@@ -6180,6 +6220,56 @@ def loan_consultant_building_search():
         cur.close()
         conn.close()
     return jsonify({"items": items})
+
+
+@app.route("/api/operator/service-areas/mine")
+@require_operator
+def operator_service_areas_mine():
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT region_name FROM operator_service_areas WHERE operator_id=%s ORDER BY region_name", [operator_id])
+    regions = [r["region_name"] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "regions": regions, "options": LOAN_SERVICE_REGIONS})
+
+
+@app.route("/api/operator/service-areas", methods=["POST"])
+@require_operator
+def operator_service_area_add():
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    region = (data.get("region_name") or "").strip()
+    if region not in LOAN_SERVICE_REGIONS:
+        return jsonify({"ok": False, "message": "올바른 지역을 선택해주세요."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO operator_service_areas (operator_id, region_name)
+            VALUES (%s, %s) ON CONFLICT (operator_id, region_name) DO NOTHING
+        """, [operator_id, region])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/service-areas/<path:region_name>", methods=["DELETE"])
+@require_operator
+def operator_service_area_remove(region_name):
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM operator_service_areas WHERE operator_id=%s AND region_name=%s",
+        [operator_id, region_name])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/operator/buildings", methods=["POST"])
@@ -6264,7 +6354,11 @@ def operator_building_claim_premium(mbid):
               AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
         """, [operator_id])
         if cur.fetchone()["c"] >= OPERATOR_PREMIUM_BADGE_CAP:
-            return jsonify({"ok": False, "message": f"단지뱃지는 최대 {OPERATOR_PREMIUM_BADGE_CAP}개까지 보유할 수 있습니다."}), 400
+            return jsonify({
+                "ok": False,
+                "message": f"단지뱃지는 최대 {OPERATOR_PREMIUM_BADGE_CAP}개까지 보유할 수 있습니다. "
+                           f"{OPERATOR_PREMIUM_BADGE_CAP}개를 초과하는 대량 등록이 필요하시면 관리자에게 별도로 문의해주세요.",
+            }), 400
 
         cur.execute("""
             UPDATE operator_buildings
