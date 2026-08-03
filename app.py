@@ -345,6 +345,7 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
 
 
 @app.route("/api/building/<int:building_id>")
+@limiter.limit("120 per minute")
 def get_building(building_id):
     """건물 상세페이지용 단건 조회 — master_buildings 기준."""
     conn = get_conn()
@@ -756,6 +757,7 @@ _stores_cache_lock = threading.Lock()
 
 
 @app.route("/api/building/<int:building_id>/nearby-stores")
+@limiter.limit("60 per minute")
 def get_building_nearby_stores(building_id):
     """이 건물(지번, PNU 기준)의 상가업소 목록 — 업종별 개수 + 층별 목록.
 
@@ -917,6 +919,7 @@ def get_transactions():
 
 
 @app.route("/api/buildings-geo")
+@limiter.limit("30 per minute")
 def get_buildings_geo():
     """지도 마커용 — 좌표(lat/lng)가 있는 마스터 건물.
 
@@ -1176,6 +1179,7 @@ def get_tx_count():
 
 
 @app.route("/api/building-count")
+@limiter.limit("60 per minute")
 def get_building_count():
     """전체 생숙 단지 수 + 용도별 분포 + 실거래 건수.
 
@@ -1222,6 +1226,7 @@ def get_building_count():
 
 
 @app.route("/api/regions")
+@limiter.limit("30 per minute")
 def get_regions():
     """시도 > 시군구 > 읍면동 계층 트리 (계층 검색 드롭다운용)"""
     conn = get_conn()
@@ -10294,6 +10299,7 @@ def get_lodging_national_stats():
 
 # ---- 공지사항 공개 API (로그인 불필요) ----
 @app.route("/api/notices")
+@limiter.limit("30 per minute")
 def get_notices():
     """공개 공지 목록 — 고정 우선 → 최신순. {total, page, size, items} 형태."""
     try:
