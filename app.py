@@ -5484,7 +5484,8 @@ def operator_public_profile(slug):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id, company_name, owner_name, category, phone, photo_url, logo_url, intro_text
+            SELECT id, company_name, owner_name, category, phone, photo_url, logo_url, intro_text,
+                   office_address, biz_reg_number, website_url
             FROM operators
             WHERE subdomain_slug = %s AND status = 'approved'
         """, [slug])
@@ -5509,6 +5510,9 @@ def operator_public_profile(slug):
         "phone": op["phone"],
         "logo_src": f"/api/partners/operator-logo/{op['id']}" if op["logo_url"] else None,
         "intro_text": op["intro_text"],
+        "office_address": op["office_address"],
+        "biz_reg_number": op["biz_reg_number"],
+        "website_url": (op["website_url"] if (op["website_url"] or "").startswith(("http://", "https://")) else None),
         "buildings": buildings,
         "building_count": len(buildings),
     })
@@ -5692,7 +5696,8 @@ def loan_consultant_public_profile(slug):
     try:
         cur.execute("""
             SELECT id, office_name, owner_name, phone, logo_url, intro_text,
-                   consultant_products, kakao_chat_url, service_region, license_number
+                   consultant_products, kakao_chat_url, service_region, license_number,
+                   office_address, biz_reg_number
             FROM loan_consultants
             WHERE subdomain_slug = %s AND status = 'approved'
         """, [slug])
@@ -5721,6 +5726,8 @@ def loan_consultant_public_profile(slug):
         "kakao_chat_url": kakao_url,
         "service_region": lc["service_region"],
         "license_number": lc["license_number"],
+        "office_address": lc["office_address"],
+        "biz_reg_number": lc["biz_reg_number"],
         "buildings": buildings,
         "building_count": len(buildings),
     })

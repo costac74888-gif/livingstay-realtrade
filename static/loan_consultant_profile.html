@@ -114,6 +114,17 @@
       </div>
       ${introSection}
       ${productsSection}
+      <div class="panel-card" style="margin-top:14px;">
+        <div class="side-card-title">상담사 정보</div>
+        <table style="width:100%; font-size:13.5px; border-collapse:collapse;">
+          <tr><td style="padding:8px 4px; color:var(--ink-soft); width:110px;">소속</td><td style="padding:8px 4px;" id="lcOfficeName">-</td></tr>
+          <tr><td style="padding:8px 4px; color:var(--ink-soft);">대표(상담사)</td><td style="padding:8px 4px;" id="lcOwnerName">-</td></tr>
+          <tr><td style="padding:8px 4px; color:var(--ink-soft);">대출모집인 등록번호</td><td style="padding:8px 4px;" id="lcLicenseNumber">-</td></tr>
+          <tr><td style="padding:8px 4px; color:var(--ink-soft);">사업자등록번호</td><td style="padding:8px 4px;" id="lcBizRegNumber">-</td></tr>
+          <tr><td style="padding:8px 4px; color:var(--ink-soft);">주소</td><td style="padding:8px 4px;" id="lcAddress">-</td></tr>
+          <tr><td style="padding:8px 4px; color:var(--ink-soft);">취급상품</td><td style="padding:8px 4px;" id="lcProducts">-</td></tr>
+        </table>
+      </div>
       <div class="panel-card" style="margin-top:14px;" id="consultFormCard">
         <div class="side-card-title">상담 신청</div>
         <div id="consultNoBuilding" style="font-size:13px; color:var(--ink-soft);">
@@ -128,6 +139,12 @@
       </div>
       ${buildingSection}
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:12px; text-align:center;">이 정보는 파트너가 등록한 내용이며, 회사가 보증하지 않습니다.</div>`;
+    document.getElementById("lcOfficeName").textContent = p.office_name || "-";
+    document.getElementById("lcOwnerName").textContent = p.owner_name || "-";
+    document.getElementById("lcLicenseNumber").textContent = p.license_number || "-";
+    document.getElementById("lcBizRegNumber").textContent = p.biz_reg_number || "-";
+    document.getElementById("lcAddress").textContent = p.office_address || "-";
+    document.getElementById("lcProducts").textContent = p.consultant_products || "-";
   }
 
   (function(){
