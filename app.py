@@ -528,14 +528,16 @@ def get_building(building_id):
         region_match.append(prov_nm)
     loan_consultant_rows = []
     cur.execute("""
-        SELECT DISTINCT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
-               lc.logo_url, lc.intro_text, lc.consultant_products,
-               lc.kakao_chat_url, lc.license_number, lc.service_region
-        FROM loan_consultant_service_areas lsa
-        JOIN loan_consultants lc ON lc.id = lsa.loan_consultant_id
-        WHERE lsa.region_name = ANY(%s)
-          AND lc.status = 'approved'
-          AND COALESCE(lc.is_visible, TRUE)
+        SELECT * FROM (
+            SELECT DISTINCT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
+                   lc.logo_url, lc.intro_text, lc.consultant_products,
+                   lc.kakao_chat_url, lc.license_number, lc.service_region
+            FROM loan_consultant_service_areas lsa
+            JOIN loan_consultants lc ON lc.id = lsa.loan_consultant_id
+            WHERE lsa.region_name = ANY(%s)
+              AND lc.status = 'approved'
+              AND COALESCE(lc.is_visible, TRUE)
+        ) sub
         ORDER BY RANDOM()
         LIMIT 3
     """, [region_match])
@@ -4355,11 +4357,13 @@ def _route_loan_lead(cur, mb_id):
         region_match.append(prov_nm)
 
     cur.execute("""
-        SELECT DISTINCT lc.id, lc.phone, lc.office_name
-        FROM loan_consultant_service_areas lsa
-        JOIN loan_consultants lc ON lc.id = lsa.loan_consultant_id
-            AND lc.status = 'approved' AND COALESCE(lc.is_visible, TRUE)
-        WHERE lsa.region_name = ANY(%s)
+        SELECT * FROM (
+            SELECT DISTINCT lc.id, lc.phone, lc.office_name
+            FROM loan_consultant_service_areas lsa
+            JOIN loan_consultants lc ON lc.id = lsa.loan_consultant_id
+                AND lc.status = 'approved' AND COALESCE(lc.is_visible, TRUE)
+            WHERE lsa.region_name = ANY(%s)
+        ) sub
         ORDER BY RANDOM()
     """, [region_match])
     rows = cur.fetchall()
@@ -4396,11 +4400,13 @@ def _route_operator_lead(cur, mb_id, category):
         region_match.append(prov_nm)
 
     cur.execute("""
-        SELECT DISTINCT o.id, o.phone, o.company_name
-        FROM operator_service_areas osa
-        JOIN operators o ON o.id = osa.operator_id
-            AND o.status = 'approved' AND o.category = %s AND COALESCE(o.is_visible, TRUE)
-        WHERE osa.region_name = ANY(%s)
+        SELECT * FROM (
+            SELECT DISTINCT o.id, o.phone, o.company_name
+            FROM operator_service_areas osa
+            JOIN operators o ON o.id = osa.operator_id
+                AND o.status = 'approved' AND o.category = %s AND COALESCE(o.is_visible, TRUE)
+            WHERE osa.region_name = ANY(%s)
+        ) sub
         ORDER BY RANDOM()
     """, [category, region_match])
     rows = cur.fetchall()
