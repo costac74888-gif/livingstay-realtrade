@@ -13,6 +13,30 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<style>
+  .agent-tabbar{ display:flex; gap:4px; margin:18px 0 14px; border-bottom:1px solid var(--line); }
+  .agent-tab{
+    padding:10px 18px; font-size:14px; font-weight:600; color:var(--ink-soft);
+    background:none; border:none; border-bottom:2px solid transparent;
+    cursor:pointer; margin-bottom:-1px;
+  }
+  .agent-tab:hover{ color:var(--ink); }
+  .agent-tab.is-active{ color:var(--brass-dark); border-bottom-color:var(--brass); }
+  .agent-tabpanel{ display:none; }
+  .agent-tabpanel.is-active{ display:block; }
+  .badge-meter{
+    display:flex; align-items:center; gap:10px; padding:14px 16px;
+    background:var(--brass-tint); border-radius:var(--radius); margin-bottom:14px;
+  }
+  .badge-meter .num{ font-size:22px; font-weight:800; color:var(--brass-dark); }
+  .agent-guide{
+    background:var(--brass-tint); border-radius:var(--radius);
+    padding:12px 16px; margin-bottom:14px; font-size:12.5px;
+    color:var(--ink); line-height:1.6;
+  }
+  .agent-guide b{ color:var(--brass-dark); }
+  .agent-guide ul{ margin:6px 0 0; padding-left:18px; }
+</style>
 </head>
 <body>
 
@@ -27,7 +51,7 @@
 
 <div class="search-panel" style="max-width:720px; padding-bottom:40px;">
 
-  <!-- 상단: 내 정보 -->
+  <!-- 상단: 내 정보 (탭 밖) -->
   <div class="panel-card" style="margin-top:16px;">
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       <div style="flex:1; min-width:200px;">
@@ -43,7 +67,7 @@
     </div>
   </div>
 
-  <!-- 안내 -->
+  <!-- 노출 안내 (탭 밖) -->
   <div class="panel-card" style="margin-top:14px;">
     <div class="side-card-title" style="margin-bottom:6px;">노출 안내</div>
     <div style="font-size:13px; color:var(--ink-soft); line-height:1.6;">
@@ -52,16 +76,51 @@
     </div>
   </div>
 
-  <!-- 담당 단지 -->
-  <div class="panel-card" style="margin-top:14px;">
-    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
-      <div class="side-card-title" style="margin-bottom:0;">담당 단지 <span class="side-sub" id="lcBldCount"></span></div>
-      <button id="btnAddLcBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
+  <!-- 탭바 -->
+  <div class="agent-tabbar">
+    <button class="agent-tab is-active" data-tab="leads">받은 상담</button>
+    <button class="agent-tab" data-tab="buildings">담당 단지</button>
+    <button class="agent-tab" data-tab="billing">뱃지기한</button>
+  </div>
+
+  <!-- 탭: 받은 상담 (기본 탭) -->
+  <div class="agent-tabpanel is-active" data-tabpanel="leads">
+    <div class="panel-card">
+      <div class="side-card-title">받은 상담</div>
+      <div class="agent-guide">
+        이 단지에 상담을 요청한 고객 목록입니다. 연락처 등 개인정보는
+        상담 목적 외로 저장·전달하지 마세요.
+      </div>
+      <div id="lcLeadsList"><div class="side-empty">불러오는 중…</div></div>
     </div>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
-      담당 단지로 등록하면 해당 건물 상세의 금융 카드 상단에 강조 표시됩니다. 최대 5개까지 무료로 등록하실 수 있어요.
+  </div>
+
+  <!-- 탭: 담당 단지 -->
+  <div class="agent-tabpanel" data-tabpanel="buildings">
+    <div class="panel-card">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+        <div class="side-card-title" style="margin-bottom:0;">담당 단지 <span class="side-sub" id="lcBldCount"></span></div>
+        <button id="btnAddLcBld" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">+ 단지 추가</button>
+      </div>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px;">
+        담당 단지로 등록하면 해당 건물 상세의 금융 카드 상단에 강조 표시됩니다. 최대 5개까지 무료로 등록하실 수 있어요.
+      </div>
+      <div id="lcBldList"><div class="side-empty">불러오는 중…</div></div>
     </div>
-    <div id="lcBldList"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
+  <!-- 탭: 뱃지기한 -->
+  <div class="agent-tabpanel" data-tabpanel="billing">
+    <div class="panel-card">
+      <div class="side-card-title">뱃지기한</div>
+      <div class="agent-guide">
+        실제 결제 기능은 아직 준비 중이며, 현재는 3개월 무료체험 기간이
+        적용되고 있습니다.
+      </div>
+      <div class="badge-meter"><div class="num" id="badgeMeterNum">-/5</div>
+        <div style="font-size:13px; color:var(--ink);">골드뱃지(단지뱃지) 보유 현황</div></div>
+      <div id="billingList"></div>
+    </div>
   </div>
 
 </div>
@@ -158,7 +217,7 @@ function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x =>
 
 let ME = null;
 
-// 취급지역 옵션 — 서버 LOAN_SERVICE_REGIONS와 동일 (전국 → 수도권 → 시도 가나다순)
+// 취급지역 옵션
 const LOAN_SERVICE_REGIONS = ["전국","수도권","강원","경기","경남","경북","광주","대구","대전","부산","서울","세종","울산","인천","전남","전북","제주","충남","충북"];
 (function(){
   const sel = document.getElementById("fRegion");
@@ -222,6 +281,49 @@ async function load(){
   if (!ok){ document.getElementById("meOffice").textContent = "정보를 불러오지 못했습니다."; return; }
   ME = data;
   render();
+}
+
+// ---- 탭 전환 ----
+document.querySelectorAll(".agent-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".agent-tab").forEach(b => b.classList.remove("is-active"));
+    document.querySelectorAll(".agent-tabpanel").forEach(p => p.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    document.querySelector(`.agent-tabpanel[data-tabpanel="${btn.dataset.tab}"]`).classList.add("is-active");
+    if (btn.dataset.tab === "leads") loadLcLeads();
+    if (btn.dataset.tab === "billing") loadLcBilling();
+  });
+});
+
+async function loadLcLeads(){
+  const res = await fetch("/api/loan-consultant/consult-requests/mine");
+  const d = await res.json().catch(()=>({}));
+  const box = document.getElementById("lcLeadsList");
+  if (!d.ok || !d.items.length){ box.innerHTML = `<div class="side-empty">받은 상담이 없습니다.</div>`; return; }
+  box.innerHTML = d.items.map(l => `
+    <div style="padding:12px 2px; border-bottom:1px solid #F0EBDF;">
+      <div style="font-weight:700;">${esc(l.building_name)} <span style="font-size:11px; font-weight:400; color:var(--ink-soft);">${l.routed_reason==='exclusive'?'단지 배정':'지역 배정'} · ${l.status==='submitted'?'신규':l.status==='in_progress'?'처리중':'완료'}</span></div>
+      <div style="font-size:13px; color:var(--ink-soft); margin-top:4px;">${l.message ? esc(l.message) + " · " : ""}연락처: ${esc(l.contact_phone)}</div>
+      <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">${esc(l.created_at)}</div>
+      ${l.status !== 'done' ? `<button class="side-more" style="width:auto; margin-top:6px; padding:5px 12px; font-size:12px;" onclick="lcSetStatus(${l.id}, '${l.status==='submitted'?'in_progress':'done'}')">${l.status==='submitted'?'처리 시작':'완료 처리'}</button>` : ""}
+    </div>`).join("");
+}
+window.lcSetStatus = async function(id, status){
+  await fetch(`/api/loan-consultant/consult-requests/${id}/status`, {
+    method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status})});
+  loadLcLeads();
+};
+async function loadLcBilling(){
+  const res = await fetch("/api/loan-consultant/tier-status");
+  const d = await res.json().catch(()=>({}));
+  if (!d.ok) return;
+  document.getElementById("badgeMeterNum").textContent = `${d.buildings.length}/5`;
+  const box = document.getElementById("billingList");
+  box.innerHTML = d.buildings.length ? d.buildings.map(b => `
+    <div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
+      <span>🧭 ${esc(b.building_name)}</span>
+      <span style="color:var(--ink-soft);">${new Date(b.premium_expires_at).toLocaleDateString("ko-KR")}까지</span>
+    </div>`).join("") : `<div class="side-empty">적용 중인 혜택이 없습니다.</div>`;
 }
 
 // ---- 노출중지/재개 토글 ----
@@ -358,6 +460,7 @@ document.getElementById("btnLogout").addEventListener("click", async () => {
 });
 
 load();
+loadLcLeads();
 </script>
   <script src="/static/js/pw_toggle.js"></script>
 </body>

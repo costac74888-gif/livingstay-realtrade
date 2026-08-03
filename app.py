@@ -5882,6 +5882,148 @@ def loan_consultant_visibility_update():
     return jsonify({"ok": True, "is_visible": v})
 
 
+@app.route("/api/loan-consultant/consult-requests/mine")
+@require_loan_consultant
+def loan_consultant_consult_requests_mine():
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lcr.id, lcr.message, lcr.contact_phone, lcr.routed_reason, lcr.status,
+               mb.id AS master_building_id, mb.building_name,
+               to_char(lcr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM loan_consult_requests lcr
+        JOIN master_buildings mb ON mb.id = lcr.master_building_id
+        WHERE lcr.routed_consultant_id = %s
+        ORDER BY lcr.created_at DESC
+    """, [lc_id])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/loan-consultant/consult-requests/<int:req_id>/status", methods=["PUT"])
+@require_loan_consultant
+def loan_consultant_consult_request_status(req_id):
+    lc_id = session["loan_consultant_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    new_status = data.get("status")
+    if new_status not in ("in_progress", "done"):
+        return jsonify({"ok": False, "message": "status는 in_progress|done 이어야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE loan_consult_requests SET status=%s WHERE id=%s AND routed_consultant_id=%s",
+        [new_status, req_id, lc_id])
+    found = cur.rowcount > 0
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not found:
+        return jsonify({"ok": False, "message": "대상을 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/consult-requests/mine")
+@require_operator
+def operator_consult_requests_mine():
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ocr.id, ocr.category, ocr.message, ocr.contact_phone, ocr.routed_reason, ocr.status,
+               mb.id AS master_building_id, mb.building_name,
+               to_char(ocr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM operator_consult_requests ocr
+        JOIN master_buildings mb ON mb.id = ocr.master_building_id
+        WHERE ocr.routed_operator_id = %s
+        ORDER BY ocr.created_at DESC
+    """, [operator_id])
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/operator/consult-requests/<int:req_id>/status", methods=["PUT"])
+@require_operator
+def operator_consult_request_status(req_id):
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    new_status = data.get("status")
+    if new_status not in ("in_progress", "done"):
+        return jsonify({"ok": False, "message": "status는 in_progress|done 이어야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE operator_consult_requests SET status=%s WHERE id=%s AND routed_operator_id=%s",
+        [new_status, req_id, operator_id])
+    found = cur.rowcount > 0
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not found:
+        return jsonify({"ok": False, "message": "대상을 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/loan-consultant/tier-status")
+@require_loan_consultant
+def loan_consultant_tier_status():
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT lcb.master_building_id, mb.building_name, lcb.premium_granted_at, lcb.premium_expires_at
+        FROM loan_consultant_buildings lcb
+        JOIN master_buildings mb ON mb.id = lcb.master_building_id
+        WHERE lcb.loan_consultant_id=%s AND lcb.premium_granted_at IS NOT NULL
+    """, [lc_id])
+    buildings = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    for b in buildings:
+        if b["premium_granted_at"]: b["premium_granted_at"] = b["premium_granted_at"].isoformat()
+        if b["premium_expires_at"]: b["premium_expires_at"] = b["premium_expires_at"].isoformat()
+    return jsonify({"ok": True, "buildings": buildings})
+
+
+@app.route("/api/operator/tier-status")
+@require_operator
+def operator_tier_status():
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ob.master_building_id, mb.building_name, ob.premium_granted_at, ob.premium_expires_at
+        FROM operator_buildings ob
+        JOIN master_buildings mb ON mb.id = ob.master_building_id
+        WHERE ob.operator_id=%s AND ob.premium_granted_at IS NOT NULL
+    """, [operator_id])
+    buildings = [dict(r) for r in cur.fetchall()]
+    cur.execute("""
+        SELECT sgg_text, granted_at, expires_at FROM operator_service_regions WHERE operator_id=%s
+    """, [operator_id])
+    regions = [dict(r) for r in cur.fetchall()]
+    cur.execute("""
+        SELECT orb.master_building_id, mb.building_name
+        FROM operator_region_buildings orb
+        JOIN master_buildings mb ON mb.id = orb.master_building_id
+        WHERE orb.operator_id=%s
+    """, [operator_id])
+    region_buildings = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    for b in buildings:
+        if b["premium_granted_at"]: b["premium_granted_at"] = b["premium_granted_at"].isoformat()
+        if b["premium_expires_at"]: b["premium_expires_at"] = b["premium_expires_at"].isoformat()
+    for r in regions:
+        if r["granted_at"]: r["granted_at"] = r["granted_at"].isoformat()
+        if r["expires_at"]: r["expires_at"] = r["expires_at"].isoformat()
+    return jsonify({"ok": True, "buildings": buildings, "regions": regions, "region_buildings": region_buildings})
+
+
 @app.route("/api/loan-consultant/buildings", methods=["POST"])
 @require_loan_consultant
 def loan_consultant_building_add():
