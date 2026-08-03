@@ -2190,7 +2190,7 @@ function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
   }).join("");
 }
 
-// 금융/대출상담 카드 — registered:true(담당단지 등록) 상단 골드, registered:false(지역매칭) 더보기
+// 금융/대출상담 카드 — 지역매칭 상담사 전원 골드 스타일로 바로 노출
 function renderBuildingLoanConsultants(consultants, buildingId, buildingName, buildingStatus){
   const box = document.getElementById("bFinanceBox");
   if (!box) return;
@@ -2203,9 +2203,6 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
       ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기", preCompletion: isPreCompletion })}`;
     return;
   }
-
-  const registered = items.filter(c => c.registered);
-  const regional   = items.filter(c => !c.registered);
 
   const mkCard = (c, isGold) => {
     const avatar = c.logo_src
@@ -2227,16 +2224,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
     return `<div ${wrap}><div style="display:flex;align-items:center;gap:12px;">${avatar}<div style="flex:1;min-width:0;">${nameEl}</div>${contactRow}</div></div>`;
   };
 
-  let html = registered.map(c => mkCard(c, true)).join("");
-
-  if (regional.length){
-    const mId = `lcMore_${buildingId ?? 0}`;
-    const cId = `lcMoreC_${buildingId ?? 0}`;
-    html += `
-    <button id="${mId}" class="side-more" style="width:100%;margin-top:6px;font-size:12px;"
-      onclick="const c=document.getElementById('${cId}'),b=document.getElementById('${mId}');if(c.hidden){c.hidden=false;b.textContent='지역 상담사 접기';}else{c.hidden=true;b.textContent='지역 취급 상담사 더보기 (${regional.length}명)';}">지역 취급 상담사 더보기 (${regional.length}명)</button>
-    <div id="${cId}" hidden>${regional.map(c => mkCard(c, false)).join("")}</div>`;
-  }
+  let html = items.map(c => mkCard(c, true)).join("");
 
   // 상담 신청은 프로필 페이지에서 처리 — 여기서는 버튼 없음
   html += `

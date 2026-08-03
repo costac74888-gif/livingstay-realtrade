@@ -517,62 +517,28 @@ def get_building(building_id):
             "tier": tier,
         })
 
-    # 담당 대출상담사 — 두 단계로 수집:
-    # 1) loan_consultant_buildings 정확매칭 → registered=True (최대 3명)
-    # 2) service_region 지역매칭 → registered=False (이미 등록된 ID 제외, 최대 5명)
-    cur.execute("""
-        SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
-               lc.logo_url, lc.intro_text, lc.consultant_products,
-               lc.kakao_chat_url, lc.license_number, lc.service_region
-        FROM loan_consultant_buildings lcb
-        JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id
-        WHERE lcb.master_building_id = %s
-          AND lc.status = 'approved'
-          AND COALESCE(lc.is_visible, TRUE)
-        ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
-        LIMIT 3
-    """, [building_id])
-    loan_consultant_rows = []
-    for r in cur.fetchall():
-        d = dict(r)
-        d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
-        d["registered"] = True
-        loan_consultant_rows.append(d)
-
-    # 지역매칭 — 건물의 sgg_cd 앞 2자리로 시도 판별 후 취급지역 일치 상담사 추가
-    _PROV_SGG = {
-        "11": "서울", "26": "부산", "27": "대구", "28": "인천", "29": "광주",
-        "30": "대전", "31": "울산", "36": "세종", "41": "경기", "42": "강원",
-        "43": "충북", "44": "충남", "45": "전북", "46": "전남", "47": "경북",
-        "48": "경남", "50": "제주",
-    }
-    _SUDO = {"11", "28", "41"}
+    # 담당 대출상담사 — 지역(전국/광역시·도 다중선택) 매칭
     sgg_cd = str(building.get("sgg_cd") or "")
     prov_prefix = sgg_cd[:2]
-    prov_nm = _PROV_SGG.get(prov_prefix)
+    prov_nm = _PROV_SGG_MAP.get(prov_prefix)
     region_match = ["전국"]
-    if prov_prefix in _SUDO:
+    if prov_prefix in _SUDO_PREFIXES:
         region_match.append("수도권")
     if prov_nm:
         region_match.append(prov_nm)
-    reg_ids = [d["id"] for d in loan_consultant_rows]
-    excl = f"AND lc.id NOT IN ({','.join(['%s']*len(reg_ids))})" if reg_ids else ""
-    region_ph = ",".join(["%s"] * len(region_match))
-    cur.execute(f"""
-        SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
+    loan_consultant_rows = []
+    cur.execute("""
+        SELECT DISTINCT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
                lc.logo_url, lc.intro_text, lc.consultant_products,
                lc.kakao_chat_url, lc.license_number, lc.service_region
-        FROM loan_consultants lc
-        WHERE lc.status = 'approved'
+        FROM loan_consultant_service_areas lsa
+        JOIN loan_consultants lc ON lc.id = lsa.loan_consultant_id
+        WHERE lsa.region_name = ANY(%s)
+          AND lc.status = 'approved'
           AND COALESCE(lc.is_visible, TRUE)
-          AND EXISTS (
-              SELECT 1 FROM loan_consultant_service_areas lsa
-              WHERE lsa.loan_consultant_id = lc.id AND lsa.region_name IN ({region_ph})
-          )
-          {excl}
-        ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
-        LIMIT 5
-    """, region_match + reg_ids)
+        ORDER BY RANDOM()
+        LIMIT 3
+    """, [region_match])
     for r in cur.fetchall():
         d = dict(r)
         d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
@@ -4376,19 +4342,7 @@ _SUDO_PREFIXES = {"11", "28", "41"}
 
 
 def _route_loan_lead(cur, mb_id):
-    """대출상담 배정. ①담당단지(전속) 등록자 우선(선착순 랜덤)
-    ②없으면 다중선택 지역(전국/광역시·도) 매칭. 단지뱃지 개념 없음."""
-    cur.execute("""
-        SELECT lc.id, lc.phone, lc.office_name
-        FROM loan_consultant_buildings lcb
-        JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id AND lc.status = 'approved'
-        WHERE lcb.master_building_id = %s AND COALESCE(lc.is_visible, TRUE)
-        ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
-    """, [mb_id])
-    rows = cur.fetchall()
-    if rows:
-        return rows[0]["id"], "exclusive"
-
+    """대출상담 배정 — 지역(전국/광역시·도 다중선택) 매칭만 사용한다."""
     cur.execute("SELECT sgg_cd FROM master_buildings WHERE id=%s", [mb_id])
     b = cur.fetchone()
     sgg_cd = str((b["sgg_cd"] if b else "") or "")
