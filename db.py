@@ -401,6 +401,28 @@ def init_db():
     cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP")
     cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE")
 
+    # 운영업체 지역Master 테이블 (중개사 agent_service_regions / agent_region_buildings와 동일 패턴)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_service_regions (
+            id SERIAL PRIMARY KEY,
+            operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+            sgg_text TEXT NOT NULL,
+            granted_at TIMESTAMP DEFAULT NOW(),
+            expires_at TIMESTAMP NOT NULL,
+            is_paid BOOLEAN DEFAULT FALSE,
+            CONSTRAINT operator_service_regions_unique UNIQUE (operator_id, sgg_text)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_region_buildings (
+            id SERIAL PRIMARY KEY,
+            operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+            master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+            added_at TIMESTAMP DEFAULT NOW(),
+            CONSTRAINT operator_region_buildings_unique UNIQUE (operator_id, master_building_id)
+        )
+    """)
+
     # 대출상담사 — 위탁운영/청소 등 운영지원업체(operators)와 완전히 분리된 별도 엔티티.
     # agents 테이블과 동일 패턴 (승인 시 slug/임시비밀번호 발급 가능 구조).
     cur.execute("""

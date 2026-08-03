@@ -61,6 +61,9 @@ MAX_FREE_BUILDINGS = 5
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
 LOAN_PREMIUM_BADGE_CAP = 5      # 대출상담사 1인당 골드뱃지(단지뱃지) 총 보유 한도
 OPERATOR_PREMIUM_BADGE_CAP = 5  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도
+OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
+OPERATOR_REGION_BUILDING_CAP = 20  # 지역 안에서 담당단지로 선택 가능한 건물 수
+OPERATOR_REGION_SLOT_CAP = 20      # 시군구 하나당 등록 가능한 운영업체 수(업종 무관 공유)
 AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(시군구) 수 (20 → 1)
 AGENT_REGION_BUILDING_CAP = 20  # 등록한 지역 안에서 담당단지로 선택 가능한 건물 수
 REGION_SLOT_CAP = 20            # 시군구 하나당 지역Master로 등록 가능한 중개사 수
@@ -5986,11 +5989,169 @@ def operator_building_claim_premium(mbid):
                 premium_expires_at = NOW() + INTERVAL '3 months'
             WHERE operator_id=%s AND master_building_id=%s
         """, [operator_id, mbid])
+        # 단지뱃지 입점 성공 시 지역담당단지 목록에서 중복 제거
+        cur.execute("DELETE FROM operator_region_buildings WHERE operator_id=%s AND master_building_id=%s",
+                    [operator_id, mbid])
         conn.commit()
     finally:
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/operator/service-regions", methods=["POST"])
+@require_operator
+def operator_service_region_claim():
+    """시군구 단위 지역Master를 3개월 무료로 즉시 등록 — 1인당 1개,
+    시군구당 최대 20명(업종 무관 공유)."""
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    sgg = (data.get("sgg_text") or "").strip()
+    if not sgg:
+        return jsonify({"ok": False, "message": "지역을 입력해주세요."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) c FROM operator_service_regions WHERE operator_id=%s", [operator_id])
+        if cur.fetchone()["c"] >= OPERATOR_REGION_CAP:
+            return jsonify({"ok": False, "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요."}), 400
+        cur.execute("SELECT COUNT(*) c FROM operator_service_regions WHERE sgg_text=%s", [sgg])
+        if cur.fetchone()["c"] >= OPERATOR_REGION_SLOT_CAP:
+            return jsonify({"ok": False, "message": f"이 지역은 이미 정원({OPERATOR_REGION_SLOT_CAP}명)이 찼습니다."}), 400
+        cur.execute("""
+            INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
+            VALUES (%s, %s, NOW() + INTERVAL '3 months')
+        """, [operator_id, sgg])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/service-regions", methods=["DELETE"])
+@require_operator
+def operator_service_region_delete():
+    """담당 지역 삭제 — 그 지역의 담당단지도 함께 전부 삭제된다."""
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM operator_region_buildings WHERE operator_id=%s", [operator_id])
+        cur.execute("DELETE FROM operator_service_regions WHERE operator_id=%s", [operator_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/region-buildings/search")
+@require_operator
+def operator_region_building_search():
+    operator_id = session["operator_id"]
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"items": []})
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT sgg_text FROM operator_service_regions WHERE operator_id=%s LIMIT 1", [operator_id])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "먼저 담당 지역을 등록해주세요."}), 400
+        cur.execute("""
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+                   (arb.id IS NOT NULL) AS already_added,
+                   EXISTS(
+                       SELECT 1 FROM operator_buildings ob
+                       WHERE ob.master_building_id = mb.id AND ob.operator_id = %s
+                         AND ob.has_priority_badge
+                         AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
+                   ) AS is_own_premium
+            FROM master_buildings mb
+            LEFT JOIN operator_region_buildings arb
+              ON arb.master_building_id = mb.id AND arb.operator_id = %s
+            WHERE mb.sgg_text = %s AND mb.building_name ILIKE %s AND mb.building_name <> '-'
+            ORDER BY mb.building_name
+            LIMIT 20
+        """, [operator_id, operator_id, row["sgg_text"], f"%{q}%"])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/operator/region-buildings", methods=["POST"])
+@require_operator
+def operator_region_building_add():
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mbid = int(data.get("master_building_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT sgg_text FROM operator_service_regions WHERE operator_id=%s LIMIT 1", [operator_id])
+        region = cur.fetchone()
+        if not region:
+            return jsonify({"ok": False, "message": "먼저 담당 지역을 등록해주세요."}), 400
+        cur.execute("SELECT sgg_text FROM master_buildings WHERE id=%s", [mbid])
+        b = cur.fetchone()
+        if not b or b["sgg_text"] != region["sgg_text"]:
+            return jsonify({"ok": False, "message": "담당 지역 안에 있는 단지만 추가할 수 있습니다."}), 400
+        cur.execute("""
+            SELECT 1 FROM operator_buildings
+            WHERE operator_id=%s AND master_building_id=%s AND has_priority_badge
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+        """, [operator_id, mbid])
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": "이미 단지뱃지로 입점한 단지입니다. 지역담당에 추가할 필요가 없습니다."}), 400
+        cur.execute("SELECT COUNT(*) c FROM operator_region_buildings WHERE operator_id=%s", [operator_id])
+        if cur.fetchone()["c"] >= OPERATOR_REGION_BUILDING_CAP:
+            return jsonify({"ok": False, "message": f"담당단지는 최대 {OPERATOR_REGION_BUILDING_CAP}개까지 추가할 수 있습니다."}), 400
+        cur.execute("""
+            INSERT INTO operator_region_buildings (operator_id, master_building_id)
+            VALUES (%s, %s) ON CONFLICT (operator_id, master_building_id) DO NOTHING
+        """, [operator_id, mbid])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/region-buildings/<int:mbid>", methods=["DELETE"])
+@require_operator
+def operator_region_building_remove(mbid):
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM operator_region_buildings WHERE operator_id=%s AND master_building_id=%s",
+                [operator_id, mbid])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/sgg-options")
+@require_operator
+def operator_sgg_options():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT sgg_text FROM master_buildings
+        WHERE sgg_text IS NOT NULL AND sgg_text <> ''
+        ORDER BY sgg_text
+    """)
+    options = [r["sgg_text"] for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "options": options})
 
 
 @app.route("/api/operator/buildings/<int:mbid>", methods=["DELETE"])
