@@ -62,6 +62,28 @@ def _load_codes():
     return data["sgg"], data["dongs"]  # sgg: {코드5: "시도 시군구"}, dongs: [[코드10, 법정동명], ...]
 
 
+_SIBLING_PROGRESS_KEYS = ("brhub_progress", "brhub_rescan_progress")
+
+
+def _combined_calls_today(cur):
+    """메인 수집 + 과거구간 재수집의 오늘 호출량 합계.
+    둘 중 하나가 8,000건을 다 써도 나머지가 또 8,000건을 쓸 수 없도록
+    일일 캡을 두 실행이 공유하게 만든다."""
+    today = date.today().isoformat()
+    total = 0
+    for key in _SIBLING_PROGRESS_KEYS:
+        cur.execute("SELECT value FROM app_meta WHERE key=%s", (key,))
+        row = cur.fetchone()
+        if row and row["value"]:
+            try:
+                p = json.loads(row["value"])
+                if p.get("calls_date") == today:
+                    total += p.get("calls_today", 0)
+            except (TypeError, ValueError):
+                pass
+    return total
+
+
 def _get_progress(cur, progress_key=PROGRESS_KEY):
     cur.execute("SELECT value FROM app_meta WHERE key=%s", (progress_key,))
     row = cur.fetchone()
@@ -180,8 +202,8 @@ def run(args, status_key=None, run_id=None):
     if prog.get("calls_date") != today:
         prog["calls_date"] = today
         prog["calls_today"] = 0
-    if prog["calls_today"] >= args.daily_cap:
-        print(f"오늘 호출 {prog['calls_today']}회 — 일일캡({args.daily_cap}) 도달, 내일 재실행하세요.")
+    if _combined_calls_today(cur) >= args.daily_cap:
+        print(f"오늘 호출 {_combined_calls_today(cur)}회(메인+재수집 합산) — 일일캡({args.daily_cap}) 도달, 내일 재실행하세요.")
         cur.close()
         conn.close()
         return False, 0, 0, prog["calls_today"]
@@ -279,8 +301,8 @@ def run(args, status_key=None, run_id=None):
             if args.limit and processed >= args.limit:
                 stop_reason = "limit"
                 break
-            if prog["calls_today"] >= args.daily_cap:
-                print(f"일일캡({args.daily_cap}) 도달 — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
+            if _combined_calls_today(cur) >= args.daily_cap:
+                print(f"일일캡({args.daily_cap}) 도달(메인+재수집 합산) — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
                 stop_reason = "daily_cap"
                 break
             if status_key and run_id and not _still_owner(cur, status_key, run_id):

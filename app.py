@@ -7875,6 +7875,7 @@ def admin_brhub_sync_run():
 
 @app.route("/api/admin/brhub-rescan-run", methods=["POST"])
 @require_admin
+@limiter.limit("2 per hour")
 def admin_brhub_rescan_run():
     """일반건축물 필터 확장 이전에 이미 지나간 법정동 구간을
     별도 체크포인트로 재수집 — 메인 건물수집 진행상태와 완전히 분리."""
