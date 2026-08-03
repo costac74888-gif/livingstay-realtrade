@@ -752,6 +752,36 @@ def init_db():
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
 
+    # 대출상담 신청 (일반회원 → 대출상담사 라우팅)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS loan_consult_requests (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
+            message TEXT,
+            contact_phone TEXT NOT NULL,
+            routed_consultant_id INTEGER REFERENCES loan_consultants(id),
+            routed_reason TEXT,              -- exclusive | region
+            status TEXT DEFAULT 'submitted', -- submitted | in_progress | done
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    # 운영업체 상담 신청 (일반회원 → 운영업체 라우팅, 업종 필터 필수)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_consult_requests (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
+            category TEXT NOT NULL,
+            message TEXT,
+            contact_phone TEXT NOT NULL,
+            routed_operator_id INTEGER REFERENCES operators(id),
+            routed_reason TEXT,              -- exclusive | region
+            status TEXT DEFAULT 'submitted',
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+
     # 매수의뢰(일반 회원 → 중개사 라우팅) — listing_requests와 동일 구조, 매수자 측 요청.
     cur.execute("""
     CREATE TABLE IF NOT EXISTS buy_requests (

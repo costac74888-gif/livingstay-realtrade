@@ -4323,6 +4323,70 @@ def _route_lead(cur, mb_id):
     return None, "house", []
 
 
+def _route_loan_lead(cur, mb_id):
+    """대출상담 배정. ①담당단지(전속) 유료우선→전체 ②취급지역(service_region)
+    유료우선→전체. LOAN_SERVICE_REGIONS 값과 건물 시/도 표기가 정확히
+    매핑되는지는 반영 후 반드시 실제 데이터로 확인할 것."""
+    cur.execute("""
+        SELECT lc.id, lc.phone, lc.office_name,
+               COALESCE(lcb.is_paid, FALSE) AS is_paid
+        FROM loan_consultant_buildings lcb
+        JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id AND lc.status = 'approved'
+        WHERE lcb.master_building_id = %s AND COALESCE(lc.is_visible, TRUE)
+        ORDER BY COALESCE(lc.priority_score, 0) DESC, RANDOM()
+    """, [mb_id])
+    rows = cur.fetchall()
+    if rows:
+        paid = [r for r in rows if r["is_paid"]]
+        pool = paid if paid else rows
+        return pool[0]["id"], "exclusive"
+
+    cur.execute("SELECT sgg_text FROM master_buildings WHERE id=%s", [mb_id])
+    b = cur.fetchone()
+    sido = (b["sgg_text"] or "").split()[0] if b and b["sgg_text"] else ""
+    cur.execute("""
+        SELECT id, phone, office_name FROM loan_consultants
+        WHERE status = 'approved' AND COALESCE(is_visible, TRUE)
+          AND (service_region IS NULL OR service_region = '' OR service_region = '전국'
+               OR %s LIKE service_region || '%%')
+        ORDER BY RANDOM()
+    """, [sido])
+    rows = cur.fetchall()
+    if rows:
+        return rows[0]["id"], "region"
+    return None, None
+
+
+def _route_operator_lead(cur, mb_id, category):
+    """운영업체 상담 배정. 반드시 같은 category 안에서만 매칭한다
+    (업종이 다른 업체에게 잘못 배정되지 않도록)."""
+    cur.execute("""
+        SELECT o.id, o.phone, o.company_name, COALESCE(ob.is_paid, FALSE) AS is_paid
+        FROM operator_buildings ob
+        JOIN operators o ON o.id = ob.operator_id AND o.status = 'approved' AND o.category = %s
+        WHERE ob.master_building_id = %s AND COALESCE(o.is_visible, TRUE)
+        ORDER BY RANDOM()
+    """, [category, mb_id])
+    rows = cur.fetchall()
+    if rows:
+        paid = [r for r in rows if r["is_paid"]]
+        pool = paid if paid else rows
+        return pool[0]["id"], "exclusive"
+
+    cur.execute("""
+        SELECT o.id, o.phone, o.company_name
+        FROM operator_region_buildings orb
+        JOIN operator_service_regions osr ON osr.operator_id = orb.operator_id
+        JOIN operators o ON o.id = orb.operator_id AND o.status = 'approved' AND o.category = %s
+        WHERE orb.master_building_id = %s AND osr.expires_at > NOW() AND COALESCE(o.is_visible, TRUE)
+        ORDER BY RANDOM()
+    """, [category, mb_id])
+    rows = cur.fetchall()
+    if rows:
+        return rows[0]["id"], "region"
+    return None, None
+
+
 def _reassign_house_requests_for_building(cur, agent_id, mbid):
     """agent_buildings에 건물이 새로 추가됐을 때, 그 건물(exclusive) 또는
     같은 시군구(region)에서 'house'(하우스 계정=홈스퀘어 중개법인)로
@@ -4940,6 +5004,75 @@ def admin_preview_agent_buy_requests(agent_id):
 _LISTING_DEAL_TYPES = {"매매", "전세", "월세", "단기임대"}
 _PHONE_RE = re.compile(r"^0\d{1,2}-?\d{3,4}-?\d{4}$")
 _HOUSE_OFFICE_NAME = "홈스퀘어부동산중개법인"
+
+
+@app.route("/api/loan-consult-requests", methods=["POST"])
+@limiter.limit("5 per hour")
+def create_loan_consult_request():
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mb_id = int(data.get("master_building_id") or 0)
+    except (TypeError, ValueError):
+        mb_id = 0
+    message = (data.get("message") or "").strip()[:500]
+    contact_phone = (data.get("contact_phone") or "").strip()
+    if not mb_id or not contact_phone or not _PHONE_RE.match(contact_phone):
+        return jsonify({"ok": False, "message": "필수 항목을 확인해주세요."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [mb_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        routed_id, routed_reason = _route_loan_lead(cur, mb_id)
+        cur.execute("""
+            INSERT INTO loan_consult_requests
+                (user_id, master_building_id, message, contact_phone, routed_consultant_id, routed_reason)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, [user["id"], mb_id, message, contact_phone, routed_id, routed_reason])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator-consult-requests", methods=["POST"])
+@limiter.limit("5 per hour")
+def create_operator_consult_request():
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mb_id = int(data.get("master_building_id") or 0)
+    except (TypeError, ValueError):
+        mb_id = 0
+    category = (data.get("category") or "").strip()
+    message = (data.get("message") or "").strip()[:500]
+    contact_phone = (data.get("contact_phone") or "").strip()
+    if not mb_id or category not in OPERATOR_CATEGORIES or not contact_phone or not _PHONE_RE.match(contact_phone):
+        return jsonify({"ok": False, "message": "필수 항목을 확인해주세요."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [mb_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        routed_id, routed_reason = _route_operator_lead(cur, mb_id, category)
+        cur.execute("""
+            INSERT INTO operator_consult_requests
+                (user_id, master_building_id, category, message, contact_phone, routed_operator_id, routed_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, [user["id"], mb_id, category, message, contact_phone, routed_id, routed_reason])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/listing-requests", methods=["POST"])

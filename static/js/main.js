@@ -2086,7 +2086,7 @@ async function loadBuildingHeader(id){
   });
 
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
-  renderBuildingOperators(b.operators, b.building_status);
+  renderBuildingOperators(b.operators, b.building_status, id);
 
   // 금융 카드 — 이 건물에 연결된(loan_consultant_buildings) 승인 대출상담사가 있으면 상담사 카드로 교체,
   // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
@@ -2166,7 +2166,7 @@ async function loadBuildingStores(buildingId){
 //   위탁운영 카드 ← category '위탁운영'
 //   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
 // 프로필 이동 없이 카드 안에서 정보 완결: 1행 상호 / 2행 업종 / 3행 전화 / 4행 홈페이지(있을 때만)
-function renderBuildingOperators(operators, buildingStatus){
+function renderBuildingOperators(operators, buildingStatus, buildingId){
   const ops = Array.isArray(operators) ? operators : [];
   const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   // 카드별 최대 3곳 — 서버가 priority_score DESC, RANDOM() 순으로 내려주므로 앞에서 3개만 자른다
@@ -2202,9 +2202,23 @@ function renderBuildingOperators(operators, buildingStatus){
         </div>
       </div>`;
     }).join("");
+    // 업종별 상담 신청 버튼 (동작 확인용 최소 구현 — 5단계에서 정식 UI로 교체)
+    const uniqueCats = [...new Set(picked.map(o => o.category))];
+    const bid = buildingId != null ? buildingId : 0;
+    box.innerHTML += uniqueCats.map(cat => `
+    <button type="button" class="side-more" style="width:100%;margin-top:8px;"
+      onclick="(async()=>{
+        const msg=prompt('문의 내용을 입력해주세요(선택)')||'';
+        const phone=prompt('연락받으실 전화번호를 입력해주세요');
+        if(!phone) return;
+        const r=await fetch('/api/operator-consult-requests',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({master_building_id:${bid},message:msg,contact_phone:phone,category:'${cat}'})});
+        const d=await r.json().catch(()=>({}));
+        alert(d.ok?'상담 신청이 접수되었습니다.':(d.message||'신청에 실패했습니다.'));
+      })()">상담 신청하기 (${cat})</button>`).join('');
   };
-  paint("bOperatorBox", pick(["위탁운영"]), "consign");
-  paint("bHousekeepingBox", pick(["청소", "세탁", "용품"]), "housekeeping");
+  paint("bOperatorBox", pick(["위탁"]), "consign");
+  paint("bHousekeepingBox", pick(["청소", "세탁", "용품", "소독", "세무", "인테리어"]), "housekeeping");
 }
 
 // 금융/대출상담 카드 — registered:true(담당단지 등록) 상단 골드, registered:false(지역매칭) 더보기
@@ -2255,6 +2269,17 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
     <div id="${cId}" hidden>${regional.map(c => mkCard(c, false)).join("")}</div>`;
   }
 
+  html += `
+    <button type="button" class="side-more" style="width:100%;margin-top:8px;"
+      onclick="(async()=>{
+        const msg=prompt('문의 내용을 입력해주세요(선택)')||'';
+        const phone=prompt('연락받으실 전화번호를 입력해주세요');
+        if(!phone) return;
+        const r=await fetch('/api/loan-consult-requests',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({master_building_id:${buildingId},message:msg,contact_phone:phone})});
+        const d=await r.json().catch(()=>({}));
+        alert(d.ok?'상담 신청이 접수되었습니다.':(d.message||'신청에 실패했습니다.'));
+      })()">상담 신청하기</button>`;
   html += `
     <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
     <div style="margin-top:8px;text-align:right;"><a href="/loan-consultants" style="font-size:12px;font-weight:600;color:var(--brass-dark);text-decoration:none;">전체 대출상담사 보기 →</a></div>`;
