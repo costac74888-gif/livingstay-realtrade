@@ -145,31 +145,31 @@
     document.getElementById("lcBizRegNumber").textContent = p.biz_reg_number || "-";
     document.getElementById("lcAddress").textContent = p.office_address || "-";
     document.getElementById("lcProducts").textContent = p.consultant_products || "-";
-  }
 
-  (function(){
+    // consultForm 설정 — render() 안에서 실행해야 DOM 요소가 존재함
     const params = new URLSearchParams(location.search);
     const bId = params.get("building_id");
     const bName = params.get("building_name");
-    if (!bId) return;
-    document.getElementById("consultNoBuilding").hidden = true;
-    document.getElementById("consultFormBox").hidden = false;
-    document.getElementById("consultBuildingLabel").textContent = `문의 단지: ${bName || "-"}`;
-    document.getElementById("btnSubmitConsult").addEventListener("click", async () => {
-      const phone = document.getElementById("consultPhone").value.trim();
-      if (!phone) { alert("전화번호를 입력해주세요."); return; }
-      const res = await fetch("/api/loan-consult-requests", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          master_building_id: Number(bId),
-          message: document.getElementById("consultMessage").value.trim(),
-          contact_phone: phone,
-        }),
+    if (bId) {
+      document.getElementById("consultNoBuilding").hidden = true;
+      document.getElementById("consultFormBox").hidden = false;
+      document.getElementById("consultBuildingLabel").textContent = `문의 단지: ${bName || "-"}`;
+      document.getElementById("btnSubmitConsult").addEventListener("click", async () => {
+        const phone = document.getElementById("consultPhone").value.trim();
+        if (!phone) { alert("전화번호를 입력해주세요."); return; }
+        const res = await fetch("/api/loan-consult-requests", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            master_building_id: Number(bId),
+            message: document.getElementById("consultMessage").value.trim(),
+            contact_phone: phone,
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        alert(d.ok ? "상담 신청이 접수되었습니다." : (d.message || "신청에 실패했습니다."));
       });
-      const d = await res.json().catch(() => ({}));
-      alert(d.ok ? "상담 신청이 접수되었습니다." : (d.message || "신청에 실패했습니다."));
-    });
-  })();
+    }
+  }
 
   (async () => {
     try {
