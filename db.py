@@ -396,6 +396,10 @@ def init_db():
         CONSTRAINT operator_buildings_operator_building_unique UNIQUE (operator_id, master_building_id)
     )
     """)
+    cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS has_priority_badge BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS premium_granted_at TIMESTAMP")
+    cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP")
+    cur.execute("ALTER TABLE operator_buildings ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE")
 
     # 대출상담사 — 위탁운영/청소 등 운영지원업체(operators)와 완전히 분리된 별도 엔티티.
     # agents 테이블과 동일 패턴 (승인 시 slug/임시비밀번호 발급 가능 구조).
@@ -440,6 +444,10 @@ def init_db():
         CONSTRAINT loan_consultant_buildings_unique UNIQUE (loan_consultant_id, master_building_id)
     )
     """)
+    cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS has_priority_badge BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS premium_granted_at TIMESTAMP")
+    cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP")
+    cur.execute("ALTER TABLE loan_consultant_buildings ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE")
     # 관리자 메모(비고) — 회원관리 목록에서 인라인 수정 + 비활성화 사유 자동 누적
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_memo TEXT")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS admin_memo TEXT")

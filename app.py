@@ -59,6 +59,8 @@ SERVER_BOOT_V = str(int(time.time()))
 # 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
 MAX_FREE_BUILDINGS = 5
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
+LOAN_PREMIUM_BADGE_CAP = 5      # 대출상담사 1인당 골드뱃지(단지뱃지) 총 보유 한도
+OPERATOR_PREMIUM_BADGE_CAP = 5  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도
 AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(시군구) 수 (20 → 1)
 AGENT_REGION_BUILDING_CAP = 20  # 등록한 지역 안에서 담당단지로 선택 가능한 건물 수
 REGION_SLOT_CAP = 20            # 시군구 하나당 지역Master로 등록 가능한 중개사 수
@@ -5802,6 +5804,50 @@ def loan_consultant_building_add():
     return jsonify({"ok": True})
 
 
+@app.route("/api/loan-consultant/buildings/<int:mbid>/claim-premium", methods=["POST"])
+@require_loan_consultant
+def loan_consultant_building_claim_premium(mbid):
+    """전속 단지를 3개월 무료 단지뱃지로 즉시 승격 — 단지당 1회 한정, 건물 전체 독점."""
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT premium_granted_at FROM loan_consultant_buildings WHERE loan_consultant_id=%s AND master_building_id=%s",
+            [lc_id, mbid])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "본인의 담당 단지만 신청할 수 있습니다."}), 400
+        if row["premium_granted_at"]:
+            return jsonify({"ok": False, "message": "이미 이 단지는 단지뱃지 혜택을 사용했습니다."}), 400
+        cur.execute("""
+            SELECT 1 FROM loan_consultant_buildings
+            WHERE master_building_id=%s AND loan_consultant_id<>%s
+              AND has_priority_badge
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+        """, [mbid, lc_id])
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": "이미 다른 상담사가 입점한 단지입니다."}), 400
+        cur.execute("""
+            SELECT COUNT(*) c FROM loan_consultant_buildings
+            WHERE loan_consultant_id=%s AND has_priority_badge
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+        """, [lc_id])
+        if cur.fetchone()["c"] >= LOAN_PREMIUM_BADGE_CAP:
+            return jsonify({"ok": False, "message": f"단지뱃지는 최대 {LOAN_PREMIUM_BADGE_CAP}개까지 보유할 수 있습니다."}), 400
+        cur.execute("""
+            UPDATE loan_consultant_buildings
+            SET has_priority_badge = TRUE, premium_granted_at = NOW(),
+                premium_expires_at = NOW() + INTERVAL '3 months'
+            WHERE loan_consultant_id=%s AND master_building_id=%s
+        """, [lc_id, mbid])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/loan-consultant/buildings/<int:mbid>", methods=["DELETE"])
 @require_loan_consultant
 def loan_consultant_building_delete(mbid):
@@ -5885,6 +5931,62 @@ def operator_building_add():
         except psycopg2_errors.UniqueViolation:
             conn.rollback()
             return jsonify({"ok": False, "message": "이미 등록된 단지입니다."}), 400
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/operator/buildings/<int:mbid>/claim-premium", methods=["POST"])
+@require_operator
+def operator_building_claim_premium(mbid):
+    """전속 단지를 3개월 무료 단지뱃지로 즉시 승격 — 단지당 1회 한정,
+    같은 업종끼리만 독점(다른 업종끼리는 동시에 뱃지 보유 가능)."""
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT category FROM operators WHERE id=%s", [operator_id])
+        me = cur.fetchone()
+        if not me:
+            return jsonify({"ok": False, "message": "운영업체 정보를 찾을 수 없습니다."}), 404
+        my_category = me["category"]
+
+        cur.execute(
+            "SELECT premium_granted_at FROM operator_buildings WHERE operator_id=%s AND master_building_id=%s",
+            [operator_id, mbid])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "본인의 담당 단지만 신청할 수 있습니다."}), 400
+        if row["premium_granted_at"]:
+            return jsonify({"ok": False, "message": "이미 이 단지는 단지뱃지 혜택을 사용했습니다."}), 400
+
+        cur.execute("""
+            SELECT 1 FROM operator_buildings ob
+            JOIN operators o ON o.id = ob.operator_id
+            WHERE ob.master_building_id=%s AND ob.operator_id<>%s
+              AND o.category = %s
+              AND ob.has_priority_badge
+              AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
+        """, [mbid, operator_id, my_category])
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": f"이미 같은 업종({my_category})의 다른 업체가 입점한 단지입니다."}), 400
+
+        cur.execute("""
+            SELECT COUNT(*) c FROM operator_buildings
+            WHERE operator_id=%s AND has_priority_badge
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+        """, [operator_id])
+        if cur.fetchone()["c"] >= OPERATOR_PREMIUM_BADGE_CAP:
+            return jsonify({"ok": False, "message": f"단지뱃지는 최대 {OPERATOR_PREMIUM_BADGE_CAP}개까지 보유할 수 있습니다."}), 400
+
+        cur.execute("""
+            UPDATE operator_buildings
+            SET has_priority_badge = TRUE, premium_granted_at = NOW(),
+                premium_expires_at = NOW() + INTERVAL '3 months'
+            WHERE operator_id=%s AND master_building_id=%s
+        """, [operator_id, mbid])
+        conn.commit()
     finally:
         cur.close()
         conn.close()
