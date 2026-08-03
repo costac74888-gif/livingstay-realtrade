@@ -2086,7 +2086,7 @@ async function loadBuildingHeader(id){
   });
 
   // 담당 운영지원업체가 등록된 건물이면 유치 문구 대신 업체명 + 프로필 링크 표시
-  renderBuildingOperators(b.operators, b.building_status, id);
+  renderBuildingOperators(b.operator_by_category, id, bName);
 
   // 금융 카드 — 이 건물에 연결된(loan_consultant_buildings) 승인 대출상담사가 있으면 상담사 카드로 교체,
   // 없으면 "이 건물에 대출상담사로 신청하기" 모집 카드 표시
@@ -2166,59 +2166,28 @@ async function loadBuildingStores(buildingId){
 //   위탁운영 카드 ← category '위탁운영'
 //   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
 // 프로필 이동 없이 카드 안에서 정보 완결: 1행 상호 / 2행 업종 / 3행 전화 / 4행 홈페이지(있을 때만)
-function renderBuildingOperators(operators, buildingStatus, buildingId){
-  const ops = Array.isArray(operators) ? operators : [];
-  const isPreCompletion = buildingStatus && buildingStatus !== "완공";
-  // 카드별 최대 3곳 — 서버가 priority_score DESC, RANDOM() 순으로 내려주므로 앞에서 3개만 자른다
-  const pick = (cats) => ops.filter(o => cats.includes(o.category)).slice(0, 3);
-  const paint = (boxId, picked, kind) => {
-    const box = document.getElementById(boxId);
-    if (!box) return;
-    if (!picked.length) {
-      if (isPreCompletion) {
-        box.innerHTML = recruitBoxHTML(kind, { preCompletion: true });
-      }
-      return; // 완공 건물이고 담당 업체 없음 → 기존 유치 카드 그대로(변경 없음)
-    }
-    box.innerHTML = picked.map((op) => {
-      // 홈페이지 링크는 http/https만 허용 (링크 인젝션 차단)
-      const siteUrl = /^https?:\/\//i.test(String(op.website_url || "")) ? op.website_url : null;
-      const nameHtml = op.subdomain_slug
-        ? `<a href="/operator/${encodeURIComponent(op.subdomain_slug)}" style="display:inline-block; font-size:13.5px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 9px; text-decoration:none;">${escapeHtml(op.company_name || "-")}</a>`
-        : `<div style="font-size:14px; font-weight:700; color:var(--ink);">${escapeHtml(op.company_name || "-")}</div>`;
-      return `
-      <div style="padding:8px 0; border-bottom:1px solid var(--line, #eee);">
-        <div style="display:flex; align-items:flex-start; gap:12px;">
-          <div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">🏨</div>
-          <div style="flex:1; min-width:0;">
-            ${nameHtml}
-            <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">${escapeHtml(op.category || "-")}</div>
-            ${op.phone ? `<div style="display:flex; gap:24px; margin-top:6px;">
-              <a href="tel:${escapeHtml(op.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;">📞 전화</a>
-              <a href="sms:${escapeHtml(op.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;">💬 문자</a>
-            </div>` : ""}
-            ${siteUrl ? `<div style="margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><a href="${escapeHtml(siteUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:none;">🔗 홈페이지 바로가기</a></div>` : ""}
-          </div>
-        </div>
+function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
+  const box = document.getElementById("bOperatorBox");
+  if (!box) return;
+  const items = Array.isArray(operatorByCategory) ? operatorByCategory : [];
+  const applyHref = `/apply/operator?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
+  box.innerHTML = items.map(it => {
+    if (!it.company_name) {
+      return `<div style="display:flex; align-items:center; justify-content:space-between; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
+        <span style="font-size:12.5px; color:var(--ink-soft);">${escapeHtml(it.category)}</span>
+        <a href="${applyHref}" style="font-size:11.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">모집중 · 지원하기</a>
       </div>`;
-    }).join("");
-    // 업종별 상담 신청 버튼 (동작 확인용 최소 구현 — 5단계에서 정식 UI로 교체)
-    const uniqueCats = [...new Set(picked.map(o => o.category))];
-    const bid = buildingId != null ? buildingId : 0;
-    box.innerHTML += uniqueCats.map(cat => `
-    <button type="button" class="side-more" style="width:100%;margin-top:8px;"
-      onclick="(async()=>{
-        const msg=prompt('문의 내용을 입력해주세요(선택)')||'';
-        const phone=prompt('연락받으실 전화번호를 입력해주세요');
-        if(!phone) return;
-        const r=await fetch('/api/operator-consult-requests',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({master_building_id:${bid},message:msg,contact_phone:phone,category:'${cat}'})});
-        const d=await r.json().catch(()=>({}));
-        alert(d.ok?'상담 신청이 접수되었습니다.':(d.message||'신청에 실패했습니다.'));
-      })()">상담 신청하기 (${cat})</button>`).join('');
-  };
-  paint("bOperatorBox", pick(["위탁"]), "consign");
-  paint("bHousekeepingBox", pick(["청소", "세탁", "용품", "소독", "세무", "인테리어"]), "housekeeping");
+    }
+    const badge = it.tier === "premium" ? "🧭" : "📍";
+    const nameEl = it.tier === "premium" && it.subdomain_slug
+      ? `<a href="/operator/${encodeURIComponent(it.subdomain_slug)}?building_id=${buildingId}&building_name=${encodeURIComponent(buildingName||"")}" style="font-size:13px; font-weight:700; color:var(--ink); text-decoration:none;">${escapeHtml(it.company_name)}</a>`
+      : `<span style="font-size:13px; font-weight:600; color:var(--ink);">${escapeHtml(it.company_name)}</span>`;
+    return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
+      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0;">${badge} ${escapeHtml(it.category)}</span>
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nameEl}</span>
+      ${it.phone ? `<a href="tel:${escapeHtml(it.phone)}" style="font-size:16px; text-decoration:none;" onclick="event.stopPropagation();">📞</a>` : ""}
+    </div>`;
+  }).join("");
 }
 
 // 금융/대출상담 카드 — registered:true(담당단지 등록) 상단 골드, registered:false(지역매칭) 더보기
@@ -2247,7 +2216,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
       ? `style="background:var(--brass-tint);border-radius:10px;padding:10px;margin-bottom:6px;"`
       : `style="padding:10px 0;border-bottom:1px solid var(--line,#eee);"`;
     const nameEl = isGold && c.subdomain_slug
-      ? `<a href="/loan-consultant/${encodeURIComponent(c.subdomain_slug)}" style="font-size:14px;font-weight:700;color:var(--brass-dark);text-decoration:none;">${escapeHtml(c.office_name || "-")}</a>`
+      ? `<a href="/loan-consultant/${encodeURIComponent(c.subdomain_slug)}?building_id=${buildingId}&building_name=${encodeURIComponent(buildingName||"")}" style="font-size:14px;font-weight:700;color:var(--brass-dark);text-decoration:none;">${escapeHtml(c.office_name || "-")}</a>`
       : `<div style="font-size:14px;font-weight:600;color:var(--ink);">${escapeHtml(c.office_name || "-")}</div>`;
     const contactRow = c.phone ? `
       <div style="display:flex;gap:14px;margin-top:6px;">
@@ -2269,17 +2238,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
     <div id="${cId}" hidden>${regional.map(c => mkCard(c, false)).join("")}</div>`;
   }
 
-  html += `
-    <button type="button" class="side-more" style="width:100%;margin-top:8px;"
-      onclick="(async()=>{
-        const msg=prompt('문의 내용을 입력해주세요(선택)')||'';
-        const phone=prompt('연락받으실 전화번호를 입력해주세요');
-        if(!phone) return;
-        const r=await fetch('/api/loan-consult-requests',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({master_building_id:${buildingId},message:msg,contact_phone:phone})});
-        const d=await r.json().catch(()=>({}));
-        alert(d.ok?'상담 신청이 접수되었습니다.':(d.message||'신청에 실패했습니다.'));
-      })()">상담 신청하기</button>`;
+  // 상담 신청은 프로필 페이지에서 처리 — 여기서는 버튼 없음
   html += `
     <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">모든 상담은 무료이며, 상담 시 수수료를 요구하는 것은 불법입니다.</div>
     <div style="margin-top:8px;text-align:right;"><a href="/loan-consultants" style="font-size:12px;font-weight:600;color:var(--brass-dark);text-decoration:none;">전체 대출상담사 보기 →</a></div>`;

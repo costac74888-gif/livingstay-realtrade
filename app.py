@@ -472,15 +472,44 @@ def get_building(building_id):
     # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 최대 3곳씩 표시한다.
     # 정렬은 중개사와 동일하게 priority_score DESC, RANDOM() (카드별 LIMIT은 화면에서 적용).
     cur.execute("""
-        SELECT o.company_name, o.category, o.subdomain_slug, o.intro_text, o.phone, o.website_url
+        SELECT o.company_name, o.category, o.subdomain_slug, o.intro_text, o.phone, o.website_url,
+               (COALESCE(ob.has_priority_badge, FALSE)
+                AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())) AS is_premium
         FROM operator_buildings ob
         JOIN operators o ON o.id = ob.operator_id
         WHERE ob.master_building_id = %s
           AND o.status = 'approved'
           AND COALESCE(o.is_visible, TRUE)
-        ORDER BY COALESCE(o.priority_score, 0) DESC, RANDOM()
+        ORDER BY is_premium DESC, COALESCE(o.priority_score, 0) DESC, RANDOM()
     """, [building_id])
     operator_rows = [dict(r) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT o.company_name, o.category, o.subdomain_slug, o.phone
+        FROM operator_region_buildings orb
+        JOIN operator_service_regions osr ON osr.operator_id = orb.operator_id
+        JOIN operators o ON o.id = orb.operator_id
+        WHERE orb.master_building_id = %s AND osr.expires_at > NOW()
+          AND o.status = 'approved' AND COALESCE(o.is_visible, TRUE)
+        ORDER BY RANDOM()
+    """, [building_id])
+    operator_region_rows = [dict(r) for r in cur.fetchall()]
+
+    operator_by_category = []
+    for cat in ("위탁", "청소", "세탁", "용품", "소독", "세무", "인테리어"):
+        premium = next((r for r in operator_rows if r["category"] == cat and r["is_premium"]), None)
+        pick, tier = premium, ("premium" if premium else None)
+        if not pick:
+            region = next((r for r in operator_region_rows if r["category"] == cat), None)
+            if region:
+                pick, tier = region, "region"
+        operator_by_category.append({
+            "category": cat,
+            "company_name": pick["company_name"] if pick else None,
+            "subdomain_slug": pick["subdomain_slug"] if pick else None,
+            "phone": pick["phone"] if pick else None,
+            "tier": tier,
+        })
 
     # 담당 대출상담사 — 두 단계로 수집:
     # 1) loan_consultant_buildings 정확매칭 → registered=True (최대 3명)
@@ -623,6 +652,7 @@ def get_building(building_id):
         more_agents_list.append(agent_d)
     result["more_agents"] = more_agents_list
     result["operators"] = operator_rows
+    result["operator_by_category"] = operator_by_category
     result["loan_consultants"] = loan_consultant_rows
     # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율
     result["lodgings"] = lodgings
