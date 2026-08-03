@@ -7778,6 +7778,8 @@ def admin_lodging_sync_status():
 
 # ---- 건축HUB 전국 건물 발견(sync_brhub.py) 관리자 실행 ----
 _BRHUB_SYNC_META_KEY = "brhub_sync_status"
+_BRHUB_RESCAN_META_KEY = "brhub_rescan_status"
+_BRHUB_RESCAN_PROGRESS_KEY = "brhub_rescan_progress"
 _BRHUB_DAILY_CAP = 8000  # sync_brhub.py --daily-cap 기본값과 동일 유지
 _BRHUB_TOTAL_DONGS = None  # bjdong_codes.json 법정동 총수 캐시
 
@@ -7871,6 +7873,95 @@ def admin_brhub_sync_run():
     return jsonify({"ok": True, "message": "건물수집(전국)을 시작했습니다.", "started_at": status["started_at"]}), 202
 
 
+@app.route("/api/admin/brhub-rescan-run", methods=["POST"])
+@require_admin
+def admin_brhub_rescan_run():
+    """일반건축물 필터 확장 이전에 이미 지나간 법정동 구간을
+    별도 체크포인트로 재수집 — 메인 건물수집 진행상태와 완전히 분리."""
+    if not os.environ.get("DATA_GO_KR_BROKER_API_KEY"):
+        return jsonify({"ok": False, "message": "DATA_GO_KR_BROKER_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT value FROM app_meta WHERE key = 'brhub_progress'")
+        row = cur.fetchone()
+        main_idx = 0
+        if row and row["value"]:
+            try:
+                main_idx = json.loads(row["value"]).get("idx", 0)
+            except (TypeError, ValueError):
+                main_idx = 0
+        if main_idx <= 0:
+            cur.close(); conn.close()
+            return jsonify({"ok": False, "message": "재수집할 구간이 없습니다(메인 진행이 아직 시작 전)."}), 400
+
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None, "processed": None, "found": None,
+            "completed": None, "calls_today": None, "error": None,
+            "end_idx": main_idx,
+        }
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '5 minutes')
+        """, (_BRHUB_RESCAN_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        return jsonify({"ok": False, "message": "이미 재수집이 실행 중이거나 최근에 완료되었습니다."}), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_brhub.py"),
+             "--start-idx", "0", "--end-idx", str(main_idx),
+             "--progress-key", _BRHUB_RESCAN_PROGRESS_KEY,
+             "--status-key", _BRHUB_RESCAN_META_KEY],
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"재수집 프로세스를 시작하지 못했습니다: {e}"}), 500
+
+    return jsonify({"ok": True, "message": f"과거 구간(0~{main_idx}) 재수집을 시작했습니다."}), 202
+
+
+@app.route("/api/admin/brhub-rescan-status")
+@require_admin
+def admin_brhub_rescan_status():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BRHUB_RESCAN_META_KEY,))
+    meta = cur.fetchone()
+    cur.execute("SELECT value FROM app_meta WHERE key = %s", (_BRHUB_RESCAN_PROGRESS_KEY,))
+    prog_row = cur.fetchone()
+    cur.close()
+    conn.close()
+    status = json.loads(meta["value"]) if meta and meta["value"] else {}
+    progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else {}
+    return jsonify({
+        "ok": True,
+        "state": status.get("state"), "started_at": status.get("started_at"),
+        "finished_at": status.get("finished_at"), "processed": status.get("processed"),
+        "found": status.get("found"), "completed": status.get("completed"),
+        "error": status.get("error"), "end_idx": status.get("end_idx"),
+        "checkpoint_idx": progress.get("idx", 0),
+        "found_total": progress.get("found_total", 0),
+    })
+
+
 @app.route("/api/admin/brhub-sync-status")
 @require_admin
 def admin_brhub_sync_status():
@@ -7885,6 +7976,7 @@ def admin_brhub_sync_status():
                      WHEN lodging_type = '생활' THEN 'living_stay'
                      WHEN lodging_type = '관광' THEN 'tourist'
                      WHEN lodging_type = '일반' THEN 'general'
+                     WHEN lodging_type = '복합' THEN 'mixed'
                      WHEN lodging_type = 'mixed_use_excluded' THEN 'excluded'
                      WHEN building_status IN ('허가', '착공') THEN 'pre_completion'
                      ELSE 'unclassified'

@@ -62,8 +62,8 @@ def _load_codes():
     return data["sgg"], data["dongs"]  # sgg: {코드5: "시도 시군구"}, dongs: [[코드10, 법정동명], ...]
 
 
-def _get_progress(cur):
-    cur.execute("SELECT value FROM app_meta WHERE key=%s", (PROGRESS_KEY,))
+def _get_progress(cur, progress_key=PROGRESS_KEY):
+    cur.execute("SELECT value FROM app_meta WHERE key=%s", (progress_key,))
     row = cur.fetchone()
     if row and row["value"]:
         try:
@@ -73,11 +73,11 @@ def _get_progress(cur):
     return {"idx": 0, "calls_date": "", "calls_today": 0, "found_total": 0}
 
 
-def _save_progress(conn, cur, prog):
+def _save_progress(conn, cur, prog, progress_key=PROGRESS_KEY):
     cur.execute("""
         INSERT INTO app_meta (key, value) VALUES (%s, %s)
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-    """, (PROGRESS_KEY, json.dumps(prog, ensure_ascii=False)))
+    """, (progress_key, json.dumps(prog, ensure_ascii=False)))
     conn.commit()
 
 
@@ -172,7 +172,7 @@ def run(args, status_key=None, run_id=None):
     sgg_map, dongs = _load_codes()
     conn = get_conn()
     cur = conn.cursor()
-    prog = {"idx": 0, "calls_date": "", "calls_today": 0, "found_total": 0} if args.reset else _get_progress(cur)
+    prog = {"idx": 0, "calls_date": "", "calls_today": 0, "found_total": 0} if args.reset else _get_progress(cur, args.progress_key)
     if args.start_idx >= 0:
         prog["idx"] = args.start_idx
 
@@ -198,7 +198,7 @@ def run(args, status_key=None, run_id=None):
         """items 리스트를 필터·분류·INSERT. found_run·counts는 클로저로 접근."""
         nonlocal found_run
         for it in items:
-            if (it.get("regstrGbCdNm") or "").strip() != "집합":
+            if (it.get("regstrGbCdNm") or "").strip() not in ("집합", "일반"):
                 continue
             purps_text = f"{it.get('mainPurpsCdNm') or ''} {it.get('etcPurps') or ''}".strip()
             if not any(k in purps_text for k in ("숙박", "호텔", "콘도")):
@@ -274,7 +274,8 @@ def run(args, status_key=None, run_id=None):
     FAIL_STREAK_LIMIT = 5
     current_sleep = args.sleep  # 429 감지 시 adaptive하게 늘어남
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        while prog["idx"] < len(dongs):
+        end_bound = args.end_idx if args.end_idx >= 0 else len(dongs)
+        while prog["idx"] < min(len(dongs), end_bound):
             if args.limit and processed >= args.limit:
                 stop_reason = "limit"
                 break
@@ -327,7 +328,7 @@ def run(args, status_key=None, run_id=None):
                     consecutive_fails += 1
                     if not args.dry_run:
                         conn.commit()
-                        _save_progress(conn, cur, prog)
+                        _save_progress(conn, cur, prog, args.progress_key)
                     if consecutive_fails >= FAIL_STREAK_LIMIT:
                         cooldowns = prog.setdefault("cooldowns", [])
                         cooldowns.append({"idx": prog["idx"],
@@ -350,7 +351,7 @@ def run(args, status_key=None, run_id=None):
                 processed += 1
                 if not args.dry_run:
                     conn.commit()
-                    _save_progress(conn, cur, prog)
+                    _save_progress(conn, cur, prog, args.progress_key)
                 # 동 간 딜레이 적용 — 페이지 간 sleep과 별개로, 동과 동 사이에 쉰다
                 if current_sleep > 0:
                     time.sleep(current_sleep)
@@ -381,6 +382,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--reset", action="store_true", help="체크포인트 초기화 후 처음부터")
     ap.add_argument("--start-idx", type=int, default=-1, help="(테스트용) 이번 실행만 이 인덱스부터")
+    ap.add_argument("--end-idx", type=int, default=-1, help="이 인덱스 전까지만 처리 (재수집 구간 한정용, -1=끝까지)")
+    ap.add_argument("--progress-key", default=PROGRESS_KEY, help="체크포인트 저장용 app_meta 키 (기본: 메인 진행상태와 공유)")
     ap.add_argument("--status-key", default=None, help="관리자 버튼 실행용 app_meta 상태 키")
     args = ap.parse_args()
 
