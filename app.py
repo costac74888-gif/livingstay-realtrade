@@ -982,9 +982,9 @@ def get_buildings_cluster():
     if _cached and (time.time() - _cached[0]) < _CLUSTER_CACHE_TTL:
         return Response(_cached[1], mimetype="application/json")
 
-    # buildings-geo와 동일한 WHERE 조건 구성
-    where  = ["lat IS NOT NULL", "lng IS NOT NULL",
-              "lodging_type IS DISTINCT FROM 'mixed_use_excluded'"]
+    # 클러스터 집계는 전체 등록 건물(범례와 동일 기준) — 좌표 없는 건물도 카운트에 포함.
+    # 배지 위치는 좌표 있는 건물의 AVG로만 계산, 좌표 있는 건물이 하나도 없으면 배지 미표시.
+    where  = ["lodging_type IS DISTINCT FROM 'mixed_use_excluded'"]
     params = []
 
     if q:
@@ -1007,15 +1007,23 @@ def get_buildings_cluster():
         where.append("lodging_type = %s")
         params.append(lodging_type)
 
-    # bounds 조건 — sgg/umd 레벨에서만 적용 (sido는 전국 17개라 필터 불필요)
+    where_sql = " AND ".join(where)
+
+    # HAVING 조건 — 좌표 있는 건물이 반드시 1개 이상이어야 배지 표시 가능
+    # bounds(sgg/umd): WHERE 대신 HAVING으로 적용 — 카운트는 지역 전체, 표시만 뷰포트 내
+    having_parts  = ["COUNT(*) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) > 0"]
+    having_params = []
+
     if level in ("sgg", "umd") and sw_lat and sw_lng and ne_lat and ne_lng:
         try:
-            where.append("lat BETWEEN %s AND %s AND lng BETWEEN %s AND %s")
-            params += [float(sw_lat), float(ne_lat), float(sw_lng), float(ne_lng)]
+            having_parts.append(
+                "COUNT(*) FILTER (WHERE lat BETWEEN %s AND %s AND lng BETWEEN %s AND %s) > 0"
+            )
+            having_params += [float(sw_lat), float(ne_lat), float(sw_lng), float(ne_lng)]
         except ValueError:
-            pass  # 잘못된 bounds는 무시하고 전국 집계
+            pass  # 잘못된 bounds 무시
 
-    where_sql = " AND ".join(where)
+    having_sql = " AND ".join(having_parts)
 
     # GROUP BY 기준: sido=시도 첫 토큰, sgg=시군구 전체, umd=시군구+읍면동
     if level == "sido":
@@ -1032,19 +1040,20 @@ def get_buildings_cluster():
     cur  = conn.cursor()
     cur.execute(f"""
         SELECT {select_extra},
-               AVG(lat)  AS lat,
-               AVG(lng)  AS lng,
+               AVG(lat) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS lat,
+               AVG(lng) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS lng,
                COUNT(*)  AS total,
-               COUNT(*) FILTER (WHERE lodging_type = '생활')                          AS cnt_live,
-               COUNT(*) FILTER (WHERE lodging_type = '관광')                          AS cnt_tour,
-               COUNT(*) FILTER (WHERE lodging_type = '일반')                          AS cnt_gen,
+               COUNT(*) FILTER (WHERE lodging_type = '생활')                              AS cnt_live,
+               COUNT(*) FILTER (WHERE lodging_type = '관광')                              AS cnt_tour,
+               COUNT(*) FILTER (WHERE lodging_type = '일반')                              AS cnt_gen,
                COUNT(*) FILTER (WHERE lodging_type LIKE '%%·%%' OR lodging_type = '복합') AS cnt_mixed,
-               COUNT(*) FILTER (WHERE lodging_type IS NULL OR lodging_type = '')      AS cnt_unknown
+               COUNT(*) FILTER (WHERE lodging_type IS NULL OR lodging_type = '')          AS cnt_unknown
         FROM master_buildings
         WHERE {where_sql}
         GROUP BY {group_by}
+        HAVING {having_sql}
         ORDER BY total DESC
-    """, params)
+    """, params + having_params)
     rows = cur.fetchall()
     cur.close()
 
