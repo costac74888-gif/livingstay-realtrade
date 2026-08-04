@@ -490,9 +490,53 @@ function lodgingLabelKo(lodgingType){
 
 let kakaoMap = null;
 let currentInfoWindow = null;
-let mapOverlays = [];                 // 현재 지도에 찍힌 마커(오버레이) 목록
-let mapLabels = [];                   // 마커 옆 '건물명+최근가' 라벨 요소 목록(줌 토글용)
-let mapLabelsByKey = {};              // "lat,lng" → 라벨 요소 — 호버 중 해당 라벨 숨김에 사용
+let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.maps.Marker) 목록
+let mapLabelData = [];                // [{b, pos, overlay, el}] — 라벨 lazy 생성용 데이터
+let mapLabelsByKey = {};              // "lat,lng" → 라벨 DOM 요소 — 호버 중 라벨 숨김에 사용
+
+// 색상별 MarkerImage 캐시 — SVG 데이터 URI를 반복 생성하지 않는다
+const _markerImageCache = {};
+function _makeMarkerImage(color){
+  if (_markerImageCache[color]) return _markerImageCache[color];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">` +
+    `<circle cx="7" cy="7" r="6" fill="${color}" stroke="white" stroke-width="2"/></svg>`;
+  const img = new kakao.maps.MarkerImage(
+    'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg),
+    new kakao.maps.Size(14, 14),
+    { offset: new kakao.maps.Point(7, 7) }
+  );
+  _markerImageCache[color] = img;
+  return img;
+}
+
+// 라벨 DOM 요소 생성 — updateMarkerLabels 에서 줌인 시 최초 1회만 호출된다
+function _buildLabelEl(b){
+  const color = markerColor(b.lodging_type, b.building_status);
+  const label = document.createElement("div");
+  label.style.cssText =
+    `background:${color}; color:#fff;` +
+    "padding:3px 7px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3);" +
+    "white-space:nowrap; text-align:center; line-height:1.25; pointer-events:none;" +
+    "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;" +
+    "margin-bottom:8px;"; // 마커 점과의 간격
+  const nameLine = document.createElement("div");
+  nameLine.textContent = b.building_name || "(건물명 미확인)";
+  nameLine.style.cssText = "font-size:11px; font-weight:700;";
+  label.appendChild(nameLine);
+  if (b.latest_price != null){
+    const priceLine = document.createElement("div");
+    priceLine.textContent = Number(b.latest_price).toLocaleString('ko-KR') + "만원";
+    priceLine.style.cssText = "font-size:10.5px; font-weight:600; opacity:.96;";
+    label.appendChild(priceLine);
+    if (b.latest_price_exact === false){
+      const refLine = document.createElement("div");
+      refLine.textContent = "(필지 내 참고가)";
+      refLine.style.cssText = "font-size:9px; font-weight:500; opacity:.9;";
+      label.appendChild(refLine);
+    }
+  }
+  return label;
+}
 let hoverTooltip = null;              // 마커 호버용 공용 미리보기 툴팁(오버레이)
 let hoverHideTimer = null;            // 호버 툴팁 지연 숨김 타이머(간격 통과 시 깜빡임 방지)
 let hoverCurrentKey = null;          // 현재 툴팁이 가리키는 마커 키(같은 마커 재진입 시 재생성 방지)
@@ -526,9 +570,10 @@ function mapFiltersFromState(){
 function clearMapMarkers(){
   mapOverlays.forEach(o => o.setMap(null));
   mapOverlays = [];
-  mapLabels = [];
+  mapLabelData.forEach(d => { if (d.overlay) d.overlay.setMap(null); });
+  mapLabelData = [];
   mapLabelsByKey = {};
-  hideHoverTooltip();
+  hideHoverTooltip(true);
 }
 
 function resetMapView(){
@@ -565,10 +610,26 @@ function dealDetailHtml(d){
 
 // 현재 확대 레벨을 보고 모든 마커 라벨을 표시/숨김 (LABEL_MAX_LEVEL 이하일 때만 표시).
 // 축소된 전국뷰에서는 라벨이 겹쳐 지저분해지므로 숨긴다.
+// 라벨 DOM/오버레이는 최초 줌인 시 lazy 생성 — 전국뷰(기본)에서는 생성조차 하지 않는다.
 function updateMarkerLabels(){
   if (!kakaoMap) return;
   const show = kakaoMap.getLevel() <= LABEL_MAX_LEVEL;
-  mapLabels.forEach(l => { l.style.display = show ? "block" : "none"; });
+  mapLabelData.forEach(d => {
+    if (show){
+      if (!d.overlay){
+        // 최초 줌인 시 1회만 DOM + CustomOverlay 생성
+        d.el = _buildLabelEl(d.b);
+        d.overlay = new kakao.maps.CustomOverlay({
+          position: d.pos, content: d.el,
+          xAnchor: 0.5, yAnchor: 1.0, zIndex: 1,
+        });
+        mapLabelsByKey[d.b.lat + "," + d.b.lng] = d.el;
+      }
+      d.overlay.setMap(kakaoMap);
+    } else {
+      if (d.overlay) d.overlay.setMap(null);
+    }
+  });
 }
 
 // ★ 마커 정보 내용 공용 빌더 — 호버 툴팁과 클릭 InfoWindow가 완전히 동일한
@@ -716,80 +777,56 @@ async function loadMapMarkers(filters = {}, opts = {}){
   clearMapMarkers();
   const bounds = new kakao.maps.LatLngBounds();
   let placed = 0;
-  items.forEach(b => {
-    if (b.lat == null || b.lng == null) return;
-    const color = markerColor(b.lodging_type, b.building_status);
-    const pos = new kakao.maps.LatLng(b.lat, b.lng);
 
-    // 기존 마커 원(색상 점) — 디자인 그대로 유지
-    const el = document.createElement("div");
-    el.style.cssText = `width:14px; height:14px; border-radius:50%; background:${color};` +
-      `border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); cursor:pointer;`;
-    el.title = b.building_name || "";
+  // 유효 좌표만 필터링
+  const validItems = items.filter(b => b.lat != null && b.lng != null);
 
-    // 점 위에 '건물명 + 실거래가' 칩 라벨을 절대배치로 얹는다.
-    // 래퍼는 점과 동일한 14x14라 앵커(0.5/0.5)가 그대로 유지되어 점 위치는 안 바뀐다.
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "position:relative; width:14px; height:14px;";
+  // 마커를 CHUNK_SIZE 단위로 나눠 setTimeout(0)으로 분산 생성 —
+  // 한 번에 수천 개를 동기 삽입하면 메인 스레드가 블로킹돼 화면이 굳는다.
+  // native kakao.maps.Marker(canvas 렌더)를 사용하므로 CustomOverlay(DOM)보다
+  // 훨씬 빠르며, 라벨은 첫 줌인 시에만 lazy 생성한다.
+  const CHUNK_SIZE = 300;
+  let idx = 0;
 
-    // 칩 라벨 — 배경은 마커 점과 같은 색, 글자는 흰색(대비용 그림자 포함).
-    const label = document.createElement("div");
-    label.style.cssText =
-      "position:absolute; left:50%; bottom:100%; transform:translate(-50%,-6px);" +
-      `background:${color}; color:#fff;` +
-      "padding:3px 7px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3);" +
-      "white-space:nowrap; text-align:center; line-height:1.25; pointer-events:none;" +
-      "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;";
-    const nameLine = document.createElement("div");
-    nameLine.textContent = b.building_name || "(건물명 미확인)";
-    nameLine.style.cssText = "font-size:11px; font-weight:700;";
-    label.appendChild(nameLine);
-    if (b.latest_price != null){
-      const priceLine = document.createElement("div");
-      priceLine.textContent = Number(b.latest_price).toLocaleString('ko-KR') + "만원";
-      priceLine.style.cssText = "font-size:10.5px; font-weight:600; opacity:.96;";
-      label.appendChild(priceLine);
-      // 같은 필지의 대체(참고) 거래이면 확정 거래와 구분되게 작은 안내를 덧붙인다.
-      if (b.latest_price_exact === false){
-        const refLine = document.createElement("div");
-        refLine.textContent = "(필지 내 참고가)";
-        refLine.style.cssText = "font-size:9px; font-weight:500; opacity:.9;";
-        label.appendChild(refLine);
-      }
+  function addChunk(){
+    const end = Math.min(idx + CHUNK_SIZE, validItems.length);
+    for (; idx < end; idx++){
+      const b = validItems[idx];
+      const color = markerColor(b.lodging_type, b.building_status);
+      const pos = new kakao.maps.LatLng(b.lat, b.lng);
+
+      const marker = new kakao.maps.Marker({
+        position: pos,
+        image: _makeMarkerImage(color),
+        title: b.building_name || "",
+        clickable: true,
+      });
+      marker.setMap(kakaoMap);
+
+      kakao.maps.event.addListener(marker, "click", () => openBuildingInfo(b, pos));
+      kakao.maps.event.addListener(marker, "mouseover", () => showHoverTooltip(b, pos));
+      kakao.maps.event.addListener(marker, "mouseout", hideHoverTooltip);
+
+      mapOverlays.push(marker);
+      // 라벨 데이터만 저장 — 실제 DOM/오버레이는 updateMarkerLabels 에서 lazy 생성
+      mapLabelData.push({ b, pos, overlay: null, el: null });
+      bounds.extend(pos);
+      placed++;
     }
-    label.style.display = "none"; // 초기 숨김 — 확대 레벨에 따라 updateMarkerLabels가 토글
-    wrap.appendChild(el);
-    wrap.appendChild(label);
 
-    const overlay = new kakao.maps.CustomOverlay({
-      position: pos, content: wrap, xAnchor: 0.5, yAnchor: 0.5, clickable: true,
-    });
-    overlay.setMap(kakaoMap);
+    if (idx < validItems.length){
+      setTimeout(addChunk, 0);
+      return;
+    }
 
-    // 클릭 = 고정 InfoWindow(기존 동작 유지), 호버 = 가벼운 미리보기 툴팁
-    el.addEventListener("click", () => openBuildingInfo(b, pos));
-    wrap.addEventListener("mouseenter", () => showHoverTooltip(b, pos));
-    wrap.addEventListener("mouseleave", hideHoverTooltip);
-
-    mapOverlays.push(overlay);
-    mapLabels.push(label);
-    mapLabelsByKey[b.lat + "," + b.lng] = label;  // 호버 중 라벨 숨김용
-    bounds.extend(pos);
-    placed++;
-  });
-
-
-  if (emptyEl) emptyEl.style.display = (placed === 0) ? "flex" : "none";
-
-  if (placed > 0 && opts.fit === true){
-    kakaoMap.setBounds(bounds);
+    // 전체 완료 후 처리
+    if (emptyEl) emptyEl.style.display = (placed === 0) ? "flex" : "none";
+    if (placed > 0 && opts.fit === true) kakaoMap.setBounds(bounds);
+    updateMarkerLabels();
+    console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
   }
 
-  // 새로 만든 라벨들의 표시 여부를 현재 확대 레벨 기준으로 즉시 반영
-  updateMarkerLabels();
-
-
-  console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
+  addChunk();
 }
 
 async function initMap(){
