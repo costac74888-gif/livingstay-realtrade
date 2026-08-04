@@ -23,11 +23,15 @@ B화면 "상거래정보" 카드용: 이 건물(지번) 안의 상가업소(사�
 """
 
 import os
+from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 import requests
 
-STORE_INFO_SERVICE_KEY = os.environ.get("STORE_INFO_SERVICE_KEY", "")
+# data.go.kr 콘솔에서 복사한 키는 URL인코딩 포함(%2B, %3D 등).
+# requests가 params로 넘길 때 다시 인코딩하면 이중 인코딩(%252B)이 돼 403이 난다.
+# unquote로 한 번 디코딩해서 실제 바이트로 저장한다.
+STORE_INFO_SERVICE_KEY = unquote(os.environ.get("STORE_INFO_SERVICE_KEY", ""))
 _BASE = "https://apis.data.go.kr/B553077/api/open/sdsc2"
 STORE_IN_PNU_URL = f"{_BASE}/storeListInPnu"
 STORE_IN_BUILDING_URL = f"{_BASE}/storeListInBuilding"
@@ -45,7 +49,14 @@ def build_pnu(sgg_cd, bjdong_cd, plat_gb, bun, ji):
 
 
 def _fetch_stores(url, key):
-    """공통 XML 페이징 조회. 실패 시 빈 리스트."""
+    """공통 JSON 페이징 조회. 실패 시 예외를 올려 호출자(_bg_fetch)가 로그를 남기게 한다.
+
+    API 응답 형식 (2026-07 확인):
+      {"header": {"resultCode": "00", ...},
+       "body": {"items": {"item": [ {...}, ... ]}}}
+    resultCode "03" = NODATA, "00" = 정상.
+    totalCount 필드가 없으므로 반환 item 수 < numOfRows이면 마지막 페이지로 판단.
+    """
     key = (key or "").strip()
     if not key or not STORE_INFO_SERVICE_KEY:
         return []
@@ -66,42 +77,50 @@ def _fetch_stores(url, key):
             raise RuntimeError(f"상가업소 API HTTP 오류: {e}") from e
 
         try:
-            root = ET.fromstring(resp.content)
-        except ET.ParseError:
-            # 인증 오류 등 API 게이트웨이가 JSON으로 반환한 경우
-            try:
-                err_msg = (
-                    resp.json()
-                    .get("OpenAPI_ServiceResponse", {})
-                    .get("cmmMsgHeader", {})
-                    .get("errMsg", "non-XML response")
-                )
-            except Exception:
-                err_msg = resp.text[:200] if resp.text else "non-XML response"
-            raise RuntimeError(f"상가업소 API 비XML 응답: {err_msg}")
+            data = resp.json()
+        except Exception:
+            # 비JSON 응답 (XML 오류 페이지 등)
+            raise RuntimeError(f"상가업소 API 비JSON 응답: {resp.text[:200]}")
 
-        result_code = (root.findtext(".//resultCode") or "").strip()
+        # 인증 오류 등은 OpenAPI_ServiceResponse 래퍼로 온다
+        if "OpenAPI_ServiceResponse" in data:
+            err = (data["OpenAPI_ServiceResponse"]
+                   .get("cmmMsgHeader", {})
+                   .get("errMsg", "unknown"))
+            raise RuntimeError(f"상가업소 API 게이트웨이 오류: {err}")
+
+        result_code = str(data.get("header", {}).get("resultCode", "")).strip()
         if result_code not in ("00", "0"):
-            return []  # 03 NODATA_ERROR 포함
+            # "03" = NODATA — 업소 없는 지번은 정상 빈 결과
+            return []
 
-        items = root.findall(".//item")
-        for it in items:
-            row = {c.tag: (c.text or "").strip() for c in it}
-            name = row.get("bizesNm", "")
+        body = data.get("body", {})
+        if not isinstance(body, dict):
+            return []
+
+        items_wrap = body.get("items", {})
+        if not isinstance(items_wrap, dict):
+            return []
+
+        raw_items = items_wrap.get("item", [])
+        # 단건이면 dict로 오는 경우가 있음 — 리스트로 정규화
+        if isinstance(raw_items, dict):
+            raw_items = [raw_items]
+
+        page_count = 0
+        for it in raw_items:
+            name = (it.get("bizesNm") or "").strip()
             if not name:
                 continue
             stores.append({
                 "name": name,
-                "category": row.get("indsLclsNm", ""),
-                "floor": row.get("flrNo", ""),
+                "category": (it.get("indsLclsNm") or "").strip(),
+                "floor": str(it.get("flrNo") or "").strip(),
             })
+            page_count += 1
 
-        total_txt = root.findtext(".//totalCount")
-        try:
-            total = int(total_txt) if total_txt else len(stores)
-        except ValueError:
-            total = len(stores)
-        if not items or len(stores) >= total:
+        # 마지막 페이지 판단: 반환 수 < 요청 수
+        if page_count < _PAGE_SIZE:
             break
         page += 1
 
