@@ -1418,7 +1418,7 @@ function recruitBoxHTML(kind, opts = {}){
     housekeeping: {
       bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 22, pad: "14px 12px",
       title: "운영지원업체를 찾고 있습니다",
-      desc: "청소 · 세탁 · 용품 · 소독 · 세무 · 인테리어 등 운영지원 파트너를 모집합니다.",
+      desc: `<span style="color:#C0392B; font-weight:700;">청소 · 세탁 · 소독 · 세무 · 인테리어</span> 운영지원 파트너를 모집합니다.`,
       btnText: "지원업체로 신청하기", href: "/partner",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
     },
@@ -1450,7 +1450,8 @@ function recruitBoxHTML(kind, opts = {}){
   return `
     <div style="text-align:center; padding:${k.pad}; background:${k.bg}; border:1px dashed ${k.border}; border-radius:8px;">
       <div style="font-size:${k.iconSize}px; margin-bottom:6px;">${k.icon}</div>
-      <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">${k.title}</div>
+      <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:6px;">${k.title}</div>
+      ${k.desc ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px; line-height:1.5;">${k.desc}</div>` : ""}
       ${btn}
     </div>`;
 }
@@ -2389,29 +2390,26 @@ async function loadBuildingStores(buildingId){
   }
 }
 
-// 위탁운영/운영지원업체(하우스키핑) 카드 — 이 건물의 담당 운영지원업체(operator_buildings 등록 + approved)가
-// 있으면 유치(모집) 문구 대신 업체 정보 카드를 보여준다. 없으면 기본 HTML 유지.
-//   위탁운영 카드 ← category '위탁운영'
-//   운영지원업체(하우스키핑) 카드 ← category '청소' | '세탁' | '용품'
-// 프로필 이동 없이 카드 안에서 정보 완결: 1행 상호 / 2행 업종 / 3행 전화 / 4행 홈페이지(있을 때만)
+// 위탁운영 카드 — '위탁운영' 카테고리 담당 업체가 있으면 업체 카드 표시,
+// 없으면 기본 모집 박스(recruitBoxHTML "consign") 그대로 유지.
+// ※ 청소·세탁·용품·소독·세무·인테리어 업종 행은 이 카드에서 표시하지 않는다
+//   (해당 업종 모집은 운영지원업체 섹션에서 일괄 안내).
 function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
   const box = document.getElementById("bOperatorBox");
   if (!box) return;
-  const items = Array.isArray(operatorByCategory) ? operatorByCategory : [];
+  const all = Array.isArray(operatorByCategory) ? operatorByCategory : [];
+  // 위탁운영 카테고리만 추려낸다
+  const consignItems = all.filter(it => it.category === "위탁운영" && it.company_name);
+  if (!consignItems.length) return;  // 담당 없으면 기본 모집 박스 유지
+
   const applyHref = `/apply/operator?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
-  box.innerHTML = items.map(it => {
-    if (!it.company_name) {
-      return `<div style="display:flex; align-items:center; justify-content:space-between; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
-        <span style="font-size:12.5px; color:var(--ink-soft);">${escapeHtml(it.category)}</span>
-        <a href="${applyHref}" style="font-size:11.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">모집중 · 지원하기</a>
-      </div>`;
-    }
+  box.innerHTML = consignItems.map(it => {
     const badge = it.tier === "premium" ? "🧭" : "📍";
     const nameEl = it.tier === "premium" && it.subdomain_slug
       ? `<a href="/operator/${encodeURIComponent(it.subdomain_slug)}?building_id=${buildingId}&building_name=${encodeURIComponent(buildingName||"")}" style="font-size:13px; font-weight:700; color:var(--ink); text-decoration:none;">${escapeHtml(it.company_name)}</a>`
       : `<span style="font-size:13px; font-weight:600; color:var(--ink);">${escapeHtml(it.company_name)}</span>`;
     return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
-      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0;">${badge} ${escapeHtml(it.category)}</span>
+      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0;">${badge} 위탁</span>
       <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nameEl}</span>
       ${it.phone ? `<a href="tel:${escapeHtml(it.phone)}" style="font-size:16px; text-decoration:none;" onclick="event.stopPropagation();">📞</a>` : ""}
     </div>`;
