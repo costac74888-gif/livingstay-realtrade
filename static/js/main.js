@@ -978,9 +978,11 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     });
 
     // sido 레벨: xAnchor=0(좌측 고정) + yAnchor=0.5(수직 중앙) →
-    //   배지 왼쪽 끝이 도청소재지 좌표에 붙어 지명 우측으로 배치됨
+    //   배지 왼쪽 끝이 도청소재지 좌표에 붙어 지명 우측으로 배치됨.
+    //   margin-left로 지명 텍스트와 배지 사이에 간격을 두어 지명이 가려지지 않도록 함.
     // sgg/umd 레벨: 기존대로 중앙 고정
     const isSido = clusterLevel === "sido";
+    if (isSido) el.style.marginLeft = "6px";
     const overlay = new kakao.maps.CustomOverlay({
       position: pos, content: el,
       xAnchor: isSido ? 0 : 0.5,
