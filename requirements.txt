@@ -6,3 +6,4 @@ psycopg2-binary
 gunicorn
 replit-object-storage
 werkzeug
+flask-compress

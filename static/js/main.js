@@ -936,19 +936,18 @@ window.toggleFavFromInfo = function(btn){
   return false;
 };
 
-// SDK를 autoload=false로 불렀으므로 명시적으로 로드한 뒤 초기화한다.
-// SDK 스크립트 로드가 살짝 늦을 수 있어 잠시 폴링하며 기다린다.
-(function waitForKakao(retries){
-  if (window.kakao && window.kakao.maps){
+// SDK 로드 완료 즉시 initMap 호출 — 200ms 폴링 방식 대체.
+// index.html의 SDK <script defer onload="..."> 와 연동:
+//   · SDK가 main.js 실행 후 로드 완료 → onload 콜백이 __onKakaoSdkLoad() 호출
+//   · SDK가 main.js 실행 전 이미 로드(캐시 히트 등) → __kakaoSdkLoaded 플래그 즉시 확인
+window.__onKakaoSdkLoad = function() {
+  if (window.kakao && window.kakao.maps) {
     kakao.maps.load(initMap);
-    return;
-  }
-  if (retries <= 0){
+  } else {
     console.warn("[MAP] 카카오맵 SDK가 로드되지 않았습니다 — appkey/도메인 등록 상태를 확인하세요.");
-    return;
   }
-  setTimeout(function(){ waitForKakao(retries - 1); }, 200);
-})(30); // 최대 약 6초 대기
+};
+if (window.__kakaoSdkLoaded) window.__onKakaoSdkLoad();
 document.getElementById("btnSubmitCorrection").addEventListener("click", async () => {
   if (!correctionTarget) return;
   const suggested_lodging_type = document.getElementById("correctionSuggestedType").value;

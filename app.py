@@ -42,6 +42,7 @@ from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_compress import Compress
 from datetime import datetime, timedelta
 from db import get_conn, init_db
 from address_utils import (
@@ -79,6 +80,7 @@ def _inject_asset_version(html):
     )
 
 app = Flask(__name__, static_folder="static")
+Compress(app)   # gzip 응답 압축 (API JSON + HTML 전체)
 
 # 대출상담사 '상담 가능 상품' 허용 목록 — 프로필 체크박스/B화면 태그 공통 기준.
 # 순서 = 노출 순서 (생활숙박시설 담보대출이 항상 최상단).
@@ -190,6 +192,17 @@ def _record_page_view(path, resp_status):
                 conn.close()
             except Exception:
                 pass
+
+
+@app.after_request
+def _static_asset_cache(resp):
+    """/static/js/ 및 /static/css/ 응답에 장기 캐시 헤더 부여.
+    HTML은 no-cache 유지. JS/CSS는 ?v=SERVER_BOOT_V 버전 쿼리스트링이
+    배포마다 바뀌므로 immutable 장기 캐시를 걸어도 안전하다."""
+    path = request.path
+    if path.startswith("/static/js/") or path.startswith("/static/css/"):
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
 
 
 @app.after_request
@@ -886,6 +899,12 @@ def get_transactions():
     return jsonify({"total": total, "page": page, "size": size, "items": rows})
 
 
+# /api/buildings-geo 서버 메모리 캐시 — 필터 없는 전체 조회(약 4,700건)용 TTL 캐시.
+# 키 = 필터 파라미터 문자열, 값 = (저장시각, 직렬화된 JSON 바이트)
+_geo_cache: dict = {}
+_GEO_CACHE_TTL = 45  # seconds
+
+
 @app.route("/api/buildings-geo")
 @limiter.limit("30 per minute")
 def get_buildings_geo():
@@ -908,6 +927,12 @@ def get_buildings_geo():
     sgg_nm = request.args.get("sgg_nm", "").strip()
     umd_nm = request.args.get("umd_nm", "").strip()
     lodging_type = request.args.get("lodging_type", "").strip()
+
+    # 메모리 캐시 조회 — 동일 필터 조합의 반복 요청을 DB 쿼리 없이 처리
+    _cache_key = f"{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}"
+    _cached = _geo_cache.get(_cache_key)
+    if _cached and (time.time() - _cached[0]) < _GEO_CACHE_TTL:
+        return Response(_cached[1], mimetype="application/json")
 
     # mixed_use_excluded: 복합시설(주용도≠숙박) 자동 제외 — 지도/사이트 노출 금지
     where = ["lat IS NOT NULL", "lng IS NOT NULL",
@@ -989,7 +1014,9 @@ def get_buildings_geo():
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
-    return jsonify({"total": len(rows), "items": rows})
+    payload = json.dumps({"total": len(rows), "items": rows}, ensure_ascii=False)
+    _geo_cache[_cache_key] = (time.time(), payload)  # 결과를 캐시에 저장
+    return Response(payload, mimetype="application/json")
 
 
 # 실거래 추이 집계의 공통 상수/로직 — /api/monthly-trend(A/B화면)와

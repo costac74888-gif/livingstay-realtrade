@@ -20,9 +20,11 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://dapi.kakao.com">
+<link rel="dns-prefetch" href="//dapi.kakao.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
-<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JS_KEY}}&autoload=false&_v={{KAKAO_SDK_V}}"></script>
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JS_KEY}}&autoload=false&_v={{KAKAO_SDK_V}}" defer onload="window.__kakaoSdkLoaded=true;if(window.__onKakaoSdkLoad)window.__onKakaoSdkLoad();"></script>
 </head>
 <body>
 
@@ -243,7 +245,7 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
 <script>
 /* 레이아웃 전용 스크립트 — 지도/검색/API 로직과 무관.
    (헤더 높이 계산 --header-h, 헤더 벨 알림 로직은 header.js에서 담당)
