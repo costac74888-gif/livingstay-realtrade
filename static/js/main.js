@@ -493,6 +493,7 @@ let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.maps.Marker) 목록
 let mapLabelData = [];                // [{b, pos, overlay, el}] — 라벨 lazy 생성용 데이터
 let mapLabelsByKey = {};              // "lat,lng" → 라벨 DOM 요소 — 호버 중 라벨 숨김에 사용
+let _markerLoadGen = 0;               // loadMapMarkers 호출마다 증가 — 이전 addChunk 루프 폐기용
 
 // 색상별 MarkerImage 캐시 — SVG 데이터 URI를 반복 생성하지 않는다
 const _markerImageCache = {};
@@ -756,6 +757,7 @@ function hideHoverTooltip(immediate){
 // opts.fit: true면 결과가 다 보이도록 bounds에 맞춰 확대/이동
 async function loadMapMarkers(filters = {}, opts = {}){
   if (!kakaoMap) return;
+  const myGen = ++_markerLoadGen;   // 이 호출의 세대 번호 — 이전 addChunk 루프는 불일치로 자동 종료
   const emptyEl = document.getElementById("mapEmpty");
 
   const params = new URLSearchParams();
@@ -789,6 +791,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
   let idx = 0;
 
   function addChunk(){
+    if (_markerLoadGen !== myGen) return; // 더 새로운 loadMapMarkers 호출이 있음 — 이 루프 폐기
     const end = Math.min(idx + CHUNK_SIZE, validItems.length);
     for (; idx < end; idx++){
       const b = validItems[idx];
