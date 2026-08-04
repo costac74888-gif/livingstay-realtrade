@@ -395,6 +395,7 @@ def get_building(building_id):
                mb.jiyuk_nm, mb.jigu_nm, mb.guyuk_nm,
                mb.last_inspection_agency, mb.last_inspection_start_day, mb.last_inspection_submit_day,
                mb.detail_fetched_at,
+               mb.booking_url,
                lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
@@ -698,6 +699,9 @@ def get_building(building_id):
     result["authority_dept"] = dept
     result["authority_phone"] = phone
     result["authority_source"] = source if dept is not None else None
+    # booking_url: javascript:/data: 등 위험 스킴 차단 — http(s)만 노출
+    raw_bu = (result.get("booking_url") or "").strip()
+    result["booking_url"] = raw_bu if raw_bu.lower().startswith(("http://", "https://")) else None
     return jsonify(result)
 
 
@@ -7536,6 +7540,7 @@ ADMIN_BLD_EDITABLE = [
     "building_name", "road_address", "jibun_address", "sgg_text", "sgg_cd",
     "umd_nm", "jibun", "units", "biz_units", "lodging_type", "lodging_type_detail",
     "building_status", "completion_expected_date",
+    "booking_url",
 ]
 ADMIN_BLD_INT_COLS = {"units", "biz_units"}
 
@@ -7692,6 +7697,12 @@ def admin_buildings_update(building_id):
                 return jsonify({"ok": False, "message": "건물명과 도로명주소는 비울 수 없습니다."}), 400
             sets.append(f"{c} = %s")
             vals.append(_clean_bld_value(c, data.get(c)))
+    # booking_url 변경 시 source/updated_at 자동 기록
+    if "booking_url" in data:
+        sets.append("booking_url_source = %s")
+        vals.append("admin")
+        sets.append("booking_url_updated_at = NOW()")
+
     if not sets:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
     conn = get_conn()

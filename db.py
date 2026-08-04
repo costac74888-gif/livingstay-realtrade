@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-04-2"
+SCHEMA_VERSION = "2026-08-04-3"
 
 
 def init_db():
@@ -1040,6 +1040,12 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_notices_order ON notices(is_pinned DESC, created_at DESC)")
     # master_buildings 지번 복합 인덱스 — 지번 매칭 쿼리(transactions JOIN, nearby-stores 등) 최적화
     cur.execute("CREATE INDEX IF NOT EXISTS idx_mb_sgg_umd_jibun ON master_buildings(sgg_cd, umd_nm, jibun)")
+
+    # OTA 등록확인 (운영확인) — 1단계: 관리자 직접 입력
+    # booking_url_source: 'admin'|'owner'|'operator'|'user_report' (1단계는 admin만 사용)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url_source TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url_updated_at TIMESTAMP")
 
     conn.commit()
     cur.close()

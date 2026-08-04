@@ -2025,12 +2025,20 @@ async function loadBuildingHeader(id){
     txAllLink.style.display = "inline-block";
   }
 
-  // 주용도1/2 — lodging_type("호텔·콘도")을 분리해 전체 명칭으로 표시. 없으면 "-".
+  // 주용도 — lodging_type("호텔·콘도")을 분리해 전체 명칭으로 표시. 복합이면 "·"로 이어 한 칸에 표시.
   const useParts = (b.lodging_type || "").split("·").filter(Boolean);
   const use1 = useParts[0]
     ? (LODGING_LABELS[useParts[0]] || useParts[0])
     : (b.lodging_type_detail ? escapeHtml(b.lodging_type_detail).slice(0, 30) : "-");
   const use2 = useParts[1] ? (LODGING_LABELS[useParts[1]] || useParts[1]) : "-";
+  const useCombined = (use2 && use2 !== "-") ? `${use1}·${use2}` : use1;
+
+  // 운영확인(OTA 등록) 배지 — 사실확인 톤만 유지, 행동유도 문구 없음
+  const bookingBadge = b.booking_url
+    ? `<span style="display:inline-block;font-size:12px;font-weight:700;color:#1a7a3c;` +
+      `background:#E6F4EA;border:1px solid #B7E0C4;border-radius:5px;padding:2px 8px;cursor:pointer;" ` +
+      `onclick="window.open('${escapeHtml(b.booking_url)}','_blank','noopener,noreferrer')">✓ OTA 등록확인</span>`
+    : `<span style="font-size:12px;color:var(--ink-soft);">미확인</span>`;
 
   // 관심저장/실거래알림은 좌측 목록과 동일한 키(building_name|address)를 사용. address가
   // 없는(=거래이력 없는) 건물은 두 버튼을 비활성화한다.
@@ -2081,8 +2089,8 @@ async function loadBuildingHeader(id){
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
     </div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
-      ${bStat("주용도1", use1)}
-      ${bStat("주용도2", use2)}
+      ${bStat("주용도", useCombined)}
+      ${bStat("운영확인", bookingBadge)}
       ${bStat("준공월", useAprShort)}
       ${bStat("총 호실", units)}
       ${bStat("영업신고 호수", bizUnits)}
