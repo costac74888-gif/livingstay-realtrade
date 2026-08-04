@@ -1884,11 +1884,12 @@ function buildingPanelSkeleton(){
     </section>`;
 }
 
-function bStat(label, value){
-  // value/label은 내부에서 escape → 호출부에서 별도 escapeHtml 불필요(누락 시 XSS 방지)
+// opts.rawValue=true → value를 이스케이프하지 않고 innerHTML로 삽입 (HTML 배지 등에 사용)
+function bStat(label, value, opts = {}){
+  const valueHtml = opts.rawValue ? String(value) : escapeHtml(String(value));
   return `<div style="flex:1; min-width:100px;">
     <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:3px;">${escapeHtml(String(label))}</div>
-    <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--ink);">${escapeHtml(String(value))}</div>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--ink);">${valueHtml}</div>
   </div>`;
 }
 
@@ -2124,7 +2125,7 @@ async function loadBuildingHeader(id){
     </div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
       ${bStat("주용도", useCombined)}
-      ${bStat("운영확인", bookingBadge)}
+      ${bStat("운영확인", bookingBadge, { rawValue: true })}
       ${bStat("준공월", useAprShort)}
       ${bStat("총 호실", units)}
       ${bStat("영업신고 호수", bizUnits)}
