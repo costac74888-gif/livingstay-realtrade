@@ -1375,7 +1375,6 @@ def get_building_count():
             COUNT(*) AS c
         FROM master_buildings
         WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
-          AND lat IS NOT NULL AND lng IS NOT NULL
         GROUP BY 1
     """)
     by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}
