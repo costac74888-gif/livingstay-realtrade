@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-04-3"
+SCHEMA_VERSION = "2026-08-04-4"
 
 
 def init_db():
@@ -1046,6 +1046,31 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url_source TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url_updated_at TIMESTAMP")
+    # OTA 링크 만료일 — 3단계(운영업체 신청) 승인 시 NOW()+3개월, 관리자 직접입력은 NULL(무기한)
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS booking_url_expires_at TIMESTAMP")
+
+    # OTA 링크 신청 큐 — 위탁운영업체가 담당 건물의 OTA 링크를 신청; 관리자 승인 후 반영
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS booking_url_requests (
+        id SERIAL PRIMARY KEY,
+        operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+        booking_url TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',   -- pending | approved | rejected | cancelled
+        submitted_at TIMESTAMP DEFAULT NOW(),
+        reviewed_at TIMESTAMP,
+        reviewed_by INTEGER REFERENCES admin_users(id),
+        admin_note TEXT
+    )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_bur_operator
+        ON booking_url_requests(operator_id, submitted_at DESC)
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_bur_status
+        ON booking_url_requests(status, submitted_at DESC)
+    """)
 
     conn.commit()
     cur.close()

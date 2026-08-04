@@ -396,6 +396,7 @@ def get_building(building_id):
                mb.last_inspection_agency, mb.last_inspection_start_day, mb.last_inspection_submit_day,
                mb.detail_fetched_at,
                mb.booking_url,
+               mb.booking_url_expires_at,
                lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
@@ -699,9 +700,15 @@ def get_building(building_id):
     result["authority_dept"] = dept
     result["authority_phone"] = phone
     result["authority_source"] = source if dept is not None else None
-    # booking_url: javascript:/data: 등 위험 스킴 차단 — http(s)만 노출
+    # booking_url: javascript:/data: 등 위험 스킴 차단 + 만료 체크
     raw_bu = (result.get("booking_url") or "").strip()
-    result["booking_url"] = raw_bu if raw_bu.lower().startswith(("http://", "https://")) else None
+    valid_bu = raw_bu if raw_bu.lower().startswith(("http://", "https://")) else None
+    expires_at = result.get("booking_url_expires_at")
+    import datetime as _dt
+    if valid_bu and expires_at and expires_at < _dt.datetime.utcnow():
+        valid_bu = None  # 만료된 운영업체 신청 링크는 미확인으로 표시
+    result["booking_url"] = valid_bu
+    result.pop("booking_url_expires_at", None)  # 내부값, 클라이언트 불필요
     return jsonify(result)
 
 
@@ -5745,13 +5752,39 @@ def operator_me():
         if not me:
             return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
         cur.execute("""
-            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note,
+                   mb.booking_url,
+                   mb.booking_url_source,
+                   mb.booking_url_expires_at,
+                   bur.id        AS bur_id,
+                   bur.booking_url AS bur_url,
+                   bur.status    AS bur_status,
+                   bur.submitted_at AS bur_submitted_at
             FROM operator_buildings ob
             JOIN master_buildings mb ON mb.id = ob.master_building_id
+            LEFT JOIN LATERAL (
+                SELECT id, booking_url, status, submitted_at
+                FROM booking_url_requests
+                WHERE operator_id = %s AND master_building_id = ob.master_building_id
+                ORDER BY submitted_at DESC
+                LIMIT 1
+            ) bur ON TRUE
             WHERE ob.operator_id = %s
             ORDER BY mb.building_name
-        """, [operator_id])
-        buildings = [dict(r) for r in cur.fetchall()]
+        """, [operator_id, operator_id])
+        import datetime as _dt
+        buildings = []
+        for r in cur.fetchall():
+            b = dict(r)
+            # 만료 체크
+            exp = b.get("booking_url_expires_at")
+            if exp and exp < _dt.datetime.utcnow():
+                b["booking_url"] = None  # 만료됨
+            if b.get("booking_url_expires_at"):
+                b["booking_url_expires_at"] = b["booking_url_expires_at"].isoformat()
+            if b.get("bur_submitted_at"):
+                b["bur_submitted_at"] = b["bur_submitted_at"].isoformat()
+            buildings.append(b)
     finally:
         cur.close()
         conn.close()
@@ -6816,6 +6849,191 @@ def operator_building_search():
         cur.close()
         conn.close()
     return jsonify({"items": items})
+
+
+# ── OTA 링크 신청 (위탁운영업체 → 관리자 승인) ────────────────────────────────
+
+@app.route("/api/operator/booking-url-requests", methods=["GET"])
+@require_operator
+def operator_booking_url_requests_list():
+    """내 모든 OTA 링크 신청 내역 — 건물별 최신 1건."""
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT DISTINCT ON (bur.master_building_id)
+                   bur.id, bur.master_building_id, mb.building_name,
+                   bur.booking_url, bur.status,
+                   bur.admin_note,
+                   to_char(bur.submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at,
+                   to_char(bur.reviewed_at,  'YYYY-MM-DD HH24:MI') AS reviewed_at,
+                   mb.booking_url_expires_at
+            FROM booking_url_requests bur
+            JOIN master_buildings mb ON mb.id = bur.master_building_id
+            WHERE bur.operator_id = %s
+            ORDER BY bur.master_building_id, bur.submitted_at DESC
+        """, [operator_id])
+        import datetime as _dt
+        items = []
+        for r in cur.fetchall():
+            d = dict(r)
+            exp = d.pop("booking_url_expires_at", None)
+            if exp:
+                d["expires_at"] = exp.isoformat()
+                d["is_expired"] = exp < _dt.datetime.utcnow()
+            else:
+                d["expires_at"] = None
+                d["is_expired"] = False
+            items.append(d)
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/operator/booking-url-requests", methods=["POST"])
+@require_operator
+def operator_booking_url_request_submit():
+    """담당 건물의 OTA 링크 신청 — 기존 pending 취소 후 새 신청 삽입."""
+    operator_id = session["operator_id"]
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        mbid = int(data.get("master_building_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
+    booking_url = (data.get("booking_url") or "").strip()
+    if not booking_url.lower().startswith(("http://", "https://")):
+        return jsonify({"ok": False, "message": "OTA 링크는 http(s)://로 시작해야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 담당 건물인지 확인
+        cur.execute("""
+            SELECT 1 FROM operator_buildings
+            WHERE operator_id = %s AND master_building_id = %s
+        """, [operator_id, mbid])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "담당 단지가 아닙니다."}), 403
+        # 기존 pending 신청 취소 (동일 건물에 중복 pending 방지)
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET status = 'cancelled'
+            WHERE operator_id = %s AND master_building_id = %s AND status = 'pending'
+        """, [operator_id, mbid])
+        cur.execute("""
+            INSERT INTO booking_url_requests
+                (operator_id, master_building_id, booking_url, status, submitted_at)
+            VALUES (%s, %s, %s, 'pending', NOW())
+        """, [operator_id, mbid, booking_url])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "message": "신청이 접수되었습니다. 관리자 검토 후 반영됩니다."})
+
+
+# ── OTA 링크 신청 관리자 심사 ────────────────────────────────────────────────
+
+@app.route("/api/admin/booking-url-requests")
+@require_admin
+def admin_booking_url_requests_list():
+    """OTA 링크 신청 목록 — 기본 pending만, ?status=all 로 전체 조회."""
+    status_filter = request.args.get("status", "pending").strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if status_filter == "all":
+            where = "1=1"
+            params = []
+        else:
+            where = "bur.status = %s"
+            params = [status_filter]
+        cur.execute(f"""
+            SELECT bur.id, bur.status,
+                   bur.booking_url, bur.admin_note,
+                   to_char(bur.submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at,
+                   to_char(bur.reviewed_at,  'YYYY-MM-DD HH24:MI') AS reviewed_at,
+                   mb.id AS building_id, mb.building_name, mb.road_address,
+                   o.id AS operator_id, o.company_name, o.category
+            FROM booking_url_requests bur
+            JOIN master_buildings mb ON mb.id = bur.master_building_id
+            JOIN operators o ON o.id = bur.operator_id
+            WHERE {where}
+            ORDER BY bur.submitted_at DESC
+            LIMIT 200
+        """, params)
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/admin/booking-url-requests/<int:req_id>/approve", methods=["POST"])
+@require_admin
+def admin_booking_url_request_approve(req_id):
+    """OTA 링크 승인 — master_buildings 반영 + 3개월 만료일 설정."""
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, operator_id, master_building_id, booking_url, status
+            FROM booking_url_requests WHERE id = %s FOR UPDATE
+        """, [req_id])
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+        if req["status"] != "pending":
+            return jsonify({"ok": False, "message": f"이미 처리된 신청입니다 (상태: {req['status']})."}), 400
+        # master_buildings 반영 (booking_url_source='operator', 3개월 만료)
+        cur.execute("""
+            UPDATE master_buildings
+            SET booking_url = %s,
+                booking_url_source = 'operator',
+                booking_url_updated_at = NOW(),
+                booking_url_expires_at = NOW() + INTERVAL '3 months'
+            WHERE id = %s
+        """, [req["booking_url"], req["master_building_id"]])
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET status = 'approved', reviewed_at = NOW(), reviewed_by = %s
+            WHERE id = %s
+        """, [admin_id, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/booking-url-requests/<int:req_id>/reject", methods=["POST"])
+@require_admin
+def admin_booking_url_request_reject(req_id):
+    """OTA 링크 신청 거절 — admin_note(거절 사유) 선택 입력."""
+    admin_id = session.get("admin_user_id")
+    data = request.get_json(force=True, silent=True) or {}
+    admin_note = (data.get("admin_note") or "").strip() or None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, status FROM booking_url_requests WHERE id = %s FOR UPDATE", [req_id])
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+        if req["status"] != "pending":
+            return jsonify({"ok": False, "message": f"이미 처리된 신청입니다 (상태: {req['status']})."}), 400
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET status = 'rejected', reviewed_at = NOW(), reviewed_by = %s, admin_note = %s
+            WHERE id = %s
+        """, [admin_id, admin_note, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
 
 
 # ---- 지도 좌표 채우기 / 건축정보 채우기 (실시간 API 러너) ----
