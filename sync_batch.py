@@ -383,7 +383,7 @@ def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
             """, (building_name, tx_address, si_do_val, sgg_nm_val,
                   float(area or 0), int(price or 0),
                   deal_date, deal_type, floor_val,
-                  sgg_cd, umd_nm, jibun, lodging_type_val, lodging_type_detail_val, match_source, raw_key))
+                  sgg_cd, umd_key, jibun, lodging_type_val, lodging_type_detail_val, match_source, raw_key))
             new_row = cur.fetchone()  # ON CONFLICT 로 스킵되면 None (기존 거래 → 알림 없음)
             if new_row:
                 stats["inserted"] += 1

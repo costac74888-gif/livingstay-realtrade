@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-03-2"
+SCHEMA_VERSION = "2026-08-04-1"
 
 
 def init_db():
@@ -1053,6 +1053,7 @@ def init_db():
     _seed_mileage_missions()
     _seed_admin_user()
     _seed_legal_documents()
+    _normalize_umd_nm_spaces()
 
     # 전체 DDL/시드가 무사히 끝났을 때만 버전을 기록 → 다음 부팅부터 빠른 경로로 건너뜀
     conn = get_conn()
@@ -1627,6 +1628,28 @@ def _seed_legal_documents():
         conn.commit()
         if inserted or upgraded:
             print(f"legal_documents 시드 완료 (신규 {inserted}건, 개정 자동교체 {upgraded}건)")
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _normalize_umd_nm_spaces():
+    """transactions·master_buildings 양쪽의 umd_nm에서 공백을 제거해 정규화한다.
+
+    address_utils.normalize_umd_nm 과 동일한 규칙(공백 제거)을 DB 행에 직접 적용.
+    멱등 — 이미 정규화된 행은 WHERE umd_nm LIKE '% %' 조건에 걸리지 않아 건드리지 않음.
+    SCHEMA_VERSION 갱신 직전에 한 번만 실행되므로 신규 배포·운영 DB 모두 자동 적용된다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE transactions SET umd_nm = REPLACE(umd_nm, ' ', '') WHERE umd_nm LIKE '% %'")
+        tx_cnt = cur.rowcount
+        cur.execute("UPDATE master_buildings SET umd_nm = REPLACE(umd_nm, ' ', '') WHERE umd_nm LIKE '% %'")
+        mb_cnt = cur.rowcount
+        conn.commit()
+        if tx_cnt or mb_cnt:
+            print(f"umd_nm 공백 정규화: transactions {tx_cnt}건, master_buildings {mb_cnt}건 수정")
     finally:
         cur.close()
         conn.close()
