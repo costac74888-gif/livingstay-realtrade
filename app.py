@@ -10410,39 +10410,40 @@ _MEMBER_SELECTS = {
         SELECT id, 'general' AS member_type, COALESCE(name, '-') AS name, email,
                '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
                NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
-               admin_tag, COALESCE(points, 0) AS points, admin_memo
+               admin_tag, COALESCE(points, 0) AS points, admin_memo,
+               '' AS category
         FROM users
     """,
     "agent": """
         SELECT id, 'agent' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
-               admin_tag, NULL::integer AS points, admin_memo
+               admin_tag, NULL::integer AS points, admin_memo,
+               '' AS category
         FROM agents WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "operator": """
         SELECT id, 'operator' AS member_type, owner_name AS name, email,
-               (category || ' · ' || company_name) AS group_label, phone, status,
+               company_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
-               admin_tag, NULL::integer AS points, admin_memo
+               admin_tag, NULL::integer AS points, admin_memo,
+               COALESCE(category, '') AS category
         FROM operators WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "loan_consultant": """
         SELECT id, 'loan_consultant' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
-               admin_tag, NULL::integer AS points, admin_memo
+               admin_tag, NULL::integer AS points, admin_memo,
+               '' AS category
         FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "pending": """
         SELECT id, 'pending' AS member_type, owner_name AS name, email,
-               CASE
-                   WHEN applicant_type = 'operator' AND category IS NOT NULL AND category <> ''
-                       THEN (category || ' · ' || office_or_company_name)
-                   ELSE office_or_company_name
-               END AS group_label, phone, status,
+               office_or_company_name AS group_label, phone, status,
                applicant_type, submitted_at AS created_at, NULL::timestamp AS approved_at,
-               NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo
+               NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo,
+               CASE WHEN applicant_type = 'operator' THEN COALESCE(category, '') ELSE '' END AS category
         FROM applications WHERE status = 'submitted'
     """,
 }
@@ -10493,8 +10494,9 @@ def admin_members_list():
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
                m.status, m.applicant_type, m.admin_tag, m.points, m.admin_memo,
-               to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
-               to_char(m.approved_at, 'YYYY-MM-DD HH24:MI') AS approved_at
+               m.category,
+               to_char(m.created_at, 'YYYY-MM-DD') AS created_at,
+               to_char(m.approved_at, 'YYYY-MM-DD') AS approved_at
         FROM ({union_sql}) m
         {group_filter}
         ORDER BY m.created_at DESC NULLS LAST, m.member_type, m.id DESC
