@@ -971,8 +971,13 @@ def get_buildings_cluster():
     sgg_nm      = request.args.get("sgg_nm", "").strip()
     umd_nm      = request.args.get("umd_nm", "").strip()
     lodging_type = request.args.get("lodging_type", "").strip()
+    # bounds 파라미터 — sgg/umd 레벨에서 화면 범위로 집계 제한
+    sw_lat = request.args.get("sw_lat", "").strip()
+    sw_lng = request.args.get("sw_lng", "").strip()
+    ne_lat = request.args.get("ne_lat", "").strip()
+    ne_lng = request.args.get("ne_lng", "").strip()
 
-    _cache_key = f"cluster:{level}|{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}"
+    _cache_key = f"cluster:{level}|{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}|{sw_lat},{sw_lng},{ne_lat},{ne_lng}"
     _cached = _cluster_cache.get(_cache_key)
     if _cached and (time.time() - _cached[0]) < _CLUSTER_CACHE_TTL:
         return Response(_cached[1], mimetype="application/json")
@@ -1001,6 +1006,14 @@ def get_buildings_cluster():
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
+
+    # bounds 조건 — sgg/umd 레벨에서만 적용 (sido는 전국 17개라 필터 불필요)
+    if level in ("sgg", "umd") and sw_lat and sw_lng and ne_lat and ne_lng:
+        try:
+            where.append("lat BETWEEN %s AND %s AND lng BETWEEN %s AND %s")
+            params += [float(sw_lat), float(ne_lat), float(sw_lng), float(ne_lng)]
+        except ValueError:
+            pass  # 잘못된 bounds는 무시하고 전국 집계
 
     where_sql = " AND ".join(where)
 
@@ -1362,6 +1375,7 @@ def get_building_count():
             COUNT(*) AS c
         FROM master_buildings
         WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+          AND lat IS NOT NULL AND lng IS NOT NULL
         GROUP BY 1
     """)
     by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}

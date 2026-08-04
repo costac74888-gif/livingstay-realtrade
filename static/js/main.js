@@ -866,6 +866,19 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     if (filters[k]) params.set(k, filters[k]);
   });
 
+  // sgg/umd 레벨은 현재 화면 범위로 집계 제한 — 화면 밖 배지 미표시
+  if ((clusterLevel === "sgg" || clusterLevel === "umd") && kakaoMap) {
+    const bounds = kakaoMap.getBounds();
+    if (bounds) {
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      params.set("sw_lat", sw.getLat());
+      params.set("sw_lng", sw.getLng());
+      params.set("ne_lat", ne.getLat());
+      params.set("ne_lng", ne.getLng());
+    }
+  }
+
   let items = [];
   try {
     const res  = await fetch(`/api/buildings-cluster?${params}`);
@@ -897,13 +910,21 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     const total = item.total || 0;
     const bt    = item.by_type || {};
 
-    // 스택바 width% 계산
+    // 스택바 width% 계산 — 14px 미만 구간(pct < 12%)은 숫자 생략(겹침 방지)
+    const BAR_H = 15;
     const barSpans = BAR_COLORS
       .map(c => {
         const cnt = bt[c.key] || 0;
         if (!cnt || !total) return "";
-        const pct = (cnt / total * 100).toFixed(1);
-        return `<span style="display:inline-block;height:100%;width:${pct}%;background:${c.color};"></span>`;
+        const pct = cnt / total * 100;
+        const pctStr = pct.toFixed(1);
+        // 최대폭 120px 기준 14px ≈ 11.7% → 12% 미만이면 숫자 생략
+        const numHtml = pct >= 12
+          ? `<span style="font-size:9px;color:#fff;font-weight:700;line-height:1;` +
+            `pointer-events:none;overflow:hidden;">${cnt}</span>`
+          : "";
+        return `<span style="display:inline-flex;align-items:center;justify-content:center;` +
+               `height:100%;width:${pctStr}%;background:${c.color};overflow:hidden;">${numHtml}</span>`;
       })
       .join("");
 
@@ -918,7 +939,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(item.name)}</div>` +
       `<div style="font-size:13px;font-weight:800;color:#16202E;line-height:1.3;">` +
       `${total.toLocaleString("ko-KR")}</div>` +
-      `<div style="display:flex;height:5px;border-radius:3px;overflow:hidden;` +
+      `<div style="display:flex;height:${BAR_H}px;border-radius:3px;overflow:hidden;` +
       `margin-top:3px;background:${LODGING_COLORS["미분류"]};">` +
       barSpans +
       `</div>`;
@@ -985,6 +1006,15 @@ async function initMap(){
 
   // 확대/축소 시 클러스터 배지↔개별마커 전환 (모드 변경 시만 재로드, 같은 모드면 라벨만 갱신)
   kakao.maps.event.addListener(kakaoMap, "zoom_changed", () => updateMapForZoom(_lastMapFilters));
+
+  // 지도 이동(드래그) 후 같은 클러스터 레벨이면 bounds가 바뀌므로 재조회
+  // (sgg/umd 배지는 뷰포트 제한이므로, 이동 시 화면 밖 지역 배지를 갱신해야 함)
+  kakao.maps.event.addListener(kakaoMap, "dragend", () => {
+    const mode = _clusterModeForLevel(kakaoMap.getLevel());
+    if (mode !== "markers" && (mode === "sgg" || mode === "umd")) {
+      loadClusterOverlays(mode, _lastMapFilters);
+    }
+  });
 
   // 풀스크린 레이아웃 대응 — 컨테이너 크기가 폰트 로드/헤더 높이 반영/창 크기변경으로
   // 바뀌면 지도 타일이 회색으로 남으므로 렌더를 다시 맞춘다.
