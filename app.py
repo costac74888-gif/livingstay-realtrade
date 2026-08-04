@@ -230,6 +230,23 @@ def _log_page_view(resp):
 # 이렇게 해야 배포 직후(아직 sync 스크립트가 안 돈 시점)에도 요청 API가 500 없이 동작한다.
 init_db()
 
+# ── 부팅 시 상거래정보 의존 환경 검증 ──────────────────────────────────────
+# 두 조건 중 하나라도 누락되면 건물상세 상거래정보 카드가 항상 "준비 중"으로 남는다.
+_store_key_ok  = bool(os.environ.get("STORE_INFO_SERVICE_KEY", "").strip())
+_bjdong_csv    = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
+_bjdong_file_ok = os.path.exists(_bjdong_csv)
+if not _store_key_ok:
+    app.logger.warning(
+        "[boot] STORE_INFO_SERVICE_KEY 미설정 — 상거래정보 카드가 항상 '준비 중'으로 표시됩니다. "
+        "data.go.kr > B553077 소상공인시장진흥공단_상가(상권)정보 API 활용신청 후 시크릿에 등록하세요."
+    )
+if not _bjdong_file_ok:
+    app.logger.warning(
+        "[boot] 법정동코드 파일 없음 (%s) — 상거래정보 PNU 매칭이 실패합니다. "
+        "파일이 .gitignore에 포함되어 배포 시 누락되는지 확인하세요.", _bjdong_csv
+    )
+# ────────────────────────────────────────────────────────────────────────────
+
 
 def _serve_app_shell():
     # 정적 index.html을 읽어 카카오맵 JS 키만 서버에서 주입해 서빙한다.
@@ -781,9 +798,16 @@ def get_building_nearby_stores(building_id):
     def _bg_fetch(bld_id, r):
         result = {"available": False, "total": 0, "categories": [], "stores": []}
         try:
-            if r["sgg_cd"] and r["umd_nm"] and r["jibun"]:
+            # 서비스키 없음 — 가장 흔한 원인이므로 먼저 확인
+            if not os.environ.get("STORE_INFO_SERVICE_KEY", "").strip():
+                result["reason"] = "no_service_key"
+            elif not (r["sgg_cd"] and r["umd_nm"] and r["jibun"]):
+                result["reason"] = "no_bjdong_match"
+            else:
                 bjd = _get_bjdong_map().find_bjdong_cd(r["sgg_cd"], r["umd_nm"])
-                if bjd:
+                if not bjd:
+                    result["reason"] = "no_bjdong_match"
+                else:
                     plat_gb, bun, ji = parse_jibun(r["jibun"])
                     pnu = build_pnu(r["sgg_cd"], bjd, plat_gb, bun, ji)
                     stores = get_stores_by_pnu(pnu) if pnu else []
@@ -808,8 +832,11 @@ def get_building_nearby_stores(building_id):
                             "categories": [{"category": c, "count": n} for c, n in categories],
                             "stores": stores_sorted,
                         }
+                    else:
+                        result["reason"] = "api_error_or_empty"
         except Exception:
             app.logger.exception("상가업소 조회 실패 (building_id=%s)", bld_id)
+            result["reason"] = "api_error_or_empty"
         with _stores_cache_lock:
             _stores_cache[bld_id] = (time.time(), result)
 

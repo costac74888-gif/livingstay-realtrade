@@ -62,9 +62,23 @@ def _fetch_stores(url, key):
         try:
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
+        except Exception as e:
+            raise RuntimeError(f"상가업소 API HTTP 오류: {e}") from e
+
+        try:
             root = ET.fromstring(resp.content)
-        except Exception:
-            return []  # 어떤 실패든 조용히 빈 결과 (화면은 "준비 중" 유지)
+        except ET.ParseError:
+            # 인증 오류 등 API 게이트웨이가 JSON으로 반환한 경우
+            try:
+                err_msg = (
+                    resp.json()
+                    .get("OpenAPI_ServiceResponse", {})
+                    .get("cmmMsgHeader", {})
+                    .get("errMsg", "non-XML response")
+                )
+            except Exception:
+                err_msg = resp.text[:200] if resp.text else "non-XML response"
+            raise RuntimeError(f"상가업소 API 비XML 응답: {err_msg}")
 
         result_code = (root.findtext(".//resultCode") or "").strip()
         if result_code not in ("00", "0"):

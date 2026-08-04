@@ -2289,6 +2289,8 @@ async function loadBuildingStores(buildingId){
     if (!data.pending) break;
     if (_poll < 4) await new Promise(r => setTimeout(r, 4000));
   }
+  // 실패 사유를 콘솔에 남겨 다음 번에 브라우저 콘솔만 봐도 원인을 알 수 있게 함
+  if (data && data.reason) console.warn("[상거래정보] 실패 사유:", data.reason);
   if (!data || !data.available || !Array.isArray(data.stores) || data.stores.length === 0) return;
 
   const summary = (data.categories || [])
