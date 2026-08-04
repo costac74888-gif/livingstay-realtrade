@@ -1054,6 +1054,8 @@ function renderSideTx(t, rank){
   const region = escapeHtml([t.sgg_nm, t.umd_nm].filter(Boolean).join(" "));
   const metaRight = t.deal_date ? ` · ${escapeHtml(t.deal_date)}` : "";
   const rankHtml = rank ? `<span class="st-rank">${rank}</span>` : "";
+  // 지도 범례와 동일한 markerColor()로 색점 생성 — LODGING_COLORS를 이중 관리하지 않음
+  const dot = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${markerColor(t.lodging_type)}; margin-right:5px; flex-shrink:0; vertical-align:middle;"></span>`;
   // master_building_id가 있으면 건물상세 좌측패널 전환(페이지 이동 없이) — 기존 로직 재사용.
   const mbid = t.master_building_id;
   const clickable = mbid != null && mbid !== "";
@@ -1062,7 +1064,7 @@ function renderSideTx(t, rank){
     : ` class="side-tx"`;
   return `<div${clickAttrs}>
     <div class="st-left">
-      <div class="st-name">${rankHtml}${name}</div>
+      <div class="st-name">${rankHtml}${dot}${name}</div>
       <div class="st-meta">${region}${metaRight}</div>
     </div>
     <div class="st-price">${priceHtml}</div>

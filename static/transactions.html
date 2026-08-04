@@ -183,11 +183,12 @@
     const typeTag = t.deal_type === "직거래"
       ? `<span class="tag brk">직거래</span>`
       : `<span class="tag med">중개거래</span>`;
-    const lodgingColors = { "생활": "med", "호텔": "brk", "콘도": "src" };
+    // static/js/main.js의 LODGING_COLORS와 반드시 동일하게 유지
+    const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#BDBDBD" };
     const isCombined = (t.lodging_type || "").includes("·");
-    const lodgingClass = isCombined ? "mixed" : (lodgingColors[t.lodging_type] || "unknown");
-    const lodgingLabel = t.lodging_type || "미확인";
-    const lodgingTag = `<span class="tag ${lodgingClass}">${escapeHtml(lodgingLabel)}</span>`;
+    const lodgingLabel = isCombined ? "복합" : (t.lodging_type || "미분류");
+    const lodgingColor = LODGING_COLORS[lodgingLabel] || LODGING_COLORS["미분류"];
+    const lodgingTag = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${lodgingColor}; padding:2px 8px; border-radius:5px;">${escapeHtml(lodgingLabel)}</span>`;
     const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
     const nameText = t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)";
     // master_building_id가 있으면 건물 상세 페이지로 이동하는 일반 링크(<a href>)로 만든다.
