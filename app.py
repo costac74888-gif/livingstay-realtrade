@@ -871,7 +871,7 @@ def get_transactions():
                lodging_type, lodging_type_detail, match_source,
                (SELECT mb.id FROM master_buildings mb
                  WHERE mb.sgg_cd = transactions.sgg_cd
-                   AND mb.umd_nm = transactions.umd_nm
+                   AND REPLACE(mb.umd_nm, ' ', '') = REPLACE(transactions.umd_nm, ' ', '')
                    AND mb.jibun = transactions.jibun
                  ORDER BY mb.id LIMIT 1) AS master_building_id
         FROM transactions
@@ -1283,7 +1283,7 @@ def get_favorites():
                lodging_type, lodging_type_detail, match_source,
                (SELECT mb.id FROM master_buildings mb
                  WHERE mb.sgg_cd = transactions.sgg_cd
-                   AND mb.umd_nm = transactions.umd_nm
+                   AND REPLACE(mb.umd_nm, ' ', '') = REPLACE(transactions.umd_nm, ' ', '')
                    AND mb.jibun = transactions.jibun
                  ORDER BY mb.id LIMIT 1) AS master_building_id
         FROM transactions
