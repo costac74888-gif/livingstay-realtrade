@@ -552,6 +552,18 @@ const CLUSTER_SIDO_MIN_LEVEL = 10;
 const CLUSTER_SGG_MIN_LEVEL  = 8;
 const CLUSTER_UMD_MIN_LEVEL  = 7;
 
+// sido 레벨 배지 좌표 수동 보정 — AVG(lat/lng)이 실제 시도 중심과 어긋나거나
+// 인접 시도와 겹칠 경우 배치 위치를 고정값으로 덮어씁니다.
+// (경기도가 서울 아래로 내려오도록, 대전↔세종 분리, 경상북도를 동해가 아닌 내륙으로)
+const SIDO_POSITION_OVERRIDE = {
+  "서울특별시":    { lat: 37.575, lng: 127.00 }, // 서울 중심 유지
+  "경기도":        { lat: 37.10,  lng: 127.55 }, // 서울 아래·동쪽으로 분리
+  "인천광역시":    { lat: 37.46,  lng: 126.64 }, // 서해 쪽 유지
+  "대전광역시":    { lat: 36.25,  lng: 127.40 }, // 세종과 분리: 남쪽
+  "세종특별자치시":{ lat: 36.61,  lng: 127.22 }, // 대전과 분리: 북쪽
+  "경상북도":      { lat: 36.57,  lng: 128.72 }, // 동해 표류 방지 → 안동 부근 내륙
+};
+
 let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록 — clearMapMarkers에서 함께 제거
 let _currentMapMode  = null;          // 'sido'|'sgg'|'umd'|'markers' — 불필요한 재로드 방지
 let _lastMapFilters  = {};            // 마지막으로 적용된 지도 필터 (zoom 전환 시 재사용)
@@ -906,7 +918,11 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
 
   items.forEach(item => {
     if (item.lat == null || item.lng == null) return;
-    const pos   = new kakao.maps.LatLng(item.lat, item.lng);
+    // sido 레벨에서만 수동 보정 좌표 적용 (sgg/umd는 실제 AVG 좌표 사용)
+    const _override = clusterLevel === "sido" ? SIDO_POSITION_OVERRIDE[item.name] : null;
+    const _lat = _override ? _override.lat : item.lat;
+    const _lng = _override ? _override.lng : item.lng;
+    const pos   = new kakao.maps.LatLng(_lat, _lng);
     const total = item.total || 0;
     const bt    = item.by_type || {};
 
