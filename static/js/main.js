@@ -552,16 +552,27 @@ const CLUSTER_SIDO_MIN_LEVEL = 10;
 const CLUSTER_SGG_MIN_LEVEL  = 8;
 const CLUSTER_UMD_MIN_LEVEL  = 7;
 
-// sido 레벨 배지 좌표 수동 보정 — AVG(lat/lng)이 실제 시도 중심과 어긋나거나
-// 인접 시도와 겹칠 경우 배치 위치를 고정값으로 덮어씁니다.
-// (경기도가 서울 아래로 내려오도록, 대전↔세종 분리, 경상북도를 동해가 아닌 내륙으로)
+// sido 레벨 배지 좌표 — 도청(시청)소재지 기준.
+// xAnchor:0 렌더링과 함께 사용 → 배지 왼쪽 끝이 해당 좌표에 고정되어
+// 배지가 도시 지명 우측에 자연스럽게 달라붙음.
 const SIDO_POSITION_OVERRIDE = {
-  "서울특별시":    { lat: 37.575, lng: 127.00 }, // 서울 중심 유지
-  "경기도":        { lat: 37.10,  lng: 127.55 }, // 서울 아래·동쪽으로 분리
-  "인천광역시":    { lat: 37.46,  lng: 126.64 }, // 서해 쪽 유지
-  "대전광역시":    { lat: 36.25,  lng: 127.40 }, // 세종과 분리: 남쪽
-  "세종특별자치시":{ lat: 36.61,  lng: 127.22 }, // 대전과 분리: 북쪽
-  "경상북도":      { lat: 36.57,  lng: 128.72 }, // 동해 표류 방지 → 안동 부근 내륙
+  "서울특별시":      { lat: 37.566, lng: 126.978 }, // 서울시청
+  "경기도":          { lat: 37.263, lng: 127.029 }, // 수원시청(도청)
+  "인천광역시":      { lat: 37.456, lng: 126.706 }, // 인천시청
+  "강원특별자치도":  { lat: 37.342, lng: 127.921 }, // 원주시청(도청)
+  "충청북도":        { lat: 36.636, lng: 127.491 }, // 청주시청(도청)
+  "충청남도":        { lat: 36.601, lng: 126.660 }, // 홍성군청(도청)
+  "대전광역시":      { lat: 36.351, lng: 127.385 }, // 대전시청
+  "세종특별자치시":  { lat: 36.480, lng: 127.289 }, // 세종시청
+  "전북특별자치도":  { lat: 35.824, lng: 127.148 }, // 전주시청(도청)
+  "전라남도":        { lat: 34.991, lng: 126.481 }, // 무안군청(도청)
+  "광주광역시":      { lat: 35.160, lng: 126.851 }, // 광주시청
+  "경상북도":        { lat: 36.566, lng: 128.729 }, // 안동시청(도청)
+  "대구광역시":      { lat: 35.871, lng: 128.601 }, // 대구시청
+  "경상남도":        { lat: 35.228, lng: 128.682 }, // 창원시청(도청)
+  "부산광역시":      { lat: 35.180, lng: 129.075 }, // 부산시청
+  "울산광역시":      { lat: 35.540, lng: 129.312 }, // 울산시청
+  "제주특별자치도":  { lat: 33.489, lng: 126.498 }, // 제주시청(도청)
 };
 
 let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록 — clearMapMarkers에서 함께 제거
@@ -966,9 +977,15 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       kakaoMap.setLevel(drillLevel);
     });
 
+    // sido 레벨: xAnchor=0(좌측 고정) + yAnchor=0.5(수직 중앙) →
+    //   배지 왼쪽 끝이 도청소재지 좌표에 붙어 지명 우측으로 배치됨
+    // sgg/umd 레벨: 기존대로 중앙 고정
+    const isSido = clusterLevel === "sido";
     const overlay = new kakao.maps.CustomOverlay({
       position: pos, content: el,
-      xAnchor: 0.5, yAnchor: 1.0, zIndex: 10,
+      xAnchor: isSido ? 0 : 0.5,
+      yAnchor: isSido ? 0.5 : 1.0,
+      zIndex: 10,
     });
     overlay.setMap(kakaoMap);
     _clusterOverlays.push(overlay);
