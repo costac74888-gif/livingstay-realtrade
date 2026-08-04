@@ -1824,10 +1824,6 @@ async function loadBuildingHeader(id){
     return;
   }
 
-  // 건물 상세가 열릴 때 지도를 해당 마커 위치로 이동 (관심단지·즐겨찾기 포함 모든 진입 경로)
-  if (typeof kakaoMap !== "undefined" && kakaoMap && b.lat != null && b.lng != null) {
-    kakaoMap.panTo(new kakao.maps.LatLng(Number(b.lat), Number(b.lng)));
-  }
 
   const isPreCompletion = b.building_status && b.building_status !== "완공";
   const hasType = !!(b.lodging_type && b.lodging_type !== "mixed_use_excluded");
