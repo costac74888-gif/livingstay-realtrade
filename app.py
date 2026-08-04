@@ -958,6 +958,34 @@ _cluster_cache: dict = {}
 _CLUSTER_CACHE_TTL = 60  # seconds
 
 
+def _sido_norm_sql(col_expr: str) -> str:
+    """sido 첫 토큰 약칭 → 공식 전체명 정규화 SQL CASE 식.
+
+    sgg_text에 '서울 강남구'처럼 약칭이 들어온 경우도 클러스터 집계 시
+    '서울특별시'로 통합되도록 한다. 알 수 없는 토큰은 그대로 반환.
+    """
+    return f"""CASE {col_expr}
+        WHEN '서울' THEN '서울특별시'
+        WHEN '부산' THEN '부산광역시'
+        WHEN '대구' THEN '대구광역시'
+        WHEN '인천' THEN '인천광역시'
+        WHEN '광주' THEN '광주광역시'
+        WHEN '대전' THEN '대전광역시'
+        WHEN '울산' THEN '울산광역시'
+        WHEN '세종' THEN '세종특별자치시'
+        WHEN '경기' THEN '경기도'
+        WHEN '강원' THEN '강원특별자치도'
+        WHEN '충북' THEN '충청북도'
+        WHEN '충남' THEN '충청남도'
+        WHEN '전북' THEN '전북특별자치도'
+        WHEN '전남' THEN '전라남도'
+        WHEN '경북' THEN '경상북도'
+        WHEN '경남' THEN '경상남도'
+        WHEN '제주' THEN '제주특별자치도'
+        ELSE {col_expr}
+    END"""
+
+
 @app.route("/api/buildings-cluster")
 @limiter.limit("60 per minute")
 def get_buildings_cluster():
@@ -1029,10 +1057,11 @@ def get_buildings_cluster():
 
     having_sql = " AND ".join(having_parts)
 
-    # GROUP BY 기준: sido=시도 첫 토큰, sgg=시군구 전체, umd=시군구+읍면동
+    # GROUP BY 기준: sido=시도 첫 토큰(약칭 정규화 포함), sgg=시군구 전체, umd=시군구+읍면동
+    _sido_expr = _sido_norm_sql("split_part(sgg_text, ' ', 1)")
     if level == "sido":
-        select_extra = "split_part(sgg_text, ' ', 1) AS region_name, NULL::text AS sgg_text_full"
-        group_by     = "split_part(sgg_text, ' ', 1)"
+        select_extra = f"{_sido_expr} AS region_name, NULL::text AS sgg_text_full"
+        group_by     = _sido_expr
     elif level == "sgg":
         select_extra = "sgg_text AS region_name, sgg_text AS sgg_text_full"
         group_by     = "sgg_text"
