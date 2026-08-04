@@ -742,17 +742,22 @@ _stores_cache_lock = threading.Lock()
 def get_building_nearby_stores(building_id):
     """이 건물(지번, PNU 기준)의 상가업소 목록 — 업종별 개수 + 층별 목록.
 
-    키가 없거나(pnu 산출 불가) 조회 실패/0건이면 {"available": False} —
-    화면은 기존 "준비 중" 카드를 유지한다.
+    캐시 미스 시 즉시 {"available": false, "pending": true} 를 반환하고
+    백그라운드 스레드가 외부 API(data.go.kr)를 조회한 뒤 캐시를 채운다.
+    프론트(loadBuildingStores)는 pending:true 시 4초 간격 최대 4회 재조회.
     """
     now = time.time()
     with _stores_cache_lock:
         hit = _stores_cache.get(building_id)
         if hit:
-            ttl = _STORES_CACHE_TTL if hit[1].get("available") else _STORES_CACHE_TTL_EMPTY
-            if now - hit[0] < ttl:
-                return jsonify(hit[1])
+            ts, payload = hit
+            if payload.get("pending"):
+                return jsonify({"available": False, "pending": True})
+            ttl = _STORES_CACHE_TTL if payload.get("available") else _STORES_CACHE_TTL_EMPTY
+            if now - ts < ttl:
+                return jsonify(payload)
 
+    # DB 조회는 빠름 — 요청 스레드에서 처리
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -765,43 +770,51 @@ def get_building_nearby_stores(building_id):
     if not row:
         return jsonify({"error": "not found"}), 404
 
-    payload = {"available": False, "total": 0, "categories": [], "stores": []}
-    try:
-        if row["sgg_cd"] and row["umd_nm"] and row["jibun"]:
-            bjd = _get_bjdong_map().find_bjdong_cd(row["sgg_cd"], row["umd_nm"])
-            if bjd:
-                plat_gb, bun, ji = parse_jibun(row["jibun"])
-                pnu = build_pnu(row["sgg_cd"], bjd, plat_gb, bun, ji)
-                stores = get_stores_by_pnu(pnu) if pnu else []
-                if stores:
-                    counts = {}
-                    for s in stores:
-                        cat = s["category"] or "기타"
-                        counts[cat] = counts.get(cat, 0) + 1
-                    categories = sorted(counts.items(), key=lambda kv: -kv[1])
-
-                    def _floor_sort_key(s):
-                        f = s["floor"]
-                        try:
-                            return (0, int(f))
-                        except (ValueError, TypeError):
-                            return (1, 0)  # 층 정보 없는 업소는 뒤로
-
-                    stores_sorted = sorted(stores, key=_floor_sort_key)
-                    payload = {
-                        "available": True,
-                        "total": len(stores),
-                        "categories": [{"category": c, "count": n} for c, n in categories],
-                        "stores": stores_sorted,
-                    }
-    except Exception:
-        # 상거래정보는 부가 정보 — 실패해도 500 내지 말고 "준비 중" 유지
-        app.logger.exception("상가업소 조회 실패 (building_id=%s)", building_id)
-        payload = {"available": False, "total": 0, "categories": [], "stores": []}
-
+    # pending 마크 후 백그라운드 스레드 기동 — 중복 기동 방지(pending이 이미 있으면 skip)
     with _stores_cache_lock:
-        _stores_cache[building_id] = (now, payload)
-    return jsonify(payload)
+        existing = _stores_cache.get(building_id)
+        if existing and existing[1].get("pending"):
+            return jsonify({"available": False, "pending": True})
+        _stores_cache[building_id] = (now, {"available": False, "pending": True,
+                                            "total": 0, "categories": [], "stores": []})
+
+    def _bg_fetch(bld_id, r):
+        result = {"available": False, "total": 0, "categories": [], "stores": []}
+        try:
+            if r["sgg_cd"] and r["umd_nm"] and r["jibun"]:
+                bjd = _get_bjdong_map().find_bjdong_cd(r["sgg_cd"], r["umd_nm"])
+                if bjd:
+                    plat_gb, bun, ji = parse_jibun(r["jibun"])
+                    pnu = build_pnu(r["sgg_cd"], bjd, plat_gb, bun, ji)
+                    stores = get_stores_by_pnu(pnu) if pnu else []
+                    if stores:
+                        counts = {}
+                        for s in stores:
+                            cat = s["category"] or "기타"
+                            counts[cat] = counts.get(cat, 0) + 1
+                        categories = sorted(counts.items(), key=lambda kv: -kv[1])
+
+                        def _floor_sort_key(s):
+                            f = s["floor"]
+                            try:
+                                return (0, int(f))
+                            except (ValueError, TypeError):
+                                return (1, 0)
+
+                        stores_sorted = sorted(stores, key=_floor_sort_key)
+                        result = {
+                            "available": True,
+                            "total": len(stores),
+                            "categories": [{"category": c, "count": n} for c, n in categories],
+                            "stores": stores_sorted,
+                        }
+        except Exception:
+            app.logger.exception("상가업소 조회 실패 (building_id=%s)", bld_id)
+        with _stores_cache_lock:
+            _stores_cache[bld_id] = (time.time(), result)
+
+    threading.Thread(target=_bg_fetch, args=(building_id, dict(row)), daemon=True).start()
+    return jsonify({"available": False, "pending": True})
 
 
 @app.route("/api/transactions")
@@ -867,12 +880,17 @@ def get_transactions():
             params.append(name if name and name != "-" else "\x00")
 
     where_sql = " AND ".join(where)
+    # with_total=1 이 있을 때만 COUNT(*) 실행 — 메인 위젯(size=5)은 total 불필요
+    with_total = request.args.get("with_total", "").strip()
 
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute(f"SELECT COUNT(*) c FROM transactions WHERE {where_sql}", params)
-    total = cur.fetchone()["c"]
+    if with_total:
+        cur.execute(f"SELECT COUNT(*) c FROM transactions WHERE {where_sql}", params)
+        total = cur.fetchone()["c"]
+    else:
+        total = None
 
     # master_building_id: 각 거래의 지번키(sgg_cd+umd_nm+jibun)로 master_buildings를
     # 역매칭(get_buildings_geo/get_monthly_trend와 동일한 지번 정확 매칭 전략).

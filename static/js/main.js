@@ -252,7 +252,8 @@ async function loadBoard(){
   } else {
     const params = new URLSearchParams({
       q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm,
-      year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size
+      year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size,
+      with_total: 1,  // COUNT(*) 실행 — 게시판은 페이지네이션에 total 필요
     });
     const res = await fetch(`/api/transactions?${params}`);
     const data = await res.json();
@@ -2135,9 +2136,6 @@ async function loadBuildingHeader(id){
     _startDetailPoll(id);
   }
 
-  // 상거래정보(이 건물의 상가업소) — 실패/0건이면 기존 "준비 중" 카드 유지
-  loadBuildingStores(id);
-
   return b.building_status || "완공";
 }
 
@@ -2147,11 +2145,16 @@ async function loadBuildingStores(buildingId){
   const card = document.getElementById("bStoresCard");
   if (!card) return;
   let data;
-  try {
-    const res = await fetch(`/api/building/${buildingId}/nearby-stores`);
-    if (!res.ok) return; // 실패 → "준비 중" 유지
-    data = await res.json();
-  } catch(e){ return; }
+  // 백그라운드 스레드 완료 대기 — pending:true 시 4초 간격 최대 4회 재조회
+  for (let _poll = 0; _poll <= 4; _poll++) {
+    try {
+      const res = await fetch(`/api/building/${buildingId}/nearby-stores`);
+      if (!res.ok) return;
+      data = await res.json();
+    } catch(e){ return; }
+    if (!data.pending) break;
+    if (_poll < 4) await new Promise(r => setTimeout(r, 4000));
+  }
   if (!data || !data.available || !Array.isArray(data.stores) || data.stores.length === 0) return;
 
   const summary = (data.categories || [])
@@ -2336,6 +2339,8 @@ async function loadBuildingTrend(id, buildingStatus){
   const canvas = document.getElementById("bTrendChart");
   const empty = document.getElementById("bTrendEmpty");
   if (buildingStatus && buildingStatus !== "완공") {
+    // 병렬 시작된 첫 번째 호출(null status)이 차트를 이미 그렸을 수 있으므로 파기
+    if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
     canvas.style.display = "none";
     empty.style.display = "block";
     empty.textContent = "준공 전입니다. 준공 후 실거래 정보가 제공됩니다.";
@@ -2421,7 +2426,7 @@ async function loadBuildingTx(id, buildingStatus){
     const size = Math.min(bTxShown, 200);
     let page = 1;
     while (true){
-      const res = await fetch(`/api/transactions?building_id=${id}&page=${page}&size=${size}`);
+      const res = await fetch(`/api/transactions?building_id=${id}&page=${page}&size=${size}&with_total=1`);
       const data = await res.json();
       bTxTotal = data.total || 0;
       const batch = data.items || [];
@@ -2506,9 +2511,16 @@ function renderBuildingPanel(id){
 
   bTxShown = B_TX_INITIAL;
   bTxTotal = 0;
+  // 4개 카드를 동시에 시작 — 헤더 응답을 기다리지 않음(B-2 병렬화)
+  loadBuildingStores(id);
+  loadBuildingTrend(id, null);   // null = 완공 가정으로 즉시 API 시작
+  loadBuildingTx(id, null);      // 동일
   loadBuildingHeader(id).then(status => {
-    loadBuildingTrend(id, status);
-    loadBuildingTx(id, status);
+    // 헤더 응답 후 준공전이면 trend/tx를 status 기준으로 덮어씀
+    if (status && status !== "완공") {
+      loadBuildingTrend(id, status);
+      loadBuildingTx(id, status);
+    }
   });
 }
 
