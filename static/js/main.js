@@ -301,7 +301,7 @@ document.getElementById("selUmdNm").addEventListener("change", e=>{ state.umd_nm
 document.getElementById("selYear").addEventListener("change", e=>{ state.year = e.target.value; });
 document.getElementById("selLodgingType").addEventListener("change", e=>{
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
-  loadMapMarkers(mapFiltersFromState(), { fit: false });
+  updateMapForZoom(mapFiltersFromState(), { force: true });
 });
 function _setLegendActive(type) {
   document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
@@ -318,7 +318,7 @@ document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
     document.getElementById("selLodgingType").value = toggle;
     _setLegendActive(toggle);
     loadBoard();
-    loadMapMarkers(mapFiltersFromState(), { fit: false });
+    updateMapForZoom(mapFiltersFromState(), { force: true });
   });
 });
 document.getElementById("mapLegendTitle").addEventListener("click", () => {
@@ -327,7 +327,7 @@ document.getElementById("mapLegendTitle").addEventListener("click", () => {
   document.getElementById("selLodgingType").value = "";
   _setLegendActive("");
   loadBoard();
-  loadMapMarkers({}, { fit: false });
+  updateMapForZoom({}, { force: true });
 });
 document.getElementById("chkFavOnly").addEventListener("change", e=>{
   state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
@@ -338,7 +338,7 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.page = 1;
   loadBoard();
   // q(건물명·주소)로 검색하면 결과가 현재 뷰 밖에 있을 수 있으므로 fit:true로 지도를 맞춤
-  loadMapMarkers(mapFiltersFromState(), { fit: !!state.q });
+  updateMapForZoom(mapFiltersFromState(), { force: true, fit: !!state.q });
 });
 function resetToHome(){
   const yearSel = document.getElementById("selYear");
@@ -355,7 +355,7 @@ function resetToHome(){
   renderFavChips();
   loadBoard();
   resetMapView();
-  loadMapMarkers({}, { fit: false });   // 지도도 전체 476개로 복귀
+  updateMapForZoom({}, { force: true });   // 지도도 전체로 복귀 (줌 레벨 기준 클러스터 또는 마커)
   window.scrollTo({top:0, behavior:"smooth"});
 }
 document.getElementById("brandHome").addEventListener("click", resetToHome);
@@ -543,6 +543,18 @@ let hoverTooltip = null;              // 마커 호버용 공용 미리보기 �
 let hoverHideTimer = null;            // 호버 툴팁 지연 숨김 타이머(간격 통과 시 깜빡임 방지)
 let hoverCurrentKey = null;          // 현재 툴팁이 가리키는 마커 키(같은 마커 재진입 시 재생성 방지)
 const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
+// 클러스터 배지 줌 레벨 임계값 — Kakao Maps 레벨: 숫자 클수록 더 넓은 시야
+// level ≥ CLUSTER_SIDO_MIN_LEVEL → 시도 집계 배지
+// level CLUSTER_SGG_MIN_LEVEL ~ CLUSTER_SIDO_MIN_LEVEL-1 → 시군구 집계 배지
+// level CLUSTER_UMD_MIN_LEVEL ~ CLUSTER_SGG_MIN_LEVEL-1 → 읍면동 집계 배지
+// level ≤ LABEL_MAX_LEVEL → 기존 개별 마커
+const CLUSTER_SIDO_MIN_LEVEL = 10;
+const CLUSTER_SGG_MIN_LEVEL  = 8;
+const CLUSTER_UMD_MIN_LEVEL  = 7;
+
+let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록 — clearMapMarkers에서 함께 제거
+let _currentMapMode  = null;          // 'sido'|'sgg'|'umd'|'markers' — 불필요한 재로드 방지
+let _lastMapFilters  = {};            // 마지막으로 적용된 지도 필터 (zoom 전환 시 재사용)
 const MAP_DEFAULT_CENTER = { lat: 36.35, lng: 126.9 }; // 좌측 사이드패널이 지도 위에 겹쳐 한반도가 왼쪽으로 밀려 보이므로 중심 경도를 서쪽으로 낮춰 가로 중앙 정렬(일본 과다 노출 완화)
 const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이는 확대 수준
 // 모바일(좁은 세로 화면) 전용 초기뷰 — 세로로 길어 같은 값이면 속초·제주가 잘리므로 별도 값 사용.
@@ -576,6 +588,9 @@ function clearMapMarkers(){
   mapLabelData = [];
   mapLabelsByKey = {};
   hideHoverTooltip(true);
+  // 클러스터 배지도 함께 제거
+  _clusterOverlays.forEach(o => o.setMap(null));
+  _clusterOverlays = [];
 }
 
 function resetMapView(){
@@ -833,6 +848,123 @@ async function loadMapMarkers(filters = {}, opts = {}){
   addChunk();
 }
 
+// 현재 지도 줌 레벨로 클러스터 모드를 결정
+function _clusterModeForLevel(lv){
+  if (lv >= CLUSTER_SIDO_MIN_LEVEL) return "sido";
+  if (lv >= CLUSTER_SGG_MIN_LEVEL)  return "sgg";
+  if (lv >= CLUSTER_UMD_MIN_LEVEL)  return "umd";
+  return "markers";
+}
+
+// 클러스터 배지(CustomOverlay) 렌더링
+// clusterLevel: 'sido'|'sgg'|'umd', filters: mapFiltersFromState()
+async function loadClusterOverlays(clusterLevel, filters = {}){
+  if (!kakaoMap) return;
+
+  const params = new URLSearchParams({ level: clusterLevel });
+  ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
+    if (filters[k]) params.set(k, filters[k]);
+  });
+
+  let items = [];
+  try {
+    const res  = await fetch(`/api/buildings-cluster?${params}`);
+    const data = await res.json();
+    items = data.items || [];
+  } catch(e){
+    console.error("[CLUSTER] 집계 로드 실패:", e);
+    return;
+  }
+
+  clearMapMarkers();  // 이전 마커·배지 모두 제거
+
+  // 클러스터 배지 색상 — LODGING_COLORS와 동일 (이중 관리 방지를 위해 참조)
+  const BAR_COLORS = [
+    { key: "생활",   color: LODGING_COLORS["생활"]   },
+    { key: "관광",   color: LODGING_COLORS["관광"]   },
+    { key: "일반",   color: LODGING_COLORS["일반"]   },
+    { key: "복합",   color: LODGING_COLORS["복합"]   },
+    { key: "미분류", color: LODGING_COLORS["미분류"] },
+  ];
+
+  // 클릭 시 드릴다운: 시도→시군구 레벨(9), 시군구→읍면동 레벨(7), 읍면동→개별마커 레벨(6)
+  const drillLevel = clusterLevel === "sido" ? 9
+                   : clusterLevel === "sgg"  ? 7 : 6;
+
+  items.forEach(item => {
+    if (item.lat == null || item.lng == null) return;
+    const pos   = new kakao.maps.LatLng(item.lat, item.lng);
+    const total = item.total || 0;
+    const bt    = item.by_type || {};
+
+    // 스택바 width% 계산
+    const barSpans = BAR_COLORS
+      .map(c => {
+        const cnt = bt[c.key] || 0;
+        if (!cnt || !total) return "";
+        const pct = (cnt / total * 100).toFixed(1);
+        return `<span style="display:inline-block;height:100%;width:${pct}%;background:${c.color};"></span>`;
+      })
+      .join("");
+
+    const el = document.createElement("div");
+    el.style.cssText =
+      "background:#fff;border:1.5px solid #cdd3da;border-radius:8px;" +
+      "box-shadow:0 2px 8px rgba(0,0,0,.18);padding:5px 9px 4px;" +
+      "cursor:pointer;text-align:center;font-family:'Noto Sans KR',sans-serif;" +
+      "min-width:52px;max-width:120px;";
+    el.innerHTML =
+      `<div style="font-size:11px;font-weight:700;color:#16202E;white-space:nowrap;` +
+      `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(item.name)}</div>` +
+      `<div style="font-size:13px;font-weight:800;color:#16202E;line-height:1.3;">` +
+      `${total.toLocaleString("ko-KR")}</div>` +
+      `<div style="display:flex;height:5px;border-radius:3px;overflow:hidden;` +
+      `margin-top:3px;background:${LODGING_COLORS["미분류"]};">` +
+      barSpans +
+      `</div>`;
+
+    // 클릭: 해당 좌표로 이동 + 한 단계 드릴다운 레벨로 축소
+    el.addEventListener("click", () => {
+      kakaoMap.setCenter(pos);
+      kakaoMap.setLevel(drillLevel);
+    });
+
+    const overlay = new kakao.maps.CustomOverlay({
+      position: pos, content: el,
+      xAnchor: 0.5, yAnchor: 1.0, zIndex: 10,
+    });
+    overlay.setMap(kakaoMap);
+    _clusterOverlays.push(overlay);
+  });
+
+  console.log(`[CLUSTER] ${clusterLevel} 배지 ${_clusterOverlays.length}개 표시 (필터: ${params})`);
+}
+
+// 현재 줌 레벨에 따라 클러스터 배지 또는 개별 마커로 자동 전환.
+// filters: mapFiltersFromState() 또는 {} (초기화 시)
+// opts.fit: true면 개별마커 모드에서 bounds 맞춤 (클러스터 모드에서는 무시)
+// opts.force: true면 모드가 같아도 강제 재로드 (필터 변경 시 사용)
+async function updateMapForZoom(filters = {}, opts = {}){
+  if (!kakaoMap) return;
+  _lastMapFilters = filters;
+  const mode  = _clusterModeForLevel(kakaoMap.getLevel());
+
+  if (mode === "markers"){
+    if (_currentMapMode !== "markers" || opts.force){
+      _currentMapMode = "markers";
+      await loadMapMarkers(filters, { fit: opts.fit || false });
+    } else {
+      updateMarkerLabels();  // 줌 레벨만 바뀐 경우 — 라벨 표시 여부만 갱신
+    }
+  } else {
+    if (_currentMapMode !== mode || opts.force){
+      _currentMapMode = mode;
+      await loadClusterOverlays(mode, filters);
+    }
+    // 같은 클러스터 레벨 내에서 zoom만 바뀐 경우는 재로드 없음
+  }
+}
+
 async function initMap(){
   const container = document.getElementById("map");
   if (!container) return;
@@ -851,8 +983,8 @@ async function initMap(){
   liftZoomControlAboveLegend();
   window.addEventListener("resize", () => setTimeout(liftZoomControlAboveLegend, 150));
 
-  // 확대/축소 시 마커 라벨 표시 여부 토글 (축소된 전국뷰에서는 라벨 숨김)
-  kakao.maps.event.addListener(kakaoMap, "zoom_changed", updateMarkerLabels);
+  // 확대/축소 시 클러스터 배지↔개별마커 전환 (모드 변경 시만 재로드, 같은 모드면 라벨만 갱신)
+  kakao.maps.event.addListener(kakaoMap, "zoom_changed", () => updateMapForZoom(_lastMapFilters));
 
   // 풀스크린 레이아웃 대응 — 컨테이너 크기가 폰트 로드/헤더 높이 반영/창 크기변경으로
   // 바뀌면 지도 타일이 회색으로 남으므로 렌더를 다시 맞춘다.
@@ -862,8 +994,8 @@ async function initMap(){
   window.addEventListener("load", () => setTimeout(relayoutMap, 120));
   setTimeout(relayoutMap, 300);
 
-  // 최초 로드 — 전체 건물, 기본 시야 유지(bounds 강제 안 함)
-  await loadMapMarkers({}, { fit: false });
+  // 최초 로드 — 줌 레벨 기반으로 클러스터 또는 개별 마커 결정
+  await updateMapForZoom({}, { fit: false });
 }
 
 // 줌 컨트롤을 우측 하단 범례박스(.map-legend) 높이 + 여백만큼 위로 띄워 겹침을 막는다.

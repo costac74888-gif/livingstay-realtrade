@@ -922,6 +922,118 @@ def get_transactions():
 _geo_cache: dict = {}
 _GEO_CACHE_TTL = 45  # seconds
 
+# /api/buildings-cluster 서버 메모리 TTL 캐시 — GROUP BY 집계 결과 재사용
+_cluster_cache: dict = {}
+_CLUSTER_CACHE_TTL = 60  # seconds
+
+
+@app.route("/api/buildings-cluster")
+@limiter.limit("60 per minute")
+def get_buildings_cluster():
+    """행정구역 단위 클러스터 집계 — level=sido|sgg|umd.
+
+    지도 줌아웃 시 개별 마커 대신 집계 배지를 표시하기 위한 데이터.
+    필터(q/si_do/sgg_nm/umd_nm/lodging_type)는 /api/buildings-geo와 동일하게 지원.
+    """
+    level = request.args.get("level", "sido").strip()
+    if level not in ("sido", "sgg", "umd"):
+        return jsonify({"ok": False, "message": "level은 sido|sgg|umd 중 하나여야 합니다."}), 400
+
+    q           = request.args.get("q", "").strip()
+    si_do       = request.args.get("si_do", "").strip()
+    sgg_nm      = request.args.get("sgg_nm", "").strip()
+    umd_nm      = request.args.get("umd_nm", "").strip()
+    lodging_type = request.args.get("lodging_type", "").strip()
+
+    _cache_key = f"cluster:{level}|{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}"
+    _cached = _cluster_cache.get(_cache_key)
+    if _cached and (time.time() - _cached[0]) < _CLUSTER_CACHE_TTL:
+        return Response(_cached[1], mimetype="application/json")
+
+    # buildings-geo와 동일한 WHERE 조건 구성
+    where  = ["lat IS NOT NULL", "lng IS NOT NULL",
+              "lodging_type IS DISTINCT FROM 'mixed_use_excluded'"]
+    params = []
+
+    if q:
+        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if si_do:
+        where.append(sido_match_clause("split_part(sgg_text, ' ', 1)"))
+        params.append(sido_core(si_do))
+    if sgg_nm:
+        where.append("sgg_text LIKE %s")
+        params.append(f"%{sgg_nm}%")
+    if umd_nm:
+        where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
+        params.append(f"%{umd_nm.replace(' ', '')}%")
+    if lodging_type == "복합":
+        where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
+    elif lodging_type == "미분류":
+        where.append("(lodging_type IS NULL OR lodging_type = '')")
+    elif lodging_type:
+        where.append("lodging_type = %s")
+        params.append(lodging_type)
+
+    where_sql = " AND ".join(where)
+
+    # GROUP BY 기준: sido=시도 첫 토큰, sgg=시군구 전체, umd=시군구+읍면동
+    if level == "sido":
+        select_extra = "split_part(sgg_text, ' ', 1) AS region_name, NULL::text AS sgg_text_full"
+        group_by     = "split_part(sgg_text, ' ', 1)"
+    elif level == "sgg":
+        select_extra = "sgg_text AS region_name, sgg_text AS sgg_text_full"
+        group_by     = "sgg_text"
+    else:  # umd — 같은 동 이름이 다른 시군구에 있을 수 있어 시군구까지 묶어 그룹핑
+        select_extra = "COALESCE(umd_nm, '') AS region_name, sgg_text AS sgg_text_full"
+        group_by     = "sgg_text, umd_nm"
+
+    conn = get_conn()
+    cur  = conn.cursor()
+    cur.execute(f"""
+        SELECT {select_extra},
+               AVG(lat)  AS lat,
+               AVG(lng)  AS lng,
+               COUNT(*)  AS total,
+               COUNT(*) FILTER (WHERE lodging_type = '생활')                          AS cnt_live,
+               COUNT(*) FILTER (WHERE lodging_type = '관광')                          AS cnt_tour,
+               COUNT(*) FILTER (WHERE lodging_type = '일반')                          AS cnt_gen,
+               COUNT(*) FILTER (WHERE lodging_type LIKE '%%·%%' OR lodging_type = '복합') AS cnt_mixed,
+               COUNT(*) FILTER (WHERE lodging_type IS NULL OR lodging_type = '')      AS cnt_unknown
+        FROM master_buildings
+        WHERE {where_sql}
+        GROUP BY {group_by}
+        ORDER BY total DESC
+    """, params)
+    rows = cur.fetchall()
+    cur.close()
+
+    items = []
+    for r in rows:
+        name = r["region_name"] or ""
+        # umd 레벨은 "시군구 읍면동" 형식으로 표시 (같은 동 이름 구분)
+        if level == "umd" and r["sgg_text_full"]:
+            display = f"{r['sgg_text_full']} {name}".strip()
+        else:
+            display = name
+        items.append({
+            "name":    display,
+            "lat":     float(r["lat"])  if r["lat"]  is not None else None,
+            "lng":     float(r["lng"])  if r["lng"]  is not None else None,
+            "total":   int(r["total"]),
+            "by_type": {
+                "생활":   int(r["cnt_live"]    or 0),
+                "관광":   int(r["cnt_tour"]    or 0),
+                "일반":   int(r["cnt_gen"]     or 0),
+                "복합":   int(r["cnt_mixed"]   or 0),
+                "미분류": int(r["cnt_unknown"] or 0),
+            },
+        })
+
+    payload = json.dumps({"level": level, "items": items}, ensure_ascii=False)
+    _cluster_cache[_cache_key] = (time.time(), payload.encode("utf-8"))
+    return Response(payload.encode("utf-8"), mimetype="application/json")
+
 
 @app.route("/api/buildings-geo")
 @limiter.limit("30 per minute")
