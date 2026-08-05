@@ -583,7 +583,7 @@ const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이�
 // 모바일(좁은 세로 화면) 전용 초기뷰 — 세로로 길어 같은 값이면 속초·제주가 잘리므로 별도 값 사용.
 // PC 값(MAP_DEFAULT_CENTER/LEVEL)은 그대로 두고 폭 480px 이하일 때만 적용된다.
 const MAP_MOBILE_MAX_WIDTH = 480;
-const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.8, lng: 127.6 }; // 모바일은 사이드패널이 지도를 가리지 않으므로 한반도 실제 중심 경도 사용. 위도는 상단 검색버튼을 피해 약간 북쪽 치우침(작은 폰에서도 제주 남단이 하단에 걸치는 정도)
+const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.8, lng: 127.1 }; // 모바일: sido 배지가 xAnchor:0+margin으로 우측 확장되므로 중심을 서쪽으로 당겨 배지가 화면 내에 들어오도록 조정
 const MAP_DEFAULT_LEVEL_MOBILE = 13;  // 속초~제주가 세로로 한 화면에 들어오는 축소 수준 (레벨 12는 제주 잘림)
 
 function isMobileMapViewport(){
@@ -985,8 +985,12 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     // sgg/umd 레벨: 기존대로 중앙 고정
     const isSido = clusterLevel === "sido";
     if (isSido) {
+      // 모바일: 좁은 화면에서 배지가 오른쪽으로 밀려나지 않도록 최소 간격만 적용
+      // 데스크톱: 글자당 ~13px 기준으로 Kakao 지명 텍스트 너비만큼 여백 확보
       const nameLen = item.name ? item.name.length : 4;
-      el.style.marginLeft = Math.max(44, nameLen * 13 + 4) + "px";
+      el.style.marginLeft = isMobileMapViewport()
+        ? "6px"
+        : Math.max(44, nameLen * 13 + 4) + "px";
     }
     const overlay = new kakao.maps.CustomOverlay({
       position: pos, content: el,
