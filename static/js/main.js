@@ -583,7 +583,7 @@ const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이�
 // 모바일(좁은 세로 화면) 전용 초기뷰 — 세로로 길어 같은 값이면 속초·제주가 잘리므로 별도 값 사용.
 // PC 값(MAP_DEFAULT_CENTER/LEVEL)은 그대로 두고 폭 480px 이하일 때만 적용된다.
 const MAP_MOBILE_MAX_WIDTH = 480;
-const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.8, lng: 127.1 }; // 모바일: sido 배지가 xAnchor:0+margin으로 우측 확장되므로 중심을 서쪽으로 당겨 배지가 화면 내에 들어오도록 조정
+const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.8, lng: 127.6 }; // 모바일: 한반도 지리 중심(~127.5°) 기준. sido 배지 margin-left는 6px(소형)이므로 이 값으로 균형 유지
 const MAP_DEFAULT_LEVEL_MOBILE = 13;  // 속초~제주가 세로로 한 화면에 들어오는 축소 수준 (레벨 12는 제주 잘림)
 
 function isMobileMapViewport(){
