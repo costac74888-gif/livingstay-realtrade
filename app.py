@@ -7639,9 +7639,25 @@ def admin_backfill_status():
         row = cur.fetchone()
         cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_BACKFILL_META_KEY,))
         meta = cur.fetchone()
-        # 오늘 사용한 RTMS API 호출 수 (sync_batch가 app_meta에 날짜별로 기록)
-        from sync_batch import _daily_calls_today, MAX_DAILY_BACKFILL_CALLS
-        api_calls_today = _daily_calls_today(cur)
+        # 백필 전용 API 호출 수 (정기동기화와 독립된 별도 카운터)
+        from sync_batch import (
+            _daily_calls_today, MAX_DAILY_BACKFILL_CALLS,
+            DAILY_CALLS_META_KEY_BACKFILL, MAX_DAILY_BACKFILL_ONLY_CALLS,
+        )
+        api_calls_today = _daily_calls_today(cur, DAILY_CALLS_META_KEY_BACKFILL)
+        api_calls_limit_backfill = MAX_DAILY_BACKFILL_ONLY_CALLS
+        # 시군구 완료 진행률: tx_backfill_progress 체크포인트에서 계산
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", ("tx_backfill_progress",))
+        prog_row = cur.fetchone()
+        sgg_done = 0
+        if prog_row and prog_row["value"]:
+            try:
+                prog_data = json.loads(prog_row["value"])
+                sgg_done = len(prog_data.get("done", {}))
+            except (TypeError, ValueError):
+                pass
+        cur.execute("SELECT COUNT(DISTINCT sgg_cd) AS c FROM master_buildings WHERE sgg_cd IS NOT NULL")
+        sgg_total = cur.fetchone()["c"] or 0
     finally:
         cur.close()
         conn.close()
@@ -7676,11 +7692,13 @@ def admin_backfill_status():
         "error": ((status.get("error") if status else None)
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
         "tx_total": row["c"],
-        "api_calls_today": api_calls_today,
-        "api_calls_limit": MAX_DAILY_BACKFILL_CALLS,
+        "api_calls_today": api_calls_today,           # 백필 전용 카운터
+        "api_calls_limit": api_calls_limit_backfill,  # 백필 전용 한도(5,000건)
         "min_deal_date": (row["mind"].strftime("%Y-%m-%d") if hasattr(row["mind"], "strftime") else row["mind"]) if row["mind"] else None,
         "has_log": bool(status and status.get("log_file")
                         and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), status["log_file"]))),
+        "sgg_done": sgg_done,    # 체크포인트에서 완료 처리된 시군구 수
+        "sgg_total": sgg_total,  # 마스터에 있는 전체 시군구 수
     })
 
 

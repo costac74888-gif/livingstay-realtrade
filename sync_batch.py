@@ -54,13 +54,17 @@ RTMS_SLEEP = 0.5
 # 날짜별로 저장 → 프로세스 재시작/동시 실행(Fast Sync + Backfill Retry)에도
 # 하나의 카운터를 공유하고, 날짜가 바뀌면 자동으로 0부터 다시 시작한다.
 # ------------------------------------------------------------------
-MAX_DAILY_BACKFILL_CALLS = 8000          # 조정 시 이 상수만 변경
-DAILY_CALLS_META_KEY = "rtms_daily_calls"
+MAX_DAILY_BACKFILL_CALLS = 8000          # 정기동기화+재시도 공유 총 한도 (조정 시 이 상수만 변경)
+MAX_DAILY_BACKFILL_ONLY_CALLS = 5000     # 백필 전용 일일 한도 — 나머지 3,000건은 정기동기화·재시도 몫
+DAILY_CALLS_META_KEY = "rtms_daily_calls"             # 정기동기화·재시도 공유 카운터
+DAILY_CALLS_META_KEY_BACKFILL = "rtms_daily_calls_backfill"  # 백필 전용 카운터(독립 예산)
 
 
-def _daily_calls_today(cur):
-    """오늘 날짜 기준 누적 RTMS 호출 수. 날짜가 다르면(=어제 기록) 0."""
-    cur.execute("SELECT value FROM app_meta WHERE key=%s", (DAILY_CALLS_META_KEY,))
+def _daily_calls_today(cur, key=None):
+    """오늘 날짜 기준 누적 RTMS 호출 수. 날짜가 다르면(=어제 기록) 0.
+    key 미지정 시 공유 카운터(DAILY_CALLS_META_KEY) 사용."""
+    _key = key or DAILY_CALLS_META_KEY
+    cur.execute("SELECT value FROM app_meta WHERE key=%s", (_key,))
     row = cur.fetchone()
     if not row or not row["value"]:
         return 0
@@ -73,9 +77,11 @@ def _daily_calls_today(cur):
     return 0
 
 
-def _bump_daily_calls(cur, conn):
+def _bump_daily_calls(cur, conn, key=None):
     """RTMS 호출 1건을 카운터에 더하고(원자적 UPSERT) 오늘 누적값을 반환.
-    날짜가 바뀌었으면 1부터 다시 시작한다."""
+    날짜가 바뀌었으면 1부터 다시 시작한다.
+    key 미지정 시 공유 카운터(DAILY_CALLS_META_KEY) 사용."""
+    _key = key or DAILY_CALLS_META_KEY
     today = datetime.now().strftime("%Y-%m-%d")
     fresh = json.dumps({"date": today, "count": 1})
     cur.execute("""
@@ -91,7 +97,7 @@ def _bump_daily_calls(cur, conn):
             END,
             updated_at = NOW()
         RETURNING (value::jsonb ->> 'count')::int AS count
-    """, (DAILY_CALLS_META_KEY, fresh, today, today))
+    """, (_key, fresh, today, today))
     count = cur.fetchone()["count"]
     conn.commit()
     return count
@@ -522,14 +528,18 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
                 skipped += 1
                 continue
             # 일일 소프트 캡: 호출 '전에' 확인 → 정확히 한도에서 멈춘다.
+            # 백필 모드(progress_key 지정)일 때는 전용 카운터·한도를 사용해 정기동기화 예산을 보호.
             # 남은 (시군구,월)은 체크포인트에 미기록 상태 그대로 → 내일 이어서 진행.
-            used = _daily_calls_today(cur)
-            if used >= MAX_DAILY_BACKFILL_CALLS:
-                print(f"[CAP] 오늘 RTMS 호출 {used}건 — 일일 한도({MAX_DAILY_BACKFILL_CALLS}건) 도달, "
-                      f"백필을 중단합니다. 체크포인트가 저장되어 있어 다음 실행에서 이어서 진행됩니다.", flush=True)
+            _cap_key   = DAILY_CALLS_META_KEY_BACKFILL if progress_key else DAILY_CALLS_META_KEY
+            _cap_limit = MAX_DAILY_BACKFILL_ONLY_CALLS if progress_key else MAX_DAILY_BACKFILL_CALLS
+            used = _daily_calls_today(cur, _cap_key)
+            if used >= _cap_limit:
+                print(f"[CAP] 오늘 {'백필 전용 ' if progress_key else ''}RTMS 호출 {used}건 "
+                      f"— 일일 한도({_cap_limit}건) 도달, 백필을 중단합니다. "
+                      f"체크포인트가 저장되어 있어 다음 실행에서 이어서 진행됩니다.", flush=True)
                 capped = True
                 break
-            _bump_daily_calls(cur, conn)
+            _bump_daily_calls(cur, conn, _cap_key)
             try:
                 trades = fetch_nrg_trade(sgg_cd, deal_ymd)
             except RateLimitError as e:

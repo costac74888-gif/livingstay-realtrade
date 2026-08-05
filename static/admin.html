@@ -1829,10 +1829,17 @@
       if (!box || !btn) { stopBackfillPolling(); return; }
       const rows = [];
       rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 가장 오래된 계약일 ${d.min_deal_date ? dgEscape(d.min_deal_date) : "-"}</div>`);
+      if (d.sgg_total) {
+        const done = d.sgg_done || 0;
+        const pct = Math.round(done / d.sgg_total * 100);
+        const barFill = `<span style="display:block;width:${pct}%;height:100%;background:var(--moss,#4a7a18);border-radius:3px;"></span>`;
+        const bar = `<span style="display:inline-block;width:80px;height:8px;background:#dde2e8;border-radius:3px;vertical-align:middle;margin:0 6px;">${barFill}</span>`;
+        rows.push(`<div class="geo-stat-row"><b>완료 시군구:</b> ${done} / ${d.sgg_total}개 ${bar}${pct}% ${done === 0 ? '<span style="color:var(--ink-soft);font-size:11px;">(백필 미실행 또는 체크포인트 없음)</span>' : ''}</div>`);
+      }
       if (d.api_calls_limit) {
         const used = d.api_calls_today || 0;
         const atCap = used >= d.api_calls_limit;
-        rows.push(`<div class="geo-stat-row"${atCap ? ' style="color:#b3261e"' : ""}><b>오늘 API 사용량:</b> ${num(used)} / ${num(d.api_calls_limit)}건${atCap ? " · 일일 한도 도달 (내일 자동 재개)" : ""}</div>`);
+        rows.push(`<div class="geo-stat-row"${atCap ? ' style="color:#b3261e"' : ""}><b>오늘 백필 API 사용량:</b> ${num(used)} / ${num(d.api_calls_limit)}건 (전용 예산, 정기동기화와 분리)${atCap ? " · 일일 한도 도달 (내일 자동 재개)" : ""}</div>`);
       }
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 백필 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")}${d.months ? " · " + num(d.months) + "개월치" : ""})</div>`);
