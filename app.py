@@ -8004,11 +8004,19 @@ def admin_buildings_list():
     total = cur.fetchone()["c"]
     # sort/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
     cur.execute(f"""
-        SELECT id, building_name, name_pending, road_address, jibun_address, sgg_text,
-               sgg_cd, umd_nm, jibun, units, biz_units, lodging_type, lodging_type_detail
-        FROM master_buildings
+        SELECT mb.id, mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
+               mb.sgg_text, mb.sgg_cd, mb.umd_nm, mb.jibun, mb.units, mb.biz_units,
+               mb.lodging_type, mb.lodging_type_detail,
+               (SELECT COUNT(*) FROM user_favorites uf
+                WHERE uf.master_building_id = mb.id
+                   OR (uf.master_building_id IS NULL
+                       AND (uf.address = mb.road_address
+                            OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))
+                       AND (uf.building_name IS NULL OR uf.building_name = mb.building_name))
+               ) AS favorite_count
+        FROM master_buildings mb
         WHERE {where_sql}
-        ORDER BY {sort} {order}, id ASC
+        ORDER BY {sort} {order}, mb.id ASC
         LIMIT %s OFFSET %s
     """, params + [size, offset])
     items = [dict(r) for r in cur.fetchall()]
@@ -8252,6 +8260,73 @@ def admin_buildings_export():
     resp.headers["Content-Disposition"] = "attachment; filename=buildings.xlsx"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/api/admin/buildings/<int:mbid>/favorites/export.xlsx")
+@require_admin
+def admin_building_favorites_export(mbid):
+    """건물별 관심저장 회원 목록 엑셀 다운로드."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 건물명 조회 (파일명용)
+        cur.execute("SELECT building_name, road_address FROM master_buildings WHERE id = %s", (mbid,))
+        bld = cur.fetchone()
+        if not bld:
+            return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+        bld_name = bld["building_name"] or bld["road_address"] or str(mbid)
+
+        # /api/favorites/mine 의 매칭 기준과 동일하게 조인
+        cur.execute("""
+            SELECT u.name, u.email, u.phone, uf.created_at
+            FROM user_favorites uf
+            JOIN users u ON u.id = uf.user_id
+            WHERE uf.master_building_id = %s
+               OR (uf.master_building_id IS NULL
+                   AND (SELECT (uf.address = mb.road_address
+                                OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))
+                           AND (uf.building_name IS NULL OR uf.building_name = mb.building_name)
+                        FROM master_buildings mb WHERE mb.id = %s))
+            ORDER BY uf.created_at DESC
+        """, (mbid, mbid))
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from datetime import date
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "관심저장회원"
+    headers = ["이름", "이메일", "연락처", "저장일시"]
+    ws.append(headers)
+    hdr_fill = PatternFill("solid", fgColor="F9F5EE")
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+    for r in rows:
+        ws.append([
+            r["name"] or "",
+            r["email"] or "",
+            r["phone"] or "",
+            r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+        ])
+    col_widths = [16, 30, 16, 18]
+    for col, w in zip(ws.columns, col_widths):
+        ws.column_dimensions[col[0].column_letter].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = bld_name.replace("/", "_").replace("\\", "_")
+    fname = f"관심저장회원_{safe_name}_{date.today().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True,
+                     download_name=fname)
 
 
 @app.route("/api/admin/backup-export")

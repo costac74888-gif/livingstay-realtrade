@@ -159,6 +159,10 @@
           { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
             render: (v, row) => `${dgEscape(v || "")}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}` },
           { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
+          { key: "favorite_count", label: "관심저장", sortable: true,
+            render: (v, row) => v > 0
+              ? `<a href="/api/admin/buildings/${row.id}/favorites/export.xlsx" style="color:var(--brass-dark);font-weight:700;text-decoration:none;" title="관심저장 회원 명단 다운로드">${v}명 📥</a>`
+              : `<span style="color:var(--ink-soft);">0</span>` },
           { key: "matched_broker_name", label: "단지부동산(입주부동산)", clientSort: true,
             render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
           { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
