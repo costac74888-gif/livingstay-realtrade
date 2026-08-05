@@ -265,19 +265,19 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
         row = {child.tag: (child.text or "").strip() for child in item}
         items.append(row)
 
-    # 실제 RTMS(NrgTrade) 응답을 raw로 확인한 결과:
-    #  - 유형 필드는 buildingType 이며 값은 '일반' / '집합' → 생숙은 집합건물이므로 '집합'.
-    #  - 용도 필드는 buildingUse 이며 값 예: 판매/제1종근린생활/제2종근린생활/기타/숙박 → 생숙은 '숙박'.
-    # 1차: buildingType == '집합', 2차: buildingUse에 '숙박' 포함.
-    # buildingUse 필드가 비어있는 응답 케이스는 일단 통과시켜(매칭 단계에서 걸러짐)
-    # 필드 누락 때문에 데이터가 전부 사라지는 사고를 방지한다.
-    def _is_saengsuk(r):
-        if r.get("buildingType", "") != "집합":
-            return False
+    # RTMS(NrgTrade) 응답 필드:
+    #  - buildingType: '일반'(통매매/단독소유) 또는 '집합'(구분소유)
+    #  - buildingUse: '숙박' 포함이면 숙박시설
+    # buildingType 조건 제거 — 통매매(일반) + 구분소유(집합) 둘 다 수집.
+    # master_buildings에 이미 등록된 일반숙박시설(모텔·여관 3,344건)에 대해
+    # 통매매 실거래도 자동 매칭·적재된다.
+    # buildingUse 비어있는 케이스는 통과(매칭 단계에서 걸러짐) — 필드 누락으로
+    # 데이터 전체가 사라지는 사고 방지 정책 유지.
+    def _is_lodging(r):
         use = r.get("buildingUse", "")
         return (not use) or ("숙박" in use)
 
-    return [r for r in items if _is_saengsuk(r)]
+    return [r for r in items if _is_lodging(r)]
 
 
 def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
