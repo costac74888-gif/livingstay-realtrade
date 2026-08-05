@@ -231,7 +231,8 @@
       } else {
         const params = new URLSearchParams({
           q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm,
-          year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size
+          year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size,
+          with_total: 1
         });
         const res = await fetch(`/api/transactions?${params}`);
         const data = await res.json();
