@@ -117,18 +117,28 @@
 
 <script>
   let regionTree = {};
-  const FAV_KEY = "livingstay_favorites";
+  const FAV_KEY = "livingstay_favorites"; // 마이그레이션 호환용 — 직접 쓰기는 하지 않음
   const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", page:1, size:20, favOnly:false, favKey:null };
 
-  // 관심단지: 지도 홈과 동일한 localStorage 키를 그대로 읽는다(서버 로그인 여부와 무관).
-  function getFavorites(){ try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; } }
-  function serverFavSync(method, item){
+  // 로그인 회원의 관심키(building_name|address) 인메모리 캐시
+  // 비로그인 → 항상 빈 Set
+  let serverFavKeys = new Set();
+  function getFavorites(){ return [...serverFavKeys]; }
+
+  async function loadServerFavKeys(){
+    serverFavKeys = new Set();
     if (!window.__livingstayLoggedIn) return;
-    fetch("/api/favorites/mine", {
-      method: method, credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ building_name: item.building_name, address: item.address })
-    }).catch(function(){});
+    try {
+      const res = await fetch("/api/favorites/mine", { credentials: "same-origin" });
+      const data = await res.json();
+      (data.items || []).forEach(item => serverFavKeys.add(`${item.building_name}|${item.address}`));
+    } catch(e) {}
+  }
+
+  function promptLogin(msg){
+    if (msg) alert(msg);
+    if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+    else location.href = "/?login=1";
   }
 
   function escapeHtml(v){
@@ -358,17 +368,32 @@
   }
 
   function removeFav(key){
-    const favs = getFavorites().filter(x => x !== key);
-    localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+    serverFavKeys.delete(key);
     const sep = key.indexOf("|");
-    if (sep >= 0) serverFavSync("DELETE", { building_name: key.slice(0, sep), address: key.slice(sep + 1) });
+    if (sep >= 0){
+      fetch("/api/favorites/mine", {
+        method: "DELETE", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ building_name: key.slice(0, sep), address: key.slice(sep + 1) })
+      }).catch(function(){});
+    }
     state.page = 1;
     renderFavChips();
     loadBoard();
   }
 
-  // 로그인 직후 auth.js가 localStorage 관심키를 migrate 하면 칩을 다시 그린다.
-  window.refreshFavoritesUI = function(){ renderFavChips(); if (state.favOnly) loadBoard(); };
+  // auth.js가 로그인/migrate 후 호출 → 서버에서 관심키 재로드 후 UI 갱신
+  window.refreshFavoritesUI = async function(){
+    await loadServerFavKeys();
+    renderFavChips();
+    if (state.favOnly) loadBoard();
+  };
+  // livingstay:auth — 이미 로그인 상태로 진입할 때도 관심키 로드
+  document.addEventListener("livingstay:auth", async function(){
+    await loadServerFavKeys();
+    renderFavChips();
+    if (state.favOnly) loadBoard();
+  });
 
   document.getElementById("selSiDo").addEventListener("change", e=>{
     state.si_do = e.target.value; state.sgg_nm=""; state.umd_nm="";

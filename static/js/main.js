@@ -1,6 +1,5 @@
-const FAV_KEY = "livingstay_favorites";
+const FAV_KEY = "livingstay_favorites"; // 마이그레이션 호환용 — 직접 쓰기는 하지 않음
 // 관리자 모드: URL에 ?admin=1 을 붙이면 50개까지, 아니면 일반 사용자 5개 제한
-// (아직 로그인/계정 시스템이 없어 임시로 URL 파라미터로 구분 — 나중에 계정 붙이면 서버 권한으로 교체 권장)
 const IS_ADMIN = new URLSearchParams(location.search).get("admin") === "1";
 const MAX_FAVORITES = IS_ADMIN ? 50 : 5;
 
@@ -8,45 +7,67 @@ let regionTree = {};
 let state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", page:1, size:20, favOnly:false, favKey:null };
 let defaultYear = "";
 
-function getFavorites(){
-  try { return JSON.parse(localStorage.getItem(FAV_KEY) || "[]"); } catch(e){ return []; }
-}
+// 로그인 회원의 관심키(building_name|address) 인메모리 캐시
+// 비로그인 → 항상 빈 Set → 관심 기능 전체가 로그인 유도로 동작
+let serverFavKeys = new Set();
+
+function getFavorites(){ return [...serverFavKeys]; }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
-function isFav(item){ return getFavorites().includes(favKey(item)); }
-// 로그인 상태(auth.js가 window.__livingstayLoggedIn 을 세팅)일 때만 서버에도 반영한다.
-// 비로그인 사용자는 지금처럼 localStorage만 사용 → 하위호환 유지.
-function serverFavSync(method, item){
+function isFav(item){ return serverFavKeys.has(favKey(item)); }
+
+// 서버 /api/favorites/mine 에서 내 관심키 전체를 로드해 인메모리 캐시를 채운다.
+async function loadServerFavKeys(){
+  serverFavKeys = new Set();
   if (!window.__livingstayLoggedIn) return;
-  fetch("/api/favorites/mine", {
-    method: method,
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      building_name: item.building_name,
-      address: item.address,
-      // 저장 시점에 이미 알고 있는 master_buildings.id를 함께 저장 —
-      // 실거래 없는 건물도 마이페이지에서 상세 링크가 끊기지 않게 한다.
-      building_id: (item.building_id != null ? item.building_id : undefined)
-    })
-  }).catch(function(){ /* 서버 반영 실패해도 localStorage는 이미 갱신됨 → 무시 */ });
+  try {
+    const res = await fetch("/api/favorites/mine", { credentials: "same-origin" });
+    const data = await res.json();
+    (data.items || []).forEach(item => serverFavKeys.add(`${item.building_name}|${item.address}`));
+  } catch(e) {}
 }
+
+// 로그인 유도 헬퍼
+function promptLogin(msg){
+  if (msg) alert(msg);
+  if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+  else location.href = "/?login=1";
+}
+
 function toggleFav(item){
-  let favs = getFavorites();
+  // 하드게이트: 비로그인은 저장 불가
+  if (!window.__livingstayLoggedIn){
+    promptLogin("관심저장은 로그인 후 이용할 수 있습니다.");
+    return false;
+  }
   const k = favKey(item);
   let clearedActiveFilter = false;
-  const wasFav = favs.includes(k);
+  const wasFav = serverFavKeys.has(k);
   if (wasFav){
-    favs = favs.filter(x=>x!==k);
+    serverFavKeys.delete(k);
     if (state.favKey === k){ state.favKey = null; state.favOnly = false; clearedActiveFilter = true; }
+    fetch("/api/favorites/mine", {
+      method: "DELETE", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ building_name: item.building_name, address: item.address })
+    }).catch(function(){});
   } else {
-    if (favs.length >= MAX_FAVORITES){
+    if (serverFavKeys.size >= MAX_FAVORITES){
       alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
       return false;
     }
-    favs = [...favs, k];
+    serverFavKeys.add(k);
+    fetch("/api/favorites/mine", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        building_name: item.building_name,
+        address: item.address,
+        // 저장 시점에 이미 알고 있는 master_buildings.id를 함께 저장 —
+        // 실거래 없는 건물도 마이페이지에서 상세 링크가 끊기지 않게 한다.
+        building_id: (item.building_id != null ? item.building_id : undefined)
+      })
+    }).catch(function(){});
   }
-  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
-  serverFavSync(wasFav ? "DELETE" : "POST", item);
   updateFavCountLabel();
   renderFavChips();
   if (typeof loadSideFavorites === "function") loadSideFavorites();
@@ -54,11 +75,14 @@ function toggleFav(item){
   return true;
 }
 function removeFav(key){
-  const favs = getFavorites().filter(x=>x!==key);
-  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  serverFavKeys.delete(key);
   const sep = key.indexOf("|");
   if (sep >= 0){
-    serverFavSync("DELETE", { building_name: key.slice(0, sep), address: key.slice(sep + 1) });
+    fetch("/api/favorites/mine", {
+      method: "DELETE", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ building_name: key.slice(0, sep), address: key.slice(sep + 1) })
+    }).catch(function(){});
   }
   if (state.favKey === key){ state.favKey = null; state.favOnly = false; }
   updateFavCountLabel();
@@ -66,15 +90,23 @@ function removeFav(key){
   if (typeof loadSideFavorites === "function") loadSideFavorites();
   loadBoard();
 }
-// 로그인 직후 migrate 로 localStorage가 갱신됐을 때 auth.js가 호출 → 관심 UI 다시 그린다.
-window.refreshFavoritesUI = function(){
+// auth.js가 로그인/migrate 후 호출 → 서버에서 관심키 재로드 후 UI 갱신
+window.refreshFavoritesUI = async function(){
+  await loadServerFavKeys();
   if (typeof updateFavCountLabel === "function") updateFavCountLabel();
   if (typeof renderFavChips === "function") renderFavChips();
   if (typeof loadSideFavorites === "function") loadSideFavorites();
 };
+// livingstay:auth 이벤트 — 이미 로그인된 상태로 페이지에 진입할 때도 관심키를 로드한다.
+document.addEventListener("livingstay:auth", async function(){
+  await loadServerFavKeys();
+  if (typeof updateFavCountLabel === "function") updateFavCountLabel();
+  if (typeof renderFavChips === "function") renderFavChips();
+  if (typeof loadSideFavorites === "function") loadSideFavorites();
+});
 function updateFavCountLabel(){
-  document.getElementById("favCountLabel").textContent =
-    `저장된 관심단지 ${getFavorites().length}/${MAX_FAVORITES}개`;
+  const el = document.getElementById("favCountLabel");
+  if (el) el.textContent = `저장된 관심단지 ${serverFavKeys.size}/${MAX_FAVORITES}개`;
 }
 
 // 실거래 알림 구독 — 서버(user_alert_subscriptions)에 저장한다. 로그인 상태에서만 동작하고,
