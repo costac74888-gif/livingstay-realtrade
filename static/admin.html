@@ -2054,6 +2054,13 @@
             이미 있는 거래는 건너뛰므로 여러 번 눌러도 데이터가 중복되지 않습니다.
             (실행 제한: 시간당 2회 — 국토부 API 사용량 보호)
           </p>
+          <p class="legal-admin-hint" style="background:#f4f1ea; border-left:3px solid var(--brass); padding:8px 12px; margin-top:4px;">
+            <b>📌 수집 범위 참고 (RTMS 구조적 한계)</b><br>
+            사용 API(<code>RTMSDataSvcNrgTrade</code>)는 <b>집합건물(구분소유) 상업업무용 매매</b>만
+            대상입니다. <b>통소유 모텔·여관</b>은 이 API로 구조적으로 수집되지 않습니다.<br>
+            ※ DB 검증(2026-08-05): lodging_type='일반' 2,989건은 비발디파크·소노벨·켄싱턴리조트·
+            제주노형호텔 등 <b>구분소유 리조트·호텔 호실 매매</b>이며, 일반 모텔·여관 건수는 없음.
+          </p>
           <div id="txSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">
             <span id="txSyncMsg" class="legal-msg" role="alert"></span>
