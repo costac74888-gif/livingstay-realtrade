@@ -37,10 +37,6 @@ args = "Fast Sync"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Verify Units"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Fill PK"
 
 [[workflows.workflow.tasks]]
@@ -54,6 +50,10 @@ args = "Merge Dev→Prod (dry-run)"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Merge Dev→Prod (실제반영)"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backfill General Lodging"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -112,17 +112,6 @@ args = "python -u sync_batch.py --months 60 --master-only"
 outputType = "console"
 
 [[workflows.workflow]]
-name = "Verify Units"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python -u verify_units.py excluded_small_buildings.csv"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
 name = "Fill PK"
 author = "agent"
 
@@ -159,6 +148,14 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python -u merge_dev_to_prod.py"
+
+[[workflows.workflow]]
+name = "Backfill General Lodging"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -u run_backfill.py"
 
 [[ports]]
 localPort = 5000
