@@ -402,6 +402,12 @@ document.getElementById("btnOpenSubmit").addEventListener("click", () => {
 document.getElementById("btnCloseSubmit").addEventListener("click", () => {
   submitModal.style.display = "none";
 });
+
+// URL ?modal=submit 으로 직접 접근 시 모달 자동 오픈
+if (new URLSearchParams(location.search).get("modal") === "submit") {
+  submitModal.style.display = "flex";
+  document.getElementById("submitResult").style.display = "none";
+}
 document.getElementById("btnSubmitBuilding").addEventListener("click", async () => {
   const road_address = document.getElementById("submitAddress").value.trim();
   const building_name_hint = document.getElementById("submitNameHint").value.trim();
