@@ -6948,6 +6948,92 @@ def operator_booking_url_request_submit():
 
 # ── OTA 링크 신청 관리자 심사 ────────────────────────────────────────────────
 
+@app.route("/api/admin/booking-url-requests/export.xlsx")
+@require_admin
+def admin_booking_url_requests_export():
+    """OTA 신청 전체 이력 엑셀 다운로드 — 신청일 내림차순."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT bur.id, bur.status, bur.renewal_count,
+                   bur.booking_url, bur.admin_note,
+                   bur.submitted_at, bur.reviewed_at,
+                   mb.building_name, mb.road_address,
+                   mb.booking_url_expires_at,
+                   o.company_name, o.category,
+                   au.email AS reviewed_by_email
+            FROM booking_url_requests bur
+            JOIN master_buildings mb ON mb.id = bur.master_building_id
+            JOIN operators o ON o.id = bur.operator_id
+            LEFT JOIN admin_users au ON au.id = bur.reviewed_by
+            ORDER BY bur.submitted_at DESC
+        """)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "OTA신청이력"
+
+    headers = ["번호", "신청일", "건물명", "도로명주소", "업체명", "업종",
+               "차수", "OTA 링크", "상태", "만료일", "처리일", "처리자", "거절사유"]
+    ws.append(headers)
+    # 헤더 스타일
+    hdr_fill = PatternFill("solid", fgColor="F9F5EE")
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    status_map = {"pending": "검토중", "approved": "승인됨", "rejected": "거절됨", "cancelled": "취소됨"}
+    for i, r in enumerate(rows, 1):
+        exp = r["booking_url_expires_at"]
+        if exp and r["status"] == "approved":
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            status_label = "운영중" if exp > now else "만료됨"
+        else:
+            status_label = status_map.get(r["status"], r["status"])
+        ws.append([
+            i,
+            r["submitted_at"].strftime("%Y-%m-%d %H:%M") if r["submitted_at"] else "",
+            r["building_name"],
+            r["road_address"] or "",
+            r["company_name"],
+            r["category"] or "",
+            "1차" if (r["renewal_count"] or 0) == 0 else "연장(2차)",
+            r["booking_url"],
+            status_label,
+            r["booking_url_expires_at"].strftime("%Y-%m-%d") if r["booking_url_expires_at"] else "",
+            r["reviewed_at"].strftime("%Y-%m-%d %H:%M") if r["reviewed_at"] else "",
+            r["reviewed_by_email"] or "",
+            r["admin_note"] or "",
+        ])
+
+    # 열 너비 자동 조정
+    col_widths = [6, 16, 24, 30, 20, 12, 8, 50, 8, 12, 16, 20, 30]
+    for col, w in zip(ws.columns, col_widths):
+        ws.column_dimensions[col[0].column_letter].width = w
+    # OTA 링크 열 셀 서식 (문자열로 강제)
+    for row in ws.iter_rows(min_row=2):
+        row[7].number_format = "@"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import date
+    fname = f"OTA신청이력_{date.today().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True,
+                     download_name=fname)
+
+
 @app.route("/api/admin/booking-url-requests/summary")
 @require_admin
 def admin_booking_url_requests_summary():
