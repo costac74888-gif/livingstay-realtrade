@@ -913,7 +913,6 @@ async function loadMapMarkers(filters = {}, opts = {}){
 function _clusterModeForLevel(lv){
   if (lv >= CLUSTER_SIDO_MIN_LEVEL) return "sido";
   if (lv >= CLUSTER_SGG_MIN_LEVEL)  return "sgg";
-  if (lv >= CLUSTER_UMD_MIN_LEVEL)  return "umd";
   return "markers";
 }
 
@@ -961,9 +960,8 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     { key: "미분류", color: LODGING_COLORS["미분류"] },
   ];
 
-  // 클릭 시 드릴다운: 시도→시군구 레벨(9), 시군구→읍면동 레벨(7), 읍면동→개별마커 레벨(6)
-  const drillLevel = clusterLevel === "sido" ? 9
-                   : clusterLevel === "sgg"  ? 7 : 6;
+  // 클릭 시 드릴다운: 시도→시군구 레벨(9), 시군구→개별마커 레벨(6)
+  const drillLevel = clusterLevel === "sido" ? 9 : 6;
 
   items.forEach(item => {
     if (item.lat == null || item.lng == null) return;
