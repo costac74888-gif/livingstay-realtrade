@@ -6915,6 +6915,19 @@ def operator_booking_url_request_submit():
         """, [operator_id, mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "담당 단지가 아닙니다."}), 403
+        # 재신청 횟수 확인 (총 2회: 최초 1회 + 재신청 1회)
+        cur.execute("""
+            SELECT COALESCE(MAX(renewal_count), -1) AS max_renewal
+            FROM booking_url_requests
+            WHERE operator_id = %s AND master_building_id = %s AND status = 'approved'
+        """, [operator_id, mbid])
+        row = cur.fetchone()
+        max_renewal = row["max_renewal"] if row else -1
+        if max_renewal >= 1:
+            return jsonify({"ok": False,
+                            "message": "무료 이용 기간이 모두 소진되었습니다. 더 이상 신청하실 수 없습니다."}), 400
+        # 이번 신청의 renewal_count: 첫 신청=0, 재신청=1
+        new_renewal_count = 0 if max_renewal < 0 else 1
         # 기존 pending 신청 취소 (동일 건물에 중복 pending 방지)
         cur.execute("""
             UPDATE booking_url_requests
@@ -6923,9 +6936,9 @@ def operator_booking_url_request_submit():
         """, [operator_id, mbid])
         cur.execute("""
             INSERT INTO booking_url_requests
-                (operator_id, master_building_id, booking_url, status, submitted_at)
-            VALUES (%s, %s, %s, 'pending', NOW())
-        """, [operator_id, mbid, booking_url])
+                (operator_id, master_building_id, booking_url, status, submitted_at, renewal_count)
+            VALUES (%s, %s, %s, 'pending', NOW(), %s)
+        """, [operator_id, mbid, booking_url, new_renewal_count])
         conn.commit()
     finally:
         cur.close()
@@ -6934,6 +6947,34 @@ def operator_booking_url_request_submit():
 
 
 # ── OTA 링크 신청 관리자 심사 ────────────────────────────────────────────────
+
+@app.route("/api/admin/booking-url-requests/summary")
+@require_admin
+def admin_booking_url_requests_summary():
+    """OTA 신청 현황 요약: 대기중/운영중/만료임박(7일) 카운트."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE bur.status = 'pending')                                          AS pending_count,
+                COUNT(*) FILTER (WHERE bur.status = 'approved'
+                                   AND mb.booking_url_expires_at > NOW())                               AS active_count,
+                COUNT(*) FILTER (WHERE bur.status = 'approved'
+                                   AND mb.booking_url_expires_at > NOW()
+                                   AND mb.booking_url_expires_at <= NOW() + INTERVAL '7 days')          AS expiring_count
+            FROM booking_url_requests bur
+            JOIN master_buildings mb ON mb.id = bur.master_building_id
+        """)
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True,
+                    "pending": row["pending_count"],
+                    "active": row["active_count"],
+                    "expiring": row["expiring_count"]})
+
 
 @app.route("/api/admin/booking-url-requests")
 @require_admin
@@ -6950,11 +6991,12 @@ def admin_booking_url_requests_list():
             where = "bur.status = %s"
             params = [status_filter]
         cur.execute(f"""
-            SELECT bur.id, bur.status,
+            SELECT bur.id, bur.status, bur.renewal_count,
                    bur.booking_url, bur.admin_note,
                    to_char(bur.submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at,
                    to_char(bur.reviewed_at,  'YYYY-MM-DD HH24:MI') AS reviewed_at,
                    mb.id AS building_id, mb.building_name, mb.road_address,
+                   mb.booking_url_expires_at,
                    o.id AS operator_id, o.company_name, o.category
             FROM booking_url_requests bur
             JOIN master_buildings mb ON mb.id = bur.master_building_id
