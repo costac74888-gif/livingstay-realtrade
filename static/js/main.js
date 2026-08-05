@@ -979,10 +979,15 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
 
     // sido 레벨: xAnchor=0(좌측 고정) + yAnchor=0.5(수직 중앙) →
     //   배지 왼쪽 끝이 도청소재지 좌표에 붙어 지명 우측으로 배치됨.
-    //   margin-left로 지명 텍스트와 배지 사이에 간격을 두어 지명이 가려지지 않도록 함.
+    //   Kakao 지도가 그 좌표에 지명 텍스트를 렌더링하므로, 텍스트 너비만큼
+    //   margin-left를 주어 배지가 지명을 가리지 않도록 함.
+    //   글자당 약 13px(Kakao 줌12 기준) + 여유 4px, 최소 44px.
     // sgg/umd 레벨: 기존대로 중앙 고정
     const isSido = clusterLevel === "sido";
-    if (isSido) el.style.marginLeft = "6px";
+    if (isSido) {
+      const nameLen = item.name ? item.name.length : 4;
+      el.style.marginLeft = Math.max(44, nameLen * 13 + 4) + "px";
+    }
     const overlay = new kakao.maps.CustomOverlay({
       position: pos, content: el,
       xAnchor: isSido ? 0 : 0.5,
