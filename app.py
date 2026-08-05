@@ -5753,6 +5753,9 @@ def operator_me():
             return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
         cur.execute("""
             SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note,
+                   ob.has_priority_badge,
+                   ob.premium_expires_at,
+                   ob.premium_granted_at,
                    mb.booking_url,
                    mb.booking_url_source,
                    mb.booking_url_expires_at,
@@ -5782,6 +5785,10 @@ def operator_me():
                 b["booking_url"] = None  # 만료됨
             if b.get("booking_url_expires_at"):
                 b["booking_url_expires_at"] = b["booking_url_expires_at"].isoformat()
+            if b.get("premium_expires_at"):
+                b["premium_expires_at"] = b["premium_expires_at"].isoformat()
+            if b.get("premium_granted_at"):
+                b["premium_granted_at"] = b["premium_granted_at"].isoformat()
             if b.get("bur_submitted_at"):
                 b["bur_submitted_at"] = b["bur_submitted_at"].isoformat()
             buildings.append(b)
@@ -5791,6 +5798,8 @@ def operator_me():
     out = dict(me)
     out["logo_src"] = f"/api/partners/operator-logo/{operator_id}" if out.get("logo_url") else None
     out["buildings"] = buildings
+    out["building_cap"] = OPERATOR_REGION_BUILDING_CAP
+    out["badge_cap"] = OPERATOR_PREMIUM_BADGE_CAP
     return jsonify(out)
 
 
