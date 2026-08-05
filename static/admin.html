@@ -3302,15 +3302,12 @@
         const dashBtn = (r.member_type === "agent")
           ? `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">마이페이지</a>`
           : "";
-        const badgeBtn = (r.member_type === "agent")
-          ? `<button class="dg-icon-btn" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}')">단지마크</button>`
-          : "";
         const actions = r.member_type === "pending"
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
           : (isReReview
-            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn} ${dashBtn} ${badgeBtn}`
-            : ((docsBtn || dashBtn || badgeBtn) ? `${docsBtn} ${dashBtn} ${badgeBtn}` : `<span style="color:var(--ink-soft);">—</span>`));
+            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn} ${dashBtn}`
+            : ((docsBtn || dashBtn) ? `${docsBtn} ${dashBtn}` : `<span style="color:var(--ink-soft);">—</span>`));
         // 광고 컬럼 — 파트너(중개사/운영지원업체/대출상담사)만. 클릭 시 이력/입력 팝업.
         let adCell = '<span style="color:var(--ink-soft);">-</span>';
         if (isPartner) {
@@ -3349,7 +3346,7 @@
           <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
           <td style="min-width:220px;">${adCell}</td>
-          <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `<a href="#" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}'); return false;" title="단지마크 관리" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span></a>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${(r.member_type === "agent" && r.region_sgg) ? `${dgEscape(r.region_sgg)} <span style="color:var(--ink-soft);">(${r.region_bld_cnt||0}/20)</span>${r.region_active ? "" : ' <span style="color:var(--brick);">종료</span>'}` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap;">${actions}</td>
         </tr>`;
