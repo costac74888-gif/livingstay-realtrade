@@ -1623,6 +1623,7 @@ def submit_building():
 
     data = request.get_json(force=True) or {}
     road_address = (data.get("road_address") or "").strip()
+    jibun_address_input = (data.get("jibun_address_input") or "").strip()
     building_name_hint = (data.get("building_name_hint") or "").strip()
     suggested_lodging_type = (data.get("suggested_lodging_type") or "").strip()  # 참고용, 신뢰 안 함
     requester_note = (data.get("requester_note") or "").strip()
@@ -1634,9 +1635,9 @@ def submit_building():
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT INTO building_requests (request_type, road_address, building_name_hint, suggested_lodging_type, requester_note)
-        VALUES ('new', %s, %s, %s, %s) RETURNING id
-    """, (road_address, building_name_hint, suggested_lodging_type, requester_note))
+        INSERT INTO building_requests (request_type, road_address, building_name_hint, suggested_lodging_type, requester_note, jibun_address_input)
+        VALUES ('new', %s, %s, %s, %s, %s) RETURNING id
+    """, (road_address, building_name_hint, suggested_lodging_type, requester_note, jibun_address_input or None))
     request_id = cur.fetchone()["id"]
     conn.commit()
 
@@ -1650,34 +1651,84 @@ def submit_building():
         conn.close()
         return jsonify({"status": "rejected", "message": reason}), http_code
 
-    try:
-        juso = road_to_jibun(road_address)
-    except Exception as e:
-        return fail(f"주소 변환 중 오류: {e}")
-
-    if not juso:
-        return fail("입력하신 주소로 지번 정보를 찾지 못했습니다. 도로명주소를 다시 확인해주세요.")
-
-    si_do = juso.get("siNm", "")
-    sgg_nm = juso.get("sggNm", "")
-    # umd_nm은 마스터/실거래 매칭키다. sync_batch가 emdNm+liNm을 공백제거해 저장하므로
-    # 여기서도 동일한 표준 함수로 정규화해야 이후 실거래 sync에서 이 건물이 누락되지 않는다.
-    umd_nm = normalize_umd_nm(juso.get("emdNm", "") + juso.get("liNm", ""))
-    bun = juso.get("lnbrMnnm", "0")
-    ji = juso.get("lnbrSlno", "0")
-    jibun_str = f"{bun}-{ji}" if ji not in ("0", "", None) else bun
-
     bjdong_csv = _os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
     bjdong = BjdongMap(bjdong_csv)
-    sgg_cd = bjdong.find_sgg_cd(si_do, sgg_nm)
-    if not sgg_cd:
-        return fail("법정동코드 매칭에 실패했습니다. 주소 표기를 확인해주세요.")
 
-    bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
-    if not bjdong_cd:
-        return fail("읍/면/동 코드 매칭에 실패했습니다.")
+    # ── 지번주소 직접 입력 경로 (road_to_jibun 우회) ─────────────────────────────
+    # 형식: "[시도] [시군구(1~2단어)] [읍면동] [번지]"  예) 경기도 용인시 기흥구 서천동 812-4
+    if jibun_address_input:
+        tokens = jibun_address_input.split()
+        parsed = None
+        if len(tokens) >= 4:
+            si_do_j = tokens[0]
+            # 시군구가 2단어(예: 용인시 기흥구)인 경우 먼저 시도
+            for sgg_words, umd_idx in [(2, 3), (1, 2)]:
+                if len(tokens) < umd_idx + 2:
+                    continue
+                sgg_nm_j = " ".join(tokens[1:1 + sgg_words])
+                umd_nm_j = normalize_umd_nm(tokens[1 + sgg_words])
+                bun_ji_str = " ".join(tokens[2 + sgg_words:]).strip()
+                sgg_cd_j = bjdong.find_sgg_cd(si_do_j, sgg_nm_j)
+                if not sgg_cd_j:
+                    continue
+                bjdong_cd_j = bjdong.find_bjdong_cd(sgg_cd_j, umd_nm_j)
+                if not bjdong_cd_j:
+                    # umd_nm 정규화 없이도 시도
+                    umd_nm_j_raw = tokens[1 + sgg_words]
+                    bjdong_cd_j = bjdong.find_bjdong_cd(sgg_cd_j, umd_nm_j_raw)
+                    if bjdong_cd_j:
+                        umd_nm_j = normalize_umd_nm(umd_nm_j_raw)
+                if not bjdong_cd_j:
+                    continue
+                plat_gb_j, bun_j, ji_j = parse_jibun(bun_ji_str)
+                jibun_str_j = f"{bun_j}-{ji_j}" if ji_j not in ("0", "", None) else bun_j
+                sgg_text_j = f"{si_do_j} {sgg_nm_j}".strip()
+                parsed = dict(
+                    si_do=si_do_j, sgg_nm=sgg_nm_j, sgg_cd=sgg_cd_j,
+                    sgg_text=sgg_text_j, umd_nm=umd_nm_j, bjdong_cd=bjdong_cd_j,
+                    plat_gb=plat_gb_j, bun=bun_j, ji=ji_j, jibun_str=jibun_str_j,
+                )
+                break
+        if not parsed:
+            return fail(
+                "입력하신 지번주소를 파악할 수 없습니다. "
+                "[시도] [시군구] [읍면동] [번지] 형식(예: 경기도 용인시 기흥구 서천동 812-4)으로 입력해주세요."
+            )
+        si_do = parsed["si_do"]; sgg_nm = parsed["sgg_nm"]
+        sgg_cd = parsed["sgg_cd"]; sgg_text_val = parsed["sgg_text"]
+        umd_nm = parsed["umd_nm"]; bjdong_cd = parsed["bjdong_cd"]
+        plat_gb, bun2, ji2 = parsed["plat_gb"], parsed["bun"], parsed["ji"]
+        jibun_str = parsed["jibun_str"]
 
-    plat_gb, bun2, ji2 = parse_jibun(jibun_str)
+    else:
+        # ── 기존 경로: 도로명주소 → road_to_jibun 변환 ─────────────────────────
+        try:
+            juso = road_to_jibun(road_address)
+        except Exception as e:
+            return fail(f"주소 변환 중 오류: {e}")
+
+        if not juso:
+            return fail("입력하신 주소로 지번 정보를 찾지 못했습니다. 도로명주소를 다시 확인해주세요.")
+
+        si_do = juso.get("siNm", "")
+        sgg_nm = juso.get("sggNm", "")
+        # umd_nm은 마스터/실거래 매칭키다. sync_batch가 emdNm+liNm을 공백제거해 저장하므로
+        # 여기서도 동일한 표준 함수로 정규화해야 이후 실거래 sync에서 이 건물이 누락되지 않는다.
+        umd_nm = normalize_umd_nm(juso.get("emdNm", "") + juso.get("liNm", ""))
+        bun = juso.get("lnbrMnnm", "0")
+        ji = juso.get("lnbrSlno", "0")
+        jibun_str = f"{bun}-{ji}" if ji not in ("0", "", None) else bun
+
+        sgg_cd = bjdong.find_sgg_cd(si_do, sgg_nm)
+        if not sgg_cd:
+            return fail("법정동코드 매칭에 실패했습니다. 주소 표기를 확인해주세요.")
+
+        bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
+        if not bjdong_cd:
+            return fail("읍/면/동 코드 매칭에 실패했습니다.")
+
+        sgg_text_val = f"{si_do} {sgg_nm}".strip()
+        plat_gb, bun2, ji2 = parse_jibun(jibun_str)
 
     try:
         label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun2, ji2)
@@ -1699,7 +1750,7 @@ def submit_building():
     else:
         building_name = f"{umd_nm} {jibun_str}"
         name_pending = True
-    sgg_text = f"{si_do} {sgg_nm}".strip()
+    sgg_text = sgg_text_val  # 지번 직접 입력/도로명 변환 양쪽 모두에서 이미 설정됨
     road_addr_final = title["new_plat_plc"] or title["plat_plc"] or road_address
 
     # 같은 지번의 건물이 이미 신마스터에 있으면 중복 INSERT 대신 검증값으로 갱신한다

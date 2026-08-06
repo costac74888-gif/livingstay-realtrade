@@ -99,10 +99,14 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "ji": ji.zfill(4),
             "numOfRows": num,
             "pageNo": page,
+            "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
         resp = requests.get(BLD_TITLE_URL, params=params, timeout=15)
         resp.raise_for_status()
-        root = ET.fromstring(resp.content)
+        try:
+            root = ET.fromstring(resp.content)
+        except ET.ParseError as e:
+            raise RuntimeError(f"건축물대장 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
         items = root.findall(".//item")
         rows.extend({c.tag: (c.text or "").strip() for c in it} for it in items)
 
@@ -126,13 +130,17 @@ def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "sigunguCd": sigungu_cd, "bjdongCd": bjdong_cd,
         "platGbCd": plat_gb, "bun": bun.zfill(4), "ji": ji.zfill(4),
         "numOfRows": 20, "pageNo": 1,
+        "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
     }
     resp = requests.get(
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo",
         params=params, timeout=10,
     )
     resp.raise_for_status()
-    root = ET.fromstring(resp.content)
+    try:
+        root = ET.fromstring(resp.content)
+    except ET.ParseError as e:
+        raise RuntimeError(f"건축물대장 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
     return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
 
 
@@ -143,13 +151,17 @@ def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "sigunguCd": sigungu_cd, "bjdongCd": bjdong_cd,
         "platGbCd": plat_gb, "bun": bun.zfill(4), "ji": ji.zfill(4),
         "numOfRows": 20, "pageNo": 1,
+        "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
     }
     resp = requests.get(
         "https://apis.data.go.kr/1613000/MtnChkHubService/getMaintenanceHistory",
         params=params, timeout=10,
     )
     resp.raise_for_status()
-    root = ET.fromstring(resp.content)
+    try:
+        root = ET.fromstring(resp.content)
+    except ET.ParseError as e:
+        raise RuntimeError(f"건축물대장 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
     return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
 
 
@@ -184,6 +196,7 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "ji": ji.zfill(4),
             "numOfRows": num,
             "pageNo": page,
+            "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
         try:
             resp = requests.get(BLD_FLOOR_URL, params=params, timeout=15)
@@ -191,7 +204,10 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         except Exception:
             return None  # 조회 실패 — "생숙 아님"과 구분해서 나중에 재시도 가능하게 함
 
-        root = ET.fromstring(resp.content)
+        try:
+            root = ET.fromstring(resp.content)
+        except ET.ParseError as e:
+            raise RuntimeError(f"건축물대장 층별개요 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
         items = root.findall(".//item")
         for item in items:
             row = {child.tag: (child.text or "").strip() for child in item}

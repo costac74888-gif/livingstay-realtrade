@@ -442,6 +442,7 @@ if (new URLSearchParams(location.search).get("modal") === "submit") {
 }
 document.getElementById("btnSubmitBuilding").addEventListener("click", async () => {
   const road_address = document.getElementById("submitAddress").value.trim();
+  const jibun_address_input = (document.getElementById("submitJibunAddress") || {value:""}).value.trim();
   const building_name_hint = document.getElementById("submitNameHint").value.trim();
   const suggested_lodging_type = document.getElementById("submitLodgingType").value;
   const resultBox = document.getElementById("submitResult");
@@ -463,7 +464,7 @@ document.getElementById("btnSubmitBuilding").addEventListener("click", async () 
     const res = await fetch("/api/submit-building", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ road_address, building_name_hint, suggested_lodging_type }),
+      body: JSON.stringify({ road_address, jibun_address_input, building_name_hint, suggested_lodging_type }),
     });
     const data = await res.json();
 
