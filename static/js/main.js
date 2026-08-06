@@ -551,6 +551,22 @@ function _makeMarkerImage(color){
 }
 
 // 라벨 DOM 요소 생성 — updateMarkerLabels 에서 줌인 시 최초 1회만 호출된다
+// 전체 주소 문자열에서 시도·시군구 앞부분을 제거하고 동 이하만 반환한다.
+// 예) "부산광역시 수영구 광안동 157-1번지" → "광안동 157-1번지"
+// 미분류 마커처럼 building_name이 전체 주소인 경우에 사용한다.
+function _stripSidoSgg(addr) {
+  if (!addr) return addr;
+  const tokens = addr.trim().split(/\s+/);
+  let i = 0;
+  // 시도 토큰: 특별시/광역시/특별자치시(도)/도/시 로 끝남
+  if (i < tokens.length &&
+      /(?:특별시|광역시|특별자치시도|특별자치시|특별자치도|도|시)$/.test(tokens[i])) i++;
+  // 시군구 토큰: 시/군/구 로 끝남
+  if (i < tokens.length && /(?:시|군|구)$/.test(tokens[i])) i++;
+  const rest = tokens.slice(i).join(" ");
+  return rest || addr; // 파싱 실패 시 원본 반환
+}
+
 function _buildLabelEl(b, pos){
   const color = markerColor(b.lodging_type, b.building_status);
   const label = document.createElement("div");
@@ -564,7 +580,13 @@ function _buildLabelEl(b, pos){
     "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;" +
     `margin-bottom:8px;${isMobile ? " cursor:pointer;" : ""}`; // 마커 점과의 간격
   const nameLine = document.createElement("div");
-  nameLine.textContent = b.building_name || "(건물명 미확인)";
+  // 미분류 건물은 building_name이 전체 주소로 채워진 경우가 많으므로
+  // 이미 시군구를 알고 있는 지도 화면에서는 동 이하만 표시한다.
+  const isMuibunryu = !b.lodging_type || b.lodging_type === "";
+  const displayName = isMuibunryu
+    ? (_stripSidoSgg(b.building_name) || "(건물명 미확인)")
+    : (b.building_name || "(건물명 미확인)");
+  nameLine.textContent = displayName;
   nameLine.style.cssText = "font-size:11px; font-weight:700;";
   label.appendChild(nameLine);
   if (b.latest_price != null){
