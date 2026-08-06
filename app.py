@@ -1734,7 +1734,14 @@ def submit_building():
     try:
         label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun2, ji2)
     except Exception as e:
-        return fail(f"건축물대장 조회 중 오류: {e}")
+        # data.go.kr 일일 쿼터 소진 → 사용자에게 명확한 안내
+        err_str = str(e)
+        if "429" in err_str:
+            return fail(
+                "건축물대장 API 일일 조회 한도에 도달했습니다. "
+                "내일 오전에 다시 시도해주세요. (매일 자정 이후 초기화됩니다)"
+            )
+        return fail(f"건축물대장 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
 
     if label is None:
         return fail(f"건축물대장으로 확인한 결과 판정이 어렵습니다 ({reason}). "
