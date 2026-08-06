@@ -190,6 +190,26 @@ class BjdongMap:
                 return bj
         return None
 
+    def extract_sgg_from_address(self, road_address: str):
+        """
+        도로명주소 앞부분에서 시도+시군구를 추출 (외부 API 불필요, _sgg_text_map 최장일치).
+        예) "경기도 용인시 기흥구 서천로127번길 11-5" → ("경기도", "용인시 기흥구", "41463")
+        반환: (si_do, sgg_nm, sgg_cd) 또는 None
+        """
+        best_cd = None
+        best_name = None
+        for cd, name in self._sgg_text_map.items():
+            if road_address == name or road_address.startswith(name + " "):
+                if best_name is None or len(name) > len(best_name):
+                    best_cd = cd
+                    best_name = name
+        if not best_cd:
+            return None
+        parts = best_name.split(None, 1)           # e.g. ["경기도", "용인시 기흥구"]
+        si_do = parts[0]
+        sgg_nm = parts[1] if len(parts) > 1 else ""
+        return si_do, sgg_nm, best_cd
+
     def all_sgg_codes(self) -> list[str]:
         """전국 실제 조회 가능한(구가 있으면 구 단위까지 내려간) 시군구 코드 목록"""
         return sorted(self._sgg_text_map.keys())

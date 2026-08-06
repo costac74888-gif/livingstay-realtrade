@@ -1655,50 +1655,51 @@ def submit_building():
     bjdong = BjdongMap(bjdong_csv)
 
     # ── 지번주소 직접 입력 경로 (road_to_jibun 우회) ─────────────────────────────
-    # 형식: "[시도] [시군구(1~2단어)] [읍면동] [번지]"  예) 경기도 용인시 기흥구 서천동 812-4
+    # 입력 형식: "[읍면동] [번지]"  예) 서천동 812  또는 서천동 812-4
+    # 하위호환: 사용자가 실수로 시도·시군구까지 풀세트 입력해도 뒤 2토큰만 사용
+    # 시도·시군구는 도로명주소 앞부분에서 longest-prefix 매칭으로 자동 추출
     if jibun_address_input:
-        tokens = jibun_address_input.split()
-        parsed = None
-        if len(tokens) >= 4:
-            si_do_j = tokens[0]
-            # 시군구가 2단어(예: 용인시 기흥구)인 경우 먼저 시도
-            for sgg_words, umd_idx in [(2, 3), (1, 2)]:
-                if len(tokens) < umd_idx + 2:
-                    continue
-                sgg_nm_j = " ".join(tokens[1:1 + sgg_words])
-                umd_nm_j = normalize_umd_nm(tokens[1 + sgg_words])
-                bun_ji_str = " ".join(tokens[2 + sgg_words:]).strip()
-                sgg_cd_j = bjdong.find_sgg_cd(si_do_j, sgg_nm_j)
-                if not sgg_cd_j:
-                    continue
-                bjdong_cd_j = bjdong.find_bjdong_cd(sgg_cd_j, umd_nm_j)
-                if not bjdong_cd_j:
-                    # umd_nm 정규화 없이도 시도
-                    umd_nm_j_raw = tokens[1 + sgg_words]
-                    bjdong_cd_j = bjdong.find_bjdong_cd(sgg_cd_j, umd_nm_j_raw)
-                    if bjdong_cd_j:
-                        umd_nm_j = normalize_umd_nm(umd_nm_j_raw)
-                if not bjdong_cd_j:
-                    continue
-                plat_gb_j, bun_j, ji_j = parse_jibun(bun_ji_str)
-                jibun_str_j = f"{bun_j}-{ji_j}" if ji_j not in ("0", "", None) else bun_j
-                sgg_text_j = f"{si_do_j} {sgg_nm_j}".strip()
-                parsed = dict(
-                    si_do=si_do_j, sgg_nm=sgg_nm_j, sgg_cd=sgg_cd_j,
-                    sgg_text=sgg_text_j, umd_nm=umd_nm_j, bjdong_cd=bjdong_cd_j,
-                    plat_gb=plat_gb_j, bun=bun_j, ji=ji_j, jibun_str=jibun_str_j,
-                )
-                break
-        if not parsed:
+        # [1] 시도·시군구를 도로명주소에서 추출 (BjdongMap 최장일치)
+        sgg_match = bjdong.extract_sgg_from_address(road_address)
+        if not sgg_match:
+            return fail(
+                "도로명주소에서 시도·시군구를 인식할 수 없습니다. "
+                "도로명주소 앞부분을 '경기도 용인시 기흥구 서천로…' 형식으로 입력해주세요."
+            )
+        si_do_j, sgg_nm_j, sgg_cd_j = sgg_match
+
+        # [2] 지번주소 입력값: 뒤에서 번지 1개, 그 앞 읍면동 1개 — 나머지 앞토큰은 무시(하위호환)
+        j_tokens = jibun_address_input.split()
+        if len(j_tokens) < 2:
             return fail(
                 "입력하신 지번주소를 파악할 수 없습니다. "
-                "[시도] [시군구] [읍면동] [번지] 형식(예: 경기도 용인시 기흥구 서천동 812-4)으로 입력해주세요."
+                "[읍면동] [번지] 형식(예: 서천동 812-4)으로 입력해주세요. "
+                "시도·시군구는 도로명주소에서 자동으로 인식됩니다."
             )
-        si_do = parsed["si_do"]; sgg_nm = parsed["sgg_nm"]
-        sgg_cd = parsed["sgg_cd"]; sgg_text_val = parsed["sgg_text"]
-        umd_nm = parsed["umd_nm"]; bjdong_cd = parsed["bjdong_cd"]
-        plat_gb, bun2, ji2 = parsed["plat_gb"], parsed["bun"], parsed["ji"]
-        jibun_str = parsed["jibun_str"]
+        bun_ji_str = j_tokens[-1]
+        umd_raw = j_tokens[-2]
+        umd_nm_j = normalize_umd_nm(umd_raw)
+
+        # [3] sgg_cd + umd_nm → bjdong_cd
+        bjdong_cd_j = bjdong.find_bjdong_cd(sgg_cd_j, umd_nm_j)
+        if not bjdong_cd_j:
+            bjdong_cd_j = bjdong.find_bjdong_cd(sgg_cd_j, umd_raw)
+            if bjdong_cd_j:
+                umd_nm_j = normalize_umd_nm(umd_raw)
+        if not bjdong_cd_j:
+            return fail(
+                f"입력하신 읍면동 '{umd_raw}'을(를) {si_do_j} {sgg_nm_j} 안에서 찾지 못했습니다. "
+                "읍면동명을 다시 확인해주세요."
+            )
+
+        plat_gb_j, bun_j, ji_j = parse_jibun(bun_ji_str)
+        jibun_str_j = f"{bun_j}-{ji_j}" if ji_j not in ("0", "", None) else bun_j
+
+        si_do = si_do_j; sgg_nm = sgg_nm_j
+        sgg_cd = sgg_cd_j; sgg_text_val = f"{si_do_j} {sgg_nm_j}".strip()
+        umd_nm = umd_nm_j; bjdong_cd = bjdong_cd_j
+        plat_gb, bun2, ji2 = plat_gb_j, bun_j, ji_j
+        jibun_str = jibun_str_j
 
     else:
         # ── 기존 경로: 도로명주소 → road_to_jibun 변환 ─────────────────────────
