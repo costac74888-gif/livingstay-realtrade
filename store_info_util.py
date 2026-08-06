@@ -14,8 +14,10 @@ B화면 "상거래정보" 카드용: 이 건물(지번) 안의 상가업소(사�
 - 대신 storeListInPnu(key=PNU 19자리)는 sgg_cd(5)+법정동(5)+토지구분(1)
   +본번(4)+부번(4)으로 우리가 직접 만들 수 있고, 같은 지번의 업소가
   층 정보 포함으로 정확히 나온다 → 이것을 사용한다.
-- 이 API는 type=json 지정 시 게이트웨이가 403 Forbidden을 반환함(같은 키로
-  XML 요청은 정상 200). 반드시 XML로 받을 것. storeListInRadius도 403.
+- 이 API는 type 파라미터를 생략하면 기본값이 JSON이다(HTTP 200, application/json).
+  type=json 명시도 JSON 200. type=xml 명시만 XML 200을 반환한다.
+  코드가 ET.fromstring() XML 파서를 쓰므로 반드시 type=xml을 명시해야 한다.
+  (type=json 시 403이라는 이전 주석은 실측 결과와 달리 틀린 정보였음 — 2026-08 수정)
 
 - 서비스키: STORE_INFO_SERVICE_KEY (data.go.kr 발급)
 - 실패(키 없음/타임아웃/쿼터/파싱오류)해도 예외를 던지지 않고 빈 리스트를
@@ -51,7 +53,7 @@ def build_pnu(sgg_cd, bjdong_cd, plat_gb, bun, ji):
 def _fetch_stores(url, key):
     """공통 XML 페이징 조회. 실패 시 예외를 올려 호출자(_bg_fetch)가 로그를 남기게 한다.
 
-    API 응답 형식: XML (type=json 지정 시 게이트웨이가 403 → 반드시 XML 파싱)
+    API 응답 형식: XML (type 생략 시 기본 JSON → ET 파싱 실패. type=xml 명시 필수)
       <response>
         <header><resultCode>00</resultCode></header>
         <body>
@@ -73,6 +75,7 @@ def _fetch_stores(url, key):
             "key": key,
             "numOfRows": _PAGE_SIZE,
             "pageNo": page,
+            "type": "xml",   # 생략하면 기본 JSON 응답 → ET.fromstring 실패 (2026-08 실측 확인)
         }
         try:
             resp = requests.get(url, params=params, timeout=15)
