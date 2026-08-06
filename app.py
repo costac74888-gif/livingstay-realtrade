@@ -1607,7 +1607,7 @@ def _fill_master_coords(cur, master_id, road_address):
 
 
 @app.route("/api/submit-building", methods=["POST"])
-@limiter.limit("3 per minute; 10 per hour")
+@limiter.limit("3 per minute; 10 per hour; 100 per day")
 def submit_building():
     """
     사용자가 "내 건물이 목록에 없다"며 도로명주소를 제출하면:
