@@ -7173,6 +7173,137 @@ def admin_booking_url_request_reject(req_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/booking-url-requests/<int:req_id>/cancel", methods=["POST"])
+@require_admin
+def admin_booking_url_request_cancel(req_id):
+    """OTA 링크 신청 취소(관리자) — pending 상태 신청을 cancelled로 변경."""
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, status FROM booking_url_requests WHERE id = %s FOR UPDATE", [req_id])
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+        if req["status"] != "pending":
+            return jsonify({"ok": False, "message": f"취소할 수 없는 상태입니다 (상태: {req['status']})."}), 400
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET status = 'cancelled', reviewed_at = NOW(), reviewed_by = %s
+            WHERE id = %s
+        """, [admin_id, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/booking-url-requests/<int:req_id>/extend", methods=["POST"])
+@require_admin
+def admin_booking_url_request_extend(req_id):
+    """OTA 링크 연장(관리자) — 승인된 신청을 현재 시점에서 3개월 연장."""
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, operator_id, master_building_id, booking_url, status
+            FROM booking_url_requests WHERE id = %s FOR UPDATE
+        """, [req_id])
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+        if req["status"] != "approved":
+            return jsonify({"ok": False, "message": "승인된 신청만 연장할 수 있습니다."}), 400
+        # master_buildings 만료일 연장
+        cur.execute("""
+            UPDATE master_buildings
+            SET booking_url_expires_at = NOW() + INTERVAL '3 months',
+                booking_url_updated_at = NOW()
+            WHERE id = %s
+        """, [req["master_building_id"]])
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET reviewed_at = NOW(), reviewed_by = %s
+            WHERE id = %s
+        """, [admin_id, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "message": "3개월 연장되었습니다."})
+
+
+@app.route("/api/admin/booking-url-requests/<int:req_id>/revoke", methods=["POST"])
+@require_admin
+def admin_booking_url_request_revoke(req_id):
+    """OTA 승인 철회(관리자) — approved 신청을 cancelled로, master_buildings 배지 제거."""
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, operator_id, master_building_id, status
+            FROM booking_url_requests WHERE id = %s FOR UPDATE
+        """, [req_id])
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+        if req["status"] != "approved":
+            return jsonify({"ok": False, "message": "승인된 신청만 철회할 수 있습니다."}), 400
+        # master_buildings 배지 제거
+        cur.execute("""
+            UPDATE master_buildings
+            SET booking_url = NULL,
+                booking_url_source = NULL,
+                booking_url_updated_at = NOW(),
+                booking_url_expires_at = NULL
+            WHERE id = %s AND booking_url_source = 'operator'
+        """, [req["master_building_id"]])
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET status = 'cancelled', reviewed_at = NOW(), reviewed_by = %s
+            WHERE id = %s
+        """, [admin_id, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "message": "승인이 철회되었습니다. 건물 배지가 제거됩니다."})
+
+
+@app.route("/api/operator/booking-url-requests/<int:req_id>/cancel", methods=["POST"])
+@require_operator
+def operator_booking_url_request_cancel(req_id):
+    """OTA 링크 신청 취소(운영자 본인) — 본인의 pending 신청만 취소 가능."""
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, operator_id, status
+            FROM booking_url_requests WHERE id = %s FOR UPDATE
+        """, [req_id])
+        req = cur.fetchone()
+        if not req:
+            return jsonify({"ok": False, "message": "존재하지 않는 신청입니다."}), 404
+        if req["operator_id"] != operator_id:
+            return jsonify({"ok": False, "message": "본인 신청만 취소할 수 있습니다."}), 403
+        if req["status"] != "pending":
+            return jsonify({"ok": False, "message": f"검토중인 신청만 취소할 수 있습니다 (현재 상태: {req['status']})."}), 400
+        cur.execute("""
+            UPDATE booking_url_requests
+            SET status = 'cancelled'
+            WHERE id = %s
+        """, [req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "message": "신청이 취소되었습니다."})
+
+
 # ---- 지도 좌표 채우기 / 건축정보 채우기 (실시간 API 러너) ----
 # (2026-07-22) 기존 data/building_coords.json·building_title_info.json 주입 방식 제거.
 # 각 스크립트를 실거래/숙박업 동기화와 동일한 잠금/러너 패턴(detached Popen +

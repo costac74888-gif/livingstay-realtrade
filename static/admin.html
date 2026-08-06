@@ -2921,7 +2921,14 @@
           <td style="padding:9px 10px;white-space:nowrap;">
             ${r.status === 'pending' ? `
               <button class="admin-btn" style="margin-right:4px;" onclick="otaApprove(${r.id})">승인</button>
-              <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;" onclick="otaReject(${r.id})">거절</button>
+              <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;margin-right:4px;" onclick="otaReject(${r.id})">거절</button>
+              <button class="admin-btn" style="background:#F5F5F5;border-color:#ccc;color:#666;" onclick="otaCancel(${r.id})">취소</button>
+            ` : r.status === 'approved' ? `
+              <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                <button class="admin-btn" style="background:#E8F0FE;border-color:#93B4F7;color:#1a4a9a;" onclick="otaExtend(${r.id})">연장</button>
+                <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;" onclick="otaRevoke(${r.id})">승인철회</button>
+              </div>
+              <div style="font-size:11px;color:var(--ink-soft);margin-top:3px;">${dgEscape(r.reviewed_at||"")}</div>
             ` : `<span style="font-size:11.5px;color:var(--ink-soft);">${dgEscape(r.reviewed_at||"")}</span>`}
           </td>
         </tr>`).join("") +
@@ -2953,6 +2960,31 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ admin_note: note })
       });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      loadOtaRequests();
+    };
+
+    window.otaCancel = async function(id) {
+      if (!confirm("이 신청을 취소합니다. 신청이 검토중 상태로 취소되며 업체에게 알림은 발송되지 않습니다.")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/cancel`, { method: "POST" });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      loadOtaRequests();
+    };
+
+    window.otaExtend = async function(id) {
+      if (!confirm("이 OTA 링크를 현재 시점에서 3개월 연장합니다.")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/extend`, { method: "POST" });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      alert(d.message || "연장되었습니다.");
+      loadOtaRequests();
+    };
+
+    window.otaRevoke = async function(id) {
+      if (!confirm("승인을 철회합니다.\n건물 상세에서 OTA 등록확인 배지가 제거됩니다.\n계속하시겠습니까?")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/revoke`, { method: "POST" });
       const d = await res.json().catch(()=>({}));
       if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
       loadOtaRequests();

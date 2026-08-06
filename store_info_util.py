@@ -49,13 +49,17 @@ def build_pnu(sgg_cd, bjdong_cd, plat_gb, bun, ji):
 
 
 def _fetch_stores(url, key):
-    """공통 JSON 페이징 조회. 실패 시 예외를 올려 호출자(_bg_fetch)가 로그를 남기게 한다.
+    """공통 XML 페이징 조회. 실패 시 예외를 올려 호출자(_bg_fetch)가 로그를 남기게 한다.
 
-    API 응답 형식 (2026-07 확인):
-      {"header": {"resultCode": "00", ...},
-       "body": {"items": {"item": [ {...}, ... ]}}}
-    resultCode "03" = NODATA, "00" = 정상.
-    totalCount 필드가 없으므로 반환 item 수 < numOfRows이면 마지막 페이지로 판단.
+    API 응답 형식: XML (type=json 지정 시 게이트웨이가 403 → 반드시 XML 파싱)
+      <response>
+        <header><resultCode>00</resultCode></header>
+        <body>
+          <items><item><bizesNm>...</bizesNm><indsLclsNm>...</indsLclsNm><flrNo>...</flrNo></item></items>
+          <totalCount>N</totalCount>
+        </body>
+      </response>
+    resultCode "03" = NODATA_ERROR(정상 빈결과), "00"/"0" = 정상.
     """
     key = (key or "").strip()
     if not key or not STORE_INFO_SERVICE_KEY:
@@ -71,55 +75,47 @@ def _fetch_stores(url, key):
             "pageNo": page,
         }
         try:
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=15)
             resp.raise_for_status()
         except Exception as e:
             raise RuntimeError(f"상가업소 API HTTP 오류: {e}") from e
 
         try:
-            data = resp.json()
-        except Exception:
-            # 비JSON 응답 (XML 오류 페이지 등)
-            raise RuntimeError(f"상가업소 API 비JSON 응답: {resp.text[:200]}")
+            root = ET.fromstring(resp.text)
+        except ET.ParseError as e:
+            raise RuntimeError(f"상가업소 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
 
-        # 인증 오류 등은 OpenAPI_ServiceResponse 래퍼로 온다
-        if "OpenAPI_ServiceResponse" in data:
-            err = (data["OpenAPI_ServiceResponse"]
-                   .get("cmmMsgHeader", {})
-                   .get("errMsg", "unknown"))
+        # 게이트웨이 오류: <OpenAPI_ServiceResponse> 래퍼로 온다
+        if root.tag == "OpenAPI_ServiceResponse":
+            err = root.findtext(".//errMsg") or "unknown"
             raise RuntimeError(f"상가업소 API 게이트웨이 오류: {err}")
 
-        result_code = str(data.get("header", {}).get("resultCode", "")).strip()
+        result_code = (root.findtext(".//resultCode") or "").strip()
         if result_code not in ("00", "0"):
-            # "03" = NODATA — 업소 없는 지번은 정상 빈 결과
+            # "03" = NODATA_ERROR — 업소 없는 지번은 정상 빈 결과
             return []
 
-        body = data.get("body", {})
-        if not isinstance(body, dict):
-            return []
-
-        items_wrap = body.get("items", {})
-        if not isinstance(items_wrap, dict):
-            return []
-
-        raw_items = items_wrap.get("item", [])
-        # 단건이면 dict로 오는 경우가 있음 — 리스트로 정규화
-        if isinstance(raw_items, dict):
-            raw_items = [raw_items]
-
+        items = root.findall(".//item")
         page_count = 0
-        for it in raw_items:
-            name = (it.get("bizesNm") or "").strip()
+        for it in items:
+            name = (it.findtext("bizesNm") or "").strip()
             if not name:
                 continue
             stores.append({
                 "name": name,
-                "category": (it.get("indsLclsNm") or "").strip(),
-                "floor": str(it.get("flrNo") or "").strip(),
+                "category": (it.findtext("indsLclsNm") or "").strip(),
+                "floor": (it.findtext("flrNo") or "").strip(),
             })
             page_count += 1
 
-        # 마지막 페이지 판단: 반환 수 < 요청 수
+        # 마지막 페이지 판단: totalCount 있으면 활용, 없으면 반환 수 < 요청 수로 판단
+        total_count_txt = root.findtext(".//totalCount")
+        if total_count_txt is not None:
+            try:
+                if len(stores) >= int(total_count_txt):
+                    break
+            except ValueError:
+                pass
         if page_count < _PAGE_SIZE:
             break
         page += 1

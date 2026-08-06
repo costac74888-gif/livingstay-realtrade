@@ -466,8 +466,11 @@ async function loadOta(){
         <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
         <span style="flex:1;"></span>
         ${statusLabel(status)}${expireInfo}
-        ${canApply ? `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openOtaModal(${b.master_building_id}, '${esc(b.building_name || '')}', '${req ? esc(req.booking_url) : ''}')">
-          ${status === 'pending' ? '신청 수정' : (status === 'approved' && !req.is_expired ? '재신청' : 'OTA 신청')}
+        ${status === 'pending' ? `
+          <button class="side-more" style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;" onclick="openOtaModal(${b.master_building_id}, '${esc(b.building_name || '')}', '${req ? esc(req.booking_url) : ''}')">신청 수정</button>
+          <button class="side-more" style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;background:#F5F5F5;border-color:#ccc;color:#666;" onclick="cancelOtaRequest(${req.id})">신청취소</button>
+        ` : canApply ? `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openOtaModal(${b.master_building_id}, '${esc(b.building_name || '')}', '${req ? esc(req.booking_url) : ''}')">
+          ${status === 'approved' && !req.is_expired ? '재신청' : 'OTA 신청'}
         </button>` : ''}
       </div>
       ${currentUrl}${rejNote}
@@ -483,6 +486,13 @@ window.openOtaModal = function(mbid, bName, currentUrl){
   document.getElementById("msgOta").textContent = "";
   openModal("mOta");
   document.getElementById("fOtaUrl").focus();
+};
+
+window.cancelOtaRequest = async function(reqId) {
+  if (!confirm("OTA 링크 신청을 취소합니다. 계속하시겠습니까?")) return;
+  const { ok, data } = await api(`/api/operator/booking-url-requests/${reqId}/cancel`, { method: "POST" });
+  if (!ok) { alert(data.message || "취소에 실패했습니다."); return; }
+  await loadOta();
 };
 
 document.getElementById("btnSubmitOta").addEventListener("click", async () => {
