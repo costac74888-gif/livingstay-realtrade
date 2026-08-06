@@ -551,15 +551,18 @@ function _makeMarkerImage(color){
 }
 
 // 라벨 DOM 요소 생성 — updateMarkerLabels 에서 줌인 시 최초 1회만 호출된다
-function _buildLabelEl(b){
+function _buildLabelEl(b, pos){
   const color = markerColor(b.lodging_type, b.building_status);
   const label = document.createElement("div");
+  // 모바일: pointer-events:auto + cursor:pointer → 탭으로 상세 진입 가능
+  // 데스크톱: 호버 툴팁이 라벨 위에 뜨므로 마우스 이벤트는 툴팁이 처리
+  const isMobile = isMobileMapViewport();
   label.style.cssText =
     `background:${color}; color:#fff;` +
     "padding:3px 7px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3);" +
-    "white-space:nowrap; text-align:center; line-height:1.25; pointer-events:none;" +
+    `white-space:nowrap; text-align:center; line-height:1.25; pointer-events:${isMobile ? "auto" : "none"};` +
     "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;" +
-    "margin-bottom:8px;"; // 마커 점과의 간격
+    `margin-bottom:8px;${isMobile ? " cursor:pointer;" : ""}`; // 마커 점과의 간격
   const nameLine = document.createElement("div");
   nameLine.textContent = b.building_name || "(건물명 미확인)";
   nameLine.style.cssText = "font-size:11px; font-weight:700;";
@@ -575,6 +578,16 @@ function _buildLabelEl(b){
       refLine.style.cssText = "font-size:9px; font-weight:500; opacity:.9;";
       label.appendChild(refLine);
     }
+  }
+  // 모바일: 라벨(네모 칩) 탭 → 마커 탭과 동일하게 건물 상세 패널 바로 열기
+  if (isMobile && b.id != null){
+    label.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+      hideHoverTooltip(true);
+      history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
+      renderBuildingPanel(b.id);
+    });
   }
   return label;
 }
@@ -701,6 +714,7 @@ function updateMarkerLabels(){
         d.overlay = new kakao.maps.CustomOverlay({
           position: d.pos, content: d.el,
           xAnchor: 0.5, yAnchor: 1.0, zIndex: 20, // Kakao 기본 POI(~3)·마커(5)보다 위
+          clickable: true,  // 모바일 탭 이벤트가 label DOM에 전달되도록
         });
         mapLabelsByKey[d.b.lat + "," + d.b.lng] = d.el;
       }
