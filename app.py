@@ -1731,67 +1731,108 @@ def submit_building():
         sgg_text_val = f"{si_do} {sgg_nm}".strip()
         plat_gb, bun2, ji2 = parse_jibun(jibun_str)
 
+    sgg_text = sgg_text_val
+
+    # ── 1순위: 이미 마스터에 있는 건물이면 외부 API 호출 없이 즉시 처리 ──────────
+    cur.execute(
+        """SELECT id, building_name, lodging_type, lodging_type_detail, lodging_subtype,
+                  road_address, name_pending
+           FROM master_buildings WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s""",
+        (sgg_cd, umd_nm, jibun_str),
+    )
+    existing = cur.fetchone()
+
+    if existing and existing["lodging_type"]:
+        # 이미 용도가 확정된 건물 → API 호출 불필요
+        master_id = existing["id"]
+        label     = existing["lodging_type"]
+        detail    = existing["lodging_type_detail"] or ""
+        subtype   = existing["lodging_subtype"] or ""
+        building_name = existing["building_name"] or f"{umd_nm} {jibun_str}"
+        name_pending  = bool(existing["name_pending"])
+        road_addr_final = existing["road_address"] or road_address
+
+        # building_name_hint가 있고 name_pending 상태면 힌트로 갱신
+        if building_name_hint and name_pending:
+            cur.execute("""
+                UPDATE master_buildings SET building_name=%s, name_pending=FALSE WHERE id=%s
+            """, (building_name_hint, master_id))
+            building_name = building_name_hint
+            name_pending  = False
+
+        mismatch_note = ""
+        if suggested_lodging_type and suggested_lodging_type != label:
+            mismatch_note = f" (제출하신 예상 용도 '{suggested_lodging_type}'와 다르게, 건축물대장 확인 결과는 '{label}'입니다.)"
+
+        cur.execute("""
+            UPDATE building_requests
+            SET status='verified', verified_lodging_type=%s, master_building_id=%s, processed_at=NOW()
+            WHERE id=%s
+        """, (label, master_id, request_id))
+        conn.commit()
+        cur.close(); conn.close()
+
+        if name_pending:
+            return jsonify({
+                "status": "verified",
+                "message": (
+                    f"용도는 '{label}'(으)로 확인되어 등록되었습니다.{mismatch_note} "
+                    f"건물명은 아직 임시명({building_name})입니다. "
+                    "추후 관리자 검토 후 확정됩니다."
+                ),
+                "lodging_type": label, "building_name": building_name, "name_pending": True,
+            })
+        return jsonify({
+            "status": "verified",
+            "message": f"'{building_name}'이(가) '{label}'(으)로 확인되어 등록되었습니다.{mismatch_note} "
+                       "다음 실거래 갱신부터 이 건물의 거래가 표시됩니다.",
+            "lodging_type": label, "building_name": building_name, "name_pending": False,
+        })
+
+    # ── 2순위: DB에 없거나 용도 미확정 → 건축물대장 API 실시간 조회 ───────────────
     try:
         label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun2, ji2)
     except Exception as e:
         # data.go.kr 일일 쿼터 소진 → 사용자에게 명확한 안내
-        err_str = str(e)
-        if "429" in err_str:
+        if "429" in str(e):
             return fail(
                 "건축물대장 API 일일 조회 한도에 도달했습니다. "
                 "내일 오전에 다시 시도해주세요. (매일 자정 이후 초기화됩니다)"
             )
-        return fail(f"건축물대장 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+        return fail("건축물대장 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
 
     if label is None:
         return fail(f"건축물대장으로 확인한 결과 판정이 어렵습니다 ({reason}). "
-                     f"집합건축물(생숙/호텔/콘도)이 맞는지 다시 확인해주세요.")
+                     "집합건축물(생숙/호텔/콘도)이 맞는지 다시 확인해주세요.")
 
     # 검증 통과 → 사용자가 뭐라고 골랐든 상관없이, 여기서 확정된 label만 반영
-    # 건물명도 동일 원칙: API(건축물대장) 명칭이 있으면 무조건 그것으로 확정하고
-    # 사용자 입력(building_name_hint)은 building_requests에 참고용으로만 남긴다.
-    # API 명칭이 없으면 "읍면동 지번" 임시명으로 등록하고 name_pending=TRUE 표시.
     api_bld_nm = resolve_api_building_name(title)
     if api_bld_nm:
         building_name = api_bld_nm
-        name_pending = False
+        name_pending  = False
     else:
         building_name = f"{umd_nm} {jibun_str}"
-        name_pending = True
-    sgg_text = sgg_text_val  # 지번 직접 입력/도로명 변환 양쪽 모두에서 이미 설정됨
+        name_pending  = True
     road_addr_final = title["new_plat_plc"] or title["plat_plc"] or road_address
 
-    # 같은 지번의 건물이 이미 신마스터에 있으면 중복 INSERT 대신 검증값으로 갱신한다
-    # (같은 주소를 여러 번 요청해도 마스터 키가 중복되지 않도록).
-    cur.execute(
-        "SELECT id, building_name FROM master_buildings WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s",
-        (sgg_cd, umd_nm, jibun_str),
-    )
-    existing = cur.fetchone()
     if existing:
+        # 용도 미확정 상태로 있던 기존 행 갱신
         master_id = existing["id"]
         cur.execute("""
             UPDATE master_buildings
             SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW()
             WHERE id=%s
         """, (label, detail, subtype, master_id))
-        # 임시명(name_pending) 상태였던 건물이 재제출로 API 명칭이 확인되면 그때 확정한다.
-        # (관리자가 손질한 기존 확정 명칭은 덮어쓰지 않도록 name_pending=TRUE인 경우에만.)
         if api_bld_nm:
             cur.execute("""
-                UPDATE master_buildings
-                SET building_name=%s, name_pending=FALSE
+                UPDATE master_buildings SET building_name=%s, name_pending=FALSE
                 WHERE id=%s AND name_pending IS TRUE
             """, (api_bld_nm, master_id))
         else:
-            # 안전장치: API 명칭이 여전히 없더라도, 기존 이름이 "(이름 미상)"/"-"/빈값처럼
-            # 무의미하면 최소한 "읍면동 지번" 임시명으로 바꾸고 name_pending=TRUE 유지.
             existing_name = (existing["building_name"] or "").strip()
             if existing_name in ("", "-", "(이름 미상)"):
                 cur.execute("""
-                    UPDATE master_buildings
-                    SET building_name=%s, name_pending=TRUE
-                    WHERE id=%s
+                    UPDATE master_buildings SET building_name=%s, name_pending=TRUE WHERE id=%s
                 """, (f"{umd_nm} {jibun_str}", master_id))
     else:
         cur.execute("""
@@ -1800,9 +1841,9 @@ def submit_building():
                  lodging_type, lodging_type_detail, lodging_subtype, verified_at, name_pending)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, %s, NOW(), %s)
             RETURNING id
-        """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str, title["ho_cnt"], label, detail, subtype, name_pending))
+        """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str,
+              title["ho_cnt"], label, detail, subtype, name_pending))
         master_id = cur.fetchone()["id"]
-        # 신규 편입 건물의 좌표를 도로명주소로 즉시 채운다(실패해도 등록은 계속).
         _fill_master_coords(cur, master_id, road_addr_final)
 
     mismatch_note = ""
