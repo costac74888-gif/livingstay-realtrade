@@ -700,7 +700,7 @@ function updateMarkerLabels(){
         d.el = _buildLabelEl(d.b);
         d.overlay = new kakao.maps.CustomOverlay({
           position: d.pos, content: d.el,
-          xAnchor: 0.5, yAnchor: 1.0, zIndex: 1,
+          xAnchor: 0.5, yAnchor: 1.0, zIndex: 20, // Kakao 기본 POI(~3)·마커(5)보다 위
         });
         mapLabelsByKey[d.b.lat + "," + d.b.lng] = d.el;
       }
@@ -881,10 +881,22 @@ async function loadMapMarkers(filters = {}, opts = {}){
         image: _makeMarkerImage(color),
         title: b.building_name || "",
         clickable: true,
+        zIndex: 5,   // Kakao 기본 파란 POI 마커(~3)보다 위
       });
       marker.setMap(kakaoMap);
 
-      kakao.maps.event.addListener(marker, "click", () => openBuildingInfo(b, pos));
+      kakao.maps.event.addListener(marker, "click", () => {
+        // 모바일: InfoWindow 팝업 없이 바로 건물 상세 패널 열기
+        // (InfoWindow 하단이 잘려 "상세보기" 버튼이 안 보이는 문제 해결)
+        if (isMobileMapViewport() && b.id != null) {
+          if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+          hideHoverTooltip(true);
+          history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
+          renderBuildingPanel(b.id);
+        } else {
+          openBuildingInfo(b, pos);
+        }
+      });
       kakao.maps.event.addListener(marker, "mouseover", () => showHoverTooltip(b, pos));
       kakao.maps.event.addListener(marker, "mouseout", hideHoverTooltip);
 
