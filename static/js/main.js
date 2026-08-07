@@ -533,7 +533,6 @@ let kakaoMap = null;
 let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.maps.Marker) 목록
 let mapLabelData = [];                // [{b, pos, overlay, el}] — 라벨 lazy 생성용 데이터
-let mapLabelsByKey = {};              // "lat,lng" → 라벨 DOM 요소 — 호버 중 라벨 숨김에 사용
 let _markerLoadGen = 0;               // loadMapMarkers 호출마다 증가 — 이전 addChunk 루프 폐기용
 
 // 색상별 MarkerImage 캐시 — SVG 데이터 URI를 반복 생성하지 않는다
@@ -571,15 +570,13 @@ function _stripSidoSgg(addr) {
 function _buildLabelEl(b, pos){
   const color = markerColor(b.lodging_type, b.building_status);
   const label = document.createElement("div");
-  // 모바일: pointer-events:auto + cursor:pointer → 탭으로 상세 진입 가능
-  // 데스크톱: 호버 툴팁이 라벨 위에 뜨므로 마우스 이벤트는 툴팁이 처리
-  const isMobile = isMobileMapViewport();
+  // PC/모바일 모두 pointer-events:auto — 라벨 클릭으로 바로 건물 상세 이동
   label.style.cssText =
     `background:${color}; color:#fff;` +
     "padding:3px 7px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3);" +
-    `white-space:nowrap; text-align:center; line-height:1.25; pointer-events:${isMobile ? "auto" : "none"};` +
+    "white-space:nowrap; text-align:center; line-height:1.25; pointer-events:auto; cursor:pointer;" +
     "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;" +
-    `margin-bottom:8px;${isMobile ? " cursor:pointer;" : ""}`; // 마커 점과의 간격
+    "margin-bottom:8px;"; // 마커 점과의 간격
   const nameLine = document.createElement("div");
   // 미분류 건물은 building_name이 전체 주소로 채워진 경우가 많으므로
   // 이미 시군구를 알고 있는 지도 화면에서는 동 이하만 표시한다.
@@ -602,21 +599,17 @@ function _buildLabelEl(b, pos){
       label.appendChild(refLine);
     }
   }
-  // 모바일: 라벨(네모 칩) 탭 → 마커 탭과 동일하게 건물 상세 패널 바로 열기
-  if (isMobile && b.id != null){
+  // PC/모바일 공통: 라벨 클릭 → 건물 상세 패널 바로 열기
+  if (b.id != null){
     label.addEventListener("click", (e) => {
       e.stopPropagation();
       if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-      hideHoverTooltip(true);
       history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
       renderBuildingPanel(b.id);
     });
   }
   return label;
 }
-let hoverTooltip = null;              // 마커 호버용 공용 미리보기 툴팁(오버레이)
-let hoverHideTimer = null;            // 호버 툴팁 지연 숨김 타이머(간격 통과 시 깜빡임 방지)
-let hoverCurrentKey = null;          // 현재 툴팁이 가리키는 마커 키(같은 마커 재진입 시 재생성 방지)
 const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
 // 클러스터 배지 줌 레벨 임계값 — Kakao Maps 레벨: 숫자 클수록 더 넓은 시야
 // level ≥ CLUSTER_SIDO_MIN_LEVEL → 시도 집계 배지
@@ -692,8 +685,6 @@ function clearMapMarkers(){
   mapOverlays = [];
   mapLabelData.forEach(d => { if (d.overlay) d.overlay.setMap(null); });
   mapLabelData = [];
-  mapLabelsByKey = {};
-  hideHoverTooltip(true);
   // 클러스터 배지도 함께 제거
   _clusterOverlays.forEach(o => o.setMap(null));
   _clusterOverlays = [];
@@ -758,7 +749,7 @@ function updateMarkerLabels(){
           xAnchor: 0.5, yAnchor: 1.0, zIndex: 20, // Kakao 기본 POI(~3)·마커(5)보다 위
           clickable: true,  // 모바일 탭 이벤트가 label DOM에 전달되도록
         });
-        mapLabelsByKey[d.b.lat + "," + d.b.lng] = d.el;
+
       }
       d.overlay.setMap(kakaoMap);
     } else {
@@ -810,88 +801,6 @@ function buildingInfoInnerHtml(b){
 
 // 호버 미리보기 툴팁 내용 — 클릭 InfoWindow와 완전히 동일한 내용을 공용 빌더로
 // 생성한다(버튼 포함, 클릭 가능). 카드 테두리/그림자만 툴팁 고유 스타일.
-function hoverTooltipContent(b){
-  return (
-    `<div style="padding:10px 12px; min-width:170px; max-width:240px; font-size:12.5px;` +
-    ` color:#16202E; font-family:'Noto Sans KR',sans-serif; background:#fff;` +
-    ` border:1px solid #e2e6ea; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.18);">` +
-      buildingInfoInnerHtml(b) +
-    `</div>`
-  );
-}
-
-function showHoverTooltip(b, pos){
-  if (!kakaoMap) return;
-  // 숨김 예약이 걸려 있으면 취소 — 인접 마커 사이 간격을 지나며 재진입한 경우.
-  if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
-  // 같은 마커에 다시 진입한 것이면 재생성하지 않는다(재생성 시 깜빡임의 원인).
-  const key = pos.getLat() + "," + pos.getLng();
-  if (hoverTooltip && hoverCurrentKey === key && hoverTooltip.getMap()) return;
-  // 이전 마커의 라벨 칩을 복원한다(다른 마커로 이동한 경우).
-  if (hoverCurrentKey && hoverCurrentKey !== key){
-    const prevLabel = mapLabelsByKey[hoverCurrentKey];
-    if (prevLabel) prevLabel.style.display = (kakaoMap.getLevel() <= LABEL_MAX_LEVEL) ? "block" : "none";
-  }
-  hoverCurrentKey = key;
-  // 현재 마커의 라벨 칩을 숨긴다 — 툴팁과 이중으로 겹치지 않게.
-  const curLabel = mapLabelsByKey[key];
-  if (curLabel) curLabel.style.display = "none";
-
-  const el = document.createElement("div");
-  // 마커 위쪽으로 충분히 띄워 상시 라벨 칩(점 위 ~45px)을 가리지 않게 한다.
-  // translateY 대신 아래쪽 padding으로 띄우면, 그 여백이 요소 히트영역에 포함돼
-  // 마커→툴팁 사이 간격을 마우스가 지나가도 mouseleave가 발생하지 않는
-  // 보이지 않는 "다리" 역할을 한다(툴팁이 클릭 전에 사라지는 문제 방지).
-  el.style.paddingBottom = "52px";
-  el.innerHTML = hoverTooltipContent(b);
-  // 툴팁 안의 ☆관심저장·상세보기 버튼을 실제로 누를 수 있어야 하므로
-  // pointer-events를 살려 두고, 대신 툴팁 자체에 mouseenter/mouseleave를 걸어
-  // 마커→툴팁으로 마우스가 이동하는 동안 숨김 타이머를 취소한다(떨림 방지 겸용).
-  el.addEventListener("mouseenter", () => {
-    if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
-  });
-  el.addEventListener("mouseleave", hideHoverTooltip);
-  // 다리(padding) 영역은 시각적으로 비어 있지만 마커 점 위를 덮으므로,
-  // 그 영역을 클릭하면 마커를 클릭한 것과 동일하게 건물 상세 패널로 바로 이동한다.
-  el.addEventListener("click", (e) => {
-    if (e.target === el && b.id != null) {
-      if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-      hideHoverTooltip(true);
-      history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
-      renderBuildingPanel(b.id);
-    }
-  });
-  if (!hoverTooltip){
-    hoverTooltip = new kakao.maps.CustomOverlay({
-      position: pos, content: el, xAnchor: 0.5, yAnchor: 1, clickable: true, zIndex: 9999,
-    });
-  } else {
-    hoverTooltip.setContent(el);
-    hoverTooltip.setPosition(pos);
-  }
-  hoverTooltip.setMap(kakaoMap);
-}
-
-// immediate=true면 즉시 숨김(클릭 등). 기본은 짧게 지연해 숨긴다 — 조밀하게 붙은
-// 마커 사이 1~2px 간격을 지날 때 숨김→표시가 반복되며 떨리는 현상을 막는다.
-// 지연 중 다른 마커로 재진입하면 showHoverTooltip에서 타이머를 취소한다.
-function hideHoverTooltip(immediate){
-  if (hoverHideTimer){ clearTimeout(hoverHideTimer); hoverHideTimer = null; }
-  const doHide = () => {
-    if (hoverTooltip) hoverTooltip.setMap(null);
-    // 숨겼던 라벨 칩을 현재 줌 레벨 기준으로 복원한다.
-    if (hoverCurrentKey){
-      const lbl = mapLabelsByKey[hoverCurrentKey];
-      if (lbl) lbl.style.display = (kakaoMap && kakaoMap.getLevel() <= LABEL_MAX_LEVEL) ? "block" : "none";
-    }
-    hoverCurrentKey = null;
-    hoverHideTimer = null;
-  };
-  if (immediate === true){ doHide(); return; }
-  // 380ms: 떨림 방지(짧은 이탈 무시)를 유지하면서, 마커→툴팁→"상세보기"까지
-  // 마우스를 천천히 옮겨도 끊기지 않을 만큼의 여유를 준다.
-  hoverHideTimer = setTimeout(doHide, 380);
-}
 
 // filters: {q, si_do, sgg_nm, umd_nm, lodging_type}
 // opts.fit: true면 결과가 다 보이도록 bounds에 맞춰 확대/이동
@@ -966,16 +875,12 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
       kakao.maps.event.addListener(marker, "click", () => {
         // PC/모바일 공통: 마커 클릭 시 바로 건물 상세 패널 열기
-        // (PC는 호버 툴팁으로 미리보기 가능하므로 클릭은 바로 이동)
         if (b.id != null) {
           if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-          hideHoverTooltip(true);
           history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
           renderBuildingPanel(b.id);
         }
       });
-      kakao.maps.event.addListener(marker, "mouseover", () => showHoverTooltip(b, pos));
-      kakao.maps.event.addListener(marker, "mouseout", hideHoverTooltip);
 
       mapOverlays.push(marker);
       // 라벨 데이터만 저장 — 실제 DOM/오버레이는 updateMarkerLabels 에서 lazy 생성
@@ -1253,7 +1158,6 @@ function liftZoomControlAboveLegend(attempt){
 
 async function openBuildingInfo(b, pos){
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-  hideHoverTooltip(true); // 같은 마커에 호버 툴팁 + InfoWindow가 동시에 뜨지 않게 즉시 닫는다.
 
   // ★ 내용은 호버 툴팁과 완전히 동일한 공용 빌더(buildingInfoInnerHtml)로 생성.
   // 클릭 InfoWindow는 "고정" 역할만 다르다(마우스를 치워도 유지, X로 닫기).
@@ -2895,7 +2799,6 @@ function restoreDefaultPanel(){
 window.openBuildingDetail = function(id){
   history.pushState({ buildingId: id }, "", "/building/" + id);
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-  hideHoverTooltip(true); // 호버 툴팁에서 눌러 들어온 경우 툴팁도 즉시 닫는다.
   renderBuildingPanel(id);
   return false;
 };
