@@ -34,14 +34,15 @@ function promptLogin(msg){
 }
 
 function toggleFav(item){
+  // 사업자 계정(agent/operator/loan_consultant)은 관심저장 불가 — 로그인 체크보다 먼저
+  // (__livingstayLoggedIn은 사업자도 false이므로 순서가 반드시 account_type 먼저여야 함)
+  if (window.__livingstayAccountType && window.__livingstayAccountType !== "user"){
+    alert("관심저장은 일반회원 전용 기능입니다. 개인 이용을 원하시면 별도로 일반회원 가입해주세요.");
+    return false;
+  }
   // 하드게이트: 비로그인은 저장 불가
   if (!window.__livingstayLoggedIn){
     promptLogin("관심저장은 로그인 후 이용할 수 있습니다.");
-    return false;
-  }
-  // 사업자 계정(agent/operator/loan_consultant)은 관심저장 불가
-  if (window.__livingstayAccountType && window.__livingstayAccountType !== "user"){
-    alert("관심저장은 일반회원 전용 기능입니다. 개인 이용을 원하시면 별도로 일반회원 가입해주세요.");
     return false;
   }
   const k = favKey(item);
@@ -2310,8 +2311,9 @@ async function loadBuildingHeader(id){
     syncFavBtn(); syncAlertBtn();
     favBtn.addEventListener("click", () => { const ok = toggleFav(favItem); if (ok !== false) syncFavBtn(); });
     alertBtn.addEventListener("click", () => {
-      if (!window.__livingstayLoggedIn){ alert("실거래 알림은 로그인이 필요합니다."); return; }
+      // 사업자 체크를 비로그인 체크보다 먼저 (사업자도 __livingstayLoggedIn=false임)
       if (window.__livingstayAccountType && window.__livingstayAccountType !== "user"){ alert("실거래 알림은 일반회원 전용 기능입니다. 개인 이용을 원하시면 별도로 일반회원 가입해주세요."); return; }
+      if (!window.__livingstayLoggedIn){ alert("실거래 알림은 로그인이 필요합니다."); return; }
       const wasOn = alertKeySet.has(favKeyStr);
       // 낙관적 업데이트 → 서버 반영. 실패하면 되돌린다.
       if (wasOn) alertKeySet.delete(favKeyStr); else alertKeySet.add(favKeyStr);
