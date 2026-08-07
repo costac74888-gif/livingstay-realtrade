@@ -446,17 +446,41 @@
     var btn = document.getElementById("logoutBtn");
     if (btn) btn.disabled = true;
     fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })
-      // 헤더(auth.js)를 소스오브트루스로 다시 맞춘다 → livingstay:auth 이벤트로 본문도 동기화.
-      .then(function(){ if (window.livingstayRefreshAuth) window.livingstayRefreshAuth(); else renderLoggedOut(); })
-      .catch(function(){ if (window.livingstayRefreshAuth) window.livingstayRefreshAuth(); else renderLoggedOut(); });
+      .then(function(){ window.location.href = "/"; })
+      .catch(function(){ window.location.href = "/"; });
   }
 
-  // 인증 상태는 헤더(auth.js)가 소스오브트루스 — livingstay:auth 이벤트로 본문을 렌더한다.
-  // (헤더 로그인/로그아웃과 본문이 항상 일치하도록. auth.js가 로드 시 refreshMe로 최초 1회 발행)
-  window.addEventListener("livingstay:auth", function(e){
-    var d = (e && e.detail) || {};
-    if (d.loggedIn && d.user) renderLoggedIn(d.user); else renderLoggedOut();
-  });
+  // ── 계정 유형 분기 ──────────────────────────────────────────────────────
+  // livingstay:auth 이벤트는 일반회원(account_type="user")에서만 발행되므로,
+  // 사업자 계정(agent/operator/loan_consultant)은 해당 대시보드로 리다이렉트한다.
+  // 비로그인이면 로그인 페이지로 이동. 일반회원이면 마이페이지 렌더링 실행.
+  var _BIZ_REDIRECT = {
+    agent:           "/agent/dashboard",
+    operator:        "/operator/dashboard",
+    loan_consultant: "/loan-consultant/dashboard",
+  };
+
+  function initMypage(d) {
+    renderLoggedIn(d);
+  }
+
+  fetch("/api/auth/me", { credentials: "same-origin" })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d || !d.logged_in) {
+        // 비로그인 — 로그인 모달 자동 오픈 파라미터와 함께 홈으로
+        window.location.href = "/?login=1";
+        return;
+      }
+      if (_BIZ_REDIRECT[d.account_type]) {
+        // 사업자 계정 — 각자 전용 대시보드로 이동
+        window.location.href = _BIZ_REDIRECT[d.account_type];
+        return;
+      }
+      // account_type === "user" 인 경우만 마이페이지 렌더링
+      initMypage(d);
+    })
+    .catch(function(){ renderLoggedOut(); });
 </script>
 <script>window.PAGE_TITLE = "마이페이지";</script>
 <script src="/static/js/header.js"></script>
