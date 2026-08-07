@@ -387,6 +387,7 @@ function resetToHome(){
   renderFavChips();
   loadBoard();
   resetMapView();
+  localStorage.removeItem("map_last_view"); // 로고 클릭 = "처음부터" 의도 — 저장 위치도 초기화
   updateMapForZoom({}, { force: true });   // 지도도 전체로 복귀 (줌 레벨 기준 클러스터 또는 마커)
   window.scrollTo({top:0, behavior:"smooth"});
 }
@@ -664,6 +665,14 @@ function isMobileMapViewport(){
   return window.matchMedia(`(max-width: ${MAP_MOBILE_MAX_WIDTH}px)`).matches;
 }
 function mapDefaultView(){
+  // localStorage에 저장된 마지막 위치가 있으면 우선 사용 (30일 이내)
+  try {
+    const saved = JSON.parse(localStorage.getItem("map_last_view") || "null");
+    if (saved && saved.lat && saved.lng && saved.level
+        && (Date.now() - saved.savedAt) < 30 * 24 * 60 * 60 * 1000) {
+      return { center: { lat: saved.lat, lng: saved.lng }, level: saved.level };
+    }
+  } catch(e) {}
   return isMobileMapViewport()
     ? { center: MAP_DEFAULT_CENTER_MOBILE, level: MAP_DEFAULT_LEVEL_MOBILE }
     : { center: MAP_DEFAULT_CENTER, level: MAP_DEFAULT_LEVEL };
@@ -1159,6 +1168,16 @@ async function initMap(){
   kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.BOTTOMRIGHT);
   liftZoomControlAboveLegend();
   window.addEventListener("resize", () => setTimeout(liftZoomControlAboveLegend, 150));
+
+  // 지도 이동·줌 완료 시 마지막 위치를 localStorage에 저장 — 새로고침 후 복원에 사용
+  // idle은 이동이 멈춘 뒤 한 번만 발생하므로 디바운스 불필요
+  kakao.maps.event.addListener(kakaoMap, "idle", () => {
+    const c = kakaoMap.getCenter();
+    localStorage.setItem("map_last_view", JSON.stringify({
+      lat: c.getLat(), lng: c.getLng(), level: kakaoMap.getLevel(),
+      savedAt: Date.now(),
+    }));
+  });
 
   // 확대/축소 시 클러스터 배지↔개별마커 전환 (모드 변경 시만 재로드, 같은 모드면 라벨만 갱신)
   kakao.maps.event.addListener(kakaoMap, "zoom_changed", () => updateMapForZoom(_lastMapFilters));
