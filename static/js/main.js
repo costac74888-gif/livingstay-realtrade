@@ -912,12 +912,18 @@ async function loadMapMarkers(filters = {}, opts = {}){
       const color = markerColor(b.lodging_type, b.building_status);
       const pos = new kakao.maps.LatLng(b.lat, b.lng);
 
+      // 겹침 우선순위: 생숙(9) > 관광(8) > 복합(7) > 일반(6) > 미분류(5)
+      const MARKER_Z = { "생활": 9, "관광": 8, "복합": 7, "일반": 6 };
+      const mzIndex = (b.lodging_type && b.lodging_type.includes("·"))
+        ? 7  // 복합(복수 타입)
+        : (MARKER_Z[b.lodging_type] || 5);
+
       const marker = new kakao.maps.Marker({
         position: pos,
         image: _makeMarkerImage(color),
         title: b.building_name || "",
         clickable: true,
-        zIndex: 5,   // Kakao 기본 파란 POI 마커(~3)보다 위
+        zIndex: mzIndex,
       });
       marker.setMap(kakaoMap);
 
