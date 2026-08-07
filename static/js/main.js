@@ -725,11 +725,22 @@ function dealDetailHtml(d){
 // 현재 확대 레벨을 보고 모든 마커 라벨을 표시/숨김 (LABEL_MAX_LEVEL 이하일 때만 표시).
 // 축소된 전국뷰에서는 라벨이 겹쳐 지저분해지므로 숨긴다.
 // 라벨 DOM/오버레이는 최초 줌인 시 lazy 생성 — 전국뷰(기본)에서는 생성조차 하지 않는다.
+// ★ 성능: viewport 밖 마커는 DOM 생성도 setMap도 건너뜀 — 11,000개 전체 동기처리 동결 방지.
 function updateMarkerLabels(){
   if (!kakaoMap) return;
   const show = kakaoMap.getLevel() <= LABEL_MAX_LEVEL;
+
+  if (!show){
+    // 라벨 숨김: overlay가 이미 생성된 것만 제거 (미생성 건 skip)
+    mapLabelData.forEach(d => { if (d.overlay) d.overlay.setMap(null); });
+    return;
+  }
+
+  // 라벨 표시: 현재 viewport bounds 안 마커만 생성·표시
+  const bounds = kakaoMap.getBounds();
   mapLabelData.forEach(d => {
-    if (show){
+    const inView = bounds ? bounds.contain(d.pos) : true;
+    if (inView){
       if (!d.overlay){
         // 최초 줌인 시 1회만 DOM + CustomOverlay 생성
         d.el = _buildLabelEl(d.b);
@@ -742,6 +753,7 @@ function updateMarkerLabels(){
       }
       d.overlay.setMap(kakaoMap);
     } else {
+      // viewport 밖: 이미 표시 중인 경우만 숨김
       if (d.overlay) d.overlay.setMap(null);
     }
   });
@@ -1155,9 +1167,12 @@ async function initMap(){
 
   // 지도 이동(드래그) 후 같은 클러스터 레벨이면 bounds가 바뀌므로 재조회
   // (sgg/umd 배지는 뷰포트 제한이므로, 이동 시 화면 밖 지역 배지를 갱신해야 함)
+  // markers 모드에서 드래그하면 viewport가 바뀌어 새로 보이는 마커에 라벨을 붙여야 한다.
   kakao.maps.event.addListener(kakaoMap, "dragend", () => {
     const mode = _clusterModeForLevel(kakaoMap.getLevel());
-    if (mode !== "markers" && (mode === "sgg" || mode === "umd")) {
+    if (mode === "markers"){
+      updateMarkerLabels();
+    } else if (mode === "sgg" || mode === "umd") {
       loadClusterOverlays(mode, _lastMapFilters);
     }
   });
