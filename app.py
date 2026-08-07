@@ -1017,7 +1017,12 @@ def get_transactions():
         where.append(sido_match_clause("si_do"))
         params.append(sido_core(si_do))
     if sgg_nm:
-        where.append("sgg_nm = %s")
+        # sgg_nm은 이제 master_buildings.sgg_text 전체값(예: '경기도 수원시 팔달구').
+        # transactions.sgg_nm은 시군구만 저장(예: '수원시 팔달구' 또는 '팔달구').
+        # suffix LIKE: sgg_text 끝이 transactions.sgg_nm과 일치하는 행만 추출.
+        # → '경기도 수원시 팔달구' LIKE '%수원시 팔달구' = TRUE ✓
+        # → '경기도 수원시 팔달구' LIKE '%수원시'       = FALSE (오염 차단) ✓
+        where.append("%s LIKE '%%' || sgg_nm")
         params.append(sgg_nm)
     if umd_nm:
         # transactions.umd_nm은 공백 없이 저장(예: '구좌읍김녕리') — regions API도 같은 값 반환.
@@ -1175,8 +1180,10 @@ def get_buildings_cluster():
         where.append(sido_match_clause("split_part(sgg_text, ' ', 1)"))
         params.append(sido_core(si_do))
     if sgg_nm:
-        where.append("sgg_text LIKE %s")
-        params.append(f"%{sgg_nm}%")
+        # sgg_nm은 master_buildings.sgg_text 전체값 — exact match로 와일드카드 오염 차단.
+        # ('경기도 수원시' LIKE '%경기도 수원시%'가 '경기도 수원시 팔달구'까지 매칭하는 문제 방지)
+        where.append("sgg_text = %s")
+        params.append(sgg_nm)
     if umd_nm:
         where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
         params.append(f"%{umd_nm.replace(' ', '')}%")
@@ -1325,8 +1332,9 @@ def get_buildings_geo():
         where.append(sido_match_clause("split_part(sgg_text, ' ', 1)"))
         params.append(sido_core(si_do))
     if sgg_nm:
-        where.append("sgg_text LIKE %s")
-        params.append(f"%{sgg_nm}%")
+        # sgg_nm은 master_buildings.sgg_text 전체값 — exact match로 와일드카드 오염 차단.
+        where.append("sgg_text = %s")
+        params.append(sgg_nm)
     if umd_nm:
         where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
         params.append(f"%{umd_nm.replace(' ', '')}%")
@@ -1614,14 +1622,26 @@ def get_building_count():
 @app.route("/api/regions")
 @limiter.limit("30 per minute")
 def get_regions():
-    """시도 > 시군구 > 읍면동 계층 트리 (계층 검색 드롭다운용)"""
+    """시도 > 시군구 > 읍면동 계층 트리 (계층 검색 드롭다운용).
+
+    buildings-cluster와 동일한 기준(master_buildings, mixed_use_excluded 제외)으로
+    집계해 드롭다운 건물 수와 지도 배지 숫자를 정확히 일치시킨다.
+    - si_do: _sido_norm_sql로 약칭 정규화(서울 → 서울특별시 등)
+    - sgg_nm: master_buildings.sgg_text 전체값(예: '경기도 수원시 팔달구')
+    - umd_nm: master_buildings.umd_nm
+    """
+    sido_expr = _sido_norm_sql("split_part(sgg_text, ' ', 1)")
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT si_do, sgg_nm, umd_nm, COUNT(*) c
-        FROM transactions
-        WHERE si_do IS NOT NULL
-        GROUP BY si_do, sgg_nm, umd_nm
+    cur.execute(f"""
+        SELECT
+            {sido_expr}  AS si_do,
+            sgg_text     AS sgg_nm,
+            umd_nm,
+            COUNT(*)     AS c
+        FROM master_buildings
+        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+        GROUP BY sgg_text, umd_nm
     """)
     rows = cur.fetchall()
     cur.close()
@@ -1629,7 +1649,12 @@ def get_regions():
 
     tree = {}
     for r in rows:
-        sd, sg, um, c = r["si_do"], r["sgg_nm"], r["umd_nm"], r["c"]
+        sd = r["si_do"] or ""
+        sg = r["sgg_nm"] or ""
+        um = r["umd_nm"] or ""   # umd_nm = NULL 건물은 빈 문자열로 처리
+        c  = r["c"]
+        if not sd or not sg:     # sgg_text = NULL 이상 건물은 드롭다운 제외
+            continue
         tree.setdefault(sd, {"count": 0, "sgg": {}})
         tree[sd]["count"] += c
         tree[sd]["sgg"].setdefault(sg, {"count": 0, "umd": {}})

@@ -201,8 +201,14 @@ function refreshSggOptions(){
     return;
   }
   const sggMap = regionTree[state.si_do].sgg;
+  // sgg 키는 master_buildings.sgg_text 전체값(예: '경기도 수원시 팔달구').
+  // value는 필터 매칭에 그대로 사용; 표시 레이블은 si_do 접두사를 제거해 간결하게 표시.
+  const sidoPrefix = state.si_do + ' ';
   selSggNm.innerHTML = '<option value="">전체</option>' +
-    Object.keys(sggMap).sort().map(sg => `<option value="${sg}">${sg} (${sggMap[sg].count})</option>`).join("");
+    Object.keys(sggMap).sort().map(sg => {
+      const label = sg.startsWith(sidoPrefix) ? sg.slice(sidoPrefix.length) : sg;
+      return `<option value="${sg}">${label} (${sggMap[sg].count})</option>`;
+    }).join("");
   selUmdNm.innerHTML = '<option value="">전체</option>';
 }
 function refreshUmdOptions(){
