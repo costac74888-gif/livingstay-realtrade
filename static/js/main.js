@@ -951,15 +951,13 @@ async function loadMapMarkers(filters = {}, opts = {}){
       marker.setMap(kakaoMap);
 
       kakao.maps.event.addListener(marker, "click", () => {
-        // 모바일: InfoWindow 팝업 없이 바로 건물 상세 패널 열기
-        // (InfoWindow 하단이 잘려 "상세보기" 버튼이 안 보이는 문제 해결)
-        if (isMobileMapViewport() && b.id != null) {
+        // PC/모바일 공통: 마커 클릭 시 바로 건물 상세 패널 열기
+        // (PC는 호버 툴팁으로 미리보기 가능하므로 클릭은 바로 이동)
+        if (b.id != null) {
           if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
           hideHoverTooltip(true);
           history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
           renderBuildingPanel(b.id);
-        } else {
-          openBuildingInfo(b, pos);
         }
       });
       kakao.maps.event.addListener(marker, "mouseover", () => showHoverTooltip(b, pos));
