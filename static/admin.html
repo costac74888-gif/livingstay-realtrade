@@ -401,9 +401,9 @@
         columns: [
           { key: "id", label: "ID", sortable: true },
           { key: "request_type", label: "요청유형", render: (v) => v === "new" ? "신규 등록" : (v === "correction" ? "정정 요청" : dgEscape(v)) },
-          { key: "road_address", label: "주소" },
-          { key: "building_name_hint", label: "건물명" },
-          { key: "suggested_building_name", label: "제안 명칭" },
+          { key: "road_address", label: "주소", width: "220px" },
+          { key: "building_name_hint", label: "건물명", width: "140px" },
+          { key: "suggested_building_name", label: "제안 명칭", width: "140px" },
           { key: "status", label: "상태", sortable: true, render: (v) => {
             const m = { pending: ["대기중", "wait"], verified: ["확인됨", "ok"], rejected: ["거절됨", "no"], name_review: ["명칭 확인 필요", "wait"] };
             const x = m[v] || [v, ""];

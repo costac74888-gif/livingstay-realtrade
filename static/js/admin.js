@@ -146,14 +146,15 @@ class DataGrid {
   _renderHead() {
     const cols = this.tableColumns();
     const ths = cols.map((col) => {
-      if (!col.sortable && !col.clientSort) return `<th>${dgEscape(col.label)}</th>`;
+      const wStyle = col.width ? ` style="min-width:${dgEscape(String(col.width))}"` : "";
+      if (!col.sortable && !col.clientSort) return `<th${wStyle}>${dgEscape(col.label)}</th>`;
       let arrow = "";
       if (this._clientSortKey === col.key) {
         arrow = this._clientSortOrder === "asc" ? " ▲" : " ▼";
       } else if (this.state.sort === col.key) {
         arrow = this.state.order === "asc" ? " ▲" : " ▼";
       }
-      return `<th class="dg-sortable" data-key="${dgEscape(col.key)}" data-client="${col.clientSort ? "1" : "0"}">${dgEscape(col.label)}${arrow}</th>`;
+      return `<th class="dg-sortable"${wStyle} data-key="${dgEscape(col.key)}" data-client="${col.clientSort ? "1" : "0"}">${dgEscape(col.label)}${arrow}</th>`;
     });
     if (this.hasActions) ths.push(`<th class="dg-col-actions">관리</th>`);
     this.$headRow.innerHTML = ths.join("");
