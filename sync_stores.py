@@ -157,19 +157,14 @@ def run(args, status_key=None, run_id=None):
     stop_reason = None
 
     # 하트비트 스레드 (status_key 있을 때만)
+    # _touch()는 내부에서 get_conn()/commit()/close()를 직접 처리하므로
+    # 호출자가 커서를 따로 열어줄 필요 없음 (sync_lodgings.py 패턴과 동일)
     stop_beat = threading.Event()
     if status_key and run_id:
         def _beat():
             while not stop_beat.wait(HEARTBEAT_SEC):
                 try:
-                    hb_conn = get_conn()
-                    hb_cur = hb_conn.cursor()
-                    try:
-                        _touch(hb_cur, status_key, run_id)
-                        hb_conn.commit()
-                    finally:
-                        hb_cur.close()
-                        hb_conn.close()
+                    _touch(status_key, run_id)
                 except Exception:
                     pass
         threading.Thread(target=_beat, daemon=True).start()
