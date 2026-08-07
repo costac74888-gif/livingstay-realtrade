@@ -226,6 +226,18 @@
   .map-legend .lg i{width:11px; height:11px; border-radius:50%; display:inline-block;}
   .map-legend .lg-count{font-size:10.5px; color:var(--ink-soft); font-weight:500;}
 
+  /* 범례 모바일 전용 축소 — 3줄 크게 차지 → 1~2줄로 컴팩트하게 */
+  @media (max-width:480px){
+    .map-legend{
+      padding:5px 8px; gap:6px 10px; font-size:10px;
+      bottom:calc(var(--stage-gap) / 2);
+    }
+    .map-legend .map-legend-title{font-size:11px;}
+    .map-legend .lg{padding:2px 4px; gap:3px;}
+    .map-legend .lg i{width:8px; height:8px;}
+    .map-legend .lg-count{font-size:9px;}
+  }
+
   /* 모바일 전용 패널 토글 버튼 (데스크톱 숨김) */
   .panel-toggle{display:none;}
   .side-card-title{font-size:13px; font-weight:700; color:var(--ink); margin-bottom:10px; display:flex; align-items:baseline; gap:6px;}
