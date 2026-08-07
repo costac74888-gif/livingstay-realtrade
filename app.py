@@ -59,6 +59,7 @@ SERVER_BOOT_V = str(int(time.time()))
 # 파트너(중개사/운영업체) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
 # 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
 MAX_FREE_BUILDINGS = 5
+MAX_FAVORITES = 5          # 회원 1인당 관심단지 최대 저장 수 (클라이언트와 동일값 유지)
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
 OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
@@ -4002,6 +4003,25 @@ def favorites_mine_add():
             cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", (bid,))
             if not cur.fetchone():
                 bid = None
+        # 서버단 개수 상한 체크 — 클라이언트 우회로 MAX_FAVORITES 초과 저장 방지.
+        # 이미 저장된 동일 항목은 ON CONFLICT DO UPDATE로 처리되므로 중복은 허용.
+        cur.execute(
+            "SELECT COUNT(*) FROM user_favorites WHERE user_id = %s",
+            (u["id"],),
+        )
+        existing_count = cur.fetchone()[0]
+        # 동일 항목이 이미 존재하면 upsert(갱신)이므로 개수 제한 적용 안 함
+        cur.execute(
+            "SELECT 1 FROM user_favorites "
+            "WHERE user_id = %s AND COALESCE(building_name,'') = COALESCE(%s,'') AND address = %s",
+            (u["id"], name, addr),
+        )
+        already_exists = cur.fetchone() is not None
+        if not already_exists and existing_count >= MAX_FAVORITES:
+            return jsonify({
+                "ok": False,
+                "message": f"관심단지는 최대 {MAX_FAVORITES}개까지 저장할 수 있습니다.",
+            }), 400
         # 표현식 UNIQUE 인덱스(uq_user_favorites) 기준으로 원자적 dedup — 동시요청 안전.
         # 이미 저장된 관심단지에 building_id 없이 남아 있으면 이번 값으로 채워준다(백필).
         cur.execute(
@@ -4073,6 +4093,25 @@ def favorites_migrate():
                 "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
                 (u["id"], name, addr),
             )
+        # migrate 후 MAX_FAVORITES 초과분 제거 — created_at 오래된 순으로 상위 N개만 유지.
+        # "가장 오래 저장한 관심단지 우선" 원칙: 최근 추가분(rn > MAX_FAVORITES)을 삭제.
+        cur.execute(
+            """
+            DELETE FROM user_favorites
+            WHERE id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY user_id ORDER BY created_at ASC, id ASC
+                           ) AS rn
+                    FROM user_favorites
+                    WHERE user_id = %s
+                ) sub
+                WHERE rn > %s
+            )
+            """,
+            (u["id"], MAX_FAVORITES),
+        )
         conn.commit()
         cur.execute(
             "SELECT building_name, address FROM user_favorites "
