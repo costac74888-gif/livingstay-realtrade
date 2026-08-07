@@ -764,6 +764,16 @@ _STORES_CACHE_TTL_EMPTY = 300  # 실패/0건은 일시 장애일 수 있어 5분
 _stores_cache = {}
 _stores_cache_lock = threading.Lock()
 
+# 상가정보 API(STORE_INFO_SERVICE_KEY) 일일 한도 분리 카운터
+# data.go.kr 총 한도 10,000건을 배치/실시간으로 나눠 실시간 조회를 항상 보호한다.
+# ┌──────────────────────────────────────────────┐
+# │  총 10,000  = 실시간 4,000  +  배치 6,000   │
+# └──────────────────────────────────────────────┘
+STORE_DAILY_CALLS_REALTIME_KEY = "store_daily_calls_realtime"  # app_meta 키
+STORE_DAILY_CALLS_BATCH_KEY    = "store_daily_calls_batch"     # app_meta 키
+_STORE_REALTIME_DAILY_CAP      = 4_000   # 실시간 전용 일일 쿼터
+_STORE_BATCH_DAILY_CAP         = 6_000   # 배치 최대 일일 쿼터 (sync_stores.py 참조용)
+
 
 def _stores_result_from_rows(db_rows):
     """building_stores DB 행 목록 → /nearby-stores 응답 dict."""
@@ -792,6 +802,43 @@ def _stores_result_from_rows(db_rows):
         "categories": [{"category": c, "count": n} for c, n in categories],
         "stores": stores_sorted,
     }
+
+
+def _store_rt_check_and_count():
+    """실시간 상가조회 카운터를 원자적으로 1 증가시키고 한도 초과 여부를 반환.
+
+    Returns (new_count: int, over_limit: bool).
+    DB 오류 시 over_limit=False(통과 허용) — DB 장애로 사용자 차단하는 것보다 API 호출을 허용.
+    카운터 형식: app_meta[STORE_DAILY_CALLS_REALTIME_KEY] = {"date": "YYYY-MM-DD", "count": N}
+    """
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    fresh_val = json.dumps({"date": today_str, "count": 1}, ensure_ascii=False)
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE
+                  SET value = CASE
+                        WHEN (app_meta.value::jsonb ->> 'date') = %s
+                        THEN jsonb_set(app_meta.value::jsonb, '{count}',
+                                       to_jsonb((COALESCE(app_meta.value::jsonb->>'count','0'))::int + 1))
+                        ELSE %s::jsonb
+                      END,
+                      updated_at = NOW()
+                RETURNING value
+            """, (STORE_DAILY_CALLS_REALTIME_KEY, fresh_val, today_str, fresh_val))
+            row = cur.fetchone()
+            conn.commit()
+            count = int(json.loads(row["value"]).get("count", 1)) if row else 1
+        finally:
+            cur.close()
+            conn.close()
+    except Exception:
+        app.logger.exception("실시간 상가 카운터 증가 실패 — 통과 허용")
+        return 1, False
+    return count, count > _STORE_REALTIME_DAILY_CAP
 
 
 @app.route("/api/building/<int:building_id>/nearby-stores")
@@ -874,7 +921,21 @@ def get_building_nearby_stores(building_id):
                 else:
                     plat_gb, bun, ji = parse_jibun(r["jibun"])
                     pnu = build_pnu(r["sgg_cd"], bjd, plat_gb, bun, ji)
-                    stores = get_stores_by_pnu(pnu) if pnu else []
+                    if not pnu:
+                        stores = []
+                    else:
+                        # 실시간 일일쿼터 확인: 한도 초과 시 API 호출 없이 즉시 반환
+                        rt_count, rt_over = _store_rt_check_and_count()
+                        if rt_over:
+                            result["reason"] = "realtime_daily_limit"
+                            app.logger.warning(
+                                "상가정보 실시간 일일한도 초과 (count=%d, cap=%d, bld_id=%s)",
+                                rt_count, _STORE_REALTIME_DAILY_CAP, bld_id,
+                            )
+                            with _stores_cache_lock:
+                                _stores_cache[bld_id] = (time.time(), result)
+                            return
+                        stores = get_stores_by_pnu(pnu)
                     if stores:
                         fetched_stores = stores
                         counts = {}
@@ -9789,6 +9850,11 @@ def admin_stores_sync_status():
         meta = cur.fetchone()
         cur.execute("SELECT value FROM app_meta WHERE key = %s", ("stores_progress",))
         prog_row = cur.fetchone()
+        # 실시간/배치 분리 카운터
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", (STORE_DAILY_CALLS_REALTIME_KEY,))
+        rt_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", (STORE_DAILY_CALLS_BATCH_KEY,))
+        bt_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
@@ -9803,12 +9869,33 @@ def admin_stores_sync_status():
     except (TypeError, ValueError):
         pass
 
-    calls_today = 0
-    if progress and progress.get("calls_date") == datetime.now().strftime("%Y-%m-%d"):
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # 배치 호출량: stores_progress.calls_today (기존) + store_daily_calls_batch 중 큰 값
+    batch_calls_today = 0
+    if progress and progress.get("calls_date") == today_str:
         try:
-            calls_today = int(progress.get("calls_today") or 0)
+            batch_calls_today = int(progress.get("calls_today") or 0)
         except (TypeError, ValueError):
             pass
+    try:
+        bt = json.loads(bt_row["value"]) if bt_row and bt_row["value"] else {}
+        if bt.get("date") == today_str:
+            batch_calls_today = max(batch_calls_today, int(bt.get("count", 0)))
+    except (TypeError, ValueError, AttributeError):
+        pass
+
+    # 실시간 호출량: store_daily_calls_realtime
+    rt_calls_today = 0
+    try:
+        rt = json.loads(rt_row["value"]) if rt_row and rt_row["value"] else {}
+        if rt.get("date") == today_str:
+            rt_calls_today = int(rt.get("count", 0))
+    except (TypeError, ValueError, AttributeError):
+        pass
+
+    # calls_today(배치)는 기존 필드명 유지 (프론트 호환)
+    calls_today = batch_calls_today
 
     running = bool(status and status.get("state") == "running")
     stale = False
@@ -9831,10 +9918,16 @@ def admin_stores_sync_status():
         "covered_buildings": covered_buildings,
         "total_buildings": total_buildings,
         "checkpoint_id": (progress.get("last_id") if progress else 0) or 0,
+        # 배치 카운터 (기존 필드명 유지)
         "calls_today": calls_today,
         "calls_remaining": max(0, _STORES_DAILY_CAP - calls_today),
         "daily_cap": _STORES_DAILY_CAP,
         "stop_reason": (status.get("stop_reason") if status else None),
+        # 분리 카운터 (신규)
+        "batch_calls_today": batch_calls_today,
+        "batch_daily_cap": _STORE_BATCH_DAILY_CAP,
+        "realtime_calls_today": rt_calls_today,
+        "realtime_daily_cap": _STORE_REALTIME_DAILY_CAP,
     })
 
 

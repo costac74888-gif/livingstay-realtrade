@@ -1565,8 +1565,15 @@
       if (!box || !btn) { stopStoresSyncPolling(); return; }
       const rows = [];
       rows.push(`<div class="geo-stat-row"><b>수집 건물 수:</b> ${num(d.covered_buildings)} / ${num(d.total_buildings)}건 · 저장 업소 ${num(d.total_stored)}개</div>`);
-      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)} / ${num(d.daily_cap)}건 (잔여 ${num(d.calls_remaining)}건)</div>`);
       rows.push(`<div class="geo-stat-row"><b>체크포인트 (마지막 처리 건물 id):</b> ${num(d.checkpoint_id)}</div>`);
+      // 분리 카운터: 배치/실시간 개별 표시
+      const bCap = d.batch_daily_cap || 6000;
+      const rCap = d.realtime_daily_cap || 4000;
+      const bToday = d.batch_calls_today != null ? d.batch_calls_today : d.calls_today;
+      const rToday = d.realtime_calls_today != null ? d.realtime_calls_today : "-";
+      const bColor = bToday >= bCap ? "color:#b3261e" : bToday >= bCap * 0.8 ? "color:#b45309" : "";
+      const rColor = (typeof rToday === "number" && rToday >= rCap) ? "color:#b3261e" : (typeof rToday === "number" && rToday >= rCap * 0.8) ? "color:#b45309" : "";
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출 — 배치:</b> <span style="${bColor}">${num(bToday)} / ${num(bCap)}건</span> &nbsp;|&nbsp; <b>실시간:</b> <span style="${rColor}">${num(rToday)} / ${num(rCap)}건</span></div>`);
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
       } else if (d.state === "done") {
@@ -2272,6 +2279,8 @@
             상가업소를 미리 수집해 DB에 저장합니다. 이후 건물 상세 화면의 "상가정보" 탭이
             즉시 응답합니다(실시간 API 대기 없음). 건당 1초 소요 — 일일 캡(500건)에 도달하면
             체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다. (실행 제한: 시간당 2회)
+             <br><b style="color:#b45309">⚠ API 한도 분리:</b> STORE_INFO_SERVICE_KEY 일일 10,000건 중
+             배치 최대 6,000건 · 실시간 전용 4,000건 예약. 배치 실행 중에도 실시간 조회는 항상 보호됩니다.
           </p>
           <div id="storesSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">

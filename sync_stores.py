@@ -29,8 +29,9 @@ from address_utils import BjdongMap, parse_jibun
 from store_info_util import get_stores_by_pnu, build_pnu
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
-PROGRESS_KEY = "stores_progress"
-BJDONG_CSV   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "법정동코드_전체자료.zip")
+PROGRESS_KEY               = "stores_progress"
+STORE_DAILY_CALLS_BATCH_KEY = "store_daily_calls_batch"   # app_meta 키 (배치 전용 카운터)
+BJDONG_CSV                 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "법정동코드_전체자료.zip")
 
 _MAX_RETRY    = 3
 _RETRY_WAITS  = [10, 30, 60]  # 초
@@ -82,10 +83,18 @@ def _load_progress(conn):
 def _save_progress(conn, prog):
     cur = conn.cursor()
     try:
+        today_str = date.today().isoformat()
+        batch_count = int(prog.get("calls_today") or 0) if prog.get("calls_date") == today_str else 0
+        batch_val   = json.dumps({"date": today_str, "count": batch_count}, ensure_ascii=False)
         cur.execute("""
             INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
         """, (PROGRESS_KEY, json.dumps(prog, ensure_ascii=False)))
+        # 배치 전용 카운터 동기화 (관리자 분리 뷰용)
+        cur.execute("""
+            INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        """, (STORE_DAILY_CALLS_BATCH_KEY, batch_val))
         conn.commit()
     finally:
         cur.close()
