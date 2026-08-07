@@ -852,9 +852,14 @@ function showHoverTooltip(b, pos){
   });
   el.addEventListener("mouseleave", hideHoverTooltip);
   // 다리(padding) 영역은 시각적으로 비어 있지만 마커 점 위를 덮으므로,
-  // 그 영역을 클릭하면 마커를 클릭한 것과 동일하게 상세 InfoWindow를 연다.
+  // 그 영역을 클릭하면 마커를 클릭한 것과 동일하게 건물 상세 패널로 바로 이동한다.
   el.addEventListener("click", (e) => {
-    if (e.target === el) openBuildingInfo(b, pos);
+    if (e.target === el && b.id != null) {
+      if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+      hideHoverTooltip(true);
+      history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
+      renderBuildingPanel(b.id);
+    }
   });
   if (!hoverTooltip){
     hoverTooltip = new kakao.maps.CustomOverlay({
