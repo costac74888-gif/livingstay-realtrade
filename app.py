@@ -3647,25 +3647,65 @@ def auth_login():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def auth_logout():
-    """일반 회원 로그아웃 — 관리자 세션은 건드리지 않고 회원 키만 제거한다."""
+    """로그아웃 — 일반회원·사업자 3종 세션 키를 모두 제거한다.
+    관리자 세션(session["admin"])은 건드리지 않는다."""
     session.pop("user_id", None)
+    session.pop("agent_id", None)
+    session.pop("operator_id", None)
+    session.pop("loan_consultant_id", None)
     session.pop("kakao_oauth_state", None)
     return jsonify({"ok": True})
 
 
 @app.route("/api/auth/me")
 def auth_me():
-    """로그인 상태 조회. 프런트 헤더가 로그인/로그아웃 표시를 결정하는 데 쓴다."""
+    """로그인 상태 조회. 프런트 헤더가 로그인/로그아웃 표시를 결정하는 데 쓴다.
+    일반 회원(user_id) 우선, 없으면 사업자 3종(agent/operator/loan_consultant) 순서로 확인.
+    account_type 필드로 프론트가 어떤 유형인지 구분할 수 있다."""
     u = current_user()
-    if not u:
-        return jsonify({"logged_in": False})
-    return jsonify({
-        "logged_in": True,
-        "name": u.get("name"),
-        "email": u.get("email"),
-        "provider": u.get("provider"),
-        "email_alert_enabled": bool(u.get("email_alert_enabled", True)),
-    })
+    if u:
+        return jsonify({
+            "logged_in": True,
+            "account_type": "user",
+            "name": u.get("name"),
+            "email": u.get("email"),
+            "provider": u.get("provider"),
+            "email_alert_enabled": bool(u.get("email_alert_enabled", True)),
+        })
+
+    # 사업자 세션 확인 — agent → operator → loan_consultant 순서.
+    # 테이블명·컬럼명은 하드코딩된 상수이므로 SQL 인젝션 위험 없음.
+    _BIZ_CHECKS = [
+        ("agent_id",           "agents",           "agent",           "owner_name", "office_name"),
+        ("operator_id",        "operators",        "operator",        "owner_name", "company_name"),
+        ("loan_consultant_id", "loan_consultants", "loan_consultant", "owner_name", "office_name"),
+    ]
+    active_biz = [(k, t, at, nc, oc) for k, t, at, nc, oc in _BIZ_CHECKS if session.get(k)]
+    if active_biz:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            for sess_key, table, acct_type, name_col, org_col in active_biz:
+                sid = session.get(sess_key)
+                cur.execute(
+                    f"SELECT {name_col} AS name, email, {org_col} AS org_name"
+                    f" FROM {table} WHERE id = %s AND status = 'approved'",
+                    (sid,),
+                )
+                row = cur.fetchone()
+                if row:
+                    return jsonify({
+                        "logged_in": True,
+                        "account_type": acct_type,
+                        "name": row.get("name"),
+                        "email": row.get("email"),
+                        "org_name": row.get("org_name"),
+                    })
+        finally:
+            cur.close()
+            conn.close()
+
+    return jsonify({"logged_in": False})
 
 
 @app.route("/api/auth/me", methods=["PUT"])

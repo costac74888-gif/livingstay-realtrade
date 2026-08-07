@@ -230,8 +230,18 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.logged_in) {
-          window.__livingstayLoggedIn = true;
           renderLoggedIn(d);
+
+          if (d.account_type && d.account_type !== "user") {
+            // 사업자 계정(agent/operator/loan_consultant) — 헤더에 로그인 상태만 표시.
+            // 관심저장·실거래알림·알림폴링은 일반회원 전용이므로 실행하지 않는다.
+            // __livingstayLoggedIn = false 를 유지해 알림 뱃지 등 회원 전용 API 호출 차단.
+            window.__livingstayLoggedIn = false;
+            return;
+          }
+
+          // 일반 회원
+          window.__livingstayLoggedIn = true;
           // 로그인 직후(이 세션 첫 확인) 1회만 관심단지 이관.
           var migrated;
           try { migrated = sessionStorage.getItem("livingstay_fav_migrated"); } catch (e) { migrated = "1"; }
