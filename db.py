@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-06-1"
+SCHEMA_VERSION = "2026-08-07-1"
 
 
 def init_db():
@@ -1075,6 +1075,22 @@ def init_db():
     cur.execute("""
         ALTER TABLE booking_url_requests
         ADD COLUMN IF NOT EXISTS renewal_count INTEGER DEFAULT 0
+    """)
+
+    # ── 상가정보 사전수집 캐시 (sync_stores.py → building_stores) ──────────
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS building_stores (
+            id                 SERIAL PRIMARY KEY,
+            master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+            store_name         TEXT,
+            category           TEXT,
+            floor              TEXT,
+            updated_at         TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_building_stores_building
+        ON building_stores(master_building_id)
     """)
 
     conn.commit()

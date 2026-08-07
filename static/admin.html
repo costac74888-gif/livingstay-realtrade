@@ -1553,6 +1553,81 @@
       }
     }
 
+    // ---- 상가정보 사전수집 ----
+    let storesSyncTimer = null;
+    function stopStoresSyncPolling() {
+      if (storesSyncTimer) { clearInterval(storesSyncTimer); storesSyncTimer = null; }
+    }
+
+    function renderStoresSyncStatus(d) {
+      const box = document.getElementById("storesSyncStatus");
+      const btn = document.getElementById("storesSyncRunBtn");
+      if (!box || !btn) { stopStoresSyncPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집 건물 수:</b> ${num(d.covered_buildings)} / ${num(d.total_buildings)}건 · 저장 업소 ${num(d.total_stored)}개</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)} / ${num(d.daily_cap)}건 (잔여 ${num(d.calls_remaining)}건)</div>`);
+      rows.push(`<div class="geo-stat-row"><b>체크포인트 (마지막 처리 건물 id):</b> ${num(d.checkpoint_id)}</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const reason = d.stop_reason === "all_done" ? "전체 완료" : d.stop_reason === "daily_cap" ? "일일 한도 도달 — 다음 실행 때 이어서" : (d.stop_reason || "완료");
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${reason}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 처리 ${d.processed == null ? "-" : num(d.processed) + "건"} · 저장 ${d.saved == null ? "-" : num(d.saved) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "상가정보 수집 실행";
+      if (!d.running) stopStoresSyncPolling();
+    }
+
+    async function loadStoresSyncStatus() {
+      const box = document.getElementById("storesSyncStatus");
+      if (!box) { stopStoresSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/stores-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderStoresSyncStatus(d);
+        if (d.running && !storesSyncTimer) storesSyncTimer = setInterval(loadStoresSyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runStoresSync() {
+      const btn = document.getElementById("storesSyncRunBtn");
+      const msg = document.getElementById("storesSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-stores", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "상가정보 수집을 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "상가정보 수집 실행";
+        }
+        loadStoresSyncStatus();
+        if (!storesSyncTimer) storesSyncTimer = setInterval(loadStoresSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "상가정보 수집 실행";
+      }
+    }
+
     // ---- 미분류 건물 재분류 ----
     let reclassifyTimer = null;
     function stopReclassifyPolling() {
@@ -2188,6 +2263,22 @@
             <button id="reclassifyRunBtn" class="admin-btn admin-btn-primary">미분류 재분류 실행</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecStores">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑫ 상가정보 사전수집</h2>
+          </div>
+          <p class="legal-admin-hint">
+            소상공인시장진흥공단 <b>상가업소 API(storeListInPnu)</b>로 각 건물의 입주
+            상가업소를 미리 수집해 DB에 저장합니다. 이후 건물 상세 화면의 "상가정보" 탭이
+            즉시 응답합니다(실시간 API 대기 없음). 건당 1초 소요 — 일일 캡(500건)에 도달하면
+            체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다. (실행 제한: 시간당 2회)
+          </p>
+          <div id="storesSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="storesSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="storesSyncRunBtn" class="admin-btn admin-btn-primary">상가정보 수집 실행</button>
+          </div>
+        </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecPendingCompletion">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">완공 대기 중</h2>
@@ -2234,6 +2325,8 @@
       document.getElementById("permitsCleanupExecBtn").addEventListener("click", () => runPermitsCleanup(false));
       document.getElementById("realtySyncRunBtn").addEventListener("click", runRealtySync);
       document.getElementById("reclassifyRunBtn").addEventListener("click", runReclassify);
+      document.getElementById("storesSyncRunBtn").addEventListener("click", runStoresSync);
+      loadStoresSyncStatus();
       loadRealtySyncStatus();
       loadReclassifyStatus();
       loadPermitsSyncStatus();

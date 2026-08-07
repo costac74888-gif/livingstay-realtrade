@@ -765,15 +765,67 @@ _stores_cache = {}
 _stores_cache_lock = threading.Lock()
 
 
+def _stores_result_from_rows(db_rows):
+    """building_stores DB 행 목록 → /nearby-stores 응답 dict."""
+    if not db_rows:
+        return None
+    counts = {}
+    stores = []
+    for r in db_rows:
+        name = r["store_name"] or ""
+        cat  = r["category"] or "기타"
+        flr  = r["floor"] or ""
+        counts[cat] = counts.get(cat, 0) + 1
+        stores.append({"name": name, "category": cat, "floor": flr})
+
+    def _floor_sort_key(s):
+        try:
+            return (0, int(s["floor"]))
+        except (ValueError, TypeError):
+            return (1, 0)
+
+    stores_sorted = sorted(stores, key=_floor_sort_key)
+    categories = sorted(counts.items(), key=lambda kv: -kv[1])
+    return {
+        "available": True,
+        "total": len(stores),
+        "categories": [{"category": c, "count": n} for c, n in categories],
+        "stores": stores_sorted,
+    }
+
+
 @app.route("/api/building/<int:building_id>/nearby-stores")
 @limiter.limit("60 per minute")
 def get_building_nearby_stores(building_id):
     """이 건물(지번, PNU 기준)의 상가업소 목록 — 업종별 개수 + 층별 목록.
 
-    캐시 미스 시 즉시 {"available": false, "pending": true} 를 반환하고
-    백그라운드 스레드가 외부 API(data.go.kr)를 조회한 뒤 캐시를 채운다.
+    1차: building_stores 테이블 즉시 조회 (sync_stores.py 사전 수집 데이터)
+    2차: 캐시 미스 시 즉시 {"available": false, "pending": true} 를 반환하고
+         백그라운드 스레드가 외부 API(data.go.kr)를 조회한 뒤 캐시를 채우며
+         결과를 building_stores에도 저장한다.
     프론트(loadBuildingStores)는 pending:true 시 4초 간격 최대 4회 재조회.
     """
+    # 1차: building_stores DB 캐시
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT store_name, category, floor FROM building_stores WHERE master_building_id = %s ORDER BY id",
+            [building_id],
+        )
+        db_rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+
+    if db_rows:
+        result = _stores_result_from_rows(db_rows)
+        if result:
+            with _stores_cache_lock:
+                _stores_cache[building_id] = (time.time(), result)
+            return jsonify(result)
+
+    # 2차: 메모리 캐시 확인
     now = time.time()
     with _stores_cache_lock:
         hit = _stores_cache.get(building_id)
@@ -785,7 +837,7 @@ def get_building_nearby_stores(building_id):
             if now - ts < ttl:
                 return jsonify(payload)
 
-    # DB 조회는 빠름 — 요청 스레드에서 처리
+    # 건물 기본정보 조회
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -808,6 +860,7 @@ def get_building_nearby_stores(building_id):
 
     def _bg_fetch(bld_id, r):
         result = {"available": False, "total": 0, "categories": [], "stores": []}
+        fetched_stores = None
         try:
             # 서비스키 없음 — 가장 흔한 원인이므로 먼저 확인
             if not os.environ.get("STORE_INFO_SERVICE_KEY", "").strip():
@@ -823,6 +876,7 @@ def get_building_nearby_stores(building_id):
                     pnu = build_pnu(r["sgg_cd"], bjd, plat_gb, bun, ji)
                     stores = get_stores_by_pnu(pnu) if pnu else []
                     if stores:
+                        fetched_stores = stores
                         counts = {}
                         for s in stores:
                             cat = s["category"] or "기타"
@@ -850,6 +904,27 @@ def get_building_nearby_stores(building_id):
             result["reason"] = "api_error_or_empty"
         with _stores_cache_lock:
             _stores_cache[bld_id] = (time.time(), result)
+        # 실시간 조회 성공 시 building_stores에 저장 (다음 요청부터 즉시 응답)
+        if fetched_stores:
+            try:
+                conn2 = get_conn()
+                cur2 = conn2.cursor()
+                try:
+                    cur2.execute(
+                        "DELETE FROM building_stores WHERE master_building_id = %s", [bld_id]
+                    )
+                    for s in fetched_stores:
+                        cur2.execute(
+                            """INSERT INTO building_stores (master_building_id, store_name, category, floor, updated_at)
+                               VALUES (%s, %s, %s, %s, NOW())""",
+                            [bld_id, s.get("name", ""), s.get("category", ""), s.get("floor", "")],
+                        )
+                    conn2.commit()
+                finally:
+                    cur2.close()
+                    conn2.close()
+            except Exception:
+                app.logger.exception("building_stores 저장 실패 (building_id=%s)", bld_id)
 
     threading.Thread(target=_bg_fetch, args=(building_id, dict(row)), daemon=True).start()
     return jsonify({"available": False, "pending": True})
@@ -9582,6 +9657,156 @@ def admin_brhub_sync_status():
 _PERMITS_SYNC_META_KEY     = "permits_sync_status"
 _REALTY_SYNC_META_KEY      = "realty_stores_sync_status"
 _RECLASSIFY_META_KEY       = "reclassify_unclassified_status"
+_STORES_SYNC_META_KEY      = "stores_sync_status"
+_STORES_DAILY_CAP          = 500  # sync_stores.py --daily-cap 기본값과 동일 유지
+
+
+@app.route("/api/admin/sync-stores", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_stores_sync_run():
+    """상가정보 사전수집(sync_stores.py) 시작 — brhub_sync와 동일한 잠금/러너 패턴."""
+    if not os.environ.get("STORE_INFO_SERVICE_KEY", "").strip():
+        return jsonify({"ok": False, "message": "STORE_INFO_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "processed": None,
+            "saved": None,
+            "calls_today": None,
+            "error": None,
+        }
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '5 minutes')
+        """, (_STORES_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        prev_state = None
+        if not acquired:
+            cur.execute("SELECT value FROM app_meta WHERE key = %s", (_STORES_SYNC_META_KEY,))
+            prev = cur.fetchone()
+            try:
+                prev_state = json.loads(prev["value"]).get("state") if prev and prev["value"] else None
+            except (TypeError, ValueError):
+                prev_state = None
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        if prev_state == "done":
+            return jsonify({"ok": False, "message": "직전 동기화가 완료된 지 30분이 지나지 않았습니다. 잠시 후 다시 시도해 주세요."}), 429
+        return jsonify({"ok": False, "message": "이미 동기화가 실행 중입니다. 완료 후 다시 시도해 주세요."}), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_stores.py"),
+             "--status-key", _STORES_SYNC_META_KEY,
+             "--run-id", status["run_id"],
+             "--daily-cap", str(_STORES_DAILY_CAP)],
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({"state": "failed", "error": f"러너 실행 실패: {e}"[:300],
+                       "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (_STORES_SYNC_META_KEY, json.dumps(status, ensure_ascii=False)))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "동기화 프로세스를 시작하지 못했습니다."}), 500
+
+    return jsonify({"ok": True, "message": "상가정보 사전수집을 시작했습니다.", "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/stores-sync-status")
+@require_admin
+def admin_stores_sync_status():
+    """상가정보 사전수집 진행상황 + 체크포인트/오늘 호출량."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM building_stores")
+        total_stored = cur.fetchone()["c"]
+        cur.execute(
+            "SELECT COUNT(DISTINCT master_building_id) AS c FROM building_stores"
+        )
+        covered_buildings = cur.fetchone()["c"]
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM master_buildings WHERE sgg_cd IS NOT NULL AND umd_nm IS NOT NULL AND jibun IS NOT NULL AND jibun != ''"
+        )
+        total_buildings = cur.fetchone()["c"]
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_STORES_SYNC_META_KEY,))
+        meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", ("stores_progress",))
+        prog_row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    progress = status = None
+    try:
+        progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        status = json.loads(meta["value"]) if meta and meta["value"] else None
+    except (TypeError, ValueError):
+        pass
+
+    calls_today = 0
+    if progress and progress.get("calls_date") == datetime.now().strftime("%Y-%m-%d"):
+        try:
+            calls_today = int(progress.get("calls_today") or 0)
+        except (TypeError, ValueError):
+            pass
+
+    running = bool(status and status.get("state") == "running")
+    stale = False
+    if running and meta and meta["updated_at"]:
+        age = (datetime.now() - meta["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            running, stale = False, True
+
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": ("stale" if stale else (status.get("state") if status else None)),
+        "started_at": _kst_label(status.get("started_at") if status else None),
+        "finished_at": _kst_label(status.get("finished_at") if status else None),
+        "processed": (status.get("processed") if status else None),
+        "saved": (status.get("saved") if status else None),
+        "error": ((status.get("error") if status else None)
+                  or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
+        "total_stored": total_stored,
+        "covered_buildings": covered_buildings,
+        "total_buildings": total_buildings,
+        "checkpoint_id": (progress.get("last_id") if progress else 0) or 0,
+        "calls_today": calls_today,
+        "calls_remaining": max(0, _STORES_DAILY_CAP - calls_today),
+        "daily_cap": _STORES_DAILY_CAP,
+        "stop_reason": (status.get("stop_reason") if status else None),
+    })
 
 
 @app.route("/api/admin/sync-permits", methods=["POST"])
