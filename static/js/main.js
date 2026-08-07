@@ -98,7 +98,9 @@ window.refreshFavoritesUI = async function(){
   if (typeof loadSideFavorites === "function") loadSideFavorites();
 };
 // livingstay:auth 이벤트 — 이미 로그인된 상태로 페이지에 진입할 때도 관심키를 로드한다.
-document.addEventListener("livingstay:auth", async function(){
+// auth.js가 window.dispatchEvent()로 발생시키므로 리스너도 window에 등록해야 함.
+// (document.addEventListener는 window 이벤트를 수신하지 못함 — 타깃 불일치 버그 수정)
+window.addEventListener("livingstay:auth", async function(){
   await loadServerFavKeys();
   if (typeof updateFavCountLabel === "function") updateFavCountLabel();
   if (typeof renderFavChips === "function") renderFavChips();

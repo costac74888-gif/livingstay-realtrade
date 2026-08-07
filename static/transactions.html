@@ -389,7 +389,8 @@
     if (state.favOnly) loadBoard();
   };
   // livingstay:auth — 이미 로그인 상태로 진입할 때도 관심키 로드
-  document.addEventListener("livingstay:auth", async function(){
+  // auth.js가 window.dispatchEvent()로 발생시키므로 window에 등록해야 함(document 불일치 수정)
+  window.addEventListener("livingstay:auth", async function(){
     await loadServerFavKeys();
     renderFavChips();
     if (state.favOnly) loadBoard();
