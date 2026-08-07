@@ -237,11 +237,13 @@
             // 관심저장·실거래알림·알림폴링은 일반회원 전용이므로 실행하지 않는다.
             // __livingstayLoggedIn = false 를 유지해 알림 뱃지 등 회원 전용 API 호출 차단.
             window.__livingstayLoggedIn = false;
+            window.__livingstayAccountType = d.account_type;
             return;
           }
 
           // 일반 회원
           window.__livingstayLoggedIn = true;
+          window.__livingstayAccountType = "user";
           // 로그인 직후(이 세션 첫 확인) 1회만 관심단지 이관.
           var migrated;
           try { migrated = sessionStorage.getItem("livingstay_fav_migrated"); } catch (e) { migrated = "1"; }
@@ -257,13 +259,14 @@
           emitAuthChange(true, d);
         } else {
           window.__livingstayLoggedIn = false;
+          window.__livingstayAccountType = null;
           try { sessionStorage.removeItem("livingstay_fav_migrated"); } catch (e) {}
           if (typeof window.stopNotifPolling === "function") window.stopNotifPolling();
           renderLoggedOut();
           emitAuthChange(false, null);
         }
       })
-      .catch(function () { window.__livingstayLoggedIn = false; renderLoggedOut(); emitAuthChange(false, null); });
+      .catch(function () { window.__livingstayLoggedIn = false; window.__livingstayAccountType = null; renderLoggedOut(); emitAuthChange(false, null); });
   }
 
   // 헤더 밖 페이지(마이페이지 등)에서 로그아웃/로그인 후 헤더+상태를 다시 맞추도록 노출.
