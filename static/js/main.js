@@ -813,15 +813,37 @@ async function loadMapMarkers(filters = {}, opts = {}){
   ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
     if (filters[k]) params.set(k, filters[k]);
   });
+
+  // 현재 뷰포트 bounds — 화면에 보이는 범위의 건물만 요청해 응답 크기를 줄인다
+  const _bounds = kakaoMap.getBounds();
+  if (_bounds) {
+    const _sw = _bounds.getSouthWest();
+    const _ne = _bounds.getNorthEast();
+    params.set("sw_lat", _sw.getLat());
+    params.set("sw_lng", _sw.getLng());
+    params.set("ne_lat", _ne.getLat());
+    params.set("ne_lng", _ne.getLng());
+  }
+
   const qs = params.toString();
 
+  // AbortController — 더 새로운 loadMapMarkers 호출이 오면 진행 중인 fetch를 취소
+  const controller = new AbortController();
   let items = [];
   try {
-    const res = await fetch(`/api/buildings-geo${qs ? "?" + qs : ""}`);
+    const res = await fetch(`/api/buildings-geo${qs ? "?" + qs : ""}`,
+      { signal: controller.signal });
     const data = await res.json();
     items = data.items || [];
   } catch(e){
+    if (e.name === "AbortError") return;  // 신세대 요청이 이 fetch를 취소함
     console.error("[MAP] 건물 좌표 로드 실패:", e);
+    return;
+  }
+
+  // fetch 완료 후 세대 번호 재확인 — 응답 대기 중 더 새로운 호출이 왔을 수 있다
+  if (_markerLoadGen !== myGen) {
+    controller.abort();  // 이미 응답 받았지만 결과를 버린다
     return;
   }
 
@@ -1050,7 +1072,8 @@ async function updateMapForZoom(filters = {}, opts = {}){
       _currentMapMode = "markers";
       await loadMapMarkers(filters, { fit: opts.fit || false });
     } else {
-      updateMarkerLabels();  // 줌 레벨만 바뀐 경우 — 라벨 표시 여부만 갱신
+      // 같은 markers 모드 내 줌 변경 — bounds가 달라지므로 뷰포트 범위 재요청
+      await loadMapMarkers(filters, { fit: false });
     }
   } else {
     if (_currentMapMode !== mode || opts.force){
@@ -1094,11 +1117,11 @@ async function initMap(){
 
   // 지도 이동(드래그) 후 같은 클러스터 레벨이면 bounds가 바뀌므로 재조회
   // (sgg/umd 배지는 뷰포트 제한이므로, 이동 시 화면 밖 지역 배지를 갱신해야 함)
-  // markers 모드에서 드래그하면 viewport가 바뀌어 새로 보이는 마커에 라벨을 붙여야 한다.
+  // markers 모드에서 드래그하면 뷰포트가 바뀌어 새 범위의 건물 마커를 재요청해야 한다.
   kakao.maps.event.addListener(kakaoMap, "dragend", () => {
     const mode = _clusterModeForLevel(kakaoMap.getLevel());
     if (mode === "markers"){
-      updateMarkerLabels();
+      loadMapMarkers(_lastMapFilters);  // 새 뷰포트 bounds로 재요청
     } else if (mode === "sgg" || mode === "umd") {
       loadClusterOverlays(mode, _lastMapFilters);
     }

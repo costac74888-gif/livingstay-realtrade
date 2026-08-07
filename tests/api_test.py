@@ -75,12 +75,30 @@ def check_transactions(payload):
     return None
 
 
+def check_buildings_geo(payload):
+    """/api/buildings-geo: {"total": int, "items": [...]}"""
+    if not isinstance(payload, dict):
+        return "응답이 JSON 객체가 아님"
+    if not isinstance(payload.get("total"), int):
+        return "'total'이 정수가 아님"
+    if not isinstance(payload.get("items"), list):
+        return "'items'가 배열이 아님"
+    # 좌표가 있는 항목은 lat/lng가 숫자여야 한다
+    for item in payload["items"][:10]:
+        if item.get("lat") is not None and not isinstance(item["lat"], (int, float)):
+            return "items[].lat이 숫자가 아님"
+        if item.get("lng") is not None and not isinstance(item["lng"], (int, float)):
+            return "items[].lng이 숫자가 아님"
+    return None
+
+
 # (경로, shape 검증 함수)
 CHECKS = [
     ("/api/health", check_health),
     ("/api/regions", check_regions),
     ("/api/years", check_years),
-    ("/api/transactions", check_transactions),
+    ("/api/transactions?with_total=1", check_transactions),
+    ("/api/buildings-geo", check_buildings_geo),
 ]
 
 
@@ -113,14 +131,63 @@ def run():
 
         print(f"OK  {path}  ({resp.status_code}, {content_type})")
 
+    # /api/buildings-geo bounds 필터 추가 테스트
+    failures += _check_buildings_geo_bounds(client)
+
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
         return 1
 
-    print("\n모든 API 체크 통과 (/api/health, /api/regions, /api/years, /api/transactions)")
+    print(
+        "\n모든 API 체크 통과 (/api/health, /api/regions, /api/years,"
+        " /api/transactions, /api/buildings-geo)"
+    )
     return 0
+
+
+def _check_buildings_geo_bounds(client):
+    """bounds 파라미터 동작 검증 — 범위 필터링·잘못된 값 안전 처리."""
+    failures = []
+
+    # 전국 전체 건수 확인
+    r_all = client.get("/api/buildings-geo")
+    if r_all.status_code != 200:
+        failures.append(f"/api/buildings-geo (전체): HTTP {r_all.status_code}")
+        return failures
+    total_all = (r_all.get_json() or {}).get("total", -1)
+
+    # 서울 부근 좁은 viewport 요청 — 전체보다 적어야 한다
+    bounds_qs = "sw_lat=37.4&sw_lng=126.8&ne_lat=37.7&ne_lng=127.2"
+    r_bounds = client.get(f"/api/buildings-geo?{bounds_qs}")
+    if r_bounds.status_code != 200:
+        failures.append(f"/api/buildings-geo (bounds): HTTP {r_bounds.status_code}")
+        return failures
+    payload_b = r_bounds.get_json() or {}
+    shape_err = check_buildings_geo(payload_b)
+    if shape_err:
+        failures.append(f"/api/buildings-geo (bounds): {shape_err}")
+        return failures
+    total_bounds = payload_b.get("total", -1)
+    if total_all > 0 and total_bounds >= total_all:
+        failures.append(
+            f"/api/buildings-geo (bounds): 범위 필터 효과 없음"
+            f" (bounds={total_bounds} >= 전체={total_all})"
+        )
+    else:
+        print(f"OK  /api/buildings-geo?{bounds_qs}  (전체 {total_all}건 → 범위내 {total_bounds}건)")
+
+    # 잘못된 bounds — 서버가 500 없이 응답해야 한다 (bounds 무시하고 200 반환)
+    r_bad = client.get("/api/buildings-geo?sw_lat=abc&sw_lng=xyz&ne_lat=!!&ne_lng=@@")
+    if r_bad.status_code != 200:
+        failures.append(
+            f"/api/buildings-geo (잘못된 bounds): HTTP {r_bad.status_code} (기대: 200)"
+        )
+    else:
+        print(f"OK  /api/buildings-geo (잘못된 bounds 무시)  ({r_bad.status_code})")
+
+    return failures
 
 
 if __name__ == "__main__":

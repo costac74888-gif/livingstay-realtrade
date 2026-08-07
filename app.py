@@ -1222,11 +1222,26 @@ def get_buildings_geo():
     umd_nm = request.args.get("umd_nm", "").strip()
     lodging_type = request.args.get("lodging_type", "").strip()
 
-    # 메모리 캐시 조회 — 동일 필터 조합의 반복 요청을 DB 쿼리 없이 처리
-    _cache_key = f"{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}"
-    _cached = _geo_cache.get(_cache_key)
-    if _cached and (time.time() - _cached[0]) < _GEO_CACHE_TTL:
-        return Response(_cached[1], mimetype="application/json")
+    # 뷰포트 bounds — 마커 모드에서 화면에 보이는 범위만 반환
+    sw_lat = request.args.get("sw_lat", "").strip()
+    sw_lng = request.args.get("sw_lng", "").strip()
+    ne_lat = request.args.get("ne_lat", "").strip()
+    ne_lng = request.args.get("ne_lng", "").strip()
+
+    # 만료된 캐시 항목 주기적 정리 — bounds 요청이 늘어도 메모리 무한 증가 방지
+    _now = time.time()
+    if len(_geo_cache) > 200:
+        expired = [k for k, (ts, _) in _geo_cache.items() if _now - ts >= _GEO_CACHE_TTL]
+        for k in expired:
+            _geo_cache.pop(k, None)
+
+    # bounds가 없는 필터 전용 요청만 캐시 — bounds는 뷰포트마다 달라 고카디낼리티
+    _has_bounds = bool(sw_lat and sw_lng and ne_lat and ne_lng)
+    _cache_key = f"{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}" if not _has_bounds else None
+    if _cache_key:
+        _cached = _geo_cache.get(_cache_key)
+        if _cached and (_now - _cached[0]) < _GEO_CACHE_TTL:
+            return Response(_cached[1], mimetype="application/json")
 
     # mixed_use_excluded: 복합시설(주용도≠숙박) 자동 제외 — 지도/사이트 노출 금지
     where = ["lat IS NOT NULL", "lng IS NOT NULL",
@@ -1254,6 +1269,19 @@ def get_buildings_geo():
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
+
+    # 뷰포트 bounds 필터 — 화면에 보이는 범위의 건물만 반환해 응답 크기 축소
+    # 파싱을 먼저 해서 실패 시 where/params를 건드리지 않는다 (IndexError 방지)
+    if sw_lat and sw_lng and ne_lat and ne_lng:
+        try:
+            _f_sw_lat = float(sw_lat)
+            _f_ne_lat = float(ne_lat)
+            _f_sw_lng = float(sw_lng)
+            _f_ne_lng = float(ne_lng)
+            where.append("lat BETWEEN %s AND %s AND lng BETWEEN %s AND %s")
+            params += [_f_sw_lat, _f_ne_lat, _f_sw_lng, _f_ne_lng]
+        except (ValueError, TypeError):
+            pass  # 잘못된 bounds 무시
 
     where_sql = " AND ".join(where)
 
@@ -1309,7 +1337,8 @@ def get_buildings_geo():
     cur.close()
     conn.close()
     payload = json.dumps({"total": len(rows), "items": rows}, ensure_ascii=False)
-    _geo_cache[_cache_key] = (time.time(), payload)  # 결과를 캐시에 저장
+    if _cache_key:  # bounds 요청은 캐시하지 않음 (고카디낼리티)
+        _geo_cache[_cache_key] = (time.time(), payload)
     return Response(payload, mimetype="application/json")
 
 
