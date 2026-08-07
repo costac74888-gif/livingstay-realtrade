@@ -25,10 +25,12 @@ B화면 "상거래정보" 카드용: 이 건물(지번) 안의 상가업소(사�
 """
 
 import os
+import time
 from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 import requests
+from requests.exceptions import ConnectTimeout
 
 # data.go.kr 콘솔에서 복사한 키는 URL인코딩 포함(%2B, %3D 등).
 # requests가 params로 넘길 때 다시 인코딩하면 이중 인코딩(%252B)이 돼 403이 난다.
@@ -40,6 +42,28 @@ STORE_IN_BUILDING_URL = f"{_BASE}/storeListInBuilding"
 
 _PAGE_SIZE = 100
 _MAX_PAGES = 10  # 안전 상한(최대 1,000개) — 단일 지번이 이걸 넘는 경우는 사실상 없음
+
+_RETRY_MAX = 2        # ConnectTimeout 재시도 횟수 (총 최대 3회 시도)
+_RETRY_SLEEP = 2.5    # 재시도 사이 대기(초)
+
+
+def _get_with_retry(url, params, timeout):
+    """ConnectTimeout에 한해 최대 _RETRY_MAX 회 재시도.
+
+    4xx/5xx 같은 진짜 API 오류는 재시도해도 의미 없으므로 즉시 올린다.
+    ConnectTimeout은 apis.data.go.kr 간헐적 인프라 문제로 확인된 패턴이므로
+    짧은 대기 후 재시도하면 대부분 해결된다.
+    """
+    last_exc = None
+    for attempt in range(1 + _RETRY_MAX):
+        try:
+            return requests.get(url, params=params, timeout=timeout)
+        except ConnectTimeout as e:
+            last_exc = e
+            if attempt < _RETRY_MAX:
+                time.sleep(_RETRY_SLEEP)
+            # ConnectTimeout 이외 예외(ReadTimeout, ConnectionError 등)는 그대로 올림
+    raise last_exc
 
 
 def build_pnu(sgg_cd, bjdong_cd, plat_gb, bun, ji):
@@ -78,7 +102,7 @@ def _fetch_stores(url, key):
             "type": "xml",   # 생략하면 기본 JSON 응답 → ET.fromstring 실패 (2026-08 실측 확인)
         }
         try:
-            resp = requests.get(url, params=params, timeout=15)
+            resp = _get_with_retry(url, params=params, timeout=15)
             resp.raise_for_status()
         except Exception as e:
             raise RuntimeError(f"상가업소 API HTTP 오류: {e}") from e

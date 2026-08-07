@@ -26,6 +26,7 @@ import time
 from xml.etree import ElementTree as ET
 
 import requests
+from requests.exceptions import ConnectTimeout
 
 BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
 BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
@@ -33,6 +34,27 @@ BLD_FLOOR_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrFlrOulnI
 
 REQUEST_SLEEP = 0.15
 LIVINGSTAY_KEYWORD = "생활숙박시설"
+
+_RETRY_MAX = 2        # ConnectTimeout 재시도 횟수 (총 최대 3회 시도)
+_RETRY_SLEEP = 2.5    # 재시도 사이 대기(초)
+
+
+def _get_with_retry(url, params, timeout):
+    """ConnectTimeout에 한해 최대 _RETRY_MAX 회 재시도.
+
+    4xx/5xx 같은 진짜 API 오류는 재시도해도 의미 없으므로 즉시 올린다.
+    ConnectTimeout은 apis.data.go.kr 간헐적 인프라 문제로 확인된 패턴이므로
+    짧은 대기 후 재시도하면 대부분 해결된다.
+    """
+    last_exc = None
+    for attempt in range(1 + _RETRY_MAX):
+        try:
+            return requests.get(url, params=params, timeout=timeout)
+        except ConnectTimeout as e:
+            last_exc = e
+            if attempt < _RETRY_MAX:
+                time.sleep(_RETRY_SLEEP)
+    raise last_exc
 
 
 def _hocnt(row: dict) -> int:
@@ -101,7 +123,7 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "pageNo": page,
             "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
-        resp = requests.get(BLD_TITLE_URL, params=params, timeout=15)
+        resp = _get_with_retry(BLD_TITLE_URL, params=params, timeout=15)
         resp.raise_for_status()
         try:
             root = ET.fromstring(resp.content)
@@ -132,7 +154,7 @@ def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "numOfRows": 20, "pageNo": 1,
         "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
     }
-    resp = requests.get(
+    resp = _get_with_retry(
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo",
         params=params, timeout=10,
     )
@@ -153,7 +175,7 @@ def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "numOfRows": 20, "pageNo": 1,
         "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
     }
-    resp = requests.get(
+    resp = _get_with_retry(
         "https://apis.data.go.kr/1613000/MtnChkHubService/getMaintenanceHistory",
         params=params, timeout=10,
     )
@@ -199,7 +221,7 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
         try:
-            resp = requests.get(BLD_FLOOR_URL, params=params, timeout=15)
+            resp = _get_with_retry(BLD_FLOOR_URL, params=params, timeout=15)
             resp.raise_for_status()
         except Exception:
             return None  # 조회 실패 — "생숙 아님"과 구분해서 나중에 재시도 가능하게 함
