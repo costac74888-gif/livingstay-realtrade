@@ -924,7 +924,12 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
     // 전체 완료 후 처리
     if (emptyEl) emptyEl.style.display = (placed === 0) ? "flex" : "none";
-    if (placed > 0 && opts.fit === true) kakaoMap.setBounds(bounds);
+    if (placed > 0 && opts.fit === true) {
+      kakaoMap.setBounds(bounds);
+      // 카카오맵은 단일 좌표에 setBounds를 하면 지나치게 넓은 레벨로 남는 특성이 있음.
+      // 결과가 1~2건이면 명시적으로 레벨 3으로 확대해 건물이 화면에 꽉 차게 표시한다.
+      if (placed <= 2) kakaoMap.setLevel(3);
+    }
     updateMarkerLabels();
     console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
   }
@@ -1071,16 +1076,17 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
 async function updateMapForZoom(filters = {}, opts = {}){
   if (!kakaoMap) return;
   _lastMapFilters = filters;
-  const mode  = _clusterModeForLevel(kakaoMap.getLevel());
+
+  // 검색어(q)가 있으면 줌 레벨과 무관하게 개별 마커 모드로 강제 전환.
+  // 클러스터 배지 단계를 건너뛰어 검색 결과 위치로 바로 확대 이동한다.
+  const forceMarkers = !!(filters.q && filters.q.trim());
+  const mode = forceMarkers ? "markers" : _clusterModeForLevel(kakaoMap.getLevel());
 
   if (mode === "markers"){
-    if (_currentMapMode !== "markers" || opts.force){
-      _currentMapMode = "markers";
-      await loadMapMarkers(filters, { fit: opts.fit || false });
-    } else {
-      // 같은 markers 모드 내 줌 변경 — bounds가 달라지므로 뷰포트 범위 재요청
-      await loadMapMarkers(filters, { fit: false });
-    }
+    _currentMapMode = "markers";
+    // forceMarkers일 때는 _currentMapMode 비교 없이 항상 재조회
+    // (검색 결과가 이전과 다른 위치일 수 있으므로 캐시 상태 무시)
+    await loadMapMarkers(filters, { fit: opts.fit || forceMarkers });
   } else {
     if (_currentMapMode !== mode || opts.force){
       _currentMapMode = mode;
