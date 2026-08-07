@@ -895,7 +895,18 @@ async function loadMapMarkers(filters = {}, opts = {}){
   let placed = 0;
 
   // 유효 좌표만 필터링
-  const validItems = items.filter(b => b.lat != null && b.lng != null);
+  // 겹침 우선순위: 생숙 > 관광 > 복합 > 일반 > 미분류
+  // Kakao Maps 캔버스는 나중에 추가된 마커가 위에 그려지므로
+  // 우선순위 낮은 타입부터 먼저 추가해야 높은 타입이 위에 표시된다.
+  const _DRAW_ORDER = { "미분류": 0, "일반": 1, "복합": 2, "관광": 3, "생활": 4 };
+  function _markerDrawOrder(b){
+    if (!b.lodging_type) return 0;                  // 미분류
+    if (b.lodging_type.includes("·")) return 2;     // 복합
+    return _DRAW_ORDER[b.lodging_type] ?? 0;
+  }
+  const validItems = items
+    .filter(b => b.lat != null && b.lng != null)
+    .sort((a, b) => _markerDrawOrder(a) - _markerDrawOrder(b));
 
   // 마커를 CHUNK_SIZE 단위로 나눠 setTimeout(0)으로 분산 생성 —
   // 한 번에 수천 개를 동기 삽입하면 메인 스레드가 블로킹돼 화면이 굳는다.
