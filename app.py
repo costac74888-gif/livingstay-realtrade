@@ -1035,8 +1035,10 @@ def get_transactions():
         params.append(f"{year}-%")
     if lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
+    elif lodging_type == "준공전":
+        where.append("building_status IN ('허가','착공')")
     elif lodging_type == "미분류":
-        where.append("(lodging_type IS NULL OR lodging_type = '')")
+        where.append("(lodging_type IS NULL OR lodging_type = '') AND building_status NOT IN ('허가','착공')")
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
@@ -1190,8 +1192,10 @@ def get_buildings_cluster():
         params.append(f"%{umd_nm.replace(' ', '')}%")
     if lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
+    elif lodging_type == "준공전":
+        where.append("building_status IN ('허가','착공')")
     elif lodging_type == "미분류":
-        where.append("(lodging_type IS NULL OR lodging_type = '')")
+        where.append("(lodging_type IS NULL OR lodging_type = '') AND building_status NOT IN ('허가','착공')")
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
@@ -1237,7 +1241,9 @@ def get_buildings_cluster():
                COUNT(*) FILTER (WHERE lodging_type = '관광')                              AS cnt_tour,
                COUNT(*) FILTER (WHERE lodging_type = '일반')                              AS cnt_gen,
                COUNT(*) FILTER (WHERE lodging_type LIKE '%%·%%' OR lodging_type = '복합') AS cnt_mixed,
-               COUNT(*) FILTER (WHERE lodging_type IS NULL OR lodging_type = '')          AS cnt_unknown
+               COUNT(*) FILTER (WHERE building_status IN ('허가','착공'))                  AS cnt_pre_completion,
+               COUNT(*) FILTER (WHERE (lodging_type IS NULL OR lodging_type = '')
+                                  AND building_status NOT IN ('허가','착공'))             AS cnt_unknown
         FROM master_buildings
         WHERE {where_sql}
         GROUP BY {group_by}
@@ -1261,11 +1267,12 @@ def get_buildings_cluster():
             "lng":     float(r["lng"])  if r["lng"]  is not None else None,
             "total":   int(r["total"]),
             "by_type": {
-                "생활":   int(r["cnt_live"]    or 0),
-                "관광":   int(r["cnt_tour"]    or 0),
-                "일반":   int(r["cnt_gen"]     or 0),
-                "복합":   int(r["cnt_mixed"]   or 0),
-                "미분류": int(r["cnt_unknown"] or 0),
+                "생활":   int(r["cnt_live"]            or 0),
+                "관광":   int(r["cnt_tour"]            or 0),
+                "일반":   int(r["cnt_gen"]             or 0),
+                "복합":   int(r["cnt_mixed"]           or 0),
+                "준공전": int(r["cnt_pre_completion"]  or 0),
+                "미분류": int(r["cnt_unknown"]         or 0),
             },
         })
 
@@ -1341,8 +1348,10 @@ def get_buildings_geo():
         params.append(f"%{umd_nm.replace(' ', '')}%")
     if lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
+    elif lodging_type == "준공전":
+        where.append("building_status IN ('허가','착공')")
     elif lodging_type == "미분류":
-        where.append("(lodging_type IS NULL OR lodging_type = '')")
+        where.append("(lodging_type IS NULL OR lodging_type = '') AND building_status NOT IN ('허가','착공')")
     elif lodging_type:
         where.append("lodging_type = %s")
         params.append(lodging_type)
@@ -1590,11 +1599,13 @@ def get_building_count():
 
     # 용도별 건물 수 — 지도 필터와 동일한 기준 (클릭 결과와 숫자 일치 보장)
     # mixed_use_excluded: 지도 노출 금지 → 범례에도 카운트 제외
+    # 준공전: building_status IN ('허가','착공') — lodging_type NULL보다 우선
     # 복합: lodging_type = '복합' 또는 '·' 포함 (지도 복합 필터와 동일)
-    # 미분류: NULL 또는 '' (준공전은 별도 집계하지 않음 — 범례에 없는 항목)
+    # 미분류: lodging_type NULL/'' 이면서 준공전이 아닌 건물
     cur.execute("""
         SELECT
             CASE
+                WHEN building_status IN ('허가','착공')                  THEN '준공전'
                 WHEN lodging_type = '생활'                               THEN '생활'
                 WHEN lodging_type = '관광'                               THEN '관광'
                 WHEN lodging_type = '일반'                               THEN '일반'

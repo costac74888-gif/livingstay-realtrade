@@ -524,15 +524,16 @@ document.getElementById("btnCloseCorrection").addEventListener("click", () => {
 });
 
 // ---------- 카카오맵 ----------
-const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#BDBDBD" };
-const LODGING_LABELS = { "생활": "생활숙박시설", "관광": "관광숙박시설", "일반": "일반숙박시설", "복합": "복합", "미분류": "미분류" };
+const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "준공전": "#616161", "미분류": "#E0E0E0" };
+const LODGING_LABELS = { "생활": "생활숙박시설", "관광": "관광숙박시설", "일반": "일반숙박시설", "복합": "복합", "준공전": "준공전", "미분류": "미분류" };
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 function markerColor(lodgingType, buildingStatus){
   // 4분류 확정 타입 우선 — 준공전 상태여도 타입색 표시
   if (lodgingType && lodgingType.includes("·")) return LODGING_COLORS["복합"];
   if (lodgingType && LODGING_COLORS[lodgingType]) return LODGING_COLORS[lodgingType];
-  // 확정 타입 없으면 미분류 — 준공전 여부와 무관하게 회색(배지로 상태 표시)
+  // 확정 타입 없음 — building_status로 준공전/미분류 구분
+  if (buildingStatus === "허가" || buildingStatus === "착공") return LODGING_COLORS["준공전"];
   return LODGING_COLORS["미분류"];
 }
 // DEFAULT_MARKER_COLOR(회색)는 이제 "준공전" 배지 전용으로만 남겨둠
@@ -869,13 +870,16 @@ async function loadMapMarkers(filters = {}, opts = {}){
   let placed = 0;
 
   // 유효 좌표만 필터링
-  // 겹침 우선순위: 생숙 > 관광 > 복합 > 일반 > 미분류
+  // 겹침 우선순위: 생숙 > 관광 > 복합 > 일반 > 준공전 > 미분류
   // Kakao Maps 캔버스는 나중에 추가된 마커가 위에 그려지므로
   // 우선순위 낮은 타입부터 먼저 추가해야 높은 타입이 위에 표시된다.
-  const _DRAW_ORDER = { "미분류": 0, "일반": 1, "복합": 2, "관광": 3, "생활": 4 };
+  const _DRAW_ORDER = { "미분류": 0, "준공전": 1, "일반": 2, "복합": 3, "관광": 4, "생활": 5 };
   function _markerDrawOrder(b){
-    if (!b.lodging_type) return 0;                  // 미분류
-    if (b.lodging_type.includes("·")) return 2;     // 복합
+    if (!b.lodging_type){
+      // lodging_type 없음 — building_status로 준공전/미분류 구분
+      return (b.building_status === "허가" || b.building_status === "착공") ? 1 : 0;
+    }
+    if (b.lodging_type.includes("·")) return 3;     // 복합
     return _DRAW_ORDER[b.lodging_type] ?? 0;
   }
   const validItems = items
@@ -996,6 +1000,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     { key: "관광",   color: LODGING_COLORS["관광"]   },
     { key: "일반",   color: LODGING_COLORS["일반"]   },
     { key: "복합",   color: LODGING_COLORS["복합"]   },
+    { key: "준공전", color: LODGING_COLORS["준공전"] },
     { key: "미분류", color: LODGING_COLORS["미분류"] },
   ];
 
@@ -2881,7 +2886,6 @@ async function loadBuildingCountLabel(){
     if (d.by_type) {
       document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
         const type = el.dataset.lodgingType;
-        if (type === "미분류") return;           // 대시보드에 없는 카테고리는 숫자 없음
         const cnt = d.by_type[type] || 0;
         let cntEl = el.querySelector(".lg-count");
         if (!cntEl) {
