@@ -657,7 +657,7 @@ const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이�
 // 모바일(좁은 세로 화면) 전용 초기뷰 — 세로로 길어 같은 값이면 속초·제주가 잘리므로 별도 값 사용.
 // PC 값(MAP_DEFAULT_CENTER/LEVEL)은 그대로 두고 폭 480px 이하일 때만 적용된다.
 const MAP_MOBILE_MAX_WIDTH = 480;
-const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.65, lng: 127.9 }; // 모바일: 동쪽(부산·울산이 줌컨트롤에 가리지 않도록 lng↑) + 남쪽(속초 이북 여백 감소 lat↓)
+const MAP_DEFAULT_CENTER_MOBILE = { lat: 35.4, lng: 127.9 }; // 모바일: 동쪽(부산·울산이 줌컨트롤에 가리지 않도록 lng↑) + 속초이북 끝부분에 붙이고 제주 완전 노출
 const MAP_DEFAULT_LEVEL_MOBILE = 13;  // 속초~제주가 세로로 한 화면에 들어오는 축소 수준 (레벨 12는 제주 잘림)
 
 function isMobileMapViewport(){
