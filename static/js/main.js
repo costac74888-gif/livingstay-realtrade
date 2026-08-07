@@ -2003,7 +2003,7 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card" id="bStoresCard">
-      <div class="side-card-title">상거래정보 <span class="side-sub">주변 상가업소</span></div>
+      <div class="side-card-title">상가정보 <span class="side-sub">주변 상가업소</span></div>
       <div class="side-soon">준비 중
         <div class="side-soon-desc">주변 상가업소 정보를 준비하고 있습니다.</div>
       </div>
@@ -2515,14 +2515,14 @@ async function loadBuildingStores(buildingId){
   const rest = data.stores.slice(FIRST).map(rowHtml).join("");
 
   card.innerHTML = `
-    <div class="side-card-title">상거래정보 <span class="side-sub">건물 내 상가업소 ${Number(data.total).toLocaleString('ko-KR')}곳</span></div>
+    <div class="side-card-title">상가정보 <span class="side-sub">건물 내 상가업소 ${Number(data.total).toLocaleString('ko-KR')}곳</span></div>
     ${summary ? `<div style="font-size:12.5px; color:var(--ink-soft); margin:2px 0 8px; line-height:1.6;">${summary}</div>` : ""}
     <div style="max-height:280px; overflow-y:auto;">
       <div>${first}</div>
       ${rest ? `<div id="bStoresRest" style="display:none;">${rest}</div>` : ""}
     </div>
     ${rest ? `<button type="button" class="side-more" id="bStoresMoreBtn">더보기 (${data.stores.length - FIRST}곳)</button>` : ""}
-    <div style="font-size:11px; color:var(--ink-soft); margin-top:8px;">출처: 소상공인시장진흥공단 상가(상권)정보</div>`;
+    `;
 
   const moreBtn = document.getElementById("bStoresMoreBtn");
   if (moreBtn){
