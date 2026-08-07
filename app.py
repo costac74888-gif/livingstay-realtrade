@@ -1007,8 +1007,11 @@ def get_transactions():
     params = []
 
     if q:
-        where.append("(building_name ILIKE %s OR address ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%"]
+        # address = "{umd_nm} {jibun}" 형태 — 역사적으로 umd_nm 공백 정규화 시점 차이로
+        # address 내 umd_nm 부분이 현재 umd_nm 컬럼과 다를 수 있음.
+        # jibun 컬럼 직접 매칭을 추가해 jibun만 입력해도 확실히 검색되도록 보완.
+        where.append("(building_name ILIKE %s OR address ILIKE %s OR jibun ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
     if si_do:
         # '서울' vs '서울특별시' 표기 편차 흡수 — 지도와 동일한 코어 이름 비교 규칙 사용
         where.append(sido_match_clause("si_do"))
@@ -1017,7 +1020,9 @@ def get_transactions():
         where.append("sgg_nm = %s")
         params.append(sgg_nm)
     if umd_nm:
-        where.append("umd_nm = %s")
+        # transactions.umd_nm은 공백 없이 저장(예: '구좌읍김녕리') — regions API도 같은 값 반환.
+        # 공백 제거 후 정규화 비교로 드롭다운 선택 값과 완전 일치 보장.
+        where.append("REPLACE(umd_nm, ' ', '') = REPLACE(%s, ' ', '')")
         params.append(umd_nm)
     if year and year != "all":
         where.append("deal_date LIKE %s")
@@ -1163,8 +1168,9 @@ def get_buildings_cluster():
     params = []
 
     if q:
-        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        # jibun 컬럼 직접 매칭 추가 — jibun_address = NULL인 건물도 지번 검색으로 발견.
+        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s OR jibun ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
     if si_do:
         where.append(sido_match_clause("split_part(sgg_text, ' ', 1)"))
         params.append(sido_core(si_do))
@@ -1310,8 +1316,9 @@ def get_buildings_geo():
     params = []
 
     if q:
-        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        # jibun 컬럼 직접 매칭 추가 — jibun_address = NULL인 건물도 지번 검색으로 발견.
+        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s OR jibun ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
     if si_do:
         # '서울' vs '서울특별시' 표기 편차 흡수 — 게시판과 동일한 코어 이름 비교 규칙 사용.
         # sgg_text('서울특별시 서초구')의 첫 토큰을 정규화해 비교한다.
