@@ -396,7 +396,7 @@ def run(args, status_key=None, run_id=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="이번 실행에서 처리할 법정동 수 (0=일일캡까지)")
-    ap.add_argument("--daily-cap", type=int, default=8000)
+    ap.add_argument("--daily-cap", type=int, default=6000)
     ap.add_argument("--workers", type=int, default=1,
                     help="동시 법정동 조회 스레드 수 (기본 4)")
     ap.add_argument("--sleep", type=float, default=1.0,

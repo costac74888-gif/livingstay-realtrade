@@ -328,7 +328,7 @@ def run(args, status_key=None, run_id=None):
 # ── CLI 진입점 ────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="상가정보 사전수집 (building_stores 테이블)")
-    parser.add_argument("--daily-cap",   type=int,   default=500,   help="오늘 최대 API 호출 수 (기본 500)")
+    parser.add_argument("--daily-cap",   type=int,   default=6000,  help="오늘 최대 API 호출 수 (기본 6000 — 실시간 4,000건 예약 후 나머지)")
     parser.add_argument("--sleep",       type=float, default=1.0,   help="건물당 API 호출 후 대기(초, 기본 1.0)")
     parser.add_argument("--limit",       type=int,   default=None,  help="이번 실행에서 처리할 최대 건물 수")
     parser.add_argument("--reset",       action="store_true",       help="체크포인트 초기화 후 처음부터")
