@@ -822,15 +822,18 @@ async function loadMapMarkers(filters = {}, opts = {}){
     if (filters[k]) params.set(k, filters[k]);
   });
 
-  // 현재 뷰포트 bounds — 화면에 보이는 범위의 건물만 요청해 응답 크기를 줄인다
-  const _bounds = kakaoMap.getBounds();
-  if (_bounds) {
-    const _sw = _bounds.getSouthWest();
-    const _ne = _bounds.getNorthEast();
-    params.set("sw_lat", _sw.getLat());
-    params.set("sw_lng", _sw.getLng());
-    params.set("ne_lat", _ne.getLat());
-    params.set("ne_lng", _ne.getLng());
+  // 현재 뷰포트 bounds — 화면에 보이는 범위의 건물만 요청해 응답 크기를 줄인다.
+  // opts.skipBounds가 true이면 bounds 파라미터를 생략한다 (q 검색 시 전국 대상 조회).
+  if (!opts.skipBounds) {
+    const _bounds = kakaoMap.getBounds();
+    if (_bounds) {
+      const _sw = _bounds.getSouthWest();
+      const _ne = _bounds.getNorthEast();
+      params.set("sw_lat", _sw.getLat());
+      params.set("sw_lng", _sw.getLng());
+      params.set("ne_lat", _ne.getLat());
+      params.set("ne_lng", _ne.getLng());
+    }
   }
 
   const qs = params.toString();
@@ -1088,7 +1091,7 @@ async function updateMapForZoom(filters = {}, opts = {}){
     _currentMapMode = "markers";
     // forceMarkers일 때는 _currentMapMode 비교 없이 항상 재조회
     // (검색 결과가 이전과 다른 위치일 수 있으므로 캐시 상태 무시)
-    await loadMapMarkers(filters, { fit: opts.fit || forceMarkers });
+    await loadMapMarkers(filters, { fit: opts.fit || forceMarkers, skipBounds: forceMarkers });
   } else {
     if (_currentMapMode !== mode || opts.force){
       _currentMapMode = mode;
