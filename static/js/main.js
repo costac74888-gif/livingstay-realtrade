@@ -2324,7 +2324,7 @@ async function loadBuildingHeader(id){
   function syncAlertBtn(){
     const on = canFav && isAlertOn(favKeyStr);
     alertBtn.classList.toggle("on", on);
-    alertBtn.querySelector(".b-icon-label").textContent = on ? "알림켜짐" : "실거래알림";
+    alertBtn.querySelector(".b-icon-label").textContent = on ? "실거래알림켜짐" : "실거래알림";
   }
   // 헤더 알림 새로고침(refreshAlertsUI) 시 현재 열린 B패널 버튼을 다시 그리기 위한 훅.
   window.__syncOpenAlertBtn = function(){ if (canFav) syncAlertBtn(); };
