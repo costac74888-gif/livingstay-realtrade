@@ -2070,10 +2070,18 @@ function _renderDetailCards(b){
         const s = (v == null) ? "" : String(v).trim();
         return /^\d{8}$/.test(s) ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}` : "-";
       };
+      const fmtExpected = (v) => {
+        if (!v) return "-";
+        const s = String(v).trim();
+        if (/^\d{8}$/.test(s)) return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}`;
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10).replace(/-/g, ".");
+        return s;
+      };
       const steps = [
-        { label: "건축허가", date: fmtDay8(b.permit_day),       done: !!(b.permit_day) },
-        { label: "착공",     date: fmtDay8(b.actual_start_day), done: !!(b.actual_start_day) },
-        { label: "사용승인", date: "-",                          done: false },
+        { label: "건축허가", date: fmtDay8(b.permit_day),                       done: !!(b.permit_day) },
+        { label: "착공",     date: fmtDay8(b.actual_start_day),                 done: !!(b.actual_start_day) },
+        { label: "준공예정", date: fmtExpected(b.completion_expected_date),     done: false },
+        { label: "사용승인", date: fmtDay8(b.use_apr_day),                      done: !!(b.use_apr_day) },
       ];
       const tcells = steps.map((s, i) => `
         <div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative;">
