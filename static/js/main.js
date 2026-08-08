@@ -2213,17 +2213,17 @@ async function loadBuildingHeader(id){
       <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
         <span style="width:44px; flex-shrink:0; color:var(--ink-soft2,#999);">도로명</span>
         <span>${escapeHtml(b.road_address || "-")}</span>
-        ${b.road_address ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.road_address)}" title="도로명주소 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px;">📋</button>` : ""}
+        ${b.road_address ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.road_address)}" title="도로명주소 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;color:var(--ink-soft2,#999);display:flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="8" height="8" rx="1.3"/><path d="M2 9.5V2.8A.8.8 0 0 1 2.8 2H9.5"/></svg></button>` : ""}
       </div>
       <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
         <span style="width:44px; flex-shrink:0; color:var(--ink-soft2,#999);">지번</span>
         <span>${escapeHtml(b.jibun_address || "-")}</span>
-        ${b.jibun_address ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.jibun_address)}" title="지번주소 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px;">📋</button>` : ""}
+        ${b.jibun_address ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.jibun_address)}" title="지번주소 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;color:var(--ink-soft2,#999);display:flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="8" height="8" rx="1.3"/><path d="M2 9.5V2.8A.8.8 0 0 1 2.8 2H9.5"/></svg></button>` : ""}
       </div>
       <div style="display:flex; align-items:center; gap:6px;">
         <span style="width:44px; flex-shrink:0; color:var(--ink-soft2,#999);">우편번호</span>
         <span>${escapeHtml(b.zip_code || "-")}</span>
-        ${b.zip_code ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.zip_code)}" title="우편번호 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px;">📋</button>` : ""}
+        ${b.zip_code ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.zip_code)}" title="우편번호 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;color:var(--ink-soft2,#999);display:flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="8" height="8" rx="1.3"/><path d="M2 9.5V2.8A.8.8 0 0 1 2.8 2H9.5"/></svg></button>` : ""}
       </div>
     </div>` : `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">주소 미확인</div>`}
     ${b.name_pending && b.sgg_cd && b.umd_nm && b.jibun ? `
