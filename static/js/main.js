@@ -2227,6 +2227,7 @@ async function loadBuildingHeader(id){
       <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">🔔<span class="b-icon-label">실거래알림</span></button>
       <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">⭐<span class="b-icon-label">관심저장</span></button>
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
+      ${b.lat != null && b.lng != null ? `<button type="button" id="bMapLocBtn" class="b-icon-btn" title="지도 위치 보기">📍<span class="b-icon-label">지도위치</span></button>` : ""}
     </div>
     <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
       ${bStat("주용도", useCombined)}
@@ -2355,6 +2356,18 @@ async function loadBuildingHeader(id){
       prompt("아래 주소를 복사하세요:", url);
     }
   });
+
+  // 지도위치 버튼 — 좌표가 있는 건물에만 렌더링됨
+  const mapLocBtn = document.getElementById("bMapLocBtn");
+  if (mapLocBtn){
+    mapLocBtn.addEventListener("click", () => {
+      if (!kakaoMap || b.lat == null || b.lng == null) return;
+      // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
+      kakaoMap.setLevel(3);
+      kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
+      updateMapForZoom(mapFiltersFromState(), { force: true });
+    });
+  }
 
   if (isPreCompletion) {
     adminCard.innerHTML = `
