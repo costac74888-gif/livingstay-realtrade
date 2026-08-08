@@ -398,6 +398,7 @@ def get_building(building_id):
                mb.detail_fetched_at,
                mb.booking_url,
                mb.booking_url_expires_at,
+               mb.zip_code,
                lt.address AS address
         FROM master_buildings mb
         LEFT JOIN LATERAL (
@@ -1867,6 +1868,7 @@ def submit_building():
     bjdong_csv = _os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
     bjdong = BjdongMap(bjdong_csv)
 
+    zip_code_val = ""  # 도로명→JUSO 경로에서만 채워짐; 지번직접입력은 백필 배치가 나중에 채운다
     # ── 지번주소 직접 입력 경로 (road_to_jibun 우회) ─────────────────────────────
     # 입력 형식: "[읍면동] [번지]"  예) 서천동 812  또는 서천동 812-4
     # 하위호환: 사용자가 실수로 시도·시군구까지 풀세트 입력해도 뒤 2토큰만 사용
@@ -1932,6 +1934,7 @@ def submit_building():
         bun = juso.get("lnbrMnnm", "0")
         ji = juso.get("lnbrSlno", "0")
         jibun_str = f"{bun}-{ji}" if ji not in ("0", "", None) else bun
+        zip_code_val = (juso.get("zipNo") or "").strip()
 
         sgg_cd = bjdong.find_sgg_cd(si_do, sgg_nm)
         if not sgg_cd:
@@ -2033,9 +2036,10 @@ def submit_building():
         master_id = existing["id"]
         cur.execute("""
             UPDATE master_buildings
-            SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW()
+            SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW(),
+                zip_code=COALESCE(zip_code, NULLIF(%s,''))
             WHERE id=%s
-        """, (label, detail, subtype, master_id))
+        """, (label, detail, subtype, zip_code_val, master_id))
         if api_bld_nm:
             cur.execute("""
                 UPDATE master_buildings SET building_name=%s, name_pending=FALSE
@@ -2051,11 +2055,13 @@ def submit_building():
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source,
-                 lodging_type, lodging_type_detail, lodging_subtype, verified_at, name_pending)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, %s, NOW(), %s)
+                 lodging_type, lodging_type_detail, lodging_subtype, verified_at, name_pending,
+                 zip_code)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, %s, NOW(), %s,
+                    NULLIF(%s,''))
             RETURNING id
         """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str,
-              title["ho_cnt"], label, detail, subtype, name_pending))
+              title["ho_cnt"], label, detail, subtype, name_pending, zip_code_val))
         master_id = cur.fetchone()["id"]
         _fill_master_coords(cur, master_id, road_addr_final)
 

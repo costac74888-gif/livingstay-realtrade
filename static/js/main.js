@@ -2208,7 +2208,24 @@ async function loadBuildingHeader(id){
       ${b.name_pending ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
       ${badge}
     </div>
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">${escapeHtml(b.road_address || "주소 미확인")}</div>
+    ${(b.road_address || b.jibun_address || b.zip_code) ? `
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+        <span style="width:44px; flex-shrink:0; color:var(--ink-soft2,#999);">도로명</span>
+        <span>${escapeHtml(b.road_address || "-")}</span>
+        ${b.road_address ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.road_address)}" title="도로명주소 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px;">📋</button>` : ""}
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+        <span style="width:44px; flex-shrink:0; color:var(--ink-soft2,#999);">지번</span>
+        <span>${escapeHtml(b.jibun_address || "-")}</span>
+        ${b.jibun_address ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.jibun_address)}" title="지번주소 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px;">📋</button>` : ""}
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="width:44px; flex-shrink:0; color:var(--ink-soft2,#999);">우편번호</span>
+        <span>${escapeHtml(b.zip_code || "-")}</span>
+        ${b.zip_code ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.zip_code)}" title="우편번호 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;font-size:13px;">📋</button>` : ""}
+      </div>
+    </div>` : `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">주소 미확인</div>`}
     ${b.name_pending && b.sgg_cd && b.umd_nm && b.jibun ? `
     <div id="bNameSuggest" style="margin:-4px 0 12px;">
       <button type="button" id="bNameSuggestOpen" style="background:none; border:none; padding:0; cursor:pointer; font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:underline;">✏️ 건물명 제안하기</button>
@@ -2368,6 +2385,24 @@ async function loadBuildingHeader(id){
       updateMapForZoom(mapFiltersFromState(), { force: true });
     });
   }
+
+  // 주소 복사 버튼 — 도로명/지번/우편번호 3줄 공통 (이벤트 위임)
+  headerCard.querySelectorAll(".b-addr-copy").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const addr = btn.dataset.addr;
+      if (!addr) return;
+      if (navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(addr);
+          const orig = btn.textContent;
+          btn.textContent = "✅";
+          setTimeout(() => { btn.textContent = orig; }, 1200);
+        } catch(e) { alert("복사에 실패했습니다."); }
+      } else {
+        prompt("아래 주소를 복사하세요:", addr);
+      }
+    });
+  });
 
   if (isPreCompletion) {
     adminCard.innerHTML = `

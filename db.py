@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-07-1"
+SCHEMA_VERSION = "2026-08-08-1"
 
 
 def init_db():
@@ -142,6 +142,7 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS last_inspection_start_day TEXT")  # 점검시작일 YYYY-MM-DD
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS last_inspection_submit_day TEXT") # 점검제출일 YYYY-MM-DD
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS detail_fetched_at TIMESTAMP")     # 즉시조회 캐싱 시각
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS zip_code TEXT")  # 우편번호 (JUSO API zipNo)
     # 정식 명칭 미확정 표시 — API(건축물대장)에 건물명이 없어 "읍면동 지번" 임시명으로 등록된 건물은 TRUE.
     # 기본값 FALSE: 기존 건물들은 이미 확정된 명칭을 갖고 있으므로, TRUE는 submit_building()이 명시적으로만 세팅한다.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS name_pending BOOLEAN DEFAULT FALSE")
