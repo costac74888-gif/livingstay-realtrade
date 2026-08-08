@@ -8510,6 +8510,22 @@ def _admin_bld_filters():
     # 명칭 미확정 건물만 필터 (관리자 주기 점검용)
     if (request.args.get("name_pending") or "").strip() == "1":
         where += " AND name_pending IS TRUE"
+    # 용도(lodging_type) 필터 — 건물마스터 드롭다운
+    lt_filter = (request.args.get("lodging_type_filter") or "").strip()
+    if lt_filter == "미분류":
+        # 준공전 제외: building_status가 허가/착공인 행은 별도 분류
+        where += (
+            " AND (lodging_type IS NULL OR lodging_type = '')"
+            " AND building_status NOT IN ('허가','착공')"
+        )
+    elif lt_filter == "준공전":
+        where += (
+            " AND building_status IN ('허가','착공')"
+            " AND (use_apr_day IS NULL OR use_apr_day = '')"
+        )
+    elif lt_filter in ("생활", "관광", "일반", "복합"):
+        where += " AND lodging_type = %s"
+        params.append(lt_filter)
     return q, sort, order, where, params
 
 
@@ -8748,10 +8764,118 @@ def admin_buildings_delete(building_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/buildings/bulk-update", methods=["POST"])
+@require_admin
+def admin_buildings_bulk_update():
+    """선택한 건물 여러 건을 동일 필드/값으로 일괄 수정 (최대 500건)."""
+    data = request.get_json(silent=True) or {}
+    ids = data.get("ids") or []
+    field = (data.get("field") or "").strip()
+    value = data.get("value")
+
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "message": "ids 목록이 필요합니다."}), 400
+    if field not in ADMIN_BLD_EDITABLE:
+        return jsonify({"ok": False, "message": f"수정할 수 없는 필드입니다: {field}"}), 400
+    try:
+        id_list = [int(x) for x in ids][:500]
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "message": "ids 형식이 올바르지 않습니다."}), 400
+
+    clean_value = _clean_bld_value(field, value)
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"UPDATE master_buildings SET {field} = %s WHERE id = ANY(%s)",
+        [clean_value, id_list],
+    )
+    updated = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "updated": updated})
+
+
+@app.route("/api/admin/buildings/bulk-delete", methods=["POST"])
+@require_admin
+def admin_buildings_bulk_delete():
+    """선택한 건물 여러 건을 일괄 삭제 (최대 500건).
+    참조 데이터(매물/슬롯/실거래)가 있는 건물은 삭제를 건너뛰고 skipped에 포함한다."""
+    data = request.get_json(silent=True) or {}
+    ids = data.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"ok": False, "message": "ids 목록이 필요합니다."}), 400
+    try:
+        id_list = [int(x) for x in ids][:500]
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "message": "ids 형식이 올바르지 않습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    # 참조가 있는 건물 ID를 한 번의 쿼리로 수집
+    # listings, slots는 master_building_id FK로 바로 조회
+    cur.execute(
+        "SELECT DISTINCT master_building_id FROM listings WHERE master_building_id = ANY(%s)"
+        " UNION"
+        " SELECT DISTINCT master_building_id FROM slots WHERE master_building_id = ANY(%s)",
+        [id_list, id_list],
+    )
+    blocked_by_fk = {r["master_building_id"] for r in cur.fetchall()}
+
+    # transactions는 지번키(sgg_cd+umd_nm+jibun) 또는 building_name으로 매칭 — 개별 확인
+    # (FK 없이 denormalized로 저장됨)
+    blocked_by_tx = set()
+    if id_list:
+        cur.execute(
+            "SELECT id, sgg_cd, umd_nm, jibun, building_name FROM master_buildings WHERE id = ANY(%s)",
+            [id_list],
+        )
+        buildings = cur.fetchall()
+        for b in buildings:
+            if b["sgg_cd"] and b["umd_nm"] and b["jibun"]:
+                cur.execute(
+                    "SELECT 1 FROM transactions "
+                    "WHERE sgg_cd=%s AND REPLACE(umd_nm,' ','')=REPLACE(%s,' ','') AND jibun=%s LIMIT 1",
+                    [b["sgg_cd"], b["umd_nm"], b["jibun"]],
+                )
+            elif b["building_name"] and b["building_name"] != "-":
+                cur.execute(
+                    "SELECT 1 FROM transactions WHERE building_name=%s LIMIT 1",
+                    [b["building_name"]],
+                )
+            else:
+                continue
+            if cur.fetchone():
+                blocked_by_tx.add(b["id"])
+
+    blocked = blocked_by_fk | blocked_by_tx
+    deletable = [bid for bid in id_list if bid not in blocked]
+
+    deleted = 0
+    if deletable:
+        cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", [deletable])
+        deleted = cur.rowcount
+        conn.commit()
+
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "deleted": deleted, "skipped": len(id_list) - deleted})
+
+
 @app.route("/api/admin/buildings/export.xlsx")
 @require_admin
 def admin_buildings_export():
     q, sort, order, where_sql, params = _admin_bld_filters()
+    # ids 파라미터가 있으면 선택 항목만 다운로드 (쉼표 구분 정수)
+    ids_raw = (request.args.get("ids") or "").strip()
+    if ids_raw:
+        try:
+            id_list = [int(x) for x in ids_raw.split(",") if x.strip()][:500]
+        except (ValueError, TypeError):
+            id_list = []
+        if id_list:
+            where_sql = f"id = ANY(%s)"
+            params = [id_list]
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"""

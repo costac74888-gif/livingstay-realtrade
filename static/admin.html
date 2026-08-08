@@ -148,7 +148,19 @@
         title: "건물마스터",
         entityLabel: "건물",
         searchPlaceholder: "건물명·주소 검색",
+        allowSelect: true,   // 체크박스 일괄선택 활성화
+        allowEdit: false,    // 행별 수정버튼 제거 → 일괄수정 툴바로 대체
+        allowDelete: false,  // 행별 삭제버튼 제거 → 일괄삭제 툴바로 대체
         filters: [
+          { key: "lodging_type_filter", default: "", options: [
+            { value: "", label: "전체 용도" },
+            { value: "생활", label: "생활" },
+            { value: "관광", label: "관광" },
+            { value: "일반", label: "일반" },
+            { value: "복합", label: "복합" },
+            { value: "준공전", label: "준공전" },
+            { value: "미분류", label: "미분류" },
+          ] },
           { key: "name_pending", default: "", options: [
             { value: "", label: "전체 명칭상태" },
             { value: "1", label: "명칭 미확정만" },
@@ -165,7 +177,8 @@
               : `<span style="color:var(--ink-soft);">0</span>` },
           { key: "matched_broker_name", label: "단지부동산(입주부동산)", clientSort: true,
             render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select", options: ["생활", "호텔", "콘도"] },
+          { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select",
+            options: ["생활", "관광", "일반", "복합", "준공전", "미분류"] },
           { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
           { key: "biz_units", label: "영업신고호수", sortable: true, editable: true, type: "number" },
           { key: "sgg_text", label: "시군구", sortable: true, editable: true },
@@ -2264,6 +2277,9 @@
             생활/관광/일반/복합 중 하나로 재판정하고 DB를 업데이트합니다.
             판정 불가 건물은 건너뜁니다. 일일 200건 캡. (실행 제한: 시간당 2회)
           </p>
+          <p class="legal-admin-hint" style="margin-top:4px;">
+            👉 <a href="#" class="legal-link" id="goBldUnclassified" style="color:var(--brass-dark);text-decoration:underline;">건물마스터에서 미분류 건물 목록 바로보기</a>
+          </p>
           <div id="reclassifyStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">
             <span id="reclassifyMsg" class="legal-msg" role="alert"></span>
@@ -4243,6 +4259,193 @@
       loadMembers();
     }
 
+    // ---- 건물마스터: 체크박스 일괄선택 + 툴바 ----
+    // DataGrid의 allowSelect 모드를 사용해 체크박스를 띄우고, 상단 툴바에서
+    // 일괄 수정 / 일괄 삭제 / 선택 항목 다운로드를 처리한다.
+    const BLD_BULK_FIELDS = [
+      { key: "lodging_type",  label: "용도",        type: "select" },
+      { key: "building_name", label: "건물명",       type: "text" },
+      { key: "units",         label: "호실수",       type: "number" },
+      { key: "biz_units",     label: "영업신고호수", type: "number" },
+      { key: "sgg_text",      label: "시군구",       type: "text" },
+      { key: "umd_nm",        label: "읍면동",       type: "text" },
+      { key: "jibun",         label: "지번",         type: "text" },
+    ];
+    const BLD_LODGING_OPTS = ["생활", "관광", "일반", "복합", "준공전", "미분류"];
+
+    function showBuildings(overrideFilters) {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div id="bldBulkBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#F4F1EA;border-radius:8px;flex-wrap:wrap;">
+          <span id="bldSelLabel" style="font-size:13px;color:var(--ink-soft);min-width:60px;">선택 0건</span>
+          <button class="admin-btn" id="bldBulkEditBtn" disabled>일괄 수정</button>
+          <button class="admin-btn" id="bldBulkDeleteBtn" disabled style="color:#b3261e;border-color:#b3261e;">일괄 삭제</button>
+          <button class="admin-btn" id="bldBulkDownloadBtn" disabled>선택 항목 다운로드</button>
+        </div>
+        <div id="bldGridMount"></div>`;
+
+      const gridMount = document.getElementById("bldGridMount");
+      // overrideFilters 지원 — 예: 미분류 바로가기 링크에서 { lodging_type_filter: "미분류" }
+      let bldCfg = GRID_CONFIGS.buildings;
+      if (overrideFilters && Object.keys(overrideFilters).length) {
+        bldCfg = Object.assign({}, bldCfg, {
+          filters: (bldCfg.filters || []).map((f) => {
+            const ov = overrideFilters[f.key];
+            return ov !== undefined ? Object.assign({}, f, { default: ov }) : f;
+          }),
+        });
+      }
+      currentGrid = new DataGrid(Object.assign({ mount: gridMount, idField: "id", pageSize: 50 }, bldCfg));
+
+      // 선택 상태 변경 → 툴바 갱신
+      gridMount.addEventListener("dg:selectionchange", (e) => {
+        const n = e.detail.count;
+        document.getElementById("bldSelLabel").textContent = `선택 ${n}건`;
+        const dis = n === 0;
+        ["bldBulkEditBtn", "bldBulkDeleteBtn", "bldBulkDownloadBtn"].forEach((bid) => {
+          const el = document.getElementById(bid);
+          if (el) el.disabled = dis;
+        });
+      });
+
+      // ── 일괄 수정 모달 ──
+      document.getElementById("bldBulkEditBtn").addEventListener("click", () => {
+        const ids = currentGrid.selectedIds();
+        if (!ids.length) return;
+
+        const overlay = document.createElement("div");
+        overlay.className = "admin-modal-overlay";
+        const fieldOpts = BLD_BULK_FIELDS
+          .map((f) => `<option value="${dgEscape(f.key)}">${dgEscape(f.label)}</option>`).join("");
+        overlay.innerHTML = `
+          <div class="admin-modal" role="dialog" aria-modal="true" style="max-width:480px;">
+            <div class="admin-modal-head">
+              <h3>일괄 수정 (${ids.length}건)</h3>
+              <button class="admin-modal-close" aria-label="닫기">×</button>
+            </div>
+            <div class="admin-modal-body">
+              <label class="admin-form-row">
+                <span class="admin-form-label">수정할 필드 <em class="req">*</em></span>
+                <select class="admin-input" id="bulkEditField">${fieldOpts}</select>
+              </label>
+              <div id="bulkEditValueWrap"></div>
+              <div id="bulkEditConfirm" style="display:none;margin-top:8px;padding:8px 10px;background:#FFF8E7;border-radius:7px;font-size:13px;"></div>
+            </div>
+            <div class="admin-modal-msg" role="alert"></div>
+            <div class="admin-modal-foot">
+              <button class="admin-btn admin-modal-cancel">취소</button>
+              <button class="admin-btn admin-btn-primary" id="bulkEditApplyBtn">적용</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+
+        const fieldSel  = overlay.querySelector("#bulkEditField");
+        const valWrap   = overlay.querySelector("#bulkEditValueWrap");
+        const confirmEl = overlay.querySelector("#bulkEditConfirm");
+        const msgBox    = overlay.querySelector(".admin-modal-msg");
+        const applyBtn  = overlay.querySelector("#bulkEditApplyBtn");
+        const close     = () => overlay.remove();
+
+        const rebuildValue = () => {
+          const f = BLD_BULK_FIELDS.find((x) => x.key === fieldSel.value);
+          if (f && f.type === "select") {
+            valWrap.innerHTML = `
+              <label class="admin-form-row">
+                <span class="admin-form-label">새 값 <em class="req">*</em></span>
+                <select class="admin-input" id="bulkEditValue">
+                  ${BLD_LODGING_OPTS.map((o) => `<option value="${dgEscape(o)}">${dgEscape(o)}</option>`).join("")}
+                </select>
+              </label>`;
+          } else {
+            valWrap.innerHTML = `
+              <label class="admin-form-row">
+                <span class="admin-form-label">새 값 <em class="req">*</em></span>
+                <input class="admin-input" id="bulkEditValue" type="${(f && f.type === "number") ? "number" : "text"}" />
+              </label>`;
+          }
+          valWrap.querySelector("#bulkEditValue").addEventListener("input", updateConfirm);
+          valWrap.querySelector("#bulkEditValue").addEventListener("change", updateConfirm);
+          updateConfirm();
+        };
+        const updateConfirm = () => {
+          const f   = BLD_BULK_FIELDS.find((x) => x.key === fieldSel.value);
+          const vel = overlay.querySelector("#bulkEditValue");
+          const val = vel ? vel.value : "";
+          if (f && val !== "") {
+            confirmEl.style.display = "block";
+            confirmEl.textContent = `${ids.length}건의 [${f.label}]을(를) "${val}"(으)로 변경합니다.`;
+          } else {
+            confirmEl.style.display = "none";
+          }
+        };
+
+        overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+        overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+        fieldSel.addEventListener("change", rebuildValue);
+        rebuildValue();
+
+        applyBtn.addEventListener("click", async () => {
+          const field = fieldSel.value;
+          const vel   = overlay.querySelector("#bulkEditValue");
+          const val   = vel ? vel.value : "";
+          if (!field || val === "") { msgBox.textContent = "필드와 값을 모두 입력해주세요."; return; }
+          applyBtn.disabled = true;
+          applyBtn.textContent = "적용 중…";
+          try {
+            const res = await fetch("/api/admin/buildings/bulk-update", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids, field, value: val }),
+            });
+            if (res.status === 401) { window.location.href = "/admin/login"; return; }
+            const d = await res.json().catch(() => ({}));
+            if (res.ok && d.ok) { close(); currentGrid.reload(); }
+            else { msgBox.textContent = d.message || "수정에 실패했습니다."; applyBtn.disabled = false; applyBtn.textContent = "적용"; }
+          } catch (e) {
+            msgBox.textContent = "네트워크 오류가 발생했습니다.";
+            applyBtn.disabled = false;
+            applyBtn.textContent = "적용";
+          }
+        });
+      });
+
+      // ── 일괄 삭제 ──
+      document.getElementById("bldBulkDeleteBtn").addEventListener("click", async () => {
+        const ids = currentGrid.selectedIds();
+        if (!ids.length) return;
+        if (!window.confirm(`선택한 ${ids.length}건을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+        try {
+          const res = await fetch("/api/admin/buildings/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids }),
+          });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) {
+            window.alert(`${d.deleted}건이 삭제되었습니다.${d.skipped ? ` (${d.skipped}건은 연결 데이터가 있어 생략)` : ""}`);
+            currentGrid.selected.clear();
+            currentGrid.reload();
+            document.getElementById("bldSelLabel").textContent = "선택 0건";
+            ["bldBulkEditBtn", "bldBulkDeleteBtn", "bldBulkDownloadBtn"].forEach((bid) => {
+              const el = document.getElementById(bid);
+              if (el) el.disabled = true;
+            });
+          } else {
+            window.alert(d.message || "삭제에 실패했습니다.");
+          }
+        } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      });
+
+      // ── 선택 항목 다운로드 ──
+      document.getElementById("bldBulkDownloadBtn").addEventListener("click", () => {
+        const ids = currentGrid.selectedIds();
+        if (!ids.length) return;
+        window.location.href = `/api/admin/buildings/export.xlsx?ids=${ids.join(",")}`;
+      });
+    }
+
     function showView(menuKey) {
       stopTxSyncPolling();
       stopBackfillPolling();
@@ -4261,6 +4464,7 @@
       if (menuKey === "ota-requests") { showOtaRequests(); return; }
       if (menuKey === "listings") { showListings(); return; }
       if (menuKey === "popups") { showPopups(); return; }
+      if (menuKey === "buildings") { showBuildings(); return; }
       showGrid(menuKey);
     }
 
@@ -4270,6 +4474,19 @@
         btn.classList.add("is-active");
         showView(btn.getAttribute("data-menu"));
       });
+    });
+
+    // ⑪ 미분류 재분류 섹션 → 건물마스터 미분류 필터 바로가기
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("#goBldUnclassified");
+      if (!link) return;
+      e.preventDefault();
+      const bldBtn = document.querySelector(".admin-menu-item[data-menu='buildings']");
+      if (bldBtn) {
+        document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
+        bldBtn.classList.add("is-active");
+      }
+      showBuildings({ lodging_type_filter: "미분류" });
     });
 
     showView("stats");

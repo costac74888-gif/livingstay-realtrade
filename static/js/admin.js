@@ -64,6 +64,7 @@ class DataGrid {
     });
     this.total = 0;
     this.items = [];
+    this.selected = new Set();  // allowSelect 모드 선택 상태 (idField 값 문자열 Set)
     this._build();
     this.reload();
   }
@@ -145,7 +146,14 @@ class DataGrid {
 
   _renderHead() {
     const cols = this.tableColumns();
-    const ths = cols.map((col) => {
+    const ths = [];
+    // 체크박스 선택 모드: 헤더에 전체선택 체크박스 추가
+    if (this.cfg.allowSelect) {
+      const pageIds = (this.items || []).map((r) => String(r[this.cfg.idField]));
+      const allChecked = pageIds.length > 0 && pageIds.every((id) => this.selected.has(id));
+      ths.push(`<th class="dg-col-cb" style="width:36px;text-align:center;padding:4px;"><input type="checkbox" class="dg-select-all"${allChecked ? " checked" : ""} title="이 페이지 전체 선택/해제"></th>`);
+    }
+    ths.push(...cols.map((col) => {
       const wStyle = col.width ? ` style="min-width:${dgEscape(String(col.width))}"` : "";
       if (!col.sortable && !col.clientSort) return `<th${wStyle}>${dgEscape(col.label)}</th>`;
       let arrow = "";
@@ -155,9 +163,22 @@ class DataGrid {
         arrow = this.state.order === "asc" ? " ▲" : " ▼";
       }
       return `<th class="dg-sortable"${wStyle} data-key="${dgEscape(col.key)}" data-client="${col.clientSort ? "1" : "0"}">${dgEscape(col.label)}${arrow}</th>`;
-    });
+    }));
     if (this.hasActions) ths.push(`<th class="dg-col-actions">관리</th>`);
     this.$headRow.innerHTML = ths.join("");
+    // 전체선택 체크박스 이벤트
+    if (this.cfg.allowSelect) {
+      const allChk = this.$headRow.querySelector(".dg-select-all");
+      if (allChk) {
+        allChk.addEventListener("change", () => {
+          const pageIds = (this.items || []).map((r) => String(r[this.cfg.idField]));
+          if (allChk.checked) { pageIds.forEach((id) => this.selected.add(id)); }
+          else { pageIds.forEach((id) => this.selected.delete(id)); }
+          this.$body.querySelectorAll(".dg-row-cb").forEach((cb) => { cb.checked = allChk.checked; });
+          this._dispatchSelectionChange();
+        });
+      }
+    }
     this.$headRow.querySelectorAll(".dg-sortable").forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.getAttribute("data-key");
@@ -242,16 +263,22 @@ class DataGrid {
       return;
     }
     const rows = this.items.map((row) => {
-      const tds = cols.map((col) => {
+      const id = row[this.cfg.idField];
+      const tds = [];
+      // 체크박스 선택 모드: 행마다 개별 체크박스 추가
+      if (this.cfg.allowSelect) {
+        const chk = this.selected.has(String(id)) ? " checked" : "";
+        tds.push(`<td class="dg-col-cb" style="text-align:center;padding:4px;"><input type="checkbox" class="dg-row-cb" data-id="${dgEscape(id)}"${chk}></td>`);
+      }
+      cols.forEach((col) => {
         let cell;
         if (typeof col.render === "function") {
           cell = col.render(row[col.key], row);
         } else {
           cell = dgEscape(row[col.key]);
         }
-        return `<td>${cell}</td>`;
+        tds.push(`<td>${cell}</td>`);
       });
-      const id = row[this.cfg.idField];
       if (this.hasActions) {
         const editBtn = this.cfg.allowEdit
           ? `<button class="dg-icon-btn dg-edit" data-id="${dgEscape(id)}">수정</button>`
@@ -287,6 +314,37 @@ class DataGrid {
         if (action && typeof action.onClick === "function") action.onClick(row, this);
       });
     });
+    // 체크박스 행 단위 이벤트 바인딩
+    if (this.cfg.allowSelect) {
+      this.$body.querySelectorAll(".dg-row-cb").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          const cbId = cb.getAttribute("data-id");
+          if (cb.checked) { this.selected.add(cbId); } else { this.selected.delete(cbId); }
+          // 전체선택 체크박스 상태 동기화
+          const allChk = this.$headRow.querySelector(".dg-select-all");
+          if (allChk) {
+            const pageIds = this.items.map((r) => String(r[this.cfg.idField]));
+            allChk.checked = pageIds.length > 0 && pageIds.every((pid) => this.selected.has(pid));
+          }
+          this._dispatchSelectionChange();
+        });
+      });
+    }
+  }
+
+  _dispatchSelectionChange() {
+    this.cfg.mount.dispatchEvent(new CustomEvent("dg:selectionchange", {
+      bubbles: true,
+      detail: { count: this.selected.size, ids: [...this.selected] },
+    }));
+  }
+
+  selectedIds() {
+    return [...this.selected].map(Number).filter((n) => !isNaN(n));
+  }
+
+  selectedItems() {
+    return this.items.filter((r) => this.selected.has(String(r[this.cfg.idField])));
   }
 
   _renderPager() {
