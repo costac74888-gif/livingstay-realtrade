@@ -190,7 +190,13 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                          tot_area=%(tot_area)s, plat_area=%(plat_area)s,
                          hhld_cnt=%(hhld_cnt)s, strct_nm=%(strct_nm)s,
                          mgm_bldrgst_pk=COALESCE(%(mgm_bldrgst_pk)s, mgm_bldrgst_pk),
-                         title_backfilled_at=NOW()
+                         title_backfilled_at=NOW(),
+                         building_status=CASE
+                             WHEN %(use_apr_day)s IS NOT NULL AND %(use_apr_day)s != ''
+                                  AND building_status IN ('허가','착공')
+                             THEN '완공'
+                             ELSE building_status
+                         END
                        WHERE id=%(id)s""",
                     {**vals, "id": bid},
                 )

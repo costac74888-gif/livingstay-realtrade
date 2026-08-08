@@ -1036,7 +1036,7 @@ def get_transactions():
     if lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "준공전":
-        where.append("building_status IN ('허가','착공')")
+        where.append("building_status IN ('허가','착공') AND (use_apr_day IS NULL OR use_apr_day = '')")
     elif lodging_type == "미분류":
         where.append("(lodging_type IS NULL OR lodging_type = '') AND building_status NOT IN ('허가','착공')")
     elif lodging_type:
@@ -1193,7 +1193,7 @@ def get_buildings_cluster():
     if lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "준공전":
-        where.append("building_status IN ('허가','착공')")
+        where.append("building_status IN ('허가','착공') AND (use_apr_day IS NULL OR use_apr_day = '')")
     elif lodging_type == "미분류":
         where.append("(lodging_type IS NULL OR lodging_type = '') AND building_status NOT IN ('허가','착공')")
     elif lodging_type:
@@ -1241,7 +1241,8 @@ def get_buildings_cluster():
                COUNT(*) FILTER (WHERE lodging_type = '관광')                              AS cnt_tour,
                COUNT(*) FILTER (WHERE lodging_type = '일반')                              AS cnt_gen,
                COUNT(*) FILTER (WHERE lodging_type LIKE '%%·%%' OR lodging_type = '복합') AS cnt_mixed,
-               COUNT(*) FILTER (WHERE building_status IN ('허가','착공'))                  AS cnt_pre_completion,
+               COUNT(*) FILTER (WHERE building_status IN ('허가','착공')
+                                  AND (use_apr_day IS NULL OR use_apr_day = ''))        AS cnt_pre_completion,
                COUNT(*) FILTER (WHERE (lodging_type IS NULL OR lodging_type = '')
                                   AND building_status NOT IN ('허가','착공'))             AS cnt_unknown
         FROM master_buildings
@@ -1349,7 +1350,7 @@ def get_buildings_geo():
     if lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "준공전":
-        where.append("building_status IN ('허가','착공')")
+        where.append("building_status IN ('허가','착공') AND (use_apr_day IS NULL OR use_apr_day = '')")
     elif lodging_type == "미분류":
         where.append("(lodging_type IS NULL OR lodging_type = '') AND building_status NOT IN ('허가','착공')")
     elif lodging_type:
@@ -1599,13 +1600,16 @@ def get_building_count():
 
     # 용도별 건물 수 — 지도 필터와 동일한 기준 (클릭 결과와 숫자 일치 보장)
     # mixed_use_excluded: 지도 노출 금지 → 범례에도 카운트 제외
-    # 준공전: building_status IN ('허가','착공') — lodging_type NULL보다 우선
+    # 준공전: building_status IN ('허가','착공') AND use_apr_day 없음 — lodging_type NULL보다 우선
+    #   use_apr_day가 있으면 이미 완공된 건물이므로 준공전에서 제외 (backfill이 채웠지만
+    #   building_status 미갱신된 오분류 112건 방어)
     # 복합: lodging_type = '복합' 또는 '·' 포함 (지도 복합 필터와 동일)
     # 미분류: lodging_type NULL/'' 이면서 준공전이 아닌 건물
     cur.execute("""
         SELECT
             CASE
-                WHEN building_status IN ('허가','착공')                  THEN '준공전'
+                WHEN building_status IN ('허가','착공')
+                     AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
                 WHEN lodging_type = '생활'                               THEN '생활'
                 WHEN lodging_type = '관광'                               THEN '관광'
                 WHEN lodging_type = '일반'                               THEN '일반'
