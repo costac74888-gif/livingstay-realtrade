@@ -2864,9 +2864,8 @@ window.addEventListener("popstate", () => {
 });
 
 // 범례 타이틀 + 용도별 건물 수 — 통계 대시보드와 동일한 집계 기준
-// by_type 매핑: 생활·관광·일반·준공전·복합(나머지 전부)
+// by_type 매핑: 생활·관광·일반·복합·준공전·미분류
 // 범례의 '복합' 항목 = 실제복합 + mixed_use_excluded + NULL(대시보드 기준과 동일)
-// 범례의 '미분류' 항목은 숫자를 표시하지 않는다 (대시보드에 없는 카테고리).
 async function loadBuildingCountLabel(){
   const countEl = document.getElementById("mapCount");
   try {
