@@ -2075,7 +2075,16 @@ function _renderDetailCards(b){
         const s = String(v).trim();
         if (/^\d{8}$/.test(s)) return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}`;
         if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10).replace(/-/g, ".");
-        return s;
+        try {
+          const d = new Date(s);
+          if (!isNaN(d)) {
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth()+1).padStart(2,"0");
+            const day = String(d.getUTCDate()).padStart(2,"0");
+            return `${y}.${m}.${day}`;
+          }
+        } catch(e){}
+        return "-";
       };
       const steps = [
         { label: "건축허가", date: fmtDay8(b.permit_day),                       done: !!(b.permit_day) },
