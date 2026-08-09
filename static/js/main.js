@@ -620,6 +620,7 @@ function _buildLabelEl(b, pos){
       e.stopPropagation();
       if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
       history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
+      if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + b.id });
       renderBuildingPanel(b.id);
     });
   }
@@ -921,6 +922,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
         if (b.id != null) {
           if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
           history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
+          if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + b.id });
           renderBuildingPanel(b.id);
         }
       });
@@ -2862,6 +2864,7 @@ function renderBuildingPanel(id){
   // "← 전체 목록으로" 링크: 기본 패널 복귀 + URL "/"
   const closeDetail = () => {
     history.pushState({}, "", "/");
+    if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
     restoreDefaultPanel();
   };
   document.getElementById("btnBackToList").addEventListener("click", closeDetail);
@@ -2915,6 +2918,7 @@ function restoreDefaultPanel(){
 // InfoWindow "상세보기 →" 클릭 → 페이지 이동 없이 패널 전환 + URL만 교체
 window.openBuildingDetail = function(id){
   history.pushState({ buildingId: id }, "", "/building/" + id);
+  if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + id });
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
   renderBuildingPanel(id);
   return false;
@@ -2923,8 +2927,13 @@ window.openBuildingDetail = function(id){
 // 브라우저 뒤로/앞으로 가기 대응
 window.addEventListener("popstate", () => {
   const m = location.pathname.match(/^\/building\/(\d+)/);
-  if (m) renderBuildingPanel(Number(m[1]));
-  else restoreDefaultPanel();
+  if (m) {
+    renderBuildingPanel(Number(m[1]));
+    if (typeof gtag === "function") gtag("event", "page_view", { page_path: location.pathname });
+  } else {
+    restoreDefaultPanel();
+    if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
+  }
 });
 
 // 범례 타이틀 + 용도별 건물 수 — 통계 대시보드와 동일한 집계 기준

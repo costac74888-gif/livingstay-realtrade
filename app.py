@@ -81,6 +81,23 @@ def _inject_asset_version(html):
         lambda m: f'{m.group(1)}="{m.group(2)}?v={SERVER_BOOT_V}"', html
     )
 
+
+def _inject_ga4(html: str) -> str:
+    """GA4_MEASUREMENT_ID 환경변수가 있을 때만 gtag 스크립트를 </head> 직전에 주입한다."""
+    ga4_id = os.environ.get("GA4_MEASUREMENT_ID", "").strip()
+    if not ga4_id:
+        return html
+    snippet = (
+        f'<script async src="https://www.googletagmanager.com/gtag/js?id={ga4_id}"></script>\n'
+        f'<script>\n'
+        f'  window.dataLayer = window.dataLayer || [];\n'
+        f'  function gtag(){{dataLayer.push(arguments);}}\n'
+        f'  gtag("js", new Date());\n'
+        f'  gtag("config", "{ga4_id}");\n'
+        f'</script>\n'
+    )
+    return html.replace("</head>", snippet + "</head>", 1)
+
 app = Flask(__name__, static_folder="static")
 Compress(app)   # gzip 응답 압축 (API JSON + HTML 전체)
 
@@ -260,6 +277,7 @@ def _serve_app_shell():
     html = html.replace("{{KAKAO_JS_KEY}}", quote(kakao_js_key, safe=""))
     html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
     html = _inject_asset_version(html)
+    html = _inject_ga4(html)
     resp = Response(html, mimetype="text/html")
     # 진입 HTML은 캐시하지 않아 항상 최신 SDK URL(_v)을 받도록 한다.
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -3390,6 +3408,9 @@ def _serve_static_html(filename):
     with open(html_path, encoding="utf-8") as fp:
         html = fp.read()
     html = _inject_asset_version(html)
+    # 관리자 전용 페이지는 GA4 트래킹 제외
+    if not filename.startswith("admin"):
+        html = _inject_ga4(html)
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
