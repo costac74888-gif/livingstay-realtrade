@@ -14436,7 +14436,7 @@ _resume_interrupted_sync_jobs()
 
 # ---- 우편번호 백필 일일 자동 실행 (소량, 사람 개입 없이 서서히 완료) ----
 _ZIP_BACKFILL_AUTO_KEY = "zip_backfill_auto"
-_ZIP_BACKFILL_AUTO_CAP = 300
+_ZIP_BACKFILL_AUTO_CAP = 1000
 
 
 def _zip_backfill_auto_loop():
@@ -14497,13 +14497,15 @@ def _zip_backfill_auto_loop():
                 if acquired:
                     base_dir = os.path.dirname(os.path.abspath(__file__))
                     try:
+                        log_path = os.path.join(base_dir, "zip_backfill_auto.log")
+                        log_f = open(log_path, "a")
                         subprocess.Popen(
                             [sys.executable, "-u",
                              os.path.join(base_dir, "zip_code_backfill.py"),
                              "--daily-cap", str(_ZIP_BACKFILL_AUTO_CAP),
-                             "--sleep", "0.5"],
+                             "--sleep", "0.3"],
                             cwd=base_dir, start_new_session=True,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdout=log_f, stderr=log_f,
                         )
                         app.logger.info("[zip-auto] 우편번호 백필 자동 실행 시작 (cap=%d, remaining=%d)",
                                        _ZIP_BACKFILL_AUTO_CAP, remaining)
