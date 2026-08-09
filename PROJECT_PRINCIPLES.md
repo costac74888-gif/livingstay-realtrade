@@ -188,3 +188,9 @@
    SCHEMA_VERSION 갱신 필수. Dev 확인 후 Prod 배포까지 확인.
 5. **원칙 문서 갱신**: 작업 마무리 시 "이번 수정이 PROJECT_PRINCIPLES.md에
    추가할 만한 원칙인가?"를 스스로 판단해서, 해당되면 같이 갱신하고 커밋.
+6. **완료 보고 시 `git push` 성공 여부와 `git status` 결과를 반드시 함께
+   제시한다.** `git commit` 만으로 끝내면 로컬에만 남는다. GitHub 쪽 `origin/main`
+   과 HEAD가 일치(`Your branch is up to date with 'origin/main'`)한 것을
+   확인한 뒤에만 완료로 보고한다. shell의 `git push`가 인증 오류로 조용히
+   실패할 수 있으므로, Replit GitHub 통합(`gitPush({})`)을 우선 사용하거나
+   push 직후 반드시 exit code를 확인한다.
