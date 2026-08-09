@@ -457,9 +457,6 @@
               '<input type="radio" name="brSeverity" value="minor" style="display:none;">',
               '🔹 사소한 문제예요</label>',
           '</div>',
-          '<label style="display:block;font-size:13px;font-weight:600;margin:12px 0 4px;">연락처 <span style="font-size:12px;color:#888;">(선택)</span></label>',
-          '<input id="brContact" type="text" placeholder="답변 받으실 연락처 (선택)"',
-            ' style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:8px;padding:9px 10px;font-size:14px;">',
           '<label style="display:block;font-size:13px;font-weight:600;margin:12px 0 4px;">스크린샷 <span style="font-size:12px;color:#888;">(선택, jpg/png)</span></label>',
           '<input id="brScreenshot" type="file" accept=".jpg,.jpeg,.png" style="font-size:13px;">',
           '<div id="brScreenshotStatus" style="font-size:12px;color:#888;margin-top:4px;"></div>',
@@ -504,7 +501,15 @@
       });
     }
 
-    btn.addEventListener("click", openModal);
+    btn.addEventListener("click", function () {
+      if (!window.__livingstayLoggedIn) {
+        if (typeof window.livingstayOpenLogin === "function") {
+          window.livingstayOpenLogin("오류신고는 로그인 후 이용할 수 있습니다.");
+        }
+        return;
+      }
+      openModal();
+    });
     document.getElementById("bugReportClose").addEventListener("click", closeModal);
     modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
 
@@ -549,7 +554,6 @@
       var payload = {
         description:    desc,
         severity:       severity,
-        contact:        (document.getElementById("brContact").value || "").trim(),
         page_url:       location.href,
         user_agent:     navigator.userAgent,
         screenshot_key: _brScreenshotKey || undefined,

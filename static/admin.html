@@ -3335,6 +3335,58 @@
         `</tbody></table>`;
     }
 
+    window.openBugReportsForUser = function(accountType, userId) {
+      // 오류신고 관리 화면으로 이동 후 해당 회원 신고만 필터해서 보여줌
+      showBugReports();
+      // 화면 마운트 후 해당 회원 신고만 로드 (showBugReports 내 loadBugReports를 덮어씀)
+      setTimeout(async function () {
+        const box = document.getElementById("bugReportsBox");
+        if (!box) return;
+        box.innerHTML = `<div style="padding:12px;color:#888;font-size:13px;">회원(${dgEscape(accountType)} #${userId}) 신고 이력 불러오는 중…</div>`;
+        const res = await fetch(`/api/admin/bug-reports?status=all&account_type=${encodeURIComponent(accountType)}&user_id=${userId}`);
+        const d   = await res.json().catch(()=>({}));
+        if (!d.ok || !d.items || !d.items.length) {
+          box.innerHTML = `<div style="padding:20px;color:#aaa;">해당 회원의 신고 내역이 없습니다.</div>`;
+          return;
+        }
+        // 요약 없이 테이블만 표시 (회원 단건 필터)
+        const severityBadge = s => {
+          if (s === 'blocking') return `<span style="font-size:11.5px;font-weight:700;color:#fff;background:#B23A3A;border-radius:5px;padding:2px 8px;">🚫 긴급</span>`;
+          if (s === 'annoying') return `<span style="font-size:11.5px;font-weight:700;color:#E65100;background:#FFF3E0;border-radius:5px;padding:2px 8px;">😕 불편함</span>`;
+          return `<span style="font-size:11.5px;color:#666;background:#F5F5F5;border-radius:5px;padding:2px 8px;">🔹 사소함</span>`;
+        };
+        const statusBadge = s => {
+          if (s === 'new')      return `<span style="font-size:11px;background:#FDF6E3;color:#8a6d1f;border-radius:4px;padding:2px 7px;">신규</span>`;
+          if (s === 'checking') return `<span style="font-size:11px;background:#E8F0FE;color:#1a4a9a;border-radius:4px;padding:2px 7px;">확인중</span>`;
+          return `<span style="font-size:11px;background:#E6F4EA;color:#1a7a3c;border-radius:4px;padding:2px 7px;">해결됨</span>`;
+        };
+        box.innerHTML = `<div style="padding:8px 0 10px;font-size:13px;color:var(--brass-dark);font-weight:600;">📋 ${dgEscape(accountType)} #${userId} 의 전체 신고 이력 (${d.items.length}건)</div>` +
+          `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:#F9F5EE;text-align:left;">
+            <th style="padding:9px 10px;">심각도</th><th style="padding:9px 10px;">신고내용</th>
+            <th style="padding:9px 10px;">페이지</th><th style="padding:9px 10px;">신고일</th>
+            <th style="padding:9px 10px;">상태</th><th style="padding:9px 10px;">처리</th>
+          </tr></thead><tbody>` +
+          d.items.map(r => `<tr style="border-bottom:1px solid #F0EBDF;vertical-align:top;">
+            <td style="padding:9px 10px;">${severityBadge(r.severity)}</td>
+            <td style="padding:9px 10px;max-width:260px;">
+              <div style="overflow:hidden;max-height:60px;cursor:pointer;font-size:13px;"
+                onclick="this.style.maxHeight=this.style.maxHeight==='none'?'60px':'none'">${dgEscape(r.description)}</div>
+              ${r.screenshot_key ? `<button class="admin-btn" style="margin-top:4px;font-size:11px;" onclick="brViewScreenshot(${r.id})">📷 스크린샷</button>` : ""}
+            </td>
+            <td style="padding:9px 10px;max-width:160px;word-break:break-all;font-size:12px;">
+              ${r.page_url ? `<a href="${dgEscape(r.page_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">${dgEscape(r.page_url)}</a>` : '-'}
+            </td>
+            <td style="padding:9px 10px;white-space:nowrap;font-size:12px;">${dgEscape(r.created_at||"")}</td>
+            <td style="padding:9px 10px;">${statusBadge(r.status)}</td>
+            <td style="padding:9px 10px;white-space:nowrap;">
+              ${r.status !== 'checking' ? `<button class="admin-btn" style="margin-bottom:3px;font-size:11.5px;" onclick="brSetStatus(${r.id},'checking')">확인중으로</button><br>` : ""}
+              ${r.status !== 'resolved' ? `<button class="admin-btn" style="font-size:11.5px;background:#E6F4EA;border-color:#A3D9B1;color:#1a7a3c;" onclick="brSetStatus(${r.id},'resolved')">해결됨으로</button>` : ""}
+            </td>
+          </tr>`).join("") + `</tbody></table>`;
+      }, 50);
+    };
+
     window.brSetStatus = async function(id, status) {
       const res = await fetch(`/api/admin/bug-reports/${id}/status`, {
         method: "PATCH",
@@ -3849,6 +3901,10 @@
           <td style="min-width:220px;">${adCell}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `<a href="#" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}'); return false;" title="단지마크 관리" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span></a>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${(r.member_type === "agent" && r.region_sgg) ? `${dgEscape(r.region_sgg)} <span style="color:var(--ink-soft);">(${r.region_bld_cnt||0}/20)</span>${r.region_active ? "" : ' <span style="color:var(--brick);">종료</span>'}` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="text-align:center; white-space:nowrap;">${(r.bug_report_count > 0 && r.member_type !== "pending")
+            ? `<a href="#" onclick="openBugReportsForUser('${r.member_type}', ${r.id}); return false;" style="color:var(--brass-dark); font-weight:700;">${r.bug_report_count}건</a>`
+            : (r.member_type === "pending" ? '<span style="color:var(--ink-soft);">-</span>' : "0")
+          }</td>
           <td style="white-space:nowrap;">${actions}</td>
         </tr>`;
       }).join("");
@@ -3870,9 +3926,9 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>세부업종</th><th>상호</th>
-            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>단지</th><th>지역</th><th>작업</th>
+            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="14" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="17" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pagination" style="display:flex; align-items:center; gap:10px; padding:12px 4px;">
           <button class="admin-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>이전</button>

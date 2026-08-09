@@ -7868,23 +7868,8 @@ def bug_report_upload_screenshot():
 @app.route("/api/bug-reports", methods=["POST"])
 @limiter.limit("1 per minute; 10 per hour")
 def submit_bug_report():
-    """오류신고 제출 — 비로그인 포함 누구나 가능."""
-    body = request.get_json(silent=True) or {}
-    description = (body.get("description") or "").strip()
-    if not description:
-        return jsonify({"ok": False, "message": "신고 내용을 입력해주세요."}), 400
-    severity = body.get("severity", "annoying")
-    if severity not in ("blocking", "annoying", "minor"):
-        severity = "annoying"
-    page_url    = (body.get("page_url") or "")[:500]
-    user_agent  = (body.get("user_agent") or "")[:500]
-    contact     = (body.get("contact") or "")[:200]
-    screenshot_key = body.get("screenshot_key") or None
-    # 스크린샷 키 검증
-    if screenshot_key and not storage_util.is_valid_bug_screenshot_ref(screenshot_key):
-        screenshot_key = None
-
-    # 로그인 회원 정보 (선택)
+    """오류신고 제출 — 로그인 회원 전용."""
+    # 로그인 회원 정보 확인 (비로그인 차단)
     user_id      = session.get("user_id")
     account_type = None
     if user_id:
@@ -7899,21 +7884,34 @@ def submit_bug_report():
         user_id      = session["loan_consultant_id"]
         account_type = "loan_consultant"
     else:
-        user_id = None
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+
+    body = request.get_json(silent=True) or {}
+    description = (body.get("description") or "").strip()
+    if not description:
+        return jsonify({"ok": False, "message": "신고 내용을 입력해주세요."}), 400
+    severity = body.get("severity", "annoying")
+    if severity not in ("blocking", "annoying", "minor"):
+        severity = "annoying"
+    page_url    = (body.get("page_url") or "")[:500]
+    user_agent  = (body.get("user_agent") or "")[:500]
+    screenshot_key = body.get("screenshot_key") or None
+    # 스크린샷 키 검증
+    if screenshot_key and not storage_util.is_valid_bug_screenshot_ref(screenshot_key):
+        screenshot_key = None
 
     conn = get_conn()
     cur  = conn.cursor()
     try:
-        # 로그인 계정 중복 쿨다운 (1분)
-        if user_id and account_type:
-            cur.execute("""
-                SELECT id FROM bug_reports
-                WHERE account_type = %s AND user_id = %s
-                  AND created_at > NOW() - INTERVAL '1 minute'
-                LIMIT 1
-            """, [account_type, user_id])
-            if cur.fetchone():
-                return jsonify({"ok": False, "message": "잠시 후 다시 시도해 주세요 (1분 쿨다운)."}), 429
+        # 1분 쿨다운
+        cur.execute("""
+            SELECT id FROM bug_reports
+            WHERE account_type = %s AND user_id = %s
+              AND created_at > NOW() - INTERVAL '1 minute'
+            LIMIT 1
+        """, [account_type, user_id])
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": "잠시 후 다시 시도해 주세요 (1분 쿨다운)."}), 429
 
         cur.execute("""
             INSERT INTO bug_reports
@@ -7922,7 +7920,7 @@ def submit_bug_report():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new')
             RETURNING id, created_at
         """, [user_id, account_type, description, page_url, user_agent,
-              severity, contact, screenshot_key])
+              severity, None, screenshot_key])
         row = cur.fetchone()
         conn.commit()
     finally:
@@ -7972,14 +7970,24 @@ def admin_bug_reports_summary():
 @require_admin
 def admin_bug_reports_list():
     """오류신고 목록 — 기본 긴급 우선 → 최신순. ?status=resolved 로 해결 목록."""
-    status_filter = request.args.get("status", "open")  # 'open' | 'resolved' | 'all'
+    status_filter  = request.args.get("status", "open")  # 'open' | 'resolved' | 'all'
+    filter_account = request.args.get("account_type", "").strip()
+    filter_user_id = request.args.get("user_id", "").strip()
     conn = get_conn()
     cur  = conn.cursor()
-    where = ""
+    conditions = []
+    params     = []
     if status_filter == "open":
-        where = "WHERE status <> 'resolved'"
+        conditions.append("status <> 'resolved'")
     elif status_filter == "resolved":
-        where = "WHERE status = 'resolved'"
+        conditions.append("status = 'resolved'")
+    if filter_account:
+        conditions.append("account_type = %s")
+        params.append(filter_account)
+    if filter_user_id.isdigit():
+        conditions.append("user_id = %s")
+        params.append(int(filter_user_id))
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     cur.execute(f"""
         SELECT id, user_id, account_type, description, page_url, user_agent,
                severity, contact, screenshot_key, status, admin_note,
@@ -7990,7 +7998,7 @@ def admin_bug_reports_list():
           CASE severity WHEN 'blocking' THEN 0 WHEN 'annoying' THEN 1 ELSE 2 END,
           created_at DESC
         LIMIT 200
-    """)
+    """, params)
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -12360,6 +12368,27 @@ def admin_members_list():
                 }
     for it in items:
         it["ads"] = ads_map.get((it["member_type"], it["id"]))
+
+    # 오류신고 건수 — 현재 페이지 회원에 한해 배치 조회
+    # pending 행은 실제 회원 테이블이 아니므로 제외
+    bug_report_keys = [(it["member_type"], it["id"]) for it in items
+                       if it["member_type"] not in ("pending",)]
+    bug_report_map = {}
+    if bug_report_keys:
+        btypes = [t for t, _ in bug_report_keys]
+        bids   = [i for _, i in bug_report_keys]
+        cur.execute("""
+            SELECT account_type, user_id, COUNT(*) AS cnt
+            FROM bug_reports
+            WHERE (account_type, user_id) IN (
+                SELECT unnest(%s::text[]), unnest(%s::int[])
+            )
+            GROUP BY account_type, user_id
+        """, [btypes, bids])
+        for r in cur.fetchall():
+            bug_report_map[(r["account_type"], r["user_id"])] = int(r["cnt"])
+    for it in items:
+        it["bug_report_count"] = bug_report_map.get((it["member_type"], it["id"]), 0)
 
     agent_ids = [it["id"] for it in items if it["member_type"] == "agent"]
     agent_tier_map = {}
