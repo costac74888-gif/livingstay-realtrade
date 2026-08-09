@@ -239,7 +239,17 @@
             <div id="fIntroTitleCount" style="font-size:12px; color:var(--ink-soft); flex-shrink:0;">0/16자</div>
           </div>
         </div>
-        <div class="field" style="margin-bottom:0;"><label>소개글</label><textarea id="fIntro" rows="4" style="width:100%; font:inherit; font-size:13px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; resize:vertical; background:#fff;"></textarea></div>
+        <div class="field" style="margin-bottom:0;">
+          <label>소개글</label>
+          <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;">
+            <div style="display:flex; border-bottom:1px solid var(--line);">
+              <button type="button" id="introTabEdit" onclick="switchIntroTab('edit')" style="flex:1;padding:7px;font-size:12.5px;background:#f8f9fa;border:none;border-right:1px solid var(--line);cursor:pointer;font-weight:600;color:var(--ink);">✏ 작성</button>
+              <button type="button" id="introTabPreview" onclick="switchIntroTab('preview')" style="flex:1;padding:7px;font-size:12.5px;background:#fff;border:none;cursor:pointer;color:var(--ink-soft);">👁 미리보기</button>
+            </div>
+            <textarea id="fIntro" rows="4" style="width:100%;box-sizing:border-box; font:inherit; font-size:13px; padding:9px 10px; border:none; resize:vertical; background:#fff; display:block;"></textarea>
+            <div id="introPreviewArea" style="display:none;padding:12px;min-height:80px;font-size:13px;line-height:1.7;color:var(--ink);"></div>
+          </div>
+        </div>
       </div>
 
       <div style="background:#F7F5F0; border-radius:10px; padding:14px;">
@@ -943,6 +953,45 @@ async function loadBilling(){
     </div>`);
   });
   box.innerHTML = rows.length ? rows.join("") : `<div class="side-empty">현재 적용 중인 혜택이 없습니다.</div>`;
+}
+
+// ---- 소개글 미리보기 ----
+function renderMarkdownSafe(text) {
+  if (!text) return '<span style="color:var(--ink-soft);font-size:12px;">내용을 입력하면 여기에 미리보기가 표시됩니다.</span>';
+  function safeUrl(raw) {
+    const u = raw.trim();
+    return (u.startsWith('http://') || u.startsWith('https://'))
+      ? u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+  }
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
+    const su = safeUrl(url); return su ? `<img src="${su}" alt="${alt}" style="max-width:100%;height:auto;border-radius:4px;">` : m;
+  });
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, t, url) => {
+    const su = safeUrl(url); return su ? `<a href="${su}" target="_blank" rel="noopener noreferrer">${t}</a>` : t;
+  });
+  s = s.replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>');
+  s = s.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
+  s = s.replace(/\n/g, '<br>\n');
+  return s;
+}
+function switchIntroTab(tab) {
+  const editBtn = document.getElementById('introTabEdit');
+  const previewBtn = document.getElementById('introTabPreview');
+  const ta = document.getElementById('fIntro');
+  const previewArea = document.getElementById('introPreviewArea');
+  if (tab === 'preview') {
+    previewArea.innerHTML = renderMarkdownSafe(ta.value);
+    ta.style.display = 'none';
+    previewArea.style.display = 'block';
+    previewBtn.style.cssText += ';background:#f8f9fa;font-weight:600;color:var(--ink);';
+    editBtn.style.cssText += ';background:#fff;font-weight:400;color:var(--ink-soft);';
+  } else {
+    ta.style.display = 'block';
+    previewArea.style.display = 'none';
+    editBtn.style.cssText += ';background:#f8f9fa;font-weight:600;color:var(--ink);';
+    previewBtn.style.cssText += ';background:#fff;font-weight:400;color:var(--ink-soft);';
+  }
 }
 </script>
   <script src="/static/js/pw_toggle.js"></script>

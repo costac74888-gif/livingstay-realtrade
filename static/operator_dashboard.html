@@ -179,16 +179,23 @@
       <div class="field">
         <label>소개글 <span style="font-weight:400;font-size:11px;color:var(--ink-soft);">**굵게**, *기울임*, [링크](URL), 이미지 첨부 지원</span></label>
         <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;">
-          <div style="display:flex;gap:2px;align-items:center;padding:5px 8px;background:#f8f9fa;border-bottom:1px solid var(--line);flex-wrap:wrap;">
-            <button type="button" class="md-tb-btn" data-cmd="bold" title="굵게 (**텍스트**)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-weight:700;">B</button>
-            <button type="button" class="md-tb-btn" data-cmd="italic" title="기울임 (*텍스트*)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-style:italic;">I</button>
-            <button type="button" class="md-tb-btn" data-cmd="link" title="링크 삽입 ([텍스트](URL))" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;">🔗</button>
-            <label class="md-tb-btn" title="이미지 첨부" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;margin:0;display:inline-flex;align-items:center;">
-              🖼 <input type="file" id="introImgInput" accept="image/jpeg,image/png" style="display:none;">
-            </label>
-            <span id="introImgMsg" style="font-size:11px;color:var(--ink-soft);margin-left:4px;"></span>
+          <div style="display:flex; border-bottom:1px solid var(--line);">
+            <button type="button" id="introTabEdit" onclick="switchIntroTab('edit')" style="flex:1;padding:7px;font-size:12.5px;background:#f8f9fa;border:none;border-right:1px solid var(--line);cursor:pointer;font-weight:600;color:var(--ink);">✏ 작성</button>
+            <button type="button" id="introTabPreview" onclick="switchIntroTab('preview')" style="flex:1;padding:7px;font-size:12.5px;background:#fff;border:none;cursor:pointer;color:var(--ink-soft);">👁 미리보기</button>
           </div>
-          <textarea id="fIntro" rows="6" placeholder="서비스 소개, 운영 방식, 강점 등을 자유롭게 작성하세요." style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:9px 10px;border:none;resize:vertical;outline:none;display:block;"></textarea>
+          <div id="introEditArea">
+            <div style="display:flex;gap:2px;align-items:center;padding:5px 8px;background:#f8f9fa;border-bottom:1px solid var(--line);flex-wrap:wrap;">
+              <button type="button" class="md-tb-btn" data-cmd="bold" title="굵게 (**텍스트**)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-weight:700;">B</button>
+              <button type="button" class="md-tb-btn" data-cmd="italic" title="기울임 (*텍스트*)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-style:italic;">I</button>
+              <button type="button" class="md-tb-btn" data-cmd="link" title="링크 삽입 ([텍스트](URL))" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;">🔗</button>
+              <label class="md-tb-btn" title="이미지 첨부" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;margin:0;display:inline-flex;align-items:center;">
+                🖼 <input type="file" id="introImgInput" accept="image/jpeg,image/png" style="display:none;">
+              </label>
+              <span id="introImgMsg" style="font-size:11px;color:var(--ink-soft);margin-left:4px;"></span>
+            </div>
+            <textarea id="fIntro" rows="6" placeholder="서비스 소개, 운영 방식, 강점 등을 자유롭게 작성하세요." style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:9px 10px;border:none;resize:vertical;outline:none;display:block;"></textarea>
+          </div>
+          <div id="introPreviewArea" style="display:none;padding:12px;min-height:100px;font-size:13px;line-height:1.7;color:var(--ink);"></div>
         </div>
       </div>
       <div style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
@@ -668,6 +675,46 @@ document.getElementById("logoFileInput").addEventListener("change", async (e) =>
     finally { e.target.value = ""; }
   });
 })();
+
+// ---- 소개글 미리보기 ----
+function renderMarkdownSafe(text) {
+  if (!text) return '<span style="color:var(--ink-soft);font-size:12px;">내용을 입력하면 여기에 미리보기가 표시됩니다.</span>';
+  function safeUrl(raw) {
+    const u = raw.trim();
+    return (u.startsWith('http://') || u.startsWith('https://'))
+      ? u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+  }
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
+    const su = safeUrl(url); return su ? `<img src="${su}" alt="${alt}" style="max-width:100%;height:auto;border-radius:4px;">` : m;
+  });
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, t, url) => {
+    const su = safeUrl(url); return su ? `<a href="${su}" target="_blank" rel="noopener noreferrer">${t}</a>` : t;
+  });
+  s = s.replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>');
+  s = s.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
+  s = s.replace(/\n/g, '<br>\n');
+  return s;
+}
+function switchIntroTab(tab) {
+  const editBtn = document.getElementById('introTabEdit');
+  const previewBtn = document.getElementById('introTabPreview');
+  const editArea = document.getElementById('introEditArea');
+  const previewArea = document.getElementById('introPreviewArea');
+  if (tab === 'preview') {
+    previewArea.innerHTML = renderMarkdownSafe(document.getElementById('fIntro').value);
+    editArea.style.display = 'none';
+    previewArea.style.display = 'block';
+    previewBtn.style.cssText += ';background:#f8f9fa;font-weight:600;color:var(--ink);';
+    editBtn.style.cssText += ';background:#fff;font-weight:400;color:var(--ink-soft);';
+  } else {
+    editArea.style.display = '';
+    previewArea.style.display = 'none';
+    editBtn.style.cssText += ';background:#f8f9fa;font-weight:600;color:var(--ink);';
+    previewBtn.style.cssText += ';background:#fff;font-weight:400;color:var(--ink-soft);';
+  }
+}
+
 
 // ---- 비밀번호 변경 ----
 document.getElementById("btnChangePw").addEventListener("click", () => {
