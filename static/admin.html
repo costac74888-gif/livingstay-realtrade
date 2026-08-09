@@ -1302,6 +1302,19 @@
           const when = s.last_run_at ? `마지막 실행 ${s.last_run_at}` : "실행 기록 없음";
           items.push({ sec: secBySync[s.key], text: `${s.label}(${when})` });
         });
+        // 우편번호 백필 진행률 (조용히 표시 — 경고 아님)
+        const zipEl = document.getElementById("zipBackfillProgress");
+        if (zipEl && typeof d.zip_total === "number" && d.zip_total > 0) {
+          if (d.zip_filled >= d.zip_total) {
+            zipEl.textContent = "✅ 완료 — 전체 " + num(d.zip_total) + "건 채움";
+          } else {
+            const pct = Math.round(d.zip_filled / d.zip_total * 100);
+            const barFill = `<span style="display:block;width:${pct}%;height:100%;background:var(--brass);border-radius:4px"></span>`;
+            const bar = `<span style="display:inline-block;width:120px;height:6px;background:#eee;border-radius:4px;vertical-align:middle;margin:0 8px">${barFill}</span>`;
+            zipEl.innerHTML = `${num(d.zip_filled)} / ${num(d.zip_total)}건 채움${bar}${pct}% · 매일 자동 실행 중`;
+          }
+        }
+
         if (!items.length) {
           box.style.display = "";
           box.style.background = "#e6f4ea";
@@ -2149,6 +2162,16 @@
             <span id="titleInfoMsg" class="legal-msg" role="alert"></span>
             <button id="titleInfoRunBtn" class="admin-btn admin-btn-primary">건축정보 채우기 실행</button>
           </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecZip">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">③-① 우편번호 자동채움</h2>
+          </div>
+          <p class="legal-admin-hint">
+            JUSO API로 도로명주소가 있는 건물의 우편번호를 채웁니다.
+            매일 자동 실행(300건/일)되므로 별도 조작이 필요 없습니다. 며칠에 걸쳐 서서히 완료됩니다.
+          </p>
+          <div id="zipBackfillProgress" style="font-size:13px;color:var(--ink-soft);padding:4px 0;min-height:20px;">불러오는 중…</div>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecTx">
           <div class="legal-admin-head">

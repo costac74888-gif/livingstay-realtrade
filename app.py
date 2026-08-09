@@ -8067,7 +8067,9 @@ def admin_datasync_overview():
                                       AND road_address IS NOT NULL AND road_address <> '') AS missing_geo,
                    COUNT(*) FILTER (WHERE title_backfilled_at IS NULL
                                       AND sgg_cd IS NOT NULL AND umd_nm IS NOT NULL
-                                      AND jibun IS NOT NULL) AS missing_title
+                                      AND jibun IS NOT NULL) AS missing_title,
+                   COUNT(*) FILTER (WHERE zip_code IS NOT NULL) AS zip_filled,
+                   COUNT(*) FILTER (WHERE road_address IS NOT NULL AND road_address <> '') AS zip_total
             FROM master_buildings
         """)
         c = cur.fetchone()
@@ -8098,6 +8100,8 @@ def admin_datasync_overview():
         "ok": True,
         "missing_geo": c["missing_geo"],
         "missing_title": c["missing_title"],
+        "zip_filled": c["zip_filled"],
+        "zip_total": c["zip_total"],
         "stale_syncs": stale_syncs,
         "booted_at": _kst_label(_APP_STARTED_AT),
     })
@@ -14111,6 +14115,90 @@ def _resume_interrupted_sync_jobs():
 
 
 _resume_interrupted_sync_jobs()
+
+
+# ---- 우편번호 백필 일일 자동 실행 (소량, 사람 개입 없이 서서히 완료) ----
+_ZIP_BACKFILL_AUTO_KEY = "zip_backfill_auto"
+_ZIP_BACKFILL_AUTO_CAP = 300
+
+
+def _zip_backfill_auto_loop():
+    """앱 기동 후 30분마다 오늘 백필이 실행됐는지 확인, 안됐으면 소량(300건) 실행.
+    연결 안 되는 날은 자연히 넘어가고, 되는 날은 채워지는 방식으로 며칠에 걸쳐 완료.
+    멀티 워커(gunicorn)에서 첫 번째 워커만 실제 실행 — app_meta 원자 UPSERT로 중복 차단."""
+    import time as _t
+    _t.sleep(120)  # 부팅 완료 대기
+    while True:
+        try:
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            conn = get_conn()
+            cur = conn.cursor()
+            try:
+                cur.execute("""
+                    SELECT
+                        (SELECT COUNT(*) FROM master_buildings
+                         WHERE zip_code IS NULL AND road_address IS NOT NULL) AS remaining,
+                        (SELECT value FROM app_meta WHERE key = %s) AS auto_meta
+                """, (_ZIP_BACKFILL_AUTO_KEY,))
+                row = cur.fetchone()
+            finally:
+                cur.close()
+                conn.close()
+
+            remaining = row["remaining"] if row else 0
+            if remaining == 0:
+                app.logger.info("[zip-auto] 우편번호 백필 완료 — 스레드 종료")
+                return  # 전체 완료 → 스레드 종료
+
+            last_date = None
+            if row and row["auto_meta"]:
+                try:
+                    last_date = json.loads(row["auto_meta"]).get("date")
+                except Exception:
+                    pass
+
+            if last_date != today:
+                # 원자 UPSERT: 멀티 워커 중 오늘 날짜로 처음 쓰는 워커만 성공
+                conn2 = get_conn()
+                cur2 = conn2.cursor()
+                try:
+                    cur2.execute("""
+                        INSERT INTO app_meta (key, value, updated_at)
+                        VALUES (%s, %s::jsonb, NOW())
+                        ON CONFLICT (key) DO UPDATE
+                          SET value = EXCLUDED.value, updated_at = NOW()
+                          WHERE (app_meta.value::jsonb ->> 'date') IS DISTINCT FROM %s
+                    """, (_ZIP_BACKFILL_AUTO_KEY,
+                          json.dumps({"date": today, "state": "started"}),
+                          today))
+                    acquired = cur2.rowcount > 0
+                    conn2.commit()
+                finally:
+                    cur2.close()
+                    conn2.close()
+
+                if acquired:
+                    base_dir = os.path.dirname(os.path.abspath(__file__))
+                    try:
+                        subprocess.Popen(
+                            [sys.executable, "-u",
+                             os.path.join(base_dir, "zip_code_backfill.py"),
+                             "--daily-cap", str(_ZIP_BACKFILL_AUTO_CAP),
+                             "--sleep", "0.5"],
+                            cwd=base_dir, start_new_session=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        )
+                        app.logger.info("[zip-auto] 우편번호 백필 자동 실행 시작 (cap=%d, remaining=%d)",
+                                       _ZIP_BACKFILL_AUTO_CAP, remaining)
+                    except Exception:
+                        app.logger.exception("[zip-auto] 백필 Popen 실패")
+        except Exception:
+            pass
+        _t.sleep(1800)  # 30분마다 재확인
+
+
+threading.Thread(target=_zip_backfill_auto_loop, daemon=True,
+                 name="zip-backfill-auto").start()
 
 
 if __name__ == "__main__":

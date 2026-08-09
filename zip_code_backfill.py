@@ -19,8 +19,10 @@ JUSO API 일일 한도: 행안부 기본 제공 500,000건/일 (공공데이터 
 import argparse
 import json
 import os
+import re
 import sys
 import time
+from datetime import date as _date
 
 import psycopg2
 import psycopg2.extras
@@ -34,13 +36,20 @@ def get_conn():
 
 
 def load_progress():
+    today = _date.today().isoformat()
     if os.path.exists(PROGRESS_FILE):
         try:
             with open(PROGRESS_FILE) as f:
-                return json.load(f)
+                p = json.load(f)
+            # 날짜가 바뀌면 calls_today 초기화 (일일 캡 재설정)
+            if p.get("last_run_date") != today:
+                p["calls_today"] = 0
+                p["last_run_date"] = today
+                save_progress(p)
+            return p
         except Exception:
             pass
-    return {"done": 0, "calls_today": 0, "last_id": 0}
+    return {"done": 0, "calls_today": 0, "last_id": 0, "last_run_date": today}
 
 
 def save_progress(prog):
@@ -113,9 +122,11 @@ def main():
         bid = row["id"]
         name = row["building_name"] or "-"
         road = row["road_address"]
+        # 괄호·쉼표 이후 꼬리표 제거 — 재발 방지 (road_to_jibun 내부도 동일 처리)
+        clean_road = re.sub(r"\([^)]*\)\s*$", "", road.split(",")[0]).strip()
 
         try:
-            juso = road_to_jibun(road)
+            juso = road_to_jibun(clean_road)
             prog["calls_today"] += 1
             if juso and (juso.get("zipNo") or "").strip():
                 zip_val = juso["zipNo"].strip()
