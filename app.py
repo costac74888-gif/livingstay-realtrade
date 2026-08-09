@@ -24,6 +24,7 @@ import io
 import sys
 import json
 import time
+import html as _html
 import hashlib
 import threading
 import subprocess
@@ -4615,7 +4616,7 @@ def agent_public_profile(slug):
         "office_address": agent["office_address"],
         "reg_number": agent["reg_number"],
         "photo_src": f"/api/partners/agent-photo/{agent['id']}" if agent["photo_url"] else None,
-        "intro_text": agent["intro_text"],
+        "intro_text": _render_markdown_safe(agent["intro_text"] or ""),
         "buildings": buildings,
         "building_count": len(buildings),
         "total_listings": total_listings,
@@ -6085,6 +6086,48 @@ def operator_profile_page(slug):
     return _serve_static_html("operator_profile.html")
 
 
+def _render_markdown_safe(text: str) -> str:
+    """마크다운 원문 → 안전한 HTML 변환.
+    1) html.escape로 전체 이스케이프 → <script> 등 완전 무해화
+    2) 최소 마크다운만 변환: ![alt](url), [text](url), **굵게**, *기울임*, 줄바꿈
+    3) href/src URL: http(s):// 시작만 허용, javascript: 등 차단
+    """
+    if not text:
+        return ""
+
+    def _safe_url(raw: str) -> str:
+        u = _html.unescape(raw).strip()
+        if u.startswith(("http://", "https://")):
+            return _html.escape(u, quote=True)
+        return ""
+
+    s = _html.escape(text)
+
+    # 이미지: ![alt](url) — 링크보다 먼저 처리
+    def _img(m):
+        su = _safe_url(m.group(2))
+        if not su:
+            return m.group(0)
+        return f'<img src="{su}" alt="{m.group(1)}" style="max-width:100%;height:auto;border-radius:4px;">'
+    s = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _img, s)
+
+    # 링크: [text](url)
+    def _link(m):
+        su = _safe_url(m.group(2))
+        if not su:
+            return m.group(1)
+        return f'<a href="{su}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>'
+    s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _link, s)
+
+    # 굵게: **text**
+    s = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', s, flags=re.DOTALL)
+    # 기울임: *text* (굵게 처리 후)
+    s = re.sub(r'\*([^*\n]+?)\*', r'<i>\1</i>', s)
+    # 줄바꿈
+    s = s.replace('\n', '<br>\n')
+    return s
+
+
 @app.route("/api/operator/profile/<slug>")
 def operator_public_profile(slug):
     """운영업체 공개 프로필 API — 인증 불필요. approved 상태만 노출."""
@@ -6117,7 +6160,7 @@ def operator_public_profile(slug):
         "category": op["category"],
         "phone": op["phone"],
         "logo_src": f"/api/partners/operator-logo/{op['id']}" if op["logo_url"] else None,
-        "intro_text": op["intro_text"],
+        "intro_text": _render_markdown_safe(op["intro_text"] or ""),
         "office_address": op["office_address"],
         "biz_reg_number": op["biz_reg_number"],
         "website_url": (op["website_url"] if (op["website_url"] or "").startswith(("http://", "https://")) else None),
@@ -6228,6 +6271,8 @@ def operator_me_update():
                 if not v or not _EMAIL_RE.match(v):
                     return jsonify({"ok": False, "message": "이메일 형식이 올바르지 않습니다."}), 400
                 v = v.lower()
+            if k == "intro_text" and v and len(v) > 5000:
+                return jsonify({"ok": False, "message": "소개글은 5000자 이내로 입력해주세요."}), 400
             if k == "biz_reg_number":
                 v = _digits_only(v) or None
                 if not v:
@@ -6307,6 +6352,49 @@ def operator_logo_upload():
     return jsonify({"ok": True, "logo_src": f"/api/partners/operator-logo/{operator_id}"})
 
 
+@app.route("/api/operator/intro-image", methods=["POST"])
+@require_operator
+def operator_intro_image_upload():
+    """소개글 내 이미지 업로드 — 로고와 동일한 검증, 별도 스토리지 키."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다."}), 400
+    key = storage_util.build_doc_key("operator", "intro_img", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("운영업체 소개글 이미지 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다."}), 500
+    url = f"/api/operator/intro-image-file/{key}"
+    return jsonify({"ok": True, "url": url})
+
+
+@app.route("/api/operator/intro-image-file/<path:key>")
+def operator_intro_image_serve(key):
+    """소개글 이미지 공개 서빙 — 인증 불필요, 키 형식 검증 후 스토리지에서 직접 서빙."""
+    if not storage_util.is_valid_intro_img_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
+    return Response(data, content_type=ct, headers={
+        "Cache-Control": "public, max-age=31536000, immutable",
+    })
+
+
 # ============================================================
 # 대출상담사 로그인/대시보드 — agent/operator와 동일 패턴.
 # 세션에 loan_consultant_id 저장. require_loan_consultant 로 보호.
@@ -6364,7 +6452,7 @@ def loan_consultant_public_profile(slug):
         "owner_name": lc["owner_name"],
         "phone": lc["phone"],
         "logo_src": f"/api/partners/loan-consultant-logo/{lc['id']}" if lc["logo_url"] else None,
-        "intro_text": lc["intro_text"],
+        "intro_text": _render_markdown_safe(lc["intro_text"] or ""),
         "consultant_products": lc["consultant_products"],
         "kakao_chat_url": kakao_url,
         "service_region": lc["service_region"],
@@ -6535,8 +6623,8 @@ def loan_consultant_me_update():
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
             if k == "kakao_chat_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "카카오톡 상담 링크는 http(s)://로 시작하는 URL이어야 합니다."}), 400
-            if k == "intro_text" and v and len(v) > 500:
-                return jsonify({"ok": False, "message": "한줄소개는 100자 이내로 입력해주세요."}), 400
+            if k == "intro_text" and v and len(v) > 5000:
+                return jsonify({"ok": False, "message": "소개글은 5000자 이내로 입력해주세요."}), 400
             if k == "logo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
                 return jsonify({"ok": False, "message": "로고 URL은 http(s)://로 시작해야 합니다."}), 400
             if k in ("office_name", "owner_name") and not v:

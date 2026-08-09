@@ -40,8 +40,17 @@ LOGO_EXTENSIONS = {"jpg", "jpeg", "png"}
 # 신청서 제출 시 넘어오는 참조 키가 우리가 발급한 형식인지 검증하는 정규식.
 DOC_REF_RE = re.compile(
     r"^applications/(agent|operator)/[0-9a-f]{32}/"
-    r"(license|office_reg|biz_reg|business_card|biz_license|logo|photo)\.(pdf|jpg|jpeg|png)$"
+    r"(license|office_reg|biz_reg|business_card|biz_license|logo|photo|intro_img)\.(pdf|jpg|jpeg|png)$"
 )
+
+# 소개글 이미지 공개 서빙용 검증
+INTRO_IMG_REF_RE = re.compile(
+    r"^applications/operator/[0-9a-f]{32}/intro_img\.(jpg|jpeg|png)$"
+)
+
+
+def is_valid_intro_img_ref(ref):
+    return bool(ref) and bool(INTRO_IMG_REF_RE.match(ref))
 
 
 def _bucket_id():
