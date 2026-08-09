@@ -660,30 +660,22 @@
           </section>
 
           <section class="stats-card">
-            <h3 class="stats-card-title">시·도별 건물 TOP 10</h3>
-            <div class="stats-chart-box"><canvas id="chartSido"></canvas></div>
+            <h3 class="stats-card-title">회원 및 파트너 가입현황</h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div>
+                <div style="text-align:center; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">중개사</div>
+                <div style="position:relative; height:195px;"><canvas id="chartMemAgent"></canvas></div>
+              </div>
+              <div>
+                <div style="text-align:center; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">운영지원업체</div>
+                <div style="position:relative; height:195px;"><canvas id="chartMemOp"></canvas></div>
+              </div>
+            </div>
           </section>
 
           <section class="stats-card stats-card-wide">
-            <h3 class="stats-card-title">회원 상태별 현황</h3>
-            <div class="stats-member-wrap">
-              <div class="stats-member-group">
-                <h4 class="stats-member-title">중개사</h4>
-                <div class="stats-member-cards">
-                  <div class="stats-mcard stats-mcard-wait"><span class="stats-mcard-num">${num(ag.pending)}</span><span class="stats-mcard-label">대기중</span></div>
-                  <div class="stats-mcard stats-mcard-ok"><span class="stats-mcard-num">${num(ag.approved)}</span><span class="stats-mcard-label">승인됨</span></div>
-                  <div class="stats-mcard stats-mcard-no"><span class="stats-mcard-num">${num(ag.rejected)}</span><span class="stats-mcard-label">반려됨</span></div>
-                </div>
-              </div>
-              <div class="stats-member-group">
-                <h4 class="stats-member-title">운영지원업체</h4>
-                <div class="stats-member-cards">
-                  <div class="stats-mcard stats-mcard-wait"><span class="stats-mcard-num">${num(op.pending)}</span><span class="stats-mcard-label">대기중</span></div>
-                  <div class="stats-mcard stats-mcard-ok"><span class="stats-mcard-num">${num(op.approved)}</span><span class="stats-mcard-label">승인됨</span></div>
-                  <div class="stats-mcard stats-mcard-no"><span class="stats-mcard-num">${num(op.rejected)}</span><span class="stats-mcard-label">반려됨</span></div>
-                </div>
-              </div>
-            </div>
+            <h3 class="stats-card-title">시·도별 건물 TOP 10</h3>
+            <div style="position:relative; height:520px;"><canvas id="chartSido"></canvas></div>
           </section>
 
           <section class="stats-card stats-card-wide">
@@ -795,7 +787,7 @@
         }),
       }));
 
-      // 시도별 TOP10 — 용도별 색상 스택 막대 + 막대 끝 합계 숫자
+      // 시도별 TOP10 — 용도별 색상 스택 막대 + 세그먼트 안 숫자 + 막대 끝 합계
       const bySido = (d.buildings && d.buildings.by_sido) || [];
       const sidoDatasets = LODGING_ORDER
         .filter((lt) => bySido.some((r) => r.by_type && r.by_type[lt]))
@@ -804,6 +796,8 @@
           data: bySido.map((r) => (r.by_type && r.by_type[lt]) || 0),
           backgroundColor: LODGING_COLORS_ADMIN[lt] || "#999",
         }));
+      // 총합 기준으로 세그먼트 내 라벨 임계값 결정 (전체 최대값의 3% 이상인 세그먼트만 표시)
+      const sidoMaxTotal = Math.max(...bySido.map((r) => r.total || 0), 1);
       statsCharts.push(new Chart(document.getElementById("chartSido"), {
         type: "bar",
         data: { labels: bySido.map((r) => r.sido), datasets: sidoDatasets },
@@ -812,28 +806,77 @@
           plugins: {
             legend: { display: true, position: "bottom", labels: { color: BRAND.ink, boxWidth: 12, font: { size: 11 } } },
             datalabels: {
-              display: (ctx) => {
-                // 마지막 세그먼트(값 > 0인 것 중 가장 높은 datasetIndex)에만 합계 표시
-                const datasets = ctx.chart.data.datasets;
-                for (let i = datasets.length - 1; i >= 0; i--) {
-                  if (datasets[i].data[ctx.dataIndex] > 0) return ctx.datasetIndex === i;
-                }
-                return false;
+              labels: {
+                // ① 세그먼트 안 숫자 — 세그먼트가 전체 최대값의 3% 이상일 때만 표시
+                value: {
+                  anchor: "center", align: "center",
+                  display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= sidoMaxTotal * 0.03,
+                  formatter: (v) => num(v),
+                  color: "#fff", font: { size: 10, weight: "600" },
+                  textShadowColor: "rgba(0,0,0,0.35)", textShadowBlur: 3,
+                },
+                // ② 막대 끝 합계 — 마지막 세그먼트(값 > 0)에만 표시
+                total: {
+                  anchor: "end", align: "end",
+                  display: (ctx) => {
+                    const ds = ctx.chart.data.datasets;
+                    for (let i = ds.length - 1; i >= 0; i--) {
+                      if (ds[i].data[ctx.dataIndex] > 0) return ctx.datasetIndex === i;
+                    }
+                    return false;
+                  },
+                  formatter: (val, ctx) => {
+                    const total = bySido[ctx.dataIndex] && bySido[ctx.dataIndex].total;
+                    return total ? num(total) : "";
+                  },
+                  color: BRAND.ink, font: { size: 11, weight: "bold" },
+                },
               },
-              anchor: "end", align: "end",
-              formatter: (val, ctx) => {
-                const total = bySido[ctx.dataIndex] && bySido[ctx.dataIndex].total;
-                return total ? num(total) : "";
-              },
-              color: BRAND.ink, font: { size: 11, weight: "bold" },
             },
           },
           scales: {
             x: { stacked: true, beginAtZero: true, ticks: { color: BRAND.ink } },
-            y: { stacked: true, ticks: { color: BRAND.ink } },
+            y: { stacked: true, ticks: { color: BRAND.ink, font: { size: 12 } } },
           },
-          layout: { padding: { right: 40 } },
+          layout: { padding: { right: 50 } },
         }),
+        plugins: [ChartDataLabels],
+      }));
+
+      // 회원 및 파트너 가입현황 도넛 차트
+      const memColors = { "대기중": "#F9A825", "승인됨": "#388E3C", "반려됨": "#D32F2F" };
+      const memLabels = ["대기중", "승인됨", "반려됨"];
+      const memCommonOpts = Object.assign({}, commonOpts, {
+        cutout: "55%",
+        plugins: {
+          legend: { position: "bottom", labels: { color: BRAND.ink, boxWidth: 12, font: { size: 11 } } },
+          datalabels: {
+            display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0,
+            formatter: (v, ctx) => {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              return total > 0 ? num(v) : "";
+            },
+            color: "#fff", font: { size: 11, weight: "bold" },
+            textShadowColor: "rgba(0,0,0,0.3)", textShadowBlur: 3,
+          },
+        },
+      });
+      statsCharts.push(new Chart(document.getElementById("chartMemAgent"), {
+        type: "doughnut",
+        data: {
+          labels: memLabels,
+          datasets: [{ data: [ag.pending, ag.approved, ag.rejected], backgroundColor: memLabels.map((l) => memColors[l]), borderColor: "#fff", borderWidth: 2 }],
+        },
+        options: memCommonOpts,
+        plugins: [ChartDataLabels],
+      }));
+      statsCharts.push(new Chart(document.getElementById("chartMemOp"), {
+        type: "doughnut",
+        data: {
+          labels: memLabels,
+          datasets: [{ data: [op.pending, op.approved, op.rejected], backgroundColor: memLabels.map((l) => memColors[l]), borderColor: "#fff", borderWidth: 2 }],
+        },
+        options: memCommonOpts,
         plugins: [ChartDataLabels],
       }));
 
