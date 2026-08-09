@@ -13832,13 +13832,13 @@ def admin_stats():
             m = 1
             y += 1
 
-    # 2) 용도별 건물 수 분포 — 확정 라벨 우선 → 준공전 → 복합
+    # 2) 용도별 건물 수 분포 — 확정 라벨('복합' 포함) 우선 → 준공전 → 미분류
     cur.execute("""
         SELECT
             CASE
-                WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type
+                WHEN lodging_type IN ('생활', '관광', '일반', '복합') THEN lodging_type
                 WHEN building_status IN ('허가', '착공') THEN '준공전'
-                ELSE '복합'
+                ELSE '미분류'
             END AS lodging_type,
             COUNT(*) AS count
         FROM master_buildings
@@ -13850,16 +13850,51 @@ def admin_stats():
     cur.execute("SELECT COUNT(*) AS c FROM master_buildings WHERE building_status IN ('허가', '착공')")
     building_pre_completion_count = int(cur.fetchone()["c"])
 
-    # 3) 시/도별 건물 수 상위 10 (master_buildings.sgg_text의 첫 토큰 = 시/도)
+    # 3) 시/도별 건물 수 상위 10 — 용도별 breakdown 포함 (스택 막대용)
     cur.execute("""
-        SELECT split_part(sgg_text, ' ', 1) AS sido, COUNT(*) AS count
-        FROM master_buildings
-        WHERE sgg_text IS NOT NULL AND sgg_text <> ''
-        GROUP BY split_part(sgg_text, ' ', 1)
-        ORDER BY count DESC
-        LIMIT 10
+        WITH top_sido AS (
+            SELECT split_part(sgg_text, ' ', 1) AS sido, COUNT(*) AS total
+            FROM master_buildings
+            WHERE sgg_text IS NOT NULL AND sgg_text <> ''
+            GROUP BY split_part(sgg_text, ' ', 1)
+            ORDER BY total DESC
+            LIMIT 10
+        )
+        SELECT
+            ts.sido,
+            ts.total,
+            CASE
+                WHEN mb.lodging_type IN ('생활', '관광', '일반', '복합') THEN mb.lodging_type
+                WHEN mb.building_status IN ('허가', '착공') THEN '준공전'
+                ELSE '미분류'
+            END AS lodging_type,
+            COUNT(*) AS count
+        FROM top_sido ts
+        JOIN master_buildings mb
+          ON split_part(mb.sgg_text, ' ', 1) = ts.sido
+         AND mb.sgg_text IS NOT NULL AND mb.sgg_text <> ''
+        GROUP BY ts.sido, ts.total,
+            CASE
+                WHEN mb.lodging_type IN ('생활', '관광', '일반', '복합') THEN mb.lodging_type
+                WHEN mb.building_status IN ('허가', '착공') THEN '준공전'
+                ELSE '미분류'
+            END
+        ORDER BY ts.total DESC, count DESC
     """)
-    building_by_sido = [{"sido": r["sido"], "count": int(r["count"])} for r in cur.fetchall()]
+    _sido_order = []
+    _sido_totals = {}
+    _sido_breakdown = {}
+    for r in cur.fetchall():
+        s = r["sido"]
+        if s not in _sido_order:
+            _sido_order.append(s)
+            _sido_totals[s] = int(r["total"])
+            _sido_breakdown[s] = {}
+        _sido_breakdown[s][r["lodging_type"]] = int(r["count"])
+    building_by_sido = [
+        {"sido": s, "total": _sido_totals[s], "by_type": _sido_breakdown[s]}
+        for s in _sido_order
+    ]
 
     # 4) 회원 현황 — 대기중/반려됨은 applications 파이프라인, 승인됨은 실제 등록된 agents/operators 수
     def _member_stats(applicant_type, member_table):

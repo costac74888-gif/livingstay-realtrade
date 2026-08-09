@@ -71,6 +71,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
   <script src="/static/js/format_util.js"></script>
   <script src="/static/js/admin.js"></script>
   <script>
@@ -508,6 +509,12 @@
       brass: "#B4863F", brassSoft: "rgba(180,134,63,0.18)", ink: "#16202E",
       palette: ["#B4863F", "#16202E", "#C9A063", "#5A6B7B", "#8A6D3B", "#A9B4BF", "#D8C29A", "#3C4A5A", "#E0D2B4", "#7E8A96"],
     };
+    // 지도 범례와 동일한 용도별 색상 (순서 독립적 항목명 매칭)
+    const LODGING_COLORS_ADMIN = {
+      "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3",
+      "복합": "#B39DDB", "준공전": "#616161", "미분류": "#E0E0E0",
+    };
+    const LODGING_ORDER = ["생활", "관광", "일반", "복합", "준공전", "미분류"];
 
     async function showStats(menuKey) {
       destroyStatsCharts();
@@ -770,33 +777,67 @@
       document.getElementById("txToggleRecent").addEventListener("click", () => renderTxChart("recent"));
       renderTxChart("all");
 
-      // 용도별 건물 분포 (도넛)
+      // 용도별 건물 분포 (도넛) — 지도 범례와 동일 색상, 라벨에 건수 병기
       const byType = (d.buildings && d.buildings.by_type) || [];
       statsCharts.push(new Chart(document.getElementById("chartType"), {
         type: "doughnut",
         data: {
-          labels: byType.map((r) => r.lodging_type),
-          datasets: [{ data: byType.map((r) => r.count), backgroundColor: BRAND.palette, borderColor: "#fff", borderWidth: 2 }],
-        },
-        options: Object.assign({}, commonOpts, { cutout: "58%" }),
-      }));
-
-      // 시도별 TOP10 (가로 막대)
-      const bySido = (d.buildings && d.buildings.by_sido) || [];
-      statsCharts.push(new Chart(document.getElementById("chartSido"), {
-        type: "bar",
-        data: {
-          labels: bySido.map((r) => r.sido),
-          datasets: [{ label: "건물 수", data: bySido.map((r) => r.count), backgroundColor: BRAND.brass }],
+          labels: byType.map((r) => r.lodging_type + " (" + num(r.count) + ")"),
+          datasets: [{
+            data: byType.map((r) => r.count),
+            backgroundColor: byType.map((r) => LODGING_COLORS_ADMIN[r.lodging_type] || "#999"),
+            borderColor: "#fff", borderWidth: 2,
+          }],
         },
         options: Object.assign({}, commonOpts, {
-          indexAxis: "y",
-          plugins: { legend: { display: false } },
-          scales: { x: { beginAtZero: true, ticks: { color: BRAND.ink } }, y: { ticks: { color: BRAND.ink } } },
+          cutout: "58%",
+          plugins: { legend: { position: "bottom", labels: { color: BRAND.ink, boxWidth: 14, font: { size: 12 } } } },
         }),
       }));
 
-      // 일별 방문자 추이 (선)
+      // 시도별 TOP10 — 용도별 색상 스택 막대 + 막대 끝 합계 숫자
+      const bySido = (d.buildings && d.buildings.by_sido) || [];
+      const sidoDatasets = LODGING_ORDER
+        .filter((lt) => bySido.some((r) => r.by_type && r.by_type[lt]))
+        .map((lt) => ({
+          label: lt,
+          data: bySido.map((r) => (r.by_type && r.by_type[lt]) || 0),
+          backgroundColor: LODGING_COLORS_ADMIN[lt] || "#999",
+        }));
+      statsCharts.push(new Chart(document.getElementById("chartSido"), {
+        type: "bar",
+        data: { labels: bySido.map((r) => r.sido), datasets: sidoDatasets },
+        options: Object.assign({}, commonOpts, {
+          indexAxis: "y",
+          plugins: {
+            legend: { display: true, position: "bottom", labels: { color: BRAND.ink, boxWidth: 12, font: { size: 11 } } },
+            datalabels: {
+              display: (ctx) => {
+                // 마지막 세그먼트(값 > 0인 것 중 가장 높은 datasetIndex)에만 합계 표시
+                const datasets = ctx.chart.data.datasets;
+                for (let i = datasets.length - 1; i >= 0; i--) {
+                  if (datasets[i].data[ctx.dataIndex] > 0) return ctx.datasetIndex === i;
+                }
+                return false;
+              },
+              anchor: "end", align: "end",
+              formatter: (val, ctx) => {
+                const total = bySido[ctx.dataIndex] && bySido[ctx.dataIndex].total;
+                return total ? num(total) : "";
+              },
+              color: BRAND.ink, font: { size: 11, weight: "bold" },
+            },
+          },
+          scales: {
+            x: { stacked: true, beginAtZero: true, ticks: { color: BRAND.ink } },
+            y: { stacked: true, ticks: { color: BRAND.ink } },
+          },
+          layout: { padding: { right: 40 } },
+        }),
+        plugins: [ChartDataLabels],
+      }));
+
+      // 일별 방문자 추이 (선) — 14일 이하일 때 꼭짓점에 숫자 표시
       const daily = (d.views && d.views.daily) || [];
       statsCharts.push(new Chart(document.getElementById("chartViews"), {
         type: "line",
@@ -805,9 +846,19 @@
           datasets: [{ label: "일별 방문(페이지뷰)", data: daily.map((r) => r.count), borderColor: BRAND.brass, backgroundColor: BRAND.brassSoft, fill: true, tension: 0.3, pointRadius: 3 }],
         },
         options: Object.assign({}, commonOpts, {
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: { display: false },
+            datalabels: {
+              display: daily.length <= 14,
+              anchor: "end", align: "top",
+              formatter: (v) => v > 0 ? num(v) : null,
+              color: BRAND.ink, font: { size: 10 },
+            },
+          },
           scales: { y: { beginAtZero: true, ticks: { precision: 0, color: BRAND.ink } }, x: { ticks: { color: BRAND.ink } } },
+          layout: { padding: { top: 20 } },
         }),
+        plugins: [ChartDataLabels],
       }));
 
       // 오늘 경로별 조회수 상위 5
