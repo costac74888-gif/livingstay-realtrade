@@ -403,4 +403,189 @@
       else showSitePopup(p);
     })
     .catch(function () { /* 팝업은 부가 기능 — 실패해도 페이지에 영향 없음 */ });
+
+  // ---- 오류신고 플로팅 버튼 (관리자 페이지 제외) ----
+  (function () {
+    // /admin 경로는 제외
+    if (location.pathname.startsWith("/admin")) return;
+
+    // 플로팅 버튼 삽입
+    var btn = document.createElement("button");
+    btn.id = "bugReportBtn";
+    btn.title = "오류신고";
+    btn.textContent = "🐛";
+    btn.style.cssText =
+      "position:fixed;right:20px;bottom:20px;z-index:9999;" +
+      "width:48px;height:48px;border-radius:50%;border:none;" +
+      "background:var(--brass,#C9A227);color:#fff;" +
+      "font-size:22px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);" +
+      "display:flex;align-items:center;justify-content:center;";
+    document.body.appendChild(btn);
+
+    // 모달 마크업
+    var modal = document.createElement("div");
+    modal.id = "bugReportModal";
+    modal.style.cssText =
+      "display:none;position:fixed;inset:0;z-index:10000;" +
+      "background:rgba(0,0,0,.45);align-items:center;justify-content:center;";
+    modal.innerHTML = [
+      '<div style="background:#fff;border-radius:14px;width:min(92vw,460px);',
+             'padding:24px 24px 20px;box-shadow:0 8px 32px rgba(0,0,0,.22);',
+             'font-family:inherit;max-height:90vh;overflow-y:auto;">',
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">',
+          '<strong style="font-size:16px;">🐛 오류 신고</strong>',
+          '<button id="bugReportClose" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;line-height:1;">✕</button>',
+        '</div>',
+        '<div id="bugReportResult" style="display:none;padding:16px;background:#E6F4EA;border-radius:8px;color:#1a7a3c;font-size:14px;text-align:center;margin-bottom:12px;"></div>',
+        '<form id="bugReportForm">',
+          '<label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">무엇이 잘못됐나요? <span style="color:#c00;">*</span></label>',
+          '<textarea id="brDescription" rows="4" placeholder="화면이 깨짐, 버튼이 안 눌림, 로그인이 안 됨 등…"',
+            ' style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:8px;',
+            'padding:10px;font-size:14px;resize:vertical;font-family:inherit;" required></textarea>',
+          '<label style="display:block;font-size:13px;font-weight:600;margin:12px 0 6px;">심각도</label>',
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">',
+            '<label style="flex:1;min-width:100px;cursor:pointer;border:1.5px solid #ddd;border-radius:8px;',
+              'padding:8px 10px;font-size:13px;text-align:center;transition:border-color .15s;">',
+              '<input type="radio" name="brSeverity" value="blocking" style="display:none;">',
+              '🚫 사용이 안 돼요</label>',
+            '<label style="flex:1;min-width:100px;cursor:pointer;border:1.5px solid var(--brass,#C9A227);border-radius:8px;',
+              'padding:8px 10px;font-size:13px;text-align:center;transition:border-color .15s;background:#FDF8EE;">',
+              '<input type="radio" name="brSeverity" value="annoying" checked style="display:none;">',
+              '😕 불편해요</label>',
+            '<label style="flex:1;min-width:100px;cursor:pointer;border:1.5px solid #ddd;border-radius:8px;',
+              'padding:8px 10px;font-size:13px;text-align:center;transition:border-color .15s;">',
+              '<input type="radio" name="brSeverity" value="minor" style="display:none;">',
+              '🔹 사소한 문제예요</label>',
+          '</div>',
+          '<label style="display:block;font-size:13px;font-weight:600;margin:12px 0 4px;">연락처 <span style="font-size:12px;color:#888;">(선택)</span></label>',
+          '<input id="brContact" type="text" placeholder="답변 받으실 연락처 (선택)"',
+            ' style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:8px;padding:9px 10px;font-size:14px;">',
+          '<label style="display:block;font-size:13px;font-weight:600;margin:12px 0 4px;">스크린샷 <span style="font-size:12px;color:#888;">(선택, jpg/png)</span></label>',
+          '<input id="brScreenshot" type="file" accept=".jpg,.jpeg,.png" style="font-size:13px;">',
+          '<div id="brScreenshotStatus" style="font-size:12px;color:#888;margin-top:4px;"></div>',
+          '<button type="submit" id="brSubmitBtn"',
+            ' style="margin-top:18px;width:100%;padding:11px;background:var(--brass,#C9A227);',
+            'color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">',
+            '신고하기</button>',
+        '</form>',
+      '</div>'
+    ].join("");
+    document.body.appendChild(modal);
+
+    // 심각도 라디오 선택 시 테두리 갱신
+    var severityLabels = modal.querySelectorAll("label[style*='cursor:pointer']");
+    modal.querySelectorAll("input[name='brSeverity']").forEach(function (radio, i) {
+      radio.addEventListener("change", function () {
+        severityLabels.forEach(function (lbl) {
+          lbl.style.borderColor = "#ddd";
+          lbl.style.background  = "";
+        });
+        if (radio.checked) {
+          severityLabels[i].style.borderColor = "var(--brass,#C9A227)";
+          severityLabels[i].style.background  = "#FDF8EE";
+        }
+      });
+    });
+
+    function openModal() {
+      modal.style.display = "flex";
+      document.getElementById("brDescription").focus();
+    }
+    function closeModal() {
+      modal.style.display = "none";
+      document.getElementById("bugReportForm").reset();
+      document.getElementById("bugReportResult").style.display = "none";
+      document.getElementById("brScreenshotStatus").textContent = "";
+      _brScreenshotKey = null;
+      // 심각도 선택 초기화
+      severityLabels.forEach(function (lbl, i) {
+        lbl.style.borderColor = i === 1 ? "var(--brass,#C9A227)" : "#ddd";
+        lbl.style.background  = i === 1 ? "#FDF8EE" : "";
+      });
+    }
+
+    btn.addEventListener("click", openModal);
+    document.getElementById("bugReportClose").addEventListener("click", closeModal);
+    modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+
+    // 스크린샷 업로드
+    var _brScreenshotKey = null;
+    document.getElementById("brScreenshot").addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      var statusEl = document.getElementById("brScreenshotStatus");
+      if (!file) { _brScreenshotKey = null; statusEl.textContent = ""; return; }
+      statusEl.textContent = "업로드 중…";
+      var fd = new FormData();
+      fd.append("file", file);
+      fetch("/api/bug-reports/upload-screenshot", { method: "POST", body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.ok) {
+            _brScreenshotKey = d.key;
+            statusEl.style.color = "#1a7a3c";
+            statusEl.textContent = "✓ 첨부 완료";
+          } else {
+            _brScreenshotKey = null;
+            statusEl.style.color = "#c00";
+            statusEl.textContent = "✕ 업로드 실패: " + (d.message || "");
+          }
+        })
+        .catch(function () {
+          _brScreenshotKey = null;
+          statusEl.style.color = "#c00";
+          statusEl.textContent = "✕ 업로드 실패";
+        });
+    });
+
+    // 폼 제출
+    document.getElementById("bugReportForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var desc = (document.getElementById("brDescription").value || "").trim();
+      if (!desc) { alert("신고 내용을 입력해주세요."); return; }
+      var severity = "annoying";
+      modal.querySelectorAll("input[name='brSeverity']").forEach(function (r) {
+        if (r.checked) severity = r.value;
+      });
+      var payload = {
+        description:    desc,
+        severity:       severity,
+        contact:        (document.getElementById("brContact").value || "").trim(),
+        page_url:       location.href,
+        user_agent:     navigator.userAgent,
+        screenshot_key: _brScreenshotKey || undefined,
+      };
+      var submitBtn = document.getElementById("brSubmitBtn");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "신고 중…";
+      fetch("/api/bug-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "same-origin",
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var resultEl = document.getElementById("bugReportResult");
+          resultEl.textContent = d.message || (d.ok ? "접수되었습니다!" : "오류가 발생했습니다.");
+          resultEl.style.display = "block";
+          resultEl.style.background = d.ok ? "#E6F4EA" : "#FBEAEA";
+          resultEl.style.color = d.ok ? "#1a7a3c" : "#B23A3A";
+          if (d.ok) {
+            document.getElementById("bugReportForm").style.display = "none";
+            setTimeout(closeModal, 2500);
+          }
+        })
+        .catch(function () {
+          var resultEl = document.getElementById("bugReportResult");
+          resultEl.textContent = "제출 중 오류가 발생했습니다.";
+          resultEl.style.display = "block";
+          resultEl.style.background = "#FBEAEA";
+          resultEl.style.color = "#B23A3A";
+        })
+        .finally(function () {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "신고하기";
+        });
+    });
+  })();
 })();

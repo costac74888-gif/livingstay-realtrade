@@ -7810,6 +7810,238 @@ def operator_booking_url_request_cancel(req_id):
     return jsonify({"ok": True, "message": "신청이 취소되었습니다."})
 
 
+# ── 사이트 오류신고 ─────────────────────────────────────────────────────────
+
+def _bug_report_admin_email_notify(report_id, description, page_url, created_at):
+    """blocking 심각도 신고 접수 시 관리자 이메일 알림 (비동기 호출, 실패해도 신고 저장 유지)."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT email FROM admin_users ORDER BY id LIMIT 5")
+        admins = cur.fetchall()
+        cur.close()
+        conn.close()
+        if not admins:
+            return
+        subject = f"[긴급 오류신고] {description[:50]}"
+        body = (
+            f"<h3>🚨 긴급 오류신고가 접수되었습니다</h3>"
+            f"<p><b>신고 ID:</b> #{report_id}</p>"
+            f"<p><b>신고내용:</b><br>{description}</p>"
+            f"<p><b>발생 페이지:</b> {page_url or '(미기재)'}</p>"
+            f"<p><b>신고일시:</b> {created_at}</p>"
+            f"<p><a href='https://homenstay.com/admin'>관리자 화면에서 확인하기 →</a></p>"
+        )
+        for admin in admins:
+            try:
+                send_email(admin["email"], subject, body)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+@app.route("/api/bug-reports/upload-screenshot", methods=["POST"])
+@limiter.limit("10 per hour")
+def bug_report_upload_screenshot():
+    """오류신고 스크린샷 업로드 (신고 제출 전 미리 업로드 → 키 반환)."""
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "message": "파일이 없습니다."}), 400
+    fn = (f.filename or "").lower()
+    ext = fn.rsplit(".", 1)[-1] if "." in fn else ""
+    if ext not in storage_util.BUG_SCREENSHOT_EXTENSIONS:
+        return jsonify({"ok": False, "message": "jpg / png 만 허용됩니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기가 5 MB를 초과합니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 형식이 올바르지 않습니다."}), 400
+    key = storage_util.build_bug_screenshot_key(ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"업로드 실패: {e}"}), 500
+    return jsonify({"ok": True, "key": key})
+
+
+@app.route("/api/bug-reports", methods=["POST"])
+@limiter.limit("1 per minute; 10 per hour")
+def submit_bug_report():
+    """오류신고 제출 — 비로그인 포함 누구나 가능."""
+    body = request.get_json(silent=True) or {}
+    description = (body.get("description") or "").strip()
+    if not description:
+        return jsonify({"ok": False, "message": "신고 내용을 입력해주세요."}), 400
+    severity = body.get("severity", "annoying")
+    if severity not in ("blocking", "annoying", "minor"):
+        severity = "annoying"
+    page_url    = (body.get("page_url") or "")[:500]
+    user_agent  = (body.get("user_agent") or "")[:500]
+    contact     = (body.get("contact") or "")[:200]
+    screenshot_key = body.get("screenshot_key") or None
+    # 스크린샷 키 검증
+    if screenshot_key and not storage_util.is_valid_bug_screenshot_ref(screenshot_key):
+        screenshot_key = None
+
+    # 로그인 회원 정보 (선택)
+    user_id      = session.get("user_id")
+    account_type = None
+    if user_id:
+        account_type = "user"
+    elif session.get("agent_id"):
+        user_id      = session["agent_id"]
+        account_type = "agent"
+    elif session.get("operator_id"):
+        user_id      = session["operator_id"]
+        account_type = "operator"
+    elif session.get("loan_consultant_id"):
+        user_id      = session["loan_consultant_id"]
+        account_type = "loan_consultant"
+    else:
+        user_id = None
+
+    conn = get_conn()
+    cur  = conn.cursor()
+    try:
+        # 로그인 계정 중복 쿨다운 (1분)
+        if user_id and account_type:
+            cur.execute("""
+                SELECT id FROM bug_reports
+                WHERE account_type = %s AND user_id = %s
+                  AND created_at > NOW() - INTERVAL '1 minute'
+                LIMIT 1
+            """, [account_type, user_id])
+            if cur.fetchone():
+                return jsonify({"ok": False, "message": "잠시 후 다시 시도해 주세요 (1분 쿨다운)."}), 429
+
+        cur.execute("""
+            INSERT INTO bug_reports
+              (user_id, account_type, description, page_url, user_agent,
+               severity, contact, screenshot_key, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'new')
+            RETURNING id, created_at
+        """, [user_id, account_type, description, page_url, user_agent,
+              severity, contact, screenshot_key])
+        row = cur.fetchone()
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    report_id  = row["id"]
+    created_at = row["created_at"]
+
+    # blocking 신고 → 이메일 알림 (별도 스레드, 실패해도 신고 저장 유지)
+    if severity == "blocking":
+        import threading
+        threading.Thread(
+            target=_bug_report_admin_email_notify,
+            args=(report_id, description, page_url, created_at),
+            daemon=True,
+        ).start()
+
+    return jsonify({"ok": True, "message": "신고가 접수되었습니다. 감사합니다!"})
+
+
+@app.route("/api/admin/bug-reports/summary")
+@require_admin
+def admin_bug_reports_summary():
+    """오류신고 요약: new / checking / blocking 카운트."""
+    conn = get_conn()
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'new')      AS new_cnt,
+          COUNT(*) FILTER (WHERE status = 'checking') AS checking_cnt,
+          COUNT(*) FILTER (WHERE severity = 'blocking' AND status <> 'resolved') AS blocking_cnt
+        FROM bug_reports
+    """)
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "new":      int(row["new_cnt"]      or 0),
+        "checking": int(row["checking_cnt"] or 0),
+        "blocking": int(row["blocking_cnt"] or 0),
+    })
+
+
+@app.route("/api/admin/bug-reports")
+@require_admin
+def admin_bug_reports_list():
+    """오류신고 목록 — 기본 긴급 우선 → 최신순. ?status=resolved 로 해결 목록."""
+    status_filter = request.args.get("status", "open")  # 'open' | 'resolved' | 'all'
+    conn = get_conn()
+    cur  = conn.cursor()
+    where = ""
+    if status_filter == "open":
+        where = "WHERE status <> 'resolved'"
+    elif status_filter == "resolved":
+        where = "WHERE status = 'resolved'"
+    cur.execute(f"""
+        SELECT id, user_id, account_type, description, page_url, user_agent,
+               severity, contact, screenshot_key, status, admin_note,
+               to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM bug_reports
+        {where}
+        ORDER BY
+          CASE severity WHEN 'blocking' THEN 0 WHEN 'annoying' THEN 1 ELSE 2 END,
+          created_at DESC
+        LIMIT 200
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "items": [dict(r) for r in rows]})
+
+
+@app.route("/api/admin/bug-reports/<int:report_id>/status", methods=["PATCH"])
+@require_admin
+def admin_bug_report_status(report_id):
+    """오류신고 상태 변경: new → checking → resolved."""
+    body   = request.get_json(silent=True) or {}
+    status = body.get("status", "")
+    if status not in ("new", "checking", "resolved"):
+        return jsonify({"ok": False, "message": "올바른 상태값이 아닙니다."}), 400
+    admin_note = (body.get("admin_note") or "").strip() or None
+    conn = get_conn()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE bug_reports
+        SET status = %s,
+            admin_note = COALESCE(%s, admin_note)
+        WHERE id = %s
+    """, [status, admin_note, report_id])
+    found = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not found:
+        return jsonify({"ok": False, "message": "신고를 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/bug-reports/<int:report_id>/screenshot")
+@require_admin
+def admin_bug_report_screenshot(report_id):
+    """오류신고 스크린샷 서명 URL(5분) 발급."""
+    conn = get_conn()
+    cur  = conn.cursor()
+    cur.execute("SELECT screenshot_key FROM bug_reports WHERE id = %s", [report_id])
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row or not row["screenshot_key"]:
+        return jsonify({"ok": False, "message": "스크린샷 없음"}), 404
+    try:
+        url = storage_util.signed_get_url(row["screenshot_key"], ttl_sec=300)
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
+    return jsonify({"ok": True, "url": url})
+
+
 # ---- 지도 좌표 채우기 / 건축정보 채우기 (실시간 API 러너) ----
 # (2026-07-22) 기존 data/building_coords.json·building_title_info.json 주입 방식 제거.
 # 각 스크립트를 실거래/숙박업 동기화와 동일한 잠금/러너 패턴(detached Popen +

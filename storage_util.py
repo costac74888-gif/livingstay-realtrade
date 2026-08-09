@@ -120,6 +120,19 @@ def is_valid_notice_attachment_ref(ref):
     return bool(ref) and bool(NOTICE_ATTACHMENT_REF_RE.match(ref))
 
 
+# ---- 오류신고 스크린샷 (비공개, 관리자 서명 URL로만 열람) ----
+BUG_SCREENSHOT_EXTENSIONS = {"jpg", "jpeg", "png"}
+BUG_SCREENSHOT_REF_RE = re.compile(r"^bug_reports/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+
+
+def build_bug_screenshot_key(ext):
+    return f"bug_reports/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_bug_screenshot_ref(ref):
+    return bool(ref) and bool(BUG_SCREENSHOT_REF_RE.match(ref))
+
+
 def download_bytes(key):
     """Object Storage에서 객체 바이트를 내려받는다(팝업 이미지 공개 프록시용)."""
     return get_client().download_as_bytes(key)
