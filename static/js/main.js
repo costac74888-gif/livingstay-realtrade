@@ -1104,6 +1104,11 @@ async function updateMapForZoom(filters = {}, opts = {}){
     _currentMapMode = "markers";
     // forceMarkers일 때는 _currentMapMode 비교 없이 항상 재조회
     // (검색 결과가 이전과 다른 위치일 수 있으므로 캐시 상태 무시)
+    //
+    // noAutoFit:true = zoom_changed 이벤트에서 호출된 경우.
+    // q 검색(forceMarkers)이면 skipBounds:true라 줌 레벨과 무관하게 결과가 같으므로
+    // 재조회 자체를 생략한다 — setBounds/setLevel → zoom_changed → loadMapMarkers 무한루프 방지.
+    if (forceMarkers && opts.noAutoFit) return;
     await loadMapMarkers(filters, { fit: opts.fit || forceMarkers, skipBounds: forceMarkers });
   } else {
     if (_currentMapMode !== mode || opts.force){
@@ -1143,7 +1148,9 @@ async function initMap(){
   });
 
   // 확대/축소 시 클러스터 배지↔개별마커 전환 (모드 변경 시만 재로드, 같은 모드면 라벨만 갱신)
-  kakao.maps.event.addListener(kakaoMap, "zoom_changed", () => updateMapForZoom(_lastMapFilters));
+  // noAutoFit:true — zoom_changed에서 setBounds/setLevel을 다시 호출하면 zoom_changed가 재발해
+  // 무한루프(깜빡임→흰 화면)가 생기므로, 이벤트 유발 fit은 반드시 억제한다.
+  kakao.maps.event.addListener(kakaoMap, "zoom_changed", () => updateMapForZoom(_lastMapFilters, { noAutoFit: true }));
 
   // 지도 이동(드래그) 후 같은 클러스터 레벨이면 bounds가 바뀌므로 재조회
   // (sgg/umd 배지는 뷰포트 제한이므로, 이동 시 화면 밖 지역 배지를 갱신해야 함)
