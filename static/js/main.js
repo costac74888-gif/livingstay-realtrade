@@ -1756,6 +1756,8 @@ function openListingRequestModal(buildingId, buildingName){
       }
       ov.querySelector("#lrForm").style.display = "none";
       ov.querySelector("#lrDone").style.display = "block";
+      // GA4: 매물의뢰 완료 — API 성공 응답 직후(서버 저장 확정 시점)
+      if (typeof gtag === "function") gtag("event", "generate_lead_listing");
     } catch(e){
       msg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
       btn.disabled = false; btn.textContent = "매물의뢰 접수하기";

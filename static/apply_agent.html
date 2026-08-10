@@ -368,6 +368,15 @@
     const guideBox = document.getElementById("applyGuideBox");
     if (guideBox) guideBox.style.display = "none";
     document.getElementById("successBox").style.display = "block";
+    // GA4: 신청 완료 이벤트 — API 성공 응답 직후(서버 저장 확정 시점)
+    // building_id 있으면 건물 지정 담당중개사 신청, 없으면 일반 파트너 가입 신청으로 구분
+    if (typeof gtag === "function") {
+      if (payload.preferred_building_id) {
+        gtag("event", "generate_lead_agent");
+      } else {
+        gtag("event", "generate_lead_partner", { method: "agent" });
+      }
+    }
   });
 </script>
 <script src="/static/js/doc_dropzone.js"></script>
