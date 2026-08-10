@@ -275,6 +275,7 @@ def run(args, status_key=None, run_id=None):
                          units, hhld_cnt, use_apr_day, tot_area, plat_area,
                          grnd_flr_cnt, ugrnd_flr_cnt, source, lodging_type, lodging_type_detail)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'brhub_bulk',%s,%s)
+                    ON CONFLICT DO NOTHING
                 """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
                       units, int(it.get("hhldCnt") or 0) or None,
                       (str(it.get("useAprDay") or "").strip() or None),
