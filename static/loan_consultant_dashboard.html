@@ -448,6 +448,8 @@ window.addLcBuilding = async function(mbid, name){
   const { ok, data } = await api("/api/loan-consultant/buildings", {
     method:"POST", body: JSON.stringify({ master_building_id: mbid }) });
   if (!ok){ alert(data.message || "추가에 실패했습니다."); return; }
+  // GA4: 대출상담사 담당단지 신청 완료 — API 성공 응답 직후
+  if (typeof gtag === "function") gtag("event", "generate_lead_finance");
   closeModal("mLcBldAdd");
   await load();
   // 단지 추가 후 담당 단지 탭으로 포커스

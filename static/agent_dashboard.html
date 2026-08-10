@@ -439,8 +439,11 @@ async function claimPremium(mbid){
     + "지금 신청하시면 3개월간 무료로 적용됩니다. 신청하시겠습니까?";
   if (!confirm(msg)) return;
   const { ok, data } = await api(`/api/agent/buildings/${mbid}/claim-premium`, { method: "POST" });
-  if (ok) { alert("적용되었습니다."); load(); }
-  else alert(data.message || "신청에 실패했습니다.");
+  if (ok) {
+    // GA4: 담당중개사 단지부동산 신청 완료 — API 성공 응답 직후
+    if (typeof gtag === "function") gtag("event", "generate_lead_agent");
+    alert("적용되었습니다."); load();
+  } else alert(data.message || "신청에 실패했습니다.");
 }
 
 async function notifyMe(mbid){

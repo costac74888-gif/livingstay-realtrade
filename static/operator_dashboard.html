@@ -421,6 +421,8 @@ window.claimBadge = async function(mbid) {
   if (!confirm("이 단지에 단지뱃지를 신청합니다.\n신청 즉시 3개월 무료 적용되며, 무료 혜택은 1회만 제공됩니다.\n계속하시겠습니까?")) return;
   const { ok, data } = await api(`/api/operator/buildings/${mbid}/claim-premium`, { method: "POST" });
   if (!ok) { alert(data && data.message ? data.message : "신청에 실패했습니다."); return; }
+  // GA4: 운영지원업체 단지뱃지 신청 완료 — API 성공 응답 직후
+  if (typeof gtag === "function") gtag("event", "generate_lead_support");
   alert("단지뱃지가 신청되었습니다. 3개월간 해당 단지 담당업체 영역 최상단에 노출됩니다.");
   // ME 갱신 후 화면 재렌더
   const res = await api("/api/operator/me");
