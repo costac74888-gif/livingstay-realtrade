@@ -38,6 +38,8 @@
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
   const slug = decodeURIComponent(location.pathname.split("/").pop());
+  // 관리자 프리뷰 모드 감지 (/admin/preview/operator/<id>)
+  const _PREVIEW_OP_ID = (location.pathname.match(/^\/admin\/preview\/operator\/(\d+)$/) || [])[1] || null;
   const wrap = document.getElementById("profileWrap");
 
   const _qs = new URLSearchParams(location.search);
@@ -162,7 +164,9 @@
 
   (async () => {
     try {
-      const res = await fetch("/api/operator/profile/" + encodeURIComponent(slug));
+      const res = await fetch(_PREVIEW_OP_ID
+        ? `/api/admin/preview/operator/${_PREVIEW_OP_ID}`
+        : "/api/operator/profile/" + encodeURIComponent(slug));
       if (!res.ok) { renderNotFound(); return; }
       const data = await res.json();
       window.__operatorProfileCategory = data.category || "";

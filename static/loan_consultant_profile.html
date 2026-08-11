@@ -33,6 +33,8 @@
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
   const slug = decodeURIComponent(location.pathname.split("/").pop());
+  // 관리자 프리뷰 모드 감지 (/admin/preview/loan_consultant/<id>)
+  const _PREVIEW_LC_ID = (location.pathname.match(/^\/admin\/preview\/loan_consultant\/(\d+)$/) || [])[1] || null;
   const wrap = document.getElementById("profileWrap");
 
   const _qs = new URLSearchParams(location.search);
@@ -173,7 +175,9 @@
 
   (async () => {
     try {
-      const res = await fetch("/api/loan-consultant/profile/" + encodeURIComponent(slug));
+      const res = await fetch(_PREVIEW_LC_ID
+        ? `/api/admin/preview/loan_consultant/${_PREVIEW_LC_ID}`
+        : "/api/loan-consultant/profile/" + encodeURIComponent(slug));
       if (!res.ok) { renderNotFound(); return; }
       const data = await res.json();
       document.title = `${data.office_name || "홈앤스테이"} | 대출상담사 프로필 . 홈앤스테이`;

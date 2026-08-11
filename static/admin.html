@@ -3817,6 +3817,8 @@
       { key: "pending", label: "승인대기" },
     ];
     const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사", pending: "승인대기" };
+    // 목록 테이블 전용 축약 표기 (상세페이지/다른 화면에서는 MEMBER_TYPE_LABEL 사용)
+    const MEMBER_TYPE_SHORT = { general: "일반", agent: "중개", operator: "운영", loan_consultant: "대출", pending: "대기" };
     const MEMBER_PARTNER_TYPES = ["agent", "operator", "loan_consultant"];
     const AD_PRODUCT_LABEL = { building_slot: "담당건물 추가", priority_exposure: "우선노출" };
     const AD_STATUS_BADGE = { "대기": "wait", "완료": "ok", "만료": "no" };
@@ -3944,10 +3946,10 @@
       (d.items || []).forEach((r) => { window.__memberRowsCache[r.member_type + ":" + r.id] = r.admin_memo || ""; });
 
       const rows = (d.items || []).map((r) => {
-        const typeLabel = MEMBER_TYPE_LABEL[r.member_type] || r.member_type;
+        const typeShort = MEMBER_TYPE_SHORT[r.member_type] || r.member_type;
         const badge = r.member_type === "pending"
-          ? `<span class="dg-badge dg-badge-wait">승인대기${r.applicant_type === "agent" ? "·중개사" : (r.applicant_type === "operator" ? "·운영지원업체" : (r.applicant_type === "loan_consultant" ? "·대출상담사" : ""))}</span>`
-          : dgEscape(typeLabel);
+          ? `<span class="dg-badge dg-badge-wait" style="white-space:nowrap;">대기${r.applicant_type === "agent" ? "·중개" : (r.applicant_type === "operator" ? "·운영" : (r.applicant_type === "loan_consultant" ? "·대출" : ""))}</span>`
+          : `<span style="white-space:nowrap;">${dgEscape(typeShort)}</span>`;
         let st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
         const isPartner = MEMBER_PARTNER_TYPES.includes(r.member_type);
         // 파트너가 본인 정보수정(등록번호류)으로 pending 전환된 경우 — 신규 신청과 구분 배지
@@ -3958,9 +3960,14 @@
         const docsBtn = (isPartner || r.member_type === "pending")
           ? `<button class="dg-icon-btn" onclick="memberDocs('${r.member_type}', ${r.id})">서류</button>`
           : "";
-        const dashBtn = (r.member_type === "agent")
-          ? `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">마이페이지</a>`
-          : "";
+        let dashBtn = "";
+        if (r.member_type === "agent") {
+          dashBtn = `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
+        } else if (r.member_type === "operator") {
+          dashBtn = `<a class="dg-icon-btn" href="/admin/preview/operator/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
+        } else if (r.member_type === "loan_consultant") {
+          dashBtn = `<a class="dg-icon-btn" href="/admin/preview/loan_consultant/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
+        }
         const actions = r.member_type === "pending"
           ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
@@ -3995,11 +4002,11 @@
           <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
           <td>${r.member_type !== "pending" ? `<a href="#" class="member-name-link" onclick="showMemberDetail('${r.member_type}', ${r.id}); return false;">${dgEscape(r.name || "-")}</a>` : dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
-          <td>${badge}</td>
-          <td>${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
-          <td>${dgEscape(r.group_label || "-") || "-"}</td>
-          <td>${dgEscape(r.created_at || "-")}</td>
-          <td>${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap;">${badge}</td>
+          <td style="white-space:nowrap;" title="${dgEscape(r.category||'')}">${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap; min-width:100px;">${dgEscape(r.group_label || "-") || "-"}</td>
+          <td style="white-space:nowrap;">${dgEscape(r.created_at || "-")}</td>
+          <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
           <td>${tagCell}</td>
           <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>

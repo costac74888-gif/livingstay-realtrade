@@ -4742,6 +4742,104 @@ def admin_preview_agent_leads(agent_id):
     return jsonify(_agent_leads_data(agent_id))
 
 
+# ── operator 관리자 프리뷰 ──
+@app.route("/admin/preview/operator/<int:operator_id>")
+@require_admin
+def admin_preview_operator_page(operator_id):
+    return _serve_static_html("operator_profile.html")
+
+
+@app.route("/api/admin/preview/operator/<int:operator_id>")
+@require_admin
+def admin_preview_operator_profile(operator_id):
+    """관리자 전용 operator 프로필 조회 — 승인/노출 여부 무관."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, company_name, owner_name, category, phone, photo_url, logo_url,
+                   intro_text, office_address, biz_reg_number, website_url
+            FROM operators WHERE id=%s
+        """, [operator_id])
+        op = cur.fetchone()
+        if not op:
+            return jsonify({"error": "not found"}), 404
+        cur.execute("""
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note
+            FROM operator_buildings ob
+            JOIN master_buildings mb ON mb.id = ob.master_building_id
+            WHERE ob.operator_id=%s ORDER BY mb.building_name
+        """, [op["id"]])
+        buildings = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "company_name": op["company_name"],
+        "owner_name":   op["owner_name"],
+        "category":     op["category"],
+        "phone":        op["phone"],
+        "logo_src":     f"/api/partners/operator-logo/{op['id']}" if op["logo_url"] else None,
+        "intro_text":   _render_markdown_safe(op["intro_text"] or ""),
+        "office_address": op["office_address"],
+        "biz_reg_number": op["biz_reg_number"],
+        "website_url":  (op["website_url"] if (op["website_url"] or "").startswith(("http://", "https://")) else None),
+        "buildings":    buildings,
+        "building_count": len(buildings),
+    })
+
+
+# ── loan_consultant 관리자 프리뷰 ──
+@app.route("/admin/preview/loan_consultant/<int:lc_id>")
+@require_admin
+def admin_preview_lc_page(lc_id):
+    return _serve_static_html("loan_consultant_profile.html")
+
+
+@app.route("/api/admin/preview/loan_consultant/<int:lc_id>")
+@require_admin
+def admin_preview_lc_profile(lc_id):
+    """관리자 전용 loan_consultant 프로필 조회 — 승인/노출 여부 무관."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, office_name, owner_name, phone, logo_url, intro_text,
+                   consultant_products, kakao_chat_url, service_region,
+                   license_number, office_address, biz_reg_number
+            FROM loan_consultants WHERE id=%s
+        """, [lc_id])
+        lc = cur.fetchone()
+        if not lc:
+            return jsonify({"error": "not found"}), 404
+        cur.execute("""
+            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type
+            FROM loan_consultant_buildings lcb
+            JOIN master_buildings mb ON mb.id = lcb.master_building_id
+            WHERE lcb.loan_consultant_id=%s ORDER BY mb.building_name
+        """, [lc["id"]])
+        buildings = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    kakao_url = lc["kakao_chat_url"] if (lc["kakao_chat_url"] or "").startswith(("http://", "https://")) else None
+    return jsonify({
+        "office_name":   lc["office_name"],
+        "owner_name":    lc["owner_name"],
+        "phone":         lc["phone"],
+        "logo_src":      f"/api/partners/loan-consultant-logo/{lc['id']}" if lc["logo_url"] else None,
+        "intro_text":    _render_markdown_safe(lc["intro_text"] or ""),
+        "consultant_products": lc["consultant_products"],
+        "kakao_chat_url": kakao_url,
+        "service_region": lc["service_region"],
+        "license_number": lc["license_number"],
+        "office_address": lc["office_address"],
+        "biz_reg_number": lc["biz_reg_number"],
+        "buildings":     buildings,
+        "building_count": len(buildings),
+    })
+
+
 def _agent_me_data(agent_id):
     """중개사 대시보드 데이터 조회 — agent_me() 라우트와 관리자 열람 라우트 공용."""
     conn = get_conn()
@@ -12426,7 +12524,7 @@ _MEMBER_SELECTS = {
                '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
                NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
                admin_tag, COALESCE(points, 0) AS points, admin_memo,
-               '' AS category
+               '' AS category, NULL::text AS subdomain_slug
         FROM users
     """,
     "agent": """
@@ -12434,7 +12532,7 @@ _MEMBER_SELECTS = {
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
-               '' AS category
+               '' AS category, subdomain_slug
         FROM agents WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "operator": """
@@ -12442,7 +12540,7 @@ _MEMBER_SELECTS = {
                company_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
-               COALESCE(category, '') AS category
+               COALESCE(category, '') AS category, subdomain_slug
         FROM operators WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "loan_consultant": """
@@ -12450,7 +12548,7 @@ _MEMBER_SELECTS = {
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
-               '' AS category
+               '' AS category, subdomain_slug
         FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "pending": """
@@ -12458,7 +12556,8 @@ _MEMBER_SELECTS = {
                office_or_company_name AS group_label, phone, status,
                applicant_type, submitted_at AS created_at, NULL::timestamp AS approved_at,
                NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo,
-               CASE WHEN applicant_type = 'operator' THEN COALESCE(category, '') ELSE '' END AS category
+               CASE WHEN applicant_type = 'operator' THEN COALESCE(category, '') ELSE '' END AS category,
+               NULL::text AS subdomain_slug
         FROM applications WHERE status = 'submitted'
     """,
 }
@@ -12509,7 +12608,7 @@ def admin_members_list():
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
                m.status, m.applicant_type, m.admin_tag, m.points, m.admin_memo,
-               m.category,
+               m.category, m.subdomain_slug,
                to_char(m.created_at, 'YYYY-MM-DD') AS created_at,
                to_char(m.approved_at, 'YYYY-MM-DD') AS approved_at
         FROM ({union_sql}) m
