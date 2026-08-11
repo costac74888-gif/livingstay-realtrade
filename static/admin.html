@@ -11,6 +11,50 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="/static/css/main.css" />
+  <style>
+  /* === 회원 상세페이지 === */
+  .member-detail-wrap { padding: 4px 0 32px; }
+  .member-detail-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .member-detail-cols { grid-template-columns: 1fr; } }
+  .member-detail-col { display: flex; flex-direction: column; gap: 14px; }
+  .member-detail-card { background: #fff; border: 1px solid #DDE1E6; border-radius: 10px; padding: 16px 18px; }
+  .member-detail-card-title {
+    font-weight: 700; font-size: 14.5px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px; color: #16202E;
+  }
+  .member-info-row {
+    display: flex; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid #F0EBDF; font-size: 13px; align-items: flex-start;
+  }
+  .member-info-row:last-child { border-bottom: none; }
+  .member-info-label { color: #5B6572; flex: 0 0 128px; font-size: 12px; padding-top: 2px; line-height: 1.5; }
+  .member-info-value { flex: 1; min-width: 0; word-break: break-all; line-height: 1.5; }
+  .member-edit-input {
+    width: 100%; border: 1px solid #DDE1E6; border-radius: 4px;
+    padding: 5px 8px; font-size: 13px; box-sizing: border-box;
+    font-family: inherit; color: #16202E;
+  }
+  .member-edit-input:focus { outline: 2px solid #F3EAD9; border-color: #B4863F; }
+  .member-bld-item {
+    display: flex; align-items: center; gap: 6px; padding: 5px 0;
+    border-bottom: 1px solid #F0EBDF; font-size: 13px; flex-wrap: wrap;
+  }
+  .member-bld-item:last-child { border-bottom: none; }
+  .member-bld-name { font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .member-note-item { border-bottom: 1px solid #F0EBDF; padding: 10px 0; }
+  .member-note-item:last-child { border-bottom: none; }
+  .member-note-meta { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; font-size: 12px; flex-wrap: wrap; }
+  .member-note-date { font-weight: 700; color: #8F6A2F; }
+  .member-note-author { color: #5B6572; }
+  .member-note-content { font-size: 13px; white-space: pre-line; color: #16202E; }
+  .member-note-content.is-deleted { color: #bbb; text-decoration: line-through; }
+  .member-note-form { border-top: 1px solid #DDE1E6; padding-top: 12px; margin-top: 12px; }
+  .member-name-link {
+    color: inherit; font-weight: 500; text-decoration: none;
+    border-bottom: 1px solid #B4863F; cursor: pointer;
+  }
+  .member-name-link:hover { color: #8F6A2F; }
+  </style>
 </head>
 <body>
   <div class="admin-layout">
@@ -3949,7 +3993,7 @@
           : `<a href="#" onclick="adminEditMemberMemo(event, '${r.member_type}', ${r.id})" title="클릭해서 메모 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); white-space:pre-line;">${memoTxt}</a>`;
         return `<tr>
           <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
-          <td>${dgEscape(r.name || "-")}</td>
+          <td>${r.member_type !== "pending" ? `<a href="#" class="member-name-link" onclick="showMemberDetail('${r.member_type}', ${r.id}); return false;">${dgEscape(r.name || "-")}</a>` : dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
           <td>${badge}</td>
           <td>${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
@@ -4877,7 +4921,527 @@
 
     // 초기 진입: hash가 있으면 해당 메뉴로, 없으면 stats
     const _initKey = location.hash.replace(/^#/, "") || "stats";
+    // 현재 관리자 권한 조회 → 메모 수정/삭제 버튼 노출 분기용
+    window.ADMIN_IS_SUPER = false;
+    fetch("/api/admin/me").then(r => r.json()).then(d => { if (d.ok) window.ADMIN_IS_SUPER = !!d.is_super; }).catch(() => {});
     activateMenu(_initKey);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //  회원 상세페이지 JS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function _mdPhone(v) {
+      if (!v) return null;
+      const d = v.replace(/\D/g, "");
+      if (d.length === 11) return d.replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3");
+      if (d.length === 10) return d.replace(/(\d{3})(\d{3,4})(\d{4})/, "$1-$2-$3");
+      return v;
+    }
+    function _mdBiz(v) {
+      if (!v) return null;
+      const d = v.replace(/\D/g, "");
+      if (d.length === 10) return d.replace(/(\d{3})(\d{2})(\d{5})/, "$1-$2-$3");
+      return v;
+    }
+    const _MD_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" };
+    const _MD_STATUS = {
+      active: ["정상", "ok"], withdrawn: ["탈퇴", "no"], inactive: ["비활성", ""],
+      approved: ["승인됨", "ok"], pending: ["승인대기", "wait"],
+      rejected: ["반려됨", "no"], suspended: ["정지", "no"]
+    };
+
+    async function showMemberDetail(memberType, memberId) {
+      if (typeof destroyStatsCharts === "function") destroyStatsCharts();
+      const _mount = document.getElementById("mount");
+      if (!_mount) return;
+      _mount.innerHTML = `<div style="padding:40px; text-align:center; color:var(--ink-soft);">불러오는 중…</div>`;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (!d.ok) {
+          _mount.innerHTML = `<div style="padding:24px; color:#c0392b;">${dgEscape(d.message || "조회 오류")}</div>`;
+          return;
+        }
+        _renderMemberDetail(d.data, memberType, memberId);
+      } catch (e) {
+        const _m = document.getElementById("mount");
+        if (_m) _m.innerHTML = `<div style="padding:24px; color:#c0392b;">불러오지 못했습니다. 새로고침 해주세요.</div>`;
+      }
+    }
+
+    function backToMemberList() { activateMenu("members"); }
+
+    function _renderMemberDetail(data, memberType, memberId) {
+      const _mount = document.getElementById("mount");
+      if (!_mount) return;
+      const tl = _MD_TYPE_LABEL[memberType] || memberType;
+      const [stLabel, stClass] = _MD_STATUS[data.status] || [data.status || "-", ""];
+      const _none = `<span style="color:var(--ink-soft);">미입력</span>`;
+      const _na   = `<span style="color:var(--ink-soft);">해당없음</span>`;
+      const _v    = v => v ? dgEscape(v) : _none;
+      const _ph   = v => { const f = _mdPhone(v); return f ? dgEscape(f) : _none; };
+      const _biz  = v => { const f = _mdBiz(v); return f ? dgEscape(f) : _none; };
+
+      // ── 기본정보 필드 (유형별) ──
+      let infoRows = [];
+      if (memberType === "general") {
+        infoRows = [
+          ["닉네임/이름", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["가입방법", data.provider === "kakao" ? "카카오" : data.provider === "email" ? "이메일" : _v(data.provider)],
+          ["업체명/회사명", _na], ["대표자명", _na], ["세부업종", _na],
+          ["연락처", _na], ["소재지", _na], ["웹사이트", _na],
+          ["희망건물", _na], ["담당자명", _na],
+          ["가입일", _v(data.created_at)],
+          ["마지막 로그인", _v(data.last_login_at)],
+          ["이용약관 동의", _v(data.terms_agreed_at)],
+          ["개인정보 동의", _v(data.privacy_agreed_at)],
+          ["마케팅 수신", data.marketing_agreed_at ? `동의 (${dgEscape(data.marketing_agreed_at)})` : `<span style="color:var(--ink-soft);">미동의</span>`],
+          ["이메일알림", data.email_alert_enabled ? "켜짐" : "꺼짐"],
+          ["포인트(적립금)", `${(Number(data.points)||0).toLocaleString("ko-KR")}P`],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      } else if (memberType === "agent") {
+        infoRows = [
+          ["대표자명", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["중개사무소명", _v(data.office_name)],
+          ["중개사 등록번호", _v(data.reg_number)],
+          ["연락처(휴대폰)", _ph(data.phone)],
+          ["사무실 전화", _ph(data.office_phone)],
+          ["소재지", _v(data.office_address)],
+          ["담당자명", _v(data.manager_name)],
+          ["희망건물", _v(data.desired_building)],
+          ["서브도메인", _v(data.subdomain_slug)],
+          ["우선노출 점수", data.priority_score != null ? String(data.priority_score) : _none],
+          ["마이페이지 노출", data.is_visible ? "노출 중" : `<span style="color:#c0392b;">숨김</span>`],
+          ["가입일", _v(data.created_at)],
+          ["승인일", _v(data.approved_at)],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      } else if (memberType === "operator") {
+        infoRows = [
+          ["대표자명", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["업체명", _v(data.company_name)],
+          ["세부업종", _v(data.category)],
+          ["연락처(휴대폰)", _ph(data.phone)],
+          ["소재지", _v(data.office_address)],
+          ["웹사이트", data.website_url ? `<a href="${dgEscape(data.website_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">${dgEscape(data.website_url)}</a>` : _none],
+          ["담당자명", _v(data.manager_name)],
+          ["희망건물", _v(data.desired_building)],
+          ["서브도메인", _v(data.subdomain_slug)],
+          ["우선노출 점수", data.priority_score != null ? String(data.priority_score) : _none],
+          ["마이페이지 노출", data.is_visible ? "노출 중" : `<span style="color:#c0392b;">숨김</span>`],
+          ["가입일", _v(data.created_at)],
+          ["승인일", _v(data.approved_at)],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      } else {
+        infoRows = [
+          ["상담사명", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["소속 회사", _v(data.office_name)],
+          ["대출모집인 등록번호", _v(data.license_number)],
+          ["연락처(휴대폰)", _ph(data.phone)],
+          ["취급 지역", _v(data.service_region)],
+          ["소재지", _v(data.office_address)],
+          ["카카오톡 상담", data.kakao_chat_url ? `<a href="${dgEscape(data.kakao_chat_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">링크</a>` : _none],
+          ["상담 상품", _v(data.consultant_products)],
+          ["담당자명", _v(data.manager_name)],
+          ["희망건물", _v(data.desired_building)],
+          ["마이페이지 노출", data.is_visible ? "노출 중" : `<span style="color:#c0392b;">숨김</span>`],
+          ["가입일", _v(data.created_at)],
+          ["승인일", _v(data.approved_at)],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      }
+
+      const bizRegCol = memberType === "general" ? "business_reg_number" : "biz_reg_number";
+      const bizRegVal = memberType === "general" ? (data.business_reg_number || "") : (data.biz_reg_number || "");
+
+      // 공통 필드 (편집 가능 포함)
+      infoRows.push(
+        ["사업자등록번호", _biz(bizRegVal)],
+        ["세금계산서 이메일", _v(data.tax_invoice_email)],
+        ["반려 사유", _v(data.rejection_reason)],
+        ["관리자 태그", data.admin_tag ? `<span class="dg-badge">${dgEscape(data.admin_tag)}</span>` : _none],
+        ["관리자 메모(구)", data.admin_memo ? `<span style="white-space:pre-line; font-size:12px;">${dgEscape(data.admin_memo)}</span>` : _none],
+      );
+
+      const infoViewHtml = infoRows.map(([lbl, v]) =>
+        `<div class="member-info-row"><span class="member-info-label">${dgEscape(lbl)}</span><span class="member-info-value">${v}</span></div>`
+      ).join("");
+
+      const infoFormHtml = `
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">사업자등록번호</label>
+          <div class="member-info-value"><input id="medit_biz_reg" class="member-edit-input" type="text" value="${dgEscape(bizRegVal)}" maxlength="20" placeholder="000-00-00000"/></div></div>
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">세금계산서 이메일</label>
+          <div class="member-info-value"><input id="medit_tax_email" class="member-edit-input" type="email" value="${dgEscape(data.tax_invoice_email||"")}" placeholder="tax@example.com"/></div></div>
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">담당자명</label>
+          <div class="member-info-value"><input id="medit_manager" class="member-edit-input" type="text" value="${dgEscape(data.manager_name||"")}" maxlength="50"/></div></div>
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">희망건물</label>
+          <div class="member-info-value"><input id="medit_desired" class="member-edit-input" type="text" value="${dgEscape(data.desired_building||"")}" maxlength="200"/></div></div>
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">관리자 태그</label>
+          <div class="member-info-value"><input id="medit_admin_tag" class="member-edit-input" type="text" value="${dgEscape(data.admin_tag||"")}" maxlength="30"/></div></div>
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">관리자 메모(구)</label>
+          <div class="member-info-value"><textarea id="medit_admin_memo" class="member-edit-input" rows="3" style="resize:vertical;">${dgEscape(data.admin_memo||"")}</textarea></div></div>
+        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">반려 사유</label>
+          <div class="member-info-value"><textarea id="medit_rejection" class="member-edit-input" rows="2" style="resize:vertical;" placeholder="가입 반려 시 사유 입력">${dgEscape(data.rejection_reason||"")}</textarea></div></div>
+        ${memberType==="general"?`<div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">상태</label>
+          <div class="member-info-value"><select id="medit_status" class="member-edit-input" style="width:auto;">
+            <option value="active"${data.status==="active"?" selected":""}>정상(active)</option>
+            <option value="withdrawn"${data.status==="withdrawn"?" selected":""}>탈퇴(withdrawn)</option>
+            <option value="inactive"${data.status==="inactive"?" selected":""}>비활성(inactive)</option>
+          </select></div></div>`:""}
+        <input type="hidden" id="medit_biz_col" value="${dgEscape(bizRegCol)}"/>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="admin-btn admin-btn-primary" onclick="saveMemberInfo('${memberType}',${memberId})">저장</button>
+          <button class="admin-btn" onclick="toggleMemberInfoEdit()">취소</button>
+        </div>`;
+
+      // ── 관심단지 / 뱃지 / 담당건물 ──
+      const LIMIT = 5;
+      let buildingHtml = "";
+      function _bldList(items, idKey, showFn, restFn) {
+        const show = items.slice(0, LIMIT);
+        const rest = items.slice(LIMIT);
+        let h = show.map(showFn).join("");
+        if (rest.length) {
+          const rid = `mdBldRest_${idKey}_${memberId}`;
+          h += `<div id="${rid}" style="display:none;">${rest.map(showFn).join("")}</div>`;
+          h += `<a href="#" onclick="document.getElementById('${rid}').style.display='block';this.remove();return false;" style="font-size:12.5px;color:var(--brass-dark);">+ ${rest.length}건 더보기 ▾</a>`;
+        }
+        return h;
+      }
+
+      if (memberType === "general") {
+        const favs = data.favorites || [];
+        if (!favs.length) {
+          buildingHtml = `<div style="color:var(--ink-soft);font-size:13px;padding:6px 0;">관심단지가 없습니다.</div>`;
+        } else {
+          buildingHtml = `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">총 ${favs.length}건</div>`;
+          buildingHtml += _bldList(favs, "fav", f =>
+            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(f.building_name||"-")}</span><span style="color:var(--ink-soft);font-size:12px;">${dgEscape((f.address||"").slice(0,40))}</span></div>`);
+        }
+      } else if (memberType === "agent") {
+        const blds = data.buildings || [];
+        const regs  = data.service_regions || [];
+        if (blds.length) {
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
+          buildingHtml += _bldList(blds, "bld", b =>
+            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(b.building_name||"-")}</span>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지${b.premium_expires_at?` ~${dgEscape(b.premium_expires_at)}`:""}</span>`:""}
+              <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
+        } else {
+          buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">담당건물 없음</div>`;
+        }
+        if (regs.length) {
+          const now = new Date().toISOString().slice(0,10);
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;">지역뱃지 (${regs.length}건)</div>`;
+          buildingHtml += regs.map(r => {
+            const exp = r.expires_at && r.expires_at < now;
+            return `<div class="member-bld-item"><span style="font-size:13px;">${dgEscape(r.sgg_text)}</span>
+              <span class="dg-badge dg-badge-${exp?"no":"ok"}" style="font-size:11px;">${exp?"만료":"활성"}${r.expires_at?` ~${dgEscape(r.expires_at)}`:""}</span></div>`;
+          }).join("");
+        }
+      } else if (memberType === "operator") {
+        const blds = data.buildings || [];
+        const otas = data.ota_requests || [];
+        if (blds.length) {
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
+          buildingHtml += _bldList(blds, "bld", b =>
+            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(b.building_name||"-")}</span>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지</span>`:""}
+              <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
+        } else {
+          buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">담당건물 없음</div>`;
+        }
+        if (otas.length) {
+          const _os = {pending:["검토중","wait"],approved:["승인됨","ok"],rejected:["거절됨","no"],cancelled:["취소됨",""]};
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;">OTA 링크 신청 (${otas.length}건)</div>`;
+          buildingHtml += otas.slice(0, LIMIT).map(o => {
+            const [sl,sc] = _os[o.status] || [o.status,""];
+            return `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(o.building_name||"-")}</span>
+              <span class="dg-badge dg-badge-${sc}" style="font-size:11px;">${dgEscape(sl)}</span>
+              <span style="color:var(--ink-soft);font-size:11px;">${dgEscape(o.submitted_at||"")}</span></div>`;
+          }).join("");
+        }
+      } else {
+        const blds = data.buildings || [];
+        if (blds.length) {
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
+          buildingHtml += _bldList(blds, "bld", b =>
+            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(b.building_name||"-")}</span>
+              <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
+        } else {
+          buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;">담당건물 없음</div>`;
+        }
+      }
+
+      // ── 활동정보 ──
+      let actHtml = "";
+      const _ar = (l,v) => `<div class="member-info-row"><span class="member-info-label">${l}</span><span class="member-info-value">${v}</span></div>`;
+      if (memberType === "general") {
+        actHtml = [
+          _ar("마지막 로그인", _v(data.last_login_at)),
+          _ar("매물의뢰 접수", `${data.listing_request_count||0}건`),
+          _ar("매수의뢰 접수", `${data.buy_request_count||0}건`),
+          _ar("포인트(적립금)", `${(Number(data.points)||0).toLocaleString("ko-KR")}P`),
+        ].join("");
+      } else if (memberType === "agent") {
+        actHtml = [
+          _ar("배정된 매물의뢰", `${data.routed_listing_count||0}건`),
+          _ar("담당 건물 수", `${(data.buildings||[]).length}건`),
+          _ar("지역뱃지 수", `${(data.service_regions||[]).length}건`),
+        ].join("");
+      } else if (memberType === "operator") {
+        actHtml = [
+          _ar("담당 건물 수", `${(data.buildings||[]).length}건`),
+          _ar("OTA 신청 수", `${(data.ota_requests||[]).length}건`),
+        ].join("");
+      } else {
+        actHtml = [
+          _ar("담당 건물 수", `${(data.buildings||[]).length}건`),
+          _ar("취급 지역", _v(data.service_region)),
+        ].join("");
+      }
+
+      // ── 승인대기 버튼 ──
+      const isPending = data.status === "pending";
+      const pendingBar = isPending ? `
+        <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;padding:12px 14px;background:#FDFBF5;border:1px solid #EAD9B8;border-radius:8px;">
+          <span style="font-size:13px;font-weight:600;color:#8F6A2F;flex:1;">⏳ 가입 승인 대기 중</span>
+          <button class="admin-btn admin-btn-primary" onclick="memberDetailApprove('${memberType}',${memberId})">✅ 승인</button>
+          <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;color:#c0392b;" onclick="memberDetailReject('${memberType}',${memberId})">❌ 반려</button>
+        </div>` : "";
+
+      // ── 소셜/마케팅 정보 (일반회원) ──
+      const mktHtml = memberType === "general" ? `
+        <div class="member-detail-card">
+          <div class="member-detail-card-title">마케팅 · 연동 정보</div>
+          ${_ar("소셜 로그인", data.provider==="kakao"?"카카오 연동":"이메일 가입")}
+          ${_ar("카카오 ID", _v(data.kakao_id))}
+          ${_ar("마케팅 동의일", _v(data.marketing_agreed_at))}
+        </div>` : "";
+
+      _mount.innerHTML = `
+        <div class="member-detail-wrap">
+          <div style="margin-bottom:20px;">
+            <button class="admin-btn" onclick="backToMemberList()" style="margin-bottom:12px;">← 목록으로</button>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span class="dg-badge" style="font-size:13px;">${dgEscape(tl)}</span>
+              <span style="font-size:1.2rem;font-weight:700;">${dgEscape(data.name||"-")}</span>
+              <span style="color:var(--ink-soft);font-size:13.5px;">${dgEscape(data.email||"-")}</span>
+              <span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>
+              <span style="color:var(--ink-soft);font-size:12px;">ID: ${memberId}</span>
+            </div>
+          </div>
+          ${pendingBar}
+          <div class="member-detail-cols">
+            <div class="member-detail-col">
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">기본정보
+                  <button class="admin-btn" style="font-size:12px;padding:2px 10px;margin-left:auto;" onclick="toggleMemberInfoEdit()">수정</button>
+                </div>
+                <div id="memberInfoView">${infoViewHtml}</div>
+                <div id="memberInfoForm" style="display:none;">${infoFormHtml}</div>
+              </div>
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">활동정보</div>
+                ${actHtml}
+              </div>
+              ${mktHtml}
+            </div>
+            <div class="member-detail-col">
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">${memberType==="general"?"관심단지":"담당건물 · 뱃지"}</div>
+                ${buildingHtml || `<div style="color:var(--ink-soft);font-size:13px;">데이터 없음</div>`}
+              </div>
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">관리자 메모 이력</div>
+                <div id="memberNotesList"><div style="color:var(--ink-soft);font-size:13px;padding:4px 0;">불러오는 중…</div></div>
+                <div class="member-note-form">
+                  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                    <div>
+                      <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">날짜</div>
+                      <input type="date" id="noteDate" value="${new Date().toISOString().slice(0,10)}" class="member-edit-input" style="width:auto;min-width:130px;"/>
+                    </div>
+                    <div style="flex:1;min-width:100px;">
+                      <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">담당자</div>
+                      <input type="text" id="noteAuthor" value="관리자" maxlength="50" class="member-edit-input"/>
+                    </div>
+                  </div>
+                  <textarea id="noteContent" rows="3" placeholder="메모 내용을 입력하세요…" class="member-edit-input" style="resize:vertical;"></textarea>
+                  <button class="admin-btn admin-btn-primary" style="margin-top:6px;" onclick="addMemberNote('${memberType}',${memberId})">메모 추가</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      loadMemberNotes(memberType, memberId);
+    }
+
+    function toggleMemberInfoEdit() {
+      const view = document.getElementById("memberInfoView");
+      const form = document.getElementById("memberInfoForm");
+      if (!view || !form) return;
+      const editing = form.style.display !== "none";
+      view.style.display = editing ? "" : "none";
+      form.style.display = editing ? "none" : "";
+    }
+
+    async function saveMemberInfo(memberType, memberId) {
+      const bizCol = document.getElementById("medit_biz_col")?.value || "biz_reg_number";
+      const body = {};
+      const get = id => document.getElementById(id);
+      if (get("medit_biz_reg"))    body[bizCol]              = get("medit_biz_reg").value;
+      if (get("medit_tax_email"))  body.tax_invoice_email    = get("medit_tax_email").value;
+      if (get("medit_manager"))    body.manager_name         = get("medit_manager").value;
+      if (get("medit_desired"))    body.desired_building     = get("medit_desired").value;
+      if (get("medit_admin_tag"))  body.admin_tag            = get("medit_admin_tag").value;
+      if (get("medit_admin_memo")) body.admin_memo           = get("medit_admin_memo").value;
+      if (get("medit_rejection"))  body.rejection_reason     = get("medit_rejection").value;
+      if (get("medit_status"))     body.status               = get("medit_status").value;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`, {
+          method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { showMemberDetail(memberType, memberId); }
+        else { window.alert(d.message || "저장에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function loadMemberNotes(memberType, memberId) {
+      const el = document.getElementById("memberNotesList");
+      if (!el) return;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes`);
+        if (!res.ok) throw new Error("fetch failed");
+        const d = await res.json();
+        const notes = d.notes || [];
+        if (!notes.length) {
+          el.innerHTML = `<div style="color:var(--ink-soft);font-size:13px;padding:4px 0;">아직 메모가 없습니다.</div>`;
+          return;
+        }
+        const isSup = !!window.ADMIN_IS_SUPER;
+        el.innerHTML = notes.map(n => `
+          <div class="member-note-item" id="note_${n.id}">
+            <div class="member-note-meta">
+              <span class="member-note-date">${dgEscape(n.memo_date||"")}</span>
+              <span class="member-note-author">${dgEscape(n.author_name||"관리자")}</span>
+              <span style="color:var(--ink-soft);font-size:11px;">(${dgEscape(n.created_at||"")}${n.updated_at?", 수정됨":""})</span>
+              ${isSup&&!n.is_deleted?`
+                <a href="#" onclick="editMemberNote('${memberType}',${memberId},${n.id});return false;" style="font-size:11px;color:var(--brass-dark);margin-left:4px;" title="수정">✏️</a>
+                <a href="#" onclick="deleteMemberNote('${memberType}',${memberId},${n.id});return false;" style="font-size:11px;color:#c0392b;margin-left:2px;" title="삭제">🗑</a>`:""}
+            </div>
+            <div class="member-note-content${n.is_deleted?" is-deleted":""}">${dgEscape(n.content)}</div>
+          </div>`).join("");
+      } catch (e) {
+        const el2 = document.getElementById("memberNotesList");
+        if (el2) el2.innerHTML = `<div style="color:#c0392b;font-size:13px;">메모를 불러오지 못했습니다.</div>`;
+      }
+    }
+
+    async function addMemberNote(memberType, memberId) {
+      const dateEl    = document.getElementById("noteDate");
+      const authorEl  = document.getElementById("noteAuthor");
+      const contentEl = document.getElementById("noteContent");
+      const content = contentEl ? contentEl.value.trim() : "";
+      if (!content) { window.alert("내용을 입력해주세요."); return; }
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes`, {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({
+            memo_date:   dateEl   ? dateEl.value : "",
+            author_name: authorEl ? (authorEl.value.trim() || "관리자") : "관리자",
+            content
+          })
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { if (contentEl) contentEl.value = ""; loadMemberNotes(memberType, memberId); }
+        else { window.alert(d.message || "저장에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function editMemberNote(memberType, memberId, noteId) {
+      const noteEl = document.getElementById(`note_${noteId}`);
+      const current = noteEl ? (noteEl.querySelector(".member-note-content")?.textContent?.trim() || "") : "";
+      const newContent = window.prompt("메모 내용 수정:", current);
+      if (newContent === null || newContent.trim() === current) return;
+      if (!newContent.trim()) { window.alert("내용을 입력해주세요."); return; }
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes/${noteId}`, {
+          method: "PATCH", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ content: newContent.trim() })
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { loadMemberNotes(memberType, memberId); }
+        else { window.alert(d.message || "수정에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function deleteMemberNote(memberType, memberId, noteId) {
+      if (!window.confirm("메모를 삭제(숨김 처리)하시겠습니까?\n복구는 관리자 DB에서만 가능합니다.")) return;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes/${noteId}`, {
+          method: "DELETE"
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { loadMemberNotes(memberType, memberId); }
+        else { window.alert(d.message || "삭제에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function memberDetailApprove(memberType, memberId) {
+      if (!window.confirm("가입을 승인하시겠습니까?")) return;
+      try {
+        let res;
+        if (memberType === "pending") {
+          res = await fetch("/api/admin/members/bulk-approve", {
+            method: "POST", headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ ids: [{ member_type: "pending", id: memberId }] })
+          });
+        } else {
+          res = await fetch(`/api/admin/members/${memberType}/${memberId}/re-approve`, {
+            method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({})
+          });
+        }
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { showMemberDetail(memberType, memberId); }
+        else { window.alert(d.message || "승인에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function memberDetailReject(memberType, memberId) {
+      const reason = window.prompt("반려 사유를 입력하세요:", "");
+      if (reason === null) return;
+      try {
+        const res = await fetch("/api/admin/members/bulk-reject", {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ ids: [{ member_type: memberType, id: memberId }], reason: reason.trim() })
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) {
+          // rejection_reason 별도 저장 (파트너 타입만, best-effort)
+          if (reason.trim() && memberType !== "pending") {
+            fetch(`/api/admin/members/${memberType}/${memberId}/detail`, {
+              method: "PUT", headers: {"Content-Type":"application/json"},
+              body: JSON.stringify({ rejection_reason: reason.trim() })
+            }).catch(() => {});
+          }
+          showMemberDetail(memberType, memberId);
+        } else { window.alert(d.message || "반려에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
   </script>
   <script src="/static/js/pw_toggle.js"></script>
 <script>

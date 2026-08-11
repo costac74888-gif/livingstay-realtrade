@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-09-1"
+SCHEMA_VERSION = "2026-08-11-1"
 
 
 def init_db():
@@ -502,6 +502,23 @@ def init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS admin_memo TEXT")
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS admin_memo TEXT")
 
+    # 회원 상세페이지 신규 필드 (2026-08-11) ─ 전 회원 유형 공통
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS business_reg_number TEXT")        # 사업자등록번호(일반회원 전용 — 파트너는 기존 biz_reg_number 사용)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tax_invoice_email TEXT")           # 세금계산서 발행용 이메일
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS rejection_reason TEXT")            # 가입 반려 사유(재신청 시 덮어씀)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS tax_invoice_email TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS manager_name TEXT")               # 담당자명(대표자와 다를 수 있음)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS desired_building TEXT")           # 희망건물(가입 시 자유 텍스트)
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS tax_invoice_email TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS manager_name TEXT")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS desired_building TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS tax_invoice_email TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS manager_name TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS desired_building TEXT")
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS applications (
         id SERIAL PRIMARY KEY,
@@ -753,6 +770,37 @@ def init_db():
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_point_tx_user ON point_transactions(user_id, created_at DESC)")
+
+    # 관리자 메모 이력 — 전 회원 유형 공통 (member_type 로 구분, FK 없음)
+    # 기본 append-only; super_admin은 수정(updated_at 갱신) 및 소프트 삭제(is_deleted=TRUE) 가능.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS member_notes (
+        id SERIAL PRIMARY KEY,
+        member_type TEXT NOT NULL,          -- 'general'|'agent'|'operator'|'loan_consultant'
+        member_id INTEGER NOT NULL,
+        memo_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        content TEXT NOT NULL,
+        author_name VARCHAR(50) NOT NULL DEFAULT '관리자',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP,
+        is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_member_notes_member ON member_notes(member_type, member_id, created_at DESC)")
+
+    # 첨부서류(다중 파일) — 회원 상세페이지 인라인 미리보기용 (object storage 키 저장)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS member_documents (
+        id SERIAL PRIMARY KEY,
+        member_type TEXT NOT NULL,          -- 'general'|'agent'|'operator'|'loan_consultant'
+        member_id INTEGER NOT NULL,
+        doc_type VARCHAR(30) NOT NULL,      -- 'business_license'|'business_card'|'permit'
+        file_key TEXT NOT NULL,             -- object storage 키(서명 URL 발급용)
+        file_type VARCHAR(10) NOT NULL,     -- 'pdf'|'jpg'|'png'
+        uploaded_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_member_docs_member ON member_documents(member_type, member_id)")
 
     # 매물 의뢰(일반 회원 → 중개사 라우팅) — users 테이블 뒤에 생성해야 FK가 성립한다.
     # 라우팅 우선순위: exclusive(그 건물 전속 중개사) > region(같은 시군구 활동 중개사) > house(하우스 계정).

@@ -13613,6 +13613,354 @@ def admin_member_memo_put(member_type, member_id):
     return jsonify({"ok": True})
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 회원 상세페이지: 상세 조회 / 기본정보 수정 / 메모 이력 CRUD
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _md_fmt(v):
+    """datetime/date → str 직렬화. None 그대로."""
+    if v is None:
+        return None
+    if hasattr(v, "strftime"):
+        return v.strftime("%Y-%m-%d %H:%M") if hasattr(v, "hour") else v.strftime("%Y-%m-%d")
+    return v
+
+
+def _md_row(row):
+    """psycopg2 RealDictRow → dict (datetime 직렬화 포함)."""
+    return {k: _md_fmt(val) if hasattr(val, "strftime") else val for k, val in dict(row).items()}
+
+
+@app.route("/api/admin/me")
+@require_admin
+def admin_me():
+    """현재 로그인 관리자 정보 (프론트엔드 권한 분기용)."""
+    admin_id = session.get("admin_user_id")
+    if not admin_id:
+        return jsonify({"ok": False}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, name, email, role FROM admin_users WHERE id=%s", [admin_id])
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row:
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "id": row["id"], "name": row["name"],
+                    "email": row["email"], "role": row["role"],
+                    "is_super": row["role"] == "super_admin"})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/detail")
+@require_admin
+def admin_member_detail(member_type, member_id):
+    """회원 상세 정보 + 관련 데이터(건물·관심단지·지역뱃지·OTA 신청 등)."""
+    if member_type not in _BULK_MEMBER_TABLES:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if member_type == "general":
+            cur.execute("""
+                SELECT id, email, name, provider, kakao_id, status,
+                       created_at, last_login_at,
+                       terms_agreed_at, privacy_agreed_at, marketing_agreed_at,
+                       points, email_alert_enabled, admin_tag, admin_memo,
+                       business_reg_number, tax_invoice_email, rejection_reason
+                FROM users WHERE id=%s
+            """, [member_id])
+        elif member_type == "agent":
+            cur.execute("""
+                SELECT id, email, owner_name AS name, office_name, phone, office_phone,
+                       status, created_at, approved_at, biz_reg_number, reg_number,
+                       office_address, priority_score, admin_tag, admin_memo,
+                       tax_invoice_email, rejection_reason, manager_name, desired_building,
+                       intro_text, intro_title, photo_url, logo_url, subdomain_slug, is_visible
+                FROM agents WHERE id=%s
+            """, [member_id])
+        elif member_type == "operator":
+            cur.execute("""
+                SELECT id, email, owner_name AS name, company_name, phone,
+                       category, status, created_at, approved_at, biz_reg_number,
+                       website_url, office_address, priority_score, admin_tag, admin_memo,
+                       tax_invoice_email, rejection_reason, manager_name, desired_building,
+                       intro_text, photo_url, logo_url, subdomain_slug, is_visible
+                FROM operators WHERE id=%s
+            """, [member_id])
+        else:  # loan_consultant
+            cur.execute("""
+                SELECT id, email, owner_name AS name, office_name, phone,
+                       license_number, biz_reg_number, status, created_at, approved_at,
+                       service_region, office_address, kakao_chat_url, consultant_products,
+                       priority_score, admin_tag, admin_memo, tax_invoice_email,
+                       rejection_reason, manager_name, desired_building,
+                       intro_text, photo_url, logo_url, subdomain_slug, is_visible
+                FROM loan_consultants WHERE id=%s
+            """, [member_id])
+
+        base = cur.fetchone()
+        if not base:
+            return jsonify({"ok": False, "message": "존재하지 않는 회원입니다."}), 404
+        result = _md_row(base)
+        result["member_type"] = member_type
+
+        # ── 유형별 관련 데이터 ──
+        if member_type == "general":
+            cur.execute("""
+                SELECT COALESCE(mb.building_name, uf.building_name) AS building_name,
+                       COALESCE(mb.road_address, uf.address) AS address,
+                       to_char(uf.created_at, 'YYYY-MM-DD') AS created_at
+                FROM user_favorites uf
+                LEFT JOIN master_buildings mb ON mb.id = uf.master_building_id
+                WHERE uf.user_id=%s ORDER BY uf.created_at DESC
+            """, [member_id])
+            result["favorites"] = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) AS c FROM listing_requests WHERE user_id=%s", [member_id])
+            result["listing_request_count"] = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) AS c FROM buy_requests WHERE user_id=%s", [member_id])
+            result["buy_request_count"] = cur.fetchone()["c"]
+
+        elif member_type == "agent":
+            cur.execute("""
+                SELECT mb.building_name, mb.road_address, mb.sgg_text,
+                       ab.has_priority_badge, ab.is_paid,
+                       to_char(ab.premium_expires_at, 'YYYY-MM-DD') AS premium_expires_at
+                FROM agent_buildings ab
+                JOIN master_buildings mb ON mb.id = ab.master_building_id
+                WHERE ab.agent_id=%s
+                ORDER BY ab.has_priority_badge DESC NULLS LAST, mb.building_name
+            """, [member_id])
+            result["buildings"] = [dict(r) for r in cur.fetchall()]
+            cur.execute("""
+                SELECT id, sgg_text, is_paid,
+                       to_char(granted_at, 'YYYY-MM-DD') AS granted_at,
+                       to_char(expires_at, 'YYYY-MM-DD') AS expires_at
+                FROM agent_service_regions WHERE agent_id=%s ORDER BY granted_at DESC
+            """, [member_id])
+            result["service_regions"] = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) AS c FROM listing_requests WHERE routed_agent_id=%s", [member_id])
+            result["routed_listing_count"] = cur.fetchone()["c"]
+
+        elif member_type == "operator":
+            cur.execute("""
+                SELECT mb.building_name, mb.road_address, mb.sgg_text,
+                       ob.has_priority_badge, ob.is_paid,
+                       to_char(ob.premium_expires_at, 'YYYY-MM-DD') AS premium_expires_at
+                FROM operator_buildings ob
+                JOIN master_buildings mb ON mb.id = ob.master_building_id
+                WHERE ob.operator_id=%s
+                ORDER BY ob.has_priority_badge DESC NULLS LAST, mb.building_name
+            """, [member_id])
+            result["buildings"] = [dict(r) for r in cur.fetchall()]
+            cur.execute("""
+                SELECT mb.building_name, bur.booking_url, bur.status,
+                       to_char(bur.submitted_at, 'YYYY-MM-DD') AS submitted_at
+                FROM booking_url_requests bur
+                JOIN master_buildings mb ON mb.id = bur.master_building_id
+                WHERE bur.operator_id=%s ORDER BY bur.submitted_at DESC
+            """, [member_id])
+            result["ota_requests"] = [dict(r) for r in cur.fetchall()]
+
+        else:  # loan_consultant
+            try:
+                cur.execute("""
+                    SELECT mb.building_name, mb.road_address, mb.sgg_text
+                    FROM lc_buildings lcb
+                    JOIN master_buildings mb ON mb.id = lcb.master_building_id
+                    WHERE lcb.loan_consultant_id=%s ORDER BY mb.building_name
+                """, [member_id])
+                result["buildings"] = [dict(r) for r in cur.fetchall()]
+            except Exception:
+                conn.rollback()
+                result["buildings"] = []
+
+        return jsonify({"ok": True, "data": result})
+    except Exception:
+        app.logger.exception("회원 상세 조회 실패: type=%s id=%s", member_type, member_id)
+        return jsonify({"ok": False, "message": "조회 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/detail", methods=["PUT"])
+@require_admin
+def admin_member_detail_update(member_type, member_id):
+    """회원 상세페이지 편집 가능 필드 일괄 저장."""
+    if member_type not in _BULK_MEMBER_TABLES:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    table = _BULK_MEMBER_TABLES[member_type]
+    data = request.get_json(force=True, silent=True) or {}
+
+    _ALLOWED = {
+        "general":         {"business_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "status", "rejection_reason"},
+        "agent":           {"biz_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "manager_name", "desired_building", "rejection_reason"},
+        "operator":        {"biz_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "manager_name", "desired_building", "rejection_reason"},
+        "loan_consultant": {"biz_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "manager_name", "desired_building", "rejection_reason"},
+    }
+    allowed = _ALLOWED[member_type]
+    updates = {}
+    for field in allowed:
+        if field in data:
+            v = data[field]
+            updates[field] = (str(v).strip() or None) if v is not None else None
+
+    if not updates:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT 1 FROM {table} WHERE id=%s", [member_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 회원입니다."}), 404
+        set_clause = ", ".join(f"{k}=%s" for k in updates)
+        cur.execute(f"UPDATE {table} SET {set_clause} WHERE id=%s",
+                    list(updates.values()) + [member_id])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("회원 상세 수정 실패: type=%s id=%s", member_type, member_id)
+        return jsonify({"ok": False, "message": "저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/notes")
+@require_admin
+def admin_member_notes_list(member_type, member_id):
+    """회원 메모 이력 목록 (기본: is_deleted=FALSE만)."""
+    if member_type not in _BULK_MEMBER_TABLES:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, to_char(memo_date, 'YYYY-MM-DD') AS memo_date,
+                   content, author_name, is_deleted,
+                   to_char(updated_at, 'YYYY-MM-DD HH24:MI') AS updated_at,
+                   to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+            FROM member_notes
+            WHERE member_type=%s AND member_id=%s AND is_deleted=FALSE
+            ORDER BY created_at DESC, id DESC
+        """, [member_type, member_id])
+        notes = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "notes": notes})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/notes", methods=["POST"])
+@require_admin
+def admin_member_notes_add(member_type, member_id):
+    """메모 신규 추가 — 모든 관리자 권한 가능."""
+    if member_type not in _BULK_MEMBER_TABLES:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    table = _BULK_MEMBER_TABLES[member_type]
+    data = request.get_json(force=True, silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"ok": False, "message": "내용을 입력해주세요."}), 400
+    author_name = (data.get("author_name") or "관리자").strip()[:50]
+    memo_date = (data.get("memo_date") or "").strip()
+    if not memo_date:
+        from datetime import date as _date
+        memo_date = _date.today().isoformat()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT 1 FROM {table} WHERE id=%s", [member_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 회원입니다."}), 404
+        cur.execute("""
+            INSERT INTO member_notes (member_type, member_id, memo_date, content, author_name)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, [member_type, member_id, memo_date, content, author_name])
+        note_id = cur.fetchone()["id"]
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("메모 추가 실패: type=%s id=%s", member_type, member_id)
+        return jsonify({"ok": False, "message": "메모 저장 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "id": note_id})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/notes/<int:note_id>", methods=["PATCH"])
+@require_admin
+def admin_member_notes_update(member_type, member_id, note_id):
+    """메모 내용 수정 — super_admin 권한만."""
+    if member_type not in _BULK_MEMBER_TABLES:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT role FROM admin_users WHERE id=%s", [admin_id])
+        adm = cur.fetchone()
+        if not adm or adm["role"] != "super_admin":
+            return jsonify({"ok": False, "message": "수정 권한이 없습니다. (super_admin만 가능)"}), 403
+        data = request.get_json(force=True, silent=True) or {}
+        content = (data.get("content") or "").strip()
+        if not content:
+            return jsonify({"ok": False, "message": "내용을 입력해주세요."}), 400
+        cur.execute("""
+            UPDATE member_notes SET content=%s, updated_at=NOW()
+            WHERE id=%s AND member_type=%s AND member_id=%s AND is_deleted=FALSE
+        """, [content, note_id, member_type, member_id])
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "메모를 찾을 수 없습니다."}), 404
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("메모 수정 실패: note_id=%s", note_id)
+        return jsonify({"ok": False, "message": "수정 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/notes/<int:note_id>", methods=["DELETE"])
+@require_admin
+def admin_member_notes_delete(member_type, member_id, note_id):
+    """메모 소프트 삭제(is_deleted=TRUE) — super_admin 권한만."""
+    if member_type not in _BULK_MEMBER_TABLES:
+        return jsonify({"ok": False, "message": "잘못된 회원유형입니다."}), 400
+    admin_id = session.get("admin_user_id")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT role FROM admin_users WHERE id=%s", [admin_id])
+        adm = cur.fetchone()
+        if not adm or adm["role"] != "super_admin":
+            return jsonify({"ok": False, "message": "삭제 권한이 없습니다. (super_admin만 가능)"}), 403
+        cur.execute("""
+            UPDATE member_notes SET is_deleted=TRUE, updated_at=NOW()
+            WHERE id=%s AND member_type=%s AND member_id=%s
+        """, [note_id, member_type, member_id])
+        if cur.rowcount == 0:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "메모를 찾을 수 없습니다."}), 404
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("메모 삭제 실패: note_id=%s", note_id)
+        return jsonify({"ok": False, "message": "삭제 중 오류가 발생했습니다."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
 # 신청서 doc_type → applications 테이블 컬럼 매핑 (관리자 서류 열람용 화이트리스트)
 _APP_DOC_COLUMNS = {
     "license": "doc_license_url",
