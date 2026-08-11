@@ -37,7 +37,10 @@
     <div style="background:#fff; border-radius:18px; max-width:480px; width:100%; padding:32px 28px 24px; box-shadow:0 20px 60px rgba(0,0,0,.4); position:relative;">
       <button id="welcomeClose" aria-label="닫기"
         style="position:absolute; top:14px; right:16px; background:none; border:none; font-size:22px; color:var(--ink-soft); cursor:pointer; line-height:1; padding:4px;">✕</button>
-      <div style="font-size:11px; font-weight:700; color:var(--brass-dark); letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px;">홈앤스테이</div>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+        <img src="/static/img/icon-192.png" alt="홈앤스테이 로고" style="height:24px; width:24px; border-radius:5px; flex-shrink:0;" />
+        <span style="font-size:17px; font-weight:800; color:var(--brass-dark); letter-spacing:.02em;">홈앤스테이</span>
+      </div>
       <h1 style="font-size:22px; font-weight:800; color:var(--ink); line-height:1.4; margin:0 0 10px;">내 건물 실거래가,<br>무료로 바로 확인하세요</h1>
       <p style="font-size:14px; color:var(--ink-soft); margin:0 0 4px; line-height:1.65;">로그인 없이 건물명이나 주소만 입력하면 바로 조회됩니다</p>
       <div style="display:flex; gap:8px; margin-top:22px;">
@@ -48,6 +51,7 @@
           style="padding:12px 20px; white-space:nowrap; border-radius:10px; flex-shrink:0;">검색</button>
       </div>
       <p style="font-size:11.5px; color:var(--ink-soft); margin:14px 0 0; text-align:center;">생활숙박시설 · 분양형호텔 · 콘도 실거래가 무료 조회</p>
+      <p style="font-size:10.5px; color:var(--ink-soft); margin:4px 0 0; text-align:center; opacity:.7;">국토교통부 실거래가 공공데이터 기반</p>
     </div>
   </div>
 
@@ -300,11 +304,7 @@
       var open = !searchbar.classList.toggle("collapsed");
       sbBtn.textContent = open ? "✕ 닫기" : "🔍 검색";
     });
-    // 데스크톱(>980px)에서는 검색바를 기본으로 펼친다
-    if (window.innerWidth > 980){
-      searchbar.classList.remove("collapsed");
-      sbBtn.textContent = "✕ 닫기";
-    }
+    // 데스크톱 자동펼침은 아래 오버레이 로직이 결정 — 오버레이가 뜨면 건너뜀
   }
 
   // ── 웰컴 오버레이 ─────────────────────────────────────────────
@@ -370,7 +370,13 @@
     // 세션당 1회 노출
     var seen = false;
     try { seen = !!sessionStorage.getItem(SESS_KEY); } catch(e){}
-    if (!seen) overlay.style.display = "flex";
+    if (!seen){
+      // 첫 방문: 오버레이 표시, 검색바는 닫힌 채 유지 (닫을 때 openSearchbar 호출됨)
+      overlay.style.display = "flex";
+    } else {
+      // 재방문: 오버레이 안 뜨므로 데스크톱에서 검색바 바로 펼침
+      if (window.innerWidth > 980) openSearchbar();
+    }
   })();
 
 })();
