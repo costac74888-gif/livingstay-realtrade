@@ -4952,29 +4952,26 @@
 
     async function showMemberDetail(memberType, memberId) {
       if (typeof destroyStatsCharts === "function") destroyStatsCharts();
-      const _mount = document.getElementById("mount");
-      if (!_mount) return;
-      _mount.innerHTML = `<div style="padding:40px; text-align:center; color:var(--ink-soft);">불러오는 중…</div>`;
+      if (!mount) return;
+      mount.innerHTML = `<div style="padding:40px; text-align:center; color:var(--ink-soft);">불러오는 중…</div>`;
       try {
         const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`);
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         const d = await res.json();
         if (!d.ok) {
-          _mount.innerHTML = `<div style="padding:24px; color:#c0392b;">${dgEscape(d.message || "조회 오류")}</div>`;
+          mount.innerHTML = `<div style="padding:24px; color:#c0392b;">${dgEscape(d.message || "조회 오류")}</div>`;
           return;
         }
         _renderMemberDetail(d.data, memberType, memberId);
       } catch (e) {
-        const _m = document.getElementById("mount");
-        if (_m) _m.innerHTML = `<div style="padding:24px; color:#c0392b;">불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        mount.innerHTML = `<div style="padding:24px; color:#c0392b;">불러오지 못했습니다. 새로고침 해주세요.</div>`;
       }
     }
 
     function backToMemberList() { activateMenu("members"); }
 
     function _renderMemberDetail(data, memberType, memberId) {
-      const _mount = document.getElementById("mount");
-      if (!_mount) return;
+      if (!mount) return;
       const tl = _MD_TYPE_LABEL[memberType] || memberType;
       const [stLabel, stClass] = _MD_STATUS[data.status] || [data.status || "-", ""];
       const _none = `<span style="color:var(--ink-soft);">미입력</span>`;
@@ -5224,7 +5221,7 @@
           ${_ar("마케팅 동의일", _v(data.marketing_agreed_at))}
         </div>` : "";
 
-      _mount.innerHTML = `
+      mount.innerHTML = `
         <div class="member-detail-wrap">
           <div style="margin-bottom:20px;">
             <button class="admin-btn" onclick="backToMemberList()" style="margin-bottom:12px;">← 목록으로</button>
