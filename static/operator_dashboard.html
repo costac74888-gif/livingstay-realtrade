@@ -54,6 +54,11 @@
   <!-- 상단: 내 정보 (탭 밖) -->
   <div class="panel-card" style="margin-top:16px;">
     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div style="position:relative; flex-shrink:0;" title="클릭하여 프로필 사진 변경">
+        <img id="meAvatarImg" src="" alt="" style="display:none; width:56px; height:56px; border-radius:50%; object-fit:cover; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();" />
+        <div id="meAvatarIcon" style="width:56px; height:56px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:26px; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();">🏨</div>
+        <input type="file" id="avatarFileInput" accept="image/jpeg,image/png" style="display:none;" />
+      </div>
       <div style="flex:1; min-width:200px;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <div id="meCompany" style="font-size:18px; font-weight:700; color:var(--ink);">불러오는 중…</div>
@@ -159,49 +164,59 @@
 
 <!-- 프로필 수정 모달 -->
 <div class="admin-modal-overlay" id="mProfile" hidden>
-  <div class="admin-modal">
+  <div class="admin-modal" style="max-width:480px;">
     <div class="admin-modal-head"><h3>프로필 수정</h3><button class="admin-modal-close" data-close="mProfile">×</button></div>
     <div class="admin-modal-body">
-      <div class="field"><label>업체명</label><input type="text" id="fCompany" placeholder="예) 홈앤스테이운영" /></div>
-      <div class="field"><label>대표자명</label><input type="text" id="fOwner" placeholder="예) 홍길동" /></div>
-      <div class="field"><label>이메일</label><input type="text" id="fEmail" placeholder="예) operator@example.com" /></div>
-      <div class="field"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
-      <div class="field"><label>사진 URL (http(s)://…)</label><input type="text" id="fPhoto" placeholder="예) https://example.com/photo.jpg" /></div>
-      <div class="field">
-        <label>로고</label>
-        <div style="display:flex; align-items:center; gap:12px;">
-          <img id="meLogoImg" src="" alt="" style="display:none; width:48px; height:48px; border-radius:8px; object-fit:cover; cursor:pointer; border:1px solid var(--line);" onclick="document.getElementById('logoFileInput').click();" />
-          <div id="meLogoIcon" style="width:48px; height:48px; border-radius:8px; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer;" onclick="document.getElementById('logoFileInput').click();">🏨</div>
-          <button type="button" class="side-more" style="width:auto; margin-top:0; padding:8px 14px;" onclick="document.getElementById('logoFileInput').click();">로고 업로드</button>
-          <input type="file" id="logoFileInput" accept="image/jpeg,image/png" style="display:none;" />
+
+      <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--line);">
+        <div style="position:relative; flex-shrink:0;" title="클릭하여 프로필 사진 변경">
+          <img id="modalAvatarImg" src="" alt="" style="display:none; width:64px; height:64px; border-radius:50%; object-fit:cover; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();" />
+          <div id="modalAvatarIcon" style="width:64px; height:64px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;" onclick="document.getElementById('avatarFileInput').click();">🏨</div>
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div class="field" style="margin-bottom:8px;"><label>업체명</label><input type="text" id="fCompany" placeholder="예) 홈앤스테이운영" /></div>
+          <div class="field" style="margin-bottom:0;"><label>대표자명</label><input type="text" id="fOwner" placeholder="예) 홍길동" /></div>
         </div>
       </div>
-      <div class="field">
-        <label>소개글 <span style="font-weight:400;font-size:11px;color:var(--ink-soft);">**굵게**, *기울임*, [링크](URL), 이미지 첨부 지원</span></label>
-        <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;">
-          <div style="display:flex; border-bottom:1px solid var(--line);">
-            <button type="button" id="introTabEdit" onclick="switchIntroTab('edit')" style="flex:1;padding:7px;font-size:12.5px;background:#f8f9fa;border:none;border-right:1px solid var(--line);cursor:pointer;font-weight:600;color:var(--ink);">✏ 작성</button>
-            <button type="button" id="introTabPreview" onclick="switchIntroTab('preview')" style="flex:1;padding:7px;font-size:12.5px;background:#fff;border:none;cursor:pointer;color:var(--ink-soft);">👁 미리보기</button>
-          </div>
-          <div id="introEditArea">
-            <div style="display:flex;gap:2px;align-items:center;padding:5px 8px;background:#f8f9fa;border-bottom:1px solid var(--line);flex-wrap:wrap;">
-              <button type="button" class="md-tb-btn" data-cmd="bold" title="굵게 (**텍스트**)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-weight:700;">B</button>
-              <button type="button" class="md-tb-btn" data-cmd="italic" title="기울임 (*텍스트*)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-style:italic;">I</button>
-              <button type="button" class="md-tb-btn" data-cmd="link" title="링크 삽입 ([텍스트](URL))" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;">🔗</button>
-              <label class="md-tb-btn" title="이미지 첨부" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;margin:0;display:inline-flex;align-items:center;">
-                🖼 <input type="file" id="introImgInput" accept="image/jpeg,image/png" style="display:none;">
-              </label>
-              <span id="introImgMsg" style="font-size:11px;color:var(--ink-soft);margin-left:4px;"></span>
+
+      <div style="background:#F7F5F0; border-radius:10px; padding:14px; margin-bottom:14px;">
+        <div class="side-card-title" style="margin-bottom:10px;">연락처</div>
+        <div class="field"><label>이메일</label><input type="text" id="fEmail" placeholder="예) operator@example.com" /></div>
+        <div class="field" style="margin-bottom:0;"><label>전화번호</label><input type="text" id="fPhone" placeholder="예) 010-1234-5678" /></div>
+      </div>
+
+      <div style="background:#F7F5F0; border-radius:10px; padding:14px; margin-bottom:14px;">
+        <div class="side-card-title" style="margin-bottom:10px;">소개</div>
+        <div class="field" style="margin-bottom:0;">
+          <label>소개글 <span style="font-weight:400;font-size:11px;color:var(--ink-soft);">**굵게**, *기울임*, [링크](URL), 이미지 첨부 지원</span></label>
+          <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;">
+            <div style="display:flex; border-bottom:1px solid var(--line);">
+              <button type="button" id="introTabEdit" onclick="switchIntroTab('edit')" style="flex:1;padding:7px;font-size:12.5px;background:#f8f9fa;border:none;border-right:1px solid var(--line);cursor:pointer;font-weight:600;color:var(--ink);">✏ 작성</button>
+              <button type="button" id="introTabPreview" onclick="switchIntroTab('preview')" style="flex:1;padding:7px;font-size:12.5px;background:#fff;border:none;cursor:pointer;color:var(--ink-soft);">👁 미리보기</button>
             </div>
-            <textarea id="fIntro" rows="6" placeholder="서비스 소개, 운영 방식, 강점 등을 자유롭게 작성하세요." style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:9px 10px;border:none;resize:vertical;outline:none;display:block;"></textarea>
+            <div id="introEditArea">
+              <div style="display:flex;gap:2px;align-items:center;padding:5px 8px;background:#f8f9fa;border-bottom:1px solid var(--line);flex-wrap:wrap;">
+                <button type="button" class="md-tb-btn" data-cmd="bold" title="굵게 (**텍스트**)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-weight:700;">B</button>
+                <button type="button" class="md-tb-btn" data-cmd="italic" title="기울임 (*텍스트*)" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;font-style:italic;">I</button>
+                <button type="button" class="md-tb-btn" data-cmd="link" title="링크 삽입 ([텍스트](URL))" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;">🔗</button>
+                <label class="md-tb-btn" title="이미지 첨부" style="background:none;border:1px solid transparent;border-radius:4px;padding:3px 8px;font-size:13px;cursor:pointer;margin:0;display:inline-flex;align-items:center;">
+                  🖼 <input type="file" id="introImgInput" accept="image/jpeg,image/png" style="display:none;">
+                </label>
+                <span id="introImgMsg" style="font-size:11px;color:var(--ink-soft);margin-left:4px;"></span>
+              </div>
+              <textarea id="fIntro" rows="6" placeholder="서비스 소개, 운영 방식, 강점 등을 자유롭게 작성하세요." style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:9px 10px;border:none;resize:vertical;outline:none;display:block;"></textarea>
+            </div>
+            <div id="introPreviewArea" style="display:none;padding:12px;min-height:100px;font-size:13px;line-height:1.7;color:var(--ink);"></div>
           </div>
-          <div id="introPreviewArea" style="display:none;padding:12px;min-height:100px;font-size:13px;line-height:1.7;color:var(--ink);"></div>
         </div>
       </div>
-      <div style="border-top:1px solid var(--line); padding-top:12px; margin-top:4px;">
-        <div style="font-size:12.5px; color:var(--brick); margin-bottom:10px;">⚠ 아래 사업자등록번호를 변경하면 재검토(승인 대기) 상태로 전환되며, 재승인 전까지 노출이 중단됩니다.</div>
-        <div class="field"><label>사업자등록번호</label><input type="text" id="fBizNo" placeholder="예) 123-45-67890" /></div>
+
+      <div style="background:#F7F5F0; border-radius:10px; padding:14px;">
+        <div class="side-card-title" style="margin-bottom:10px;">등록정보</div>
+        <div style="font-size:12.5px; color:var(--brick); margin-bottom:10px;">⚠ 사업자등록번호를 변경하면 재검토(승인 대기) 상태로 전환되며, 재승인 전까지 노출이 중단됩니다.</div>
+        <div class="field" style="margin-bottom:0;"><label>사업자등록번호</label><input type="text" id="fBizNo" placeholder="예) 123-45-67890" /></div>
       </div>
+
     </div>
     <div class="admin-modal-msg" id="msgProfile"></div>
     <div class="admin-modal-foot">
@@ -326,16 +341,20 @@ function renderVisibility(){
   else { badge.textContent = "노출중지됨"; badge.style.background = "#FBEAEA"; badge.style.color = "#B23A3A"; }
 }
 
-function renderLogo(){
-  const img = document.getElementById("meLogoImg");
-  const icon = document.getElementById("meLogoIcon");
+function renderAvatar(){
+  const img = document.getElementById("meAvatarImg");
+  const icon = document.getElementById("meAvatarIcon");
+  const mImg = document.getElementById("modalAvatarImg");
+  const mIcon = document.getElementById("modalAvatarIcon");
   if (ME.logo_src){
-    img.src = ME.logo_src + "?t=" + Date.now();
-    img.style.display = "block";
-    icon.style.display = "none";
+    const src = ME.logo_src + "?t=" + Date.now();
+    img.src = src; img.style.display = "block"; icon.style.display = "none";
+    if (mImg){ mImg.src = src; mImg.style.display = "block"; }
+    if (mIcon) mIcon.style.display = "none";
   } else {
-    img.style.display = "none";
-    icon.style.display = "flex";
+    img.style.display = "none"; icon.style.display = "flex";
+    if (mImg) mImg.style.display = "none";
+    if (mIcon) mIcon.style.display = "flex";
   }
 }
 
@@ -399,7 +418,7 @@ async function load(){
   if (!ok){ document.getElementById("meCompany").textContent = "정보를 불러오지 못했습니다."; return; }
   ME = data;
   render();
-  renderLogo();
+  renderAvatar();
 }
 
 // ---- 탭 전환 ----
@@ -594,10 +613,10 @@ document.getElementById("btnEditProfile").addEventListener("click", () => {
   document.getElementById("fOwner").value = ME.owner_name || "";
   document.getElementById("fEmail").value = ME.email || "";
   document.getElementById("fPhone").value = formatPhone(ME.phone || "");
-  document.getElementById("fPhoto").value = ME.photo_url || "";
   document.getElementById("fIntro").value = ME.intro_text || "";
   document.getElementById("fBizNo").value = formatBizRegNumber(ME.biz_reg_number || "");
   document.getElementById("msgProfile").textContent = "";
+  renderAvatar();
   openModal("mProfile");
 });
 document.getElementById("btnSaveProfile").addEventListener("click", async () => {
@@ -606,7 +625,6 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
     owner_name: document.getElementById("fOwner").value,
     email: document.getElementById("fEmail").value,
     phone: document.getElementById("fPhone").value,
-    photo_url: document.getElementById("fPhoto").value,
     intro_text: document.getElementById("fIntro").value,
     biz_reg_number: document.getElementById("fBizNo").value,
   };
@@ -619,18 +637,18 @@ document.getElementById("btnSaveProfile").addEventListener("click", async () => 
   await load();
 });
 
-// ---- 로고 업로드 ----
-document.getElementById("logoFileInput").addEventListener("change", async (e) => {
+// ---- 아바타 업로드 ----
+document.getElementById("avatarFileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const res = await fetch("/api/operator/logo", { method: "POST", body: fd });
+    const res = await fetch("/api/operator/avatar", { method: "POST", body: fd });
     const data = await res.json();
-    if (!res.ok || !data.ok){ alert(data.message || "로고 업로드에 실패했습니다."); return; }
-    ME.logo_src = data.logo_src;
-    renderLogo();
+    if (!res.ok || !data.ok){ alert(data.message || "사진 업로드에 실패했습니다."); return; }
+    ME.logo_src = data.photo_src;
+    renderAvatar();
   } catch(err){
     alert("네트워크 오류로 업로드에 실패했습니다.");
   } finally {

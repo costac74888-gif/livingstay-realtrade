@@ -3200,9 +3200,9 @@ def partners_operator_logo(operator_id):
 
 @app.route("/api/partners/loan-consultant-logo/<int:lc_id>")
 def partners_loan_consultant_logo(lc_id):
-    """승인 대출상담사 로고 공개 프록시 — 운영업체 로고 프록시와 동일 패턴.
+    """승인 대출상담사 로고/아바타 공개 프록시 — 운영업체 로고 프록시와 동일 패턴.
 
-    대시보드에서 외부 URL로 등록한 로고는 그대로 리다이렉트, 그 외(스토리지 키 미지원)는 404.
+    외부 http(s) URL은 리다이렉트, 스토리지 키는 다운로드 후 이미지로 응답.
     """
     conn = get_conn()
     cur = conn.cursor()
@@ -3213,7 +3213,17 @@ def partners_loan_consultant_logo(lc_id):
     key = (row or {}).get("logo_url")
     if key and (key.startswith("http://") or key.startswith("https://")):
         return redirect(key)
-    abort(404)
+    if not key or not storage_util.is_valid_doc_ref(key, "loan_consultant", {"logo"}):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    mime = "image/png" if ext == "png" else "image/jpeg"
+    resp = Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
 
 
 @app.route("/api/partners/agent-photo/<int:agent_id>")
@@ -6478,6 +6488,39 @@ def operator_logo_upload():
     return jsonify({"ok": True, "logo_src": f"/api/partners/operator-logo/{operator_id}"})
 
 
+@app.route("/api/operator/avatar", methods=["POST"])
+@require_operator
+def operator_avatar_upload():
+    """마이페이지 원형 아바타 업로드 — logo_url 필드에 저장, operator_logo_upload와 동일 검증."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다."}), 400
+    key = storage_util.build_doc_key("operator", "logo", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("운영업체 아바타 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다."}), 500
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE operators SET logo_url=%s WHERE id=%s", [key, operator_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "photo_src": f"/api/partners/operator-logo/{operator_id}"})
+
+
 @app.route("/api/operator/intro-image", methods=["POST"])
 @require_operator
 def operator_intro_image_upload():
@@ -6742,6 +6785,7 @@ def loan_consultant_me():
         cur.close()
         conn.close()
     out = dict(me)
+    out["logo_src"] = f"/api/partners/loan-consultant-logo/{lc_id}" if out.get("logo_url") else None
     out["buildings"] = buildings
     return jsonify(out)
 
@@ -7128,6 +7172,39 @@ def loan_consultant_building_search():
         cur.close()
         conn.close()
     return jsonify({"items": items})
+
+
+@app.route("/api/loan-consultant/avatar", methods=["POST"])
+@require_loan_consultant
+def loan_consultant_avatar_upload():
+    """마이페이지 원형 아바타 업로드 — logo_url 필드에 저장."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다."}), 400
+    key = storage_util.build_doc_key("loan_consultant", "logo", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("대출상담사 아바타 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다."}), 500
+    lc_id = session["loan_consultant_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE loan_consultants SET logo_url=%s WHERE id=%s", [key, lc_id])
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"ok": True, "photo_src": f"/api/partners/loan-consultant-logo/{lc_id}"})
 
 
 @app.route("/api/loan-consultant/intro-image", methods=["POST"])
