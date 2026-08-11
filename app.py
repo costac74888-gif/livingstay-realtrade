@@ -13794,18 +13794,61 @@ def admin_member_detail_update(member_type, member_id):
     table = _BULK_MEMBER_TABLES[member_type]
     data = request.get_json(force=True, silent=True) or {}
 
+    # 값: "str" | "int" | "bool"
     _ALLOWED = {
-        "general":         {"business_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "status", "rejection_reason"},
-        "agent":           {"biz_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "manager_name", "desired_building", "rejection_reason"},
-        "operator":        {"biz_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "manager_name", "desired_building", "rejection_reason"},
-        "loan_consultant": {"biz_reg_number", "tax_invoice_email", "admin_tag", "admin_memo", "manager_name", "desired_building", "rejection_reason"},
+        "general": {
+            "name": "str", "email": "str",
+            "business_reg_number": "str", "tax_invoice_email": "str",
+            "admin_tag": "str", "admin_memo": "str",
+            "status": "str", "rejection_reason": "str",
+            "points": "int", "email_alert_enabled": "bool",
+        },
+        "agent": {
+            "owner_name": "str", "email": "str", "office_name": "str",
+            "reg_number": "str", "phone": "str", "office_phone": "str",
+            "office_address": "str", "manager_name": "str", "desired_building": "str",
+            "subdomain_slug": "str", "biz_reg_number": "str",
+            "tax_invoice_email": "str", "admin_tag": "str", "admin_memo": "str",
+            "rejection_reason": "str", "intro_title": "str", "intro_text": "str",
+            "priority_score": "int", "is_visible": "bool", "status": "str",
+        },
+        "operator": {
+            "owner_name": "str", "email": "str", "company_name": "str",
+            "category": "str", "phone": "str", "website_url": "str",
+            "office_address": "str", "manager_name": "str", "desired_building": "str",
+            "subdomain_slug": "str", "biz_reg_number": "str",
+            "tax_invoice_email": "str", "admin_tag": "str", "admin_memo": "str",
+            "rejection_reason": "str", "intro_text": "str",
+            "priority_score": "int", "is_visible": "bool", "status": "str",
+        },
+        "loan_consultant": {
+            "owner_name": "str", "email": "str", "office_name": "str",
+            "license_number": "str", "phone": "str", "office_address": "str",
+            "service_region": "str", "kakao_chat_url": "str",
+            "consultant_products": "str", "manager_name": "str", "desired_building": "str",
+            "subdomain_slug": "str", "biz_reg_number": "str",
+            "tax_invoice_email": "str", "admin_tag": "str", "admin_memo": "str",
+            "rejection_reason": "str", "intro_text": "str",
+            "priority_score": "int", "is_visible": "bool", "status": "str",
+        },
     }
     allowed = _ALLOWED[member_type]
     updates = {}
-    for field in allowed:
-        if field in data:
-            v = data[field]
-            updates[field] = (str(v).strip() or None) if v is not None else None
+    for field, ftype in allowed.items():
+        if field not in data:
+            continue
+        v = data[field]
+        if v is None or v == "":
+            updates[field] = None
+        elif ftype == "int":
+            try:
+                updates[field] = int(v)
+            except (TypeError, ValueError):
+                updates[field] = None
+        elif ftype == "bool":
+            updates[field] = bool(v)
+        else:
+            updates[field] = str(v).strip() or None
 
     if not updates:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400

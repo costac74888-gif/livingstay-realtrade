@@ -5071,32 +5071,104 @@
         `<div class="member-info-row"><span class="member-info-label">${dgEscape(lbl)}</span><span class="member-info-value">${v}</span></div>`
       ).join("");
 
-      const infoFormHtml = `
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">사업자등록번호</label>
-          <div class="member-info-value"><input id="medit_biz_reg" class="member-edit-input" type="text" value="${dgEscape(bizRegVal)}" maxlength="20" placeholder="000-00-00000"/></div></div>
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">세금계산서 이메일</label>
-          <div class="member-info-value"><input id="medit_tax_email" class="member-edit-input" type="email" value="${dgEscape(data.tax_invoice_email||"")}" placeholder="tax@example.com"/></div></div>
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">담당자명</label>
-          <div class="member-info-value"><input id="medit_manager" class="member-edit-input" type="text" value="${dgEscape(data.manager_name||"")}" maxlength="50"/></div></div>
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">희망건물</label>
-          <div class="member-info-value"><input id="medit_desired" class="member-edit-input" type="text" value="${dgEscape(data.desired_building||"")}" maxlength="200"/></div></div>
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">관리자 태그</label>
-          <div class="member-info-value"><input id="medit_admin_tag" class="member-edit-input" type="text" value="${dgEscape(data.admin_tag||"")}" maxlength="30"/></div></div>
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">관리자 메모(구)</label>
-          <div class="member-info-value"><textarea id="medit_admin_memo" class="member-edit-input" rows="3" style="resize:vertical;">${dgEscape(data.admin_memo||"")}</textarea></div></div>
-        <div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">반려 사유</label>
-          <div class="member-info-value"><textarea id="medit_rejection" class="member-edit-input" rows="2" style="resize:vertical;" placeholder="가입 반려 시 사유 입력">${dgEscape(data.rejection_reason||"")}</textarea></div></div>
-        ${memberType==="general"?`<div class="member-info-row"><label class="member-info-label" style="padding-top:7px;">상태</label>
-          <div class="member-info-value"><select id="medit_status" class="member-edit-input" style="width:auto;">
-            <option value="active"${data.status==="active"?" selected":""}>정상(active)</option>
-            <option value="withdrawn"${data.status==="withdrawn"?" selected":""}>탈퇴(withdrawn)</option>
-            <option value="inactive"${data.status==="inactive"?" selected":""}>비활성(inactive)</option>
-          </select></div></div>`:""}
-        <input type="hidden" id="medit_biz_col" value="${dgEscape(bizRegCol)}"/>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="admin-btn admin-btn-primary" onclick="saveMemberInfo('${memberType}',${memberId})">저장</button>
-          <button class="admin-btn" onclick="toggleMemberInfoEdit()">취소</button>
-        </div>`;
+      // ── 편집 폼 헬퍼 ──
+      const _fi = (lbl, fld, val, typ="text", dtyp="", ex="") =>
+        `<div class="member-info-row"><label class="member-info-label" style="padding-top:6px;">${dgEscape(lbl)}</label>` +
+        `<div class="member-info-value"><input data-field="${fld}" data-type="${dtyp}" class="member-edit-input" type="${typ}" value="${dgEscape(String(val??''))}" ${ex}/></div></div>`;
+      const _ft = (lbl, fld, val, rows=2) =>
+        `<div class="member-info-row"><label class="member-info-label" style="padding-top:6px;">${dgEscape(lbl)}</label>` +
+        `<div class="member-info-value"><textarea data-field="${fld}" class="member-edit-input" rows="${rows}" style="resize:vertical;">${dgEscape(String(val??''))}</textarea></div></div>`;
+      const _fsel = (lbl, fld, optsHtml, dtyp="") =>
+        `<div class="member-info-row"><label class="member-info-label" style="padding-top:6px;">${dgEscape(lbl)}</label>` +
+        `<div class="member-info-value"><select data-field="${fld}" data-type="${dtyp}" class="member-edit-input" style="width:auto;">${optsHtml}</select></div></div>`;
+      const _fbool = (lbl, fld, val, tLbl="노출 중", fLbl="숨김") =>
+        _fsel(lbl, fld,
+          `<option value="true"${val?" selected":""}>` + tLbl + `</option>` +
+          `<option value="false"${!val?" selected":""}>` + fLbl + `</option>`, "bool");
+      const _fstatus_biz = (cur) =>
+        _fsel("상태", "status",
+          `<option value="pending"${cur==="pending"?" selected":""}>대기(pending)</option>` +
+          `<option value="approved"${cur==="approved"?" selected":""}>승인(approved)</option>` +
+          `<option value="rejected"${cur==="rejected"?" selected":""}>반려(rejected)</option>` +
+          `<option value="suspended"${cur==="suspended"?" selected":""}>정지(suspended)</option>`);
+      const _fcommon = `
+        ${_fi("사업자등록번호", bizRegCol, bizRegVal, "text", "", 'maxlength="20" placeholder="000-00-00000"')}
+        ${_fi("세금계산서 이메일", "tax_invoice_email", data.tax_invoice_email, "email", "", 'placeholder="tax@example.com"')}
+        ${_ft("반려 사유", "rejection_reason", data.rejection_reason)}
+        ${_fi("관리자 태그", "admin_tag", data.admin_tag, "text", "", 'maxlength="30"')}
+        ${_ft("관리자 메모(구)", "admin_memo", data.admin_memo, 3)}`;
+
+      let infoFormHtml = "";
+      if (memberType === "general") {
+        infoFormHtml =
+          _fi("닉네임/이름", "name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fsel("상태", "status",
+            `<option value="active"${data.status==="active"?" selected":""}>정상(active)</option>` +
+            `<option value="withdrawn"${data.status==="withdrawn"?" selected":""}>탈퇴(withdrawn)</option>` +
+            `<option value="inactive"${data.status==="inactive"?" selected":""}>비활성(inactive)</option>`) +
+          _fi("포인트(적립금)", "points", data.points??0, "number", "int", 'min="0" step="1"') +
+          _fbool("이메일알림", "email_alert_enabled", data.email_alert_enabled, "켜짐", "꺼짐") +
+          _fcommon;
+      } else if (memberType === "agent") {
+        infoFormHtml =
+          _fi("대표자명", "owner_name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fi("중개사무소명", "office_name", data.office_name, "text", "", 'maxlength="100"') +
+          _fi("중개사 등록번호", "reg_number", data.reg_number, "text", "", 'maxlength="50"') +
+          _fi("연락처(휴대폰)", "phone", data.phone, "text", "", 'maxlength="20"') +
+          _fi("사무실 전화", "office_phone", data.office_phone, "text", "", 'maxlength="20"') +
+          _fi("소재지", "office_address", data.office_address, "text", "", 'maxlength="200"') +
+          _fi("담당자명", "manager_name", data.manager_name, "text", "", 'maxlength="50"') +
+          _fi("희망건물", "desired_building", data.desired_building, "text", "", 'maxlength="200"') +
+          _fi("서브도메인", "subdomain_slug", data.subdomain_slug, "text", "", 'maxlength="50"') +
+          _fi("우선노출 점수", "priority_score", data.priority_score??0, "number", "int", 'step="1"') +
+          _fbool("마이페이지 노출", "is_visible", data.is_visible) +
+          _fstatus_biz(data.status) +
+          _fcommon +
+          _fi("소개글 제목", "intro_title", data.intro_title, "text", "", 'maxlength="100"') +
+          _ft("소개글", "intro_text", data.intro_text, 4);
+      } else if (memberType === "operator") {
+        infoFormHtml =
+          _fi("대표자명", "owner_name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fi("업체명", "company_name", data.company_name, "text", "", 'maxlength="100"') +
+          _fi("세부업종", "category", data.category, "text", "", 'maxlength="50"') +
+          _fi("연락처(휴대폰)", "phone", data.phone, "text", "", 'maxlength="20"') +
+          _fi("소재지", "office_address", data.office_address, "text", "", 'maxlength="200"') +
+          _fi("웹사이트", "website_url", data.website_url, "url", "", 'maxlength="200" placeholder="https://"') +
+          _fi("담당자명", "manager_name", data.manager_name, "text", "", 'maxlength="50"') +
+          _fi("희망건물", "desired_building", data.desired_building, "text", "", 'maxlength="200"') +
+          _fi("서브도메인", "subdomain_slug", data.subdomain_slug, "text", "", 'maxlength="50"') +
+          _fi("우선노출 점수", "priority_score", data.priority_score??0, "number", "int", 'step="1"') +
+          _fbool("마이페이지 노출", "is_visible", data.is_visible) +
+          _fstatus_biz(data.status) +
+          _fcommon +
+          _ft("소개글", "intro_text", data.intro_text, 4);
+      } else { // loan_consultant
+        infoFormHtml =
+          _fi("상담사명", "owner_name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fi("소속 회사", "office_name", data.office_name, "text", "", 'maxlength="100"') +
+          _fi("대출모집인 등록번호", "license_number", data.license_number, "text", "", 'maxlength="50"') +
+          _fi("연락처(휴대폰)", "phone", data.phone, "text", "", 'maxlength="20"') +
+          _fi("취급 지역", "service_region", data.service_region, "text", "", 'maxlength="100"') +
+          _fi("소재지", "office_address", data.office_address, "text", "", 'maxlength="200"') +
+          _fi("카카오톡 상담 URL", "kakao_chat_url", data.kakao_chat_url, "url", "", 'maxlength="300" placeholder="https://open.kakao.com/..."') +
+          _fi("상담 상품", "consultant_products", data.consultant_products, "text", "", 'maxlength="200"') +
+          _fi("담당자명", "manager_name", data.manager_name, "text", "", 'maxlength="50"') +
+          _fi("희망건물", "desired_building", data.desired_building, "text", "", 'maxlength="200"') +
+          _fi("서브도메인", "subdomain_slug", data.subdomain_slug, "text", "", 'maxlength="50"') +
+          _fi("우선노출 점수", "priority_score", data.priority_score??0, "number", "int", 'step="1"') +
+          _fbool("마이페이지 노출", "is_visible", data.is_visible) +
+          _fstatus_biz(data.status) +
+          _fcommon +
+          _ft("소개글", "intro_text", data.intro_text, 4);
+      }
+      infoFormHtml += `<div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="admin-btn admin-btn-primary" onclick="saveMemberInfo('${memberType}',${memberId})">저장</button>
+        <button class="admin-btn" onclick="toggleMemberInfoEdit()">취소</button>
+      </div>`;
 
       // ── 관심단지 / 뱃지 / 담당건물 ──
       const LIMIT = 5;
@@ -5289,17 +5361,23 @@
     }
 
     async function saveMemberInfo(memberType, memberId) {
-      const bizCol = document.getElementById("medit_biz_col")?.value || "biz_reg_number";
       const body = {};
-      const get = id => document.getElementById(id);
-      if (get("medit_biz_reg"))    body[bizCol]              = get("medit_biz_reg").value;
-      if (get("medit_tax_email"))  body.tax_invoice_email    = get("medit_tax_email").value;
-      if (get("medit_manager"))    body.manager_name         = get("medit_manager").value;
-      if (get("medit_desired"))    body.desired_building     = get("medit_desired").value;
-      if (get("medit_admin_tag"))  body.admin_tag            = get("medit_admin_tag").value;
-      if (get("medit_admin_memo")) body.admin_memo           = get("medit_admin_memo").value;
-      if (get("medit_rejection"))  body.rejection_reason     = get("medit_rejection").value;
-      if (get("medit_status"))     body.status               = get("medit_status").value;
+      document.querySelectorAll("#memberInfoForm [data-field]").forEach(el => {
+        const fld  = el.dataset.field;
+        const dtyp = el.dataset.type || "";
+        let val;
+        if (el.tagName === "SELECT") {
+          val = el.value;
+          if (dtyp === "bool") val = (val === "true");
+          else if (dtyp === "int") val = parseInt(val, 10);
+        } else {
+          val = el.value.trim();
+          if (dtyp === "int") val = val === "" ? null : (parseInt(val, 10) || 0);
+          else val = val === "" ? null : val;
+        }
+        body[fld] = val;
+      });
+      if (!Object.keys(body).length) { window.alert("변경 항목이 없습니다."); return; }
       try {
         const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`, {
           method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
