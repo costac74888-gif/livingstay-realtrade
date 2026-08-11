@@ -4933,11 +4933,15 @@ def agent_photo_upload():
     return jsonify({"ok": True, "photo_src": f"/api/partners/agent-photo/{agent_id}"})
 
 
-# 정부 인허가 기반 등록번호 필드 — 본인 수정 시 재승인 대기 전환 대상 (3개 파트너 공통 규칙)
+# 정부 인허가 기반 등록번호 필드 — 본인 수정 시 재승인 대기 전환 대상
+# ▶ 확정 정책 (2026-08-11):
+#   agent          → 재검토 전환 없음 (등록번호 즉시 저장·반영)
+#   operator       → 사업자등록번호 변경 시 pending 전환
+#   loan_consultant → 대출모집인 등록번호 변경 시 pending 전환 (사업자등록번호는 비대상)
 _PARTNER_LICENSE_FIELDS = {
-    "agents": {"reg_number": "중개사무소 등록번호", "biz_reg_number": "사업자등록번호"},
+    "agents": {},                                                        # 재검토 없음
     "operators": {"biz_reg_number": "사업자등록번호"},
-    "loan_consultants": {"license_number": "대출모집인 등록번호", "biz_reg_number": "사업자등록번호"},
+    "loan_consultants": {"license_number": "대출모집인 등록번호"},       # biz_reg_number 제외
 }
 
 
@@ -6758,11 +6762,12 @@ def loan_consultant_me_update():
                     return jsonify({"ok": False, "message": "대출모집인 등록번호는 비울 수 없습니다."}), 400
                 license_changes[k] = v
             if k == "biz_reg_number":
-                # 대출상담사 사업자등록번호는 선택 항목 — 비우는 것도 허용(변경으로 간주해 재검토 대상)
+                # 대출상담사 사업자등록번호는 선택 항목 — 비우는 것도 허용.
+                # ※ 정책 확정: 사업자등록번호 변경은 재검토 대상 아님 → license_changes에 넣지 않음.
                 v = _digits_only(v) or None
                 if v and len(v) != 10:
                     return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
-                license_changes[k] = v
+                # (license_changes에 추가하지 않음 — pending 전환 미트리거)
             sets.append(f"{k} = %s")
             params.append(v)
     if not sets:
