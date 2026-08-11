@@ -11511,6 +11511,185 @@ def admin_listing_requests_update(req_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/listing-requests/export.xlsx")
+@require_admin
+def admin_listing_requests_export():
+    """매물의뢰 전체 엑셀 다운로드 — 접수일 내림차순."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT lr.id, mb.building_name, lr.contact_phone, lr.deal_type,
+                   lr.desired_price, lr.routed_reason, a.office_name AS agent_name,
+                   a.phone AS agent_phone, lr.status, lr.admin_note, lr.created_at
+            FROM listing_requests lr
+            LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            ORDER BY lr.created_at DESC
+        """)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "매물의뢰"
+    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가",
+               "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "접수일"]
+    ws.append(headers)
+    hdr_fill = PatternFill("solid", fgColor="F9F5EE")
+    for cell in ws[1]:
+        cell.font = Font(bold=True); cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+    reason_map = {"exclusive": "전속", "region": "관할", "house": "제휴"}
+    status_map = {"submitted": "신규", "in_progress": "처리중", "done": "완료"}
+    for r in rows:
+        ws.append([
+            r["id"], r["building_name"] or "", r["contact_phone"] or "",
+            r["deal_type"] or "", r["desired_price"] or "",
+            reason_map.get(r["routed_reason"], r["routed_reason"] or ""),
+            r["agent_name"] or "", r["agent_phone"] or "",
+            status_map.get(r["status"], r["status"] or ""),
+            r["admin_note"] or "",
+            r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+        ])
+    col_widths = [6, 20, 16, 10, 18, 8, 22, 14, 8, 20, 16]
+    for col, w in zip(ws.columns, col_widths):
+        ws.column_dimensions[col[0].column_letter].width = w
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    from datetime import date as _date
+    fname = f"매물의뢰_{_date.today().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=fname)
+
+
+# ---- 매수의뢰(buy_requests) 관리 (모두 require_admin) ----
+_ADMIN_BREQ_SORT = {"id": "br.id", "created_at": "br.created_at", "status": "br.status"}
+
+
+@app.route("/api/admin/buy-requests")
+@require_admin
+def admin_buy_requests_list():
+    q = (request.args.get("q") or "").strip()
+    sort_key = (request.args.get("sort") or "id").strip()
+    sort_expr = _ADMIN_BREQ_SORT.get(sort_key, "br.id")
+    order = "DESC" if (request.args.get("order") or "desc").strip().lower() == "desc" else "ASC"
+    page, size, offset = _admin_paging()
+    where, params = "1=1", []
+    if q:
+        where = "(mb.building_name ILIKE %s OR br.contact_phone ILIKE %s OR a.office_name ILIKE %s)"
+        like = f"%{q}%"
+        params = [like, like, like]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            SELECT COUNT(*) c FROM buy_requests br
+            LEFT JOIN master_buildings mb ON mb.id = br.master_building_id
+            LEFT JOIN agents a ON a.id = br.routed_agent_id
+            WHERE {where}
+        """, params)
+        total = cur.fetchone()["c"]
+        cur.execute(f"""
+            SELECT br.id, br.master_building_id, mb.building_name,
+                   br.deal_type, br.desired_price, br.contact_phone,
+                   br.routed_reason, br.status, br.admin_note,
+                   (br.status = 'submitted' AND br.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
+                   a.office_name AS agent_office_name, a.phone AS agent_phone,
+                   to_char(br.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+            FROM buy_requests br
+            LEFT JOIN master_buildings mb ON mb.id = br.master_building_id
+            LEFT JOIN agents a ON a.id = br.routed_agent_id
+            WHERE {where}
+            ORDER BY {sort_expr} {order}, br.id ASC
+            LIMIT %s OFFSET %s
+        """, params + [size, offset])
+        items = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/buy-requests/<int:req_id>", methods=["PUT"])
+@require_admin
+def admin_buy_requests_update(req_id):
+    """관리자 수정은 admin_note만 허용."""
+    data = request.get_json(force=True, silent=True) or {}
+    if "admin_note" not in data:
+        return jsonify({"ok": False, "message": "수정할 항목이 없습니다. (비고만 수정 가능)"}), 400
+    note = data.get("admin_note")
+    note = str(note).strip() if note is not None else None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM buy_requests WHERE id = %s", [req_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "존재하지 않는 의뢰입니다."}), 404
+        cur.execute("UPDATE buy_requests SET admin_note = %s WHERE id = %s", [note or None, req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/buy-requests/export.xlsx")
+@require_admin
+def admin_buy_requests_export():
+    """매수의뢰 전체 엑셀 다운로드 — 접수일 내림차순."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT br.id, mb.building_name, br.contact_phone, br.deal_type,
+                   br.desired_price, br.routed_reason, a.office_name AS agent_name,
+                   a.phone AS agent_phone, br.status, br.admin_note, br.created_at
+            FROM buy_requests br
+            LEFT JOIN master_buildings mb ON mb.id = br.master_building_id
+            LEFT JOIN agents a ON a.id = br.routed_agent_id
+            ORDER BY br.created_at DESC
+        """)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "매수의뢰"
+    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가",
+               "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "접수일"]
+    ws.append(headers)
+    hdr_fill = PatternFill("solid", fgColor="F9F5EE")
+    for cell in ws[1]:
+        cell.font = Font(bold=True); cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+    reason_map = {"exclusive": "전속", "region": "관할", "house": "제휴"}
+    status_map = {"submitted": "신규", "in_progress": "처리중", "done": "완료"}
+    for r in rows:
+        ws.append([
+            r["id"], r["building_name"] or "", r["contact_phone"] or "",
+            r["deal_type"] or "", r["desired_price"] or "",
+            reason_map.get(r["routed_reason"], r["routed_reason"] or ""),
+            r["agent_name"] or "", r["agent_phone"] or "",
+            status_map.get(r["status"], r["status"] or ""),
+            r["admin_note"] or "",
+            r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+        ])
+    col_widths = [6, 20, 16, 10, 18, 8, 22, 14, 8, 20, 16]
+    for col, w in zip(ws.columns, col_widths):
+        ws.column_dimensions[col[0].column_letter].width = w
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    from datetime import date as _date
+    fname = f"매수의뢰_{_date.today().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=fname)
+
+
 # ---- 실거래(transactions) 관리 (모두 require_admin) ----
 # 실거래는 공공데이터 원본이라 삭제는 만들지 않고, 이상치 정정용 수정만 허용한다.
 # 수정 시 반드시 사유(reason)를 받아 admin_edit_log에 필드 단위로 남긴다.
