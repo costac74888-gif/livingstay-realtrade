@@ -4832,12 +4832,31 @@
       showGrid(menuKey);
     }
 
+    // 메뉴 활성화 + hash 동기화 (공통 헬퍼)
+    function activateMenu(menuKey) {
+      document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
+      const btn = document.querySelector(`.admin-menu-item[data-menu="${menuKey}"]`);
+      if (btn) btn.classList.add("is-active");
+      // hash 업데이트 — hashchange가 다시 showView를 부르지 않도록 플래그 사용
+      _suppressHashChange = true;
+      location.hash = menuKey;
+      _suppressHashChange = false;
+      showView(menuKey);
+    }
+
+    let _suppressHashChange = false;
+
     document.querySelectorAll(".admin-menu-item[data-menu]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
-        btn.classList.add("is-active");
-        showView(btn.getAttribute("data-menu"));
+        activateMenu(btn.getAttribute("data-menu"));
       });
+    });
+
+    // 브라우저 뒤로/앞으로 버튼 지원
+    window.addEventListener("hashchange", () => {
+      if (_suppressHashChange) return;
+      const key = location.hash.replace(/^#/, "") || "stats";
+      activateMenu(key);
     });
 
     // ⑪ 미분류 재분류 섹션 → 건물마스터 미분류 필터 바로가기
@@ -4845,6 +4864,9 @@
       const link = e.target.closest("#goBldUnclassified");
       if (!link) return;
       e.preventDefault();
+      _suppressHashChange = true;
+      location.hash = "buildings";
+      _suppressHashChange = false;
       const bldBtn = document.querySelector(".admin-menu-item[data-menu='buildings']");
       if (bldBtn) {
         document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
@@ -4853,7 +4875,9 @@
       showBuildings({ lodging_type_filter: "미분류" });
     });
 
-    showView("stats");
+    // 초기 진입: hash가 있으면 해당 메뉴로, 없으면 stats
+    const _initKey = location.hash.replace(/^#/, "") || "stats";
+    activateMenu(_initKey);
   </script>
   <script src="/static/js/pw_toggle.js"></script>
 <script>
