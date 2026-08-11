@@ -43,6 +43,7 @@
     brandHtml +
     '<div class="page-title">' + esc(title) + '</div>' +
     '<div class="header-actions">' +
+      '<button type="button" class="hnav-btn" id="myPriceBtn">🏠 <span class="hnav-label">내건물시세</span></button>' +
       '<div class="hnav-dropdown" id="alertMenu">' +
         '<button type="button" class="hnav-btn" id="alertMenuBtn" aria-haspopup="true" aria-expanded="false">🔔 <span class="hnav-label">알림</span><span class="notif-badge" id="notifBadge" hidden>0</span> ▾</button>' +
         '<div class="hnav-panel hnav-panel-notif" id="alertMenuPanel" role="menu">' +
@@ -255,6 +256,18 @@
     if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
     renderNotifBadge(0);
   };
+
+  // ── "내건물시세" 버튼 — 다른 페이지에서 클릭 시 메인으로 이동 ──────────
+  var myPriceBtn = document.getElementById("myPriceBtn");
+  if (myPriceBtn){
+    myPriceBtn.addEventListener("click", function(){
+      // index.html에선 오버레이 IIFE가 직접 처리(delegated listener)
+      // 다른 페이지에서는 메인으로 이동하면서 강제 오픈 파라미터 전달
+      if (!document.getElementById("welcomeOverlay")){
+        location.href = "/?openMyPrice=1";
+      }
+    });
+  }
 
   if (alertMenu && alertMenuBtn) {
     alertMenuBtn.addEventListener("click", function (e) {

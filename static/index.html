@@ -367,16 +367,32 @@
       overlayQ.addEventListener("blur",  function(){ overlayQ.style.borderColor = "var(--line)";  });
     }
 
-    // 세션당 1회 노출
+    // 헤더 "내건물시세" 버튼 — 다른 페이지에서 ?openMyPrice=1 로 진입한 경우 강제 오픈
+    var forceOpen = new URLSearchParams(location.search).get("openMyPrice") === "1";
+    if (forceOpen){
+      // 주소창에 파라미터 제거 (히스토리 유지)
+      try { history.replaceState(null, "", location.pathname); } catch(e){}
+    }
+
+    // 세션당 1회 노출 (또는 강제 오픈)
     var seen = false;
     try { seen = !!sessionStorage.getItem(SESS_KEY); } catch(e){}
-    if (!seen){
-      // 첫 방문: 오버레이 표시, 검색바는 닫힌 채 유지 (닫을 때 openSearchbar 호출됨)
+    if (!seen || forceOpen){
+      // 첫 방문 or 강제: 오버레이 표시, 검색바는 닫힌 채 유지 (닫을 때 openSearchbar 호출됨)
       overlay.style.display = "flex";
     } else {
       // 재방문: 오버레이 안 뜨므로 데스크톱에서 검색바 바로 펼침
       if (window.innerWidth > 980) openSearchbar();
     }
+
+    // 헤더 "내건물시세" 버튼 — 같은 페이지(index.html)에서 클릭 시 직접 오버레이 표시
+    document.addEventListener("click", function(e){
+      if (e.target && (e.target.id === "myPriceBtn" || e.target.closest("#myPriceBtn"))){
+        overlay.style.display = "flex";
+        var qi = document.getElementById("overlayQ");
+        if (qi){ qi.value = ""; setTimeout(function(){ qi.focus(); }, 50); }
+      }
+    });
   })();
 
 })();
