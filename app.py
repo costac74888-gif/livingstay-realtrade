@@ -13824,23 +13824,33 @@ def admin_members_bulk_delete():
             cur.execute("DELETE FROM mileage_submissions WHERE agent_id = ANY(%s)", [aid])
             cur.execute("DELETE FROM slots WHERE agent_id = ANY(%s)", [aid])
             cur.execute("DELETE FROM listings WHERE agent_id = ANY(%s)", [aid])
+            # 매물의뢰·매수의뢰 배정 중개사 FK — 의뢰 이력은 보존, 중개사만 NULL
             cur.execute("UPDATE listing_requests SET routed_agent_id=NULL WHERE routed_agent_id = ANY(%s)", [aid])
+            cur.execute("UPDATE buy_requests SET routed_agent_id=NULL WHERE routed_agent_id = ANY(%s)", [aid])
             cur.execute("DELETE FROM applications WHERE linked_agent_id = ANY(%s)", [aid])
             cur.execute("DELETE FROM agents WHERE id = ANY(%s)", [aid])
             deleted += cur.rowcount
         if by_type.get("operator"):
             oid = by_type["operator"]
             cur.execute("DELETE FROM applications WHERE linked_operator_id = ANY(%s)", [oid])
+            # 운영업체 상담 배정 FK — 상담 이력은 보존, 업체만 NULL
+            cur.execute("UPDATE operator_consult_requests SET routed_operator_id=NULL WHERE routed_operator_id = ANY(%s)", [oid])
             cur.execute("DELETE FROM operators WHERE id = ANY(%s)", [oid])
             deleted += cur.rowcount
         if by_type.get("loan_consultant"):
             lid = by_type["loan_consultant"]
             cur.execute("DELETE FROM applications WHERE linked_loan_consultant_id = ANY(%s)", [lid])
+            # 대출상담 배정 FK — 상담 이력은 보존, 상담사만 NULL
+            cur.execute("UPDATE loan_consult_requests SET routed_consultant_id=NULL WHERE routed_consultant_id = ANY(%s)", [lid])
             cur.execute("DELETE FROM loan_consultants WHERE id = ANY(%s)", [lid])
             deleted += cur.rowcount
         if by_type.get("general"):
             uid = by_type["general"]
+            # 각종 의뢰 테이블 — user_id NOT NULL, ON DELETE CASCADE 없으므로 먼저 삭제
             cur.execute("DELETE FROM listing_requests WHERE user_id = ANY(%s)", [uid])
+            cur.execute("DELETE FROM buy_requests WHERE user_id = ANY(%s)", [uid])
+            cur.execute("DELETE FROM loan_consult_requests WHERE user_id = ANY(%s)", [uid])
+            cur.execute("DELETE FROM operator_consult_requests WHERE user_id = ANY(%s)", [uid])
             cur.execute("DELETE FROM users WHERE id = ANY(%s)", [uid])
             deleted += cur.rowcount
         conn.commit()
