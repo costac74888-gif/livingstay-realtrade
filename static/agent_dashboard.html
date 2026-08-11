@@ -388,22 +388,39 @@ function renderVisibility(){
   else { badge.textContent = "노출중지됨"; badge.style.background = "#FBEAEA"; badge.style.color = "#B23A3A"; }
 }
 
-function renderAvatar(){
-  const img = document.getElementById("meAvatarImg");
+const _AVATAR_CACHE_KEY = "hs_agent_avatar_src";
+
+// bustCache=true 는 업로드 직후에만 사용 — 일반 표시는 브라우저 캐시 활용
+function renderAvatar(bustCache = false){
+  const img  = document.getElementById("meAvatarImg");
   const icon = document.getElementById("meAvatarIcon");
-  const mImg = document.getElementById("modalAvatarImg");
+  const mImg  = document.getElementById("modalAvatarImg");
   const mIcon = document.getElementById("modalAvatarIcon");
   if (ME.photo_src){
-    const src = ME.photo_src + "?t=" + Date.now();
+    const src = ME.photo_src + (bustCache ? "?t=" + Date.now() : "");
     img.src = src; img.style.display = "block"; icon.style.display = "none";
     if (mImg){ mImg.src = src; mImg.style.display = "block"; }
     if (mIcon) mIcon.style.display = "none";
+    // localStorage에 캐시 → 다음 로드 시 즉시 표시
+    try { localStorage.setItem(_AVATAR_CACHE_KEY, ME.photo_src); } catch(e){}
   } else {
     img.style.display = "none"; icon.style.display = "flex";
     if (mImg) mImg.style.display = "none";
     if (mIcon) mIcon.style.display = "flex";
+    try { localStorage.removeItem(_AVATAR_CACHE_KEY); } catch(e){}
   }
 }
+
+// 페이지 진입 즉시 캐시된 아바타를 선표시 — API 응답 전 깜빡임 제거
+(function preFillAvatar(){
+  try {
+    const cached = localStorage.getItem(_AVATAR_CACHE_KEY);
+    if (!cached) return;
+    const img  = document.getElementById("meAvatarImg");
+    const icon = document.getElementById("meAvatarIcon");
+    if (img && icon){ img.src = cached; img.style.display = "block"; icon.style.display = "none"; }
+  } catch(e){}
+})();
 
 function render(){
   renderVisibility();
@@ -914,7 +931,7 @@ document.getElementById("avatarFileInput").addEventListener("change", async (e) 
       return;
     }
     ME.photo_src = data.photo_src;
-    renderAvatar();
+    renderAvatar(true); // 업로드 직후 — 캐시버스터로 새 사진 즉시 반영
   } catch(err){
     alert("네트워크 오류로 업로드에 실패했습니다.");
   } finally {
