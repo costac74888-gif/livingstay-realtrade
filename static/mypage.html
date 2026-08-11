@@ -13,41 +13,142 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<style>
+  .agent-tabbar{ display:flex; gap:4px; margin:18px 0 14px; border-bottom:1px solid var(--line); overflow-x:auto; }
+  .agent-tab{
+    padding:10px 16px; font-size:14px; font-weight:600; color:var(--ink-soft);
+    background:none; border:none; border-bottom:2px solid transparent;
+    cursor:pointer; margin-bottom:-1px; white-space:nowrap; flex-shrink:0;
+  }
+  .agent-tab:hover{ color:var(--ink); }
+  .agent-tab.is-active{ color:var(--brass-dark); border-bottom-color:var(--brass); }
+  .agent-tabpanel{ display:none; }
+  .agent-tabpanel.is-active{ display:block; }
+  .agent-guide{
+    background:var(--brass-tint); border-radius:var(--radius);
+    padding:12px 16px; margin-bottom:14px; font-size:12.5px;
+    color:var(--ink); line-height:1.6;
+  }
+  .mp-section-box{
+    background:#F7F5F0; border-radius:10px; padding:14px 16px; margin-bottom:14px;
+  }
+  .mp-section-title{
+    font-size:12px; font-weight:700; color:var(--ink-soft);
+    text-transform:uppercase; letter-spacing:.04em; margin-bottom:12px;
+  }
+</style>
 </head>
 <body>
 
 <header id="siteHeader"></header>
 
-<div class="search-panel" style="max-width:560px; padding-bottom:40px;">
+<div class="search-panel" style="max-width:720px; padding-bottom:56px;">
 
-  <div class="panel-card">
-    <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 16px;">마이페이지</h1>
-    <div id="myBody">
-      <div style="text-align:center; padding:40px 12px; color:var(--ink-soft);">불러오는 중…</div>
-    </div>
+  <!-- ── 로딩/비로그인 상태 ── -->
+  <div id="myLoading" class="panel-card" style="margin-top:16px;">
+    <div style="text-align:center; padding:40px 12px; color:var(--ink-soft);">불러오는 중…</div>
   </div>
+
+  <!-- ── 로그인 후 본문 (초기에는 숨김) ── -->
+  <div id="myMain" style="display:none;">
+
+    <!-- 헤더 카드 -->
+    <div class="panel-card" style="margin-top:16px;">
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <div style="width:54px; height:54px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;">👤</div>
+        <div style="flex:1; min-width:160px;">
+          <div id="profileName" style="font-size:18px; font-weight:700; color:var(--ink);"></div>
+          <div id="profileEmail" style="font-size:12.5px; color:var(--ink-soft); margin-top:3px;"></div>
+          <div id="profileProvider" style="font-size:11.5px; color:var(--ink-soft); margin-top:1px;"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+        <button id="btnGoAccount" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">정보 수정</button>
+        <button id="btnGoPassword" class="side-more" style="width:auto; margin-top:0; padding:8px 16px; display:none;">비밀번호 변경</button>
+      </div>
+    </div>
+
+    <!-- 탭바 -->
+    <div class="agent-tabbar">
+      <button class="agent-tab is-active" data-tab="favorites">관심단지</button>
+      <button class="agent-tab" data-tab="listing">매물의뢰 현황</button>
+      <button class="agent-tab" data-tab="buy">매수의뢰 현황</button>
+      <button class="agent-tab" data-tab="account">계정</button>
+    </div>
+
+    <!-- ── 탭: 관심단지 ── -->
+    <div class="agent-tabpanel is-active" data-tabpanel="favorites">
+      <div class="panel-card" style="margin-top:14px;">
+        <div class="agent-guide">건물 상세페이지에서 <b>♥</b> 를 눌러 관심단지로 저장할 수 있습니다. 새 실거래가 등록되면 이메일로 알려드립니다.</div>
+
+        <!-- 이메일 알림 토글 -->
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px; padding:10px 14px; border:1px solid var(--line); border-radius:8px;">
+          <input type="checkbox" id="emailAlertChk" style="accent-color:var(--brass); flex-shrink:0;" />
+          <label for="emailAlertChk" style="font-size:13.5px; color:var(--ink); cursor:pointer; flex:1;">실거래 이메일 알림 받기</label>
+          <span id="emailAlertMsg" style="font-size:12px; color:var(--ink-soft);"></span>
+        </div>
+
+        <div class="side-card-title" style="margin-bottom:10px;">내 관심단지</div>
+        <div id="myFavList"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
+      </div>
+    </div>
+
+    <!-- ── 탭: 매물의뢰 현황 ── -->
+    <div class="agent-tabpanel" data-tabpanel="listing">
+      <div class="panel-card" style="margin-top:14px;">
+        <div class="agent-guide">건물 상세화면의 <b>"매물 내놓기"</b> 버튼으로 의뢰하면 여기에 현황이 표시됩니다.</div>
+        <div id="myListingReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
+      </div>
+    </div>
+
+    <!-- ── 탭: 매수의뢰 현황 ── -->
+    <div class="agent-tabpanel" data-tabpanel="buy">
+      <div class="panel-card" style="margin-top:14px;">
+        <div class="agent-guide">건물 상세화면의 <b>"매수 희망"</b> 버튼으로 의뢰하면 여기에 현황이 표시됩니다.</div>
+        <div id="myBuyReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
+      </div>
+    </div>
+
+    <!-- ── 탭: 계정 ── -->
+    <div class="agent-tabpanel" data-tabpanel="account">
+      <div class="panel-card" style="margin-top:14px;">
+
+        <!-- 이름 변경 -->
+        <div class="mp-section-box">
+          <div class="mp-section-title">이름 변경</div>
+          <label style="display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px;">이름</label>
+          <input id="nameInput" type="text" maxlength="50"
+            style="width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;" />
+          <div id="nameMsg" style="font-size:12.5px; margin-top:6px; min-height:16px;"></div>
+          <button id="nameSaveBtn" class="btn-search" style="width:100%; padding:11px; margin-top:8px;">이름 저장</button>
+        </div>
+
+        <!-- 비밀번호 변경 (이메일 계정만) / 카카오 안내 -->
+        <div id="pwSection" class="mp-section-box"></div>
+
+        <!-- 로그아웃 -->
+        <button id="logoutBtn" class="side-more"
+          style="width:100%; margin-top:0; margin-bottom:10px; padding:12px; background:#fff; color:var(--ink); border:1px solid var(--line);">로그아웃</button>
+
+        <!-- 회원탈퇴 -->
+        <div style="padding-top:6px;">
+          <button id="withdrawBtn"
+            style="width:100%; padding:11px; background:transparent; color:var(--brick); border:1px solid #F0CFCB; border-radius:8px; font-size:13.5px; font-family:inherit; cursor:pointer;">회원탈퇴</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /#myMain -->
 </div>
 
 <script>
+  // ── 유틸 ──────────────────────────────────────────────────────────────────
   function escapeHtml(s){
     return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
       return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
     });
   }
-
-  var PROVIDER_KR = { email: "이메일", kakao: "카카오" };
-
-  var CURRENT = null;
-
-  function sectionTitle(t){
-    return '<div style="font-size:14px; font-weight:700; color:var(--ink); margin:26px 0 12px;">' + escapeHtml(t) + '</div>';
-  }
-  function fieldLabel(t){
-    return '<label style="display:block; font-size:12.5px; color:var(--ink-soft); margin:0 0 5px;">' + escapeHtml(t) + '</label>';
-  }
-  var INPUT_STYLE = 'width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;';
-  var MSG_STYLE = 'font-size:12.5px; margin-top:8px; min-height:16px;';
-
   function showMsg(id, text, ok){
     var el = document.getElementById(id);
     if (!el) return;
@@ -55,194 +156,157 @@
     el.style.color = ok ? "var(--brass-dark)" : "var(--brick)";
   }
 
+  var PROVIDER_KR = { email: "이메일", kakao: "카카오" };
+  var CURRENT = null;
+
+  // ── 탭 전환 ───────────────────────────────────────────────────────────────
+  function switchTab(name){
+    document.querySelectorAll(".agent-tab").forEach(function(t){
+      t.classList.toggle("is-active", t.getAttribute("data-tab") === name);
+    });
+    document.querySelectorAll(".agent-tabpanel").forEach(function(p){
+      p.classList.toggle("is-active", p.getAttribute("data-tabpanel") === name);
+    });
+  }
+  document.querySelectorAll(".agent-tab").forEach(function(t){
+    t.addEventListener("click", function(){ switchTab(t.getAttribute("data-tab")); });
+  });
+
+  // ── 렌더링 (로그인 성공) ─────────────────────────────────────────────────
   function renderLoggedIn(d){
     CURRENT = d;
-    var name = escapeHtml(d.name || "회원");
-    var email = escapeHtml(d.email || "-");
-    var provider = PROVIDER_KR[d.provider] || (d.provider || "-");
     var isEmail = (d.provider === "email");
 
-    var html =
-      '<div style="display:flex; align-items:center; gap:14px; margin-bottom:22px;">' +
-        '<div style="width:52px; height:52px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:24px;">👤</div>' +
-        '<div>' +
-          '<div id="profileName" style="font-size:17px; font-weight:700; color:var(--ink);">' + name + '</div>' +
-          '<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(provider) + ' 로그인</div>' +
-        '</div>' +
-      '</div>' +
-      '<div style="border-top:1px solid var(--line); padding-top:16px;">' +
-        '<div style="display:flex; justify-content:space-between; padding:9px 0; font-size:13.5px;">' +
-          '<span style="color:var(--ink-soft);">이메일</span><span style="color:var(--ink); font-weight:600;">' + email + '</span>' +
-        '</div>' +
-        '<div style="display:flex; justify-content:space-between; padding:9px 0; font-size:13.5px;">' +
-          '<span style="color:var(--ink-soft);">로그인 방식</span><span style="color:var(--ink); font-weight:600;">' + escapeHtml(provider) + '</span>' +
-        '</div>' +
-      '</div>';
+    // 헤더 카드 채우기
+    document.getElementById("profileName").textContent = d.name || "회원";
+    document.getElementById("profileEmail").textContent = d.email || "";
+    document.getElementById("profileProvider").textContent = (PROVIDER_KR[d.provider] || d.provider || "") + " 로그인";
 
-    // 내 관심단지 (GET /api/favorites/mine 로 비동기 로드)
-    html +=
-      sectionTitle("내 관심단지") +
-      '<div id="myFavList"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
+    // 비밀번호 변경 버튼 — 이메일 계정만 표시
+    if (isEmail) document.getElementById("btnGoPassword").style.display = "";
 
-    // 매물의뢰 현황 (GET /api/listing-requests/mine)
-    html +=
-      sectionTitle("매물의뢰 현황") +
-      '<div id="myListingReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
-
-    // 매수의뢰 현황 (GET /api/buy-requests/mine)
-    html +=
-      sectionTitle("매수의뢰 현황") +
-      '<div id="myBuyReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>';
-
-    // 알림 설정 — 실거래 이메일 알림 (인앱 🔔 알림은 항상 발송)
+    // 이메일 알림 토글 초기값
     var emailAlertOn = (d.email_alert_enabled !== false);
-    html +=
-      sectionTitle("알림 설정") +
-      '<label style="display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); cursor:pointer;">' +
-        '<input type="checkbox" id="emailAlertChk"' + (emailAlertOn ? ' checked' : '') + ' style="accent-color:var(--brass);" /> ' +
-        '실거래 이메일 알림 받기' +
-      '</label>' +
-      '<div style="font-size:12px; color:var(--ink-soft); margin-top:5px;">관심단지에 새 실거래가 등록되면 이메일로 알려드립니다. 꺼도 사이트 내 🔔 알림은 계속 옵니다.</div>' +
-      '<div id="emailAlertMsg" style="' + MSG_STYLE + '"></div>';
+    document.getElementById("emailAlertChk").checked = emailAlertOn;
+    document.getElementById("emailAlertChk").addEventListener("change", doToggleEmailAlert);
 
-    // (a) 이름 변경
-    html +=
-      sectionTitle("이름 변경") +
-      fieldLabel("이름") +
-      '<input id="nameInput" type="text" value="' + name + '" maxlength="50" style="' + INPUT_STYLE + '" />' +
-      '<div id="nameMsg" style="' + MSG_STYLE + '"></div>' +
-      '<button id="nameSaveBtn" class="btn-search" style="width:100%; padding:11px; margin-top:6px;">이름 저장</button>';
+    // 이름 입력 초기값
+    document.getElementById("nameInput").value = d.name || "";
 
-    // (b) 비밀번호 변경 (이메일 계정만)
+    // 비밀번호 영역 (계정 탭)
+    var pwBox = document.getElementById("pwSection");
     if (isEmail){
-      html +=
-        sectionTitle("비밀번호 변경") +
-        fieldLabel("현재 비밀번호") +
-        '<input id="curPw" type="password" autocomplete="current-password" style="' + INPUT_STYLE + ' margin-bottom:10px;" />' +
-        fieldLabel("새 비밀번호 (8자 이상)") +
-        '<input id="newPw" type="password" autocomplete="new-password" style="' + INPUT_STYLE + '" />' +
-        '<div id="pwMsg" style="' + MSG_STYLE + '"></div>' +
-        '<button id="pwSaveBtn" class="btn-search" style="width:100%; padding:11px; margin-top:6px;">비밀번호 변경</button>';
+      pwBox.innerHTML =
+        '<div class="mp-section-title">비밀번호 변경</div>' +
+        '<label style="display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px;">현재 비밀번호</label>' +
+        '<input id="curPw" type="password" autocomplete="current-password" style="width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; margin-bottom:10px;" />' +
+        '<label style="display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px;">새 비밀번호 (8자 이상)</label>' +
+        '<input id="newPw" type="password" autocomplete="new-password" style="width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;" />' +
+        '<div id="pwMsg" style="font-size:12.5px; margin-top:6px; min-height:16px;"></div>' +
+        '<button id="pwSaveBtn" class="btn-search" style="width:100%; padding:11px; margin-top:8px;">비밀번호 변경</button>';
+      document.getElementById("pwSaveBtn").addEventListener("click", doChangePassword);
     } else {
-      html +=
-        sectionTitle("비밀번호") +
-        '<div style="font-size:13px; color:var(--ink-soft); background:var(--brass-tint); border-radius:8px; padding:12px 14px;">카카오 계정으로 로그인 중입니다. 비밀번호 변경이 필요 없습니다.</div>';
+      pwBox.innerHTML =
+        '<div class="mp-section-title">비밀번호</div>' +
+        '<div style="font-size:13px; color:var(--ink-soft); background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px 14px; line-height:1.6;">' +
+          '카카오 계정으로 로그인 중입니다.<br>비밀번호 변경이 필요하지 않습니다.' +
+        '</div>';
     }
 
-    // 로그아웃
-    html +=
-      '<button id="logoutBtn" class="btn-search" style="width:100%; padding:12px; margin-top:26px; background:#fff; color:var(--ink); border:1px solid var(--line);">로그아웃</button>';
-
-    // (c) 회원탈퇴
-    html +=
-      '<div style="border-top:1px solid var(--line); margin-top:26px; padding-top:18px;">' +
-        '<button id="withdrawBtn" style="width:100%; padding:11px; background:transparent; color:var(--brick); border:1px solid #F0CFCB; border-radius:8px; font-size:13.5px; font-family:inherit; cursor:pointer;">회원탈퇴</button>' +
-      '</div>';
-
-    document.getElementById("myBody").innerHTML = html;
+    // 버튼 이벤트
+    document.getElementById("btnGoAccount").addEventListener("click", function(){ switchTab("account"); });
+    if (isEmail){
+      document.getElementById("btnGoPassword").addEventListener("click", function(){
+        switchTab("account");
+        setTimeout(function(){ var el = document.getElementById("curPw"); if (el) el.focus(); }, 80);
+      });
+    }
     document.getElementById("nameSaveBtn").addEventListener("click", doSaveName);
-    document.getElementById("emailAlertChk").addEventListener("change", doToggleEmailAlert);
     document.getElementById("logoutBtn").addEventListener("click", doLogout);
     document.getElementById("withdrawBtn").addEventListener("click", openWithdrawModal);
-    if (isEmail) document.getElementById("pwSaveBtn").addEventListener("click", doChangePassword);
+
+    // 데이터 로드
     loadMyFavorites();
     loadMyListingRequests();
     loadMyBuyRequests();
+
+    // 화면 전환
+    document.getElementById("myLoading").style.display = "none";
+    document.getElementById("myMain").style.display = "";
   }
 
-  // ── 매물의뢰 현황 ─────────────────────────────────────────────
+  // ── 매물의뢰 현황 ─────────────────────────────────────────────────────────
   var LR_STATUS_LABEL = { submitted: "접수됨", in_progress: "처리중", done: "완료" };
   var LR_STATUS_COLOR = { submitted: "#4A7A18", in_progress: "#B4863F", done: "#6B7684" };
+
+  function requestItemHtml(it){
+    var st = LR_STATUS_LABEL[it.status] || it.status;
+    var color = LR_STATUS_COLOR[it.status] || "var(--ink-soft)";
+    var agentHtml;
+    if (it.agent_office_name) {
+      var officeName = escapeHtml(it.agent_office_name);
+      agentHtml = it.agent_slug
+        ? '담당 <a href="/agent/' + encodeURIComponent(it.agent_slug) + '" style="color:var(--brass); font-weight:700; text-decoration:none; border-bottom:1px dashed var(--brass);">' + officeName + '</a>'
+        : '담당 <span style="font-weight:700;">' + officeName + '</span>';
+    } else {
+      agentHtml = '<span style="color:var(--ink-soft);">담당자 배정 중</span>';
+    }
+    return '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line);">' +
+      '<div style="min-width:0;">' +
+        '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
+        '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
+          (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
+        '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
+      '</div>' +
+      '<span style="flex:0 0 auto; font-size:11.5px; font-weight:700; color:' + color + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px; white-space:nowrap;">' + st + '</span>' +
+    '</div>';
+  }
+
   function loadMyListingRequests(){
     var box = document.getElementById("myListingReqs");
     if (!box) return;
     fetch("/api/listing-requests/mine", { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
+      .then(function(r){ return r.json(); })
+      .then(function(d){
         var items = (d && d.items) || [];
         if (!items.length){
-          box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매물의뢰가 없습니다.<br/>건물 상세화면의 "매물 내놓기" 버튼으로 의뢰할 수 있습니다.</div>';
+          box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매물의뢰가 없습니다.</div>';
           return;
         }
-        box.innerHTML = items.map(function (it) {
-          var st = LR_STATUS_LABEL[it.status] || it.status;
-          var color = LR_STATUS_COLOR[it.status] || "var(--ink-soft)";
-          // 담당중개사 — 배정되면 상호 + 공개 프로필 링크, 아직 없으면 "담당자 배정 중"
-          var agentHtml;
-          if (it.agent_office_name) {
-            var officeName = escapeHtml(it.agent_office_name);
-            agentHtml = it.agent_slug
-              ? '담당 <a href="/agent/' + encodeURIComponent(it.agent_slug) + '" style="color:var(--brass); font-weight:700; text-decoration:none; border-bottom:1px dashed var(--brass);">' + officeName + '</a>'
-              : '담당 <span style="font-weight:700;">' + officeName + '</span>';
-          } else {
-            agentHtml = '<span style="color:var(--ink-soft);">담당자 배정 중</span>';
-          }
-          return '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line);">' +
-            '<div style="min-width:0;">' +
-              '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
-              '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
-                (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
-              '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
-            '</div>' +
-            '<span style="flex:0 0 auto; font-size:11.5px; font-weight:700; color:' + color + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px;">' + st + '</span>' +
-          '</div>';
-        }).join("");
+        box.innerHTML = items.map(requestItemHtml).join("");
       })
-      .catch(function () {
+      .catch(function(){
         box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매물의뢰 현황을 불러오지 못했습니다.</div>';
       });
   }
 
-  // ── 매수의뢰 현황 ─────────────────────────────────────────────
+  // ── 매수의뢰 현황 ─────────────────────────────────────────────────────────
   function loadMyBuyRequests(){
     var box = document.getElementById("myBuyReqs");
     if (!box) return;
     fetch("/api/buy-requests/mine", { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
+      .then(function(r){ return r.json(); })
+      .then(function(d){
         var items = (d && d.items) || [];
         if (!items.length){
-          box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매수의뢰가 없습니다.<br/>건물 상세화면의 "매수 희망" 버튼으로 의뢰할 수 있습니다.</div>';
+          box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매수의뢰가 없습니다.</div>';
           return;
         }
-        box.innerHTML = items.map(function (it) {
-          var st = LR_STATUS_LABEL[it.status] || it.status;
-          var color = LR_STATUS_COLOR[it.status] || "var(--ink-soft)";
-          var agentHtml;
-          if (it.agent_office_name) {
-            var officeName = escapeHtml(it.agent_office_name);
-            agentHtml = it.agent_slug
-              ? '담당 <a href="/agent/' + encodeURIComponent(it.agent_slug) + '" style="color:var(--brass); font-weight:700; text-decoration:none; border-bottom:1px dashed var(--brass);">' + officeName + '</a>'
-              : '담당 <span style="font-weight:700;">' + officeName + '</span>';
-          } else {
-            agentHtml = '<span style="color:var(--ink-soft);">담당자 배정 중</span>';
-          }
-          return '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line);">' +
-            '<div style="min-width:0;">' +
-              '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
-              '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
-                (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
-              '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
-            '</div>' +
-            '<span style="flex:0 0 auto; font-size:11.5px; font-weight:700; color:' + color + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px;">' + st + '</span>' +
-          '</div>';
-        }).join("");
+        box.innerHTML = items.map(requestItemHtml).join("");
       })
-      .catch(function () {
+      .catch(function(){
         box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매수의뢰 현황을 불러오지 못했습니다.</div>';
       });
   }
 
-  // ── 내 관심단지 ─────────────────────────────────────────────
+  // ── 내 관심단지 ───────────────────────────────────────────────────────────
   function favEmptyHtml(msg){
     return '<div style="text-align:center; padding:22px 12px; color:var(--ink-soft); font-size:13px; border:1px dashed var(--line); border-radius:8px;">' + escapeHtml(msg) + '</div>';
   }
-
   function fmtPrice(p){
     if (p == null) return "실거래 정보 없음";
     return Number(p).toLocaleString() + "만";
   }
-
   function renderFavRow(t){
     var name = (t.building_name && String(t.building_name).length) ? t.building_name : "이름 미상 단지";
     var addr = t.address || "";
@@ -258,10 +322,9 @@
         '</div>' +
         '<div style="font-size:14px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">' + escapeHtml(fmtPrice(t.price)) + '</div>' +
         '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
-                'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:4px;">★</button>' +
+                'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:4px; flex-shrink:0;">★</button>' +
       '</div>';
   }
-
   function loadMyFavorites(){
     var box = document.getElementById("myFavList");
     if (!box) return;
@@ -287,7 +350,6 @@
       })
       .catch(function(){ box.innerHTML = favEmptyHtml("네트워크 오류가 발생했습니다."); });
   }
-
   function removeMyFavorite(name, addr, btn){
     if (btn) btn.disabled = true;
     fetch("/api/favorites/mine", {
@@ -296,7 +358,6 @@
       body: JSON.stringify({ building_name: name || null, address: addr })
     })
       .then(function(){
-        // 지도 화면과 어긋나지 않도록 localStorage에서도 같은 키를 제거한다.
         try {
           var keys = JSON.parse(localStorage.getItem("livingstay_favorites") || "[]");
           var k = (name && name.length ? name : "null") + "|" + addr;
@@ -310,6 +371,7 @@
       .catch(function(){ if (btn) btn.disabled = false; });
   }
 
+  // ── 이름 저장 ─────────────────────────────────────────────────────────────
   function doSaveName(){
     var btn = document.getElementById("nameSaveBtn");
     var name = (document.getElementById("nameInput").value || "").trim();
@@ -334,6 +396,7 @@
       .catch(function(){ btn.disabled = false; showMsg("nameMsg", "네트워크 오류가 발생했습니다.", false); });
   }
 
+  // ── 이메일 알림 토글 ──────────────────────────────────────────────────────
   function doToggleEmailAlert(){
     var chk = document.getElementById("emailAlertChk");
     var enabled = !!chk.checked;
@@ -347,19 +410,21 @@
       .then(function(res){
         chk.disabled = false;
         if (res.ok && res.j.ok){
-          showMsg("emailAlertMsg", enabled ? "이메일 알림을 켰습니다." : "이메일 알림을 껐습니다.", true);
+          showMsg("emailAlertMsg", enabled ? "알림 켜짐" : "알림 꺼짐", true);
+          setTimeout(function(){ showMsg("emailAlertMsg", "", true); }, 2500);
         } else {
-          chk.checked = !enabled; // 실패 시 원상복구
-          showMsg("emailAlertMsg", (res.j && res.j.message) || "변경에 실패했습니다.", false);
+          chk.checked = !enabled;
+          showMsg("emailAlertMsg", (res.j && res.j.message) || "변경 실패", false);
         }
       })
       .catch(function(){
         chk.disabled = false;
         chk.checked = !enabled;
-        showMsg("emailAlertMsg", "네트워크 오류가 발생했습니다.", false);
+        showMsg("emailAlertMsg", "오류", false);
       });
   }
 
+  // ── 비밀번호 변경 ─────────────────────────────────────────────────────────
   function doChangePassword(){
     var btn = document.getElementById("pwSaveBtn");
     var cur = document.getElementById("curPw").value || "";
@@ -385,6 +450,7 @@
       .catch(function(){ btn.disabled = false; showMsg("pwMsg", "네트워크 오류가 발생했습니다.", false); });
   }
 
+  // ── 회원탈퇴 ─────────────────────────────────────────────────────────────
   function openWithdrawModal(){
     var overlay = document.createElement("div");
     overlay.id = "withdrawOverlay";
@@ -404,12 +470,10 @@
     document.getElementById("withdrawCancel").addEventListener("click", closeWithdrawModal);
     document.getElementById("withdrawConfirm").addEventListener("click", doWithdraw);
   }
-
   function closeWithdrawModal(){
     var o = document.getElementById("withdrawOverlay");
     if (o) o.parentNode.removeChild(o);
   }
-
   function doWithdraw(){
     var btn = document.getElementById("withdrawConfirm");
     btn.disabled = true;
@@ -432,16 +496,7 @@
       });
   }
 
-  function renderLoggedOut(){
-    document.getElementById("myBody").innerHTML =
-      '<div style="text-align:center; padding:36px 12px;">' +
-        '<div style="font-size:40px; margin-bottom:12px;">🔒</div>' +
-        '<div style="font-size:15px; font-weight:600; color:var(--ink); margin-bottom:6px;">로그인이 필요합니다.</div>' +
-        '<div style="font-size:13px; color:var(--ink-soft); margin-bottom:20px;">마이페이지는 로그인 후 이용하실 수 있습니다.</div>' +
-        '<a href="/?login=1" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:10px 28px; text-decoration:none;">로그인하러 가기</a>' +
-      '</div>';
-  }
-
+  // ── 로그아웃 ─────────────────────────────────────────────────────────────
   function doLogout(){
     var btn = document.getElementById("logoutBtn");
     if (btn) btn.disabled = true;
@@ -450,42 +505,42 @@
       .catch(function(){ window.location.href = "/"; });
   }
 
-  // ── 계정 유형 분기 ──────────────────────────────────────────────────────
-  // livingstay:auth 이벤트는 일반회원(account_type="user")에서만 발행되므로,
-  // 사업자 계정(agent/operator/loan_consultant)은 해당 대시보드로 리다이렉트한다.
-  // 비로그인이면 로그인 페이지로 이동. 일반회원이면 마이페이지 렌더링 실행.
+  // ── 비로그인 ─────────────────────────────────────────────────────────────
+  function renderLoggedOut(){
+    document.getElementById("myLoading").innerHTML =
+      '<div style="text-align:center; padding:36px 12px;">' +
+        '<div style="font-size:40px; margin-bottom:12px;">🔒</div>' +
+        '<div style="font-size:15px; font-weight:600; color:var(--ink); margin-bottom:6px;">로그인이 필요합니다.</div>' +
+        '<div style="font-size:13px; color:var(--ink-soft); margin-bottom:20px;">마이페이지는 로그인 후 이용하실 수 있습니다.</div>' +
+        '<a href="/?login=1" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:10px 28px; text-decoration:none;">로그인하러 가기</a>' +
+      '</div>';
+  }
+
+  // ── 계정 유형 분기 ────────────────────────────────────────────────────────
   var _BIZ_REDIRECT = {
     agent:           "/agent/dashboard",
     operator:        "/operator/dashboard",
     loan_consultant: "/loan-consultant/dashboard",
   };
 
-  function initMypage(d) {
-    renderLoggedIn(d);
-  }
-
   fetch("/api/auth/me", { credentials: "same-origin" })
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (!d || !d.logged_in) {
-        // 비로그인 — 로그인 모달 자동 오픈 파라미터와 함께 홈으로
+      if (!d || !d.logged_in){
         window.location.href = "/?login=1";
         return;
       }
-      if (_BIZ_REDIRECT[d.account_type]) {
-        // 사업자 계정 — 각자 전용 대시보드로 이동
+      if (_BIZ_REDIRECT[d.account_type]){
         window.location.href = _BIZ_REDIRECT[d.account_type];
         return;
       }
-      // account_type === "user" 인 경우만 마이페이지 렌더링
-      initMypage(d);
+      renderLoggedIn(d);
     })
     .catch(function(){ renderLoggedOut(); });
 </script>
 <script>window.PAGE_TITLE = "마이페이지";</script>
 <script src="/static/js/header.js"></script>
 <script src="/static/js/auth.js"></script>
-
-  <script src="/static/js/pw_toggle.js"></script>
+<script src="/static/js/pw_toggle.js"></script>
 </body>
 </html>
