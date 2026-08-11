@@ -45,7 +45,7 @@ DOC_REF_RE = re.compile(
 
 # 소개글 이미지 공개 서빙용 검증
 INTRO_IMG_REF_RE = re.compile(
-    r"^applications/operator/[0-9a-f]{32}/intro_img\.(jpg|jpeg|png)$"
+    r"^applications/(operator|agent|loan_consultant)/[0-9a-f]{32}/intro_img\.(jpg|jpeg|png)$"
 )
 
 

@@ -683,8 +683,12 @@ function renderMarkdownSafe(text) {
   if (!text) return '<span style="color:var(--ink-soft);font-size:12px;">내용을 입력하면 여기에 미리보기가 표시됩니다.</span>';
   function safeUrl(raw) {
     const u = raw.trim();
-    return (u.startsWith('http://') || u.startsWith('https://'))
-      ? u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+    if (u.startsWith('http://') || u.startsWith('https://'))
+      return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // 자체 소개글 이미지 경로 허용
+    if (/^\/api\/(?:operator|agent|loan_consultant)\/intro-image-file\/[a-zA-Z0-9/_.-]+$/.test(u))
+      return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '';
   }
   let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {

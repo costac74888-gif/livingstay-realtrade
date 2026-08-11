@@ -6222,6 +6222,9 @@ def _render_markdown_safe(text: str) -> str:
         u = _html.unescape(raw).strip()
         if u.startswith(("http://", "https://")):
             return _html.escape(u, quote=True)
+        # 자체 소개글 이미지 경로 허용 (operator/agent/loan_consultant)
+        if re.match(r'^/api/(?:operator|agent|loan_consultant)/intro-image-file/[a-zA-Z0-9/_.-]+$', u):
+            return _html.escape(u, quote=True)
         return ""
 
     s = _html.escape(text)
@@ -6505,6 +6508,49 @@ def operator_intro_image_upload():
 @app.route("/api/operator/intro-image-file/<path:key>")
 def operator_intro_image_serve(key):
     """소개글 이미지 공개 서빙 — 인증 불필요, 키 형식 검증 후 스토리지에서 직접 서빙."""
+    if not storage_util.is_valid_intro_img_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
+    return Response(data, content_type=ct, headers={
+        "Cache-Control": "public, max-age=31536000, immutable",
+    })
+
+
+@app.route("/api/agent/intro-image", methods=["POST"])
+@require_agent
+def agent_intro_image_upload():
+    """중개사 소개글 내 이미지 업로드."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다."}), 400
+    key = storage_util.build_doc_key("agent", "intro_img", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("중개사 소개글 이미지 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다."}), 500
+    url = f"/api/agent/intro-image-file/{key}"
+    return jsonify({"ok": True, "url": url})
+
+
+@app.route("/api/agent/intro-image-file/<path:key>")
+def agent_intro_image_serve(key):
+    """중개사 소개글 이미지 공개 서빙."""
     if not storage_util.is_valid_intro_img_ref(key):
         abort(404)
     try:
@@ -7082,6 +7128,49 @@ def loan_consultant_building_search():
         cur.close()
         conn.close()
     return jsonify({"items": items})
+
+
+@app.route("/api/loan-consultant/intro-image", methods=["POST"])
+@require_loan_consultant
+def loan_consultant_intro_image_upload():
+    """대출상담사 소개글 내 이미지 업로드."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다."}), 400
+    key = storage_util.build_doc_key("loan_consultant", "intro_img", ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("대출상담사 소개글 이미지 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다."}), 500
+    url = f"/api/loan-consultant/intro-image-file/{key}"
+    return jsonify({"ok": True, "url": url})
+
+
+@app.route("/api/loan-consultant/intro-image-file/<path:key>")
+def loan_consultant_intro_image_serve(key):
+    """대출상담사 소개글 이미지 공개 서빙."""
+    if not storage_util.is_valid_intro_img_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
+    return Response(data, content_type=ct, headers={
+        "Cache-Control": "public, max-age=31536000, immutable",
+    })
 
 
 @app.route("/api/operator/service-areas/mine")
