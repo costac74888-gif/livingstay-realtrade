@@ -134,6 +134,9 @@ def run():
     # /api/buildings-geo bounds 필터 추가 테스트
     failures += _check_buildings_geo_bounds(client)
 
+    # 수정 요청 → 승인 → 지도 노출 end-to-end 테스트
+    failures += _check_building_request_e2e(client)
+
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
         for f in failures:
@@ -142,9 +145,283 @@ def run():
 
     print(
         "\n모든 API 체크 통과 (/api/health, /api/regions, /api/years,"
-        " /api/transactions, /api/buildings-geo)"
+        " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_building_request_e2e(client):
+    """내 건물 수정 요청 → 승인 → 지도 노출 end-to-end 회귀 점검.
+
+    /api/submit-building의 "신규 마스터 INSERT 경로"를 검증한다.
+    외부 API 의존성(건축물대장, 지오코더)은 unittest.mock으로 대체해
+    data.go.kr 쿼터를 소모하지 않는다:
+
+      1. baseline: 의정부동 cluster 배지 카운트 기록
+      2. /api/submit-building (jibun_address_input 경로) 호출
+           classify_lodging_type → ('생활', ...) 으로 고정 반환 (data.go.kr 대체)
+           resolve_api_building_name → 고유 TEST_NAME 반환
+           _fill_master_coords → lat/lng 직접 UPDATE (geocoder 대체)
+         → submit_building이 master_buildings에 새 행을 INSERT하고
+           building_requests를 'verified'로 완결시키는 경로 전체가 실행됨
+      3. building_requests 행이 생성되고 status='verified'인지 DB 직접 확인
+         → 이때 이번 호출에서 생성된 req_id · mb_id를 캡처 (cleanup 전용)
+      4. master_buildings 행에 lat/lng가 채워졌는지 확인
+      5. 캐시 전체 초기화
+      6. /api/buildings-geo?q={이름}     — 정확 이름 검색에서 해당 건물 확인
+      7. /api/buildings-geo?q={붙여쓰기} — 공백제거 ILIKE 검색에서도 확인
+                                           (더 그레이스 경희 버그 회귀 방지)
+      8. /api/buildings-cluster?level=umd — umd 배지 카운트가 baseline+1인지 확인
+      9. 롤백: 이번 호출에서 생성된 req_id · mb_id만 삭제
+               (다른 행·다른 실행 결과를 건드리지 않음)
+
+    모든 fixture 식별자(이름·지번·도로명주소)는 ms 타임스탬프 기반으로 실행마다 고유.
+    BjdongMap 전제조건 (dev 환경 확인 완료):
+      extract_sgg_from_address('경기도 의정부시 ...') → sgg_cd='41150'
+      find_bjdong_cd('41150', '의정부동')             → bjdong_cd='10100'
+    """
+    import time as _time
+    from unittest import mock
+    import app as _app_module
+    from db import get_conn
+
+    failures = []
+
+    # 모든 fixture 식별자를 ms 타임스탬프로 고유화 — 같은 jibun/이름 중복 방지
+    _run_ms = str(int(_time.time() * 1000))
+    TEST_NAME         = f"자동검증빌딩 {_run_ms[-7:]}"   # 공백 포함 → ILIKE nospace 버그 재현
+    TEST_NAME_NOSPACE = TEST_NAME.replace(" ", "")
+    # 9xxx-9 범위: 9000+로 실제 지번 충돌 가능성 최소, -9 suffix로 test 전용 구별
+    TEST_JIBUN        = f"9{_run_ms[-3:]}-9"             # e.g., "9328-9" — 매 실행 고유
+    TEST_ROAD_ADDR    = f"경기도 의정부시 테스트로 {_run_ms[-5:]}"   # 매 실행 고유
+
+    REAL_SGG_CD   = "41150"
+    REAL_UMD_NM   = "의정부동"
+    REAL_SGG_TEXT = "경기도 의정부시"
+    TEST_LAT      = 37.7339
+    TEST_LNG      = 127.0471
+    TEST_LODGING  = "생활"
+
+    def _clear_caches():
+        """in-process 테스트 클라이언트 전용 — 전체 초기화가 부작용 없이 안전."""
+        _app_module._geo_cache.clear()
+        _app_module._cluster_cache.clear()
+
+    conn = get_conn()
+    cur  = conn.cursor()
+    # 이번 호출에서 생성된 ID만 추적 — cleanup은 이 ID만 삭제
+    captured_req_id = None
+    captured_mb_id  = None
+
+    try:
+        # ── ① Baseline: 삽입 전 의정부동 클러스터 배지 카운트 ─────────────────
+        _clear_caches()
+        r_base = client.get(
+            f"/api/buildings-cluster?level=umd&sgg_nm={REAL_SGG_TEXT}"
+        )
+        base_items   = (r_base.get_json() or {}).get("items", [])
+        expected_umd = f"{REAL_SGG_TEXT} {REAL_UMD_NM}".strip()
+        base_badge   = next((it for it in base_items if it.get("name") == expected_umd), None)
+        base_count   = base_badge["total"] if base_badge else 0
+
+        # ── ② /api/submit-building — 외부 API mock으로 NEW INSERT 경로 실행 ──
+        mock_title = {"new_plat_plc": TEST_ROAD_ADDR, "plat_plc": None, "ho_cnt": 50}
+
+        def _mock_fill_coords(inner_cur, master_id, road_address):
+            """geocode_buildings 호출 없이 lat/lng를 직접 설정.
+            submit_building이 열어 둔 cursor를 그대로 받아 같은 트랜잭션 내에서 UPDATE."""
+            inner_cur.execute(
+                "UPDATE master_buildings SET lat=%s, lng=%s WHERE id=%s",
+                (TEST_LAT, TEST_LNG, master_id),
+            )
+
+        with (
+            mock.patch(
+                "building_registry.classify_lodging_type",
+                return_value=(TEST_LODGING, "생활숙박시설", "", mock_title, "검증완료"),
+            ),
+            mock.patch(
+                "building_registry.resolve_api_building_name",
+                return_value=TEST_NAME,   # 고유 이름 → name_pending=False
+            ),
+            mock.patch("app._fill_master_coords", side_effect=_mock_fill_coords),
+        ):
+            r_sub = client.post(
+                "/api/submit-building",
+                json={
+                    "road_address":           TEST_ROAD_ADDR,
+                    "jibun_address_input":    f"{REAL_UMD_NM} {TEST_JIBUN}",
+                    "suggested_lodging_type": TEST_LODGING,
+                },
+                headers={"X-Forwarded-For": "203.0.113.42"},  # 레이트리밋 전용 테스트 IP
+            )
+
+        if r_sub.status_code != 200:
+            failures.append(
+                f"submit-building: HTTP {r_sub.status_code} (기대: 200)"
+            )
+        else:
+            sub_pl = r_sub.get_json() or {}
+            if sub_pl.get("status") != "verified":
+                failures.append(
+                    f"submit-building: status='{sub_pl.get('status')}' (기대: 'verified') "
+                    f"— {sub_pl.get('message')}"
+                )
+            else:
+                print(f"OK  /api/submit-building  (status=verified, 건물={TEST_NAME})")
+
+        # ── ③ 이번 호출이 생성한 행 ID 캡처 + DB 연결 확인 ──────────────────
+        # 고유한 (TEST_NAME, TEST_JIBUN) 조합으로 이번 호출 결과만 특정함
+        cur.execute("""
+            SELECT br.id AS req_id, br.status,
+                   mb.id AS mb_id, mb.lat, mb.lng
+            FROM building_requests br
+            JOIN master_buildings mb ON mb.id = br.master_building_id
+            WHERE mb.building_name = %s
+              AND mb.jibun         = %s
+              AND br.request_type  = 'new'
+            ORDER BY br.id DESC LIMIT 1
+        """, (TEST_NAME, TEST_JIBUN))
+        linked = cur.fetchone()
+
+        if not linked:
+            failures.append(
+                f"building_requests: '{TEST_NAME}' (jibun={TEST_JIBUN}) 연결 행 없음 "
+                f"— submit-building이 master_buildings INSERT를 하지 않은 것으로 의심"
+            )
+            # 고아 building_request 캡처 (master 생성 전 실패 대비) — 고유 road_address 기준
+            cur.execute(
+                "SELECT id FROM building_requests"
+                " WHERE road_address=%s ORDER BY id DESC LIMIT 1",
+                (TEST_ROAD_ADDR,),
+            )
+            br_row = cur.fetchone()
+            if br_row:
+                captured_req_id = br_row["id"]
+        else:
+            captured_req_id = linked["req_id"]
+            captured_mb_id  = linked["mb_id"]
+            if linked["status"] != "verified":
+                failures.append(
+                    f"building_requests id={captured_req_id}: "
+                    f"status='{linked['status']}' (기대: 'verified')"
+                )
+            else:
+                print(
+                    f"OK  building_requests id={captured_req_id} status=verified "
+                    f"→ master_building_id={captured_mb_id}"
+                )
+            if linked["lat"] is None or linked["lng"] is None:
+                failures.append(
+                    f"master_buildings id={captured_mb_id}: lat/lng NULL — 지도 노출 불가 "
+                    f"(_fill_master_coords mock이 lat/lng를 설정하지 못함)"
+                )
+            else:
+                print(
+                    f"OK  master_buildings id={captured_mb_id} "
+                    f"lat={float(linked['lat']):.4f} lng={float(linked['lng']):.4f}"
+                )
+
+        # ── ④ 캐시 초기화 — baseline 조회가 채운 stale 항목 제거 ──────────────
+        _clear_caches()
+
+        # ── ⑤ /api/buildings-geo — 정확 이름 검색 ───────────────────────────
+        if captured_mb_id is not None:
+            r = client.get(f"/api/buildings-geo?q={TEST_NAME}")
+            if r.status_code != 200:
+                failures.append(f"geo(정확 이름): HTTP {r.status_code} (기대: 200)")
+            else:
+                payload = r.get_json() or {}
+                found = [it for it in payload.get("items", [])
+                         if it.get("id") == captured_mb_id]
+                if not found:
+                    failures.append(
+                        f"geo(정확 이름): id={captured_mb_id}가 검색 결과에 없음 "
+                        f"(total={payload.get('total')})"
+                    )
+                else:
+                    print(
+                        f"OK  /api/buildings-geo?q={TEST_NAME}"
+                        f"  (id={captured_mb_id} 확인)"
+                    )
+
+            # ── ⑥ /api/buildings-geo — 붙여쓰기 검색 (ILIKE nospace 회귀 방지) ──
+            r = client.get(f"/api/buildings-geo?q={TEST_NAME_NOSPACE}")
+            if r.status_code != 200:
+                failures.append(f"geo(붙여쓰기): HTTP {r.status_code} (기대: 200)")
+            else:
+                payload = r.get_json() or {}
+                found = [it for it in payload.get("items", [])
+                         if it.get("id") == captured_mb_id]
+                if not found:
+                    failures.append(
+                        f"geo(붙여쓰기): REPLACE(building_name,' ','') ILIKE 검색에서 "
+                        f"id={captured_mb_id} 없음 — nospace ILIKE 조건 확인 필요"
+                    )
+                else:
+                    print(
+                        f"OK  /api/buildings-geo?q={TEST_NAME_NOSPACE}"
+                        f"  (붙여쓰기 id={captured_mb_id} 확인)"
+                    )
+
+        # ── ⑦ /api/buildings-cluster — umd 배지 baseline+1 확인 ─────────────
+        _clear_caches()
+        r = client.get(
+            f"/api/buildings-cluster?level=umd&sgg_nm={REAL_SGG_TEXT}"
+        )
+        if r.status_code != 200:
+            failures.append(f"cluster(umd): HTTP {r.status_code} (기대: 200)")
+        else:
+            payload     = r.get_json() or {}
+            items       = payload.get("items", [])
+            badge       = next((it for it in items if it.get("name") == expected_umd), None)
+            if badge is None:
+                failures.append(
+                    f"cluster(umd): '{expected_umd}' 배지 없음 "
+                    f"(반환 배지 수={len(items)})"
+                )
+            else:
+                after_count = badge.get("total", 0)
+                if after_count < base_count + 1:
+                    failures.append(
+                        f"cluster(umd): '{expected_umd}' total={after_count}, "
+                        f"기대≥{base_count + 1} (baseline={base_count}+1) "
+                        f"— 신규 건물이 집계에 포함되지 않음"
+                    )
+                else:
+                    print(
+                        f"OK  /api/buildings-cluster?level=umd&sgg_nm={REAL_SGG_TEXT}"
+                        f"  ('{expected_umd}' {base_count}→{after_count})"
+                    )
+
+    except Exception as e:
+        failures.append(f"e2e 테스트 오류: {e}")
+
+    finally:
+        # ── ⑧ 롤백: 이번 호출에서 캡처한 ID만 삭제 ─────────────────────────
+        # → 다른 실행·다른 사용자 행을 절대 건드리지 않음
+        try:
+            if captured_req_id:
+                cur.execute(
+                    "DELETE FROM building_requests WHERE id=%s", (captured_req_id,)
+                )
+            if captured_mb_id:
+                cur.execute(
+                    "DELETE FROM master_buildings WHERE id=%s", (captured_mb_id,)
+                )
+            conn.commit()
+        except Exception as cleanup_err:
+            failures.append(f"롤백 실패: {cleanup_err}")
+        finally:
+            cur.close()
+            conn.close()
+        # 사후 캐시 제거 — 다음 실행이 stale 값을 보지 않게
+        try:
+            _clear_caches()
+        except Exception:
+            pass
+
+    return failures
 
 
 def _check_buildings_geo_bounds(client):
