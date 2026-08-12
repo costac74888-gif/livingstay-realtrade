@@ -379,7 +379,7 @@ document.getElementById("chkFavOnly").addEventListener("change", e=>{
   state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
   renderFavChips(); loadBoard();
 });
-document.getElementById("btnSearch").addEventListener("click", ()=>{
+document.getElementById("btnSearch").addEventListener("click", async ()=>{
   state.q = document.getElementById("inputQ").value.trim();
   state.page = 1;
   loadBoard();
@@ -392,6 +392,37 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   }
   // q(건물명·주소) 또는 지역 필터(si_do/sgg_nm/umd_nm)가 있으면 fit:true로 지도를 해당 지역으로 이동
   const hasFit = !!(state.q || state.si_do || state.sgg_nm || state.umd_nm);
+
+  // 텍스트 검색어 없이 지역 드롭다운만 선택한 경우:
+  // fit 옵션이 markers 모드에서만 동작하므로, 선택된 필터 구체성에 맞는
+  // 줌 레벨로 지도를 강제 이동시킨 뒤 해당 레벨의 클러스터를 재조회한다.
+  // 이렇게 해야 "주교동까지 선택 → 배지가 주교동 단위로 표시"가 동작함.
+  if (!state.q && hasFit && kakaoMap){
+    const targetLevel     = state.umd_nm ? CLUSTER_UMD_MIN_LEVEL
+                          : state.sgg_nm ? CLUSTER_SGG_MIN_LEVEL
+                          : CLUSTER_SIDO_MIN_LEVEL;
+    const clusterLevelName = state.umd_nm ? "umd"
+                           : state.sgg_nm ? "sgg"
+                           : "sido";
+    try {
+      // 해당 지역 클러스터를 미리 조회해 중심 좌표를 구한다
+      // (건물들의 평균 lat/lng — loadClusterOverlays 내부와 동일한 데이터)
+      const _p = new URLSearchParams({ level: clusterLevelName });
+      const _f = mapFiltersFromState();
+      ["si_do","sgg_nm","umd_nm","lodging_type"].forEach(k => { if (_f[k]) _p.set(k, _f[k]); });
+      const _r = await fetch(`/api/buildings-cluster?${_p}`);
+      const _d = await _r.json();
+      const _items = _d.items || [];
+      if (_items.length > 0){
+        // 단일 결과면 그 좌표로, 여럿이면 평균 중심으로 이동
+        const _cLat = _items.reduce((s, i) => s + i.lat, 0) / _items.length;
+        const _cLng = _items.reduce((s, i) => s + i.lng, 0) / _items.length;
+        kakaoMap.setCenter(new kakao.maps.LatLng(_cLat, _cLng));
+        kakaoMap.setLevel(targetLevel);
+      }
+    } catch(e){ console.warn("[SEARCH] 지역 중심 좌표 조회 실패:", e); }
+  }
+
   updateMapForZoom(mapFiltersFromState(), { force: true, fit: hasFit });
 });
 function resetToHome(){
