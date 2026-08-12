@@ -966,6 +966,8 @@ async function loadMapMarkers(filters = {}, opts = {}){
     }
     updateMarkerLabels();
     console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
+    // 완료 콜백 — updateMapForZoom의 0건 폴백 판단에 사용
+    if (opts.onComplete) opts.onComplete(placed);
   }
 
   addChunk();
@@ -975,6 +977,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
 function _clusterModeForLevel(lv){
   if (lv >= CLUSTER_SIDO_MIN_LEVEL) return "sido";
   if (lv >= CLUSTER_SGG_MIN_LEVEL)  return "sgg";
+  if (lv >= CLUSTER_UMD_MIN_LEVEL)  return "umd";   // 읍면동 집계 배지 (lv 7)
   return "markers";
 }
 
@@ -1126,7 +1129,23 @@ async function updateMapForZoom(filters = {}, opts = {}){
     // q 검색(forceMarkers)이면 skipBounds:true라 줌 레벨과 무관하게 결과가 같으므로
     // 재조회 자체를 생략한다 — setBounds/setLevel → zoom_changed → loadMapMarkers 무한루프 방지.
     if (forceMarkers && opts.noAutoFit) return;
-    await loadMapMarkers(filters, { fit: opts.fit || forceMarkers, skipBounds: forceMarkers });
+
+    // q 검색 0건 → umd 클러스터 폴백 콜백
+    // "이 건물은 아직 지도에 없지만 이 동네엔 이만큼 등록돼 있다"는 최소 피드백 제공.
+    // q를 제거하고 나머지 지역 필터(si_do/sgg_nm/umd_nm)만 유지해 umd 배지를 표시한다.
+    const _markerOpts = { fit: opts.fit || forceMarkers, skipBounds: forceMarkers };
+    if (forceMarkers){
+      _markerOpts.onComplete = (placed) => {
+        if (placed === 0){
+          const fallback = Object.assign({}, filters);
+          delete fallback.q;  // 검색어 제거 — 지역 필터만으로 umd 집계
+          _currentMapMode = "umd";
+          loadClusterOverlays("umd", fallback);
+          console.log("[MAP] q=0건 → umd 클러스터 폴백");
+        }
+      };
+    }
+    await loadMapMarkers(filters, _markerOpts);
   } else {
     if (_currentMapMode !== mode || opts.force){
       _currentMapMode = mode;
