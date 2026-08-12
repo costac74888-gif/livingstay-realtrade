@@ -432,10 +432,13 @@ document.getElementById("btnSearch").addEventListener("click", async ()=>{
           // 단일 결과면 그 좌표로, 여럿이면 평균 중심으로 이동
           const _cLat = _items.reduce((s, i) => s + i.lat, 0) / _items.length;
           const _cLng = _items.reduce((s, i) => s + i.lng, 0) / _items.length;
+          // setLevel 이 zoom_changed 이벤트를 즉시 발생시키고,
+          // 핸들러가 _lastMapFilters 로 클러스터를 재조회하므로
+          // setCenter/setLevel 호출 전에 미리 올바른 필터로 갱신해둔다.
+          _lastMapFilters = fb.filters;
+          _effectiveMapFilters = fb.filters;
           kakaoMap.setCenter(new kakao.maps.LatLng(_cLat, _cLng));
           kakaoMap.setLevel(fb.level);
-          // 지도 갱신도 이 레벨의 필터(상위 geo 필터만)로 호출해야 배지가 유지된다
-          _effectiveMapFilters = fb.filters;
           break; // 첫 번째 결과가 있는 레벨에서 중단
         }
         // 해당 레벨에 건물 없음 → 다음 상위 레벨로 폴백
