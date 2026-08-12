@@ -147,6 +147,26 @@ function escapeHtml(v){
   ));
 }
 
+let _fallbackToastTimer = null;
+function showFallbackToast(msg){
+  const wrap = document.getElementById("fallbackToast");
+  if (!wrap) return;
+  // 이전 타이머 취소 후 새 메시지로 갱신
+  if (_fallbackToastTimer) { clearTimeout(_fallbackToastTimer); _fallbackToastTimer = null; }
+  wrap.innerHTML = `<div class="fallback-toast-inner">${escapeHtml(msg)}</div>`;
+  wrap.style.display = "block";
+  const inner = wrap.querySelector(".fallback-toast-inner");
+  // 2.8초 후 페이드아웃, 0.4초 뒤 숨김
+  _fallbackToastTimer = setTimeout(function(){
+    if (inner) inner.classList.add("fading");
+    _fallbackToastTimer = setTimeout(function(){
+      wrap.style.display = "none";
+      wrap.innerHTML = "";
+      _fallbackToastTimer = null;
+    }, 420);
+  }, 2800);
+}
+
 function renderFavChips(){
   const wrap = document.getElementById("favChips");
   const favs = getFavorites();
@@ -422,7 +442,8 @@ document.getElementById("btnSearch").addEventListener("click", async ()=>{
           filters: { si_do: state.si_do, lodging_type: _lodging } });
       }
 
-      for (const fb of _fallbacks){
+      for (let _fbi = 0; _fbi < _fallbacks.length; _fbi++){
+        const fb = _fallbacks[_fbi];
         const _p = new URLSearchParams({ level: fb.name });
         Object.entries(fb.filters).forEach(([k, v]) => { if (v) _p.set(k, v); });
         const _r = await fetch(`/api/buildings-cluster?${_p}`);
@@ -439,6 +460,23 @@ document.getElementById("btnSearch").addEventListener("click", async ()=>{
           _effectiveMapFilters = fb.filters;
           kakaoMap.setCenter(new kakao.maps.LatLng(_cLat, _cLng));
           kakaoMap.setLevel(fb.level);
+          // 폴백이 실제로 발생한 경우(처음 선택한 레벨에 건물 없음) 사용자에게 안내.
+          // 메시지는 실제로 결과가 발견된 레벨(fb.name)을 기준으로 결정한다.
+          if (_fbi > 0){
+            const _orig = _fallbacks[0].name; // 사용자가 처음 선택한 레벨
+            const _resolved = fb.name;        // 실제로 건물이 있는 레벨
+            let _toastMsg;
+            if (_resolved === "sgg"){
+              _toastMsg = "선택한 읍면동에 등록 건물이 없어 시군구 단위로 인근 배지를 표시합니다";
+            } else if (_resolved === "sido"){
+              if (_orig === "umd"){
+                _toastMsg = "선택한 읍면동·시군구에 등록 건물이 없어 시/도 단위로 표시합니다";
+              } else {
+                _toastMsg = "이 시군구에 등록 건물이 없어 시/도 단위로 표시합니다";
+              }
+            }
+            if (_toastMsg) showFallbackToast(_toastMsg);
+          }
           break; // 첫 번째 결과가 있는 레벨에서 중단
         }
         // 해당 레벨에 건물 없음 → 다음 상위 레벨로 폴백
@@ -534,27 +572,25 @@ document.getElementById("btnSubmitBuilding").addEventListener("click", async () 
   const road_address = document.getElementById("submitAddress").value.trim();
   const jibun_address_input = (document.getElementById("submitJibunAddress") || {value:""}).value.trim();
   const building_name_hint = document.getElementById("submitNameHint").value.trim();
-  const suggested_lodging_type = document.getElementById("submitLodgingType").value;
-  const resultBox = document.getElementById("submitResult");
-
-  if (!road_address) {
-    resultBox.style.display = "block";
-    resultBox.style.background = "#FBEBE9";
-    resultBox.style.color = "#B3453A";
-    resultBox.textContent = "주소를 입력해주세요.";
-    return;
-  }
+  const suggested_lodging_type = document.getElementById("correctionSuggestedType").value;
+  const resultBox = document.getElementById("correctionResult");
 
   resultBox.style.display = "block";
   resultBox.style.background = "#EEF1F3";
   resultBox.style.color = "var(--ink-soft)";
-  resultBox.textContent = "건축물대장을 조회하고 있습니다…";
+  resultBox.textContent = "건축물대장을 다시 조회하고 있습니다…";
 
   try {
-    const res = await fetch("/api/submit-building", {
+    const res = await fetch("/api/request-correction", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ road_address, jibun_address_input, building_name_hint, suggested_lodging_type }),
+      body: JSON.stringify({
+        sgg_cd: correctionTarget.sgg_cd,
+        umd_nm: correctionTarget.umd_nm,
+        jibun: correctionTarget.jibun,
+        suggested_lodging_type,
+        requester_note,
+      }),
     });
     const data = await res.json();
 
@@ -1407,7 +1443,7 @@ document.getElementById("btnSubmitCorrection").addEventListener("click", async (
   }
 });
 
-/* ================= 좌측 사이드 패널 (지도/검색/게시판과 독립) ================= */
+/* ===== 좌측 사이드 패널 (지도/검색/게시판과 독립) ===== */
 let sideTrendChart = null;
 
 async function loadTrendChart(){
@@ -1544,7 +1580,7 @@ async function loadSideFavorites(){
   box.innerHTML = ordered.map((t, i) => renderSideTx(t, i + 1)).join("");
 }
 
-/* ================= 건물 상세: 좌측 패널 전환 ================= */
+/* ===== 건물 상세: 좌측 패널 전환 ===== */
 /* /building/<id> 를 별도 페이지로 이동하지 않고, 지도는 그대로 둔 채
    좌측 패널(.side-panel) 내용만 건물 상세로 통째로 교체한다.
    (static/building.html에 있던 HTML/차트 코드를 그대로 가져와 사용) */
