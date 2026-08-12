@@ -52,6 +52,11 @@
     padding:9px 22px; font-weight:600; font-size:13.5px; cursor:pointer; white-space:nowrap;
   }
   .btn-search:hover{background:#000;}
+  .btn-reset{
+    background:#fff; color:var(--ink-soft); border:1px solid var(--line); border-radius:8px;
+    padding:9px 16px; font-weight:600; font-size:13.5px; cursor:pointer; white-space:nowrap;
+  }
+  .btn-reset:hover{background:#F1F3F5; color:var(--ink);}
   .search-row2{
     display:flex; align-items:center; gap:14px; margin-top:12px; padding-top:12px;
     border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap;
@@ -121,7 +126,9 @@
 
   @media (max-width: 980px){
     .search-grid{grid-template-columns:1fr 1fr;}
-    .btn-search{grid-column:span 2;}
+    /* 검색·초기화 버튼을 같은 행에 나란히 — 각 1칸씩 */
+    .btn-search{grid-column:span 1;}
+    .btn-reset {grid-column:span 1;}
     table.data-table{font-size:12px;}
     td.col-addr{display:none;}
     .footer-inner{flex-direction:column;}
@@ -274,7 +281,8 @@
     /* 검색바: 전체 폭으로, 내용 많으면 스크롤 */
     .map-searchbar{
       left:var(--stage-gap);
-      max-height:calc(100vh - 80px); overflow-y:auto;
+      max-height:calc(100vh - 80px);
+      max-height:calc(100dvh - 80px); overflow-y:auto;
       /* 카카오맵 SDK가 지도 컨테이너에 touchmove preventDefault를 걸어 패널 스크롤을
          가로채는 문제 방지 — 세로 pan 제스처를 패널이 우선 처리하도록 명시 */
       touch-action: pan-y;

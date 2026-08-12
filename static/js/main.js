@@ -468,6 +468,7 @@ function resetToHome(){
   window.scrollTo({top:0, behavior:"smooth"});
 }
 document.getElementById("brandHome").addEventListener("click", resetToHome);
+document.getElementById("btnResetSearch").addEventListener("click", resetToHome);
 document.getElementById("inputQ").addEventListener("keydown", e=>{
   if (e.key === "Enter") document.getElementById("btnSearch").click();
 });
