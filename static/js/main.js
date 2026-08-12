@@ -1108,7 +1108,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       "min-width:52px;max-width:120px;";
     el.innerHTML =
       `<div style="font-size:11px;font-weight:700;color:#16202E;white-space:nowrap;` +
-      `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(item.name)}</div>` +
+      `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(clusterLevel === "umd" ? item.name.trim().split(" ").pop() : item.name)}</div>` +
       `<div style="font-size:13px;font-weight:800;color:#16202E;line-height:1.3;">` +
       `${total.toLocaleString("ko-KR")}</div>` +
       `<div style="display:flex;height:${BAR_H}px;border-radius:3px;overflow:hidden;` +
