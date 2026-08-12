@@ -301,7 +301,10 @@
 
   // ── 내 관심단지 ───────────────────────────────────────────────────────────
   function favEmptyHtml(msg){
-    return '<div style="text-align:center; padding:22px 12px; color:var(--ink-soft); font-size:13px; border:1px dashed var(--line); border-radius:8px;">' + escapeHtml(msg) + '</div>';
+    var extra = (msg === "저장된 관심단지가 없습니다.")
+      ? '<div style="margin-top:8px; font-size:12px; font-weight:400; color:var(--ink-soft);">관심단지를 저장하면 시세 변동을 놓치지 않고, 매도 타이밍도 놓치지 않을 수 있어요</div>'
+      : '';
+    return '<div style="text-align:center; padding:22px 12px; color:var(--ink-soft); font-size:13px; border:1px dashed var(--line); border-radius:8px;">' + escapeHtml(msg) + extra + '</div>';
   }
   function fmtPrice(p){
     if (p == null) return "실거래 정보 없음";

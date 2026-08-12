@@ -102,6 +102,9 @@
             '<input type="checkbox" id="authRemember" /> 로그인 상태 유지 (31일)' +
           '</label>' +
           '<div class="auth-consent" id="authConsent" style="display:none;">' +
+            '<div style="background:#fffbf3; border:1px solid #f0ddb0; border-radius:8px; padding:9px 12px; margin-bottom:10px; font-size:12.5px; color:#8a5e1a; line-height:1.55;">' +
+              '🎁 회원가입하면 관심단지를 등록하고, 새 실거래가 등록될 때마다 무료로 알림을 받아볼 수 있어요' +
+            '</div>' +
             '<label class="auth-consent-row auth-consent-all">' +
               '<input type="checkbox" id="agreeAll" /> <b>전체 동의</b>' +
             '</label>' +

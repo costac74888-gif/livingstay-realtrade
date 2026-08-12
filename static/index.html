@@ -56,7 +56,16 @@
   </div>
 
   <div id="map"></div>
-  <div id="mapEmpty" style="display:none; position:absolute; inset:0; align-items:center; justify-content:center; background:rgba(255,255,255,.85); font-size:14px; color:var(--ink-soft); font-weight:600; text-align:center; padding:0 16px;">검색 결과가 없습니다</div>
+  <!-- ⑤ 검색 0건 유도 — flex-direction:column으로 2줄 표시 -->
+  <div id="mapEmpty" style="display:none; position:absolute; inset:0; flex-direction:column; gap:8px; align-items:center; justify-content:center; background:rgba(255,255,255,.85); font-size:14px; color:var(--ink-soft); font-weight:600; text-align:center; padding:0 16px;">
+    <div>검색 결과가 없습니다</div>
+    <div style="font-size:12px; font-weight:400;">찾으시는 건물이 아직 없나요? <a href="/mypage" style="color:var(--brass,#B4863F); font-weight:600; text-decoration:none;">관심 등록해두면 신규 등록 시 알려드립니다 →</a></div>
+  </div>
+  <!-- ①⑧ 관심저장 유도 배너 — 오버레이/내건물시세 검색 직후 세션당 1회 -->
+  <div id="favHintBanner" style="display:none; position:absolute; top:0; left:0; right:0; z-index:200; background:rgba(180,134,63,0.93); color:#fff; font-size:13px; font-weight:600; text-align:center; padding:9px 44px 9px 16px; line-height:1.5; pointer-events:auto;">
+    이 건물, 나중에 또 보고 싶다면 ☆로 저장하세요 — 새 실거래 등록 시 바로 알려드려요
+    <button type="button" id="favHintClose" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#fff; font-size:20px; line-height:1; cursor:pointer; padding:2px 6px;" aria-label="닫기">×</button>
+  </div>
 
   <!-- 지도 우측 상단: 검색바 접기/펼치기 버튼 -->
   <button class="searchbar-toggle" id="btnToggleSearch">🔍 검색</button>
@@ -338,10 +347,23 @@
       if (e.target === overlay){ closeOverlay(); }
     });
 
+    // ①⑧ 관심저장 유도 배너 — 세션당 1회, doOverlaySearch 후 표시
+    var FAV_HINT_KEY = "hs_fav_hint_seen";
+    var favBanner = document.getElementById("favHintBanner");
+    var favHintClose = document.getElementById("favHintClose");
+    if (favHintClose) favHintClose.addEventListener("click", function(){ if (favBanner) favBanner.style.display = "none"; });
+    function showFavHintBanner(){
+      try { if (sessionStorage.getItem(FAV_HINT_KEY)) return; } catch(e){}
+      if (!favBanner) return;
+      setTimeout(function(){ favBanner.style.display = "block"; }, 900);
+      try { sessionStorage.setItem(FAV_HINT_KEY, "1"); } catch(e){}
+    }
+
     // 검색 실행
     function doOverlaySearch(){
       var q = (document.getElementById("overlayQ").value || "").trim();
       closeOverlay();
+      showFavHintBanner();
       if (q){
         var inp = document.getElementById("inputQ");
         if (inp) inp.value = q;

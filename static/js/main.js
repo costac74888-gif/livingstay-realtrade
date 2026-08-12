@@ -42,7 +42,7 @@ function toggleFav(item){
   }
   // 하드게이트: 비로그인은 저장 불가
   if (!window.__livingstayLoggedIn){
-    promptLogin("관심저장은 로그인 후 이용할 수 있습니다.");
+    promptLogin("로그인하고 관심단지를 저장하면, 이 건물의 새 실거래가 등록될 때 알림을 보내드려요");
     return false;
   }
   const k = favKey(item);
@@ -797,8 +797,17 @@ function buildingInfoInnerHtml(b){
   const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
   const canFav = favAddr !== "";
   const favActive = canFav && isFav({ building_name: b.building_name, address: favAddr });
+  // ③ 마커 팝업 최초 1회 툴팁 — localStorage로 노출 여부 제어
+  let showMarkerTip = false;
+  if (canFav && !favActive){
+    try { showMarkerTip = !localStorage.getItem("hs_marker_fav_tip_seen"); } catch(e){}
+    if (showMarkerTip){ try { localStorage.setItem("hs_marker_fav_tip_seen", "1"); } catch(e){} }
+  }
+  const markerTipHtml = showMarkerTip
+    ? `<div style="display:inline-block; font-size:11px; color:#B4863F; background:#fffbf3; border:1px solid #f0ddb0; border-radius:6px; padding:2px 8px; margin-bottom:3px;">☆를 눌러 저장해보세요</div><br>`
+    : "";
   const favBtn = canFav
-    ? `<button type="button" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}" data-bid="${b.id != null ? b.id : ""}"
+    ? markerTipHtml + `<button type="button" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}" data-bid="${b.id != null ? b.id : ""}"
          onclick="return window.toggleFavFromInfo(this);"
          style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
          ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
@@ -2273,6 +2282,7 @@ async function loadBuildingHeader(id){
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
       ${b.lat != null && b.lng != null ? `<button type="button" id="bMapLocBtn" class="b-icon-btn" title="지도 위치 보기">📍<span class="b-icon-label">지도위치</span></button>` : ""}
     </div>
+    ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 이 건물의 새 실거래를 이메일로 알려드립니다</div>` : ""}
     <div style="display:flex; gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:12px;">
       ${bStat("주용도", useCombined)}
       ${bStat("운영확인", bookingBadge, { rawValue: true })}
@@ -2347,6 +2357,9 @@ async function loadBuildingHeader(id){
     const on = canFav && isFav(favItem);
     favBtn.classList.toggle("on", on);
     favBtn.querySelector(".b-icon-label").textContent = on ? "저장됨" : "관심저장";
+    // ② 저장됐을 때 안내 문구 숨김
+    const hint = document.getElementById("bFavHint");
+    if (hint) hint.style.display = on ? "none" : "";
   }
   function syncAlertBtn(){
     const on = canFav && isAlertOn(favKeyStr);

@@ -101,6 +101,10 @@
   .tx-filter-grid .btn-search:hover{ background:var(--brass-dark); }
   .tx-favbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); }
   .tx-favbar label{ display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:600; color:var(--ink); white-space:nowrap; }
+  /* ⑨ 관심저장 별 컬럼 */
+  .col-star{ width:32px; min-width:32px; text-align:center; cursor:pointer; font-size:16px; color:#c5cdd6; user-select:none; }
+  .col-star.on{ color:#B4863F; }
+  .col-star:hover{ color:#B4863F; }
   .clickable-row{ cursor:pointer; }
   .clickable-row:hover{ background:var(--bg-soft, #f6f4ef); }
   .clickable-row .row-link{ color:inherit; text-decoration:none; }
@@ -122,8 +126,11 @@
 
   // 로그인 회원의 관심키(building_name|address) 인메모리 캐시
   // 비로그인 → 항상 빈 Set
+  const MAX_FAVORITES = 5;
   let serverFavKeys = new Set();
   function getFavorites(){ return [...serverFavKeys]; }
+  function favKey(item){ return `${item.building_name}|${item.address}`; }
+  function isFav(item){ return serverFavKeys.has(favKey(item)); }
 
   async function loadServerFavKeys(){
     serverFavKeys = new Set();
@@ -139,6 +146,51 @@
     if (msg) alert(msg);
     if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
     else location.href = "/?login=1";
+  }
+
+  // ⑨ 관심저장 토글 (main.js의 toggleFav와 동일 로직, 이 페이지 전용)
+  function toggleFav(item){
+    if (window.__livingstayAccountType && window.__livingstayAccountType !== "user"){
+      alert("관심저장은 일반회원 전용 기능입니다. 개인 이용을 원하시면 별도로 일반회원 가입해주세요.");
+      return false;
+    }
+    if (!window.__livingstayLoggedIn){
+      promptLogin("로그인하고 관심단지를 저장하면, 이 건물의 새 실거래가 등록될 때 알림을 보내드려요");
+      return false;
+    }
+    const k = favKey(item);
+    const wasFav = serverFavKeys.has(k);
+    if (wasFav){
+      serverFavKeys.delete(k);
+      fetch("/api/favorites/mine", {
+        method: "DELETE", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ building_name: item.building_name, address: item.address })
+      }).catch(function(){});
+    } else {
+      if (serverFavKeys.size >= MAX_FAVORITES){
+        alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
+        return false;
+      }
+      serverFavKeys.add(k);
+      fetch("/api/favorites/mine", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ building_name: item.building_name, address: item.address })
+      }).catch(function(){});
+    }
+    return !wasFav;
+  }
+  function handleStarClick(td, e){
+    e.stopPropagation();
+    const name = td.dataset.name;
+    const addr = td.dataset.addr;
+    if (!name && !addr) return;
+    const item = { building_name: name, address: addr };
+    const result = toggleFav(item);
+    if (result === false) return;
+    td.classList.toggle("on", !!result);
+    td.textContent = result ? "★" : "☆";
   }
 
   function escapeHtml(v){
@@ -210,8 +262,12 @@
       ? `<a href="${href}" class="row-link" onclick="event.stopPropagation()">${nameText}</a> ${lodgingTag}`
       : `${nameText} ${lodgingTag}`;
     const trAttrs = clickable ? ` class="clickable-row" onclick="location.href='${href}'"` : "";
+    // ⑨ 관심저장 ☆ 컬럼
+    const on = isFav({ building_name: t.building_name, address: t.address || t.jibun || "" });
+    const starTd = `<td class="col-star${on?" on":""}" data-name="${escapeHtml(t.building_name||"")}" data-addr="${escapeHtml(t.address||t.jibun||"")}" onclick="handleStarClick(this, event)" title="관심저장">${on?"★":"☆"}</td>`;
     return `
       <tr${trAttrs}>
+        ${starTd}
         <td class="col-name">${nameCell}</td>
         <td class="col-addr">${escapeHtml(t.si_do||'')} ${escapeHtml(t.sgg_nm||'')} ${escapeHtml(t.umd_nm||'')} ${escapeHtml(t.jibun||'')}</td>
         <td class="col-num col-area">${Number(t.area).toFixed(1)} ㎡</td>
@@ -267,7 +323,7 @@
 
     board.innerHTML = `
       <table class="data-table">
-        <thead><tr><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+        <thead><tr><th style="width:32px;"></th><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
         <tbody>${items.map(rowHTML).join("")}</tbody>
       </table>`;
 
