@@ -331,19 +331,19 @@
     var closeBtn = document.getElementById("welcomeClose");
     if (closeBtn) closeBtn.addEventListener("click", function(){
       closeOverlay();
-      openSearchbar();
+      if (window.innerWidth > 980) openSearchbar();
     });
 
     // 배경 클릭
     overlay.addEventListener("click", function(e){
-      if (e.target === overlay){ closeOverlay(); openSearchbar(); }
+      if (e.target === overlay){ closeOverlay(); if (window.innerWidth > 980) openSearchbar(); }
     });
 
     // 검색 실행
     function doOverlaySearch(){
       var q = (document.getElementById("overlayQ").value || "").trim();
       closeOverlay();
-      openSearchbar();
+      if (window.innerWidth > 980) openSearchbar();
       if (q){
         var inp = document.getElementById("inputQ");
         if (inp) inp.value = q;
