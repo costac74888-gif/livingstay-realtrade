@@ -397,33 +397,53 @@ document.getElementById("btnSearch").addEventListener("click", async ()=>{
   // fit 옵션이 markers 모드에서만 동작하므로, 선택된 필터 구체성에 맞는
   // 줌 레벨로 지도를 강제 이동시킨 뒤 해당 레벨의 클러스터를 재조회한다.
   // 이렇게 해야 "주교동까지 선택 → 배지가 주교동 단위로 표시"가 동작함.
+  //
+  // 폴백: 선택한 레벨(umd)에 건물이 없으면 sgg → sido 순으로 한 단계씩 올라가
+  // 인근 배지를 보여준다. 모두 없으면 loadClusterOverlays 가 mapEmpty를 표시한다.
+  //
+  // 중요: 폴백 성공 시 지도 갱신은 실제로 결과가 있는 레벨의 필터로 호출해야 한다.
+  // mapFiltersFromState()를 그대로 쓰면 원래 umd_nm이 살아있어 배지가 다시 사라진다.
+  let _effectiveMapFilters = mapFiltersFromState(); // 기본: 사용자 선택 그대로
   if (!state.q && hasFit && kakaoMap){
-    const targetLevel     = state.umd_nm ? CLUSTER_UMD_MIN_LEVEL
-                          : state.sgg_nm ? CLUSTER_SGG_MIN_LEVEL
-                          : CLUSTER_SIDO_MIN_LEVEL;
-    const clusterLevelName = state.umd_nm ? "umd"
-                           : state.sgg_nm ? "sgg"
-                           : "sido";
     try {
-      // 해당 지역 클러스터를 미리 조회해 중심 좌표를 구한다
-      // (건물들의 평균 lat/lng — loadClusterOverlays 내부와 동일한 데이터)
-      const _p = new URLSearchParams({ level: clusterLevelName });
-      const _f = mapFiltersFromState();
-      ["si_do","sgg_nm","umd_nm","lodging_type"].forEach(k => { if (_f[k]) _p.set(k, _f[k]); });
-      const _r = await fetch(`/api/buildings-cluster?${_p}`);
-      const _d = await _r.json();
-      const _items = _d.items || [];
-      if (_items.length > 0){
-        // 단일 결과면 그 좌표로, 여럿이면 평균 중심으로 이동
-        const _cLat = _items.reduce((s, i) => s + i.lat, 0) / _items.length;
-        const _cLng = _items.reduce((s, i) => s + i.lng, 0) / _items.length;
-        kakaoMap.setCenter(new kakao.maps.LatLng(_cLat, _cLng));
-        kakaoMap.setLevel(targetLevel);
+      // 선택 단계에 따라 시도할 레벨 목록을 가장 구체적인 것부터 준비한다.
+      const _lodging = state.lodging_type || "";
+      const _fallbacks = [];
+      if (state.umd_nm){
+        _fallbacks.push({ name: "umd", level: CLUSTER_UMD_MIN_LEVEL,
+          filters: { si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm, lodging_type: _lodging } });
+      }
+      if (state.sgg_nm){
+        _fallbacks.push({ name: "sgg", level: CLUSTER_SGG_MIN_LEVEL,
+          filters: { si_do: state.si_do, sgg_nm: state.sgg_nm, lodging_type: _lodging } });
+      }
+      if (state.si_do){
+        _fallbacks.push({ name: "sido", level: CLUSTER_SIDO_MIN_LEVEL,
+          filters: { si_do: state.si_do, lodging_type: _lodging } });
+      }
+
+      for (const fb of _fallbacks){
+        const _p = new URLSearchParams({ level: fb.name });
+        Object.entries(fb.filters).forEach(([k, v]) => { if (v) _p.set(k, v); });
+        const _r = await fetch(`/api/buildings-cluster?${_p}`);
+        const _d = await _r.json();
+        const _items = _d.items || [];
+        if (_items.length > 0){
+          // 단일 결과면 그 좌표로, 여럿이면 평균 중심으로 이동
+          const _cLat = _items.reduce((s, i) => s + i.lat, 0) / _items.length;
+          const _cLng = _items.reduce((s, i) => s + i.lng, 0) / _items.length;
+          kakaoMap.setCenter(new kakao.maps.LatLng(_cLat, _cLng));
+          kakaoMap.setLevel(fb.level);
+          // 지도 갱신도 이 레벨의 필터(상위 geo 필터만)로 호출해야 배지가 유지된다
+          _effectiveMapFilters = fb.filters;
+          break; // 첫 번째 결과가 있는 레벨에서 중단
+        }
+        // 해당 레벨에 건물 없음 → 다음 상위 레벨로 폴백
       }
     } catch(e){ console.warn("[SEARCH] 지역 중심 좌표 조회 실패:", e); }
   }
 
-  updateMapForZoom(mapFiltersFromState(), { force: true, fit: hasFit });
+  updateMapForZoom(_effectiveMapFilters, { force: true, fit: hasFit });
 });
 function resetToHome(){
   const yearSel = document.getElementById("selYear");
@@ -1056,6 +1076,10 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     console.error("[CLUSTER] 집계 로드 실패:", e);
     return;
   }
+
+  // 클러스터 모드에서도 0건이면 mapEmpty 표시, 있으면 숨김
+  const _mapEmptyEl = document.getElementById("mapEmpty");
+  if (_mapEmptyEl) _mapEmptyEl.style.display = items.length === 0 ? "flex" : "none";
 
   clearMapMarkers();  // 이전 마커·배지 모두 제거
 
