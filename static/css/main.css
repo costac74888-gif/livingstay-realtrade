@@ -277,13 +277,18 @@
        건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라
        ✕가 묻혀 안 보이는 문제 방지 (패널 닫으면 다시 표시, 데스크톱 무관) */
     body:has(.side-panel.open) .searchbar-toggle{display:none;}
+    /* 패널이 열려 있는 동안엔 하단 "☰ 목록" 플로팅 버튼도 숨김 —
+       패널이 이미 열렸으므로 토글 버튼이 불필요하고, 56px 공간을 확보할 필요가 없어
+       패널 하단까지 콘텐츠가 스크롤되도록 bottom을 정상값으로 복귀시킨다 */
+    body:has(.side-panel.open) .map-list-toggle{display:none;}
     /* 좌측 패널: 기본 접힘, 버튼 눌러야 펼쳐짐 */
     .side-panel{
       width:88%; max-width:340px; z-index:25;
       bottom:calc(var(--stage-gap) + 56px);
       transform:translateX(-115%); transition:transform .25s ease;
     }
-    .side-panel.open{transform:translateX(0);}
+    /* 패널 오픈 시 하단까지 전체 높이 사용 — 관심저장·실거래 등 모든 섹션 스크롤 가능 */
+    .side-panel.open{transform:translateX(0); bottom:var(--stage-gap);}
     .panel-toggle{
       display:inline-flex; align-items:center; gap:6px;
       position:absolute; left:var(--stage-gap); bottom:var(--stage-gap); z-index:30;
