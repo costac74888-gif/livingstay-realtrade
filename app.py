@@ -1031,8 +1031,14 @@ def get_transactions():
         # address = "{umd_nm} {jibun}" 형태 — 역사적으로 umd_nm 공백 정규화 시점 차이로
         # address 내 umd_nm 부분이 현재 umd_nm 컬럼과 다를 수 있음.
         # jibun 컬럼 직접 매칭을 추가해 jibun만 입력해도 확실히 검색되도록 보완.
-        where.append("(building_name ILIKE %s OR address ILIKE %s OR jibun ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        # 공백 제거 후 비교(nospace) 추가 — "그레이스경희"→"더 그레이스 경희",
+        # "서천동812"→"서천동 812" 등 붙여쓰기/띄어쓰기 편차 흡수.
+        _q_ns = q.replace(' ', '')
+        where.append(
+            "(building_name ILIKE %s OR address ILIKE %s OR jibun ILIKE %s"
+            " OR REPLACE(building_name,' ','') ILIKE %s OR REPLACE(address,' ','') ILIKE %s)"
+        )
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{_q_ns}%", f"%{_q_ns}%"]
     if si_do:
         # '서울' vs '서울특별시' 표기 편차 흡수 — 지도와 동일한 코어 이름 비교 규칙 사용
         where.append(sido_match_clause("si_do"))
@@ -1197,8 +1203,14 @@ def get_buildings_cluster():
 
     if q:
         # jibun 컬럼 직접 매칭 추가 — jibun_address = NULL인 건물도 지번 검색으로 발견.
-        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s OR jibun ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
+        # 공백 제거 후 비교(nospace) 추가 — "그레이스경희"→"더 그레이스 경희",
+        # "서천동812"→"서천동 812" 등 붙여쓰기/띄어쓰기 편차 흡수.
+        _q_ns = q.replace(' ', '')
+        where.append(
+            "(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s OR jibun ILIKE %s"
+            " OR REPLACE(building_name,' ','') ILIKE %s OR REPLACE(road_address,' ','') ILIKE %s)"
+        )
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{_q_ns}%", f"%{_q_ns}%"]
     if si_do:
         where.append(sido_match_clause("split_part(sgg_text, ' ', 1)"))
         params.append(sido_core(si_do))
@@ -1353,8 +1365,14 @@ def get_buildings_geo():
 
     if q:
         # jibun 컬럼 직접 매칭 추가 — jibun_address = NULL인 건물도 지번 검색으로 발견.
-        where.append("(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s OR jibun ILIKE %s)")
-        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
+        # 공백 제거 후 비교(nospace) 추가 — "그레이스경희"→"더 그레이스 경희",
+        # "서천동812"→"서천동 812" 등 붙여쓰기/띄어쓰기 편차 흡수.
+        _q_ns = q.replace(' ', '')
+        where.append(
+            "(building_name ILIKE %s OR road_address ILIKE %s OR jibun_address ILIKE %s OR jibun ILIKE %s"
+            " OR REPLACE(building_name,' ','') ILIKE %s OR REPLACE(road_address,' ','') ILIKE %s)"
+        )
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", f"%{_q_ns}%", f"%{_q_ns}%"]
     if si_do:
         # '서울' vs '서울특별시' 표기 편차 흡수 — 게시판과 동일한 코어 이름 비교 규칙 사용.
         # sgg_text('서울특별시 서초구')의 첫 토큰을 정규화해 비교한다.
