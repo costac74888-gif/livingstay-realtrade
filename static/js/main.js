@@ -383,8 +383,16 @@ document.getElementById("btnSearch").addEventListener("click", ()=>{
   state.q = document.getElementById("inputQ").value.trim();
   state.page = 1;
   loadBoard();
-  // q(건물명·주소)로 검색하면 결과가 현재 뷰 밖에 있을 수 있으므로 fit:true로 지도를 맞춤
-  updateMapForZoom(mapFiltersFromState(), { force: true, fit: !!state.q });
+  // 검색 후 검색바를 닫아 지도가 보이게 한다 (모바일에서 검색바가 화면을 덮는 문제 해결)
+  const _sb = document.querySelector(".map-searchbar");
+  const _sbt = document.getElementById("btnToggleSearch");
+  if (_sb && !_sb.classList.contains("collapsed")){
+    _sb.classList.add("collapsed");
+    if (_sbt) _sbt.textContent = "🔍 검색";
+  }
+  // q(건물명·주소) 또는 지역 필터(si_do/sgg_nm/umd_nm)가 있으면 fit:true로 지도를 해당 지역으로 이동
+  const hasFit = !!(state.q || state.si_do || state.sgg_nm || state.umd_nm);
+  updateMapForZoom(mapFiltersFromState(), { force: true, fit: hasFit });
 });
 function resetToHome(){
   const yearSel = document.getElementById("selYear");
