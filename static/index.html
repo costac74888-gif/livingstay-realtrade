@@ -331,19 +331,17 @@
     var closeBtn = document.getElementById("welcomeClose");
     if (closeBtn) closeBtn.addEventListener("click", function(){
       closeOverlay();
-      if (window.innerWidth > 980) openSearchbar();
     });
 
     // 배경 클릭
     overlay.addEventListener("click", function(e){
-      if (e.target === overlay){ closeOverlay(); if (window.innerWidth > 980) openSearchbar(); }
+      if (e.target === overlay){ closeOverlay(); }
     });
 
     // 검색 실행
     function doOverlaySearch(){
       var q = (document.getElementById("overlayQ").value || "").trim();
       closeOverlay();
-      if (window.innerWidth > 980) openSearchbar();
       if (q){
         var inp = document.getElementById("inputQ");
         if (inp) inp.value = q;
@@ -381,8 +379,7 @@
       // 첫 방문 or 강제: 오버레이 표시, 검색바는 닫힌 채 유지 (닫을 때 openSearchbar 호출됨)
       overlay.style.display = "flex";
     } else {
-      // 재방문: 오버레이 안 뜨므로 데스크톱에서 검색바 바로 펼침
-      if (window.innerWidth > 980) openSearchbar();
+      // 재방문: 오버레이 없이 지도 바로 표시 — 검색바는 사용자가 직접 열도록 유지
     }
 
     // 헤더 "내건물시세" 버튼 — 같은 페이지(index.html)에서 클릭 시 직접 오버레이 표시
