@@ -448,6 +448,18 @@ async function loadHealth(){
   loadBoard();
 })();
 
+// ---------- 검색패널 터치 스크롤 보호 ----------
+// 카카오맵 SDK가 지도 컨테이너에 touchmove preventDefault를 등록해 패널 위에서
+// 손가락 스크롤이 안 되는 문제 방지. capture:true로 지도 쪽 핸들러보다 먼저 잡아
+// 패널 안에서의 수직 드래그 이벤트가 지도로 전파되지 않도록 차단한다.
+(function(){
+  const _sb = document.querySelector(".map-searchbar");
+  if (!_sb) return;
+  function _blockMapTouch(e){ e.stopPropagation(); }
+  _sb.addEventListener("touchstart", _blockMapTouch, { passive: true, capture: true });
+  _sb.addEventListener("touchmove",  _blockMapTouch, { passive: true, capture: true });
+})();
+
 // ---------- 내 건물 추가 요청 ----------
 const submitModal = document.getElementById("submitModal");
 document.getElementById("btnOpenSubmit").addEventListener("click", () => {
