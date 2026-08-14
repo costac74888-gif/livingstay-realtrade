@@ -1736,12 +1736,106 @@ function financeEmptyHTML(){
     ${recruitBoxHTML("finance")}`;
 }
 
+// ── 최근 본 건물 (localStorage, 비로그인 포함) ──────────────────────────────
+const HS_RECENT_KEY = "hs_recent_buildings";
+const HS_RECENT_MAX = 5;
+
+function trackRecentBuilding(id, name, addr){
+  try {
+    let list = JSON.parse(localStorage.getItem(HS_RECENT_KEY) || "[]");
+    // 중복 제거 (같은 id가 있으면 맨 앞으로)
+    list = list.filter(b => b.id !== id);
+    list.unshift({ id, name, addr, viewed_at: Date.now() });
+    if (list.length > HS_RECENT_MAX) list = list.slice(0, HS_RECENT_MAX);
+    localStorage.setItem(HS_RECENT_KEY, JSON.stringify(list));
+    renderRecentChips();
+  } catch(e){ /* 스토리지 접근 실패 시 조용히 무시 */ }
+}
+
+function renderRecentChips(){
+  const row = document.getElementById("recentRow");
+  const container = document.getElementById("recentChips");
+  if (!row || !container) return;
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(HS_RECENT_KEY) || "[]"); } catch(e){}
+  if (!list.length){ row.style.display = "none"; return; }
+  row.style.display = "";
+  container.innerHTML = list.map(b => {
+    const label = escapeHtml(b.name || "(건물명 미확인)");
+    return `<button type="button"
+      onclick="history.pushState({buildingId:${b.id}},'','/building/${b.id}');renderBuildingPanel(${b.id});"
+      style="flex:none;background:#fff;border:1px solid var(--line);border-radius:20px;
+             padding:5px 12px;font-size:12px;font-weight:600;color:var(--ink);
+             cursor:pointer;white-space:nowrap;max-width:140px;overflow:hidden;
+             text-overflow:ellipsis;"
+      title="${label}">${label}</button>`;
+  }).join("");
+}
+
+// ── 랭킹 위젯 ────────────────────────────────────────────────────────────────
+async function loadRankingWidget(){
+  const box = document.getElementById("sideRanking");
+  if (!box) return;
+  try {
+    const res = await fetch("/api/ranking");
+    if (!res.ok) throw new Error(res.status);
+    const d = await res.json();
+    if (!d.ok){ box.innerHTML = '<div class="side-empty">랭킹 데이터 없음</div>'; return; }
+
+    const _btn = (item, label) => {
+      const bid = item.building_id;
+      const name = escapeHtml(item.building_name || "건물명 미확인");
+      const onclick = bid
+        ? `history.pushState({buildingId:${bid}},'','/building/${bid}');renderBuildingPanel(${bid});`
+        : `document.getElementById('inputQ').value=${JSON.stringify(item.building_name||'')};document.getElementById('btnSearch').click();`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;
+                          border-bottom:1px solid var(--line);">
+        <span style="flex:none;font-size:11px;font-weight:700;color:#9AA5B1;
+                     width:18px;text-align:center;">${label}</span>
+        <button type="button" onclick="${onclick}"
+          style="flex:1;background:none;border:none;padding:0;text-align:left;
+                 cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink);
+                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+          title="${name}">${name}</button>
+      </div>`;
+    };
+
+    let html = "";
+
+    if (d.price_highs && d.price_highs.length){
+      html += `<div style="font-size:11px;font-weight:700;color:var(--brass-dark);
+                            padding:6px 0 2px;">🏆 신고가 갱신</div>`;
+      d.price_highs.forEach((item, i) => {
+        const gain = item.pct_gain > 0 ? `<span style="color:#E53E3E;font-size:11px;">+${item.pct_gain}%</span>` : "";
+        html += _btn(item, i + 1).replace("</div>", `${gain}</div>`);
+      });
+    }
+
+    if (d.most_traded && d.most_traded.length){
+      html += `<div style="font-size:11px;font-weight:700;color:var(--ink-soft);
+                            padding:10px 0 2px;">🔥 거래량 TOP</div>`;
+      d.most_traded.forEach((item, i) => {
+        const cnt = `<span style="color:var(--brass-dark);font-size:11px;">${item.deal_count}건</span>`;
+        html += _btn(item, i + 1).replace("</div>", `${cnt}</div>`);
+      });
+    }
+
+    if (!html) html = '<div class="side-empty">이번 주 거래 데이터 없음</div>';
+    box.classList.remove("side-soon");
+    box.innerHTML = html;
+  } catch(e){
+    box.innerHTML = '<div class="side-empty">랭킹을 불러오지 못했습니다.</div>';
+  }
+}
+
 function initDefaultSidePanel(){
   document.getElementById("btnMoreTx")?.addEventListener("click", () => loadSideTx(20));
   loadTrendChart();
   loadSideTx(5);
   loadSideFavorites();
   loadSideStats();
+  loadRankingWidget();
+  renderRecentChips(); // 페이지 로드 시 최근 본 건물 칩 복원
 }
 
 // 건물 상세 전용 상태/차트
@@ -2327,6 +2421,8 @@ async function loadBuildingHeader(id){
   }
   const bName = b.building_name || "(건물명 미확인)";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
+  // 최근 본 건물 localStorage 기록 (로그인 불필요)
+  trackRecentBuilding(id, bName, b.road_address || b.jibun_address || b.address || "");
 
   // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
   const txAllLink = document.getElementById("bTxAllLink");

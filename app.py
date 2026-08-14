@@ -1314,6 +1314,112 @@ def get_buildings_cluster():
     return Response(payload.encode("utf-8"), mimetype="application/json")
 
 
+@app.route("/api/ranking")
+@limiter.limit("20 per minute")
+def get_ranking():
+    """재방문 유인용 랭킹 — 이번 주 신고가 갱신 TOP5 + 거래량 TOP5.
+    결과는 1시간 캐시(서버 재시작 시 초기화).
+    """
+    import time as _time
+    _cache = getattr(get_ranking, "_cache", None)
+    if _cache and _time.time() - _cache[0] < 3600:
+        return Response(_cache[1], mimetype="application/json")
+
+    conn = None
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            # ── 신고가 갱신 TOP 5 ──────────────────────────────────────────
+            # 최근 7일 안에 들어온 거래 중 그 건물의 과거 최고가를 넘긴 건들
+            cur.execute("""
+                WITH recent AS (
+                    SELECT DISTINCT ON (building_name, address)
+                        building_name, address, price, deal_date
+                    FROM transactions
+                    WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
+                      AND price > 0
+                    ORDER BY building_name, address, price DESC
+                ),
+                prev_max AS (
+                    SELECT building_name, address, MAX(price) AS old_max
+                    FROM transactions
+                    WHERE deal_date < TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
+                      AND price > 0
+                    GROUP BY building_name, address
+                    HAVING MAX(price) > 0
+                )
+                SELECT
+                    r.building_name, r.address,
+                    r.price            AS new_price,
+                    p.old_max,
+                    ROUND(100.0 * (r.price - p.old_max) / p.old_max, 1) AS pct_gain,
+                    r.deal_date,
+                    (SELECT id FROM master_buildings
+                     WHERE building_name = r.building_name LIMIT 1) AS building_id
+                FROM recent r
+                JOIN prev_max p
+                  ON r.building_name = p.building_name AND r.address = p.address
+                WHERE r.price > p.old_max
+                ORDER BY pct_gain DESC
+                LIMIT 5
+            """)
+            price_highs = [
+                {
+                    "building_name": row["building_name"],
+                    "address": row["address"],
+                    "new_price": row["new_price"],
+                    "old_max": row["old_max"],
+                    "pct_gain": float(row["pct_gain"]) if row["pct_gain"] is not None else 0,
+                    "deal_date": row["deal_date"],
+                    "building_id": row["building_id"],
+                }
+                for row in cur.fetchall()
+            ]
+
+            # ── 거래량 TOP 5 ───────────────────────────────────────────────
+            cur.execute("""
+                SELECT
+                    building_name, address,
+                    COUNT(*)        AS deal_count,
+                    MAX(price)      AS max_price,
+                    MAX(deal_date)  AS latest_date,
+                    (SELECT id FROM master_buildings
+                     WHERE building_name = t.building_name LIMIT 1) AS building_id
+                FROM transactions t
+                WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
+                  AND price > 0
+                GROUP BY building_name, address
+                ORDER BY deal_count DESC
+                LIMIT 5
+            """)
+            most_traded = [
+                {
+                    "building_name": row["building_name"],
+                    "address": row["address"],
+                    "deal_count": row["deal_count"],
+                    "max_price": row["max_price"],
+                    "latest_date": row["latest_date"],
+                    "building_id": row["building_id"],
+                }
+                for row in cur.fetchall()
+            ]
+
+        result = json.dumps(
+            {"ok": True, "price_highs": price_highs, "most_traded": most_traded},
+            ensure_ascii=False, default=str
+        ).encode("utf-8")
+        get_ranking._cache = (_time.time(), result)
+        return Response(result, mimetype="application/json")
+
+    except Exception as e:
+        app.logger.error("[ranking] %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
+
+
 @app.route("/api/buildings-geo")
 @limiter.limit("30 per minute")
 def get_buildings_geo():
@@ -3442,6 +3548,12 @@ def _serve_static_html(filename):
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+@app.route("/guide")
+def guide_page():
+    """이용안내 페이지 — 로그인 여부 무관 항상 접근 가능."""
+    return _serve_static_html("guide.html")
 
 
 @app.route("/notices")

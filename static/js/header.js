@@ -59,6 +59,7 @@
       '<button type="button" class="hamburger-btn" id="hamburgerBtn" aria-label="메뉴" aria-haspopup="true" aria-expanded="false">☰</button>' +
       '<div class="header-menu" id="headerMenu">' +
         '<nav class="header-nav">' +
+          '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
           '<a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +

@@ -121,6 +121,11 @@
       <span style="margin-left:auto; font-size:11px; color:var(--ink-soft); white-space:nowrap;">※ 국토부 실거래는 매매만 제공</span>
       <button id="btnOpenSubmit" style="background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 수정 요청</button>
     </div>
+    <!-- 최근 본 건물 (localStorage, 비로그인 포함) — 기록 없으면 숨김 -->
+    <div id="recentRow" style="display:none; border-top:1px solid var(--line); margin-top:10px; padding-top:10px;">
+      <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:6px;">🕐 최근 본 건물</div>
+      <div id="recentChips" style="display:flex; gap:6px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px;"></div>
+    </div>
   </div>
 
   <!-- (좌측 패널 토글 버튼은 지도 좌측 상단 플로팅 — #btnTogglePanel) -->
@@ -154,6 +159,12 @@
     <section class="side-card">
       <div class="side-card-title">최근 관심물건 <span class="side-sub">내 저장</span></div>
       <div id="sideFavList" class="side-list"><div class="side-empty">불러오는 중…</div></div>
+    </section>
+
+    <!-- 이번 주 랭킹 위젯 -->
+    <section class="side-card" id="sideRankingCard">
+      <div class="side-card-title">이번 주 랭킹 <span class="side-sub">실거래 기준</span></div>
+      <div id="sideRanking"><div class="side-empty">불러오는 중…</div></div>
     </section>
 
     <section class="side-card">
