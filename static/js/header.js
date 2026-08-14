@@ -44,6 +44,7 @@
     '<div class="page-title">' + esc(title) + '</div>' +
     '<div class="header-actions">' +
       '<button type="button" class="hnav-btn" id="myPriceBtn">🏨 <span class="hnav-label">내건물시세</span></button>' +
+      '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
       '<div class="hnav-dropdown" id="alertMenu">' +
         '<button type="button" class="hnav-btn" id="alertMenuBtn" aria-haspopup="true" aria-expanded="false">🔔 <span class="hnav-label">알림</span><span class="notif-badge" id="notifBadge" hidden>0</span> ▾</button>' +
         '<div class="hnav-panel hnav-panel-notif" id="alertMenuPanel" role="menu">' +
