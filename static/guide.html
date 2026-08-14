@@ -3,147 +3,504 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>이용안내 . 홈앤스테이</title>
-<meta name="description" content="홈앤스테이 이용안내 — 실거래가 조회, 관심단지 알림, 매물의뢰, 중개사 상담, 위탁운영 정보를 한눈에." />
+<title>이용안내 · 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 이용안내 — 실거래가 조회, 최근 본 건물, 시세 랭킹, 매물의뢰, 중개사 상담 기능을 소개합니다." />
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
 <style>
-  .guide-hero {
-    background: linear-gradient(135deg, var(--ink) 0%, #2C3E55 100%);
-    color: #fff;
-    padding: 48px 24px 40px;
-    text-align: center;
-    margin-bottom: 32px;
-  }
-  .guide-hero h1 { font-size: 26px; font-weight: 700; margin: 0 0 10px; }
-  .guide-hero p  { font-size: 15px; opacity: .82; margin: 0; line-height: 1.65; }
+/* ── 공통 ─────────────────────────────── */
+.guide-wrap { max-width: 780px; margin: 0 auto; padding: 0 20px 60px; }
+.guide-section { margin-bottom: 48px; }
+.guide-section-title {
+  font-size: 21px; font-weight: 700; color: var(--ink);
+  margin: 0 0 6px;
+}
+.guide-section-sub {
+  font-size: 14px; color: var(--ink-soft); margin: 0 0 20px; line-height: 1.6;
+}
 
-  .guide-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 0 20px 48px;
-  }
-  @media (max-width: 560px) {
-    .guide-grid { grid-template-columns: 1fr; padding: 0 14px 40px; }
-  }
+/* ── 히어로 ──────────────────────────── */
+.guide-hero {
+  background: linear-gradient(135deg, var(--ink) 0%, #2C3E55 100%);
+  color: #fff; padding: 52px 24px 44px; text-align: center; margin-bottom: 40px;
+}
+.guide-hero h1 { font-size: 26px; font-weight: 700; margin: 0 0 10px; }
+.guide-hero p  { font-size: 15px; opacity: .82; margin: 0; line-height: 1.65; }
 
-  .guide-card {
-    background: var(--card, #fff);
-    border: 1px solid var(--line, #e8eaed);
-    border-radius: 14px;
-    padding: 24px 22px 20px;
-    display: flex; flex-direction: column; gap: 8px;
-    box-shadow: 0 2px 10px rgba(22,32,46,.07);
-  }
-  .guide-icon { font-size: 32px; line-height: 1; }
-  .guide-title { font-size: 16px; font-weight: 700; color: var(--ink); margin: 0; }
-  .guide-desc  { font-size: 13.5px; color: var(--ink-soft); line-height: 1.65; flex: 1; margin: 0; }
-  .guide-btn {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 9px 18px;
-    background: var(--ink);
-    color: #fff;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    text-align: center;
-    transition: background .15s;
-  }
-  .guide-btn:hover { background: #000; }
-  .guide-btn.secondary {
-    background: #fff;
-    color: var(--brass-dark, #8A6420);
-    border: 1px solid var(--brass, #B4863F);
-  }
-  .guide-btn.secondary:hover { background: #FBF6ED; }
+/* ── 섹션 A ──────────────────────────── */
+.sec-a-card {
+  background: var(--card, #fff); border: 1px solid var(--line, #e8eaed);
+  border-radius: 14px; padding: 26px 24px 22px;
+  box-shadow: 0 2px 10px rgba(22,32,46,.07);
+  display: flex; gap: 18px; align-items: flex-start;
+}
+.sec-a-icon { font-size: 36px; flex: none; }
+.sec-a-body h2 { font-size: 17px; font-weight: 700; margin: 0 0 6px; color: var(--ink); }
+.sec-a-body p  { font-size: 13.5px; color: var(--ink-soft); line-height: 1.65; margin: 0 0 14px; }
+.btn-dark {
+  display: inline-block; background: var(--ink); color: #fff;
+  padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 700;
+  text-decoration: none; transition: background .15s;
+}
+.btn-dark:hover { background: #000; }
 
-  /* 첫 번째 카드(실거래가)는 2열 전체 차지 */
-  .guide-card.full { grid-column: span 2; }
-  @media (max-width: 560px) { .guide-card.full { grid-column: span 1; } }
+/* ── 섹션 B ──────────────────────────── */
+.sec-b-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+}
+@media (max-width: 580px) { .sec-b-grid { grid-template-columns: 1fr; } }
+.sec-b-card {
+  background: var(--card, #fff); border: 1px solid var(--line, #e8eaed);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(22,32,46,.07);
+}
+.sec-b-preview {
+  background: #F4F5F7; padding: 14px 14px 10px; border-bottom: 1px solid var(--line);
+  min-height: 120px; position: relative;
+}
+.preview-label {
+  position: absolute; bottom: 6px; right: 8px;
+  font-size: 10px; color: #9AA5B1; background: rgba(255,255,255,.8);
+  padding: 1px 6px; border-radius: 4px;
+}
+.sec-b-desc { padding: 14px 16px; }
+.sec-b-desc strong { font-size: 14px; font-weight: 700; color: var(--ink); display: block; margin-bottom: 6px; }
+.sec-b-desc p { font-size: 12.5px; color: var(--ink-soft); line-height: 1.6; margin: 0; }
+
+/* ── 최근 본 건물 미리보기 ─────────── */
+#guideRecentChips {
+  display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 0;
+}
+.guide-chip {
+  background: #fff; border: 1px solid #D1D9E0; border-radius: 18px;
+  padding: 5px 12px; font-size: 12px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis;
+}
+.guide-chip.example { color: #9AA5B1; border-style: dashed; }
+
+/* ── 랭킹 미리보기 ───────────────── */
+.guide-rank-section { margin-bottom: 8px; }
+.guide-rank-label {
+  font-size: 10.5px; font-weight: 700; color: var(--brass-dark, #8A6420);
+  margin-bottom: 4px;
+}
+.guide-rank-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 0; border-bottom: 1px solid #F0F0F0; font-size: 12px;
+}
+.guide-rank-no { width: 16px; text-align: center; font-size: 11px; font-weight: 700; color: #9AA5B1; flex: none; }
+.guide-rank-name { flex: 1; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guide-rank-badge { font-size: 10.5px; color: #E53E3E; font-weight: 700; flex: none; }
+.guide-rank-badge.vol { color: var(--brass-dark, #8A6420); }
+.side-empty-sm { font-size: 12px; color: #9AA5B1; padding: 8px 0; }
+
+/* ── 섹션 C ──────────────────────────── */
+.sec-c-header { margin-bottom: 24px; }
+.sec-c-layout {
+  display: grid; grid-template-columns: 300px 1fr; gap: 32px; align-items: start;
+}
+@media (max-width: 680px) { .sec-c-layout { grid-template-columns: 1fr; } }
+
+/* 패널 모형 */
+.mock-panel {
+  background: var(--card, #fff); border: 1.5px solid var(--line, #e8eaed);
+  border-radius: 12px; overflow: hidden;
+  box-shadow: 0 4px 20px rgba(22,32,46,.12); font-size: 11px; color: var(--ink);
+  position: relative;
+}
+.mock-topbar {
+  display: flex; gap: 6px; align-items: center; padding: 8px 10px;
+  border-bottom: 1px solid var(--line); background: #FAFBFC;
+}
+.mock-back  { font-size: 10px; background: #F0F2F5; border: none; border-radius: 5px; padding: 3px 7px; cursor: pointer; }
+.mock-btn   { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 5px; border: none; cursor: pointer; }
+.mock-btn.sell { background: var(--brass, #B4863F); color: #fff; }
+.mock-btn.buy  { background: #fff; border: 1px solid var(--brass, #B4863F) !important; color: var(--brass-dark, #8A6420); }
+
+.mock-header { padding: 10px 12px 8px; }
+.mock-bname  { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+.mock-addr   { font-size: 10px; color: var(--ink-soft); margin-bottom: 8px; }
+.mock-actions { display: flex; gap: 6px; }
+.mock-action-btn {
+  font-size: 10px; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line);
+  background: #fff; cursor: pointer; display: flex; align-items: center; gap: 3px;
+}
+
+.mock-info-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border: 1px solid var(--line); border-radius: 6px; margin: 0 12px 8px; overflow: hidden;
+}
+.mock-info-cell {
+  padding: 6px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.mock-info-cell:nth-child(2n) { border-right: none; }
+.mock-info-cell:nth-last-child(-n+2) { border-bottom: none; }
+.mock-info-key { font-size: 9px; color: var(--ink-soft); margin-bottom: 2px; }
+.mock-info-val { font-size: 11px; font-weight: 700; }
+
+.mock-chart-area { margin: 0 12px 8px; }
+.mock-chart-title { font-size: 11px; font-weight: 700; margin-bottom: 5px; color: var(--ink); }
+.mock-chart-bars {
+  display: flex; align-items: flex-end; gap: 3px; height: 48px;
+  background: #F8F9FA; border-radius: 6px; padding: 6px 8px 4px;
+}
+.mock-bar { flex: 1; background: var(--brass, #B4863F); border-radius: 2px 2px 0 0; opacity: .7; }
+
+.mock-tx-area { margin: 0 12px 10px; }
+.mock-tx-title { font-size: 11px; font-weight: 700; margin-bottom: 5px; }
+.mock-tx-row {
+  display: flex; justify-content: space-between; padding: 4px 0;
+  border-bottom: 1px solid #F0F0F0; font-size: 10px;
+}
+.mock-tx-price { font-weight: 700; color: var(--brass-dark, #8A6420); }
+
+/* 하이라이트 번호 뱃지 */
+.mock-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  font-size: 9px; font-weight: 700; color: #fff; flex: none;
+  vertical-align: middle; margin-left: 3px;
+}
+.n1 { background: #E53E3E; }
+.n2 { background: #3182CE; }
+.n3 { background: #38A169; }
+.n4 { background: #D69E2E; }
+.n5 { background: #805AD5; }
+.n6 { background: #DD6B20; }
+
+/* 콜아웃 목록 */
+.callout-list { display: flex; flex-direction: column; gap: 14px; }
+.callout-item {
+  background: var(--card, #fff); border: 1px solid var(--line, #e8eaed);
+  border-radius: 10px; padding: 12px 14px;
+  box-shadow: 0 1px 6px rgba(22,32,46,.06);
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.callout-badge {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  font-size: 12px; font-weight: 700; color: #fff; flex: none; margin-top: 1px;
+}
+.callout-body strong { font-size: 13px; font-weight: 700; color: var(--ink); display: block; margin-bottom: 4px; }
+.callout-body p { font-size: 12px; color: var(--ink-soft); line-height: 1.6; margin: 0; }
+
+/* 하이라이트 링 — 모형 요소 강조 */
+.hl { outline: 2px dashed; outline-offset: 2px; border-radius: 4px; }
+.hl1 { outline-color: #E53E3E; }
+.hl2 { outline-color: #3182CE; }
+.hl3 { outline-color: #38A169; }
+.hl4 { outline-color: #D69E2E; }
+.hl5 { outline-color: #805AD5; }
+.hl6 { outline-color: #DD6B20; }
 </style>
 </head>
 <body>
 
 <header id="siteHeader"></header>
 
+<!-- 히어로 -->
 <div class="guide-hero">
   <h1>홈앤스테이 이용안내</h1>
   <p>생활숙박시설·관광숙박 실거래가 플랫폼에서<br>이런 기능들을 무료로 이용하실 수 있습니다.</p>
 </div>
 
-<div class="guide-grid">
+<div class="guide-wrap">
 
-  <!-- 1. 실거래가 무료조회 -->
-  <div class="guide-card full">
-    <div class="guide-icon">📊</div>
-    <h2 class="guide-title">실거래가 무료조회</h2>
-    <p class="guide-desc">
-      로그인 없이 건물명이나 주소만 입력하면 국토교통부 실거래가를 바로 확인할 수 있습니다.<br>
-      시/도 · 시/군/구 · 읍면동 필터와 지도 클러스터로 원하는 지역 건물을 빠르게 찾아보세요.
-    </p>
-    <a href="/" class="guide-btn">지도에서 검색하기 →</a>
+  <!-- ── 섹션 A: 실거래가 무료조회 ─────────────────────────────────── -->
+  <div class="guide-section">
+    <div class="guide-section-title">📊 실거래가 무료조회</div>
+    <div class="guide-section-sub">로그인 없이 건물명이나 주소만 입력하면 국토교통부 실거래가를 바로 확인할 수 있습니다.</div>
+    <div class="sec-a-card">
+      <div class="sec-a-icon">🏨</div>
+      <div class="sec-a-body">
+        <h2>내 건물 시세, 바로 확인하기</h2>
+        <p>시/도 · 시/군/구 · 읍면동 필터와 지도 클러스터로 원하는 지역 건물을 빠르게 찾아보세요. 계약일·전용면적·층·거래금액·거래유형까지 상세 내역 무료 제공.</p>
+        <a href="/?openMyPrice=1" class="btn-dark">내 건물 시세 확인하기 →</a>
+      </div>
+    </div>
   </div>
 
-  <!-- 2. 관심단지 저장·알림 -->
-  <div class="guide-card">
-    <div class="guide-icon">⭐</div>
-    <h2 class="guide-title">관심단지 저장 &amp; 알림</h2>
-    <p class="guide-desc">
-      관심 있는 건물을 즐겨찾기로 저장해두면,<br>
-      새 실거래가가 등록될 때 이메일로 바로 알려드립니다.
-    </p>
-    <a href="/mypage" class="guide-btn secondary">마이페이지에서 설정 →</a>
+  <!-- ── 섹션 B: 로그인 없이 쓸 수 있는 기능 ─────────────────────── -->
+  <div class="guide-section">
+    <div class="guide-section-title">✅ 로그인 없이 쓸 수 있는 기능</div>
+    <div class="guide-section-sub">회원가입 없이 바로 사용 가능한 기능입니다.</div>
+
+    <div class="sec-b-grid">
+
+      <!-- B1: 최근 본 건물 -->
+      <div class="sec-b-card">
+        <div class="sec-b-preview">
+          <div style="font-size:11px; font-weight:700; color:var(--ink-soft); margin-bottom:8px;">🕐 최근 본 건물</div>
+          <div id="guideRecentChips">
+            <!-- JS로 실제 데이터 또는 예시 데이터 렌더링 -->
+          </div>
+          <div id="guideRecentLabel" class="preview-label" style="display:none;">예시 화면</div>
+        </div>
+        <div class="sec-b-desc">
+          <strong>최근 본 건물 조회</strong>
+          <p>최근에 확인한 건물이 자동으로 여기 저장돼요. 로그인 없이도 최대 5개까지 기록되니, 다시 찾아볼 때 편리해요.</p>
+        </div>
+      </div>
+
+      <!-- B2: 이번 주 시세 랭킹 -->
+      <div class="sec-b-card">
+        <div class="sec-b-preview">
+          <div id="guideRanking">
+            <div class="side-empty-sm">불러오는 중…</div>
+          </div>
+        </div>
+        <div class="sec-b-desc">
+          <strong>이번 주 시세 랭킹</strong>
+          <p><b>신고가 갱신</b>: 이번 주 실거래가 중 역대 최고가를 새로 쓴 건물을 보여드려요.<br>
+          <b>거래량 TOP</b>: 이번 주 가장 활발히 거래된 건물 TOP5를 확인하세요.</p>
+        </div>
+      </div>
+
+    </div>
   </div>
 
-  <!-- 3. 매물의뢰/매수의뢰 -->
-  <div class="guide-card">
-    <div class="guide-icon">🏨</div>
-    <h2 class="guide-title">매물의뢰 &amp; 매수의뢰</h2>
-    <p class="guide-desc">
-      매도 또는 매수 의뢰를 남기면<br>
-      생활숙박시설 전문 중개사가 연결해드립니다.
-    </p>
-    <a href="/?modal=submit" class="guide-btn secondary">건물 등록 요청하기 →</a>
-  </div>
+  <!-- ── 섹션 C: 로그인을 하면! ─────────────────────────────────────── -->
+  <div class="guide-section">
+    <div class="sec-c-header">
+      <div class="guide-section-title">🔓 로그인을 하면!</div>
+      <div class="guide-section-sub">회원가입하고 아래 기능들을 모두 무료로 이용해보세요.</div>
+    </div>
 
-  <!-- 4. 전문 중개사 상담 -->
-  <div class="guide-card">
-    <div class="guide-icon">🤝</div>
-    <h2 class="guide-title">전문 중개사 상담</h2>
-    <p class="guide-desc">
-      홈앤스테이에 등록된 생활숙박시설 전문 중개사와<br>
-      빠르게 상담 연결을 받을 수 있습니다.
-    </p>
-    <a href="/partner" class="guide-btn secondary">파트너 중개사 보기 →</a>
-  </div>
+    <div class="sec-c-layout">
 
-  <!-- 5. 위탁운영 정보 -->
-  <div class="guide-card">
-    <div class="guide-icon">🏢</div>
-    <h2 class="guide-title">위탁운영 정보</h2>
-    <p class="guide-desc">
-      숙박시설 운영·관리 정보와 전문 위탁운영업체를<br>
-      한눈에 비교하고 상담 신청할 수 있습니다.
-    </p>
-    <a href="/apply/operator" class="guide-btn secondary">운영 상담 신청하기 →</a>
-  </div>
+      <!-- 왼쪽: 건물상세 패널 CSS 모형 -->
+      <div class="mock-panel">
 
-</div>
+        <!-- ① 매물내놓기 / 매수의뢰 -->
+        <div class="mock-topbar hl hl1">
+          <button class="mock-back">← 전체목록</button>
+          <button class="mock-btn sell">매물내놓기 <span class="mock-num n1">1</span></button>
+          <button class="mock-btn buy" style="border:1px solid var(--brass);">매수의뢰 <span class="mock-num n1">1</span></button>
+        </div>
+
+        <div class="mock-header">
+          <div class="mock-bname">아라트라움 아리스타 <span style="font-size:9px;background:#2C7A7B;color:#fff;border-radius:4px;padding:1px 5px;vertical-align:middle;">생숙</span></div>
+          <div class="mock-addr">경기도 평택시 지산동 735-4</div>
+
+          <!-- ② 알림 / ③ 관심저장 -->
+          <div class="mock-actions hl hl2" style="margin-bottom:4px;">
+            <button class="mock-action-btn">🔔 실거래알림 <span class="mock-num n2">2</span></button>
+            <button class="mock-action-btn">☆ 관심저장 <span class="mock-num n3">3</span></button>
+            <div class="hl hl3" style="position:absolute;pointer-events:none;inset:0;border-radius:6px;"></div>
+          </div>
+        </div>
+
+        <!-- ④ 기본정보 -->
+        <div class="mock-info-grid hl hl4">
+          <div class="mock-info-cell">
+            <div class="mock-info-key">주용도</div>
+            <div class="mock-info-val" style="font-size:9.5px;">생활숙박시설</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">운영확인</div>
+            <div class="mock-info-val" style="font-size:9.5px;">미확인</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">준공월</div>
+            <div class="mock-info-val">2020.11</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">총 호실</div>
+            <div class="mock-info-val">425실</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">영업신고 호수</div>
+            <div class="mock-info-val">36실</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">신고율 <span class="mock-num n4" style="width:12px;height:12px;font-size:8px;">4</span></div>
+            <div class="mock-info-val" style="color:#E53E3E;">8%</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">총 주차</div>
+            <div class="mock-info-val">127대</div>
+          </div>
+          <div class="mock-info-cell">
+            <div class="mock-info-key">층수(지상/지하)</div>
+            <div class="mock-info-val">14 / 5</div>
+          </div>
+        </div>
+
+        <!-- ⑤ 실거래추세 -->
+        <div class="mock-chart-area hl hl5">
+          <div class="mock-chart-title">실거래추세 <span class="mock-num n5">5</span></div>
+          <div class="mock-chart-bars">
+            <div class="mock-bar" style="height:30%;"></div>
+            <div class="mock-bar" style="height:55%;"></div>
+            <div class="mock-bar" style="height:40%;"></div>
+            <div class="mock-bar" style="height:90%;"></div>
+            <div class="mock-bar" style="height:70%;"></div>
+            <div class="mock-bar" style="height:50%;"></div>
+            <div class="mock-bar" style="height:80%;"></div>
+            <div class="mock-bar" style="height:45%;"></div>
+          </div>
+        </div>
+
+        <!-- ⑥ 실거래목록 -->
+        <div class="mock-tx-area hl hl6">
+          <div class="mock-tx-title">실거래목록 <span class="mock-num n6">6</span></div>
+          <div class="mock-tx-row">
+            <span>2026-08 · 9층 · 34㎡</span>
+            <span class="mock-tx-price">11,000만</span>
+          </div>
+          <div class="mock-tx-row">
+            <span>2026-07 · 5층 · 34㎡</span>
+            <span class="mock-tx-price">5,700만</span>
+          </div>
+          <div class="mock-tx-row" style="border:none;">
+            <span>2026-06 · 12층 · 34㎡</span>
+            <span class="mock-tx-price">5,800만</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 오른쪽: 콜아웃 설명 -->
+      <div class="callout-list">
+
+        <div class="callout-item">
+          <div class="callout-badge n1">1</div>
+          <div class="callout-body">
+            <strong>매물내놓기 &amp; 매수의뢰</strong>
+            <p>내 건물을 팔고 싶다면 '매물내놓기'를, 원하는 조건의 매물을 찾고 있다면 '매수의뢰'를 남겨보세요. 전문 중개사가 연결해드립니다.</p>
+          </div>
+        </div>
+
+        <div class="callout-item">
+          <div class="callout-badge n2">2</div>
+          <div class="callout-body">
+            <strong>🔔 실거래알림</strong>
+            <p>이 건물에 새로운 실거래가 등록되면 이메일로 바로 알려드려요.</p>
+          </div>
+        </div>
+
+        <div class="callout-item">
+          <div class="callout-badge n3">3</div>
+          <div class="callout-body">
+            <strong>☆ 관심저장</strong>
+            <p>관심 있는 건물을 저장해두고 마이페이지에서 한눈에 모아보세요. (최대 30개까지 저장 가능)</p>
+          </div>
+        </div>
+
+        <div class="callout-item">
+          <div class="callout-badge n4">4</div>
+          <div class="callout-body">
+            <strong>기본정보 &amp; 신고율</strong>
+            <p>이 건물의 기본 정보와 숙박업 신고 현황을 한눈에 확인하세요. 신고율이 낮을수록 아직 합법 등록이 안 된 호실이 많다는 뜻이에요.</p>
+          </div>
+        </div>
+
+        <div class="callout-item">
+          <div class="callout-badge n5">5</div>
+          <div class="callout-body">
+            <strong>실거래추세 차트</strong>
+            <p>분기별 거래건수와 거래금액 추이를 그래프로 한눈에 확인하세요.</p>
+          </div>
+        </div>
+
+        <div class="callout-item">
+          <div class="callout-badge n6">6</div>
+          <div class="callout-body">
+            <strong>실거래목록</strong>
+            <p>계약일·전용면적·층·거래금액·거래유형(직거래/중개거래)까지 상세 실거래 내역을 확인할 수 있어요.</p>
+          </div>
+        </div>
+
+        <div style="margin-top:8px; text-align:center;">
+          <a href="/?login=1" class="btn-dark" style="display:inline-block; padding:12px 28px; font-size:14px;">
+            지금 무료 가입하기 →
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div><!-- /guide-wrap -->
 
 <script src="/static/js/header.js"></script>
 <script>
-  if (typeof initHeader === "function") initHeader({ title: "이용안내" });
+if (typeof initHeader === "function") initHeader({ title: "이용안내" });
+
+/* ── B1: 최근 본 건물 (localStorage) ─────────────────────────── */
+(function(){
+  const container = document.getElementById("guideRecentChips");
+  const label     = document.getElementById("guideRecentLabel");
+  if (!container) return;
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem("hs_recent_buildings") || "[]"); } catch(e){}
+  if (list.length){
+    // 실제 데이터
+    container.innerHTML = list.slice(0,5).map(b => {
+      const name = (b.name||"건물명 미확인").replace(/</g,"&lt;");
+      return `<a href="/building/${b.id}" class="guide-chip" title="${name}">${name}</a>`;
+    }).join("");
+  } else {
+    // 예시 데이터
+    label.style.display = "";
+    const examples = ["아라트라움 아리스타","그레이스콘도미니엄","대명콘도미니엄"];
+    container.innerHTML = examples.map(n =>
+      `<span class="guide-chip example">${n}</span>`
+    ).join("");
+  }
+})();
+
+/* ── B2: 이번 주 시세 랭킹 (실데이터 연동) ───────────────────── */
+(async function(){
+  const box = document.getElementById("guideRanking");
+  if (!box) return;
+  try {
+    const res = await fetch("/api/ranking");
+    if (!res.ok) throw new Error(res.status);
+    const d = await res.json();
+    if (!d.ok) throw new Error("no data");
+
+    const ph = d.price_highs || [];
+    const mt = d.most_traded || [];
+    let html = "";
+
+    if (ph.length){
+      html += '<div class="guide-rank-section"><div class="guide-rank-label">🏆 신고가 갱신</div>';
+      ph.forEach((item,i) => {
+        const href = item.building_id ? `/building/${item.building_id}` : `/?q=${encodeURIComponent(item.building_name||"")}`;
+        html += `<a href="${href}" class="guide-rank-row" style="text-decoration:none;">
+          <span class="guide-rank-no">${i+1}</span>
+          <span class="guide-rank-name">${(item.building_name||"").replace(/</g,"&lt;")}</span>
+          ${item.pct_gain>0?`<span class="guide-rank-badge">+${item.pct_gain}%</span>`:""}
+        </a>`;
+      });
+      html += '</div>';
+    }
+
+    if (mt.length){
+      html += '<div class="guide-rank-section" style="margin-top:8px;"><div class="guide-rank-label" style="color:var(--ink-soft);">🔥 거래량 TOP</div>';
+      mt.forEach((item,i) => {
+        const href = item.building_id ? `/building/${item.building_id}` : `/?q=${encodeURIComponent(item.building_name||"")}`;
+        html += `<a href="${href}" class="guide-rank-row" style="text-decoration:none;">
+          <span class="guide-rank-no">${i+1}</span>
+          <span class="guide-rank-name">${(item.building_name||"").replace(/</g,"&lt;")}</span>
+          <span class="guide-rank-badge vol">${item.deal_count}건</span>
+        </a>`;
+      });
+      html += '</div>';
+    }
+
+    if (!html) html = '<div class="side-empty-sm">이번 주 거래 데이터 없음</div>';
+    box.innerHTML = html;
+  } catch(e){
+    box.innerHTML = '<div class="side-empty-sm">랭킹을 불러오지 못했습니다.</div>';
+  }
+})();
 </script>
 </body>
 </html>
