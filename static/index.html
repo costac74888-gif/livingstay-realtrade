@@ -121,11 +121,6 @@
       <span style="margin-left:auto; font-size:11px; color:var(--ink-soft); white-space:nowrap;">※ 국토부 실거래는 매매만 제공</span>
       <button id="btnOpenSubmit" style="background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 수정 요청</button>
     </div>
-    <!-- 최근 본 건물 (localStorage, 비로그인 포함) — 기록 없으면 숨김 -->
-    <div id="recentRow" style="display:none; border-top:1px solid var(--line); margin-top:10px; padding-top:10px;">
-      <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:6px;">🕐 최근 본 건물</div>
-      <div id="recentChips" style="display:flex; gap:6px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px;"></div>
-    </div>
   </div>
 
   <!-- (좌측 패널 토글 버튼은 지도 좌측 상단 플로팅 — #btnTogglePanel) -->
@@ -152,8 +147,13 @@
       <div class="side-card-title">실거래목록 <span class="side-sub">최근순</span></div>
       <div class="side-updated" id="healthStatus"></div>
       <div id="sideTxList" class="side-list"><div class="side-empty">불러오는 중…</div></div>
-      <button id="btnMoreTx" class="side-more" style="display:none;">더보기 (20건)</button>
       <a href="/transactions" class="side-all-link">전체 실거래 보기 →</a>
+    </section>
+
+    <!-- 최근 본 건물 (localStorage, 비로그인 포함) — 기록 없으면 숨김 -->
+    <section class="side-card" id="recentRow" style="display:none;">
+      <div class="side-card-title">최근 본 건물 <span class="side-sub">내 방문 기록</span></div>
+      <div id="recentChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
     </section>
 
     <section class="side-card">

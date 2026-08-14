@@ -1525,7 +1525,6 @@ function renderSideTx(t, rank){
 
 async function loadSideTx(size){
   const box = document.getElementById("sideTxList");
-  const moreBtn = document.getElementById("btnMoreTx");
   if (!box) return;
   box.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
   let items = [];
@@ -1539,22 +1538,25 @@ async function loadSideTx(size){
   }
   if (!items.length){
     box.innerHTML = `<div class="side-empty">실거래 내역이 없습니다.</div>`;
-    if (moreBtn) moreBtn.style.display = "none";
     return;
   }
   box.innerHTML = items.map(t => renderSideTx(t)).join("");
-  if (moreBtn) moreBtn.style.display = (size <= 5) ? "block" : "none";
 }
 
 async function loadSideFavorites(){
   const box = document.getElementById("sideFavList");
   if (!box) return;
-  const favKeys = (typeof getFavorites === "function" ? getFavorites() : [])
-    .slice().reverse().slice(0, 5); // 최근 저장 우선, 최대 5개
-  if (!favKeys.length){
+  const allFavKeys = (typeof getFavorites === "function" ? getFavorites() : [])
+    .slice().reverse(); // 최근 저장 우선
+  if (!allFavKeys.length){
     box.innerHTML = `<div class="side-empty">저장된 관심물건이 없습니다.<br>목록에서 ☆를 눌러 추가하세요.</div>`;
     return;
   }
+
+  const FAV_INITIAL = 5;
+  const favKeys = allFavKeys.slice(0, FAV_INITIAL);
+  const remainKeys = allFavKeys.slice(FAV_INITIAL); // 6번째~30번째
+
   box.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
   let items = [];
   try {
@@ -1566,7 +1568,6 @@ async function loadSideFavorites(){
     return;
   }
   // 저장 순서(최근 우선)를 유지하려고 favKeys 순서대로 재정렬한다.
-  // /api/favorites는 deal_date DESC 정렬 → 관심키별 첫 항목(최신 거래)을 유지한다.
   const byKey = {};
   items.forEach(t => {
     const key = `${t.building_name}|${t.address}`;
@@ -1578,6 +1579,38 @@ async function loadSideFavorites(){
     return;
   }
   box.innerHTML = ordered.map((t, i) => renderSideTx(t, i + 1)).join("");
+
+  // 6개 이상 저장돼 있으면 "더보기" 버튼 추가
+  if (remainKeys.length > 0){
+    const moreBtn = document.createElement("button");
+    moreBtn.className = "side-more";
+    moreBtn.textContent = `+ ${remainKeys.length}개 더보기`;
+    moreBtn.addEventListener("click", async () => {
+      moreBtn.disabled = true;
+      moreBtn.textContent = "불러오는 중…";
+      let moreItems = [];
+      try {
+        const res2 = await fetch(`/api/favorites?keys=${encodeURIComponent(remainKeys.join(","))}`);
+        const data2 = await res2.json();
+        moreItems = data2.items || [];
+      } catch(e){ moreBtn.textContent = "오류 — 다시 시도"; moreBtn.disabled = false; return; }
+      const byKey2 = {};
+      moreItems.forEach(t => {
+        const key = `${t.building_name}|${t.address}`;
+        if (!(key in byKey2)) byKey2[key] = t;
+      });
+      const moreOrdered = remainKeys.map(k => byKey2[k]).filter(Boolean);
+      const frag = document.createDocumentFragment();
+      moreOrdered.forEach((t, i) => {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = renderSideTx(t, ordered.length + i + 1);
+        frag.appendChild(tmp.firstChild);
+      });
+      box.insertBefore(frag, moreBtn);
+      moreBtn.remove();
+    });
+    box.appendChild(moreBtn);
+  }
 }
 
 /* ===== 건물 상세: 좌측 패널 전환 ===== */
@@ -1764,9 +1797,9 @@ function renderRecentChips(){
     const label = escapeHtml(b.name || "(건물명 미확인)");
     return `<button type="button"
       onclick="history.pushState({buildingId:${b.id}},'','/building/${b.id}');renderBuildingPanel(${b.id});"
-      style="flex:none;background:#fff;border:1px solid var(--line);border-radius:20px;
-             padding:5px 12px;font-size:12px;font-weight:600;color:var(--ink);
-             cursor:pointer;white-space:nowrap;max-width:140px;overflow:hidden;
+      style="background:#F8F9FA;border:1px solid var(--line);border-radius:20px;
+             padding:4px 11px;font-size:12px;font-weight:600;color:var(--ink);
+             cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;
              text-overflow:ellipsis;"
       title="${label}">${label}</button>`;
   }).join("");
@@ -1829,7 +1862,6 @@ async function loadRankingWidget(){
 }
 
 function initDefaultSidePanel(){
-  document.getElementById("btnMoreTx")?.addEventListener("click", () => loadSideTx(20));
   loadTrendChart();
   loadSideTx(5);
   loadSideFavorites();
