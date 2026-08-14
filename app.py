@@ -60,7 +60,7 @@ SERVER_BOOT_V = str(int(time.time()))
 # 파트너(중개사/운영업체) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
 # 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
 MAX_FREE_BUILDINGS = 5
-MAX_FAVORITES = 5          # 회원 1인당 관심단지 최대 저장 수 (클라이언트와 동일값 유지)
+MAX_FAVORITES = 30         # 회원 1인당 관심단지 최대 저장 수 (클라이언트와 동일값 유지)
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
 OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수

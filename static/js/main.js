@@ -1,7 +1,7 @@
 const FAV_KEY = "livingstay_favorites"; // 마이그레이션 호환용 — 직접 쓰기는 하지 않음
 // 관리자 모드: URL에 ?admin=1 을 붙이면 50개까지, 아니면 일반 사용자 5개 제한
 const IS_ADMIN = new URLSearchParams(location.search).get("admin") === "1";
-const MAX_FAVORITES = IS_ADMIN ? 50 : 5;
+const MAX_FAVORITES = IS_ADMIN ? 50 : 30;
 
 let regionTree = {};
 let state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", page:1, size:20, favOnly:false, favKey:null };
