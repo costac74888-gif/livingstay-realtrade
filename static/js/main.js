@@ -1710,27 +1710,27 @@ function hideAdjacentApplyBanner(box){
 function recruitBoxHTML(kind, opts = {}){
   const KINDS = {
     agent: {
-      bg: "var(--brass-tint)", border: "#EAD9B8", icon: "🔎", iconSize: 24, pad: "16px 12px",
+      bg: "var(--brass-tint)", border: "#EAD9B8", icon: "🔎", iconSize: 14, pad: "8px 8px",
       title: "건물별 담당중개사를 모집하고 있습니다",
       desc: "건물별 담당 중개사무소를 모집합니다.",
       btnText: "담당중개사로 신청하기", href: "/partner", btnStyle: "",
     },
     consign: {
-      bg: "#EEF6E6", border: "#CFE4B8", icon: "🏨", iconSize: 22, pad: "14px 12px",
+      bg: "#EEF6E6", border: "#CFE4B8", icon: "🏨", iconSize: 13, pad: "7px 8px",
       title: "위탁운영 지원업체를 찾고 있습니다",
       desc: "",
       btnText: "지원업체로 신청하기", href: "/partner",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
     },
     housekeeping: {
-      bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 22, pad: "14px 12px",
+      bg: "#EEF6E6", border: "#CFE4B8", icon: "🧹", iconSize: 13, pad: "7px 8px",
       title: "",
       desc: `<span style="font-weight:700;">청소 · 세탁 · 용품 · 소독 · 세무 · 인테리어</span>`,
       btnText: "지원업체로 신청하기", href: "/partner",
       btnStyle: "background:#EEF6E6; color:#4A7A18; border-color:#CFE4B8;",
     },
     finance: {
-      bg: "var(--brass-tint)", border: "#EAD9B8", icon: "💰", iconSize: 22, pad: "14px 12px",
+      bg: "var(--brass-tint)", border: "#EAD9B8", icon: "💰", iconSize: 13, pad: "7px 8px",
       title: "금융 파트너(대출상담사)를 모집합니다",
       desc: "",
       btnText: "대출상담사로 등록하기", href: "/partner", btnStyle: "",
@@ -1752,13 +1752,13 @@ function recruitBoxHTML(kind, opts = {}){
   const btnText = opts.btnText || k.btnText;
   const href = (opts.href !== undefined) ? opts.href : k.href;
   const btn = href
-    ? `<a ${opts.linkId ? `id="${opts.linkId}" ` : ""}href="${href}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:7px 16px; text-decoration:none; ${k.btnStyle}">${btnText}</a>`
-    : `<button class="side-more" style="width:auto; margin-top:0; padding:7px 16px; ${k.btnStyle}">${btnText}</button>`;
+    ? `<a ${opts.linkId ? `id="${opts.linkId}" ` : ""}href="${href}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:4px 10px; font-size:10.5px; text-decoration:none; ${k.btnStyle}">${btnText}</a>`
+    : `<button class="side-more" style="width:auto; margin-top:0; padding:4px 10px; font-size:10.5px; ${k.btnStyle}">${btnText}</button>`;
   return `
     <div style="text-align:center; padding:${k.pad}; background:${k.bg}; border:1px dashed ${k.border}; border-radius:8px;">
-      <div style="font-size:${k.iconSize}px; margin-bottom:6px;">${k.icon}</div>
-      <div style="font-size:12.5px; font-weight:700; color:var(--ink); margin-bottom:6px;">${k.title}</div>
-      ${k.desc ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:10px; line-height:1.5;">${k.desc}</div>` : ""}
+      <div style="font-size:${k.iconSize}px; margin-bottom:3px;">${k.icon}</div>
+      <div style="font-size:11px; font-weight:700; color:var(--ink); margin-bottom:3px;">${k.title}</div>
+      ${k.desc ? `<div style="font-size:10px; color:var(--ink-soft); margin-bottom:5px; line-height:1.3;">${k.desc}</div>` : ""}
       ${btn}
     </div>`;
 }
