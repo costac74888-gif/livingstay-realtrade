@@ -131,7 +131,7 @@
               '<a href="/privacy" target="_blank" rel="noopener">개인정보처리방침 전문</a>' +
             '</div>' +
             '<label class="auth-consent-row">' +
-              '<input type="checkbox" id="agreeMarketing" /> <span class="agree-tag agree-tag-opt">[선택]</span> 마케팅 정보(이메일) 수신 동의' +
+              '<input type="checkbox" id="agreeMarketing" /> <span class="agree-tag agree-tag-opt">[선택]</span> 주간 소식 이메일(시세 랭킹·관심단지 알림, 광고 포함) 수신 동의' +
             '</label>' +
           '</div>' +
           '<button type="submit" class="auth-submit" id="authSubmit">로그인</button>' +

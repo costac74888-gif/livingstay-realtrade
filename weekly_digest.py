@@ -1,33 +1,28 @@
 #!/usr/bin/env python3
 """
-관심단지 주간 요약 이메일 발송 배치
+홈앤스테이 주간 소식 이메일 발송
+===================================
+대상  : weekly_email_enabled = TRUE 인 일반 회원 전체 (관심단지 유무 무관)
+Zone 1-1 : 관심단지 신규 실거래 (없으면 안내 문구)
+Zone 1-2 : 매물의뢰 / 매수의뢰 진행 현황 (없으면 CTA)
+Zone 2   : 이번 주 시세 랭킹 — 신고가 TOP5, 거래량 TOP5
+Zone 5   : 광고 배너 (활성 배너 없으면 완전 제외)
 
-실행 방법:
-  python weekly_digest.py [--dry-run] [--user-id <id>]
-
-  --dry-run   실제 발송 없이 대상자·내용만 출력
-  --user-id   특정 사용자 1명에게만 발송 (테스트용)
-
-스케줄링 예시 (cron):
-  0 9 * * 1  cd /path/to/app && python weekly_digest.py >> logs/weekly_digest.log 2>&1
-
-로직:
-  1. email_alert_enabled=true 인 회원 중 user_favorites 가 1개 이상인 회원 조회
-  2. 각 회원의 관심단지에 대해 지난 7일 신규 실거래가 있는 건만 필터
-  3. 신규 실거래가 있는 회원에게만 이메일 발송 (없으면 발송 안 함)
-  4. 이메일 본문에 수신거부 링크 포함 (마이페이지 알림 설정 링크)
+실행:
+  python weekly_digest.py                  # 전체 발송
+  python weekly_digest.py --dry-run        # 발송 없이 로그만 출력
+  python weekly_digest.py --user-id 4     # 특정 회원만 (테스트)
 """
 
 import os
 import sys
 import argparse
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import psycopg2
 import psycopg2.extras
 
-# email_util은 같은 디렉터리에 있다고 가정
 from email_util import send_email
 
 logging.basicConfig(
@@ -38,19 +33,22 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-SITE_URL = os.environ.get("SITE_URL", "https://livingstay.kr")
+SITE_URL     = os.environ.get("SITE_URL", "https://livingstay.co.kr")
 
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def _fmt_price(won_man: int) -> str:
-    """만원 단위 → '1억 2,300만원' 형식."""
-    if won_man is None:
+# ── 유틸 ──────────────────────────────────────────────────────────────────────
+
+def _fmt_price(won_man):
+    """만원 단위 정수 → '3억 2,500만원' 형태 문자열"""
+    if not won_man:
         return "-"
-    uk = won_man // 10000
-    man = won_man % 10000
+    v = int(won_man)
+    uk = v // 10000
+    man = v % 10000
     if uk and man:
         return f"{uk:,}억 {man:,}만원"
     if uk:
@@ -58,176 +56,558 @@ def _fmt_price(won_man: int) -> str:
     return f"{man:,}만원"
 
 
-def _build_email_html(user_name: str, deals: list, unsubscribe_url: str) -> str:
-    """관심단지 주간 요약 이메일 HTML 생성."""
-    greeting = f"안녕하세요, {user_name}님!"
+def _status_label(status):
+    return {
+        "submitted":  "신규접수",
+        "consulting": "상담중",
+        "matched":    "중개사 매칭완료",
+        "completed":  "완료",
+        "cancelled":  "취소",
+    }.get(status or "", status or "-")
 
-    rows_html = ""
-    for d in deals:
-        building = d["building_name"] or "(건물명 미확인)"
-        addr = d["address"] or ""
-        price = _fmt_price(d["price"])
-        date = d["deal_date"] or ""
-        detail_url = f"{SITE_URL}/building/{d['building_id']}" if d.get("building_id") else f"{SITE_URL}/?q={building}"
-        rows_html += f"""
+
+def _status_badge_style(status):
+    ok_statuses = {"completed", "matched"}
+    if status in ok_statuses:
+        return "background:#EEF6E6;color:#4A7A18;"
+    return "background:#FFF3CD;color:#856404;"
+
+
+# ── DB 조회 ──────────────────────────────────────────────────────────────────
+
+def _get_active_banner(cur):
+    today = date.today().isoformat()
+    cur.execute("""
+        SELECT image_url, link_url FROM email_ad_banners
+        WHERE is_active = TRUE
+          AND start_date <= %s::date
+          AND end_date   >= %s::date
+        ORDER BY RANDOM()
+        LIMIT 1
+    """, (today, today))
+    return cur.fetchone()
+
+
+def _get_ranking(cur):
+    """신고가 갱신 TOP5, 거래량 TOP5 (최근 7일)"""
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+
+    # 신고가 갱신: 이번 주 거래 중 해당 건물의 역대 최고가를 경신한 것
+    cur.execute("""
+        WITH this_week AS (
+            SELECT building_name,
+                   MAX(price) AS new_peak
+            FROM transactions
+            WHERE deal_date >= %s
+            GROUP BY building_name
+        ),
+        prev_peak AS (
+            SELECT building_name,
+                   MAX(price) AS old_peak
+            FROM transactions
+            WHERE deal_date < %s
+            GROUP BY building_name
+        )
+        SELECT t.building_name,
+               t.new_peak AS price,
+               mb.id      AS building_id,
+               ROUND((t.new_peak - COALESCE(p.old_peak, 0))::numeric
+                     * 100.0 / NULLIF(COALESCE(p.old_peak, t.new_peak), 0), 1) AS pct_gain
+        FROM this_week t
+        LEFT JOIN prev_peak p USING (building_name)
+        LEFT JOIN master_buildings mb ON mb.building_name = t.building_name
+        WHERE t.new_peak > COALESCE(p.old_peak, 0)
+        ORDER BY pct_gain DESC NULLS LAST
+        LIMIT 5
+    """, (week_ago, week_ago))
+    price_highs = cur.fetchall()
+
+    # 거래량 TOP5 (최근 7일)
+    cur.execute("""
+        SELECT t.building_name,
+               COUNT(*) AS deal_count,
+               mb.id    AS building_id
+        FROM transactions t
+        LEFT JOIN master_buildings mb ON mb.building_name = t.building_name
+        WHERE t.deal_date >= %s
+        GROUP BY t.building_name, mb.id
+        ORDER BY deal_count DESC
+        LIMIT 5
+    """, (week_ago,))
+    most_traded = cur.fetchall()
+
+    return price_highs, most_traded
+
+
+# ── HTML 조립 ─────────────────────────────────────────────────────────────────
+
+def _bld_url(building_id, building_name=""):
+    if building_id:
+        return f"{SITE_URL}/building/{building_id}"
+    if building_name:
+        import urllib.parse
+        return f"{SITE_URL}/?q={urllib.parse.quote(building_name)}"
+    return SITE_URL
+
+
+def _zone1_1(favs, deals_by_fav):
+    """관심단지 실거래"""
+    if not favs:
+        return f"""
+        <p style="color:#555;font-size:14px;margin:0 0 12px;">
+          아직 등록하신 관심단지가 없어요.
+        </p>
+        <a href="{SITE_URL}/"
+           style="display:inline-block;background:#B4863F;color:#fff;
+                  text-decoration:none;padding:10px 22px;border-radius:6px;
+                  font-size:14px;font-weight:700;">
+          지도에서 관심단지 저장하기 →
+        </a>"""
+
+    rows = ""
+    for bname, addr, mid in favs:
+        deal = deals_by_fav.get((bname, addr))
+        url  = _bld_url(mid or (deal and deal.get("building_id")), bname)
+        if deal:
+            rows += f"""
+            <tr>
+              <td style="padding:8px 4px;border-bottom:1px solid #eee;vertical-align:top;">
+                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">{bname}</a>
+              </td>
+              <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;
+                         white-space:nowrap;font-weight:700;color:#B4863F;">
+                {_fmt_price(deal['price'])}
+              </td>
+              <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;
+                         white-space:nowrap;color:#888;font-size:12px;">
+                {deal['deal_date']}
+              </td>
+            </tr>"""
+        else:
+            rows += f"""
+            <tr>
+              <td colspan="3" style="padding:8px 4px;border-bottom:1px solid #eee;color:#888;">
+                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">{bname}</a>
+                <span style="margin-left:8px;font-size:12px;">— 이번 주 새로운 실거래가 없었어요</span>
+              </td>
+            </tr>"""
+
+    return f"""
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
         <tr>
-          <td style="padding:10px 14px; border-bottom:1px solid #eee;">
-            <a href="{detail_url}" style="font-weight:700; color:#16202E; text-decoration:none; font-size:14px;">{building}</a><br>
-            <span style="font-size:12px; color:#6B7684;">{addr}</span>
+          <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">건물명</th>
+          <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;white-space:nowrap;">거래금액</th>
+          <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">계약일</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>"""
+
+
+def _zone1_2(listing_reqs, buy_reqs):
+    """매물의뢰 / 매수의뢰 현황"""
+    all_reqs = [("매물내놓기", r) for r in listing_reqs] + \
+               [("매수의뢰",   r) for r in buy_reqs]
+
+    if not all_reqs:
+        return f"""
+        <p style="color:#555;font-size:14px;margin:0 0 12px;">
+          현재 진행 중인 의뢰가 없습니다.<br>
+          매물을 내놓으시면 전문 중개사가 연결해드립니다.
+        </p>
+        <a href="{SITE_URL}/"
+           style="display:inline-block;background:#B4863F;color:#fff;
+                  text-decoration:none;padding:10px 22px;border-radius:6px;
+                  font-size:14px;font-weight:700;">
+          매물내놓기 →
+        </a>"""
+
+    rows = ""
+    for kind, r in all_reqs:
+        url  = _bld_url(r.get("master_building_id"), r.get("building_name") or "")
+        name = r.get("building_name") or "-"
+        badge_style = _status_badge_style(r["status"])
+        rows += f"""
+        <tr>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:12px;
+                     color:#888;white-space:nowrap;">{kind}</td>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee;font-weight:700;">
+            <a href="{url}" style="color:#16202E;text-decoration:none;">{name}</a>
           </td>
-          <td style="padding:10px 14px; border-bottom:1px solid #eee; text-align:right; white-space:nowrap;">
-            <span style="font-weight:700; color:#B4863F; font-size:14px;">{price}</span><br>
-            <span style="font-size:11px; color:#9AA5B1;">{date}</span>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee;">
+            <span style="{badge_style}padding:2px 8px;border-radius:10px;
+                          font-size:12px;font-weight:700;">
+              {_status_label(r['status'])}
+            </span>
           </td>
         </tr>"""
 
-    html = f"""<!DOCTYPE html>
+    return f"""
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">구분</th>
+          <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">건물</th>
+          <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">상태</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>"""
+
+
+def _zone2(price_highs, most_traded):
+    """시세 랭킹"""
+    def price_rows():
+        if not price_highs:
+            return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 신고가 갱신 건물이 없습니다.</td></tr>"
+        html = ""
+        for i, r in enumerate(price_highs, 1):
+            url  = _bld_url(r.get("building_id"), r["building_name"])
+            gain = f"+{r['pct_gain']}%" if r.get("pct_gain") else ""
+            html += f"""
+            <tr>
+              <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;
+                         color:#aaa;width:20px;font-size:13px;">{i}</td>
+              <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;font-size:13px;">
+                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">
+                  {r['building_name']}
+                </a>
+              </td>
+              <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;text-align:right;
+                         color:#E53E3E;font-weight:700;white-space:nowrap;font-size:13px;">
+                {gain}
+              </td>
+            </tr>"""
+        return html
+
+    def vol_rows():
+        if not most_traded:
+            return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 거래 데이터가 없습니다.</td></tr>"
+        html = ""
+        for i, r in enumerate(most_traded, 1):
+            url = _bld_url(r.get("building_id"), r["building_name"])
+            html += f"""
+            <tr>
+              <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;
+                         color:#aaa;width:20px;font-size:13px;">{i}</td>
+              <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;font-size:13px;">
+                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">
+                  {r['building_name']}
+                </a>
+              </td>
+              <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;text-align:right;
+                         font-weight:700;white-space:nowrap;color:#B4863F;font-size:13px;">
+                {r['deal_count']}건
+              </td>
+            </tr>"""
+        return html
+
+    return f"""
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <thead>
+        <tr>
+          <th colspan="3"
+              style="text-align:left;padding:6px 4px;color:#16202E;font-size:13px;
+                     font-weight:700;border-bottom:2px solid #eee;">
+            🏆 신고가 갱신 TOP5
+          </th>
+        </tr>
+      </thead>
+      <tbody>{price_rows()}</tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th colspan="3"
+              style="text-align:left;padding:6px 4px;color:#16202E;font-size:13px;
+                     font-weight:700;border-bottom:2px solid #eee;">
+            🔥 거래량 TOP5
+          </th>
+        </tr>
+      </thead>
+      <tbody>{vol_rows()}</tbody>
+    </table>"""
+
+
+def _zone5(banner):
+    if not banner:
+        return ""
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="padding:16px 0 0;border-top:1px solid #eee;">
+          <p style="font-size:10px;color:#aaa;margin:0 0 6px;">[광고]</p>
+          <a href="{banner['link_url']}" target="_blank" rel="noopener noreferrer">
+            <img src="{banner['image_url']}" alt="광고 배너"
+                 style="display:block;width:100%;max-width:524px;height:auto;border-radius:8px;" />
+          </a>
+        </td>
+      </tr>
+    </table>"""
+
+
+def build_html(user_name, favs, deals_by_fav,
+               listing_reqs, buy_reqs,
+               price_highs, most_traded,
+               banner, unsubscribe_url):
+    z1  = _zone1_1(favs, deals_by_fav)
+    z12 = _zone1_2(listing_reqs, buy_reqs)
+    z2  = _zone2(price_highs, most_traded)
+    z5  = _zone5(banner)
+
+    zone5_block = ""
+    if z5:
+        zone5_block = f"""
+  <tr>
+    <td style="padding:20px 28px 0;">{z5}</td>
+  </tr>"""
+
+    return f"""<!DOCTYPE html>
 <html lang="ko">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>관심단지 주간 실거래 요약</title></head>
-<body style="margin:0;padding:0;background:#F4F5F7;font-family:'Noto Sans KR',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F7;padding:32px 0;">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>홈앤스테이 주간 소식</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;
+             font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0"
+       style="background:#f4f5f7;padding:24px 0;">
 <tr><td align="center">
-  <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
-    <!-- 헤더 -->
-    <tr><td style="background:#16202E;padding:24px 32px;">
-      <a href="{SITE_URL}" style="color:#fff;font-size:20px;font-weight:700;text-decoration:none;">🏨 홈앤스테이</a>
-      <p style="color:#B0B8C1;font-size:13px;margin:6px 0 0;">관심단지 주간 실거래 요약</p>
-    </td></tr>
-    <!-- 인사 -->
-    <tr><td style="padding:28px 32px 8px;">
-      <p style="font-size:16px;font-weight:600;color:#16202E;margin:0 0 8px;">{greeting}</p>
-      <p style="font-size:14px;color:#4A5568;line-height:1.7;margin:0;">
-        관심 등록하신 건물에서 <strong>지난 7일간 새로운 실거래</strong>가 등록됐습니다.
-      </p>
-    </td></tr>
-    <!-- 거래 목록 -->
-    <tr><td style="padding:12px 32px 24px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eee;border-radius:8px;overflow:hidden;">
-        <thead>
-          <tr style="background:#F8F9FA;">
-            <th style="padding:10px 14px;text-align:left;font-size:12px;color:#6B7684;font-weight:600;">건물명 / 주소</th>
-            <th style="padding:10px 14px;text-align:right;font-size:12px;color:#6B7684;font-weight:600;">실거래가</th>
-          </tr>
-        </thead>
-        <tbody>{rows_html}</tbody>
-      </table>
-    </td></tr>
-    <!-- CTA -->
-    <tr><td style="padding:0 32px 28px;text-align:center;">
-      <a href="{SITE_URL}" style="display:inline-block;background:#16202E;color:#fff;padding:13px 32px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;">
-        지도에서 전체 실거래 확인하기 →
+
+<table width="100%" style="max-width:580px;background:#fff;
+       border-radius:12px;overflow:hidden;
+       box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+
+  <!-- ── 헤더 ── -->
+  <tr>
+    <td style="background:#16202E;padding:20px 28px;text-align:center;">
+      <a href="{SITE_URL}" style="color:#fff;text-decoration:none;
+                                  font-size:22px;font-weight:800;letter-spacing:-0.5px;">
+        HOME&amp;STAY
       </a>
-    </td></tr>
-    <!-- 푸터 -->
-    <tr><td style="background:#F8F9FA;padding:18px 32px;text-align:center;">
-      <p style="font-size:12px;color:#9AA5B1;margin:0;line-height:1.7;">
-        이 메일은 홈앤스테이 관심단지 실거래 알림 서비스입니다.<br>
-        수신을 원하지 않으시면
-        <a href="{unsubscribe_url}" style="color:#9AA5B1;text-decoration:underline;">여기서 알림을 끄실 수 있습니다</a>.
+      <p style="color:#9aa5b1;font-size:12px;margin:4px 0 0;">주간 소식</p>
+    </td>
+  </tr>
+
+  <!-- ── 인사말 ── -->
+  <tr>
+    <td style="padding:24px 28px 0;">
+      <p style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 4px;">
+        {user_name}님, 이번 주 홈앤스테이 소식을 전달해드려요.
       </p>
-    </td></tr>
-  </table>
-</td></tr></table>
-</body></html>"""
-    return html
+      <p style="font-size:13px;color:#888;margin:0;">
+        생활숙박시설·관광숙박 실거래가 최신 정보입니다.
+      </p>
+    </td>
+  </tr>
+
+  <!-- ── Zone 1-1: 관심단지 실거래 ── -->
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📌 관심단지 실거래 알림
+      </h2>
+      {z1}
+    </td>
+  </tr>
+
+  <!-- ── Zone 1-2: 매물의뢰 현황 ── -->
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📋 매물의뢰 진행 현황
+      </h2>
+      {z12}
+    </td>
+  </tr>
+
+  <!-- ── Zone 2: 시세 랭킹 ── -->
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📊 이번 주 시세 랭킹
+      </h2>
+      {z2}
+    </td>
+  </tr>
+
+  <!-- ── Zone 5: 광고 배너 (없으면 블록 자체 제거) ── -->
+  {zone5_block}
+
+  <!-- ── 푸터 ── -->
+  <tr>
+    <td style="padding:20px 28px 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding-top:16px;border-top:1px solid #eee;text-align:center;">
+            <p style="font-size:11px;color:#aaa;margin:0 0 4px;">
+              홈앤스테이 | 빌드리머스 주식회사
+            </p>
+            <p style="font-size:11px;color:#aaa;margin:0;">
+              이 메일은 홈앤스테이 회원가입 시 동의하신 주간 소식 수신 설정에 따라 발송됩니다.
+              <a href="{unsubscribe_url}" style="color:#aaa;text-decoration:underline;">수신거부</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
 
 
-def run(dry_run: bool = False, target_user_id: int = None):
-    if not DATABASE_URL:
-        log.error("DATABASE_URL 환경변수가 없습니다. 종료합니다.")
-        sys.exit(1)
+# ── 메인 ─────────────────────────────────────────────────────────────────────
 
-    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).date().isoformat()
+def main():
+    parser = argparse.ArgumentParser(description="홈앤스테이 주간 소식 이메일 발송")
+    parser.add_argument("--dry-run",  action="store_true", help="발송 없이 로그만 출력")
+    parser.add_argument("--user-id",  type=int, default=None, help="특정 회원 ID (테스트용)")
+    args = parser.parse_args()
+
+    dry_run    = args.dry_run
+    target_uid = args.user_id
+    week_ago   = (date.today() - timedelta(days=7)).isoformat()
 
     conn = get_conn()
-    sent = 0
-    skipped = 0
-    errors = 0
-
     try:
-        with conn.cursor() as cur:
-            # ── 대상 회원 조회 ──────────────────────────────────────────────
-            user_filter = "AND u.id = %s" if target_user_id else ""
-            user_params = (target_user_id,) if target_user_id else ()
-            cur.execute(f"""
-                SELECT DISTINCT u.id, u.email, COALESCE(u.name, u.email) AS name
-                FROM users u
-                JOIN user_favorites uf ON uf.user_id = u.id
-                WHERE COALESCE(u.email_alert_enabled, TRUE) = TRUE
-                  AND u.email IS NOT NULL
-                  AND u.email <> ''
-                  {user_filter}
-                ORDER BY u.id
-            """, user_params)
-            users = cur.fetchall()
-            log.info("대상 회원 %d명", len(users))
+        cur = conn.cursor()
 
-            for user in users:
-                uid = user["id"]
-                email = user["email"]
-                name = user["name"]
+        # 공통 데이터 (전체 회원이 동일하게 받음)
+        banner                  = _get_active_banner(cur)
+        price_highs, most_traded = _get_ranking(cur)
 
-                # ── 관심단지에 최근 7일 신규 실거래 조회 ─────────────────
+        # 발송 대상 회원 조회
+        uid_filter = "AND u.id = %s" if target_uid else ""
+        uid_params = (target_uid,) if target_uid else ()
+        cur.execute(f"""
+            SELECT id, email, COALESCE(name, email) AS name
+            FROM users u
+            WHERE COALESCE(weekly_email_enabled, FALSE) = TRUE
+              AND email IS NOT NULL AND email <> ''
+              AND COALESCE(status, 'active') <> 'withdrawn'
+              {uid_filter}
+            ORDER BY id
+        """, uid_params)
+        users = cur.fetchall()
+        log.info("발송 대상 회원 %d명 (배너=%s)", len(users), "있음" if banner else "없음")
+
+        sent = errors = 0
+        for user in users:
+            uid   = user["id"]
+            email = user["email"]
+            name  = user["name"]
+
+            # 관심단지
+            cur.execute("""
+                SELECT building_name, address, master_building_id
+                FROM user_favorites
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            """, (uid,))
+            favs = [(r["building_name"], r["address"], r["master_building_id"])
+                    for r in cur.fetchall()]
+
+            # 관심단지별 최근 실거래 (건물명+주소 매칭, 최신 1건)
+            deals_by_fav: dict = {}
+            if favs:
+                fav_names   = [f[0] for f in favs]
+                fav_addrs   = [f[1] for f in favs]
                 cur.execute("""
-                    SELECT
-                        uf.building_name, uf.address,
-                        t.price, t.deal_date, t.floor, t.area,
+                    SELECT DISTINCT ON (t.building_name, t.address)
+                        t.building_name, t.address, t.price, t.deal_date,
                         mb.id AS building_id
-                    FROM user_favorites uf
-                    JOIN transactions t
-                      ON t.building_name = uf.building_name
-                     AND t.address = uf.address
+                    FROM transactions t
                     LEFT JOIN master_buildings mb
-                      ON mb.building_name = uf.building_name
-                    WHERE uf.user_id = %s
-                      AND t.deal_date >= %s
-                    ORDER BY uf.building_name, t.deal_date DESC
-                """, (uid, seven_days_ago))
-                deals = cur.fetchall()
+                           ON mb.building_name = t.building_name
+                    WHERE t.building_name = ANY(%s)
+                      AND t.address       = ANY(%s)
+                      AND t.deal_date    >= %s
+                    ORDER BY t.building_name, t.address, t.deal_date DESC
+                """, (fav_names, fav_addrs, week_ago))
+                for r in cur.fetchall():
+                    # 건물명+주소가 모두 일치하는 것만 저장
+                    key = (r["building_name"], r["address"])
+                    if key in set((f[0], f[1]) for f in favs):
+                        deals_by_fav[key] = dict(r)
 
-                if not deals:
-                    skipped += 1
-                    log.debug("  user %d — 신규 실거래 없음, 건너뜀", uid)
-                    continue
+            # 진행 중 매물의뢰
+            cur.execute("""
+                SELECT lr.id, lr.status, lr.master_building_id,
+                       mb.building_name
+                FROM listing_requests lr
+                LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+                WHERE lr.user_id = %s
+                  AND lr.status NOT IN ('cancelled', 'completed')
+                ORDER BY lr.created_at DESC
+                LIMIT 5
+            """, (uid,))
+            listing_reqs = cur.fetchall()
 
-                # ── 건물별로 최신 1건만 (중복 방지) ─────────────────────
-                seen = {}
-                unique_deals = []
-                for d in deals:
-                    key = (d["building_name"], d["address"])
-                    if key not in seen:
-                        seen[key] = True
-                        unique_deals.append(d)
+            # 진행 중 매수의뢰
+            cur.execute("""
+                SELECT br.id, br.status, br.master_building_id,
+                       mb.building_name
+                FROM buy_requests br
+                LEFT JOIN master_buildings mb ON mb.id = br.master_building_id
+                WHERE br.user_id = %s
+                  AND br.status NOT IN ('cancelled', 'completed')
+                ORDER BY br.created_at DESC
+                LIMIT 5
+            """, (uid,))
+            buy_reqs = cur.fetchall()
 
-                unsubscribe_url = f"{SITE_URL}/mypage#alerts"
-                subject = f"[홈앤스테이] 관심단지 {len(unique_deals)}곳에 새 실거래가 등록됐습니다"
-                html_body = _build_email_html(name, unique_deals, unsubscribe_url)
+            # 이메일 제목 구성
+            n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))
+            has_ad  = banner is not None
+            subject_suffix = f" | 관심단지 {n_deals}곳 새 실거래" if n_deals else ""
+            subject = f"{'(광고) ' if has_ad else ''}[홈앤스테이] 이번 주 소식{subject_suffix}"
 
-                if dry_run:
-                    log.info("  [DRY-RUN] → %s (%d건): %s",
-                             email, len(unique_deals),
-                             ", ".join(d["building_name"] for d in unique_deals))
-                    sent += 1
-                    continue
+            unsubscribe_url = f"{SITE_URL}/mypage#alerts"
+            html_body = build_html(
+                name, favs, deals_by_fav,
+                listing_reqs, buy_reqs,
+                price_highs, most_traded,
+                banner, unsubscribe_url,
+            )
 
-                ok, msg = send_email(email, subject, html_body)
-                if ok:
-                    sent += 1
-                    log.info("  ✓ %s — %d건 발송", email, len(unique_deals))
-                else:
-                    errors += 1
-                    log.warning("  ✗ %s — 발송 실패: %s", email, msg)
+            if dry_run:
+                log.info("  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
+                         "의뢰 listing=%d buy=%d | 배너=%s",
+                         email, len(favs), n_deals,
+                         len(listing_reqs), len(buy_reqs),
+                         "있음" if banner else "없음")
+                sent += 1
+                continue
+
+            ok, msg = send_email(email, subject, html_body)
+            if ok:
+                sent += 1
+                log.info("  ✓ %s", email)
+            else:
+                errors += 1
+                log.warning("  ✗ %s — %s", email, msg)
 
     finally:
         conn.close()
 
-    log.info("완료: 발송=%d, 건너뜀=%d, 오류=%d", sent, skipped, errors)
+    log.info("완료: 발송=%d, 오류=%d", sent, errors)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="홈앤스테이 관심단지 주간 요약 이메일")
-    parser.add_argument("--dry-run", action="store_true", help="실제 발송 없이 대상만 출력")
-    parser.add_argument("--user-id", type=int, default=None, help="특정 사용자 ID에게만 발송 (테스트)")
-    args = parser.parse_args()
-    run(dry_run=args.dry_run, target_user_id=args.user_id)
+    main()

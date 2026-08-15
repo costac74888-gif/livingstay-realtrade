@@ -3718,7 +3718,9 @@ def current_user():
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, email, name, provider, COALESCE(email_alert_enabled, TRUE) AS email_alert_enabled"
+            "SELECT id, email, name, provider,"
+            " COALESCE(email_alert_enabled, TRUE) AS email_alert_enabled,"
+            " COALESCE(weekly_email_enabled, FALSE) AS weekly_email_enabled"
             " FROM users WHERE id = %s AND status <> 'withdrawn'",
             (uid,),
         )
@@ -3760,11 +3762,13 @@ def auth_signup():
             return jsonify({"ok": False, "message": "이미 가입된 이메일입니다."}), 400
         cur.execute(
             """INSERT INTO users (email, password_hash, name, provider, last_login_at,
-                                  terms_agreed_at, privacy_agreed_at, marketing_agreed_at)
+                                  terms_agreed_at, privacy_agreed_at, marketing_agreed_at,
+                                  weekly_email_enabled)
                VALUES (%s, %s, %s, 'email', NOW(),
-                       NOW(), NOW(), CASE WHEN %s THEN NOW() ELSE NULL END)
+                       NOW(), NOW(), CASE WHEN %s THEN NOW() ELSE NULL END,
+                       %s)
                RETURNING id""",
-            (email, pw_hash, name, marketing),
+            (email, pw_hash, name, marketing, marketing),
         )
         new_id = cur.fetchone()["id"]
         conn.commit()
@@ -3853,7 +3857,8 @@ def auth_me():
             "name": u.get("name"),
             "email": u.get("email"),
             "provider": u.get("provider"),
-            "email_alert_enabled": bool(u.get("email_alert_enabled", True)),
+            "email_alert_enabled":  bool(u.get("email_alert_enabled", True)),
+            "weekly_email_enabled": bool(u.get("weekly_email_enabled", False)),
         })
 
     # 사업자 세션 확인 — agent → operator → loan_consultant 순서.
@@ -3937,6 +3942,28 @@ def auth_update_email_alert():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "email_alert_enabled": enabled})
+
+
+@app.route("/api/auth/weekly-email", methods=["PUT"])
+@limiter.limit("10 per minute")
+def auth_update_weekly_email():
+    """주간 소식 이메일 수신 동의 변경 — 로그인 필요."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    raw = data.get("enabled")
+    if not isinstance(raw, bool):
+        return jsonify({"ok": False, "message": "enabled 값은 true/false여야 합니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET weekly_email_enabled = %s WHERE id = %s", (raw, u["id"]))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "weekly_email_enabled": raw})
 
 
 @app.route("/api/auth/password", methods=["PUT"])
@@ -15498,6 +15525,85 @@ def _zip_backfill_auto_loop():
 
 threading.Thread(target=_zip_backfill_auto_loop, daemon=True,
                  name="zip-backfill-auto").start()
+
+
+
+# ── 이메일 광고배너 관리 (admin) ──────────────────────────────────────────────
+@app.route("/api/admin/email-banners", methods=["GET"])
+@require_admin
+def admin_email_banners_list():
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id, image_url, link_url, start_date::text, end_date::text,
+                              is_active, created_at::text
+                       FROM email_ad_banners ORDER BY id DESC""")
+        rows = [dict(r) for r in cur.fetchall()]
+        return jsonify({"ok": True, "rows": rows, "total": len(rows)})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/email-banners", methods=["POST"])
+@require_admin
+def admin_email_banners_create():
+    data = request.get_json(force=True, silent=True) or {}
+    image_url  = (data.get("image_url") or "").strip()
+    link_url   = (data.get("link_url") or "").strip()
+    start_date = data.get("start_date")
+    end_date   = data.get("end_date")
+    is_active  = bool(data.get("is_active", True))
+    if not image_url or not link_url or not start_date or not end_date:
+        return jsonify({"ok": False, "message": "image_url, link_url, start_date, end_date는 필수입니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO email_ad_banners (image_url, link_url, start_date, end_date, is_active)
+                       VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                    (image_url, link_url, start_date, end_date, is_active))
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+        return jsonify({"ok": True, "id": new_id})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "message": str(e)}), 400
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/email-banners/<int:bid>", methods=["PUT"])
+@require_admin
+def admin_email_banners_update(bid):
+    data = request.get_json(force=True, silent=True) or {}
+    fields, vals = [], []
+    for col in ("image_url", "link_url"):
+        if col in data:
+            fields.append(f"{col} = %s"); vals.append((data[col] or "").strip())
+    for col in ("start_date", "end_date"):
+        if col in data:
+            fields.append(f"{col} = %s"); vals.append(data[col])
+    if "is_active" in data:
+        fields.append("is_active = %s"); vals.append(bool(data["is_active"]))
+    if not fields:
+        return jsonify({"ok": False, "message": "변경할 필드가 없습니다."}), 400
+    vals.append(bid)
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"UPDATE email_ad_banners SET {', '.join(fields)} WHERE id = %s", vals)
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/email-banners/<int:bid>", methods=["DELETE"])
+@require_admin
+def admin_email_banners_delete(bid):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM email_ad_banners WHERE id = %s", (bid,))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
 
 
 if __name__ == "__main__":

@@ -81,6 +81,7 @@
         <button class="admin-menu-item" data-menu="premium-status">단지뱃지(골드)·지역뱃지(실버) 현황</button>
         <button class="admin-menu-item" data-menu="ota-requests">OTA 링크 신청 심사</button>
         <button class="admin-menu-item" data-menu="bug-reports">오류신고 관리</button>
+        <button class="admin-menu-item" data-menu="emailbanners">이메일 배너 관리</button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
         <a class="admin-menu-item" href="/admin/ad-products" style="display:block; text-decoration:none; box-sizing:border-box; width:100%;">광고상품 안내</a>
@@ -562,6 +563,23 @@
         ],
       },
       // 공지사항: 관리자가 직접 작성/수정/삭제. 기본 정렬은 서버에서 고정 우선 → 최신순.
+      emailbanners: {
+        endpoint: "/api/admin/email-banners",
+        title: "이메일 광고배너 관리",
+        entityLabel: "배너",
+        searchPlaceholder: "링크 URL 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "image_url", label: "이미지 URL", editable: true, required: true, placeholder: "https://..." },
+          { key: "link_url",  label: "클릭 링크",  editable: true, required: true, placeholder: "https://..." },
+          { key: "start_date", label: "시작일", editable: true, required: true, type: "date" },
+          { key: "end_date",   label: "종료일", editable: true, required: true, type: "date" },
+          { key: "is_active", label: "활성", sortable: true, editable: true, type: "boolean",
+            trueLabel: "활성", falseLabel: "비활성",
+            render: (v) => v ? `<span class="dg-badge dg-badge-ok">활성</span>` : `<span class="dg-badge">비활성</span>` },
+          { key: "created_at", label: "등록일", sortable: true },
+        ],
+      },
       notices: {
         endpoint: "/api/admin/notices",
         title: "공지사항 관리",

@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-11-1"
+SCHEMA_VERSION = "2026-08-15-1"
 
 
 def init_db():
@@ -756,7 +756,22 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0")
     # 실거래 이메일 알림 수신 여부 (기본 켜짐 — 마이페이지에서 끌 수 있음)
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_alert_enabled BOOLEAN DEFAULT TRUE")
+    # 주간 소식 이메일 수신 동의 (기본 꺼짐 — 회원가입 선택 동의 또는 마이페이지에서 켤 수 있음)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_tag TEXT")
+
+    # 이메일 광고 배너 (주간 이메일 Zone 5)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS email_ad_banners (
+        id         SERIAL PRIMARY KEY,
+        image_url  TEXT NOT NULL,
+        link_url   TEXT NOT NULL,
+        start_date DATE NOT NULL,
+        end_date   DATE NOT NULL,
+        is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """)
 
     # 포인트 변경 이력(감사로그) — 양수=지급, 음수=차감. 삭제하지 않고 계속 쌓는다.
     cur.execute("""
