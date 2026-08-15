@@ -97,18 +97,18 @@ def _get_ranking(cur):
     # 신고가 갱신: 이번 주 거래 중 해당 건물의 역대 최고가를 경신한 것
     cur.execute("""
         WITH this_week AS (
-            SELECT building_name,
+            SELECT building_name, jibun,
                    MAX(price) AS new_peak
             FROM transactions
             WHERE deal_date >= %s
-            GROUP BY building_name
+            GROUP BY building_name, jibun
         ),
         prev_peak AS (
-            SELECT building_name,
+            SELECT building_name, jibun,
                    MAX(price) AS old_peak
             FROM transactions
             WHERE deal_date < %s
-            GROUP BY building_name
+            GROUP BY building_name, jibun
         )
         SELECT t.building_name,
                t.new_peak AS price,
@@ -116,9 +116,11 @@ def _get_ranking(cur):
                ROUND((t.new_peak - COALESCE(p.old_peak, 0))::numeric
                      * 100.0 / NULLIF(COALESCE(p.old_peak, t.new_peak), 0), 1) AS pct_gain
         FROM this_week t
-        LEFT JOIN prev_peak p USING (building_name)
+        LEFT JOIN prev_peak p
+               ON p.building_name = t.building_name AND p.jibun = t.jibun
         LEFT JOIN master_buildings mb
                ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
+              AND mb.jibun = t.jibun
         WHERE t.new_peak > COALESCE(p.old_peak, 0)
         ORDER BY pct_gain DESC NULLS LAST
         LIMIT 5
@@ -133,8 +135,9 @@ def _get_ranking(cur):
         FROM transactions t
         LEFT JOIN master_buildings mb
                ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
+              AND mb.jibun = t.jibun
         WHERE t.deal_date >= %s
-        GROUP BY t.building_name, mb.id
+        GROUP BY t.building_name, t.jibun, mb.id
         ORDER BY deal_count DESC
         LIMIT 5
     """, (week_ago,))

@@ -2046,21 +2046,27 @@ function openListingRequestModal(buildingId, buildingName){
 // (이메일 "매물내놓기 →" 버튼 → 홈 랜딩 후 자동 실행)
 (function(){
   if (new URLSearchParams(location.search).get("modal") !== "listing") return;
-  function _openIfLoggedIn() {
+  var _opened = false;
+  function _open() {
+    if (_opened) return;
+    _opened = true;
+    openListingRequestModal(null, "");
+    history.replaceState({}, "", "/"); // 모달 열렸으면 파라미터 제거
+  }
+  // livingstay:auth 이벤트를 제거하지 않고 지속 감시.
+  // 로그아웃→로그인 순서로 두 번 발생하므로 loggedIn=true 인 경우에만 오픈.
+  window.addEventListener("livingstay:auth", function(e) {
+    if (e.detail && e.detail.loggedIn) _open();
+  });
+  // 600ms 후 체크: 이미 로그인 상태이면 바로 열고, 아니면 로그인 모달 선행.
+  setTimeout(function() {
     if (window.__livingstayLoggedIn) {
-      openListingRequestModal(null, "");
-    } else {
-      // 미로그인 → 로그인 모달 열기
+      _open();
+    } else if (!_opened) {
       if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
       else location.href = "/?login=1";
     }
-  }
-  // auth 이벤트가 이미 발생했을 수 있으므로 이벤트 수신 + 지연 호출 병행
-  window.addEventListener("livingstay:auth", function h(e) {
-    window.removeEventListener("livingstay:auth", h);
-    if (e.detail && e.detail.loggedIn) openListingRequestModal(null, "");
-  });
-  setTimeout(_openIfLoggedIn, 600);
+  }, 600);
 })();
 
 // ── 매수의뢰 모달 (B화면) ────────────────────────────────────
