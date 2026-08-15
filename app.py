@@ -3591,8 +3591,9 @@ def unsubscribe_weekly_email():
             if cur.fetchone():
                 success = True
             conn.commit()
-        except Exception:
+        except Exception as e:
             conn.rollback()
+            app.logger.error("unsubscribe error token=%s: %s", token, e)
         finally:
             cur.close()
             conn.close()

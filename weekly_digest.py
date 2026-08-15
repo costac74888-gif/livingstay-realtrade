@@ -161,7 +161,7 @@ def _zone1_1(favs, deals_by_fav, alert_off_count=0):
         <p style="color:#555;font-size:14px;margin:0 0 12px;">
           아직 등록하신 관심단지가 없어요.
         </p>
-        <a href="{SITE_URL}/"
+        <a href="{SITE_URL}/?modal=listing"
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
@@ -232,7 +232,7 @@ def _zone1_2(listing_reqs, buy_reqs):
           현재 진행 중인 의뢰가 없습니다.<br>
           매물을 내놓으시면 전문 중개사가 연결해드립니다.
         </p>
-        <a href="{SITE_URL}/"
+        <a href="{SITE_URL}/?modal=listing"
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
@@ -468,7 +468,7 @@ def build_html(user_name, favs, deals_by_fav,
         <tr>
           <td style="padding-top:16px;border-top:1px solid #eee;text-align:center;">
             <p style="font-size:11px;color:#aaa;margin:0 0 4px;">
-              홈앤스테이 | 빌드리머스 주식회사
+              홈앤스테이 | 사업자등록번호 301-41-68319
             </p>
             <p style="font-size:11px;color:#aaa;margin:0;">
               이 메일은 홈앤스테이 회원가입 시 동의하신 주간 소식 수신 설정에 따라 발송됩니다.

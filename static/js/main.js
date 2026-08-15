@@ -2042,6 +2042,27 @@ function openListingRequestModal(buildingId, buildingName){
   });
 }
 
+// URL ?modal=listing 으로 직접 접근 시 매물의뢰 모달 자동 오픈
+// (이메일 "매물내놓기 →" 버튼 → 홈 랜딩 후 자동 실행)
+(function(){
+  if (new URLSearchParams(location.search).get("modal") !== "listing") return;
+  function _openIfLoggedIn() {
+    if (window.__livingstayLoggedIn) {
+      openListingRequestModal(null, "");
+    } else {
+      // 미로그인 → 로그인 모달 열기
+      if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+      else location.href = "/?login=1";
+    }
+  }
+  // auth 이벤트가 이미 발생했을 수 있으므로 이벤트 수신 + 지연 호출 병행
+  window.addEventListener("livingstay:auth", function h(e) {
+    window.removeEventListener("livingstay:auth", h);
+    if (e.detail && e.detail.loggedIn) openListingRequestModal(null, "");
+  });
+  setTimeout(_openIfLoggedIn, 600);
+})();
+
 // ── 매수의뢰 모달 (B화면) ────────────────────────────────────
 function openBuyRequestModal(buildingId, buildingName){
   document.getElementById("buyReqOverlay")?.remove();
