@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-15-1"
+SCHEMA_VERSION = "2026-08-15-2"
 
 
 def init_db():
@@ -758,6 +758,9 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_alert_enabled BOOLEAN DEFAULT TRUE")
     # 주간 소식 이메일 수신 동의 (기본 꺼짐 — 회원가입 선택 동의 또는 마이페이지에서 켤 수 있음)
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN DEFAULT FALSE")
+    # 원클릭 수신거부용 UUID 토큰 (로그인 없이 이메일 링크 하나로 수신거부 처리)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS unsubscribe_token UUID")
+    cur.execute("UPDATE users SET unsubscribe_token = gen_random_uuid() WHERE unsubscribe_token IS NULL")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_tag TEXT")
 
     # 이메일 광고 배너 (주간 이메일 Zone 5)

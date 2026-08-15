@@ -313,7 +313,8 @@
   // ── 내 관심단지 ───────────────────────────────────────────────────────────
   function favEmptyHtml(msg){
     var extra = (msg === "저장된 관심단지가 없습니다.")
-      ? '<div style="margin-top:8px; font-size:12px; font-weight:400; color:var(--ink-soft);">관심단지를 저장하면 시세 변동을 놓치지 않고, 매도 타이밍도 놓치지 않을 수 있어요</div>'
+      ? '<div style="margin-top:10px; font-size:12px; font-weight:400; color:var(--ink-soft);">관심단지를 저장하고 실거래알림까지 받아보세요 — 새 거래 발생 시 이메일로 바로 알려드려요</div>' +
+        '<div style="margin-top:12px;"><a href="/" style="display:inline-block;background:var(--brass,#B4863F);color:#fff;text-decoration:none;padding:8px 18px;border-radius:7px;font-size:13px;font-weight:700;">🗺️ 지도에서 관심단지 찾기 →</a></div>'
       : '';
     return '<div style="text-align:center; padding:22px 12px; color:var(--ink-soft); font-size:13px; border:1px dashed var(--line); border-radius:8px;">' + escapeHtml(msg) + extra + '</div>';
   }
@@ -321,12 +322,18 @@
     if (p == null) return "실거래 정보 없음";
     return Number(p).toLocaleString() + "만";
   }
-  function renderFavRow(t){
+  function renderFavRow(t, alertKeys){
     var name = (t.building_name && String(t.building_name).length) ? t.building_name : "이름 미상 단지";
     var addr = t.address || "";
     var bid = (t.building_id != null) ? String(t.building_id) : "";
     var dataName = (t.building_name == null) ? "" : t.building_name;
     var clickable = bid ? "cursor:pointer;" : "cursor:default;";
+    var alertKey = (t.building_name != null ? t.building_name : "null") + "|" + addr;
+    var hasAlert = alertKeys && alertKeys.has(alertKey);
+    var alertBtn = hasAlert
+      ? '<span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0;">🔔 알림 중</span>'
+      : '<button class="myfav-alert-on" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 켜기" '
+          + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 켜기</button>';
     return '' +
       '<div class="myfav-item" data-bid="' + escapeHtml(bid) + '" ' +
            'style="display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
@@ -335,6 +342,7 @@
           '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
         '</div>' +
         '<div style="font-size:14px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">' + escapeHtml(fmtPrice(t.price)) + '</div>' +
+        alertBtn +
         '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
                 'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:4px; flex-shrink:0;">★</button>' +
       '</div>';
@@ -342,27 +350,47 @@
   function loadMyFavorites(){
     var box = document.getElementById("myFavList");
     if (!box) return;
-    fetch("/api/favorites/mine", { credentials: "same-origin" })
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        if (!d || !d.ok){ box.innerHTML = favEmptyHtml("관심단지를 불러오지 못했습니다."); return; }
-        var items = d.items || [];
-        if (!items.length){ box.innerHTML = favEmptyHtml("저장된 관심단지가 없습니다."); return; }
-        box.innerHTML = items.map(renderFavRow).join("");
-        Array.prototype.forEach.call(box.querySelectorAll(".myfav-item"), function(row){
-          row.addEventListener("click", function(){
-            var bid = row.getAttribute("data-bid");
-            if (bid) window.location.href = "/building/" + bid;
-          });
+    Promise.all([
+      fetch("/api/favorites/mine", { credentials: "same-origin" }).then(function(r){ return r.json(); }),
+      fetch("/api/alerts/mine",    { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return { ok: false, keys: [] }; })
+    ]).then(function(results){
+      var d = results[0], ad = results[1];
+      if (!d || !d.ok){ box.innerHTML = favEmptyHtml("관심단지를 불러오지 못했습니다."); return; }
+      var items = d.items || [];
+      var alertKeys = new Set((ad && ad.keys) || []);
+      if (!items.length){ box.innerHTML = favEmptyHtml("저장된 관심단지가 없습니다."); return; }
+      box.innerHTML = items.map(function(t){ return renderFavRow(t, alertKeys); }).join("");
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-item"), function(row){
+        row.addEventListener("click", function(){
+          var bid = row.getAttribute("data-bid");
+          if (bid) window.location.href = "/building/" + bid;
         });
-        Array.prototype.forEach.call(box.querySelectorAll(".myfav-remove"), function(btn){
-          btn.addEventListener("click", function(e){
-            e.stopPropagation();
-            removeMyFavorite(btn.getAttribute("data-name"), btn.getAttribute("data-addr"), btn);
-          });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-remove"), function(btn){
+        btn.addEventListener("click", function(e){
+          e.stopPropagation();
+          removeMyFavorite(btn.getAttribute("data-name"), btn.getAttribute("data-addr"), btn);
         });
-      })
-      .catch(function(){ box.innerHTML = favEmptyHtml("네트워크 오류가 발생했습니다."); });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-alert-on"), function(btn){
+        btn.addEventListener("click", function(e){
+          e.stopPropagation();
+          btn.disabled = true;
+          btn.textContent = "처리 중…";
+          fetch("/api/alerts/mine", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ building_name: btn.getAttribute("data-name") || null,
+                                   address: btn.getAttribute("data-addr") })
+          }).then(function(r){ return r.json(); })
+            .then(function(j){
+              if (j && j.ok){
+                btn.outerHTML = '<span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0;">🔔 알림 중</span>';
+              } else { btn.disabled = false; btn.textContent = "🔔 알림 켜기"; }
+            }).catch(function(){ btn.disabled = false; btn.textContent = "🔔 알림 켜기"; });
+        });
+      });
+    }).catch(function(){ box.innerHTML = favEmptyHtml("네트워크 오류가 발생했습니다."); });
   }
   function removeMyFavorite(name, addr, btn){
     if (btn) btn.disabled = true;

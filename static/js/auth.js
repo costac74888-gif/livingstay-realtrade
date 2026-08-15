@@ -323,7 +323,10 @@
           if (mode === "signup" && typeof gtag === "function") gtag("event", "sign_up", { method: "email" });
           closeModal();
           if (res.data.redirect) { window.location.href = res.data.redirect; }
-          else { refreshMe(); }
+          else {
+            refreshMe();
+            if (mode === "signup") { showSignupAlertNudge(); }
+          }
         } else {
           showError((res.data && res.data.message) || "요청을 처리하지 못했습니다.");
         }
@@ -363,6 +366,27 @@
     if (e.key === "Escape" && modal.style.display !== "none") closeModal();
   });
   form.addEventListener("submit", submit);
+
+  // 회원가입 완료 직후 실거래알림 유도 토스트 (5초 후 자동 사라짐)
+  function showSignupAlertNudge() {
+    var el = document.createElement("div");
+    el.style.cssText = [
+      "position:fixed", "bottom:80px", "left:50%", "transform:translateX(-50%)",
+      "background:#16202E", "color:#fff", "padding:14px 20px",
+      "border-radius:12px", "font-size:13px", "z-index:9999",
+      "text-align:center", "box-shadow:0 6px 24px rgba(0,0,0,.35)",
+      "max-width:320px", "line-height:1.6", "pointer-events:auto"
+    ].join(";");
+    el.innerHTML = '관심단지 실거래알림도 함께 켜두시면 편해요 🔔<br>'
+      + '<a href="/mypage" style="color:#B4863F;text-decoration:none;font-weight:700;">'
+      + '마이페이지에서 설정하기 →</a>';
+    document.body.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = "opacity .5s";
+      el.style.opacity = "0";
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 600);
+    }, 5000);
+  }
 
   refreshMe();
   checkLoginError();

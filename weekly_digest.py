@@ -117,7 +117,8 @@ def _get_ranking(cur):
                      * 100.0 / NULLIF(COALESCE(p.old_peak, t.new_peak), 0), 1) AS pct_gain
         FROM this_week t
         LEFT JOIN prev_peak p USING (building_name)
-        LEFT JOIN master_buildings mb ON mb.building_name = t.building_name
+        LEFT JOIN master_buildings mb
+               ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
         WHERE t.new_peak > COALESCE(p.old_peak, 0)
         ORDER BY pct_gain DESC NULLS LAST
         LIMIT 5
@@ -130,7 +131,8 @@ def _get_ranking(cur):
                COUNT(*) AS deal_count,
                mb.id    AS building_id
         FROM transactions t
-        LEFT JOIN master_buildings mb ON mb.building_name = t.building_name
+        LEFT JOIN master_buildings mb
+               ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
         WHERE t.deal_date >= %s
         GROUP BY t.building_name, mb.id
         ORDER BY deal_count DESC
@@ -152,7 +154,7 @@ def _bld_url(building_id, building_name=""):
     return SITE_URL
 
 
-def _zone1_1(favs, deals_by_fav):
+def _zone1_1(favs, deals_by_fav, alert_off_count=0):
     """관심단지 실거래"""
     if not favs:
         return f"""
@@ -194,6 +196,15 @@ def _zone1_1(favs, deals_by_fav):
               </td>
             </tr>"""
 
+    alert_off_hint = ""
+    if alert_off_count > 0:
+        mypage_url = f"{SITE_URL}/mypage"
+        alert_off_hint = f"""
+    <p style="margin:10px 0 0;font-size:12px;color:#B4863F;">
+      🔔 알림이 꺼진 관심단지가 {alert_off_count}건 있어요 —
+      <a href="{mypage_url}" style="color:#B4863F;font-weight:700;text-decoration:underline;">마이페이지에서 켜기 →</a>
+    </p>"""
+
     return f"""
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
@@ -207,7 +218,7 @@ def _zone1_1(favs, deals_by_fav):
         </tr>
       </thead>
       <tbody>{rows}</tbody>
-    </table>"""
+    </table>{alert_off_hint}"""
 
 
 def _zone1_2(listing_reqs, buy_reqs):
@@ -358,8 +369,8 @@ def _zone5(banner):
 def build_html(user_name, favs, deals_by_fav,
                listing_reqs, buy_reqs,
                price_highs, most_traded,
-               banner, unsubscribe_url):
-    z1  = _zone1_1(favs, deals_by_fav)
+               banner, unsubscribe_url, alert_off_count=0):
+    z1  = _zone1_1(favs, deals_by_fav, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
     z2  = _zone2(price_highs, most_traded)
     z5  = _zone5(banner)
@@ -500,7 +511,8 @@ def main():
         uid_filter = "AND u.id = %s" if target_uid else ""
         uid_params = (target_uid,) if target_uid else ()
         cur.execute(f"""
-            SELECT id, email, COALESCE(name, email) AS name
+            SELECT id, email, COALESCE(name, email) AS name,
+                   COALESCE(unsubscribe_token::text, '') AS unsubscribe_token
             FROM users u
             WHERE COALESCE(weekly_email_enabled, FALSE) = TRUE
               AND email IS NOT NULL AND email <> ''
@@ -527,6 +539,18 @@ def main():
             favs = [(r["building_name"], r["address"], r["master_building_id"])
                     for r in cur.fetchall()]
 
+            # 알림 꺼진 관심단지 수 (user_alert_subscriptions 미등록)
+            alert_off_count = 0
+            if favs:
+                cur.execute("""
+                    SELECT COUNT(*) AS cnt FROM (
+                        SELECT building_name, address FROM user_favorites WHERE user_id = %s
+                        EXCEPT
+                        SELECT building_name, address FROM user_alert_subscriptions WHERE user_id = %s
+                    ) sub
+                """, (uid, uid))
+                alert_off_count = (cur.fetchone() or {}).get("cnt", 0) or 0
+
             # 관심단지별 최근 실거래 (건물명+주소 매칭, 최신 1건)
             deals_by_fav: dict = {}
             if favs:
@@ -538,7 +562,7 @@ def main():
                         mb.id AS building_id
                     FROM transactions t
                     LEFT JOIN master_buildings mb
-                           ON mb.building_name = t.building_name
+                           ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
                     WHERE t.building_name = ANY(%s)
                       AND t.address       = ANY(%s)
                       AND t.deal_date    >= %s
@@ -582,12 +606,16 @@ def main():
             subject_suffix = f" | 관심단지 {n_deals}곳 새 실거래" if n_deals else ""
             subject = f"{'(광고) ' if has_ad else ''}[홈앤스테이] 이번 주 소식{subject_suffix}"
 
-            unsubscribe_url = f"{SITE_URL}/mypage#alerts"
+            tok = user.get("unsubscribe_token") or ""
+            unsubscribe_url = (
+                f"{SITE_URL}/unsubscribe?token={tok}" if tok
+                else f"{SITE_URL}/mypage"
+            )
             html_body = build_html(
                 name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,
                 price_highs, most_traded,
-                banner, unsubscribe_url,
+                banner, unsubscribe_url, alert_off_count,
             )
 
             if dry_run:

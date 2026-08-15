@@ -3574,6 +3574,42 @@ def mypage_page():
     return _serve_static_html("mypage.html")
 
 
+@app.route("/unsubscribe")
+def unsubscribe_weekly_email():
+    """원클릭 수신거부 — 이메일 링크의 토큰만으로 로그인 없이 처리."""
+    token = request.args.get("token", "").strip()
+    success = False
+    if token:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "UPDATE users SET weekly_email_enabled = FALSE "
+                "WHERE unsubscribe_token = %s::uuid RETURNING id",
+                (token,),
+            )
+            if cur.fetchone():
+                success = True
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+    if success:
+        return _serve_static_html("unsubscribe_done.html")
+    return Response(
+        "<!DOCTYPE html><html lang='ko'><head><meta charset='utf-8'>"
+        "<title>수신거부 오류</title></head><body style='font-family:sans-serif;"
+        "text-align:center;padding:60px 20px;color:#555;'>"
+        "<p>잘못되거나 이미 처리된 링크입니다.</p>"
+        "<p><a href='/mypage' style='color:#B4863F;'>마이페이지에서 직접 설정하기 →</a></p>"
+        "</body></html>",
+        status=400,
+        mimetype="text/html",
+    )
+
+
 @app.route("/transactions")
 def transactions_page():
     """실거래목록 전용 페이지 (검색 필터 + 게시판, /api/transactions 재사용)."""

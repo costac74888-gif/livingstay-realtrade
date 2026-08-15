@@ -538,6 +538,14 @@ async function loadHealth(){
     refreshSggOptions();
   }
 
+  // 이메일 등 외부 링크의 ?q=건물명 파라미터 — 홈에서 자동 검색 실행
+  const initialQ = urlParams.get("q");
+  if (initialQ) {
+    const inp = document.getElementById("inputQ");
+    if (inp) inp.value = initialQ;
+    state.q = initialQ;
+  }
+
   loadBoard();
 })();
 
