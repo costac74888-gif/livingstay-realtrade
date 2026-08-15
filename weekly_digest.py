@@ -33,7 +33,9 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-SITE_URL     = os.environ.get("SITE_URL", "https://livingstay.co.kr")
+_dev_domain  = os.environ.get("REPLIT_DEV_DOMAIN", "")
+_fallback    = f"https://{_dev_domain}" if _dev_domain else "https://livingstay-realtrade.replit.app"
+SITE_URL     = os.environ.get("SITE_URL", _fallback).rstrip("/")
 
 
 def get_conn():
@@ -390,11 +392,13 @@ def build_html(user_name, favs, deals_by_fav,
   <!-- ── 헤더 ── -->
   <tr>
     <td style="background:#16202E;padding:20px 28px;text-align:center;">
-      <a href="{SITE_URL}" style="color:#fff;text-decoration:none;
-                                  font-size:22px;font-weight:800;letter-spacing:-0.5px;">
-        HOME&amp;STAY
+      <a href="{SITE_URL}">
+        <img src="{SITE_URL}/static/images/logo-email.png"
+             alt="HOME &amp; STAY"
+             width="180" height="auto"
+             style="display:inline-block;height:auto;max-height:44px;border:0;" />
       </a>
-      <p style="color:#9aa5b1;font-size:12px;margin:4px 0 0;">주간 소식</p>
+      <p style="color:#9aa5b1;font-size:12px;margin:6px 0 0;">주간 소식</p>
     </td>
   </tr>
 
