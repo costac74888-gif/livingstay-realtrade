@@ -332,12 +332,13 @@
   }
 
   // ── 웰컴 오버레이 ─────────────────────────────────────────────
-  // 세션당 1회만 표시 (sessionStorage 키: hs_welcome_seen)
+  // 홈화면에서만 표시, 하루 1회 (localStorage 키: hs_welcome_seen, 값: YYYY-MM-DD)
   // 검색 시 기존 #inputQ / #btnSearch 로직을 그대로 재사용한다.
   (function(){
     var overlay = document.getElementById("welcomeOverlay");
     if (!overlay) return;
-    var SESS_KEY = "hs_welcome_seen";
+    var LS_KEY   = "hs_welcome_seen";
+    var todayStr = new Date().toISOString().slice(0, 10); // "2026-08-15"
 
     function openSearchbar(){
       if (searchbar && searchbar.classList.contains("collapsed")){
@@ -348,7 +349,7 @@
 
     function closeOverlay(){
       overlay.style.display = "none";
-      try { sessionStorage.setItem(SESS_KEY, "1"); } catch(e){}
+      try { localStorage.setItem(LS_KEY, todayStr); } catch(e){}
     }
 
     // X 버튼
@@ -409,9 +410,9 @@
       try { history.replaceState(null, "", location.pathname); } catch(e){}
     }
 
-    // 세션당 1회 노출 (또는 강제 오픈)
+    // 하루 1회 노출 (또는 강제 오픈)
     var seen = false;
-    try { seen = !!sessionStorage.getItem(SESS_KEY); } catch(e){}
+    try { seen = (localStorage.getItem(LS_KEY) === todayStr); } catch(e){}
     if (!seen || forceOpen){
       // 첫 방문 or 강제: 오버레이 표시, 검색바는 닫힌 채 유지 (닫을 때 openSearchbar 호출됨)
       overlay.style.display = "flex";
