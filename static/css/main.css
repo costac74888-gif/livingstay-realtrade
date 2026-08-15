@@ -802,7 +802,7 @@
 .auth-consent-row input[type="checkbox"]{ width:15px; height:15px; accent-color:var(--brass); flex:0 0 auto; cursor:pointer; }
 .auth-consent-all{ font-size:13px; }
 .auth-consent-sep{ border-top:1px solid var(--line); margin:6px 0; }
-.auth-consent .agree-tag{ color:var(--brass-dark); font-weight:700; font-size:11.5px; }
+.auth-consent .agree-tag{ color:var(--brass-dark); font-weight:700; font-size:11.5px; white-space:nowrap; }
 .auth-consent .agree-tag-opt{ color:var(--ink-soft); }
 .auth-consent a{ color:var(--brass-dark); font-weight:600; text-decoration:underline; }
 .auth-consent-privacy{ display:flex; align-items:center; justify-content:space-between; gap:6px; cursor:default; }
