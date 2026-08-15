@@ -421,6 +421,7 @@
           <a href="/?login=1" class="btn-dark" style="display:inline-block; padding:12px 28px; font-size:14px;">
             지금 무료 가입하기 →
           </a>
+          <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">3초면 가입 완료!</div>
         </div>
 
       </div>
@@ -525,6 +526,52 @@
             <div style="font-size:13px; font-weight:700; color:var(--ink); margin-bottom:4px;">상가정보 (건물 내 상가업소)</div>
             <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.65; margin:0;">
               건물 내·인근에 입점한 상가업소 현황을 확인해, 생활 편의시설이나 상권을 미리 파악해보세요.
+            </p>
+          </div>
+        </div>
+
+        <!-- 진행단계 카드 (준공전 건물 전용) -->
+        <div>
+          <div class="side-card" style="border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:var(--card); box-shadow:0 2px 10px rgba(22,32,46,.07);">
+            <div class="side-card-title" style="font-size:13px; font-weight:700; color:var(--ink); margin-bottom:12px;">
+              진행단계 <span class="side-sub" style="font-size:11px; color:var(--ink-soft); font-weight:500;">건축인허가</span>
+            </div>
+            <!-- 타임라인 (실제 main.js 렌더링과 동일 스타일, 샘플 데이터) -->
+            <div style="display:flex; align-items:flex-start; padding:4px 2px 6px;">
+              <!-- 건축허가 (완료) -->
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
+                <div style="position:relative; z-index:1; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; background:#378ADD;">✓</div>
+                <div style="margin-top:6px; font-size:11px; font-weight:700; color:var(--ink);">건축허가</div>
+                <div style="margin-top:2px; font-size:10px; color:var(--ink-soft);">2025.12.09</div>
+              </div>
+              <!-- 착공 (미완료) -->
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
+                <div style="position:absolute; top:9px; left:-50%; width:100%; height:2px; background:#D5DAE0;"></div>
+                <div style="position:relative; z-index:1; width:20px; height:20px; border-radius:50%; background:#C7CCD1;"></div>
+                <div style="margin-top:6px; font-size:11px; font-weight:700; color:var(--ink-soft);">착공</div>
+                <div style="margin-top:2px; font-size:10px; color:var(--ink-soft);">-</div>
+              </div>
+              <!-- 준공예정 (미완료) -->
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
+                <div style="position:absolute; top:9px; left:-50%; width:100%; height:2px; background:#D5DAE0;"></div>
+                <div style="position:relative; z-index:1; width:20px; height:20px; border-radius:50%; background:#C7CCD1;"></div>
+                <div style="margin-top:6px; font-size:11px; font-weight:700; color:var(--ink-soft);">준공예정</div>
+                <div style="margin-top:2px; font-size:10px; color:var(--ink-soft);">2027.06</div>
+              </div>
+              <!-- 사용승인 (미완료) -->
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; position:relative;">
+                <div style="position:absolute; top:9px; left:-50%; width:100%; height:2px; background:#D5DAE0;"></div>
+                <div style="position:relative; z-index:1; width:20px; height:20px; border-radius:50%; background:#C7CCD1;"></div>
+                <div style="margin-top:6px; font-size:11px; font-weight:700; color:var(--ink-soft);">사용승인</div>
+                <div style="margin-top:2px; font-size:10px; color:var(--ink-soft);">-</div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px; padding:0 4px;">
+            <div style="font-size:13px; font-weight:700; color:var(--ink); margin-bottom:4px;">준공 전 공사 진행정보</div>
+            <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.65; margin:0;">
+              준공 전 건물의 건축 진행 단계를 한눈에 확인하세요.<br>
+              건축허가부터 착공, 준공예정, 사용승인까지 단계별 현황을 파악할 수 있어요.
             </p>
           </div>
         </div>
