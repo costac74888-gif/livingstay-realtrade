@@ -171,6 +171,7 @@ SITE_URL = "https://livingstay-realtrade.replit.app"
 [deployment]
 deploymentTarget = "autoscale"
 run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--preload", "app:app"]
+build = ["python", "-c", "from db import init_db; init_db()"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
