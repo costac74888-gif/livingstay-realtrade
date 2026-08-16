@@ -9422,8 +9422,34 @@ def admin_ad_products_page():
 
 # ---- 건물마스터 CRUD (모두 require_admin) ----
 # 정렬 허용 컬럼 화이트리스트 (SQL 인젝션 방지 — 목록에 없으면 id로 폴백)
-ADMIN_BLD_SORT = {"id", "building_name", "road_address", "units", "biz_units", "lodging_type",
-                   "sgg_text", "umd_nm", "jibun", "favorite_count"}
+# key → ORDER BY SQL expression (화이트리스트 겸 식 맵)
+# 서브쿼리 식은 항상 mb 별칭을 사용해야 한다.
+ADMIN_BLD_SORT = {
+    "id":               "mb.id",
+    "building_name":    "mb.building_name",
+    "road_address":     "mb.road_address",
+    "units":            "mb.units",
+    "biz_units":        "mb.biz_units",
+    "lodging_type":     "mb.lodging_type",
+    "sgg_text":         "mb.sgg_text",
+    "umd_nm":           "mb.umd_nm",
+    "jibun":            "mb.jibun",
+    # SELECT alias — Postgres는 같은 SELECT의 alias를 ORDER BY에서 허용
+    "favorite_count":   "favorite_count",
+    # building_stores 서브쿼리 정렬 — 현재 페이지만 아니라 전체 기준
+    "store_realty_count": (
+        "(SELECT COUNT(*) FROM building_stores bs "
+        " WHERE bs.master_building_id = mb.id AND bs.category = '부동산')"
+    ),
+    "store_count": (
+        "(SELECT COUNT(*) FROM building_stores bs "
+        " WHERE bs.master_building_id = mb.id)"
+    ),
+    # 신고율 = biz_units / units (units=0이면 0으로 처리)
+    "report_rate": (
+        "CASE WHEN mb.units > 0 THEN mb.biz_units::float / mb.units ELSE 0 END"
+    ),
+}
 # 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
 ADMIN_BLD_EDITABLE = [
     "building_name", "road_address", "jibun_address", "sgg_text", "sgg_cd",
@@ -9505,7 +9531,8 @@ def admin_buildings_list():
     cur = conn.cursor()
     cur.execute(f"SELECT COUNT(*) c FROM master_buildings WHERE {where_sql}", params)
     total = cur.fetchone()["c"]
-    # sort/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
+    # sort/order는 화이트리스트 맵(ADMIN_BLD_SORT)으로만 정해지므로 f-string 삽입이 안전하다.
+    sort_expr = ADMIN_BLD_SORT[sort]
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
                mb.sgg_text, mb.sgg_cd, mb.umd_nm, mb.jibun, mb.units, mb.biz_units,
@@ -9519,7 +9546,7 @@ def admin_buildings_list():
                ) AS favorite_count
         FROM master_buildings mb
         WHERE {where_sql}
-        ORDER BY {sort} {order}, mb.id ASC
+        ORDER BY {sort_expr} {order}, mb.id ASC
         LIMIT %s OFFSET %s
     """, params + [size, offset])
     items = [dict(r) for r in cur.fetchall()]
@@ -10202,7 +10229,7 @@ def admin_buildings_export():
                ) AS favorite_count
         FROM master_buildings mb
         WHERE {where_sql}
-        ORDER BY {sort} {order}, mb.id ASC
+        ORDER BY {ADMIN_BLD_SORT[sort]} {order}, mb.id ASC
     """, params)
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
@@ -10310,12 +10337,14 @@ def admin_buildings_export():
     from openpyxl.styles import Font, PatternFill
     wb = Workbook(); ws = wb.active; ws.title = "건물마스터"
 
-    # ── 헤더: 입점부동산·영업사업장은 행 분리(세로 확장) 방식 ─────────────────
+    # ── 헤더 ────────────────────────────────────────────────────────────────
+    # 컬럼 순서: 건물정보 / 입점부동산 / 입점상가수(첫행만) / 영업사업장 / 집계 / 메타
     headers = [
         "건물명", "도로명주소", "용도", "총호실수", "관심저장", "단지뱃지",
         "입점부동산_업체명", "입점부동산_호번호",
+        "입점상가수",          # 첫 번째 행에만 표시, 나머지 반복 행은 빈칸
         "영업사업장_업체명", "신고번호", "객실수", "상태", "신고일", "전화", "원본주소", "갱신일",
-        "입점부동산수", "입점상가수", "총영업신고호수", "신고율(%)",
+        "입점부동산수", "총영업신고호수", "신고율(%)",
         "ID", "시군구", "읍면동", "지번", "지번주소", "용도상세",
         "등록된입점부동산(구 realty_store_name)",
     ]
@@ -10332,19 +10361,12 @@ def admin_buildings_export():
         biz_units     = r["biz_units"] or 0
         report_rate   = round(biz_units / units * 100, 1) if units else None
         n_rows        = max(len(realty_list), len(lr_list), 1)
-
-        # 건물 공통 정보 (모든 분리 행에 반복)
-        bld_base = [
-            r["building_name"], r["road_address"], r["lodging_type"], units,
-            r["favorite_count"] or 0,
-            "보유" if r["matched_broker_name"] else None,
-        ]
-        # 집계 정보 (첫 번째 행에만 출력, 나머지는 빈칸)
+        store_count   = r["store_count"] or None      # 입점상가수: 첫 행만
+        # 집계 (첫 번째 행에만 출력, 나머지는 빈칸)
         bld_summary = [
-            r["store_realty_count"] or None,
-            r["store_count"] or None,
-            biz_units or None,
-            report_rate,
+            r["store_realty_count"] or None,   # 입점부동산수
+            biz_units or None,                 # 총영업신고호수
+            report_rate,                       # 신고율(%)
         ]
         bld_meta = [
             r["id"], r["sgg_text"], r["umd_nm"], r["jibun"], r["jibun_address"],
@@ -10354,10 +10376,16 @@ def admin_buildings_export():
         for i in range(n_rows):
             realty = realty_list[i] if i < len(realty_list) else {}
             lr     = lr_list[i]     if i < len(lr_list)     else {}
-            row_vals = bld_base + [
+            # 건물 공통 정보는 모든 행에 반복
+            row_vals = [
+                r["building_name"], r["road_address"], r["lodging_type"], units,
+                r["favorite_count"] or 0,
+                "보유" if r["matched_broker_name"] else None,
+            ] + [
                 realty.get("name"), realty.get("ho_no"),
-                lr.get("biz_name"),     lr.get("permit_number"), lr.get("room_count"),
-                lr.get("biz_status_name"), lr.get("permit_date"), lr.get("phone"),
+                store_count if i == 0 else None,  # 입점상가수: 첫 행만
+                lr.get("biz_name"),       lr.get("permit_number"), lr.get("room_count"),
+                lr.get("biz_status_name"), lr.get("permit_date"),  lr.get("phone"),
                 lr.get("lr_road") or lr.get("lr_jibun"), lr.get("source_updated_at"),
             ]
             if i == 0:

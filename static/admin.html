@@ -368,22 +368,21 @@
               ? `<span class="dg-badge dg-badge-ok" title="${dgEscape(v)}">보유</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
           // 입점부동산: 부동산 업소 수만 표시, 클릭 시 모달 (입점상가와 동일 패턴)
-          { key: "store_realty_count", label: "입점부동산", clientSort: true,
+          { key: "store_realty_count", label: "입점부동산", sortable: true,
             render: (v, row) => (v > 0)
               ? `<button class="bld-realty-modal-btn" data-id="${row.id}" ` +
                 `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
                 `🏠 ${v}개</button>`
               : `<span style="color:var(--ink-soft);">-</span>` },
           // 입점상가: 전체 개수 표시, 클릭 시 모달
-          { key: "store_count", label: "입점상가", clientSort: true,
+          { key: "store_count", label: "입점상가", sortable: true,
             render: (v, row) => (v > 0)
               ? `<button class="bld-store-modal-btn" data-id="${row.id}" ` +
                 `style="background:none;border:1px solid #aaa;border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
                 `🏪 ${v}개</button>`
               : `<span style="color:var(--ink-soft);">-</span>` },
           { key: "biz_units", label: "총영업신고호수", sortable: true, editable: true, type: "number" },
-          { key: "report_rate", label: "신고율", clientSort: true,
-            sortValue: (row) => row.units ? (row.biz_units || 0) / row.units * 100 : -1,
+          { key: "report_rate", label: "신고율", sortable: true,
             render: (_, row) => {
               if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
               const rate = Math.round((row.biz_units || 0) / row.units * 100);
