@@ -441,8 +441,14 @@
 .admin-btn-danger{ background:#D9534F; border-color:#D9534F; color:#fff; font-weight:700; }
 .admin-btn-danger:hover{ background:#C0392B; border-color:#C0392B; color:#fff; }
 .dg-del:hover{ border-color:var(--brick); color:var(--brick); }
-.dg-pager{ display:flex; align-items:center; justify-content:center; gap:14px; margin-top:16px; }
-.dg-pageinfo{ color:var(--ink-soft); font-size:13px; }
+.dg-pager{ display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:2px; margin-top:16px; }
+.dg-nav-btn{ background:none; border:1px solid #ccc; border-radius:3px; padding:3px 8px; font-size:13px; cursor:pointer; color:var(--ink); line-height:1.6; }
+.dg-nav-btn:hover:not(:disabled){ border-color:var(--brass); color:var(--brass); }
+.dg-nav-btn:disabled{ opacity:.4; cursor:not-allowed; }
+.dg-page-btn{ background:none; border:1px solid transparent; border-radius:3px; padding:3px 8px; font-size:13px; cursor:pointer; color:var(--ink); line-height:1.6; min-width:32px; }
+.dg-page-btn:hover:not(.active){ border-color:#ccc; }
+.dg-page-btn.active{ color:#c00; font-weight:700; border-color:transparent; cursor:default; }
+.dg-page-ellipsis{ font-size:13px; color:var(--ink-soft); padding:0 2px; line-height:1.6; user-select:none; }
 
 /* --- 모달 --- */
 .admin-modal-overlay{

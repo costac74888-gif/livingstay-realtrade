@@ -4235,15 +4235,23 @@
           </tr></thead>
           <tbody>${rows || `<tr><td colspan="17" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
-        <div class="dg-pagination" style="display:flex; align-items:center; gap:10px; padding:12px 4px;">
-          <button class="admin-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>이전</button>
-          <span style="font-size:13px;">${s.page} / ${totalPages} 페이지 · 총 ${(d.total || 0).toLocaleString("ko-KR")}명</span>
-          <button class="admin-btn" id="membersNext" ${s.page >= totalPages ? "disabled" : ""}>다음</button>
+        <div class="dg-pager" style="padding:12px 4px; justify-content:flex-start;">
+          <button class="dg-nav-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>&#8249;</button>
+          ${buildPageList(s.page, totalPages, 10).map((n) =>
+            n === "..."
+              ? `<span class="dg-page-ellipsis">…</span>`
+              : `<button class="dg-page-btn${n === s.page ? " active" : ""}" data-pg="${n}">${n}</button>`
+          ).join("")}
+          <button class="dg-nav-btn" id="membersNext" ${s.page >= totalPages ? "disabled" : ""}>&#8250;</button>
+          <span style="font-size:12px; color:var(--ink-soft); margin-left:8px;">총 ${(d.total || 0).toLocaleString("ko-KR")}명</span>
         </div>`;
       const prev = document.getElementById("membersPrev");
       const next = document.getElementById("membersNext");
       if (prev) prev.addEventListener("click", () => { membersState.page -= 1; loadMembers(); });
       if (next) next.addEventListener("click", () => { membersState.page += 1; loadMembers(); });
+      document.querySelectorAll("#membersWrap .dg-page-btn:not(.active)").forEach((btn) => {
+        btn.addEventListener("click", () => { membersState.page = Number(btn.dataset.pg); loadMembers(); });
+      });
       wireMemberSelection();
     }
 

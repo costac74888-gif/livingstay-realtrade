@@ -1,3 +1,26 @@
+/**
+ * buildPageList(current, total, windowSize=10)
+ * 슬라이딩 윈도우 페이지 번호 배열을 반환합니다.
+ * 반환 예) [1, 2, ..., 10, '...', 627]  또는  [1, '...', 11, ..., 20, '...', 627]
+ */
+function buildPageList(current, total, windowSize) {
+  windowSize = windowSize || 10;
+  const winStart = current;
+  const winEnd   = Math.min(total, current + windowSize - 1);
+  const pages    = [];
+  if (winStart <= 1) {
+    // 윈도우가 1페이지부터 시작 → 앞 ellipsis 불필요
+    for (let i = 1; i <= winEnd; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (winStart > 2) pages.push("...");
+    for (let i = winStart; i <= winEnd; i++) pages.push(i);
+  }
+  if (winEnd < total - 1) pages.push("...");
+  if (winEnd < total)     pages.push(total);
+  return pages;
+}
+
 /*
  * admin.js — 재사용 가능한 관리자 데이터그리드
  * ------------------------------------------------------------
@@ -355,17 +378,23 @@ class DataGrid {
   }
 
   _renderPager() {
-    const pages = Math.max(Math.ceil(this.total / this.cfg.pageSize), 1);
+    const totalPages = Math.max(Math.ceil(this.total / this.cfg.pageSize), 1);
     const p = this.state.page;
-    this.$pager.innerHTML = `
-      <button class="admin-btn dg-prev" ${p <= 1 ? "disabled" : ""}>‹ 이전</button>
-      <span class="dg-pageinfo">${p} / ${pages}</span>
-      <button class="admin-btn dg-next" ${p >= pages ? "disabled" : ""}>다음 ›</button>
-    `;
-    const prev = this.$pager.querySelector(".dg-prev");
-    const next = this.$pager.querySelector(".dg-next");
-    if (prev) prev.addEventListener("click", () => { if (this.state.page > 1) { this.state.page--; this.reload(); } });
-    if (next) next.addEventListener("click", () => { if (this.state.page < pages) { this.state.page++; this.reload(); } });
+    const pageNums = buildPageList(p, totalPages, 10);
+    const pageHtml = pageNums.map((n) =>
+      n === "..."
+        ? `<span class="dg-page-ellipsis">…</span>`
+        : `<button class="dg-page-btn${n === p ? " active" : ""}" data-pg="${n}">${n}</button>`
+    ).join("");
+    this.$pager.innerHTML =
+      `<button class="dg-nav-btn dg-prev" ${p <= 1 ? "disabled" : ""}>&#8249;</button>` +
+      pageHtml +
+      `<button class="dg-nav-btn dg-next" ${p >= totalPages ? "disabled" : ""}>&#8250;</button>`;
+    this.$pager.querySelector(".dg-prev").addEventListener("click", () => { if (this.state.page > 1) { this.state.page--; this.reload(); } });
+    this.$pager.querySelector(".dg-next").addEventListener("click", () => { if (this.state.page < totalPages) { this.state.page++; this.reload(); } });
+    this.$pager.querySelectorAll(".dg-page-btn:not(.active)").forEach((btn) => {
+      btn.addEventListener("click", () => { this.state.page = Number(btn.dataset.pg); this.reload(); });
+    });
   }
 
   exportXlsx() {
