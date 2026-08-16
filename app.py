@@ -6136,6 +6136,16 @@ def create_listing_request():
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
               routed_agent_id, routed_reason, price_krw, monthly_rent_krw])
         req_id = cur.fetchone()["id"]
+        # 이력 기록 — 최초 접수
+        cur.execute(
+            "INSERT INTO listing_request_history (listing_request_id, action, after_data) "
+            "VALUES (%s, 'created', %s)",
+            [req_id, json.dumps({
+                "deal_type": deal_type, "desired_price": desired_price,
+                "price_krw": price_krw, "monthly_rent_krw": monthly_rent_krw,
+                "contact_phone": contact_phone,
+            })]
+        )
         conn.commit()
     finally:
         cur.close()
@@ -6296,6 +6306,7 @@ def my_listing_requests():
     try:
         cur.execute("""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.status,
+                   lr.price_krw, lr.monthly_rent_krw, lr.contact_phone,
                    to_char(lr.created_at, 'YYYY-MM-DD') AS created_date,
                    mb.id AS building_id, mb.building_name,
                    a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug
@@ -6310,6 +6321,133 @@ def my_listing_requests():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/listing-requests/<int:req_id>", methods=["PUT"])
+def update_listing_request(req_id):
+    """매물의뢰 수정 — 접수됨(submitted) 상태인 본인 의뢰만 수정 가능."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    deal_type = (data.get("deal_type") or "").strip()
+    desired_price = (data.get("desired_price") or "").strip()[:100]
+    def _parse_krw(field, allowed):
+        v = data.get(field)
+        if v is None or v == "":
+            return None, None
+        if not allowed:
+            return None, None
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return None, "희망가는 만원 단위 숫자로 입력해주세요."
+        if not (0 < n <= 100_000_000):
+            return None, "희망가 숫자 범위가 올바르지 않습니다."
+        return n, None
+    price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
+    monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
+    if err1 or err2:
+        return jsonify({"ok": False, "message": err1 or err2}), 400
+    if deal_type and deal_type not in _LISTING_DEAL_TYPES:
+        return jsonify({"ok": False, "message": "거래유형이 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, user_id, status, deal_type, desired_price, price_krw, monthly_rent_krw "
+            "FROM listing_requests WHERE id = %s", [req_id]
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
+        if row["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row["status"] != "submitted":
+            return jsonify({"ok": False, "message": "접수됨 상태에서만 수정할 수 있습니다."}), 400
+        before = {
+            "deal_type": row["deal_type"], "desired_price": row["desired_price"],
+            "price_krw": row["price_krw"], "monthly_rent_krw": row["monthly_rent_krw"],
+        }
+        after = {
+            "deal_type": deal_type or row["deal_type"],
+            "desired_price": desired_price or row["desired_price"],
+            "price_krw": price_krw, "monthly_rent_krw": monthly_rent_krw,
+        }
+        cur.execute(
+            "UPDATE listing_requests SET deal_type=%s, desired_price=%s, "
+            "price_krw=%s, monthly_rent_krw=%s WHERE id=%s",
+            [after["deal_type"], after["desired_price"] or None,
+             after["price_krw"], after["monthly_rent_krw"], req_id]
+        )
+        cur.execute(
+            "INSERT INTO listing_request_history (listing_request_id, action, before_data, after_data) "
+            "VALUES (%s, 'edited', %s, %s)",
+            [req_id, json.dumps(before), json.dumps(after)]
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/listing-requests/<int:req_id>/withdraw", methods=["POST"])
+def withdraw_listing_request(req_id):
+    """매물의뢰 철회 — 접수됨 상태인 본인 의뢰만 철회 가능. 삭제하지 않고 status만 변경."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, user_id, status FROM listing_requests WHERE id = %s", [req_id])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
+        if row["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row["status"] != "submitted":
+            return jsonify({"ok": False, "message": "접수됨 상태에서만 철회할 수 있습니다."}), 400
+        cur.execute("UPDATE listing_requests SET status = '철회됨' WHERE id = %s", [req_id])
+        cur.execute(
+            "INSERT INTO listing_request_history (listing_request_id, action) VALUES (%s, 'withdrawn')",
+            [req_id]
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/listing-requests/<int:req_id>/history")
+def listing_request_history_api(req_id):
+    """매물의뢰 이력 조회 — 본인 것만."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT user_id FROM listing_requests WHERE id = %s", [req_id])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
+        if row["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        cur.execute(
+            "SELECT id, action, before_data, after_data, "
+            "to_char(created_at, 'YYYY-MM-DD HH24:MI') AS created_at "
+            "FROM listing_request_history WHERE listing_request_id = %s "
+            "ORDER BY created_at ASC",
+            [req_id]
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "history": rows})
 
 
 # ============================================================

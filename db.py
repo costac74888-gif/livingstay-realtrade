@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-15-2"
+SCHEMA_VERSION = "2026-08-16-1"
 
 
 def init_db():
@@ -843,6 +843,18 @@ def init_db():
     # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
+
+    # 매물의뢰 이력 — 접수/수정/철회 변경 내역을 타임라인으로 보존
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS listing_request_history (
+            id SERIAL PRIMARY KEY,
+            listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id),
+            action VARCHAR(20) NOT NULL,   -- 'created' | 'edited' | 'withdrawn'
+            before_data JSONB,
+            after_data JSONB,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
 
     # 대출상담 신청 (일반회원 → 대출상담사 라우팅)
     cur.execute("""

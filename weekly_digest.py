@@ -532,12 +532,34 @@ def main():
             email = user["email"]
             name  = user["name"]
 
-            # 관심단지
+            # 관심단지 — /api/favorites/mine 과 동일한 3단계 LATERAL JOIN으로 building_id 결정
+            # (저장 시점 master_building_id가 NULL인 기존 데이터도 거래·주소 역매칭으로 복구)
             cur.execute("""
-                SELECT building_name, address, master_building_id
-                FROM user_favorites
-                WHERE user_id = %s
-                ORDER BY created_at DESC
+                SELECT uf.building_name, uf.address,
+                       COALESCE(uf.master_building_id, bid.id, bid2.id) AS master_building_id
+                FROM user_favorites uf
+                LEFT JOIN LATERAL (
+                    SELECT mb.id
+                    FROM transactions t2
+                    JOIN master_buildings mb
+                      ON mb.sgg_cd = t2.sgg_cd AND mb.umd_nm = t2.umd_nm
+                     AND mb.jibun = t2.jibun
+                    WHERE ((uf.building_name IS NULL AND t2.building_name IS NULL)
+                           OR t2.building_name = uf.building_name)
+                      AND t2.address = uf.address
+                    ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
+                    LIMIT 1
+                ) bid ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT mb.id
+                    FROM master_buildings mb
+                    WHERE mb.road_address = uf.address
+                       OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', '')
+                    ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
+                    LIMIT 1
+                ) bid2 ON TRUE
+                WHERE uf.user_id = %s
+                ORDER BY uf.created_at DESC, uf.id DESC
             """, (uid,))
             favs = [(r["building_name"], r["address"], r["master_building_id"])
                     for r in cur.fetchall()]

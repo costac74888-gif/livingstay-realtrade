@@ -90,7 +90,7 @@
         <!-- 주간 소식 이메일 토글 -->
         <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px; padding:10px 14px; border:1px solid var(--line); border-radius:8px;">
           <input type="checkbox" id="weeklyEmailChk" style="accent-color:var(--brass); flex-shrink:0;" />
-          <label for="weeklyEmailChk" style="font-size:13.5px; color:var(--ink); cursor:pointer; flex:1;">주간 소식 이메일 받기 <span style="font-size:11px; color:var(--ink-soft);">(시세 랭킹·관심단지 요약, 광고 포함)</span></label>
+          <label for="weeklyEmailChk" style="font-size:13.5px; color:var(--ink); cursor:pointer; flex:1;">주간 소식 이메일 받기 <span style="font-size:11px; color:var(--ink-soft);">(시세 랭킹·관심단지 요약 등)</span></label>
           <span id="weeklyEmailMsg" style="font-size:12px; color:var(--ink-soft);"></span>
         </div>
 
@@ -247,8 +247,8 @@
   }
 
   // ── 매물의뢰 현황 ─────────────────────────────────────────────────────────
-  var LR_STATUS_LABEL = { submitted: "접수됨", in_progress: "처리중", done: "완료" };
-  var LR_STATUS_COLOR = { submitted: "#4A7A18", in_progress: "#B4863F", done: "#6B7684" };
+  var LR_STATUS_LABEL = { submitted: "접수됨", in_progress: "처리중", done: "완료", "철회됨": "철회됨" };
+  var LR_STATUS_COLOR = { submitted: "#4A7A18", in_progress: "#B4863F", done: "#6B7684", "철회됨": "#999" };
 
   function requestItemHtml(it){
     var st = LR_STATUS_LABEL[it.status] || it.status;
@@ -262,15 +262,89 @@
     } else {
       agentHtml = '<span style="color:var(--ink-soft);">담당자 배정 중</span>';
     }
-    return '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line);">' +
-      '<div style="min-width:0;">' +
-        '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
-        '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
-          (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
-        '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
+    var actionBtns = "";
+    if (it.status === "submitted") {
+      actionBtns = '<div style="display:flex;gap:6px;margin-top:6px;">' +
+        '<button class="lr-edit-btn" data-id="' + it.id + '" data-bid="' + it.building_id + '" data-bname="' + escapeHtml(it.building_name||"") + '" data-deal="' + escapeHtml(it.deal_type) + '" data-price="' + (it.price_krw||"") + '" data-rent="' + (it.monthly_rent_krw||"") + '" data-phone="' + escapeHtml(it.contact_phone||"") + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;">수정</button>' +
+        '<button class="lr-withdraw-btn" data-id="' + it.id + '" style="font-size:11px;padding:3px 9px;border:1px solid #999;border-radius:5px;background:none;color:#999;cursor:pointer;">철회</button>' +
+      '</div>';
+    }
+    return '<div style="padding:11px 4px; border-bottom:1px solid var(--line);">' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">' +
+        '<div style="min-width:0; flex:1;">' +
+          '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
+          '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
+            (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
+          '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
+          actionBtns +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">' +
+          '<span style="font-size:11.5px; font-weight:700; color:' + color + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px; white-space:nowrap;">' + st + '</span>' +
+          '<button class="lr-history-btn" data-id="' + it.id + '" style="font-size:10.5px;border:none;background:none;color:var(--ink-soft);cursor:pointer;padding:0;text-decoration:underline;">이력 보기 ▾</button>' +
+        '</div>' +
       '</div>' +
-      '<span style="flex:0 0 auto; font-size:11.5px; font-weight:700; color:' + color + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px; white-space:nowrap;">' + st + '</span>' +
+      '<div class="lr-history-box" data-id="' + it.id + '" style="display:none;margin-top:8px;font-size:11.5px;color:var(--ink-soft);background:#f9f7f4;border-radius:6px;padding:8px 10px;"></div>' +
     '</div>';
+  }
+
+  function bindListingRequestEvents(box) {
+    // 이력 보기 토글
+    Array.prototype.forEach.call(box.querySelectorAll(".lr-history-btn"), function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        var hbox = box.querySelector('.lr-history-box[data-id="' + id + '"]');
+        if (!hbox) return;
+        if (hbox.style.display !== "none") { hbox.style.display = "none"; btn.textContent = "이력 보기 ▾"; return; }
+        btn.textContent = "불러오는 중…";
+        fetch("/api/listing-requests/" + id + "/history", { credentials: "same-origin" })
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            btn.textContent = "이력 닫기 ▴";
+            if (!d.ok || !d.history.length) { hbox.innerHTML = "이력 없음"; hbox.style.display = "block"; return; }
+            var ACTION_LABEL = { created: "접수", edited: "수정", withdrawn: "철회" };
+            hbox.innerHTML = d.history.map(function(h){
+              var label = ACTION_LABEL[h.action] || h.action;
+              var detail = "";
+              if (h.action === "created" && h.after_data) {
+                var a = h.after_data;
+                detail = (a.deal_type||"") + (a.price_krw ? " · " + fmtPrice(a.price_krw*10000) : "") + (a.monthly_rent_krw ? "/월" + fmtPrice(a.monthly_rent_krw*10000) : "");
+              } else if (h.action === "edited" && h.before_data && h.after_data) {
+                var b = h.before_data, af = h.after_data;
+                detail = (b.deal_type||"") + (b.price_krw ? " " + fmtPrice(b.price_krw*10000) : "") + " → " + (af.deal_type||"") + (af.price_krw ? " " + fmtPrice(af.price_krw*10000) : "");
+              }
+              return '<div style="padding:2px 0;">' + h.created_at + ' · ' + label + (detail ? ' · ' + detail : '') + '</div>';
+            }).join("");
+            hbox.style.display = "block";
+          })
+          .catch(function(){ btn.textContent = "이력 보기 ▾"; });
+      });
+    });
+    // 수정 버튼
+    Array.prototype.forEach.call(box.querySelectorAll(".lr-edit-btn"), function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        var bid = btn.getAttribute("data-bid");
+        var bname = btn.getAttribute("data-bname");
+        var deal = btn.getAttribute("data-deal");
+        var price = btn.getAttribute("data-price");
+        var rent = btn.getAttribute("data-rent");
+        var phone = btn.getAttribute("data-phone");
+        openListingModalMypage(bid, bname, { editId: id, deal_type: deal, price_krw: price, monthly_rent_krw: rent, contact_phone: phone });
+      });
+    });
+    // 철회 버튼
+    Array.prototype.forEach.call(box.querySelectorAll(".lr-withdraw-btn"), function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        if (!confirm("정말 철회하시겠어요? 철회한 의뢰는 '철회됨'으로 표시됩니다.")) return;
+        btn.disabled = true;
+        fetch("/api/listing-requests/" + id + "/withdraw", {
+          method: "POST", credentials: "same-origin"
+        }).then(function(r){ return r.json(); })
+          .then(function(j){ if (j && j.ok) loadMyListingRequests(); else { btn.disabled = false; alert(j.message || "철회에 실패했습니다."); } })
+          .catch(function(){ btn.disabled = false; });
+      });
+    });
   }
 
   function loadMyListingRequests(){
@@ -285,6 +359,7 @@
           return;
         }
         box.innerHTML = items.map(requestItemHtml).join("");
+        bindListingRequestEvents(box);
       })
       .catch(function(){
         box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매물의뢰 현황을 불러오지 못했습니다.</div>';
@@ -331,9 +406,14 @@
     var alertKey = (t.building_name != null ? t.building_name : "null") + "|" + addr;
     var hasAlert = alertKeys && alertKeys.has(alertKey);
     var alertBtn = hasAlert
-      ? '<span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0;">🔔 알림 중</span>'
+      ? '<button class="myfav-alert-off" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 끄기" '
+          + 'style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 중</button>'
       : '<button class="myfav-alert-on" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 켜기" '
           + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 켜기</button>';
+    var listingBtn = bid
+      ? '<button class="myfav-listing-btn" data-bid="' + escapeHtml(bid) + '" data-bname="' + escapeHtml(name) + '" title="매물내놓기" '
+          + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">매물내놓기</button>'
+      : '';
     return '' +
       '<div class="myfav-item" data-bid="' + escapeHtml(bid) + '" ' +
            'style="display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
@@ -342,6 +422,7 @@
           '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
         '</div>' +
         '<div style="font-size:14px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">' + escapeHtml(fmtPrice(t.price)) + '</div>' +
+        listingBtn +
         alertBtn +
         '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
                 'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:4px; flex-shrink:0;">★</button>' +
@@ -385,12 +466,138 @@
           }).then(function(r){ return r.json(); })
             .then(function(j){
               if (j && j.ok){
-                btn.outerHTML = '<span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;flex-shrink:0;">🔔 알림 중</span>';
+                btn.outerHTML = '<button class="myfav-alert-off" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 끄기" style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 중</button>';
+                // 새로 삽입된 버튼에 핸들러 재바인딩
+                var newBtn = box.querySelector('.myfav-alert-off[data-addr="' + (btn.getAttribute("data-addr")||"") + '"]');
+                if (newBtn) bindAlertOff(newBtn);
               } else { btn.disabled = false; btn.textContent = "🔔 알림 켜기"; }
             }).catch(function(){ btn.disabled = false; btn.textContent = "🔔 알림 켜기"; });
         });
       });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-alert-off"), function(btn){
+        bindAlertOff(btn);
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-listing-btn"), function(btn){
+        btn.addEventListener("click", function(e){
+          e.stopPropagation();
+          openListingModalMypage(btn.getAttribute("data-bid"), btn.getAttribute("data-bname"));
+        });
+      });
     }).catch(function(){ box.innerHTML = favEmptyHtml("네트워크 오류가 발생했습니다."); });
+  }
+  function bindAlertOff(btn){
+    btn.addEventListener("click", function(e){
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.textContent = "처리 중…";
+      fetch("/api/alerts/mine", {
+        method: "DELETE", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ building_name: btn.getAttribute("data-name") || null,
+                               address: btn.getAttribute("data-addr") })
+      }).then(function(r){ return r.json(); })
+        .then(function(j){
+          if (j && j.ok){
+            btn.outerHTML = '<button class="myfav-alert-on" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 켜기" style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 켜기</button>';
+          } else { btn.disabled = false; btn.textContent = "🔔 알림 중"; }
+        }).catch(function(){ btn.disabled = false; btn.textContent = "🔔 알림 중"; });
+    });
+  }
+
+  // ── 마이페이지 전용 매물내놓기 모달 ─────────────────────────────────────────
+  // main.js의 openListingRequestModal과 동일한 API(/api/listing-requests)를 사용하되
+  // mypage.html 내 인라인으로 구현(mypage는 main.js를 로드하지 않음).
+  function openListingModalMypage(buildingId, buildingName, prefill){
+    document.getElementById("mpListingOverlay")?.remove();
+    prefill = prefill || {};
+    var isEdit = !!prefill.editId;
+    var FLD = "width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line,#E2DDD8);border-radius:8px;font-size:13.5px;font-family:inherit;";
+    var DEAL_TYPES = ["매매","전세","월세","단기임대"];
+    var ov = document.createElement("div");
+    ov.id = "mpListingOverlay";
+    ov.style.cssText = "position:fixed;inset:0;background:rgba(22,32,46,.45);z-index:4000;display:flex;align-items:center;justify-content:center;padding:16px;";
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;width:100%;max-width:400px;padding:22px 20px;box-shadow:0 10px 40px rgba(0,0,0,.2);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+        '<div style="font-size:16px;font-weight:800;color:var(--ink);">' + (isEdit ? "매물의뢰 수정" : "매물 내놓기") + '</div>' +
+        '<button id="mpLrClose" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-soft);">×</button>' +
+      '</div>' +
+      '<div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">' + escapeHtml(buildingName||"") + '</div>' +
+      '<div id="mpLrForm">' +
+        '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:5px;">거래 유형</div>' +
+        '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">' +
+          DEAL_TYPES.map(function(dt){ return '<button class="mpLrDealBtn" data-dt="' + dt + '" style="padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--line,#E2DDD8);background:' + (dt===(prefill.deal_type||"매매")?"var(--brass,#B4863F)":"#fff") + ';color:' + (dt===(prefill.deal_type||"매매")?"#fff":"var(--ink)") + ';">' + dt + '</button>'; }).join("") +
+        '</div>' +
+        '<div id="mpLrPriceSale">' +
+          '<input id="mpLrSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" style="' + FLD + 'margin-bottom:12px;" value="' + (prefill.price_krw||"") + '" />' +
+        '</div>' +
+        '<div id="mpLrPriceJeonse" style="display:none;">' +
+          '<input id="mpLrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="' + FLD + 'margin-bottom:12px;" value="' + (prefill.price_krw||"") + '" />' +
+        '</div>' +
+        '<div id="mpLrPriceWolse" style="display:none;gap:6px;margin-bottom:12px;">' +
+          '<input id="mpLrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="' + FLD + 'flex:1;" value="' + (prefill.price_krw||"") + '" />' +
+          '<input id="mpLrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" style="' + FLD + 'flex:1;" value="' + (prefill.monthly_rent_krw||"") + '" />' +
+        '</div>' +
+        '<input id="mpLrPhone" type="tel" placeholder="연락처 (예: 010-1234-5678)" style="' + FLD + 'margin-bottom:14px;" value="' + escapeHtml(prefill.contact_phone||"") + '" />' +
+        '<div id="mpLrMsg" style="font-size:12px;color:#c00;margin-bottom:8px;display:none;"></div>' +
+        '<button id="mpLrSubmit" style="width:100%;padding:12px;border-radius:8px;background:var(--brass,#B4863F);color:#fff;border:none;font-size:15px;font-weight:700;cursor:pointer;">' + (isEdit?"저장":"매물의뢰 접수하기") + '</button>' +
+      '</div>' +
+      '<div id="mpLrDone" style="display:none;text-align:center;padding:18px 0;">' +
+        '<div style="font-size:16px;font-weight:700;margin-bottom:8px;">' + (isEdit?"수정됐습니다 ✓":"접수됐습니다 ✓") + '</div>' +
+        '<div style="font-size:13px;color:var(--ink-soft);">' + (isEdit?"변경 내용이 저장됐습니다.":"담당 중개사가 곧 연락드립니다.") + '</div>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    document.getElementById("mpLrClose").onclick = function(){ ov.remove(); };
+    ov.addEventListener("click", function(e){ if (e.target===ov) ov.remove(); });
+
+    var curDeal = prefill.deal_type || "매매";
+    function showPriceFields(dt){
+      document.getElementById("mpLrPriceSale").style.display  = (dt==="매매")?"block":"none";
+      document.getElementById("mpLrPriceJeonse").style.display= (dt==="전세")?"block":"none";
+      document.getElementById("mpLrPriceWolse").style.display = (dt==="월세")?"flex":"none";
+    }
+    showPriceFields(curDeal);
+    Array.prototype.forEach.call(ov.querySelectorAll(".mpLrDealBtn"), function(b){
+      b.addEventListener("click", function(){
+        curDeal = b.getAttribute("data-dt");
+        Array.prototype.forEach.call(ov.querySelectorAll(".mpLrDealBtn"), function(x){
+          x.style.background = (x===b)?"var(--brass,#B4863F)":"#fff";
+          x.style.color      = (x===b)?"#fff":"var(--ink)";
+        });
+        showPriceFields(curDeal);
+      });
+    });
+
+    document.getElementById("mpLrSubmit").onclick = function(){
+      var phone = (document.getElementById("mpLrPhone").value||"").trim();
+      var priceKrw = null, rentKrw = null;
+      if (curDeal==="매매") priceKrw = parseInt(document.getElementById("mpLrSalePrice").value)||null;
+      if (curDeal==="전세") priceKrw = parseInt(document.getElementById("mpLrJeonseDeposit").value)||null;
+      if (curDeal==="월세"){ priceKrw=parseInt(document.getElementById("mpLrWolseDeposit").value)||null; rentKrw=parseInt(document.getElementById("mpLrWolseRent").value)||null; }
+      var msg = document.getElementById("mpLrMsg");
+      if (!phone){ msg.textContent="연락처를 입력해주세요."; msg.style.display="block"; return; }
+      msg.style.display="none";
+      var submitBtn = document.getElementById("mpLrSubmit");
+      submitBtn.disabled=true; submitBtn.textContent="처리 중…";
+      var body = isEdit
+        ? { deal_type: curDeal, price_krw: priceKrw, monthly_rent_krw: rentKrw, contact_phone: phone }
+        : { master_building_id: parseInt(buildingId), deal_type: curDeal, price_krw: priceKrw, monthly_rent_krw: rentKrw, contact_phone: phone };
+      var url = isEdit ? ("/api/listing-requests/" + prefill.editId) : "/api/listing-requests";
+      var method = isEdit ? "PUT" : "POST";
+      fetch(url, { method: method, credentials: "same-origin",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (j && j.ok){
+            document.getElementById("mpLrForm").style.display="none";
+            document.getElementById("mpLrDone").style.display="block";
+            setTimeout(function(){ ov.remove(); loadMyListingRequests(); }, 1800);
+          } else {
+            submitBtn.disabled=false; submitBtn.textContent=(isEdit?"저장":"매물의뢰 접수하기");
+            msg.textContent=(j&&j.message)||"오류가 발생했습니다."; msg.style.display="block";
+          }
+        }).catch(function(){ submitBtn.disabled=false; submitBtn.textContent=(isEdit?"저장":"매물의뢰 접수하기"); msg.textContent="네트워크 오류"; msg.style.display="block"; });
+    };
   }
   function removeMyFavorite(name, addr, btn){
     if (btn) btn.disabled = true;
