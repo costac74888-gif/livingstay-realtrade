@@ -9775,17 +9775,18 @@ def admin_buildings_full_stats():
         if rk: all_road_norms.append(rk)
         if jk: all_jibun_norms.append(jk)
 
-    # 6. 단지뱃지 (broker_registry 주소 매칭)
-    broker_matched = set()
-    if all_road_norms or all_jibun_norms:
-        cur.execute(
-            "SELECT road_norm, jibun_norm FROM broker_registry "
-            "WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
-            [all_road_norms or ["__none__"], all_jibun_norms or ["__none__"]]
-        )
-        for r in cur.fetchall():
-            if r["road_norm"]:  broker_matched.add(("r", r["road_norm"]))
-            if r["jibun_norm"]: broker_matched.add(("j", r["jibun_norm"]))
+    # 6. 단지뱃지 — agent_buildings 실승인 건수 (has_priority_badge=TRUE, 미만료)
+    #    기존 broker_registry 주소매칭 방식은 "중개업소가 같은 주소에 있는 건물 수"였으나
+    #    실제 단지뱃지 승인 건수와 무관했으므로 교체.
+    cur.execute("""
+        SELECT ab.master_building_id, COUNT(*) AS cnt
+        FROM agent_buildings ab
+        WHERE ab.master_building_id = ANY(%s)
+          AND COALESCE(ab.has_priority_badge, FALSE)
+          AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+        GROUP BY ab.master_building_id
+    """, [all_ids])
+    badge_map = {r["master_building_id"]: int(r["cnt"]) for r in cur.fetchall()}
 
     # 7. 영업신고 (lodging_registry 배치)
     lr_road_map: dict = {}   # road_norm → {permit_number → row}
@@ -9822,11 +9823,7 @@ def admin_buildings_full_stats():
                     "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None}
         tu = sum(int(b["units"] or 0) for b in blds)
         tb = sum(int(b["biz_units"] or 0) for b in blds)
-        broker_c = sum(
-            1 for b in blds
-            if (bld_rk[b["id"]] and ("r", bld_rk[b["id"]]) in broker_matched)
-            or (bld_jk[b["id"]] and ("j", bld_jk[b["id"]]) in broker_matched)
-        )
+        broker_c = sum(badge_map.get(b["id"], 0) for b in blds)
         permits: dict = {}
         for b in blds:
             rk = bld_rk[b["id"]]; jk = bld_jk[b["id"]]
