@@ -344,7 +344,10 @@
         columns: [
           // ── 건물 자체 정보 1~9 ─────────────────────────────────────────────
           { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
-            render: (v, row) => `${dgEscape(v || "")}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}` },
+            render: (v, row) => {
+              const link = `<a href="/building/${row.id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(v || "")}</a>`;
+              return `${link}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}`;
+            } },
           { key: "road_address_toggle", label: "주소(도로명⇄지번)",
             render: (_, row) => {
               const mb = dgEscape(row.road_address || "-");
@@ -363,9 +366,9 @@
             render: (v, row) => v > 0
               ? `<a href="/api/admin/buildings/${row.id}/favorites/export.xlsx" style="color:var(--brass-dark);font-weight:700;text-decoration:none;" title="관심저장 회원 명단 다운로드">${v}명 📥</a>`
               : `<span style="color:var(--ink-soft);">0</span>` },
-          { key: "matched_broker_name", label: "단지뱃지", clientSort: true,
-            render: (v) => v
-              ? `<span class="dg-badge dg-badge-ok" title="${dgEscape(v)}">보유</span>`
+          { key: "priority_badge_count", label: "단지뱃지", clientSort: true,
+            render: (v, row) => v > 0
+              ? `<span class="dg-badge dg-badge-ok" title="${row.premium_expires_at ? '만료 ' + dgEscape(row.premium_expires_at) : '무기한'}">${v > 1 ? v + "명 보유" : "보유"}</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
           // 입점부동산: 부동산 업소 수만 표시, 클릭 시 모달 (입점상가와 동일 패턴)
           { key: "store_realty_count", label: "입점부동산", sortable: true,
@@ -2881,7 +2884,7 @@
         listBox.innerHTML = d.items.map((b) => `
           <button type="button" class="broker-bld-item" data-id="${b.id}" data-name="${dgEscape(b.building_name || "")}"
                   style="display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid #e3e6ea;border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer">
-            <b>${dgEscape(b.building_name || "(이름없음)")}</b>
+            <b><a href="/building/${b.id}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name || "(이름없음)")}</a></b>
             <span style="color:#667">${dgEscape(b.road_address || b.sgg_text || "")}</span>
             ${b.has_coords ? "" : `<span style="color:#b3261e"> · 좌표 없음</span>`}
           </button>`).join("");
@@ -3146,7 +3149,7 @@
           const bg = (bld && tint) ? " style=\"background:#faf6ee\"" : "";
           return `
           <tr${bg}>
-            <td style="font-weight:600"><span class="lodging-clamp2">${r.matched_building_name ? dgEscape(r.matched_building_name) : `<span style="color:#aab;">-</span>`}</span></td>
+            <td style="font-weight:600"><span class="lodging-clamp2">${r.matched_building_name ? (r.matched_building_id ? `<a href="/building/${r.matched_building_id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(r.matched_building_name)}</a>` : dgEscape(r.matched_building_name)) : `<span style="color:#aab;">-</span>`}</span></td>
             <td style="text-align:right">${r.building_total_units != null ? num(r.building_total_units) + "실" : `<span style="color:#aab;">-</span>`}</td>
             <td><span class="lodging-clamp2">${dgEscape(r.biz_name)}</span></td>
             <td style="text-align:right">${r.room_count ? num(r.room_count) + "실" : `<span style="color:#aab;">-</span>`}</td>
@@ -3281,7 +3284,7 @@
         <tr>
           <td>${r.kind === "building" ? "단지뱃지(골드)" : "지역뱃지(실버)"}</td>
           <td>${dgEscape(r.office_name || "-")}</td>
-          <td>${dgEscape(r.target || "-")}</td>
+          <td>${r.kind === "building" && r.master_building_id ? `<a href="/building/${r.master_building_id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(r.target || "-")}</a>` : dgEscape(r.target || "-")}</td>
           <td>${dgEscape((r.granted_at||"").slice(0,10))}</td>
           <td>${dgEscape((r.expires_at||"").slice(0,10))}</td>
           <td>${new Date(r.expires_at) > new Date() ? "적용중" : "종료"}</td>
@@ -5571,7 +5574,7 @@
         } else {
           buildingHtml = `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">총 ${favs.length}건</div>`;
           buildingHtml += _bldList(favs, "fav", f =>
-            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(f.building_name||"-")}</span><span style="color:var(--ink-soft);font-size:12px;">${dgEscape((f.address||"").slice(0,40))}</span></div>`);
+            `<div class="member-bld-item">${f.building_id ? `<a href="/building/${f.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(f.building_name||"-")}</a>` : `<span class="member-bld-name">${dgEscape(f.building_name||"-")}</span>`}<span style="color:var(--ink-soft);font-size:12px;">${dgEscape((f.address||"").slice(0,40))}</span></div>`);
         }
       } else if (memberType === "agent") {
         const blds = data.buildings || [];
@@ -5579,7 +5582,7 @@
         if (blds.length) {
           buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
           buildingHtml += _bldList(blds, "bld", b =>
-            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(b.building_name||"-")}</span>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지${b.premium_expires_at?` ~${dgEscape(b.premium_expires_at)}`:""}</span>`:""}
+            `<div class="member-bld-item"><a href="/building/${b.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name||"-")}</a>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지${b.premium_expires_at?` ~${dgEscape(b.premium_expires_at)}`:""}</span>`:""}
               <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
         } else {
           buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">담당건물 없음</div>`;
@@ -5599,7 +5602,7 @@
         if (blds.length) {
           buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
           buildingHtml += _bldList(blds, "bld", b =>
-            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(b.building_name||"-")}</span>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지</span>`:""}
+            `<div class="member-bld-item"><a href="/building/${b.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name||"-")}</a>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지</span>`:""}
               <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
         } else {
           buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">담당건물 없음</div>`;
@@ -5609,7 +5612,7 @@
           buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;">OTA 링크 신청 (${otas.length}건)</div>`;
           buildingHtml += otas.slice(0, LIMIT).map(o => {
             const [sl,sc] = _os[o.status] || [o.status,""];
-            return `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(o.building_name||"-")}</span>
+            return `<div class="member-bld-item"><a href="/building/${o.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(o.building_name||"-")}</a>
               <span class="dg-badge dg-badge-${sc}" style="font-size:11px;">${dgEscape(sl)}</span>
               <span style="color:var(--ink-soft);font-size:11px;">${dgEscape(o.submitted_at||"")}</span></div>`;
           }).join("");
@@ -5619,7 +5622,7 @@
         if (blds.length) {
           buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
           buildingHtml += _bldList(blds, "bld", b =>
-            `<div class="member-bld-item"><span class="member-bld-name">${dgEscape(b.building_name||"-")}</span>
+            `<div class="member-bld-item"><a href="/building/${b.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name||"-")}</a>
               <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
         } else {
           buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;">담당건물 없음</div>`;

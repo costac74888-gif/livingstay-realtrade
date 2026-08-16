@@ -9555,7 +9555,19 @@ def admin_buildings_list():
                        AND (uf.address = mb.road_address
                             OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))
                        AND (uf.building_name IS NULL OR uf.building_name = mb.building_name))
-               ) AS favorite_count
+               ) AS favorite_count,
+               (SELECT COUNT(*) FROM agent_buildings ab
+                WHERE ab.master_building_id = mb.id
+                  AND COALESCE(ab.has_priority_badge, FALSE)
+                  AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+               ) AS priority_badge_count,
+               (SELECT to_char(MIN(ab.premium_expires_at), 'YYYY-MM-DD')
+                FROM agent_buildings ab
+                WHERE ab.master_building_id = mb.id
+                  AND COALESCE(ab.has_priority_badge, FALSE)
+                  AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+                  AND ab.premium_expires_at IS NOT NULL
+               ) AS premium_expires_at
         FROM master_buildings mb
         WHERE {where_sql}
         ORDER BY {sort_expr} {order} NULLS LAST, mb.id ASC
@@ -10238,7 +10250,12 @@ def admin_buildings_export():
                        AND (uf.address = mb.road_address
                             OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))
                        AND (uf.building_name IS NULL OR uf.building_name = mb.building_name))
-               ) AS favorite_count
+               ) AS favorite_count,
+               (SELECT COUNT(*) FROM agent_buildings ab
+                WHERE ab.master_building_id = mb.id
+                  AND COALESCE(ab.has_priority_badge, FALSE)
+                  AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+               ) AS priority_badge_count
         FROM master_buildings mb
         WHERE {where_sql}
         ORDER BY {ADMIN_BLD_SORT[sort]} {order} NULLS LAST, mb.id ASC
@@ -10392,7 +10409,7 @@ def admin_buildings_export():
             row_vals = [
                 r["building_name"], r["road_address"], r["lodging_type"], units,
                 r["favorite_count"] or 0,
-                "보유" if r["matched_broker_name"] else None,
+                (f"{r['priority_badge_count']}명 보유" if r.get('priority_badge_count', 0) > 1 else "보유") if r.get('priority_badge_count') else None,
             ] + [
                 realty.get("name"), realty.get("ho_no"),
                 store_count if i == 0 else None,  # 입점상가수: 첫 행만
@@ -12156,12 +12173,12 @@ def _building_norm_maps(cur):
     B화면 2차 매칭과 동일한 정규화(addr_norm)를 사용한다.
     """
     cur.execute("""
-        SELECT building_name, units, road_address, jibun_address
+        SELECT id, building_name, units, road_address, jibun_address
         FROM master_buildings
     """)
     road_map, jibun_map = {}, {}
     for b in cur.fetchall():
-        info = (b["building_name"], b["units"])
+        info = (b["building_name"], b["units"], b["id"])
         rk = addr_norm.normalize_road_prefix(b["road_address"])
         if rk and rk not in road_map:
             road_map[rk] = info
@@ -12193,6 +12210,7 @@ def _annotate_and_sort_candidates(rows, road_map, jibun_map):
         d.pop("jibun_norm", None)
         d["matched_building_name"] = info[0] if info else None
         d["building_total_units"] = info[1] if info else None
+        d["matched_building_id"] = info[2] if info else None
         items.append(d)
     items.sort(key=lambda d: (
         -(d["building_total_units"] if d["building_total_units"] is not None else -1),
@@ -14872,6 +14890,7 @@ def admin_member_detail(member_type, member_id):
             cur.execute("""
                 SELECT COALESCE(mb.building_name, uf.building_name) AS building_name,
                        COALESCE(mb.road_address, uf.address) AS address,
+                       uf.master_building_id AS building_id,
                        to_char(uf.created_at, 'YYYY-MM-DD') AS created_at
                 FROM user_favorites uf
                 LEFT JOIN master_buildings mb ON mb.id = uf.master_building_id
@@ -14885,7 +14904,7 @@ def admin_member_detail(member_type, member_id):
 
         elif member_type == "agent":
             cur.execute("""
-                SELECT mb.building_name, mb.road_address, mb.sgg_text,
+                SELECT mb.id AS building_id, mb.building_name, mb.road_address, mb.sgg_text,
                        ab.has_priority_badge, ab.is_paid,
                        to_char(ab.premium_expires_at, 'YYYY-MM-DD') AS premium_expires_at
                 FROM agent_buildings ab
@@ -14906,7 +14925,7 @@ def admin_member_detail(member_type, member_id):
 
         elif member_type == "operator":
             cur.execute("""
-                SELECT mb.building_name, mb.road_address, mb.sgg_text,
+                SELECT mb.id AS building_id, mb.building_name, mb.road_address, mb.sgg_text,
                        ob.has_priority_badge, ob.is_paid,
                        to_char(ob.premium_expires_at, 'YYYY-MM-DD') AS premium_expires_at
                 FROM operator_buildings ob
@@ -14916,7 +14935,7 @@ def admin_member_detail(member_type, member_id):
             """, [member_id])
             result["buildings"] = [dict(r) for r in cur.fetchall()]
             cur.execute("""
-                SELECT mb.building_name, bur.booking_url, bur.status,
+                SELECT mb.id AS building_id, mb.building_name, bur.booking_url, bur.status,
                        to_char(bur.submitted_at, 'YYYY-MM-DD') AS submitted_at
                 FROM booking_url_requests bur
                 JOIN master_buildings mb ON mb.id = bur.master_building_id
@@ -14927,7 +14946,7 @@ def admin_member_detail(member_type, member_id):
         else:  # loan_consultant
             try:
                 cur.execute("""
-                    SELECT mb.building_name, mb.road_address, mb.sgg_text
+                    SELECT mb.id AS building_id, mb.building_name, mb.road_address, mb.sgg_text
                     FROM lc_buildings lcb
                     JOIN master_buildings mb ON mb.id = lcb.master_building_id
                     WHERE lcb.loan_consultant_id=%s ORDER BY mb.building_name

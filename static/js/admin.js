@@ -304,6 +304,13 @@ class DataGrid {
         let cell;
         if (typeof col.render === "function") {
           cell = col.render(row[col.key], row);
+        } else if (col.key === "building_name") {
+          // building_id 또는 master_building_id가 있으면 새 창 링크로 자동 렌더링
+          const bid = row.building_id || row.master_building_id;
+          const text = dgEscape(row[col.key]);
+          cell = bid
+            ? `<a href="/building/${bid}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${text}</a>`
+            : text;
         } else {
           cell = dgEscape(row[col.key]);
         }
