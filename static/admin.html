@@ -233,6 +233,38 @@
           { key: "jibun", label: "지번", sortable: true, editable: true },
           { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
           { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
+          // ── 영업신고(lodging_registry) 매칭 컬럼 ──
+          { key: "lodging_count", label: "매칭 사업장",
+            render: (v, row) => (v > 0)
+              ? `<button class="bld-lodging-modal-btn" data-id="${dgEscape(String(row.id))}" style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">🏢 ${v}건</button>`
+              : `<span style="font-size:11px;color:#aaa;border:1px solid #ddd;border-radius:4px;padding:2px 8px;">미매칭</span>` },
+          { key: "lodging_biz_name", label: "대표 사업장명",
+            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "lodging_permit_date", label: "신고일자",
+            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "lodging_biz_status", label: "영업상태",
+            render: (v) => {
+              if (!v) return `<span style="color:var(--ink-soft);">-</span>`;
+              const closed = v.includes("폐업");
+              return `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}">${dgEscape(v)}</span>`;
+            } },
+          { key: "lodging_hygiene_type", label: "위생업태",
+            render: (v) => v ? `<span style="font-size:11.5px;">${dgEscape(v)}</span>` : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "lodging_phone", label: "영업신고 전화",
+            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "lodging_source_updated_at", label: "원본 갱신일",
+            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "road_address_toggle", label: "주소(토글 ⇄)", hideInTable: false,
+            render: (_, row) => {
+              const mb = dgEscape(row.road_address || "-");
+              const lr = dgEscape(row.lodging_road_address || row.lodging_jibun_address || "");
+              if (!lr) return mb;
+              return `<div class="bld-addr-cell">` +
+                `<span class="bld-addr-mb">${mb}</span>` +
+                `<span class="bld-addr-lr" style="display:none;color:var(--brass-dark);">${lr}</span>` +
+                `<button class="bld-addr-toggle" title="영업신고 주소로 보기" style="margin-left:4px;background:none;border:1px solid var(--brass);color:var(--brass);border-radius:3px;font-size:10px;padding:1px 5px;cursor:pointer;white-space:nowrap;">⇄</button>` +
+                `</div>`;
+            } },
           { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
           { key: "booking_url", label: "운영확인 링크(OTA)", editable: true, hideInTable: true,
             placeholder: "https://www.yanolja.com/..." },
@@ -2882,7 +2914,7 @@
       const btn = document.getElementById("lodgingSyncRunBtn");
       if (!box || !btn) { stopLodgingSyncPolling(); return; }
       const rows = [];
-      rows.push(`<div class="geo-stat-row"><b>수집된 생활숙박업 사업장:</b> 총 ${num(d.lodging_total)}건</div>`);
+      rows.push(`<div class="geo-stat-row"><b>수집된 숙박업 사업장(생활+일반):</b> 총 ${num(d.lodging_total)}건</div>`);
       rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
       if (d.progress && d.progress.next_page) {
         const tot = d.progress.total_count ? ` / 전체 약 ${num(d.progress.total_count)}건` : "";
@@ -4705,9 +4737,101 @@
     ];
     const BLD_LODGING_OPTS = ["생활", "관광", "일반", "복합", "준공전", "미분류"];
 
+    // ── 건물마스터 통계박스 ──────────────────────────────────────────────────
+    async function loadBldStats() {
+      const box = document.getElementById("bldStatBoxes");
+      if (!box || !currentGrid) return;
+      const s = currentGrid.state;
+      const p = new URLSearchParams({ q: s.q || "" });
+      Object.keys(s.filters || {}).forEach((k) => {
+        if (s.filters[k] !== "" && s.filters[k] != null) p.set(k, s.filters[k]);
+      });
+      try {
+        const r = await fetch("/api/admin/buildings/stats?" + p.toString());
+        const d = await r.json();
+        if (!d || !d.ok) { box.innerHTML = ""; return; }
+        const pctFmt = (v) => v == null ? "-" : v.toFixed(1) + "%";
+        const statItems = [
+          { label: "건물수",          value: num(d.building_count),           color: "" },
+          { label: "영업신고 업체수",  value: num(d.lodging_permit_count),     color: "" },
+          { label: "영업신고 호실수",  value: num(d.room_total),               color: "" },
+          { label: "신고율",          value: pctFmt(d.report_rate),           color: d.report_rate != null && d.report_rate >= 80 ? "var(--brass-dark)" : "" },
+          { label: "폐업율",          value: pctFmt(d.closed_rate),           color: d.closed_rate != null && d.closed_rate >= 30 ? "#b3261e" : "" },
+        ];
+        box.innerHTML = statItems.map((si) =>
+          `<div style="background:#F4F1EA;border-radius:8px;padding:10px 18px;min-width:110px;text-align:center;flex:1;">` +
+            `<div style="font-size:11px;color:var(--ink-soft);margin-bottom:4px;">${dgEscape(si.label)}</div>` +
+            `<div style="font-size:20px;font-weight:800;color:${si.color||"var(--ink)"};">${dgEscape(si.value)}</div>` +
+          `</div>`
+        ).join("");
+      } catch(e) { box.innerHTML = ""; }
+    }
+
+    // ── lodging 상세 모달 ────────────────────────────────────────────────────
+    async function openLodgingDetailModal(buildingId) {
+      document.getElementById("lodgingDetailOverlay")?.remove();
+      const ov = document.createElement("div");
+      ov.id = "lodgingDetailOverlay";
+      ov.className = "admin-modal-overlay";
+      ov.innerHTML = `<div class="admin-modal" role="dialog" style="max-width:700px;">
+        <div class="admin-modal-head">
+          <h3>영업신고 사업장 목록</h3>
+          <button class="admin-modal-close">×</button>
+        </div>
+        <div class="admin-modal-body" id="lodgingDetailBody">로딩 중…</div>
+      </div>`;
+      document.body.appendChild(ov);
+      ov.addEventListener("click", (e) => { if (e.target === ov) ov.remove(); });
+      ov.querySelector(".admin-modal-close").addEventListener("click", () => ov.remove());
+      try {
+        const r = await fetch(`/api/admin/buildings/${buildingId}/lodgings`);
+        const d = await r.json();
+        const body = document.getElementById("lodgingDetailBody");
+        if (!body) return;
+        if (!d.ok || !d.items.length) {
+          body.innerHTML = `<p style="color:var(--ink-soft);">매칭된 영업신고 없음</p>`;
+          return;
+        }
+        const STATUS_COLOR = {"영업/정상":"#4A7A18", "폐업":"#b3261e", "휴업":"#B4863F"};
+        const rows = d.items.map((it) => {
+          const sc = Object.entries(STATUS_COLOR).find(([k]) => (it.biz_status_name||"").includes(k));
+          const sColor = sc ? sc[1] : "var(--ink-soft)";
+          return `<tr>
+            <td style="padding:6px 8px;">${dgEscape(it.biz_name||"-")}</td>
+            <td style="padding:6px 8px;font-size:11.5px;color:var(--ink-soft);">${dgEscape(it.permit_number||"-")}</td>
+            <td style="padding:6px 8px;text-align:center;">${it.room_count ?? "-"}</td>
+            <td style="padding:6px 8px;"><span style="color:${sColor};font-weight:700;font-size:11.5px;">${dgEscape(it.biz_status_name||"-")}</span><br><span style="font-size:10.5px;color:var(--ink-soft);">${dgEscape(it.biz_status_detail||"")}</span></td>
+            <td style="padding:6px 8px;font-size:11.5px;">${dgEscape(it.permit_date||"-")}</td>
+            <td style="padding:6px 8px;font-size:11.5px;">${dgEscape(it.phone||"-")}</td>
+            <td style="padding:6px 8px;font-size:11px;color:var(--ink-soft);">${dgEscape(it.road_address||it.jibun_address||"-")}</td>
+          </tr>`;
+        }).join("");
+        body.innerHTML = `<div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead><tr style="background:#F4F1EA;font-weight:700;">
+              <th style="padding:7px 8px;text-align:left;">사업장명</th>
+              <th style="padding:7px 8px;text-align:left;">신고번호</th>
+              <th style="padding:7px 8px;text-align:center;">객실수</th>
+              <th style="padding:7px 8px;text-align:left;">상태</th>
+              <th style="padding:7px 8px;text-align:left;">신고일</th>
+              <th style="padding:7px 8px;text-align:left;">전화</th>
+              <th style="padding:7px 8px;text-align:left;">원본주소</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      } catch(e) {
+        const body = document.getElementById("lodgingDetailBody");
+        if (body) body.innerHTML = `<p style="color:#b3261e;">불러오기 실패</p>`;
+      }
+    }
+
     function showBuildings(overrideFilters) {
       destroyStatsCharts();
       mount.innerHTML = `
+        <div id="bldStatBoxes" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;min-height:52px;">
+          <div style="color:var(--ink-soft);font-size:13px;padding:14px 0;">통계 로딩 중…</div>
+        </div>
         <div id="bldBulkBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#F4F1EA;border-radius:8px;flex-wrap:wrap;">
           <span id="bldSelLabel" style="font-size:13px;color:var(--ink-soft);min-width:60px;">선택 0건</span>
           <button class="admin-btn" id="bldBulkEditBtn" disabled>일괄 수정</button>
@@ -4728,6 +4852,39 @@
         });
       }
       currentGrid = new DataGrid(Object.assign({ mount: gridMount, idField: "id", pageSize: 50 }, bldCfg));
+
+      // ── 통계박스: 초기 로드 + 필터 변경 시 자동 갱신 ──
+      {
+        const origReload = currentGrid.reload.bind(currentGrid);
+        currentGrid.reload = async function() {
+          await origReload();
+          loadBldStats();
+        };
+        loadBldStats();
+      }
+
+      // ── 이벤트 위임: 영업신고 상세모달 + 주소 토글 ──
+      gridMount.addEventListener("click", (e) => {
+        const modalBtn = e.target.closest(".bld-lodging-modal-btn");
+        if (modalBtn) {
+          e.stopPropagation();
+          openLodgingDetailModal(modalBtn.getAttribute("data-id"));
+          return;
+        }
+        const toggleBtn = e.target.closest(".bld-addr-toggle");
+        if (toggleBtn) {
+          e.stopPropagation();
+          const cell = toggleBtn.closest(".bld-addr-cell");
+          if (!cell) return;
+          const mbSpan = cell.querySelector(".bld-addr-mb");
+          const lrSpan = cell.querySelector(".bld-addr-lr");
+          const showingMb = mbSpan.style.display !== "none";
+          mbSpan.style.display = showingMb ? "none" : "";
+          lrSpan.style.display = showingMb ? "" : "none";
+          toggleBtn.title = showingMb ? "건물마스터 주소로 보기" : "영업신고 주소로 보기";
+          return;
+        }
+      });
 
       // 선택 상태 변경 → 툴바 갱신
       gridMount.addEventListener("dg:selectionchange", (e) => {

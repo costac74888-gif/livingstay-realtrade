@@ -9560,7 +9560,163 @@ def admin_buildings_list():
         for it in items:
             it["matched_broker_name"] = ", ".join(it.pop("_broker_names", [])) or None
 
+    # ── lodging_registry 영업신고 배치 매칭 ──────────────────────────────────
+    # road_key_map / jibun_key_map은 위 broker 매칭 블록에서 이미 계산됨.
+    if items and (rkeys or jkeys):
+        conn3 = get_conn()
+        cur3 = conn3.cursor()
+        cur3.execute("""
+            SELECT biz_name, permit_number, permit_date, biz_status_name,
+                   room_count, hygiene_type, phone,
+                   road_address  AS lr_road_address,
+                   jibun_address AS lr_jibun_address,
+                   source_updated_at,
+                   road_norm, jibun_norm
+            FROM lodging_registry
+            WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+            ORDER BY source_updated_at DESC NULLS LAST
+        """, (rkeys, jkeys))
+        lr_road_grp, lr_jibun_grp = {}, {}
+        for lr in cur3.fetchall():
+            lr_d = dict(lr)
+            if lr_d.get("road_norm"):
+                lr_road_grp.setdefault(lr_d["road_norm"], []).append(lr_d)
+            if lr_d.get("jibun_norm"):
+                lr_jibun_grp.setdefault(lr_d["jibun_norm"], []).append(lr_d)
+        cur3.close()
+        conn3.close()
+        # road_key_map: norm → [building dicts]  →  attach lodging list per building
+        for rk_norm, bld_list in road_key_map.items():
+            lr_list = lr_road_grp.get(rk_norm, [])
+            for it in bld_list:
+                it["_lr_list"] = lr_list
+        for jk_norm, bld_list in jibun_key_map.items():
+            lr_list = lr_jibun_grp.get(jk_norm, [])
+            for it in bld_list:
+                if "_lr_list" not in it:   # road 매칭이 없는 경우만
+                    it["_lr_list"] = lr_list
+    for it in items:
+        lr_list = it.pop("_lr_list", [])
+        cnt = len(lr_list)
+        if cnt:
+            rep = lr_list[0]
+            it["lodging_count"]            = cnt
+            it["lodging_biz_name"]         = rep["biz_name"] + (f" 외 {cnt-1}건" if cnt > 1 else "")
+            it["lodging_permit_date"]      = rep["permit_date"]
+            it["lodging_biz_status"]       = rep["biz_status_name"]
+            it["lodging_hygiene_type"]     = rep["hygiene_type"]
+            it["lodging_phone"]            = rep["phone"]
+            it["lodging_source_updated_at"]= rep["source_updated_at"]
+            it["lodging_road_address"]     = rep["lr_road_address"]
+            it["lodging_jibun_address"]    = rep["lr_jibun_address"]
+        else:
+            it["lodging_count"] = 0
+
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+@app.route("/api/admin/buildings/stats")
+@require_admin
+def admin_buildings_stats():
+    """건물마스터 탭 상단 통계박스 — 현재 필터 기준 5가지 집계."""
+    _, _, _, where_sql, params = _admin_bld_filters()
+    conn = get_conn()
+    cur = conn.cursor()
+    # 필터에 맞는 전체 건물(주소+호실수) 조회
+    cur.execute(f"SELECT road_address, jibun_address, units FROM master_buildings WHERE {where_sql}", params)
+    buildings = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    bld_count = len(buildings)
+    if not bld_count:
+        return jsonify({"ok": True, "building_count": 0, "lodging_permit_count": 0,
+                        "room_total": 0, "report_rate": None, "closed_rate": None})
+
+    # 정규화 키 수집
+    road_norms, jibun_norms = [], []
+    for b in buildings:
+        rk = addr_norm.normalize_road_prefix(b["road_address"])
+        jk = addr_norm.normalize_jibun_prefix(b.get("jibun_address") or b["road_address"])
+        if rk:
+            road_norms.append(rk)
+        if jk:
+            jibun_norms.append(jk)
+    road_norm_set  = set(road_norms)
+    jibun_norm_set = set(jibun_norms)
+
+    # 영업신고 배치 조회 (전체 상태 — 폐업 포함)
+    conn2 = get_conn()
+    cur2  = conn2.cursor()
+    cur2.execute("""
+        SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+        FROM lodging_registry
+        WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+    """, (road_norms or ['__none__'], jibun_norms or ['__none__']))
+    permit_data = {}
+    for lr in cur2.fetchall():
+        pn = lr["permit_number"]
+        if pn in permit_data:
+            continue
+        if lr["road_norm"]  and lr["road_norm"]  in road_norm_set:
+            permit_data[pn] = lr
+        elif lr["jibun_norm"] and lr["jibun_norm"] in jibun_norm_set:
+            permit_data[pn] = lr
+    cur2.close()
+    conn2.close()
+
+    lodging_permit_count = len(permit_data)
+    room_total   = sum(int(v["room_count"] or 0) for v in permit_data.values())
+    closed_count = sum(1 for v in permit_data.values() if "폐업" in (v["biz_status_name"] or ""))
+    total_units  = sum(int(b["units"] or 0) for b in buildings)
+
+    report_rate = round(room_total * 100.0 / total_units, 1) if total_units > 0 else None
+    closed_rate = round(closed_count * 100.0 / lodging_permit_count, 1) if lodging_permit_count > 0 else None
+
+    return jsonify({
+        "ok": True,
+        "building_count": bld_count,
+        "lodging_permit_count": lodging_permit_count,
+        "room_total": room_total,
+        "report_rate": report_rate,
+        "closed_rate": closed_rate,
+    })
+
+
+@app.route("/api/admin/buildings/<int:building_id>/lodgings")
+@require_admin
+def admin_building_lodgings(building_id):
+    """건물 ID에 해당하는 영업신고(lodging_registry) 전체 목록 — 상세모달용."""
+    conn = get_conn()
+    cur  = conn.cursor()
+    cur.execute("SELECT road_address, jibun_address FROM master_buildings WHERE id = %s", [building_id])
+    b = cur.fetchone()
+    if not b:
+        cur.close(); conn.close()
+        return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+    rk = addr_norm.normalize_road_prefix(b["road_address"])
+    jk = addr_norm.normalize_jibun_prefix(b.get("jibun_address") or b["road_address"])
+    rows = []
+    if rk:
+        cur.execute("""
+            SELECT biz_name, permit_number, permit_date, biz_status_name, biz_status_detail,
+                   room_count, hygiene_type, phone,
+                   road_address, jibun_address, source_updated_at
+            FROM lodging_registry WHERE road_norm = %s
+            ORDER BY source_updated_at DESC NULLS LAST
+        """, [rk])
+        rows = cur.fetchall()
+    if not rows and jk:
+        cur.execute("""
+            SELECT biz_name, permit_number, permit_date, biz_status_name, biz_status_detail,
+                   room_count, hygiene_type, phone,
+                   road_address, jibun_address, source_updated_at
+            FROM lodging_registry WHERE jibun_norm = %s
+            ORDER BY source_updated_at DESC NULLS LAST
+        """, [jk])
+        rows = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify({"ok": True, "items": [dict(r) for r in rows]})
 
 
 @app.route("/api/admin/buildings", methods=["POST"])
@@ -9843,18 +9999,63 @@ def admin_buildings_export():
     cur.close()
     conn.close()
 
+    # 엑셀용 lodging_registry 배치 매칭 (export 전체 대상 기준)
+    lr_road_grp_x, lr_jibun_grp_x = {}, {}
+    if rows:
+        road_key_map_x, jibun_key_map_x = {}, {}
+        for r in rows:
+            rk = addr_norm.normalize_road_prefix(r.get("road_address"))
+            jk = addr_norm.normalize_jibun_prefix(r.get("jibun_address") or r.get("road_address"))
+            if rk:
+                road_key_map_x.setdefault(rk, []).append(r)
+            if jk:
+                jibun_key_map_x.setdefault(jk, []).append(r)
+        rkeys_x = list(road_key_map_x.keys())
+        jkeys_x = list(jibun_key_map_x.keys())
+        if rkeys_x or jkeys_x:
+            conn_x = get_conn()
+            cur_x  = conn_x.cursor()
+            cur_x.execute("""
+                SELECT biz_name, permit_number, permit_date, biz_status_name,
+                       room_count, hygiene_type, phone, road_norm, jibun_norm,
+                       road_address AS lr_road, jibun_address AS lr_jibun
+                FROM lodging_registry
+                WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+                ORDER BY source_updated_at DESC NULLS LAST
+            """, (rkeys_x or ['__none__'], jkeys_x or ['__none__']))
+            for lr in cur_x.fetchall():
+                lr_d = dict(lr)
+                if lr_d.get("road_norm"):
+                    lr_road_grp_x.setdefault(lr_d["road_norm"], []).append(lr_d)
+                if lr_d.get("jibun_norm"):
+                    lr_jibun_grp_x.setdefault(lr_d["jibun_norm"], []).append(lr_d)
+            cur_x.close(); conn_x.close()
+            for rk_norm, bld_list in road_key_map_x.items():
+                for it in bld_list:
+                    it["_xlr"] = lr_road_grp_x.get(rk_norm, [])
+            for jk_norm, bld_list in jibun_key_map_x.items():
+                for it in bld_list:
+                    if "_xlr" not in it:
+                        it["_xlr"] = lr_jibun_grp_x.get(jk_norm, [])
+
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
     ws.title = "건물마스터"
     headers = ["ID", "건물명", "도로명주소", "단지부동산(입주부동산)", "시군구", "읍면동", "지번",
-               "호실수", "영업신고호수", "용도", "용도상세"]
+               "호실수", "영업신고호수", "용도", "용도상세",
+               "매칭업체수", "대표사업장명", "신고일자", "영업상태", "위생업태", "전화", "갱신일"]
     ws.append(headers)
     for r in rows:
+        lr_list = r.pop("_xlr", [])
+        rep = lr_list[0] if lr_list else {}
         ws.append([
             r["id"], r["building_name"], r["road_address"], r["realty_store_name"], r["sgg_text"],
             r["umd_nm"], r["jibun"], r["units"], r["biz_units"],
             r["lodging_type"], r["lodging_type_detail"],
+            len(lr_list) or None,
+            rep.get("biz_name"), rep.get("permit_date"), rep.get("biz_status_name"),
+            rep.get("hygiene_type"), rep.get("phone"), rep.get("source_updated_at"),
         ])
     buf = io.BytesIO()
     wb.save(buf)
