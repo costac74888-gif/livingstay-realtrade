@@ -9702,6 +9702,16 @@ def admin_buildings_list():
             }
             for lr in lr_list
         ]
+        # 주소 매칭된 영업신고가 있으면 비폐업 객실수 합계를 biz_units 실값으로 사용.
+        # mb.biz_units(저장값)이 0/NULL이어도 lodging_registry 실데이터 기준으로 교정하여
+        # 신고율이 0%로 잘못 표시되는 문제를 방지한다.
+        if lr_list:
+            live_active = sum(
+                (lr.get("room_count") or 0)
+                for lr in lr_list
+                if "폐업" not in (lr.get("biz_status_name") or "")
+            )
+            it["biz_units"] = live_active
 
     return jsonify({"total": total, "page": page, "size": size, "items": items})
 
