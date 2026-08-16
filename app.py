@@ -9424,30 +9424,42 @@ def admin_ad_products_page():
 # 정렬 허용 컬럼 화이트리스트 (SQL 인젝션 방지 — 목록에 없으면 id로 폴백)
 # key → ORDER BY SQL expression (화이트리스트 겸 식 맵)
 # 서브쿼리 식은 항상 mb 별칭을 사용해야 한다.
+# key → ORDER BY SQL expression (화이트리스트 겸 식 맵)
+# ※ 모든 식에 NULLS LAST를 적용하고, 숫자 컬럼은 NULLIF(..., 0)으로 0도 뒤로 밀어낸다.
+#   → 정렬 방향(오름차/내림차) 무관하게 빈값·0이 항상 맨 끝에 위치한다.
 ADMIN_BLD_SORT = {
-    "id":               "mb.id",
-    "building_name":    "mb.building_name",
-    "road_address":     "mb.road_address",
-    "units":            "mb.units",
-    "biz_units":        "mb.biz_units",
-    "lodging_type":     "mb.lodging_type",
-    "sgg_text":         "mb.sgg_text",
-    "umd_nm":           "mb.umd_nm",
-    "jibun":            "mb.jibun",
-    # SELECT alias — Postgres는 같은 SELECT의 alias를 ORDER BY에서 허용
-    "favorite_count":   "favorite_count",
-    # building_stores 서브쿼리 정렬 — 현재 페이지만 아니라 전체 기준
+    "id":             "mb.id",
+    # 문자열: NULL/빈문자열을 NULL로 통일해 NULLS LAST 처리
+    "building_name":  "NULLIF(mb.building_name, '')",
+    "road_address":   "NULLIF(mb.road_address, '')",
+    "lodging_type":   "NULLIF(mb.lodging_type, '')",
+    "sgg_text":       "NULLIF(mb.sgg_text, '')",
+    "umd_nm":         "NULLIF(mb.umd_nm, '')",
+    "jibun":          "NULLIF(mb.jibun, '')",
+    # 숫자: 0 → NULL로 치환해 NULLS LAST 처리
+    "units":          "NULLIF(mb.units, 0)",
+    "biz_units":      "NULLIF(mb.biz_units, 0)",
+    # SELECT alias를 NULLIF 감싸면 동작 안 함 → 직접 서브쿼리로 작성
+    "favorite_count": (
+        "NULLIF((SELECT COUNT(*) FROM user_favorites uf"
+        " WHERE uf.master_building_id = mb.id"
+        "    OR (uf.master_building_id IS NULL"
+        "        AND (uf.address = mb.road_address"
+        "             OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))"
+        "        AND (uf.building_name IS NULL OR uf.building_name = mb.building_name))), 0)"
+    ),
+    # building_stores 서브쿼리 — 전체 기준, 0 → NULL
     "store_realty_count": (
-        "(SELECT COUNT(*) FROM building_stores bs "
-        " WHERE bs.master_building_id = mb.id AND bs.category = '부동산')"
+        "NULLIF((SELECT COUNT(*) FROM building_stores bs"
+        " WHERE bs.master_building_id = mb.id AND bs.category = '부동산'), 0)"
     ),
     "store_count": (
-        "(SELECT COUNT(*) FROM building_stores bs "
-        " WHERE bs.master_building_id = mb.id)"
+        "NULLIF((SELECT COUNT(*) FROM building_stores bs"
+        " WHERE bs.master_building_id = mb.id), 0)"
     ),
-    # 신고율 = biz_units / units (units=0이면 0으로 처리)
+    # 신고율: units=0이면 NULL → NULLS LAST 처리
     "report_rate": (
-        "CASE WHEN mb.units > 0 THEN mb.biz_units::float / mb.units ELSE 0 END"
+        "CASE WHEN mb.units > 0 THEN mb.biz_units::float / mb.units ELSE NULL END"
     ),
 }
 # 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
@@ -9546,7 +9558,7 @@ def admin_buildings_list():
                ) AS favorite_count
         FROM master_buildings mb
         WHERE {where_sql}
-        ORDER BY {sort_expr} {order}, mb.id ASC
+        ORDER BY {sort_expr} {order} NULLS LAST, mb.id ASC
         LIMIT %s OFFSET %s
     """, params + [size, offset])
     items = [dict(r) for r in cur.fetchall()]
@@ -10229,7 +10241,7 @@ def admin_buildings_export():
                ) AS favorite_count
         FROM master_buildings mb
         WHERE {where_sql}
-        ORDER BY {ADMIN_BLD_SORT[sort]} {order}, mb.id ASC
+        ORDER BY {ADMIN_BLD_SORT[sort]} {order} NULLS LAST, mb.id ASC
     """, params)
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
