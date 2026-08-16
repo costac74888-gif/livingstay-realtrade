@@ -878,7 +878,8 @@ def get_building_nearby_stores(building_id):
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT store_name, category, floor FROM building_stores WHERE master_building_id = %s ORDER BY id",
+            "SELECT store_name, category, floor, ho_no, inds_mcls_nm, inds_scls_nm "
+            "FROM building_stores WHERE master_building_id = %s ORDER BY ho_no NULLS LAST, id",
             [building_id],
         )
         db_rows = cur.fetchall()
@@ -997,9 +998,13 @@ def get_building_nearby_stores(building_id):
                     )
                     for s in fetched_stores:
                         cur2.execute(
-                            """INSERT INTO building_stores (master_building_id, store_name, category, floor, updated_at)
-                               VALUES (%s, %s, %s, %s, NOW())""",
-                            [bld_id, s.get("name", ""), s.get("category", ""), s.get("floor", "")],
+                            """INSERT INTO building_stores
+                               (master_building_id, store_name, category, floor,
+                                ho_no, inds_mcls_nm, inds_scls_nm, updated_at)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())""",
+                            [bld_id, s.get("name", ""), s.get("category", ""), s.get("floor", ""),
+                             s.get("ho_no") or None, s.get("inds_mcls_nm") or None,
+                             s.get("inds_scls_nm") or None],
                         )
                     conn2.commit()
                 finally:
@@ -9560,21 +9565,35 @@ def admin_buildings_list():
         for it in items:
             it["matched_broker_name"] = ", ".join(it.pop("_broker_names", [])) or None
 
-    # ── 입점부동산(building_stores 캐시) 배치 조회 ────────────────────────────
+    # ── 입점상가/입점부동산 — building_stores 캐시 배치 조회 ──────────────────
     if items:
         bld_ids = [it["id"] for it in items]
         conn_bs = get_conn()
         cur_bs = conn_bs.cursor()
+        # 전체 상가 수
         cur_bs.execute(
             "SELECT master_building_id, COUNT(*) AS cnt FROM building_stores "
             "WHERE master_building_id = ANY(%s) GROUP BY master_building_id",
             (bld_ids,)
         )
         store_cnt_map = {row["master_building_id"]: row["cnt"] for row in cur_bs.fetchall()}
+        # 부동산 업종 목록 (호번호 순 정렬)
+        cur_bs.execute(
+            "SELECT master_building_id, store_name, ho_no FROM building_stores "
+            "WHERE master_building_id = ANY(%s) AND category = '부동산' "
+            "ORDER BY master_building_id, ho_no NULLS LAST, store_name",
+            (bld_ids,)
+        )
+        realty_map = {}
+        for row in cur_bs.fetchall():
+            realty_map.setdefault(row["master_building_id"], []).append(
+                {"name": row["store_name"], "ho_no": row["ho_no"]}
+            )
         cur_bs.close()
         conn_bs.close()
         for it in items:
             it["store_count"] = store_cnt_map.get(it["id"], 0)
+            it["store_realty_list"] = realty_map.get(it["id"], [])
 
     # ── lodging_registry 영업신고 배치 매칭 ──────────────────────────────────
     # road_key_map / jibun_key_map은 위 broker 매칭 블록에서 이미 계산됨.
@@ -9737,6 +9756,24 @@ def admin_building_lodgings(building_id):
         rows = cur.fetchall()
     cur.close(); conn.close()
     return jsonify({"ok": True, "items": [dict(r) for r in rows]})
+
+
+@app.route("/api/admin/buildings/<int:mbid>/stores")
+@require_admin
+def admin_building_stores(mbid):
+    """건물 입점상가 전체 목록 (building_stores 캐시 기준)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT store_name, category, inds_mcls_nm, floor, ho_no "
+        "FROM building_stores WHERE master_building_id = %s "
+        "ORDER BY ho_no NULLS LAST, store_name",
+        [mbid]
+    )
+    items = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return jsonify({"items": items})
 
 
 @app.route("/api/admin/buildings", methods=["POST"])
@@ -10066,7 +10103,7 @@ def admin_buildings_export():
     for r in rows:
         r["matched_broker_name"] = ", ".join(r.pop("_broker_names", [])) or None
 
-    # ── building_stores 입점부동산 수 ─────────────────────────────────────────
+    # ── building_stores 입점상가(전체) + 입점부동산(부동산업소) 수 ───────────
     bld_ids_x = [r["id"] for r in rows]
     conn_bs_x = get_conn(); cur_bs_x = conn_bs_x.cursor()
     cur_bs_x.execute(
@@ -10074,9 +10111,16 @@ def admin_buildings_export():
         "WHERE master_building_id = ANY(%s) GROUP BY master_building_id", (bld_ids_x,)
     )
     store_cnt_map_x = {row["master_building_id"]: row["cnt"] for row in cur_bs_x.fetchall()}
+    cur_bs_x.execute(
+        "SELECT master_building_id, COUNT(*) AS cnt FROM building_stores "
+        "WHERE master_building_id = ANY(%s) AND category = '부동산' GROUP BY master_building_id",
+        (bld_ids_x,)
+    )
+    realty_cnt_map_x = {row["master_building_id"]: row["cnt"] for row in cur_bs_x.fetchall()}
     cur_bs_x.close(); conn_bs_x.close()
     for r in rows:
-        r["store_count"] = store_cnt_map_x.get(r["id"], 0)
+        r["store_count"]        = store_cnt_map_x.get(r["id"], 0)
+        r["store_realty_count"] = realty_cnt_map_x.get(r["id"], 0)
 
     # ── lodging_registry 배치 매칭 ────────────────────────────────────────────
     if rkeys_x or jkeys_x:
@@ -10121,7 +10165,7 @@ def admin_buildings_export():
     lr_subfields = ["신고번호", "객실수", "상태", "신고일", "전화", "원본주소", "갱신일"]
     headers = [
         "건물명", "도로명주소", "용도", "총호실수", "관심저장",
-        "단지뱃지", "입점부동산(상가수)", "총영업신고호수", "신고율(%)"
+        "단지뱃지", "입점부동산(부동산업소수)", "입점상가(전체상가수)", "총영업신고호수", "신고율(%)"
     ]
     for i in range(max_lr):
         headers += [f"사업장{i+1}_{f}" for f in lr_subfields]
@@ -10140,6 +10184,7 @@ def admin_buildings_export():
             r["building_name"], r["road_address"], r["lodging_type"], units,
             r["favorite_count"] or 0,
             "보유" if r["matched_broker_name"] else None,
+            r["store_realty_count"] or None,
             r["store_count"] or None,
             biz_units or None,
             report_rate,

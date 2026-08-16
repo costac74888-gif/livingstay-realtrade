@@ -129,9 +129,12 @@ def _fetch_stores(url, key):
             if not name:
                 continue
             stores.append({
-                "name": name,
-                "category": (it.findtext("indsLclsNm") or "").strip(),
-                "floor": (it.findtext("flrNo") or "").strip(),
+                "name":          name,
+                "category":      (it.findtext("indsLclsNm") or "").strip(),
+                "inds_mcls_nm":  (it.findtext("indsMclsNm") or "").strip(),
+                "inds_scls_nm":  (it.findtext("indsSclsNm") or "").strip(),
+                "floor":         (it.findtext("flrNo") or "").strip(),
+                "ho_no":         (it.findtext("hoNo")  or "").strip(),
             })
             page_count += 1
 

@@ -187,34 +187,51 @@
       }
     });
 
-    // ── 건물마스터 영업사업장 슬롯 렌더러 (3그룹 × 7필드) ──────────────────
-    function renderLodgingSlot(row, idx) {
-      const list = row.lodging_list || [];
-      const lr   = list[idx];
-      if (!lr) return '<span style="color:var(--ink-soft);font-size:11px;">-</span>';
-      const cnt    = row.lodging_count || 0;
-      const closed = (lr.biz_status_name || "").includes("폐업");
-      const badge  = lr.biz_status_name
-        ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>`
-        : "";
-      let html =
-        `<div style="font-size:11.5px;line-height:1.6;min-width:120px;">` +
-        `<div><span style="color:var(--ink-soft);font-size:10.5px;">신고</span> ${dgEscape(lr.permit_number || "-")}</div>` +
-        `<div><span style="color:var(--ink-soft);font-size:10.5px;">객실</span> <b>${lr.room_count != null ? lr.room_count : "-"}</b> ${badge}</div>` +
-        `<div><span style="color:var(--ink-soft);font-size:10.5px;">신고일</span> ${dgEscape(lr.permit_date || "-")}</div>` +
-        `<div><span style="color:var(--ink-soft);font-size:10.5px;">전화</span> ${dgEscape(lr.phone || "-")}</div>` +
-        `<div style="color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</div>` +
-        `<div style="color:var(--ink-soft);font-size:10px;">갱신 ${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</div>` +
-        `</div>`;
-      // 세 번째 슬롯(idx=2)에서 3건 초과분 더보기 버튼
-      if (idx === 2 && cnt > 3) {
-        html +=
-          `<button class="bld-lodging-modal-btn" data-id="${dgEscape(String(row.id))}" ` +
-          `style="margin-top:3px;background:none;border:1px solid var(--brass);color:var(--brass);` +
-          `border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">` +
-          `+${cnt - 3}건 더보기</button>`;
+    // ── data 속성용 JSON 직렬화 헬퍼 (HTML attribute 안전) ──────────────────
+    function jsonAttr(obj) {
+      return JSON.stringify(obj)
+        .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // ── 입점상가 전체 목록 모달 ───────────────────────────────────────────────
+    async function openStoreModal(buildingId) {
+      document.querySelector(".bld-store-overlay")?.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "bld-store-overlay";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:center;justify-content:center;";
+      overlay.innerHTML =
+        `<div style="background:#fff;border-radius:12px;padding:24px;min-width:480px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18);">` +
+        `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">` +
+        `<b style="font-size:15px;">입점상가 전체 목록</b>` +
+        `<button onclick="this.closest('.bld-store-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
+        `</div><div id="storeModalBody" style="min-height:40px;">로딩 중…</div></div>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+      try {
+        const r = await fetch(`/api/admin/buildings/${buildingId}/stores`);
+        const d = await r.json();
+        const items = d.items || [];
+        if (!items.length) {
+          document.getElementById("storeModalBody").textContent = "캐시된 상가정보 없음 (건물 상세 페이지 방문 시 수집됩니다)";
+          return;
+        }
+        let html = `<table style="width:100%;font-size:12px;border-collapse:collapse;">`;
+        html += `<thead><tr style="background:#F0EBE1;"><th style="padding:4px 8px;text-align:left;">상호명</th><th style="padding:4px 8px;">업종</th><th style="text-align:center;">호번호</th><th style="text-align:center;">층</th></tr></thead><tbody>`;
+        for (const s of items) {
+          html += `<tr style="border-bottom:1px solid #eee;">`;
+          html += `<td style="padding:3px 8px;">${dgEscape(s.store_name || "-")}</td>`;
+          const cat = s.category + (s.inds_mcls_nm ? " · " + s.inds_mcls_nm : "");
+          html += `<td style="padding:3px 8px;color:var(--ink-soft);">${dgEscape(cat || "-")}</td>`;
+          html += `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.ho_no || "-")}</td>`;
+          html += `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.floor || "-")}</td>`;
+          html += `</tr>`;
+        }
+        html += `</tbody></table>`;
+        document.getElementById("storeModalBody").innerHTML = html;
+      } catch (e) {
+        document.getElementById("storeModalBody").textContent = "불러오기 실패";
       }
-      return html;
     }
 
     // 메뉴별 그리드 설정 — 같은 DataGrid에 컬럼 정의만 바꿔 그대로 재사용한다.
@@ -269,9 +286,33 @@
             render: (v) => v
               ? `<span class="dg-badge dg-badge-ok" title="${dgEscape(v)}">보유</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "store_count", label: "입점부동산", clientSort: true,
-            render: (v) => (v > 0)
-              ? `<span style="font-weight:600;">${v}</span><span style="color:var(--ink-soft);font-size:11px;">개</span>`
+          // 입점부동산: category='부동산' 업소만, 호번호 순 최대 3건 + 더보기
+          { key: "store_realty_list", label: "입점부동산", clientSort: true,
+            render: (_, row) => {
+              const list = row.store_realty_list || [];
+              if (!list.length) return `<span style="color:var(--ink-soft);">-</span>`;
+              const shown = list.slice(0, 3);
+              let html = `<div style="font-size:11.5px;line-height:1.65;">`;
+              for (const s of shown) {
+                const label = s.ho_no ? `${dgEscape(s.name)} <span style="color:var(--ink-soft);font-size:10.5px;">(${dgEscape(s.ho_no)}호)</span>` : dgEscape(s.name);
+                html += `<div>${label}</div>`;
+              }
+              if (list.length > 3) {
+                html +=
+                  `<button class="bld-realty-more-btn" data-list="${jsonAttr(list.slice(3))}" ` +
+                  `style="margin-top:2px;background:none;border:1px solid var(--brass);color:var(--brass);` +
+                  `border-radius:4px;padding:1px 6px;font-size:10.5px;cursor:pointer;">` +
+                  `+${list.length - 3}건 더보기</button>`;
+              }
+              html += `</div>`;
+              return html;
+            } },
+          // 입점상가: 전체 개수 표시, 클릭 시 모달
+          { key: "store_count", label: "입점상가", clientSort: true,
+            render: (v, row) => (v > 0)
+              ? `<button class="bld-store-modal-btn" data-id="${row.id}" ` +
+                `style="background:none;border:1px solid #aaa;border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
+                `🏪 ${v}개</button>`
               : `<span style="color:var(--ink-soft);">-</span>` },
           { key: "biz_units", label: "총영업신고호수", sortable: true, editable: true, type: "number" },
           { key: "report_rate", label: "신고율", clientSort: true,
@@ -281,13 +322,16 @@
               const color = rate >= 80 ? "var(--brass-dark)" : rate >= 50 ? "var(--ink)" : "var(--ink-soft)";
               return `<span style="color:${color};font-weight:600;">${rate}%</span>`;
             } },
-          // ── 영업사업장 그룹 (객실수 큰 순 최대 3건) ──────────────────────────
-          { key: "lodging_slot_0", label: "영업사업장 ①",
-            render: (_, row) => renderLodgingSlot(row, 0) },
-          { key: "lodging_slot_1", label: "영업사업장 ②",
-            render: (_, row) => renderLodgingSlot(row, 1) },
-          { key: "lodging_slot_2", label: "영업사업장 ③",
-            render: (_, row) => renderLodgingSlot(row, 2) },
+          // 영업사업장: 펼치기 버튼 — 클릭 시 건물 행 아래에 서브 테이블 삽입
+          { key: "lodging_expand", label: "영업사업장",
+            render: (_, row) => {
+              if (!row.lodging_count) return `<span style="font-size:11px;color:#aaa;border:1px solid #ddd;border-radius:4px;padding:2px 8px;">미매칭</span>`;
+              return `<button class="bld-lodging-expand" data-id="${row.id}" ` +
+                `data-cnt="${row.lodging_count}" data-list="${jsonAttr(row.lodging_list || [])}" ` +
+                `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;` +
+                `padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
+                `🏢 ${row.lodging_count}건 펼치기</button>`;
+            } },
           // ── 편집·필터 전용 숨김 컬럼 ──────────────────────────────────────────
           { key: "id", label: "ID", sortable: true, hideInTable: true },
           { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true, hideInTable: true },
@@ -4894,14 +4938,108 @@
         loadBldStats();
       }
 
-      // ── 이벤트 위임: 영업신고 상세모달 + 주소 토글 ──
+      // ── 이벤트 위임: 영업사업장 아코디언 + 주소 토글 + 입점상가 모달 + 더보기 ──
       gridMount.addEventListener("click", (e) => {
-        const modalBtn = e.target.closest(".bld-lodging-modal-btn");
-        if (modalBtn) {
+        // 영업사업장 아코디언 펼치기/접기
+        const expandBtn = e.target.closest(".bld-lodging-expand");
+        if (expandBtn) {
           e.stopPropagation();
-          openLodgingDetailModal(modalBtn.getAttribute("data-id"));
+          const tr = expandBtn.closest("tr");
+          const next = tr.nextElementSibling;
+          if (next && next.classList.contains("bld-lodging-sub-row")) {
+            next.remove();
+            expandBtn.textContent = `🏢 ${expandBtn.dataset.cnt}건 펼치기`;
+            return;
+          }
+          const list = JSON.parse(expandBtn.getAttribute("data-list") || "[]");
+          const cnt  = parseInt(expandBtn.dataset.cnt || "0");
+          const colCount = tr.querySelectorAll("td").length;
+          const subFields = (lr) => {
+            const closed = (lr.biz_status_name || "").includes("폐업");
+            const badge = lr.biz_status_name
+              ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
+            return `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
+              `<td style="text-align:center;font-weight:600;">${lr.room_count != null ? lr.room_count : "-"} ${badge}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10px;">${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</td>`;
+          };
+          let subHtml =
+            `<tr class="bld-lodging-sub-row"><td colspan="${colCount}" style="padding:0;background:#FAF8F3;border-bottom:2px solid #E8E3D9;">` +
+            `<table style="width:100%;font-size:11.5px;border-collapse:collapse;">` +
+            `<thead><tr style="background:#F0EBE1;color:var(--ink-soft);font-size:11px;">` +
+            `<th style="padding:3px 8px;text-align:left;font-weight:500;">신고번호</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">객실수/상태</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">신고일</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">전화</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">원본주소</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">갱신</th>` +
+            `</tr></thead><tbody class="bld-lodging-sub-body">`;
+          for (const lr of list.slice(0, 3)) {
+            subHtml += `<tr style="border-bottom:1px solid #E8E3D9;">${subFields(lr)}</tr>`;
+          }
+          if (cnt > 3) {
+            subHtml +=
+              `<tr class="bld-lodging-more-row"><td colspan="6" style="padding:4px 8px;text-align:center;">` +
+              `<button class="bld-lodging-more-btn" data-list="${jsonAttr(list.slice(3))}" ` +
+              `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;` +
+              `padding:2px 8px;font-size:11px;cursor:pointer;">+${cnt - 3}건 더보기</button></td></tr>`;
+          }
+          subHtml += `</tbody></table></td></tr>`;
+          tr.insertAdjacentHTML("afterend", subHtml);
+          expandBtn.textContent = `🏢 접기`;
           return;
         }
+        // 영업사업장 서브 더보기
+        const lodgMoreBtn = e.target.closest(".bld-lodging-more-btn");
+        if (lodgMoreBtn) {
+          e.stopPropagation();
+          const rest = JSON.parse(lodgMoreBtn.getAttribute("data-list") || "[]");
+          const subBody = lodgMoreBtn.closest("table").querySelector(".bld-lodging-sub-body");
+          const moreRow = lodgMoreBtn.closest(".bld-lodging-more-row");
+          const subFields = (lr) => {
+            const closed = (lr.biz_status_name || "").includes("폐업");
+            const badge = lr.biz_status_name
+              ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
+            return `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
+              `<td style="text-align:center;font-weight:600;">${lr.room_count != null ? lr.room_count : "-"} ${badge}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10px;">${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</td>`;
+          };
+          let moreHtml = "";
+          for (const lr of rest) moreHtml += `<tr style="border-bottom:1px solid #E8E3D9;">${subFields(lr)}</tr>`;
+          moreRow.insertAdjacentHTML("beforebegin", moreHtml);
+          moreRow.remove();
+          return;
+        }
+        // 입점부동산 더보기 (셀 내 인라인 확장)
+        const realtyMoreBtn = e.target.closest(".bld-realty-more-btn");
+        if (realtyMoreBtn) {
+          e.stopPropagation();
+          const rest = JSON.parse(realtyMoreBtn.getAttribute("data-list") || "[]");
+          const container = realtyMoreBtn.closest("div");
+          for (const s of rest) {
+            const div = document.createElement("div");
+            div.style.cssText = "font-size:11.5px;line-height:1.65;";
+            div.innerHTML = s.ho_no
+              ? `${dgEscape(s.name)} <span style="color:var(--ink-soft);font-size:10.5px;">(${dgEscape(s.ho_no)}호)</span>`
+              : dgEscape(s.name);
+            container.insertBefore(div, realtyMoreBtn);
+          }
+          realtyMoreBtn.remove();
+          return;
+        }
+        // 입점상가 모달
+        const storeBtn = e.target.closest(".bld-store-modal-btn");
+        if (storeBtn) {
+          e.stopPropagation();
+          openStoreModal(storeBtn.getAttribute("data-id"));
+          return;
+        }
+        // 주소 토글 (도로명 ⇄ 지번)
         const toggleBtn = e.target.closest(".bld-addr-toggle");
         if (toggleBtn) {
           e.stopPropagation();

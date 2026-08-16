@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-16-1"
+SCHEMA_VERSION = "2026-08-16-2"
 
 
 def init_db():
@@ -123,6 +123,10 @@ def init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS hhld_cnt INTEGER")        # 세대수
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS strct_nm TEXT")           # 구조
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS title_backfilled_at TIMESTAMP")  # 표제부 백필 시각(재시도/커버리지 추적)
+    # building_stores — 호번호/세부업종 추가 (2026-08-16-2)
+    cur.execute("ALTER TABLE building_stores ADD COLUMN IF NOT EXISTS ho_no TEXT")           # 호번호(hoNo)
+    cur.execute("ALTER TABLE building_stores ADD COLUMN IF NOT EXISTS inds_mcls_nm TEXT")    # 업종 중분류
+    cur.execute("ALTER TABLE building_stores ADD COLUMN IF NOT EXISTS inds_scls_nm TEXT")    # 업종 소분류
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS mgm_bldrgst_pk TEXT")    # 관리건축물대장PK(표제부 mgmBldrgstPk. 상가업소 조회 키로는 못 씀 — store_info_util.py 참고)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_status TEXT DEFAULT '완공'")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS completion_expected_date DATE")
@@ -1186,6 +1190,9 @@ def init_db():
             store_name         TEXT,
             category           TEXT,
             floor              TEXT,
+            ho_no              TEXT,
+            inds_mcls_nm       TEXT,
+            inds_scls_nm       TEXT,
             updated_at         TIMESTAMP DEFAULT NOW()
         )
     """)
