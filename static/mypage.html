@@ -405,6 +405,10 @@
     var clickable = bid ? "cursor:pointer;" : "cursor:default;";
     var alertKey = (t.building_name != null ? t.building_name : "null") + "|" + addr;
     var hasAlert = alertKeys && alertKeys.has(alertKey);
+    // 가격: null이면 회색 소자로 표시
+    var priceHtml = (t.price != null)
+      ? '<span style="font-size:14px;font-weight:700;color:var(--brass-dark);white-space:nowrap;">' + escapeHtml(Number(t.price).toLocaleString() + "만") + '</span>'
+      : '<span style="font-size:12px;color:var(--ink-soft);font-weight:400;white-space:nowrap;">실거래 정보 없음</span>';
     var alertBtn = hasAlert
       ? '<button class="myfav-alert-off" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 끄기" '
           + 'style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 중</button>'
@@ -414,18 +418,28 @@
       ? '<button class="myfav-listing-btn" data-bid="' + escapeHtml(bid) + '" data-bname="' + escapeHtml(name) + '" title="매물내놓기" '
           + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">매물내놓기</button>'
       : '';
+    // 2행 레이아웃:
+    //   1행 — 건물명(flex:1, ellipsis) + ★해제버튼
+    //   2행 — 최신 실거래가 + 매물내놓기 + 알림버튼
+    // 기존 1행 구조는 모바일에서 버튼이 공간을 차지해 건물명이 1~2글자로 잘리는 버그 발생.
     return '' +
       '<div class="myfav-item" data-bid="' + escapeHtml(bid) + '" ' +
-           'style="display:flex; align-items:center; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
-        '<div style="flex:1; min-width:0;">' +
-          '<div style="font-size:14px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
-          '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
+           'style="padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
+        // 1행: 건물명 + 주소 + ★
+        '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:8px;">' +
+          '<div style="flex:1; min-width:0;">' +
+            '<div style="font-size:14px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
+            '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
+          '</div>' +
+          '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
+                  'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0;">★</button>' +
         '</div>' +
-        '<div style="font-size:14px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">' + escapeHtml(fmtPrice(t.price)) + '</div>' +
-        listingBtn +
-        alertBtn +
-        '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
-                'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:4px; flex-shrink:0;">★</button>' +
+        // 2행: 가격 + 버튼들
+        '<div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">' +
+          '<div style="margin-right:auto;">' + priceHtml + '</div>' +
+          listingBtn +
+          alertBtn +
+        '</div>' +
       '</div>';
   }
   function loadMyFavorites(){
