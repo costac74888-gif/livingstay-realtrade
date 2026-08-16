@@ -194,6 +194,87 @@
         .replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
+    // ── 용도별 세부 통계표 로더 ───────────────────────────────────────────────
+    async function loadBldFullStats() {
+      const box = document.getElementById("bldFullStats");
+      if (!box) return;
+      try {
+        const r = await fetch("/api/admin/buildings/full-stats");
+        const d = await r.json();
+        if (!d || !d.ok) { box.innerHTML = ""; return; }
+        const rows = d.rows || [];
+        const pct  = (v) => v == null ? "-" : v.toFixed(1) + "%";
+        const n    = (v) => (v == null || v === 0) ? "-" : Number(v).toLocaleString();
+        const COLS = [
+          { label: "용도",        key: null,                fmt: (row) => `<td style="padding:4px 8px;font-weight:inherit;">${row.type}</td>` },
+          { label: "건물수",      key: "building_count",    fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${row.building_count.toLocaleString()}</td>` },
+          { label: "호실수",      key: "units",             fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.units)}</td>` },
+          { label: "관심저장",    key: "favorites",         fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.favorites)}</td>` },
+          { label: "매물내놓기",  key: "listing_requests",  fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.listing_requests)}</td>` },
+          { label: "단지뱃지",    key: "broker_badge",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.broker_badge)}</td>` },
+          { label: "입점부동산",  key: "store_realty",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.store_realty)}</td>` },
+          { label: "입점상가",    key: "store_total",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.store_total)}</td>` },
+          { label: "총영업신고",  key: "biz_units",         fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.biz_units)}</td>` },
+          { label: "신고율",      key: "report_rate",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;${row.report_rate >= 80 ? "color:var(--brass-dark);" : ""}">${pct(row.report_rate)}</td>` },
+          { label: "영업신고업체",key: "permit_count",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.permit_count)}</td>` },
+          { label: "영업신고호실",key: "room_count",        fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.room_count)}</td>` },
+          { label: "폐업율",      key: "closed_rate",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;${row.closed_rate >= 30 ? "color:#b3261e;" : ""}">${pct(row.closed_rate)}</td>` },
+        ];
+        let html = `<div style="overflow-x:auto;margin-bottom:6px;border:1px solid #E8E3D9;border-radius:8px;">` +
+          `<table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap;">` +
+          `<thead><tr style="background:#F0EBE1;">`;
+        for (const c of COLS) html += `<th style="padding:5px 8px;font-weight:600;text-align:${c.label==="용도"?"left":"right"};border-bottom:2px solid #D4C9B0;">${c.label}</th>`;
+        html += `</tr></thead><tbody>`;
+        rows.forEach((row, i) => {
+          const isTotal = row.type === "전체";
+          const bg = isTotal ? "#FAF8F0" : (i % 2 === 0 ? "#fff" : "#FAFAFA");
+          html += `<tr style="background:${bg};${isTotal ? "font-weight:700;" : ""}border-bottom:1px solid #EEE;">`;
+          for (const c of COLS) html += c.fmt(row);
+          html += `</tr>`;
+        });
+        html += `</tbody></table></div>`;
+        box.innerHTML = html;
+      } catch(e) { box.innerHTML = ""; }
+    }
+
+    // ── 입점부동산 목록 모달 ─────────────────────────────────────────────────
+    async function openRealtyModal(buildingId) {
+      document.querySelector(".bld-realty-overlay")?.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "bld-realty-overlay";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:center;justify-content:center;";
+      overlay.innerHTML =
+        `<div style="background:#fff;border-radius:12px;padding:24px;min-width:380px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18);">` +
+        `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">` +
+        `<b style="font-size:15px;">입점부동산 목록</b>` +
+        `<button onclick="this.closest('.bld-realty-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
+        `</div><div id="realtyModalBody" style="min-height:40px;">로딩 중…</div></div>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+      try {
+        const r = await fetch(`/api/admin/buildings/${buildingId}/stores`);
+        const d = await r.json();
+        const items = (d.items || []).filter(s => s.category === "부동산");
+        if (!items.length) {
+          document.getElementById("realtyModalBody").textContent = "캐시된 부동산 업소 없음 (건물 상세 방문 시 수집됩니다)";
+          return;
+        }
+        let html = `<table style="width:100%;font-size:12px;border-collapse:collapse;">`;
+        html += `<thead><tr style="background:#F0EBE1;"><th style="padding:4px 8px;text-align:left;">상호명</th><th style="text-align:center;">호번호</th><th style="text-align:center;">층</th></tr></thead><tbody>`;
+        for (const s of items) {
+          html += `<tr style="border-bottom:1px solid #eee;">` +
+            `<td style="padding:3px 8px;">${dgEscape(s.store_name || "-")}</td>` +
+            `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.ho_no || "-")}</td>` +
+            `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.floor || "-")}</td>` +
+            `</tr>`;
+        }
+        html += `</tbody></table>`;
+        document.getElementById("realtyModalBody").innerHTML = html;
+      } catch(e) {
+        document.getElementById("realtyModalBody").textContent = "불러오기 실패";
+      }
+    }
+
     // ── 입점상가 전체 목록 모달 ───────────────────────────────────────────────
     async function openStoreModal(buildingId) {
       document.querySelector(".bld-store-overlay")?.remove();
@@ -286,27 +367,13 @@
             render: (v) => v
               ? `<span class="dg-badge dg-badge-ok" title="${dgEscape(v)}">보유</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          // 입점부동산: category='부동산' 업소만, 호번호 순 최대 3건 + 더보기
-          { key: "store_realty_list", label: "입점부동산", clientSort: true,
-            render: (_, row) => {
-              const list = row.store_realty_list || [];
-              if (!list.length) return `<span style="color:var(--ink-soft);">-</span>`;
-              const shown = list.slice(0, 3);
-              let html = `<div style="font-size:11.5px;line-height:1.65;">`;
-              for (const s of shown) {
-                const label = s.ho_no ? `${dgEscape(s.name)} <span style="color:var(--ink-soft);font-size:10.5px;">(${dgEscape(s.ho_no)}호)</span>` : dgEscape(s.name);
-                html += `<div>${label}</div>`;
-              }
-              if (list.length > 3) {
-                html +=
-                  `<button class="bld-realty-more-btn" data-list="${jsonAttr(list.slice(3))}" ` +
-                  `style="margin-top:2px;background:none;border:1px solid var(--brass);color:var(--brass);` +
-                  `border-radius:4px;padding:1px 6px;font-size:10.5px;cursor:pointer;">` +
-                  `+${list.length - 3}건 더보기</button>`;
-              }
-              html += `</div>`;
-              return html;
-            } },
+          // 입점부동산: 부동산 업소 수만 표시, 클릭 시 모달 (입점상가와 동일 패턴)
+          { key: "store_realty_count", label: "입점부동산", clientSort: true,
+            render: (v, row) => (v > 0)
+              ? `<button class="bld-realty-modal-btn" data-id="${row.id}" ` +
+                `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
+                `🏠 ${v}개</button>`
+              : `<span style="color:var(--ink-soft);">-</span>` },
           // 입점상가: 전체 개수 표시, 클릭 시 모달
           { key: "store_count", label: "입점상가", clientSort: true,
             render: (v, row) => (v > 0)
@@ -4904,8 +4971,11 @@
     function showBuildings(overrideFilters) {
       destroyStatsCharts();
       mount.innerHTML = `
-        <div id="bldStatBoxes" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;min-height:52px;">
+        <div id="bldStatBoxes" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;min-height:52px;">
           <div style="color:var(--ink-soft);font-size:13px;padding:14px 0;">통계 로딩 중…</div>
+        </div>
+        <div id="bldFullStats" style="margin-bottom:10px;">
+          <div style="color:var(--ink-soft);font-size:12px;padding:6px 0;">용도별 통계 로딩 중…</div>
         </div>
         <div id="bldBulkBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#F4F1EA;border-radius:8px;flex-wrap:wrap;">
           <span id="bldSelLabel" style="font-size:13px;color:var(--ink-soft);min-width:60px;">선택 0건</span>
@@ -4937,6 +5007,8 @@
         };
         loadBldStats();
       }
+      // ── 용도별 세부 통계표: 1회 로드 (전체 데이터 기준, 필터 무관) ──
+      loadBldFullStats();
 
       // ── 이벤트 위임: 영업사업장 아코디언 + 주소 토글 + 입점상가 모달 + 더보기 ──
       gridMount.addEventListener("click", (e) => {
@@ -5015,21 +5087,11 @@
           moreRow.remove();
           return;
         }
-        // 입점부동산 더보기 (셀 내 인라인 확장)
-        const realtyMoreBtn = e.target.closest(".bld-realty-more-btn");
-        if (realtyMoreBtn) {
+        // 입점부동산 모달 (입점상가와 동일 패턴)
+        const realtyModalBtn = e.target.closest(".bld-realty-modal-btn");
+        if (realtyModalBtn) {
           e.stopPropagation();
-          const rest = JSON.parse(realtyMoreBtn.getAttribute("data-list") || "[]");
-          const container = realtyMoreBtn.closest("div");
-          for (const s of rest) {
-            const div = document.createElement("div");
-            div.style.cssText = "font-size:11.5px;line-height:1.65;";
-            div.innerHTML = s.ho_no
-              ? `${dgEscape(s.name)} <span style="color:var(--ink-soft);font-size:10.5px;">(${dgEscape(s.ho_no)}호)</span>`
-              : dgEscape(s.name);
-            container.insertBefore(div, realtyMoreBtn);
-          }
-          realtyMoreBtn.remove();
+          openRealtyModal(realtyModalBtn.getAttribute("data-id"));
           return;
         }
         // 입점상가 모달

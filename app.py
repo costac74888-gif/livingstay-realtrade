@@ -9423,7 +9423,7 @@ def admin_ad_products_page():
 # ---- 건물마스터 CRUD (모두 require_admin) ----
 # 정렬 허용 컬럼 화이트리스트 (SQL 인젝션 방지 — 목록에 없으면 id로 폴백)
 ADMIN_BLD_SORT = {"id", "building_name", "road_address", "units", "biz_units", "lodging_type",
-                   "sgg_text", "umd_nm", "jibun"}
+                   "sgg_text", "umd_nm", "jibun", "favorite_count"}
 # 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
 ADMIN_BLD_EDITABLE = [
     "building_name", "road_address", "jibun_address", "sgg_text", "sgg_cd",
@@ -9594,6 +9594,7 @@ def admin_buildings_list():
         for it in items:
             it["store_count"] = store_cnt_map.get(it["id"], 0)
             it["store_realty_list"] = realty_map.get(it["id"], [])
+            it["store_realty_count"] = len(it["store_realty_list"])
 
     # ── lodging_registry 영업신고 배치 매칭 ──────────────────────────────────
     # road_key_map / jibun_key_map은 위 broker 매칭 블록에서 이미 계산됨.
@@ -9652,6 +9653,149 @@ def admin_buildings_list():
         ]
 
     return jsonify({"total": total, "page": page, "size": size, "items": items})
+
+
+_bld_full_stats_cache: dict = {"ts": 0.0, "data": None}
+_BLD_FULL_STATS_TTL = 300  # 5분 캐시
+
+
+@app.route("/api/admin/buildings/full-stats")
+@require_admin
+def admin_buildings_full_stats():
+    """건물마스터 용도별 세부 통계표 — 항상 전체 데이터 기준 (필터 무관, 5분 캐시)."""
+    global _bld_full_stats_cache
+    now = time.time()
+    if _bld_full_stats_cache["data"] and now - _bld_full_stats_cache["ts"] < _BLD_FULL_STATS_TTL:
+        return jsonify(_bld_full_stats_cache["data"])
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # 1. 전체 건물
+    cur.execute("""
+        SELECT id, lodging_type, units, biz_units, road_address, jibun_address
+        FROM master_buildings WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+    """)
+    all_blds = cur.fetchall()
+    all_ids  = [b["id"] for b in all_blds]
+
+    # 2. 관심저장 수 per building
+    cur.execute(
+        "SELECT master_building_id, COUNT(*) AS cnt FROM user_favorites "
+        "WHERE master_building_id = ANY(%s) GROUP BY master_building_id", [all_ids]
+    )
+    fav_map = {r["master_building_id"]: int(r["cnt"]) for r in cur.fetchall()}
+
+    # 3. 매물내놓기 수 per building (철회됨 제외)
+    cur.execute(
+        "SELECT master_building_id, COUNT(*) AS cnt FROM listing_requests "
+        "WHERE master_building_id = ANY(%s) AND status != '철회됨' "
+        "GROUP BY master_building_id", [all_ids]
+    )
+    lr_req_map = {r["master_building_id"]: int(r["cnt"]) for r in cur.fetchall()}
+
+    # 4. 입점상가 전체 + 부동산 업소 수
+    cur.execute(
+        "SELECT master_building_id, COUNT(*) AS total, "
+        "COUNT(*) FILTER (WHERE category = '부동산') AS realty "
+        "FROM building_stores WHERE master_building_id = ANY(%s) "
+        "GROUP BY master_building_id", [all_ids]
+    )
+    store_map = {r["master_building_id"]: {"total": int(r["total"]), "realty": int(r["realty"])} for r in cur.fetchall()}
+
+    # 5. 주소 정규화 (전체 1회)
+    bld_rk = {}; bld_jk = {}
+    all_road_norms = []; all_jibun_norms = []
+    for b in all_blds:
+        rk = addr_norm.normalize_road_prefix(b["road_address"])
+        jk = addr_norm.normalize_jibun_prefix(b.get("jibun_address") or b["road_address"])
+        bld_rk[b["id"]] = rk
+        bld_jk[b["id"]] = jk
+        if rk: all_road_norms.append(rk)
+        if jk: all_jibun_norms.append(jk)
+
+    # 6. 단지뱃지 (broker_registry 주소 매칭)
+    broker_matched = set()
+    if all_road_norms or all_jibun_norms:
+        cur.execute(
+            "SELECT road_norm, jibun_norm FROM broker_registry "
+            "WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
+            [all_road_norms or ["__none__"], all_jibun_norms or ["__none__"]]
+        )
+        for r in cur.fetchall():
+            if r["road_norm"]:  broker_matched.add(("r", r["road_norm"]))
+            if r["jibun_norm"]: broker_matched.add(("j", r["jibun_norm"]))
+
+    # 7. 영업신고 (lodging_registry 배치)
+    lr_road_map: dict = {}   # road_norm → {permit_number → row}
+    lr_jibun_map: dict = {}
+    if all_road_norms or all_jibun_norms:
+        cur.execute(
+            "SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm "
+            "FROM lodging_registry WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
+            [all_road_norms or ["__none__"], all_jibun_norms or ["__none__"]]
+        )
+        for r in cur.fetchall():
+            rr = dict(r)
+            if rr.get("road_norm"):
+                lr_road_map.setdefault(rr["road_norm"], {})[rr["permit_number"]] = rr
+            if rr.get("jibun_norm"):
+                lr_jibun_map.setdefault(rr["jibun_norm"], {})[rr["permit_number"]] = rr
+    cur.close(); conn.close()
+
+    # 그룹화
+    TYPES = ["생활", "관광", "일반", "복합", "준공전", "미분류"]
+    by_type: dict = {t: [] for t in TYPES}
+    all_list: list = []
+    for b in all_blds:
+        lt = b["lodging_type"] or "미분류"
+        if lt not in by_type: lt = "미분류"
+        by_type[lt].append(b)
+        all_list.append(b)
+
+    def _row(blds: list, type_label: str) -> dict:
+        if not blds:
+            return {"type": type_label, "building_count": 0, "units": 0,
+                    "favorites": 0, "listing_requests": 0, "broker_badge": 0,
+                    "store_realty": 0, "store_total": 0, "biz_units": 0,
+                    "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None}
+        tu = sum(int(b["units"] or 0) for b in blds)
+        tb = sum(int(b["biz_units"] or 0) for b in blds)
+        broker_c = sum(
+            1 for b in blds
+            if (bld_rk[b["id"]] and ("r", bld_rk[b["id"]]) in broker_matched)
+            or (bld_jk[b["id"]] and ("j", bld_jk[b["id"]]) in broker_matched)
+        )
+        permits: dict = {}
+        for b in blds:
+            rk = bld_rk[b["id"]]; jk = bld_jk[b["id"]]
+            if rk and rk in lr_road_map:
+                permits.update(lr_road_map[rk])
+            elif jk and jk in lr_jibun_map:
+                permits.update(lr_jibun_map[jk])
+        pc = len(permits)
+        rc = sum(int(v["room_count"] or 0) for v in permits.values())
+        cc = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
+        return {
+            "type": type_label,
+            "building_count": len(blds),
+            "units": tu,
+            "favorites": sum(fav_map.get(b["id"], 0) for b in blds),
+            "listing_requests": sum(lr_req_map.get(b["id"], 0) for b in blds),
+            "broker_badge": broker_c,
+            "store_realty": sum(store_map.get(b["id"], {}).get("realty", 0) for b in blds),
+            "store_total": sum(store_map.get(b["id"], {}).get("total", 0) for b in blds),
+            "biz_units": tb,
+            "report_rate": round(tb / tu * 100, 1) if tu else None,
+            "permit_count": pc,
+            "room_count": rc,
+            "closed_rate": round(cc / pc * 100, 1) if pc else None,
+        }
+
+    rows = [_row(all_list, "전체")] + [_row(by_type[t], t) for t in TYPES]
+    result = {"ok": True, "rows": rows}
+    _bld_full_stats_cache = {"ts": now, "data": result}
+    return jsonify(result)
 
 
 @app.route("/api/admin/buildings/stats")
