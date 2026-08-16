@@ -10247,7 +10247,7 @@ def admin_buildings_export():
     for r in rows:
         r["matched_broker_name"] = ", ".join(r.pop("_broker_names", [])) or None
 
-    # ── building_stores 입점상가(전체) + 입점부동산(부동산업소) 수 ───────────
+    # ── building_stores 입점상가(전체수) + 입점부동산(명단+수) ───────────────
     bld_ids_x = [r["id"] for r in rows]
     conn_bs_x = get_conn(); cur_bs_x = conn_bs_x.cursor()
     cur_bs_x.execute(
@@ -10255,16 +10255,23 @@ def admin_buildings_export():
         "WHERE master_building_id = ANY(%s) GROUP BY master_building_id", (bld_ids_x,)
     )
     store_cnt_map_x = {row["master_building_id"]: row["cnt"] for row in cur_bs_x.fetchall()}
+    # 입점부동산: 이름+호번호 목록 (엑셀 행 분리용)
     cur_bs_x.execute(
-        "SELECT master_building_id, COUNT(*) AS cnt FROM building_stores "
-        "WHERE master_building_id = ANY(%s) AND category = '부동산' GROUP BY master_building_id",
+        "SELECT master_building_id, store_name, ho_no FROM building_stores "
+        "WHERE master_building_id = ANY(%s) AND category = '부동산' "
+        "ORDER BY master_building_id, ho_no NULLS LAST, store_name",
         (bld_ids_x,)
     )
-    realty_cnt_map_x = {row["master_building_id"]: row["cnt"] for row in cur_bs_x.fetchall()}
+    realty_list_map_x = {}
+    for row in cur_bs_x.fetchall():
+        realty_list_map_x.setdefault(row["master_building_id"], []).append(
+            {"name": row["store_name"], "ho_no": row["ho_no"]}
+        )
     cur_bs_x.close(); conn_bs_x.close()
     for r in rows:
         r["store_count"]        = store_cnt_map_x.get(r["id"], 0)
-        r["store_realty_count"] = realty_cnt_map_x.get(r["id"], 0)
+        r["store_realty_list"]  = realty_list_map_x.get(r["id"], [])
+        r["store_realty_count"] = len(r["store_realty_list"])
 
     # ── lodging_registry 배치 매칭 ────────────────────────────────────────────
     if rkeys_x or jkeys_x:
@@ -10299,53 +10306,65 @@ def admin_buildings_export():
                          key=lambda x: (x.get("room_count") or 0), reverse=True)
         r["_lr_list"] = lr_list
 
-    # ── 동적 헤더 (사업장 수 가변) ────────────────────────────────────────────
-    max_lr = max((len(r["_lr_list"]) for r in rows), default=0)
-
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, PatternFill
     wb = Workbook(); ws = wb.active; ws.title = "건물마스터"
 
-    lr_subfields = ["신고번호", "객실수", "상태", "신고일", "전화", "원본주소", "갱신일"]
+    # ── 헤더: 입점부동산·영업사업장은 행 분리(세로 확장) 방식 ─────────────────
     headers = [
-        "건물명", "도로명주소", "용도", "총호실수", "관심저장",
-        "단지뱃지", "입점부동산(부동산업소수)", "입점상가(전체상가수)", "총영업신고호수", "신고율(%)"
+        "건물명", "도로명주소", "용도", "총호실수", "관심저장", "단지뱃지",
+        "입점부동산_업체명", "입점부동산_호번호",
+        "영업사업장_업체명", "신고번호", "객실수", "상태", "신고일", "전화", "원본주소", "갱신일",
+        "입점부동산수", "입점상가수", "총영업신고호수", "신고율(%)",
+        "ID", "시군구", "읍면동", "지번", "지번주소", "용도상세",
+        "등록된입점부동산(구 realty_store_name)",
     ]
-    for i in range(max_lr):
-        headers += [f"사업장{i+1}_{f}" for f in lr_subfields]
-    headers += ["ID", "시군구", "읍면동", "지번", "지번주소", "용도상세",
-                "등록된입점부동산(구 realty_store_name)"]
     ws.append(headers)
+    hdr_fill = PatternFill(start_color="F4F1EA", end_color="F4F1EA", fill_type="solid")
     for cell in ws[1]:
         cell.font = Font(bold=True)
+        cell.fill = hdr_fill
 
     for r in rows:
-        lr_list = r.pop("_lr_list", [])
-        units    = r["units"]    or 0
-        biz_units = r["biz_units"] or 0
-        report_rate = round(biz_units / units * 100, 1) if units else None
-        row_vals = [
+        lr_list       = r.pop("_lr_list", [])
+        realty_list   = r.get("store_realty_list", [])
+        units         = r["units"]    or 0
+        biz_units     = r["biz_units"] or 0
+        report_rate   = round(biz_units / units * 100, 1) if units else None
+        n_rows        = max(len(realty_list), len(lr_list), 1)
+
+        # 건물 공통 정보 (모든 분리 행에 반복)
+        bld_base = [
             r["building_name"], r["road_address"], r["lodging_type"], units,
             r["favorite_count"] or 0,
             "보유" if r["matched_broker_name"] else None,
+        ]
+        # 집계 정보 (첫 번째 행에만 출력, 나머지는 빈칸)
+        bld_summary = [
             r["store_realty_count"] or None,
             r["store_count"] or None,
             biz_units or None,
             report_rate,
         ]
-        for i in range(max_lr):
-            lr = lr_list[i] if i < len(lr_list) else {}
-            row_vals += [
-                lr.get("permit_number"), lr.get("room_count"), lr.get("biz_status_name"),
-                lr.get("permit_date"),   lr.get("phone"),
-                lr.get("lr_road") or lr.get("lr_jibun"),
-                lr.get("source_updated_at"),
-            ]
-        row_vals += [
+        bld_meta = [
             r["id"], r["sgg_text"], r["umd_nm"], r["jibun"], r["jibun_address"],
             r["lodging_type_detail"], r["realty_store_name"],
         ]
-        ws.append(row_vals)
+
+        for i in range(n_rows):
+            realty = realty_list[i] if i < len(realty_list) else {}
+            lr     = lr_list[i]     if i < len(lr_list)     else {}
+            row_vals = bld_base + [
+                realty.get("name"), realty.get("ho_no"),
+                lr.get("biz_name"),     lr.get("permit_number"), lr.get("room_count"),
+                lr.get("biz_status_name"), lr.get("permit_date"), lr.get("phone"),
+                lr.get("lr_road") or lr.get("lr_jibun"), lr.get("source_updated_at"),
+            ]
+            if i == 0:
+                row_vals += bld_summary + bld_meta
+            else:
+                row_vals += [None] * (len(bld_summary) + len(bld_meta))
+            ws.append(row_vals)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)

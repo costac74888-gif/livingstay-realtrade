@@ -383,6 +383,7 @@
               : `<span style="color:var(--ink-soft);">-</span>` },
           { key: "biz_units", label: "총영업신고호수", sortable: true, editable: true, type: "number" },
           { key: "report_rate", label: "신고율", clientSort: true,
+            sortValue: (row) => row.units ? (row.biz_units || 0) / row.units * 100 : -1,
             render: (_, row) => {
               if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
               const rate = Math.round((row.biz_units || 0) / row.units * 100);
@@ -4879,36 +4880,6 @@
     ];
     const BLD_LODGING_OPTS = ["생활", "관광", "일반", "복합", "준공전", "미분류"];
 
-    // ── 건물마스터 통계박스 ──────────────────────────────────────────────────
-    async function loadBldStats() {
-      const box = document.getElementById("bldStatBoxes");
-      if (!box || !currentGrid) return;
-      const s = currentGrid.state;
-      const p = new URLSearchParams({ q: s.q || "" });
-      Object.keys(s.filters || {}).forEach((k) => {
-        if (s.filters[k] !== "" && s.filters[k] != null) p.set(k, s.filters[k]);
-      });
-      try {
-        const r = await fetch("/api/admin/buildings/stats?" + p.toString());
-        const d = await r.json();
-        if (!d || !d.ok) { box.innerHTML = ""; return; }
-        const pctFmt = (v) => v == null ? "-" : v.toFixed(1) + "%";
-        const statItems = [
-          { label: "건물수",          value: num(d.building_count),           color: "" },
-          { label: "영업신고 업체수",  value: num(d.lodging_permit_count),     color: "" },
-          { label: "영업신고 호실수",  value: num(d.room_total),               color: "" },
-          { label: "신고율",          value: pctFmt(d.report_rate),           color: d.report_rate != null && d.report_rate >= 80 ? "var(--brass-dark)" : "" },
-          { label: "폐업율",          value: pctFmt(d.closed_rate),           color: d.closed_rate != null && d.closed_rate >= 30 ? "#b3261e" : "" },
-        ];
-        box.innerHTML = statItems.map((si) =>
-          `<div style="background:#F4F1EA;border-radius:8px;padding:10px 18px;min-width:110px;text-align:center;flex:1;">` +
-            `<div style="font-size:11px;color:var(--ink-soft);margin-bottom:4px;">${dgEscape(si.label)}</div>` +
-            `<div style="font-size:20px;font-weight:800;color:${si.color||"var(--ink)"};">${dgEscape(si.value)}</div>` +
-          `</div>`
-        ).join("");
-      } catch(e) { box.innerHTML = ""; }
-    }
-
     // ── lodging 상세 모달 ────────────────────────────────────────────────────
     async function openLodgingDetailModal(buildingId) {
       document.getElementById("lodgingDetailOverlay")?.remove();
@@ -4971,9 +4942,6 @@
     function showBuildings(overrideFilters) {
       destroyStatsCharts();
       mount.innerHTML = `
-        <div id="bldStatBoxes" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;min-height:52px;">
-          <div style="color:var(--ink-soft);font-size:13px;padding:14px 0;">통계 로딩 중…</div>
-        </div>
         <div id="bldFullStats" style="margin-bottom:10px;">
           <div style="color:var(--ink-soft);font-size:12px;padding:6px 0;">용도별 통계 로딩 중…</div>
         </div>
@@ -4998,15 +4966,6 @@
       }
       currentGrid = new DataGrid(Object.assign({ mount: gridMount, idField: "id", pageSize: 50 }, bldCfg));
 
-      // ── 통계박스: 초기 로드 + 필터 변경 시 자동 갱신 ──
-      {
-        const origReload = currentGrid.reload.bind(currentGrid);
-        currentGrid.reload = async function() {
-          await origReload();
-          loadBldStats();
-        };
-        loadBldStats();
-      }
       // ── 용도별 세부 통계표: 1회 로드 (전체 데이터 기준, 필터 무관) ──
       loadBldFullStats();
 

@@ -193,10 +193,17 @@ class DataGrid {
           }
           this.state.sort = null; // 서버 정렬 상태와 헷갈리지 않게 해제
           const dir = this._clientSortOrder === "asc" ? 1 : -1;
+          // sortValue 함수가 정의된 컬럼이면 우선 사용 (예: report_rate = biz_units/units)
+          const col = (this.cfg.cols || []).find((c) => c.key === key);
+          const getVal = col && col.sortValue ? col.sortValue : (row) => row[key];
           this.items.sort((a, b) => {
-            const av = (a[key] || "").toString();
-            const bv = (b[key] || "").toString();
-            return av.localeCompare(bv, "ko") * dir;
+            const av = getVal(a);
+            const bv = getVal(b);
+            // 숫자 비교 (null/undefined는 가장 뒤로)
+            if (typeof av === "number" || typeof bv === "number") {
+              return ((av == null ? -Infinity : av) - (bv == null ? -Infinity : bv)) * dir;
+            }
+            return ((av || "").toString()).localeCompare((bv || "").toString(), "ko") * dir;
           });
           this._renderHead();
           this._renderBody();
