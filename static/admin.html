@@ -187,6 +187,36 @@
       }
     });
 
+    // ── 건물마스터 영업사업장 슬롯 렌더러 (3그룹 × 7필드) ──────────────────
+    function renderLodgingSlot(row, idx) {
+      const list = row.lodging_list || [];
+      const lr   = list[idx];
+      if (!lr) return '<span style="color:var(--ink-soft);font-size:11px;">-</span>';
+      const cnt    = row.lodging_count || 0;
+      const closed = (lr.biz_status_name || "").includes("폐업");
+      const badge  = lr.biz_status_name
+        ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>`
+        : "";
+      let html =
+        `<div style="font-size:11.5px;line-height:1.6;min-width:120px;">` +
+        `<div><span style="color:var(--ink-soft);font-size:10.5px;">신고</span> ${dgEscape(lr.permit_number || "-")}</div>` +
+        `<div><span style="color:var(--ink-soft);font-size:10.5px;">객실</span> <b>${lr.room_count != null ? lr.room_count : "-"}</b> ${badge}</div>` +
+        `<div><span style="color:var(--ink-soft);font-size:10.5px;">신고일</span> ${dgEscape(lr.permit_date || "-")}</div>` +
+        `<div><span style="color:var(--ink-soft);font-size:10.5px;">전화</span> ${dgEscape(lr.phone || "-")}</div>` +
+        `<div style="color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</div>` +
+        `<div style="color:var(--ink-soft);font-size:10px;">갱신 ${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</div>` +
+        `</div>`;
+      // 세 번째 슬롯(idx=2)에서 3건 초과분 더보기 버튼
+      if (idx === 2 && cnt > 3) {
+        html +=
+          `<button class="bld-lodging-modal-btn" data-id="${dgEscape(String(row.id))}" ` +
+          `style="margin-top:3px;background:none;border:1px solid var(--brass);color:var(--brass);` +
+          `border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;white-space:nowrap;">` +
+          `+${cnt - 3}건 더보기</button>`;
+      }
+      return html;
+    }
+
     // 메뉴별 그리드 설정 — 같은 DataGrid에 컬럼 정의만 바꿔 그대로 재사용한다.
     const GRID_CONFIGS = {
       buildings: {
@@ -214,57 +244,58 @@
           ] },
         ],
         columns: [
-          { key: "id", label: "ID", sortable: true },
+          // ── 건물 자체 정보 1~9 ─────────────────────────────────────────────
           { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
             render: (v, row) => `${dgEscape(v || "")}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}` },
-          { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true },
+          { key: "road_address_toggle", label: "주소(도로명⇄지번)",
+            render: (_, row) => {
+              const mb = dgEscape(row.road_address || "-");
+              const jb = dgEscape(row.jibun_address || "");
+              if (!jb) return mb;
+              return `<div class="bld-addr-cell">` +
+                `<span class="bld-addr-mb">${mb}</span>` +
+                `<span class="bld-addr-lr" style="display:none;color:var(--brass-dark);">${jb}</span>` +
+                `<button class="bld-addr-toggle" title="지번주소로 보기" style="margin-left:4px;background:none;border:1px solid var(--brass);color:var(--brass);border-radius:3px;font-size:10px;padding:1px 5px;cursor:pointer;white-space:nowrap;">⇄</button>` +
+                `</div>`;
+            } },
+          { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select",
+            options: ["생활", "관광", "일반", "복합", "준공전", "미분류"] },
+          { key: "units", label: "총호실수", sortable: true, editable: true, type: "number" },
           { key: "favorite_count", label: "관심저장", sortable: true,
             render: (v, row) => v > 0
               ? `<a href="/api/admin/buildings/${row.id}/favorites/export.xlsx" style="color:var(--brass-dark);font-weight:700;text-decoration:none;" title="관심저장 회원 명단 다운로드">${v}명 📥</a>`
               : `<span style="color:var(--ink-soft);">0</span>` },
-          { key: "matched_broker_name", label: "단지부동산(입주부동산)", clientSort: true,
-            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select",
-            options: ["생활", "관광", "일반", "복합", "준공전", "미분류"] },
-          { key: "units", label: "호실수", sortable: true, editable: true, type: "number" },
-          { key: "biz_units", label: "영업신고호수", sortable: true, editable: true, type: "number" },
-          { key: "sgg_text", label: "시군구", sortable: true, editable: true },
-          { key: "umd_nm", label: "읍면동", sortable: true, editable: true },
-          { key: "jibun", label: "지번", sortable: true, editable: true },
-          { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
-          { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
-          // ── 영업신고(lodging_registry) 매칭 컬럼 ──
-          { key: "lodging_count", label: "매칭 사업장",
-            render: (v, row) => (v > 0)
-              ? `<button class="bld-lodging-modal-btn" data-id="${dgEscape(String(row.id))}" style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">🏢 ${v}건</button>`
-              : `<span style="font-size:11px;color:#aaa;border:1px solid #ddd;border-radius:4px;padding:2px 8px;">미매칭</span>` },
-          { key: "lodging_biz_name", label: "대표 사업장명",
-            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "lodging_permit_date", label: "신고일자",
-            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "lodging_biz_status", label: "영업상태",
-            render: (v) => {
-              if (!v) return `<span style="color:var(--ink-soft);">-</span>`;
-              const closed = v.includes("폐업");
-              return `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}">${dgEscape(v)}</span>`;
-            } },
-          { key: "lodging_hygiene_type", label: "위생업태",
-            render: (v) => v ? `<span style="font-size:11.5px;">${dgEscape(v)}</span>` : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "lodging_phone", label: "영업신고 전화",
-            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "lodging_source_updated_at", label: "원본 갱신일",
-            render: (v) => v ? dgEscape(v) : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "road_address_toggle", label: "주소(토글 ⇄)", hideInTable: false,
+          { key: "matched_broker_name", label: "단지뱃지", clientSort: true,
+            render: (v) => v
+              ? `<span class="dg-badge dg-badge-ok" title="${dgEscape(v)}">보유</span>`
+              : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "store_count", label: "입점부동산", clientSort: true,
+            render: (v) => (v > 0)
+              ? `<span style="font-weight:600;">${v}</span><span style="color:var(--ink-soft);font-size:11px;">개</span>`
+              : `<span style="color:var(--ink-soft);">-</span>` },
+          { key: "biz_units", label: "총영업신고호수", sortable: true, editable: true, type: "number" },
+          { key: "report_rate", label: "신고율", clientSort: true,
             render: (_, row) => {
-              const mb = dgEscape(row.road_address || "-");
-              const lr = dgEscape(row.lodging_road_address || row.lodging_jibun_address || "");
-              if (!lr) return mb;
-              return `<div class="bld-addr-cell">` +
-                `<span class="bld-addr-mb">${mb}</span>` +
-                `<span class="bld-addr-lr" style="display:none;color:var(--brass-dark);">${lr}</span>` +
-                `<button class="bld-addr-toggle" title="영업신고 주소로 보기" style="margin-left:4px;background:none;border:1px solid var(--brass);color:var(--brass);border-radius:3px;font-size:10px;padding:1px 5px;cursor:pointer;white-space:nowrap;">⇄</button>` +
-                `</div>`;
+              if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
+              const rate = Math.round((row.biz_units || 0) / row.units * 100);
+              const color = rate >= 80 ? "var(--brass-dark)" : rate >= 50 ? "var(--ink)" : "var(--ink-soft)";
+              return `<span style="color:${color};font-weight:600;">${rate}%</span>`;
             } },
+          // ── 영업사업장 그룹 (객실수 큰 순 최대 3건) ──────────────────────────
+          { key: "lodging_slot_0", label: "영업사업장 ①",
+            render: (_, row) => renderLodgingSlot(row, 0) },
+          { key: "lodging_slot_1", label: "영업사업장 ②",
+            render: (_, row) => renderLodgingSlot(row, 1) },
+          { key: "lodging_slot_2", label: "영업사업장 ③",
+            render: (_, row) => renderLodgingSlot(row, 2) },
+          // ── 편집·필터 전용 숨김 컬럼 ──────────────────────────────────────────
+          { key: "id", label: "ID", sortable: true, hideInTable: true },
+          { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true, hideInTable: true },
+          { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
+          { key: "sgg_text", label: "시군구", sortable: true, editable: true, hideInTable: true },
+          { key: "umd_nm", label: "읍면동", sortable: true, editable: true, hideInTable: true },
+          { key: "jibun", label: "지번", sortable: true, editable: true, hideInTable: true },
+          { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
           { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
           { key: "booking_url", label: "운영확인 링크(OTA)", editable: true, hideInTable: true,
             placeholder: "https://www.yanolja.com/..." },
@@ -4881,7 +4912,7 @@
           const showingMb = mbSpan.style.display !== "none";
           mbSpan.style.display = showingMb ? "none" : "";
           lrSpan.style.display = showingMb ? "" : "none";
-          toggleBtn.title = showingMb ? "건물마스터 주소로 보기" : "영업신고 주소로 보기";
+          toggleBtn.title = showingMb ? "도로명주소로 보기" : "지번주소로 보기";
           return;
         }
       });
