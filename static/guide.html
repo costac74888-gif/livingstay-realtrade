@@ -579,6 +579,217 @@
       </div><!-- /3-card grid -->
     </div><!-- /섹션 C 추가 -->
 
+    <!-- ── 주간이메일 신청하면! ────────────────────────────────────────────── -->
+    <div style="margin-top:48px;">
+      <div style="font-size:15px; font-weight:700; color:var(--ink); margin-bottom:4px;">
+        📧 주간이메일 신청하면!
+      </div>
+      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:20px; line-height:1.6;">
+        매주 관심단지 실거래·시세 랭킹을 이메일로 받아보세요.<br>
+        <span style="font-size:11px; color:#9AA5B1;">(아래는 실제 발송되는 이메일의 미리보기입니다. 개인별 관심단지 데이터로 발송됩니다.)</span>
+      </div>
+
+      <!-- ─── 이메일 미리보기 래퍼 ─────────────────── -->
+      <div style="background:#f4f5f7; border-radius:14px; padding:20px 12px;">
+        <div style="max-width:540px; margin:0 auto; background:#fff;
+                    border-radius:12px; overflow:hidden;
+                    box-shadow:0 2px 12px rgba(0,0,0,0.10);">
+
+          <!-- 헤더 -->
+          <div style="background:#16202E; padding:20px 28px; text-align:center;">
+            <img src="/static/images/logo-email.png" alt="HOME &amp; STAY"
+                 width="160" style="height:auto; max-height:40px; display:inline-block; border:0;" />
+            <p style="color:#9aa5b1; font-size:12px; margin:6px 0 0; font-family:sans-serif;">주간 소식</p>
+          </div>
+
+          <!-- 인사말 -->
+          <div style="padding:22px 28px 0; font-family:sans-serif;">
+            <p style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 4px;">
+              홈앤스테이 회원님, 이번 주 홈앤스테이 소식을 전달해드려요.
+            </p>
+            <p style="font-size:13px; color:#888; margin:0;">
+              생활숙박시설·관광숙박 실거래가 최신 정보입니다.
+            </p>
+          </div>
+
+          <!-- Zone 1-1: 관심단지 실거래 -->
+          <div style="padding:20px 28px 0; font-family:sans-serif;">
+            <h2 style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 12px;
+                       padding-bottom:8px; border-bottom:2px solid #B4863F;">
+              📌 관심단지 실거래 알림
+            </h2>
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+              <thead>
+                <tr>
+                  <th style="text-align:left; padding:6px 4px; color:#888; font-weight:600;
+                             border-bottom:2px solid #eee;">건물명</th>
+                  <th style="text-align:right; padding:6px 4px; color:#888; font-weight:600;
+                             border-bottom:2px solid #eee; white-space:nowrap;">거래금액</th>
+                  <th style="text-align:right; padding:6px 4px; color:#888; font-weight:600;
+                             border-bottom:2px solid #eee;">계약일</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:8px 4px; border-bottom:1px solid #eee; vertical-align:top;">
+                    <span style="color:#16202E; font-weight:700;">샘플레지던스 강남</span>
+                  </td>
+                  <td style="padding:8px 4px; border-bottom:1px solid #eee; text-align:right;
+                             white-space:nowrap; font-weight:700; color:#B4863F;">
+                    2억 3,000만원
+                  </td>
+                  <td style="padding:8px 4px; border-bottom:1px solid #eee; text-align:right;
+                             white-space:nowrap; color:#888; font-size:12px;">
+                    2026-08-10
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="3" style="padding:8px 4px; border-bottom:1px solid #eee; color:#888;">
+                    <span style="color:#16202E; font-weight:700;">오션뷰스테이 해운대</span>
+                    <span style="margin-left:8px; font-size:12px;">— 이번 주 새로운 실거래가 없었어요</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Zone 1-2: 매물의뢰 현황 -->
+          <div style="padding:20px 28px 0; font-family:sans-serif;">
+            <h2 style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 12px;
+                       padding-bottom:8px; border-bottom:2px solid #B4863F;">
+              📋 매물의뢰 진행 현황
+            </h2>
+            <p style="color:#555; font-size:14px; margin:0 0 12px; line-height:1.6;">
+              현재 진행 중인 의뢰가 없습니다.<br>
+              매물을 내놓으시면 전문 중개사가 연결해드립니다.
+            </p>
+            <a href="/mypage"
+               style="display:inline-block; background:#B4863F; color:#fff;
+                      text-decoration:none; padding:10px 22px; border-radius:6px;
+                      font-size:14px; font-weight:700;">
+              매물내놓기 →
+            </a>
+          </div>
+
+          <!-- Zone 2: 시세 랭킹 -->
+          <div style="padding:20px 28px 0; font-family:sans-serif;">
+            <h2 style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 12px;
+                       padding-bottom:8px; border-bottom:2px solid #B4863F;">
+              📊 이번 주 시세 랭킹
+            </h2>
+            <!-- 신고가 갱신 TOP5 -->
+            <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+              <thead>
+                <tr>
+                  <th colspan="3" style="text-align:left; padding:6px 4px; color:#16202E;
+                                         font-size:13px; font-weight:700; border-bottom:2px solid #eee;">
+                    🏆 신고가 갱신 TOP5
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">1</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">샘플타워 1차</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; color:#E53E3E; font-weight:700; white-space:nowrap; font-size:13px;">+87.2%</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">2</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">그랜드스테이 서면</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; color:#E53E3E; font-weight:700; white-space:nowrap; font-size:13px;">+34.5%</td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- 거래량 TOP5 -->
+            <table style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th colspan="3" style="text-align:left; padding:6px 4px; color:#16202E;
+                                         font-size:13px; font-weight:700; border-bottom:2px solid #eee;">
+                    🔥 거래량 TOP5
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">1</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">샘플레지던스 강남</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; white-space:nowrap; color:#B4863F; font-size:13px;">12건</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">2</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">오션뷰스테이 해운대</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; white-space:nowrap; color:#B4863F; font-size:13px;">9건</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">3</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">하버뷰레지던스 인천</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; white-space:nowrap; color:#B4863F; font-size:13px;">7건</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">4</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">스카이팰리스 수성</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; white-space:nowrap; color:#B4863F; font-size:13px;">5건</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; color:#aaa; width:20px; font-size:13px;">5</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:700; color:#16202E;">그랜드스테이 서면</td>
+                  <td style="padding:6px 4px; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; white-space:nowrap; color:#B4863F; font-size:13px;">4건</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Zone 5: 광고배너 자리 (플레이스홀더) -->
+          <div style="padding:20px 28px 0; font-family:sans-serif;">
+            <p style="font-size:10px; color:#aaa; margin:0 0 6px;">[광고]</p>
+            <div style="width:100%; padding:28px 0; background:#f0f2f5; border-radius:8px;
+                        text-align:center; color:#9AA5B1; font-size:13px; font-weight:600;
+                        border:1.5px dashed #D5DAE0; box-sizing:border-box;">
+              여기에 광고가 노출됩니다
+            </div>
+          </div>
+
+          <!-- 푸터 -->
+          <div style="padding:20px 28px 24px; font-family:sans-serif;">
+            <div style="padding-top:16px; border-top:1px solid #eee; text-align:center;">
+              <p style="font-size:11px; color:#aaa; margin:0 0 4px;">
+                홈앤스테이 | 사업자등록번호 301-41-68319
+              </p>
+              <p style="font-size:11px; color:#aaa; margin:0;">
+                이 메일은 홈앤스테이 회원가입 시 동의하신 주간 소식 수신 설정에 따라 발송됩니다.
+                <a href="/mypage" style="color:#aaa; text-decoration:underline;">수신거부</a>
+              </p>
+            </div>
+          </div>
+
+        </div><!-- /email card -->
+      </div><!-- /email wrapper bg -->
+
+      <!-- CTA -->
+      <div style="margin-top:20px; background:var(--card, #fff); border:1px solid var(--line, #e8eaed);
+                  border-radius:12px; padding:20px 24px; display:flex; align-items:center;
+                  gap:16px; flex-wrap:wrap; box-shadow:0 2px 8px rgba(22,32,46,.05);">
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:14px; font-weight:700; color:var(--ink); margin-bottom:4px;">
+            다음 주부터 바로 받아보실 수 있어요
+          </div>
+          <div style="font-size:13px; color:var(--ink-soft); line-height:1.6;">
+            마이페이지에서 <strong>"주간 소식 이메일 받기"</strong>를 켜시면
+            매주 관심단지 실거래와 시세 랭킹이 이메일로 도착합니다.
+          </div>
+        </div>
+        <a href="/mypage#weeklyEmailChk"
+           onclick="this.href='/mypage'; setTimeout(()=>{const el=document.getElementById('weeklyEmailChk'); if(el){el.scrollIntoView({behavior:'smooth',block:'center'}); el.focus();}}, 400); return true;"
+           style="display:inline-block; background:var(--ink); color:#fff;
+                  padding:12px 24px; border-radius:8px; font-size:14px; font-weight:700;
+                  text-decoration:none; white-space:nowrap; flex:none;">
+          마이페이지에서 신청하기 →
+        </a>
+      </div>
+
+    </div><!-- /주간이메일 섹션 -->
+
   </div>
 </div><!-- /guide-wrap -->
 
