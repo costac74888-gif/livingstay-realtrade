@@ -9523,6 +9523,19 @@ def _admin_bld_filters():
     elif lt_filter in ("생활", "관광", "일반", "복합"):
         where += " AND lodging_type = %s"
         params.append(lt_filter)
+    # 지역 검색 필터 — 시/도(LIKE 전두), 시/군/구(exact), 읍/면/동(exact)
+    sido_tf = (request.args.get("sido_filter") or "").strip()
+    if sido_tf:
+        where += " AND sgg_text LIKE %s"
+        params.append(f"{sido_tf} %")
+    sgg_tf = (request.args.get("sgg_text_filter") or "").strip()
+    if sgg_tf:
+        where += " AND sgg_text = %s"
+        params.append(sgg_tf)
+    umd_tf = (request.args.get("umd_nm_filter") or "").strip()
+    if umd_tf:
+        where += " AND umd_nm = %s"
+        params.append(umd_tf)
     return q, sort, order, where, params
 
 
@@ -9831,9 +9844,13 @@ def admin_buildings_full_stats():
                 permits.update(lr_road_map[rk])
             elif jk and jk in lr_jibun_map:
                 permits.update(lr_jibun_map[jk])
-        pc = len(permits)
-        rc = sum(int(v["room_count"] or 0) for v in permits.values())
-        cc = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
+        # 폐업 제외: 영업신고업체·영업신고호실은 현재 운영 중인 사업장만 집계
+        # → 총영업신고(biz_units, RTMS 기반)와 비교 가능한 기준을 맞춤
+        total_pc = len(permits)
+        cc       = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
+        active_vals = [v for v in permits.values() if "폐업" not in (v["biz_status_name"] or "")]
+        pc = len(active_vals)   # 현재 운영 영업신고업체 수 (폐업 제외)
+        rc = sum(int(v["room_count"] or 0) for v in active_vals)  # 현재 운영 영업신고호실 (폐업 제외)
         return {
             "type": type_label,
             "building_count": len(blds),
@@ -9847,13 +9864,52 @@ def admin_buildings_full_stats():
             "report_rate": round(tb / tu * 100, 1) if tu else None,
             "permit_count": pc,
             "room_count": rc,
-            "closed_rate": round(cc / pc * 100, 1) if pc else None,
+            "closed_rate": round(cc / total_pc * 100, 1) if total_pc else None,
         }
 
     rows = [_row(all_list, "전체")] + [_row(by_type[t], t) for t in TYPES]
     result = {"ok": True, "rows": rows}
     _bld_full_stats_cache = {"ts": now, "data": result}
     return jsonify(result)
+
+
+@app.route("/api/admin/buildings/region-options")
+@require_admin
+def admin_buildings_region_options():
+    """건물마스터 지역 검색용 시/도·시군구·읍면동 목록 반환 (5분 캐시)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT sgg_text, umd_nm
+        FROM master_buildings
+        WHERE sgg_text IS NOT NULL AND sgg_text <> ''
+          AND lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+        ORDER BY sgg_text, umd_nm
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from collections import defaultdict
+    sgg_to_umds: dict = defaultdict(list)
+    for r in rows:
+        sgg = r["sgg_text"]
+        umd = r["umd_nm"]
+        if umd and umd not in sgg_to_umds[sgg]:
+            sgg_to_umds[sgg].append(umd)
+
+    # 시/도 추출: sgg_text 첫 번째 공백 이전 토큰 (예: "인천광역시 연수구" → "인천광역시")
+    sido_to_sggs: dict = defaultdict(list)
+    for sgg in sgg_to_umds:
+        sido = sgg.split(" ")[0]
+        sido_to_sggs[sido].append(sgg)
+
+    return jsonify({
+        "ok": True,
+        "sidos":       sorted(sido_to_sggs.keys()),
+        "sgg_by_sido": {s: sorted(v) for s, v in sido_to_sggs.items()},
+        "umd_by_sgg":  {k: sorted(v) for k, v in sgg_to_umds.items()},
+    })
 
 
 @app.route("/api/admin/buildings/stats")

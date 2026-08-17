@@ -4963,6 +4963,19 @@
           <button class="admin-btn" id="bldBulkDeleteBtn" disabled style="color:#b3261e;border-color:#b3261e;">일괄 삭제</button>
           <button class="admin-btn" id="bldBulkDownloadBtn" disabled>선택 항목 다운로드</button>
         </div>
+        <div id="bldRegionFilter" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;padding:4px 0;">
+          <span style="font-size:12px;color:var(--ink-soft);white-space:nowrap;font-weight:600;">🗺️ 지역:</span>
+          <select id="bldSidoSel" class="admin-input" style="min-width:120px;font-size:12px;padding:4px 6px;">
+            <option value="">시/도 전체</option>
+          </select>
+          <select id="bldSggSel" class="admin-input" style="min-width:150px;font-size:12px;padding:4px 6px;" disabled>
+            <option value="">시/군/구 전체</option>
+          </select>
+          <select id="bldUmdSel" class="admin-input" style="min-width:120px;font-size:12px;padding:4px 6px;" disabled>
+            <option value="">읍/면/동 전체</option>
+          </select>
+          <button id="bldRegionResetBtn" class="admin-btn" style="font-size:12px;padding:3px 10px;display:none;">✕ 지역초기화</button>
+        </div>
         <div id="bldGridMount"></div>`;
 
       const gridMount = document.getElementById("bldGridMount");
@@ -4977,6 +4990,59 @@
         });
       }
       currentGrid = new DataGrid(Object.assign({ mount: gridMount, idField: "id", pageSize: 50 }, bldCfg));
+
+      // ── 지역 검색 필터 (시/도 → 시/군/구 → 읍/면/동 연동) ──
+      // DataGrid state.filters에 키를 수동 추가하면 load() 시 쿼리 파라미터로 전달됨
+      currentGrid.state.filters.sido_filter     = "";
+      currentGrid.state.filters.sgg_text_filter = "";
+      currentGrid.state.filters.umd_nm_filter   = "";
+      (async () => {
+        try {
+          const res  = await fetch("/api/admin/buildings/region-options");
+          const data = await res.json();
+          if (!data.ok) return;
+          const { sidos, sgg_by_sido, umd_by_sgg } = data;
+          const sidoSel  = document.getElementById("bldSidoSel");
+          const sggSel   = document.getElementById("bldSggSel");
+          const umdSel   = document.getElementById("bldUmdSel");
+          const resetBtn = document.getElementById("bldRegionResetBtn");
+          if (!sidoSel) return;
+          sidos.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s; sidoSel.appendChild(o); });
+
+          function fillSgg(sido) {
+            sggSel.innerHTML = '<option value="">시/군/구 전체</option>';
+            const list = sido ? (sgg_by_sido[sido] || []) : [];
+            list.forEach(sgg => { const o = document.createElement("option"); o.value = sgg; o.textContent = sgg.replace(sido, "").trim(); sggSel.appendChild(o); });
+            sggSel.disabled = !list.length;
+          }
+          function fillUmd(sgg) {
+            umdSel.innerHTML = '<option value="">읍/면/동 전체</option>';
+            const list = sgg ? (umd_by_sgg[sgg] || []) : [];
+            list.forEach(umd => { const o = document.createElement("option"); o.value = umd; o.textContent = umd; umdSel.appendChild(o); });
+            umdSel.disabled = !list.length;
+          }
+          function triggerLoad() {
+            const sido = sidoSel.value, sgg = sggSel.value, umd = umdSel.value;
+            // sgg가 선택되면 sido_filter 불필요(sgg_text exact match로 커버)
+            currentGrid.state.filters.sido_filter     = sgg ? "" : sido;
+            currentGrid.state.filters.sgg_text_filter = sgg;
+            currentGrid.state.filters.umd_nm_filter   = umd;
+            currentGrid.state.page = 1;
+            currentGrid.reload();
+            resetBtn.style.display = (sido || sgg || umd) ? "" : "none";
+          }
+          sidoSel.addEventListener("change", () => { fillSgg(sidoSel.value); sggSel.value = ""; fillUmd(""); umdSel.value = ""; triggerLoad(); });
+          sggSel.addEventListener("change",  () => { fillUmd(sggSel.value); umdSel.value = ""; triggerLoad(); });
+          umdSel.addEventListener("change",  triggerLoad);
+          resetBtn.addEventListener("click", () => {
+            sidoSel.value = ""; sggSel.value = ""; umdSel.value = "";
+            fillSgg(""); fillUmd("");
+            currentGrid.state.filters.sido_filter = currentGrid.state.filters.sgg_text_filter = currentGrid.state.filters.umd_nm_filter = "";
+            currentGrid.state.page = 1; currentGrid.reload();
+            resetBtn.style.display = "none";
+          });
+        } catch(e) { console.warn("지역 옵션 로드 실패", e); }
+      })();
 
       // ── 용도별 세부 통계표: 1회 로드 (전체 데이터 기준, 필터 무관) ──
       loadBldFullStats();
