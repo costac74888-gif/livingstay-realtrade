@@ -422,6 +422,9 @@
 .dg-table tbody td{ padding:10px 12px; border-bottom:1px solid var(--line); color:var(--ink); vertical-align:middle; }
 .dg-table tbody tr:last-child td{ border-bottom:0; }
 .dg-table tbody tr:hover{ background:var(--brass-tint); }
+/* 합계 행 — 헤더 바로 아래 고정 집계 행 */
+.dg-totals-row td{ background:#F4F1E8; border-bottom:2px solid var(--brass-tint); }
+.dg-totals-cell{ padding:7px 12px; font-size:12px; color:var(--ink); white-space:nowrap; text-align:right; }
 .dg-empty{ text-align:center; color:var(--ink-soft); padding:32px 0 !important; }
 .dg-col-actions{ white-space:nowrap; width:1%; }
 .dg-icon-btn{ padding:5px 10px; border:1px solid var(--line); background:#fff; border-radius:6px; font-size:12px; cursor:pointer; color:var(--ink); margin-right:6px; }

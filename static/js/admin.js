@@ -127,7 +127,10 @@ class DataGrid {
       </div>
       <div class="dg-table-wrap">
         <table class="dg-table">
-          <thead><tr class="dg-head-row"></tr></thead>
+          <thead>
+            <tr class="dg-head-row"></tr>
+            <tr class="dg-totals-row" style="display:none;"></tr>
+          </thead>
           <tbody class="dg-body"></tbody>
         </table>
       </div>
@@ -137,6 +140,7 @@ class DataGrid {
     this.$search = el.querySelector(".dg-search");
     this.$body = el.querySelector(".dg-body");
     this.$headRow = el.querySelector(".dg-head-row");
+    this.$totalsRow = el.querySelector(".dg-totals-row");
     this.$pager = el.querySelector(".dg-pager");
     this.$count = el.querySelector(".dg-count");
 
@@ -275,10 +279,37 @@ class DataGrid {
     const data = await res.json();
     this.items = data.items || [];
     this.total = data.total || 0;
+    this.totals = data.totals || null;
     this._renderHead();
     this._renderBody();
+    this._renderTotals();
     this._renderPager();
     this.$count.textContent = `총 ${this.total.toLocaleString()}건`;
+  }
+
+  // ─── 합계 행 렌더링 ───────────────────────────────────────────────────────
+  // cfg.totalsRow: { [colKey]: (totals) => HTML문자열 } 형태로 정의.
+  // API 응답의 data.totals 객체를 받아 헤더 바로 아래 고정 행에 표시한다.
+  // 합산이 의미 없는 컬럼은 totalsRow에서 생략하면 빈 칸으로 표시된다.
+  _renderTotals() {
+    if (!this.$totalsRow) return;
+    if (!this.cfg.totalsRow || !this.totals) {
+      this.$totalsRow.style.display = "none";
+      return;
+    }
+    const cols = this.tableColumns();
+    const tds = [];
+    // allowSelect 모드: 체크박스 열 자리 확보
+    if (this.cfg.allowSelect) tds.push(`<td></td>`);
+    cols.forEach((col) => {
+      const fn = this.cfg.totalsRow[col.key];
+      // fn이 있으면 HTML 반환 함수로 호출, 없으면 빈 칸
+      tds.push(`<td class="dg-totals-cell">${fn ? fn(this.totals) : ""}</td>`);
+    });
+    // 관리 열 자리 확보
+    if (this.hasActions) tds.push(`<td></td>`);
+    this.$totalsRow.innerHTML = tds.join("");
+    this.$totalsRow.style.display = "";
   }
 
   _bodyMessage(text) {

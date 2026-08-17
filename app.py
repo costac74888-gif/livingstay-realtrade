@@ -9726,7 +9726,133 @@ def admin_buildings_list():
             )
             it["biz_units"] = live_active
 
-    return jsonify({"total": total, "page": page, "size": size, "items": items})
+    # ── 합계(totals) 집계 — 현재 필터 기준 전체 결과 ────────────────────────────
+    # 페이지네이션된 items가 아닌, 동일 WHERE절에 해당하는 전체 건물 기준으로 집계.
+    # 신고율은 건물별 (biz_units / units × 100)의 단순 산술 평균 (단순평균, full-stats는 가중평균).
+    totals = None
+    try:
+        conn_t = get_conn()
+        cur_t = conn_t.cursor()
+
+        # 매칭 건물 전체의 id + 집계에 필요한 최소 컬럼 fetch
+        cur_t.execute(f"""
+            SELECT id, units, road_address, jibun_address
+            FROM master_buildings mb WHERE {where_sql}
+        """, params)
+        all_blds_t = cur_t.fetchall()
+        all_ids_t = [b["id"] for b in all_blds_t]
+
+        total_units_t = sum(int(b["units"] or 0) for b in all_blds_t)
+
+        # 관심저장 합계 — master_building_id 직접 매칭 (full-stats 전체 통계표 동일 방식)
+        cur_t.execute("""
+            SELECT COALESCE(SUM(f.cnt), 0) AS s
+            FROM (SELECT master_building_id, COUNT(*) AS cnt
+                  FROM user_favorites WHERE master_building_id = ANY(%s)
+                  GROUP BY master_building_id) f
+        """, [all_ids_t or [0]])
+        total_favorites_t = int(cur_t.fetchone()["s"])
+
+        # 단지뱃지 합계 — 활성 has_priority_badge=TRUE 기준 (full-stats 동일)
+        cur_t.execute("""
+            SELECT COALESCE(SUM(a.cnt), 0) AS s
+            FROM (SELECT master_building_id, COUNT(*) AS cnt
+                  FROM agent_buildings
+                  WHERE master_building_id = ANY(%s)
+                    AND COALESCE(has_priority_badge, FALSE)
+                    AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+                  GROUP BY master_building_id) a
+        """, [all_ids_t or [0]])
+        total_badges_t = int(cur_t.fetchone()["s"])
+
+        # 입점부동산 / 입점상가 합계 — building_stores 테이블 집계
+        cur_t.execute("""
+            SELECT COALESCE(SUM(cnt_all), 0) AS store_total,
+                   COALESCE(SUM(cnt_realty), 0) AS store_realty
+            FROM (SELECT master_building_id,
+                         COUNT(*) AS cnt_all,
+                         COUNT(*) FILTER (WHERE category = '부동산') AS cnt_realty
+                  FROM building_stores WHERE master_building_id = ANY(%s)
+                  GROUP BY master_building_id) s
+        """, [all_ids_t or [0]])
+        store_agg_t = cur_t.fetchone()
+        total_store_count_t = int(store_agg_t["store_total"])
+        total_store_realty_t = int(store_agg_t["store_realty"])
+
+        # 영업사업장(lodging_registry) — 주소 정규화 후 매칭 (full-stats와 동일 로직)
+        t_road_norms: list = []
+        t_jibun_norms: list = []
+        bld_rk_t: dict = {}
+        bld_jk_t: dict = {}
+        for b in all_blds_t:
+            rk = addr_norm.normalize_road_prefix(b["road_address"])
+            jk = addr_norm.normalize_jibun_prefix(b.get("jibun_address") or b["road_address"])
+            bld_rk_t[b["id"]] = rk
+            bld_jk_t[b["id"]] = jk
+            if rk: t_road_norms.append(rk)
+            if jk: t_jibun_norms.append(jk)
+
+        lr_road_map_t: dict = {}
+        lr_jibun_map_t: dict = {}
+        if t_road_norms or t_jibun_norms:
+            cur_t.execute(
+                "SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm "
+                "FROM lodging_registry WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
+                [t_road_norms or ["__none__"], t_jibun_norms or ["__none__"]]
+            )
+            for r in cur_t.fetchall():
+                rr = dict(r)
+                if rr.get("road_norm"):
+                    lr_road_map_t.setdefault(rr["road_norm"], {})[rr["permit_number"]] = rr
+                if rr.get("jibun_norm"):
+                    lr_jibun_map_t.setdefault(rr["jibun_norm"], {})[rr["permit_number"]] = rr
+        cur_t.close()
+        conn_t.close()
+
+        # permit_number 중복 제거 후 전체 집계 (full-stats _row() 로직 동일)
+        all_permits_t: dict = {}
+        per_bld_rates: list = []
+        for b in all_blds_t:
+            rk = bld_rk_t[b["id"]]
+            jk = bld_jk_t[b["id"]]
+            bld_permits: dict = {}
+            if rk and rk in lr_road_map_t:
+                bld_permits.update(lr_road_map_t[rk])
+            elif jk and jk in lr_jibun_map_t:
+                bld_permits.update(lr_jibun_map_t[jk])
+            all_permits_t.update(bld_permits)
+            # 신고율 단순평균용: 건물별 (비폐업 객실수 / 호실수 × 100) 산술 평균
+            units_b = int(b["units"] or 0)
+            if units_b:
+                active_b = [v for v in bld_permits.values()
+                            if "폐업" not in (v["biz_status_name"] or "")]
+                biz_b = sum(int(v["room_count"] or 0) for v in active_b)
+                per_bld_rates.append(biz_b / units_b * 100)
+
+        active_permits_t = [v for v in all_permits_t.values()
+                            if "폐업" not in (v["biz_status_name"] or "")]
+        total_biz_units_t  = sum(int(v["room_count"] or 0) for v in active_permits_t)
+        total_lodging_t    = len(active_permits_t)
+        # 신고율 단순평균: 건물별 신고율의 산술 평균 (주석: 단순평균 — full-stats는 가중평균)
+        avg_report_rate_t  = round(sum(per_bld_rates) / len(per_bld_rates), 1) \
+                             if per_bld_rates else None
+
+        totals = {
+            "total_units":         total_units_t,
+            "total_favorites":     total_favorites_t,
+            "total_badges":        total_badges_t,
+            "total_store_realty":  total_store_realty_t,
+            "total_store_count":   total_store_count_t,
+            "total_biz_units":     total_biz_units_t,
+            "avg_report_rate":     avg_report_rate_t,
+            "total_lodging_count": total_lodging_t,
+        }
+    except Exception as _e:
+        import traceback as _tb
+        app.logger.error(f"admin buildings totals error: {_e}\n{_tb.format_exc()}")
+        totals = None
+
+    return jsonify({"total": total, "page": page, "size": size, "items": items, "totals": totals})
 
 
 _bld_full_stats_cache: dict = {"ts": 0.0, "data": None}
