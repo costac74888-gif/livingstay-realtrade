@@ -431,6 +431,23 @@ class DataGrid {
             <input type="file" accept="application/pdf" class="admin-input" data-filekey="${dgEscape(col.key)}" />
             ${existing ? `<div class="admin-form-hint">현재 첨부됨 (새 파일을 선택하면 교체, 비워두면 유지)</div>` : ""}
             <input type="hidden" data-key="${dgEscape(col.key)}" value="${dgEscape(existing)}" />`;
+        } else if (col.type === "imageUrl") {
+          // 이미지 URL 텍스트 입력 + 파일 업로드 버튼 조합
+          // 업로드 성공 시 반환된 절대 URL을 텍스트 입력에 자동 채움; 수동 입력도 허용
+          control = `
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <input class="admin-input" type="text" data-key="${dgEscape(col.key)}"
+                     value="${dgEscape(initVal)}" ${col.required ? "required" : ""}
+                     placeholder="${dgEscape(col.placeholder || "https://...")}"
+                     style="flex:1;min-width:200px;" />
+              <label style="cursor:pointer;white-space:nowrap;">
+                <input type="file" accept=".jpg,.jpeg,.png" style="display:none;"
+                       data-imgupload="${dgEscape(col.key)}"
+                       data-imgendpoint="${dgEscape(col.uploadEndpoint || "")}" />
+                <span class="admin-btn" style="padding:4px 10px;font-size:12px;">📁 파일 선택</span>
+              </label>
+            </div>
+            <div class="admin-form-hint" data-imgstatus="${dgEscape(col.key)}" style="min-height:16px;"></div>`;
         } else if (col.type === "select") {
           const opts = ['<option value="">(선택 안 함)</option>']
             .concat(
@@ -482,6 +499,38 @@ class DataGrid {
     overlay.querySelector(".admin-modal-close").addEventListener("click", close);
     overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+    // imageUrl 타입 컬럼: 파일 선택 → 업로드 → URL 텍스트 입력에 자동 채움
+    overlay.querySelectorAll("[data-imgupload]").forEach((fileInput) => {
+      const key = fileInput.getAttribute("data-imgupload");
+      const endpoint = fileInput.getAttribute("data-imgendpoint");
+      const textInput = overlay.querySelector(`[data-key="${key}"]`);
+      const statusEl = overlay.querySelector(`[data-imgstatus="${key}"]`);
+      if (!endpoint || !textInput) return;
+      // label > span 클릭 → hidden file input 클릭 위임
+      const span = fileInput.nextElementSibling;
+      if (span) span.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", async () => {
+        const f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        if (statusEl) { statusEl.style.color = ""; statusEl.textContent = "업로드 중…"; }
+        const fd = new FormData();
+        fd.append("file", f);
+        try {
+          const res = await fetch(endpoint, { method: "POST", body: fd });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) {
+            textInput.value = d.image_url;
+            if (statusEl) { statusEl.style.color = "#1a7f37"; statusEl.textContent = "✓ 업로드 완료"; }
+          } else {
+            if (statusEl) { statusEl.style.color = "#b3261e"; statusEl.textContent = d.message || "업로드에 실패했습니다."; }
+          }
+        } catch (_) {
+          if (statusEl) { statusEl.style.color = "#b3261e"; statusEl.textContent = "네트워크 오류가 발생했습니다."; }
+        }
+      });
+    });
 
     const msgBox = overlay.querySelector(".admin-modal-msg");
     const saveBtn = overlay.querySelector(".admin-modal-save");

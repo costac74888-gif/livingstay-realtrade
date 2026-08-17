@@ -77,7 +77,7 @@ def _status_badge_style(status):
 
 # ── DB 조회 ──────────────────────────────────────────────────────────────────
 
-def _get_active_banner(cur):
+def _get_active_banners(cur):
     today = date.today().isoformat()
     cur.execute("""
         SELECT image_url, link_url FROM email_ad_banners
@@ -85,9 +85,8 @@ def _get_active_banner(cur):
           AND start_date <= %s::date
           AND end_date   >= %s::date
         ORDER BY RANDOM()
-        LIMIT 1
     """, (today, today))
-    return cur.fetchone()
+    return cur.fetchall()   # LIMIT 1 제거 — 활성 배너 전부, 순서만 랜덤
 
 
 def _get_ranking(cur):
@@ -354,31 +353,30 @@ def _zone2(price_highs, most_traded):
     </table>"""
 
 
-def _zone5(banner):
-    if not banner:
+def _zone5(banners):
+    if not banners:
         return ""
-    return f"""
-    <table width="100%" cellpadding="0" cellspacing="0">
+    items = "".join(f"""
       <tr>
-        <td style="padding:16px 0 0;border-top:1px solid #eee;">
+        <td style="padding:16px 0 0;{'border-top:1px solid #eee;' if i == 0 else ''}">
           <p style="font-size:10px;color:#aaa;margin:0 0 6px;">[광고]</p>
-          <a href="{banner['link_url']}" target="_blank" rel="noopener noreferrer">
-            <img src="{banner['image_url']}" alt="광고 배너"
+          <a href="{b['link_url']}" target="_blank" rel="noopener noreferrer">
+            <img src="{b['image_url']}" alt="광고 배너"
                  style="display:block;width:100%;max-width:524px;height:auto;border-radius:8px;" />
           </a>
         </td>
-      </tr>
-    </table>"""
+      </tr>""" for i, b in enumerate(banners))
+    return f'<table width="100%" cellpadding="0" cellspacing="0">{items}</table>'
 
 
 def build_html(user_name, favs, deals_by_fav,
                listing_reqs, buy_reqs,
                price_highs, most_traded,
-               banner, unsubscribe_url, alert_off_count=0):
+               banners, unsubscribe_url, alert_off_count=0):
     z1  = _zone1_1(favs, deals_by_fav, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
     z2  = _zone2(price_highs, most_traded)
-    z5  = _zone5(banner)
+    z5  = _zone5(banners)
 
     zone5_block = ""
     if z5:
@@ -509,7 +507,7 @@ def main():
         cur = conn.cursor()
 
         # 공통 데이터 (전체 회원이 동일하게 받음)
-        banner                  = _get_active_banner(cur)
+        banners                  = _get_active_banners(cur)
         price_highs, most_traded = _get_ranking(cur)
 
         # 발송 대상 회원 조회
@@ -526,7 +524,7 @@ def main():
             ORDER BY id
         """, uid_params)
         users = cur.fetchall()
-        log.info("발송 대상 회원 %d명 (배너=%s)", len(users), "있음" if banner else "없음")
+        log.info("발송 대상 회원 %d명 (배너=%d개)", len(users), len(banners))
 
         sent = errors = 0
         for user in users:
@@ -629,7 +627,7 @@ def main():
 
             # 이메일 제목 구성
             n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))
-            has_ad  = banner is not None
+            has_ad  = bool(banners)
             subject_suffix = f" | 관심단지 {n_deals}곳 새 실거래" if n_deals else ""
             subject = f"{'(광고) ' if has_ad else ''}[홈앤스테이] 이번 주 소식{subject_suffix}"
 
@@ -640,15 +638,15 @@ def main():
                 name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,
                 price_highs, most_traded,
-                banner, unsubscribe_url, alert_off_count,
+                banners, unsubscribe_url, alert_off_count,
             )
 
             if dry_run:
                 log.info("  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
-                         "의뢰 listing=%d buy=%d | 배너=%s",
+                         "의뢰 listing=%d buy=%d | 배너=%d개",
                          email, len(favs), n_deals,
                          len(listing_reqs), len(buy_reqs),
-                         "있음" if banner else "없음")
+                         len(banners))
                 sent += 1
                 continue
 

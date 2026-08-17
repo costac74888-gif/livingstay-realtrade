@@ -107,6 +107,19 @@ def is_valid_popup_ref(ref):
     return bool(ref) and bool(POPUP_REF_RE.match(ref))
 
 
+# ---- 이메일 광고배너 이미지 (공개 서빙, 이메일 img src 직접 사용) ----
+EMAIL_BANNER_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+EMAIL_BANNER_REF_RE = re.compile(r"^email_banners/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+
+
+def build_email_banner_key(ext):
+    return f"email_banners/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_email_banner_ref(ref):
+    return bool(ref) and bool(EMAIL_BANNER_REF_RE.match(ref))
+
+
 # ---- 공지사항 첨부파일 (관리자 업로드, 공개 서빙) ----
 NOTICE_ATTACHMENT_EXTENSIONS = {"pdf"}
 NOTICE_ATTACHMENT_REF_RE = re.compile(r"^notices/[0-9a-f]{32}\.pdf$")

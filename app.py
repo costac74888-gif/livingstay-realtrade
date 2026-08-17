@@ -13415,6 +13415,50 @@ def admin_popups_upload_image():
     return jsonify({"ok": True, "image_ref": key, "image_url": f"/api/popups/image/{key}"})
 
 
+@app.route("/api/admin/email-banners/upload-image", methods=["POST"])
+@require_admin
+def admin_email_banners_upload_image():
+    """이메일 광고배너 이미지 업로드 — 이메일 img src로 직접 쓰므로 절대 URL 반환."""
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해주세요."}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in storage_util.EMAIL_BANNER_IMAGE_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG, PNG 이미지만 업로드할 수 있습니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(data) < 16:
+        return jsonify({"ok": False, "message": "파일이 비어 있거나 손상되었습니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 확장자와 일치하지 않습니다. 실제 JPG/PNG 이미지만 업로드해주세요."}), 400
+    key = storage_util.build_email_banner_key(ext)
+    try:
+        storage_util.upload_doc(key, data)
+    except Exception:
+        app.logger.exception("이메일 배너 이미지 업로드 실패")
+        return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
+    domain = os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com").rstrip("/")
+    return jsonify({"ok": True, "image_url": f"{domain}/api/email-banners/image/{key}"})
+
+
+@app.route("/api/email-banners/image/<path:key>")
+def serve_email_banner_image(key):
+    """이메일 배너 이미지 공개 서빙 — 로그인 불필요, 이메일 클라이언트에서 직접 접근."""
+    if not storage_util.is_valid_email_banner_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "application/octet-stream")
+    resp = make_response(data)
+    resp.headers["Content-Type"] = ct
+    resp.headers["Cache-Control"] = "public, max-age=31536000"
+    return resp
+
+
 @app.route("/api/admin/notices/upload-attachment", methods=["POST"])
 @require_admin
 def admin_notices_upload_attachment():

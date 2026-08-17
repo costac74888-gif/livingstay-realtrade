@@ -749,7 +749,8 @@
         searchPlaceholder: "링크 URL 검색",
         columns: [
           { key: "id", label: "ID", sortable: true },
-          { key: "image_url", label: "이미지 URL", editable: true, required: true, placeholder: "https://..." },
+          { key: "image_url", label: "이미지 URL", editable: true, required: true, type: "imageUrl",
+            uploadEndpoint: "/api/admin/email-banners/upload-image", placeholder: "https://… (파일 선택으로 자동 입력 가능)" },
           { key: "link_url",  label: "클릭 링크",  editable: true, required: true, placeholder: "https://..." },
           { key: "start_date", label: "시작일", editable: true, required: true, type: "date" },
           { key: "end_date",   label: "종료일", editable: true, required: true, type: "date" },
