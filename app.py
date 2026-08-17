@@ -16451,7 +16451,7 @@ def admin_email_banners_create():
         cur.close(); conn.close()
 
 
-@app.route("/api/admin/email-banners/<int:bid>", methods=["PUT"])
+@app.route("/api/admin/email-banners/<int:bid>", methods=["PUT", "PATCH"])
 @require_admin
 def admin_email_banners_update(bid):
     data = request.get_json(force=True, silent=True) or {}

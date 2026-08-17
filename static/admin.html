@@ -758,6 +758,44 @@
             render: (v) => v ? `<span class="dg-badge dg-badge-ok">활성</span>` : `<span class="dg-badge">비활성</span>` },
           { key: "created_at", label: "등록일", sortable: true },
         ],
+        rowActions: [
+          {
+            // 활성 배너 → "정지" 버튼 (비활성이면 숨김)
+            label: "정지",
+            hidden: (row) => !row.is_active,
+            onClick: async (row, grid) => {
+              try {
+                const res = await fetch(`/api/admin/email-banners/${row.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ is_active: false }),
+                });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok || !d.ok) { window.alert(d.message || "정지에 실패했습니다."); return; }
+                grid.reload();
+              } catch (_) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+          {
+            // 비활성 배너 → "재개" 버튼 (활성이면 숨김)
+            label: "재개",
+            hidden: (row) => !!row.is_active,
+            onClick: async (row, grid) => {
+              try {
+                const res = await fetch(`/api/admin/email-banners/${row.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ is_active: true }),
+                });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok || !d.ok) { window.alert(d.message || "재개에 실패했습니다."); return; }
+                grid.reload();
+              } catch (_) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+        ],
       },
       notices: {
         endpoint: "/api/admin/notices",

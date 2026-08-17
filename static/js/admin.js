@@ -448,6 +448,9 @@ class DataGrid {
               </label>
             </div>
             <div class="admin-form-hint" data-imgstatus="${dgEscape(col.key)}" style="min-height:16px;"></div>`;
+        } else if (col.type === "date") {
+          // <input type="date"> — 브라우저 달력 피커 자동 지원, 값은 항상 YYYY-MM-DD
+          control = `<input class="admin-input" type="date" data-key="${dgEscape(col.key)}" value="${dgEscape(initVal)}" ${col.required ? "required" : ""} />`;
         } else if (col.type === "select") {
           const opts = ['<option value="">(선택 안 함)</option>']
             .concat(
@@ -583,8 +586,10 @@ class DataGrid {
           return;
         }
         msgBox.textContent = data.message || "저장에 실패했습니다.";
+        msgBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
       } catch (e) {
         msgBox.textContent = "네트워크 오류가 발생했습니다.";
+        msgBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
       } finally {
         saveBtn.disabled = false;
         saveBtn.textContent = prevText;
