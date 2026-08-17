@@ -9744,13 +9744,19 @@ def admin_buildings_list():
 
         total_units_t = sum(int(b["units"] or 0) for b in all_blds_t)
 
-        # 관심저장 합계 — master_building_id 직접 매칭 (full-stats 전체 통계표 동일 방식)
-        cur_t.execute("""
-            SELECT COALESCE(SUM(f.cnt), 0) AS s
-            FROM (SELECT master_building_id, COUNT(*) AS cnt
-                  FROM user_favorites WHERE master_building_id = ANY(%s)
-                  GROUP BY master_building_id) f
-        """, [all_ids_t or [0]])
+        # 관심저장 합계 — 개별 행 표시와 동일한 correlated 서브쿼리(master_building_id OR 주소매칭)
+        # master_building_id IS NULL인 주소기반 favorites를 누락하지 않기 위해 per-row 쿼리와 동일 로직 사용.
+        cur_t.execute(f"""
+            SELECT COALESCE(SUM(
+                (SELECT COUNT(*) FROM user_favorites uf
+                 WHERE uf.master_building_id = mb.id
+                    OR (uf.master_building_id IS NULL
+                        AND (uf.address = mb.road_address
+                             OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))
+                        AND (uf.building_name IS NULL OR uf.building_name = mb.building_name)))
+            ), 0) AS s
+            FROM master_buildings mb WHERE {where_sql}
+        """, params)
         total_favorites_t = int(cur_t.fetchone()["s"])
 
         # 단지뱃지 합계 — 활성 has_priority_badge=TRUE 기준 (full-stats 동일)
