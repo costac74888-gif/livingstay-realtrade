@@ -95,6 +95,8 @@ def _get_ranking(cur):
     week_ago = (date.today() - timedelta(days=7)).isoformat()
 
     # 신고가 갱신: 이번 주 거래 중 해당 건물의 역대 최고가를 경신한 것
+    # ※ 동명 건물이 여러 master_buildings 행으로 매칭될 수 있어 LATERAL 서브쿼리로
+    #    building_id를 1건만 선택. GROUP BY에 mb.id를 넣으면 중복 행이 생겨 오류 발생.
     cur.execute("""
         WITH this_week AS (
             SELECT building_name, jibun,
@@ -112,15 +114,15 @@ def _get_ranking(cur):
         )
         SELECT t.building_name,
                t.new_peak AS price,
-               mb.id      AS building_id,
+               (SELECT mb2.id FROM master_buildings mb2
+                WHERE REPLACE(mb2.building_name,' ','') = REPLACE(t.building_name,' ','')
+                  AND mb2.jibun = t.jibun
+                ORDER BY mb2.id LIMIT 1)  AS building_id,
                ROUND((t.new_peak - COALESCE(p.old_peak, 0))::numeric
                      * 100.0 / NULLIF(COALESCE(p.old_peak, t.new_peak), 0), 1) AS pct_gain
         FROM this_week t
         LEFT JOIN prev_peak p
                ON p.building_name = t.building_name AND p.jibun = t.jibun
-        LEFT JOIN master_buildings mb
-               ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
-              AND mb.jibun = t.jibun
         WHERE t.new_peak > COALESCE(p.old_peak, 0)
         ORDER BY pct_gain DESC NULLS LAST
         LIMIT 5
@@ -128,16 +130,17 @@ def _get_ranking(cur):
     price_highs = cur.fetchall()
 
     # 거래량 TOP5 (최근 7일)
+    # ※ 동일하게 correlated 서브쿼리로 building_id 1건만 선택 → 중복/오매칭 방지
     cur.execute("""
         SELECT t.building_name,
                COUNT(*) AS deal_count,
-               mb.id    AS building_id
+               (SELECT mb2.id FROM master_buildings mb2
+                WHERE REPLACE(mb2.building_name,' ','') = REPLACE(t.building_name,' ','')
+                  AND mb2.jibun = t.jibun
+                ORDER BY mb2.id LIMIT 1)  AS building_id
         FROM transactions t
-        LEFT JOIN master_buildings mb
-               ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
-              AND mb.jibun = t.jibun
         WHERE t.deal_date >= %s
-        GROUP BY t.building_name, t.jibun, mb.id
+        GROUP BY t.building_name, t.jibun
         ORDER BY deal_count DESC
         LIMIT 5
     """, (week_ago,))
@@ -149,11 +152,10 @@ def _get_ranking(cur):
 # ── HTML 조립 ─────────────────────────────────────────────────────────────────
 
 def _bld_url(building_id, building_name=""):
+    """building_id 가 있으면 상세 페이지 직링크, 없으면 홈으로.
+    /?q= 검색 URL은 지도 패널을 자동으로 열지 않아 '건물 정보 못 불러옴'처럼 보이므로 사용하지 않는다."""
     if building_id:
         return f"{SITE_URL}/building/{building_id}"
-    if building_name:
-        import urllib.parse
-        return f"{SITE_URL}/?q={urllib.parse.quote(building_name)}"
     return SITE_URL
 
 
@@ -235,7 +237,7 @@ def _zone1_2(listing_reqs, buy_reqs):
           현재 진행 중인 의뢰가 없습니다.<br>
           매물을 내놓으시면 전문 중개사가 연결해드립니다.
         </p>
-        <a href="{SITE_URL}/?modal=listing"
+        <a href="{SITE_URL}/mypage"
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
@@ -631,11 +633,9 @@ def main():
             subject_suffix = f" | 관심단지 {n_deals}곳 새 실거래" if n_deals else ""
             subject = f"{'(광고) ' if has_ad else ''}[홈앤스테이] 이번 주 소식{subject_suffix}"
 
-            tok = user.get("unsubscribe_token") or ""
-            unsubscribe_url = (
-                f"{SITE_URL}/unsubscribe?token={tok}" if tok
-                else f"{SITE_URL}/mypage"
-            )
+            # 수신거부는 /unsubscribe?token=… 대신 마이페이지로 이동
+            # (토큰 링크가 "잘못됐거나 이미 처리된 링크" 오류를 내는 경우 방지)
+            unsubscribe_url = f"{SITE_URL}/mypage"
             html_body = build_html(
                 name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,
