@@ -16552,7 +16552,7 @@ def admin_email_banners_list():
                               is_active, created_at::text
                        FROM email_ad_banners ORDER BY id DESC""")
         rows = [dict(r) for r in cur.fetchall()]
-        return jsonify({"ok": True, "rows": rows, "total": len(rows)})
+        return jsonify({"ok": True, "items": rows, "total": len(rows)})
     finally:
         cur.close(); conn.close()
 
