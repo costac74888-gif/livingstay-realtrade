@@ -982,6 +982,10 @@ const SIDO_POSITION_OVERRIDE = {
   "제주특별자치도":  { lat: 33.489, lng: 126.498 }, // 제주시청(도청)
 };
 
+// xAnchor:1(배지 오른쪽 끝이 좌표에 고정) → 배지가 좌표 왼쪽에 표시되는 시도 목록.
+// 기본(xAnchor:0)은 배지 왼쪽 끝 고정(배지가 우측에 표시). 인접 배지 겹침 방지용.
+const SIDO_ANCHOR_LEFT = new Set(["경상남도"]);
+
 let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록 — clearMapMarkers에서 함께 제거
 let _currentMapMode  = null;          // 'sido'|'sgg'|'umd'|'markers' — 불필요한 재로드 방지
 let _lastMapFilters  = {};            // 마지막으로 적용된 지도 필터 (zoom 전환 시 재사용)
@@ -1405,17 +1409,22 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     //   글자당 약 13px(Kakao 줌12 기준) + 여유 4px, 최소 44px.
     // sgg/umd 레벨: 기존대로 중앙 고정
     const isSido = clusterLevel === "sido";
+    // anchorLeft: true → xAnchor:1(배지 오른쪽 끝이 좌표에 고정 = 배지가 좌표 왼쪽에 표시)
+    const anchorLeft = isSido && SIDO_ANCHOR_LEFT.has(item.name);
     if (isSido) {
-      // 모바일: 좁은 화면에서 배지가 오른쪽으로 밀려나지 않도록 최소 간격만 적용
+      // 모바일: 좁은 화면에서 배지가 밀려나지 않도록 최소 간격만 적용
       // 데스크톱: 글자당 ~13px 기준으로 Kakao 지명 텍스트 너비만큼 여백 확보
       const nameLen = item.name ? item.name.length : 4;
-      el.style.marginLeft = isMobileMapViewport()
-        ? "6px"
-        : Math.max(44, nameLen * 13 + 4) + "px";
+      const gap = isMobileMapViewport() ? "6px" : Math.max(44, nameLen * 13 + 4) + "px";
+      if (anchorLeft) {
+        el.style.marginRight = gap;  // 배지가 좌표 왼쪽에 붙으므로 오른쪽 여백으로 지명 침범 방지
+      } else {
+        el.style.marginLeft = gap;
+      }
     }
     const overlay = new kakao.maps.CustomOverlay({
       position: pos, content: el,
-      xAnchor: isSido ? 0 : 0.5,
+      xAnchor: isSido ? (anchorLeft ? 1 : 0) : 0.5,
       yAnchor: isSido ? 0.5 : 1.0,
       zIndex: 10,
     });
