@@ -838,7 +838,15 @@ def get_building_unit_areas(building_id):
 
         plat_gb, bun, ji = parse_jibun(mb["jibun"])
         import building_registry as br
-        raw = br.fetch_expos_area(mb["sgg_cd"], bjd, plat_gb, bun, ji)
+        import concurrent.futures as _cf
+        # fetch_expos_area 내부에서 _RETRY_MAX(2)×timeout(15s)=45s blocking 가능
+        # → gunicorn worker timeout(30s) 초과 방지를 위해 별도 스레드 + 20s hard cap
+        with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
+            _fut = _ex.submit(br.fetch_expos_area, mb["sgg_cd"], bjd, plat_gb, bun, ji)
+            try:
+                raw = _fut.result(timeout=20)
+            except (_cf.TimeoutError, Exception):
+                raw = []
 
         # DB 캐싱 (기존 캐시 교체 후 신규 삽입)
         cur.execute("DELETE FROM building_unit_areas WHERE master_building_id = %s", [building_id])
