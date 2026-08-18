@@ -260,6 +260,47 @@ def fetch_expos_area(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     반환: [(ho, area_sqm), ...] 전용부분(exposPubuseAreaGbCd=="1")만.
     실패 시 [] 반환 — 매물등록 자체를 막지 않는다.
     """
+    try:
+        return _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    except Exception:
+        return []
+
+
+def fetch_expos_area_strict(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+    """전유부 조회 — 배치/프리워밍용 엄격 버전.
+
+    반환: [(ho, area_sqm), ...] — API가 0건을 정상 응답하면 [] 반환.
+    HTTP/재시도 실패·XML 파싱 오류 등 전송 계층 장애 시 예외를 그대로 전파.
+    호출자가 실패와 진정한 빈 응답을 구분할 수 있다.
+    """
+    return _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+
+
+def _check_api_result_code(root):
+    """건축HUB XML 응답 헤더의 resultCode를 검사한다.
+
+    성공 코드 "00" / "000" 이외의 resultCode는 API 레벨 오류
+    (쿼터 소진·인증 실패·서비스 오류 등)로 RuntimeError를 발생시킨다.
+    resultCode 요소 자체가 없으면(헤더 없는 정상 응답) 검사를 건너뛴다.
+    """
+    code_el = root.find(".//resultCode")
+    if code_el is None:
+        return
+    code = (code_el.text or "").strip()
+    if code not in ("00", "000"):
+        msg_el = root.find(".//resultMsg")
+        msg = (msg_el.text or "").strip() if msg_el is not None else ""
+        raise RuntimeError(
+            f"건축HUB API 오류 — resultCode={code!r} resultMsg={msg!r}"
+        )
+
+
+def _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+    """fetch_expos_area / fetch_expos_area_strict 공유 구현.
+
+    전송 실패·XML 파싱 오류·API resultCode 오류 시 예외 전파.
+    호출자가 처리 방식 결정.
+    """
     rows = []
     page = 1
     num = 100
@@ -275,15 +316,10 @@ def fetch_expos_area(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "pageNo": page,
             "type": "xml",
         }
-        try:
-            resp = _get_with_retry(BLD_EXPOS_URL, params=params, timeout=15)
-            resp.raise_for_status()
-        except Exception:
-            return []
-        try:
-            root = ET.fromstring(resp.content)
-        except ET.ParseError:
-            return []
+        resp = _get_with_retry(BLD_EXPOS_URL, params=params, timeout=15)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        _check_api_result_code(root)
 
         items = root.findall(".//item")
         for item in items:
