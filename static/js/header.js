@@ -222,10 +222,14 @@
   }
   function refreshUnreadCount() {
     if (!window.__livingstayLoggedIn) { renderNotifBadge(0); return; }
-    fetch("/api/notifications/unread-count", { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { if (d && d.ok) renderNotifBadge(d.count); })
-      .catch(function () {});
+    Promise.all([
+      fetch("/api/notifications/unread-count", { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return { ok: false }; }),
+      fetch("/api/chat/unread-count",           { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return { ok: false }; })
+    ]).then(function (results) {
+      var notifCount = (results[0] && results[0].ok) ? (results[0].count || 0) : 0;
+      var chatCount  = (results[1] && results[1].ok) ? (results[1].count || 0) : 0;
+      renderNotifBadge(notifCount + chatCount);
+    });
   }
   function loadNotifList() {
     if (!window.__livingstayLoggedIn) {

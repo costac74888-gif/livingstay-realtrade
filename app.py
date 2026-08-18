@@ -6901,9 +6901,40 @@ def get_chat_messages(room_id):
             LIMIT 200
         """, [room_id])
         messages = [dict(r) for r in cur.fetchall()]
+        # 상대방이 보낸 안 읽은 메시지를 읽음으로 표시
+        cur.execute("""
+            UPDATE chat_messages
+               SET is_read = TRUE
+             WHERE room_id = %s
+               AND sender_user_id != %s
+               AND is_read = FALSE
+        """, [room_id, user["id"]])
+        conn.commit()
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "messages": messages, "my_user_id": user["id"]})
+
+
+@app.route("/api/chat/unread-count")
+def chat_unread_count():
+    """헤더 벨 배지용 — 현재 사용자에게 온 안 읽은 채팅 메시지 수."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS c
+              FROM chat_messages cm
+              JOIN chat_rooms cr ON cr.id = cm.room_id
+             WHERE cm.sender_user_id != %s
+               AND cm.is_read = FALSE
+               AND (cr.buyer_user_id = %s OR cr.seller_user_id = %s)
+        """, [u["id"], u["id"], u["id"]])
+        c = cur.fetchone()["c"]
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "count": c})
 
 
 @app.route("/api/chat/rooms/<int:room_id>/messages", methods=["POST"])
