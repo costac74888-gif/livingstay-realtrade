@@ -42,7 +42,7 @@ function toggleFav(item){
   }
   // 하드게이트: 비로그인은 저장 불가
   if (!window.__livingstayLoggedIn){
-    promptLogin("로그인하고 관심단지를 저장하면, 이 건물의 새 실거래가 등록될 때 알림을 보내드려요");
+    promptLogin("로그인하고 관심단지를 저장하면, 새 실거래가 등록될 때 알림을 보내드려요");
     return false;
   }
   const k = favKey(item);
@@ -2095,15 +2095,12 @@ function openListingRequestModal(buildingId, buildingName){
 
   // —— 전유부 API → 전용면적 콤보 채우기 (buildingId가 있을 때만)
   if (buildingId) {
-    fetch(`/api/building/${buildingId}/unit-areas`, { credentials: "same-origin" })
+    fetch(`/api/building/${buildingId}/area-types`, { credentials: "same-origin" })
       .then(r => r.json()).catch(() => ({}))
       .then(d => {
         const areaSelectEl = ov.querySelector("#lrAreaSelect");
         if (!areaSelectEl) return;
-        const sqms = (d.areas || [])
-          .map(a => a.area_sqm)
-          .filter((v, i, arr) => v != null && arr.indexOf(v) === i)
-          .sort((a, b) => a - b);
+        const sqms = d.sqms || [];
         if (sqms.length > 0) {
           areaSelectEl.innerHTML =
             sqms.map(v => `<option value="${v}">${v}㎡</option>`).join("") +
@@ -2835,7 +2832,7 @@ async function loadBuildingHeader(id){
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
       ${b.lat != null && b.lng != null ? `<button type="button" id="bMapLocBtn" class="b-icon-btn" title="지도 위치 보기">📍<span class="b-icon-label">지도위치</span></button>` : ""}
     </div>
-    ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 이 건물의 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
+    ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
 
   // 직거래 공개 매물 카드 — API가 내려준 direct_listings를 즉시 렌더
   const listingsCard = document.getElementById("bListingsCard");
@@ -2847,14 +2844,18 @@ async function loadBuildingHeader(id){
         const lrId = lr.id;
         const dt = escapeHtml(lr.deal_type || "-");
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm) + "㎡" : "-";
-        const price = escapeHtml(lr.desired_price || "-");
+        // desired_price에서 접두어(매매가·보증금·월세 등)와 "만원" 단위 제거 → 숫자만
+        const rawPrice = lr.desired_price || "";
+        const price = rawPrice
+          ? rawPrice.replace(/(매매가|보증금|월세)\s*/g, "").replace(/만원/g, "").trim() || "-"
+          : "-";
         const date = escapeHtml(lr.listing_date || "");
         return `<tr>
           <td style="text-align:left;">${dt}</td>
           <td style="white-space:nowrap;">${sqm}</td>
-          <td style="text-align:left;">${price}</td>
+          <td style="text-align:right; white-space:nowrap;">${escapeHtml(price)}</td>
           <td style="font-size:11.5px; color:var(--ink-soft); white-space:nowrap;">${date}</td>
-          <td style="text-align:center; padding:0 4px;"><button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:none; border:none; cursor:pointer; font-size:18px; line-height:1;" title="문의하기">💬</button></td>
+          <td style="text-align:center; padding:0 4px;"><button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:rgba(180,134,63,.12); border:1.5px solid var(--brass,#B4863F); border-radius:20px; padding:2px 6px; cursor:pointer; font-size:16px; line-height:1;" title="문의하기">💬</button></td>
         </tr>`;
       }).join("");
       listingsBody.innerHTML = `
@@ -3532,15 +3533,15 @@ function renderBuildingPanel(id){
     }
     // 전용면적 필터 드롭다운 옵션 채우기 (unit_area_sqms 우선, 없으면 건너뜀)
     if (bAreaFilterEl){
-      fetch("/api/building/" + id + "/unit-areas")
+      fetch("/api/building/" + id + "/area-types")
         .then(r => r.json()).catch(() => ({}))
         .then(d => {
-          const sqms = (d.areas || []).map(a => a.area_sqm).filter((v, i, arr) => arr.indexOf(v) === i).sort((a,b) => a-b);
+          const sqms = d.sqms || [];
           if (sqms.length > 0){
             bAreaFilterEl.innerHTML = `<option value="">전체</option>` +
               sqms.map(v => `<option value="${v}">${v}㎡</option>`).join("");
           } else {
-            // 전유부 없으면 섹션 숨김 (실거래 기반 값도 없으면 필터 불필요)
+            // 전유부 + 실거래 모두 없으면 섹션 숨김
             const sec = bAreaFilterEl.closest("section");
             if (sec) sec.style.display = "none";
           }

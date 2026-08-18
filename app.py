@@ -799,6 +799,56 @@ def get_building(building_id):
     return jsonify(result)
 
 
+@app.route("/api/building/<int:building_id>/area-types")
+def get_building_area_types(building_id):
+    """전용면적 타입 목록 — 순수 DB 조회 (외부 API 없음, 빠름).
+
+    1차: building_unit_areas 캐시 DISTINCT area_sqm
+    2차: transactions DISTINCT area 폴백 (실거래 이력이 있는 건물)
+    """
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT DISTINCT area_sqm FROM building_unit_areas
+            WHERE master_building_id = %s AND area_sqm IS NOT NULL
+            ORDER BY area_sqm
+        """, [building_id])
+        sqms = [float(r["area_sqm"]) for r in cur.fetchall()]
+
+        if not sqms:
+            cur.execute("""
+                SELECT building_name, sgg_cd, umd_nm, jibun
+                FROM master_buildings WHERE id = %s
+            """, [building_id])
+            mb = cur.fetchone()
+            if mb and mb["sgg_cd"] and mb["umd_nm"] and mb["jibun"]:
+                cur.execute("""
+                    SELECT DISTINCT ROUND(area::numeric, 1) AS a
+                    FROM transactions
+                    WHERE sgg_cd = %s AND umd_nm = %s AND jibun = %s
+                      AND area IS NOT NULL AND area > 0
+                    ORDER BY a LIMIT 30
+                """, [mb["sgg_cd"], mb["umd_nm"], mb["jibun"]])
+                sqms = [float(r["a"]) for r in cur.fetchall()]
+            elif mb:
+                name = ((mb.get("building_name") or "")).strip()
+                if name and name != "-":
+                    cur.execute("""
+                        SELECT DISTINCT ROUND(area::numeric, 1) AS a
+                        FROM transactions
+                        WHERE building_name = %s AND area IS NOT NULL AND area > 0
+                        ORDER BY a LIMIT 30
+                    """, [name])
+                    sqms = [float(r["a"]) for r in cur.fetchall()]
+
+        return jsonify({"ok": True, "sqms": sqms})
+    except Exception as e:
+        app.logger.exception("area-types 오류 building_id=%s", building_id)
+        return jsonify({"ok": False, "sqms": []})
+    finally:
+        cur.close(); conn.close()
+
+
 @app.route("/api/building/<int:building_id>/unit-areas")
 def get_building_unit_areas(building_id):
     """전유부(호실별 전용면적) 온디맨드 조회 + DB 캐싱.
