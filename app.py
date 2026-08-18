@@ -8562,7 +8562,8 @@ def admin_booking_url_request_approve(req_id):
         """, [req["booking_url"], req["master_building_id"]])
         cur.execute("""
             UPDATE booking_url_requests
-            SET status = 'approved', reviewed_at = NOW(), reviewed_by = %s
+            SET status = 'approved', reviewed_at = NOW(), reviewed_by = %s,
+                expires_at = NOW() + INTERVAL '3 months'
             WHERE id = %s
         """, [admin_id, req_id])
         conn.commit()
@@ -8652,7 +8653,8 @@ def admin_booking_url_request_extend(req_id):
         """, [req["master_building_id"]])
         cur.execute("""
             UPDATE booking_url_requests
-            SET reviewed_at = NOW(), reviewed_by = %s
+            SET reviewed_at = NOW(), reviewed_by = %s,
+                expires_at = NOW() + INTERVAL '3 months'
             WHERE id = %s
         """, [admin_id, req_id])
         conn.commit()

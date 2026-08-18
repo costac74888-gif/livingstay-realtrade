@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-18-1"
+SCHEMA_VERSION = "2026-08-18-2"
 
 
 def init_db():
@@ -1191,6 +1191,7 @@ def init_db():
         ALTER TABLE booking_url_requests
         ADD COLUMN IF NOT EXISTS renewal_count INTEGER DEFAULT 0
     """)
+    cur.execute("ALTER TABLE booking_url_requests ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP")
 
     # ── 사이트 오류신고 (플로팅 버튼 → 관리자 심사) ────────────────────────
     cur.execute("""
