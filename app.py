@@ -13572,11 +13572,9 @@ def admin_email_banners_upload_image():
     except Exception:
         app.logger.exception("이메일 배너 이미지 업로드 실패")
         return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
-    # 이메일 img src는 외부 클라이언트가 직접 접근하므로 공개 접근 가능 URL이어야 함.
-    # Replit dev 환경에서는 PUBLIC_BASE_URL(homenstay.com)이 잘못된 주소이므로 REPLIT_DEV_DOMAIN 우선 사용.
-    _dev = os.environ.get("REPLIT_DEV_DOMAIN", "")
-    domain = (f"https://{_dev}" if _dev else os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com")).rstrip("/")
-    return jsonify({"ok": True, "image_url": f"{domain}/api/email-banners/image/{key}"})
+    # 상대경로로 반환 — 브라우저(관리자 화면)에서 바로 미리보기 가능,
+    # 이메일 발송 시에는 weekly_digest.py 에서 SITE_URL을 앞에 붙여 절대 URL로 변환.
+    return jsonify({"ok": True, "image_url": f"/api/email-banners/image/{key}"})
 
 
 @app.route("/api/email-banners/image/<path:key>")

@@ -361,7 +361,7 @@ def _zone5(banners):
         <td style="padding:16px 0 0;{'border-top:1px solid #eee;' if i == 0 else ''}">
           <p style="font-size:10px;color:#aaa;margin:0 0 6px;">[광고]</p>
           <a href="{b['link_url']}" target="_blank" rel="noopener noreferrer">
-            <img src="{b['image_url']}" alt="광고 배너"
+            <img src="{SITE_URL}{b['image_url'] if b['image_url'].startswith('/') else '/' + b['image_url']}" alt="광고 배너"
                  style="display:block;width:100%;max-width:524px;height:auto;border-radius:8px;" />
           </a>
         </td>
