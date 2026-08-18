@@ -712,6 +712,18 @@ def get_building(building_id):
         _d["phone_tail"] = _phone[-4:] if len(_phone) >= 4 else ""
         _direct_listings.append(_d)
 
+    # 전유부 통계 (평형별 호실수) — 캐시에 데이터가 있을 때만 집계
+    cur.execute("""
+        SELECT area_sqm, COUNT(*) AS ho_cnt
+        FROM building_unit_areas
+        WHERE master_building_id = %s AND area_sqm IS NOT NULL
+        GROUP BY area_sqm ORDER BY area_sqm
+    """, [building_id])
+    _unit_area_stats = [
+        {"area_sqm": float(r["area_sqm"]), "ho_cnt": int(r["ho_cnt"])}
+        for r in cur.fetchall()
+    ]
+
     cur.close()
     conn.close()
 
@@ -782,7 +794,76 @@ def get_building(building_id):
     result.pop("booking_url_expires_at", None)  # 내부값, 클라이언트 불필요
     result["booking_urls"] = _booking_urls       # OTA 다건 지원
     result["direct_listings"] = _direct_listings  # 직거래 공개 매물
+    result["unit_area_stats"] = _unit_area_stats  # 평형별 호실수
+    result["unit_area_sqms"] = [s["area_sqm"] for s in _unit_area_stats]  # 필터/콤보용
     return jsonify(result)
+
+
+@app.route("/api/building/<int:building_id>/unit-areas")
+def get_building_unit_areas(building_id):
+    """전유부(호실별 전용면적) 온디맨드 조회 + DB 캐싱.
+
+    캐시(7일): 있으면 즉시 반환, 없으면 건축HUB API 조회 후 저장.
+    실패 시 areas:[] 반환 — 매물등록 자체는 막지 않음.
+    """
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        # 캐시 확인 (7일 이내 fetched_at이 있는 행)
+        cur.execute("""
+            SELECT ho, area_sqm FROM building_unit_areas
+            WHERE master_building_id = %s
+              AND fetched_at > NOW() - INTERVAL '7 days'
+            ORDER BY area_sqm NULLS LAST, ho
+            LIMIT 500
+        """, [building_id])
+        cached = cur.fetchall()
+        if cached:
+            areas = [
+                {"ho": r["ho"], "area_sqm": float(r["area_sqm"])}
+                for r in cached if r["area_sqm"] is not None
+            ]
+            return jsonify({"ok": True, "areas": areas, "from_cache": True})
+
+        # 건물 위치 정보 조회
+        cur.execute("""
+            SELECT sgg_cd, umd_nm, jibun FROM master_buildings WHERE id = %s
+        """, [building_id])
+        mb = cur.fetchone()
+        if not mb or not mb["sgg_cd"] or not mb["jibun"]:
+            return jsonify({"ok": True, "areas": [], "reason": "no_location"})
+
+        bjd = _get_bjdong_map().find_bjdong_cd(mb["sgg_cd"], mb["umd_nm"])
+        if not bjd:
+            return jsonify({"ok": True, "areas": [], "reason": "no_bjdong"})
+
+        plat_gb, bun, ji = parse_jibun(mb["jibun"])
+        import building_registry as br
+        raw = br.fetch_expos_area(mb["sgg_cd"], bjd, plat_gb, bun, ji)
+
+        # DB 캐싱 (기존 캐시 교체 후 신규 삽입)
+        cur.execute("DELETE FROM building_unit_areas WHERE master_building_id = %s", [building_id])
+        if raw:
+            execute_values(cur,
+                "INSERT INTO building_unit_areas (master_building_id, ho, area_sqm) VALUES %s",
+                [(building_id, ho, sqm) for ho, sqm in raw]
+            )
+        else:
+            # API 결과 없음 — sentinel 행을 삽입해 7일간 재호출 방지
+            cur.execute(
+                "INSERT INTO building_unit_areas (master_building_id, ho, area_sqm) VALUES (%s, NULL, NULL)",
+                [building_id]
+            )
+        conn.commit()
+
+        areas = [{"ho": ho, "area_sqm": float(sqm)} for ho, sqm in raw]
+        return jsonify({"ok": True, "areas": areas, "from_cache": False})
+    except Exception as e:
+        app.logger.exception("unit-areas 조회 오류 building_id=%s", building_id)
+        try: conn.rollback()
+        except Exception: pass
+        return jsonify({"ok": False, "areas": [], "error": str(e)})
+    finally:
+        cur.close(); conn.close()
 
 
 # ── 상거래정보(주변 상가업소) ───────────────────────────────────────────
@@ -1148,6 +1229,16 @@ def get_transactions():
             name = (b["building_name"] if b else None) or ""
             where.append("building_name = %s")
             params.append(name if name and name != "-" else "\x00")
+
+    # 선택적 area_sqm → 해당 전용면적 ±0.5㎡ 범위 실거래만 필터
+    _area_sqm_raw = request.args.get("area_sqm", "").strip()
+    if _area_sqm_raw:
+        try:
+            _asqm = float(_area_sqm_raw)
+            where.append("area BETWEEN %s AND %s")
+            params += [_asqm - 0.5, _asqm + 0.5]
+        except ValueError:
+            pass
 
     where_sql = " AND ".join(where)
     # with_total=1 이 있을 때만 COUNT(*) 실행 — 메인 위젯(size=5)은 total 불필요
@@ -1752,6 +1843,16 @@ def get_monthly_trend():
                 params.append(name)
             else:
                 where.append("FALSE")
+
+    # 선택적 area_sqm → 해당 평형 ±0.5㎡ 거래만 추세 집계
+    _trend_asqm = request.args.get("area_sqm", "").strip()
+    if _trend_asqm:
+        try:
+            _tasqm = float(_trend_asqm)
+            where.append("area BETWEEN %s AND %s")
+            params += [_tasqm - 0.5, _tasqm + 0.5]
+        except ValueError:
+            pass
 
     conn = get_conn()
     cur = conn.cursor()

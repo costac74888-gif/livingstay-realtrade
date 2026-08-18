@@ -31,6 +31,7 @@ from requests.exceptions import ConnectTimeout
 BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
 BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
 BLD_FLOOR_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrFlrOulnInfo"
+BLD_EXPOS_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrExposPubuseAreaInfo"
 
 REQUEST_SLEEP = 0.15
 LIVINGSTAY_KEYWORD = "생활숙박시설"
@@ -251,6 +252,65 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         page += 1
         time.sleep(REQUEST_SLEEP)
     return floors
+
+
+def fetch_expos_area(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+    """전유부(호실별 전용면적) 조회 — getBrExposPubuseAreaInfo.
+
+    반환: [(ho, area_sqm), ...] 전용부분(exposPubuseAreaGbCd=="1")만.
+    실패 시 [] 반환 — 매물등록 자체를 막지 않는다.
+    """
+    rows = []
+    page = 1
+    num = 100
+    while True:
+        params = {
+            "serviceKey": BLD_SERVICE_KEY,
+            "sigunguCd": sigungu_cd,
+            "bjdongCd": bjdong_cd,
+            "platGbCd": plat_gb,
+            "bun": bun.zfill(4),
+            "ji": ji.zfill(4),
+            "numOfRows": num,
+            "pageNo": page,
+            "type": "xml",
+        }
+        try:
+            resp = _get_with_retry(BLD_EXPOS_URL, params=params, timeout=15)
+            resp.raise_for_status()
+        except Exception:
+            return []
+        try:
+            root = ET.fromstring(resp.content)
+        except ET.ParseError:
+            return []
+
+        items = root.findall(".//item")
+        for item in items:
+            row = {child.tag: (child.text or "").strip() for child in item}
+            # 전용부분(1)만, 공용부분(2) 제외
+            if row.get("exposPubuseAreaGbCd") != "1":
+                continue
+            ho = (row.get("hoNm") or "").strip()
+            area_txt = (row.get("area") or "").strip()
+            try:
+                area_sqm = round(float(area_txt), 2) if area_txt else None
+            except ValueError:
+                area_sqm = None
+            if area_sqm and area_sqm > 0:
+                rows.append((ho, area_sqm))
+
+        total_txt = root.findtext(".//totalCount")
+        try:
+            total = int(total_txt) if total_txt else len(rows)
+        except ValueError:
+            total = len(rows)
+
+        if not items or len(rows) >= total or page >= 20:
+            break
+        page += 1
+        time.sleep(REQUEST_SLEEP)
+    return rows
 
 
 # 관광숙박시설 세부유형 키워드 — 순서 중요(더 구체적인 표현을 먼저 검사).

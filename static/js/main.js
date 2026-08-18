@@ -1952,7 +1952,12 @@ function openListingRequestModal(buildingId, buildingName){
         </div>
 
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">전용면적 <span style="font-weight:400; color:var(--ink-soft);">(㎡, 선택)</span></div>
-        <input id="lrAreaSqm" type="number" min="1" max="9999" step="0.01" inputmode="decimal" placeholder="예) 46.28" style="${FLD} margin-bottom:12px;" />
+        <div id="lrAreaWrap" style="margin-bottom:12px;">
+          <select id="lrAreaSelect" style="${FLD}">
+            <option value="">불러오는 중…</option>
+          </select>
+          <input id="lrAreaSqm" type="number" min="1" max="9999" step="0.01" inputmode="decimal" placeholder="예) 46.28" style="${FLD} display:none; margin-top:6px;" />
+        </div>
 
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">상세주소 <span style="font-weight:400; color:var(--ink-soft);">(선택 — 비공개)</span></div>
         <div style="display:flex; gap:6px; margin-bottom:4px;">
@@ -2088,6 +2093,49 @@ function openListingRequestModal(buildingId, buildingName){
     })
     .catch(() => {});
 
+  // —— 전유부 API → 전용면적 콤보 채우기 (buildingId가 있을 때만)
+  if (buildingId) {
+    fetch(`/api/building/${buildingId}/unit-areas`, { credentials: "same-origin" })
+      .then(r => r.json()).catch(() => ({}))
+      .then(d => {
+        const areaSelectEl = ov.querySelector("#lrAreaSelect");
+        if (!areaSelectEl) return;
+        const sqms = (d.areas || [])
+          .map(a => a.area_sqm)
+          .filter((v, i, arr) => v != null && arr.indexOf(v) === i)
+          .sort((a, b) => a - b);
+        if (sqms.length > 0) {
+          areaSelectEl.innerHTML =
+            sqms.map(v => `<option value="${v}">${v}㎡</option>`).join("") +
+            `<option value="__manual__">직접입력</option>`;
+        } else {
+          // 전유부 데이터 없음 → 직접입력만
+          areaSelectEl.innerHTML = `<option value="__manual__">직접입력</option>`;
+        }
+        // 직접입력 선택 시 수동 입력창 표시
+        areaSelectEl.addEventListener("change", () => {
+          const manualInput = ov.querySelector("#lrAreaSqm");
+          if (!manualInput) return;
+          if (areaSelectEl.value === "__manual__") {
+            manualInput.style.display = "";
+            manualInput.focus();
+          } else {
+            manualInput.style.display = "none";
+          }
+        });
+      });
+  } else {
+    // 건물 없이 모달 열림 → 직접입력만
+    const areaSelectEl = ov.querySelector("#lrAreaSelect");
+    if (areaSelectEl) {
+      areaSelectEl.innerHTML = `<option value="__manual__">직접입력</option>`;
+      areaSelectEl.addEventListener("change", () => {
+        const manualInput = ov.querySelector("#lrAreaSqm");
+        if (manualInput) manualInput.style.display = areaSelectEl.value === "__manual__" ? "" : "none";
+      });
+    }
+  }
+
   // 초기 렌더
   applyDealMode(DEFAULT_DEAL_MODE);
   showPriceBox();
@@ -2192,7 +2240,15 @@ function openListingRequestModal(buildingId, buildingName){
     setMsg("");
     const btn = ov.querySelector("#lrSubmit"); btn.disabled = true; btn.textContent = "접수 중…";
     try {
-      const _areaSqmRaw = parseFloat(ov.querySelector("#lrAreaSqm").value);
+      // 전용면적: 콤보 선택값 우선, "직접입력" 또는 수동입력창이 보이면 거기서 읽음
+      const _areaSelectEl = ov.querySelector("#lrAreaSelect");
+      const _areaManualEl = ov.querySelector("#lrAreaSqm");
+      let _areaSqmRaw;
+      if (_areaSelectEl && _areaSelectEl.value && _areaSelectEl.value !== "__manual__") {
+        _areaSqmRaw = parseFloat(_areaSelectEl.value);
+      } else {
+        _areaSqmRaw = parseFloat(_areaManualEl ? _areaManualEl.value : "");
+      }
       const areaSqm = Number.isFinite(_areaSqmRaw) && _areaSqmRaw > 0 ? _areaSqmRaw : null;
       const dong = ov.querySelector("#lrDong").value.trim().slice(0, 20) || null;
       const ho = ov.querySelector("#lrHo").value.trim().slice(0, 20) || null;
@@ -2417,9 +2473,13 @@ function buildingPanelSkeleton(){
       <div class="side-empty">불러오는 중…</div>
     </section>
 
-    <section class="side-card" id="bListingsCard" style="display:none;">
-      <div class="side-card-title">직거래 매물 <span class="side-sub">공개 등록</span></div>
-      <div id="bListingsBody"></div>
+    <section class="side-card" style="padding:10px 14px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label for="bAreaFilter" style="font-size:12px; color:var(--ink-soft); white-space:nowrap; font-weight:600;">전용면적 타입</label>
+        <select id="bAreaFilter" style="flex:1; font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:4px 8px; background:#fff; color:var(--ink); cursor:pointer;">
+          <option value="">전체</option>
+        </select>
+      </div>
     </section>
 
     <section class="side-card">
@@ -2446,6 +2506,11 @@ function buildingPanelSkeleton(){
       <div style="text-align:center; margin-top:8px;">
         <a id="bTxAllLink" class="side-more" style="display:none; width:auto; padding:7px 18px; margin-top:0; text-decoration:none;" href="/transactions">이 건물 전체 실거래 보기 →</a>
       </div>
+    </section>
+
+    <section class="side-card" id="bListingsCard" style="display:none;">
+      <div class="side-card-title">직거래 매물 <span class="side-sub">공개 등록</span></div>
+      <div id="bListingsBody"></div>
     </section>
 
     <section class="side-card">
@@ -2554,9 +2619,18 @@ function _renderDetailCards(b){
     </div>`).join("");
   const hint = b.detail_fetched_at ? ""
     : ` <span style="font-size:11px;color:#8a94a0;font-weight:500;margin-left:4px;">조회 중…</span>`;
+  const unitStatsHtml = (() => {
+    const stats = Array.isArray(b.unit_area_stats) ? b.unit_area_stats : [];
+    if (!stats.length) return "";
+    const items = stats.map(s => `${s.area_sqm}㎡ ${s.ho_cnt}실`).join("&emsp;");
+    return `<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+      <div style="font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:4px;">평형별 호실수</div>
+      <div style="font-size:12.5px; color:var(--ink); line-height:1.8;">${items}</div>
+    </div>`;
+  })();
   bldgInfoCard.innerHTML = `
     <div class="side-card-title">건축정보 <span class="side-sub">${isPreC ? "건축인허가" : "표제부"}</span>${hint}</div>
-    <div class="b-bldg-grid">${cells}</div>`;
+    <div class="b-bldg-grid">${cells}</div>${unitStatsHtml}`;
 
   // 타임라인(준공전 전용)
   if (isPreC){
@@ -3255,7 +3329,7 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
   }
 }
 
-async function loadBuildingTrend(id, buildingStatus){
+async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
   const canvas = document.getElementById("bTrendChart");
   const empty = document.getElementById("bTrendEmpty");
   if (buildingStatus && buildingStatus !== "완공") {
@@ -3270,7 +3344,8 @@ async function loadBuildingTrend(id, buildingStatus){
   let items = [];
   let granularity = "month";
   try {
-    const res = await fetch("/api/monthly-trend?building_id=" + id);
+    const qs = areaFilter ? `&area_sqm=${encodeURIComponent(areaFilter)}` : "";
+    const res = await fetch("/api/monthly-trend?building_id=" + id + qs);
     const data = await res.json();
     items = data.items || [];
     granularity = data.granularity || "month";
@@ -3327,7 +3402,7 @@ function bDealTypeTag(v){
     : `<span class="tag med">중개거래</span>`;
 }
 
-async function loadBuildingTx(id, buildingStatus){
+async function loadBuildingTx(id, buildingStatus, areaFilter=""){
   if (buildingStatus && buildingStatus !== "완공") {
     document.getElementById("bTxTableWrap").innerHTML =
       '<div class="side-empty">준공 전입니다. 준공 후 실거래 목록이 표시됩니다.</div>';
@@ -3340,13 +3415,14 @@ async function loadBuildingTx(id, buildingStatus){
 
   // /api/transactions 는 요청당 size 상한이 200이라, 목표 건수(bTxShown)가 200을 넘으면
   // 200건씩 여러 페이지를 이어 받아 합친 뒤 앞에서 bTxShown개만 보여준다.
+  const areaQs = areaFilter ? `&area_sqm=${encodeURIComponent(areaFilter)}` : "";
   let items = [];
   bTxTotal = 0;
   try {
     const size = Math.min(bTxShown, 200);
     let page = 1;
     while (true){
-      const res = await fetch(`/api/transactions?building_id=${id}&page=${page}&size=${size}&with_total=1`);
+      const res = await fetch(`/api/transactions?building_id=${id}&page=${page}&size=${size}&with_total=1${areaQs}`);
       const data = await res.json();
       bTxTotal = data.total || 0;
       const batch = data.items || [];
@@ -3432,6 +3508,18 @@ function renderBuildingPanel(id){
 
   bTxShown = B_TX_INITIAL;
   bTxTotal = 0;
+
+  // 전용면적 타입 필터 — 변경 시 trend/tx 재로드
+  const bAreaFilterEl = document.getElementById("bAreaFilter");
+  let _bAreaFilter = "";
+  if (bAreaFilterEl){
+    bAreaFilterEl.addEventListener("change", () => {
+      _bAreaFilter = bAreaFilterEl.value;
+      loadBuildingTrend(id, null, _bAreaFilter);
+      loadBuildingTx(id, null, _bAreaFilter);
+    });
+  }
+
   // 4개 카드를 동시에 시작 — 헤더 응답을 기다리지 않음(B-2 병렬화)
   loadBuildingStores(id);
   loadBuildingTrend(id, null);   // null = 완공 가정으로 즉시 API 시작
@@ -3439,8 +3527,24 @@ function renderBuildingPanel(id){
   loadBuildingHeader(id).then(status => {
     // 헤더 응답 후 준공전이면 trend/tx를 status 기준으로 덮어씀
     if (status && status !== "완공") {
-      loadBuildingTrend(id, status);
-      loadBuildingTx(id, status);
+      loadBuildingTrend(id, status, _bAreaFilter);
+      loadBuildingTx(id, status, _bAreaFilter);
+    }
+    // 전용면적 필터 드롭다운 옵션 채우기 (unit_area_sqms 우선, 없으면 건너뜀)
+    if (bAreaFilterEl){
+      fetch("/api/building/" + id + "/unit-areas")
+        .then(r => r.json()).catch(() => ({}))
+        .then(d => {
+          const sqms = (d.areas || []).map(a => a.area_sqm).filter((v, i, arr) => arr.indexOf(v) === i).sort((a,b) => a-b);
+          if (sqms.length > 0){
+            bAreaFilterEl.innerHTML = `<option value="">전체</option>` +
+              sqms.map(v => `<option value="${v}">${v}㎡</option>`).join("");
+          } else {
+            // 전유부 없으면 섹션 숨김 (실거래 기반 값도 없으면 필터 불필요)
+            const sec = bAreaFilterEl.closest("section");
+            if (sec) sec.style.display = "none";
+          }
+        });
     }
   });
 }
