@@ -415,7 +415,7 @@
     .then(function (d) {
       var p = d && d.popup;
       if (!p || !p.image_url) return;
-      if (p.scope === "home_only" && location.pathname !== "/") return;
+      if (location.pathname !== "/") return;  // 팝업은 메인 홈 화면에서만 노출
       if (popupDismissed(p)) return;
       if (p.display_type === "top_banner") showSiteBanner(p);
       else showSitePopup(p);
