@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>직거래 매물 목록 . 홈앤스테이</title>
+<meta name="description" content="홈앤스테이 직거래 공개 매물 목록. 숙박시설 매매·전세·월세 직거래 매물을 확인하세요." />
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css" />
+<style>
+  .listings-page { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+  .listings-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+  .listings-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
+  .listings-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .filter-btn { padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; background: #fff; font-size: 13px; color: var(--ink-soft); cursor: pointer; transition: all .15s; }
+  .filter-btn.active { background: var(--brass); color: #fff; border-color: var(--brass); font-weight: 700; }
+  .listing-card {
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    margin-bottom: 12px; background: #fff; cursor: pointer;
+    transition: box-shadow .15s, border-color .15s;
+  }
+  .listing-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.10); border-color: var(--brass-light,#d4a843); }
+  .listing-card-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+  .listing-badge { font-size: 11.5px; font-weight: 700; color: #fff; background: var(--brass); border-radius: 5px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0; }
+  .listing-building { font-size: 14.5px; font-weight: 700; color: var(--ink); line-height: 1.4; flex: 1; }
+  .listing-price { font-size: 13.5px; font-weight: 700; color: var(--brass-dark,#7D4A00); margin-bottom: 4px; }
+  .listing-meta { font-size: 12px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 8px; }
+  .listing-meta span::before { content: "•"; margin-right: 4px; }
+  .listing-meta span:first-child::before { content: ""; margin-right: 0; }
+  .listings-empty { text-align: center; padding: 60px 20px; color: var(--ink-soft); font-size: 14px; }
+  .listings-loading { text-align: center; padding: 40px 20px; color: var(--ink-soft); font-size: 14px; }
+  .listings-more { display: block; width: 180px; margin: 18px auto 0; padding: 10px 0; text-align: center; border: 1px solid var(--line); border-radius: 8px; font-size: 13.5px; color: var(--ink-soft); background: #fff; cursor: pointer; }
+  .listings-more:hover { border-color: var(--brass); color: var(--brass-dark); }
+  @media (max-width: 600px) {
+    .listings-page { padding: 16px 12px 60px; }
+    .listings-title { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="appHeader"></div>
+<div class="listings-page">
+  <div class="listings-title">직거래 매물</div>
+  <div class="listings-sub">개인이 직접 내놓은 숙박시설 공개 매물입니다.</div>
+
+  <div class="listings-filters">
+    <button type="button" class="filter-btn active" data-dt="">전체</button>
+    <button type="button" class="filter-btn" data-dt="매매">매매</button>
+    <button type="button" class="filter-btn" data-dt="전세">전세</button>
+    <button type="button" class="filter-btn" data-dt="월세">월세</button>
+    <button type="button" class="filter-btn" data-dt="단기임대">단기임대</button>
+  </div>
+
+  <div id="listingsContainer">
+    <div class="listings-loading">불러오는 중…</div>
+  </div>
+  <button type="button" id="listingsMore" class="listings-more" style="display:none;">더보기</button>
+</div>
+<script src="/static/js/header.js"></script>
+<script src="/static/js/auth.js"></script>
+<script>
+(function(){
+  "use strict";
+  const container = document.getElementById("listingsContainer");
+  const moreBtn = document.getElementById("listingsMore");
+  let currentDt = "";
+  let offset = 0;
+  const PAGE = 20;
+  let loading = false;
+
+  function escHtml(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+
+  function dealLabel(dt){
+    const m={"매매":"매매","전세":"전세","월세":"월세","단기임대":"단기임대"};
+    return m[dt]||dt||"-";
+  }
+
+  function renderCard(item){
+    const card = document.createElement("div");
+    card.className = "listing-card";
+    card.innerHTML = `
+      <div class="listing-card-top">
+        <span class="listing-badge">${escHtml(dealLabel(item.deal_type))}</span>
+        <span class="listing-building">${escHtml(item.building_name||"-")}</span>
+      </div>
+      <div class="listing-price">${escHtml(item.desired_price||"가격 미정")}</div>
+      <div class="listing-meta">
+        <span>${escHtml(item.sgg_text||"-")}</span>
+        ${item.lodging_type ? `<span>${escHtml(item.lodging_type)}</span>` : ""}
+        <span>연락처 010-****-${escHtml(item.phone_tail||"????")}</span>
+        <span>${escHtml(item.listing_date||"")}</span>
+      </div>`;
+    card.addEventListener("click", () => {
+      if (item.building_id) window.location.href = `/building/${item.building_id}`;
+    });
+    return card;
+  }
+
+  async function loadListings(reset){
+    if (loading) return;
+    loading = true;
+    if (reset){ container.innerHTML = `<div class="listings-loading">불러오는 중…</div>`; offset = 0; }
+    try {
+      const params = new URLSearchParams({ limit: PAGE, offset });
+      if (currentDt) params.set("deal_type", currentDt);
+      const res = await fetch(`/api/listings?${params}`, { credentials: "same-origin" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok){ container.innerHTML = `<div class="listings-empty">불러오기 실패. 새로고침 해주세요.</div>`; return; }
+      if (reset) container.innerHTML = "";
+      if (!d.items || d.items.length === 0){
+        if (reset) container.innerHTML = `<div class="listings-empty">현재 공개된 직거래 매물이 없습니다.</div>`;
+        moreBtn.style.display = "none";
+      } else {
+        d.items.forEach(item => container.appendChild(renderCard(item)));
+        offset += d.items.length;
+        moreBtn.style.display = d.has_more ? "" : "none";
+      }
+    } catch(e){
+      if (reset) container.innerHTML = `<div class="listings-empty">오류가 발생했습니다.</div>`;
+    } finally { loading = false; }
+  }
+
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentDt = btn.dataset.dt;
+      loadListings(true);
+    });
+  });
+
+  moreBtn.addEventListener("click", () => loadListings(false));
+
+  loadListings(true);
+})();
+</script>
+</body>
+</html>

@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-16-2"
+SCHEMA_VERSION = "2026-08-18-1"
 
 
 def init_db():
@@ -766,6 +766,12 @@ def init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS unsubscribe_token UUID")
     cur.execute("UPDATE users SET unsubscribe_token = gen_random_uuid() WHERE unsubscribe_token IS NULL")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_tag TEXT")
+    # 매물 직거래 — 휴대폰 인증
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_code TEXT")            # 6자리 OTP
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_code_expires_at TIMESTAMP")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_code_target TEXT")     # 인증 중인 번호
 
     # 이메일 광고 배너 (주간 이메일 Zone 5)
     cur.execute("""
@@ -847,6 +853,10 @@ def init_db():
     # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
+    # 진행방식: 'direct'(직거래) | 'broker'(중개사 연결)
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS deal_mode TEXT DEFAULT 'broker'")
+    # 직거래 공개 매물 연락처 (인증된 번호)
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS verified_phone TEXT")
 
     # 매물의뢰 이력 — 접수/수정/철회 변경 내역을 타임라인으로 보존
     cur.execute("""
@@ -859,6 +869,28 @@ def init_db():
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
+
+    # 직거래 채팅방 — 매수자↔매도자 인앱 메시지
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chat_rooms (
+            id SERIAL PRIMARY KEY,
+            listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id),
+            buyer_user_id  INTEGER REFERENCES users(id),
+            seller_user_id INTEGER NOT NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE (listing_request_id, buyer_user_id)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id SERIAL PRIMARY KEY,
+            room_id INTEGER NOT NULL REFERENCES chat_rooms(id),
+            sender_user_id INTEGER NOT NULL REFERENCES users(id),
+            body TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_chat_messages_room ON chat_messages(room_id, created_at)")
 
     # 대출상담 신청 (일반회원 → 대출상담사 라우팅)
     cur.execute("""

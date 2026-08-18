@@ -662,6 +662,56 @@ def get_building(building_id):
         app.logger.exception("영업신고 매칭 실패 (building_id=%s)", building_id)
         lodgings = []
         lodging_room_total = 0
+
+    # 승인된 OTA 예약 링크 전체 (다건 지원 — booking_url_requests 기반)
+    cur.execute("""
+        SELECT bur.booking_url, o.company_name, o.subdomain_slug
+        FROM booking_url_requests bur
+        JOIN operators o ON o.id = bur.operator_id
+        WHERE bur.master_building_id = %s
+          AND bur.status = 'approved'
+          AND (bur.expires_at IS NULL OR bur.expires_at > NOW())
+          AND bur.booking_url IS NOT NULL
+          AND bur.booking_url ~ '^https?://'
+        ORDER BY bur.reviewed_at DESC NULLS LAST
+    """, [building_id])
+    _booking_urls = []
+    import datetime as _dt2
+    for _bur in cur.fetchall():
+        _url = _bur["booking_url"]
+        _dom = _url.lower().split("/")[2] if "//" in _url else ""
+        if "yanolja" in _dom:
+            _plat = "야놀자"
+        elif "yeogi" in _dom:
+            _plat = "여기어때"
+        elif "airbnb" in _dom:
+            _plat = "에어비앤비"
+        elif "booking.com" in _dom:
+            _plat = "부킹닷컴"
+        else:
+            _plat = "예약"
+        _booking_urls.append({"url": _url, "platform": _plat, "company_name": _bur["company_name"]})
+
+    # 이 건물의 공개 직거래 매물 목록 (deal_mode='direct', withdrawn 아닌 것)
+    cur.execute("""
+        SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
+               lr.verified_phone,
+               TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date
+        FROM listing_requests lr
+        WHERE lr.master_building_id = %s
+          AND lr.deal_mode = 'direct'
+          AND COALESCE(lr.status, '') <> 'withdrawn'
+        ORDER BY lr.created_at DESC
+        LIMIT 10
+    """, [building_id])
+    _direct_listings = []
+    for _lr in cur.fetchall():
+        _d = dict(_lr)
+        # 전화번호 마스킹 — 뒤 4자리만 노출
+        _phone = _d.pop("verified_phone", None) or ""
+        _d["phone_tail"] = _phone[-4:] if len(_phone) >= 4 else ""
+        _direct_listings.append(_d)
+
     cur.close()
     conn.close()
 
@@ -730,6 +780,8 @@ def get_building(building_id):
         valid_bu = None  # 만료된 운영업체 신청 링크는 미확인으로 표시
     result["booking_url"] = valid_bu
     result.pop("booking_url_expires_at", None)  # 내부값, 클라이언트 불필요
+    result["booking_urls"] = _booking_urls       # OTA 다건 지원
+    result["direct_listings"] = _direct_listings  # 직거래 공개 매물
     return jsonify(result)
 
 
@@ -3658,6 +3710,12 @@ def privacy_page():
     return _serve_static_html("privacy.html")
 
 
+@app.route("/listings")
+def listings_page():
+    """직거래 공개 매물 목록 페이지."""
+    return _serve_static_html("listings.html")
+
+
 # ---- 약관/개인정보처리방침 (legal_documents) ----
 # doc_type은 'terms' 또는 'privacy' 두 값만 허용한다.
 _LEGAL_DOC_TYPES = ("terms", "privacy")
@@ -3762,7 +3820,8 @@ def current_user():
         cur.execute(
             "SELECT id, email, name, provider,"
             " COALESCE(email_alert_enabled, TRUE) AS email_alert_enabled,"
-            " COALESCE(weekly_email_enabled, FALSE) AS weekly_email_enabled"
+            " COALESCE(weekly_email_enabled, FALSE) AS weekly_email_enabled,"
+            " phone, COALESCE(phone_verified, FALSE) AS phone_verified"
             " FROM users WHERE id = %s AND status <> 'withdrawn'",
             (uid,),
         )
@@ -3901,6 +3960,8 @@ def auth_me():
             "provider": u.get("provider"),
             "email_alert_enabled":  bool(u.get("email_alert_enabled", True)),
             "weekly_email_enabled": bool(u.get("weekly_email_enabled", False)),
+            "phone": u.get("phone"),
+            "phone_verified": bool(u.get("phone_verified", False)),
         })
 
     # 사업자 세션 확인 — agent → operator → loan_consultant 순서.
@@ -4006,6 +4067,82 @@ def auth_update_weekly_email():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "weekly_email_enabled": raw})
+
+
+@app.route("/api/auth/send-phone-code", methods=["POST"])
+@limiter.limit("5 per 10 minutes; 20 per hour")
+def auth_send_phone_code():
+    """SMS 인증번호 발송 — 로그인 필요. 6자리 OTP, 3분 유효."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    phone = re.sub(r"\D", "", (data.get("phone") or "").strip())
+    if not re.match(r"^01[016789]\d{7,8}$", phone):
+        return jsonify({"ok": False, "message": "올바른 휴대폰 번호를 입력해주세요. (010-XXXX-XXXX)"}), 400
+    # 표준 하이픈 포맷
+    if len(phone) == 11:
+        phone_fmt = f"{phone[:3]}-{phone[3:7]}-{phone[7:]}"
+    else:
+        phone_fmt = f"{phone[:3]}-{phone[3:6]}-{phone[6:]}"
+    import random as _rnd
+    code = f"{_rnd.randint(0, 999999):06d}"
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE users
+               SET phone_code = %s,
+                   phone_code_expires_at = NOW() + INTERVAL '3 minutes',
+                   phone_code_target = %s
+             WHERE id = %s
+        """, [code, phone_fmt, u["id"]])
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    sent, sms_msg = send_sms(phone_fmt, f"[홈앤스테이] 인증번호: {code} (3분 이내 입력)")
+    app.logger.info("SMS 인증 발송 user=%s sent=%s: %s", u["id"], sent, sms_msg)
+    out = {"ok": True, "sent": sent}
+    if not sent:
+        out["dev_code"] = code  # 개발환경용 (SMS 설정 없을 때)
+    return jsonify(out)
+
+
+@app.route("/api/auth/verify-phone-code", methods=["POST"])
+@limiter.limit("10 per minute")
+def auth_verify_phone_code():
+    """인증번호 확인 — 성공 시 users.phone + phone_verified 업데이트."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    code = (data.get("code") or "").strip()
+    if not code:
+        return jsonify({"ok": False, "message": "인증번호를 입력해주세요."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT phone_code, phone_code_expires_at, phone_code_target
+              FROM users WHERE id = %s
+        """, [u["id"]])
+        row = cur.fetchone()
+        if not row or not row["phone_code"]:
+            return jsonify({"ok": False, "message": "먼저 인증번호를 요청해주세요."}), 400
+        import datetime as _nowdt
+        if row["phone_code_expires_at"] and row["phone_code_expires_at"] < _nowdt.datetime.utcnow():
+            return jsonify({"ok": False, "message": "인증번호가 만료됐습니다. 다시 요청해주세요."}), 400
+        if row["phone_code"] != code:
+            return jsonify({"ok": False, "message": "인증번호가 일치하지 않습니다."}), 400
+        phone = row["phone_code_target"]
+        cur.execute("""
+            UPDATE users
+               SET phone = %s, phone_verified = TRUE,
+                   phone_code = NULL, phone_code_expires_at = NULL, phone_code_target = NULL
+             WHERE id = %s
+        """, [phone, u["id"]])
+        conn.commit()
+        return jsonify({"ok": True, "phone": phone})
+    finally:
+        cur.close(); conn.close()
 
 
 @app.route("/api/auth/password", methods=["PUT"])
@@ -6092,6 +6229,9 @@ def create_listing_request():
     except (TypeError, ValueError):
         mb_id = 0
     deal_type = (data.get("deal_type") or "").strip()
+    deal_mode = (data.get("deal_mode") or "broker").strip()
+    if deal_mode not in ("direct", "broker"):
+        deal_mode = "broker"
     desired_price = (data.get("desired_price") or "").strip()[:100]
     contact_phone = (data.get("contact_phone") or "").strip()
 
@@ -6119,8 +6259,23 @@ def create_listing_request():
         return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
     if deal_type not in _LISTING_DEAL_TYPES:
         return jsonify({"ok": False, "message": "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."}), 400
-    if not _PHONE_RE.match(contact_phone):
-        return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
+
+    # 직거래: 인증된 연락처 DB 확인 / 중개사연결: 입력 연락처 형식 검증
+    verified_phone = None
+    if deal_mode == "direct":
+        _conn2 = get_conn(); _cur2 = _conn2.cursor()
+        try:
+            _cur2.execute("SELECT phone, phone_verified FROM users WHERE id=%s", [user["id"]])
+            _urow = _cur2.fetchone()
+        finally:
+            _cur2.close(); _conn2.close()
+        if not _urow or not _urow.get("phone_verified") or not _urow.get("phone"):
+            return jsonify({"ok": False, "message": "직거래 매물은 휴대폰 인증이 필요합니다. 인증 후 다시 시도해주세요."}), 400
+        verified_phone = _urow["phone"]
+        contact_phone = verified_phone
+    else:
+        if not _PHONE_RE.match(contact_phone):
+            return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
 
     conn = get_conn()
     cur = conn.cursor()
@@ -6130,16 +6285,22 @@ def create_listing_request():
         if not bld:
             return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
 
-        routed_agent_id, routed_reason, notify_agents = _route_lead(cur, mb_id)
+        # 직거래는 중개사 라우팅 없이 공개 등록만
+        if deal_mode == "broker":
+            routed_agent_id, routed_reason, notify_agents = _route_lead(cur, mb_id)
+        else:
+            routed_agent_id, routed_reason, notify_agents = None, "direct", []
 
         cur.execute("""
             INSERT INTO listing_requests
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
-                 routed_agent_id, routed_reason, price_krw, monthly_rent_krw)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
+                 deal_mode, verified_phone)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
-              routed_agent_id, routed_reason, price_krw, monthly_rent_krw])
+              routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
+              deal_mode, verified_phone])
         req_id = cur.fetchone()["id"]
         # 이력 기록 — 최초 접수
         cur.execute(
@@ -6326,6 +6487,160 @@ def my_listing_requests():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/listings")
+@limiter.limit("120 per minute")
+def public_listings():
+    """직거래 공개 매물 목록 — 인증 불필요. deal_mode='direct' + withdrawn 아닌 것."""
+    try:
+        limit = min(int(request.args.get("limit") or 20), 50)
+        offset = max(int(request.args.get("offset") or 0), 0)
+    except (TypeError, ValueError):
+        limit, offset = 20, 0
+    deal_type_filter = (request.args.get("deal_type") or "").strip()
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        params = []
+        where_extra = ""
+        if deal_type_filter and deal_type_filter in _LISTING_DEAL_TYPES:
+            where_extra = " AND lr.deal_type = %s"
+            params.append(deal_type_filter)
+        cur.execute(f"""
+            SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
+                   lr.verified_phone,
+                   TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
+                   mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type
+            FROM listing_requests lr
+            JOIN master_buildings mb ON mb.id = lr.master_building_id
+            WHERE lr.deal_mode = 'direct'
+              AND COALESCE(lr.status, '') <> 'withdrawn'
+              {where_extra}
+            ORDER BY lr.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params + [limit + 1, offset])
+        rows = cur.fetchall()
+        has_more = len(rows) > limit
+        items = []
+        for r in rows[:limit]:
+            d = dict(r)
+            ph = d.pop("verified_phone", "") or ""
+            d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
+            items.append(d)
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "items": items, "has_more": has_more})
+
+
+# ── 인앱 채팅 (직거래 매물 문의) ─────────────────────────────────────────
+
+@app.route("/api/chat/rooms", methods=["POST"])
+@limiter.limit("20 per hour")
+def create_chat_room():
+    """직거래 매물 채팅방 생성 또는 기존 방 반환 — 로그인 필요."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        lr_id = int(data.get("listing_request_id") or 0)
+    except (TypeError, ValueError):
+        lr_id = 0
+    if not lr_id:
+        return jsonify({"ok": False, "message": "매물 ID가 필요합니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        # 매물 존재 확인 + 판매자 ID
+        cur.execute("""
+            SELECT lr.id, lr.user_id AS seller_user_id
+            FROM listing_requests lr
+            WHERE lr.id = %s AND lr.deal_mode = 'direct'
+              AND COALESCE(lr.status, '') <> 'withdrawn'
+        """, [lr_id])
+        lr = cur.fetchone()
+        if not lr:
+            return jsonify({"ok": False, "message": "공개 직거래 매물을 찾을 수 없습니다."}), 404
+        seller_id = lr["seller_user_id"]
+        buyer_id = user["id"]
+        if seller_id == buyer_id:
+            return jsonify({"ok": False, "message": "본인 매물에는 문의할 수 없습니다."}), 400
+        # UPSERT — 기존 방 있으면 반환
+        cur.execute("""
+            INSERT INTO chat_rooms (listing_request_id, buyer_user_id, seller_user_id)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (listing_request_id, buyer_user_id) DO UPDATE SET listing_request_id = EXCLUDED.listing_request_id
+            RETURNING id, created_at
+        """, [lr_id, buyer_id, seller_id])
+        room = cur.fetchone()
+        conn.commit()
+        return jsonify({"ok": True, "room_id": room["id"]})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/chat/rooms/<int:room_id>/messages")
+@limiter.limit("120 per minute")
+def get_chat_messages(room_id):
+    """채팅 메시지 조회 — 채팅방 참여자(buyer/seller)만 접근 가능."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT buyer_user_id, seller_user_id FROM chat_rooms WHERE id = %s
+        """, [room_id])
+        room = cur.fetchone()
+        if not room:
+            return jsonify({"ok": False, "message": "채팅방을 찾을 수 없습니다."}), 404
+        if user["id"] not in (room["buyer_user_id"], room["seller_user_id"]):
+            return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
+        cur.execute("""
+            SELECT cm.id, cm.sender_user_id, cm.body,
+                   TO_CHAR(cm.created_at, 'YYYY-MM-DD HH24:MI') AS sent_at,
+                   u.name AS sender_name
+            FROM chat_messages cm
+            JOIN users u ON u.id = cm.sender_user_id
+            WHERE cm.room_id = %s
+            ORDER BY cm.created_at ASC
+            LIMIT 200
+        """, [room_id])
+        messages = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "messages": messages, "my_user_id": user["id"]})
+
+
+@app.route("/api/chat/rooms/<int:room_id>/messages", methods=["POST"])
+@limiter.limit("60 per minute")
+def send_chat_message(room_id):
+    """메시지 전송 — 채팅방 참여자만."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    body = (data.get("body") or "").strip()[:1000]
+    if not body:
+        return jsonify({"ok": False, "message": "메시지를 입력해주세요."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT buyer_user_id, seller_user_id FROM chat_rooms WHERE id = %s
+        """, [room_id])
+        room = cur.fetchone()
+        if not room:
+            return jsonify({"ok": False, "message": "채팅방을 찾을 수 없습니다."}), 404
+        if user["id"] not in (room["buyer_user_id"], room["seller_user_id"]):
+            return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
+        cur.execute("""
+            INSERT INTO chat_messages (room_id, sender_user_id, body)
+            VALUES (%s, %s, %s) RETURNING id, TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS sent_at
+        """, [room_id, user["id"], body])
+        msg = cur.fetchone()
+        conn.commit()
+        return jsonify({"ok": True, "id": msg["id"], "sent_at": msg["sent_at"]})
+    finally:
+        cur.close(); conn.close()
 
 
 @app.route("/api/listing-requests/<int:req_id>", methods=["PUT"])

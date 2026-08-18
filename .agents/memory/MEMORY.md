@@ -26,3 +26,4 @@
 - [header.js modal ID collisions](apply-pages-id-collision.md) — header.js injects modal IDs (agreeTerms 등) into every page; page-local widgets must namespace IDs or auth.js double-binds.
 - [건축HUB 전국 표제부 스캔](brhub-bulk-scan.md) — recap API는 누락 심각(표제부 전수만 신뢰); HUB는 2026 신 법정동코드(12*) 모름 → 폐지 29*/46* 코드로 치환 조회.
 - [Deploy slimming: prod-only requirements](deploy-prod-requirements.md) — requirements.txt drives deploy install; keep heavy dev-only libs (pandas) out and rewrite boot-path usage with stdlib; dev keeps them installed.
+- [직거래 매물 & 휴대폰 인증 아키텍처](direct-listing-phone-auth.md) — deal_mode='direct' listing_requests는 verified_phone(DB) 기반 공개; 중개사 라우팅 없음; phone OTP는 users.phone_code(3분 TTL); /api/auth/send-phone-code + verify-phone-code; DEFAULT_DEAL_MODE="direct" in modal; booking_urls는 booking_url_requests 다건 배열로 건물 API가 반환.
