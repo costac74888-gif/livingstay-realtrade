@@ -14,14 +14,44 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
 <style>
-  .listings-page { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+  /* ── 페이지 레이아웃 ── */
+  .listings-page { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
   .listings-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
-  .listings-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
-  .listings-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-  .filter-btn { padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; background: #fff; font-size: 13px; color: var(--ink-soft); cursor: pointer; transition: all .15s; }
-  .filter-btn.active { background: var(--brass); color: #fff; border-color: var(--brass); font-weight: 700; }
+  .listings-sub   { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
 
-  /* 매물 카드 */
+  /* ── 필터 박스 (transactions.html .tx-filter 패턴 재사용) ── */
+  .tx-filter { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .ls-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr) auto;
+    gap: 12px;
+    align-items: end;
+  }
+  .ls-filter-grid .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .ls-filter-grid .field label { font-size: 11.5px; color: var(--ink-soft); font-weight: 600; }
+  .ls-filter-grid .field select,
+  .ls-filter-grid .field input {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13px; font-family: inherit; box-sizing: border-box; background: #fff; color: var(--ink);
+  }
+  .ls-filter-grid .btn-search {
+    background: var(--brass); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 22px; font-size: 13.5px; font-weight: 700; cursor: pointer;
+    font-family: inherit; white-space: nowrap;
+  }
+  .ls-filter-grid .btn-search:hover { background: var(--brass-dark); }
+
+  /* ── 채팅중 칩 바 (tx-favbar 패턴) ── */
+  .tx-favbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px; color: var(--ink-soft);
+  }
+  .tx-favbar .bar-label { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  #lsChatChips { display: flex; gap: 6px; flex-wrap: wrap; overflow-x: auto; }
+
+  /* ── 매물 카드 ── */
   .listing-card {
     border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px;
     margin-bottom: 12px; background: #fff;
@@ -32,7 +62,7 @@
   }
   .listing-card-name:hover { color: var(--brass-dark, #7D4A00); text-decoration: underline; }
 
-  /* 통일 표 */
+  /* ── 통일 표 ── */
   .listing-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .listing-tbl th {
     text-align: left; font-size: 11.5px; font-weight: 600;
@@ -45,71 +75,235 @@
     vertical-align: middle; white-space: nowrap;
   }
   .listing-tbl tr:last-child td { border-bottom: none; }
-  .listing-tbl td.td-type { font-weight: 700; }
+  .listing-tbl td.td-type  { font-weight: 700; }
   .listing-tbl td.td-price { font-weight: 700; color: var(--brass-dark, #7D4A00); }
-  .listing-tbl td.td-date { font-size: 11.5px; color: var(--ink-soft); }
-  .listing-tbl td.td-chat { text-align: center; }
+  .listing-tbl td.td-date  { font-size: 11.5px; color: var(--ink-soft); }
+  .listing-tbl td.td-chat  { text-align: center; }
+
+  /* ── 채팅 버튼 ── */
   .listing-chat-btn {
     background: none; border: none; cursor: pointer;
     font-size: 18px; line-height: 1; padding: 2px;
-    opacity: .8; transition: opacity .15s;
+    opacity: .7; transition: opacity .15s;
+    filter: grayscale(1);
   }
-  .listing-chat-btn:hover { opacity: 1; }
-
-  /* 안내 문구 */
-  .listing-card-notice {
-    font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6;
+  .listing-chat-btn:hover   { opacity: 1; filter: none; }
+  /* 채팅 중인 매물은 brass 컬러로 강조 */
+  .listing-chat-btn.is-chatting {
+    filter: none;
+    opacity: 1;
+    /* 이모지라 CSS 컬러가 직접 안 먹으므로 drop-shadow로 강조 */
+    filter: drop-shadow(0 0 3px #B4863F);
   }
 
-  /* 빈 상태 */
-  .listings-empty { text-align: center; padding: 60px 20px; color: var(--ink-soft); font-size: 14px; }
+  /* ── 안내 문구·빈 상태 ── */
+  .listing-card-notice { font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6; }
+  .listings-empty   { text-align: center; padding: 60px 20px; color: var(--ink-soft); font-size: 14px; }
   .listings-loading { text-align: center; padding: 40px 20px; color: var(--ink-soft); font-size: 14px; }
-  .listings-more { display: block; width: 180px; margin: 18px auto 0; padding: 10px 0; text-align: center; border: 1px solid var(--line); border-radius: 8px; font-size: 13.5px; color: var(--ink-soft); background: #fff; cursor: pointer; }
+  .listings-more {
+    display: block; width: 180px; margin: 18px auto 0; padding: 10px 0;
+    text-align: center; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13.5px; color: var(--ink-soft); background: #fff; cursor: pointer;
+  }
   .listings-more:hover { border-color: var(--brass); color: var(--brass-dark); }
 
-  @media (max-width: 600px) {
-    .listings-page { padding: 16px 12px 60px; }
+  /* ── 모바일 ── */
+  @media (max-width: 900px) {
+    .ls-filter-grid { grid-template-columns: 1fr 1fr; }
+    .ls-filter-grid .btn-search { grid-column: 1 / -1; }
+  }
+  @media (max-width: 520px) {
+    .listings-page  { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
-    .listing-tbl td.td-date { display: none; }
-    .listing-tbl th.th-date { display: none; }
+    .ls-filter-grid { grid-template-columns: 1fr; }
+    .listing-tbl td.td-date  { display: none; }
+    .listing-tbl th.th-date  { display: none; }
+    /* 채팅중 칩 바 가로 스크롤 */
+    #lsChatChips { flex-wrap: nowrap; }
   }
 </style>
 </head>
 <body>
-<div id="appHeader"></div>
+<header id="siteHeader"></header>
+
 <div class="listings-page">
   <div class="listings-title">직거래 매물</div>
   <div class="listings-sub">개인이 직접 내놓은 숙박시설 공개 매물입니다.</div>
 
-  <div class="listings-filters">
-    <button type="button" class="filter-btn active" data-dt="">전체</button>
-    <button type="button" class="filter-btn" data-dt="매매">매매</button>
-    <button type="button" class="filter-btn" data-dt="전세">전세</button>
-    <button type="button" class="filter-btn" data-dt="월세">월세</button>
-    <button type="button" class="filter-btn" data-dt="단기임대">단기임대</button>
+  <!-- ── 필터 박스 ── -->
+  <div class="tx-filter">
+    <div class="ls-filter-grid">
+      <div class="field">
+        <label>시/도</label>
+        <select id="lsSido"><option value="">전체</option></select>
+      </div>
+      <div class="field">
+        <label>시/군/구</label>
+        <select id="lsSggNm"><option value="">전체</option></select>
+      </div>
+      <div class="field">
+        <label>읍/면/동</label>
+        <select id="lsUmdNm"><option value="">전체</option></select>
+      </div>
+      <div class="field">
+        <label>건물명 검색</label>
+        <input type="text" id="lsQ" placeholder="예) 오션마크레지던스" />
+      </div>
+      <div class="field">
+        <label>거래유형</label>
+        <select id="lsDealType">
+          <option value="">전체</option>
+          <option value="매매">매매</option>
+          <option value="전세">전세</option>
+          <option value="월세">월세</option>
+          <option value="단기임대">단기임대</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>검색기간 (등록일)</label>
+        <select id="lsDateRange">
+          <option value="">전체</option>
+          <option value="1month">최근 1개월</option>
+          <option value="3months">최근 3개월</option>
+        </select>
+      </div>
+      <button type="button" class="btn-search" id="lsBtnSearch">검색</button>
+    </div>
+
+    <!-- 채팅중 칩 바 (로그인 시만 노출) -->
+    <div class="tx-favbar" id="lsChatBar" style="display:none;">
+      <span class="bar-label">💬 채팅중인 매물</span>
+      <div id="lsChatChips"></div>
+    </div>
   </div>
 
+  <!-- ── 목록 ── -->
   <div id="listingsContainer">
     <div class="listings-loading">불러오는 중…</div>
   </div>
   <button type="button" id="listingsMore" class="listings-more" style="display:none;">더보기</button>
 </div>
+
 <script src="/static/js/format_util.js"></script>
 <script src="/static/js/header.js"></script>
 <script src="/static/js/auth.js"></script>
 <script>
 (function(){
   "use strict";
+
+  // ── 유틸 ──────────────────────────────────────────────────────────────
+  function esc(s){ const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+
+  // ── 상태 ──────────────────────────────────────────────────────────────
   const container = document.getElementById("listingsContainer");
-  const moreBtn = document.getElementById("listingsMore");
-  let currentDt = "";
+  const moreBtn   = document.getElementById("listingsMore");
+  const state = { sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"" };
   let offset = 0;
   const PAGE = 20;
   let loading = false;
 
-  function esc(s){ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
+  // 채팅 중인 listing_request_id Set (로드 후 채움)
+  let myChattingIds = new Set();
+  // 채팅중 칩에서 선택한 필터 id (null = 전체 보기)
+  let chatFilterId = null;
 
-  // 💬 채팅방 열기
+  // ── 지역 드롭다운 ───────────────────────────────────────────────────
+  let regionTree = {};
+
+  async function loadRegions(){
+    try {
+      const res = await fetch("/api/regions");
+      regionTree = await res.json();
+    } catch(e){ return; }
+    const selSiDo = document.getElementById("lsSido");
+    selSiDo.innerHTML = '<option value="">전체</option>' +
+      Object.keys(regionTree).sort().map(sd =>
+        `<option value="${esc(sd)}">${esc(sd)}</option>`
+      ).join("");
+  }
+
+  function refreshSggOptions(){
+    const selSgg = document.getElementById("lsSggNm");
+    const selUmd = document.getElementById("lsUmdNm");
+    const sd = document.getElementById("lsSido").value;
+    if (!sd || !regionTree[sd]){
+      selSgg.innerHTML = '<option value="">전체</option>';
+      selUmd.innerHTML = '<option value="">전체</option>';
+      return;
+    }
+    const sggMap = regionTree[sd].sgg;
+    selSgg.innerHTML = '<option value="">전체</option>' +
+      Object.keys(sggMap).sort().map(sg =>
+        `<option value="${esc(sg)}">${esc(sg)}</option>`
+      ).join("");
+    selUmd.innerHTML = '<option value="">전체</option>';
+  }
+
+  function refreshUmdOptions(){
+    const selUmd = document.getElementById("lsUmdNm");
+    const sd  = document.getElementById("lsSido").value;
+    const sg  = document.getElementById("lsSggNm").value;
+    const sgg = regionTree[sd] && regionTree[sd].sgg[sg];
+    if (!sgg){
+      selUmd.innerHTML = '<option value="">전체</option>';
+      return;
+    }
+    selUmd.innerHTML = '<option value="">전체</option>' +
+      Object.keys(sgg.umd).sort().map(um =>
+        `<option value="${esc(um)}">${esc(um)}</option>`
+      ).join("");
+  }
+
+  document.getElementById("lsSido").addEventListener("change",  () => { refreshSggOptions(); });
+  document.getElementById("lsSggNm").addEventListener("change", () => { refreshUmdOptions(); });
+
+  // ── 채팅중 칩 바 ────────────────────────────────────────────────────
+  async function loadMyChatListings(){
+    try {
+      const res = await fetch("/api/chat/my-listing-ids", { credentials: "same-origin" });
+      const d   = await res.json().catch(() => ({}));
+      if (!d.ok || !d.items || d.items.length === 0) return;
+
+      myChattingIds = new Set(d.items.map(it => it.listing_request_id));
+      const bar   = document.getElementById("lsChatBar");
+      const chips = document.getElementById("lsChatChips");
+      bar.style.display = "";
+      chips.innerHTML = "";
+
+      // "전체" 리셋 칩
+      const allChip = document.createElement("span");
+      allChip.className = "fav-chip active";
+      allChip.style.cursor = "pointer";
+      allChip.textContent = "전체";
+      allChip.addEventListener("click", () => {
+        chatFilterId = null;
+        chips.querySelectorAll(".fav-chip").forEach(c => c.classList.remove("active"));
+        allChip.classList.add("active");
+        loadListings(true);
+      });
+      chips.appendChild(allChip);
+
+      d.items.forEach(it => {
+        const chip = document.createElement("span");
+        chip.className = "fav-chip";
+        chip.style.cursor = "pointer";
+        const lbl = document.createElement("span");
+        lbl.className = "label";
+        lbl.textContent = "💬 " + (it.building_name || "(건물명 없음)");
+        lbl.title = "이 매물만 보기";
+        lbl.addEventListener("click", () => {
+          chatFilterId = it.listing_request_id;
+          chips.querySelectorAll(".fav-chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+          loadListings(true);
+        });
+        chip.appendChild(lbl);
+        chips.appendChild(chip);
+      });
+    } catch(e){ /* 비로그인 or 오류 시 조용히 */ }
+  }
+
+  // ── 채팅방 열기 ─────────────────────────────────────────────────────
   async function openChat(listingRequestId){
     try {
       const res = await fetch("/api/chat/rooms", {
@@ -134,11 +328,12 @@
     }
   }
 
+  // ── 카드 렌더링 ─────────────────────────────────────────────────────
   function renderCard(item){
     const card = document.createElement("div");
     card.className = "listing-card";
 
-    // 건물명 (클릭 시 건물상세로)
+    // 건물명
     const nameEl = document.createElement("div");
     nameEl.className = "listing-card-name";
     nameEl.textContent = item.building_name || "(건물명 없음)";
@@ -147,8 +342,12 @@
     });
     card.appendChild(nameEl);
 
-    // 표: 유형 | 전용㎡ | 희망가 | 등록일 | 💬
-    const sqm = item.area_sqm ? parseFloat(item.area_sqm) + "㎡" : "-";
+    // 표
+    const sqm = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
+    const isChatting = myChattingIds.has(item.id);
+    const chatBtnClass = "listing-chat-btn" + (isChatting ? " is-chatting" : "");
+    const chatTitle     = isChatting ? "채팅 이어하기" : "문의하기";
+
     const tbl = document.createElement("table");
     tbl.className = "listing-tbl";
     tbl.innerHTML = `
@@ -163,11 +362,13 @@
       </thead>
       <tbody>
         <tr>
-          <td class="td-type">${esc(item.deal_type||"-")}</td>
+          <td class="td-type">${esc(item.deal_type || "-")}</td>
           <td>${esc(sqm)}</td>
           <td class="td-price">${esc(formatLrPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
-          <td class="td-date">${esc(item.listing_date||"")}</td>
-          <td class="td-chat"><button type="button" class="listing-chat-btn" title="문의하기">💬</button></td>
+          <td class="td-date">${esc(item.listing_date || "")}</td>
+          <td class="td-chat">
+            <button type="button" class="${chatBtnClass}" title="${chatTitle}">💬</button>
+          </td>
         </tr>
       </tbody>`;
     tbl.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
@@ -185,16 +386,46 @@
     return card;
   }
 
+  // ── 목록 로드 ────────────────────────────────────────────────────────
   async function loadListings(reset){
     if (loading) return;
     loading = true;
-    if (reset){ container.innerHTML = `<div class="listings-loading">불러오는 중…</div>`; offset = 0; }
+    if (reset){
+      container.innerHTML = `<div class="listings-loading">불러오는 중…</div>`;
+      offset = 0;
+    }
     try {
+      // 채팅중 칩 필터 (id 지정 시 해당 매물 단독 표시)
+      if (chatFilterId != null){
+        // 단일 ID 직접 렌더 (프론트 필터 — 이미 myChattingIds로 데이터 있음)
+        container.innerHTML = "";
+        moreBtn.style.display = "none";
+        // 해당 ID의 카드를 /api/listings에서 단건 조회
+        const res = await fetch(`/api/listings?limit=50&offset=0`, { credentials: "same-origin" });
+        const d = await res.json().catch(() => ({}));
+        const filtered = (d.items || []).filter(it => it.id === chatFilterId);
+        if (filtered.length === 0){
+          container.innerHTML = `<div class="listings-empty">해당 매물을 찾을 수 없습니다.</div>`;
+        } else {
+          filtered.forEach(it => container.appendChild(renderCard(it)));
+        }
+        return;
+      }
+
       const params = new URLSearchParams({ limit: PAGE, offset });
-      if (currentDt) params.set("deal_type", currentDt);
+      if (state.sido)       params.set("sido",       state.sido);
+      if (state.sgg_nm)     params.set("sgg_nm",     state.sgg_nm);
+      if (state.umd_nm)     params.set("umd_nm",     state.umd_nm);
+      if (state.q)          params.set("q",          state.q);
+      if (state.deal_type)  params.set("deal_type",  state.deal_type);
+      if (state.date_range) params.set("date_range", state.date_range);
+
       const res = await fetch(`/api/listings?${params}`, { credentials: "same-origin" });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok || !d.ok){ container.innerHTML = `<div class="listings-empty">불러오기 실패. 새로고침 해주세요.</div>`; return; }
+      const d   = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok){
+        container.innerHTML = `<div class="listings-empty">불러오기 실패. 새로고침 해주세요.</div>`;
+        return;
+      }
       if (reset) container.innerHTML = "";
       if (!d.items || d.items.length === 0){
         if (reset) container.innerHTML = `<div class="listings-empty">현재 공개된 직거래 매물이 없습니다.</div>`;
@@ -206,21 +437,41 @@
       }
     } catch(e){
       if (reset) container.innerHTML = `<div class="listings-empty">오류가 발생했습니다.</div>`;
-    } finally { loading = false; }
+    } finally {
+      loading = false;
+    }
   }
 
-  document.querySelectorAll(".filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentDt = btn.dataset.dt;
-      loadListings(true);
-    });
+  // ── 검색 버튼 ────────────────────────────────────────────────────────
+  document.getElementById("lsBtnSearch").addEventListener("click", () => {
+    chatFilterId = null;
+    // 활성 채팅 칩 초기화
+    document.querySelectorAll("#lsChatChips .fav-chip").forEach(c => c.classList.remove("active"));
+    const allChip = document.querySelector("#lsChatChips .fav-chip");
+    if (allChip) allChip.classList.add("active");
+
+    state.sido       = document.getElementById("lsSido").value;
+    state.sgg_nm     = document.getElementById("lsSggNm").value;
+    state.umd_nm     = document.getElementById("lsUmdNm").value;
+    state.q          = document.getElementById("lsQ").value.trim();
+    state.deal_type  = document.getElementById("lsDealType").value;
+    state.date_range = document.getElementById("lsDateRange").value;
+    loadListings(true);
+  });
+
+  // Enter 키로도 검색
+  document.getElementById("lsQ").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("lsBtnSearch").click();
   });
 
   moreBtn.addEventListener("click", () => loadListings(false));
 
-  loadListings(true);
+  // ── 초기 로드 ────────────────────────────────────────────────────────
+  Promise.all([
+    loadRegions(),
+    loadMyChatListings(),
+  ]).then(() => loadListings(true));
+
 })();
 </script>
 </body>

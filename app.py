@@ -6822,20 +6822,63 @@ def my_listing_request_chat_rooms(lr_id):
 @app.route("/api/listings")
 @limiter.limit("120 per minute")
 def public_listings():
-    """직거래 공개 매물 목록 — 인증 불필요. deal_mode='direct' + withdrawn 아닌 것."""
+    """직거래 공개 매물 목록 — 인증 불필요. deal_mode='direct' + withdrawn 아닌 것.
+
+    쿼리 파라미터:
+      limit, offset      — 페이징
+      deal_type          — 거래유형 필터 (매매/전세/월세/단기임대)
+      sido               — 시/도 (예: 경기도) → sgg_text 첫 토큰 정규화 후 비교
+      sgg_nm             — 시/군/구 (예: 경기도 수원시 팔달구) → mb.sgg_text 전체 일치
+      umd_nm             — 읍/면/동 (예: 매산로1가) → mb.umd_nm 일치
+      q                  — 건물명 ILIKE 검색
+      date_range         — '1month' / '3months' / '' (전체) — lr.created_at 기준
+    """
     try:
         limit = min(int(request.args.get("limit") or 20), 50)
         offset = max(int(request.args.get("offset") or 0), 0)
     except (TypeError, ValueError):
         limit, offset = 20, 0
+
     deal_type_filter = (request.args.get("deal_type") or "").strip()
+    sido_filter      = (request.args.get("sido")      or "").strip()
+    sgg_nm_filter    = (request.args.get("sgg_nm")    or "").strip()
+    umd_nm_filter    = (request.args.get("umd_nm")    or "").strip()
+    q_filter         = (request.args.get("q")         or "").strip()
+    date_range       = (request.args.get("date_range") or "").strip()
+
     conn = get_conn(); cur = conn.cursor()
     try:
         params = []
-        where_extra = ""
+        clauses = []
+
         if deal_type_filter and deal_type_filter in _LISTING_DEAL_TYPES:
-            where_extra = " AND lr.deal_type = %s"
+            clauses.append("lr.deal_type = %s")
             params.append(deal_type_filter)
+
+        if sido_filter:
+            sido_expr = _sido_norm_sql("split_part(mb.sgg_text, ' ', 1)")
+            clauses.append(f"({sido_expr}) = %s")
+            params.append(sido_filter)
+
+        if sgg_nm_filter:
+            clauses.append("mb.sgg_text = %s")
+            params.append(sgg_nm_filter)
+
+        if umd_nm_filter:
+            clauses.append("mb.umd_nm = %s")
+            params.append(umd_nm_filter)
+
+        if q_filter:
+            clauses.append("mb.building_name ILIKE %s")
+            params.append(f"%{q_filter}%")
+
+        if date_range == "1month":
+            clauses.append("lr.created_at >= NOW() - INTERVAL '1 month'")
+        elif date_range == "3months":
+            clauses.append("lr.created_at >= NOW() - INTERVAL '3 months'")
+
+        where_extra = (" AND " + " AND ".join(clauses)) if clauses else ""
+
         cur.execute(f"""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
                    lr.area_sqm, lr.verified_phone,
@@ -6861,6 +6904,35 @@ def public_listings():
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "items": items, "has_more": has_more})
+
+
+@app.route("/api/chat/my-listing-ids")
+@limiter.limit("60 per minute")
+def my_listing_ids():
+    """로그인 사용자가 참여 중인 채팅방의 listing_request_id 목록.
+    buyer 또는 seller 어느 쪽이든 포함.
+    비로그인 시 빈 배열 반환(401 아님 — 프론트에서 칩 바 숨김 처리).
+    """
+    user = session.get("user")
+    if not user:
+        return jsonify({"ok": True, "items": []})
+    uid = user["id"]
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT DISTINCT cr.listing_request_id,
+                   mb.building_name
+            FROM chat_rooms cr
+            JOIN listing_requests lr ON lr.id = cr.listing_request_id
+            JOIN master_buildings mb ON mb.id = lr.master_building_id
+            WHERE cr.buyer_user_id = %s OR cr.seller_user_id = %s
+            ORDER BY cr.listing_request_id
+        """, [uid, uid])
+        items = [{"listing_request_id": r["listing_request_id"],
+                  "building_name": r["building_name"]} for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "items": items})
 
 
 # ── 인앱 채팅 (직거래 매물 문의) ─────────────────────────────────────────
