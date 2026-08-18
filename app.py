@@ -6745,7 +6745,7 @@ def my_listing_requests():
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
-            WHERE lr.user_id = %s AND lr.status != '철회됨'
+            WHERE lr.user_id = %s
             ORDER BY lr.created_at DESC
         """, [user["id"]])
         items = [dict(r) for r in cur.fetchall()]
@@ -7019,7 +7019,7 @@ def update_listing_request(req_id):
 
 @app.route("/api/listing-requests/<int:req_id>/withdraw", methods=["POST"])
 def withdraw_listing_request(req_id):
-    """매물의뢰 철회 — 접수됨 상태인 본인 의뢰만 철회 가능. 삭제하지 않고 status만 변경."""
+    """매물의뢰 철회 — 접수됨 상태인 본인 의뢰만 철회 가능. 연관 데이터 포함 영구 삭제."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
@@ -7034,11 +7034,14 @@ def withdraw_listing_request(req_id):
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
         if row["status"] != "submitted":
             return jsonify({"ok": False, "message": "접수됨 상태에서만 철회할 수 있습니다."}), 400
-        cur.execute("UPDATE listing_requests SET status = '철회됨' WHERE id = %s", [req_id])
-        cur.execute(
-            "INSERT INTO listing_request_history (listing_request_id, action) VALUES (%s, 'withdrawn')",
-            [req_id]
-        )
+        # 연관 데이터 순서대로 삭제 (FK NO ACTION이므로 수동 처리)
+        cur.execute("""
+            DELETE FROM chat_messages
+            WHERE room_id IN (SELECT id FROM chat_rooms WHERE listing_request_id = %s)
+        """, [req_id])
+        cur.execute("DELETE FROM chat_rooms WHERE listing_request_id = %s", [req_id])
+        cur.execute("DELETE FROM listing_request_history WHERE listing_request_id = %s", [req_id])
+        cur.execute("DELETE FROM listing_requests WHERE id = %s", [req_id])
         conn.commit()
     finally:
         cur.close()
