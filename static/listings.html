@@ -94,6 +94,7 @@
   </div>
   <button type="button" id="listingsMore" class="listings-more" style="display:none;">더보기</button>
 </div>
+<script src="/static/js/format_util.js"></script>
 <script src="/static/js/header.js"></script>
 <script src="/static/js/auth.js"></script>
 <script>
@@ -164,7 +165,7 @@
         <tr>
           <td class="td-type">${esc(item.deal_type||"-")}</td>
           <td>${esc(sqm)}</td>
-          <td class="td-price">${esc(item.desired_price||"미정")}</td>
+          <td class="td-price">${esc(formatLrPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
           <td class="td-date">${esc(item.listing_date||"")}</td>
           <td class="td-chat"><button type="button" class="listing-chat-btn" title="문의하기">💬</button></td>
         </tr>

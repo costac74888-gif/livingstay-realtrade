@@ -314,6 +314,14 @@
       }
     }
 
+    // 거래유형별 희망가 포맷 헬퍼 (만원 단위)
+    function formatLrPrice(deal_type, price_krw, monthly_rent_krw) {
+      var fmt = function(v){ return v != null ? Number(v).toLocaleString() : "-"; };
+      if (deal_type === "매매" || deal_type === "전세") return fmt(price_krw);
+      if (deal_type === "월세") return "보" + fmt(price_krw) + "/" + fmt(monthly_rent_krw);
+      return "-";
+    }
+
     // 메뉴별 그리드 설정 — 같은 DataGrid에 컬럼 정의만 바꿔 그대로 재사용한다.
     const GRID_CONFIGS = {
       buildings: {
@@ -436,23 +444,29 @@
                                       ? `<strong>${t.total_lodging_count.toLocaleString()}건</strong>` : "",
         },
       },
-      // 매물: 신규 추가는 이번엔 생략(C/D 승인 이후 흐름에서 생성) — 수정/삭제/정렬/검색/엑셀만.
+      // 직거래 매물: listing_requests(deal_mode='direct') 읽기 전용 뷰.
+      // 삭제 시 상태를 '철회됨'으로 변경 (데이터 보존). 수정은 매물의뢰 탭에서.
       listings: {
         endpoint: "/api/admin/listings",
         exportUrl: "/api/admin/listings/export.xlsx",
         title: "매물관리",
-        entityLabel: "매물",
+        entityLabel: "직거래매물",
         allowAdd: false,
-        searchPlaceholder: "건물ID로 검색",
+        allowEdit: false,
+        allowDelete: true,
+        searchPlaceholder: "건물명·건물ID 검색",
         columns: [
           { key: "id", label: "ID", sortable: true },
-          { key: "building_name", label: "건물명" },
-          { key: "deal_type", label: "거래유형", sortable: true, editable: true, type: "select", options: ["매매", "전세", "월세"] },
-          { key: "price", label: "가격(만원)", sortable: true, editable: true, type: "number" },
-          { key: "monthly_rent", label: "월세(만원)", editable: true, type: "number" },
-          { key: "floor", label: "층", editable: true },
-          { key: "area", label: "면적(㎡)", editable: true, type: "number" },
-          { key: "status", label: "상태", sortable: true, editable: true, type: "select", options: ["active", "completed", "hidden"] },
+          { key: "building_name", label: "건물명", sortable: true },
+          { key: "deal_type", label: "거래유형", sortable: true },
+          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw) },
+          { key: "area_sqm", label: "면적(㎡)" },
+          { key: "contact_phone", label: "연락처" },
+          { key: "status", label: "상태", sortable: true, render: (v) => {
+            const m = { submitted: ["공개중", "ok"], "철회됨": ["철회됨", "no"] };
+            const x = m[v] || [v || "-", ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          }},
           { key: "created_at", label: "등록일", sortable: true },
         ],
       },
@@ -481,7 +495,7 @@
             if (v === "broker") return '<span class="dg-badge dg-badge-wait">중개</span>';
             return dgEscape(v || "-");
           } },
-          { key: "desired_price", label: "희망가" },
+          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw) },
           { key: "routed_reason", label: "전달구분", render: (v) => {
             const m = { exclusive: ["전속", "ok"], region: ["관할", "wait"], house: ["제휴", "no"] };
             const x = m[v] || [v || "-", ""];

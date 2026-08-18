@@ -64,9 +64,19 @@
     });
   }
 
+  // 거래유형별 희망가 포맷 (만원 단위)
+  // 매매/전세: '10,000' | 월세: '보5,000/50' | 없으면 '-'
+  function formatLrPrice(deal_type, price_krw, monthly_rent_krw) {
+    var fmt = function(v){ return v != null ? Number(v).toLocaleString() : "-"; };
+    if (deal_type === "매매" || deal_type === "전세") return fmt(price_krw);
+    if (deal_type === "월세") return "보" + fmt(price_krw) + "/" + fmt(monthly_rent_krw);
+    return "-";
+  }
+
   window.formatPhone = formatPhone;
   window.formatBizRegNumber = formatBizRegNumber;
   window.formatLicenseNumber = formatLicenseNumber;
+  window.formatLrPrice = formatLrPrice;
   window.autoHyphenPhone = autoHyphenPhone;
   window.autoHyphenBizReg = autoHyphenBizReg;
   window.autoHyphenLicense = autoHyphenLicense;

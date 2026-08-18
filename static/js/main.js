@@ -3020,11 +3020,11 @@ async function loadBuildingHeader(id){
         const lrId = lr.id;
         const dt = escapeHtml(lr.deal_type || "-");
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm) + "㎡" : "-";
-        // desired_price에서 접두어(매매가·보증금·월세 등)와 "만원" 단위 제거 → 숫자만
-        const rawPrice = lr.desired_price || "";
-        const price = rawPrice
-          ? rawPrice.replace(/(매매가|보증금|월세)\s*/g, "").replace(/만원/g, "").trim() || "-"
-          : "-";
+        // price_krw / monthly_rent_krw에서 거래유형별 통일 포맷
+        const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
+        const price = lr.deal_type === "월세"
+          ? "보" + _fmtN(lr.price_krw) + "/" + _fmtN(lr.monthly_rent_krw)
+          : _fmtN(lr.price_krw);
         const date = escapeHtml(lr.listing_date || "");
         return `<tr>
           <td style="text-align:left;">${dt}</td>

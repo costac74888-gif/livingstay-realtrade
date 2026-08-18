@@ -2700,6 +2700,18 @@ def _validate_license_digits(d):
     return len(d) == 10
 
 
+def format_lr_price(deal_type, price_krw, monthly_rent_krw):
+    """거래유형별 희망가 포맷 (단위: 만원).
+    매매/전세: '10,000' | 월세: '보5,000/50' | 없으면 '-'"""
+    if deal_type in ("매매", "전세"):
+        return f"{price_krw:,}" if price_krw is not None else "-"
+    if deal_type == "월세":
+        dep = f"{price_krw:,}" if price_krw is not None else "-"
+        rent = f"{monthly_rent_krw:,}" if monthly_rent_krw is not None else "-"
+        return f"보{dep}/{rent}"
+    return "-"
+
+
 _APPLICANT_TYPE_KR = {"agent": "중개사", "operator": "운영지원업체", "loan_consultant": "대출상담사"}
 
 
@@ -11055,7 +11067,11 @@ def admin_buildings_delete(building_id):
         conn.close()
         return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
     # 참조 매물(listings) / 슬롯(slots) — master_building_id FK
-    cur.execute("SELECT COUNT(*) c FROM listings WHERE master_building_id=%s", [building_id])
+    cur.execute(
+        "SELECT COUNT(*) c FROM listing_requests"
+        " WHERE master_building_id=%s AND deal_mode='direct' AND status <> '철회됨'",
+        [building_id],
+    )
     listing_cnt = cur.fetchone()["c"]
     cur.execute("SELECT COUNT(*) c FROM slots WHERE master_building_id=%s", [building_id])
     slot_cnt = cur.fetchone()["c"]
@@ -11150,7 +11166,8 @@ def admin_buildings_bulk_delete():
     # 참조가 있는 건물 ID를 한 번의 쿼리로 수집
     # listings, slots는 master_building_id FK로 바로 조회
     cur.execute(
-        "SELECT DISTINCT master_building_id FROM listings WHERE master_building_id = ANY(%s)"
+        "SELECT DISTINCT master_building_id FROM listing_requests"
+        " WHERE master_building_id = ANY(%s) AND deal_mode='direct' AND status <> '철회됨'"
         " UNION"
         " SELECT DISTINCT master_building_id FROM slots WHERE master_building_id = ANY(%s)",
         [id_list, id_list],
@@ -13368,16 +13385,12 @@ def admin_dismiss_building_candidate(permit_number):
     return jsonify({"ok": True})
 
 
-# ---- 매물(listings) 관리 (모두 require_admin) ----
-# 정렬 허용 컬럼 화이트리스트 → 실제 SQL 표현식 매핑 (인젝션 방지, 없으면 l.id 폴백)
+# ---- 직거래 매물(listing_requests, deal_mode='direct') 관리 (모두 require_admin) ----
+# 정렬 허용 컬럼 화이트리스트 → 실제 SQL 표현식 매핑 (인젝션 방지, 없으면 lr.id 폴백)
 ADMIN_LST_SORT = {
-    "id": "l.id", "deal_type": "l.deal_type", "price": "l.price",
-    "status": "l.status", "created_at": "l.created_at",
-}
-# 수정 가능한 컬럼 → 값 형변환 종류
-ADMIN_LST_EDITABLE = {
-    "deal_type": "text", "price": "int", "monthly_rent": "int",
-    "floor": "text", "area": "float", "status": "text",
+    "id": "lr.id", "deal_type": "lr.deal_type",
+    "status": "lr.status", "created_at": "lr.created_at",
+    "building_name": "mb.building_name",
 }
 
 
@@ -13415,102 +13428,102 @@ def _admin_paging():
 
 
 def _admin_lst_filters():
-    """매물 목록/엑셀 공용: sort_expr, order, WHERE절, 파라미터. 검색은 건물ID로 필터."""
+    """직거래 매물 목록/엑셀 공용: sort_expr, order, WHERE절(deal_mode 제외), 파라미터."""
     q = (request.args.get("q") or "").strip()
     sort_key = (request.args.get("sort") or "id").strip()
-    sort_expr = ADMIN_LST_SORT.get(sort_key, "l.id")
+    sort_expr = ADMIN_LST_SORT.get(sort_key, "lr.id")
     order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
     where = "1=1"
     params = []
-    if q.isdigit():
-        where = "l.master_building_id = %s"
-        params = [int(q)]
+    if q:
+        if q.isdigit():
+            where = "lr.master_building_id = %s"
+            params = [int(q)]
+        else:
+            where = "mb.building_name ILIKE %s"
+            params = [f"%{q}%"]
     return sort_expr, order, where, params
 
 
 @app.route("/api/admin/listings")
 @require_admin
 def admin_listings_list():
+    """직거래 매물(listing_requests, deal_mode='direct') 조회 — 읽기 전용 뷰."""
     sort_expr, order, where_sql, params = _admin_lst_filters()
     page, size, offset = _admin_paging()
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) c FROM listings l WHERE {where_sql}", params)
+    base_where = f"lr.deal_mode = 'direct' AND {where_sql}"
+    cur.execute(
+        f"SELECT COUNT(*) c FROM listing_requests lr"
+        f" LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id"
+        f" WHERE {base_where}",
+        params,
+    )
     total = cur.fetchone()["c"]
-    # sort_expr/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
     cur.execute(f"""
-        SELECT l.id, l.master_building_id, mb.building_name,
-               l.deal_type, l.price, l.monthly_rent, l.floor, l.area, l.status,
-               to_char(l.created_at, 'YYYY-MM-DD') AS created_at
-        FROM listings l
-        LEFT JOIN master_buildings mb ON mb.id = l.master_building_id
-        WHERE {where_sql}
-        ORDER BY {sort_expr} {order}, l.id ASC
+        SELECT lr.id, lr.master_building_id, mb.building_name,
+               lr.deal_type, lr.price_krw, lr.monthly_rent_krw,
+               lr.area_sqm, lr.contact_phone, lr.status,
+               to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM listing_requests lr
+        LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+        WHERE {base_where}
+        ORDER BY {sort_expr} {order}, lr.id DESC
         LIMIT %s OFFSET %s
     """, params + [size, offset])
     items = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
+    for it in items:
+        if it.get("contact_phone"):
+            it["contact_phone"] = format_phone(it["contact_phone"])
     return jsonify({"total": total, "page": page, "size": size, "items": items})
 
 
 @app.route("/api/admin/listings/<int:listing_id>", methods=["PUT"])
 @require_admin
 def admin_listings_update(listing_id):
-    data = request.get_json(force=True, silent=True) or {}
-    sets, vals = [], []
-    for c, kind in ADMIN_LST_EDITABLE.items():
-        if c in data:
-            sets.append(f"{c} = %s")
-            vals.append(_clean_typed_value(kind, data.get(c)))
-    if not sets:
-        return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM listings WHERE id=%s", [listing_id])
-    if not cur.fetchone():
-        cur.close()
-        conn.close()
-        return jsonify({"ok": False, "message": "존재하지 않는 매물입니다."}), 404
-    sets.append("updated_at = NOW()")
-    vals.append(listing_id)
-    cur.execute(f"UPDATE listings SET {', '.join(sets)} WHERE id = %s", vals)
-    conn.commit()
-    cur.close()
-    conn.close()
-    return jsonify({"ok": True})
+    """직거래 매물은 읽기 전용 — 수정 불가 (매물의뢰 탭에서 상태 관리)."""
+    return jsonify({"ok": False, "message": "직거래 매물은 읽기 전용입니다. 매물의뢰 탭을 이용하세요."}), 405
 
 
 @app.route("/api/admin/listings/<int:listing_id>", methods=["DELETE"])
 @require_admin
 def admin_listings_delete(listing_id):
-    # 매물은 다른 테이블이 참조하지 않으므로 참조 무결성 이슈 없이 바로 삭제한다.
+    """직거래 매물을 관리자 철회 처리 (status='철회됨') — 데이터는 보존."""
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM listings WHERE id=%s RETURNING id", [listing_id])
-    deleted = cur.fetchone()
+    cur.execute(
+        "UPDATE listing_requests SET status = '철회됨'"
+        " WHERE id = %s AND deal_mode = 'direct' RETURNING id",
+        [listing_id],
+    )
+    updated = cur.fetchone()
     conn.commit()
     cur.close()
     conn.close()
-    if not deleted:
-        return jsonify({"ok": False, "message": "존재하지 않는 매물입니다."}), 404
+    if not updated:
+        return jsonify({"ok": False, "message": "존재하지 않는 직거래 매물입니다."}), 404
     return jsonify({"ok": True})
 
 
 @app.route("/api/admin/listings/export.xlsx")
 @require_admin
 def admin_listings_export():
+    """직거래 매물 엑셀 다운로드 — listing_requests, deal_mode='direct'."""
     sort_expr, order, where_sql, params = _admin_lst_filters()
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"""
-        SELECT l.id, l.master_building_id, mb.building_name,
-               l.deal_type, l.price, l.monthly_rent, l.floor, l.area, l.status,
-               to_char(l.created_at, 'YYYY-MM-DD') AS created_at
-        FROM listings l
-        LEFT JOIN master_buildings mb ON mb.id = l.master_building_id
-        WHERE {where_sql}
-        ORDER BY {sort_expr} {order}, l.id ASC
+        SELECT lr.id, lr.master_building_id, mb.building_name,
+               lr.deal_type, lr.price_krw, lr.monthly_rent_krw,
+               lr.area_sqm, lr.contact_phone, lr.status,
+               to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+        FROM listing_requests lr
+        LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+        WHERE lr.deal_mode = 'direct' AND {where_sql}
+        ORDER BY {sort_expr} {order}, lr.id DESC
     """, params)
     rows = cur.fetchall()
     cur.close()
@@ -13519,14 +13532,17 @@ def admin_listings_export():
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
-    ws.title = "매물"
-    ws.append(["ID", "건물ID", "건물명", "거래유형", "가격(만원)", "월세(만원)",
-               "층", "면적(㎡)", "상태", "등록일"])
+    ws.title = "직거래매물"
+    ws.append(["ID", "건물ID", "건물명", "거래유형",
+               "가격(만원)", "월세(만원)", "면적(㎡)",
+               "연락처", "상태", "등록일"])
     for r in rows:
+        ph = format_phone(r["contact_phone"]) if r["contact_phone"] else ""
         ws.append([
             r["id"], r["master_building_id"], r["building_name"], r["deal_type"],
-            r["price"], r["monthly_rent"], r["floor"], r["area"],
-            r["status"], r["created_at"],
+            r["price_krw"], r["monthly_rent_krw"],
+            float(r["area_sqm"]) if r["area_sqm"] else "",
+            ph, r["status"], r["created_at"],
         ])
     buf = io.BytesIO()
     wb.save(buf)
@@ -13575,7 +13591,8 @@ def admin_listing_requests_list():
         cur.execute(f"""
             SELECT lr.id, lr.master_building_id, mb.building_name,
                    u.name AS requester_name,
-                   lr.deal_type, lr.desired_price, lr.area_sqm, lr.deal_mode,
+                   lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
+                   lr.area_sqm, lr.deal_mode,
                    lr.contact_phone, lr.routed_reason, lr.status, lr.admin_note,
                    CASE
                      WHEN lr.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
