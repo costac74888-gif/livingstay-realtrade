@@ -2003,14 +2003,12 @@ function openListingRequestModal(buildingId, buildingName){
 
   const PRICE_BOXES = { "매매": "lrPriceSale", "전세": "lrPriceJeonse", "월세": "lrPriceWolse", "단기임대": "lrPriceShort" };
   const _CAUTION = `<div style="font-weight:700; color:var(--ink); margin-bottom:5px; margin-top:10px;">[매물등록 유의사항]</div>` +
-    `- 상세주소(동/호)는 공개되지 않으며, 추후 안전거래 확인(소유자 인증) 목적으로만 활용됩니다.<br><br>` +
-    `- 동/호 정보가 정확하지 않으면 추후 안전거래 인증 절차에서 매물이 제외될 수 있습니다.<br><br>` +
-    `- 이미 계약이 완료됐거나 존재하지 않는 매물을 등록하면 서비스 이용이 제한될 수 있습니다.<br><br>` +
-    `- 등록하신 매물 정보와 연락처는 실제 거래 문의를 위해서만 사용되며, 관심 없는 용도로 활용되지 않습니다.`;
+    `- 상세주소(동/호)는 공개되지 않으며, 추후 안전거래 확인(소유자 인증) 목적으로만 활용됩니다.<br>` +
+    `- 동/호 정보가 정확하지 않으면 추후 안전거래 인증 절차에서 매물이 제외될 수 있습니다.<br>` +
+    `- 이미 계약이 완료됐거나 존재하지 않는 매물을 등록하면 서비스 이용이 제한될 수 있습니다.`;
   const NOTICES = {
     direct: `<div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[직거래 안내]</div>` +
-      `-매물 내용과 인증된 연락처가 건물 상세 페이지에 공개됩니다.<br><br>` +
-      `-홈앤스테이는 중개행위에 관여하지 않으며 중개수수료를 받지 않습니다.<br><br>` +
+      `-홈앤스테이는 중개행위에 관여하지 않으며 중개수수료를 받지 않습니다.<br>` +
       `-직거래 시 발생하는 법적 분쟁은 당사자 간 책임입니다. 고가 거래는 전문 중개사를 이용하시길 권장합니다.` +
       _CAUTION,
     broker: `<div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>` +
