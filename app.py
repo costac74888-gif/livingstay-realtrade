@@ -14636,6 +14636,29 @@ def admin_members_list():
     for it in items:
         it["bug_report_count"] = bug_report_map.get((it["member_type"], it["id"]), 0)
 
+    # 매물의뢰 건수 — general 회원(users.id)에 한해 배치 조회
+    general_ids = [it["id"] for it in items if it["member_type"] == "general"]
+    listing_count_map = {}
+    if general_ids:
+        cur.execute("""
+            SELECT user_id,
+                   COUNT(*) FILTER (WHERE deal_mode = 'direct') AS direct_cnt,
+                   COUNT(*) FILTER (WHERE deal_mode = 'broker')  AS broker_cnt
+            FROM listing_requests
+            WHERE user_id = ANY(%s)
+            GROUP BY user_id
+        """, [general_ids])
+        for r in cur.fetchall():
+            listing_count_map[r["user_id"]] = (int(r["direct_cnt"]), int(r["broker_cnt"]))
+    for it in items:
+        if it["member_type"] == "general":
+            d, b = listing_count_map.get(it["id"], (0, 0))
+            it["listing_direct_count"] = d
+            it["listing_broker_count"] = b
+        else:
+            it["listing_direct_count"] = None
+            it["listing_broker_count"] = None
+
     agent_ids = [it["id"] for it in items if it["member_type"] == "agent"]
     agent_tier_map = {}
     if agent_ids:
