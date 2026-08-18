@@ -870,6 +870,8 @@ let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.maps.Marker) 목록
 let mapLabelData = [];                // [{b, pos, overlay, el}] — 라벨 lazy 생성용 데이터
 let _markerLoadGen = 0;               // loadMapMarkers 호출마다 증가 — 이전 addChunk 루프 폐기용
+let _listingOverlays = [];            // 직거래 매물 마커 목록 (건물 마커와 별도 레이어)
+let _listingsVisible = true;          // 직거래 매물 레이어 표시 여부
 
 // 색상별 MarkerImage 캐시 — SVG 데이터 URI를 반복 생성하지 않는다
 const _markerImageCache = {};
@@ -1472,6 +1474,90 @@ async function updateMapForZoom(filters = {}, opts = {}){
   }
 }
 
+// ── 직거래 매물 지도 레이어 ───────────────────────────────────────────────
+
+// 직거래 매물 마커 이미지 — 마름모꼴(◇), 14×14 원형 건물 마커와 구분
+function _makeListingMarkerImage(){
+  const key = "__listing__";
+  if (_markerImageCache[key]) return _markerImageCache[key];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18">` +
+    `<polygon points="9,1 17,9 9,17 1,9" fill="#1B7F3D" stroke="white" stroke-width="2"/></svg>`;
+  const img = new kakao.maps.MarkerImage(
+    "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg),
+    new kakao.maps.Size(18, 18),
+    { offset: new kakao.maps.Point(9, 9) }
+  );
+  _markerImageCache[key] = img;
+  return img;
+}
+
+// 직거래 매물 레이어 표시/숨김 토글 (범례 버튼에서 호출)
+function toggleListingLayer(){
+  _listingsVisible = !_listingsVisible;
+  _listingOverlays.forEach(o => o.setMap(_listingsVisible ? kakaoMap : null));
+  const btn = document.getElementById("listingLayerToggle");
+  if (btn) btn.style.opacity = _listingsVisible ? "1" : "0.4";
+}
+
+// /api/listings → 초록 마름모 마커로 별도 레이어 표시.
+// clearMapMarkers()와 독립적 — 건물 마커 재로드 시에도 직거래 마커는 유지된다.
+async function loadListingMarkers(){
+  if (!kakaoMap) return;
+  _listingOverlays.forEach(o => o.setMap(null));
+  _listingOverlays = [];
+
+  let items = [];
+  try {
+    const res = await fetch("/api/listings?limit=500");
+    const data = await res.json();
+    items = (data.ok && data.items) ? data.items : [];
+  } catch(e){
+    console.error("[LISTING] 직거래 매물 로드 실패:", e);
+    return;
+  }
+
+  const valid = items.filter(it => it.lat != null && it.lng != null);
+  valid.forEach(it => {
+    const pos = new kakao.maps.LatLng(it.lat, it.lng);
+    const marker = new kakao.maps.Marker({
+      position: pos,
+      image: _makeListingMarkerImage(),
+      title: (it.building_name || "직거래매물") + " · " + (it.deal_type || ""),
+      clickable: true,
+      zIndex: 10,
+    });
+    if (_listingsVisible) marker.setMap(kakaoMap);
+
+    kakao.maps.event.addListener(marker, "click", () => {
+      if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+      const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
+      const priceStr = it.deal_type === "월세"
+        ? `보${_fmtN(it.price_krw)}/${_fmtN(it.monthly_rent_krw)}만원`
+        : `${_fmtN(it.price_krw)}만원`;
+      const area = it.area_sqm != null ? Number(it.area_sqm).toFixed(1) + "㎡" : "-";
+      const iw = new kakao.maps.InfoWindow({
+        content:
+          `<div style="padding:10px 14px;min-width:165px;font-size:13px;line-height:1.9;">` +
+          `<div style="font-weight:700;margin-bottom:2px;">🏠 직거래 매물</div>` +
+          `<div>${escapeHtml(it.deal_type || "-")} · ${escapeHtml(priceStr)}</div>` +
+          `<div style="color:#555;">전용 ${escapeHtml(area)}</div>` +
+          (it.building_name ? `<div style="color:#888;font-size:11px;">${escapeHtml(it.building_name)}</div>` : ``) +
+          `<button onclick="window.__listingChat(${it.id})" ` +
+          `style="margin-top:8px;padding:5px 14px;background:#1B7F3D;color:#fff;border:none;` +
+          `border-radius:4px;cursor:pointer;font-size:12px;">💬 채팅하기</button>` +
+          `</div>`,
+        removable: true,
+      });
+      iw.open(kakaoMap, marker);
+      currentInfoWindow = iw;
+    });
+    _listingOverlays.push(marker);
+  });
+  console.log(`[LISTING] 직거래 매물 마커 ${valid.length}개 배치`);
+}
+// InfoWindow 인라인 onclick에서 접근하는 전역 핸들러
+window.__listingChat = (id) => _openListingChat(id);
+
 async function initMap(){
   const container = document.getElementById("map");
   if (!container) return;
@@ -1527,6 +1613,24 @@ async function initMap(){
 
   // 최초 로드 — 줌 레벨 기반으로 클러스터 또는 개별 마커 결정
   await updateMapForZoom({}, { fit: false });
+
+  // 직거래 매물 마커 레이어 로드 (건물 마커와 독립)
+  loadListingMarkers();
+
+  // 직거래 매물 토글 칩을 지도 범례 끝에 삽입
+  const _legend = document.querySelector(".map-legend");
+  if (_legend) {
+    const _chip = document.createElement("button");
+    _chip.type = "button";
+    _chip.id = "listingLayerToggle";
+    _chip.title = "직거래 매물 표시/숨김";
+    _chip.style.cssText = "background:transparent;border:none;cursor:pointer;padding:2px 5px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle;";
+    _chip.innerHTML =
+      `<span style="display:inline-block;width:9px;height:9px;background:#1B7F3D;transform:rotate(45deg);flex-shrink:0;"></span>` +
+      `<span style="font-size:11px;font-weight:700;color:#1B7F3D;">직거래</span>`;
+    _chip.addEventListener("click", toggleListingLayer);
+    _legend.appendChild(_chip);
+  }
 }
 
 // 줌 컨트롤을 우측 하단 범례박스(.map-legend) 높이 + 여백만큼 위로 띄워 겹침을 막는다.
@@ -2151,14 +2255,14 @@ function openListingRequestModal(buildingId, buildingName){
 
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">희망가 <span style="font-weight:400; color:var(--ink-soft);">(선택)</span></div>
         <div id="lrPriceSale">
-          <input id="lrSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" style="${FLD} margin-bottom:12px;" />
+          <input id="lrSalePrice" type="number" min="1" max="1000000" inputmode="numeric" placeholder="매매가 (만원)" style="${FLD} margin-bottom:12px;" />
         </div>
         <div id="lrPriceJeonse" style="display:none;">
-          <input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} margin-bottom:12px;" />
+          <input id="lrJeonseDeposit" type="number" min="1" max="1000000" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} margin-bottom:12px;" />
         </div>
         <div id="lrPriceWolse" style="display:none; gap:6px; margin-bottom:12px;">
-          <input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} flex:1;" />
-          <input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" style="${FLD} flex:1;" />
+          <input id="lrWolseDeposit" type="number" min="1" max="1000000" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} flex:1;" />
+          <input id="lrWolseRent" type="number" min="1" max="1000000" inputmode="numeric" placeholder="월세 (만원)" style="${FLD} flex:1;" />
         </div>
         <div id="lrPriceShort" style="display:none;">
           <input id="lrShortPrice" type="text" maxlength="100" placeholder="예) 1박 8만원 / 주 단위 협의" style="${FLD} margin-bottom:12px;" />
@@ -2401,7 +2505,14 @@ function openListingRequestModal(buildingId, buildingName){
         setMsg("연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"); return;
       }
     }
-    const numVal = (id) => { const v = parseInt(ov.querySelector("#" + id).value, 10); return (Number.isFinite(v) && v > 0) ? v : null; };
+    const _MAX_PRICE = 1_000_000; // 100억 만원 (만원 단위)
+    let _priceOver = false;
+    const numVal = (id) => {
+      const v = parseInt(ov.querySelector("#" + id).value, 10);
+      if (!Number.isFinite(v) || v <= 0) return null;
+      if (v > _MAX_PRICE) { _priceOver = true; return null; }
+      return v;
+    };
     const fmt = (n) => n.toLocaleString("ko-KR");
     let priceKrw = null, monthlyRentKrw = null, desiredPrice = "";
     if (dealType === "매매"){ priceKrw = numVal("lrSalePrice"); if (priceKrw) desiredPrice = `매매가 ${fmt(priceKrw)}만원`; }
@@ -2410,6 +2521,7 @@ function openListingRequestModal(buildingId, buildingName){
       priceKrw = numVal("lrWolseDeposit"); monthlyRentKrw = numVal("lrWolseRent");
       const parts = []; if (priceKrw) parts.push(`보증금 ${fmt(priceKrw)}만원`); if (monthlyRentKrw) parts.push(`월세 ${fmt(monthlyRentKrw)}만원`); desiredPrice = parts.join("·");
     } else { desiredPrice = ov.querySelector("#lrShortPrice").value.trim(); }
+    if (_priceOver){ setMsg("입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."); return; }
     setMsg("");
     const btn = ov.querySelector("#lrSubmit"); btn.disabled = true; btn.textContent = "접수 중…";
     try {

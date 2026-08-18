@@ -6533,8 +6533,8 @@ def create_listing_request():
             n = int(v)
         except (TypeError, ValueError):
             return None, "희망가는 만원 단위 숫자로 입력해주세요."
-        if not (0 < n <= 100_000_000):
-            return None, "희망가 숫자 범위가 올바르지 않습니다. (1~1억 만원)"
+        if not (0 < n <= 1_000_000):
+            return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
     price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
     monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
@@ -6658,8 +6658,8 @@ def create_buy_request():
             n = int(v)
         except (TypeError, ValueError):
             return None, "희망가는 만원 단위 숫자로 입력해주세요."
-        if not (0 < n <= 100_000_000):
-            return None, "희망가 숫자 범위가 올바르지 않습니다. (1~1억 만원)"
+        if not (0 < n <= 1_000_000):
+            return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
     price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
     monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
@@ -6840,7 +6840,8 @@ def public_listings():
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
                    lr.area_sqm, lr.verified_phone,
                    TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
-                   mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type
+                   mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type,
+                   mb.lat, mb.lng
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
             WHERE lr.deal_mode = 'direct'
@@ -7134,8 +7135,8 @@ def update_listing_request(req_id):
             n = int(v)
         except (TypeError, ValueError):
             return None, "희망가는 만원 단위 숫자로 입력해주세요."
-        if not (0 < n <= 100_000_000):
-            return None, "희망가 숫자 범위가 올바르지 않습니다."
+        if not (0 < n <= 1_000_000):
+            return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
     price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
     monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
