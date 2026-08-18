@@ -799,14 +799,87 @@ def get_building(building_id):
     return jsonify(result)
 
 
+def _bg_populate_unit_areas(building_id: int) -> None:
+    """area-types 폴백 시 백그라운드에서 전유부 데이터를 가져와 building_unit_areas를 채움.
+
+    daemon 스레드에서 호출 — 이미 캐시가 있으면 즉시 반환(재진입 방지).
+    성공/실패 무관하게 sentinel 행을 삽입해 7일간 재시도 차단.
+    """
+    import building_registry as br
+    import threading as _threading
+    conn2 = None
+    try:
+        conn2 = get_conn()
+        cur2 = conn2.cursor()
+        # 7일 이내 캐시 행이 이미 있으면 skip (다른 요청이 먼저 채웠을 수도 있음)
+        cur2.execute("""
+            SELECT 1 FROM building_unit_areas
+            WHERE master_building_id = %s
+              AND fetched_at > NOW() - INTERVAL '7 days'
+            LIMIT 1
+        """, [building_id])
+        if cur2.fetchone():
+            return
+        # 위치 정보 조회
+        cur2.execute(
+            "SELECT sgg_cd, umd_nm, jibun FROM master_buildings WHERE id = %s",
+            [building_id]
+        )
+        mb = cur2.fetchone()
+        if not mb or not mb["sgg_cd"] or not mb["jibun"]:
+            return
+        bjd = _get_bjdong_map().find_bjdong_cd(mb["sgg_cd"], mb["umd_nm"])
+        if not bjd:
+            return
+        plat_gb, bun, ji = parse_jibun(mb["jibun"])
+        # 외부 API fetch (20s cap, daemon)
+        _result_box = [None]
+        _done_evt   = _threading.Event()
+        def _inner():
+            try:
+                _result_box[0] = br.fetch_expos_area(mb["sgg_cd"], bjd, plat_gb, bun, ji)
+            except Exception:
+                pass
+            finally:
+                _done_evt.set()
+        _threading.Thread(target=_inner, daemon=True).start()
+        _done_evt.wait(timeout=20)
+        raw = _result_box[0] or []
+        # DB 저장 (기존 행 교체)
+        cur2.execute("DELETE FROM building_unit_areas WHERE master_building_id = %s", [building_id])
+        if raw:
+            execute_values(cur2,
+                "INSERT INTO building_unit_areas (master_building_id, ho, area_sqm) VALUES %s",
+                [(building_id, ho, sqm) for ho, sqm in raw]
+            )
+        else:
+            cur2.execute(
+                "INSERT INTO building_unit_areas (master_building_id, ho, area_sqm) VALUES (%s, NULL, NULL)",
+                [building_id]
+            )
+        conn2.commit()
+    except Exception:
+        try:
+            if conn2: conn2.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if conn2: conn2.close()
+        except Exception:
+            pass
+
+
 @app.route("/api/building/<int:building_id>/area-types")
 def get_building_area_types(building_id):
     """전용면적 타입 목록 — 순수 DB 조회 (외부 API 없음, 빠름).
 
     1차: building_unit_areas 캐시 → area_sqm별 호실수(ho_cnt) 포함
     2차: transactions DISTINCT area 폴백 (ho_cnt=null)
+         + 백그라운드에서 전유부 캐시를 채워 다음번 호출엔 ho_cnt 표시
     반환: items=[{sqm, ho_cnt|null}], sqms=[...] (하위호환)
     """
+    import threading as _threading
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
@@ -843,6 +916,14 @@ def get_building_area_types(building_id):
                         ORDER BY a LIMIT 30
                     """, [name])
                     items = [{"sqm": float(r["a"]), "ho_cnt": None} for r in cur.fetchall()]
+
+            # building_unit_areas가 비어 있음 → 백그라운드에서 자동 채우기
+            # (다음번 area-types 호출 때 ho_cnt 표시)
+            _threading.Thread(
+                target=_bg_populate_unit_areas,
+                args=(building_id,),
+                daemon=True
+            ).start()
 
         return jsonify({"ok": True, "items": items, "sqms": [x["sqm"] for x in items]})
     except Exception as e:

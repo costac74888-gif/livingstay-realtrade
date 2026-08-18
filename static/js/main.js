@@ -3641,20 +3641,37 @@ function renderBuildingPanel(id){
     }
     // 전용면적 필터 드롭다운 옵션 채우기 (unit_area_sqms 우선, 없으면 건너뜀)
     if (bAreaFilterEl){
+      const _fillAreaFilter = (items) => {
+        if (items.length > 0){
+          const prevVal = bAreaFilterEl.value;
+          bAreaFilterEl.innerHTML = `<option value="">전체</option>` +
+            items.map(it => {
+              const label = it.ho_cnt != null ? `${it.sqm}㎡ (${it.ho_cnt}실)` : `${it.sqm}㎡`;
+              return `<option value="${it.sqm}">${label}</option>`;
+            }).join("");
+          if (prevVal) bAreaFilterEl.value = prevVal; // 선택 값 유지
+        } else {
+          // 전유부 + 실거래 모두 없으면 섹션 숨김
+          const sec = bAreaFilterEl.closest("section");
+          if (sec) sec.style.display = "none";
+        }
+      };
       fetch("/api/building/" + id + "/area-types")
         .then(r => r.json()).catch(() => ({}))
         .then(d => {
           const items = d.items || [];
-          if (items.length > 0){
-            bAreaFilterEl.innerHTML = `<option value="">전체</option>` +
-              items.map(it => {
-                const label = it.ho_cnt != null ? `${it.sqm}㎡ (${it.ho_cnt}실)` : `${it.sqm}㎡`;
-                return `<option value="${it.sqm}">${label}</option>`;
-              }).join("");
-          } else {
-            // 전유부 + 실거래 모두 없으면 섹션 숨김
-            const sec = bAreaFilterEl.closest("section");
-            if (sec) sec.style.display = "none";
+          _fillAreaFilter(items);
+          // ho_cnt가 전부 null이면 백그라운드 populate 중 → 8초 후 재시도
+          const allNull = items.length > 0 && items.every(it => it.ho_cnt == null);
+          if (allNull){
+            setTimeout(() => {
+              fetch("/api/building/" + id + "/area-types")
+                .then(r => r.json()).catch(() => ({}))
+                .then(d2 => {
+                  const items2 = d2.items || [];
+                  if (items2.some(it => it.ho_cnt != null)) _fillAreaFilter(items2);
+                });
+            }, 8000);
           }
         });
     }
