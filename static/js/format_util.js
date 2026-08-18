@@ -23,6 +23,51 @@
     return b || "";
   }
 
+  // 대출모집인 등록번호: 10자리 → 00-00000000. 실패 시 원문 반환.
+  function formatLicenseNumber(v) {
+    const d = digitsOnly(v);
+    if (d.length === 10) return d.slice(0, 2) + "-" + d.slice(2);
+    return v || "";
+  }
+
+  // ---- 입력창 자동 하이픈 (UX 전용 — 저장/전송 시엔 서버·JS에서 숫자만 추출) ----
+
+  function autoHyphenPhone(el) {
+    el.addEventListener("input", function () {
+      var d = this.value.replace(/\D/g, "").slice(0, 11);
+      var f = d;
+      if (d.startsWith("02")) {
+        if (d.length > 5) f = d.slice(0,2)+"-"+d.slice(2,6)+"-"+d.slice(6);
+        else if (d.length > 2) f = d.slice(0,2)+"-"+d.slice(2);
+      } else {
+        if (d.length > 7) f = d.slice(0,3)+"-"+d.slice(3,7)+"-"+d.slice(7);
+        else if (d.length > 3) f = d.slice(0,3)+"-"+d.slice(3);
+      }
+      this.value = f;
+    });
+  }
+
+  function autoHyphenBizReg(el) {
+    el.addEventListener("input", function () {
+      var d = this.value.replace(/\D/g, "").slice(0, 10);
+      var f = d;
+      if (d.length > 5) f = d.slice(0,3)+"-"+d.slice(3,5)+"-"+d.slice(5);
+      else if (d.length > 3) f = d.slice(0,3)+"-"+d.slice(3);
+      this.value = f;
+    });
+  }
+
+  function autoHyphenLicense(el) {
+    el.addEventListener("input", function () {
+      var d = this.value.replace(/\D/g, "").slice(0, 10);
+      this.value = d.length > 2 ? d.slice(0,2)+"-"+d.slice(2) : d;
+    });
+  }
+
   window.formatPhone = formatPhone;
   window.formatBizRegNumber = formatBizRegNumber;
+  window.formatLicenseNumber = formatLicenseNumber;
+  window.autoHyphenPhone = autoHyphenPhone;
+  window.autoHyphenBizReg = autoHyphenBizReg;
+  window.autoHyphenLicense = autoHyphenLicense;
 })();

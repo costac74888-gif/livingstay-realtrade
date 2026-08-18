@@ -304,6 +304,17 @@
   load();
 </script>
 <script>window.PAGE_TITLE = "신청 내용 수정";</script>
+<script src="/static/js/format_util.js"></script>
+<script>
+(function(){
+  var ph   = document.getElementById("phone");
+  var biz  = document.getElementById("biz_reg_number");
+  var biz2 = document.getElementById("biz_reg_number_loan");
+  if (ph)   autoHyphenPhone(ph);
+  if (biz)  autoHyphenBizReg(biz);
+  if (biz2) autoHyphenBizReg(biz2);
+})();
+</script>
 <script src="/static/js/header.js"></script>
 </body>
 </html>

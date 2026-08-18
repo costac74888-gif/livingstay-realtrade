@@ -2687,6 +2687,19 @@ def _validate_biz_reg_digits(d):
     return len(d) == 10
 
 
+def format_license_number(v):
+    """대출모집인 등록번호(10자리)를 00-00000000 형태로 포맷한다."""
+    d = _digits_only(v)
+    if len(d) == 10:
+        return f"{d[:2]}-{d[2:]}"
+    return v or ""
+
+
+def _validate_license_digits(d):
+    """숫자만 남긴 대출모집인 등록번호가 10자리인지 검사."""
+    return len(d) == 10
+
+
 _APPLICANT_TYPE_KR = {"agent": "중개사", "operator": "운영지원업체", "loan_consultant": "대출상담사"}
 
 
@@ -3067,7 +3080,7 @@ def apply_loan():
 
     office_or_company_name = (data.get("office_or_company_name") or "").strip()
     owner_name = (data.get("owner_name") or "").strip()
-    license_number = (data.get("license_number") or "").strip()
+    license_number = _digits_only(data.get("license_number"))
     biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
@@ -3101,9 +3114,11 @@ def apply_loan():
     if service_region not in LOAN_SERVICE_REGIONS:
         return jsonify({"ok": False, "message": "취급지역은 다음 중 하나여야 합니다: " + ", ".join(LOAN_SERVICE_REGIONS)}), 400
 
-    # 번호 형식 검증 — 전화번호는 필수, 사업자등록번호는 선택(입력 시에만 검사)
+    # 번호 형식 검증 — 전화번호·등록번호는 필수, 사업자등록번호는 선택(입력 시에만 검사)
     if not _validate_phone_digits(phone):
         return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
+    if not _validate_license_digits(license_number):
+        return jsonify({"ok": False, "message": "대출모집인 등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
     if biz_reg_number and not _validate_biz_reg_digits(biz_reg_number):
         return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
 
@@ -5414,15 +5429,15 @@ def admin_preview_lc_profile(lc_id):
     return jsonify({
         "office_name":   lc["office_name"],
         "owner_name":    lc["owner_name"],
-        "phone":         lc["phone"],
+        "phone":         format_phone(lc["phone"]) if lc["phone"] else None,
         "logo_src":      f"/api/partners/loan-consultant-logo/{lc['id']}" if lc["logo_url"] else None,
         "intro_text":    _render_markdown_safe(lc["intro_text"] or ""),
         "consultant_products": lc["consultant_products"],
         "kakao_chat_url": kakao_url,
         "service_region": lc["service_region"],
-        "license_number": lc["license_number"],
+        "license_number": format_license_number(lc["license_number"]) if lc["license_number"] else None,
         "office_address": lc["office_address"],
-        "biz_reg_number": lc["biz_reg_number"],
+        "biz_reg_number": format_biz_reg_number(lc["biz_reg_number"]) if lc["biz_reg_number"] else None,
         "buildings":     buildings,
         "building_count": len(buildings),
     })
@@ -5476,6 +5491,12 @@ def _agent_me_data(agent_id):
     out = dict(me)
     out["photo_src"] = f"/api/partners/agent-photo/{agent_id}" if out.get("photo_url") else None
     out["buildings"] = buildings
+    if out.get("phone"):
+        out["phone"] = format_phone(out["phone"])
+    if out.get("office_phone"):
+        out["office_phone"] = format_phone(out["office_phone"])
+    if out.get("biz_reg_number"):
+        out["biz_reg_number"] = format_biz_reg_number(out["biz_reg_number"])
     return out
 
 
@@ -6401,8 +6422,8 @@ def create_loan_consult_request():
     except (TypeError, ValueError):
         mb_id = 0
     message = (data.get("message") or "").strip()[:500]
-    contact_phone = (data.get("contact_phone") or "").strip()
-    if not mb_id or not contact_phone or not _PHONE_RE.match(contact_phone):
+    contact_phone = _digits_only((data.get("contact_phone") or "").strip())
+    if not mb_id or not _validate_phone_digits(contact_phone):
         return jsonify({"ok": False, "message": "필수 항목을 확인해주세요."}), 400
     conn = get_conn()
     cur = conn.cursor()
@@ -6436,8 +6457,8 @@ def create_operator_consult_request():
         mb_id = 0
     category = (data.get("category") or "").strip()
     message = (data.get("message") or "").strip()[:500]
-    contact_phone = (data.get("contact_phone") or "").strip()
-    if not mb_id or category not in OPERATOR_CATEGORIES or not contact_phone or not _PHONE_RE.match(contact_phone):
+    contact_phone = _digits_only((data.get("contact_phone") or "").strip())
+    if not mb_id or category not in OPERATOR_CATEGORIES or not _validate_phone_digits(contact_phone):
         return jsonify({"ok": False, "message": "필수 항목을 확인해주세요."}), 400
     conn = get_conn()
     cur = conn.cursor()
@@ -6529,6 +6550,7 @@ def create_listing_request():
     else:
         if not _PHONE_RE.match(contact_phone):
             return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
+        contact_phone = _digits_only(contact_phone)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -6638,6 +6660,7 @@ def create_buy_request():
         return jsonify({"ok": False, "message": "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."}), 400
     if not _PHONE_RE.match(contact_phone):
         return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
+    contact_phone = _digits_only(contact_phone)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -13578,6 +13601,11 @@ def admin_listing_requests_list():
     finally:
         cur.close()
         conn.close()
+    for it in items:
+        if it.get("contact_phone"):
+            it["contact_phone"] = format_phone(it["contact_phone"])
+        if it.get("agent_phone"):
+            it["agent_phone"] = format_phone(it["agent_phone"])
     return jsonify({"total": total, "page": page, "size": size, "items": items})
 
 
@@ -13677,12 +13705,12 @@ def admin_listing_requests_export():
     for r in rows:
         ws.append([
             r["id"], r["building_name"] or "", r["requester_name"] or "",
-            r["contact_phone"] or "",
+            format_phone(r["contact_phone"]) if r["contact_phone"] else "",
             r["deal_type"] or "", r["desired_price"] or "",
             float(r["area_sqm"]) if r["area_sqm"] else "",
             mode_map.get(r["deal_mode"], r["deal_mode"] or ""),
             reason_map.get(r["routed_reason"], r["routed_reason"] or ""),
-            r["agent_name"] or "", r["agent_phone"] or "",
+            r["agent_name"] or "", format_phone(r["agent_phone"]) if r["agent_phone"] else "",
             status_map.get(r["status"], r["status"] or ""),
             r["admin_note"] or "",
             r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
@@ -14696,6 +14724,9 @@ def admin_members_list():
         LIMIT %s OFFSET %s
     """, group_params + [size, offset])
     items = [dict(r) for r in cur.fetchall()]
+    for _it in items:
+        if _it.get("phone"):
+            _it["phone"] = format_phone(_it["phone"])
 
     # 광고(revenue_records) 요약 — 현재 페이지의 파트너 행에만 배치 조회로 붙인다.
     partner_keys = [(it["member_type"], it["id"]) for it in items

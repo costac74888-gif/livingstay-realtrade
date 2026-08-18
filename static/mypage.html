@@ -710,6 +710,18 @@
       '</div>' +
     '</div>';
     document.body.appendChild(ov);
+    // 연락처 입력창 자동 하이픈 (UX 전용)
+    (function(){
+      var _ph = document.getElementById("mpLrPhone");
+      if (!_ph) return;
+      _ph.addEventListener("input", function(){
+        var d = this.value.replace(/\D/g, "").slice(0, 11);
+        var f = d;
+        if (d.length > 7) f = d.slice(0,3)+"-"+d.slice(3,7)+"-"+d.slice(7);
+        else if (d.length > 3) f = d.slice(0,3)+"-"+d.slice(3);
+        this.value = f;
+      });
+    })();
     document.getElementById("mpLrClose").onclick = function(){ ov.remove(); };
     ov.addEventListener("click", function(e){ if (e.target===ov) ov.remove(); });
 
