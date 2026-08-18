@@ -800,18 +800,18 @@ def get_building(building_id):
 
 
 def _bg_populate_unit_areas(building_id: int) -> None:
-    """area-types 폴백 시 백그라운드에서 전유부 데이터를 가져와 building_unit_areas를 채움.
+    """area-types 폴백 시 백그라운드 daemon 스레드에서 전유부 데이터를 직접 fetch해 캐싱.
 
-    daemon 스레드에서 호출 — 이미 캐시가 있으면 즉시 반환(재진입 방지).
-    성공/실패 무관하게 sentinel 행을 삽입해 7일간 재시도 차단.
+    이 함수 자체가 daemon thread에서 실행되므로 fetch_expos_area를 직접 호출한다.
+    (중첩 daemon thread는 불필요하며 오히려 결과 미수신 원인이 됨)
+    실제 API 결과가 없을 때만 sentinel 삽입 — 예외 발생 시는 삽입 안 해 재시도 허용.
     """
     import building_registry as br
-    import threading as _threading
     conn2 = None
     try:
         conn2 = get_conn()
         cur2 = conn2.cursor()
-        # 7일 이내 캐시 행이 이미 있으면 skip (다른 요청이 먼저 채웠을 수도 있음)
+        # 7일 이내 캐시 행이 이미 있으면 skip
         cur2.execute("""
             SELECT 1 FROM building_unit_areas
             WHERE master_building_id = %s
@@ -832,20 +832,9 @@ def _bg_populate_unit_areas(building_id: int) -> None:
         if not bjd:
             return
         plat_gb, bun, ji = parse_jibun(mb["jibun"])
-        # 외부 API fetch (20s cap, daemon)
-        _result_box = [None]
-        _done_evt   = _threading.Event()
-        def _inner():
-            try:
-                _result_box[0] = br.fetch_expos_area(mb["sgg_cd"], bjd, plat_gb, bun, ji)
-            except Exception:
-                pass
-            finally:
-                _done_evt.set()
-        _threading.Thread(target=_inner, daemon=True).start()
-        _done_evt.wait(timeout=20)
-        raw = _result_box[0] or []
-        # DB 저장 (기존 행 교체)
+        # daemon thread 안이므로 직접 호출 (blocking OK, gunicorn worker와 무관)
+        raw = br.fetch_expos_area(mb["sgg_cd"], bjd, plat_gb, bun, ji) or []
+        # DB 저장
         cur2.execute("DELETE FROM building_unit_areas WHERE master_building_id = %s", [building_id])
         if raw:
             execute_values(cur2,
@@ -853,6 +842,7 @@ def _bg_populate_unit_areas(building_id: int) -> None:
                 [(building_id, ho, sqm) for ho, sqm in raw]
             )
         else:
+            # API 정상 응답인데 데이터가 없음 → sentinel (7일 재시도 차단)
             cur2.execute(
                 "INSERT INTO building_unit_areas (master_building_id, ho, area_sqm) VALUES (%s, NULL, NULL)",
                 [building_id]
