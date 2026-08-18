@@ -6892,6 +6892,7 @@ def get_chat_messages(room_id):
             return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
         cur.execute("""
             SELECT cm.id, cm.sender_user_id, cm.body,
+                   cm.attachment_key, cm.attachment_name,
                    TO_CHAR(cm.created_at, 'YYYY-MM-DD HH24:MI') AS sent_at,
                    u.name AS sender_name
             FROM chat_messages cm
@@ -6937,6 +6938,112 @@ def chat_unread_count():
     return jsonify({"ok": True, "count": c})
 
 
+@app.route("/api/chat/recent-unread")
+def chat_recent_unread():
+    """헤더 알림 드롭다운용 — 안 읽은 채팅을 채팅방별 최신 1건씩 최대 10개 반환."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT cr.id AS room_id,
+                   mb.building_name,
+                   (SELECT COUNT(*) FROM chat_messages
+                    WHERE room_id = cr.id AND sender_user_id != %(uid)s AND is_read = FALSE
+                   ) AS unread_count,
+                   (SELECT u2.name
+                    FROM chat_messages cm2
+                    JOIN users u2 ON u2.id = cm2.sender_user_id
+                    WHERE cm2.room_id = cr.id AND cm2.sender_user_id != %(uid)s AND cm2.is_read = FALSE
+                    ORDER BY cm2.created_at DESC LIMIT 1
+                   ) AS sender_name,
+                   (SELECT COALESCE(NULLIF(TRIM(cm2.body),''), '(첨부파일)')
+                    FROM chat_messages cm2
+                    WHERE cm2.room_id = cr.id AND cm2.sender_user_id != %(uid)s AND cm2.is_read = FALSE
+                    ORDER BY cm2.created_at DESC LIMIT 1
+                   ) AS body,
+                   (SELECT TO_CHAR(cm2.created_at, 'YYYY-MM-DD HH24:MI')
+                    FROM chat_messages cm2
+                    WHERE cm2.room_id = cr.id AND cm2.sender_user_id != %(uid)s AND cm2.is_read = FALSE
+                    ORDER BY cm2.created_at DESC LIMIT 1
+                   ) AS sent_at,
+                   (SELECT cm2.created_at
+                    FROM chat_messages cm2
+                    WHERE cm2.room_id = cr.id AND cm2.sender_user_id != %(uid)s AND cm2.is_read = FALSE
+                    ORDER BY cm2.created_at DESC LIMIT 1
+                   ) AS latest_at
+            FROM chat_rooms cr
+            JOIN listing_requests lr ON lr.id = cr.listing_request_id
+            JOIN master_buildings mb ON mb.id = lr.master_building_id
+            WHERE (cr.buyer_user_id = %(uid)s OR cr.seller_user_id = %(uid)s)
+              AND EXISTS (
+                SELECT 1 FROM chat_messages
+                WHERE room_id = cr.id AND sender_user_id != %(uid)s AND is_read = FALSE
+              )
+            ORDER BY latest_at DESC
+            LIMIT 10
+        """, {"uid": u["id"]})
+        items = [dict(r) for r in cur.fetchall()]
+        for it in items:
+            it.pop("latest_at", None)
+            it["unread_count"] = int(it["unread_count"])
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/chat/rooms/<int:room_id>/attachments", methods=["POST"])
+@limiter.limit("20 per minute")
+def upload_chat_attachment(room_id):
+    """채팅 첨부파일 업로드 — 채팅방 참여자만, jpg/jpeg/png/pdf 5MB 이하."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if "file" not in request.files:
+        return jsonify({"ok": False, "message": "파일이 없습니다."}), 400
+    f = request.files["file"]
+    original_name = (f.filename or "").strip()
+    if not original_name:
+        return jsonify({"ok": False, "message": "파일명이 없습니다."}), 400
+    ext = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if ext not in storage_util.CHAT_ATTACHMENT_EXTENSIONS:
+        return jsonify({"ok": False, "message": "jpg, jpeg, png, pdf만 첨부 가능합니다."}), 400
+    data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if not storage_util.check_magic_bytes(data, ext):
+        return jsonify({"ok": False, "message": "파일 형식이 올바르지 않습니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT buyer_user_id, seller_user_id FROM chat_rooms WHERE id = %s", [room_id])
+        room = cur.fetchone()
+        if not room:
+            return jsonify({"ok": False, "message": "채팅방을 찾을 수 없습니다."}), 404
+        if user["id"] not in (room["buyer_user_id"], room["seller_user_id"]):
+            return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
+    finally:
+        cur.close(); conn.close()
+    key = storage_util.build_chat_attachment_key(ext)
+    storage_util.upload_doc(key, data)
+    return jsonify({"ok": True, "key": key, "name": original_name})
+
+
+@app.route("/api/chat/attachments/<path:key>")
+def chat_attachment_proxy(key):
+    """채팅 첨부파일 다운로드 프록시 — 로그인한 사용자만."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if not storage_util.is_valid_chat_attachment_ref(key):
+        return jsonify({"ok": False, "message": "잘못된 파일 경로입니다."}), 400
+    data = storage_util.download_bytes(key)
+    ext = key.rsplit(".", 1)[-1].lower()
+    ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+          "pdf": "application/pdf"}.get(ext, "application/octet-stream")
+    return Response(data, mimetype=ct)
+
+
 @app.route("/api/chat/rooms/<int:room_id>/messages", methods=["POST"])
 @limiter.limit("60 per minute")
 def send_chat_message(room_id):
@@ -6946,8 +7053,12 @@ def send_chat_message(room_id):
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     data = request.get_json(force=True, silent=True) or {}
     body = (data.get("body") or "").strip()[:1000]
-    if not body:
-        return jsonify({"ok": False, "message": "메시지를 입력해주세요."}), 400
+    attachment_key  = (data.get("attachment_key")  or "").strip() or None
+    attachment_name = (data.get("attachment_name") or "").strip()[:200] or None
+    if not body and not attachment_key:
+        return jsonify({"ok": False, "message": "메시지 또는 첨부파일을 입력해주세요."}), 400
+    if attachment_key and not storage_util.is_valid_chat_attachment_ref(attachment_key):
+        return jsonify({"ok": False, "message": "잘못된 첨부파일 참조입니다."}), 400
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
@@ -6959,9 +7070,9 @@ def send_chat_message(room_id):
         if user["id"] not in (room["buyer_user_id"], room["seller_user_id"]):
             return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
         cur.execute("""
-            INSERT INTO chat_messages (room_id, sender_user_id, body)
-            VALUES (%s, %s, %s) RETURNING id, TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS sent_at
-        """, [room_id, user["id"], body])
+            INSERT INTO chat_messages (room_id, sender_user_id, body, attachment_key, attachment_name)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id, TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS sent_at
+        """, [room_id, user["id"], body, attachment_key, attachment_name])
         msg = cur.fetchone()
         conn.commit()
         return jsonify({"ok": True, "id": msg["id"], "sent_at": msg["sent_at"]})

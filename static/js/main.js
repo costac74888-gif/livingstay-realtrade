@@ -185,13 +185,16 @@ function openChatModal(roomId){
   ov.innerHTML = `
     <div id="chatModalBox" style="width:100%; max-width:520px; background:#fff; border-radius:16px 16px 0 0; display:flex; flex-direction:column; max-height:80vh; box-shadow:0 -4px 24px rgba(0,0,0,.18);">
       <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid var(--line); flex-shrink:0;">
-        <span style="font-size:15px; font-weight:700; color:var(--ink);">직거래 문의</span>
+        <span style="font-size:15px; font-weight:700; color:var(--ink);">직거래 채팅</span>
         <button id="chatModalClose" style="background:none; border:none; font-size:22px; color:var(--ink-soft); cursor:pointer; line-height:1; padding:0 4px;">×</button>
       </div>
       <div id="chatMsgList" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;">
         <div style="text-align:center; color:var(--ink-soft); font-size:13px;">불러오는 중…</div>
       </div>
-      <div style="padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px; flex-shrink:0; background:#fafafa; border-radius:0 0 0 0;">
+      <div id="chatAttachPreview" style="display:none; padding:6px 14px; background:#fafafa; border-top:1px solid var(--line); font-size:12px; color:var(--ink-soft); display:flex; align-items:center; gap:6px;"></div>
+      <div style="padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px; flex-shrink:0; background:#fafafa;">
+        <input type="file" id="chatFileInput" accept=".jpg,.jpeg,.png,.pdf" style="display:none;" />
+        <button id="chatAttachBtn" title="파일 첨부" style="background:none; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:17px; cursor:pointer; color:var(--ink-soft); line-height:1;">📎</button>
         <input id="chatInput" type="text" maxlength="500" placeholder="메시지를 입력하세요…" style="flex:1; border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:14px; font-family:inherit; outline:none;" />
         <button id="chatSendBtn" style="background:var(--brass,#B4863F); color:#fff; border:none; border-radius:8px; padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap;">전송</button>
       </div>
@@ -201,11 +204,15 @@ function openChatModal(roomId){
 
   let myUserId = null;
   let pollTimer = null;
+  let pendingAttachment = null; // { key, name }
 
-  const listEl   = ov.querySelector("#chatMsgList");
-  const inputEl  = ov.querySelector("#chatInput");
-  const sendBtn  = ov.querySelector("#chatSendBtn");
-  const closeBtn = ov.querySelector("#chatModalClose");
+  const listEl      = ov.querySelector("#chatMsgList");
+  const inputEl     = ov.querySelector("#chatInput");
+  const sendBtn     = ov.querySelector("#chatSendBtn");
+  const closeBtn    = ov.querySelector("#chatModalClose");
+  const attachBtn   = ov.querySelector("#chatAttachBtn");
+  const fileInputEl = ov.querySelector("#chatFileInput");
+  const attachPrev  = ov.querySelector("#chatAttachPreview");
 
   function _renderMessages(messages){
     if (!messages.length){
@@ -214,13 +221,27 @@ function openChatModal(roomId){
     }
     const wasAtBottom = listEl.scrollHeight - listEl.scrollTop <= listEl.clientHeight + 40;
     listEl.innerHTML = messages.map(m => {
-      const isMine = m.sender_user_id === myUserId;
+      const isMine = String(m.sender_user_id) === String(myUserId);
       const bg    = isMine ? "var(--brass,#B4863F)" : "#f0f0f0";
       const clr   = isMine ? "#fff" : "var(--ink)";
       const align = isMine ? "flex-end" : "flex-start";
+      const br    = isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px";
+      let contentHtml = "";
+      if (m.body) {
+        contentHtml += `<div style="background:${bg}; color:${clr}; border-radius:${br}; padding:8px 12px; max-width:75%; font-size:14px; line-height:1.5; word-break:break-word;">${escapeHtml(m.body)}</div>`;
+      }
+      if (m.attachment_key) {
+        const ext = m.attachment_key.split(".").pop().toLowerCase();
+        const url = `/api/chat/attachments/${m.attachment_key}`;
+        if (["jpg","jpeg","png"].includes(ext)) {
+          contentHtml += `<a href="${url}" target="_blank" rel="noopener" style="display:block; max-width:75%;"><img src="${url}" style="max-width:100%; max-height:200px; border-radius:8px; display:block; margin-top:${m.body ? "4px" : "0"};" /></a>`;
+        } else {
+          contentHtml += `<a href="${url}" target="_blank" rel="noopener" style="background:${bg}; color:${clr}; border-radius:${br}; padding:8px 12px; max-width:75%; font-size:13px; display:inline-block; text-decoration:none; margin-top:${m.body ? "4px" : "0"};">📎 ${escapeHtml(m.attachment_name || "첨부파일")}</a>`;
+        }
+      }
       return `<div style="display:flex; flex-direction:column; align-items:${align}; gap:2px;">
         ${!isMine ? `<span style="font-size:11px; color:var(--ink-soft);">${escapeHtml(m.sender_name || "")}</span>` : ""}
-        <div style="background:${bg}; color:${clr}; border-radius:${isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px"}; padding:8px 12px; max-width:75%; font-size:14px; line-height:1.5; word-break:break-word;">${escapeHtml(m.body)}</div>
+        ${contentHtml}
         <span style="font-size:10.5px; color:var(--ink-soft);">${escapeHtml(m.sent_at || "")}</span>
       </div>`;
     }).join("");
@@ -238,32 +259,76 @@ function openChatModal(roomId){
     } catch(e){ /* 조용히 실패 — 폴링이 재시도 */ }
   }
 
+  async function _uploadFile(file){
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/chat/rooms/${roomId}/attachments`, {
+      method: "POST", credentials: "same-origin", body: fd,
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!d.ok) throw new Error(d.message || "업로드 실패");
+    return { key: d.key, name: d.name };
+  }
+
   async function _send(){
     const body = inputEl.value.trim();
-    if (!body) return;
+    const att  = pendingAttachment;
+    if (!body && !att) return;
     inputEl.value = "";
+    pendingAttachment = null;
+    attachPrev.style.display = "none";
+    attachPrev.innerHTML = "";
     sendBtn.disabled = true;
     try {
+      const payload = { body };
+      if (att) { payload.attachment_key = att.key; payload.attachment_name = att.name; }
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ body }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) await _loadMessages();
       else {
         const d = await res.json().catch(() => ({}));
-        inputEl.value = body; // 실패 시 복원
+        inputEl.value = body;
+        if (att) { pendingAttachment = att; attachPrev.style.display = "flex"; attachPrev.innerHTML = `📎 ${escapeHtml(att.name)}`; }
         alert(d.message || "전송에 실패했습니다.");
       }
     } catch(e){
       inputEl.value = body;
+      if (att) pendingAttachment = att;
       alert("네트워크 오류가 발생했습니다.");
     } finally {
       sendBtn.disabled = false;
       inputEl.focus();
     }
   }
+
+  // 파일 첨부 버튼
+  attachBtn.addEventListener("click", () => fileInputEl.click());
+  fileInputEl.addEventListener("change", async () => {
+    const file = fileInputEl.files[0];
+    if (!file) return;
+    fileInputEl.value = "";
+    attachPrev.style.display = "flex";
+    attachPrev.innerHTML = `<span>📎 ${escapeHtml(file.name)} 업로드 중…</span>`;
+    try {
+      const att = await _uploadFile(file);
+      pendingAttachment = att;
+      attachPrev.innerHTML = `<span>📎 ${escapeHtml(att.name)}</span><button id="chatAttachRm" style="margin-left:6px;background:none;border:none;cursor:pointer;color:#c00;font-size:14px;padding:0;">✕</button>`;
+      document.getElementById("chatAttachRm")?.addEventListener("click", () => {
+        pendingAttachment = null;
+        attachPrev.style.display = "none";
+        attachPrev.innerHTML = "";
+      });
+    } catch(e) {
+      pendingAttachment = null;
+      attachPrev.style.display = "none";
+      attachPrev.innerHTML = "";
+      alert(e.message || "파일 업로드에 실패했습니다.");
+    }
+  });
 
   const _close = () => {
     clearInterval(pollTimer);
@@ -280,6 +345,9 @@ function openChatModal(roomId){
   pollTimer = setInterval(_loadMessages, 5000);
   setTimeout(() => inputEl.focus(), 100);
 }
+
+// header.js에서 알림 드롭다운 채팅 항목 클릭 시 사용
+window.openChatModal = openChatModal;
 
 let _fallbackToastTimer = null;
 function showFallbackToast(msg){

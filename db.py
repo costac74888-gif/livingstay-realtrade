@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-18-5"
+SCHEMA_VERSION = "2026-08-18-6"
 
 
 def init_db():
@@ -899,10 +899,12 @@ def init_db():
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS ix_chat_messages_room ON chat_messages(room_id, created_at)")
-    # 기존 테이블에 is_read 컬럼 추가 (이미 있으면 무시)
+    # 기존 테이블에 컬럼 추가 (이미 있으면 무시)
     cur.execute("""
         ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE
     """)
+    cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_key TEXT")
+    cur.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT")
 
     # 대출상담 신청 (일반회원 → 대출상담사 라우팅)
     cur.execute("""

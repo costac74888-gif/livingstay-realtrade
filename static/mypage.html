@@ -272,7 +272,7 @@
     // ── 채팅 문의 버튼 (매도자 입장 — 내 매물에 온 문의) ──
     var chatCount = parseInt(it.chat_room_count, 10) || 0;
     var chatBtn = chatCount > 0
-      ? '<button class="lr-chat-btn" data-id="' + it.id + '" data-count="' + chatCount + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;margin-top:4px;">💬 문의 ' + chatCount + '건</button>'
+      ? '<button class="lr-chat-btn" data-id="' + it.id + '" data-count="' + chatCount + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;margin-top:4px;">💬 채팅 ' + chatCount + '건</button>'
       : '';
     var actionBtns = "";
     if (it.status === "submitted") {
@@ -529,7 +529,7 @@
     overlay.innerHTML =
       '<div style="background:#fff;width:100%;max-width:520px;max-height:55vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #eee;">' +
-          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 문의 목록</span>' +
+          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 채팅 목록</span>' +
           '<button id="mpChatListClose" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">×</button>' +
         '</div>' +
         '<div style="overflow-y:auto;">' + listHtml + '</div>' +

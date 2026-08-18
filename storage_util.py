@@ -146,6 +146,19 @@ def is_valid_bug_screenshot_ref(ref):
     return bool(ref) and bool(BUG_SCREENSHOT_REF_RE.match(ref))
 
 
+# ---- 채팅 첨부파일 (참여자만 열람, 비공개) ----
+CHAT_ATTACHMENT_EXTENSIONS = {"jpg", "jpeg", "png", "pdf"}
+CHAT_ATTACHMENT_REF_RE = re.compile(r"^chat_attachments/[0-9a-f]{32}\.(jpg|jpeg|png|pdf)$")
+
+
+def build_chat_attachment_key(ext):
+    return f"chat_attachments/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_chat_attachment_ref(ref):
+    return bool(ref) and bool(CHAT_ATTACHMENT_REF_RE.match(ref))
+
+
 def download_bytes(key):
     """Object Storage에서 객체 바이트를 내려받는다(팝업 이미지 공개 프록시용)."""
     return get_client().download_as_bytes(key)

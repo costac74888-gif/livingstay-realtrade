@@ -237,22 +237,37 @@
       return;
     }
     notifList.innerHTML = '<div class="notif-empty">불러오는 중…</div>';
-    fetch("/api/notifications/mine", { credentials: "same-origin" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.ok) { notifList.innerHTML = '<div class="notif-empty">알림을 불러오지 못했습니다.</div>'; return; }
-        var items = d.items || [];
-        if (!items.length) { notifList.innerHTML = '<div class="notif-empty">받은 알림이 없습니다.</div>'; return; }
-        notifList.innerHTML = items.map(function (it) {
-          var cls = "notif-item" + (it.is_read ? "" : " unread");
-          return '<div class="' + cls + '" data-id="' + it.id + '" data-bid="' + (it.building_id != null ? it.building_id : "") + '">' +
-                   '<div class="notif-title">' + esc(it.title) + '</div>' +
-                   (it.body ? '<div class="notif-body">' + esc(it.body) + '</div>' : '') +
-                   '<div class="notif-time">' + notifTimeAgo(it.created_at) + '</div>' +
-                 '</div>';
-        }).join("");
-      })
-      .catch(function () { notifList.innerHTML = '<div class="notif-empty">알림을 불러오지 못했습니다.</div>'; });
+    Promise.all([
+      fetch("/api/notifications/mine",   { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; }),
+      fetch("/api/chat/recent-unread",   { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; })
+    ]).then(function(results) {
+      var notifItems = (results[0] && results[0].ok) ? (results[0].items || []) : [];
+      var chatItems  = (results[1] && results[1].ok) ? (results[1].items || []) : [];
+      if (!notifItems.length && !chatItems.length) {
+        notifList.innerHTML = '<div class="notif-empty">받은 알림이 없습니다.</div>';
+        return;
+      }
+      var html = "";
+      // 채팅 알림 먼저 (더 즉각적)
+      chatItems.forEach(function(it) {
+        var cnt = it.unread_count > 1 ? ' · ' + it.unread_count + '개 미읽음' : '';
+        html += '<div class="notif-item unread notif-chat-item" data-room="' + it.room_id + '">' +
+                  '<div class="notif-title">💬 ' + esc(it.sender_name || "상대방") + '님의 채팅</div>' +
+                  '<div class="notif-body">[' + esc(it.building_name || "") + '] ' + esc(it.body || "(첨부파일)") + '</div>' +
+                  '<div class="notif-time">' + notifTimeAgo(it.sent_at) + cnt + '</div>' +
+                '</div>';
+      });
+      // 실거래 알림
+      notifItems.forEach(function(it) {
+        var cls = "notif-item" + (it.is_read ? "" : " unread");
+        html += '<div class="' + cls + '" data-id="' + it.id + '" data-bid="' + (it.building_id != null ? it.building_id : "") + '">' +
+                  '<div class="notif-title">' + esc(it.title) + '</div>' +
+                  (it.body ? '<div class="notif-body">' + esc(it.body) + '</div>' : '') +
+                  '<div class="notif-time">' + notifTimeAgo(it.created_at) + '</div>' +
+                '</div>';
+      });
+      notifList.innerHTML = html;
+    }).catch(function() { notifList.innerHTML = '<div class="notif-empty">알림을 불러오지 못했습니다.</div>'; });
   }
 
   // 폴링(1분 간격) — auth.js가 로그인/로그아웃 시점에 start/stop 호출.
@@ -291,10 +306,23 @@
         alertMenuBtn.setAttribute("aria-expanded", "false");
       }
     });
-    // 항목 클릭 → 읽음 처리 후 해당 건물 상세로 이동.
+    // 항목 클릭 → 채팅 항목은 채팅 모달, 실거래 알림은 건물 상세로 이동
     notifList.addEventListener("click", function (e) {
       var item = e.target.closest(".notif-item");
       if (!item) return;
+      // 채팅 알림 클릭
+      if (item.classList.contains("notif-chat-item")) {
+        var roomId = parseInt(item.getAttribute("data-room"), 10);
+        alertMenu.classList.remove("open");
+        alertMenuBtn.setAttribute("aria-expanded", "false");
+        if (window.openChatModal) {
+          window.openChatModal(roomId);
+        } else {
+          location.href = "/mypage";
+        }
+        return;
+      }
+      // 실거래 알림 클릭
       var id = item.getAttribute("data-id");
       var bid = item.getAttribute("data-bid");
       fetch("/api/notifications/mine/read", {
@@ -426,10 +454,10 @@
     })
     .catch(function () { /* 팝업은 부가 기능 — 실패해도 페이지에 영향 없음 */ });
 
-  // ---- 오류신고 플로팅 버튼 (관리자 페이지 제외) ----
+  // ---- 오류신고 플로팅 버튼 (홈('/') 전용) ----
   (function () {
-    // /admin 경로는 제외
-    if (location.pathname.startsWith("/admin")) return;
+    // 메인 지도 홈('/')에서만 노출
+    if (location.pathname !== "/") return;
 
     // 플로팅 버튼 삽입
     var btn = document.createElement("button");
