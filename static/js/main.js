@@ -1476,22 +1476,47 @@ async function updateMapForZoom(filters = {}, opts = {}){
 
 // ── 직거래 매물 지도 레이어 ───────────────────────────────────────────────
 
-// 직거래 매물 마커 이미지 — 마름모꼴(◇), 14×14 원형 건물 마커와 구분
-function _makeListingMarkerImage(){
-  const key = "__listing__";
-  if (_markerImageCache[key]) return _markerImageCache[key];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18">` +
-    `<polygon points="9,1 17,9 9,17 1,9" fill="#1B7F3D" stroke="white" stroke-width="2"/></svg>`;
-  const img = new kakao.maps.MarkerImage(
-    "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg),
-    new kakao.maps.Size(18, 18),
-    { offset: new kakao.maps.Point(9, 9) }
-  );
-  _markerImageCache[key] = img;
-  return img;
-}
+// ── 직거래 매물 지도 레이어 ───────────────────────────────────────────────
+// /api/listings(lat/lng 포함) 호출 → 브랜드 컬러(#B4863F) "직거래" 뱃지형
+// CustomOverlay로 별도 레이어 표시. clearMapMarkers()와 독립적이므로
+// 건물 마커 재로드(필터·이동) 시에도 직거래 레이어는 유지된다.
 
-// 직거래 매물 레이어 표시/숨김 토글 (범례 버튼에서 호출)
+// id별 아이템 캐시 — CustomOverlay 클릭 후 InfoWindow에서 접근
+const _listingItemMap = {};
+
+// 직거래 매물 InfoWindow 열기 (CustomOverlay onclick → 전역 핸들러 경유)
+function _openListingInfoWindow(id){
+  const it = _listingItemMap[id];
+  if (!it || !kakaoMap) return;
+  if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+  const pos = new kakao.maps.LatLng(it.lat, it.lng);
+  const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
+  const priceStr = it.deal_type === "월세"
+    ? `보${_fmtN(it.price_krw)}/${_fmtN(it.monthly_rent_krw)}만원`
+    : `${_fmtN(it.price_krw)}만원`;
+  const area = it.area_sqm != null ? Number(it.area_sqm).toFixed(1) + "㎡" : "-";
+  const iw = new kakao.maps.InfoWindow({
+    position: pos,   // 마커 없이 좌표로만 InfoWindow 열기
+    content:
+      `<div style="padding:10px 14px;min-width:170px;font-size:13px;line-height:1.9;">` +
+      `<div style="font-weight:700;margin-bottom:2px;color:#B4863F;">🏠 직거래 매물</div>` +
+      `<div>${escapeHtml(it.deal_type || "-")} · ${escapeHtml(priceStr)}</div>` +
+      (it.desired_price ? `<div style="color:#777;font-size:11px;">${escapeHtml(it.desired_price)}</div>` : ``) +
+      `<div style="color:#555;">전용 ${escapeHtml(area)}</div>` +
+      (it.building_name ? `<div style="color:#888;font-size:11px;">${escapeHtml(it.building_name)}</div>` : ``) +
+      (it.listing_date ? `<div style="color:#aaa;font-size:11px;">등록일 ${escapeHtml(it.listing_date)}</div>` : ``) +
+      `<button onclick="window.__listingChat(${it.id})" ` +
+      `style="margin-top:8px;padding:5px 14px;background:#B4863F;color:#fff;border:none;` +
+      `border-radius:4px;cursor:pointer;font-size:12px;">💬 채팅하기</button>` +
+      `</div>`,
+    removable: true,
+  });
+  iw.open(kakaoMap);
+  currentInfoWindow = iw;
+}
+window.__openListingIW = _openListingInfoWindow;
+
+// 직거래 레이어 표시/숨김 토글 (범례 칩에서 호출)
 function toggleListingLayer(){
   _listingsVisible = !_listingsVisible;
   _listingOverlays.forEach(o => o.setMap(_listingsVisible ? kakaoMap : null));
@@ -1499,8 +1524,7 @@ function toggleListingLayer(){
   if (btn) btn.style.opacity = _listingsVisible ? "1" : "0.4";
 }
 
-// /api/listings → 초록 마름모 마커로 별도 레이어 표시.
-// clearMapMarkers()와 독립적 — 건물 마커 재로드 시에도 직거래 마커는 유지된다.
+// /api/listings → "직거래" 뱃지 CustomOverlay 배치
 async function loadListingMarkers(){
   if (!kakaoMap) return;
   _listingOverlays.forEach(o => o.setMap(null));
@@ -1508,54 +1532,41 @@ async function loadListingMarkers(){
 
   let items = [];
   try {
-    const res = await fetch("/api/listings?limit=500");
-    const data = await res.json();
+    const res = await fetch("/api/listings?limit=50", { credentials: "same-origin" });
+    const data = await res.json().catch(() => ({}));
     items = (data.ok && data.items) ? data.items : [];
-  } catch(e){
-    console.error("[LISTING] 직거래 매물 로드 실패:", e);
-    return;
-  }
+  } catch(e){ return; }  // 매물 0건·네트워크 오류 시 조용히 종료
 
-  const valid = items.filter(it => it.lat != null && it.lng != null);
-  valid.forEach(it => {
+  items.forEach(it => {
+    if (it.lat == null || it.lng == null) return;   // 좌표 없으면 스킵
+    _listingItemMap[it.id] = it;
+
     const pos = new kakao.maps.LatLng(it.lat, it.lng);
-    const marker = new kakao.maps.Marker({
+
+    // "직거래" 텍스트 뱃지 DOM 요소 — 브랜드 컬러(brass)
+    const el = document.createElement("div");
+    el.style.cssText =
+      "background:#B4863F;color:#fff;font-size:10px;font-weight:700;" +
+      "padding:2px 6px;border-radius:3px;border:2px solid #fff;" +
+      "cursor:pointer;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35);" +
+      "transform:translateX(-50%);";
+    el.textContent = "직거래";
+    el.title = (it.building_name || "") + (it.deal_type ? " · " + it.deal_type : "");
+    el.addEventListener("click", () => _openListingInfoWindow(it.id));
+
+    const overlay = new kakao.maps.CustomOverlay({
       position: pos,
-      image: _makeListingMarkerImage(),
-      title: (it.building_name || "직거래매물") + " · " + (it.deal_type || ""),
+      content: el,
       clickable: true,
       zIndex: 10,
+      yAnchor: 1.0,  // 뱃지 하단이 좌표에 닿도록
     });
-    if (_listingsVisible) marker.setMap(kakaoMap);
-
-    kakao.maps.event.addListener(marker, "click", () => {
-      if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-      const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
-      const priceStr = it.deal_type === "월세"
-        ? `보${_fmtN(it.price_krw)}/${_fmtN(it.monthly_rent_krw)}만원`
-        : `${_fmtN(it.price_krw)}만원`;
-      const area = it.area_sqm != null ? Number(it.area_sqm).toFixed(1) + "㎡" : "-";
-      const iw = new kakao.maps.InfoWindow({
-        content:
-          `<div style="padding:10px 14px;min-width:165px;font-size:13px;line-height:1.9;">` +
-          `<div style="font-weight:700;margin-bottom:2px;">🏠 직거래 매물</div>` +
-          `<div>${escapeHtml(it.deal_type || "-")} · ${escapeHtml(priceStr)}</div>` +
-          `<div style="color:#555;">전용 ${escapeHtml(area)}</div>` +
-          (it.building_name ? `<div style="color:#888;font-size:11px;">${escapeHtml(it.building_name)}</div>` : ``) +
-          `<button onclick="window.__listingChat(${it.id})" ` +
-          `style="margin-top:8px;padding:5px 14px;background:#1B7F3D;color:#fff;border:none;` +
-          `border-radius:4px;cursor:pointer;font-size:12px;">💬 채팅하기</button>` +
-          `</div>`,
-        removable: true,
-      });
-      iw.open(kakaoMap, marker);
-      currentInfoWindow = iw;
-    });
-    _listingOverlays.push(marker);
+    if (_listingsVisible) overlay.setMap(kakaoMap);
+    _listingOverlays.push(overlay);
   });
-  console.log(`[LISTING] 직거래 매물 마커 ${valid.length}개 배치`);
+  console.log(`[LISTING] 직거래 매물 뱃지 ${_listingOverlays.length}개 배치`);
 }
-// InfoWindow 인라인 onclick에서 접근하는 전역 핸들러
+// InfoWindow 채팅 버튼 onclick 전역 핸들러
 window.__listingChat = (id) => _openListingChat(id);
 
 async function initMap(){
@@ -1626,8 +1637,8 @@ async function initMap(){
     _chip.title = "직거래 매물 표시/숨김";
     _chip.style.cssText = "background:transparent;border:none;cursor:pointer;padding:2px 5px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle;";
     _chip.innerHTML =
-      `<span style="display:inline-block;width:9px;height:9px;background:#1B7F3D;transform:rotate(45deg);flex-shrink:0;"></span>` +
-      `<span style="font-size:11px;font-weight:700;color:#1B7F3D;">직거래</span>`;
+      `<span style="display:inline-block;width:9px;height:9px;background:#B4863F;transform:rotate(45deg);flex-shrink:0;"></span>` +
+      `<span style="font-size:11px;font-weight:700;color:#B4863F;">직거래</span>`;
     _chip.addEventListener("click", toggleListingLayer);
     _legend.appendChild(_chip);
   }
