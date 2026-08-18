@@ -44,7 +44,6 @@
     '<div class="page-title">' + esc(title) + '</div>' +
     '<div class="header-actions">' +
       '<button type="button" class="hnav-btn" id="myPriceBtn">🏨 <span class="hnav-label">내건물시세</span></button>' +
-      '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
       '<div class="hnav-dropdown" id="alertMenu">' +
         '<button type="button" class="hnav-btn" id="alertMenuBtn" aria-haspopup="true" aria-expanded="false">🔔 <span class="hnav-label">알림</span><span class="notif-badge" id="notifBadge" hidden>0</span> ▾</button>' +
         '<div class="hnav-panel hnav-panel-notif" id="alertMenuPanel" role="menu">' +
@@ -61,6 +60,7 @@
       '<div class="header-menu" id="headerMenu">' +
         '<nav class="header-nav">' +
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
+          '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
           '<a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
