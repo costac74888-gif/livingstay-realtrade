@@ -2968,7 +2968,7 @@ async function loadBuildingHeader(id){
       }).join("");
       listingsBody.innerHTML = `
         <table class="b-info-table" style="margin-bottom:8px;">
-          <thead><tr><th>유형</th><th>전용㎡</th><th>희망가</th><th>등록일</th><th></th></tr></thead>
+          <thead><tr><th>유형</th><th>전용㎡</th><th>희망가(만원)</th><th>등록일</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.6; margin-top:4px;">

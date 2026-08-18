@@ -6655,6 +6655,9 @@ def my_listing_requests():
         cur.execute("""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.status,
                    lr.price_krw, lr.monthly_rent_krw, lr.contact_phone,
+                   lr.deal_mode,
+                   (SELECT COUNT(*) FROM chat_rooms cr
+                    WHERE cr.listing_request_id = lr.id) AS chat_room_count,
                    to_char(lr.created_at, 'YYYY-MM-DD') AS created_date,
                    mb.id AS building_id, mb.building_name,
                    a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug
@@ -6669,6 +6672,45 @@ def my_listing_requests():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/my/listing-requests/<int:lr_id>/chat-rooms")
+@limiter.limit("60 per minute")
+def my_listing_request_chat_rooms(lr_id):
+    """내가 등록한 직거래 매물에 온 채팅방 목록 — 판매자(등록자) 전용."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 본인 매물인지 확인
+        cur.execute(
+            "SELECT id FROM listing_requests WHERE id = %s AND user_id = %s",
+            [lr_id, user["id"]]
+        )
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "매물을 찾을 수 없습니다."}), 404
+        cur.execute("""
+            SELECT cr.id AS room_id,
+                   u.name AS buyer_name,
+                   (SELECT cm.body FROM chat_messages cm
+                    WHERE cm.room_id = cr.id ORDER BY cm.created_at DESC LIMIT 1) AS last_msg,
+                   TO_CHAR(
+                     (SELECT cm.created_at FROM chat_messages cm
+                      WHERE cm.room_id = cr.id ORDER BY cm.created_at DESC LIMIT 1),
+                     'MM-DD HH24:MI'
+                   ) AS last_at
+            FROM chat_rooms cr
+            JOIN users u ON u.id = cr.buyer_user_id
+            WHERE cr.listing_request_id = %s
+            ORDER BY cr.created_at DESC
+        """, [lr_id])
+        rooms = [dict(r) for r in cur.fetchall()]
+        return jsonify({"ok": True, "rooms": rooms})
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/listings")

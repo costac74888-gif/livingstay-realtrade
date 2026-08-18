@@ -253,8 +253,15 @@
   function requestItemHtml(it){
     var st = LR_STATUS_LABEL[it.status] || it.status;
     var color = LR_STATUS_COLOR[it.status] || "var(--ink-soft)";
+    // ── 직거래/중개거래 뱃지 ──
+    var modeBadge = it.deal_mode === "direct"
+      ? '<span style="font-size:10.5px;font-weight:700;color:#4A7A18;border:1px solid #4A7A18;border-radius:999px;padding:2px 7px;margin-left:5px;vertical-align:middle;">직거래</span>'
+      : '<span style="font-size:10.5px;font-weight:700;color:#B4863F;border:1px solid #B4863F;border-radius:999px;padding:2px 7px;margin-left:5px;vertical-align:middle;">중개거래</span>';
+    // ── 담당자 표시 (직거래는 중개사 배정 없음) ──
     var agentHtml;
-    if (it.agent_office_name) {
+    if (it.deal_mode === "direct") {
+      agentHtml = '<span style="color:var(--ink-soft);">직거래 진행 중</span>';
+    } else if (it.agent_office_name) {
       var officeName = escapeHtml(it.agent_office_name);
       agentHtml = it.agent_slug
         ? '담당 <a href="/agent/' + encodeURIComponent(it.agent_slug) + '" style="color:var(--brass); font-weight:700; text-decoration:none; border-bottom:1px dashed var(--brass);">' + officeName + '</a>'
@@ -262,9 +269,14 @@
     } else {
       agentHtml = '<span style="color:var(--ink-soft);">담당자 배정 중</span>';
     }
+    // ── 채팅 문의 버튼 (매도자 입장 — 내 매물에 온 문의) ──
+    var chatCount = parseInt(it.chat_room_count, 10) || 0;
+    var chatBtn = chatCount > 0
+      ? '<button class="lr-chat-btn" data-id="' + it.id + '" data-count="' + chatCount + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;margin-top:4px;">💬 문의 ' + chatCount + '건</button>'
+      : '';
     var actionBtns = "";
     if (it.status === "submitted") {
-      actionBtns = '<div style="display:flex;gap:6px;margin-top:6px;">' +
+      actionBtns = '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
         '<button class="lr-edit-btn" data-id="' + it.id + '" data-bid="' + it.building_id + '" data-bname="' + escapeHtml(it.building_name||"") + '" data-deal="' + escapeHtml(it.deal_type) + '" data-price="' + (it.price_krw||"") + '" data-rent="' + (it.monthly_rent_krw||"") + '" data-phone="' + escapeHtml(it.contact_phone||"") + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;">수정</button>' +
         '<button class="lr-withdraw-btn" data-id="' + it.id + '" style="font-size:11px;padding:3px 9px;border:1px solid #999;border-radius:5px;background:none;color:#999;cursor:pointer;">철회</button>' +
       '</div>';
@@ -273,9 +285,11 @@
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">' +
         '<div style="min-width:0; flex:1;">' +
           '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
+          modeBadge +
           '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
             (it.desired_price ? ' · ' + escapeHtml(it.desired_price) : '') + ' · ' + it.created_date + '</div>' +
           '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
+          (chatBtn ? '<div>' + chatBtn + '</div>' : '') +
           actionBtns +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">' +
@@ -307,10 +321,10 @@
               var detail = "";
               if (h.action === "created" && h.after_data) {
                 var a = h.after_data;
-                detail = (a.deal_type||"") + (a.price_krw ? " · " + fmtPrice(a.price_krw*10000) : "") + (a.monthly_rent_krw ? "/월" + fmtPrice(a.monthly_rent_krw*10000) : "");
+                detail = (a.deal_type||"") + (a.price_krw ? " · " + fmtPrice(a.price_krw) + "만원" : "") + (a.monthly_rent_krw ? "/월" + fmtPrice(a.monthly_rent_krw) + "만원" : "");
               } else if (h.action === "edited" && h.before_data && h.after_data) {
                 var b = h.before_data, af = h.after_data;
-                detail = (b.deal_type||"") + (b.price_krw ? " " + fmtPrice(b.price_krw*10000) : "") + " → " + (af.deal_type||"") + (af.price_krw ? " " + fmtPrice(af.price_krw*10000) : "");
+                detail = (b.deal_type||"") + (b.price_krw ? " " + fmtPrice(b.price_krw) + "만원" : "") + " → " + (af.deal_type||"") + (af.price_krw ? " " + fmtPrice(af.price_krw) + "만원" : "");
               }
               return '<div style="padding:2px 0;">' + h.created_at + ' · ' + label + (detail ? ' · ' + detail : '') + '</div>';
             }).join("");
@@ -343,6 +357,24 @@
         }).then(function(r){ return r.json(); })
           .then(function(j){ if (j && j.ok) loadMyListingRequests(); else { btn.disabled = false; alert(j.message || "철회에 실패했습니다."); } })
           .catch(function(){ btn.disabled = false; });
+      });
+    });
+    // 채팅 문의 버튼 — 내 직거래 매물에 온 문의 목록 / 바로 열기
+    Array.prototype.forEach.call(box.querySelectorAll(".lr-chat-btn"), function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        var count = parseInt(btn.getAttribute("data-count"), 10) || 0;
+        fetch("/api/my/listing-requests/" + id + "/chat-rooms", { credentials: "same-origin" })
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if (!d.ok || !d.rooms || !d.rooms.length) { alert("채팅방을 불러오지 못했습니다."); return; }
+            if (d.rooms.length === 1) {
+              openMypageChatModal(d.rooms[0].room_id);
+            } else {
+              openChatRoomListModal(d.rooms);
+            }
+          })
+          .catch(function(){ alert("오류가 발생했습니다."); });
       });
     });
   }
@@ -395,7 +427,124 @@
   }
   function fmtPrice(p){
     if (p == null) return "실거래 정보 없음";
-    return Number(p).toLocaleString() + "만";
+    return Number(p).toLocaleString();
+  }
+
+  // ── 채팅 모달 (마이페이지 전용 — main.js 미포함) ─────────────────────────
+  var _mpChatPollTimer = null;
+  var _mpChatLastCount = 0;
+  function openMypageChatModal(roomId) {
+    // 기존 모달 제거
+    var old = document.getElementById("mpChatOverlay");
+    if (old) old.remove();
+    if (_mpChatPollTimer) { clearInterval(_mpChatPollTimer); _mpChatPollTimer = null; }
+    _mpChatLastCount = 0;
+
+    var overlay = document.createElement("div");
+    overlay.id = "mpChatOverlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:4000;display:flex;align-items:flex-end;justify-content:center;";
+    overlay.innerHTML =
+      '<div id="mpChatBox" style="background:#fff;width:100%;max-width:520px;height:72vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #eee;background:#fff;">' +
+          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 채팅</span>' +
+          '<button id="mpChatClose" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">×</button>' +
+        '</div>' +
+        '<div id="mpChatMsgs" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;"></div>' +
+        '<div style="padding:10px 12px;border-top:1px solid #eee;display:flex;gap:8px;">' +
+          '<input id="mpChatInput" type="text" placeholder="메시지 입력…" style="flex:1;border:1px solid #ddd;border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;" />' +
+          '<button id="mpChatSend" style="background:#B4863F;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer;white-space:nowrap;">전송</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    function renderMsgs(msgs) {
+      var box = document.getElementById("mpChatMsgs");
+      if (!box) return;
+      var meId = (window._livingstayUserId || 0);
+      _mpChatLastCount = msgs.length;
+      box.innerHTML = msgs.map(function(m) {
+        var isMe = (m.sender_user_id == meId);
+        return '<div style="display:flex;justify-content:' + (isMe ? 'flex-end' : 'flex-start') + ';">' +
+          '<div style="max-width:72%;padding:8px 12px;border-radius:14px;font-size:13.5px;line-height:1.5;' +
+            (isMe ? 'background:#B4863F;color:#fff;' : 'background:#f3f3f3;color:#333;') + '">' +
+            escapeHtml(m.body) + '<div style="font-size:10px;margin-top:3px;opacity:.65;">' + (m.created_at_fmt||"") + '</div>' +
+          '</div></div>';
+      }).join("");
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function loadMsgs() {
+      fetch("/api/chat/rooms/" + roomId + "/messages", { credentials: "same-origin" })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d.ok) renderMsgs(d.messages||[]); })
+        .catch(function(){});
+    }
+    loadMsgs();
+    _mpChatPollTimer = setInterval(function(){
+      fetch("/api/chat/rooms/" + roomId + "/messages", { credentials: "same-origin" })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.ok && (d.messages||[]).length !== _mpChatLastCount) renderMsgs(d.messages||[]);
+        }).catch(function(){});
+    }, 5000);
+
+    function sendMsg() {
+      var inp = document.getElementById("mpChatInput");
+      if (!inp) return;
+      var body = (inp.value || "").trim();
+      if (!body) return;
+      inp.value = "";
+      fetch("/api/chat/rooms/" + roomId + "/messages", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: body })
+      }).then(function(r){ return r.json(); })
+        .then(function(d){ if (d.ok) loadMsgs(); })
+        .catch(function(){});
+    }
+
+    function closeModal() {
+      if (_mpChatPollTimer) { clearInterval(_mpChatPollTimer); _mpChatPollTimer = null; }
+      overlay.remove();
+    }
+    document.getElementById("mpChatClose").addEventListener("click", closeModal);
+    overlay.addEventListener("click", function(e){ if (e.target === overlay) closeModal(); });
+    document.getElementById("mpChatSend").addEventListener("click", sendMsg);
+    document.getElementById("mpChatInput").addEventListener("keydown", function(e){ if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
+  }
+
+  function openChatRoomListModal(rooms) {
+    var old = document.getElementById("mpChatListOverlay");
+    if (old) old.remove();
+    var overlay = document.createElement("div");
+    overlay.id = "mpChatListOverlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:4000;display:flex;align-items:flex-end;justify-content:center;";
+    var listHtml = rooms.map(function(r) {
+      return '<div class="mprl-item" data-room="' + r.room_id + '" style="padding:11px 14px;border-bottom:1px solid #eee;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">' +
+        '<div><div style="font-weight:700;font-size:13.5px;">' + escapeHtml(r.buyer_name||"문의자") + '</div>' +
+        '<div style="font-size:12px;color:#888;margin-top:2px;">' + escapeHtml(r.last_msg||"") + '</div></div>' +
+        '<div style="font-size:11px;color:#aaa;white-space:nowrap;">' + escapeHtml(r.last_at||"") + '</div>' +
+      '</div>';
+    }).join("");
+    overlay.innerHTML =
+      '<div style="background:#fff;width:100%;max-width:520px;max-height:55vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #eee;">' +
+          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 문의 목록</span>' +
+          '<button id="mpChatListClose" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">×</button>' +
+        '</div>' +
+        '<div style="overflow-y:auto;">' + listHtml + '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function closeList() { overlay.remove(); }
+    document.getElementById("mpChatListClose").addEventListener("click", closeList);
+    overlay.addEventListener("click", function(e){ if (e.target === overlay) closeList(); });
+    Array.prototype.forEach.call(overlay.querySelectorAll(".mprl-item"), function(item) {
+      item.addEventListener("click", function() {
+        var rid = parseInt(item.getAttribute("data-room"), 10);
+        closeList();
+        openMypageChatModal(rid);
+      });
+    });
   }
   function renderFavRow(t, alertKeys){
     var name = (t.building_name && String(t.building_name).length) ? t.building_name : "이름 미상 단지";
@@ -825,6 +974,8 @@
         window.location.href = _BIZ_REDIRECT[d.account_type];
         return;
       }
+      // 채팅 모달의 내/상대 말풍선 구분에 사용
+      window._livingstayUserId = d.id;
       renderLoggedIn(d);
     })
     .catch(function(){ renderLoggedOut(); });

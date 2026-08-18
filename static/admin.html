@@ -475,6 +475,11 @@
           { key: "building_name", label: "건물명", sortable: true },
           { key: "contact_phone", label: "의뢰자 연락처" },
           { key: "deal_type", label: "거래유형", sortable: true },
+          { key: "deal_mode", label: "방식", render: (v) => {
+            if (v === "direct") return '<span class="dg-badge dg-badge-ok">직거래</span>';
+            if (v === "broker") return '<span class="dg-badge dg-badge-wait">중개</span>';
+            return dgEscape(v || "-");
+          } },
           { key: "desired_price", label: "희망가" },
           { key: "routed_reason", label: "전달구분", render: (v) => {
             const m = { exclusive: ["전속", "ok"], region: ["관할", "wait"], house: ["제휴", "no"] };
