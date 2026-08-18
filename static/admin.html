@@ -469,10 +469,11 @@
         allowSelect: true,
         defaultSort: "created_at",
         defaultOrder: "desc",
-        searchPlaceholder: "건물명·연락처·중개사 검색",
+        searchPlaceholder: "건물명·닉네임·연락처·중개사 검색",
         columns: [
           { key: "id", label: "ID", sortable: true },
           { key: "building_name", label: "건물명", sortable: true },
+          { key: "requester_name", label: "회원닉네임(이름)", render: (v) => v ? dgEscape(v) : '<span style="color:var(--ink-soft);">—</span>' },
           { key: "contact_phone", label: "의뢰자 연락처" },
           { key: "deal_type", label: "거래유형", sortable: true },
           { key: "deal_mode", label: "방식", render: (v) => {

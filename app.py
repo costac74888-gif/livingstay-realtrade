@@ -13422,9 +13422,9 @@ def admin_listing_requests_list():
     where = "1=1"
     params = []
     if q:
-        where = "(mb.building_name ILIKE %s OR lr.contact_phone ILIKE %s OR a.office_name ILIKE %s)"
+        where = "(mb.building_name ILIKE %s OR u.name ILIKE %s OR lr.contact_phone ILIKE %s OR a.office_name ILIKE %s)"
         like = f"%{q}%"
-        params = [like, like, like]
+        params = [like, like, like, like]
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -13433,12 +13433,14 @@ def admin_listing_requests_list():
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            LEFT JOIN users u ON u.id = lr.user_id
             WHERE {where}
         """, params)
         total = cur.fetchone()["c"]
         # sort_expr/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
         cur.execute(f"""
             SELECT lr.id, lr.master_building_id, mb.building_name,
+                   u.name AS requester_name,
                    lr.deal_type, lr.desired_price, lr.area_sqm, lr.deal_mode,
                    lr.contact_phone, lr.routed_reason, lr.status, lr.admin_note,
                    CASE
@@ -13454,6 +13456,7 @@ def admin_listing_requests_list():
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            LEFT JOIN users u ON u.id = lr.user_id
             LEFT JOIN agent_buildings ab
               ON ab.master_building_id = lr.master_building_id AND ab.agent_id = lr.routed_agent_id
             WHERE {where}
@@ -13530,13 +13533,15 @@ def admin_listing_requests_export():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT lr.id, mb.building_name, lr.contact_phone, lr.deal_type,
+            SELECT lr.id, mb.building_name, u.name AS requester_name,
+                   lr.contact_phone, lr.deal_type,
                    lr.desired_price, lr.area_sqm, lr.deal_mode,
                    lr.routed_reason, a.office_name AS agent_name,
                    a.phone AS agent_phone, lr.status, lr.admin_note, lr.created_at
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
+            LEFT JOIN users u ON u.id = lr.user_id
             ORDER BY lr.created_at DESC
         """)
         rows = cur.fetchall()
@@ -13548,7 +13553,7 @@ def admin_listing_requests_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "매물의뢰"
-    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가", "전용㎡", "진행방식",
+    headers = ["번호", "건물명", "회원닉네임(이름)", "의뢰자 연락처", "거래유형", "희망가", "전용㎡", "진행방식",
                "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "접수일"]
     ws.append(headers)
     hdr_fill = PatternFill("solid", fgColor="F9F5EE")
@@ -13560,7 +13565,8 @@ def admin_listing_requests_export():
     mode_map = {"direct": "직거래", "broker": "중개사연결"}
     for r in rows:
         ws.append([
-            r["id"], r["building_name"] or "", r["contact_phone"] or "",
+            r["id"], r["building_name"] or "", r["requester_name"] or "",
+            r["contact_phone"] or "",
             r["deal_type"] or "", r["desired_price"] or "",
             float(r["area_sqm"]) if r["area_sqm"] else "",
             mode_map.get(r["deal_mode"], r["deal_mode"] or ""),
@@ -13570,7 +13576,7 @@ def admin_listing_requests_export():
             r["admin_note"] or "",
             r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
         ])
-    col_widths = [6, 20, 16, 10, 18, 8, 10, 8, 22, 14, 8, 20, 16]
+    col_widths = [6, 20, 16, 16, 10, 18, 8, 10, 8, 22, 14, 8, 20, 16]
     for col, w in zip(ws.columns, col_widths):
         ws.column_dimensions[col[0].column_letter].width = w
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
