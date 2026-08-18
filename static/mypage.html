@@ -350,7 +350,7 @@
     Array.prototype.forEach.call(box.querySelectorAll(".lr-withdraw-btn"), function(btn) {
       btn.addEventListener("click", function() {
         var id = btn.getAttribute("data-id");
-        if (!confirm("정말 철회하시겠어요? 철회한 의뢰는 '철회됨'으로 표시됩니다.")) return;
+        if (!confirm("정말 철회하시겠어요? 철회한 의뢰는 목록에서 사라집니다.")) return;
         btn.disabled = true;
         fetch("/api/listing-requests/" + id + "/withdraw", {
           method: "POST", credentials: "same-origin"

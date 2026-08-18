@@ -6745,7 +6745,7 @@ def my_listing_requests():
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
-            WHERE lr.user_id = %s
+            WHERE lr.user_id = %s AND lr.status != '철회됨'
             ORDER BY lr.created_at DESC
         """, [user["id"]])
         items = [dict(r) for r in cur.fetchall()]
