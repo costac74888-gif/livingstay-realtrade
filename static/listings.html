@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>직거래 매물 목록 . 홈앤스테이</title>
+<title>직거래 매물 목록 · 홈앤스테이</title>
 <meta name="description" content="홈앤스테이 직거래 공개 매물 목록. 숙박시설 매매·전세·월세 직거래 매물을 확인하세요." />
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
@@ -14,32 +14,64 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
 <style>
-  .listings-page { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+  .listings-page { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
   .listings-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
   .listings-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
   .listings-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
   .filter-btn { padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; background: #fff; font-size: 13px; color: var(--ink-soft); cursor: pointer; transition: all .15s; }
   .filter-btn.active { background: var(--brass); color: #fff; border-color: var(--brass); font-weight: 700; }
+
+  /* 매물 카드 */
   .listing-card {
-    border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
-    margin-bottom: 12px; background: #fff; cursor: pointer;
-    transition: box-shadow .15s, border-color .15s;
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px;
+    margin-bottom: 12px; background: #fff;
   }
-  .listing-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.10); border-color: var(--brass-light,#d4a843); }
-  .listing-card-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
-  .listing-badge { font-size: 11.5px; font-weight: 700; color: #fff; background: var(--brass); border-radius: 5px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0; }
-  .listing-building { font-size: 14.5px; font-weight: 700; color: var(--ink); line-height: 1.4; flex: 1; }
-  .listing-price { font-size: 13.5px; font-weight: 700; color: var(--brass-dark,#7D4A00); margin-bottom: 4px; }
-  .listing-meta { font-size: 12px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 8px; }
-  .listing-meta span::before { content: "•"; margin-right: 4px; }
-  .listing-meta span:first-child::before { content: ""; margin-right: 0; }
+  .listing-card-name {
+    font-size: 14px; font-weight: 700; color: var(--ink);
+    margin-bottom: 8px; cursor: pointer; display: inline-block;
+  }
+  .listing-card-name:hover { color: var(--brass-dark, #7D4A00); text-decoration: underline; }
+
+  /* 통일 표 */
+  .listing-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .listing-tbl th {
+    text-align: left; font-size: 11.5px; font-weight: 600;
+    color: var(--ink-soft); padding: 0 6px 5px 0;
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  .listing-tbl th:last-child { text-align: center; }
+  .listing-tbl td {
+    padding: 6px 6px 6px 0; border-bottom: 1px solid #f0ece3;
+    vertical-align: middle; white-space: nowrap;
+  }
+  .listing-tbl tr:last-child td { border-bottom: none; }
+  .listing-tbl td.td-type { font-weight: 700; }
+  .listing-tbl td.td-price { font-weight: 700; color: var(--brass-dark, #7D4A00); }
+  .listing-tbl td.td-date { font-size: 11.5px; color: var(--ink-soft); }
+  .listing-tbl td.td-chat { text-align: center; }
+  .listing-chat-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 18px; line-height: 1; padding: 2px;
+    opacity: .8; transition: opacity .15s;
+  }
+  .listing-chat-btn:hover { opacity: 1; }
+
+  /* 안내 문구 */
+  .listing-card-notice {
+    font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6;
+  }
+
+  /* 빈 상태 */
   .listings-empty { text-align: center; padding: 60px 20px; color: var(--ink-soft); font-size: 14px; }
   .listings-loading { text-align: center; padding: 40px 20px; color: var(--ink-soft); font-size: 14px; }
   .listings-more { display: block; width: 180px; margin: 18px auto 0; padding: 10px 0; text-align: center; border: 1px solid var(--line); border-radius: 8px; font-size: 13.5px; color: var(--ink-soft); background: #fff; cursor: pointer; }
   .listings-more:hover { border-color: var(--brass); color: var(--brass-dark); }
+
   @media (max-width: 600px) {
     .listings-page { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
+    .listing-tbl td.td-date { display: none; }
+    .listing-tbl th.th-date { display: none; }
   }
 </style>
 </head>
@@ -74,31 +106,81 @@
   const PAGE = 20;
   let loading = false;
 
-  function escHtml(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+  function esc(s){ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
 
-  function dealLabel(dt){
-    const m={"매매":"매매","전세":"전세","월세":"월세","단기임대":"단기임대"};
-    return m[dt]||dt||"-";
+  // 💬 채팅방 열기
+  async function openChat(listingRequestId){
+    try {
+      const res = await fetch("/api/chat/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ listing_request_id: listingRequestId }),
+      });
+      if (res.status === 401){
+        if (confirm("채팅을 이용하려면 로그인이 필요합니다.\n로그인 페이지로 이동하시겠습니까?"))
+          window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+        return;
+      }
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok){
+        alert("채팅방이 준비되었습니다.\n(채팅 화면은 준비 중입니다)");
+      } else {
+        alert(d.error || "채팅방 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      }
+    } catch(e){
+      alert("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   function renderCard(item){
     const card = document.createElement("div");
     card.className = "listing-card";
-    card.innerHTML = `
-      <div class="listing-card-top">
-        <span class="listing-badge">${escHtml(dealLabel(item.deal_type))}</span>
-        <span class="listing-building">${escHtml(item.building_name||"-")}</span>
-      </div>
-      <div class="listing-price">${escHtml(item.desired_price||"가격 미정")}${item.area_sqm ? ` · ${parseFloat(item.area_sqm)}㎡` : ""}</div>
-      <div class="listing-meta">
-        <span>${escHtml(item.sgg_text||"-")}</span>
-        ${item.lodging_type ? `<span>${escHtml(item.lodging_type)}</span>` : ""}
-        <span>연락처 010-****-${escHtml(item.phone_tail||"????")}</span>
-        <span>${escHtml(item.listing_date||"")}</span>
-      </div>`;
-    card.addEventListener("click", () => {
+
+    // 건물명 (클릭 시 건물상세로)
+    const nameEl = document.createElement("div");
+    nameEl.className = "listing-card-name";
+    nameEl.textContent = item.building_name || "(건물명 없음)";
+    nameEl.addEventListener("click", () => {
       if (item.building_id) window.location.href = `/building/${item.building_id}`;
     });
+    card.appendChild(nameEl);
+
+    // 표: 유형 | 전용㎡ | 희망가 | 등록일 | 💬
+    const sqm = item.area_sqm ? parseFloat(item.area_sqm) + "㎡" : "-";
+    const tbl = document.createElement("table");
+    tbl.className = "listing-tbl";
+    tbl.innerHTML = `
+      <thead>
+        <tr>
+          <th>유형</th>
+          <th>전용㎡</th>
+          <th>희망가</th>
+          <th class="th-date">등록일</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="td-type">${esc(item.deal_type||"-")}</td>
+          <td>${esc(sqm)}</td>
+          <td class="td-price">${esc(item.desired_price||"미정")}</td>
+          <td class="td-date">${esc(item.listing_date||"")}</td>
+          <td class="td-chat"><button type="button" class="listing-chat-btn" title="문의하기">💬</button></td>
+        </tr>
+      </tbody>`;
+    tbl.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openChat(item.id);
+    });
+    card.appendChild(tbl);
+
+    // 안내 문구
+    const notice = document.createElement("div");
+    notice.className = "listing-card-notice";
+    notice.textContent = "직거래 시 계약 전 등기부등본 확인을 권장합니다.";
+    card.appendChild(notice);
+
     return card;
   }
 

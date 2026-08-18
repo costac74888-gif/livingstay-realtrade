@@ -147,6 +147,32 @@ function escapeHtml(v){
   ));
 }
 
+// 💬 채팅방 열기 — listing_request_id로 방 생성 후 이동
+async function _openListingChat(listingRequestId){
+  try {
+    const res = await fetch("/api/chat/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ listing_request_id: listingRequestId }),
+    });
+    if (res.status === 401){
+      if (confirm("채팅을 이용하려면 로그인이 필요합니다.\n로그인 페이지로 이동하시겠습니까?"))
+        window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+      return;
+    }
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok){
+      // 채팅 UI 페이지가 준비되면 /chat/<id>로 이동; 현재는 안내 표시
+      alert("채팅방이 준비되었습니다.\n(채팅 화면은 준비 중입니다)");
+    } else {
+      alert(d.error || "채팅방 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+  } catch(e){
+    alert("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+  }
+}
+
 let _fallbackToastTimer = null;
 function showFallbackToast(msg){
   const wrap = document.getElementById("fallbackToast");
@@ -1914,7 +1940,7 @@ function openListingRequestModal(buildingId, buildingName){
         </div>
         <div id="lrDirectNotice" style="font-size:11.5px; color:#7D4A00; background:#FFF7E6; border:1px solid #FFD898; border-radius:8px; padding:9px 11px; margin-bottom:12px; line-height:1.6;">
           <strong>직거래 공개 매물</strong>로 등록됩니다.<br>
-          매물 내용과 인증된 연락처가 건물 상세 페이지에 공개됩니다.
+          매물 내용과 채팅창이 건물 상세 페이지에 공개됩니다.
         </div>
         <div id="lrBrokerNotice" style="display:none; font-size:11.5px; color:var(--ink-soft); background:#F4F1EA; border-radius:8px; padding:9px 11px; margin-bottom:12px; line-height:1.6;">
           담당 중개사에게 배정되어 상담 연락을 드립니다.
@@ -2744,26 +2770,33 @@ async function loadBuildingHeader(id){
     const listings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     if (listings.length > 0) {
       const rows = listings.map((lr) => {
+        const lrId = lr.id;
         const dt = escapeHtml(lr.deal_type || "-");
+        const sqm = lr.area_sqm ? parseFloat(lr.area_sqm) + "㎡" : "-";
         const price = escapeHtml(lr.desired_price || "-");
-        const areaSqmStr = lr.area_sqm ? ` · ${parseFloat(lr.area_sqm)}㎡` : "";
-        const tail = lr.phone_tail ? `010-****-${escapeHtml(lr.phone_tail)}` : "-";
         const date = escapeHtml(lr.listing_date || "");
         return `<tr>
           <td style="text-align:left;">${dt}</td>
-          <td style="text-align:left;">${price}${escapeHtml(areaSqmStr)}</td>
-          <td style="color:var(--ink-soft); white-space:nowrap;">${tail}</td>
+          <td style="white-space:nowrap;">${sqm}</td>
+          <td style="text-align:left;">${price}</td>
           <td style="font-size:11.5px; color:var(--ink-soft); white-space:nowrap;">${date}</td>
+          <td style="text-align:center; padding:0 4px;"><button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:none; border:none; cursor:pointer; font-size:18px; line-height:1;" title="문의하기">💬</button></td>
         </tr>`;
       }).join("");
       listingsBody.innerHTML = `
         <table class="b-info-table" style="margin-bottom:8px;">
-          <thead><tr><th>유형</th><th>희망가</th><th>연락처</th><th>등록일</th></tr></thead>
+          <thead><tr><th>유형</th><th>전용㎡</th><th>희망가</th><th>등록일</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.6; margin-top:4px;">
           직거래 시 계약 전 등기부등본 확인을 권장합니다.
         </div>`;
+      listingsBody.querySelectorAll(".listing-chat-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          _openListingChat(parseInt(btn.dataset.lrid, 10));
+        });
+      });
       listingsCard.style.display = "";
     } else {
       listingsCard.style.display = "none";
