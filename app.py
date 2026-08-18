@@ -803,19 +803,22 @@ def get_building(building_id):
 def get_building_area_types(building_id):
     """전용면적 타입 목록 — 순수 DB 조회 (외부 API 없음, 빠름).
 
-    1차: building_unit_areas 캐시 DISTINCT area_sqm
-    2차: transactions DISTINCT area 폴백 (실거래 이력이 있는 건물)
+    1차: building_unit_areas 캐시 → area_sqm별 호실수(ho_cnt) 포함
+    2차: transactions DISTINCT area 폴백 (ho_cnt=null)
+    반환: items=[{sqm, ho_cnt|null}], sqms=[...] (하위호환)
     """
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT DISTINCT area_sqm FROM building_unit_areas
+            SELECT area_sqm, COUNT(*) AS ho_cnt
+            FROM building_unit_areas
             WHERE master_building_id = %s AND area_sqm IS NOT NULL
-            ORDER BY area_sqm
+            GROUP BY area_sqm ORDER BY area_sqm
         """, [building_id])
-        sqms = [float(r["area_sqm"]) for r in cur.fetchall()]
+        rows = cur.fetchall()
+        items = [{"sqm": float(r["area_sqm"]), "ho_cnt": int(r["ho_cnt"])} for r in rows]
 
-        if not sqms:
+        if not items:
             cur.execute("""
                 SELECT building_name, sgg_cd, umd_nm, jibun
                 FROM master_buildings WHERE id = %s
@@ -829,7 +832,7 @@ def get_building_area_types(building_id):
                       AND area IS NOT NULL AND area > 0
                     ORDER BY a LIMIT 30
                 """, [mb["sgg_cd"], mb["umd_nm"], mb["jibun"]])
-                sqms = [float(r["a"]) for r in cur.fetchall()]
+                items = [{"sqm": float(r["a"]), "ho_cnt": None} for r in cur.fetchall()]
             elif mb:
                 name = ((mb.get("building_name") or "")).strip()
                 if name and name != "-":
@@ -839,12 +842,12 @@ def get_building_area_types(building_id):
                         WHERE building_name = %s AND area IS NOT NULL AND area > 0
                         ORDER BY a LIMIT 30
                     """, [name])
-                    sqms = [float(r["a"]) for r in cur.fetchall()]
+                    items = [{"sqm": float(r["a"]), "ho_cnt": None} for r in cur.fetchall()]
 
-        return jsonify({"ok": True, "sqms": sqms})
+        return jsonify({"ok": True, "items": items, "sqms": [x["sqm"] for x in items]})
     except Exception as e:
         app.logger.exception("area-types 오류 building_id=%s", building_id)
-        return jsonify({"ok": False, "sqms": []})
+        return jsonify({"ok": False, "items": [], "sqms": []})
     finally:
         cur.close(); conn.close()
 
@@ -888,15 +891,24 @@ def get_building_unit_areas(building_id):
 
         plat_gb, bun, ji = parse_jibun(mb["jibun"])
         import building_registry as br
-        import concurrent.futures as _cf
-        # fetch_expos_area 내부에서 _RETRY_MAX(2)×timeout(15s)=45s blocking 가능
-        # → gunicorn worker timeout(30s) 초과 방지를 위해 별도 스레드 + 20s hard cap
-        with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
-            _fut = _ex.submit(br.fetch_expos_area, mb["sgg_cd"], bjd, plat_gb, bun, ji)
+        import threading as _threading
+        # fetch_expos_area 내부 _RETRY_MAX(2)×timeout(15s)=45s blocking 가능
+        # → daemon thread + Event 20s cap.  daemon=True이므로 timeout 후 gunicorn은
+        #   즉시 응답; 백그라운드 스레드는 OS가 정리(worker를 block하지 않음).
+        # ThreadPoolExecutor.__exit__ 은 내부 스레드가 끝날 때까지 block하므로 사용불가.
+        _result_box = [None]
+        _done_evt   = _threading.Event()
+        def _bg_fetch():
             try:
-                raw = _fut.result(timeout=20)
-            except (_cf.TimeoutError, Exception):
-                raw = []
+                _result_box[0] = br.fetch_expos_area(mb["sgg_cd"], bjd, plat_gb, bun, ji)
+            except Exception:
+                pass
+            finally:
+                _done_evt.set()
+        _t = _threading.Thread(target=_bg_fetch, daemon=True)
+        _t.start()
+        _done_evt.wait(timeout=20)
+        raw = _result_box[0] or []
 
         # DB 캐싱 (기존 캐시 교체 후 신규 삽입)
         cur.execute("DELETE FROM building_unit_areas WHERE master_building_id = %s", [building_id])

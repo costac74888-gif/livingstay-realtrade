@@ -147,7 +147,7 @@ function escapeHtml(v){
   ));
 }
 
-// 💬 채팅방 열기 — listing_request_id로 방 생성 후 이동
+// 💬 채팅방 열기 — listing_request_id로 방 생성 후 채팅 모달 오픈
 async function _openListingChat(listingRequestId){
   try {
     const res = await fetch("/api/chat/rooms", {
@@ -157,20 +157,128 @@ async function _openListingChat(listingRequestId){
       body: JSON.stringify({ listing_request_id: listingRequestId }),
     });
     if (res.status === 401){
-      if (confirm("채팅을 이용하려면 로그인이 필요합니다.\n로그인 페이지로 이동하시겠습니까?"))
-        window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+      if (typeof window.livingstayOpenLogin === "function") {
+        window.livingstayOpenLogin();
+      } else {
+        alert("로그인이 필요합니다.");
+      }
       return;
     }
     const d = await res.json().catch(() => ({}));
     if (res.ok && d.ok){
-      // 채팅 UI 페이지가 준비되면 /chat/<id>로 이동; 현재는 안내 표시
-      alert("채팅방이 준비되었습니다.\n(채팅 화면은 준비 중입니다)");
+      openChatModal(d.room_id);
     } else {
-      alert(d.error || "채팅방 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      alert(d.message || d.error || "채팅방 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
   } catch(e){
     alert("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
   }
+}
+
+// 💬 인앱 채팅 모달 — room_id로 메시지 조회·전송
+function openChatModal(roomId){
+  document.getElementById("chatModalOverlay")?.remove();
+  const ov = document.createElement("div");
+  ov.id = "chatModalOverlay";
+  ov.style.cssText = "position:fixed; inset:0; background:rgba(22,32,46,.45); z-index:4000; display:flex; align-items:flex-end; justify-content:center;";
+
+  ov.innerHTML = `
+    <div id="chatModalBox" style="width:100%; max-width:520px; background:#fff; border-radius:16px 16px 0 0; display:flex; flex-direction:column; max-height:80vh; box-shadow:0 -4px 24px rgba(0,0,0,.18);">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid var(--line); flex-shrink:0;">
+        <span style="font-size:15px; font-weight:700; color:var(--ink);">💬 직거래 문의</span>
+        <button id="chatModalClose" style="background:none; border:none; font-size:22px; color:var(--ink-soft); cursor:pointer; line-height:1; padding:0 4px;">×</button>
+      </div>
+      <div id="chatMsgList" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;">
+        <div style="text-align:center; color:var(--ink-soft); font-size:13px;">불러오는 중…</div>
+      </div>
+      <div style="padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px; flex-shrink:0; background:#fafafa; border-radius:0 0 0 0;">
+        <input id="chatInput" type="text" maxlength="500" placeholder="메시지를 입력하세요…" style="flex:1; border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:14px; font-family:inherit; outline:none;" />
+        <button id="chatSendBtn" style="background:var(--brass,#B4863F); color:#fff; border:none; border-radius:8px; padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap;">전송</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(ov);
+
+  let myUserId = null;
+  let pollTimer = null;
+
+  const listEl   = ov.querySelector("#chatMsgList");
+  const inputEl  = ov.querySelector("#chatInput");
+  const sendBtn  = ov.querySelector("#chatSendBtn");
+  const closeBtn = ov.querySelector("#chatModalClose");
+
+  function _renderMessages(messages){
+    if (!messages.length){
+      listEl.innerHTML = `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px 0;">아직 메시지가 없습니다. 먼저 인사를 건네보세요!</div>`;
+      return;
+    }
+    const wasAtBottom = listEl.scrollHeight - listEl.scrollTop <= listEl.clientHeight + 40;
+    listEl.innerHTML = messages.map(m => {
+      const isMine = m.sender_user_id === myUserId;
+      const bg    = isMine ? "var(--brass,#B4863F)" : "#f0f0f0";
+      const clr   = isMine ? "#fff" : "var(--ink)";
+      const align = isMine ? "flex-end" : "flex-start";
+      return `<div style="display:flex; flex-direction:column; align-items:${align}; gap:2px;">
+        ${!isMine ? `<span style="font-size:11px; color:var(--ink-soft);">${escapeHtml(m.sender_name || "")}</span>` : ""}
+        <div style="background:${bg}; color:${clr}; border-radius:${isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px"}; padding:8px 12px; max-width:75%; font-size:14px; line-height:1.5; word-break:break-word;">${escapeHtml(m.body)}</div>
+        <span style="font-size:10.5px; color:var(--ink-soft);">${escapeHtml(m.sent_at || "")}</span>
+      </div>`;
+    }).join("");
+    if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight;
+  }
+
+  async function _loadMessages(){
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages`, { credentials: "same-origin" });
+      if (!res.ok) return;
+      const d = await res.json().catch(() => ({}));
+      if (!d.ok) return;
+      myUserId = d.my_user_id;
+      _renderMessages(d.messages || []);
+    } catch(e){ /* 조용히 실패 — 폴링이 재시도 */ }
+  }
+
+  async function _send(){
+    const body = inputEl.value.trim();
+    if (!body) return;
+    inputEl.value = "";
+    sendBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ body }),
+      });
+      if (res.ok) await _loadMessages();
+      else {
+        const d = await res.json().catch(() => ({}));
+        inputEl.value = body; // 실패 시 복원
+        alert(d.message || "전송에 실패했습니다.");
+      }
+    } catch(e){
+      inputEl.value = body;
+      alert("네트워크 오류가 발생했습니다.");
+    } finally {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  const _close = () => {
+    clearInterval(pollTimer);
+    ov.remove();
+  };
+
+  closeBtn.addEventListener("click", _close);
+  ov.addEventListener("click", (e) => { if (e.target === ov) _close(); });
+  sendBtn.addEventListener("click", _send);
+  inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); _send(); } });
+
+  // 초기 로드 + 5초 폴링
+  _loadMessages();
+  pollTimer = setInterval(_loadMessages, 5000);
+  setTimeout(() => inputEl.focus(), 100);
 }
 
 let _fallbackToastTimer = null;
@@ -2100,7 +2208,7 @@ function openListingRequestModal(buildingId, buildingName){
       .then(d => {
         const areaSelectEl = ov.querySelector("#lrAreaSelect");
         if (!areaSelectEl) return;
-        const sqms = d.sqms || [];
+        const sqms = (d.items || []).map(it => it.sqm);
         if (sqms.length > 0) {
           areaSelectEl.innerHTML =
             sqms.map(v => `<option value="${v}">${v}㎡</option>`).join("") +
@@ -3536,10 +3644,13 @@ function renderBuildingPanel(id){
       fetch("/api/building/" + id + "/area-types")
         .then(r => r.json()).catch(() => ({}))
         .then(d => {
-          const sqms = d.sqms || [];
-          if (sqms.length > 0){
+          const items = d.items || [];
+          if (items.length > 0){
             bAreaFilterEl.innerHTML = `<option value="">전체</option>` +
-              sqms.map(v => `<option value="${v}">${v}㎡</option>`).join("");
+              items.map(it => {
+                const label = it.ho_cnt != null ? `${it.sqm}㎡ (${it.ho_cnt}실)` : `${it.sqm}㎡`;
+                return `<option value="${it.sqm}">${label}</option>`;
+              }).join("");
           } else {
             // 전유부 + 실거래 모두 없으면 섹션 숨김
             const sec = bAreaFilterEl.closest("section");
