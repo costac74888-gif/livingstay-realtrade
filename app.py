@@ -13572,7 +13572,9 @@ def admin_email_banners_upload_image():
     except Exception:
         app.logger.exception("이메일 배너 이미지 업로드 실패")
         return jsonify({"ok": False, "message": "파일 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."}), 500
-    domain = os.environ.get("PUBLIC_BASE_URL", "https://homenstay.com").rstrip("/")
+    _dev = os.environ.get("REPLIT_DEV_DOMAIN", "")
+    _default = f"https://{_dev}" if _dev else "https://homenstay.com"
+    domain = os.environ.get("PUBLIC_BASE_URL", _default).rstrip("/")
     return jsonify({"ok": True, "image_url": f"{domain}/api/email-banners/image/{key}"})
 
 
