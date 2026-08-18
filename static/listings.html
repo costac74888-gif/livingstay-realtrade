@@ -89,7 +89,7 @@
         <span class="listing-badge">${escHtml(dealLabel(item.deal_type))}</span>
         <span class="listing-building">${escHtml(item.building_name||"-")}</span>
       </div>
-      <div class="listing-price">${escHtml(item.desired_price||"가격 미정")}</div>
+      <div class="listing-price">${escHtml(item.desired_price||"가격 미정")}${item.area_sqm ? ` · ${parseFloat(item.area_sqm)}㎡` : ""}</div>
       <div class="listing-meta">
         <span>${escHtml(item.sgg_text||"-")}</span>
         ${item.lodging_type ? `<span>${escHtml(item.lodging_type)}</span>` : ""}

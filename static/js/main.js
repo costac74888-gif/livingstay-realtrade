@@ -1924,6 +1924,24 @@ function openListingRequestModal(buildingId, buildingName){
         <div id="lrDealTypes" style="display:flex; gap:6px; margin-bottom:12px;">
           ${["매매","전세","월세","단기임대"].map((t,i) => `<button type="button" data-dt="${t}" class="side-more" style="flex:1; margin-top:0; padding:8px 0; ${i===0 ? "background:var(--brass); color:#fff; border-color:var(--brass);" : ""}">${t}</button>`).join("")}
         </div>
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">전용면적 <span style="font-weight:400; color:var(--ink-soft);">(㎡, 선택)</span></div>
+        <input id="lrAreaSqm" type="number" min="1" max="9999" step="0.01" inputmode="decimal" placeholder="예) 46.28" style="${FLD} margin-bottom:12px;" />
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">상세주소 <span style="font-weight:400; color:var(--ink-soft);">(선택 — 비공개)</span></div>
+        <div style="display:flex; gap:6px; margin-bottom:4px;">
+          <input id="lrDong" type="text" maxlength="20" placeholder="동" style="${FLD} flex:1;" />
+          <input id="lrHo" type="text" maxlength="20" placeholder="호" style="${FLD} flex:1;" />
+        </div>
+        <div style="font-size:11px; color:var(--ink-soft); margin-bottom:12px; line-height:1.5;">동/호는 지도·매물목록에 공개되지 않으며, 추후 안전거래 확인 목적으로만 활용됩니다.</div>
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">등록자 정보</div>
+        <select id="lrRegistrantType" style="${FLD} margin-bottom:12px;">
+          <option value="owner">소유자 본인</option>
+          <option value="agent">위임 대리인</option>
+          <option value="other">기타</option>
+        </select>
+
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">희망가 <span style="font-weight:400; color:var(--ink-soft);">(선택)</span></div>
         <div id="lrPriceSale">
           <input id="lrSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" style="${FLD} margin-bottom:12px;" />
@@ -1952,7 +1970,7 @@ function openListingRequestModal(buildingId, buildingName){
             <div id="lrPhoneInputWrap" style="margin-bottom:10px;">
               <input id="lrPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD} margin-bottom:6px;" />
               <div style="display:flex; gap:6px; margin-bottom:6px;">
-                <input id="lrPhoneCode" type="text" inputmode="numeric" maxlength="6" placeholder="인증번호 6자리" style="${FLD} flex:1; min-width:0;" />
+                <input id="lrPhoneCode" type="text" inputmode="numeric" maxlength="6" placeholder="인증번호 6자리" style="${FLD} flex:1; min-width:90px; font-size:16px;" />
                 <button type="button" id="lrSendCode" class="side-more" style="white-space:nowrap; margin-top:0; padding:8px 10px; flex-shrink:0; font-size:12.5px;">인증번호 받기</button>
               </div>
               <button type="button" id="lrVerifyCode" class="btn-search" style="width:100%; padding:9px; display:none; font-size:13px;">인증 확인</button>
@@ -1984,11 +2002,17 @@ function openListingRequestModal(buildingId, buildingName){
   let verifiedPhone = "";
 
   const PRICE_BOXES = { "매매": "lrPriceSale", "전세": "lrPriceJeonse", "월세": "lrPriceWolse", "단기임대": "lrPriceShort" };
+  const _CAUTION = `<div style="font-weight:700; color:var(--ink); margin-bottom:5px; margin-top:10px;">[매물등록 유의사항]</div>` +
+    `- 상세주소(동/호)는 공개되지 않으며, 추후 안전거래 확인(소유자 인증) 목적으로만 활용됩니다.<br><br>` +
+    `- 동/호 정보가 정확하지 않으면 추후 안전거래 인증 절차에서 매물이 제외될 수 있습니다.<br><br>` +
+    `- 이미 계약이 완료됐거나 존재하지 않는 매물을 등록하면 서비스 이용이 제한될 수 있습니다.<br><br>` +
+    `- 등록하신 매물 정보와 연락처는 실제 거래 문의를 위해서만 사용되며, 관심 없는 용도로 활용되지 않습니다.`;
   const NOTICES = {
     direct: `<div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[직거래 안내]</div>` +
       `-매물 내용과 인증된 연락처가 건물 상세 페이지에 공개됩니다.<br><br>` +
       `-홈앤스테이는 중개행위에 관여하지 않으며 중개수수료를 받지 않습니다.<br><br>` +
-      `-직거래 시 발생하는 법적 분쟁은 당사자 간 책임입니다. 고가 거래는 전문 중개사를 이용하시길 권장합니다.`,
+      `-직거래 시 발생하는 법적 분쟁은 당사자 간 책임입니다. 고가 거래는 전문 중개사를 이용하시길 권장합니다.` +
+      _CAUTION,
     broker: `<div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>` +
       `-매물의뢰는 단지부동산, 지역부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>` +
       `-홈앤스테이는 부동산중개사무소가 아니며 중개행위에 관여하지 않고, 중개수수료를 받지 않습니다.<br><br>` +
@@ -2144,7 +2168,12 @@ function openListingRequestModal(buildingId, buildingName){
     setMsg("");
     const btn = ov.querySelector("#lrSubmit"); btn.disabled = true; btn.textContent = "접수 중…";
     try {
-      const body = { master_building_id: buildingId, deal_type: dealType, deal_mode: dealMode, desired_price: desiredPrice, price_krw: priceKrw, monthly_rent_krw: monthlyRentKrw };
+      const _areaSqmRaw = parseFloat(ov.querySelector("#lrAreaSqm").value);
+      const areaSqm = Number.isFinite(_areaSqmRaw) && _areaSqmRaw > 0 ? _areaSqmRaw : null;
+      const dong = ov.querySelector("#lrDong").value.trim().slice(0, 20) || null;
+      const ho = ov.querySelector("#lrHo").value.trim().slice(0, 20) || null;
+      const registrantType = ov.querySelector("#lrRegistrantType").value || "owner";
+      const body = { master_building_id: buildingId, deal_type: dealType, deal_mode: dealMode, desired_price: desiredPrice, price_krw: priceKrw, monthly_rent_krw: monthlyRentKrw, area_sqm: areaSqm, dong, ho, registrant_type: registrantType };
       if (contactPhone) body.contact_phone = contactPhone;
       const res = await fetch("/api/listing-requests", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await res.json().catch(() => ({}));
@@ -2719,11 +2748,12 @@ async function loadBuildingHeader(id){
       const rows = listings.map((lr) => {
         const dt = escapeHtml(lr.deal_type || "-");
         const price = escapeHtml(lr.desired_price || "-");
+        const areaSqmStr = lr.area_sqm ? ` · ${parseFloat(lr.area_sqm)}㎡` : "";
         const tail = lr.phone_tail ? `010-****-${escapeHtml(lr.phone_tail)}` : "-";
         const date = escapeHtml(lr.listing_date || "");
         return `<tr>
           <td style="text-align:left;">${dt}</td>
-          <td style="text-align:left;">${price}</td>
+          <td style="text-align:left;">${price}${escapeHtml(areaSqmStr)}</td>
           <td style="color:var(--ink-soft); white-space:nowrap;">${tail}</td>
           <td style="font-size:11.5px; color:var(--ink-soft); white-space:nowrap;">${date}</td>
         </tr>`;

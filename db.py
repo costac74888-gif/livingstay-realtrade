@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-18-2"
+SCHEMA_VERSION = "2026-08-18-3"
 
 
 def init_db():
@@ -857,6 +857,13 @@ def init_db():
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS deal_mode TEXT DEFAULT 'broker'")
     # 직거래 공개 매물 연락처 (인증된 번호)
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS verified_phone TEXT")
+    # 전용면적(㎡) — 선택 입력, 공개 표시용
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS area_sqm NUMERIC")
+    # 상세주소(동/호) — 비공개, 추후 소유자 인증용
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS dong VARCHAR(20)")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS ho VARCHAR(20)")
+    # 등록자 유형: 'owner' | 'agent' | 'other'
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS registrant_type VARCHAR(20)")
 
     # 매물의뢰 이력 — 접수/수정/철회 변경 내역을 타임라인으로 보존
     cur.execute("""

@@ -695,7 +695,7 @@ def get_building(building_id):
     # 이 건물의 공개 직거래 매물 목록 (deal_mode='direct', withdrawn 아닌 것)
     cur.execute("""
         SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
-               lr.verified_phone,
+               lr.area_sqm, lr.verified_phone,
                TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date
         FROM listing_requests lr
         WHERE lr.master_building_id = %s
@@ -6235,6 +6235,17 @@ def create_listing_request():
     desired_price = (data.get("desired_price") or "").strip()[:100]
     contact_phone = (data.get("contact_phone") or "").strip()
 
+    # 전용면적(㎡) — 선택, 양수 숫자만 허용
+    try:
+        area_sqm = float(data.get("area_sqm") or 0)
+        area_sqm = round(area_sqm, 2) if 0 < area_sqm < 100000 else None
+    except (TypeError, ValueError):
+        area_sqm = None
+    dong = (str(data.get("dong") or "").strip()[:20]) or None
+    ho = (str(data.get("ho") or "").strip()[:20]) or None
+    registrant_type_raw = (data.get("registrant_type") or "owner").strip()
+    registrant_type = registrant_type_raw if registrant_type_raw in ("owner", "agent", "other") else "owner"
+
     # 거래유형별 구조화 희망가(만원 단위 정수, 선택) — 단기임대는 자유텍스트만 사용.
     # 값이 전달됐는데 정수가 아니거나 범위(1~1억 만원)를 벗어나면 400 (조용한 유실 방지).
     def _parse_krw(field, allowed):
@@ -6295,12 +6306,12 @@ def create_listing_request():
             INSERT INTO listing_requests
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
                  routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
-                 deal_mode, verified_phone)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 deal_mode, verified_phone, area_sqm, dong, ho, registrant_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
               routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
-              deal_mode, verified_phone])
+              deal_mode, verified_phone, area_sqm, dong, ho, registrant_type])
         req_id = cur.fetchone()["id"]
         # 이력 기록 — 최초 접수
         cur.execute(
@@ -6508,7 +6519,7 @@ def public_listings():
             params.append(deal_type_filter)
         cur.execute(f"""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
-                   lr.verified_phone,
+                   lr.area_sqm, lr.verified_phone,
                    TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type
             FROM listing_requests lr
@@ -13110,8 +13121,8 @@ def admin_listing_requests_list():
         # sort_expr/order는 화이트리스트로만 정해지므로 f-string 삽입이 안전하다.
         cur.execute(f"""
             SELECT lr.id, lr.master_building_id, mb.building_name,
-                   lr.deal_type, lr.desired_price, lr.contact_phone,
-                   lr.routed_reason, lr.status, lr.admin_note,
+                   lr.deal_type, lr.desired_price, lr.area_sqm, lr.deal_mode,
+                   lr.contact_phone, lr.routed_reason, lr.status, lr.admin_note,
                    CASE
                      WHEN lr.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
                           AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
@@ -13202,7 +13213,8 @@ def admin_listing_requests_export():
     try:
         cur.execute("""
             SELECT lr.id, mb.building_name, lr.contact_phone, lr.deal_type,
-                   lr.desired_price, lr.routed_reason, a.office_name AS agent_name,
+                   lr.desired_price, lr.area_sqm, lr.deal_mode,
+                   lr.routed_reason, a.office_name AS agent_name,
                    a.phone AS agent_phone, lr.status, lr.admin_note, lr.created_at
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
@@ -13218,7 +13230,7 @@ def admin_listing_requests_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "매물의뢰"
-    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가",
+    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가", "전용㎡", "진행방식",
                "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "접수일"]
     ws.append(headers)
     hdr_fill = PatternFill("solid", fgColor="F9F5EE")
@@ -13227,17 +13239,20 @@ def admin_listing_requests_export():
         cell.alignment = Alignment(horizontal="center")
     reason_map = {"exclusive": "전속", "region": "관할", "house": "제휴"}
     status_map = {"submitted": "신규", "in_progress": "처리중", "done": "완료"}
+    mode_map = {"direct": "직거래", "broker": "중개사연결"}
     for r in rows:
         ws.append([
             r["id"], r["building_name"] or "", r["contact_phone"] or "",
             r["deal_type"] or "", r["desired_price"] or "",
+            float(r["area_sqm"]) if r["area_sqm"] else "",
+            mode_map.get(r["deal_mode"], r["deal_mode"] or ""),
             reason_map.get(r["routed_reason"], r["routed_reason"] or ""),
             r["agent_name"] or "", r["agent_phone"] or "",
             status_map.get(r["status"], r["status"] or ""),
             r["admin_note"] or "",
             r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
         ])
-    col_widths = [6, 20, 16, 10, 18, 8, 22, 14, 8, 20, 16]
+    col_widths = [6, 20, 16, 10, 18, 8, 10, 8, 22, 14, 8, 20, 16]
     for col, w in zip(ws.columns, col_widths):
         ws.column_dimensions[col[0].column_letter].width = w
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
