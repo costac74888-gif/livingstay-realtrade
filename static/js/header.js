@@ -316,6 +316,7 @@
           '<span style="margin-left:auto; font-size:10.5px; color:var(--ink-soft); flex:none;">' + notifTimeAgo(it.last_at) + '</span>' +
         '</div>' +
         (it.building_name ? '<div style="font-size:11.5px; color:var(--brass-dark,#8a5e1a); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🏨 ' + esc(it.building_name) + '</div>' : "") +
+        (it.listing_summary ? '<div style="font-size:11px; color:var(--ink-soft); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.listing_summary) + (it.listing_date ? ' · ' + esc(it.listing_date) : '') + '</div>' : "") +
         '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.preview || "") + '</div>' +
       '</div>' +
     '</div>';

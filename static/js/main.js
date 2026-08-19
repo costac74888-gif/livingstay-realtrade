@@ -192,6 +192,13 @@ function openChatModal(roomId){
         <div style="text-align:center; color:var(--ink-soft); font-size:13px;">불러오는 중…</div>
       </div>
       <div id="chatAttachPreview" style="display:none; padding:6px 14px; background:#fafafa; border-top:1px solid var(--line); font-size:12px; color:var(--ink-soft); display:flex; align-items:center; gap:6px;"></div>
+      <div id="chatTemplateChips" style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:0 16px 8px;">
+        <button class="chat-template-chip" data-tpl="안녕하세요">안녕하세요</button>
+        <button class="chat-template-chip" data-tpl="아직 거래가능한가요">아직 거래가능한가요</button>
+        <button class="chat-template-chip" data-tpl="영업신고·위탁운영 이상없나요">영업신고·위탁운영 이상없나요</button>
+        <button class="chat-template-chip" data-tpl="매물방문은 가능한가요?">매물방문은 가능한가요?</button>
+        <button class="chat-template-chip" data-tpl="입주는 언제가능한지요?">입주는 언제가능한지요?</button>
+      </div>
       <div style="padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px; flex-shrink:0; background:#fafafa;">
         <input type="file" id="chatFileInput" accept=".jpg,.jpeg,.png,.pdf" style="display:none;" />
         <button id="chatAttachBtn" title="파일 첨부" style="background:none; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:17px; cursor:pointer; color:var(--ink-soft); line-height:1;">📎</button>
@@ -206,6 +213,14 @@ function openChatModal(roomId){
   let pollTimer = null;
   let pendingAttachment = null; // { key, name }
 
+  // 칩 스타일 (전역 중복 방지)
+  if (!document.getElementById("chatChipStyle")) {
+    const st = document.createElement("style");
+    st.id = "chatChipStyle";
+    st.textContent = ".chat-template-chip{background:var(--brass-tint,#F4EDDF);border:1px solid var(--line);border-radius:14px;padding:6px 12px;font-size:12.5px;color:var(--ink);cursor:pointer;white-space:nowrap;font-family:inherit;}";
+    document.head.appendChild(st);
+  }
+
   const listEl      = ov.querySelector("#chatMsgList");
   const inputEl     = ov.querySelector("#chatInput");
   const sendBtn     = ov.querySelector("#chatSendBtn");
@@ -213,6 +228,15 @@ function openChatModal(roomId){
   const attachBtn   = ov.querySelector("#chatAttachBtn");
   const fileInputEl = ov.querySelector("#chatFileInput");
   const attachPrev  = ov.querySelector("#chatAttachPreview");
+  const chipsEl     = ov.querySelector("#chatTemplateChips");
+
+  // 칩 클릭 → 입력창 채우기 (자동전송 아님)
+  chipsEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".chat-template-chip");
+    if (!btn) return;
+    inputEl.value = btn.getAttribute("data-tpl");
+    inputEl.focus();
+  });
 
   function _fmtChatTime(isoStr) {
     if (!isoStr) return "";
@@ -231,6 +255,8 @@ function openChatModal(roomId){
   }
 
   function _renderMessages(messages){
+    // 메시지가 없으면 템플릿 칩 표시, 있으면 숨김
+    if (chipsEl) chipsEl.style.display = messages.length === 0 ? "flex" : "none";
     if (!messages.length){
       listEl.innerHTML = `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px 0;">아직 메시지가 없습니다. 먼저 인사를 건네보세요!</div>`;
       return;

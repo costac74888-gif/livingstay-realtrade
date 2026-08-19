@@ -6586,6 +6586,32 @@ def create_operator_consult_request():
     return jsonify({"ok": True})
 
 
+def format_lr_summary(deal_type, price_krw, monthly_rent_krw, area_sqm, yield_rate):
+    """채팅목록용 매물 요약 — 예: '매매 12,000/0.5%/8.4㎡'."""
+    label = deal_type or ""
+    price_str = ""
+    if deal_type in ("월세", "단기임대"):
+        if price_krw is not None:
+            price_str = f"{int(price_krw):,}"
+        if monthly_rent_krw is not None:
+            price_str += f"/{int(monthly_rent_krw):,}"
+    elif price_krw is not None:
+        price_str = f"{int(price_krw):,}"
+    base = f"{label} {price_str}".strip() if price_str else label
+    extras = []
+    if yield_rate is not None:
+        try:
+            extras.append(f"{float(yield_rate):.1f}%")
+        except (TypeError, ValueError):
+            pass
+    if area_sqm is not None:
+        try:
+            extras.append(f"{float(area_sqm):.1f}㎡")
+        except (TypeError, ValueError):
+            pass
+    return (base + "/" + "/".join(extras)) if extras else base
+
+
 def format_listing_number(deal_mode, display_seq):
     """대외 표시번호 — 예: format_listing_number('direct', 1001) → '직거래001001'."""
     if display_seq is None:
@@ -7424,6 +7450,9 @@ def list_chat_rooms():
                    lm.attachment_key  AS last_attachment_key,
                    TO_CHAR(COALESCE(lm.created_at, cr.created_at),
                            'YYYY-MM-DD HH24:MI') AS last_at,
+                   lr.deal_type, lr.price_krw, lr.monthly_rent_krw,
+                   lr.area_sqm, lr.yield_rate,
+                   TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
                    (SELECT COUNT(*) FROM chat_messages
                      WHERE room_id = cr.id
                        AND sender_user_id != %(uid)s
@@ -7470,6 +7499,10 @@ def list_chat_rooms():
             "last_at": r.get("last_at"),
             "unread_count": int(r["unread_count"]),
             "thumb_url": r.get("thumb_url"),
+            "listing_summary": format_lr_summary(
+                r.get("deal_type"), r.get("price_krw"), r.get("monthly_rent_krw"),
+                r.get("area_sqm"), r.get("yield_rate")),
+            "listing_date": r.get("listing_date"),
         })
     return jsonify({"ok": True, "items": items, "limit": limit,
                     "offset": offset, "has_more": has_more})
