@@ -70,6 +70,12 @@
     text-align: left; font-size: 11.5px; font-weight: 600; color: var(--ink-soft);
     padding: 6px 8px 8px; border-bottom: 2px solid var(--line); white-space: nowrap;
   }
+  .ls-sort-btn {
+    display:inline-flex; align-items:center; gap:3px; padding:0; border:0;
+    background:transparent; color:inherit; font:inherit; cursor:pointer; white-space:nowrap;
+  }
+  .ls-sort-btn:hover, .ls-sort-btn.is-active { color:var(--brass-dark, #7D4A00); }
+  .ls-sort-arrow { font-size:11px; color:var(--brass, #B4863F); min-width:10px; }
   .ls-board-tbl thead th:last-child { text-align: center; }
   .ls-board-tbl tbody tr { transition: background .1s; }
   .ls-board-tbl tbody tr:hover { background: #fafaf8; }
@@ -287,13 +293,13 @@
         <thead>
           <tr>
             <th>사진</th>
-            <th class="ls-hide-mobile">용도</th>
-            <th>건물명</th>
-            <th>유형</th>
-            <th>희망가(만원)</th>
-            <th class="ls-hide-mobile">수익률</th>
-            <th class="ls-hide-mobile">전용㎡</th>
-            <th class="ls-hide-mobile">등록일</th>
+            <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="lodging" aria-label="용도 정렬">용도 <span class="ls-sort-arrow">↕</span></button></th>
+            <th><button type="button" class="ls-sort-btn" data-sort="building" aria-label="건물명 정렬">건물명 <span class="ls-sort-arrow">↕</span></button></th>
+            <th><button type="button" class="ls-sort-btn" data-sort="dealType" aria-label="유형 정렬">유형 <span class="ls-sort-arrow">↕</span></button></th>
+            <th><button type="button" class="ls-sort-btn" data-sort="price" aria-label="희망가 정렬">희망가(만원) <span class="ls-sort-arrow">↕</span></button></th>
+            <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="yield" aria-label="수익률 정렬">수익률 <span class="ls-sort-arrow">↕</span></button></th>
+            <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="area" aria-label="전용면적 정렬">전용㎡ <span class="ls-sort-arrow">↕</span></button></th>
+            <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="date" aria-label="등록일 정렬">등록일 <span class="ls-sort-arrow">↕</span></button></th>
             <th>채팅</th>
             <th class="ls-hide-mobile">찜</th>
             <th class="ls-hide-mobile">공유</th>
@@ -361,6 +367,8 @@
 
   let myChattingIds = new Set();
   let chatFilterId  = null;
+  let boardSortKey = null;
+  let boardSortDirection = "asc";
 
   // ── 뷰 전환 ────────────────────────────────────────────────────────────
   const STORAGE_KEY = "listingsViewMode";
@@ -418,6 +426,46 @@
 
   document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
+  });
+
+  function sortBoardRows(){
+    if (!boardSortKey) return;
+    const rows = Array.from(boardBody.querySelectorAll("tr[data-listing-id]"));
+    const keyName = "sort" + boardSortKey.charAt(0).toUpperCase() + boardSortKey.slice(1);
+    const numericKeys = new Set(["price", "yield", "area"]);
+    rows.sort((a, b) => {
+      const av = a.dataset[keyName] || "";
+      const bv = b.dataset[keyName] || "";
+      const aMissing = av === "";
+      const bMissing = bv === "";
+      if (aMissing || bMissing) return aMissing === bMissing ? 0 : (aMissing ? 1 : -1);
+      let result;
+      if (numericKeys.has(boardSortKey)){
+        result = Number(av) - Number(bv);
+      } else {
+        result = av.localeCompare(bv, "ko");
+      }
+      return boardSortDirection === "asc" ? result : -result;
+    });
+    rows.forEach(row => boardBody.appendChild(row));
+  }
+
+  document.querySelectorAll(".ls-sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const nextKey = btn.dataset.sort;
+      if (boardSortKey === nextKey) boardSortDirection = boardSortDirection === "asc" ? "desc" : "asc";
+      else {
+        boardSortKey = nextKey;
+        boardSortDirection = "asc";
+      }
+      document.querySelectorAll(".ls-sort-btn").forEach(other => {
+        const active = other === btn;
+        other.classList.toggle("is-active", active);
+        other.querySelector(".ls-sort-arrow").textContent = active ? (boardSortDirection === "asc" ? "↑" : "↓") : "↕";
+        other.closest("th").setAttribute("aria-sort", active ? (boardSortDirection === "asc" ? "ascending" : "descending") : "none");
+      });
+      sortBoardRows();
+    });
   });
 
   // 초기 뷰 적용
@@ -590,6 +638,13 @@
   function renderBoardRow(item){
     const tr = document.createElement("tr");
     tr.dataset.listingId = item.id;
+    tr.dataset.sortLodging = lodgingLabel(item.lodging_type);
+    tr.dataset.sortBuilding = item.building_name || "";
+    tr.dataset.sortDealType = item.deal_type || "";
+    tr.dataset.sortPrice = item.price_krw != null ? item.price_krw : "";
+    tr.dataset.sortYield = item.yield_rate != null ? item.yield_rate : "";
+    tr.dataset.sortArea = item.area_sqm != null ? item.area_sqm : "";
+    tr.dataset.sortDate = item.listing_date || "";
     const isChatting   = myChattingIds.has(item.id);
     const chatBtnClass = "listing-chat-btn" + (isChatting ? " is-chatting" : "");
     const chatTitle    = isChatting ? "채팅 이어하기" : "문의하기";
@@ -767,6 +822,7 @@
           boardBody.appendChild(renderBoardRow(item));
           cardGrid.appendChild(renderCardItem(item));
         });
+         sortBoardRows();
         offset      += d.items.length;
         totalLoaded += d.items.length;
         countEl.textContent = `총 ${totalLoaded}건${d.has_more ? "+" : ""}`;
