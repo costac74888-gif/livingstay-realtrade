@@ -409,6 +409,14 @@
   var myPriceBtnMenu = document.getElementById("myPriceBtnMenu");
   if (myPriceBtnMenu){ myPriceBtnMenu.addEventListener("click", _handleMyPriceClick); }
 
+  // /menu의 바로가기에서도 PC 상단 메뉴와 동일한 동작을 재사용한다.
+  var menuMyPriceShortcut = document.getElementById("menuMyPriceShortcut");
+  if (menuMyPriceShortcut){ menuMyPriceShortcut.addEventListener("click", _handleMyPriceClick); }
+  var menuAlertShortcut = document.getElementById("menuAlertShortcut");
+  if (menuAlertShortcut && alertMenuBtn){ menuAlertShortcut.addEventListener("click", function(){ alertMenuBtn.click(); }); }
+  var menuChatShortcut = document.getElementById("menuChatShortcut");
+  if (menuChatShortcut && chatMenuBtn){ menuChatShortcut.addEventListener("click", function(){ chatMenuBtn.click(); }); }
+
   if (alertMenu && alertMenuBtn) {
     alertMenuBtn.addEventListener("click", function (e) {
       e.stopPropagation();
@@ -563,10 +571,10 @@
     })
     .catch(function () { /* 팝업은 부가 기능 — 실패해도 페이지에 영향 없음 */ });
 
-  // ---- 오류신고 플로팅 버튼 (홈('/') 전용) ----
+  // ---- 오류신고 플로팅 버튼 (마이페이지 전용) ----
   (function () {
-    // 메인 지도 홈('/')에서만 노출
-    if (location.pathname !== "/") return;
+    // 오류 신고는 마이페이지에서만 노출
+    if (location.pathname !== "/mypage") return;
 
     // 플로팅 버튼 삽입
     var btn = document.createElement("button");

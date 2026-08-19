@@ -35,7 +35,11 @@
   <!-- 바로가기 -->
   <div class="panel-card" style="margin-bottom:14px;">
     <h2 class="menu-sec-title">바로가기</h2>
+    <button type="button" class="menu-link menu-action-link" id="menuMyPriceShortcut">🏨 내건물시세</button>
+    <button type="button" class="menu-link menu-action-link" id="menuAlertShortcut">🔔 알림</button>
+    <button type="button" class="menu-link menu-action-link" id="menuChatShortcut">💬 채팅</button>
     <a class="menu-link" href="/guide" style="background:var(--brass-tint); font-weight:700;">📖 이용안내</a>
+    <a class="menu-link" href="/listings">🏠 직거래매물</a>
     <a class="menu-link" href="/">🗺️ 지도 홈</a>
     <a class="menu-link" href="/transactions">📋 실거래목록</a>
     <a class="menu-link" href="/mypage" id="menuMypageLink" style="display:none;">👤 마이페이지</a>
@@ -83,9 +87,11 @@
     display:flex; align-items:center; gap:8px;
     padding:13px 4px; font-size:15px; font-weight:500; color:var(--ink);
     text-decoration:none; border-bottom:1px solid var(--line, #e8eaed);
+    width:100%; box-sizing:border-box; font-family:inherit; text-align:left;
   }
+  button.menu-link { background:transparent; border-top:0; border-left:0; border-right:0; cursor:pointer; }
   .menu-link:last-child { border-bottom:none; }
-  .menu-link:active { background:var(--brass-tint, #F4EDDF); }
+  .menu-link:hover, .menu-link:active { background:var(--brass-tint, #F4EDDF); }
 </style>
 
 <script>
