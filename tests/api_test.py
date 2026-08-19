@@ -89,6 +89,11 @@ def check_buildings_geo(payload):
             return "items[].lat이 숫자가 아님"
         if item.get("lng") is not None and not isinstance(item["lng"], (int, float)):
             return "items[].lng이 숫자가 아님"
+        for key in ("txn_count", "listing_count", "total_count"):
+            if not isinstance(item.get(key), int) or item[key] < 0:
+                return f"items[].{key}가 0 이상의 정수가 아님"
+        if item["total_count"] != item["txn_count"] + item["listing_count"]:
+            return "items[].total_count가 txn_count + listing_count와 다름"
     return None
 
 

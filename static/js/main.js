@@ -868,12 +868,11 @@ function lodgingLabelKo(lodgingType){
 let kakaoMap = null;
 let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.maps.Marker) 목록
-let mapLabelData = [];                // [{b, pos, overlay, el}] — 라벨 lazy 생성용 데이터
-let _markerLoadGen = 0;               // loadMapMarkers 호출마다 증가 — 이전 addChunk 루프 폐기용
-let _listingOverlays = [];            // 직거래 매물 마커 목록 (건물 마커와 별도 레이어)
-let _listingsVisible = true;          // 직거래 매물 레이어 표시 여부
+let mapLabelData = [];                // [{b, pos, overlay, el}] — 원형 배지 lazy 생성용 데이터
+let _mapRenderGen = 0;                // 마커·클러스터 공용 세대 — 늦게 도착한 이전 응답 폐기용
 
-// 색상별 MarkerImage 캐시 — SVG 데이터 URI를 반복 생성하지 않는다
+// 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
+// 거래·매물 합계가 1건 이상인 건물은 CustomOverlay 원형 숫자 배지로 표시한다.
 const _markerImageCache = {};
 function _makeMarkerImage(color){
   if (_markerImageCache[color]) return _markerImageCache[color];
@@ -888,66 +887,36 @@ function _makeMarkerImage(color){
   return img;
 }
 
-// 라벨 DOM 요소 생성 — updateMarkerLabels 에서 줌인 시 최초 1회만 호출된다
-// 전체 주소 문자열에서 시도·시군구 앞부분을 제거하고 동 이하만 반환한다.
-// 예) "부산광역시 수영구 광안동 157-1번지" → "광안동 157-1번지"
-// 미분류 마커처럼 building_name이 전체 주소인 경우에 사용한다.
-function _stripSidoSgg(addr) {
-  if (!addr) return addr;
-  const tokens = addr.trim().split(/\s+/);
-  let i = 0;
-  // 시도 토큰: 특별시/광역시/특별자치시(도)/도/시 로 끝남
-  if (i < tokens.length &&
-      /(?:특별시|광역시|특별자치시도|특별자치시|특별자치도|도|시)$/.test(tokens[i])) i++;
-  // 시군구 토큰: 시/군/구 로 끝남
-  if (i < tokens.length && /(?:시|군|구)$/.test(tokens[i])) i++;
-  const rest = tokens.slice(i).join(" ");
-  return rest || addr; // 파싱 실패 시 원본 반환
+function _openBuildingFromMap(b){
+  if (b.id == null) return;
+  if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
+  history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
+  if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + b.id });
+  renderBuildingPanel(b.id);
 }
 
-function _buildLabelEl(b, pos){
+// 거래·매물 합계가 있는 건물의 원형 숫자 배지.
+// updateMarkerLabels에서 가까운 줌 레벨에 진입한 뒤 최초 1회만 생성한다.
+function _buildCircleBadgeEl(b){
+  const total = Math.max(0, Number(b.total_count) || 0);
+  if (total < 1) return null;
   const color = markerColor(b.lodging_type, b.building_status);
-  const label = document.createElement("div");
-  // PC/모바일 모두 pointer-events:auto — 라벨 클릭으로 바로 건물 상세 이동
-  label.style.cssText =
-    `background:${color}; color:#fff;` +
-    "padding:3px 7px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3);" +
-    "white-space:nowrap; text-align:center; line-height:1.25; pointer-events:auto; cursor:pointer;" +
-    "text-shadow:0 1px 1px rgba(0,0,0,.28); font-family:'Noto Sans KR',sans-serif;" +
-    "margin-bottom:8px;"; // 마커 점과의 간격
-  const nameLine = document.createElement("div");
-  // 미분류 건물은 building_name이 전체 주소로 채워진 경우가 많으므로
-  // 이미 시군구를 알고 있는 지도 화면에서는 동 이하만 표시한다.
-  const isMuibunryu = !b.lodging_type || b.lodging_type === "";
-  const displayName = isMuibunryu
-    ? (_stripSidoSgg(b.building_name) || "(건물명 미확인)")
-    : (b.building_name || "(건물명 미확인)");
-  nameLine.textContent = displayName;
-  nameLine.style.cssText = "font-size:11px; font-weight:700;";
-  label.appendChild(nameLine);
-  if (b.latest_price != null){
-    const priceLine = document.createElement("div");
-    priceLine.textContent = Number(b.latest_price).toLocaleString('ko-KR') + "만원";
-    priceLine.style.cssText = "font-size:10.5px; font-weight:600; opacity:.96;";
-    label.appendChild(priceLine);
-    if (b.latest_price_exact === false){
-      const refLine = document.createElement("div");
-      refLine.textContent = "(필지 내 참고가)";
-      refLine.style.cssText = "font-size:9px; font-weight:500; opacity:.9;";
-      label.appendChild(refLine);
-    }
-  }
-  // PC/모바일 공통: 라벨 클릭 → 건물 상세 패널 바로 열기
-  if (b.id != null){
-    label.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-      history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
-      if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + b.id });
-      renderBuildingPanel(b.id);
-    });
-  }
-  return label;
+  const badge = document.createElement("button");
+  badge.type = "button";
+  badge.title = `${b.building_name || "건물"} · 거래/매물 ${total.toLocaleString("ko-KR")}건`;
+  badge.setAttribute("aria-label", badge.title);
+  badge.textContent = total > 999 ? "999+" : total.toLocaleString("ko-KR");
+  badge.style.cssText =
+    `width:34px;height:34px;padding:0;border:2px solid #fff;border-radius:50%;background:${color};` +
+    "color:#fff;display:flex;align-items:center;justify-content:center;box-sizing:border-box;" +
+    "font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:800;line-height:1;" +
+    "text-shadow:0 1px 1px rgba(0,0,0,.22);box-shadow:0 2px 7px rgba(0,0,0,.28);" +
+    "cursor:pointer;pointer-events:auto;transition:opacity .18s ease,transform .18s ease;";
+  badge.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _openBuildingFromMap(b);
+  });
+  return badge;
 }
 const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
 // 클러스터 배지 줌 레벨 임계값 — Kakao Maps 레벨: 숫자 클수록 더 넓은 시야
@@ -986,9 +955,11 @@ const SIDO_POSITION_OVERRIDE = {
 // 기본(xAnchor:0)은 배지 왼쪽 끝 고정(배지가 우측에 표시). 인접 배지 겹침 방지용.
 const SIDO_ANCHOR_LEFT = new Set(["경상남도"]);
 
-let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록 — clearMapMarkers에서 함께 제거
+let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록
 let _currentMapMode  = null;          // 'sido'|'sgg'|'umd'|'markers' — 불필요한 재로드 방지
 let _lastMapFilters  = {};            // 마지막으로 적용된 지도 필터 (zoom 전환 시 재사용)
+const MAP_OVERLAY_FADE_MS = 180;
+let _pendingFadeOutOverlays = [];
 const MAP_DEFAULT_CENTER = { lat: 36.35, lng: 126.9 }; // 좌측 사이드패널이 지도 위에 겹쳐 한반도가 왼쪽으로 밀려 보이므로 중심 경도를 서쪽으로 낮춰 가로 중앙 정렬(일본 과다 노출 완화)
 const MAP_DEFAULT_LEVEL = 12;         // 속초~완도가 세로로 다 보이는 확대 수준
 // 모바일(좁은 세로 화면) 전용 초기뷰 — 세로로 길어 같은 값이면 속초·제주가 잘리므로 별도 값 사용.
@@ -1023,14 +994,43 @@ function mapFiltersFromState(){
   };
 }
 
-function clearMapMarkers(){
+// 새 레이어가 준비될 때까지 기존 CustomOverlay를 지도에 남겼다가 짧게 페이드아웃한다.
+// Native Marker는 opacity 제어가 불가하므로 교체 시점에만 제거한다.
+function _beginMapLayerSwap(){
+  // 빠른 줌 변경으로 직전 렌더가 끝나지 않았어도, 더 오래된 레이어는 즉시 퇴장시킨다.
+  _finishMapLayerSwap(_pendingFadeOutOverlays);
+  const previousCustomOverlays = [
+    ...mapLabelData.map(d => d.overlay).filter(Boolean),
+    ..._clusterOverlays,
+  ];
   mapOverlays.forEach(o => o.setMap(null));
   mapOverlays = [];
-  mapLabelData.forEach(d => { if (d.overlay) d.overlay.setMap(null); });
   mapLabelData = [];
-  // 클러스터 배지도 함께 제거
-  _clusterOverlays.forEach(o => o.setMap(null));
   _clusterOverlays = [];
+  _pendingFadeOutOverlays = previousCustomOverlays;
+  return previousCustomOverlays;
+}
+
+function _fadeOutCustomOverlays(overlays){
+  if (!overlays || overlays.length === 0) return;
+  requestAnimationFrame(() => {
+    overlays.forEach(overlay => {
+      const el = overlay.__contentEl;
+      if (el) {
+        el.style.transition = "opacity .18s ease";
+        el.style.opacity = "0";
+      }
+    });
+  });
+  setTimeout(() => overlays.forEach(overlay => overlay.setMap(null)), MAP_OVERLAY_FADE_MS);
+}
+
+function _finishMapLayerSwap(overlays){
+  if (!overlays || overlays.length === 0) return;
+  _pendingFadeOutOverlays = _pendingFadeOutOverlays.filter(
+    overlay => !overlays.includes(overlay)
+  );
+  _fadeOutCustomOverlays(overlays);
 }
 
 function resetMapView(){
@@ -1065,9 +1065,8 @@ function dealDetailHtml(d){
   );
 }
 
-// 현재 확대 레벨을 보고 모든 마커 라벨을 표시/숨김 (LABEL_MAX_LEVEL 이하일 때만 표시).
-// 축소된 전국뷰에서는 라벨이 겹쳐 지저분해지므로 숨긴다.
-// 라벨 DOM/오버레이는 최초 줌인 시 lazy 생성 — 전국뷰(기본)에서는 생성조차 하지 않는다.
+// 현재 확대 레벨을 보고 1건 이상인 마커의 원형 숫자 배지를 표시/숨김한다.
+// 0건 건물은 기존 작은 점 마커만 유지한다.
 // ★ 성능: viewport 밖 마커는 DOM 생성도 setMap도 건너뜀 — 11,000개 전체 동기처리 동결 방지.
 function updateMarkerLabels(){
   if (!kakaoMap) return;
@@ -1082,17 +1081,22 @@ function updateMarkerLabels(){
   // 라벨 표시: 현재 viewport bounds 안 마커만 생성·표시
   const bounds = kakaoMap.getBounds();
   mapLabelData.forEach(d => {
+    if ((Number(d.b.total_count) || 0) < 1){
+      if (d.overlay) d.overlay.setMap(null);
+      return;
+    }
     const inView = bounds ? bounds.contain(d.pos) : true;
     if (inView){
       if (!d.overlay){
         // 최초 줌인 시 1회만 DOM + CustomOverlay 생성
-        d.el = _buildLabelEl(d.b);
+        d.el = _buildCircleBadgeEl(d.b);
+        if (!d.el) return;
         d.overlay = new kakao.maps.CustomOverlay({
           position: d.pos, content: d.el,
           xAnchor: 0.5, yAnchor: 1.0, zIndex: 20, // Kakao 기본 POI(~3)·마커(5)보다 위
           clickable: true,  // 모바일 탭 이벤트가 label DOM에 전달되도록
         });
-
+        d.overlay.__contentEl = d.el;
       }
       d.overlay.setMap(kakaoMap);
     } else {
@@ -1158,7 +1162,7 @@ function buildingInfoInnerHtml(b){
 // opts.fit: true면 결과가 다 보이도록 bounds에 맞춰 확대/이동
 async function loadMapMarkers(filters = {}, opts = {}){
   if (!kakaoMap) return;
-  const myGen = ++_markerLoadGen;   // 이 호출의 세대 번호 — 이전 addChunk 루프는 불일치로 자동 종료
+  const myGen = ++_mapRenderGen;   // 이전 마커·클러스터 응답 및 addChunk 루프를 모두 폐기한다.
   const emptyEl = document.getElementById("mapEmpty");
 
   const params = new URLSearchParams();
@@ -1182,7 +1186,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
   const qs = params.toString();
 
-  // AbortController — 더 새로운 loadMapMarkers 호출이 오면 진행 중인 fetch를 취소
+  // 네트워크 취소를 지원하지 않는 환경에서도 공용 세대 검사로 늦은 응답을 안전하게 폐기한다.
   const controller = new AbortController();
   let items = [];
   try {
@@ -1197,12 +1201,13 @@ async function loadMapMarkers(filters = {}, opts = {}){
   }
 
   // fetch 완료 후 세대 번호 재확인 — 응답 대기 중 더 새로운 호출이 왔을 수 있다
-  if (_markerLoadGen !== myGen) {
+  if (_mapRenderGen !== myGen) {
     controller.abort();  // 이미 응답 받았지만 결과를 버린다
     return;
   }
 
-  clearMapMarkers();
+  // 기존 CustomOverlay는 새 배지가 생성될 때까지 남겨둔 뒤 짧게 페이드아웃한다.
+  const previousCustomOverlays = _beginMapLayerSwap();
   const bounds = new kakao.maps.LatLngBounds();
   let placed = 0;
 
@@ -1231,41 +1236,30 @@ async function loadMapMarkers(filters = {}, opts = {}){
   let idx = 0;
 
   function addChunk(){
-    if (_markerLoadGen !== myGen) return; // 더 새로운 loadMapMarkers 호출이 있음 — 이 루프 폐기
+    if (_mapRenderGen !== myGen) return; // 더 새로운 지도 렌더 요청이 있음 — 이 루프 폐기
     const end = Math.min(idx + CHUNK_SIZE, validItems.length);
     for (; idx < end; idx++){
       const b = validItems[idx];
-      const color = markerColor(b.lodging_type, b.building_status);
       const pos = new kakao.maps.LatLng(b.lat, b.lng);
+      const totalCount = Math.max(0, Number(b.total_count) || 0);
 
-      // 겹침 우선순위: 생숙(9) > 관광(8) > 복합(7) > 일반(6) > 미분류(5)
-      const MARKER_Z = { "생활": 9, "관광": 8, "복합": 7, "일반": 6 };
-      const mzIndex = (b.lodging_type && b.lodging_type.includes("·"))
-        ? 7  // 복합(복수 타입)
-        : (MARKER_Z[b.lodging_type] || 5);
-
-      const marker = new kakao.maps.Marker({
-        position: pos,
-        image: _makeMarkerImage(color),
-        title: b.building_name || "",
-        clickable: true,
-        zIndex: mzIndex,
-      });
-      marker.setMap(kakaoMap);
-
-      kakao.maps.event.addListener(marker, "click", () => {
-        // PC/모바일 공통: 마커 클릭 시 바로 건물 상세 패널 열기
-        if (b.id != null) {
-          if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-          history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
-          if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + b.id });
-          renderBuildingPanel(b.id);
-        }
-      });
-
-      mapOverlays.push(marker);
-      // 라벨 데이터만 저장 — 실제 DOM/오버레이는 updateMarkerLabels 에서 lazy 생성
-      mapLabelData.push({ b, pos, overlay: null, el: null });
+      // 합계 0건은 기존 점 마커를 유지하고, 1건 이상은 원형 숫자 배지만 표시한다.
+      if (totalCount === 0){
+        const color = markerColor(b.lodging_type, b.building_status);
+        const marker = new kakao.maps.Marker({
+          position: pos,
+          image: _makeMarkerImage(color),
+          title: b.building_name || "",
+          clickable: true,
+          zIndex: 5,
+        });
+        marker.setMap(kakaoMap);
+        kakao.maps.event.addListener(marker, "click", () => _openBuildingFromMap(b));
+        mapOverlays.push(marker);
+      } else {
+        // 실제 DOM/오버레이는 updateMarkerLabels에서 가까운 줌 레벨에 lazy 생성
+        mapLabelData.push({ b, pos, overlay: null, el: null });
+      }
       bounds.extend(pos);
       placed++;
     }
@@ -1284,6 +1278,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
       if (placed <= 2) kakaoMap.setLevel(3);
     }
     updateMarkerLabels();
+    _finishMapLayerSwap(previousCustomOverlays);
     console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
     // 완료 콜백 — updateMapForZoom의 0건 폴백 판단에 사용
     if (opts.onComplete) opts.onComplete(placed);
@@ -1304,6 +1299,7 @@ function _clusterModeForLevel(lv){
 // clusterLevel: 'sido'|'sgg'|'umd', filters: mapFiltersFromState()
 async function loadClusterOverlays(clusterLevel, filters = {}){
   if (!kakaoMap) return;
+  const myGen = ++_mapRenderGen;  // 마커·다른 클러스터 요청을 포함해 이전 응답을 폐기한다.
 
   const params = new URLSearchParams({ level: clusterLevel });
   ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
@@ -1333,11 +1329,15 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     return;
   }
 
+  // 응답 대기 중 줌·드래그·검색으로 더 새로운 렌더 요청이 발생했으면 무시한다.
+  if (_mapRenderGen !== myGen) return;
+
   // 클러스터 모드에서도 0건이면 mapEmpty 표시, 있으면 숨김
   const _mapEmptyEl = document.getElementById("mapEmpty");
   if (_mapEmptyEl) _mapEmptyEl.style.display = items.length === 0 ? "flex" : "none";
 
-  clearMapMarkers();  // 이전 마커·배지 모두 제거
+  // 새 클러스터 배지를 만든 뒤 이전 레이어를 페이드아웃한다.
+  const previousCustomOverlays = _beginMapLayerSwap();
 
   // 클러스터 배지 색상 — LODGING_COLORS와 동일 (이중 관리 방지를 위해 참조)
   const BAR_COLORS = [
@@ -1385,7 +1385,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       "background:#fff;border:1.5px solid #cdd3da;border-radius:8px;" +
       "box-shadow:0 2px 8px rgba(0,0,0,.18);padding:5px 9px 4px;" +
       "cursor:pointer;text-align:center;font-family:'Noto Sans KR',sans-serif;" +
-      "min-width:52px;max-width:120px;";
+      "min-width:52px;max-width:120px;transition:opacity .18s ease;";
     el.innerHTML =
       `<div style="font-size:11px;font-weight:700;color:#16202E;white-space:nowrap;` +
       `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(clusterLevel === "umd" ? item.name.trim().split(" ").pop() : item.name)}</div>` +
@@ -1429,9 +1429,11 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       zIndex: 10,
     });
     overlay.setMap(kakaoMap);
+    overlay.__contentEl = el;
     _clusterOverlays.push(overlay);
   });
 
+  _finishMapLayerSwap(previousCustomOverlays);
   console.log(`[CLUSTER] ${clusterLevel} 배지 ${_clusterOverlays.length}개 표시 (필터: ${params})`);
 }
 
@@ -1482,101 +1484,6 @@ async function updateMapForZoom(filters = {}, opts = {}){
     // 같은 클러스터 레벨 내에서 zoom만 바뀐 경우는 재로드 없음
   }
 }
-
-// ── 직거래 매물 지도 레이어 ───────────────────────────────────────────────
-
-// ── 직거래 매물 지도 레이어 ───────────────────────────────────────────────
-// /api/listings(lat/lng 포함) 호출 → 브랜드 컬러(#B4863F) "직거래" 뱃지형
-// CustomOverlay로 별도 레이어 표시. clearMapMarkers()와 독립적이므로
-// 건물 마커 재로드(필터·이동) 시에도 직거래 레이어는 유지된다.
-
-// id별 아이템 캐시 — CustomOverlay 클릭 후 InfoWindow에서 접근
-const _listingItemMap = {};
-
-// 직거래 매물 InfoWindow 열기 (CustomOverlay onclick → 전역 핸들러 경유)
-function _openListingInfoWindow(id){
-  const it = _listingItemMap[id];
-  if (!it || !kakaoMap) return;
-  if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-  const pos = new kakao.maps.LatLng(it.lat, it.lng);
-  const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
-  const priceStr = it.deal_type === "월세"
-    ? `보${_fmtN(it.price_krw)}/${_fmtN(it.monthly_rent_krw)}만원`
-    : `${_fmtN(it.price_krw)}만원`;
-  const area = it.area_sqm != null ? Number(it.area_sqm).toFixed(1) + "㎡" : "-";
-  const iw = new kakao.maps.InfoWindow({
-    position: pos,   // 마커 없이 좌표로만 InfoWindow 열기
-    content:
-      `<div style="padding:10px 14px;min-width:170px;font-size:13px;line-height:1.9;">` +
-      `<div style="font-weight:700;margin-bottom:2px;color:#B4863F;">🏠 직거래 매물</div>` +
-      `<div>${escapeHtml(it.deal_type || "-")} · ${escapeHtml(priceStr)}</div>` +
-      (it.desired_price ? `<div style="color:#777;font-size:11px;">${escapeHtml(it.desired_price)}</div>` : ``) +
-      `<div style="color:#555;">전용 ${escapeHtml(area)}</div>` +
-      (it.building_name ? `<div style="color:#888;font-size:11px;">${escapeHtml(it.building_name)}</div>` : ``) +
-      (it.listing_date ? `<div style="color:#aaa;font-size:11px;">등록일 ${escapeHtml(it.listing_date)}</div>` : ``) +
-      `<button onclick="window.__listingChat(${it.id})" ` +
-      `style="margin-top:8px;padding:5px 14px;background:#B4863F;color:#fff;border:none;` +
-      `border-radius:4px;cursor:pointer;font-size:12px;">💬 채팅하기</button>` +
-      `</div>`,
-    removable: true,
-  });
-  iw.open(kakaoMap);
-  currentInfoWindow = iw;
-}
-window.__openListingIW = _openListingInfoWindow;
-
-// 직거래 레이어 표시/숨김 토글 (범례 칩에서 호출)
-function toggleListingLayer(){
-  _listingsVisible = !_listingsVisible;
-  _listingOverlays.forEach(o => o.setMap(_listingsVisible ? kakaoMap : null));
-  const btn = document.getElementById("listingLayerToggle");
-  if (btn) btn.style.opacity = _listingsVisible ? "1" : "0.4";
-}
-
-// /api/listings → "직거래" 뱃지 CustomOverlay 배치
-async function loadListingMarkers(){
-  if (!kakaoMap) return;
-  _listingOverlays.forEach(o => o.setMap(null));
-  _listingOverlays = [];
-
-  let items = [];
-  try {
-    const res = await fetch("/api/listings?limit=50", { credentials: "same-origin" });
-    const data = await res.json().catch(() => ({}));
-    items = (data.ok && data.items) ? data.items : [];
-  } catch(e){ return; }  // 매물 0건·네트워크 오류 시 조용히 종료
-
-  items.forEach(it => {
-    if (it.lat == null || it.lng == null) return;   // 좌표 없으면 스킵
-    _listingItemMap[it.id] = it;
-
-    const pos = new kakao.maps.LatLng(it.lat, it.lng);
-
-    // "직거래" 텍스트 뱃지 DOM 요소 — 브랜드 컬러(brass)
-    const el = document.createElement("div");
-    el.style.cssText =
-      "background:#B4863F;color:#fff;font-size:10px;font-weight:700;" +
-      "padding:2px 6px;border-radius:3px;border:2px solid #fff;" +
-      "cursor:pointer;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35);" +
-      "transform:translateX(-50%);";
-    el.textContent = "직거래";
-    el.title = (it.building_name || "") + (it.deal_type ? " · " + it.deal_type : "");
-    el.addEventListener("click", () => _openListingInfoWindow(it.id));
-
-    const overlay = new kakao.maps.CustomOverlay({
-      position: pos,
-      content: el,
-      clickable: true,
-      zIndex: 10,
-      yAnchor: 1.0,  // 뱃지 하단이 좌표에 닿도록
-    });
-    if (_listingsVisible) overlay.setMap(kakaoMap);
-    _listingOverlays.push(overlay);
-  });
-  console.log(`[LISTING] 직거래 매물 뱃지 ${_listingOverlays.length}개 배치`);
-}
-// InfoWindow 채팅 버튼 onclick 전역 핸들러
-window.__listingChat = (id) => _openListingChat(id);
 
 async function initMap(){
   const container = document.getElementById("map");
@@ -1633,24 +1540,6 @@ async function initMap(){
 
   // 최초 로드 — 줌 레벨 기반으로 클러스터 또는 개별 마커 결정
   await updateMapForZoom({}, { fit: false });
-
-  // 직거래 매물 마커 레이어 로드 (건물 마커와 독립)
-  loadListingMarkers();
-
-  // 직거래 매물 토글 칩을 지도 범례 끝에 삽입
-  const _legend = document.querySelector(".map-legend");
-  if (_legend) {
-    const _chip = document.createElement("button");
-    _chip.type = "button";
-    _chip.id = "listingLayerToggle";
-    _chip.title = "직거래 매물 표시/숨김";
-    _chip.style.cssText = "background:transparent;border:none;cursor:pointer;padding:2px 5px;display:inline-flex;align-items:center;gap:3px;vertical-align:middle;";
-    _chip.innerHTML =
-      `<span style="display:inline-block;width:9px;height:9px;background:#B4863F;transform:rotate(45deg);flex-shrink:0;"></span>` +
-      `<span style="font-size:11px;font-weight:700;color:#B4863F;">직거래</span>`;
-    _chip.addEventListener("click", toggleListingLayer);
-    _legend.appendChild(_chip);
-  }
 }
 
 // 줌 컨트롤을 우측 하단 범례박스(.map-legend) 높이 + 여백만큼 위로 띄워 겹침을 막는다.
