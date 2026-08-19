@@ -69,7 +69,7 @@ class DataGrid {
       {
         idField: "id", pageSize: 50, title: "", allowAdd: true, allowEdit: true, allowDelete: true,
         searchPlaceholder: "건물명·주소 검색", entityLabel: "건물",
-        filters: [], rowActions: [],
+        filters: [], rowActions: [], bulkDeleteEndpoint: "", bulkDeleteLabel: "선택 삭제",
       },
       config
     );
@@ -113,6 +113,7 @@ class DataGrid {
         <h2 class="dg-title">${dgEscape(c.title)}</h2>
         <div class="dg-actions">
           ${c.exportUrl ? `<button class="admin-btn dg-export">엑셀 다운로드</button>` : ""}
+          ${c.bulkDeleteEndpoint ? `<button class="admin-btn dg-bulk-delete" disabled>${dgEscape(c.bulkDeleteLabel)} (0)</button>` : ""}
           ${c.allowAdd ? `<button class="admin-btn admin-btn-primary dg-add">+ 추가</button>` : ""}
         </div>
       </div>
@@ -165,10 +166,15 @@ class DataGrid {
     });
     const addBtn = el.querySelector(".dg-add");
     if (addBtn) addBtn.addEventListener("click", () => this.openForm(null));
+    this.$bulkDelete = el.querySelector(".dg-bulk-delete");
+    if (this.$bulkDelete) {
+      this.$bulkDelete.addEventListener("click", () => this.bulkDeleteSelected());
+    }
     if (c.exportUrl) {
       el.querySelector(".dg-export").addEventListener("click", () => this.exportXlsx());
     }
     this._renderHead();
+    this._updateBulkDeleteButton();
   }
 
   _renderHead() {
@@ -401,6 +407,7 @@ class DataGrid {
   }
 
   _dispatchSelectionChange() {
+    this._updateBulkDeleteButton();
     this.cfg.mount.dispatchEvent(new CustomEvent("dg:selectionchange", {
       bubbles: true,
       detail: { count: this.selected.size, ids: [...this.selected] },
@@ -413,6 +420,45 @@ class DataGrid {
 
   selectedItems() {
     return this.items.filter((r) => this.selected.has(String(r[this.cfg.idField])));
+  }
+
+  _updateBulkDeleteButton() {
+    if (!this.$bulkDelete) return;
+    const count = this.selected.size;
+    this.$bulkDelete.disabled = count === 0;
+    this.$bulkDelete.textContent = `${this.cfg.bulkDeleteLabel} (${count})`;
+  }
+
+  async bulkDeleteSelected() {
+    const ids = this.selectedIds();
+    if (!ids.length || !this.cfg.bulkDeleteEndpoint) return;
+    const warning =
+      `선택한 ${ids.length}건의 ${this.cfg.entityLabel}을(를) 완전히 삭제할까요?\n\n` +
+      "연결된 사진, 찜, 채팅 및 변경 이력도 함께 삭제되며 복구할 수 없습니다.";
+    if (!window.confirm(warning)) return;
+    const btn = this.$bulkDelete;
+    if (btn) { btn.disabled = true; btn.textContent = "삭제 중…"; }
+    try {
+      const res = await fetch(this.cfg.bulkDeleteEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.status === 401) { window.location.href = "/admin/login"; return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        window.alert(data.message || "선택 항목 삭제에 실패했습니다.");
+        return;
+      }
+      this.selected.clear();
+      this._updateBulkDeleteButton();
+      window.alert(`${data.deleted || 0}건이 삭제되었습니다.${data.skipped ? ` (${data.skipped}건은 이미 없거나 삭제할 수 없습니다.)` : ""}`);
+      this.reload();
+    } catch (e) {
+      window.alert("네트워크 오류가 발생했습니다.");
+    } finally {
+      this._updateBulkDeleteButton();
+    }
   }
 
   _renderPager() {
