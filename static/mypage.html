@@ -249,6 +249,7 @@
   // ── 매물의뢰 현황 ─────────────────────────────────────────────────────────
   var LR_STATUS_LABEL = { submitted: "접수됨", in_progress: "처리중", done: "완료", "철회됨": "철회됨" };
   var LR_STATUS_COLOR = { submitted: "#4A7A18", in_progress: "#B4863F", done: "#6B7684", "철회됨": "#999" };
+  var MY_LISTING_BY_ID = {};
 
   function requestItemHtml(it){
     var st = LR_STATUS_LABEL[it.status] || it.status;
@@ -337,13 +338,16 @@
     Array.prototype.forEach.call(box.querySelectorAll(".lr-edit-btn"), function(btn) {
       btn.addEventListener("click", function() {
         var id = btn.getAttribute("data-id");
-        var bid = btn.getAttribute("data-bid");
-        var bname = btn.getAttribute("data-bname");
-        var deal = btn.getAttribute("data-deal");
-        var price = btn.getAttribute("data-price");
-        var rent = btn.getAttribute("data-rent");
-        var phone = btn.getAttribute("data-phone");
-        openListingModalMypage(bid, bname, { editId: id, deal_type: deal, price_krw: price, monthly_rent_krw: rent, contact_phone: phone });
+        var item = MY_LISTING_BY_ID[id];
+        if (!item || typeof window.openListingRequestModal !== "function") {
+          alert("매물 정보를 불러오지 못했습니다. 페이지를 새로고침 후 다시 시도해주세요.");
+          return;
+        }
+        window.openListingRequestModal(item.building_id, item.building_name, {
+          editId: id,
+          prefill: item,
+          onSuccess: loadMyListingRequests
+        });
       });
     });
     // 철회 버튼
@@ -386,6 +390,8 @@
       .then(function(r){ return r.json(); })
       .then(function(d){
         var items = (d && d.items) || [];
+        MY_LISTING_BY_ID = {};
+        items.forEach(function(item){ MY_LISTING_BY_ID[String(item.id)] = item; });
         if (!items.length){
           box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매물의뢰가 없습니다.</div>';
           return;
@@ -648,7 +654,9 @@
       Array.prototype.forEach.call(box.querySelectorAll(".myfav-listing-btn"), function(btn){
         btn.addEventListener("click", function(e){
           e.stopPropagation();
-          openListingModalMypage(btn.getAttribute("data-bid"), btn.getAttribute("data-bname"));
+          if (typeof window.openListingRequestModal === "function") {
+            window.openListingRequestModal(btn.getAttribute("data-bid"), btn.getAttribute("data-bname"));
+          }
         });
       });
     }).catch(function(){ box.innerHTML = favEmptyHtml("네트워크 오류가 발생했습니다."); });
@@ -675,7 +683,7 @@
   // ── 마이페이지 전용 매물내놓기 모달 ─────────────────────────────────────────
   // main.js의 openListingRequestModal과 동일한 API(/api/listing-requests)를 사용하되
   // mypage.html 내 인라인으로 구현(mypage는 main.js를 로드하지 않음).
-  function openListingModalMypage(buildingId, buildingName, prefill){
+  function legacyOpenListingModalMypage(buildingId, buildingName, prefill){
     document.getElementById("mpListingOverlay")?.remove();
     prefill = prefill || {};
     var isEdit = !!prefill.editId;
@@ -1001,5 +1009,6 @@
 <script src="/static/js/header.js"></script>
 <script src="/static/js/auth.js"></script>
 <script src="/static/js/pw_toggle.js"></script>
+<script src="/static/js/listing_modal.js"></script>
 </body>
 </html>

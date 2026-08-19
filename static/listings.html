@@ -116,6 +116,15 @@
     transition: box-shadow .15s;
   }
   .ls-card-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,.10); }
+  .ls-card-highlight {
+    outline: 3px solid var(--brass, #B4863F);
+    outline-offset: 2px;
+    animation: lsHighlightPulse 1.8s ease-out;
+  }
+  @keyframes lsHighlightPulse {
+    0%   { background: var(--brass-tint, #FFF5E0); }
+    100% { background: transparent; }
+  }
   .ls-card-photo {
     width: 100%; aspect-ratio: 16/9; object-fit: cover;
     background: var(--brass-tint, #FFF5E0);
@@ -353,6 +362,43 @@
     });
   }
 
+  function findCardItem(listingId){
+    return Array.from(cardGrid.querySelectorAll(".ls-card-item"))
+      .find(el => String(el.dataset.listingId) === String(listingId)) || null;
+  }
+
+  function highlightCardItem(el){
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    // 같은 카드를 연속 클릭해도 애니메이션이 다시 시작되도록 초기화한다.
+    el.classList.remove("ls-card-highlight");
+    void el.offsetWidth;
+    el.classList.add("ls-card-highlight");
+    setTimeout(() => el.classList.remove("ls-card-highlight"), 1800);
+  }
+
+  // 게시판형 사진에서 진입했을 때 카드형으로 전환하고 대상 카드까지 찾는다.
+  // 현재 페이지에 없으면 더보기 페이지를 순차적으로 불러와 긴 목록도 지원한다.
+  async function goToCardView(listingId){
+    setView("card");
+    for (let attempt = 0; attempt < 100; attempt++){
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const card = findCardItem(listingId);
+      if (card){
+        highlightCardItem(card);
+        return;
+      }
+      if (loading){
+        await new Promise(resolve => setTimeout(resolve, 50));
+        continue;
+      }
+      if (moreBtn.style.display === "none") return;
+      const before = offset;
+      await loadListings(false);
+      if (offset === before) await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+
   document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
   });
@@ -551,6 +597,13 @@
         <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
       </td>`;
 
+    const photoCell = tr.querySelector(".td-photo");
+    photoCell.style.cursor = "pointer";
+    photoCell.title = "카드형에서 자세히 보기";
+    photoCell.addEventListener("click", (e) => {
+      e.stopPropagation();
+      goToCardView(item.id);
+    });
     tr.querySelector(".ls-bldg-link").addEventListener("click", () => {
       if (item.building_id) window.location.href = `/building/${item.building_id}`;
     });
@@ -592,6 +645,10 @@
         </div>
       </div>`;
 
+    div.querySelector(".ls-card-photo").addEventListener("click", (e) => {
+      e.stopPropagation();
+      highlightCardItem(div);
+    });
     div.querySelectorAll(".ls-bldg-link").forEach(el => {
       el.addEventListener("click", () => {
         if (item.building_id) window.location.href = `/building/${item.building_id}`;

@@ -195,6 +195,11 @@ def upload_doc(key, data):
     client._Client__object(key).upload_from_string(data, content_type=content_type)
 
 
+def delete_object(key):
+    """Object Storage 객체 삭제. DB 레코드 삭제 뒤의 정리 작업에만 사용한다."""
+    get_client()._Client__object(key).delete()
+
+
 def doc_exists(key):
     try:
         return get_client().exists(key)

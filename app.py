@@ -6593,16 +6593,17 @@ def create_listing_request():
     price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
     monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
     deposit_krw, err3 = _parse_krw("deposit_krw", True)
-    if err1 or err2 or err3:
-        return jsonify({"ok": False, "message": err1 or err2 or err3}), 400
+    yield_rent_krw, err4 = _parse_krw("yield_rent_krw", True)
+    if err1 or err2 or err3 or err4:
+        return jsonify({"ok": False, "message": err1 or err2 or err3 or err4}), 400
     description = (str(data.get("description") or "").strip()[:500]) or None
-    try:
-        _yr = data.get("yield_rate")
-        yield_rate = round(float(_yr), 1) if _yr is not None and float(_yr) > 0 else None
-        if yield_rate is not None and yield_rate >= 1000:
-            yield_rate = None
-    except (TypeError, ValueError):
-        yield_rate = None
+    # 클라이언트가 보낸 수익률은 신뢰하지 않는다. 매매가/보증금/월 임대료로 서버에서 재계산한다.
+    yield_base_price = price_krw if deal_type == "매매" else None
+    yield_base_rent = yield_rent_krw if yield_rent_krw is not None else monthly_rent_krw
+    yield_rate = (
+        round((yield_base_rent * 12) / max(yield_base_price - (deposit_krw or 0), 1) * 100, 1)
+        if yield_base_price and yield_base_rent else None
+    )
 
     if not mb_id:
         return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
@@ -6646,13 +6647,13 @@ def create_listing_request():
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
                  routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
                  deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
-                 description, deposit_krw, yield_rate)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                  description, deposit_krw, yield_rate, yield_rent_krw)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
               routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
               deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
-              description, deposit_krw, yield_rate])
+               description, deposit_krw, yield_rate, yield_rent_krw])
         req_id = cur.fetchone()["id"]
         # 이력 기록 — 최초 접수
         cur.execute(
@@ -6661,7 +6662,10 @@ def create_listing_request():
             [req_id, json.dumps({
                 "deal_type": deal_type, "desired_price": desired_price,
                 "price_krw": price_krw, "monthly_rent_krw": monthly_rent_krw,
-                "contact_phone": contact_phone,
+                "contact_phone": contact_phone, "area_sqm": area_sqm, "dong": dong, "ho": ho,
+                "registrant_type": registrant_type, "description": description,
+                "deposit_krw": deposit_krw, "yield_rent_krw": yield_rent_krw,
+                "yield_rate": yield_rate,
             })]
         )
         conn.commit()
@@ -6826,12 +6830,19 @@ def my_listing_requests():
         cur.execute("""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.status,
                    lr.price_krw, lr.monthly_rent_krw, lr.contact_phone,
-                   lr.deal_mode,
+                   lr.deal_mode, lr.area_sqm, lr.dong, lr.ho, lr.registrant_type,
+                   lr.description, lr.deposit_krw, lr.yield_rent_krw, lr.yield_rate,
                    (SELECT COUNT(*) FROM chat_rooms cr
                     WHERE cr.listing_request_id = lr.id) AS chat_room_count,
                    to_char(lr.created_at, 'YYYY-MM-DD') AS created_date,
                    mb.id AS building_id, mb.building_name,
-                   a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug
+                   a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug,
+                   COALESCE((
+                     SELECT json_agg(json_build_object(
+                       'id', lp.id, 'url', '/api/listing-photos/img/' || lp.image_key
+                     ) ORDER BY lp.sort_order ASC, lp.id ASC)
+                     FROM listing_photos lp WHERE lp.listing_request_id = lr.id
+                   ), '[]'::json) AS photos
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
@@ -7072,6 +7083,38 @@ def upload_listing_photo(lr_id):
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}"})
+
+
+@app.route("/api/listing-requests/<int:lr_id>/photos/<int:photo_id>", methods=["DELETE"])
+@limiter.limit("30 per minute")
+def delete_listing_photo(lr_id, photo_id):
+    """매물 등록자만 기존 사진을 삭제한다. DB와 Object Storage를 함께 정리한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn(); cur = conn.cursor()
+    key = None
+    try:
+        cur.execute("""
+            SELECT lp.image_key
+            FROM listing_photos lp
+            JOIN listing_requests lr ON lr.id = lp.listing_request_id
+            WHERE lp.id=%s AND lp.listing_request_id=%s AND lr.user_id=%s
+              AND COALESCE(lr.status, '') <> 'withdrawn'
+        """, [photo_id, lr_id, user["id"]])
+        photo = cur.fetchone()
+        if not photo:
+            return jsonify({"ok": False, "message": "사진을 찾을 수 없거나 권한이 없습니다."}), 404
+        key = photo["image_key"]
+        cur.execute("DELETE FROM listing_photos WHERE id=%s AND listing_request_id=%s", [photo_id, lr_id])
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    try:
+        storage_util.delete_object(key)
+    except Exception:
+        app.logger.warning("매물 사진 객체 삭제 실패: %s", key, exc_info=True)
+    return jsonify({"ok": True, "id": photo_id})
 
 
 @app.route("/api/listing-photos/img/<path:key>")
@@ -7392,12 +7435,16 @@ def update_listing_request(req_id):
     data = request.get_json(force=True, silent=True) or {}
     deal_type = (data.get("deal_type") or "").strip()
     desired_price = (data.get("desired_price") or "").strip()[:100]
+
+    if deal_type not in _LISTING_DEAL_TYPES:
+        return jsonify({"ok": False, "message": "거래유형이 올바르지 않습니다."}), 400
+
     def _parse_krw(field, allowed):
         v = data.get(field)
         if v is None or v == "":
             return None, None
         if not allowed:
-            return None, None
+            return None, f"{field}는 이 거래유형에서 사용할 수 없습니다."
         try:
             n = int(v)
         except (TypeError, ValueError):
@@ -7405,18 +7452,36 @@ def update_listing_request(req_id):
         if not (0 < n <= 1_000_000):
             return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
+
     price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
-    monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
-    if err1 or err2:
-        return jsonify({"ok": False, "message": err1 or err2}), 400
-    if deal_type and deal_type not in _LISTING_DEAL_TYPES:
-        return jsonify({"ok": False, "message": "거래유형이 올바르지 않습니다."}), 400
+    monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
+    deposit_krw, err3 = _parse_krw("deposit_krw", True)
+    yield_rent_krw, err4 = _parse_krw("yield_rent_krw", True)
+    if err1 or err2 or err3 or err4:
+        return jsonify({"ok": False, "message": err1 or err2 or err3 or err4}), 400
+    try:
+        area_sqm = float(data.get("area_sqm") or 0)
+        area_sqm = round(area_sqm, 2) if 0 < area_sqm < 100000 else None
+    except (TypeError, ValueError):
+        area_sqm = None
+    dong = (str(data.get("dong") or "").strip()[:20]) or None
+    ho = (str(data.get("ho") or "").strip()[:20]) or None
+    registrant_type_raw = (data.get("registrant_type") or "owner").strip()
+    registrant_type = registrant_type_raw if registrant_type_raw in ("owner", "agent", "other") else "owner"
+    description = (str(data.get("description") or "").strip()[:500]) or None
+    yield_base_rent = yield_rent_krw if yield_rent_krw is not None else monthly_rent_krw
+    yield_rate = (
+        round((yield_base_rent * 12) / max(price_krw - (deposit_krw or 0), 1) * 100, 1)
+        if deal_type == "매매" and price_krw and yield_base_rent else None
+    )
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, user_id, status, deal_type, desired_price, price_krw, monthly_rent_krw "
-            "FROM listing_requests WHERE id = %s", [req_id]
+            """SELECT id, user_id, status, deal_type, desired_price, price_krw, monthly_rent_krw,
+                      area_sqm, dong, ho, registrant_type, description, deposit_krw,
+                      yield_rent_krw, yield_rate, contact_phone
+               FROM listing_requests WHERE id = %s""", [req_id]
         )
         row = cur.fetchone()
         if not row:
@@ -7428,17 +7493,29 @@ def update_listing_request(req_id):
         before = {
             "deal_type": row["deal_type"], "desired_price": row["desired_price"],
             "price_krw": row["price_krw"], "monthly_rent_krw": row["monthly_rent_krw"],
+            "area_sqm": row["area_sqm"], "dong": row["dong"], "ho": row["ho"],
+            "registrant_type": row["registrant_type"], "description": row["description"],
+            "deposit_krw": row["deposit_krw"], "yield_rent_krw": row["yield_rent_krw"],
+            "yield_rate": row["yield_rate"], "contact_phone": row["contact_phone"],
         }
         after = {
-            "deal_type": deal_type or row["deal_type"],
-            "desired_price": desired_price or row["desired_price"],
+            "deal_type": deal_type,
+            "desired_price": desired_price,
             "price_krw": price_krw, "monthly_rent_krw": monthly_rent_krw,
+            "area_sqm": area_sqm, "dong": dong, "ho": ho,
+            "registrant_type": registrant_type, "description": description,
+            "deposit_krw": deposit_krw, "yield_rent_krw": yield_rent_krw,
+            "yield_rate": yield_rate, "contact_phone": row["contact_phone"],
         }
         cur.execute(
-            "UPDATE listing_requests SET deal_type=%s, desired_price=%s, "
-            "price_krw=%s, monthly_rent_krw=%s WHERE id=%s",
-            [after["deal_type"], after["desired_price"] or None,
-             after["price_krw"], after["monthly_rent_krw"], req_id]
+            """UPDATE listing_requests SET deal_type=%s, desired_price=%s,
+               price_krw=%s, monthly_rent_krw=%s, area_sqm=%s, dong=%s, ho=%s,
+               registrant_type=%s, description=%s, deposit_krw=%s,
+               yield_rent_krw=%s, yield_rate=%s WHERE id=%s""",
+            [after["deal_type"], after["desired_price"] or None, after["price_krw"],
+             after["monthly_rent_krw"], after["area_sqm"], after["dong"], after["ho"],
+             after["registrant_type"], after["description"], after["deposit_krw"],
+             after["yield_rent_krw"], after["yield_rate"], req_id]
         )
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, before_data, after_data) "

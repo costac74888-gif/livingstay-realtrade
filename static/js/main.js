@@ -2064,7 +2064,7 @@ let bCurrentName = ""; // 현재 열린 건물상세의 건물명 (매물 내놓
 
 // ── 매물 내놓기 모달 (B화면) ──────────────────────────────────
 // 제출 시 기존 POST /api/listing-requests 호출 (로그인 필수, 서버가 중개사 라우팅+SMS 처리)
-function openListingRequestModal(buildingId, buildingName){
+function legacyOpenListingRequestModal(buildingId, buildingName){
   document.getElementById("listingReqOverlay")?.remove();
   const ov = document.createElement("div");
   ov.id = "listingReqOverlay";
