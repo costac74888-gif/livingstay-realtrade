@@ -82,6 +82,8 @@
   .td-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); vertical-align: middle; }
   .td-thumb-placeholder { width: 44px; height: 44px; border-radius: 6px; background: var(--brass-tint, #FFF5E0); display: inline-flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid var(--line); }
   .td-type   { font-weight: 700; white-space: nowrap; }
+  .td-lodging { width: 48px; white-space: nowrap; }
+  .td-yield { color: var(--brass-dark, #7D4A00); font-weight: 700; white-space: nowrap; }
   .ls-deal-type-badge {
     display:inline-block; min-width:35px; padding:2px 5px; margin-right:5px;
     border-radius:5px; color:#fff; font-size:10px; line-height:1.25;
@@ -285,17 +287,20 @@
         <thead>
           <tr>
             <th>사진</th>
+            <th class="ls-hide-mobile">용도</th>
             <th>건물명</th>
             <th>유형</th>
             <th>희망가(만원)</th>
+            <th class="ls-hide-mobile">수익률</th>
             <th class="ls-hide-mobile">전용㎡</th>
             <th class="ls-hide-mobile">등록일</th>
             <th>채팅</th>
+            <th class="ls-hide-mobile">찜</th>
             <th class="ls-hide-mobile">공유</th>
           </tr>
         </thead>
         <tbody id="lsBoardBody">
-          <tr><td colspan="8" class="listings-loading">불러오는 중…</td></tr>
+          <tr><td colspan="11" class="listings-loading">불러오는 중…</td></tr>
         </tbody>
       </table>
     </div>
@@ -595,15 +600,20 @@
 
     tr.innerHTML = `
       <td class="td-photo">${thumbHtml(item.photo_url, false)}</td>
+      <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type)}</td>
       <td class="td-bldg" title="${bName}">
-        ${lodgeBadgeHtml(item.lodging_type)}<span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
+        <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
       </td>
-       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
+      <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
       <td class="td-price">${esc(fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
+      <td class="td-yield ls-hide-mobile">${esc(yld)}</td>
       <td class="td-area ls-hide-mobile">${esc(sqm)}</td>
       <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
       <td class="td-action">
         <button type="button" class="${chatBtnClass}" title="${chatTitle}">💬</button>
+      </td>
+      <td class="td-action ls-hide-mobile">
+        <button type="button" class="listing-like-btn" title="찜">♥ <span class="like-cnt">${item.like_count || 0}</span></button>
       </td>
       <td class="td-action ls-hide-mobile">
         <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
@@ -622,6 +632,18 @@
     tr.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       openChat(item.id);
+    });
+    tr.querySelector(".listing-like-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const res = await fetch(`/api/listing-requests/${item.id}/like`, { method:"POST", credentials:"same-origin" });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          const count = e.currentTarget.querySelector(".like-cnt");
+          if (count) count.textContent = d.like_count;
+          e.currentTarget.style.color = d.liked ? "var(--brass,#B4863F)" : "var(--ink-soft)";
+        }
+      } catch (err) {}
     });
     tr.querySelector(".listing-share-btn").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -691,7 +713,7 @@
     loading = true;
 
     if (reset){
-      boardBody.innerHTML = `<tr><td colspan="8" class="listings-loading">불러오는 중…</td></tr>`;
+      boardBody.innerHTML = `<tr><td colspan="11" class="listings-loading">불러오는 중…</td></tr>`;
       cardGrid.innerHTML  = `<div class="listings-loading" style="grid-column:1/-1;">불러오는 중…</div>`;
       offset = 0;
       totalLoaded = 0;
@@ -707,7 +729,7 @@
         cardGrid.innerHTML  = "";
         moreBtn.style.display = "none";
         if (!filtered.length){
-          boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">해당 매물을 찾을 수 없습니다.</td></tr>`;
+           boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">해당 매물을 찾을 수 없습니다.</td></tr>`;
         } else {
           filtered.forEach(it => { boardBody.appendChild(renderBoardRow(it)); cardGrid.appendChild(renderCardItem(it)); });
         }
@@ -727,7 +749,7 @@
       const d   = await res.json().catch(() => ({}));
 
       if (!res.ok || !d.ok){
-        boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">불러오기 실패. 새로고침 해주세요.</td></tr>`;
+         boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">불러오기 실패. 새로고침 해주세요.</td></tr>`;
         cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">불러오기 실패.</div>`;
         return;
       }
@@ -736,7 +758,7 @@
 
       if (!d.items || d.items.length === 0){
         if (reset){
-          boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">현재 공개된 직거래 매물이 없습니다.</td></tr>`;
+           boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">현재 공개된 직거래 매물이 없습니다.</td></tr>`;
           cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">현재 공개된 직거래 매물이 없습니다.</div>`;
         }
         moreBtn.style.display = "none";
@@ -752,7 +774,7 @@
       }
     } catch(e){
       if (reset){
-        boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">오류가 발생했습니다.</td></tr>`;
+         boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">오류가 발생했습니다.</td></tr>`;
         cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">오류가 발생했습니다.</div>`;
       }
     } finally {
