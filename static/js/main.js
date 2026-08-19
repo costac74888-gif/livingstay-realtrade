@@ -1977,59 +1977,8 @@ async function loadSideStats(){
     }
   }
 
-  // 전속중개사 카드 — 승인된 중개사 수 (하우스 계정 제외, 공개 API)
-  // 노출 기준: SIDE_COUNT_THRESHOLD(10) 미만이면 숫자를 감추고 모집 문구만 노출 (내부 정보 취급)
-  const agentBox = document.getElementById("sideAgentCount");
-  if (agentBox){
-    try {
-      const res = await fetch("/api/stats/agent-count");
-      const d = await res.json();
-      if (res.ok && d.ok){
-        const n = d.count || 0;
-        if (n >= SIDE_COUNT_THRESHOLD){
-          agentBox.classList.remove("side-soon");
-          agentBox.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 담당중개사 ${n}명</div>`;
-        } else {
-          agentBox.classList.remove("side-soon");
-          agentBox.innerHTML = recruitBoxHTML("agent");
-          hideAdjacentApplyBanner(agentBox);
-        }
-      } else {
-        agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
-      }
-    } catch(e){
-      agentBox.textContent = "중개사 정보를 불러오지 못했습니다.";
-    }
-  }
-
-  const opBoxes = {
-    consign: document.getElementById("sideOpConsign"),
-    housekeeping: document.getElementById("sideOpHousekeeping"),
-    finance: document.getElementById("sideOpFinance"),
-  };
-  if (opBoxes.consign || opBoxes.housekeeping || opBoxes.finance){
-    let counts = null;
-    try {
-      const res = await fetch("/api/stats/operator-counts");
-      const d = await res.json();
-      if (res.ok && d.ok) counts = d;
-    } catch(e){ /* 아래 공통 처리 */ }
-    Object.keys(opBoxes).forEach((k) => {
-      const box = opBoxes[k];
-      if (!box) return;
-      if (!counts){ box.textContent = "업체 정보를 불러오지 못했습니다."; return; }
-      const n = counts[k] || 0;
-      if (n >= SIDE_COUNT_THRESHOLD){
-        box.classList.remove("side-soon");
-        box.innerHTML = `<div style="font-size:14px; font-weight:700; color:var(--ink);">등록된 업체 ${n}곳</div>`;
-      } else {
-        // 10곳 미만이면 실제 숫자는 감추고 모집 문구만 (내부 정보 취급)
-        box.classList.remove("side-soon");
-        box.innerHTML = "";  // 통합 배너에서 안내
-        hideAdjacentApplyBanner(box);
-      }
-    });
-  }
+  // sideAgentCount / sideOpConsign / sideOpHousekeeping / sideOpFinance 섹션은
+  // 통합 파트너 배너로 대체되어 index.html에서 제거됨 — 관련 로직 삭제
 }
 
 // 모집 박스에 자체 신청 버튼이 있으므로, 바로 아래 배너형 신청 링크는 중복이라 숨긴다 (A화면 전용)
@@ -2912,29 +2861,14 @@ function buildingPanelSkeleton(){
       <div id="bListingsBody"></div>
     </section>
 
-    <section class="side-card">
+    <section class="side-card" id="bAgentCard" style="display:none;">
       <div class="side-card-title">담당중개사</div>
-      <div id="bAgentBox"><div class="side-empty">불러오는 중…</div></div>
+      <div id="bAgentBox"></div>
     </section>
 
     <section class="side-card" id="bAdminCard">
       <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
       <div class="side-empty">불러오는 중…</div>
-    </section>
-
-    <section class="side-card">
-      <div class="side-card-title">위탁운영</div>
-      <div id="bOperatorBox"></div>
-    </section>
-
-    <section class="side-card">
-      <div class="side-card-title">운영지원업체</div>
-      <div id="bHousekeepingBox"></div>
-    </section>
-
-    <section class="side-card">
-      <div class="side-card-title">금융 <span class="side-sub">대출상담</span></div>
-      <div id="bFinanceBox"></div>
     </section>
 
     <section class="side-card" id="bBldgInfoCard">
@@ -3710,7 +3644,9 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
   const box = document.getElementById("bAgentBox");
   if (!box) return;
   const list = Array.isArray(agents) ? agents : [];
+  const agentCard = document.getElementById("bAgentCard");
   if (list.length){
+    if (agentCard) agentCard.style.display = "";
     // 최대 3명 카드 스택 — 기존 단일 카드 스타일을 세로로 나열 (서버가 priority_score DESC, RANDOM()으로 최대 3명 반환)
     box.innerHTML = list.map((agent) => {
       // 프로필 사진(photo_src)이 있으면 원형 썸네일, 없으면 기존 🏢 아이콘 (아실 스타일)
@@ -3749,7 +3685,9 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
       </div>`;
     }).join("");
   } else {
-    box.innerHTML = "";  // 통합 파트너 배너에서 안내
+    // 배정된 중개사 없으면 카드 자체를 숨김 (통합 파트너 배너에서 안내)
+    if (agentCard) agentCard.style.display = "none";
+    box.innerHTML = "";
   }
   if (moreAgents && moreAgents.length) {
     const moreHtml = moreAgents.map(agent => `
