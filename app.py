@@ -17797,7 +17797,10 @@ def stats_registration_rate():
             "biz_units": total_row.get("room_count", 0),   # 행안부 영업신고호실 (폐업 제외)
             "rate": total_row.get("report_rate"),
         })
-    # 캐시 미스(초기 기동 직후): road_norm 기준 단순 SQL로 근사치 반환
+    # 캐시 미스(초기 기동 직후): admin_buildings_full_stats()와 동일한
+    # Python 정규화 방식으로 계산 (master_buildings에 road_norm 컬럼이 없으므로
+    # SQL 서브쿼리 방식은 사용 불가 — 과거 폴백 SQL의 서브쿼리가 correlated
+    # subquery로 해석되어 lr.road_norm IS NOT NULL 전체를 반환하는 버그가 있었음).
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
@@ -17809,22 +17812,32 @@ def stats_registration_rate():
     row = cur.fetchone()
     buildings   = int(row["buildings"])
     total_units = int(row["total_units"])
-    # road_norm 기준만 — _row() elif 로직에 근사 (jibun fallback 제외)
+
+    # 전체 건물 주소에서 road_norm·jibun_norm 계산 후 lodging_registry 매칭
     cur.execute("""
-        SELECT COALESCE(SUM(COALESCE(room_count, 0)), 0) AS active_rooms
-        FROM (
-            SELECT DISTINCT ON (lr.permit_number) lr.room_count
-            FROM lodging_registry lr
-            WHERE (lr.biz_status_name IS NULL OR lr.biz_status_name NOT LIKE '%%폐업%%')
-              AND lr.road_norm IN (
-                  SELECT road_norm FROM master_buildings
-                  WHERE road_norm IS NOT NULL
-                    AND lodging_type IS DISTINCT FROM 'mixed_use_excluded'
-              )
-        ) t
+        SELECT road_address, jibun_address
+        FROM master_buildings
+        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
     """)
-    lr_row    = cur.fetchone()
-    biz_units = int(lr_row["active_rooms"])
+    bld_rows = cur.fetchall()
+    road_norms  = list({addr_norm.normalize_road_prefix(b["road_address"])
+                        for b in bld_rows if b["road_address"]
+                        if addr_norm.normalize_road_prefix(b["road_address"])})
+    jibun_norms = list({addr_norm.normalize_jibun_prefix(b["jibun_address"] or b["road_address"])
+                        for b in bld_rows if b["road_address"]
+                        if addr_norm.normalize_jibun_prefix(b["jibun_address"] or b["road_address"])})
+    if road_norms or jibun_norms:
+        cur.execute(
+            "SELECT DISTINCT ON (permit_number) permit_number, room_count "
+            "FROM lodging_registry "
+            "WHERE (biz_status_name IS NULL OR biz_status_name NOT LIKE '%%폐업%%') "
+            "  AND (road_norm = ANY(%s) OR jibun_norm = ANY(%s)) "
+            "ORDER BY permit_number",
+            [road_norms or ["__none__"], jibun_norms or ["__none__"]]
+        )
+        biz_units = sum(int(r["room_count"] or 0) for r in cur.fetchall())
+    else:
+        biz_units = 0
     cur.close()
     conn.close()
     rate = round(biz_units / total_units * 100, 1) if total_units > 0 else None

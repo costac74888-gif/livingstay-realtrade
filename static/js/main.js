@@ -230,6 +230,22 @@ function openChatModal(roomId){
   const attachPrev  = ov.querySelector("#chatAttachPreview");
   const chipsEl     = ov.querySelector("#chatTemplateChips");
 
+  // 방별 "이미 전송한 템플릿" 추적 — localStorage로 재입장 후에도 유지
+  const _tplStorageKey = "chatUsedTpl_" + roomId;
+  const usedTemplates = new Set(
+    JSON.parse(localStorage.getItem(_tplStorageKey) || "[]")
+  );
+
+  function _refreshChipVisibility() {
+    chipsEl.querySelectorAll(".chat-template-chip").forEach((btn) => {
+      const tpl = btn.getAttribute("data-tpl");
+      btn.style.display = usedTemplates.has(tpl) ? "none" : "inline-flex";
+    });
+    // 5개 모두 사용됐으면 칩 영역 자체를 접어 빈 공간이 안 남도록
+    chipsEl.style.display = usedTemplates.size >= 5 ? "none" : "flex";
+  }
+  _refreshChipVisibility();
+
   // 칩 클릭 → 입력창 채우기 (자동전송 아님)
   chipsEl.addEventListener("click", (e) => {
     const btn = e.target.closest(".chat-template-chip");
@@ -255,8 +271,6 @@ function openChatModal(roomId){
   }
 
   function _renderMessages(messages){
-    // 메시지가 없으면 템플릿 칩 표시, 있으면 숨김
-    if (chipsEl) chipsEl.style.display = messages.length === 0 ? "flex" : "none";
     if (!messages.length){
       listEl.innerHTML = `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px 0;">아직 메시지가 없습니다. 먼저 인사를 건네보세요!</div>`;
       return;
@@ -316,6 +330,7 @@ function openChatModal(roomId){
     const body = inputEl.value.trim();
     const att  = pendingAttachment;
     if (!body && !att) return;
+    const sentText = body; // 전송 직전 텍스트 보존 (칩 매칭용)
     inputEl.value = "";
     pendingAttachment = null;
     attachPrev.style.display = "none";
@@ -330,7 +345,19 @@ function openChatModal(roomId){
         credentials: "same-origin",
         body: JSON.stringify(payload),
       });
-      if (res.ok) await _loadMessages();
+      if (res.ok) {
+        // 전송 성공 시 해당 템플릿 칩을 사용 처리
+        if (usedTemplates.size < 5) {
+          const matchedChip = Array.from(chipsEl.querySelectorAll(".chat-template-chip"))
+            .find((b) => b.getAttribute("data-tpl") === sentText);
+          if (matchedChip) {
+            usedTemplates.add(sentText);
+            localStorage.setItem(_tplStorageKey, JSON.stringify([...usedTemplates]));
+            _refreshChipVisibility();
+          }
+        }
+        await _loadMessages();
+      }
       else {
         const d = await res.json().catch(() => ({}));
         inputEl.value = body;
