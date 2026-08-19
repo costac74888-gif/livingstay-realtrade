@@ -606,6 +606,7 @@
   font-size:10px; font-weight:700; line-height:16px; text-align:center;
   color:#fff; background:#E5484D; border-radius:9px; vertical-align:top;
 }
+.notif-badge[hidden]{ display:none; }
 /* 알림 드롭다운 패널 */
 .hnav-panel-notif{ width:320px; max-width:86vw; padding:0; }
 .notif-head{
@@ -619,6 +620,17 @@
 }
 .notif-readall:hover{ color:var(--brass-dark); text-decoration:underline; }
 .notif-list{ max-height:360px; overflow-y:auto; }
+/* 알림 패널 섹션 헤더 — "내 알림" / "공지사항(전체보기)" 구분 */
+.notif-sec-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:9px 14px 7px; font-size:11.5px; font-weight:700; color:var(--ink-soft);
+  background:#FAF9F6; border-bottom:1px solid var(--line);
+}
+.notif-sec-head + .notif-sec-head{ border-top:1px solid var(--line); }
+.notif-sec-link{
+  font-size:11px; font-weight:600; color:var(--brass-dark, #8a5e1a); text-decoration:none;
+}
+.notif-sec-link:hover{ text-decoration:underline; }
 .notif-empty{ font-size:12.5px; color:var(--ink-soft); text-align:center; padding:26px 14px; line-height:1.6; }
 .notif-item{
   padding:10px 14px; border-bottom:1px solid var(--line); cursor:pointer;

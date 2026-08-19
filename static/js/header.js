@@ -56,6 +56,7 @@
           '</div>' +
         '</div>' +
       '</div>' +
+      '<button type="button" class="hnav-btn" id="chatMenuBtn">💬 <span class="hnav-label">채팅</span><span class="notif-badge" id="chatBadge" hidden>0</span></button>' +
       '<button type="button" class="hamburger-btn" id="hamburgerBtn" aria-label="메뉴" aria-haspopup="true" aria-expanded="false">☰</button>' +
       '<div class="header-menu" id="headerMenu">' +
         '<nav class="header-nav">' +
@@ -63,7 +64,6 @@
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
           '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
-          '<a class="hnav-btn" href="/notices">📢 <span class="hnav-label">공지사항</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
         '</nav>' +
         '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +
@@ -221,52 +221,68 @@
     if (n > 0) { notifBadge.textContent = n > 99 ? "99+" : String(n); notifBadge.hidden = false; }
     else { notifBadge.hidden = true; }
   }
+  function renderChatBadge(n) {
+    var b = document.getElementById("chatBadge");
+    if (!b) return;
+    if (n > 0) { b.textContent = n > 99 ? "99+" : String(n); b.hidden = false; }
+    else { b.hidden = true; }
+  }
   function refreshUnreadCount() {
-    if (!window.__livingstayLoggedIn) { renderNotifBadge(0); return; }
+    if (!window.__livingstayLoggedIn) { renderNotifBadge(0); renderChatBadge(0); return; }
     Promise.all([
       fetch("/api/notifications/unread-count", { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return { ok: false }; }),
       fetch("/api/chat/unread-count",           { credentials: "same-origin" }).then(function (r) { return r.json(); }).catch(function () { return { ok: false }; })
     ]).then(function (results) {
       var notifCount = (results[0] && results[0].ok) ? (results[0].count || 0) : 0;
       var chatCount  = (results[1] && results[1].ok) ? (results[1].count || 0) : 0;
-      renderNotifBadge(notifCount + chatCount);
+      renderNotifBadge(notifCount);   // 벨 배지 = 개인 알림만 (채팅은 💬 배지로 분리)
+      renderChatBadge(chatCount);
     });
   }
-  function loadNotifList() {
-    if (!window.__livingstayLoggedIn) {
-      notifList.innerHTML = '<div class="notif-empty">로그인하면 관심건물의 새 실거래 알림을 받아볼 수 있어요.</div>';
-      return;
+  function _renderNoticeSection(notices) {
+    var html = '<div class="notif-sec-head">공지사항' +
+               '<a class="notif-sec-link" href="/notices">전체보기 →</a></div>';
+    if (!notices.length) {
+      html += '<div class="notif-empty" style="padding:14px;">등록된 공지가 없습니다.</div>';
+      return html;
     }
+    notices.forEach(function (n) {
+      html += '<div class="notif-item notif-notice-item" data-nid="' + n.id + '">' +
+                '<div class="notif-title">' + (n.is_pinned ? "📌 " : "📢 ") + esc(n.title) + '</div>' +
+                '<div class="notif-time">' + esc(n.created_at || "") + '</div>' +
+              '</div>';
+    });
+    return html;
+  }
+  function loadNotifList() {
     notifList.innerHTML = '<div class="notif-empty">불러오는 중…</div>';
-    Promise.all([
-      fetch("/api/notifications/mine",   { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; }),
-      fetch("/api/chat/recent-unread",   { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; })
-    ]).then(function(results) {
-      var notifItems = (results[0] && results[0].ok) ? (results[0].items || []) : [];
-      var chatItems  = (results[1] && results[1].ok) ? (results[1].items || []) : [];
-      if (!notifItems.length && !chatItems.length) {
-        notifList.innerHTML = '<div class="notif-empty">받은 알림이 없습니다.</div>';
-        return;
+    var loggedIn = !!window.__livingstayLoggedIn;
+    var reqs = [
+      fetch("/api/notices?size=3", { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return {}; })
+    ];
+    if (loggedIn) {
+      reqs.push(fetch("/api/notifications/mine", { credentials: "same-origin" }).then(function(r){ return r.json(); }).catch(function(){ return {ok:false}; }));
+    }
+    Promise.all(reqs).then(function(results) {
+      var notices    = (results[0] && results[0].items) || [];
+      var notifItems = (loggedIn && results[1] && results[1].ok) ? (results[1].items || []) : [];
+      var html = '<div class="notif-sec-head">내 알림</div>';
+      if (!loggedIn) {
+        html += '<div class="notif-empty" style="padding:14px;">로그인하면 관심건물의 새 실거래 알림을 받아볼 수 있어요.</div>';
+      } else if (!notifItems.length) {
+        html += '<div class="notif-empty" style="padding:14px;">받은 알림이 없습니다.</div>';
+      } else {
+        notifItems.forEach(function(it) {
+          var cls = "notif-item" + (it.is_read ? "" : " unread");
+          html += '<div class="' + cls + '" data-id="' + it.id + '" data-bid="' + (it.building_id != null ? it.building_id : "") + '">' +
+                    '<div class="notif-title">' + esc(it.title) + '</div>' +
+                    (it.body ? '<div class="notif-body">' + esc(it.body) + '</div>' : '') +
+                    '<div class="notif-time">' + notifTimeAgo(it.created_at) + '</div>' +
+                  '</div>';
+        });
       }
-      var html = "";
-      // 채팅 알림 먼저 (더 즉각적)
-      chatItems.forEach(function(it) {
-        var cnt = it.unread_count > 1 ? ' · ' + it.unread_count + '개 미읽음' : '';
-        html += '<div class="notif-item unread notif-chat-item" data-room="' + it.room_id + '">' +
-                  '<div class="notif-title">💬 ' + esc(it.sender_name || "상대방") + '님의 채팅</div>' +
-                  '<div class="notif-body">[' + esc(it.building_name || "") + '] ' + esc(it.body || "(첨부파일)") + '</div>' +
-                  '<div class="notif-time">' + notifTimeAgo(it.sent_at) + cnt + '</div>' +
-                '</div>';
-      });
-      // 실거래 알림
-      notifItems.forEach(function(it) {
-        var cls = "notif-item" + (it.is_read ? "" : " unread");
-        html += '<div class="' + cls + '" data-id="' + it.id + '" data-bid="' + (it.building_id != null ? it.building_id : "") + '">' +
-                  '<div class="notif-title">' + esc(it.title) + '</div>' +
-                  (it.body ? '<div class="notif-body">' + esc(it.body) + '</div>' : '') +
-                  '<div class="notif-time">' + notifTimeAgo(it.created_at) + '</div>' +
-                '</div>';
-      });
+      // 공지 섹션 — 개인 알림이 비어 있어도 항상 표시
+      html += _renderNoticeSection(notices);
       notifList.innerHTML = html;
     }).catch(function() { notifList.innerHTML = '<div class="notif-empty">알림을 불러오지 못했습니다.</div>'; });
   }
@@ -280,7 +296,103 @@
   window.stopNotifPolling = function () {
     if (notifPollTimer) { clearInterval(notifPollTimer); notifPollTimer = null; }
     renderNotifBadge(0);
+    renderChatBadge(0);   // 로그아웃 시 이전 계정의 채팅 배지 잔상 제거
   };
+
+  // ── 💬 채팅목록 모달 — 참여 중인 모든 채팅방을 최신 메시지순으로 표시 ────
+  var CHAT_LIST_PAGE = 20;
+  function _chatRowHtml(it) {
+    var unread = it.unread_count > 0
+      ? '<span class="notif-badge" style="margin-left:6px;">' + (it.unread_count > 99 ? "99+" : it.unread_count) + '</span>'
+      : "";
+    var thumb = it.thumb_url
+      ? '<img src="' + esc(it.thumb_url) + '" alt="" style="width:44px; height:44px; border-radius:8px; object-fit:cover; flex:none; background:#f0f0f0;" />'
+      : '<div style="width:44px; height:44px; border-radius:8px; background:var(--brass-tint,#F4EDDF); display:flex; align-items:center; justify-content:center; font-size:20px; flex:none;">🏨</div>';
+    return '<div class="chatlist-row" data-room="' + it.room_id + '" style="display:flex; gap:10px; align-items:center; padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer;' + (it.unread_count > 0 ? " background:var(--brass-tint,#F4EDDF);" : "") + '">' +
+      thumb +
+      '<div style="flex:1; min-width:0;">' +
+        '<div style="display:flex; align-items:center; gap:4px;">' +
+          '<span style="font-size:13.5px; font-weight:' + (it.unread_count > 0 ? "700" : "600") + '; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.opponent_name) + '</span>' + unread +
+          '<span style="margin-left:auto; font-size:10.5px; color:var(--ink-soft); flex:none;">' + notifTimeAgo(it.last_at) + '</span>' +
+        '</div>' +
+        (it.building_name ? '<div style="font-size:11.5px; color:var(--brass-dark,#8a5e1a); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🏨 ' + esc(it.building_name) + '</div>' : "") +
+        '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.preview || "") + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  window.openChatListModal = function () {
+    var old = document.getElementById("chatListOverlay");
+    if (old) old.remove();
+    var ov = document.createElement("div");
+    ov.id = "chatListOverlay";
+    ov.style.cssText = "position:fixed; inset:0; background:rgba(22,32,46,.45); z-index:3900; display:flex; align-items:flex-end; justify-content:center;";
+    ov.innerHTML =
+      '<div style="width:100%; max-width:520px; background:#fff; border-radius:16px 16px 0 0; display:flex; flex-direction:column; max-height:80vh; box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
+        '<div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid var(--line); flex-shrink:0;">' +
+          '<span style="font-size:15px; font-weight:700; color:var(--ink);">채팅</span>' +
+          '<button id="chatListClose" style="background:none; border:none; font-size:22px; color:var(--ink-soft); cursor:pointer; line-height:1; padding:0 4px;">×</button>' +
+        '</div>' +
+        '<div id="chatListBody" style="flex:1; overflow-y:auto; min-height:120px;">' +
+          '<div class="notif-empty" style="padding:26px 14px;">불러오는 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var body = ov.querySelector("#chatListBody");
+    var offset = 0;
+    function _load() {
+      fetch("/api/chat/rooms?limit=" + CHAT_LIST_PAGE + "&offset=" + offset, { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.ok) throw new Error(d.message || "load fail");
+          var moreBtn = body.querySelector("#chatListMore");
+          if (moreBtn) moreBtn.parentNode.removeChild(moreBtn);
+          if (offset === 0 && !d.items.length) {
+            body.innerHTML = '<div class="notif-empty" style="padding:34px 16px;">아직 채팅이 없습니다.<br/>직거래 매물에서 판매자에게 문의하면 여기에 표시돼요.</div>';
+            return;
+          }
+          if (offset === 0) body.innerHTML = "";
+          var frag = document.createElement("div");
+          frag.innerHTML = d.items.map(_chatRowHtml).join("");
+          while (frag.firstChild) body.appendChild(frag.firstChild);
+          offset += d.items.length;
+          if (d.has_more) {
+            var b = document.createElement("button");
+            b.id = "chatListMore";
+            b.textContent = "더보기";
+            b.style.cssText = "display:block; width:100%; background:none; border:none; border-top:1px solid var(--line); padding:12px; font-size:13px; color:var(--ink-soft); cursor:pointer; font-family:inherit;";
+            b.addEventListener("click", _load);
+            body.appendChild(b);
+          }
+        })
+        .catch(function () {
+          if (offset === 0) body.innerHTML = '<div class="notif-empty" style="padding:26px 14px;">채팅 목록을 불러오지 못했습니다.</div>';
+        });
+    }
+    body.addEventListener("click", function (e) {
+      var row = e.target.closest(".chatlist-row");
+      if (!row) return;
+      var roomId = parseInt(row.getAttribute("data-room"), 10);
+      ov.remove();
+      if (window.openChatModal) window.openChatModal(roomId);
+      else location.href = "/mypage?openChat=" + roomId;  // 선택한 방을 유지한 채 이동
+      // 열람 후 배지 갱신 (읽음 처리는 메시지 조회가 수행)
+      setTimeout(refreshUnreadCount, 2000);
+    });
+    ov.querySelector("#chatListClose").addEventListener("click", function () { ov.remove(); });
+    ov.addEventListener("click", function (e) { if (e.target === ov) ov.remove(); });
+    _load();
+  };
+  var chatMenuBtn = document.getElementById("chatMenuBtn");
+  if (chatMenuBtn) {
+    chatMenuBtn.addEventListener("click", function () {
+      if (!window.__livingstayLoggedIn) {
+        if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+        else alert("로그인이 필요합니다.");
+        return;
+      }
+      window.openChatListModal();
+    });
+  }
 
   // ── "내건물시세" 버튼 — 다른 페이지에서 클릭 시 메인으로 이동 ──────────
   function _handleMyPriceClick(){
@@ -310,20 +422,13 @@
         alertMenuBtn.setAttribute("aria-expanded", "false");
       }
     });
-    // 항목 클릭 → 채팅 항목은 채팅 모달, 실거래 알림은 건물 상세로 이동
+    // 항목 클릭 → 공지 항목은 공지 목록, 실거래 알림은 건물 상세로 이동
     notifList.addEventListener("click", function (e) {
       var item = e.target.closest(".notif-item");
       if (!item) return;
-      // 채팅 알림 클릭
-      if (item.classList.contains("notif-chat-item")) {
-        var roomId = parseInt(item.getAttribute("data-room"), 10);
-        alertMenu.classList.remove("open");
-        alertMenuBtn.setAttribute("aria-expanded", "false");
-        if (window.openChatModal) {
-          window.openChatModal(roomId);
-        } else {
-          location.href = "/mypage";
-        }
+      // 공지 항목 클릭
+      if (item.classList.contains("notif-notice-item")) {
+        location.href = "/notices";
         return;
       }
       // 실거래 알림 클릭

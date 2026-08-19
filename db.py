@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-19-3"
+SCHEMA_VERSION = "2026-08-19-4"
 
 
 def init_db():
@@ -926,6 +926,9 @@ def init_db():
             UNIQUE (listing_request_id, buyer_user_id)
         )
     """)
+    # 채팅목록(GET /api/chat/rooms) — 참여자 기준 조회용 인덱스
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_chat_rooms_buyer ON chat_rooms(buyer_user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_chat_rooms_seller ON chat_rooms(seller_user_id)")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chat_messages (
             id SERIAL PRIMARY KEY,

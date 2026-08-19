@@ -7339,6 +7339,88 @@ def chat_recent_unread():
     return jsonify({"ok": True, "items": items})
 
 
+@app.route("/api/chat/rooms", methods=["GET"])
+@limiter.limit("60 per minute")
+def list_chat_rooms():
+    """채팅목록 모달용 — 내가 참여한 모든 채팅방을 최신 메시지순으로 반환.
+
+    미읽음 여부와 무관하게 전체 방을 포함한다(/api/chat/recent-unread와 구별).
+    limit/offset 페이징 — limit+1개를 조회해 has_more를 계산한다.
+    """
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    try:
+        limit = min(max(int(request.args.get("limit", 20)), 1), 50)
+    except (TypeError, ValueError):
+        limit = 20
+    try:
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        offset = 0
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT cr.id AS room_id,
+                   cr.listing_request_id,
+                   mb.building_name,
+                   CASE WHEN cr.buyer_user_id = %(uid)s THEN su.name ELSE bu.name END
+                       AS opponent_name,
+                   lm.body            AS last_body,
+                   lm.attachment_key  AS last_attachment_key,
+                   TO_CHAR(COALESCE(lm.created_at, cr.created_at),
+                           'YYYY-MM-DD HH24:MI') AS last_at,
+                   (SELECT COUNT(*) FROM chat_messages
+                     WHERE room_id = cr.id
+                       AND sender_user_id != %(uid)s
+                       AND is_read = FALSE) AS unread_count,
+                   ph.thumb_url
+              FROM chat_rooms cr
+              JOIN listing_requests lr ON lr.id = cr.listing_request_id
+              LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+              JOIN users bu ON bu.id = cr.buyer_user_id
+              JOIN users su ON su.id = cr.seller_user_id
+              LEFT JOIN LATERAL (
+                    SELECT body, attachment_key, created_at
+                      FROM chat_messages
+                     WHERE room_id = cr.id
+                     ORDER BY created_at DESC
+                     LIMIT 1
+                   ) lm ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT '/api/listing-photos/img/' || image_key AS thumb_url
+                      FROM listing_photos
+                     WHERE listing_request_id = lr.id
+                     ORDER BY sort_order ASC, id ASC
+                     LIMIT 1
+                   ) ph ON TRUE
+             WHERE cr.buyer_user_id = %(uid)s OR cr.seller_user_id = %(uid)s
+             ORDER BY COALESCE(lm.created_at, cr.created_at) DESC, cr.id DESC
+             LIMIT %(limit_plus)s OFFSET %(offset)s
+        """, {"uid": u["id"], "limit_plus": limit + 1, "offset": offset})
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    has_more = len(rows) > limit
+    items = []
+    for r in rows[:limit]:
+        body = (r.get("last_body") or "").strip()
+        if not body:
+            body = "(첨부파일)" if r.get("last_attachment_key") else "아직 메시지가 없습니다"
+        items.append({
+            "room_id": r["room_id"],
+            "listing_request_id": r["listing_request_id"],
+            "building_name": r.get("building_name") or "",
+            "opponent_name": r.get("opponent_name") or "상대방",
+            "preview": body,
+            "last_at": r.get("last_at"),
+            "unread_count": int(r["unread_count"]),
+            "thumb_url": r.get("thumb_url"),
+        })
+    return jsonify({"ok": True, "items": items, "limit": limit,
+                    "offset": offset, "has_more": has_more})
+
+
 @app.route("/api/chat/rooms/<int:room_id>/attachments", methods=["POST"])
 @limiter.limit("20 per minute")
 def upload_chat_attachment(room_id):

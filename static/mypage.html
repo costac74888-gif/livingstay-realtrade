@@ -523,6 +523,13 @@
     document.getElementById("mpChatSend").addEventListener("click", sendMsg);
     document.getElementById("mpChatInput").addEventListener("keydown", function(e){ if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
   }
+  // 헤더 채팅목록(header.js openChatListModal)이 이 페이지에서도 방을 바로 열 수 있게 공유
+  window.openChatModal = openMypageChatModal;
+  // 다른 페이지에서 /mypage?openChat=<roomId> 로 넘어온 경우 해당 방 자동 오픈
+  (function () {
+    var m = /[?&]openChat=(\d+)/.exec(location.search);
+    if (m) setTimeout(function(){ openMypageChatModal(parseInt(m[1], 10)); }, 150);
+  })();
 
   function openChatRoomListModal(rooms) {
     var old = document.getElementById("mpChatListOverlay");
