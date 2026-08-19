@@ -7520,7 +7520,9 @@ def update_listing_request(req_id):
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, before_data, after_data) "
             "VALUES (%s, 'edited', %s, %s)",
-            [req_id, json.dumps(before), json.dumps(after)]
+            # PostgreSQL NUMERIC는 Decimal로 반환될 수 있으므로 이력 저장 시
+            # JSON 직렬화 실패로 본문 수정 전체가 500이 되지 않게 한다.
+            [req_id, json.dumps(before, default=str), json.dumps(after, default=str)]
         )
         conn.commit()
     finally:
