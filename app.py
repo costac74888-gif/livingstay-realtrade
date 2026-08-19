@@ -6920,6 +6920,7 @@ def public_listings():
                    lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
                    TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
                    COALESCE(ll.like_count, 0) AS like_count,
+                   lp.photo_url,
                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type,
                    mb.lat, mb.lng
             FROM listing_requests lr
@@ -6928,6 +6929,13 @@ def public_listings():
                 SELECT listing_request_id, COUNT(*) AS like_count
                 FROM listing_likes GROUP BY listing_request_id
             ) ll ON ll.listing_request_id = lr.id
+            LEFT JOIN LATERAL (
+                SELECT '/api/listing-photos/img/' || image_key AS photo_url
+                FROM listing_photos
+                WHERE listing_request_id = lr.id
+                ORDER BY sort_order ASC, id ASC
+                LIMIT 1
+            ) lp ON true
             WHERE lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') <> 'withdrawn'
               {where_extra}

@@ -15,11 +15,11 @@
 <link rel="stylesheet" href="/static/css/main.css" />
 <style>
   /* ── 페이지 레이아웃 ── */
-  .listings-page { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+  .listings-page { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
   .listings-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
   .listings-sub   { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
 
-  /* ── 필터 박스 (transactions.html .tx-filter 패턴 재사용) ── */
+  /* ── 필터 박스 ── */
   .tx-filter { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
   .ls-filter-grid {
     display: grid;
@@ -41,63 +41,116 @@
   }
   .ls-filter-grid .btn-search:hover { background: var(--brass-dark); }
 
-  /* ── 채팅중 칩 바 (tx-favbar 패턴) ── */
+  /* ── 채팅중 칩 바 ── */
   .tx-favbar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    margin-top: 12px; padding-top: 12px;
-    border-top: 1px solid var(--line);
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
     font-size: 12.5px; color: var(--ink-soft);
   }
   .tx-favbar .bar-label { font-weight: 600; color: var(--ink); white-space: nowrap; }
   #lsChatChips { display: flex; gap: 6px; flex-wrap: wrap; overflow-x: auto; }
 
-  /* ── 매물 카드 ── */
-  .listing-card {
-    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px;
-    margin-bottom: 12px; background: #fff;
+  /* ── 뷰 탭 ── */
+  .ls-view-tabs { display: flex; gap: 6px; margin-bottom: 14px; align-items: center; }
+  .ls-view-tabs button {
+    padding: 6px 16px; border-radius: 20px; border: 1.5px solid var(--line, #ddd);
+    background: #fff; color: var(--ink-soft); font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: all .15s;
   }
-  .listing-card-name {
-    font-size: 14px; font-weight: 700; color: var(--ink);
-    margin-bottom: 8px; cursor: pointer; display: inline-block;
+  .ls-view-tabs button.active {
+    border-color: var(--brass, #B4863F); background: var(--brass-tint, #FFF5E0);
+    color: var(--brass-dark, #7D4A00);
   }
-  .listing-card-name:hover { color: var(--brass-dark, #7D4A00); text-decoration: underline; }
+  .ls-view-tabs .ls-count { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
 
-  /* ── 통일 표 ── */
-  .listing-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .listing-tbl th {
-    text-align: left; font-size: 11.5px; font-weight: 600;
-    color: var(--ink-soft); padding: 0 6px 5px 0;
-    border-bottom: 1px solid var(--line); white-space: nowrap;
+  /* ── 게시판형(표) ── */
+  .ls-board-wrap { overflow-x: auto; }
+  .ls-board-tbl { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 540px; }
+  .ls-board-tbl thead th {
+    text-align: left; font-size: 11.5px; font-weight: 600; color: var(--ink-soft);
+    padding: 6px 8px 8px; border-bottom: 2px solid var(--line); white-space: nowrap;
   }
-  .listing-tbl th:last-child { text-align: center; }
-  .listing-tbl td {
-    padding: 6px 6px 6px 0; border-bottom: 1px solid #f0ece3;
-    vertical-align: middle; white-space: nowrap;
+  .ls-board-tbl thead th:last-child { text-align: center; }
+  .ls-board-tbl tbody tr { transition: background .1s; }
+  .ls-board-tbl tbody tr:hover { background: #fafaf8; }
+  .ls-board-tbl td {
+    padding: 8px 8px; border-bottom: 1px solid #f0ece3;
+    vertical-align: middle;
   }
-  .listing-tbl tr:last-child td { border-bottom: none; }
-  .listing-tbl td.td-type  { font-weight: 700; }
-  .listing-tbl td.td-price { font-weight: 700; color: var(--brass-dark, #7D4A00); }
-  .listing-tbl td.td-date  { font-size: 11.5px; color: var(--ink-soft); }
-  .listing-tbl td.td-chat  { text-align: center; }
+  .ls-board-tbl tbody tr:last-child td { border-bottom: none; }
+  .td-photo { width: 50px; }
+  .td-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); vertical-align: middle; }
+  .td-thumb-placeholder { width: 44px; height: 44px; border-radius: 6px; background: var(--brass-tint, #FFF5E0); display: inline-flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid var(--line); }
+  .td-type   { font-weight: 700; white-space: nowrap; }
+  .td-price  { font-weight: 700; color: var(--brass-dark, #7D4A00); white-space: nowrap; }
+  .td-yield  { white-space: nowrap; color: var(--brass-dark, #7D4A00); font-size: 12px; }
+  .td-desc   { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-soft); }
+  .td-date   { font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; }
+  .td-action { text-align: center; white-space: nowrap; }
+  .td-bldg   { font-weight: 600; }
 
-  /* ── 채팅 버튼 ── */
+  /* ── 채팅 / 공유 버튼 ── */
   .listing-chat-btn {
     background: none; border: none; cursor: pointer;
     font-size: 18px; line-height: 1; padding: 2px;
-    opacity: .7; transition: opacity .15s;
-    filter: grayscale(1);
+    opacity: .7; transition: opacity .15s; filter: grayscale(1);
   }
   .listing-chat-btn:hover   { opacity: 1; filter: none; }
-  /* 채팅 중인 매물은 brass 컬러로 강조 */
-  .listing-chat-btn.is-chatting {
-    filter: none;
-    opacity: 1;
-    /* 이모지라 CSS 컬러가 직접 안 먹으므로 drop-shadow로 강조 */
-    filter: drop-shadow(0 0 3px #B4863F);
+  .listing-chat-btn.is-chatting { filter: drop-shadow(0 0 3px #B4863F); opacity: 1; }
+  .listing-share-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 2px;
+    opacity: .55; transition: opacity .15s;
   }
+  .listing-share-btn:hover { opacity: 1; }
 
-  /* ── 안내 문구·빈 상태 ── */
-  .listing-card-notice { font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6; }
+  /* ── 카드형(그리드) ── */
+  .ls-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .ls-card-item {
+    border: 1px solid var(--line); border-radius: 12px;
+    background: #fff; overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: box-shadow .15s;
+  }
+  .ls-card-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,.10); }
+  .ls-card-photo {
+    width: 100%; aspect-ratio: 16/9; object-fit: cover;
+    background: var(--brass-tint, #FFF5E0);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; flex-shrink: 0;
+  }
+  .ls-card-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .ls-card-body { padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .ls-card-bldg { font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer; }
+  .ls-card-bldg:hover { color: var(--brass-dark); }
+  .ls-card-type { font-size: 12px; color: var(--ink-soft); }
+  .ls-card-price { font-size: 15px; font-weight: 800; color: var(--ink); }
+  .ls-card-yield { font-size: 12px; color: var(--brass-dark, #7D4A00); font-weight: 700; }
+  .ls-card-desc  { font-size: 12px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ls-card-footer {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 11.5px; color: var(--ink-soft);
+    margin-top: auto; padding-top: 6px;
+    border-top: 1px solid var(--line);
+  }
+  .ls-card-footer .ls-card-date { flex: 1; }
+  .ls-card-footer-btn {
+    background: none; border: none; cursor: pointer;
+    font-size: 15px; padding: 2px 4px; opacity: .65; transition: opacity .15s;
+  }
+  .ls-card-footer-btn:hover { opacity: 1; }
+
+  /* ── 뷰 전환 CSS ── */
+  body.view-board .ls-board-wrap  { display: block; }
+  body.view-board .ls-card-grid   { display: none; }
+  body.view-card  .ls-board-wrap  { display: none; }
+  body.view-card  .ls-card-grid   { display: grid; }
+
+  /* ── 빈 상태 · 로딩 ── */
   .listings-empty   { text-align: center; padding: 60px 20px; color: var(--ink-soft); font-size: 14px; }
   .listings-loading { text-align: center; padding: 40px 20px; color: var(--ink-soft); font-size: 14px; }
   .listings-more {
@@ -106,20 +159,30 @@
     font-size: 13.5px; color: var(--ink-soft); background: #fff; cursor: pointer;
   }
   .listings-more:hover { border-color: var(--brass); color: var(--brass-dark); }
+  .ls-notice { font-size: 11.5px; color: var(--ink-soft); margin-top: 10px; line-height: 1.6; }
 
-  /* ── 모바일 ── */
+  /* ── 공유 토스트 ── */
+  #lsShareToast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #333; color: #fff; font-size: 13px; padding: 10px 20px;
+    border-radius: 24px; opacity: 0; transition: all .25s; pointer-events: none; z-index: 9999;
+  }
+  #lsShareToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── 모바일 반응형 ── */
   @media (max-width: 900px) {
     .ls-filter-grid { grid-template-columns: 1fr 1fr; }
     .ls-filter-grid .btn-search { grid-column: 1 / -1; }
+    .ls-card-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
   }
   @media (max-width: 520px) {
     .listings-page  { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
     .ls-filter-grid { grid-template-columns: 1fr; }
-    .listing-tbl td.td-date  { display: none; }
-    .listing-tbl th.th-date  { display: none; }
-    /* 채팅중 칩 바 가로 스크롤 */
+    /* 게시판형 모바일: 사진·설명·수익률·등록일 숨김 */
+    .ls-hide-mobile { display: none !important; }
     #lsChatChips { flex-wrap: nowrap; }
+    .ls-card-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -177,12 +240,47 @@
     </div>
   </div>
 
+  <!-- ── 뷰 탭 ── -->
+  <div class="ls-view-tabs">
+    <button data-view="board" class="active">📋 게시판형</button>
+    <button data-view="card">🖼 카드형</button>
+    <span class="ls-count" id="lsTotalCount"></span>
+  </div>
+
   <!-- ── 목록 ── -->
   <div id="listingsContainer">
-    <div class="listings-loading">불러오는 중…</div>
+    <!-- 게시판형 -->
+    <div class="ls-board-wrap">
+      <table class="ls-board-tbl">
+        <thead>
+          <tr>
+            <th class="ls-hide-mobile">사진</th>
+            <th>건물명</th>
+            <th>유형</th>
+            <th>전용㎡</th>
+            <th>희망가(만원)</th>
+            <th class="ls-hide-mobile">수익률</th>
+            <th class="ls-hide-mobile">설명</th>
+            <th class="ls-hide-mobile">등록일</th>
+            <th>채팅</th>
+            <th>공유</th>
+          </tr>
+        </thead>
+        <tbody id="lsBoardBody">
+          <tr><td colspan="10" class="listings-loading">불러오는 중…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- 카드형 -->
+    <div class="ls-card-grid" id="lsCardGrid" style="display:none;"></div>
   </div>
+
   <button type="button" id="listingsMore" class="listings-more" style="display:none;">더보기</button>
+  <p class="ls-notice">직거래 시 계약 전 등기부등본 확인을 권장합니다. 플랫폼은 거래 당사자가 아닙니다.</p>
 </div>
+
+<!-- 공유 토스트 -->
+<div id="lsShareToast">링크가 복사되었습니다</div>
 
 <script src="/static/js/format_util.js"></script>
 <script src="/static/js/header.js"></script>
@@ -193,19 +291,76 @@
 
   // ── 유틸 ──────────────────────────────────────────────────────────────
   function esc(s){ const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+  function fmtN(v){ return v != null ? Number(v).toLocaleString() : "-"; }
+  function fmtPrice(deal_type, price_krw, monthly_rent_krw){
+    if (typeof window.formatLrPrice === "function")
+      return window.formatLrPrice(deal_type, price_krw, monthly_rent_krw);
+    if (deal_type === "매매" || deal_type === "전세") return fmtN(price_krw) + "만원";
+    if (deal_type === "월세") return "보" + fmtN(price_krw) + "/" + fmtN(monthly_rent_krw) + "만";
+    return "-";
+  }
 
   // ── 상태 ──────────────────────────────────────────────────────────────
-  const container = document.getElementById("listingsContainer");
+  const boardBody = document.getElementById("lsBoardBody");
+  const cardGrid  = document.getElementById("lsCardGrid");
   const moreBtn   = document.getElementById("listingsMore");
+  const countEl   = document.getElementById("lsTotalCount");
   const state = { sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"" };
   let offset = 0;
   const PAGE = 20;
   let loading = false;
+  let totalLoaded = 0;
 
-  // 채팅 중인 listing_request_id Set (로드 후 채움)
   let myChattingIds = new Set();
-  // 채팅중 칩에서 선택한 필터 id (null = 전체 보기)
-  let chatFilterId = null;
+  let chatFilterId  = null;
+
+  // ── 뷰 전환 ────────────────────────────────────────────────────────────
+  const STORAGE_KEY = "listingsViewMode";
+  let currentView = localStorage.getItem(STORAGE_KEY) || "board";
+
+  function setView(mode){
+    currentView = mode;
+    localStorage.setItem(STORAGE_KEY, mode);
+    document.body.classList.remove("view-board", "view-card");
+    document.body.classList.add("view-" + mode);
+    // 카드형일 때 grid 복원 (초기 display:none 덮어씀)
+    if (mode === "card") cardGrid.style.display = "";
+    else cardGrid.style.display = "none";
+    document.querySelectorAll(".ls-view-tabs button").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.view === mode);
+    });
+  }
+
+  document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
+    btn.addEventListener("click", () => setView(btn.dataset.view));
+  });
+
+  // 초기 뷰 적용
+  setView(currentView);
+
+  // ── 공유 ────────────────────────────────────────────────────────────────
+  let _toastTimer = null;
+  function showToast(msg){
+    const el = document.getElementById("lsShareToast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+  }
+
+  function shareItem(item){
+    const url = `${location.origin}/building/${item.building_id}?listing=${item.id}`;
+    const title = item.building_name || "직거래 매물";
+    const text  = `직거래 매물 - ${item.deal_type || ""} ${fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw)}`;
+    if (navigator.share){
+      navigator.share({ title, text, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(
+        () => showToast("링크가 복사되었습니다"),
+        () => showToast("복사 실패. 주소창에서 직접 복사해주세요.")
+      );
+    }
+  }
 
   // ── 지역 드롭다운 ───────────────────────────────────────────────────
   let regionTree = {};
@@ -244,18 +399,15 @@
     const sd  = document.getElementById("lsSido").value;
     const sg  = document.getElementById("lsSggNm").value;
     const sgg = regionTree[sd] && regionTree[sd].sgg[sg];
-    if (!sgg){
-      selUmd.innerHTML = '<option value="">전체</option>';
-      return;
-    }
+    if (!sgg){ selUmd.innerHTML = '<option value="">전체</option>'; return; }
     selUmd.innerHTML = '<option value="">전체</option>' +
       Object.keys(sgg.umd).sort().map(um =>
         `<option value="${esc(um)}">${esc(um)}</option>`
       ).join("");
   }
 
-  document.getElementById("lsSido").addEventListener("change",  () => { refreshSggOptions(); });
-  document.getElementById("lsSggNm").addEventListener("change", () => { refreshUmdOptions(); });
+  document.getElementById("lsSido").addEventListener("change",  () => refreshSggOptions());
+  document.getElementById("lsSggNm").addEventListener("change", () => refreshUmdOptions());
 
   // ── 채팅중 칩 바 ────────────────────────────────────────────────────
   async function loadMyChatListings(){
@@ -270,7 +422,6 @@
       bar.style.display = "";
       chips.innerHTML = "";
 
-      // "전체" 리셋 칩
       const allChip = document.createElement("span");
       allChip.className = "fav-chip active";
       allChip.style.cursor = "pointer";
@@ -300,7 +451,7 @@
         chip.appendChild(lbl);
         chips.appendChild(chip);
       });
-    } catch(e){ /* 비로그인 or 오류 시 조용히 */ }
+    } catch(e){ /* 비로그인 or 오류 무시 */ }
   }
 
   // ── 채팅방 열기 ─────────────────────────────────────────────────────
@@ -328,86 +479,150 @@
     }
   }
 
-  // ── 카드 렌더링 ─────────────────────────────────────────────────────
-  function renderCard(item){
-    const card = document.createElement("div");
-    card.className = "listing-card";
+  // ── 썸네일 HTML ─────────────────────────────────────────────────────
+  function thumbHtml(photoUrl, isCard){
+    if (isCard){
+      return photoUrl
+        ? `<img src="${esc(photoUrl)}" alt="매물 사진" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML='🏠'">`
+        : `🏠`;
+    }
+    return photoUrl
+      ? `<img class="td-thumb" src="${esc(photoUrl)}" alt="매물 사진" onerror="this.outerHTML='<span class=td-thumb-placeholder>🏠</span>'">`
+      : `<span class="td-thumb-placeholder">🏠</span>`;
+  }
 
-    // 건물명
-    const nameEl = document.createElement("div");
-    nameEl.className = "listing-card-name";
-    nameEl.textContent = item.building_name || "(건물명 없음)";
-    nameEl.addEventListener("click", () => {
+  // ── NEW 뱃지 ────────────────────────────────────────────────────────
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  function newBadge(dateStr){
+    if (!dateStr) return "";
+    const ms = Date.now() - new Date(dateStr + "T00:00:00").getTime();
+    if (ms < THREE_DAYS_MS)
+      return `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 5px;margin-left:4px;vertical-align:middle;">NEW</span>`;
+    return "";
+  }
+
+  // ── 게시판형 행 ─────────────────────────────────────────────────────
+  function renderBoardRow(item){
+    const tr = document.createElement("tr");
+    tr.dataset.listingId = item.id;
+    const isChatting   = myChattingIds.has(item.id);
+    const chatBtnClass = "listing-chat-btn" + (isChatting ? " is-chatting" : "");
+    const chatTitle    = isChatting ? "채팅 이어하기" : "문의하기";
+    const sqm  = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
+    const yld  = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : "-";
+    const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
+    const bName = esc(item.building_name || "(건물명 없음)");
+
+    tr.innerHTML = `
+      <td class="td-photo ls-hide-mobile">${thumbHtml(item.photo_url, false)}</td>
+      <td class="td-bldg">
+        <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">
+          ${bName}${newBadge(item.listing_date)}
+        </span>
+      </td>
+      <td class="td-type">${esc(item.deal_type || "-")}</td>
+      <td>${esc(sqm)}</td>
+      <td class="td-price">${esc(fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
+      <td class="td-yield ls-hide-mobile" title="참고용 수익률 (관리비·공실률 미반영)">${esc(yld)}</td>
+      <td class="td-desc ls-hide-mobile" title="${esc(item.description || "")}">${esc(desc)}</td>
+      <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
+      <td class="td-action">
+        <button type="button" class="${chatBtnClass}" title="${chatTitle}">💬</button>
+      </td>
+      <td class="td-action">
+        <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
+      </td>`;
+
+    tr.querySelector(".ls-bldg-link").addEventListener("click", () => {
       if (item.building_id) window.location.href = `/building/${item.building_id}`;
     });
-    card.appendChild(nameEl);
-
-    // 표
-    const sqm = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
-    const isChatting = myChattingIds.has(item.id);
-    const chatBtnClass = "listing-chat-btn" + (isChatting ? " is-chatting" : "");
-    const chatTitle     = isChatting ? "채팅 이어하기" : "문의하기";
-
-    const tbl = document.createElement("table");
-    tbl.className = "listing-tbl";
-    tbl.innerHTML = `
-      <thead>
-        <tr>
-          <th>유형</th>
-          <th>전용㎡</th>
-          <th>희망가(만원)</th>
-          <th class="th-date">등록일</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="td-type">${esc(item.deal_type || "-")}</td>
-          <td>${esc(sqm)}</td>
-          <td class="td-price">${esc(formatLrPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
-          <td class="td-date">${esc(item.listing_date || "")}</td>
-          <td class="td-chat">
-            <button type="button" class="${chatBtnClass}" title="${chatTitle}">💬</button>
-          </td>
-        </tr>
-      </tbody>`;
-    tbl.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
+    tr.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       openChat(item.id);
     });
-    card.appendChild(tbl);
+    tr.querySelector(".listing-share-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      shareItem(item);
+    });
+    return tr;
+  }
 
-    // 안내 문구
-    const notice = document.createElement("div");
-    notice.className = "listing-card-notice";
-    notice.textContent = "직거래 시 계약 전 등기부등본 확인을 권장합니다.";
-    card.appendChild(notice);
+  // ── 카드형 카드 ─────────────────────────────────────────────────────
+  function renderCardItem(item){
+    const div = document.createElement("div");
+    div.className = "ls-card-item";
+    div.dataset.listingId = item.id;
+    const sqm     = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
+    const priceStr = fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw);
+    const yld      = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : null;
+    const desc     = item.description ? item.description.slice(0, 40) + (item.description.length > 40 ? "…" : "") : null;
+    const likeCount = item.like_count || 0;
 
-    return card;
+    div.innerHTML = `
+      <div class="ls-card-photo">${thumbHtml(item.photo_url, true)}</div>
+      <div class="ls-card-body">
+        <div class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</div>
+        <div class="ls-card-type">${esc(item.deal_type || "-")}${sqm ? " · " + sqm : ""}</div>
+        <div class="ls-card-price">${esc(priceStr)}</div>
+        ${yld  ? `<div class="ls-card-yield">수익률 ${esc(yld)} <span style="font-size:10px;font-weight:400;">(참고용)</span></div>` : ""}
+        ${desc ? `<div class="ls-card-desc">${esc(desc)}</div>` : ""}
+        <div class="ls-card-footer">
+          <span class="ls-card-date">${esc(item.listing_date || "")}</span>
+          <button type="button" class="ls-card-footer-btn listing-like-btn" title="찜">♥ ${likeCount}</button>
+          <button type="button" class="ls-card-footer-btn listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="문의하기">💬</button>
+          <button type="button" class="ls-card-footer-btn listing-share-btn" title="링크 공유">🔗</button>
+        </div>
+      </div>`;
+
+    div.querySelectorAll(".ls-bldg-link").forEach(el => {
+      el.addEventListener("click", () => {
+        if (item.building_id) window.location.href = `/building/${item.building_id}`;
+      });
+    });
+    div.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openChat(item.id);
+    });
+    div.querySelector(".listing-share-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      shareItem(item);
+    });
+    div.querySelector(".listing-like-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const res = await fetch(`/api/listing-requests/${item.id}/like`, { method:"POST", credentials:"same-origin" });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) e.currentTarget.textContent = "♥ " + d.like_count;
+      } catch(e2){}
+    });
+    return div;
   }
 
   // ── 목록 로드 ────────────────────────────────────────────────────────
   async function loadListings(reset){
     if (loading) return;
     loading = true;
+
     if (reset){
-      container.innerHTML = `<div class="listings-loading">불러오는 중…</div>`;
+      boardBody.innerHTML = `<tr><td colspan="10" class="listings-loading">불러오는 중…</td></tr>`;
+      cardGrid.innerHTML  = `<div class="listings-loading" style="grid-column:1/-1;">불러오는 중…</div>`;
       offset = 0;
+      totalLoaded = 0;
+      countEl.textContent = "";
     }
+
     try {
-      // 채팅중 칩 필터 (id 지정 시 해당 매물 단독 표시)
       if (chatFilterId != null){
-        // 단일 ID 직접 렌더 (프론트 필터 — 이미 myChattingIds로 데이터 있음)
-        container.innerHTML = "";
-        moreBtn.style.display = "none";
-        // 해당 ID의 카드를 /api/listings에서 단건 조회
-        const res = await fetch(`/api/listings?limit=50&offset=0`, { credentials: "same-origin" });
+        const res = await fetch("/api/listings?limit=50&offset=0", { credentials: "same-origin" });
         const d = await res.json().catch(() => ({}));
         const filtered = (d.items || []).filter(it => it.id === chatFilterId);
-        if (filtered.length === 0){
-          container.innerHTML = `<div class="listings-empty">해당 매물을 찾을 수 없습니다.</div>`;
+        boardBody.innerHTML = "";
+        cardGrid.innerHTML  = "";
+        moreBtn.style.display = "none";
+        if (!filtered.length){
+          boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">해당 매물을 찾을 수 없습니다.</td></tr>`;
         } else {
-          filtered.forEach(it => container.appendChild(renderCard(it)));
+          filtered.forEach(it => { boardBody.appendChild(renderBoardRow(it)); cardGrid.appendChild(renderCardItem(it)); });
         }
         return;
       }
@@ -422,21 +637,36 @@
 
       const res = await fetch(`/api/listings?${params}`, { credentials: "same-origin" });
       const d   = await res.json().catch(() => ({}));
+
       if (!res.ok || !d.ok){
-        container.innerHTML = `<div class="listings-empty">불러오기 실패. 새로고침 해주세요.</div>`;
+        boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">불러오기 실패. 새로고침 해주세요.</td></tr>`;
+        cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">불러오기 실패.</div>`;
         return;
       }
-      if (reset) container.innerHTML = "";
+
+      if (reset){ boardBody.innerHTML = ""; cardGrid.innerHTML = ""; }
+
       if (!d.items || d.items.length === 0){
-        if (reset) container.innerHTML = `<div class="listings-empty">현재 공개된 직거래 매물이 없습니다.</div>`;
+        if (reset){
+          boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">현재 공개된 직거래 매물이 없습니다.</td></tr>`;
+          cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">현재 공개된 직거래 매물이 없습니다.</div>`;
+        }
         moreBtn.style.display = "none";
       } else {
-        d.items.forEach(item => container.appendChild(renderCard(item)));
-        offset += d.items.length;
+        d.items.forEach(item => {
+          boardBody.appendChild(renderBoardRow(item));
+          cardGrid.appendChild(renderCardItem(item));
+        });
+        offset      += d.items.length;
+        totalLoaded += d.items.length;
+        countEl.textContent = `총 ${totalLoaded}건${d.has_more ? "+" : ""}`;
         moreBtn.style.display = d.has_more ? "" : "none";
       }
     } catch(e){
-      if (reset) container.innerHTML = `<div class="listings-empty">오류가 발생했습니다.</div>`;
+      if (reset){
+        boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">오류가 발생했습니다.</td></tr>`;
+        cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">오류가 발생했습니다.</div>`;
+      }
     } finally {
       loading = false;
     }
@@ -445,11 +675,9 @@
   // ── 검색 버튼 ────────────────────────────────────────────────────────
   document.getElementById("lsBtnSearch").addEventListener("click", () => {
     chatFilterId = null;
-    // 활성 채팅 칩 초기화
     document.querySelectorAll("#lsChatChips .fav-chip").forEach(c => c.classList.remove("active"));
     const allChip = document.querySelector("#lsChatChips .fav-chip");
     if (allChip) allChip.classList.add("active");
-
     state.sido       = document.getElementById("lsSido").value;
     state.sgg_nm     = document.getElementById("lsSggNm").value;
     state.umd_nm     = document.getElementById("lsUmdNm").value;
@@ -459,7 +687,6 @@
     loadListings(true);
   });
 
-  // Enter 키로도 검색
   document.getElementById("lsQ").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("lsBtnSearch").click();
   });

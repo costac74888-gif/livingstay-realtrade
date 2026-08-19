@@ -3210,7 +3210,7 @@ async function loadBuildingHeader(id){
         const thumbHtml = photoSrc
           ? `<img src="${photoSrc}" alt="매물 사진" style="width:54px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
           : `<div style="width:54px;height:54px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
-        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line,#eee);">
+        return `<div data-listing-id="${lrId}" style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
           ${thumbHtml}
           <div style="flex:1;min-width:0;">
             <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
@@ -3253,6 +3253,19 @@ async function loadBuildingHeader(id){
       });
     }
     _renderListings(allListings);
+
+    // ?listing=ID 로 진입 시 해당 매물 카드로 자동 스크롤 + 2초 하이라이트
+    const _targetListing = new URLSearchParams(location.search).get("listing");
+    if (_targetListing) {
+      requestAnimationFrame(() => {
+        const el = listingsCard && listingsCard.querySelector(`[data-listing-id="${_targetListing}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.background = "var(--brass-tint, #FFF5E0)";
+          setTimeout(() => { el.style.background = ""; }, 2000);
+        }
+      });
+    }
   }
 
   // 건물명 제안하기(명칭 미확정 건물 전용) — 기존 /api/request-correction의
