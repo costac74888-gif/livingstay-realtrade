@@ -3138,6 +3138,7 @@ async function loadBuildingHeader(id){
         return `<div data-listing-id="${lrId}" style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
            <button type="button" class="listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="display:block;padding:0;border:0;background:none;cursor:pointer;flex-shrink:0;">${thumbHtml}</button>
           <div style="flex:1;min-width:0;">
+            ${lr.listing_number ? `<div style="margin-bottom:2px;"><span style="display:inline-block;font-size:9.5px;font-weight:700;color:var(--brass-dark,#7D4A00);background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);border-radius:4px;padding:0 5px;">${escapeHtml(lr.listing_number)}</span></div>` : ""}
             <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
             <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:2px;">${priceText}</div>
             ${yieldText?`<div style="margin-bottom:2px;">${yieldText}</div>`:""}

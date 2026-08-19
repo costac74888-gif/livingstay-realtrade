@@ -721,6 +721,7 @@
     div.innerHTML = `
       <div class="ls-card-photo">${thumbHtml(item.photo_url, true)}</div>
       <div class="ls-card-body">
+        ${item.listing_number ? `<div style="margin-bottom:3px;"><span style="display:inline-block;font-size:10px;font-weight:700;color:var(--brass-dark,#7D4A00);background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);border-radius:4px;padding:1px 6px;">${esc(item.listing_number)}</span></div>` : ""}
         <div class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</div>
         <div class="ls-card-type">${dealTypeBadgeHtml(item.deal_type)}${sqm ? " · " + sqm : ""}</div>
         <div class="ls-card-price">${esc(priceStr)}</div>

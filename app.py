@@ -735,6 +735,7 @@ def get_building(building_id):
     cur.execute("""
         SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
                lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
+               lr.deal_mode, lr.display_seq,
                TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
                COALESCE(ll.like_count, 0) AS like_count
         FROM listing_requests lr
@@ -756,6 +757,7 @@ def get_building(building_id):
         _d["phone_tail"] = _phone[-4:] if len(_phone) >= 4 else ""
         if _d.get("yield_rate") is not None:
             _d["yield_rate"] = float(_d["yield_rate"])
+        _d["listing_number"] = format_listing_number(_d.pop("deal_mode", "direct"), _d.pop("display_seq", None))
         _direct_listings.append(_d)
     # 매물별 사진 (최대 5장, sort_order 순)
     if _direct_listings:
@@ -6584,6 +6586,14 @@ def create_operator_consult_request():
     return jsonify({"ok": True})
 
 
+def format_listing_number(deal_mode, display_seq):
+    """대외 표시번호 — 예: format_listing_number('direct', 1001) → '직거래001001'."""
+    if display_seq is None:
+        return None
+    label = "직거래" if deal_mode == "direct" else "중개"
+    return f"{label}{display_seq:06d}"
+
+
 @app.route("/api/listing-requests", methods=["POST"])
 @limiter.limit("5 per hour")
 def create_listing_request():
@@ -6681,13 +6691,16 @@ def create_listing_request():
         else:
             routed_agent_id, routed_reason, notify_agents = None, "direct", []
 
-        cur.execute("""
+        # 표시번호 채번 — deal_mode별 독립 시퀀스 (시퀀스명은 위 검증된 deal_mode로만 결정)
+        seq_name = "listing_seq_direct" if deal_mode == "direct" else "listing_seq_broker"
+        cur.execute(f"""
             INSERT INTO listing_requests
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
                  routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
                  deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
-                  description, deposit_krw, yield_rate, yield_rent_krw)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                  description, deposit_krw, yield_rate, yield_rent_krw, display_seq)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    nextval('{seq_name}'))
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
               routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
@@ -7004,6 +7017,7 @@ def public_listings():
         cur.execute(f"""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
                    lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
+                   lr.deal_mode, lr.display_seq,
                    TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
                    COALESCE(ll.like_count, 0) AS like_count,
                    lp.photo_url,
@@ -7035,6 +7049,7 @@ def public_listings():
             d = dict(r)
             ph = d.pop("verified_phone", "") or ""
             d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
+            d["listing_number"] = format_listing_number(d.pop("deal_mode", "direct"), d.pop("display_seq", None))
             items.append(d)
     finally:
         cur.close(); conn.close()
@@ -14043,6 +14058,11 @@ def admin_listing_requests_list():
         where = "(mb.building_name ILIKE %s OR u.name ILIKE %s OR lr.contact_phone ILIKE %s OR a.office_name ILIKE %s)"
         like = f"%{q}%"
         params = [like, like, like, like]
+    # 전체/직거래/중개 탭 필터 — direct/broker 외 값은 무시(전체)
+    deal_mode_filter = (request.args.get("deal_mode") or "").strip()
+    if deal_mode_filter in ("direct", "broker"):
+        where += " AND lr.deal_mode = %s"
+        params.append(deal_mode_filter)
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -14060,7 +14080,7 @@ def admin_listing_requests_list():
             SELECT lr.id, lr.master_building_id, mb.building_name,
                    u.name AS requester_name,
                    lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
-                   lr.area_sqm, lr.deal_mode,
+                   lr.area_sqm, lr.deal_mode, lr.display_seq,
                    lr.contact_phone, lr.routed_reason, lr.status, lr.admin_note,
                    CASE
                      WHEN lr.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
@@ -14091,6 +14111,7 @@ def admin_listing_requests_list():
             it["contact_phone"] = format_phone(it["contact_phone"])
         if it.get("agent_phone"):
             it["agent_phone"] = format_phone(it["agent_phone"])
+        it["listing_number"] = format_listing_number(it.get("deal_mode"), it.pop("display_seq", None))
     return jsonify({"total": total, "page": page, "size": size, "items": items})
 
 

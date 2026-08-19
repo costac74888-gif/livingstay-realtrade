@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-19-4"
+SCHEMA_VERSION = "2026-08-19-5"
 
 
 def init_db():
@@ -878,6 +878,38 @@ def init_db():
         ON listing_requests(master_building_id)
         WHERE status IS DISTINCT FROM 'withdrawn'
     """)
+
+    # 대외 표시번호(내부 id와 분리) — deal_mode별 독립 채번 (직거래001001 / 중개001001)
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS display_seq INTEGER")
+    # (deal_mode, display_seq) 조합 유니크 — 부분 인덱스는 ON CONFLICT 추론 문제로
+    # 여기서는 순수 조회/제약용이므로 WHERE display_seq IS NOT NULL 부분 인덱스로 충분.
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_lr_dealmode_seq
+        ON listing_requests(deal_mode, display_seq)
+        WHERE display_seq IS NOT NULL
+    """)
+    # deal_mode별 독립 시퀀스 — 1001부터 시작(표시 형식은 6자리 zero-pad → 001001)
+    cur.execute("CREATE SEQUENCE IF NOT EXISTS listing_seq_direct START WITH 1001")
+    cur.execute("CREATE SEQUENCE IF NOT EXISTS listing_seq_broker START WITH 1001")
+    # 기존 데이터 1회성 소급 채번 — display_seq가 비어있는 행만, 등록 순서(id ASC)대로.
+    # 이미 채번된 행이 있으면 그 최대값 다음부터 이어붙인다(재실행해도 안전).
+    for _mode, _seq in (("direct", "listing_seq_direct"), ("broker", "listing_seq_broker")):
+        cur.execute("""
+            WITH ranked AS (
+                SELECT id,
+                       COALESCE((SELECT MAX(display_seq) FROM listing_requests WHERE deal_mode = %s), 1000)
+                       + ROW_NUMBER() OVER (ORDER BY id ASC) AS seq
+                FROM listing_requests
+                WHERE deal_mode = %s AND display_seq IS NULL
+            )
+            UPDATE listing_requests lr SET display_seq = ranked.seq
+            FROM ranked WHERE lr.id = ranked.id
+        """, (_mode, _mode))
+        # 시퀀스를 현재 최대 번호에 맞춤 — 없으면 1000으로 세팅해 다음 nextval()이 1001.
+        cur.execute(f"""
+            SELECT setval('{_seq}',
+                          COALESCE((SELECT MAX(display_seq) FROM listing_requests WHERE deal_mode = %s), 1000))
+        """, (_mode,))
 
     # 직거래 매물 사진 (등록자가 첨부, 공개 표시)
     cur.execute("""

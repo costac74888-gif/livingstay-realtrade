@@ -491,6 +491,7 @@
         searchPlaceholder: "건물명·닉네임·연락처·중개사 검색",
         columns: [
           { key: "id", label: "ID", sortable: true },
+          { key: "listing_number", label: "번호", render: (v) => v ? `<span style="font-weight:700; white-space:nowrap;">${dgEscape(v)}</span>` : '<span style="color:var(--ink-soft);">—</span>' },
           { key: "building_name", label: "건물명", sortable: true },
           { key: "requester_name", label: "회원닉네임(이름)", render: (v) => v ? dgEscape(v) : '<span style="color:var(--ink-soft);">—</span>' },
           { key: "contact_phone", label: "의뢰자 연락처" },
@@ -1326,7 +1327,29 @@
           </div>`;
           subMount.parentNode.insertBefore(wrap, subMount);
         }
-        currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
+        // 매물의뢰 탭: 전체/직거래/중개 분류 탭 (deal_mode 필터로 그리드 재조회)
+        if (key === "listing_requests") {
+          const modeWrap = document.createElement("div");
+          modeWrap.className = "lst-route-note"; // 탭 전환 시 함께 제거되도록 같은 클래스 사용
+          modeWrap.innerHTML = `<div style="display:flex; gap:6px; margin-bottom:10px;">
+            <button class="admin-btn lreq-mode-tab admin-btn-primary" data-mode="">전체</button>
+            <button class="admin-btn lreq-mode-tab" data-mode="direct">직거래</button>
+            <button class="admin-btn lreq-mode-tab" data-mode="broker">중개</button>
+          </div>`;
+          subMount.parentNode.insertBefore(modeWrap, subMount);
+          currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
+          modeWrap.querySelectorAll(".lreq-mode-tab").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              modeWrap.querySelectorAll(".lreq-mode-tab").forEach((b) =>
+                b.classList.toggle("admin-btn-primary", b === btn));
+              currentGrid.state.filters.deal_mode = btn.getAttribute("data-mode");
+              currentGrid.state.page = 1; // 분류 전환 시 첫 페이지부터
+              currentGrid.reload();
+            });
+          });
+        } else {
+          currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
+        }
       };
       mount.querySelectorAll(".lst-subtab").forEach((b) => {
         b.addEventListener("click", () => activate(b.getAttribute("data-sub")));
