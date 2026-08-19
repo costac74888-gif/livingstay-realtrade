@@ -214,6 +214,22 @@ function openChatModal(roomId){
   const fileInputEl = ov.querySelector("#chatFileInput");
   const attachPrev  = ov.querySelector("#chatAttachPreview");
 
+  function _fmtChatTime(isoStr) {
+    if (!isoStr) return "";
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      const today = new Date();
+      const sameDay = d.getFullYear() === today.getFullYear() &&
+                      d.getMonth()    === today.getMonth()    &&
+                      d.getDate()     === today.getDate();
+      const hhmm = d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+      if (sameDay) return hhmm;
+      const yyyy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,"0"), dd = String(d.getDate()).padStart(2,"0");
+      return `${yyyy}-${mm}-${dd} ${hhmm}`;
+    } catch(e) { return isoStr; }
+  }
+
   function _renderMessages(messages){
     if (!messages.length){
       listEl.innerHTML = `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px 0;">아직 메시지가 없습니다. 먼저 인사를 건네보세요!</div>`;
@@ -242,7 +258,7 @@ function openChatModal(roomId){
       return `<div style="display:flex; flex-direction:column; align-items:${align}; gap:2px;">
         ${!isMine ? `<span style="font-size:11px; color:var(--ink-soft);">${escapeHtml(m.sender_name || "")}</span>` : ""}
         ${contentHtml}
-        <span style="font-size:10.5px; color:var(--ink-soft);">${escapeHtml(m.sent_at || "")}</span>
+        <span style="font-size:10.5px; color:var(--ink-soft);">${_fmtChatTime(m.sent_at)}</span>
       </div>`;
     }).join("");
     if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight;

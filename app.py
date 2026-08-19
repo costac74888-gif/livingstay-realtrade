@@ -7293,7 +7293,7 @@ def get_chat_messages(room_id):
         cur.execute("""
             SELECT cm.id, cm.sender_user_id, cm.body,
                    cm.attachment_key, cm.attachment_name,
-                   TO_CHAR(cm.created_at, 'YYYY-MM-DD HH24:MI') AS sent_at,
+                   TO_CHAR(cm.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS sent_at,
                    u.name AS sender_name
             FROM chat_messages cm
             JOIN users u ON u.id = cm.sender_user_id
@@ -7553,7 +7553,7 @@ def send_chat_message(room_id):
             return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
         cur.execute("""
             INSERT INTO chat_messages (room_id, sender_user_id, body, attachment_key, attachment_name)
-            VALUES (%s, %s, %s, %s, %s) RETURNING id, TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS sent_at
+            VALUES (%s, %s, %s, %s, %s) RETURNING id, TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS sent_at
         """, [room_id, user["id"], body, attachment_key, attachment_name])
         msg = cur.fetchone()
         conn.commit()
