@@ -14160,6 +14160,60 @@ def admin_listing_requests_bulk_delete():
     return jsonify({"ok": True, "deleted": len(existing_ids), "skipped": len(ids) - len(existing_ids)})
 
 
+@app.route("/api/admin/listings/bulk-delete", methods=["POST"])
+@require_admin
+def admin_listings_bulk_delete():
+    """관리자가 선택한 직거래 매물을 연관 데이터와 함께 영구 삭제한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    raw_ids = data.get("ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"ok": False, "message": "삭제할 매물을 선택해주세요."}), 400
+    ids = []
+    for value in raw_ids:
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            continue
+        if value > 0 and value not in ids:
+            ids.append(value)
+    if not ids:
+        return jsonify({"ok": False, "message": "삭제할 매물을 선택해주세요."}), 400
+    if len(ids) > 200:
+        return jsonify({"ok": False, "message": "한 번에 최대 200건까지 삭제할 수 있습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id FROM listing_requests "
+            "WHERE id = ANY(%s) AND deal_mode = 'direct' FOR UPDATE",
+            [ids],
+        )
+        existing_ids = [row["id"] for row in cur.fetchall()]
+        if not existing_ids:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "삭제할 직거래 매물을 찾을 수 없습니다."}), 404
+        # 채팅 관련 FK는 NO ACTION이므로 자식부터 삭제한다.
+        # 사진/찜은 listing_requests 삭제 시 ON DELETE CASCADE로 처리된다.
+        cur.execute("""
+            DELETE FROM chat_messages
+            WHERE room_id IN (
+                SELECT id FROM chat_rooms WHERE listing_request_id = ANY(%s)
+            )
+        """, [existing_ids])
+        cur.execute("DELETE FROM chat_rooms WHERE listing_request_id = ANY(%s)", [existing_ids])
+        cur.execute("DELETE FROM listing_request_history WHERE listing_request_id = ANY(%s)", [existing_ids])
+        cur.execute("DELETE FROM listing_requests WHERE id = ANY(%s)", [existing_ids])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "deleted": len(existing_ids), "skipped": len(ids) - len(existing_ids)})
+
+
 @app.route("/api/admin/listing-requests/export.xlsx")
 @require_admin
 def admin_listing_requests_export():
@@ -14290,6 +14344,46 @@ def admin_buy_requests_update(req_id):
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/admin/buy-requests/bulk-delete", methods=["POST"])
+@require_admin
+def admin_buy_requests_bulk_delete():
+    """관리자가 선택한 매수의뢰를 영구 삭제한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    raw_ids = data.get("ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"ok": False, "message": "삭제할 매수의뢰를 선택해주세요."}), 400
+    ids = []
+    for value in raw_ids:
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            continue
+        if value > 0 and value not in ids:
+            ids.append(value)
+    if not ids:
+        return jsonify({"ok": False, "message": "삭제할 매수의뢰를 선택해주세요."}), 400
+    if len(ids) > 200:
+        return jsonify({"ok": False, "message": "한 번에 최대 200건까지 삭제할 수 있습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM buy_requests WHERE id = ANY(%s) FOR UPDATE", [ids])
+        existing_ids = [row["id"] for row in cur.fetchall()]
+        if not existing_ids:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "삭제할 매수의뢰를 찾을 수 없습니다."}), 404
+        cur.execute("DELETE FROM buy_requests WHERE id = ANY(%s)", [existing_ids])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "deleted": len(existing_ids), "skipped": len(ids) - len(existing_ids)})
 
 
 @app.route("/api/admin/buy-requests/export.xlsx")
