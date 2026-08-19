@@ -23,7 +23,7 @@
   .tx-filter { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
   .ls-filter-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr) auto;
+    grid-template-columns: repeat(7, 1fr) auto;
     gap: 12px;
     align-items: end;
   }
@@ -83,11 +83,10 @@
   .td-thumb-placeholder { width: 44px; height: 44px; border-radius: 6px; background: var(--brass-tint, #FFF5E0); display: inline-flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid var(--line); }
   .td-type   { font-weight: 700; white-space: nowrap; }
   .td-price  { font-weight: 700; color: var(--brass-dark, #7D4A00); white-space: nowrap; }
-  .td-yield  { white-space: nowrap; color: var(--brass-dark, #7D4A00); font-size: 12px; }
-  .td-desc   { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-soft); }
+  .td-area   { font-size: 12.5px; white-space: nowrap; color: var(--ink-soft); }
   .td-date   { font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; }
   .td-action { text-align: center; white-space: nowrap; }
-  .td-bldg   { font-weight: 600; }
+  .td-bldg   { font-weight: 600; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ── 채팅 / 공유 버튼 ── */
   .listing-chat-btn {
@@ -179,8 +178,14 @@
     .listings-page  { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
     .ls-filter-grid { grid-template-columns: 1fr; }
-    /* 게시판형 모바일: 사진·설명·수익률·등록일 숨김 */
+    /* 게시판형 모바일: 전용㎡·등록일·공유 숨김 → [사진|건물명|유형|희망가|채팅] 5열만 노출 */
     .ls-hide-mobile { display: none !important; }
+    .ls-board-tbl { min-width: 0; table-layout: fixed; }
+    .td-photo { width: 50px; }
+    .td-bldg { width: 92px; max-width: 92px; }
+    .td-type { width: 42px; }
+    .td-price { width: 92px; }
+    .td-action { width: 42px; }
     #lsChatChips { flex-wrap: nowrap; }
     .ls-card-grid { grid-template-columns: 1fr; }
   }
@@ -211,6 +216,16 @@
       <div class="field">
         <label>건물명 검색</label>
         <input type="text" id="lsQ" placeholder="예) 오션마크레지던스" />
+      </div>
+      <div class="field">
+        <label>용도</label>
+        <select id="lsLodgingType">
+          <option value="">전체</option>
+          <option value="생활">생활</option>
+          <option value="관광">관광</option>
+          <option value="일반">일반</option>
+          <option value="복합">복합</option>
+        </select>
       </div>
       <div class="field">
         <label>거래유형</label>
@@ -254,20 +269,18 @@
       <table class="ls-board-tbl">
         <thead>
           <tr>
-            <th class="ls-hide-mobile">사진</th>
+            <th>사진</th>
             <th>건물명</th>
             <th>유형</th>
-            <th>전용㎡</th>
             <th>희망가(만원)</th>
-            <th class="ls-hide-mobile">수익률</th>
-            <th class="ls-hide-mobile">설명</th>
+            <th class="ls-hide-mobile">전용㎡</th>
             <th class="ls-hide-mobile">등록일</th>
             <th>채팅</th>
-            <th>공유</th>
+            <th class="ls-hide-mobile">공유</th>
           </tr>
         </thead>
         <tbody id="lsBoardBody">
-          <tr><td colspan="10" class="listings-loading">불러오는 중…</td></tr>
+          <tr><td colspan="8" class="listings-loading">불러오는 중…</td></tr>
         </tbody>
       </table>
     </div>
@@ -305,7 +318,16 @@
   const cardGrid  = document.getElementById("lsCardGrid");
   const moreBtn   = document.getElementById("listingsMore");
   const countEl   = document.getElementById("lsTotalCount");
-  const state = { sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"" };
+  // ── 용도 색상 — main.js 848줄과 동일 값 유지(이중 관리 방지) ──────────
+  const LODGING_COLORS = { "생활":"#378ADD", "관광":"#639922", "일반":"#D46BA3", "복합":"#B39DDB", "준공전":"#616161", "미분류":"#E0E0E0" };
+  function lodgingLabel(raw){ return (raw && raw.includes("·")) ? "복합" : (raw || "미분류"); }
+  function lodgeBadgeHtml(raw){
+    const lbl = lodgingLabel(raw);
+    const col = LODGING_COLORS[lbl] || LODGING_COLORS["미분류"];
+    return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${col};padding:1px 6px;border-radius:4px;margin-right:5px;white-space:nowrap;vertical-align:middle;">${lbl}</span>`;
+  }
+
+  const state = { sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"", lodging_type:"" };
   let offset = 0;
   const PAGE = 20;
   let loading = false;
@@ -514,22 +536,18 @@
     const bName = esc(item.building_name || "(건물명 없음)");
 
     tr.innerHTML = `
-      <td class="td-photo ls-hide-mobile">${thumbHtml(item.photo_url, false)}</td>
-      <td class="td-bldg">
-        <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">
-          ${bName}${newBadge(item.listing_date)}
-        </span>
+      <td class="td-photo">${thumbHtml(item.photo_url, false)}</td>
+      <td class="td-bldg" title="${bName}">
+        ${lodgeBadgeHtml(item.lodging_type)}<span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
       </td>
       <td class="td-type">${esc(item.deal_type || "-")}</td>
-      <td>${esc(sqm)}</td>
       <td class="td-price">${esc(fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
-      <td class="td-yield ls-hide-mobile" title="참고용 수익률 (관리비·공실률 미반영)">${esc(yld)}</td>
-      <td class="td-desc ls-hide-mobile" title="${esc(item.description || "")}">${esc(desc)}</td>
+      <td class="td-area ls-hide-mobile">${esc(sqm)}</td>
       <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
       <td class="td-action">
         <button type="button" class="${chatBtnClass}" title="${chatTitle}">💬</button>
       </td>
-      <td class="td-action">
+      <td class="td-action ls-hide-mobile">
         <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
       </td>`;
 
@@ -561,7 +579,7 @@
     div.innerHTML = `
       <div class="ls-card-photo">${thumbHtml(item.photo_url, true)}</div>
       <div class="ls-card-body">
-        <div class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</div>
+        <div class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</div>
         <div class="ls-card-type">${esc(item.deal_type || "-")}${sqm ? " · " + sqm : ""}</div>
         <div class="ls-card-price">${esc(priceStr)}</div>
         ${yld  ? `<div class="ls-card-yield">수익률 ${esc(yld)} <span style="font-size:10px;font-weight:400;">(참고용)</span></div>` : ""}
@@ -604,7 +622,7 @@
     loading = true;
 
     if (reset){
-      boardBody.innerHTML = `<tr><td colspan="10" class="listings-loading">불러오는 중…</td></tr>`;
+      boardBody.innerHTML = `<tr><td colspan="8" class="listings-loading">불러오는 중…</td></tr>`;
       cardGrid.innerHTML  = `<div class="listings-loading" style="grid-column:1/-1;">불러오는 중…</div>`;
       offset = 0;
       totalLoaded = 0;
@@ -620,7 +638,7 @@
         cardGrid.innerHTML  = "";
         moreBtn.style.display = "none";
         if (!filtered.length){
-          boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">해당 매물을 찾을 수 없습니다.</td></tr>`;
+          boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">해당 매물을 찾을 수 없습니다.</td></tr>`;
         } else {
           filtered.forEach(it => { boardBody.appendChild(renderBoardRow(it)); cardGrid.appendChild(renderCardItem(it)); });
         }
@@ -632,14 +650,15 @@
       if (state.sgg_nm)     params.set("sgg_nm",     state.sgg_nm);
       if (state.umd_nm)     params.set("umd_nm",     state.umd_nm);
       if (state.q)          params.set("q",          state.q);
-      if (state.deal_type)  params.set("deal_type",  state.deal_type);
-      if (state.date_range) params.set("date_range", state.date_range);
+      if (state.deal_type)    params.set("deal_type",    state.deal_type);
+      if (state.date_range)  params.set("date_range",  state.date_range);
+      if (state.lodging_type) params.set("lodging_type", state.lodging_type);
 
       const res = await fetch(`/api/listings?${params}`, { credentials: "same-origin" });
       const d   = await res.json().catch(() => ({}));
 
       if (!res.ok || !d.ok){
-        boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">불러오기 실패. 새로고침 해주세요.</td></tr>`;
+        boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">불러오기 실패. 새로고침 해주세요.</td></tr>`;
         cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">불러오기 실패.</div>`;
         return;
       }
@@ -648,7 +667,7 @@
 
       if (!d.items || d.items.length === 0){
         if (reset){
-          boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">현재 공개된 직거래 매물이 없습니다.</td></tr>`;
+          boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">현재 공개된 직거래 매물이 없습니다.</td></tr>`;
           cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">현재 공개된 직거래 매물이 없습니다.</div>`;
         }
         moreBtn.style.display = "none";
@@ -664,7 +683,7 @@
       }
     } catch(e){
       if (reset){
-        boardBody.innerHTML = `<tr><td colspan="10" class="listings-empty">오류가 발생했습니다.</td></tr>`;
+        boardBody.innerHTML = `<tr><td colspan="8" class="listings-empty">오류가 발생했습니다.</td></tr>`;
         cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">오류가 발생했습니다.</div>`;
       }
     } finally {
@@ -682,8 +701,9 @@
     state.sgg_nm     = document.getElementById("lsSggNm").value;
     state.umd_nm     = document.getElementById("lsUmdNm").value;
     state.q          = document.getElementById("lsQ").value.trim();
-    state.deal_type  = document.getElementById("lsDealType").value;
-    state.date_range = document.getElementById("lsDateRange").value;
+    state.deal_type    = document.getElementById("lsDealType").value;
+    state.date_range   = document.getElementById("lsDateRange").value;
+    state.lodging_type = document.getElementById("lsLodgingType").value;
     loadListings(true);
   });
 

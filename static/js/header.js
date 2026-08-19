@@ -59,6 +59,7 @@
       '<button type="button" class="hamburger-btn" id="hamburgerBtn" aria-label="메뉴" aria-haspopup="true" aria-expanded="false">☰</button>' +
       '<div class="header-menu" id="headerMenu">' +
         '<nav class="header-nav">' +
+          '<button type="button" class="hnav-btn" id="myPriceBtnMenu">🏨 <span class="hnav-label">내건물시세</span></button>' +
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
           '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
@@ -282,16 +283,19 @@
   };
 
   // ── "내건물시세" 버튼 — 다른 페이지에서 클릭 시 메인으로 이동 ──────────
-  var myPriceBtn = document.getElementById("myPriceBtn");
-  if (myPriceBtn){
-    myPriceBtn.addEventListener("click", function(){
-      // index.html에선 오버레이 IIFE가 직접 처리(delegated listener)
-      // 다른 페이지에서는 메인으로 이동하면서 강제 오픈 파라미터 전달
-      if (!document.getElementById("welcomeOverlay")){
-        location.href = "/?openMyPrice=1";
-      }
-    });
+  function _handleMyPriceClick(){
+    // index.html에선 오버레이 IIFE가 직접 처리(delegated listener)
+    // 다른 페이지에서는 메인으로 이동하면서 강제 오픈 파라미터 전달
+    if (!document.getElementById("welcomeOverlay")){
+      location.href = "/?openMyPrice=1";
+    }
   }
+  var myPriceBtn = document.getElementById("myPriceBtn");
+  if (myPriceBtn){ myPriceBtn.addEventListener("click", _handleMyPriceClick); }
+
+  // 햄버거 메뉴 내 "내건물시세" 버튼 — 동일 동작
+  var myPriceBtnMenu = document.getElementById("myPriceBtnMenu");
+  if (myPriceBtnMenu){ myPriceBtnMenu.addEventListener("click", _handleMyPriceClick); }
 
   if (alertMenu && alertMenuBtn) {
     alertMenuBtn.addEventListener("click", function (e) {

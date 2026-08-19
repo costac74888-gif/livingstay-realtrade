@@ -6913,6 +6913,13 @@ def public_listings():
         elif date_range == "3months":
             clauses.append("lr.created_at >= NOW() - INTERVAL '3 months'")
 
+        lodging_type_filter = (request.args.get("lodging_type") or "").strip()
+        if lodging_type_filter == "복합":
+            clauses.append("(mb.lodging_type = '복합' OR mb.lodging_type LIKE '%%·%%')")
+        elif lodging_type_filter in ("생활", "관광", "일반"):
+            clauses.append("mb.lodging_type = %s")
+            params.append(lodging_type_filter)
+
         where_extra = (" AND " + " AND ".join(clauses)) if clauses else ""
 
         cur.execute(f"""

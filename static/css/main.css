@@ -560,6 +560,8 @@
 }
 /* 메뉴 묶음(네비 + 로그인) — 데스크톱 인라인, 모바일 드롭다운 */
 .header-menu{ display:flex; align-items:center; gap:14px; }
+/* 내건물시세는 데스크톱 상단 액션에 이미 표시되므로 햄버거용 항목은 모바일에서만 노출 */
+#myPriceBtnMenu{ display:none; }
 
 /* 파트너등록 CTA — 로그인 버튼 우측, 데스크톱 전용 (모바일은 /menu 안에 동일 항목) */
 .partner-cta{
@@ -661,6 +663,7 @@
   .header-menu .header-nav{ flex-direction:column; align-items:stretch; gap:2px; }
   .header-menu .hnav-btn{ padding:10px 12px; font-size:14px; justify-content:flex-start; }
   .header-menu .hnav-btn .hnav-label{ display:inline; }  /* 드롭다운 안에서는 라벨 표시 */
+  .header-menu #myPriceBtnMenu{ display:flex; }
   .header-menu .auth-area{
     flex-direction:column; align-items:stretch; gap:6px;
     margin-top:4px; padding-top:8px; border-top:1px solid var(--line);
