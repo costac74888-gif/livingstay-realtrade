@@ -3069,6 +3069,42 @@ async function loadBuildingHeader(id){
   if (listingsCard && listingsBody) {
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
+     const _dealTypeColors = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1" };
+     function _dealTypeBadge(raw){
+       const label = raw || "-";
+       const color = _dealTypeColors[label] || "#7B8794";
+       return `<span style="display:inline-block;min-width:35px;padding:2px 5px;margin-right:4px;border-radius:5px;color:#fff;background:${color};font-size:10px;line-height:1.25;font-weight:800;text-align:center;vertical-align:middle;white-space:nowrap;">${escapeHtml(label)}</span>`;
+     }
+     function _openDirectListingCard(lr){
+       document.getElementById("directListingCardOverlay")?.remove();
+       const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
+       const formatNumber = (v) => v != null ? Number(v).toLocaleString() : "-";
+       const firstPhoto = photos[0] ? `<img src="${escapeHtml(photos[0])}" alt="매물 사진" style="width:100%;height:220px;object-fit:cover;display:block;" onerror="this.style.display='none';">` : `<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>`;
+       const sqm = lr.area_sqm ? `${parseFloat(lr.area_sqm).toFixed(1)}㎡` : "";
+       const priceText = lr.deal_type === "월세"
+         ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
+         : (lr.price_krw ? `${formatNumber(lr.price_krw)}만원` : "-");
+       const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}% (참고용)` : "";
+       const desc = lr.description ? escapeHtml(lr.description) : "";
+       const ov = document.createElement("div");
+       ov.id = "directListingCardOverlay";
+       ov.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
+       ov.innerHTML = `<div style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">
+         <div style="position:relative;">${firstPhoto}<button type="button" id="directListingCardClose" aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button></div>
+         <div style="padding:16px 18px 18px;">
+           <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
+           <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
+           ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
+           ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:12px;">${desc}</div>` : ""}
+           <button type="button" id="directListingCardChat" style="width:100%;padding:10px;border:1.5px solid var(--brass,#B4863F);border-radius:9px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:13px;font-weight:700;cursor:pointer;">💬 채팅</button>
+         </div>
+       </div>`;
+       document.body.appendChild(ov);
+       const close = () => ov.remove();
+       ov.querySelector("#directListingCardClose").addEventListener("click", close);
+       ov.querySelector("#directListingCardChat").addEventListener("click", () => { close(); _openListingChat(lr.id); });
+       ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+     }
 
     function _renderListings(listings){
       if (!listings.length){ listingsCard.style.display = "none"; return; }
@@ -3085,7 +3121,7 @@ async function loadBuildingHeader(id){
         const lrId = lr.id;
         const isNew = lr.listing_date && ((now - new Date(lr.listing_date + "T00:00:00").getTime()) < THREE_DAYS_MS);
         const newBadge = isNew ? `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">NEW</span>` : "";
-        const dt = escapeHtml(lr.deal_type || "-");
+         const dt = _dealTypeBadge(lr.deal_type);
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
         const priceText = lr.deal_type === "월세"
           ? `보${_fmtN(lr.price_krw)}/${_fmtN(lr.monthly_rent_krw)}만`
@@ -3096,11 +3132,11 @@ async function loadBuildingHeader(id){
         const desc = lr.description ? escapeHtml(lr.description.slice(0, 50)) + (lr.description.length > 50 ? "…" : "") : "";
         const likeCount = lr.like_count || 0;
         const photoSrc = (lr.photos && lr.photos.length > 0) ? escapeHtml(lr.photos[0]) : null;
-        const thumbHtml = photoSrc
+         const thumbHtml = photoSrc
           ? `<img src="${photoSrc}" alt="매물 사진" style="width:54px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
           : `<div style="width:54px;height:54px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
         return `<div data-listing-id="${lrId}" style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
-          ${thumbHtml}
+           <button type="button" class="listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="display:block;padding:0;border:0;background:none;cursor:pointer;flex-shrink:0;">${thumbHtml}</button>
           <div style="flex:1;min-width:0;">
             <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
             <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:2px;">${priceText}</div>
@@ -3124,6 +3160,13 @@ async function loadBuildingHeader(id){
           else if (_lsSort === "yield") sorted.sort((a,b)=>(b.yield_rate||0)-(a.yield_rate||0));
           else sorted.sort((a,b)=>new Date(b.listing_date)-new Date(a.listing_date));
           _renderListings(sorted);
+        });
+      });
+      listingsBody.querySelectorAll(".listing-photo-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const lr = listings.find(item => String(item.id) === String(btn.dataset.lrid));
+          if (lr) _openDirectListingCard(lr);
         });
       });
       listingsBody.querySelectorAll(".listing-chat-btn").forEach(btn => {
