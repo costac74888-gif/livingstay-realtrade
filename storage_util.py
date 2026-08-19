@@ -53,6 +53,20 @@ def is_valid_intro_img_ref(ref):
     return bool(ref) and bool(INTRO_IMG_REF_RE.match(ref))
 
 
+# ---- 직거래 매물 사진 (등록자 업로드, 공개 서빙) ----
+LISTING_PHOTO_EXTENSIONS = {"jpg", "jpeg", "png"}
+LISTING_PHOTO_REF_RE = re.compile(r"^listing_photos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+
+
+def build_listing_photo_key(listing_request_id, ext):
+    """직거래 매물 사진 저장 키 생성."""
+    return f"listing_photos/{listing_request_id}/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_listing_photo_ref(ref):
+    return bool(ref) and bool(LISTING_PHOTO_REF_RE.match(ref))
+
+
 def _bucket_id():
     bid = os.environ.get("DEFAULT_OBJECT_STORAGE_BUCKET_ID")
     if not bid:

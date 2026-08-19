@@ -695,9 +695,14 @@ def get_building(building_id):
     # 이 건물의 공개 직거래 매물 목록 (deal_mode='direct', withdrawn 아닌 것)
     cur.execute("""
         SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
-               lr.area_sqm, lr.verified_phone,
-               TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date
+               lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
+               TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
+               COALESCE(ll.like_count, 0) AS like_count
         FROM listing_requests lr
+        LEFT JOIN (
+            SELECT listing_request_id, COUNT(*) AS like_count
+            FROM listing_likes GROUP BY listing_request_id
+        ) ll ON ll.listing_request_id = lr.id
         WHERE lr.master_building_id = %s
           AND lr.deal_mode = 'direct'
           AND COALESCE(lr.status, '') <> 'withdrawn'
@@ -710,7 +715,27 @@ def get_building(building_id):
         # 전화번호 마스킹 — 뒤 4자리만 노출
         _phone = _d.pop("verified_phone", None) or ""
         _d["phone_tail"] = _phone[-4:] if len(_phone) >= 4 else ""
+        if _d.get("yield_rate") is not None:
+            _d["yield_rate"] = float(_d["yield_rate"])
         _direct_listings.append(_d)
+    # 매물별 사진 (최대 5장, sort_order 순)
+    if _direct_listings:
+        _lr_ids = [d["id"] for d in _direct_listings]
+        _id_ph = ",".join(["%s"] * len(_lr_ids))
+        cur.execute(f"""
+            SELECT listing_request_id, image_key
+            FROM listing_photos
+            WHERE listing_request_id IN ({_id_ph})
+            ORDER BY listing_request_id, sort_order, id
+        """, _lr_ids)
+        _photos_by_lr: dict = {}
+        for _pr in cur.fetchall():
+            _lrid = _pr["listing_request_id"]
+            _photos_by_lr.setdefault(_lrid, []).append(
+                f"/api/listing-photos/img/{_pr['image_key']}"
+            )
+        for _d in _direct_listings:
+            _d["photos"] = _photos_by_lr.get(_d["id"], [])
 
     # 전유부 통계 (평형별 호실수) — 캐시에 데이터가 있을 때만 집계
     cur.execute("""
@@ -6537,9 +6562,18 @@ def create_listing_request():
             return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
     price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
-    monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type == "월세")
-    if err1 or err2:
-        return jsonify({"ok": False, "message": err1 or err2}), 400
+    monthly_rent_krw, err2 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
+    deposit_krw, err3 = _parse_krw("deposit_krw", True)
+    if err1 or err2 or err3:
+        return jsonify({"ok": False, "message": err1 or err2 or err3}), 400
+    description = (str(data.get("description") or "").strip()[:500]) or None
+    try:
+        _yr = data.get("yield_rate")
+        yield_rate = round(float(_yr), 1) if _yr is not None and float(_yr) > 0 else None
+        if yield_rate is not None and yield_rate >= 1000:
+            yield_rate = None
+    except (TypeError, ValueError):
+        yield_rate = None
 
     if not mb_id:
         return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
@@ -6582,12 +6616,14 @@ def create_listing_request():
             INSERT INTO listing_requests
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
                  routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
-                 deal_mode, verified_phone, area_sqm, dong, ho, registrant_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
+                 description, deposit_krw, yield_rate)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
               routed_agent_id, routed_reason, price_krw, monthly_rent_krw,
-              deal_mode, verified_phone, area_sqm, dong, ho, registrant_type])
+              deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
+              description, deposit_krw, yield_rate])
         req_id = cur.fetchone()["id"]
         # 이력 기록 — 최초 접수
         cur.execute(
@@ -6881,12 +6917,17 @@ def public_listings():
 
         cur.execute(f"""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
-                   lr.area_sqm, lr.verified_phone,
+                   lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
                    TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
+                   COALESCE(ll.like_count, 0) AS like_count,
                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type,
                    mb.lat, mb.lng
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN (
+                SELECT listing_request_id, COUNT(*) AS like_count
+                FROM listing_likes GROUP BY listing_request_id
+            ) ll ON ll.listing_request_id = lr.id
             WHERE lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') <> 'withdrawn'
               {where_extra}
@@ -6933,6 +6974,116 @@ def my_listing_ids():
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+# ── 직거래 매물 사진 & 찜 ─────────────────────────────────────────────────
+
+@app.route("/api/listing-requests/<int:lr_id>/photos", methods=["POST"])
+@limiter.limit("30 per minute")
+def upload_listing_photo(lr_id):
+    """직거래 매물 사진 업로드 — 매물 등록자만, jpg/png 5MB 이하, 최대 5장."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if "file" not in request.files:
+        return jsonify({"ok": False, "message": "파일이 없습니다."}), 400
+    f = request.files["file"]
+    original_name = (f.filename or "").strip()
+    if not original_name:
+        return jsonify({"ok": False, "message": "파일명이 없습니다."}), 400
+    ext = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if ext not in storage_util.LISTING_PHOTO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "jpg, jpeg, png만 첨부 가능합니다."}), 400
+    file_data = f.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(file_data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if not storage_util.check_magic_bytes(file_data, ext):
+        return jsonify({"ok": False, "message": "파일 형식이 올바르지 않습니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT user_id FROM listing_requests WHERE id=%s AND COALESCE(status,'') <> 'withdrawn'",
+            [lr_id]
+        )
+        lr = cur.fetchone()
+        if not lr:
+            return jsonify({"ok": False, "message": "매물을 찾을 수 없습니다."}), 404
+        if lr["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM listing_photos WHERE listing_request_id=%s", [lr_id]
+        )
+        if cur.fetchone()["cnt"] >= 5:
+            return jsonify({"ok": False, "message": "사진은 최대 5장까지 첨부할 수 있습니다."}), 400
+        key = storage_util.build_listing_photo_key(lr_id, ext)
+        storage_util.upload_doc(key, file_data)
+        cur.execute(
+            "INSERT INTO listing_photos (listing_request_id, image_key, sort_order) "
+            "VALUES (%s,%s,(SELECT COALESCE(MAX(sort_order),0)+1 FROM listing_photos WHERE listing_request_id=%s)) "
+            "RETURNING id",
+            [lr_id, key, lr_id]
+        )
+        photo_id = cur.fetchone()["id"]
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}"})
+
+
+@app.route("/api/listing-photos/img/<path:key>")
+def listing_photo_proxy(key):
+    """직거래 매물 사진 공개 프록시 — 인증 불필요, 24시간 캐시."""
+    if not storage_util.is_valid_listing_photo_ref(key):
+        return jsonify({"ok": False, "message": "잘못된 경로입니다."}), 404
+    try:
+        file_data = storage_util.download_bytes(key)
+    except Exception:
+        return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
+    from flask import Response as _Response
+    resp = _Response(file_data, mimetype=ct)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
+@app.route("/api/listing-requests/<int:lr_id>/like", methods=["POST"])
+@limiter.limit("60 per minute")
+def toggle_listing_like(lr_id):
+    """직거래 매물 찜 토글 — 로그인 필수. liked:true/false + like_count 반환."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id FROM listing_requests WHERE id=%s AND deal_mode='direct' AND COALESCE(status,'') <> 'withdrawn'",
+            [lr_id]
+        )
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "매물을 찾을 수 없습니다."}), 404
+        cur.execute(
+            "SELECT id FROM listing_likes WHERE listing_request_id=%s AND user_id=%s",
+            [lr_id, user["id"]]
+        )
+        if cur.fetchone():
+            cur.execute(
+                "DELETE FROM listing_likes WHERE listing_request_id=%s AND user_id=%s",
+                [lr_id, user["id"]]
+            )
+            liked = False
+        else:
+            cur.execute(
+                "INSERT INTO listing_likes (listing_request_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                [lr_id, user["id"]]
+            )
+            liked = True
+        cur.execute("SELECT COUNT(*) AS cnt FROM listing_likes WHERE listing_request_id=%s", [lr_id])
+        like_count = int(cur.fetchone()["cnt"])
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "liked": liked, "like_count": like_count})
 
 
 # ── 인앱 채팅 (직거래 매물 문의) ─────────────────────────────────────────

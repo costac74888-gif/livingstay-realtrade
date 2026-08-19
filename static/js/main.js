@@ -2025,7 +2025,7 @@ async function loadSideStats(){
       } else {
         // 10곳 미만이면 실제 숫자는 감추고 모집 문구만 (내부 정보 취급)
         box.classList.remove("side-soon");
-        box.innerHTML = (k === "finance") ? financeEmptyHTML() : recruitBoxHTML(k);
+        box.innerHTML = "";  // 통합 배너에서 안내
         hideAdjacentApplyBanner(box);
       }
     });
@@ -2097,10 +2097,21 @@ function recruitBoxHTML(kind, opts = {}){
     </div>`;
 }
 
-// 금융 섹션 빈 상태: 문구 + 대출상담 모집 박스 (A/B 공통)
-function financeEmptyHTML(){
+// ---- 파트너 모집 통합 배너 — B화면 상가정보 아래 + A화면 사이드 전용 ----
+// 담당중개사·위탁운영·운영지원·금융 4개 개별 빈상태 박스를 하나로 통합
+function partnerUnifiedBannerHTML(){
   return `
-    ${recruitBoxHTML("finance")}`;
+    <div style="text-align:center; padding:12px 10px; background:linear-gradient(135deg,var(--brass-tint,#FFF5E0) 0%,#EEF6E6 100%); border:1px dashed var(--brass,#B4863F); border-radius:10px;">
+      <div style="font-size:14px; margin-bottom:4px;">🤝</div>
+      <div style="font-size:12px; font-weight:800; color:var(--ink); margin-bottom:3px;">이 건물의 파트너가 되고 싶으신가요?</div>
+      <div style="font-size:10.5px; color:var(--ink-soft); margin-bottom:8px; line-height:1.5;">중개사 · 위탁운영 · 운영지원업체 · 대출상담</div>
+      <a href="/partner" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 16px; font-size:11.5px; text-decoration:none; background:var(--brass,#B4863F); color:#fff; border-color:var(--brass,#B4863F);">파트너 등록하기 →</a>
+    </div>`;
+}
+
+// 금융 섹션 빈 상태 — 통합 배너로 대체, 하위 호환용 스텁
+function financeEmptyHTML(){
+  return "";
 }
 
 // ── 최근 본 건물 (localStorage, 비로그인 포함) ──────────────────────────────
@@ -2288,6 +2299,22 @@ function openListingRequestModal(buildingId, buildingName){
           <input id="lrShortPrice" type="text" maxlength="100" placeholder="예) 1박 8만원 / 주 단위 협의" style="${FLD} margin-bottom:12px;" />
         </div>
 
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">수익률 계산 <span style="font-weight:400; color:var(--ink-soft);">(선택, 참고용)</span></div>
+        <div style="display:flex; gap:6px; margin-bottom:4px;">
+          <input id="lrYieldDeposit" type="number" min="0" max="1000000" inputmode="numeric" placeholder="보증금 (만원)" style="${FLD} flex:1;" />
+          <input id="lrYieldRent" type="number" min="1" max="100000" inputmode="numeric" placeholder="월세 (만원)" style="${FLD} flex:1;" />
+        </div>
+        <div id="lrYieldResult" style="font-size:12.5px; font-weight:700; color:var(--brass-dark,#7D4A00); min-height:18px; margin-bottom:2px;"></div>
+        <div style="font-size:10.5px; color:var(--ink-soft); margin-bottom:12px; line-height:1.4;">관리비·공실률 미반영, 참고용 수치입니다. (월세×12 ÷ (매매가−보증금) × 100)</div>
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">물건설명 <span style="font-weight:400; color:var(--ink-soft);">(선택, 최대 500자)</span></div>
+        <textarea id="lrDesc" maxlength="500" rows="3" placeholder="역세권, 채광, 층수 등 특징을 간단히 적어주세요" style="${FLD} margin-bottom:12px; resize:vertical; min-height:64px;"></textarea>
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">사진 첨부 <span style="font-weight:400; color:var(--ink-soft);">(선택, 최대 5장 · 장당 5MB 이하)</span></div>
+        <input id="lrPhotos" type="file" accept=".jpg,.jpeg,.png" multiple style="width:100%; font-size:12.5px; margin-bottom:4px; box-sizing:border-box;" />
+        <div id="lrPhotosMsg" style="font-size:11.5px; color:var(--brick,#cc3300); min-height:14px; margin-bottom:4px;"></div>
+        <div id="lrPhotosPreviews" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
+
         <div id="lrPhoneSection">
           <div id="lrPhoneDirectWrap">
             <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처 <span style="font-weight:400; color:var(--ink-soft);">(직거래 — 휴대폰 인증 필요)</span></div>
@@ -2437,6 +2464,49 @@ function openListingRequestModal(buildingId, buildingName){
   applyDealMode(DEFAULT_DEAL_MODE);
   showPriceBox();
 
+  // 수익률 실시간 계산 (매매가, 보증금, 월세 입력 시 갱신)
+  function _calcYield(){
+    const price = parseFloat(ov.querySelector("#lrSalePrice")?.value) || 0;
+    const dep   = parseFloat(ov.querySelector("#lrYieldDeposit")?.value) || 0;
+    const rent  = parseFloat(ov.querySelector("#lrYieldRent")?.value) || 0;
+    const disp  = ov.querySelector("#lrYieldResult");
+    if (!disp) return;
+    const denom = price - dep;
+    disp.textContent = (denom > 0 && rent > 0)
+      ? `수익률 ${((rent * 12) / denom * 100).toFixed(1)}%`
+      : "";
+  }
+  ["lrSalePrice","lrYieldDeposit","lrYieldRent"].forEach(id => {
+    ov.querySelector("#" + id)?.addEventListener("input", _calcYield);
+  });
+
+  // 사진 미리보기 & 유효성 검사
+  ov.querySelector("#lrPhotos")?.addEventListener("change", function(){
+    const prev = ov.querySelector("#lrPhotosPreviews");
+    const msg  = ov.querySelector("#lrPhotosMsg");
+    const files = Array.from(this.files || []);
+    if (files.length > 5){
+      if (msg) msg.textContent = "최대 5장까지 첨부 가능합니다.";
+      this.value = ""; if (prev) prev.innerHTML = ""; return;
+    }
+    if (files.some(f => f.size > 5 * 1024 * 1024)){
+      if (msg) msg.textContent = "각 파일은 5MB 이하여야 합니다.";
+      this.value = ""; if (prev) prev.innerHTML = ""; return;
+    }
+    if (msg) msg.textContent = "";
+    if (prev) prev.innerHTML = "";
+    files.forEach(file => {
+      const r = new FileReader();
+      r.onload = (e) => {
+        const img = document.createElement("img");
+        img.src = e.target.result;
+        img.style.cssText = "width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--line,#eee);";
+        if (prev) prev.appendChild(img);
+      };
+      r.readAsDataURL(file);
+    });
+  });
+
   // —— 이벤트 바인딩
   ov.querySelector("#lrModeDirect").addEventListener("click", () => applyDealMode("direct"));
   ov.querySelector("#lrModeBroker").addEventListener("click", () => applyDealMode("broker"));
@@ -2558,12 +2628,36 @@ function openListingRequestModal(buildingId, buildingName){
       const dong = ov.querySelector("#lrDong").value.trim().slice(0, 20) || null;
       const ho = ov.querySelector("#lrHo").value.trim().slice(0, 20) || null;
       const registrantType = ov.querySelector("#lrRegistrantType").value || "owner";
-      const body = { master_building_id: buildingId, deal_type: dealType, deal_mode: dealMode, desired_price: desiredPrice, price_krw: priceKrw, monthly_rent_krw: monthlyRentKrw, area_sqm: areaSqm, dong, ho, registrant_type: registrantType };
+      const description = (ov.querySelector("#lrDesc")?.value || "").trim().slice(0, 500) || null;
+      const depositKrw = numVal("lrYieldDeposit");
+      // 수익률: 계산값 직접 전달 (서버도 검증)
+      let yieldRate = null;
+      {
+        const price = priceKrw || 0;
+        const dep   = depositKrw || 0;
+        const rent  = monthlyRentKrw || numVal("lrYieldRent") || 0;
+        const denom = price - dep;
+        if (denom > 0 && rent > 0) yieldRate = parseFloat(((rent * 12) / denom * 100).toFixed(1));
+      }
+      if (_priceOver){ setMsg("입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."); return; }
+      const body = { master_building_id: buildingId, deal_type: dealType, deal_mode: dealMode, desired_price: desiredPrice, price_krw: priceKrw, monthly_rent_krw: monthlyRentKrw, area_sqm: areaSqm, dong, ho, registrant_type: registrantType, description, deposit_krw: depositKrw, yield_rate: yieldRate };
       if (contactPhone) body.contact_phone = contactPhone;
       const res = await fetch("/api/listing-requests", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await res.json().catch(() => ({}));
       if (res.status === 401){ close(); if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin(); return; }
       if (!res.ok || d.ok === false){ setMsg(d.message || "접수에 실패했습니다. 잠시 후 다시 시도해주세요."); btn.disabled = false; btn.textContent = "매물의뢰 접수하기"; return; }
+      // 사진 업로드 (접수 성공 후 순차 처리, 실패해도 접수 자체는 유지)
+      const reqId = d.id;
+      if (reqId) {
+        const photosEl = ov.querySelector("#lrPhotos");
+        const photoFiles = photosEl ? Array.from(photosEl.files || []) : [];
+        for (const file of photoFiles.slice(0, 5)) {
+          try {
+            const fd = new FormData(); fd.append("file", file);
+            await fetch(`/api/listing-requests/${reqId}/photos`, { method:"POST", credentials:"same-origin", body: fd });
+          } catch(e){ /* 사진 업로드 실패 무시 */ }
+        }
+      }
       ov.querySelector("#lrForm").style.display = "none";
       ov.querySelector("#lrDone").style.display = "block";
       if (dealMode === "direct"){
@@ -2830,17 +2924,17 @@ function buildingPanelSkeleton(){
 
     <section class="side-card">
       <div class="side-card-title">위탁운영</div>
-      <div id="bOperatorBox">${recruitBoxHTML("consign", { linkId: "lnkOperatorApply" })}</div>
+      <div id="bOperatorBox"></div>
     </section>
 
     <section class="side-card">
       <div class="side-card-title">운영지원업체</div>
-      <div id="bHousekeepingBox">${recruitBoxHTML("housekeeping", { linkId: "lnkHousekeepingApply" })}</div>
+      <div id="bHousekeepingBox"></div>
     </section>
 
     <section class="side-card">
       <div class="side-card-title">금융 <span class="side-sub">대출상담</span></div>
-      <div id="bFinanceBox">${financeEmptyHTML()}</div>
+      <div id="bFinanceBox"></div>
     </section>
 
     <section class="side-card" id="bBldgInfoCard">
@@ -2853,6 +2947,10 @@ function buildingPanelSkeleton(){
       <div class="side-soon">준비 중
         <div class="side-soon-desc">주변 상가업소 정보를 준비하고 있습니다.</div>
       </div>
+    </section>
+
+    <section class="side-card" id="bPartnerBannerCard">
+      ${partnerUnifiedBannerHTML()}
     </section>`;
 }
 
@@ -3142,48 +3240,85 @@ async function loadBuildingHeader(id){
     </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
 
-  // 직거래 공개 매물 카드 — API가 내려준 direct_listings를 즉시 렌더
+  // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");
   const listingsBody = document.getElementById("bListingsBody");
   if (listingsCard && listingsBody) {
-    const listings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
-    if (listings.length > 0) {
-      const rows = listings.map((lr) => {
+    const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
+    let _lsSort = "latest";
+
+    function _renderListings(listings){
+      if (!listings.length){ listingsCard.style.display = "none"; return; }
+      listingsCard.style.display = "";
+      const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
+      const now = Date.now();
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+      const sortBar = [["latest","최신순"],["price","가격순"],["yield","수익률순"]].map(([v,l])=>
+        `<button type="button" data-lsort="${v}" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1px solid ${_lsSort===v?"var(--brass,#B4863F)":"var(--line,#ddd)"};background:${_lsSort===v?"var(--brass-tint,#FFF5E0)":"#fff"};color:${_lsSort===v?"var(--brass-dark,#7D4A00)":"var(--ink-soft)"};cursor:pointer;margin-right:4px;">${l}</button>`
+      ).join("");
+
+      const cards = listings.map((lr) => {
         const lrId = lr.id;
+        const isNew = lr.listing_date && ((now - new Date(lr.listing_date + "T00:00:00").getTime()) < THREE_DAYS_MS);
+        const newBadge = isNew ? `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">NEW</span>` : "";
         const dt = escapeHtml(lr.deal_type || "-");
-        const sqm = lr.area_sqm ? parseFloat(lr.area_sqm) + "㎡" : "-";
-        // price_krw / monthly_rent_krw에서 거래유형별 통일 포맷
-        const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
-        const price = lr.deal_type === "월세"
-          ? "보" + _fmtN(lr.price_krw) + "/" + _fmtN(lr.monthly_rent_krw)
-          : _fmtN(lr.price_krw);
-        const date = escapeHtml(lr.listing_date || "");
-        return `<tr>
-          <td style="text-align:left;">${dt}</td>
-          <td style="white-space:nowrap;">${sqm}</td>
-          <td style="text-align:right; white-space:nowrap;">${escapeHtml(price)}</td>
-          <td style="font-size:11.5px; color:var(--ink-soft); white-space:nowrap;">${date}</td>
-          <td style="text-align:center; padding:0 4px;"><button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:rgba(180,134,63,.12); border:1.5px solid var(--brass,#B4863F); border-radius:20px; padding:2px 6px; cursor:pointer; font-size:16px; line-height:1;" title="문의하기">💬</button></td>
-        </tr>`;
-      }).join("");
-      listingsBody.innerHTML = `
-        <table class="b-info-table" style="margin-bottom:8px;">
-          <thead><tr><th>유형</th><th>전용㎡</th><th>희망가(만원)</th><th>등록일</th><th></th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.6; margin-top:4px;">
-          직거래 시 계약 전 등기부등본 확인을 권장합니다.
+        const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
+        const priceText = lr.deal_type === "월세"
+          ? `보${_fmtN(lr.price_krw)}/${_fmtN(lr.monthly_rent_krw)}만`
+          : (lr.price_krw ? `${_fmtN(lr.price_krw)}만원` : "-");
+        const yieldText = lr.yield_rate != null
+          ? `<span style="font-size:11.5px;color:var(--brass-dark,#7D4A00);font-weight:700;">수익률 ${parseFloat(lr.yield_rate).toFixed(1)}%</span><span style="font-size:10px;color:var(--ink-soft);"> (참고용)</span>`
+          : "";
+        const desc = lr.description ? escapeHtml(lr.description.slice(0, 50)) + (lr.description.length > 50 ? "…" : "") : "";
+        const likeCount = lr.like_count || 0;
+        const photoSrc = (lr.photos && lr.photos.length > 0) ? escapeHtml(lr.photos[0]) : null;
+        const thumbHtml = photoSrc
+          ? `<img src="${photoSrc}" alt="매물 사진" style="width:54px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
+          : `<div style="width:54px;height:54px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
+        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line,#eee);">
+          ${thumbHtml}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
+            <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:2px;">${priceText}</div>
+            ${yieldText?`<div style="margin-bottom:2px;">${yieldText}</div>`:""}
+            ${desc?`<div style="font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${desc}</div>`:""}
+            <div style="display:flex;align-items:center;gap:10px;margin-top:3px;">
+              <button type="button" class="listing-like-btn" data-lrid="${lrId}" style="font-size:13px;background:none;border:none;cursor:pointer;padding:0;color:var(--ink-soft);">♥ <span class="like-cnt">${likeCount}</span></button>
+              <button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:rgba(180,134,63,.12);border:1.5px solid var(--brass,#B4863F);border-radius:16px;padding:2px 10px;cursor:pointer;font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:600;">💬 채팅</button>
+            </div>
+          </div>
         </div>`;
-      listingsBody.querySelectorAll(".listing-chat-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          _openListingChat(parseInt(btn.dataset.lrid, 10));
+      }).join("");
+
+      listingsBody.innerHTML = `<div style="margin-bottom:8px;">${sortBar}</div><div>${cards}</div><div style="font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:6px;">직거래 시 계약 전 등기부등본 확인을 권장합니다.</div>`;
+
+      listingsBody.querySelectorAll("[data-lsort]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          _lsSort = btn.dataset.lsort;
+          let sorted = [...allListings];
+          if (_lsSort === "price") sorted.sort((a,b)=>(a.price_krw||0)-(b.price_krw||0));
+          else if (_lsSort === "yield") sorted.sort((a,b)=>(b.yield_rate||0)-(a.yield_rate||0));
+          else sorted.sort((a,b)=>new Date(b.listing_date)-new Date(a.listing_date));
+          _renderListings(sorted);
         });
       });
-      listingsCard.style.display = "";
-    } else {
-      listingsCard.style.display = "none";
+      listingsBody.querySelectorAll(".listing-chat-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => { e.stopPropagation(); _openListingChat(parseInt(btn.dataset.lrid, 10)); });
+      });
+      listingsBody.querySelectorAll(".listing-like-btn").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const lrid = parseInt(btn.dataset.lrid, 10);
+          try {
+            const res = await fetch(`/api/listing-requests/${lrid}/like`, {method:"POST",credentials:"same-origin"});
+            const d = await res.json().catch(()=>({}));
+            if (res.ok && d.ok){ const cnt=btn.querySelector(".like-cnt"); if(cnt) cnt.textContent=d.like_count; btn.style.color=d.liked?"var(--brass,#B4863F)":"var(--ink-soft)"; }
+          } catch(e){}
+        });
+      });
     }
+    _renderListings(allListings);
   }
 
   // 건물명 제안하기(명칭 미확정 건물 전용) — 기존 /api/request-correction의
@@ -3515,7 +3650,7 @@ function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
   const all = Array.isArray(operatorByCategory) ? operatorByCategory : [];
   // 위탁운영 카테고리만 추려낸다
   const consignItems = all.filter(it => it.category === "위탁운영" && it.company_name);
-  if (!consignItems.length) return;  // 담당 없으면 기본 모집 박스 유지
+  if (!consignItems.length){ box.innerHTML = ""; return; }  // 통합 배너에서 안내
 
   const applyHref = `/apply/operator?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
   box.innerHTML = consignItems.map(it => {
@@ -3539,11 +3674,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
   const items = Array.isArray(consultants) ? consultants : [];
   const applyHref = `/apply/loan?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
 
-  if (!items.length){
-    box.innerHTML = `
-      ${recruitBoxHTML("finance", { href: applyHref, btnText: "이 건물에 대출상담사로 신청하기", preCompletion: isPreCompletion })}`;
-    return;
-  }
+  if (!items.length){ box.innerHTML = ""; return; }  // 통합 배너에서 안내
 
   const mkCard = (c, isGold) => {
     const avatar = c.logo_src
@@ -3618,11 +3749,7 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
       </div>`;
     }).join("");
   } else {
-    box.innerHTML = recruitBoxHTML("agent", {
-      href: `/apply/agent?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`,
-      btnText: "이 건물에 담당중개사로 신청하기",
-      preCompletion: isPreCompletion,
-    });
+    box.innerHTML = "";  // 통합 파트너 배너에서 안내
   }
   if (moreAgents && moreAgents.length) {
     const moreHtml = moreAgents.map(agent => `

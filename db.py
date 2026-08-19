@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-18-6"
+SCHEMA_VERSION = "2026-08-19-1"
 
 
 def init_db():
@@ -864,6 +864,36 @@ def init_db():
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS ho VARCHAR(20)")
     # 등록자 유형: 'owner' | 'agent' | 'other'
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS registrant_type VARCHAR(20)")
+    # 물건설명 (선택, 최대 500자 권장)
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS description TEXT")
+    # 수익률 계산용 보증금 (만원 단위) — 매매 거래유형에서 yield_rate 계산 시 입력
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS deposit_krw INTEGER")
+    # 계산된 수익률 (참고용, %) — (월세×12)/(매매가−보증금)×100
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS yield_rate NUMERIC")
+
+    # 직거래 매물 사진 (등록자가 첨부, 공개 표시)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS listing_photos (
+            id SERIAL PRIMARY KEY,
+            listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id) ON DELETE CASCADE,
+            image_key TEXT NOT NULL,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_listing_photos_lr ON listing_photos(listing_request_id, sort_order)")
+
+    # 직거래 매물 찜(♥) — 사용자별 중복 방지 unique constraint
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS listing_likes (
+            id SERIAL PRIMARY KEY,
+            listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(listing_request_id, user_id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_listing_likes_lr ON listing_likes(listing_request_id)")
 
     # 매물의뢰 이력 — 접수/수정/철회 변경 내역을 타임라인으로 보존
     cur.execute("""
