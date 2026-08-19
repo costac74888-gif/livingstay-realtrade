@@ -159,16 +159,49 @@ def get_client_ip():
 
 
 # 메모리 기반 rate limiter (별도 인프라 불필요).
-# 기본값은 걸지 않고, 쓰기성 API에만 데코레이터로 개별 제한을 건다.
+# 전역 기본 제한(default_limits): 봇이 GET(페이지 조회)만 대량 반복해도 걸리도록
+# IP당 분당 200회로 제한한다. 실사용자는 페이지 1회 로드에 요청 수십 건 수준이라
+# 정상 사용에서는 도달하지 않는 넉넉한 값. (주의: memory:// 저장소는 gunicorn
+# 프로세스별 카운터이고 재시작 시 초기화됨 — 완화 필요 시 값만 조정.)
+# 쓰기성 API에는 기존처럼 데코레이터로 더 엄격한 개별 제한을 건다.
 limiter = Limiter(
     key_func=get_client_ip,
     app=app,
     storage_uri="memory://",
+    default_limits=["200 per minute"],
 )
+
+
+@limiter.request_filter
+def _rate_limit_exempt():
+    """전역 기본 제한 제외 경로.
+    - /static/*: 첫 페이지 로드가 아이콘·CSS·JS 수십 건을 당기므로, 회사/통신사
+      NAT 공유 IP에서 전역 카운터를 순식간에 소진하는 것을 막는다.
+      (개별 데코레이터 제한이 없는 경로라 정적 자산은 전역 제한 대상이었음)
+    - /api/health: 홈 로드시 호출 + 배포 헬스체크·자동 점검용이라 차단되면 안 된다.
+    개별 @limiter.limit 데코레이터가 붙은 쓰기성 API에는 영향 없다(별개 카운터).
+    """
+    p = request.path
+    return p.startswith("/static/") or p == "/api/health"
+
+
+def _log_safe(v, maxlen):
+    """로그 위조(개행·제어문자 주입) 방지: 출력 가능한 문자만 남기고 자른다."""
+    return "".join(ch for ch in str(v or "") if ch.isprintable())[:maxlen]
 
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
+    # 봇 트래픽 관측용: 원본 IP는 남기지 않고 해시 앞 10자리만 기록한다.
+    try:
+        ip = get_client_ip() or ""
+        ip_h = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()[:10]
+        app.logger.warning(
+            "[rate-limit] 429 ip_hash=%s path=%s ua=%s",
+            ip_h, _log_safe(request.path, 200), _log_safe(request.headers.get("User-Agent"), 200),
+        )
+    except Exception:
+        pass
     return (
         jsonify({"message": "너무 많은 요청입니다. 잠시 후 다시 시도해주세요."}),
         429,
@@ -293,6 +326,12 @@ def index():
 def pwa_manifest():
     """PWA 매니페스트 — 루트 경로로 서빙 (모든 페이지의 <link rel="manifest">가 참조)."""
     return send_from_directory(app.static_folder, "manifest.json", mimetype="application/manifest+json")
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    """정상 크롤러용 크롤링 규칙 — 관리자/API 경로는 크롤링 제외."""
+    return send_from_directory(app.static_folder, "robots.txt", mimetype="text/plain")
 
 
 @app.route("/favicon.ico")
