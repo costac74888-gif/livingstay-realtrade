@@ -577,18 +577,19 @@
     // 오류 신고는 마이페이지에서만 노출
     if (location.pathname !== "/mypage") return;
 
-    // 플로팅 버튼 삽입
+    // 회원정보 카드의 액션 행 오른쪽에 버튼 삽입
     var btn = document.createElement("button");
     btn.id = "bugReportBtn";
     btn.title = "오류신고";
     btn.textContent = "🐛";
     btn.style.cssText =
-      "position:fixed;right:20px;bottom:20px;z-index:9999;" +
       "width:48px;height:48px;border-radius:50%;border:none;" +
       "background:var(--brass,#C9A227);color:#fff;" +
       "font-size:22px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);" +
-      "display:flex;align-items:center;justify-content:center;";
-    document.body.appendChild(btn);
+      "display:flex;align-items:center;justify-content:center;" +
+      "flex:0 0 auto;margin-left:auto;";
+    var profileActions = document.getElementById("profileActions");
+    if (profileActions) profileActions.appendChild(btn);
 
     // 모달 마크업
     var modal = document.createElement("div");
