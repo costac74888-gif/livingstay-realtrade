@@ -7309,7 +7309,12 @@ def get_chat_messages(room_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT buyer_user_id, seller_user_id FROM chat_rooms WHERE id = %s
+            SELECT cr.buyer_user_id, cr.seller_user_id,
+                   bu.name AS buyer_name, su.name AS seller_name
+              FROM chat_rooms cr
+              JOIN users bu ON bu.id = cr.buyer_user_id
+              JOIN users su ON su.id = cr.seller_user_id
+             WHERE cr.id = %s
         """, [room_id])
         room = cur.fetchone()
         if not room:
@@ -7339,7 +7344,16 @@ def get_chat_messages(room_id):
         conn.commit()
     finally:
         cur.close(); conn.close()
-    return jsonify({"ok": True, "messages": messages, "my_user_id": user["id"]})
+    opponent_name = (
+        room["seller_name"] if user["id"] == room["buyer_user_id"]
+        else room["buyer_name"]
+    ) or "상대방"
+    return jsonify({
+        "ok": True,
+        "messages": messages,
+        "my_user_id": user["id"],
+        "opponent_name": opponent_name,
+    })
 
 
 @app.route("/api/chat/unread-count")

@@ -459,7 +459,7 @@
     overlay.innerHTML =
       '<div id="mpChatBox" style="background:#fff;width:100%;max-width:520px;height:72vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #eee;background:#fff;">' +
-          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 채팅</span>' +
+          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 <span id="mpChatOpponentName">상대방</span></span>' +
           '<button id="mpChatClose" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">×</button>' +
         '</div>' +
         '<div id="mpChatMsgs" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;"></div>' +
@@ -489,7 +489,12 @@
     function loadMsgs() {
       fetch("/api/chat/rooms/" + roomId + "/messages", { credentials: "same-origin" })
         .then(function(r){ return r.json(); })
-        .then(function(d){ if (d.ok) renderMsgs(d.messages||[], d.my_user_id); })
+        .then(function(d){
+          if (!d.ok) return;
+          var opponentEl = document.getElementById("mpChatOpponentName");
+          if (opponentEl) opponentEl.textContent = d.opponent_name || "상대방";
+          renderMsgs(d.messages||[], d.my_user_id);
+        })
         .catch(function(){});
     }
     loadMsgs();
@@ -497,6 +502,10 @@
       fetch("/api/chat/rooms/" + roomId + "/messages", { credentials: "same-origin" })
         .then(function(r){ return r.json(); })
         .then(function(d){
+          if (d.ok) {
+            var opponentEl = document.getElementById("mpChatOpponentName");
+            if (opponentEl) opponentEl.textContent = d.opponent_name || "상대방";
+          }
           if (d.ok && (d.messages||[]).length !== _mpChatLastCount) {
             renderMsgs(d.messages||[], d.my_user_id);
           }

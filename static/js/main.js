@@ -185,7 +185,7 @@ function openChatModal(roomId){
   ov.innerHTML = `
     <div id="chatModalBox" style="width:100%; max-width:520px; background:#fff; border-radius:16px 16px 0 0; display:flex; flex-direction:column; max-height:80vh; box-shadow:0 -4px 24px rgba(0,0,0,.18);">
       <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid var(--line); flex-shrink:0;">
-        <span style="font-size:15px; font-weight:700; color:var(--ink);">직거래 채팅</span>
+        <span style="font-size:15px; font-weight:700; color:var(--ink);">💬 <span id="chatOpponentName">상대방</span></span>
         <button id="chatModalClose" style="background:none; border:none; font-size:22px; color:var(--ink-soft); cursor:pointer; line-height:1; padding:0 4px;">×</button>
       </div>
       <div id="chatMsgList" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;">
@@ -311,6 +311,8 @@ function openChatModal(roomId){
       const d = await res.json().catch(() => ({}));
       if (!d.ok) return;
       myUserId = d.my_user_id;
+      const opponentNameEl = ov.querySelector("#chatOpponentName");
+      if (opponentNameEl) opponentNameEl.textContent = d.opponent_name || "상대방";
       _renderMessages(d.messages || []);
     } catch(e){ /* 조용히 실패 — 폴링이 재시도 */ }
   }
