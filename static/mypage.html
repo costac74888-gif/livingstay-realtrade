@@ -470,10 +470,10 @@
       '</div>';
     document.body.appendChild(overlay);
 
-    function renderMsgs(msgs) {
+    function renderMsgs(msgs, myUserId) {
       var box = document.getElementById("mpChatMsgs");
       if (!box) return;
-      var meId = (window._livingstayUserId || 0);
+      var meId = (myUserId != null) ? myUserId : (window._livingstayUserId || 0);
       _mpChatLastCount = msgs.length;
       box.innerHTML = msgs.map(function(m) {
         var isMe = (m.sender_user_id == meId);
@@ -489,7 +489,7 @@
     function loadMsgs() {
       fetch("/api/chat/rooms/" + roomId + "/messages", { credentials: "same-origin" })
         .then(function(r){ return r.json(); })
-        .then(function(d){ if (d.ok) renderMsgs(d.messages||[]); })
+        .then(function(d){ if (d.ok) renderMsgs(d.messages||[], d.my_user_id); })
         .catch(function(){});
     }
     loadMsgs();
@@ -497,7 +497,9 @@
       fetch("/api/chat/rooms/" + roomId + "/messages", { credentials: "same-origin" })
         .then(function(r){ return r.json(); })
         .then(function(d){
-          if (d.ok && (d.messages||[]).length !== _mpChatLastCount) renderMsgs(d.messages||[]);
+          if (d.ok && (d.messages||[]).length !== _mpChatLastCount) {
+            renderMsgs(d.messages||[], d.my_user_id);
+          }
         }).catch(function(){});
     }, 5000);
 
