@@ -550,7 +550,8 @@ def get_building(building_id):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
+        SELECT mb.id AS building_id,
+               mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
                mb.lodging_type, mb.lodging_type_detail, mb.lodging_subtype,
                mb.building_status, mb.completion_expected_date,
                mb.permit_day, mb.actual_start_day,

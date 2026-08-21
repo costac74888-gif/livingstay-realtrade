@@ -3041,7 +3041,7 @@ async function loadBuildingHeader(id){
   // 실거래 지번주소(b.address)가 있으면 그대로(좌측 목록과 키 일치), 없으면 마스터
   // 도로명주소(b.road_address)로 폴백 → 거래이력 없어도 주소만 있으면 버튼 활성화.
   const favAddr = (b.address != null && b.address !== "") ? b.address : (b.road_address || "");
-  const favItem = { building_name: b.building_name, address: favAddr, building_id: b.id };
+  const favItem = { building_name: b.building_name, address: favAddr, building_id: b.building_id };
   const favKeyStr = favKey(favItem); // 관심저장과 동일한 키 규칙으로 알림도 저장한다
   const canFav = favAddr !== "";
 
@@ -3211,7 +3211,7 @@ async function loadBuildingHeader(id){
         }
         ov.querySelector("#directListingCardShare").addEventListener("click", async () => {
           const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
-          const shareUrl = new URL(`/building/${encodeURIComponent(b.id)}`, shareOrigin);
+          const shareUrl = new URL(`/building/${encodeURIComponent(b.building_id)}`, shareOrigin);
           shareUrl.searchParams.set("listing", String(lr.id));
           const url = shareUrl.toString();
           const shareData = {title: `${bName} 직거래 매물 | 홈앤스테이`, text: `${bName} 직거래 매물`, url: url};
@@ -3538,7 +3538,7 @@ async function loadBuildingHeader(id){
     // 영업신고 사업장 목록 — 서버가 이미 등록운영업체(priority 순) → 미등록(랜덤)으로 정렬해서 내려줌
     const lodgingRows = lodgings.map((l) => {
       const name = l.registered && l.operator_slug
-        ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}?building_id=${b.id}&building_name=${encodeURIComponent(b.building_name||"")}" style="display:inline-block; font-size:12.5px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 8px; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
+        ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}?building_id=${b.building_id}&building_name=${encodeURIComponent(b.building_name||"")}" style="display:inline-block; font-size:12.5px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 8px; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
         : escapeHtml(l.biz_name);
       const rooms = (l.room_count != null && Number(l.room_count) > 0)
         ? Number(l.room_count).toLocaleString('ko-KR') + "실" : "-";
