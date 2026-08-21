@@ -3210,7 +3210,8 @@ async function loadBuildingHeader(id){
           thumbs.forEach((thumb) => thumb.addEventListener("click", () => showPhoto(parseInt(thumb.dataset.photoIndex, 10))));
         }
         ov.querySelector("#directListingCardShare").addEventListener("click", async () => {
-          const shareUrl = new URL(`/building/${encodeURIComponent(b.id)}`, location.origin);
+          const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
+          const shareUrl = new URL(`/building/${encodeURIComponent(b.id)}`, shareOrigin);
           shareUrl.searchParams.set("listing", String(lr.id));
           const url = shareUrl.toString();
           const shareData = {title: `${bName} 직거래 매물 | 홈앤스테이`, text: `${bName} 직거래 매물`, url: url};

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>window.LIVINGSTAY_PUBLIC_BASE_URL = "{{PUBLIC_BASE_URL}}";</script>
 <title>직거래 매물 목록 · 홈앤스테이</title>
 <meta name="description" content="홈앤스테이 직거래 공개 매물 목록. 숙박시설 매매·전세·월세 직거래 매물을 확인하세요." />
 <link rel="icon" href="/static/img/favicon.ico">
@@ -483,16 +484,31 @@
   }
 
   function shareItem(item){
-    const url = `${location.origin}/building/${item.building_id}?listing=${item.id}`;
+    const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
+    const shareUrl = new URL(`/building/${encodeURIComponent(item.building_id)}`, shareOrigin);
+    shareUrl.searchParams.set("listing", String(item.id));
+    const url = shareUrl.toString();
     const title = item.building_name || "직거래 매물";
     const text  = `직거래 매물 - ${item.deal_type || ""} ${fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw)}`;
     if (navigator.share){
-      navigator.share({ title, text, url }).catch(() => {});
-    } else {
+      navigator.share({ title, text, url }).catch((error) => {
+        if (error && error.name === "AbortError") return;
+        if (!navigator.clipboard) {
+          window.prompt("아래 매물 링크를 복사하세요:", url);
+          return;
+        }
+        navigator.clipboard.writeText(url).then(
+          () => showToast("공유를 열지 못해 링크를 복사했습니다"),
+          () => window.prompt("아래 매물 링크를 복사하세요:", url)
+        );
+      });
+    } else if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(
         () => showToast("링크가 복사되었습니다"),
-        () => showToast("복사 실패. 주소창에서 직접 복사해주세요.")
+        () => window.prompt("아래 매물 링크를 복사하세요:", url)
       );
+    } else {
+      window.prompt("아래 매물 링크를 복사하세요:", url);
     }
   }
 

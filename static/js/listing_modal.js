@@ -402,11 +402,18 @@
         .then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (user) {
           draftUser = user && user.logged_in ? user : null;
-          if (user.logged_in && user.phone_verified && user.phone) {
-            restoreDraftForUser(user);
-            showListingForm();
+          // 새 매물 등록은 매번 휴대폰 인증 화면을 먼저 거친다.
+          // 기존 인증 번호가 있으면 재입력을 줄이기 위해 번호만 채워 둔다.
+          if (user && user.phone) {
+            var savedDigits = String(user.phone).replace(/\D/g, "").slice(0, 11);
+            $("#lrGatePhone").value = savedDigits.length > 7
+              ? savedDigits.slice(0, 3) + "-" + savedDigits.slice(3, 7) + "-" + savedDigits.slice(7)
+              : (savedDigits.length > 3 ? savedDigits.slice(0, 3) + "-" + savedDigits.slice(3) : savedDigits);
           }
-          else showPhoneGate();
+          if (user && user.phone_verified && user.phone) {
+            setGateMessage("매물 등록 전 휴대폰 인증을 한 번 더 진행해주세요.", true);
+          }
+          showPhoneGate();
         })
         .catch(showPhoneGate);
     }

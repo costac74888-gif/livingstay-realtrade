@@ -123,6 +123,14 @@ def _default_share_meta():
     }
 
 
+def _public_base_url():
+    """외부에 전달할 공식 사이트 주소. 개발 프리뷰 주소가 공유되지 않게 한다."""
+    configured = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured.startswith(("https://", "http://")):
+        return configured
+    return request.url_root.rstrip("/")
+
+
 def _building_share_meta(building_id, listing_id=None):
     """공유 크롤러용 건물/매물 메타태그 값. 실패 시 홈페이지 기본값으로 폴백한다."""
     meta = _default_share_meta()
@@ -406,6 +414,7 @@ def _serve_app_shell(building_id=None, listing_id=None):
         "{{OG_DESCRIPTION}}": share_meta["description"],
         "{{OG_IMAGE}}": share_meta["image"],
         "{{OG_URL}}": share_meta["url"],
+        "{{PUBLIC_BASE_URL}}": _public_base_url(),
     }.items():
         html = html.replace(key, _html.escape(value, quote=True))
     html = html.replace("{{KAKAO_JS_KEY}}", quote(kakao_js_key, safe=""))
@@ -4059,6 +4068,7 @@ def _serve_static_html(filename):
     html_path = os.path.join(app.static_folder, filename)
     with open(html_path, encoding="utf-8") as fp:
         html = fp.read()
+    html = html.replace("{{PUBLIC_BASE_URL}}", _html.escape(_public_base_url(), quote=True))
     html = _inject_asset_version(html)
     # 관리자 전용 페이지는 GA4 트래킹 제외
     if not filename.startswith("admin"):
