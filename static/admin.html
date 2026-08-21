@@ -470,7 +470,7 @@
             const x = m[v] || [v || "-", ""];
             return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
           }},
-          { key: "created_at", label: "등록일", sortable: true },
+          { key: "created_at", label: "최근 수정일", sortable: true },
         ],
       },
       // 매물의뢰: 회원이 접수한 매물의뢰. 관리자는 조회 + 비고(admin_note)만 수정 가능,
@@ -523,7 +523,7 @@
             const txt = v ? dgEscape(v) : '<span style="color:var(--ink-soft);">메모 입력</span>';
             return `<a href="#" onclick="adminEditLeadNote(event, ${row.id})" title="클릭해서 비고 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${txt}</a>`;
           } },
-          { key: "created_at", label: "접수일", sortable: true },
+          { key: "created_at", label: "최근 수정일", sortable: true },
         ],
       },
       buy_requests: {

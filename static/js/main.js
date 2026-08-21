@@ -192,13 +192,7 @@ function openChatModal(roomId){
         <div style="text-align:center; color:var(--ink-soft); font-size:13px;">불러오는 중…</div>
       </div>
       <div id="chatAttachPreview" style="display:none; padding:6px 14px; background:#fafafa; border-top:1px solid var(--line); font-size:12px; color:var(--ink-soft); display:flex; align-items:center; gap:6px;"></div>
-      <div id="chatTemplateChips" style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:0 16px 8px;">
-        <button class="chat-template-chip" data-tpl="안녕하세요">안녕하세요</button>
-        <button class="chat-template-chip" data-tpl="아직 거래가능한가요">아직 거래가능한가요</button>
-        <button class="chat-template-chip" data-tpl="영업신고·위탁운영 이상없나요">영업신고·위탁운영 이상없나요</button>
-        <button class="chat-template-chip" data-tpl="매물방문은 가능한가요?">매물방문은 가능한가요?</button>
-        <button class="chat-template-chip" data-tpl="입주는 언제가능한지요?">입주는 언제가능한지요?</button>
-      </div>
+      <div id="chatTemplateChips" style="display:none; flex-direction:column; align-items:flex-start; gap:6px; padding:0 16px 8px;"></div>
       <div style="padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px; flex-shrink:0; background:#fafafa;">
         <input type="file" id="chatFileInput" accept=".jpg,.jpeg,.png,.pdf" style="display:none;" />
         <button id="chatAttachBtn" title="파일 첨부" style="background:none; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:17px; cursor:pointer; color:var(--ink-soft); line-height:1;">📎</button>
@@ -210,16 +204,9 @@ function openChatModal(roomId){
   document.body.appendChild(ov);
 
   let myUserId = null;
+  let myRole = null;
   let pollTimer = null;
   let pendingAttachment = null; // { key, name }
-
-  // 칩 스타일 (전역 중복 방지)
-  if (!document.getElementById("chatChipStyle")) {
-    const st = document.createElement("style");
-    st.id = "chatChipStyle";
-    st.textContent = ".chat-template-chip{background:var(--brass-tint,#F4EDDF);border:1px solid var(--line);border-radius:14px;padding:6px 12px;font-size:12.5px;color:var(--ink);cursor:pointer;white-space:nowrap;font-family:inherit;}";
-    document.head.appendChild(st);
-  }
 
   const listEl      = ov.querySelector("#chatMsgList");
   const inputEl     = ov.querySelector("#chatInput");
@@ -235,16 +222,32 @@ function openChatModal(roomId){
   const usedTemplates = new Set(
     JSON.parse(localStorage.getItem(_tplStorageKey) || "[]")
   );
+  const buyerTemplates = [
+    "안녕하세요", "아직 거래가능한가요", "영업신고·위탁운영 이상없나요",
+    "매물방문은 가능한가요?", "입주는 언제가능한지요?",
+  ];
+  const sellerTemplates = [
+    "안녕하세요, 문의주셔서 감사합니다.", "네, 아직 가능합니다.",
+    "네, 직접 거래 가능합니다.", "집보기 가능합니다.", "추가로 궁금한 점 있으세요?",
+  ];
 
   function _refreshChipVisibility() {
     chipsEl.querySelectorAll(".chat-template-chip").forEach((btn) => {
       const tpl = btn.getAttribute("data-tpl");
       btn.style.display = usedTemplates.has(tpl) ? "none" : "inline-flex";
     });
-    // 5개 모두 사용됐으면 칩 영역 자체를 접어 빈 공간이 안 남도록
-    chipsEl.style.display = usedTemplates.size >= 5 ? "none" : "flex";
+    // 현재 역할의 모든 문구를 사용했으면 빈 칩 영역을 접는다.
+    chipsEl.style.display = chipsEl.querySelector(".chat-template-chip:not([style*='display: none'])")
+      ? "flex" : "none";
   }
-  _refreshChipVisibility();
+  function _renderTemplateChips() {
+    const templates = myRole === "seller" ? sellerTemplates : buyerTemplates;
+    const roleClass = myRole === "seller" ? " seller" : "";
+    chipsEl.innerHTML = templates.map((tpl) =>
+      `<button class="chat-template-chip${roleClass}" data-tpl="${escapeHtml(tpl)}">${escapeHtml(tpl)}</button>`
+    ).join("");
+    _refreshChipVisibility();
+  }
 
   // 칩 클릭 → 입력창 채우기 (자동전송 아님)
   chipsEl.addEventListener("click", (e) => {
@@ -311,6 +314,10 @@ function openChatModal(roomId){
       const d = await res.json().catch(() => ({}));
       if (!d.ok) return;
       myUserId = d.my_user_id;
+      if (d.my_role && d.my_role !== myRole) {
+        myRole = d.my_role;
+        _renderTemplateChips();
+      }
       const opponentNameEl = ov.querySelector("#chatOpponentName");
       if (opponentNameEl) opponentNameEl.textContent = d.opponent_name || "상대방";
       _renderMessages(d.messages || []);
@@ -349,14 +356,12 @@ function openChatModal(roomId){
       });
       if (res.ok) {
         // 전송 성공 시 해당 템플릿 칩을 사용 처리
-        if (usedTemplates.size < 5) {
-          const matchedChip = Array.from(chipsEl.querySelectorAll(".chat-template-chip"))
-            .find((b) => b.getAttribute("data-tpl") === sentText);
-          if (matchedChip) {
-            usedTemplates.add(sentText);
-            localStorage.setItem(_tplStorageKey, JSON.stringify([...usedTemplates]));
-            _refreshChipVisibility();
-          }
+        const matchedChip = Array.from(chipsEl.querySelectorAll(".chat-template-chip"))
+          .find((b) => b.getAttribute("data-tpl") === sentText);
+        if (matchedChip) {
+          usedTemplates.add(sentText);
+          localStorage.setItem(_tplStorageKey, JSON.stringify([...usedTemplates]));
+          _refreshChipVisibility();
         }
         await _loadMessages();
       }
@@ -3164,7 +3169,7 @@ async function loadBuildingHeader(id){
        const sqm = lr.area_sqm ? `${parseFloat(lr.area_sqm).toFixed(1)}㎡` : "";
         const listingMeta = [
           lr.listing_number ? escapeHtml(lr.listing_number) : "",
-          lr.listing_date ? `등록 ${escapeHtml(lr.listing_date)}` : ""
+          lr.listing_date ? `최근 수정 ${escapeHtml(lr.listing_date)}` : ""
         ].filter(Boolean).join(" · ");
        const priceText = lr.deal_type === "월세"
          ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
@@ -3174,17 +3179,18 @@ async function loadBuildingHeader(id){
        const ov = document.createElement("div");
        ov.id = "directListingCardOverlay";
        ov.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
+        const shareButtonMarkup = `<button type="button" id="directListingCardShare" aria-label="매물 공유" title="매물 공유" style="width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line,#ddd);border-radius:50%;background:#fff;color:var(--ink,#16202e);cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.6 10.5 6.8-4"></path><path d="m8.6 13.5 6.8 4"></path></svg></button>`;
         ov.innerHTML = `<div id="directListingCardDialog" role="dialog" aria-modal="true" aria-label="직거래 매물 상세" tabindex="-1" style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">
           <div style="position:relative;">${photoGallery}<button type="button" id="directListingCardClose" aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button></div>
          <div style="padding:16px 18px 18px;">
-            ${listingMeta ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:11px;color:var(--ink-soft);"><span style="padding:2px 6px;border-radius:4px;background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);color:var(--brass-dark,#7D4A00);font-weight:800;">${lr.listing_number ? escapeHtml(lr.listing_number) : ""}</span>${lr.listing_date ? `<span>등록 ${escapeHtml(lr.listing_date)}</span>` : ""}</div>` : ""}
+            <div style="display:flex;justify-content:flex-end;margin:-4px 0 8px;">${shareButtonMarkup}</div>
+            ${listingMeta ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:11px;color:var(--ink-soft);"><span style="padding:2px 6px;border-radius:4px;background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);color:var(--brass-dark,#7D4A00);font-weight:800;">${lr.listing_number ? escapeHtml(lr.listing_number) : ""}</span>${lr.listing_date ? `<span>최근 수정 ${escapeHtml(lr.listing_date)}</span>` : ""}</div>` : ""}
            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
            <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
            ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:12px;">${desc}</div>` : ""}
-            <div style="display:flex;gap:7px;">
+             <div style="display:flex;gap:7px;">
               <button type="button" id="directListingCardChat" style="flex:1;padding:10px;border:1.5px solid var(--brass,#B4863F);border-radius:9px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:13px;font-weight:700;cursor:pointer;">💬 채팅</button>
-              <button type="button" id="directListingCardShare" style="padding:10px 13px;border:1px solid var(--line,#ddd);border-radius:9px;background:#fff;color:var(--ink,#16202e);font-size:13px;font-weight:700;cursor:pointer;">↗ 공유</button>
             </div>
          </div>
        </div>`;
@@ -3250,8 +3256,9 @@ async function loadBuildingHeader(id){
             if (navigator.clipboard) {
               await navigator.clipboard.writeText(url);
               const button = ov.querySelector("#directListingCardShare");
-              button.textContent = "링크 복사됨";
-              setTimeout(() => { if (button.isConnected) button.textContent = "↗ 공유"; }, 1400);
+              const originalMarkup = button.innerHTML;
+              button.innerHTML = `<span style="font-size:11px;font-weight:700;white-space:nowrap;">복사됨</span>`;
+              setTimeout(() => { if (button.isConnected) button.innerHTML = originalMarkup; }, 1400);
               return;
             }
           } catch (e) { /* 아래 복사 안내로 진행 */ }
@@ -3290,7 +3297,7 @@ async function loadBuildingHeader(id){
          const thumbHtml = photoSrc
            ? `<img src="${photoSrc}" alt="매물 사진" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
            : `<div style="width:48px;height:48px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
-         const rowDate = lr.listing_date ? `<span style="font-size:10px;color:var(--ink-soft);">등록 ${escapeHtml(lr.listing_date)}</span>` : "";
+        const rowDate = lr.listing_date ? `<span style="font-size:10px;color:var(--ink-soft);">최근 수정 ${escapeHtml(lr.listing_date)}</span>` : "";
          return `<div class="listing-row" data-listing-id="${lrId}" style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
             <button type="button" class="listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="display:block;padding:0;border:0;background:none;cursor:pointer;flex-shrink:0;">${thumbHtml}</button>
            <div style="flex:1;min-width:0;">

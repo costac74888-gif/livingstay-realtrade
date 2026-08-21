@@ -98,6 +98,103 @@ def _inject_ga4(html: str) -> str:
     )
     return html.replace("</head>", snippet + "</head>", 1)
 
+
+_HOME_SHARE_TITLE = "숙박시설 실거래가 & 위탁운영 플랫폼 . 홈앤스테이"
+_HOME_SHARE_DESCRIPTION = (
+    "전국 생활숙박시설·분양형호텔·콘도의 실거래가와 위탁운영 정보를 한눈에 확인하세요. "
+    "국토교통부 실거래 데이터 기반 숙박시설 플랫폼."
+)
+
+
+def _share_text(value, limit=180):
+    """공유 메타태그용 DB 문자열 정리 — 줄바꿈을 제거하고 길이를 제한한다."""
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _default_share_meta():
+    origin = request.url_root.rstrip("/")
+    return {
+        "title": _HOME_SHARE_TITLE,
+        "description": _HOME_SHARE_DESCRIPTION,
+        "url": request.url,
+        "image": f"{origin}/static/home_stay_share.png?v=2",
+    }
+
+
+def _building_share_meta(building_id, listing_id=None):
+    """공유 크롤러용 건물/매물 메타태그 값. 실패 시 홈페이지 기본값으로 폴백한다."""
+    meta = _default_share_meta()
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT building_name,
+                   COALESCE(NULLIF(road_address, ''), NULLIF(jibun_address, ''), NULLIF(sgg_text, '')) AS address
+            FROM master_buildings
+            WHERE id = %s
+        """, [building_id])
+        building = cur.fetchone()
+        if not building:
+            return meta
+
+        building_name = _share_text(building.get("building_name"), 80)
+        address = _share_text(building.get("address"), 130)
+        if not building_name:
+            return meta
+        meta["title"] = f"{building_name} 직거래 매물 | 홈앤스테이"
+        meta["description"] = (
+            f"{address} · {building_name}의 직거래 매물과 실거래가를 확인하세요."
+            if address else f"{building_name}의 직거래 매물과 실거래가를 확인하세요."
+        )
+        if not listing_id:
+            return meta
+
+        cur.execute("""
+            SELECT id, deal_type, price_krw, monthly_rent_krw, area_sqm, yield_rate
+            FROM listing_requests
+            WHERE id = %s
+              AND master_building_id = %s
+              AND deal_mode = 'direct'
+              AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+        """, [listing_id, building_id])
+        listing = cur.fetchone()
+        if not listing:
+            return meta
+
+        summary = _share_text(format_lr_summary(
+            listing.get("deal_type"), listing.get("price_krw"), listing.get("monthly_rent_krw"),
+            listing.get("area_sqm"), listing.get("yield_rate"),
+        ), 90)
+        if summary:
+            meta["title"] = f"{building_name} {summary} 직거래 매물 | 홈앤스테이"
+            meta["description"] = (
+                f"{address} · {summary} 직거래 매물입니다."
+                if address else f"{building_name} {summary} 직거래 매물입니다."
+            )
+
+        cur.execute("""
+            SELECT image_key
+            FROM listing_photos
+            WHERE listing_request_id = %s
+            ORDER BY sort_order ASC, id ASC
+            LIMIT 1
+        """, [listing["id"]])
+        photo = cur.fetchone()
+        if photo and storage_util.is_valid_listing_photo_ref(photo.get("image_key")):
+            origin = request.url_root.rstrip("/")
+            meta["image"] = f"{origin}/api/listing-photos/img/{quote(photo['image_key'], safe='/')}"
+        return meta
+    except Exception:
+        app.logger.warning("공유 메타태그 조회 실패 (building_id=%s)", building_id, exc_info=True)
+        return meta
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
 app = Flask(__name__, static_folder="static")
 Compress(app)   # gzip 응답 압축 (API JSON + HTML 전체)
 
@@ -300,13 +397,26 @@ if not _bjdong_file_ok:
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _serve_app_shell():
+def _serve_app_shell(building_id=None, listing_id=None):
     # 정적 index.html을 읽어 카카오맵 JS 키만 서버에서 주입해 서빙한다.
     # (프론트 소스에 키를 직접 박지 않고, 환경변수/시크릿에서 안전하게 넣는다.)
     kakao_js_key = os.environ.get("KAKAO_JS_KEY", "")
     html_path = os.path.join(app.static_folder, "index.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
+    share_meta = (
+        _building_share_meta(building_id, listing_id)
+        if building_id is not None else _default_share_meta()
+    )
+    for key, value in {
+        "{{PAGE_TITLE}}": share_meta["title"],
+        "{{META_DESCRIPTION}}": share_meta["description"],
+        "{{OG_TITLE}}": share_meta["title"],
+        "{{OG_DESCRIPTION}}": share_meta["description"],
+        "{{OG_IMAGE}}": share_meta["image"],
+        "{{OG_URL}}": share_meta["url"],
+    }.items():
+        html = html.replace(key, _html.escape(value, quote=True))
     html = html.replace("{{KAKAO_JS_KEY}}", quote(kakao_js_key, safe=""))
     html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
     html = _inject_asset_version(html)
@@ -349,7 +459,7 @@ def building_page(building_id):
     main.js가 URL을 확인해 자동으로 해당 건물 상세를 좌측 패널에 표시한다.
     (static/building.html은 롤백 대비 남겨두되 더 이상 서빙하지 않는다.)
     """
-    return _serve_app_shell()
+    return _serve_app_shell(building_id, request.args.get("listing", type=int))
 
 
 _AUTHORITY_INDEX = None
@@ -736,7 +846,7 @@ def get_building(building_id):
         SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
                lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
                lr.deal_mode, lr.display_seq,
-               TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
+               TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                COALESCE(ll.like_count, 0) AS like_count
         FROM listing_requests lr
         LEFT JOIN (
@@ -745,8 +855,8 @@ def get_building(building_id):
         ) ll ON ll.listing_request_id = lr.id
         WHERE lr.master_building_id = %s
           AND lr.deal_mode = 'direct'
-          AND COALESCE(lr.status, '') <> 'withdrawn'
-        ORDER BY lr.created_at DESC
+          AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+        ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
         LIMIT 10
     """, [building_id])
     _direct_listings = []
@@ -1943,7 +2053,7 @@ def get_buildings_geo():
             SELECT COUNT(*) AS listing_count
             FROM listing_requests lr
             WHERE lr.master_building_id = mb.id
-              AND lr.status IS DISTINCT FROM 'withdrawn'
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
         ) listing_counts ON TRUE
         WHERE {where_sql}
         ORDER BY mb.id
@@ -6347,13 +6457,13 @@ def _agent_leads_data(agent_id):
                      ELSE lr.routed_reason
                    END AS routed_tier,
                    mb.id AS master_building_id, mb.building_name,
-                   to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+                   to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agent_buildings ab
               ON ab.master_building_id = lr.master_building_id AND ab.agent_id = lr.routed_agent_id
             WHERE lr.routed_agent_id = %s
-            ORDER BY lr.created_at DESC, lr.id DESC
+            ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC, lr.id DESC
             LIMIT 200
         """, [agent_id])
         items = [dict(r) for r in cur.fetchall()]
@@ -6913,7 +7023,7 @@ def my_listing_requests():
                    lr.description, lr.deposit_krw, lr.yield_rent_krw, lr.yield_rate,
                    (SELECT COUNT(*) FROM chat_rooms cr
                     WHERE cr.listing_request_id = lr.id) AS chat_room_count,
-                   to_char(lr.created_at, 'YYYY-MM-DD') AS created_date,
+                    to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS created_date,
                    mb.id AS building_id, mb.building_name,
                    a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug,
                    COALESCE((
@@ -6926,7 +7036,7 @@ def my_listing_requests():
             JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
             WHERE lr.user_id = %s
-            ORDER BY lr.created_at DESC
+            ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
         """, [user["id"]])
         items = [dict(r) for r in cur.fetchall()]
     finally:
@@ -6986,7 +7096,7 @@ def public_listings():
       sgg_nm             — 시/군/구 (예: 경기도 수원시 팔달구) → mb.sgg_text 전체 일치
       umd_nm             — 읍/면/동 (예: 매산로1가) → mb.umd_nm 일치
       q                  — 건물명 ILIKE 검색
-      date_range         — '1month' / '3months' / '' (전체) — lr.created_at 기준
+      date_range         — '1month' / '3months' / '' (전체) — 최근 수정일 우선 기준
     """
     try:
         limit = min(int(request.args.get("limit") or 20), 50)
@@ -7028,9 +7138,9 @@ def public_listings():
             params.append(f"%{q_filter}%")
 
         if date_range == "1month":
-            clauses.append("lr.created_at >= NOW() - INTERVAL '1 month'")
+            clauses.append("COALESCE(lr.updated_at, lr.created_at) >= NOW() - INTERVAL '1 month'")
         elif date_range == "3months":
-            clauses.append("lr.created_at >= NOW() - INTERVAL '3 months'")
+            clauses.append("COALESCE(lr.updated_at, lr.created_at) >= NOW() - INTERVAL '3 months'")
 
         lodging_type_filter = (request.args.get("lodging_type") or "").strip()
         if lodging_type_filter == "복합":
@@ -7045,7 +7155,7 @@ def public_listings():
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.monthly_rent_krw,
                    lr.area_sqm, lr.verified_phone, lr.description, lr.yield_rate,
                    lr.deal_mode, lr.display_seq,
-                   TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
+                   TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                    COALESCE(ll.like_count, 0) AS like_count,
                    lp.photo_url,
                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type,
@@ -7064,9 +7174,9 @@ def public_listings():
                 LIMIT 1
             ) lp ON true
             WHERE lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') <> 'withdrawn'
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
               {where_extra}
-            ORDER BY lr.created_at DESC
+            ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
             LIMIT %s OFFSET %s
         """, params + [limit + 1, offset])
         rows = cur.fetchall()
@@ -7138,7 +7248,8 @@ def upload_listing_photo(lr_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT user_id FROM listing_requests WHERE id=%s AND COALESCE(status,'') <> 'withdrawn'",
+            "SELECT user_id FROM listing_requests WHERE id=%s "
+            "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')",
             [lr_id]
         )
         lr = cur.fetchone()
@@ -7160,6 +7271,7 @@ def upload_listing_photo(lr_id):
             [lr_id, key, lr_id]
         )
         photo_id = cur.fetchone()["id"]
+        cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -7191,7 +7303,7 @@ def reorder_listing_photos(lr_id):
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.listing_request_id=%s AND lr.user_id=%s
-              AND COALESCE(lr.status, '') <> 'withdrawn'
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
             ORDER BY lp.sort_order, lp.id
         """, [lr_id, user["id"]])
         current_ids = [row["id"] for row in cur.fetchall()]
@@ -7208,6 +7320,7 @@ def reorder_listing_photos(lr_id):
                 FROM (VALUES {values_sql}) AS ordered(id, sort_order)
                 WHERE lp.id = ordered.id AND lp.listing_request_id = %s
             """, params + [lr_id])
+            cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -7229,13 +7342,14 @@ def delete_listing_photo(lr_id, photo_id):
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.id=%s AND lp.listing_request_id=%s AND lr.user_id=%s
-              AND COALESCE(lr.status, '') <> 'withdrawn'
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
         """, [photo_id, lr_id, user["id"]])
         photo = cur.fetchone()
         if not photo:
             return jsonify({"ok": False, "message": "사진을 찾을 수 없거나 권한이 없습니다."}), 404
         key = photo["image_key"]
         cur.execute("DELETE FROM listing_photos WHERE id=%s AND listing_request_id=%s", [photo_id, lr_id])
+        cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -7251,10 +7365,23 @@ def listing_photo_proxy(key):
     """직거래 매물 사진 공개 프록시 — 인증 불필요, 24시간 캐시."""
     if not storage_util.is_valid_listing_photo_ref(key):
         return jsonify({"ok": False, "message": "잘못된 경로입니다."}), 404
+    conn = get_conn(); cur = conn.cursor()
     try:
+        cur.execute("""
+            SELECT 1
+            FROM listing_photos lp
+            JOIN listing_requests lr ON lr.id = lp.listing_request_id
+            WHERE lp.image_key = %s
+              AND lr.deal_mode = 'direct'
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+        """, [key])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
         file_data = storage_util.download_bytes(key)
     except Exception:
         return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
+    finally:
+        cur.close(); conn.close()
     ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
     ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
     from flask import Response as _Response
@@ -7273,7 +7400,8 @@ def toggle_listing_like(lr_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id FROM listing_requests WHERE id=%s AND deal_mode='direct' AND COALESCE(status,'') <> 'withdrawn'",
+            "SELECT id FROM listing_requests WHERE id=%s AND deal_mode='direct' "
+            "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')",
             [lr_id]
         )
         if not cur.fetchone():
@@ -7325,7 +7453,7 @@ def create_chat_room():
             SELECT lr.id, lr.user_id AS seller_user_id
             FROM listing_requests lr
             WHERE lr.id = %s AND lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') <> 'withdrawn'
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
         """, [lr_id])
         lr = cur.fetchone()
         if not lr:
@@ -7401,6 +7529,7 @@ def get_chat_messages(room_id):
         "ok": True,
         "messages": messages,
         "my_user_id": user["id"],
+        "my_role": "buyer" if user["id"] == room["buyer_user_id"] else "seller",
         "opponent_name": opponent_name,
     })
 
@@ -7515,7 +7644,7 @@ def list_chat_rooms():
                            'YYYY-MM-DD HH24:MI') AS last_at,
                    lr.deal_type, lr.price_krw, lr.monthly_rent_krw,
                    lr.area_sqm, lr.yield_rate,
-                   TO_CHAR(lr.created_at, 'YYYY-MM-DD') AS listing_date,
+                    TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                    (SELECT COUNT(*) FROM chat_messages
                      WHERE room_id = cr.id
                        AND sender_user_id != %(uid)s
@@ -7743,7 +7872,7 @@ def update_listing_request(req_id):
             """UPDATE listing_requests SET deal_type=%s, desired_price=%s,
                price_krw=%s, monthly_rent_krw=%s, area_sqm=%s, dong=%s, ho=%s,
                registrant_type=%s, description=%s, deposit_krw=%s,
-               yield_rent_krw=%s, yield_rate=%s WHERE id=%s""",
+                yield_rent_krw=%s, yield_rate=%s, updated_at=NOW() WHERE id=%s""",
             [after["deal_type"], after["desired_price"] or None, after["price_krw"],
              after["monthly_rent_krw"], after["area_sqm"], after["dong"], after["ho"],
              after["registrant_type"], after["description"], after["deposit_krw"],
@@ -11266,7 +11395,7 @@ def admin_buildings_full_stats():
     # 3. 매물내놓기 수 per building (철회됨 제외)
     cur.execute(
         "SELECT master_building_id, COUNT(*) AS cnt FROM listing_requests "
-        "WHERE master_building_id = ANY(%s) AND status != '철회됨' "
+        "WHERE master_building_id = ANY(%s) AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨') "
         "GROUP BY master_building_id", [all_ids]
     )
     lr_req_map = {r["master_building_id"]: int(r["cnt"]) for r in cur.fetchall()}
@@ -11648,7 +11777,7 @@ def admin_buildings_delete(building_id):
     # 참조 매물(listings) / 슬롯(slots) — master_building_id FK
     cur.execute(
         "SELECT COUNT(*) c FROM listing_requests"
-        " WHERE master_building_id=%s AND deal_mode='direct' AND status <> '철회됨'",
+        " WHERE master_building_id=%s AND deal_mode='direct' AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')",
         [building_id],
     )
     listing_cnt = cur.fetchone()["c"]
@@ -11746,7 +11875,7 @@ def admin_buildings_bulk_delete():
     # listings, slots는 master_building_id FK로 바로 조회
     cur.execute(
         "SELECT DISTINCT master_building_id FROM listing_requests"
-        " WHERE master_building_id = ANY(%s) AND deal_mode='direct' AND status <> '철회됨'"
+        " WHERE master_building_id = ANY(%s) AND deal_mode='direct' AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')"
         " UNION"
         " SELECT DISTINCT master_building_id FROM slots WHERE master_building_id = ANY(%s)",
         [id_list, id_list],
@@ -13968,7 +14097,7 @@ def admin_dismiss_building_candidate(permit_number):
 # 정렬 허용 컬럼 화이트리스트 → 실제 SQL 표현식 매핑 (인젝션 방지, 없으면 lr.id 폴백)
 ADMIN_LST_SORT = {
     "id": "lr.id", "deal_type": "lr.deal_type",
-    "status": "lr.status", "created_at": "lr.created_at",
+    "status": "lr.status", "created_at": "COALESCE(lr.updated_at, lr.created_at)",
     "building_name": "mb.building_name",
 }
 
@@ -14044,7 +14173,7 @@ def admin_listings_list():
         SELECT lr.id, lr.master_building_id, mb.building_name,
                lr.deal_type, lr.price_krw, lr.monthly_rent_krw,
                lr.area_sqm, lr.contact_phone, lr.status,
-               to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+               to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD HH24:MI') AS created_at
         FROM listing_requests lr
         LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
         WHERE {base_where}
@@ -14098,7 +14227,7 @@ def admin_listings_export():
         SELECT lr.id, lr.master_building_id, mb.building_name,
                lr.deal_type, lr.price_krw, lr.monthly_rent_krw,
                lr.area_sqm, lr.contact_phone, lr.status,
-               to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+               to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD HH24:MI') AS created_at
         FROM listing_requests lr
         LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
         WHERE lr.deal_mode = 'direct' AND {where_sql}
@@ -14114,7 +14243,7 @@ def admin_listings_export():
     ws.title = "직거래매물"
     ws.append(["ID", "건물ID", "건물명", "거래유형",
                "가격(만원)", "월세(만원)", "면적(㎡)",
-               "연락처", "상태", "등록일"])
+                "연락처", "상태", "최근 수정일"])
     for r in rows:
         ph = format_phone(r["contact_phone"]) if r["contact_phone"] else ""
         ws.append([
@@ -14137,7 +14266,11 @@ def admin_listings_export():
 
 # ---- 매물의뢰(listing_requests) 관리 (모두 require_admin) ----
 # 관리자는 조회 + 비고(admin_note) 수정만 가능. status는 중개사 API에서만 변경(여기서는 읽기전용).
-_ADMIN_LREQ_SORT = {"id": "lr.id", "created_at": "lr.created_at", "status": "lr.status"}
+_ADMIN_LREQ_SORT = {
+    "id": "lr.id",
+    "created_at": "COALESCE(lr.updated_at, lr.created_at)",
+    "status": "lr.status",
+}
 
 
 @app.route("/api/admin/listing-requests")
@@ -14187,7 +14320,7 @@ def admin_listing_requests_list():
                    END AS routed_tier,
                    (lr.status = 'submitted' AND lr.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
                    a.office_name AS agent_office_name, a.phone AS agent_phone,
-                   to_char(lr.created_at, 'YYYY-MM-DD HH24:MI') AS created_at
+                   to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
@@ -14382,12 +14515,13 @@ def admin_listing_requests_export():
                    lr.contact_phone, lr.deal_type,
                    lr.desired_price, lr.area_sqm, lr.deal_mode,
                    lr.routed_reason, a.office_name AS agent_name,
-                   a.phone AS agent_phone, lr.status, lr.admin_note, lr.created_at
+                   a.phone AS agent_phone, lr.status, lr.admin_note,
+                   COALESCE(lr.updated_at, lr.created_at) AS created_at
             FROM listing_requests lr
             LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             LEFT JOIN agents a ON a.id = lr.routed_agent_id
             LEFT JOIN users u ON u.id = lr.user_id
-            ORDER BY lr.created_at DESC
+            ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
         """)
         rows = cur.fetchall()
     finally:
@@ -14399,7 +14533,7 @@ def admin_listing_requests_export():
     ws = wb.active
     ws.title = "매물의뢰"
     headers = ["번호", "건물명", "회원닉네임(이름)", "의뢰자 연락처", "거래유형", "희망가", "전용㎡", "진행방식",
-               "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "접수일"]
+               "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "최근 수정일"]
     ws.append(headers)
     hdr_fill = PatternFill("solid", fgColor="F9F5EE")
     for cell in ws[1]:

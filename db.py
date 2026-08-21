@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-19-5"
+SCHEMA_VERSION = "2026-08-21-1"
 
 
 def init_db():
@@ -186,7 +186,8 @@ def init_db():
         lodging_type_detail TEXT,     -- 건축물대장 원문 용도 표기 (배지 툴팁용)
         match_source TEXT,            -- 'master' | 'buildinghub' | 'unmatched'
         raw_key TEXT UNIQUE,          -- 중복 적재 방지용 (sgg_cd+umd_nm+jibun+deal_date+price)
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP
     )
     """)
 
@@ -845,11 +846,13 @@ def init_db():
         routed_agent_id INTEGER REFERENCES agents(id),  -- 배정된 대표 중개사 (없으면 NULL)
         routed_reason TEXT,               -- exclusive | region | house
         status TEXT DEFAULT 'submitted',  -- submitted(신규) | in_progress(처리중) | done(완료) — 중개사만 순방향 변경 가능
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP
     )
     """)
     # 기존 DB에도 안전하게 컬럼 추가 — 관리자 전용 메모(중개사에게는 노출 안 함)
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS admin_note TEXT")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP")
     # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")

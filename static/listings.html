@@ -201,7 +201,7 @@
     .listings-page  { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
     .ls-filter-grid { grid-template-columns: 1fr; }
-    /* 게시판형 모바일: 전용㎡·등록일·공유 숨김 → [사진|건물명|유형|희망가|채팅] 5열만 노출 */
+    /* 게시판형 모바일: 전용㎡·최근 수정일·공유 숨김 → [사진|건물명|유형|희망가|채팅] 5열만 노출 */
     .ls-hide-mobile { display: none !important; }
     .ls-board-tbl { min-width: 0; table-layout: fixed; }
     .td-photo { width: 50px; }
@@ -261,7 +261,7 @@
         </select>
       </div>
       <div class="field">
-        <label>검색기간 (등록일)</label>
+        <label>검색기간 (최근 수정일)</label>
         <select id="lsDateRange">
           <option value="">전체</option>
           <option value="1month">최근 1개월</option>
@@ -299,7 +299,7 @@
             <th><button type="button" class="ls-sort-btn" data-sort="price" aria-label="희망가 정렬">희망가(만원) <span class="ls-sort-arrow">↕</span></button></th>
             <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="yield" aria-label="수익률 정렬">수익률 <span class="ls-sort-arrow">↕</span></button></th>
             <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="area" aria-label="전용면적 정렬">전용㎡ <span class="ls-sort-arrow">↕</span></button></th>
-            <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="date" aria-label="등록일 정렬">등록일 <span class="ls-sort-arrow">↕</span></button></th>
+            <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="date" aria-label="최근 수정일 정렬">최근 수정일 <span class="ls-sort-arrow">↕</span></button></th>
             <th>채팅</th>
             <th class="ls-hide-mobile">찜</th>
             <th class="ls-hide-mobile">공유</th>
