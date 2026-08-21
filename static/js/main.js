@@ -3148,10 +3148,24 @@ async function loadBuildingHeader(id){
      }
      function _openDirectListingCard(lr){
        document.getElementById("directListingCardOverlay")?.remove();
+        const previousFocus = document.activeElement;
        const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
        const formatNumber = (v) => v != null ? Number(v).toLocaleString() : "-";
-       const firstPhoto = photos[0] ? `<img src="${escapeHtml(photos[0])}" alt="매물 사진" style="width:100%;height:220px;object-fit:cover;display:block;" onerror="this.style.display='none';">` : `<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>`;
+        let photoIndex = 0;
+        const photoGallery = photos[0]
+          ? `<div style="position:relative;background:#f6f4f0;">
+              <img id="directListingCardImage" src="${escapeHtml(photos[0])}" alt="매물 사진 1" style="width:100%;height:220px;object-fit:cover;display:block;" onerror="this.style.display='none';">
+              ${photos.length > 1 ? `<button type="button" id="directListingPhotoPrev" aria-label="이전 사진" style="position:absolute;left:10px;top:calc(50% - 17px);width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:21px;line-height:1;cursor:pointer;">‹</button>
+              <button type="button" id="directListingPhotoNext" aria-label="다음 사진" style="position:absolute;right:10px;top:calc(50% - 17px);width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:21px;line-height:1;cursor:pointer;">›</button>
+              <span id="directListingPhotoCount" style="position:absolute;right:12px;bottom:10px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:11px;font-weight:700;">1 / ${photos.length}</span>
+              <div id="directListingPhotoThumbs" style="position:absolute;left:10px;bottom:9px;display:flex;gap:5px;max-width:calc(100% - 86px);overflow:auto;">${photos.map((src, index) => `<button type="button" data-photo-index="${index}" aria-label="사진 ${index + 1} 보기" style="width:34px;height:27px;padding:0;flex:0 0 auto;border:${index === 0 ? "2px solid #fff" : "1px solid rgba(255,255,255,.72)"};border-radius:4px;overflow:hidden;background:#fff;cursor:pointer;"><img src="${escapeHtml(src)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></button>`).join("")}</div>` : ""}
+            </div>`
+          : `<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>`;
        const sqm = lr.area_sqm ? `${parseFloat(lr.area_sqm).toFixed(1)}㎡` : "";
+        const listingMeta = [
+          lr.listing_number ? escapeHtml(lr.listing_number) : "",
+          lr.listing_date ? `등록 ${escapeHtml(lr.listing_date)}` : ""
+        ].filter(Boolean).join(" · ");
        const priceText = lr.deal_type === "월세"
          ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
          : (lr.price_krw ? `${formatNumber(lr.price_krw)}만원` : "-");
@@ -3160,21 +3174,91 @@ async function loadBuildingHeader(id){
        const ov = document.createElement("div");
        ov.id = "directListingCardOverlay";
        ov.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
-       ov.innerHTML = `<div style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">
-         <div style="position:relative;">${firstPhoto}<button type="button" id="directListingCardClose" aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button></div>
+        ov.innerHTML = `<div id="directListingCardDialog" role="dialog" aria-modal="true" aria-label="직거래 매물 상세" tabindex="-1" style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">
+          <div style="position:relative;">${photoGallery}<button type="button" id="directListingCardClose" aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button></div>
          <div style="padding:16px 18px 18px;">
+            ${listingMeta ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:11px;color:var(--ink-soft);"><span style="padding:2px 6px;border-radius:4px;background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);color:var(--brass-dark,#7D4A00);font-weight:800;">${lr.listing_number ? escapeHtml(lr.listing_number) : ""}</span>${lr.listing_date ? `<span>등록 ${escapeHtml(lr.listing_date)}</span>` : ""}</div>` : ""}
            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
            <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
            ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:12px;">${desc}</div>` : ""}
-           <button type="button" id="directListingCardChat" style="width:100%;padding:10px;border:1.5px solid var(--brass,#B4863F);border-radius:9px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:13px;font-weight:700;cursor:pointer;">💬 채팅</button>
+            <div style="display:flex;gap:7px;">
+              <button type="button" id="directListingCardChat" style="flex:1;padding:10px;border:1.5px solid var(--brass,#B4863F);border-radius:9px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:13px;font-weight:700;cursor:pointer;">💬 채팅</button>
+              <button type="button" id="directListingCardShare" style="padding:10px 13px;border:1px solid var(--line,#ddd);border-radius:9px;background:#fff;color:var(--ink,#16202e);font-size:13px;font-weight:700;cursor:pointer;">↗ 공유</button>
+            </div>
          </div>
        </div>`;
        document.body.appendChild(ov);
-       const close = () => ov.remove();
+        const dialog = ov.querySelector("#directListingCardDialog");
+        const close = () => {
+          document.removeEventListener("keydown", handleCardKeydown);
+          ov.remove();
+          if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
+        };
+        const handleCardKeydown = (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            close();
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const focusable = Array.prototype.slice.call(dialog.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )).filter((element) => element.offsetParent !== null);
+          if (!focusable.length) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+          }
+          const first = focusable[0], last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        };
+        document.addEventListener("keydown", handleCardKeydown);
        ov.querySelector("#directListingCardClose").addEventListener("click", close);
        ov.querySelector("#directListingCardChat").addEventListener("click", () => { close(); _openListingChat(lr.id); });
+        if (photos.length > 1) {
+          const image = ov.querySelector("#directListingCardImage");
+          const count = ov.querySelector("#directListingPhotoCount");
+          const thumbs = ov.querySelectorAll("[data-photo-index]");
+          const showPhoto = (index) => {
+            photoIndex = (index + photos.length) % photos.length;
+            image.src = photos[photoIndex];
+            image.alt = `매물 사진 ${photoIndex + 1}`;
+            count.textContent = `${photoIndex + 1} / ${photos.length}`;
+            thumbs.forEach((thumb, thumbIndex) => {
+              thumb.style.border = thumbIndex === photoIndex ? "2px solid #fff" : "1px solid rgba(255,255,255,.72)";
+            });
+          };
+          ov.querySelector("#directListingPhotoPrev").addEventListener("click", () => showPhoto(photoIndex - 1));
+          ov.querySelector("#directListingPhotoNext").addEventListener("click", () => showPhoto(photoIndex + 1));
+          thumbs.forEach((thumb) => thumb.addEventListener("click", () => showPhoto(parseInt(thumb.dataset.photoIndex, 10))));
+        }
+        ov.querySelector("#directListingCardShare").addEventListener("click", async () => {
+          const url = location.origin + "/building/" + encodeURIComponent(b.id) + "?listing=" + encodeURIComponent(lr.id);
+          const shareData = {title: `${bName} 직거래 매물 | 홈앤스테이`, text: `${bName} 직거래 매물`, url: url};
+          if (navigator.share) {
+            try { await navigator.share(shareData); } catch (e) { /* 사용자가 공유를 취소함 */ }
+            return;
+          }
+          try {
+            if (navigator.clipboard) {
+              await navigator.clipboard.writeText(url);
+              const button = ov.querySelector("#directListingCardShare");
+              button.textContent = "링크 복사됨";
+              setTimeout(() => { if (button.isConnected) button.textContent = "↗ 공유"; }, 1400);
+              return;
+            }
+          } catch (e) { /* 아래 복사 안내로 진행 */ }
+          prompt("아래 매물 링크를 복사하세요:", url);
+        });
        ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+        requestAnimationFrame(() => ov.querySelector("#directListingCardClose").focus());
      }
 
     function _renderListings(listings){
@@ -3202,24 +3286,30 @@ async function loadBuildingHeader(id){
           : "";
         const desc = lr.description ? escapeHtml(lr.description.slice(0, 50)) + (lr.description.length > 50 ? "…" : "") : "";
         const likeCount = lr.like_count || 0;
-        const photoSrc = (lr.photos && lr.photos.length > 0) ? escapeHtml(lr.photos[0]) : null;
+         const photoSrc = (lr.photos && lr.photos.length > 0) ? escapeHtml(lr.photos[0]) : null;
          const thumbHtml = photoSrc
-          ? `<img src="${photoSrc}" alt="매물 사진" style="width:54px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
-          : `<div style="width:54px;height:54px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
-        return `<div data-listing-id="${lrId}" style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
-           <button type="button" class="listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="display:block;padding:0;border:0;background:none;cursor:pointer;flex-shrink:0;">${thumbHtml}</button>
-          <div style="flex:1;min-width:0;">
-            ${lr.listing_number ? `<div style="margin-bottom:2px;"><span style="display:inline-block;font-size:9.5px;font-weight:700;color:var(--brass-dark,#7D4A00);background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);border-radius:4px;padding:0 5px;">${escapeHtml(lr.listing_number)}</span></div>` : ""}
-            <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:2px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
-            <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:2px;">${priceText}</div>
-            ${yieldText?`<div style="margin-bottom:2px;">${yieldText}</div>`:""}
-            ${desc?`<div style="font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">${desc}</div>`:""}
-            <div style="display:flex;align-items:center;gap:10px;margin-top:3px;">
-              <button type="button" class="listing-like-btn" data-lrid="${lrId}" style="font-size:13px;background:none;border:none;cursor:pointer;padding:0;color:var(--ink-soft);">♥ <span class="like-cnt">${likeCount}</span></button>
-              <button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:rgba(180,134,63,.12);border:1.5px solid var(--brass,#B4863F);border-radius:16px;padding:2px 10px;cursor:pointer;font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:600;">💬 채팅</button>
-            </div>
-          </div>
-        </div>`;
+           ? `<img src="${photoSrc}" alt="매물 사진" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
+           : `<div style="width:48px;height:48px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
+         const rowDate = lr.listing_date ? `<span style="font-size:10px;color:var(--ink-soft);">등록 ${escapeHtml(lr.listing_date)}</span>` : "";
+         return `<div class="listing-row" data-listing-id="${lrId}" style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
+            <button type="button" class="listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="display:block;padding:0;border:0;background:none;cursor:pointer;flex-shrink:0;">${thumbHtml}</button>
+           <div style="flex:1;min-width:0;">
+             <div class="listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="cursor:pointer;">
+             <div style="display:flex;align-items:center;gap:5px;margin-bottom:1px;min-height:15px;">
+               ${lr.listing_number ? `<span style="display:inline-block;font-size:9px;font-weight:700;color:var(--brass-dark,#7D4A00);background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);border-radius:4px;padding:0 4px;">${escapeHtml(lr.listing_number)}</span>` : ""}
+               ${rowDate}
+             </div>
+             <div style="font-size:11.5px;font-weight:700;color:var(--ink);margin-bottom:1px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
+             <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:1px;">${priceText}</div>
+             ${yieldText?`<div style="line-height:1.2;margin-bottom:1px;">${yieldText}</div>`:""}
+             ${desc?`<div style="font-size:10.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;">${desc}</div>`:""}
+             </div>
+             <div style="display:flex;align-items:center;gap:8px;margin-top:1px;">
+               <button type="button" class="listing-like-btn" data-lrid="${lrId}" style="font-size:12px;background:none;border:none;cursor:pointer;padding:0;color:var(--ink-soft);">♥ <span class="like-cnt">${likeCount}</span></button>
+               <button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:rgba(180,134,63,.12);border:1.5px solid var(--brass,#B4863F);border-radius:16px;padding:1px 8px;cursor:pointer;font-size:11px;color:var(--brass-dark,#7D4A00);font-weight:600;">💬 채팅</button>
+             </div>
+           </div>
+         </div>`;
       }).join("");
 
       listingsBody.innerHTML = `<div style="margin-bottom:8px;">${sortBar}</div><div>${cards}</div><div style="font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:6px;">직거래 시 계약 전 등기부등본 확인을 권장합니다.</div>`;
@@ -3239,6 +3329,19 @@ async function loadBuildingHeader(id){
           e.stopPropagation();
           const lr = listings.find(item => String(item.id) === String(btn.dataset.lrid));
           if (lr) _openDirectListingCard(lr);
+        });
+      });
+      listingsBody.querySelectorAll(".listing-card-trigger").forEach(trigger => {
+        const openRow = () => {
+          const lr = listings.find(item => String(item.id) === String(trigger.dataset.lrid));
+          if (lr) _openDirectListingCard(lr);
+        };
+        trigger.addEventListener("click", openRow);
+        trigger.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openRow();
+          }
         });
       });
       listingsBody.querySelectorAll(".listing-chat-btn").forEach(btn => {
@@ -3263,10 +3366,12 @@ async function loadBuildingHeader(id){
     if (_targetListing) {
       requestAnimationFrame(() => {
         const el = listingsCard && listingsCard.querySelector(`[data-listing-id="${_targetListing}"]`);
-        if (el) {
+        const targetListing = allListings.find(item => String(item.id) === String(_targetListing));
+        if (el && targetListing) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           el.style.background = "var(--brass-tint, #FFF5E0)";
           setTimeout(() => { el.style.background = ""; }, 2000);
+          _openDirectListingCard(targetListing);
         }
       });
     }

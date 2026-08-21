@@ -4319,6 +4319,7 @@ def auth_me():
         return jsonify({
             "logged_in": True,
             "account_type": "user",
+            "id": u.get("id"),
             "name": u.get("name"),
             "email": u.get("email"),
             "provider": u.get("provider"),
@@ -7163,6 +7164,54 @@ def upload_listing_photo(lr_id):
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}"})
+
+
+@app.route("/api/listing-requests/<int:lr_id>/photos/order", methods=["PUT"])
+@limiter.limit("30 per minute")
+def reorder_listing_photos(lr_id):
+    """매물 등록자가 사진의 표시 순서를 저장한다. 첫 번째 사진이 대표사진이다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(silent=True) or {}
+    photo_ids = data.get("photo_ids")
+    if not isinstance(photo_ids, list) or len(photo_ids) > 5:
+        return jsonify({"ok": False, "message": "사진 순서 정보가 올바르지 않습니다."}), 400
+    try:
+        photo_ids = [int(photo_id) for photo_id in photo_ids]
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "사진 순서 정보가 올바르지 않습니다."}), 400
+    if len(photo_ids) != len(set(photo_ids)):
+        return jsonify({"ok": False, "message": "사진이 중복되어 있습니다."}), 400
+
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT lp.id
+            FROM listing_photos lp
+            JOIN listing_requests lr ON lr.id = lp.listing_request_id
+            WHERE lp.listing_request_id=%s AND lr.user_id=%s
+              AND COALESCE(lr.status, '') <> 'withdrawn'
+            ORDER BY lp.sort_order, lp.id
+        """, [lr_id, user["id"]])
+        current_ids = [row["id"] for row in cur.fetchall()]
+        if set(photo_ids) != set(current_ids):
+            return jsonify({"ok": False, "message": "사진 목록이 변경되었습니다. 새로고침 후 다시 시도해주세요."}), 409
+        if photo_ids:
+            values_sql = ",".join(["(%s,%s)"] * len(photo_ids))
+            params = []
+            for order, photo_id in enumerate(photo_ids):
+                params.extend([photo_id, order])
+            cur.execute(f"""
+                UPDATE listing_photos AS lp
+                SET sort_order = ordered.sort_order
+                FROM (VALUES {values_sql}) AS ordered(id, sort_order)
+                WHERE lp.id = ordered.id AND lp.listing_request_id = %s
+            """, params + [lr_id])
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "photo_ids": photo_ids})
 
 
 @app.route("/api/listing-requests/<int:lr_id>/photos/<int:photo_id>", methods=["DELETE"])
