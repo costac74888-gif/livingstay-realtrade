@@ -28,6 +28,7 @@ sync_log         : 배치 실행 이력 (언제, 몇 건, 성공/실패)
 """
 
 import os
+from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 from werkzeug.security import generate_password_hash
@@ -46,26 +47,76 @@ def get_conn():
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
 SCHEMA_VERSION = "2026-08-21-2"
+# PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
+# DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
+_SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
 
 
-def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+def _schema_version_is_current(conn, cur):
+    """app_meta에 현재 스키마 버전이 기록됐는지 확인한다.
 
-    # 빠른 경로: 스키마 버전이 이미 최신이면 DDL 전체를 건너뛴다.
-    # 이유: ALTER TABLE은 (변경이 없어도) 테이블 잠금을 잡아서, 배치 동기화가 도는 동안
-    # 부팅이 잠금 대기에 걸려 재배포/재시작이 오래 걸렸음. 버전이 같으면 즉시 리턴.
+    최초 기동처럼 app_meta가 아직 없는 경우에는 PostgreSQL 오류를 롤백하고
+    False를 반환해 전체 초기화로 진행한다.
+    """
     try:
         cur.execute("SELECT value FROM app_meta WHERE key = 'schema_version'")
         row = cur.fetchone()
-        if row and row["value"] == SCHEMA_VERSION:
-            conn.rollback()
+        is_current = bool(row and row["value"] == SCHEMA_VERSION)
+        # SELECT도 트랜잭션을 열기 때문에, 장시간 초기화 전에 깨끗하게 끝낸다.
+        conn.rollback()
+        return is_current
+    except psycopg2.Error:
+        conn.rollback()
+        return False
+
+
+@contextmanager
+def _schema_initialization_lock():
+    """버전 불일치 시 한 프로세스만 전체 DDL/시드를 실행하게 직렬화한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    locked = False
+    try:
+        cur.execute("SELECT pg_advisory_lock(%s)", (_SCHEMA_INIT_ADVISORY_LOCK_KEY,))
+        conn.commit()
+        locked = True
+        yield conn
+    finally:
+        try:
+            if locked:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (_SCHEMA_INIT_ADVISORY_LOCK_KEY,))
+                conn.commit()
+        finally:
             cur.close()
             conn.close()
+
+
+def init_db():
+    """최신 스키마는 즉시 종료하고, 불일치 시에만 직렬화된 전체 초기화를 수행한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if _schema_version_is_current(conn, cur):
             return
-        conn.rollback()
-    except Exception:
-        conn.rollback()  # app_meta가 아직 없으면 아래 전체 DDL 실행으로 진행
+    finally:
+        cur.close()
+        conn.close()
+
+    # 여러 gunicorn 워커가 동시에 부팅해도 한 프로세스만 DDL과 시드를 실행한다.
+    # 잠금 대기 중 다른 프로세스가 완료했을 수 있으므로 반드시 다시 확인한다.
+    with _schema_initialization_lock() as lock_conn:
+        lock_cur = lock_conn.cursor()
+        try:
+            if _schema_version_is_current(lock_conn, lock_cur):
+                return
+        finally:
+            lock_cur.close()
+        _run_init_db()
+
+
+def _run_init_db():
+    conn = get_conn()
+    cur = conn.cursor()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS master_buildings (

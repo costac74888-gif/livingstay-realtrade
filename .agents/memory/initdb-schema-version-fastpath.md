@@ -6,4 +6,4 @@ Rule: db.py init_db() skips ALL DDL/seeds when app_meta.schema_version == db.SCH
 
 **Why:** `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` takes an ACCESS EXCLUSIVE lock even as a no-op. Every boot (app + every batch script) reran ~50 DDLs plus a transactions dedup DELETE, so while batch sync workflows held table locks, boot/init_db blocked >100s — making redeploys and restarts look "stuck".
 
-**How to apply:** when editing db.py schema, bump SCHEMA_VERSION (dated string) in the same commit; the next boot runs the full DDL once and re-stamps. First deploy after a bump can still hit a one-time lock-contention window if multiple processes boot simultaneously (advisory lock would serialize it if that ever bites).
+**How to apply:** when editing db.py schema, bump SCHEMA_VERSION (dated string) in the same commit; the next boot runs the full DDL once and re-stamps. A session advisory lock now serializes stale-version initialization; a waiting worker rechecks the version after acquiring it and skips duplicate DDL.
