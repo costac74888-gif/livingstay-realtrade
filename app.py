@@ -6637,7 +6637,6 @@ def create_listing_request():
     if deal_mode not in ("direct", "broker"):
         deal_mode = "broker"
     desired_price = (data.get("desired_price") or "").strip()[:100]
-    contact_phone = (data.get("contact_phone") or "").strip()
 
     # 전용면적(㎡) — 선택, 양수 숫자만 허용
     try:
@@ -6685,23 +6684,18 @@ def create_listing_request():
     if deal_type not in _LISTING_DEAL_TYPES:
         return jsonify({"ok": False, "message": "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."}), 400
 
-    # 직거래: 인증된 연락처 DB 확인 / 중개사연결: 입력 연락처 형식 검증
-    verified_phone = None
-    if deal_mode == "direct":
-        _conn2 = get_conn(); _cur2 = _conn2.cursor()
-        try:
-            _cur2.execute("SELECT phone, phone_verified FROM users WHERE id=%s", [user["id"]])
-            _urow = _cur2.fetchone()
-        finally:
-            _cur2.close(); _conn2.close()
-        if not _urow or not _urow.get("phone_verified") or not _urow.get("phone"):
-            return jsonify({"ok": False, "message": "직거래 매물은 휴대폰 인증이 필요합니다. 인증 후 다시 시도해주세요."}), 400
-        verified_phone = _urow["phone"]
-        contact_phone = verified_phone
-    else:
-        if not _PHONE_RE.match(contact_phone):
-            return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
-        contact_phone = _digits_only(contact_phone)
+    # 진행 방식과 무관하게 인증된 계정 전화번호만 매물 연락처로 사용한다.
+    # 클라이언트가 임의로 보낸 contact_phone은 신뢰하지 않는다.
+    _conn2 = get_conn(); _cur2 = _conn2.cursor()
+    try:
+        _cur2.execute("SELECT phone, phone_verified FROM users WHERE id=%s", [user["id"]])
+        _urow = _cur2.fetchone()
+    finally:
+        _cur2.close(); _conn2.close()
+    if not _urow or not _urow.get("phone_verified") or not _urow.get("phone"):
+        return jsonify({"ok": False, "message": "매물 등록은 휴대폰 인증이 필요합니다. 인증 후 다시 시도해주세요."}), 400
+    verified_phone = _urow["phone"]
+    contact_phone = verified_phone
 
     conn = get_conn()
     cur = conn.cursor()
