@@ -3210,11 +3210,19 @@ async function loadBuildingHeader(id){
           thumbs.forEach((thumb) => thumb.addEventListener("click", () => showPhoto(parseInt(thumb.dataset.photoIndex, 10))));
         }
         ov.querySelector("#directListingCardShare").addEventListener("click", async () => {
-          const url = location.origin + "/building/" + encodeURIComponent(b.id) + "?listing=" + encodeURIComponent(lr.id);
+          const shareUrl = new URL(`/building/${encodeURIComponent(b.id)}`, location.origin);
+          shareUrl.searchParams.set("listing", String(lr.id));
+          const url = shareUrl.toString();
           const shareData = {title: `${bName} 직거래 매물 | 홈앤스테이`, text: `${bName} 직거래 매물`, url: url};
           if (navigator.share) {
-            try { await navigator.share(shareData); } catch (e) { /* 사용자가 공유를 취소함 */ }
-            return;
+            try {
+              await navigator.share(shareData);
+              return;
+            } catch (e) {
+              // 사용자가 공유창을 닫은 경우만 조용히 종료한다.
+              // 그 밖의 오류는 아래 링크 복사로 이어져 공유가 불발되지 않게 한다.
+              if (e && e.name === "AbortError") return;
+            }
           }
           try {
             if (navigator.clipboard) {

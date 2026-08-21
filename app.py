@@ -117,7 +117,9 @@ def _default_share_meta():
         "title": _HOME_SHARE_TITLE,
         "description": _HOME_SHARE_DESCRIPTION,
         "url": request.url,
-        "image": f"{origin}/static/home_stay_share.png?v=2",
+        # 매물 사진 유무와 관계없이 공유 카드에는 브랜드 로고를 사용한다.
+        # 메신저의 링크 미리보기에서 발신처가 분명하게 보이게 하는 용도다.
+        "image": f"{origin}/static/home_stay_share.png?v=3",
     }
 
 
@@ -173,17 +175,6 @@ def _building_share_meta(building_id, listing_id=None):
                 if address else f"{building_name} {summary} 직거래 매물입니다."
             )
 
-        cur.execute("""
-            SELECT image_key
-            FROM listing_photos
-            WHERE listing_request_id = %s
-            ORDER BY sort_order ASC, id ASC
-            LIMIT 1
-        """, [listing["id"]])
-        photo = cur.fetchone()
-        if photo and storage_util.is_valid_listing_photo_ref(photo.get("image_key")):
-            origin = request.url_root.rstrip("/")
-            meta["image"] = f"{origin}/api/listing-photos/img/{quote(photo['image_key'], safe='/')}"
         return meta
     except Exception:
         app.logger.warning("공유 메타태그 조회 실패 (building_id=%s)", building_id, exc_info=True)
