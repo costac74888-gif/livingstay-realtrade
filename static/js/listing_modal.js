@@ -80,6 +80,7 @@
           '<div style="font-size:12px;color:var(--ink-soft,#6b7684);margin-top:4px;">' + esc(buildingName || "") + '</div></div>' +
           '<button type="button" id="lrClose" aria-label="닫기" style="border:0;background:transparent;color:#6b7684;font-size:25px;line-height:1;cursor:pointer;">×</button>' +
         '</div>' +
+        '<div id="lrAuthLoading" style="display:none;padding:34px 18px;text-align:center;color:var(--ink-soft,#6b7684);font-size:13px;">매물 등록을 준비하고 있습니다.</div>' +
         '<div id="lrPhoneVerifyGate" style="display:none;padding:28px 18px 24px;">' +
           '<div style="font-size:17px;font-weight:800;color:var(--ink,#16202e);">휴대폰 인증</div>' +
           '<p style="margin:8px 0 18px;color:var(--ink-soft,#6b7684);font-size:13px;line-height:1.55;">매물 등록은 휴대폰 인증이 필요합니다.<br>인증된 계정 전화번호만 매물 연락처로 사용됩니다.</p>' +
@@ -301,6 +302,7 @@
       gateMessage.style.display = text ? "block" : "none";
     }
     function showPhoneGate() {
+      $("#lrAuthLoading").style.display = "none";
       form.style.display = "none";
       phoneGate.style.display = "block";
       $("#lrGateLoading").style.display = "none";
@@ -308,6 +310,7 @@
       $("#lrGatePhone").focus();
     }
     function showListingForm() {
+      $("#lrAuthLoading").style.display = "none";
       phoneGate.style.display = "none";
       form.style.display = "block";
       if (draftRestored) {
@@ -339,7 +342,7 @@
     }
     if (!isEdit) {
       form.style.display = "none";
-      phoneGate.style.display = "block";
+      $("#lrAuthLoading").style.display = "block";
       $("#lrGatePhone").addEventListener("input", formatGatePhone);
       $("#lrGateSendCode").addEventListener("click", function () {
         var button = this, phone = ($("#lrGatePhone").value || "").trim();
