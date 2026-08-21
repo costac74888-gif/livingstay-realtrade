@@ -4464,11 +4464,17 @@ def auth_send_phone_code():
     finally:
         cur.close(); conn.close()
     sent, sms_msg = send_sms(phone_fmt, f"[홈앤스테이] 인증번호: {code} (3분 이내 입력)")
-    app.logger.info("SMS 인증 발송 user=%s sent=%s: %s", u["id"], sent, sms_msg)
-    out = {"ok": True, "sent": sent}
     if not sent:
-        out["dev_code"] = code  # 개발환경용 (SMS 설정 없을 때)
-    return jsonify(out)
+        # Aligo의 미등록 발송 IP·일시적 네트워크 오류 등을 클라이언트가
+        # 발송 성공으로 오인하지 않게 한다. 상세 사유는 서버 로그에만 남긴다.
+        app.logger.warning("SMS 인증 발송 실패 user=%s: %s", u["id"], sms_msg)
+        return jsonify({
+            "ok": False,
+            "retryable": True,
+            "message": "인증번호를 보내지 못했습니다. 잠시 후 다시 시도해주세요.",
+        }), 503
+    app.logger.info("SMS 인증 발송 user=%s sent=True", u["id"])
+    return jsonify({"ok": True, "sent": True})
 
 
 @app.route("/api/auth/verify-phone-code", methods=["POST"])
