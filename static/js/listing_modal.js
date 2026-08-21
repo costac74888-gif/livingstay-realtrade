@@ -109,7 +109,7 @@
           '<select id="lrRegistrantType" style="' + inputStyle() + '"><option value="owner">소유자</option><option value="agent">중개사</option><option value="other">기타 관계자</option></select></section>' +
           '<section id="lrYieldSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">예상 수익률 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
           '<div style="display:flex;gap:7px;"><input id="lrYieldDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.deposit_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrYieldRent" type="number" min="1" inputmode="numeric" placeholder="월 임대료 (만원)" value="' + esc(prefill.yield_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div id="lrYieldResult" style="font-size:11.5px;color:var(--brass,#b4863f);margin-top:6px;"></div></section>' +
-          '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 설명 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div><textarea id="lrDescription" maxlength="500" rows="4" placeholder="매물의 장점, 입주 가능일 등을 적어주세요." style="' + inputStyle("resize:vertical;line-height:1.5;") + '">' + esc(prefill.description || "") + '</textarea></section>' +
+           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 설명 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div><textarea id="lrDescription" maxlength="500" rows="4" aria-describedby="lrDescriptionHint" placeholder="매물의 장점, 입주 가능일 등을 적어주세요." style="' + inputStyle("resize:vertical;line-height:1.5;") + '">' + esc(prefill.description || "") + '</textarea><div id="lrDescriptionHint" style="margin-top:5px;font-size:11px;color:var(--ink-soft);">Enter 키를 누르면 다음 줄에 작성할 수 있습니다.</div></section>' +
           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">사진 <span style="font-weight:400;color:var(--ink-soft);">최대 5장 · JPG/PNG · 장당 5MB · 첫 사진이 대표사진</span></div>' +
           '<input id="lrPhotoInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple style="display:none">' +
           '<div id="lrDropZone" tabindex="0" role="button" style="border:1.5px dashed var(--brass,#b4863f);border-radius:9px;padding:16px 10px;text-align:center;color:var(--brass,#b4863f);font-size:12.5px;cursor:pointer;background:#fffaf2;">사진을 끌어 놓거나 클릭해서 선택</div>' +
@@ -287,6 +287,18 @@
       $(selector).addEventListener("input", updateYield);
       $(selector).addEventListener("input", saveDraft);
       $(selector).addEventListener("change", saveDraft);
+    });
+    // 모바일 키보드나 상위 폼 이벤트와 무관하게 Enter는 항상 설명의 다음 줄을 만든다.
+    $("#lrDescription").addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" || event.isComposing) return;
+      event.preventDefault();
+      var start = this.selectionStart;
+      var end = this.selectionEnd;
+      var nextValue = this.value.slice(0, start) + "\n" + this.value.slice(end);
+      if (this.maxLength > 0 && nextValue.length > this.maxLength) return;
+      this.value = nextValue;
+      this.selectionStart = this.selectionEnd = start + 1;
+      this.dispatchEvent(new Event("input", {bubbles: true}));
     });
     if (isEdit) $("#lrModeSection").style.display = "none";
     updateMode();

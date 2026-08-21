@@ -3152,7 +3152,7 @@ async function loadBuildingHeader(id){
            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
            <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
-           ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:12px;">${desc}</div>` : ""}
+            ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:12px;">${desc}</div>` : ""}
              <div style="display:flex;gap:7px;">
               <button type="button" id="directListingCardChat" style="flex:1;padding:10px;border:1.5px solid var(--brass,#B4863F);border-radius:9px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:13px;font-weight:700;cursor:pointer;">💬 채팅</button>
             </div>
