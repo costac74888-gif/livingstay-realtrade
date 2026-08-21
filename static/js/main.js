@@ -148,31 +148,8 @@ function escapeHtml(v){
 }
 
 // 💬 채팅방 열기 — listing_request_id로 방 생성 후 채팅 모달 오픈
-async function _openListingChat(listingRequestId){
-  try {
-    const res = await fetch("/api/chat/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ listing_request_id: listingRequestId }),
-    });
-    if (res.status === 401){
-      if (typeof window.livingstayOpenLogin === "function") {
-        window.livingstayOpenLogin();
-      } else {
-        alert("로그인이 필요합니다.");
-      }
-      return;
-    }
-    const d = await res.json().catch(() => ({}));
-    if (res.ok && d.ok){
-      openChatModal(d.room_id);
-    } else {
-      alert(d.message || d.error || "채팅방 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
-    }
-  } catch(e){
-    alert("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-  }
+function _openListingChat(listingRequestId){
+  return window.LivingstayChat.startListingChat(listingRequestId, openChatModal);
 }
 
 // 💬 인앱 채팅 모달 — room_id로 메시지 조회·전송
@@ -191,6 +168,7 @@ function openChatModal(roomId){
       <div id="chatMsgList" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;">
         <div style="text-align:center; color:var(--ink-soft); font-size:13px;">불러오는 중…</div>
       </div>
+       <div id="chatSafetyNotice" role="status" style="display:none; margin:0 16px 8px; padding:9px 10px; border-radius:8px; background:#FFF7E6; border:1px solid #FFD898; color:#7D4A00; font-size:11.5px; line-height:1.55;"></div>
       <div id="chatAttachPreview" style="display:none; padding:6px 14px; background:#fafafa; border-top:1px solid var(--line); font-size:12px; color:var(--ink-soft); display:flex; align-items:center; gap:6px;"></div>
       <div id="chatTemplateChips" style="display:none; flex-direction:column; align-items:flex-start; gap:6px; padding:0 16px 8px;"></div>
       <div style="padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px; flex-shrink:0; background:#fafafa;">
@@ -207,6 +185,7 @@ function openChatModal(roomId){
   let myRole = null;
   let pollTimer = null;
   let pendingAttachment = null; // { key, name }
+  let messageLoadSequence = 0;
 
   const listEl      = ov.querySelector("#chatMsgList");
   const inputEl     = ov.querySelector("#chatInput");
@@ -216,45 +195,20 @@ function openChatModal(roomId){
   const fileInputEl = ov.querySelector("#chatFileInput");
   const attachPrev  = ov.querySelector("#chatAttachPreview");
   const chipsEl     = ov.querySelector("#chatTemplateChips");
+  const safetyEl    = ov.querySelector("#chatSafetyNotice");
 
-  // 방별 "이미 전송한 템플릿" 추적 — localStorage로 재입장 후에도 유지
-  const _tplStorageKey = "chatUsedTpl_" + roomId;
-  const usedTemplates = new Set(
-    JSON.parse(localStorage.getItem(_tplStorageKey) || "[]")
-  );
-  const buyerTemplates = [
-    "안녕하세요", "아직 거래가능한가요", "영업신고·위탁운영 이상없나요",
-    "매물방문은 가능한가요?", "입주는 언제가능한지요?",
-  ];
-  const sellerTemplates = [
-    "안녕하세요", "네 거래가능합니다",
-    "네 영업신고·위탁운영 이상없습니다", "네 집보기 가능합니다",
-  ];
-
-  function _refreshChipVisibility() {
-    chipsEl.querySelectorAll(".chat-template-chip").forEach((btn) => {
-      const tpl = btn.getAttribute("data-tpl");
-      btn.style.display = usedTemplates.has(tpl) ? "none" : "inline-flex";
-    });
-    // 현재 역할의 모든 문구를 사용했으면 빈 칩 영역을 접는다.
-    chipsEl.style.display = chipsEl.querySelector(".chat-template-chip:not([style*='display: none'])")
-      ? "flex" : "none";
-  }
-  function _renderTemplateChips() {
-    const templates = myRole === "seller" ? sellerTemplates : buyerTemplates;
-    const roleClass = myRole === "seller" ? " seller" : "";
-    chipsEl.innerHTML = templates.map((tpl) =>
-      `<button class="chat-template-chip${roleClass}" data-tpl="${escapeHtml(tpl)}">${escapeHtml(tpl)}</button>`
-    ).join("");
-    _refreshChipVisibility();
+  function _renderTemplateChips(isEmpty) {
+    chipsEl.innerHTML = isEmpty
+      ? `<button class="chat-template-chip" data-tpl="안녕하세요">안녕하세요</button>`
+      : "";
+    chipsEl.style.display = isEmpty ? "flex" : "none";
   }
 
   // 칩 클릭 → 입력창 채우기 (자동전송 아님)
   chipsEl.addEventListener("click", (e) => {
     const btn = e.target.closest(".chat-template-chip");
     if (!btn) return;
-    inputEl.value = btn.getAttribute("data-tpl");
-    inputEl.focus();
+    window.LivingstayChat.fillQuickReply(inputEl, btn.getAttribute("data-tpl"));
   });
 
   function _fmtChatTime(isoStr) {
@@ -308,19 +262,22 @@ function openChatModal(roomId){
   }
 
   async function _loadMessages(){
+    const loadSequence = ++messageLoadSequence;
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`, { credentials: "same-origin" });
       if (!res.ok) return;
       const d = await res.json().catch(() => ({}));
-      if (!d.ok) return;
+      // 먼저 시작된 느린 요청이 최신 응답을 덮어써 빈 방 UI를 다시 보이지 않게 한다.
+      if (!d.ok || loadSequence !== messageLoadSequence) return;
       myUserId = d.my_user_id;
       if (d.my_role && d.my_role !== myRole) {
         myRole = d.my_role;
-        _renderTemplateChips();
       }
       const opponentNameEl = ov.querySelector("#chatOpponentName");
       if (opponentNameEl) opponentNameEl.textContent = d.opponent_name || "상대방";
-      _renderMessages(d.messages || []);
+      const messages = d.messages || [];
+      _renderMessages(messages);
+      _renderTemplateChips(window.LivingstayChat.shouldShowGreeting(messages));
     } catch(e){ /* 조용히 실패 — 폴링이 재시도 */ }
   }
 
@@ -355,14 +312,7 @@ function openChatModal(roomId){
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        // 전송 성공 시 해당 템플릿 칩을 사용 처리
-        const matchedChip = Array.from(chipsEl.querySelectorAll(".chat-template-chip"))
-          .find((b) => b.getAttribute("data-tpl") === sentText);
-        if (matchedChip) {
-          usedTemplates.add(sentText);
-          localStorage.setItem(_tplStorageKey, JSON.stringify([...usedTemplates]));
-          _refreshChipVisibility();
-        }
+        window.LivingstayChat.showSafetyNoticeForMessage(sentText, safetyEl);
         await _loadMessages();
       }
       else {

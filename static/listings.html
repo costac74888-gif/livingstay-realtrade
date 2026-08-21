@@ -324,6 +324,7 @@
 <script src="/static/js/format_util.js"></script>
 <script src="/static/js/header.js"></script>
 <script src="/static/js/auth.js"></script>
+<script src="/static/js/chat_common.js"></script>
 <script>
 (function(){
   "use strict";
@@ -588,28 +589,10 @@
   }
 
   // ── 채팅방 열기 ─────────────────────────────────────────────────────
-  async function openChat(listingRequestId){
-    try {
-      const res = await fetch("/api/chat/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ listing_request_id: listingRequestId }),
-      });
-      if (res.status === 401){
-        if (confirm("채팅을 이용하려면 로그인이 필요합니다.\n로그인 페이지로 이동하시겠습니까?"))
-          window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
-        return;
-      }
-      const d = await res.json().catch(() => ({}));
-      if (res.ok && d.ok){
-        alert("채팅방이 준비되었습니다.\n(채팅 화면은 준비 중입니다)");
-      } else {
-        alert(d.error || "채팅방 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      }
-    } catch(e){
-      alert("오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-    }
+  function openChat(listingRequestId){
+    return window.LivingstayChat.startListingChat(listingRequestId, function(roomId){
+      window.location.href = "/mypage?openChat=" + roomId;
+    });
   }
 
   // ── 썸네일 HTML ─────────────────────────────────────────────────────

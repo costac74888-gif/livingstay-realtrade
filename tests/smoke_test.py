@@ -2,11 +2,12 @@
 """
 smoke_test.py — 홈페이지가 빈/무스타일 화면으로 뜨는 것을 배포 전에 잡아내는 스모크 체크.
 
-홈페이지는 이제 두 정적 파일에 의존한다:
+홈페이지는 이제 세 정적 파일에 의존한다:
   - /static/css/main.css  (스타일)
+  - /static/js/chat_common.js (채팅 인증·안전 공통 흐름)
   - /static/js/main.js    (데이터 + 상호작용)
-둘 중 하나라도 로드에 실패하면(경로 이동/정적 서빙 변경 등) 화면이 통째로 깨진다.
-이 체크는 세 경로가 각각 HTTP 200 + 기대 content-type을 돌려주는지 검증한다.
+하나라도 로드에 실패하면(경로 이동/정적 서빙 변경 등) 화면이 통째로 깨진다.
+이 체크는 네 경로가 각각 HTTP 200 + 기대 content-type을 돌려주는지 검증한다.
 하나라도 어긋나면 즉시 실패(exit 1)한다.
 
 두 가지 모드:
@@ -34,6 +35,7 @@ import sys
 CHECKS = [
     ("/", "text/html"),
     ("/static/css/main.css", "text/css"),
+    ("/static/js/chat_common.js", "javascript"),
     ("/static/js/main.js", "javascript"),
 ]
 
@@ -145,7 +147,7 @@ def run():
             print(f"  - {f}", file=sys.stderr)
         return 1
 
-    print("\n모든 스모크 체크 통과 (/, main.css, main.js)")
+    print("\n모든 스모크 체크 통과 (/, main.css, chat_common.js, main.js)")
     return 0
 
 

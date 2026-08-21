@@ -141,6 +141,8 @@ def run():
 
     # 수정 요청 → 승인 → 지도 노출 end-to-end 테스트
     failures += _check_building_request_e2e(client)
+    # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
+    failures += _check_chat_phone_verification(client)
 
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
@@ -153,6 +155,84 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_chat_phone_verification(client):
+    """미인증 사용자의 채팅방 생성을 서버에서 차단하고, 인증 뒤 생성되는지 확인."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    seller_id = buyer_id = listing_id = room_id = None
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["chat phone verification: 테스트용 master_buildings 행이 없습니다."]
+        cur.execute(
+            "INSERT INTO users (email, name, phone, phone_verified) VALUES (%s, %s, %s, TRUE) RETURNING id",
+            (f"chat-seller-{run_id}@example.test", "채팅 판매자", "010-0000-0000"),
+        )
+        seller_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"chat-buyer-{run_id}@example.test", "채팅 구매자"),
+        )
+        buyer_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO listing_requests
+                (user_id, master_building_id, deal_type, contact_phone, deal_mode, status)
+            VALUES (%s, %s, '매매', %s, 'direct', 'submitted')
+            RETURNING id
+        """, (seller_id, building["id"], "010-0000-0000"))
+        listing_id = cur.fetchone()["id"]
+        conn.commit()
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = buyer_id
+        blocked = client.post("/api/chat/rooms", json={"listing_request_id": listing_id})
+        blocked_payload = blocked.get_json() or {}
+        if blocked.status_code != 403 or blocked_payload.get("code") != "PHONE_VERIFICATION_REQUIRED":
+            failures.append(
+                "chat phone verification: 미인증 채팅 생성 응답이 "
+                f"HTTP {blocked.status_code}, code={blocked_payload.get('code')} (기대: 403, PHONE_VERIFICATION_REQUIRED)"
+            )
+        else:
+            print("OK  /api/chat/rooms 미인증 차단 (403, PHONE_VERIFICATION_REQUIRED)")
+
+        cur.execute(
+            "UPDATE users SET phone=%s, phone_verified=TRUE WHERE id=%s",
+            ("010-1111-2222", buyer_id),
+        )
+        conn.commit()
+        allowed = client.post("/api/chat/rooms", json={"listing_request_id": listing_id})
+        allowed_payload = allowed.get_json() or {}
+        if allowed.status_code != 200 or not allowed_payload.get("ok") or not allowed_payload.get("room_id"):
+            failures.append("chat phone verification: 인증 후 채팅방 생성에 실패했습니다.")
+        else:
+            room_id = allowed_payload["room_id"]
+            print("OK  /api/chat/rooms 인증 후 생성")
+    except Exception as exc:
+        failures.append(f"chat phone verification 테스트 오류: {exc}")
+    finally:
+        try:
+            if room_id:
+                cur.execute("DELETE FROM chat_messages WHERE room_id=%s", (room_id,))
+                cur.execute("DELETE FROM chat_rooms WHERE id=%s", (room_id,))
+            if listing_id:
+                cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
+            if buyer_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (buyer_id,))
+            if seller_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (seller_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
 
 
 def _check_building_request_e2e(client):

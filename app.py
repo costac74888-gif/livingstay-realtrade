@@ -7431,7 +7431,7 @@ def toggle_listing_like(lr_id):
 @app.route("/api/chat/rooms", methods=["POST"])
 @limiter.limit("20 per hour")
 def create_chat_room():
-    """직거래 매물 채팅방 생성 또는 기존 방 반환 — 로그인 필요."""
+    """직거래 매물 채팅방 생성 또는 기존 방 반환 — 로그인·휴대폰 인증 필요."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
@@ -7444,6 +7444,20 @@ def create_chat_room():
         return jsonify({"ok": False, "message": "매물 ID가 필요합니다."}), 400
     conn = get_conn(); cur = conn.cursor()
     try:
+        # 세션에 든 정보가 아니라 현재 DB 인증 상태를 기준으로 확인한다.
+        # 이 생성/재개 진입점은 기존 방을 반환하는 경우에도 인증을 요구한다.
+        # 방 목록에서 이미 참여 중인 방을 읽고 보내는 API의 정책은 별개다.
+        cur.execute("""
+            SELECT phone, COALESCE(phone_verified, FALSE) AS phone_verified
+              FROM users WHERE id = %s
+        """, [user["id"]])
+        requester = cur.fetchone()
+        if not requester or not requester["phone_verified"] or not requester["phone"]:
+            return jsonify({
+                "ok": False,
+                "code": "PHONE_VERIFICATION_REQUIRED",
+                "message": "안전한 직거래를 위해 휴대폰 인증 후 채팅을 시작해주세요.",
+            }), 403
         # 매물 존재 확인 + 판매자 ID
         cur.execute("""
             SELECT lr.id, lr.user_id AS seller_user_id
