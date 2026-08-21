@@ -86,8 +86,8 @@
           '<div id="lrPriceJeonse"><input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="전세 보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
           '<div id="lrPriceWolse" style="display:flex;gap:7px;"><input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" value="' + esc(prefill.monthly_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
           '<div id="lrShortTerm"><input id="lrDesiredPrice" maxlength="100" placeholder="희망 조건 (선택)" value="' + esc(prefill.desired_price || "") + '" style="' + inputStyle() + '"></div></section>' +
-          '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">상세 정보 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
-          '<div style="display:flex;gap:7px;margin-bottom:7px;"><input id="lrArea" type="number" min="0" step="0.01" inputmode="decimal" placeholder="전용면적 ㎡" value="' + esc(prefill.area_sqm || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrDong" maxlength="20" placeholder="동" value="' + esc(prefill.dong || "") + '" style="' + inputStyle("flex:.55;") + '"><input id="lrHo" maxlength="20" placeholder="호" value="' + esc(prefill.ho || "") + '" style="' + inputStyle("flex:.55;") + '"></div>' +
+           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">상세 정보 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
+           '<div style="display:flex;gap:7px;margin-bottom:7px;"><div style="flex:1;"><select id="lrArea" style="' + inputStyle() + '"><option value="">전용면적 선택</option></select><input id="lrAreaManual" type="number" min="0" step="0.01" inputmode="decimal" placeholder="전용면적 직접 입력 ㎡" style="' + inputStyle("display:none;margin-top:6px;") + '"></div><input id="lrDong" maxlength="20" placeholder="동" value="' + esc(prefill.dong || "") + '" style="' + inputStyle("flex:.55;") + '"><input id="lrHo" maxlength="20" placeholder="호" value="' + esc(prefill.ho || "") + '" style="' + inputStyle("flex:.55;") + '"></div>' +
           '<select id="lrRegistrantType" style="' + inputStyle() + '"><option value="owner">소유자</option><option value="agent">중개사</option><option value="other">기타 관계자</option></select></section>' +
           '<section id="lrYieldSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">예상 수익률 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
           '<div style="display:flex;gap:7px;"><input id="lrYieldDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.deposit_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrYieldRent" type="number" min="1" inputmode="numeric" placeholder="월 임대료 (만원)" value="' + esc(prefill.yield_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div id="lrYieldResult" style="font-size:11.5px;color:var(--brass,#b4863f);margin-top:6px;"></div></section>' +
@@ -106,6 +106,45 @@
     var $ = function (selector) { return overlay.querySelector(selector); };
     var form = $("#lrForm"), message = $("#lrMessage"), submit = $("#lrSubmit");
     $("#lrRegistrantType").value = ["owner", "agent", "other"].indexOf(prefill.registrant_type) >= 0 ? prefill.registrant_type : "owner";
+
+    function populateAreaTypes(items) {
+      var areaSelect = $("#lrArea");
+      var areaManual = $("#lrAreaManual");
+      if (!areaSelect || !areaManual) return;
+      var savedArea = prefill.area_sqm == null ? "" : String(prefill.area_sqm);
+      var validItems = (Array.isArray(items) ? items : []).filter(function (item) {
+        return item && item.sqm != null && isFinite(Number(item.sqm)) && Number(item.sqm) > 0;
+      });
+      areaSelect.innerHTML = '<option value="">전용면적 선택</option>' +
+        validItems.map(function (item) {
+          var value = String(item.sqm);
+          var label = value + "㎡" + (item.ho_cnt != null ? " (" + item.ho_cnt + "실)" : "");
+          return '<option value="' + esc(value) + '">' + esc(label) + '</option>';
+        }).join("") +
+        '<option value="__manual__">직접 입력</option>';
+      var matchingArea = savedArea && validItems.find(function (item) {
+        return Number(item.sqm) === Number(savedArea);
+      });
+      if (matchingArea) {
+        areaSelect.value = String(matchingArea.sqm);
+      } else if (savedArea) {
+        areaSelect.value = "__manual__";
+        areaManual.value = savedArea;
+      }
+      areaManual.style.display = areaSelect.value === "__manual__" ? "block" : "none";
+    }
+    $("#lrArea").addEventListener("change", function () {
+      $("#lrAreaManual").style.display = this.value === "__manual__" ? "block" : "none";
+      if (this.value !== "__manual__") $("#lrAreaManual").value = "";
+    });
+    if (buildingId) {
+      fetch("/api/building/" + encodeURIComponent(buildingId) + "/area-types", { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { populateAreaTypes(data.items || []); })
+        .catch(function () { populateAreaTypes([]); });
+    } else {
+      populateAreaTypes([]);
+    }
 
     function close() { overlay.remove(); }
     $("#lrClose").addEventListener("click", close);
@@ -232,7 +271,7 @@
       if (dealMode === "broker" && !phone) { setMessage("중개사 연결을 위해 연락처를 입력해주세요."); return; }
       var body = {
         deal_type: dealType, desired_price: dealType === "단기임대" ? ($("#lrDesiredPrice").value || "").trim() : priceText(dealType, price, rent),
-        price_krw: price, monthly_rent_krw: rent, area_sqm: ($("#lrArea").value || "").trim(),
+        price_krw: price, monthly_rent_krw: rent, area_sqm: ($("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "").trim() : ($("#lrArea").value || "").trim()),
         dong: ($("#lrDong").value || "").trim(), ho: ($("#lrHo").value || "").trim(),
         registrant_type: $("#lrRegistrantType").value, description: ($("#lrDescription").value || "").trim(),
         deposit_krw: numValue($("#lrYieldDeposit")), yield_rent_krw: numValue($("#lrYieldRent"))

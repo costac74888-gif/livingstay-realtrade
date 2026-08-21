@@ -3882,11 +3882,7 @@ function renderBuildingPanel(id){
       else location.href = "/?login=1";
       return;
     }
-    // 상세 화면에서 선택한 전용면적 타입을 매물 등록 폼에 기본값으로 전달한다.
-    const selectedAreaSqm = bAreaFilterEl ? bAreaFilterEl.value : "";
-    openListingRequestModal(id, bCurrentName || "", {
-      prefill: { area_sqm: selectedAreaSqm },
-    });
+    openListingRequestModal(id, bCurrentName || "");
   });
   document.getElementById("btnBuyRequest").addEventListener("click", () => {
     if (!window.__livingstayLoggedIn){
