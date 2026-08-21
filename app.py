@@ -2000,7 +2000,7 @@ def get_buildings_geo():
     # N+1 방지를 위해 LEFT JOIN LATERAL로 건물당 최신 1행만 조회하고,
     # 실거래 이력이 없으면 latest_price/latest_deal_date가 NULL로 반환된다.
     # txn_count는 최신 거래 선택과 같은 매칭 규칙으로 전체 거래 건수를 계산한다.
-    # listing_count는 거래 방식과 무관하게 철회되지 않은 매물의뢰를 합산한다.
+    # listing_count는 지도에서 공개하던 직거래 매물 중 철회되지 않은 것만 합산한다.
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.road_address, mb.lat, mb.lng, mb.lodging_type,
                mb.building_status,
@@ -2009,16 +2009,26 @@ def get_buildings_geo():
                lt.deal_type AS latest_deal_type,
                COALESCE(lt.name_exact, FALSE) AS latest_price_exact,
                lt.address AS address,
-               COALESCE(txn_counts.txn_count, 0)::integer AS txn_count,
+                COALESCE(
+                  CASE WHEN lt.exact_count > 0 THEN lt.exact_count ELSE lt.candidate_count END,
+                  0
+                )::integer AS txn_count,
                COALESCE(listing_counts.listing_count, 0)::integer AS listing_count,
                (
-                 COALESCE(txn_counts.txn_count, 0) +
+                  COALESCE(
+                    CASE WHEN lt.exact_count > 0 THEN lt.exact_count ELSE lt.candidate_count END,
+                    0
+                  ) +
                  COALESCE(listing_counts.listing_count, 0)
                )::integer AS total_count
         FROM master_buildings mb
         LEFT JOIN LATERAL (
             SELECT t.price, t.deal_date, t.floor, t.area, t.deal_type, t.address,
-                   (t.building_name = mb.building_name) AS name_exact
+                   (t.building_name = mb.building_name) AS name_exact,
+                   COUNT(*) FILTER (
+                     WHERE t.building_name = mb.building_name
+                   ) OVER () AS exact_count,
+                   COUNT(*) OVER () AS candidate_count
             FROM transactions t
             WHERE (
                     mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
@@ -2035,24 +2045,10 @@ def get_buildings_geo():
             LIMIT 1
         ) lt ON TRUE
         LEFT JOIN LATERAL (
-            SELECT COUNT(*) AS txn_count
-            FROM transactions t
-            WHERE (
-                    mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
-                    AND t.sgg_cd = mb.sgg_cd
-                    AND t.umd_nm = mb.umd_nm
-                    AND t.jibun  = mb.jibun
-                  )
-               OR (
-                    (mb.sgg_cd IS NULL OR mb.umd_nm IS NULL OR mb.jibun IS NULL)
-                    AND mb.building_name <> '-'
-                    AND t.building_name = mb.building_name
-                  )
-        ) txn_counts ON TRUE
-        LEFT JOIN LATERAL (
             SELECT COUNT(*) AS listing_count
             FROM listing_requests lr
             WHERE lr.master_building_id = mb.id
+              AND lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
         ) listing_counts ON TRUE
         WHERE {where_sql}

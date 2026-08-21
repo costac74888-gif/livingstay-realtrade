@@ -45,7 +45,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-21-1"
+SCHEMA_VERSION = "2026-08-21-2"
 
 
 def init_db():
@@ -875,11 +875,12 @@ def init_db():
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS yield_rate NUMERIC")
     # 수익률 산출에 사용한 월 임대료(만원) — 매매/전세 매물도 별도로 보관
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS yield_rent_krw INTEGER")
-    # 지도 마커의 활성 매물 건수 집계 — 건물별 LATERAL COUNT의 전체 스캔 방지
+    # 지도 마커의 공개 직거래 활성 매물 건수 집계 — 건물별 LATERAL COUNT의 전체 스캔 방지
     cur.execute("""
-        CREATE INDEX IF NOT EXISTS ix_listing_requests_active_building
+        CREATE INDEX IF NOT EXISTS idx_listing_requests_active_direct_building
         ON listing_requests(master_building_id)
-        WHERE status IS DISTINCT FROM 'withdrawn'
+        WHERE deal_mode = 'direct'
+          AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
     """)
 
     # 대외 표시번호(내부 id와 분리) — deal_mode별 독립 채번 (직거래001001 / 중개001001)

@@ -217,6 +217,10 @@ def _check_building_request_e2e(client):
     # 이번 호출에서 생성된 ID만 추적 — cleanup은 이 ID만 삭제
     captured_req_id = None
     captured_mb_id  = None
+    captured_txn_id = None
+    captured_other_txn_id = None
+    captured_listing_id = None
+    captured_user_id = None
 
     try:
         # ── ① Baseline: 삽입 전 의정부동 클러스터 배지 카운트 ─────────────────
@@ -369,6 +373,88 @@ def _check_building_request_e2e(client):
                         f"  (붙여쓰기 id={captured_mb_id} 확인)"
                     )
 
+            # ── ⑥a 지도 원형 배지 — 실거래만·직거래만·동시 조합 회귀 점검 ──
+            # API가 같은 건물에서 두 수를 정확히 합산하는지 실제 DB fixture로 검증한다.
+            def _assert_badge_counts(label, expected):
+                _clear_caches()
+                response = client.get(f"/api/buildings-geo?q={TEST_NAME}")
+                items = (response.get_json() or {}).get("items", []) if response.status_code == 200 else []
+                item = next((it for it in items if it.get("id") == captured_mb_id), None)
+                got = (
+                    (item or {}).get("txn_count"),
+                    (item or {}).get("listing_count"),
+                    (item or {}).get("total_count"),
+                )
+                if response.status_code != 200 or got != expected:
+                    failures.append(
+                        f"지도 배지 {label}: {got} (기대: {expected}, HTTP={response.status_code})"
+                    )
+                else:
+                    print(f"OK  지도 배지 {label}: {got}")
+
+            cur.execute(
+                "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+                (f"map-badge-{_run_ms}@example.test", "지도 배지 테스트"),
+            )
+            captured_user_id = cur.fetchone()["id"]
+            cur.execute("""
+                INSERT INTO transactions
+                    (building_name, address, price, deal_date, deal_type,
+                     sgg_cd, umd_nm, jibun, raw_key)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                TEST_NAME, f"{REAL_UMD_NM} {TEST_JIBUN}", 10000, "2026-08-21",
+                "직거래", REAL_SGG_CD, REAL_UMD_NM, TEST_JIBUN,
+                f"map-badge-{_run_ms}",
+            ))
+            captured_txn_id = cur.fetchone()["id"]
+            # 같은 필지지만 건물명이 다른 거래는, 정확 이름 거래가 있으면 배지 건수에서 제외된다.
+            cur.execute("""
+                INSERT INTO transactions
+                    (building_name, address, price, deal_date, deal_type,
+                     sgg_cd, umd_nm, jibun, raw_key)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                TEST_NAME + " 별관", f"{REAL_UMD_NM} {TEST_JIBUN}", 11000, "2026-08-20",
+                "직거래", REAL_SGG_CD, REAL_UMD_NM, TEST_JIBUN,
+                f"map-badge-other-{_run_ms}",
+            ))
+            captured_other_txn_id = cur.fetchone()["id"]
+            conn.commit()
+            _assert_badge_counts("실거래만", (1, 0, 1))
+
+            cur.execute("""
+                INSERT INTO listing_requests
+                    (user_id, master_building_id, deal_type, contact_phone, deal_mode, status)
+                VALUES (%s, %s, '매매', '01000000000', 'direct', 'submitted')
+                RETURNING id
+            """, (captured_user_id, captured_mb_id))
+            captured_listing_id = cur.fetchone()["id"]
+            # 중개 매물과 두 철회 표기는 지도 공개 직거래 집계에서 제외되어야 한다.
+            cur.execute("""
+                INSERT INTO listing_requests
+                    (user_id, master_building_id, deal_type, contact_phone, deal_mode, status)
+                VALUES
+                    (%s, %s, '매매', '01000000000', 'broker', 'submitted'),
+                    (%s, %s, '매매', '01000000000', 'direct', 'withdrawn'),
+                    (%s, %s, '매매', '01000000000', 'direct', '철회됨')
+            """, (
+                captured_user_id, captured_mb_id,
+                captured_user_id, captured_mb_id,
+                captured_user_id, captured_mb_id,
+            ))
+            conn.commit()
+            _assert_badge_counts("실거래+직거래 매물", (1, 1, 2))
+
+            cur.execute("DELETE FROM transactions WHERE id=%s", (captured_txn_id,))
+            captured_txn_id = None
+            cur.execute("DELETE FROM transactions WHERE id=%s", (captured_other_txn_id,))
+            captured_other_txn_id = None
+            conn.commit()
+            _assert_badge_counts("직거래 매물만", (0, 1, 1))
+
         # ── ⑦ /api/buildings-cluster — umd 배지 baseline+1 확인 ─────────────
         _clear_caches()
         r = client.get(
@@ -406,6 +492,14 @@ def _check_building_request_e2e(client):
         # ── ⑧ 롤백: 이번 호출에서 캡처한 ID만 삭제 ─────────────────────────
         # → 다른 실행·다른 사용자 행을 절대 건드리지 않음
         try:
+            if captured_txn_id:
+                cur.execute("DELETE FROM transactions WHERE id=%s", (captured_txn_id,))
+            if captured_other_txn_id:
+                cur.execute("DELETE FROM transactions WHERE id=%s", (captured_other_txn_id,))
+            if captured_listing_id:
+                cur.execute("DELETE FROM listing_requests WHERE id=%s", (captured_listing_id,))
+            if captured_user_id:
+                cur.execute("DELETE FROM listing_requests WHERE user_id=%s", (captured_user_id,))
             if captured_req_id:
                 cur.execute(
                     "DELETE FROM building_requests WHERE id=%s", (captured_req_id,)
@@ -414,6 +508,8 @@ def _check_building_request_e2e(client):
                 cur.execute(
                     "DELETE FROM master_buildings WHERE id=%s", (captured_mb_id,)
                 )
+            if captured_user_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (captured_user_id,))
             conn.commit()
         except Exception as cleanup_err:
             failures.append(f"롤백 실패: {cleanup_err}")

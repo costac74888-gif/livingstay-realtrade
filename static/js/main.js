@@ -946,6 +946,7 @@ let currentInfoWindow = null;
 let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.maps.Marker) 목록
 let mapLabelData = [];                // [{b, pos, overlay, el}] — 원형 배지 lazy 생성용 데이터
 let _mapRenderGen = 0;                // 마커·클러스터 공용 세대 — 늦게 도착한 이전 응답 폐기용
+let _mapFetchController = null;       // 다음 지도 요청이 이전 네트워크 요청을 취소한다.
 
 // 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
 // 거래·매물 합계가 1건 이상인 건물은 CustomOverlay 원형 숫자 배지로 표시한다.
@@ -1071,15 +1072,14 @@ function mapFiltersFromState(){
 }
 
 // 새 레이어가 준비될 때까지 기존 CustomOverlay를 지도에 남겼다가 짧게 페이드아웃한다.
-// Native Marker는 opacity 제어가 불가하므로 교체 시점에만 제거한다.
 function _beginMapLayerSwap(){
   // 빠른 줌 변경으로 직전 렌더가 끝나지 않았어도, 더 오래된 레이어는 즉시 퇴장시킨다.
   _finishMapLayerSwap(_pendingFadeOutOverlays);
   const previousCustomOverlays = [
+    ...mapOverlays,
     ...mapLabelData.map(d => d.overlay).filter(Boolean),
     ..._clusterOverlays,
   ];
-  mapOverlays.forEach(o => o.setMap(null));
   mapOverlays = [];
   mapLabelData = [];
   _clusterOverlays = [];
@@ -1239,6 +1239,7 @@ function buildingInfoInnerHtml(b){
 async function loadMapMarkers(filters = {}, opts = {}){
   if (!kakaoMap) return;
   const myGen = ++_mapRenderGen;   // 이전 마커·클러스터 응답 및 addChunk 루프를 모두 폐기한다.
+  if (_mapFetchController) _mapFetchController.abort();
   const emptyEl = document.getElementById("mapEmpty");
 
   const params = new URLSearchParams();
@@ -1264,6 +1265,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
   // 네트워크 취소를 지원하지 않는 환경에서도 공용 세대 검사로 늦은 응답을 안전하게 폐기한다.
   const controller = new AbortController();
+  _mapFetchController = controller;
   let items = [];
   try {
     const res = await fetch(`/api/buildings-geo${qs ? "?" + qs : ""}`,
@@ -1306,8 +1308,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
 
   // 마커를 CHUNK_SIZE 단위로 나눠 setTimeout(0)으로 분산 생성 —
   // 한 번에 수천 개를 동기 삽입하면 메인 스레드가 블로킹돼 화면이 굳는다.
-  // native kakao.maps.Marker(canvas 렌더)를 사용하므로 CustomOverlay(DOM)보다
-  // 훨씬 빠르며, 라벨은 첫 줌인 시에만 lazy 생성한다.
+  // 숫자 배지는 가까운 줌 레벨에서만 lazy 생성한다.
   const CHUNK_SIZE = 300;
   let idx = 0;
 
@@ -1322,16 +1323,26 @@ async function loadMapMarkers(filters = {}, opts = {}){
       // 합계 0건은 기존 점 마커를 유지하고, 1건 이상은 원형 숫자 배지만 표시한다.
       if (totalCount === 0){
         const color = markerColor(b.lodging_type, b.building_status);
-        const marker = new kakao.maps.Marker({
-          position: pos,
-          image: _makeMarkerImage(color),
-          title: b.building_name || "",
-          clickable: true,
-          zIndex: 5,
+        // 점도 CustomOverlay로 만들어 다른 배지·클러스터와 동일하게 페이드아웃한다.
+        const el = document.createElement("button");
+        el.type = "button";
+        el.title = b.building_name || "건물";
+        el.setAttribute("aria-label", el.title);
+        el.style.cssText =
+          `width:14px;height:14px;padding:0;border:2px solid #fff;border-radius:50%;background:${color};` +
+          "box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.24);cursor:pointer;" +
+          "pointer-events:auto;transition:opacity .18s ease;";
+        el.addEventListener("click", (event) => {
+          event.stopPropagation();
+          _openBuildingFromMap(b);
         });
-        marker.setMap(kakaoMap);
-        kakao.maps.event.addListener(marker, "click", () => _openBuildingFromMap(b));
-        mapOverlays.push(marker);
+        const overlay = new kakao.maps.CustomOverlay({
+          position: pos, content: el, xAnchor: 0.5, yAnchor: 0.5,
+          clickable: true, zIndex: 5,
+        });
+        overlay.__contentEl = el;
+        overlay.setMap(kakaoMap);
+        mapOverlays.push(overlay);
       } else {
         // 실제 DOM/오버레이는 updateMarkerLabels에서 가까운 줌 레벨에 lazy 생성
         mapLabelData.push({ b, pos, overlay: null, el: null });
@@ -1376,6 +1387,7 @@ function _clusterModeForLevel(lv){
 async function loadClusterOverlays(clusterLevel, filters = {}){
   if (!kakaoMap) return;
   const myGen = ++_mapRenderGen;  // 마커·다른 클러스터 요청을 포함해 이전 응답을 폐기한다.
+  if (_mapFetchController) _mapFetchController.abort();
 
   const params = new URLSearchParams({ level: clusterLevel });
   ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
@@ -1395,12 +1407,15 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     }
   }
 
+  const controller = new AbortController();
+  _mapFetchController = controller;
   let items = [];
   try {
-    const res  = await fetch(`/api/buildings-cluster?${params}`);
+    const res  = await fetch(`/api/buildings-cluster?${params}`, { signal: controller.signal });
     const data = await res.json();
     items = data.items || [];
   } catch(e){
+    if (e.name === "AbortError") return;
     console.error("[CLUSTER] 집계 로드 실패:", e);
     return;
   }
