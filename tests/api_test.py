@@ -162,6 +162,8 @@ def run():
 def _check_lodging_metric_contract(client):
     """실제 표본 건물과 공개 통계가 일반숙박 지표 계약을 지키는지 확인."""
     import app as app_module
+    import time as _time
+    import addr_norm
     from db import get_conn
     from io import BytesIO
     from openpyxl import load_workbook
@@ -387,6 +389,75 @@ def _check_lodging_metric_contract(client):
                     failures.append("lodging metric: 관리자 건물 엑셀에 일반숙박 객실수 표기가 없음")
                 else:
                     print(f"OK  관리자 목록·엑셀 일반숙박 객실수 표기 ({metric_value})")
+
+        # 도로명 정규화 키는 다르지만 지번 키가 같은 건물은 상세 API와
+        # 관리자 목록 모두 지번 보조 매칭으로 영업신고를 보여야 한다.
+        # 개발 DB의 실제 표본 유무에 의존하지 않도록 임시 행을 만들고 정리한다.
+        run_id = str(int(_time.time() * 1000))
+        building_id = None
+        permit_number = f"TEST-ADMIN-JIBUN-{run_id}"
+        building_name = f"자동 지번보조매칭 {run_id}"
+        building_road = "경상북도 칠곡군 팔공산로2길 8 (동명면 기성리)"
+        building_jibun = "경상북도 칠곡군 동명면 기성리 836번지"
+        lodging_road = "경상북도 칠곡군 동명면 팔공산로2길 8"
+        lodging_jibun = "경상북도 칠곡군 동명면 기성리 836"
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO master_buildings "
+                "(building_name, road_address, jibun_address, source, lodging_type) "
+                "VALUES (%s, %s, %s, 'api_test', '일반') RETURNING id",
+                (building_name, building_road, building_jibun),
+            )
+            building_id = cur.fetchone()["id"]
+            cur.execute(
+                "INSERT INTO lodging_registry "
+                "(biz_name, permit_number, road_address, jibun_address, biz_status_name, "
+                "room_count, hygiene_type, road_norm, jibun_norm) "
+                "VALUES (%s, %s, %s, %s, '영업/정상', 18, '여관업', %s, %s)",
+                (
+                    "아이리스모텔",
+                    permit_number,
+                    lodging_road,
+                    lodging_jibun,
+                    addr_norm.normalize_road_prefix(lodging_road),
+                    addr_norm.normalize_jibun_prefix(lodging_jibun),
+                ),
+            )
+            conn.commit()
+
+            detail_response = client.get(f"/api/building/{building_id}")
+            detail_payload = detail_response.get_json() or {}
+            detail_has_iris = any(
+                item.get("biz_name") == "아이리스모텔"
+                for item in detail_payload.get("lodgings", [])
+            )
+            list_response = client.get(f"/api/admin/buildings?q={building_name}")
+            list_payload = list_response.get_json() or {}
+            list_row = next(
+                (row for row in list_payload.get("items", []) if row.get("id") == building_id),
+                None,
+            )
+            list_has_iris = any(
+                item.get("biz_name") == "아이리스모텔"
+                for item in (list_row or {}).get("lodging_list", [])
+            )
+            if detail_response.status_code != 200 or not detail_has_iris:
+                failures.append("lodging match fallback: 아이리스모텔이 상세 API 지번 보조 매칭에서 누락됨")
+            elif list_response.status_code != 200 or not list_row:
+                failures.append("lodging match fallback: 지번 보조 매칭 건물 행을 관리자 목록에서 찾지 못함")
+            elif not list_row.get("lodging_count") or not list_has_iris:
+                failures.append("lodging match fallback: 아이리스모텔이 관리자 목록에서 미매칭으로 표시됨")
+            else:
+                print("OK  아이리스모텔 지번 보조 매칭이 상세·관리자 목록에서 일치")
+        finally:
+            if building_id is not None:
+                cur.execute("DELETE FROM lodging_registry WHERE permit_number = %s", (permit_number,))
+                cur.execute("DELETE FROM master_buildings WHERE id = %s", (building_id,))
+                conn.commit()
+            cur.close()
+            conn.close()
     finally:
         app_module._bld_full_stats_cache = original_cache
 

@@ -11225,7 +11225,10 @@ def admin_buildings_list():
         for jk_norm, bld_list in jibun_key_map.items():
             lr_list = lr_jibun_grp.get(jk_norm, [])
             for it in bld_list:
-                if "_lr_list" not in it:   # road 매칭이 없는 경우만
+                # 도로명 키는 있어도 해당 신고가 없을 수 있다. 이때 빈 목록을
+                # 이미 붙였다는 이유로 지번 보조 매칭을 건너뛰면 상세 API와
+                # 목록의 판정이 달라진다.
+                if not it.get("_lr_list"):  # road 매칭 결과가 없는 경우만
                     it["_lr_list"] = lr_list
     for it in items:
         lr_list = it.pop("_lr_list", [])
