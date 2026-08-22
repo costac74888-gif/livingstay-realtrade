@@ -1,4 +1,4 @@
-// 홈 지도 검색바가 버튼을 한 줄로 유지하고 관심단지를 접어 두는지 정적 회귀 점검한다.
+// 홈 지도 검색바가 모바일에서 화면 폭을 채우고 관심단지 칩을 보장하는지 점검한다.
 const fs = require("fs");
 const vm = require("vm");
 
@@ -26,13 +26,16 @@ expect(
 expect(
   css.includes(".search-actions{display:flex") &&
   css.includes(".search-grid{display:flex") &&
-  css.includes(".search-row2{gap:8px; overflow-x:auto") &&
+  css.includes("right:var(--stage-gap);") &&
+  css.includes(".map-searchbar .search-row2") &&
+  css.includes("flex-wrap:wrap; white-space:normal; overflow:visible;") &&
+  css.includes("#favChips:not(:empty)") &&
   css.includes(".note-full{display:none;}"),
-  "모바일 가로 스크롤·안내 축소 CSS가 없습니다."
+  "모바일 검색바 폭 확장·관심단지 줄바꿈 CSS가 없습니다."
 );
 expect(
-  main.includes("const visibleKeys = favs.slice(0, 4);") &&
-  main.includes("const hiddenKeys = favs.slice(4);") &&
+  main.includes("const visibleKeys = favs.slice(0, 3);") &&
+  main.includes("const hiddenKeys = favs.slice(3);") &&
   main.includes("`+더보기(${hiddenKeys.length})`") &&
   main.includes("fav-overflow-popover"),
   "관심단지 4개 제한 또는 더보기 팝오버 로직이 없습니다."

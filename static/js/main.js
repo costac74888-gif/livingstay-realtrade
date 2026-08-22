@@ -451,8 +451,8 @@ function renderFavChips(){
   if (!wrap) return;
   closeFavOverflowPopover();
   wrap.innerHTML = "";
-  const visibleKeys = favs.slice(0, 4);
-  const hiddenKeys = favs.slice(4);
+  const visibleKeys = favs.slice(0, 3);
+  const hiddenKeys = favs.slice(3);
   visibleKeys.forEach(k => wrap.appendChild(createFavChip(k)));
   if (hiddenKeys.length) {
     const more = document.createElement("button");

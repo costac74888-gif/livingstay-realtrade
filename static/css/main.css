@@ -188,7 +188,7 @@
     .page-title{order:3; flex-basis:100%; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
     .search-panel{padding:0 10px;}
     .panel-card{padding:13px 12px;}
-    .search-row2{gap:8px; overflow-x:auto; padding-bottom:3px; scrollbar-width:thin; -webkit-overflow-scrolling:touch;}
+    .search-row2{gap:8px; padding-bottom:3px;}
     .transactions-note{margin-left:0;}
     .note-full{display:none;}
     .note-info{display:inline-block;}
@@ -348,12 +348,20 @@
     /* 검색바: 전체 폭으로, 내용 많으면 스크롤 */
     .map-searchbar{
       left:var(--stage-gap);
+      right:var(--stage-gap);
       max-height:calc(100vh - 80px);
       max-height:calc(100dvh - 80px); overflow-y:auto;
       /* 카카오맵 SDK가 지도 컨테이너에 touchmove preventDefault를 걸어 패널 스크롤을
          가로채는 문제 방지 — 세로 pan 제스처를 패널이 우선 처리하도록 명시 */
       touch-action: pan-y;
       -webkit-overflow-scrolling: touch;
+    }
+    /* 관심단지·보조 컨트롤은 검색 버튼 행과 분리하고, 칩은 좁은 화면에서 줄바꿈 */
+    .map-searchbar .search-row2{
+      flex-wrap:wrap; white-space:normal; overflow:visible;
+    }
+    .map-searchbar .search-row2 #favChips:not(:empty){
+      flex:1 1 100%; min-width:0; flex-wrap:wrap; overflow:visible;
     }
     /* 패널이 열려 있는 동안엔 우측 상단 "🔍 검색" 플로팅 버튼 숨김 —
        건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라
