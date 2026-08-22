@@ -1,23 +1,36 @@
 /**
- * buildPageList(current, total, windowSize=10)
- * 슬라이딩 윈도우 페이지 번호 배열을 반환합니다.
- * 반환 예) [1, 2, ..., 10, '...', 627]  또는  [1, '...', 11, ..., 20, '...', 627]
+ * buildPageList(current, total, edgeSize=10)
+ * 첫 구간과 마지막 구간은 10개씩, 중간 구간은 현재 페이지 ±2를 반환합니다.
+ * 반환 예) [1, 2, ..., 10, '...', 423]
+ *       또는 [1, '...', 198, 199, 200, 201, 202, '...', 423]
+ *       또는 [1, '...', 414, 415, ..., 423]
  */
-function buildPageList(current, total, windowSize) {
-  windowSize = windowSize || 10;
-  const winStart = current;
-  const winEnd   = Math.min(total, current + windowSize - 1);
-  const pages    = [];
-  if (winStart <= 1) {
-    // 윈도우가 1페이지부터 시작 → 앞 ellipsis 불필요
-    for (let i = 1; i <= winEnd; i++) pages.push(i);
-  } else {
-    pages.push(1);
-    if (winStart > 2) pages.push("...");
-    for (let i = winStart; i <= winEnd; i++) pages.push(i);
+function buildPageList(current, total, edgeSize) {
+  const page = Math.max(1, Math.min(Number(current) || 1, Number(total) || 1));
+  const totalPages = Math.max(1, Number(total) || 1);
+  const edgeCount = Math.max(5, Number(edgeSize) || 10);
+  const pages = [];
+
+  if (totalPages <= edgeCount) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+    return pages;
   }
-  if (winEnd < total - 1) pages.push("...");
-  if (winEnd < total)     pages.push(total);
+
+  // 첫 10개와 마지막 10개는 끊지 않고 보여줘 방향 탐색을 쉽게 한다.
+  if (page <= edgeCount) {
+    for (let i = 1; i <= edgeCount; i++) pages.push(i);
+    pages.push("...", totalPages);
+    return pages;
+  }
+  if (page > totalPages - edgeCount) {
+    pages.push(1, "...");
+    for (let i = totalPages - edgeCount + 1; i <= totalPages; i++) pages.push(i);
+    return pages;
+  }
+
+  pages.push(1, "...");
+  for (let i = page - 2; i <= page + 2; i++) pages.push(i);
+  pages.push("...", totalPages);
   return pages;
 }
 
@@ -471,11 +484,19 @@ class DataGrid {
         : `<button class="dg-page-btn${n === p ? " active" : ""}" data-pg="${n}">${n}</button>`
     ).join("");
     this.$pager.innerHTML =
+      `<button class="dg-nav-btn dg-first" ${p <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>` +
       `<button class="dg-nav-btn dg-prev" ${p <= 1 ? "disabled" : ""}>&#8249;</button>` +
       pageHtml +
-      `<button class="dg-nav-btn dg-next" ${p >= totalPages ? "disabled" : ""}>&#8250;</button>`;
+      `<button class="dg-nav-btn dg-next" ${p >= totalPages ? "disabled" : ""}>&#8250;</button>` +
+      `<button class="dg-nav-btn dg-last" ${p >= totalPages ? "disabled" : ""} title="마지막 페이지로 이동" aria-label="마지막 페이지로 이동">»|</button>`;
+    this.$pager.querySelector(".dg-first").addEventListener("click", () => {
+      if (this.state.page > 1) { this.state.page = 1; this.reload(); }
+    });
     this.$pager.querySelector(".dg-prev").addEventListener("click", () => { if (this.state.page > 1) { this.state.page--; this.reload(); } });
     this.$pager.querySelector(".dg-next").addEventListener("click", () => { if (this.state.page < totalPages) { this.state.page++; this.reload(); } });
+    this.$pager.querySelector(".dg-last").addEventListener("click", () => {
+      if (this.state.page < totalPages) { this.state.page = totalPages; this.reload(); }
+    });
     this.$pager.querySelectorAll(".dg-page-btn:not(.active)").forEach((btn) => {
       btn.addEventListener("click", () => { this.state.page = Number(btn.dataset.pg); this.reload(); });
     });

@@ -295,6 +295,10 @@ def _check_lodging_auto_naming(client):
         add_lodging("도로명자동모텔", road_only_road, road_only_jibun, "road-only", 7, "20260101")
         manual_id, manual_road, manual_jibun = add_building("자동동 8", "8")
         add_lodging("수동수정전모텔", manual_road, manual_jibun, "manual", 7, "20260101")
+        official_pending_id, official_road, official_jibun = add_building(
+            "건축HUB 정식명칭", "9", pending=True, source="official"
+        )
+        add_lodging("정식명칭을바꾸면안됨", official_road, official_jibun, "official-pending", 100, "20260101")
         conn.commit()
         refresh_auto_building_names(conn, inserted_buildings)
 
@@ -317,6 +321,7 @@ def _check_lodging_auto_naming(client):
             unmatched_id: ("자동동 6", "pending", 0),
             road_only_id: ("도로명자동모텔", "lodging_report", 1),
             manual_id: ("수동수정전모텔", "lodging_report", 1),
+            official_pending_id: ("건축HUB 정식명칭", "official", 0),
         }
         for building_id, (name, source, candidate_count) in expected.items():
             row = rows.get(building_id) or {}
@@ -344,6 +349,26 @@ def _check_lodging_auto_naming(client):
         )
         if (cur.fetchone() or {}).get("building_name") != "아이리스모텔 리뉴얼":
             failures.append("lodging auto name: 상호 변경이 다음 재계산에 반영되지 않음")
+
+        # 활성 후보가 0건이 되면 자동명명 결과를 되돌리거나 덮어쓰지 않는다.
+        cur.execute(
+            "UPDATE lodging_registry SET biz_status_name=%s WHERE permit_number=%s",
+            ("폐업", inserted_permits[0]),
+        )
+        conn.commit()
+        refresh_auto_building_names(conn, [single_id])
+        cur.execute(
+            """SELECT building_name, building_name_source, building_name_candidate_count
+                 FROM master_buildings WHERE id=%s""",
+            (single_id,),
+        )
+        no_active_row = cur.fetchone() or {}
+        if (
+            no_active_row.get("building_name") != "아이리스모텔 리뉴얼"
+            or no_active_row.get("building_name_source") != "lodging_report"
+            or int(no_active_row.get("building_name_candidate_count") or 0) != 1
+        ):
+            failures.append("lodging auto name: 활성 후보 0건일 때 기존 자동명칭을 변경함")
 
         detail = client.get(f"/api/building/{tie_id}")
         payload = detail.get_json() or {}

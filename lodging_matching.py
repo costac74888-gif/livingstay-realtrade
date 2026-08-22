@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """행안부 숙박업 신고와 건물 마스터의 주소 매칭·자동명칭 공통 로직."""
 
+from psycopg2.extras import execute_values
+
 from addr_norm import get_building_jibun_key, normalize_road_prefix
 
 
@@ -75,9 +77,9 @@ def choose_representative(rows):
 def refresh_auto_building_names(conn, building_ids=None):
     """미확정 일반숙박 건물의 신고 기준 임시 명칭을 다시 계산한다.
 
-    확정 명칭(name_pending=FALSE)은 절대 수정하지 않는다. 자동명이었던
-    건물에서 활성 후보가 사라지면 원래 지번 기반 임시명으로 되돌려 다음
-    동기화에서 폐업/재개업 상태가 정확히 반영되게 한다.
+    확정 명칭과 활성 후보가 없는 건물은 건드리지 않는다. 대상 건물과
+    활성 신고를 각각 한 번에 읽어, 대량 백필 후에도 원격 DB 왕복 없이
+    도로명 우선·지번 보조 규칙으로 대표 사업장을 선택한다.
     """
     cur = conn.cursor()
     try:
@@ -85,6 +87,8 @@ def refresh_auto_building_names(conn, building_ids=None):
         where = [
             "name_pending IS TRUE",
             "lodging_type = '일반'",
+            "building_name_source IS DISTINCT FROM 'official'",
+            "building_name_source IS DISTINCT FROM 'user'",
         ]
         if building_ids:
             where.append("id = ANY(%s)")
@@ -102,47 +106,92 @@ def refresh_auto_building_names(conn, building_ids=None):
             params,
         )
         buildings = [dict(row) for row in cur.fetchall()]
-        updated = 0
+        if not buildings:
+            return 0
+
+        building_keys = []
+        road_norms = set()
+        jibun_norms = set()
         for building in buildings:
-            rows, match_source = matched_lodgings(cur, building, active_only=True)
+            road_norm = normalize_road_prefix(building.get("road_address"))
+            jibun_norm = get_building_jibun_key(building)
+            building_keys.append((building, road_norm, jibun_norm))
+            if road_norm:
+                road_norms.add(road_norm)
+            if jibun_norm:
+                jibun_norms.add(jibun_norm)
+
+        cur.execute(
+            """
+            SELECT biz_name, permit_number, permit_date, room_count,
+                   road_norm, jibun_norm
+            FROM lodging_registry
+            WHERE biz_status_name = %s
+              AND (road_norm = ANY(%s) OR jibun_norm = ANY(%s))
+            """,
+            (ACTIVE_STATUS, list(road_norms) or ["__none__"],
+             list(jibun_norms) or ["__none__"]),
+        )
+        road_matches = {}
+        jibun_matches = {}
+        for row in cur.fetchall():
+            lodging = dict(row)
+            permit_number = lodging["permit_number"]
+            if lodging.get("road_norm"):
+                road_matches.setdefault(lodging["road_norm"], {})[permit_number] = lodging
+            if lodging.get("jibun_norm"):
+                jibun_matches.setdefault(lodging["jibun_norm"], {})[permit_number] = lodging
+
+        updates = []
+        for building, road_norm, jibun_norm in building_keys:
+            road_rows = list(road_matches.get(road_norm, {}).values()) if road_norm else []
+            rows = road_rows or (
+                list(jibun_matches.get(jibun_norm, {}).values()) if jibun_norm else []
+            )
             representative = choose_representative(rows)
-            if representative:
-                next_name = (representative.get("biz_name") or "").strip()
-                if not next_name:
-                    continue
-                next_source = "lodging_report"
-            else:
-                next_name = (
-                    building.get("building_name_pending_base")
-                    or f"{building.get('umd_nm') or ''} {building.get('jibun') or ''}".strip()
-                    or building.get("jibun_address")
-                    or building.get("road_address")
-                    or building.get("building_name")
-                )
-                next_source = "pending"
+            # 활성 후보가 없으면 자동명명 보류: 기존 이름과 출처를 건드리지 않는다.
+            if not representative:
+                continue
+            next_name = (representative.get("biz_name") or "").strip()
+            if not next_name:
+                continue
+            next_source = "lodging_report"
             if (
                 building.get("building_name") != next_name
                 or building.get("building_name_source") != next_source
                 or (building.get("building_name_candidate_count") or 0) != len(rows)
             ):
-                cur.execute(
-                    """
-                    UPDATE master_buildings
-                       SET building_name=%s,
-                           building_name_source=%s,
-                           building_name_candidate_count=%s,
-                           building_name_pending_base=COALESCE(
-                               building_name_pending_base,
-                               CASE WHEN building_name_source <> 'lodging_report'
-                                    THEN building_name ELSE NULL END
-                           )
-                     WHERE id=%s
-                       AND name_pending IS TRUE
-                       AND lodging_type='일반'
-                    """,
-                    (next_name, next_source, len(rows), building["id"]),
-                )
-                updated += cur.rowcount
+                updates.append((building["id"], next_name, next_source, len(rows)))
+
+        updated = 0
+        for start in range(0, len(updates), 1000):
+            batch = updates[start:start + 1000]
+            execute_values(
+                cur,
+                """
+                UPDATE master_buildings AS mb
+                   SET building_name = values.building_name,
+                       building_name_source = values.building_name_source,
+                       building_name_candidate_count = values.candidate_count,
+                       building_name_pending_base = COALESCE(
+                           mb.building_name_pending_base,
+                           CASE WHEN mb.building_name_source <> 'lodging_report'
+                                THEN mb.building_name ELSE NULL END
+                       )
+                  FROM (VALUES %s) AS values(
+                      id, building_name, building_name_source, candidate_count
+                  )
+                 WHERE mb.id = values.id
+                   AND mb.name_pending IS TRUE
+                   AND mb.lodging_type = '일반'
+                   AND mb.building_name_source IS DISTINCT FROM 'official'
+                   AND mb.building_name_source IS DISTINCT FROM 'user'
+                """,
+                batch,
+                template="(%s, %s, %s, %s)",
+                page_size=len(batch),
+            )
+            updated += cur.rowcount
         conn.commit()
         return updated
     finally:

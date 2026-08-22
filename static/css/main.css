@@ -456,6 +456,7 @@
 .dg-nav-btn{ background:none; border:1px solid #ccc; border-radius:3px; padding:3px 8px; font-size:13px; cursor:pointer; color:var(--ink); line-height:1.6; }
 .dg-nav-btn:hover:not(:disabled){ border-color:var(--brass); color:var(--brass); }
 .dg-nav-btn:disabled{ opacity:.4; cursor:not-allowed; }
+.dg-nav-btn.dg-first,.dg-nav-btn.dg-last{ font-weight:700; padding-left:7px; padding-right:7px; }
 .dg-page-btn{ background:none; border:1px solid transparent; border-radius:3px; padding:3px 8px; font-size:13px; cursor:pointer; color:var(--ink); line-height:1.6; min-width:32px; }
 .dg-page-btn:hover:not(.active){ border-color:#ccc; }
 .dg-page-btn.active{ color:#c00; font-weight:700; border-color:transparent; cursor:default; }

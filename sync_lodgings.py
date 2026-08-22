@@ -419,7 +419,6 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
             if calls_today >= max_calls:
                 print(f"[lodgings] 일일 소프트 캡({max_calls}건) 도달 — 내일 이어서 진행 "
                       f"(다음 페이지 {page} 저장됨)")
-                refresh_auto_building_names(conn)
                 return False, processed, calls_today
 
             calls_today = _bump_daily_calls(cur, conn)
