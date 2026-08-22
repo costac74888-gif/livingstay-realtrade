@@ -205,10 +205,19 @@
         const rows = d.rows || [];
         const pct  = (v) => v == null ? "-" : v.toFixed(1) + "%";
         const n    = (v) => (v == null || v === 0) ? "-" : Number(v).toLocaleString();
+        const GENERAL_UNITS_TOOLTIP =
+          "일반숙박시설은 구분소유 호수 개념이 없어 이 값이 실제 객실수를 반영하지 않습니다. 실제 객실수는 '신고율/객실수' 컬럼을 참고하세요";
+        const generalUnitsCell = (value) => {
+          const formatted = n(value);
+          const label = formatted === "-"
+            ? "-"
+            : `${formatted} <span style="font-size:10px;">(참고용, 신뢰불가)</span>`;
+          return `<td title="${GENERAL_UNITS_TOOLTIP}" style="text-align:right;padding:4px 8px;color:var(--ink-soft);font-size:10px;cursor:help;">${label}</td>`;
+        };
         const COLS = [
           { label: "용도",        key: null,                fmt: (row) => `<td style="padding:4px 8px;font-weight:inherit;">${row.type}</td>` },
           { label: "건물수",      key: "building_count",    fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${row.building_count.toLocaleString()}</td>` },
-          { label: "호실수",      key: "units",             fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.units)}</td>` },
+          { label: "호실수",      key: "units",             fmt: (row) => row.type === "일반" ? generalUnitsCell(row.units) : `<td style="text-align:right;padding:4px 8px;">${n(row.units)}</td>` },
           { label: "관심저장",    key: "favorites",         fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.favorites)}</td>` },
           { label: "매물내놓기",  key: "listing_requests",  fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.listing_requests)}</td>` },
           { label: "단지뱃지",    key: "broker_badge",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.broker_badge)}</td>` },
@@ -243,6 +252,9 @@
           }
           if (c.key === "report_rate") {
             return `<td style="text-align:right;padding:4px 8px;color:var(--ink-soft);">-</td>`;
+          }
+          if (c.key === "units") {
+            return generalUnitsCell(sub.units);
           }
           if (c.key === "permit_count" || c.key === "room_count") {
             return `<td style="text-align:right;padding:4px 8px;">${n(sub[c.key])}</td>`;

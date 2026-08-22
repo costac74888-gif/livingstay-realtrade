@@ -147,6 +147,8 @@ def run():
     failures += _check_lodging_address_normalization()
     # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
     failures += _check_lodging_metric_contract(client)
+    # 관리자 통계표의 일반숙박 호실수 신뢰불가 표시와 비일반 회귀를 확인
+    failures += _check_general_units_table_markup(client)
 
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
@@ -202,6 +204,33 @@ def _check_lodging_address_normalization():
         )
     if not failures:
         print("OK  괄호 안 읍·면·동 표기 도로명 정규화 및 오매칭 방지")
+    return failures
+
+
+def _check_general_units_table_markup(client):
+    """관리자 통계표에서 일반숙박 호실수만 참고용으로 표시하는지 확인."""
+    failures = []
+    response = client.get("/admin")
+    if response.status_code != 200:
+        return [f"admin stats markup: 관리자 페이지 HTTP {response.status_code}"]
+
+    html = response.get_data(as_text=True)
+    required_fragments = [
+        "일반숙박시설은 구분소유 호수 개념이 없어 이 값이 실제 객실수를 반영하지 않습니다.",
+        "실제 객실수는 '신고율/객실수' 컬럼을 참고하세요",
+        "const generalUnitsCell =",
+        'row.type === "일반" ? generalUnitsCell(row.units)',
+        'if (c.key === "units")',
+        "${n(row.units)}",
+    ]
+    missing = [fragment for fragment in required_fragments if fragment not in html]
+    if missing:
+        failures.append(
+            "admin stats markup: 일반 전용 호실수 표시 또는 비일반 기존 표시가 누락됨 "
+            f"({', '.join(missing)})"
+        )
+    else:
+        print("OK  관리자 통계표 일반숙박 호실수 참고용 표시 및 비일반 회귀")
     return failures
 
 
