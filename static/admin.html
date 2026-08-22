@@ -1927,6 +1927,12 @@
       rows.push(`<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">※ 전국 대량수집(brhub_bulk) + 실거래로 새로 발견된 건물(api_discovered)만 포함 — 준공전 파이프라인·사용자 제출 등 다른 경로로 등록된 건물은 이 숫자에서 제외됩니다.</div>`);
       rows.push(`<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">※ 이 화면의 숫자는 통계대시보드·지도 범례와 다를 수 있습니다 — 집계 범위(출처 포함 여부)와 "복합"·"준공전" 정의가 화면마다 다르게 설계되어 있습니다(추후 통일 예정).</div>`);
       rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 법정동 ${num(d.checkpoint_idx)} / ${num(d.total_dongs)}곳${d.checkpoint_idx >= d.total_dongs ? " — 전국 완료" : " — 미완(다음 실행 때 이어서 수집)"}</div>`);
+      if (d.progress_by_sido && d.progress_by_sido.length) {
+        const sidoProgress = d.progress_by_sido.map(p =>
+          `<span style="display:inline-block; margin:2px 8px 2px 0; white-space:nowrap;">${dgEscape(p.sido)} ${num(p.processed)}/${num(p.total)} (${num(p.percent)}%)</span>`
+        ).join("");
+        rows.push(`<div class="geo-stat-row"><b>시도별 진행:</b><div style="margin-top:3px; line-height:1.5;">${sidoProgress}</div></div>`);
+      }
       rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);

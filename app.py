@@ -13837,6 +13837,7 @@ _BRHUB_RESCAN_META_KEY = "brhub_rescan_status"
 _BRHUB_RESCAN_PROGRESS_KEY = "brhub_rescan_progress"
 _BRHUB_DAILY_CAP = 8000  # sync_brhub.py --daily-cap 기본값과 동일 유지
 _BRHUB_TOTAL_DONGS = None  # bjdong_codes.json 법정동 총수 캐시
+_BRHUB_SIDO_LAYOUT = None  # bjdong_codes.json 순서 기반 시도별 법정동 위치 캐시
 
 
 def _brhub_total_dongs():
@@ -13849,6 +13850,45 @@ def _brhub_total_dongs():
         except Exception:
             _BRHUB_TOTAL_DONGS = 0
     return _BRHUB_TOTAL_DONGS
+
+
+def _brhub_progress_by_sido(checkpoint_idx=0):
+    """bjdong_codes.json의 동 순서와 체크포인트로 시도별 진행률을 계산한다."""
+    global _BRHUB_SIDO_LAYOUT
+    if _BRHUB_SIDO_LAYOUT is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bjdong_codes.json"),
+                      encoding="utf-8") as f:
+                code_data = json.load(f)
+            sgg_map = code_data["sgg"]
+            groups = {}
+            for index, dong in enumerate(code_data["dongs"]):
+                code = str(dong[0])
+                sgg_text = sgg_map.get(code[:5], "")
+                sido = (sgg_text.split() or ["미상"])[0]
+                group = groups.setdefault(sido, {"sido": sido, "total": 0, "indices": []})
+                group["total"] += 1
+                group["indices"].append(index)
+            _BRHUB_SIDO_LAYOUT = list(groups.values())
+        except (OSError, KeyError, TypeError, ValueError):
+            _BRHUB_SIDO_LAYOUT = []
+
+    try:
+        checkpoint = max(0, int(checkpoint_idx or 0))
+    except (TypeError, ValueError):
+        checkpoint = 0
+
+    result = []
+    for group in _BRHUB_SIDO_LAYOUT:
+        processed = sum(index < checkpoint for index in group["indices"])
+        total = group["total"]
+        result.append({
+            "sido": group["sido"],
+            "processed": processed,
+            "total": total,
+            "percent": round(processed * 100 / total, 1) if total else 0,
+        })
+    return result
 
 
 @app.route("/api/admin/sync-brhub", methods=["POST"])
@@ -14087,6 +14127,9 @@ def admin_brhub_sync_status():
         "by_type": by_type,
         "checkpoint_idx": (progress.get("idx") if progress else 0) or 0,
         "total_dongs": _brhub_total_dongs(),
+        "progress_by_sido": _brhub_progress_by_sido(
+            (progress.get("idx") if progress else 0) or 0
+        ),
         "found_total": (progress.get("found_total") if progress else 0) or 0,
         "failed_dongs": (progress.get("failed_dongs") if progress else None) or [],
         "cooldowns": (progress.get("cooldowns") if progress else None) or [],
