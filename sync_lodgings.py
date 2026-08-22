@@ -297,6 +297,33 @@ def _upsert(cur, it):
     return True
 
 
+def reindex_lodging_norms():
+    """기존 lodging_registry 주소의 정규화 키를 현재 규칙으로 재계산한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    updated = 0
+    try:
+        cur.execute("SELECT id, road_address, jibun_address FROM lodging_registry")
+        rows = cur.fetchall()
+        for row in rows:
+            road_norm = normalize_road_prefix(row["road_address"])
+            jibun_norm = normalize_jibun_prefix(row["jibun_address"])
+            cur.execute(
+                "UPDATE lodging_registry "
+                "SET road_norm=%s, jibun_norm=%s, updated_at=NOW() "
+                "WHERE id=%s "
+                "  AND (road_norm IS DISTINCT FROM %s OR jibun_norm IS DISTINCT FROM %s)",
+                (road_norm, jibun_norm, row["id"], road_norm, jibun_norm),
+            )
+            updated += cur.rowcount
+        conn.commit()
+        print(f"[lodgings] 정규화 키 재계산 완료 — 전체 {len(rows)}건, 변경 {updated}건")
+        return updated
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _still_owner(cur, status_key, run_id):
     """상태행 소유권 확인 — 다른 실행이 상태를 가져갔으면 False (관리자 버튼 실행일 때만 사용)."""
     cur.execute("SELECT value FROM app_meta WHERE key=%s", (status_key,))
@@ -397,8 +424,13 @@ def main():
     parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
     parser.add_argument("--max-calls", type=int, default=MAX_DAILY_CALLS)
     parser.add_argument("--reset", action="store_true")
+    parser.add_argument("--reindex-norms", action="store_true")
     parser.add_argument("--status-key", default=None)
     args = parser.parse_args()
+
+    if args.reindex_norms:
+        reindex_lodging_norms()
+        return
 
     run_id = None
     stop_beat = threading.Event()

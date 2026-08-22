@@ -28,22 +28,53 @@ _REGION_ALIASES = [
 _ROAD_PREFIX_RE = re.compile(
     r"^(.*?[가-힣A-Za-z0-9·.]+(?:로|길|대로)\s*\d+(?:-\d+)?)"
 )
+_ROAD_TAIL_RE = re.compile(
+    r"[가-힣A-Za-z0-9·.]+(?:로|길|대로)\s*\d+(?:-\d+)?$"
+)
+_PAREN_LOCALITY_RE = re.compile(r"[가-힣][가-힣0-9]*(?:읍|면|동)")
+
+
+def _restore_parenthetical_locality(road_prefix, original):
+    """도로명 본문에서 생략된 괄호 안 읍·면·동 표기를 보완한다.
+
+    건축물대장은 ``경상북도 칠곡군 팔공산로2길 8 (동명면 기성리)``처럼
+    행정구역을 괄호에 두는 반면, 신고 데이터는 ``경상북도 칠곡군 동명면
+    팔공산로2길 8``처럼 도로명 앞에 둔다. 도로명 자체는 바꾸지 않고,
+    괄호에서 읍·면·동 토큰 하나만 도로명 앞에 삽입해 두 형식을 맞춘다.
+    """
+    if not road_prefix or not original:
+        return road_prefix
+    locality = None
+    for content in re.findall(r"[(\[]([^)\]]*)[)\]]", original):
+        match = _PAREN_LOCALITY_RE.search(content)
+        if match:
+            locality = match.group(0)
+            break
+    if not locality or locality in road_prefix:
+        return road_prefix
+    road_match = _ROAD_TAIL_RE.search(road_prefix)
+    if not road_match:
+        return road_prefix
+    head = road_prefix[:road_match.start()].rstrip()
+    road = road_prefix[road_match.start():].lstrip()
+    return f"{head} {locality} {road}".strip()
 
 
 def normalize_road_prefix(addr):
     """도로명주소 → 정규화 매칭 키. 실패 시 None.
 
     1) 괄호 이후/콤마 이후 상세 제거 전에 도로명+건물번호 prefix 추출
-    2) 광역명 표기 통일
-    3) 공백/특수문자 전부 제거
+    2) 괄호 안 읍·면·동 표기가 도로명 본문에서 생략된 경우 보완
+    3) 광역명 표기 통일
+    4) 공백/특수문자 전부 제거
     """
     if not addr:
         return None
-    s = str(addr).strip()
-    m = _ROAD_PREFIX_RE.match(s)
+    original = str(addr).strip()
+    m = _ROAD_PREFIX_RE.match(original)
     if not m:
         return None
-    s = m.group(1)
+    s = _restore_parenthetical_locality(m.group(1), original)
     for old, new in _REGION_ALIASES:
         if s.startswith(old):
             s = new + s[len(old):]

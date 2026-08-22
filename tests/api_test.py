@@ -143,6 +143,8 @@ def run():
     failures += _check_building_request_e2e(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
     failures += _check_chat_phone_verification(client)
+    # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
+    failures += _check_lodging_address_normalization()
     # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
     failures += _check_lodging_metric_contract(client)
 
@@ -157,6 +159,50 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_lodging_address_normalization():
+    """건축물대장 괄호 표기와 영업신고 도로명주소 정규화를 검증."""
+    import addr_norm
+
+    failures = []
+    matching_cases = [
+        (
+            "경상북도 칠곡군 팔공산로2길 8 (동명면 기성리)",
+            "경상북도 칠곡군 동명면 팔공산로2길 8",
+        ),
+        (
+            "경상북도 칠곡군 한티로 708-29 (동명면 기성리)",
+            "경상북도 칠곡군 동명면 한티로 708-29",
+        ),
+        (
+            "경상북도 칠곡군 팔공산로4길 11-12 (동명면 기성리)",
+            "경상북도 칠곡군 동명면 팔공산로4길 11-12",
+        ),
+    ]
+    for master_address, lodging_address in matching_cases:
+        master_key = addr_norm.normalize_road_prefix(master_address)
+        lodging_key = addr_norm.normalize_road_prefix(lodging_address)
+        if not master_key or master_key != lodging_key:
+            failures.append(
+                "lodging address normalization: 괄호 안 행정리 표기와 신고 도로명이 "
+                f"같은 키가 되지 않음 ({master_key} != {lodging_key})"
+            )
+
+    # 한티로와 한티로1길처럼 도로명 자체가 다른 주소는 계속 분리한다.
+    different_master = addr_norm.normalize_road_prefix(
+        "경상북도 칠곡군 한티로1길 708-13 (동명면 기성리)"
+    )
+    different_lodging = addr_norm.normalize_road_prefix(
+        "경상북도 칠곡군 동명면 한티로 708-13"
+    )
+    if different_master == different_lodging:
+        failures.append(
+            "lodging address normalization: 서로 다른 도로명을 같은 키로 합침"
+        )
+    if not failures:
+        print("OK  괄호 안 읍·면·동 표기 도로명 정규화 및 오매칭 방지")
+    return failures
 
 
 def _check_lodging_metric_contract(client):
