@@ -38,6 +38,7 @@ from sms_util import send_sms
 from email_util import send_email
 import storage_util
 import addr_norm
+from lodging_categories import GENERAL_LODGING_HYGIENE_TYPES
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
@@ -14023,8 +14024,8 @@ def admin_unmatched_building_candidates():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        params = [_LODGING_ACTIVE_STATUS, "숙박업(일반)"]
-        where = "lr.biz_status_name = %s AND lr.hygiene_type = %s AND lr.applied_building_id IS NULL AND lr.dismissed_at IS NULL"
+        params = [_LODGING_ACTIVE_STATUS, sorted(GENERAL_LODGING_HYGIENE_TYPES)]
+        where = "lr.biz_status_name = %s AND lr.hygiene_type = ANY(%s) AND lr.applied_building_id IS NULL AND lr.dismissed_at IS NULL"
         if q:
             where += " AND (lr.biz_name ILIKE %s OR lr.road_address ILIKE %s)"
             params += [f"%{q}%", f"%{q}%"]

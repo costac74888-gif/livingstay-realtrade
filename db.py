@@ -1111,7 +1111,7 @@ def _run_init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_jibun_norm ON broker_registry(jibun_norm)")
 
     # 행안부 '문화_숙박업 조회서비스'(apis.data.go.kr/1741000/lodgings/info) 수집본.
-    # 수집은 sync_lodgings.py — 위생업태 '숙박업(생활)'만 저장. permit_number(관리번호) 유일키 UPSERT.
+    # 수집은 sync_lodgings.py — 실제 API 업태명 기준 생활숙박·일반숙박을 저장. permit_number(관리번호) 유일키 UPSERT.
     # road_norm: 도로명주소 정규화(도로명+건물번호 prefix) — master_buildings 주소 매칭용.
     cur.execute("""
     CREATE TABLE IF NOT EXISTS lodging_registry (

@@ -159,7 +159,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python -u run_backfill.py"
+args = "python -u sync_lodgings.py --sleep 0.3 --max-calls 8000"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[workflows.workflow]]
 name = "Prewarm Unit Areas"

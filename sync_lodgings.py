@@ -3,7 +3,7 @@ sync_lodgings.py — 행안부 '문화_숙박업 조회서비스' 수집 배치.
 
 특징 (sync_brokers.py 패턴 재사용)
 - 일일 트래픽 10,000건 → 소프트 캡 8,000에서 스스로 멈추고 체크포인트 저장.
-- numOfRows=1000, 위생업태 '숙박업(생활)'만 저장(클라이언트 필터 — API에 업태 필터 없음).
+- numOfRows=1000, 실제 API 업태명 기준 생활숙박·일반숙박만 저장(클라이언트 필터 — API에 업태 필터 없음).
 - permit_number(관리번호 MNG_NO) 기준 UPSERT.
 - --status-key 시 run_id 펜싱 + 30초 하트비트 (관리자 버튼용).
 
@@ -26,6 +26,11 @@ import requests
 
 from addr_norm import normalize_name, normalize_road_prefix, normalize_jibun_prefix
 from db import get_conn
+from lodging_categories import (
+    TARGET_LODGING_HYGIENE_TYPES,
+    is_target_lodging_hygiene,
+    normalize_hygiene_type,
+)
 
 API_URL = "https://apis.data.go.kr/1741000/lodgings/info"
 SERVICE_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 계정 공용 일반인증키 재사용
@@ -35,7 +40,10 @@ DAILY_CALLS_META_KEY = "lodging_daily_calls"
 PROGRESS_META_KEY = "lodging_sync_progress"
 LAST_SYNC_META_KEY = "lodging_last_sync"
 
-TARGET_HYGIENES = {"숙박업(생활)", "숙박업(일반)"}
+# 실제 API 응답값: 숙박업(생활), 일반호텔, 여관업, 여인숙업.
+# '숙박업 기타'는 범위가 모호해 별도 검토 전에는 수집하지 않는다.
+TARGET_HYGIENES = TARGET_LODGING_HYGIENE_TYPES
+PROGRESS_TARGET_HYGIENES = tuple(sorted(TARGET_HYGIENES))
 
 NUM_ROWS_DEFAULT = 1000
 SLEEP_DEFAULT = 0.3
@@ -85,6 +93,12 @@ def _load_progress(cur):
         return {"next_page": 1, "total_count": None}
     try:
         data = json.loads(row["value"])
+        # 수집 대상이 바뀌면 과거 체크포인트를 이어 쓰면 안 된다.
+        # 예: 생활숙박만 수집하던 시점의 page 200 체크포인트를 일반숙박
+        # 추가 후 재사용하면 1~199페이지의 일반숙박을 영구히 건너뛴다.
+        saved_targets = tuple(sorted(data.get("target_hygienes") or ()))
+        if saved_targets != PROGRESS_TARGET_HYGIENES:
+            return {"next_page": 1, "total_count": None}
         return {"next_page": int(data.get("next_page", 1)),
                 "total_count": data.get("total_count")}
     except (TypeError, ValueError):
@@ -95,6 +109,7 @@ def _save_progress(cur, conn, next_page, total_count):
     payload = json.dumps({
         "next_page": next_page,
         "total_count": total_count,
+        "target_hygienes": PROGRESS_TARGET_HYGIENES,
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     })
     cur.execute("""
@@ -232,9 +247,11 @@ def _to_int(v):
 
 
 def _upsert(cur, it):
-    """숙박업(생활)·숙박업(일반) 1행 UPSERT. 저장 시 True."""
-    hygiene = (it.get("SNTTN_BZSTAT_NM") or it.get("BZSTAT_SE_NM") or "").strip()
-    if hygiene not in TARGET_HYGIENES:
+    """수집 대상 생활·일반숙박 업태 1행 UPSERT. 저장 시 True."""
+    hygiene = normalize_hygiene_type(
+        it.get("SNTTN_BZSTAT_NM") or it.get("BZSTAT_SE_NM")
+    )
+    if not is_target_lodging_hygiene(hygiene):
         return False
     biz_name = (it.get("BPLC_NM") or "").strip()
     if not biz_name:
@@ -339,7 +356,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
-                print(f"[lodgings] 전체 수집 완료 — 생활숙박업 누적 {total_rows}건")
+                print(f"[lodgings] 전체 수집 완료 — 대상 숙박업 누적 {total_rows}건")
                 return True, processed, calls_today
 
             if not first_item_logged:
@@ -354,7 +371,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
             processed += saved
             page += 1
             _save_progress(cur, conn, page, total_count)
-            print(f"[lodgings] 생활숙박업 {saved}건 저장/{len(items)}건 검사 "
+            print(f"[lodgings] 대상 숙박업 {saved}건 저장/{len(items)}건 검사 "
                   f"(누적 이번 실행 {processed}건, 전체 {total_count or '?'}건 중 페이지 {page - 1} 완료)")
 
             # 완료 판정은 '실제' 페이지 크기 기준 — 요청 numOfRows보다 적게 내려오는 경우가 있음(실측 100행).
@@ -365,7 +382,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
-                print(f"[lodgings] 전체 수집 완료 — 생활숙박업 누적 {total_rows}건")
+                print(f"[lodgings] 전체 수집 완료 — 대상 숙박업 누적 {total_rows}건")
                 return True, processed, calls_today
 
             time.sleep(sleep_sec)
