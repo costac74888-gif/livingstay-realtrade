@@ -567,7 +567,8 @@
   }
   function fmtLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max){
     var fN = function(v){ return v != null ? Number(v).toLocaleString() : "-"; };
-    if (deal_type === "월세") return "보" + fN(price_krw) + "/" + fN(monthly_rent_krw);
+    if (deal_type === "월세") return price_krw_max != null ? fN(price_krw) + " ~ " + fN(price_krw_max) : "보" + fN(price_krw) + "/" + fN(monthly_rent_krw);
+    if (deal_type === "단기임대") return price_krw != null ? fN(price_krw) + (price_krw_max != null ? " ~ " + fN(price_krw_max) : "") : "-";
     return price_krw_max != null ? fN(price_krw) + " ~ " + fN(price_krw_max) : fN(price_krw);
   }
 

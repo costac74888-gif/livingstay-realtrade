@@ -71,7 +71,10 @@
     if (deal_type === "매매" || deal_type === "전세") {
       return price_krw_max != null ? fmt(price_krw) + " ~ " + fmt(price_krw_max) : fmt(price_krw);
     }
-    if (deal_type === "월세") return "보" + fmt(price_krw) + "/" + fmt(monthly_rent_krw);
+    if (deal_type === "월세") {
+      return price_krw_max != null ? fmt(price_krw) + " ~ " + fmt(price_krw_max) : "보" + fmt(price_krw) + "/" + fmt(monthly_rent_krw);
+    }
+    if (deal_type === "단기임대") return price_krw != null ? fmt(price_krw) + (price_krw_max != null ? " ~ " + fmt(price_krw_max) : "") : "-";
     return "-";
   }
 

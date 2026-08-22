@@ -1152,7 +1152,7 @@ def _check_listing_registrant_types(client):
         business_update = client.put(
             f"/api/listing-requests/{listing_id}",
             json={
-                "deal_type": "매매",
+                "deal_type": "월세",
                 "registrant_type": "business",
                 "price_krw": 3000,
                 "price_krw_max": 4500,
@@ -1177,7 +1177,7 @@ def _check_listing_registrant_types(client):
         invalid_range = client.put(
             f"/api/listing-requests/{listing_id}",
             json={
-                "deal_type": "매매",
+                "deal_type": "월세",
                 "registrant_type": "business",
                 "price_krw": 4500,
                 "price_krw_max": 3000,
@@ -1186,6 +1186,42 @@ def _check_listing_registrant_types(client):
         )
         if invalid_range.status_code != 400:
             failures.append("business listing: 최고가가 최저가보다 작은 가격범위를 차단하지 않음")
+
+        sale_range = client.put(
+            f"/api/listing-requests/{listing_id}",
+            json={
+                "deal_type": "매매",
+                "registrant_type": "business",
+                "price_krw": 4500,
+                "price_krw_max": 5000,
+                "room_count": 37,
+            },
+        )
+        if sale_range.status_code != 400:
+            failures.append("business listing: 매매 가격범위를 차단하지 않음")
+
+        short_update = client.put(
+            f"/api/listing-requests/{listing_id}",
+            json={
+                "deal_type": "단기임대",
+                "registrant_type": "business",
+                "price_krw": 30,
+                "price_krw_max": 60,
+                "room_count": 37,
+            },
+        )
+        cur.execute(
+            "SELECT deal_type, price_krw, price_krw_max FROM listing_requests WHERE id=%s",
+            (listing_id,),
+        )
+        short_stored = cur.fetchone() or {}
+        if (
+            short_update.status_code != 200
+            or short_stored.get("deal_type") != "단기임대"
+            or short_stored.get("price_krw") != 30
+            or short_stored.get("price_krw_max") != 60
+        ):
+            failures.append("business listing: 단기임대 가격범위 저장 실패")
 
         from unittest.mock import patch
         with patch("app.matched_lodgings", return_value=(

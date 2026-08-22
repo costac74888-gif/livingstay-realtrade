@@ -914,8 +914,8 @@ def _run_init_db():
         master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
         deal_type TEXT NOT NULL,          -- 매매 | 전세 | 월세 | 단기임대
         desired_price TEXT,               -- 희망가 사람이 읽는 문자열 (예: "매매가 12,000만원") — 호환성 유지
-        price_krw INTEGER,                -- 최저 매매가 또는 보증금 (만원 단위 숫자) — 단기임대는 NULL
-        price_krw_max INTEGER,            -- 사업주 가격범위의 최고가 (만원 단위 숫자)
+        price_krw INTEGER,                -- 매매가/보증금 또는 사업주 임대 최저가 (만원 단위 숫자)
+        price_krw_max INTEGER,            -- 사업주 월세·단기임대 가격범위의 최고가 (만원 단위 숫자)
         monthly_rent_krw INTEGER,         -- 월세 (만원 단위 숫자) — 월세 유형에서만 사용
         room_count INTEGER,               -- 사업주가 입력한 총 호실수
         contact_phone TEXT NOT NULL,      -- 중개사가 연락할 번호

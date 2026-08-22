@@ -3142,8 +3142,8 @@ async function loadBuildingHeader(id){
           lr.listing_number ? escapeHtml(lr.listing_number) : "",
           lr.listing_date ? `최근 수정 ${escapeHtml(lr.listing_date)}` : ""
         ].filter(Boolean).join(" · ");
-        const priceText = lr.deal_type === "월세"
-         ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
+        const priceText = lr.deal_type === "월세" && lr.price_krw_max == null
+          ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
           : (lr.price_krw
             ? `${formatNumber(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + formatNumber(lr.price_krw_max) : ""}만원`
             : "-");
@@ -3269,8 +3269,8 @@ async function loadBuildingHeader(id){
         const newBadge = isNew ? `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">NEW</span>` : "";
          const dt = _dealTypeBadge(lr.deal_type);
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
-        const priceText = lr.deal_type === "월세"
-          ? `보${_fmtN(lr.price_krw)}/${_fmtN(lr.monthly_rent_krw)}만`
+         const priceText = lr.deal_type === "월세" && lr.price_krw_max == null
+           ? `보${_fmtN(lr.price_krw)}/${_fmtN(lr.monthly_rent_krw)}만`
           : (lr.price_krw
             ? `${_fmtN(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + _fmtN(lr.price_krw_max) : ""}만원`
             : "-");

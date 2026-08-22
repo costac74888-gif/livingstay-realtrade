@@ -32,9 +32,12 @@ expect(modal.includes("form.dataset.registrantType"),
   "등록자유형 변경 플래그가 폼 data 속성에 저장되지 않습니다.");
 for (const id of [
   "lrAreaBusiness", "lrRoomCount", "lrRoomCountHelp",
-  "lrSalePriceMin", "lrSalePriceMax", "lrJeonseDepositMin", "lrJeonseDepositMax",
+  "lrWolsePriceMin", "lrWolsePriceMax", "lrShortPriceMin", "lrShortPriceMax",
 ]) {
   expect(modal.includes(`id="${id}"`), `사업주 전용 입력란 ${id}이 없습니다.`);
+}
+for (const id of ["lrSalePriceMin", "lrSalePriceMax", "lrJeonseDepositMin", "lrJeonseDepositMax"]) {
+  expect(!modal.includes(`id="${id}"`), `매매/전세에 남은 사업주 가격범위 입력란 ${id}이 있습니다.`);
 }
 expect(modal.includes("/lodging-summary") && modal.includes("loadLodgingSummary"),
   "사업주 대표 숙박업 객실수 자동채움 API 호출이 없습니다.");
@@ -43,6 +46,9 @@ expect(modal.includes("price_krw_max") && modal.includes("priceMax"),
 expect(
   modal.includes('$("#lrAreaOwnerWrap").style.display = isBusiness ? "none" : "block"') &&
   modal.includes('$("#lrAreaBusinessWrap").style.display = isBusiness ? "block" : "none"') &&
+  modal.includes('$("#lrPriceWolseBusiness").style.display = dealType === "월세" && isBusiness ? "flex" : "none"') &&
+  modal.includes('$("#lrShortTermBusiness").style.display = dealType === "단기임대" && isBusiness ? "flex" : "none"') &&
+  modal.includes('$("#lrPriceSale").style.display = dealType === "매매" && !isBusiness ? "block" : "none"') &&
   modal.includes('$("#lrYieldSection").style.display = dealType === "매매" ? "block" : "none"'),
   "사업주/소유자 전용면적 전환 또는 거래유형별 수익률 표시 로직이 없습니다."
 );

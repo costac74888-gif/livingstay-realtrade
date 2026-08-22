@@ -2990,9 +2990,17 @@ def format_lr_price(deal_type, price_krw, monthly_rent_krw, price_krw_max=None):
         price = f"{price_krw:,}"
         return f"{price} ~ {price_krw_max:,}" if price_krw_max is not None else price
     if deal_type == "월세":
+        if price_krw_max is not None:
+            return f"{price_krw:,} ~ {price_krw_max:,}" if price_krw is not None else "-"
         dep = f"{price_krw:,}" if price_krw is not None else "-"
         rent = f"{monthly_rent_krw:,}" if monthly_rent_krw is not None else "-"
         return f"보{dep}/{rent}"
+    if deal_type == "단기임대":
+        return (
+            f"{price_krw:,} ~ {price_krw_max:,}"
+            if price_krw is not None and price_krw_max is not None
+            else (f"{price_krw:,}" if price_krw is not None else "-")
+        )
     return "-"
 
 
@@ -6798,7 +6806,9 @@ def format_lr_summary(deal_type, price_krw, monthly_rent_krw, area_sqm, yield_ra
     if deal_type in ("월세", "단기임대"):
         if price_krw is not None:
             price_str = f"{int(price_krw):,}"
-        if monthly_rent_krw is not None:
+        if price_krw_max is not None:
+            price_str += f"~{int(price_krw_max):,}"
+        elif monthly_rent_krw is not None:
             price_str += f"/{int(monthly_rent_krw):,}"
     elif price_krw is not None:
         price_str = f"{int(price_krw):,}"
@@ -6873,9 +6883,13 @@ def create_listing_request():
         if not (0 < n <= 1_000_000):
             return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
-    price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
+    price_krw, err1 = _parse_krw(
+        "price_krw",
+        deal_type in ("매매", "전세", "월세")
+        or (registrant_type == "business" and deal_type == "단기임대"),
+    )
     price_krw_max, err2 = _parse_krw(
-        "price_krw_max", registrant_type == "business" and deal_type in ("매매", "전세")
+        "price_krw_max", registrant_type == "business" and deal_type in ("월세", "단기임대")
     )
     monthly_rent_krw, err3 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
     deposit_krw, err4 = _parse_krw("deposit_krw", True)
@@ -8113,9 +8127,13 @@ def update_listing_request(req_id):
     registrant_type = registrant_type_raw if registrant_type_raw in (
         "owner", "building_owner", "business", "agent", "other"
     ) else "owner"
-    price_krw, err1 = _parse_krw("price_krw", deal_type in ("매매", "전세", "월세"))
+    price_krw, err1 = _parse_krw(
+        "price_krw",
+        deal_type in ("매매", "전세", "월세")
+        or (registrant_type == "business" and deal_type == "단기임대"),
+    )
     price_krw_max, err2 = _parse_krw(
-        "price_krw_max", registrant_type == "business" and deal_type in ("매매", "전세")
+        "price_krw_max", registrant_type == "business" and deal_type in ("월세", "단기임대")
     )
     monthly_rent_krw, err3 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
     deposit_krw, err4 = _parse_krw("deposit_krw", True)
