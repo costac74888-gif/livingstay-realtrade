@@ -85,7 +85,7 @@
     vertical-align: middle;
   }
   .ls-board-tbl tbody tr:last-child td { border-bottom: none; }
-  .td-photo { width: 50px; }
+  .td-photo { width: 50px; position:relative; }
   .td-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); vertical-align: middle; }
   .td-thumb-placeholder { width: 44px; height: 44px; border-radius: 6px; background: var(--brass-tint, #FFF5E0); display: inline-flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid var(--line); }
   .td-type   { font-weight: 700; white-space: nowrap; }
@@ -104,18 +104,9 @@
 
   /* ── 채팅 / 공유 버튼 ── */
   .listing-chat-btn {
-    background: none; border: none; cursor: pointer;
-    font-size: 18px; line-height: 1; padding: 2px;
-    opacity: .7; transition: opacity .15s; filter: grayscale(1);
+    font-size: 14px;
   }
-  .listing-chat-btn:hover   { opacity: 1; filter: none; }
-  .listing-chat-btn.is-chatting { filter: drop-shadow(0 0 3px #B4863F); opacity: 1; }
-  .listing-share-btn {
-    background: none; border: none; cursor: pointer;
-    font-size: 16px; line-height: 1; padding: 2px;
-    opacity: .55; transition: opacity .15s;
-  }
-  .listing-share-btn:hover { opacity: 1; }
+  .listing-chat-btn.is-chatting { color: var(--brass,#B4863F); opacity: 1; }
 
   /* ── 카드형(그리드) ── */
   .ls-card-grid {
@@ -164,11 +155,8 @@
   }
   .ls-card-actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
   .ls-card-actions button {
-    background: none; border: none; cursor: pointer;
-    font-size: 14px; line-height: 1; padding: 2px; opacity: .7; transition: opacity .15s;
+    font-size: 13px;
   }
-  .ls-card-actions button:hover { opacity: 1; }
-  .ls-card-actions .listing-chat-btn { font-size: 14px; }
   .ls-card-photo-right {
     width: 88px; height: 88px; flex: 0 0 88px; align-self: center;
     margin: 0 10px 0 4px; border-radius: 8px; overflow: hidden;
@@ -320,8 +308,8 @@
             <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="area" aria-label="전용면적 정렬">전용㎡ <span class="ls-sort-arrow">↕</span></button></th>
             <th class="ls-hide-mobile"><button type="button" class="ls-sort-btn" data-sort="date" aria-label="최근 수정일 정렬">최근 수정일 <span class="ls-sort-arrow">↕</span></button></th>
             <th>채팅</th>
-            <th class="ls-hide-mobile">찜</th>
             <th class="ls-hide-mobile">공유</th>
+             <th class="ls-hide-mobile">찜</th>
           </tr>
         </thead>
         <tbody id="lsBoardBody">
@@ -344,6 +332,7 @@
 <script src="/static/js/header.js"></script>
 <script src="/static/js/auth.js"></script>
 <script src="/static/js/chat_common.js"></script>
+<script src="/static/js/listing_icons.js"></script>
 <script>
 (function(){
   "use strict";
@@ -645,15 +634,16 @@
   }
 
   // ── 썸네일 HTML ─────────────────────────────────────────────────────
-  function thumbHtml(photoUrl, isCard){
+  function thumbHtml(photoUrl, isCard, photoCount){
+    const countBadge = window.LivingstayListingIcons.photoCount(photoCount);
     if (isCard){
-      return photoUrl
+      return `<span class="ls-photo-frame">${photoUrl
         ? `<img src="${esc(photoUrl)}" alt="매물 사진" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML='🏠'">`
-        : `🏠`;
+        : `🏠`}${countBadge}</span>`;
     }
-    return photoUrl
+    return `<span class="ls-photo-frame">${photoUrl
       ? `<img class="td-thumb" src="${esc(photoUrl)}" alt="매물 사진" onerror="this.outerHTML='<span class=td-thumb-placeholder>🏠</span>'">`
-      : `<span class="td-thumb-placeholder">🏠</span>`;
+      : `<span class="td-thumb-placeholder">🏠</span>`}${countBadge}</span>`;
   }
 
   // ── NEW 뱃지 ────────────────────────────────────────────────────────
@@ -689,8 +679,9 @@
     const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
     const bName = esc(item.building_name || "(건물명 없음)");
 
+    const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     tr.innerHTML = `
-      <td class="td-photo">${thumbHtml(item.photo_url, false)}</td>
+      <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount)}</td>
       <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type)}</td>
       <td class="td-bldg" title="${bName}">
         <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
@@ -700,14 +691,14 @@
       <td class="td-yield ls-hide-mobile">${esc(yld)}</td>
       <td class="td-area ls-hide-mobile">${esc(sqm)}</td>
       <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
-      <td class="td-action">
-        <button type="button" class="${chatBtnClass}" title="${chatTitle}">💬</button>
+        <td class="td-action">
+        <button type="button" class="${chatBtnClass}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
       </td>
       <td class="td-action ls-hide-mobile">
-        <button type="button" class="listing-like-btn" title="찜">♥ <span class="like-cnt">${item.like_count || 0}</span></button>
+        <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
       </td>
       <td class="td-action ls-hide-mobile">
-        <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
+        <button type="button" class="listing-like-btn${item.liked ? " is-liked" : ""}" title="찜">${window.LivingstayListingIcons.heart(!!item.liked)}<span class="like-cnt">${item.like_count || 0}</span></button>
       </td>`;
 
     const photoCell = tr.querySelector(".td-photo");
@@ -732,7 +723,10 @@
         if (res.ok && d.ok) {
           const count = e.currentTarget.querySelector(".like-cnt");
           if (count) count.textContent = d.like_count;
-          e.currentTarget.style.color = d.liked ? "var(--brass,#B4863F)" : "var(--ink-soft)";
+          e.currentTarget.classList.toggle("is-liked", !!d.liked);
+          e.currentTarget.querySelector(".listing-icon")?.replaceWith(
+            document.createRange().createContextualFragment(window.LivingstayListingIcons.heart(!!d.liked))
+          );
         }
       } catch (err) {}
     });
@@ -758,6 +752,7 @@
     const desc     = item.description ? item.description.slice(0, 40) + (item.description.length > 40 ? "…" : "") : null;
     const detailText = [sqm, floor, rooms, yld, desc].filter(Boolean).join(" · ") || "-";
     const likeCount = item.like_count || 0;
+    const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     const chatTitle = myChattingIds.has(item.id) ? "채팅 이어하기" : "문의하기";
 
     div.innerHTML = `
@@ -771,13 +766,13 @@
           ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
           <span class="ls-card-date">${esc(item.listing_date || "")}</span>
           <span class="ls-card-actions">
-            <button type="button" class="listing-like-btn" title="찜">♥ <span class="like-cnt">${likeCount}</span></button>
-            <button type="button" class="listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="${chatTitle}">💬</button>
-            <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
+            <button type="button" class="listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
+            <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
+            <button type="button" class="listing-like-btn${item.liked ? " is-liked" : ""}" title="찜">${window.LivingstayListingIcons.heart(!!item.liked)}<span class="like-cnt">${likeCount}</span></button>
           </span>
         </div>
       </div>
-      <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true)}</div>`;
+      <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
 
     div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -801,7 +796,13 @@
       try {
         const res = await fetch(`/api/listing-requests/${item.id}/like`, { method:"POST", credentials:"same-origin" });
         const d = await res.json().catch(() => ({}));
-        if (res.ok && d.ok) e.currentTarget.textContent = "♥ " + d.like_count;
+        if (res.ok && d.ok) {
+          e.currentTarget.classList.toggle("is-liked", !!d.liked);
+          const count = e.currentTarget.querySelector(".like-cnt");
+          if (count) count.textContent = d.like_count;
+          const oldIcon = e.currentTarget.querySelector(".listing-icon");
+          if (oldIcon) oldIcon.replaceWith(document.createRange().createContextualFragment(window.LivingstayListingIcons.heart(!!d.liked)));
+        }
       } catch(e2){}
     });
     return div;

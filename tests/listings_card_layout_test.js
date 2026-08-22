@@ -1,5 +1,4 @@
-// 직거래 매물 카드가 4줄 정보·우측 사진 구조를 유지하고 게시판형은 건드리지 않았는지 확인한다.
-const childProcess = require("child_process");
+// 직거래 매물 카드·게시판·건물상세의 사진 배지와 SVG 행동 버튼을 회귀 점검한다.
 const fs = require("fs");
 
 function expect(condition, message) {
@@ -8,6 +7,7 @@ function expect(condition, message) {
 
 const listings = fs.readFileSync("static/listings.html", "utf8");
 const main = fs.readFileSync("static/js/main.js", "utf8");
+const icons = fs.readFileSync("static/js/listing_icons.js", "utf8");
 
 const inlineScript = listings.match(/<script>\s*((?:\(function\(\)\{)[\s\S]*?)<\/script>\s*<\/body>/);
 expect(inlineScript, "static/listings.html의 인라인 스크립트를 찾지 못했습니다.");
@@ -19,9 +19,13 @@ for (const needle of [
   'class="ls-card-l3"',
   'class="ls-card-l4"',
   'class="ls-card-photo-right"',
-  'class="listing-like-btn"',
+  'class="listing-like-btn${',
   'class="listing-chat-btn',
   'class="listing-share-btn"',
+  'LivingstayListingIcons.chat()',
+  'LivingstayListingIcons.share()',
+  'LivingstayListingIcons.heart(!!item.liked)',
+  'LivingstayListingIcons.photoCount(photoCount)',
   'highlightCardItem(div)',
   'e.stopPropagation();\n      openChat(item.id);',
 ]) {
@@ -34,17 +38,41 @@ expect(
   main.includes('class="b-listing-l3"') &&
   main.includes('class="b-listing-l4"') &&
   main.includes('class="b-listing-photo-btn listing-photo-btn"') &&
+  main.includes('LivingstayListingIcons.photoCount(photos.length)') &&
+  main.includes('LivingstayListingIcons.heart(!!lr.liked)') &&
   main.includes('listingsBody.querySelectorAll(".listing-share-btn")'),
-  "건물상세 매물 카드가 동일한 4줄/사진/공유 구조가 아닙니다."
-);
-
-const zeroContextDiff = childProcess.execSync(
-  "git diff --unified=0 -- static/listings.html",
-  { encoding: "utf8" }
+  "건물상세 매물 카드가 동일한 4줄/사진 배지/SVG 행동 구조가 아닙니다."
 );
 expect(
-  !zeroContextDiff.includes("renderBoardRow"),
-  "게시판형 renderBoardRow가 이번 카드형 변경 diff에 포함되었습니다."
+  icons.includes("LivingstayListingIcons") &&
+  icons.includes("photoCount") &&
+  icons.includes('fill="currentColor"'),
+  "공용 SVG 아이콘 또는 활성 찜 채움 아이콘이 없습니다."
+);
+const iconContext = { window: {} };
+require("vm").createContext(iconContext);
+require("vm").runInContext(icons, iconContext);
+expect(
+  iconContext.window.LivingstayListingIcons.photoCount(2).includes("ls-photo-count") &&
+  iconContext.window.LivingstayListingIcons.photoCount(5).includes(">5</span>") &&
+  iconContext.window.LivingstayListingIcons.photoCount(1) === "",
+  "사진 2장 이상 배지 또는 1장 이하 숨김 규칙이 정확하지 않습니다."
+);
+const boardBlock = listings.slice(listings.indexOf("function renderBoardRow"), listings.indexOf("function renderCardItem"));
+const cardBlock = listings.slice(listings.indexOf("function renderCardItem"), listings.indexOf("// ── 목록 로드"));
+const detailBlock = main.slice(main.indexOf("function _renderListings"), main.indexOf("_renderListings(allListings)"));
+for (const [name, block] of [["게시판형", boardBlock], ["카드형", cardBlock], ["건물상세", detailBlock]]) {
+  expect(
+    block.indexOf("LivingstayListingIcons.chat()") < block.indexOf("LivingstayListingIcons.share()") &&
+    block.indexOf("LivingstayListingIcons.share()") < block.indexOf("LivingstayListingIcons.heart("),
+    `${name} 행동 버튼 순서가 채팅 → 공유 → 찜이 아닙니다.`
+  );
+}
+
+expect(
+  main.includes('<div class="side-card-title">직거래 매물</div>') &&
+  !main.includes('직거래 매물 <span class="side-sub">공개 등록</span>'),
+  "건물상세의 공개 등록 라벨이 제거되지 않았습니다."
 );
 
-console.log("OK  직거래 카드 4줄·우측사진·찜/채팅/공유 및 게시판형 회귀 방지");
+console.log("OK  직거래 카드·게시판·건물상세 SVG 버튼/사진 배지/공개등록 라벨 회귀 점검");

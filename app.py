@@ -906,6 +906,17 @@ def get_building(building_id):
             )
         for _d in _direct_listings:
             _d["photos"] = _photos_by_lr.get(_d["id"], [])
+            _d["liked"] = False
+        _viewer = session.get("user") or {}
+        if _viewer.get("id"):
+            cur.execute(
+                "SELECT listing_request_id FROM listing_likes "
+                "WHERE user_id=%s AND listing_request_id = ANY(%s)",
+                [_viewer["id"], _lr_ids],
+            )
+            _liked_listing_ids = {row["listing_request_id"] for row in cur.fetchall()}
+            for _d in _direct_listings:
+                _d["liked"] = _d["id"] in _liked_listing_ids
 
     # 전유부 통계 (평형별 호실수) — 캐시에 데이터가 있을 때만 집계
     cur.execute("""
@@ -7827,13 +7838,19 @@ def public_listings():
                 SELECT listing_request_id, COUNT(*) AS like_count
                 FROM listing_likes GROUP BY listing_request_id
             ) ll ON ll.listing_request_id = lr.id
-            LEFT JOIN LATERAL (
-                SELECT '/api/listing-photos/img/' || image_key AS photo_url
-                FROM listing_photos
-                WHERE listing_request_id = lr.id
-                ORDER BY sort_order ASC, id ASC
-                LIMIT 1
-            ) lp ON true
+             LEFT JOIN LATERAL (
+                 SELECT
+                     (array_agg(photo_url ORDER BY sort_order ASC, id ASC))[1] AS photo_url,
+                     array_agg(photo_url ORDER BY sort_order ASC, id ASC) AS photos
+                 FROM (
+                     SELECT '/api/listing-photos/img/' || image_key AS photo_url,
+                            sort_order, id
+                     FROM listing_photos
+                     WHERE listing_request_id = lr.id
+                     ORDER BY sort_order ASC, id ASC
+                     LIMIT 5
+                 ) photo_rows
+             ) lp ON true
             WHERE lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
               {where_extra}
@@ -7848,7 +7865,19 @@ def public_listings():
             ph = d.pop("verified_phone", "") or ""
             d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
             d["listing_number"] = format_listing_number(d.pop("deal_mode", "direct"), d.pop("display_seq", None))
+            d["liked"] = False
             items.append(d)
+        viewer = session.get("user") or {}
+        if viewer.get("id") and items:
+            listing_ids = [item["id"] for item in items]
+            cur.execute(
+                "SELECT listing_request_id FROM listing_likes "
+                "WHERE user_id=%s AND listing_request_id = ANY(%s)",
+                [viewer["id"], listing_ids],
+            )
+            liked_listing_ids = {row["listing_request_id"] for row in cur.fetchall()}
+            for item in items:
+                item["liked"] = item["id"] in liked_listing_ids
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "items": items, "has_more": has_more})

@@ -29,6 +29,26 @@
   .chat-template-chip.seller{
     background:#F1F3F5; border-color:#C8CDD3; color:#46515D;
   }
+  .listing-like-btn,.listing-chat-btn,.listing-share-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:3px;
+    width:28px; height:28px; padding:0; border:1px solid var(--line,#DDE1E6);
+    border-radius:50%; background:#fff; color:var(--ink-soft,#5B6572);
+    cursor:pointer; line-height:1; opacity:.82;
+    transition:color .15s, opacity .15s, background .15s;
+  }
+  .listing-like-btn:hover,.listing-chat-btn:hover,.listing-share-btn:hover{
+    opacity:1; background:var(--brass-tint,#FBF3E7);
+  }
+  .listing-like-btn.is-liked{color:var(--brass,#B4863F); border-color:#EAD9B8;}
+  .listing-icon{width:17px; height:17px; display:block; flex:0 0 auto;}
+  .listing-like-btn .listing-icon{width:16px; height:16px;}
+  .ls-photo-frame{position:relative; display:inline-flex; width:100%; height:100%;
+    align-items:center; justify-content:center;}
+  .ls-photo-count{position:absolute; right:4px; bottom:4px; display:inline-flex;
+    align-items:center; gap:3px; padding:2px 5px; border-radius:999px;
+    background:rgba(0,0,0,.62); color:#fff; font-size:10px; font-weight:700;
+    line-height:1; white-space:nowrap; pointer-events:none;}
+  .ls-photo-count-icon{width:12px; height:12px; display:block;}
 
   header{
     background:#fff; border-bottom:1px solid var(--line);
@@ -998,7 +1018,7 @@
 .b-listing-number{display:inline-block;flex-shrink:0;padding:1px 4px;border:1px solid var(--brass,#B4863F);border-radius:4px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:9px;font-weight:700;}
 .b-listing-actions{display:inline-flex;align-items:center;gap:4px;margin-left:auto;}
 .b-listing-actions button{padding:2px;border:0;background:none;color:var(--ink-soft);font-size:13px;line-height:1;cursor:pointer;}
-.b-listing-photo-btn{display:flex;align-items:center;justify-content:center;width:76px;height:76px;flex:0 0 76px;align-self:center;margin-left:8px;padding:0;overflow:hidden;border:0;border-radius:7px;background:var(--brass-tint,#FFF5E0);font-size:26px;cursor:pointer;}
+.b-listing-photo-btn{position:relative;display:flex;align-items:center;justify-content:center;width:76px;height:76px;flex:0 0 76px;align-self:center;margin-left:8px;padding:0;overflow:hidden;border:0;border-radius:7px;background:var(--brass-tint,#FFF5E0);font-size:26px;cursor:pointer;}
 .b-listing-photo-btn img{width:100%;height:100%;object-fit:cover;display:block;}
 @media (max-width:520px){
   .b-listing-card{min-height:82px;padding:6px 0;}
