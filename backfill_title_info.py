@@ -37,7 +37,13 @@ from datetime import datetime
 
 from db import get_conn, init_db
 from address_utils import BjdongMap, parse_jibun
-from building_registry import _fetch_title_rows, _hocnt, BLD_SERVICE_KEY
+from building_registry import (
+    _fetch_title_rows,
+    _hocnt,
+    BLD_SERVICE_KEY,
+    resolve_api_building_name,
+)
+from lodging_matching import refresh_auto_building_names
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 동일한 로직 재사용
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
@@ -171,11 +177,38 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                 print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부 없음", flush=True)
                 continue
             vals = _extract(rep)
+            official_name = resolve_api_building_name({
+                "bld_nm": rep.get("bldNm"),
+                "dong_nm": rep.get("dongNm"),
+            })
             if pk_only:
                 if vals["mgm_bldrgst_pk"]:
                     cur.execute(
-                        "UPDATE master_buildings SET mgm_bldrgst_pk=%s WHERE id=%s",
-                        (vals["mgm_bldrgst_pk"], bid),
+                        """
+                        UPDATE master_buildings
+                           SET mgm_bldrgst_pk=%s,
+                               building_name=CASE
+                                   WHEN name_pending IS TRUE AND %s <> '' THEN %s
+                                   ELSE building_name
+                               END,
+                               name_pending=CASE
+                                   WHEN name_pending IS TRUE AND %s <> '' THEN FALSE
+                                   ELSE name_pending
+                               END,
+                               building_name_source=CASE
+                                   WHEN name_pending IS TRUE AND %s <> '' THEN 'official'
+                                   ELSE building_name_source
+                               END,
+                               building_name_candidate_count=CASE
+                                   WHEN name_pending IS TRUE AND %s <> '' THEN 0
+                                   ELSE building_name_candidate_count
+                               END
+                         WHERE id=%s
+                        """,
+                        (
+                            vals["mgm_bldrgst_pk"], official_name, official_name,
+                            official_name, official_name, official_name, bid,
+                        ),
                     )
                     n_ok += 1
                     print(f"  [{i}/{total}] OK   id={bid} {name} — pk={vals['mgm_bldrgst_pk']}", flush=True)
@@ -190,6 +223,22 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                          tot_area=%(tot_area)s, plat_area=%(plat_area)s,
                          hhld_cnt=%(hhld_cnt)s, strct_nm=%(strct_nm)s,
                          mgm_bldrgst_pk=COALESCE(%(mgm_bldrgst_pk)s, mgm_bldrgst_pk),
+                         building_name=CASE
+                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
+                             THEN %(official_name)s ELSE building_name
+                         END,
+                         name_pending=CASE
+                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
+                             THEN FALSE ELSE name_pending
+                         END,
+                         building_name_source=CASE
+                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
+                             THEN 'official' ELSE building_name_source
+                         END,
+                         building_name_candidate_count=CASE
+                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
+                             THEN 0 ELSE building_name_candidate_count
+                         END,
                          title_backfilled_at=NOW(),
                          building_status=CASE
                              WHEN %(use_apr_day)s IS NOT NULL AND %(use_apr_day)s != ''
@@ -198,7 +247,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                              ELSE building_status
                          END
                        WHERE id=%(id)s""",
-                    {**vals, "id": bid},
+                    {**vals, "id": bid, "official_name": official_name},
                 )
                 n_ok += 1
                 print(
@@ -222,9 +271,10 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
         time.sleep(sleep)
 
     conn.commit()
+    renamed = refresh_auto_building_names(conn)
     print(
         f"[완료] 처리 {n_ok + n_empty + n_skip + n_err}건 / OK={n_ok} EMPTY={n_empty} "
-        f"SKIP={n_skip} ERR={n_err}",
+        f"SKIP={n_skip} ERR={n_err} / 신고 기준 자동명칭 변경={renamed}건",
         flush=True,
     )
     return n_ok, n_empty, n_skip, n_err

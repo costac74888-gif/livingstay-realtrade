@@ -397,7 +397,11 @@
           { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
             render: (v, row) => {
               const link = `<a href="/building/${row.id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(v || "")}</a>`;
-              return `${link}${row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : ""}`;
+               const pending = row && row.name_pending ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : "";
+               const auto = row && row.building_name_source === "lodging_report"
+                 ? ` <span class="dg-badge dg-badge-ok" title="행안부 영업신고의 영업/정상 사업장명으로 자동 표시">${Number(row.building_name_candidate_count || 0) > 1 ? "영업신고 기준 · 규모 최대" : "영업신고 기준"}</span>`
+                 : "";
+               return `${link}${pending}${auto}`;
             } },
           { key: "road_address_toggle", label: "주소(도로명⇄지번)",
             render: (_, row) => {

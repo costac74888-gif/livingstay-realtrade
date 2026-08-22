@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-21-2"
+SCHEMA_VERSION = "2026-08-22-2"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -201,6 +201,29 @@ def _run_init_db():
     # 정식 명칭 미확정 표시 — API(건축물대장)에 건물명이 없어 "읍면동 지번" 임시명으로 등록된 건물은 TRUE.
     # 기본값 FALSE: 기존 건물들은 이미 확정된 명칭을 갖고 있으므로, TRUE는 submit_building()이 명시적으로만 세팅한다.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS name_pending BOOLEAN DEFAULT FALSE")
+    # 건물명 출처와 자동 대표 후보 수 — 자동 신고명과 확정 명칭을 API에서 구분한다.
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_name_source TEXT DEFAULT 'official'")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_name_candidate_count INTEGER DEFAULT 0")
+    # 자동 신고명이 사라졌을 때 되돌릴 원래 임시명. 주소 보조키가 없는 도로명 건물도
+    # 대상에서 제외하지 않기 위해 별도로 보존한다.
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_name_pending_base TEXT")
+    cur.execute("""
+        UPDATE master_buildings
+           SET building_name_source = 'pending'
+         WHERE name_pending IS TRUE
+           AND (building_name_source IS NULL OR building_name_source = 'official')
+    """)
+    cur.execute("""
+        UPDATE master_buildings
+           SET building_name_pending_base = COALESCE(
+                   NULLIF(TRIM(CONCAT_WS(' ', umd_nm, jibun)), ''),
+                   NULLIF(jibun_address, ''),
+                   NULLIF(road_address, ''),
+                   building_name
+               )
+         WHERE name_pending IS TRUE
+           AND building_name_pending_base IS NULL
+    """)
     # source_key — 수집 파이프라인별 중복 방지 키 (permit_pipeline: "permit|sgg_cd|bjd_cd|bun|ji").
     # NULL 허용 (기존 행 + 비-permit 소스). 부분 유니크 인덱스로 NULL 행은 제외.
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS source_key TEXT")

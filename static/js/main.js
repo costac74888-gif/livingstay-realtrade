@@ -1138,6 +1138,9 @@ function updateMarkerLabels(){
 // 문제를 없애기 위한 단일 소스.
 function buildingInfoInnerHtml(b){
   const name = escapeHtml(b.building_name || "(건물명 미확인)");
+  const nameSource = b.building_name_source === "lodging_report"
+    ? `<span style="font-size:10.5px; font-weight:600; color:#386641;">(영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대" : ""})</span>`
+    : "";
   const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
   const dealHtml = dealDetailHtml({
     price: b.latest_price, deal_date: b.latest_deal_date,
@@ -1174,7 +1177,7 @@ function buildingInfoInnerHtml(b){
     : "";
 
   return (
-    `<div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name}</div>` +
+    `<div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">${name} ${nameSource}</div>` +
     `<div style="color:#6b7683; margin-bottom:4px;">${typeKo}</div>` +
     dealHtml +
     actionRow
@@ -3008,6 +3011,9 @@ async function loadBuildingHeader(id){
     headerRate = Number((lodgingRoomTotal * 100 / unitsNum).toFixed(1)).toLocaleString('ko-KR') + "%";
   }
   const bName = b.building_name || "(건물명 미확인)";
+  const lodgingNameTag = b.building_name_source === "lodging_report"
+    ? `<span title="행안부 숙박업 영업신고의 현재 영업 사업장명으로 임시 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대 사업장" : ""}</span>`
+    : "";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
   // 최근 본 건물 localStorage 기록 (로그인 불필요)
   trackRecentBuilding(id, bName, b.road_address || b.jibun_address || b.address || "");
@@ -3060,6 +3066,7 @@ async function loadBuildingHeader(id){
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${b.name_pending ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
+      ${lodgingNameTag}
       ${badge}
     </div>
     ${(b.road_address || b.jibun_address || b.zip_code) ? `

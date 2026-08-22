@@ -50,6 +50,7 @@ BUILDING_COLS = [
     "lodging_type_detail", "lat", "lng", "slot_capacity", "use_apr_day",
     "tot_pkng_cnt", "grnd_flr_cnt", "ugrnd_flr_cnt", "tot_area", "plat_area",
     "hhld_cnt", "strct_nm", "mgm_bldrgst_pk", "name_pending",
+    "building_name_source", "building_name_candidate_count", "building_name_pending_base",
     "building_status", "completion_expected_date", "permit_day",
     "actual_start_day", "arch_area", "bc_rat", "vl_rat", "source_key",
     "heit", "ride_use_elvt_cnt", "emgen_use_elvt_cnt",

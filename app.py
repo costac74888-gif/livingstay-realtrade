@@ -54,6 +54,11 @@ from address_utils import (
 )
 from store_info_util import build_pnu, get_stores_by_pnu
 import building_registry
+from lodging_matching import (
+    ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
+    matched_lodgings,
+    choose_representative,
+)
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -561,7 +566,9 @@ def get_building(building_id):
     cur = conn.cursor()
     cur.execute("""
         SELECT mb.id AS building_id,
-               mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
+               mb.building_name, mb.name_pending, mb.building_name_source,
+               mb.building_name_candidate_count,
+               mb.road_address, mb.jibun_address,
                mb.lodging_type, mb.lodging_type_detail, mb.lodging_subtype,
                mb.building_status, mb.completion_expected_date,
                mb.permit_day, mb.actual_start_day,
@@ -766,27 +773,7 @@ def get_building(building_id):
     lodgings = []
     lodging_room_total = 0
     try:
-        lr_rows = []
-        road_norm = addr_norm.normalize_road_prefix(building["road_address"])
-        if road_norm:
-            cur.execute("""
-                SELECT lr.biz_name, lr.permit_date, lr.room_count, lr.biz_name_norm
-                FROM lodging_registry lr
-                WHERE lr.road_norm = %s
-                  AND lr.biz_status_name = '영업/정상'
-            """, [road_norm])
-            lr_rows = cur.fetchall()
-        if not lr_rows:
-            # 2차: 도로명 매칭 실패(도로명 없는 건물 등) 시 지번 정규화 키로 매칭
-            jibun_key = addr_norm.get_building_jibun_key(building)
-            if jibun_key:
-                cur.execute("""
-                    SELECT lr.biz_name, lr.permit_date, lr.room_count, lr.biz_name_norm
-                    FROM lodging_registry lr
-                    WHERE lr.jibun_norm = %s
-                      AND lr.biz_status_name = '영업/정상'
-                """, [jibun_key])
-                lr_rows = cur.fetchall()
+        lr_rows, _ = matched_lodgings(cur, building, active_only=True)
         if lr_rows:
             op_map = {}
             if lr_rows:
@@ -939,6 +926,13 @@ def get_building(building_id):
     result["lodgings"] = lodgings
     result["lodging_room_total"] = lodging_room_total  # 영업신고 목록의 객실수 합계 (행정 카드 목록 표시용)
     result["lodging_active_business_count"] = len(lodgings)
+    result["building_name_auto"] = (
+        result.get("building_name_source") == "lodging_report"
+    )
+    result["building_name_auto_representative"] = (
+        result["building_name_auto"]
+        and int(result.get("building_name_candidate_count") or 0) > 1
+    )
     result["lodging_metric"] = (
         "report_rate" if uses_lodging_report_rate(result.get("lodging_type")) else "room_count"
     )
@@ -2024,7 +2018,9 @@ def get_buildings_geo():
     # txn_count는 최신 거래 선택과 같은 매칭 규칙으로 전체 거래 건수를 계산한다.
     # listing_count는 지도에서 공개하던 직거래 매물 중 철회되지 않은 것만 합산한다.
     cur.execute(f"""
-        SELECT mb.id, mb.building_name, mb.road_address, mb.lat, mb.lng, mb.lodging_type,
+        SELECT mb.id, mb.building_name, mb.name_pending,
+               mb.building_name_source, mb.building_name_candidate_count,
+               mb.road_address, mb.lat, mb.lng, mb.lodging_type,
                mb.building_status,
                lt.price AS latest_price, lt.deal_date AS latest_deal_date,
                lt.floor AS latest_floor, lt.area AS latest_area,
@@ -2079,6 +2075,14 @@ def get_buildings_geo():
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
+    for row in rows:
+        row["building_name_auto"] = (
+            row.get("building_name_source") == "lodging_report"
+        )
+        row["building_name_auto_representative"] = (
+            row["building_name_auto"]
+            and int(row.get("building_name_candidate_count") or 0) > 1
+        )
     payload = json.dumps({"total": len(rows), "items": rows}, ensure_ascii=False)
     if _cache_key:  # bounds 요청은 캐시하지 않음 (고카디낼리티)
         _geo_cache[_cache_key] = (time.time(), payload)
@@ -2636,7 +2640,10 @@ def submit_building():
         # building_name_hint가 있고 name_pending 상태면 힌트로 갱신
         if building_name_hint and name_pending:
             cur.execute("""
-                UPDATE master_buildings SET building_name=%s, name_pending=FALSE WHERE id=%s
+                UPDATE master_buildings
+                   SET building_name=%s, name_pending=FALSE,
+                       building_name_source='user', building_name_candidate_count=0
+                 WHERE id=%s
             """, (building_name_hint, master_id))
             building_name = building_name_hint
             name_pending  = False
@@ -2707,26 +2714,34 @@ def submit_building():
         """, (label, detail, subtype, zip_code_val, master_id))
         if api_bld_nm:
             cur.execute("""
-                UPDATE master_buildings SET building_name=%s, name_pending=FALSE
+                UPDATE master_buildings
+                   SET building_name=%s, name_pending=FALSE,
+                       building_name_source='official', building_name_candidate_count=0
                 WHERE id=%s AND name_pending IS TRUE
             """, (api_bld_nm, master_id))
         else:
             existing_name = (existing["building_name"] or "").strip()
             if existing_name in ("", "-", "(이름 미상)"):
                 cur.execute("""
-                    UPDATE master_buildings SET building_name=%s, name_pending=TRUE WHERE id=%s
-                """, (f"{umd_nm} {jibun_str}", master_id))
+                    UPDATE master_buildings
+                       SET building_name=%s, name_pending=TRUE,
+                           building_name_source='pending', building_name_candidate_count=0,
+                           building_name_pending_base=%s
+                     WHERE id=%s
+                """, (f"{umd_nm} {jibun_str}", f"{umd_nm} {jibun_str}", master_id))
     else:
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source,
                  lodging_type, lodging_type_detail, lodging_subtype, verified_at, name_pending,
-                 zip_code)
+                 building_name_source, building_name_candidate_count, building_name_pending_base, zip_code)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, %s, NOW(), %s,
-                    NULLIF(%s,''))
+                    %s, 0, %s, NULLIF(%s,''))
             RETURNING id
         """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str,
-              title["ho_cnt"], label, detail, subtype, name_pending, zip_code_val))
+              title["ho_cnt"], label, detail, subtype, name_pending,
+              "official" if api_bld_nm else "pending",
+              None if api_bld_nm else building_name, zip_code_val))
         master_id = cur.fetchone()["id"]
         _fill_master_coords(cur, master_id, road_addr_final)
 
@@ -4011,15 +4026,22 @@ def request_correction():
         if api_bld_nm:
             if api_bld_nm != (building["building_name"] or ""):
                 cur.execute("""
-                    UPDATE master_buildings SET building_name=%s, name_pending=FALSE
-                    WHERE id=%s
+                    UPDATE master_buildings
+                       SET building_name=%s, name_pending=FALSE,
+                           building_name_source='official', building_name_candidate_count=0
+                     WHERE id=%s
                 """, (api_bld_nm, building["id"]))
                 name_changed = True
                 name_message = f" 건물명은 건축물대장에서 '{api_bld_nm}'(으)로 확인되어 반영했습니다."
             else:
                 if building.get("name_pending"):
-                    cur.execute("UPDATE master_buildings SET name_pending=FALSE WHERE id=%s",
-                                (building["id"],))
+                    cur.execute(
+                        """UPDATE master_buildings
+                              SET name_pending=FALSE, building_name_source='official',
+                                  building_name_candidate_count=0
+                            WHERE id=%s""",
+                        (building["id"],),
+                    )
                 name_message = f" 건물명은 건축물대장 확인 결과 기존 명칭 '{api_bld_nm}'이 맞습니다."
         else:
             # API에 명칭이 없음 → 제안명은 기록만 하고 마스터는 그대로(지번 임시명 유지).
@@ -11090,7 +11112,9 @@ def admin_buildings_list():
     # sort/order는 화이트리스트 맵(ADMIN_BLD_SORT)으로만 정해지므로 f-string 삽입이 안전하다.
     sort_expr = ADMIN_BLD_SORT[sort]
     cur.execute(f"""
-        SELECT mb.id, mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
+        SELECT mb.id, mb.building_name, mb.name_pending,
+               mb.building_name_source, mb.building_name_candidate_count,
+               mb.road_address, mb.jibun_address,
                mb.sgg_text, mb.sgg_cd, mb.umd_nm, mb.jibun, mb.units,
                mb.biz_units AS biz_units_snapshot_legacy,
                mb.lodging_type, mb.lodging_type_detail,
@@ -11233,9 +11257,27 @@ def admin_buildings_list():
     for it in items:
         lr_list = it.pop("_lr_list", [])
         # 객실수 큰 순으로 정렬
-        lr_list.sort(key=lambda x: (x.get("room_count") or 0), reverse=True)
+        lr_list.sort(key=lambda x: (
+            int(x.get("room_count") or 0),
+            str(x.get("permit_date") or ""),
+        ), reverse=True)
         cnt = len(lr_list)
         it["lodging_count"] = cnt
+        active_lodgings = [
+            lr for lr in lr_list
+            if lr.get("biz_status_name") == ACTIVE_LODGING_STATUS
+        ]
+        it["building_name_auto"] = (
+            it.get("building_name_source") == "lodging_report"
+        )
+        it["building_name_auto_representative"] = (
+            it["building_name_auto"]
+            and int(it.get("building_name_candidate_count") or 0) > 1
+        )
+        # 후보 수가 아직 저장되지 않은 기존 행도 목록에서 현재 상태를
+        # 설명할 수 있도록, 매칭된 활성 사업장 기준으로 보정한다.
+        if it["building_name_auto"] and not it.get("building_name_candidate_count"):
+            it["building_name_candidate_count"] = len(active_lodgings)
         it["lodging_list"] = [
             {
                 "permit_number":     lr.get("permit_number"),
@@ -11833,6 +11875,13 @@ def admin_buildings_update(building_id):
         sets.append("booking_url_source = %s")
         vals.append("admin")
         sets.append("booking_url_updated_at = NOW()")
+    # 관리자가 건물명을 고치면 자동 신고명보다 우선하는 확정 명칭으로 간주한다.
+    if "building_name" in data:
+        sets.extend([
+            "name_pending = FALSE",
+            "building_name_source = 'user'",
+            "building_name_candidate_count = 0",
+        ])
 
     if not sets:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
@@ -11966,10 +12015,19 @@ def admin_buildings_bulk_update():
     clean_value = _clean_bld_value(field, value)
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        f"UPDATE master_buildings SET {field} = %s WHERE id = ANY(%s)",
-        [clean_value, id_list],
-    )
+    if field == "building_name":
+        cur.execute(
+            """UPDATE master_buildings
+                  SET building_name=%s, name_pending=FALSE,
+                      building_name_source='user', building_name_candidate_count=0
+                WHERE id = ANY(%s)""",
+            [clean_value, id_list],
+        )
+    else:
+        cur.execute(
+            f"UPDATE master_buildings SET {field} = %s WHERE id = ANY(%s)",
+            [clean_value, id_list],
+        )
     updated = cur.rowcount
     conn.commit()
     cur.close()
@@ -17858,7 +17916,10 @@ def admin_building_request_approve_name(req_id):
         if not req["master_building_id"]:
             return jsonify({"ok": False, "message": "대상 건물이 연결되어 있지 않습니다."}), 400
         cur.execute(
-            "UPDATE master_buildings SET building_name=%s, name_pending=FALSE WHERE id=%s",
+            """UPDATE master_buildings
+                  SET building_name=%s, name_pending=FALSE,
+                      building_name_source='user', building_name_candidate_count=0
+                WHERE id=%s""",
             (name, req["master_building_id"]))
         if cur.rowcount == 0:
             conn.rollback()

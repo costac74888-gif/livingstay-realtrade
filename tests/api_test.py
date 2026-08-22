@@ -147,6 +147,8 @@ def run():
     failures += _check_lodging_address_normalization()
     # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
     failures += _check_lodging_metric_contract(client)
+    # 명칭 미확정 일반숙박은 영업신고 대표 사업장명으로 자동 표시되는지 확인
+    failures += _check_lodging_auto_naming(client)
     # 관리자 통계표의 일반숙박 호실수 신뢰불가 표시와 비일반 회귀를 확인
     failures += _check_general_units_table_markup(client)
 
@@ -204,6 +206,207 @@ def _check_lodging_address_normalization():
         )
     if not failures:
         print("OK  괄호 안 읍·면·동 표기 도로명 정규화 및 오매칭 방지")
+    return failures
+
+def _check_lodging_auto_naming(client):
+    """미확정 일반숙박의 영업신고 대표명 자동 반영 계약을 검증한다."""
+    import time as _time
+    import addr_norm
+    from db import get_conn
+    from lodging_matching import refresh_auto_building_names
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    road_base = f"테스트특별시 자동명명구 검증로 {run_id[-4:]}"
+    inserted_buildings = []
+    inserted_permits = []
+    conn = get_conn()
+    cur = conn.cursor()
+
+    def add_building(label, suffix, pending=True, source="pending", with_metadata=True):
+        road = f"{road_base}-{suffix}"
+        if with_metadata:
+            cur.execute(
+                """
+                INSERT INTO master_buildings
+                    (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
+                     source, lodging_type, name_pending, building_name_source, building_name_pending_base)
+                VALUES (%s, %s, %s, '테스트특별시 자동명명구', '99999', %s, %s,
+                        'api_test', '일반', %s, %s, %s)
+                RETURNING id
+                """,
+                (label, road, f"테스트특별시 자동동 {suffix}", "자동동", suffix, pending, source, label),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO master_buildings
+                    (building_name, road_address, source, lodging_type, name_pending,
+                     building_name_source, building_name_pending_base)
+                VALUES (%s, %s, 'api_test', '일반', TRUE, 'pending', %s)
+                RETURNING id
+                """,
+                (label, road, label),
+            )
+        building_id = cur.fetchone()["id"]
+        inserted_buildings.append(building_id)
+        return building_id, road, f"테스트특별시 자동동 {suffix}"
+
+    def add_lodging(name, road, jibun, permit_suffix, rooms, date, status="영업/정상"):
+        permit = f"TEST-AUTO-NAME-{run_id}-{permit_suffix}"
+        cur.execute(
+            """
+            INSERT INTO lodging_registry
+                (biz_name, permit_number, road_address, jibun_address, permit_date,
+                 biz_status_name, room_count, hygiene_type, road_norm, jibun_norm)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, '여관업', %s, %s)
+            """,
+            (
+                name, permit, road, jibun, date, status, rooms,
+                addr_norm.normalize_road_prefix(road),
+                addr_norm.normalize_jibun_prefix(jibun),
+            ),
+        )
+        inserted_permits.append(permit)
+
+    try:
+        single_id, single_road, single_jibun = add_building("자동동 1", "1")
+        add_lodging("아이리스모텔", single_road, single_jibun, "single", 8, "20220101")
+
+        largest_id, largest_road, largest_jibun = add_building("자동동 2", "2")
+        add_lodging("객실최대모텔", largest_road, largest_jibun, "largest", 31, "20200101")
+        add_lodging("객실작은호텔", largest_road, largest_jibun, "small", 10, "20250101")
+
+        tie_id, tie_road, tie_jibun = add_building("자동동 3", "3")
+        add_lodging("동률기존모텔", tie_road, tie_jibun, "tie-old", 20, "20200101")
+        add_lodging("동률신규호텔", tie_road, tie_jibun, "tie-new", 20, "20250101")
+        add_lodging("폐업대형모텔", tie_road, tie_jibun, "closed", 999, "20260101", "폐업")
+
+        closed_id, closed_road, closed_jibun = add_building("자동동 4", "4")
+        add_lodging("폐업전용모텔", closed_road, closed_jibun, "closed-only", 99, "20260101", "폐업")
+
+        fixed_id, fixed_road, fixed_jibun = add_building("사용자 확정명", "5", pending=False, source="user")
+        add_lodging("자동으로바뀌면안됨", fixed_road, fixed_jibun, "fixed", 100, "20260101")
+
+        unmatched_id, _, _ = add_building("자동동 6", "6")
+        road_only_id, road_only_road, road_only_jibun = add_building(
+            "도로명 임시명", "7", with_metadata=False
+        )
+        add_lodging("도로명자동모텔", road_only_road, road_only_jibun, "road-only", 7, "20260101")
+        manual_id, manual_road, manual_jibun = add_building("자동동 8", "8")
+        add_lodging("수동수정전모텔", manual_road, manual_jibun, "manual", 7, "20260101")
+        conn.commit()
+        refresh_auto_building_names(conn, inserted_buildings)
+
+        cur.execute(
+            """
+            SELECT id, building_name, name_pending, building_name_source,
+                   building_name_candidate_count
+            FROM master_buildings WHERE id = ANY(%s)
+            """,
+            (inserted_buildings,),
+        )
+        rows = {row["id"]: row for row in cur.fetchall()}
+
+        expected = {
+            single_id: ("아이리스모텔", "lodging_report", 1),
+            largest_id: ("객실최대모텔", "lodging_report", 2),
+            tie_id: ("동률신규호텔", "lodging_report", 2),
+            closed_id: ("자동동 4", "pending", 0),
+            fixed_id: ("사용자 확정명", "user", 0),
+            unmatched_id: ("자동동 6", "pending", 0),
+            road_only_id: ("도로명자동모텔", "lodging_report", 1),
+            manual_id: ("수동수정전모텔", "lodging_report", 1),
+        }
+        for building_id, (name, source, candidate_count) in expected.items():
+            row = rows.get(building_id) or {}
+            if (
+                row.get("building_name") != name
+                or row.get("building_name_source") != source
+                or int(row.get("building_name_candidate_count") or 0) != candidate_count
+                or (building_id != fixed_id and row.get("name_pending") is not True)
+            ):
+                failures.append(
+                    f"lodging auto name: id={building_id} 결과 불일치 "
+                    f"({row.get('building_name')}, {row.get('building_name_source')}, "
+                    f"{row.get('building_name_candidate_count')})"
+                )
+
+        # 상호 변경은 같은 신고번호 UPSERT 뒤 다음 재계산에서 즉시 반영돼야 한다.
+        cur.execute(
+            "UPDATE lodging_registry SET biz_name=%s WHERE permit_number=%s",
+            ("아이리스모텔 리뉴얼", inserted_permits[0]),
+        )
+        conn.commit()
+        refresh_auto_building_names(conn, [single_id])
+        cur.execute(
+            "SELECT building_name FROM master_buildings WHERE id=%s", (single_id,)
+        )
+        if (cur.fetchone() or {}).get("building_name") != "아이리스모텔 리뉴얼":
+            failures.append("lodging auto name: 상호 변경이 다음 재계산에 반영되지 않음")
+
+        detail = client.get(f"/api/building/{tie_id}")
+        payload = detail.get_json() or {}
+        if (
+            detail.status_code != 200
+            or payload.get("building_name_source") != "lodging_report"
+            or payload.get("building_name_candidate_count") != 2
+            or payload.get("building_name_auto_representative") is not True
+        ):
+            failures.append("lodging auto name: 공개 상세 API에 자동명칭 출처/대표 정보가 없음")
+
+        with client.session_transaction() as sess:
+            sess["admin"] = True
+        listing = client.get(f"/api/admin/buildings?q=동률신규호텔")
+        list_row = next(
+            (row for row in (listing.get_json() or {}).get("items", []) if row.get("id") == tie_id),
+            None,
+        )
+        if (
+            listing.status_code != 200
+            or not list_row
+            or list_row.get("building_name_source") != "lodging_report"
+            or list_row.get("building_name_auto_representative") is not True
+        ):
+            failures.append("lodging auto name: 관리자 목록에 자동명칭 출처/대표 정보가 없음")
+
+        # 관리자 수동 명칭 수정도 확정명으로 보호되어 다음 동기화에 덮어써지지 않아야 한다.
+        manual_update = client.put(
+            f"/api/admin/buildings/{manual_id}",
+            json={"building_name": "관리자 확정명"},
+        )
+        refresh_auto_building_names(conn, [manual_id])
+        cur.execute(
+            """SELECT building_name, name_pending, building_name_source
+                 FROM master_buildings WHERE id=%s""",
+            (manual_id,),
+        )
+        manual_row = cur.fetchone() or {}
+        if (
+            manual_update.status_code != 200
+            or manual_row.get("building_name") != "관리자 확정명"
+            or manual_row.get("name_pending") is not False
+            or manual_row.get("building_name_source") != "user"
+        ):
+            failures.append("lodging auto name: 관리자 수동 명칭이 자동명에 덮어써짐")
+
+        if not failures:
+            print("OK  영업신고 자동명칭 단일·복수·동률·폐업·상호변경·확정명 보호")
+    except Exception as exc:
+        failures.append(f"lodging auto name 테스트 오류: {exc}")
+    finally:
+        try:
+            if inserted_permits:
+                cur.execute(
+                    "DELETE FROM lodging_registry WHERE permit_number = ANY(%s)",
+                    (inserted_permits,),
+                )
+            if inserted_buildings:
+                cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (inserted_buildings,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
     return failures
 
 

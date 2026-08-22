@@ -33,6 +33,7 @@ from lodging_categories import (
     is_target_lodging_hygiene,
     normalize_hygiene_type,
 )
+from lodging_matching import refresh_auto_building_names
 
 API_URL = "https://apis.data.go.kr/1741000/lodgings/info"
 SERVICE_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 계정 공용 일반인증키 재사용
@@ -367,7 +368,9 @@ def reindex_lodging_norms():
             )
             updated += cur.rowcount
         conn.commit()
+        renamed = refresh_auto_building_names(conn)
         print(f"[lodgings] 정규화 키 재계산 완료 — 전체 {len(rows)}건, 변경 {updated}건")
+        print(f"[lodgings] 신고 기준 자동명칭 재계산 완료 — 변경 {renamed}건")
         return updated
     finally:
         cur.close()
@@ -416,6 +419,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
             if calls_today >= max_calls:
                 print(f"[lodgings] 일일 소프트 캡({max_calls}건) 도달 — 내일 이어서 진행 "
                       f"(다음 페이지 {page} 저장됨)")
+                refresh_auto_building_names(conn)
                 return False, processed, calls_today
 
             calls_today = _bump_daily_calls(cur, conn)
@@ -433,6 +437,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
+                refresh_auto_building_names(conn)
                 print(f"[lodgings] 전체 수집 완료 — 대상 숙박업 누적 {total_rows}건")
                 return True, processed, calls_today
 
@@ -459,6 +464,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
+                refresh_auto_building_names(conn)
                 print(f"[lodgings] 전체 수집 완료 — 대상 숙박업 누적 {total_rows}건")
                 return True, processed, calls_today
 
