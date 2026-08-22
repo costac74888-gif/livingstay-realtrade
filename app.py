@@ -1623,8 +1623,14 @@ def get_transactions():
             params += [b["sgg_cd"], b["umd_nm"], b["jibun"]]
         else:
             name = (b["building_name"] if b else None) or ""
-            where.append("building_name = %s")
-            params.append(name if name and name != "-" else "\x00")
+            if name and name != "-":
+                where.append("building_name = %s")
+                params.append(name)
+            else:
+                # 삭제·미존재 건물의 실거래를 의도적으로 0건 처리한다.
+                # PostgreSQL TEXT에는 NUL 문자를 담을 수 없어 문자열 센티널을
+                # 바인딩하는 방식도 사용하지 않는다.
+                where.append("FALSE")
 
     # 선택적 area_sqm → 해당 전용면적 ±0.5㎡ 범위 실거래만 필터
     _area_sqm_raw = request.args.get("area_sqm", "").strip()
@@ -7374,6 +7380,15 @@ _ROOM_INVENTORY_MAX_FLOOR = 999
 _ROOM_INVENTORY_MAX_ROOMS_PER_FLOOR = 99
 
 
+def _parse_room_monthly_rent(value):
+    """방별 월세(만원)는 비워둘 수 있고, 입력하면 양의 정수만 허용한다."""
+    if value is None or value == "":
+        return None, None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None, "월세는 1만원 이상의 숫자로 입력해주세요."
+    return value, None
+
+
 def _parse_contract_end_date(value):
     """YYYY-MM-DD 계약만기일만 허용한다. 빈 값은 만기일 미입력으로 본다."""
     if value is None or value == "":
@@ -7437,11 +7452,11 @@ def my_room_inventory(lr_id):
         if error_response:
             return error_response
         cur.execute("""
-            SELECT id, room_label, status, floor, channel,
+            SELECT id, room_label, monthly_rent_krw, status, floor, channel,
                    TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
               FROM business_room_inventory
              WHERE listing_request_id = %s
-              ORDER BY floor IS NULL ASC, floor ASC NULLS LAST, room_label ASC, id ASC
+              ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
         """, [lr_id])
         return jsonify({"ok": True, "items": [dict(row) for row in cur.fetchall()]})
     finally:
@@ -7467,6 +7482,9 @@ def create_my_room_inventory(lr_id):
     if not isinstance(status_value, str):
         return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
     status = status_value.strip()
+    monthly_rent_krw, rent_error = _parse_room_monthly_rent(
+        data.get("monthly_rent_krw")
+    )
     contract_end_date, date_error = _parse_contract_end_date(data.get("contract_end_date"))
     floor, floor_error = _parse_room_floor(data.get("floor"))
     channel, channel_error = _parse_room_channel(
@@ -7478,6 +7496,8 @@ def create_my_room_inventory(lr_id):
         return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
     if date_error:
         return jsonify({"ok": False, "message": date_error}), 400
+    if rent_error:
+        return jsonify({"ok": False, "message": rent_error}), 400
     if floor_error:
         return jsonify({"ok": False, "message": floor_error}), 400
     if channel_error:
@@ -7493,11 +7513,11 @@ def create_my_room_inventory(lr_id):
             return error_response
         cur.execute("""
             INSERT INTO business_room_inventory
-                (listing_request_id, room_label, status, contract_end_date, floor, channel)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id, room_label, status, floor, channel,
+                (listing_request_id, room_label, monthly_rent_krw, status, contract_end_date, floor, channel)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, room_label, monthly_rent_krw, status, floor, channel,
                       TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
-        """, [lr_id, room_label, status, contract_end_date, floor, channel])
+        """, [lr_id, room_label, monthly_rent_krw, status, contract_end_date, floor, channel])
         item = dict(cur.fetchone())
         conn.commit()
         return jsonify({"ok": True, "item": item}), 201
@@ -7571,13 +7591,20 @@ def create_my_room_inventory_bulk(lr_id):
 @app.route("/api/my/room-inventory/<int:room_id>", methods=["PUT"])
 @limiter.limit("60 per minute")
 def update_my_room_inventory(room_id):
-    """내 방 재고의 입실/공실 상태와 계약만기일을 저장한다."""
+    """내 방 재고의 호실·월세·입실 상태·계약만기일을 저장한다."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     data = request.get_json(force=True, silent=True) or {}
     if not isinstance(data, dict):
         return jsonify({"ok": False, "message": "요청 본문은 JSON 객체여야 합니다."}), 400
+    if "room_label" in data:
+        room_label_value = data.get("room_label")
+        if not isinstance(room_label_value, str) or not room_label_value.strip():
+            return jsonify({"ok": False, "message": "방 이름 또는 호실을 입력해주세요."}), 400
+        room_label = room_label_value.strip()[:50]
+    else:
+        room_label = None
     status_value = data.get("status")
     if not isinstance(status_value, str):
         return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
@@ -7590,6 +7617,14 @@ def update_my_room_inventory(room_id):
             return jsonify({"ok": False, "message": date_error}), 400
     else:
         contract_end_date = None
+    if "monthly_rent_krw" in data:
+        monthly_rent_krw, rent_error = _parse_room_monthly_rent(
+            data.get("monthly_rent_krw")
+        )
+        if rent_error:
+            return jsonify({"ok": False, "message": rent_error}), 400
+    else:
+        monthly_rent_krw = None
     if "floor" in data:
         floor, floor_error = _parse_room_floor(data.get("floor"))
         if floor_error:
@@ -7607,7 +7642,8 @@ def update_my_room_inventory(room_id):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT bri.id, bri.status, bri.contract_end_date, bri.floor, bri.channel, lr.user_id
+            SELECT bri.id, bri.room_label, bri.status, bri.contract_end_date, bri.floor, bri.channel,
+                   bri.monthly_rent_krw, lr.user_id
               FROM business_room_inventory bri
               JOIN listing_requests lr ON lr.id = bri.listing_request_id
              WHERE bri.id = %s
@@ -7626,17 +7662,24 @@ def update_my_room_inventory(room_id):
             floor = room["floor"]
         if channel is None:
             channel = room["channel"]
+        if "monthly_rent_krw" not in data:
+            monthly_rent_krw = room["monthly_rent_krw"]
+        if room_label is None:
+            room_label = room["room_label"]
         cur.execute("""
             UPDATE business_room_inventory
-               SET status = %s, contract_end_date = %s, floor = %s,
-                   channel = %s, updated_at = NOW()
+               SET room_label = %s, status = %s, contract_end_date = %s, floor = %s,
+                   channel = %s, monthly_rent_krw = %s, updated_at = NOW()
              WHERE id = %s
-         RETURNING id, room_label, status, floor, channel,
+         RETURNING id, room_label, monthly_rent_krw, status, floor, channel,
                    TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
-        """, [status, contract_end_date, floor, channel, room_id])
+        """, [room_label, status, contract_end_date, floor, channel, monthly_rent_krw, room_id])
         item = dict(cur.fetchone())
         conn.commit()
         return jsonify({"ok": True, "item": item})
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "같은 이름의 방이 이미 있습니다."}), 409
     finally:
         cur.close()
         conn.close()

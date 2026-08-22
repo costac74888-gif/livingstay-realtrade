@@ -73,8 +73,7 @@
     <!-- 탭바 -->
     <div class="agent-tabbar">
       <button class="agent-tab is-active" data-tab="favorites">관심단지</button>
-      <button class="agent-tab" data-tab="listing">매물의뢰 현황</button>
-      <button class="agent-tab" data-tab="buy">매수의뢰 현황</button>
+      <button class="agent-tab" data-tab="listing">매물내놓기 현황</button>
       <button class="agent-tab" data-tab="account">계정</button>
     </div>
 
@@ -101,19 +100,11 @@
       </div>
     </div>
 
-    <!-- ── 탭: 매물의뢰 현황 ── -->
+    <!-- ── 탭: 매물내놓기 현황 ── -->
     <div class="agent-tabpanel" data-tabpanel="listing">
       <div class="panel-card" style="margin-top:14px;">
         <div class="agent-guide">건물 상세화면의 <b>"매물 내놓기"</b> 버튼으로 의뢰하면 여기에 현황이 표시됩니다.</div>
         <div id="myListingReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
-      </div>
-    </div>
-
-    <!-- ── 탭: 매수의뢰 현황 ── -->
-    <div class="agent-tabpanel" data-tabpanel="buy">
-      <div class="panel-card" style="margin-top:14px;">
-        <div class="agent-guide">건물 상세화면의 <b>"매수 희망"</b> 버튼으로 의뢰하면 여기에 현황이 표시됩니다.</div>
-        <div id="myBuyReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
       </div>
     </div>
 
@@ -242,7 +233,6 @@
     // 데이터 로드
     loadMyFavorites();
     loadMyListingRequests();
-    loadMyBuyRequests();
 
     // 화면 전환
     document.getElementById("myLoading").style.display = "none";
@@ -328,72 +318,48 @@
       var longStayRooms = items.filter(function(room){ return (room.channel || "장박가능") === "장박가능"; });
       var longStayVacant = longStayRooms.filter(function(room){ return room.status === "공실"; }).length;
       var otaRooms = items.filter(function(room){ return (room.channel || "장박가능") === "OTA전용"; }).length;
-      var groups = {};
-      items.forEach(function(room){
-        var groupKey = room.floor == null ? "__unassigned__" : String(room.floor);
-        if (!groups[groupKey]) groups[groupKey] = [];
-        groups[groupKey].push(room);
-      });
-      var groupKeys = Object.keys(groups).sort(function(a, b){
-        if (a === "__unassigned__") return 1;
-        if (b === "__unassigned__") return -1;
-        return Number(a) - Number(b);
-      });
       function roomCardHtml(room){
-       var isOccupied = room.status === "입실";
+        var isOccupied = room.status === "입실";
         var channel = room.channel === "OTA전용" ? "OTA전용" : "장박가능";
-       var meta = isOccupied ? roomDdayMeta(room.contract_end_date) : null;
-       var contractHtml = isOccupied
-         ? '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px;">' +
-             '<label style="font-size:11.5px;color:var(--ink-soft);">계약만기일 ' +
-             '<input class="room-contract-date" type="date" value="' + escapeHtml(room.contract_end_date || "") + '" style="margin-left:4px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;font:inherit;color:var(--ink);" /></label>' +
-             (meta
-               ? '<span style="font-size:11px;font-weight:700;color:' + meta.color + ';background:' + meta.bg + ';border-radius:999px;padding:3px 7px;">' + meta.label + '</span>'
-               : '<span style="font-size:11px;color:var(--ink-soft);">만기일을 입력해주세요</span>') +
-           '</div>'
-         : '<div style="font-size:11.5px;color:var(--ink-soft);margin-top:7px;">공실 전환 시 계약만기일은 자동으로 초기화됩니다.</div>';
-       return '<div class="room-inventory-card" data-room-id="' + room.id + '" style="padding:9px 0;border-top:1px solid var(--line);">' +
-         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
-           '<strong style="font-size:12.5px;color:var(--ink);">' + escapeHtml(room.room_label) + '</strong>' +
-            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">' +
-              '<label style="font-size:11.5px;color:var(--ink-soft);">층 ' +
-              '<input class="room-floor" type="number" min="1" max="999" inputmode="numeric" placeholder="미지정" value="' + (room.floor == null ? "" : Number(room.floor)) + '" style="margin-left:3px;width:48px;padding:4px 5px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);" /></label>' +
-              '<label style="font-size:11.5px;color:var(--ink-soft);">상태 ' +
-              '<select class="room-status" style="margin-left:3px;padding:4px 5px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);">' +
+        var meta = isOccupied ? roomDdayMeta(room.contract_end_date) : null;
+        var contractHtml = isOccupied
+          ? '<label style="font-size:11.5px;color:var(--ink-soft);">계약만기일 ' +
+              '<input class="room-contract-date" type="date" value="' + escapeHtml(room.contract_end_date || "") + '" style="margin-left:3px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;font:inherit;color:var(--ink);" /></label>' +
+              (meta ? '<span style="font-size:11px;font-weight:700;color:' + meta.color + ';background:' + meta.bg + ';border-radius:999px;padding:3px 7px;">' + meta.label + '</span>' : '<span style="font-size:11px;color:var(--ink-soft);">만기일을 입력해주세요</span>')
+          : '<span style="font-size:11.5px;color:var(--ink-soft);">공실 전환 시 계약만기일은 자동 초기화됩니다.</span>';
+        return '<div class="room-inventory-card" data-room-id="' + room.id + '" style="padding:10px 0;border-top:1px solid var(--line);">' +
+          '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">' +
+            '<input class="room-label" type="text" maxlength="50" placeholder="호실 표기 (예: 301)" value="' + escapeHtml(room.room_label) + '" style="width:118px;padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-size:12.5px;font-weight:700;color:var(--ink);" />' +
+            '<label style="font-size:11.5px;color:var(--ink-soft);">월세 ' +
+              '<input class="room-monthly-rent" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + (room.monthly_rent_krw == null ? "" : Number(room.monthly_rent_krw)) + '" style="margin-left:3px;width:68px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);" /></label>' +
+            '<label style="font-size:11.5px;color:var(--ink-soft);">상태 ' +
+              '<select class="room-status" style="margin-left:3px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);">' +
                 '<option value="입실"' + (isOccupied ? ' selected' : '') + '>입실</option>' +
                 '<option value="공실"' + (!isOccupied ? ' selected' : '') + '>공실</option>' +
               '</select></label>' +
-              '<label style="font-size:11.5px;color:var(--ink-soft);">채널 ' +
-              '<select class="room-channel" style="margin-left:3px;padding:4px 5px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);">' +
+            '<label style="font-size:11.5px;color:var(--ink-soft);">채널 ' +
+              '<select class="room-channel" style="margin-left:3px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);">' +
                 '<option value="장박가능"' + (channel === "장박가능" ? ' selected' : '') + '>장박가능</option>' +
                 '<option value="OTA전용"' + (channel === "OTA전용" ? ' selected' : '') + '>OTA전용</option>' +
               '</select></label>' +
-            '</div>' +
-         '</div>' +
-         contractHtml +
-         '<div class="room-inventory-msg" style="min-height:14px;margin-top:5px;font-size:11px;"></div>' +
-       '</div>';
+            '<button type="button" class="room-copy-btn" style="font-size:11px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--ink-soft);cursor:pointer;">복사</button>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px;">' + contractHtml + '</div>' +
+          '<div class="room-inventory-msg" style="min-height:14px;margin-top:5px;font-size:11px;"></div>' +
+        '</div>';
       }
-      var roomsHtml = groupKeys.length ? groupKeys.map(function(groupKey){
-        var title = groupKey === "__unassigned__" ? "층 미지정" : groupKey + "층";
-        return '<section class="room-floor-group" data-floor="' + escapeHtml(groupKey) + '" style="margin-top:10px;">' +
-          '<div style="font-size:11.5px;font-weight:800;color:var(--ink);padding:5px 0;border-bottom:1px solid var(--line);">' +
-            title + ' <span style="font-weight:400;color:var(--ink-soft);">(' + groups[groupKey].length + '실)</span>' +
-          '</div><div class="room-floor-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">' +
-            groups[groupKey].map(roomCardHtml).join("") + '</div></section>';
-      }).join("") : '<div style="padding:8px 0 2px;font-size:11.5px;color:var(--ink-soft);">등록된 방 재고가 없습니다.</div>';
+      var roomsHtml = items.length
+        ? '<div class="room-inventory-list">' + items.map(roomCardHtml).join("") + '</div>'
+        : '<div style="padding:8px 0 2px;font-size:11.5px;color:var(--ink-soft);">등록된 방 재고가 없습니다.</div>';
      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
          '<strong style="font-size:12.5px;color:var(--ink);">방 재고</strong>' +
-          '<div style="display:flex;gap:5px;">' +
-            '<button class="room-floor-add-btn" style="font-size:11px;padding:4px 8px;border:1px solid var(--brass);border-radius:5px;background:var(--brass);color:#fff;cursor:pointer;">+ 층 추가</button>' +
-            '<button class="room-add-btn" style="font-size:11px;padding:4px 8px;border:1px solid var(--brass);border-radius:5px;background:#fff;color:var(--brass);cursor:pointer;">+ 방 추가</button>' +
-          '</div>' +
+          '<button class="room-add-btn" style="font-size:11px;padding:4px 8px;border:1px solid var(--brass);border-radius:5px;background:#fff;color:var(--brass);cursor:pointer;">+ 방 추가</button>' +
         '</div>' +
         '<div class="room-inventory-summary" style="margin-top:6px;font-size:11.5px;color:var(--ink-soft);">전체 ' + total + '실 · 장박가능 ' + longStayRooms.length + '실(공실 ' + longStayVacant + ') · OTA전용 ' + otaRooms + '실</div>' +
         roomsHtml;
    }
 
-   function loadRoomInventory(lrId, box){
+    function loadRoomInventory(lrId, box, focusRoomId){
      var target = box.querySelector('.lr-room-inventory[data-lr-id="' + lrId + '"]');
      if (!target) return;
      fetch("/api/my/listing-requests/" + lrId + "/rooms", { credentials: "same-origin" })
@@ -405,6 +371,10 @@
          }
          target.innerHTML = roomInventoryHtml(res.j.items || []);
          bindRoomInventoryEvents(target, lrId, box);
+          if (focusRoomId) {
+            var input = target.querySelector('.room-inventory-card[data-room-id="' + focusRoomId + '"] .room-label');
+            if (input) { input.focus(); input.select(); }
+          }
        })
        .catch(function(){
          target.innerHTML = '<div style="font-size:11.5px;color:var(--brick);">방 재고를 불러오지 못했습니다.</div>';
@@ -415,29 +385,37 @@
      var roomId = card.getAttribute("data-room-id");
      var statusEl = card.querySelector(".room-status");
      var dateEl = card.querySelector(".room-contract-date");
-      var floorEl = card.querySelector(".room-floor");
+      var roomLabelEl = card.querySelector(".room-label");
+      var rentEl = card.querySelector(".room-monthly-rent");
       var channelEl = card.querySelector(".room-channel");
      var msg = card.querySelector(".room-inventory-msg");
      var status = statusEl.value;
      var contractEndDate = dateEl ? dateEl.value : "";
-      var floorText = floorEl ? floorEl.value.trim() : "";
-      var floorValue = floorText ? Number(floorText) : null;
-      if (floorText && (!Number.isInteger(floorValue) || floorValue < 1 || floorValue > 999)) {
-        if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "층 번호는 1~999 사이로 입력해주세요."; }
+      var roomLabel = roomLabelEl ? roomLabelEl.value.trim() : "";
+      var rentText = rentEl ? rentEl.value.trim() : "";
+      var monthlyRent = rentText ? Number(rentText) : null;
+      if (!roomLabel) {
+        if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "호실 표기를 입력해주세요."; }
+        return;
+      }
+      if (rentText && (!Number.isInteger(monthlyRent) || monthlyRent < 1)) {
+        if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "월세는 1만원 이상의 숫자로 입력해주세요."; }
         return;
       }
      statusEl.disabled = true;
      if (dateEl) dateEl.disabled = true;
-      if (floorEl) floorEl.disabled = true;
+      if (roomLabelEl) roomLabelEl.disabled = true;
+      if (rentEl) rentEl.disabled = true;
       if (channelEl) channelEl.disabled = true;
      if (msg) { msg.style.color = "var(--ink-soft)"; msg.textContent = "저장 중…"; }
      fetch("/api/my/room-inventory/" + roomId, {
        method: "PUT", credentials: "same-origin",
        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+           room_label: roomLabel,
           status: status,
           contract_end_date: contractEndDate,
-          floor: floorValue,
+           monthly_rent_krw: monthlyRent,
           channel: channelEl ? channelEl.value : "장박가능"
         })
      }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
@@ -445,7 +423,8 @@
          if (!res.ok || !res.j || !res.j.ok) {
            statusEl.disabled = false;
            if (dateEl) dateEl.disabled = false;
-            if (floorEl) floorEl.disabled = false;
+            if (roomLabelEl) roomLabelEl.disabled = false;
+            if (rentEl) rentEl.disabled = false;
             if (channelEl) channelEl.disabled = false;
            if (msg) { msg.style.color = "var(--brick)"; msg.textContent = (res.j && res.j.message) || "저장하지 못했습니다."; }
            return;
@@ -455,7 +434,8 @@
        .catch(function(){
          statusEl.disabled = false;
          if (dateEl) dateEl.disabled = false;
-          if (floorEl) floorEl.disabled = false;
+          if (roomLabelEl) roomLabelEl.disabled = false;
+          if (rentEl) rentEl.disabled = false;
           if (channelEl) channelEl.disabled = false;
          if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "네트워크 오류로 저장하지 못했습니다."; }
        });
@@ -464,59 +444,53 @@
    function bindRoomInventoryEvents(target, lrId, box){
      var addBtn = target.querySelector(".room-add-btn");
      if (addBtn) addBtn.addEventListener("click", function(){
-       var label = window.prompt("방 이름 또는 호실을 입력해주세요. (예: 201호)");
-       if (label == null) return;
-       label = label.trim();
-       if (!label) { alert("방 이름 또는 호실을 입력해주세요."); return; }
-        var floorText = window.prompt("층 번호를 입력해주세요. (모르면 빈칸)");
-        if (floorText == null) return;
-        floorText = floorText.trim();
-        var floorValue = floorText ? Number(floorText) : null;
-        if (floorText && (!Number.isInteger(floorValue) || floorValue < 1 || floorValue > 999)) {
-          alert("층 번호는 1~999 사이로 입력해주세요.");
-          return;
-        }
+        var existingLabels = Array.prototype.map.call(target.querySelectorAll(".room-label"), function(el){ return el.value.trim(); });
+        var label = "새 호실";
+        var suffix = 2;
+        while (existingLabels.indexOf(label) >= 0) label = "새 호실 " + suffix++;
        addBtn.disabled = true;
        fetch("/api/my/listing-requests/" + lrId + "/rooms", {
          method: "POST", credentials: "same-origin",
          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ room_label: label, status: "공실", floor: floorValue })
+          body: JSON.stringify({ room_label: label, status: "공실", channel: "장박가능" })
        }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
          .then(function(res){
            if (!res.ok || !res.j || !res.j.ok) { addBtn.disabled = false; alert((res.j && res.j.message) || "방을 추가하지 못했습니다."); return; }
-           loadRoomInventory(lrId, box);
+            loadRoomInventory(lrId, box, res.j.item && res.j.item.id);
          })
          .catch(function(){ addBtn.disabled = false; alert("네트워크 오류로 방을 추가하지 못했습니다."); });
      });
-      var floorAddBtn = target.querySelector(".room-floor-add-btn");
-      if (floorAddBtn) floorAddBtn.addEventListener("click", function(){
-        var floorText = window.prompt("층 번호를 입력해주세요. (예: 3)");
-        if (floorText == null) return;
-        var roomCountText = window.prompt("생성할 방 개수를 입력해주세요. (예: 10)");
-        if (roomCountText == null) return;
-        var floor = Number(floorText.trim()), roomCount = Number(roomCountText.trim());
-        if (!Number.isInteger(floor) || floor < 1 || !Number.isInteger(roomCount) || roomCount < 1) {
-          alert("층 번호와 방 개수를 올바른 숫자로 입력해주세요.");
-          return;
-        }
-        floorAddBtn.disabled = true;
-        fetch("/api/my/listing-requests/" + lrId + "/rooms/bulk", {
-          method: "POST", credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ floor: floor, room_count: roomCount, channel: "장박가능" })
-        }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
-          .then(function(res){
-            if (!res.ok || !res.j || !res.j.ok) {
-              floorAddBtn.disabled = false;
-              alert((res.j && res.j.message) || "층별 방을 추가하지 못했습니다.");
-              return;
-            }
-            alert(res.j.created_count + "개 생성, " + res.j.skipped_count + "개는 이미 존재해 건너뛰었습니다.");
-            loadRoomInventory(lrId, box);
-          })
-          .catch(function(){ floorAddBtn.disabled = false; alert("네트워크 오류로 층별 방을 추가하지 못했습니다."); });
+      Array.prototype.forEach.call(target.querySelectorAll(".room-copy-btn"), function(copyBtn){
+        copyBtn.addEventListener("click", function(){
+          var card = copyBtn.closest(".room-inventory-card");
+          var existingLabels = Array.prototype.map.call(target.querySelectorAll(".room-label"), function(el){ return el.value.trim(); });
+          var label = "새 호실";
+          var suffix = 2;
+          while (existingLabels.indexOf(label) >= 0) label = "새 호실 " + suffix++;
+          var status = card.querySelector(".room-status").value;
+          var channel = card.querySelector(".room-channel").value;
+          var rentText = card.querySelector(".room-monthly-rent").value.trim();
+          var contractDate = card.querySelector(".room-contract-date");
+          copyBtn.disabled = true;
+          fetch("/api/my/listing-requests/" + lrId + "/rooms", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              room_label: label,
+              monthly_rent_krw: rentText ? Number(rentText) : null,
+              status: status,
+              channel: channel,
+              contract_end_date: contractDate ? contractDate.value : ""
+            })
+          }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+            .then(function(res){
+              if (!res.ok || !res.j || !res.j.ok) { copyBtn.disabled = false; alert((res.j && res.j.message) || "방을 복사하지 못했습니다."); return; }
+              loadRoomInventory(lrId, box, res.j.item && res.j.item.id);
+            })
+            .catch(function(){ copyBtn.disabled = false; alert("네트워크 오류로 방을 복사하지 못했습니다."); });
+        });
       });
-      Array.prototype.forEach.call(target.querySelectorAll(".room-status, .room-contract-date, .room-floor, .room-channel"), function(el){
+      Array.prototype.forEach.call(target.querySelectorAll(".room-label, .room-monthly-rent, .room-status, .room-contract-date, .room-channel"), function(el){
        el.addEventListener("change", function(){
          var card = el.closest(".room-inventory-card");
          if (card) saveRoomInventory(card, lrId, box);

@@ -103,6 +103,7 @@ CHECKS = [
     ("/api/regions", check_regions),
     ("/api/years", check_years),
     ("/api/transactions?with_total=1", check_transactions),
+    ("/api/transactions?with_total=1&building_id=999999999", check_transactions),
     ("/api/buildings-geo", check_buildings_geo),
 ]
 
@@ -1032,6 +1033,7 @@ def _check_room_inventory_contract_dates(client):
             f"/api/my/listing-requests/{listing_id}/rooms",
             json={
                 "room_label": "201호",
+                "monthly_rent_krw": 120,
                 "status": "입실",
                 "contract_end_date": contract_end_date,
             },
@@ -1043,8 +1045,9 @@ def _check_room_inventory_contract_dates(client):
         room = created_payload.get("item") or {}
         room_id = room.get("id")
         if (room.get("status") != "입실" or room.get("contract_end_date") != contract_end_date
+                or room.get("monthly_rent_krw") != 120
                 or room.get("channel") != "장박가능" or room.get("floor") is not None):
-            failures.append("room inventory: 기존 단건 방의 기본 채널 또는 계약만기일이 저장되지 않음")
+            failures.append("room inventory: 단건 방의 월세·기본 채널 또는 계약만기일이 저장되지 않음")
 
         manual_floor_created = client.post(
             f"/api/my/listing-requests/{listing_id}/rooms",
@@ -1069,10 +1072,18 @@ def _check_room_inventory_contract_dates(client):
         if invalid_create_status.status_code != 400:
             failures.append("room inventory: false 상태값을 400으로 거부하지 않음")
 
+        invalid_create_rent = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms",
+            json={"room_label": "203호", "monthly_rent_krw": 0},
+        )
+        if invalid_create_rent.status_code != 400:
+            failures.append("room inventory: 0원 월세를 400으로 거부하지 않음")
+
         listed = client.get(f"/api/my/listing-requests/{listing_id}/rooms")
         listed_items = (listed.get_json() or {}).get("items") or []
         if listed.status_code != 200 or not any(
             item.get("id") == room_id and item.get("contract_end_date") == contract_end_date
+            and item.get("monthly_rent_krw") == 120
             and item.get("channel") == "장박가능" and item.get("floor") is None
             for item in listed_items
         ):
@@ -1081,6 +1092,8 @@ def _check_room_inventory_contract_dates(client):
         channel_updated = client.put(
             f"/api/my/room-inventory/{room_id}",
             json={
+                "room_label": "201호 복사본",
+                "monthly_rent_krw": 135,
                 "status": "입실",
                 "contract_end_date": contract_end_date,
                 "floor": 2,
@@ -1089,8 +1102,10 @@ def _check_room_inventory_contract_dates(client):
         )
         channel_item = (channel_updated.get_json() or {}).get("item") or {}
         if (channel_updated.status_code != 200 or channel_item.get("floor") != 2
-                or channel_item.get("channel") != "OTA전용"):
-            failures.append("room inventory: 층 또는 OTA전용 채널 저장 실패")
+                or channel_item.get("channel") != "OTA전용"
+                or channel_item.get("room_label") != "201호 복사본"
+                or channel_item.get("monthly_rent_krw") != 135):
+            failures.append("room inventory: 호실·월세·층 또는 OTA전용 채널 저장 실패")
 
         bulk_created = client.post(
             f"/api/my/listing-requests/{listing_id}/rooms/bulk",

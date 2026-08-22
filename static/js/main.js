@@ -395,39 +395,85 @@ function showFallbackToast(msg){
   }, 2800);
 }
 
+let _favOverflowPopover = null;
+function closeFavOverflowPopover(){
+  if (_favOverflowPopover) {
+    _favOverflowPopover.remove();
+    _favOverflowPopover = null;
+  }
+}
+function createFavChip(key){
+  const chip = document.createElement("span");
+  chip.className = "fav-chip" + (state.favKey === key ? " active" : "");
+  const label = document.createElement("span");
+  label.className = "label";
+  label.textContent = "★ " + key.split("|")[0];
+  label.title = "건물 상세 보기";
+  label.addEventListener("click", async () => {
+    try {
+      const res = await fetch(`/api/favorites?keys=${encodeURIComponent(key)}`);
+      const data = await res.json();
+      const item = (data.items || [])[0];
+      if (item && item.master_building_id) {
+        openBuildingDetail(item.master_building_id);
+        return;
+      }
+    } catch(e){ /* fall through */ }
+    filterToFav(key);
+  });
+  chip.appendChild(label);
+  const x = document.createElement("span");
+  x.className = "x";
+  x.textContent = "✕";
+  x.addEventListener("click", (e) => { e.stopPropagation(); removeFav(key); });
+  chip.appendChild(x);
+  return chip;
+}
+function openFavOverflowPopover(button, hiddenKeys){
+  closeFavOverflowPopover();
+  const popover = document.createElement("div");
+  popover.className = "fav-overflow-popover";
+  popover.setAttribute("role", "dialog");
+  popover.setAttribute("aria-label", "전체 관심단지");
+  hiddenKeys.forEach(key => popover.appendChild(createFavChip(key)));
+  document.body.appendChild(popover);
+  _favOverflowPopover = popover;
+  const rect = button.getBoundingClientRect();
+  const width = Math.min(430, window.innerWidth - 24);
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  popover.style.left = left + "px";
+  popover.style.top = Math.min(rect.bottom + 6, window.innerHeight - popover.offsetHeight - 12) + "px";
+  button.setAttribute("aria-expanded", "true");
+}
 function renderFavChips(){
   const wrap = document.getElementById("favChips");
   const favs = getFavorites();
+  if (!wrap) return;
+  closeFavOverflowPopover();
   wrap.innerHTML = "";
-  favs.forEach(k => {
-    const name = k.split("|")[0];
-    const chip = document.createElement("span");
-    chip.className = "fav-chip" + (state.favKey === k ? " active" : "");
-    const label = document.createElement("span");
-    label.className = "label";
-    label.textContent = "★ " + name;
-    label.title = "건물 상세 보기";
-    label.addEventListener("click", async () => {
-      try {
-        const res = await fetch(`/api/favorites?keys=${encodeURIComponent(k)}`);
-        const data = await res.json();
-        const item = (data.items || [])[0];
-        if (item && item.master_building_id) {
-          openBuildingDetail(item.master_building_id);
-          return;
-        }
-      } catch(e){ /* fall through */ }
-      filterToFav(k);
+  const visibleKeys = favs.slice(0, 4);
+  const hiddenKeys = favs.slice(4);
+  visibleKeys.forEach(k => wrap.appendChild(createFavChip(k)));
+  if (hiddenKeys.length) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "fav-more-btn";
+    more.textContent = `+더보기(${hiddenKeys.length})`;
+    more.setAttribute("aria-expanded", "false");
+    more.addEventListener("click", () => {
+      if (_favOverflowPopover) {
+        closeFavOverflowPopover();
+        more.setAttribute("aria-expanded", "false");
+      } else {
+        openFavOverflowPopover(more, hiddenKeys);
+      }
     });
-    chip.appendChild(label);
-    const x = document.createElement("span");
-    x.className = "x";
-    x.textContent = "✕";
-    x.addEventListener("click", (e) => { e.stopPropagation(); removeFav(k); });
-    chip.appendChild(x);
-    wrap.appendChild(chip);
-  });
+    wrap.appendChild(more);
+  }
 }
+document.addEventListener("click", (e) => {
+  if (_favOverflowPopover && !e.target.closest(".fav-overflow-popover, .fav-more-btn")) closeFavOverflowPopover();
+});
 
 function filterToFav(key){
   if (state.favOnly && state.favKey === key){

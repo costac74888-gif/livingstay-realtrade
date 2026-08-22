@@ -114,14 +114,19 @@
         <label>검색기간</label>
         <select id="selYear"></select>
       </div>
-      <button class="btn-search" id="btnSearch">검색</button>
-      <button class="btn-reset" id="btnResetSearch">초기화</button>
+      <div class="search-actions">
+        <button class="btn-search" id="btnSearch">검색</button>
+        <button class="btn-reset" id="btnResetSearch">초기화</button>
+      </div>
     </div>
     <div class="search-row2">
       <label><input type="checkbox" id="chkFavOnly"> 관심단지만 보기</label>
       <span id="favCountLabel"></span>
-      <div id="favChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
-      <span style="margin-left:auto; font-size:11px; color:var(--ink-soft); white-space:nowrap;">※ 국토부 실거래는 매매만 제공</span>
+      <div id="favChips" class="fav-chips"></div>
+      <span class="transactions-note">
+        <span class="note-full">※ 국토부 실거래는 매매만 제공</span>
+        <button type="button" class="note-info" title="국토부 실거래는 매매만 제공" aria-label="국토부 실거래는 매매만 제공">ⓘ</button>
+      </span>
       <button id="btnOpenSubmit" style="background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 수정 요청</button>
     </div>
   </div>

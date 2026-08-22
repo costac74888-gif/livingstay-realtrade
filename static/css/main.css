@@ -48,7 +48,7 @@
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
     box-shadow:var(--shadow); padding:18px 20px;
   }
-  .search-grid{display:grid; grid-template-columns: 0.9fr 1fr 1fr 1fr 1.2fr 0.9fr auto; gap:10px; align-items:end;}
+  .search-grid{display:grid; grid-template-columns: 0.9fr 1fr 1fr 1fr 1.2fr 0.9fr max-content; gap:10px; align-items:end;}
   .field label{display:block; font-size:11.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;}
   .field select, .field input[type=text]{
     width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
@@ -65,11 +65,21 @@
     padding:9px 16px; font-weight:600; font-size:13.5px; cursor:pointer; white-space:nowrap;
   }
   .btn-reset:hover{background:#F1F3F5; color:var(--ink);}
+  .search-actions{display:flex; align-items:stretch; gap:6px; white-space:nowrap;}
+  .search-actions .btn-search,.search-actions .btn-reset{height:100%;}
   .search-row2{
-    display:flex; align-items:center; gap:14px; margin-top:12px; padding-top:12px;
-    border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); flex-wrap:wrap;
+    display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:12px;
+    border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft);
+    min-width:0; white-space:nowrap; position:relative;
   }
   .search-row2 label{display:flex; align-items:center; gap:6px; cursor:pointer;}
+  .fav-chips{display:flex; align-items:center; gap:6px; flex:0 0 auto; position:relative;}
+  .fav-more-btn{background:#fff; color:var(--brass-dark); border:1px solid #EAD9B8; border-radius:999px; padding:4px 9px; font:inherit; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;}
+  .fav-more-btn:hover{background:var(--brass-tint);}
+  .fav-overflow-popover{position:fixed; z-index:120; display:flex; flex-wrap:wrap; gap:6px; width:min(430px, calc(100vw - 24px)); max-height:min(260px, calc(100vh - 24px)); overflow:auto; padding:10px; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 26px rgba(22,32,46,.2);}
+  .transactions-note{display:inline-flex; align-items:center; flex:0 0 auto; margin-left:auto; font-size:11px; color:var(--ink-soft);}
+  .note-info{display:none; border:0; padding:2px; background:transparent; color:var(--ink-soft); cursor:help; font:inherit;}
+  #btnOpenSubmit{flex:0 0 auto; white-space:nowrap;}
   .fav-chip{
     display:inline-flex; align-items:center; gap:6px;
     background:var(--brass-tint); color:var(--brass-dark); border:1px solid #EAD9B8;
@@ -132,11 +142,16 @@
   .footer-copy{margin-top:8px; color:#6B7480;}
   .m-only{display:none;}
 
+  /* 지도 위 검색바는 좌측 패널 폭을 제외하면 1,320px 화면에서도 좁다.
+     이 구간부터 한 줄 가로 스크롤로 전환해 검색·초기화 버튼이 분리되지 않게 한다. */
+  @media (max-width: 1320px){
+    .search-grid{display:flex; align-items:stretch; gap:8px; overflow-x:auto; padding-bottom:3px; scrollbar-width:thin; -webkit-overflow-scrolling:touch;}
+    .search-grid > .field{flex:0 0 132px;}
+    .search-grid > .field:nth-of-type(4){flex-basis:205px;}
+    .search-actions{flex:0 0 auto;}
+  }
+
   @media (max-width: 980px){
-    .search-grid{grid-template-columns:1fr 1fr;}
-    /* 검색·초기화 버튼을 같은 행에 나란히 — 각 1칸씩 */
-    .btn-search{grid-column:span 1;}
-    .btn-reset {grid-column:span 1;}
     table.data-table{font-size:12px;}
     td.col-addr{display:none;}
     .footer-inner{flex-direction:column;}
@@ -151,6 +166,12 @@
     .brand-text .name{white-space:nowrap; font-size:14px;}
     .header-right{margin-left:auto; font-size:10.5px; text-align:right; max-width:46%; line-height:1.4;}
     .page-title{order:3; flex-basis:100%; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .search-panel{padding:0 10px;}
+    .panel-card{padding:13px 12px;}
+    .search-row2{gap:8px; overflow-x:auto; padding-bottom:3px; scrollbar-width:thin; -webkit-overflow-scrolling:touch;}
+    .transactions-note{margin-left:0;}
+    .note-full{display:none;}
+    .note-info{display:inline-block;}
 
     /* 목록: 표 대신 2단 카드형 */
     table.data-table{display:block; border:none; box-shadow:none; background:transparent;}
