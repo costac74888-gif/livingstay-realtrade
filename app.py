@@ -7169,6 +7169,9 @@ def my_listing_requests():
 
 
 _ROOM_INVENTORY_STATUSES = {"입실", "공실"}
+_ROOM_INVENTORY_CHANNELS = {"OTA전용", "장박가능"}
+_ROOM_INVENTORY_MAX_FLOOR = 999
+_ROOM_INVENTORY_MAX_ROOMS_PER_FLOOR = 99
 
 
 def _parse_contract_end_date(value):
@@ -7181,6 +7184,29 @@ def _parse_contract_end_date(value):
         return datetime.strptime(value.strip(), "%Y-%m-%d").date(), None
     except ValueError:
         return None, "계약만기일은 YYYY-MM-DD 형식으로 입력해주세요."
+
+
+def _parse_room_floor(value, *, required=False):
+    """방 재고 층은 1~999 정수만 허용한다. 단건 생성에서는 생략할 수 있다."""
+    if value is None or value == "":
+        return (None, "층 번호를 입력해주세요.") if required else (None, None)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None, "층 번호는 숫자로 입력해주세요."
+    if not 1 <= value <= _ROOM_INVENTORY_MAX_FLOOR:
+        return None, f"층 번호는 1~{_ROOM_INVENTORY_MAX_FLOOR} 사이로 입력해주세요."
+    return value, None
+
+
+def _parse_room_channel(value, *, default=None):
+    """OTA전용 또는 장박가능 채널만 허용한다."""
+    if value is None:
+        return default, None
+    if not isinstance(value, str):
+        return None, "채널은 OTA전용 또는 장박가능만 선택할 수 있습니다."
+    channel = value.strip()
+    if channel not in _ROOM_INVENTORY_CHANNELS:
+        return None, "채널은 OTA전용 또는 장박가능만 선택할 수 있습니다."
+    return channel, None
 
 
 def _owned_listing_request(cur, listing_request_id, user_id):
@@ -7211,11 +7237,11 @@ def my_room_inventory(lr_id):
         if error_response:
             return error_response
         cur.execute("""
-            SELECT id, room_label, status,
+            SELECT id, room_label, status, floor, channel,
                    TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
               FROM business_room_inventory
              WHERE listing_request_id = %s
-             ORDER BY id ASC
+              ORDER BY floor IS NULL ASC, floor ASC NULLS LAST, room_label ASC, id ASC
         """, [lr_id])
         return jsonify({"ok": True, "items": [dict(row) for row in cur.fetchall()]})
     finally:
@@ -7242,12 +7268,20 @@ def create_my_room_inventory(lr_id):
         return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
     status = status_value.strip()
     contract_end_date, date_error = _parse_contract_end_date(data.get("contract_end_date"))
+    floor, floor_error = _parse_room_floor(data.get("floor"))
+    channel, channel_error = _parse_room_channel(
+        data.get("channel"), default="장박가능"
+    )
     if not room_label:
         return jsonify({"ok": False, "message": "방 이름 또는 호실을 입력해주세요."}), 400
     if status not in _ROOM_INVENTORY_STATUSES:
         return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
     if date_error:
         return jsonify({"ok": False, "message": date_error}), 400
+    if floor_error:
+        return jsonify({"ok": False, "message": floor_error}), 400
+    if channel_error:
+        return jsonify({"ok": False, "message": channel_error}), 400
     if status == "공실":
         contract_end_date = None
 
@@ -7259,17 +7293,76 @@ def create_my_room_inventory(lr_id):
             return error_response
         cur.execute("""
             INSERT INTO business_room_inventory
-                (listing_request_id, room_label, status, contract_end_date)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, room_label, status,
+                (listing_request_id, room_label, status, contract_end_date, floor, channel)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, room_label, status, floor, channel,
                       TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
-        """, [lr_id, room_label, status, contract_end_date])
+        """, [lr_id, room_label, status, contract_end_date, floor, channel])
         item = dict(cur.fetchone())
         conn.commit()
         return jsonify({"ok": True, "item": item}), 201
     except psycopg2_errors.UniqueViolation:
         conn.rollback()
         return jsonify({"ok": False, "message": "같은 이름의 방이 이미 있습니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/my/listing-requests/<int:lr_id>/rooms/bulk", methods=["POST"])
+@limiter.limit("20 per minute")
+def create_my_room_inventory_bulk(lr_id):
+    """한 층의 방을 자동 호수로 묶어 추가한다. 기존 호수는 건너뛴다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "message": "요청 본문은 JSON 객체여야 합니다."}), 400
+    floor, floor_error = _parse_room_floor(data.get("floor"), required=True)
+    room_count = data.get("room_count")
+    if isinstance(room_count, bool) or not isinstance(room_count, int):
+        return jsonify({"ok": False, "message": "방 개수는 숫자로 입력해주세요."}), 400
+    if not 1 <= room_count <= _ROOM_INVENTORY_MAX_ROOMS_PER_FLOOR:
+        return jsonify({
+            "ok": False,
+            "message": f"방 개수는 1~{_ROOM_INVENTORY_MAX_ROOMS_PER_FLOOR}개로 입력해주세요.",
+        }), 400
+    channel, channel_error = _parse_room_channel(
+        data.get("channel"), default="장박가능"
+    )
+    if floor_error:
+        return jsonify({"ok": False, "message": floor_error}), 400
+    if channel_error:
+        return jsonify({"ok": False, "message": channel_error}), 400
+    room_labels = [f"{floor}{room_no:02d}" for room_no in range(1, room_count + 1)]
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        _, error_response = _owned_listing_request(cur, lr_id, user["id"])
+        if error_response:
+            return error_response
+        execute_values(
+            cur,
+            """
+            INSERT INTO business_room_inventory
+                (listing_request_id, room_label, status, floor, channel)
+            VALUES %s
+            ON CONFLICT (listing_request_id, room_label) DO NOTHING
+            RETURNING id, room_label, status, floor, channel,
+                      TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
+            """,
+            [(lr_id, label, "공실", floor, channel) for label in room_labels],
+        )
+        items = [dict(row) for row in cur.fetchall()]
+        conn.commit()
+        return jsonify({
+            "ok": True,
+            "items": items,
+            "created_count": len(items),
+            "skipped_count": room_count - len(items),
+        }), 201
     finally:
         cur.close()
         conn.close()
@@ -7297,12 +7390,24 @@ def update_my_room_inventory(room_id):
             return jsonify({"ok": False, "message": date_error}), 400
     else:
         contract_end_date = None
+    if "floor" in data:
+        floor, floor_error = _parse_room_floor(data.get("floor"))
+        if floor_error:
+            return jsonify({"ok": False, "message": floor_error}), 400
+    else:
+        floor = None
+    if "channel" in data:
+        channel, channel_error = _parse_room_channel(data.get("channel"))
+        if channel_error:
+            return jsonify({"ok": False, "message": channel_error}), 400
+    else:
+        channel = None
 
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT bri.id, bri.status, bri.contract_end_date, lr.user_id
+            SELECT bri.id, bri.status, bri.contract_end_date, bri.floor, bri.channel, lr.user_id
               FROM business_room_inventory bri
               JOIN listing_requests lr ON lr.id = bri.listing_request_id
              WHERE bri.id = %s
@@ -7317,13 +7422,18 @@ def update_my_room_inventory(room_id):
             contract_end_date = None
         elif "contract_end_date" not in data:
             contract_end_date = room["contract_end_date"]
+        if "floor" not in data:
+            floor = room["floor"]
+        if channel is None:
+            channel = room["channel"]
         cur.execute("""
             UPDATE business_room_inventory
-               SET status = %s, contract_end_date = %s, updated_at = NOW()
+               SET status = %s, contract_end_date = %s, floor = %s,
+                   channel = %s, updated_at = NOW()
              WHERE id = %s
-         RETURNING id, room_label, status,
+         RETURNING id, room_label, status, floor, channel,
                    TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
-        """, [status, contract_end_date, room_id])
+        """, [status, contract_end_date, floor, channel, room_id])
         item = dict(cur.fetchone())
         conn.commit()
         return jsonify({"ok": True, "item": item})

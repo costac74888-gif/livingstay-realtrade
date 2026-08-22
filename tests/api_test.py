@@ -961,7 +961,7 @@ def _check_chat_phone_verification(client):
 
 
 def _check_room_inventory_contract_dates(client):
-    """방 재고 만기일은 입실에만 보관되고, 소유자만 수정할 수 있어야 한다."""
+    """방 재고의 만기일·층·채널·벌크 생성과 소유권을 검증한다."""
     import time as _time
     from datetime import date, timedelta
     from db import get_conn
@@ -983,6 +983,19 @@ def _check_room_inventory_contract_dates(client):
         if (not status_column or status_column["is_nullable"] != "NO"
                 or not status_column.get("column_default")):
             failures.append("room inventory: status가 NOT NULL 기본 공실 제약으로 마이그레이션되지 않음")
+        cur.execute("""
+            SELECT column_name, is_nullable, column_default
+              FROM information_schema.columns
+             WHERE table_schema = current_schema()
+               AND table_name = 'business_room_inventory'
+               AND column_name IN ('floor', 'channel')
+        """)
+        inventory_columns = {row["column_name"]: row for row in cur.fetchall()}
+        channel_column = inventory_columns.get("channel")
+        if ("floor" not in inventory_columns or not channel_column
+                or channel_column["is_nullable"] != "NO"
+                or "장박가능" not in (channel_column.get("column_default") or "")):
+            failures.append("room inventory: floor/channel 마이그레이션 또는 장박가능 기본값이 없음")
         cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
         building = cur.fetchone()
         if not building:
@@ -1023,8 +1036,18 @@ def _check_room_inventory_contract_dates(client):
             return failures
         room = created_payload.get("item") or {}
         room_id = room.get("id")
-        if room.get("status") != "입실" or room.get("contract_end_date") != contract_end_date:
-            failures.append("room inventory: 입실 방의 계약만기일이 저장되지 않음")
+        if (room.get("status") != "입실" or room.get("contract_end_date") != contract_end_date
+                or room.get("channel") != "장박가능" or room.get("floor") is not None):
+            failures.append("room inventory: 기존 단건 방의 기본 채널 또는 계약만기일이 저장되지 않음")
+
+        manual_floor_created = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms",
+            json={"room_label": "401호", "status": "공실", "floor": 4},
+        )
+        manual_floor_item = (manual_floor_created.get_json() or {}).get("item") or {}
+        if (manual_floor_created.status_code != 201 or manual_floor_item.get("floor") != 4
+                or manual_floor_item.get("channel") != "장박가능"):
+            failures.append("room inventory: 수동 추가 방의 층 또는 기본 채널 저장 실패")
 
         invalid_create_body = client.post(
             f"/api/my/listing-requests/{listing_id}/rooms",
@@ -1044,9 +1067,60 @@ def _check_room_inventory_contract_dates(client):
         listed_items = (listed.get_json() or {}).get("items") or []
         if listed.status_code != 200 or not any(
             item.get("id") == room_id and item.get("contract_end_date") == contract_end_date
+            and item.get("channel") == "장박가능" and item.get("floor") is None
             for item in listed_items
         ):
-            failures.append("room inventory: 소유자 조회에서 계약만기일을 찾지 못함")
+            failures.append("room inventory: 소유자 조회에서 기본 채널·계약만기일을 찾지 못함")
+
+        channel_updated = client.put(
+            f"/api/my/room-inventory/{room_id}",
+            json={
+                "status": "입실",
+                "contract_end_date": contract_end_date,
+                "floor": 2,
+                "channel": "OTA전용",
+            },
+        )
+        channel_item = (channel_updated.get_json() or {}).get("item") or {}
+        if (channel_updated.status_code != 200 or channel_item.get("floor") != 2
+                or channel_item.get("channel") != "OTA전용"):
+            failures.append("room inventory: 층 또는 OTA전용 채널 저장 실패")
+
+        bulk_created = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms/bulk",
+            json={"floor": 3, "room_count": 10},
+        )
+        bulk_payload = bulk_created.get_json() or {}
+        bulk_labels = {
+            item.get("room_label") for item in (bulk_payload.get("items") or [])
+        }
+        expected_labels = {str(room_no) for room_no in range(301, 311)}
+        if (bulk_created.status_code != 201 or bulk_payload.get("created_count") != 10
+                or bulk_payload.get("skipped_count") != 0
+                or bulk_labels != expected_labels
+                or any(item.get("floor") != 3 or item.get("channel") != "장박가능"
+                       for item in (bulk_payload.get("items") or []))):
+            failures.append("room inventory: 3층 10실(301~310) 벌크 생성 실패")
+
+        bulk_duplicate = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms/bulk",
+            json={"floor": 3, "room_count": 10},
+        )
+        duplicate_payload = bulk_duplicate.get_json() or {}
+        if (bulk_duplicate.status_code != 201 or duplicate_payload.get("created_count") != 0
+                or duplicate_payload.get("skipped_count") != 10):
+            failures.append("room inventory: 벌크 생성 시 기존 호실을 건너뛰지 않음")
+
+        invalid_bulk_floor = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms/bulk",
+            json={"floor": "3", "room_count": 10},
+        )
+        invalid_bulk_count = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms/bulk",
+            json={"floor": 3, "room_count": 100},
+        )
+        if invalid_bulk_floor.status_code != 400 or invalid_bulk_count.status_code != 400:
+            failures.append("room inventory: 잘못된 벌크 층 또는 방 개수를 400으로 거부하지 않음")
 
         invalid_date = client.put(
             f"/api/my/room-inventory/{room_id}",
@@ -1061,8 +1135,10 @@ def _check_room_inventory_contract_dates(client):
         )
         vacated_item = (vacated.get_json() or {}).get("item") or {}
         if (vacated.status_code != 200 or vacated_item.get("status") != "공실"
-                or vacated_item.get("contract_end_date") is not None):
-            failures.append("room inventory: 공실 전환 때 계약만기일이 초기화되지 않음")
+                or vacated_item.get("contract_end_date") is not None
+                or vacated_item.get("channel") != "OTA전용"
+                or vacated_item.get("floor") != 2):
+            failures.append("room inventory: 공실 전환 때 만기일만 초기화하고 채널·층을 보존하지 않음")
 
         invalid_status = client.put(
             f"/api/my/room-inventory/{room_id}",
@@ -1084,7 +1160,7 @@ def _check_room_inventory_contract_dates(client):
         if blocked.status_code != 403:
             failures.append("room inventory: 타 사용자의 방 재고 수정을 403으로 차단하지 않음")
         if not failures:
-            print("OK  방 재고 만기일 저장·공실 초기화·입실/공실 검증·소유자 권한")
+            print("OK  방 재고 층·채널·벌크 생성·만기일·소유자 권한")
     except Exception as exc:
         failures.append(f"room inventory 테스트 오류: {exc}")
     finally:

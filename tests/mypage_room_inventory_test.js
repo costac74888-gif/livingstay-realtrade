@@ -5,7 +5,7 @@ const vm = require("vm");
 
 const html = fs.readFileSync("static/mypage.html", "utf8");
 const match = html.match(
-  /function roomDdayMeta\(dateText\)\{[\s\S]*?\n   \}\n\n   function roomInventoryHtml/
+  /function roomDdayMeta\(dateText\)\{[\s\S]*?\n\s*\}(?=\n\s*function roomInventoryHtml)/
 );
 if (!match) {
   throw new Error("roomDdayMeta 함수를 static/mypage.html에서 찾지 못했습니다.");
@@ -23,7 +23,7 @@ class FixedDate extends Date {
 
 const context = { Date: FixedDate, Math, Number };
 vm.createContext(context);
-vm.runInContext(match[0].replace(/\n\n   function roomInventoryHtml$/, ""), context);
+vm.runInContext(match[0], context);
 
 function isoAfter(days) {
   const date = new Date(2026, 0, 1 + days);
