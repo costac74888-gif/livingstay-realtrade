@@ -333,10 +333,12 @@
   // ── 유틸 ──────────────────────────────────────────────────────────────
   function esc(s){ const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
   function fmtN(v){ return v != null ? Number(v).toLocaleString() : "-"; }
-  function fmtPrice(deal_type, price_krw, monthly_rent_krw){
+  function fmtPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max){
     if (typeof window.formatLrPrice === "function")
-      return window.formatLrPrice(deal_type, price_krw, monthly_rent_krw);
-    if (deal_type === "매매" || deal_type === "전세") return fmtN(price_krw) + "만원";
+      return window.formatLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max);
+    if (deal_type === "매매" || deal_type === "전세") {
+      return (price_krw_max != null ? fmtN(price_krw) + " ~ " + fmtN(price_krw_max) : fmtN(price_krw)) + "만원";
+    }
     if (deal_type === "월세") return "보" + fmtN(price_krw) + "/" + fmtN(monthly_rent_krw) + "만";
     return "-";
   }
@@ -489,7 +491,7 @@
     shareUrl.searchParams.set("listing", String(item.id));
     const url = shareUrl.toString();
     const title = item.building_name || "직거래 매물";
-    const text  = `직거래 매물 - ${item.deal_type || ""} ${fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw)}`;
+    const text  = `직거래 매물 - ${item.deal_type || ""} ${fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max)}`;
     if (navigator.share){
       navigator.share({ title, text, url }).catch((error) => {
         if (error && error.name === "AbortError") return;
@@ -649,6 +651,8 @@
     const chatTitle    = isChatting ? "채팅 이어하기" : "문의하기";
     const sqm  = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
     const yld  = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : "-";
+    const rooms = item.room_count != null && Number(item.room_count) > 0
+      ? " · 총 " + Number(item.room_count).toLocaleString() + "실" : "";
     const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
     const bName = esc(item.building_name || "(건물명 없음)");
 
@@ -659,7 +663,7 @@
         <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
       </td>
       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
-      <td class="td-price">${esc(fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw))}</td>
+      <td class="td-price">${esc(fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max) + rooms)}</td>
       <td class="td-yield ls-hide-mobile">${esc(yld)}</td>
       <td class="td-area ls-hide-mobile">${esc(sqm)}</td>
       <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
@@ -712,7 +716,9 @@
     div.className = "ls-card-item";
     div.dataset.listingId = item.id;
     const sqm     = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
-    const priceStr = fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw);
+    const priceStr = fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max);
+    const rooms    = item.room_count != null && Number(item.room_count) > 0
+      ? "총 " + Number(item.room_count).toLocaleString() + "실" : null;
     const yld      = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : null;
     const desc     = item.description ? item.description.slice(0, 40) + (item.description.length > 40 ? "…" : "") : null;
     const likeCount = item.like_count || 0;
@@ -724,6 +730,7 @@
         <div class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</div>
         <div class="ls-card-type">${dealTypeBadgeHtml(item.deal_type)}${sqm ? " · " + sqm : ""}</div>
         <div class="ls-card-price">${esc(priceStr)}</div>
+        ${rooms ? `<div style="font-size:11px;color:var(--ink-soft);font-weight:700;margin-top:2px;">${esc(rooms)}</div>` : ""}
         ${yld  ? `<div class="ls-card-yield">수익률 ${esc(yld)} <span style="font-size:10px;font-weight:400;">(참고용)</span></div>` : ""}
         ${desc ? `<div class="ls-card-desc">${esc(desc)}</div>` : ""}
         <div class="ls-card-footer">

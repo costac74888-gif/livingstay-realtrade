@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-22-4"
+SCHEMA_VERSION = "2026-08-22-5"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -914,8 +914,10 @@ def _run_init_db():
         master_building_id INTEGER NOT NULL REFERENCES master_buildings(id),
         deal_type TEXT NOT NULL,          -- 매매 | 전세 | 월세 | 단기임대
         desired_price TEXT,               -- 희망가 사람이 읽는 문자열 (예: "매매가 12,000만원") — 호환성 유지
-        price_krw INTEGER,                -- 매매가 또는 보증금 (만원 단위 숫자) — 단기임대는 NULL
+        price_krw INTEGER,                -- 최저 매매가 또는 보증금 (만원 단위 숫자) — 단기임대는 NULL
+        price_krw_max INTEGER,            -- 사업주 가격범위의 최고가 (만원 단위 숫자)
         monthly_rent_krw INTEGER,         -- 월세 (만원 단위 숫자) — 월세 유형에서만 사용
+        room_count INTEGER,               -- 사업주가 입력한 총 호실수
         contact_phone TEXT NOT NULL,      -- 중개사가 연락할 번호
         routed_agent_id INTEGER REFERENCES agents(id),  -- 배정된 대표 중개사 (없으면 NULL)
         routed_reason TEXT,               -- exclusive | region | house
@@ -929,7 +931,9 @@ def _run_init_db():
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP")
     # 거래유형별 구조화 희망가(만원 단위 숫자) — desired_price(텍스트)와 병행 저장
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS price_krw_max INTEGER")
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_rent_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS room_count INTEGER")
     # 진행방식: 'direct'(직거래) | 'broker'(중개사 연결)
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS deal_mode TEXT DEFAULT 'broker'")
     # 직거래 공개 매물 연락처 (인증된 번호)

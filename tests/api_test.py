@@ -1149,6 +1149,59 @@ def _check_listing_registrant_types(client):
             )
             return failures
 
+        business_update = client.put(
+            f"/api/listing-requests/{listing_id}",
+            json={
+                "deal_type": "매매",
+                "registrant_type": "business",
+                "price_krw": 3000,
+                "price_krw_max": 4500,
+                "room_count": 37,
+            },
+        )
+        cur.execute(
+            """SELECT registrant_type, price_krw, price_krw_max, room_count
+               FROM listing_requests WHERE id=%s""",
+            (listing_id,),
+        )
+        business_stored = cur.fetchone() or {}
+        if (
+            business_update.status_code != 200
+            or business_stored.get("registrant_type") != "business"
+            or business_stored.get("price_krw") != 3000
+            or business_stored.get("price_krw_max") != 4500
+            or business_stored.get("room_count") != 37
+        ):
+            failures.append("business listing: 가격범위 또는 총 호실수 저장 실패")
+
+        invalid_range = client.put(
+            f"/api/listing-requests/{listing_id}",
+            json={
+                "deal_type": "매매",
+                "registrant_type": "business",
+                "price_krw": 4500,
+                "price_krw_max": 3000,
+                "room_count": 37,
+            },
+        )
+        if invalid_range.status_code != 400:
+            failures.append("business listing: 최고가가 최저가보다 작은 가격범위를 차단하지 않음")
+
+        from unittest.mock import patch
+        with patch("app.matched_lodgings", return_value=(
+            [{"room_count": 37, "biz_name": "테스트 숙박업소"}], "road"
+        )), patch("app.choose_representative", return_value={
+            "room_count": 37, "biz_name": "테스트 숙박업소"
+        }):
+            summary = client.get(f"/api/building/{building['id']}/lodging-summary")
+        summary_data = summary.get_json() or {}
+        if (
+            summary.status_code != 200
+            or summary_data.get("room_count") != 37
+            or summary_data.get("business_name") != "테스트 숙박업소"
+        ):
+            failures.append("business listing: 대표 숙박업 객실수 자동채움 API 실패")
+
         for value in ("business", "agent"):
             updated = client.put(
                 f"/api/listing-requests/{listing_id}",
@@ -1178,7 +1231,7 @@ def _check_listing_registrant_types(client):
         ):
             failures.append("listing registrant type: 과거 agent 매물의뢰를 마이페이지 조회에서 찾지 못함")
         if not failures:
-            print("OK  등록자유형 building_owner/business 및 과거 agent 수정·조회 호환")
+            print("OK  사업주 가격범위·총 호실수·대표객실수 API 및 과거 agent 수정·조회 호환")
     except Exception as exc:
         failures.append(f"listing registrant type 테스트 오류: {exc}")
     finally:

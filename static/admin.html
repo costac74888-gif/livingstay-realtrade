@@ -357,9 +357,9 @@
     }
 
     // 거래유형별 희망가 포맷 헬퍼 (만원 단위)
-    function formatLrPrice(deal_type, price_krw, monthly_rent_krw) {
+    function formatLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max) {
       var fmt = function(v){ return v != null ? Number(v).toLocaleString() : "-"; };
-      if (deal_type === "매매" || deal_type === "전세") return fmt(price_krw);
+      if (deal_type === "매매" || deal_type === "전세") return price_krw_max != null ? fmt(price_krw) + " ~ " + fmt(price_krw_max) : fmt(price_krw);
       if (deal_type === "월세") return "보" + fmt(price_krw) + "/" + fmt(monthly_rent_krw);
       return "-";
     }
@@ -514,7 +514,7 @@
           { key: "id", label: "ID", sortable: true },
           { key: "building_name", label: "건물명", sortable: true },
           { key: "deal_type", label: "거래유형", sortable: true },
-          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw) },
+          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw, row.price_krw_max) },
           { key: "area_sqm", label: "면적(㎡)" },
           { key: "contact_phone", label: "연락처" },
           { key: "status", label: "상태", sortable: true, render: (v) => {
@@ -553,7 +553,7 @@
             if (v === "broker") return '<span class="dg-badge dg-badge-wait">중개</span>';
             return dgEscape(v || "-");
           } },
-          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw) },
+          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw, row.price_krw_max) },
           { key: "routed_reason", label: "전달구분", render: (v) => {
             const m = { exclusive: ["전속", "ok"], region: ["관할", "wait"], house: ["제휴", "no"] };
             const x = m[v] || [v || "-", ""];

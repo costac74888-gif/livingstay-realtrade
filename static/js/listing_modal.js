@@ -27,9 +27,12 @@
       "border-radius:8px;font:13px inherit;background:#fff;" + (extra || "");
   }
 
-  function priceText(dealType, price, rent) {
-    if (dealType === "매매") return price ? "매매가 " + price + "만원" : "";
-    if (dealType === "전세") return price ? "전세 " + price + "만원" : "";
+  function priceText(dealType, price, rent, priceMax) {
+    var range = price
+      ? (priceMax ? price + "만원 ~ " + priceMax + "만원" : price + "만원")
+      : "";
+    if (dealType === "매매") return range ? "매매가 " + range : "";
+    if (dealType === "전세") return range ? "전세 " + range : "";
     if (dealType === "월세") return price || rent ? "보증금 " + (price || 0) + "만원 / 월세 " + (rent || 0) + "만원" : "";
     return "";
   }
@@ -124,14 +127,17 @@
           '<div id="lrDealButtons" style="display:flex;gap:6px;flex-wrap:wrap;">' + DEAL_TYPES.map(function (dt) {
             return '<button type="button" class="lr-deal" data-type="' + dt + '" style="padding:7px 11px;border-radius:7px;border:1px solid ' + (dt === dealType ? "var(--brass,#b4863f)" : "var(--line,#e2ddd8)") + ';background:' + (dt === dealType ? "var(--brass,#b4863f)" : "#fff") + ';color:' + (dt === dealType ? "#fff" : "var(--ink,#16202e)") + ';font:700 12.5px inherit;cursor:pointer;">' + dt + '</button>';
           }).join("") + '</div></section>' +
-          '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 정보</div>' +
+           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 정보</div>' +
           '<div id="lrPriceSale"><input id="lrSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
+           '<div id="lrPriceSaleBusiness" style="display:none;align-items:center;gap:7px;"><input id="lrSalePriceMin" type="number" min="1" inputmode="numeric" placeholder="최저가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><span style="color:var(--ink-soft);">~</span><input id="lrSalePriceMax" type="number" min="1" inputmode="numeric" placeholder="최고가 (만원)" value="' + esc(prefill.price_krw_max || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
           '<div id="lrPriceJeonse"><input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="전세 보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
+           '<div id="lrPriceJeonseBusiness" style="display:none;align-items:center;gap:7px;"><input id="lrJeonseDepositMin" type="number" min="1" inputmode="numeric" placeholder="최저가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><span style="color:var(--ink-soft);">~</span><input id="lrJeonseDepositMax" type="number" min="1" inputmode="numeric" placeholder="최고가 (만원)" value="' + esc(prefill.price_krw_max || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
           '<div id="lrPriceWolse" style="display:flex;gap:7px;"><input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" value="' + esc(prefill.monthly_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
           '<div id="lrShortTerm"><input id="lrDesiredPrice" maxlength="100" placeholder="희망 조건 (선택)" value="' + esc(prefill.desired_price || "") + '" style="' + inputStyle() + '"></div></section>' +
             '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">상세 정보 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
-           '<div style="display:flex;gap:7px;margin-bottom:7px;"><div style="flex:1;"><select id="lrArea" style="' + inputStyle() + '"><option value="">전용면적 선택</option></select><input id="lrAreaManual" type="number" min="0" step="0.01" inputmode="decimal" placeholder="전용면적 직접 입력 ㎡" style="' + inputStyle("display:none;margin-top:6px;") + '"></div><input id="lrDong" maxlength="20" placeholder="동" value="' + esc(prefill.dong || "") + '" style="' + inputStyle("flex:.55;") + '"><input id="lrHo" maxlength="20" placeholder="호" value="' + esc(prefill.ho || "") + '" style="' + inputStyle("flex:.55;") + '"></div>' +
+            '<div style="display:flex;gap:7px;margin-bottom:7px;"><div style="flex:1;"><div id="lrAreaOwnerWrap"><select id="lrArea" style="' + inputStyle() + '"><option value="">전용면적 선택</option></select><input id="lrAreaManual" type="number" min="0" step="0.01" inputmode="decimal" placeholder="전용면적 직접 입력 ㎡" style="' + inputStyle("display:none;margin-top:6px;") + '"></div><div id="lrAreaBusinessWrap" style="display:none;"><input id="lrAreaBusiness" type="number" min="0" step="0.01" inputmode="decimal" placeholder="평균 전용면적(㎡) 예: 18" value="' + esc(prefill.area_sqm || "") + '" style="' + inputStyle() + '"></div></div><input id="lrDong" maxlength="20" placeholder="동" value="' + esc(prefill.dong || "") + '" style="' + inputStyle("flex:.55;") + '"><input id="lrHo" maxlength="20" placeholder="호" value="' + esc(prefill.ho || "") + '" style="' + inputStyle("flex:.55;") + '"></div>' +
            '</section>' +
+           '<section id="lrRoomCountSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">총 호실수</div><input id="lrRoomCount" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="총 호실수" value="' + esc(prefill.room_count || "") + '" style="' + inputStyle() + '"><div id="lrRoomCountHelp" style="display:none;margin-top:6px;font-size:11.5px;color:var(--ink-soft);"></div></section>' +
           '<section id="lrYieldSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">예상 수익률 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
           '<div style="display:flex;gap:7px;"><input id="lrYieldDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.deposit_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrYieldRent" type="number" min="1" inputmode="numeric" placeholder="월 임대료 (만원)" value="' + esc(prefill.yield_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div id="lrYieldResult" style="font-size:11.5px;color:var(--brass,#b4863f);margin-top:6px;"></div></section>' +
            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 설명 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div><textarea id="lrDescription" maxlength="500" rows="4" aria-describedby="lrDescriptionHint" placeholder="매물의 장점, 입주 가능일 등을 적어주세요." style="' + inputStyle("resize:vertical;line-height:1.5;") + '">' + esc(prefill.description || "") + '</textarea><div id="lrDescriptionHint" style="margin-top:5px;font-size:11px;color:var(--ink-soft);">Enter 키를 누르면 다음 줄에 작성할 수 있습니다.</div></section>' +
@@ -152,6 +158,8 @@
       ? presetRegistrantType
       : (validRegistrantType(prefill.registrant_type) ? prefill.registrant_type : "owner");
     $("#lrRegistrantType").value = initialRegistrantType;
+    var areaTypesLoaded = false;
+    var lodgingSummaryLoaded = false;
 
     function populateAreaTypes(items) {
       var areaSelect = $("#lrArea");
@@ -183,13 +191,32 @@
       $("#lrAreaManual").style.display = this.value === "__manual__" ? "block" : "none";
       if (this.value !== "__manual__") $("#lrAreaManual").value = "";
     });
-    if (buildingId) {
+
+    function loadAreaTypes() {
+      if (!buildingId || areaTypesLoaded) return;
+      areaTypesLoaded = true;
       fetch("/api/building/" + encodeURIComponent(buildingId) + "/area-types", { credentials: "same-origin" })
         .then(function (r) { return r.json(); })
         .then(function (data) { populateAreaTypes(data.items || []); })
         .catch(function () { populateAreaTypes([]); });
-    } else {
-      populateAreaTypes([]);
+    }
+
+    function loadLodgingSummary() {
+      if (!buildingId || lodgingSummaryLoaded) return;
+      lodgingSummaryLoaded = true;
+      fetch("/api/building/" + encodeURIComponent(buildingId) + "/lodging-summary", { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data || !data.ok || data.room_count == null) return;
+          var roomInput = $("#lrRoomCount");
+          if (!roomInput.value) roomInput.value = String(data.room_count);
+          var help = $("#lrRoomCountHelp");
+          help.textContent = Number(data.room_count).toLocaleString() + "실로 신고되어 있습니다. 다르면 수정해주세요.";
+          help.style.display = "block";
+        })
+        .catch(function () {
+          // 자동 채움 실패는 직접 입력을 막지 않는다.
+        });
     }
 
     function close() {
@@ -212,38 +239,53 @@
       $("#lrModeHelp").textContent = dealMode === "direct" ? "인증된 휴대폰 번호로 구매자와 직접 연락합니다." : "조건에 맞는 담당 중개사에게 연결합니다.";
     }
     function updateDealType() {
+      var isBusiness = $("#lrRegistrantType").value === "business";
       Array.prototype.forEach.call(overlay.querySelectorAll(".lr-deal"), function (button) {
         var active = button.getAttribute("data-type") === dealType;
         button.style.background = active ? "var(--brass,#b4863f)" : "#fff";
         button.style.color = active ? "#fff" : "var(--ink,#16202e)";
         button.style.borderColor = active ? "var(--brass,#b4863f)" : "var(--line,#e2ddd8)";
       });
-      $("#lrPriceSale").style.display = dealType === "매매" ? "block" : "none";
-      $("#lrPriceJeonse").style.display = dealType === "전세" ? "block" : "none";
+      $("#lrPriceSale").style.display = dealType === "매매" && !isBusiness ? "block" : "none";
+      $("#lrPriceSaleBusiness").style.display = dealType === "매매" && isBusiness ? "flex" : "none";
+      $("#lrPriceJeonse").style.display = dealType === "전세" && !isBusiness ? "block" : "none";
+      $("#lrPriceJeonseBusiness").style.display = dealType === "전세" && isBusiness ? "flex" : "none";
       $("#lrPriceWolse").style.display = dealType === "월세" ? "flex" : "none";
       $("#lrShortTerm").style.display = dealType === "단기임대" ? "block" : "none";
       $("#lrYieldSection").style.display = dealType === "매매" ? "block" : "none";
       updateYield();
     }
     function updateYield() {
-      var price = numValue($("#lrSalePrice")), deposit = numValue($("#lrYieldDeposit")) || 0, rent = numValue($("#lrYieldRent"));
+      var priceField = $("#lrRegistrantType").value === "business"
+        ? $("#lrSalePriceMin") : $("#lrSalePrice");
+      var price = numValue(priceField), deposit = numValue($("#lrYieldDeposit")) || 0, rent = numValue($("#lrYieldRent"));
       $("#lrYieldResult").textContent = dealType === "매매" && price && rent
         ? "예상 수익률 약 " + ((rent * 12 / Math.max(price - deposit, 1)) * 100).toFixed(1) + "%" : "";
     }
     function saveDraft() {
       if (!draftKey || !form || form.style.display === "none") return;
       try {
-        var draftPrice = dealType === "전세" ? $("#lrJeonseDeposit").value :
-          (dealType === "월세" ? $("#lrWolseDeposit").value : $("#lrSalePrice").value);
+        var isBusiness = $("#lrRegistrantType").value === "business";
+        var draftPrice = dealType === "전세"
+          ? (isBusiness ? $("#lrJeonseDepositMin").value : $("#lrJeonseDeposit").value)
+          : (dealType === "월세" ? $("#lrWolseDeposit").value
+            : (isBusiness ? $("#lrSalePriceMin").value : $("#lrSalePrice").value));
+        var draftPriceMax = dealType === "전세" && isBusiness
+          ? $("#lrJeonseDepositMax").value
+          : (dealType === "매매" && isBusiness ? $("#lrSalePriceMax").value : "");
         localStorage.setItem(draftKey, JSON.stringify({
           saved_at: Date.now(),
           data: {
             deal_type: dealType,
             deal_mode: dealMode,
             price_krw: draftPrice || "",
+            price_krw_max: draftPriceMax || "",
             monthly_rent_krw: $("#lrWolseRent").value || "",
             desired_price: $("#lrDesiredPrice").value || "",
-            area_sqm: $("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "") : ($("#lrArea").value || ""),
+            area_sqm: isBusiness
+              ? ($("#lrAreaBusiness").value || "")
+              : ($("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "") : ($("#lrArea").value || "")),
+            room_count: isBusiness ? ($("#lrRoomCount").value || "") : "",
             dong: $("#lrDong").value || "",
             ho: $("#lrHo").value || "",
             registrant_type: $("#lrRegistrantType").value || "owner",
@@ -265,10 +307,15 @@
        }
       dealMode = draft.deal_mode === "broker" ? "broker" : "direct";
       $("#lrSalePrice").value = draft.price_krw || "";
+       $("#lrSalePriceMin").value = draft.price_krw || "";
+       $("#lrSalePriceMax").value = draft.price_krw_max || "";
       $("#lrJeonseDeposit").value = draft.price_krw || "";
+       $("#lrJeonseDepositMin").value = draft.price_krw || "";
+       $("#lrJeonseDepositMax").value = draft.price_krw_max || "";
       $("#lrWolseDeposit").value = draft.price_krw || "";
       $("#lrWolseRent").value = draft.monthly_rent_krw || "";
       $("#lrDesiredPrice").value = draft.desired_price || "";
+       $("#lrRoomCount").value = draft.room_count || "";
       $("#lrDong").value = draft.dong || "";
       $("#lrHo").value = draft.ho || "";
        if (!presetRegistrantType && validRegistrantType(draft.registrant_type)) {
@@ -279,6 +326,7 @@
       $("#lrDescription").value = draft.description || "";
       var areaSelect = $("#lrArea"), areaManual = $("#lrAreaManual");
       if (draft.area_sqm) {
+         $("#lrAreaBusiness").value = draft.area_sqm;
         var hasArea = Array.prototype.some.call(areaSelect.options, function (option) {
           return option.value === String(draft.area_sqm);
         });
@@ -315,15 +363,25 @@
       button.addEventListener("click", function () { dealType = button.getAttribute("data-type"); updateDealType(); saveDraft(); });
     });
     function updateRegistrantTypeFlag() {
-      form.dataset.registrantType = $("#lrRegistrantType").value || "owner";
+      var registrantType = $("#lrRegistrantType").value || "owner";
+      var isBusiness = registrantType === "business";
+      form.dataset.registrantType = registrantType;
+      $("#lrAreaOwnerWrap").style.display = isBusiness ? "none" : "block";
+      $("#lrAreaBusinessWrap").style.display = isBusiness ? "block" : "none";
+      $("#lrRoomCountSection").style.display = isBusiness ? "block" : "none";
+      if (isBusiness) loadLodgingSummary();
+      else loadAreaTypes();
+      updateDealType();
     }
     $("#lrRegistrantType").addEventListener("change", function () {
       updateRegistrantTypeFlag();
       saveDraft();
     });
-    ["#lrSalePrice", "#lrJeonseDeposit", "#lrWolseDeposit", "#lrWolseRent", "#lrDesiredPrice",
-      "#lrArea", "#lrAreaManual", "#lrDong", "#lrHo", "#lrRegistrantType", "#lrYieldDeposit",
-      "#lrYieldRent", "#lrDescription"].forEach(function (selector) {
+    ["#lrSalePrice", "#lrSalePriceMin", "#lrSalePriceMax", "#lrJeonseDeposit",
+      "#lrJeonseDepositMin", "#lrJeonseDepositMax", "#lrWolseDeposit", "#lrWolseRent",
+      "#lrDesiredPrice", "#lrArea", "#lrAreaManual", "#lrAreaBusiness", "#lrRoomCount",
+      "#lrDong", "#lrHo", "#lrRegistrantType", "#lrYieldDeposit", "#lrYieldRent",
+      "#lrDescription"].forEach(function (selector) {
       $(selector).addEventListener("input", updateYield);
       $(selector).addEventListener("input", saveDraft);
       $(selector).addEventListener("change", saveDraft);
@@ -608,16 +666,31 @@
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       setMessage("");
-      var price = null, rent = null;
-      if (dealType === "매매") price = numValue($("#lrSalePrice"));
-      if (dealType === "전세") price = numValue($("#lrJeonseDeposit"));
+      var isBusiness = $("#lrRegistrantType").value === "business";
+      var price = null, priceMax = null, rent = null;
+      if (dealType === "매매") {
+        price = numValue(isBusiness ? $("#lrSalePriceMin") : $("#lrSalePrice"));
+        priceMax = isBusiness ? numValue($("#lrSalePriceMax")) : null;
+      }
+      if (dealType === "전세") {
+        price = numValue(isBusiness ? $("#lrJeonseDepositMin") : $("#lrJeonseDeposit"));
+        priceMax = isBusiness ? numValue($("#lrJeonseDepositMax")) : null;
+      }
       if (dealType === "월세") { price = numValue($("#lrWolseDeposit")); rent = numValue($("#lrWolseRent")); }
       var body = {
-        deal_type: dealType, desired_price: dealType === "단기임대" ? ($("#lrDesiredPrice").value || "").trim() : priceText(dealType, price, rent),
-        price_krw: price, monthly_rent_krw: rent, area_sqm: ($("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "").trim() : ($("#lrArea").value || "").trim()),
+        deal_type: dealType,
+        desired_price: dealType === "단기임대"
+          ? ($("#lrDesiredPrice").value || "").trim()
+          : priceText(dealType, price, rent, priceMax),
+        price_krw: price, price_krw_max: priceMax, monthly_rent_krw: rent,
+        area_sqm: isBusiness
+          ? ($("#lrAreaBusiness").value || "").trim()
+          : ($("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "").trim() : ($("#lrArea").value || "").trim()),
+        room_count: isBusiness ? numValue($("#lrRoomCount")) : null,
         dong: ($("#lrDong").value || "").trim(), ho: ($("#lrHo").value || "").trim(),
         registrant_type: $("#lrRegistrantType").value, description: ($("#lrDescription").value || "").trim(),
-        deposit_krw: numValue($("#lrYieldDeposit")), yield_rent_krw: numValue($("#lrYieldRent"))
+        deposit_krw: dealType === "매매" ? numValue($("#lrYieldDeposit")) : null,
+        yield_rent_krw: dealType === "매매" ? numValue($("#lrYieldRent")) : null
       };
       if (!isEdit) { body.master_building_id = parseInt(buildingId, 10); body.deal_mode = dealMode; }
       submit.disabled = true; submit.textContent = "처리 중…";

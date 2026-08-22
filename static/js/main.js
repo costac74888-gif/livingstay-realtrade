@@ -3142,10 +3142,14 @@ async function loadBuildingHeader(id){
           lr.listing_number ? escapeHtml(lr.listing_number) : "",
           lr.listing_date ? `최근 수정 ${escapeHtml(lr.listing_date)}` : ""
         ].filter(Boolean).join(" · ");
-       const priceText = lr.deal_type === "월세"
+        const priceText = lr.deal_type === "월세"
          ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
-         : (lr.price_krw ? `${formatNumber(lr.price_krw)}만원` : "-");
+          : (lr.price_krw
+            ? `${formatNumber(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + formatNumber(lr.price_krw_max) : ""}만원`
+            : "-");
        const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}% (참고용)` : "";
+        const roomText = lr.room_count != null && Number(lr.room_count) > 0
+          ? `총 ${formatNumber(lr.room_count)}실` : "";
        const desc = lr.description ? escapeHtml(lr.description) : "";
        const ov = document.createElement("div");
        ov.id = "directListingCardOverlay";
@@ -3157,6 +3161,7 @@ async function loadBuildingHeader(id){
              ${listingMeta ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-4px 0 8px;font-size:11px;color:var(--ink-soft);"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;"><span style="padding:2px 6px;border-radius:4px;background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);color:var(--brass-dark,#7D4A00);font-weight:800;">${lr.listing_number ? escapeHtml(lr.listing_number) : ""}</span>${lr.listing_date ? `<span>최근 수정 ${escapeHtml(lr.listing_date)}</span>` : ""}</div><div style="flex:0 0 auto;">${shareButtonMarkup}</div></div>` : `<div style="display:flex;justify-content:flex-end;margin:-4px 0 8px;">${shareButtonMarkup}</div>`}
            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
            <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
+            ${roomText ? `<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">${escapeHtml(roomText)}</div>` : ""}
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
             ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:12px;">${desc}</div>` : ""}
              <div style="display:flex;gap:7px;">
@@ -3266,7 +3271,11 @@ async function loadBuildingHeader(id){
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
         const priceText = lr.deal_type === "월세"
           ? `보${_fmtN(lr.price_krw)}/${_fmtN(lr.monthly_rent_krw)}만`
-          : (lr.price_krw ? `${_fmtN(lr.price_krw)}만원` : "-");
+          : (lr.price_krw
+            ? `${_fmtN(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + _fmtN(lr.price_krw_max) : ""}만원`
+            : "-");
+        const roomText = lr.room_count != null && Number(lr.room_count) > 0
+          ? `총 ${_fmtN(lr.room_count)}실` : "";
         const yieldText = lr.yield_rate != null
           ? `<span style="font-size:11.5px;color:var(--brass-dark,#7D4A00);font-weight:700;">수익률 ${parseFloat(lr.yield_rate).toFixed(1)}%</span><span style="font-size:10px;color:var(--ink-soft);"> (참고용)</span>`
           : "";
@@ -3287,6 +3296,7 @@ async function loadBuildingHeader(id){
              </div>
              <div style="font-size:11.5px;font-weight:700;color:var(--ink);margin-bottom:1px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
              <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:1px;">${priceText}</div>
+              ${roomText?`<div style="font-size:10.5px;color:var(--ink-soft);font-weight:700;margin-bottom:1px;">${roomText}</div>`:""}
              ${yieldText?`<div style="line-height:1.2;margin-bottom:1px;">${yieldText}</div>`:""}
              ${desc?`<div style="font-size:10.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;">${desc}</div>`:""}
              </div>

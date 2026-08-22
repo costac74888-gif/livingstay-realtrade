@@ -291,7 +291,9 @@
           '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
           modeBadge +
           '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
-            (it.price_krw != null ? ' · ' + escapeHtml(fmtLrPrice(it.deal_type, it.price_krw, it.monthly_rent_krw)) : '') + ' · 최근 수정 ' + it.created_date + '</div>' +
+            (it.price_krw != null ? ' · ' + escapeHtml(fmtLrPrice(it.deal_type, it.price_krw, it.monthly_rent_krw, it.price_krw_max)) : '') +
+            (it.room_count != null ? ' · 총 ' + Number(it.room_count).toLocaleString() + '실' : '') +
+            ' · 최근 수정 ' + it.created_date + '</div>' +
           '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
           (chatBtn ? '<div>' + chatBtn + '</div>' : '') +
           actionBtns +
@@ -563,10 +565,10 @@
     if (p == null) return "실거래 정보 없음";
     return Number(p).toLocaleString();
   }
-  function fmtLrPrice(deal_type, price_krw, monthly_rent_krw){
+  function fmtLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max){
     var fN = function(v){ return v != null ? Number(v).toLocaleString() : "-"; };
     if (deal_type === "월세") return "보" + fN(price_krw) + "/" + fN(monthly_rent_krw);
-    return fN(price_krw);
+    return price_krw_max != null ? fN(price_krw) + " ~ " + fN(price_krw_max) : fN(price_krw);
   }
 
   // ── 채팅 모달 (마이페이지 전용 — main.js 미포함) ─────────────────────────
