@@ -2745,7 +2745,8 @@ function buildingPanelSkeleton(){
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto; white-space:nowrap; font-size:12px; padding:6px 10px;">← 전체목록</button>
         <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700; white-space:nowrap; font-size:12px;">매물내놓기</button>
-        <button id="btnBuyRequest" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700; white-space:nowrap; font-size:12px;">매수의뢰</button>
+        <button id="btnBuyRequest" class="side-more" style="display:none; margin-top:0; width:auto; padding:6px 10px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700; white-space:nowrap; font-size:12px;">매수의뢰</button>
+        <button id="btnLongTermRoom" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:#E8EAED; color:#46515D; border:1px solid #C7CBD1; font-weight:700; white-space:nowrap; font-size:12px;">장기방 내놓기</button>
       </div>
     </section>
 
@@ -3978,6 +3979,17 @@ function renderBuildingPanel(id){
       return;
     }
     openListingRequestModal(id, bCurrentName || "");
+  });
+  document.getElementById("btnLongTermRoom").addEventListener("click", () => {
+    if (!window.__livingstayLoggedIn){
+      if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
+      else location.href = "/?login=1";
+      return;
+    }
+    openListingRequestModal(id, bCurrentName || "", {
+      presetRegistrantType: "business",
+      presetDealType: "단기임대",
+    });
   });
   document.getElementById("btnBuyRequest").addEventListener("click", () => {
     if (!window.__livingstayLoggedIn){

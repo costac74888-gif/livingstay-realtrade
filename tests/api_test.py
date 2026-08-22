@@ -145,6 +145,8 @@ def run():
     failures += _check_chat_phone_verification(client)
     # 방 재고의 만기일 저장·공실 초기화·소유자 권한을 확인
     failures += _check_room_inventory_contract_dates(client)
+    # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
+    failures += _check_listing_registrant_types(client)
     # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
     failures += _check_lodging_address_normalization()
     # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
@@ -1097,6 +1099,98 @@ def _check_room_inventory_contract_dates(client):
                 cur.execute("DELETE FROM users WHERE id=%s", (other_id,))
             if owner_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_listing_registrant_types(client):
+    """신규 3분류 등록자유형 저장과 과거 agent 값 수정 호환성을 검증한다."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    user_id = listing_id = None
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["listing registrant type: 테스트용 master_buildings 행이 없습니다."]
+        cur.execute(
+            """
+            INSERT INTO users (email, name, phone, phone_verified)
+            VALUES (%s, %s, '01000000000', TRUE)
+            RETURNING id
+            """,
+            (f"registrant-type-{run_id}@example.test", "등록자유형 테스트"),
+        )
+        user_id = cur.fetchone()["id"]
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["user_id"] = user_id
+
+        created = client.post("/api/listing-requests", json={
+            "master_building_id": building["id"],
+            "deal_type": "단기임대",
+            "deal_mode": "direct",
+            "registrant_type": "building_owner",
+        })
+        created_item = created.get_json() or {}
+        listing_id = created_item.get("id")
+        if created.status_code != 200 or not listing_id:
+            failures.append(
+                f"listing registrant type: building_owner 등록 실패 (HTTP {created.status_code})"
+            )
+            return failures
+
+        for value in ("business", "agent"):
+            updated = client.put(
+                f"/api/listing-requests/{listing_id}",
+                json={"deal_type": "단기임대", "registrant_type": value},
+            )
+            payload = updated.get_json() or {}
+            cur.execute(
+                "SELECT registrant_type FROM listing_requests WHERE id=%s",
+                (listing_id,),
+            )
+            stored = cur.fetchone() or {}
+            if (
+                updated.status_code != 200
+                or not payload.get("ok")
+                or stored.get("registrant_type") != value
+            ):
+                failures.append(
+                    f"listing registrant type: {value} 수정 호환 실패 (HTTP {updated.status_code})"
+                )
+                break
+
+        mine = client.get("/api/listing-requests/mine")
+        items = (mine.get_json() or {}).get("items") or []
+        if mine.status_code != 200 or not any(
+            item.get("id") == listing_id and item.get("registrant_type") == "agent"
+            for item in items
+        ):
+            failures.append("listing registrant type: 과거 agent 매물의뢰를 마이페이지 조회에서 찾지 못함")
+        if not failures:
+            print("OK  등록자유형 building_owner/business 및 과거 agent 수정·조회 호환")
+    except Exception as exc:
+        failures.append(f"listing registrant type 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_id:
+                cur.execute(
+                    "DELETE FROM listing_request_history WHERE listing_request_id=%s",
+                    (listing_id,),
+                )
+                cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
+            if user_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
             conn.commit()
         finally:
             cur.close()

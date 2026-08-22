@@ -4,6 +4,12 @@
   var MAX_PHOTOS = 5;
   var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
   var DEAL_TYPES = ["매매", "전세", "월세", "단기임대"];
+  var REGISTRANT_TYPES = [
+    {value: "owner", label: "소유자 또는 대리인"},
+    {value: "building_owner", label: "건물주 또는 대리인"},
+    {value: "business", label: "사업주(숙박업대표) 또는 대리인"}
+  ];
+  var LEGACY_REGISTRANT_LABELS = {agent: "기존 등록자유형: 중개사", other: "기존 등록자유형: 기타 관계자"};
 
   function esc(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
@@ -47,6 +53,21 @@
     });
   }
 
+  function validRegistrantType(value) {
+    var allowed = REGISTRANT_TYPES.map(function (item) { return item.value; });
+    return allowed.indexOf(value) >= 0 || Object.prototype.hasOwnProperty.call(LEGACY_REGISTRANT_LABELS, value);
+  }
+
+  function registrantOptions(selectedValue) {
+    var html = REGISTRANT_TYPES.map(function (item) {
+      return '<option value="' + item.value + '">' + item.label + '</option>';
+    }).join("");
+    if (Object.prototype.hasOwnProperty.call(LEGACY_REGISTRANT_LABELS, selectedValue)) {
+      html += '<option value="' + selectedValue + '" hidden>' + LEGACY_REGISTRANT_LABELS[selectedValue] + '</option>';
+    }
+    return html;
+  }
+
   window.openListingRequestModal = function (buildingId, buildingName, options) {
     options = options || {};
     var prefill = options.prefill || options;
@@ -59,7 +80,9 @@
     var old = document.getElementById("listingRequestOverlay");
     if (old) old.remove();
 
-    var dealType = prefill.deal_type || "매매";
+    var presetDealType = options.presetDealType;
+    var presetRegistrantType = options.presetRegistrantType;
+    var dealType = presetDealType || prefill.deal_type || "매매";
     if (DEAL_TYPES.indexOf(dealType) < 0) dealType = "매매";
     var dealMode = prefill.deal_mode || "direct";
     if (dealMode !== "broker") dealMode = "direct";
@@ -95,6 +118,8 @@
           '<div style="display:flex;gap:8px;"><button type="button" class="lr-mode" data-mode="direct" style="flex:1;padding:9px;border-radius:8px;border:1px solid #4A7A18;background:' + (dealMode === "direct" ? "#4A7A18" : "#fff") + ';color:' + (dealMode === "direct" ? "#fff" : "#4A7A18") + ';font:700 13px inherit;cursor:pointer;">직거래</button>' +
           '<button type="button" class="lr-mode" data-mode="broker" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--brass,#b4863f);background:' + (dealMode === "broker" ? "var(--brass,#b4863f)" : "#fff") + ';color:' + (dealMode === "broker" ? "#fff" : "var(--brass,#b4863f)") + ';font:700 13px inherit;cursor:pointer;">중개사 연결</button></div>' +
           '<div id="lrModeHelp" style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;"></div></section>' +
+           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">등록자유형</div>' +
+           '<select id="lrRegistrantType" style="' + inputStyle() + '">' + registrantOptions(presetRegistrantType || prefill.registrant_type) + '</select></section>' +
           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">거래 유형</div>' +
           '<div id="lrDealButtons" style="display:flex;gap:6px;flex-wrap:wrap;">' + DEAL_TYPES.map(function (dt) {
             return '<button type="button" class="lr-deal" data-type="' + dt + '" style="padding:7px 11px;border-radius:7px;border:1px solid ' + (dt === dealType ? "var(--brass,#b4863f)" : "var(--line,#e2ddd8)") + ';background:' + (dt === dealType ? "var(--brass,#b4863f)" : "#fff") + ';color:' + (dt === dealType ? "#fff" : "var(--ink,#16202e)") + ';font:700 12.5px inherit;cursor:pointer;">' + dt + '</button>';
@@ -104,9 +129,9 @@
           '<div id="lrPriceJeonse"><input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="전세 보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
           '<div id="lrPriceWolse" style="display:flex;gap:7px;"><input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" value="' + esc(prefill.monthly_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
           '<div id="lrShortTerm"><input id="lrDesiredPrice" maxlength="100" placeholder="희망 조건 (선택)" value="' + esc(prefill.desired_price || "") + '" style="' + inputStyle() + '"></div></section>' +
-           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">상세 정보 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
+            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">상세 정보 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
            '<div style="display:flex;gap:7px;margin-bottom:7px;"><div style="flex:1;"><select id="lrArea" style="' + inputStyle() + '"><option value="">전용면적 선택</option></select><input id="lrAreaManual" type="number" min="0" step="0.01" inputmode="decimal" placeholder="전용면적 직접 입력 ㎡" style="' + inputStyle("display:none;margin-top:6px;") + '"></div><input id="lrDong" maxlength="20" placeholder="동" value="' + esc(prefill.dong || "") + '" style="' + inputStyle("flex:.55;") + '"><input id="lrHo" maxlength="20" placeholder="호" value="' + esc(prefill.ho || "") + '" style="' + inputStyle("flex:.55;") + '"></div>' +
-          '<select id="lrRegistrantType" style="' + inputStyle() + '"><option value="owner">소유자</option><option value="agent">중개사</option><option value="other">기타 관계자</option></select></section>' +
+           '</section>' +
           '<section id="lrYieldSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">예상 수익률 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
           '<div style="display:flex;gap:7px;"><input id="lrYieldDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.deposit_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrYieldRent" type="number" min="1" inputmode="numeric" placeholder="월 임대료 (만원)" value="' + esc(prefill.yield_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div id="lrYieldResult" style="font-size:11.5px;color:var(--brass,#b4863f);margin-top:6px;"></div></section>' +
            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 설명 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div><textarea id="lrDescription" maxlength="500" rows="4" aria-describedby="lrDescriptionHint" placeholder="매물의 장점, 입주 가능일 등을 적어주세요." style="' + inputStyle("resize:vertical;line-height:1.5;") + '">' + esc(prefill.description || "") + '</textarea><div id="lrDescriptionHint" style="margin-top:5px;font-size:11px;color:var(--ink-soft);">Enter 키를 누르면 다음 줄에 작성할 수 있습니다.</div></section>' +
@@ -123,7 +148,10 @@
     var $ = function (selector) { return overlay.querySelector(selector); };
     var form = $("#lrForm"), message = $("#lrMessage"), submit = $("#lrSubmit");
     var phoneGate = $("#lrPhoneVerifyGate"), gateTimer = null;
-    $("#lrRegistrantType").value = ["owner", "agent", "other"].indexOf(prefill.registrant_type) >= 0 ? prefill.registrant_type : "owner";
+    var initialRegistrantType = validRegistrantType(presetRegistrantType)
+      ? presetRegistrantType
+      : (validRegistrantType(prefill.registrant_type) ? prefill.registrant_type : "owner");
+    $("#lrRegistrantType").value = initialRegistrantType;
 
     function populateAreaTypes(items) {
       var areaSelect = $("#lrArea");
@@ -232,7 +260,9 @@
     }
     function applyDraft(draft) {
       prefill = Object.assign({}, prefill, draft);
-      dealType = DEAL_TYPES.indexOf(draft.deal_type) >= 0 ? draft.deal_type : dealType;
+       if (!presetDealType) {
+         dealType = DEAL_TYPES.indexOf(draft.deal_type) >= 0 ? draft.deal_type : dealType;
+       }
       dealMode = draft.deal_mode === "broker" ? "broker" : "direct";
       $("#lrSalePrice").value = draft.price_krw || "";
       $("#lrJeonseDeposit").value = draft.price_krw || "";
@@ -241,7 +271,9 @@
       $("#lrDesiredPrice").value = draft.desired_price || "";
       $("#lrDong").value = draft.dong || "";
       $("#lrHo").value = draft.ho || "";
-      $("#lrRegistrantType").value = ["owner", "agent", "other"].indexOf(draft.registrant_type) >= 0 ? draft.registrant_type : "owner";
+       if (!presetRegistrantType && validRegistrantType(draft.registrant_type)) {
+         $("#lrRegistrantType").value = draft.registrant_type;
+       }
       $("#lrYieldDeposit").value = draft.deposit_krw || "";
       $("#lrYieldRent").value = draft.yield_rent_krw || "";
       $("#lrDescription").value = draft.description || "";
@@ -256,6 +288,7 @@
       }
       updateMode();
       updateDealType();
+       updateRegistrantTypeFlag();
     }
     function restoreDraftForUser(user) {
       if (isEdit || !buildingId || !user || !user.id) return;
@@ -281,6 +314,13 @@
     Array.prototype.forEach.call(overlay.querySelectorAll(".lr-deal"), function (button) {
       button.addEventListener("click", function () { dealType = button.getAttribute("data-type"); updateDealType(); saveDraft(); });
     });
+    function updateRegistrantTypeFlag() {
+      form.dataset.registrantType = $("#lrRegistrantType").value || "owner";
+    }
+    $("#lrRegistrantType").addEventListener("change", function () {
+      updateRegistrantTypeFlag();
+      saveDraft();
+    });
     ["#lrSalePrice", "#lrJeonseDeposit", "#lrWolseDeposit", "#lrWolseRent", "#lrDesiredPrice",
       "#lrArea", "#lrAreaManual", "#lrDong", "#lrHo", "#lrRegistrantType", "#lrYieldDeposit",
       "#lrYieldRent", "#lrDescription"].forEach(function (selector) {
@@ -301,6 +341,7 @@
       this.dispatchEvent(new Event("input", {bubbles: true}));
     });
     if (isEdit) $("#lrModeSection").style.display = "none";
+    updateRegistrantTypeFlag();
     updateMode();
     updateDealType();
     if (draftRestored) {

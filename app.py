@@ -6805,7 +6805,9 @@ def create_listing_request():
     dong = (str(data.get("dong") or "").strip()[:20]) or None
     ho = (str(data.get("ho") or "").strip()[:20]) or None
     registrant_type_raw = (data.get("registrant_type") or "owner").strip()
-    registrant_type = registrant_type_raw if registrant_type_raw in ("owner", "agent", "other") else "owner"
+    registrant_type = registrant_type_raw if registrant_type_raw in (
+        "owner", "building_owner", "business", "agent", "other"
+    ) else "owner"
 
     # 거래유형별 구조화 희망가(만원 단위 정수, 선택) — 단기임대는 자유텍스트만 사용.
     # 값이 전달됐는데 정수가 아니거나 범위(1~1억 만원)를 벗어나면 400 (조용한 유실 방지).
@@ -8047,7 +8049,9 @@ def update_listing_request(req_id):
     dong = (str(data.get("dong") or "").strip()[:20]) or None
     ho = (str(data.get("ho") or "").strip()[:20]) or None
     registrant_type_raw = (data.get("registrant_type") or "owner").strip()
-    registrant_type = registrant_type_raw if registrant_type_raw in ("owner", "agent", "other") else "owner"
+    registrant_type = registrant_type_raw if registrant_type_raw in (
+        "owner", "building_owner", "business", "agent", "other"
+    ) else "owner"
     description = (str(data.get("description") or "").strip()[:500]) or None
     yield_base_rent = yield_rent_krw if yield_rent_krw is not None else monthly_rent_krw
     yield_rate = (
