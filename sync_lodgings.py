@@ -20,6 +20,7 @@ import os
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
 import requests
@@ -49,6 +50,38 @@ PROGRESS_TARGET_HYGIENES = tuple(sorted(TARGET_HYGIENES))
 NUM_ROWS_DEFAULT = 1000
 SLEEP_DEFAULT = 0.3
 HEARTBEAT_SEC = 30
+LODGING_SYNC_LOCK_ID = 918273
+
+
+@contextmanager
+def _lodging_sync_lock():
+    """모든 숙박업 동기화 실행을 직렬화하는 세션 advisory lock."""
+    conn = get_conn()
+    cur = conn.cursor()
+    acquired = False
+    try:
+        cur.execute(
+            "SELECT pg_try_advisory_lock(%s) AS acquired",
+            (LODGING_SYNC_LOCK_ID,),
+        )
+        acquired = bool(cur.fetchone()["acquired"])
+        if not acquired:
+            print("[lodgings] 이미 다른 프로세스가 실행 중입니다 — 이 실행을 종료합니다.")
+            yield False
+            return
+        yield True
+    finally:
+        if acquired:
+            try:
+                cur.execute(
+                    "SELECT pg_advisory_unlock(%s) AS released",
+                    (LODGING_SYNC_LOCK_ID,),
+                )
+                cur.fetchone()["released"]
+            except Exception as exc:
+                print(f"[lodgings] advisory lock 해제 실패: {_redact(repr(exc))[:160]}")
+        cur.close()
+        conn.close()
 
 
 def _daily_calls_today(cur):
@@ -435,16 +468,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
         conn.close()
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--num-rows", type=int, default=NUM_ROWS_DEFAULT)
-    parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
-    parser.add_argument("--max-calls", type=int, default=MAX_DAILY_CALLS)
-    parser.add_argument("--reset", action="store_true")
-    parser.add_argument("--reindex-norms", action="store_true")
-    parser.add_argument("--status-key", default=None)
-    args = parser.parse_args()
-
+def _run(args):
     if args.reindex_norms:
         reindex_lodging_norms()
         return
@@ -497,6 +521,21 @@ def main():
                 time.sleep(5)
     if error and not args.status_key:
         sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num-rows", type=int, default=NUM_ROWS_DEFAULT)
+    parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
+    parser.add_argument("--max-calls", type=int, default=MAX_DAILY_CALLS)
+    parser.add_argument("--reset", action="store_true")
+    parser.add_argument("--reindex-norms", action="store_true")
+    parser.add_argument("--status-key", default=None)
+    args = parser.parse_args()
+
+    with _lodging_sync_lock() as acquired:
+        if acquired:
+            _run(args)
 
 
 if __name__ == "__main__":

@@ -30,3 +30,4 @@
 - [Deploy slimming: prod-only requirements](deploy-prod-requirements.md) — requirements.txt drives deploy install; keep heavy dev-only libs (pandas) out and rewrite boot-path usage with stdlib; dev keeps them installed.
 - [직거래 매물 & 휴대폰 인증 아키텍처](direct-listing-phone-auth.md) — deal_mode='direct' listing_requests는 verified_phone(DB) 기반 공개; 중개사 라우팅 없음; phone OTP는 users.phone_code(3분 TTL); /api/auth/send-phone-code + verify-phone-code; DEFAULT_DEAL_MODE="direct" in modal; booking_urls는 booking_url_requests 다건 배열로 건물 API가 반환.
 - [숙박업 유형별 통계 중복](lodging-category-stat-dedup.md) — 주소 매칭된 같은 신고번호가 여러 유형 행에 나타날 수 있으므로 전국 합계는 유형 행의 단순 합이 아니라 신고번호 중복 제거 기준으로 계산한다.
+- [Advisory locks with RealDictCursor](advisory-lock-realdictcursor.md) — shared DB helper returns mapping rows, so scalar lock results need named SQL aliases rather than positional indexes.
