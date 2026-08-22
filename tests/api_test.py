@@ -149,6 +149,8 @@ def run():
     failures += _check_room_expiry_alerts()
     # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
     failures += _check_listing_registrant_types(client)
+    # 사업주 매물의 사용자·건물별 영업신고번호 인증 캐시와 서버 우회 차단을 확인
+    failures += _check_business_listing_verification(client)
     # 사업주 공개 장기방은 공실 장박가능 재고의 월 가격만 공개하고 호실수는 숨긴다.
     failures += _check_public_business_listing_summary(client)
     # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
@@ -1675,9 +1677,148 @@ def _check_public_business_listing_summary(client):
     return failures
 
 
+def _check_business_listing_verification(client):
+    """사업주 신고번호 인증 캐시, 사용자 분리, 미매칭 폴백과 우회 차단을 검증한다."""
+    import time as _time
+    from unittest.mock import patch
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    user_one_id = user_two_id = None
+    listing_ids = []
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["business verification: 테스트용 master_buildings 행이 없습니다."]
+        cur.execute("""
+            INSERT INTO users (email, name, phone, phone_verified)
+            VALUES (%s, %s, '01000000000', TRUE)
+            RETURNING id
+        """, (f"business-verify-one-{run_id}@example.test", "사업주 인증 사용자1"))
+        user_one_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO users (email, name, phone, phone_verified)
+            VALUES (%s, %s, '01000000001', TRUE)
+            RETURNING id
+        """, (f"business-verify-two-{run_id}@example.test", "사업주 인증 사용자2"))
+        user_two_id = cur.fetchone()["id"]
+        conn.commit()
+
+        representative = {
+            "biz_name": "테스트 대표 숙박업소",
+            "permit_number": "2026-01-12345",
+            "room_count": 12,
+        }
+        listing_body = {
+            "master_building_id": building["id"],
+            "deal_type": "단기임대",
+            "deal_mode": "direct",
+            "registrant_type": "business",
+        }
+        with patch("app.matched_lodgings", return_value=([representative], "road")):
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["user_id"] = user_one_id
+
+            status_before = client.get(
+                f"/api/building/{building['id']}/business-verification"
+            )
+            before_data = status_before.get_json() or {}
+            if (
+                status_before.status_code != 200
+                or not before_data.get("matched")
+                or before_data.get("verified")
+                or not before_data.get("requires_permit_verification")
+            ):
+                failures.append("business verification: 최초 인증 상태 조회가 잘못됨")
+
+            bypassed = client.post("/api/listing-requests", json=listing_body)
+            if bypassed.status_code != 403 or not (bypassed.get_json() or {}).get("requires_business_verification"):
+                failures.append("business verification: 인증 캐시 없는 사업주 등록 우회를 차단하지 못함")
+
+            wrong = client.post(
+                f"/api/building/{building['id']}/business-verification",
+                json={"permit_number": "2026-01-99999"},
+            )
+            if wrong.status_code != 400 or not (wrong.get_json() or {}).get("retryable"):
+                failures.append("business verification: 틀린 신고번호를 재시도 가능 오류로 처리하지 못함")
+
+            verified = client.post(
+                f"/api/building/{building['id']}/business-verification",
+                json={"permit_number": "2026 - 01 12345"},
+            )
+            if verified.status_code != 200 or not (verified.get_json() or {}).get("verified"):
+                failures.append("business verification: 하이픈·공백을 무시한 신고번호 인증 실패")
+
+            created = client.post("/api/listing-requests", json=listing_body)
+            created_data = created.get_json() or {}
+            if created.status_code != 200 or not created_data.get("id"):
+                failures.append("business verification: 인증 후 사업주 등록 실패")
+            elif created_data.get("id"):
+                listing_ids.append(created_data["id"])
+
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["user_id"] = user_two_id
+            other_user_status = client.get(
+                f"/api/building/{building['id']}/business-verification"
+            )
+            other_data = other_user_status.get_json() or {}
+            if other_user_status.status_code != 200 or other_data.get("verified"):
+                failures.append("business verification: 다른 사용자에게 인증 캐시가 공유됨")
+
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["user_id"] = user_one_id
+            with patch("app.matched_lodgings", return_value=([], None)):
+                unmatched_status = client.get(
+                    f"/api/building/{building['id']}/business-verification"
+                )
+                unmatched_data = unmatched_status.get_json() or {}
+                unmatched_listing = client.post("/api/listing-requests", json=listing_body)
+            if (
+                unmatched_status.status_code != 200
+                or unmatched_data.get("matched")
+                or not unmatched_data.get("verified")
+                or unmatched_listing.status_code != 200
+            ):
+                failures.append("business verification: 영업신고 미매칭 건물의 휴대폰 인증 폴백 실패")
+            elif (unmatched_listing.get_json() or {}).get("id"):
+                listing_ids.append(unmatched_listing.get_json()["id"])
+
+        if not failures:
+            print("OK  사업주 신고번호 인증·숫자 정규화·사용자 분리·미매칭 폴백·서버 우회 차단")
+    except Exception as exc:
+        failures.append(f"business verification 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_ids:
+                cur.execute(
+                    "DELETE FROM listing_request_history WHERE listing_request_id = ANY(%s)",
+                    (listing_ids,),
+                )
+                cur.execute("DELETE FROM listing_requests WHERE id = ANY(%s)", (listing_ids,))
+            if user_one_id or user_two_id:
+                cur.execute(
+                    "DELETE FROM business_building_verifications WHERE user_id = ANY(%s)",
+                    ([x for x in (user_one_id, user_two_id) if x],),
+                )
+                cur.execute("DELETE FROM users WHERE id = ANY(%s)", ([x for x in (user_one_id, user_two_id) if x],))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
 def _check_listing_registrant_types(client):
     """신규 3분류 등록자유형 저장과 과거 agent 값 수정 호환성을 검증한다."""
     import time as _time
+    from unittest.mock import patch
     from db import get_conn
 
     failures = []
@@ -1718,16 +1859,19 @@ def _check_listing_registrant_types(client):
             )
             return failures
 
-        business_update = client.put(
-            f"/api/listing-requests/{listing_id}",
-            json={
+        def update_without_lodging_match(payload):
+            # 이 테스트는 등록자유형 값 호환만 검증한다. 신고번호 인증 차단은
+            # _check_business_listing_verification에서 별도로 검증한다.
+            with patch("app.matched_lodgings", return_value=([], None)):
+                return client.put(f"/api/listing-requests/{listing_id}", json=payload)
+
+        business_update = update_without_lodging_match({
                 "deal_type": "월세",
                 "registrant_type": "business",
                 "price_krw": 3000,
                 "price_krw_max": 4500,
                 "room_count": 37,
-            },
-        )
+            })
         cur.execute(
             """SELECT registrant_type, price_krw, price_krw_max, room_count
                FROM listing_requests WHERE id=%s""",
@@ -1743,42 +1887,33 @@ def _check_listing_registrant_types(client):
         ):
             failures.append("business listing: 가격범위 또는 총 호실수 저장 실패")
 
-        invalid_range = client.put(
-            f"/api/listing-requests/{listing_id}",
-            json={
+        invalid_range = update_without_lodging_match({
                 "deal_type": "월세",
                 "registrant_type": "business",
                 "price_krw": 4500,
                 "price_krw_max": 3000,
                 "room_count": 37,
-            },
-        )
+            })
         if invalid_range.status_code != 400:
             failures.append("business listing: 최고가가 최저가보다 작은 가격범위를 차단하지 않음")
 
-        sale_range = client.put(
-            f"/api/listing-requests/{listing_id}",
-            json={
+        sale_range = update_without_lodging_match({
                 "deal_type": "매매",
                 "registrant_type": "business",
                 "price_krw": 4500,
                 "price_krw_max": 5000,
                 "room_count": 37,
-            },
-        )
+            })
         if sale_range.status_code != 400:
             failures.append("business listing: 매매 가격범위를 차단하지 않음")
 
-        short_update = client.put(
-            f"/api/listing-requests/{listing_id}",
-            json={
+        short_update = update_without_lodging_match({
                 "deal_type": "단기임대",
                 "registrant_type": "business",
                 "price_krw": 30,
                 "price_krw_max": 60,
                 "room_count": 37,
-            },
-        )
+            })
         cur.execute(
             "SELECT deal_type, price_krw, price_krw_max FROM listing_requests WHERE id=%s",
             (listing_id,),
@@ -1792,7 +1927,6 @@ def _check_listing_registrant_types(client):
         ):
             failures.append("business listing: 단기임대 가격범위 저장 실패")
 
-        from unittest.mock import patch
         with patch("app.matched_lodgings", return_value=(
             [{"room_count": 37, "biz_name": "테스트 숙박업소"}], "road"
         )), patch("app.choose_representative", return_value={
@@ -1808,9 +1942,9 @@ def _check_listing_registrant_types(client):
             failures.append("business listing: 대표 숙박업 객실수 자동채움 API 실패")
 
         for value in ("business", "agent"):
-            updated = client.put(
-                f"/api/listing-requests/{listing_id}",
-                json={"deal_type": "단기임대", "registrant_type": value},
+            payload = {"deal_type": "단기임대", "registrant_type": value}
+            updated = update_without_lodging_match(payload) if value == "business" else client.put(
+                f"/api/listing-requests/{listing_id}", json=payload
             )
             payload = updated.get_json() or {}
             cur.execute(

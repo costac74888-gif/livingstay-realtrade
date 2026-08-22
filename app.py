@@ -6749,6 +6749,71 @@ _PHONE_RE = re.compile(r"^0\d{1,2}-?\d{3,4}-?\d{4}$")
 _HOUSE_OFFICE_NAME = "홈스퀘어부동산중개법인"
 
 
+def _normalize_permit_number(value):
+    """영업신고번호 비교용 정규화 — 숫자만 남기고 나머지는 무시한다."""
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def _business_verification_context(cur, building_id, user_id=None):
+    """현재 대표 영업신고와 사용자별 인증 캐시를 한 번에 읽는다.
+
+    대표 선정은 자동명명/숙박업 요약과 같은 주소 매칭 규칙을 사용한다.
+    신고번호 자체는 API 응답으로 내보내지 않는다.
+    """
+    cur.execute("""
+        SELECT id, road_address, jibun_address, sgg_text, umd_nm, jibun, building_name
+          FROM master_buildings
+         WHERE id = %s
+    """, [building_id])
+    building = cur.fetchone()
+    if not building:
+        return None
+    rows, match_source = matched_lodgings(cur, dict(building), active_only=True)
+    representative = choose_representative(rows)
+    representative_permit = _normalize_permit_number(
+        representative.get("permit_number") if representative else None
+    )
+    cached = None
+    if user_id and representative_permit:
+        cur.execute("""
+            SELECT permit_number, verified_at
+              FROM business_building_verifications
+             WHERE user_id = %s AND master_building_id = %s
+        """, [user_id, building_id])
+        cached = cur.fetchone()
+    return {
+        "building": building,
+        "match_source": match_source,
+        "representative": representative,
+        "representative_permit": representative_permit,
+        "cached": cached,
+    }
+
+
+def _business_verification_response(context):
+    """사업주 인증 상태 API의 공개 응답을 만든다."""
+    representative = context["representative"]
+    matched = representative is not None
+    permit_available = bool(context["representative_permit"])
+    verified = (
+        not matched
+        or (
+            permit_available
+            and context["cached"] is not None
+            and context["cached"].get("permit_number") == context["representative_permit"]
+        )
+    )
+    return {
+        "ok": True,
+        "matched": matched,
+        "verified": verified,
+        "requires_permit_verification": matched and not verified,
+        "permit_available": permit_available,
+        "business_name": representative.get("biz_name") if representative else None,
+        "match_source": context["match_source"],
+    }
+
+
 @app.route("/api/loan-consult-requests", methods=["POST"])
 @limiter.limit("5 per hour")
 def create_loan_consult_request():
@@ -6816,6 +6881,83 @@ def create_operator_consult_request():
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/building/<int:building_id>/business-verification")
+@limiter.limit("60 per minute")
+def get_business_verification(building_id):
+    """현재 사용자·건물의 사업주 영업신고번호 인증 상태를 반환한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        context = _business_verification_context(cur, building_id, user["id"])
+        if not context:
+            return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
+        return jsonify(_business_verification_response(context))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/building/<int:building_id>/business-verification", methods=["POST"])
+@limiter.limit("10 per minute")
+def verify_business_building(building_id):
+    """대표 영업신고번호를 확인하고 사용자·건물별 인증 캐시를 저장한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if not user.get("phone_verified") or not user.get("phone"):
+        return jsonify({"ok": False, "message": "먼저 휴대폰 인증을 완료해주세요."}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    permit_number = _normalize_permit_number(data.get("permit_number"))
+    if not permit_number:
+        return jsonify({"ok": False, "retryable": True, "message": "영업신고번호를 입력해주세요."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        context = _business_verification_context(cur, building_id, user["id"])
+        if not context:
+            return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
+        representative = context["representative"]
+        current_permit = context["representative_permit"]
+        if not representative:
+            return jsonify({
+                "ok": True, "matched": False, "verified": True,
+                "requires_permit_verification": False,
+                "business_name": None, "match_source": None,
+            })
+        if not current_permit:
+            return jsonify({
+                "ok": False, "retryable": False,
+                "message": "이 건물의 영업신고번호를 확인할 수 없습니다. 관리자에게 문의해주세요.",
+            }), 503
+        if permit_number != current_permit:
+            return jsonify({
+                "ok": False, "retryable": True,
+                "message": "영업신고번호가 일치하지 않습니다. 숫자만 입력해 다시 확인해주세요.",
+            }), 400
+        cur.execute("""
+            INSERT INTO business_building_verifications
+                (user_id, master_building_id, permit_number, verified_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (user_id, master_building_id)
+            DO UPDATE SET permit_number = EXCLUDED.permit_number,
+                          verified_at = NOW()
+        """, [user["id"], building_id, current_permit])
+        conn.commit()
+        return jsonify({
+            "ok": True, "matched": True, "verified": True,
+            "requires_permit_verification": False,
+            "business_name": representative.get("biz_name"),
+            "match_source": context["match_source"],
+        })
+    finally:
+        cur.close()
+        conn.close()
 
 
 def format_lr_summary(deal_type, price_krw, monthly_rent_krw, area_sqm, yield_rate,
@@ -6974,10 +7116,33 @@ def create_listing_request():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT id, building_name, sgg_text FROM master_buildings WHERE id = %s", [mb_id])
+        cur.execute("""
+            SELECT id, building_name, sgg_text, road_address, jibun_address, umd_nm, jibun
+              FROM master_buildings
+             WHERE id = %s
+        """, [mb_id])
         bld = cur.fetchone()
         if not bld:
             return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
+
+        # 사업주 매물은 현재 대표 영업신고와 사용자·건물별 인증 캐시를
+        # 서버에서 다시 확인한다. 클라이언트가 인증 단계를 건너뛰어도 우회할 수 없다.
+        if registrant_type == "business":
+            verification = _business_verification_context(cur, mb_id, user["id"])
+            if verification["representative"]:
+                current_permit = verification["representative_permit"]
+                cached = verification["cached"]
+                if not current_permit:
+                    return jsonify({
+                        "ok": False,
+                        "message": "이 건물의 영업신고번호를 확인할 수 없습니다. 관리자에게 문의해주세요.",
+                    }), 503
+                if not cached or cached.get("permit_number") != current_permit:
+                    return jsonify({
+                        "ok": False,
+                        "message": "사업주 영업신고번호 인증이 필요합니다. 인증 후 다시 시도해주세요.",
+                        "requires_business_verification": True,
+                    }), 403
 
         # 직거래는 중개사 라우팅 없이 공개 등록만
         if deal_mode == "broker":
@@ -8328,7 +8493,7 @@ def update_listing_request(req_id):
     cur = conn.cursor()
     try:
         cur.execute(
-            """SELECT id, user_id, status, deal_type, desired_price, price_krw, price_krw_max,
+            """SELECT id, user_id, master_building_id, status, deal_type, desired_price, price_krw, price_krw_max,
                        monthly_rent_krw, room_count, area_sqm, dong, ho, registrant_type, description, deposit_krw,
                       yield_rent_krw, yield_rate, contact_phone
                FROM listing_requests WHERE id = %s""", [req_id]
@@ -8340,6 +8505,22 @@ def update_listing_request(req_id):
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
         if row["status"] != "submitted":
             return jsonify({"ok": False, "message": "접수됨 상태에서만 수정할 수 있습니다."}), 400
+        if registrant_type == "business":
+            verification = _business_verification_context(cur, row["master_building_id"], user["id"])
+            if verification["representative"]:
+                current_permit = verification["representative_permit"]
+                cached = verification["cached"]
+                if not current_permit:
+                    return jsonify({
+                        "ok": False,
+                        "message": "이 건물의 영업신고번호를 확인할 수 없습니다. 관리자에게 문의해주세요.",
+                    }), 503
+                if not cached or cached.get("permit_number") != current_permit:
+                    return jsonify({
+                        "ok": False,
+                        "message": "사업주 영업신고번호 인증이 필요합니다. 인증 후 다시 시도해주세요.",
+                        "requires_business_verification": True,
+                    }), 403
         before = {
             "deal_type": row["deal_type"], "desired_price": row["desired_price"],
             "price_krw": row["price_krw"], "price_krw_max": row["price_krw_max"],

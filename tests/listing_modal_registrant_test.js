@@ -26,8 +26,6 @@ for (const [value, label] of [
   expect(modal.includes(`{value: "${value}", label: "${label}"}`),
     `등록자유형 ${value} / ${label} 옵션이 없습니다.`);
 }
-expect(modal.includes("presetRegistrantType") && modal.includes("presetDealType"),
-  "장기방 등록용 사전선택 파라미터가 없습니다.");
 expect(modal.includes("form.dataset.registrantType"),
   "등록자유형 변경 플래그가 폼 data 속성에 저장되지 않습니다.");
 for (const id of [
@@ -55,17 +53,24 @@ expect(
 
 expect(main.includes('id="btnBuyRequest"') && main.includes("display:none"),
   "매수의뢰 버튼이 숨김 처리되지 않았습니다.");
-expect(main.includes('id="btnLongTermRoom"') && main.includes(">장기방 내놓기</button>"),
-  "장기방 내놓기 버튼이 없습니다.");
+expect(!main.includes("btnLongTermRoom") && !main.includes("장기방 내놓기"),
+  "제거된 장기방 내놓기 버튼 또는 클릭 코드가 남아 있습니다.");
+for (const id of [
+  "lrBusinessVerifyGate", "lrBusinessPermitNumber", "lrBusinessVerifySubmit",
+]) {
+  expect(modal.includes(`id="${id}"`), `사업주 영업신고번호 인증 UI ${id}가 없습니다.`);
+}
 expect(
-  main.includes('presetRegistrantType: "business"') &&
-  main.includes('presetDealType: "단기임대"'),
-  "장기방 내놓기 버튼의 사업주/단기임대 사전선택이 없습니다."
+  modal.includes("/business-verification") &&
+  modal.includes("checkBusinessVerification") &&
+  modal.includes("phone_verified && user.phone") &&
+  modal.includes("else showListingForm()"),
+  "기존 휴대폰 인증 계정 건너뛰기 또는 사업주 신고번호 인증 흐름이 없습니다."
 );
 expect(
-  main.includes("lr.price_krw_max") && main.includes("const roomText = lr.room_count") &&
+  main.includes("lr.price_krw_max") && main.includes("lr.room_count") &&
   listings.includes("item.price_krw_max") && listings.includes("item.room_count"),
   "건물상세 또는 공개 매물 목록에서 사업주 가격범위·총 호실수가 표시되지 않습니다."
 );
 
-console.log("OK  등록자유형·사업주 가격범위/호실수·폼 순서·장기방 사전선택·매수의뢰 숨김");
+console.log("OK  등록자유형·사업주 가격범위/호실수·휴대폰 인증 건너뛰기·신고번호 인증·장기방 버튼 제거");

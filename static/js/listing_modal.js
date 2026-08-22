@@ -118,6 +118,14 @@
           '<div id="lrGateCodeWrap" style="display:none;margin-top:12px;"><div style="display:flex;gap:7px;"><input id="lrGateCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="인증번호 6자리" style="' + inputStyle("flex:1;") + '"><button type="button" id="lrGateVerify" style="white-space:nowrap;border:0;border-radius:8px;padding:10px 13px;background:#4A7A18;color:#fff;font:700 13px inherit;cursor:pointer;">확인</button></div></div>' +
           '<div id="lrGateMessage" aria-live="polite" style="display:none;margin-top:9px;font-size:12.5px;"></div></div>' +
         '</div>' +
+        '<div id="lrBusinessVerifyGate" style="display:none;padding:28px 18px 24px;">' +
+          '<div style="font-size:17px;font-weight:800;color:var(--ink,#16202e);">사업주 영업신고번호 확인</div>' +
+          '<p id="lrBusinessVerifyHelp" style="margin:8px 0 18px;color:var(--ink-soft,#6b7684);font-size:13px;line-height:1.55;">이 건물에 등록된 대표 숙박업 영업신고번호를 확인해주세요.<br>하이픈과 공백은 입력하지 않아도 됩니다.</p>' +
+          '<div id="lrBusinessVerifyLoading" style="font-size:13px;color:var(--ink-soft,#6b7684);">인증 상태를 확인하고 있습니다.</div>' +
+          '<div id="lrBusinessVerifyFields" style="display:none;"><input id="lrBusinessPermitNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="영업신고번호" style="' + inputStyle() + '">' +
+          '<button type="button" id="lrBusinessVerifySubmit" style="width:100%;margin-top:8px;border:0;border-radius:8px;padding:11px;background:#4A7A18;color:#fff;font:700 13px inherit;cursor:pointer;">신고번호 확인</button>' +
+          '<div id="lrBusinessVerifyMessage" aria-live="polite" style="display:none;margin-top:9px;font-size:12.5px;"></div></div>' +
+        '</div>' +
         '<form id="lrForm" style="padding:16px 18px 20px;">' +
           '<section id="lrModeSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">진행 방식</div>' +
           '<div style="display:flex;gap:8px;"><button type="button" class="lr-mode" data-mode="direct" style="flex:1;padding:9px;border-radius:8px;border:1px solid #4A7A18;background:' + (dealMode === "direct" ? "#4A7A18" : "#fff") + ';color:' + (dealMode === "direct" ? "#fff" : "#4A7A18") + ';font:700 13px inherit;cursor:pointer;">직거래</button>' +
@@ -155,7 +163,7 @@
 
     var $ = function (selector) { return overlay.querySelector(selector); };
     var form = $("#lrForm"), message = $("#lrMessage"), submit = $("#lrSubmit");
-    var phoneGate = $("#lrPhoneVerifyGate"), gateTimer = null;
+    var phoneGate = $("#lrPhoneVerifyGate"), businessGate = $("#lrBusinessVerifyGate"), gateTimer = null;
     var initialRegistrantType = validRegistrantType(presetRegistrantType)
       ? presetRegistrantType
       : (validRegistrantType(prefill.registrant_type) ? prefill.registrant_type : "owner");
@@ -376,6 +384,8 @@
     $("#lrRegistrantType").addEventListener("change", function () {
       updateRegistrantTypeFlag();
       saveDraft();
+      if (this.value === "business") checkBusinessVerification();
+      else if (!isEdit || form.style.display !== "none") showListingForm();
     });
     ["#lrSalePrice", "#lrJeonseDeposit", "#lrWolseDeposit", "#lrWolseRent",
       "#lrWolsePriceMin", "#lrWolsePriceMax", "#lrShortPriceMin", "#lrShortPriceMax",
@@ -402,6 +412,7 @@
     updateRegistrantTypeFlag();
     updateMode();
     updateDealType();
+    if (isEdit && $("#lrRegistrantType").value === "business") checkBusinessVerification();
     if (draftRestored) {
       setTimeout(function () { setMessage("이전에 작성 중이던 내용을 불러왔습니다."); }, 0);
     }
@@ -416,6 +427,7 @@
       $("#lrAuthLoading").style.display = "none";
       form.style.display = "none";
       phoneGate.style.display = "block";
+      businessGate.style.display = "none";
       $("#lrGateLoading").style.display = "none";
       $("#lrGateFields").style.display = "block";
       $("#lrGatePhone").focus();
@@ -423,12 +435,88 @@
     function showListingForm() {
       $("#lrAuthLoading").style.display = "none";
       phoneGate.style.display = "none";
+      businessGate.style.display = "none";
       form.style.display = "block";
       if (draftRestored) {
         setMessage("이전에 작성 중이던 내용을 불러왔습니다.");
         draftRestored = false;
       }
     }
+    function setBusinessVerifyMessage(text, ok) {
+      var verifyMessage = $("#lrBusinessVerifyMessage");
+      verifyMessage.textContent = text || "";
+      verifyMessage.style.color = ok ? "#28733f" : "#b42318";
+      verifyMessage.style.display = text ? "block" : "none";
+    }
+    function showBusinessGate() {
+      $("#lrAuthLoading").style.display = "none";
+      form.style.display = "none";
+      phoneGate.style.display = "none";
+      businessGate.style.display = "block";
+    }
+    function checkBusinessVerification() {
+      if ($("#lrRegistrantType").value !== "business") {
+        showListingForm();
+        return;
+      }
+      if (!buildingId) {
+        showBusinessGate();
+        $("#lrBusinessVerifyLoading").style.display = "none";
+        $("#lrBusinessVerifyFields").style.display = "none";
+        setBusinessVerifyMessage("건물을 선택한 뒤 사업주 매물을 등록할 수 있습니다.");
+        return;
+      }
+      showBusinessGate();
+      $("#lrBusinessVerifyLoading").style.display = "block";
+      $("#lrBusinessVerifyFields").style.display = "none";
+      setBusinessVerifyMessage("");
+      fetch("/api/building/" + encodeURIComponent(buildingId) + "/business-verification", {
+        credentials: "same-origin"
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (data) { return {ok: r.ok, data: data}; });
+      }).then(function (result) {
+        if (!result.ok || !result.data.ok) throw new Error(result.data.message || "사업주 인증 상태를 확인하지 못했습니다.");
+        if (result.data.verified || !result.data.matched) {
+          showListingForm();
+          return;
+        }
+        $("#lrBusinessVerifyLoading").style.display = "none";
+        $("#lrBusinessVerifyFields").style.display = result.data.permit_available ? "block" : "none";
+        $("#lrBusinessVerifyHelp").textContent = (result.data.business_name
+          ? result.data.business_name + "의 " : "") + "영업신고번호를 입력해주세요. 하이픈과 공백은 입력하지 않아도 됩니다.";
+        if (result.data.permit_available) $("#lrBusinessPermitNumber").focus();
+        else setBusinessVerifyMessage("이 건물의 영업신고번호를 확인할 수 없습니다. 관리자에게 문의해주세요.");
+      }).catch(function (error) {
+        $("#lrBusinessVerifyLoading").style.display = "none";
+        $("#lrBusinessVerifyFields").style.display = "none";
+        setBusinessVerifyMessage(error.message || "인증 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.");
+      });
+    }
+    $("#lrBusinessVerifySubmit").addEventListener("click", function () {
+      var button = this;
+      var permitNumber = ($("#lrBusinessPermitNumber").value || "").replace(/\D/g, "");
+      if (!permitNumber) {
+        setBusinessVerifyMessage("영업신고번호를 입력해주세요.");
+        return;
+      }
+      setBusinessVerifyMessage("");
+      button.disabled = true;
+      button.textContent = "확인 중…";
+      fetch("/api/building/" + encodeURIComponent(buildingId) + "/business-verification", {
+        method: "POST", credentials: "same-origin",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({permit_number: permitNumber})
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (data) { return {ok: r.ok, data: data}; });
+      }).then(function (result) {
+        if (!result.ok || !result.data.ok) throw new Error(result.data.message || "영업신고번호 확인에 실패했습니다.");
+        showListingForm();
+      }).catch(function (error) {
+        button.disabled = false;
+        button.textContent = "신고번호 확인";
+        setBusinessVerifyMessage(error.message || "네트워크 오류가 발생했습니다.");
+      });
+    });
     function startResendCountdown() {
       var button = $("#lrGateSendCode"), remaining = 60;
       if (gateTimer) clearInterval(gateTimer);
@@ -502,7 +590,8 @@
           if (typeof window.livingstayRefreshAuth === "function") window.livingstayRefreshAuth();
           window.dispatchEvent(new CustomEvent("livingstay:auth"));
           restoreDraftForUser(draftUser);
-          showListingForm();
+          if ($("#lrRegistrantType").value === "business") checkBusinessVerification();
+          else showListingForm();
         }).catch(function (error) {
           button.disabled = false;
           button.textContent = "확인";
@@ -513,8 +602,6 @@
         .then(function (r) { return r.json().catch(function () { return {}; }); })
         .then(function (user) {
           draftUser = user && user.logged_in ? user : null;
-          // 새 매물 등록은 매번 휴대폰 인증 화면을 먼저 거친다.
-          // 기존 인증 번호가 있으면 재입력을 줄이기 위해 번호만 채워 둔다.
           if (user && user.phone) {
             var savedDigits = String(user.phone).replace(/\D/g, "").slice(0, 11);
             $("#lrGatePhone").value = savedDigits.length > 7
@@ -522,7 +609,10 @@
               : (savedDigits.length > 3 ? savedDigits.slice(0, 3) + "-" + savedDigits.slice(3) : savedDigits);
           }
           if (user && user.phone_verified && user.phone) {
-            setGateMessage("매물 등록 전 휴대폰 인증을 한 번 더 진행해주세요.", true);
+            restoreDraftForUser(draftUser);
+            if ($("#lrRegistrantType").value === "business") checkBusinessVerification();
+            else showListingForm();
+            return;
           }
           showPhoneGate();
         })
