@@ -102,3 +102,8 @@ Facts you can only discover by querying Postgres, not by reading code.
 - 해결: lodging_registry.jibun_norm(지번 정규화 키) 2차 매칭 — 1차 road_norm 0건일 때만. 건물 쪽 키는 jibun_address 우선, NULL이면 지번형 road_address 폴백(get_building_jibun_key).
 - **Why:** 재수집 없이 매칭 키만 추가하면 전국 49개 건물이 살아남(476 중 road 335 + jibun 49 + 미매칭 92).
 - 운영 반영 절차: Publish(스키마 diff로 jibun_norm 컬럼 생성) → 실서비스 /admin 숙박업 동기화 재실행(업서트가 jibun_norm 채움). dev의 backfill은 운영에 전파되지 않음.
+
+## 숙박업 괄호 행정구역·통계 일관성
+- **규칙:** 건축물대장 도로명 본문에서 빠진 괄호 안 읍·면·동은 도로명 키에 보완하되, 도로명 자체가 다르면 유사도 추측으로 합치지 않는다. 건물별 신고 매칭은 반드시 도로명 우선, 도로명 결과가 0건일 때만 지번 보조를 쓴다.
+- **Why:** 대장은 `... 팔공산로2길 8 (동명면 기성리)`, 신고는 `... 동명면 팔공산로2길 8`처럼 같은 주소를 다르게 표기한다. 반면 한티로와 한티로1길처럼 숫자·이름이 비슷한 다른 도로는 오매칭 위험이 크다.
+- **How to apply:** 목록·상세·후보·공개 통계 모두 같은 우선순위를 적용한다. 저장된 신고 키의 정규화 규칙이 바뀌면 API 재수집 대신 전체 키 재계산을 먼저 실행해 신규·기존 행을 일치시킨다.

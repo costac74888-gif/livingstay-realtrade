@@ -162,7 +162,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" python -u sync_lodgings.py --sleep 0.3 --max-calls 8000"
+args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" python -u sync_lodgings.py"
 
 [[workflows.workflow]]
 name = "Prewarm Unit Areas"

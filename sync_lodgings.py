@@ -23,6 +23,7 @@ import time
 from datetime import datetime
 
 import requests
+from psycopg2.extras import execute_values
 
 from addr_norm import normalize_name, normalize_road_prefix, normalize_jibun_prefix
 from db import get_conn
@@ -301,19 +302,35 @@ def reindex_lodging_norms():
     """기존 lodging_registry 주소의 정규화 키를 현재 규칙으로 재계산한다."""
     conn = get_conn()
     cur = conn.cursor()
-    updated = 0
     try:
         cur.execute("SELECT id, road_address, jibun_address FROM lodging_registry")
         rows = cur.fetchall()
+        updates = []
         for row in rows:
-            road_norm = normalize_road_prefix(row["road_address"])
-            jibun_norm = normalize_jibun_prefix(row["jibun_address"])
-            cur.execute(
-                "UPDATE lodging_registry "
-                "SET road_norm=%s, jibun_norm=%s, updated_at=NOW() "
-                "WHERE id=%s "
-                "  AND (road_norm IS DISTINCT FROM %s OR jibun_norm IS DISTINCT FROM %s)",
-                (road_norm, jibun_norm, row["id"], road_norm, jibun_norm),
+            updates.append((
+                row["id"],
+                normalize_road_prefix(row["road_address"]),
+                normalize_jibun_prefix(row["jibun_address"]),
+            ))
+
+        updated = 0
+        for start in range(0, len(updates), 1000):
+            batch = updates[start:start + 1000]
+            execute_values(
+                cur,
+                """
+                UPDATE lodging_registry AS lr
+                   SET road_norm = values.road_norm,
+                       jibun_norm = values.jibun_norm,
+                       updated_at = NOW()
+                  FROM (VALUES %s) AS values(id, road_norm, jibun_norm)
+                 WHERE lr.id = values.id
+                   AND (lr.road_norm IS DISTINCT FROM values.road_norm
+                        OR lr.jibun_norm IS DISTINCT FROM values.jibun_norm)
+                """,
+                batch,
+                template="(%s, %s, %s)",
+                page_size=len(batch),
             )
             updated += cur.rowcount
         conn.commit()

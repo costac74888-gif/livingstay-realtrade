@@ -18138,7 +18138,9 @@ def stats_registration_rate():
     buildings   = int(row["buildings"])
     total_units = int(row["total_units"])
 
-    # 전체 건물 주소에서 road_norm·jibun_norm 계산 후 lodging_registry 매칭
+    # 전체 건물 주소에서 road_norm·jibun_norm 계산 후 lodging_registry 매칭.
+    # 관리자 전체통계와 마찬가지로 각 건물마다 도로명 우선, 결과가 없을 때만
+    # 지번 보조 매칭을 적용해야 같은 신고를 같은 기준으로 집계할 수 있다.
     cur.execute("""
         SELECT road_address, jibun_address
         FROM master_buildings
@@ -18146,22 +18148,38 @@ def stats_registration_rate():
           AND lodging_type IS DISTINCT FROM %s
     """, [REPORT_RATE_EXCLUDED_LODGING_TYPE])
     bld_rows = cur.fetchall()
-    road_norms  = list({addr_norm.normalize_road_prefix(b["road_address"])
-                        for b in bld_rows if b["road_address"]
-                        if addr_norm.normalize_road_prefix(b["road_address"])})
-    jibun_norms = list({addr_norm.normalize_jibun_prefix(b["jibun_address"] or b["road_address"])
-                        for b in bld_rows if b["road_address"]
-                        if addr_norm.normalize_jibun_prefix(b["jibun_address"] or b["road_address"])})
+    building_keys = [
+        (
+            addr_norm.normalize_road_prefix(building["road_address"]),
+            addr_norm.normalize_jibun_prefix(building["jibun_address"] or building["road_address"]),
+        )
+        for building in bld_rows
+    ]
+    road_norms = list({road_key for road_key, _ in building_keys if road_key})
+    jibun_norms = list({jibun_key for _, jibun_key in building_keys if jibun_key})
     if road_norms or jibun_norms:
         cur.execute(
-            "SELECT DISTINCT ON (permit_number) permit_number, room_count "
+            "SELECT permit_number, room_count, road_norm, jibun_norm "
             "FROM lodging_registry "
             "WHERE (biz_status_name IS NULL OR biz_status_name NOT LIKE '%%폐업%%') "
-            "  AND (road_norm = ANY(%s) OR jibun_norm = ANY(%s)) "
-            "ORDER BY permit_number",
+            "  AND (road_norm = ANY(%s) OR jibun_norm = ANY(%s))",
             [road_norms or ["__none__"], jibun_norms or ["__none__"]]
         )
-        biz_units = sum(int(r["room_count"] or 0) for r in cur.fetchall())
+        road_matches = {}
+        jibun_matches = {}
+        for lodging in cur.fetchall():
+            if lodging["road_norm"]:
+                road_matches.setdefault(lodging["road_norm"], {})[lodging["permit_number"]] = lodging
+            if lodging["jibun_norm"]:
+                jibun_matches.setdefault(lodging["jibun_norm"], {})[lodging["permit_number"]] = lodging
+
+        permits = {}
+        for road_key, jibun_key in building_keys:
+            if road_key and road_key in road_matches:
+                permits.update(road_matches[road_key])
+            elif jibun_key and jibun_key in jibun_matches:
+                permits.update(jibun_matches[jibun_key])
+        biz_units = sum(int(row["room_count"] or 0) for row in permits.values())
     else:
         biz_units = 0
     cur.close()

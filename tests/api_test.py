@@ -443,7 +443,9 @@ def _check_lodging_metric_contract(client):
         building_id = None
         permit_number = f"TEST-ADMIN-JIBUN-{run_id}"
         building_name = f"자동 지번보조매칭 {run_id}"
-        building_road = "경상북도 칠곡군 팔공산로2길 8 (동명면 기성리)"
+        # 새 괄호 정규화 규칙이 도로명 매칭을 보강하더라도, 도로명 자체가
+        # 다른 경우에는 지번 보조 매칭이 계속 작동해야 한다.
+        building_road = "경상북도 칠곡군 동명면 한티로1길 8"
         building_jibun = "경상북도 칠곡군 동명면 기성리 836번지"
         lodging_road = "경상북도 칠곡군 동명면 팔공산로2길 8"
         lodging_jibun = "경상북도 칠곡군 동명면 기성리 836"
