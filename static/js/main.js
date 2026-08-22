@@ -1898,7 +1898,7 @@ async function loadSideStats(){
         regBox.classList.remove("side-soon");
         regBox.innerHTML =
           `<div style="font-size:20px; font-weight:700; color:var(--brass-dark);">전국 ${d.rate}%</div>` +
-          `<div style="font-size:12px; color:var(--ink-soft); margin-top:3px;">총 ${d.buildings.toLocaleString()}개 건물 · ${d.total_units.toLocaleString()}실 중 ${d.biz_units.toLocaleString()}실 신고</div>`;
+          `<div title="가중평균 기준: 전체 영업신고호실 합 ÷ 전체 호실 합" style="font-size:12px; color:var(--ink-soft); margin-top:3px;">총 ${d.buildings.toLocaleString()}개 건물 · ${d.total_units.toLocaleString()}실 중 ${d.biz_units.toLocaleString()}실 신고 · 가중평균 기준</div>`;
       } else {
         regBox.textContent = "신고율 데이터를 불러오지 못했습니다.";
       }

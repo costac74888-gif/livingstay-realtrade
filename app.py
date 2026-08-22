@@ -11240,7 +11240,7 @@ def admin_buildings_list():
 
     # ── 합계(totals) 집계 — 현재 필터 기준 전체 결과 ────────────────────────────
     # 페이지네이션된 items가 아닌, 동일 WHERE절에 해당하는 전체 건물 기준으로 집계.
-    # 신고율은 건물별 (biz_units / units × 100)의 단순 산술 평균 (단순평균, full-stats는 가중평균).
+    # 신고율은 전체 영업신고호실 합 ÷ 전체 호실 합의 가중평균으로 모든 요약 화면과 통일한다.
     totals = None
     try:
         conn_t = get_conn()
@@ -11329,7 +11329,6 @@ def admin_buildings_list():
 
         # permit_number 중복 제거 후 전체 집계 (full-stats _row() 로직 동일)
         all_permits_t: dict = {}
-        per_bld_rates: list = []
         for b in all_blds_t:
             rk = bld_rk_t[b["id"]]
             jk = bld_jk_t[b["id"]]
@@ -11339,21 +11338,16 @@ def admin_buildings_list():
             elif jk and jk in lr_jibun_map_t:
                 bld_permits.update(lr_jibun_map_t[jk])
             all_permits_t.update(bld_permits)
-            # 신고율 단순평균용: 건물별 (비폐업 객실수 / 호실수 × 100) 산술 평균
-            units_b = int(b["units"] or 0)
-            if units_b:
-                active_b = [v for v in bld_permits.values()
-                            if "폐업" not in (v["biz_status_name"] or "")]
-                biz_b = sum(int(v["room_count"] or 0) for v in active_b)
-                per_bld_rates.append(biz_b / units_b * 100)
 
         active_permits_t = [v for v in all_permits_t.values()
                             if "폐업" not in (v["biz_status_name"] or "")]
         total_biz_units_t  = sum(int(v["room_count"] or 0) for v in active_permits_t)
         total_lodging_t    = len(active_permits_t)
-        # 신고율 단순평균: 건물별 신고율의 산술 평균 (주석: 단순평균 — full-stats는 가중평균)
-        avg_report_rate_t  = round(sum(per_bld_rates) / len(per_bld_rates), 1) \
-                             if per_bld_rates else None
+        # 가중평균: 전체 영업신고호실 합 ÷ 전체 호실 합 × 100.
+        weighted_report_rate_t = (
+            round(total_biz_units_t / total_units_t * 100, 1)
+            if total_units_t else None
+        )
 
         totals = {
             "total_units":         total_units_t,
@@ -11362,7 +11356,7 @@ def admin_buildings_list():
             "total_store_realty":  total_store_realty_t,
             "total_store_count":   total_store_count_t,
             "total_biz_units":     total_biz_units_t,
-            "avg_report_rate":     avg_report_rate_t,
+            "weighted_report_rate": weighted_report_rate_t,
             "total_lodging_count": total_lodging_t,
         }
     except Exception as _e:

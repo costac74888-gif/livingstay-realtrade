@@ -437,9 +437,9 @@
                                       ? `<strong>${t.total_store_realty.toLocaleString()}</strong>` : "",
           store_count:         (t) => t.total_store_count != null
                                       ? `<strong>${t.total_store_count.toLocaleString()}</strong>` : "",
-          // 신고율: 건물별 (biz_units / units × 100) 단순 산술평균 (전체 통계표는 가중평균 사용)
-          report_rate:         (t) => t.avg_report_rate != null
-                                      ? `<strong>${t.avg_report_rate}%</strong>` : "",
+          // 요약 신고율은 전체 신고호실 합 ÷ 전체 호실 합으로 계산한 가중평균.
+          report_rate:         (t) => t.weighted_report_rate != null
+                                      ? `<strong title="가중평균 기준: 전체 영업신고호실 합 ÷ 전체 호실 합">${t.weighted_report_rate}%</strong><span title="가중평균 기준: 전체 영업신고호실 합 ÷ 전체 호실 합" style="margin-left:3px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>` : "",
           lodging_expand:      (t) => t.total_lodging_count != null
                                       ? `<strong>${t.total_lodging_count.toLocaleString()}건</strong>` : "",
         },
