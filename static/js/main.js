@@ -3317,46 +3317,48 @@ async function loadBuildingHeader(id){
       const sortBar = [["latest","최신순"],["price","가격순"],["yield","수익률순"]].map(([v,l])=>
         `<button type="button" data-lsort="${v}" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1px solid ${_lsSort===v?"var(--brass,#B4863F)":"var(--line,#ddd)"};background:${_lsSort===v?"var(--brass-tint,#FFF5E0)":"#fff"};color:${_lsSort===v?"var(--brass-dark,#7D4A00)":"var(--ink-soft)"};cursor:pointer;margin-right:4px;">${l}</button>`
       ).join("");
+      const _lodgingColors = { "생활":"#378ADD", "관광":"#639922", "일반":"#D46BA3", "복합":"#B39DDB", "준공전":"#616161", "미분류":"#E0E0E0" };
+      function _lodgingBadge(raw){
+        const label = raw && raw.includes("·") ? "복합" : (raw || "미분류");
+        return `<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:${_lodgingColors[label] || _lodgingColors["미분류"]};color:#fff;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap;">${label}</span>`;
+      }
 
       const cards = listings.map((lr) => {
         const lrId = lr.id;
         const isNew = lr.listing_date && ((now - new Date(lr.listing_date + "T00:00:00").getTime()) < THREE_DAYS_MS);
         const newBadge = isNew ? `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">NEW</span>` : "";
-         const dt = _dealTypeBadge(lr.deal_type);
+        const dt = _dealTypeBadge(lr.deal_type);
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
-          const priceText = _listingPriceText(lr, _fmtN);
-         const roomText = !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
+        const priceText = _listingPriceText(lr, _fmtN);
+        const floorValue = lr.floor ?? lr.floor_no ?? lr.floor_number;
+        const floorText = floorValue != null && String(floorValue).trim() ? String(floorValue).trim() + "층" : "";
+        const roomText = !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
           ? `총 ${_fmtN(lr.room_count)}실` : "";
-        const yieldText = lr.yield_rate != null
-          ? `<span style="font-size:11.5px;color:var(--brass-dark,#7D4A00);font-weight:700;">수익률 ${parseFloat(lr.yield_rate).toFixed(1)}%</span><span style="font-size:10px;color:var(--ink-soft);"> (참고용)</span>`
-          : "";
-        const desc = lr.description ? escapeHtml(lr.description.slice(0, 50)) + (lr.description.length > 50 ? "…" : "") : "";
+        const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}%` : "";
+        const desc = lr.description ? lr.description.slice(0, 50) + (lr.description.length > 50 ? "…" : "") : "";
+        const detailText = [sqm, floorText, roomText, yieldText, desc].filter(Boolean).join(" · ") || "-";
         const likeCount = lr.like_count || 0;
-         const photoSrc = (lr.photos && lr.photos.length > 0) ? escapeHtml(lr.photos[0]) : null;
-         const thumbHtml = photoSrc
-           ? `<img src="${photoSrc}" alt="매물 사진" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--line,#eee);" onerror="this.style.display='none'">`
-           : `<div style="width:48px;height:48px;border-radius:6px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1px solid var(--line,#eee);">🏠</div>`;
-        const rowDate = lr.listing_date ? `<span style="font-size:10px;color:var(--ink-soft);">최근 수정 ${escapeHtml(lr.listing_date)}</span>` : "";
-         return `<div class="listing-row" data-listing-id="${lrId}" style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line,#eee);transition:background 0.4s;">
-            <button type="button" class="listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="display:block;padding:0;border:0;background:none;cursor:pointer;flex-shrink:0;">${thumbHtml}</button>
-           <div style="flex:1;min-width:0;">
-             <div class="listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기" style="cursor:pointer;">
-             <div style="display:flex;align-items:center;gap:5px;margin-bottom:1px;min-height:15px;">
-               ${lr.listing_number ? `<span style="display:inline-block;font-size:9px;font-weight:700;color:var(--brass-dark,#7D4A00);background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);border-radius:4px;padding:0 4px;">${escapeHtml(lr.listing_number)}</span>` : ""}
-               ${rowDate}
-             </div>
-             <div style="font-size:11.5px;font-weight:700;color:var(--ink);margin-bottom:1px;">${dt}${sqm?` · ${sqm}`:""}${newBadge}</div>
-             <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:1px;">${priceText}</div>
-              ${roomText?`<div style="font-size:10.5px;color:var(--ink-soft);font-weight:700;margin-bottom:1px;">${roomText}</div>`:""}
-             ${yieldText?`<div style="line-height:1.2;margin-bottom:1px;">${yieldText}</div>`:""}
-             ${desc?`<div style="font-size:10.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;">${desc}</div>`:""}
-             </div>
-             <div style="display:flex;align-items:center;gap:8px;margin-top:1px;">
-               <button type="button" class="listing-like-btn" data-lrid="${lrId}" style="font-size:12px;background:none;border:none;cursor:pointer;padding:0;color:var(--ink-soft);">♥ <span class="like-cnt">${likeCount}</span></button>
-               <button type="button" class="listing-chat-btn" data-lrid="${lrId}" style="background:rgba(180,134,63,.12);border:1.5px solid var(--brass,#B4863F);border-radius:16px;padding:1px 8px;cursor:pointer;font-size:11px;color:var(--brass-dark,#7D4A00);font-weight:600;">💬 채팅</button>
-             </div>
-           </div>
-         </div>`;
+        const photoSrc = (lr.photos && lr.photos.length > 0) ? escapeHtml(lr.photos[0]) : null;
+        const photoHtml = photoSrc
+          ? `<img src="${photoSrc}" alt="매물 사진" onerror="this.parentElement.innerHTML='🏠'">`
+          : "🏠";
+        return `<div class="b-listing-card" data-listing-id="${lrId}">
+          <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기">
+            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${escapeHtml(bName)}${newBadge}</div>
+            <div class="b-listing-l2">${dt}${escapeHtml(priceText)}</div>
+            <div class="b-listing-l3" title="${escapeHtml(detailText)}">${escapeHtml(detailText)}</div>
+            <div class="b-listing-l4">
+              ${lr.listing_number ? `<span class="b-listing-number">${escapeHtml(lr.listing_number)}</span>` : ""}
+              <span>${escapeHtml(lr.listing_date || "")}</span>
+              <span class="b-listing-actions">
+                <button type="button" class="listing-like-btn" data-lrid="${lrId}" title="찜">♥ <span class="like-cnt">${likeCount}</span></button>
+                <button type="button" class="listing-chat-btn" data-lrid="${lrId}" title="문의하기">💬</button>
+                <button type="button" class="listing-share-btn" data-lrid="${lrId}" title="링크 공유">🔗</button>
+              </span>
+            </div>
+          </div>
+          <button type="button" class="b-listing-photo-btn listing-photo-btn" data-lrid="${lrId}" aria-label="매물 카드로 보기">${photoHtml}</button>
+        </div>`;
       }).join("");
 
       listingsBody.innerHTML = `<div style="margin-bottom:8px;">${sortBar}</div><div>${cards}</div><div style="font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:6px;">직거래 시 계약 전 등기부등본 확인을 권장합니다.</div>`;
@@ -3397,6 +3399,32 @@ async function loadBuildingHeader(id){
       });
       listingsBody.querySelectorAll(".listing-chat-btn").forEach(btn => {
         btn.addEventListener("click", (e) => { e.stopPropagation(); _openListingChat(parseInt(btn.dataset.lrid, 10)); });
+      });
+      listingsBody.querySelectorAll(".listing-share-btn").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
+          const shareUrl = new URL(`/building/${encodeURIComponent(b.building_id)}`, shareOrigin);
+          shareUrl.searchParams.set("listing", String(btn.dataset.lrid));
+          const url = shareUrl.toString();
+          const shareData = { title: `${bName} 직거래 매물 | 홈앤스테이`, text: `${bName} 직거래 매물`, url };
+          try {
+            if (navigator.share) {
+              await navigator.share(shareData);
+              return;
+            }
+            if (navigator.clipboard) {
+              await navigator.clipboard.writeText(url);
+              const previous = btn.textContent;
+              btn.textContent = "✓";
+              setTimeout(() => { if (btn.isConnected) btn.textContent = previous; }, 1400);
+              return;
+            }
+          } catch (err) {
+            if (err && err.name === "AbortError") return;
+          }
+          prompt("아래 매물 링크를 복사하세요:", url);
+        });
       });
       listingsBody.querySelectorAll(".listing-like-btn").forEach(btn => {
         btn.addEventListener("click", async (e) => {

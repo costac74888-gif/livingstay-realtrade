@@ -126,7 +126,8 @@
   .ls-card-item {
     border: 1px solid var(--line); border-radius: 12px;
     background: #fff; overflow: hidden;
-    display: flex; flex-direction: column;
+    display: flex; flex-direction: row; align-items: stretch;
+    min-height: 112px;
     transition: box-shadow .15s;
   }
   .ls-card-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,.10); }
@@ -139,33 +140,43 @@
     0%   { background: var(--brass-tint, #FFF5E0); }
     100% { background: transparent; }
   }
-  .ls-card-photo {
-    width: 100%; aspect-ratio: 16/9; object-fit: cover;
+  .ls-card-info {
+    min-width: 0; flex: 1; padding: 10px 12px;
+    display: flex; flex-direction: column; justify-content: center; gap: 3px;
+  }
+  .ls-card-l1, .ls-card-l2, .ls-card-l3, .ls-card-l4 {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ls-card-l1 { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+  .ls-card-l2 { font-size: 16px; font-weight: 800; color: var(--ink); }
+  .ls-card-l3 { font-size: 11.5px; color: var(--ink-soft); }
+  .ls-card-l4 {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; color: var(--ink-soft);
+  }
+  .ls-card-l4 .ls-card-date { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ls-card-bldg { font-size: inherit; font-weight: inherit; color: inherit; cursor: pointer; }
+  .ls-card-bldg:hover { color: var(--brass-dark); }
+  .ls-card-number {
+    display: inline-block; flex-shrink: 0; font-size: 9.5px; font-weight: 700;
+    color: var(--brass-dark, #7D4A00); background: var(--brass-tint, #FFF5E0);
+    border: 1px solid var(--brass, #B4863F); border-radius: 4px; padding: 1px 5px;
+  }
+  .ls-card-actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+  .ls-card-actions button {
+    background: none; border: none; cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 2px; opacity: .7; transition: opacity .15s;
+  }
+  .ls-card-actions button:hover { opacity: 1; }
+  .ls-card-actions .listing-chat-btn { font-size: 14px; }
+  .ls-card-photo-right {
+    width: 88px; height: 88px; flex: 0 0 88px; align-self: center;
+    margin: 0 10px 0 4px; border-radius: 8px; overflow: hidden;
     background: var(--brass-tint, #FFF5E0);
     display: flex; align-items: center; justify-content: center;
-    font-size: 40px; flex-shrink: 0;
+    font-size: 30px; cursor: pointer;
   }
-  .ls-card-photo img { width: 100%; height: 100%; object-fit: cover; }
-  .ls-card-body { padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .ls-card-bldg { font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer; }
-  .ls-card-bldg:hover { color: var(--brass-dark); }
-  .ls-card-type { font-size: 12px; color: var(--ink-soft); }
-  .ls-card-type .ls-deal-type-badge { margin-right:4px; }
-  .ls-card-price { font-size: 15px; font-weight: 800; color: var(--ink); }
-  .ls-card-yield { font-size: 12px; color: var(--brass-dark, #7D4A00); font-weight: 700; }
-  .ls-card-desc  { font-size: 12px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ls-card-footer {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 11.5px; color: var(--ink-soft);
-    margin-top: auto; padding-top: 6px;
-    border-top: 1px solid var(--line);
-  }
-  .ls-card-footer .ls-card-date { flex: 1; }
-  .ls-card-footer-btn {
-    background: none; border: none; cursor: pointer;
-    font-size: 15px; padding: 2px 4px; opacity: .65; transition: opacity .15s;
-  }
-  .ls-card-footer-btn:hover { opacity: 1; }
+  .ls-card-photo-right img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   /* ── 뷰 전환 CSS ── */
   body.view-board .ls-board-wrap  { display: block; }
@@ -212,6 +223,13 @@
     .td-action { width: 42px; }
     #lsChatChips { flex-wrap: nowrap; }
     .ls-card-grid { grid-template-columns: 1fr; }
+    .ls-card-info { padding: 8px 9px; gap: 2px; }
+    .ls-card-l1 { font-size: 11.5px; }
+    .ls-card-l2 { font-size: 14px; }
+    .ls-card-l3 { font-size: 10.5px; }
+    .ls-card-l4 { font-size: 9.5px; }
+    .ls-card-photo-right { width: 68px; height: 68px; flex-basis: 68px; margin-right: 7px; }
+    .ls-card-actions button { font-size: 13px; }
   }
 </style>
 </head>
@@ -732,31 +750,36 @@
     div.dataset.listingId = item.id;
     const sqm     = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
     const priceStr = listingPriceText(item);
+    const floorValue = item.floor ?? item.floor_no ?? item.floor_number;
+    const floor    = floorValue != null && String(floorValue).trim() ? String(floorValue).trim() + "층" : null;
     const rooms    = !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
       ? "총 " + Number(item.room_count).toLocaleString() + "실" : null;
-    const yld      = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : null;
+    const yld      = item.yield_rate != null ? "수익률 " + parseFloat(item.yield_rate).toFixed(1) + "%" : null;
     const desc     = item.description ? item.description.slice(0, 40) + (item.description.length > 40 ? "…" : "") : null;
+    const detailText = [sqm, floor, rooms, yld, desc].filter(Boolean).join(" · ") || "-";
     const likeCount = item.like_count || 0;
+    const chatTitle = myChattingIds.has(item.id) ? "채팅 이어하기" : "문의하기";
 
     div.innerHTML = `
-      <div class="ls-card-photo">${thumbHtml(item.photo_url, true)}</div>
-      <div class="ls-card-body">
-        ${item.listing_number ? `<div style="margin-bottom:3px;"><span style="display:inline-block;font-size:10px;font-weight:700;color:var(--brass-dark,#7D4A00);background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);border-radius:4px;padding:1px 6px;">${esc(item.listing_number)}</span></div>` : ""}
-        <div class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</div>
-        <div class="ls-card-type">${dealTypeBadgeHtml(item.deal_type)}${sqm ? " · " + sqm : ""}</div>
-        <div class="ls-card-price">${esc(priceStr)}</div>
-        ${rooms ? `<div style="font-size:11px;color:var(--ink-soft);font-weight:700;margin-top:2px;">${esc(rooms)}</div>` : ""}
-        ${yld  ? `<div class="ls-card-yield">수익률 ${esc(yld)} <span style="font-size:10px;font-weight:400;">(참고용)</span></div>` : ""}
-        ${desc ? `<div class="ls-card-desc">${esc(desc)}</div>` : ""}
-        <div class="ls-card-footer">
-          <span class="ls-card-date">${esc(item.listing_date || "")}</span>
-          <button type="button" class="ls-card-footer-btn listing-like-btn" title="찜">♥ ${likeCount}</button>
-          <button type="button" class="ls-card-footer-btn listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="문의하기">💬</button>
-          <button type="button" class="ls-card-footer-btn listing-share-btn" title="링크 공유">🔗</button>
+      <div class="ls-card-info">
+        <div class="ls-card-l1">
+          <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>
         </div>
-      </div>`;
+        <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(priceStr)}</div>
+        <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}</div>
+        <div class="ls-card-l4">
+          ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
+          <span class="ls-card-date">${esc(item.listing_date || "")}</span>
+          <span class="ls-card-actions">
+            <button type="button" class="listing-like-btn" title="찜">♥ <span class="like-cnt">${likeCount}</span></button>
+            <button type="button" class="listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="${chatTitle}">💬</button>
+            <button type="button" class="listing-share-btn" title="링크 공유">🔗</button>
+          </span>
+        </div>
+      </div>
+      <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true)}</div>`;
 
-    div.querySelector(".ls-card-photo").addEventListener("click", (e) => {
+    div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
       e.stopPropagation();
       highlightCardItem(div);
     });

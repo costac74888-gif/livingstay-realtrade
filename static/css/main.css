@@ -986,3 +986,25 @@
 /* 파트너 랜딩 공용 — 낮은 위계 outline 버튼 (홈페이지 둘러보기 등) */
 .btn-secondary-outline{display:block; width:100%; box-sizing:border-box; text-align:center; background:transparent; color:var(--brass-dark, #8a6a2f); border:1.5px solid var(--brass, #B4863F); border-radius:10px; padding:11px 14px; font-size:14px; font-weight:700; text-decoration:none; cursor:pointer;}
 .btn-secondary-outline:hover{background:var(--brass-tint, #F4EDDF);}
+
+/* 건물 상세 · 직거래 매물 4줄 카드 */
+.b-listing-card{display:flex;align-items:stretch;min-height:100px;padding:8px 0;border-bottom:1px solid var(--line,#eee);transition:background .4s;}
+.b-listing-info{display:flex;flex:1;min-width:0;flex-direction:column;justify-content:center;gap:2px;}
+.b-listing-l1,.b-listing-l2,.b-listing-l3,.b-listing-l4{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.b-listing-l1{font-size:11.5px;font-weight:700;color:var(--ink);}
+.b-listing-l2{font-size:14px;font-weight:800;color:var(--ink);}
+.b-listing-l3{font-size:10.5px;color:var(--ink-soft);}
+.b-listing-l4{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--ink-soft);}
+.b-listing-number{display:inline-block;flex-shrink:0;padding:1px 4px;border:1px solid var(--brass,#B4863F);border-radius:4px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font-size:9px;font-weight:700;}
+.b-listing-actions{display:inline-flex;align-items:center;gap:4px;margin-left:auto;}
+.b-listing-actions button{padding:2px;border:0;background:none;color:var(--ink-soft);font-size:13px;line-height:1;cursor:pointer;}
+.b-listing-photo-btn{display:flex;align-items:center;justify-content:center;width:76px;height:76px;flex:0 0 76px;align-self:center;margin-left:8px;padding:0;overflow:hidden;border:0;border-radius:7px;background:var(--brass-tint,#FFF5E0);font-size:26px;cursor:pointer;}
+.b-listing-photo-btn img{width:100%;height:100%;object-fit:cover;display:block;}
+@media (max-width:520px){
+  .b-listing-card{min-height:82px;padding:6px 0;}
+  .b-listing-l1{font-size:10.5px;}
+  .b-listing-l2{font-size:12.5px;}
+  .b-listing-l3{font-size:9.5px;}
+  .b-listing-l4{font-size:9px;}
+  .b-listing-photo-btn{width:66px;height:66px;flex-basis:66px;margin-left:6px;font-size:22px;}
+}
