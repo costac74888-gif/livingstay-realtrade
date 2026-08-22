@@ -5048,10 +5048,10 @@ def favorites_mine_add():
         # 서버단 개수 상한 체크 — 클라이언트 우회로 MAX_FAVORITES 초과 저장 방지.
         # 이미 저장된 동일 항목은 ON CONFLICT DO UPDATE로 처리되므로 중복은 허용.
         cur.execute(
-            "SELECT COUNT(*) FROM user_favorites WHERE user_id = %s",
+            "SELECT COUNT(*) AS favorite_count FROM user_favorites WHERE user_id = %s",
             (u["id"],),
         )
-        existing_count = cur.fetchone()[0]
+        existing_count = cur.fetchone()["favorite_count"]
         # 동일 항목이 이미 존재하면 upsert(갱신)이므로 개수 제한 적용 안 함
         cur.execute(
             "SELECT 1 FROM user_favorites "

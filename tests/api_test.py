@@ -142,6 +142,8 @@ def run():
 
     # 수정 요청 → 승인 → 지도 노출 end-to-end 테스트
     failures += _check_building_request_e2e(client)
+    # 관심저장 POST가 실제 DB에 남고, 새로고침 조회 뒤에도 유지되는지 확인
+    failures += _check_favorite_save_persistence(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
     failures += _check_chat_phone_verification(client)
     # 방 재고의 만기일 저장·공실 초기화·소유자 권한을 확인
@@ -176,6 +178,87 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_favorite_save_persistence(client):
+    """아이리스모텔 관심저장 → 목록 재조회 → 삭제가 실제 DB에서 정상 동작하는지 확인."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    user_id = None
+    try:
+        cur.execute("""
+            SELECT id, building_name, road_address
+            FROM master_buildings
+            WHERE building_name = %s AND NULLIF(road_address, '') IS NOT NULL
+            ORDER BY id
+            LIMIT 1
+        """, ("아이리스모텔",))
+        iris = cur.fetchone()
+        if not iris:
+            return ["favorites persistence: 아이리스모텔 테스트 건물을 찾지 못했습니다."]
+
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"favorite-{run_id}@example.test", "관심저장 테스트"),
+        )
+        user_id = cur.fetchone()["id"]
+        conn.commit()
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = user_id
+
+        payload = {
+            "building_name": iris["building_name"],
+            "address": iris["road_address"],
+            "building_id": iris["id"],
+        }
+        saved = client.post("/api/favorites/mine", json=payload)
+        saved_data = saved.get_json() or {}
+        if saved.status_code != 200 or not saved_data.get("ok"):
+            failures.append(
+                "favorites persistence: 아이리스모텔 저장 실패 "
+                f"(HTTP {saved.status_code}, {saved_data})"
+            )
+            return failures
+
+        refreshed = client.get("/api/favorites/mine")
+        refreshed_data = refreshed.get_json() or {}
+        stored = next((
+            item for item in refreshed_data.get("items", [])
+            if item.get("building_name") == iris["building_name"]
+            and item.get("address") == iris["road_address"]
+        ), None)
+        if refreshed.status_code != 200 or not refreshed_data.get("ok") or not stored:
+            failures.append("favorites persistence: 새로고침 뒤 아이리스모텔 관심저장이 유지되지 않습니다.")
+            return failures
+        if stored.get("building_id") != iris["id"]:
+            failures.append("favorites persistence: 아이리스모텔의 building_id가 저장 시점 값과 다릅니다.")
+            return failures
+
+        removed = client.delete("/api/favorites/mine", json=payload)
+        removed_data = removed.get_json() or {}
+        if removed.status_code != 200 or not removed_data.get("ok"):
+            failures.append("favorites persistence: 아이리스모텔 관심저장 삭제에 실패했습니다.")
+        else:
+            print("OK  아이리스모텔 관심저장·새로고침 유지·삭제")
+    except Exception as exc:
+        failures.append(f"favorites persistence 테스트 오류: {exc}")
+    finally:
+        try:
+            if user_id:
+                cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+                conn.commit()
+            with client.session_transaction() as sess:
+                sess.pop("user_id", None)
+        finally:
+            cur.close()
+            conn.close()
+    return failures
 
 
 def _check_lodging_address_normalization():

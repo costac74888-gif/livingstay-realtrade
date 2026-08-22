@@ -15,6 +15,22 @@ function getFavorites(){ return [...serverFavKeys]; }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
 function isFav(item){ return serverFavKeys.has(favKey(item)); }
 
+// 관심저장 실패로 낙관적 상태를 되돌릴 때, 열려 있는 건물상세 버튼과 게시판 별도 함께 맞춘다.
+function syncFavBtn(){
+  if (typeof window.__syncOpenFavBtn === "function") window.__syncOpenFavBtn();
+  const board = document.getElementById("board");
+  if (!board) return;
+  board.querySelectorAll(".col-star").forEach(function(td){
+    const row = td.parentElement;
+    const idx = [...row.parentElement.children].indexOf(row);
+    const item = lastItems[idx];
+    if (!item) return;
+    const on = isFav(item);
+    td.classList.toggle("on", on);
+    td.textContent = on ? "★" : "☆";
+  });
+}
+
 // 서버 /api/favorites/mine 에서 내 관심키 전체를 로드해 인메모리 캐시를 채운다.
 async function loadServerFavKeys(){
   serverFavKeys = new Set();
@@ -48,6 +64,7 @@ function toggleFav(item){
   const k = favKey(item);
   let clearedActiveFilter = false;
   const wasFav = serverFavKeys.has(k);
+  const restoreActiveFilter = wasFav && state.favKey === k;
   if (wasFav){
     serverFavKeys.delete(k);
     if (state.favKey === k){ state.favKey = null; state.favOnly = false; clearedActiveFilter = true; }
@@ -55,7 +72,34 @@ function toggleFav(item){
       method: "DELETE", credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ building_name: item.building_name, address: item.address })
-    }).catch(function(){});
+    })
+    .then(function(r){
+      if (!r.ok) throw new Error("save-failed");
+      return r.json().catch(function(){ return {}; });
+    })
+    .then(function(result){
+      if (!result.ok) throw new Error(result.message || "save-failed");
+    })
+    .catch(function(){
+      // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
+      if (wasFav) {
+        serverFavKeys.add(k);
+        if (restoreActiveFilter) {
+          state.favKey = k;
+          state.favOnly = true;
+          const chkFavOnly = document.getElementById("chkFavOnly");
+          if (chkFavOnly) chkFavOnly.checked = true;
+        }
+      } else {
+        serverFavKeys.delete(k);
+      }
+      updateFavCountLabel();
+      renderFavChips();
+      if (typeof loadSideFavorites === "function") loadSideFavorites();
+      syncFavBtn();
+      if (restoreActiveFilter) loadBoard();
+      alert("관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    });
   } else {
     if (serverFavKeys.size >= MAX_FAVORITES){
       alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
@@ -72,7 +116,24 @@ function toggleFav(item){
         // 실거래 없는 건물도 마이페이지에서 상세 링크가 끊기지 않게 한다.
         building_id: (item.building_id != null ? item.building_id : undefined)
       })
-    }).catch(function(){});
+    })
+    .then(function(r){
+      if (!r.ok) throw new Error("save-failed");
+      return r.json().catch(function(){ return {}; });
+    })
+    .then(function(result){
+      if (!result.ok) throw new Error(result.message || "save-failed");
+    })
+    .catch(function(){
+      // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
+      if (wasFav) { serverFavKeys.add(k); }
+      else { serverFavKeys.delete(k); }
+      updateFavCountLabel();
+      renderFavChips();
+      if (typeof loadSideFavorites === "function") loadSideFavorites();
+      syncFavBtn();
+      alert("관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    });
   }
   updateFavCountLabel();
   renderFavChips();
@@ -3562,6 +3623,7 @@ async function loadBuildingHeader(id){
   // 헤더 알림 새로고침(refreshAlertsUI) 시 현재 열린 B패널 버튼을 다시 그리기 위한 훅.
   window.__syncOpenAlertBtn = function(){ if (canFav) syncAlertBtn(); };
   if (canFav){
+    window.__syncOpenFavBtn = syncFavBtn;
     // 서버 구독 목록이 아직 로드 전이면 로드 후 버튼 상태 반영.
     if (window.__livingstayLoggedIn && !alertsLoaded) loadServerAlerts(syncAlertBtn);
     syncFavBtn(); syncAlertBtn();
