@@ -129,7 +129,7 @@ def _run_init_db():
         umd_nm TEXT,                  -- 법정동명 (배치가 채움, 매칭 키)
         jibun TEXT,                   -- 지번 (배치가 채움, 매칭 키)
         units INTEGER,                -- 호수(세대수) — 정보용, 필터 기준 아님
-        biz_units INTEGER,            -- 영업신고호수
+        biz_units INTEGER,            -- 레거시 엑셀 스냅샷 참고값(신고율 계산에 사용 금지)
         source TEXT DEFAULT 'original', -- 'original' | 'api_discovered' | 'verify_rescued' | 'sync_verified' | 'user_submitted'
         verified_at TIMESTAMP,         -- is_living_stay로 실검증된 시각 (NULL이면 미검증 → 재분류 대상)
         lodging_type TEXT,             -- '생활'|'관광'|'일반'|'복합' (reclassify가 채움, NULL이면 미분류)

@@ -557,7 +557,7 @@ def get_building(building_id):
                mb.permit_day, mb.actual_start_day,
                mb.arch_area, mb.bc_rat, mb.vl_rat,
                mb.sgg_cd, mb.umd_nm, mb.jibun,
-               mb.units, mb.biz_units, mb.lat, mb.lng, mb.sgg_text,
+               mb.units, mb.biz_units AS biz_units_snapshot_legacy, mb.lat, mb.lng, mb.sgg_text,
                mb.use_apr_day, mb.tot_pkng_cnt, mb.grnd_flr_cnt, mb.ugrnd_flr_cnt,
                mb.tot_area, mb.plat_area, mb.hhld_cnt, mb.strct_nm,
                mb.heit, mb.ride_use_elvt_cnt, mb.emgen_use_elvt_cnt, mb.main_purps_nm,
@@ -928,10 +928,11 @@ def get_building(building_id):
     result["lodging_room_total"] = lodging_room_total  # 영업신고 목록의 객실수 합계 (행정 카드 목록 표시용)
     units    = result.get("units")          # master_buildings.units — 총 호실(단일 소스)
     reported = result.get("lodging_room_total")  # 행안부 기준 실시간 영업신고호실 (폐업 제외)
-    # biz_units(엑셀 스냅샷)은 보관용 — 신고율 계산에는 사용하지 않음
+    # biz_units_snapshot_legacy(엑셀 스냅샷)은 참고용으로만 보관한다.
+    # 영업신고호실·신고율은 아래 lodging_registry 실시간 집계만 사용한다.
     # 헤더카드·행정 블록이 동일 소스를 참조하여 불일치 방지
     result["lodging_report_rate"] = (
-        round(reported * 100.0 / units) if (units and reported is not None) else None
+        round(reported * 100.0 / units, 1) if (units and reported is not None) else None
     )
     result["lodging_unreported"] = (
         (units - reported) if (units is not None and reported is not None) else None
@@ -10950,7 +10951,6 @@ ADMIN_BLD_SORT = {
     "jibun":          "NULLIF(mb.jibun, '')",
     # 숫자: 0 → NULL로 치환해 NULLS LAST 처리
     "units":          "NULLIF(mb.units, 0)",
-    "biz_units":      "NULLIF(mb.biz_units, 0)",
     # SELECT alias를 NULLIF 감싸면 동작 안 함 → 직접 서브쿼리로 작성
     "favorite_count": (
         "NULLIF((SELECT COUNT(*) FROM user_favorites uf"
@@ -10969,10 +10969,8 @@ ADMIN_BLD_SORT = {
         "NULLIF((SELECT COUNT(*) FROM building_stores bs"
         " WHERE bs.master_building_id = mb.id), 0)"
     ),
-    # 신고율: units=0이면 NULL → NULLS LAST 처리
-    "report_rate": (
-        "CASE WHEN mb.units > 0 THEN mb.biz_units::float / mb.units ELSE NULL END"
-    ),
+    # 신고율·영업신고호실은 lodging_registry 주소 정규화 매칭으로 계산한다.
+    # SQL만으로 현재 Python 정규화 규칙을 정확히 재현할 수 없어 목록 서버 정렬에는 제공하지 않는다.
 }
 # 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
 ADMIN_BLD_EDITABLE = [
@@ -10981,6 +10979,7 @@ ADMIN_BLD_EDITABLE = [
     "building_status", "completion_expected_date",
     "booking_url",
 ]
+# biz_units는 과거 엑셀 스냅샷 참고값이다. 신고율·영업신고호실 계산에는 절대 사용하지 않는다.
 ADMIN_BLD_INT_COLS = {"units", "biz_units"}
 
 
@@ -11072,7 +11071,8 @@ def admin_buildings_list():
     sort_expr = ADMIN_BLD_SORT[sort]
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.name_pending, mb.road_address, mb.jibun_address,
-               mb.sgg_text, mb.sgg_cd, mb.umd_nm, mb.jibun, mb.units, mb.biz_units,
+               mb.sgg_text, mb.sgg_cd, mb.umd_nm, mb.jibun, mb.units,
+               mb.biz_units AS biz_units_snapshot_legacy,
                mb.lodging_type, mb.lodging_type_detail,
                (SELECT COUNT(*) FROM user_favorites uf
                 WHERE uf.master_building_id = mb.id
@@ -11227,16 +11227,13 @@ def admin_buildings_list():
             }
             for lr in lr_list
         ]
-        # 주소 매칭된 영업신고가 있으면 비폐업 객실수 합계를 biz_units 실값으로 사용.
-        # mb.biz_units(저장값)이 0/NULL이어도 lodging_registry 실데이터 기준으로 교정하여
-        # 신고율이 0%로 잘못 표시되는 문제를 방지한다.
-        if lr_list:
-            live_active = sum(
-                (lr.get("room_count") or 0)
-                for lr in lr_list
-                if "폐업" not in (lr.get("biz_status_name") or "")
-            )
-            it["biz_units"] = live_active
+        # 영업신고호실은 주소 매칭된 lodging_registry의 비폐업 객실수 합계만 사용한다.
+        # legacy 스냅샷이 0/NULL이거나 다른 값이어도 화면·신고율 계산에 영향 주지 않는다.
+        it["lodging_room_total"] = sum(
+            (lr.get("room_count") or 0)
+            for lr in lr_list
+            if "폐업" not in (lr.get("biz_status_name") or "")
+        )
 
     # ── 합계(totals) 집계 — 현재 필터 기준 전체 결과 ────────────────────────────
     # 페이지네이션된 items가 아닌, 동일 WHERE절에 해당하는 전체 건물 기준으로 집계.
@@ -11385,7 +11382,7 @@ def admin_buildings_full_stats():
 
     # 1. 전체 건물
     cur.execute("""
-        SELECT id, lodging_type, units, biz_units, road_address, jibun_address
+        SELECT id, lodging_type, units, road_address, jibun_address
         FROM master_buildings WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
     """)
     all_blds = cur.fetchall()
@@ -11481,8 +11478,7 @@ def admin_buildings_full_stats():
                 permits.update(lr_road_map[rk])
             elif jk and jk in lr_jibun_map:
                 permits.update(lr_jibun_map[jk])
-        # 폐업 제외: 영업신고업체·영업신고호실은 현재 운영 중인 사업장만 집계
-        # → 총영업신고(biz_units, RTMS 기반)와 비교 가능한 기준을 맞춤
+        # 폐업 제외: 영업신고업체·영업신고호실은 현재 운영 중인 사업장만 집계한다.
         total_pc = len(permits)
         cc       = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
         active_vals = [v for v in permits.values() if "폐업" not in (v["biz_status_name"] or "")]
@@ -11946,7 +11942,7 @@ def admin_buildings_export():
     cur = conn.cursor()
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.road_address, mb.jibun_address,
-               mb.sgg_text, mb.umd_nm, mb.jibun, mb.units, mb.biz_units,
+               mb.sgg_text, mb.umd_nm, mb.jibun, mb.units,
                mb.lodging_type, mb.lodging_type_detail, mb.realty_store_name,
                (SELECT COUNT(*) FROM user_favorites uf
                 WHERE uf.master_building_id = mb.id
@@ -14067,13 +14063,13 @@ def admin_create_building_from_lodging(permit_number):
     if not lr["road_address"]:
         cur.close(); conn.close()
         return jsonify({"ok": False, "message": "도로명주소가 없어 건물로 등록할 수 없습니다."}), 400
-    # units(총호실)는 채우지 않는다 — room_count는 영업신고 호실수이지 총호실수가 아님.
-    # biz_units에만 저장해야 호실/영업신고 정합성이 유지된다.
+    # units(총호실)는 채우지 않는다 — room_count는 영업신고 호실수이지 총호실수가 아니다.
+    # 신고호실은 lodging_registry를 실시간 집계하므로 legacy biz_units 스냅샷도 저장하지 않는다.
     cur.execute("""
-        INSERT INTO master_buildings (building_name, road_address, jibun_address, biz_units, source, lodging_type)
-        VALUES (%s, %s, %s, %s, 'user_submitted', '일반')
+        INSERT INTO master_buildings (building_name, road_address, jibun_address, source, lodging_type)
+        VALUES (%s, %s, %s, 'user_submitted', '일반')
         RETURNING id
-    """, [lr["biz_name"], lr["road_address"], lr["jibun_address"], lr["room_count"]])
+    """, [lr["biz_name"], lr["road_address"], lr["jibun_address"]])
     new_id = cur.fetchone()["id"]
     cur.execute("UPDATE lodging_registry SET applied_building_id = %s WHERE permit_number = %s",
                 [new_id, permit_number])

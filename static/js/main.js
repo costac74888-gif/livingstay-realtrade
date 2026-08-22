@@ -2995,19 +2995,18 @@ async function loadBuildingHeader(id){
     ? `${typeBadge}${preBadge}`
     : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["미분류"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">미분류</span>`;
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
-  // 영업신고 호수: 행안부 lodgings 합산값(행정운영 '신고'와 동일 소스) 우선, 없으면 master_buildings.biz_units fallback
-  const lodgingRoomTotal = (b.lodging_room_total != null && Number(b.lodging_room_total) > 0)
+  // 영업신고 호수·신고율은 lodging_registry 비폐업 객실수 합계만 사용한다.
+  // master_buildings의 과거 biz_units 스냅샷은 계산 경로에서 제외한다.
+  const lodgingRoomTotal = b.lodging_room_total != null
     ? Number(b.lodging_room_total) : null;
-  const bizUnitsNum = b.biz_units != null ? Number(b.biz_units) : null;
-  const effectiveBizUnits = lodgingRoomTotal ?? bizUnitsNum;
-  const bizUnits = effectiveBizUnits != null ? effectiveBizUnits.toLocaleString('ko-KR') + "실" : "-";
-  // 신고율: lodging_report_rate 또는 effectiveBizUnits / units 즉석 계산
+  const bizUnits = lodgingRoomTotal != null ? lodgingRoomTotal.toLocaleString('ko-KR') + "실" : "-";
+  // 신고율: 서버가 같은 실시간 집계로 계산한 값을 우선 사용한다.
   const unitsNum = b.units != null ? Number(b.units) : null;
   let headerRate = "-";
   if (b.lodging_report_rate != null) {
-    headerRate = Math.round(Number(b.lodging_report_rate)) + "%";
-  } else if (effectiveBizUnits != null && unitsNum && unitsNum > 0) {
-    headerRate = Math.round(effectiveBizUnits * 100 / unitsNum) + "%";
+    headerRate = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
+  } else if (lodgingRoomTotal != null && unitsNum && unitsNum > 0) {
+    headerRate = Number((lodgingRoomTotal * 100 / unitsNum).toFixed(1)).toLocaleString('ko-KR') + "%";
   }
   const bName = b.building_name || "(건물명 미확인)";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
@@ -3522,10 +3521,10 @@ async function loadBuildingHeader(id){
     let rateDisplay;
     const _adminUnits = b.units != null ? Number(b.units) : 0;
     if (b.lodging_report_rate != null){
-      rateDisplay = Math.round(Number(b.lodging_report_rate)) + "%";
+      rateDisplay = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (roomTotal > 0 && _adminUnits > 0){
       // lodging_room_total(행안부 합산)로 즉석 계산 — 헤더 신고율과 동일 소스
-      rateDisplay = Math.round(roomTotal * 100 / _adminUnits) + "%";
+      rateDisplay = Number((roomTotal * 100 / _adminUnits).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (_adminUnits > 0 && lodgings.length === 0){
       rateDisplay = "0%";
     } else {

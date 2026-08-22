@@ -128,12 +128,13 @@
     const color = markerColor(b.lodging_type);
     const badge = `<span style="display:inline-block; font-size:8.8px; font-weight:700; color:${color}; vertical-align:middle;">${esc(badgeLabel(b.lodging_type))}</span>`;
     const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
-    const bizUnits = b.biz_units != null ? Number(b.biz_units).toLocaleString('ko-KR') + "실" : "-";
-    // 미신고·신고율: DB에 저장하지 않고 biz_units / units 기준 즉시 계산 (단일 소스 통일)
-    const unreported = (b.units != null && b.biz_units != null)
-      ? Number(b.units - b.biz_units).toLocaleString('ko-KR') + "실" : "-";
-    const reportRate = (b.units && b.biz_units != null)
-      ? Math.round(b.biz_units * 100 / b.units) + "%" : "-";
+    // 영업신고호실·미신고·신고율은 lodging_registry 비폐업 객실수 합계만 사용한다.
+    const lodgingRoomTotal = b.lodging_room_total != null ? Number(b.lodging_room_total) : null;
+    const bizUnits = lodgingRoomTotal != null ? lodgingRoomTotal.toLocaleString('ko-KR') + "실" : "-";
+    const unreported = (b.units != null && lodgingRoomTotal != null)
+      ? Number(Math.max(b.units - lodgingRoomTotal, 0)).toLocaleString('ko-KR') + "실" : "-";
+    const reportRate = b.lodging_report_rate != null
+      ? Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%" : "-";
     // 총주차대수: 응답의 total_pkng_cnt(자주식+기계식 합산) 재사용
     const totalPkng = b.total_pkng_cnt != null
       ? Number(b.total_pkng_cnt).toLocaleString('ko-KR') + "대"

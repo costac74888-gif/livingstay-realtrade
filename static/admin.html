@@ -393,11 +393,12 @@
                 `style="background:none;border:1px solid #aaa;border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
                 `🏪 ${v}개</button>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "report_rate", label: "신고율", sortable: true,
+          { key: "report_rate", label: "신고율", clientSort: true,
+            sortValue: (row) => row.units ? Number(row.lodging_room_total || 0) / Number(row.units) : null,
             render: (_, row) => {
               if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
-              // biz_units는 lodging_registry 기준 live_active로 교정된 값 (행안부 기준)
-              const rate = Math.round((row.biz_units || 0) / row.units * 100);
+              // 신고율은 lodging_registry의 비폐업 객실수 합계만 사용한다.
+              const rate = Math.round((row.lodging_room_total || 0) / row.units * 1000) / 10;
               const color = rate >= 80 ? "var(--brass-dark)" : rate >= 50 ? "var(--ink)" : "var(--ink-soft)";
               return `<span style="color:${color};font-weight:600;">${rate}%</span>`;
             } },
@@ -4994,7 +4995,7 @@
       { key: "lodging_type",  label: "용도",        type: "select" },
       { key: "building_name", label: "건물명",       type: "text" },
       { key: "units",         label: "호실수",       type: "number" },
-      { key: "biz_units",     label: "영업신고호수", type: "number" },
+      { key: "biz_units",     label: "영업신고호수 스냅샷(참고용)", type: "number" },
       { key: "sgg_text",      label: "시군구",       type: "text" },
       { key: "umd_nm",        label: "읍면동",       type: "text" },
       { key: "jibun",         label: "지번",         type: "text" },
