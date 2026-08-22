@@ -3064,6 +3064,7 @@ async function loadBuildingHeader(id){
   const lodgingNameTag = b.building_name_source === "lodging_report"
     ? `<span title="행안부 숙박업 영업신고의 현재 영업 사업장명으로 임시 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대 사업장" : ""}</span>`
     : "";
+  const namePendingNeedsReview = b.name_pending && b.building_name_source !== "lodging_report";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
   // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
   const txAllLink = document.getElementById("bTxAllLink");
@@ -3112,7 +3113,7 @@ async function loadBuildingHeader(id){
   headerCard.innerHTML = `
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
-      ${b.name_pending ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
+      ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
       ${lodgingNameTag}
       ${badge}
     </div>
@@ -3134,7 +3135,7 @@ async function loadBuildingHeader(id){
         ${b.zip_code ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.zip_code)}" title="우편번호 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;color:var(--ink-soft2,#999);display:flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="8" height="8" rx="1.3"/><path d="M2 9.5V2.8A.8.8 0 0 1 2.8 2H9.5"/></svg></button>` : ""}
       </div>
     </div>` : `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">주소 미확인</div>`}
-    ${b.name_pending && b.sgg_cd && b.umd_nm && b.jibun ? `
+    ${namePendingNeedsReview && b.sgg_cd && b.umd_nm && b.jibun ? `
     <div id="bNameSuggest" style="margin:-4px 0 12px;">
       <button type="button" id="bNameSuggestOpen" style="background:none; border:none; padding:0; cursor:pointer; font-size:12px; font-weight:600; color:var(--brass-dark); text-decoration:underline;">✏️ 건물명 제안하기</button>
       <div id="bNameSuggestBox" style="display:none; margin-top:8px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; background:#fbfaf7;">
