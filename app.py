@@ -7086,6 +7086,170 @@ def my_listing_requests():
     return jsonify({"ok": True, "items": items})
 
 
+_ROOM_INVENTORY_STATUSES = {"입실", "공실"}
+
+
+def _parse_contract_end_date(value):
+    """YYYY-MM-DD 계약만기일만 허용한다. 빈 값은 만기일 미입력으로 본다."""
+    if value is None or value == "":
+        return None, None
+    if not isinstance(value, str):
+        return None, "계약만기일은 YYYY-MM-DD 형식으로 입력해주세요."
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%d").date(), None
+    except ValueError:
+        return None, "계약만기일은 YYYY-MM-DD 형식으로 입력해주세요."
+
+
+def _owned_listing_request(cur, listing_request_id, user_id):
+    """매물의뢰가 존재하는지와 현재 사용자의 소유 여부를 분리해 확인한다."""
+    cur.execute(
+        "SELECT id, user_id FROM listing_requests WHERE id = %s",
+        [listing_request_id],
+    )
+    row = cur.fetchone()
+    if not row:
+        return None, (jsonify({"ok": False, "message": "매물의뢰를 찾을 수 없습니다."}), 404)
+    if row["user_id"] != user_id:
+        return None, (jsonify({"ok": False, "message": "권한이 없습니다."}), 403)
+    return row, None
+
+
+@app.route("/api/my/listing-requests/<int:lr_id>/rooms")
+@limiter.limit("60 per minute")
+def my_room_inventory(lr_id):
+    """내 매물의뢰에 연결된 방 재고 목록."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        _, error_response = _owned_listing_request(cur, lr_id, user["id"])
+        if error_response:
+            return error_response
+        cur.execute("""
+            SELECT id, room_label, status,
+                   TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
+              FROM business_room_inventory
+             WHERE listing_request_id = %s
+             ORDER BY id ASC
+        """, [lr_id])
+        return jsonify({"ok": True, "items": [dict(row) for row in cur.fetchall()]})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/my/listing-requests/<int:lr_id>/rooms", methods=["POST"])
+@limiter.limit("30 per minute")
+def create_my_room_inventory(lr_id):
+    """내 매물의뢰에 방 재고 한 건을 추가한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "message": "요청 본문은 JSON 객체여야 합니다."}), 400
+    room_label_value = data.get("room_label")
+    if not isinstance(room_label_value, str):
+        return jsonify({"ok": False, "message": "방 이름 또는 호실을 입력해주세요."}), 400
+    room_label = room_label_value.strip()[:50]
+    status_value = data.get("status", "공실")
+    if not isinstance(status_value, str):
+        return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
+    status = status_value.strip()
+    contract_end_date, date_error = _parse_contract_end_date(data.get("contract_end_date"))
+    if not room_label:
+        return jsonify({"ok": False, "message": "방 이름 또는 호실을 입력해주세요."}), 400
+    if status not in _ROOM_INVENTORY_STATUSES:
+        return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
+    if date_error:
+        return jsonify({"ok": False, "message": date_error}), 400
+    if status == "공실":
+        contract_end_date = None
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        _, error_response = _owned_listing_request(cur, lr_id, user["id"])
+        if error_response:
+            return error_response
+        cur.execute("""
+            INSERT INTO business_room_inventory
+                (listing_request_id, room_label, status, contract_end_date)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, room_label, status,
+                      TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
+        """, [lr_id, room_label, status, contract_end_date])
+        item = dict(cur.fetchone())
+        conn.commit()
+        return jsonify({"ok": True, "item": item}), 201
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "같은 이름의 방이 이미 있습니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/my/room-inventory/<int:room_id>", methods=["PUT"])
+@limiter.limit("60 per minute")
+def update_my_room_inventory(room_id):
+    """내 방 재고의 입실/공실 상태와 계약만기일을 저장한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "message": "요청 본문은 JSON 객체여야 합니다."}), 400
+    status_value = data.get("status")
+    if not isinstance(status_value, str):
+        return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
+    status = status_value.strip()
+    if status not in _ROOM_INVENTORY_STATUSES:
+        return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
+    if "contract_end_date" in data:
+        contract_end_date, date_error = _parse_contract_end_date(data.get("contract_end_date"))
+        if date_error:
+            return jsonify({"ok": False, "message": date_error}), 400
+    else:
+        contract_end_date = None
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT bri.id, bri.status, bri.contract_end_date, lr.user_id
+              FROM business_room_inventory bri
+              JOIN listing_requests lr ON lr.id = bri.listing_request_id
+             WHERE bri.id = %s
+        """, [room_id])
+        room = cur.fetchone()
+        if not room:
+            return jsonify({"ok": False, "message": "방 재고를 찾을 수 없습니다."}), 404
+        if room["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        # 상태를 공실로 바꾸면 만기일은 어떤 클라이언트 값도 신뢰하지 않고 반드시 지운다.
+        if status == "공실":
+            contract_end_date = None
+        elif "contract_end_date" not in data:
+            contract_end_date = room["contract_end_date"]
+        cur.execute("""
+            UPDATE business_room_inventory
+               SET status = %s, contract_end_date = %s, updated_at = NOW()
+             WHERE id = %s
+         RETURNING id, room_label, status,
+                   TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
+        """, [status, contract_end_date, room_id])
+        item = dict(cur.fetchone())
+        conn.commit()
+        return jsonify({"ok": True, "item": item})
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/my/listing-requests/<int:lr_id>/chat-rooms")
 @limiter.limit("60 per minute")
 def my_listing_request_chat_rooms(lr_id):

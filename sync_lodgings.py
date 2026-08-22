@@ -26,7 +26,12 @@ from datetime import datetime
 import requests
 from psycopg2.extras import execute_values
 
-from addr_norm import normalize_name, normalize_road_prefix, normalize_jibun_prefix
+from addr_norm import (
+    get_building_jibun_key,
+    normalize_name,
+    normalize_road_prefix,
+    normalize_jibun_prefix,
+)
 from db import get_conn
 from lodging_categories import (
     TARGET_LODGING_HYGIENE_TYPES,
@@ -332,6 +337,62 @@ def _upsert(cur, it):
     return True
 
 
+def _lodging_item_match_keys(it):
+    """자동명명 후보를 찾기 위한 수집 항목의 주소 정규화 키."""
+    hygiene = normalize_hygiene_type(
+        it.get("SNTTN_BZSTAT_NM") or it.get("BZSTAT_SE_NM")
+    )
+    if not is_target_lodging_hygiene(hygiene):
+        return None
+    if not (it.get("BPLC_NM") or "").strip():
+        return None
+    return (
+        normalize_road_prefix((it.get("ROAD_NM_ADDR") or "").strip() or None),
+        normalize_jibun_prefix((it.get("LOTNO_ADDR") or "").strip() or None),
+    )
+
+
+def _building_ids_for_lodging_keys(cur, match_keys):
+    """그날 UPSERT한 신고 주소와 매칭되는 미확정 일반숙박 건물 ID를 찾는다."""
+    road_norms = {road for road, _ in match_keys if road}
+    jibun_norms = {jibun for _, jibun in match_keys if jibun}
+    if not road_norms and not jibun_norms:
+        return set()
+
+    # master_buildings에는 lodging_registry처럼 정규화 키가 저장되지 않으므로
+    # 후보 건물만 읽어 동일한 주소 정규화 함수를 적용한다. 이 조회는 캡 시점에
+    # 한 번만 수행하고, 실제 자동명명 재계산은 매칭된 ID로 제한한다.
+    cur.execute("""
+        SELECT id, road_address, jibun_address
+          FROM master_buildings
+         WHERE name_pending IS TRUE
+           AND lodging_type = '일반'
+    """)
+    ids = set()
+    for row in cur.fetchall():
+        road_norm = normalize_road_prefix(row.get("road_address"))
+        jibun_norm = get_building_jibun_key(row)
+        if (road_norm and road_norm in road_norms) or (
+            jibun_norm and jibun_norm in jibun_norms
+        ):
+            ids.add(row["id"])
+    return ids
+
+
+def _refresh_daily_auto_building_names(conn, match_keys):
+    """오늘 처리한 주소에 해당하는 자동명칭만 갱신한다."""
+    if not match_keys:
+        return 0
+    cur = conn.cursor()
+    try:
+        building_ids = _building_ids_for_lodging_keys(cur, match_keys)
+    finally:
+        cur.close()
+    if not building_ids:
+        return 0
+    return refresh_auto_building_names(conn, sorted(building_ids))
+
+
 def reindex_lodging_norms():
     """기존 lodging_registry 주소의 정규화 키를 현재 규칙으로 재계산한다."""
     conn = get_conn()
@@ -409,6 +470,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
         page_size = None  # 실제 페이지 크기 — API가 numOfRows보다 적게 줄 수 있어 응답으로 판정
         calls_today = _daily_calls_today(cur)
         first_item_logged = False
+        daily_match_keys = set()
 
         while True:
             # run_id 펜싱: 상태행 소유권을 잃었으면(다른 실행이 시작됨) 즉시 중단 —
@@ -419,6 +481,8 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
             if calls_today >= max_calls:
                 print(f"[lodgings] 일일 소프트 캡({max_calls}건) 도달 — 내일 이어서 진행 "
                       f"(다음 페이지 {page} 저장됨)")
+                renamed = _refresh_daily_auto_building_names(conn, daily_match_keys)
+                print(f"[lodgings] 오늘 처리분 신고 기준 자동명칭 반영 — 변경 {renamed}건")
                 return False, processed, calls_today
 
             calls_today = _bump_daily_calls(cur, conn)
@@ -448,6 +512,9 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
             for it in items:
                 if _upsert(cur, it):
                     saved += 1
+                    match_keys = _lodging_item_match_keys(it)
+                    if match_keys:
+                        daily_match_keys.add(match_keys)
             conn.commit()
             processed += saved
             page += 1

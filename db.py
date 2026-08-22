@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-22-2"
+SCHEMA_VERSION = "2026-08-22-4"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -988,6 +988,72 @@ def _run_init_db():
             SELECT setval('{_seq}',
                           COALESCE((SELECT MAX(display_seq) FROM listing_requests WHERE deal_mode = %s), 1000))
         """, (_mode,))
+
+    # 방 재고 — 매물의뢰 등록자가 관리하는 객실별 입실/공실 및 계약만기일.
+    # 만기임박은 저장 상태가 아니라 contract_end_date와 오늘 날짜로 화면에서 계산한다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS business_room_inventory (
+            id SERIAL PRIMARY KEY,
+            listing_request_id INTEGER NOT NULL
+                REFERENCES listing_requests(id) ON DELETE CASCADE,
+            room_label TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT '공실',
+            contract_end_date DATE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP,
+            UNIQUE (listing_request_id, room_label)
+        )
+    """)
+    cur.execute(
+        "ALTER TABLE business_room_inventory "
+        "ADD COLUMN IF NOT EXISTS contract_end_date DATE"
+    )
+    cur.execute(
+        "ALTER TABLE business_room_inventory "
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP"
+    )
+    # 이전/수동 데이터가 있더라도 만기임박은 입실로 보존하고, 알 수 없는 값은 공실로 정리한다.
+    cur.execute("""
+        UPDATE business_room_inventory
+           SET status = '입실'
+         WHERE status = '만기임박'
+    """)
+    cur.execute("""
+        UPDATE business_room_inventory
+           SET status = '공실'
+         WHERE status IS NULL OR status NOT IN ('입실', '공실')
+    """)
+    cur.execute("""
+        UPDATE business_room_inventory
+           SET contract_end_date = NULL
+         WHERE status = '공실'
+    """)
+    cur.execute(
+        "ALTER TABLE business_room_inventory "
+        "ALTER COLUMN status SET DEFAULT '공실'"
+    )
+    cur.execute(
+        "ALTER TABLE business_room_inventory "
+        "ALTER COLUMN status SET NOT NULL"
+    )
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                 WHERE conname = 'business_room_inventory_status_check'
+                   AND conrelid = 'business_room_inventory'::regclass
+            ) THEN
+                ALTER TABLE business_room_inventory
+                ADD CONSTRAINT business_room_inventory_status_check
+                CHECK (status IN ('입실', '공실'));
+            END IF;
+        END $$;
+    """)
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_business_room_inventory_listing "
+        "ON business_room_inventory(listing_request_id, id)"
+    )
 
     # 직거래 매물 사진 (등록자가 첨부, 공개 표시)
     cur.execute("""

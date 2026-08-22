@@ -34,6 +34,15 @@ function buildPageList(current, total, edgeSize) {
   return pages;
 }
 
+// 첫/마지막 버튼과 구분되는 좌우 이동 버튼은 한 번에 10페이지씩 이동한다.
+function jumpPage(current, total, direction, step) {
+  const page = Math.max(1, Number(current) || 1);
+  const totalPages = Math.max(1, Number(total) || 1);
+  const amount = Math.max(1, Number(step) || 10);
+  const next = page + (Number(direction) < 0 ? -amount : amount);
+  return Math.max(1, Math.min(totalPages, next));
+}
+
 /*
  * admin.js — 재사용 가능한 관리자 데이터그리드
  * ------------------------------------------------------------
@@ -485,15 +494,19 @@ class DataGrid {
     ).join("");
     this.$pager.innerHTML =
       `<button class="dg-nav-btn dg-first" ${p <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>` +
-      `<button class="dg-nav-btn dg-prev" ${p <= 1 ? "disabled" : ""}>&#8249;</button>` +
+      `<button class="dg-nav-btn dg-prev" ${p <= 1 ? "disabled" : ""} title="이전 10페이지로 이동" aria-label="이전 10페이지로 이동">&#8249;</button>` +
       pageHtml +
-      `<button class="dg-nav-btn dg-next" ${p >= totalPages ? "disabled" : ""}>&#8250;</button>` +
+      `<button class="dg-nav-btn dg-next" ${p >= totalPages ? "disabled" : ""} title="다음 10페이지로 이동" aria-label="다음 10페이지로 이동">&#8250;</button>` +
       `<button class="dg-nav-btn dg-last" ${p >= totalPages ? "disabled" : ""} title="마지막 페이지로 이동" aria-label="마지막 페이지로 이동">»|</button>`;
     this.$pager.querySelector(".dg-first").addEventListener("click", () => {
       if (this.state.page > 1) { this.state.page = 1; this.reload(); }
     });
-    this.$pager.querySelector(".dg-prev").addEventListener("click", () => { if (this.state.page > 1) { this.state.page--; this.reload(); } });
-    this.$pager.querySelector(".dg-next").addEventListener("click", () => { if (this.state.page < totalPages) { this.state.page++; this.reload(); } });
+    this.$pager.querySelector(".dg-prev").addEventListener("click", () => {
+      if (this.state.page > 1) { this.state.page = jumpPage(this.state.page, totalPages, -1, 10); this.reload(); }
+    });
+    this.$pager.querySelector(".dg-next").addEventListener("click", () => {
+      if (this.state.page < totalPages) { this.state.page = jumpPage(this.state.page, totalPages, 1, 10); this.reload(); }
+    });
     this.$pager.querySelector(".dg-last").addEventListener("click", () => {
       if (this.state.page < totalPages) { this.state.page = totalPages; this.reload(); }
     });

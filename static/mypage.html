@@ -302,8 +302,132 @@
         '</div>' +
       '</div>' +
       '<div class="lr-history-box" data-id="' + it.id + '" style="display:none;margin-top:8px;font-size:11.5px;color:var(--ink-soft);background:#f9f7f4;border-radius:6px;padding:8px 10px;"></div>' +
+       '<div class="lr-room-inventory" data-lr-id="' + it.id + '" style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fcfbf9;">' +
+         '<div style="font-size:12px;color:var(--ink-soft);">방 재고를 불러오는 중…</div>' +
+       '</div>' +
     '</div>';
   }
+
+   function roomDdayMeta(dateText){
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText || "")) return null;
+     var parts = dateText.split("-").map(Number);
+     var expiryUtc = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+     var now = new Date();
+     var todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+     var days = Math.round((expiryUtc - todayUtc) / 86400000);
+     if (days > 30) return { label: "만기 " + dateText, color: "#6B7684", bg: "#f2f4f6" };
+     var dday = days >= 0 ? "D-" + days : "D+" + Math.abs(days);
+     if (days > 7) return { label: dday, color: "#B45309", bg: "#fff3df" };
+     return { label: dday, color: "#B42318", bg: "#fff0ee" };
+   }
+
+   function roomInventoryHtml(items){
+     var roomsHtml = items.length ? items.map(function(room){
+       var isOccupied = room.status === "입실";
+       var meta = isOccupied ? roomDdayMeta(room.contract_end_date) : null;
+       var contractHtml = isOccupied
+         ? '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:7px;">' +
+             '<label style="font-size:11.5px;color:var(--ink-soft);">계약만기일 ' +
+             '<input class="room-contract-date" type="date" value="' + escapeHtml(room.contract_end_date || "") + '" style="margin-left:4px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;font:inherit;color:var(--ink);" /></label>' +
+             (meta
+               ? '<span style="font-size:11px;font-weight:700;color:' + meta.color + ';background:' + meta.bg + ';border-radius:999px;padding:3px 7px;">' + meta.label + '</span>'
+               : '<span style="font-size:11px;color:var(--ink-soft);">만기일을 입력해주세요</span>') +
+           '</div>'
+         : '<div style="font-size:11.5px;color:var(--ink-soft);margin-top:7px;">공실 전환 시 계약만기일은 자동으로 초기화됩니다.</div>';
+       return '<div class="room-inventory-card" data-room-id="' + room.id + '" style="padding:9px 0;border-top:1px solid var(--line);">' +
+         '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+           '<strong style="font-size:12.5px;color:var(--ink);">' + escapeHtml(room.room_label) + '</strong>' +
+           '<label style="font-size:11.5px;color:var(--ink-soft);">상태 ' +
+           '<select class="room-status" style="margin-left:3px;padding:4px 5px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);">' +
+             '<option value="입실"' + (isOccupied ? ' selected' : '') + '>입실</option>' +
+             '<option value="공실"' + (!isOccupied ? ' selected' : '') + '>공실</option>' +
+           '</select></label>' +
+         '</div>' +
+         contractHtml +
+         '<div class="room-inventory-msg" style="min-height:14px;margin-top:5px;font-size:11px;"></div>' +
+       '</div>';
+     }).join("") : '<div style="padding:8px 0 2px;font-size:11.5px;color:var(--ink-soft);">등록된 방 재고가 없습니다.</div>';
+     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+         '<strong style="font-size:12.5px;color:var(--ink);">방 재고</strong>' +
+         '<button class="room-add-btn" style="font-size:11px;padding:4px 8px;border:1px solid var(--brass);border-radius:5px;background:#fff;color:var(--brass);cursor:pointer;">+ 방 추가</button>' +
+       '</div>' + roomsHtml;
+   }
+
+   function loadRoomInventory(lrId, box){
+     var target = box.querySelector('.lr-room-inventory[data-lr-id="' + lrId + '"]');
+     if (!target) return;
+     fetch("/api/my/listing-requests/" + lrId + "/rooms", { credentials: "same-origin" })
+       .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+       .then(function(res){
+         if (!res.ok || !res.j || !res.j.ok) {
+           target.innerHTML = '<div style="font-size:11.5px;color:var(--brick);">방 재고를 불러오지 못했습니다.</div>';
+           return;
+         }
+         target.innerHTML = roomInventoryHtml(res.j.items || []);
+         bindRoomInventoryEvents(target, lrId, box);
+       })
+       .catch(function(){
+         target.innerHTML = '<div style="font-size:11.5px;color:var(--brick);">방 재고를 불러오지 못했습니다.</div>';
+       });
+   }
+
+   function saveRoomInventory(card, lrId, box){
+     var roomId = card.getAttribute("data-room-id");
+     var statusEl = card.querySelector(".room-status");
+     var dateEl = card.querySelector(".room-contract-date");
+     var msg = card.querySelector(".room-inventory-msg");
+     var status = statusEl.value;
+     var contractEndDate = dateEl ? dateEl.value : "";
+     statusEl.disabled = true;
+     if (dateEl) dateEl.disabled = true;
+     if (msg) { msg.style.color = "var(--ink-soft)"; msg.textContent = "저장 중…"; }
+     fetch("/api/my/room-inventory/" + roomId, {
+       method: "PUT", credentials: "same-origin",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({ status: status, contract_end_date: contractEndDate })
+     }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+       .then(function(res){
+         if (!res.ok || !res.j || !res.j.ok) {
+           statusEl.disabled = false;
+           if (dateEl) dateEl.disabled = false;
+           if (msg) { msg.style.color = "var(--brick)"; msg.textContent = (res.j && res.j.message) || "저장하지 못했습니다."; }
+           return;
+         }
+         loadRoomInventory(lrId, box);
+       })
+       .catch(function(){
+         statusEl.disabled = false;
+         if (dateEl) dateEl.disabled = false;
+         if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "네트워크 오류로 저장하지 못했습니다."; }
+       });
+   }
+
+   function bindRoomInventoryEvents(target, lrId, box){
+     var addBtn = target.querySelector(".room-add-btn");
+     if (addBtn) addBtn.addEventListener("click", function(){
+       var label = window.prompt("방 이름 또는 호실을 입력해주세요. (예: 201호)");
+       if (label == null) return;
+       label = label.trim();
+       if (!label) { alert("방 이름 또는 호실을 입력해주세요."); return; }
+       addBtn.disabled = true;
+       fetch("/api/my/listing-requests/" + lrId + "/rooms", {
+         method: "POST", credentials: "same-origin",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ room_label: label, status: "공실" })
+       }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+         .then(function(res){
+           if (!res.ok || !res.j || !res.j.ok) { addBtn.disabled = false; alert((res.j && res.j.message) || "방을 추가하지 못했습니다."); return; }
+           loadRoomInventory(lrId, box);
+         })
+         .catch(function(){ addBtn.disabled = false; alert("네트워크 오류로 방을 추가하지 못했습니다."); });
+     });
+     Array.prototype.forEach.call(target.querySelectorAll(".room-status, .room-contract-date"), function(el){
+       el.addEventListener("change", function(){
+         var card = el.closest(".room-inventory-card");
+         if (card) saveRoomInventory(card, lrId, box);
+       });
+     });
+   }
 
   function bindListingRequestEvents(box) {
     // 이력 보기 토글
@@ -401,6 +525,7 @@
         }
         box.innerHTML = items.map(requestItemHtml).join("");
         bindListingRequestEvents(box);
+         items.forEach(function(item){ loadRoomInventory(item.id, box); });
       })
       .catch(function(){
         box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매물의뢰 현황을 불러오지 못했습니다.</div>';

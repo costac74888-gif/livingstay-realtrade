@@ -143,12 +143,16 @@ def run():
     failures += _check_building_request_e2e(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
     failures += _check_chat_phone_verification(client)
+    # 방 재고의 만기일 저장·공실 초기화·소유자 권한을 확인
+    failures += _check_room_inventory_contract_dates(client)
     # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
     failures += _check_lodging_address_normalization()
     # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
     failures += _check_lodging_metric_contract(client)
     # 명칭 미확정 일반숙박은 영업신고 대표 사업장명으로 자동 표시되는지 확인
     failures += _check_lodging_auto_naming(client)
+    # 일일 캡으로 중간 종료되어도 당일 처리분 자동명명이 반영되는지 확인
+    failures += _check_lodging_cap_auto_naming()
     # 관리자 통계표의 일반숙박 호실수 신뢰불가 표시와 비일반 회귀를 확인
     failures += _check_general_units_table_markup(client)
 
@@ -428,6 +432,113 @@ def _check_lodging_auto_naming(client):
                 )
             if inserted_buildings:
                 cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (inserted_buildings,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_lodging_cap_auto_naming():
+    """일일 캡 도달 시 당일 UPSERT 주소의 자동명칭을 즉시 갱신하는지 확인."""
+    import os as _os
+    import time as _time
+    from unittest.mock import patch
+    import addr_norm
+    import sync_lodgings as sync_module
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    road = f"테스트특별시 캡검증구 자동명명대로 {run_id[-4:]}"
+    permit = f"TEST-CAP-AUTO-NAME-{run_id}"
+    daily_key = f"test_lodging_daily_calls_{run_id}"
+    progress_key = f"test_lodging_sync_progress_{run_id}"
+    inserted_buildings = []
+    conn = get_conn()
+    cur = conn.cursor()
+    original_daily_key = sync_module.DAILY_CALLS_META_KEY
+    original_progress_key = sync_module.PROGRESS_META_KEY
+    try:
+        for label, suffix in (("캡 처리 전 임시명", "1"), ("당일 미처리 임시명", "2")):
+            cur.execute(
+                """
+                INSERT INTO master_buildings
+                    (building_name, road_address, source, lodging_type, name_pending,
+                     building_name_source, building_name_pending_base)
+                VALUES (%s, %s, 'api_test', '일반', TRUE, 'pending', %s)
+                RETURNING id
+                """,
+                (label, f"{road}-{suffix}", label),
+            )
+            inserted_buildings.append(cur.fetchone()["id"])
+        conn.commit()
+
+        item = {
+            "BPLC_NM": "캡당일자동명모텔",
+            "MNG_NO": permit,
+            "ROAD_NM_ADDR": road + "-1",
+            "LOTNO_ADDR": f"테스트특별시 캡동 {run_id[-3:]}-1",
+            "LCPMT_YMD": "20260101",
+            "SALS_STTS_NM": "영업/정상",
+            "DTL_SALS_STTS_NM": "",
+            "KSRM_CNT": "5",
+            "WSRM_CNT": "0",
+            "SNTTN_BZSTAT_NM": "여관업",
+            "TELNO": "",
+            "DAT_UPDT_PNT": "",
+        }
+        with patch.object(sync_module, "DAILY_CALLS_META_KEY", daily_key), \
+             patch.object(sync_module, "PROGRESS_META_KEY", progress_key), \
+             patch.object(
+                 sync_module,
+                 "_fetch_page_retry",
+                 return_value=([item], 2, False),
+             ), \
+             patch.dict(_os.environ, {sync_module.SERVICE_KEY_ENV: "test-key"}):
+            completed, processed, calls_today = sync_module.sync_lodgings(
+                num_rows=100, sleep_sec=0, max_calls=1
+            )
+
+        cur.execute(
+            "SELECT building_name FROM master_buildings WHERE id=%s",
+            (inserted_buildings[0],),
+        )
+        target_name = (cur.fetchone() or {}).get("building_name")
+        cur.execute(
+            "SELECT building_name FROM master_buildings WHERE id=%s",
+            (inserted_buildings[1],),
+        )
+        untouched_name = (cur.fetchone() or {}).get("building_name")
+        if not (
+            completed is False
+            and processed == 1
+            and calls_today == 1
+            and target_name == "캡당일자동명모텔"
+            and untouched_name == "당일 미처리 임시명"
+        ):
+            failures.append(
+                "lodging cap auto name: 캡 중간 종료 후 당일 처리 건물만 즉시 자동명명되지 않음 "
+                f"(completed={completed}, processed={processed}, target={target_name}, "
+                f"untouched={untouched_name})"
+            )
+        else:
+            print("OK  일일 캡 도달 시 당일 처리분 자동명칭 즉시 반영")
+    except Exception as exc:
+        failures.append(f"lodging cap auto name 테스트 오류: {exc}")
+    finally:
+        sync_module.DAILY_CALLS_META_KEY = original_daily_key
+        sync_module.PROGRESS_META_KEY = original_progress_key
+        try:
+            cur.execute("DELETE FROM lodging_registry WHERE permit_number=%s", (permit,))
+            cur.execute(
+                "DELETE FROM master_buildings WHERE id = ANY(%s)",
+                (inserted_buildings,),
+            )
+            cur.execute(
+                "DELETE FROM app_meta WHERE key = ANY(%s)",
+                ([daily_key, progress_key],),
+            )
             conn.commit()
         finally:
             cur.close()
@@ -840,6 +951,152 @@ def _check_chat_phone_verification(client):
                 cur.execute("DELETE FROM users WHERE id=%s", (buyer_id,))
             if seller_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (seller_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_room_inventory_contract_dates(client):
+    """방 재고 만기일은 입실에만 보관되고, 소유자만 수정할 수 있어야 한다."""
+    import time as _time
+    from datetime import date, timedelta
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    owner_id = other_id = listing_id = room_id = None
+    try:
+        cur.execute("""
+            SELECT is_nullable, column_default
+              FROM information_schema.columns
+             WHERE table_schema = current_schema()
+               AND table_name = 'business_room_inventory'
+               AND column_name = 'status'
+        """)
+        status_column = cur.fetchone()
+        if (not status_column or status_column["is_nullable"] != "NO"
+                or not status_column.get("column_default")):
+            failures.append("room inventory: status가 NOT NULL 기본 공실 제약으로 마이그레이션되지 않음")
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["room inventory: 테스트용 master_buildings 행이 없습니다."]
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"room-owner-{run_id}@example.test", "방 재고 소유자"),
+        )
+        owner_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"room-other-{run_id}@example.test", "방 재고 타인"),
+        )
+        other_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO listing_requests
+                (user_id, master_building_id, deal_type, contact_phone, deal_mode, status)
+            VALUES (%s, %s, '월세', %s, 'direct', 'submitted')
+            RETURNING id
+        """, (owner_id, building["id"], "010-0000-0000"))
+        listing_id = cur.fetchone()["id"]
+        conn.commit()
+
+        contract_end_date = (date.today() + timedelta(days=30)).isoformat()
+        with client.session_transaction() as sess:
+            sess["user_id"] = owner_id
+        created = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms",
+            json={
+                "room_label": "201호",
+                "status": "입실",
+                "contract_end_date": contract_end_date,
+            },
+        )
+        created_payload = created.get_json() or {}
+        if created.status_code != 201 or not created_payload.get("ok"):
+            failures.append(f"room inventory: 입실 방 추가 실패 (HTTP {created.status_code})")
+            return failures
+        room = created_payload.get("item") or {}
+        room_id = room.get("id")
+        if room.get("status") != "입실" or room.get("contract_end_date") != contract_end_date:
+            failures.append("room inventory: 입실 방의 계약만기일이 저장되지 않음")
+
+        invalid_create_body = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms",
+            json=[],
+        )
+        if invalid_create_body.status_code != 400:
+            failures.append("room inventory: 객체가 아닌 추가 요청을 400으로 거부하지 않음")
+
+        invalid_create_status = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms",
+            json={"room_label": "202호", "status": False},
+        )
+        if invalid_create_status.status_code != 400:
+            failures.append("room inventory: false 상태값을 400으로 거부하지 않음")
+
+        listed = client.get(f"/api/my/listing-requests/{listing_id}/rooms")
+        listed_items = (listed.get_json() or {}).get("items") or []
+        if listed.status_code != 200 or not any(
+            item.get("id") == room_id and item.get("contract_end_date") == contract_end_date
+            for item in listed_items
+        ):
+            failures.append("room inventory: 소유자 조회에서 계약만기일을 찾지 못함")
+
+        invalid_date = client.put(
+            f"/api/my/room-inventory/{room_id}",
+            json={"status": "입실", "contract_end_date": "2026-99-99"},
+        )
+        if invalid_date.status_code != 400:
+            failures.append("room inventory: 잘못된 날짜를 400으로 거부하지 않음")
+
+        vacated = client.put(
+            f"/api/my/room-inventory/{room_id}",
+            json={"status": "공실", "contract_end_date": contract_end_date},
+        )
+        vacated_item = (vacated.get_json() or {}).get("item") or {}
+        if (vacated.status_code != 200 or vacated_item.get("status") != "공실"
+                or vacated_item.get("contract_end_date") is not None):
+            failures.append("room inventory: 공실 전환 때 계약만기일이 초기화되지 않음")
+
+        invalid_status = client.put(
+            f"/api/my/room-inventory/{room_id}",
+            json={"status": "만기임박", "contract_end_date": contract_end_date},
+        )
+        if invalid_status.status_code != 400:
+            failures.append("room inventory: 만기임박 상태를 거부하지 않음")
+
+        invalid_update_body = client.put(f"/api/my/room-inventory/{room_id}", json=[])
+        if invalid_update_body.status_code != 400:
+            failures.append("room inventory: 객체가 아닌 수정 요청을 400으로 거부하지 않음")
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = other_id
+        blocked = client.put(
+            f"/api/my/room-inventory/{room_id}",
+            json={"status": "입실", "contract_end_date": contract_end_date},
+        )
+        if blocked.status_code != 403:
+            failures.append("room inventory: 타 사용자의 방 재고 수정을 403으로 차단하지 않음")
+        if not failures:
+            print("OK  방 재고 만기일 저장·공실 초기화·입실/공실 검증·소유자 권한")
+    except Exception as exc:
+        failures.append(f"room inventory 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_id:
+                cur.execute(
+                    "DELETE FROM business_room_inventory WHERE listing_request_id=%s",
+                    (listing_id,),
+                )
+                cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
+            if other_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (other_id,))
+            if owner_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
             conn.commit()
         finally:
             cur.close()

@@ -4403,13 +4403,13 @@
         </table>
         <div class="dg-pager" style="padding:12px 4px; justify-content:flex-start;">
           <button class="dg-nav-btn" id="membersFirst" ${s.page <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>
-          <button class="dg-nav-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""}>&#8249;</button>
+          <button class="dg-nav-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""} title="이전 10페이지로 이동" aria-label="이전 10페이지로 이동">&#8249;</button>
           ${buildPageList(s.page, totalPages, 10).map((n) =>
             n === "..."
               ? `<span class="dg-page-ellipsis">…</span>`
               : `<button class="dg-page-btn${n === s.page ? " active" : ""}" data-pg="${n}">${n}</button>`
           ).join("")}
-          <button class="dg-nav-btn" id="membersNext" ${s.page >= totalPages ? "disabled" : ""}>&#8250;</button>
+          <button class="dg-nav-btn" id="membersNext" ${s.page >= totalPages ? "disabled" : ""} title="다음 10페이지로 이동" aria-label="다음 10페이지로 이동">&#8250;</button>
           <button class="dg-nav-btn" id="membersLast" ${s.page >= totalPages ? "disabled" : ""} title="마지막 페이지로 이동" aria-label="마지막 페이지로 이동">»|</button>
           <span style="font-size:12px; color:var(--ink-soft); margin-left:8px;">총 ${(d.total || 0).toLocaleString("ko-KR")}명</span>
         </div>`;
@@ -4418,8 +4418,8 @@
       const next = document.getElementById("membersNext");
       const last = document.getElementById("membersLast");
       if (first) first.addEventListener("click", () => { membersState.page = 1; loadMembers(); });
-      if (prev) prev.addEventListener("click", () => { membersState.page -= 1; loadMembers(); });
-      if (next) next.addEventListener("click", () => { membersState.page += 1; loadMembers(); });
+      if (prev) prev.addEventListener("click", () => { membersState.page = jumpPage(membersState.page, totalPages, -1, 10); loadMembers(); });
+      if (next) next.addEventListener("click", () => { membersState.page = jumpPage(membersState.page, totalPages, 1, 10); loadMembers(); });
       if (last) last.addEventListener("click", () => { membersState.page = totalPages; loadMembers(); });
       document.querySelectorAll("#membersWrap .dg-page-btn:not(.active)").forEach((btn) => {
         btn.addEventListener("click", () => { membersState.page = Number(btn.dataset.pg); loadMembers(); });
