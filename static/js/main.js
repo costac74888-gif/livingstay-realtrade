@@ -396,7 +396,12 @@ function showFallbackToast(msg){
 }
 
 let _favOverflowPopover = null;
+let _favOverflowPopoverButton = null;
 function closeFavOverflowPopover(){
+  if (_favOverflowPopoverButton) {
+    _favOverflowPopoverButton.setAttribute("aria-expanded", "false");
+    _favOverflowPopoverButton = null;
+  }
   if (_favOverflowPopover) {
     _favOverflowPopover.remove();
     _favOverflowPopover = null;
@@ -410,6 +415,8 @@ function createFavChip(key){
   label.textContent = "★ " + key.split("|")[0];
   label.title = "건물 상세 보기";
   label.addEventListener("click", async () => {
+    // 팝오버 안에서 상세로 이동해도 팝오버가 상세 패널 위에 잔류하지 않게 한다.
+    closeFavOverflowPopover();
     try {
       const res = await fetch(`/api/favorites?keys=${encodeURIComponent(key)}`);
       const data = await res.json();
@@ -438,6 +445,7 @@ function openFavOverflowPopover(button, hiddenKeys){
   hiddenKeys.forEach(key => popover.appendChild(createFavChip(key)));
   document.body.appendChild(popover);
   _favOverflowPopover = popover;
+  _favOverflowPopoverButton = button;
   const rect = button.getBoundingClientRect();
   const width = Math.min(430, window.innerWidth - 24);
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
@@ -4176,6 +4184,7 @@ function renderBuildingPanel(id){
 function restoreDefaultPanel(){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  closeFavOverflowPopover();
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
   panel.classList.remove("open");
@@ -4185,6 +4194,7 @@ function restoreDefaultPanel(){
 
 // InfoWindow "상세보기 →" 클릭 → 페이지 이동 없이 패널 전환 + URL만 교체
 window.openBuildingDetail = function(id){
+  closeFavOverflowPopover();
   history.pushState({ buildingId: id }, "", "/building/" + id);
   if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + id });
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
