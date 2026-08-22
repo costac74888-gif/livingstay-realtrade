@@ -32,3 +32,4 @@
 - [숙박업 유형별 통계 중복](lodging-category-stat-dedup.md) — 주소 매칭된 같은 신고번호가 여러 유형 행에 나타날 수 있으므로 전국 합계는 유형 행의 단순 합이 아니라 신고번호 중복 제거 기준으로 계산한다.
 - [Advisory locks with RealDictCursor](advisory-lock-realdictcursor.md) — shared DB helper returns mapping rows, so scalar lock results need named SQL aliases rather than positional indexes.
 - [숙박업 자동명명 대량 갱신](lodging-auto-naming-bulk.md) — 운영 기존 대상은 1만 건 이상이므로 건물별 SQL 왕복 대신 키 일괄 조회·batch UPDATE로 처리해야 실행 제한 안에 끝난다.
+- [매물 등록자유형 호환](listing-registrant-types.md) — 새 UI는 3분류만 노출하되 기존 agent/other 값은 숨김 옵션으로 보존해 수정 시 조용히 owner로 바뀌지 않게 한다.
