@@ -114,7 +114,7 @@ def _inject_ga4(html: str) -> str:
     return html.replace("</head>", snippet + "</head>", 1)
 
 
-_HOME_SHARE_TITLE = "숙박시설 실거래가 & 위탁운영 플랫폼 . 홈앤스테이"
+_HOME_SHARE_TITLE = "숙박시설은 홈앤스테이"
 _HOME_SHARE_DESCRIPTION = (
     "전국 생활숙박시설·분양형호텔·콘도의 실거래가와 위탁운영 정보를 한눈에 확인하세요. "
     "국토교통부 실거래 데이터 기반 숙박시설 플랫폼."
