@@ -1897,8 +1897,7 @@ async function loadSideStats(){
       if (res.ok && d.ok && d.rate !== null){
         regBox.classList.remove("side-soon");
         regBox.innerHTML =
-          `<div style="font-size:20px; font-weight:700; color:var(--brass-dark);">전국 ${d.rate}%</div>` +
-          `<div title="가중평균 기준: 일반숙박 제외" style="font-size:12px; color:var(--ink-soft); margin-top:3px;">생활·관광·복합 ${d.buildings.toLocaleString()}개 건물 · ${d.total_units.toLocaleString()}실 중 ${d.biz_units.toLocaleString()}실 신고 · 일반숙박 제외 가중평균</div>`;
+          `<div style="font-size:20px; font-weight:700; color:var(--brass-dark);">전국 ${d.rate}%</div>`;
       } else {
         regBox.textContent = "신고율 데이터를 불러오지 못했습니다.";
       }
