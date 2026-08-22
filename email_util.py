@@ -157,24 +157,42 @@ def render_newsletter_email(unsubscribe_link, greeting_line,
     return True, html
 
 
-def send_email(to, subject, html_body):
-    """Resend REST API로 이메일 발송. 반환: (ok: bool, message: str). 예외를 던지지 않음."""
+def send_email(to, subject, html_body, idempotency_key=None, detailed=False):
+    """Resend REST API로 이메일 발송. 반환: (ok: bool, message: str). 예외를 던지지 않음.
+
+    idempotency_key가 있으면 Resend가 같은 요청을 24시간 동안 한 번만 처리한다.
+    네트워크·DB 장애 뒤의 안전한 재시도에 사용한다.
+
+    detailed=True이면 세 번째 반환값으로 ``accepted`` / ``definitive_failure`` /
+    ``transport_error``를 준다. 호출부는 확정 실패와 발송 여부가 불확실한 오류를
+    서로 다른 재시도 정책으로 다룰 수 있다.
+    """
+    def _result(ok, message, outcome):
+        return (ok, message, outcome) if detailed else (ok, message)
+
     api_key = os.environ.get("RESEND_API_KEY", "").strip()
     from_email = os.environ.get("RESEND_FROM_EMAIL", "").strip()
     if not api_key or not from_email:
-        return False, "이메일 설정(RESEND_API_KEY/RESEND_FROM_EMAIL)이 등록되지 않아 발송을 건너뜁니다."
+        return _result(
+            False,
+            "이메일 설정(RESEND_API_KEY/RESEND_FROM_EMAIL)이 등록되지 않아 발송을 건너뜁니다.",
+            "definitive_failure",
+        )
 
     to_addr = (to or "").strip()
     if not to_addr or "@" not in to_addr:
-        return False, "수신자 이메일이 없습니다."
+        return _result(False, "수신자 이메일이 없습니다.", "definitive_failure")
 
     try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        if idempotency_key:
+            headers["Idempotency-Key"] = str(idempotency_key)[:256]
         res = requests.post(
             RESEND_SEND_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             json={
                 "from": f"홈앤스테이 <{from_email}>",
                 "to": [to_addr],
@@ -184,11 +202,22 @@ def send_email(to, subject, html_body):
             timeout=10,
         )
         if res.status_code in (200, 201):
-            return True, "발송 성공"
+            return _result(True, "발송 성공", "accepted")
         try:
             detail = res.json().get("message") or res.text
         except Exception:
             detail = res.text
-        return False, f"Resend 발송 실패({res.status_code}): {detail}"
+        # 명시적인 유효성·인증·요청 거절 상태만 "수락되지 않음"으로 본다.
+        # 408/409 등은 이전 요청의 수락 여부가 불명확할 수 있고, 5xx도 수락 후
+        # 응답만 실패했을 수 있으므로 전송 불확실 상태로 보수적으로 처리한다.
+        definitive_rejection_statuses = {
+            400, 401, 403, 404, 405, 406, 410, 413, 415, 422, 429,
+        }
+        outcome = (
+            "definitive_failure"
+            if res.status_code in definitive_rejection_statuses
+            else "transport_error"
+        )
+        return _result(False, f"Resend 발송 실패({res.status_code}): {detail}", outcome)
     except Exception as e:
-        return False, f"이메일 발송 중 오류: {e}"
+        return _result(False, f"이메일 발송 중 오류: {e}", "transport_error")

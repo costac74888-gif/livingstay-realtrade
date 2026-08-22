@@ -15,13 +15,14 @@ sync_lodgings.py — 행안부 '문화_숙박업 조회서비스' 수집 배치.
 
 import argparse
 import hashlib
+import html
 import json
 import os
 import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 
 import requests
 from psycopg2.extras import execute_values
@@ -33,6 +34,7 @@ from addr_norm import (
     normalize_jibun_prefix,
 )
 from db import get_conn
+from email_util import send_email
 from lodging_categories import (
     TARGET_LODGING_HYGIENE_TYPES,
     is_target_lodging_hygiene,
@@ -57,6 +59,8 @@ NUM_ROWS_DEFAULT = 1000
 SLEEP_DEFAULT = 0.3
 HEARTBEAT_SEC = 30
 LODGING_SYNC_LOCK_ID = 918273
+ROOM_EXPIRY_ALERT_LOCK_ID = 918274
+ROOM_EXPIRY_THRESHOLDS = (90, 60, 30, 7)
 
 
 @contextmanager
@@ -174,6 +178,270 @@ def _mark_last_sync(cur, conn, total):
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     """, (LAST_SYNC_META_KEY, payload))
     conn.commit()
+
+
+def send_room_expiry_alerts(today=None):
+    """계약만기 90/60/30/7일 전 알림을 이메일과 알림함에 기록한다.
+
+    인앱 알림을 먼저 영속화한 뒤 이메일을 보낸다. 이메일 호출 직전에
+    ``attempting`` 상태와 Resend 멱등 키를 먼저 커밋한다. 호출 뒤 DB 장애가
+    나도 다음 실행이 같은 멱등 키로 안전하게 재시도할 수 있다.
+    """
+    basis_date = today or date.today()
+    conn = get_conn()
+    cur = conn.cursor()
+    acquired = False
+    stats = {
+        "target_count": 0,
+        "sent_count": 0,
+        "email_sent_count": 0,
+        "in_app_count": 0,
+        "failed_count": 0,
+    }
+    try:
+        cur.execute(
+            "SELECT pg_try_advisory_lock(%s) AS acquired",
+            (ROOM_EXPIRY_ALERT_LOCK_ID,),
+        )
+        acquired = bool(cur.fetchone()["acquired"])
+        if not acquired:
+            print("[room-expiry] 이미 다른 실행이 진행 중입니다 — 이번 실행을 건너뜁니다.")
+            return stats
+
+        cur.execute("""
+            WITH room_data AS (
+                SELECT bri.id AS room_id,
+                       bri.room_label,
+                       bri.contract_end_date,
+                       (bri.contract_end_date - %s::date) AS days_remaining,
+                       lr.user_id,
+                       u.email,
+                       mb.building_name
+                  FROM business_room_inventory bri
+                  JOIN listing_requests lr ON lr.id = bri.listing_request_id
+                  JOIN users u ON u.id = lr.user_id
+                  JOIN master_buildings mb ON mb.id = lr.master_building_id
+                 WHERE bri.status = '입실'
+                   AND bri.contract_end_date IS NOT NULL
+                   AND COALESCE(u.status, 'active') = 'active'
+            )
+            -- 새 알림은 오늘 정확히 90/60/30/7일 남은 방에만 만든다.
+            SELECT rd.room_id, rd.room_label, rd.contract_end_date, rd.days_remaining,
+                   rd.user_id, rd.email, rd.building_name,
+                   rd.days_remaining::text AS alert_threshold,
+                   NULL::INTEGER AS alert_id, NULL::TEXT AS email_state
+              FROM room_data rd
+             WHERE rd.days_remaining IN (90, 60, 30, 7)
+               AND NOT EXISTS (
+                   SELECT 1 FROM room_expiry_alerts_sent sent
+                    WHERE sent.room_id = rd.room_id
+                      AND sent.threshold = rd.days_remaining::text
+               )
+
+            UNION ALL
+
+            -- 인앱 기록 뒤 이메일만 실패한 이력은 임계 날짜가 지나도 재시도한다.
+            -- Resend 멱등 키 보관(24시간) 안에서만 자동 재시도해 중복을 막는다.
+            SELECT rd.room_id, rd.room_label, rd.contract_end_date, rd.days_remaining,
+                   rd.user_id, rd.email, rd.building_name,
+                   sent.threshold AS alert_threshold,
+                   sent.id AS alert_id, sent.email_state
+              FROM room_data rd
+              JOIN room_expiry_alerts_sent sent ON sent.room_id = rd.room_id
+             WHERE NULLIF(BTRIM(rd.email), '') IS NOT NULL
+               AND (
+                   sent.email_state IN ('pending', 'failed')
+                   OR (
+                       sent.email_state IN ('failed', 'attempting')
+                       AND sent.email_attempted_at >= NOW() - INTERVAL '23 hours'
+                   )
+               )
+             ORDER BY contract_end_date, room_id
+        """, (basis_date,))
+        targets = cur.fetchall()
+        stats["target_count"] = len(targets)
+        cur.execute("""
+            SELECT COUNT(*) AS count
+              FROM room_expiry_alerts_sent sent
+              JOIN business_room_inventory bri ON bri.id = sent.room_id
+              JOIN listing_requests lr ON lr.id = bri.listing_request_id
+              JOIN users u ON u.id = lr.user_id
+             WHERE bri.status = '입실'
+               AND bri.contract_end_date IS NOT NULL
+               AND NULLIF(BTRIM(u.email), '') IS NOT NULL
+               AND sent.email_state = 'attempting'
+               AND (
+                   sent.email_attempted_at IS NULL
+                   OR sent.email_attempted_at < NOW() - INTERVAL '23 hours'
+               )
+        """)
+        stale_email_attempts = int(cur.fetchone()["count"])
+        if stale_email_attempts:
+            print(
+                f"[room-expiry] 이메일 멱등 재시도 안전 창이 지난 "
+                f"{stale_email_attempts}건은 자동 재발송하지 않습니다. "
+                "발송 이력 확인 후 수동 처리해주세요.",
+                file=sys.stderr,
+            )
+        # 조회 트랜잭션을 닫고 각 항목을 즉시 커밋할 수 있게 한다.
+        conn.commit()
+
+        for target in targets:
+            alert_threshold = int(target["alert_threshold"])
+            building_name = target["building_name"] or "건물"
+            raw_room_label = str(target["room_label"] or "")
+            room_label = (
+                raw_room_label
+                if raw_room_label.endswith("호")
+                else raw_room_label + "호"
+            )
+            expiry_date = target["contract_end_date"].strftime("%Y-%m-%d")
+            title = (
+                f"[홈앤스테이] {building_name} {room_label} "
+                f"계약만료 {alert_threshold}일 전입니다."
+            )
+            body = f"만기일: {expiry_date}. 마이페이지에서 확인해주세요."
+            email = (target["email"] or "").strip()
+            alert_id = target["alert_id"]
+            email_state = target["email_state"]
+
+            # 새 대상은 알림함과 이력 행을 하나의 트랜잭션으로 먼저 남긴다.
+            # 따라서 이메일 실패는 사이트 알림 수신을 막지 않는다.
+            if not alert_id:
+                try:
+                    cur.execute("""
+                        INSERT INTO room_expiry_alerts_sent
+                            (room_id, threshold, email_state)
+                        VALUES (%s, %s, %s)
+                        RETURNING id
+                    """, (
+                        target["room_id"],
+                        str(alert_threshold),
+                        "pending" if email else "not_required",
+                    ))
+                    alert_id = cur.fetchone()["id"]
+                    cur.execute("""
+                        INSERT INTO notifications
+                            (user_id, title, body, building_name)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id
+                    """, (target["user_id"], title, body, building_name))
+                    notification_id = cur.fetchone()["id"]
+                    cur.execute("""
+                        UPDATE room_expiry_alerts_sent
+                           SET notification_id=%s, in_app_sent_at=NOW()
+                         WHERE id=%s
+                    """, (notification_id, alert_id))
+                    conn.commit()
+                    stats["sent_count"] += 1
+                    stats["in_app_count"] += 1
+                    email_state = "pending" if email else "not_required"
+                except Exception as exc:
+                    conn.rollback()
+                    stats["failed_count"] += 1
+                    print(
+                        f"[room-expiry] 인앱 알림 기록 실패(room_id={target['room_id']}): {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+
+            if not email or email_state not in ("pending", "failed", "attempting"):
+                continue
+
+            # 발송 시도와 멱등 키를 먼저 확정한다. 성공 응답 뒤 상태 갱신이
+            # 실패해도 다음 실행이 같은 키로 재시도하므로 중복 이메일은 없다.
+            try:
+                cur.execute("""
+                    UPDATE room_expiry_alerts_sent
+                       SET email_state='attempting',
+                           email_attempted_at=NOW(),
+                           email_error=NULL,
+                           email_idempotency_key=COALESCE(
+                               email_idempotency_key,
+                               'room-expiry/' || id::text
+                           )
+                     WHERE id=%s
+                       AND email_state IN ('pending', 'failed', 'attempting')
+                    RETURNING id, email_idempotency_key
+                """, (alert_id,))
+                claimed = cur.fetchone()
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                stats["failed_count"] += 1
+                print(
+                    f"[room-expiry] 이메일 발송 준비 실패(room_id={target['room_id']}): {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            if not claimed:
+                continue
+
+            email_html = (
+                f"<p>{html.escape(title)}</p>"
+                f"<p>{html.escape(body)}</p>"
+                '<p><a href="https://homenstay.com/mypage">'
+                "마이페이지에서 확인하기</a></p>"
+            )
+            email_result = send_email(
+                email,
+                title,
+                email_html,
+                idempotency_key=claimed["email_idempotency_key"],
+                detailed=True,
+            )
+            email_ok, email_message = email_result[:2]
+            email_outcome = (
+                email_result[2]
+                if len(email_result) > 2
+                else ("accepted" if email_ok else "definitive_failure")
+            )
+            next_email_state = (
+                "sent" if email_ok
+                else ("attempting" if email_outcome == "transport_error" else "failed")
+            )
+            try:
+                cur.execute("""
+                    UPDATE room_expiry_alerts_sent
+                       SET email_state=%s,
+                           email_sent_at=CASE WHEN %s THEN NOW() ELSE NULL END,
+                           email_error=CASE WHEN %s THEN NULL ELSE %s END
+                     WHERE id=%s AND email_state='attempting'
+                """, (
+                    next_email_state,
+                    email_ok,
+                    email_ok,
+                    None if email_ok else str(email_message)[:500],
+                    alert_id,
+                ))
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                stats["failed_count"] += 1
+                print(
+                    f"[room-expiry] 이메일 후처리 기록 실패(room_id={target['room_id']}); "
+                    f"다음 실행에서 멱등 키로 재시도합니다: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            if email_ok:
+                stats["email_sent_count"] += 1
+            else:
+                stats["failed_count"] += 1
+                print(f"[room-expiry] 이메일 발송 실패({email}): {email_message}")
+        return stats
+    finally:
+        if acquired:
+            try:
+                cur.execute(
+                    "SELECT pg_advisory_unlock(%s) AS released",
+                    (ROOM_EXPIRY_ALERT_LOCK_ID,),
+                )
+                cur.fetchone()["released"]
+            except Exception:
+                pass
+        cur.close()
+        conn.close()
 
 
 # ---- 관리자 버튼용 상태 기록 (run_id 펜싱 + 하트비트) ----
@@ -572,6 +840,18 @@ def _run(args):
     except Exception as e:
         error = _redact(str(e))[:500]
         print(f"[lodgings] 실패: {error}")
+
+    # 숙박업 수집과 독립적으로 매일 계약만기 알림을 점검한다.
+    # 수집 실패나 이메일 설정 문제로 숙박업 배치 자체가 실패하지 않게 한다.
+    try:
+        expiry_stats = send_room_expiry_alerts()
+        print(
+            "[room-expiry] 대상 {target_count}건, "
+            "발송 {sent_count}건 (이메일 {email_sent_count}건, "
+            "인앱 {in_app_count}건, 실패 {failed_count}건)".format(**expiry_stats)
+        )
+    except Exception as e:
+        print(f"[room-expiry] 배치 실패: {_redact(str(e))[:500]}")
 
     if args.status_key and run_id is not None:
         stop_beat.set()

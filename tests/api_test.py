@@ -145,6 +145,8 @@ def run():
     failures += _check_chat_phone_verification(client)
     # 방 재고의 만기일 저장·공실 초기화·소유자 권한을 확인
     failures += _check_room_inventory_contract_dates(client)
+    # 계약만기 90/60/30/7일 알림의 이메일·알림함 기록과 중복 방지를 확인
+    failures += _check_room_expiry_alerts()
     # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
     failures += _check_listing_registrant_types(client)
     # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
@@ -1175,6 +1177,346 @@ def _check_room_inventory_contract_dates(client):
                 cur.execute("DELETE FROM users WHERE id=%s", (other_id,))
             if owner_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_room_expiry_alerts():
+    """계약만기 임계치별 발송·중복 방지·이메일 없는 회원의 인앱 알림을 검증한다."""
+    import os
+    import time as _time
+    from datetime import date, timedelta
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from db import get_conn
+    import email_util
+    import sync_lodgings as sync_module
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    owner_id = no_email_id = None
+    listing_ids = []
+    room_ids = []
+    owner_room_ids = []
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["room expiry: 테스트용 master_buildings 행이 없습니다."]
+
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"expiry-owner-{run_id}@example.test", "만기 알림 소유자"),
+        )
+        owner_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (None, "만기 알림 이메일 없음"),
+        )
+        no_email_id = cur.fetchone()["id"]
+
+        for user_id in (owner_id, no_email_id):
+            cur.execute("""
+                INSERT INTO listing_requests
+                    (user_id, master_building_id, deal_type, contact_phone,
+                     deal_mode, registrant_type, status)
+                VALUES (%s, %s, '월세', '010-0000-0000',
+                        'direct', 'business', 'submitted')
+                RETURNING id
+            """, (user_id, building["id"]))
+            listing_ids.append(cur.fetchone()["id"])
+
+        today = date.today()
+        room_specs = [
+            (listing_ids[0], "0901", 90),
+            (listing_ids[0], "0601", 60),
+            (listing_ids[0], "0701", 7),
+            (listing_ids[1], "0301", 30),
+        ]
+        for listing_id, label, threshold in room_specs:
+            cur.execute("""
+                INSERT INTO business_room_inventory
+                    (listing_request_id, room_label, status, contract_end_date)
+                VALUES (%s, %s, '입실', %s)
+                RETURNING id
+            """, (listing_id, label, today + timedelta(days=threshold)))
+            room_id = cur.fetchone()["id"]
+            room_ids.append(room_id)
+            if listing_id == listing_ids[0]:
+                owner_room_ids.append(room_id)
+        conn.commit()
+
+        with patch.object(
+            sync_module, "send_email", return_value=(True, "테스트 발송 성공")
+        ) as email_mock:
+            first = sync_module.send_room_expiry_alerts(today=today)
+        if (
+            first.get("target_count") != 4
+            or first.get("sent_count") != 4
+            or first.get("email_sent_count") != 3
+            or first.get("in_app_count") != 4
+            or email_mock.call_count != 3
+        ):
+            failures.append(
+                "room expiry: 90/60/30/7일 첫 실행의 이메일·인앱 발송 건수가 다름"
+            )
+
+        cur.execute("""
+            SELECT threshold, COUNT(*) AS count
+              FROM room_expiry_alerts_sent
+             WHERE room_id = ANY(%s)
+             GROUP BY threshold
+             ORDER BY threshold
+        """, (room_ids,))
+        thresholds = {row["threshold"]: int(row["count"]) for row in cur.fetchall()}
+        if thresholds != {"7": 1, "30": 1, "60": 1, "90": 1}:
+            failures.append(f"room expiry: 임계치별 발송 이력이 잘못됨 ({thresholds})")
+
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM notifications WHERE user_id=%s",
+            (no_email_id,),
+        )
+        if int(cur.fetchone()["count"]) != 1:
+            failures.append("room expiry: 이메일 없는 회원의 인앱 알림이 1건 생성되지 않음")
+
+        with patch.object(
+            sync_module, "send_email", return_value=(True, "중복 테스트 발송")
+        ) as duplicate_email_mock:
+            second = sync_module.send_room_expiry_alerts(today=today)
+        if (
+            second.get("target_count") != 0
+            or second.get("sent_count") != 0
+            or duplicate_email_mock.call_count != 0
+        ):
+            failures.append("room expiry: 같은 배치 재실행에서 중복 발송됨")
+
+        # 이메일 실패도 사이트 알림은 남기고, 다음 배치에서 이메일만 재시도해야 한다.
+        cur.execute("""
+            INSERT INTO business_room_inventory
+                (listing_request_id, room_label, status, contract_end_date)
+            VALUES (%s, '0302', '입실', %s)
+            RETURNING id
+        """, (listing_ids[0], today + timedelta(days=30)))
+        failed_email_room_id = cur.fetchone()["id"]
+        room_ids.append(failed_email_room_id)
+        owner_room_ids.append(failed_email_room_id)
+        conn.commit()
+        with patch.object(
+            sync_module, "send_email", return_value=(False, "계획된 이메일 실패")
+        ) as failed_email_mock:
+            failed_email_run = sync_module.send_room_expiry_alerts(today=today)
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM notifications WHERE user_id=%s",
+            (owner_id,),
+        )
+        owner_notification_count = int(cur.fetchone()["count"])
+        cur.execute(
+            "SELECT email_state FROM room_expiry_alerts_sent WHERE room_id=%s",
+            (failed_email_room_id,),
+        )
+        failed_email_state = (cur.fetchone() or {}).get("email_state")
+        if (
+            failed_email_run.get("target_count") != 1
+            or failed_email_run.get("in_app_count") != 1
+            or failed_email_mock.call_count != 1
+            or owner_notification_count != 4
+            or failed_email_state != "failed"
+        ):
+            failures.append("room expiry: 이메일 실패 때 인앱 알림 또는 재시도 상태를 남기지 않음")
+
+        with patch.object(
+            sync_module, "send_email", return_value=(True, "재시도 성공")
+        ) as retry_email_mock:
+            cur.execute("""
+                UPDATE room_expiry_alerts_sent
+                   SET email_attempted_at = NOW() - INTERVAL '24 hours'
+                 WHERE room_id=%s
+            """, (failed_email_room_id,))
+            conn.commit()
+            retry_email_run = sync_module.send_room_expiry_alerts(today=today)
+        if (
+            retry_email_run.get("target_count") != 1
+            or retry_email_run.get("in_app_count") != 0
+            or retry_email_run.get("email_sent_count") != 1
+            or retry_email_mock.call_count != 1
+        ):
+            failures.append("room expiry: 이메일 실패 재시도에서 인앱 중복 또는 이메일 재시도 실패")
+
+        # 이메일 성공 뒤 상태 저장이 끊긴 상황(attempting)은 같은 멱등 키로 회복한다.
+        cur.execute("""
+            INSERT INTO business_room_inventory
+                (listing_request_id, room_label, status, contract_end_date)
+            VALUES (%s, '0303', '입실', %s)
+            RETURNING id
+        """, (listing_ids[0], today + timedelta(days=30)))
+        stuck_room_id = cur.fetchone()["id"]
+        room_ids.append(stuck_room_id)
+        owner_room_ids.append(stuck_room_id)
+        cur.execute("""
+            INSERT INTO notifications (user_id, title, body, building_name)
+            VALUES (%s, '기존 인앱 알림', '테스트', '테스트 건물')
+            RETURNING id
+        """, (owner_id,))
+        stuck_notification_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO room_expiry_alerts_sent
+                (room_id, threshold, notification_id, in_app_sent_at,
+                 email_state, email_attempted_at)
+            VALUES (%s, '30', %s, NOW(), 'attempting', NOW())
+        """, (stuck_room_id, stuck_notification_id))
+        conn.commit()
+        with patch.object(
+            sync_module, "send_email", return_value=(True, "중복 방지 확인")
+        ) as stuck_email_mock:
+            stuck_run = sync_module.send_room_expiry_alerts(today=today)
+        stuck_key = (stuck_email_mock.call_args.kwargs.get("idempotency_key")
+                     if stuck_email_mock.call_args else None)
+        if (
+            stuck_run.get("target_count") != 1
+            or stuck_run.get("email_sent_count") != 1
+            or stuck_email_mock.call_count != 1
+            or not (stuck_key or "").startswith("room-expiry/")
+        ):
+            failures.append("room expiry: attempting 상태 이메일의 멱등 재시도 실패")
+
+        with patch.object(
+            sync_module, "send_email", return_value=(True, "이미 발송됨")
+        ) as recovered_duplicate_mock:
+            recovered_duplicate_run = sync_module.send_room_expiry_alerts(today=today)
+        if (
+            recovered_duplicate_run.get("target_count") != 0
+            or recovered_duplicate_mock.call_count != 0
+        ):
+            failures.append("room expiry: 멱등 복구 완료 뒤 이메일을 다시 발송함")
+
+        # Resend 5xx처럼 수락 여부가 불확실한 실패는 attempting으로 보존하고,
+        # 24시간 멱등 보관 창을 지난 뒤에는 자동 재발송하지 않는다.
+        cur.execute("""
+            INSERT INTO business_room_inventory
+                (listing_request_id, room_label, status, contract_end_date)
+            VALUES (%s, '0304', '입실', %s)
+            RETURNING id
+        """, (listing_ids[0], today + timedelta(days=30)))
+        stale_room_id = cur.fetchone()["id"]
+        room_ids.append(stale_room_id)
+        owner_room_ids.append(stale_room_id)
+        conn.commit()
+        with patch.object(
+            sync_module,
+            "send_email",
+            return_value=(False, "Resend 발송 실패(503): temporary", "transport_error"),
+        ) as transient_email_mock:
+            transient_run = sync_module.send_room_expiry_alerts(today=today)
+        cur.execute(
+            "SELECT email_state FROM room_expiry_alerts_sent WHERE room_id=%s",
+            (stale_room_id,),
+        )
+        transient_state = (cur.fetchone() or {}).get("email_state")
+        if (
+            transient_run.get("target_count") != 1
+            or transient_run.get("in_app_count") != 1
+            or transient_email_mock.call_count != 1
+            or transient_state != "attempting"
+        ):
+            failures.append("room expiry: Resend 5xx를 불확실한 발송 상태로 보존하지 않음")
+
+        cur.execute("""
+            UPDATE room_expiry_alerts_sent
+               SET email_attempted_at = NOW() - INTERVAL '24 hours'
+             WHERE room_id=%s
+        """, (stale_room_id,))
+        conn.commit()
+        with patch.object(
+            sync_module, "send_email", return_value=(True, "오래된 시도")
+        ) as stale_email_mock:
+            stale_run = sync_module.send_room_expiry_alerts(today=today)
+        if stale_run.get("target_count") != 0 or stale_email_mock.call_count != 0:
+            failures.append("room expiry: 24시간 지난 불확실한 이메일을 자동 재발송함")
+
+        # Resend REST 호출에도 alert ID 기반 멱등 키 헤더가 실제로 전달되어야 한다.
+        with patch.dict(
+            os.environ,
+            {"RESEND_API_KEY": "test-key", "RESEND_FROM_EMAIL": "test@example.test"},
+            clear=False,
+        ), patch.object(
+            email_util.requests,
+            "post",
+            return_value=SimpleNamespace(status_code=200),
+        ) as resend_post:
+            email_ok, _ = email_util.send_email(
+                "recipient@example.test",
+                "멱등 키 테스트",
+                "<p>test</p>",
+                idempotency_key="room-expiry/test-alert",
+            )
+        sent_headers = resend_post.call_args.kwargs.get("headers") if resend_post.call_args else {}
+        if not email_ok or sent_headers.get("Idempotency-Key") != "room-expiry/test-alert":
+            failures.append("room expiry: Resend Idempotency-Key 헤더를 전달하지 않음")
+
+        with patch.dict(
+            os.environ,
+            {"RESEND_API_KEY": "test-key", "RESEND_FROM_EMAIL": "test@example.test"},
+            clear=False,
+        ), patch.object(
+            email_util.requests,
+            "post",
+            return_value=SimpleNamespace(
+                status_code=409,
+                text="idempotency conflict",
+                json=lambda: {"message": "idempotency conflict"},
+            ),
+        ):
+            _, _, conflict_outcome = email_util.send_email(
+                "recipient@example.test",
+                "멱등 충돌 테스트",
+                "<p>test</p>",
+                idempotency_key="room-expiry/conflict-alert",
+                detailed=True,
+            )
+        if conflict_outcome != "transport_error":
+            failures.append("room expiry: Resend 409 응답을 불확실한 전송으로 처리하지 않음")
+
+        # 알림 이력이 생긴 방이 있는 매물도 철회(삭제)할 수 있어야 한다.
+        cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_ids[0],))
+        conn.commit()
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM room_expiry_alerts_sent WHERE room_id = ANY(%s)",
+            (owner_room_ids,),
+        )
+        if int(cur.fetchone()["count"]) != 0:
+            failures.append("room expiry: 알림 이력이 매물 삭제를 막거나 함께 삭제되지 않음")
+
+        if not failures:
+            print("OK  계약만기 90·60·30·7일 이메일·인앱 알림·실패 재시도·중복 방지")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"room expiry 테스트 오류: {exc}")
+    finally:
+        try:
+            if room_ids:
+                cur.execute(
+                    "DELETE FROM room_expiry_alerts_sent WHERE room_id = ANY(%s)",
+                    (room_ids,),
+                )
+            if listing_ids:
+                cur.execute(
+                    "DELETE FROM business_room_inventory WHERE listing_request_id = ANY(%s)",
+                    (listing_ids,),
+                )
+                cur.execute(
+                    "DELETE FROM listing_requests WHERE id = ANY(%s)",
+                    (listing_ids,),
+                )
+            if owner_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
+            if no_email_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (no_email_id,))
             conn.commit()
         finally:
             cur.close()

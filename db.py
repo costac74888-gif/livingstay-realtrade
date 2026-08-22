@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-22-6"
+SCHEMA_VERSION = "2026-08-22-9"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1096,7 +1096,6 @@ def _run_init_db():
         "CREATE INDEX IF NOT EXISTS ix_business_room_inventory_listing "
         "ON business_room_inventory(listing_request_id, id)"
     )
-
     # 직거래 매물 사진 (등록자가 첨부, 공개 표시)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS listing_photos (
@@ -1337,6 +1336,61 @@ def _run_init_db():
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_tx "
         "ON notifications (user_id, transaction_id)"
+    )
+
+    # 계약만기 알림 발송 이력 — 인앱/이메일 상태를 분리해 임계치별 중복을 막는다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS room_expiry_alerts_sent (
+            id SERIAL PRIMARY KEY,
+            room_id INTEGER NOT NULL REFERENCES business_room_inventory(id) ON DELETE CASCADE,
+            threshold TEXT NOT NULL,
+            notification_id INTEGER REFERENCES notifications(id) ON DELETE SET NULL,
+            in_app_sent_at TIMESTAMP,
+            email_state TEXT NOT NULL DEFAULT 'pending',
+            email_idempotency_key TEXT,
+            email_attempted_at TIMESTAMP,
+            email_sent_at TIMESTAMP,
+            email_error TEXT,
+            sent_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(room_id, threshold)
+        )
+    """)
+    # 초기 버전의 RESTRICT FK/단일 sent_at 이력을 상태 분리 구조로 안전하게 보정한다.
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS notification_id INTEGER")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS in_app_sent_at TIMESTAMP")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS email_state TEXT")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS email_idempotency_key TEXT")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS email_attempted_at TIMESTAMP")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMP")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ADD COLUMN IF NOT EXISTS email_error TEXT")
+    cur.execute("""
+        UPDATE room_expiry_alerts_sent
+           SET in_app_sent_at = COALESCE(in_app_sent_at, sent_at),
+               email_state = COALESCE(email_state, 'sent')
+         WHERE in_app_sent_at IS NULL OR email_state IS NULL
+    """)
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ALTER COLUMN email_state SET DEFAULT 'pending'")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent ALTER COLUMN email_state SET NOT NULL")
+    cur.execute("ALTER TABLE room_expiry_alerts_sent DROP CONSTRAINT IF EXISTS room_expiry_alerts_sent_room_id_fkey")
+    cur.execute("""
+        ALTER TABLE room_expiry_alerts_sent
+        ADD CONSTRAINT room_expiry_alerts_sent_room_id_fkey
+        FOREIGN KEY (room_id) REFERENCES business_room_inventory(id) ON DELETE CASCADE
+    """)
+    cur.execute("ALTER TABLE room_expiry_alerts_sent DROP CONSTRAINT IF EXISTS room_expiry_alerts_sent_notification_id_fkey")
+    cur.execute("""
+        ALTER TABLE room_expiry_alerts_sent
+        ADD CONSTRAINT room_expiry_alerts_sent_notification_id_fkey
+        FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+    """)
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS ix_room_expiry_alerts_sent_room "
+        "ON room_expiry_alerts_sent(room_id)"
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_room_expiry_alert_email_key "
+        "ON room_expiry_alerts_sent(email_idempotency_key) "
+        "WHERE email_idempotency_key IS NOT NULL"
     )
 
     # 지자체(시군구)별 생활숙박시설 담당부서·연락처 (엑셀 원본 그대로 적재)
