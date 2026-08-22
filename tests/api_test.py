@@ -185,6 +185,15 @@ def _check_lodging_metric_contract(client):
 
         cur.execute(
             "SELECT id, building_name, lodging_type FROM master_buildings "
+            "WHERE building_name ILIKE %s ORDER BY id LIMIT 1",
+            ("%빌리브패러그라프해운대%",),
+        )
+        living_sample = cur.fetchone()
+        if not living_sample:
+            failures.append("lodging metric: 표본 건물을 찾지 못했습니다 (빌리브패러그라프해운대)")
+
+        cur.execute(
+            "SELECT id, building_name, lodging_type FROM master_buildings "
             "WHERE lodging_type IS DISTINCT FROM '일반' "
             "  AND lodging_type IS DISTINCT FROM 'mixed_use_excluded' "
             "ORDER BY id LIMIT 1"
@@ -241,6 +250,40 @@ def _check_lodging_metric_contract(client):
             print(f"OK  {non_general['building_name']} 비일반 신고율 지표 유지")
     else:
         failures.append("lodging metric: 비일반 표본 건물을 찾지 못했습니다.")
+
+    if living_sample:
+        resp = client.get(f"/api/building/{living_sample['id']}")
+        payload = resp.get_json() or {}
+        expected_rate = round(153 / 286 * 100, 1)
+        if resp.status_code != 200:
+            failures.append(
+                f"lodging metric: {living_sample['building_name']} 상세 API "
+                f"HTTP {resp.status_code}"
+            )
+        elif payload.get("lodging_type") != "생활":
+            failures.append(
+                f"lodging metric: {living_sample['building_name']} 유형이 생활이 아님 "
+                f"({payload.get('lodging_type')})"
+            )
+        elif payload.get("lodging_metric") != "report_rate":
+            failures.append(
+                f"lodging metric: {living_sample['building_name']}가 신고율 지표가 아님"
+            )
+        elif payload.get("units") != 286 or payload.get("lodging_room_total") != 153:
+            failures.append(
+                f"lodging metric: {living_sample['building_name']} 객실수/호실수가 "
+                f"153/286이 아님 ({payload.get('lodging_room_total')}/{payload.get('units')})"
+            )
+        elif payload.get("lodging_report_rate") != expected_rate:
+            failures.append(
+                f"lodging metric: {living_sample['building_name']} 신고율이 "
+                f"{expected_rate}%가 아님 ({payload.get('lodging_report_rate')}%)"
+            )
+        else:
+            print(
+                f"OK  {living_sample['building_name']} 생활 신고율 지표 "
+                f"(153실 / 286실 = {expected_rate}%)"
+            )
 
     # 캐시가 없는 공개 통계와 관리자 전체통계가 같은 일반 제외 분자·분모를 쓰는지 확인한다.
     original_cache = app_module._bld_full_stats_cache
