@@ -1898,7 +1898,7 @@ async function loadSideStats(){
         regBox.classList.remove("side-soon");
         regBox.innerHTML =
           `<div style="font-size:20px; font-weight:700; color:var(--brass-dark);">전국 ${d.rate}%</div>` +
-          `<div title="가중평균 기준: 전체 영업신고호실 합 ÷ 전체 호실 합" style="font-size:12px; color:var(--ink-soft); margin-top:3px;">총 ${d.buildings.toLocaleString()}개 건물 · ${d.total_units.toLocaleString()}실 중 ${d.biz_units.toLocaleString()}실 신고 · 가중평균 기준</div>`;
+          `<div title="가중평균 기준: 일반숙박 제외" style="font-size:12px; color:var(--ink-soft); margin-top:3px;">생활·관광·복합 ${d.buildings.toLocaleString()}개 건물 · ${d.total_units.toLocaleString()}실 중 ${d.biz_units.toLocaleString()}실 신고 · 일반숙박 제외 가중평균</div>`;
       } else {
         regBox.textContent = "신고율 데이터를 불러오지 못했습니다.";
       }
@@ -3003,9 +3003,9 @@ async function loadBuildingHeader(id){
   // 신고율: 서버가 같은 실시간 집계로 계산한 값을 우선 사용한다.
   const unitsNum = b.units != null ? Number(b.units) : null;
   let headerRate = "-";
-  if (b.lodging_report_rate != null) {
+  if (b.lodging_type !== "일반" && b.lodging_report_rate != null) {
     headerRate = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
-  } else if (lodgingRoomTotal != null && unitsNum && unitsNum > 0) {
+  } else if (b.lodging_type !== "일반" && lodgingRoomTotal != null && unitsNum && unitsNum > 0) {
     headerRate = Number((lodgingRoomTotal * 100 / unitsNum).toFixed(1)).toLocaleString('ko-KR') + "%";
   }
   const bName = b.building_name || "(건물명 미확인)";
@@ -3515,12 +3515,15 @@ async function loadBuildingHeader(id){
     // 타임라인은 _renderDetailCards()가 담당 (폴링 갱신과 공유)
   } else {
     // [2] 행정운영 표 — 행안부 영업신고 데이터(영업/정상만) 기반.
-    //     신고율 = 영업 중 객실수 합 / 총 호실수(units). 데이터 미수집이면 "확인 불가".
+    //     일반숙박은 건축물대장 호실수와 객실수가 비교 대상이 아니므로 절대 객실수만 표시한다.
     const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
     const roomTotal = Number(b.lodging_room_total || 0);
+    const isGeneralLodging = b.lodging_type === "일반";
     let rateDisplay;
     const _adminUnits = b.units != null ? Number(b.units) : 0;
-    if (b.lodging_report_rate != null){
+    if (isGeneralLodging) {
+      rateDisplay = `${roomTotal.toLocaleString('ko-KR')}실 (현재 영업중 ${lodgings.length}개 사업장)`;
+    } else if (b.lodging_report_rate != null){
       rateDisplay = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (roomTotal > 0 && _adminUnits > 0){
       // lodging_room_total(행안부 합산)로 즉석 계산 — 헤더 신고율과 동일 소스
@@ -3531,7 +3534,7 @@ async function loadBuildingHeader(id){
       rateDisplay = "확인 불가";
     }
     const reportedRooms = roomTotal > 0 ? roomTotal.toLocaleString('ko-KR') + "실" : "-";
-    const notReported = (b.units != null && Number(b.units) > 0)
+    const notReported = (!isGeneralLodging && b.units != null && Number(b.units) > 0)
       ? Math.max(Number(b.units) - roomTotal, 0).toLocaleString('ko-KR') + "실"
       : "-";
     // 영업신고 사업장 목록 — 서버가 이미 등록운영업체(priority 순) → 미등록(랜덤)으로 정렬해서 내려줌
@@ -3561,10 +3564,12 @@ async function loadBuildingHeader(id){
       <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
       <table class="b-info-table" style="margin-bottom:12px;">
         <tbody>
-          <tr><th>신고율</th><td>${rateDisplay}</td></tr>
-          <tr><th>호실수</th><td>${units}</td></tr>
-          <tr><th>신고</th><td>${reportedRooms}</td></tr>
-          <tr><th>미신고</th><td>${notReported}</td></tr>
+          ${isGeneralLodging
+            ? `<tr><th>영업신고 객실</th><td>${rateDisplay}</td></tr>`
+            : `<tr><th>신고율</th><td>${rateDisplay}</td></tr>
+               <tr><th>호실수</th><td>${units}</td></tr>
+               <tr><th>신고</th><td>${reportedRooms}</td></tr>
+               <tr><th>미신고</th><td>${notReported}</td></tr>`}
           <tr><th>담당부처</th><td>${deptCell}</td></tr>
           <tr><th>연락처</th><td>${phoneCell}</td></tr>
         </tbody>

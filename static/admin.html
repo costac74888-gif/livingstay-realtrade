@@ -214,7 +214,17 @@
           { label: "단지뱃지",    key: "broker_badge",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.broker_badge)}</td>` },
           { label: "입점부동산",  key: "store_realty",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.store_realty)}</td>` },
           { label: "입점상가",    key: "store_total",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.store_total)}</td>` },
-          { label: "신고율",      key: "report_rate",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;${row.report_rate >= 80 ? "color:var(--brass-dark);" : ""}">${pct(row.report_rate)}</td>` },
+          { label: "신고율 / 객실수", key: "report_rate", fmt: (row) => {
+              if (row.lodging_metric === "room_count") {
+                const rooms = row.room_count == null ? "-" : Number(row.room_count).toLocaleString();
+                return `<td style="text-align:right;padding:4px 8px;">${rooms}실</td>`;
+              }
+              const color = row.report_rate >= 80 ? "color:var(--brass-dark);" : "";
+              const title = row.report_rate_excludes_general
+                ? "가중평균 기준: 일반숙박 제외, 생활·관광·복합 등 신고율 적용 대상만 계산"
+                : "가중평균 기준: 영업신고호실 합 ÷ 호실 합";
+              return `<td title="${title}" style="text-align:right;padding:4px 8px;${color}">${pct(row.report_rate)}</td>`;
+            } },
           { label: "영업신고업체",key: "permit_count",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.permit_count)}</td>` },
           { label: "영업신고호실",key: "room_count",        fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.room_count)}</td>` },
           { label: "폐업율",      key: "closed_rate",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;${row.closed_rate >= 30 ? "color:#b3261e;" : ""}">${pct(row.closed_rate)}</td>` },
@@ -393,9 +403,14 @@
                 `style="background:none;border:1px solid #aaa;border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
                 `🏪 ${v}개</button>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          { key: "report_rate", label: "신고율", clientSort: true,
-            sortValue: (row) => row.units ? Number(row.lodging_room_total || 0) / Number(row.units) : null,
+          { key: "report_rate", label: "신고율 / 객실수", clientSort: true,
+            sortValue: (row) => row.lodging_type === "일반"
+              ? Number(row.lodging_room_total || 0)
+              : (row.units ? Number(row.lodging_room_total || 0) / Number(row.units) : null),
             render: (_, row) => {
+              if (row.lodging_type === "일반") {
+                return `<span style="font-weight:600;">${Number(row.lodging_room_total || 0).toLocaleString()}실</span>`;
+              }
               if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
               // 신고율은 lodging_registry의 비폐업 객실수 합계만 사용한다.
               const rate = Math.round((row.lodging_room_total || 0) / row.units * 1000) / 10;
@@ -438,9 +453,9 @@
                                       ? `<strong>${t.total_store_realty.toLocaleString()}</strong>` : "",
           store_count:         (t) => t.total_store_count != null
                                       ? `<strong>${t.total_store_count.toLocaleString()}</strong>` : "",
-          // 요약 신고율은 전체 신고호실 합 ÷ 전체 호실 합으로 계산한 가중평균.
+           // 요약 신고율은 일반숙박을 제외한 신고호실 합 ÷ 해당 호실 합으로 계산한 가중평균.
           report_rate:         (t) => t.weighted_report_rate != null
-                                      ? `<strong title="가중평균 기준: 전체 영업신고호실 합 ÷ 전체 호실 합">${t.weighted_report_rate}%</strong><span title="가중평균 기준: 전체 영업신고호실 합 ÷ 전체 호실 합" style="margin-left:3px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>` : "",
+                                       ? `<strong title="가중평균 기준: 일반숙박 제외, 생활·관광·복합 등 신고율 적용 대상만 계산">${t.weighted_report_rate}%</strong><span title="가중평균 기준: 일반숙박 제외, 생활·관광·복합 등 신고율 적용 대상만 계산" style="margin-left:3px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>` : "",
           lodging_expand:      (t) => t.total_lodging_count != null
                                       ? `<strong>${t.total_lodging_count.toLocaleString()}건</strong>` : "",
         },

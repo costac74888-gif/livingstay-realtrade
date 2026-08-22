@@ -129,12 +129,19 @@
     const badge = `<span style="display:inline-block; font-size:8.8px; font-weight:700; color:${color}; vertical-align:middle;">${esc(badgeLabel(b.lodging_type))}</span>`;
     const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
     // 영업신고호실·미신고·신고율은 lodging_registry 비폐업 객실수 합계만 사용한다.
+    // 일반숙박은 units와 객실수가 비교 대상이 아니므로 객실수 절대값만 표시한다.
     const lodgingRoomTotal = b.lodging_room_total != null ? Number(b.lodging_room_total) : null;
     const bizUnits = lodgingRoomTotal != null ? lodgingRoomTotal.toLocaleString('ko-KR') + "실" : "-";
+    const isGeneralLodging = b.lodging_type === "일반";
     const unreported = (b.units != null && lodgingRoomTotal != null)
       ? Number(Math.max(b.units - lodgingRoomTotal, 0)).toLocaleString('ko-KR') + "실" : "-";
-    const reportRate = b.lodging_report_rate != null
+    const reportRate = !isGeneralLodging && b.lodging_report_rate != null
       ? Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%" : "-";
+    const activeBusinessCount = Number(
+      b.lodging_active_business_count != null
+        ? b.lodging_active_business_count
+        : (Array.isArray(b.lodgings) ? b.lodgings.length : 0)
+    ).toLocaleString('ko-KR');
     // 총주차대수: 응답의 total_pkng_cnt(자주식+기계식 합산) 재사용
     const totalPkng = b.total_pkng_cnt != null
       ? Number(b.total_pkng_cnt).toLocaleString('ko-KR') + "대"
@@ -152,9 +159,11 @@
       ${b.lodging_type_detail ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:16px;">${esc(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:16px;"></div>`}
       <div style="display:flex; gap:16px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:14px;">
         ${stat("총 호실", units)}
-        ${stat("영업신고 호수", bizUnits)}
-        ${unreported !== "-" ? stat("미신고", unreported) : ""}
-        ${reportRate !== "-" ? stat("신고율", reportRate) : ""}
+        ${isGeneralLodging
+          ? stat("영업신고 객실", `${bizUnits} (현재 영업중 ${activeBusinessCount}개 사업장)`)
+          : `${stat("영업신고 호수", bizUnits)}
+             ${unreported !== "-" ? stat("미신고", unreported) : ""}
+             ${reportRate !== "-" ? stat("신고율", reportRate) : ""}`}
         ${stat("총 주차", totalPkng)}
       </div>`;
 

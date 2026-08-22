@@ -71,6 +71,15 @@ AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(�
 AGENT_REGION_BUILDING_CAP = 20  # 등록한 지역 안에서 담당단지로 선택 가능한 건물 수
 REGION_SLOT_CAP = 20            # 시군구 하나당 지역Master로 등록 가능한 중개사 수
 
+# 일반숙박은 건축물대장 호실수와 실제 영업 객실수가 같은 모집단이 아니다.
+# 따라서 일반 건물은 신고율 대신 행안부 영업신고 객실수 절대값을 보여준다.
+REPORT_RATE_EXCLUDED_LODGING_TYPE = "일반"
+
+
+def uses_lodging_report_rate(lodging_type):
+    """일반숙박을 제외한 유형에만 객실수 대비 신고율을 적용한다."""
+    return lodging_type != REPORT_RATE_EXCLUDED_LODGING_TYPE
+
 # 정적 JS/CSS 자산에 배포마다 바뀌는 버전 쿼리스트링(?v=SERVER_BOOT_V)을 붙여
 # 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
 # 하드코딩하지 않고 서버 기동 시각(=배포마다 갱신)을 재사용한다.
@@ -924,19 +933,29 @@ def get_building(building_id):
     result["operators"] = operator_rows
     result["operator_by_category"] = operator_by_category
     result["loan_consultants"] = loan_consultant_rows
-    # B화면 행정 카드용: 영업/정상 영업신고 목록 + 신고율
+    # B화면 행정 카드용: 영업/정상 영업신고 목록 + 지표.
+    # 일반숙박은 건축물대장 호실수와 실제 객실수가 비교 대상이 아니므로
+    # 신고율 대신 영업신고 객실수·활성 사업장 수를 내려준다.
     result["lodgings"] = lodgings
     result["lodging_room_total"] = lodging_room_total  # 영업신고 목록의 객실수 합계 (행정 카드 목록 표시용)
+    result["lodging_active_business_count"] = len(lodgings)
+    result["lodging_metric"] = (
+        "report_rate" if uses_lodging_report_rate(result.get("lodging_type")) else "room_count"
+    )
     units    = result.get("units")          # master_buildings.units — 총 호실(단일 소스)
     reported = result.get("lodging_room_total")  # 행안부 기준 실시간 영업신고호실 (폐업 제외)
     # biz_units_snapshot_legacy(엑셀 스냅샷)은 참고용으로만 보관한다.
-    # 영업신고호실·신고율은 아래 lodging_registry 실시간 집계만 사용한다.
-    # 헤더카드·행정 블록이 동일 소스를 참조하여 불일치 방지
+    # 영업신고호실은 아래 lodging_registry 실시간 집계만 사용한다.
     result["lodging_report_rate"] = (
-        round(reported * 100.0 / units, 1) if (units and reported is not None) else None
+        round(reported * 100.0 / units, 1)
+        if (uses_lodging_report_rate(result.get("lodging_type")) and units and reported is not None)
+        else None
     )
     result["lodging_unreported"] = (
-        (units - reported) if (units is not None and reported is not None) else None
+        (units - reported)
+        if (uses_lodging_report_rate(result.get("lodging_type"))
+            and units is not None and reported is not None)
+        else None
     )
     # 총주차대수: 자주식(옥내+옥외) + 기계식(옥내+옥외) — 기존 4개 컬럼 합산, 표시 시점만 계산
     ia = result.get("indr_auto_utcnt"); oa = result.get("oudr_auto_utcnt")
@@ -11235,6 +11254,9 @@ def admin_buildings_list():
             for lr in lr_list
             if "폐업" not in (lr.get("biz_status_name") or "")
         )
+        it["lodging_metric"] = (
+            "report_rate" if uses_lodging_report_rate(it.get("lodging_type")) else "room_count"
+        )
 
     # ── 합계(totals) 집계 — 현재 필터 기준 전체 결과 ────────────────────────────
     # 페이지네이션된 items가 아닌, 동일 WHERE절에 해당하는 전체 건물 기준으로 집계.
@@ -11246,13 +11268,17 @@ def admin_buildings_list():
 
         # 매칭 건물 전체의 id + 집계에 필요한 최소 컬럼 fetch
         cur_t.execute(f"""
-            SELECT id, units, road_address, jibun_address
+            SELECT id, lodging_type, units, road_address, jibun_address
             FROM master_buildings mb WHERE {where_sql}
         """, params)
         all_blds_t = cur_t.fetchall()
         all_ids_t = [b["id"] for b in all_blds_t]
 
         total_units_t = sum(int(b["units"] or 0) for b in all_blds_t)
+        report_rate_blds_t = [
+            b for b in all_blds_t if uses_lodging_report_rate(b.get("lodging_type"))
+        ]
+        report_rate_units_t = sum(int(b["units"] or 0) for b in report_rate_blds_t)
 
         # 관심저장 합계 — 개별 행 표시와 동일한 correlated 서브쿼리(master_building_id OR 주소매칭)
         # master_building_id IS NULL인 주소기반 favorites를 누락하지 않기 위해 per-row 쿼리와 동일 로직 사용.
@@ -11327,6 +11353,7 @@ def admin_buildings_list():
 
         # permit_number 중복 제거 후 전체 집계 (full-stats _row() 로직 동일)
         all_permits_t: dict = {}
+        report_rate_permits_t: dict = {}
         for b in all_blds_t:
             rk = bld_rk_t[b["id"]]
             jk = bld_jk_t[b["id"]]
@@ -11336,15 +11363,21 @@ def admin_buildings_list():
             elif jk and jk in lr_jibun_map_t:
                 bld_permits.update(lr_jibun_map_t[jk])
             all_permits_t.update(bld_permits)
+            if uses_lodging_report_rate(b.get("lodging_type")):
+                report_rate_permits_t.update(bld_permits)
 
         active_permits_t = [v for v in all_permits_t.values()
                             if "폐업" not in (v["biz_status_name"] or "")]
-        total_biz_units_t  = sum(int(v["room_count"] or 0) for v in active_permits_t)
+        report_rate_active_permits_t = [
+            v for v in report_rate_permits_t.values()
+            if "폐업" not in (v["biz_status_name"] or "")
+        ]
+        total_biz_units_t  = sum(int(v["room_count"] or 0) for v in report_rate_active_permits_t)
         total_lodging_t    = len(active_permits_t)
-        # 가중평균: 전체 영업신고호실 합 ÷ 전체 호실 합 × 100.
+        # 가중평균: 일반숙박을 제외한 영업신고호실 합 ÷ 호실 합 × 100.
         weighted_report_rate_t = (
-            round(total_biz_units_t / total_units_t * 100, 1)
-            if total_units_t else None
+            round(total_biz_units_t / report_rate_units_t * 100, 1)
+            if report_rate_units_t else None
         )
 
         totals = {
@@ -11356,6 +11389,9 @@ def admin_buildings_list():
             "total_biz_units":     total_biz_units_t,
             "weighted_report_rate": weighted_report_rate_t,
             "total_lodging_count": total_lodging_t,
+            "report_rate_units":   report_rate_units_t,
+            "report_rate_buildings": len(report_rate_blds_t),
+            "report_rate_excludes_general": True,
         }
     except Exception as _e:
         import traceback as _tb
@@ -11464,14 +11500,7 @@ def admin_buildings_full_stats():
         by_type[lt].append(b)
         all_list.append(b)
 
-    def _row(blds: list, type_label: str) -> dict:
-        if not blds:
-            return {"type": type_label, "building_count": 0, "units": 0,
-                    "favorites": 0, "listing_requests": 0, "broker_badge": 0,
-                    "store_realty": 0, "store_total": 0,
-                    "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None}
-        tu = sum(int(b["units"] or 0) for b in blds)
-        broker_c = sum(badge_map.get(b["id"], 0) for b in blds)
+    def _permits_for(blds: list) -> dict:
         permits: dict = {}
         for b in blds:
             rk = bld_rk[b["id"]]; jk = bld_jk[b["id"]]
@@ -11479,12 +11508,38 @@ def admin_buildings_full_stats():
                 permits.update(lr_road_map[rk])
             elif jk and jk in lr_jibun_map:
                 permits.update(lr_jibun_map[jk])
+        return permits
+
+    def _row(blds: list, type_label: str) -> dict:
+        if not blds:
+            return {"type": type_label, "building_count": 0, "units": 0,
+                    "favorites": 0, "listing_requests": 0, "broker_badge": 0,
+                    "store_realty": 0, "store_total": 0,
+                    "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None,
+                    "lodging_metric": "room_count" if type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE else "report_rate",
+                    "report_rate_room_count": 0, "report_rate_units": 0, "report_rate_building_count": 0,
+                    "report_rate_excludes_general": type_label == "전체"}
+        tu = sum(int(b["units"] or 0) for b in blds)
+        broker_c = sum(badge_map.get(b["id"], 0) for b in blds)
+        permits = _permits_for(blds)
         # 폐업 제외: 영업신고업체·영업신고호실은 현재 운영 중인 사업장만 집계한다.
         total_pc = len(permits)
         cc       = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
         active_vals = [v for v in permits.values() if "폐업" not in (v["biz_status_name"] or "")]
         pc = len(active_vals)   # 현재 운영 영업신고업체 수 (폐업 제외)
         rc = sum(int(v["room_count"] or 0) for v in active_vals)  # 현재 운영 영업신고호실 (폐업 제외)
+        # 전체 행만 일반숙박을 제외해 가중평균을 낸다. 일반 행 자체는 객실수 지표다.
+        rate_blds = (
+            [b for b in blds if uses_lodging_report_rate(b.get("lodging_type"))]
+            if type_label == "전체" else blds
+        )
+        rate_permits = _permits_for(rate_blds)
+        rate_active_vals = [
+            v for v in rate_permits.values() if "폐업" not in (v["biz_status_name"] or "")
+        ]
+        rate_rc = sum(int(v["room_count"] or 0) for v in rate_active_vals)
+        rate_tu = sum(int(b["units"] or 0) for b in rate_blds)
+        is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
         return {
             "type": type_label,
             "building_count": len(blds),
@@ -11494,10 +11549,15 @@ def admin_buildings_full_stats():
             "broker_badge": broker_c,
             "store_realty": sum(store_map.get(b["id"], {}).get("realty", 0) for b in blds),
             "store_total": sum(store_map.get(b["id"], {}).get("total", 0) for b in blds),
-            "report_rate": round(rc / tu * 100, 1) if tu else None,
+            "report_rate": None if is_general else (round(rate_rc / rate_tu * 100, 1) if rate_tu else None),
             "permit_count": pc,
             "room_count": rc,
             "closed_rate": round(cc / total_pc * 100, 1) if total_pc else None,
+            "lodging_metric": "room_count" if is_general else "report_rate",
+            "report_rate_room_count": rate_rc,
+            "report_rate_units": rate_tu if not is_general else 0,
+            "report_rate_building_count": len(rate_blds) if not is_general else 0,
+            "report_rate_excludes_general": type_label == "전체",
         }
 
     rows = [_row(all_list, "전체")] + [_row(by_type[t], t) for t in TYPES]
@@ -11553,7 +11613,10 @@ def admin_buildings_stats():
     conn = get_conn()
     cur = conn.cursor()
     # 필터에 맞는 전체 건물(주소+호실수) 조회
-    cur.execute(f"SELECT road_address, jibun_address, units FROM master_buildings WHERE {where_sql}", params)
+    cur.execute(
+        f"SELECT road_address, jibun_address, units, lodging_type FROM master_buildings WHERE {where_sql}",
+        params,
+    )
     buildings = cur.fetchall()
     cur.close()
     conn.close()
@@ -11561,10 +11624,12 @@ def admin_buildings_stats():
     bld_count = len(buildings)
     if not bld_count:
         return jsonify({"ok": True, "building_count": 0, "lodging_permit_count": 0,
-                        "room_total": 0, "report_rate": None, "closed_rate": None})
+                        "room_total": 0, "report_rate": None, "closed_rate": None,
+                        "report_rate_excludes_general": True})
 
     # 정규화 키 수집
     road_norms, jibun_norms = [], []
+    rate_road_norms, rate_jibun_norms = [], []
     for b in buildings:
         rk = addr_norm.normalize_road_prefix(b["road_address"])
         jk = addr_norm.normalize_jibun_prefix(b.get("jibun_address") or b["road_address"])
@@ -11572,8 +11637,15 @@ def admin_buildings_stats():
             road_norms.append(rk)
         if jk:
             jibun_norms.append(jk)
+        if uses_lodging_report_rate(b.get("lodging_type")):
+            if rk:
+                rate_road_norms.append(rk)
+            if jk:
+                rate_jibun_norms.append(jk)
     road_norm_set  = set(road_norms)
     jibun_norm_set = set(jibun_norms)
+    rate_road_norm_set = set(rate_road_norms)
+    rate_jibun_norm_set = set(rate_jibun_norms)
 
     # 영업신고 배치 조회 (전체 상태 — 폐업 포함)
     conn2 = get_conn()
@@ -11584,23 +11656,34 @@ def admin_buildings_stats():
         WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
     """, (road_norms or ['__none__'], jibun_norms or ['__none__']))
     permit_data = {}
+    rate_permit_data = {}
     for lr in cur2.fetchall():
         pn = lr["permit_number"]
-        if pn in permit_data:
-            continue
-        if lr["road_norm"]  and lr["road_norm"]  in road_norm_set:
-            permit_data[pn] = lr
-        elif lr["jibun_norm"] and lr["jibun_norm"] in jibun_norm_set:
-            permit_data[pn] = lr
+        if pn not in permit_data:
+            if lr["road_norm"]  and lr["road_norm"]  in road_norm_set:
+                permit_data[pn] = lr
+            elif lr["jibun_norm"] and lr["jibun_norm"] in jibun_norm_set:
+                permit_data[pn] = lr
+        if pn not in rate_permit_data:
+            if lr["road_norm"] and lr["road_norm"] in rate_road_norm_set:
+                rate_permit_data[pn] = lr
+            elif lr["jibun_norm"] and lr["jibun_norm"] in rate_jibun_norm_set:
+                rate_permit_data[pn] = lr
     cur2.close()
     conn2.close()
 
     lodging_permit_count = len(permit_data)
     room_total   = sum(int(v["room_count"] or 0) for v in permit_data.values())
     closed_count = sum(1 for v in permit_data.values() if "폐업" in (v["biz_status_name"] or ""))
-    total_units  = sum(int(b["units"] or 0) for b in buildings)
+    rate_buildings = [b for b in buildings if uses_lodging_report_rate(b.get("lodging_type"))]
+    total_units  = sum(int(b["units"] or 0) for b in rate_buildings)
+    active_rate_rooms = sum(
+        int(v["room_count"] or 0)
+        for v in rate_permit_data.values()
+        if "폐업" not in (v["biz_status_name"] or "")
+    )
 
-    report_rate = round(room_total * 100.0 / total_units, 1) if total_units > 0 else None
+    report_rate = round(active_rate_rooms * 100.0 / total_units, 1) if total_units > 0 else None
     closed_rate = round(closed_count * 100.0 / lodging_permit_count, 1) if lodging_permit_count > 0 else None
 
     return jsonify({
@@ -11610,6 +11693,7 @@ def admin_buildings_stats():
         "room_total": room_total,
         "report_rate": report_rate,
         "closed_rate": closed_rate,
+        "report_rate_excludes_general": True,
     })
 
 
@@ -12074,7 +12158,7 @@ def admin_buildings_export():
         "입점부동산_업체명", "입점부동산_호번호",
         "입점상가수",          # 첫 번째 행에만 표시, 나머지 반복 행은 빈칸
         "영업사업장_업체명", "신고번호", "객실수", "상태", "신고일", "전화", "원본주소", "갱신일",
-        "입점부동산수", "신고율(%)",
+        "입점부동산수", "신고 지표(일반=객실수)",
         "ID", "시군구", "읍면동", "지번", "지번주소", "용도상세",
         "등록된입점부동산(구 realty_store_name)",
     ]
@@ -12094,13 +12178,17 @@ def admin_buildings_export():
             for lr in lr_list
             if "폐업" not in (lr.get("biz_status_name") or "")
         )
-        report_rate   = round(active_rooms / units * 100, 1) if units else None
+        report_metric = (
+            round(active_rooms / units * 100, 1)
+            if uses_lodging_report_rate(r.get("lodging_type")) and units
+            else f"{active_rooms}실"
+        )
         n_rows        = max(len(realty_list), len(lr_list), 1)
         store_count   = r["store_count"] or None      # 입점상가수: 첫 행만
         # 집계 (첫 번째 행에만 출력, 나머지는 빈칸)
         bld_summary = [
             r["store_realty_count"] or None,   # 입점부동산수
-            report_rate,                       # 신고율(%)
+            report_metric,                     # 일반은 영업신고 객실수, 나머지는 신고율(%)
         ]
         bld_meta = [
             r["id"], r["sgg_text"], r["umd_nm"], r["jibun"], r["jibun_address"],
@@ -17979,7 +18067,7 @@ def admin_stats():
 
 @app.route("/api/stats/registration-rate")
 def stats_registration_rate():
-    """전국 숙박업 영업신고율 — lodging_registry(행안부) 기준.
+    """전국 숙박업 영업신고율 — 일반숙박을 제외한 lodging_registry(행안부) 기준.
 
     _row() 함수(건물마스터 상단 통계)와 동일한 소스·계산 방식 재사용:
     admin_buildings_full_stats 캐시가 유효하면 그 결과를 직접 사용하고,
@@ -17992,10 +18080,11 @@ def stats_registration_rate():
         total_row = next((r for r in cached["rows"] if r["type"] == "전체"), {})
         return jsonify({
             "ok": True,
-            "buildings": total_row.get("building_count", 0),
-            "total_units": total_row.get("units", 0),
-            "biz_units": total_row.get("room_count", 0),   # 행안부 영업신고호실 (폐업 제외)
+            "buildings": total_row.get("report_rate_building_count", 0),
+            "total_units": total_row.get("report_rate_units", 0),
+            "biz_units": total_row.get("report_rate_room_count", total_row.get("room_count", 0)),
             "rate": total_row.get("report_rate"),
+            "general_excluded": True,
         })
     # 캐시 미스(초기 기동 직후): admin_buildings_full_stats()와 동일한
     # Python 정규화 방식으로 계산 (master_buildings에 road_norm 컬럼이 없으므로
@@ -18008,7 +18097,8 @@ def stats_registration_rate():
                COALESCE(SUM(units), 0) AS total_units
         FROM master_buildings
         WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
-    """)
+          AND lodging_type IS DISTINCT FROM %s
+    """, [REPORT_RATE_EXCLUDED_LODGING_TYPE])
     row = cur.fetchone()
     buildings   = int(row["buildings"])
     total_units = int(row["total_units"])
@@ -18018,7 +18108,8 @@ def stats_registration_rate():
         SELECT road_address, jibun_address
         FROM master_buildings
         WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
-    """)
+          AND lodging_type IS DISTINCT FROM %s
+    """, [REPORT_RATE_EXCLUDED_LODGING_TYPE])
     bld_rows = cur.fetchall()
     road_norms  = list({addr_norm.normalize_road_prefix(b["road_address"])
                         for b in bld_rows if b["road_address"]
@@ -18047,6 +18138,7 @@ def stats_registration_rate():
         "total_units": total_units,
         "biz_units": biz_units,
         "rate": rate,
+        "general_excluded": True,
     })
 
 

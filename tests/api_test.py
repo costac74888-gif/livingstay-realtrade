@@ -143,6 +143,8 @@ def run():
     failures += _check_building_request_e2e(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
     failures += _check_chat_phone_verification(client)
+    # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
+    failures += _check_lodging_metric_contract(client)
 
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
@@ -155,6 +157,182 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_lodging_metric_contract(client):
+    """실제 표본 건물과 공개 통계가 일반숙박 지표 계약을 지키는지 확인."""
+    import app as app_module
+    from db import get_conn
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    failures = []
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        samples = []
+        for pattern in ("%라마다인천호텔%", "%THE TRINY HOTEL%"):
+            cur.execute(
+                "SELECT id, building_name, lodging_type FROM master_buildings "
+                "WHERE building_name ILIKE %s ORDER BY id LIMIT 1",
+                (pattern,),
+            )
+            row = cur.fetchone()
+            if not row:
+                failures.append(f"lodging metric: 표본 건물을 찾지 못했습니다 ({pattern})")
+            else:
+                samples.append(row)
+
+        cur.execute(
+            "SELECT id, building_name, lodging_type FROM master_buildings "
+            "WHERE lodging_type IS DISTINCT FROM '일반' "
+            "  AND lodging_type IS DISTINCT FROM 'mixed_use_excluded' "
+            "ORDER BY id LIMIT 1"
+        )
+        non_general = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    for sample in samples:
+        resp = client.get(f"/api/building/{sample['id']}")
+        payload = resp.get_json() or {}
+        if resp.status_code != 200:
+            failures.append(
+                f"lodging metric: {sample['building_name']} 상세 API HTTP {resp.status_code}"
+            )
+            continue
+        if payload.get("lodging_type") != "일반":
+            failures.append(
+                f"lodging metric: {sample['building_name']} 유형이 일반이 아님 "
+                f"({payload.get('lodging_type')})"
+            )
+        if payload.get("lodging_metric") != "room_count":
+            failures.append(
+                f"lodging metric: {sample['building_name']} lodging_metric이 room_count가 아님"
+            )
+        if payload.get("lodging_report_rate") is not None:
+            failures.append(
+                f"lodging metric: {sample['building_name']} 상세 응답에 신고율이 남아 있음"
+            )
+        if payload.get("lodging_active_business_count") != len(payload.get("lodgings") or []):
+            failures.append(
+                f"lodging metric: {sample['building_name']} 활성 사업장 수가 목록과 다름"
+            )
+        else:
+            print(
+                f"OK  {sample['building_name']} 일반숙박 객실수 지표 "
+                f"({payload.get('lodging_room_total', 0)}실)"
+            )
+
+    if non_general:
+        resp = client.get(f"/api/building/{non_general['id']}")
+        payload = resp.get_json() or {}
+        if resp.status_code != 200:
+            failures.append(
+                f"lodging metric: 비일반 표본 {non_general['building_name']} 상세 API "
+                f"HTTP {resp.status_code}"
+            )
+        elif payload.get("lodging_metric") != "report_rate":
+            failures.append(
+                f"lodging metric: 비일반 표본 {non_general['building_name']}이 신고율 지표가 아님"
+            )
+        else:
+            print(f"OK  {non_general['building_name']} 비일반 신고율 지표 유지")
+    else:
+        failures.append("lodging metric: 비일반 표본 건물을 찾지 못했습니다.")
+
+    # 캐시가 없는 공개 통계와 관리자 전체통계가 같은 일반 제외 분자·분모를 쓰는지 확인한다.
+    original_cache = app_module._bld_full_stats_cache
+    try:
+        app_module._bld_full_stats_cache = {"ts": 0.0, "data": None}
+        fallback_response = client.get("/api/stats/registration-rate")
+        fallback_stats = fallback_response.get_json() or {}
+
+        with client.session_transaction() as sess:
+            sess["admin"] = True
+
+        full_stats_response = client.get("/api/admin/buildings/full-stats")
+        full_stats = full_stats_response.get_json() or {}
+        rows = {row.get("type"): row for row in full_stats.get("rows", [])}
+        total_row = rows.get("전체") or {}
+        general_row = rows.get("일반") or {}
+
+        if full_stats_response.status_code != 200 or not full_stats.get("ok"):
+            failures.append("lodging metric: 관리자 전체 통계를 불러오지 못했습니다.")
+        elif general_row.get("lodging_metric") != "room_count" or general_row.get("report_rate") is not None:
+            failures.append("lodging metric: 관리자 일반숙박 행이 객실수 지표가 아님")
+        else:
+            expected_rooms = int(total_row.get("report_rate_room_count") or 0)
+            expected_units = int(total_row.get("report_rate_units") or 0)
+            expected_rate = round(expected_rooms * 100.0 / expected_units, 1) if expected_units else None
+            if total_row.get("report_rate") != expected_rate:
+                failures.append("lodging metric: 관리자 전체 신고율의 가중 분자·분모가 불일치")
+            else:
+                print(
+                    f"OK  관리자 전체 신고율 일반 제외 "
+                    f"({expected_rooms}실 / {expected_units}실 = {expected_rate}%)"
+                )
+
+        general_list_response = client.get("/api/admin/buildings?lodging_type_filter=일반")
+        general_totals = (general_list_response.get_json() or {}).get("totals") or {}
+        if (
+            general_list_response.status_code != 200
+            or general_totals.get("weighted_report_rate") is not None
+            or general_totals.get("report_rate_units") != 0
+        ):
+            failures.append("lodging metric: 일반숙박만 필터한 관리자 합계에 신고율이 남아 있음")
+        else:
+            print("OK  관리자 일반숙박 필터 합계는 객실수 지표만 사용")
+
+        cached_response = client.get("/api/stats/registration-rate")
+        cached_stats = cached_response.get_json() or {}
+        for label, response, stats_payload in (
+            ("캐시 미스", fallback_response, fallback_stats),
+            ("캐시 히트", cached_response, cached_stats),
+        ):
+            if (
+                response.status_code != 200
+                or stats_payload.get("general_excluded") is not True
+                or stats_payload.get("biz_units") != total_row.get("report_rate_room_count")
+                or stats_payload.get("total_units") != total_row.get("report_rate_units")
+                or stats_payload.get("rate") != total_row.get("report_rate")
+            ):
+                failures.append(f"lodging metric: 공개 전국 신고율 {label} 경로가 일반 제외 집계와 불일치")
+            else:
+                print(f"OK  공개 전국 신고율 {label} 일반 제외 집계 일치")
+
+        # 관리자 목록과 선택 엑셀도 일반숙박을 객실수 지표로 전달하는지 확인한다.
+        ramada = next((row for row in samples if row["building_name"] == "라마다인천호텔"), None)
+        if ramada:
+            list_response = client.get(
+                f"/api/admin/buildings?lodging_type_filter=일반&q={ramada['building_name']}"
+            )
+            list_payload = list_response.get_json() or {}
+            list_row = next(
+                (row for row in list_payload.get("items", []) if row.get("id") == ramada["id"]),
+                None,
+            )
+            if not list_row or list_row.get("lodging_metric") != "room_count":
+                failures.append("lodging metric: 관리자 목록 일반숙박 지표가 객실수로 내려오지 않음")
+
+            export_response = client.get(f"/api/admin/buildings/export.xlsx?ids={ramada['id']}")
+            if export_response.status_code != 200:
+                failures.append("lodging metric: 관리자 건물 엑셀 다운로드 실패")
+            else:
+                wb = load_workbook(BytesIO(export_response.data), data_only=True)
+                ws = wb.active
+                headers = [cell.value for cell in ws[1]]
+                metric_col = headers.index("신고 지표(일반=객실수)") + 1
+                metric_value = ws.cell(2, metric_col).value
+                if not isinstance(metric_value, str) or not metric_value.endswith("실"):
+                    failures.append("lodging metric: 관리자 건물 엑셀에 일반숙박 객실수 표기가 없음")
+                else:
+                    print(f"OK  관리자 목록·엑셀 일반숙박 객실수 표기 ({metric_value})")
+    finally:
+        app_module._bld_full_stats_cache = original_cache
+
+    return failures
 
 
 def _check_chat_phone_verification(client):
