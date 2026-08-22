@@ -306,6 +306,21 @@ def _check_lodging_metric_contract(client):
         elif general_row.get("lodging_metric") != "room_count" or general_row.get("report_rate") is not None:
             failures.append("lodging metric: 관리자 일반숙박 행이 객실수 지표가 아님")
         else:
+            expected_sub_types = ["일반호텔", "여관업", "여인숙업", "숙박업(생활)"]
+            sub_rows = general_row.get("sub_rows")
+            if not isinstance(sub_rows, list) or [row.get("type") for row in sub_rows] != expected_sub_types:
+                failures.append("lodging metric: 관리자 일반숙박 세분류 행이 4개 업태로 반환되지 않음")
+            elif (
+                sum(int(row.get("permit_count") or 0) for row in sub_rows) != general_row.get("permit_count")
+                or sum(int(row.get("room_count") or 0) for row in sub_rows) != general_row.get("room_count")
+            ):
+                failures.append("lodging metric: 일반숙박 세분류 업체수 또는 객실수 합계가 일반 행과 불일치")
+            else:
+                print(
+                    f"OK  관리자 일반숙박 4개 세분류 합계 일치 "
+                    f"({general_row.get('room_count')}실)"
+                )
+
             expected_rooms = int(total_row.get("report_rate_room_count") or 0)
             expected_units = int(total_row.get("report_rate_units") or 0)
             expected_rate = round(expected_rooms * 100.0 / expected_units, 1) if expected_units else None

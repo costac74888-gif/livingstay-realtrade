@@ -234,12 +234,32 @@
           `<thead><tr style="background:#F0EBE1;">`;
         for (const c of COLS) html += `<th style="padding:5px 8px;font-weight:600;text-align:${c.label==="용도"?"left":"right"};border-bottom:2px solid #D4C9B0;">${c.label}</th>`;
         html += `</tr></thead><tbody>`;
+        const subRowCells = (sub) => COLS.map((c) => {
+          if (c.label === "용도") {
+            const guide = sub.type === "숙박업(생활)"
+              ? `<span title="건물은 '일반'으로 분류됐으나 등록된 사업자 업태는 생활숙박업인 경우" style="margin-left:4px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>`
+              : "";
+            return `<td style="padding:4px 8px 4px 28px;color:var(--ink-soft);">↳ ${sub.type}${guide}</td>`;
+          }
+          if (c.key === "report_rate") {
+            return `<td style="text-align:right;padding:4px 8px;color:var(--ink-soft);">-</td>`;
+          }
+          if (c.key === "permit_count" || c.key === "room_count") {
+            return `<td style="text-align:right;padding:4px 8px;">${n(sub[c.key])}</td>`;
+          }
+          return `<td style="padding:4px 8px;"></td>`;
+        }).join("");
         rows.forEach((row, i) => {
           const isTotal = row.type === "전체";
           const bg = isTotal ? "#FAF8F0" : (i % 2 === 0 ? "#fff" : "#FAFAFA");
           html += `<tr style="background:${bg};${isTotal ? "font-weight:700;" : ""}border-bottom:1px solid #EEE;">`;
           for (const c of COLS) html += c.fmt(row);
           html += `</tr>`;
+          if (row.type === "일반" && Array.isArray(row.sub_rows)) {
+            row.sub_rows.forEach((sub) => {
+              html += `<tr style="background:#FCFCFC;border-bottom:1px solid #F0F0F0;">${subRowCells(sub)}</tr>`;
+            });
+          }
         });
         html += `</tbody></table></div>`;
         box.innerHTML = html;

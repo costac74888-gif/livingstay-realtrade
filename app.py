@@ -11403,6 +11403,7 @@ def admin_buildings_list():
 
 _bld_full_stats_cache: dict = {"ts": 0.0, "data": None}
 _BLD_FULL_STATS_TTL = 300  # 5분 캐시
+GENERAL_LODGING_SUB_TYPES = ("일반호텔", "여관업", "여인숙업", "숙박업(생활)")
 
 
 @app.route("/api/admin/buildings/full-stats")
@@ -11478,7 +11479,7 @@ def admin_buildings_full_stats():
     lr_jibun_map: dict = {}
     if all_road_norms or all_jibun_norms:
         cur.execute(
-            "SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm "
+            "SELECT permit_number, room_count, biz_status_name, hygiene_type, road_norm, jibun_norm "
             "FROM lodging_registry WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
             [all_road_norms or ["__none__"], all_jibun_norms or ["__none__"]]
         )
@@ -11512,13 +11513,21 @@ def admin_buildings_full_stats():
 
     def _row(blds: list, type_label: str) -> dict:
         if not blds:
-            return {"type": type_label, "building_count": 0, "units": 0,
-                    "favorites": 0, "listing_requests": 0, "broker_badge": 0,
-                    "store_realty": 0, "store_total": 0,
-                    "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None,
-                    "lodging_metric": "room_count" if type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE else "report_rate",
-                    "report_rate_room_count": 0, "report_rate_units": 0, "report_rate_building_count": 0,
-                    "report_rate_excludes_general": type_label == "전체"}
+            empty_row = {
+                "type": type_label, "building_count": 0, "units": 0,
+                "favorites": 0, "listing_requests": 0, "broker_badge": 0,
+                "store_realty": 0, "store_total": 0,
+                "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None,
+                "lodging_metric": "room_count" if type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE else "report_rate",
+                "report_rate_room_count": 0, "report_rate_units": 0, "report_rate_building_count": 0,
+                "report_rate_excludes_general": type_label == "전체",
+            }
+            if type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE:
+                empty_row["sub_rows"] = [
+                    {"type": hygiene_type, "permit_count": 0, "room_count": 0}
+                    for hygiene_type in GENERAL_LODGING_SUB_TYPES
+                ]
+            return empty_row
         tu = sum(int(b["units"] or 0) for b in blds)
         broker_c = sum(badge_map.get(b["id"], 0) for b in blds)
         permits = _permits_for(blds)
@@ -11540,7 +11549,7 @@ def admin_buildings_full_stats():
         rate_rc = sum(int(v["room_count"] or 0) for v in rate_active_vals)
         rate_tu = sum(int(b["units"] or 0) for b in rate_blds)
         is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
-        return {
+        row = {
             "type": type_label,
             "building_count": len(blds),
             "units": tu,
@@ -11559,6 +11568,29 @@ def admin_buildings_full_stats():
             "report_rate_building_count": len(rate_blds) if not is_general else 0,
             "report_rate_excludes_general": type_label == "전체",
         }
+        if is_general:
+            row["sub_rows"] = [
+                {
+                    "type": hygiene_type,
+                    "permit_count": sum(
+                        1 for permit in active_vals
+                        if permit.get("hygiene_type") == hygiene_type
+                    ),
+                    "room_count": sum(
+                        int(permit["room_count"] or 0) for permit in active_vals
+                        if permit.get("hygiene_type") == hygiene_type
+                    ),
+                }
+                for hygiene_type in GENERAL_LODGING_SUB_TYPES
+            ]
+            sub_room_total = sum(sub_row["room_count"] for sub_row in row["sub_rows"])
+            if sub_room_total != rc:
+                app.logger.warning(
+                    "일반숙박 세분류 합계 불일치: 일반 행 %s실, 세분류 %s실",
+                    rc,
+                    sub_room_total,
+                )
+        return row
 
     rows = [_row(all_list, "전체")] + [_row(by_type[t], t) for t in TYPES]
     result = {"ok": True, "rows": rows}
