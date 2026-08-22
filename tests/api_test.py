@@ -149,6 +149,8 @@ def run():
     failures += _check_room_expiry_alerts()
     # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
     failures += _check_listing_registrant_types(client)
+    # 사업주 공개 장기방은 공실 장박가능 재고의 월 가격만 공개하고 호실수는 숨긴다.
+    failures += _check_public_business_listing_summary(client)
     # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
     failures += _check_lodging_address_normalization()
     # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
@@ -1517,6 +1519,155 @@ def _check_room_expiry_alerts():
                 cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
             if no_email_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (no_email_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_public_business_listing_summary(client):
+    """사업주 공개 장기방은 공실 장박가능 재고의 가격만, 호실수 없이 노출되는지 확인."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    user_id = None
+    listing_ids = []
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["business public summary: 테스트용 master_buildings 행이 없습니다."]
+
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"business-public-{run_id}@example.test", "사업주 공개 요약 테스트"),
+        )
+        user_id = cur.fetchone()["id"]
+
+        def add_listing(registrant_type, price_min, price_max, room_count):
+            cur.execute(
+                """
+                INSERT INTO listing_requests
+                    (user_id, master_building_id, deal_type, price_krw, price_krw_max,
+                     monthly_rent_krw, room_count, contact_phone, verified_phone,
+                     deal_mode, registrant_type, status)
+                VALUES (%s, %s, '월세', %s, %s, %s, %s, '010-0000-0000', '01000000000',
+                        'direct', %s, 'submitted')
+                RETURNING id
+                """,
+                (
+                    user_id, building["id"], price_min, price_max, price_min,
+                    room_count, registrant_type,
+                ),
+            )
+            listing_id = cur.fetchone()["id"]
+            listing_ids.append(listing_id)
+            return listing_id
+
+        available_id = add_listing("business", 90, 120, 88)
+        fixed_price_id = add_listing("business", 70, None, 77)
+        unavailable_id = add_listing("business", 50, 60, 66)
+        no_inventory_id = add_listing("business", 40, 50, 55)
+        owner_id = add_listing("building_owner", 30, None, 3)
+        cur.execute(
+            """
+            INSERT INTO business_room_inventory
+                (listing_request_id, room_label, status, channel)
+            VALUES
+                (%s, '101', '공실', '장박가능'),
+                (%s, '102', '공실', 'OTA전용'),
+                (%s, '103', '공실', '장박가능'),
+                (%s, '201', '입실', '장박가능'),
+                (%s, '202', '공실', 'OTA전용')
+            """,
+            (available_id, available_id, fixed_price_id, unavailable_id, unavailable_id),
+        )
+        conn.commit()
+
+        listed = client.get("/api/listings?limit=50")
+        public_items = {
+            item.get("id"): item for item in ((listed.get_json() or {}).get("items") or [])
+        }
+        expected_ids = {available_id, fixed_price_id, unavailable_id, no_inventory_id, owner_id}
+        if listed.status_code != 200 or not expected_ids.issubset(public_items):
+            failures.append("business public summary: 공개 목록에서 테스트 매물을 찾지 못함")
+            return failures
+
+        available = public_items[available_id]
+        fixed_price = public_items[fixed_price_id]
+        unavailable = public_items[unavailable_id]
+        no_inventory = public_items[no_inventory_id]
+        owner = public_items[owner_id]
+        for label, item, expected_min, expected_max in (
+            ("공실 장박가능", available, 90, 120),
+            ("단일 가격 상속", fixed_price, 70, 70),
+        ):
+            if (
+                item.get("is_business_listing") is not True
+                or item.get("room_price_min") != expected_min
+                or item.get("room_price_max") != expected_max
+                or "room_count" in item
+            ):
+                failures.append(
+                    f"business public summary: {label} 가격 범위 또는 호실수 비공개가 잘못됨"
+                )
+        for label, item in (("만실·OTA전용", unavailable), ("재고 없음", no_inventory)):
+            if (
+                item.get("room_price_min") is not None
+                or item.get("room_price_max") is not None
+                or "room_count" in item
+            ):
+                failures.append(
+                    f"business public summary: {label} 사업주 매물에 가격 또는 호실수가 노출됨"
+                )
+        if (
+            owner.get("room_count") != 3
+            or "is_business_listing" in owner
+            or "room_price_min" in owner
+            or "room_price_max" in owner
+        ):
+            failures.append("business public summary: 건물주 매물의 기존 호실수·가격 표시가 바뀜")
+
+        detail = client.get(f"/api/building/{building['id']}")
+        detail_items = {
+            item.get("id"): item
+            for item in ((detail.get_json() or {}).get("direct_listings") or [])
+        }
+        detail_available = detail_items.get(available_id) or {}
+        detail_unavailable = detail_items.get(unavailable_id) or {}
+        detail_owner = detail_items.get(owner_id) or {}
+        if (
+            detail.status_code != 200
+            or detail_available.get("room_price_min") != 90
+            or detail_available.get("room_price_max") != 120
+            or "room_count" in detail_available
+            or detail_unavailable.get("room_price_min") is not None
+            or detail_unavailable.get("room_price_max") is not None
+            or "room_count" in detail_unavailable
+            or detail_owner.get("room_count") != 3
+        ):
+            failures.append("business public summary: 건물상세 공개 요약 또는 기존 호실수 표시가 잘못됨")
+
+        if not failures:
+            print("OK  사업주 장기방 공개 가격범위·문의 안내·호실수 비노출 및 기존 유형 보존")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"business public summary 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_ids:
+                cur.execute(
+                    "DELETE FROM business_room_inventory WHERE listing_request_id = ANY(%s)",
+                    (listing_ids,),
+                )
+                cur.execute("DELETE FROM listing_requests WHERE id = ANY(%s)", (listing_ids,))
+            if user_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
             conn.commit()
         finally:
             cur.close()

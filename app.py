@@ -844,10 +844,30 @@ def get_building(building_id):
         SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.price_krw_max,
                lr.monthly_rent_krw, lr.room_count, lr.area_sqm, lr.verified_phone,
                lr.description, lr.yield_rate,
-               lr.deal_mode, lr.display_seq,
+               lr.deal_mode, lr.display_seq, lr.registrant_type,
+               CASE
+                   WHEN lr.registrant_type = 'business'
+                    AND lr.deal_type IN ('월세', '단기임대')
+                    AND vacant_long_stay.has_room
+                   THEN lr.price_krw
+               END AS room_price_min,
+               CASE
+                   WHEN lr.registrant_type = 'business'
+                    AND lr.deal_type IN ('월세', '단기임대')
+                    AND vacant_long_stay.has_room
+                   THEN COALESCE(lr.price_krw_max, lr.price_krw)
+               END AS room_price_max,
                TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                COALESCE(ll.like_count, 0) AS like_count
         FROM listing_requests lr
+        LEFT JOIN LATERAL (
+            SELECT TRUE AS has_room
+            FROM business_room_inventory bri
+            WHERE bri.listing_request_id = lr.id
+              AND bri.status = '공실'
+              AND bri.channel = '장박가능'
+            LIMIT 1
+        ) vacant_long_stay ON TRUE
         LEFT JOIN (
             SELECT listing_request_id, COUNT(*) AS like_count
             FROM listing_likes GROUP BY listing_request_id
@@ -860,7 +880,7 @@ def get_building(building_id):
     """, [building_id])
     _direct_listings = []
     for _lr in cur.fetchall():
-        _d = dict(_lr)
+        _d = _apply_public_business_listing_summary(dict(_lr))
         # 전화번호 마스킹 — 뒤 4자리만 노출
         _phone = _d.pop("verified_phone", None) or ""
         _d["phone_tail"] = _phone[-4:] if len(_phone) >= 4 else ""
@@ -6837,6 +6857,21 @@ def format_listing_number(deal_mode, display_seq):
     return f"{label}{display_seq:06d}"
 
 
+def _apply_public_business_listing_summary(listing):
+    """공개 직거래 응답에서 사업주 장기방의 재고·호실수 노출을 제한한다."""
+    is_business = listing.pop("registrant_type", None) == "business"
+    if is_business:
+        # 사업주 총 호실수는 공개하지 않는다. 가격은 SQL에서 장박가능·공실 재고가
+        # 있을 때만 계산되어 들어오며, 없으면 두 값 모두 NULL로 내려온다.
+        listing["is_business_listing"] = True
+        listing.pop("room_count", None)
+    else:
+        # 소유자·건물주 응답은 기존 모양을 유지한다.
+        listing.pop("room_price_min", None)
+        listing.pop("room_price_max", None)
+    return listing
+
+
 @app.route("/api/listing-requests", methods=["POST"])
 @limiter.limit("5 per hour")
 def create_listing_request():
@@ -7552,7 +7587,19 @@ def public_listings():
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.price_krw_max,
                    lr.monthly_rent_krw, lr.room_count, lr.area_sqm, lr.verified_phone,
                    lr.description, lr.yield_rate,
-                   lr.deal_mode, lr.display_seq,
+                   lr.deal_mode, lr.display_seq, lr.registrant_type,
+                   CASE
+                       WHEN lr.registrant_type = 'business'
+                        AND lr.deal_type IN ('월세', '단기임대')
+                        AND vacant_long_stay.has_room
+                       THEN lr.price_krw
+                   END AS room_price_min,
+                   CASE
+                       WHEN lr.registrant_type = 'business'
+                        AND lr.deal_type IN ('월세', '단기임대')
+                        AND vacant_long_stay.has_room
+                       THEN COALESCE(lr.price_krw_max, lr.price_krw)
+                   END AS room_price_max,
                    TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                    COALESCE(ll.like_count, 0) AS like_count,
                    lp.photo_url,
@@ -7560,6 +7607,14 @@ def public_listings():
                    mb.lat, mb.lng
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN LATERAL (
+                SELECT TRUE AS has_room
+                FROM business_room_inventory bri
+                WHERE bri.listing_request_id = lr.id
+                  AND bri.status = '공실'
+                  AND bri.channel = '장박가능'
+                LIMIT 1
+            ) vacant_long_stay ON TRUE
             LEFT JOIN (
                 SELECT listing_request_id, COUNT(*) AS like_count
                 FROM listing_likes GROUP BY listing_request_id
@@ -7581,7 +7636,7 @@ def public_listings():
         has_more = len(rows) > limit
         items = []
         for r in rows[:limit]:
-            d = dict(r)
+            d = _apply_public_business_listing_summary(dict(r))
             ph = d.pop("verified_phone", "") or ""
             d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
             d["listing_number"] = format_listing_number(d.pop("deal_mode", "direct"), d.pop("display_seq", None))

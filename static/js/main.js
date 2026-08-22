@@ -3122,6 +3122,20 @@ async function loadBuildingHeader(id){
        const color = _dealTypeColors[label] || "#7B8794";
        return `<span style="display:inline-block;min-width:35px;padding:2px 5px;margin-right:4px;border-radius:5px;color:#fff;background:${color};font-size:10px;line-height:1.25;font-weight:800;text-align:center;vertical-align:middle;white-space:nowrap;">${escapeHtml(label)}</span>`;
      }
+      function _businessStayPriceText(lr, formatNumber){
+        if (lr.room_price_min != null && lr.room_price_max != null) {
+          return `장기임대 가능 · ${formatNumber(lr.room_price_min)}~${formatNumber(lr.room_price_max)}만원/월`;
+        }
+        return "현재 문의 가능 여부는 채팅으로 확인해주세요";
+      }
+      function _listingPriceText(lr, formatNumber){
+        if (lr.is_business_listing) return _businessStayPriceText(lr, formatNumber);
+        return lr.deal_type === "월세" && lr.price_krw_max == null
+          ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
+          : (lr.price_krw
+            ? `${formatNumber(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + formatNumber(lr.price_krw_max) : ""}만원`
+            : "-");
+      }
      function _openDirectListingCard(lr){
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;
@@ -3142,13 +3156,9 @@ async function loadBuildingHeader(id){
           lr.listing_number ? escapeHtml(lr.listing_number) : "",
           lr.listing_date ? `최근 수정 ${escapeHtml(lr.listing_date)}` : ""
         ].filter(Boolean).join(" · ");
-        const priceText = lr.deal_type === "월세" && lr.price_krw_max == null
-          ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
-          : (lr.price_krw
-            ? `${formatNumber(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + formatNumber(lr.price_krw_max) : ""}만원`
-            : "-");
+         const priceText = _listingPriceText(lr, formatNumber);
        const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}% (참고용)` : "";
-        const roomText = lr.room_count != null && Number(lr.room_count) > 0
+         const roomText = !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
           ? `총 ${formatNumber(lr.room_count)}실` : "";
        const desc = lr.description ? escapeHtml(lr.description) : "";
        const ov = document.createElement("div");
@@ -3269,12 +3279,8 @@ async function loadBuildingHeader(id){
         const newBadge = isNew ? `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">NEW</span>` : "";
          const dt = _dealTypeBadge(lr.deal_type);
         const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
-         const priceText = lr.deal_type === "월세" && lr.price_krw_max == null
-           ? `보${_fmtN(lr.price_krw)}/${_fmtN(lr.monthly_rent_krw)}만`
-          : (lr.price_krw
-            ? `${_fmtN(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + _fmtN(lr.price_krw_max) : ""}만원`
-            : "-");
-        const roomText = lr.room_count != null && Number(lr.room_count) > 0
+          const priceText = _listingPriceText(lr, _fmtN);
+         const roomText = !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
           ? `총 ${_fmtN(lr.room_count)}실` : "";
         const yieldText = lr.yield_rate != null
           ? `<span style="font-size:11.5px;color:var(--brass-dark,#7D4A00);font-weight:700;">수익률 ${parseFloat(lr.yield_rate).toFixed(1)}%</span><span style="font-size:10px;color:var(--ink-soft);"> (참고용)</span>`
@@ -3314,7 +3320,11 @@ async function loadBuildingHeader(id){
         btn.addEventListener("click", () => {
           _lsSort = btn.dataset.lsort;
           let sorted = [...allListings];
-          if (_lsSort === "price") sorted.sort((a,b)=>(a.price_krw||0)-(b.price_krw||0));
+          if (_lsSort === "price") sorted.sort((a,b)=>(
+            (a.is_business_listing ? a.room_price_min : a.price_krw) || 0
+          ) - (
+            (b.is_business_listing ? b.room_price_min : b.price_krw) || 0
+          ));
           else if (_lsSort === "yield") sorted.sort((a,b)=>(b.yield_rate||0)-(a.yield_rate||0));
           else sorted.sort((a,b)=>new Date(b.listing_date)-new Date(a.listing_date));
           _renderListings(sorted);

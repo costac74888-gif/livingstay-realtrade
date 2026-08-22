@@ -343,6 +343,18 @@
     if (deal_type === "단기임대") return price_krw != null ? fmtN(price_krw) + (price_krw_max != null ? " ~ " + fmtN(price_krw_max) : "") + "만원" : "-";
     return "-";
   }
+  function businessStayPriceText(item){
+    if (item.room_price_min != null && item.room_price_max != null) {
+      return "장기임대 가능 · " + fmtN(item.room_price_min) + "~" +
+        fmtN(item.room_price_max) + "만원/월";
+    }
+    return "현재 문의 가능 여부는 채팅으로 확인해주세요";
+  }
+  function listingPriceText(item){
+    return item.is_business_listing
+      ? businessStayPriceText(item)
+      : fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max);
+  }
 
   // ── 상태 ──────────────────────────────────────────────────────────────
   const boardBody = document.getElementById("lsBoardBody");
@@ -492,7 +504,7 @@
     shareUrl.searchParams.set("listing", String(item.id));
     const url = shareUrl.toString();
     const title = item.building_name || "직거래 매물";
-    const text  = `직거래 매물 - ${item.deal_type || ""} ${fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max)}`;
+    const text  = `직거래 매물 - ${item.deal_type || ""} ${listingPriceText(item)}`;
     if (navigator.share){
       navigator.share({ title, text, url }).catch((error) => {
         if (error && error.name === "AbortError") return;
@@ -643,7 +655,9 @@
     tr.dataset.sortLodging = lodgingLabel(item.lodging_type);
     tr.dataset.sortBuilding = item.building_name || "";
     tr.dataset.sortDealType = item.deal_type || "";
-    tr.dataset.sortPrice = item.price_krw != null ? item.price_krw : "";
+    tr.dataset.sortPrice = item.is_business_listing
+      ? (item.room_price_min != null ? item.room_price_min : "")
+      : (item.price_krw != null ? item.price_krw : "");
     tr.dataset.sortYield = item.yield_rate != null ? item.yield_rate : "";
     tr.dataset.sortArea = item.area_sqm != null ? item.area_sqm : "";
     tr.dataset.sortDate = item.listing_date || "";
@@ -652,7 +666,7 @@
     const chatTitle    = isChatting ? "채팅 이어하기" : "문의하기";
     const sqm  = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
     const yld  = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : "-";
-    const rooms = item.room_count != null && Number(item.room_count) > 0
+    const rooms = !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
       ? " · 총 " + Number(item.room_count).toLocaleString() + "실" : "";
     const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
     const bName = esc(item.building_name || "(건물명 없음)");
@@ -664,7 +678,7 @@
         <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
       </td>
       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
-      <td class="td-price">${esc(fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max) + rooms)}</td>
+      <td class="td-price">${esc(listingPriceText(item) + rooms)}</td>
       <td class="td-yield ls-hide-mobile">${esc(yld)}</td>
       <td class="td-area ls-hide-mobile">${esc(sqm)}</td>
       <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
@@ -717,8 +731,8 @@
     div.className = "ls-card-item";
     div.dataset.listingId = item.id;
     const sqm     = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
-    const priceStr = fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max);
-    const rooms    = item.room_count != null && Number(item.room_count) > 0
+    const priceStr = listingPriceText(item);
+    const rooms    = !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
       ? "총 " + Number(item.room_count).toLocaleString() + "실" : null;
     const yld      = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : null;
     const desc     = item.description ? item.description.slice(0, 40) + (item.description.length > 40 ? "…" : "") : null;
