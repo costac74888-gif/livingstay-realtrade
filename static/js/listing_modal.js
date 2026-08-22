@@ -10,6 +10,13 @@
     {value: "business", label: "사업주(숙박업대표) 또는 대리인"}
   ];
   var LEGACY_REGISTRANT_LABELS = {agent: "기존 등록자유형: 중개사", other: "기존 등록자유형: 기타 관계자"};
+  var DRAFT_REGISTRANT_LABELS = {
+    owner: "소유자 등록",
+    building_owner: "건물주 등록",
+    business: "사업주 등록",
+    agent: "중개사 등록",
+    other: "기타 관계자 등록"
+  };
 
   function esc(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
@@ -61,6 +68,14 @@
   function validRegistrantType(value) {
     var allowed = REGISTRANT_TYPES.map(function (item) { return item.value; });
     return allowed.indexOf(value) >= 0 || Object.prototype.hasOwnProperty.call(LEGACY_REGISTRANT_LABELS, value);
+  }
+
+  function draftRegistrantLabel(value) {
+    return DRAFT_REGISTRANT_LABELS[value] || "등록자유형 미상";
+  }
+
+  function draftDealLabel(value) {
+    return DEAL_TYPES.indexOf(value) >= 0 ? value : "거래유형 미상";
   }
 
   function registrantOptions(selectedValue) {
@@ -356,7 +371,9 @@
           localStorage.removeItem(draftKey);
           return;
         }
-        if (confirm("이 건물에 이전에 작성 중이던 매물 정보가 있습니다.\n확인을 누르면 불러오고, 취소를 누르면 새로 작성합니다.")) {
+        var draftInfo = savedDraft.data;
+        var draftSummary = draftRegistrantLabel(draftInfo.registrant_type) + ", " + draftDealLabel(draftInfo.deal_type);
+        if (confirm("이 건물에 이전에 작성 중이던 매물 정보(" + draftSummary + ")가 있습니다.\n확인을 누르면 불러오고, 취소를 누르면 새로 작성합니다.")) {
           applyDraft(savedDraft.data);
           draftRestored = true;
         } else {

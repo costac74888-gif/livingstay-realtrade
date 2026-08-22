@@ -68,6 +68,38 @@ expect(
   "기존 휴대폰 인증 계정 건너뛰기 또는 사업주 신고번호 인증 흐름이 없습니다."
 );
 expect(
+  modal.includes("DRAFT_REGISTRANT_LABELS") &&
+  modal.includes('business: "사업주 등록"') &&
+  modal.includes('owner: "소유자 등록"') &&
+  modal.includes('building_owner: "건물주 등록"') &&
+  modal.includes('agent: "중개사 등록"') &&
+  modal.includes('other: "기타 관계자 등록"'),
+  "초안 복원용 등록자유형 한글 라벨 매핑이 없습니다."
+);
+expect(
+  modal.includes("draftRegistrantLabel(draftInfo.registrant_type)") &&
+  modal.includes("draftDealLabel(draftInfo.deal_type)") &&
+  modal.includes("매물 정보(\" + draftSummary + \")가 있습니다."),
+  "초안 복원 확인창에 저장된 등록자유형·거래유형이 포함되지 않습니다."
+);
+const helperStart = modal.indexOf("var DRAFT_REGISTRANT_LABELS =");
+const helperEnd = modal.indexOf("\n\n  function registrantOptions", helperStart);
+expect(helperStart >= 0 && helperEnd > helperStart, "초안 라벨 변환 함수를 찾지 못했습니다.");
+const helperContext = {};
+require("vm").createContext(helperContext);
+require("vm").runInContext(
+  "var DEAL_TYPES = ['매매', '전세', '월세', '단기임대'];\n" +
+  modal.slice(helperStart, helperEnd) +
+  "\nvar businessSummary = draftRegistrantLabel('business') + ', ' + draftDealLabel('단기임대');" +
+  "\nvar ownerSummary = draftRegistrantLabel('owner') + ', ' + draftDealLabel('매매');",
+  helperContext
+);
+expect(
+  helperContext.businessSummary === "사업주 등록, 단기임대" &&
+  helperContext.ownerSummary === "소유자 등록, 매매",
+  "사업주·소유자 초안의 확인창 라벨 조합이 정확하지 않습니다."
+);
+expect(
   main.includes("lr.price_krw_max") && main.includes("lr.room_count") &&
   listings.includes("item.price_krw_max") && listings.includes("item.room_count"),
   "건물상세 또는 공개 매물 목록에서 사업주 가격범위·총 호실수가 표시되지 않습니다."
