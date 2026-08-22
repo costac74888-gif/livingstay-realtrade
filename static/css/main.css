@@ -345,17 +345,30 @@
   .side-apply-banner:hover{background:#F5EDDD;}
 
   @media (max-width: 980px){
-    /* 검색바: 전체 폭으로, 내용 많으면 스크롤 */
+    /* 검색바: 상단 토글 버튼 아래에서 화면 폭을 모두 사용 */
     .map-searchbar{
+      top:calc(var(--stage-gap) + 52px);
       left:var(--stage-gap);
       right:var(--stage-gap);
-      max-height:calc(100vh - 80px);
-      max-height:calc(100dvh - 80px); overflow-y:auto;
+      width:auto; max-width:none;
+      max-height:calc(100vh - var(--stage-gap) - 64px);
+      max-height:calc(100dvh - var(--stage-gap) - 64px); overflow-y:auto;
       /* 카카오맵 SDK가 지도 컨테이너에 touchmove preventDefault를 걸어 패널 스크롤을
          가로채는 문제 방지 — 세로 pan 제스처를 패널이 우선 처리하도록 명시 */
       touch-action: pan-y;
       -webkit-overflow-scrolling: touch;
     }
+    /* 1320px 이하의 데스크톱용 가로 스크롤을 모바일에서는 세로 2열로 전환 */
+    .map-searchbar .search-grid{
+      display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:8px; overflow:visible; padding-bottom:0;
+    }
+    .map-searchbar .search-grid > .field{flex:none; min-width:0; width:auto;}
+    .map-searchbar .search-grid > .field:nth-of-type(4){flex-basis:auto;}
+    .map-searchbar .search-grid .search-actions{
+      grid-column:1 / -1; width:100%;
+    }
+    .map-searchbar .search-actions > button{flex:1; min-width:0;}
     /* 관심단지·보조 컨트롤은 검색 버튼 행과 분리하고, 칩은 좁은 화면에서 줄바꿈 */
     .map-searchbar .search-row2{
       flex-wrap:wrap; white-space:normal; overflow:visible;

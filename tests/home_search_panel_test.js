@@ -27,6 +27,10 @@ expect(
   css.includes(".search-actions{display:flex") &&
   css.includes(".search-grid{display:flex") &&
   css.includes("right:var(--stage-gap);") &&
+  css.includes("top:calc(var(--stage-gap) + 52px);") &&
+  css.includes("width:auto; max-width:none;") &&
+  css.includes("grid-template-columns:repeat(2,minmax(0,1fr));") &&
+  css.includes("grid-column:1 / -1;") &&
   css.includes(".map-searchbar .search-row2") &&
   css.includes("flex-wrap:wrap; white-space:normal; overflow:visible;") &&
   css.includes("#favChips:not(:empty)") &&
