@@ -1,5 +1,6 @@
 // 홈 지도 검색바가 버튼을 한 줄로 유지하고 관심단지를 접어 두는지 정적 회귀 점검한다.
 const fs = require("fs");
+const vm = require("vm");
 
 const html = fs.readFileSync("static/index.html", "utf8");
 const css = fs.readFileSync("static/css/main.css", "utf8");
@@ -37,9 +38,38 @@ expect(
   "관심단지 4개 제한 또는 더보기 팝오버 로직이 없습니다."
 );
 expect(
-  main.includes("trackRecentBuilding(id, bName") &&
-  !main.includes("trackRecentBuilding(buildingId, bName"),
-  "건물 상세의 최근 본 건물 기록이 정의되지 않은 식별자를 사용합니다."
+  main.includes("function _renderDetailCards(b, buildingId)") &&
+  main.includes("trackRecentBuilding(buildingId, bName") &&
+  !main.includes("trackRecentBuilding(id, bName") &&
+  main.includes("_renderDetailCards(fresh, buildingId)") &&
+  main.includes("_renderDetailCards(b, id)"),
+  "건물 상세의 최근 본 건물 기록이 _renderDetailCards의 실제 ID를 사용하지 않습니다."
 );
 
-console.log("OK  홈 검색바 압축·관심단지 더보기·모바일 가로 스크롤·최근 본 건물 UI");
+const trackStart = main.indexOf("function trackRecentBuilding(id, name, addr){");
+const trackEnd = main.indexOf("\n}\n\nfunction renderRecentChips", trackStart);
+expect(trackStart >= 0 && trackEnd > trackStart, "최근 본 건물 기록 함수를 찾지 못했습니다.");
+const storage = {};
+const trackContext = {
+  localStorage: {
+    getItem: (key) => storage[key] || null,
+    setItem: (key, value) => { storage[key] = value; },
+  },
+  renderRecentChips: () => {},
+  Date,
+  JSON,
+};
+vm.createContext(trackContext);
+vm.runInContext(
+  "const HS_RECENT_KEY = 'hs_recent_buildings'; const HS_RECENT_MAX = 5;\n" +
+  main.slice(trackStart, trackEnd + 2),
+  trackContext
+);
+vm.runInContext("trackRecentBuilding(2654, '정동진 솔라뷰', '강원특별자치도 강릉시');", trackContext);
+const recent = JSON.parse(storage.hs_recent_buildings || "[]");
+expect(
+  recent.length === 1 && recent[0].id === 2654 && recent[0].name === "정동진 솔라뷰",
+  "최근 본 건물이 localStorage에 실제로 기록되지 않습니다."
+);
+
+console.log("OK  홈 검색바 압축·관심단지 더보기·최근 본 건물 기록·모바일 UI");

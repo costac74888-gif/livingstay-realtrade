@@ -2885,7 +2885,7 @@ function _cancelDetailPoll(){
 }
 
 // bBldgInfoCard + bTimelineCard(준공전)을 렌더. loadBuildingHeader와 폴링 콜백이 공유.
-function _renderDetailCards(b){
+function _renderDetailCards(b, buildingId){
   const bldgInfoCard = document.getElementById("bBldgInfoCard");
   if (!bldgInfoCard) return;
   const fmtNum = (v, suffix) => (v != null && v !== "") ? Number(v).toLocaleString('ko-KR') + suffix : "-";
@@ -2947,6 +2947,10 @@ function _renderDetailCards(b){
     <div class="side-card-title">건축정보 <span class="side-sub">${isPreC ? "건축인허가" : "표제부"}</span>${hint}</div>
     <div class="b-bldg-grid">${cells}</div>${unitStatsHtml}`;
 
+  // 최근 본 건물 localStorage 기록 (로그인 불필요)
+  const bName = b.building_name || "(건물명 미확인)";
+  trackRecentBuilding(buildingId, bName, b.road_address || b.jibun_address || b.address || "");
+
   // 타임라인(준공전 전용)
   if (isPreC){
     const tlCard = document.getElementById("bTimelineCard");
@@ -3007,7 +3011,7 @@ function _startDetailPoll(buildingId){
         if (_detailPollBuildingId !== buildingId) return;
         if (fresh.detail_fetched_at){
           _detailPollBuildingId = null;
-          _renderDetailCards(fresh);
+          _renderDetailCards(fresh, buildingId);
           return;
         }
       }
@@ -3061,9 +3065,6 @@ async function loadBuildingHeader(id){
     ? `<span title="행안부 숙박업 영업신고의 현재 영업 사업장명으로 임시 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대 사업장" : ""}</span>`
     : "";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
-  // 최근 본 건물 localStorage 기록 (로그인 불필요)
-  trackRecentBuilding(id, bName, b.road_address || b.jibun_address || b.address || "");
-
   // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
   const txAllLink = document.getElementById("bTxAllLink");
   if (txAllLink && b.building_name){
@@ -3709,7 +3710,7 @@ async function loadBuildingHeader(id){
 
   // 건축정보(표제부) + 타임라인 — _renderDetailCards 공유 렌더러로 그린다.
   // detail_fetched_at이 없으면 "조회 중…" 힌트가 표시되고 폴링이 자동 시작된다.
-  _renderDetailCards(b);
+  _renderDetailCards(b, id);
   if (!b.detail_fetched_at
       && b.sgg_cd && b.umd_nm && b.jibun) {
     _startDetailPoll(id);
