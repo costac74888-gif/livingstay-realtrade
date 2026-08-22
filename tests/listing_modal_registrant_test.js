@@ -67,6 +67,27 @@ expect(
   modal.includes("else showListingForm()"),
   "기존 휴대폰 인증 계정 건너뛰기 또는 사업주 신고번호 인증 흐름이 없습니다."
 );
+const verifyStart = modal.indexOf("function checkBusinessVerification()");
+const verifyEnd = modal.indexOf("\n    }\n    $(\"#lrBusinessVerifySubmit\")", verifyStart);
+const verifyBlock = modal.slice(verifyStart, verifyEnd);
+const verifyFetchAt = verifyBlock.indexOf('fetch("/api/building/"');
+const verifyGateAfterFetchAt = verifyBlock.indexOf("showBusinessGate();", verifyFetchAt);
+expect(
+  verifyStart >= 0 &&
+  verifyFetchAt > 0 &&
+  verifyBlock.indexOf('$("#lrAuthLoading").style.display = "block";') < verifyFetchAt &&
+  verifyBlock.indexOf('form.style.display = "none";') < verifyFetchAt &&
+  verifyBlock.indexOf('businessGate.style.display = "none";') < verifyFetchAt &&
+  verifyGateAfterFetchAt > verifyFetchAt &&
+  verifyBlock.indexOf("showListingForm();", verifyFetchAt) > verifyFetchAt,
+  "사업주 인증 상태 확인 전에 게이트가 노출되거나, 공용 로딩 처리 순서가 잘못되었습니다."
+);
+const verifyCatchAt = verifyBlock.indexOf("}).catch(function (error) {");
+expect(
+  verifyCatchAt > verifyFetchAt &&
+  verifyBlock.indexOf("showBusinessGate();", verifyCatchAt) > verifyCatchAt,
+  "사업주 인증 API 오류 시 게이트가 노출되지 않습니다."
+);
 expect(
   modal.includes("DRAFT_REGISTRANT_LABELS") &&
   modal.includes('business: "사업주 등록"') &&

@@ -483,8 +483,10 @@
         setBusinessVerifyMessage("건물을 선택한 뒤 사업주 매물을 등록할 수 있습니다.");
         return;
       }
-      showBusinessGate();
-      $("#lrBusinessVerifyLoading").style.display = "block";
+      $("#lrAuthLoading").style.display = "block";
+      form.style.display = "none";
+      phoneGate.style.display = "none";
+      businessGate.style.display = "none";
       $("#lrBusinessVerifyFields").style.display = "none";
       setBusinessVerifyMessage("");
       fetch("/api/building/" + encodeURIComponent(buildingId) + "/business-verification", {
@@ -497,6 +499,7 @@
           showListingForm();
           return;
         }
+        showBusinessGate();
         $("#lrBusinessVerifyLoading").style.display = "none";
         $("#lrBusinessVerifyFields").style.display = result.data.permit_available ? "block" : "none";
         $("#lrBusinessVerifyHelp").textContent = (result.data.business_name
@@ -504,6 +507,7 @@
         if (result.data.permit_available) $("#lrBusinessPermitNumber").focus();
         else setBusinessVerifyMessage("이 건물의 영업신고번호를 확인할 수 없습니다. 관리자에게 문의해주세요.");
       }).catch(function (error) {
+        showBusinessGate();
         $("#lrBusinessVerifyLoading").style.display = "none";
         $("#lrBusinessVerifyFields").style.display = "none";
         setBusinessVerifyMessage(error.message || "인증 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.");
