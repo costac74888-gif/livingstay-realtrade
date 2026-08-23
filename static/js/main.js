@@ -2439,10 +2439,30 @@ function setDataLabActive(key){
   if (key === "consign") {
     dataLabConsignRefreshTimer = setInterval(() => {
       if (document.visibilityState === "visible" && !dataLabFetchController) {
-        loadDataLab("consign", "up", { background: true });
+        // 수집 완료 뒤 서버 무효화는 브라우저 Map을 직접 비우지 못하므로,
+        // 열린 탭의 30초 폴링은 공통 TTL을 우회해 새 stale 응답을 받아온다.
+        loadDataLab("consign", "up", { background: true, forceRefresh: true });
       }
     }, DATA_LAB_CONSIGN_REFRESH_MS);
   }
+}
+
+function setDataLabTabLoading(key, loading, requestId){
+  const button = document.querySelector(`[data-datalab-key="${key}"]`);
+  if (!button) return;
+  if (loading) {
+    button.dataset.datalabLoadingRequest = String(requestId);
+    button.classList.add("loading");
+    button.setAttribute("aria-busy", "true");
+    return;
+  }
+  if (
+    requestId != null &&
+    button.dataset.datalabLoadingRequest !== String(requestId)
+  ) return;
+  delete button.dataset.datalabLoadingRequest;
+  button.classList.remove("loading");
+  button.setAttribute("aria-busy", "false");
 }
 
 function dataLabLoadingHTML(){
@@ -2470,7 +2490,10 @@ function bindDataLabControls(content){
   });
 }
 
-async function loadDataLab(key, option = "up", { background = false } = {}){
+async function loadDataLab(key, option = "up", {
+  background = false,
+  forceRefresh = false,
+} = {}){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
   const requestId = ++dataLabRequestSequence;
@@ -2487,9 +2510,9 @@ async function loadDataLab(key, option = "up", { background = false } = {}){
   if (!url) return;
   const cacheKey = `${key}:${option}`;
   const cached = dataLabResponseCache.get(cacheKey);
-  // 행안부 영업신고 수집 데이터는 수시로 갱신되므로, 영업신고현황은 서버
-  // 캐시를 매번 다시 읽는다. 나머지 데이터랩 탭은 10분 브라우저 캐시를 유지한다.
-  const cacheTtl = key === "consign" ? 0 : DATA_LAB_CACHE_TTL_MS;
+  // 모든 데이터랩 탭은 같은 브라우저 TTL을 사용한다. 다만 열린 영업신고
+  // 탭의 30초 폴링은 forceRefresh로 서버 stale 재검증 결과를 받아온다.
+  const cacheTtl = DATA_LAB_CACHE_TTL_MS;
   const renders = {
     lodging: renderDataLabLodging,
     volume: renderDataLabVolume,
@@ -2498,7 +2521,7 @@ async function loadDataLab(key, option = "up", { background = false } = {}){
     closure: renderDataLabClosure,
     consign: renderDataLabConsign,
   };
-  if (cached && Date.now() - cached.ts < cacheTtl) {
+  if (!forceRefresh && cached && Date.now() - cached.ts < cacheTtl) {
     content.innerHTML = renders[key](cached.data);
     bindDataLabControls(content);
     return;
@@ -2506,7 +2529,9 @@ async function loadDataLab(key, option = "up", { background = false } = {}){
   if (dataLabFetchController) dataLabFetchController.abort();
   const controller = new AbortController();
   dataLabFetchController = controller;
-  if (!background) content.innerHTML = dataLabLoadingHTML();
+  setDataLabTabLoading(key, true, requestId);
+  const contentIsEmpty = !content.textContent.trim();
+  if (!background && contentIsEmpty) content.innerHTML = dataLabLoadingHTML();
   try {
     const response = await fetch(url, { signal: controller.signal });
     const data = await response.json();
@@ -2524,7 +2549,12 @@ async function loadDataLab(key, option = "up", { background = false } = {}){
     }
     console.error("[데이터랩] 로드 실패:", error);
   } finally {
-    if (dataLabFetchController === controller) dataLabFetchController = null;
+    if (dataLabFetchController === controller) {
+      dataLabFetchController = null;
+      setDataLabTabLoading(key, false, requestId);
+    } else {
+      setDataLabTabLoading(key, false, requestId);
+    }
   }
 }
 

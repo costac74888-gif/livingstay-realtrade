@@ -13347,8 +13347,8 @@ _BLD_FULL_STATS_TTL = 300  # 5분 캐시
 # 값을 내놓지 않도록, 데이터랩과 관리자용 원본은 이 캐시에서 한 번에 만든다.
 # 기존 개별 캐시는 [LEGACY] 폴백 경로로 남겨 둔다.
 _MASTER_STATS_CACHE_TTL = 30 * 60
-_MASTER_STATS_REFRESH_LEAD = 5 * 60
-_MASTER_STATS_BACKGROUND_POLL = 60
+_MASTER_STATS_REFRESH_LEAD = 10 * 60
+_MASTER_STATS_BACKGROUND_POLL = 30
 _MASTER_STATS_INVALIDATION_KEY = "master_stats_invalidation"
 _MASTER_STATS_INVALIDATION_CHECK_TTL = 10
 _MASTER_STATS_CACHE: dict = {
@@ -13359,6 +13359,7 @@ _MASTER_STATS_CACHE: dict = {
 }
 _MASTER_STATS_LOCK = threading.RLock()
 _MASTER_STATS_REBUILDING = threading.local()
+_MASTER_STATS_REVALIDATION_PENDING = False
 _MASTER_STATS_INVALIDATION_STATE = {"checked_at": 0.0, "token": None}
 
 
@@ -13447,6 +13448,7 @@ def _rebuild_master_stats(*, force=False):
         if not force and _master_stats_cache_is_valid():
             return _MASTER_STATS_CACHE
 
+        previous_data = dict(_MASTER_STATS_CACHE.get("data") or {})
         # 무효화 뒤 마스터의 특정 섹션만 실패한 경우에도 [LEGACY] 폴백이
         # 무효화 이전의 개별 캐시를 내놓지 않도록 함께 비운다.
         global _bld_full_stats_cache
@@ -13486,6 +13488,13 @@ def _rebuild_master_stats(*, force=False):
         finally:
             _MASTER_STATS_REBUILDING.active = False
 
+        # 백그라운드 재검증 중 일부 섹션만 실패해도 직전 성공값을 stale 값으로
+        # 유지한다. sections의 error 상태는 관리자 화면과 다음 재시도를 위해
+        # 보존하고, 공개 API는 해당 섹션의 stale 데이터를 즉시 제공한다.
+        for name, section in sections.items():
+            if section.get("status") == "error" and name in previous_data:
+                data[name] = previous_data[name]
+
         _MASTER_STATS_CACHE.update({
             "ts": time.time(),
             "data": data,
@@ -13495,13 +13504,62 @@ def _rebuild_master_stats(*, force=False):
         return _MASTER_STATS_CACHE
 
 
+def _master_stats_schedule_revalidation():
+    """이전 통계를 유지한 채 중복 없는 백그라운드 재계산을 예약한다."""
+    global _MASTER_STATS_REVALIDATION_PENDING
+    with _MASTER_STATS_LOCK:
+        if _MASTER_STATS_REVALIDATION_PENDING:
+            return False
+        _MASTER_STATS_REVALIDATION_PENDING = True
+
+    def revalidate():
+        global _MASTER_STATS_REVALIDATION_PENDING
+        try:
+            with app.app_context():
+                _rebuild_master_stats(force=True)
+            app.logger.info("[master-stats] stale cache revalidated")
+        except Exception:
+            # _rebuild_master_stats는 섹션별 실패를 자체 기록하지만, 스레드
+            # 바깥의 예외도 다음 폴링에서 재시도할 수 있도록 pending을 해제한다.
+            app.logger.exception("[master-stats] stale cache revalidation failed")
+        finally:
+            with _MASTER_STATS_LOCK:
+                _MASTER_STATS_REVALIDATION_PENDING = False
+
+    try:
+        threading.Thread(
+            target=revalidate,
+            daemon=True,
+            name="master-stats-revalidation",
+        ).start()
+    except Exception:
+        with _MASTER_STATS_LOCK:
+            _MASTER_STATS_REVALIDATION_PENDING = False
+        app.logger.exception("[master-stats] stale cache revalidation thread start failed")
+        return False
+    return True
+
+
 def _master_stats_section(name):
-    """유효한 섹션만 반환한다. 실패·만료 시에는 호출자가 레거시 경로를 쓴다."""
+    """통계 섹션을 반환하고, 만료된 이전 값은 stale 상태로 즉시 제공한다."""
     if _master_stats_is_rebuilding():
         return None
-    cache = _MASTER_STATS_CACHE if _master_stats_cache_is_valid() else _rebuild_master_stats()
+    cache = _MASTER_STATS_CACHE
+    section_data = cache.get("data", {}).get(name)
+    if _master_stats_cache_is_valid():
+        if cache["sections"].get(name, {}).get("status") == "ok":
+            return section_data
+        if section_data is not None:
+            _master_stats_schedule_revalidation()
+            return section_data
+        return None
+    if section_data is not None:
+        _master_stats_schedule_revalidation()
+        return section_data
+    cache = _rebuild_master_stats()
     if cache["sections"].get(name, {}).get("status") == "ok":
         return cache["data"].get(name)
+    # 최초 재계산 중 해당 섹션이 실패한 경우에는 레거시 경로가 응답한다.
     return None
 
 
@@ -13523,9 +13581,8 @@ def _master_stats_background_loop():
             )
             invalidated = bool(cache_ts) and not _master_stats_cache_is_valid()
             if refresh_due or invalidated:
-                with app.app_context():
-                    _rebuild_master_stats(force=True)
-                app.logger.info("[master-stats] background refresh completed")
+                if _master_stats_schedule_revalidation():
+                    app.logger.info("[master-stats] background refresh scheduled")
             first_run = False
         except Exception:
             app.logger.exception("[master-stats] background refresh failed")
@@ -20617,7 +20674,10 @@ def stats_price_change_top(_direction=None, _as_payload=False):
         return jsonify({"ok": False, "message": "direction은 up 또는 down이어야 합니다."}), 400
 
     master_payload = _master_stats_section("transaction_stats")
-    if master_payload and master_payload.get("price_change", {}).get(direction):
+    if (
+        master_payload is not None
+        and direction in (master_payload.get("price_change") or {})
+    ):
         return jsonify(master_payload["price_change"][direction])
 
     # [LEGACY] 원본 캐시의 거래 섹션이 없거나 실패했을 때의 기존 직접 집계.
@@ -20722,7 +20782,10 @@ def stats_highest_price_top(_order=None, _as_payload=False):
     price_order = "DESC" if order == "highest" else "ASC"
 
     master_payload = _master_stats_section("transaction_stats")
-    if master_payload and master_payload.get("highest_price", {}).get(order):
+    if (
+        master_payload is not None
+        and order in (master_payload.get("highest_price") or {})
+    ):
         return jsonify(master_payload["highest_price"][order])
 
     # [LEGACY] 원본 캐시의 거래 섹션이 없거나 실패했을 때의 기존 직접 집계.

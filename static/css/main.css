@@ -381,9 +381,14 @@
   }
   .datalab-tab:hover{border-color:#D2B47D; background:var(--brass-tint);}
   .datalab-tab.active{border-color:var(--brass); background:var(--brass-tint); color:var(--brass-dark); box-shadow:inset 0 -3px var(--brass);}
+  .datalab-tab.loading{border-color:#D2B47D; color:var(--brass-dark);}
+  .datalab-tab.loading .datalab-icon{
+    width:13px; height:13px; border:2px solid #E7DDCA; border-top-color:var(--brass);
+    border-radius:50%; font-size:0; animation:datalab-spin .7s linear infinite;
+  }
   .datalab-icon{flex:none; width:17px; font-size:13px; text-align:center;}
   .datalab-tab > span:last-child{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .datalab-content{min-width:0; min-height:210px; margin-top:10px;}
+  .datalab-content{min-width:0; min-height:420px; margin-top:10px;}
    .datalab-loading{
      display:flex; flex-direction:column; align-items:center; gap:9px;
      min-height:150px; padding:20px 8px; color:var(--ink-soft); font-size:11.5px;
@@ -513,7 +518,6 @@
     .platform-stats{grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;}
     .platform-stats > div{font-size:10.5px; padding:7px 6px;}
     .datalab-nav{grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px;}
-    .datalab-content{min-height:0;}
      .datalab-map-highlight{max-width:calc(100vw - 48px); font-size:11px; padding:6px 9px 6px 7px;}
     /* 패널이 열려 있는 동안엔 우측 상단 "🔍 검색" 플로팅 버튼 숨김 —
        건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라

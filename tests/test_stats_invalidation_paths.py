@@ -10,7 +10,7 @@ import unittest
 import hashlib
 import hmac
 from argparse import Namespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -128,6 +128,117 @@ class AppMutationInvalidationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.get_json()["ok"], False)
+
+    def test_expired_master_stats_returns_stale_section_and_schedules_revalidation(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        original_pending = app_module._MASTER_STATS_REVALIDATION_PENDING
+        stale_section = {"ok": True, "items": ["old"], "total": {"value": 1}}
+        try:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 1_700_000_000,
+                "data": {"consign_stats": stale_section},
+                "sections": {"consign_stats": {"status": "ok"}},
+                "invalidation_token": "old",
+            })
+            app_module._MASTER_STATS_REVALIDATION_PENDING = False
+            with (
+                patch.object(app_module, "_master_stats_cache_is_valid", return_value=False),
+                patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+            ):
+                result = app_module._master_stats_section("consign_stats")
+
+            self.assertIs(result, stale_section)
+            schedule.assert_called_once_with()
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+            app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
+
+    def test_empty_master_stats_still_rebuilds_synchronously(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        rebuilt = {
+            "data": {"consign_stats": {"ok": True}},
+            "sections": {"consign_stats": {"status": "ok"}},
+        }
+        try:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 0.0,
+                "data": {},
+                "sections": {},
+                "invalidation_token": None,
+            })
+            with (
+                patch.object(app_module, "_master_stats_cache_is_valid", return_value=False),
+                patch.object(app_module, "_rebuild_master_stats", return_value=rebuilt) as rebuild,
+                patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+            ):
+                result = app_module._master_stats_section("consign_stats")
+
+            self.assertEqual(result, rebuilt["data"]["consign_stats"])
+            rebuild.assert_called_once_with()
+            schedule.assert_not_called()
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+
+    def test_master_stats_revalidation_is_single_flight_and_start_failure_retries(self):
+        original_pending = app_module._MASTER_STATS_REVALIDATION_PENDING
+        try:
+            app_module._MASTER_STATS_REVALIDATION_PENDING = False
+            worker = Mock()
+            with patch.object(app_module.threading, "Thread", return_value=worker) as thread:
+                self.assertTrue(app_module._master_stats_schedule_revalidation())
+                self.assertFalse(app_module._master_stats_schedule_revalidation())
+            thread.assert_called_once()
+            worker.start.assert_called_once_with()
+            self.assertTrue(app_module._MASTER_STATS_REVALIDATION_PENDING)
+
+            app_module._MASTER_STATS_REVALIDATION_PENDING = False
+            with patch.object(
+                app_module.threading,
+                "Thread",
+                side_effect=RuntimeError("thread unavailable"),
+            ):
+                self.assertFalse(app_module._master_stats_schedule_revalidation())
+            self.assertFalse(app_module._MASTER_STATS_REVALIDATION_PENDING)
+        finally:
+            app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
+
+    def test_failed_master_stats_section_keeps_previous_data_as_stale(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        previous = {"ok": True, "items": ["previous"]}
+        try:
+            # 앱 부팅 시 동작하는 실제 백그라운드 갱신 스레드가 이 검증 중
+            # 전역 캐시를 바꾸지 못하도록 같은 RLock을 잡고 재진입한다.
+            with app_module._MASTER_STATS_LOCK:
+                app_module._MASTER_STATS_CACHE.clear()
+                app_module._MASTER_STATS_CACHE.update({
+                    "ts": 1_700_000_000,
+                    "data": {"consign_stats": previous},
+                    "sections": {"consign_stats": {"status": "ok"}},
+                    "invalidation_token": "old",
+                })
+
+                def fail_section(_data, sections, name, _builder):
+                    sections[name] = {"status": "error", "error": "test"}
+
+                with (
+                    patch.object(app_module, "_master_stats_add_section", side_effect=fail_section),
+                    patch.object(app_module, "_master_stats_invalidation_token", return_value="new"),
+                    patch.object(app_module, "_master_stats_cache_is_valid", return_value=False),
+                ):
+                    rebuilt = app_module._rebuild_master_stats(force=True)
+
+                self.assertEqual(rebuilt["data"]["consign_stats"], previous)
+                self.assertEqual(
+                    rebuilt["sections"]["consign_stats"]["status"],
+                    "error",
+                )
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
 
     @staticmethod
     def _internal_refresh_headers(timestamp, secret="internal-test-secret"):

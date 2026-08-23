@@ -1,6 +1,7 @@
 // 홈 검색영역·좌측 패널의 최근검색/데이터랩 구성을 검증한다.
 const fs = require("fs");
 const path = require("path");
+const vm = require("vm");
 
 const index = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
 const main = fs.readFileSync(path.join(__dirname, "..", "static", "js", "main.js"), "utf8");
@@ -58,7 +59,7 @@ expect(
 );
 expect(
   css.includes("grid-template-columns:repeat(3,minmax(0,1fr))") &&
-  css.includes(".datalab-content{min-width:0; min-height:210px; margin-top:10px;}") &&
+  css.includes(".datalab-content{min-width:0; min-height:420px; margin-top:10px;}") &&
   css.includes(".datalab-loading") &&
   css.includes(".datalab-error"),
   "데이터랩이 3열 탭 그리드와 탭 아래 콘텐츠 구조가 아닙니다."
@@ -79,11 +80,19 @@ expect(
 );
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");
 expect(main.includes("DATA_LAB_CACHE_TTL_MS"), "데이터랩 반복 탭 전환 캐시가 없습니다.");
-expect(
-  main.includes('key === "consign" ? 0 : DATA_LAB_CACHE_TTL_MS') &&
+expect(main.includes("const cacheTtl = DATA_LAB_CACHE_TTL_MS;") &&
   main.includes("DATA_LAB_CONSIGN_REFRESH_MS"),
-  "위탁현황의 최신 데이터 재조회 처리가 없습니다."
+  "영업신고현황의 공통 브라우저 캐시 TTL 또는 갱신 확인이 없습니다.");
+expect(
+  main.includes('loadDataLab("consign", "up", { background: true, forceRefresh: true })') &&
+  main.includes("if (!forceRefresh && cached && Date.now() - cached.ts < cacheTtl)"),
+  "영업신고현황 30초 갱신이 브라우저 캐시를 우회하지 않습니다."
 );
+expect(main.includes("function setDataLabTabLoading") &&
+  main.includes('button.classList.add("loading")') &&
+  main.includes("contentIsEmpty") &&
+  main.includes("if (!background && contentIsEmpty)"),
+  "데이터랩 탭 로딩 인디케이터 또는 기존 콘텐츠 유지 처리가 없습니다.");
 expect(main.includes("function moveDataLabBuildingToMap"), "데이터랩 건물명의 지도 이동 함수가 없습니다.");
 expect(main.includes("data-datalab-lat") && main.includes("data-datalab-lng"),
   "데이터랩 건물 버튼에 지도 좌표가 연결되지 않았습니다.");
@@ -133,4 +142,67 @@ expect(css.includes("--panel-w:440px") &&
 expect(!main.includes("row.favorites") && !main.includes("row.listing_requests"),
   "전국숙박업통계 렌더링에 내부 운영지표가 남아 있습니다.");
 
-console.log("OK  홈 최근검색 위치·실거래추세·데이터랩 로딩·localStorage 회귀");
+async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
+  const sourceStart = main.indexOf("async function loadDataLab");
+  const sourceEnd = main.indexOf("\nfunction initDataLab", sourceStart);
+  expect(sourceStart >= 0 && sourceEnd > sourceStart, "데이터랩 로더를 동작 검증에 분리할 수 없습니다.");
+
+  const content = {
+    textContent: "기존 영업신고현황",
+    innerHTML: "기존 영업신고현황",
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  let fetchCalls = 0;
+  const context = {
+    AbortController,
+    Date,
+    encodeURIComponent,
+    console,
+    dataLabRequestSequence: 0,
+    dataLabFetchController: null,
+    DATA_LAB_CACHE_TTL_MS: 600000,
+    dataLabResponseCache: new Map([
+      ["consign:up", {
+        ts: Date.now(),
+        data: { ok: true, marker: "cached" },
+      }],
+    ]),
+    document: {
+      getElementById: () => content,
+    },
+    setDataLabActive: () => {},
+    setDataLabTabLoading: () => {},
+    bindDataLabControls: () => {},
+    dataLabLoadingHTML: () => "로딩",
+    dataLabErrorHTML: () => "오류",
+    renderDataLabLodging: () => "",
+    renderDataLabVolume: () => "",
+    renderDataLabChange: () => "",
+    renderDataLabHighest: () => "",
+    renderDataLabClosure: () => "",
+    renderDataLabConsign: (data) => `영업신고현황:${data.marker}`,
+    fetch: async () => {
+      fetchCalls += 1;
+      return {
+        ok: true,
+        json: async () => ({ ok: true, marker: "fresh" }),
+      };
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(`${main.slice(sourceStart, sourceEnd)}\nglobalThis.runDataLab = loadDataLab;`, context);
+  await context.runDataLab("consign", "up", {
+    background: true,
+    forceRefresh: true,
+  });
+  expect(fetchCalls === 1, "최근 브라우저 캐시가 있어도 강제 영업신고 갱신이 네트워크 요청을 보내지 않았습니다.");
+  expect(content.innerHTML === "영업신고현황:fresh", "강제 영업신고 갱신 결과가 기존 콘텐츠를 대체하지 않았습니다.");
+}
+
+verifyForcedConsignRefreshFetchesPastRecentBrowserCache()
+  .then(() => console.log("OK  홈 최근검색 위치·실거래추세·데이터랩 로딩·localStorage 회귀"))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

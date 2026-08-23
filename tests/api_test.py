@@ -2958,8 +2958,8 @@ def _check_datalab_stats(client):
 
         import app as app_module
 
-        # 별도 수집 프로세스가 원본을 커밋한 뒤 표식을 기록하면, 30분 TTL이
-        # 남아 있어도 다음 통계 요청은 이전 메모리 원본을 재사용하지 않아야 한다.
+        # 별도 수집 프로세스가 원본을 커밋한 뒤 표식을 기록하면, 만료된 이전
+        # 통계는 즉시 응답으로 유지하고 재계산만 백그라운드에 예약한다.
         from stats_cache import mark_master_stats_invalidated
         saved_master_cache = copy.deepcopy(app_module._MASTER_STATS_CACHE)
         saved_bld_full_stats_cache = copy.deepcopy(app_module._bld_full_stats_cache)
@@ -2986,13 +2986,19 @@ def _check_datalab_stats(client):
                 "sections": {"consign_stats": {"status": "ok", "error": None}},
                 "invalidation_token": token_before,
             })
-            external_rebuild = client.get("/api/stats/consign-by-sido").get_json() or {}
+            from unittest.mock import patch
+            with patch.object(
+                app_module,
+                "_master_stats_schedule_revalidation",
+                return_value=True,
+            ) as schedule_revalidation:
+                external_stale = client.get("/api/stats/consign-by-sido").get_json() or {}
             if (
                 token_after == token_before
-                or app_module._MASTER_STATS_CACHE.get("invalidation_token") != token_after
-                or (external_rebuild.get("total") or {}).get("units") == -1
+                or (external_stale.get("total") or {}).get("units") != -1
+                or not schedule_revalidation.called
             ):
-                failures.append("통계 원본 창고: 외부 원본 갱신 뒤 다음 요청이 캐시를 재생성하지 않음")
+                failures.append("통계 원본 창고: 외부 원본 갱신 뒤 stale 응답·백그라운드 재검증이 동작하지 않음")
 
             # 신고율 API도 통합 숙박 섹션을 거쳐야 한다. 외부 무효화 후에는
             # 아직 유효한 레거시 5분 캐시에 심어 둔 값이 반환되면 안 된다.
@@ -3013,9 +3019,16 @@ def _check_datalab_stats(client):
                 "sections": {"lodging_stats": {"status": "ok", "error": None}},
                 "invalidation_token": token_before,
             })
-            registration_after_external_write = client.get("/api/stats/registration-rate").get_json() or {}
+            with patch.object(
+                app_module,
+                "_master_stats_schedule_revalidation",
+                return_value=True,
+            ) as schedule_revalidation:
+                registration_after_external_write = client.get("/api/stats/registration-rate").get_json() or {}
             if registration_after_external_write.get("total_units") == 999993:
                 failures.append("통계 원본 창고: 신고율 API가 외부 무효화 뒤 레거시 캐시를 반환함")
+            elif not schedule_revalidation.called:
+                failures.append("통계 원본 창고: 신고율 stale 응답이 재검증을 예약하지 않음")
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(saved_master_cache)
