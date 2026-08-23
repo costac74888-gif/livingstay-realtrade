@@ -3232,6 +3232,7 @@ async function loadBuildingHeader(id){
   if (listingsCard && listingsBody) {
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
+    const _trackedWholeListingViews = new Set();
       const _dealTypeColors = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1", "통임대":"#5A7FA6", "운영권양도":"#8B6BB1", "위탁운영":"#557A5B" };
      function _dealTypeBadge(raw){
        const label = raw || "-";
@@ -3428,6 +3429,53 @@ async function loadBuildingHeader(id){
         const label = raw && raw.includes("·") ? "복합" : (raw || "미분류");
         return `<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:${_lodgingColors[label] || _lodgingColors["미분류"]};color:#fff;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap;">${label}</span>`;
       }
+      function _wholeListingCard(lr, lrId, photoHtml, photoCount, dt){
+        const price = Number(lr.price_krw || 0);
+        const loan = Number(lr.succession_loan_krw || 0);
+        const financeVisible = !!lr.financial_details_visible;
+        const acquisition = lr.deal_type === "매매" && price > 0 && financeVisible
+          ? price - loan + (price * 0.061) : null;
+        const isRecentClosure = lr.operation_status === "폐업" && lr.closed_at
+          && Date.now() - new Date(lr.closed_at).getTime() <= 90 * 24 * 60 * 60 * 1000;
+        const metrics = [
+          lr.room_count != null && Number(lr.room_count) > 0 ? `객실 ${_fmtN(lr.room_count)}실` : "객실 정보 없음",
+          b.tot_pkng_cnt != null ? `주차 ${_fmtN(b.tot_pkng_cnt)}대` : "주차 정보 없음",
+          b.plat_area != null ? `대지 ${(Number(b.plat_area) / 3.305785).toFixed(1)}평` : "대지 정보 없음",
+          b.tot_area != null ? `연면적 ${(Number(b.tot_area) / 3.305785).toFixed(1)}평` : "연면적 정보 없음",
+        ];
+        const finance = financeVisible
+          ? `실인수가 ${acquisition != null ? _fmtN(Math.round(acquisition)) + "만원" : "-"} · 융자 ${lr.has_succession_loan ? _fmtN(loan) + "만원" : "없음"}`
+          : `실인수가 🔒 로그인하고 보기 · 융자${lr.has_succession_loan ? " 🔒 로그인하고 보기" : " 없음"}`;
+        const revenue = lr.has_monthly_revenue
+          ? (financeVisible ? `월 매출 ${_fmtN(lr.monthly_revenue_krw)}만원` : "월 매출 🔒 로그인하고 보기")
+          : "";
+        const badges = [
+          lr.is_urgent ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;animation:wholeUrgentPulse 1.25s ease-in-out infinite;">급매</span>' : "",
+          isRecentClosure ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E5E5E5;color:#222;font-size:10px;font-weight:800;">최근 폐업</span>' : "",
+          lr.has_monthly_revenue ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E7F2FC;color:#275B88;font-size:10px;font-weight:800;">매출정보 있음</span>' : ""
+        ].filter(Boolean).join(" ");
+        return `<div class="b-listing-card b-whole-listing-card" data-listing-id="${lrId}" style="border-color:var(--brass,#B4863F);">
+          <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="건물전체 매물 카드로 보기">
+            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${escapeHtml(bName)}${_operationStatusHtml(lr)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin:3px 0;">${badges}</div>
+            <div class="b-listing-l2">${dt}${escapeHtml(_listingPriceText(lr, _fmtN))}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--brass-dark,#7D4A00);margin:4px 0;">${escapeHtml(finance)}${revenue ? ` · ${escapeHtml(revenue)}` : ""}</div>
+            <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.55;">${escapeHtml(metrics[0])} · ${escapeHtml(metrics[1])}<br>${escapeHtml(metrics[2])} · ${escapeHtml(metrics[3])}</div>
+            <div class="b-whole-viewers" style="font-size:11px;font-weight:700;color:#356212;margin-top:3px;">최근 5분 열람 ${_fmtN(lr.viewer_count || 0)}명</div>
+            <div style="border-top:1px solid var(--line,#ddd);margin-top:6px;padding-top:6px;color:var(--ink-soft);font-size:10.5px;line-height:1.45;">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
+            <div class="b-listing-l4">
+              ${lr.listing_number ? `<span class="b-listing-number">${escapeHtml(lr.listing_number)}</span>` : ""}
+              <span>${escapeHtml(lr.listing_date || "")}</span>
+              <span class="b-listing-actions">
+                <button type="button" class="listing-like-btn${lr.liked ? " is-liked" : ""}" data-lrid="${lrId}" title="찜">${window.LivingstayListingIcons.heart(!!lr.liked)}<span class="like-cnt">${lr.like_count || 0}</span></button>
+                <button type="button" class="listing-chat-btn" data-lrid="${lrId}" title="문의하기">${window.LivingstayListingIcons.chat()}</button>
+                <button type="button" class="listing-share-btn" data-lrid="${lrId}" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
+              </span>
+            </div>
+          </div>
+          <button type="button" class="b-listing-photo-btn listing-photo-btn" data-lrid="${lrId}" aria-label="건물전체 매물 카드로 보기">${photoHtml}${window.LivingstayListingIcons.photoCount(photoCount)}</button>
+        </div>`;
+      }
 
       const cards = listings.map((lr) => {
         const lrId = lr.id;
@@ -3451,6 +3499,9 @@ async function loadBuildingHeader(id){
         const photoHtml = photoSrc
           ? `<img src="${photoSrc}" alt="매물 사진" onerror="this.parentElement.innerHTML='🏠'">`
           : "🏠";
+        if (isWholeListing) {
+          return _wholeListingCard(lr, lrId, photoHtml, photos.length, dt);
+        }
         return `<div class="b-listing-card" data-listing-id="${lrId}">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기">
             <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${escapeHtml(bName)}${newBadge}</div>
@@ -3471,6 +3522,30 @@ async function loadBuildingHeader(id){
       }).join("");
 
       listingsBody.innerHTML = `<div style="margin-bottom:8px;">${sortBar}</div><div>${cards}</div><div style="font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:6px;">직거래 시 계약 전 등기부등본 확인을 권장합니다.</div>`;
+      const wholeListingIds = listings
+        .filter(lr => (lr.is_whole_listing || lr.transaction_target === "whole")
+          && !_trackedWholeListingViews.has(lr.id))
+        .map(lr => lr.id);
+      if (wholeListingIds.length) {
+        wholeListingIds.forEach(id => _trackedWholeListingViews.add(id));
+        fetch("/api/listings/views", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listing_ids: wholeListingIds }),
+        })
+          .then(res => res.json().then(data => ({ ok: res.ok, data })))
+          .then(({ ok, data }) => {
+            if (!ok || !data.ok) throw new Error("view record failed");
+            (data.items || []).forEach(item => {
+              listingsBody.querySelectorAll(`[data-listing-id="${item.id}"]`).forEach(card => {
+                const count = card.querySelector(".b-whole-viewers");
+                if (count) count.textContent = `최근 5분 열람 ${_fmtN(item.viewer_count || 0)}명`;
+              });
+            });
+          })
+          .catch(() => wholeListingIds.forEach(id => _trackedWholeListingViews.delete(id)));
+      }
 
       listingsBody.querySelectorAll("[data-lsort]").forEach(btn => {
         btn.addEventListener("click", () => {

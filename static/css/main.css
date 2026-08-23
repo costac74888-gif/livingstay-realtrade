@@ -1032,6 +1032,10 @@
 .b-listing-card{display:flex;align-items:stretch;min-height:100px;padding:8px 0;border-bottom:1px solid var(--line,#eee);transition:background .4s;}
 .b-listing-info{display:flex;flex:1;min-width:0;flex-direction:column;justify-content:center;gap:2px;}
 .b-listing-l1,.b-listing-l2,.b-listing-l3,.b-listing-l4{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.b-whole-listing-card{min-height:190px;}
+.b-whole-listing-card .b-listing-info{justify-content:flex-start;gap:4px;}
+.b-whole-listing-card .b-listing-l1,.b-whole-listing-card .b-listing-l2,.b-whole-listing-card .b-listing-l4{white-space:normal;overflow:visible;text-overflow:clip;}
+@keyframes wholeUrgentPulse{50%{transform:scale(1.06);box-shadow:0 0 0 4px rgba(200,90,54,.16);}}
 .b-listing-l1{font-size:11.5px;font-weight:700;color:var(--ink);}
 .b-listing-l2{font-size:14px;font-weight:800;color:var(--ink);}
 .b-listing-l3{font-size:10.5px;color:var(--ink-soft);}

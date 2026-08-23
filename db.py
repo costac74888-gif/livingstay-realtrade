@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-23-01"
+SCHEMA_VERSION = "2026-08-23-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -799,11 +799,13 @@ def _run_init_db():
     CREATE TABLE IF NOT EXISTS page_views (
         id SERIAL PRIMARY KEY,
         path TEXT NOT NULL,                -- 조회한 사용자 페이지 경로 (/ , /building/<id> 등)
+        listing_request_id INTEGER,        -- /building/<id>?listing=<id>로 연 매물 (없으면 NULL)
         ip_hash TEXT,                      -- sha256(방문자IP + 고정 salt) — 원본 IP는 저장 안 함
         user_agent TEXT,                   -- 브라우저 UA 문자열 (참고용)
         viewed_at TIMESTAMP DEFAULT NOW()
     )
     """)
+    cur.execute("ALTER TABLE page_views ADD COLUMN IF NOT EXISTS listing_request_id INTEGER")
 
     # 일반 회원 — 이메일/비밀번호 또는 카카오 소셜 로그인. (관리자 admin_users와는 별개 테이블)
     cur.execute("""
@@ -1514,6 +1516,12 @@ def _run_init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_listings_building ON listings(master_building_id)")
     # 통계(일별 방문 집계)용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_page_views_viewed_at ON page_views(viewed_at)")
+    # 건물전체 매물 카드의 최근 5분 고유 열람자 집계용 인덱스
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_page_views_listing_recent "
+        "ON page_views(listing_request_id, viewed_at DESC) "
+        "WHERE listing_request_id IS NOT NULL"
+    )
     # 공지사항 정렬(고정 우선 → 최신순)용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_notices_order ON notices(is_pinned DESC, created_at DESC)")
     # master_buildings 지번 복합 인덱스 — 지번 매칭 쿼리(transactions JOIN, nearby-stores 등) 최적화

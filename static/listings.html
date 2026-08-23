@@ -63,6 +63,14 @@
     color: var(--brass-dark, #7D4A00);
   }
   .ls-view-tabs .ls-count { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
+  .ls-disclosure-tabs { display:flex; gap:6px; margin:0 0 10px; align-items:center; }
+  .ls-disclosure-tabs button {
+    padding:6px 15px; border-radius:20px; border:1.5px solid var(--line, #ddd);
+    background:#fff; color:var(--ink-soft); font:600 13px inherit; cursor:pointer;
+  }
+  .ls-disclosure-tabs button.active {
+    border-color:#4A7A18; background:#EEF7E7; color:#356212;
+  }
 
   /* ── 게시판형(표) ── */
   .ls-board-wrap { overflow-x: auto; }
@@ -165,6 +173,21 @@
     font-size: 30px; cursor: pointer;
   }
   .ls-card-photo-right img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .whole-listing-card { border-color:var(--brass,#B4863F); min-height:178px; }
+  .whole-listing-card .ls-card-info { justify-content:flex-start; gap:7px; padding:13px 14px; }
+  .whole-listing-card .ls-card-l1,
+  .whole-listing-card .ls-card-l2,
+  .whole-listing-card .ls-card-l3 { white-space:normal; overflow:visible; text-overflow:clip; }
+  .whole-badges { display:flex; flex-wrap:wrap; gap:4px; }
+  .whole-badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; line-height:1.35; }
+  .whole-badge-urgent { color:#fff; background:#C85A36; animation:wholeUrgentPulse 1.25s ease-in-out infinite; }
+  .whole-badge-closed { color:#222; background:#E5E5E5; }
+  .whole-badge-revenue { color:#275B88; background:#E7F2FC; }
+  @keyframes wholeUrgentPulse { 50% { transform:scale(1.06); box-shadow:0 0 0 4px rgba(200,90,54,.16); } }
+  .whole-finance { font-size:12px; color:var(--brass-dark,#7D4A00); font-weight:700; }
+  .whole-metrics { font-size:11.5px; color:var(--ink-soft); line-height:1.55; }
+  .whole-caution { padding-top:7px; border-top:1px solid var(--line); color:var(--ink-soft); font-size:10.5px; line-height:1.45; }
+  .whole-viewers { color:#356212; font-size:11px; font-weight:700; }
 
   /* ── 뷰 전환 CSS ── */
   body.view-board .ls-board-wrap  { display: block; }
@@ -286,6 +309,10 @@
   </div>
 
   <!-- ── 뷰 탭 ── -->
+  <div class="ls-disclosure-tabs" role="tablist" aria-label="공개범위">
+    <button type="button" class="active" data-disclosure-scope="public" role="tab" aria-selected="true">전체공개</button>
+    <button type="button" data-disclosure-scope="limited" role="tab" aria-selected="false">제한공개</button>
+  </div>
   <div class="ls-view-tabs">
     <button data-view="board" class="active">📋 게시판형</button>
     <button data-view="card">🖼 카드형</button>
@@ -340,6 +367,7 @@
   // ── 유틸 ──────────────────────────────────────────────────────────────
   function esc(s){ const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
   function fmtN(v){ return v != null ? Number(v).toLocaleString() : "-"; }
+  function formatKrw(v){ return v != null && Number.isFinite(Number(v)) ? fmtN(Math.round(Number(v))) + "만원" : "-"; }
   function fmtPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max){
     if (typeof window.formatLrPrice === "function")
       return window.formatLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max);
@@ -401,7 +429,11 @@
      return `<span class="ls-deal-type-badge" style="background:${col};">${esc(label)}</span>`;
    }
 
-  const state = { sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"", lodging_type:"" };
+  const requestedDisclosureScope = new URLSearchParams(location.search).get("disclosure_scope");
+  const state = {
+    sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"", lodging_type:"",
+    disclosure_scope: requestedDisclosureScope === "limited" ? "limited" : "public"
+  };
   let offset = 0;
   const PAGE = 20;
   let loading = false;
@@ -469,6 +501,23 @@
   document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
   });
+  document.querySelectorAll("[data-disclosure-scope]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.disclosure_scope = btn.dataset.disclosureScope;
+      chatFilterId = null;
+      document.querySelectorAll("[data-disclosure-scope]").forEach(other => {
+        const active = other === btn;
+        other.classList.toggle("active", active);
+        other.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      loadListings(true);
+    });
+  });
+  document.querySelectorAll("[data-disclosure-scope]").forEach(btn => {
+    const active = btn.dataset.disclosureScope === state.disclosure_scope;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
 
   function sortBoardRows(){
     if (!boardSortKey) return;
@@ -525,8 +574,11 @@
 
   function shareItem(item){
     const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
-    const shareUrl = new URL(`/building/${encodeURIComponent(item.building_id)}`, shareOrigin);
+    const shareUrl = item.is_limited_listing
+      ? new URL("/listings", shareOrigin)
+      : new URL(`/building/${encodeURIComponent(item.building_id)}`, shareOrigin);
     shareUrl.searchParams.set("listing", String(item.id));
+    if (item.is_limited_listing) shareUrl.searchParams.set("disclosure_scope", "limited");
     const url = shareUrl.toString();
     const title = item.building_name || "직거래 매물";
     const text  = `직거래 매물 - ${item.deal_type || ""} ${listingPriceText(item)}`;
@@ -650,6 +702,33 @@
       window.location.href = "/mypage?openChat=" + roomId;
     });
   }
+  const trackedWholeListingViews = new Set();
+  async function recordWholeListingViews(items){
+    const listingIds = (items || [])
+      .filter(item => (item.is_whole_listing || item.transaction_target === "whole")
+        && !trackedWholeListingViews.has(item.id))
+      .map(item => item.id);
+    if (!listingIds.length) return;
+    listingIds.forEach(id => trackedWholeListingViews.add(id));
+    try {
+      const res = await fetch("/api/listings/views", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listing_ids: listingIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error("view record failed");
+      (data.items || []).forEach(item => {
+        document.querySelectorAll(`[data-listing-id="${item.id}"] .whole-viewers`).forEach(el => {
+          el.textContent = `최근 5분 열람 ${Number(item.viewer_count || 0).toLocaleString()}명`;
+        });
+      });
+    } catch (err) {
+      // 일시 네트워크 오류면 다음 목록 새로고침에서 다시 시도한다.
+      listingIds.forEach(id => trackedWholeListingViews.delete(id));
+    }
+  }
 
   // ── 썸네일 HTML ─────────────────────────────────────────────────────
   function thumbHtml(photoUrl, isCard, photoCount){
@@ -697,13 +776,16 @@
       ? " · 총 " + Number(item.room_count).toLocaleString() + "실" : "";
     const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
     const bName = esc(item.building_name || "(건물명 없음)");
+    const buildingLabel = item.is_limited_listing
+      ? `<span class="ls-bldg-private" style="cursor:default;">${bName}</span>`
+      : `<span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>`;
 
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     tr.innerHTML = `
       <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount)}</td>
       <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type)}</td>
       <td class="td-bldg" title="${bName}">
-        <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>${operationStatusHtml(item)}
+        ${buildingLabel}${operationStatusHtml(item)}
       </td>
       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
       <td class="td-price">${esc(listingPriceText(item) + rooms)}</td>
@@ -727,7 +809,7 @@
       e.stopPropagation();
       goToCardView(item.id);
     });
-    tr.querySelector(".ls-bldg-link").addEventListener("click", () => {
+    tr.querySelector(".ls-bldg-link")?.addEventListener("click", () => {
       if (item.building_id) window.location.href = `/building/${item.building_id}`;
     });
     tr.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
@@ -757,7 +839,99 @@
   }
 
   // ── 카드형 카드 ─────────────────────────────────────────────────────
+  function renderWholeListingCard(item){
+    const div = document.createElement("div");
+    div.className = "ls-card-item whole-listing-card";
+    div.dataset.listingId = item.id;
+    const price = Number(item.price_krw || 0);
+    const loan = Number(item.succession_loan_krw || 0);
+    const hasFinance = item.financial_details_visible;
+    const acquisition = price > 0 && hasFinance
+      ? price - loan + (price * 0.061) : null;
+    const recentlyClosed = item.operation_status === "폐업" && item.closed_at
+      && Date.now() - new Date(item.closed_at).getTime() <= 90 * 24 * 60 * 60 * 1000;
+    const badges = [
+      item.is_urgent ? '<span class="whole-badge whole-badge-urgent">급매</span>' : "",
+      recentlyClosed ? '<span class="whole-badge whole-badge-closed">최근 폐업</span>' : "",
+      item.has_monthly_revenue ? '<span class="whole-badge whole-badge-revenue">매출정보 있음</span>' : ""
+    ].filter(Boolean).join("");
+    const roomText = item.room_count != null && Number(item.room_count) > 0
+      ? `객실 ${Number(item.room_count).toLocaleString()}실` : "객실 정보 없음";
+    const parkingText = item.parking_count != null
+      ? `주차 ${Number(item.parking_count).toLocaleString()}대` : "주차 정보 없음";
+    const landText = item.land_area_pyeong != null
+      ? `대지 ${Number(item.land_area_pyeong).toFixed(1)}평` : "대지 정보 없음";
+    const grossText = item.gross_area_pyeong != null
+      ? `연면적 ${Number(item.gross_area_pyeong).toFixed(1)}평` : "연면적 정보 없음";
+    const financeText = hasFinance
+      ? `실인수가 ${acquisition != null ? formatKrw(acquisition) : "-"} · 융자 ${item.has_succession_loan ? formatKrw(loan) : "없음"}`
+      : `실인수가 🔒 로그인하고 보기 · 융자${item.has_succession_loan ? " 🔒 로그인하고 보기" : " 없음"}`;
+    const revenueText = item.has_monthly_revenue
+      ? (hasFinance ? `월 매출 ${formatKrw(item.monthly_revenue_krw)}` : "월 매출 🔒 로그인하고 보기")
+      : "";
+    const chatTitle = myChattingIds.has(item.id) ? "채팅 이어하기" : "문의하기";
+    const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
+    const buildingLabel = item.is_limited_listing
+      ? `<span class="ls-card-bldg">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:#6B7280;color:#fff;">제한공개</span>${esc(item.building_name || "지역 비공개")}</span>`
+      : `<span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span>${esc(item.building_name || "(건물명 없음)")}</span>`;
+
+    div.innerHTML = `
+      <div class="ls-card-info">
+        <div class="ls-card-l1">${buildingLabel}${operationStatusHtml(item)}</div>
+        <div class="whole-badges">${badges}</div>
+        <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(listingPriceText(item))}</div>
+        <div class="whole-finance">${esc(financeText)}${revenueText ? ` · ${esc(revenueText)}` : ""}</div>
+        <div class="whole-metrics">${esc(roomText)} · ${esc(parkingText)}<br>${esc(landText)} · ${esc(grossText)}</div>
+        <div class="whole-viewers">최근 5분 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
+        <div class="whole-caution">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
+        <div class="ls-card-l4">
+          ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
+          <span class="ls-card-date">${esc(item.listing_date || "")}</span>
+          <span class="ls-card-actions">
+            <button type="button" class="listing-like-btn${item.liked ? " is-liked" : ""}" title="찜">${window.LivingstayListingIcons.heart(!!item.liked)}<span class="like-cnt">${item.like_count || 0}</span></button>
+            <button type="button" class="listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
+            <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
+          </span>
+        </div>
+      </div>
+      <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
+
+    div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
+      e.stopPropagation();
+      highlightCardItem(div);
+    });
+    div.querySelector(".ls-bldg-link")?.addEventListener("click", () => {
+      if (item.building_id) window.location.href = `/building/${item.building_id}?listing=${item.id}`;
+    });
+    div.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openChat(item.id);
+    });
+    div.querySelector(".listing-share-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      shareItem(item);
+    });
+    div.querySelector(".listing-like-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        const res = await fetch(`/api/listing-requests/${item.id}/like`, { method:"POST", credentials:"same-origin" });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          e.currentTarget.classList.toggle("is-liked", !!d.liked);
+          const count = e.currentTarget.querySelector(".like-cnt");
+          if (count) count.textContent = d.like_count;
+          const oldIcon = e.currentTarget.querySelector(".listing-icon");
+          if (oldIcon) oldIcon.replaceWith(document.createRange().createContextualFragment(window.LivingstayListingIcons.heart(!!d.liked)));
+        }
+      } catch(e2){}
+    });
+    return div;
+  }
+
   function renderCardItem(item){
+    if (item.is_whole_listing || item.transaction_target === "whole") {
+      return renderWholeListingCard(item);
+    }
     const div = document.createElement("div");
     div.className = "ls-card-item";
     div.dataset.listingId = item.id;
@@ -843,7 +1017,7 @@
 
     try {
       if (chatFilterId != null){
-        const res = await fetch("/api/listings?limit=50&offset=0", { credentials: "same-origin" });
+        const res = await fetch(`/api/listings?limit=50&offset=0&disclosure_scope=${encodeURIComponent(state.disclosure_scope)}`, { credentials: "same-origin" });
         const d = await res.json().catch(() => ({}));
         const filtered = (d.items || []).filter(it => it.id === chatFilterId);
         boardBody.innerHTML = "";
@@ -853,11 +1027,13 @@
            boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">해당 매물을 찾을 수 없습니다.</td></tr>`;
         } else {
           filtered.forEach(it => { boardBody.appendChild(renderBoardRow(it)); cardGrid.appendChild(renderCardItem(it)); });
+          recordWholeListingViews(filtered);
         }
         return;
       }
 
       const params = new URLSearchParams({ limit: PAGE, offset });
+      params.set("disclosure_scope", state.disclosure_scope);
       if (state.sido)       params.set("sido",       state.sido);
       if (state.sgg_nm)     params.set("sgg_nm",     state.sgg_nm);
       if (state.umd_nm)     params.set("umd_nm",     state.umd_nm);
@@ -888,6 +1064,7 @@
           boardBody.appendChild(renderBoardRow(item));
           cardGrid.appendChild(renderCardItem(item));
         });
+        recordWholeListingViews(d.items);
          sortBoardRows();
         offset      += d.items.length;
         totalLoaded += d.items.length;

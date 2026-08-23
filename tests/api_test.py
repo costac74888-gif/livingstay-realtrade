@@ -1209,7 +1209,7 @@ def _check_chat_phone_verification(client):
     cur = conn.cursor()
     seller_id = buyer_id = listing_id = room_id = None
     try:
-        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        cur.execute("SELECT id, building_name FROM master_buildings ORDER BY id LIMIT 1")
         building = cur.fetchone()
         if not building:
             return ["chat phone verification: 테스트용 master_buildings 행이 없습니다."]
@@ -2362,16 +2362,79 @@ def _check_whole_building_listing(client):
         detail_item = next(
             (item for item in ((detail.get_json() or {}).get("direct_listings") or [])
              if item.get("id") == listing_id),
+            None,
+        )
+        if detail.status_code != 200 or detail_item is not None:
+            failures.append("whole listing: 제한공개 매물이 건물상세 공개 목록에 노출됨")
+
+        cur.execute("SELECT sgg_text, umd_nm FROM master_buildings WHERE id=%s", (building["id"],))
+        location = cur.fetchone() or {}
+        limited_location = " ".join(
+            value for value in (location.get("sgg_text"), location.get("umd_nm")) if value
+        )
+        with client.session_transaction() as sess:
+            sess.clear()
+        public_items = (client.get("/api/listings?disclosure_scope=public").get_json() or {}).get("items") or []
+        limited_items = (client.get("/api/listings?disclosure_scope=limited").get_json() or {}).get("items") or []
+        public_item = next((item for item in public_items if item.get("id") == listing_id), None)
+        limited_item = next((item for item in limited_items if item.get("id") == listing_id), {})
+        if (
+            public_item is not None
+            or limited_item.get("building_name") != limited_location
+            or limited_item.get("building_id") is not None
+            or limited_item.get("monthly_revenue_krw") is not None
+            or limited_item.get("succession_loan_krw") is not None
+            or not limited_item.get("has_monthly_revenue")
+            or not limited_item.get("has_succession_loan")
+            or any(key in limited_item for key in (
+                "description", "photo_url", "photos", "building_info_overrides",
+                "key_money_krw", "annual_revenue_krw", "remodeling_info",
+                "phone_tail", "lat", "lng",
+            ))
+        ):
+            failures.append("whole listing: 제한공개 탭의 지역 익명화·비로그인 민감정보 마스킹이 누락됨")
+        geo = client.get(f"/api/buildings-geo?q={building.get('building_name') or ''}")
+        geo_item = next(
+            (item for item in ((geo.get_json() or {}).get("items") or [])
+             if item.get("id") == building["id"]),
             {},
         )
+        if geo.status_code != 200 or geo_item.get("listing_count") != 0:
+            failures.append("whole listing: 제한공개 매물이 지도 직거래 배지에서 역추적됨")
+        from app import _HOME_SHARE_TITLE
+        private_share_html = client.get(
+            f"/building/{building['id']}?listing={listing_id}"
+        ).get_data(as_text=True)
+        private_share_head = private_share_html.split("</head>", 1)[0]
+        building_name = building.get("building_name") or ""
+        if (_HOME_SHARE_TITLE not in private_share_head
+                or (building_name and building_name in private_share_head)):
+            failures.append("whole listing: 제한공개 공유 메타에 정확한 건물명이 노출됨")
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = user_id
+        logged_limited_items = (client.get("/api/listings?disclosure_scope=limited").get_json() or {}).get("items") or []
+        logged_limited_item = next((item for item in logged_limited_items if item.get("id") == listing_id), {})
+        if (logged_limited_item.get("monthly_revenue_krw") != 3000
+                or logged_limited_item.get("succession_loan_krw") != 120000
+                or any(key in logged_limited_item for key in (
+                    "description", "photo_url", "photos", "building_info_overrides",
+                    "key_money_krw", "annual_revenue_krw", "remodeling_info",
+                    "phone_tail", "lat", "lng",
+                ))):
+            failures.append("whole listing: 로그인 제한공개 응답의 허용 금융정보 또는 익명화가 잘못됨")
+        first_view = client.post("/api/listings/views", json={"listing_ids": [listing_id]})
+        second_view = client.post("/api/listings/views", json={"listing_ids": [listing_id]})
+        limited_after_view = (
+            client.get("/api/listings?disclosure_scope=limited").get_json() or {}
+        ).get("items") or []
+        limited_view_item = next((item for item in limited_after_view if item.get("id") == listing_id), {})
         if (
-            detail.status_code != 200
-            or detail_item.get("transaction_target") != "whole"
-            or detail_item.get("is_whole_listing") is not True
-            or "monthly_revenue_krw" in detail_item
-            or "succession_loan_krw" in detail_item
+            first_view.status_code != 200
+            or second_view.status_code != 200
+            or limited_view_item.get("viewer_count") != 1
         ):
-            failures.append("whole listing: 건물상세에서 거래대상 또는 제한공개 처리가 누락됨")
+            failures.append("whole listing: 제한공개 카드 열람자 기록 또는 고유 IP 집계가 누락됨")
 
         cur.execute("""SELECT transaction_target, deal_type, price_krw, succession_loan_krw,
                               operation_status, closed_at, is_urgent, disclosure_scope, building_info_overrides
@@ -2398,6 +2461,11 @@ def _check_whole_building_listing(client):
                 or changed.get("operation_status") != "영업중" or changed.get("disclosure_scope") != "public"):
             failures.append("whole listing: 통임대 수정 또는 매매 필드 초기화 실패")
 
+        public_items_after = (client.get("/api/listings?disclosure_scope=public").get_json() or {}).get("items") or []
+        public_item_after = next((item for item in public_items_after if item.get("id") == listing_id), {})
+        if public_item_after.get("viewer_count") != 1:
+            failures.append("whole listing: 최근 5분 고유 열람자 수 집계가 정확하지 않음")
+
         mine = client.get("/api/listing-requests/mine")
         mine_item = next((x for x in ((mine.get_json() or {}).get("items") or []) if x.get("id") == listing_id), {})
         if mine.status_code != 200 or mine_item.get("transaction_target") != "whole" or mine_item.get("key_money_krw") != 2500:
@@ -2416,6 +2484,7 @@ def _check_whole_building_listing(client):
     finally:
         try:
             if listing_id:
+                cur.execute("DELETE FROM page_views WHERE listing_request_id=%s", (listing_id,))
                 cur.execute("DELETE FROM listing_request_history WHERE listing_request_id=%s", (listing_id,))
                 cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
             if user_id:

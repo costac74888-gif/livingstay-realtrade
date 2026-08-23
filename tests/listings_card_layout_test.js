@@ -61,13 +61,47 @@ expect(
 const boardBlock = listings.slice(listings.indexOf("function renderBoardRow"), listings.indexOf("function renderCardItem"));
 const cardBlock = listings.slice(listings.indexOf("function renderCardItem"), listings.indexOf("// ── 목록 로드"));
 const detailBlock = main.slice(main.indexOf("function _renderListings"), main.indexOf("_renderListings(allListings)"));
-for (const [name, block] of [["게시판형", boardBlock], ["카드형", cardBlock], ["건물상세", detailBlock]]) {
+for (const [name, block] of [["게시판형", boardBlock], ["카드형", cardBlock]]) {
   expect(
     block.indexOf("LivingstayListingIcons.chat()") < block.indexOf("LivingstayListingIcons.share()") &&
     block.indexOf("LivingstayListingIcons.share()") < block.indexOf("LivingstayListingIcons.heart("),
     `${name} 행동 버튼 순서가 채팅 → 공유 → 찜이 아닙니다.`
   );
 }
+const normalDetailBlock = detailBlock.slice(detailBlock.indexOf("return `<div class=\"b-listing-card\""), detailBlock.indexOf("}).join(\"\");"));
+expect(
+  normalDetailBlock.indexOf("LivingstayListingIcons.chat()") < normalDetailBlock.indexOf("LivingstayListingIcons.share()") &&
+  normalDetailBlock.indexOf("LivingstayListingIcons.share()") < normalDetailBlock.indexOf("LivingstayListingIcons.heart("),
+  "기존 개별호실 건물상세 카드의 행동 버튼 순서가 바뀌었습니다."
+);
+for (const [name, block] of [
+  ["목록 건물전체", listings.slice(listings.indexOf("function renderWholeListingCard"), listings.indexOf("function renderCardItem"))],
+  ["건물상세 건물전체", detailBlock.slice(detailBlock.indexOf("function _wholeListingCard"), detailBlock.indexOf("const cards = listings.map"))],
+]) {
+  expect(
+    block.includes("급매") && block.includes("최근 폐업") && block.includes("매출정보 있음") &&
+    block.includes("실인수가") && block.includes("🔒 로그인하고 보기") &&
+    block.includes("최근 5분 열람") && block.includes("부대비용 기준의 참고값"),
+    `${name} 전용 카드의 거래조건·마스킹·열람자·유의문구가 누락되었습니다.`
+  );
+  expect(
+    block.indexOf("LivingstayListingIcons.heart(") < block.indexOf("LivingstayListingIcons.chat()") &&
+    block.indexOf("LivingstayListingIcons.chat()") < block.indexOf("LivingstayListingIcons.share()"),
+    `${name} 건물전체 카드의 행동 버튼 순서가 찜 → 채팅 → 공유가 아닙니다.`
+  );
+}
+expect(
+  listings.includes("/api/listings/views") && main.includes("/api/listings/views"),
+  "건물전체 카드의 실제 열람자 기록 API 호출이 없습니다."
+);
+expect(
+  listings.includes('data-disclosure-scope="public"') &&
+  listings.includes('data-disclosure-scope="limited"') &&
+  listings.includes('params.set("disclosure_scope", state.disclosure_scope)') &&
+  listings.includes("item.is_limited_listing") &&
+  listings.includes('shareUrl.searchParams.set("disclosure_scope", "limited")'),
+  "공개범위 탭 또는 제한공개 익명·공유 처리 연결이 없습니다."
+);
 
 expect(
   main.includes('<div class="side-card-title">직거래 매물</div>') &&

@@ -153,6 +153,21 @@ def _building_share_meta(building_id, listing_id=None):
     try:
         conn = get_conn()
         cur = conn.cursor()
+        if listing_id:
+            # 제한공개 건물전체는 추측한 /building/<id>?listing=<id> 링크에서도
+            # 건물명·주소·가격을 담은 OG 메타로 역추적되면 안 된다.
+            cur.execute("""
+                SELECT 1
+                FROM listing_requests
+                WHERE id = %s
+                  AND master_building_id = %s
+                  AND deal_mode = 'direct'
+                  AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+                  AND COALESCE(transaction_target, 'unit') = 'whole'
+                  AND COALESCE(disclosure_scope, 'limited') = 'limited'
+            """, [listing_id, building_id])
+            if cur.fetchone():
+                return meta
         cur.execute("""
             SELECT building_name,
                    COALESCE(NULLIF(road_address, ''), NULLIF(jibun_address, ''), NULLIF(sgg_text, '')) AS address
@@ -323,7 +338,7 @@ def ratelimit_handler(e):
 _PAGE_VIEW_SALT = os.environ.get("FLASK_SECRET_KEY", "") or "livingstay_pageview_salt_v1"
 
 
-def _record_page_view(path, resp_status):
+def _record_page_view(path, resp_status, listing_request_id=None):
     """실제 사용자 페이지(GET·200)만 page_views에 1건 기록한다.
     개인정보 최소수집: 방문자 IP는 원본 저장 없이 sha256(IP+salt)로만 남긴다.
     통계 기록 실패가 절대 실서비스 요청을 죽이지 않도록 전 구간을 try/except로 감싼다."""
@@ -336,8 +351,8 @@ def _record_page_view(path, resp_status):
         conn = get_conn()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO page_views (path, ip_hash, user_agent) VALUES (%s, %s, %s)",
-            [path[:500], ip_hash, ua],
+            "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) VALUES (%s, %s, %s, %s)",
+            [path[:500], listing_request_id, ip_hash, ua],
         )
         conn.commit()
     except Exception:
@@ -382,7 +397,10 @@ def _log_page_view(resp):
             # 정적 자산(favicon.ico, .js, .css 등)도 페이지 조회가 아니므로 제외
             is_asset = "." in path.rsplit("/", 1)[-1]
             if not excluded and not is_asset:
-                _record_page_view(path, resp.status_code)
+                listing_request_id = None
+                if re.fullmatch(r"/building/\d+", path):
+                    listing_request_id = request.args.get("listing", type=int)
+                _record_page_view(path, resp.status_code, listing_request_id)
     except Exception:
         pass
     return resp
@@ -861,7 +879,8 @@ def get_building(building_id):
                    THEN COALESCE(lr.price_krw_max, lr.price_krw)
                END AS room_price_max,
                TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
-               COALESCE(ll.like_count, 0) AS like_count
+                COALESCE(ll.like_count, 0) AS like_count,
+                COALESCE(pv.viewer_count, 0) AS viewer_count
         FROM listing_requests lr
         LEFT JOIN LATERAL (
             SELECT TRUE AS has_room
@@ -875,15 +894,28 @@ def get_building(building_id):
             SELECT listing_request_id, COUNT(*) AS like_count
             FROM listing_likes GROUP BY listing_request_id
         ) ll ON ll.listing_request_id = lr.id
+        LEFT JOIN (
+            SELECT listing_request_id, COUNT(DISTINCT ip_hash) AS viewer_count
+            FROM page_views
+            WHERE listing_request_id IS NOT NULL
+              AND viewed_at >= NOW() - INTERVAL '5 minutes'
+            GROUP BY listing_request_id
+        ) pv ON pv.listing_request_id = lr.id
         WHERE lr.master_building_id = %s
           AND lr.deal_mode = 'direct'
           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+          AND NOT (
+              COALESCE(lr.transaction_target, 'unit') = 'whole'
+              AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
+          )
         ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
         LIMIT 10
     """, [building_id])
     _direct_listings = []
     for _lr in cur.fetchall():
-        _d = _apply_public_business_listing_summary(dict(_lr))
+        _d = _apply_public_business_listing_summary(
+            dict(_lr), financial_details_visible=bool(session.get("user_id"))
+        )
         # 전화번호 마스킹 — 뒤 4자리만 노출
         _phone = _d.pop("verified_phone", None) or ""
         _d["phone_tail"] = _phone[-4:] if len(_phone) >= 4 else ""
@@ -2151,6 +2183,10 @@ def get_buildings_geo():
             WHERE lr.master_building_id = mb.id
               AND lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+              AND NOT (
+                  COALESCE(lr.transaction_target, 'unit') = 'whole'
+                  AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
+              )
         ) listing_counts ON TRUE
         WHERE {where_sql}
         ORDER BY mb.id
@@ -7246,8 +7282,8 @@ def format_listing_number(deal_mode, display_seq):
     return f"{label}{display_seq:06d}"
 
 
-def _apply_public_business_listing_summary(listing):
-    """공개 직거래 응답에서 사업주 장기방의 재고·호실수 노출을 제한한다."""
+def _apply_public_business_listing_summary(listing, financial_details_visible=False):
+    """공개 직거래 응답에서 사업주 재고와 건물전체 금융정보 노출을 정리한다."""
     transaction_target = listing.pop("transaction_target", None) or "unit"
     if transaction_target == "whole":
         listing["transaction_target"] = "whole"
@@ -7255,12 +7291,13 @@ def _apply_public_business_listing_summary(listing):
         listing["is_whole_listing"] = True
         disclosure_scope = listing.get("disclosure_scope") or "limited"
         listing["disclosure_scope"] = disclosure_scope
-        listing["sensitive_details_visible"] = disclosure_scope == "public"
-        if disclosure_scope != "public":
-            for key in ("succession_loan_krw", "key_money_krw", "monthly_revenue_krw",
-                        "annual_revenue_krw", "operation_status", "closed_at",
-                        "remodeling_info", "building_info_overrides"):
-                listing.pop(key, None)
+        listing["financial_details_visible"] = bool(financial_details_visible)
+        listing["has_succession_loan"] = listing.get("succession_loan_krw") is not None
+        listing["has_monthly_revenue"] = listing.get("monthly_revenue_krw") is not None
+        if not financial_details_visible:
+            listing["succession_loan_krw"] = None
+            listing["monthly_revenue_krw"] = None
+            listing["annual_revenue_krw"] = None
         return listing
     is_business = listing.pop("registrant_type", None) == "business"
     listing["transaction_target"] = "unit"
@@ -7274,6 +7311,26 @@ def _apply_public_business_listing_summary(listing):
         # 소유자·건물주 응답은 기존 모양을 유지한다.
         listing.pop("room_price_min", None)
         listing.pop("room_price_max", None)
+    return listing
+
+
+def _apply_limited_whole_listing_privacy(listing):
+    """제한공개 건물전체 매물은 지역·카드 표시에 필요한 값만 남긴다.
+
+    로그인 회원은 월 매출과 승계융자만 볼 수 있으며, 설명·사진·건물 보조정보처럼
+    정확한 건물을 역추적할 수 있는 원문은 어떤 공개 목록 응답에도 포함하지 않는다.
+    """
+    location_label = " ".join(
+        part for part in (listing.get("sgg_text"), listing.get("umd_nm")) if part
+    ).strip() or "지역 비공개"
+    for key in (
+        "building_id", "lat", "lng", "description", "photo_url", "photos",
+        "building_info_overrides", "key_money_krw", "annual_revenue_krw",
+        "remodeling_info", "verified_phone", "phone_tail",
+    ):
+        listing.pop(key, None)
+    listing["building_name"] = location_label
+    listing["is_limited_listing"] = True
     return listing
 
 
@@ -8050,7 +8107,8 @@ def public_listings():
       sgg_nm             — 시/군/구 (예: 경기도 수원시 팔달구) → mb.sgg_text 전체 일치
       umd_nm             — 읍/면/동 (예: 매산로1가) → mb.umd_nm 일치
       q                  — 건물명 ILIKE 검색
-      date_range         — '1month' / '3months' / '' (전체) — 최근 수정일 우선 기준
+       date_range         — '1month' / '3months' / '' (전체) — 최근 수정일 우선 기준
+       disclosure_scope   — 'public'(기본: 개별호실+전체공개) / 'limited'(제한공개 건물전체)
     """
     try:
         limit = min(int(request.args.get("limit") or 20), 50)
@@ -8064,11 +8122,27 @@ def public_listings():
     umd_nm_filter    = (request.args.get("umd_nm")    or "").strip()
     q_filter         = (request.args.get("q")         or "").strip()
     date_range       = (request.args.get("date_range") or "").strip()
+    disclosure_scope_filter = (request.args.get("disclosure_scope") or "public").strip()
+    if disclosure_scope_filter not in ("public", "limited"):
+        disclosure_scope_filter = "public"
+    viewer_user = current_user()
 
     conn = get_conn(); cur = conn.cursor()
     try:
         params = []
         clauses = []
+
+        if disclosure_scope_filter == "limited":
+            clauses.append(
+                "COALESCE(lr.transaction_target, 'unit') = 'whole' "
+                "AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'"
+            )
+        else:
+            # 개별호실은 공개범위 개념 없이 기존처럼 전체공개 탭에 포함한다.
+            clauses.append(
+                "NOT (COALESCE(lr.transaction_target, 'unit') = 'whole' "
+                "AND COALESCE(lr.disclosure_scope, 'limited') = 'limited')"
+            )
 
         if deal_type_filter and deal_type_filter in _LISTING_DEAL_TYPES:
             clauses.append("lr.deal_type = %s")
@@ -8087,7 +8161,7 @@ def public_listings():
             clauses.append("mb.umd_nm = %s")
             params.append(umd_nm_filter)
 
-        if q_filter:
+        if q_filter and disclosure_scope_filter != "limited":
             clauses.append("mb.building_name ILIKE %s")
             params.append(f"%{q_filter}%")
 
@@ -8126,9 +8200,20 @@ def public_listings():
                        THEN COALESCE(lr.price_krw_max, lr.price_krw)
                    END AS room_price_max,
                    TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
-                   COALESCE(ll.like_count, 0) AS like_count,
+                    COALESCE(ll.like_count, 0) AS like_count,
+                    COALESCE(pv.viewer_count, 0) AS viewer_count,
                    lp.photo_url,
-                   mb.id AS building_id, mb.building_name, mb.sgg_text, mb.lodging_type,
+                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.umd_nm, mb.lodging_type,
+                    mb.plat_area / 3.305785 AS land_area_pyeong,
+                    mb.tot_area / 3.305785 AS gross_area_pyeong,
+                    CASE WHEN mb.tot_pkng_cnt IS NULL AND mb.indr_auto_utcnt IS NULL
+                                   AND mb.oudr_auto_utcnt IS NULL AND mb.indr_mech_utcnt IS NULL
+                                   AND mb.oudr_mech_utcnt IS NULL
+                         THEN NULL
+                         ELSE COALESCE(mb.tot_pkng_cnt, 0) + COALESCE(mb.indr_auto_utcnt, 0)
+                            + COALESCE(mb.oudr_auto_utcnt, 0) + COALESCE(mb.indr_mech_utcnt, 0)
+                            + COALESCE(mb.oudr_mech_utcnt, 0)
+                    END AS parking_count,
                    mb.lat, mb.lng
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
@@ -8144,6 +8229,13 @@ def public_listings():
                 SELECT listing_request_id, COUNT(*) AS like_count
                 FROM listing_likes GROUP BY listing_request_id
             ) ll ON ll.listing_request_id = lr.id
+        LEFT JOIN (
+            SELECT listing_request_id, COUNT(DISTINCT ip_hash) AS viewer_count
+            FROM page_views
+            WHERE listing_request_id IS NOT NULL
+              AND viewed_at >= NOW() - INTERVAL '5 minutes'
+            GROUP BY listing_request_id
+        ) pv ON pv.listing_request_id = lr.id
              LEFT JOIN LATERAL (
                  SELECT
                      (array_agg(photo_url ORDER BY sort_order ASC, id ASC))[1] AS photo_url,
@@ -8167,13 +8259,18 @@ def public_listings():
         has_more = len(rows) > limit
         items = []
         for r in rows[:limit]:
-            d = _apply_public_business_listing_summary(dict(r))
+            d = _apply_public_business_listing_summary(
+                dict(r), financial_details_visible=bool(viewer_user)
+            )
+            if disclosure_scope_filter == "limited":
+                d = _apply_limited_whole_listing_privacy(d)
             ph = d.pop("verified_phone", "") or ""
-            d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
+            if disclosure_scope_filter != "limited":
+                d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
             d["listing_number"] = format_listing_number(d.pop("deal_mode", "direct"), d.pop("display_seq", None))
             d["liked"] = False
             items.append(d)
-        viewer = session.get("user") or {}
+        viewer = viewer_user or {}
         if viewer.get("id") and items:
             listing_ids = [item["id"] for item in items]
             cur.execute(
@@ -8187,6 +8284,73 @@ def public_listings():
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "items": items, "has_more": has_more})
+
+
+@app.route("/api/listings/views", methods=["POST"])
+@limiter.limit("60 per minute")
+def record_listing_views():
+    """목록에서 실제로 표시된 건물전체 매물을 최근 열람자로 기록한다.
+
+    제한공개 카드도 건물 식별자를 넘기지 않고 이 API의 매물 ID만 사용한다.
+    응답에는 건물·주소 정보 없이 갱신된 고유 IP 수만 반환한다.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    raw_ids = data.get("listing_ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"ok": False, "message": "listing_ids 배열이 필요합니다."}), 400
+    listing_ids = []
+    for value in raw_ids[:50]:
+        try:
+            listing_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if listing_id > 0 and listing_id not in listing_ids:
+            listing_ids.append(listing_id)
+    if not listing_ids:
+        return jsonify({"ok": True, "items": []})
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id
+            FROM listing_requests
+            WHERE id = ANY(%s)
+              AND deal_mode = 'direct'
+              AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(transaction_target, 'unit') = 'whole'
+        """, [listing_ids])
+        visible_ids = [row["id"] for row in cur.fetchall()]
+        if not visible_ids:
+            return jsonify({"ok": True, "items": []})
+
+        ip = get_client_ip() or ""
+        ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
+        ua = (request.headers.get("User-Agent") or "")[:500]
+        cur.executemany(
+            "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) "
+            "VALUES ('/listings', %s, %s, %s)",
+            [(listing_id, ip_hash, ua) for listing_id in visible_ids],
+        )
+        cur.execute("""
+            SELECT listing_request_id, COUNT(DISTINCT ip_hash) AS viewer_count
+            FROM page_views
+            WHERE listing_request_id = ANY(%s)
+              AND viewed_at >= NOW() - INTERVAL '5 minutes'
+            GROUP BY listing_request_id
+        """, [visible_ids])
+        counts = {row["listing_request_id"]: row["viewer_count"] for row in cur.fetchall()}
+        conn.commit()
+        return jsonify({
+            "ok": True,
+            "items": [
+                {"id": listing_id, "viewer_count": int(counts.get(listing_id, 0))}
+                for listing_id in visible_ids
+            ],
+        })
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/chat/my-listing-ids")
