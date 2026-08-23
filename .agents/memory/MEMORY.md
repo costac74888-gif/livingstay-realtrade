@@ -37,4 +37,5 @@
 - [Postgres no-match queries](postgres-no-match-queries.md) — PostgreSQL TEXT 바인딩에 NUL 센티널을 쓰지 말고 SQL FALSE 조건으로 의도적 0건을 표현한다.
 - [Long-running sync workflow execution](long-running-sync-workflows.md) — ShellExec에서 start_new_session으로 띄운 배치는 셸 종료 때 사라질 수 있으므로 지속 수집은 Replit 워크플로로 실행한다.
 - [관리자 영업상태 주소 매칭](lodging-status-filter.md) — 정상·폐업 필터는 수동 연결 ID가 아닌 목록과 동일한 도로명 우선·지번 보조 매칭을 사용한다.
+- [숙박업 통합 지역 표기 정규화](lodging-merged-region-normalization.md) — 전남광주통합특별시 원본 주소는 자치구에 따라 광주·전남으로 나눠 매칭한다.
 - [건물전체 매물 체크리스트 공개 범위](whole-listing-checklist-privacy.md) — 제한공개 매물에는 자동 건물값도 제공하지 않아 익명화가 우회되지 않게 한다.

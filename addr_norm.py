@@ -11,6 +11,7 @@ import re
 _REGION_ALIASES = [
     ("강원특별자치도", "강원도"),
     ("전북특별자치도", "전라북도"),
+    ("전라남도", "전남"),
     ("제주특별자치도", "제주도"),
     ("제주도", "제주도"),
     ("서울특별시", "서울"),
@@ -22,6 +23,26 @@ _REGION_ALIASES = [
     ("울산광역시", "울산"),
     ("세종특별자치시", "세종"),
 ]
+
+# 일부 숙박업 원본에는 광주와 전남이 합쳐진 과거/통합 표기(전남광주통합특별시)가
+# 남아 있다. 뒤의 시군구가 광주 5개 자치구이면 광주, 나머지는 전남으로 복원한다.
+_GWANGJU_JACHIGU = frozenset({"동구", "서구", "남구", "북구", "광산구"})
+_MERGED_GWANGJU_JEONNAM = "전남광주통합특별시"
+
+
+def _normalize_region_prefix(value: str) -> str:
+    """주소 선두의 광역명 표기 편차를 매칭용 짧은 이름으로 통일한다."""
+    s = value or ""
+    if s.startswith(_MERGED_GWANGJU_JEONNAM):
+        rest = s[len(_MERGED_GWANGJU_JEONNAM):].lstrip()
+        first_locality = rest.split(None, 1)[0] if rest else ""
+        s = ("광주" if first_locality in _GWANGJU_JACHIGU else "전남") + (
+            f" {rest}" if rest else ""
+        )
+    for old, new in _REGION_ALIASES:
+        if s.startswith(old):
+            return new + s[len(old):]
+    return s
 
 # 도로명주소에서 '도로명 + 건물번호'까지만 남기기 위한 패턴:
 # 예) "서울특별시 강서구 마곡중앙6로 76-3(마곡동), 101동 202호" → "... 마곡중앙6로 76-3"
@@ -74,11 +95,7 @@ def normalize_road_prefix(addr):
     m = _ROAD_PREFIX_RE.match(original)
     if not m:
         return None
-    s = _restore_parenthetical_locality(m.group(1), original)
-    for old, new in _REGION_ALIASES:
-        if s.startswith(old):
-            s = new + s[len(old):]
-            break
+    s = _normalize_region_prefix(_restore_parenthetical_locality(m.group(1), original))
     # 공백·쉼표·점 등 제거 (숫자/한글/영문/하이픈만 유지)
     s = re.sub(r"[^0-9가-힣A-Za-z-]", "", s)
     return s.lower() or None
@@ -112,11 +129,7 @@ def normalize_jibun_prefix(addr):
     m = _JIBUN_PREFIX_RE.match(s)
     if not m:
         return None
-    s = m.group(1)
-    for old, new in _REGION_ALIASES:
-        if s.startswith(old):
-            s = new + s[len(old):]
-            break
+    s = _normalize_region_prefix(m.group(1))
     s = re.sub(r"[^0-9가-힣A-Za-z-]", "", s)
     return s.lower() or None
 

@@ -150,8 +150,10 @@ def check_datalab_rate(payload):
         return "응답이 성공 객체가 아님"
     if not isinstance(payload.get("items"), list):
         return "'items'가 배열이 아님"
-    if payload.get("general_excluded") is not True:
-        return "일반숙박 제외 기준이 표시되지 않음"
+    if payload.get("general_excluded") is not False:
+        return "일반숙박 포함 기준이 표시되지 않음"
+    if payload.get("rate_basis") != "type_weighted":
+        return "일반숙박 포함 유형별 산식이 표시되지 않음"
     rate = payload.get("national_rate")
     if rate is not None and not isinstance(rate, (int, float)):
         return "'national_rate'가 숫자 또는 null이 아님"
@@ -2621,28 +2623,34 @@ def _check_datalab_stats(client):
                 break
 
         report_rate = client.get("/api/stats/report-rate-by-sido").get_json() or {}
-        if report_rate.get("general_excluded") is not True:
-            failures.append("데이터랩 시도별 신고율: 일반숙박 제외 기준이 없음")
+        if report_rate.get("general_excluded") is not False:
+            failures.append("데이터랩 시도별 신고율: 일반숙박 포함 기준이 없음")
+        if report_rate.get("rate_basis") != "type_weighted":
+            failures.append("데이터랩 시도별 신고율: 유형별 산식이 없음")
+        canonical_sidos = [item.get("sido") for item in report_rate.get("items") or []]
+        if (
+            len(canonical_sidos) != len(set(canonical_sidos))
+            or any(sido in {"서울", "광주", "울산", "전남"} for sido in canonical_sidos)
+        ):
+            failures.append("데이터랩 시도별 신고율: 시도 표기가 공식 명칭으로 통합되지 않음")
         for item in report_rate.get("items") or []:
             units = int(item.get("total_units") or 0)
             biz_units = int(item.get("biz_units") or 0)
             expected_rate = round(biz_units / units * 100, 1) if units else None
             if (
                 item.get("rate") != expected_rate
-                or biz_units > units
                 or (item.get("rate") is not None and not 0 <= item["rate"] <= 100)
             ):
-                failures.append("데이터랩 시도별 신고율: 가중평균 또는 100% 상한이 잘못됨")
+                failures.append("데이터랩 시도별 신고율: 유형별 가중평균 계산이 잘못됨")
                 break
         national_units = sum(int(item.get("total_units") or 0) for item in report_rate.get("items") or [])
         national_biz_units = sum(int(item.get("biz_units") or 0) for item in report_rate.get("items") or [])
         expected_national_rate = round(national_biz_units / national_units * 100, 1) if national_units else None
         if (
             report_rate.get("national_rate") != expected_national_rate
-            or national_biz_units > national_units
             or (report_rate.get("national_rate") is not None and not 0 <= report_rate["national_rate"] <= 100)
         ):
-            failures.append("데이터랩 시도별 신고율: 전국 가중평균 또는 100% 상한이 잘못됨")
+            failures.append("데이터랩 시도별 신고율: 전국 유형별 가중평균 계산이 잘못됨")
 
         public_stats = client.get("/api/stats/lodging-full-table").get_json() or {}
 
@@ -2656,11 +2664,8 @@ def _check_datalab_stats(client):
             session["admin"] = True
         admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
         total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
-        legacy_rooms = int(total_row.get("report_rate_room_count") or 0)
-        legacy_units = int(total_row.get("report_rate_units") or 0)
-        legacy_rate = round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None
-        if report_rate.get("national_rate") != legacy_rate:
-            failures.append("데이터랩 시도별 신고율: 일반 제외 전국 기준선이 관리자 원본과 다름")
+        if report_rate.get("national_rate") != total_row.get("report_rate"):
+            failures.append("데이터랩 시도별 신고율: 일반 포함 전국 기준선이 관리자 원본과 다름")
         admin_rows = admin_stats.get("rows") or []
         admin_required = {
             "type", "building_count", "units", "favorites", "listing_requests",

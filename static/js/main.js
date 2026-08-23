@@ -2326,9 +2326,9 @@ function renderDataLabRate(data){
   const marker = Number.isFinite(nationalRate) ? Math.max(0, Math.min(nationalRate, 100)) : null;
   return `
     <div class="datalab-heading">
-      <strong>⑤ 📈 영업신고율</strong><span class="datalab-caption">일반숙박 제외</span>
+      <strong>⑤ 📈 영업신고율</strong><span class="datalab-caption">일반숙박 포함</span>
     </div>
-    <div class="datalab-rate-summary">가중평균: 영업신고 객실 수 ÷ 건물 호실 수</div>
+    <div class="datalab-rate-summary">유형별 기준: 일반은 영업신고업체 ÷ 건물수, 나머지는 영업신고호실 ÷ 건물 호실수</div>
     ${items.map(item => {
       const rate = Math.max(0, Math.min(Number(item.rate) || 0, 100));
       return `<div class="datalab-rate-row">

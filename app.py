@@ -1809,6 +1809,28 @@ def _sido_norm_sql(col_expr: str) -> str:
     END"""
 
 
+_SIDO_DISPLAY_NAMES = {
+    "서울": "서울특별시", "부산": "부산광역시", "대구": "대구광역시",
+    "인천": "인천광역시", "광주": "광주광역시", "대전": "대전광역시",
+    "울산": "울산광역시", "세종": "세종특별자치시", "경기": "경기도",
+    "강원": "강원특별자치도", "충북": "충청북도", "충남": "충청남도",
+    "전북": "전북특별자치도", "전남": "전라남도", "경북": "경상북도",
+    "경남": "경상남도", "제주": "제주특별자치도",
+}
+_GWANGJU_JACHIGU = frozenset({"동구", "서구", "남구", "북구", "광산구"})
+
+
+def _canonical_sido_name(sgg_text) -> str:
+    """주소 첫 토큰을 데이터랩·지도와 같은 공식 시도명으로 표시한다."""
+    parts = str(sgg_text or "").strip().split()
+    if not parts:
+        return ""
+    first = parts[0]
+    if first == "전남광주통합특별시":
+        return "광주광역시" if len(parts) > 1 and parts[1] in _GWANGJU_JACHIGU else "전라남도"
+    return _SIDO_DISPLAY_NAMES.get(sido_core(first), first)
+
+
 @app.route("/api/buildings-cluster")
 @limiter.limit("60 per minute")
 def get_buildings_cluster():
@@ -20453,7 +20475,7 @@ def _matched_lodging_by_region(*, exclude_general=False):
         jibun_matches = {}
         if road_norms or jibun_norms:
             cur.execute("""
-                SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+                SELECT permit_number, room_count, biz_status_name, hygiene_type, road_norm, jibun_norm
                 FROM lodging_registry
                 WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
             """, [list(road_norms) or ["__none__"], list(jibun_norms) or ["__none__"]])
@@ -20466,6 +20488,7 @@ def _matched_lodging_by_region(*, exclude_general=False):
         region_map = {}
         sido_map = {}
         all_permits = {}
+        building_permits = {}
         for building, road_key, jibun_key in building_keys:
             region = (building["sgg_text"] or "").strip()
             matches = road_matches.get(road_key) if road_key else None
@@ -20473,6 +20496,7 @@ def _matched_lodging_by_region(*, exclude_general=False):
                 matches = jibun_matches.get(jibun_key) if jibun_key else None
             if not matches:
                 continue
+            building_permits[building["id"]] = matches
             for permit, lodging in matches.items():
                 all_permits.setdefault(permit, lodging)
                 if region:
@@ -20485,7 +20509,10 @@ def _matched_lodging_by_region(*, exclude_general=False):
         capped_report_rooms_by_building = _capped_active_report_rooms_by_building(
             buildings, road_matches, jibun_matches
         ) if exclude_general else {}
-        result = (buildings, region_map, sido_map, all_permits, capped_report_rooms_by_building)
+        result = (
+            buildings, region_map, sido_map, all_permits,
+            capped_report_rooms_by_building, building_permits,
+        )
         _matched_lodging_region_cache[cache_key] = {"ts": now, "data": result}
         return result
     finally:
@@ -20497,7 +20524,7 @@ def _matched_lodging_by_region(*, exclude_general=False):
 @limiter.limit("20 per minute")
 def stats_closure_rate_by_region():
     """시군구별 매칭 숙박업체 폐업률 TOP5(표본 5건 이상)."""
-    _, region_map, _, _, _ = _matched_lodging_by_region()
+    _, region_map, _, _, _, _ = _matched_lodging_by_region()
     items = []
     for region, permits in region_map.items():
         total_count = len(permits)
@@ -20520,35 +20547,74 @@ def stats_closure_rate_by_region():
 @app.route("/api/stats/report-rate-by-sido")
 @limiter.limit("20 per minute")
 def stats_report_rate_by_sido():
-    """일반숙박을 제외한 시도별 가중평균 영업신고율."""
-    buildings, _, _, _, capped_report_rooms_by_building = _matched_lodging_by_region(
+    """일반숙박을 포함한 시도별 유형별 기준 영업신고율."""
+    room_buildings, _, _, _, capped_report_rooms_by_building, _ = _matched_lodging_by_region(
         exclude_general=True
     )
-    units_by_sido = {}
-    building_count_by_sido = {}
-    capped_biz_units_by_sido = {}
-    for building in buildings:
-        sido = (building["sgg_text"] or "").strip().split(" ")[0]
+    all_buildings, _, _, _, _, building_permits_by_id = _matched_lodging_by_region(
+        exclude_general=False
+    )
+    room_units_by_sido = {}
+    room_biz_units_by_sido = {}
+    room_building_count_by_sido = {}
+    general_building_count_by_sido = {}
+    general_biz_count_by_sido = {}
+    for building in room_buildings:
+        sido = _canonical_sido_name(building["sgg_text"])
         if not sido:
             continue
-        units_by_sido[sido] = units_by_sido.get(sido, 0) + int(building["units"] or 0)
-        building_count_by_sido[sido] = building_count_by_sido.get(sido, 0) + 1
-        capped_biz_units_by_sido[sido] = (
-            capped_biz_units_by_sido.get(sido, 0)
+        room_units_by_sido[sido] = room_units_by_sido.get(sido, 0) + int(building["units"] or 0)
+        room_building_count_by_sido[sido] = room_building_count_by_sido.get(sido, 0) + 1
+        room_biz_units_by_sido[sido] = (
+            room_biz_units_by_sido.get(sido, 0)
             + capped_report_rooms_by_building.get(building["id"], 0)
         )
 
-    # 전국 평균은 시도 정보가 없는 유효 건물까지 포함한다. 시도별 행만 지역명 없는
-    # 건물을 표시하지 않으며, 기준선은 관리자 전체 통계와 같은 전체 모집단으로 계산한다.
-    total_units = sum(int(building["units"] or 0) for building in buildings)
-    total_biz_units = sum(capped_report_rooms_by_building.values())
+    # 일반숙박은 건물 호실수가 객실 모집단과 다르므로 영업신고업체 ÷ 건물수로 계산한다.
+    # 동일 신고번호가 여러 건물 주소에 매칭되더라도 시도별 분자는 중복 제거한다.
+    general_permits_by_sido = {}
+    total_general_buildings = 0
+    total_general_permits = set()
+    total_room_units = 0
+    total_room_biz_units = 0
+    for building in all_buildings:
+        sido = _canonical_sido_name(building["sgg_text"])
+        is_general = building.get("lodging_type") == REPORT_RATE_EXCLUDED_LODGING_TYPE
+        if is_general:
+            total_general_buildings += 1
+            if sido:
+                general_building_count_by_sido[sido] = (
+                    general_building_count_by_sido.get(sido, 0) + 1
+                )
+            active_general_permits = {
+                permit_number
+                for permit_number, permit in (building_permits_by_id.get(building["id"]) or {}).items()
+                if "폐업" not in (permit.get("biz_status_name") or "")
+            }
+            total_general_permits.update(active_general_permits)
+            if sido:
+                general_permits_by_sido.setdefault(sido, set()).update(active_general_permits)
+        else:
+            total_room_units += int(building["units"] or 0)
+            total_room_biz_units += capped_report_rooms_by_building.get(building["id"], 0)
+
+    for sido, permits in general_permits_by_sido.items():
+        general_biz_count_by_sido[sido] = len(permits)
+
+    total_units = total_room_units + total_general_buildings
+    total_biz_units = total_room_biz_units + len(total_general_permits)
+    all_sidos = set(room_units_by_sido) | set(general_building_count_by_sido)
     items = []
-    for sido in sorted(units_by_sido):
-        biz_units = capped_biz_units_by_sido.get(sido, 0)
-        units = units_by_sido.get(sido, 0)
+    for sido in sorted(all_sidos):
+        room_units = room_units_by_sido.get(sido, 0)
+        room_biz_units = room_biz_units_by_sido.get(sido, 0)
+        general_buildings = general_building_count_by_sido.get(sido, 0)
+        general_biz = general_biz_count_by_sido.get(sido, 0)
+        units = room_units + general_buildings
+        biz_units = room_biz_units + general_biz
         items.append({
             "sido": sido,
-            "building_count": building_count_by_sido.get(sido, 0),
+            "building_count": room_building_count_by_sido.get(sido, 0) + general_buildings,
             "total_units": units,
             "biz_units": biz_units,
             "rate": round(biz_units / units * 100, 1) if units else None,
@@ -20561,7 +20627,8 @@ def stats_report_rate_by_sido():
         "ok": True,
         "items": items,
         "national_rate": round(total_biz_units / total_units * 100, 1) if total_units else None,
-        "general_excluded": True,
+        "general_excluded": False,
+        "rate_basis": "type_weighted",
     })
 
 
@@ -20590,7 +20657,7 @@ def stats_registration_rate():
         })
     # 캐시 미스도 데이터랩·관리자 통계와 같은 주소 우선 매칭과 건물별 상한 규칙을
     # 사용한다. 별도 SQL 폴백을 두면 중복 주소의 신고 객실이 다시 중복 집계된다.
-    report_buildings, _, _, _, capped_rooms_by_building = _matched_lodging_by_region(
+    report_buildings, _, _, _, capped_rooms_by_building, _ = _matched_lodging_by_region(
         exclude_general=True
     )
     buildings = len(report_buildings)
