@@ -2198,12 +2198,14 @@ function renderRecentChips(){
   }).join("");
 }
 
-// ── 데이터랩: ① 전국숙박업통계 + 시장 신호 4종 ─────────────────────────────
+// ── 데이터랩: ① 전국숙박업통계 + 시장 신호 5종 ─────────────────────────────
 let dataLabRequestSequence = 0;
 let dataLabFetchController = null;
 const DATA_LAB_CACHE_TTL_MS = 600000;
+const DATA_LAB_CONSIGN_REFRESH_MS = 30000;
 const dataLabResponseCache = new Map();
 let dataLabActiveKey = null;
+let dataLabConsignRefreshTimer = null;
 
 function dataLabNum(value){
   return Number(value || 0).toLocaleString("ko-KR");
@@ -2390,6 +2392,38 @@ function renderDataLabClosure(data){
        </div>`).join("")}</div>`;
 }
 
+function renderDataLabConsign(data){
+  const items = Array.isArray(data.items) ? data.items : [];
+  const total = data && data.total && typeof data.total === "object" ? data.total : null;
+  if (!items.length || !total) return '<div class="side-empty">영업신고현황 데이터가 없습니다.</div>';
+  const partialBadge = data.is_partial === true
+    ? '<span class="datalab-partial-badge">수집중</span>'
+    : "";
+  const renderRate = value => value == null
+    ? "-"
+    : `<strong class="datalab-consign-rate">${Number(value).toFixed(1)}%</strong>`;
+  const renderRow = (item, label) => `
+    <tr>
+      <td>${escapeHtml(label)}</td>
+      <td>${dataLabNum(item.building_cnt)}</td>
+      <td>${dataLabNum(item.total_units)}</td>
+      <td>${dataLabNum(item.active_biz_cnt)}</td>
+      <td>${dataLabNum(item.active_room_cnt)}</td>
+      <td>${renderRate(item.report_rate)}</td>
+    </tr>`;
+  return `
+    <div class="datalab-heading">
+      <div class="datalab-heading-main"><strong>⑤ 📋 생활숙박시설 영업신고현황</strong>${partialBadge}</div>
+    </div>
+    <div class="datalab-table-wrap">
+      <table class="datalab-table datalab-consign-table">
+        <thead><tr><th>시도</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th></tr></thead>
+        <tbody>${items.map(item => renderRow(item, item.sido || "-")).join("")}</tbody>
+        <tfoot>${renderRow(total, "합계")}</tfoot>
+      </table>
+    </div>`;
+}
+
 function setDataLabActive(key){
   dataLabActiveKey = key;
   document.querySelectorAll("[data-datalab-key]").forEach(button => {
@@ -2397,6 +2431,19 @@ function setDataLabActive(key){
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
+  if (dataLabConsignRefreshTimer) {
+    clearInterval(dataLabConsignRefreshTimer);
+    dataLabConsignRefreshTimer = null;
+  }
+  if (key === "consign") {
+    dataLabConsignRefreshTimer = setInterval(() => {
+      if (document.visibilityState === "visible" && !dataLabFetchController) {
+        // 수집 완료 뒤 서버 무효화는 브라우저 Map을 직접 비우지 못하므로,
+        // 열린 탭의 30초 폴링은 공통 TTL을 우회해 새 stale 응답을 받아온다.
+        loadDataLab("consign", "up", { background: true, forceRefresh: true });
+      }
+    }, DATA_LAB_CONSIGN_REFRESH_MS);
+  }
 }
 
 function setDataLabTabLoading(key, loading, requestId){
@@ -2456,6 +2503,7 @@ async function loadDataLab(key, option = "up", {
     change: `/api/stats/price-change-top?direction=${encodeURIComponent(option)}`,
     highest: `/api/stats/highest-price-top?order=${encodeURIComponent(option === "lowest" ? "lowest" : "highest")}`,
     closure: "/api/stats/closure-rate-by-region",
+    consign: "/api/stats/consign-by-sido",
   };
   const url = urls[key];
   if (!url) return;
@@ -2470,6 +2518,7 @@ async function loadDataLab(key, option = "up", {
     change: renderDataLabChange,
     highest: renderDataLabHighest,
     closure: renderDataLabClosure,
+    consign: renderDataLabConsign,
   };
   if (!forceRefresh && cached && Date.now() - cached.ts < cacheTtl) {
     content.innerHTML = renders[key](cached.data);

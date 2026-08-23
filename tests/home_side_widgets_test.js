@@ -75,7 +75,7 @@ expect(
   consignRender.includes("<th>시도</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th>") &&
   consignRender.includes("<tfoot>") &&
   consignRender.includes("datalab-partial-badge") &&
-  consignRender.includes("건물마스터 + 행안부 영업신고 기준"),
+  !consignRender.includes("건물마스터 + 행안부 영업신고 기준"),
   "영업신고현황이 합계행 포함 단일 테이블로 렌더링되지 않았습니다."
 );
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");

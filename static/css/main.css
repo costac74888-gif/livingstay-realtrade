@@ -427,6 +427,7 @@
   .datalab-table th:first-child,.datalab-table td:first-child{text-align:left;}
   .datalab-table td{padding:6px 4px; border-top:1px solid var(--line); color:var(--ink); text-align:right; white-space:nowrap;}
   .datalab-table tfoot th,.datalab-table tfoot td{border-top:2px solid var(--ink); background:#fff; font-weight:800;}
+  .datalab-consign-rate{color:var(--primary); font-weight:800;}
   .datalab-table tr:nth-child(even) td{background:#FCFBF8;}
   .datalab-table .datalab-sub-row td{background:#FAFAFA; color:var(--ink-soft); font-size:9.5px;}
   .datalab-list{display:flex; flex-direction:column; border-top:1px solid var(--line);}
