@@ -170,7 +170,8 @@ CHECKS = [
     ("/api/stats/lodging-full-table", check_datalab_lodging_table),
     ("/api/stats/price-change-top?direction=up", check_datalab_items),
     ("/api/stats/price-change-top?direction=down", check_datalab_items),
-    ("/api/stats/highest-price-top", check_datalab_items),
+    ("/api/stats/highest-price-top?order=highest", check_datalab_items),
+    ("/api/stats/highest-price-top?order=lowest", check_datalab_items),
     ("/api/stats/closure-rate-by-region", check_datalab_items),
     ("/api/stats/report-rate-by-sido", check_datalab_rate),
 ]
@@ -2582,11 +2583,16 @@ def _check_datalab_stats(client):
             if changes != ordered:
                 failures.append(f"데이터랩 가격변동 {direction}: 변동률 정렬이 잘못됨")
 
-        highest = client.get("/api/stats/highest-price-top").get_json() or {}
-        prices = [int(item.get("price") or 0) for item in highest.get("items") or []]
-        ranked_items.extend(highest.get("items") or [])
-        if any(price <= 0 for price in prices) or prices != sorted(prices, reverse=True):
-            failures.append("데이터랩 최고가: 양수 가격 내림차순 TOP이 아님")
+        for order, reverse, label in (("highest", True, "최고가"), ("lowest", False, "최저가")):
+            highest = client.get(f"/api/stats/highest-price-top?order={order}").get_json() or {}
+            prices = [int(item.get("price") or 0) for item in highest.get("items") or []]
+            ranked_items.extend(highest.get("items") or [])
+            if (
+                highest.get("order") != order
+                or any(price <= 0 for price in prices)
+                or prices != sorted(prices, reverse=reverse)
+            ):
+                failures.append(f"데이터랩 {label}: 양수 가격 정렬 TOP이 아님")
 
         ranking = client.get("/api/ranking").get_json() or {}
         ranked_items.extend(ranking.get("price_highs") or [])

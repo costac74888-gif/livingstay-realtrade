@@ -2152,6 +2152,16 @@ function dataLabArea(value){
   return value == null || !Number.isFinite(Number(value)) ? "-" : `${Number(value).toFixed(1)}㎡`;
 }
 
+function dataLabSimpleAddress(item){
+  const shortAddress = [item.sgg_nm, item.umd_nm].filter(Boolean).join(" ");
+  return escapeHtml(shortAddress || item.address || "-");
+}
+
+function dataLabTransactionMeta(item, date){
+  const dateText = date ? ` · ${escapeHtml(date)}` : "";
+  return `${dataLabSimpleAddress(item)}${dateText}`;
+}
+
 function dataLabBuildingButton(item){
   const name = escapeHtml(item.building_name || "건물명 미확인");
   const buildingId = Number(item.building_id);
@@ -2239,7 +2249,7 @@ function renderDataLabVolume(data){
     </div>
     ${dataLabRankList(
       items,
-      item => `${escapeHtml(item.address || "-")} · 최근 ${escapeHtml(item.latest_date || "-")}`,
+      item => dataLabTransactionMeta(item, item.latest_date),
       item => `${dataLabNum(item.deal_count)}건`
     )}`;
 }
@@ -2261,20 +2271,29 @@ function renderDataLabChange(data){
     </div>
     ${dataLabRankList(
       items,
-      item => `${dataLabArea(item.area_sqm)} · ${dataLabNum(item.first_price)}만원 → ${dataLabNum(item.latest_price)}만원`,
+      item => `${dataLabTransactionMeta(item, item.latest_deal_date)} · ${dataLabArea(item.area_sqm)}`,
       item => `${item.change_percent > 0 ? "+" : ""}${item.change_percent}%`
     )}`;
 }
 
 function renderDataLabHighest(data){
+  const order = data.order === "lowest" ? "lowest" : "highest";
   const items = Array.isArray(data.items) ? data.items : [];
+  const label = order === "highest" ? "최고가" : "최저가";
   return `
     <div class="datalab-heading">
-      <strong>④ 💰 최고가 건물 TOP</strong><span class="datalab-caption">역대 최고 거래가</span>
+      <strong>④ 💰 ${label} 건물 TOP</strong><span class="datalab-caption">역대 ${label} 거래가</span>
+    </div>
+    <div class="datalab-toolbar">
+      <span class="datalab-caption">${label} 기준</span>
+      <span class="datalab-toggle">
+        <button type="button" data-datalab-price-order="highest" class="${order === "highest" ? "active" : ""}">최고</button>
+        <button type="button" data-datalab-price-order="lowest" class="${order === "lowest" ? "active" : ""}">최저</button>
+      </span>
     </div>
     ${dataLabRankList(
       items,
-      item => `${escapeHtml(item.address || "-")} · ${escapeHtml(item.deal_date || "-")}`,
+      item => dataLabTransactionMeta(item, item.deal_date),
       item => `${dataLabNum(item.price)}만원`
     )}`;
 }
@@ -2292,7 +2311,7 @@ function renderDataLabClosure(data){
       <div class="datalab-list-item">
         <span class="datalab-rank">${index + 1}</span>
         <div style="min-width:0;">
-          <strong class="datalab-building">${escapeHtml(item.region)}</strong>
+          <span class="datalab-building">${escapeHtml(item.region)}</span>
           <div class="datalab-meta">전체 ${dataLabNum(item.total_count)}개 중 ${dataLabNum(item.closed_count)}개 폐업</div>
         </div>
         <span class="datalab-value">${item.closure_rate}%</span>
@@ -2346,7 +2365,17 @@ function dataLabErrorHTML(){
   </div>`;
 }
 
-async function loadDataLab(key, direction = "up"){
+function bindDataLabControls(content){
+  bindDataLabBuildingButtons(content);
+  content.querySelectorAll("[data-datalab-direction]").forEach(button => {
+    button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
+  });
+  content.querySelectorAll("[data-datalab-price-order]").forEach(button => {
+    button.addEventListener("click", () => loadDataLab("highest", button.dataset.datalabPriceOrder));
+  });
+}
+
+async function loadDataLab(key, option = "up"){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
   const requestId = ++dataLabRequestSequence;
@@ -2354,14 +2383,14 @@ async function loadDataLab(key, direction = "up"){
   const urls = {
     lodging: "/api/stats/lodging-full-table",
     volume: "/api/ranking",
-    change: `/api/stats/price-change-top?direction=${encodeURIComponent(direction)}`,
-    highest: "/api/stats/highest-price-top",
+    change: `/api/stats/price-change-top?direction=${encodeURIComponent(option)}`,
+    highest: `/api/stats/highest-price-top?order=${encodeURIComponent(option === "lowest" ? "lowest" : "highest")}`,
     closure: "/api/stats/closure-rate-by-region",
     rate: "/api/stats/report-rate-by-sido",
   };
   const url = urls[key];
   if (!url) return;
-  const cacheKey = `${key}:${direction}`;
+  const cacheKey = `${key}:${option}`;
   const cached = dataLabResponseCache.get(cacheKey);
   const renders = {
     lodging: renderDataLabLodging,
@@ -2373,10 +2402,7 @@ async function loadDataLab(key, direction = "up"){
   };
   if (cached && Date.now() - cached.ts < DATA_LAB_CACHE_TTL_MS) {
     content.innerHTML = renders[key](cached.data);
-    bindDataLabBuildingButtons(content);
-    content.querySelectorAll("[data-datalab-direction]").forEach(button => {
-      button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
-    });
+    bindDataLabControls(content);
     return;
   }
   if (dataLabFetchController) dataLabFetchController.abort();
@@ -2390,15 +2416,12 @@ async function loadDataLab(key, direction = "up"){
     if (!response.ok || !data.ok) throw new Error("datalab request failed");
     dataLabResponseCache.set(cacheKey, { ts: Date.now(), data });
     content.innerHTML = renders[key](data);
-    bindDataLabBuildingButtons(content);
-    content.querySelectorAll("[data-datalab-direction]").forEach(button => {
-      button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
-    });
+    bindDataLabControls(content);
   } catch (error) {
     if (error.name === "AbortError") return;
     if (requestId !== dataLabRequestSequence) return;
     content.innerHTML = dataLabErrorHTML();
-    content.querySelector("[data-datalab-retry]")?.addEventListener("click", () => loadDataLab(key, direction));
+    content.querySelector("[data-datalab-retry]")?.addEventListener("click", () => loadDataLab(key, option));
     console.error("[데이터랩] 로드 실패:", error);
   } finally {
     if (dataLabFetchController === controller) dataLabFetchController = null;

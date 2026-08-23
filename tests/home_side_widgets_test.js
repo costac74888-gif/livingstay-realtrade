@@ -64,6 +64,8 @@ expect(
   "데이터랩이 3열 탭 그리드와 탭 아래 콘텐츠 구조가 아닙니다."
 );
 expect(main.includes("/api/stats/price-change-top"), "가격변동 데이터랩 API 연결이 없습니다.");
+expect(main.includes("data-datalab-price-order") && main.includes("최고</button>") && main.includes("최저</button>"),
+  "데이터랩 최고가/최저가 토글이 없습니다.");
 expect(main.includes("/api/stats/report-rate-by-sido"), "시도별 신고율 데이터랩 API 연결이 없습니다.");
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");
 expect(main.includes("DATA_LAB_CACHE_TTL_MS"), "데이터랩 반복 탭 전환 캐시가 없습니다.");

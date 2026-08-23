@@ -2050,7 +2050,7 @@ def get_ranking():
             # ── 거래량 TOP 5 ───────────────────────────────────────────────
             cur.execute("""
                 SELECT
-                    building_name, address, sgg_cd, umd_nm, jibun,
+                    building_name, address, sgg_nm, sgg_cd, umd_nm, jibun,
                     COUNT(*)        AS deal_count,
                     MAX(price)      AS max_price,
                     MAX(deal_date)  AS latest_date,
@@ -2075,7 +2075,7 @@ def get_ranking():
                 FROM transactions t
                 WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
                   AND price > 0
-                GROUP BY building_name, address, sgg_cd, umd_nm, jibun
+                GROUP BY building_name, address, sgg_nm, sgg_cd, umd_nm, jibun
                 ORDER BY deal_count DESC
                 LIMIT 5
             """)
@@ -2083,6 +2083,8 @@ def get_ranking():
                 {
                     "building_name": row["building_name"],
                     "address": row["address"],
+                    "sgg_nm": row["sgg_nm"],
+                    "umd_nm": row["umd_nm"],
                     "deal_count": row["deal_count"],
                     "max_price": row["max_price"],
                     "latest_date": row["latest_date"],
@@ -20264,6 +20266,7 @@ def stats_price_change_top():
                 SELECT
                     building_name,
                     address,
+                    MIN(sgg_nm) AS sgg_nm,
                     sgg_cd,
                     umd_nm,
                     jibun,
@@ -20288,7 +20291,7 @@ def stats_price_change_top():
                 FROM grouped
             )
             SELECT
-                building_name, address, transaction_count,
+                building_name, address, sgg_nm, umd_nm, transaction_count,
                 first_price, latest_price, first_deal_date, latest_deal_date,
                 area_sqm, change_percent,
                 (SELECT id FROM master_buildings
@@ -20318,6 +20321,8 @@ def stats_price_change_top():
             {
                 "building_name": row["building_name"],
                 "address": row["address"],
+                "sgg_nm": row["sgg_nm"],
+                "umd_nm": row["umd_nm"],
                 "building_id": row["building_id"],
                 "lat": float(row["lat"]) if row["lat"] is not None else None,
                 "lng": float(row["lng"]) if row["lng"] is not None else None,
@@ -20340,46 +20345,52 @@ def stats_price_change_top():
 @app.route("/api/stats/highest-price-top")
 @limiter.limit("30 per minute")
 def stats_highest_price_top():
-    """건물별 역대 최고 거래가 TOP5."""
+    """건물별 역대 최고·최저 거래가 TOP5."""
+    order = (request.args.get("order") or "highest").strip().lower()
+    if order not in ("highest", "lowest"):
+        return jsonify({"ok": False, "message": "order는 highest 또는 lowest여야 합니다."}), 400
+    price_order = "DESC" if order == "highest" else "ASC"
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
-            WITH highest_by_building AS (
+        cur.execute(f"""
+            WITH extreme_by_building AS (
                 SELECT DISTINCT ON (building_name, address)
-                    building_name, address, sgg_cd, umd_nm, jibun, price, deal_date, id
+                    building_name, address, sgg_nm, sgg_cd, umd_nm, jibun, price, deal_date, id
                 FROM transactions
                 WHERE price > 0 AND deal_date IS NOT NULL
-                ORDER BY building_name, address, price DESC, deal_date DESC, id DESC
+                ORDER BY building_name, address, price {price_order}, deal_date DESC, id DESC
             )
             SELECT
-                building_name, address, price, deal_date,
+                building_name, address, sgg_nm, umd_nm, price, deal_date,
                 (SELECT id FROM master_buildings
-                 WHERE building_name = highest_by_building.building_name
-                   AND sgg_cd = highest_by_building.sgg_cd
-                   AND umd_nm = highest_by_building.umd_nm
-                   AND jibun = highest_by_building.jibun
+                 WHERE building_name = extreme_by_building.building_name
+                    AND sgg_cd = extreme_by_building.sgg_cd
+                    AND umd_nm = extreme_by_building.umd_nm
+                    AND jibun = extreme_by_building.jibun
                  ORDER BY id LIMIT 1) AS building_id,
                 (SELECT lat FROM master_buildings
-                 WHERE building_name = highest_by_building.building_name
-                   AND sgg_cd = highest_by_building.sgg_cd
-                   AND umd_nm = highest_by_building.umd_nm
-                   AND jibun = highest_by_building.jibun
+                 WHERE building_name = extreme_by_building.building_name
+                    AND sgg_cd = extreme_by_building.sgg_cd
+                    AND umd_nm = extreme_by_building.umd_nm
+                    AND jibun = extreme_by_building.jibun
                  ORDER BY id LIMIT 1) AS lat,
                 (SELECT lng FROM master_buildings
-                 WHERE building_name = highest_by_building.building_name
-                   AND sgg_cd = highest_by_building.sgg_cd
-                   AND umd_nm = highest_by_building.umd_nm
-                   AND jibun = highest_by_building.jibun
+                 WHERE building_name = extreme_by_building.building_name
+                    AND sgg_cd = extreme_by_building.sgg_cd
+                    AND umd_nm = extreme_by_building.umd_nm
+                    AND jibun = extreme_by_building.jibun
                  ORDER BY id LIMIT 1) AS lng
-            FROM highest_by_building
-            ORDER BY price DESC, deal_date DESC, building_name, address
+            FROM extreme_by_building
+            ORDER BY price {price_order}, deal_date DESC, building_name, address
             LIMIT 5
         """)
         items = [
             {
                 "building_name": row["building_name"],
                 "address": row["address"],
+                "sgg_nm": row["sgg_nm"],
+                "umd_nm": row["umd_nm"],
                 "building_id": row["building_id"],
                 "lat": float(row["lat"]) if row["lat"] is not None else None,
                 "lng": float(row["lng"]) if row["lng"] is not None else None,
@@ -20388,7 +20399,7 @@ def stats_highest_price_top():
             }
             for row in cur.fetchall()
         ]
-        return jsonify({"ok": True, "items": items})
+        return jsonify({"ok": True, "order": order, "items": items})
     finally:
         cur.close()
         conn.close()
