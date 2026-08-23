@@ -84,6 +84,11 @@ expect(!datalabClickBinding.includes("openBuildingDetail"),
   "데이터랩 건물 클릭이 지도 이동 대신 상세 패널을 열고 있습니다.");
 expect(main.includes("<strong>⑤ 📈 영업신고율</strong>") && main.includes("<strong>⑥ ⚫ 폐업 현황</strong>"),
   "데이터랩 콘텐츠의 영업신고율·폐업 현황 순서 또는 명칭이 맞지 않습니다.");
+const closureRender = main.slice(main.indexOf("function renderDataLabClosure"), main.indexOf("function renderDataLabRate"));
+expect(closureRender.includes('class="datalab-region"') && !closureRender.includes('class="datalab-building"'),
+  "폐업 현황 지역명이 건물명 강조 스타일을 사용하고 있습니다.");
+expect(css.includes(".datalab-region") && css.includes("font-size:12px; font-weight:400"),
+  "폐업 현황 지역명이 건물명 크기·일반 굵기로 지정되지 않았습니다.");
 expect(main.includes("dataLabArea(item.area_sqm)"), "가격변동 데이터랩에 동일 전용면적 표시가 없습니다.");
 expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국숙박업통계 캡션이 현재수집 기준이 아닙니다.");
 expect(main.includes("<th>건물수</th><th>호실수</th><th>영업신고업체</th><th>영업신고호실</th><th>영업신고율</th>"),

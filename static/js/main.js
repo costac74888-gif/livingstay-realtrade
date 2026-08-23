@@ -2311,7 +2311,7 @@ function renderDataLabClosure(data){
       <div class="datalab-list-item">
         <span class="datalab-rank">${index + 1}</span>
         <div style="min-width:0;">
-          <span class="datalab-building">${escapeHtml(item.region)}</span>
+          <span class="datalab-region">${escapeHtml(item.region)}</span>
           <div class="datalab-meta">전체 ${dataLabNum(item.total_count)}개 중 ${dataLabNum(item.closed_count)}개 폐업</div>
         </div>
         <span class="datalab-value">${item.closure_rate}%</span>
