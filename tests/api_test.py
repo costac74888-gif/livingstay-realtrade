@@ -164,6 +164,8 @@ def run():
     failures += _check_lodging_auto_naming(client)
     # BRHUB 표제부 명칭이 없는 신규 일반숙박도 자동명명 대상 상태로 저장되는지 확인
     failures += _check_brhub_auto_naming_contract()
+    # 건물마스터가 매칭된 영업신고의 정상/폐업 상태를 올바르게 필터링하는지 확인
+    failures += _check_building_biz_status_filters(client)
     # 일일 캡으로 중간 종료되어도 당일 처리분 자동명명이 반영되는지 확인
     failures += _check_lodging_cap_auto_naming()
     # 관리자 통계표의 일반숙박 호실수 신뢰불가 표시와 비일반 회귀를 확인
@@ -625,6 +627,118 @@ def _check_brhub_auto_naming_contract():
             cur.execute("DELETE FROM lodging_registry WHERE permit_number=%s", (permit,))
             if building_id:
                 cur.execute("DELETE FROM master_buildings WHERE id=%s", (building_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_building_biz_status_filters(client):
+    """정상 운영/전부 폐업/미매칭 건물 필터와 필터 조합을 확인."""
+    import time
+    from urllib.parse import urlencode
+    from db import get_conn
+    from lodging_matching import ACTIVE_STATUS
+
+    failures = []
+    run_id = str(int(time.time() * 1000))
+    token = f"STATUSFILTER{run_id}"
+    specs = [
+        ("활성전용", [ACTIVE_STATUS]),
+        ("폐업전용", ["폐업"]),
+        ("혼합", ["폐업", ACTIVE_STATUS]),
+        ("미매칭", []),
+    ]
+    building_ids = []
+    permits = []
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        for suffix, statuses in specs:
+            cur.execute(
+                """
+                INSERT INTO master_buildings
+                    (building_name, road_address, source, lodging_type, name_pending)
+                VALUES (%s, %s, 'api_test', '일반', TRUE)
+                RETURNING id
+                """,
+                (f"{token}-{suffix}", f"테스트특별시 상태검증구 {token} {suffix}로"),
+            )
+            building_id = cur.fetchone()["id"]
+            building_ids.append(building_id)
+            for index, status in enumerate(statuses):
+                permit = f"TEST-BIZ-STATUS-{run_id}-{suffix}-{index}"
+                permits.append(permit)
+                cur.execute(
+                    """
+                    INSERT INTO lodging_registry
+                        (biz_name, permit_number, biz_status_name, applied_building_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (f"{token}-{suffix}-사업장{index}", permit, status, building_id),
+                )
+        conn.commit()
+
+        with client.session_transaction() as sess:
+            sess["admin"] = True
+
+        def filtered_ids(**filters):
+            query = {"q": token, "size": "200"}
+            query.update(filters)
+            response = client.get(f"/api/admin/buildings?{urlencode(query)}")
+            payload = response.get_json() or {}
+            if response.status_code != 200:
+                failures.append(
+                    f"건물 영업상태 필터: HTTP {response.status_code} ({filters})"
+                )
+            return {row.get("building_name") for row in payload.get("items", [])}
+
+        names = {f"{token}-{suffix}" for suffix, _ in specs}
+        active_names = filtered_ids(
+            lodging_type_filter="일반",
+            name_pending="1",
+            biz_status_filter="active",
+        )
+        closed_names = filtered_ids(
+            lodging_type_filter="일반",
+            name_pending="1",
+            biz_status_filter="closed",
+        )
+        all_names = filtered_ids(lodging_type_filter="일반", name_pending="1")
+        expected_active = {f"{token}-활성전용", f"{token}-혼합"}
+        expected_closed = {f"{token}-폐업전용"}
+        if active_names != expected_active:
+            failures.append(
+                f"건물 영업상태 필터: 정상 운영중 결과 불일치 "
+                f"(기대={expected_active}, 실제={active_names})"
+            )
+        if closed_names != expected_closed:
+            failures.append(
+                f"건물 영업상태 필터: 폐업만 결과 불일치 "
+                f"(기대={expected_closed}, 실제={closed_names})"
+            )
+        if all_names != names:
+            failures.append(
+                f"건물 영업상태 필터: 전체 상태 결과 불일치 "
+                f"(기대={names}, 실제={all_names})"
+            )
+        if not failures:
+            print("OK  건물마스터 정상 운영/폐업/미매칭 및 필터 조합")
+    except Exception as exc:
+        failures.append(f"건물 영업상태 필터 테스트 오류: {exc}")
+    finally:
+        try:
+            if permits:
+                cur.execute(
+                    "DELETE FROM lodging_registry WHERE permit_number = ANY(%s)",
+                    (permits,),
+                )
+            if building_ids:
+                cur.execute(
+                    "DELETE FROM master_buildings WHERE id = ANY(%s)",
+                    (building_ids,),
+                )
             conn.commit()
         finally:
             cur.close()

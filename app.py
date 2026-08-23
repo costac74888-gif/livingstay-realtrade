@@ -11751,6 +11751,33 @@ def _admin_bld_filters():
     # 명칭 미확정 건물만 필터 (관리자 주기 점검용)
     if (request.args.get("name_pending") or "").strip() == "1":
         where += " AND name_pending IS TRUE"
+    # 매칭된 영업신고 사업장의 영업상태 필터 — 신고율/상세 목록과 같은 상수 사용
+    biz_status_filter = (request.args.get("biz_status_filter") or "").strip()
+    if biz_status_filter == "active":
+        where += """
+            AND EXISTS (
+                SELECT 1
+                FROM lodging_registry lr
+                WHERE lr.applied_building_id = mb.id
+                  AND lr.biz_status_name = %s
+            )
+        """
+        params.append(ACTIVE_LODGING_STATUS)
+    elif biz_status_filter == "closed":
+        where += """
+            AND EXISTS (
+                SELECT 1
+                FROM lodging_registry lr
+                WHERE lr.applied_building_id = mb.id
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM lodging_registry lr
+                WHERE lr.applied_building_id = mb.id
+                  AND lr.biz_status_name = %s
+            )
+        """
+        params.append(ACTIVE_LODGING_STATUS)
     # 용도(lodging_type) 필터 — 건물마스터 드롭다운
     lt_filter = (request.args.get("lodging_type_filter") or "").strip()
     if lt_filter == "미분류":
@@ -11798,7 +11825,7 @@ def admin_buildings_list():
     offset = (page - 1) * size
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) c FROM master_buildings WHERE {where_sql}", params)
+    cur.execute(f"SELECT COUNT(*) c FROM master_buildings mb WHERE {where_sql}", params)
     total = cur.fetchone()["c"]
     # sort/order는 화이트리스트 맵(ADMIN_BLD_SORT)으로만 정해지므로 f-string 삽입이 안전하다.
     sort_expr = ADMIN_BLD_SORT[sort]

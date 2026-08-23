@@ -84,4 +84,22 @@ expect(
   "건물수집의 일일 부분 갱신 또는 완료 전체 갱신이 없습니다.",
 );
 
+expect(
+  app.includes('biz_status_filter = (request.args.get("biz_status_filter") or "").strip()') &&
+    app.includes('biz_status_filter == "active"') &&
+    app.includes('biz_status_filter == "closed"') &&
+    app.includes("ACTIVE_LODGING_STATUS"),
+  "건물마스터 영업상태 필터 백엔드 조건이 없습니다.",
+);
+const adminBuildingFilters = admin.slice(
+  admin.indexOf('filters: [', admin.indexOf('buildings:')),
+  admin.indexOf('columns: [', admin.indexOf('buildings:')),
+);
+expect(
+  adminBuildingFilters.includes('{ key: "biz_status_filter", default: "", options: [') &&
+    adminBuildingFilters.includes('{ value: "active", label: "정상 운영중만" }') &&
+    adminBuildingFilters.includes('{ value: "closed", label: "폐업만" }'),
+  "건물마스터 영업상태 필터 옵션이 없습니다.",
+);
+
 console.log("OK  건물명 출처별 정식명칭 라벨·제안 링크 회귀 점검");
