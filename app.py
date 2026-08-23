@@ -20563,7 +20563,7 @@ def stats_consign_by_sido():
                 FROM operator_buildings ob
                 JOIN operators o ON o.id = ob.operator_id
                 WHERE o.status = 'approved'
-                  AND o.category = '위탁'
+                  AND o.category = '위탁운영'
             ) approved ON approved.master_building_id = mb.id
             WHERE mb.lodging_type = '생활'
             ORDER BY mb.id

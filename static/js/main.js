@@ -2411,7 +2411,7 @@ function renderDataLabConsign(data){
   return `
     <div class="datalab-heading">
       <div class="datalab-heading-main"><strong>⑤ 🏨 위탁현황</strong>${partialBadge}</div>
-      <span class="datalab-caption">플랫폼 등록 기준</span>
+      <span class="datalab-caption">생활숙박시설 기준</span>
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table datalab-consign-table">

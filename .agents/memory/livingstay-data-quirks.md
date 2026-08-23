@@ -45,6 +45,13 @@ Facts you can only discover by querying Postgres, not by reading code.
   → SQL `lodging_type LIKE '%·%'`; any other value → exact `=` match (so `생활`
   does NOT include `생활·호텔`). Keep map and board using the identical rule.
 
+- **`operators.category` can differ between environments.** The production data
+  may still use `"위탁운영"`, while development boot normalization can convert
+  legacy rows to `"위탁"`. **Why:** the normalization migration is not guaranteed
+  to have run against every existing database. **How to apply:** before changing
+  an operator-category filter, query the target environment's stored values and
+  do not assume dev and production use the same label.
+
 - **One `(sgg_cd, umd_nm, jibun)` parcel can hold MANY distinct master buildings.**
   Resort/condo complexes (동/호 units) and name-variant duplicates share a jibun
   (e.g. 스카이썬 / 스카이썬(이든프롭스); 본재 / 파르마 스테이). Matching latest

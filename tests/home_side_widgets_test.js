@@ -74,7 +74,7 @@ expect(
   consignRender.includes("<th>시도</th><th>건물수</th><th>호실수</th><th>위탁업체수</th><th>위탁호실수</th><th>위탁비율</th>") &&
   consignRender.includes("<tfoot>") &&
   consignRender.includes("datalab-partial-badge") &&
-  consignRender.includes("플랫폼 등록 기준"),
+  consignRender.includes("생활숙박시설 기준"),
   "위탁현황이 합계행 포함 단일 테이블로 렌더링되지 않았습니다."
 );
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");
