@@ -79,6 +79,11 @@ expect(
 );
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");
 expect(main.includes("DATA_LAB_CACHE_TTL_MS"), "데이터랩 반복 탭 전환 캐시가 없습니다.");
+expect(
+  main.includes('key === "consign" ? 0 : DATA_LAB_CACHE_TTL_MS') &&
+  main.includes("DATA_LAB_CONSIGN_REFRESH_MS"),
+  "위탁현황의 최신 데이터 재조회 처리가 없습니다."
+);
 expect(main.includes("function moveDataLabBuildingToMap"), "데이터랩 건물명의 지도 이동 함수가 없습니다.");
 expect(main.includes("data-datalab-lat") && main.includes("data-datalab-lng"),
   "데이터랩 건물 버튼에 지도 좌표가 연결되지 않았습니다.");

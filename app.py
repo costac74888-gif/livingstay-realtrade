@@ -235,6 +235,11 @@ def _mark_master_stats_invalidated_safely(source):
     """커밋된 원본 변경의 통계 캐시 표식 실패가 본 요청을 되돌리지 않게 한다."""
     try:
         mark_master_stats_invalidated(source)
+        # 같은 앱 워커에서 바로 이어지는 데이터랩 요청은 10초 폴링을 기다리지
+        # 않고, 방금 기록한 DB 무효화 표식을 다시 읽어 최신 집계를 사용한다.
+        state = globals().get("_MASTER_STATS_INVALIDATION_STATE")
+        if state is not None:
+            state["checked_at"] = 0.0
     except Exception as e:
         app.logger.warning("[stats-cache] invalidation failed (%s): %s", source, str(e)[:200])
 
@@ -18884,7 +18889,7 @@ def admin_member_reapprove(member_type, member_id):
         conn.close()
     if not row:
         return jsonify({"ok": False, "message": "재승인 대상(pending 상태)이 아닙니다."}), 404
-    if member_type == "operator" and row["category"] == "위탁운영":
+    if member_type == "operator" and row["category"] == "위탁":
         _mark_master_stats_invalidated_safely("admin_operator_reapprove")
     return jsonify({"ok": True})
 
@@ -19072,7 +19077,7 @@ def admin_members_bulk_deactivate():
                 cur.execute("""
                     SELECT 1 FROM operators
                     WHERE id = ANY(%s) AND status IS DISTINCT FROM %s
-                      AND status = 'approved' AND category = '위탁운영'
+                      AND status = 'approved' AND category = '위탁'
                     LIMIT 1
                 """, [id_list, new_status[t]])
                 operator_stats_changed = bool(cur.fetchone())
@@ -19125,7 +19130,7 @@ def admin_members_bulk_reactivate():
             if t == "operator":
                 cur.execute("""
                     SELECT 1 FROM operators
-                    WHERE id = ANY(%s) AND status = %s AND category = '위탁운영'
+                    WHERE id = ANY(%s) AND status = %s AND category = '위탁'
                     LIMIT 1
                 """, [id_list, prev_status[t]])
                 operator_stats_changed = bool(cur.fetchone())
@@ -19195,7 +19200,7 @@ def admin_members_bulk_delete():
             oid = by_type["operator"]
             cur.execute("""
                 SELECT 1 FROM operators
-                WHERE id = ANY(%s) AND status = 'approved' AND category = '위탁운영'
+                WHERE id = ANY(%s) AND status = 'approved' AND category = '위탁'
                 LIMIT 1
             """, [oid])
             operator_stats_changed = bool(cur.fetchone())
@@ -19522,8 +19527,8 @@ def admin_member_detail_update(member_type, member_id):
             operator_stats_changed = (
                 (old_status, old_category) != (new_status, new_category)
                 and (
-                    (old_status == "approved" and old_category == "위탁운영")
-                    or (new_status == "approved" and new_category == "위탁운영")
+                    (old_status == "approved" and old_category == "위탁")
+                    or (new_status == "approved" and new_category == "위탁")
                 )
             )
         set_clause = ", ".join(f"{k}=%s" for k in updates)

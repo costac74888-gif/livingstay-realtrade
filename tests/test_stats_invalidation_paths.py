@@ -587,7 +587,7 @@ class AppMutationInvalidationTests(unittest.TestCase):
         application = {
             "id": 71, "status": "submitted", "applicant_type": "operator",
             "office_or_company_name": "테스트 운영사", "owner_name": "대표",
-            "category": "위탁운영", "biz_reg_number": "123-45-67890",
+            "category": "위탁", "biz_reg_number": "123-45-67890",
             "phone": "01012345678", "email": "operator@example.test",
             "website_url": None, "password_hash": "stored-hash",
             "doc_logo_url": None, "office_address": None,
@@ -630,7 +630,7 @@ class AppMutationInvalidationTests(unittest.TestCase):
 
         def update_response(sql, _params):
             if sql.startswith("SELECT status, category FROM operators"):
-                return {"status": "approved", "category": "위탁운영"}
+                return {"status": "approved", "category": "위탁"}
             if sql.startswith("UPDATE operators"):
                 events.append("admin_operator_update_write")
             return None
