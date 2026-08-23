@@ -19,3 +19,10 @@ uri = "file://screenshots/listing-checklist.jpg"
 type = "image"
 title = "숙박업소 거래 체크리스트 화면"
 description = "공개 건물전체 매물에서 확인한 체크리스트 아코디언, 진행률, 면책문구 화면입니다."
+
+[[outputs]]
+id = "UzP1kpUdGRCynXLFyCKVc"
+uri = "file://screenshots/public-lodging-table-minimal.jpg"
+type = "image"
+title = "공개 전국숙박업통계 축소 표"
+description = "건물수·영업신고업체·영업신고호실·폐업율 4개 공개 컬럼과 일반 세부 4종 행을 확인한 캡처입니다."

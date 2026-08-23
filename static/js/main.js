@@ -2132,17 +2132,17 @@ function renderRecentChips(){
   container.innerHTML = list.map(b => {
     const label = escapeHtml(b.name || "(건물명 미확인)");
     return `<button type="button"
+      class="recent-search-chip"
       onclick="history.pushState({buildingId:${b.id}},'','/building/${b.id}');renderBuildingPanel(${b.id});"
-      style="background:#F8F9FA;border:1px solid var(--line);border-radius:20px;
-             padding:4px 11px;font-size:12px;font-weight:600;color:var(--ink);
-             cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;
-             text-overflow:ellipsis;"
       title="${label}">${label}</button>`;
   }).join("");
 }
 
 // ── 데이터랩: ① 전국숙박업통계 + 시장 신호 5종 ─────────────────────────────
 let dataLabRequestSequence = 0;
+let dataLabFetchController = null;
+const DATA_LAB_CACHE_TTL_MS = 2 * 60 * 1000;
+const dataLabResponseCache = new Map();
 
 function dataLabNum(value){
   return Number(value || 0).toLocaleString("ko-KR");
@@ -2183,38 +2183,35 @@ function renderDataLabLodging(data){
   const rows = Array.isArray(data.rows) ? data.rows : [];
   if (!rows.length) return '<div class="side-empty">전국 숙박업 통계가 없습니다.</div>';
   const body = rows.map(row => {
-    const rateMetric = row.lodging_metric === "room_count"
-      ? `${dataLabNum(row.room_count)}실`
-      : (row.report_rate == null ? "-" : `${row.report_rate}%`);
     const base = `
       <tr>
         <td>${escapeHtml(row.type)}</td>
         <td>${dataLabNum(row.building_count)}</td>
-        <td>${dataLabNum(row.units)}</td>
-        <td>${dataLabNum(row.favorites)}</td>
-        <td>${dataLabNum(row.listing_requests)}</td>
-        <td>${rateMetric}</td>
-        <td>${row.closed_rate == null ? "-" : `${row.closed_rate}%`}</td>
+        <td>${dataLabNum(row.biz_count)}</td>
+        <td>${dataLabNum(row.room_count)}</td>
+        <td>${row.closure_rate == null ? "-" : `${row.closure_rate}%`}</td>
       </tr>`;
     const subRows = (row.sub_rows || []).map(sub => `
       <tr class="datalab-sub-row">
         <td class="datalab-sub-name">└ ${escapeHtml(sub.type)}</td>
-        <td>-</td><td>-</td><td>-</td><td>-</td>
-        <td>${dataLabNum(sub.room_count)}실</td><td>-</td>
+        <td>-</td>
+        <td>${dataLabNum(sub.biz_count)}</td>
+        <td>${dataLabNum(sub.room_count)}</td>
+        <td>-</td>
       </tr>`).join("");
     return base + subRows;
   }).join("");
   return `
     <div class="datalab-heading">
-      <strong>① 전국숙박업통계</strong><span class="datalab-caption">관리자 기준 동기화</span>
+      <strong>① 전국숙박업통계</strong><span class="datalab-caption">현재수집 기준</span>
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물</th><th>호실</th><th>관심</th><th>매물</th><th>신고</th><th>폐업</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수</th><th>영업신고업체</th><th>영업신고호실</th><th>폐업율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>
-    <p class="datalab-note">일반숙박은 신고율 대신 현재 영업신고 객실 수를 표시합니다.</p>`;
+    <p class="datalab-note">영업신고업체·호실은 현재 수집된 운영 신고 기준입니다.</p>`;
 }
 
 function renderDataLabVolume(data){
@@ -2317,12 +2314,26 @@ function setDataLabActive(key){
   });
 }
 
+function dataLabLoadingHTML(){
+  return `<div class="datalab-loading" role="status">
+    <span class="datalab-spinner" aria-hidden="true"></span>
+    <span>데이터를 불러오는 중입니다…</span>
+    <div class="datalab-skeletons" aria-hidden="true"><i></i><i></i><i></i></div>
+  </div>`;
+}
+
+function dataLabErrorHTML(){
+  return `<div class="datalab-error">
+    <span>데이터를 불러오지 못했습니다.</span>
+    <button type="button" data-datalab-retry>다시 시도</button>
+  </div>`;
+}
+
 async function loadDataLab(key, direction = "up"){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
   const requestId = ++dataLabRequestSequence;
   setDataLabActive(key);
-  content.innerHTML = '<div class="side-empty">데이터를 불러오는 중…</div>';
   const urls = {
     lodging: "/api/stats/lodging-full-table",
     volume: "/api/ranking",
@@ -2331,28 +2342,49 @@ async function loadDataLab(key, direction = "up"){
     closure: "/api/stats/closure-rate-by-region",
     rate: "/api/stats/report-rate-by-sido",
   };
+  const url = urls[key];
+  if (!url) return;
+  const cacheKey = `${key}:${direction}`;
+  const cached = dataLabResponseCache.get(cacheKey);
+  const renders = {
+    lodging: renderDataLabLodging,
+    volume: renderDataLabVolume,
+    change: renderDataLabChange,
+    highest: renderDataLabHighest,
+    closure: renderDataLabClosure,
+    rate: renderDataLabRate,
+  };
+  if (cached && Date.now() - cached.ts < DATA_LAB_CACHE_TTL_MS) {
+    content.innerHTML = renders[key](cached.data);
+    bindDataLabBuildingButtons(content);
+    content.querySelectorAll("[data-datalab-direction]").forEach(button => {
+      button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
+    });
+    return;
+  }
+  if (dataLabFetchController) dataLabFetchController.abort();
+  const controller = new AbortController();
+  dataLabFetchController = controller;
+  content.innerHTML = dataLabLoadingHTML();
   try {
-    const response = await fetch(urls[key]);
+    const response = await fetch(url, { signal: controller.signal });
     const data = await response.json();
     if (requestId !== dataLabRequestSequence) return;
     if (!response.ok || !data.ok) throw new Error("datalab request failed");
-    const renders = {
-      lodging: renderDataLabLodging,
-      volume: renderDataLabVolume,
-      change: renderDataLabChange,
-      highest: renderDataLabHighest,
-      closure: renderDataLabClosure,
-      rate: renderDataLabRate,
-    };
+    dataLabResponseCache.set(cacheKey, { ts: Date.now(), data });
     content.innerHTML = renders[key](data);
     bindDataLabBuildingButtons(content);
     content.querySelectorAll("[data-datalab-direction]").forEach(button => {
       button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
     });
   } catch (error) {
+    if (error.name === "AbortError") return;
     if (requestId !== dataLabRequestSequence) return;
-    content.innerHTML = '<div class="side-empty">데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+    content.innerHTML = dataLabErrorHTML();
+    content.querySelector("[data-datalab-retry]")?.addEventListener("click", () => loadDataLab(key, direction));
     console.error("[데이터랩] 로드 실패:", error);
+  } finally {
+    if (dataLabFetchController === controller) dataLabFetchController = null;
   }
 }
 

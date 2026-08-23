@@ -129,6 +129,11 @@
       </span>
       <button id="btnOpenSubmit" style="background:#fff; border:1px dashed var(--brass); color:var(--brass-dark); border-radius:8px; padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer;">+ 내 건물 수정 요청</button>
     </div>
+    <!-- 최근검색은 관심단지 컨트롤 바로 아래의 보조 칩 행으로만 표시한다. -->
+    <div class="recent-search-row" id="recentRow" style="display:none;" aria-label="최근 검색한 건물">
+      <span class="recent-search-label">최근검색</span>
+      <div id="recentChips" class="recent-search-chips"></div>
+    </div>
   </div>
 
   <!-- (좌측 패널 토글 버튼은 지도 좌측 상단 플로팅 — #btnTogglePanel) -->
@@ -142,10 +147,13 @@
         onclick="document.getElementById('btnTogglePanel').click()">✕</button>
     </div>
 
-    <!-- 최근검색 (localStorage, 비로그인 포함) — 기록 없으면 숨김 -->
-    <section class="side-card" id="recentRow" style="display:none;">
-      <div class="side-card-title">최근검색 <span class="side-sub">내 방문 기록</span></div>
-      <div id="recentChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+    <section class="side-card">
+      <div class="side-card-title">실거래추세 <span class="side-sub" id="trendGranularityNote"></span></div>
+      <div class="side-chart-wrap"><canvas id="trendChart"></canvas></div>
+      <div class="side-legend">
+        <span><i class="lg-bar"></i>거래건수</span>
+        <span><i class="lg-line"></i>거래금액(억)</span>
+      </div>
     </section>
 
     <section class="side-card">
@@ -182,15 +190,6 @@
         <div class="datalab-content" id="dataLabContent" aria-live="polite">
           <div class="side-empty">데이터를 불러오는 중…</div>
         </div>
-      </div>
-    </section>
-
-    <section class="side-card">
-      <div class="side-card-title">실거래추세 <span class="side-sub" id="trendGranularityNote"></span></div>
-      <div class="side-chart-wrap"><canvas id="trendChart"></canvas></div>
-      <div class="side-legend">
-        <span><i class="lg-bar"></i>거래건수</span>
-        <span><i class="lg-line"></i>거래금액(억)</span>
       </div>
     </section>
 

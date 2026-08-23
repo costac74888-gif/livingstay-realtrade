@@ -370,7 +370,7 @@
       if (!help) return;
       help.textContent = $("#lrDisclosureScope").value === "public"
         ? "전체공개: 건물명·매물 조건·공개로 선택한 사진이 목록과 건물 상세에 표시됩니다."
-        : "제한공개: 지역과 조건만 공개됩니다. 사진과 정확한 건물 정보는 공개 목록에 표시되지 않습니다.";
+        : "제한공개: 지역과 조건만 공개됩니다. 건물명·상세지번·사진은 공개 목록에 표시되지 않으며, 언제든 마이페이지에서 전체공개로 변경할 수 있습니다.";
     }
     function updateDealType() {
       var isBusiness = $("#lrRegistrantType").value === "business";

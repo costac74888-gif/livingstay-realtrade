@@ -108,15 +108,28 @@ def check_platform_summary(payload):
 
 
 def check_datalab_lodging_table(payload):
-    """/api/stats/lodging-full-table: 공개 데이터랩 ①의 7개 상위 행."""
+    """/api/stats/lodging-full-table: 공개 데이터랩 ①의 최소 컬럼."""
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return "응답이 성공 객체가 아님"
     rows = payload.get("rows")
-    if not isinstance(rows, list) or len(rows) != 7:
-        return "'rows'가 7개 상위행 배열이 아님"
-    expected_types = ["전체", "생활", "관광", "일반", "복합", "준공전", "미분류"]
+    if not isinstance(rows, list) or len(rows) != 5:
+        return "'rows'가 공개 대상 5개 상위행 배열이 아님"
+    expected_types = ["전체", "생활", "관광", "일반", "복합"]
     if [row.get("type") for row in rows] != expected_types:
-        return "용도별 행 순서가 관리자 통계와 다름"
+        return "공개 용도별 행 순서가 잘못됨"
+    allowed = {"type", "building_count", "biz_count", "room_count", "closure_rate", "sub_rows"}
+    for row in rows:
+        if set(row) - allowed or not {"type", "building_count", "biz_count", "room_count", "closure_rate"} <= set(row):
+            return "공개 응답에 최소 컬럼 외 필드가 있거나 필수 필드가 없음"
+        if row["type"] == "일반":
+            sub_rows = row.get("sub_rows")
+            if [sub.get("type") for sub in sub_rows or []] != ["일반호텔", "여관업", "여인숙업", "숙박업(생활)"]:
+                return "일반숙박 세부 4종이 공개 응답에 없음"
+            for sub in sub_rows:
+                if set(sub) != {"type", "building_count", "biz_count", "room_count", "closure_rate"}:
+                    return "일반숙박 세부행에 공개 최소 컬럼 외 필드가 있음"
+    if any(row.get("type") in {"준공전", "미분류"} for row in rows):
+        return "준공전·미분류 행이 공개 응답에 남아 있음"
     return None
 
 
@@ -2552,25 +2565,77 @@ def _check_datalab_stats(client):
             units = int(item.get("total_units") or 0)
             biz_units = int(item.get("biz_units") or 0)
             expected_rate = round(biz_units / units * 100, 1) if units else None
-            if item.get("rate") != expected_rate:
-                failures.append("데이터랩 시도별 신고율: 가중평균 계산이 잘못됨")
+            if (
+                item.get("rate") != expected_rate
+                or biz_units > units
+                or (item.get("rate") is not None and not 0 <= item["rate"] <= 100)
+            ):
+                failures.append("데이터랩 시도별 신고율: 가중평균 또는 100% 상한이 잘못됨")
                 break
+        national_units = sum(int(item.get("total_units") or 0) for item in report_rate.get("items") or [])
+        national_biz_units = sum(int(item.get("biz_units") or 0) for item in report_rate.get("items") or [])
+        expected_national_rate = round(national_biz_units / national_units * 100, 1) if national_units else None
+        if (
+            report_rate.get("national_rate") != expected_national_rate
+            or national_biz_units > national_units
+            or (report_rate.get("national_rate") is not None and not 0 <= report_rate["national_rate"] <= 100)
+        ):
+            failures.append("데이터랩 시도별 신고율: 전국 가중평균 또는 100% 상한이 잘못됨")
 
         public_stats = client.get("/api/stats/lodging-full-table").get_json() or {}
-        total_row = next((row for row in public_stats.get("rows") or [] if row.get("type") == "전체"), {})
-        if report_rate.get("national_rate") != total_row.get("report_rate"):
-            failures.append("데이터랩 시도별 신고율: 전국 기준선이 관리자 전체 신고율과 다름")
+
+        clusters = client.get("/api/buildings-cluster?level=sido").get_json() or {}
+        for item in clusters.get("items") or []:
+            by_type = item.get("by_type") or {}
+            if int(item.get("total") or 0) != sum(int(value or 0) for value in by_type.values()):
+                failures.append("지도 시도 배지: 전체 건물 수와 숙박유형 부분합이 다름")
+                break
         with client.session_transaction() as session:
             session["admin"] = True
         admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
-        public_rows = public_stats.get("rows") or []
+        total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
+        if report_rate.get("national_rate") != total_row.get("report_rate"):
+            failures.append("데이터랩 시도별 신고율: 전국 기준선이 관리자 전체 신고율과 다름")
         admin_rows = admin_stats.get("rows") or []
-        keys = ("type", "building_count", "units", "favorites", "listing_requests", "report_rate", "room_count")
-        if len(public_rows) != len(admin_rows) or any(
-            any(left.get(key) != right.get(key) for key in keys)
-            for left, right in zip(public_rows, admin_rows)
-        ):
-            failures.append("데이터랩 전국숙박업통계: 관리자 통계와 공통 수치가 다름")
+        admin_required = {
+            "type", "building_count", "units", "favorites", "listing_requests",
+            "broker_badge", "store_realty", "store_total", "report_rate",
+            "permit_count", "room_count", "closed_rate", "lodging_metric",
+        }
+        if not admin_rows or any(not admin_required <= set(row) for row in admin_rows):
+            failures.append("데이터랩 전국숙박업통계: 관리자 전체 통계 원본 컬럼이 사라짐")
+        public_rows = public_stats.get("rows") or []
+        public_allowed = {"type", "building_count", "biz_count", "room_count", "closure_rate", "sub_rows"}
+        if any(set(row) - public_allowed for row in public_rows):
+            failures.append("데이터랩 전국숙박업통계: 공개 응답에 내부 운영지표가 남아 있음")
+        if any(row.get("type") in {"준공전", "미분류"} for row in public_rows):
+            failures.append("데이터랩 전국숙박업통계: 준공전·미분류 행이 공개 응답에 남아 있음")
+        admin_by_type = {row.get("type"): row for row in admin_rows}
+        for public_row in public_rows:
+            admin_row = admin_by_type.get(public_row.get("type")) or {}
+            if any(
+                public_row.get(public_key) != admin_row.get(admin_key)
+                for public_key, admin_key in (
+                    ("building_count", "building_count"),
+                    ("biz_count", "permit_count"),
+                    ("room_count", "room_count"),
+                    ("closure_rate", "closed_rate"),
+                )
+            ):
+                failures.append("데이터랩 전국숙박업통계: 공개 최소 컬럼이 관리자 계산 결과와 다름")
+                break
+            if public_row.get("type") == "일반":
+                admin_sub_rows = {
+                    row.get("type"): row for row in admin_row.get("sub_rows") or []
+                }
+                for public_sub in public_row.get("sub_rows") or []:
+                    admin_sub = admin_sub_rows.get(public_sub.get("type")) or {}
+                    if (
+                        public_sub.get("biz_count") != admin_sub.get("permit_count")
+                        or public_sub.get("room_count") != admin_sub.get("room_count")
+                    ):
+                        failures.append("데이터랩 전국숙박업통계: 일반 세부행 공개 수치가 관리자 결과와 다름")
+                        break
 
         # 주소까지 일치할 때만 랭킹에서 건물 상세 링크를 반환해야 동명이 건물 오연결을 막는다.
         from db import get_conn
