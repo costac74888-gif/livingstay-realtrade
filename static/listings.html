@@ -729,6 +729,49 @@
       listingIds.forEach(id => trackedWholeListingViews.delete(id));
     }
   }
+  function wholeLocationHint(item){
+    if (!(item.is_whole_listing || item.transaction_target === "whole") || item.is_limited_listing || !item.building_id) return "";
+    return `<div class="whole-location-hint" data-location-building-id="${esc(item.building_id)}" style="font-size:11px;color:var(--ink-soft);">입지정보 불러오는 중…</div>`;
+  }
+  const wholeLocationContextCache = new Map();
+  function wholeLocationText(context){
+    if (!context) return "입지정보를 확인할 수 없습니다.";
+    const nearby = context.nearby_lodgings || {};
+    const total = Number(nearby["일반"] || 0) + Number(nearby["관광"] || 0)
+      + Number(nearby["복합"] || 0) + Number(nearby["생활"] || 0);
+    const subway = context.subway;
+    const station = subway && (subway.station_name || subway.name);
+    let text = `경쟁업소 ${total.toLocaleString()}곳`;
+    if (station && subway.walk_minutes != null) text += ` · ${station}까지 도보 약 ${Number(subway.walk_minutes).toLocaleString()}분`;
+    return text;
+  }
+  async function loadWholeLocationHints(items){
+    const buildingIds = [...new Set((items || [])
+      .filter(item => (item.is_whole_listing || item.transaction_target === "whole")
+        && !item.is_limited_listing && item.building_id)
+      .map(item => String(item.building_id)))];
+    const missingIds = buildingIds.filter(id => !wholeLocationContextCache.has(id));
+    if (missingIds.length) {
+      try {
+        const res = await fetch("/api/whole-listing-contexts", {
+          method: "POST", credentials: "same-origin",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({building_ids: missingIds}),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error("location contexts failed");
+        missingIds.forEach(id => wholeLocationContextCache.set(id, (data.items || {})[id] || null));
+      } catch (err) {
+        // 실패는 캐시하지 않아 다음 목록 로드에서 재시도할 수 있게 한다.
+      }
+    }
+    buildingIds.forEach((buildingId) => {
+      const text = wholeLocationText(wholeLocationContextCache.get(buildingId));
+      document.querySelectorAll(`[data-location-building-id="${buildingId}"]`).forEach(el => {
+        el.textContent = text;
+      });
+    });
+  }
 
   // ── 썸네일 HTML ─────────────────────────────────────────────────────
   function thumbHtml(photoUrl, isCard, photoCount){
@@ -882,6 +925,7 @@
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(listingPriceText(item))}</div>
         <div class="whole-finance">${esc(financeText)}${revenueText ? ` · ${esc(revenueText)}` : ""}</div>
         <div class="whole-metrics">${esc(roomText)} · ${esc(parkingText)}<br>${esc(landText)} · ${esc(grossText)}</div>
+        ${wholeLocationHint(item)}
         <div class="whole-viewers">최근 5분 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
         <div class="whole-caution">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
         <div class="ls-card-l4">
@@ -1028,6 +1072,7 @@
         } else {
           filtered.forEach(it => { boardBody.appendChild(renderBoardRow(it)); cardGrid.appendChild(renderCardItem(it)); });
           recordWholeListingViews(filtered);
+          loadWholeLocationHints(filtered);
         }
         return;
       }
@@ -1065,6 +1110,7 @@
           cardGrid.appendChild(renderCardItem(item));
         });
         recordWholeListingViews(d.items);
+        loadWholeLocationHints(d.items);
          sortBoardRows();
         offset      += d.items.length;
         totalLoaded += d.items.length;

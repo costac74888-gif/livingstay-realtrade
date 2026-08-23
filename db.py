@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-23-02"
+SCHEMA_VERSION = "2026-08-23-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -806,6 +806,30 @@ def _run_init_db():
     )
     """)
     cur.execute("ALTER TABLE page_views ADD COLUMN IF NOT EXISTS listing_request_id INTEGER")
+
+    # 전국 도시철도역 좌표 — 공공데이터 1회성 import로 채우며, 없는 지역은 null로 처리한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS subway_stations (
+        id SERIAL PRIMARY KEY,
+        station_name TEXT NOT NULL,
+        line_name TEXT,
+        lat DOUBLE PRECISION NOT NULL,
+        lng DOUBLE PRECISION NOT NULL
+    )
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS subway_stations_dedupe_uidx
+        ON subway_stations (station_name, COALESCE(line_name, ''), lat, lng)
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS subway_stations_lat_lng_idx
+        ON subway_stations (lat, lng)
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS master_buildings_lat_lng_idx
+        ON master_buildings (lat, lng)
+        WHERE lat IS NOT NULL AND lng IS NOT NULL
+    """)
 
     # 일반 회원 — 이메일/비밀번호 또는 카카오 소셜 로그인. (관리자 admin_users와는 별개 테이블)
     cur.execute("""

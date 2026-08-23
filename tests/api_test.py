@@ -97,6 +97,16 @@ def check_buildings_geo(payload):
     return None
 
 
+def check_platform_summary(payload):
+    """/api/stats/platform-summary: 홈 신뢰지표 4개는 모두 0 이상 정수여야 한다."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return "응답이 성공 객체가 아님"
+    for key in ("building_count", "biz_count", "transaction_count", "listing_count"):
+        if not isinstance(payload.get(key), int) or payload[key] < 0:
+            return f"'{key}'가 0 이상 정수가 아님"
+    return None
+
+
 # (경로, shape 검증 함수)
 CHECKS = [
     ("/api/health", check_health),
@@ -105,6 +115,7 @@ CHECKS = [
     ("/api/transactions?with_total=1", check_transactions),
     ("/api/transactions?with_total=1&building_id=999999999", check_transactions),
     ("/api/buildings-geo", check_buildings_geo),
+    ("/api/stats/platform-summary", check_platform_summary),
 ]
 
 
@@ -152,6 +163,12 @@ def run():
     failures += _check_room_expiry_alerts()
     # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
     failures += _check_listing_registrant_types(client)
+    # 전국 도시철도역사정보 표준데이터의 실제 헤더 변형을 importer가 해석하는지 확인
+    failures += _check_subway_station_import_headers()
+    # 홈 신뢰지표가 현재 건물마스터·거래·매물 COUNT와 일치하는지 확인
+    failures += _check_platform_summary(client)
+    # 건물전체 입지정보의 경쟁시설·최단 지하철역·원거리 처리 확인
+    failures += _check_whole_listing_location_context(client)
     # 건물전체 매물의 생성·수정·공개범위 계약을 확인
     failures += _check_whole_building_listing(client)
     # 사업주 매물의 사용자·건물별 영업신고번호 인증 캐시와 서버 우회 차단을 확인
@@ -2307,6 +2324,164 @@ def _check_listing_registrant_types(client):
                 cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
             if user_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_subway_station_import_headers():
+    """표준데이터의 역사위도/역사경도 헤더가 importer에서 누락되지 않게 고정한다."""
+    try:
+        from import_subway_stations import _find_columns, _normalise_rows
+        headers = ("역번호", "역사명", "노선명", "역사위도", "역사경도")
+        rows = _normalise_rows(
+            [("T001", "테스트역", "테스트선", "37.5001", "127.0001")],
+            _find_columns(headers),
+        )
+        if rows != [("테스트역", "테스트선", 37.5001, 127.0001)]:
+            return ["subway importer: 전국 표준데이터 역사위도·역사경도 헤더를 해석하지 못함"]
+        print("OK  전국 도시철도역사정보 표준 헤더·좌표 importer")
+        return []
+    except Exception as exc:
+        return [f"subway importer 테스트 오류: {exc}"]
+
+
+def _check_platform_summary(client):
+    """플랫폼 지표 4개를 기본 COUNT 쿼리로 대조한다."""
+    from app import _matched_lodging_registry_count
+    from db import get_conn
+
+    failures = []
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        response = client.get("/api/stats/platform-summary")
+        payload = response.get_json() or {}
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings")
+        building_count = int(cur.fetchone()["c"])
+        cur.execute("SELECT COUNT(*) AS c FROM transactions")
+        transaction_count = int(cur.fetchone()["c"])
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM listing_requests
+            WHERE status = '접수됨' AND disclosure_scope = 'public'
+        """)
+        listing_count = int(cur.fetchone()["c"])
+        biz_count = _matched_lodging_registry_count(cur)
+        expected = {
+            "building_count": building_count,
+            "biz_count": biz_count,
+            "transaction_count": transaction_count,
+            "listing_count": listing_count,
+        }
+        if response.status_code != 200 or any(payload.get(k) != v for k, v in expected.items()):
+            failures.append(f"platform summary: 실제 DB COUNT와 응답 불일치 ({payload}, {expected})")
+        else:
+            print("OK  홈 데이터 규모 4개 지표·실제 DB COUNT 대조")
+    except Exception as exc:
+        failures.append(f"platform summary 테스트 오류: {exc}")
+    finally:
+        cur.close()
+        conn.close()
+    return failures
+
+
+def _check_whole_listing_location_context(client):
+    """건물전체 입지 API의 최단역·500m 경쟁업소·5km 외 null 경계를 확인한다."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    conn = get_conn()
+    cur = conn.cursor()
+    building_ids = []
+    station_id = None
+    try:
+        run_id = str(int(_time.time() * 1000))
+        base_name = f"입지테스트-{run_id}"
+        cur.execute(
+            """INSERT INTO master_buildings (building_name, road_address, lat, lng, lodging_type)
+               VALUES (%s, %s, 30.0000, 120.0000, '생활') RETURNING id""",
+            (base_name, "입지 테스트 도로 1"),
+        )
+        building_ids.append(cur.fetchone()["id"])
+        cur.execute(
+            """INSERT INTO master_buildings (building_name, road_address, lat, lng, lodging_type)
+               VALUES (%s, %s, 30.0008, 120.0000, '일반') RETURNING id""",
+            (base_name + " 경쟁", "입지 테스트 도로 2"),
+        )
+        building_ids.append(cur.fetchone()["id"])
+        cur.execute(
+            """INSERT INTO master_buildings (building_name, road_address, lat, lng, lodging_type)
+               VALUES (%s, %s, 30.0007, 120.0000, '생활') RETURNING id""",
+            (base_name + " 생활경쟁", "입지 테스트 도로 2-1"),
+        )
+        building_ids.append(cur.fetchone()["id"])
+        cur.execute(
+            """INSERT INTO master_buildings (building_name, road_address, lat, lng, lodging_type)
+               VALUES (%s, %s, 20.0000, 110.0000, '생활') RETURNING id""",
+            (base_name + " 원거리", "입지 테스트 도로 3"),
+        )
+        building_ids.append(cur.fetchone()["id"])
+        cur.execute(
+            """INSERT INTO subway_stations (station_name, line_name, lat, lng)
+               VALUES (%s, %s, 30.0004, 120.0000) RETURNING id""",
+            (base_name + "역", "테스트선"),
+        )
+        station_id = cur.fetchone()["id"]
+        conn.commit()
+
+        nearby = client.get(f"/api/building/{building_ids[0]}/whole-listing-context")
+        nearby_data = nearby.get_json() or {}
+        subway = nearby_data.get("subway") or {}
+        if (
+            nearby.status_code != 200
+            or subway.get("station_name") != base_name + "역"
+            or subway.get("line_name") != "테스트선"
+            or not (0 < int(subway.get("distance_m") or 0) < 5000)
+            or not (1 <= int(subway.get("walk_minutes") or 0) <= 63)
+            or int((nearby_data.get("nearby_lodgings") or {}).get("일반") or 0) != 1
+            or int((nearby_data.get("nearby_lodgings") or {}).get("생활") or 0) != 1
+        ):
+            failures.append("whole location: 최단 지하철역·도보시간 또는 500m 경쟁업소 계산이 잘못됨")
+
+        remote = client.get(f"/api/building/{building_ids[3]}/whole-listing-context")
+        if remote.status_code != 200 or (remote.get_json() or {}).get("subway") is not None:
+            failures.append("whole location: 5km 밖 지하철역을 표시함")
+        # 공개 목록의 최대 50건보다 많은 31개 서로 다른 건물도 한 요청으로
+        # 처리돼야 카드별 입지정보가 통째로 비지 않는다.
+        bulk_ids = []
+        for index in range(30):
+            cur.execute(
+                """INSERT INTO master_buildings (building_name, road_address, lat, lng, lodging_type)
+                   VALUES (%s, %s, %s, 110.0000, '생활') RETURNING id""",
+                (base_name + f" 일괄{index}", "입지 테스트 일괄", 20.1 + index / 10),
+            )
+            bulk_id = cur.fetchone()["id"]
+            building_ids.append(bulk_id)
+            bulk_ids.append(bulk_id)
+        conn.commit()
+        batch = client.post("/api/whole-listing-contexts", json={
+            "building_ids": [building_ids[0], *bulk_ids, "invalid"],
+        })
+        batch_items = (batch.get_json() or {}).get("items") or {}
+        if (
+            batch.status_code != 200
+            or batch_items.get(str(building_ids[0]), {}).get("subway", {}).get("station_name") != base_name + "역"
+            or len(batch_items) != 31
+        ):
+            failures.append("whole location: 공개 목록용 일괄 입지 컨텍스트 API가 잘못됨")
+        if not failures:
+            print("OK  건물전체 경쟁업소·최단 지하철역·원거리 생략·일괄 컨텍스트")
+    except Exception as exc:
+        failures.append(f"whole location 테스트 오류: {exc}")
+    finally:
+        try:
+            if station_id:
+                cur.execute("DELETE FROM subway_stations WHERE id=%s", (station_id,))
+            if building_ids:
+                cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (building_ids,))
             conn.commit()
         finally:
             cur.close()

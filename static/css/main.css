@@ -260,6 +260,19 @@
   }
   .map-searchbar.collapsed{display:none;}
   .map-searchbar .search-row2{margin-top:10px; padding-top:10px;}
+  .platform-stats{
+    display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px;
+    margin-top:11px; padding-top:10px; border-top:1px solid var(--line);
+  }
+  .platform-stats > div{
+    min-width:0; padding:8px 9px; border:1px solid #EADFC8; border-radius:8px;
+    background:var(--brass-tint); color:var(--ink-soft); font-size:11px;
+    line-height:1.45; text-align:center; white-space:nowrap;
+  }
+  .platform-stats b{
+    display:block; margin-top:2px; color:var(--ink); font-family:'JetBrains Mono',monospace;
+    font-size:15px; font-weight:700; letter-spacing:-.02em;
+  }
 
   /* 검색바 접기/펼치기 버튼 (지도 우측 상단, 데스크톱·모바일 공통) */
   .searchbar-toggle{
@@ -376,6 +389,8 @@
     .map-searchbar .search-row2 #favChips:not(:empty){
       flex:1 1 100%; min-width:0; flex-wrap:wrap; overflow:visible;
     }
+    .platform-stats{grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;}
+    .platform-stats > div{font-size:10.5px; padding:7px 6px;}
     /* 패널이 열려 있는 동안엔 우측 상단 "🔍 검색" 플로팅 버튼 숨김 —
        건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라
        ✕가 묻혀 안 보이는 문제 방지 (패널 닫으면 다시 표시, 데스크톱 무관) */

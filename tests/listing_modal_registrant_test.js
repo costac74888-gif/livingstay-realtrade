@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, "..");
 const modal = fs.readFileSync(path.join(root, "static/js/listing_modal.js"), "utf8");
 const main = fs.readFileSync(path.join(root, "static/js/main.js"), "utf8");
 const listings = fs.readFileSync(path.join(root, "static/listings.html"), "utf8");
+const index = fs.readFileSync(path.join(root, "static/index.html"), "utf8");
+const css = fs.readFileSync(path.join(root, "static/css/main.css"), "utf8");
 
 function expect(condition, message) {
   if (!condition) throw new Error(message);
@@ -31,6 +33,34 @@ expect(
   modal.includes("/whole-listing-context") &&
   modal.includes("WHOLE_ACQUISITION_COST_RATE"),
   "건물전체 거래대상·설명 템플릿·자동 정보·실인수가 계산 연결이 없습니다."
+);
+expect(
+  modal.includes("반경 500m 내 동종 숙박시설") &&
+  modal.includes("station_name") &&
+  modal.includes("도보 약"),
+  "건물전체 STEP5의 경쟁업소 합계 또는 지하철 도보시간 표시가 없습니다."
+);
+expect(
+  listings.includes("wholeLocationHint") &&
+  listings.includes("loadWholeLocationHints") &&
+  listings.includes("/api/whole-listing-contexts") &&
+  listings.includes("경쟁업소") &&
+  main.includes("_wholeLocationContext") &&
+  main.includes("b-whole-location"),
+  "건물전체 공개 카드의 경쟁업소·지하철 입지정보 연결이 없습니다."
+);
+expect(
+  index.includes('class="platform-stats"') &&
+  index.includes('data-platform-stat="building_count"') &&
+  index.includes('data-platform-stat="biz_count"') &&
+  index.includes('data-platform-stat="transaction_count"') &&
+  index.includes('data-platform-stat="listing_count"') &&
+  main.includes("/api/stats/platform-summary") &&
+  main.includes("async function loadPlatformStats") &&
+  main.includes("loadPlatformStats();") &&
+  css.includes(".platform-stats") &&
+  css.includes("grid-template-columns:repeat(2,minmax(0,1fr))"),
+  "홈 검색창 아래 실시간 4개 지표 또는 모바일 2x2 레이아웃이 없습니다."
 );
 
 for (const [value, label] of [

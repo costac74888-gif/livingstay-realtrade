@@ -24,6 +24,7 @@ import io
 import sys
 import json
 import time
+import math
 import html as _html
 import hashlib
 import threading
@@ -6964,13 +6965,9 @@ def _whole_listing_values(data, *, existing=None):
     }, None
 
 
-@app.route("/api/building/<int:building_id>/whole-listing-context")
-def whole_listing_context(building_id):
-    """건물전체 매물 폼에 필요한 마스터 정보와 500m 주변 숙박시설 수."""
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
+def _whole_listing_context_data(cur, building_id):
+    """건물전체 등록·공개카드가 공유하는 입지 컨텍스트를 계산한다."""
+    cur.execute("""
             SELECT id, building_name, lat, lng, plat_area, tot_area,
                    grnd_flr_cnt, ugrnd_flr_cnt, use_apr_day, jiyuk_nm,
                    strct_nm,
@@ -6986,47 +6983,134 @@ def whole_listing_context(building_id):
                         THEN NULL ELSE COALESCE(ride_use_elvt_cnt, 0) + COALESCE(emgen_use_elvt_cnt, 0)
                    END AS elevators
               FROM master_buildings WHERE id = %s
-        """, [building_id])
-        building = cur.fetchone()
-        if not building:
-            return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
-        info = {
-            "site_area_sqm": building["plat_area"],
-            "total_area_sqm": building["tot_area"],
-            "above_ground_floors": building["grnd_flr_cnt"],
-            "below_ground_floors": building["ugrnd_flr_cnt"],
-            "approval_date": building["use_apr_day"],
-            "zoning": building["jiyuk_nm"],
-            "parking_spaces": building["parking_spaces"],
-            "elevators": building["elevators"],
-            "structure": building["strct_nm"],
-        }
-        counts = {"일반": 0, "관광": 0, "복합": 0}
-        if building["lat"] is not None and building["lng"] is not None:
-            cur.execute("""
+    """, [building_id])
+    building = cur.fetchone()
+    if not building:
+        return None
+    info = {
+        "site_area_sqm": building["plat_area"],
+        "total_area_sqm": building["tot_area"],
+        "above_ground_floors": building["grnd_flr_cnt"],
+        "below_ground_floors": building["ugrnd_flr_cnt"],
+        "approval_date": building["use_apr_day"],
+        "zoning": building["jiyuk_nm"],
+        "parking_spaces": building["parking_spaces"],
+        "elevators": building["elevators"],
+        "structure": building["strct_nm"],
+    }
+    counts = {"일반": 0, "관광": 0, "복합": 0, "생활": 0}
+    subway = None
+    if building["lat"] is not None and building["lng"] is not None:
+        lat = float(building["lat"])
+        lng = float(building["lng"])
+        # 하버사인 계산 전 B-tree (lat,lng) 인덱스를 탈 수 있는 사각형으로 크게 줄인다.
+        lat_delta_500m = 500 / 111_320
+        lng_delta_500m = 500 / (111_320 * max(0.1, abs(math.cos(math.radians(lat)))))
+        cur.execute("""
                 SELECT mb.lodging_type, COUNT(*) AS cnt
                   FROM master_buildings mb
                  WHERE mb.lat IS NOT NULL AND mb.lng IS NOT NULL
                    AND mb.id <> %s
+                    AND mb.lat BETWEEN %s AND %s
+                    AND mb.lng BETWEEN %s AND %s
                    AND 6371000 * 2 * ASIN(SQRT(
                          POWER(SIN(RADIANS(mb.lat - %s) / 2), 2)
                        + COS(RADIANS(%s)) * COS(RADIANS(mb.lat))
                          * POWER(SIN(RADIANS(mb.lng - %s) / 2), 2)
                    )) <= 500
-                   AND mb.lodging_type IN ('일반', '관광', '복합')
+                    AND mb.lodging_type IN ('일반', '관광', '복합', '생활')
                  GROUP BY mb.lodging_type
-            """, [building_id, building["lat"], building["lat"], building["lng"]])
-            for row in cur.fetchall():
-                counts[row["lodging_type"]] = int(row["cnt"])
-        return jsonify({
-            "ok": True,
-            "building": {
-                "id": building["id"], "name": building["building_name"],
-                "lat": building["lat"], "lng": building["lng"], "info": info,
-            },
-            "nearby_lodgings": counts,
-            "subway": None,
-        })
+        """, [
+            building_id, lat - lat_delta_500m, lat + lat_delta_500m,
+            lng - lng_delta_500m, lng + lng_delta_500m,
+            lat, lat, lng,
+        ])
+        for row in cur.fetchall():
+            counts[row["lodging_type"]] = int(row["cnt"])
+        lat_delta_5km = 5000 / 111_320
+        lng_delta_5km = 5000 / (111_320 * max(0.1, abs(math.cos(math.radians(lat)))))
+        cur.execute("""
+                SELECT station_name, line_name,
+                       6371000 * 2 * ASIN(SQRT(
+                           POWER(SIN(RADIANS(lat - %s) / 2), 2)
+                         + COS(RADIANS(%s)) * COS(RADIANS(lat))
+                           * POWER(SIN(RADIANS(lng - %s) / 2), 2)
+                       )) AS distance_m
+                  FROM subway_stations
+                 WHERE lat IS NOT NULL AND lng IS NOT NULL
+                   AND lat BETWEEN %s AND %s
+                   AND lng BETWEEN %s AND %s
+                 ORDER BY distance_m ASC
+                 LIMIT 1
+        """, [
+            lat, lat, lng,
+            lat - lat_delta_5km, lat + lat_delta_5km,
+            lng - lng_delta_5km, lng + lng_delta_5km,
+        ])
+        station = cur.fetchone()
+        if station and float(station["distance_m"]) <= 5000:
+            distance_m = int(round(float(station["distance_m"])))
+            subway = {
+                "station_name": station["station_name"],
+                "line_name": station["line_name"],
+                # name은 기존 등록 모달과의 호환 필드다.
+                "name": station["station_name"],
+                "distance_m": distance_m,
+                "walk_minutes": max(1, int(round(distance_m / 80))),
+            }
+    return {
+        "building": {
+            "id": building["id"], "name": building["building_name"],
+            "lat": building["lat"], "lng": building["lng"], "info": info,
+        },
+        "nearby_lodgings": counts,
+        "subway": subway,
+    }
+
+
+@app.route("/api/building/<int:building_id>/whole-listing-context")
+def whole_listing_context(building_id):
+    """건물전체 매물 폼에 필요한 건물·경쟁시설·지하철 입지 정보."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        context = _whole_listing_context_data(cur, building_id)
+        if context is None:
+            return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
+        return jsonify({"ok": True, **context})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/whole-listing-contexts", methods=["POST"])
+@limiter.limit("60 per minute")
+def whole_listing_contexts():
+    """공개 매물 목록용 다건 입지 컨텍스트. 한 화면당 한 요청만 허용한다."""
+    raw_ids = (request.get_json(silent=True) or {}).get("building_ids") or []
+    if not isinstance(raw_ids, list):
+        return jsonify({"ok": False, "message": "building_ids 형식이 올바르지 않습니다."}), 400
+    building_ids = []
+    for value in raw_ids:
+        try:
+            building_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if building_id > 0 and building_id not in building_ids:
+            building_ids.append(building_id)
+    # 공개 목록의 한 페이지가 최대 50건이므로, 같은 화면의 모든 건물을 한 번에
+    # 처리할 수 있도록 동일한 상한을 사용한다.
+    if len(building_ids) > 50:
+        return jsonify({"ok": False, "message": "한 번에 최대 50개 건물까지 조회할 수 있습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        items = {}
+        for building_id in building_ids:
+            context = _whole_listing_context_data(cur, building_id)
+            if context is not None:
+                items[str(building_id)] = context
+        return jsonify({"ok": True, "items": items})
     finally:
         cur.close()
         conn.close()
@@ -19500,6 +19584,79 @@ def admin_stats():
 
 
 # ---- 메인화면 좌측 패널용 공개 집계 API (인증 불필요, 읽기 전용) ----
+
+def _matched_lodging_registry_count(cur):
+    """건물마스터 주소에 매칭되는 고유 영업신고번호 수(폐업 포함)."""
+    cur.execute("""
+        SELECT road_address, jibun_address
+        FROM master_buildings
+        WHERE road_address IS NOT NULL OR jibun_address IS NOT NULL
+    """)
+    building_keys = [
+        (
+            addr_norm.normalize_road_prefix(row["road_address"]),
+            addr_norm.normalize_jibun_prefix(row["jibun_address"] or row["road_address"]),
+        )
+        for row in cur.fetchall()
+    ]
+    road_keys = {road for road, _ in building_keys if road}
+    jibun_keys = {jibun for _, jibun in building_keys if jibun}
+    if not road_keys and not jibun_keys:
+        return 0
+    cur.execute("""
+        SELECT permit_number, road_norm, jibun_norm
+        FROM lodging_registry
+        WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+    """, [list(road_keys) or ["__none__"], list(jibun_keys) or ["__none__"]])
+    road_permits = {}
+    jibun_permits = {}
+    for row in cur.fetchall():
+        permit = row["permit_number"]
+        if row["road_norm"]:
+            road_permits.setdefault(row["road_norm"], set()).add(permit)
+        if row["jibun_norm"]:
+            jibun_permits.setdefault(row["jibun_norm"], set()).add(permit)
+
+    matched = set()
+    for road, jibun in building_keys:
+        # 관리자 건물마스터 통계와 같은 도로명 우선·지번 보조 규칙.
+        if road and road in road_permits:
+            matched.update(road_permits[road])
+        elif jibun and jibun in jibun_permits:
+            matched.update(jibun_permits[jibun])
+    return len(matched)
+
+
+@app.route("/api/stats/platform-summary")
+@limiter.limit("60 per minute")
+def stats_platform_summary():
+    """홈 검색창 아래에 표시할 실시간 데이터 규모 신뢰지표."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM master_buildings")
+        building_count = int(cur.fetchone()["c"])
+        biz_count = _matched_lodging_registry_count(cur)
+        # 누적 실거래는 기존 /api/health·관리자 통계와 같은 전체 행 수 기준.
+        cur.execute("SELECT COUNT(*) AS c FROM transactions")
+        transaction_count = int(cur.fetchone()["c"])
+        cur.execute("""
+            SELECT COUNT(*) AS c
+            FROM listing_requests
+            WHERE status = '접수됨' AND disclosure_scope = 'public'
+        """)
+        listing_count = int(cur.fetchone()["c"])
+        return jsonify({
+            "ok": True,
+            "building_count": building_count,
+            "biz_count": biz_count,
+            "transaction_count": transaction_count,
+            "listing_count": listing_count,
+        })
+    finally:
+        cur.close()
+        conn.close()
+
 
 @app.route("/api/stats/registration-rate")
 def stats_registration_rate():

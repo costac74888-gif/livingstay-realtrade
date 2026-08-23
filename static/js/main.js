@@ -3233,6 +3233,7 @@ async function loadBuildingHeader(id){
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
     const _trackedWholeListingViews = new Set();
+    let _wholeLocationContext = null;
       const _dealTypeColors = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1", "통임대":"#5A7FA6", "운영권양도":"#8B6BB1", "위탁운영":"#557A5B" };
      function _dealTypeBadge(raw){
        const label = raw || "-";
@@ -3449,6 +3450,14 @@ async function loadBuildingHeader(id){
         const revenue = lr.has_monthly_revenue
           ? (financeVisible ? `월 매출 ${_fmtN(lr.monthly_revenue_krw)}만원` : "월 매출 🔒 로그인하고 보기")
           : "";
+        const nearby = (_wholeLocationContext || {}).nearby_lodgings || {};
+        const nearbyTotal = Number(nearby["일반"] || 0) + Number(nearby["관광"] || 0)
+          + Number(nearby["복합"] || 0) + Number(nearby["생활"] || 0);
+        const subway = (_wholeLocationContext || {}).subway;
+        const stationName = subway && (subway.station_name || subway.name);
+        const locationText = _wholeLocationContext
+          ? `경쟁업소 ${_fmtN(nearbyTotal)}곳${stationName && subway.walk_minutes != null ? ` · ${stationName}까지 도보 약 ${_fmtN(subway.walk_minutes)}분` : ""}`
+          : "입지정보 불러오는 중…";
         const badges = [
           lr.is_urgent ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;animation:wholeUrgentPulse 1.25s ease-in-out infinite;">급매</span>' : "",
           isRecentClosure ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E5E5E5;color:#222;font-size:10px;font-weight:800;">최근 폐업</span>' : "",
@@ -3461,6 +3470,7 @@ async function loadBuildingHeader(id){
             <div class="b-listing-l2">${dt}${escapeHtml(_listingPriceText(lr, _fmtN))}</div>
             <div style="font-size:12px;font-weight:700;color:var(--brass-dark,#7D4A00);margin:4px 0;">${escapeHtml(finance)}${revenue ? ` · ${escapeHtml(revenue)}` : ""}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.55;">${escapeHtml(metrics[0])} · ${escapeHtml(metrics[1])}<br>${escapeHtml(metrics[2])} · ${escapeHtml(metrics[3])}</div>
+            <div class="b-whole-location" style="font-size:11px;color:var(--ink-soft);">${escapeHtml(locationText)}</div>
             <div class="b-whole-viewers" style="font-size:11px;font-weight:700;color:#356212;margin-top:3px;">최근 5분 열람 ${_fmtN(lr.viewer_count || 0)}명</div>
             <div style="border-top:1px solid var(--line,#ddd);margin-top:6px;padding-top:6px;color:var(--ink-soft);font-size:10.5px;line-height:1.45;">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
             <div class="b-listing-l4">
@@ -3629,6 +3639,19 @@ async function loadBuildingHeader(id){
       });
     }
     _renderListings(allListings);
+    if (allListings.some(lr => lr.is_whole_listing || lr.transaction_target === "whole") && b.building_id) {
+      fetch(`/api/building/${encodeURIComponent(b.building_id)}/whole-listing-context`, {credentials:"same-origin"})
+        .then(res => res.json().then(data => ({ok: res.ok, data})))
+        .then(({ok, data}) => {
+          if (!ok || !data.ok) throw new Error("location context failed");
+          _wholeLocationContext = data;
+          _renderListings(allListings);
+        })
+        .catch(() => {
+          _wholeLocationContext = {nearby_lodgings: {}, subway: null};
+          _renderListings(allListings);
+        });
+    }
 
     // ?listing=ID 로 진입 시 해당 매물 카드로 자동 스크롤 + 2초 하이라이트
     const _targetListing = new URLSearchParams(location.search).get("listing");
@@ -4409,9 +4432,28 @@ async function loadBuildingCountLabel(){
   } catch(e){ console.error("[지도] 건물 건수 로드 실패:", e); }
 }
 
+// 검색창 바로 아래 데이터 규모 지표 — 값은 매 로드마다 서버 집계에서 갱신한다.
+async function loadPlatformStats(){
+  const statEls = document.querySelectorAll("[data-platform-stat]");
+  if (!statEls.length) return;
+  try {
+    const res = await fetch("/api/stats/platform-summary", { credentials: "same-origin" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error("platform summary failed");
+    statEls.forEach(el => {
+      const value = data[el.dataset.platformStat];
+      if (typeof value === "number") el.textContent = value.toLocaleString("ko-KR");
+    });
+  } catch (e) {
+    statEls.forEach(el => { el.textContent = "—"; });
+    console.error("[홈] 데이터 규모 지표 로드 실패:", e);
+  }
+}
+
 // 최초 로드: 기본 패널 초기화 후, URL이 /building/<id>면 자동으로 상세를 연다.
 initDefaultSidePanel();
 loadBuildingCountLabel();
+loadPlatformStats();
 (function(){
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) renderBuildingPanel(Number(m[1]));

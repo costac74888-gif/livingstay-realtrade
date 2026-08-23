@@ -239,10 +239,12 @@
         return '<label style="display:flex;align-items:center;gap:8px;padding:3px 0;"><span style="min-width:76px;">' + labels[key] + '</span><input data-building-info-key="' + key + '" value="' + esc(saved[key] || "") + '" placeholder="정보 없음 · 직접 입력" style="' + inputStyle("padding:6px 8px;font-size:11.5px;") + '"></label>';
       }).join("");
       if (nearby) {
-        html += '<div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px;color:var(--ink);">반경 500m 숙박시설 · 일반 ' + Number(nearby["일반"] || 0).toLocaleString() + ' · 관광 ' + Number(nearby["관광"] || 0).toLocaleString() + ' · 복합 ' + Number(nearby["복합"] || 0).toLocaleString() + '</div>';
+        var nearbyTotal = Number(nearby["일반"] || 0) + Number(nearby["관광"] || 0) + Number(nearby["복합"] || 0) + Number(nearby["생활"] || 0);
+        html += '<div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px;color:var(--ink);">반경 500m 내 동종 숙박시설 ' + nearbyTotal.toLocaleString() + '곳 · 일반 ' + Number(nearby["일반"] || 0).toLocaleString() + ' · 관광 ' + Number(nearby["관광"] || 0).toLocaleString() + ' · 복합 ' + Number(nearby["복합"] || 0).toLocaleString() + ' · 생활 ' + Number(nearby["생활"] || 0).toLocaleString() + '</div>';
       }
-      if (subway && subway.name) {
-        html += '<div style="margin-top:4px;color:var(--ink);">가장 가까운 지하철역 · ' + esc(subway.name) + ' · 도보 약 ' + esc(subway.walk_minutes) + '분</div>';
+      var stationName = subway && (subway.station_name || subway.name);
+      if (stationName && subway.walk_minutes != null) {
+        html += '<div style="margin-top:4px;color:var(--ink);">' + esc(stationName) + '까지 도보 약 ' + esc(subway.walk_minutes) + '분</div>';
       }
       $("#lrWholeBuildingInfo").innerHTML = html || "건물 정보가 없습니다.";
     }
