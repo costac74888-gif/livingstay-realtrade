@@ -354,6 +354,19 @@ def ratelimit_handler(e):
 # 방문 기록(page_views)용 고정 salt — 원본 IP를 그대로 저장하지 않고 해시할 때 쓴다.
 # 코드에 평문 salt를 박지 않으려고 FLASK_SECRET_KEY를 재사용(이미 시크릿). 없으면 폴백.
 _PAGE_VIEW_SALT = os.environ.get("FLASK_SECRET_KEY", "") or "livingstay_pageview_salt_v1"
+_PAGE_VIEW_BOT_MARKERS = (
+    "bot",
+    "crawl",
+    "spider",
+    "slurp",
+    "facebookexternalhit",
+)
+
+
+def _should_store_page_view(user_agent):
+    """빈 UA와 알려진 크롤러 UA는 신규 페이지뷰로 저장하지 않는다."""
+    normalized = str(user_agent or "").strip().lower()
+    return bool(normalized) and not any(marker in normalized for marker in _PAGE_VIEW_BOT_MARKERS)
 
 
 def _record_page_view(path, resp_status, listing_request_id=None):
@@ -366,6 +379,8 @@ def _record_page_view(path, resp_status, listing_request_id=None):
         ip = get_client_ip() or ""
         ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
         ua = (request.headers.get("User-Agent") or "")[:500]
+        if not _should_store_page_view(ua):
+            return
         conn = get_conn()
         cur = conn.cursor()
         cur.execute(
@@ -8904,11 +8919,12 @@ def record_listing_views():
         ip = get_client_ip() or ""
         ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
         ua = (request.headers.get("User-Agent") or "")[:500]
-        cur.executemany(
-            "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) "
-            "VALUES ('/listings', %s, %s, %s)",
-            [(listing_id, ip_hash, ua) for listing_id in visible_ids],
-        )
+        if _should_store_page_view(ua):
+            cur.executemany(
+                "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) "
+                "VALUES ('/listings', %s, %s, %s)",
+                [(listing_id, ip_hash, ua) for listing_id in visible_ids],
+            )
         cur.execute("""
             SELECT listing_request_id, COUNT(DISTINCT ip_hash) AS viewer_count
             FROM page_views
@@ -20511,6 +20527,210 @@ def admin_building_request_approve_name(req_id):
         conn.close()
     _mark_master_stats_invalidated_safely("admin_building_request_approve_name")
     return jsonify({"ok": True, "building_name": name})
+
+
+@app.route("/api/admin/user-stats")
+@require_admin
+def admin_user_stats():
+    """회원 활동·가입·페이지뷰를 운영 대시보드용으로 집계한다.
+
+    모든 기간은 서버의 CURRENT_DATE를 기준으로 계산하고, 일별 CTE가 0건인
+    날짜도 채워 30행을 항상 반환한다. 기존 page_views는 보존하되 TOP5만
+    알려진 봇 UA를 제외한다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, 'active') = 'active'
+                      AND last_login_at >= CURRENT_DATE - INTERVAL '29 days'
+                      AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                ) AS mau,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, 'active') = 'active'
+                      AND last_login_at >= CURRENT_DATE - INTERVAL '6 days'
+                      AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                ) AS wau,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, 'active') = 'active'
+                      AND last_login_at >= CURRENT_DATE
+                      AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                ) AS dau,
+                COUNT(*) FILTER (
+                    WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
+                      AND created_at < CURRENT_DATE + INTERVAL '1 day'
+                ) AS new_this_week
+            FROM users
+        """)
+        summary = dict(cur.fetchone())
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
+                      AND created_at < CURRENT_DATE + INTERVAL '1 day'
+                ) AS fav_this_week
+            FROM user_favorites
+        """)
+        summary.update(dict(cur.fetchone()))
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
+                      AND created_at < CURRENT_DATE + INTERVAL '1 day'
+                      AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+                ) AS listing_this_week
+            FROM listing_requests
+        """)
+        summary.update(dict(cur.fetchone()))
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, 'active') = 'active'
+                      AND last_login_at >= CURRENT_DATE - INTERVAL '60 days'
+                      AND last_login_at < CURRENT_DATE - INTERVAL '30 days'
+                ) AS mau_prev,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, 'active') = 'active'
+                      AND last_login_at >= CURRENT_DATE - INTERVAL '14 days'
+                      AND last_login_at < CURRENT_DATE - INTERVAL '7 days'
+                ) AS wau_prev,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, 'active') = 'active'
+                      AND last_login_at >= CURRENT_DATE - INTERVAL '1 day'
+                      AND last_login_at < CURRENT_DATE
+                ) AS dau_prev
+            FROM users
+        """)
+        summary.update(dict(cur.fetchone()))
+
+        cur.execute("""
+            WITH days AS (
+                SELECT generate_series(
+                    CURRENT_DATE - INTERVAL '29 days',
+                    CURRENT_DATE,
+                    INTERVAL '1 day'
+                )::date AS day
+            ),
+            active AS (
+                SELECT last_login_at::date AS day, COUNT(*) AS count
+                FROM users
+                WHERE COALESCE(status, 'active') = 'active'
+                  AND last_login_at >= CURRENT_DATE - INTERVAL '29 days'
+                  AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                GROUP BY last_login_at::date
+            ),
+            new_users AS (
+                SELECT created_at::date AS day, COUNT(*) AS count
+                FROM users
+                WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
+                  AND created_at < CURRENT_DATE + INTERVAL '1 day'
+                GROUP BY created_at::date
+            ),
+            listings AS (
+                SELECT created_at::date AS day, COUNT(*) AS count
+                FROM listing_requests
+                WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
+                  AND created_at < CURRENT_DATE + INTERVAL '1 day'
+                  AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+                GROUP BY created_at::date
+            )
+            SELECT
+                to_char(days.day, 'YYYY-MM-DD') AS day,
+                COALESCE(active.count, 0) AS active,
+                COALESCE(new_users.count, 0) AS new_users,
+                COALESCE(listings.count, 0) AS listings
+            FROM days
+            LEFT JOIN active ON active.day = days.day
+            LEFT JOIN new_users ON new_users.day = days.day
+            LEFT JOIN listings ON listings.day = days.day
+            ORDER BY days.day
+        """)
+        daily_rows = [dict(row) for row in cur.fetchall()]
+        daily_active = [{"date": row["day"], "count": int(row["active"])} for row in daily_rows]
+        daily_new = [{"date": row["day"], "count": int(row["new_users"])} for row in daily_rows]
+        daily_listing = [{"date": row["day"], "count": int(row["listings"])} for row in daily_rows]
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE COALESCE(user_type, 'general') = 'general'
+                      AND COALESCE(status, 'active') = 'active'
+                ) AS general,
+                (SELECT COUNT(*) FROM agents WHERE status = 'approved') AS agent,
+                (SELECT COUNT(*) FROM operators WHERE status = 'approved') AS operator
+            FROM users
+        """)
+        segment_counts = {key: int(value or 0) for key, value in dict(cur.fetchone()).items()}
+
+        cur.execute("""
+            SELECT COUNT(*) AS count
+            FROM page_views
+            WHERE viewed_at >= CURRENT_DATE
+              AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+        """)
+        pv_today = int(cur.fetchone()["count"])
+        cur.execute("""
+            SELECT COUNT(*) AS count
+            FROM page_views
+            WHERE viewed_at >= CURRENT_DATE - INTERVAL '6 days'
+              AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+        """)
+        pv_this_week = int(cur.fetchone()["count"])
+
+        cur.execute("""
+            WITH filtered AS (
+                SELECT path
+                FROM page_views
+                WHERE viewed_at >= CURRENT_DATE - INTERVAL '6 days'
+                  AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+                  AND COALESCE(user_agent, '') NOT ILIKE ANY(
+                      ARRAY['%bot%', '%crawl%', '%spider%', '%slurp%', '%facebookexternalhit%']
+                  )
+            ),
+            grouped AS (
+                SELECT path, COUNT(*) AS count
+                FROM filtered
+                GROUP BY path
+            )
+            SELECT path, count,
+                   ROUND(count * 100.0 / NULLIF(SUM(count) OVER (), 0), 1) AS percent
+            FROM grouped
+            ORDER BY count DESC, path ASC
+            LIMIT 5
+        """)
+        top_paths = [
+            {"path": row["path"], "count": int(row["count"]), "percent": float(row["percent"] or 0)}
+            for row in cur.fetchall()
+        ]
+
+        return jsonify({
+            "mau": int(summary["mau"] or 0),
+            "wau": int(summary["wau"] or 0),
+            "dau": int(summary["dau"] or 0),
+            "new_this_week": int(summary["new_this_week"] or 0),
+            "fav_this_week": int(summary["fav_this_week"] or 0),
+            "listing_this_week": int(summary["listing_this_week"] or 0),
+            "mau_prev": int(summary["mau_prev"] or 0),
+            "wau_prev": int(summary["wau_prev"] or 0),
+            "dau_prev": int(summary["dau_prev"] or 0),
+            "daily_active": daily_active,
+            "daily_new": daily_new,
+            "daily_listing": daily_listing,
+            "segment_counts": segment_counts,
+            "page_views": {
+                "pv_today": pv_today,
+                "pv_this_week": pv_this_week,
+                "top_paths": top_paths,
+            },
+        })
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/admin/stats")

@@ -24,11 +24,17 @@ import os
 import sys
 import copy
 import time
+from datetime import timedelta
 
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import _building_share_meta, _canonical_sido_name, app  # noqa: E402
+from app import (  # noqa: E402
+    _building_share_meta,
+    _canonical_sido_name,
+    _should_store_page_view,
+    app,
+)
 from db import get_conn  # noqa: E402
 import addr_norm  # noqa: E402
 
@@ -91,6 +97,187 @@ def check_feature_tips_admin_api(client):
         if first_id and old_label:
             client.patch(f"/api/admin/feature-tips/{first_id}", json={"cta_label": old_label})
     return None
+
+
+def check_user_stats_admin_api(client):
+    """이용자 현황 API의 관리자 인증과 집계 응답 계약을 확인한다."""
+    with client.session_transaction() as sess:
+        sess.clear()
+    blocked = client.get("/api/admin/user-stats")
+    if blocked.status_code != 401:
+        return "이용자 현황 API가 비관리자 요청을 차단하지 않음"
+
+    with client.session_transaction() as sess:
+        sess["admin"] = True
+    response = client.get("/api/admin/user-stats")
+    if response.status_code != 200 or not response.is_json:
+        return f"이용자 현황 API가 정상 응답하지 않음 (HTTP {response.status_code})"
+    data = response.get_json() or {}
+    required = {
+        "mau", "wau", "dau", "new_this_week", "fav_this_week", "listing_this_week",
+        "mau_prev", "wau_prev", "dau_prev", "daily_active", "daily_new",
+        "daily_listing", "segment_counts", "page_views",
+    }
+    if not required <= set(data):
+        return f"이용자 현황 API 필수 필드 누락: {sorted(required - set(data))}"
+    for key in ("mau", "wau", "dau", "new_this_week", "fav_this_week",
+                "listing_this_week", "mau_prev", "wau_prev", "dau_prev"):
+        if not isinstance(data[key], int) or data[key] < 0:
+            return f"{key}가 0 이상 정수가 아님"
+    for key in ("daily_active", "daily_new", "daily_listing"):
+        rows = data[key]
+        if not isinstance(rows, list) or len(rows) != 30:
+            return f"{key}가 30일 배열이 아님"
+        if any(not row.get("date") or not isinstance(row.get("count"), int) for row in rows):
+            return f"{key} 행의 date/count 형태가 잘못됨"
+    if set((data["segment_counts"] or {})) != {"general", "agent", "operator"}:
+        return "segment_counts의 general/agent/operator 구성이 잘못됨"
+    views = data["page_views"]
+    if not isinstance(views, dict) or not all(
+        isinstance(views.get(key), int) and views[key] >= 0
+        for key in ("pv_today", "pv_this_week")
+    ):
+        return "page_views의 오늘/이번 주 값 형태가 잘못됨"
+    top_paths = views.get("top_paths")
+    if not isinstance(top_paths, list) or len(top_paths) > 5:
+        return "page_views.top_paths가 5건 이하 배열이 아님"
+    for row in top_paths:
+        if not isinstance(row.get("path"), str) or not isinstance(row.get("count"), int):
+            return "page_views.top_paths 행의 path/count 형태가 잘못됨"
+    if _should_store_page_view(""):
+        return "빈 User-Agent가 페이지뷰 저장 대상으로 판정됨"
+    for ua in ("Googlebot/2.1", "example crawler", "Spider/1.0",
+               "Slurp", "facebookexternalhit/1.1"):
+        if _should_store_page_view(ua):
+            return f"봇 User-Agent가 페이지뷰 저장 대상으로 판정됨: {ua}"
+    if not _should_store_page_view("Mozilla/5.0 (X11; Linux x86_64)"):
+        return "일반 브라우저 User-Agent가 페이지뷰 저장 대상에서 제외됨"
+    return None
+
+
+def _daily_count(payload, series_key, day):
+    row = next((item for item in payload[series_key] if item["date"] == day.isoformat()), None)
+    return None if row is None else row["count"]
+
+
+def check_user_stats_aggregate_windows_and_view_writers(client):
+    """날짜 경계·철회 매물·두 page_views 기록 경로를 실제 행으로 검증한다."""
+    response = client.get("/api/admin/user-stats")
+    if response.status_code != 200:
+        return "이용자 현황 집계 기준값을 불러오지 못함"
+    before = response.get_json() or {}
+    tag = f"user-stats-test-{time.time_ns()}"
+    user_ids, listing_ids = [], []
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT CURRENT_DATE AS today")
+        today = cur.fetchone()["today"]
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return "이용자 현황 테스트용 마스터 건물이 없어 집계 경계를 검증할 수 없음"
+        building_id = building["id"]
+
+        def add_user(label, created_sql, login_sql, status="active"):
+            cur.execute(f"""
+                INSERT INTO users (email, name, user_type, status, created_at, last_login_at)
+                VALUES (%s, %s, 'general', %s, {created_sql}, {login_sql})
+                RETURNING id
+            """, (f"{tag}-{label}@example.test", tag, status))
+            user_id = cur.fetchone()["id"]
+            user_ids.append(user_id)
+            return user_id
+
+        # 오늘·8일 전·31일 전: 현재/이전 MAU·WAU 및 일별 시계열의 경계점.
+        today_user = add_user("today", "CURRENT_DATE + INTERVAL '1 hour'", "CURRENT_DATE + INTERVAL '1 hour'")
+        add_user("wau-prev", "CURRENT_DATE - INTERVAL '8 days' + INTERVAL '1 hour'",
+                 "CURRENT_DATE - INTERVAL '8 days' + INTERVAL '1 hour'")
+        add_user("mau-prev", "CURRENT_DATE - INTERVAL '31 days' + INTERVAL '1 hour'",
+                 "CURRENT_DATE - INTERVAL '31 days' + INTERVAL '1 hour'")
+        add_user("withdrawn", "CURRENT_DATE - INTERVAL '40 days'", "CURRENT_DATE + INTERVAL '1 hour'",
+                 status="withdrawn")
+        cur.execute("""
+            INSERT INTO user_favorites (user_id, building_name, address, master_building_id, created_at)
+            VALUES (%s, %s, %s, %s, CURRENT_DATE + INTERVAL '1 hour')
+        """, (today_user, tag, tag, building_id))
+        # 영어·한글 철회 행은 모두 주간/일별 매물등록에서 빠져야 한다.
+        for status, created_sql, target in (
+            ("submitted", "CURRENT_DATE + INTERVAL '1 hour'", "unit"),
+            ("withdrawn", "CURRENT_DATE + INTERVAL '1 hour'", "unit"),
+            ("철회됨", "CURRENT_DATE + INTERVAL '1 hour'", "unit"),
+            ("submitted", "CURRENT_DATE - INTERVAL '40 days'", "whole"),
+        ):
+            cur.execute(f"""
+                INSERT INTO listing_requests
+                    (user_id, master_building_id, deal_type, contact_phone, deal_mode,
+                     transaction_target, status, created_at)
+                VALUES (%s, %s, '매매', '01000000000', 'direct', %s, %s, {created_sql})
+                RETURNING id
+            """, (today_user, building_id, target, status))
+            listing_ids.append(cur.fetchone()["id"])
+        view_listing_id = listing_ids[-1]
+        conn.commit()
+
+        after_response = client.get("/api/admin/user-stats")
+        if after_response.status_code != 200:
+            return "테스트 행 추가 뒤 이용자 현황 API가 응답하지 않음"
+        after = after_response.get_json() or {}
+        expected_deltas = {
+            "mau": 2, "wau": 1, "dau": 1, "new_this_week": 1,
+            "fav_this_week": 1, "listing_this_week": 1,
+            "mau_prev": 1, "wau_prev": 1, "dau_prev": 0,
+        }
+        for key, delta in expected_deltas.items():
+            if after.get(key) != before.get(key, 0) + delta:
+                return f"이용자 현황 {key}의 기간 또는 철회 상태 집계가 잘못됨"
+        if after["segment_counts"]["general"] != before["segment_counts"]["general"] + 3:
+            return "탈퇴한 일반회원이 사용자 세그먼트에 포함되거나 활성 회원이 누락됨"
+        for series_key, day, delta in (
+            ("daily_active", today, 1),
+            ("daily_active", today - timedelta(days=8), 1),
+            ("daily_new", today, 1),
+            ("daily_listing", today, 1),
+        ):
+            old_count = _daily_count(before, series_key, day)
+            new_count = _daily_count(after, series_key, day)
+            if old_count is None or new_count != old_count + delta:
+                return f"{series_key}의 {day.isoformat()} 일별 경계 집계가 잘못됨"
+
+        bot_ua = f"Googlebot/2.1 {tag}"
+        browser_ua = f"StatsTestBrowser/1.0 {tag}"
+        cur.execute("SELECT COUNT(*) AS count FROM page_views WHERE user_agent IN (%s, %s)", (bot_ua, browser_ua))
+        before_views = cur.fetchone()["count"]
+        client.get("/", headers={"User-Agent": bot_ua})
+        client.get("/", headers={"User-Agent": browser_ua})
+        bot_view = client.post("/api/listings/views", json={"listing_ids": [view_listing_id]},
+                               headers={"User-Agent": bot_ua})
+        browser_view = client.post("/api/listings/views", json={"listing_ids": [view_listing_id]},
+                                   headers={"User-Agent": browser_ua})
+        if bot_view.status_code != 200 or browser_view.status_code != 200:
+            return "매물 열람 페이지뷰 경로가 테스트 매물에 응답하지 않음"
+        cur.execute("SELECT COUNT(*) AS count FROM page_views WHERE user_agent IN (%s, %s)", (bot_ua, browser_ua))
+        after_views = cur.fetchone()["count"]
+        # 일반 페이지 1건 + 매물열람 1건만 추가되며, 봇 UA는 어느 INSERT 경로에서도 저장되지 않아야 한다.
+        if after_views != before_views + 2:
+            return "빈/봇 UA 제외 또는 일반 UA의 두 페이지뷰 INSERT 경로가 잘못됨"
+        return None
+    except Exception as exc:
+        conn.rollback()
+        return f"이용자 현황 집계 경계 테스트 실행 오류: {exc}"
+    finally:
+        try:
+            cur.execute("DELETE FROM page_views WHERE user_agent LIKE %s", (f"%{tag}%",))
+            if listing_ids:
+                cur.execute("DELETE FROM listing_requests WHERE id = ANY(%s)", (listing_ids,))
+            if user_ids:
+                cur.execute("DELETE FROM user_favorites WHERE user_id = ANY(%s)", (user_ids,))
+                cur.execute("DELETE FROM users WHERE id = ANY(%s)", (user_ids,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.close()
+        conn.close()
 
 
 def check_health(payload):
@@ -438,6 +625,18 @@ def run():
         failures.append(feature_tip_error)
     else:
         print("OK  /api/admin/feature-tips (관리자 인증·입력 검증)")
+
+    user_stats_error = check_user_stats_admin_api(client)
+    if user_stats_error:
+        failures.append(user_stats_error)
+    else:
+        print("OK  /api/admin/user-stats (집계 shape·기간·UA 필터)")
+
+    user_stats_data_error = check_user_stats_aggregate_windows_and_view_writers(client)
+    if user_stats_data_error:
+        failures.append(user_stats_data_error)
+    else:
+        print("OK  /api/admin/user-stats (날짜 경계·철회 상태·두 페이지뷰 INSERT)")
 
     # /api/buildings-geo bounds 필터 추가 테스트
     failures += _check_buildings_geo_bounds(client)

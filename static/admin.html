@@ -68,6 +68,7 @@
         <button class="admin-menu-item is-active" data-menu="stats">통계 대시보드</button>
         <button class="admin-menu-item" data-menu="revenue">매출관리</button>
         <button class="admin-menu-item" data-menu="buildings">건물마스터</button>
+        <button class="admin-menu-item" data-menu="user-stats">이용자 현황</button>
         <button class="admin-menu-item" data-menu="warehouse">데이터 원본 창고</button>
         <button class="admin-menu-item" data-menu="datasync">데이터 동기화</button>
         <button class="admin-menu-item" data-menu="members">회원관리</button>
@@ -1164,6 +1165,141 @@
         if (feedback) { feedback.style.color = "#B3261E"; feedback.textContent = e.message || "추가에 실패했습니다."; }
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = "새 회차 추가"; }
+      }
+    }
+
+    function userStatChange(current, previous) {
+      if (Number(previous) === 0) return { text: "—", color: "var(--ink-soft)" };
+      const rate = ((Number(current || 0) - Number(previous || 0)) / Number(previous)) * 100;
+      const rounded = rate.toFixed(1);
+      return {
+        text: `${rate > 0 ? "+" : ""}${rounded}%`,
+        color: rate > 0 ? "#2E7D32" : rate < 0 ? "#B3261E" : "var(--ink-soft)",
+      };
+    }
+
+    function userStatsLineSvg(data) {
+      const active = (data.daily_active || []).map((row) => Number(row.count || 0));
+      const fresh = (data.daily_new || []).map((row) => Number(row.count || 0));
+      const listings = (data.daily_listing || []).map((row) => Number(row.count || 0));
+      const days = data.daily_active || [];
+      const width = 760, height = 290, left = 42, right = 14, top = 18, bottom = 38;
+      const plotWidth = width - left - right, plotHeight = height - top - bottom;
+      const max = Math.max(1, ...active, ...fresh, ...listings);
+      const x = (i) => left + (days.length <= 1 ? 0 : (i / (days.length - 1)) * plotWidth);
+      const y = (value) => top + plotHeight - (value / max) * plotHeight;
+      const points = (values) => values.map((value, i) => `${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+      const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+        const gy = top + plotHeight * (1 - ratio);
+        const label = Math.round(max * ratio).toLocaleString("ko-KR");
+        return `<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="#E8EBEF" stroke-width="1"/>
+          <text x="${left - 7}" y="${gy + 4}" text-anchor="end" fill="#7A8490" font-size="10">${label}</text>`;
+      }).join("");
+      const labels = [0, 7, 14, 21, 28].filter((i) => i < days.length).map((i) => {
+        const label = String(days[i].date || "").slice(5);
+        return `<text x="${x(i)}" y="${height - 12}" text-anchor="middle" fill="#7A8490" font-size="10">${dgEscape(label)}</text>`;
+      }).join("");
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="최근 30일 이용자·가입·매물등록 추이" style="width:100%;height:auto;display:block;">
+        ${grid}
+        <polyline points="${points(active)}" fill="none" stroke="#378ADD" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polyline points="${points(fresh)}" fill="none" stroke="#2E8B57" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polyline points="${points(listings)}" fill="none" stroke="#B4863F" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        ${labels}
+      </svg>`;
+    }
+
+    function renderUserStats(data) {
+      const cards = [
+        ["MAU", "mau", "mau_prev", "명"],
+        ["WAU", "wau", "wau_prev", "명"],
+        ["DAU", "dau", "dau_prev", "명"],
+        ["신규가입(주간)", "new_this_week", null, "명"],
+        ["관심단지(주간)", "fav_this_week", null, "건"],
+        ["매물등록(주간)", "listing_this_week", null, "건"],
+      ];
+      const cardHtml = cards.map(([label, key, previousKey, unit]) => {
+        const value = Number(data[key] || 0);
+        const change = previousKey ? userStatChange(value, data[previousKey]) : null;
+        return `<div style="background:#fff;border:1px solid #DDE1E6;border-radius:10px;padding:14px 15px;min-width:0;">
+          <div style="font-size:12px;color:var(--ink-soft);font-weight:600;">${label}</div>
+          <div style="display:flex;align-items:baseline;gap:5px;margin-top:4px;">
+            <b style="font-size:26px;color:var(--ink);">${num(value)}</b><span style="font-size:11px;color:var(--ink-soft);">${unit}</span>
+          </div>
+          ${change ? `<div style="font-size:11px;color:${change.color};margin-top:4px;">전 기간 대비 ${change.text}</div>` : '<div style="height:16px;margin-top:4px;"></div>'}
+        </div>`;
+      }).join("");
+
+      const daily = data.daily_active || [];
+      const segments = data.segment_counts || {};
+      const segmentRows = [
+        ["일반회원", Number(segments.general || 0), "#378ADD"],
+        ["중개사", Number(segments.agent || 0), "#2E8B57"],
+        ["운영업체", Number(segments.operator || 0), "#B4863F"],
+      ];
+      const segmentMax = Math.max(1, ...segmentRows.map((row) => row[1]));
+      const segmentHtml = segmentRows.map(([label, value, color]) => `
+        <div style="margin:13px 0;">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;">
+            <span>${label}</span><b>${num(value)}명</b>
+          </div>
+          <div style="height:9px;background:#EEF1F4;border-radius:5px;margin-top:6px;overflow:hidden;">
+            <div style="height:100%;width:${(value / segmentMax) * 100}%;background:${color};border-radius:5px;"></div>
+          </div>
+        </div>
+      `).join("");
+      const topPaths = ((data.page_views || {}).top_paths || []);
+      const pathRows = topPaths.length ? topPaths.map((row) => `
+        <tr>
+          <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${dgEscape(row.path || "/")}</td>
+          <td style="text-align:right;">${num(row.count)}</td>
+          <td style="text-align:right;color:var(--ink-soft);">${Number(row.percent || 0).toFixed(1)}%</td>
+        </tr>
+      `).join("") : '<tr><td colspan="3" style="text-align:center;color:var(--ink-soft);padding:18px;">최근 7일 페이지뷰가 없습니다.</td></tr>';
+
+      mount.innerHTML = `
+        <div class="stats-head">
+          <h2 class="stats-title">이용자 현황</h2>
+          <p class="stats-sub">최근 활동·가입·관심단지·매물등록과 페이지뷰를 기존 서비스 데이터 기준으로 집계합니다.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          ${cardHtml}
+        </div>
+        <section class="stats-card stats-card-wide" style="margin-top:14px;">
+          <h3 class="stats-card-title">최근 30일 활동 추이</h3>
+          <div style="display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin:8px 0 2px;">
+            <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;border-radius:50%;margin-right:5px;"></i>활성사용자</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#2E8B57;border-radius:50%;margin-right:5px;"></i>신규가입</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#B4863F;border-radius:50%;margin-right:5px;"></i>매물등록</span>
+          </div>
+          <div style="overflow:hidden;margin-top:5px;">${userStatsLineSvg(data)}</div>
+        </section>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;">
+          <section class="stats-card">
+            <h3 class="stats-card-title">사용자 세그먼트</h3>
+            ${segmentHtml}
+          </section>
+          <section class="stats-card">
+            <h3 class="stats-card-title">페이지뷰 TOP5 <span class="stats-card-hint">오늘 ${num((data.page_views || {}).pv_today || 0)} · 이번 주 ${num((data.page_views || {}).pv_this_week || 0)}</span></h3>
+            <table class="dg-table" style="width:100%;font-size:12px;">
+              <thead><tr><th>경로</th><th style="text-align:right;">조회수</th><th style="text-align:right;">비율</th></tr></thead>
+              <tbody>${pathRows}</tbody>
+            </table>
+          </section>
+        </div>
+      `;
+    }
+
+    async function showUserStats() {
+      destroyStatsCharts();
+      mount.innerHTML = '<div class="stats-loading">이용자 현황을 불러오는 중…</div>';
+      try {
+        const res = await fetch("/api/admin/user-stats");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("user stats fetch failed");
+        const data = await res.json();
+        renderUserStats(data);
+      } catch (e) {
+        mount.innerHTML = '<div class="stats-loading">이용자 현황을 불러오지 못했습니다. 새로고침 해주세요.</div>';
       }
     }
 
@@ -5697,6 +5833,7 @@
       stopLodgingSyncPolling();
       stopBrhubSyncPolling();
       if (menuKey === "stats") { showStats(menuKey); return; }
+      if (menuKey === "user-stats") { showUserStats(); return; }
       if (menuKey === "warehouse") { showWarehouse(); return; }
       if (menuKey === "revenue") { showRevenue(); return; }
       if (menuKey === "members") { showMembers(); return; }
