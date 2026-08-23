@@ -20544,92 +20544,104 @@ def stats_closure_rate_by_region():
     return jsonify({"ok": True, "items": items[:5], "minimum_sample_size": 5})
 
 
-@app.route("/api/stats/report-rate-by-sido")
+@app.route("/api/stats/consign-by-sido")
 @limiter.limit("20 per minute")
-def stats_report_rate_by_sido():
-    """일반숙박을 포함한 시도별 유형별 기준 영업신고율."""
-    room_buildings, _, _, _, capped_report_rooms_by_building, _ = _matched_lodging_by_region(
-        exclude_general=True
-    )
-    all_buildings, _, _, _, _, building_permits_by_id = _matched_lodging_by_region(
-        exclude_general=False
-    )
-    room_units_by_sido = {}
-    room_biz_units_by_sido = {}
-    room_building_count_by_sido = {}
-    general_building_count_by_sido = {}
-    general_biz_count_by_sido = {}
-    for building in room_buildings:
-        sido = _canonical_sido_name(building["sgg_text"])
-        if not sido:
-            continue
-        room_units_by_sido[sido] = room_units_by_sido.get(sido, 0) + int(building["units"] or 0)
-        room_building_count_by_sido[sido] = room_building_count_by_sido.get(sido, 0) + 1
-        room_biz_units_by_sido[sido] = (
-            room_biz_units_by_sido.get(sido, 0)
-            + capped_report_rooms_by_building.get(building["id"], 0)
-        )
+def stats_consign_by_sido():
+    """생활숙박시설의 승인된 위탁운영 등록 현황을 시도별로 집계한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT
+                mb.id AS building_id,
+                mb.sgg_text,
+                COALESCE(mb.units, 0) AS units,
+                approved.operator_id
+            FROM master_buildings mb
+            LEFT JOIN (
+                SELECT DISTINCT ob.master_building_id, ob.operator_id
+                FROM operator_buildings ob
+                JOIN operators o ON o.id = ob.operator_id
+                WHERE o.status = 'approved'
+                  AND o.category = '위탁'
+            ) approved ON approved.master_building_id = mb.id
+            WHERE mb.lodging_type = '생활'
+            ORDER BY mb.id
+        """)
+        # 업체가 여러 곳 연결된 건물도 호실수는 한 번만 세고,
+        # 업체수만 승인 업체 ID 기준으로 중복 제거한다.
+        buildings = {}
+        for row in cur.fetchall():
+            building_id = row["building_id"]
+            building = buildings.setdefault(building_id, {
+                "sido": _canonical_sido_name(row["sgg_text"]),
+                "units": max(0, int(row["units"] or 0)),
+                "operator_ids": set(),
+            })
+            if row["operator_id"] is not None:
+                building["operator_ids"].add(int(row["operator_id"]))
 
-    # 일반숙박은 건물 호실수가 객실 모집단과 다르므로 영업신고업체 ÷ 건물수로 계산한다.
-    # 동일 신고번호가 여러 건물 주소에 매칭되더라도 시도별 분자는 중복 제거한다.
-    general_permits_by_sido = {}
-    total_general_buildings = 0
-    total_general_permits = set()
-    total_room_units = 0
-    total_room_biz_units = 0
-    for building in all_buildings:
-        sido = _canonical_sido_name(building["sgg_text"])
-        is_general = building.get("lodging_type") == REPORT_RATE_EXCLUDED_LODGING_TYPE
-        if is_general:
-            total_general_buildings += 1
-            if sido:
-                general_building_count_by_sido[sido] = (
-                    general_building_count_by_sido.get(sido, 0) + 1
-                )
-            active_general_permits = {
-                permit_number
-                for permit_number, permit in (building_permits_by_id.get(building["id"]) or {}).items()
-                if "폐업" not in (permit.get("biz_status_name") or "")
+        region_stats = {}
+        for building in buildings.values():
+            sido = building["sido"]
+            if not sido:
+                continue
+            stats = region_stats.setdefault(sido, {
+                "building_count": 0,
+                "units": 0,
+                "operator_ids": set(),
+                "operator_units": 0,
+            })
+            stats["building_count"] += 1
+            stats["units"] += building["units"]
+            stats["operator_ids"].update(building["operator_ids"])
+            if building["operator_ids"]:
+                stats["operator_units"] += building["units"]
+
+        def summary(stats):
+            units = stats["units"]
+            return {
+                "building_count": stats["building_count"],
+                "units": units,
+                "operator_count": len(stats["operator_ids"]),
+                "operator_units": stats["operator_units"],
+                "operator_rate": (
+                    round(stats["operator_units"] / units * 100, 1)
+                    if units else None
+                ),
             }
-            total_general_permits.update(active_general_permits)
-            if sido:
-                general_permits_by_sido.setdefault(sido, set()).update(active_general_permits)
-        else:
-            total_room_units += int(building["units"] or 0)
-            total_room_biz_units += capped_report_rooms_by_building.get(building["id"], 0)
 
-    for sido, permits in general_permits_by_sido.items():
-        general_biz_count_by_sido[sido] = len(permits)
-
-    total_units = total_room_units + total_general_buildings
-    total_biz_units = total_room_biz_units + len(total_general_permits)
-    all_sidos = set(room_units_by_sido) | set(general_building_count_by_sido)
-    items = []
-    for sido in sorted(all_sidos):
-        room_units = room_units_by_sido.get(sido, 0)
-        room_biz_units = room_biz_units_by_sido.get(sido, 0)
-        general_buildings = general_building_count_by_sido.get(sido, 0)
-        general_biz = general_biz_count_by_sido.get(sido, 0)
-        units = room_units + general_buildings
-        biz_units = room_biz_units + general_biz
-        items.append({
-            "sido": sido,
-            "building_count": room_building_count_by_sido.get(sido, 0) + general_buildings,
-            "total_units": units,
-            "biz_units": biz_units,
-            "rate": round(biz_units / units * 100, 1) if units else None,
+        items = [
+            {"sido": sido, **summary(stats)}
+            for sido, stats in sorted(region_stats.items())
+        ]
+        total_stats = {
+            "building_count": sum(item["building_count"] for item in items),
+            "units": sum(item["units"] for item in items),
+            "operator_count": len({
+                operator_id
+                for stats in region_stats.values()
+                for operator_id in stats["operator_ids"]
+            }),
+            "operator_units": sum(item["operator_units"] for item in items),
+        }
+        total = summary({
+            **total_stats,
+            "operator_ids": {
+                operator_id
+                for stats in region_stats.values()
+                for operator_id in stats["operator_ids"]
+            },
         })
-    items.sort(key=lambda item: (
-        -(item["rate"] if item["rate"] is not None else -1),
-        item["sido"],
-    ))
-    return jsonify({
-        "ok": True,
-        "items": items,
-        "national_rate": round(total_biz_units / total_units * 100, 1) if total_units else None,
-        "general_excluded": False,
-        "rate_basis": "type_weighted",
-    })
+        return jsonify({
+            "ok": True,
+            "items": items,
+            "total": total,
+            "is_partial": True,
+        })
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/stats/registration-rate")

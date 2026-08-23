@@ -24,16 +24,16 @@ expect(!index.includes("최근 관심물건"), "최근 관심물건 위젯이 �
 expect(!index.includes('id="sideFavList"'), "최근 관심물건 위젯의 목록 컨테이너가 남아 있습니다.");
 expect(!index.includes('id="sideRankingCard"'), "거래량 TOP 별도 위젯이 데이터랩 편입 후에도 남아 있습니다.");
 expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습니다.");
-["lodging", "volume", "change", "highest", "closure", "rate"].forEach((key) => {
+["lodging", "volume", "change", "highest", "consign", "closure"].forEach((key) => {
   expect(index.includes(`data-datalab-key="${key}"`), `데이터랩 ${key} 항목이 없습니다.`);
 });
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
-  tabKeys.join(",") === "lodging,volume,change,highest,rate,closure",
-  "데이터랩 ⑤ 영업신고율·⑥ 폐업 현황 탭 순서가 아닙니다."
+  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure",
+  "데이터랩 ⑤ 위탁현황·⑥ 폐업 현황 탭 순서가 아닙니다."
 );
-expect(index.includes("<span>영업신고율</span>") && !index.includes("신고율 비교"),
-  "데이터랩 탭 명칭이 영업신고율로 통일되지 않았습니다.");
+expect(index.includes("<span>위탁현황</span>") && !index.includes("영업신고율"),
+  "데이터랩 ⑤ 탭 명칭이 위탁현황으로 교체되지 않았습니다.");
 
 expect(main.includes('const HS_RECENT_KEY = "hs_recent_buildings"'), "최근검색 localStorage 키가 바뀌었습니다.");
 expect(main.includes("function trackRecentBuilding"), "최근검색 기록 함수가 사라졌습니다.");
@@ -66,10 +66,17 @@ expect(
 expect(main.includes("/api/stats/price-change-top"), "가격변동 데이터랩 API 연결이 없습니다.");
 expect(main.includes("data-datalab-price-order") && main.includes("최고</button>") && main.includes("최저</button>"),
   "데이터랩 최고가/최저가 토글이 없습니다.");
-expect(main.includes("/api/stats/report-rate-by-sido"), "시도별 신고율 데이터랩 API 연결이 없습니다.");
-const rateRender = main.slice(main.indexOf("function renderDataLabRate"), main.indexOf("function setDataLabActive"));
-expect(rateRender.includes("일반숙박 포함") && !rateRender.includes("유형별 기준:"),
-  "시도별 신고율은 일반숙박 포함만 간결하게 표시하고 산식 안내를 노출하지 않아야 합니다.");
+expect(main.includes("/api/stats/consign-by-sido"), "위탁현황 데이터랩 API 연결이 없습니다.");
+expect(!main.includes("/api/stats/report-rate-by-sido") && !main.includes("function renderDataLabRate"),
+  "구 영업신고율 데이터랩 연결 또는 렌더링이 남아 있습니다.");
+const consignRender = main.slice(main.indexOf("function renderDataLabConsign"), main.indexOf("function setDataLabActive"));
+expect(
+  consignRender.includes("<th>시도</th><th>건물수</th><th>호실수</th><th>위탁업체수</th><th>위탁호실수</th><th>위탁비율</th>") &&
+  consignRender.includes("<tfoot>") &&
+  consignRender.includes("datalab-partial-badge") &&
+  consignRender.includes("플랫폼 등록 기준"),
+  "위탁현황이 합계행 포함 단일 테이블로 렌더링되지 않았습니다."
+);
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");
 expect(main.includes("DATA_LAB_CACHE_TTL_MS"), "데이터랩 반복 탭 전환 캐시가 없습니다.");
 expect(main.includes("function moveDataLabBuildingToMap"), "데이터랩 건물명의 지도 이동 함수가 없습니다.");
@@ -93,9 +100,9 @@ const datalabClickBinding = main.slice(
 );
 expect(!datalabClickBinding.includes("openBuildingDetail"),
   "데이터랩 건물 클릭이 지도 이동 대신 상세 패널을 열고 있습니다.");
-expect(main.includes("<strong>⑤ 📈 영업신고율</strong>") && main.includes("<strong>⑥ ⚫ 폐업 현황</strong>"),
-  "데이터랩 콘텐츠의 영업신고율·폐업 현황 순서 또는 명칭이 맞지 않습니다.");
-const closureRender = main.slice(main.indexOf("function renderDataLabClosure"), main.indexOf("function renderDataLabRate"));
+expect(main.includes("<strong>⑤ 🏨 위탁현황</strong>") && main.includes("<strong>⑥ ⚫ 폐업 현황</strong>"),
+  "데이터랩 콘텐츠의 위탁현황·폐업 현황 순서 또는 명칭이 맞지 않습니다.");
+const closureRender = main.slice(main.indexOf("function renderDataLabClosure"), main.indexOf("function renderDataLabConsign"));
 expect(closureRender.includes('class="datalab-region"') && !closureRender.includes('class="datalab-building"'),
   "폐업 현황 지역명이 건물명 강조 스타일을 사용하고 있습니다.");
 expect(css.includes(".datalab-region") && css.includes("font-size:12px; font-weight:400"),

@@ -26,7 +26,8 @@ import sys
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import app  # noqa: E402
+from app import _canonical_sido_name, app  # noqa: E402
+from db import get_conn  # noqa: E402
 
 
 def check_health(payload):
@@ -144,20 +145,112 @@ def check_datalab_items(payload):
     return None
 
 
-def check_datalab_rate(payload):
-    """/api/stats/report-rate-by-sido: 전국 평균과 시도별 배열."""
+def check_datalab_consign(payload):
+    """/api/stats/consign-by-sido: 시도별 위탁현황과 전국 합계."""
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return "응답이 성공 객체가 아님"
     if not isinstance(payload.get("items"), list):
         return "'items'가 배열이 아님"
-    if payload.get("general_excluded") is not False:
-        return "일반숙박 포함 기준이 표시되지 않음"
-    if payload.get("rate_basis") != "type_weighted":
-        return "일반숙박 포함 유형별 산식이 표시되지 않음"
-    rate = payload.get("national_rate")
-    if rate is not None and not isinstance(rate, (int, float)):
-        return "'national_rate'가 숫자 또는 null이 아님"
+    if not isinstance(payload.get("total"), dict):
+        return "'total'이 객체가 아님"
+    if payload.get("is_partial") is not True:
+        return "수집중 상태가 표시되지 않음"
+    required = {"building_count", "units", "operator_count", "operator_units", "operator_rate"}
+    for scope, rows in (("items", payload["items"]), ("total", [payload["total"]])):
+        for row in rows:
+            if not required <= set(row):
+                return f"{scope}에 위탁현황 필수 컬럼이 없음"
+            for key in required - {"operator_rate"}:
+                if not isinstance(row[key], int) or row[key] < 0:
+                    return f"{scope}.{key}가 0 이상 정수가 아님"
+            rate = row["operator_rate"]
+            if rate is not None and (
+                not isinstance(rate, (int, float)) or not 0 <= rate <= 100
+            ):
+                return f"{scope}.operator_rate가 0~100 숫자가 아님"
     return None
+
+
+def expected_consign_by_sido():
+    """승인된 위탁업체 연결만 사용한 위탁현황 독립 집계값."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT
+                mb.id AS building_id,
+                mb.sgg_text,
+                COALESCE(mb.units, 0) AS units,
+                approved.operator_id
+            FROM master_buildings mb
+            LEFT JOIN (
+                SELECT DISTINCT ob.master_building_id, ob.operator_id
+                FROM operator_buildings ob
+                JOIN operators o ON o.id = ob.operator_id
+                WHERE o.status = 'approved'
+                  AND o.category = '위탁'
+            ) approved ON approved.master_building_id = mb.id
+            WHERE mb.lodging_type = '생활'
+            ORDER BY mb.id
+        """)
+        buildings = {}
+        for row in cur.fetchall():
+            building = buildings.setdefault(row["building_id"], {
+                "sido": _canonical_sido_name(row["sgg_text"]),
+                "units": max(0, int(row["units"] or 0)),
+                "operator_ids": set(),
+            })
+            if row["operator_id"] is not None:
+                building["operator_ids"].add(int(row["operator_id"]))
+
+        regions = {}
+        for building in buildings.values():
+            if not building["sido"]:
+                continue
+            region = regions.setdefault(building["sido"], {
+                "building_count": 0,
+                "units": 0,
+                "operator_ids": set(),
+                "operator_units": 0,
+            })
+            region["building_count"] += 1
+            region["units"] += building["units"]
+            region["operator_ids"].update(building["operator_ids"])
+            if building["operator_ids"]:
+                region["operator_units"] += building["units"]
+
+        def summary(region):
+            units = region["units"]
+            return {
+                "building_count": region["building_count"],
+                "units": units,
+                "operator_count": len(region["operator_ids"]),
+                "operator_units": region["operator_units"],
+                "operator_rate": (
+                    round(region["operator_units"] / units * 100, 1)
+                    if units else None
+                ),
+            }
+
+        items = [
+            {"sido": sido, **summary(region)}
+            for sido, region in sorted(regions.items())
+        ]
+        total_operator_ids = {
+            operator_id
+            for region in regions.values()
+            for operator_id in region["operator_ids"]
+        }
+        total = summary({
+            "building_count": sum(item["building_count"] for item in items),
+            "units": sum(item["units"] for item in items),
+            "operator_ids": total_operator_ids,
+            "operator_units": sum(item["operator_units"] for item in items),
+        })
+        return items, total
+    finally:
+        cur.close()
+        conn.close()
 
 
 # (경로, shape 검증 함수)
@@ -175,7 +268,7 @@ CHECKS = [
     ("/api/stats/highest-price-top?order=highest", check_datalab_items),
     ("/api/stats/highest-price-top?order=lowest", check_datalab_items),
     ("/api/stats/closure-rate-by-region", check_datalab_items),
-    ("/api/stats/report-rate-by-sido", check_datalab_rate),
+    ("/api/stats/consign-by-sido", check_datalab_consign),
 ]
 
 
@@ -207,6 +300,10 @@ def run():
             continue
 
         print(f"OK  {path}  ({resp.status_code}, {content_type})")
+
+    removed_rate = client.get("/api/stats/report-rate-by-sido")
+    if removed_rate.status_code != 404:
+        failures.append("삭제된 영업신고율 API가 404를 반환하지 않음")
 
     # /api/buildings-geo bounds 필터 추가 테스트
     failures += _check_buildings_geo_bounds(client)
@@ -2631,35 +2728,44 @@ def _check_datalab_stats(client):
                 failures.append("데이터랩 폐업 지역: 표본 5건 제외 또는 폐업률 계산이 잘못됨")
                 break
 
-        report_rate = client.get("/api/stats/report-rate-by-sido").get_json() or {}
-        if report_rate.get("general_excluded") is not False:
-            failures.append("데이터랩 시도별 신고율: 일반숙박 포함 기준이 없음")
-        if report_rate.get("rate_basis") != "type_weighted":
-            failures.append("데이터랩 시도별 신고율: 유형별 산식이 없음")
-        canonical_sidos = [item.get("sido") for item in report_rate.get("items") or []]
+        consign = client.get("/api/stats/consign-by-sido").get_json() or {}
+        expected_consign_items, expected_consign_total = expected_consign_by_sido()
+        if (
+            consign.get("items") != expected_consign_items
+            or consign.get("total") != expected_consign_total
+        ):
+            failures.append(
+                "데이터랩 위탁현황: 생활·승인 위탁업체·건물별 호실 중복 제거 집계가 원본과 다름"
+            )
+        canonical_sidos = [item.get("sido") for item in consign.get("items") or []]
         if (
             len(canonical_sidos) != len(set(canonical_sidos))
             or any(sido in {"서울", "광주", "울산", "전남"} for sido in canonical_sidos)
         ):
-            failures.append("데이터랩 시도별 신고율: 시도 표기가 공식 명칭으로 통합되지 않음")
-        for item in report_rate.get("items") or []:
-            units = int(item.get("total_units") or 0)
-            biz_units = int(item.get("biz_units") or 0)
-            expected_rate = round(biz_units / units * 100, 1) if units else None
+            failures.append("데이터랩 위탁현황: 시도 표기가 공식 명칭으로 통합되지 않음")
+        for item in consign.get("items") or []:
+            units = int(item.get("units") or 0)
+            operator_units = int(item.get("operator_units") or 0)
+            expected_rate = round(operator_units / units * 100, 1) if units else None
             if (
-                item.get("rate") != expected_rate
-                or (item.get("rate") is not None and not 0 <= item["rate"] <= 100)
+                item.get("operator_rate") != expected_rate
+                or (item.get("operator_rate") is not None and not 0 <= item["operator_rate"] <= 100)
+                or operator_units > units
             ):
-                failures.append("데이터랩 시도별 신고율: 유형별 가중평균 계산이 잘못됨")
+                failures.append("데이터랩 위탁현황: 위탁비율 계산이 잘못됨")
                 break
-        national_units = sum(int(item.get("total_units") or 0) for item in report_rate.get("items") or [])
-        national_biz_units = sum(int(item.get("biz_units") or 0) for item in report_rate.get("items") or [])
-        expected_national_rate = round(national_biz_units / national_units * 100, 1) if national_units else None
+        total = consign.get("total") or {}
+        national_units = int(total.get("units") or 0)
+        national_operator_units = int(total.get("operator_units") or 0)
+        expected_national_rate = round(
+            national_operator_units / national_units * 100, 1
+        ) if national_units else None
         if (
-            report_rate.get("national_rate") != expected_national_rate
-            or (report_rate.get("national_rate") is not None and not 0 <= report_rate["national_rate"] <= 100)
+            total.get("operator_rate") != expected_national_rate
+            or (total.get("operator_rate") is not None and not 0 <= total["operator_rate"] <= 100)
+            or national_operator_units > national_units
         ):
-            failures.append("데이터랩 시도별 신고율: 전국 유형별 가중평균 계산이 잘못됨")
+            failures.append("데이터랩 위탁현황: 전국 합계 비율 계산이 잘못됨")
 
         public_stats = client.get("/api/stats/lodging-full-table").get_json() or {}
 
@@ -2673,8 +2779,6 @@ def _check_datalab_stats(client):
             session["admin"] = True
         admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
         total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
-        if report_rate.get("national_rate") != total_row.get("report_rate"):
-            failures.append("데이터랩 시도별 신고율: 일반 포함 전국 기준선이 관리자 원본과 다름")
         admin_rows = admin_stats.get("rows") or []
         admin_required = {
             "type", "building_count", "units", "favorites", "listing_requests",
