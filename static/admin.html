@@ -1053,6 +1053,120 @@
       }
     }
 
+    function featureTipField(row, field) {
+      return row.querySelector(`[data-feature-tip-field="${field}"]`);
+    }
+
+    async function saveFeatureTip(row) {
+      const id = row.getAttribute("data-feature-tip-id");
+      const feedback = row.querySelector("[data-feature-tip-feedback]");
+      const btn = row.querySelector("[data-feature-tip-save]");
+      const payload = {
+        title: featureTipField(row, "title").value.trim(),
+        body: featureTipField(row, "body").value.trim(),
+        cta_url: featureTipField(row, "cta_url").value.trim(),
+        cta_label: featureTipField(row, "cta_label").value.trim(),
+        is_active: featureTipField(row, "is_active").checked,
+      };
+      if (btn) { btn.disabled = true; btn.textContent = "저장 중…"; }
+      if (feedback) feedback.textContent = "";
+      try {
+        const res = await fetch(`/api/admin/feature-tips/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "저장에 실패했습니다.");
+        if (feedback) { feedback.style.color = "#2E7D32"; feedback.textContent = "저장했습니다."; }
+      } catch (e) {
+        if (feedback) { feedback.style.color = "#B3261E"; feedback.textContent = e.message || "저장에 실패했습니다."; }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "수정 저장"; }
+      }
+    }
+
+    function renderFeatureTips(items) {
+      const wrap = document.getElementById("featureTipsList");
+      if (!wrap) return;
+      if (!items.length) {
+        wrap.innerHTML = '<div class="stats-loading">등록된 기능 소개 회차가 없습니다.</div>';
+        return;
+      }
+      wrap.innerHTML = items.map((tip) => `
+        <article data-feature-tip-id="${tip.id}" style="border:1px solid #DDE1E6;border-radius:8px;padding:12px;margin-top:9px;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <b style="font-size:13px;">${dgEscape(String(tip.episode))}회차</b>
+            <label style="font-size:12px;color:var(--ink-soft);display:flex;gap:5px;align-items:center;">
+              <input type="checkbox" data-feature-tip-field="is_active" ${tip.is_active ? "checked" : ""}> 활성
+            </label>
+            <button type="button" class="admin-btn" data-feature-tip-save style="margin-left:auto;font-size:12px;">수정 저장</button>
+          </div>
+          <input class="admin-input" data-feature-tip-field="title" value="${dgEscape(tip.title || "")}" placeholder="제목" style="width:100%;box-sizing:border-box;margin-bottom:7px;">
+          <textarea class="admin-input" data-feature-tip-field="body" placeholder="본문" style="width:100%;box-sizing:border-box;min-height:74px;resize:vertical;margin-bottom:7px;">${dgEscape(tip.body || "")}</textarea>
+          <input class="admin-input" data-feature-tip-field="cta_label" value="${dgEscape(tip.cta_label || "")}" placeholder="CTA 버튼 문구" style="width:100%;box-sizing:border-box;margin-bottom:7px;">
+          <input class="admin-input" data-feature-tip-field="cta_url" value="${dgEscape(tip.cta_url || "")}" placeholder="/guide 또는 https://…" style="width:100%;box-sizing:border-box;">
+          <div data-feature-tip-feedback style="font-size:12px;margin-top:7px;min-height:16px;"></div>
+        </article>
+      `).join("");
+      wrap.querySelectorAll("[data-feature-tip-save]").forEach((btn) => {
+        btn.addEventListener("click", () => saveFeatureTip(btn.closest("[data-feature-tip-id]")));
+      });
+    }
+
+    async function loadFeatureTips() {
+      const wrap = document.getElementById("featureTipsList");
+      if (!wrap) return;
+      try {
+        const res = await fetch("/api/admin/feature-tips");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "조회에 실패했습니다.");
+        renderFeatureTips(data.items || []);
+      } catch (e) {
+        wrap.innerHTML = `<div class="stats-loading" style="color:#B3261E;">${dgEscape(e.message || "기능 소개를 불러오지 못했습니다.")}</div>`;
+      }
+    }
+
+    async function createFeatureTip() {
+      const feedback = document.getElementById("featureTipCreateFeedback");
+      const btn = document.getElementById("featureTipCreate");
+      const episodeRaw = document.getElementById("featureTipEpisode").value.trim();
+      const payload = {
+        episode: Number(episodeRaw),
+        title: document.getElementById("featureTipTitle").value.trim(),
+        body: document.getElementById("featureTipBody").value.trim(),
+        cta_label: document.getElementById("featureTipCtaLabel").value.trim(),
+        cta_url: document.getElementById("featureTipUrl").value.trim(),
+        is_active: document.getElementById("featureTipActive").checked,
+      };
+      if (btn) { btn.disabled = true; btn.textContent = "추가 중…"; }
+      if (feedback) feedback.textContent = "";
+      try {
+        const res = await fetch("/api/admin/feature-tips", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "추가에 실패했습니다.");
+        document.getElementById("featureTipEpisode").value = "";
+        document.getElementById("featureTipTitle").value = "";
+        document.getElementById("featureTipBody").value = "";
+        document.getElementById("featureTipCtaLabel").value = "";
+        document.getElementById("featureTipUrl").value = "";
+        document.getElementById("featureTipActive").checked = true;
+        if (feedback) { feedback.style.color = "#2E7D32"; feedback.textContent = "새 회차를 추가했습니다."; }
+        await loadFeatureTips();
+      } catch (e) {
+        if (feedback) { feedback.style.color = "#B3261E"; feedback.textContent = e.message || "추가에 실패했습니다."; }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "새 회차 추가"; }
+      }
+    }
+
     function showWarehouse() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -1070,9 +1184,31 @@
             <div class="stats-loading">원본 상태를 불러오는 중…</div>
           </div>
         </section>
+        <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
+          <h3 class="stats-card-title">주간 이메일 기능 소개</h3>
+          <p class="stats-card-hint" style="margin:4px 0 10px;">ISO 주차를 기준으로 1~8회차를 순환합니다. 비활성 회차는 이메일에 표시되지 않습니다.</p>
+          <div id="featureTipsList"><div class="stats-loading">기능 소개를 불러오는 중…</div></div>
+          <div style="border-top:1px solid #DDE1E6;margin-top:14px;padding-top:12px;">
+            <b style="font-size:13px;">새 회차 추가</b>
+            <div style="display:grid;grid-template-columns:90px minmax(160px,1fr);gap:7px;margin-top:8px;">
+              <input id="featureTipEpisode" class="admin-input" inputmode="numeric" placeholder="회차">
+              <input id="featureTipTitle" class="admin-input" placeholder="제목">
+            </div>
+            <textarea id="featureTipBody" class="admin-input" placeholder="본문" style="width:100%;box-sizing:border-box;min-height:74px;resize:vertical;margin-top:7px;"></textarea>
+            <input id="featureTipCtaLabel" class="admin-input" placeholder="CTA 버튼 문구 (예: 데이터랩 열기)" style="width:100%;box-sizing:border-box;margin-top:7px;">
+            <input id="featureTipUrl" class="admin-input" placeholder="/guide 또는 https://…" style="width:100%;box-sizing:border-box;margin-top:7px;">
+            <div style="display:flex;align-items:center;gap:9px;margin-top:8px;">
+              <label style="font-size:12px;color:var(--ink-soft);"><input id="featureTipActive" type="checkbox" checked> 활성</label>
+              <button id="featureTipCreate" type="button" class="admin-btn">새 회차 추가</button>
+              <span id="featureTipCreateFeedback" style="font-size:12px;min-height:16px;"></span>
+            </div>
+          </div>
+        </section>
       `;
       loadMasterStats(false);
       document.getElementById("masterStatsRefresh").addEventListener("click", () => loadMasterStats(true));
+      document.getElementById("featureTipCreate").addEventListener("click", createFeatureTip);
+      loadFeatureTips();
     }
 
     function renderStats(d, mapBld) {

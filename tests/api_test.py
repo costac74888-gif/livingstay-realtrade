@@ -33,6 +33,66 @@ from db import get_conn  # noqa: E402
 import addr_norm  # noqa: E402
 
 
+def check_feature_tips_admin_api(client):
+    """기능 소개 관리 API의 인증·목록·생성·수정·입력 검증을 확인한다."""
+    blocked = client.get("/api/admin/feature-tips")
+    if blocked.status_code != 401 or not blocked.is_json:
+        return "기능 소개 목록 API가 비관리자 요청을 차단하지 않음"
+
+    with client.session_transaction() as sess:
+        sess["admin"] = True
+    listed = client.get("/api/admin/feature-tips")
+    if listed.status_code != 200 or not listed.is_json:
+        return "관리자 기능 소개 목록 API가 정상 응답하지 않음"
+    payload = listed.get_json()
+    if payload.get("ok") is not True or not isinstance(payload.get("items"), list):
+        return "관리자 기능 소개 목록 API의 응답 형태가 잘못됨"
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT pg_get_constraintdef(c.oid) AS definition
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            WHERE t.relname = 'weekly_feature_tips'
+              AND c.conname = 'weekly_feature_tips_episode_check'
+        """)
+        row = cur.fetchone() or {}
+        definition = (row.get("definition") or "").lower()
+        if "episode >= 1" not in definition or "episode <= 8" not in definition:
+            return "기능 소개 테이블의 ISO 회차 범위 제약(1~8)이 없음"
+    finally:
+        cur.close()
+        conn.close()
+
+    malformed_create = client.post("/api/admin/feature-tips", json={"episode": 0})
+    if malformed_create.status_code != 400:
+        return "기능 소개 생성 API가 잘못된 회차를 거절하지 않음"
+    out_of_range = client.post("/api/admin/feature-tips", json={
+        "episode": 9, "title": "범위 초과", "body": "범위 초과", "cta_url": "/"
+    })
+    if out_of_range.status_code != 400:
+        return "기능 소개 생성 API가 ISO 순환 범위를 벗어난 회차를 거절하지 않음"
+    malformed_update = client.patch("/api/admin/feature-tips/999999999", json={})
+    if malformed_update.status_code != 400:
+        return "기능 소개 수정 API가 빈 변경을 거절하지 않음"
+    first_id = (payload.get("items") or [{}])[0].get("id")
+    blank_label = client.patch(f"/api/admin/feature-tips/{first_id}", json={"cta_label": ""})
+    if blank_label.status_code != 400:
+        return "기능 소개 수정 API가 빈 CTA 문구를 거절하지 않음"
+    old_label = (payload.get("items") or [{}])[0].get("cta_label")
+    try:
+        changed_label = client.patch(
+            f"/api/admin/feature-tips/{first_id}", json={"cta_label": "api_test CTA"}
+        )
+        if changed_label.status_code != 200 or not (changed_label.get_json() or {}).get("ok"):
+            return "기능 소개 수정 API가 CTA 문구를 저장하지 못함"
+    finally:
+        if first_id and old_label:
+            client.patch(f"/api/admin/feature-tips/{first_id}", json={"cta_label": old_label})
+    return None
+
+
 def check_health(payload):
     """/api/health: 항상 total_transactions(정수)를 포함하는 객체여야 한다."""
     if not isinstance(payload, dict):
@@ -372,6 +432,12 @@ def run():
     removed_rate = client.get("/api/stats/report-rate-by-sido")
     if removed_rate.status_code != 404:
         failures.append("삭제된 영업신고율 API가 404를 반환하지 않음")
+
+    feature_tip_error = check_feature_tips_admin_api(client)
+    if feature_tip_error:
+        failures.append(feature_tip_error)
+    else:
+        print("OK  /api/admin/feature-tips (관리자 인증·입력 검증)")
 
     # /api/buildings-geo bounds 필터 추가 테스트
     failures += _check_buildings_geo_bounds(client)

@@ -6,6 +6,8 @@
 Zone 1-1 : 관심단지 신규 실거래 (없으면 안내 문구)
 Zone 1-2 : 매물의뢰 / 매수의뢰 진행 현황 (없으면 CTA)
 Zone 2   : 이번 주 시세 랭킹 — 신고가 TOP5, 거래량 TOP5
+Zone 3   : 데이터랩 요약 — 전국 신고율, 가격변동·거래량 TOP1
+Zone 4   : ISO 주차 기반 기능 소개 시리즈
 Zone 5   : 광고 배너 (활성 배너 없으면 완전 제외)
 
 실행:
@@ -17,6 +19,7 @@ Zone 5   : 광고 배너 (활성 배너 없으면 완전 제외)
 import os
 import sys
 import argparse
+import html
 import logging
 from datetime import date, timedelta
 
@@ -148,6 +151,71 @@ def _get_ranking(cur):
     return price_highs, most_traded
 
 
+def _weekly_feature_episode(today=None, series_length=8):
+    """ISO 주차를 1~8회차 기능 소개 시리즈로 순환한다."""
+    current = today or date.today()
+    return ((current.isocalendar().week - 1) % series_length) + 1
+
+
+def _get_active_feature_tip(cur, today=None):
+    """이번 ISO 주차에 해당하는 활성 기능 팁만 조회한다."""
+    episode = _weekly_feature_episode(today)
+    cur.execute("""
+        SELECT id, episode, title, body, cta_label, cta_url
+        FROM weekly_feature_tips
+        WHERE episode = %s AND is_active = TRUE
+        LIMIT 1
+    """, (episode,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _get_datalab_summary(app_module=None):
+    """통합 통계 원본 캐시에서 이메일용 최소 요약만 안전하게 꺼낸다.
+
+    weekly_digest는 별도 프로세스로 실행되므로 최초에는 자기 프로세스의 캐시가
+    비어 있다. 이 경우 app의 섹션 접근자를 한 번 호출해 통합 캐시를 채운 뒤 읽고,
+    어떤 섹션이 실패해도 해당 지표만 None으로 남겨 이메일 발송은 계속한다.
+    """
+    empty = {"report_rate": None, "price_change": None, "volume_top": None}
+    try:
+        if app_module is None:
+            import app as app_module
+
+        cache = getattr(app_module, "_MASTER_STATS_CACHE", {}) or {}
+        if not (cache.get("data") or {}):
+            section_reader = getattr(app_module, "_master_stats_section", None)
+            if callable(section_reader):
+                section_reader("consign_stats")
+            cache = getattr(app_module, "_MASTER_STATS_CACHE", {}) or {}
+
+        data = cache.get("data") or {}
+        sections = cache.get("sections") or {}
+
+        def section_ok(name):
+            return sections.get(name, {}).get("status") == "ok"
+
+        result = dict(empty)
+        if section_ok("consign_stats"):
+            total = (data.get("consign_stats") or {}).get("total") or {}
+            rate = total.get("report_rate")
+            result["report_rate"] = float(rate) if rate is not None else None
+
+        if section_ok("transaction_stats"):
+            transactions = data.get("transaction_stats") or {}
+            price_items = (
+                ((transactions.get("price_change") or {}).get("up") or {}).get("items")
+                or []
+            )
+            volume_items = transactions.get("volume_top") or []
+            result["price_change"] = dict(price_items[0]) if price_items else None
+            result["volume_top"] = dict(volume_items[0]) if volume_items else None
+        return result
+    except Exception:
+        log.warning("데이터랩 요약을 읽지 못했습니다. 빈 상태로 발송합니다.", exc_info=True)
+        return empty
+
+
 # ── HTML 조립 ─────────────────────────────────────────────────────────────────
 
 def _bld_url(building_id, building_name=""):
@@ -165,11 +233,11 @@ def _zone1_1(favs, deals_by_fav, alert_off_count=0):
         <p style="color:#555;font-size:14px;margin:0 0 12px;">
           아직 등록하신 관심단지가 없어요.
         </p>
-        <a href="{SITE_URL}/?modal=listing"
+        <a href="{SITE_URL}/"
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
-          지도에서 관심단지 저장하기 →
+          지도에서 관심단지 둘러보기 →
         </a>"""
 
     rows = ""
@@ -234,13 +302,13 @@ def _zone1_2(listing_reqs, buy_reqs):
         return f"""
         <p style="color:#555;font-size:14px;margin:0 0 12px;">
           현재 진행 중인 의뢰가 없습니다.<br>
-          매물을 내놓으시면 전문 중개사가 연결해드립니다.
+          건물을 찾아 매물 등록을 시작해 보세요.
         </p>
-        <a href="{SITE_URL}/mypage"
+        <a href="{SITE_URL}/?modal=listing"
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
-          매물내놓기 →
+          매물 등록 시작하기 →
         </a>"""
 
     rows = ""
@@ -353,6 +421,68 @@ def _zone2(price_highs, most_traded):
     </table>"""
 
 
+def _zone3(summary):
+    """데이터랩 원본 캐시의 전국 요약. 개별 데이터 미준비 상태도 표시한다."""
+    summary = summary or {}
+    rate = summary.get("report_rate")
+    price = summary.get("price_change") or {}
+    volume = summary.get("volume_top") or {}
+
+    rate_text = f"{rate:.1f}%" if isinstance(rate, (int, float)) else "집계 준비 중"
+    if price:
+        pct = price.get("change_percent")
+        pct_text = f"{float(pct):+.1f}%" if pct is not None else "변동률 집계 중"
+        price_text = (
+            f'<a href="{_bld_url(price.get("building_id"), price.get("building_name") or "")}" '
+            'style="color:#16202E;font-weight:700;text-decoration:none;">'
+            f'{html.escape(str(price.get("building_name") or "-"))}</a> · {pct_text}'
+        )
+    else:
+        price_text = "가격변동 데이터를 준비 중이에요."
+
+    if volume:
+        volume_text = (
+            f'<a href="{_bld_url(volume.get("building_id"), volume.get("building_name") or "")}" '
+            'style="color:#16202E;font-weight:700;text-decoration:none;">'
+            f'{html.escape(str(volume.get("building_name") or "-"))}</a> · '
+            f'{int(volume.get("deal_count") or 0):,}건'
+        )
+    else:
+        volume_text = "거래량 데이터를 준비 중이에요."
+
+    return f"""
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <tbody>
+        <tr><td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;color:#888;">전국 생숙 영업신고율</td>
+            <td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;text-align:right;color:#B4863F;font-weight:700;">{rate_text}</td></tr>
+        <tr><td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;color:#888;">가격변동 TOP1</td>
+            <td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;text-align:right;">{price_text}</td></tr>
+        <tr><td style="padding:8px 4px;color:#888;">거래량 TOP1</td>
+            <td style="padding:8px 4px;text-align:right;">{volume_text}</td></tr>
+      </tbody>
+    </table>"""
+
+
+def _zone4(feature_tip):
+    """활성 회차가 없더라도 이메일 레이아웃은 안정적으로 유지한다."""
+    if not feature_tip:
+        return '<p style="color:#888;font-size:13px;margin:0;">다음 기능 소개를 준비하고 있어요.</p>'
+
+    title = html.escape(str(feature_tip.get("title") or "이번 주 기능 소개"))
+    body = html.escape(str(feature_tip.get("body") or "")).replace("\n", "<br>")
+    cta_label = html.escape(str(feature_tip.get("cta_label") or "기능 자세히 보기"))
+    cta_url = str(feature_tip.get("cta_url") or "").strip()
+    href = cta_url if cta_url.startswith(("https://", "http://")) else f"{SITE_URL}{cta_url if cta_url.startswith('/') else '/'}"
+    return f"""
+    <p style="font-size:14px;font-weight:700;color:#16202E;margin:0 0 7px;">{title}</p>
+    <p style="font-size:13px;color:#555;line-height:1.65;margin:0 0 13px;">{body}</p>
+    <a href="{html.escape(href, quote=True)}"
+       style="display:inline-block;background:#16202E;color:#fff;text-decoration:none;
+              padding:9px 16px;border-radius:6px;font-size:13px;font-weight:700;">
+      {cta_label} →
+    </a>"""
+
+
 def _zone5(banners):
     if not banners:
         return ""
@@ -372,10 +502,13 @@ def _zone5(banners):
 def build_html(user_name, favs, deals_by_fav,
                listing_reqs, buy_reqs,
                price_highs, most_traded,
+               datalab_summary, feature_tip,
                banners, unsubscribe_url, alert_off_count=0):
     z1  = _zone1_1(favs, deals_by_fav, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
     z2  = _zone2(price_highs, most_traded)
+    z3  = _zone3(datalab_summary)
+    z4  = _zone4(feature_tip)
     z5  = _zone5(banners)
 
     zone5_block = ""
@@ -461,6 +594,28 @@ def build_html(user_name, favs, deals_by_fav,
     </td>
   </tr>
 
+  <!-- ── Zone 3: 데이터랩 요약 ── -->
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📈 데이터랩 한눈에 보기
+      </h2>
+      {z3}
+    </td>
+  </tr>
+
+  <!-- ── Zone 4: 기능 소개 ── -->
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        ✨ 이번 주 기능 소개
+      </h2>
+      {z4}
+    </td>
+  </tr>
+
   <!-- ── Zone 5: 광고 배너 (없으면 블록 자체 제거) ── -->
   {zone5_block}
 
@@ -490,6 +645,24 @@ def build_html(user_name, favs, deals_by_fav,
 </html>"""
 
 
+def _build_subject(has_ad, new_deal_count, datalab_summary, feature_tip):
+    """관심단지 실거래 → 가격변동 TOP1 → 기능 팁 → 기본 제목 순서."""
+    prefix = "(광고) " if has_ad else ""
+    if new_deal_count:
+        headline = f"관심단지 {new_deal_count}곳 새 실거래"
+    else:
+        price = (datalab_summary or {}).get("price_change") or {}
+        if price.get("building_name"):
+            pct = price.get("change_percent")
+            pct_text = f" {float(pct):+.1f}%" if pct is not None else ""
+            headline = f"가격변동 TOP1 | {price['building_name']}{pct_text}"
+        elif feature_tip and feature_tip.get("title"):
+            headline = str(feature_tip["title"])
+        else:
+            headline = "이번 주 소식"
+    return f"{prefix}[홈앤스테이] {headline}"
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -509,12 +682,15 @@ def main():
         # 공통 데이터 (전체 회원이 동일하게 받음)
         banners                  = _get_active_banners(cur)
         price_highs, most_traded = _get_ranking(cur)
+        datalab_summary          = _get_datalab_summary()
+        feature_tip              = _get_active_feature_tip(cur)
 
         # 발송 대상 회원 조회
         uid_filter = "AND u.id = %s" if target_uid else ""
         uid_params = (target_uid,) if target_uid else ()
         cur.execute(f"""
             SELECT id, email, COALESCE(name, email) AS name,
+                   COALESCE(user_type, 'general') AS user_type,
                    COALESCE(unsubscribe_token::text, '') AS unsubscribe_token
             FROM users u
             WHERE COALESCE(weekly_email_enabled, FALSE) = TRUE
@@ -625,11 +801,9 @@ def main():
             """, (uid,))
             buy_reqs = cur.fetchall()
 
-            # 이메일 제목 구성
+            # 이메일 제목 구성: 관심단지 새 실거래 → 가격변동 TOP1 → 기능 소개 → 기본.
             n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))
-            has_ad  = bool(banners)
-            subject_suffix = f" | 관심단지 {n_deals}곳 새 실거래" if n_deals else ""
-            subject = f"{'(광고) ' if has_ad else ''}[홈앤스테이] 이번 주 소식{subject_suffix}"
+            subject = _build_subject(bool(banners), n_deals, datalab_summary, feature_tip)
 
             # 수신거부는 /unsubscribe?token=… 대신 마이페이지로 이동
             # (토큰 링크가 "잘못됐거나 이미 처리된 링크" 오류를 내는 경우 방지)
@@ -638,14 +812,16 @@ def main():
                 name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,
                 price_highs, most_traded,
+                datalab_summary, feature_tip,
                 banners, unsubscribe_url, alert_off_count,
             )
 
             if dry_run:
                 log.info("  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
-                         "의뢰 listing=%d buy=%d | 배너=%d개",
+                          "의뢰 listing=%d buy=%d | 데이터랩 신고율=%s | 기능팁=%s | 배너=%d개",
                          email, len(favs), n_deals,
-                         len(listing_reqs), len(buy_reqs),
+                          len(listing_reqs), len(buy_reqs), datalab_summary.get("report_rate"),
+                          feature_tip.get("episode") if feature_tip else "-",
                          len(banners))
                 sent += 1
                 continue

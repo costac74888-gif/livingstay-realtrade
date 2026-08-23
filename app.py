@@ -33,7 +33,7 @@ import subprocess
 import secrets as _secrets
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 import requests
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -21926,6 +21926,156 @@ def admin_email_banners_delete(bid):
         return jsonify({"ok": True})
     finally:
         cur.close(); conn.close()
+
+
+# ── 주간 이메일 기능 소개 관리 (admin) ────────────────────────────────────────
+_FEATURE_TIP_TEXT_LIMITS = {
+    "title": 160,
+    "body": 4000,
+    "cta_label": 80,
+    "cta_url": 2000,
+}
+
+
+def _feature_tip_text(data, key, *, required=False):
+    if key not in data:
+        return None, None
+    value = data.get(key)
+    if not isinstance(value, str):
+        return None, f"{key}은(는) 문자열이어야 합니다."
+    value = value.strip()
+    if (required or key in {"title", "body", "cta_label", "cta_url"}) and not value:
+        return None, f"{key}은(는) 필수입니다."
+    if len(value) > _FEATURE_TIP_TEXT_LIMITS[key]:
+        return None, f"{key}은(는) {_FEATURE_TIP_TEXT_LIMITS[key]}자 이하여야 합니다."
+    return value, None
+
+
+def _feature_tip_url_is_safe(value):
+    """이메일 CTA는 사이트 상대경로 또는 일반 HTTP(S) 주소만 허용한다."""
+    if value.startswith("/"):
+        return not value.startswith("//")
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _feature_tip_payload_from_request(data, *, creating=False):
+    """관리자 입력을 검증하고 SQL 컬럼명만 포함한 변경값을 만든다."""
+    if not isinstance(data, dict):
+        return None, "요청 본문이 올바르지 않습니다."
+    fields = {}
+    if creating or "episode" in data:
+        episode = data.get("episode")
+        if isinstance(episode, bool) or not isinstance(episode, int) or not 1 <= episode <= 8:
+            return None, "episode는 1~8 사이의 정수여야 합니다."
+        fields["episode"] = episode
+
+    for key in ("title", "body", "cta_label", "cta_url"):
+        value, error = _feature_tip_text(data, key, required=creating and key != "cta_label")
+        if error:
+            return None, error
+        if value is not None:
+            fields[key] = value
+
+    if creating and "cta_label" not in fields:
+        fields["cta_label"] = "기능 자세히 보기"
+    if "cta_url" in fields and not _feature_tip_url_is_safe(fields["cta_url"]):
+        return None, "cta_url은 '/'로 시작하거나 http/https URL이어야 합니다."
+
+    if "is_active" in data:
+        if not isinstance(data["is_active"], bool):
+            return None, "is_active는 true 또는 false여야 합니다."
+        fields["is_active"] = data["is_active"]
+    elif creating:
+        fields["is_active"] = True
+
+    if creating and not {"episode", "title", "body", "cta_url"} <= set(fields):
+        return None, "episode, title, body, cta_url은 필수입니다."
+    if not fields:
+        return None, "변경할 필드가 없습니다."
+    return fields, None
+
+
+@app.route("/api/admin/feature-tips", methods=["GET"])
+@require_admin
+def admin_feature_tips_list():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, episode, title, body, cta_label, cta_url, is_active,
+                   created_at::text, updated_at::text
+            FROM weekly_feature_tips
+            ORDER BY episode ASC, id ASC
+        """)
+        rows = [dict(row) for row in cur.fetchall()]
+        return jsonify({"ok": True, "items": rows, "total": len(rows)})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/admin/feature-tips", methods=["POST"])
+@require_admin
+def admin_feature_tips_create():
+    fields, error = _feature_tip_payload_from_request(
+        request.get_json(force=True, silent=True) or {}, creating=True
+    )
+    if error:
+        return jsonify({"ok": False, "message": error}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO weekly_feature_tips
+                (episode, title, body, cta_label, cta_url, is_active)
+            VALUES (%(episode)s, %(title)s, %(body)s, %(cta_label)s, %(cta_url)s, %(is_active)s)
+            RETURNING id
+        """, fields)
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+        return jsonify({"ok": True, "id": new_id}), 201
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 등록된 회차입니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/admin/feature-tips/<int:tip_id>", methods=["PATCH"])
+@require_admin
+def admin_feature_tips_update(tip_id):
+    fields, error = _feature_tip_payload_from_request(
+        request.get_json(force=True, silent=True) or {}, creating=False
+    )
+    if error:
+        return jsonify({"ok": False, "message": error}), 400
+
+    assignments = [f"{column} = %({column})s" for column in fields]
+    assignments.append("updated_at = NOW()")
+    fields["tip_id"] = tip_id
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            UPDATE weekly_feature_tips
+            SET {", ".join(assignments)}
+            WHERE id = %(tip_id)s
+            RETURNING id
+        """, fields)
+        if not cur.fetchone():
+            conn.rollback()
+            return jsonify({"ok": False, "message": "기능 소개 회차를 찾을 수 없습니다."}), 404
+        conn.commit()
+        return jsonify({"ok": True})
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 등록된 회차입니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
 
 
 # 통계 원본은 앱 모듈과 모든 라우트가 로드된 뒤 백그라운드에서 선제 집계한다.

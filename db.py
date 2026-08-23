@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-23-08"
+SCHEMA_VERSION = "2026-08-24-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -840,6 +840,7 @@ def _run_init_db():
         name TEXT,                         -- 표시용 이름/닉네임
         provider TEXT DEFAULT 'email',     -- 'email' | 'kakao'
         kakao_id TEXT,                     -- 카카오 회원번호. UNIQUE는 helper에서 부여(NULL 허용)
+        user_type TEXT NOT NULL DEFAULT 'general',  -- general | owner | operator
         created_at TIMESTAMP DEFAULT NOW(),
         last_login_at TIMESTAMP,           -- 마지막 로그인 시각 (로그인 시 갱신)
         status TEXT DEFAULT 'active'       -- 'active' | 'withdrawn'(회원탈퇴 소프트삭제)
@@ -850,6 +851,15 @@ def _run_init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT 'email'")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS kakao_id TEXT")
+    # 주간 기능 소개 등 회원 대상 콘텐츠의 유형 구분. 기존 회원은 일반회원으로
+    # 보정해 과거 데이터의 NULL/예상 밖 값으로 발송 작업이 중단되지 않게 한다.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'general'")
+    cur.execute("""
+        UPDATE users SET user_type = 'general'
+        WHERE user_type IS NULL OR user_type NOT IN ('general', 'owner', 'operator')
+    """)
+    cur.execute("ALTER TABLE users ALTER COLUMN user_type SET DEFAULT 'general'")
+    cur.execute("ALTER TABLE users ALTER COLUMN user_type SET NOT NULL")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
@@ -1556,6 +1566,37 @@ def _run_init_db():
     )
     """)
 
+    # 주간 이메일 기능 소개 시리즈. episode는 ISO 주차를 1~8회로 순환해 선택하는
+    # 운영용 회차이며, 관리자가 내용을 바꾼 뒤에는 초기 시드가 덮어쓰지 않는다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS weekly_feature_tips (
+        id SERIAL PRIMARY KEY,
+        episode INTEGER NOT NULL UNIQUE CHECK (episode BETWEEN 1 AND 8),
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        cta_label TEXT NOT NULL DEFAULT '기능 자세히 보기',
+        cta_url TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_weekly_feature_tips_active_episode
+        ON weekly_feature_tips (is_active, episode)
+    """)
+    # ISO 주차는 1~8회차로 순환한다. 테이블을 최초 생성한 뒤 도입한 제약이라
+    # 기존 환경에도 명시적으로 같은 범위를 적용한다.
+    cur.execute("""
+        ALTER TABLE weekly_feature_tips
+        DROP CONSTRAINT IF EXISTS weekly_feature_tips_episode_check
+    """)
+    cur.execute("""
+        ALTER TABLE weekly_feature_tips
+        ADD CONSTRAINT weekly_feature_tips_episode_check
+        CHECK (episode BETWEEN 1 AND 8)
+    """)
+
     # 검색 성능을 위한 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_deal_date ON transactions(deal_date DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_building_name ON transactions(building_name)")
@@ -1685,6 +1726,7 @@ def _run_init_db():
     _seed_mileage_missions()
     _seed_admin_user()
     _seed_legal_documents()
+    _seed_weekly_feature_tips()
     _normalize_umd_nm_spaces()
     _ensure_transaction_stats_indexes()
 
@@ -2282,6 +2324,86 @@ def _seed_legal_documents():
         conn.commit()
         if inserted or upgraded:
             print(f"legal_documents 시드 완료 (신규 {inserted}건, 개정 자동교체 {upgraded}건)")
+    finally:
+        cur.close()
+        conn.close()
+
+
+_WEEKLY_FEATURE_TIP_SEEDS = [
+    (
+        1,
+        "데이터랩으로 전국 흐름 살펴보기",
+        "전국 생활숙박시설의 실거래·영업신고 현황을 데이터랩에서 한눈에 비교해 보세요.",
+        "데이터랩 열기",
+        "/?tab=datalab",
+    ),
+    (
+        2,
+        "관심단지를 저장해 보세요",
+        "관심 있는 건물을 저장하면 새 실거래와 알림 설정을 빠르게 확인할 수 있어요.",
+        "지도에서 건물 찾기",
+        "/",
+    ),
+    (
+        3,
+        "내 건물 매물을 직접 등록하세요",
+        "직거래 매물은 휴대폰 인증 후 직접 등록하고 공개 범위도 선택할 수 있습니다.",
+        "매물 등록 시작하기",
+        "/?modal=listing",
+    ),
+    (
+        4,
+        "방별 재고와 보증금을 관리하세요",
+        "객실별 재고와 보증금을 입력하면 매수자가 매물 조건을 더 정확히 이해할 수 있습니다.",
+        "내 매물 관리하기",
+        "/mypage",
+    ),
+    (
+        5,
+        "영업신고 현황을 지역별로 비교하세요",
+        "행안부 영업신고 데이터를 바탕으로 생활숙박시설의 신고율과 객실 현황을 비교합니다.",
+        "영업신고 현황 보기",
+        "/?tab=datalab",
+    ),
+    (
+        6,
+        "건물전체 거래 체크리스트 확인하기",
+        "권리·소방·주차·운영 등 거래 전에 확인할 항목을 체크리스트로 정리해 두었습니다.",
+        "거래 체크리스트 보기",
+        "/guide",
+    ),
+    (
+        7,
+        "매물 공개 범위를 선택하세요",
+        "전체공개와 제한공개 중 거래 목적에 맞는 범위를 선택해 정보를 안전하게 관리할 수 있습니다.",
+        "매물 등록 시작하기",
+        "/?modal=listing",
+    ),
+    (
+        8,
+        "휴대폰 인증으로 직거래를 시작하세요",
+        "인증한 번호를 기반으로 매도자와 연결되므로 더 신뢰도 있게 직거래 매물을 등록할 수 있습니다.",
+        "내 정보 확인하기",
+        "/mypage",
+    ),
+]
+
+
+def _seed_weekly_feature_tips():
+    """초기 8회차 기능 팁만 채우고, 운영 중 수정된 회차는 그대로 둔다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.executemany("""
+            INSERT INTO weekly_feature_tips
+                (episode, title, body, cta_label, cta_url)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (episode) DO NOTHING
+        """, _WEEKLY_FEATURE_TIP_SEEDS)
+        inserted = cur.rowcount
+        conn.commit()
+        if inserted:
+            print(f"weekly_feature_tips 시드 완료 ({inserted}건)")
     finally:
         cur.close()
         conn.close()
