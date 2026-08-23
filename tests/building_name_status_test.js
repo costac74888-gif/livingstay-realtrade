@@ -3,6 +3,8 @@ const fs = require("fs");
 
 const app = fs.readFileSync("app.py", "utf8");
 const main = fs.readFileSync("static/js/main.js", "utf8");
+const admin = fs.readFileSync("static/admin.html", "utf8");
+const brhub = fs.readFileSync("sync_brhub.py", "utf8");
 
 function expect(condition, message) {
   if (!condition) {
@@ -55,6 +57,31 @@ expect(
 expect(
   shouldShowPendingActions({ name_pending: false, building_name_source: "official" }) === false,
   "공식명칭 확정 건물에서 명칭 확인 요소가 노출될 수 있습니다.",
+);
+
+const adminBuildingColumn = admin.slice(
+  admin.indexOf('{ key: "building_name"'),
+  admin.indexOf('{ key: "building_name"') + 1800,
+);
+expect(
+  adminBuildingColumn.includes(
+    'row && row.name_pending && row.building_name_source !== "lodging_report"',
+  ),
+  "관리자 목록의 명칭 미확정 배지가 영업신고 기준 자동명명을 제외하지 않습니다.",
+);
+
+expect(
+  brhub.includes("from lodging_matching import refresh_auto_building_names"),
+  "건물수집 배치에 자동명명 갱신 모듈이 연결되지 않았습니다.",
+);
+expect(
+  brhub.includes("RETURNING id") && brhub.includes('new_building_ids.add(inserted["id"])'),
+  "새로 INSERT된 건물 ID 추적이 없습니다.",
+);
+expect(
+  brhub.includes("refresh_auto_building_names(conn, sorted(new_building_ids))") &&
+    brhub.includes("refresh_auto_building_names(conn)"),
+  "건물수집의 일일 부분 갱신 또는 완료 전체 갱신이 없습니다.",
 );
 
 console.log("OK  건물명 출처별 정식명칭 라벨·제안 링크 회귀 점검");

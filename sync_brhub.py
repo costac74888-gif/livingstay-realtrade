@@ -45,6 +45,7 @@ from db import get_conn
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from address_utils import normalize_umd_nm
 from building_registry import _find_categories, _combine_labels
+from lodging_matching import refresh_auto_building_names
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 완전히 동일한 로직을 재사용
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 from geocode_buildings import geocode_buildings
@@ -214,6 +215,7 @@ def run(args, status_key=None, run_id=None):
 
     processed = 0
     found_run = 0
+    new_building_ids = set()
     counts = {"생활": 0, "관광": 0, "일반": 0, "복합": 0, "미분류": 0, "복합제외": 0}
 
     def _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name):
@@ -276,12 +278,16 @@ def run(args, status_key=None, run_id=None):
                          grnd_flr_cnt, ugrnd_flr_cnt, source, lodging_type, lodging_type_detail)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'brhub_bulk',%s,%s)
                     ON CONFLICT DO NOTHING
+                    RETURNING id
                 """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
                       units, int(it.get("hhldCnt") or 0) or None,
                       (str(it.get("useAprDay") or "").strip() or None),
                       float(it.get("totArea") or 0) or None, float(it.get("platArea") or 0) or None,
                       int(it.get("grndFlrCnt") or 0) or None, int(it.get("ugrndFlrCnt") or 0) or None,
                       label, detail_text))
+                inserted = cur.fetchone()
+                if inserted:
+                    new_building_ids.add(inserted["id"])
             found_run += 1
             prog["found_total"] = prog.get("found_total", 0) + 1
             if jibun:
@@ -304,6 +310,9 @@ def run(args, status_key=None, run_id=None):
                 break
             if _combined_calls_today(cur) >= args.daily_cap:
                 print(f"일일캡({args.daily_cap}) 도달(메인+재수집 합산) — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
+                if not args.dry_run and new_building_ids:
+                    renamed = refresh_auto_building_names(conn, sorted(new_building_ids))
+                    print(f"[brhub] 오늘 새로 발견한 건물 자동명칭 부분 갱신 — 대상 {len(new_building_ids)}건, 변경 {renamed}건")
                 stop_reason = "daily_cap"
                 break
             if status_key and run_id and not _still_owner(cur, status_key, run_id):
@@ -383,6 +392,10 @@ def run(args, status_key=None, run_id=None):
                 print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
         else:
             stop_reason = "completed"
+
+    if not args.dry_run:
+        renamed = refresh_auto_building_names(conn)
+        print(f"[brhub] 수집 범위 완료 — 신고 기준 자동명칭 전체 재계산, 변경 {renamed}건")
 
     print(f"\n[종료] 법정동 {prog['idx']}/{len(dongs)} 처리, 오늘 호출 {prog['calls_today']}, "
           f"이번 실행 발견 {found_run}건 (누적 {prog.get('found_total', 0)}건), 중단사유={stop_reason}")
