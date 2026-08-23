@@ -7500,6 +7500,253 @@ def _apply_limited_whole_listing_privacy(listing):
     return listing
 
 
+_LISTING_CHECKLIST_KEYS = {
+    "building_violation", "building_specification", "ownership_rights", "zoning",
+    "lodging_report", "fire_safety", "parking", "nearby_competition",
+    "nearest_subway", "revenue", "sales_mix", "finance", "staff_transition",
+    "sale_reason",
+}
+
+
+def _checklist_amount(value):
+    """체크리스트 공개용 금액(만원 단위)을 짧은 읽기 형식으로 표시한다."""
+    if value is None:
+        return None
+    try:
+        return f"{int(value):,}만원"
+    except (TypeError, ValueError):
+        return None
+
+
+def _whole_listing_checklist_data(cur, listing_id, user_id=None):
+    """공개 건물전체 매물의 체크리스트 항목·자동값을 만든다.
+
+    제한공개 매물은 카드만으로 정확한 건물을 특정할 수 없어 이 API에서도
+    체크리스트를 제공하지 않는다. 이로써 자동값이 별도 정보 유출 경로가 되는 것을 막는다.
+    """
+    cur.execute("""
+        SELECT lr.id, lr.master_building_id AS building_id, lr.deal_type, lr.price_krw,
+               lr.succession_loan_krw, lr.monthly_revenue_krw, lr.annual_revenue_krw,
+               lr.short_stay_ratio, lr.ota_revenue_ratio, lr.description,
+               COALESCE(lr.building_info_overrides, '{}'::jsonb) AS building_info_overrides,
+               mb.main_purps_nm, mb.strct_nm, mb.tot_area, mb.use_apr_day, mb.jiyuk_nm,
+               CASE WHEN mb.tot_pkng_cnt IS NULL AND mb.indr_auto_utcnt IS NULL
+                              AND mb.oudr_auto_utcnt IS NULL AND mb.indr_mech_utcnt IS NULL
+                              AND mb.oudr_mech_utcnt IS NULL
+                    THEN NULL
+                    ELSE COALESCE(mb.tot_pkng_cnt, 0) + COALESCE(mb.indr_auto_utcnt, 0)
+                       + COALESCE(mb.oudr_auto_utcnt, 0) + COALESCE(mb.indr_mech_utcnt, 0)
+                       + COALESCE(mb.oudr_mech_utcnt, 0)
+               END AS parking_spaces
+          FROM listing_requests lr
+          JOIN master_buildings mb ON mb.id = lr.master_building_id
+         WHERE lr.id = %s
+           AND lr.deal_mode = 'direct'
+           AND COALESCE(lr.transaction_target, 'unit') = 'whole'
+           AND COALESCE(lr.disclosure_scope, 'limited') = 'public'
+           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+    """, [listing_id])
+    row = cur.fetchone()
+    if not row:
+        return None
+
+    listing = dict(row)
+    overrides = listing.get("building_info_overrides") or {}
+    if not isinstance(overrides, dict):
+        overrides = {}
+    context = _whole_listing_context_data(cur, listing["building_id"]) or {}
+    nearby = context.get("nearby_lodgings") or {}
+    nearby_total = sum(int(nearby.get(kind) or 0) for kind in ("일반", "관광", "복합", "생활"))
+    subway = context.get("subway") or {}
+    financial_visible = bool(user_id)
+
+    total_area = overrides.get("total_area_sqm", listing.get("tot_area"))
+    parking_spaces = overrides.get("parking_spaces", listing.get("parking_spaces"))
+    zoning = overrides.get("zoning", listing.get("jiyuk_nm"))
+    structure = overrides.get("structure", listing.get("strct_nm"))
+    approval_date = overrides.get("approval_date", listing.get("use_apr_day"))
+    building_bits = []
+    if listing.get("main_purps_nm"):
+        building_bits.append(f"용도 {listing['main_purps_nm']}")
+    if structure:
+        building_bits.append(f"구조 {structure}")
+    if total_area is not None:
+        try:
+            building_bits.append(f"연면적 {float(total_area):,.1f}㎡")
+        except (TypeError, ValueError):
+            building_bits.append(f"연면적 {total_area}")
+    if approval_date:
+        building_bits.append(f"사용승인일 {approval_date}")
+
+    revenue_bits = [
+        value for value in (
+            f"월매출 {_checklist_amount(listing.get('monthly_revenue_krw'))}"
+            if listing.get("monthly_revenue_krw") is not None else None,
+            f"연매출 {_checklist_amount(listing.get('annual_revenue_krw'))}"
+            if listing.get("annual_revenue_krw") is not None else None,
+        ) if value
+    ]
+    sales_mix_bits = [
+        value for value in (
+            f"대실 비율 {float(listing['short_stay_ratio']):g}%"
+            if listing.get("short_stay_ratio") is not None else None,
+            f"OTA 매출 비중 {float(listing['ota_revenue_ratio']):g}%"
+            if listing.get("ota_revenue_ratio") is not None else None,
+        ) if value
+    ]
+    finance_value = None
+    if listing.get("deal_type") == "매매" and listing.get("price_krw") is not None:
+        loan = int(listing.get("succession_loan_krw") or 0)
+        acquisition = int(listing["price_krw"]) - loan + int(round(int(listing["price_krw"]) * 0.061))
+        finance_value = (
+            f"승계융자 {_checklist_amount(listing.get('succession_loan_krw')) or '없음'} · "
+            f"실인수가 {_checklist_amount(acquisition)}"
+        )
+
+    items = [
+        {
+            "key": "building_violation", "category": "건물", "question": "위반건축물 여부",
+            "type": "official", "link_url": "https://www.gov.kr/portal/main/nologin",
+            "link_label": "정부24 건축물대장 바로가기",
+        },
+        {
+            "key": "building_specification", "category": "건물",
+            "question": "용도·구조·연면적·사용승인일", "type": "auto",
+            "value": " · ".join(building_bits) or None,
+        },
+        {
+            "key": "ownership_rights", "category": "권리", "question": "소유권·압류·가압류",
+            "type": "official", "link_url": "https://www.iros.go.kr/",
+            "link_label": "대법원 인터넷등기소 바로가기",
+        },
+    ]
+    if zoning:
+        items.append({
+            "key": "zoning", "category": "법적", "question": "용도지역·토지이용계획",
+            "type": "auto", "value": f"용도지역 {zoning}",
+        })
+    items.extend([
+        {
+            "key": "lodging_report", "category": "법적", "question": "숙박업 영업신고·행정처분 이력",
+            "type": "official", "link_url": "https://www.gov.kr/portal/main/nologin",
+            "link_label": "관할 시군구 위생과 안내 바로가기",
+        },
+        {
+            "key": "fire_safety", "category": "소방", "question": "소방점검·완비증명",
+            "type": "official", "link_url": "https://www.nfa.go.kr/",
+            "link_label": "관할 소방서 안내 바로가기",
+        },
+        {
+            "key": "parking", "category": "주차", "question": "법정 주차대수",
+            "type": "auto",
+            "value": f"주차 {int(parking_spaces):,}대" if parking_spaces is not None else None,
+        },
+        {
+            "key": "nearby_competition", "category": "입지", "question": "반경 500m 경쟁업소 수",
+            "type": "auto", "value": f"숙박 경쟁업소 {nearby_total:,}곳",
+        },
+        {
+            "key": "nearest_subway", "category": "입지", "question": "최근접 지하철역 도보거리",
+            "type": "auto",
+            "value": (
+                f"{subway.get('station_name') or subway.get('name')}까지 도보 약 {subway['walk_minutes']}분"
+                if subway.get("walk_minutes") is not None else None
+            ),
+        },
+        {
+            "key": "revenue", "category": "매출", "question": "월매출·연매출", "type": "seller",
+            "value": " · ".join(revenue_bits) if financial_visible else None,
+            "requires_login": bool(revenue_bits) and not financial_visible,
+        },
+        {
+            "key": "sales_mix", "category": "매출", "question": "대실/숙박 비율, OTA매출비중",
+            "type": "seller", "value": " · ".join(sales_mix_bits) or None,
+        },
+        {
+            "key": "finance", "category": "금융", "question": "승계융자·실인수가", "type": "seller",
+            "value": finance_value if financial_visible else None,
+            "requires_login": bool(finance_value) and not financial_visible,
+        },
+        {
+            "key": "staff_transition", "category": "운영", "question": "직원 고용승계 여부",
+            "type": "seller",
+            "value": "매도자 설명란의 운영 현황을 확인하세요" if listing.get("description") else None,
+        },
+        {
+            "key": "sale_reason", "category": "출구", "question": "매도사유", "type": "seller",
+            "value": "매도자 설명란을 확인하세요" if listing.get("description") else None,
+        },
+    ])
+    return {
+        "listing_id": listing["id"],
+        "items": items,
+        "total_items": len(_LISTING_CHECKLIST_KEYS),
+        "is_authenticated": bool(user_id),
+    }
+
+
+@app.route("/api/listing-requests/<int:lr_id>/checklist")
+@limiter.limit("60 per minute")
+def public_listing_checklist(lr_id):
+    """건물전체 공개매물의 체크리스트 데이터와 로그인 회원 진행 상태."""
+    user = current_user()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        data = _whole_listing_checklist_data(cur, lr_id, user["id"] if user else None)
+        if not data:
+            return jsonify({"ok": False, "message": "체크리스트를 제공하지 않는 매물입니다."}), 404
+        checked_keys = []
+        if user:
+            cur.execute("""
+                SELECT item_key FROM listing_checklist_progress
+                 WHERE user_id = %s AND listing_request_id = %s
+            """, [user["id"], lr_id])
+            checked_keys = [row["item_key"] for row in cur.fetchall()]
+        return jsonify({"ok": True, **data, "checked_keys": checked_keys})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/listing-requests/<int:lr_id>/checklist/progress", methods=["POST"])
+@limiter.limit("120 per minute")
+def save_listing_checklist_progress(lr_id):
+    """로그인 회원의 체크리스트 항목 상태를 항목 단위로 저장한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    payload = request.get_json(silent=True) or {}
+    item_key = payload.get("item_key")
+    checked = payload.get("checked")
+    if not isinstance(item_key, str) or item_key not in _LISTING_CHECKLIST_KEYS:
+        return jsonify({"ok": False, "message": "체크 항목이 올바르지 않습니다."}), 400
+    if not isinstance(checked, bool):
+        return jsonify({"ok": False, "message": "체크 상태가 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if not _whole_listing_checklist_data(cur, lr_id, user["id"]):
+            return jsonify({"ok": False, "message": "체크리스트를 제공하지 않는 매물입니다."}), 404
+        if checked:
+            cur.execute("""
+                INSERT INTO listing_checklist_progress (user_id, listing_request_id, item_key)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, listing_request_id, item_key)
+                DO UPDATE SET checked_at = NOW()
+            """, [user["id"], lr_id, item_key])
+        else:
+            cur.execute("""
+                DELETE FROM listing_checklist_progress
+                 WHERE user_id = %s AND listing_request_id = %s AND item_key = %s
+            """, [user["id"], lr_id, item_key])
+        conn.commit()
+        return jsonify({"ok": True, "item_key": item_key, "checked": checked})
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/listing-requests", methods=["POST"])
 @limiter.limit("5 per hour")
 def create_listing_request():

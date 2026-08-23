@@ -12,3 +12,10 @@ id = "lk3Y1wuvV65P1V2B8TuWf"
 uri = "file://vworld_broker_fetch.zip"
 type = "unspecified"
 title = "브이월드 수집 스크립트 (vworld_broker_fetch.py 압축본)"
+
+[[outputs]]
+id = "PZpIVgvk2wXTGjPlaPc2k"
+uri = "file://screenshots/listing-checklist.jpg"
+type = "image"
+title = "숙박업소 거래 체크리스트 화면"
+description = "공개 건물전체 매물에서 확인한 체크리스트 아코디언, 진행률, 면책문구 화면입니다."

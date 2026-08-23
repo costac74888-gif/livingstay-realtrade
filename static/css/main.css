@@ -1109,6 +1109,33 @@
 .b-listing-actions button{padding:2px;border:0;background:none;color:var(--ink-soft);font-size:13px;line-height:1;cursor:pointer;}
 .b-listing-photo-btn{position:relative;display:flex;align-items:center;justify-content:center;width:76px;height:76px;flex:0 0 76px;align-self:center;margin-left:8px;padding:0;overflow:hidden;border:0;border-radius:7px;background:var(--brass-tint,#FFF5E0);font-size:26px;cursor:pointer;}
 .b-listing-photo-btn img{width:100%;height:100%;object-fit:cover;display:block;}
+.listing-checklist-open{width:100%;margin:11px 0 4px;padding:9px 10px;border:1px solid var(--brass,#B4863F);border-radius:8px;background:var(--brass-tint,#FFF5E0);color:var(--brass-dark,#7D4A00);font:700 12px/1.3 inherit;cursor:pointer;}
+.listing-checklist-open:hover{background:#F3E6CE;}
+.listing-checklist-overlay{position:fixed;inset:0;z-index:4600;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(22,32,46,.54);box-sizing:border-box;}
+.listing-checklist-dialog{width:min(100%,560px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.28);outline:0;}
+.listing-checklist-dialog header{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:#fff;border-bottom:1px solid var(--line,#e7e7e7);}
+.listing-checklist-dialog header strong{display:block;color:var(--ink);font-size:16px;}
+.listing-checklist-dialog header span{display:block;margin-top:2px;color:var(--ink-soft);font-size:11px;}
+.listing-checklist-dialog header button{width:32px;height:32px;border:0;border-radius:50%;background:#f1f3f5;color:var(--ink);font-size:22px;line-height:1;cursor:pointer;}
+.listing-checklist-body{padding:14px 18px 18px;}
+.listing-checklist-disclaimer{position:sticky;top:0;z-index:1;margin-bottom:10px;padding:9px 10px;border:1px solid #E9D5A8;border-radius:8px;background:#FFF8E8;color:#6E562A;font-size:11px;line-height:1.5;}
+.listing-checklist-progress{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 10px;color:var(--brass-dark,#7D4A00);font-size:12px;}
+.listing-checklist-progress span{color:var(--ink-soft);font-size:10.5px;}
+.listing-checklist-group{margin-top:7px;border:1px solid var(--line,#e7e7e7);border-radius:9px;overflow:hidden;}
+.listing-checklist-group summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;background:#FCFBF8;color:var(--ink);font-size:12px;font-weight:800;cursor:pointer;}
+.listing-checklist-group summary span{color:var(--ink-soft);font-size:10.5px;font-weight:600;}
+.listing-checklist-items{padding:2px 11px 5px;}
+.listing-checklist-item{display:flex;align-items:flex-start;gap:9px;padding:10px 0;border-bottom:1px solid var(--line,#eee);cursor:pointer;}
+.listing-checklist-item:last-child{border-bottom:0;}
+.listing-checklist-item input{width:16px;height:16px;margin:1px 0 0;accent-color:var(--brass,#B4863F);flex:0 0 auto;cursor:pointer;}
+.listing-checklist-copy{display:grid;gap:4px;min-width:0;}
+.listing-checklist-copy strong{color:var(--ink);font-size:12px;line-height:1.35;}
+.listing-checklist-value{display:flex;align-items:center;flex-wrap:wrap;gap:5px;color:var(--ink-soft);font-size:11px;line-height:1.45;}
+.listing-checklist-seller{display:inline-block;padding:1px 5px;border-radius:4px;background:#EEF5FF;color:#275B88;font-size:9.5px;font-weight:800;}
+.listing-checklist-link{color:var(--brass-dark,#7D4A00);font-weight:700;text-decoration:none;}
+.listing-checklist-link:hover{text-decoration:underline;}
+.listing-checklist-muted{color:var(--ink-soft);}
+.listing-checklist-loading{padding:20px 4px;color:var(--ink-soft);font-size:12px;text-align:center;}
 @media (max-width:520px){
   .b-listing-card{min-height:82px;padding:6px 0;}
   .b-listing-l1{font-size:10.5px;}
@@ -1116,4 +1143,8 @@
   .b-listing-l3{font-size:9.5px;}
   .b-listing-l4{font-size:9px;}
   .b-listing-photo-btn{width:66px;height:66px;flex-basis:66px;margin-left:6px;font-size:22px;}
+   .listing-checklist-dialog{max-height:92vh;}
+   .listing-checklist-body{padding:12px;}
+   .listing-checklist-dialog header{padding:13px 14px;}
+   .listing-checklist-progress{align-items:flex-start;flex-direction:column;gap:2px;}
 }

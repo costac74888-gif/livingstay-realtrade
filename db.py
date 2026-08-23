@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-23-05"
+SCHEMA_VERSION = "2026-08-23-06"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1052,6 +1052,23 @@ def _run_init_db():
             SELECT setval('{_seq}',
                           COALESCE((SELECT MAX(display_seq) FROM listing_requests WHERE deal_mode = %s), 1000))
         """, (_mode,))
+
+    # 건물전체 매물 실사 체크리스트 — 로그인 회원의 사용자·매물별 항목 진행 상태.
+    # 비로그인 상태는 프런트 localStorage로 처리해 사용자 계정 정보와 섞지 않는다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS listing_checklist_progress (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id) ON DELETE CASCADE,
+            item_key TEXT NOT NULL,
+            checked_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE(user_id, listing_request_id, item_key)
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS ix_listing_checklist_progress_listing_user
+        ON listing_checklist_progress(listing_request_id, user_id)
+    """)
 
     # 방 재고 — 매물의뢰 등록자가 관리하는 객실별 월세·입실/공실·계약만기일·판매 채널.
     # 만기임박은 저장 상태가 아니라 contract_end_date와 오늘 날짜로 화면에서 계산한다.

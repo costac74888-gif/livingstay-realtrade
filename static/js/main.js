@@ -3538,6 +3538,7 @@ async function loadBuildingHeader(id){
               ${_permitBadgeMarkup(lr)}
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
             ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:12px;">${desc}</div>` : ""}
+             ${isWholeListing ? `<button type="button" class="listing-checklist-open" id="directListingChecklistOpen">숙박업소 거래 체크리스트 열어보기</button>` : ""}
              ${listingActionsMarkup}
          </div>
        </div>`;
@@ -3574,6 +3575,9 @@ async function loadBuildingHeader(id){
         };
         document.addEventListener("keydown", handleCardKeydown);
        ov.querySelector("#directListingCardClose").addEventListener("click", close);
+         ov.querySelector("#directListingChecklistOpen")?.addEventListener("click", () => {
+           window.LivingstayListingChecklist?.open(lr.id);
+         });
         ov.querySelector("#directListingCardChat").addEventListener("click", () => { close(); _openListingChat(lr.id); });
         if (photos.length > 1) {
           const image = ov.querySelector("#directListingCardImage");

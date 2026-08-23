@@ -360,6 +360,7 @@
 <script src="/static/js/auth.js"></script>
 <script src="/static/js/chat_common.js"></script>
 <script src="/static/js/listing_icons.js"></script>
+<script src="/static/js/listing_checklist.js"></script>
 <script>
 (function(){
   "use strict";
@@ -943,6 +944,7 @@
         ${wholeLocationHint(item)}
         <div class="whole-viewers">최근 5분 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
         <div class="whole-caution">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
+        <button type="button" class="listing-checklist-open">숙박업소 거래 체크리스트 열어보기</button>
         <div class="ls-card-l4">
           ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
           <span class="ls-card-date">${esc(item.listing_date || "")}</span>
@@ -958,6 +960,10 @@
     div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
       e.stopPropagation();
       highlightCardItem(div);
+    });
+    div.querySelector(".listing-checklist-open").addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.LivingstayListingChecklist?.open(item.id);
     });
     div.querySelector(".ls-bldg-link")?.addEventListener("click", () => {
       if (item.building_id) window.location.href = `/building/${item.building_id}?listing=${item.id}`;

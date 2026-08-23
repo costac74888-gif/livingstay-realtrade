@@ -2757,6 +2757,9 @@ def _check_whole_building_listing(client):
         )
         if detail.status_code != 200 or detail_item is not None:
             failures.append("whole listing: 제한공개 매물이 건물상세 공개 목록에 노출됨")
+        limited_checklist = client.get(f"/api/listing-requests/{listing_id}/checklist")
+        if limited_checklist.status_code != 404:
+            failures.append("whole listing: 제한공개 매물 체크리스트가 건물정보를 노출함")
 
         cur.execute("SELECT sgg_text, umd_nm FROM master_buildings WHERE id=%s", (building["id"],))
         location = cur.fetchone() or {}
@@ -2865,6 +2868,39 @@ def _check_whole_building_listing(client):
                 or float(public_item_after.get("short_stay_ratio") or -1) != 40
                 or float(public_item_after.get("ota_revenue_ratio") or -1) != 80):
             failures.append("whole listing: 최근 5분 고유 열람자 수 집계가 정확하지 않음")
+
+        checklist = client.get(f"/api/listing-requests/{listing_id}/checklist")
+        checklist_data = checklist.get_json() or {}
+        checklist_keys = {item.get("key") for item in checklist_data.get("items") or []}
+        if (checklist.status_code != 200 or not checklist_data.get("ok")
+                or checklist_data.get("total_items") != 14
+                or checklist_data.get("is_authenticated") is not True
+                or "zoning" not in checklist_keys
+                or not {"building_violation", "nearby_competition", "finance", "sale_reason"} <= checklist_keys):
+            failures.append("whole listing: 공개 건물전체 체크리스트 항목·자동값 응답이 잘못됨")
+        saved_progress = client.post(
+            f"/api/listing-requests/{listing_id}/checklist/progress",
+            json={"item_key": "parking", "checked": True},
+        )
+        checked_after_save = client.get(f"/api/listing-requests/{listing_id}/checklist").get_json() or {}
+        if (saved_progress.status_code != 200
+                or "parking" not in (checked_after_save.get("checked_keys") or [])):
+            failures.append("whole listing: 로그인 체크리스트 진행 상태 서버 저장 실패")
+        with client.session_transaction() as sess:
+            sess.clear()
+        anonymous_checklist = client.get(f"/api/listing-requests/{listing_id}/checklist")
+        anonymous_data = anonymous_checklist.get_json() or {}
+        anonymous_save = client.post(
+            f"/api/listing-requests/{listing_id}/checklist/progress",
+            json={"item_key": "parking", "checked": False},
+        )
+        if (anonymous_checklist.status_code != 200
+                or anonymous_data.get("is_authenticated") is not False
+                or anonymous_data.get("checked_keys") != []
+                or anonymous_save.status_code != 401):
+            failures.append("whole listing: 비로그인 체크리스트의 로컬 저장 분리 또는 서버 차단 실패")
+        with client.session_transaction() as sess:
+            sess["user_id"] = user_id
 
         mine = client.get("/api/listing-requests/mine")
         mine_item = next((x for x in ((mine.get_json() or {}).get("items") or []) if x.get("id") == listing_id), {})
