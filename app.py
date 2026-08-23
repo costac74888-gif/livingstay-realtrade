@@ -13342,6 +13342,8 @@ _BLD_FULL_STATS_TTL = 300  # 5분 캐시
 # 값을 내놓지 않도록, 데이터랩과 관리자용 원본은 이 캐시에서 한 번에 만든다.
 # 기존 개별 캐시는 [LEGACY] 폴백 경로로 남겨 둔다.
 _MASTER_STATS_CACHE_TTL = 30 * 60
+_MASTER_STATS_REFRESH_LEAD = 5 * 60
+_MASTER_STATS_BACKGROUND_POLL = 60
 _MASTER_STATS_INVALIDATION_KEY = "master_stats_invalidation"
 _MASTER_STATS_INVALIDATION_CHECK_TTL = 10
 _MASTER_STATS_CACHE: dict = {
@@ -13496,6 +13498,36 @@ def _master_stats_section(name):
     if cache["sections"].get(name, {}).get("status") == "ok":
         return cache["data"].get(name)
     return None
+
+
+def _master_stats_background_loop():
+    """부팅 직후와 캐시 만료 전 통계 원본을 미리 갱신한다.
+
+    통계 집계는 요청 스레드에서 선행하되, 실패가 앱 기동이나 일반 요청을
+    방해하지 않도록 daemon 스레드에서 best effort로 실행한다.
+    """
+    first_run = True
+    while True:
+        try:
+            cache_ts = _MASTER_STATS_CACHE["ts"]
+            now = time.time()
+            refresh_due = (
+                first_run
+                or not cache_ts
+                or now - cache_ts >= _MASTER_STATS_CACHE_TTL - _MASTER_STATS_REFRESH_LEAD
+            )
+            invalidated = bool(cache_ts) and not _master_stats_cache_is_valid()
+            if refresh_due or invalidated:
+                with app.app_context():
+                    _rebuild_master_stats(force=True)
+                app.logger.info("[master-stats] background refresh completed")
+            first_run = False
+        except Exception:
+            app.logger.exception("[master-stats] background refresh failed")
+            first_run = False
+        time.sleep(_MASTER_STATS_BACKGROUND_POLL)
+
+
 GENERAL_LODGING_SUB_TYPES = ("일반호텔", "여관업", "여인숙업", "숙박업(생활)")
 
 
@@ -21525,6 +21557,15 @@ def admin_email_banners_delete(bid):
         return jsonify({"ok": True})
     finally:
         cur.close(); conn.close()
+
+
+# 통계 원본은 앱 모듈과 모든 라우트가 로드된 뒤 백그라운드에서 선제 집계한다.
+_master_stats_background_thread = threading.Thread(
+    target=_master_stats_background_loop,
+    daemon=True,
+    name="master-stats-background",
+)
+_master_stats_background_thread.start()
 
 
 if __name__ == "__main__":

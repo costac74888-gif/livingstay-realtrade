@@ -2201,7 +2201,7 @@ function renderRecentChips(){
 // ── 데이터랩: ① 전국숙박업통계 + 시장 신호 5종 ─────────────────────────────
 let dataLabRequestSequence = 0;
 let dataLabFetchController = null;
-const DATA_LAB_CACHE_TTL_MS = 2 * 60 * 1000;
+const DATA_LAB_CACHE_TTL_MS = 600000;
 const dataLabResponseCache = new Map();
 
 function dataLabNum(value){

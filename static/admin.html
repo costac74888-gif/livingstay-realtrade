@@ -68,6 +68,7 @@
         <button class="admin-menu-item is-active" data-menu="stats">통계 대시보드</button>
         <button class="admin-menu-item" data-menu="revenue">매출관리</button>
         <button class="admin-menu-item" data-menu="buildings">건물마스터</button>
+        <button class="admin-menu-item" data-menu="warehouse">데이터 원본 창고</button>
         <button class="admin-menu-item" data-menu="datasync">데이터 동기화</button>
         <button class="admin-menu-item" data-menu="members">회원관리</button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
@@ -1052,6 +1053,28 @@
       }
     }
 
+    function showWarehouse() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="stats-head">
+          <h2 class="stats-title">데이터 원본 창고</h2>
+          <p class="stats-sub">데이터랩과 관리자 통계가 사용하는 원본 집계 상태입니다.</p>
+        </div>
+        <section class="stats-card stats-card-wide" id="masterStatsCard">
+          <h3 class="stats-card-title" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            통합 원본 집계
+            <span id="masterStatsMeta" class="stats-card-hint">불러오는 중…</span>
+            <button type="button" class="stats-toggle-btn" id="masterStatsRefresh" style="margin-left:auto;">새로고침</button>
+          </h3>
+          <div id="masterStatsGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:10px;">
+            <div class="stats-loading">원본 상태를 불러오는 중…</div>
+          </div>
+        </section>
+      `;
+      loadMasterStats(false);
+      document.getElementById("masterStatsRefresh").addEventListener("click", () => loadMasterStats(true));
+    }
+
     function renderStats(d, mapBld) {
       mapBld = mapBld || {};
       const m = d.members || {};
@@ -1076,17 +1099,6 @@
           <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
         <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
-
-        <section class="stats-card stats-card-wide" id="masterStatsCard">
-          <h3 class="stats-card-title" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            데이터 원본 창고
-            <span id="masterStatsMeta" class="stats-card-hint">불러오는 중…</span>
-            <button type="button" class="stats-toggle-btn" id="masterStatsRefresh" style="margin-left:auto;">새로고침</button>
-          </h3>
-          <div id="masterStatsGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:10px;">
-            <div class="stats-loading">원본 상태를 불러오는 중…</div>
-          </div>
-        </section>
 
         <div class="stats-kpi-row">
           <div class="stats-kpi">
@@ -1178,9 +1190,6 @@
           </section>
         </div>
       `;
-
-      loadMasterStats(false);
-      document.getElementById("masterStatsRefresh").addEventListener("click", () => loadMasterStats(true));
 
       fetch("/api/admin/sync-progress-summary").then(r => r.json()).then(d => {
         if (!d.ok) return;
@@ -5552,6 +5561,7 @@
       stopLodgingSyncPolling();
       stopBrhubSyncPolling();
       if (menuKey === "stats") { showStats(menuKey); return; }
+      if (menuKey === "warehouse") { showWarehouse(); return; }
       if (menuKey === "revenue") { showRevenue(); return; }
       if (menuKey === "members") { showMembers(); return; }
       if (menuKey === "legal") { showLegal(); return; }
