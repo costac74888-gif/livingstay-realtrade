@@ -95,7 +95,6 @@ function toggleFav(item){
       }
       updateFavCountLabel();
       renderFavChips();
-      if (typeof loadSideFavorites === "function") loadSideFavorites();
       syncFavBtn();
       if (restoreActiveFilter) loadBoard();
       alert("관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
@@ -130,14 +129,12 @@ function toggleFav(item){
       else { serverFavKeys.delete(k); }
       updateFavCountLabel();
       renderFavChips();
-      if (typeof loadSideFavorites === "function") loadSideFavorites();
       syncFavBtn();
       alert("관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
     });
   }
   updateFavCountLabel();
   renderFavChips();
-  if (typeof loadSideFavorites === "function") loadSideFavorites();
   if (clearedActiveFilter){ document.getElementById("chkFavOnly").checked = false; loadBoard(); }
   return true;
 }
@@ -154,7 +151,6 @@ function removeFav(key){
   if (state.favKey === key){ state.favKey = null; state.favOnly = false; }
   updateFavCountLabel();
   renderFavChips();
-  if (typeof loadSideFavorites === "function") loadSideFavorites();
   loadBoard();
 }
 // auth.js가 로그인/migrate 후 호출 → 서버에서 관심키 재로드 후 UI 갱신
@@ -162,7 +158,6 @@ window.refreshFavoritesUI = async function(){
   await loadServerFavKeys();
   if (typeof updateFavCountLabel === "function") updateFavCountLabel();
   if (typeof renderFavChips === "function") renderFavChips();
-  if (typeof loadSideFavorites === "function") loadSideFavorites();
 };
 // livingstay:auth 이벤트 — 이미 로그인된 상태로 페이지에 진입할 때도 관심키를 로드한다.
 // auth.js가 window.dispatchEvent()로 발생시키므로 리스너도 window에 등록해야 함.
@@ -171,7 +166,6 @@ window.addEventListener("livingstay:auth", async function(){
   await loadServerFavKeys();
   if (typeof updateFavCountLabel === "function") updateFavCountLabel();
   if (typeof renderFavChips === "function") renderFavChips();
-  if (typeof loadSideFavorites === "function") loadSideFavorites();
 });
 function updateFavCountLabel(){
   const el = document.getElementById("favCountLabel");
@@ -2205,7 +2199,6 @@ async function loadRankingWidget(){
 function initDefaultSidePanel(){
   loadTrendChart();
   loadSideTx(5);
-  loadSideFavorites();
   loadSideStats();
   loadRankingWidget();
   renderRecentChips(); // 페이지 로드 시 최근 본 건물 칩 복원
@@ -2868,6 +2861,11 @@ function buildingPanelSkeleton(){
       <div class="side-empty">불러오는 중…</div>
     </section>
 
+    <section class="side-card" id="bPriceCompareCard">
+      <div class="side-card-title">매물가 · 최근 실거래 비교</div>
+      <div id="bPriceCompareBody" class="side-empty">불러오는 중…</div>
+    </section>
+
     <section class="side-card" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
         <label for="bAreaFilter" style="font-size:12px; color:var(--ink-soft); white-space:nowrap; font-weight:600;">전용면적 타입</label>
@@ -3226,6 +3224,41 @@ async function loadBuildingHeader(id){
     </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
 
+  const priceCompareCard = document.getElementById("bPriceCompareCard");
+  const priceCompareBody = document.getElementById("bPriceCompareBody");
+  if (priceCompareCard && priceCompareBody) {
+    const recentDealPrice = Number(b.recent_deal_price);
+    const listingMinPrice = Number(b.listing_min_price);
+    const hasPriceComparison = Number.isFinite(recentDealPrice) && recentDealPrice > 0
+      && Number.isFinite(listingMinPrice) && listingMinPrice > 0
+      && b.price_gap_percent != null;
+    priceCompareCard.style.display = "";
+    if (!hasPriceComparison) {
+      priceCompareBody.textContent = "최근 실거래가와 공개 매물가가 모두 있어야 비교할 수 있습니다.";
+    } else {
+      const gap = Number(b.price_gap_percent);
+      const gapColor = gap > 0 ? "#C85A36" : (gap < 0 ? "#2F7D52" : "var(--ink-soft)");
+      const gapLabel = gap > 0 ? "매물가가 더 높음" : (gap < 0 ? "매물가가 더 낮음" : "동일");
+      const gapValue = `${gap > 0 ? "+" : ""}${gap.toFixed(1)}%`;
+      const fmtComparePrice = (value) => `${Number(value).toLocaleString("ko-KR")}만원`;
+      priceCompareBody.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div style="padding:9px 10px;border:1px solid var(--line);border-radius:8px;">
+            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">최근 실거래가</div>
+            <div style="font-size:16px;font-weight:800;color:var(--ink);">${fmtComparePrice(recentDealPrice)}</div>
+          </div>
+          <div style="padding:9px 10px;border:1px solid var(--line);border-radius:8px;">
+            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">공개 매물 최저가</div>
+            <div style="font-size:16px;font-weight:800;color:var(--ink);">${fmtComparePrice(listingMinPrice)}</div>
+          </div>
+        </div>
+        <div style="text-align:center;color:${gapColor};font-size:14px;font-weight:800;">
+          ${gapValue} <span style="font-size:11px;font-weight:600;">(${gapLabel})</span>
+        </div>
+        <div style="margin-top:5px;text-align:center;font-size:11px;color:var(--ink-soft);">최근 실거래가 대비 공개 매물 최저가</div>`;
+    }
+  }
+
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");
   const listingsBody = document.getElementById("bListingsBody");
@@ -3295,8 +3328,14 @@ async function loadBuildingHeader(id){
         ].filter(Boolean).join(" · ");
          const priceText = _listingPriceText(lr, formatNumber);
        const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}% (참고용)` : "";
-          const roomText = !isWholeListing && !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
-          ? `총 ${formatNumber(lr.room_count)}실` : "";
+        const wholeRoomPriceText = isWholeListing && lr.price_krw != null
+          && Number(lr.room_count) > 0 && Number(lr.price_krw) > 0
+          ? `객실당 ${formatNumber(Math.round(Number(lr.price_krw) / Number(lr.room_count)))}만원` : "";
+        const roomText = isWholeListing
+          ? [lr.room_count != null && Number(lr.room_count) > 0 ? `총 ${formatNumber(lr.room_count)}실` : "", wholeRoomPriceText]
+            .filter(Boolean).join(" · ")
+          : (!lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
+            ? `총 ${formatNumber(lr.room_count)}실` : "");
         const statusMarkup = _operationStatusMarkup(lr);
         const desc = lr.description ? escapeHtml(lr.description) : "";
        const ov = document.createElement("div");
@@ -3438,8 +3477,13 @@ async function loadBuildingHeader(id){
           ? price - loan + (price * 0.061) : null;
         const isRecentClosure = lr.operation_status === "폐업" && lr.closed_at
           && Date.now() - new Date(lr.closed_at).getTime() <= 90 * 24 * 60 * 60 * 1000;
+        const wholeRoomPriceText = lr.price_krw != null && Number(lr.room_count) > 0
+          && Number(lr.price_krw) > 0
+          ? `객실당 ${_fmtN(Math.round(Number(lr.price_krw) / Number(lr.room_count)))}만원` : "";
         const metrics = [
-          lr.room_count != null && Number(lr.room_count) > 0 ? `객실 ${_fmtN(lr.room_count)}실` : "객실 정보 없음",
+          lr.room_count != null && Number(lr.room_count) > 0
+            ? `객실 ${_fmtN(lr.room_count)}실${wholeRoomPriceText ? ` · ${wholeRoomPriceText}` : ""}`
+            : "객실 정보 없음",
           b.tot_pkng_cnt != null ? `주차 ${_fmtN(b.tot_pkng_cnt)}대` : "주차 정보 없음",
           b.plat_area != null ? `대지 ${(Number(b.plat_area) / 3.305785).toFixed(1)}평` : "대지 정보 없음",
           b.tot_area != null ? `연면적 ${(Number(b.tot_area) / 3.305785).toFixed(1)}평` : "연면적 정보 없음",
@@ -4434,18 +4478,26 @@ async function loadBuildingCountLabel(){
 
 // 검색창 바로 아래 데이터 규모 지표 — 값은 매 로드마다 서버 집계에서 갱신한다.
 async function loadPlatformStats(){
-  const statEls = document.querySelectorAll("[data-platform-stat]");
+  const platformStats = document.getElementById("platformStats");
+  if (!platformStats) return;
+  const statKeys = ["building_count", "biz_count", "transaction_count", "listing_count"];
+  const statEls = statKeys.map(key =>
+    platformStats.querySelector(`[data-platform-stat="${key}"]`)
+  );
   if (!statEls.length) return;
   try {
     const res = await fetch("/api/stats/platform-summary", { credentials: "same-origin" });
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error("platform summary failed");
-    statEls.forEach(el => {
-      const value = data[el.dataset.platformStat];
-      if (typeof value === "number") el.textContent = value.toLocaleString("ko-KR");
+    const values = statKeys.map(key => data[key]);
+    if (values.some(value => !Number.isInteger(value) || value < 0)) {
+      throw new Error("invalid platform summary values");
+    }
+    statEls.forEach((el, index) => {
+      if (el) el.textContent = values[index].toLocaleString("ko-KR");
     });
   } catch (e) {
-    statEls.forEach(el => { el.textContent = "—"; });
+    statEls.forEach(el => { if (el) el.textContent = "—"; });
     console.error("[홈] 데이터 규모 지표 로드 실패:", e);
   }
 }

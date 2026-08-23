@@ -898,8 +898,12 @@
       recentlyClosed ? '<span class="whole-badge whole-badge-closed">최근 폐업</span>' : "",
       item.has_monthly_revenue ? '<span class="whole-badge whole-badge-revenue">매출정보 있음</span>' : ""
     ].filter(Boolean).join("");
+    const roomPriceText = item.price_krw != null && Number(item.room_count) > 0
+      && Number(item.price_krw) > 0
+      ? `객실당 ${Math.round(Number(item.price_krw) / Number(item.room_count)).toLocaleString()}만원` : "";
     const roomText = item.room_count != null && Number(item.room_count) > 0
-      ? `객실 ${Number(item.room_count).toLocaleString()}실` : "객실 정보 없음";
+      ? `객실 ${Number(item.room_count).toLocaleString()}실${roomPriceText ? " · " + roomPriceText : ""}`
+      : "객실 정보 없음";
     const parkingText = item.parking_count != null
       ? `주차 ${Number(item.parking_count).toLocaleString()}대` : "주차 정보 없음";
     const landText = item.land_area_pyeong != null
