@@ -635,9 +635,10 @@ def _check_brhub_auto_naming_contract():
 
 
 def _check_building_biz_status_filters(client):
-    """정상 운영/전부 폐업/미매칭 건물 필터와 필터 조합을 확인."""
+    """주소 매칭 기준 정상 운영/전부 폐업/미매칭 건물 필터와 조합을 확인."""
     import time
     from urllib.parse import urlencode
+    import addr_norm
     from db import get_conn
     from lodging_matching import ACTIVE_STATUS
 
@@ -655,7 +656,10 @@ def _check_building_biz_status_filters(client):
     conn = get_conn()
     cur = conn.cursor()
     try:
-        for suffix, statuses in specs:
+        for building_index, (suffix, statuses) in enumerate(specs):
+            road_address = (
+                f"테스트특별시 상태검증구 상태검증로 {building_index + 100}"
+            )
             cur.execute(
                 """
                 INSERT INTO master_buildings
@@ -663,7 +667,7 @@ def _check_building_biz_status_filters(client):
                 VALUES (%s, %s, 'api_test', '일반', TRUE)
                 RETURNING id
                 """,
-                (f"{token}-{suffix}", f"테스트특별시 상태검증구 {token} {suffix}로"),
+                (f"{token}-{suffix}", road_address),
             )
             building_id = cur.fetchone()["id"]
             building_ids.append(building_id)
@@ -673,10 +677,15 @@ def _check_building_biz_status_filters(client):
                 cur.execute(
                     """
                     INSERT INTO lodging_registry
-                        (biz_name, permit_number, biz_status_name, applied_building_id)
+                        (biz_name, permit_number, biz_status_name, road_norm)
                     VALUES (%s, %s, %s, %s)
                     """,
-                    (f"{token}-{suffix}-사업장{index}", permit, status, building_id),
+                    (
+                        f"{token}-{suffix}-사업장{index}",
+                        permit,
+                        status,
+                        addr_norm.normalize_road_prefix(road_address),
+                    ),
                 )
         conn.commit()
 

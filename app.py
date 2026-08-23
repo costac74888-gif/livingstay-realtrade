@@ -11735,6 +11735,78 @@ def _clean_bld_value(col, v):
     return s or None
 
 
+def _building_ids_by_lodging_status(where_sql, params, status_filter):
+    """현재 건물 목록과 같은 주소 정규화 규칙으로 영업상태별 건물 ID를 찾는다.
+
+    lodging_registry.applied_building_id는 신규 등록 후보를 수동 적용할 때만
+    채워진다. 일반 건물마스터 목록의 신고 매칭은 road_norm 우선, 해당 신고가
+    전혀 없을 때만 jibun_norm을 보조로 쓰므로, 상태 필터도 그 규칙을 그대로
+    따라야 목록의 영업사업장 표시와 결과가 일치한다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            SELECT mb.id, mb.road_address, mb.jibun_address
+            FROM master_buildings mb
+            WHERE {where_sql}
+        """, params)
+        buildings = [dict(row) for row in cur.fetchall()]
+        if not buildings:
+            return []
+
+        road_keys_by_id = {}
+        jibun_keys_by_id = {}
+        road_keys, jibun_keys = set(), set()
+        for building in buildings:
+            building_id = building["id"]
+            road_key = addr_norm.normalize_road_prefix(building.get("road_address"))
+            # 관리자 목록의 영업신고 attach 로직과 동일: 지번주소가 없으면
+            # road_address도 지번 형식일 수 있으므로 보조 키로 시도한다.
+            jibun_key = addr_norm.normalize_jibun_prefix(
+                building.get("jibun_address") or building.get("road_address")
+            )
+            road_keys_by_id[building_id] = road_key
+            jibun_keys_by_id[building_id] = jibun_key
+            if road_key:
+                road_keys.add(road_key)
+            if jibun_key:
+                jibun_keys.add(jibun_key)
+
+        cur.execute("""
+            SELECT biz_status_name, road_norm, jibun_norm
+            FROM lodging_registry
+            WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+        """, [list(road_keys) or ["__none__"], list(jibun_keys) or ["__none__"]])
+        road_statuses, jibun_statuses = {}, {}
+        for row in cur.fetchall():
+            if row["road_norm"]:
+                road_statuses.setdefault(row["road_norm"], []).append(
+                    row["biz_status_name"]
+                )
+            if row["jibun_norm"]:
+                jibun_statuses.setdefault(row["jibun_norm"], []).append(
+                    row["biz_status_name"]
+                )
+
+        matching_ids = []
+        for building in buildings:
+            building_id = building["id"]
+            # 도로명 키에 매칭된 신고가 하나라도 있으면 도로명 결과만 사용한다.
+            # 그렇지 않을 때만 지번 결과를 사용해야 목록의 사업장 수와 같아진다.
+            statuses = road_statuses.get(road_keys_by_id[building_id], [])
+            if not statuses:
+                statuses = jibun_statuses.get(jibun_keys_by_id[building_id], [])
+            has_active = ACTIVE_LODGING_STATUS in statuses
+            if ((status_filter == "active" and has_active)
+                    or (status_filter == "closed" and statuses and not has_active)):
+                matching_ids.append(building_id)
+        return matching_ids
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _admin_bld_filters():
     """목록/엑셀 공용: q, sort, order, WHERE절, 파라미터를 계산."""
     q = (request.args.get("q") or "").strip()
@@ -11751,33 +11823,6 @@ def _admin_bld_filters():
     # 명칭 미확정 건물만 필터 (관리자 주기 점검용)
     if (request.args.get("name_pending") or "").strip() == "1":
         where += " AND name_pending IS TRUE"
-    # 매칭된 영업신고 사업장의 영업상태 필터 — 신고율/상세 목록과 같은 상수 사용
-    biz_status_filter = (request.args.get("biz_status_filter") or "").strip()
-    if biz_status_filter == "active":
-        where += """
-            AND EXISTS (
-                SELECT 1
-                FROM lodging_registry lr
-                WHERE lr.applied_building_id = mb.id
-                  AND lr.biz_status_name = %s
-            )
-        """
-        params.append(ACTIVE_LODGING_STATUS)
-    elif biz_status_filter == "closed":
-        where += """
-            AND EXISTS (
-                SELECT 1
-                FROM lodging_registry lr
-                WHERE lr.applied_building_id = mb.id
-            )
-            AND NOT EXISTS (
-                SELECT 1
-                FROM lodging_registry lr
-                WHERE lr.applied_building_id = mb.id
-                  AND lr.biz_status_name = %s
-            )
-        """
-        params.append(ACTIVE_LODGING_STATUS)
     # 용도(lodging_type) 필터 — 건물마스터 드롭다운
     lt_filter = (request.args.get("lodging_type_filter") or "").strip()
     if lt_filter == "미분류":
@@ -11807,6 +11852,18 @@ def _admin_bld_filters():
     if umd_tf:
         where += " AND umd_nm = %s"
         params.append(umd_tf)
+    # 매칭된 영업신고 사업장의 영업상태 필터. 목록과 동일한 주소 정규화
+    # (도로명 우선·지번 보조)는 SQL만으로 정확히 재현하기 어려워 ID를 먼저 계산한다.
+    biz_status_filter = (request.args.get("biz_status_filter") or "").strip()
+    if biz_status_filter in ("active", "closed"):
+        matched_ids = _building_ids_by_lodging_status(
+            where, params, biz_status_filter
+        )
+        if matched_ids:
+            where += " AND mb.id = ANY(%s)"
+            params.append(matched_ids)
+        else:
+            where += " AND FALSE"
     return q, sort, order, where, params
 
 

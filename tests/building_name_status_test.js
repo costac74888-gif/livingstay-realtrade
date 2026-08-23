@@ -86,8 +86,9 @@ expect(
 
 expect(
   app.includes('biz_status_filter = (request.args.get("biz_status_filter") or "").strip()') &&
-    app.includes('biz_status_filter == "active"') &&
-    app.includes('biz_status_filter == "closed"') &&
+    app.includes('biz_status_filter in ("active", "closed")') &&
+    app.includes("def _building_ids_by_lodging_status") &&
+    app.includes("도로명 우선·지번 보조") &&
     app.includes("ACTIVE_LODGING_STATUS"),
   "건물마스터 영업상태 필터 백엔드 조건이 없습니다.",
 );
