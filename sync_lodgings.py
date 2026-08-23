@@ -15,6 +15,7 @@ sync_lodgings.py — 행안부 '문화_숙박업 조회서비스' 수집 배치.
 
 import argparse
 import hashlib
+import hmac
 import html
 import json
 import os
@@ -50,6 +51,10 @@ MAX_DAILY_CALLS = 8000  # 일일 쿼터 10,000 — 여유분을 남기고 멈춘
 DAILY_CALLS_META_KEY = "lodging_daily_calls"
 PROGRESS_META_KEY = "lodging_sync_progress"
 LAST_SYNC_META_KEY = "lodging_last_sync"
+_INTERNAL_STATS_REFRESH_URL = os.environ.get(
+    "MASTER_STATS_REFRESH_URL",
+    "http://127.0.0.1:5000/api/admin/stats/refresh",
+)
 
 # 실제 API 응답값: 숙박업(생활), 일반호텔, 여관업, 여인숙업.
 # '숙박업 기타'는 범위가 모호해 별도 검토 전에는 수집하지 않는다.
@@ -509,6 +514,37 @@ def _signal_stats_change():
         )
 
 
+def _refresh_master_stats_after_completion():
+    """수집 완료 직후 실행 중인 앱 워커의 통계 원본을 즉시 갱신한다."""
+    try:
+        secret = os.environ.get("SESSION_SECRET", "")
+        if not secret:
+            raise RuntimeError("SESSION_SECRET이 없어 내부 통계 갱신 요청을 서명할 수 없습니다.")
+        timestamp = str(int(time.time()))
+        signature = hmac.new(
+            secret.encode("utf-8"),
+            f"POST:/api/admin/stats/refresh:{timestamp}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        response = requests.post(
+            _INTERNAL_STATS_REFRESH_URL,
+            headers={
+                "X-Stats-Refresh-Timestamp": timestamp,
+                "X-Stats-Refresh-Signature": signature,
+            },
+            timeout=180,
+        )
+        payload = response.json()
+        if not response.ok or not payload.get("ok"):
+            raise RuntimeError(payload.get("message") or f"HTTP {response.status_code}")
+        failed = [key for key, ok in (payload.get("sections") or {}).items() if not ok]
+        print(
+            f"[lodgings] 완료 후 통계 캐시 {'부분 실패: ' + ', '.join(failed) if failed else '갱신 완료'}"
+        )
+    except Exception as exc:
+        print(f"[lodgings] 완료 후 통계 캐시 갱신 실패: {_redact(str(exc))[:300]}")
+
+
 def _fetch_page(key, page, num_rows):
     resp = requests.get(API_URL, params={
         "serviceKey": key,
@@ -867,6 +903,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
 def _run(args):
     if args.reindex_norms:
         reindex_lodging_norms()
+        _refresh_master_stats_after_completion()
         return
 
     run_id = None
@@ -896,6 +933,9 @@ def _run(args):
     except Exception as e:
         error = _redact(str(e))[:500]
         print(f"[lodgings] 실패: {error}")
+
+    if not error and completed:
+        _refresh_master_stats_after_completion()
 
     # 숙박업 수집과 독립적으로 매일 계약만기 알림을 점검한다.
     # 수집 실패나 이메일 설정 문제로 숙박업 배치 자체가 실패하지 않게 한다.

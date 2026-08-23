@@ -7,6 +7,8 @@ real Flask views and sync/merge functions rather than the stats helper alone.
 import os
 import sys
 import unittest
+import hashlib
+import hmac
 from argparse import Namespace
 from unittest.mock import patch
 
@@ -74,12 +76,161 @@ class FakeCursor:
         self.closed = True
 
 
+class FakeRefreshResponse:
+    def __init__(self, *, ok=True, status_code=200, payload=None, json_error=None):
+        self.ok = ok
+        self.status_code = status_code
+        self.payload = payload or {}
+        self.json_error = json_error
+
+    def json(self):
+        if self.json_error:
+            raise self.json_error
+        return self.payload
+
+
 class AppMutationInvalidationTests(unittest.TestCase):
     def setUp(self):
-        app_module.app.config.update(TESTING=True, SECRET_KEY="focused-test-secret")
+        app_module.app.config.update(
+            TESTING=True,
+            SECRET_KEY="focused-test-secret",
+            RATELIMIT_ENABLED=False,
+        )
+        app_module.limiter.reset()
         self.client = app_module.app.test_client()
         with self.client.session_transaction() as session:
             session["admin"] = True
+
+    @staticmethod
+    def _stats_refresh_cache(failed=()):
+        section_keys = (
+            "lodging_stats",
+            "region_match",
+            "consign_stats",
+            "closure_stats",
+            "transaction_stats",
+        )
+        return {
+            "ts": 1_700_000_000,
+            "sections": {
+                key: {
+                    "status": "error" if key in failed else "ok",
+                    "error": "test failure" if key in failed else None,
+                }
+                for key in section_keys
+            },
+        }
+
+    def test_admin_stats_refresh_requires_admin_session(self):
+        anonymous = app_module.app.test_client()
+
+        response = anonymous.post("/api/admin/stats/refresh")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["ok"], False)
+
+    @staticmethod
+    def _internal_refresh_headers(timestamp, secret="internal-test-secret"):
+        signature = hmac.new(
+            secret.encode("utf-8"),
+            f"POST:/api/admin/stats/refresh:{timestamp}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return {
+            "X-Stats-Refresh-Timestamp": str(timestamp),
+            "X-Stats-Refresh-Signature": signature,
+        }
+
+    def test_signed_internal_stats_refresh_rebuilds_without_admin_session(self):
+        cache = self._stats_refresh_cache()
+        anonymous = app_module.app.test_client()
+        timestamp = "1700000000"
+        with (
+            patch.dict(os.environ, {"SESSION_SECRET": "internal-test-secret"}),
+            patch.object(app_module.time, "time", return_value=int(timestamp)),
+            patch.object(app_module, "_rebuild_master_stats", return_value=cache) as rebuild,
+        ):
+            response = anonymous.post(
+                "/api/admin/stats/refresh",
+                headers=self._internal_refresh_headers(timestamp),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["ok"])
+        rebuild.assert_called_once_with(force=True)
+
+    def test_invalid_or_stale_internal_stats_refresh_signature_is_rejected(self):
+        anonymous = app_module.app.test_client()
+        timestamp = "1700000000"
+        with patch.dict(os.environ, {"SESSION_SECRET": "internal-test-secret"}):
+            invalid = anonymous.post(
+                "/api/admin/stats/refresh",
+                headers={
+                    "X-Stats-Refresh-Timestamp": timestamp,
+                    "X-Stats-Refresh-Signature": "not-a-valid-signature",
+                },
+            )
+        with (
+            patch.dict(os.environ, {"SESSION_SECRET": "internal-test-secret"}),
+            patch.object(app_module.time, "time", return_value=int(timestamp) + 61),
+        ):
+            stale = anonymous.post(
+                "/api/admin/stats/refresh",
+                headers=self._internal_refresh_headers(timestamp),
+            )
+
+        self.assertEqual(invalid.status_code, 401)
+        self.assertEqual(stale.status_code, 401)
+
+    def test_admin_stats_refresh_returns_all_section_results(self):
+        cache = self._stats_refresh_cache()
+        with patch.object(
+            app_module, "_rebuild_master_stats", return_value=cache
+        ) as rebuild:
+            response = self.client.post("/api/admin/stats/refresh")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["refreshed_at"])
+        self.assertEqual(payload["sections"], {
+            "lodging_stats": True,
+            "region_match": True,
+            "consign_stats": True,
+            "closure_stats": True,
+            "transaction_stats": True,
+        })
+        rebuild.assert_called_once_with(force=True)
+
+    def test_admin_stats_refresh_keeps_success_for_partial_section_failure(self):
+        cache = self._stats_refresh_cache(failed=("closure_stats",))
+        with patch.object(app_module, "_rebuild_master_stats", return_value=cache):
+            response = self.client.post("/api/admin/stats/refresh")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["sections"], {
+            "lodging_stats": True,
+            "region_match": True,
+            "consign_stats": True,
+            "closure_stats": False,
+            "transaction_stats": True,
+        })
+
+    def test_admin_stats_refresh_reports_failure_when_all_sections_fail(self):
+        cache = self._stats_refresh_cache(failed=(
+            "lodging_stats",
+            "region_match",
+            "consign_stats",
+            "closure_stats",
+            "transaction_stats",
+        ))
+        with patch.object(app_module, "_rebuild_master_stats", return_value=cache):
+            response = self.client.post("/api/admin/stats/refresh")
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(response.get_json()["ok"])
 
     def _marker(self, events):
         def mark(source):
@@ -571,6 +722,162 @@ class AppMutationInvalidationTests(unittest.TestCase):
 
 
 class SyncInvalidationTests(unittest.TestCase):
+    def test_sync_completion_helpers_post_signed_refresh_and_accept_partial_success(self):
+        timestamp = "1700000000"
+        secret = "internal-test-secret"
+        expected_headers = {
+            "X-Stats-Refresh-Timestamp": timestamp,
+            "X-Stats-Refresh-Signature": hmac.new(
+                secret.encode("utf-8"),
+                f"POST:/api/admin/stats/refresh:{timestamp}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest(),
+        }
+        partial_response = FakeRefreshResponse(payload={
+            "ok": True,
+            "sections": {
+                "lodging_stats": True,
+                "closure_stats": False,
+            },
+        })
+
+        for module in (sync_lodgings, sync_brhub):
+            with self.subTest(module=module.__name__):
+                with (
+                    patch.dict(os.environ, {"SESSION_SECRET": secret}),
+                    patch.object(module.time, "time", return_value=int(timestamp)),
+                    patch.object(
+                        module.requests, "post", return_value=partial_response
+                    ) as post,
+                ):
+                    module._refresh_master_stats_after_completion()
+
+                post.assert_called_once_with(
+                    module._INTERNAL_STATS_REFRESH_URL,
+                    headers=expected_headers,
+                    timeout=180,
+                )
+
+    def test_sync_completion_helpers_tolerate_failed_http_or_payload(self):
+        failures = (
+            ("http", FakeRefreshResponse(
+                ok=False,
+                status_code=500,
+                payload={"ok": False, "message": "server failed"},
+            )),
+            ("payload", FakeRefreshResponse(json_error=ValueError("invalid JSON"))),
+        )
+
+        for module in (sync_lodgings, sync_brhub):
+            for label, response in failures:
+                with self.subTest(module=module.__name__, failure=label):
+                    with (
+                        patch.dict(os.environ, {"SESSION_SECRET": "internal-test-secret"}),
+                        patch.object(module.requests, "post", return_value=response) as post,
+                    ):
+                        module._refresh_master_stats_after_completion()
+
+                    post.assert_called_once()
+
+    def test_lodging_run_refreshes_only_after_successful_completion(self):
+        args = Namespace(
+            reindex_norms=False,
+            status_key=None,
+            num_rows=1000,
+            sleep=0,
+            max_calls=10,
+            reset=False,
+        )
+        cases = (
+            ("completed", (True, 3, 1), 1),
+            ("incomplete", (False, 3, 1), 0),
+            ("error", RuntimeError("sync failed"), 0),
+        )
+
+        for label, outcome, expected_refreshes in cases:
+            with self.subTest(label=label):
+                with (
+                    patch.object(
+                        sync_lodgings,
+                        "sync_lodgings",
+                        side_effect=outcome if isinstance(outcome, Exception) else None,
+                        return_value=None if isinstance(outcome, Exception) else outcome,
+                    ),
+                    patch.object(sync_lodgings, "send_room_expiry_alerts", return_value={
+                        "target_count": 0,
+                        "sent_count": 0,
+                        "email_sent_count": 0,
+                        "in_app_count": 0,
+                        "failed_count": 0,
+                    }),
+                    patch.object(
+                        sync_lodgings, "_refresh_master_stats_after_completion"
+                    ) as refresh,
+                    patch.object(sync_lodgings.sys, "exit") as exit_process,
+                ):
+                    sync_lodgings._run(args)
+
+                self.assertEqual(refresh.call_count, expected_refreshes)
+                self.assertEqual(exit_process.call_count, int(label == "error"))
+
+    def test_lodging_run_reindex_refreshes_after_reindex_completion(self):
+        args = Namespace(reindex_norms=True)
+        with (
+            patch.object(sync_lodgings, "reindex_lodging_norms") as reindex,
+            patch.object(
+                sync_lodgings, "_refresh_master_stats_after_completion"
+            ) as refresh,
+        ):
+            sync_lodgings._run(args)
+
+        reindex.assert_called_once_with()
+        refresh.assert_called_once_with()
+
+        with (
+            patch.object(
+                sync_lodgings,
+                "reindex_lodging_norms",
+                side_effect=RuntimeError("reindex failed"),
+            ),
+            patch.object(
+                sync_lodgings, "_refresh_master_stats_after_completion"
+            ) as refresh,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "reindex failed"):
+                sync_lodgings._run(args)
+        refresh.assert_not_called()
+
+    def test_brhub_main_refreshes_only_after_successful_completed_non_dry_run(self):
+        cases = (
+            ("completed", False, (True, 2, 0, 2, "completed"), 1),
+            ("incomplete", False, (False, 2, 0, 2, "limit"), 0),
+            ("dry_run", True, (True, 2, 0, 2, "completed"), 0),
+            ("error", False, RuntimeError("sync failed"), 0),
+        )
+
+        for label, dry_run, outcome, expected_refreshes in cases:
+            argv = ["sync_brhub.py"]
+            if dry_run:
+                argv.append("--dry-run")
+            with self.subTest(label=label):
+                with (
+                    patch.object(sync_brhub.sys, "argv", argv),
+                    patch.object(
+                        sync_brhub,
+                        "run",
+                        side_effect=outcome if isinstance(outcome, Exception) else None,
+                        return_value=None if isinstance(outcome, Exception) else outcome,
+                    ),
+                    patch.object(
+                        sync_brhub, "_refresh_master_stats_after_completion"
+                    ) as refresh,
+                    patch.object(sync_brhub.sys, "exit") as exit_process,
+                ):
+                    sync_brhub.main()
+
+                self.assertEqual(refresh.call_count, expected_refreshes)
+                self.assertEqual(exit_process.call_count, int(label == "error"))
+
     def test_lodging_no_change_completion_signals_after_last_sync_commit(self):
         events = []
 

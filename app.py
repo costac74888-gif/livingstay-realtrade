@@ -27,6 +27,7 @@ import time
 import math
 import html as _html
 import hashlib
+import hmac
 import threading
 import subprocess
 import secrets as _secrets
@@ -4371,12 +4372,39 @@ def request_correction():
 # require_admin 및 /api/admin/* 나머지 API는 session["admin"] 여부만 확인한다.
 # ============================================================
 
+_INTERNAL_STATS_REFRESH_PATH = "/api/admin/stats/refresh"
+_INTERNAL_STATS_REFRESH_MAX_AGE = 60
+
+
+def _is_internal_stats_refresh_request():
+    """별도 수집 프로세스의 서명된 로컬 캐시 갱신 요청만 제한적으로 허용한다."""
+    if request.path != _INTERNAL_STATS_REFRESH_PATH:
+        return False
+    secret = os.environ.get("SESSION_SECRET", "")
+    timestamp = request.headers.get("X-Stats-Refresh-Timestamp", "")
+    signature = request.headers.get("X-Stats-Refresh-Signature", "")
+    if not secret or not timestamp or not signature:
+        return False
+    try:
+        timestamp_int = int(timestamp)
+    except ValueError:
+        return False
+    if abs(time.time() - timestamp_int) > _INTERNAL_STATS_REFRESH_MAX_AGE:
+        return False
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        f"POST:{_INTERNAL_STATS_REFRESH_PATH}:{timestamp}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected)
+
+
 def require_admin(f):
     """세션에 admin=True가 없으면 차단한다.
     /api/admin/* 요청은 401 JSON, 그 외(/admin/*)는 /admin/login으로 리다이렉트."""
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("admin"):
+        if not session.get("admin") and not _is_internal_stats_refresh_request():
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
             return redirect("/admin/login")
@@ -21111,6 +21139,42 @@ def _master_stats_admin_snapshot(*, force=False):
 def admin_master_stats():
     """통계 원본 창고 상태 조회와 관리자 수동 새로고침."""
     return jsonify(_master_stats_admin_snapshot(force=request.method == "POST"))
+
+
+@app.route("/api/admin/stats/refresh", methods=["POST"])
+@require_admin
+@limiter.limit("2 per minute")
+def admin_stats_refresh():
+    """관리자 요청으로 통합 통계 원본 캐시를 즉시 다시 만든다."""
+    try:
+        cache = _rebuild_master_stats(force=True)
+    except Exception as exc:
+        app.logger.exception("[master-stats] manual refresh failed")
+        return jsonify({"ok": False, "message": f"통계 갱신에 실패했습니다: {exc}"}), 500
+
+    section_keys = (
+        "lodging_stats",
+        "region_match",
+        "consign_stats",
+        "closure_stats",
+        "transaction_stats",
+    )
+    sections = {
+        key: cache["sections"].get(key, {}).get("status") == "ok"
+        for key in section_keys
+    }
+    if not any(sections.values()):
+        return jsonify({"ok": False, "message": "모든 통계 섹션 갱신에 실패했습니다."}), 500
+
+    refreshed_at = (
+        datetime.fromtimestamp(cache["ts"]).isoformat(timespec="seconds")
+        if cache["ts"] else None
+    )
+    return jsonify({
+        "ok": True,
+        "refreshed_at": refreshed_at,
+        "sections": sections,
+    })
 
 
 @app.route("/api/stats/registration-rate")

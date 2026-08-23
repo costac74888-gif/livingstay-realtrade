@@ -32,6 +32,8 @@ sync_brhub.py — 건축HUB 표제부(getBrTitleInfo)로 전국 '집합건물 + 
 
 import argparse
 import concurrent.futures
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -58,6 +60,10 @@ KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"
 CODES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bjdong_codes.json")
 PROGRESS_KEY = "brhub_progress"
 NUM_ROWS = 100
+_INTERNAL_STATS_REFRESH_URL = os.environ.get(
+    "MASTER_STATS_REFRESH_URL",
+    "http://127.0.0.1:5000/api/admin/stats/refresh",
+)
 
 
 _PENDING_BUILDING_NAMES = ("", "-", "(이름 미상)")
@@ -70,6 +76,37 @@ def _signal_stats_change():
         print("[brhub] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
     except Exception as exc:
         print(f"[brhub] 통계 원본 캐시 표식 갱신 실패: {repr(exc)[:200]}")
+
+
+def _refresh_master_stats_after_completion():
+    """수집 완료 직후 실행 중인 앱 워커의 통계 원본을 즉시 갱신한다."""
+    try:
+        secret = os.environ.get("SESSION_SECRET", "")
+        if not secret:
+            raise RuntimeError("SESSION_SECRET이 없어 내부 통계 갱신 요청을 서명할 수 없습니다.")
+        timestamp = str(int(time.time()))
+        signature = hmac.new(
+            secret.encode("utf-8"),
+            f"POST:/api/admin/stats/refresh:{timestamp}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        response = requests.post(
+            _INTERNAL_STATS_REFRESH_URL,
+            headers={
+                "X-Stats-Refresh-Timestamp": timestamp,
+                "X-Stats-Refresh-Signature": signature,
+            },
+            timeout=180,
+        )
+        payload = response.json()
+        if not response.ok or not payload.get("ok"):
+            raise RuntimeError(payload.get("message") or f"HTTP {response.status_code}")
+        failed = [key for key, ok in (payload.get("sections") or {}).items() if not ok]
+        print(
+            f"[brhub] 완료 후 통계 캐시 {'부분 실패: ' + ', '.join(failed) if failed else '갱신 완료'}"
+        )
+    except Exception as exc:
+        print(f"[brhub] 완료 후 통계 캐시 갱신 실패: {repr(exc)[:200]}")
 
 
 def _building_name_metadata(raw_name, lodging_type, umd_nm, jibun, road_address):
@@ -490,6 +527,9 @@ def main():
         key = os.environ.get(KEY_ENV, "")
         error = (str(e).replace(key, "***") if key else str(e))[:500]
         print(f"[brhub] 실패: {error}")
+
+    if not error and completed and not args.dry_run:
+        _refresh_master_stats_after_completion()
 
     if args.status_key and run_id is not None:
         stop_beat.set()
