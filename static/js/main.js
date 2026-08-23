@@ -2291,7 +2291,7 @@ function renderDataLabLodging(data){
       </tr>`;
     const subRows = (row.sub_rows || []).map(sub => `
       <tr class="datalab-sub-row">
-        <td class="datalab-sub-name">└ ${escapeHtml(sub.type)}</td>
+        <td>${escapeHtml(sub.type)}</td>
         <td>${dataLabNum(sub.building_count)}</td>
         <td>-</td>
         <td>${dataLabNum(sub.biz_count)}</td>
@@ -2306,11 +2306,10 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물수</th><th>호실수</th><th>영업신고업체</th><th>영업신고호실</th><th>영업신고율</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
-    </div>
-    <p class="datalab-note">생활·관광·복합은 신고호실 ÷ 호실수, 일반은 영업신고업체 ÷ 건물수 기준입니다.</p>`;
+    </div>`;
 }
 
 function renderDataLabVolume(data){
@@ -2387,8 +2386,7 @@ function renderDataLabClosure(data){
           <div class="datalab-meta">전체 ${dataLabNum(item.total_count)}개 중 ${dataLabNum(item.closed_count)}개 폐업</div>
         </div>
         <span class="datalab-value">${item.closure_rate}%</span>
-      </div>`).join("")}</div>
-    <p class="datalab-note">투자 기회 신호일 수 있으나, 폐업 사유는 확인이 필요합니다.</p>`;
+       </div>`).join("")}</div>`;
 }
 
 function renderDataLabConsign(data){

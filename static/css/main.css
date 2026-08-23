@@ -14,7 +14,7 @@
     --shadow: 0 1px 2px rgba(22,32,46,.05), 0 4px 14px rgba(22,32,46,.06);
     --header-h:63px;
     --stage-gap:12px;
-    --panel-w:380px;
+    --panel-w:440px;
   }
   *{box-sizing:border-box;}
   body{
@@ -415,17 +415,15 @@
   .datalab-heading-main{display:inline-flex; align-items:center; gap:5px; min-width:0;}
   .datalab-caption{font-size:10px; color:var(--ink-soft); white-space:nowrap;}
   .datalab-partial-badge{display:inline-block; padding:2px 5px; border-radius:4px; background:#FFF3CD; color:#8A6200; font-size:9px; font-weight:800; white-space:nowrap;}
-  .datalab-note{margin-top:8px; padding:7px 8px; border-radius:7px; background:#F8F4EC; color:var(--ink-soft); font-size:10px; line-height:1.45;}
   .datalab-table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:7px;}
-  .datalab-table{width:100%; min-width:330px; border-collapse:collapse; font-size:10px;}
-  .datalab-table th{padding:6px 5px; background:#F8F9FA; color:var(--ink-soft); font-weight:600; text-align:right; white-space:nowrap;}
+  .datalab-table{width:100%; min-width:260px; border-collapse:collapse; font-size:10px;}
+  .datalab-table th{padding:6px 4px; background:#F8F9FA; color:var(--ink-soft); font-weight:600; text-align:right; white-space:nowrap;}
   .datalab-table th:first-child,.datalab-table td:first-child{text-align:left;}
-  .datalab-table td{padding:6px 5px; border-top:1px solid var(--line); color:var(--ink); text-align:right; white-space:nowrap;}
+  .datalab-table td{padding:6px 4px; border-top:1px solid var(--line); color:var(--ink); text-align:right; white-space:nowrap;}
   .datalab-table tfoot th,.datalab-table tfoot td{border-top:2px solid var(--ink); background:#fff; font-weight:800;}
   .datalab-consign-rate{color:var(--primary); font-weight:800;}
   .datalab-table tr:nth-child(even) td{background:#FCFBF8;}
   .datalab-table .datalab-sub-row td{background:#FAFAFA; color:var(--ink-soft); font-size:9.5px;}
-  .datalab-table .datalab-sub-name{padding-left:15px;}
   .datalab-list{display:flex; flex-direction:column; border-top:1px solid var(--line);}
   .datalab-list-item{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:7px 2px; border-bottom:1px solid var(--line);}
   .datalab-rank{font:700 10px 'JetBrains Mono',monospace; color:var(--brass-dark); text-align:center;}

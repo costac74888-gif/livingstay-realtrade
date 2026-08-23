@@ -109,10 +109,22 @@ expect(css.includes(".datalab-region") && css.includes("font-size:12px; font-wei
   "폐업 현황 지역명이 건물명 크기·일반 굵기로 지정되지 않았습니다.");
 expect(main.includes("dataLabArea(item.area_sqm)"), "가격변동 데이터랩에 동일 전용면적 표시가 없습니다.");
 expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국숙박업통계 캡션이 현재수집 기준이 아닙니다.");
-expect(main.includes("<th>건물수</th><th>호실수</th><th>영업신고업체</th><th>영업신고호실</th><th>영업신고율</th>"),
-  "전국숙박업통계가 영업신고율·분모 호실수를 표시하지 않습니다.");
-expect(main.includes("일반은 영업신고업체 ÷ 건물수 기준"),
-  "전국숙박업통계에 일반숙박 영업신고율 산식 안내가 없습니다.");
+expect(main.includes("<th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th>") &&
+  !main.includes("영업신고업체</th>") &&
+  !main.includes("영업신고호실</th>") &&
+  !main.includes("영업신고율</th>"),
+  "전국숙박업통계 헤더가 축약되지 않았습니다.");
+expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&
+  !main.includes("datalab-caption-bottom"),
+  "데이터랩 하단 설명문이 남아 있습니다.");
+expect(main.includes("<td>${escapeHtml(sub.type)}</td>") && !main.includes("└ ${escapeHtml(sub.type)}") &&
+  !css.includes(".datalab-sub-name"),
+  "숙박통계 서브행 들여쓰기가 남아 있습니다.");
+expect(css.includes("--panel-w:440px") &&
+  css.includes(".datalab-table{width:100%; min-width:260px;") &&
+  css.includes(".datalab-table th{padding:6px 4px;") &&
+  css.includes(".datalab-table td{padding:6px 4px;"),
+  "데이터랩 패널·테이블 폭 축소 CSS가 반영되지 않았습니다.");
 expect(!main.includes("row.favorites") && !main.includes("row.listing_requests"),
   "전국숙박업통계 렌더링에 내부 운영지표가 남아 있습니다.");
 
