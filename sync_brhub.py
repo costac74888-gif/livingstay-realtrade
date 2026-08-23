@@ -57,6 +57,19 @@ PROGRESS_KEY = "brhub_progress"
 NUM_ROWS = 100
 
 
+_PENDING_BUILDING_NAMES = ("", "-", "(이름 미상)")
+
+
+def _building_name_metadata(raw_name, lodging_type, umd_nm, jibun, road_address):
+    """표제부 명칭이 없는 일반숙박만 영업신고 자동명명 대상으로 표시한다."""
+    name = (raw_name or "").strip()
+    if lodging_type == "일반" and name in _PENDING_BUILDING_NAMES:
+        base_name = " ".join(part for part in (umd_nm, jibun) if part).strip()
+        base_name = base_name or road_address or "-"
+        return base_name, True, "pending", base_name
+    return name or "-", False, "official", None
+
+
 def _load_codes():
     with open(CODES_FILE, encoding="utf-8") as f:
         data = json.load(f)
@@ -265,8 +278,10 @@ def run(args, status_key=None, run_id=None):
                     label = "일반"
                     counts["일반"] += 1
 
-            bld_nm = (it.get("bldNm") or "").strip() or "-"
             units = int(it.get("hoCnt") or 0) or None
+            bld_nm, name_pending, name_source, pending_base = _building_name_metadata(
+                it.get("bldNm"), label, umd_raw, jibun, road_address
+            )
 
             if args.dry_run:
                 print(f"  [발견] {dong_name} | {bld_nm} | {label or '미분류'} | {purps_text[:60]} | {units}호")
@@ -275,8 +290,10 @@ def run(args, status_key=None, run_id=None):
                     INSERT INTO master_buildings
                         (building_name, road_address, jibun_address, sgg_text, sgg_cd, umd_nm, jibun,
                          units, hhld_cnt, use_apr_day, tot_area, plat_area,
-                         grnd_flr_cnt, ugrnd_flr_cnt, source, lodging_type, lodging_type_detail)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'brhub_bulk',%s,%s)
+                         grnd_flr_cnt, ugrnd_flr_cnt, source, lodging_type, lodging_type_detail,
+                         name_pending, building_name_source, building_name_candidate_count,
+                         building_name_pending_base)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'brhub_bulk',%s,%s,%s,%s,0,%s)
                     ON CONFLICT DO NOTHING
                     RETURNING id
                 """, (bld_nm, road_address, plat_plc, sgg_text, sgg_cd, umd_key, jibun,
@@ -284,7 +301,7 @@ def run(args, status_key=None, run_id=None):
                       (str(it.get("useAprDay") or "").strip() or None),
                       float(it.get("totArea") or 0) or None, float(it.get("platArea") or 0) or None,
                       int(it.get("grndFlrCnt") or 0) or None, int(it.get("ugrndFlrCnt") or 0) or None,
-                      label, detail_text))
+                      label, detail_text, name_pending, name_source, pending_base))
                 inserted = cur.fetchone()
                 if inserted:
                     new_building_ids.add(inserted["id"])

@@ -162,6 +162,8 @@ def run():
     failures += _check_lodging_metric_contract(client)
     # 명칭 미확정 일반숙박은 영업신고 대표 사업장명으로 자동 표시되는지 확인
     failures += _check_lodging_auto_naming(client)
+    # BRHUB 표제부 명칭이 없는 신규 일반숙박도 자동명명 대상 상태로 저장되는지 확인
+    failures += _check_brhub_auto_naming_contract()
     # 일일 캡으로 중간 종료되어도 당일 처리분 자동명명이 반영되는지 확인
     failures += _check_lodging_cap_auto_naming()
     # 관리자 통계표의 일반숙박 호실수 신뢰불가 표시와 비일반 회귀를 확인
@@ -524,6 +526,105 @@ def _check_lodging_auto_naming(client):
                 )
             if inserted_buildings:
                 cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (inserted_buildings,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_brhub_auto_naming_contract():
+    """BRHUB 표제부 이름 없는 일반숙박 INSERT가 자동명명 대상이 되는지 확인."""
+    import time
+    import addr_norm
+    import sync_brhub as brhub_module
+    from db import get_conn
+    from lodging_matching import refresh_auto_building_names
+
+    failures = []
+    run_id = str(int(time.time() * 1000))
+    road = f"테스트특별시 BRHUB검증구 자동연동로 {run_id[-5:]}"
+    permit = f"TEST-BRHUB-AUTO-NAME-{run_id}"
+    building_id = None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        building_name, name_pending, name_source, pending_base = (
+            brhub_module._building_name_metadata(
+                "-", "일반", "BRHUB자동명동", "123-4", road
+            )
+        )
+        official_metadata = brhub_module._building_name_metadata(
+            "건축HUB 정식명칭", "일반", "BRHUB자동명동", "123-5", road
+        )
+        if (
+            (building_name, name_pending, name_source, pending_base)
+            != ("BRHUB자동명동 123-4", True, "pending", "BRHUB자동명동 123-4")
+            or official_metadata != ("건축HUB 정식명칭", False, "official", None)
+        ):
+            failures.append("BRHUB 자동명명: 표제부 이름별 pending/official 메타데이터가 잘못됨")
+            return failures
+
+        # sync_brhub.py의 신규 행 INSERT 계약과 같은 명칭 메타데이터를 사용한다.
+        cur.execute(
+            """
+            INSERT INTO master_buildings
+                (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun,
+                 source, lodging_type, name_pending, building_name_source,
+                 building_name_candidate_count, building_name_pending_base)
+            VALUES (%s, %s, %s, %s, %s, %s, 'brhub_bulk', '일반', %s, %s, 0, %s)
+            RETURNING id
+            """,
+            (
+                building_name, road, f"테스트특별시 BRHUB자동명동 123-4번지",
+                "테스트특별시 BRHUB검증구", "BRHUB자동명동", "123-4",
+                name_pending, name_source, pending_base,
+            ),
+        )
+        building_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO lodging_registry
+                (biz_name, permit_number, road_address, jibun_address, road_norm, jibun_norm,
+                 biz_status_name, hygiene_type)
+            VALUES (%s, %s, %s, %s, %s, %s, '영업/정상', '여관업')
+            """,
+            (
+                "BRHUB연동모텔", permit, road, f"테스트특별시 BRHUB자동명동 123-4번지",
+                addr_norm.normalize_road_prefix(road),
+                addr_norm.normalize_jibun_prefix("테스트특별시 BRHUB자동명동 123-4번지"),
+            ),
+        )
+        conn.commit()
+        refresh_auto_building_names(conn, [building_id])
+
+        cur.execute(
+            """
+            SELECT building_name, name_pending, building_name_source,
+                   building_name_candidate_count, building_name_pending_base
+              FROM master_buildings
+             WHERE id=%s
+            """,
+            (building_id,),
+        )
+        row = cur.fetchone() or {}
+        if (
+            row.get("building_name") != "BRHUB연동모텔"
+            or row.get("name_pending") is not True
+            or row.get("building_name_source") != "lodging_report"
+            or int(row.get("building_name_candidate_count") or 0) != 1
+            or row.get("building_name_pending_base") != "BRHUB자동명동 123-4"
+        ):
+            failures.append(f"BRHUB 자동명명: 신규 행 자동명칭 결과 불일치 ({row})")
+        else:
+            print("OK  BRHUB 신규 일반숙박 placeholder → 영업신고 자동명칭")
+    except Exception as exc:
+        failures.append(f"BRHUB 자동명명 테스트 오류: {exc}")
+    finally:
+        try:
+            cur.execute("DELETE FROM lodging_registry WHERE permit_number=%s", (permit,))
+            if building_id:
+                cur.execute("DELETE FROM master_buildings WHERE id=%s", (building_id,))
             conn.commit()
         finally:
             cur.close()
