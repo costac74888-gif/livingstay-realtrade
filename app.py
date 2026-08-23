@@ -1987,7 +1987,7 @@ def get_ranking():
             cur.execute("""
                 WITH recent AS (
                     SELECT DISTINCT ON (building_name, address)
-                        building_name, address, price, deal_date
+                        building_name, address, sgg_cd, umd_nm, jibun, price, deal_date
                     FROM transactions
                     WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
                       AND price > 0
@@ -2009,8 +2009,22 @@ def get_ranking():
                     r.deal_date,
                     (SELECT id FROM master_buildings
                      WHERE building_name = r.building_name
-                       AND (road_address = r.address OR jibun_address = r.address)
-                     ORDER BY id LIMIT 1) AS building_id
+                       AND sgg_cd = r.sgg_cd
+                       AND umd_nm = r.umd_nm
+                       AND jibun = r.jibun
+                     ORDER BY id LIMIT 1) AS building_id,
+                    (SELECT lat FROM master_buildings
+                     WHERE building_name = r.building_name
+                       AND sgg_cd = r.sgg_cd
+                       AND umd_nm = r.umd_nm
+                       AND jibun = r.jibun
+                     ORDER BY id LIMIT 1) AS lat,
+                    (SELECT lng FROM master_buildings
+                     WHERE building_name = r.building_name
+                       AND sgg_cd = r.sgg_cd
+                       AND umd_nm = r.umd_nm
+                       AND jibun = r.jibun
+                     ORDER BY id LIMIT 1) AS lng
                 FROM recent r
                 JOIN prev_max p
                   ON r.building_name = p.building_name AND r.address = p.address
@@ -2027,6 +2041,8 @@ def get_ranking():
                     "pct_gain": float(row["pct_gain"]) if row["pct_gain"] is not None else 0,
                     "deal_date": row["deal_date"],
                     "building_id": row["building_id"],
+                    "lat": float(row["lat"]) if row["lat"] is not None else None,
+                    "lng": float(row["lng"]) if row["lng"] is not None else None,
                 }
                 for row in cur.fetchall()
             ]
@@ -2034,18 +2050,32 @@ def get_ranking():
             # ── 거래량 TOP 5 ───────────────────────────────────────────────
             cur.execute("""
                 SELECT
-                    building_name, address,
+                    building_name, address, sgg_cd, umd_nm, jibun,
                     COUNT(*)        AS deal_count,
                     MAX(price)      AS max_price,
                     MAX(deal_date)  AS latest_date,
                     (SELECT id FROM master_buildings
                      WHERE building_name = t.building_name
-                       AND (road_address = t.address OR jibun_address = t.address)
-                     ORDER BY id LIMIT 1) AS building_id
+                       AND sgg_cd = t.sgg_cd
+                       AND umd_nm = t.umd_nm
+                       AND jibun = t.jibun
+                     ORDER BY id LIMIT 1) AS building_id,
+                    (SELECT lat FROM master_buildings
+                     WHERE building_name = t.building_name
+                       AND sgg_cd = t.sgg_cd
+                       AND umd_nm = t.umd_nm
+                       AND jibun = t.jibun
+                     ORDER BY id LIMIT 1) AS lat,
+                    (SELECT lng FROM master_buildings
+                     WHERE building_name = t.building_name
+                       AND sgg_cd = t.sgg_cd
+                       AND umd_nm = t.umd_nm
+                       AND jibun = t.jibun
+                     ORDER BY id LIMIT 1) AS lng
                 FROM transactions t
                 WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
                   AND price > 0
-                GROUP BY building_name, address
+                GROUP BY building_name, address, sgg_cd, umd_nm, jibun
                 ORDER BY deal_count DESC
                 LIMIT 5
             """)
@@ -2057,6 +2087,8 @@ def get_ranking():
                     "max_price": row["max_price"],
                     "latest_date": row["latest_date"],
                     "building_id": row["building_id"],
+                    "lat": float(row["lat"]) if row["lat"] is not None else None,
+                    "lng": float(row["lng"]) if row["lng"] is not None else None,
                 }
                 for row in cur.fetchall()
             ]
@@ -20143,7 +20175,7 @@ def stats_platform_summary():
 @app.route("/api/stats/price-change-top")
 @limiter.limit("30 per minute")
 def stats_price_change_top():
-    """최근 30일 안에 두 번 이상 거래된 건물의 첫 거래 대비 최근 거래 변동 TOP5."""
+    """최근 30일 안의 동일 건물·주소·전용면적 거래 첫값 대비 최근값 변동 TOP5."""
     direction = (request.args.get("direction") or "up").strip().lower()
     if direction not in ("up", "down"):
         return jsonify({"ok": False, "message": "direction은 up 또는 down이어야 합니다."}), 400
@@ -20158,16 +20190,21 @@ def stats_price_change_top():
                 SELECT
                     building_name,
                     address,
+                    sgg_cd,
+                    umd_nm,
+                    jibun,
                     COUNT(*) AS transaction_count,
                     (array_agg(price ORDER BY deal_date ASC, id ASC))[1] AS first_price,
                     (array_agg(price ORDER BY deal_date DESC, id DESC))[1] AS latest_price,
                     (array_agg(deal_date ORDER BY deal_date ASC, id ASC))[1] AS first_deal_date,
-                    (array_agg(deal_date ORDER BY deal_date DESC, id DESC))[1] AS latest_deal_date
+                    (array_agg(deal_date ORDER BY deal_date DESC, id DESC))[1] AS latest_deal_date,
+                    area AS area_sqm
                 FROM transactions
                 WHERE deal_date IS NOT NULL
                   AND deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')
+                  AND area > 0
                   AND price > 0
-                GROUP BY building_name, address
+                GROUP BY building_name, address, sgg_cd, umd_nm, jibun, area
                 HAVING COUNT(*) >= 2
             ),
             changed AS (
@@ -20179,14 +20216,28 @@ def stats_price_change_top():
             SELECT
                 building_name, address, transaction_count,
                 first_price, latest_price, first_deal_date, latest_deal_date,
-                change_percent,
+                area_sqm, change_percent,
                 (SELECT id FROM master_buildings
                  WHERE building_name = changed.building_name
-                   AND (road_address = changed.address OR jibun_address = changed.address)
-                 ORDER BY id LIMIT 1) AS building_id
+                    AND sgg_cd = changed.sgg_cd
+                    AND umd_nm = changed.umd_nm
+                    AND jibun = changed.jibun
+                  ORDER BY id LIMIT 1) AS building_id,
+                 (SELECT lat FROM master_buildings
+                  WHERE building_name = changed.building_name
+                    AND sgg_cd = changed.sgg_cd
+                    AND umd_nm = changed.umd_nm
+                    AND jibun = changed.jibun
+                  ORDER BY id LIMIT 1) AS lat,
+                 (SELECT lng FROM master_buildings
+                  WHERE building_name = changed.building_name
+                    AND sgg_cd = changed.sgg_cd
+                    AND umd_nm = changed.umd_nm
+                    AND jibun = changed.jibun
+                  ORDER BY id LIMIT 1) AS lng
             FROM changed
             WHERE {comparison}
-            ORDER BY {ordering}, building_name, address
+            ORDER BY {ordering}, building_name, address, area_sqm
             LIMIT 5
         """)
         items = [
@@ -20194,6 +20245,9 @@ def stats_price_change_top():
                 "building_name": row["building_name"],
                 "address": row["address"],
                 "building_id": row["building_id"],
+                "lat": float(row["lat"]) if row["lat"] is not None else None,
+                "lng": float(row["lng"]) if row["lng"] is not None else None,
+                "area_sqm": float(row["area_sqm"]),
                 "transaction_count": int(row["transaction_count"]),
                 "first_price": int(row["first_price"]),
                 "latest_price": int(row["latest_price"]),
@@ -20219,7 +20273,7 @@ def stats_highest_price_top():
         cur.execute("""
             WITH highest_by_building AS (
                 SELECT DISTINCT ON (building_name, address)
-                    building_name, address, price, deal_date, id
+                    building_name, address, sgg_cd, umd_nm, jibun, price, deal_date, id
                 FROM transactions
                 WHERE price > 0 AND deal_date IS NOT NULL
                 ORDER BY building_name, address, price DESC, deal_date DESC, id DESC
@@ -20228,8 +20282,22 @@ def stats_highest_price_top():
                 building_name, address, price, deal_date,
                 (SELECT id FROM master_buildings
                  WHERE building_name = highest_by_building.building_name
-                   AND (road_address = highest_by_building.address OR jibun_address = highest_by_building.address)
-                 ORDER BY id LIMIT 1) AS building_id
+                   AND sgg_cd = highest_by_building.sgg_cd
+                   AND umd_nm = highest_by_building.umd_nm
+                   AND jibun = highest_by_building.jibun
+                 ORDER BY id LIMIT 1) AS building_id,
+                (SELECT lat FROM master_buildings
+                 WHERE building_name = highest_by_building.building_name
+                   AND sgg_cd = highest_by_building.sgg_cd
+                   AND umd_nm = highest_by_building.umd_nm
+                   AND jibun = highest_by_building.jibun
+                 ORDER BY id LIMIT 1) AS lat,
+                (SELECT lng FROM master_buildings
+                 WHERE building_name = highest_by_building.building_name
+                   AND sgg_cd = highest_by_building.sgg_cd
+                   AND umd_nm = highest_by_building.umd_nm
+                   AND jibun = highest_by_building.jibun
+                 ORDER BY id LIMIT 1) AS lng
             FROM highest_by_building
             ORDER BY price DESC, deal_date DESC, building_name, address
             LIMIT 5
@@ -20239,6 +20307,8 @@ def stats_highest_price_top():
                 "building_name": row["building_name"],
                 "address": row["address"],
                 "building_id": row["building_id"],
+                "lat": float(row["lat"]) if row["lat"] is not None else None,
+                "lng": float(row["lng"]) if row["lng"] is not None else None,
                 "price": int(row["price"]),
                 "deal_date": row["deal_date"],
             }

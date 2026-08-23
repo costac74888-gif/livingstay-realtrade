@@ -2148,21 +2148,36 @@ function dataLabNum(value){
   return Number(value || 0).toLocaleString("ko-KR");
 }
 
+function dataLabArea(value){
+  return value == null || !Number.isFinite(Number(value)) ? "-" : `${Number(value).toFixed(1)}㎡`;
+}
+
 function dataLabBuildingButton(item){
   const name = escapeHtml(item.building_name || "건물명 미확인");
   const buildingId = Number(item.building_id);
-  if (!Number.isInteger(buildingId) || buildingId <= 0) {
-    return `<span class="datalab-building" title="${name}">${name}</span>`;
+  const lat = Number(item.lat);
+  const lng = Number(item.lng);
+  const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
+  if (!Number.isInteger(buildingId) || buildingId <= 0 || !hasCoordinates) {
+    return `<span class="datalab-building datalab-building-disabled" title="${name} — 지도 좌표 없음">${name}</span>`;
   }
-  return `<button type="button" class="datalab-building" data-datalab-building="${buildingId}" title="${name}">${name}</button>`;
+  return `<button type="button" class="datalab-building" data-datalab-building="${buildingId}" data-datalab-lat="${lat}" data-datalab-lng="${lng}" title="지도에서 ${name} 위치 보기">${name}</button>`;
+}
+
+function moveDataLabBuildingToMap(button){
+  if (!kakaoMap) return;
+  const lat = Number(button.dataset.datalabLat);
+  const lng = Number(button.dataset.datalabLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  const position = new kakao.maps.LatLng(lat, lng);
+  kakaoMap.setCenter(position);
+  kakaoMap.setLevel(3);
+  updateMapForZoom(mapFiltersFromState(), { force: true });
 }
 
 function bindDataLabBuildingButtons(box){
   box.querySelectorAll("[data-datalab-building]").forEach(button => {
-    button.addEventListener("click", () => {
-      const buildingId = Number(button.dataset.datalabBuilding);
-      if (Number.isInteger(buildingId) && buildingId > 0) window.openBuildingDetail(buildingId);
-    });
+    button.addEventListener("click", () => moveDataLabBuildingToMap(button));
   });
 }
 
@@ -2244,7 +2259,7 @@ function renderDataLabChange(data){
     </div>
     ${dataLabRankList(
       items,
-      item => `${dataLabNum(item.first_price)}만원 → ${dataLabNum(item.latest_price)}만원`,
+      item => `${dataLabArea(item.area_sqm)} · ${dataLabNum(item.first_price)}만원 → ${dataLabNum(item.latest_price)}만원`,
       item => `${item.change_percent > 0 ? "+" : ""}${item.change_percent}%`
     )}`;
 }
@@ -2269,7 +2284,7 @@ function renderDataLabClosure(data){
   }
   return `
     <div class="datalab-heading">
-      <strong>⑤ ⚫ 폐업 지역 랭킹</strong><span class="datalab-caption">시군구 · 표본 5건 이상</span>
+      <strong>⑥ ⚫ 폐업 지역 랭킹</strong><span class="datalab-caption">시군구 · 표본 5건 이상</span>
     </div>
     <div class="datalab-list">${items.map((item, index) => `
       <div class="datalab-list-item">
@@ -2290,7 +2305,7 @@ function renderDataLabRate(data){
   const marker = Number.isFinite(nationalRate) ? Math.max(0, Math.min(nationalRate, 100)) : null;
   return `
     <div class="datalab-heading">
-      <strong>⑥ 📈 영업신고율 지역비교</strong><span class="datalab-caption">일반숙박 제외</span>
+      <strong>⑤ 📈 영업신고율</strong><span class="datalab-caption">일반숙박 제외</span>
     </div>
     <div class="datalab-rate-summary">가중평균: 영업신고 객실 수 ÷ 건물 호실 수</div>
     ${items.map(item => {

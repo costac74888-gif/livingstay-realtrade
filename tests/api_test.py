@@ -2531,6 +2531,17 @@ def _check_datalab_stats(client):
             changes = [float(item.get("change_percent") or 0) for item in items]
             if any(item.get("transaction_count", 0) < 2 for item in items):
                 failures.append(f"데이터랩 가격변동 {direction}: 2건 미만 거래 건물이 포함됨")
+            if any(
+                item.get("area_sqm") is None or float(item.get("area_sqm") or 0) <= 0
+                for item in items
+            ):
+                failures.append(f"데이터랩 가격변동 {direction}: 동일 전용면적(area_sqm) 정보가 없음")
+            group_keys = [
+                (item.get("building_name"), item.get("address"), item.get("area_sqm"))
+                for item in items
+            ]
+            if len(group_keys) != len(set(group_keys)):
+                failures.append(f"데이터랩 가격변동 {direction}: 동일 건물·주소·전용면적 그룹이 중복됨")
             if (sign > 0 and any(value <= 0 for value in changes)) or (
                 sign < 0 and any(value >= 0 for value in changes)
             ):
@@ -2548,6 +2559,19 @@ def _check_datalab_stats(client):
         ranking = client.get("/api/ranking").get_json() or {}
         ranked_items.extend(ranking.get("price_highs") or [])
         ranked_items.extend(ranking.get("most_traded") or [])
+
+        for item in ranked_items:
+            has_lat = item.get("lat") is not None
+            has_lng = item.get("lng") is not None
+            if has_lat != has_lng:
+                failures.append("데이터랩 랭킹: 지도 좌표가 위도·경도 쌍으로 반환되지 않음")
+                break
+            if has_lat and (
+                not -90 <= float(item["lat"]) <= 90
+                or not -180 <= float(item["lng"]) <= 180
+            ):
+                failures.append("데이터랩 랭킹: 지도 좌표 범위가 올바르지 않음")
+                break
 
         closure = client.get("/api/stats/closure-rate-by-region").get_json() or {}
         for item in closure.get("items") or []:
@@ -2637,7 +2661,7 @@ def _check_datalab_stats(client):
                         failures.append("데이터랩 전국숙박업통계: 일반 세부행 공개 수치가 관리자 결과와 다름")
                         break
 
-        # 주소까지 일치할 때만 랭킹에서 건물 상세 링크를 반환해야 동명이 건물 오연결을 막는다.
+        # 순위 좌표는 거래의 법정동·지번 키까지 일치하는 마스터 건물에서만 가져와야 한다.
         from db import get_conn
         conn = get_conn()
         cur = conn.cursor()
@@ -2647,14 +2671,37 @@ def _check_datalab_stats(client):
                 if not building_id:
                     continue
                 cur.execute(
-                    "SELECT building_name, road_address, jibun_address FROM master_buildings WHERE id = %s",
+                    "SELECT building_name, sgg_cd, umd_nm, jibun, lat, lng FROM master_buildings WHERE id = %s",
                     [building_id],
                 )
                 building = cur.fetchone()
-                if not building or building["building_name"] != item.get("building_name") or (
-                    item.get("address") not in (building["road_address"], building["jibun_address"])
+                cur.execute(
+                    """
+                    SELECT sgg_cd, umd_nm, jibun
+                    FROM transactions
+                    WHERE building_name = %s AND address = %s
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    [item.get("building_name"), item.get("address")],
+                )
+                transaction = cur.fetchone()
+                if (
+                    not building
+                    or not transaction
+                    or building["building_name"] != item.get("building_name")
+                    or any(building[key] != transaction[key] for key in ("sgg_cd", "umd_nm", "jibun"))
+                    or (building["lat"] is None) != (item.get("lat") is None)
+                    or (building["lng"] is None) != (item.get("lng") is None)
+                    or (
+                        building["lat"] is not None
+                        and (
+                            item.get("lat") != float(building["lat"])
+                            or item.get("lng") != float(building["lng"])
+                        )
+                    )
                 ):
-                    failures.append("데이터랩 랭킹: 주소 불일치 건물 상세 링크가 반환됨")
+                    failures.append("데이터랩 랭킹: 법정동·지번 불일치 지도 좌표가 반환됨")
                     break
         finally:
             cur.close()

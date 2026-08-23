@@ -26,3 +26,10 @@ uri = "file://screenshots/public-lodging-table-minimal.jpg"
 type = "image"
 title = "공개 전국숙박업통계 축소 표"
 description = "건물수·영업신고업체·영업신고호실·폐업율 4개 공개 컬럼과 일반 세부 4종 행을 확인한 캡처입니다."
+
+[[outputs]]
+id = "1jQYpLxIOEPDSi-6FUJvr"
+uri = "file://screenshots/datalab-building-map-navigation.jpg"
+type = "image"
+title = "데이터랩 건물명 클릭 → 지도 이동"
+description = "실제 거래량 TOP API 좌표로 클릭 후 중심 좌표와 level 3 확대 상태를 확인한 검증 캡처입니다. 캡처 브라우저에서는 외부 Kakao 지도 SDK가 차단되어 같은 클릭 처리 흐름을 별도 검증 화면으로 렌더링했습니다."
