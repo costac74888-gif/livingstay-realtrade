@@ -72,6 +72,10 @@
 .sec-b-desc { padding: 14px 16px; }
 .sec-b-desc strong { font-size: 14px; font-weight: 700; color: var(--ink); display: block; margin-bottom: 6px; }
 .sec-b-desc p { font-size: 12.5px; color: var(--ink-soft); line-height: 1.6; margin: 0; }
+.guide-datalab-list { display: grid; gap: 7px; margin: 0; }
+.guide-datalab-list > div { display: grid; grid-template-columns: 86px 1fr; gap: 7px; align-items: start; }
+.guide-datalab-list dt { color: var(--ink); font-size: 10.5px; font-weight: 700; }
+.guide-datalab-list dd { margin: 0; color: var(--ink-soft); font-size: 10.5px; line-height: 1.45; }
 
 /* ── 최근 본 건물 미리보기 ─────────── */
 #guideRecentChips {
@@ -297,6 +301,16 @@
 .guide-disclosure-callout .callout-badge { background: var(--brass); }
 .guide-disclosure-callout p { margin: 0; color: var(--ink); font-size: 12.5px; line-height: 1.6; }
 .guide-disclosure-callout strong { display: block; margin-bottom: 2px; }
+.guide-control-stack { display: grid; gap: 9px; margin-top: 16px; }
+.guide-control-note { margin: 0; }
+.guide-button-mock {
+  padding: 12px 13px; border: 1px dashed #D9DEE4; border-radius: 9px; background: #F8F9FA;
+}
+.guide-button-mock-label {
+  display: block; margin-bottom: 7px; color: var(--ink-soft); font-size: 10px; font-weight: 700;
+}
+.guide-button-mock-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.guide-button-mock-row .mock-action-btn { flex: 1 1 110px; }
 .guide-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
 .guide-compare-table {
   width: 100%; min-width: 540px; border-collapse: collapse; background: var(--card);
@@ -341,6 +355,23 @@
 .guide-point strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 13px; }
 .guide-point p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
 .guide-alert-point { border-color: #EAD9B8; background: #FFF8EC; }
+.guide-checklist-callout {
+  margin-top: 14px; padding: 13px; border: 1px solid #D9DEE4; border-radius: 9px; background: #F8F9FA;
+}
+.guide-checklist-callout > strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 13px; }
+.guide-checklist-callout > p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
+.guide-checklist-list {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 18px;
+  margin: 10px 0 0; padding-left: 21px; color: var(--ink-soft); font-size: 11px; line-height: 1.5;
+}
+.guide-checklist-list li { padding-left: 2px; }
+.guide-checklist-list a { color: var(--brass-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.guide-checklist-warning {
+  margin-top: 10px; padding: 9px 10px; border-radius: 7px; background: #FFF0EE; color: #6F3A35;
+  font-size: 11.5px; line-height: 1.55;
+}
+.guide-checklist-warning strong { display: block; margin-bottom: 2px; color: #B42318; }
+.guide-checklist-warning p { margin: 0; }
 .guide-safety-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
 }
@@ -382,6 +413,11 @@
   .guide-hero h1 { font-size: 23px; }
   .guide-feature-card-head, .guide-feature-copy { padding-left: 14px; padding-right: 14px; }
   .guide-room-row { grid-template-columns: .65fr .7fr .8fr .7fr; font-size: 8.5px; }
+}
+@media (max-width: 480px) {
+  .guide-datalab-list > div { grid-template-columns: 78px 1fr; gap: 5px; }
+  .guide-button-mock-row .mock-action-btn { flex-basis: calc(50% - 3px); }
+  .guide-checklist-list { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -444,6 +480,24 @@
           <strong>이번 주 시세 랭킹</strong>
           <p><b>신고가 갱신</b>: 이번 주 실거래가 중 역대 최고가를 새로 쓴 건물을 보여드려요.<br>
           <b>거래량 TOP</b>: 이번 주 가장 활발히 거래된 건물 TOP5를 확인하세요.</p>
+        </div>
+      </div>
+
+      <!-- B3: 데이터랩 -->
+      <div class="sec-b-card" id="guideDataLab">
+        <div class="sec-b-preview">
+          <dl class="guide-datalab-list">
+            <div><dt>① 숙박통계</dt><dd>전국 생활·관광·일반 숙박시설의 건물수·호실수·영업신고율·폐업율</dd></div>
+            <div><dt>② 거래량 TOP</dt><dd>최근 30일 가장 활발히 거래된 건물 TOP5</dd></div>
+            <div><dt>③ 가격변동</dt><dd>최근 30일 동일 건물 내 가격 상승/하락폭이 큰 건물</dd></div>
+            <div><dt>④ 최고가 TOP</dt><dd>건물별 역대 최고가·최저가 기록</dd></div>
+            <div><dt>⑤ 영업신고현황</dt><dd>시도별 생활숙박시설 건물수·호실수·영업신고업체·신고호실·신고율. 건물마스터 + 행안부 영업신고 기준.</dd></div>
+            <div><dt>⑥ 폐업 현황</dt><dd>지역별 폐업율이 높은 시군구</dd></div>
+          </dl>
+        </div>
+        <div class="sec-b-desc">
+          <strong>📈 데이터랩 — 숙박시장 신호</strong>
+          <p>로그인 없이 누구나 볼 수 있는 생활숙박시설 시장 데이터입니다.<br>탭을 클릭하면 각 항목을 바로 확인할 수 있습니다.</p>
         </div>
       </div>
 
@@ -840,6 +894,30 @@
             <div class="guide-pill-row">
               <span class="guide-pill emphasis">실인수가 자동계산</span><span class="guide-pill emphasis">운영정보(매출·상태)</span><span class="guide-pill">건물 정보 자동채움</span>
             </div>
+            <div class="guide-checklist-callout">
+              <strong>숙박업소 거래 체크리스트</strong>
+              <p>건물전체 매물에는 숙박업소 거래 체크리스트 버튼이 제공됩니다. 거래 전 확인해야 할 <b>14개 항목</b>(영업신고 확인, 인허가 이력, 세금 체납 조회 등 공인기관 링크 포함)을 안내합니다.</p>
+              <ol class="guide-checklist-list">
+                <li>위반건축물 여부 · <a href="https://www.gov.kr/portal/main/nologin" target="_blank" rel="noopener noreferrer">정부24</a></li>
+                <li>용도·구조·연면적·사용승인일</li>
+                <li>소유권·압류·가압류 · <a href="https://www.iros.go.kr/" target="_blank" rel="noopener noreferrer">인터넷등기소</a></li>
+                <li>용도지역·토지이용계획</li>
+                <li>숙박업 영업신고·행정처분 이력 · <a href="https://www.gov.kr/portal/main/nologin" target="_blank" rel="noopener noreferrer">정부24</a></li>
+                <li>소방점검·완비증명 · <a href="https://www.nfa.go.kr/" target="_blank" rel="noopener noreferrer">소방청</a></li>
+                <li>법정 주차대수</li>
+                <li>반경 500m 경쟁업소 수</li>
+                <li>최근접 지하철역 도보거리</li>
+                <li>월매출·연매출</li>
+                <li>대실/숙박 비율·OTA 매출 비중</li>
+                <li>승계융자·실인수가</li>
+                <li>직원 고용승계 여부</li>
+                <li>매도사유</li>
+              </ol>
+              <div class="guide-checklist-warning" role="note">
+                <strong>주의 · 미검증 정보</strong>
+                <p>매출·운영·매도사유 등 매도자가 입력한 정보는 플랫폼이 검증한 내용이 아닙니다. 공인기관에서 직접 확인하시기 바랍니다.</p>
+              </div>
+            </div>
           </div>
         </article>
       </div>
@@ -875,6 +953,25 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div class="guide-control-stack">
+          <div class="guide-point guide-control-note">
+            <strong>공개범위 토글</strong>
+            <p>매물을 등록한 후에도 마이페이지 매물내놓기 현황에서 언제든지 전체공개 ↔ 제한공개를 바꿀 수 있습니다.</p>
+          </div>
+          <div class="guide-point guide-control-note">
+            <strong>보류 기능</strong>
+            <p>매물을 잠시 중단하고 싶을 때 철회하지 않고 보류할 수 있습니다. 보류 상태에서는 목록에 노출되지 않으며, 수정 버튼을 누르면 다시 접수됨 상태로 돌아옵니다.</p>
+          </div>
+          <div class="guide-button-mock" aria-label="매물 관리 버튼 순서 예시">
+            <span class="guide-button-mock-label">버튼 순서 예시</span>
+            <div class="guide-button-mock-row">
+              <button type="button" class="mock-action-btn">수정</button>
+              <button type="button" class="mock-action-btn">보류</button>
+              <button type="button" class="mock-action-btn">철회</button>
+              <button type="button" class="mock-action-btn">전체공개↔제한공개</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -924,6 +1021,10 @@
             <div class="guide-point guide-alert-point">
               <strong>계약만기 임박 자동알림</strong>
               <p>만기일이 가까워지면 <strong>이메일과 사이트 알림</strong>으로 알려드려 다음 계약을 놓치지 않게 도와드립니다.</p>
+            </div>
+            <div class="guide-point">
+              <strong>보증금 관리</strong>
+              <p>방 추가 시 보증금(만원)을 함께 입력할 수 있습니다. 월세와 보증금을 함께 관리해 객실별 수익 현황을 파악하세요.<br><b>입력 순서:</b> 호실명 / 보증금(만원) / 월세(만원) / 상태 / 채널</p>
             </div>
           </div>
         </div>

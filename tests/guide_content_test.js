@@ -14,6 +14,13 @@ for (const text of [
   "관심단지",
   "최근 본 건물",
   "시세 랭킹",
+  "데이터랩",
+  "숙박시장 신호",
+  "전국 생활·관광·일반 숙박시설의 건물수·호실수·영업신고율·폐업율",
+  "최근 30일 가장 활발히 거래된 건물 TOP5",
+  "건물별 역대 최고가·최저가 기록",
+  "건물마스터 + 행안부 영업신고 기준",
+  "지역별 폐업율이 높은 시군구",
 ]) {
   expect(guide.includes(text), `기존 이용안내 '${text}'가 사라졌습니다.`);
 }
@@ -31,6 +38,13 @@ for (const text of [
   "노출 위치",
   "정확한 정보는 채팅 시작 후 판매자에게 문의하세요",
   "구체적인 건물명·매물 정보는 자동으로 공개되지 않습니다",
+  "공개범위 토글",
+  "전체공개 ↔ 제한공개",
+  "보류 기능",
+  "보류 상태에서는 목록에 노출되지 않으며",
+  "수정 버튼을 누르면 다시 접수됨 상태로 돌아옵니다",
+  "전체공개↔제한공개",
+  "버튼 순서 예시",
   "예상 취득부대비용 6.1%",
   "저장되지 않는 참고값",
   "사업주(숙박업대표)",
@@ -44,12 +58,23 @@ for (const text of [
   "장박가능",
   "계약만기 임박 자동알림",
   "이메일과 사이트 알림",
+  "보증금 관리",
+  "보증금(만원)",
+  "호실명 / 보증금(만원) / 월세(만원) / 상태 / 채널",
   "휴대폰 인증",
   "채팅 시작",
   "연락처 공유 주의",
   "영업신고번호를 한 번 인증",
   "다시 등록할 때 인증을 생략",
   "매출·운영정보는 매도자가 등록한 수치이며",
+  "숙박업소 거래 체크리스트",
+  "14개 항목",
+  "공인기관 링크 포함",
+  "매도자가 입력한 정보",
+  "플랫폼이 검증한 내용이 아닙니다",
+  "정부24",
+  "인터넷등기소",
+  "소방청",
 ]) {
   expect(guide.includes(text), `신규 이용안내 문구 '${text}'가 없습니다.`);
 }
@@ -63,8 +88,11 @@ const disclosureAt = guide.indexOf('id="disclosure-guide"');
 const businessAt = guide.indexOf('id="business-guide"');
 const chatAt = guide.indexOf('id="safe-chat-guide"');
 const trustAt = guide.indexOf('id="trust-notice"');
+const rankingAt = guide.indexOf('id="guideRanking"');
+const dataLabAt = guide.indexOf('id="guideDataLab"');
 expect(listingAt < disclosureAt && disclosureAt < businessAt && businessAt < chatAt && chatAt < trustAt,
   "신규 이용안내 섹션 순서가 매물 유형 → 공개범위 → 사업주 → 채팅 → 신뢰장치가 아닙니다.");
+expect(rankingAt >= 0 && dataLabAt > rankingAt, "데이터랩 카드가 B2 시세 랭킹 카드 다음에 배치되지 않았습니다.");
 expect(!guide.includes("정확한 정보는 채팅 시작 후에만 공개됩니다"),
   "제한공개 정보가 채팅 시작만으로 자동 공개된다고 안내하면 안 됩니다.");
 expect(!guide.includes("연락처 노출 자동 경고"),
@@ -80,9 +108,14 @@ expect(
   guide.includes(".guide-dual-grid") &&
   guide.includes(".guide-inventory-layout") &&
   guide.includes(".guide-safety-grid") &&
+  guide.includes(".guide-datalab-list") &&
+  guide.includes(".guide-button-mock") &&
+  guide.includes("@media (max-width: 480px)") &&
   guide.includes("@media (max-width: 680px)") &&
   guide.includes("grid-template-columns: 1fr"),
   "이용안내 모바일 카드 반응형 스타일이 없습니다."
 );
+expect(!guide.includes("검증됨") && !guide.includes("확인됨"),
+  "이용안내에 검증·확정을 단정하는 표현이 들어가면 안 됩니다.");
 
 console.log("OK  이용안내 기존 기능 보존·매물·공개범위·사업주·채팅·면책 콘텐츠");
