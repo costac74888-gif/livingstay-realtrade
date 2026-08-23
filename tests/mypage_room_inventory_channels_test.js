@@ -10,6 +10,7 @@ function expect(condition, message) {
 
 for (const needle of [
   'class="room-label"',
+  'class="room-deposit"',
   'class="room-monthly-rent"',
   'class="room-copy-btn"',
   'class="room-channel"',
@@ -18,7 +19,9 @@ for (const needle of [
   'class="room-inventory-summary"',
   "장박가능 ' + longStayRooms.length",
   "monthly_rent_krw: monthlyRent",
+  "deposit_krw: deposit",
   "monthly_rent_krw: rentText ? Number(rentText) : null",
+  "deposit_krw: depositText ? Number(depositText) : null",
   'room_label: label',
   "새 호실",
 ]) {
@@ -32,8 +35,8 @@ expect(
   "제거 대상인 층별 벌크 생성 UI가 남아 있습니다."
 );
 expect(
-  html.includes('.room-label, .room-monthly-rent, .room-status, .room-contract-date, .room-channel'),
-  "호실·월세·상태·계약만기일·채널 변경 자동저장 이벤트가 없습니다."
+  html.includes('.room-label, .room-deposit, .room-monthly-rent, .room-status, .room-contract-date, .room-channel'),
+  "호실·보증금·월세·상태·계약만기일·채널 변경 자동저장 이벤트가 없습니다."
 );
 
 const inventoryMatch = html.match(
@@ -49,11 +52,13 @@ vm.createContext(context);
 vm.runInContext(inventoryMatch[0], context);
 
 const rendered = context.roomInventoryHtml([
-  { id: 1, room_label: "기존방", monthly_rent_krw: 90, status: "공실", channel: "장박가능" },
+  { id: 1, room_label: "기존방", deposit_krw: 500, monthly_rent_krw: 90, status: "공실", channel: "장박가능" },
   { id: 2, room_label: "301", monthly_rent_krw: 120, status: "공실", channel: "OTA전용" },
 ]);
 expect(
   rendered.includes('class="room-inventory-list"') &&
+  rendered.includes('class="room-deposit"') &&
+  rendered.includes('value="500"') &&
   rendered.includes('class="room-monthly-rent"') &&
   rendered.includes('value="90"') &&
   rendered.includes('class="room-copy-btn"') &&
@@ -62,4 +67,4 @@ expect(
   "방 재고 단순 목록·월세·복사·채널 요약 렌더링이 올바르지 않습니다."
 );
 
-console.log("OK  방 재고 개별 카드·월세·복사·채널·요약 UI");
+console.log("OK  방 재고 개별 카드·보증금·월세·복사·채널·요약 UI");

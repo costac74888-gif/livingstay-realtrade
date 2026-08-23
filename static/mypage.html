@@ -240,8 +240,8 @@
   }
 
   // ── 매물의뢰 현황 ─────────────────────────────────────────────────────────
-  var LR_STATUS_LABEL = { submitted: "접수됨", in_progress: "처리중", done: "완료", "철회됨": "철회됨" };
-  var LR_STATUS_COLOR = { submitted: "#4A7A18", in_progress: "#B4863F", done: "#6B7684", "철회됨": "#999" };
+  var LR_STATUS_LABEL = { submitted: "접수됨", "보류": "보류중", in_progress: "처리중", done: "완료", "철회됨": "철회됨" };
+  var LR_STATUS_COLOR = { submitted: "#4A7A18", "보류": "#B45309", in_progress: "#B4863F", done: "#6B7684", "철회됨": "#999" };
   var MY_LISTING_BY_ID = {};
 
   function requestItemHtml(it){
@@ -269,10 +269,22 @@
       ? '<button class="lr-chat-btn" data-id="' + it.id + '" data-count="' + chatCount + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;margin-top:4px;">💬 채팅 ' + chatCount + '건</button>'
       : '';
     var actionBtns = "";
-    if (it.status === "submitted") {
+    if (it.status === "submitted" || it.status === "보류") {
+      var isHeld = it.status === "보류";
+      var holdButton = isHeld
+        ? '<button class="lr-resume-btn" data-id="' + it.id + '" style="font-size:11px;padding:3px 9px;border:1px solid #B45309;border-radius:5px;background:none;color:#B45309;cursor:pointer;">보류해제</button>'
+        : '<button class="lr-hold-btn" data-id="' + it.id + '" style="font-size:11px;padding:3px 9px;border:1px solid #B45309;border-radius:5px;background:none;color:#B45309;cursor:pointer;">보류</button>';
+      var scopeButton = "";
+      var scope = it.disclosure_scope === "public" ? "public" : "limited";
+      var scopeLabel = scope === "public" ? "전체공개" : "제한공개";
+      if (it.transaction_target === "whole") {
+        scopeButton = '<button class="lr-disclosure-btn" data-id="' + it.id + '" data-scope="' + scope + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:5px;background:none;color:var(--ink-soft);cursor:pointer;">' + scopeLabel + '</button>';
+      }
       actionBtns = '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
         '<button class="lr-edit-btn" data-id="' + it.id + '" data-bid="' + it.building_id + '" data-bname="' + escapeHtml(it.building_name||"") + '" data-deal="' + escapeHtml(it.deal_type) + '" data-price="' + (it.price_krw||"") + '" data-rent="' + (it.monthly_rent_krw||"") + '" data-phone="' + escapeHtml(it.contact_phone||"") + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;">수정</button>' +
+        holdButton +
         '<button class="lr-withdraw-btn" data-id="' + it.id + '" style="font-size:11px;padding:3px 9px;border:1px solid #999;border-radius:5px;background:none;color:#999;cursor:pointer;">철회</button>' +
+        scopeButton +
       '</div>';
     }
     return '<div style="padding:11px 4px; border-bottom:1px solid var(--line);">' +
@@ -332,6 +344,8 @@
         return '<div class="room-inventory-card" data-room-id="' + room.id + '" style="padding:10px 0;border-top:1px solid var(--line);">' +
           '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">' +
             '<input class="room-label" type="text" maxlength="50" placeholder="호실 표기 (예: 301)" value="' + escapeHtml(room.room_label) + '" style="width:118px;padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-size:12.5px;font-weight:700;color:var(--ink);" />' +
+             '<label style="font-size:11.5px;color:var(--ink-soft);">보증금 ' +
+               '<input class="room-deposit" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + (room.deposit_krw == null ? "" : Number(room.deposit_krw)) + '" style="margin-left:3px;width:68px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);" /></label>' +
             '<label style="font-size:11.5px;color:var(--ink-soft);">월세 ' +
               '<input class="room-monthly-rent" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + (room.monthly_rent_krw == null ? "" : Number(room.monthly_rent_krw)) + '" style="margin-left:3px;width:68px;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;color:var(--ink);" /></label>' +
             '<label style="font-size:11.5px;color:var(--ink-soft);">상태 ' +
@@ -388,12 +402,15 @@
      var statusEl = card.querySelector(".room-status");
      var dateEl = card.querySelector(".room-contract-date");
       var roomLabelEl = card.querySelector(".room-label");
+       var depositEl = card.querySelector(".room-deposit");
       var rentEl = card.querySelector(".room-monthly-rent");
       var channelEl = card.querySelector(".room-channel");
      var msg = card.querySelector(".room-inventory-msg");
      var status = statusEl.value;
      var contractEndDate = dateEl ? dateEl.value : "";
       var roomLabel = roomLabelEl ? roomLabelEl.value.trim() : "";
+       var depositText = depositEl ? depositEl.value.trim() : "";
+       var deposit = depositText ? Number(depositText) : null;
       var rentText = rentEl ? rentEl.value.trim() : "";
       var monthlyRent = rentText ? Number(rentText) : null;
       if (!roomLabel) {
@@ -404,9 +421,14 @@
         if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "월세는 1만원 이상의 숫자로 입력해주세요."; }
         return;
       }
+       if (depositText && (!Number.isInteger(deposit) || deposit < 1)) {
+         if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "보증금은 1만원 이상의 숫자로 입력해주세요."; }
+         return;
+       }
      statusEl.disabled = true;
      if (dateEl) dateEl.disabled = true;
       if (roomLabelEl) roomLabelEl.disabled = true;
+       if (depositEl) depositEl.disabled = true;
       if (rentEl) rentEl.disabled = true;
       if (channelEl) channelEl.disabled = true;
      if (msg) { msg.style.color = "var(--ink-soft)"; msg.textContent = "저장 중…"; }
@@ -417,6 +439,7 @@
            room_label: roomLabel,
           status: status,
           contract_end_date: contractEndDate,
+            deposit_krw: deposit,
            monthly_rent_krw: monthlyRent,
           channel: channelEl ? channelEl.value : "장박가능"
         })
@@ -426,6 +449,7 @@
            statusEl.disabled = false;
            if (dateEl) dateEl.disabled = false;
             if (roomLabelEl) roomLabelEl.disabled = false;
+             if (depositEl) depositEl.disabled = false;
             if (rentEl) rentEl.disabled = false;
             if (channelEl) channelEl.disabled = false;
            if (msg) { msg.style.color = "var(--brick)"; msg.textContent = (res.j && res.j.message) || "저장하지 못했습니다."; }
@@ -437,6 +461,7 @@
          statusEl.disabled = false;
          if (dateEl) dateEl.disabled = false;
           if (roomLabelEl) roomLabelEl.disabled = false;
+           if (depositEl) depositEl.disabled = false;
           if (rentEl) rentEl.disabled = false;
           if (channelEl) channelEl.disabled = false;
          if (msg) { msg.style.color = "var(--brick)"; msg.textContent = "네트워크 오류로 저장하지 못했습니다."; }
@@ -471,6 +496,7 @@
           while (existingLabels.indexOf(label) >= 0) label = "새 호실 " + suffix++;
           var status = card.querySelector(".room-status").value;
           var channel = card.querySelector(".room-channel").value;
+           var depositText = card.querySelector(".room-deposit").value.trim();
           var rentText = card.querySelector(".room-monthly-rent").value.trim();
           var contractDate = card.querySelector(".room-contract-date");
           copyBtn.disabled = true;
@@ -479,6 +505,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               room_label: label,
+               deposit_krw: depositText ? Number(depositText) : null,
               monthly_rent_krw: rentText ? Number(rentText) : null,
               status: status,
               channel: channel,
@@ -492,7 +519,7 @@
             .catch(function(){ copyBtn.disabled = false; alert("네트워크 오류로 방을 복사하지 못했습니다."); });
         });
       });
-      Array.prototype.forEach.call(target.querySelectorAll(".room-label, .room-monthly-rent, .room-status, .room-contract-date, .room-channel"), function(el){
+      Array.prototype.forEach.call(target.querySelectorAll(".room-label, .room-deposit, .room-monthly-rent, .room-status, .room-contract-date, .room-channel"), function(el){
        el.addEventListener("change", function(){
          var card = el.closest(".room-inventory-card");
          if (card) saveRoomInventory(card, lrId, box);
@@ -514,7 +541,10 @@
           .then(function(d){
             btn.textContent = "이력 닫기 ▴";
             if (!d.ok || !d.history.length) { hbox.innerHTML = "이력 없음"; hbox.style.display = "block"; return; }
-            var ACTION_LABEL = { created: "접수", edited: "수정", withdrawn: "철회" };
+            var ACTION_LABEL = {
+              created: "접수", edited: "수정", withdrawn: "철회",
+              held: "보류", resumed: "보류해제", scope_changed: "공개범위 변경"
+            };
             hbox.innerHTML = d.history.map(function(h){
               var label = ACTION_LABEL[h.action] || h.action;
               var detail = "";
@@ -548,6 +578,23 @@
         });
       });
     });
+    Array.prototype.forEach.call(box.querySelectorAll(".lr-hold-btn, .lr-resume-btn"), function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        var isResume = btn.classList.contains("lr-resume-btn");
+        var label = isResume ? "보류를 해제" : "매물을 보류";
+        if (!confirm(label + "하시겠어요?")) return;
+        btn.disabled = true;
+        fetch("/api/listing-requests/" + id + "/" + (isResume ? "resume" : "hold"), {
+          method: "POST", credentials: "same-origin"
+        }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+          .then(function(res) {
+            if (res.ok && res.j && res.j.ok) loadMyListingRequests();
+            else { btn.disabled = false; alert((res.j && res.j.message) || (label + "하지 못했습니다.")); }
+          })
+          .catch(function(){ btn.disabled = false; alert("네트워크 오류가 발생했습니다."); });
+      });
+    });
     // 철회 버튼
     Array.prototype.forEach.call(box.querySelectorAll(".lr-withdraw-btn"), function(btn) {
       btn.addEventListener("click", function() {
@@ -559,6 +606,32 @@
         }).then(function(r){ return r.json(); })
           .then(function(j){ if (j && j.ok) loadMyListingRequests(); else { btn.disabled = false; alert(j.message || "철회에 실패했습니다."); } })
           .catch(function(){ btn.disabled = false; });
+      });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll(".lr-disclosure-btn"), function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        var currentScope = btn.getAttribute("data-scope") === "public" ? "public" : "limited";
+        var nextScope = currentScope === "public" ? "limited" : "public";
+        var nextLabel = nextScope === "public" ? "전체공개" : "제한공개";
+        btn.disabled = true;
+        fetch("/api/listing-requests/" + id + "/disclosure-scope", {
+          method: "PATCH", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ disclosure_scope: nextScope })
+        }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+          .then(function(res) {
+            if (!res.ok || !res.j || !res.j.ok) {
+              btn.disabled = false;
+              alert((res.j && res.j.message) || "공개범위를 변경하지 못했습니다.");
+              return;
+            }
+            btn.setAttribute("data-scope", nextScope);
+            btn.textContent = nextLabel;
+            btn.disabled = false;
+            if (MY_LISTING_BY_ID[id]) MY_LISTING_BY_ID[id].disclosure_scope = nextScope;
+          })
+          .catch(function(){ btn.disabled = false; alert("네트워크 오류가 발생했습니다."); });
       });
     });
     // 채팅 문의 버튼 — 내 직거래 매물에 온 문의 목록 / 바로 열기

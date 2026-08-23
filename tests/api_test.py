@@ -28,7 +28,7 @@ import time
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import _canonical_sido_name, app  # noqa: E402
+from app import _building_share_meta, _canonical_sido_name, app  # noqa: E402
 from db import get_conn  # noqa: E402
 import addr_norm  # noqa: E402
 
@@ -174,6 +174,8 @@ def check_datalab_consign(payload):
                 not isinstance(rate, (int, float)) or rate < 0
             ):
                 return f"{scope}.report_rate가 0 이상 숫자가 아님"
+            if rate is not None and rate > 100:
+                return f"{scope}.report_rate가 호실수 캡을 넘어 100%를 초과함"
     return None
 
 
@@ -229,9 +231,11 @@ def expected_consign_by_sido():
                 "building_cnt": 0,
                 "total_units": 0,
                 "active_permits": {},
+                "building_ids": [],
             })
             region["building_cnt"] += 1
             region["total_units"] += max(0, int(building.get("units") or 0))
+            region["building_ids"].append(building["id"])
             road_matches = road_permits.get(building.get("_road_key"), {})
             matched_permits = road_matches or jibun_permits.get(
                 building.get("_jibun_key"), {}
@@ -246,12 +250,43 @@ def expected_consign_by_sido():
                 assigned_active_permits.add(permit_number)
                 region["active_permits"][permit_number] = permit
 
+        candidates_by_permit = {}
+        building_by_id = {building["id"]: building for building in buildings}
+        for building in buildings:
+            matches = road_permits.get(building.get("_road_key"), {})
+            matches = matches or jibun_permits.get(building.get("_jibun_key"), {})
+            for permit_number, permit in matches.items():
+                if "폐업" in (permit.get("biz_status_name") or ""):
+                    continue
+                candidates_by_permit.setdefault(permit_number, {
+                    "permit": permit,
+                    "buildings": [],
+                })["buildings"].append(building)
+        raw_rooms_by_building = {}
+        for candidate in candidates_by_permit.values():
+            representative = max(
+                candidate["buildings"],
+                key=lambda building: (int(building["units"] or 0), -int(building["id"])),
+            )
+            building_id = representative["id"]
+            raw_rooms_by_building[building_id] = (
+                raw_rooms_by_building.get(building_id, 0)
+                + int(candidate["permit"].get("room_count") or 0)
+            )
+        capped_rooms_by_building = {
+            building_id: min(
+                room_count,
+                max(0, int(building_by_id[building_id].get("units") or 0)),
+            )
+            for building_id, room_count in raw_rooms_by_building.items()
+        }
+
         def summary(region):
             total_units = region["total_units"]
             active_permits = region["active_permits"]
             active_room_cnt = sum(
-                max(0, int(permit.get("room_count") or 0))
-                for permit in active_permits.values()
+                capped_rooms_by_building.get(building_id, 0)
+                for building_id in region["building_ids"]
             )
             return {
                 "building_cnt": region["building_cnt"],
@@ -349,8 +384,10 @@ def run():
     failures += _check_favorite_save_persistence(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
     failures += _check_chat_phone_verification(client)
-    # 방 재고의 만기일 저장·공실 초기화·소유자 권한을 확인
+    # 방 재고의 보증금·만기일 저장·공실 초기화·소유자 권한을 확인
     failures += _check_room_inventory_contract_dates(client)
+    # 매물의뢰 보류·보류해제·공개범위는 소유자만 변경하고 수정 시 접수됨으로 복원되는지 확인
+    failures += _check_listing_hold_and_disclosure_controls(client)
     # 계약만기 90/60/30/7일 알림의 이메일·알림함 기록과 중복 방지를 확인
     failures += _check_room_expiry_alerts()
     # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
@@ -1680,14 +1717,16 @@ def _check_room_inventory_contract_dates(client):
               FROM information_schema.columns
              WHERE table_schema = current_schema()
                AND table_name = 'business_room_inventory'
-               AND column_name IN ('floor', 'channel')
+                AND column_name IN ('deposit_krw', 'floor', 'channel')
         """)
         inventory_columns = {row["column_name"]: row for row in cur.fetchall()}
         channel_column = inventory_columns.get("channel")
-        if ("floor" not in inventory_columns or not channel_column
+        if ("deposit_krw" not in inventory_columns or not channel_column
+                or inventory_columns["deposit_krw"]["is_nullable"] != "YES"
+                or "floor" not in inventory_columns or not channel_column
                 or channel_column["is_nullable"] != "NO"
                 or "장박가능" not in (channel_column.get("column_default") or "")):
-            failures.append("room inventory: floor/channel 마이그레이션 또는 장박가능 기본값이 없음")
+            failures.append("room inventory: 보증금/floor/channel 마이그레이션 또는 장박가능 기본값이 없음")
         cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
         building = cur.fetchone()
         if not building:
@@ -1718,6 +1757,7 @@ def _check_room_inventory_contract_dates(client):
             f"/api/my/listing-requests/{listing_id}/rooms",
             json={
                 "room_label": "201호",
+                "deposit_krw": 500,
                 "monthly_rent_krw": 120,
                 "status": "입실",
                 "contract_end_date": contract_end_date,
@@ -1730,9 +1770,10 @@ def _check_room_inventory_contract_dates(client):
         room = created_payload.get("item") or {}
         room_id = room.get("id")
         if (room.get("status") != "입실" or room.get("contract_end_date") != contract_end_date
+                or room.get("deposit_krw") != 500
                 or room.get("monthly_rent_krw") != 120
                 or room.get("channel") != "장박가능" or room.get("floor") is not None):
-            failures.append("room inventory: 단건 방의 월세·기본 채널 또는 계약만기일이 저장되지 않음")
+            failures.append("room inventory: 단건 방의 보증금·월세·기본 채널 또는 계약만기일이 저장되지 않음")
 
         manual_floor_created = client.post(
             f"/api/my/listing-requests/{listing_id}/rooms",
@@ -1763,21 +1804,29 @@ def _check_room_inventory_contract_dates(client):
         )
         if invalid_create_rent.status_code != 400:
             failures.append("room inventory: 0원 월세를 400으로 거부하지 않음")
+        invalid_create_deposit = client.post(
+            f"/api/my/listing-requests/{listing_id}/rooms",
+            json={"room_label": "204호", "deposit_krw": 0},
+        )
+        if invalid_create_deposit.status_code != 400:
+            failures.append("room inventory: 0원 보증금을 400으로 거부하지 않음")
 
         listed = client.get(f"/api/my/listing-requests/{listing_id}/rooms")
         listed_items = (listed.get_json() or {}).get("items") or []
         if listed.status_code != 200 or not any(
             item.get("id") == room_id and item.get("contract_end_date") == contract_end_date
+            and item.get("deposit_krw") == 500
             and item.get("monthly_rent_krw") == 120
             and item.get("channel") == "장박가능" and item.get("floor") is None
             for item in listed_items
         ):
-            failures.append("room inventory: 소유자 조회에서 기본 채널·계약만기일을 찾지 못함")
+            failures.append("room inventory: 소유자 조회에서 보증금·기본 채널·계약만기일을 찾지 못함")
 
         channel_updated = client.put(
             f"/api/my/room-inventory/{room_id}",
             json={
                 "room_label": "201호 복사본",
+                "deposit_krw": 750,
                 "monthly_rent_krw": 135,
                 "status": "입실",
                 "contract_end_date": contract_end_date,
@@ -1789,8 +1838,9 @@ def _check_room_inventory_contract_dates(client):
         if (channel_updated.status_code != 200 or channel_item.get("floor") != 2
                 or channel_item.get("channel") != "OTA전용"
                 or channel_item.get("room_label") != "201호 복사본"
+                 or channel_item.get("deposit_krw") != 750
                 or channel_item.get("monthly_rent_krw") != 135):
-            failures.append("room inventory: 호실·월세·층 또는 OTA전용 채널 저장 실패")
+            failures.append("room inventory: 호실·보증금·월세·층 또는 OTA전용 채널 저장 실패")
 
         bulk_created = client.post(
             f"/api/my/listing-requests/{listing_id}/rooms/bulk",
@@ -1834,6 +1884,12 @@ def _check_room_inventory_contract_dates(client):
         )
         if invalid_date.status_code != 400:
             failures.append("room inventory: 잘못된 날짜를 400으로 거부하지 않음")
+        invalid_deposit = client.put(
+            f"/api/my/room-inventory/{room_id}",
+            json={"status": "입실", "deposit_krw": 0},
+        )
+        if invalid_deposit.status_code != 400:
+            failures.append("room inventory: 0원 보증금 수정을 400으로 거부하지 않음")
 
         vacated = client.put(
             f"/api/my/room-inventory/{room_id}",
@@ -1842,9 +1898,10 @@ def _check_room_inventory_contract_dates(client):
         vacated_item = (vacated.get_json() or {}).get("item") or {}
         if (vacated.status_code != 200 or vacated_item.get("status") != "공실"
                 or vacated_item.get("contract_end_date") is not None
+                or vacated_item.get("deposit_krw") != 750
                 or vacated_item.get("channel") != "OTA전용"
                 or vacated_item.get("floor") != 2):
-            failures.append("room inventory: 공실 전환 때 만기일만 초기화하고 채널·층을 보존하지 않음")
+            failures.append("room inventory: 공실 전환 때 만기일만 초기화하고 보증금·채널·층을 보존하지 않음")
 
         invalid_status = client.put(
             f"/api/my/room-inventory/{room_id}",
@@ -1866,7 +1923,7 @@ def _check_room_inventory_contract_dates(client):
         if blocked.status_code != 403:
             failures.append("room inventory: 타 사용자의 방 재고 수정을 403으로 차단하지 않음")
         if not failures:
-            print("OK  방 재고 층·채널·벌크 생성·만기일·소유자 권한")
+            print("OK  방 재고 보증금·층·채널·벌크 생성·만기일·소유자 권한")
     except Exception as exc:
         failures.append(f"room inventory 테스트 오류: {exc}")
     finally:
@@ -1882,6 +1939,160 @@ def _check_room_inventory_contract_dates(client):
             if owner_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
             conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_listing_hold_and_disclosure_controls(client):
+    """매물 보류·보류해제·공개범위 전환의 소유권과 상태 전이를 검증한다."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(_time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    owner_id = other_id = listing_id = None
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["listing controls: 테스트용 master_buildings 행이 없습니다."]
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"listing-owner-{run_id}@example.test", "매물 제어 소유자"),
+        )
+        owner_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO users (email, name) VALUES (%s, %s) RETURNING id",
+            (f"listing-other-{run_id}@example.test", "매물 제어 타인"),
+        )
+        other_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO listing_requests
+                (user_id, master_building_id, deal_type, desired_price, price_krw, contact_phone,
+                 deal_mode, status, disclosure_scope, transaction_target)
+            VALUES (%s, %s, '매매', '테스트 조건', 10000, %s, 'direct', 'submitted', 'limited', 'whole')
+            RETURNING id
+        """, (owner_id, building["id"], "010-0000-0000"))
+        listing_id = cur.fetchone()["id"]
+        conn.commit()
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = other_id
+        if client.post(f"/api/listing-requests/{listing_id}/hold").status_code != 403:
+            failures.append("listing controls: 타 사용자의 보류 요청을 403으로 차단하지 않음")
+        if client.patch(
+            f"/api/listing-requests/{listing_id}/disclosure-scope",
+            json={"disclosure_scope": "public"},
+        ).status_code != 403:
+            failures.append("listing controls: 타 사용자의 공개범위 변경을 403으로 차단하지 않음")
+
+        with client.session_transaction() as sess:
+            sess["user_id"] = owner_id
+        mine = client.get("/api/listing-requests/mine")
+        mine_items = (mine.get_json() or {}).get("items") or []
+        mine_item = next((item for item in mine_items if item.get("id") == listing_id), {})
+        if mine.status_code != 200 or mine_item.get("disclosure_scope") != "limited":
+            failures.append("listing controls: 내 매물 목록에서 공개범위를 반환하지 않음")
+
+        held = client.post(f"/api/listing-requests/{listing_id}/hold")
+        held_item = (held.get_json() or {}).get("item") or {}
+        if held.status_code != 200 or held_item.get("status") != "보류":
+            failures.append("listing controls: 소유자 보류 상태 변경 실패")
+        if client.post(f"/api/listing-requests/{listing_id}/hold").status_code != 400:
+            failures.append("listing controls: 이미 보류인 매물을 다시 보류하지 않음")
+        invalid_scope = client.patch(
+            f"/api/listing-requests/{listing_id}/disclosure-scope",
+            json={"disclosure_scope": "private"},
+        )
+        if invalid_scope.status_code != 400:
+            failures.append("listing controls: 잘못된 공개범위를 400으로 거부하지 않음")
+
+        edited = client.put(f"/api/listing-requests/{listing_id}", json={
+            "deal_type": "매매",
+            "desired_price": "수정 조건",
+            "price_krw": 10000,
+            "transaction_target": "whole",
+            "registrant_type": "owner",
+        })
+        if edited.status_code != 200:
+            failures.append("listing controls: 보류 매물 수정 실패")
+        cur.execute("SELECT status FROM listing_requests WHERE id=%s", (listing_id,))
+        if (cur.fetchone() or {}).get("status") != "submitted":
+            failures.append("listing controls: 보류 매물 수정 후 접수됨으로 복원되지 않음")
+
+        held_again = client.post(f"/api/listing-requests/{listing_id}/hold")
+        resumed = client.post(f"/api/listing-requests/{listing_id}/resume")
+        resumed_item = (resumed.get_json() or {}).get("item") or {}
+        if (held_again.status_code != 200 or resumed.status_code != 200
+                or resumed_item.get("status") != "submitted"):
+            failures.append("listing controls: 보류해제 상태 변경 실패")
+
+        scope_changed = client.patch(
+            f"/api/listing-requests/{listing_id}/disclosure-scope",
+            json={"disclosure_scope": "public"},
+        )
+        scope_item = (scope_changed.get_json() or {}).get("item") or {}
+        if scope_changed.status_code != 200 or scope_item.get("disclosure_scope") != "public":
+            failures.append("listing controls: 소유자 공개범위 전체공개 전환 실패")
+
+        public_before_hold = client.get("/api/listings?limit=50")
+        public_items = (public_before_hold.get_json() or {}).get("items") or []
+        if not any(item.get("id") == listing_id for item in public_items):
+            failures.append("listing controls: 전체공개 건물전체 매물이 공개 목록에 나타나지 않음")
+
+        held_for_visibility = client.post(f"/api/listing-requests/{listing_id}/hold")
+        public_while_held = client.get("/api/listings?limit=50")
+        held_items = (public_while_held.get_json() or {}).get("items") or []
+        with app.test_request_context(f"/building/{building['id']}?listing={listing_id}"):
+            held_meta = _building_share_meta(building["id"], listing_id)
+            building_meta = _building_share_meta(building["id"])
+        if held_for_visibility.status_code != 200 or any(item.get("id") == listing_id for item in held_items):
+            failures.append("listing controls: 보류 매물이 공개 목록에 계속 노출됨")
+        if (held_meta.get("title"), held_meta.get("description")) != (
+                building_meta.get("title"), building_meta.get("description")):
+            failures.append("listing controls: 보류 매물이 공유 메타데이터에 노출됨")
+        if client.post(f"/api/listing-requests/{listing_id}/resume").status_code != 200:
+            failures.append("listing controls: 공개 노출 점검 후 보류해제 실패")
+
+        unit_changed = client.put(f"/api/listing-requests/{listing_id}", json={
+            "deal_type": "단기임대",
+            "desired_price": "개별호실 변경",
+            "transaction_target": "unit",
+            "registrant_type": "owner",
+        })
+        unit_scope = client.patch(
+            f"/api/listing-requests/{listing_id}/disclosure-scope",
+            json={"disclosure_scope": "limited"},
+        )
+        if unit_changed.status_code != 200 or unit_scope.status_code != 400:
+            failures.append("listing controls: 개별호실 공개범위 변경을 차단하지 않음")
+        cur.execute(
+            "SELECT action FROM listing_request_history WHERE listing_request_id=%s ORDER BY id",
+            (listing_id,),
+        )
+        actions = [row["action"] for row in cur.fetchall()]
+        if not {"held", "resumed", "edited", "scope_changed"} <= set(actions):
+            failures.append("listing controls: 상태·공개범위 변경 이력이 남지 않음")
+        if not failures:
+            print("OK  매물 보류·보류해제·수정 복원·공개범위·소유자 권한")
+    except Exception as exc:
+        failures.append(f"listing controls 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_id:
+                cur.execute("DELETE FROM listing_request_history WHERE listing_request_id=%s", (listing_id,))
+                cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
+            if other_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (other_id,))
+            if owner_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
+            conn.commit()
+            with client.session_transaction() as sess:
+                sess.pop("user_id", None)
         finally:
             cur.close()
             conn.close()

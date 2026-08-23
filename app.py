@@ -165,7 +165,7 @@ def _building_share_meta(building_id, listing_id=None):
                 WHERE id = %s
                   AND master_building_id = %s
                   AND deal_mode = 'direct'
-                  AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+                  AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')
                   AND COALESCE(transaction_target, 'unit') = 'whole'
                   AND COALESCE(disclosure_scope, 'limited') = 'limited'
             """, [listing_id, building_id])
@@ -199,7 +199,7 @@ def _building_share_meta(building_id, listing_id=None):
             WHERE id = %s
               AND master_building_id = %s
               AND deal_mode = 'direct'
-              AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')
         """, [listing_id, building_id])
         listing = cur.fetchone()
         if not listing:
@@ -671,7 +671,7 @@ def get_building(building_id):
             FROM listing_requests lr
             WHERE lr.master_building_id = mb.id
               AND lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               AND COALESCE(lr.disclosure_scope, 'public') = 'public'
               AND lr.deal_type = '매매'
               AND lr.price_krw IS NOT NULL
@@ -959,7 +959,7 @@ def get_building(building_id):
         ) pv ON pv.listing_request_id = lr.id
         WHERE lr.master_building_id = %s
           AND lr.deal_mode = 'direct'
-          AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+          AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
           AND NOT (
               COALESCE(lr.transaction_target, 'unit') = 'whole'
               AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
@@ -2324,7 +2324,7 @@ def get_buildings_geo():
             FROM listing_requests lr
             WHERE lr.master_building_id = mb.id
               AND lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               AND NOT (
                   COALESCE(lr.transaction_target, 'unit') = 'whole'
                   AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
@@ -7675,7 +7675,7 @@ def _whole_listing_checklist_data(cur, listing_id, user_id=None):
            AND lr.deal_mode = 'direct'
            AND COALESCE(lr.transaction_target, 'unit') = 'whole'
            AND COALESCE(lr.disclosure_scope, 'limited') = 'public'
-           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
     """, [listing_id])
     row = cur.fetchone()
     if not row:
@@ -8314,6 +8314,15 @@ def _parse_room_monthly_rent(value):
     return value, None
 
 
+def _parse_room_deposit(value):
+    """방별 보증금(만원)은 비워둘 수 있고, 입력하면 양의 정수만 허용한다."""
+    if value is None or value == "":
+        return None, None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None, "보증금은 1만원 이상의 숫자로 입력해주세요."
+    return value, None
+
+
 def _parse_contract_end_date(value):
     """YYYY-MM-DD 계약만기일만 허용한다. 빈 값은 만기일 미입력으로 본다."""
     if value is None or value == "":
@@ -8377,7 +8386,7 @@ def my_room_inventory(lr_id):
         if error_response:
             return error_response
         cur.execute("""
-            SELECT id, room_label, monthly_rent_krw, status, floor, channel,
+            SELECT id, room_label, deposit_krw, monthly_rent_krw, status, floor, channel,
                    TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
               FROM business_room_inventory
              WHERE listing_request_id = %s
@@ -8407,6 +8416,7 @@ def create_my_room_inventory(lr_id):
     if not isinstance(status_value, str):
         return jsonify({"ok": False, "message": "방 상태는 입실 또는 공실만 선택할 수 있습니다."}), 400
     status = status_value.strip()
+    deposit_krw, deposit_error = _parse_room_deposit(data.get("deposit_krw"))
     monthly_rent_krw, rent_error = _parse_room_monthly_rent(
         data.get("monthly_rent_krw")
     )
@@ -8423,6 +8433,8 @@ def create_my_room_inventory(lr_id):
         return jsonify({"ok": False, "message": date_error}), 400
     if rent_error:
         return jsonify({"ok": False, "message": rent_error}), 400
+    if deposit_error:
+        return jsonify({"ok": False, "message": deposit_error}), 400
     if floor_error:
         return jsonify({"ok": False, "message": floor_error}), 400
     if channel_error:
@@ -8438,11 +8450,11 @@ def create_my_room_inventory(lr_id):
             return error_response
         cur.execute("""
             INSERT INTO business_room_inventory
-                (listing_request_id, room_label, monthly_rent_krw, status, contract_end_date, floor, channel)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, room_label, monthly_rent_krw, status, floor, channel,
+                (listing_request_id, room_label, deposit_krw, monthly_rent_krw, status, contract_end_date, floor, channel)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, room_label, deposit_krw, monthly_rent_krw, status, floor, channel,
                       TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
-        """, [lr_id, room_label, monthly_rent_krw, status, contract_end_date, floor, channel])
+        """, [lr_id, room_label, deposit_krw, monthly_rent_krw, status, contract_end_date, floor, channel])
         item = dict(cur.fetchone())
         conn.commit()
         return jsonify({"ok": True, "item": item}), 201
@@ -8550,6 +8562,12 @@ def update_my_room_inventory(room_id):
             return jsonify({"ok": False, "message": rent_error}), 400
     else:
         monthly_rent_krw = None
+    if "deposit_krw" in data:
+        deposit_krw, deposit_error = _parse_room_deposit(data.get("deposit_krw"))
+        if deposit_error:
+            return jsonify({"ok": False, "message": deposit_error}), 400
+    else:
+        deposit_krw = None
     if "floor" in data:
         floor, floor_error = _parse_room_floor(data.get("floor"))
         if floor_error:
@@ -8568,7 +8586,7 @@ def update_my_room_inventory(room_id):
     try:
         cur.execute("""
             SELECT bri.id, bri.room_label, bri.status, bri.contract_end_date, bri.floor, bri.channel,
-                   bri.monthly_rent_krw, lr.user_id
+                   bri.deposit_krw, bri.monthly_rent_krw, lr.user_id
               FROM business_room_inventory bri
               JOIN listing_requests lr ON lr.id = bri.listing_request_id
              WHERE bri.id = %s
@@ -8589,16 +8607,18 @@ def update_my_room_inventory(room_id):
             channel = room["channel"]
         if "monthly_rent_krw" not in data:
             monthly_rent_krw = room["monthly_rent_krw"]
+        if "deposit_krw" not in data:
+            deposit_krw = room["deposit_krw"]
         if room_label is None:
             room_label = room["room_label"]
         cur.execute("""
             UPDATE business_room_inventory
                SET room_label = %s, status = %s, contract_end_date = %s, floor = %s,
-                   channel = %s, monthly_rent_krw = %s, updated_at = NOW()
+                   channel = %s, deposit_krw = %s, monthly_rent_krw = %s, updated_at = NOW()
              WHERE id = %s
-         RETURNING id, room_label, monthly_rent_krw, status, floor, channel,
+         RETURNING id, room_label, deposit_krw, monthly_rent_krw, status, floor, channel,
                    TO_CHAR(contract_end_date, 'YYYY-MM-DD') AS contract_end_date
-        """, [room_label, status, contract_end_date, floor, channel, monthly_rent_krw, room_id])
+        """, [room_label, status, contract_end_date, floor, channel, deposit_krw, monthly_rent_krw, room_id])
         item = dict(cur.fetchone())
         conn.commit()
         return jsonify({"ok": True, "item": item})
@@ -8806,7 +8826,7 @@ def public_listings():
                  ) photo_rows
              ) lp ON true
             WHERE lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               {where_extra}
             ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
             LIMIT %s OFFSET %s
@@ -9112,7 +9132,7 @@ def listing_photo_proxy(key):
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.image_key = %s
               AND lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               AND (COALESCE(lp.is_public, TRUE) OR lr.user_id = %s)
         """, [key, (current_user() or {}).get("id", -1)])
         photo = cur.fetchone()
@@ -9144,7 +9164,7 @@ def toggle_listing_like(lr_id):
     try:
         cur.execute(
             "SELECT id FROM listing_requests WHERE id=%s AND deal_mode='direct' "
-            "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')",
+            "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')",
             [lr_id]
         )
         if not cur.fetchone():
@@ -9210,7 +9230,7 @@ def create_chat_room():
             SELECT lr.id, lr.user_id AS seller_user_id
             FROM listing_requests lr
             WHERE lr.id = %s AND lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
         """, [lr_id])
         lr = cur.fetchone()
         if not lr:
@@ -9546,7 +9566,7 @@ def send_chat_message(room_id):
 
 @app.route("/api/listing-requests/<int:req_id>", methods=["PUT"])
 def update_listing_request(req_id):
-    """매물의뢰 수정 — 접수됨(submitted) 상태인 본인 의뢰만 수정 가능."""
+    """매물의뢰 수정 — 접수됨 또는 보류 상태인 본인 의뢰만 수정 가능."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
@@ -9656,8 +9676,8 @@ def update_listing_request(req_id):
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
         if row["user_id"] != user["id"]:
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
-        if row["status"] != "submitted":
-            return jsonify({"ok": False, "message": "접수됨 상태에서만 수정할 수 있습니다."}), 400
+        if row["status"] not in ("submitted", "보류"):
+            return jsonify({"ok": False, "message": "접수됨 또는 보류 상태에서만 수정할 수 있습니다."}), 400
         matched_permit_number = None if registrant_type != "business" else row["matched_permit_number"]
         if registrant_type == "business":
             verification = _business_verification_context(cur, row["master_building_id"], user["id"])
@@ -9718,7 +9738,7 @@ def update_listing_request(req_id):
             "building_info_overrides": whole_values["building_info_overrides"] if whole_values else {},
         }
         cur.execute(
-            """UPDATE listing_requests SET deal_type=%s, desired_price=%s,
+            """UPDATE listing_requests SET status='submitted', deal_type=%s, desired_price=%s,
                 price_krw=%s, price_krw_max=%s, monthly_rent_krw=%s, room_count=%s,
                 area_sqm=%s, dong=%s, ho=%s,
                registrant_type=%s, description=%s, deposit_krw=%s,
@@ -9755,7 +9775,7 @@ def update_listing_request(req_id):
 
 @app.route("/api/listing-requests/<int:req_id>/withdraw", methods=["POST"])
 def withdraw_listing_request(req_id):
-    """매물의뢰 철회 — 접수됨 상태인 본인 의뢰만 철회 가능. 연관 데이터 포함 영구 삭제."""
+    """매물의뢰 철회 — 접수됨 또는 보류 상태인 본인 의뢰만 철회 가능."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
@@ -9768,8 +9788,8 @@ def withdraw_listing_request(req_id):
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
         if row["user_id"] != user["id"]:
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
-        if row["status"] != "submitted":
-            return jsonify({"ok": False, "message": "접수됨 상태에서만 철회할 수 있습니다."}), 400
+        if row["status"] not in ("submitted", "보류"):
+            return jsonify({"ok": False, "message": "접수됨 또는 보류 상태에서만 철회할 수 있습니다."}), 400
         # 연관 데이터 순서대로 삭제 (FK NO ACTION이므로 수동 처리)
         cur.execute("""
             DELETE FROM chat_messages
@@ -9783,6 +9803,100 @@ def withdraw_listing_request(req_id):
         cur.close()
         conn.close()
     return jsonify({"ok": True})
+
+
+def _set_listing_hold_state(req_id, *, held):
+    """본인 매물의뢰를 보류하거나 보류해제한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    expected_status = "submitted" if held else "보류"
+    next_status = "보류" if held else "submitted"
+    action = "held" if held else "resumed"
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, user_id, status FROM listing_requests WHERE id = %s",
+            [req_id],
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
+        if row["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row["status"] != expected_status:
+            label = "접수됨" if held else "보류중"
+            return jsonify({"ok": False, "message": f"{label} 상태에서만 변경할 수 있습니다."}), 400
+        cur.execute(
+            "UPDATE listing_requests SET status=%s, updated_at=NOW() "
+            "WHERE id=%s RETURNING id, status",
+            [next_status, req_id],
+        )
+        item = dict(cur.fetchone())
+        cur.execute(
+            "INSERT INTO listing_request_history (listing_request_id, action, after_data) "
+            "VALUES (%s, %s, %s)",
+            [req_id, action, json.dumps({"status": next_status})],
+        )
+        conn.commit()
+        return jsonify({"ok": True, "item": item})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/listing-requests/<int:req_id>/hold", methods=["POST"])
+def hold_listing_request(req_id):
+    return _set_listing_hold_state(req_id, held=True)
+
+
+@app.route("/api/listing-requests/<int:req_id>/resume", methods=["POST"])
+@app.route("/api/listing-requests/<int:req_id>/unhold", methods=["POST"])
+def resume_listing_request(req_id):
+    return _set_listing_hold_state(req_id, held=False)
+
+
+@app.route("/api/listing-requests/<int:req_id>/disclosure-scope", methods=["PATCH", "PUT"])
+def update_listing_disclosure_scope(req_id):
+    """본인 매물의 공개범위만 즉시 변경한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    scope = data.get("disclosure_scope", data.get("scope"))
+    if scope not in ("public", "limited"):
+        return jsonify({"ok": False, "message": "공개범위는 전체공개 또는 제한공개만 선택할 수 있습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, user_id, transaction_target FROM listing_requests WHERE id=%s",
+            [req_id],
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
+        if row["user_id"] != user["id"]:
+            return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row["transaction_target"] != "whole":
+            return jsonify({"ok": False, "message": "공개범위는 건물전체 매물에서만 변경할 수 있습니다."}), 400
+        cur.execute(
+            "UPDATE listing_requests SET disclosure_scope=%s, updated_at=NOW() "
+            "WHERE id=%s RETURNING id, disclosure_scope",
+            [scope, req_id],
+        )
+        item = dict(cur.fetchone())
+        cur.execute(
+            "INSERT INTO listing_request_history (listing_request_id, action, after_data) "
+            "VALUES (%s, 'scope_changed', %s)",
+            [req_id, json.dumps({"disclosure_scope": scope})],
+        )
+        conn.commit()
+        return jsonify({"ok": True, "item": item})
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/listing-requests/<int:req_id>/history")
@@ -21156,9 +21270,11 @@ def _report_rate_by_sido_payload():
                 "building_cnt": 0,
                 "total_units": 0,
                 "active_permits": {},
+                "building_ids": [],
             })
             region["building_cnt"] += 1
             region["total_units"] += max(0, int(building.get("units") or 0))
+            region["building_ids"].append(building["id"])
 
             road_matches = road_permits.get(building.get("_road_key"), {})
             # 기존 건물 목록·상세와 동일하게 도로명 결과가 없을 때만 지번을 쓴다.
@@ -21175,12 +21291,18 @@ def _report_rate_by_sido_payload():
                 assigned_active_permits.add(permit_number)
                 region["active_permits"][permit_number] = permit
 
+        # 주소가 여러 건물에 매칭되는 신고는 대표 건물 한 곳에만 귀속하고,
+        # 대표 건물 안에서도 마스터 호실수를 넘지 않게 캡처리한다.
+        capped_active_rooms_by_building = _capped_active_report_rooms_by_building(
+            buildings, road_permits, jibun_permits
+        )
+
         def summary(region):
             total_units = region["total_units"]
             active_permits = region["active_permits"]
             active_room_cnt = sum(
-                max(0, int(permit.get("room_count") or 0))
-                for permit in active_permits.values()
+                capped_active_rooms_by_building.get(building_id, 0)
+                for building_id in region["building_ids"]
             )
             return {
                 "building_cnt": region["building_cnt"],
