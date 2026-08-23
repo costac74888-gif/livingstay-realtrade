@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>이용안내 · 홈앤스테이</title>
-<meta name="description" content="홈앤스테이 이용안내 — 실거래가 조회, 최근 본 건물, 시세 랭킹, 매물의뢰, 중개사 상담 기능을 소개합니다." />
+<meta name="description" content="홈앤스테이 이용안내 — 실거래가 조회, 매물 등록, 제한공개, 사업주 재고 관리, 안전한 채팅 기능을 소개합니다." />
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
@@ -198,6 +198,191 @@
 .hl4 { outline-color: #D69E2E; }
 .hl5 { outline-color: #805AD5; }
 .hl6 { outline-color: #DD6B20; }
+
+/* ── 매물·안전 이용안내 ───────────────── */
+.listing-guide-section { margin-top: 8px; }
+.guide-kicker {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  padding: 5px 10px; border-radius: 999px; background: var(--brass-tint);
+  color: var(--brass-dark); font-size: 11px; font-weight: 700;
+}
+.guide-lead-question {
+  margin: 0 0 8px; color: var(--ink); font-size: 19px; line-height: 1.45;
+  letter-spacing: -.02em;
+}
+.guide-lead-copy {
+  margin: 0 0 20px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.7;
+}
+.guide-dual-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch;
+}
+.guide-feature-card {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(22,32,46,.07);
+}
+.guide-feature-card.is-whole { border-color: #EAD9B8; }
+.guide-feature-card-head { padding: 17px 18px 4px; }
+.guide-feature-card-head h3 {
+  margin: 0 0 5px; color: var(--ink); font-size: 16px; line-height: 1.4;
+}
+.guide-feature-card-head p {
+  margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6;
+}
+.guide-screen-wrap { padding: 14px 16px 0; }
+.guide-screen {
+  overflow: hidden; border: 1px solid #D9DEE4; border-radius: 10px;
+  background: #F7F8FA; box-shadow: 0 3px 10px rgba(22,32,46,.09);
+  color: var(--ink); font-size: 10px;
+}
+.guide-screen-bar {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 8px 10px; background: #fff; border-bottom: 1px solid var(--line);
+  font-weight: 700;
+}
+.guide-screen-bar span:last-child { color: var(--ink-soft); font-weight: 500; }
+.guide-screen-body { padding: 11px; }
+.guide-screen-label {
+  margin-bottom: 7px; color: var(--ink-soft); font-size: 9px; font-weight: 700;
+  letter-spacing: .02em;
+}
+.guide-choice-row { display: flex; gap: 6px; }
+.guide-choice {
+  flex: 1; padding: 9px 5px; border: 1px solid #D9DEE4; border-radius: 7px;
+  background: #fff; color: var(--ink-soft); text-align: center; font-weight: 700;
+}
+.guide-choice.selected {
+  border-color: var(--brass); background: var(--brass-tint); color: var(--brass-dark);
+}
+.guide-screen-fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px;
+}
+.guide-screen-field {
+  padding: 7px 8px; border: 1px solid #E1E5E9; border-radius: 6px; background: #fff;
+}
+.guide-screen-field small { display: block; margin-bottom: 2px; color: var(--ink-soft); font-size: 8px; }
+.guide-screen-field strong { font-size: 10px; }
+.guide-screen-highlight {
+  margin-top: 9px; padding: 8px; border: 1px solid #EAD9B8; border-radius: 7px;
+  background: #FFF8EC; color: var(--brass-dark); font-weight: 700;
+}
+.guide-screen-highlight b { float: right; color: var(--ink); font-size: 11px; }
+.guide-screen-caption {
+  margin: 7px 0 0; color: #9AA5B1; font-size: 9.5px; text-align: right;
+}
+.guide-feature-copy { padding: 14px 18px 18px; }
+.guide-feature-copy p { margin: 0; color: var(--ink-soft); font-size: 12.5px; line-height: 1.65; }
+.guide-feature-copy strong { color: var(--ink); }
+.guide-pill-row {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px;
+}
+.guide-pill {
+  padding: 4px 8px; border: 1px solid #D9DEE4; border-radius: 999px;
+  background: #fff; color: var(--ink-soft); font-size: 10.5px; font-weight: 600;
+}
+.guide-pill.emphasis { border-color: #EAD9B8; background: var(--brass-tint); color: var(--brass-dark); }
+.guide-subsection {
+  margin-top: 42px; padding-top: 2px;
+}
+.guide-subsection-title {
+  margin: 0 0 6px; color: var(--ink); font-size: 17px; line-height: 1.45;
+}
+.guide-subsection-copy {
+  margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; line-height: 1.65;
+}
+.guide-disclosure-callout {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0 0 16px; padding: 13px 14px;
+  border: 1px solid #EAD9B8; border-radius: 10px; background: #FFF8EC;
+}
+.guide-disclosure-callout .callout-badge { background: var(--brass); }
+.guide-disclosure-callout p { margin: 0; color: var(--ink); font-size: 12.5px; line-height: 1.6; }
+.guide-disclosure-callout strong { display: block; margin-bottom: 2px; }
+.guide-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.guide-compare-table {
+  width: 100%; min-width: 540px; border-collapse: collapse; background: var(--card);
+  font-size: 12px;
+}
+.guide-compare-table th, .guide-compare-table td {
+  padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; line-height: 1.55;
+}
+.guide-compare-table th { background: #F8F9FA; color: var(--ink-soft); font-size: 11px; font-weight: 700; }
+.guide-compare-table th:not(:first-child), .guide-compare-table td:not(:first-child) { text-align: center; }
+.guide-compare-table tr:last-child td { border-bottom: none; }
+.guide-compare-table td:first-child { color: var(--ink); font-weight: 700; }
+.guide-compare-table .public-mark { color: #4A7A18; font-weight: 700; }
+.guide-compare-table .limited-mark { color: var(--brass-dark); font-weight: 700; }
+.guide-inventory-layout {
+  display: grid; grid-template-columns: 1.08fr .92fr; gap: 18px; align-items: start;
+}
+.guide-inventory-screen { padding: 12px; }
+.guide-inventory-summary {
+  display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.guide-summary-chip {
+  padding: 5px 7px; border-radius: 6px; background: #F2F4F6; color: var(--ink-soft);
+  font-size: 9px; font-weight: 700;
+}
+.guide-summary-chip b { color: var(--ink); }
+.guide-room-row {
+  display: grid; grid-template-columns: .7fr .65fr .85fr .65fr; gap: 4px; align-items: center;
+  padding: 7px 0; border-top: 1px solid #E9ECEF; font-size: 9px;
+}
+.guide-room-row span:first-child { color: var(--ink); font-weight: 700; }
+.guide-room-status, .guide-room-channel, .guide-room-dday {
+  padding: 3px 4px; border-radius: 4px; background: #F2F4F6; color: var(--ink-soft); text-align: center;
+}
+.guide-room-status.occupied { background: #EEF6E9; color: #4A7A18; }
+.guide-room-channel.longstay { background: #FFF8EC; color: var(--brass-dark); }
+.guide-room-dday { color: #B42318; background: #FFF0EE; font-weight: 700; }
+.guide-inventory-points { display: flex; flex-direction: column; gap: 9px; }
+.guide-point {
+  padding: 12px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+}
+.guide-point strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 13px; }
+.guide-point p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
+.guide-alert-point { border-color: #EAD9B8; background: #FFF8EC; }
+.guide-safety-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+}
+.guide-safety-card {
+  padding: 15px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+}
+.guide-safety-no {
+  display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px;
+  margin-bottom: 8px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 12px; font-weight: 700;
+}
+.guide-safety-card h4 { margin: 0 0 5px; color: var(--ink); font-size: 13px; }
+.guide-safety-card p { margin: 0; color: var(--ink-soft); font-size: 12px; line-height: 1.65; }
+.guide-chat-screen {
+  margin-top: 10px; padding: 9px; border: 1px dashed #D9DEE4; border-radius: 7px; background: #F8F9FA;
+}
+.guide-chat-bubble {
+  max-width: 92%; margin-left: auto; padding: 7px 8px; border-radius: 8px 8px 2px 8px;
+  background: #E9F2E0; color: var(--ink); font-size: 10px; line-height: 1.45;
+}
+.guide-chat-warning {
+  margin-top: 7px; padding: 6px 7px; border-radius: 6px; background: #FFF0EE; color: #B42318;
+  font-size: 9.5px; font-weight: 700; line-height: 1.45;
+}
+.guide-disclaimer {
+  margin-top: 18px; padding: 15px 16px; border-left: 4px solid var(--brick);
+  border-radius: 8px; background: var(--brick-tint); color: var(--ink);
+}
+.guide-disclaimer strong { display: block; margin-bottom: 5px; font-size: 13px; }
+.guide-disclaimer p { margin: 0; color: #6F3A35; font-size: 12.5px; line-height: 1.65; }
+@media (max-width: 680px) {
+  .guide-dual-grid, .guide-inventory-layout, .guide-safety-grid { grid-template-columns: 1fr; }
+  .guide-lead-question { font-size: 17px; }
+  .guide-subsection { margin-top: 34px; }
+  .guide-screen-wrap { padding-left: 13px; padding-right: 13px; }
+}
+@media (max-width: 420px) {
+  .guide-wrap { padding-left: 14px; padding-right: 14px; }
+  .guide-hero { padding-left: 16px; padding-right: 16px; }
+  .guide-hero h1 { font-size: 23px; }
+  .guide-feature-card-head, .guide-feature-copy { padding-left: 14px; padding-right: 14px; }
+  .guide-room-row { grid-template-columns: .65fr .7fr .8fr .7fr; font-size: 8.5px; }
+}
 </style>
 </head>
 <body>
@@ -578,6 +763,205 @@
 
       </div><!-- /3-card grid -->
     </div><!-- /섹션 C 추가 -->
+
+    <!-- ── 매물 내놓기 안내 ──────────────────────────────────────────────── -->
+    <div class="guide-section listing-guide-section" id="listing-guide">
+      <div class="guide-kicker">NEW · 매물 등록 가이드</div>
+      <h2 class="guide-lead-question">생숙 등 개별 호실이신가요, 모텔·호텔 건물 전체이신가요?</h2>
+      <p class="guide-lead-copy">
+        매물 내놓기에서 거래 대상을 먼저 선택하면 내 상황에 맞는 입력 항목만 이어집니다.
+        아래 화면은 실제 등록 흐름을 이해하기 위한 예시입니다.
+      </p>
+
+      <div class="guide-dual-grid">
+        <!-- 개별호실 화면 예시 -->
+        <article class="guide-feature-card">
+          <div class="guide-feature-card-head">
+            <h3>① 개별 호실</h3>
+            <p>생숙처럼 한 호실을 매도·임대하고 싶을 때</p>
+          </div>
+          <div class="guide-screen-wrap">
+            <div class="guide-screen" aria-label="개별 호실 매물 등록 화면 예시">
+              <div class="guide-screen-bar">
+                <span>매물 내놓기</span><span>STEP 2 · 거래대상</span>
+              </div>
+              <div class="guide-screen-body">
+                <div class="guide-screen-label">어떤 매물인가요?</div>
+                <div class="guide-choice-row">
+                  <div class="guide-choice selected">개별호실</div>
+                  <div class="guide-choice">건물전체</div>
+                </div>
+                <div class="guide-screen-fields">
+                  <div class="guide-screen-field"><small>거래 방식</small><strong>매매 · 전세 · 월세</strong></div>
+                  <div class="guide-screen-field"><small>호실 정보</small><strong>동 · 호 · 전용면적</strong></div>
+                  <div class="guide-screen-field"><small>희망 가격</small><strong>매매가 / 보증금</strong></div>
+                  <div class="guide-screen-field"><small>예상 수익률</small><strong>선택 입력</strong></div>
+                </div>
+                <div class="guide-screen-caption">화면 예시 · 개별호실 등록</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-feature-copy">
+            <p>거래할 <strong>동·호와 전용면적</strong>을 입력하고, 매매·전세·월세·단기임대 중 하나를 선택합니다.</p>
+            <div class="guide-pill-row">
+              <span class="guide-pill">동·호 입력</span><span class="guide-pill">전용면적</span><span class="guide-pill">수익률 선택</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 건물전체 화면 예시 -->
+        <article class="guide-feature-card is-whole">
+          <div class="guide-feature-card-head">
+            <h3>② 건물전체</h3>
+            <p>모텔·호텔처럼 건물 단위로 거래하고 싶을 때</p>
+          </div>
+          <div class="guide-screen-wrap">
+            <div class="guide-screen" aria-label="건물전체 매물 등록 화면 예시">
+              <div class="guide-screen-bar">
+                <span>매물 내놓기</span><span>STEP 5 · 운영정보</span>
+              </div>
+              <div class="guide-screen-body">
+                <div class="guide-screen-label">거래대상 · 거래 방식</div>
+                <div class="guide-choice-row">
+                  <div class="guide-choice">개별호실</div>
+                  <div class="guide-choice selected">건물전체</div>
+                </div>
+                <div class="guide-screen-fields">
+                  <div class="guide-screen-field"><small>거래 방식</small><strong>매매 · 통임대</strong></div>
+                  <div class="guide-screen-field"><small>운영정보</small><strong>매출 · 운영상태</strong></div>
+                </div>
+                <div class="guide-screen-highlight"><span>실인수가 자동계산</span><b>참고값</b><br><small>매매가 - 승계융자 + 예상 취득부대비용 6.1%</small></div>
+                <div class="guide-screen-caption">화면 예시 · 건물전체 등록</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-feature-copy">
+            <p><strong>매매가 - 승계융자 + 예상 취득부대비용 6.1%로 실인수가 자동계산</strong>되며, 이는 저장되지 않는 참고값입니다. 월매출·연매출·운영상태 등 운영정보도 함께 정리할 수 있습니다.</p>
+            <div class="guide-pill-row">
+              <span class="guide-pill emphasis">실인수가 자동계산</span><span class="guide-pill emphasis">운영정보(매출·상태)</span><span class="guide-pill">건물 정보 자동채움</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- 공개범위 -->
+      <div class="guide-subsection" id="disclosure-guide">
+        <h3 class="guide-subsection-title">정상 영업 중인데 매물로 나온 걸 알리고 싶지 않다면?</h3>
+        <p class="guide-subsection-copy">
+          건물전체 매물은 공개범위를 선택할 수 있습니다. 영업 중인 사실을 널리 알리고 싶지 않을 때는
+          제한공개로 먼저 상담을 시작하세요.
+        </p>
+        <div class="guide-disclosure-callout">
+          <div class="callout-badge">!</div>
+          <p><strong>정확한 정보는 채팅 시작 후 판매자에게 문의하세요</strong>제한공개에서는 익명 지역만 먼저 보여주며, 구체적인 건물명·매물 정보는 자동으로 공개되지 않습니다.</p>
+        </div>
+        <div class="guide-table-wrap">
+          <table class="guide-compare-table">
+            <thead>
+              <tr><th scope="col">공개범위</th><th scope="col">건물명 노출 여부</th><th scope="col">목록·지도 노출 위치</th><th scope="col">추천 상황</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>전체공개</td>
+                <td class="public-mark">건물명 공개</td>
+                <td>공개 매물 목록·건물 상세</td>
+                <td>많은 문의를 받고 싶을 때</td>
+              </tr>
+              <tr>
+                <td>제한공개</td>
+                <td class="limited-mark">건물명 비공개</td>
+                <td>제한공개 목록에 익명 지역만</td>
+                <td>영업 중인 사실을 보호할 때</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 사업주 기능 -->
+      <div class="guide-subsection" id="business-guide">
+        <h3 class="guide-subsection-title">사업주(숙박업대표)라면 방 재고까지 한 곳에서 관리하세요</h3>
+        <p class="guide-subsection-copy">
+          사업주(숙박업대표)처럼 숙소를 직접 운영하고 <strong>직접 등록한 매물의 소유자</strong>라면,
+          마이페이지의 <strong>매물내놓기 현황</strong>에서 매물별 방 재고를 관리할 수 있습니다.
+          사업장 관리에 필요한 객실별 상태와 판매 채널을 정리해보세요.
+        </p>
+        <div class="guide-inventory-layout">
+          <div class="guide-screen guide-inventory-screen" aria-label="마이페이지 매물내놓기 현황 방 재고 화면 예시">
+            <div class="guide-screen-bar">
+              <span>마이페이지</span><span>매물내놓기 현황</span>
+            </div>
+            <div class="guide-screen-body">
+              <div class="guide-inventory-summary">
+                <span class="guide-summary-chip">전체 <b>42실</b></span>
+                <span class="guide-summary-chip">입실 <b>31</b></span>
+                <span class="guide-summary-chip">공실 <b>11</b></span>
+              </div>
+              <div class="guide-room-row">
+                <span>301호</span><span class="guide-room-status occupied">입실</span>
+                <span class="guide-room-channel longstay">장박가능</span><span class="guide-room-dday">D-12</span>
+              </div>
+              <div class="guide-room-row">
+                <span>302호</span><span class="guide-room-status">공실</span>
+                <span class="guide-room-channel">OTA전용</span><span class="guide-room-dday" style="visibility:hidden;">-</span>
+              </div>
+              <div class="guide-room-row">
+                <span>303호</span><span class="guide-room-status occupied">입실</span>
+                <span class="guide-room-channel longstay">장박가능</span><span class="guide-room-dday">D-48</span>
+              </div>
+              <div class="guide-screen-caption">화면 예시 · 내 매물의 객실별 상태·채널·만기일</div>
+            </div>
+          </div>
+          <div class="guide-inventory-points">
+            <div class="guide-point">
+              <strong>입실 / 공실</strong>
+              <p>객실마다 입실·공실 상태를 바꾸고, 공실 전환 시 계약만기일은 초기화됩니다.</p>
+            </div>
+            <div class="guide-point">
+              <strong>OTA전용 / 장박가능</strong>
+              <p>객실을 판매 채널별로 구분해 전체 객실과 공실 수를 한눈에 확인할 수 있습니다.</p>
+            </div>
+            <div class="guide-point guide-alert-point">
+              <strong>계약만기 임박 자동알림</strong>
+              <p>만기일이 가까워지면 <strong>이메일과 사이트 알림</strong>으로 알려드려 다음 계약을 놓치지 않게 도와드립니다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 안전한 채팅 -->
+      <div class="guide-subsection" id="safe-chat-guide">
+        <h3 class="guide-subsection-title">채팅으로 안전하게 거래하기</h3>
+        <p class="guide-subsection-copy">연락처를 먼저 주고받기보다, 인증된 계정으로 앱 안에서 대화를 이어가세요.</p>
+        <div class="guide-safety-grid">
+          <div class="guide-safety-card">
+            <div class="guide-safety-no">1</div>
+            <h4>휴대폰 인증</h4>
+            <p>채팅 시작 전 휴대폰 인증으로 실제 연락 가능한 계정인지 확인합니다.</p>
+          </div>
+          <div class="guide-safety-card">
+            <div class="guide-safety-no">2</div>
+            <h4>채팅 시작</h4>
+            <p>인증을 마치면 해당 매물의 채팅방으로 바로 연결됩니다.</p>
+            <div class="guide-chat-screen">
+              <div class="guide-chat-bubble">매물 조건을 확인하고 싶습니다.</div>
+              <div class="guide-chat-warning">연락처 공유 주의: 개인정보 보호를 위해 연락처를 바로 남기지 말고 앱 안 채팅에서 조건을 확인하세요.</div>
+            </div>
+          </div>
+          <div class="guide-safety-card">
+            <div class="guide-safety-no">3</div>
+            <h4>사업주 1회 인증</h4>
+            <p>사업주는 영업신고번호를 한 번 인증하면, 같은 사업장에 매물을 다시 등록할 때 인증을 생략할 수 있습니다.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 신뢰장치·면책 -->
+      <div class="guide-disclaimer" id="trust-notice">
+        <strong>확인해야 할 정보가 있어요</strong>
+        <p>매출·운영정보는 매도자가 등록한 수치이며 홈앤스테이가 사실을 보증하지 않습니다. 계약·송금 전에는 관련 서류와 운영 현황을 직접 확인하고, 필요한 경우 전문가와 상담해주세요.</p>
+      </div>
+    </div>
 
     <!-- ── 주간이메일 신청하면! ────────────────────────────────────────────── -->
     <div style="margin-top:48px;">
