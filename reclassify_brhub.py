@@ -20,6 +20,7 @@ import os
 from db import get_conn
 from address_utils import parse_jibun, BjdongMap, normalize_umd_nm
 from building_registry import classify_lodging_type
+from stats_cache import mark_master_stats_invalidated
 
 MARKER = "[재분류불가]"
 CODES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bjdong_codes.json")
@@ -82,9 +83,11 @@ def main():
         except Exception as e:
             print(f"  [{r['id']}] {r['building_name']}: API 오류 {repr(e)[:100]} — 다음 실행 때 재시도")
             continue
+        changed = False
         if label:
             cur.execute("UPDATE master_buildings SET lodging_type=%s, lodging_type_detail=%s WHERE id=%s",
                         (label, (detail or "")[:500] or None, r["id"]))
+            changed = cur.rowcount > 0
             ok += 1
             print(f"  [{r['id']}] {r['building_name']} → {label} ({reason})")
         elif "실패" in (reason or "") or "재시도" in (reason or ""):
@@ -95,9 +98,15 @@ def main():
             old = r["lodging_type_detail"] or ""
             cur.execute("UPDATE master_buildings SET lodging_type_detail=%s WHERE id=%s",
                         ((MARKER + " " + old)[:500], r["id"]))
+            changed = cur.rowcount > 0
             fail += 1
             print(f"  [{r['id']}] {r['building_name']} → 판정불가 ({reason})")
-        conn.commit()
+        if changed:
+            conn.commit()
+            try:
+                mark_master_stats_invalidated("reclassify_brhub")
+            except Exception as e:
+                print(f"[reclassify_brhub] 통계 원본 캐시 표식 갱신 실패: {e}")
 
     print(f"\n[종료] 재분류 성공 {ok}, 판정불가/실패 {fail}")
     cur.close()

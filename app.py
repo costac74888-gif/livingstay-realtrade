@@ -48,6 +48,7 @@ from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from datetime import datetime, timedelta
 from db import get_conn, init_db
+from stats_cache import mark_master_stats_invalidated
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
     build_authority_index, match_authority_contact,
@@ -227,6 +228,15 @@ def _building_share_meta(building_id, listing_id=None):
 
 app = Flask(__name__, static_folder="static")
 Compress(app)   # gzip 응답 압축 (API JSON + HTML 전체)
+
+
+def _mark_master_stats_invalidated_safely(source):
+    """커밋된 원본 변경의 통계 캐시 표식 실패가 본 요청을 되돌리지 않게 한다."""
+    try:
+        mark_master_stats_invalidated(source)
+    except Exception as e:
+        app.logger.warning("[stats-cache] invalidation failed (%s): %s", source, str(e)[:200])
+
 
 # 대출상담사 '상담 가능 상품' 허용 목록 — 프로필 체크박스/B화면 태그 공통 기준.
 # 순서 = 노출 순서 (생활숙박시설 담보대출이 항상 최상단).
@@ -1991,13 +2001,22 @@ def get_buildings_cluster():
 
 @app.route("/api/ranking")
 @limiter.limit("20 per minute")
-def get_ranking():
+def get_ranking(_as_payload=False):
     """재방문 유인용 랭킹 — 이번 주 신고가 갱신 TOP5 + 거래량 TOP5.
     결과는 1시간 캐시(서버 재시작 시 초기화).
     """
+    master_payload = _master_stats_section("transaction_stats")
+    if master_payload and master_payload.get("ranking"):
+        return jsonify(master_payload["ranking"])
+
+    # [LEGACY] 원본 캐시가 비어 있거나 거래 섹션이 실패한 경우의 기존 랭킹 쿼리.
     import time as _time
     _cache = getattr(get_ranking, "_cache", None)
-    if _cache and _time.time() - _cache[0] < 3600:
+    if (
+        not _master_stats_is_rebuilding()
+        and _cache
+        and _time.time() - _cache[0] < 3600
+    ):
         return Response(_cache[1], mimetype="application/json")
 
     conn = None
@@ -2117,10 +2136,10 @@ def get_ranking():
                 for row in cur.fetchall()
             ]
 
-        result = json.dumps(
-            {"ok": True, "price_highs": price_highs, "most_traded": most_traded},
-            ensure_ascii=False, default=str
-        ).encode("utf-8")
+        payload = {"ok": True, "price_highs": price_highs, "most_traded": most_traded}
+        if _as_payload:
+            return payload
+        result = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         get_ranking._cache = (_time.time(), result)
         return Response(result, mimetype="application/json")
 
@@ -2999,6 +3018,11 @@ def submit_building():
     conn.commit()
     cur.close()
     conn.close()
+    try:
+        mark_master_stats_invalidated("user_verified_building")
+    except Exception as e:
+        # 건물 승인 커밋은 통계 표식 기록 실패와 분리해 보존한다.
+        print(f"[building-request] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
 
     # 명칭 미확정(name_pending)이면 이름까지 확정된 것처럼 오해하지 않도록 문구를 분리한다.
     if name_pending:
@@ -4269,6 +4293,7 @@ def request_correction():
     name_changed = False
     name_review = False
     name_message = ""
+    stats_changed = False
     if suggested_building_name:
         if api_bld_nm:
             if api_bld_nm != (building["building_name"] or ""):
@@ -4279,6 +4304,7 @@ def request_correction():
                      WHERE id=%s
                 """, (api_bld_nm, building["id"]))
                 name_changed = True
+                stats_changed = True
                 name_message = f" 건물명은 건축물대장에서 '{api_bld_nm}'(으)로 확인되어 반영했습니다."
             else:
                 if building.get("name_pending"):
@@ -4289,6 +4315,7 @@ def request_correction():
                             WHERE id=%s""",
                         (building["id"],),
                     )
+                    stats_changed = True
                 name_message = f" 건물명은 건축물대장 확인 결과 기존 명칭 '{api_bld_nm}'이 맞습니다."
         else:
             # API에 명칭이 없음 → 제안명은 기록만 하고 마스터는 그대로(지번 임시명 유지).
@@ -4305,6 +4332,7 @@ def request_correction():
             UPDATE transactions SET lodging_type=%s, lodging_type_detail=%s
             WHERE sgg_cd=%s AND REPLACE(umd_nm, ' ', '')=%s AND jibun=%s
         """, (label, detail, sgg_cd, umd_key, jibun))
+        stats_changed = True
 
     # 명칭 미확인 건은 'name_review' 상태로 남겨 관리자 이력에서 "명칭 확인 필요"로 노출한다.
     final_status = "name_review" if name_review else "verified"
@@ -4316,6 +4344,8 @@ def request_correction():
     conn.commit()
     cur.close()
     conn.close()
+    if stats_changed:
+        _mark_master_stats_invalidated_safely("request_correction")
 
     if changed:
         message = f"재검증 결과 '{old_label or '미확인'}' → '{label}'(으)로 확인되어 반영했습니다."
@@ -10066,6 +10096,8 @@ def operator_me_update():
     finally:
         cur.close()
         conn.close()
+    if reapproval:
+        _mark_master_stats_invalidated_safely("operator_me_reapproval")
     return jsonify({"ok": True, "reapproval_required": reapproval})
 
 
@@ -10971,6 +11003,7 @@ def operator_building_add():
     finally:
         cur.close()
         conn.close()
+    _mark_master_stats_invalidated_safely("operator_building_add")
     return jsonify({"ok": True})
 
 
@@ -11210,6 +11243,7 @@ def operator_building_delete(mbid):
         conn.close()
     if not deleted:
         return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+    _mark_master_stats_invalidated_safely("operator_building_delete")
     return jsonify({"ok": True})
 
 
@@ -13275,6 +13309,165 @@ def admin_buildings_list():
 
 _bld_full_stats_cache: dict = {"ts": 0.0, "data": None}
 _BLD_FULL_STATS_TTL = 300  # 5분 캐시
+
+# 통계 화면은 여러 무거운 집계를 동시에 사용한다. 개별 캐시가 서로 다른 시점의
+# 값을 내놓지 않도록, 데이터랩과 관리자용 원본은 이 캐시에서 한 번에 만든다.
+# 기존 개별 캐시는 [LEGACY] 폴백 경로로 남겨 둔다.
+_MASTER_STATS_CACHE_TTL = 30 * 60
+_MASTER_STATS_INVALIDATION_KEY = "master_stats_invalidation"
+_MASTER_STATS_INVALIDATION_CHECK_TTL = 10
+_MASTER_STATS_CACHE: dict = {
+    "ts": 0.0,
+    "data": {},
+    "sections": {},
+    "invalidation_token": None,
+}
+_MASTER_STATS_LOCK = threading.RLock()
+_MASTER_STATS_REBUILDING = threading.local()
+_MASTER_STATS_INVALIDATION_STATE = {"checked_at": 0.0, "token": None}
+
+
+def _master_stats_is_rebuilding():
+    return bool(getattr(_MASTER_STATS_REBUILDING, "active", False))
+
+
+def _master_stats_invalidation_token():
+    """별도 수집 프로세스가 남긴 무효화 신호를 짧게 폴링한다.
+
+    Gunicorn 워커와 수집 워크플로는 메모리를 공유하지 않는다. app_meta의 갱신
+    시각을 토큰으로 사용하면 새 스키마나 외부 비밀값 없이 다음 읽기에서 캐시를
+    안전하게 다시 만들 수 있다.
+    """
+    now = time.time()
+    state = _MASTER_STATS_INVALIDATION_STATE
+    if now - state["checked_at"] < _MASTER_STATS_INVALIDATION_CHECK_TTL:
+        return state["token"]
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT value, updated_at::text AS updated_at FROM app_meta WHERE key=%s",
+            (_MASTER_STATS_INVALIDATION_KEY,),
+        )
+        row = cur.fetchone()
+        token = (
+            f"{row.get('updated_at') or ''}:{row.get('value') or ''}"
+            if row else None
+        )
+        state.update({"checked_at": now, "token": token})
+        return token
+    except Exception:
+        # 무효화 표식을 읽지 못해도 마지막으로 알던 값은 유지하고, 기존 TTL이
+        # 만료되면 재계산한다. 통계 화면을 표식 조회 장애로 멈추지 않는다.
+        app.logger.warning("[master-stats] invalidation token read failed", exc_info=True)
+        state["checked_at"] = now
+        return state["token"]
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _master_stats_cache_is_valid():
+    if not _MASTER_STATS_CACHE["ts"]:
+        return False
+    if time.time() - _MASTER_STATS_CACHE["ts"] >= _MASTER_STATS_CACHE_TTL:
+        return False
+    return _MASTER_STATS_CACHE["invalidation_token"] == _master_stats_invalidation_token()
+
+
+def _master_stats_add_section(data, sections, name, builder):
+    try:
+        result = builder()
+        required_keys = {
+            "lodging_stats": ("rows",),
+            "consign_stats": ("items", "total"),
+            "closure_stats": ("items",),
+            "transaction_stats": ("volume_top", "price_change", "highest_price", "ranking"),
+            "collection_stats": ("lodging", "brhub"),
+        }
+        if name == "region_match":
+            if not isinstance(result, tuple) or len(result) != 6:
+                raise RuntimeError("주소 매칭 원본 형식이 올바르지 않습니다.")
+        elif (
+            not isinstance(result, dict)
+            or not all(key in result for key in required_keys.get(name, ()))
+            or (result.get("ok") is False)
+        ):
+            raise RuntimeError("통계 원본 응답 형식이 올바르지 않습니다.")
+        data[name] = result
+        sections[name] = {"status": "ok", "error": None}
+    except Exception as exc:
+        # 한 섹션 실패가 나머지 통계를 버리게 하지 않는다. 호출 API는 이 상태를
+        # 보고 각각의 [LEGACY] 로직으로 폴백한다.
+        app.logger.exception("[master-stats] %s rebuild failed", name)
+        sections[name] = {"status": "error", "error": str(exc)[:240]}
+
+
+def _rebuild_master_stats(*, force=False):
+    """통계 원본을 한 번에 재계산하고 섹션별 성공 여부를 남긴다."""
+    with _MASTER_STATS_LOCK:
+        if not force and _master_stats_cache_is_valid():
+            return _MASTER_STATS_CACHE
+
+        # 무효화 뒤 마스터의 특정 섹션만 실패한 경우에도 [LEGACY] 폴백이
+        # 무효화 이전의 개별 캐시를 내놓지 않도록 함께 비운다.
+        global _bld_full_stats_cache
+        _bld_full_stats_cache = {"ts": 0.0, "data": None}
+        _matched_lodging_region_cache.clear()
+        if hasattr(get_ranking, "_cache"):
+            delattr(get_ranking, "_cache")
+
+        _MASTER_STATS_REBUILDING.active = True
+        data = {}
+        sections = {}
+        try:
+            _master_stats_add_section(
+                data, sections, "lodging_stats",
+                lambda: _lodging_full_stats_payload().get_json() or {},
+            )
+            _master_stats_add_section(
+                data, sections, "region_match",
+                lambda: _matched_lodging_by_region(),
+            )
+            _master_stats_add_section(
+                data, sections, "consign_stats",
+                _consign_by_sido_payload,
+            )
+            _master_stats_add_section(
+                data, sections, "closure_stats",
+                lambda: _closure_rate_payload(data.get("region_match")),
+            )
+            _master_stats_add_section(
+                data, sections, "transaction_stats",
+                _transaction_master_stats_payload,
+            )
+            _master_stats_add_section(
+                data, sections, "collection_stats",
+                _collection_stats_payload,
+            )
+        finally:
+            _MASTER_STATS_REBUILDING.active = False
+
+        _MASTER_STATS_CACHE.update({
+            "ts": time.time(),
+            "data": data,
+            "sections": sections,
+            "invalidation_token": _master_stats_invalidation_token(),
+        })
+        return _MASTER_STATS_CACHE
+
+
+def _master_stats_section(name):
+    """유효한 섹션만 반환한다. 실패·만료 시에는 호출자가 레거시 경로를 쓴다."""
+    if _master_stats_is_rebuilding():
+        return None
+    cache = _MASTER_STATS_CACHE if _master_stats_cache_is_valid() else _rebuild_master_stats()
+    if cache["sections"].get(name, {}).get("status") == "ok":
+        return cache["data"].get(name)
+    return None
 GENERAL_LODGING_SUB_TYPES = ("일반호텔", "여관업", "여인숙업", "숙박업(생활)")
 
 
@@ -13327,8 +13520,17 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
 def _lodging_full_stats_payload():
     """건물마스터 용도별 세부 통계표 — 항상 전체 데이터 기준 (필터 무관, 5분 캐시)."""
     global _bld_full_stats_cache
+    master_payload = _master_stats_section("lodging_stats")
+    if master_payload is not None:
+        return jsonify(master_payload)
+
+    # [LEGACY] 마스터 캐시를 만들 수 없을 때도 기존 상세 집계를 그대로 제공한다.
     now = time.time()
-    if _bld_full_stats_cache["data"] and now - _bld_full_stats_cache["ts"] < _BLD_FULL_STATS_TTL:
+    if (
+        not _master_stats_is_rebuilding()
+        and _bld_full_stats_cache["data"]
+        and now - _bld_full_stats_cache["ts"] < _BLD_FULL_STATS_TTL
+    ):
         return jsonify(_bld_full_stats_cache["data"])
 
     conn = get_conn()
@@ -13848,6 +14050,7 @@ def admin_buildings_create():
     conn.commit()
     cur.close()
     conn.close()
+    _mark_master_stats_invalidated_safely("admin_buildings_create")
     return jsonify({"ok": True, "id": new_id})
 
 
@@ -13899,6 +14102,7 @@ def admin_buildings_update(building_id):
     conn.commit()
     cur.close()
     conn.close()
+    _mark_master_stats_invalidated_safely("admin_buildings_update")
     return jsonify({"ok": True})
 
 
@@ -13984,6 +14188,7 @@ def admin_buildings_delete(building_id):
     conn.commit()
     cur.close()
     conn.close()
+    _mark_master_stats_invalidated_safely("admin_buildings_delete")
     return jsonify({"ok": True})
 
 
@@ -14025,6 +14230,8 @@ def admin_buildings_bulk_update():
     conn.commit()
     cur.close()
     conn.close()
+    if updated:
+        _mark_master_stats_invalidated_safely("admin_buildings_bulk_update")
     return jsonify({"ok": True, "updated": updated})
 
 
@@ -14092,6 +14299,8 @@ def admin_buildings_bulk_delete():
 
     cur.close()
     conn.close()
+    if deleted:
+        _mark_master_stats_invalidated_safely("admin_buildings_bulk_delete")
     return jsonify({"ok": True, "deleted": deleted, "skipped": len(id_list) - deleted})
 
 
@@ -15840,6 +16049,8 @@ def admin_permits_cleanup():
         cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (ids,))
         deleted = cur.rowcount
         conn.commit()
+        if deleted:
+            _mark_master_stats_invalidated_safely("admin_permits_cleanup")
         return jsonify({
             "ok": True, "dry_run": False,
             "target_count": len(ids), "deleted": deleted,
@@ -16294,6 +16505,7 @@ def admin_create_building_from_lodging(permit_number):
     conn.commit()
     cur.close()
     conn.close()
+    _mark_master_stats_invalidated_safely("admin_create_building_from_lodging")
     return jsonify({"ok": True, "building_id": new_id})
 
 
@@ -17049,6 +17261,8 @@ def admin_transactions_update(tx_id):
     conn.commit()
     cur.close()
     conn.close()
+    if logged:
+        _mark_master_stats_invalidated_safely("admin_transactions_update")
     return jsonify({"ok": True, "logged": logged})
 
 
@@ -18593,6 +18807,7 @@ def admin_member_reapprove(member_type, member_id):
     memo = f"[재검토 승인] {datetime.now().strftime('%Y-%m-%d')}"
     conn = get_conn()
     cur = conn.cursor()
+    returning = "id, category" if member_type == "operator" else "id"
     try:
         cur.execute(f"""
             UPDATE {table}
@@ -18600,7 +18815,7 @@ def admin_member_reapprove(member_type, member_id):
                    admin_memo = CASE WHEN admin_memo IS NULL OR admin_memo = '' THEN %s
                                      ELSE admin_memo || E'\\n' || %s END
              WHERE id = %s AND status = 'pending'
-            RETURNING id
+             RETURNING {returning}
         """, [session.get("admin_user_id"), memo, memo, member_id])
         row = cur.fetchone()
         conn.commit()
@@ -18609,6 +18824,8 @@ def admin_member_reapprove(member_type, member_id):
         conn.close()
     if not row:
         return jsonify({"ok": False, "message": "재승인 대상(pending 상태)이 아닙니다."}), 404
+    if member_type == "operator" and row["category"] == "위탁운영":
+        _mark_master_stats_invalidated_safely("admin_operator_reapprove")
     return jsonify({"ok": True})
 
 
@@ -18787,9 +19004,18 @@ def admin_members_bulk_deactivate():
     conn = get_conn()
     cur = conn.cursor()
     updated = 0
+    operator_stats_changed = False
     try:
         for t, id_list in by_type.items():
             table = _BULK_MEMBER_TABLES[t]
+            if t == "operator":
+                cur.execute("""
+                    SELECT 1 FROM operators
+                    WHERE id = ANY(%s) AND status IS DISTINCT FROM %s
+                      AND status = 'approved' AND category = '위탁운영'
+                    LIMIT 1
+                """, [id_list, new_status[t]])
+                operator_stats_changed = bool(cur.fetchone())
             if memo_line:
                 cur.execute(
                     f"""UPDATE {table}
@@ -18809,6 +19035,8 @@ def admin_members_bulk_deactivate():
     finally:
         cur.close()
         conn.close()
+    if operator_stats_changed:
+        _mark_master_stats_invalidated_safely("admin_operators_bulk_deactivate")
     return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
 
 
@@ -18830,9 +19058,17 @@ def admin_members_bulk_reactivate():
     conn = get_conn()
     cur = conn.cursor()
     updated = 0
+    operator_stats_changed = False
     try:
         for t, id_list in by_type.items():
             table = _BULK_MEMBER_TABLES[t]
+            if t == "operator":
+                cur.execute("""
+                    SELECT 1 FROM operators
+                    WHERE id = ANY(%s) AND status = %s AND category = '위탁운영'
+                    LIMIT 1
+                """, [id_list, prev_status[t]])
+                operator_stats_changed = bool(cur.fetchone())
             cur.execute(f"UPDATE {table} SET status=%s WHERE id = ANY(%s) AND status=%s",
                         [new_status[t], id_list, prev_status[t]])
             updated += cur.rowcount
@@ -18844,6 +19080,8 @@ def admin_members_bulk_reactivate():
     finally:
         cur.close()
         conn.close()
+    if operator_stats_changed:
+        _mark_master_stats_invalidated_safely("admin_operators_bulk_reactivate")
     return jsonify({"ok": True, "success": updated, "failed": len(ids) - updated})
 
 
@@ -18877,6 +19115,7 @@ def admin_members_bulk_delete():
     conn = get_conn()
     cur = conn.cursor()
     deleted = 0
+    operator_stats_changed = False
     try:
         if by_type.get("pending"):
             cur.execute("DELETE FROM applications WHERE id = ANY(%s)", [by_type["pending"]])
@@ -18894,6 +19133,12 @@ def admin_members_bulk_delete():
             deleted += cur.rowcount
         if by_type.get("operator"):
             oid = by_type["operator"]
+            cur.execute("""
+                SELECT 1 FROM operators
+                WHERE id = ANY(%s) AND status = 'approved' AND category = '위탁운영'
+                LIMIT 1
+            """, [oid])
+            operator_stats_changed = bool(cur.fetchone())
             cur.execute("DELETE FROM applications WHERE linked_operator_id = ANY(%s)", [oid])
             # 운영업체 상담 배정 FK — 상담 이력은 보존, 업체만 NULL
             cur.execute("UPDATE operator_consult_requests SET routed_operator_id=NULL WHERE routed_operator_id = ANY(%s)", [oid])
@@ -18923,6 +19168,8 @@ def admin_members_bulk_delete():
     finally:
         cur.close()
         conn.close()
+    if operator_stats_changed:
+        _mark_master_stats_invalidated_safely("admin_operators_bulk_delete")
     return jsonify({"ok": True, "success": deleted, "failed": len(ids) - deleted})
 
 
@@ -19198,10 +19445,27 @@ def admin_member_detail_update(member_type, member_id):
 
     conn = get_conn()
     cur = conn.cursor()
+    operator_stats_changed = False
     try:
-        cur.execute(f"SELECT 1 FROM {table} WHERE id=%s", [member_id])
-        if not cur.fetchone():
+        if member_type == "operator":
+            cur.execute("SELECT status, category FROM operators WHERE id=%s", [member_id])
+        else:
+            cur.execute(f"SELECT 1 FROM {table} WHERE id=%s", [member_id])
+        existing = cur.fetchone()
+        if not existing:
             return jsonify({"ok": False, "message": "존재하지 않는 회원입니다."}), 404
+        if member_type == "operator":
+            old_status = existing["status"]
+            old_category = existing["category"]
+            new_status = updates.get("status", old_status)
+            new_category = updates.get("category", old_category)
+            operator_stats_changed = (
+                (old_status, old_category) != (new_status, new_category)
+                and (
+                    (old_status == "approved" and old_category == "위탁운영")
+                    or (new_status == "approved" and new_category == "위탁운영")
+                )
+            )
         set_clause = ", ".join(f"{k}=%s" for k in updates)
         cur.execute(f"UPDATE {table} SET {set_clause} WHERE id=%s",
                     list(updates.values()) + [member_id])
@@ -19213,6 +19477,8 @@ def admin_member_detail_update(member_type, member_id):
     finally:
         cur.close()
         conn.close()
+    if operator_stats_changed:
+        _mark_master_stats_invalidated_safely("admin_operator_detail_update")
     return jsonify({"ok": True})
 
 
@@ -19741,6 +20007,8 @@ def admin_applications_approve(app_id):
     conn.commit()
     cur.close()
     conn.close()
+    if atype == "operator":
+        _mark_master_stats_invalidated_safely("admin_operator_approval")
 
     if atype == "loan_consultant":
         # 승인 시 로그인 계정(이메일 ID + 임시비밀번호)도 함께 안내 — agent/operator와 동일 패턴
@@ -19967,6 +20235,7 @@ def admin_building_request_approve_name(req_id):
     finally:
         cur.close()
         conn.close()
+    _mark_master_stats_invalidated_safely("admin_building_request_approve_name")
     return jsonify({"ok": True, "building_name": name})
 
 
@@ -20272,12 +20541,21 @@ def stats_platform_summary():
 
 @app.route("/api/stats/price-change-top")
 @limiter.limit("30 per minute")
-def stats_price_change_top():
+def stats_price_change_top(_direction=None, _as_payload=False):
     """최근 30일 안의 동일 건물·주소·전용면적 거래 첫값 대비 최근값 변동 TOP5."""
-    direction = (request.args.get("direction") or "up").strip().lower()
+    direction = (
+        _direction
+        if _direction is not None
+        else (request.args.get("direction") or "up").strip().lower()
+    )
     if direction not in ("up", "down"):
         return jsonify({"ok": False, "message": "direction은 up 또는 down이어야 합니다."}), 400
 
+    master_payload = _master_stats_section("transaction_stats")
+    if master_payload and master_payload.get("price_change", {}).get(direction):
+        return jsonify(master_payload["price_change"][direction])
+
+    # [LEGACY] 원본 캐시의 거래 섹션이 없거나 실패했을 때의 기존 직접 집계.
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -20358,7 +20636,8 @@ def stats_price_change_top():
             }
             for row in cur.fetchall()
         ]
-        return jsonify({"ok": True, "direction": direction, "items": items})
+        payload = {"ok": True, "direction": direction, "items": items}
+        return payload if _as_payload else jsonify(payload)
     finally:
         cur.close()
         conn.close()
@@ -20366,12 +20645,22 @@ def stats_price_change_top():
 
 @app.route("/api/stats/highest-price-top")
 @limiter.limit("30 per minute")
-def stats_highest_price_top():
+def stats_highest_price_top(_order=None, _as_payload=False):
     """건물별 역대 최고·최저 거래가 TOP5."""
-    order = (request.args.get("order") or "highest").strip().lower()
+    order = (
+        _order
+        if _order is not None
+        else (request.args.get("order") or "highest").strip().lower()
+    )
     if order not in ("highest", "lowest"):
         return jsonify({"ok": False, "message": "order는 highest 또는 lowest여야 합니다."}), 400
     price_order = "DESC" if order == "highest" else "ASC"
+
+    master_payload = _master_stats_section("transaction_stats")
+    if master_payload and master_payload.get("highest_price", {}).get(order):
+        return jsonify(master_payload["highest_price"][order])
+
+    # [LEGACY] 원본 캐시의 거래 섹션이 없거나 실패했을 때의 기존 직접 집계.
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -20421,7 +20710,8 @@ def stats_highest_price_top():
             }
             for row in cur.fetchall()
         ]
-        return jsonify({"ok": True, "order": order, "items": items})
+        payload = {"ok": True, "order": order, "items": items}
+        return payload if _as_payload else jsonify(payload)
     finally:
         cur.close()
         conn.close()
@@ -20433,10 +20723,21 @@ _MATCHED_LODGING_REGION_CACHE_TTL = 300  # seconds; 전국 주소 매칭 재계�
 
 def _matched_lodging_by_region(*, exclude_general=False):
     """관리자 통계와 같은 주소 우선순위로 신고사업장을 지역·전국 집계에 연결한다."""
+    if not exclude_general:
+        master_payload = _master_stats_section("region_match")
+        if master_payload is not None:
+            return master_payload
+
+    # [LEGACY] 지역별 주소 매칭 원본. 마스터 캐시 재생성 중에는 이 경로를
+    # 강제로 다시 계산해 개별 5분 캐시의 오래된 값을 섞지 않는다.
     cache_key = bool(exclude_general)
     now = time.time()
     cached = _matched_lodging_region_cache.get(cache_key)
-    if cached and now - cached["ts"] < _MATCHED_LODGING_REGION_CACHE_TTL:
+    if (
+        not _master_stats_is_rebuilding()
+        and cached
+        and now - cached["ts"] < _MATCHED_LODGING_REGION_CACHE_TTL
+    ):
         return cached["data"]
 
     conn = get_conn()
@@ -20520,11 +20821,9 @@ def _matched_lodging_by_region(*, exclude_general=False):
         conn.close()
 
 
-@app.route("/api/stats/closure-rate-by-region")
-@limiter.limit("20 per minute")
-def stats_closure_rate_by_region():
-    """시군구별 매칭 숙박업체 폐업률 TOP5(표본 5건 이상)."""
-    _, region_map, _, _, _, _ = _matched_lodging_by_region()
+def _closure_rate_payload(region_match=None):
+    """[LEGACY] 시군구별 매칭 숙박업체 폐업률 TOP5(표본 5건 이상)."""
+    _, region_map, _, _, _, _ = region_match or _matched_lodging_by_region()
     items = []
     for region, permits in region_map.items():
         total_count = len(permits)
@@ -20541,13 +20840,27 @@ def stats_closure_rate_by_region():
             "closure_rate": round(closed_count / total_count * 100, 1),
         })
     items.sort(key=lambda item: (-item["closure_rate"], -item["total_count"], item["region"]))
-    return jsonify({"ok": True, "items": items[:5], "minimum_sample_size": 5})
+    return {"ok": True, "items": items[:5], "minimum_sample_size": 5}
+
+
+@app.route("/api/stats/closure-rate-by-region")
+@limiter.limit("20 per minute")
+def stats_closure_rate_by_region():
+    master_payload = _master_stats_section("closure_stats")
+    if master_payload is not None:
+        return jsonify(master_payload)
+    return jsonify(_closure_rate_payload())
 
 
 @app.route("/api/stats/consign-by-sido")
 @limiter.limit("20 per minute")
-def stats_consign_by_sido():
+def stats_consign_by_sido(_as_payload=False):
     """생활숙박시설의 승인된 위탁운영 등록 현황을 시도별로 집계한다."""
+    master_payload = _master_stats_section("consign_stats")
+    if master_payload is not None:
+        return jsonify(master_payload)
+
+    # [LEGACY] 원본 캐시의 위탁 섹션 실패 시에도 기존 SQL 집계를 계속 제공한다.
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -20633,15 +20946,171 @@ def stats_consign_by_sido():
                 for operator_id in stats["operator_ids"]
             },
         })
-        return jsonify({
+        payload = {
             "ok": True,
             "items": items,
             "total": total,
             "is_partial": True,
-        })
+        }
+        return payload if _as_payload else jsonify(payload)
     finally:
         cur.close()
         conn.close()
+
+
+def _consign_by_sido_payload():
+    """마스터 재계산은 HTTP 레이트리밋 래퍼 없이 원본 집계를 직접 호출한다."""
+    handler = getattr(stats_consign_by_sido, "__wrapped__", stats_consign_by_sido)
+    return handler(_as_payload=True)
+
+
+def _transaction_master_stats_payload():
+    """가격변동·최고가·거래량 랭킹을 같은 재계산 시점에 묶는다.
+
+    HTTP API의 rate limit은 외부 요청에만 적용해야 한다. 여기서는 데코레이터를
+    우회해 순수 집계 경로의 dict를 얻고, 형식 검증은 공통 섹션 처리에서 한다.
+    """
+    price_handler = getattr(stats_price_change_top, "__wrapped__", stats_price_change_top)
+    highest_handler = getattr(stats_highest_price_top, "__wrapped__", stats_highest_price_top)
+    ranking_handler = getattr(get_ranking, "__wrapped__", get_ranking)
+    price_change = {
+        direction: price_handler(_direction=direction, _as_payload=True)
+        for direction in ("up", "down")
+    }
+    highest_price = {
+        order: highest_handler(_order=order, _as_payload=True)
+        for order in ("highest", "lowest")
+    }
+    ranking = ranking_handler(_as_payload=True)
+    return {
+        "volume_top": ranking.get("most_traded") or [],
+        "price_change": price_change,
+        "highest_price": highest_price,
+        "ranking": ranking,
+    }
+
+
+def _collection_stats_payload():
+    """수집 작업의 마지막 갱신 상태를 원본 창고 카드용으로 읽는다."""
+    key_map = {
+        "lodging": "lodging_last_sync",
+        "brhub": "brhub_progress",
+    }
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT key, value, updated_at::text AS updated_at FROM app_meta WHERE key = ANY(%s)",
+            (list(key_map.values()),),
+        )
+        rows = {row["key"]: row for row in cur.fetchall()}
+        result = {}
+        for label, key in key_map.items():
+            row = rows.get(key) or {}
+            value = row.get("value")
+            try:
+                payload = json.loads(value) if value else {}
+            except (TypeError, ValueError):
+                payload = {}
+            result[label] = {
+                "updated_at": payload.get("finished_at") or payload.get("updated_at") or row.get("updated_at"),
+                "completed": payload.get("completed"),
+                "total": payload.get("total") or payload.get("found_total"),
+            }
+        return result
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _master_stats_admin_snapshot(*, force=False):
+    """관리자 원본 창고가 표시할 안전한 요약만 만든다."""
+    cache = _rebuild_master_stats(force=force)
+    now = time.time()
+    refreshed_at = (
+        datetime.fromtimestamp(cache["ts"]).strftime("%Y-%m-%d %H:%M:%S")
+        if cache["ts"] else None
+    )
+    expires_in_seconds = max(
+        0,
+        int(_MASTER_STATS_CACHE_TTL - (now - cache["ts"])),
+    ) if cache["ts"] else 0
+    data = cache["data"]
+
+    lodging_total = next(
+        (row for row in (data.get("lodging_stats", {}).get("rows") or []) if row.get("type") == "전체"),
+        {},
+    )
+    region_match = data.get("region_match")
+    all_permits = region_match[3] if region_match else {}
+    active_permits = [
+        permit for permit in all_permits.values()
+        if "폐업" not in (permit.get("biz_status_name") or "")
+    ]
+    consign_total = data.get("consign_stats", {}).get("total") or {}
+    closure_items = data.get("closure_stats", {}).get("items") or []
+    transaction_data = data.get("transaction_stats", {})
+    collection_data = data.get("collection_stats", {})
+
+    summaries = {
+        "lodging_stats": (
+            f"건물 {int(lodging_total.get('building_count') or 0):,}건 · "
+            f"호실 {int(lodging_total.get('units') or 0):,}실"
+        ),
+        "region_match": (
+            f"매칭 신고 {len(all_permits):,}건 · 영업중 {len(active_permits):,}건"
+        ),
+        "consign_stats": (
+            f"위탁업체 {int(consign_total.get('operator_count') or 0):,}곳 · "
+            f"위탁호실 {int(consign_total.get('operator_units') or 0):,}실"
+        ),
+        "closure_stats": f"표본 충족 지역 {len(closure_items):,}곳",
+        "transaction_stats": (
+            f"거래량 TOP {len(transaction_data.get('volume_top') or []):,}건 · "
+            f"가격변동 {len(transaction_data.get('price_change', {}).get('up', {}).get('items') or []):,}건"
+        ),
+        "collection_stats": (
+            "숙박업 "
+            f"{collection_data.get('lodging', {}).get('updated_at') or '-'} · "
+            "건축HUB "
+            f"{collection_data.get('brhub', {}).get('updated_at') or '-'}"
+        ),
+    }
+    labels = {
+        "lodging_stats": "숙박 통계",
+        "region_match": "주소 매칭",
+        "consign_stats": "위탁 현황",
+        "closure_stats": "폐업 현황",
+        "transaction_stats": "거래 통계",
+        "collection_stats": "수집 현황",
+    }
+    sections = [
+        {
+            "key": key,
+            "label": labels[key],
+            "status": cache["sections"].get(key, {}).get("status", "error"),
+            "error": cache["sections"].get(key, {}).get("error"),
+            "summary": summaries[key],
+        }
+        for key in labels
+    ]
+    return {
+        "ok": True,
+        "refreshed_at": refreshed_at,
+        "expires_in_seconds": expires_in_seconds,
+        "sections": sections,
+    }
+
+
+@app.route("/api/admin/stats/master", methods=["GET", "POST"])
+@require_admin
+@limiter.limit("2 per minute", methods=["POST"])
+def admin_master_stats():
+    """통계 원본 창고 상태 조회와 관리자 수동 새로고침."""
+    return jsonify(_master_stats_admin_snapshot(force=request.method == "POST"))
 
 
 @app.route("/api/stats/registration-rate")
@@ -20653,6 +21122,26 @@ def stats_registration_rate():
     미스(초기 기동 직후)일 때만 road_norm 기준 SQL 폴백으로 근사치 반환.
     응답 필드명은 하위호환을 위해 biz_units로 유지.
     """
+    master_payload = _master_stats_section("lodging_stats")
+    if master_payload:
+        total_row = next(
+            (row for row in master_payload.get("rows") or [] if row.get("type") == "전체"),
+            {},
+        )
+        legacy_rooms = int(total_row.get("report_rate_room_count") or 0)
+        legacy_units = int(total_row.get("report_rate_units") or 0)
+        return jsonify({
+            "ok": True,
+            "buildings": total_row.get("report_rate_building_count", 0),
+            "total_units": legacy_units,
+            "biz_units": legacy_rooms,
+            "rate": round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None,
+            "general_excluded": True,
+        })
+
+    # [LEGACY] 통합 원본의 숙박 섹션 자체가 실패했을 때만 기존 5분 캐시를
+    # 사용한다. 통합 원본을 재생성할 때는 이 캐시도 먼저 비우므로, 외부
+    # 무효화 표식 이전 값이 재사용되지는 않는다.
     global _bld_full_stats_cache
     cached = _bld_full_stats_cache.get("data")
     if cached and (time.time() - _bld_full_stats_cache["ts"] < _BLD_FULL_STATS_TTL):

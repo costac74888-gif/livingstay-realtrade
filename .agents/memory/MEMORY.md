@@ -13,6 +13,7 @@
 - [Best-effort aux writes need SAVEPOINT](psycopg2-savepoint-aux-writes.md) — an optional secondary UPDATE (e.g. geocode after INSERT) must be SAVEPOINT-wrapped; else its error aborts the whole psycopg2 txn and the main commit fails (swallowing the exception isn't enough).
 - [Static HTML served via Flask routes](static-html-serving.md) — HTML pages go through _serve_app_shell/_serve_static_html (not raw /static/*.html); JS/CSS cache-busting = _inject_asset_version appends ?v=SERVER_BOOT_V at serve time.
 - [Detached bg jobs from gunicorn](detached-bg-jobs-gunicorn.md) — long admin jobs need detached Popen(start_new_session)+DB heartbeat+run_id fencing; worker threads die on gunicorn WORKER TIMEOUT; DB-side guards beat memory:// limiter on autoscale.
+- [마스터 통계 캐시 무효화](master-stats-cache-invalidation.md) — 별도 수집 프로세스가 통계 원본을 바꾸면 app_meta 신호로 각 앱 워커의 메모리 캐시를 갱신해야 한다.
 - [Admin auth model](admin-auth.md) — /admin uses admin_users email/pw (session["admin"]+admin_user_id); seed ADMIN/ADMIN only when table fully empty (atomic WHERE NOT EXISTS); login rate-limited so avoid rapid re-login in tests (resets on app restart).
 - [prod map 0 buildings / prod data lag](prod-geo-empty.md) — phone hits prod URL with a SEPARATE prod DB: empty map (NULL lat/lng) and 표제부 "-" are prod-wide data-lag issues, not mobile CSS; dev backfills never reach prod.
 - [소상공인 상가업소 API](sbiz-store-api.md) — storeListInBuilding 키는 25자리 bldMngNo(≠표제부 mgmBldrgstPk); 건물 조회는 storeListInPnu(PNU 19자리); type=json은 403 → XML만.; 중개사표준데이터 필드/한도/키반영지연도 같은 파일

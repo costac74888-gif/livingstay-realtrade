@@ -13,6 +13,7 @@ python migrate_regions.py  # 그 다음 기존 행 채우기
 """
 
 from db import get_conn
+from stats_cache import mark_master_stats_invalidated
 
 
 def migrate():
@@ -31,6 +32,11 @@ def migrate():
     """)
     updated = cur.rowcount
     conn.commit()
+    if updated:
+        try:
+            mark_master_stats_invalidated("migrate_regions")
+        except Exception as e:
+            print(f"[migrate_regions] 통계 원본 캐시 표식 갱신 실패: {e}")
 
     cur.execute("SELECT COUNT(*) c FROM transactions WHERE si_do IS NULL")
     remaining = cur.fetchone()["c"]

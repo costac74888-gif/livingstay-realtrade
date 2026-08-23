@@ -24,6 +24,20 @@ import sys
 import psycopg2
 import psycopg2.extras
 
+from stats_cache import mark_master_stats_invalidated
+
+
+def _signal_prod_stats_change():
+    """운영 DB에 커밋된 변경을 알리되 표식 실패는 병합을 실패시키지 않는다."""
+    try:
+        mark_master_stats_invalidated(
+            "merge_dev_to_prod",
+            database_url=os.environ["PROD_DATABASE_URL"],
+        )
+        print("  통계 원본 캐시 무효화 표식을 갱신했습니다.")
+    except Exception as exc:
+        print(f"  통계 원본 캐시 표식 갱신 실패: {repr(exc)[:200]}")
+
 
 def get_dev_conn():
     url = os.environ.get("DATABASE_URL")
@@ -142,6 +156,8 @@ def merge_buildings(dev_cur, prod_conn, prod_cur, dry_run):
         inserted += prod_cur.rowcount
 
     prod_conn.commit()
+    if inserted:
+        _signal_prod_stats_change()
     print(f"  ✅ 실제 INSERT 완료: {inserted}건")
     return inserted, 0
 
@@ -222,6 +238,8 @@ def sync_lodging_types(dev_cur, prod_conn, prod_cur, dry_run):
         """, (lt, detail, sub, prod_id))
         updated += prod_cur.rowcount
     prod_conn.commit()
+    if updated:
+        _signal_prod_stats_change()
     print(f"  ✅ 실제 UPDATE 완료: {updated}건")
     return updated, skipped, not_found
 
@@ -254,27 +272,35 @@ def merge_transactions(dev_cur, prod_conn, prod_cur, dry_run):
     dev_rows = dev_cur.fetchall()
     print(f"  개발 DB 거래: {len(dev_rows)}건")
 
-    new_rows = [r for r in dev_rows if r[0] not in prod_raw_keys]  # r[0] = raw_key
+    raw_key_idx = tx_cols.index("raw_key")
+    new_rows = [r for r in dev_rows if r[raw_key_idx] not in prod_raw_keys]
     print(f"  → 신규 INSERT 대상: {len(new_rows)}건")
 
     if dry_run:
         return len(new_rows)
 
     cols_str = ", ".join(tx_cols)
-    placeholders = ", ".join(["%s"] * len(tx_cols))
-    insert_sql = f"""
-        INSERT INTO transactions ({cols_str})
-        VALUES ({placeholders})
-        ON CONFLICT (raw_key) DO NOTHING
-    """
 
     batch_size = 500
     inserted = 0
     for i in range(0, len(new_rows), batch_size):
         batch = new_rows[i:i + batch_size]
-        prod_cur.executemany(insert_sql, batch)
-        inserted += sum(1 for _ in batch)  # rowcount not reliable for executemany
+        psycopg2.extras.execute_values(
+            prod_cur,
+            f"""
+                INSERT INTO transactions ({cols_str})
+                VALUES %s
+                ON CONFLICT (raw_key) DO NOTHING
+                RETURNING raw_key
+            """,
+            batch,
+            page_size=len(batch),
+        )
+        inserted_batch = len(prod_cur.fetchall())
+        inserted += inserted_batch
         prod_conn.commit()
+        if inserted_batch:
+            _signal_prod_stats_change()
         print(f"  진행: {min(i + batch_size, len(new_rows))}/{len(new_rows)}건", flush=True)
 
     print(f"\n  ✅ 실제 INSERT 완료: {inserted}건")

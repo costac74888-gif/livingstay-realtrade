@@ -34,6 +34,7 @@ import time
 from db import get_conn
 from address_utils import BjdongMap
 from building_registry import classify_lodging_type
+from stats_cache import mark_master_stats_invalidated
 
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 
@@ -87,6 +88,7 @@ def reclassify(force: bool, dry_run: bool):
                 SET lodging_type = %s, lodging_type_detail = %s, verified_at = NOW()
                 WHERE id = %s
             """, (label, detail, row["id"]))
+            changed = cur.rowcount > 0
             # 이 건물에 이미 쌓인 실거래에도 라벨을 같이 반영.
             # 지번 키가 아니라 '건물명+sgg_cd+jibun'으로 반영한다 (docstring 참조):
             #  - 마스터 umd_nm(정규화)과 실거래 umd_nm(RTMS 원문)이 공백 표기가 달라 지번키가 안 맞음
@@ -95,7 +97,13 @@ def reclassify(force: bool, dry_run: bool):
                 UPDATE transactions SET lodging_type = %s, lodging_type_detail = %s
                 WHERE building_name = %s AND sgg_cd = %s AND jibun = %s
             """, (label, detail, row["building_name"], row["sgg_cd"], row["jibun"]))
+            changed = cur.rowcount > 0 or changed
             conn.commit()
+            if changed:
+                try:
+                    mark_master_stats_invalidated("reclassify_buildings")
+                except Exception as e:
+                    print(f"[reclassify_buildings] 통계 원본 캐시 표식 갱신 실패: {e}")
 
         time.sleep(0.1)
 
@@ -161,7 +169,13 @@ def reclassify_unmatched(dry_run: bool):
                 WHERE sgg_cd = %s AND umd_nm = %s AND jibun = %s AND lodging_type IS NULL
             """, (label, detail, row["sgg_cd"], row["umd_nm"], row["jibun"]))
             updated_tx += cur.rowcount
+            changed = cur.rowcount > 0
             conn.commit()
+            if changed:
+                try:
+                    mark_master_stats_invalidated("reclassify_buildings_unmatched")
+                except Exception as e:
+                    print(f"[reclassify_buildings] 통계 원본 캐시 표식 갱신 실패: {e}")
 
         time.sleep(0.1)
 

@@ -1007,6 +1007,51 @@
 
     function num(n) { return (n || 0).toLocaleString("ko-KR"); }
 
+    async function loadMasterStats(force) {
+      const grid = document.getElementById("masterStatsGrid");
+      const meta = document.getElementById("masterStatsMeta");
+      const refreshBtn = document.getElementById("masterStatsRefresh");
+      if (!grid || !meta) return;
+      if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = force ? "갱신 중…" : "새로고침";
+      }
+      try {
+        const res = await fetch("/api/admin/stats/master", {
+          method: force ? "POST" : "GET",
+          headers: force ? { "Content-Type": "application/json" } : undefined,
+        });
+        if (!res.ok) throw new Error("master stats fetch failed");
+        const data = await res.json();
+        const ttl = Math.max(0, Number(data.expires_in_seconds || 0));
+        const minutes = Math.floor(ttl / 60);
+        const seconds = ttl % 60;
+        meta.textContent = `마지막 갱신 ${data.refreshed_at || "-"} · 만료까지 ${minutes}분 ${seconds}초`;
+        grid.innerHTML = (data.sections || []).map((section) => {
+          const isOk = section.status === "ok";
+          const color = isOk ? "#2E7D32" : "#B3261E";
+          const state = isOk ? "정상" : "폴백";
+          const error = !isOk && section.error ? `<div style="font-size:10px; color:#B3261E; margin-top:4px;">${dgEscape(section.error)}</div>` : "";
+          return `<div style="border:1px solid #DDE1E6; border-radius:8px; padding:10px; min-width:0;">
+            <div style="display:flex; justify-content:space-between; gap:6px; align-items:center; font-size:12px;">
+              <b>${dgEscape(section.label || "-")}</b>
+              <span style="color:${color}; font-weight:700;">${state}</span>
+            </div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.45;">${dgEscape(section.summary || "-")}</div>
+            ${error}
+          </div>`;
+        }).join("") || '<div class="stats-loading">원본 상태가 없습니다.</div>';
+      } catch (e) {
+        meta.textContent = "원본 상태를 불러오지 못했습니다.";
+        grid.innerHTML = '<div class="stats-loading">기존 통계 경로로 표시 중입니다.</div>';
+      } finally {
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = "새로고침";
+        }
+      }
+    }
+
     function renderStats(d, mapBld) {
       mapBld = mapBld || {};
       const m = d.members || {};
@@ -1031,6 +1076,17 @@
           <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
         <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
+
+        <section class="stats-card stats-card-wide" id="masterStatsCard">
+          <h3 class="stats-card-title" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            데이터 원본 창고
+            <span id="masterStatsMeta" class="stats-card-hint">불러오는 중…</span>
+            <button type="button" class="stats-toggle-btn" id="masterStatsRefresh" style="margin-left:auto;">새로고침</button>
+          </h3>
+          <div id="masterStatsGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:10px;">
+            <div class="stats-loading">원본 상태를 불러오는 중…</div>
+          </div>
+        </section>
 
         <div class="stats-kpi-row">
           <div class="stats-kpi">
@@ -1122,6 +1178,9 @@
           </section>
         </div>
       `;
+
+      loadMasterStats(false);
+      document.getElementById("masterStatsRefresh").addEventListener("click", () => loadMasterStats(true));
 
       fetch("/api/admin/sync-progress-summary").then(r => r.json()).then(d => {
         if (!d.ok) return;

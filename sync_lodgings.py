@@ -34,6 +34,7 @@ from addr_norm import (
     normalize_jibun_prefix,
 )
 from db import get_conn
+from stats_cache import mark_master_stats_invalidated
 from email_util import send_email
 from lodging_categories import (
     TARGET_LODGING_HYGIENE_TYPES,
@@ -178,6 +179,7 @@ def _mark_last_sync(cur, conn, total):
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     """, (LAST_SYNC_META_KEY, payload))
     conn.commit()
+    _signal_stats_change()
 
 
 def send_room_expiry_alerts(today=None):
@@ -495,6 +497,18 @@ def _redact(text):
     return text.replace(key, "***") if key else text
 
 
+def _signal_stats_change():
+    """커밋된 원본 변경을 알리되 표식 실패는 배치를 실패시키지 않는다."""
+    try:
+        mark_master_stats_invalidated("lodgings")
+        print("[lodgings] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+    except Exception as exc:
+        print(
+            f"[lodgings] 통계 원본 캐시 표식 갱신 실패: "
+            f"{_redact(str(exc))[:300]}"
+        )
+
+
 def _fetch_page(key, page, num_rows):
     resp = requests.get(API_URL, params={
         "serviceKey": key,
@@ -592,6 +606,35 @@ def _upsert(cur, it):
             biz_name_norm = EXCLUDED.biz_name_norm,
             source_updated_at = EXCLUDED.source_updated_at,
             updated_at = NOW()
+         WHERE (
+             lodging_registry.biz_name,
+             lodging_registry.road_address,
+             lodging_registry.jibun_address,
+             lodging_registry.permit_date,
+             lodging_registry.biz_status_name,
+             lodging_registry.biz_status_detail,
+             lodging_registry.room_count,
+             lodging_registry.hygiene_type,
+             lodging_registry.phone,
+             lodging_registry.road_norm,
+             lodging_registry.jibun_norm,
+             lodging_registry.biz_name_norm,
+             lodging_registry.source_updated_at
+         ) IS DISTINCT FROM (
+             EXCLUDED.biz_name,
+             EXCLUDED.road_address,
+             EXCLUDED.jibun_address,
+             EXCLUDED.permit_date,
+             EXCLUDED.biz_status_name,
+             EXCLUDED.biz_status_detail,
+             EXCLUDED.room_count,
+             EXCLUDED.hygiene_type,
+             EXCLUDED.phone,
+             EXCLUDED.road_norm,
+             EXCLUDED.jibun_norm,
+             EXCLUDED.biz_name_norm,
+             EXCLUDED.source_updated_at
+         )
     """, (biz_name, permit_number, road_address, jibun_address,
           (it.get("LCPMT_YMD") or "").strip() or None,
           (it.get("SALS_STTS_NM") or "").strip() or None,
@@ -602,7 +645,7 @@ def _upsert(cur, it):
           normalize_jibun_prefix(jibun_address),
           normalize_name(biz_name),
           (it.get("DAT_UPDT_PNT") or "").strip() or None))
-    return True
+    return bool(cur.rowcount)
 
 
 def _lodging_item_match_keys(it):
@@ -697,7 +740,11 @@ def reindex_lodging_norms():
             )
             updated += cur.rowcount
         conn.commit()
+        if updated:
+            _signal_stats_change()
         renamed = refresh_auto_building_names(conn)
+        if renamed:
+            _signal_stats_change()
         print(f"[lodgings] 정규화 키 재계산 완료 — 전체 {len(rows)}건, 변경 {updated}건")
         print(f"[lodgings] 신고 기준 자동명칭 재계산 완료 — 변경 {renamed}건")
         return updated
@@ -750,6 +797,8 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 print(f"[lodgings] 일일 소프트 캡({max_calls}건) 도달 — 내일 이어서 진행 "
                       f"(다음 페이지 {page} 저장됨)")
                 renamed = _refresh_daily_auto_building_names(conn, daily_match_keys)
+                if renamed:
+                    _signal_stats_change()
                 print(f"[lodgings] 오늘 처리분 신고 기준 자동명칭 반영 — 변경 {renamed}건")
                 return False, processed, calls_today
 
@@ -768,7 +817,9 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
-                refresh_auto_building_names(conn)
+                renamed = refresh_auto_building_names(conn)
+                if renamed:
+                    _signal_stats_change()
                 print(f"[lodgings] 전체 수집 완료 — 대상 숙박업 누적 {total_rows}건")
                 return True, processed, calls_today
 
@@ -778,12 +829,15 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
 
             saved = 0
             for it in items:
-                if _upsert(cur, it):
+                changed = _upsert(cur, it)
+                if changed:
                     saved += 1
-                    match_keys = _lodging_item_match_keys(it)
-                    if match_keys:
-                        daily_match_keys.add(match_keys)
+                match_keys = _lodging_item_match_keys(it)
+                if match_keys:
+                    daily_match_keys.add(match_keys)
             conn.commit()
+            if saved:
+                _signal_stats_change()
             processed += saved
             page += 1
             _save_progress(cur, conn, page, total_count)
@@ -798,7 +852,9 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
-                refresh_auto_building_names(conn)
+                renamed = refresh_auto_building_names(conn)
+                if renamed:
+                    _signal_stats_change()
                 print(f"[lodgings] 전체 수집 완료 — 대상 숙박업 누적 {total_rows}건")
                 return True, processed, calls_today
 

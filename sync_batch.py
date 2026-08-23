@@ -31,6 +31,7 @@ import requests
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
+from stats_cache import mark_master_stats_invalidated as _mark_master_stats_invalidated
 
 # ------------------------------------------------------------------
 # 설정값 — API 키는 Replit Secrets(환경변수)에서 읽음
@@ -240,6 +241,7 @@ def prepare_master_addresses(region_kw: str | None = None):
     cur.close()
     conn.close()
     print(f"[STEP1] 주소 보강 완료: {updated}/{len(targets)}건")
+    return updated
 
 
 # ------------------------------------------------------------------
@@ -597,6 +599,14 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
     cur.close()
     conn.close()
 
+    if stats["inserted"] > 0:
+        try:
+            _mark_master_stats_invalidated("transactions")
+            print("[STEP2] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+        except Exception as e:
+            # 실거래 적재 성공은 캐시 표식 문제와 분리해 보존한다.
+            print(f"[STEP2] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
+
     print(f"[STEP2] {'일일 한도 도달로 중단' if capped else '완료'} — 신규 {stats['inserted']}건 "
           f"(마스터매칭 {stats['matched_master']} / 건축HUB보완 {stats['matched_bld']} / "
           f"미매칭제외 {stats['unmatched']} / 429실패 {rate_limited})")
@@ -710,6 +720,13 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
     cur.close()
     conn.close()
 
+    if stats["inserted"] > 0:
+        try:
+            _mark_master_stats_invalidated("transaction_retry")
+            print("[RETRY] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+        except Exception as e:
+            print(f"[RETRY] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
+
     print(f"[RETRY] 종료 — 남은 실패큐 {remaining}건 "
           f"(누적 신규 {stats['inserted']}건, 마스터매칭 {stats['matched_master']})", flush=True)
 
@@ -754,6 +771,13 @@ if __name__ == "__main__":
         # 실패 큐만 재시도 — 신규 수집 없이 429로 놓친 (시군구, 거래년월)만 backoff로 채운다.
         retry_failed_requests(bjdong=bjdong_map, base_sleep=(args.sleep or 1.0))
     else:
-        prepare_master_addresses(region_kw=args.region)
+        address_updates = prepare_master_addresses(region_kw=args.region)
+        if address_updates > 0:
+            try:
+                _mark_master_stats_invalidated("master_address_enrichment")
+                print("[STEP1] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+            except Exception as e:
+                # 주소 보강 커밋은 캐시 표식 기록 문제와 분리해 보존한다.
+                print(f"[STEP1] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
         sync_transactions(months=args.months, bjdong=bjdong_map, sgg_filter=sgg_filter,
                           progress_key=args.progress_key)

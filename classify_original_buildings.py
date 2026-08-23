@@ -21,6 +21,7 @@ classify_original_buildings.py — source='original' 미분류 건물 재분류 
 import argparse
 import os
 import psycopg2
+from stats_cache import mark_master_stats_invalidated
 
 NAME_TOURIST = r'콘도미니엄|콘도|호스텔|게스트하우스|호텔'
 ADDR_TOURIST = r'관광호텔|가족호텔|휴양콘도|호스텔'
@@ -101,6 +102,11 @@ def main():
     cur.execute(UPDATE_SQL, params)
     updated = cur.rowcount
     conn.commit()
+    if updated:
+        try:
+            mark_master_stats_invalidated("classify_original_buildings")
+        except Exception as e:
+            print(f"[classify_original_buildings] 통계 원본 캐시 표식 갱신 실패: {e}")
     print(f"\n✅ UPDATE 완료: {updated}건")
 
     # 검증: 분류 후 잔여 미분류 건수

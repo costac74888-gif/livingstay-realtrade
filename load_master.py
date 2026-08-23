@@ -19,6 +19,7 @@ import sys
 import argparse
 import pandas as pd
 from db import get_conn, init_db
+from stats_cache import mark_master_stats_invalidated
 
 
 def extract_sgg_text(addr: str):
@@ -54,6 +55,7 @@ def load_master_file(xlsx_path: str, min_units: int = 30):
     cur = conn.cursor()
 
     cur.execute("DELETE FROM master_buildings")  # 매번 최신 마스터파일로 전체 교체
+    deleted = cur.rowcount
 
     inserted = 0
     for _, row in kept.iterrows():
@@ -70,6 +72,11 @@ def load_master_file(xlsx_path: str, min_units: int = 30):
         inserted += 1
 
     conn.commit()
+    if deleted or inserted:
+        try:
+            mark_master_stats_invalidated("load_master")
+        except Exception as e:
+            print(f"[load_master] 통계 원본 캐시 표식 갱신 실패: {e}")
 
     # 배치 대상 시군구 목록 미리 확인
     cur.execute("SELECT sgg_text, COUNT(*) c FROM master_buildings GROUP BY sgg_text ORDER BY c DESC")

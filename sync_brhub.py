@@ -47,7 +47,10 @@ from address_utils import normalize_umd_nm
 from building_registry import _find_categories, _combine_labels
 from lodging_matching import refresh_auto_building_names
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 완전히 동일한 로직을 재사용
-from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
+from sync_lodgings import (
+    _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC,
+)
+from stats_cache import mark_master_stats_invalidated
 from geocode_buildings import geocode_buildings
 
 API_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
@@ -58,6 +61,15 @@ NUM_ROWS = 100
 
 
 _PENDING_BUILDING_NAMES = ("", "-", "(이름 미상)")
+
+
+def _signal_stats_change():
+    """커밋된 원본 변경을 알리되 표식 실패는 수집 결과에 영향 주지 않는다."""
+    try:
+        mark_master_stats_invalidated("brhub")
+        print("[brhub] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+    except Exception as exc:
+        print(f"[brhub] 통계 원본 캐시 표식 갱신 실패: {repr(exc)[:200]}")
 
 
 def _building_name_metadata(raw_name, lodging_type, umd_nm, jibun, road_address):
@@ -115,6 +127,7 @@ def _save_progress(conn, cur, prog, progress_key=PROGRESS_KEY):
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
     """, (progress_key, json.dumps(prog, ensure_ascii=False)))
     conn.commit()
+    _signal_stats_change()
 
 
 def _jibun_from_bunji(bun, ji):
@@ -234,6 +247,7 @@ def run(args, status_key=None, run_id=None):
     def _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name):
         """items 리스트를 필터·분류·INSERT. found_run·counts는 클로저로 접근."""
         nonlocal found_run
+        inserted_count = 0
         for it in items:
             if (it.get("regstrGbCdNm") or "").strip() not in ("집합", "일반"):
                 continue
@@ -305,6 +319,7 @@ def run(args, status_key=None, run_id=None):
                 inserted = cur.fetchone()
                 if inserted:
                     new_building_ids.add(inserted["id"])
+                    inserted_count += 1
             found_run += 1
             prog["found_total"] = prog.get("found_total", 0) + 1
             if jibun:
@@ -313,6 +328,7 @@ def run(args, status_key=None, run_id=None):
                 roads.add(rn)
             if jn:
                 jibuns.add(jn)
+        return inserted_count
 
     workers = getattr(args, "workers", 1)
     stop_reason = None
@@ -329,6 +345,8 @@ def run(args, status_key=None, run_id=None):
                 print(f"일일캡({args.daily_cap}) 도달(메인+재수집 합산) — 체크포인트 저장 후 중단. 내일 이어서 실행하세요.")
                 if not args.dry_run and new_building_ids:
                     renamed = refresh_auto_building_names(conn, sorted(new_building_ids))
+                    if renamed:
+                        _signal_stats_change()
                     print(f"[brhub] 오늘 새로 발견한 건물 자동명칭 부분 갱신 — 대상 {len(new_building_ids)}건, 변경 {renamed}건")
                 stop_reason = "daily_cap"
                 break
@@ -395,11 +413,15 @@ def run(args, status_key=None, run_id=None):
                     continue
 
                 consecutive_fails = 0
-                _process_items(items, sgg_cd, sgg_text, umd_raw, dong_name)
+                inserted_count = _process_items(
+                    items, sgg_cd, sgg_text, umd_raw, dong_name
+                )
                 prog["idx"] += 1
                 processed += 1
                 if not args.dry_run:
                     conn.commit()
+                    if inserted_count:
+                        _signal_stats_change()
                     _save_progress(conn, cur, prog, args.progress_key)
                 # 동 간 딜레이 적용 — 페이지 간 sleep과 별개로, 동과 동 사이에 쉰다
                 if current_sleep > 0:
@@ -412,6 +434,8 @@ def run(args, status_key=None, run_id=None):
 
     if not args.dry_run:
         renamed = refresh_auto_building_names(conn)
+        if renamed:
+            _signal_stats_change()
         print(f"[brhub] 수집 범위 완료 — 신고 기준 자동명칭 전체 재계산, 변경 {renamed}건")
 
     print(f"\n[종료] 법정동 {prog['idx']}/{len(dongs)} 처리, 오늘 호출 {prog['calls_today']}, "

@@ -27,6 +27,7 @@ from db import get_conn
 from address_utils import BjdongMap, parse_jibun
 from store_info_util import build_pnu, get_stores_by_pnu, STORE_INFO_SERVICE_KEY
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
+from stats_cache import mark_master_stats_invalidated
 
 PROGRESS_KEY = "realty_stores_progress"
 BJDONG_CSV   = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
@@ -225,8 +226,14 @@ def run(args, status_key=None, run_id=None):
                             SET realty_store_name=%s, realty_checked_at=NOW()
                             WHERE id=%s
                         """, (name, row["id"]))
+                        changed = upd_cur.rowcount > 0
                         upd_conn.commit()
                         upd_cur.close(); upd_conn.close()
+                        if changed:
+                            try:
+                                mark_master_stats_invalidated("sync_realty_stores")
+                            except Exception as e:
+                                print(f"    ↳ 통계 원본 캐시 표식 갱신 실패: {e}")
                         updated += 1
                         prog["updated_total"] = prog.get("updated_total", 0) + 1
                     except Exception as e:

@@ -49,6 +49,7 @@ import requests
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
+from stats_cache import mark_master_stats_invalidated
 
 RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
@@ -254,6 +255,10 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
                     new_transactions += 1
 
                 conn.commit()  # 건별 즉시 커밋 — 중간에 죽어도 여기까지는 보존
+                try:
+                    mark_master_stats_invalidated("discover_new_buildings")
+                except Exception as e:
+                    print(f"  통계 원본 캐시 표식 갱신 실패: {e}")
                 print(f"  신규 등록: {title['bld_nm']} ({sgg_text} {umd_nm} {jibun}) — {title['ho_cnt']}실")
 
             if not month_had_error:

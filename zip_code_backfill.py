@@ -26,6 +26,7 @@ from datetime import date as _date
 
 import psycopg2
 import psycopg2.extras
+from stats_cache import mark_master_stats_invalidated
 
 PROGRESS_FILE = "zip_code_backfill_progress.json"
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("PROD_DATABASE_URL", "")
@@ -134,7 +135,13 @@ def main():
                     "UPDATE master_buildings SET zip_code=%s WHERE id=%s AND zip_code IS NULL",
                     (zip_val, bid),
                 )
+                changed = cur.rowcount > 0
                 conn.commit()
+                if changed:
+                    try:
+                        mark_master_stats_invalidated("zip_code_backfill")
+                    except Exception as e:
+                        print(f"[zip_code_backfill] 통계 원본 캐시 표식 갱신 실패: {e}")
                 prog["last_id"] = bid
                 prog["done"] += 1
                 n_ok += 1

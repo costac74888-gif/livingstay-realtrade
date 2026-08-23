@@ -22,6 +22,8 @@ api_test.py — 데이터 JSON API가 조용히 깨지는 것을 배포 전에 �
 
 import os
 import sys
+import copy
+import time
 
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -188,7 +190,7 @@ def expected_consign_by_sido():
                 FROM operator_buildings ob
                 JOIN operators o ON o.id = ob.operator_id
                 WHERE o.status = 'approved'
-                  AND o.category = '위탁'
+                  AND o.category = '위탁운영'
             ) approved ON approved.master_building_id = mb.id
             WHERE mb.lodging_type = '생활'
             ORDER BY mb.id
@@ -310,6 +312,8 @@ def run():
 
     # 수정 요청 → 승인 → 지도 노출 end-to-end 테스트
     failures += _check_building_request_e2e(client)
+    # 일부 재분류가 커밋된 뒤 후속 오류가 나도 통계 무효화 표식은 남는지 확인
+    failures += _check_master_stats_partial_success_invalidation()
     # 관심저장 POST가 실제 DB에 남고, 새로고침 조회 뒤에도 유지되는지 확인
     failures += _check_favorite_save_persistence(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
@@ -2777,6 +2781,121 @@ def _check_datalab_stats(client):
                 break
         with client.session_transaction() as session:
             session["admin"] = True
+        master_stats = client.get("/api/admin/stats/master").get_json() or {}
+        master_sections = master_stats.get("sections") or []
+        expected_master_keys = {
+            "lodging_stats", "region_match", "consign_stats",
+            "closure_stats", "transaction_stats", "collection_stats",
+        }
+        if (
+            not master_stats.get("ok")
+            or not isinstance(master_stats.get("refreshed_at"), str)
+            or not isinstance(master_stats.get("expires_in_seconds"), int)
+            or {section.get("key") for section in master_sections} != expected_master_keys
+            or any(section.get("status") not in {"ok", "error"} for section in master_sections)
+        ):
+            failures.append("통계 원본 창고: 갱신시각·TTL·6개 섹션 상태 응답이 잘못됨")
+        refreshed_master_stats = client.post("/api/admin/stats/master").get_json() or {}
+        if (
+            not refreshed_master_stats.get("ok")
+            or {section.get("key") for section in refreshed_master_stats.get("sections") or []}
+            != expected_master_keys
+        ):
+            failures.append("통계 원본 창고: 관리자 수동 새로고침이 동작하지 않음")
+
+        import app as app_module
+
+        # 별도 수집 프로세스가 원본을 커밋한 뒤 표식을 기록하면, 30분 TTL이
+        # 남아 있어도 다음 통계 요청은 이전 메모리 원본을 재사용하지 않아야 한다.
+        from stats_cache import mark_master_stats_invalidated
+        saved_master_cache = copy.deepcopy(app_module._MASTER_STATS_CACHE)
+        saved_bld_full_stats_cache = copy.deepcopy(app_module._bld_full_stats_cache)
+        saved_invalidation_state = copy.deepcopy(app_module._MASTER_STATS_INVALIDATION_STATE)
+        try:
+            app_module._MASTER_STATS_INVALIDATION_STATE["checked_at"] = 0.0
+            token_before = app_module._master_stats_invalidation_token()
+            external_conn = app_module.get_conn()
+            external_cur = external_conn.cursor()
+            external_cur.execute("""
+                UPDATE master_buildings
+                   SET verified_at = NOW()
+                 WHERE id = (SELECT id FROM master_buildings ORDER BY id LIMIT 1)
+            """)
+            external_conn.commit()
+            external_cur.close()
+            external_conn.close()
+            mark_master_stats_invalidated("api_test_external_master_writer")
+            app_module._MASTER_STATS_INVALIDATION_STATE["checked_at"] = 0.0
+            token_after = app_module._master_stats_invalidation_token()
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": time.time(),
+                "data": {"consign_stats": {"ok": True, "items": [], "total": {"units": -1}}},
+                "sections": {"consign_stats": {"status": "ok", "error": None}},
+                "invalidation_token": token_before,
+            })
+            external_rebuild = client.get("/api/stats/consign-by-sido").get_json() or {}
+            if (
+                token_after == token_before
+                or app_module._MASTER_STATS_CACHE.get("invalidation_token") != token_after
+                or (external_rebuild.get("total") or {}).get("units") == -1
+            ):
+                failures.append("통계 원본 창고: 외부 원본 갱신 뒤 다음 요청이 캐시를 재생성하지 않음")
+
+            # 신고율 API도 통합 숙박 섹션을 거쳐야 한다. 외부 무효화 후에는
+            # 아직 유효한 레거시 5분 캐시에 심어 둔 값이 반환되면 안 된다.
+            app_module._bld_full_stats_cache = {
+                "ts": time.time(),
+                "data": {
+                    "rows": [{
+                        "type": "전체",
+                        "report_rate_building_count": 999991,
+                        "report_rate_room_count": 999992,
+                        "report_rate_units": 999993,
+                    }],
+                },
+            }
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": time.time(),
+                "data": {"lodging_stats": {"rows": []}},
+                "sections": {"lodging_stats": {"status": "ok", "error": None}},
+                "invalidation_token": token_before,
+            })
+            registration_after_external_write = client.get("/api/stats/registration-rate").get_json() or {}
+            if registration_after_external_write.get("total_units") == 999993:
+                failures.append("통계 원본 창고: 신고율 API가 외부 무효화 뒤 레거시 캐시를 반환함")
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(saved_master_cache)
+            app_module._bld_full_stats_cache = saved_bld_full_stats_cache
+            app_module._MASTER_STATS_INVALIDATION_STATE.clear()
+            app_module._MASTER_STATS_INVALIDATION_STATE.update(saved_invalidation_state)
+
+        # 마스터 캐시 한 섹션이 실패해도 해당 공개 API는 기존 직접 집계로
+        # 폴백해야 하며, 빈 캐시는 다음 요청에서 전체 원본을 다시 만든다.
+        saved_master_cache = copy.deepcopy(app_module._MASTER_STATS_CACHE)
+        try:
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": time.time(),
+                "data": {},
+                "sections": {"consign_stats": {"status": "error", "error": "test"}},
+                "invalidation_token": app_module._master_stats_invalidation_token(),
+            })
+            fallback_consign = client.get("/api/stats/consign-by-sido").get_json() or {}
+            if fallback_consign != consign:
+                failures.append("통계 원본 창고: 위탁 섹션 오류 때 레거시 폴백 결과가 달라짐")
+
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 0.0,
+                "data": {},
+                "sections": {},
+                "invalidation_token": None,
+            })
+            rebuilt_consign = client.get("/api/stats/consign-by-sido").get_json() or {}
+            if rebuilt_consign != consign:
+                failures.append("통계 원본 창고: 빈 캐시 재생성 뒤 위탁현황 결과가 달라짐")
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(saved_master_cache)
         admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
         total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
         admin_rows = admin_stats.get("rows") or []
@@ -3279,6 +3398,7 @@ def _check_building_request_e2e(client):
     captured_other_txn_id = None
     captured_listing_id = None
     captured_user_id = None
+    stats_marker = None
 
     try:
         # ── ① Baseline: 삽입 전 의정부동 클러스터 배지 카운트 ─────────────────
@@ -3312,6 +3432,7 @@ def _check_building_request_e2e(client):
                 return_value=TEST_NAME,   # 고유 이름 → name_pending=False
             ),
             mock.patch("app._fill_master_coords", side_effect=_mock_fill_coords),
+            mock.patch("app.mark_master_stats_invalidated") as stats_marker,
         ):
             r_sub = client.post(
                 "/api/submit-building",
@@ -3321,6 +3442,11 @@ def _check_building_request_e2e(client):
                     "suggested_lodging_type": TEST_LODGING,
                 },
                 headers={"X-Forwarded-For": "203.0.113.42"},  # 레이트리밋 전용 테스트 IP
+            )
+
+        if stats_marker.call_args_list != [mock.call("user_verified_building")]:
+            failures.append(
+                "submit-building: 원본 커밋 뒤 master stats 무효화 표식을 정확히 한 번 남기지 않음"
             )
 
         if r_sub.status_code != 200:
@@ -3580,6 +3706,114 @@ def _check_building_request_e2e(client):
         except Exception:
             pass
 
+    return failures
+
+
+def _check_master_stats_partial_success_invalidation():
+    """앞선 UPDATE 커밋 뒤 다음 행 오류가 나도 외부 writer 표식이 남는지 검증한다.
+
+    DB와 건축물대장 API는 전부 작은 fake로 대체한다. 실제
+    reclassify_unclassified.run의 ``finally`` 경로를 실행하므로, 단순히 테스트
+    안에서 표식 함수를 호출하는 것보다 "부분 성공 후 오류" 계약을 직접 고정한다.
+    """
+    from types import SimpleNamespace
+    from unittest import mock
+
+    import reclassify_unclassified as reclassify
+
+    failures = []
+    events = []
+    invalidation = {"token": 17}
+    token_before = invalidation["token"]
+
+    class FakeCursor:
+        rowcount = 1
+
+        def __init__(self, rows=()):
+            self.rows = list(rows)
+
+        def execute(self, _sql, _params=None):
+            events.append("source_update")
+
+        def fetchall(self):
+            return self.rows
+
+        def close(self):
+            pass
+
+    class FakeConnection:
+        def __init__(self, rows=()):
+            self.cur = FakeCursor(rows)
+
+        def cursor(self):
+            return self.cur
+
+        def commit(self):
+            events.append("source_commit")
+
+        def close(self):
+            pass
+
+    rows = [
+        {"id": 1, "building_name": "부분성공", "sgg_cd": "11110",
+         "umd_nm": "테스트동", "jibun": "1-1"},
+        {"id": 2, "building_name": "후속오류", "sgg_cd": "11110",
+         "umd_nm": "테스트동", "jibun": "2-2"},
+    ]
+    connections = iter((FakeConnection(rows), FakeConnection()))
+
+    class FakeBjdongMap:
+        def __init__(self):
+            self.calls = 0
+
+        def find_bjdong_cd(self, _sgg_cd, _umd_nm):
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError("simulated error after committed work")
+            return "10100"
+
+    def marker(source):
+        invalidation["token"] += 1
+        events.append(("marker", source))
+
+    args = SimpleNamespace(daily_cap=10, limit=None, dry_run=False, sleep=0)
+    progress = {"calls_date": "", "calls_today": 0, "updated_total": 0}
+    try:
+        with (
+            mock.patch.object(reclassify, "get_conn", side_effect=lambda: next(connections)),
+            mock.patch.object(reclassify, "_get_progress", return_value=progress),
+            mock.patch.object(reclassify, "_get_bjdmap", return_value=FakeBjdongMap()),
+            mock.patch.object(
+                reclassify,
+                "classify_lodging_type",
+                return_value=("생활", "생활숙박시설", "", {}, "fixture"),
+            ),
+            mock.patch.object(reclassify, "mark_master_stats_invalidated", side_effect=marker),
+            mock.patch.object(reclassify.time, "sleep"),
+        ):
+            try:
+                reclassify.run(args)
+            except RuntimeError as exc:
+                if "simulated error" not in str(exc):
+                    raise
+            else:
+                failures.append("master stats partial success: 후속 오류 fixture가 발생하지 않음")
+
+        commit_index = events.index("source_commit")
+        marker_index = events.index(("marker", "reclassify_unclassified"))
+        if marker_index <= commit_index:
+            failures.append("master stats partial success: 원본 커밋 전에 무효화 표식을 기록함")
+        if events.count(("marker", "reclassify_unclassified")) != 1:
+            failures.append("master stats partial success: 무효화 토큰을 정확히 한 번 전진시키지 않음")
+        if invalidation["token"] != token_before + 1:
+            failures.append("master stats partial success: 선행 커밋 뒤 무효화 토큰이 전진하지 않음")
+    except (ValueError, StopIteration) as exc:
+        failures.append(f"master stats partial success: 커밋/표식 순서 누락 ({exc})")
+    except Exception as exc:
+        failures.append(f"master stats partial success 테스트 오류: {exc}")
+
+    if not failures:
+        print("OK  통계 원본 부분성공·후속오류에도 커밋 뒤 무효화 토큰 전진")
     return failures
 
 

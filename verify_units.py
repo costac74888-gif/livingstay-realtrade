@@ -43,6 +43,7 @@ import pandas as pd
 from db import get_conn
 from address_utils import road_to_jibun
 from building_registry import is_living_stay
+from stats_cache import mark_master_stats_invalidated
 
 REQUEST_SLEEP = 0.15
 
@@ -135,6 +136,10 @@ def verify(csv_path: str, offset: int = 0, limit: int | None = None):
                      sigungu_cd, umd_nm, jibun_str, confirmed_units),
                 )
                 conn.commit()  # 청크 도중 강제종료돼도 구제분 보존 (증분 커밋)
+                try:
+                    mark_master_stats_invalidated("verify_units")
+                except Exception as e:
+                    print(f"[verify_units] 통계 원본 캐시 표식 갱신 실패: {e}")
                 rescued += 1
                 results.append({"road_address": road_address, "building_name": building_name,
                                 "status": "구제됨(생숙확인)", "confirmed_units": confirmed_units})

@@ -25,6 +25,7 @@ import os
 
 from db import get_conn
 from address_utils import BjdongMap
+from stats_cache import mark_master_stats_invalidated
 
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 
@@ -65,7 +66,13 @@ def backfill(dry_run: bool):
                 UPDATE transactions SET si_do = %s, sgg_nm = %s
                 WHERE sgg_cd = %s AND (si_do IS NULL OR sgg_nm IS NULL)
             """, (si_do_val, sgg_nm_val, sgg_cd))
+            changed = cur.rowcount > 0
             conn.commit()
+            if changed:
+                try:
+                    mark_master_stats_invalidated("backfill_address")
+                except Exception as e:
+                    print(f"[backfill_address] 통계 원본 캐시 표식 갱신 실패: {e}")
 
         total_updated += affected
 

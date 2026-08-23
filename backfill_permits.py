@@ -19,6 +19,7 @@ import time
 
 from db import get_conn
 from address_utils import normalize_umd_nm
+from stats_cache import mark_master_stats_invalidated
 from sync_permits import _fetch_page, _jibun_from_bunji, _load_codes, KEY_ENV
 
 
@@ -101,6 +102,7 @@ def main():
 
     updated_ids = set()
     calls = 0
+    changed = 0
 
     # 3) 법정동별 재조회 (페이지네이션 + 재시도는 sync_permits와 동일 정책)
     for (sgg_cd, bjd_cd), rows in groups.items():
@@ -184,7 +186,9 @@ def main():
                               it.get("hhldCnt") or None,
                               it.get("totPkngCnt") or None,
                               t["id"]))
+                        row_changed = cur.rowcount
                         conn.commit()
+                        changed += row_changed
                         print(f"  [보강완료] id={t['id']} | {new_name}")
                     updated_ids.add(t["id"])
 
@@ -205,6 +209,13 @@ def main():
         for t in unmatched:
             print(f"  - id={t['id']} | {t['building_name']} | sgg_cd={t['sgg_cd']} "
                   f"umd_nm={t['umd_nm']} jibun={t['jibun']} | {t['road_address'] or t['jibun_address'] or ''}")
+    if changed > 0:
+        try:
+            mark_master_stats_invalidated("backfill_permits")
+            print("[permits-backfill] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+        except Exception as e:
+            # 표식 기록 실패는 이미 커밋된 보강 결과를 실패로 바꾸지 않는다.
+            print(f"[permits-backfill] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
 
     cur.close()
     conn.close()

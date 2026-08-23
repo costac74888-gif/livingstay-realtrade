@@ -44,6 +44,7 @@ from building_registry import (
     resolve_api_building_name,
 )
 from lodging_matching import refresh_auto_building_names
+from stats_cache import mark_master_stats_invalidated
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 동일한 로직 재사용
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
@@ -144,6 +145,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
     print(f"[시작] 대상 {total}건 ({mode}, limit={limit})", flush=True)
 
     n_ok = n_empty = n_skip = n_err = 0
+    changed = 0
     consec_err = 0
 
     for i, b in enumerate(targets, 1):
@@ -162,6 +164,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                     cur.execute(
                         "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
                     )
+                    changed += cur.rowcount
                 print(f"  [{i}/{total}] SKIP id={bid} {name} — bjdong_cd 못찾음(umd={b['umd_nm']})", flush=True)
                 continue
             plat_gb, bun, ji = parse_jibun(b["jibun"])
@@ -174,6 +177,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                     cur.execute(
                         "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
                     )
+                    changed += cur.rowcount
                 print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부 없음", flush=True)
                 continue
             vals = _extract(rep)
@@ -210,6 +214,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                             official_name, official_name, official_name, bid,
                         ),
                     )
+                    changed += cur.rowcount
                     n_ok += 1
                     print(f"  [{i}/{total}] OK   id={bid} {name} — pk={vals['mgm_bldrgst_pk']}", flush=True)
                 else:
@@ -249,6 +254,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                        WHERE id=%(id)s""",
                     {**vals, "id": bid, "official_name": official_name},
                 )
+                changed += cur.rowcount
                 n_ok += 1
                 print(
                     f"  [{i}/{total}] OK   id={bid} {name} — 준공={vals['use_apr_day']} "
@@ -272,6 +278,14 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
 
     conn.commit()
     renamed = refresh_auto_building_names(conn)
+    changed += renamed
+    if changed > 0:
+        try:
+            mark_master_stats_invalidated("backfill_title_info")
+            print("[title-info] 통계 원본 캐시 무효화 표식을 갱신했습니다.", flush=True)
+        except Exception as e:
+            # 표식 기록 실패는 이미 커밋된 백필 결과를 실패로 바꾸지 않는다.
+            print(f"[title-info] 통계 원본 캐시 표식 갱신 실패: {_mask_key(e)[:300]}", flush=True)
     print(
         f"[완료] 처리 {n_ok + n_empty + n_skip + n_err}건 / OK={n_ok} EMPTY={n_empty} "
         f"SKIP={n_skip} ERR={n_err} / 신고 기준 자동명칭 변경={renamed}건",

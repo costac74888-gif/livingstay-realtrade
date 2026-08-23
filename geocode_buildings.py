@@ -29,6 +29,7 @@ from datetime import datetime
 import requests
 
 from db import get_conn
+from stats_cache import mark_master_stats_invalidated
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 동일한 로직 재사용
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
@@ -144,7 +145,13 @@ def geocode_buildings(limit: int | None = None, status_key=None, run_id=None):
             "UPDATE master_buildings SET lat=%s, lng=%s WHERE id=%s",
             (lat, lng, bld_id),
         )
+        changed = cur.rowcount > 0
         conn.commit()  # 건물 단위 커밋 → 중간에 멈춰도 여기까지는 보존
+        if changed:
+            try:
+                mark_master_stats_invalidated("geocode_buildings")
+            except Exception as e:
+                print(f"[geocode] 통계 원본 캐시 표식 갱신 실패: {e}")
         updated += 1
         if i % 50 == 0 or i == total_targets:
             print(f"  [진행] {i}/{total_targets} 처리 — 성공 {updated} / 건너뜀 {skipped}", flush=True)

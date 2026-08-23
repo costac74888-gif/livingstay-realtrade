@@ -41,6 +41,7 @@ import requests
 from db import get_conn
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from address_utils import normalize_umd_nm
+from stats_cache import mark_master_stats_invalidated
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
 API_URL = "https://apis.data.go.kr/1613000/ArchPmsHubService/getApBasisOulnInfo"
@@ -405,6 +406,12 @@ def run(args, status_key=None, run_id=None):
                 for rp in rows:
                     u.execute(INSERT_SQL, rp)
                 c.commit()
+                try:
+                    mark_master_stats_invalidated("sync_permits")
+                    print("[permits] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+                except Exception as e:
+                    # 표식 기록 실패는 이미 커밋된 수집 결과를 실패로 바꾸지 않는다.
+                    print(f"[permits] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
                 _save_progress(c, u, p)
 
             if dong_rows:

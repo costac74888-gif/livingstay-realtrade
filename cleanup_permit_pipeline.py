@@ -26,6 +26,7 @@ from datetime import date, timedelta
 
 import psycopg2
 import psycopg2.extras
+from stats_cache import mark_master_stats_invalidated
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
@@ -198,6 +199,11 @@ def main():
             )
             deleted = cur.rowcount
         conn.commit()
+        if deleted:
+            try:
+                mark_master_stats_invalidated("cleanup_permit_pipeline")
+            except Exception as e:
+                print(f"[cleanup_permit_pipeline] 통계 원본 캐시 표식 갱신 실패: {e}")
         print(f"✓ {deleted}건 삭제 완료.")
 
     finally:

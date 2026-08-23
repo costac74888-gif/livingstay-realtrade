@@ -26,6 +26,7 @@ from datetime import date, datetime
 from db import get_conn
 from address_utils import BjdongMap, parse_jibun
 from building_registry import classify_lodging_type
+from stats_cache import mark_master_stats_invalidated
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
 PROGRESS_KEY = "reclassify_unclassified_progress"
@@ -136,6 +137,7 @@ def run(args, status_key=None, run_id=None):
 
     processed = 0
     updated   = 0
+    changed   = 0
     skipped   = 0
 
     # heartbeat 스레드 (관리자 버튼 상태 연동)
@@ -210,7 +212,9 @@ def run(args, status_key=None, run_id=None):
                             verified_at=NOW()
                         WHERE id=%s
                     """, (label, detail, subtype, row["id"]))
+                    row_changed = upd_cur.rowcount
                     upd_conn.commit()
+                    changed += row_changed
                     upd_cur.close(); upd_conn.close()
                     updated += 1
                     prog["updated_total"] = prog.get("updated_total", 0) + 1
@@ -239,6 +243,13 @@ def run(args, status_key=None, run_id=None):
 
     finally:
         stop_beat.set()
+        if changed > 0:
+            try:
+                mark_master_stats_invalidated("reclassify_unclassified")
+                print("[reclassify] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+            except Exception as e:
+                # 표식 기록 실패는 이미 커밋된 재분류 결과를 실패로 바꾸지 않는다.
+                print(f"[reclassify] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
 
     completed = processed >= total_bldgs and not args.limit
     print(f"\n[완료] 처리 {processed}건 (UPDATE {updated}건, skip {skipped}건)"
