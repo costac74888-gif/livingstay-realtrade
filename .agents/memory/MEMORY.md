@@ -34,3 +34,4 @@
 - [숙박업 자동명명 대량 갱신](lodging-auto-naming-bulk.md) — 운영 기존 대상은 1만 건 이상이므로 건물별 SQL 왕복 대신 키 일괄 조회·batch UPDATE로 처리해야 실행 제한 안에 끝난다.
 - [매물 등록자유형 호환](listing-registrant-types.md) — 새 UI는 3분류만 노출하되 기존 agent/other 값은 숨김 옵션으로 보존해 수정 시 조용히 owner로 바뀌지 않게 한다.
 - [Postgres no-match queries](postgres-no-match-queries.md) — PostgreSQL TEXT 바인딩에 NUL 센티널을 쓰지 말고 SQL FALSE 조건으로 의도적 0건을 표현한다.
+- [Long-running sync workflow execution](long-running-sync-workflows.md) — ShellExec에서 start_new_session으로 띄운 배치는 셸 종료 때 사라질 수 있으므로 지속 수집은 Replit 워크플로로 실행한다.

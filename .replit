@@ -135,7 +135,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "nice -n 19 python -u sync_brhub.py --sleep 1.0 --daily-cap 7000"
+args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 19 python -u sync_brhub.py --end-idx 8877 --progress-key brhub_rescan_progress --status-key brhub_rescan_status --daily-cap 7976 --sleep 1.0"
 
 [[workflows.workflow]]
 name = "Merge Dev→Prod (dry-run)"
