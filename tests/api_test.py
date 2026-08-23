@@ -364,6 +364,15 @@ def _check_lodging_address_normalization():
             "경상북도 칠곡군 팔공산로4길 11-12 (동명면 기성리)",
             "경상북도 칠곡군 동명면 팔공산로4길 11-12",
         ),
+        # 영업신고 원본의 통합 광역명은 자치구 여부에 따라 광주·전남으로 나뉜다.
+        (
+            "광주광역시 북구 무등로 100",
+            "전남광주통합특별시 북구 무등로 100",
+        ),
+        (
+            "전라남도 여수시 여문로 100",
+            "전남광주통합특별시 여수시 여문로 100",
+        ),
     ]
     for master_address, lodging_address in matching_cases:
         master_key = addr_norm.normalize_road_prefix(master_address)
@@ -386,7 +395,7 @@ def _check_lodging_address_normalization():
             "lodging address normalization: 서로 다른 도로명을 같은 키로 합침"
         )
     if not failures:
-        print("OK  괄호 안 읍·면·동 표기 도로명 정규화 및 오매칭 방지")
+        print("OK  괄호 안 읍·면·동·광주전남 통합표기 도로명 정규화 및 오매칭 방지")
     return failures
 
 def _check_lodging_auto_naming(client):

@@ -67,13 +67,24 @@ expect(main.includes("/api/stats/price-change-top"), "가격변동 데이터랩 
 expect(main.includes("data-datalab-price-order") && main.includes("최고</button>") && main.includes("최저</button>"),
   "데이터랩 최고가/최저가 토글이 없습니다.");
 expect(main.includes("/api/stats/report-rate-by-sido"), "시도별 신고율 데이터랩 API 연결이 없습니다.");
-expect(main.includes("일반숙박 포함") && main.includes("일반은 영업신고업체 ÷ 건물수"),
-  "시도별 신고율에 일반숙박 포함 산식 안내가 없습니다.");
+const rateRender = main.slice(main.indexOf("function renderDataLabRate"), main.indexOf("function setDataLabActive"));
+expect(rateRender.includes("일반숙박 포함") && !rateRender.includes("유형별 기준:"),
+  "시도별 신고율은 일반숙박 포함만 간결하게 표시하고 산식 안내를 노출하지 않아야 합니다.");
 expect(main.includes("dataLabFetchController"), "데이터랩 탭 전환 시 이전 요청 취소가 없습니다.");
 expect(main.includes("DATA_LAB_CACHE_TTL_MS"), "데이터랩 반복 탭 전환 캐시가 없습니다.");
 expect(main.includes("function moveDataLabBuildingToMap"), "데이터랩 건물명의 지도 이동 함수가 없습니다.");
 expect(main.includes("data-datalab-lat") && main.includes("data-datalab-lng"),
   "데이터랩 건물 버튼에 지도 좌표가 연결되지 않았습니다.");
+expect(main.includes("function showDataLabBuildingHighlight") &&
+  main.includes("selectedDataLabOverlay") &&
+  main.includes("datalab-map-highlight"),
+  "데이터랩 선택 건물의 지도 강조 오버레이가 연결되지 않았습니다.");
+expect(main.includes("clearDataLabBuildingHighlight") &&
+  main.includes("selectedDataLabOverlay.setMap(null)"),
+  "새 데이터랩 건물 선택 시 이전 지도 강조 오버레이 정리가 보장되지 않습니다.");
+expect(main.includes('aria-pressed="${selected}"') &&
+  main.includes("datalab-building-selected"),
+  "데이터랩 선택 건물의 접근성·선택 상태 표시가 없습니다.");
 expect(main.includes("지도 좌표 없음") && main.includes("datalab-building-disabled"),
   "지도 좌표가 없는 데이터랩 건물의 비활성 안내가 없습니다.");
 const datalabClickBinding = main.slice(

@@ -1006,6 +1006,8 @@ let mapOverlays = [];                 // 현재 지도에 찍힌 마커(kakao.ma
 let mapLabelData = [];                // [{b, pos, overlay, el}] — 원형 배지 lazy 생성용 데이터
 let _mapRenderGen = 0;                // 마커·클러스터 공용 세대 — 늦게 도착한 이전 응답 폐기용
 let _mapFetchController = null;       // 다음 지도 요청이 이전 네트워크 요청을 취소한다.
+let selectedDataLabBuilding = null;   // 데이터랩에서 마지막으로 선택한 건물
+let selectedDataLabOverlay = null;    // 선택 건물 전용 CustomOverlay — 레이어 교체와 분리
 
 // 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
 // 거래·매물 합계가 1건 이상인 건물은 CustomOverlay 원형 숫자 배지로 표시한다.
@@ -1021,6 +1023,64 @@ function _makeMarkerImage(color){
   );
   _markerImageCache[color] = img;
   return img;
+}
+
+function _syncDataLabBuildingSelection(){
+  const selectedId = selectedDataLabBuilding ? String(selectedDataLabBuilding.id) : null;
+  document.querySelectorAll("[data-datalab-building]").forEach(button => {
+    const selected = selectedId !== null && button.dataset.datalabBuilding === selectedId;
+    button.classList.toggle("datalab-building-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+
+function clearDataLabBuildingHighlight(){
+  if (selectedDataLabOverlay){
+    selectedDataLabOverlay.setMap(null);
+    selectedDataLabOverlay = null;
+  }
+  selectedDataLabBuilding = null;
+  _syncDataLabBuildingSelection();
+}
+
+function showDataLabBuildingHighlight(building){
+  if (!kakaoMap || !building) return;
+  const lat = Number(building.lat);
+  const lng = Number(building.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+  clearDataLabBuildingHighlight();
+  selectedDataLabBuilding = {
+    id: Number(building.id),
+    name: building.name || "건물명 미확인",
+    lat,
+    lng,
+  };
+
+  const label = document.createElement("div");
+  label.className = "datalab-map-highlight";
+  label.setAttribute("role", "status");
+  label.setAttribute("aria-live", "polite");
+  label.setAttribute("aria-label", `선택한 건물: ${selectedDataLabBuilding.name}`);
+  const dot = document.createElement("span");
+  dot.className = "datalab-map-highlight-dot";
+  dot.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.textContent = selectedDataLabBuilding.name;
+  label.append(dot, text);
+
+  const position = new kakao.maps.LatLng(lat, lng);
+  selectedDataLabOverlay = new kakao.maps.CustomOverlay({
+    position,
+    content: label,
+    xAnchor: 0.5,
+    yAnchor: 1.0,
+    zIndex: 40,
+    clickable: false,
+  });
+  selectedDataLabOverlay.__contentEl = label;
+  selectedDataLabOverlay.setMap(kakaoMap);
+  _syncDataLabBuildingSelection();
 }
 
 function _openBuildingFromMap(b){
@@ -2171,14 +2231,23 @@ function dataLabBuildingButton(item){
   if (!Number.isInteger(buildingId) || buildingId <= 0 || !hasCoordinates) {
     return `<span class="datalab-building datalab-building-disabled" title="${name} — 지도 좌표 없음">${name}</span>`;
   }
-  return `<button type="button" class="datalab-building" data-datalab-building="${buildingId}" data-datalab-lat="${lat}" data-datalab-lng="${lng}" title="지도에서 ${name} 위치 보기">${name}</button>`;
+  const selected = selectedDataLabBuilding && selectedDataLabBuilding.id === buildingId;
+  return `<button type="button" class="datalab-building${selected ? " datalab-building-selected" : ""}" data-datalab-building="${buildingId}" data-datalab-lat="${lat}" data-datalab-lng="${lng}" aria-pressed="${selected}" title="지도에서 ${name} 위치 보기">${name}</button>`;
 }
 
 function moveDataLabBuildingToMap(button){
   if (!kakaoMap) return;
+  const buildingId = Number(button.dataset.datalabBuilding);
   const lat = Number(button.dataset.datalabLat);
   const lng = Number(button.dataset.datalabLng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  if (!Number.isInteger(buildingId) || buildingId <= 0 ||
+      !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  showDataLabBuildingHighlight({
+    id: buildingId,
+    name: button.textContent.trim() || "건물명 미확인",
+    lat,
+    lng,
+  });
   const position = new kakao.maps.LatLng(lat, lng);
   kakaoMap.setCenter(position);
   kakaoMap.setLevel(3);
@@ -2187,7 +2256,10 @@ function moveDataLabBuildingToMap(button){
 
 function bindDataLabBuildingButtons(box){
   box.querySelectorAll("[data-datalab-building]").forEach(button => {
-    button.addEventListener("click", () => moveDataLabBuildingToMap(button));
+    button.addEventListener("click", () => {
+      moveDataLabBuildingToMap(button);
+      _syncDataLabBuildingSelection();
+    });
   });
 }
 
@@ -2328,7 +2400,6 @@ function renderDataLabRate(data){
     <div class="datalab-heading">
       <strong>⑤ 📈 영업신고율</strong><span class="datalab-caption">일반숙박 포함</span>
     </div>
-    <div class="datalab-rate-summary">유형별 기준: 일반은 영업신고업체 ÷ 건물수, 나머지는 영업신고호실 ÷ 건물 호실수</div>
     ${items.map(item => {
       const rate = Math.max(0, Math.min(Number(item.rate) || 0, 100));
       return `<div class="datalab-rate-row">
