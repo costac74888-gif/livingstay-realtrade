@@ -2452,7 +2452,7 @@ function setDataLabTabLoading(key, loading, requestId){
   if (!button) return;
   if (loading) {
     button.dataset.datalabLoadingRequest = String(requestId);
-    button.classList.add("loading");
+    button.classList.add("is-loading");
     button.setAttribute("aria-busy", "true");
     return;
   }
@@ -2461,7 +2461,7 @@ function setDataLabTabLoading(key, loading, requestId){
     button.dataset.datalabLoadingRequest !== String(requestId)
   ) return;
   delete button.dataset.datalabLoadingRequest;
-  button.classList.remove("loading");
+  button.classList.remove("is-loading");
   button.setAttribute("aria-busy", "false");
 }
 
@@ -2543,7 +2543,7 @@ async function loadDataLab(key, option = "up", {
   } catch (error) {
     if (error.name === "AbortError") return;
     if (requestId !== dataLabRequestSequence) return;
-    if (!background) {
+    if (!background && contentIsEmpty) {
       content.innerHTML = dataLabErrorHTML();
       content.querySelector("[data-datalab-retry]")?.addEventListener("click", () => loadDataLab(key, option));
     }

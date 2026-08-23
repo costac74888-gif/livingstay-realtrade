@@ -89,10 +89,15 @@ expect(
   "영업신고현황 30초 갱신이 브라우저 캐시를 우회하지 않습니다."
 );
 expect(main.includes("function setDataLabTabLoading") &&
-  main.includes('button.classList.add("loading")') &&
+  main.includes('button.classList.add("is-loading")') &&
   main.includes("contentIsEmpty") &&
   main.includes("if (!background && contentIsEmpty)"),
   "데이터랩 탭 로딩 인디케이터 또는 기존 콘텐츠 유지 처리가 없습니다.");
+expect(
+  css.includes(".datalab-tab.is-loading::after") &&
+  css.includes("animation:datalab-spin .7s linear infinite"),
+  "데이터랩 탭 로딩 스피너 CSS가 없습니다."
+);
 expect(main.includes("function moveDataLabBuildingToMap"), "데이터랩 건물명의 지도 이동 함수가 없습니다.");
 expect(main.includes("data-datalab-lat") && main.includes("data-datalab-lng"),
   "데이터랩 건물 버튼에 지도 좌표가 연결되지 않았습니다.");

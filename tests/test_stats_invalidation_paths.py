@@ -129,9 +129,10 @@ class AppMutationInvalidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.get_json()["ok"], False)
 
-    def test_expired_master_stats_returns_stale_section_and_schedules_revalidation(self):
+    def test_expired_master_stats_returns_stale_section_and_marks_revalidation_needed(self):
         original_cache = dict(app_module._MASTER_STATS_CACHE)
         original_pending = app_module._MASTER_STATS_REVALIDATION_PENDING
+        refresh_signal = Mock()
         stale_section = {"ok": True, "items": ["old"], "total": {"value": 1}}
         try:
             app_module._MASTER_STATS_CACHE.clear()
@@ -145,11 +146,13 @@ class AppMutationInvalidationTests(unittest.TestCase):
             with (
                 patch.object(app_module, "_master_stats_cache_is_valid", return_value=False),
                 patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+                patch.object(app_module, "_MASTER_STATS_NEEDS_REFRESH", refresh_signal),
             ):
                 result = app_module._master_stats_section("consign_stats")
 
             self.assertIs(result, stale_section)
-            schedule.assert_called_once_with()
+            refresh_signal.set.assert_called_once_with()
+            schedule.assert_not_called()
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(original_cache)
@@ -205,6 +208,45 @@ class AppMutationInvalidationTests(unittest.TestCase):
             self.assertFalse(app_module._MASTER_STATS_REVALIDATION_PENDING)
         finally:
             app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
+
+    def test_master_stats_rebuild_groups_independent_sections_before_dependents(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        stages = []
+
+        def capture_parallel_sections(data, sections, specs):
+            names = tuple(name for name, _builder in specs)
+            stages.append(names)
+            for name in names:
+                data[name] = (
+                    ([], {}, {}, {}, {}, {})
+                    if name == "region_match"
+                    else {"ok": True, "items": [], "rows": [], "total": {},
+                          "volume_top": [], "price_change": {}, "highest_price": {},
+                          "ranking": {}, "lodging": {}, "brhub": {}}
+                )
+                sections[name] = {"status": "ok", "error": None}
+
+        try:
+            with (
+                patch.object(
+                    app_module,
+                    "_master_stats_add_parallel_sections",
+                    side_effect=capture_parallel_sections,
+                ),
+                patch.object(app_module, "_master_stats_invalidation_token", return_value="test"),
+            ):
+                app_module._rebuild_master_stats(force=True)
+
+            self.assertEqual(
+                stages,
+                [
+                    ("lodging_stats", "region_match", "transaction_stats", "collection_stats"),
+                    ("consign_stats", "closure_stats"),
+                ],
+            )
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
 
     def test_failed_master_stats_section_keeps_previous_data_as_stale(self):
         original_cache = dict(app_module._MASTER_STATS_CACHE)

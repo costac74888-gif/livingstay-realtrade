@@ -3175,6 +3175,7 @@ def _check_datalab_stats(client):
         saved_master_cache = copy.deepcopy(app_module._MASTER_STATS_CACHE)
         saved_bld_full_stats_cache = copy.deepcopy(app_module._bld_full_stats_cache)
         saved_invalidation_state = copy.deepcopy(app_module._MASTER_STATS_INVALIDATION_STATE)
+        saved_refresh_signal = app_module._MASTER_STATS_NEEDS_REFRESH
         try:
             app_module._MASTER_STATS_INVALIDATION_STATE["checked_at"] = 0.0
             token_before = app_module._master_stats_invalidation_token()
@@ -3198,16 +3199,18 @@ def _check_datalab_stats(client):
                 "invalidation_token": token_before,
             })
             from unittest.mock import patch
+            from unittest.mock import Mock
+            refresh_signal = Mock()
             with patch.object(
                 app_module,
-                "_master_stats_schedule_revalidation",
-                return_value=True,
-            ) as schedule_revalidation:
+                "_MASTER_STATS_NEEDS_REFRESH",
+                refresh_signal,
+            ):
                 external_stale = client.get("/api/stats/consign-by-sido").get_json() or {}
             if (
                 token_after == token_before
                 or (external_stale.get("total") or {}).get("units") != -1
-                or not schedule_revalidation.called
+                or not refresh_signal.set.called
             ):
                 failures.append("통계 원본 창고: 외부 원본 갱신 뒤 stale 응답·백그라운드 재검증이 동작하지 않음")
 
@@ -3230,15 +3233,16 @@ def _check_datalab_stats(client):
                 "sections": {"lodging_stats": {"status": "ok", "error": None}},
                 "invalidation_token": token_before,
             })
+            refresh_signal = Mock()
             with patch.object(
                 app_module,
-                "_master_stats_schedule_revalidation",
-                return_value=True,
-            ) as schedule_revalidation:
+                "_MASTER_STATS_NEEDS_REFRESH",
+                refresh_signal,
+            ):
                 registration_after_external_write = client.get("/api/stats/registration-rate").get_json() or {}
             if registration_after_external_write.get("total_units") == 999993:
                 failures.append("통계 원본 창고: 신고율 API가 외부 무효화 뒤 레거시 캐시를 반환함")
-            elif not schedule_revalidation.called:
+            elif not refresh_signal.set.called:
                 failures.append("통계 원본 창고: 신고율 stale 응답이 재검증을 예약하지 않음")
         finally:
             app_module._MASTER_STATS_CACHE.clear()
@@ -3246,6 +3250,7 @@ def _check_datalab_stats(client):
             app_module._bld_full_stats_cache = saved_bld_full_stats_cache
             app_module._MASTER_STATS_INVALIDATION_STATE.clear()
             app_module._MASTER_STATS_INVALIDATION_STATE.update(saved_invalidation_state)
+            app_module._MASTER_STATS_NEEDS_REFRESH = saved_refresh_signal
 
         # 마스터 캐시 한 섹션이 실패해도 해당 공개 API는 기존 직접 집계로
         # 폴백해야 하며, 빈 캐시는 다음 요청에서 전체 원본을 다시 만든다.

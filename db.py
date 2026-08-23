@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-23-07"
+SCHEMA_VERSION = "2026-08-23-08"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1686,6 +1686,7 @@ def _run_init_db():
     _seed_admin_user()
     _seed_legal_documents()
     _normalize_umd_nm_spaces()
+    _ensure_transaction_stats_indexes()
 
     # 전체 DDL/시드가 무사히 끝났을 때만 버전을 기록 → 다음 부팅부터 빠른 경로로 건너뜀
     conn = get_conn()
@@ -1698,6 +1699,27 @@ def _run_init_db():
     cur.close()
     conn.close()
     print(f"스키마 버전 {SCHEMA_VERSION} 기록 완료 — 다음 부팅부터 DDL 건너뜀")
+
+
+def _ensure_transaction_stats_indexes():
+    """데이터랩 거래 통계용 인덱스를 서비스 중단 없이 보장한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # CONCURRENTLY는 트랜잭션 블록 안에서 실행할 수 없으므로 별도 autocommit
+        # 연결을 쓴다. 스키마 초기화 advisory lock은 중복 실행만 막는다.
+        conn.autocommit = True
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_deal_date
+            ON transactions (deal_date DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_building
+            ON transactions (building_name, address)
+        """)
+    finally:
+        cur.close()
+        conn.close()
 
 
 def _ensure_raw_key_unique_constraint():

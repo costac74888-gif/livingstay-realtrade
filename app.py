@@ -31,6 +31,7 @@ import hmac
 import threading
 import subprocess
 import secrets as _secrets
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from urllib.parse import quote, urlencode
 import requests
@@ -13474,6 +13475,7 @@ _MASTER_STATS_CACHE: dict = {
 _MASTER_STATS_LOCK = threading.RLock()
 _MASTER_STATS_REBUILDING = threading.local()
 _MASTER_STATS_REVALIDATION_PENDING = False
+_MASTER_STATS_NEEDS_REFRESH = threading.Event()
 _MASTER_STATS_INVALIDATION_STATE = {"checked_at": 0.0, "token": None}
 
 
@@ -13556,8 +13558,44 @@ def _master_stats_add_section(data, sections, name, builder):
         sections[name] = {"status": "error", "error": str(exc)[:240]}
 
 
+def _master_stats_build_section(name, builder):
+    """별도 작업 스레드에서 섹션 하나를 계산하고 결과를 호출 스레드에 돌려준다."""
+    data = {}
+    sections = {}
+    previous_rebuilding = _master_stats_is_rebuilding()
+    try:
+        # Flask 앱 컨텍스트와 재빌드 플래그는 작업 스레드에 자동 전파되지 않는다.
+        # 둘 다 여기서 준비해야 내부 통계 API가 마스터 캐시를 재귀 호출하지 않는다.
+        with app.app_context():
+            _MASTER_STATS_REBUILDING.active = True
+            _master_stats_add_section(data, sections, name, builder)
+    except Exception as exc:
+        app.logger.exception("[master-stats] %s worker failed", name)
+        sections[name] = {"status": "error", "error": str(exc)[:240]}
+    finally:
+        _MASTER_STATS_REBUILDING.active = previous_rebuilding
+    return name, data.get(name), sections[name]
+
+
+def _master_stats_add_parallel_sections(data, sections, specs):
+    """독립적인 통계 섹션을 함께 계산하되 결과 반영은 호출 스레드에서 직렬화한다."""
+    with ThreadPoolExecutor(
+        max_workers=len(specs),
+        thread_name_prefix="master-stats",
+    ) as executor:
+        futures = [
+            executor.submit(_master_stats_build_section, name, builder)
+            for name, builder in specs
+        ]
+        for future in futures:
+            name, result, section = future.result()
+            sections[name] = section
+            if result is not None:
+                data[name] = result
+
+
 def _rebuild_master_stats(*, force=False):
-    """통계 원본을 한 번에 재계산하고 섹션별 성공 여부를 남긴다."""
+    """통계 원본을 단계별 병렬 재계산하고 섹션별 성공 여부를 남긴다."""
     with _MASTER_STATS_LOCK:
         if not force and _master_stats_cache_is_valid():
             return _MASTER_STATS_CACHE
@@ -13575,29 +13613,25 @@ def _rebuild_master_stats(*, force=False):
         data = {}
         sections = {}
         try:
-            _master_stats_add_section(
-                data, sections, "lodging_stats",
-                lambda: _lodging_full_stats_payload().get_json() or {},
+            # 1단계: 서로의 원본에 의존하지 않는 무거운 집계를 동시에 실행한다.
+            _master_stats_add_parallel_sections(
+                data,
+                sections,
+                (
+                    ("lodging_stats", lambda: _lodging_full_stats_payload().get_json() or {}),
+                    ("region_match", _matched_lodging_by_region),
+                    ("transaction_stats", _transaction_master_stats_payload),
+                    ("collection_stats", _collection_stats_payload),
+                ),
             )
-            _master_stats_add_section(
-                data, sections, "region_match",
-                lambda: _matched_lodging_by_region(),
-            )
-            _master_stats_add_section(
-                data, sections, "consign_stats",
-                _consign_by_sido_payload,
-            )
-            _master_stats_add_section(
-                data, sections, "closure_stats",
-                lambda: _closure_rate_payload(data.get("region_match")),
-            )
-            _master_stats_add_section(
-                data, sections, "transaction_stats",
-                _transaction_master_stats_payload,
-            )
-            _master_stats_add_section(
-                data, sections, "collection_stats",
-                _collection_stats_payload,
+            # 2단계: 주소 매칭 결과를 재사용하는 섹션을 병렬로 계산한다.
+            _master_stats_add_parallel_sections(
+                data,
+                sections,
+                (
+                    ("consign_stats", _consign_by_sido_payload),
+                    ("closure_stats", lambda: _closure_rate_payload(data.get("region_match"))),
+                ),
             )
         finally:
             _MASTER_STATS_REBUILDING.active = False
@@ -13625,6 +13659,7 @@ def _master_stats_schedule_revalidation():
         if _MASTER_STATS_REVALIDATION_PENDING:
             return False
         _MASTER_STATS_REVALIDATION_PENDING = True
+        _MASTER_STATS_NEEDS_REFRESH.clear()
 
     def revalidate():
         global _MASTER_STATS_REVALIDATION_PENDING
@@ -13664,11 +13699,12 @@ def _master_stats_section(name):
         if cache["sections"].get(name, {}).get("status") == "ok":
             return section_data
         if section_data is not None:
-            _master_stats_schedule_revalidation()
+            _MASTER_STATS_NEEDS_REFRESH.set()
             return section_data
         return None
     if section_data is not None:
-        _master_stats_schedule_revalidation()
+        # 만료된 데이터는 바로 돌려주고 다음 백그라운드 폴링에 재계산만 맡긴다.
+        _MASTER_STATS_NEEDS_REFRESH.set()
         return section_data
     cache = _rebuild_master_stats()
     if cache["sections"].get(name, {}).get("status") == "ok":
@@ -13694,9 +13730,11 @@ def _master_stats_background_loop():
                 or now - cache_ts >= _MASTER_STATS_CACHE_TTL - _MASTER_STATS_REFRESH_LEAD
             )
             invalidated = bool(cache_ts) and not _master_stats_cache_is_valid()
-            if refresh_due or invalidated:
+            refresh_requested = _MASTER_STATS_NEEDS_REFRESH.is_set()
+            if refresh_due or invalidated or refresh_requested:
                 if _master_stats_schedule_revalidation():
-                    app.logger.info("[master-stats] background refresh scheduled")
+                    reason = "requested" if refresh_requested else "scheduled"
+                    app.logger.info("[master-stats] background refresh %s", reason)
             first_run = False
         except Exception:
             app.logger.exception("[master-stats] background refresh failed")
