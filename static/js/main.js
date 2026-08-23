@@ -2286,7 +2286,7 @@ function renderDataLabClosure(data){
   }
   return `
     <div class="datalab-heading">
-      <strong>⑥ ⚫ 폐업 지역 랭킹</strong><span class="datalab-caption">시군구 · 표본 5건 이상</span>
+      <strong>⑥ ⚫ 폐업 현황</strong><span class="datalab-caption">시군구 · 표본 5건 이상</span>
     </div>
     <div class="datalab-list">${items.map((item, index) => `
       <div class="datalab-list-item">

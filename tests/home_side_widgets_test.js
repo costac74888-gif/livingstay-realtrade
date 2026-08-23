@@ -30,7 +30,7 @@ expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습�
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
   tabKeys.join(",") === "lodging,volume,change,highest,rate,closure",
-  "데이터랩 ⑤ 영업신고율·⑥ 폐업 지역 탭 순서가 아닙니다."
+  "데이터랩 ⑤ 영업신고율·⑥ 폐업 현황 탭 순서가 아닙니다."
 );
 expect(index.includes("<span>영업신고율</span>") && !index.includes("신고율 비교"),
   "데이터랩 탭 명칭이 영업신고율로 통일되지 않았습니다.");
@@ -78,8 +78,8 @@ const datalabClickBinding = main.slice(
 );
 expect(!datalabClickBinding.includes("openBuildingDetail"),
   "데이터랩 건물 클릭이 지도 이동 대신 상세 패널을 열고 있습니다.");
-expect(main.includes("<strong>⑤ 📈 영업신고율</strong>") && main.includes("<strong>⑥ ⚫ 폐업 지역 랭킹</strong>"),
-  "데이터랩 콘텐츠의 영업신고율·폐업 지역 순서 또는 명칭이 맞지 않습니다.");
+expect(main.includes("<strong>⑤ 📈 영업신고율</strong>") && main.includes("<strong>⑥ ⚫ 폐업 현황</strong>"),
+  "데이터랩 콘텐츠의 영업신고율·폐업 현황 순서 또는 명칭이 맞지 않습니다.");
 expect(main.includes("dataLabArea(item.area_sqm)"), "가격변동 데이터랩에 동일 전용면적 표시가 없습니다.");
 expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국숙박업통계 캡션이 현재수집 기준이 아닙니다.");
 expect(main.includes("<th>건물수</th><th>호실수</th><th>영업신고업체</th><th>영업신고호실</th><th>영업신고율</th>"),
