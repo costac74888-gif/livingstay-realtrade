@@ -10,13 +10,18 @@ function expect(condition, message) {
 }
 
 const recentStart = index.indexOf('id="recentRow"');
-const rankingStart = index.indexOf('id="sideRankingCard"');
-expect(recentStart >= 0 && rankingStart > recentStart, "최근검색 위젯 위치를 찾을 수 없습니다.");
-const recentSection = index.slice(recentStart, rankingStart);
+const partnerStart = index.indexOf('파트너가 되고 싶으신가요?');
+expect(recentStart >= 0 && partnerStart > recentStart, "최근검색 위젯 위치를 찾을 수 없습니다.");
+const recentSection = index.slice(recentStart, partnerStart);
 expect(recentSection.includes("최근검색"), "최근검색 위젯 제목이 없습니다.");
 expect(recentSection.includes("내 방문 기록"), "최근검색 위젯의 방문 기록 보조 라벨이 사라졌습니다.");
 expect(!index.includes("최근 관심물건"), "최근 관심물건 위젯이 홈 마크업에 남아 있습니다.");
 expect(!index.includes('id="sideFavList"'), "최근 관심물건 위젯의 목록 컨테이너가 남아 있습니다.");
+expect(!index.includes('id="sideRankingCard"'), "거래량 TOP 별도 위젯이 데이터랩 편입 후에도 남아 있습니다.");
+expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습니다.");
+["lodging", "volume", "change", "highest", "closure", "rate"].forEach((key) => {
+  expect(index.includes(`data-datalab-key="${key}"`), `데이터랩 ${key} 항목이 없습니다.`);
+});
 
 expect(main.includes('const HS_RECENT_KEY = "hs_recent_buildings"'), "최근검색 localStorage 키가 바뀌었습니다.");
 expect(main.includes("function trackRecentBuilding"), "최근검색 기록 함수가 사라졌습니다.");
@@ -27,5 +32,8 @@ expect(main.includes("renderRecentChips(); // 페이지 로드 시 최근 본 �
 const sideFavoriteCallSites = main.match(/(?:^|[^\w])loadSideFavorites\s*\(/g) || [];
 expect(sideFavoriteCallSites.length === 1 && main.includes("async function loadSideFavorites"),
   "관심물건 위젯 데이터 로드 호출부가 남아 있습니다.");
+expect(main.includes("function loadDataLab"), "데이터랩 전환 로더가 없습니다.");
+expect(main.includes("/api/stats/price-change-top"), "가격변동 데이터랩 API 연결이 없습니다.");
+expect(main.includes("/api/stats/report-rate-by-sido"), "시도별 신고율 데이터랩 API 연결이 없습니다.");
 
-console.log("OK  홈 좌측 최근검색 유지·최근 관심물건 제거·localStorage 회귀");
+console.log("OK  홈 최근검색·데이터랩 편입·관심물건 제거·localStorage 회귀");

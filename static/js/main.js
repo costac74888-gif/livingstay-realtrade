@@ -2140,67 +2140,234 @@ function renderRecentChips(){
   }).join("");
 }
 
-// ── 랭킹 위젯 ────────────────────────────────────────────────────────────────
-async function loadRankingWidget(){
-  const box = document.getElementById("sideRanking");
-  if (!box) return;
-  try {
-    const res = await fetch("/api/ranking");
-    if (!res.ok) throw new Error(res.status);
-    const d = await res.json();
-    if (!d.ok){ box.innerHTML = '<div class="side-empty">랭킹 데이터 없음</div>'; return; }
+// ── 데이터랩: ① 전국숙박업통계 + 시장 신호 5종 ─────────────────────────────
+let dataLabRequestSequence = 0;
 
-    const _btn = (item, label) => {
-      const bid = item.building_id;
-      const name = escapeHtml(item.building_name || "건물명 미확인");
-      const onclick = bid
-        ? `history.pushState({buildingId:${bid}},'','/building/${bid}');renderBuildingPanel(${bid});`
-        : `document.getElementById('inputQ').value=${JSON.stringify(item.building_name||'')};document.getElementById('btnSearch').click();`;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;
-                          border-bottom:1px solid var(--line);">
-        <span style="flex:none;font-size:11px;font-weight:700;color:#9AA5B1;
-                     width:18px;text-align:center;">${label}</span>
-        <button type="button" onclick="${onclick}"
-          style="flex:1;background:none;border:none;padding:0;text-align:left;
-                 cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink);
-                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-          title="${name}">${name}</button>
-      </div>`;
-    };
+function dataLabNum(value){
+  return Number(value || 0).toLocaleString("ko-KR");
+}
 
-    let html = "";
-
-    if (d.price_highs && d.price_highs.length){
-      html += `<div style="font-size:11px;font-weight:700;color:var(--brass-dark);
-                            padding:6px 0 2px;">🏆 신고가 갱신</div>`;
-      d.price_highs.forEach((item, i) => {
-        const gain = item.pct_gain > 0 ? `<span style="color:#E53E3E;font-size:11px;">+${item.pct_gain}%</span>` : "";
-        html += _btn(item, i + 1).replace("</div>", `${gain}</div>`);
-      });
-    }
-
-    if (d.most_traded && d.most_traded.length){
-      html += `<div style="font-size:11px;font-weight:700;color:var(--ink-soft);
-                            padding:10px 0 2px;">🔥 거래량 TOP</div>`;
-      d.most_traded.forEach((item, i) => {
-        const cnt = `<span style="color:var(--brass-dark);font-size:11px;">${item.deal_count}건</span>`;
-        html += _btn(item, i + 1).replace("</div>", `${cnt}</div>`);
-      });
-    }
-
-    if (!html) html = '<div class="side-empty">이번 주 거래 데이터 없음</div>';
-    box.classList.remove("side-soon");
-    box.innerHTML = html;
-  } catch(e){
-    box.innerHTML = '<div class="side-empty">랭킹을 불러오지 못했습니다.</div>';
+function dataLabBuildingButton(item){
+  const name = escapeHtml(item.building_name || "건물명 미확인");
+  const buildingId = Number(item.building_id);
+  if (!Number.isInteger(buildingId) || buildingId <= 0) {
+    return `<span class="datalab-building" title="${name}">${name}</span>`;
   }
+  return `<button type="button" class="datalab-building" data-datalab-building="${buildingId}" title="${name}">${name}</button>`;
+}
+
+function bindDataLabBuildingButtons(box){
+  box.querySelectorAll("[data-datalab-building]").forEach(button => {
+    button.addEventListener("click", () => {
+      const buildingId = Number(button.dataset.datalabBuilding);
+      if (Number.isInteger(buildingId) && buildingId > 0) window.openBuildingDetail(buildingId);
+    });
+  });
+}
+
+function dataLabRankList(items, makeMeta, makeValue){
+  if (!items.length) return '<div class="side-empty">표시할 데이터가 없습니다.</div>';
+  return `<div class="datalab-list">${items.map((item, index) => `
+    <div class="datalab-list-item">
+      <span class="datalab-rank">${index + 1}</span>
+      <div style="min-width:0;">
+        ${dataLabBuildingButton(item)}
+        <div class="datalab-meta">${makeMeta(item)}</div>
+      </div>
+      <span class="datalab-value">${makeValue(item)}</span>
+    </div>`).join("")}</div>`;
+}
+
+function renderDataLabLodging(data){
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  if (!rows.length) return '<div class="side-empty">전국 숙박업 통계가 없습니다.</div>';
+  const body = rows.map(row => {
+    const rateMetric = row.lodging_metric === "room_count"
+      ? `${dataLabNum(row.room_count)}실`
+      : (row.report_rate == null ? "-" : `${row.report_rate}%`);
+    const base = `
+      <tr>
+        <td>${escapeHtml(row.type)}</td>
+        <td>${dataLabNum(row.building_count)}</td>
+        <td>${dataLabNum(row.units)}</td>
+        <td>${dataLabNum(row.favorites)}</td>
+        <td>${dataLabNum(row.listing_requests)}</td>
+        <td>${rateMetric}</td>
+        <td>${row.closed_rate == null ? "-" : `${row.closed_rate}%`}</td>
+      </tr>`;
+    const subRows = (row.sub_rows || []).map(sub => `
+      <tr class="datalab-sub-row">
+        <td class="datalab-sub-name">└ ${escapeHtml(sub.type)}</td>
+        <td>-</td><td>-</td><td>-</td><td>-</td>
+        <td>${dataLabNum(sub.room_count)}실</td><td>-</td>
+      </tr>`).join("");
+    return base + subRows;
+  }).join("");
+  return `
+    <div class="datalab-heading">
+      <strong>① 전국숙박업통계</strong><span class="datalab-caption">관리자 기준 동기화</span>
+    </div>
+    <div class="datalab-table-wrap">
+      <table class="datalab-table">
+        <thead><tr><th>구분</th><th>건물</th><th>호실</th><th>관심</th><th>매물</th><th>신고</th><th>폐업</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    <p class="datalab-note">일반숙박은 신고율 대신 현재 영업신고 객실 수를 표시합니다.</p>`;
+}
+
+function renderDataLabVolume(data){
+  const items = Array.isArray(data.most_traded) ? data.most_traded : [];
+  return `
+    <div class="datalab-heading">
+      <strong>② 🔥 거래량 TOP</strong><span class="datalab-caption">최근 7일 실거래</span>
+    </div>
+    ${dataLabRankList(
+      items,
+      item => `${escapeHtml(item.address || "-")} · 최근 ${escapeHtml(item.latest_date || "-")}`,
+      item => `${dataLabNum(item.deal_count)}건`
+    )}`;
+}
+
+function renderDataLabChange(data){
+  const direction = data.direction === "down" ? "down" : "up";
+  const items = Array.isArray(data.items) ? data.items : [];
+  const label = direction === "up" ? "상승" : "하락";
+  return `
+    <div class="datalab-heading">
+      <strong>③ 📊 가격변동 TOP</strong><span class="datalab-caption">최근 30일 · 2건 이상</span>
+    </div>
+    <div class="datalab-toolbar">
+      <span class="datalab-caption">${label}률 기준</span>
+      <span class="datalab-toggle">
+        <button type="button" data-datalab-direction="up" class="${direction === "up" ? "active" : ""}">상승</button>
+        <button type="button" data-datalab-direction="down" class="${direction === "down" ? "active" : ""}">하락</button>
+      </span>
+    </div>
+    ${dataLabRankList(
+      items,
+      item => `${dataLabNum(item.first_price)}만원 → ${dataLabNum(item.latest_price)}만원`,
+      item => `${item.change_percent > 0 ? "+" : ""}${item.change_percent}%`
+    )}`;
+}
+
+function renderDataLabHighest(data){
+  const items = Array.isArray(data.items) ? data.items : [];
+  return `
+    <div class="datalab-heading">
+      <strong>④ 💰 최고가 건물 TOP</strong><span class="datalab-caption">역대 최고 거래가</span>
+    </div>
+    ${dataLabRankList(
+      items,
+      item => `${escapeHtml(item.address || "-")} · ${escapeHtml(item.deal_date || "-")}`,
+      item => `${dataLabNum(item.price)}만원`
+    )}`;
+}
+
+function renderDataLabClosure(data){
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (!items.length) {
+    return '<div class="side-empty">표본 5건 이상인 지역 데이터가 없습니다.</div>';
+  }
+  return `
+    <div class="datalab-heading">
+      <strong>⑤ ⚫ 폐업 지역 랭킹</strong><span class="datalab-caption">시군구 · 표본 5건 이상</span>
+    </div>
+    <div class="datalab-list">${items.map((item, index) => `
+      <div class="datalab-list-item">
+        <span class="datalab-rank">${index + 1}</span>
+        <div style="min-width:0;">
+          <strong class="datalab-building">${escapeHtml(item.region)}</strong>
+          <div class="datalab-meta">전체 ${dataLabNum(item.total_count)}개 중 ${dataLabNum(item.closed_count)}개 폐업</div>
+        </div>
+        <span class="datalab-value">${item.closure_rate}%</span>
+      </div>`).join("")}</div>
+    <p class="datalab-note">투자 기회 신호일 수 있으나, 폐업 사유는 확인이 필요합니다.</p>`;
+}
+
+function renderDataLabRate(data){
+  const items = Array.isArray(data.items) ? data.items.filter(item => item.rate != null) : [];
+  const nationalRate = Number(data.national_rate);
+  if (!items.length) return '<div class="side-empty">시도별 신고율 데이터가 없습니다.</div>';
+  const marker = Number.isFinite(nationalRate) ? Math.max(0, Math.min(nationalRate, 100)) : null;
+  return `
+    <div class="datalab-heading">
+      <strong>⑥ 📈 영업신고율 지역비교</strong><span class="datalab-caption">일반숙박 제외</span>
+    </div>
+    <div class="datalab-rate-summary">가중평균: 영업신고 객실 수 ÷ 건물 호실 수</div>
+    ${items.map(item => {
+      const rate = Math.max(0, Math.min(Number(item.rate) || 0, 100));
+      return `<div class="datalab-rate-row">
+        <div class="datalab-rate-label"><strong>${escapeHtml(item.sido)}</strong><span>${item.rate}%</span></div>
+        <div class="datalab-rate-track">
+          <div class="datalab-rate-fill" style="width:${rate}%"></div>
+          ${marker == null ? "" : `<i class="datalab-rate-marker" style="left:${marker}%"></i>`}
+        </div>
+      </div>`;
+    }).join("")}
+    ${marker == null ? "" : `<div class="datalab-rate-legend"><i></i> 전국 평균 ${nationalRate}% 기준선</div>`}`;
+}
+
+function setDataLabActive(key){
+  document.querySelectorAll("[data-datalab-key]").forEach(button => {
+    const active = button.dataset.datalabKey === key;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+async function loadDataLab(key, direction = "up"){
+  const content = document.getElementById("dataLabContent");
+  if (!content) return;
+  const requestId = ++dataLabRequestSequence;
+  setDataLabActive(key);
+  content.innerHTML = '<div class="side-empty">데이터를 불러오는 중…</div>';
+  const urls = {
+    lodging: "/api/stats/lodging-full-table",
+    volume: "/api/ranking",
+    change: `/api/stats/price-change-top?direction=${encodeURIComponent(direction)}`,
+    highest: "/api/stats/highest-price-top",
+    closure: "/api/stats/closure-rate-by-region",
+    rate: "/api/stats/report-rate-by-sido",
+  };
+  try {
+    const response = await fetch(urls[key]);
+    const data = await response.json();
+    if (requestId !== dataLabRequestSequence) return;
+    if (!response.ok || !data.ok) throw new Error("datalab request failed");
+    const renders = {
+      lodging: renderDataLabLodging,
+      volume: renderDataLabVolume,
+      change: renderDataLabChange,
+      highest: renderDataLabHighest,
+      closure: renderDataLabClosure,
+      rate: renderDataLabRate,
+    };
+    content.innerHTML = renders[key](data);
+    bindDataLabBuildingButtons(content);
+    content.querySelectorAll("[data-datalab-direction]").forEach(button => {
+      button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
+    });
+  } catch (error) {
+    if (requestId !== dataLabRequestSequence) return;
+    content.innerHTML = '<div class="side-empty">데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+    console.error("[데이터랩] 로드 실패:", error);
+  }
+}
+
+function initDataLab(){
+  const nav = document.getElementById("dataLabNav");
+  if (!nav) return;
+  nav.querySelectorAll("[data-datalab-key]").forEach(button => {
+    button.addEventListener("click", () => loadDataLab(button.dataset.datalabKey));
+  });
+  loadDataLab("lodging");
 }
 
 function initDefaultSidePanel(){
   loadTrendChart();
   loadSideTx(5);
-  loadSideStats();
-  loadRankingWidget();
+  initDataLab();
   renderRecentChips(); // 페이지 로드 시 최근 본 건물 칩 복원
 }
 

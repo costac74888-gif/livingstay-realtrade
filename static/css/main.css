@@ -356,6 +356,53 @@
   .side-soon-desc{font-size:10.5px; font-weight:400; color:#9AA5B1; margin-top:5px;}
   .side-apply-banner{display:block; margin-top:8px; padding:7px 12px; font-size:12px; font-weight:700; color:var(--brass-dark); background:#FBF6ED; border:1px solid #EADFC8; border-radius:8px; text-align:center; text-decoration:none;}
   .side-apply-banner:hover{background:#F5EDDD;}
+  .datalab-layout{display:grid; grid-template-columns:92px minmax(0,1fr); gap:10px; align-items:start;}
+  .datalab-nav{display:grid; grid-template-columns:1fr; gap:5px;}
+  .datalab-tab{
+    display:flex; align-items:center; gap:4px; width:100%; min-width:0;
+    border:1px solid var(--line); border-radius:8px; padding:6px 5px;
+    background:#fff; color:var(--ink-soft); font:600 10.5px/1.2 inherit;
+    cursor:pointer; text-align:left;
+  }
+  .datalab-tab:hover{border-color:#D2B47D; background:var(--brass-tint);}
+  .datalab-tab.active{border-color:var(--brass); background:var(--brass-tint); color:var(--brass-dark); box-shadow:inset 3px 0 var(--brass);}
+  .datalab-icon{flex:none; width:19px; font-size:13px; text-align:center;}
+  .datalab-tab > span:last-child{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .datalab-content{min-width:0; min-height:210px;}
+  .datalab-heading{display:flex; align-items:baseline; justify-content:space-between; gap:6px; margin-bottom:7px;}
+  .datalab-heading strong{font-size:12px; color:var(--ink);}
+  .datalab-caption{font-size:10px; color:var(--ink-soft); white-space:nowrap;}
+  .datalab-note{margin-top:8px; padding:7px 8px; border-radius:7px; background:#F8F4EC; color:var(--ink-soft); font-size:10px; line-height:1.45;}
+  .datalab-table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:7px;}
+  .datalab-table{width:100%; min-width:330px; border-collapse:collapse; font-size:10px;}
+  .datalab-table th{padding:6px 5px; background:#F8F9FA; color:var(--ink-soft); font-weight:600; text-align:right; white-space:nowrap;}
+  .datalab-table th:first-child,.datalab-table td:first-child{text-align:left;}
+  .datalab-table td{padding:6px 5px; border-top:1px solid var(--line); color:var(--ink); text-align:right; white-space:nowrap;}
+  .datalab-table tr:nth-child(even) td{background:#FCFBF8;}
+  .datalab-table .datalab-sub-row td{background:#FAFAFA; color:var(--ink-soft); font-size:9.5px;}
+  .datalab-table .datalab-sub-name{padding-left:15px;}
+  .datalab-list{display:flex; flex-direction:column; border-top:1px solid var(--line);}
+  .datalab-list-item{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:7px 2px; border-bottom:1px solid var(--line);}
+  .datalab-rank{font:700 10px 'JetBrains Mono',monospace; color:var(--brass-dark); text-align:center;}
+  .datalab-building{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; padding:0; background:transparent; color:var(--ink); cursor:pointer; text-align:left; font:600 10.5px/1.3 inherit;}
+  .datalab-building:hover{text-decoration:underline; color:var(--brass-dark);}
+  .datalab-meta{font-size:9.5px; color:var(--ink-soft); white-space:nowrap;}
+  .datalab-value{font-size:10px; color:var(--brass-dark); font-weight:700; white-space:nowrap;}
+  .datalab-toolbar{display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:7px;}
+  .datalab-toggle{display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden;}
+  .datalab-toggle button{border:0; border-right:1px solid var(--line); padding:3px 7px; background:#fff; color:var(--ink-soft); font:600 10px inherit; cursor:pointer;}
+  .datalab-toggle button:last-child{border-right:0;}
+  .datalab-toggle button.active{background:var(--brass); color:#fff;}
+  .datalab-rate-summary{font-size:10px; color:var(--ink-soft); margin-bottom:8px;}
+  .datalab-rate-row{margin:7px 0 9px;}
+  .datalab-rate-label{display:flex; justify-content:space-between; gap:6px; font-size:10.5px; margin-bottom:3px;}
+  .datalab-rate-label strong{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .datalab-rate-label span{color:var(--brass-dark); font-weight:700; white-space:nowrap;}
+  .datalab-rate-track{position:relative; height:8px; background:#EEF0F2; border-radius:5px; overflow:visible;}
+  .datalab-rate-fill{height:100%; border-radius:5px; background:linear-gradient(90deg,#B4863F,#D1A867);}
+  .datalab-rate-marker{position:absolute; top:-3px; bottom:-3px; width:1px; background:#3E566F; z-index:1;}
+  .datalab-rate-legend{display:flex; align-items:center; gap:4px; margin-top:7px; color:var(--ink-soft); font-size:9.5px;}
+  .datalab-rate-legend i{display:inline-block; width:1px; height:12px; background:#3E566F;}
 
   @media (max-width: 980px){
     /* 검색바: 상단 토글 버튼 아래에서 화면 폭을 모두 사용 */
@@ -391,6 +438,9 @@
     }
     .platform-stats{grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;}
     .platform-stats > div{font-size:10.5px; padding:7px 6px;}
+    .datalab-layout{grid-template-columns:1fr; gap:9px;}
+    .datalab-nav{grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px;}
+    .datalab-content{min-height:0;}
     /* 패널이 열려 있는 동안엔 우측 상단 "🔍 검색" 플로팅 버튼 숨김 —
        건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라
        ✕가 묻혀 안 보이는 문제 방지 (패널 닫으면 다시 표시, 데스크톱 무관) */

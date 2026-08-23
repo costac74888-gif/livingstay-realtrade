@@ -148,6 +148,36 @@
         onclick="document.getElementById('btnTogglePanel').click()">✕</button>
     </div>
 
+    <!-- 데이터랩: 좌측 신호 선택 + 우측 콘텐츠 -->
+    <section class="side-card datalab-card" id="dataLabCard">
+      <div class="side-card-title">데이터랩 <span class="side-sub">숙박시장 신호</span></div>
+      <div class="datalab-layout">
+        <nav class="datalab-nav" id="dataLabNav" aria-label="데이터랩 항목">
+          <button type="button" class="datalab-tab active" data-datalab-key="lodging" aria-pressed="true">
+            <span class="datalab-icon">①</span><span>숙박통계</span>
+          </button>
+          <button type="button" class="datalab-tab" data-datalab-key="volume" aria-pressed="false">
+            <span class="datalab-icon">🔥</span><span>거래량 TOP</span>
+          </button>
+          <button type="button" class="datalab-tab" data-datalab-key="change" aria-pressed="false">
+            <span class="datalab-icon">📊</span><span>가격변동</span>
+          </button>
+          <button type="button" class="datalab-tab" data-datalab-key="highest" aria-pressed="false">
+            <span class="datalab-icon">💰</span><span>최고가 TOP</span>
+          </button>
+          <button type="button" class="datalab-tab" data-datalab-key="closure" aria-pressed="false">
+            <span class="datalab-icon">⚫</span><span>폐업 지역</span>
+          </button>
+          <button type="button" class="datalab-tab" data-datalab-key="rate" aria-pressed="false">
+            <span class="datalab-icon">📈</span><span>신고율 비교</span>
+          </button>
+        </nav>
+        <div class="datalab-content" id="dataLabContent" aria-live="polite">
+          <div class="side-empty">데이터를 불러오는 중…</div>
+        </div>
+      </div>
+    </section>
+
     <section class="side-card">
       <div class="side-card-title">실거래추세 <span class="side-sub" id="trendGranularityNote"></span></div>
       <div class="side-chart-wrap"><canvas id="trendChart"></canvas></div>
@@ -168,17 +198,6 @@
     <section class="side-card" id="recentRow" style="display:none;">
       <div class="side-card-title">최근검색 <span class="side-sub">내 방문 기록</span></div>
       <div id="recentChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
-    </section>
-
-    <!-- 이번 주 랭킹 위젯 -->
-    <section class="side-card" id="sideRankingCard">
-      <div class="side-card-title">이번 주 랭킹 <span class="side-sub">실거래 기준</span></div>
-      <div id="sideRanking"><div class="side-empty">불러오는 중…</div></div>
-    </section>
-
-    <section class="side-card">
-      <div class="side-card-title">행정 <span class="side-sub">숙박업영업신고율</span></div>
-      <div id="sideRegRate" class="side-soon">불러오는 중…</div>
     </section>
 
     <section class="side-card">

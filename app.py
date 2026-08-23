@@ -1994,7 +1994,9 @@ def get_ranking():
                     ROUND(100.0 * (r.price - p.old_max) / p.old_max, 1) AS pct_gain,
                     r.deal_date,
                     (SELECT id FROM master_buildings
-                     WHERE building_name = r.building_name LIMIT 1) AS building_id
+                     WHERE building_name = r.building_name
+                       AND (road_address = r.address OR jibun_address = r.address)
+                     ORDER BY id LIMIT 1) AS building_id
                 FROM recent r
                 JOIN prev_max p
                   ON r.building_name = p.building_name AND r.address = p.address
@@ -2023,7 +2025,9 @@ def get_ranking():
                     MAX(price)      AS max_price,
                     MAX(deal_date)  AS latest_date,
                     (SELECT id FROM master_buildings
-                     WHERE building_name = t.building_name LIMIT 1) AS building_id
+                     WHERE building_name = t.building_name
+                       AND (road_address = t.address OR jibun_address = t.address)
+                     ORDER BY id LIMIT 1) AS building_id
                 FROM transactions t
                 WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
                   AND price > 0
@@ -12874,9 +12878,7 @@ _BLD_FULL_STATS_TTL = 300  # 5분 캐시
 GENERAL_LODGING_SUB_TYPES = ("일반호텔", "여관업", "여인숙업", "숙박업(생활)")
 
 
-@app.route("/api/admin/buildings/full-stats")
-@require_admin
-def admin_buildings_full_stats():
+def _lodging_full_stats_payload():
     """건물마스터 용도별 세부 통계표 — 항상 전체 데이터 기준 (필터 무관, 5분 캐시)."""
     global _bld_full_stats_cache
     now = time.time()
@@ -13064,6 +13066,19 @@ def admin_buildings_full_stats():
     result = {"ok": True, "rows": rows}
     _bld_full_stats_cache = {"ts": now, "data": result}
     return jsonify(result)
+
+
+@app.route("/api/admin/buildings/full-stats")
+@require_admin
+def admin_buildings_full_stats():
+    return _lodging_full_stats_payload()
+
+
+@app.route("/api/stats/lodging-full-table")
+@limiter.limit("20 per minute")
+def stats_lodging_full_table():
+    """인증 없이 공개하는 데이터랩 전국 숙박업 통계표."""
+    return _lodging_full_stats_payload()
 
 
 @app.route("/api/admin/buildings/region-options")
@@ -19698,6 +19713,263 @@ def stats_platform_summary():
     finally:
         cur.close()
         conn.close()
+
+
+@app.route("/api/stats/price-change-top")
+@limiter.limit("30 per minute")
+def stats_price_change_top():
+    """최근 30일 안에 두 번 이상 거래된 건물의 첫 거래 대비 최근 거래 변동 TOP5."""
+    direction = (request.args.get("direction") or "up").strip().lower()
+    if direction not in ("up", "down"):
+        return jsonify({"ok": False, "message": "direction은 up 또는 down이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        comparison = "change_percent > 0" if direction == "up" else "change_percent < 0"
+        ordering = "change_percent DESC" if direction == "up" else "change_percent ASC"
+        cur.execute(f"""
+            WITH grouped AS (
+                SELECT
+                    building_name,
+                    address,
+                    COUNT(*) AS transaction_count,
+                    (array_agg(price ORDER BY deal_date ASC, id ASC))[1] AS first_price,
+                    (array_agg(price ORDER BY deal_date DESC, id DESC))[1] AS latest_price,
+                    (array_agg(deal_date ORDER BY deal_date ASC, id ASC))[1] AS first_deal_date,
+                    (array_agg(deal_date ORDER BY deal_date DESC, id DESC))[1] AS latest_deal_date
+                FROM transactions
+                WHERE deal_date IS NOT NULL
+                  AND deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')
+                  AND price > 0
+                GROUP BY building_name, address
+                HAVING COUNT(*) >= 2
+            ),
+            changed AS (
+                SELECT *,
+                       100.0 * (latest_price - first_price) / NULLIF(first_price, 0)
+                         AS change_percent
+                FROM grouped
+            )
+            SELECT
+                building_name, address, transaction_count,
+                first_price, latest_price, first_deal_date, latest_deal_date,
+                change_percent,
+                (SELECT id FROM master_buildings
+                 WHERE building_name = changed.building_name
+                   AND (road_address = changed.address OR jibun_address = changed.address)
+                 ORDER BY id LIMIT 1) AS building_id
+            FROM changed
+            WHERE {comparison}
+            ORDER BY {ordering}, building_name, address
+            LIMIT 5
+        """)
+        items = [
+            {
+                "building_name": row["building_name"],
+                "address": row["address"],
+                "building_id": row["building_id"],
+                "transaction_count": int(row["transaction_count"]),
+                "first_price": int(row["first_price"]),
+                "latest_price": int(row["latest_price"]),
+                "first_deal_date": row["first_deal_date"],
+                "latest_deal_date": row["latest_deal_date"],
+                "change_percent": round(float(row["change_percent"]), 1),
+            }
+            for row in cur.fetchall()
+        ]
+        return jsonify({"ok": True, "direction": direction, "items": items})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/stats/highest-price-top")
+@limiter.limit("30 per minute")
+def stats_highest_price_top():
+    """건물별 역대 최고 거래가 TOP5."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            WITH highest_by_building AS (
+                SELECT DISTINCT ON (building_name, address)
+                    building_name, address, price, deal_date, id
+                FROM transactions
+                WHERE price > 0 AND deal_date IS NOT NULL
+                ORDER BY building_name, address, price DESC, deal_date DESC, id DESC
+            )
+            SELECT
+                building_name, address, price, deal_date,
+                (SELECT id FROM master_buildings
+                 WHERE building_name = highest_by_building.building_name
+                   AND (road_address = highest_by_building.address OR jibun_address = highest_by_building.address)
+                 ORDER BY id LIMIT 1) AS building_id
+            FROM highest_by_building
+            ORDER BY price DESC, deal_date DESC, building_name, address
+            LIMIT 5
+        """)
+        items = [
+            {
+                "building_name": row["building_name"],
+                "address": row["address"],
+                "building_id": row["building_id"],
+                "price": int(row["price"]),
+                "deal_date": row["deal_date"],
+            }
+            for row in cur.fetchall()
+        ]
+        return jsonify({"ok": True, "items": items})
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _matched_lodging_by_region(*, exclude_general=False):
+    """관리자 통계와 같은 주소 우선순위로 신고사업장을 지역·전국 집계에 연결한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        lodging_filter = """
+            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+        """
+        if exclude_general:
+            lodging_filter += " AND lodging_type IS DISTINCT FROM %s"
+            lodging_params = [REPORT_RATE_EXCLUDED_LODGING_TYPE]
+        else:
+            lodging_params = []
+        cur.execute(f"""
+            SELECT id, sgg_text, road_address, jibun_address, lodging_type, units
+            FROM master_buildings
+            {lodging_filter}
+        """, lodging_params)
+        buildings = cur.fetchall()
+
+        building_keys = []
+        road_norms = set()
+        jibun_norms = set()
+        for building in buildings:
+            road_key = addr_norm.normalize_road_prefix(building["road_address"])
+            jibun_key = addr_norm.normalize_jibun_prefix(
+                building["jibun_address"] or building["road_address"]
+            )
+            building_keys.append((building, road_key, jibun_key))
+            if road_key:
+                road_norms.add(road_key)
+            if jibun_key:
+                jibun_norms.add(jibun_key)
+
+        road_matches = {}
+        jibun_matches = {}
+        if road_norms or jibun_norms:
+            cur.execute("""
+                SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+                FROM lodging_registry
+                WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+            """, [list(road_norms) or ["__none__"], list(jibun_norms) or ["__none__"]])
+            for row in cur.fetchall():
+                if row["road_norm"]:
+                    road_matches.setdefault(row["road_norm"], {})[row["permit_number"]] = row
+                if row["jibun_norm"]:
+                    jibun_matches.setdefault(row["jibun_norm"], {})[row["permit_number"]] = row
+
+        region_map = {}
+        sido_map = {}
+        all_permits = {}
+        for building, road_key, jibun_key in building_keys:
+            region = (building["sgg_text"] or "").strip()
+            matches = road_matches.get(road_key) if road_key else None
+            if not matches:
+                matches = jibun_matches.get(jibun_key) if jibun_key else None
+            if not matches:
+                continue
+            for permit, lodging in matches.items():
+                all_permits.setdefault(permit, lodging)
+                if region:
+                    sido = region.split(" ")[0]
+                    region_permits = region_map.setdefault(region, {})
+                    sido_permits = sido_map.setdefault(sido, {})
+                    region_permits.setdefault(permit, lodging)
+                    sido_permits.setdefault(permit, lodging)
+
+        return buildings, region_map, sido_map, all_permits
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/stats/closure-rate-by-region")
+@limiter.limit("20 per minute")
+def stats_closure_rate_by_region():
+    """시군구별 매칭 숙박업체 폐업률 TOP5(표본 5건 이상)."""
+    _, region_map, _, _ = _matched_lodging_by_region()
+    items = []
+    for region, permits in region_map.items():
+        total_count = len(permits)
+        if total_count < 5:
+            continue
+        closed_count = sum(
+            1 for lodging in permits.values()
+            if "폐업" in (lodging["biz_status_name"] or "")
+        )
+        items.append({
+            "region": region,
+            "total_count": total_count,
+            "closed_count": closed_count,
+            "closure_rate": round(closed_count / total_count * 100, 1),
+        })
+    items.sort(key=lambda item: (-item["closure_rate"], -item["total_count"], item["region"]))
+    return jsonify({"ok": True, "items": items[:5], "minimum_sample_size": 5})
+
+
+@app.route("/api/stats/report-rate-by-sido")
+@limiter.limit("20 per minute")
+def stats_report_rate_by_sido():
+    """일반숙박을 제외한 시도별 가중평균 영업신고율."""
+    buildings, _, sido_map, all_permits = _matched_lodging_by_region(exclude_general=True)
+    units_by_sido = {}
+    building_count_by_sido = {}
+    for building in buildings:
+        sido = (building["sgg_text"] or "").strip().split(" ")[0]
+        if not sido:
+            continue
+        units_by_sido[sido] = units_by_sido.get(sido, 0) + int(building["units"] or 0)
+        building_count_by_sido[sido] = building_count_by_sido.get(sido, 0) + 1
+
+    # 전국 평균은 시도 정보가 없는 유효 건물까지 포함한다. 시도별 행만 지역명 없는
+    # 건물을 표시하지 않으며, 기준선은 관리자 전체 통계와 같은 전체 모집단으로 계산한다.
+    total_units = sum(int(building["units"] or 0) for building in buildings)
+    total_biz_units = sum(
+        int(lodging["room_count"] or 0)
+        for lodging in all_permits.values()
+        if "폐업" not in (lodging["biz_status_name"] or "")
+    )
+    items = []
+    for sido in sorted(units_by_sido):
+        permits = sido_map.get(sido, {})
+        active_permits = [
+            lodging for lodging in permits.values()
+            if "폐업" not in (lodging["biz_status_name"] or "")
+        ]
+        biz_units = sum(int(lodging["room_count"] or 0) for lodging in active_permits)
+        units = units_by_sido.get(sido, 0)
+        items.append({
+            "sido": sido,
+            "building_count": building_count_by_sido.get(sido, 0),
+            "total_units": units,
+            "biz_units": biz_units,
+            "rate": round(biz_units / units * 100, 1) if units else None,
+        })
+    items.sort(key=lambda item: (
+        -(item["rate"] if item["rate"] is not None else -1),
+        item["sido"],
+    ))
+    return jsonify({
+        "ok": True,
+        "items": items,
+        "national_rate": round(total_biz_units / total_units * 100, 1) if total_units else None,
+        "general_excluded": True,
+    })
 
 
 @app.route("/api/stats/registration-rate")

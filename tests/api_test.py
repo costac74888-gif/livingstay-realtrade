@@ -107,6 +107,44 @@ def check_platform_summary(payload):
     return None
 
 
+def check_datalab_lodging_table(payload):
+    """/api/stats/lodging-full-table: 공개 데이터랩 ①의 7개 상위 행."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return "응답이 성공 객체가 아님"
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or len(rows) != 7:
+        return "'rows'가 7개 상위행 배열이 아님"
+    expected_types = ["전체", "생활", "관광", "일반", "복합", "준공전", "미분류"]
+    if [row.get("type") for row in rows] != expected_types:
+        return "용도별 행 순서가 관리자 통계와 다름"
+    return None
+
+
+def check_datalab_items(payload):
+    """데이터랩 TOP/지역 비교 API: 성공 객체와 items 배열."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return "응답이 성공 객체가 아님"
+    if not isinstance(payload.get("items"), list):
+        return "'items'가 배열이 아님"
+    if len(payload["items"]) > 5:
+        return "TOP API가 5건을 초과함"
+    return None
+
+
+def check_datalab_rate(payload):
+    """/api/stats/report-rate-by-sido: 전국 평균과 시도별 배열."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return "응답이 성공 객체가 아님"
+    if not isinstance(payload.get("items"), list):
+        return "'items'가 배열이 아님"
+    if payload.get("general_excluded") is not True:
+        return "일반숙박 제외 기준이 표시되지 않음"
+    rate = payload.get("national_rate")
+    if rate is not None and not isinstance(rate, (int, float)):
+        return "'national_rate'가 숫자 또는 null이 아님"
+    return None
+
+
 # (경로, shape 검증 함수)
 CHECKS = [
     ("/api/health", check_health),
@@ -116,6 +154,12 @@ CHECKS = [
     ("/api/transactions?with_total=1&building_id=999999999", check_transactions),
     ("/api/buildings-geo", check_buildings_geo),
     ("/api/stats/platform-summary", check_platform_summary),
+    ("/api/stats/lodging-full-table", check_datalab_lodging_table),
+    ("/api/stats/price-change-top?direction=up", check_datalab_items),
+    ("/api/stats/price-change-top?direction=down", check_datalab_items),
+    ("/api/stats/highest-price-top", check_datalab_items),
+    ("/api/stats/closure-rate-by-region", check_datalab_items),
+    ("/api/stats/report-rate-by-sido", check_datalab_rate),
 ]
 
 
@@ -167,6 +211,8 @@ def run():
     failures += _check_subway_station_import_headers()
     # 홈 신뢰지표가 현재 건물마스터·거래·매물 COUNT와 일치하는지 확인
     failures += _check_platform_summary(client)
+    # 데이터랩 ②~⑥의 TOP·토글·표본 제외·신고율 기준을 확인
+    failures += _check_datalab_stats(client)
     # 건물전체 입지정보의 경쟁시설·최단 지하철역·원거리 처리 확인
     failures += _check_whole_listing_location_context(client)
     # 건물전체 매물의 생성·수정·공개범위 계약을 확인
@@ -2384,6 +2430,106 @@ def _check_platform_summary(client):
     finally:
         cur.close()
         conn.close()
+    return failures
+
+
+def _check_datalab_stats(client):
+    """데이터랩 ②~⑥의 정렬·토글·표본 제외·공통 집계 기준을 점검한다."""
+    failures = []
+    try:
+        ranked_items = []
+        for direction, sign in (("up", 1), ("down", -1)):
+            response = client.get(f"/api/stats/price-change-top?direction={direction}")
+            payload = response.get_json() or {}
+            items = payload.get("items") or []
+            ranked_items.extend(items)
+            if response.status_code != 200 or payload.get("direction") != direction:
+                failures.append(f"데이터랩 가격변동 {direction}: 응답 실패")
+                continue
+            changes = [float(item.get("change_percent") or 0) for item in items]
+            if any(item.get("transaction_count", 0) < 2 for item in items):
+                failures.append(f"데이터랩 가격변동 {direction}: 2건 미만 거래 건물이 포함됨")
+            if (sign > 0 and any(value <= 0 for value in changes)) or (
+                sign < 0 and any(value >= 0 for value in changes)
+            ):
+                failures.append(f"데이터랩 가격변동 {direction}: 상승/하락 방향이 잘못됨")
+            ordered = sorted(changes, reverse=(sign > 0))
+            if changes != ordered:
+                failures.append(f"데이터랩 가격변동 {direction}: 변동률 정렬이 잘못됨")
+
+        highest = client.get("/api/stats/highest-price-top").get_json() or {}
+        prices = [int(item.get("price") or 0) for item in highest.get("items") or []]
+        ranked_items.extend(highest.get("items") or [])
+        if any(price <= 0 for price in prices) or prices != sorted(prices, reverse=True):
+            failures.append("데이터랩 최고가: 양수 가격 내림차순 TOP이 아님")
+
+        ranking = client.get("/api/ranking").get_json() or {}
+        ranked_items.extend(ranking.get("price_highs") or [])
+        ranked_items.extend(ranking.get("most_traded") or [])
+
+        closure = client.get("/api/stats/closure-rate-by-region").get_json() or {}
+        for item in closure.get("items") or []:
+            total = int(item.get("total_count") or 0)
+            closed = int(item.get("closed_count") or 0)
+            expected_rate = round(closed / total * 100, 1) if total else None
+            if total < 5 or closed > total or item.get("closure_rate") != expected_rate:
+                failures.append("데이터랩 폐업 지역: 표본 5건 제외 또는 폐업률 계산이 잘못됨")
+                break
+
+        report_rate = client.get("/api/stats/report-rate-by-sido").get_json() or {}
+        if report_rate.get("general_excluded") is not True:
+            failures.append("데이터랩 시도별 신고율: 일반숙박 제외 기준이 없음")
+        for item in report_rate.get("items") or []:
+            units = int(item.get("total_units") or 0)
+            biz_units = int(item.get("biz_units") or 0)
+            expected_rate = round(biz_units / units * 100, 1) if units else None
+            if item.get("rate") != expected_rate:
+                failures.append("데이터랩 시도별 신고율: 가중평균 계산이 잘못됨")
+                break
+
+        public_stats = client.get("/api/stats/lodging-full-table").get_json() or {}
+        total_row = next((row for row in public_stats.get("rows") or [] if row.get("type") == "전체"), {})
+        if report_rate.get("national_rate") != total_row.get("report_rate"):
+            failures.append("데이터랩 시도별 신고율: 전국 기준선이 관리자 전체 신고율과 다름")
+        with client.session_transaction() as session:
+            session["admin"] = True
+        admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
+        public_rows = public_stats.get("rows") or []
+        admin_rows = admin_stats.get("rows") or []
+        keys = ("type", "building_count", "units", "favorites", "listing_requests", "report_rate", "room_count")
+        if len(public_rows) != len(admin_rows) or any(
+            any(left.get(key) != right.get(key) for key in keys)
+            for left, right in zip(public_rows, admin_rows)
+        ):
+            failures.append("데이터랩 전국숙박업통계: 관리자 통계와 공통 수치가 다름")
+
+        # 주소까지 일치할 때만 랭킹에서 건물 상세 링크를 반환해야 동명이 건물 오연결을 막는다.
+        from db import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            for item in ranked_items:
+                building_id = item.get("building_id")
+                if not building_id:
+                    continue
+                cur.execute(
+                    "SELECT building_name, road_address, jibun_address FROM master_buildings WHERE id = %s",
+                    [building_id],
+                )
+                building = cur.fetchone()
+                if not building or building["building_name"] != item.get("building_name") or (
+                    item.get("address") not in (building["road_address"], building["jibun_address"])
+                ):
+                    failures.append("데이터랩 랭킹: 주소 불일치 건물 상세 링크가 반환됨")
+                    break
+        finally:
+            cur.close()
+            conn.close()
+
+        if not failures:
+            print("OK  데이터랩 가격변동 토글·최고가·폐업 표본·시도별 신고율·관리자 통계 대조")
+    except Exception as exc:
+        failures.append(f"데이터랩 통계 테스트 오류: {exc}")
     return failures
 
 
