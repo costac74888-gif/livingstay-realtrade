@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-22-11"
+SCHEMA_VERSION = "2026-08-23-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -969,6 +969,20 @@ def _run_init_db():
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS yield_rate NUMERIC")
     # 수익률 산출에 사용한 월 임대료(만원) — 매매/전세 매물도 별도로 보관
     cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS yield_rent_krw INTEGER")
+    # 거래대상 — 기존 행은 모두 개별호실(unit)로 해석한다.
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS transaction_target TEXT DEFAULT 'unit'")
+    # 건물전체 거래·운영 정보. 금액은 모두 만원 단위 정수다.
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS succession_loan_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS key_money_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS monthly_revenue_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS annual_revenue_krw INTEGER")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS operation_status TEXT")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS closed_at DATE")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS remodeling_info TEXT")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS disclosure_scope TEXT DEFAULT 'limited'")
+    # 마스터 원본이 비어 있는 건물정보의 매물별 직접입력 보정값.
+    cur.execute("ALTER TABLE listing_requests ADD COLUMN IF NOT EXISTS building_info_overrides JSONB DEFAULT '{}'::jsonb")
     # 지도 마커의 공개 직거래 활성 매물 건수 집계 — 건물별 LATERAL COUNT의 전체 스캔 방지
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_listing_requests_active_direct_building

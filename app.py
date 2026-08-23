@@ -844,7 +844,10 @@ def get_building(building_id):
         SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.price_krw_max,
                lr.monthly_rent_krw, lr.room_count, lr.area_sqm, lr.verified_phone,
                lr.description, lr.yield_rate,
-               lr.deal_mode, lr.display_seq, lr.registrant_type,
+                lr.deal_mode, lr.display_seq, lr.registrant_type, lr.transaction_target,
+                lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
+                lr.annual_revenue_krw, lr.operation_status, lr.closed_at,
+                lr.remodeling_info, lr.is_urgent, lr.disclosure_scope, lr.building_info_overrides,
                CASE
                    WHEN lr.registrant_type = 'business'
                     AND lr.deal_type IN ('월세', '단기임대')
@@ -6762,8 +6765,235 @@ def admin_preview_agent_buy_requests(agent_id):
 # ============================================================
 
 _LISTING_DEAL_TYPES = {"매매", "전세", "월세", "단기임대"}
+_WHOLE_LISTING_DEAL_TYPES = {"매매", "통임대", "운영권양도", "위탁운영"}
+_LISTING_TARGETS = {"unit", "whole"}
+_WHOLE_OPERATION_STATUSES = {"영업중", "휴업", "폐업"}
+_WHOLE_DISCLOSURE_SCOPES = {"limited", "public"}
+_WHOLE_BUILDING_INFO_KEYS = {
+    "site_area_sqm", "total_area_sqm", "above_ground_floors", "below_ground_floors",
+    "approval_date", "zoning", "parking_spaces", "elevators", "structure",
+}
+WHOLE_DESCRIPTION_TEMPLATE = """■ 매물 개요
+- 건물 전체 거래 매물입니다.
+- 매매·임대·운영 조건은 협의 가능합니다.
+
+■ 건물 정보
+- 대지면적:
+- 연면적:
+- 층수:
+- 사용승인일:
+- 용도지역:
+- 주차:
+- 승강기:
+- 구조:
+
+■ 운영 현황
+- 월평균 매출:
+- 연매출:
+- 운영상태:
+- 리모델링:
+
+■ 거래 조건
+- 거래방식:
+- 권리금:
+- 급매 여부:
+
+■ 기타 안내
+- 상세 조건은 상담을 통해 확인해주세요."""
+WHOLE_ACQUISITION_COST_RATE = 0.061
 _PHONE_RE = re.compile(r"^0\d{1,2}-?\d{3,4}-?\d{4}$")
 _HOUSE_OFFICE_NAME = "홈스퀘어부동산중개법인"
+
+
+def _parse_listing_krw(value, field_label="금액", maximum=1_000_000):
+    """건물전체 금액을 만원 단위 양의 정수로 정규화한다."""
+    if value is None or value == "":
+        return None, None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None, f"{field_label}은(는) 만원 단위 숫자로 입력해주세요."
+    if not 0 < number <= maximum:
+        return None, f"{field_label}은(는) 1~{maximum:,}만원 사이로 입력해주세요."
+    return number, None
+
+
+def _parse_whole_date(value):
+    if value in (None, ""):
+        return None, None
+    if not isinstance(value, str):
+        return None, "폐업일은 YYYY-MM-DD 형식으로 입력해주세요."
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%d").date(), None
+    except ValueError:
+        return None, "폐업일은 YYYY-MM-DD 형식으로 입력해주세요."
+
+
+def _parse_building_info_overrides(value):
+    """직접 입력 건물정보는 허용된 키와 짧은 값만 JSON으로 보존한다."""
+    if value in (None, ""):
+        return {}, None
+    if not isinstance(value, dict):
+        return None, "건물정보 직접입력 형식이 올바르지 않습니다."
+    result = {}
+    for key, raw in value.items():
+        if key not in _WHOLE_BUILDING_INFO_KEYS:
+            continue
+        if raw is None:
+            continue
+        if isinstance(raw, bool):
+            result[key] = raw
+        elif isinstance(raw, (int, float)):
+            if raw >= 0:
+                result[key] = round(raw, 2)
+        else:
+            text = str(raw).strip()[:100]
+            if text:
+                result[key] = text
+    return result, None
+
+
+def _whole_listing_values(data, *, existing=None):
+    """건물전체 전용 필드 검증. 반환값은 INSERT/UPDATE 공통 계약이다."""
+    transaction_target = (data.get("transaction_target") or data.get("listing_target") or
+                          (existing or {}).get("transaction_target") or "unit").strip()
+    if transaction_target not in _LISTING_TARGETS:
+        return None, "거래대상은 개별호실 또는 건물전체 중 하나여야 합니다."
+
+    raw_deal_type = data.get("deal_type") or data.get("whole_deal_type")
+    if raw_deal_type in (None, "") and existing:
+        raw_deal_type = existing.get("deal_type")
+    deal_type = (raw_deal_type or "").strip()
+    allowed_types = _WHOLE_LISTING_DEAL_TYPES if transaction_target == "whole" else _LISTING_DEAL_TYPES
+    if deal_type not in allowed_types:
+        return None, (
+            "건물전체 거래방식은 매매/통임대/운영권양도/위탁운영 중 하나여야 합니다."
+            if transaction_target == "whole" else
+            "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."
+        )
+
+    if transaction_target == "unit":
+        return {"transaction_target": "unit", "deal_type": deal_type}, None
+
+    price_krw, error = _parse_listing_krw(data.get("price_krw"), "매매가" if deal_type == "매매" else "보증금")
+    if error:
+        return None, error
+    monthly_rent_krw, error = _parse_listing_krw(data.get("monthly_rent_krw"), "월세")
+    if error:
+        return None, error
+    succession_loan_krw, error = _parse_listing_krw(data.get("succession_loan_krw"), "승계융자")
+    if error:
+        return None, error
+    key_money_krw, error = _parse_listing_krw(data.get("key_money_krw"), "권리금")
+    if error:
+        return None, error
+    monthly_revenue_krw, error = _parse_listing_krw(data.get("monthly_revenue_krw"), "월평균매출")
+    if error:
+        return None, error
+    annual_revenue_krw, error = _parse_listing_krw(data.get("annual_revenue_krw"), "연매출")
+    if error:
+        return None, error
+    if deal_type == "매매" and succession_loan_krw is not None and price_krw is not None and succession_loan_krw > price_krw:
+        return None, "승계융자는 매매가보다 클 수 없습니다."
+    operation_status = (data.get("operation_status") or "").strip()
+    if operation_status and operation_status not in _WHOLE_OPERATION_STATUSES:
+        return None, "운영상태는 영업중/휴업/폐업 중 하나여야 합니다."
+    closed_at, error = _parse_whole_date(data.get("closed_at"))
+    if error:
+        return None, error
+    if operation_status != "폐업":
+        closed_at = None
+    disclosure_scope = (data.get("disclosure_scope") or "limited").strip()
+    if disclosure_scope not in _WHOLE_DISCLOSURE_SCOPES:
+        return None, "공개범위가 올바르지 않습니다."
+    overrides, error = _parse_building_info_overrides(data.get("building_info_overrides"))
+    if error:
+        return None, error
+    return {
+        "transaction_target": "whole",
+        "deal_type": deal_type,
+        "price_krw": price_krw,
+        "price_krw_max": None,
+        "monthly_rent_krw": monthly_rent_krw,
+        "succession_loan_krw": succession_loan_krw,
+        "key_money_krw": key_money_krw,
+        "monthly_revenue_krw": monthly_revenue_krw,
+        "annual_revenue_krw": annual_revenue_krw,
+        "operation_status": operation_status or None,
+        "closed_at": closed_at,
+        "remodeling_info": (str(data.get("remodeling_info") or "").strip()[:500] or None),
+        "is_urgent": bool(data.get("is_urgent")),
+        "disclosure_scope": disclosure_scope,
+        "building_info_overrides": overrides,
+    }, None
+
+
+@app.route("/api/building/<int:building_id>/whole-listing-context")
+def whole_listing_context(building_id):
+    """건물전체 매물 폼에 필요한 마스터 정보와 500m 주변 숙박시설 수."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, building_name, lat, lng, plat_area, tot_area,
+                   grnd_flr_cnt, ugrnd_flr_cnt, use_apr_day, jiyuk_nm,
+                   strct_nm,
+                   CASE WHEN tot_pkng_cnt IS NULL AND indr_auto_utcnt IS NULL
+                             AND oudr_auto_utcnt IS NULL AND indr_mech_utcnt IS NULL
+                             AND oudr_mech_utcnt IS NULL
+                        THEN NULL
+                        ELSE COALESCE(tot_pkng_cnt, 0) + COALESCE(indr_auto_utcnt, 0)
+                           + COALESCE(oudr_auto_utcnt, 0) + COALESCE(indr_mech_utcnt, 0)
+                           + COALESCE(oudr_mech_utcnt, 0)
+                   END AS parking_spaces,
+                   CASE WHEN ride_use_elvt_cnt IS NULL AND emgen_use_elvt_cnt IS NULL
+                        THEN NULL ELSE COALESCE(ride_use_elvt_cnt, 0) + COALESCE(emgen_use_elvt_cnt, 0)
+                   END AS elevators
+              FROM master_buildings WHERE id = %s
+        """, [building_id])
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"ok": False, "message": "등록되지 않은 건물입니다."}), 404
+        info = {
+            "site_area_sqm": building["plat_area"],
+            "total_area_sqm": building["tot_area"],
+            "above_ground_floors": building["grnd_flr_cnt"],
+            "below_ground_floors": building["ugrnd_flr_cnt"],
+            "approval_date": building["use_apr_day"],
+            "zoning": building["jiyuk_nm"],
+            "parking_spaces": building["parking_spaces"],
+            "elevators": building["elevators"],
+            "structure": building["strct_nm"],
+        }
+        counts = {"일반": 0, "관광": 0, "복합": 0}
+        if building["lat"] is not None and building["lng"] is not None:
+            cur.execute("""
+                SELECT mb.lodging_type, COUNT(*) AS cnt
+                  FROM master_buildings mb
+                 WHERE mb.lat IS NOT NULL AND mb.lng IS NOT NULL
+                   AND mb.id <> %s
+                   AND 6371000 * 2 * ASIN(SQRT(
+                         POWER(SIN(RADIANS(mb.lat - %s) / 2), 2)
+                       + COS(RADIANS(%s)) * COS(RADIANS(mb.lat))
+                         * POWER(SIN(RADIANS(mb.lng - %s) / 2), 2)
+                   )) <= 500
+                   AND mb.lodging_type IN ('일반', '관광', '복합')
+                 GROUP BY mb.lodging_type
+            """, [building_id, building["lat"], building["lat"], building["lng"]])
+            for row in cur.fetchall():
+                counts[row["lodging_type"]] = int(row["cnt"])
+        return jsonify({
+            "ok": True,
+            "building": {
+                "id": building["id"], "name": building["building_name"],
+                "lat": building["lat"], "lng": building["lng"], "info": info,
+            },
+            "nearby_lodgings": counts,
+            "subway": None,
+        })
+    finally:
+        cur.close()
+        conn.close()
 
 
 def _normalize_permit_number(value):
@@ -7018,7 +7248,23 @@ def format_listing_number(deal_mode, display_seq):
 
 def _apply_public_business_listing_summary(listing):
     """공개 직거래 응답에서 사업주 장기방의 재고·호실수 노출을 제한한다."""
+    transaction_target = listing.pop("transaction_target", None) or "unit"
+    if transaction_target == "whole":
+        listing["transaction_target"] = "whole"
+        listing["listing_target"] = "whole"
+        listing["is_whole_listing"] = True
+        disclosure_scope = listing.get("disclosure_scope") or "limited"
+        listing["disclosure_scope"] = disclosure_scope
+        listing["sensitive_details_visible"] = disclosure_scope == "public"
+        if disclosure_scope != "public":
+            for key in ("succession_loan_krw", "key_money_krw", "monthly_revenue_krw",
+                        "annual_revenue_krw", "operation_status", "closed_at",
+                        "remodeling_info", "building_info_overrides"):
+                listing.pop(key, None)
+        return listing
     is_business = listing.pop("registrant_type", None) == "business"
+    listing["transaction_target"] = "unit"
+    listing["listing_target"] = "unit"
     if is_business:
         # 사업주 총 호실수는 공개하지 않는다. 가격은 SQL에서 장박가능·공실 재고가
         # 있을 때만 계산되어 들어오며, 없으면 두 값 모두 NULL로 내려온다.
@@ -7044,6 +7290,15 @@ def create_listing_request():
     except (TypeError, ValueError):
         mb_id = 0
     deal_type = (data.get("deal_type") or "").strip()
+    transaction_target = (data.get("transaction_target") or data.get("listing_target") or "unit").strip()
+    if transaction_target not in _LISTING_TARGETS:
+        return jsonify({"ok": False, "message": "거래대상은 개별호실 또는 건물전체 중 하나여야 합니다."}), 400
+    whole_values = None
+    if transaction_target == "whole":
+        whole_values, whole_error = _whole_listing_values(data)
+        if whole_error:
+            return jsonify({"ok": False, "message": whole_error}), 400
+        deal_type = whole_values["deal_type"]
     deal_mode = (data.get("deal_mode") or "broker").strip()
     if deal_mode not in ("direct", "broker"):
         deal_mode = "broker"
@@ -7077,17 +7332,25 @@ def create_listing_request():
         if not (0 < n <= 1_000_000):
             return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
-    price_krw, err1 = _parse_krw(
-        "price_krw",
-        deal_type in ("매매", "전세", "월세")
-        or (registrant_type == "business" and deal_type == "단기임대"),
-    )
-    price_krw_max, err2 = _parse_krw(
-        "price_krw_max", registrant_type == "business" and deal_type in ("월세", "단기임대")
-    )
-    monthly_rent_krw, err3 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
-    deposit_krw, err4 = _parse_krw("deposit_krw", True)
-    yield_rent_krw, err5 = _parse_krw("yield_rent_krw", True)
+    if transaction_target == "whole":
+        price_krw = whole_values["price_krw"]
+        price_krw_max = None
+        monthly_rent_krw = whole_values["monthly_rent_krw"]
+        deposit_krw = None
+        yield_rent_krw = None
+        err1 = err2 = err3 = err4 = err5 = None
+    else:
+        price_krw, err1 = _parse_krw(
+            "price_krw",
+            deal_type in ("매매", "전세", "월세")
+            or (registrant_type == "business" and deal_type == "단기임대"),
+        )
+        price_krw_max, err2 = _parse_krw(
+            "price_krw_max", registrant_type == "business" and deal_type in ("월세", "단기임대")
+        )
+        monthly_rent_krw, err3 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
+        deposit_krw, err4 = _parse_krw("deposit_krw", True)
+        yield_rent_krw, err5 = _parse_krw("yield_rent_krw", True)
     try:
         room_count_value = data.get("room_count")
         room_count = int(room_count_value) if room_count_value not in (None, "") else None
@@ -7111,10 +7374,17 @@ def create_listing_request():
         round((yield_base_rent * 12) / max(yield_base_price - (deposit_krw or 0), 1) * 100, 1)
         if yield_base_price and yield_base_rent else None
     )
+    if transaction_target == "whole":
+        desired_price = (str(data.get("desired_price") or "").strip()[:100] or
+                         f"{deal_type} {price_krw:,}만원" if price_krw else deal_type)
+        area_sqm = None
+        dong = ho = None
+        room_count = None
+        yield_rate = None
 
     if not mb_id:
         return jsonify({"ok": False, "message": "건물 정보가 없습니다."}), 400
-    if deal_type not in _LISTING_DEAL_TYPES:
+    if transaction_target == "unit" and deal_type not in _LISTING_DEAL_TYPES:
         return jsonify({"ok": False, "message": "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."}), 400
 
     # 진행 방식과 무관하게 인증된 계정 전화번호만 매물 연락처로 사용한다.
@@ -7174,14 +7444,29 @@ def create_listing_request():
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
                  routed_agent_id, routed_reason, price_krw, price_krw_max, monthly_rent_krw, room_count,
                   deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
-                  description, deposit_krw, yield_rate, yield_rent_krw, display_seq)
+                 description, deposit_krw, yield_rate, yield_rent_krw, display_seq,
+                 transaction_target, succession_loan_krw, key_money_krw, monthly_revenue_krw,
+                 annual_revenue_krw, operation_status, closed_at, remodeling_info, is_urgent,
+                 disclosure_scope, building_info_overrides)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    nextval('{seq_name}'))
+                    nextval('{seq_name}'),
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
                routed_agent_id, routed_reason, price_krw, price_krw_max, monthly_rent_krw, room_count,
                deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
-               description, deposit_krw, yield_rate, yield_rent_krw])
+               description, deposit_krw, yield_rate, yield_rent_krw,
+               transaction_target,
+               whole_values["succession_loan_krw"] if whole_values else None,
+               whole_values["key_money_krw"] if whole_values else None,
+               whole_values["monthly_revenue_krw"] if whole_values else None,
+               whole_values["annual_revenue_krw"] if whole_values else None,
+               whole_values["operation_status"] if whole_values else None,
+               whole_values["closed_at"] if whole_values else None,
+               whole_values["remodeling_info"] if whole_values else None,
+               whole_values["is_urgent"] if whole_values else False,
+               whole_values["disclosure_scope"] if whole_values else None,
+               json.dumps(whole_values["building_info_overrides"]) if whole_values else "{}"])
         req_id = cur.fetchone()["id"]
         # 이력 기록 — 최초 접수
         cur.execute(
@@ -7195,6 +7480,17 @@ def create_listing_request():
                 "registrant_type": registrant_type, "description": description,
                 "deposit_krw": deposit_krw, "yield_rent_krw": yield_rent_krw,
                 "yield_rate": yield_rate,
+                "transaction_target": transaction_target,
+                "succession_loan_krw": whole_values["succession_loan_krw"] if whole_values else None,
+                "key_money_krw": whole_values["key_money_krw"] if whole_values else None,
+                "monthly_revenue_krw": whole_values["monthly_revenue_krw"] if whole_values else None,
+                "annual_revenue_krw": whole_values["annual_revenue_krw"] if whole_values else None,
+                "operation_status": whole_values["operation_status"] if whole_values else None,
+                "closed_at": str(whole_values["closed_at"]) if whole_values and whole_values["closed_at"] else None,
+                "remodeling_info": whole_values["remodeling_info"] if whole_values else None,
+                "is_urgent": whole_values["is_urgent"] if whole_values else False,
+                "disclosure_scope": whole_values["disclosure_scope"] if whole_values else None,
+                "building_info_overrides": whole_values["building_info_overrides"] if whole_values else {},
             })]
         )
         conn.commit()
@@ -7360,7 +7656,14 @@ def my_listing_requests():
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.status,
                    lr.price_krw, lr.price_krw_max, lr.monthly_rent_krw, lr.room_count,
                    lr.contact_phone, lr.deal_mode, lr.area_sqm, lr.dong, lr.ho, lr.registrant_type,
-                   lr.description, lr.deposit_krw, lr.yield_rent_krw, lr.yield_rate,
+                    lr.description, lr.deposit_krw, lr.yield_rent_krw, lr.yield_rate,
+                    COALESCE(lr.transaction_target, 'unit') AS transaction_target,
+                    lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
+                    lr.annual_revenue_krw, lr.operation_status,
+                    to_char(lr.closed_at, 'YYYY-MM-DD') AS closed_at,
+                    lr.remodeling_info, COALESCE(lr.is_urgent, FALSE) AS is_urgent,
+                    COALESCE(lr.disclosure_scope, 'limited') AS disclosure_scope,
+                    COALESCE(lr.building_info_overrides, '{}'::jsonb) AS building_info_overrides,
                    (SELECT COUNT(*) FROM chat_rooms cr
                     WHERE cr.listing_request_id = lr.id) AS chat_room_count,
                     to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS created_date,
@@ -7806,7 +8109,10 @@ def public_listings():
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.price_krw, lr.price_krw_max,
                    lr.monthly_rent_krw, lr.room_count, lr.area_sqm, lr.verified_phone,
                    lr.description, lr.yield_rate,
-                   lr.deal_mode, lr.display_seq, lr.registrant_type,
+                    lr.deal_mode, lr.display_seq, lr.registrant_type, lr.transaction_target,
+                    lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
+                    lr.annual_revenue_krw, lr.operation_status, lr.closed_at,
+                    lr.remodeling_info, lr.is_urgent, lr.disclosure_scope, lr.building_info_overrides,
                    CASE
                        WHEN lr.registrant_type = 'business'
                         AND lr.deal_type IN ('월세', '단기임대')
@@ -8500,8 +8806,17 @@ def update_listing_request(req_id):
     data = request.get_json(force=True, silent=True) or {}
     deal_type = (data.get("deal_type") or "").strip()
     desired_price = (data.get("desired_price") or "").strip()[:100]
+    transaction_target = (data.get("transaction_target") or data.get("listing_target") or "unit").strip()
+    if transaction_target not in _LISTING_TARGETS:
+        return jsonify({"ok": False, "message": "거래대상은 개별호실 또는 건물전체 중 하나여야 합니다."}), 400
+    whole_values = None
+    if transaction_target == "whole":
+        whole_values, whole_error = _whole_listing_values(data)
+        if whole_error:
+            return jsonify({"ok": False, "message": whole_error}), 400
+        deal_type = whole_values["deal_type"]
 
-    if deal_type not in _LISTING_DEAL_TYPES:
+    if transaction_target == "unit" and deal_type not in _LISTING_DEAL_TYPES:
         return jsonify({"ok": False, "message": "거래유형이 올바르지 않습니다."}), 400
 
     def _parse_krw(field, allowed):
@@ -8529,17 +8844,25 @@ def update_listing_request(req_id):
     registrant_type = registrant_type_raw if registrant_type_raw in (
         "owner", "building_owner", "business", "agent", "other"
     ) else "owner"
-    price_krw, err1 = _parse_krw(
-        "price_krw",
-        deal_type in ("매매", "전세", "월세")
-        or (registrant_type == "business" and deal_type == "단기임대"),
-    )
-    price_krw_max, err2 = _parse_krw(
-        "price_krw_max", registrant_type == "business" and deal_type in ("월세", "단기임대")
-    )
-    monthly_rent_krw, err3 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
-    deposit_krw, err4 = _parse_krw("deposit_krw", True)
-    yield_rent_krw, err5 = _parse_krw("yield_rent_krw", True)
+    if transaction_target == "whole":
+        price_krw = whole_values["price_krw"]
+        price_krw_max = None
+        monthly_rent_krw = whole_values["monthly_rent_krw"]
+        deposit_krw = None
+        yield_rent_krw = None
+        err1 = err2 = err3 = err4 = err5 = None
+    else:
+        price_krw, err1 = _parse_krw(
+            "price_krw",
+            deal_type in ("매매", "전세", "월세")
+            or (registrant_type == "business" and deal_type == "단기임대"),
+        )
+        price_krw_max, err2 = _parse_krw(
+            "price_krw_max", registrant_type == "business" and deal_type in ("월세", "단기임대")
+        )
+        monthly_rent_krw, err3 = _parse_krw("monthly_rent_krw", deal_type in ("월세", "매매"))
+        deposit_krw, err4 = _parse_krw("deposit_krw", True)
+        yield_rent_krw, err5 = _parse_krw("yield_rent_krw", True)
     try:
         room_count_value = data.get("room_count")
         room_count = int(room_count_value) if room_count_value not in (None, "") else None
@@ -8561,13 +8884,23 @@ def update_listing_request(req_id):
         round((yield_base_rent * 12) / max(price_krw - (deposit_krw or 0), 1) * 100, 1)
         if deal_type == "매매" and price_krw and yield_base_rent else None
     )
+    if transaction_target == "whole":
+        desired_price = ((str(data.get("desired_price") or "").strip()[:100] or
+                          (f"{deal_type} {price_krw:,}만원" if price_krw else deal_type)))
+        area_sqm = None
+        dong = ho = None
+        room_count = None
+        yield_rate = None
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute(
             """SELECT id, user_id, master_building_id, status, deal_type, desired_price, price_krw, price_krw_max,
                        monthly_rent_krw, room_count, area_sqm, dong, ho, registrant_type, description, deposit_krw,
-                      yield_rent_krw, yield_rate, contact_phone
+                       yield_rent_krw, yield_rate, contact_phone, transaction_target,
+                       succession_loan_krw, key_money_krw, monthly_revenue_krw, annual_revenue_krw,
+                       operation_status, closed_at, remodeling_info, is_urgent, disclosure_scope,
+                       building_info_overrides
                FROM listing_requests WHERE id = %s""", [req_id]
         )
         row = cur.fetchone()
@@ -8601,6 +8934,12 @@ def update_listing_request(req_id):
             "registrant_type": row["registrant_type"], "description": row["description"],
             "deposit_krw": row["deposit_krw"], "yield_rent_krw": row["yield_rent_krw"],
             "yield_rate": row["yield_rate"], "contact_phone": row["contact_phone"],
+            "transaction_target": row["transaction_target"] or "unit",
+            "succession_loan_krw": row["succession_loan_krw"], "key_money_krw": row["key_money_krw"],
+            "monthly_revenue_krw": row["monthly_revenue_krw"], "annual_revenue_krw": row["annual_revenue_krw"],
+            "operation_status": row["operation_status"], "closed_at": row["closed_at"],
+            "remodeling_info": row["remodeling_info"], "is_urgent": row["is_urgent"],
+            "disclosure_scope": row["disclosure_scope"], "building_info_overrides": row["building_info_overrides"],
         }
         after = {
             "deal_type": deal_type,
@@ -8611,18 +8950,37 @@ def update_listing_request(req_id):
             "registrant_type": registrant_type, "description": description,
             "deposit_krw": deposit_krw, "yield_rent_krw": yield_rent_krw,
             "yield_rate": yield_rate, "contact_phone": row["contact_phone"],
+            "transaction_target": transaction_target,
+            "succession_loan_krw": whole_values["succession_loan_krw"] if whole_values else None,
+            "key_money_krw": whole_values["key_money_krw"] if whole_values else None,
+            "monthly_revenue_krw": whole_values["monthly_revenue_krw"] if whole_values else None,
+            "annual_revenue_krw": whole_values["annual_revenue_krw"] if whole_values else None,
+            "operation_status": whole_values["operation_status"] if whole_values else None,
+            "closed_at": whole_values["closed_at"] if whole_values else None,
+            "remodeling_info": whole_values["remodeling_info"] if whole_values else None,
+            "is_urgent": whole_values["is_urgent"] if whole_values else False,
+            "disclosure_scope": whole_values["disclosure_scope"] if whole_values else None,
+            "building_info_overrides": whole_values["building_info_overrides"] if whole_values else {},
         }
         cur.execute(
             """UPDATE listing_requests SET deal_type=%s, desired_price=%s,
                 price_krw=%s, price_krw_max=%s, monthly_rent_krw=%s, room_count=%s,
                 area_sqm=%s, dong=%s, ho=%s,
                registrant_type=%s, description=%s, deposit_krw=%s,
-                yield_rent_krw=%s, yield_rate=%s, updated_at=NOW() WHERE id=%s""",
+                yield_rent_krw=%s, yield_rate=%s, transaction_target=%s,
+                succession_loan_krw=%s, key_money_krw=%s, monthly_revenue_krw=%s,
+                annual_revenue_krw=%s, operation_status=%s, closed_at=%s,
+                remodeling_info=%s, is_urgent=%s, disclosure_scope=%s,
+                building_info_overrides=%s, updated_at=NOW() WHERE id=%s""",
             [after["deal_type"], after["desired_price"] or None, after["price_krw"],
               after["price_krw_max"], after["monthly_rent_krw"], after["room_count"],
               after["area_sqm"], after["dong"], after["ho"],
              after["registrant_type"], after["description"], after["deposit_krw"],
-             after["yield_rent_krw"], after["yield_rate"], req_id]
+              after["yield_rent_krw"], after["yield_rate"], after["transaction_target"],
+              after["succession_loan_krw"], after["key_money_krw"], after["monthly_revenue_krw"],
+              after["annual_revenue_krw"], after["operation_status"], after["closed_at"],
+              after["remodeling_info"], after["is_urgent"], after["disclosure_scope"],
+              json.dumps(after["building_info_overrides"] or {}), req_id]
         )
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, before_data, after_data) "

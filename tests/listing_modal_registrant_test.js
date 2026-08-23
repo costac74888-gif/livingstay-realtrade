@@ -12,11 +12,26 @@ function expect(condition, message) {
 }
 
 const modeAt = modal.indexOf('id="lrModeSection"');
+const targetAt = modal.indexOf('id="lrTargetSection"');
 const registrantAt = modal.indexOf('id="lrRegistrantType"');
-const dealAt = modal.indexOf('id="lrDealButtons"');
+const dealAt = modal.indexOf('id="lrUnitDealButtons"');
 const detailAt = modal.indexOf("상세 정보");
-expect(modeAt >= 0 && registrantAt > modeAt && dealAt > registrantAt && detailAt > dealAt,
-  "폼 순서가 진행방식 → 등록자유형 → 거래유형 → 상세정보가 아닙니다.");
+expect(modeAt >= 0 && targetAt > modeAt && registrantAt > targetAt && dealAt > registrantAt && detailAt > dealAt,
+  "폼 순서가 진행방식 → 거래대상 → 등록자유형 → 거래방식 → 상세정보가 아닙니다.");
+for (const id of [
+  "lrWholeDealButtons", "lrWholeSalePrice", "lrSuccessionLoan", "lrRealTakeover",
+  "lrWholeDeposit", "lrKeyMoney", "lrMonthlyRevenue", "lrAnnualRevenue",
+  "lrOperationStatus", "lrDisclosureScope", "lrWholeBuildingInfo",
+]) {
+  expect(modal.includes(`id="${id}"`), `건물전체 매물 입력란 ${id}이 없습니다.`);
+}
+expect(
+  modal.includes('transaction_target: transactionTarget') &&
+  modal.includes("WHOLE_DESCRIPTION_TEMPLATE") &&
+  modal.includes("/whole-listing-context") &&
+  modal.includes("WHOLE_ACQUISITION_COST_RATE"),
+  "건물전체 거래대상·설명 템플릿·자동 정보·실인수가 계산 연결이 없습니다."
+);
 
 for (const [value, label] of [
   ["owner", "소유자 또는 대리인"],
@@ -42,12 +57,12 @@ expect(modal.includes("/lodging-summary") && modal.includes("loadLodgingSummary"
 expect(modal.includes("price_krw_max") && modal.includes("priceMax"),
   "가격범위 최고가 전송이 없습니다.");
 expect(
-  modal.includes('$("#lrAreaOwnerWrap").style.display = isBusiness ? "none" : "block"') &&
-  modal.includes('$("#lrAreaBusinessWrap").style.display = isBusiness ? "block" : "none"') &&
-  modal.includes('$("#lrPriceWolseBusiness").style.display = dealType === "월세" && isBusiness ? "flex" : "none"') &&
-  modal.includes('$("#lrShortTermBusiness").style.display = dealType === "단기임대" && isBusiness ? "flex" : "none"') &&
-  modal.includes('$("#lrPriceSale").style.display = dealType === "매매" && !isBusiness ? "block" : "none"') &&
-  modal.includes('$("#lrYieldSection").style.display = dealType === "매매" ? "block" : "none"'),
+  modal.includes('$("#lrAreaOwnerWrap").style.display = !whole && !isBusiness ? "block" : "none"') &&
+  modal.includes('$("#lrAreaBusinessWrap").style.display = !whole && isBusiness ? "block" : "none"') &&
+  modal.includes('$("#lrPriceWolseBusiness").style.display = dealType === "월세" && isBusiness && !whole ? "flex" : "none"') &&
+  modal.includes('$("#lrShortTermBusiness").style.display = dealType === "단기임대" && isBusiness && !whole ? "flex" : "none"') &&
+  modal.includes('$("#lrPriceSale").style.display = dealType === "매매" && !isBusiness && !whole ? "block" : "none"') &&
+  modal.includes('$("#lrWholeSale").style.display = whole && dealType === "매매" ? "block" : "none"'),
   "사업주/소유자 전용면적 전환 또는 거래유형별 수익률 표시 로직이 없습니다."
 );
 

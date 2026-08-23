@@ -152,6 +152,8 @@ def run():
     failures += _check_room_expiry_alerts()
     # 새 등록자유형과 과거 agent 값의 저장 호환성을 확인
     failures += _check_listing_registrant_types(client)
+    # 건물전체 매물의 생성·수정·공개범위 계약을 확인
+    failures += _check_whole_building_listing(client)
     # 사업주 매물의 사용자·건물별 영업신고번호 인증 캐시와 서버 우회 차단을 확인
     failures += _check_business_listing_verification(client)
     # 사업주 공개 장기방은 공실 장박가능 재고의 월 가격만 공개하고 호실수는 숨긴다.
@@ -2302,6 +2304,119 @@ def _check_listing_registrant_types(client):
                     "DELETE FROM listing_request_history WHERE listing_request_id=%s",
                     (listing_id,),
                 )
+                cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
+            if user_id:
+                cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_whole_building_listing(client):
+    """건물전체 매물의 전용 필드 저장·수정과 제한공개 응답을 검증한다."""
+    import time as _time
+    from db import get_conn
+
+    failures = []
+    conn = get_conn()
+    cur = conn.cursor()
+    user_id = listing_id = None
+    try:
+        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
+        building = cur.fetchone()
+        if not building:
+            return ["whole listing: 테스트용 master_buildings 행이 없습니다."]
+        run_id = str(int(_time.time() * 1000))
+        cur.execute(
+            "INSERT INTO users (email, name, phone, phone_verified) VALUES (%s, %s, '01000000000', TRUE) RETURNING id",
+            (f"whole-listing-{run_id}@example.test", "건물전체 매물 테스트"),
+        )
+        user_id = cur.fetchone()["id"]
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["user_id"] = user_id
+
+        created = client.post("/api/listing-requests", json={
+            "master_building_id": building["id"], "deal_mode": "direct",
+            "registrant_type": "building_owner", "transaction_target": "whole",
+            "deal_type": "매매", "price_krw": 200000, "succession_loan_krw": 120000,
+            "monthly_revenue_krw": 3000, "annual_revenue_krw": 36000,
+            "operation_status": "폐업", "closed_at": "2026-08-01",
+            "remodeling_info": "객실 일부 리모델링", "is_urgent": True,
+            "disclosure_scope": "limited", "building_info_overrides": {"structure": "철근콘크리트"},
+        })
+        body = created.get_json() or {}
+        listing_id = body.get("id")
+        if created.status_code != 200 or not listing_id:
+            return [f"whole listing: 생성 실패 (HTTP {created.status_code}, {body})"]
+        context = client.get(f"/api/building/{building['id']}/whole-listing-context")
+        context_data = context.get_json() or {}
+        if (context.status_code != 200 or not context_data.get("ok")
+                or "building" not in context_data or "nearby_lodgings" not in context_data
+                or "subway" not in context_data):
+            failures.append("whole listing: 건물자동채움·주변 숙박시설 컨텍스트 API 실패")
+        detail = client.get(f"/api/building/{building['id']}")
+        detail_item = next(
+            (item for item in ((detail.get_json() or {}).get("direct_listings") or [])
+             if item.get("id") == listing_id),
+            {},
+        )
+        if (
+            detail.status_code != 200
+            or detail_item.get("transaction_target") != "whole"
+            or detail_item.get("is_whole_listing") is not True
+            or "monthly_revenue_krw" in detail_item
+            or "succession_loan_krw" in detail_item
+        ):
+            failures.append("whole listing: 건물상세에서 거래대상 또는 제한공개 처리가 누락됨")
+
+        cur.execute("""SELECT transaction_target, deal_type, price_krw, succession_loan_krw,
+                              operation_status, closed_at, is_urgent, disclosure_scope, building_info_overrides
+                       FROM listing_requests WHERE id=%s""", (listing_id,))
+        stored = cur.fetchone() or {}
+        if not (stored.get("transaction_target") == "whole" and stored.get("deal_type") == "매매"
+                and stored.get("price_krw") == 200000 and stored.get("succession_loan_krw") == 120000
+                and stored.get("operation_status") == "폐업" and stored.get("is_urgent")
+                and stored.get("disclosure_scope") == "limited"):
+            failures.append("whole listing: 매매 전용 필드 저장 실패")
+
+        updated = client.put(f"/api/listing-requests/{listing_id}", json={
+            "transaction_target": "whole", "deal_type": "통임대", "price_krw": 5000,
+            "monthly_rent_krw": 400, "key_money_krw": 2500, "operation_status": "영업중",
+            "disclosure_scope": "public", "building_info_overrides": {"zoning": "상업지역"},
+        })
+        cur.execute("""SELECT deal_type, price_krw, monthly_rent_krw, key_money_krw,
+                              succession_loan_krw, operation_status, disclosure_scope, building_info_overrides
+                       FROM listing_requests WHERE id=%s""", (listing_id,))
+        changed = cur.fetchone() or {}
+        if (updated.status_code != 200 or changed.get("deal_type") != "통임대"
+                or changed.get("monthly_rent_krw") != 400 or changed.get("key_money_krw") != 2500
+                or changed.get("succession_loan_krw") is not None
+                or changed.get("operation_status") != "영업중" or changed.get("disclosure_scope") != "public"):
+            failures.append("whole listing: 통임대 수정 또는 매매 필드 초기화 실패")
+
+        mine = client.get("/api/listing-requests/mine")
+        mine_item = next((x for x in ((mine.get_json() or {}).get("items") or []) if x.get("id") == listing_id), {})
+        if mine.status_code != 200 or mine_item.get("transaction_target") != "whole" or mine_item.get("key_money_krw") != 2500:
+            failures.append("whole listing: 내 매물 조회 전용 필드 누락")
+
+        from app import _whole_listing_values
+        _invalid_values, invalid_error = _whole_listing_values({
+            "transaction_target": "whole", "deal_type": "전세",
+        })
+        if not invalid_error:
+            failures.append("whole listing: 허용하지 않는 건물전체 거래방식을 차단하지 않음")
+        if not failures:
+            print("OK  건물전체 매물 생성·수정·내 매물 조회·거래방식 검증")
+    except Exception as exc:
+        failures.append(f"whole listing 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_id:
+                cur.execute("DELETE FROM listing_request_history WHERE listing_request_id=%s", (listing_id,))
                 cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
             if user_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (user_id,))

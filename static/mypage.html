@@ -280,9 +280,11 @@
         '<div style="min-width:0; flex:1;">' +
           '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
           modeBadge +
-          '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + escapeHtml(it.deal_type) +
-            (it.price_krw != null ? ' · ' + escapeHtml(fmtLrPrice(it.deal_type, it.price_krw, it.monthly_rent_krw, it.price_krw_max)) : '') +
-            (it.room_count != null ? ' · 총 ' + Number(it.room_count).toLocaleString() + '실' : '') +
+          '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + (it.transaction_target === "whole" ? '<b style="color:var(--brass);">건물전체</b> · ' : '') + escapeHtml(it.deal_type) +
+            (it.price_krw != null ? ' · ' + escapeHtml(it.transaction_target === "whole"
+              ? (it.deal_type === "매매" ? "매매가 " + fmtPrice(it.price_krw) + "만원" : "보증금 " + fmtPrice(it.price_krw) + "만원" + (it.monthly_rent_krw != null ? " / 월 " + fmtPrice(it.monthly_rent_krw) + "만원" : ""))
+              : fmtLrPrice(it.deal_type, it.price_krw, it.monthly_rent_krw, it.price_krw_max)) : '') +
+            (it.transaction_target !== "whole" && it.room_count != null ? ' · 총 ' + Number(it.room_count).toLocaleString() + '실' : '') +
             ' · 최근 수정 ' + it.created_date + '</div>' +
           '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
           (chatBtn ? '<div>' + chatBtn + '</div>' : '') +

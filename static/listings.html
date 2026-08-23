@@ -358,9 +358,27 @@
     return "현재 문의 가능 여부는 채팅으로 확인해주세요";
   }
   function listingPriceText(item){
+    if (item.transaction_target === "whole" || item.is_whole_listing) {
+      if (item.deal_type === "매매") return item.price_krw != null ? "매매가 " + fmtN(item.price_krw) + "만원" : "매매 조건 협의";
+      var lease = item.price_krw != null ? "보증금 " + fmtN(item.price_krw) + "만원" : "조건 협의";
+      return item.monthly_rent_krw != null ? lease + " / 월 " + fmtN(item.monthly_rent_krw) + "만원" : lease;
+    }
     return item.is_business_listing
       ? businessStayPriceText(item)
       : fmtPrice(item.deal_type, item.price_krw, item.monthly_rent_krw, item.price_krw_max);
+  }
+  function operationStatusText(item){
+    if (!(item.is_whole_listing || item.transaction_target === "whole") || !item.operation_status) return "";
+    const icon = item.operation_status === "영업중" ? "🟢" : (item.operation_status === "휴업" ? "🟡" : "⚫");
+    const closedDate = item.operation_status === "폐업" && (item.closed_at || item.closed_date)
+      ? "(" + (item.closed_at || item.closed_date) + ")" : "";
+    return "영업상태: " + icon + item.operation_status + closedDate;
+  }
+  function operationStatusHtml(item){
+    const text = operationStatusText(item);
+    if (!text) return "";
+    const color = item.operation_status === "폐업" ? "#222" : (item.operation_status === "휴업" ? "#A06D18" : "#4A7A18");
+    return `<span style="display:inline-block;margin-top:4px;color:${color};font-size:11.5px;font-weight:700;">${esc(text)}</span>`;
   }
 
   // ── 상태 ──────────────────────────────────────────────────────────────
@@ -672,9 +690,10 @@
     const isChatting   = myChattingIds.has(item.id);
     const chatBtnClass = "listing-chat-btn" + (isChatting ? " is-chatting" : "");
     const chatTitle    = isChatting ? "채팅 이어하기" : "문의하기";
-    const sqm  = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
+    const isWholeListing = item.is_whole_listing || item.transaction_target === "whole";
+    const sqm  = !isWholeListing && item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "-";
     const yld  = item.yield_rate != null ? parseFloat(item.yield_rate).toFixed(1) + "%" : "-";
-    const rooms = !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
+    const rooms = !item.is_whole_listing && !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
       ? " · 총 " + Number(item.room_count).toLocaleString() + "실" : "";
     const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
     const bName = esc(item.building_name || "(건물명 없음)");
@@ -684,7 +703,7 @@
       <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount)}</td>
       <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type)}</td>
       <td class="td-bldg" title="${bName}">
-        <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>
+        <span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>${operationStatusHtml(item)}
       </td>
       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
       <td class="td-price">${esc(listingPriceText(item) + rooms)}</td>
@@ -742,11 +761,12 @@
     const div = document.createElement("div");
     div.className = "ls-card-item";
     div.dataset.listingId = item.id;
-    const sqm     = item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
+    const isWholeListing = item.is_whole_listing || item.transaction_target === "whole";
+    const sqm     = !isWholeListing && item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
     const priceStr = listingPriceText(item);
     const floorValue = item.floor ?? item.floor_no ?? item.floor_number;
     const floor    = floorValue != null && String(floorValue).trim() ? String(floorValue).trim() + "층" : null;
-    const rooms    = !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
+    const rooms    = !isWholeListing && !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
       ? "총 " + Number(item.room_count).toLocaleString() + "실" : null;
     const yld      = item.yield_rate != null ? "수익률 " + parseFloat(item.yield_rate).toFixed(1) + "%" : null;
     const desc     = item.description ? item.description.slice(0, 40) + (item.description.length > 40 ? "…" : "") : null;
@@ -758,10 +778,10 @@
     div.innerHTML = `
       <div class="ls-card-info">
         <div class="ls-card-l1">
-          <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>
+          <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>
         </div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(priceStr)}</div>
-        <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}</div>
+        <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}${operationStatusHtml(item)}</div>
         <div class="ls-card-l4">
           ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
           <span class="ls-card-date">${esc(item.listing_date || "")}</span>

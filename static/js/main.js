@@ -3232,7 +3232,7 @@ async function loadBuildingHeader(id){
   if (listingsCard && listingsBody) {
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
-     const _dealTypeColors = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1" };
+      const _dealTypeColors = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1", "통임대":"#5A7FA6", "운영권양도":"#8B6BB1", "위탁운영":"#557A5B" };
      function _dealTypeBadge(raw){
        const label = raw || "-";
        const color = _dealTypeColors[label] || "#7B8794";
@@ -3245,14 +3245,32 @@ async function loadBuildingHeader(id){
         return "현재 문의 가능 여부는 채팅으로 확인해주세요";
       }
       function _listingPriceText(lr, formatNumber){
+        if (lr.is_whole_listing || lr.transaction_target === "whole") {
+          if (lr.deal_type === "매매") return lr.price_krw != null ? `매매가 ${formatNumber(lr.price_krw)}만원` : "매매 조건 협의";
+          const deposit = lr.price_krw != null ? `보증금 ${formatNumber(lr.price_krw)}만원` : "조건 협의";
+          return lr.monthly_rent_krw != null ? `${deposit} / 월 ${formatNumber(lr.monthly_rent_krw)}만원` : deposit;
+        }
         if (lr.is_business_listing) return _businessStayPriceText(lr, formatNumber);
         return lr.deal_type === "월세" && lr.price_krw_max == null
           ? `보${formatNumber(lr.price_krw)}/${formatNumber(lr.monthly_rent_krw)}만`
           : (lr.price_krw
             ? `${formatNumber(lr.price_krw)}${lr.price_krw_max != null ? " ~ " + formatNumber(lr.price_krw_max) : ""}만원`
             : "-");
-      }
-     function _openDirectListingCard(lr){
+       }
+       function _operationStatusText(lr){
+         if (!(lr.is_whole_listing || lr.transaction_target === "whole") || !lr.operation_status) return "";
+         const icon = lr.operation_status === "영업중" ? "🟢" : (lr.operation_status === "휴업" ? "🟡" : "⚫");
+         const closedDate = lr.operation_status === "폐업" && (lr.closed_at || lr.closed_date)
+           ? `(${escapeHtml(lr.closed_at || lr.closed_date)})` : "";
+         return `영업상태: ${icon}${escapeHtml(lr.operation_status)}${closedDate}`;
+       }
+       function _operationStatusMarkup(lr){
+         const text = _operationStatusText(lr);
+         if (!text) return "";
+         const color = lr.operation_status === "폐업" ? "#222" : (lr.operation_status === "휴업" ? "#A06D18" : "#4A7A18");
+         return `<div style="font-size:12px;color:${color};font-weight:700;margin-bottom:7px;">${text}</div>`;
+       }
+      function _openDirectListingCard(lr){
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;
        const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
@@ -3267,16 +3285,18 @@ async function loadBuildingHeader(id){
               <div id="directListingPhotoThumbs" style="position:absolute;left:10px;bottom:9px;display:flex;gap:5px;max-width:calc(100% - 86px);overflow:auto;">${photos.map((src, index) => `<button type="button" data-photo-index="${index}" aria-label="사진 ${index + 1} 보기" style="width:34px;height:27px;padding:0;flex:0 0 auto;border:${index === 0 ? "2px solid #fff" : "1px solid rgba(255,255,255,.72)"};border-radius:4px;overflow:hidden;background:#fff;cursor:pointer;"><img src="${escapeHtml(src)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></button>`).join("")}</div>` : ""}
             </div>`
           : `<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>`;
-       const sqm = lr.area_sqm ? `${parseFloat(lr.area_sqm).toFixed(1)}㎡` : "";
+        const isWholeListing = lr.is_whole_listing || lr.transaction_target === "whole";
+        const sqm = !isWholeListing && lr.area_sqm ? `${parseFloat(lr.area_sqm).toFixed(1)}㎡` : "";
         const listingMeta = [
           lr.listing_number ? escapeHtml(lr.listing_number) : "",
           lr.listing_date ? `최근 수정 ${escapeHtml(lr.listing_date)}` : ""
         ].filter(Boolean).join(" · ");
          const priceText = _listingPriceText(lr, formatNumber);
        const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}% (참고용)` : "";
-         const roomText = !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
+          const roomText = !isWholeListing && !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
           ? `총 ${formatNumber(lr.room_count)}실` : "";
-       const desc = lr.description ? escapeHtml(lr.description) : "";
+        const statusMarkup = _operationStatusMarkup(lr);
+        const desc = lr.description ? escapeHtml(lr.description) : "";
        const ov = document.createElement("div");
        ov.id = "directListingCardOverlay";
        ov.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
@@ -3291,9 +3311,10 @@ async function loadBuildingHeader(id){
           <div style="position:relative;">${photoGallery}<button type="button" id="directListingCardClose" aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button></div>
           <div style="padding:16px 18px 18px;">
              ${listingMeta ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-4px 0 8px;font-size:11px;color:var(--ink-soft);"><span style="padding:2px 6px;border-radius:4px;background:var(--brass-tint,#FFF5E0);border:1px solid var(--brass,#B4863F);color:var(--brass-dark,#7D4A00);font-weight:800;">${lr.listing_number ? escapeHtml(lr.listing_number) : ""}</span>${lr.listing_date ? `<span>최근 수정 ${escapeHtml(lr.listing_date)}</span>` : ""}</div>` : ""}
-           <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
+            <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:7px;">${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${_dealTypeBadge(lr.deal_type)}${sqm ? ` · ${sqm}` : ""}</div>
            <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
-            ${roomText ? `<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">${escapeHtml(roomText)}</div>` : ""}
+             ${roomText ? `<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">${escapeHtml(roomText)}</div>` : ""}
+             ${statusMarkup}
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
             ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:12px;">${desc}</div>` : ""}
              ${listingActionsMarkup}
@@ -3413,15 +3434,17 @@ async function loadBuildingHeader(id){
         const isNew = lr.listing_date && ((now - new Date(lr.listing_date + "T00:00:00").getTime()) < THREE_DAYS_MS);
         const newBadge = isNew ? `<span style="display:inline-block;font-size:9px;font-weight:800;color:#fff;background:#E03333;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">NEW</span>` : "";
         const dt = _dealTypeBadge(lr.deal_type);
-        const sqm = lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
+        const isWholeListing = lr.is_whole_listing || lr.transaction_target === "whole";
+        const sqm = !isWholeListing && lr.area_sqm ? parseFloat(lr.area_sqm).toFixed(1) + "㎡" : "";
         const priceText = _listingPriceText(lr, _fmtN);
         const floorValue = lr.floor ?? lr.floor_no ?? lr.floor_number;
         const floorText = floorValue != null && String(floorValue).trim() ? String(floorValue).trim() + "층" : "";
-        const roomText = !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
+        const roomText = !isWholeListing && !lr.is_business_listing && lr.room_count != null && Number(lr.room_count) > 0
           ? `총 ${_fmtN(lr.room_count)}실` : "";
         const yieldText = lr.yield_rate != null ? `수익률 ${parseFloat(lr.yield_rate).toFixed(1)}%` : "";
+        const statusText = _operationStatusText(lr);
         const desc = lr.description ? lr.description.slice(0, 50) + (lr.description.length > 50 ? "…" : "") : "";
-        const detailText = [sqm, floorText, roomText, yieldText, desc].filter(Boolean).join(" · ") || "-";
+        const detailText = [sqm, floorText, roomText, yieldText, statusText, desc].filter(Boolean).join(" · ") || "-";
         const likeCount = lr.like_count || 0;
         const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
         const photoSrc = photos[0] ? escapeHtml(photos[0]) : null;
@@ -3430,7 +3453,7 @@ async function loadBuildingHeader(id){
           : "🏠";
         return `<div class="b-listing-card" data-listing-id="${lrId}">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기">
-            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${escapeHtml(bName)}${newBadge}</div>
+            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${escapeHtml(bName)}${newBadge}</div>
             <div class="b-listing-l2">${dt}${escapeHtml(priceText)}</div>
             <div class="b-listing-l3" title="${escapeHtml(detailText)}">${escapeHtml(detailText)}</div>
             <div class="b-listing-l4">
