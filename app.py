@@ -20917,15 +20917,12 @@ def stats_closure_rate_by_region():
     return jsonify(_closure_rate_payload())
 
 
-@app.route("/api/stats/consign-by-sido")
-@limiter.limit("20 per minute")
-def stats_consign_by_sido(_as_payload=False):
-    """생활숙박시설의 승인된 위탁운영 등록 현황을 시도별로 집계한다."""
-    master_payload = _master_stats_section("consign_stats")
-    if master_payload is not None:
-        return jsonify(master_payload)
+def _legacy_operator_consign_by_sido_payload(_as_payload=False):
+    """[LEGACY-위탁가입업체] 플랫폼 가입 위탁업체 기반 집계 보존본.
 
-    # [LEGACY] 원본 캐시의 위탁 섹션 실패 시에도 기존 SQL 집계를 계속 제공한다.
+    공개 데이터랩은 행안부 영업신고 기준으로 전환됐다. 이 구현은 과거 플랫폼
+    가입·담당건물 기준을 비교하거나 필요 시 복구할 수 있도록 남겨 둔다.
+    """
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -21023,10 +21020,154 @@ def stats_consign_by_sido(_as_payload=False):
         conn.close()
 
 
+def _report_rate_by_sido_payload():
+    """생활숙박시설의 행안부 영업신고 현황을 시도별로 집계한다.
+
+    건물 상세·관리자 통계와 같은 주소 매칭 규칙을 사용한다. 도로명 키에 신고가
+    하나라도 있으면 그 결과만 쓰고, 없을 때에만 지번 키를 보조로 사용한다.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, sgg_text, COALESCE(units, 0) AS units,
+                   road_address, jibun_address
+            FROM master_buildings
+            WHERE lodging_type = '생활'
+            ORDER BY id
+        """)
+        buildings = [dict(row) for row in cur.fetchall()]
+        if not buildings:
+            return {
+                "ok": True,
+                "items": [],
+                "total": {
+                    "building_cnt": 0,
+                    "total_units": 0,
+                    "active_biz_cnt": 0,
+                    "active_room_cnt": 0,
+                    "report_rate": None,
+                },
+                "is_partial": True,
+            }
+
+        road_keys, jibun_keys = set(), set()
+        for building in buildings:
+            road_key = addr_norm.normalize_road_prefix(building.get("road_address"))
+            jibun_key = addr_norm.get_building_jibun_key(building)
+            building["_road_key"] = road_key
+            building["_jibun_key"] = jibun_key
+            if road_key:
+                road_keys.add(road_key)
+            if jibun_key:
+                jibun_keys.add(jibun_key)
+
+        cur.execute("""
+            SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+            FROM lodging_registry
+            WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+            ORDER BY source_updated_at DESC NULLS LAST, id DESC
+        """, [list(road_keys) or ["__none__"], list(jibun_keys) or ["__none__"]])
+        road_permits, jibun_permits = {}, {}
+        for row in cur.fetchall():
+            permit = dict(row)
+            if permit.get("road_norm"):
+                road_permits.setdefault(permit["road_norm"], {})[
+                    permit["permit_number"]
+                ] = permit
+            if permit.get("jibun_norm"):
+                jibun_permits.setdefault(permit["jibun_norm"], {})[
+                    permit["permit_number"]
+                ] = permit
+
+        regions = {}
+        # 이 지표의 포함 기준은 "영업/정상"만이 아니라, 요구사항대로 폐업이
+        # 아닌 모든 신고다. 주소 우선순위는 상태를 적용하기 전에 결정해 기존
+        # 건물마스터 주소 매칭과 동일한 결과를 유지한다.
+        assigned_active_permits = set()
+        for building in buildings:
+            sido = _canonical_sido_name(building.get("sgg_text"))
+            if not sido:
+                continue
+            region = regions.setdefault(sido, {
+                "building_cnt": 0,
+                "total_units": 0,
+                "active_permits": {},
+            })
+            region["building_cnt"] += 1
+            region["total_units"] += max(0, int(building.get("units") or 0))
+
+            road_matches = road_permits.get(building.get("_road_key"), {})
+            # 기존 건물 목록·상세와 동일하게 도로명 결과가 없을 때만 지번을 쓴다.
+            matched_permits = road_matches or jibun_permits.get(
+                building.get("_jibun_key"), {}
+            )
+            for permit_number, permit in matched_permits.items():
+                if (
+                    not permit_number
+                    or "폐업" in (permit.get("biz_status_name") or "")
+                    or permit_number in assigned_active_permits
+                ):
+                    continue
+                assigned_active_permits.add(permit_number)
+                region["active_permits"][permit_number] = permit
+
+        def summary(region):
+            total_units = region["total_units"]
+            active_permits = region["active_permits"]
+            active_room_cnt = sum(
+                max(0, int(permit.get("room_count") or 0))
+                for permit in active_permits.values()
+            )
+            return {
+                "building_cnt": region["building_cnt"],
+                "total_units": total_units,
+                "active_biz_cnt": len(active_permits),
+                "active_room_cnt": active_room_cnt,
+                "report_rate": (
+                    round(active_room_cnt * 100.0 / total_units, 1)
+                    if total_units else None
+                ),
+            }
+
+        items = [
+            {"sido": sido, **summary(region)}
+            for sido, region in sorted(regions.items())
+        ]
+        total_units = sum(item["total_units"] for item in items)
+        active_room_cnt = sum(item["active_room_cnt"] for item in items)
+        total = {
+            "building_cnt": sum(item["building_cnt"] for item in items),
+            "total_units": total_units,
+            "active_biz_cnt": len(assigned_active_permits),
+            "active_room_cnt": active_room_cnt,
+            "report_rate": (
+                round(active_room_cnt * 100.0 / total_units, 1)
+                if total_units else None
+            ),
+        }
+        return {"ok": True, "items": items, "total": total, "is_partial": True}
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/stats/consign-by-sido")
+@limiter.limit("20 per minute")
+def stats_consign_by_sido(_as_payload=False):
+    """생활숙박시설 영업신고 현황을 시도별로 반환한다."""
+    master_payload = _master_stats_section("consign_stats")
+    if master_payload is not None:
+        return master_payload if _as_payload else jsonify(master_payload)
+
+    # [LEGACY] 원본 캐시 섹션 장애에도 같은 행안부 영업신고 기준으로 폴백한다.
+    payload = _report_rate_by_sido_payload()
+    return payload if _as_payload else jsonify(payload)
+
+
 def _consign_by_sido_payload():
-    """마스터 재계산은 HTTP 레이트리밋 래퍼 없이 원본 집계를 직접 호출한다."""
-    handler = getattr(stats_consign_by_sido, "__wrapped__", stats_consign_by_sido)
-    return handler(_as_payload=True)
+    """마스터 재계산용 생활숙박시설 영업신고 현황 원본 집계."""
+    return _report_rate_by_sido_payload()
 
 
 def _transaction_master_stats_payload():
@@ -21129,8 +21270,8 @@ def _master_stats_admin_snapshot(*, force=False):
             f"매칭 신고 {len(all_permits):,}건 · 영업중 {len(active_permits):,}건"
         ),
         "consign_stats": (
-            f"위탁업체 {int(consign_total.get('operator_count') or 0):,}곳 · "
-            f"위탁호실 {int(consign_total.get('operator_units') or 0):,}실"
+            f"신고업체 {int(consign_total.get('active_biz_cnt') or 0):,}곳 · "
+            f"신고호실 {int(consign_total.get('active_room_cnt') or 0):,}실"
         ),
         "closure_stats": f"표본 충족 지역 {len(closure_items):,}곳",
         "transaction_stats": (
@@ -21147,7 +21288,7 @@ def _master_stats_admin_snapshot(*, force=False):
     labels = {
         "lodging_stats": "숙박 통계",
         "region_match": "주소 매칭",
-        "consign_stats": "위탁 현황",
+        "consign_stats": "영업신고 현황",
         "closure_stats": "폐업 현황",
         "transaction_stats": "거래 통계",
         "collection_stats": "수집 현황",

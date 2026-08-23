@@ -2395,7 +2395,7 @@ function renderDataLabClosure(data){
 function renderDataLabConsign(data){
   const items = Array.isArray(data.items) ? data.items : [];
   const total = data && data.total && typeof data.total === "object" ? data.total : null;
-  if (!items.length || !total) return '<div class="side-empty">위탁현황 데이터가 없습니다.</div>';
+  if (!items.length || !total) return '<div class="side-empty">영업신고현황 데이터가 없습니다.</div>';
   const partialBadge = data.is_partial === true
     ? '<span class="datalab-partial-badge">수집중</span>'
     : "";
@@ -2405,20 +2405,20 @@ function renderDataLabConsign(data){
   const renderRow = (item, label) => `
     <tr>
       <td>${escapeHtml(label)}</td>
-      <td>${dataLabNum(item.building_count)}</td>
-      <td>${dataLabNum(item.units)}</td>
-      <td>${dataLabNum(item.operator_count)}</td>
-      <td>${dataLabNum(item.operator_units)}</td>
-      <td>${renderRate(item.operator_rate)}</td>
+      <td>${dataLabNum(item.building_cnt)}</td>
+      <td>${dataLabNum(item.total_units)}</td>
+      <td>${dataLabNum(item.active_biz_cnt)}</td>
+      <td>${dataLabNum(item.active_room_cnt)}</td>
+      <td>${renderRate(item.report_rate)}</td>
     </tr>`;
   return `
     <div class="datalab-heading">
-      <div class="datalab-heading-main"><strong>⑤ 🏨 위탁현황</strong>${partialBadge}</div>
-      <span class="datalab-caption">생활숙박시설 기준</span>
+      <div class="datalab-heading-main"><strong>⑤ 📋 생활숙박시설 영업신고현황</strong>${partialBadge}</div>
+      <span class="datalab-caption">건물마스터 + 행안부 영업신고 기준</span>
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table datalab-consign-table">
-        <thead><tr><th>시도</th><th>건물수</th><th>호실수</th><th>위탁업체수</th><th>위탁호실수</th><th>위탁비율</th></tr></thead>
+        <thead><tr><th>시도</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th></tr></thead>
         <tbody>${items.map(item => renderRow(item, item.sido || "-")).join("")}</tbody>
         <tfoot>${renderRow(total, "합계")}</tfoot>
       </table>
@@ -2487,8 +2487,8 @@ async function loadDataLab(key, option = "up", { background = false } = {}){
   if (!url) return;
   const cacheKey = `${key}:${option}`;
   const cached = dataLabResponseCache.get(cacheKey);
-  // 운영업체·담당 건물 정보는 수시로 바뀌므로, 위탁현황은 서버 캐시를 매번
-  // 다시 읽는다. 나머지 데이터랩 탭은 10분 브라우저 캐시를 유지한다.
+  // 행안부 영업신고 수집 데이터는 수시로 갱신되므로, 영업신고현황은 서버
+  // 캐시를 매번 다시 읽는다. 나머지 데이터랩 탭은 10분 브라우저 캐시를 유지한다.
   const cacheTtl = key === "consign" ? 0 : DATA_LAB_CACHE_TTL_MS;
   const renders = {
     lodging: renderDataLabLodging,

@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app import _canonical_sido_name, app  # noqa: E402
 from db import get_conn  # noqa: E402
+import addr_norm  # noqa: E402
 
 
 def check_health(payload):
@@ -148,7 +149,7 @@ def check_datalab_items(payload):
 
 
 def check_datalab_consign(payload):
-    """/api/stats/consign-by-sido: 시도별 위탁현황과 전국 합계."""
+    """/api/stats/consign-by-sido: 시도별 영업신고현황과 전국 합계."""
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return "응답이 성공 객체가 아님"
     if not isinstance(payload.get("items"), list):
@@ -157,80 +158,109 @@ def check_datalab_consign(payload):
         return "'total'이 객체가 아님"
     if payload.get("is_partial") is not True:
         return "수집중 상태가 표시되지 않음"
-    required = {"building_count", "units", "operator_count", "operator_units", "operator_rate"}
+    required = {
+        "building_cnt", "total_units", "active_biz_cnt",
+        "active_room_cnt", "report_rate",
+    }
     for scope, rows in (("items", payload["items"]), ("total", [payload["total"]])):
         for row in rows:
             if not required <= set(row):
-                return f"{scope}에 위탁현황 필수 컬럼이 없음"
-            for key in required - {"operator_rate"}:
+                return f"{scope}에 영업신고현황 필수 컬럼이 없음"
+            for key in required - {"report_rate"}:
                 if not isinstance(row[key], int) or row[key] < 0:
                     return f"{scope}.{key}가 0 이상 정수가 아님"
-            rate = row["operator_rate"]
+            rate = row["report_rate"]
             if rate is not None and (
-                not isinstance(rate, (int, float)) or not 0 <= rate <= 100
+                not isinstance(rate, (int, float)) or rate < 0
             ):
-                return f"{scope}.operator_rate가 0~100 숫자가 아님"
+                return f"{scope}.report_rate가 0 이상 숫자가 아님"
     return None
 
 
 def expected_consign_by_sido():
-    """승인된 위탁업체 연결만 사용한 위탁현황 독립 집계값."""
+    """생활숙박시설과 영업신고 주소 매칭을 사용한 독립 집계값."""
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT
-                mb.id AS building_id,
-                mb.sgg_text,
-                COALESCE(mb.units, 0) AS units,
-                approved.operator_id
-            FROM master_buildings mb
-            LEFT JOIN (
-                SELECT DISTINCT ob.master_building_id, ob.operator_id
-                FROM operator_buildings ob
-                JOIN operators o ON o.id = ob.operator_id
-                WHERE o.status = 'approved'
-                  AND o.category = '위탁'
-            ) approved ON approved.master_building_id = mb.id
-            WHERE mb.lodging_type = '생활'
-            ORDER BY mb.id
+            SELECT id, sgg_text, COALESCE(units, 0) AS units,
+                   road_address, jibun_address
+            FROM master_buildings
+            WHERE lodging_type = '생활'
+            ORDER BY id
         """)
-        buildings = {}
+        buildings = [dict(row) for row in cur.fetchall()]
+        road_keys, jibun_keys = set(), set()
+        for building in buildings:
+            road_key = addr_norm.normalize_road_prefix(building.get("road_address"))
+            jibun_key = addr_norm.get_building_jibun_key(building)
+            building["_road_key"] = road_key
+            building["_jibun_key"] = jibun_key
+            if road_key:
+                road_keys.add(road_key)
+            if jibun_key:
+                jibun_keys.add(jibun_key)
+
+        cur.execute("""
+            SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+            FROM lodging_registry
+            WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+            ORDER BY source_updated_at DESC NULLS LAST, id DESC
+        """, [list(road_keys) or ["__none__"], list(jibun_keys) or ["__none__"]])
+        road_permits, jibun_permits = {}, {}
         for row in cur.fetchall():
-            building = buildings.setdefault(row["building_id"], {
-                "sido": _canonical_sido_name(row["sgg_text"]),
-                "units": max(0, int(row["units"] or 0)),
-                "operator_ids": set(),
-            })
-            if row["operator_id"] is not None:
-                building["operator_ids"].add(int(row["operator_id"]))
+            permit = dict(row)
+            if permit.get("road_norm"):
+                road_permits.setdefault(permit["road_norm"], {})[
+                    permit["permit_number"]
+                ] = permit
+            if permit.get("jibun_norm"):
+                jibun_permits.setdefault(permit["jibun_norm"], {})[
+                    permit["permit_number"]
+                ] = permit
 
         regions = {}
-        for building in buildings.values():
-            if not building["sido"]:
+        assigned_active_permits = set()
+        for building in buildings:
+            sido = _canonical_sido_name(building.get("sgg_text"))
+            if not sido:
                 continue
-            region = regions.setdefault(building["sido"], {
-                "building_count": 0,
-                "units": 0,
-                "operator_ids": set(),
-                "operator_units": 0,
+            region = regions.setdefault(sido, {
+                "building_cnt": 0,
+                "total_units": 0,
+                "active_permits": {},
             })
-            region["building_count"] += 1
-            region["units"] += building["units"]
-            region["operator_ids"].update(building["operator_ids"])
-            if building["operator_ids"]:
-                region["operator_units"] += building["units"]
+            region["building_cnt"] += 1
+            region["total_units"] += max(0, int(building.get("units") or 0))
+            road_matches = road_permits.get(building.get("_road_key"), {})
+            matched_permits = road_matches or jibun_permits.get(
+                building.get("_jibun_key"), {}
+            )
+            for permit_number, permit in matched_permits.items():
+                if (
+                    not permit_number
+                    or "폐업" in (permit.get("biz_status_name") or "")
+                    or permit_number in assigned_active_permits
+                ):
+                    continue
+                assigned_active_permits.add(permit_number)
+                region["active_permits"][permit_number] = permit
 
         def summary(region):
-            units = region["units"]
+            total_units = region["total_units"]
+            active_permits = region["active_permits"]
+            active_room_cnt = sum(
+                max(0, int(permit.get("room_count") or 0))
+                for permit in active_permits.values()
+            )
             return {
-                "building_count": region["building_count"],
-                "units": units,
-                "operator_count": len(region["operator_ids"]),
-                "operator_units": region["operator_units"],
-                "operator_rate": (
-                    round(region["operator_units"] / units * 100, 1)
-                    if units else None
+                "building_cnt": region["building_cnt"],
+                "total_units": total_units,
+                "active_biz_cnt": len(active_permits),
+                "active_room_cnt": active_room_cnt,
+                "report_rate": (
+                    round(active_room_cnt / total_units * 100, 1)
+                    if total_units else None
                 ),
             }
 
@@ -238,17 +268,18 @@ def expected_consign_by_sido():
             {"sido": sido, **summary(region)}
             for sido, region in sorted(regions.items())
         ]
-        total_operator_ids = {
-            operator_id
-            for region in regions.values()
-            for operator_id in region["operator_ids"]
+        total_units = sum(item["total_units"] for item in items)
+        active_room_cnt = sum(item["active_room_cnt"] for item in items)
+        total = {
+            "building_cnt": sum(item["building_cnt"] for item in items),
+            "total_units": total_units,
+            "active_biz_cnt": len(assigned_active_permits),
+            "active_room_cnt": active_room_cnt,
+            "report_rate": (
+                round(active_room_cnt / total_units * 100, 1)
+                if total_units else None
+            ),
         }
-        total = summary({
-            "building_count": sum(item["building_count"] for item in items),
-            "units": sum(item["units"] for item in items),
-            "operator_ids": total_operator_ids,
-            "operator_units": sum(item["operator_units"] for item in items),
-        })
         return items, total
     finally:
         cur.close()
@@ -330,6 +361,9 @@ def run():
     failures += _check_platform_summary(client)
     # 데이터랩 ②~⑥의 TOP·토글·표본 제외·신고율 기준을 확인
     failures += _check_datalab_stats(client)
+    # 데이터랩 영업신고현황이 도로명 우선·지번 보조·폐업 제외·신고번호
+    # 중복 제거라는 주소 매칭 계약을 실제 임시 데이터로 지키는지 확인
+    failures += _check_datalab_report_source_contract()
     # 건물전체 입지정보의 경쟁시설·최단 지하철역·원거리 처리 확인
     failures += _check_whole_listing_location_context(client)
     # 건물전체 매물의 생성·수정·공개범위 계약을 확인
@@ -441,6 +475,127 @@ def _check_favorite_save_persistence(client):
                 conn.commit()
             with client.session_transaction() as sess:
                 sess.pop("user_id", None)
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_datalab_report_source_contract():
+    """영업신고현황 주소 매칭·폐업 제외·전국 신고번호 중복 제거를 검증."""
+    from app import _report_rate_by_sido_payload
+
+    failures = []
+    conn = get_conn()
+    cur = conn.cursor()
+    prefix = f"API신고집계검증{int(time.time() * 1000)}"
+    permit_numbers = [
+        f"{prefix}-ROAD",
+        f"{prefix}-JIBUN",
+        f"{prefix}-CLOSED",
+        f"{prefix}-DUPLICATE",
+        f"{prefix}-PAUSED",
+        f"{prefix}-ROAD-WINS",
+    ]
+    building_ids = []
+    try:
+        before = _report_rate_by_sido_payload()["total"]
+        road_primary = f"서울특별시 신고집계구 {prefix}로 101"
+        jibun_primary = f"서울특별시 신고집계동 101"
+        road_jibun_fallback = f"서울특별시 신고집계구 {prefix}다른로 102"
+        jibun_fallback = f"서울특별시 신고집계동 102"
+        road_closed = f"부산광역시 신고집계구 {prefix}로 103"
+        road_duplicate = f"서울특별시 신고집계구 {prefix}로 104"
+        jibun_duplicate = f"부산광역시 신고집계동 105"
+        building_specs = [
+            ("서울특별시 신고집계구", road_primary, jibun_primary, 100),
+            ("서울특별시 신고집계구", road_jibun_fallback, jibun_fallback, 50),
+            ("부산광역시 신고집계구", road_closed, None, 30),
+            ("서울특별시 신고집계구", road_duplicate, None, 10),
+            ("부산광역시 신고집계구", f"부산광역시 신고집계구 {prefix}다른로 105", jibun_duplicate, 10),
+        ]
+        for index, (sgg_text, road_address, jibun_address, units) in enumerate(building_specs):
+            cur.execute("""
+                INSERT INTO master_buildings
+                    (building_name, sgg_text, road_address, jibun_address,
+                     lodging_type, units, source)
+                VALUES (%s, %s, %s, %s, '생활', %s, 'api_test')
+                RETURNING id
+            """, (
+                f"{prefix} 건물 {index + 1}",
+                sgg_text,
+                road_address,
+                jibun_address,
+                units,
+            ))
+            building_ids.append(cur.fetchone()["id"])
+
+        registry_specs = [
+            # 도로명에 신고가 있으면 같은 건물의 지번 신고보다 도로명 결과를 쓴다.
+            (permit_numbers[0], road_primary, None, "영업/정상", 20),
+            # road_primary의 지번도 맞지만, 도로명 결과가 있으므로 합산하지 않는다.
+            (permit_numbers[5], f"서울특별시 신고집계구 {prefix}무관로 998", jibun_primary, "영업/정상", 11),
+            # 도로명 결과가 없을 때만 지번 보조 매칭한다.
+            (permit_numbers[1], f"서울특별시 신고집계구 {prefix}무관로 999", jibun_fallback, "영업/정상", 25),
+            # 폐업은 주소가 맞아도 영업신고현황에 포함하지 않는다.
+            (permit_numbers[2], road_closed, None, "폐업", 90),
+            # 하나의 신고번호가 두 건물 키에 걸려도 전국 합계에는 한 번만 포함한다.
+            (permit_numbers[3], road_duplicate, jibun_duplicate, "영업/정상", 7),
+            # 명시된 기준은 폐업 제외이므로 휴업은 포함한다.
+            (permit_numbers[4], road_primary, None, "휴업", 9),
+        ]
+        for permit_number, road_address, jibun_address, status, room_count in registry_specs:
+            cur.execute("""
+                INSERT INTO lodging_registry
+                    (biz_name, permit_number, road_address, jibun_address,
+                     biz_status_name, room_count, road_norm, jibun_norm)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                f"{prefix} 신고업체",
+                permit_number,
+                road_address,
+                jibun_address,
+                status,
+                room_count,
+                addr_norm.normalize_road_prefix(road_address),
+                addr_norm.normalize_jibun_prefix(jibun_address),
+            ))
+        conn.commit()
+
+        after_payload = _report_rate_by_sido_payload()
+        after = after_payload["total"]
+        expected_delta = {
+            "building_cnt": 5,
+            "total_units": 200,
+            "active_biz_cnt": 4,
+            "active_room_cnt": 61,
+        }
+        for field, delta in expected_delta.items():
+            if int(after.get(field) or 0) != int(before.get(field) or 0) + delta:
+                failures.append(
+                    f"영업신고현황 주소 매칭: {field} 증감이 {delta}가 아님"
+                )
+        items = after_payload.get("items") or []
+        for field in expected_delta:
+            if int(after.get(field) or 0) != sum(int(item.get(field) or 0) for item in items):
+                failures.append(f"영업신고현황 주소 매칭: 전국 {field}가 시도 합계와 다름")
+        if not failures:
+            print("OK  영업신고현황 도로명 우선·지번 보조·폐업 제외·신고번호 중복 제거")
+    except Exception as exc:
+        failures.append(f"영업신고현황 주소 매칭 테스트 오류: {exc}")
+    finally:
+        try:
+            if permit_numbers:
+                cur.execute(
+                    "DELETE FROM lodging_registry WHERE permit_number = ANY(%s)",
+                    (permit_numbers,),
+                )
+            if building_ids:
+                cur.execute(
+                    "DELETE FROM master_buildings WHERE id = ANY(%s)",
+                    (building_ids,),
+                )
+            conn.commit()
         finally:
             cur.close()
             conn.close()
@@ -2739,37 +2894,35 @@ def _check_datalab_stats(client):
             or consign.get("total") != expected_consign_total
         ):
             failures.append(
-                "데이터랩 위탁현황: 생활·승인 위탁업체·건물별 호실 중복 제거 집계가 원본과 다름"
+                "데이터랩 영업신고현황: 생활·주소매칭·폐업제외·신고번호 중복 제거 집계가 원본과 다름"
             )
         canonical_sidos = [item.get("sido") for item in consign.get("items") or []]
         if (
             len(canonical_sidos) != len(set(canonical_sidos))
             or any(sido in {"서울", "광주", "울산", "전남"} for sido in canonical_sidos)
         ):
-            failures.append("데이터랩 위탁현황: 시도 표기가 공식 명칭으로 통합되지 않음")
+            failures.append("데이터랩 영업신고현황: 시도 표기가 공식 명칭으로 통합되지 않음")
         for item in consign.get("items") or []:
-            units = int(item.get("units") or 0)
-            operator_units = int(item.get("operator_units") or 0)
-            expected_rate = round(operator_units / units * 100, 1) if units else None
+            units = int(item.get("total_units") or 0)
+            active_room_cnt = int(item.get("active_room_cnt") or 0)
+            expected_rate = round(active_room_cnt / units * 100, 1) if units else None
             if (
-                item.get("operator_rate") != expected_rate
-                or (item.get("operator_rate") is not None and not 0 <= item["operator_rate"] <= 100)
-                or operator_units > units
+                item.get("report_rate") != expected_rate
+                or (item.get("report_rate") is not None and item["report_rate"] < 0)
             ):
-                failures.append("데이터랩 위탁현황: 위탁비율 계산이 잘못됨")
+                failures.append("데이터랩 영업신고현황: 신고율 계산이 잘못됨")
                 break
         total = consign.get("total") or {}
-        national_units = int(total.get("units") or 0)
-        national_operator_units = int(total.get("operator_units") or 0)
+        national_units = int(total.get("total_units") or 0)
+        national_active_room_cnt = int(total.get("active_room_cnt") or 0)
         expected_national_rate = round(
-            national_operator_units / national_units * 100, 1
+            national_active_room_cnt / national_units * 100, 1
         ) if national_units else None
         if (
-            total.get("operator_rate") != expected_national_rate
-            or (total.get("operator_rate") is not None and not 0 <= total["operator_rate"] <= 100)
-            or national_operator_units > national_units
+            total.get("report_rate") != expected_national_rate
+            or (total.get("report_rate") is not None and total["report_rate"] < 0)
         ):
-            failures.append("데이터랩 위탁현황: 전국 합계 비율 계산이 잘못됨")
+            failures.append("데이터랩 영업신고현황: 전국 합계 신고율 계산이 잘못됨")
 
         public_stats = client.get("/api/stats/lodging-full-table").get_json() or {}
 
@@ -2882,7 +3035,7 @@ def _check_datalab_stats(client):
             })
             fallback_consign = client.get("/api/stats/consign-by-sido").get_json() or {}
             if fallback_consign != consign:
-                failures.append("통계 원본 창고: 위탁 섹션 오류 때 레거시 폴백 결과가 달라짐")
+                failures.append("통계 원본 창고: 영업신고 섹션 오류 때 폴백 결과가 달라짐")
 
             app_module._MASTER_STATS_CACHE.update({
                 "ts": 0.0,
@@ -2892,7 +3045,7 @@ def _check_datalab_stats(client):
             })
             rebuilt_consign = client.get("/api/stats/consign-by-sido").get_json() or {}
             if rebuilt_consign != consign:
-                failures.append("통계 원본 창고: 빈 캐시 재생성 뒤 위탁현황 결과가 달라짐")
+                failures.append("통계 원본 창고: 빈 캐시 재생성 뒤 영업신고현황 결과가 달라짐")
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(saved_master_cache)
