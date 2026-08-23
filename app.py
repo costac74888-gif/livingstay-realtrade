@@ -13413,18 +13413,24 @@ def _lodging_full_stats_payload():
 
     def _row(blds: list, type_label: str) -> dict:
         if not blds:
+            is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
             empty_row = {
                 "type": type_label, "building_count": 0, "units": 0,
                 "favorites": 0, "listing_requests": 0, "broker_badge": 0,
                 "store_realty": 0, "store_total": 0,
                 "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None,
-                "lodging_metric": "room_count" if type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE else "report_rate",
+                "lodging_metric": "businesses_per_building" if is_general else "report_rate",
+                "report_rate_numerator": 0, "report_rate_denominator": 0,
+                "report_rate_basis": "businesses_per_building" if is_general else "reported_rooms_per_units",
                 "report_rate_room_count": 0, "report_rate_units": 0, "report_rate_building_count": 0,
-                "report_rate_excludes_general": type_label == "전체",
+                "report_rate_excludes_general": False,
             }
-            if type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE:
+            if is_general:
                 empty_row["sub_rows"] = [
-                    {"type": hygiene_type, "permit_count": 0, "room_count": 0}
+                    {
+                        "type": hygiene_type, "building_count": 0,
+                        "permit_count": 0, "room_count": 0, "report_rate": None,
+                    }
                     for hygiene_type in GENERAL_LODGING_SUB_TYPES
                 ]
             return empty_row
@@ -13437,14 +13443,49 @@ def _lodging_full_stats_payload():
         active_vals = [v for v in permits.values() if "폐업" not in (v["biz_status_name"] or "")]
         pc = len(active_vals)   # 현재 운영 영업신고업체 수 (폐업 제외)
         rc = sum(int(v["room_count"] or 0) for v in active_vals)  # 현재 운영 영업신고호실 (폐업 제외)
-        # 전체 행만 일반숙박을 제외해 가중평균을 낸다. 일반 행 자체는 객실수 지표다.
-        rate_blds = (
-            [b for b in blds if uses_lodging_report_rate(b.get("lodging_type"))]
-            if type_label == "전체" else blds
-        )
-        rate_rc = sum(capped_report_rooms_by_building.get(b["id"], 0) for b in rate_blds)
-        rate_tu = sum(int(b["units"] or 0) for b in rate_blds)
         is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
+        is_total = type_label == "전체"
+
+        # 생활·관광·복합은 기존처럼 신고 객실수 ÷ 건물 호실수로 계산한다.
+        # 일반숙박은 건축물대장 호실수와 객실수가 같은 모집단이 아니므로, 사용자 요청에
+        # 따라 현재 영업신고업체 수 ÷ 일반숙박 건물 수를 신고율로 사용한다.
+        if is_total:
+            room_rate_blds = [
+                building for building in blds
+                if uses_lodging_report_rate(building.get("lodging_type"))
+            ]
+            general_blds = [
+                building for building in blds
+                if building.get("lodging_type") == REPORT_RATE_EXCLUDED_LODGING_TYPE
+            ]
+            legacy_rate_rc = sum(
+                capped_report_rooms_by_building.get(building["id"], 0)
+                for building in room_rate_blds
+            )
+            legacy_rate_tu = sum(int(building["units"] or 0) for building in room_rate_blds)
+            general_active_count = sum(
+                1 for permit in _permits_for(general_blds).values()
+                if "폐업" not in (permit["biz_status_name"] or "")
+            )
+            rate_numerator = legacy_rate_rc + general_active_count
+            rate_denominator = legacy_rate_tu + len(general_blds)
+            rate_basis = "type_weighted"
+            lodging_metric = "type_weighted"
+        elif is_general:
+            legacy_rate_rc = 0
+            legacy_rate_tu = 0
+            rate_numerator = pc
+            rate_denominator = len(blds)
+            rate_basis = "businesses_per_building"
+            lodging_metric = "businesses_per_building"
+        else:
+            legacy_rate_rc = sum(capped_report_rooms_by_building.get(b["id"], 0) for b in blds)
+            legacy_rate_tu = tu
+            rate_numerator = legacy_rate_rc
+            rate_denominator = legacy_rate_tu
+            rate_basis = "reported_rooms_per_units"
+            lodging_metric = "report_rate"
+
         row = {
             "type": type_label,
             "building_count": len(blds),
@@ -13454,27 +13495,59 @@ def _lodging_full_stats_payload():
             "broker_badge": broker_c,
             "store_realty": sum(store_map.get(b["id"], {}).get("realty", 0) for b in blds),
             "store_total": sum(store_map.get(b["id"], {}).get("total", 0) for b in blds),
-            "report_rate": None if is_general else (round(rate_rc / rate_tu * 100, 1) if rate_tu else None),
+            "report_rate": round(rate_numerator / rate_denominator * 100, 1) if rate_denominator else None,
             "permit_count": pc,
             "room_count": rc,
             "closed_rate": round(cc / total_pc * 100, 1) if total_pc else None,
-            "lodging_metric": "room_count" if is_general else "report_rate",
-            "report_rate_room_count": rate_rc,
-            "report_rate_units": rate_tu if not is_general else 0,
-            "report_rate_building_count": len(rate_blds) if not is_general else 0,
-            "report_rate_excludes_general": type_label == "전체",
+            "lodging_metric": lodging_metric,
+            "report_rate_numerator": rate_numerator,
+            "report_rate_denominator": rate_denominator,
+            "report_rate_basis": rate_basis,
+            # 기존 지역별 신고율 API용 일반숙박 제외 분자·분모는 별도 유지한다.
+            "report_rate_room_count": legacy_rate_rc,
+            "report_rate_units": legacy_rate_tu,
+            "report_rate_building_count": (
+                len(room_rate_blds) if is_total
+                else (len(blds) if not is_general else 0)
+            ),
+            "report_rate_excludes_general": False,
         }
         if is_general:
+            sub_stats = {
+                hygiene_type: {"building_ids": set(), "permits": {}}
+                for hygiene_type in GENERAL_LODGING_SUB_TYPES
+            }
+            for building in blds:
+                road_key = bld_rk[building["id"]]
+                jibun_key = bld_jk[building["id"]]
+                building_permits = lr_road_map.get(road_key) if road_key else None
+                if not building_permits:
+                    building_permits = lr_jibun_map.get(jibun_key) if jibun_key else None
+                for permit_number, permit in (building_permits or {}).items():
+                    hygiene_type = permit.get("hygiene_type")
+                    if hygiene_type not in sub_stats:
+                        continue
+                    # 분모는 해당 세부 업태로 매칭된 일반숙박 건물 수이며, 폐업 신고도
+                    # 기존 건물이므로 분모에 남긴다. 분자는 현재 영업 중 신고업체만 센다.
+                    sub_stats[hygiene_type]["building_ids"].add(building["id"])
+                    if "폐업" not in (permit.get("biz_status_name") or ""):
+                        sub_stats[hygiene_type]["permits"][permit_number] = permit
             row["sub_rows"] = [
                 {
                     "type": hygiene_type,
-                    "permit_count": sum(
-                        1 for permit in active_vals
-                        if permit.get("hygiene_type") == hygiene_type
-                    ),
+                    "building_count": len(sub_stats[hygiene_type]["building_ids"]),
+                    "permit_count": len(sub_stats[hygiene_type]["permits"]),
                     "room_count": sum(
-                        int(permit["room_count"] or 0) for permit in active_vals
-                        if permit.get("hygiene_type") == hygiene_type
+                        int(permit["room_count"] or 0)
+                        for permit in sub_stats[hygiene_type]["permits"].values()
+                    ),
+                    "report_rate": (
+                        round(
+                            len(sub_stats[hygiene_type]["permits"])
+                            / len(sub_stats[hygiene_type]["building_ids"]) * 100,
+                            1,
+                        )
+                        if sub_stats[hygiene_type]["building_ids"] else None
                     ),
                 }
                 for hygiene_type in GENERAL_LODGING_SUB_TYPES
@@ -13495,7 +13568,7 @@ def _lodging_full_stats_payload():
 
 
 _PUBLIC_LODGING_STATS_TYPES = {"전체", "생활", "관광", REPORT_RATE_EXCLUDED_LODGING_TYPE, "복합"}
-_PUBLIC_LODGING_STATS_FIELDS = ("type", "building_count", "biz_count", "room_count", "closure_rate")
+_PUBLIC_LODGING_STATS_FIELDS = ("type", "building_count", "units", "biz_count", "room_count", "report_rate")
 
 
 def _public_lodging_stats_payload(payload: dict) -> dict:
@@ -13503,10 +13576,11 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
     def compact_row(row: dict, *, is_sub_row=False) -> dict:
         compact = {
             "type": row.get("type"),
-            "building_count": None if is_sub_row else row.get("building_count", 0),
+            "building_count": row.get("building_count", 0),
+            "units": None if is_sub_row else row.get("units", 0),
             "biz_count": row.get("permit_count", 0),
             "room_count": row.get("room_count", 0),
-            "closure_rate": None if is_sub_row else row.get("closed_rate"),
+            "report_rate": row.get("report_rate"),
         }
         return compact
 
@@ -20493,12 +20567,14 @@ def stats_registration_rate():
     cached = _bld_full_stats_cache.get("data")
     if cached and (time.time() - _bld_full_stats_cache["ts"] < _BLD_FULL_STATS_TTL):
         total_row = next((r for r in cached["rows"] if r["type"] == "전체"), {})
+        legacy_rooms = int(total_row.get("report_rate_room_count") or 0)
+        legacy_units = int(total_row.get("report_rate_units") or 0)
         return jsonify({
             "ok": True,
             "buildings": total_row.get("report_rate_building_count", 0),
-            "total_units": total_row.get("report_rate_units", 0),
-            "biz_units": total_row.get("report_rate_room_count", total_row.get("room_count", 0)),
-            "rate": total_row.get("report_rate"),
+            "total_units": legacy_units,
+            "biz_units": legacy_rooms,
+            "rate": round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None,
             "general_excluded": True,
         })
     # 캐시 미스도 데이터랩·관리자 통계와 같은 주소 우선 매칭과 건물별 상한 규칙을

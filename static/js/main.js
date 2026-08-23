@@ -2202,17 +2202,19 @@ function renderDataLabLodging(data){
       <tr>
         <td>${escapeHtml(row.type)}</td>
         <td>${dataLabNum(row.building_count)}</td>
+        <td>${dataLabNum(row.units)}</td>
         <td>${dataLabNum(row.biz_count)}</td>
         <td>${dataLabNum(row.room_count)}</td>
-        <td>${row.closure_rate == null ? "-" : `${row.closure_rate}%`}</td>
+        <td>${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
       </tr>`;
     const subRows = (row.sub_rows || []).map(sub => `
       <tr class="datalab-sub-row">
         <td class="datalab-sub-name">└ ${escapeHtml(sub.type)}</td>
+        <td>${dataLabNum(sub.building_count)}</td>
         <td>-</td>
         <td>${dataLabNum(sub.biz_count)}</td>
         <td>${dataLabNum(sub.room_count)}</td>
-        <td>-</td>
+        <td>${sub.report_rate == null ? "-" : `${sub.report_rate}%`}</td>
       </tr>`).join("");
     return base + subRows;
   }).join("");
@@ -2222,11 +2224,11 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물수</th><th>영업신고업체</th><th>영업신고호실</th><th>폐업율</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수</th><th>호실수</th><th>영업신고업체</th><th>영업신고호실</th><th>영업신고율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>
-    <p class="datalab-note">영업신고업체·호실은 현재 수집된 운영 신고 기준입니다.</p>`;
+    <p class="datalab-note">생활·관광·복합은 신고호실 ÷ 호실수, 일반은 영업신고업체 ÷ 건물수 기준입니다.</p>`;
 }
 
 function renderDataLabVolume(data){

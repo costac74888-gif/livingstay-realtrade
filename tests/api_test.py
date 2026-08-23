@@ -117,16 +117,16 @@ def check_datalab_lodging_table(payload):
     expected_types = ["전체", "생활", "관광", "일반", "복합"]
     if [row.get("type") for row in rows] != expected_types:
         return "공개 용도별 행 순서가 잘못됨"
-    allowed = {"type", "building_count", "biz_count", "room_count", "closure_rate", "sub_rows"}
+    allowed = {"type", "building_count", "units", "biz_count", "room_count", "report_rate", "sub_rows"}
     for row in rows:
-        if set(row) - allowed or not {"type", "building_count", "biz_count", "room_count", "closure_rate"} <= set(row):
+        if set(row) - allowed or not {"type", "building_count", "units", "biz_count", "room_count", "report_rate"} <= set(row):
             return "공개 응답에 최소 컬럼 외 필드가 있거나 필수 필드가 없음"
         if row["type"] == "일반":
             sub_rows = row.get("sub_rows")
             if [sub.get("type") for sub in sub_rows or []] != ["일반호텔", "여관업", "여인숙업", "숙박업(생활)"]:
                 return "일반숙박 세부 4종이 공개 응답에 없음"
             for sub in sub_rows:
-                if set(sub) != {"type", "building_count", "biz_count", "room_count", "closure_rate"}:
+                if set(sub) != {"type", "building_count", "units", "biz_count", "room_count", "report_rate"}:
                     return "일반숙박 세부행에 공개 최소 컬럼 외 필드가 있음"
     if any(row.get("type") in {"준공전", "미분류"} for row in rows):
         return "준공전·미분류 행이 공개 응답에 남아 있음"
@@ -1095,7 +1095,8 @@ def _check_lodging_metric_contract(client):
                 f"(153실 / 286실 = {expected_rate}%)"
             )
 
-    # 캐시가 없는 공개 통계와 관리자 전체통계가 같은 일반 제외 분자·분모를 쓰는지 확인한다.
+    # 관리자 통계는 일반숙박을 업체수 ÷ 건물수로, 생활·관광·복합은 신고호실 ÷ 호실수로 계산한다.
+    # 별도 지역 비교 API는 기존처럼 일반숙박을 제외한 객실 기준을 유지한다.
     original_cache = app_module._bld_full_stats_cache
     try:
         app_module._bld_full_stats_cache = {"ts": 0.0, "data": None}
@@ -1113,8 +1114,19 @@ def _check_lodging_metric_contract(client):
 
         if full_stats_response.status_code != 200 or not full_stats.get("ok"):
             failures.append("lodging metric: 관리자 전체 통계를 불러오지 못했습니다.")
-        elif general_row.get("lodging_metric") != "room_count" or general_row.get("report_rate") is not None:
-            failures.append("lodging metric: 관리자 일반숙박 행이 객실수 지표가 아님")
+        elif (
+            general_row.get("lodging_metric") != "businesses_per_building"
+            or general_row.get("report_rate")
+            != (
+                round(
+                    int(general_row.get("permit_count") or 0)
+                    / int(general_row.get("building_count") or 0) * 100,
+                    1,
+                )
+                if int(general_row.get("building_count") or 0) else None
+            )
+        ):
+            failures.append("lodging metric: 관리자 일반숙박 신고율이 업체수 ÷ 건물수 기준이 아님")
         else:
             expected_sub_types = ["일반호텔", "여관업", "여인숙업", "숙박업(생활)"]
             sub_rows = general_row.get("sub_rows")
@@ -1123,23 +1135,35 @@ def _check_lodging_metric_contract(client):
             elif (
                 sum(int(row.get("permit_count") or 0) for row in sub_rows) != general_row.get("permit_count")
                 or sum(int(row.get("room_count") or 0) for row in sub_rows) != general_row.get("room_count")
+                or any(
+                    row.get("report_rate")
+                    != (
+                        round(
+                            int(row.get("permit_count") or 0)
+                            / int(row.get("building_count") or 0) * 100,
+                            1,
+                        )
+                        if int(row.get("building_count") or 0) else None
+                    )
+                    for row in sub_rows
+                )
             ):
-                failures.append("lodging metric: 일반숙박 세분류 업체수 또는 객실수 합계가 일반 행과 불일치")
+                failures.append("lodging metric: 일반숙박 세분류 업체수·객실수 또는 업체÷건물 신고율이 잘못됨")
             else:
                 print(
-                    f"OK  관리자 일반숙박 4개 세분류 합계 일치 "
-                    f"({general_row.get('room_count')}실)"
+                    f"OK  관리자 일반숙박 4개 세분류·업체÷건물 신고율 "
+                    f"({general_row.get('permit_count')}개 / {general_row.get('building_count')}건)"
                 )
 
-            expected_rooms = int(total_row.get("report_rate_room_count") or 0)
-            expected_units = int(total_row.get("report_rate_units") or 0)
-            expected_rate = round(expected_rooms * 100.0 / expected_units, 1) if expected_units else None
+            expected_numerator = int(total_row.get("report_rate_numerator") or 0)
+            expected_denominator = int(total_row.get("report_rate_denominator") or 0)
+            expected_rate = round(expected_numerator * 100.0 / expected_denominator, 1) if expected_denominator else None
             if total_row.get("report_rate") != expected_rate:
-                failures.append("lodging metric: 관리자 전체 신고율의 가중 분자·분모가 불일치")
+                failures.append("lodging metric: 관리자 전체 신고율의 유형별 분자·분모가 불일치")
             else:
                 print(
-                    f"OK  관리자 전체 신고율 일반 제외 "
-                    f"({expected_rooms}실 / {expected_units}실 = {expected_rate}%)"
+                    f"OK  관리자 전체 신고율 유형별 합산 "
+                    f"({expected_numerator} / {expected_denominator} = {expected_rate}%)"
                 )
 
         general_list_response = client.get("/api/admin/buildings?lodging_type_filter=일반")
@@ -1164,7 +1188,15 @@ def _check_lodging_metric_contract(client):
                 or stats_payload.get("general_excluded") is not True
                 or stats_payload.get("biz_units") != total_row.get("report_rate_room_count")
                 or stats_payload.get("total_units") != total_row.get("report_rate_units")
-                or stats_payload.get("rate") != total_row.get("report_rate")
+                or stats_payload.get("rate")
+                != (
+                    round(
+                        int(total_row.get("report_rate_room_count") or 0)
+                        / int(total_row.get("report_rate_units") or 0) * 100,
+                        1,
+                    )
+                    if int(total_row.get("report_rate_units") or 0) else None
+                )
             ):
                 failures.append(f"lodging metric: 공개 전국 신고율 {label} 경로가 일반 제외 집계와 불일치")
             else:
@@ -2618,18 +2650,22 @@ def _check_datalab_stats(client):
             session["admin"] = True
         admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
         total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
-        if report_rate.get("national_rate") != total_row.get("report_rate"):
-            failures.append("데이터랩 시도별 신고율: 전국 기준선이 관리자 전체 신고율과 다름")
+        legacy_rooms = int(total_row.get("report_rate_room_count") or 0)
+        legacy_units = int(total_row.get("report_rate_units") or 0)
+        legacy_rate = round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None
+        if report_rate.get("national_rate") != legacy_rate:
+            failures.append("데이터랩 시도별 신고율: 일반 제외 전국 기준선이 관리자 원본과 다름")
         admin_rows = admin_stats.get("rows") or []
         admin_required = {
             "type", "building_count", "units", "favorites", "listing_requests",
             "broker_badge", "store_realty", "store_total", "report_rate",
             "permit_count", "room_count", "closed_rate", "lodging_metric",
+            "report_rate_numerator", "report_rate_denominator", "report_rate_basis",
         }
         if not admin_rows or any(not admin_required <= set(row) for row in admin_rows):
             failures.append("데이터랩 전국숙박업통계: 관리자 전체 통계 원본 컬럼이 사라짐")
         public_rows = public_stats.get("rows") or []
-        public_allowed = {"type", "building_count", "biz_count", "room_count", "closure_rate", "sub_rows"}
+        public_allowed = {"type", "building_count", "units", "biz_count", "room_count", "report_rate", "sub_rows"}
         if any(set(row) - public_allowed for row in public_rows):
             failures.append("데이터랩 전국숙박업통계: 공개 응답에 내부 운영지표가 남아 있음")
         if any(row.get("type") in {"준공전", "미분류"} for row in public_rows):
@@ -2641,9 +2677,10 @@ def _check_datalab_stats(client):
                 public_row.get(public_key) != admin_row.get(admin_key)
                 for public_key, admin_key in (
                     ("building_count", "building_count"),
+                    ("units", "units"),
                     ("biz_count", "permit_count"),
                     ("room_count", "room_count"),
-                    ("closure_rate", "closed_rate"),
+                    ("report_rate", "report_rate"),
                 )
             ):
                 failures.append("데이터랩 전국숙박업통계: 공개 최소 컬럼이 관리자 계산 결과와 다름")
@@ -2655,8 +2692,10 @@ def _check_datalab_stats(client):
                 for public_sub in public_row.get("sub_rows") or []:
                     admin_sub = admin_sub_rows.get(public_sub.get("type")) or {}
                     if (
-                        public_sub.get("biz_count") != admin_sub.get("permit_count")
+                        public_sub.get("building_count") != admin_sub.get("building_count")
+                        or public_sub.get("biz_count") != admin_sub.get("permit_count")
                         or public_sub.get("room_count") != admin_sub.get("room_count")
+                        or public_sub.get("report_rate") != admin_sub.get("report_rate")
                     ):
                         failures.append("데이터랩 전국숙박업통계: 일반 세부행 공개 수치가 관리자 결과와 다름")
                         break

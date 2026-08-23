@@ -82,8 +82,10 @@ expect(main.includes("<strong>⑤ 📈 영업신고율</strong>") && main.includ
   "데이터랩 콘텐츠의 영업신고율·폐업 지역 순서 또는 명칭이 맞지 않습니다.");
 expect(main.includes("dataLabArea(item.area_sqm)"), "가격변동 데이터랩에 동일 전용면적 표시가 없습니다.");
 expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국숙박업통계 캡션이 현재수집 기준이 아닙니다.");
-expect(main.includes("<th>건물수</th><th>영업신고업체</th><th>영업신고호실</th><th>폐업율</th>"),
-  "전국숙박업통계 공개 컬럼이 4개로 축소되지 않았습니다.");
+expect(main.includes("<th>건물수</th><th>호실수</th><th>영업신고업체</th><th>영업신고호실</th><th>영업신고율</th>"),
+  "전국숙박업통계가 영업신고율·분모 호실수를 표시하지 않습니다.");
+expect(main.includes("일반은 영업신고업체 ÷ 건물수 기준"),
+  "전국숙박업통계에 일반숙박 영업신고율 산식 안내가 없습니다.");
 expect(!main.includes("row.favorites") && !main.includes("row.listing_requests"),
   "전국숙박업통계 렌더링에 내부 운영지표가 남아 있습니다.");
 
