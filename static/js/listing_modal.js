@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var MAX_PHOTOS = 5;
+  var MAX_PHOTOS = 10;
   var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
   var DEAL_TYPES = ["매매", "전세", "월세", "단기임대"];
   var WHOLE_DEAL_TYPES = ["매매", "통임대", "운영권양도", "위탁운영"];
@@ -11,7 +11,7 @@
     "■ 거래 조건\n- 거래방식:\n- 권리금:\n- 급매 여부:\n\n" +
     "■ 매도 사유\n- \n\n" +
     "■ 인수인계 조건\n- 희망 인수인계 시기:\n- 직원 고용승계:\n- 시설·집기 포함 여부:\n\n" +
-    "■ 기타 안내\n- 상세 조건은 상담을 통해 확인해주세요.";
+    "■ 기타 안내\n- 상세 조건은 상담을 통해 안내드립니다.";
   var WHOLE_ACQUISITION_COST_RATE = 0.061;
   var REGISTRANT_TYPES = [
     {value: "owner", label: "소유자 또는 대리인"},
@@ -61,9 +61,10 @@
     }) : [];
   }
 
-  function uploadPhoto(listingId, file) {
+  function uploadPhoto(listingId, file, isPublic) {
     var form = new FormData();
     form.append("file", file, file.name);
+    form.append("is_public", isPublic ? "true" : "false");
     return fetch("/api/listing-requests/" + listingId + "/photos", {
       method: "POST", credentials: "same-origin", body: form
     }).then(function (r) {
@@ -117,7 +118,7 @@
     var dealMode = prefill.deal_mode || "direct";
     if (dealMode !== "broker") dealMode = "direct";
     var photoItems = photoArray(prefill.photos || prefill.existing_photos).map(function (photo) {
-      return { kind: "existing", photo: photo };
+      return { kind: "existing", photo: photo, isPublic: photo.is_public !== false };
     });
     var confirmedPhotoItems = photoItems.slice();
     var photoOrderSaveChain = Promise.resolve();
@@ -183,10 +184,10 @@
            '<section id="lrRoomCountSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">총 호실수</div><input id="lrRoomCount" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="총 호실수" value="' + esc(prefill.room_count || "") + '" style="' + inputStyle() + '"><div id="lrRoomCountHelp" style="display:none;margin-top:6px;font-size:11.5px;color:var(--ink-soft);"></div></section>' +
           '<section id="lrYieldSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">예상 수익률 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
           '<div style="display:flex;gap:7px;"><input id="lrYieldDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.deposit_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrYieldRent" type="number" min="1" inputmode="numeric" placeholder="월 임대료 (만원)" value="' + esc(prefill.yield_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div id="lrYieldResult" style="font-size:11.5px;color:var(--brass,#b4863f);margin-top:6px;"></div></section>' +
-           '<section id="lrWholeOperationSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 5 · 운영정보</div><div style="display:flex;gap:7px;"><input id="lrMonthlyRevenue" type="number" min="1" inputmode="numeric" placeholder="월평균매출 (만원)" value="' + esc(prefill.monthly_revenue_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrAnnualRevenue" type="number" min="1" inputmode="numeric" placeholder="연매출 (만원)" value="' + esc(prefill.annual_revenue_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div style="display:flex;gap:7px;margin-top:7px;"><select id="lrOperationStatus" style="' + inputStyle("flex:1;") + '"><option value="">운영상태 선택</option><option value="영업중">영업중</option><option value="휴업">휴업</option><option value="폐업">폐업</option></select><input id="lrClosedAt" type="date" value="' + esc(prefill.closed_at || "") + '" style="' + inputStyle("display:none;flex:1;") + '"></div><textarea id="lrRemodelingInfo" maxlength="500" rows="2" placeholder="리모델링 정보 (시기·범위·비용 등)" style="' + inputStyle("resize:vertical;margin-top:7px;") + '">' + esc(prefill.remodeling_info || "") + '</textarea><div style="display:flex;gap:12px;align-items:center;margin-top:8px;font-size:12px;"><label><input id="lrUrgentSale" type="checkbox"' + (prefill.is_urgent ? " checked" : "") + '> 급매</label><label>공개범위 <select id="lrDisclosureScope" style="margin-left:4px;border:1px solid var(--line);border-radius:5px;padding:4px;"><option value="limited">제한공개</option><option value="public">전체공개</option></select></label></div></section>' +
+            '<section id="lrWholeOperationSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 5 · 운영정보</div><div style="display:flex;gap:7px;"><input id="lrMonthlyRevenue" type="number" min="1" inputmode="numeric" placeholder="월평균매출 (만원)" value="' + esc(prefill.monthly_revenue_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrAnnualRevenue" type="number" min="1" inputmode="numeric" placeholder="연매출 (만원)" value="' + esc(prefill.annual_revenue_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div style="display:flex;gap:7px;margin-top:7px;"><input id="lrShortStayRatio" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="대실 비율 (선택, %)" value="' + esc(prefill.short_stay_ratio || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrOtaRevenueRatio" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="OTA 매출 비중 (선택, %)" value="' + esc(prefill.ota_revenue_ratio || "") + '" style="' + inputStyle("flex:1;") + '"></div><div style="display:flex;gap:7px;margin-top:7px;"><select id="lrOperationStatus" style="' + inputStyle("flex:1;") + '"><option value="">운영상태 선택</option><option value="영업중">영업중</option><option value="휴업">휴업</option><option value="폐업">폐업</option></select><input id="lrClosedAt" type="date" value="' + esc(prefill.closed_at || "") + '" style="' + inputStyle("display:none;flex:1;") + '"></div><textarea id="lrRemodelingInfo" maxlength="500" rows="2" placeholder="리모델링 정보 (시기·범위·비용 등)" style="' + inputStyle("resize:vertical;margin-top:7px;") + '">' + esc(prefill.remodeling_info || "") + '</textarea><div style="display:flex;gap:12px;align-items:center;margin-top:8px;font-size:12px;"><label><input id="lrUrgentSale" type="checkbox"' + (prefill.is_urgent ? " checked" : "") + '> 급매</label><label>공개범위 <select id="lrDisclosureScope" style="margin-left:4px;border:1px solid var(--line);border-radius:5px;padding:4px;"><option value="limited">제한공개</option><option value="public">전체공개</option></select></label></div><div id="lrDisclosureHelp" style="margin-top:6px;font-size:11.5px;color:var(--ink-soft);line-height:1.5;"></div></section>' +
            '<section id="lrWholeBuildingSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 6 · 건물정보</div><div id="lrWholeBuildingInfo" style="padding:10px;border:1px solid var(--line);border-radius:8px;background:#fcfbf9;font-size:12px;color:var(--ink-soft);">건물 정보를 불러오는 중…</div><a href="/contact" style="display:inline-block;margin-top:7px;font-size:11.5px;color:var(--brass,#b4863f);">건물정보 수정 요청하기</a></section>' +
            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 설명 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div><textarea id="lrDescription" maxlength="500" rows="4" aria-describedby="lrDescriptionHint" placeholder="매물의 장점, 입주 가능일 등을 적어주세요." style="' + inputStyle("resize:vertical;line-height:1.5;") + '">' + esc(prefill.description || "") + '</textarea><div id="lrDescriptionHint" style="margin-top:5px;font-size:11px;color:var(--ink-soft);">Enter 키를 누르면 다음 줄에 작성할 수 있습니다.</div></section>' +
-          '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">사진 <span style="font-weight:400;color:var(--ink-soft);">최대 5장 · JPG/PNG · 장당 5MB · 첫 사진이 대표사진</span></div>' +
+           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">사진 <span style="font-weight:400;color:var(--ink-soft);">최대 10장 · JPG/PNG · 장당 5MB · 첫 사진이 대표사진</span></div>' +
           '<input id="lrPhotoInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple style="display:none">' +
           '<div id="lrDropZone" tabindex="0" role="button" style="border:1.5px dashed var(--brass,#b4863f);border-radius:9px;padding:16px 10px;text-align:center;color:var(--brass,#b4863f);font-size:12.5px;cursor:pointer;background:#fffaf2;">사진을 끌어 놓거나 클릭해서 선택</div>' +
           '<div id="lrPhotoGrid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"></div></section>' +
@@ -231,8 +232,9 @@
         parking_spaces: "주차", elevators: "승강기", structure: "구조"
       };
       var saved = prefill.building_info_overrides || {};
-      var html = Object.keys(labels).map(function (key) {
+        var html = Object.keys(labels).map(function (key) {
         var value = wholeBuildingInfo[key];
+          if (key === "zoning" && (value == null || value === "")) return "";
         if (value != null && value !== "") {
           return '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;"><span>' + labels[key] + '</span><b style="color:var(--ink);text-align:right;">' + esc(formatBuildingInfoValue(key, value)) + '</b></div>';
         }
@@ -355,12 +357,20 @@
       $("#lrWholeDealButtons").style.display = whole ? "flex" : "none";
       $("#lrWholeOperationSection").style.display = whole ? "block" : "none";
       $("#lrWholeBuildingSection").style.display = whole ? "block" : "none";
+      updateDisclosureHelp();
       if (whole) {
         if (!isEdit && !($("#lrDescription").value || "").trim()) $("#lrDescription").value = WHOLE_DESCRIPTION_TEMPLATE;
         loadWholeListingContext();
       }
       updateRegistrantTypeFlag();
       updateDealType();
+    }
+    function updateDisclosureHelp() {
+      var help = $("#lrDisclosureHelp");
+      if (!help) return;
+      help.textContent = $("#lrDisclosureScope").value === "public"
+        ? "전체공개: 건물명·매물 조건·공개로 선택한 사진이 목록과 건물 상세에 표시됩니다."
+        : "제한공개: 지역과 조건만 공개됩니다. 사진과 정확한 건물 정보는 공개 목록에 표시되지 않습니다.";
     }
     function updateDealType() {
       var isBusiness = $("#lrRegistrantType").value === "business";
@@ -445,6 +455,8 @@
              key_money_krw: $("#lrKeyMoney").value || "",
              monthly_revenue_krw: $("#lrMonthlyRevenue").value || "",
              annual_revenue_krw: $("#lrAnnualRevenue").value || "",
+              short_stay_ratio: $("#lrShortStayRatio").value || "",
+              ota_revenue_ratio: $("#lrOtaRevenueRatio").value || "",
              operation_status: $("#lrOperationStatus").value || "",
              closed_at: $("#lrClosedAt").value || "",
              remodeling_info: $("#lrRemodelingInfo").value || "",
@@ -482,6 +494,8 @@
        $("#lrKeyMoney").value = draft.key_money_krw || "";
        $("#lrMonthlyRevenue").value = draft.monthly_revenue_krw || "";
        $("#lrAnnualRevenue").value = draft.annual_revenue_krw || "";
+        $("#lrShortStayRatio").value = draft.short_stay_ratio || "";
+        $("#lrOtaRevenueRatio").value = draft.ota_revenue_ratio || "";
        $("#lrOperationStatus").value = draft.operation_status || "";
        $("#lrClosedAt").value = draft.closed_at || "";
        $("#lrRemodelingInfo").value = draft.remodeling_info || "";
@@ -575,12 +589,14 @@
       if ($("#lrOperationStatus").value !== "폐업") $("#lrClosedAt").value = "";
     }
     $("#lrOperationStatus").addEventListener("change", function () { updateClosedAt(); saveDraft(); });
+    $("#lrDisclosureScope").addEventListener("change", function () { updateDisclosureHelp(); saveDraft(); });
     ["#lrSalePrice", "#lrJeonseDeposit", "#lrWolseDeposit", "#lrWolseRent",
       "#lrWolsePriceMin", "#lrWolsePriceMax", "#lrShortPriceMin", "#lrShortPriceMax",
       "#lrDesiredPrice", "#lrArea", "#lrAreaManual", "#lrAreaBusiness", "#lrRoomCount",
       "#lrDong", "#lrHo", "#lrRegistrantType", "#lrYieldDeposit", "#lrYieldRent",
       "#lrDescription", "#lrWholeSalePrice", "#lrSuccessionLoan", "#lrWholeDeposit",
       "#lrWholeRent", "#lrKeyMoney", "#lrMonthlyRevenue", "#lrAnnualRevenue",
+      "#lrShortStayRatio", "#lrOtaRevenueRatio",
       "#lrClosedAt", "#lrRemodelingInfo", "#lrUrgentSale", "#lrDisclosureScope"].forEach(function (selector) {
       $(selector).addEventListener("input", updateYield);
       $(selector).addEventListener("input", updateRealTakeover);
@@ -819,6 +835,15 @@
         return item.kind === "existing" ? item.photo.id : null;
       });
     }
+    function photoPublicFor(items) {
+      var values = {};
+      (items || photoItems).forEach(function (item) {
+        if (item.kind === "existing" && item.photo && item.photo.id != null) {
+          values[String(item.photo.id)] = item.isPublic !== false;
+        }
+      });
+      return values;
+    }
 
     function savePhotoOrder(listingId, items) {
       var photoIds = photoIdsFor(items || photoItems);
@@ -826,7 +851,7 @@
       return fetch("/api/listing-requests/" + listingId + "/photos/order", {
         method: "PUT", credentials: "same-origin",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({photo_ids: photoIds})
+        body: JSON.stringify({photo_ids: photoIds, photo_public: photoPublicFor(items || photoItems)})
       }).then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (data) {
           if (!r.ok || !data.ok) throw new Error(data.message || "사진 순서를 저장하지 못했습니다.");
@@ -901,14 +926,15 @@
         var card = document.createElement("div");
         var photoUrl = item.kind === "existing" ? item.photo.url : item.previewUrl;
         var photoAlt = item.kind === "existing" ? "기존 매물 사진" : "새 사진 미리보기";
-        card.style.cssText = "position:relative;width:82px;height:104px;";
+        card.style.cssText = "position:relative;width:82px;height:123px;";
         card.innerHTML =
           '<img src="' + esc(photoUrl) + '" alt="' + photoAlt + '" style="width:82px;height:76px;object-fit:cover;border-radius:7px;border:1px solid #eee;">' +
           (index === 0
             ? '<span style="position:absolute;left:3px;top:3px;padding:2px 4px;border-radius:4px;background:var(--brass,#b4863f);color:#fff;font-size:9px;font-weight:800;">대표</span>'
             : '<button type="button" class="lr-photo-cover" aria-label="대표사진으로 지정" style="position:absolute;left:3px;top:3px;border:0;border-radius:4px;padding:3px 4px;background:rgba(22,32,46,.78);color:#fff;font-size:9px;font-weight:700;cursor:pointer;">대표로</button>') +
           '<button type="button" class="lr-photo-remove" aria-label="사진 삭제" style="position:absolute;right:-4px;top:-5px;width:21px;height:21px;border:0;border-radius:50%;background:#333;color:#fff;cursor:pointer;line-height:18px;">×</button>' +
-          '<div style="display:flex;gap:3px;margin-top:4px;">' +
+          '<label style="display:block;margin-top:3px;font-size:10px;color:var(--ink-soft);white-space:nowrap;"><input type="checkbox" class="lr-photo-public"' + (item.isPublic !== false ? " checked" : "") + '> 사진 공개</label>' +
+          '<div style="display:flex;gap:3px;margin-top:3px;">' +
             '<button type="button" class="lr-photo-prev" aria-label="사진 앞으로 이동" ' + (index === 0 ? "disabled" : "") + ' style="flex:1;border:1px solid var(--line,#ddd);border-radius:4px;background:#fff;padding:2px 0;font-size:11px;cursor:' + (index === 0 ? "default" : "pointer") + ';">←</button>' +
             '<button type="button" class="lr-photo-next" aria-label="사진 뒤로 이동" ' + (index === photoItems.length - 1 ? "disabled" : "") + ' style="flex:1;border:1px solid var(--line,#ddd);border-radius:4px;background:#fff;padding:2px 0;font-size:11px;cursor:' + (index === photoItems.length - 1 ? "default" : "pointer") + ';">→</button>' +
           '</div>';
@@ -916,6 +942,10 @@
         if (cover) cover.addEventListener("click", function () { movePhoto(index, 0); });
         card.querySelector(".lr-photo-remove").addEventListener("click", function () {
           removePhoto(index);
+        });
+        card.querySelector(".lr-photo-public").addEventListener("change", function () {
+          item.isPublic = this.checked;
+          if (item.kind === "existing") persistPhotoOrder();
         });
         card.querySelector(".lr-photo-prev").addEventListener("click", function () { movePhoto(index, index - 1); });
         card.querySelector(".lr-photo-next").addEventListener("click", function () { movePhoto(index, index + 1); });
@@ -930,7 +960,10 @@
         if (["jpg", "jpeg", "png"].indexOf(ext) < 0) errors.push(file.name + ": JPG 또는 PNG만 가능합니다.");
         else if (file.size > MAX_PHOTO_BYTES) errors.push(file.name + ": 5MB 이하만 가능합니다.");
         else if (photoItems.length >= MAX_PHOTOS) errors.push("사진은 최대 " + MAX_PHOTOS + "장까지 첨부할 수 있습니다.");
-        else photoItems.push({kind: "pending", file: file, previewUrl: URL.createObjectURL(file)});
+        else photoItems.push({
+          kind: "pending", file: file, previewUrl: URL.createObjectURL(file),
+          isPublic: !isWholeListing() || $("#lrDisclosureScope").value === "public"
+        });
       });
       $("#lrPhotoInput").value = "";
       renderPhotos();
@@ -997,6 +1030,8 @@
         key_money_krw: isWhole && dealType !== "매매" ? numValue($("#lrKeyMoney")) : null,
         monthly_revenue_krw: isWhole ? numValue($("#lrMonthlyRevenue")) : null,
         annual_revenue_krw: isWhole ? numValue($("#lrAnnualRevenue")) : null,
+        short_stay_ratio: isWhole ? ($("#lrShortStayRatio").value || "").trim() : "",
+        ota_revenue_ratio: isWhole ? ($("#lrOtaRevenueRatio").value || "").trim() : "",
         operation_status: isWhole ? $("#lrOperationStatus").value : "",
         closed_at: isWhole ? $("#lrClosedAt").value : "",
         remodeling_info: isWhole ? ($("#lrRemodelingInfo").value || "").trim() : "",
@@ -1019,10 +1054,11 @@
         return photoItems.reduce(function (chain, item) {
           if (item.kind !== "pending") return chain;
           return chain.then(function () {
-            return uploadPhoto(listingId, item.file).then(function (data) {
+            return uploadPhoto(listingId, item.file, item.isPublic !== false).then(function (data) {
               if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
               item.kind = "existing";
-              item.photo = {id: data.id, url: data.src};
+              item.photo = {id: data.id, url: data.src, is_public: data.is_public};
+              item.isPublic = data.is_public !== false;
               delete item.file;
               delete item.previewUrl;
             });

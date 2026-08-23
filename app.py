@@ -903,7 +903,8 @@ def get_building(building_id):
                lr.description, lr.yield_rate,
                 lr.deal_mode, lr.display_seq, lr.registrant_type, lr.transaction_target,
                 lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
-                lr.annual_revenue_krw, lr.operation_status, lr.closed_at,
+                 lr.annual_revenue_krw, lr.short_stay_ratio, lr.ota_revenue_ratio,
+                 lr.matched_permit_number, lr.operation_status, lr.closed_at,
                 lr.remodeling_info, lr.is_urgent, lr.disclosure_scope, lr.building_info_overrides,
                CASE
                    WHEN lr.registrant_type = 'business'
@@ -970,6 +971,7 @@ def get_building(building_id):
             SELECT listing_request_id, image_key
             FROM listing_photos
             WHERE listing_request_id IN ({_id_ph})
+              AND COALESCE(is_public, TRUE)
             ORDER BY listing_request_id, sort_order, id
         """, _lr_ids)
         _photos_by_lr: dict = {}
@@ -6936,6 +6938,21 @@ def _parse_building_info_overrides(value):
     return result, None
 
 
+def _parse_listing_ratio(value, field_label):
+    """선택 운영 비율은 0~100의 소수 한 자리 값만 저장한다."""
+    if value in (None, ""):
+        return None, None
+    if isinstance(value, bool):
+        return None, f"{field_label}은(는) 0~100% 사이의 숫자로 입력해주세요."
+    try:
+        number = round(float(value), 1)
+    except (TypeError, ValueError):
+        return None, f"{field_label}은(는) 0~100% 사이의 숫자로 입력해주세요."
+    if not 0 <= number <= 100:
+        return None, f"{field_label}은(는) 0~100% 사이의 숫자로 입력해주세요."
+    return number, None
+
+
 def _whole_listing_values(data, *, existing=None):
     """건물전체 전용 필드 검증. 반환값은 INSERT/UPDATE 공통 계약이다."""
     transaction_target = (data.get("transaction_target") or data.get("listing_target") or
@@ -6976,6 +6993,12 @@ def _whole_listing_values(data, *, existing=None):
     annual_revenue_krw, error = _parse_listing_krw(data.get("annual_revenue_krw"), "연매출")
     if error:
         return None, error
+    short_stay_ratio, error = _parse_listing_ratio(data.get("short_stay_ratio"), "대실 비율")
+    if error:
+        return None, error
+    ota_revenue_ratio, error = _parse_listing_ratio(data.get("ota_revenue_ratio"), "OTA 매출 비중")
+    if error:
+        return None, error
     if deal_type == "매매" and succession_loan_krw is not None and price_krw is not None and succession_loan_krw > price_krw:
         return None, "승계융자는 매매가보다 클 수 없습니다."
     operation_status = (data.get("operation_status") or "").strip()
@@ -7002,6 +7025,8 @@ def _whole_listing_values(data, *, existing=None):
         "key_money_krw": key_money_krw,
         "monthly_revenue_krw": monthly_revenue_krw,
         "annual_revenue_krw": annual_revenue_krw,
+        "short_stay_ratio": short_stay_ratio,
+        "ota_revenue_ratio": ota_revenue_ratio,
         "operation_status": operation_status or None,
         "closed_at": closed_at,
         "remodeling_info": (str(data.get("remodeling_info") or "").strip()[:500] or None),
@@ -7412,8 +7437,19 @@ def format_listing_number(deal_mode, display_seq):
     return f"{label}{display_seq:06d}"
 
 
+def _masked_permit_number(value):
+    """공개 카드에는 인증에 쓰인 신고번호의 끝 다섯 자리만 남긴다."""
+    digits = _normalize_permit_number(value)
+    if not digits:
+        return None
+    return "••••" + digits[-5:]
+
+
 def _apply_public_business_listing_summary(listing, financial_details_visible=False):
     """공개 직거래 응답에서 사업주 재고와 건물전체 금융정보 노출을 정리한다."""
+    permit_masked = _masked_permit_number(listing.pop("matched_permit_number", None))
+    if permit_masked:
+        listing["permit_number_masked"] = permit_masked
     transaction_target = listing.pop("transaction_target", None) or "unit"
     if transaction_target == "whole":
         listing["transaction_target"] = "whole"
@@ -7601,6 +7637,7 @@ def create_listing_request():
 
         # 사업주 매물은 현재 대표 영업신고와 사용자·건물별 인증 캐시를
         # 서버에서 다시 확인한다. 클라이언트가 인증 단계를 건너뛰어도 우회할 수 없다.
+        matched_permit_number = None
         if registrant_type == "business":
             verification = _business_verification_context(cur, mb_id, user["id"])
             if verification["representative"]:
@@ -7617,6 +7654,7 @@ def create_listing_request():
                         "message": "사업주 영업신고번호 인증이 필요합니다. 인증 후 다시 시도해주세요.",
                         "requires_business_verification": True,
                     }), 403
+                matched_permit_number = current_permit
 
         # 직거래는 중개사 라우팅 없이 공개 등록만
         if deal_mode == "broker":
@@ -7632,22 +7670,25 @@ def create_listing_request():
                  routed_agent_id, routed_reason, price_krw, price_krw_max, monthly_rent_krw, room_count,
                   deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
                  description, deposit_krw, yield_rate, yield_rent_krw, display_seq,
-                 transaction_target, succession_loan_krw, key_money_krw, monthly_revenue_krw,
-                 annual_revenue_krw, operation_status, closed_at, remodeling_info, is_urgent,
-                 disclosure_scope, building_info_overrides)
+                  matched_permit_number, transaction_target, succession_loan_krw, key_money_krw,
+                  monthly_revenue_krw, annual_revenue_krw, short_stay_ratio, ota_revenue_ratio,
+                  operation_status, closed_at, remodeling_info, is_urgent, disclosure_scope,
+                  building_info_overrides)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     nextval('{seq_name}'),
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
                routed_agent_id, routed_reason, price_krw, price_krw_max, monthly_rent_krw, room_count,
                deal_mode, verified_phone, area_sqm, dong, ho, registrant_type,
                description, deposit_krw, yield_rate, yield_rent_krw,
-               transaction_target,
+                matched_permit_number, transaction_target,
                whole_values["succession_loan_krw"] if whole_values else None,
                whole_values["key_money_krw"] if whole_values else None,
                whole_values["monthly_revenue_krw"] if whole_values else None,
                whole_values["annual_revenue_krw"] if whole_values else None,
+                whole_values["short_stay_ratio"] if whole_values else None,
+                whole_values["ota_revenue_ratio"] if whole_values else None,
                whole_values["operation_status"] if whole_values else None,
                whole_values["closed_at"] if whole_values else None,
                whole_values["remodeling_info"] if whole_values else None,
@@ -7667,11 +7708,14 @@ def create_listing_request():
                 "registrant_type": registrant_type, "description": description,
                 "deposit_krw": deposit_krw, "yield_rent_krw": yield_rent_krw,
                 "yield_rate": yield_rate,
+                "matched_permit_number": matched_permit_number,
                 "transaction_target": transaction_target,
                 "succession_loan_krw": whole_values["succession_loan_krw"] if whole_values else None,
                 "key_money_krw": whole_values["key_money_krw"] if whole_values else None,
                 "monthly_revenue_krw": whole_values["monthly_revenue_krw"] if whole_values else None,
                 "annual_revenue_krw": whole_values["annual_revenue_krw"] if whole_values else None,
+                "short_stay_ratio": whole_values["short_stay_ratio"] if whole_values else None,
+                "ota_revenue_ratio": whole_values["ota_revenue_ratio"] if whole_values else None,
                 "operation_status": whole_values["operation_status"] if whole_values else None,
                 "closed_at": str(whole_values["closed_at"]) if whole_values and whole_values["closed_at"] else None,
                 "remodeling_info": whole_values["remodeling_info"] if whole_values else None,
@@ -7846,7 +7890,8 @@ def my_listing_requests():
                     lr.description, lr.deposit_krw, lr.yield_rent_krw, lr.yield_rate,
                     COALESCE(lr.transaction_target, 'unit') AS transaction_target,
                     lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
-                    lr.annual_revenue_krw, lr.operation_status,
+                     lr.annual_revenue_krw, lr.short_stay_ratio, lr.ota_revenue_ratio,
+                     lr.matched_permit_number, lr.operation_status,
                     to_char(lr.closed_at, 'YYYY-MM-DD') AS closed_at,
                     lr.remodeling_info, COALESCE(lr.is_urgent, FALSE) AS is_urgent,
                     COALESCE(lr.disclosure_scope, 'limited') AS disclosure_scope,
@@ -7858,7 +7903,8 @@ def my_listing_requests():
                    a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug,
                    COALESCE((
                      SELECT json_agg(json_build_object(
-                       'id', lp.id, 'url', '/api/listing-photos/img/' || lp.image_key
+                        'id', lp.id, 'url', '/api/listing-photos/img/' || lp.image_key,
+                        'is_public', COALESCE(lp.is_public, TRUE)
                      ) ORDER BY lp.sort_order ASC, lp.id ASC)
                      FROM listing_photos lp WHERE lp.listing_request_id = lr.id
                    ), '[]'::json) AS photos
@@ -8315,7 +8361,8 @@ def public_listings():
                    lr.description, lr.yield_rate,
                     lr.deal_mode, lr.display_seq, lr.registrant_type, lr.transaction_target,
                     lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
-                    lr.annual_revenue_krw, lr.operation_status, lr.closed_at,
+                     lr.annual_revenue_krw, lr.short_stay_ratio, lr.ota_revenue_ratio,
+                     lr.matched_permit_number, lr.operation_status, lr.closed_at,
                     lr.remodeling_info, lr.is_urgent, lr.disclosure_scope, lr.building_info_overrides,
                    CASE
                        WHEN lr.registrant_type = 'business'
@@ -8332,7 +8379,7 @@ def public_listings():
                    TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                     COALESCE(ll.like_count, 0) AS like_count,
                     COALESCE(pv.viewer_count, 0) AS viewer_count,
-                   lp.photo_url,
+                    lp.photo_url, lp.photos,
                     mb.id AS building_id, mb.building_name, mb.sgg_text, mb.umd_nm, mb.lodging_type,
                     mb.plat_area / 3.305785 AS land_area_pyeong,
                     mb.tot_area / 3.305785 AS gross_area_pyeong,
@@ -8375,8 +8422,9 @@ def public_listings():
                             sort_order, id
                      FROM listing_photos
                      WHERE listing_request_id = lr.id
+                        AND COALESCE(is_public, TRUE)
                      ORDER BY sort_order ASC, id ASC
-                     LIMIT 5
+                      LIMIT 10
                  ) photo_rows
              ) lp ON true
             WHERE lr.deal_mode = 'direct'
@@ -8517,7 +8565,7 @@ def my_listing_ids():
 @app.route("/api/listing-requests/<int:lr_id>/photos", methods=["POST"])
 @limiter.limit("30 per minute")
 def upload_listing_photo(lr_id):
-    """직거래 매물 사진 업로드 — 매물 등록자만, jpg/png 5MB 이하, 최대 5장."""
+    """직거래 매물 사진 업로드 — 매물 등록자만, jpg/png 5MB 이하, 최대 10장."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
@@ -8538,7 +8586,7 @@ def upload_listing_photo(lr_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT user_id FROM listing_requests WHERE id=%s "
+            "SELECT user_id, transaction_target, disclosure_scope FROM listing_requests WHERE id=%s "
             "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')",
             [lr_id]
         )
@@ -8550,22 +8598,34 @@ def upload_listing_photo(lr_id):
         cur.execute(
             "SELECT COUNT(*) AS cnt FROM listing_photos WHERE listing_request_id=%s", [lr_id]
         )
-        if cur.fetchone()["cnt"] >= 5:
-            return jsonify({"ok": False, "message": "사진은 최대 5장까지 첨부할 수 있습니다."}), 400
+        if cur.fetchone()["cnt"] >= 10:
+            return jsonify({"ok": False, "message": "사진은 최대 10장까지 첨부할 수 있습니다."}), 400
+        raw_public = request.form.get("is_public")
+        if raw_public in (None, ""):
+            is_public = not (
+                lr.get("transaction_target") == "whole"
+                and (lr.get("disclosure_scope") or "limited") == "limited"
+            )
+        elif str(raw_public).strip().lower() in ("1", "true", "yes", "on"):
+            is_public = True
+        elif str(raw_public).strip().lower() in ("0", "false", "no", "off"):
+            is_public = False
+        else:
+            return jsonify({"ok": False, "message": "사진 공개 설정이 올바르지 않습니다."}), 400
         key = storage_util.build_listing_photo_key(lr_id, ext)
         storage_util.upload_doc(key, file_data)
         cur.execute(
-            "INSERT INTO listing_photos (listing_request_id, image_key, sort_order) "
-            "VALUES (%s,%s,(SELECT COALESCE(MAX(sort_order),0)+1 FROM listing_photos WHERE listing_request_id=%s)) "
+            "INSERT INTO listing_photos (listing_request_id, image_key, sort_order, is_public) "
+            "VALUES (%s,%s,(SELECT COALESCE(MAX(sort_order),0)+1 FROM listing_photos WHERE listing_request_id=%s),%s) "
             "RETURNING id",
-            [lr_id, key, lr_id]
+            [lr_id, key, lr_id, is_public]
         )
         photo_id = cur.fetchone()["id"]
         cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
         conn.commit()
     finally:
         cur.close(); conn.close()
-    return jsonify({"ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}"})
+    return jsonify({"ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}", "is_public": is_public})
 
 
 @app.route("/api/listing-requests/<int:lr_id>/photos/order", methods=["PUT"])
@@ -8577,7 +8637,7 @@ def reorder_listing_photos(lr_id):
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     data = request.get_json(silent=True) or {}
     photo_ids = data.get("photo_ids")
-    if not isinstance(photo_ids, list) or len(photo_ids) > 5:
+    if not isinstance(photo_ids, list) or len(photo_ids) > 10:
         return jsonify({"ok": False, "message": "사진 순서 정보가 올바르지 않습니다."}), 400
     try:
         photo_ids = [int(photo_id) for photo_id in photo_ids]
@@ -8585,29 +8645,40 @@ def reorder_listing_photos(lr_id):
         return jsonify({"ok": False, "message": "사진 순서 정보가 올바르지 않습니다."}), 400
     if len(photo_ids) != len(set(photo_ids)):
         return jsonify({"ok": False, "message": "사진이 중복되어 있습니다."}), 400
+    photo_public = data.get("photo_public")
+    if photo_public is not None and not isinstance(photo_public, dict):
+        return jsonify({"ok": False, "message": "사진 공개 설정이 올바르지 않습니다."}), 400
 
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT lp.id
+            SELECT lp.id, COALESCE(lp.is_public, TRUE) AS is_public
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.listing_request_id=%s AND lr.user_id=%s
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
             ORDER BY lp.sort_order, lp.id
         """, [lr_id, user["id"]])
-        current_ids = [row["id"] for row in cur.fetchall()]
+        current_rows = cur.fetchall()
+        current_ids = [row["id"] for row in current_rows]
         if set(photo_ids) != set(current_ids):
             return jsonify({"ok": False, "message": "사진 목록이 변경되었습니다. 새로고침 후 다시 시도해주세요."}), 409
         if photo_ids:
-            values_sql = ",".join(["(%s,%s)"] * len(photo_ids))
+            current_visibility = {str(row["id"]): bool(row["is_public"]) for row in current_rows}
+            values_sql = ",".join(["(%s,%s,%s)"] * len(photo_ids))
             params = []
             for order, photo_id in enumerate(photo_ids):
-                params.extend([photo_id, order])
+                is_public = current_visibility[str(photo_id)]
+                if photo_public is not None and str(photo_id) in photo_public:
+                    proposed = photo_public[str(photo_id)]
+                    if not isinstance(proposed, bool):
+                        return jsonify({"ok": False, "message": "사진 공개 설정이 올바르지 않습니다."}), 400
+                    is_public = proposed
+                params.extend([photo_id, order, is_public])
             cur.execute(f"""
                 UPDATE listing_photos AS lp
-                SET sort_order = ordered.sort_order
-                FROM (VALUES {values_sql}) AS ordered(id, sort_order)
+                SET sort_order = ordered.sort_order, is_public = ordered.is_public
+                FROM (VALUES {values_sql}) AS ordered(id, sort_order, is_public)
                 WHERE lp.id = ordered.id AND lp.listing_request_id = %s
             """, params + [lr_id])
             cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
@@ -8652,20 +8723,22 @@ def delete_listing_photo(lr_id, photo_id):
 
 @app.route("/api/listing-photos/img/<path:key>")
 def listing_photo_proxy(key):
-    """직거래 매물 사진 공개 프록시 — 인증 불필요, 24시간 캐시."""
+    """직거래 매물 사진 프록시 — 공개 상태가 바뀔 수 있어 공유 캐시를 금지한다."""
     if not storage_util.is_valid_listing_photo_ref(key):
         return jsonify({"ok": False, "message": "잘못된 경로입니다."}), 404
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT 1
+            SELECT COALESCE(lp.is_public, TRUE) AS is_public
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.image_key = %s
               AND lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
-        """, [key])
-        if not cur.fetchone():
+              AND (COALESCE(lp.is_public, TRUE) OR lr.user_id = %s)
+        """, [key, (current_user() or {}).get("id", -1)])
+        photo = cur.fetchone()
+        if not photo:
             return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
         file_data = storage_util.download_bytes(key)
     except Exception:
@@ -8676,7 +8749,9 @@ def listing_photo_proxy(key):
     ct = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}.get(ext, "image/jpeg")
     from flask import Response as _Response
     resp = _Response(file_data, mimetype=ct)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
+    # 같은 이미지 URL이 공개에서 비공개로 전환될 수 있다. 공개 응답을 CDN에
+    # 보관하면 이후 DB 권한 확인을 우회할 수 있으므로 모든 사진을 공유 캐시하지 않는다.
+    resp.headers["Cache-Control"] = "private, no-store"
     return resp
 
 
@@ -9193,7 +9268,8 @@ def update_listing_request(req_id):
                        monthly_rent_krw, room_count, area_sqm, dong, ho, registrant_type, description, deposit_krw,
                        yield_rent_krw, yield_rate, contact_phone, transaction_target,
                        succession_loan_krw, key_money_krw, monthly_revenue_krw, annual_revenue_krw,
-                       operation_status, closed_at, remodeling_info, is_urgent, disclosure_scope,
+                        short_stay_ratio, ota_revenue_ratio, matched_permit_number,
+                        operation_status, closed_at, remodeling_info, is_urgent, disclosure_scope,
                        building_info_overrides
                FROM listing_requests WHERE id = %s""", [req_id]
         )
@@ -9204,6 +9280,7 @@ def update_listing_request(req_id):
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
         if row["status"] != "submitted":
             return jsonify({"ok": False, "message": "접수됨 상태에서만 수정할 수 있습니다."}), 400
+        matched_permit_number = None if registrant_type != "business" else row["matched_permit_number"]
         if registrant_type == "business":
             verification = _business_verification_context(cur, row["master_building_id"], user["id"])
             if verification["representative"]:
@@ -9220,6 +9297,7 @@ def update_listing_request(req_id):
                         "message": "사업주 영업신고번호 인증이 필요합니다. 인증 후 다시 시도해주세요.",
                         "requires_business_verification": True,
                     }), 403
+                matched_permit_number = current_permit
         before = {
             "deal_type": row["deal_type"], "desired_price": row["desired_price"],
             "price_krw": row["price_krw"], "price_krw_max": row["price_krw_max"],
@@ -9231,6 +9309,8 @@ def update_listing_request(req_id):
             "transaction_target": row["transaction_target"] or "unit",
             "succession_loan_krw": row["succession_loan_krw"], "key_money_krw": row["key_money_krw"],
             "monthly_revenue_krw": row["monthly_revenue_krw"], "annual_revenue_krw": row["annual_revenue_krw"],
+            "short_stay_ratio": row["short_stay_ratio"], "ota_revenue_ratio": row["ota_revenue_ratio"],
+            "matched_permit_number": row["matched_permit_number"],
             "operation_status": row["operation_status"], "closed_at": row["closed_at"],
             "remodeling_info": row["remodeling_info"], "is_urgent": row["is_urgent"],
             "disclosure_scope": row["disclosure_scope"], "building_info_overrides": row["building_info_overrides"],
@@ -9249,6 +9329,9 @@ def update_listing_request(req_id):
             "key_money_krw": whole_values["key_money_krw"] if whole_values else None,
             "monthly_revenue_krw": whole_values["monthly_revenue_krw"] if whole_values else None,
             "annual_revenue_krw": whole_values["annual_revenue_krw"] if whole_values else None,
+            "short_stay_ratio": whole_values["short_stay_ratio"] if whole_values else None,
+            "ota_revenue_ratio": whole_values["ota_revenue_ratio"] if whole_values else None,
+            "matched_permit_number": matched_permit_number,
             "operation_status": whole_values["operation_status"] if whole_values else None,
             "closed_at": whole_values["closed_at"] if whole_values else None,
             "remodeling_info": whole_values["remodeling_info"] if whole_values else None,
@@ -9263,7 +9346,8 @@ def update_listing_request(req_id):
                registrant_type=%s, description=%s, deposit_krw=%s,
                 yield_rent_krw=%s, yield_rate=%s, transaction_target=%s,
                 succession_loan_krw=%s, key_money_krw=%s, monthly_revenue_krw=%s,
-                annual_revenue_krw=%s, operation_status=%s, closed_at=%s,
+                annual_revenue_krw=%s, short_stay_ratio=%s, ota_revenue_ratio=%s,
+                matched_permit_number=%s, operation_status=%s, closed_at=%s,
                 remodeling_info=%s, is_urgent=%s, disclosure_scope=%s,
                 building_info_overrides=%s, updated_at=NOW() WHERE id=%s""",
             [after["deal_type"], after["desired_price"] or None, after["price_krw"],
@@ -9272,7 +9356,8 @@ def update_listing_request(req_id):
              after["registrant_type"], after["description"], after["deposit_krw"],
               after["yield_rent_krw"], after["yield_rate"], after["transaction_target"],
               after["succession_loan_krw"], after["key_money_krw"], after["monthly_revenue_krw"],
-              after["annual_revenue_krw"], after["operation_status"], after["closed_at"],
+               after["annual_revenue_krw"], after["short_stay_ratio"], after["ota_revenue_ratio"],
+               after["matched_permit_number"], after["operation_status"], after["closed_at"],
               after["remodeling_info"], after["is_urgent"], after["disclosure_scope"],
               json.dumps(after["building_info_overrides"] or {}), req_id]
         )

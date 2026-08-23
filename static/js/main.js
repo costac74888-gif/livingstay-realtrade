@@ -3472,6 +3472,16 @@ async function loadBuildingHeader(id){
          const color = lr.operation_status === "폐업" ? "#222" : (lr.operation_status === "휴업" ? "#A06D18" : "#4A7A18");
          return `<div style="font-size:12px;color:${color};font-weight:700;margin-bottom:7px;">${text}</div>`;
        }
+       function _permitBadgeMarkup(lr){
+         if (!lr || !lr.permit_number_masked) return "";
+         return `<span title="인증된 숙박업 신고번호의 일부를 마스킹해 표시합니다." style="display:inline-block;margin-left:5px;padding:1px 5px;border-radius:4px;background:#EDF6EC;color:#356212;font-size:10px;font-weight:800;vertical-align:middle;white-space:nowrap;">신고 ${escapeHtml(lr.permit_number_masked)}</span>`;
+       }
+       function _operationRatioMarkup(lr){
+         const badges = [];
+         if (lr && lr.short_stay_ratio != null) badges.push(`대실 ${Number(lr.short_stay_ratio).toLocaleString()}%`);
+         if (lr && lr.ota_revenue_ratio != null) badges.push(`OTA ${Number(lr.ota_revenue_ratio).toLocaleString()}%`);
+         return badges.map(label => `<span style="display:inline-block;margin:0 4px 7px 0;padding:2px 5px;border-radius:4px;background:#EEF5FF;color:#275B88;font-size:10px;font-weight:800;">${escapeHtml(label)}</span>`).join("");
+       }
       function _openDirectListingCard(lr){
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;
@@ -3523,6 +3533,8 @@ async function loadBuildingHeader(id){
            <div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">${escapeHtml(priceText)}</div>
              ${roomText ? `<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">${escapeHtml(roomText)}</div>` : ""}
              ${statusMarkup}
+              ${_operationRatioMarkup(lr)}
+              ${_permitBadgeMarkup(lr)}
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
             ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:12px;">${desc}</div>` : ""}
              ${listingActionsMarkup}
@@ -3672,11 +3684,12 @@ async function loadBuildingHeader(id){
         const badges = [
           lr.is_urgent ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;animation:wholeUrgentPulse 1.25s ease-in-out infinite;">급매</span>' : "",
           isRecentClosure ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E5E5E5;color:#222;font-size:10px;font-weight:800;">최근 폐업</span>' : "",
-          lr.has_monthly_revenue ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E7F2FC;color:#275B88;font-size:10px;font-weight:800;">매출정보 있음</span>' : ""
+           lr.has_monthly_revenue ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E7F2FC;color:#275B88;font-size:10px;font-weight:800;">매출정보 있음</span>' : "",
+           _operationRatioMarkup(lr)
         ].filter(Boolean).join(" ");
         return `<div class="b-listing-card b-whole-listing-card" data-listing-id="${lrId}" style="border-color:var(--brass,#B4863F);">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="건물전체 매물 카드로 보기">
-            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${escapeHtml(bName)}${_operationStatusHtml(lr)}</div>
+            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${escapeHtml(bName)}${_permitBadgeMarkup(lr)}${_operationStatusHtml(lr)}</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin:3px 0;">${badges}</div>
             <div class="b-listing-l2">${dt}${escapeHtml(_listingPriceText(lr, _fmtN))}</div>
             <div style="font-size:12px;font-weight:700;color:var(--brass-dark,#7D4A00);margin:4px 0;">${escapeHtml(finance)}${revenue ? ` · ${escapeHtml(revenue)}` : ""}</div>
@@ -3725,9 +3738,9 @@ async function loadBuildingHeader(id){
         }
         return `<div class="b-listing-card" data-listing-id="${lrId}">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기">
-            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${escapeHtml(bName)}${newBadge}</div>
+            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${escapeHtml(bName)}${newBadge}${_permitBadgeMarkup(lr)}</div>
             <div class="b-listing-l2">${dt}${escapeHtml(priceText)}</div>
-            <div class="b-listing-l3" title="${escapeHtml(detailText)}">${escapeHtml(detailText)}</div>
+            <div class="b-listing-l3" title="${escapeHtml(detailText)}">${escapeHtml(detailText)}${_operationRatioMarkup(lr)}</div>
             <div class="b-listing-l4">
               ${lr.listing_number ? `<span class="b-listing-number">${escapeHtml(lr.listing_number)}</span>` : ""}
               <span>${escapeHtml(lr.listing_date || "")}</span>

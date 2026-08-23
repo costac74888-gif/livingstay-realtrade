@@ -24,6 +24,7 @@ for (const id of [
   "lrWholeDealButtons", "lrWholeSalePrice", "lrSuccessionLoan", "lrRealTakeover",
   "lrWholeDeposit", "lrKeyMoney", "lrMonthlyRevenue", "lrAnnualRevenue",
   "lrOperationStatus", "lrDisclosureScope", "lrWholeBuildingInfo",
+  "lrShortStayRatio", "lrOtaRevenueRatio", "lrDisclosureHelp",
 ]) {
   expect(modal.includes(`id="${id}"`), `건물전체 매물 입력란 ${id}이 없습니다.`);
 }
@@ -33,6 +34,23 @@ expect(
   modal.includes("/whole-listing-context") &&
   modal.includes("WHOLE_ACQUISITION_COST_RATE"),
   "건물전체 거래대상·설명 템플릿·자동 정보·실인수가 계산 연결이 없습니다."
+);
+expect(
+  modal.includes("var MAX_PHOTOS = 10") &&
+  modal.includes("최대 10장") &&
+  modal.includes("lr-photo-public") &&
+  modal.includes("photo_public") &&
+  modal.includes("사진 공개"),
+  "사진 최대 10장 또는 사진별 공개 설정 연결이 없습니다."
+);
+expect(
+  modal.includes("대실 비율") &&
+  modal.includes("OTA 매출 비중") &&
+  modal.includes("short_stay_ratio") &&
+  modal.includes("ota_revenue_ratio") &&
+  modal.includes("updateDisclosureHelp") &&
+  modal.includes('key === "zoning" && (value == null || value === "")'),
+  "운영 비율·공개범위 안내·빈 용도지역 숨김 처리가 없습니다."
 );
 expect(
   modal.includes("반경 500m 내 동종 숙박시설") &&

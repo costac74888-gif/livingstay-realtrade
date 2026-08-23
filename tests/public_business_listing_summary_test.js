@@ -69,5 +69,15 @@ expect(
   mainJs.includes("const priceText = _listingPriceText(lr, _fmtN)"),
   "건물상세 목록 또는 상세 팝업에서 사업주 호실수 비노출·가격 요약을 사용하지 않습니다."
 );
+expect(
+  listingsHtml.includes("permitBadgeHtml") &&
+  listingsHtml.includes("operationRatioBadgesHtml") &&
+  listingsHtml.includes("permit_number_masked") &&
+  listingsHtml.includes("short_stay_ratio") &&
+  listingsHtml.includes("ota_revenue_ratio") &&
+  mainJs.includes("_permitBadgeMarkup") &&
+  mainJs.includes("_operationRatioMarkup"),
+  "신고번호 마스킹 또는 운영 비율 배지가 공개 목록·건물상세에 연결되지 않았습니다."
+);
 
 console.log("OK  사업주 공개 장기방 가격·문의 안내·호실수 비노출 화면");

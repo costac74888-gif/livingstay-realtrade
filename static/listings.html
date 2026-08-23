@@ -408,6 +408,16 @@
     const color = item.operation_status === "폐업" ? "#222" : (item.operation_status === "휴업" ? "#A06D18" : "#4A7A18");
     return `<span style="display:inline-block;margin-top:4px;color:${color};font-size:11.5px;font-weight:700;">${esc(text)}</span>`;
   }
+  function permitBadgeHtml(item){
+    if (!item || !item.permit_number_masked) return "";
+    return `<span title="인증된 숙박업 신고번호의 일부를 마스킹해 표시합니다." style="display:inline-block;margin-left:5px;padding:1px 5px;border-radius:4px;background:#EDF6EC;color:#356212;font-size:10px;font-weight:800;vertical-align:middle;white-space:nowrap;">신고 ${esc(item.permit_number_masked)}</span>`;
+  }
+  function operationRatioBadgesHtml(item){
+    const badges = [];
+    if (item && item.short_stay_ratio != null) badges.push(`대실 ${Number(item.short_stay_ratio).toLocaleString()}%`);
+    if (item && item.ota_revenue_ratio != null) badges.push(`OTA ${Number(item.ota_revenue_ratio).toLocaleString()}%`);
+    return badges.map(label => `<span style="display:inline-block;margin:4px 4px 0 0;padding:1px 5px;border-radius:4px;background:#EEF5FF;color:#275B88;font-size:10px;font-weight:800;">${esc(label)}</span>`).join("");
+  }
 
   // ── 상태 ──────────────────────────────────────────────────────────────
   const boardBody = document.getElementById("lsBoardBody");
@@ -828,7 +838,7 @@
       <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount)}</td>
       <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type)}</td>
       <td class="td-bldg" title="${bName}">
-        ${buildingLabel}${operationStatusHtml(item)}
+         ${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}
       </td>
       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
       <td class="td-price">${esc(listingPriceText(item) + rooms)}</td>
@@ -896,7 +906,8 @@
     const badges = [
       item.is_urgent ? '<span class="whole-badge whole-badge-urgent">급매</span>' : "",
       recentlyClosed ? '<span class="whole-badge whole-badge-closed">최근 폐업</span>' : "",
-      item.has_monthly_revenue ? '<span class="whole-badge whole-badge-revenue">매출정보 있음</span>' : ""
+       item.has_monthly_revenue ? '<span class="whole-badge whole-badge-revenue">매출정보 있음</span>' : "",
+       operationRatioBadgesHtml(item)
     ].filter(Boolean).join("");
     const roomPriceText = item.price_krw != null && Number(item.room_count) > 0
       && Number(item.price_krw) > 0
@@ -924,7 +935,7 @@
 
     div.innerHTML = `
       <div class="ls-card-info">
-        <div class="ls-card-l1">${buildingLabel}${operationStatusHtml(item)}</div>
+        <div class="ls-card-l1">${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}</div>
         <div class="whole-badges">${badges}</div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(listingPriceText(item))}</div>
         <div class="whole-finance">${esc(financeText)}${revenueText ? ` · ${esc(revenueText)}` : ""}</div>
@@ -1000,10 +1011,10 @@
     div.innerHTML = `
       <div class="ls-card-info">
         <div class="ls-card-l1">
-          <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>
+          <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>${permitBadgeHtml(item)}
         </div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(priceStr)}</div>
-        <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}${operationStatusHtml(item)}</div>
+        <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}</div>
         <div class="ls-card-l4">
           ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
           <span class="ls-card-date">${esc(item.listing_date || "")}</span>

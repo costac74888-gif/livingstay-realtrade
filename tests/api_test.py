@@ -2146,7 +2146,76 @@ def _check_business_listing_verification(client):
             if created.status_code != 200 or not created_data.get("id"):
                 failures.append("business verification: 인증 후 사업주 등록 실패")
             elif created_data.get("id"):
-                listing_ids.append(created_data["id"])
+                verified_listing_id = created_data["id"]
+                listing_ids.append(verified_listing_id)
+                cur.execute(
+                    "SELECT matched_permit_number FROM listing_requests WHERE id=%s",
+                    (verified_listing_id,),
+                )
+                stored_permit = (cur.fetchone() or {}).get("matched_permit_number")
+                public_photo_key = f"listing_photos/{verified_listing_id}/{'a' * 32}.jpg"
+                private_photo_key = f"listing_photos/{verified_listing_id}/{'b' * 32}.jpg"
+                cur.execute("""
+                    INSERT INTO listing_photos (listing_request_id, image_key, sort_order, is_public)
+                    VALUES (%s, %s, 0, TRUE), (%s, %s, 1, FALSE)
+                """, (
+                    verified_listing_id, public_photo_key,
+                    verified_listing_id, private_photo_key,
+                ))
+                conn.commit()
+                cur.execute(
+                    "SELECT id, image_key FROM listing_photos WHERE listing_request_id=%s",
+                    (verified_listing_id,),
+                )
+                photo_ids_by_key = {row["image_key"]: row["id"] for row in cur.fetchall()}
+                with client.session_transaction() as sess:
+                    sess.clear()
+                public_items = (client.get("/api/listings?disclosure_scope=public").get_json() or {}).get("items") or []
+                public_listing = next((item for item in public_items if item.get("id") == verified_listing_id), {})
+                if (
+                    stored_permit != "20260112345"
+                    or public_listing.get("permit_number_masked") != "••••12345"
+                    or "matched_permit_number" in public_listing
+                    or len(public_listing.get("photos") or []) != 1
+                    or public_photo_key not in str(public_listing.get("photo_url") or "")
+                ):
+                    failures.append("business verification: 신고번호 복사·마스킹 또는 사진별 공개 필터가 잘못됨")
+                public_path = f"/api/listing-photos/img/{public_photo_key}"
+                private_path = f"/api/listing-photos/img/{private_photo_key}"
+                with patch("app.storage_util.download_bytes", return_value=b"test-image"):
+                    public_image = client.get(public_path)
+                    private_unauthenticated = client.get(private_path)
+                    with client.session_transaction() as sess:
+                        sess["user_id"] = user_one_id
+                    visibility_changed = client.put(
+                        f"/api/listing-requests/{verified_listing_id}/photos/order",
+                        json={
+                            "photo_ids": [
+                                photo_ids_by_key[public_photo_key],
+                                photo_ids_by_key[private_photo_key],
+                            ],
+                            "photo_public": {
+                                str(photo_ids_by_key[public_photo_key]): False,
+                                str(photo_ids_by_key[private_photo_key]): False,
+                            },
+                        },
+                    )
+                    with client.session_transaction() as sess:
+                        sess.clear()
+                    public_after_private = client.get(public_path)
+                    with client.session_transaction() as sess:
+                        sess["user_id"] = user_one_id
+                    private_owner = client.get(private_path)
+                if (
+                    public_image.status_code != 200
+                    or public_image.headers.get("Cache-Control") != "private, no-store"
+                    or private_unauthenticated.status_code != 404
+                    or visibility_changed.status_code != 200
+                    or public_after_private.status_code != 404
+                    or private_owner.status_code != 200
+                    or private_owner.headers.get("Cache-Control") != "private, no-store"
+                ):
+                    failures.append("business verification: 비공개 전환 후 사진 접근 권한 또는 공유 캐시 금지가 잘못됨")
 
             with client.session_transaction() as sess:
                 sess.clear()
@@ -2664,7 +2733,8 @@ def _check_whole_building_listing(client):
             "master_building_id": building["id"], "deal_mode": "direct",
             "registrant_type": "building_owner", "transaction_target": "whole",
             "deal_type": "매매", "price_krw": 200000, "succession_loan_krw": 120000,
-            "monthly_revenue_krw": 3000, "annual_revenue_krw": 36000,
+             "monthly_revenue_krw": 3000, "annual_revenue_krw": 36000,
+             "short_stay_ratio": 32.5, "ota_revenue_ratio": 71.2,
             "operation_status": "폐업", "closed_at": "2026-08-01",
             "remodeling_info": "객실 일부 리모델링", "is_urgent": True,
             "disclosure_scope": "limited", "building_info_overrides": {"structure": "철근콘크리트"},
@@ -2758,11 +2828,14 @@ def _check_whole_building_listing(client):
             failures.append("whole listing: 제한공개 카드 열람자 기록 또는 고유 IP 집계가 누락됨")
 
         cur.execute("""SELECT transaction_target, deal_type, price_krw, succession_loan_krw,
+                               short_stay_ratio, ota_revenue_ratio,
                               operation_status, closed_at, is_urgent, disclosure_scope, building_info_overrides
                        FROM listing_requests WHERE id=%s""", (listing_id,))
         stored = cur.fetchone() or {}
         if not (stored.get("transaction_target") == "whole" and stored.get("deal_type") == "매매"
                 and stored.get("price_krw") == 200000 and stored.get("succession_loan_krw") == 120000
+                and float(stored.get("short_stay_ratio") or -1) == 32.5
+                and float(stored.get("ota_revenue_ratio") or -1) == 71.2
                 and stored.get("operation_status") == "폐업" and stored.get("is_urgent")
                 and stored.get("disclosure_scope") == "limited"):
             failures.append("whole listing: 매매 전용 필드 저장 실패")
@@ -2770,21 +2843,27 @@ def _check_whole_building_listing(client):
         updated = client.put(f"/api/listing-requests/{listing_id}", json={
             "transaction_target": "whole", "deal_type": "통임대", "price_krw": 5000,
             "monthly_rent_krw": 400, "key_money_krw": 2500, "operation_status": "영업중",
-            "disclosure_scope": "public", "building_info_overrides": {"zoning": "상업지역"},
+             "short_stay_ratio": 40, "ota_revenue_ratio": 80,
+             "disclosure_scope": "public", "building_info_overrides": {"zoning": "상업지역"},
         })
         cur.execute("""SELECT deal_type, price_krw, monthly_rent_krw, key_money_krw,
+                               short_stay_ratio, ota_revenue_ratio,
                               succession_loan_krw, operation_status, disclosure_scope, building_info_overrides
                        FROM listing_requests WHERE id=%s""", (listing_id,))
         changed = cur.fetchone() or {}
         if (updated.status_code != 200 or changed.get("deal_type") != "통임대"
                 or changed.get("monthly_rent_krw") != 400 or changed.get("key_money_krw") != 2500
                 or changed.get("succession_loan_krw") is not None
+                or float(changed.get("short_stay_ratio") or -1) != 40
+                or float(changed.get("ota_revenue_ratio") or -1) != 80
                 or changed.get("operation_status") != "영업중" or changed.get("disclosure_scope") != "public"):
             failures.append("whole listing: 통임대 수정 또는 매매 필드 초기화 실패")
 
         public_items_after = (client.get("/api/listings?disclosure_scope=public").get_json() or {}).get("items") or []
         public_item_after = next((item for item in public_items_after if item.get("id") == listing_id), {})
-        if public_item_after.get("viewer_count") != 1:
+        if (public_item_after.get("viewer_count") != 1
+                or float(public_item_after.get("short_stay_ratio") or -1) != 40
+                or float(public_item_after.get("ota_revenue_ratio") or -1) != 80):
             failures.append("whole listing: 최근 5분 고유 열람자 수 집계가 정확하지 않음")
 
         mine = client.get("/api/listing-requests/mine")
@@ -2798,6 +2877,12 @@ def _check_whole_building_listing(client):
         })
         if not invalid_error:
             failures.append("whole listing: 허용하지 않는 건물전체 거래방식을 차단하지 않음")
+        _ratio_values, ratio_error = _whole_listing_values({
+            "transaction_target": "whole", "deal_type": "통임대",
+            "short_stay_ratio": 101,
+        })
+        if not ratio_error:
+            failures.append("whole listing: 범위를 벗어난 운영 비율을 차단하지 않음")
         if not failures:
             print("OK  건물전체 매물 생성·수정·내 매물 조회·거래방식 검증")
     except Exception as exc:
