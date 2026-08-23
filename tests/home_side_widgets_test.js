@@ -4,6 +4,7 @@ const path = require("path");
 
 const index = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
 const main = fs.readFileSync(path.join(__dirname, "..", "static", "js", "main.js"), "utf8");
+const css = fs.readFileSync(path.join(__dirname, "..", "static", "css", "main.css"), "utf8");
 
 function expect(condition, message) {
   if (!condition) throw new Error(message);
@@ -33,6 +34,21 @@ const sideFavoriteCallSites = main.match(/(?:^|[^\w])loadSideFavorites\s*\(/g) |
 expect(sideFavoriteCallSites.length === 1 && main.includes("async function loadSideFavorites"),
   "관심물건 위젯 데이터 로드 호출부가 남아 있습니다.");
 expect(main.includes("function loadDataLab"), "데이터랩 전환 로더가 없습니다.");
+expect(
+  index.indexOf('id="recentRow"') < index.indexOf('id="sideTxList"') &&
+  index.indexOf('id="sideTxList"') < index.indexOf('id="dataLabNav"'),
+  "좌측 패널 순서가 최근검색 → 실거래목록 → 데이터랩이 아닙니다."
+);
+expect(
+  main.includes('const HS_RECENT_MAX = 3') &&
+  main.includes("list.slice(0, HS_RECENT_MAX)"),
+  "최근검색 화면 표시 개수가 3개로 제한되지 않았습니다."
+);
+expect(
+  css.includes("grid-template-columns:repeat(3,minmax(0,1fr))") &&
+  css.includes(".datalab-content{min-width:0; min-height:210px; margin-top:10px;}"),
+  "데이터랩이 3열 탭 그리드와 탭 아래 콘텐츠 구조가 아닙니다."
+);
 expect(main.includes("/api/stats/price-change-top"), "가격변동 데이터랩 API 연결이 없습니다.");
 expect(main.includes("/api/stats/report-rate-by-sido"), "시도별 신고율 데이터랩 API 연결이 없습니다.");
 

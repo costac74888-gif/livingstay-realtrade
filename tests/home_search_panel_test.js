@@ -71,7 +71,7 @@ const trackContext = {
 };
 vm.createContext(trackContext);
 vm.runInContext(
-  "const HS_RECENT_KEY = 'hs_recent_buildings'; const HS_RECENT_MAX = 5;\n" +
+  "const HS_RECENT_KEY = 'hs_recent_buildings'; const HS_RECENT_MAX = 3;\n" +
   main.slice(trackStart, trackEnd + 2),
   trackContext
 );

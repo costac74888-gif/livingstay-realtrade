@@ -2106,7 +2106,7 @@ function financeEmptyHTML(){
 
 // ── 최근 본 건물 (localStorage, 비로그인 포함) ──────────────────────────────
 const HS_RECENT_KEY = "hs_recent_buildings";
-const HS_RECENT_MAX = 5;
+const HS_RECENT_MAX = 3;
 
 function trackRecentBuilding(id, name, addr){
   try {
@@ -2126,6 +2126,7 @@ function renderRecentChips(){
   if (!row || !container) return;
   let list = [];
   try { list = JSON.parse(localStorage.getItem(HS_RECENT_KEY) || "[]"); } catch(e){}
+  list = Array.isArray(list) ? list.slice(0, HS_RECENT_MAX) : [];
   if (!list.length){ row.style.display = "none"; return; }
   row.style.display = "";
   container.innerHTML = list.map(b => {

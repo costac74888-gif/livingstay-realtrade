@@ -142,7 +142,20 @@
         onclick="document.getElementById('btnTogglePanel').click()">✕</button>
     </div>
 
-    <!-- 데이터랩: 좌측 신호 선택 + 우측 콘텐츠 -->
+    <!-- 최근검색 (localStorage, 비로그인 포함) — 기록 없으면 숨김 -->
+    <section class="side-card" id="recentRow" style="display:none;">
+      <div class="side-card-title">최근검색 <span class="side-sub">내 방문 기록</span></div>
+      <div id="recentChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+    </section>
+
+    <section class="side-card">
+      <div class="side-card-title">실거래목록 <span class="side-sub">최근순</span></div>
+      <div class="side-updated" id="healthStatus"></div>
+      <div id="sideTxList" class="side-list"><div class="side-empty">불러오는 중…</div></div>
+      <a href="/transactions" class="side-all-link">전체 실거래 보기 →</a>
+    </section>
+
+    <!-- 데이터랩: 3열×2행 탭 + 바로 아래 콘텐츠 -->
     <section class="side-card datalab-card" id="dataLabCard">
       <div class="side-card-title">데이터랩 <span class="side-sub">숙박시장 신호</span></div>
       <div class="datalab-layout">
@@ -179,19 +192,6 @@
         <span><i class="lg-bar"></i>거래건수</span>
         <span><i class="lg-line"></i>거래금액(억)</span>
       </div>
-    </section>
-
-    <section class="side-card">
-      <div class="side-card-title">실거래목록 <span class="side-sub">최근순</span></div>
-      <div class="side-updated" id="healthStatus"></div>
-      <div id="sideTxList" class="side-list"><div class="side-empty">불러오는 중…</div></div>
-      <a href="/transactions" class="side-all-link">전체 실거래 보기 →</a>
-    </section>
-
-    <!-- 최근검색 (localStorage, 비로그인 포함) — 기록 없으면 숨김 -->
-    <section class="side-card" id="recentRow" style="display:none;">
-      <div class="side-card-title">최근검색 <span class="side-sub">내 방문 기록</span></div>
-      <div id="recentChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
     </section>
 
     <section class="side-card">
