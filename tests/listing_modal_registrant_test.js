@@ -50,17 +50,13 @@ expect(
   "건물전체 공개 카드의 경쟁업소·지하철 입지정보 연결이 없습니다."
 );
 expect(
-  index.includes('class="platform-stats"') &&
-  index.includes('data-platform-stat="building_count"') &&
-  index.includes('data-platform-stat="biz_count"') &&
-  index.includes('data-platform-stat="transaction_count"') &&
-  index.includes('data-platform-stat="listing_count"') &&
+  !index.includes('id="platformStats"') &&
+  !index.includes('data-platform-stat=') &&
   main.includes("/api/stats/platform-summary") &&
   main.includes("async function loadPlatformStats") &&
-  main.includes("loadPlatformStats();") &&
   css.includes(".platform-stats") &&
   css.includes("grid-template-columns:repeat(2,minmax(0,1fr))"),
-  "홈 검색창 아래 실시간 4개 지표 또는 모바일 2x2 레이아웃이 없습니다."
+  "홈 검색창의 4개 지표가 제거되지 않았거나 데이터랩 재사용용 통계 API 계약이 없습니다."
 );
 
 for (const [value, label] of [

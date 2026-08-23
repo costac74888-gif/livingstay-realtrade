@@ -1,58 +1,20 @@
-// 홈 데이터 규모 지표가 API 응답의 4개 숫자를 실제 DOM에 쓰는지 점검한다.
+// 홈 검색바에서 데이터 규모 위젯은 제거하되, 데이터랩 재사용용 함수/API는 보존되는지 점검한다.
 const fs = require("fs");
-const vm = require("vm");
 
+const index = fs.readFileSync("static/index.html", "utf8");
 const main = fs.readFileSync("static/js/main.js", "utf8");
-const start = main.indexOf("async function loadPlatformStats(){");
-const end = main.indexOf("\n}\n\n// 최초 로드:", start);
-if (start < 0 || end < start) throw new Error("loadPlatformStats 함수를 찾지 못했습니다.");
 
-const keys = ["building_count", "biz_count", "transaction_count", "listing_count"];
-const elements = keys.map((key) => ({
-  dataset: { platformStat: key },
-  textContent: "불러오는 중…",
-}));
-const platformStats = {
-  querySelector: (selector) => {
-    const match = selector.match(/data-platform-stat="([^"]+)"/);
-    return elements[keys.indexOf(match && match[1])] || null;
-  },
-};
-const calls = [];
-const context = {
-  document: {
-    getElementById: (id) => id === "platformStats" ? platformStats : null,
-  },
-  fetch: async (url, options) => {
-    calls.push({ url, options });
-    return {
-      ok: true,
-      json: async () => ({
-        ok: true,
-        building_count: 11802,
-        biz_count: 3841,
-        transaction_count: 16652,
-        listing_count: 27,
-      }),
-    };
-  },
-  console: { error: () => {} },
-};
-vm.createContext(context);
-vm.runInContext(main.slice(start, end + 2), context);
+if (index.includes('id="platformStats"') || index.includes('data-platform-stat=')) {
+  throw new Error("검색바 영역의 플랫폼 통계 위젯 마크업이 남아 있습니다.");
+}
+if (!main.includes("async function loadPlatformStats(){")) {
+  throw new Error("데이터랩 재사용용 loadPlatformStats 함수가 사라졌습니다.");
+}
+if (!main.includes('/api/stats/platform-summary')) {
+  throw new Error("platform-summary API 재사용 경로가 사라졌습니다.");
+}
+if (main.includes("loadPlatformStats();")) {
+  throw new Error("홈 초기화에서 loadPlatformStats 호출이 남아 있습니다.");
+}
 
-(async () => {
-  await context.loadPlatformStats();
-  if (calls.length !== 1 || calls[0].url !== "/api/stats/platform-summary") {
-    throw new Error("플랫폼 통계 API 호출이 정확하지 않습니다.");
-  }
-  const actual = elements.map((el) => el.textContent);
-  const expected = ["11,802", "3,841", "16,652", "27"];
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`4개 지표 DOM 렌더링이 잘못됨: ${JSON.stringify(actual)}`);
-  }
-  console.log("OK  홈 플랫폼 통계 API 4개 숫자 DOM 렌더링");
-})().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+console.log("OK  홈 검색바 플랫폼 통계 위젯 제거·함수/API 보존");

@@ -4672,7 +4672,6 @@ async function loadPlatformStats(){
 // 최초 로드: 기본 패널 초기화 후, URL이 /building/<id>면 자동으로 상세를 연다.
 initDefaultSidePanel();
 loadBuildingCountLabel();
-loadPlatformStats();
 (function(){
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) renderBuildingPanel(Number(m[1]));
