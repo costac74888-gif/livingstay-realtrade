@@ -355,6 +355,13 @@ function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x =>
 
 const PREVIEW_AGENT_ID = (location.pathname.match(/^\/admin\/preview\/agent\/(\d+)/) || [])[1] || null;
 const PREVIEW_MODE = !!PREVIEW_AGENT_ID;
+const dashboardParams = new URLSearchParams(location.search);
+const REQUESTED_TAB = ["leads-sell", "leads-buy", "buildings", "region", "billing"].includes(
+  dashboardParams.get("tab")
+) ? dashboardParams.get("tab") : "leads-sell";
+const REQUESTED_LEAD_ID = /^\d+$/.test(dashboardParams.get("request_id") || "")
+  ? Number(dashboardParams.get("request_id"))
+  : null;
 
 let ME = null;
 
@@ -365,7 +372,11 @@ document.querySelectorAll(".admin-modal-overlay").forEach(ov => ov.addEventListe
 
 async function api(url, opts){
   const res = await fetch(url, Object.assign({ headers: { "Content-Type": "application/json" } }, opts));
-  if (res.status === 401){ location.href = "/agent/login"; throw new Error("unauthenticated"); }
+  if (res.status === 401){
+    const next = location.pathname + location.search + location.hash;
+    location.href = "/agent/login?next=" + encodeURIComponent(next);
+    throw new Error("unauthenticated");
+  }
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, data };
 }
@@ -580,6 +591,15 @@ function leadActionBtn(l){
     return `<button class="btn btn-sm btn-primary" data-lead-act="done" data-lead-id="${l.id}" style="font-size:12px; padding:4px 12px;">완료 처리</button>`;
   return "";
 }
+function focusRequestedLead(kind){
+  if (!REQUESTED_LEAD_ID || REQUESTED_TAB !== `leads-${kind}`) return;
+  const card = document.getElementById(`${kind}-lead-card-${REQUESTED_LEAD_ID}`);
+  if (!card) return;
+  card.style.background = "#FFF8E8";
+  card.style.boxShadow = "0 0 0 2px #D8A948";
+  card.style.borderRadius = "8px";
+  requestAnimationFrame(() => card.scrollIntoView({ block: "center", behavior: "smooth" }));
+}
 async function loadLeads(){
   const box = document.getElementById("leadList");
   try {
@@ -592,7 +612,7 @@ async function loadLeads(){
       return;
     }
     box.innerHTML = items.map(l => `
-      <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+      <div id="sell-lead-card-${l.id}" data-lead-id="${l.id}" style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
           <a href="/building/${l.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(l.building_name || "-")}</a>
           <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(l.deal_type)}</span>
@@ -609,6 +629,7 @@ async function loadLeads(){
           ${leadActionBtn(l)}
         </div>
       </div>`).join("");
+    focusRequestedLead("sell");
   } catch(e) {
     box.innerHTML = `<div class="side-empty">매물의뢰를 불러오지 못했습니다.</div>`;
   }
@@ -853,7 +874,7 @@ async function loadBuyRequests(){
       return;
     }
     box.innerHTML = items.map(r => `
-      <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+      <div id="buy-lead-card-${r.id}" data-lead-id="${r.id}" style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
           <a href="/building/${r.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(r.building_name || "-")}</a>
           <span style="display:inline-block; font-size:11px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">${esc(r.deal_type)}</span>
@@ -870,6 +891,7 @@ async function loadBuyRequests(){
           ${buyReqActionBtn(r)}
         </div>
       </div>`).join("");
+    focusRequestedLead("buy");
   } catch(e) {
     box.innerHTML = `<div class="side-empty">매수의뢰를 불러오지 못했습니다.</div>`;
   }
@@ -947,20 +969,25 @@ if (!PREVIEW_MODE) {
   });
 }
 
+function activateAgentTab(tab){
+  const button = document.querySelector(`.agent-tab[data-tab="${tab}"]`);
+  const panel = document.querySelector(`.agent-tabpanel[data-tabpanel="${tab}"]`);
+  if (!button || !panel) return;
+  document.querySelectorAll(".agent-tab").forEach(b => b.classList.remove("is-active"));
+  document.querySelectorAll(".agent-tabpanel").forEach(p => p.classList.remove("is-active"));
+  button.classList.add("is-active");
+  panel.classList.add("is-active");
+  if (tab === "billing") loadBilling();
+}
+
+document.querySelectorAll(".agent-tab").forEach(btn => {
+  btn.addEventListener("click", () => activateAgentTab(btn.dataset.tab));
+});
+
+activateAgentTab(REQUESTED_TAB);
 load();
 loadLeads();
 loadBuyRequests();
-
-// ---- 탭 전환 ----
-document.querySelectorAll(".agent-tab").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".agent-tab").forEach(b => b.classList.remove("is-active"));
-    document.querySelectorAll(".agent-tabpanel").forEach(p => p.classList.remove("is-active"));
-    btn.classList.add("is-active");
-    document.querySelector(`.agent-tabpanel[data-tabpanel="${btn.dataset.tab}"]`).classList.add("is-active");
-    if (btn.dataset.tab === "billing") loadBilling();
-  });
-});
 
 async function loadBilling(){
   const { ok, data } = await api("/api/agent/tier-status");

@@ -338,7 +338,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-24-05"
+SCHEMA_VERSION = "2026-08-25-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1914,6 +1914,30 @@ def _run_init_db():
         value TEXT,                         -- 자유 형식(문자열/숫자)
         updated_at TIMESTAMP DEFAULT NOW()  -- 마지막 갱신 시각
     )
+    """)
+
+    # 중개사 의뢰 알림용 단축 링크 — 코드는 외부에 노출되므로 만료 시각을 함께 검증한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS short_links (
+        code VARCHAR(6) PRIMARY KEY,
+        target_path TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT short_links_target_path_check
+            CHECK (target_path LIKE '/admin%' OR target_path LIKE '/agent/dashboard%')
+    )
+    """)
+    # 이전 단축 링크 스키마는 관리자 경로만 허용했다. 기존 테이블에도 중개사
+    # 대시보드 딥링크를 저장할 수 있게 제약을 명시적으로 교체한다.
+    cur.execute("ALTER TABLE short_links DROP CONSTRAINT IF EXISTS short_links_target_path_check")
+    cur.execute("""
+        ALTER TABLE short_links
+        ADD CONSTRAINT short_links_target_path_check
+        CHECK (target_path LIKE '/admin%' OR target_path LIKE '/agent/dashboard%')
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_short_links_expires_at
+        ON short_links(expires_at)
     """)
 
     # 주간 이메일 기능 소개 시리즈. episode는 ISO 주차를 1~8회로 순환해 선택하는

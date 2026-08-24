@@ -142,11 +142,29 @@ def _default_share_meta():
 
 
 def _public_base_url():
-    """외부에 전달할 공식 사이트 주소. 개발 프리뷰 주소가 공유되지 않게 한다."""
+    """외부 알림·공유에 쓸 신뢰된 공식 사이트 origin만 반환한다.
+
+    요청 Host 헤더는 사용자가 제어할 수 있으므로, 문자나 이메일 같은 외부
+    발송 URL에 절대 사용하지 않는다.
+    """
     configured = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
-    if configured.startswith(("https://", "http://")):
-        return configured
-    return request.url_root.rstrip("/")
+    try:
+        parsed = urlparse(configured)
+        if (
+            parsed.scheme == "https"
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+            and parsed.path in ("", "/")
+            and not parsed.params
+            and not parsed.query
+            and not parsed.fragment
+            and not any(char.isspace() for char in parsed.netloc)
+        ):
+            return configured
+    except (TypeError, ValueError):
+        pass
+    return "https://homenstay.com"
 
 
 def _building_share_meta(building_id, listing_id=None):
@@ -5850,13 +5868,14 @@ def admin_change_password():
 
 def require_agent(f):
     """세션에 agent_id가 없으면 차단한다.
-    /api/* 요청은 401 JSON, 그 외는 /agent/login으로 리다이렉트."""
+    /api/* 요청은 401 JSON, 그 외는 로그인 뒤 돌아올 주소를 보존해 /agent/login으로 리다이렉트."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get("agent_id"):
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
-            return redirect("/agent/login")
+            next_path = request.full_path if request.query_string else request.path
+            return redirect("/agent/login?next=" + quote(next_path, safe=""))
         return f(*args, **kwargs)
     return wrapper
 
@@ -6367,7 +6386,7 @@ def _route_lead(cur, mb_id):
     반환: (routed_agent_id, routed_reason, notify_agents)
     """
     cur.execute("""
-        SELECT a.id, a.phone, a.office_name, COALESCE(ab.is_paid, FALSE) AS is_paid
+        SELECT a.id, a.phone, a.email, a.office_name, COALESCE(ab.is_paid, FALSE) AS is_paid
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id AND a.status = 'approved'
         WHERE ab.master_building_id = %s AND COALESCE(a.is_visible, TRUE)
@@ -6380,7 +6399,7 @@ def _route_lead(cur, mb_id):
         return pool[0]["id"], "exclusive", [dict(r) for r in pool]
 
     cur.execute("""
-        SELECT a.id, a.phone, a.office_name, COALESCE(sr.is_paid, FALSE) AS is_paid
+        SELECT a.id, a.phone, a.email, a.office_name, COALESCE(sr.is_paid, FALSE) AS is_paid
         FROM agent_region_buildings arb
         JOIN agent_service_regions sr ON sr.agent_id = arb.agent_id
         JOIN agents a ON a.id = arb.agent_id AND a.status = 'approved'
@@ -6396,7 +6415,7 @@ def _route_lead(cur, mb_id):
         return pool[0]["id"], "region", [dict(r) for r in pool]
 
     cur.execute("""
-        SELECT id, phone, office_name FROM agents
+        SELECT id, phone, email, office_name FROM agents
         WHERE office_name = %s AND status = 'approved'
         ORDER BY id LIMIT 1
     """, [_HOUSE_OFFICE_NAME])
@@ -6404,6 +6423,168 @@ def _route_lead(cur, mb_id):
     if row:
         return row["id"], "house", [dict(row)]
     return None, "house", []
+
+
+_SHORT_LINK_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+_SHORT_LINK_CODE_RE = re.compile(r"^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$")
+
+
+def _is_short_link_target(target_path):
+    """단축 링크가 이동할 수 있는 내부 관리자·중개사 경로인지 확인한다."""
+    return (
+        isinstance(target_path, str)
+        and (
+            target_path == "/admin"
+            or target_path.startswith("/admin?")
+            or target_path.startswith("/admin/")
+            or target_path == "/agent/dashboard"
+            or target_path.startswith("/agent/dashboard?")
+        )
+    )
+
+
+def _create_short_link(target_path):
+    """내부 중개사 의뢰 화면을 72시간 유효한 6자리 링크로 저장한다.
+
+    단축 링크는 알림 보조 기능이므로 DB 오류나 코드 충돌이 의뢰 처리를
+    실패시키지 않는다. target_path는 외부 URL이나 공개 경로로 재사용되지
+    않도록 인증이 필요한 내부 경로만 허용한다.
+    """
+    if not _is_short_link_target(target_path):
+        app.logger.warning("단축 링크 대상 경로 거부: %s", _log_safe(target_path, 200))
+        return None
+
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        for _ in range(5):
+            code = "".join(_secrets.choice(_SHORT_LINK_ALPHABET) for _ in range(6))
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO short_links (code, target_path, expires_at)
+                    VALUES (%s, %s, NOW() + INTERVAL '72 hours')
+                    RETURNING code
+                    """,
+                    [code, target_path],
+                )
+                row = cur.fetchone()
+                conn.commit()
+                if row:
+                    return f"{_public_base_url()}/s/{row['code']}"
+            except psycopg2_errors.UniqueViolation:
+                conn.rollback()
+                continue
+        app.logger.warning("단축 링크 코드 충돌 재시도 초과")
+    except Exception:
+        if conn:
+            conn.rollback()
+        app.logger.exception("단축 링크 생성 실패")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+    return None
+
+
+@app.route("/s/<code>")
+def short_link_redirect(code):
+    """유효한 단축 링크는 인증된 내부 화면으로, 나머지는 홈페이지로 보낸다."""
+    if not _SHORT_LINK_CODE_RE.fullmatch(code or ""):
+        return redirect("/")
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT target_path
+            FROM short_links
+            WHERE code = %s AND expires_at > NOW()
+            """,
+            [code],
+        )
+        row = cur.fetchone()
+        target_path = row["target_path"] if row else None
+        if _is_short_link_target(target_path):
+            return redirect(target_path)
+    except Exception:
+        app.logger.exception("단축 링크 조회 실패")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+    return redirect("/")
+
+
+def _send_lead_email(agent, kind, building_name, deal_type, desired_price,
+                     contact_phone, short_url, assigned):
+    """의뢰 담당 중개사 이메일 알림. 실패해도 의뢰·문자 처리에는 영향이 없다."""
+    if not agent.get("email"):
+        return False, "중개사 이메일 없음"
+    try:
+        kind_label = "매물의뢰" if kind == "listing" else "매수의뢰"
+        assignment_label = "담당 의뢰로 배정되었습니다." if assigned else "참고용으로 전달드립니다."
+        safe_building = _html.escape(str(building_name or ""), quote=True)
+        safe_deal_type = _html.escape(str(deal_type or ""), quote=True)
+        safe_price = _html.escape(str(desired_price or "미입력"), quote=True)
+        safe_phone = _html.escape(str(contact_phone or ""), quote=True)
+        safe_url = _html.escape(short_url or _public_base_url(), quote=True)
+        body = f"""
+        <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;max-width:560px;margin:0 auto;color:#16202E;">
+          <h2 style="font-size:18px;border-bottom:2px solid #B4863F;padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
+          <p style="font-size:15px;font-weight:700;">새 {kind_label}가 접수되었습니다.</p>
+          <p style="font-size:14px;">{assignment_label}</p>
+          <table style="font-size:14px;border-collapse:collapse;margin:12px 0;">
+            <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">건물</td><td>{safe_building}</td></tr>
+            <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">거래유형</td><td>{safe_deal_type}</td></tr>
+            <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">희망가</td><td>{safe_price}</td></tr>
+            <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">연락처</td><td>{safe_phone}</td></tr>
+          </table>
+          <p><a href="{safe_url}" style="display:inline-block;background:#B4863F;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;">중개사 대시보드에서 확인하기</a></p>
+          <p style="font-size:12px;color:#6b7280;">링크는 발송 후 72시간 동안 유효합니다.</p>
+        </div>
+        """
+        subject = f"[홈앤스테이] 새 {kind_label} 알림"
+        ok, msg = send_email(agent["email"], subject, body)
+        if not ok:
+            app.logger.warning("의뢰 알림 이메일 발송 실패 (kind=%s, agent_id=%s): %s",
+                               kind, agent.get("id"), msg)
+        return ok, msg
+    except Exception as exc:
+        app.logger.exception("의뢰 알림 이메일 발송 중 오류 (kind=%s, agent_id=%s)",
+                             kind, agent.get("id"))
+        return False, str(exc)
+
+
+def _notify_lead_agents(notify_agents, routed_agent_id, sms_body, kind, target_path,
+                        building_name, deal_type, desired_price, contact_phone):
+    """매수·매물의뢰 공통 SMS+이메일 알림."""
+    short_url = _create_short_link(target_path)
+    link_notice = f" / 확인: {short_url}" if short_url else " / 대시보드에서 확인해주세요"
+    sms_results = []
+    for agent in notify_agents:
+        assigned = agent["id"] == routed_agent_id
+        if assigned:
+            body = sms_body + link_notice
+        else:
+            body = "[참고용] " + sms_body + link_notice + " / 다른 담당중개사에게 배정되었습니다"
+        byte_length = len(body.encode("utf-8"))
+        if agent.get("phone"):
+            sent, msg = send_sms(agent["phone"], body)
+        else:
+            sent, msg = False, "중개사 전화번호 없음"
+        app.logger.info("[lead-sms] kind=%s agent_id=%s bytes=%d sent=%s",
+                        kind, agent.get("id"), byte_length, sent)
+        sms_results.append({"agent_id": agent["id"], "sent": sent, "message": msg})
+        _send_lead_email(
+            agent, kind, building_name, deal_type, desired_price, contact_phone,
+            short_url, assigned,
+        )
+    return sms_results, short_url
 
 
 _PROV_SGG_MAP = {
@@ -6556,13 +6737,47 @@ def agent_building_add():
         conn2 = get_conn()
         cur2 = conn2.cursor()
         try:
-            cur2.execute("SELECT phone FROM agents WHERE id=%s", [agent_id])
+            cur2.execute("SELECT phone, email FROM agents WHERE id=%s", [agent_id])
             ph = cur2.fetchone()
         finally:
             cur2.close()
             conn2.close()
+        reassigned_url = _create_short_link("/agent/dashboard?tab=leads-sell")
+        reassigned_notice = (
+            f"확인: {reassigned_url}"
+            if reassigned_url else "대시보드에서 확인해주세요"
+        )
+        reassigned_sms = (
+            f"[홈앤스테이] 대기 중이던 매물의뢰 {reassigned_count}건이 배정되었습니다. "
+            f"{reassigned_notice}"
+        )
         if ph and ph["phone"]:
-            send_sms(ph["phone"], f"[홈앤스테이] 대기 중이던 매물의뢰 {reassigned_count}건이 배정되었습니다. 대시보드에서 확인해주세요.")
+            sent, msg = send_sms(ph["phone"], reassigned_sms)
+            app.logger.info("[lead-sms] kind=listing-reassigned agent_id=%s bytes=%d sent=%s",
+                            agent_id, len(reassigned_sms.encode("utf-8")), sent)
+        else:
+            sent, msg = False, "중개사 전화번호 없음"
+        if ph and ph.get("email"):
+            safe_url = _html.escape(reassigned_url or _public_base_url(), quote=True)
+            email_body = f"""
+            <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;max-width:560px;margin:0 auto;color:#16202E;">
+              <h2 style="font-size:18px;border-bottom:2px solid #B4863F;padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
+              <p style="font-size:15px;font-weight:700;">대기 중이던 매물의뢰가 배정되었습니다.</p>
+              <p style="font-size:14px;">총 <b>{int(reassigned_count)}</b>건이 담당 중개사님에게 배정되었습니다.</p>
+              <p><a href="{safe_url}" style="display:inline-block;background:#B4863F;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;">관리자 화면에서 확인하기</a></p>
+              <p style="font-size:12px;color:#6b7280;">링크는 발송 후 72시간 동안 유효합니다.</p>
+            </div>
+            """
+            try:
+                email_sent, email_msg = send_email(
+                    ph["email"], "[홈앤스테이] 대기 중인 매물의뢰가 배정되었습니다", email_body
+                )
+                if not email_sent:
+                    app.logger.warning("재배정 매물의뢰 이메일 발송 실패 (agent_id=%s): %s",
+                                       agent_id, email_msg)
+            except Exception:
+                email_sent, email_msg = False, "이메일 발송 중 오류"
+                app.logger.exception("재배정 매물의뢰 이메일 발송 중 오류 (agent_id=%s)", agent_id)
     return jsonify({"ok": True, "reassigned": reassigned_count})
 
 
@@ -8242,19 +8457,13 @@ def create_listing_request():
         + (f" / 희망가 {desired_price}" if desired_price else "")
         + f" / 연락처 {contact_phone}"
     )
-    sms_results = []
-    for ag in notify_agents:
-        # 배정자(routed_agent_id)에게는 배정 문자, 나머지 담당중개사에게는 참고용 문자만.
-        # (상태변경 권한은 배정자 1명에게만 있음)
-        if ag["id"] == routed_agent_id:
-            body = sms_body + " / 대시보드에서 확인해주세요"
-        else:
-            body = "[참고용] " + sms_body + " / 다른 담당중개사에게 배정되었습니다"
-        if ag.get("phone"):
-            sent, msg = send_sms(ag["phone"], body)
-        else:
-            sent, msg = False, "중개사 전화번호 없음"
-        sms_results.append({"agent_id": ag["id"], "sent": sent, "message": msg})
+    # 배정자에게는 배정 문자, 나머지 담당중개사에게는 참고용 문자만 보낸다.
+    # 단축 링크 생성·SMS·이메일은 모두 best-effort 알림 단계다.
+    sms_results, _ = _notify_lead_agents(
+        notify_agents, routed_agent_id, sms_body, "listing",
+        f"/agent/dashboard?tab=leads-sell&request_id={req_id}",
+        bld["building_name"], deal_type, desired_price, contact_phone,
+    )
 
     return jsonify({
         "ok": True, "id": req_id,
@@ -8339,17 +8548,11 @@ def create_buy_request():
         + (f" / 희망가 {desired_price}" if desired_price else "")
         + f" / 연락처 {contact_phone}"
     )
-    sms_results = []
-    for ag in notify_agents:
-        if ag["id"] == routed_agent_id:
-            body = sms_body + " / 대시보드에서 확인해주세요"
-        else:
-            body = "[참고용] " + sms_body + " / 다른 담당중개사에게 배정되었습니다"
-        if ag.get("phone"):
-            sent, msg = send_sms(ag["phone"], body)
-        else:
-            sent, msg = False, "중개사 전화번호 없음"
-        sms_results.append({"agent_id": ag["id"], "sent": sent, "message": msg})
+    sms_results, _ = _notify_lead_agents(
+        notify_agents, routed_agent_id, sms_body, "buy",
+        f"/agent/dashboard?tab=leads-buy&request_id={req_id}",
+        bld["building_name"], deal_type, desired_price, contact_phone,
+    )
 
     return jsonify({
         "ok": True, "id": req_id,

@@ -45,3 +45,4 @@
 - [매수의뢰 철회 상태](buy-request-withdrawal-state.md) — 철회됨은 최종 상태이며, 담당 중개사도 이후 처리 상태로 되돌릴 수 없다.
 - [회원 접속이력](member-login-history.md) — 일반회원의 모든 인증 세션은 원본 IP 없이 해시·UA로 기록하고, 관리자만 최근 이력을 조회한다.
 - [Pooled DB connection ownership](pooled-db-connection-ownership.md) — Legacy conn.close() is a pool-release shim; fallback cleanup must use a unique per-lease token.
+- [Outbound notification URLs](outbound-notification-urls.md) — SMS/email links must use a validated canonical origin, never request Host or URL root.

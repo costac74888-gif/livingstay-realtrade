@@ -45,6 +45,17 @@
     const form = document.getElementById("loginForm");
     const msg = document.getElementById("loginMsg");
     const btn = document.getElementById("loginBtn");
+    const requestedNext = new URLSearchParams(window.location.search).get("next") || "";
+    let nextTarget = "/agent/dashboard";
+    try {
+      const parsed = new URL(requestedNext, window.location.origin);
+      if (
+        parsed.origin === window.location.origin
+        && parsed.pathname === "/agent/dashboard"
+      ) {
+        nextTarget = parsed.pathname + parsed.search + parsed.hash;
+      }
+    } catch (_) {}
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -61,7 +72,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) {
-          window.location.href = "/agent/dashboard";
+          window.location.href = nextTarget;
           return;
         }
         msg.textContent = data.message || "로그인에 실패했습니다.";

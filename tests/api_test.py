@@ -24,15 +24,20 @@ import os
 import sys
 import copy
 import time
+import re
 from datetime import timedelta
 from unittest.mock import patch
+from werkzeug.security import generate_password_hash
 
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import app as app_module  # noqa: E402
 from app import (  # noqa: E402
     _building_share_meta,
     _canonical_sido_name,
+    _create_short_link,
+    _notify_lead_agents,
     _should_store_page_view,
     app,
 )
@@ -693,6 +698,8 @@ def run():
     failures += _check_general_units_table_markup(client)
     # 마지막에 실행해 매물 등록 rate limit을 기존 API 회귀 테스트와 공유하지 않는다.
     failures += _check_weekly_email_auto_optin_apis(client)
+    # 의뢰 알림 단축 링크의 생성·만료·안전한 리다이렉트와 SMS/이메일 동시 발송을 확인
+    failures += _check_lead_short_links(client)
 
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
@@ -705,6 +712,145 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_lead_short_links(client):
+    """의뢰 알림용 6자리 링크와 best-effort SMS·이메일 계약을 점검한다."""
+    failures = []
+    code = None
+    agent_id = None
+    try:
+        target_path = "/agent/dashboard?tab=leads-buy&request_id=123"
+        # 발신 URL은 수신자가 신뢰하는 공식 주소여야 한다. 접수 요청의 Host
+        # 헤더는 공격자가 제어할 수 있으므로 단축 링크에 반영되면 안 된다.
+        with patch.dict(os.environ, {"PUBLIC_BASE_URL": "https://homenstay.com"}):
+            with app.test_request_context("/", base_url="https://attacker.example.invalid"):
+                short_url = _create_short_link(target_path)
+                if not short_url or not re.fullmatch(
+                    r"https://homenstay\.com/s/[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}",
+                    short_url,
+                ):
+                    return ["의뢰 알림: 신뢰된 공식 도메인의 6자리 단축 URL을 생성하지 못함"]
+                code = short_url.rsplit("/", 1)[-1]
+                if _create_short_link("https://example.invalid/redirect") is not None:
+                    failures.append("의뢰 알림: 외부 URL을 단축 링크 대상으로 허용함")
+
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT target_path, expires_at > NOW() + INTERVAL '71 hours'
+                       AND expires_at < NOW() + INTERVAL '73 hours' AS ttl_ok
+                FROM short_links WHERE code=%s
+                """,
+                (code,),
+            )
+            row = cur.fetchone() or {}
+            if row.get("target_path") != target_path or not row.get("ttl_ok"):
+                failures.append("의뢰 알림: 단축 링크 대상 또는 72시간 만료시각이 잘못됨")
+
+            active = client.get(f"/s/{code}", follow_redirects=False)
+            if (
+                active.status_code not in (301, 302, 303, 307, 308)
+                or active.headers.get("Location") != target_path
+            ):
+                failures.append("의뢰 알림: 유효한 단축 링크가 중개사 대시보드로 이동하지 않음")
+
+            with client.session_transaction() as sess:
+                sess.pop("agent_id", None)
+            login_redirect = client.get(target_path, follow_redirects=False)
+            login_location = login_redirect.headers.get("Location") or ""
+            if (
+                login_redirect.status_code not in (301, 302, 303, 307, 308)
+                or not login_location.startswith("/agent/login?next=")
+                or target_path not in login_location.replace("%2F", "/").replace("%3F", "?").replace("%3D", "=").replace("%26", "&")
+            ):
+                failures.append("의뢰 알림: 비로그인 중개사의 대시보드 목적지가 로그인 뒤에도 보존되지 않음")
+
+            login_page = client.get(login_location)
+            login_html = login_page.get_data(as_text=True)
+            if "nextTarget" not in login_html or "window.location.href = nextTarget" not in login_html:
+                failures.append("의뢰 알림: 중개사 로그인 후 대시보드 복귀 처리가 누락됨")
+
+            run_id = str(int(time.time() * 1000))
+            agent_email = f"lead-link-agent-{run_id}@example.test"
+            agent_password = "lead-link-test-password"
+            cur.execute(
+                """
+                INSERT INTO agents (office_name, owner_name, reg_number, email, password_hash, status)
+                VALUES (%s, %s, %s, %s, %s, 'approved')
+                RETURNING id
+                """,
+                ["단축링크 테스트중개사", "테스트대표", f"lead-link-{run_id}",
+                 agent_email, generate_password_hash(agent_password)],
+            )
+            agent_id = cur.fetchone()["id"]
+            conn.commit()
+            signed_in = client.post("/api/agent/login", json={
+                "email": agent_email, "password": agent_password,
+            })
+            if signed_in.status_code != 200 or not (signed_in.get_json() or {}).get("ok"):
+                failures.append("의뢰 알림: 임시 중개사 계정으로 로그인하지 못함")
+
+            dashboard = client.get(target_path)
+            dashboard_html = dashboard.get_data(as_text=True)
+            if (
+                dashboard.status_code != 200
+                or "const REQUESTED_TAB" not in dashboard_html
+                or "focusRequestedLead" not in dashboard_html
+                or 'id="buy-lead-card-${r.id}"' not in dashboard_html
+            ):
+                failures.append("의뢰 알림: 로그인한 중개사의 의뢰 탭·요청 강조 딥링크가 누락됨")
+
+            cur.execute("UPDATE short_links SET expires_at=NOW() - INTERVAL '1 second' WHERE code=%s", (code,))
+            conn.commit()
+            expired = client.get(f"/s/{code}", follow_redirects=False)
+            unknown = client.get("/s/ABCDEFG", follow_redirects=False)
+            malformed = client.get("/s/not-valid", follow_redirects=False)
+            if any(response.headers.get("Location") != "/" for response in (expired, unknown, malformed)):
+                failures.append("의뢰 알림: 만료·없는·잘못된 단축 링크가 홈으로 이동하지 않음")
+        finally:
+            if code:
+                cur.execute("DELETE FROM short_links WHERE code=%s", (code,))
+            if agent_id:
+                cur.execute("DELETE FROM agents WHERE id=%s", (agent_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+        agents = [{
+            "id": 31,
+            "phone": "01012345678",
+            "email": "broker@example.test",
+            "office_name": "테스트중개사",
+        }]
+        with app.test_request_context("/", base_url="https://lead-link.example.test"), \
+             patch.object(app_module, "_create_short_link", return_value="https://lead-link.example.test/s/ABCDEF"), \
+             patch.object(app_module, "send_sms", return_value=(True, "발송 성공")) as sms_mock, \
+             patch.object(app_module, "send_email", return_value=(True, "발송 성공")) as email_mock:
+            results, sent_url = _notify_lead_agents(
+                agents, 31, "[홈앤스테이] 매수의뢰 접수 — <테스트건물> / 매매",
+                "buy", target_path,
+                "<테스트건물>", "매매", "10,000", "01012345678",
+            )
+        sms_body = sms_mock.call_args.args[1] if sms_mock.call_args else ""
+        email_html = email_mock.call_args.args[2] if email_mock.call_args else ""
+        if (
+            sent_url != "https://lead-link.example.test/s/ABCDEF"
+            or not results or not results[0]["sent"]
+            or "https://lead-link.example.test/s/ABCDEF" not in sms_body
+            or len(sms_body.encode("utf-8")) <= 0
+            or "https://lead-link.example.test/s/ABCDEF" not in email_html
+            or "&lt;테스트건물&gt;" not in email_html
+        ):
+            failures.append("의뢰 알림: SMS 단축 URL 또는 이메일 HTML 이스케이프·동시 발송이 누락됨")
+    except Exception as exc:
+        failures.append(f"의뢰 알림 단축 링크 테스트 오류: {exc}")
+
+    if not failures:
+        print("OK  의뢰 알림 6자리 단축 URL·72시간 만료·SMS/이메일 동시 발송")
+    return failures
 
 
 def _check_member_login_history(client):
