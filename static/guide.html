@@ -520,11 +520,11 @@
         <div class="sec-b-desc">
           <strong>📈 데이터랩 — 숙박시장 신호</strong>
           <dl class="guide-datalab-list">
-            <div><dt>① 숙박통계</dt><dd>전국 생숙·관광·일반 건물수·호실수·신고율·폐업율</dd></div>
-            <div><dt>② 거래량 TOP</dt><dd>최근 30일 가장 활발히 거래된 건물</dd></div>
+            <div><dt>① 숙박통계</dt><dd>전국 생활·관광·일반 숙박시설의 건물수·호실수·영업신고율·폐업율</dd></div>
+            <div><dt>② 거래량 TOP</dt><dd>최근 30일 가장 활발히 거래된 건물 TOP5</dd></div>
             <div><dt>③ 가격변동</dt><dd>최근 30일 가격 상승·하락폭이 큰 건물</dd></div>
-            <div><dt>④ 최고가 TOP</dt><dd>건물별 역대 최고가·최저가</dd></div>
-            <div><dt>⑤ 영업신고현황</dt><dd>시도별 생숙 영업신고업체·신고호실·신고율</dd></div>
+            <div><dt>④ 최고가 TOP</dt><dd>건물별 역대 최고가·최저가 기록</dd></div>
+            <div><dt>⑤ 영업신고현황</dt><dd>건물마스터 + 행안부 영업신고 기준 · 시도별 생숙 영업신고업체·신고호실·신고율</dd></div>
             <div><dt>⑥ 폐업현황</dt><dd>지역별 폐업율이 높은 시군구</dd></div>
           </dl>
         </div>
@@ -925,7 +925,7 @@
             </div>
             <div class="guide-checklist-callout">
               <strong>숙박업소 거래 체크리스트</strong>
-              <p>건물전체 매물에는 숙박업소 거래 체크리스트 버튼이 제공됩니다. 거래 전 확인해야 할 <b>14개 항목</b>(영업신고 확인, 인허가 이력, 세금 체납 조회 등)을 안내합니다.</p>
+              <p>건물전체 매물에는 숙박업소 거래 체크리스트 버튼이 제공됩니다. 거래 전 확인해야 할 <b>14개 항목</b>(영업신고 확인, 인허가 이력, 세금 체납 조회 등)과 공인기관 링크 포함 내용을 안내합니다.</p>
               <ol class="guide-checklist-list">
                 <li>위반건축물 여부 · 정부24</li>
                 <li>용도·구조·연면적·사용승인일</li>
@@ -1099,7 +1099,7 @@
         📧 주간이메일 신청하면!
       </div>
       <div style="font-size:13px; color:var(--ink-soft); margin-bottom:20px; line-height:1.6;">
-        매주 관심단지 실거래·시세 랭킹을 이메일로 받아보세요.<br>
+        매주 관심단지 실거래·시세 랭킹·데이터랩 요약·기능 소개를 이메일로 받아보세요.<br>
         <span style="font-size:11px; color:#9AA5B1;">(아래는 실제 발송되는 이메일의 미리보기입니다. 개인별 관심단지 데이터로 발송됩니다.)</span>
       </div>
 
@@ -1114,15 +1114,19 @@
             <img src="/static/images/logo-email.png" alt="HOME &amp; STAY"
                  width="160" style="height:auto; max-height:40px; display:inline-block; border:0;" />
             <p style="color:#9aa5b1; font-size:12px; margin:6px 0 0; font-family:sans-serif;">주간 소식</p>
+            <p style="color:#B4863F; font-size:11px; font-weight:700;
+                      margin:4px 0 0; letter-spacing:.02em; font-family:sans-serif;">
+              대한민국 숙박부동산 데이터 플랫폼
+            </p>
           </div>
 
           <!-- 인사말 -->
           <div style="padding:22px 28px 0; font-family:sans-serif;">
             <p style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 4px;">
-              홈앤스테이 회원님, 이번 주 홈앤스테이 소식을 전달해드려요.
+              홈앤스테이 회원님, 이번 주 소식을 전달해드려요.
             </p>
             <p style="font-size:13px; color:#888; margin:0;">
-              생활숙박시설·관광숙박 실거래가 최신 정보입니다.
+              실거래부터 영업현황·매물·중개·운영·금융까지
             </p>
           </div>
 
@@ -1165,6 +1169,12 @@
                 </tr>
               </tbody>
             </table>
+            <a href="/mypage"
+               style="display:inline-block; margin-top:12px; background:#B4863F; color:#fff;
+                      text-decoration:none; padding:9px 16px; border-radius:6px;
+                      font-size:13px; font-weight:700;">
+              관심단지 등록하고 실거래 알림 받기 →
+            </a>
           </div>
 
           <!-- Zone 1-2: 매물의뢰 현황 -->
@@ -1181,7 +1191,7 @@
                style="display:inline-block; background:#B4863F; color:#fff;
                       text-decoration:none; padding:10px 22px; border-radius:6px;
                       font-size:14px; font-weight:700;">
-              매물내놓기 →
+              매물 내놓기 — 제휴 중개법인 통해 수수료 0원 →
             </a>
           </div>
 
@@ -1254,19 +1264,81 @@
             </table>
           </div>
 
-          <!-- Zone 5: 광고배너 자리 (플레이스홀더) -->
-          <div style="padding:20px 28px 0; font-family:sans-serif;">
-            <p style="font-size:10px; color:#aaa; margin:0 0 6px;">[광고]</p>
-            <div style="width:100%; padding:28px 0; background:#f0f2f5; border-radius:8px;
-                        text-align:center; color:#9AA5B1; font-size:13px; font-weight:600;
-                        border:1.5px dashed #D5DAE0; box-sizing:border-box;">
-              여기에 광고가 노출됩니다
+          <!-- Zone 3: 데이터랩 요약 -->
+          <div style="padding:20px 28px 0; background:#F8F4EE; font-family:sans-serif;">
+            <h2 style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 12px;
+                       padding-bottom:8px; border-bottom:2px solid #B4863F;">
+              📈 데이터랩 한눈에 보기
+            </h2>
+            <div style="font-size:0; margin:0 -4px;">
+              <a href="/?datalab=consign"
+                 style="display:inline-block; vertical-align:top; width:33.333%; box-sizing:border-box;
+                        padding:4px; color:#16202E; text-decoration:none; font-size:13px;">
+                <div style="border:1px solid #eee; border-radius:8px; padding:12px 8px;
+                            text-align:center; background:#fff; min-height:72px;">
+                  <div style="font-size:11px; color:#888; margin-bottom:7px;">영업신고율</div>
+                  <div style="font-size:18px; font-weight:800; color:#B4863F;">60.3%</div>
+                </div>
+              </a>
+              <a href="/"
+                 style="display:inline-block; vertical-align:top; width:33.333%; box-sizing:border-box;
+                        padding:4px; color:#16202E; text-decoration:none; font-size:13px;">
+                <div style="border:1px solid #eee; border-radius:8px; padding:12px 8px;
+                            text-align:center; background:#fff; min-height:72px;">
+                  <div style="font-size:11px; color:#888; margin-bottom:7px;">가격변동 TOP1</div>
+                  <div style="font-size:18px; font-weight:800; color:#B4863F; line-height:1.35;">
+                    경상리조트<br>+128.3%
+                  </div>
+                </div>
+              </a>
+              <a href="/"
+                 style="display:inline-block; vertical-align:top; width:33.333%; box-sizing:border-box;
+                        padding:4px; color:#16202E; text-decoration:none; font-size:13px;">
+                <div style="border:1px solid #eee; border-radius:8px; padding:12px 8px;
+                            text-align:center; background:#fff; min-height:72px;">
+                  <div style="font-size:11px; color:#888; margin-bottom:7px;">거래량 TOP1</div>
+                  <div style="font-size:18px; font-weight:800; color:#B4863F; line-height:1.35;">
+                    스타릭스 호텔<br>3건
+                  </div>
+                </div>
+              </a>
             </div>
+            <p style="margin:10px 0 0; text-align:right;">
+              <a href="/?datalab=lodging"
+                 style="font-size:12px; color:#B4863F; text-decoration:none;">
+                데이터랩 전체 보기 →
+              </a>
+            </p>
+          </div>
+
+          <!-- Zone 4: 이번 주 기능 소개 -->
+          <div style="padding:20px 28px 24px; background:#F0F4FF; font-family:sans-serif;">
+            <h2 style="font-size:15px; font-weight:700; color:#16202E; margin:0 0 12px;
+                       padding-bottom:8px; border-bottom:2px solid #B4863F;">
+              💡 이번 주 기능 소개 · 1회
+            </h2>
+            <p style="font-size:14px; font-weight:700; color:#16202E; margin:0 0 7px;">
+              내 건물 매물을 직접 등록하세요
+            </p>
+            <p style="font-size:13px; color:#555; line-height:1.65; margin:0 0 13px;">
+              직거래 혹은 중개인 인증 후 직접 등록하고<br>
+              공개 범위도 선택할 수 있습니다.
+            </p>
+            <a href="/guide#listing-guide"
+               style="display:inline-block; background:#B4863F; color:#fff;
+                      text-decoration:none; padding:9px 16px; border-radius:6px;
+                      font-size:13px; font-weight:700;">
+              매물 등록 시작하기 →
+            </a>
           </div>
 
           <!-- 푸터 -->
           <div style="padding:20px 28px 24px; font-family:sans-serif;">
             <div style="padding-top:16px; border-top:1px solid #eee; text-align:center;">
+              <p style="font-size:11px; color:#B4863F; font-weight:700;
+                        margin:0 0 4px; text-align:center;">
+                대한민국 숙박부동산 데이터 플랫폼
+              </p>
               <p style="font-size:11px; color:#aaa; margin:0 0 4px;">
                 홈앤스테이 | 사업자등록번호 301-41-68319
               </p>
@@ -1290,7 +1362,7 @@
           </div>
           <div style="font-size:13px; color:var(--ink-soft); line-height:1.6;">
             마이페이지에서 <strong>"주간 소식 이메일 받기"</strong>를 켜시면
-            매주 관심단지 실거래와 시세 랭킹이 이메일로 도착합니다.
+            관심단지 실거래·데이터랩 요약·기능 소개까지 매주 이메일로 도착합니다.
           </div>
         </div>
         <a href="/mypage#weeklyEmailChk"
