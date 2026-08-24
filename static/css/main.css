@@ -23,11 +23,14 @@
   }
   .mono{font-family:'JetBrains Mono',monospace;}
   .chat-template-chip{
-    background:var(--brass-tint,#F4EDDF); border:1px solid var(--line); border-radius:14px;
+    border:1px solid var(--line); border-radius:14px;
     padding:6px 12px; font-size:12.5px; color:var(--ink); cursor:pointer;
     white-space:nowrap; font-family:inherit;
   }
   .chat-template-chip.seller{
+    background:var(--brass-tint,#FBF3E7); border-color:#EAD9B8; color:var(--brass-dark,#8F6A2F);
+  }
+  .chat-template-chip.buyer{
     background:#F1F3F5; border-color:#C8CDD3; color:#46515D;
   }
   .listing-like-btn,.listing-chat-btn,.listing-share-btn{

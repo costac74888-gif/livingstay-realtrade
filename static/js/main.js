@@ -251,12 +251,34 @@ function openChatModal(roomId){
   const attachPrev  = ov.querySelector("#chatAttachPreview");
   const chipsEl     = ov.querySelector("#chatTemplateChips");
   const safetyEl    = ov.querySelector("#chatSafetyNotice");
+  const _tplStorageKey = "chatUsedTpl_" + roomId;
+  let usedTemplates = new Set();
+  try {
+    const storedTemplates = JSON.parse(localStorage.getItem(_tplStorageKey) || "[]");
+    if (Array.isArray(storedTemplates)) usedTemplates = new Set(storedTemplates);
+  } catch(e) {}
 
-  function _renderTemplateChips(isEmpty) {
-    chipsEl.innerHTML = isEmpty
-      ? `<button class="chat-template-chip" data-tpl="안녕하세요">안녕하세요</button>`
-      : "";
-    chipsEl.style.display = isEmpty ? "flex" : "none";
+  function _refreshChipVisibility() {
+    chipsEl.querySelectorAll(".chat-template-chip").forEach((btn) => {
+      const tpl = btn.getAttribute("data-tpl");
+      btn.style.display = usedTemplates.has(tpl) ? "none" : "inline-flex";
+    });
+    chipsEl.style.display = chipsEl.querySelector(".chat-template-chip:not([style*='display: none'])")
+      ? "flex" : "none";
+  }
+
+  function _renderTemplateChips() {
+    if (myRole !== "buyer" && myRole !== "seller") {
+      chipsEl.innerHTML = "";
+      chipsEl.style.display = "none";
+      return;
+    }
+    const templates = window.LivingstayChat.getRoleQuickReplies(myRole);
+    const roleClass = myRole === "seller" ? "seller" : "buyer";
+    chipsEl.innerHTML = templates.map((tpl) =>
+      `<button class="chat-template-chip ${roleClass}" data-tpl="${escapeHtml(tpl)}">${escapeHtml(tpl)}</button>`
+    ).join("");
+    _refreshChipVisibility();
   }
 
   // 칩 클릭 → 입력창 채우기 (자동전송 아님)
@@ -327,12 +349,12 @@ function openChatModal(roomId){
       myUserId = d.my_user_id;
       if (d.my_role && d.my_role !== myRole) {
         myRole = d.my_role;
+        _renderTemplateChips();
       }
       const opponentNameEl = ov.querySelector("#chatOpponentName");
       if (opponentNameEl) opponentNameEl.textContent = d.opponent_name || "상대방";
       const messages = d.messages || [];
       _renderMessages(messages);
-      _renderTemplateChips(window.LivingstayChat.shouldShowGreeting(messages));
     } catch(e){ /* 조용히 실패 — 폴링이 재시도 */ }
   }
 
@@ -367,6 +389,13 @@ function openChatModal(roomId){
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        const matchedChip = Array.from(chipsEl.querySelectorAll(".chat-template-chip"))
+          .find((b) => b.getAttribute("data-tpl") === sentText);
+        if (matchedChip) {
+          usedTemplates.add(sentText);
+          localStorage.setItem(_tplStorageKey, JSON.stringify([...usedTemplates]));
+          _refreshChipVisibility();
+        }
         window.LivingstayChat.showSafetyNoticeForMessage(sentText, safetyEl);
         await _loadMessages();
       }

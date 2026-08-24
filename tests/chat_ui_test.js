@@ -3,6 +3,7 @@ const chat = require("../static/js/chat_common.js");
 
 const containsMobile = chat.containsKoreanMobileNumber;
 const shouldShowGreeting = chat.shouldShowGreeting;
+const getRoleQuickReplies = chat.getRoleQuickReplies;
 const fillQuickReply = chat.fillQuickReply;
 
 const phoneCases = [
@@ -39,6 +40,18 @@ if (fakeInput.value !== "안녕하세요" || !focused) {
   throw new Error("빠른 인사가 입력창을 채우고 포커스하지 못했습니다.");
 }
 console.log("OK  빠른 인사는 자동 전송 없이 입력창만 채움");
+
+const buyerTemplates = getRoleQuickReplies("buyer");
+const sellerTemplates = getRoleQuickReplies("seller");
+if (buyerTemplates.length !== 5 ||
+    buyerTemplates[0] !== "안녕하세요" ||
+    buyerTemplates[4] !== "입주는 언제가능한지요?" ||
+    sellerTemplates.length !== 5 ||
+    sellerTemplates[0] !== "안녕하세요, 문의주셔서 감사합니다." ||
+    sellerTemplates[4] !== "추가로 궁금한 점 있으세요?") {
+  throw new Error("매수자·매도자 역할별 빠른답장 템플릿이 복원되지 않았습니다.");
+}
+console.log("OK  매수자·매도자 역할별 빠른답장 템플릿");
 
 const safetyNotice = { textContent: "", style: { display: "none" } };
 if (!chat.showSafetyNoticeForMessage("010-1234-5678", safetyNotice) ||
@@ -96,11 +109,16 @@ function checkSharedEntryPoints() {
   const listings = fs.readFileSync("static/listings.html", "utf8");
   const index = fs.readFileSync("static/index.html", "utf8");
   const mypage = fs.readFileSync("static/mypage.html", "utf8");
+  const main = fs.readFileSync("static/js/main.js", "utf8");
+  const css = fs.readFileSync("static/css/main.css", "utf8");
   if (!listings.includes("LivingstayChat.startListingChat") ||
       !index.includes("/static/js/chat_common.js") ||
       !mypage.includes("/static/js/chat_common.js") ||
       !mypage.includes("LivingstayChat.showSafetyNoticeForMessage(") ||
-      !mypage.includes("LivingstayChat.shouldShowGreeting(msgs)")) {
+      !mypage.includes("LivingstayChat.getRoleQuickReplies(") ||
+      !main.includes('myRole === "seller" ? "seller" : "buyer"') ||
+      !css.includes(".chat-template-chip.seller") ||
+      !css.includes(".chat-template-chip.buyer")) {
     throw new Error("채팅 진입 화면이 공통 인증 흐름을 사용하지 않습니다.");
   }
   console.log("OK  홈페이지·매물목록·마이페이지가 공통 채팅 모듈 사용");

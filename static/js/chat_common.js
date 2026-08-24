@@ -13,6 +13,27 @@
     return Array.isArray(messages) && messages.length === 0;
   }
 
+  var ROLE_QUICK_REPLIES = {
+    buyer: [
+      "안녕하세요",
+      "아직 거래가능한가요",
+      "영업신고·위탁운영 이상없나요",
+      "매물방문은 가능한가요?",
+      "입주는 언제가능한지요?",
+    ],
+    seller: [
+      "안녕하세요, 문의주셔서 감사합니다.",
+      "네, 아직 가능합니다.",
+      "네, 직접 거래 가능합니다.",
+      "집보기 가능합니다.",
+      "추가로 궁금한 점 있으세요?",
+    ],
+  };
+
+  function getRoleQuickReplies(role) {
+    return (ROLE_QUICK_REPLIES[role] || ROLE_QUICK_REPLIES.buyer).slice();
+  }
+
   function fillQuickReply(inputEl, text) {
     inputEl.value = text;
     inputEl.focus();
@@ -172,6 +193,7 @@
   return {
     containsKoreanMobileNumber: containsKoreanMobileNumber,
     shouldShowGreeting: shouldShowGreeting,
+    getRoleQuickReplies: getRoleQuickReplies,
     fillQuickReply: fillQuickReply,
     showSafetyNoticeForMessage: showSafetyNoticeForMessage,
     isLatestMessageLoad: isLatestMessageLoad,
