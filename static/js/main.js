@@ -3251,7 +3251,7 @@ function buildingPanelSkeleton(){
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto; white-space:nowrap; font-size:12px; padding:6px 10px;">← 전체목록</button>
         <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700; white-space:nowrap; font-size:12px;">매물내놓기</button>
-        <button id="btnBuyRequest" class="side-more" style="display:none; margin-top:0; width:auto; padding:6px 10px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700; white-space:nowrap; font-size:12px;">매수의뢰</button>
+        <button id="btnBuyRequest" class="side-more" style="display:inline-flex; margin-top:0; width:auto; padding:6px 10px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700; white-space:nowrap; font-size:12px;">매수의뢰</button>
       </div>
     </section>
 
@@ -3958,7 +3958,7 @@ async function loadBuildingHeader(id){
             <div style="font-size:12px;font-weight:700;color:var(--brass-dark,#7D4A00);margin:4px 0;">${escapeHtml(finance)}${revenue ? ` · ${escapeHtml(revenue)}` : ""}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.55;">${escapeHtml(metrics[0])} · ${escapeHtml(metrics[1])}<br>${escapeHtml(metrics[2])} · ${escapeHtml(metrics[3])}</div>
             <div class="b-whole-location" style="font-size:11px;color:var(--ink-soft);">${escapeHtml(locationText)}</div>
-            <div class="b-whole-viewers" style="font-size:11px;font-weight:700;color:#356212;margin-top:3px;">최근 5분 열람 ${_fmtN(lr.viewer_count || 0)}명</div>
+            <div class="b-whole-viewers" style="font-size:11px;font-weight:700;color:#356212;margin-top:3px;">최근 열람 ${_fmtN(lr.viewer_count || 0)}명</div>
             <div style="border-top:1px solid var(--line,#ddd);margin-top:6px;padding-top:6px;color:var(--ink-soft);font-size:10.5px;line-height:1.45;">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
             <div class="b-listing-l4">
               ${lr.listing_number ? `<span class="b-listing-number">${escapeHtml(lr.listing_number)}</span>` : ""}
@@ -4037,7 +4037,7 @@ async function loadBuildingHeader(id){
             (data.items || []).forEach(item => {
               listingsBody.querySelectorAll(`[data-listing-id="${item.id}"]`).forEach(card => {
                 const count = card.querySelector(".b-whole-viewers");
-                if (count) count.textContent = `최근 5분 열람 ${_fmtN(item.viewer_count || 0)}명`;
+                if (count) count.textContent = `최근 열람 ${_fmtN(item.viewer_count || 0)}명`;
               });
             });
           })

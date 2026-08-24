@@ -110,8 +110,8 @@ expect(
   "사업주/소유자 전용면적 전환 또는 거래유형별 수익률 표시 로직이 없습니다."
 );
 
-expect(main.includes('id="btnBuyRequest"') && main.includes("display:none"),
-  "매수의뢰 버튼이 숨김 처리되지 않았습니다.");
+expect(main.includes('id="btnBuyRequest"') && main.includes("display:inline-flex"),
+  "매수의뢰 버튼이 다시 표시되지 않습니다.");
 expect(!main.includes("btnLongTermRoom") && !main.includes("장기방 내놓기"),
   "제거된 장기방 내놓기 버튼 또는 클릭 코드가 남아 있습니다.");
 for (const id of [

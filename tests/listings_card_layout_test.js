@@ -81,7 +81,7 @@ for (const [name, block] of [
   expect(
     block.includes("급매") && block.includes("최근 폐업") && block.includes("매출정보 있음") &&
     block.includes("실인수가") && block.includes("🔒 로그인하고 보기") &&
-    block.includes("최근 5분 열람") && block.includes("부대비용 기준의 참고값"),
+    block.includes("최근 열람") && block.includes("부대비용 기준의 참고값"),
     `${name} 전용 카드의 거래조건·마스킹·열람자·유의문구가 누락되었습니다.`
   );
   expect(
@@ -93,6 +93,30 @@ for (const [name, block] of [
 expect(
   listings.includes("/api/listings/views") && main.includes("/api/listings/views"),
   "건물전체 카드의 실제 열람자 기록 API 호출이 없습니다."
+);
+const wholeCardBlock = listings.slice(
+  listings.indexOf("function renderWholeListingCard"),
+  listings.indexOf("function renderCardItem")
+);
+const normalCardBlock = listings.slice(
+  listings.indexOf("function renderCardItem"),
+  listings.indexOf("// ── 목록 로드")
+);
+expect(
+  listings.includes(".ls-card-photo-top") &&
+  wholeCardBlock.includes('const photoClass = isLimitedListing ? "ls-card-photo-top" : "ls-card-photo-right"') &&
+  wholeCardBlock.includes("whole-limited-notice") &&
+  wholeCardBlock.includes("const checklistButton = isLimitedListing"),
+  "제한공개 카드의 상단 사진·안내문·체크리스트 조건이 없습니다."
+);
+expect(
+  wholeCardBlock.includes("openListingDetail(item);") &&
+  normalCardBlock.includes("openListingDetail(item);") &&
+  wholeCardBlock.includes(".ls-card-photo-right, .ls-card-photo-top") &&
+  normalCardBlock.includes(".ls-card-photo-right, .ls-card-photo-top") &&
+  !wholeCardBlock.match(/if \(window\.innerWidth > 520\) return/) &&
+  !normalCardBlock.match(/if \(window\.innerWidth > 520\) return/),
+  "PC 카드 전체 클릭 또는 사진 강조 예외 처리가 없습니다."
 );
 expect(
   listings.includes('data-disclosure-scope="public"') &&
