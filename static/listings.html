@@ -856,13 +856,13 @@
       <td class="td-area ls-hide-mobile">${esc(sqm)}</td>
       <td class="td-date ls-hide-mobile">${esc(item.listing_date || "")}</td>
         <td class="td-action">
-        <button type="button" class="${chatBtnClass}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
-      </td>
-      <td class="td-action ls-hide-mobile">
-        <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
-      </td>
-      <td class="td-action ls-hide-mobile">
-        <button type="button" class="listing-like-btn${item.liked ? " is-liked" : ""}" title="찜">${window.LivingstayListingIcons.heart(!!item.liked)}<span class="like-cnt">${item.like_count || 0}</span></button>
+         <button type="button" class="listing-like-btn${item.liked ? " is-liked" : ""}" title="찜">${window.LivingstayListingIcons.heart(!!item.liked)}<span class="like-cnt">${item.like_count || 0}</span></button>
+       </td>
+       <td class="td-action">
+         <button type="button" class="${chatBtnClass}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
+       </td>
+       <td class="td-action ls-hide-mobile">
+         <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
       </td>`;
 
     const photoCell = tr.querySelector(".td-photo");
@@ -1056,9 +1056,9 @@
           ${item.listing_number ? `<span class="ls-card-number">${esc(item.listing_number)}</span>` : ""}
           <span class="ls-card-date">${esc(item.listing_date || "")}</span>
           <span class="ls-card-actions">
-            <button type="button" class="listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
-            <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
             <button type="button" class="listing-like-btn${item.liked ? " is-liked" : ""}" title="찜">${window.LivingstayListingIcons.heart(!!item.liked)}<span class="like-cnt">${likeCount}</span></button>
+             <button type="button" class="listing-chat-btn${myChattingIds.has(item.id) ? " is-chatting" : ""}" title="${chatTitle}">${window.LivingstayListingIcons.chat()}</button>
+             <button type="button" class="listing-share-btn" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
           </span>
         </div>
       </div>

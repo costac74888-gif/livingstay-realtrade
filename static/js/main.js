@@ -3893,9 +3893,9 @@ async function loadBuildingHeader(id){
          const listingIcons = window.LivingstayListingIcons;
          const likeCount = lr.like_count || 0;
          const listingActionsMarkup = `<div style="display:flex;justify-content:flex-end;gap:7px;">
-           <button type="button" id="directListingCardChat" class="listing-chat-btn" aria-label="매물 채팅" title="채팅">${listingIcons.chat()}</button>
-           <button type="button" id="directListingCardShare" class="listing-share-btn" aria-label="매물 공유" title="매물 공유">${listingIcons.share()}</button>
            <button type="button" id="directListingCardLike" class="listing-like-btn${lr.liked ? " is-liked" : ""}" aria-label="매물 찜" title="찜">${listingIcons.heart(!!lr.liked)}<span class="like-cnt">${likeCount}</span></button>
+            <button type="button" id="directListingCardChat" class="listing-chat-btn" aria-label="매물 채팅" title="채팅">${listingIcons.chat()}</button>
+            <button type="button" id="directListingCardShare" class="listing-share-btn" aria-label="매물 공유" title="매물 공유">${listingIcons.share()}</button>
          </div>`;
         ov.innerHTML = `<div id="directListingCardDialog" role="dialog" aria-modal="true" aria-label="직거래 매물 상세" tabindex="-1" style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">
           <div style="position:relative;">${photoGallery}<button type="button" id="directListingCardClose" aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button></div>
@@ -4121,9 +4121,9 @@ async function loadBuildingHeader(id){
               ${lr.listing_number ? `<span class="b-listing-number">${escapeHtml(lr.listing_number)}</span>` : ""}
               <span>${escapeHtml(lr.listing_date || "")}</span>
               <span class="b-listing-actions">
+                <button type="button" class="listing-like-btn${lr.liked ? " is-liked" : ""}" data-lrid="${lrId}" title="찜">${window.LivingstayListingIcons.heart(!!lr.liked)}<span class="like-cnt">${likeCount}</span></button>
                 <button type="button" class="listing-chat-btn" data-lrid="${lrId}" title="문의하기">${window.LivingstayListingIcons.chat()}</button>
                 <button type="button" class="listing-share-btn" data-lrid="${lrId}" title="링크 공유">${window.LivingstayListingIcons.share()}</button>
-                <button type="button" class="listing-like-btn${lr.liked ? " is-liked" : ""}" data-lrid="${lrId}" title="찜">${window.LivingstayListingIcons.heart(!!lr.liked)}<span class="like-cnt">${likeCount}</span></button>
               </span>
             </div>
           </div>

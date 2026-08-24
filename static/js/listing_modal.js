@@ -1169,9 +1169,9 @@
           (detail ? '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">' + esc(detail) + '</div>' : "") +
           (description ? '<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin:12px 0;">' + description + '</div>' : "") +
           '<div style="display:flex;justify-content:flex-end;gap:7px;">' +
+            '<button type="button" data-listing-detail-like class="listing-like-btn' + (listing.liked ? " is-liked" : "") + '" title="찜">' + icons.heart(!!listing.liked) + '<span class="like-cnt">' + (listing.like_count || 0) + '</span></button>' +
             '<button type="button" data-listing-detail-chat class="listing-chat-btn" title="채팅">' + icons.chat() + '</button>' +
             '<button type="button" data-listing-detail-share class="listing-share-btn" title="매물 공유">' + icons.share() + '</button>' +
-            '<button type="button" data-listing-detail-like class="listing-like-btn' + (listing.liked ? " is-liked" : "") + '" title="찜">' + icons.heart(!!listing.liked) + '<span class="like-cnt">' + (listing.like_count || 0) + '</span></button>' +
           '</div>' +
         '</div>' +
       '</div>';
