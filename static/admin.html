@@ -49,6 +49,25 @@
   .member-note-content { font-size: 13px; white-space: pre-line; color: #16202E; }
   .member-note-content.is-deleted { color: #bbb; text-decoration: line-through; }
   .member-note-form { border-top: 1px solid #DDE1E6; padding-top: 12px; margin-top: 12px; }
+  .member-attachment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .member-attachment-item {
+    display: block; min-width: 0; padding: 7px; border: 1px solid #E5E7EB;
+    border-radius: 7px; background: #FAFAF8; color: inherit; text-decoration: none;
+  }
+  .member-attachment-item:hover { border-color: #B4863F; }
+  .member-attachment-item img {
+    display: block; width: 100%; height: 118px; object-fit: cover;
+    border-radius: 4px; background: #F0F0EE;
+  }
+  .member-attachment-label {
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    margin-top: 6px; font-size: 12px; color: #5B6572;
+  }
+  .member-attachment-docs {
+    display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 12px;
+    padding-top: 10px; border-top: 1px solid #F0EBDF; font-size: 12.5px;
+  }
+  @media (max-width: 420px) { .member-attachment-grid { grid-template-columns: 1fr; } }
   .member-name-link {
     color: inherit; font-weight: 500; text-decoration: none;
     border-bottom: 1px solid #B4863F; cursor: pointer;
@@ -5172,6 +5191,67 @@
       overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
     };
 
+    // 회원 상세 우측 하단의 첨부 이미지/서류 영역.
+    // 서명 URL은 화면을 열 때마다 발급받아 장시간 노출되지 않도록 한다.
+    async function loadMemberAttachments(memberType, memberId) {
+      const box = document.getElementById("memberAttachments");
+      const memberKey = `${memberType}:${memberId}`;
+      if (!box || box.dataset.memberKey !== memberKey) return;
+      // 일반회원은 신청서 첨부서류가 없는 유형이므로 잘못된 API 호출을 하지 않는다.
+      if (memberType === "general") {
+        box.innerHTML = `<div style="color:var(--ink-soft);font-size:13px;">첨부된 이미지가 없습니다.</div>`;
+        return;
+      }
+      try {
+        const res = await fetch(`/api/admin/members/${encodeURIComponent(memberType)}/${memberId}/docs`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (!res.ok || !d.ok) throw new Error(d.message || "첨부파일을 불러오지 못했습니다.");
+        if (box.dataset.memberKey !== memberKey) return;
+        const docs = d.docs || [];
+        if (!docs.length || !d.app_id) {
+          box.innerHTML = `<div style="color:var(--ink-soft);font-size:13px;">첨부된 이미지가 없습니다.</div>`;
+          return;
+        }
+
+        const images = docs.filter((doc) => doc.is_image);
+        const otherDocs = docs.filter((doc) => !doc.is_image);
+        const imageItems = await Promise.all(images.map(async (doc) => {
+          try {
+            const urlRes = await fetch(`/api/admin/applications/${d.app_id}/doc-url?doc=${encodeURIComponent(doc.doc)}`);
+            const urlData = await urlRes.json().catch(() => ({}));
+            return { doc, url: urlRes.ok && urlData.ok ? urlData.url : null };
+          } catch (e) {
+            return { doc, url: null };
+          }
+        }));
+        if (box.dataset.memberKey !== memberKey) return;
+
+        const imageHtml = imageItems.length
+          ? `<div class="member-attachment-grid">${imageItems.map(({doc, url}) => url
+              ? `<a class="member-attachment-item" href="${dgEscape(url)}" target="_blank" rel="noopener">
+                   <img src="${dgEscape(url)}" alt="${dgEscape(doc.label)}" />
+                   <span class="member-attachment-label">${dgEscape(doc.label)} · 새 탭에서 보기</span>
+                 </a>`
+              : `<a href="#" onclick="adminOpenAppDoc(event, ${d.app_id}, '${dgEscape(doc.doc)}')" style="font-size:13px;color:var(--brass-dark);">${dgEscape(doc.label)} 열람</a>`
+            ).join("")}</div>`
+          : "";
+        const otherHtml = otherDocs.length
+          ? `<div class="member-attachment-docs"><strong style="font-weight:600;color:#5B6572;">기타 첨부서류</strong>${
+              otherDocs.map((doc) => `<a href="#" onclick="adminOpenAppDoc(event, ${d.app_id}, '${dgEscape(doc.doc)}')" style="color:var(--brass-dark);">${dgEscape(doc.label)} 열람 ↗</a>`).join("")
+            }</div>`
+          : "";
+        box.innerHTML = imageHtml || otherHtml
+          ? `${imageHtml}${otherHtml}`
+          : `<div style="color:var(--ink-soft);font-size:13px;">첨부된 이미지가 없습니다.</div>`;
+      } catch (e) {
+        const current = document.getElementById("memberAttachments");
+        if (current && current.dataset.memberKey === memberKey) {
+          current.innerHTML = `<div style="color:var(--brick);font-size:13px;">첨부파일을 불러오지 못했습니다.</div>`;
+        }
+      }
+    }
+
     // ---- 광고(매출 기록) 팝업 — 이력 리스트 + 신규추가/수정/삭제 ----
     window.memberAds = function (ev, partnerType, partnerId, encName) {
       ev.preventDefault();
@@ -6353,11 +6433,18 @@
                   <button class="admin-btn admin-btn-primary" style="margin-top:6px;" onclick="addMemberNote('${memberType}',${memberId})">메모 추가</button>
                 </div>
               </div>
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">첨부 이미지</div>
+                <div id="memberAttachments" data-member-key="${memberType}:${memberId}">
+                  <div style="color:var(--ink-soft);font-size:13px;">불러오는 중…</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>`;
 
       loadMemberNotes(memberType, memberId);
+      loadMemberAttachments(memberType, memberId);
       if (memberType === "general") loadMemberLoginHistory(memberId);
     }
 
