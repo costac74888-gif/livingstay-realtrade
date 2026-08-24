@@ -386,18 +386,23 @@ def _zone0(summary):
      rate = summary.get("report_rate")
      volume = summary.get("volume_top") or {}
 
-     hero_value = hero_label = None
+     hero_value = hero_label = hero_href = None
      if rate is not None:
          try:
              hero_value = f"{float(rate):.1f}%"
              hero_label = "전국 생숙 영업신고율"
+             hero_href = f"{SITE_URL}/?datalab=consign"
          except (TypeError, ValueError):
              pass
 
      if hero_value is None and volume.get("building_name"):
          volume_count = int(volume.get("deal_count") or 0)
-         hero_value = html.escape(str(volume.get("building_name")))
-         hero_label = f"최근 30일 거래량 TOP1 · {volume_count:,}건"
+         hero_value = f"{html.escape(str(volume.get('building_name')))} {volume_count:,}건"
+         hero_label = "최근 30일 거래량 TOP1"
+         hero_href = html.escape(
+             _bld_url(volume.get("building_id"), volume.get("building_name") or ""),
+             quote=True,
+         )
 
      if hero_value is None:
          return ""
@@ -408,10 +413,11 @@ def _zone0(summary):
                    border-left:4px solid #B4863F;">
        <tr>
          <td style="padding:17px 22px 16px;">
-           <div style="font-size:28px;line-height:1.2;font-weight:800;
-                       color:#8F6A2F;overflow-wrap:anywhere;">
+           <a href="{hero_href}"
+              style="font-size:28px;line-height:1.2;font-weight:800;
+                     color:#B4863F;text-decoration:none;overflow-wrap:anywhere;">
              {hero_value}
-           </div>
+           </a>
            <div style="font-size:11px;color:#888;margin-top:5px;">
              {hero_label}
            </div>
@@ -652,6 +658,13 @@ def _zone3(summary):
      else:
          price_text = "-"
 
+     consign_url = html.escape(f"{SITE_URL}/?datalab=consign", quote=True)
+     rate_link = (
+         f'<a href="{consign_url}" '
+         'style="color:#B4863F;font-weight:700;text-decoration:none;">'
+         f'{rate_text}</a>'
+     )
+
      if volume:
          volume_text = (
              f'<a href="{html.escape(_bld_url(volume.get("building_id"), volume.get("building_name") or ""), quote=True)}" '
@@ -667,7 +680,8 @@ def _zone3(summary):
      def card(label, value):
          return f"""
          <td class="weekly-datalab-card-cell"
-             style="vertical-align:top;padding:4px;min-width:0;">
+             width="33%"
+             style="width:33%;vertical-align:top;padding:4px;min-width:0;">
            <table class="weekly-datalab-card" width="100%" cellpadding="0" cellspacing="0"
                   role="presentation"
                   style="width:100%;min-width:0;border:1px solid #EEEEEE;
@@ -692,11 +706,17 @@ def _zone3(summary):
             style="width:100%;border-collapse:separate;border-spacing:0;
                    table-layout:fixed;font-size:13px;">
        <tr>
-         {card("영업신고율", rate_text)}
+          {card("영업신고율", rate_link)}
          {card("가격변동 TOP1", price_text)}
          {card("거래량 TOP1", volume_text)}
        </tr>
-     </table>"""
+     </table>
+     <p style="margin:10px 0 0;text-align:right;">
+       <a href="{SITE_URL}/?datalab=lodging"
+          style="font-size:12px;color:#B4863F;text-decoration:none;">
+         데이터랩 전체 보기 →
+       </a>
+     </p>"""
 
 
 def _zone4(feature_tip):
