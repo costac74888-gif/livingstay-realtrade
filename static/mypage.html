@@ -74,6 +74,7 @@
     <div class="agent-tabbar">
       <button class="agent-tab is-active" data-tab="favorites">관심단지</button>
       <button class="agent-tab" data-tab="listing">매물내놓기 현황</button>
+      <button class="agent-tab" data-tab="buy">매수의뢰 현황</button>
       <button class="agent-tab" data-tab="account">계정</button>
     </div>
 
@@ -105,6 +106,21 @@
       <div class="panel-card" style="margin-top:14px;">
         <div class="agent-guide">건물 상세화면의 <b>"매물 내놓기"</b> 버튼으로 의뢰하면 여기에 현황이 표시됩니다.</div>
         <div id="myListingReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
+      </div>
+    </div>
+
+    <!-- ── 탭: 매수의뢰 현황 ── -->
+    <div class="agent-tabpanel" data-tabpanel="buy">
+      <div class="panel-card" style="margin-top:14px;">
+        <div style="background:#FFF8EE; border:1px solid #EAD9B8; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+          <div style="font-size:13px; font-weight:700; color:#8F6A2F; margin-bottom:6px;">💡 거래 전 체크리스트를 확인하세요</div>
+          <div style="font-size:12px; color:var(--ink-soft); line-height:1.6; margin-bottom:10px;">
+            매수의뢰 전 영업신고 확인·인허가 이력·세금 체납 조회 등
+            14개 항목을 공인기관에서 직접 확인하시기 바랍니다.
+          </div>
+          <button id="buyChecklist" class="side-more" style="width:auto; padding:6px 14px; font-size:12px;">숙박업소 거래 체크리스트 열어보기</button>
+        </div>
+        <div id="myBuyReqs"><div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px;">불러오는 중…</div></div>
       </div>
     </div>
 
@@ -167,6 +183,7 @@
     document.querySelectorAll(".agent-tabpanel").forEach(function(p){
       p.classList.toggle("is-active", p.getAttribute("data-tabpanel") === name);
     });
+    if (name === "buy") loadMyBuyRequests();
   }
   document.querySelectorAll(".agent-tab").forEach(function(t){
     t.addEventListener("click", function(){ switchTab(t.getAttribute("data-tab")); });
@@ -229,6 +246,9 @@
     document.getElementById("nameSaveBtn").addEventListener("click", doSaveName);
     document.getElementById("logoutBtn").addEventListener("click", doLogout);
     document.getElementById("withdrawBtn").addEventListener("click", openWithdrawModal);
+    document.getElementById("buyChecklist").addEventListener("click", function(){
+      window.LivingstayListingChecklist?.open();
+    });
 
     // 데이터 로드
     loadMyFavorites();
@@ -314,7 +334,75 @@
     '</div>';
   }
 
-   function roomDdayMeta(dateText){
+  var BUY_STATUS_LABEL = {
+    submitted: "접수됨",
+    in_progress: "처리중",
+    done: "완료",
+    "철회됨": "철회됨"
+  };
+  var BUY_STATUS_COLOR = {
+    submitted: "#4A7A18",
+    in_progress: "#B4863F",
+    done: "#6B7684",
+    "철회됨": "#999"
+  };
+
+  function buyRequestItemHtml(it){
+    var status = BUY_STATUS_LABEL[it.status] || it.status || "접수됨";
+    var statusColor = BUY_STATUS_COLOR[it.status] || "var(--ink-soft)";
+    var price = it.desired_price || "";
+    var agent = it.agent_office_name
+      ? "담당중개사: " + escapeHtml(it.agent_office_name)
+      : "담당중개사 배정 중";
+    var canWithdraw = it.status !== "done" && it.status !== "철회됨";
+    return '<div style="padding:12px 4px; border-bottom:1px solid var(--line);">' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">' +
+        '<div style="min-width:0; flex:1;">' +
+          '<a href="/building/' + encodeURIComponent(it.building_id) + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' +
+            escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
+          '<div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">' +
+            '<span style="font-weight:700; color:var(--brass-dark);">' + escapeHtml(it.deal_type || "") + '</span>' +
+            (price ? ' · 희망가 ' + escapeHtml(price) : "") +
+            ' · 접수일 ' + escapeHtml(it.created_date || "") +
+          '</div>' +
+          '<div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">' + agent + '</div>' +
+          (canWithdraw
+            ? '<button type="button" class="buy-withdraw-btn" data-id="' + encodeURIComponent(it.id) + '" style="font-size:11px; padding:4px 10px; margin-top:8px; border:1px solid #999; border-radius:5px; background:none; color:#777; cursor:pointer;">철회</button>'
+            : "") +
+        '</div>' +
+        '<span style="font-size:11.5px; font-weight:700; color:' + statusColor + '; border:1px solid currentColor; border-radius:999px; padding:3px 10px; white-space:nowrap;">' +
+          escapeHtml(status) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function bindBuyRequestEvents(box){
+    Array.prototype.forEach.call(box.querySelectorAll(".buy-withdraw-btn"), function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-id");
+        if (!confirm("매수의뢰를 철회하시겠어요?")) return;
+        btn.disabled = true;
+        fetch("/api/buy-requests/" + encodeURIComponent(id), {
+          method: "DELETE",
+          credentials: "same-origin"
+        }).then(function(r){
+          return r.json().then(function(j){ return { ok: r.ok, j: j }; });
+        }).then(function(res){
+          if (res.ok && res.j && res.j.ok) {
+            loadMyBuyRequests();
+          } else {
+            btn.disabled = false;
+            alert((res.j && res.j.message) || "매수의뢰를 철회하지 못했습니다.");
+          }
+        }).catch(function(){
+          btn.disabled = false;
+          alert("네트워크 오류가 발생했습니다.");
+        });
+      });
+    });
+  }
+
+    function roomDdayMeta(dateText){
      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText || "")) return null;
      var parts = dateText.split("-").map(Number);
      var expiryUtc = Date.UTC(parts[0], parts[1] - 1, parts[2]);
@@ -688,7 +776,8 @@
           box.innerHTML = '<div style="text-align:center; padding:18px 12px; color:var(--ink-soft); font-size:13px; background:var(--brass-tint); border-radius:8px;">접수한 매수의뢰가 없습니다.</div>';
           return;
         }
-        box.innerHTML = items.map(requestItemHtml).join("");
+        box.innerHTML = items.map(buyRequestItemHtml).join("");
+        bindBuyRequestEvents(box);
       })
       .catch(function(){
         box.innerHTML = '<div style="text-align:center; padding:14px; color:var(--ink-soft); font-size:13px;">매수의뢰 현황을 불러오지 못했습니다.</div>';
@@ -1364,5 +1453,6 @@
 <script src="/static/js/auth.js"></script>
 <script src="/static/js/pw_toggle.js"></script>
 <script src="/static/js/listing_modal.js"></script>
+<script src="/static/js/listing_checklist.js"></script>
 </body>
 </html>

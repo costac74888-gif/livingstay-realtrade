@@ -3124,9 +3124,23 @@ function openBuyRequestModal(buildingId, buildingName){
           <input id="brShortPrice" type="text" maxlength="100" placeholder="예) 1박 8만원 / 주 단위 협의" style="${FLD} margin-bottom:12px;" />
         </div>
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처</div>
-        <input id="brPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD}" />
+        <div id="brPhoneInputWrap" style="margin-bottom:6px;">
+          <input id="brPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD} margin-bottom:6px;" />
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <input id="brPhoneCode" type="text" inputmode="numeric" maxlength="6" placeholder="인증번호 6자리" style="${FLD} flex:1; min-width:90px; font-size:16px;" />
+            <button type="button" id="brSendCode" class="side-more" style="white-space:nowrap; margin-top:0; padding:8px 10px; flex-shrink:0; font-size:12.5px;">인증번호 받기</button>
+          </div>
+          <button type="button" id="brVerifyCode" class="btn-search" style="width:100%; padding:9px; display:none; font-size:13px;">인증 확인</button>
+        </div>
+        <div id="brPhoneVerified" style="display:none; margin-bottom:6px;">
+          <div style="display:flex; align-items:center; gap:8px; padding:9px 11px; background:#F0FBF4; border:1px solid #B7E0C4; border-radius:8px;">
+            <span id="brPhoneVerifiedNum" style="font-size:14px; font-weight:700; color:var(--ink); flex:1;"></span>
+            <span style="font-size:11.5px; color:#1a7a3c; font-weight:700; white-space:nowrap;">✓ 인증</span>
+          </div>
+          <button type="button" id="brChangePhone" style="margin-top:5px; font-size:11.5px; color:var(--brass); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline;">다른 번호로 변경</button>
+        </div>
         <div id="brMsg" style="font-size:12px; color:var(--brick); min-height:16px; margin-top:6px;"></div>
-        <button id="brSubmit" class="btn-search" style="width:100%; padding:12px; margin-top:6px; background:#3B7DD8; border-color:#3B7DD8;">매수의뢰 접수하기</button>
+        <button id="brSubmit" class="btn-search" disabled style="width:100%; padding:12px; margin-top:6px; background:#3B7DD8; border-color:#3B7DD8;">매수의뢰 접수하기</button>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.7; margin-top:10px; padding:10px 12px; background:#F4F1EA; border-radius:8px;">
           <div style="font-weight:700; color:var(--ink); margin-bottom:6px;">[공지사항]</div>
           -매수의뢰는 단지부동산, 지역부동산 순으로 자동으로 순차배정되며 배정된 부동산에서 중개상담차 전화를 연결할 수 있습니다.<br><br>
@@ -3145,10 +3159,23 @@ function openBuyRequestModal(buildingId, buildingName){
 
   fetch("/api/auth/me", { credentials: "same-origin" })
     .then((r) => r.json())
-    .then((d) => { if (d && d.logged_in && d.name) ov.querySelector("#brName").value = d.name; })
+    .then((d) => {
+      if (!d || !d.logged_in) return;
+      if (d.name) ov.querySelector("#brName").value = d.name;
+      if (d.phone_verified && d.phone) {
+        phoneVerified = true;
+        verifiedPhone = d.phone;
+        ov.querySelector("#brPhoneVerifiedNum").textContent = d.phone;
+        ov.querySelector("#brPhoneInputWrap").style.display = "none";
+        ov.querySelector("#brPhoneVerified").style.display = "block";
+        ov.querySelector("#brSubmit").disabled = false;
+      }
+    })
     .catch(() => {});
 
   let dealType = "매매";
+  let phoneVerified = false;
+  let verifiedPhone = "";
   const PRICE_BOXES = { "매매": "brPriceSale", "전세": "brPriceJeonse", "월세": "brPriceWolse", "단기임대": "brPriceShort" };
   function showPriceBox(){
     Object.entries(PRICE_BOXES).forEach(([dt, id]) => {
@@ -3173,13 +3200,99 @@ function openBuyRequestModal(buildingId, buildingName){
   ov.querySelector("#brClose").addEventListener("click", close);
   ov.querySelector("#brDoneClose").addEventListener("click", close);
 
-  ov.querySelector("#brSubmit").addEventListener("click", async () => {
+  ov.querySelector("#brChangePhone").addEventListener("click", () => {
+    phoneVerified = false;
+    verifiedPhone = "";
+    ov.querySelector("#brPhoneVerified").style.display = "none";
+    ov.querySelector("#brPhoneInputWrap").style.display = "block";
+    ov.querySelector("#brPhoneCode").value = "";
+    ov.querySelector("#brVerifyCode").style.display = "none";
+    ov.querySelector("#brSendCode").disabled = false;
+    ov.querySelector("#brSendCode").textContent = "인증번호 받기";
+    ov.querySelector("#brSubmit").disabled = true;
+    ov.querySelector("#brMsg").textContent = "";
+  });
+
+  ov.querySelector("#brSendCode").addEventListener("click", async () => {
+    const phoneRaw = ov.querySelector("#brPhone").value.trim();
     const msg = ov.querySelector("#brMsg");
-    const phone = ov.querySelector("#brPhone").value.trim();
-    if (!/^0\d{1,2}-?\d{3,4}-?\d{4}$/.test(phone)){
-      msg.textContent = "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678";
+    if (!/^0\d{1,2}-?\d{3,4}-?\d{4}$/.test(phoneRaw)){
+      msg.textContent = "휴대폰 번호 형식이 올바르지 않습니다. 예) 010-1234-5678";
       return;
     }
+    const btn = ov.querySelector("#brSendCode");
+    msg.style.color = "var(--brick)";
+    msg.textContent = "";
+    btn.disabled = true;
+    btn.textContent = "발송 중…";
+    try {
+      const res = await fetch("/api/auth/send-phone-code", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneRaw }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.ok === false){
+        msg.textContent = d.message || "발송에 실패했습니다.";
+        btn.disabled = false;
+        btn.textContent = "인증번호 받기";
+        return;
+      }
+      ov.querySelector("#brVerifyCode").style.display = "block";
+      msg.style.color = "#1a7a3c";
+      msg.textContent = d.sent ? "인증번호를 발송했습니다. (3분 이내 입력)" : `[개발환경] 인증번호: ${d.dev_code}`;
+      btn.textContent = "재발송";
+      btn.disabled = false;
+    } catch(e){
+      msg.style.color = "var(--brick)";
+      msg.textContent = "네트워크 오류가 발생했습니다.";
+      btn.disabled = false;
+      btn.textContent = "인증번호 받기";
+    }
+  });
+
+  ov.querySelector("#brVerifyCode").addEventListener("click", async () => {
+    const code = ov.querySelector("#brPhoneCode").value.trim();
+    const msg = ov.querySelector("#brMsg");
+    if (!code){ msg.textContent = "인증번호를 입력해주세요."; return; }
+    const btn = ov.querySelector("#brVerifyCode");
+    btn.disabled = true;
+    btn.textContent = "확인 중…";
+    try {
+      const res = await fetch("/api/auth/verify-phone-code", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.ok === false){
+        msg.textContent = d.message || "인증에 실패했습니다.";
+        btn.disabled = false;
+        btn.textContent = "인증 확인";
+        return;
+      }
+      phoneVerified = true;
+      verifiedPhone = d.phone;
+      ov.querySelector("#brPhoneVerifiedNum").textContent = d.phone;
+      ov.querySelector("#brPhoneInputWrap").style.display = "none";
+      ov.querySelector("#brPhoneVerified").style.display = "block";
+      ov.querySelector("#brSubmit").disabled = false;
+      msg.style.color = "#1a7a3c";
+      msg.textContent = "✓ 휴대폰 인증이 완료됐습니다.";
+    } catch(e){
+      msg.textContent = "네트워크 오류가 발생했습니다.";
+      btn.disabled = false;
+      btn.textContent = "인증 확인";
+    }
+  });
+
+  ov.querySelector("#brSubmit").addEventListener("click", async () => {
+    const msg = ov.querySelector("#brMsg");
+    if (!phoneVerified){
+      msg.textContent = "휴대폰 인증이 필요합니다.";
+      return;
+    }
+    const phone = verifiedPhone;
     const numVal = (id) => {
       const v = parseInt(ov.querySelector("#" + id).value, 10);
       return (Number.isFinite(v) && v > 0) ? v : null;

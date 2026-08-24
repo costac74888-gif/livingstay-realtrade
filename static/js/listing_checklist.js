@@ -4,6 +4,24 @@
 
   const STORAGE_PREFIX = "hs_listing_checklist:";
   const CATEGORY_ORDER = ["건물", "권리", "법적", "소방", "주차", "입지", "매출", "금융", "운영", "출구"];
+  const GENERAL_CHECKLIST_ITEMS = [
+    ["building_register", "건물", "건축물대장과 실제 건물 정보가 일치하나요?", "https://cloud.eais.go.kr", "세움터에서 건축물대장 확인"],
+    ["registry", "권리", "등기부등본으로 소유권·근저당권을 확인했나요?", "https://www.iros.go.kr", "인터넷등기소에서 확인"],
+    ["land_use", "법적", "토지이용계획과 용도지역 제한을 확인했나요?", "https://www.eum.go.kr", "토지이음에서 확인"],
+    ["permit", "법적", "숙박업 인허가·영업신고 상태를 확인했나요?", "https://www.gov.kr", "정부24에서 확인"],
+    ["fire", "소방", "소방시설 점검·완비증명 대상 여부를 확인했나요?", "https://www.nfa.go.kr", "소방청 안내 확인"],
+    ["parking", "주차", "주차장 설치 기준과 실제 확보 대수를 확인했나요?", "https://cloud.eais.go.kr", "건축물대장에서 확인"],
+    ["surroundings", "입지", "주변 경쟁 숙박업소와 접근성을 확인했나요?", "https://www.vworld.kr", "공간정보 확인"],
+    ["sales", "매출", "매출 자료와 증빙의 일치 여부를 확인했나요?", "https://www.hometax.go.kr", "홈택스 증빙 확인"],
+    ["loan", "금융", "승계할 대출·근저당 조건을 금융기관에 확인했나요?", "https://www.iros.go.kr", "등기부등본 재확인"],
+    ["tax", "금융", "국세·지방세 체납 여부와 납세증명서를 확인했나요?", "https://www.hometax.go.kr", "홈택스 납세증명"],
+    ["operation", "운영", "예약 채널·직원·시설 유지보수 계약을 확인했나요?", "https://www.gov.kr", "관련 서류 확인"],
+    ["insurance", "운영", "화재·배상책임 등 보험 가입 상태를 확인했나요?", "https://www.gov.kr", "보험 증빙 확인"],
+    ["contract", "출구", "계약 전 법률·세무·중개 전문가 검토를 받았나요?", "https://www.law.go.kr", "국가법령정보센터"],
+    ["exit", "출구", "향후 매각·임대 전환 시 제약을 확인했나요?", "https://www.eum.go.kr", "토지이용계획 재확인"],
+  ].map(([key, category, question, link_url, link_label]) => ({
+    key, category, question, link_url, link_label, type: "official",
+  }));
 
   function escapeHtml(value) {
     const node = document.createElement("div");
@@ -77,12 +95,14 @@
   }
 
   async function open(listingId) {
+    const hasListing = Number.isInteger(Number(listingId)) && Number(listingId) > 0;
+    const progressId = hasListing ? String(listingId) : "general";
     document.getElementById("listingChecklistOverlay")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "listingChecklistOverlay";
     overlay.className = "listing-checklist-overlay";
     overlay.innerHTML = `<section class="listing-checklist-dialog" role="dialog" aria-modal="true" aria-label="숙박업소 거래 체크리스트" tabindex="-1">
-      <header><div><strong>숙박업소 거래 체크리스트</strong><span>건물전체 매물 전용</span></div><button type="button" aria-label="닫기">×</button></header>
+      <header><div><strong>숙박업소 거래 체크리스트</strong><span>${hasListing ? "건물전체 매물 전용" : "매수 전 공통 확인 항목"}</span></div><button type="button" aria-label="닫기">×</button></header>
       <div class="listing-checklist-body"><p class="listing-checklist-loading">체크리스트를 불러오는 중…</p></div>
     </section>`;
     document.body.appendChild(overlay);
@@ -102,18 +122,27 @@
 
     let response;
     let data;
-    try {
-      response = await fetch(`/api/listing-requests/${encodeURIComponent(listingId)}/checklist`, { credentials: "same-origin" });
-      data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.ok) throw new Error(data.message || "체크리스트를 불러오지 못했습니다.");
-    } catch (error) {
-      body.innerHTML = `<p class="listing-checklist-loading">${escapeHtml(error.message || "체크리스트를 불러오지 못했습니다.")}</p>`;
-      return;
+    if (!hasListing) {
+      data = {
+        ok: true,
+        is_authenticated: false,
+        total_items: GENERAL_CHECKLIST_ITEMS.length,
+        items: GENERAL_CHECKLIST_ITEMS,
+      };
+    } else {
+      try {
+        response = await fetch(`/api/listing-requests/${encodeURIComponent(listingId)}/checklist`, { credentials: "same-origin" });
+        data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.message || "체크리스트를 불러오지 못했습니다.");
+      } catch (error) {
+        body.innerHTML = `<p class="listing-checklist-loading">${escapeHtml(error.message || "체크리스트를 불러오지 못했습니다.")}</p>`;
+        return;
+      }
     }
 
     const checkedKeys = data.is_authenticated
       ? new Set(data.checked_keys || [])
-      : readLocalProgress(listingId);
+      : readLocalProgress(progressId);
     const render = () => {
       if (!overlay.isConnected) return;
       body.innerHTML = makeContent(data, checkedKeys);
@@ -125,7 +154,7 @@
           else checkedKeys.delete(key);
           render();
           if (!data.is_authenticated) {
-            writeLocalProgress(listingId, checkedKeys);
+            writeLocalProgress(progressId, checkedKeys);
             return;
           }
           try {

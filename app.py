@@ -7042,6 +7042,9 @@ def agent_buy_request_update_status(req_id):
         if row["routed_agent_id"] != agent_id:
             conn.rollback()
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row["status"] == "철회됨":
+            conn.rollback()
+            return jsonify({"ok": False, "message": "철회된 매수의뢰는 상태를 변경할 수 없습니다."}), 400
         cur_rank = _LEAD_STATUS_ORDER.get(row["status"], 0)
         if _LEAD_STATUS_ORDER[new_status] <= cur_rank:
             conn.rollback()
@@ -8264,6 +8267,9 @@ def create_buy_request():
     if not _PHONE_RE.match(contact_phone):
         return jsonify({"ok": False, "message": "연락처 형식이 올바르지 않습니다. 예) 010-1234-5678"}), 400
     contact_phone = _digits_only(contact_phone)
+    verified_phone = _digits_only(user.get("phone") or "")
+    if not user.get("phone_verified") or not verified_phone or contact_phone != verified_phone:
+        return jsonify({"ok": False, "message": "휴대폰 인증을 완료한 연락처로만 매수의뢰할 수 있습니다."}), 400
 
     conn = get_conn()
     cur = conn.cursor()
@@ -8324,7 +8330,7 @@ def my_buy_requests():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT br.id, br.deal_type, br.desired_price, br.status,
+            SELECT br.id, br.deal_type, br.desired_price, br.status, br.routed_agent_id,
                    to_char(br.created_at, 'YYYY-MM-DD') AS created_date,
                    mb.id AS building_id, mb.building_name,
                    a.office_name AS agent_office_name, a.subdomain_slug AS agent_slug
@@ -8339,6 +8345,36 @@ def my_buy_requests():
         cur.close()
         conn.close()
     return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/buy-requests/<int:req_id>", methods=["DELETE"])
+def withdraw_buy_request(req_id):
+    """본인이 접수한 매수의뢰를 철회 상태로 전환한다."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT status
+              FROM buy_requests
+             WHERE id = %s AND user_id = %s
+             FOR UPDATE
+        """, [req_id, user["id"]])
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "존재하지 않거나 권한이 없는 매수의뢰입니다."}), 404
+        if row["status"] == "done":
+            conn.rollback()
+            return jsonify({"ok": False, "message": "완료된 매수의뢰는 철회할 수 없습니다."}), 400
+        cur.execute("UPDATE buy_requests SET status = %s WHERE id = %s", ["철회됨", req_id])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "status": "철회됨"})
 
 
 @app.route("/api/listing-requests/mine")

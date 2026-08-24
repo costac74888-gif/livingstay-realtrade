@@ -871,6 +871,13 @@ def _check_weekly_email_auto_optin_apis(client):
             assert_opted_in("매물의뢰")
 
         reset_auto_eligible()
+        unverified_buy = client.post("/api/buy-requests", json={
+            "master_building_id": building["id"],
+            "deal_type": "매매",
+            "contact_phone": "010-9999-9999",
+        }, headers=test_headers)
+        if unverified_buy.status_code != 400:
+            failures.append("매수의뢰 SMS 인증: 인증된 전화번호가 아닌 요청을 차단하지 않았습니다.")
         with patch("app.send_sms", return_value=(False, "test")):
             buy = client.post("/api/buy-requests", json={
                 "master_building_id": building["id"],
@@ -881,6 +888,33 @@ def _check_weekly_email_auto_optin_apis(client):
             failures.append(f"weekly auto opt-in: 매수의뢰 API가 실패했습니다. ({buy.get_json()})")
         else:
             assert_opted_in("매수의뢰")
+            buy_id = (buy.get_json() or {}).get("id")
+            withdrawn = client.delete(f"/api/buy-requests/{buy_id}", headers=test_headers)
+            if withdrawn.status_code != 200 or not (withdrawn.get_json() or {}).get("ok"):
+                failures.append(f"매수의뢰 철회 API가 실패했습니다. ({withdrawn.get_json()})")
+            else:
+                cur.execute("SELECT status FROM buy_requests WHERE id = %s", (buy_id,))
+                if (cur.fetchone() or {}).get("status") != "철회됨":
+                    failures.append("매수의뢰 철회 API가 상태를 '철회됨'으로 저장하지 않았습니다.")
+                cur.execute("SELECT id FROM agents ORDER BY id LIMIT 1")
+                agent = cur.fetchone()
+                if agent:
+                    cur.execute("UPDATE buy_requests SET routed_agent_id = %s WHERE id = %s",
+                                (agent["id"], buy_id))
+                    conn.commit()
+                    with client.session_transaction() as sess:
+                        sess.clear()
+                        sess["agent_id"] = agent["id"]
+                    reactivated = client.put(
+                        f"/api/agent/buy-requests/{buy_id}/status",
+                        json={"status": "in_progress"},
+                        headers=test_headers,
+                    )
+                    if reactivated.status_code != 400:
+                        failures.append("매수의뢰 철회: 담당 중개사가 철회된 의뢰를 다시 처리중으로 바꿀 수 있습니다.")
+                    with client.session_transaction() as sess:
+                        sess.clear()
+                        sess["user_id"] = user_id
 
         # 사용자가 이미 꺼둔 뒤에는 저장 API가 구독을 되살리지 않아야 한다.
         cur.execute("""
