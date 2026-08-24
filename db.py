@@ -41,10 +41,15 @@ from werkzeug.security import generate_password_hash
 _logger = logging.getLogger(__name__)
 _POOL_MIN_CONNECTIONS = 2
 _POOL_MAX_CONNECTIONS = 20
+_POOL_RESERVED_FOR_REQUESTS = 1
+_BACKGROUND_POOL_MAX_CONNECTIONS = 2
 _connection_pool = None
 _connection_pool_pid = None
 _borrowed_connections = {}
 _connection_pool_lock = threading.RLock()
+_background_connection_slots = None
+_background_connection_slot_limit = 0
+_connection_priority = threading.local()
 
 
 class _PooledConnection:
@@ -58,12 +63,13 @@ class _PooledConnection:
         object.__setattr__(self, "_raw_connection", raw_connection)
         object.__setattr__(self, "_released", False)
         object.__setattr__(self, "_lease_token", object())
+        object.__setattr__(self, "_background_slot", None)
 
     def __getattr__(self, name):
         return getattr(self._raw_connection, name)
 
     def __setattr__(self, name, value):
-        if name in {"_raw_connection", "_released", "_lease_token"}:
+        if name in {"_raw_connection", "_released", "_lease_token", "_background_slot"}:
             object.__setattr__(self, name, value)
         else:
             setattr(self._raw_connection, name, value)
@@ -90,11 +96,15 @@ class _PooledConnection:
 
 def _reset_connection_pool_after_fork():
     """fork된 자식은 부모의 DB 소켓과 잠금 객체를 절대 이어받지 않는다."""
-    global _connection_pool, _connection_pool_pid, _borrowed_connections, _connection_pool_lock
+    global _connection_pool, _connection_pool_pid, _borrowed_connections
+    global _connection_pool_lock, _background_connection_slots
+    global _background_connection_slot_limit
     _connection_pool = None
     _connection_pool_pid = None
     _borrowed_connections = {}
     _connection_pool_lock = threading.RLock()
+    _background_connection_slots = None
+    _background_connection_slot_limit = 0
 
 
 if hasattr(os, "register_at_fork"):
@@ -116,7 +126,29 @@ def _pool_size_from_env(name, default):
         return default
     return value
 
-
+def _background_pool_size_from_env():
+    """백그라운드용 동시 연결 상한을 읽는다. 0은 의도적인 비활성 값이다."""
+    raw = os.environ.get(
+        "DB_POOL_BACKGROUND_MAXCONN",
+        str(_BACKGROUND_POOL_MAX_CONNECTIONS),
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        _logger.warning(
+            "DB_POOL_BACKGROUND_MAXCONN=%r이 올바른 정수가 아니어서 기본값 %s을 사용합니다.",
+            raw,
+            _BACKGROUND_POOL_MAX_CONNECTIONS,
+        )
+        return _BACKGROUND_POOL_MAX_CONNECTIONS
+    if value < 0:
+        _logger.warning(
+            "DB_POOL_BACKGROUND_MAXCONN=%r은 0 이상이어야 하므로 기본값 %s을 사용합니다.",
+            raw,
+            _BACKGROUND_POOL_MAX_CONNECTIONS,
+        )
+        return _BACKGROUND_POOL_MAX_CONNECTIONS
+    return value
 def _get_connection_pool():
     """현재 프로세스 전용 풀을 반환한다.
 
@@ -124,6 +156,7 @@ def _get_connection_pool():
     PID가 바뀐 경우 상속된 풀은 closeall()하지 않고 버리고, 자식에서 새로 만든다.
     """
     global _connection_pool, _connection_pool_pid
+    global _background_connection_slots, _background_connection_slot_limit
     current_pid = os.getpid()
 
     with _connection_pool_lock:
@@ -164,12 +197,20 @@ def _get_connection_pool():
             dsn=database_url,
             cursor_factory=psycopg2.extras.RealDictCursor,
         )
+        # 저우선순위 작업은 사용자 요청용 연결 하나를 반드시 남긴다.
+        background_limit = min(
+            _background_pool_size_from_env(),
+            max(0, maxconn - _POOL_RESERVED_FOR_REQUESTS),
+        )
+        _background_connection_slots = threading.BoundedSemaphore(background_limit)
+        _background_connection_slot_limit = background_limit
         _connection_pool_pid = current_pid
         _logger.info(
-            "DB 연결 풀 생성 완료 (pid=%s, min=%s, max=%s)",
+            "DB 연결 풀 생성 완료 (pid=%s, min=%s, max=%s, background_max=%s)",
             current_pid,
             minconn,
             maxconn,
+            background_limit,
         )
         return _connection_pool
 
@@ -180,9 +221,24 @@ def get_conn():
     반드시 release_conn()으로 반환해야 한다.
     """
     pool = _get_connection_pool()
+    background = bool(getattr(_connection_priority, "background", False))
+    background_slot = None
+    if background:
+        with _connection_pool_lock:
+            background_slot = _background_connection_slots
+        if background_slot is None or not background_slot.acquire(blocking=False):
+            raise BackgroundConnectionUnavailable(
+                "사용자 요청용 DB 연결을 남기기 위해 백그라운드 작업을 다음 주기로 미룹니다."
+            )
+
     try:
         raw_connection = pool.getconn()
     except PoolError:
+        _release_background_slot(background_slot)
+        if background:
+            raise BackgroundConnectionUnavailable(
+                "DB 연결 풀이 사용 중이어서 백그라운드 작업을 다음 주기로 미룹니다."
+            )
         _logger.error(
             "DB 연결 풀이 고갈되었습니다 (pid=%s). DB_POOL_MAXCONN 또는 동시 작업을 확인하세요.",
             os.getpid(),
@@ -190,10 +246,12 @@ def get_conn():
         )
         raise
     except Exception:
+        _release_background_slot(background_slot)
         _logger.error("DB 연결 풀에서 연결 대여 실패", exc_info=True)
         raise
 
     conn = _PooledConnection(raw_connection)
+    conn._background_slot = background_slot
     with _connection_pool_lock:
         _borrowed_connections[id(raw_connection)] = (pool, os.getpid(), conn._lease_token)
     _track_request_connection(conn)
@@ -215,9 +273,11 @@ def release_conn(conn):
         object.__setattr__(conn, "_released", True)
         raw_connection = conn._raw_connection
         lease_token = conn._lease_token
+        background_slot = conn._background_slot
     else:
         raw_connection = conn
         lease_token = None
+        background_slot = None
 
     with _connection_pool_lock:
         borrowed = _borrowed_connections.get(id(raw_connection))
@@ -225,6 +285,7 @@ def release_conn(conn):
             # 오래된 래퍼가 GC된 시점에는 같은 원시 연결이 이미 다른 요청에
             # 재대여됐을 수 있다. 그 경우 새 대여분은 절대 반환하거나 rollback하지 않는다.
             if borrowed is None or borrowed[2] is not lease_token:
+                _release_background_slot(background_slot)
                 return
         borrowed = _borrowed_connections.pop(id(raw_connection), None)
 
@@ -234,6 +295,7 @@ def release_conn(conn):
             raw_connection.close()
         except Exception:
             _logger.warning("미등록 DB 연결 폐기 실패", exc_info=True)
+        _release_background_slot(background_slot)
         return
 
     pool, borrowed_pid, _ = borrowed
@@ -243,6 +305,7 @@ def release_conn(conn):
             raw_connection.close()
         except Exception:
             _logger.warning("fork 후 상속된 DB 연결 폐기 실패", exc_info=True)
+        _release_background_slot(background_slot)
         return
 
     discard = bool(getattr(raw_connection, "closed", True))
@@ -268,6 +331,8 @@ def release_conn(conn):
             raw_connection.close()
         except Exception:
             pass
+    finally:
+        _release_background_slot(background_slot)
 
 
 @contextmanager
@@ -2809,3 +2874,39 @@ if __name__ == "__main__":
     init_db()
     print("DB 초기화 완료 (PostgreSQL)")
 
+
+class BackgroundConnectionUnavailable(PoolError):
+    """사용자 요청용 연결을 남기기 위해 백그라운드 대여를 미룰 때 사용한다."""
+
+def _release_background_slot(slot):
+    if slot is None:
+        return
+    try:
+        slot.release()
+    except ValueError:
+        # 방어적으로 이중 반환을 무시한다. 실제 연결 lease의 idempotency와 맞춘다.
+        _logger.warning("백그라운드 DB 연결 슬롯 이중 반환을 무시합니다.")
+
+def background_connection_limit():
+    """현재 풀에서 통계 등 저우선순위 작업에 허용할 최대 동시 대여 수."""
+    with _connection_pool_lock:
+        if _background_connection_slots is not None:
+            return _background_connection_slot_limit
+
+    minconn = _pool_size_from_env("DB_POOL_MINCONN", _POOL_MIN_CONNECTIONS)
+    maxconn = _pool_size_from_env("DB_POOL_MAXCONN", _POOL_MAX_CONNECTIONS)
+    maxconn = max(minconn, maxconn)
+    return min(
+        _background_pool_size_from_env(),
+        max(0, maxconn - _POOL_RESERVED_FOR_REQUESTS),
+    )
+
+@contextmanager
+def background_connection_priority():
+    """현재 스레드의 DB 대여를 비차단 백그라운드 우선순위로 표시한다."""
+    previous = getattr(_connection_priority, "background", False)
+    _connection_priority.background = True
+    try:
+        yield
+    finally:
+        _connection_priority.background = previous

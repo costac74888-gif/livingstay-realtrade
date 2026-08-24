@@ -49,7 +49,15 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from datetime import datetime, timedelta
-from db import get_conn, init_db, release_conn, release_request_connections
+from db import (
+    BackgroundConnectionUnavailable,
+    background_connection_limit,
+    background_connection_priority,
+    get_conn,
+    init_db,
+    release_conn,
+    release_request_connections,
+)
 from stats_cache import mark_master_stats_invalidated
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
@@ -11304,7 +11312,6 @@ def loan_consultant_building_add():
     return jsonify({"ok": True})
 
 
-
 @app.route("/api/loan-consultant/buildings/<int:mbid>", methods=["DELETE"])
 @require_loan_consultant
 def loan_consultant_building_delete(mbid):
@@ -13917,6 +13924,11 @@ def _master_stats_add_section(data, sections, name, builder):
             raise RuntimeError("통계 원본 응답 형식이 올바르지 않습니다.")
         data[name] = result
         sections[name] = {"status": "ok", "error": None}
+    except BackgroundConnectionUnavailable as exc:
+        # 지도 등 사용자 요청용 연결을 확보하지 못한 상태다. 실패 결과로 캐시를
+        # 덮지 않고, 기존 통계를 유지한 채 다음 백그라운드 주기에 다시 시도한다.
+        app.logger.info("[master-stats] %s rebuild deferred: %s", name, exc)
+        sections[name] = {"status": "deferred", "error": str(exc)[:240]}
     except Exception as exc:
         # 한 섹션 실패가 나머지 통계를 버리게 하지 않는다. 호출 API는 이 상태를
         # 보고 각각의 [LEGACY] 로직으로 폴백한다.
@@ -13934,7 +13946,8 @@ def _master_stats_build_section(name, builder):
         # 둘 다 여기서 준비해야 내부 통계 API가 마스터 캐시를 재귀 호출하지 않는다.
         with app.app_context():
             _MASTER_STATS_REBUILDING.active = True
-            _master_stats_add_section(data, sections, name, builder)
+            with background_connection_priority():
+                _master_stats_add_section(data, sections, name, builder)
     except Exception as exc:
         app.logger.exception("[master-stats] %s worker failed", name)
         sections[name] = {"status": "error", "error": str(exc)[:240]}
@@ -13945,8 +13958,12 @@ def _master_stats_build_section(name, builder):
 
 def _master_stats_add_parallel_sections(data, sections, specs):
     """독립적인 통계 섹션을 함께 계산하되 결과 반영은 호출 스레드에서 직렬화한다."""
+    # 통계 작업은 DB 풀에 예약된 백그라운드 예산 안에서만 동시에 시작한다.
+    # 예산이 0인 작은 풀에서는 한 작업이 즉시 deferred가 되어 사용자 요청을
+    # 기다리게 하지 않는다.
+    worker_limit = max(1, min(len(specs), background_connection_limit() or 1))
     with ThreadPoolExecutor(
-        max_workers=len(specs),
+        max_workers=worker_limit,
         thread_name_prefix="master-stats",
     ) as executor:
         futures = [
@@ -14002,6 +14019,13 @@ def _rebuild_master_stats(*, force=False):
         finally:
             _MASTER_STATS_REBUILDING.active = False
 
+        if any(section.get("status") == "deferred" for section in sections.values()):
+            _MASTER_STATS_NEEDS_REFRESH.set()
+            app.logger.info(
+                "[master-stats] DB capacity reserved for user requests; refresh deferred"
+            )
+            return _MASTER_STATS_CACHE
+
         # 백그라운드 재검증 중 일부 섹션만 실패해도 직전 성공값을 stale 값으로
         # 유지한다. sections의 error 상태는 관리자 화면과 다음 재시도를 위해
         # 보존하고, 공개 API는 해당 섹션의 stale 데이터를 즉시 제공한다.
@@ -14031,7 +14055,10 @@ def _master_stats_schedule_revalidation():
         global _MASTER_STATS_REVALIDATION_PENDING
         try:
             with app.app_context():
-                _rebuild_master_stats(force=True)
+                # 섹션 계산뿐 아니라 캐시 발행 시 무효화 토큰을 읽는 DB 작업도
+                # 지도 등 사용자 요청용 마지막 연결을 빌리지 않게 한다.
+                with background_connection_priority():
+                    _rebuild_master_stats(force=True)
             app.logger.info("[master-stats] stale cache revalidated")
         except Exception:
             # _rebuild_master_stats는 섹션별 실패를 자체 기록하지만, 스레드
@@ -14088,19 +14115,22 @@ def _master_stats_background_loop():
     first_run = True
     while True:
         try:
-            cache_ts = _MASTER_STATS_CACHE["ts"]
-            now = time.time()
-            refresh_due = (
-                first_run
-                or not cache_ts
-                or now - cache_ts >= _MASTER_STATS_CACHE_TTL - _MASTER_STATS_REFRESH_LEAD
-            )
-            invalidated = bool(cache_ts) and not _master_stats_cache_is_valid()
-            refresh_requested = _MASTER_STATS_NEEDS_REFRESH.is_set()
-            if refresh_due or invalidated or refresh_requested:
-                if _master_stats_schedule_revalidation():
-                    reason = "requested" if refresh_requested else "scheduled"
-                    app.logger.info("[master-stats] background refresh %s", reason)
+            # app_meta 무효화 표식 조회도 공유 풀을 사용한다. 이 루프는 사용자
+            # 요청과 경쟁하는 백그라운드 작업이므로 마지막 연결은 항상 남긴다.
+            with background_connection_priority():
+                cache_ts = _MASTER_STATS_CACHE["ts"]
+                now = time.time()
+                refresh_due = (
+                    first_run
+                    or not cache_ts
+                    or now - cache_ts >= _MASTER_STATS_CACHE_TTL - _MASTER_STATS_REFRESH_LEAD
+                )
+                invalidated = bool(cache_ts) and not _master_stats_cache_is_valid()
+                refresh_requested = _MASTER_STATS_NEEDS_REFRESH.is_set()
+                if refresh_due or invalidated or refresh_requested:
+                    if _master_stats_schedule_revalidation():
+                        reason = "requested" if refresh_requested else "scheduled"
+                        app.logger.info("[master-stats] background refresh %s", reason)
             first_run = False
         except Exception:
             app.logger.exception("[master-stats] background refresh failed")
@@ -22557,7 +22587,6 @@ def _zip_backfill_auto_loop():
 
 threading.Thread(target=_zip_backfill_auto_loop, daemon=True,
                  name="zip-backfill-auto").start()
-
 
 
 # ── 이메일 광고배너 관리 (admin) ──────────────────────────────────────────────
