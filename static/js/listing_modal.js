@@ -1084,4 +1084,143 @@
       });
     });
   };
+
+  // 직거래 목록과 건물 상세 화면에서 공용으로 사용하는 읽기 전용 매물 상세 팝업.
+  // 등록/수정 모달(openListingRequestModal)과 분리해, 어느 화면에서도 같은 상세
+  // 정보·사진·액션을 제공한다.
+  window.openListingDetailModal = function (listing, options) {
+    options = options || {};
+    if (!listing) return;
+
+    var old = document.getElementById("ls-listing-modal");
+    if (old) old.remove();
+
+    var previousFocus = document.activeElement;
+    var photos = (Array.isArray(listing.photos) ? listing.photos : []).map(function (photo) {
+      return typeof photo === "string" ? photo : (photo && photo.url);
+    }).filter(Boolean);
+    if (!photos.length && listing.photo_url) photos = [listing.photo_url];
+
+    var isWhole = listing.is_whole_listing || listing.transaction_target === "whole";
+    var formatNumber = function (value) {
+      return value != null && value !== "" ? Number(value).toLocaleString("ko-KR") : "-";
+    };
+    var priceText;
+    if (isWhole) {
+      var deposit = listing.price_krw != null ? "보증금 " + formatNumber(listing.price_krw) + "만원" : "조건 협의";
+      priceText = listing.deal_type === "매매"
+        ? (listing.price_krw != null ? "매매가 " + formatNumber(listing.price_krw) + "만원" : "매매 조건 협의")
+        : (listing.monthly_rent_krw != null ? deposit + " / 월 " + formatNumber(listing.monthly_rent_krw) + "만원" : deposit);
+    } else if (listing.is_business_listing) {
+      priceText = listing.room_price_min != null && listing.room_price_max != null
+        ? "장기임대 가능 · " + formatNumber(listing.room_price_min) + "~" + formatNumber(listing.room_price_max) + "만원/월"
+        : "현재 문의 가능 여부는 채팅으로 확인해주세요";
+    } else if (listing.deal_type === "월세" && listing.price_krw_max == null) {
+      priceText = "보" + formatNumber(listing.price_krw) + "/" + formatNumber(listing.monthly_rent_krw) + "만";
+    } else {
+      priceText = listing.price_krw != null
+        ? formatNumber(listing.price_krw) + (listing.price_krw_max != null ? " ~ " + formatNumber(listing.price_krw_max) : "") + "만원"
+        : "-";
+    }
+
+    var lodging = listing.lodging_type && String(listing.lodging_type).indexOf("·") >= 0
+      ? "복합" : (listing.lodging_type || "미분류");
+    var lodgingColors = {"생활":"#378ADD","관광":"#639922","일반":"#D46BA3","복합":"#B39DDB","미분류":"#E0E0E0"};
+    var dealColors = {"매매":"#C85A36","전세":"#378ADD","월세":"#639922","단기임대":"#8B6BB1","통임대":"#5A7FA6","운영권양도":"#8B6BB1","위탁운영":"#557A5B"};
+    var areaText = !isWhole && listing.area_sqm ? Number(listing.area_sqm).toFixed(1) + "㎡" : "";
+    var roomText = listing.room_count != null && Number(listing.room_count) > 0
+      ? (isWhole ? "총 " : "") + formatNumber(listing.room_count) + "실" : "";
+    var yieldText = listing.yield_rate != null ? "수익률 " + Number(listing.yield_rate).toFixed(1) + "%" : "";
+    var meta = [listing.listing_number, listing.listing_date ? "최근 수정 " + listing.listing_date : ""].filter(Boolean).join(" · ");
+    var detail = [areaText, roomText, yieldText].filter(Boolean).join(" · ");
+    var description = listing.description ? esc(listing.description) : "";
+    var photoIndex = 0;
+    var icons = window.LivingstayListingIcons;
+    if (!icons) return;
+
+    var overlay = document.createElement("div");
+    overlay.id = "ls-listing-modal";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
+    var gallery = photos[0]
+      ? '<div style="position:relative;background:#f6f4f0;">' +
+        '<img id="lsListingDetailImage" src="' + esc(photos[0]) + '" alt="매물 사진 1" style="width:100%;height:220px;object-fit:cover;display:block;" onerror="this.style.display=\'none\';">' +
+        (photos.length > 1
+          ? '<button type="button" data-listing-photo-prev aria-label="이전 사진" style="position:absolute;left:10px;top:calc(50% - 17px);width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:21px;cursor:pointer;">‹</button>' +
+            '<button type="button" data-listing-photo-next aria-label="다음 사진" style="position:absolute;right:10px;top:calc(50% - 17px);width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:21px;cursor:pointer;">›</button>' +
+            '<span id="lsListingDetailCount" style="position:absolute;right:12px;bottom:10px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:11px;font-weight:700;">1 / ' + photos.length + '</span>'
+          : "") +
+        '</div>'
+      : '<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>';
+
+    overlay.innerHTML =
+      '<div role="dialog" aria-modal="true" aria-label="직거래 매물 상세" tabindex="-1" style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">' +
+        '<div style="position:relative;">' + gallery +
+          '<button type="button" data-listing-detail-close aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;cursor:pointer;">×</button>' +
+        '</div>' +
+        '<div style="padding:16px 18px 18px;">' +
+          (meta ? '<div style="font-size:11px;color:var(--ink-soft);margin:-4px 0 8px;">' + esc(meta) + '</div>' : "") +
+          '<div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">' +
+            '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:' + (lodgingColors[lodging] || lodgingColors["미분류"]) + ';color:#fff;font-size:10px;">' + esc(lodging) + '</span>' +
+            (isWhole ? '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;">건물전체</span>' : "") +
+            '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:' + (dealColors[listing.deal_type] || "#7B8794") + ';color:#fff;font-size:10px;">' + esc(listing.deal_type || "-") + '</span>' +
+            (areaText ? ' · ' + esc(areaText) : "") +
+          '</div>' +
+          '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">' + esc(priceText) + '</div>' +
+          (detail ? '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">' + esc(detail) + '</div>' : "") +
+          (description ? '<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin:12px 0;">' + description + '</div>' : "") +
+          '<div style="display:flex;justify-content:flex-end;gap:7px;">' +
+            '<button type="button" data-listing-detail-chat class="listing-chat-btn" title="채팅">' + icons.chat() + '</button>' +
+            '<button type="button" data-listing-detail-share class="listing-share-btn" title="매물 공유">' + icons.share() + '</button>' +
+            '<button type="button" data-listing-detail-like class="listing-like-btn' + (listing.liked ? " is-liked" : "") + '" title="찜">' + icons.heart(!!listing.liked) + '<span class="like-cnt">' + (listing.like_count || 0) + '</span></button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var dialog = overlay.querySelector('[role="dialog"]');
+    var close = function () {
+      document.removeEventListener("keydown", onKeydown);
+      overlay.remove();
+      if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
+    };
+    var onKeydown = function (event) {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKeydown);
+    overlay.addEventListener("click", function (event) { if (event.target === overlay) close(); });
+    overlay.querySelector("[data-listing-detail-close]").addEventListener("click", close);
+    overlay.querySelector("[data-listing-detail-chat]").addEventListener("click", function () {
+      close();
+      if (typeof options.onChat === "function") options.onChat(listing);
+    });
+    overlay.querySelector("[data-listing-detail-share]").addEventListener("click", function () {
+      if (typeof options.onShare === "function") options.onShare(listing);
+    });
+    overlay.querySelector("[data-listing-detail-like]").addEventListener("click", function (event) {
+      var button = event.currentTarget;
+      fetch("/api/listing-requests/" + encodeURIComponent(listing.id) + "/like", {method:"POST", credentials:"same-origin"})
+        .then(function (res) { return res.json().then(function (data) { return {ok:res.ok, data:data}; }); })
+        .then(function (result) {
+          if (!result.ok || !result.data.ok) return;
+          listing.liked = !!result.data.liked;
+          listing.like_count = result.data.like_count;
+          button.classList.toggle("is-liked", listing.liked);
+          button.innerHTML = icons.heart(listing.liked) + '<span class="like-cnt">' + listing.like_count + '</span>';
+          if (typeof options.onLike === "function") options.onLike(listing);
+        }).catch(function () {});
+    });
+    if (photos.length > 1) {
+      var image = overlay.querySelector("#lsListingDetailImage");
+      var count = overlay.querySelector("#lsListingDetailCount");
+      var showPhoto = function (index) {
+        photoIndex = (index + photos.length) % photos.length;
+        image.src = photos[photoIndex];
+        image.alt = "매물 사진 " + (photoIndex + 1);
+        count.textContent = (photoIndex + 1) + " / " + photos.length;
+      };
+      overlay.querySelector("[data-listing-photo-prev]").addEventListener("click", function () { showPhoto(photoIndex - 1); });
+      overlay.querySelector("[data-listing-photo-next]").addEventListener("click", function () { showPhoto(photoIndex + 1); });
+    }
+    requestAnimationFrame(function () { overlay.querySelector("[data-listing-detail-close]").focus(); });
+  };
 })();

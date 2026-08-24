@@ -223,6 +223,7 @@
   @media (max-width: 520px) {
     .listings-page  { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
+    .ls-view-tabs button[data-view="board"] { display: none; }
     .ls-filter-grid { grid-template-columns: 1fr 1fr; }
     .ls-filter-grid .field:nth-child(1) { order: 1; }
     .ls-filter-grid .field:nth-child(2) { order: 2; }
@@ -369,6 +370,7 @@
 <script src="/static/js/chat_common.js"></script>
 <script src="/static/js/listing_icons.js"></script>
 <script src="/static/js/listing_checklist.js"></script>
+<script src="/static/js/listing_modal.js"></script>
 <script>
 (function(){
   "use strict";
@@ -465,7 +467,9 @@
 
   // ── 뷰 전환 ────────────────────────────────────────────────────────────
   const STORAGE_KEY = "listingsViewMode";
-  let currentView = localStorage.getItem(STORAGE_KEY) || "board";
+  const isMobile = window.innerWidth <= 520;
+  let currentView = localStorage.getItem(STORAGE_KEY)
+    || (isMobile ? "card" : "board");
 
   function setView(mode){
     currentView = mode;
@@ -721,6 +725,23 @@
       window.location.href = "/mypage?openChat=" + roomId;
     });
   }
+
+  function syncListingLikeButtons(item){
+    document.querySelectorAll(`[data-listing-id="${item.id}"] .listing-like-btn`).forEach(button => {
+      button.classList.toggle("is-liked", !!item.liked);
+      const count = button.querySelector(".like-cnt");
+      if (count) count.textContent = item.like_count || 0;
+    });
+  }
+
+  function openListingDetail(item){
+    if (typeof window.openListingDetailModal !== "function") return;
+    window.openListingDetailModal(item, {
+      onChat: () => openChat(item.id),
+      onShare: () => shareItem(item),
+      onLike: syncListingLikeButtons,
+    });
+  }
   const trackedWholeListingViews = new Set();
   async function recordWholeListingViews(items){
     const listingIds = (items || [])
@@ -866,12 +887,19 @@
 
     const photoCell = tr.querySelector(".td-photo");
     photoCell.style.cursor = "pointer";
-    photoCell.title = "카드형에서 자세히 보기";
+    photoCell.title = "매물 상세 보기";
     photoCell.addEventListener("click", (e) => {
+      if (window.innerWidth <= 520) return;
       e.stopPropagation();
       goToCardView(item.id);
     });
-    tr.querySelector(".ls-bldg-link")?.addEventListener("click", () => {
+    tr.addEventListener("click", (e) => {
+      if (window.innerWidth > 520) return;
+      if (e.target.closest(".listing-chat-btn, .listing-share-btn, .listing-like-btn, .ls-bldg-link")) return;
+      openListingDetail(item);
+    });
+    tr.querySelector(".ls-bldg-link")?.addEventListener("click", (e) => {
+      e.stopPropagation();
       if (item.building_id) window.location.href = `/building/${item.building_id}`;
     });
     tr.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
@@ -965,7 +993,14 @@
       </div>
       <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
 
+    // ls-card-item click: 모바일에서는 액션 버튼 외 카드 전체가 상세 팝업을 연다.
+    div.addEventListener("click", (e) => {
+      if (window.innerWidth > 520) return;
+      if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link")) return;
+      openListingDetail(item);
+    });
     div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
+      if (window.innerWidth <= 520) return;
       e.stopPropagation();
       highlightCardItem(div);
     });
@@ -973,7 +1008,8 @@
       e.stopPropagation();
       window.LivingstayListingChecklist?.open(item.id);
     });
-    div.querySelector(".ls-bldg-link")?.addEventListener("click", () => {
+    div.querySelector(".ls-bldg-link")?.addEventListener("click", (e) => {
+      e.stopPropagation();
       if (item.building_id) window.location.href = `/building/${item.building_id}?listing=${item.id}`;
     });
     div.querySelector(".listing-chat-btn").addEventListener("click", (e) => {
@@ -1041,12 +1077,20 @@
       </div>
       <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
 
+    // ls-card-item click: 모바일에서는 액션 버튼 외 카드 전체가 상세 팝업을 연다.
+    div.addEventListener("click", (e) => {
+      if (window.innerWidth > 520) return;
+      if (e.target.closest(".ls-card-actions button, .ls-bldg-link")) return;
+      openListingDetail(item);
+    });
     div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
+      if (window.innerWidth <= 520) return;
       e.stopPropagation();
       highlightCardItem(div);
     });
     div.querySelectorAll(".ls-bldg-link").forEach(el => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
         if (item.building_id) window.location.href = `/building/${item.building_id}`;
       });
     });

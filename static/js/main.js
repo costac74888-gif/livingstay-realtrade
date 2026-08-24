@@ -3685,6 +3685,34 @@ async function loadBuildingHeader(id){
          return badges.map(label => `<span style="display:inline-block;margin:0 4px 7px 0;padding:2px 5px;border-radius:4px;background:#EEF5FF;color:#275B88;font-size:10px;font-weight:800;">${escapeHtml(label)}</span>`).join("");
        }
       function _openDirectListingCard(lr){
+        if (window.innerWidth <= 520 && typeof window.openListingDetailModal === "function") {
+          const shareListing = async () => {
+            const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
+            const shareUrl = new URL(`/building/${encodeURIComponent(b.building_id)}`, shareOrigin);
+            shareUrl.searchParams.set("listing", String(lr.id));
+            const shareData = {title: `${bName} 직거래 매물 | 홈앤스테이`, text: `${bName} 직거래 매물`, url: shareUrl.toString()};
+            if (navigator.share) {
+              try {
+                await navigator.share(shareData);
+                return;
+              } catch (e) {
+                if (e && e.name === "AbortError") return;
+              }
+            }
+            try {
+              if (navigator.clipboard) {
+                await navigator.clipboard.writeText(shareData.url);
+                return;
+              }
+            } catch (e) {}
+            prompt("아래 매물 링크를 복사하세요:", shareData.url);
+          };
+          window.openListingDetailModal(lr, {
+            onChat: () => _openListingChat(lr.id),
+            onShare: shareListing,
+          });
+          return;
+        }
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;
        const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
@@ -4001,8 +4029,18 @@ async function loadBuildingHeader(id){
           _renderListings(sorted);
         });
       });
+      // listing card click: 모바일에서 액션 버튼 외 카드 전체를 공용 listing modal로 연다.
+      listingsBody.querySelectorAll(".b-listing-card").forEach(card => {
+        card.addEventListener("click", (e) => {
+          if (window.innerWidth > 520) return;
+          if (e.target.closest(".b-listing-actions button")) return;
+          const lr = listings.find(item => String(item.id) === String(card.dataset.listingId));
+          if (lr) _openDirectListingCard(lr);
+        });
+      });
       listingsBody.querySelectorAll(".listing-photo-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
+          if (window.innerWidth <= 520) return;
           e.stopPropagation();
           const lr = listings.find(item => String(item.id) === String(btn.dataset.lrid));
           if (lr) _openDirectListingCard(lr);
@@ -4013,7 +4051,10 @@ async function loadBuildingHeader(id){
           const lr = listings.find(item => String(item.id) === String(trigger.dataset.lrid));
           if (lr) _openDirectListingCard(lr);
         };
-        trigger.addEventListener("click", openRow);
+        trigger.addEventListener("click", () => {
+          if (window.innerWidth <= 520) return;
+          openRow();
+        });
         trigger.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
