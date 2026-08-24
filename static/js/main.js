@@ -3827,7 +3827,7 @@ async function loadBuildingHeader(id){
          return badges.map(label => `<span style="display:inline-block;margin:0 4px 7px 0;padding:2px 5px;border-radius:4px;background:#EEF5FF;color:#275B88;font-size:10px;font-weight:800;">${escapeHtml(label)}</span>`).join("");
        }
       function _openDirectListingCard(lr){
-        if (window.innerWidth <= 520 && typeof window.openListingDetailModal === "function") {
+        if (typeof window.openListingDetailModal === "function") {
           const shareListing = async () => {
             const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
             const shareUrl = new URL(`/building/${encodeURIComponent(b.building_id)}`, shareOrigin);

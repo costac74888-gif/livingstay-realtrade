@@ -484,7 +484,7 @@
 
   // ── 뷰 전환 ────────────────────────────────────────────────────────────
   const STORAGE_KEY = "listingsViewMode";
-  const isMobile = window.innerWidth <= 520;
+  const isMobile = window.matchMedia("(max-width: 520px)").matches;
   let currentView = localStorage.getItem(STORAGE_KEY)
     || (isMobile ? "card" : "board");
 
@@ -499,43 +499,6 @@
     document.querySelectorAll(".ls-view-tabs button").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === mode);
     });
-  }
-
-  function findCardItem(listingId){
-    return Array.from(cardGrid.querySelectorAll(".ls-card-item"))
-      .find(el => String(el.dataset.listingId) === String(listingId)) || null;
-  }
-
-  function highlightCardItem(el){
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    // 같은 카드를 연속 클릭해도 애니메이션이 다시 시작되도록 초기화한다.
-    el.classList.remove("ls-card-highlight");
-    void el.offsetWidth;
-    el.classList.add("ls-card-highlight");
-    setTimeout(() => el.classList.remove("ls-card-highlight"), 1800);
-  }
-
-  // 게시판형 사진에서 진입했을 때 카드형으로 전환하고 대상 카드까지 찾는다.
-  // 현재 페이지에 없으면 더보기 페이지를 순차적으로 불러와 긴 목록도 지원한다.
-  async function goToCardView(listingId){
-    setView("card");
-    for (let attempt = 0; attempt < 100; attempt++){
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      const card = findCardItem(listingId);
-      if (card){
-        highlightCardItem(card);
-        return;
-      }
-      if (loading){
-        await new Promise(resolve => setTimeout(resolve, 50));
-        continue;
-      }
-      if (moreBtn.style.display === "none") return;
-      const before = offset;
-      await loadListings(false);
-      if (offset === before) await new Promise(resolve => setTimeout(resolve, 50));
-    }
   }
 
   document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
@@ -906,15 +869,12 @@
     photoCell.style.cursor = "pointer";
     photoCell.title = "매물 상세 보기";
     photoCell.addEventListener("click", (e) => {
-      if (window.innerWidth <= 520) return;
       e.stopPropagation();
-      goToCardView(item.id);
+      openListingDetail(item);
     });
     tr.addEventListener("click", (e) => {
-      if (window.innerWidth <= 520) {
-        if (e.target.closest(".listing-chat-btn, .listing-share-btn, .listing-like-btn, .ls-bldg-link")) return;
-        openListingDetail(item);
-      }
+      if (e.target.closest(".listing-chat-btn, .listing-share-btn, .listing-like-btn, .ls-bldg-link")) return;
+      openListingDetail(item);
     });
     tr.querySelector(".ls-bldg-link")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -986,7 +946,7 @@
     const chatTitle = myChattingIds.has(item.id) ? "채팅 이어하기" : "문의하기";
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     const photoClass = isLimitedListing ? "ls-card-photo-top" : "ls-card-photo-right";
-    const cardPhotoHtml = `<div class="${photoClass}" title="${isLimitedListing ? "제한공개 매물 사진" : "매물 강조 보기"}">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
+    const cardPhotoHtml = `<div class="${photoClass}" title="${isLimitedListing ? "제한공개 매물 사진" : "매물 상세 보기"}">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
     const limitedNotice = isLimitedListing
       ? '<div class="whole-limited-notice">상세한 매물 내용은 채팅 상담으로 직접 문의해 주시기 바랍니다.</div>'
       : "";
@@ -1022,15 +982,14 @@
       </div>
       ${isLimitedListing ? "" : cardPhotoHtml}`;
 
-    // PC도 카드 전체에서 상세 팝업을 열고, 사진은 기존 강조 동작을 유지한다.
+    // 카드 전체와 사진에서 공용 상세 팝업을 연다.
     div.addEventListener("click", (e) => {
       if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link, .ls-card-photo-right, .ls-card-photo-top")) return;
       openListingDetail(item);
     });
     div.querySelector("." + photoClass).addEventListener("click", (e) => {
-      if (window.innerWidth <= 520) return;
       e.stopPropagation();
-      highlightCardItem(div);
+      openListingDetail(item);
     });
     div.querySelector(".listing-checklist-open")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1103,17 +1062,16 @@
           </span>
         </div>
       </div>
-      <div class="ls-card-photo-right" title="매물 강조 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
+      <div class="ls-card-photo-right" title="매물 상세 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
 
-    // PC도 카드 전체에서 상세 팝업을 열고, 사진은 기존 강조 동작을 유지한다.
+    // 카드 전체와 사진에서 공용 상세 팝업을 연다.
     div.addEventListener("click", (e) => {
       if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link, .ls-card-photo-right, .ls-card-photo-top")) return;
       openListingDetail(item);
     });
     div.querySelector(".ls-card-photo-right").addEventListener("click", (e) => {
-      if (window.innerWidth <= 520) return;
       e.stopPropagation();
-      highlightCardItem(div);
+      openListingDetail(item);
     });
     div.querySelectorAll(".ls-bldg-link").forEach(el => {
       el.addEventListener("click", (e) => {
