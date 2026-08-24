@@ -190,6 +190,7 @@
     td.col-addr{display:none;}
     .footer-inner{flex-direction:column;}
     .footer-meta{text-align:left;}
+    .brand-text .sub{display:none;}
   }
 
   @media (max-width: 700px){

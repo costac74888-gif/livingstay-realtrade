@@ -3,6 +3,7 @@
 홈앤스테이 주간 소식 이메일 발송
 ===================================
 대상  : weekly_email_enabled = TRUE 인 일반 회원 전체 (관심단지 유무 무관)
+Zone 0   : 이번 주 핵심 수치 (데이터가 없으면 생략)
 Zone 1-1 : 관심단지 신규 실거래 (없으면 CTA 버튼)
 Zone 1-2 : 매물의뢰 / 매수의뢰 진행 현황 (없으면 CTA 버튼)
 Zone 2   : 이번 주 시세 랭킹 — 신고가 TOP5, 거래량 TOP5
@@ -379,6 +380,51 @@ def _get_datalab_summary(app_module=None):
 
 # ── HTML 조립 ─────────────────────────────────────────────────────────────────
 
+def _zone0(summary):
+     """데이터랩 요약에서 이번 주 핵심 수치 하나를 보여준다."""
+     summary = summary or {}
+     rate = summary.get("report_rate")
+     volume = summary.get("volume_top") or {}
+
+     hero_value = hero_label = None
+     if rate is not None:
+         try:
+             hero_value = f"{float(rate):.1f}%"
+             hero_label = "전국 생숙 영업신고율"
+         except (TypeError, ValueError):
+             pass
+
+     if hero_value is None and volume.get("building_name"):
+         volume_count = int(volume.get("deal_count") or 0)
+         hero_value = html.escape(str(volume.get("building_name")))
+         hero_label = f"최근 30일 거래량 TOP1 · {volume_count:,}건"
+
+     if hero_value is None:
+         return ""
+
+     return f"""
+     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+            style="border-collapse:collapse;background:#F8F4EE;
+                   border-left:4px solid #B4863F;">
+       <tr>
+         <td style="padding:17px 22px 16px;">
+           <div style="font-size:28px;line-height:1.2;font-weight:800;
+                       color:#8F6A2F;overflow-wrap:anywhere;">
+             {hero_value}
+           </div>
+           <div style="font-size:11px;color:#888;margin-top:5px;">
+             {hero_label}
+           </div>
+           <a href="{SITE_URL}/?datalab=lodging"
+              style="display:inline-block;margin-top:9px;font-size:12px;
+                     color:#8F6A2F;text-decoration:none;font-weight:700;">
+             데이터랩 전체 보기 →
+           </a>
+         </td>
+       </tr>
+     </table>"""
+
+
 def _bld_url(building_id, building_name=""):
     """building_id 가 있으면 상세 페이지 직링크, 없으면 홈으로.
     /?q= 검색 URL은 지도 패널을 자동으로 열지 않아 '건물 정보 못 불러옴'처럼 보이므로 사용하지 않는다."""
@@ -583,48 +629,74 @@ def _zone2(price_highs, most_traded):
 
 
 def _zone3(summary):
-    """데이터랩 원본 캐시의 전국 요약. 데이터가 없으면 Zone 자체를 생략한다."""
-    summary = summary or {}
-    rate = summary.get("report_rate")
-    price = summary.get("price_change") or {}
-    volume = summary.get("volume_top") or {}
+     """데이터랩 원본 캐시의 전국 요약을 카드로 표시한다."""
+     summary = summary or {}
+     rate = summary.get("report_rate")
+     price = summary.get("price_change") or {}
+     volume = summary.get("volume_top") or {}
 
-    if rate is None and not price and not volume:
-        return ""
+     if rate is None and not price and not volume:
+         return ""
 
-    rate_text = f"{rate:.1f}%" if isinstance(rate, (int, float)) else "-"
-    if price:
-        pct = price.get("change_percent")
-        pct_text = f"{float(pct):+.1f}%" if pct is not None else "변동률 집계 중"
-        price_text = (
-            f'<a href="{_bld_url(price.get("building_id"), price.get("building_name") or "")}" '
-            'style="color:#16202E;font-weight:700;text-decoration:none;">'
-            f'{html.escape(str(price.get("building_name") or "-"))}</a> · {pct_text}'
-        )
-    else:
-        price_text = "-"
+     rate_text = f"{float(rate):.1f}%" if isinstance(rate, (int, float)) else "-"
+     if price:
+         pct = price.get("change_percent")
+         pct_text = f"{float(pct):+.1f}%" if pct is not None else "변동률 집계 중"
+         price_text = (
+             f'<a href="{html.escape(_bld_url(price.get("building_id"), price.get("building_name") or ""), quote=True)}" '
+             'style="color:#16202E;font-weight:800;text-decoration:none;'
+             'overflow-wrap:anywhere;">'
+             f'{html.escape(str(price.get("building_name") or "-"))}</a>'
+             f'<br><span style="font-size:13px;color:#B4863F;">{pct_text}</span>'
+         )
+     else:
+         price_text = "-"
 
-    if volume:
-        volume_text = (
-            f'<a href="{_bld_url(volume.get("building_id"), volume.get("building_name") or "")}" '
-            'style="color:#16202E;font-weight:700;text-decoration:none;">'
-            f'{html.escape(str(volume.get("building_name") or "-"))}</a> · '
-            f'{int(volume.get("deal_count") or 0):,}건'
-        )
-    else:
-        volume_text = "-"
+     if volume:
+         volume_text = (
+             f'<a href="{html.escape(_bld_url(volume.get("building_id"), volume.get("building_name") or ""), quote=True)}" '
+             'style="color:#16202E;font-weight:800;text-decoration:none;'
+             'overflow-wrap:anywhere;">'
+             f'{html.escape(str(volume.get("building_name") or "-"))}</a>'
+             f'<br><span style="font-size:13px;color:#B4863F;">'
+             f'{int(volume.get("deal_count") or 0):,}건</span>'
+         )
+     else:
+         volume_text = "-"
 
-    return f"""
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <tbody>
-        <tr><td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;color:#888;">전국 생숙 영업신고율</td>
-            <td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;text-align:right;color:#B4863F;font-weight:700;">{rate_text}</td></tr>
-        <tr><td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;color:#888;">가격변동 TOP1</td>
-            <td style="padding:8px 4px;border-bottom:1px solid #f0f0f0;text-align:right;">{price_text}</td></tr>
-        <tr><td style="padding:8px 4px;color:#888;">거래량 TOP1</td>
-            <td style="padding:8px 4px;text-align:right;">{volume_text}</td></tr>
-      </tbody>
-    </table>"""
+     def card(label, value):
+         return f"""
+         <td class="weekly-datalab-card-cell"
+             style="vertical-align:top;padding:4px;min-width:0;">
+           <table class="weekly-datalab-card" width="100%" cellpadding="0" cellspacing="0"
+                  role="presentation"
+                  style="width:100%;min-width:0;border:1px solid #EEEEEE;
+                         border-radius:8px;background:#FFFFFF;">
+             <tr>
+               <td style="padding:12px 8px;text-align:center;min-width:0;">
+                 <div style="font-size:11px;color:#888;margin-bottom:7px;">
+                   {label}
+                 </div>
+                 <div style="font-size:18px;line-height:1.35;font-weight:800;
+                             color:#B4863F;overflow-wrap:anywhere;word-break:break-word;">
+                   {value}
+                 </div>
+               </td>
+             </tr>
+           </table>
+         </td>"""
+
+     return f"""
+     <table class="weekly-datalab-cards" width="100%" cellpadding="0" cellspacing="0"
+            role="presentation"
+            style="width:100%;border-collapse:separate;border-spacing:0;
+                   table-layout:fixed;font-size:13px;">
+       <tr>
+         {card("영업신고율", rate_text)}
+         {card("가격변동 TOP1", price_text)}
+         {card("거래량 TOP1", volume_text)}
+       </tr>
+     </table>"""
 
 
 def _zone4(feature_tip):
@@ -653,15 +725,23 @@ def build_html(user_name, favs, deals_by_fav,
                price_highs, most_traded,
                datalab_summary, feature_tip,
                unsubscribe_url, alert_off_count=0):
+    z0  = _zone0(datalab_summary)
     z1  = _zone1_1(favs, deals_by_fav, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
     z2  = _zone2(price_highs, most_traded)
     z3  = _zone3(datalab_summary)
     z4  = _zone4(feature_tip)
 
-    zone3_block = f"""
+    zone0_block = f"""
   <tr>
     <td style="padding:20px 28px 0;">
+      {z0}
+    </td>
+  </tr>""" if z0 else ""
+
+    zone3_block = f"""
+  <tr>
+    <td style="padding:20px 28px 0;background:#F8F4EE;">
       <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
                  padding-bottom:8px;border-bottom:2px solid #B4863F;">
         📈 데이터랩 한눈에 보기
@@ -672,7 +752,7 @@ def build_html(user_name, favs, deals_by_fav,
 
     zone4_block = f"""
   <tr>
-    <td style="padding:20px 28px 0;">
+    <td style="padding:20px 28px 0;background:#F0F4FF;">
       <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
                  padding-bottom:8px;border-bottom:2px solid #B4863F;">
         ✨ 이번 주 기능 소개
@@ -687,6 +767,17 @@ def build_html(user_name, favs, deals_by_fav,
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>홈앤스테이 주간 소식</title>
+<style>
+@media only screen and (max-width:580px) {{
+  .weekly-datalab-cards {{ table-layout:auto !important; }}
+  .weekly-datalab-card-cell {{
+    display:block !important;
+    width:100% !important;
+    padding:4px 0 !important;
+  }}
+  .weekly-datalab-card {{ width:100% !important; }}
+}}
+</style>
 </head>
 <body style="margin:0;padding:0;background:#f4f5f7;
              font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;">
@@ -708,7 +799,12 @@ def build_html(user_name, favs, deals_by_fav,
              width="180" height="auto"
              style="display:inline-block;height:auto;max-height:44px;border:0;" />
       </a>
-      <p style="color:#9aa5b1;font-size:12px;margin:6px 0 0;">주간 소식</p>
+       <p style="color:#9aa5b1;font-size:11px;margin:4px 0 0;
+                 letter-spacing:.04em;">주간 소식</p>
+       <p style="color:#B4863F;font-size:11px;font-weight:700;
+                 margin:4px 0 0;letter-spacing:.02em;">
+         대한민국 숙박부동산 데이터 플랫폼
+       </p>
     </td>
   </tr>
 
@@ -719,10 +815,12 @@ def build_html(user_name, favs, deals_by_fav,
         {user_name}님, 이번 주 홈앤스테이 소식을 전달해드려요.
       </p>
       <p style="font-size:13px;color:#888;margin:0;">
-        생활숙박시설·관광숙박 실거래가 최신 정보입니다.
+         실거래부터 영업현황·매물·중개·운영·금융까지 — 이번 주 소식을 전달해드려요.
       </p>
     </td>
   </tr>
+
+  {zone0_block}
 
   <!-- ── Zone 1-1: 관심단지 실거래 ── -->
   <tr>
@@ -766,6 +864,10 @@ def build_html(user_name, favs, deals_by_fav,
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td style="padding-top:16px;border-top:1px solid #eee;text-align:center;">
+            <p style="font-size:11px;color:#B4863F;font-weight:700;
+                      margin:0 0 4px;text-align:center;">
+              대한민국 숙박부동산 데이터 플랫폼
+            </p>
             <p style="font-size:11px;color:#aaa;margin:0 0 4px;">
               홈앤스테이 | 사업자등록번호 301-41-68319
             </p>

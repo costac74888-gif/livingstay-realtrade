@@ -93,6 +93,44 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertIn("기능 소개 제목", html)
 
+    def test_zone0_prefers_report_rate_and_has_hero_style(self):
+        html = digest.build_html(
+            "테스터", [], {}, [], [], [], [],
+            {
+                "report_rate": 42.5,
+                "price_change": {"building_name": "상승 단지", "change_percent": 9.8},
+                "volume_top": {"building_name": "거래 단지", "deal_count": 7},
+            },
+            None, "https://example.test/mypage",
+        )
+        self.assertIn("전국 생숙 영업신고율", html)
+        self.assertIn("42.5%", html)
+        self.assertIn("데이터랩 전체 보기 →", html)
+        self.assertIn("border-left:4px solid #B4863F", html)
+        self.assertIn("background:#F8F4EE", html)
+
+    def test_zone0_falls_back_to_volume_top_and_zone3_uses_cards(self):
+        html = digest.build_html(
+            "테스터", [], {}, [], [], [], [],
+            {
+                "report_rate": None,
+                "price_change": {"building_name": "상승 단지", "change_percent": 9.8},
+                "volume_top": {"building_name": "거래 단지", "deal_count": 7},
+            },
+            {
+                "title": "기능 소개 제목",
+                "body": "기능 설명",
+                "cta_label": "자세히 보기",
+                "cta_url": "/guide",
+            },
+            "https://example.test/mypage",
+        )
+        self.assertIn("거래 단지", html)
+        self.assertIn("최근 30일 거래량 TOP1 · 7건", html)
+        self.assertIn("weekly-datalab-cards", html)
+        self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 3)
+        self.assertIn("background:#F0F4FF", html)
+
     def test_empty_zone3_and_zone4_are_omitted(self):
         html = digest.build_html(
             "테스터", [], {}, [], [], [], [],
@@ -101,6 +139,7 @@ class WeeklyDigestTests(unittest.TestCase):
         )
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertNotIn("이번 주 기능 소개", html)
+        self.assertNotIn("데이터랩 전체 보기 →", html)
 
     def test_subject_priority_has_no_ad_prefix(self):
         tip = {"title": "이번 주 기능"}
