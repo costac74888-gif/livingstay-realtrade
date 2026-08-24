@@ -33,7 +33,7 @@
   .ls-filter-grid .field select,
   .ls-filter-grid .field input {
     width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
-    font-size: 13px; font-family: inherit; box-sizing: border-box; background: #fff; color: var(--ink);
+    font-size: 12px; font-family: inherit; box-sizing: border-box; background: #fff; color: var(--ink);
   }
   .ls-filter-grid .btn-search {
     background: var(--brass); color: #fff; border: none; border-radius: 8px;
@@ -223,7 +223,15 @@
   @media (max-width: 520px) {
     .listings-page  { padding: 16px 12px 60px; }
     .listings-title { font-size: 18px; }
-    .ls-filter-grid { grid-template-columns: 1fr; }
+    .ls-filter-grid { grid-template-columns: 1fr 1fr; }
+    .ls-filter-grid .field:nth-child(1) { order: 1; }
+    .ls-filter-grid .field:nth-child(2) { order: 2; }
+    .ls-filter-grid .field:nth-child(3) { order: 3; }
+    .ls-filter-grid .field:nth-child(5) { order: 4; }
+    .ls-filter-grid .field:nth-child(6) { order: 5; }
+    .ls-filter-grid .field:nth-child(7) { order: 6; }
+    .ls-filter-grid .field.ls-field-building { grid-column: 1 / -1; order: 7; }
+    .ls-filter-grid .btn-search { grid-column: 1 / -1; order: 8; }
     /* 게시판형 모바일: 전용㎡·최근 수정일·공유 숨김 → [사진|건물명|유형|희망가|채팅] 5열만 노출 */
     .ls-hide-mobile { display: none !important; }
     .ls-board-tbl { min-width: 0; table-layout: fixed; }
@@ -266,7 +274,7 @@
         <label>읍/면/동</label>
         <select id="lsUmdNm"><option value="">전체</option></select>
       </div>
-      <div class="field">
+      <div class="field ls-field-building">
         <label>건물명 검색</label>
         <input type="text" id="lsQ" placeholder="예) 오션마크레지던스" />
       </div>
