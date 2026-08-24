@@ -190,6 +190,10 @@ run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--preload", "app:app"
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
 
+[[ports]]
+localPort = 5000
+externalPort = 80
+
 
 [[workflows.workflow]]
 name = "Weekly Digest"
@@ -214,7 +218,3 @@ args = "python deal_alert_digest.py"
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[ports]]
-localPort = 5000
-externalPort = 80
