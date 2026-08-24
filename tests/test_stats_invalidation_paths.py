@@ -209,6 +209,68 @@ class AppMutationInvalidationTests(unittest.TestCase):
         finally:
             app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
 
+    def test_map_building_count_uses_cached_master_total(self):
+        tx_conn = FakeConnection(FakeCursor(
+            lambda sql, _params: {"c": 777} if "FROM transactions" in sql else None
+        ))
+        cached_lodging_stats = {
+            "total_building_cnt": 22416,
+            "building_count_by_type": {"생활": 20000, "관광": 2000, "준공전": 416},
+            "rows": [{"type": "전체", "building_count": 22416}],
+        }
+        with (
+            patch.object(app_module, "_MASTER_STATS_CACHE", {
+                "ts": 1_700_000_000,
+                "data": {"lodging_stats": cached_lodging_stats},
+                "sections": {"lodging_stats": {"status": "ok", "error": None}},
+                "invalidation_token": "test",
+            }),
+            patch.object(app_module, "_master_stats_cache_is_valid", return_value=True),
+            patch.object(app_module, "get_conn", return_value=tx_conn),
+        ):
+            response = self.client.get("/api/building-count")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {
+            "count": 22416,
+            "by_type": {"생활": 20000, "관광": 2000, "준공전": 416},
+            "tx_count": 777,
+        })
+
+    def test_admin_full_stats_marks_refresh_when_total_differs_by_fifty(self):
+        refresh_signal = Mock()
+        with (
+            patch.object(app_module, "_cached_master_building_count", return_value=22341),
+            patch.object(app_module, "_live_master_building_count", return_value=22416),
+            patch.object(
+                app_module,
+                "_lodging_full_stats_payload",
+                side_effect=lambda: app_module.jsonify({"ok": True, "rows": []}),
+            ),
+            patch.object(app_module, "_MASTER_STATS_NEEDS_REFRESH", refresh_signal),
+        ):
+            response = self.client.get("/api/admin/buildings/full-stats")
+
+        self.assertEqual(response.status_code, 200)
+        refresh_signal.set.assert_called_once_with()
+
+    def test_admin_full_stats_does_not_mark_refresh_below_fifty_difference(self):
+        refresh_signal = Mock()
+        with (
+            patch.object(app_module, "_cached_master_building_count", return_value=22341),
+            patch.object(app_module, "_live_master_building_count", return_value=22390),
+            patch.object(
+                app_module,
+                "_lodging_full_stats_payload",
+                side_effect=lambda: app_module.jsonify({"ok": True, "rows": []}),
+            ),
+            patch.object(app_module, "_MASTER_STATS_NEEDS_REFRESH", refresh_signal),
+        ):
+            response = self.client.get("/api/admin/buildings/full-stats")
+
+        self.assertEqual(response.status_code, 200)
+        refresh_signal.set.assert_not_called()
+
     def test_master_stats_rebuild_groups_independent_sections_before_dependents(self):
         original_cache = dict(app_module._MASTER_STATS_CACHE)
         stages = []

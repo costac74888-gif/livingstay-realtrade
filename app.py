@@ -2541,38 +2541,67 @@ def get_building_count():
     count   : 통계 대시보드의 '등록 건물' 총수 (분류 합계)
     tx_count: 현재 실거래 건수
     """
-    conn = get_conn()
-    cur = conn.cursor()
+    # /api/building-count는 _MASTER_STATS_CACHE가 있으면 지도와 관리자 통계가 같은 시점의 건물 수를
+    # 사용한다. 만료·무효화된 캐시는 stale 값을 즉시 사용하고 백그라운드
+    # 재검증만 예약한다. 최초 캐시가 없을 때만 아래의 실시간 쿼리를 실행한다.
+    cached_lodging = (
+        _MASTER_STATS_CACHE.get("data", {}).get("lodging_stats")
+        if "_MASTER_STATS_CACHE" in globals()
+        else None
+    )
+    if cached_lodging is not None:
+        if not _master_stats_cache_is_valid():
+            _MASTER_STATS_NEEDS_REFRESH.set()
+        cached_rows = cached_lodging.get("rows") or []
+        by_type = cached_lodging.get("building_count_by_type") or {
+            row.get("type"): int(row.get("building_count") or 0)
+            for row in cached_rows
+            if row.get("type") not in (None, "전체")
+            and int(row.get("building_count") or 0) > 0
+        }
+        cached_total = cached_lodging.get("total_building_cnt")
+        total = (
+            int(cached_total)
+            if cached_total is not None
+            else sum(by_type.values())
+        )
+    else:
+        conn = get_conn()
+        cur = conn.cursor()
 
-    # 용도별 건물 수 — 지도 필터와 동일한 기준 (클릭 결과와 숫자 일치 보장)
-    # mixed_use_excluded: 지도 노출 금지 → 범례에도 카운트 제외
-    # 준공전: building_status IN ('허가','착공') AND use_apr_day 없음 — lodging_type NULL보다 우선
-    #   use_apr_day가 있으면 이미 완공된 건물이므로 준공전에서 제외 (backfill이 채웠지만
-    #   building_status 미갱신된 오분류 112건 방어)
-    # 복합: lodging_type = '복합' 또는 '·' 포함 (지도 복합 필터와 동일)
-    # 미분류: lodging_type NULL/'' 이면서 준공전이 아닌 건물
-    cur.execute("""
-        SELECT
-            CASE
-                WHEN building_status IN ('허가','착공')
-                     AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
-                WHEN lodging_type = '생활'                               THEN '생활'
-                WHEN lodging_type = '관광'                               THEN '관광'
-                WHEN lodging_type = '일반'                               THEN '일반'
-                WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
-                WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
-                ELSE NULL   -- mixed_use_excluded 등 → 제외
-            END AS t,
-            COUNT(*) AS c
-        FROM master_buildings
-        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
-        GROUP BY 1
-    """)
-    by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}
-    # total: mixed_use_excluded 제외 건물 수 (범례에 표시할 건물 수와 동일)
-    total = sum(by_type.values())
+        # 용도별 건물 수 — 지도 필터와 동일한 기준 (클릭 결과와 숫자 일치 보장)
+        # mixed_use_excluded: 지도 노출 금지 → 범례에도 카운트 제외
+        # 준공전: building_status IN ('허가','착공') AND use_apr_day 없음 — lodging_type NULL보다 우선
+        #   use_apr_day가 있으면 이미 완공된 건물이므로 준공전에서 제외 (backfill이 채웠지만
+        #   building_status 미갱신된 오분류 112건 방어)
+        # 복합: lodging_type = '복합' 또는 '·' 포함 (지도 복합 필터와 동일)
+        # 미분류: lodging_type NULL/'' 이면서 준공전이 아닌 건물
+        cur.execute("""
+            SELECT
+                CASE
+                    WHEN building_status IN ('허가','착공')
+                         AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
+                    WHEN lodging_type = '생활'                               THEN '생활'
+                    WHEN lodging_type = '관광'                               THEN '관광'
+                    WHEN lodging_type = '일반'                               THEN '일반'
+                    WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
+                    WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
+                    ELSE NULL   -- mixed_use_excluded 등 → 제외
+                END AS t,
+                COUNT(*) AS c
+            FROM master_buildings
+            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+            GROUP BY 1
+        """)
+        by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}
+        # total: mixed_use_excluded 제외 건물 수 (범례에 표시할 건물 수와 동일)
+        total = sum(by_type.values())
+        cur.close()
+        conn.close()
 
     # 실거래 건수
+    conn = get_conn()
+    cur = conn.cursor()
     cur.execute("SELECT COUNT(*) AS c FROM transactions")
     tx_count = int(cur.fetchone()["c"])
 
@@ -13549,7 +13578,7 @@ def _master_stats_add_section(data, sections, name, builder):
     try:
         result = builder()
         required_keys = {
-            "lodging_stats": ("rows",),
+            "lodging_stats": ("rows", "total_building_cnt"),
             "consign_stats": ("items", "total"),
             "closure_stats": ("items",),
             "transaction_stats": ("volume_top", "price_change", "highest_price", "ranking"),
@@ -13811,7 +13840,12 @@ def _lodging_full_stats_payload():
     global _bld_full_stats_cache
     master_payload = _master_stats_section("lodging_stats")
     if master_payload is not None:
-        return jsonify(master_payload)
+        # total_building_cnt는 지도와 관리자 통계가 공유하는 내부 기준값이다.
+        # 기존 관리자/공개 응답 구조는 유지하기 위해 외부 응답에서는 숨긴다.
+        response_payload = dict(master_payload)
+        response_payload.pop("total_building_cnt", None)
+        response_payload.pop("building_count_by_type", None)
+        return jsonify(response_payload)
 
     # [LEGACY] 마스터 캐시를 만들 수 없을 때도 기존 상세 집계를 그대로 제공한다.
     now = time.time()
@@ -13820,14 +13854,24 @@ def _lodging_full_stats_payload():
         and _bld_full_stats_cache["data"]
         and now - _bld_full_stats_cache["ts"] < _BLD_FULL_STATS_TTL
     ):
-        return jsonify(_bld_full_stats_cache["data"])
+        response_payload = dict(_bld_full_stats_cache["data"])
+        response_payload.pop("total_building_cnt", None)
+        response_payload.pop("building_count_by_type", None)
+        return jsonify(response_payload)
 
     conn = get_conn()
     cur = conn.cursor()
 
     # 1. 전체 건물
     cur.execute("""
-        SELECT id, lodging_type, units, road_address, jibun_address
+        SELECT COUNT(*) AS total_building_cnt
+        FROM master_buildings
+        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+    """)
+    total_building_cnt = int(cur.fetchone()["total_building_cnt"])
+    cur.execute("""
+        SELECT id, lodging_type, building_status, use_apr_day,
+               units, road_address, jibun_address
         FROM master_buildings WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
     """)
     all_blds = cur.fetchall()
@@ -13902,11 +13946,33 @@ def _lodging_full_stats_payload():
     TYPES = ["생활", "관광", "일반", "복합", "준공전", "미분류"]
     by_type: dict = {t: [] for t in TYPES}
     all_list: list = []
+    building_count_by_type: dict = {}
     for b in all_blds:
         lt = b["lodging_type"] or "미분류"
         if lt not in by_type: lt = "미분류"
         by_type[lt].append(b)
         all_list.append(b)
+
+        # 지도 /api/building-count의 CASE 분류와 동일한 순서로 집계한다.
+        # 준공전은 lodging_type보다 우선하며, 사용승인일이 있으면 완공 건물이다.
+        if (
+            b.get("building_status") in ("허가", "착공")
+            and not b.get("use_apr_day")
+        ):
+            map_type = "준공전"
+        elif b.get("lodging_type") in ("생활", "관광", "일반"):
+            map_type = b["lodging_type"]
+        elif (
+            b.get("lodging_type") == "복합"
+            or "·" in (b.get("lodging_type") or "")
+        ):
+            map_type = "복합"
+        elif not b.get("lodging_type"):
+            map_type = "미분류"
+        else:
+            map_type = None
+        if map_type is not None:
+            building_count_by_type[map_type] = building_count_by_type.get(map_type, 0) + 1
 
     def _permits_for(blds: list) -> dict:
         permits: dict = {}
@@ -14077,9 +14143,23 @@ def _lodging_full_stats_payload():
         return row
 
     rows = [_row(all_list, "전체")] + [_row(by_type[t], t) for t in TYPES]
-    result = {"ok": True, "rows": rows}
+    # 전체 행도 지도와 같은 명시적 COUNT 쿼리 결과를 사용한다.
+    rows[0]["building_count"] = total_building_cnt
+    result = {
+        "ok": True,
+        "rows": rows,
+        # /api/building-count와 관리자 통계 상단이 공유하는 마스터 건물 수.
+        "total_building_cnt": total_building_cnt,
+        # 지도 범례의 세부 분포도 동일한 캐시 시점으로 유지한다.
+        "building_count_by_type": building_count_by_type,
+    }
     _bld_full_stats_cache = {"ts": now, "data": result}
-    return jsonify(result)
+    if _master_stats_is_rebuilding():
+        return jsonify(result)
+    response_payload = dict(result)
+    response_payload.pop("total_building_cnt", None)
+    response_payload.pop("building_count_by_type", None)
+    return jsonify(response_payload)
 
 
 _PUBLIC_LODGING_STATS_TYPES = {"전체", "생활", "관광", REPORT_RATE_EXCLUDED_LODGING_TYPE, "복합"}
@@ -14113,9 +14193,57 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
     return {"ok": payload.get("ok") is True, "rows": public_rows}
 
 
+def _live_master_building_count():
+    """지도와 동일한 기준의 현재 건물 수를 가볍게 조회한다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) AS total_building_cnt
+            FROM master_buildings
+            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+        """)
+        row = cur.fetchone() or {}
+        return int(row.get("total_building_cnt") or 0)
+    except Exception:
+        # 관리자 통계 화면은 기존 캐시를 우선 반환해야 하므로, 비교용 COUNT 장애가
+        # 전체 통계 API를 실패시키지 않게 한다.
+        app.logger.warning("[master-stats] live building count check failed", exc_info=True)
+        return None
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+def _cached_master_building_count():
+    """현재 마스터 통계 캐시에 저장된 지도 기준 건물 수를 반환한다."""
+    lodging_stats = _MASTER_STATS_CACHE.get("data", {}).get("lodging_stats") or {}
+    cached_count = lodging_stats.get("total_building_cnt")
+    if cached_count is not None:
+        return int(cached_count)
+    total_row = next(
+        (row for row in (lodging_stats.get("rows") or []) if row.get("type") == "전체"),
+        None,
+    )
+    return int(total_row.get("building_count") or 0) if total_row else None
+
+
 @app.route("/api/admin/buildings/full-stats")
 @require_admin
 def admin_buildings_full_stats():
+    # 관리자 통계 상단은 현재 캐시를 즉시 돌려준다. 다만 지도 기준 실시간 수치와
+    # 50건 이상 차이나면 이벤트만 세워 백그라운드 마스터 재계산을 예약한다.
+    cached_count = _cached_master_building_count()
+    live_count = _live_master_building_count()
+    if (
+        cached_count is not None
+        and live_count is not None
+        and abs(live_count - cached_count) >= 50
+    ):
+        _MASTER_STATS_NEEDS_REFRESH.set()
     return _lodging_full_stats_payload()
 
 
@@ -21688,10 +21816,14 @@ def _master_stats_admin_snapshot(*, force=False):
     ) if cache["ts"] else 0
     data = cache["data"]
 
+    lodging_stats = data.get("lodging_stats", {})
     lodging_total = next(
-        (row for row in (data.get("lodging_stats", {}).get("rows") or []) if row.get("type") == "전체"),
+        (row for row in (lodging_stats.get("rows") or []) if row.get("type") == "전체"),
         {},
     )
+    lodging_total_building_cnt = lodging_stats.get("total_building_cnt")
+    if lodging_total_building_cnt is None:
+        lodging_total_building_cnt = lodging_total.get("building_count") or 0
     region_match = data.get("region_match")
     all_permits = region_match[3] if region_match else {}
     active_permits = [
@@ -21705,7 +21837,7 @@ def _master_stats_admin_snapshot(*, force=False):
 
     summaries = {
         "lodging_stats": (
-            f"건물 {int(lodging_total.get('building_count') or 0):,}건 · "
+            f"건물 {int(lodging_total_building_cnt):,}건 · "
             f"호실 {int(lodging_total.get('units') or 0):,}실"
         ),
         "region_match": (
