@@ -49,7 +49,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from datetime import datetime, timedelta
-from db import get_conn, init_db, release_request_connections
+from db import get_conn, init_db, release_conn, release_request_connections
 from stats_cache import mark_master_stats_invalidated
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
@@ -1976,9 +1976,10 @@ def get_buildings_cluster():
         select_extra = "COALESCE(umd_nm, '') AS region_name, sgg_text AS sgg_text_full"
         group_by     = "sgg_text, umd_nm"
 
-    conn = get_conn()
+    conn = None
     cur = None
     try:
+        conn = get_conn()
         cur = conn.cursor()
         cur.execute(f"""
             WITH grouped_buildings AS (
@@ -2013,9 +2014,13 @@ def get_buildings_cluster():
         """, params + having_params)
         rows = cur.fetchall()
     finally:
-        if cur is not None:
-            cur.close()
-        conn.close()
+        # 커서 close가 실패해도 연결 반환은 반드시 실행되어야 한다.
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
 
     items = []
     for r in rows:
