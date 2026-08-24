@@ -19209,12 +19209,7 @@ def admin_member_docs(member_type, member_id):
     docs = []
     for doc_key, col in _APP_DOC_COLUMNS.items():
         if row.get(col):
-            ext = str(row[col]).rsplit(".", 1)[-1].lower() if "." in str(row[col]) else ""
-            docs.append({
-                "doc": doc_key,
-                "label": _DOC_LABELS.get(doc_key, doc_key),
-                "is_image": ext in {"jpg", "jpeg", "png", "webp", "gif"},
-            })
+            docs.append({"doc": doc_key, "label": _DOC_LABELS.get(doc_key, doc_key)})
     return jsonify({
         "ok": True, "app_id": row["id"], "docs": docs,
         "applicant_name": row.get("office_or_company_name") or row.get("owner_name"),
