@@ -41,3 +41,4 @@
 - [숙박업 통합 지역 표기 정규화](lodging-merged-region-normalization.md) — 전남광주통합특별시 원본 주소는 자치구에 따라 광주·전남으로 나눠 매칭한다.
 - [건물전체 매물 체크리스트 공개 범위](whole-listing-checklist-privacy.md) — 제한공개 매물에는 자동 건물값도 제공하지 않아 익명화가 우회되지 않게 한다.
 - [주간 이메일 기능 소개 운영](weekly-email-feature-tips.md) — ISO 주차에 따라 1~8회차만 순환하며, 초기 시드는 관리자가 수정한 본문을 덮어쓰지 않는다.
+- [주간 이메일 동의 마이그레이션](weekly-email-consent-migration.md) — 과거 FALSE는 명시적 off와 구별 불가하므로 개인정보 보호상 off로 보존하고, 신규 회원·명시 없는 행동만 자동 opt-in한다.

@@ -25,6 +25,7 @@ import sys
 import copy
 import time
 from datetime import timedelta
+from unittest.mock import patch
 
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -688,6 +689,8 @@ def run():
     failures += _check_lodging_cap_auto_naming()
     # 관리자 통계표의 일반숙박 호실수 신뢰불가 표시와 비일반 회귀를 확인
     failures += _check_general_units_table_markup(client)
+    # 마지막에 실행해 매물 등록 rate limit을 기존 API 회귀 테스트와 공유하지 않는다.
+    failures += _check_weekly_email_auto_optin_apis(client)
 
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
@@ -777,6 +780,137 @@ def _check_favorite_save_persistence(client):
                 conn.commit()
             with client.session_transaction() as sess:
                 sess.pop("user_id", None)
+        finally:
+            cur.close()
+            conn.close()
+    return failures
+
+
+def _check_weekly_email_auto_optin_apis(client):
+    """네 저장 API의 자동 opt-in과 명시적 수신거부 보존을 실제 DB로 검증한다."""
+    from db import get_conn
+
+    failures = []
+    run_id = str(int(time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    user_id = None
+    try:
+        cur.execute("""
+            SELECT id, building_name, road_address
+              FROM master_buildings
+             WHERE NULLIF(road_address, '') IS NOT NULL
+             ORDER BY id
+             LIMIT 1
+        """)
+        building = cur.fetchone()
+        if not building:
+            return ["weekly auto opt-in: 테스트용 마스터 건물이 없습니다."]
+
+        cur.execute("""
+            INSERT INTO users
+                (email, name, phone, phone_verified, weekly_email_enabled, updated_weekly_email_at)
+            VALUES (%s, %s, %s, TRUE, FALSE, NULL)
+            RETURNING id
+        """, (f"weekly-optin-{run_id}@example.test", "주간자동구독 테스트", "01012345678"))
+        user_id = cur.fetchone()["id"]
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["user_id"] = user_id
+
+        def reset_auto_eligible():
+            cur.execute("""
+                UPDATE users
+                   SET weekly_email_enabled = FALSE, updated_weekly_email_at = NULL
+                 WHERE id = %s
+            """, (user_id,))
+            conn.commit()
+
+        def assert_opted_in(label):
+            cur.execute("""
+                SELECT weekly_email_enabled, updated_weekly_email_at
+                  FROM users WHERE id = %s
+            """, (user_id,))
+            row = cur.fetchone() or {}
+            if not row.get("weekly_email_enabled") or row.get("updated_weekly_email_at") is None:
+                failures.append(f"weekly auto opt-in: {label} 성공 뒤 구독이 켜지지 않았습니다.")
+
+        favorite_payload = {
+            "building_name": building["building_name"],
+            "address": building["road_address"],
+            "building_id": building["id"],
+        }
+        test_headers = {
+            "X-Forwarded-For": f"198.51.100.{(int(run_id) % 200) + 1}",
+        }
+        reset_auto_eligible()
+        favorite = client.post("/api/favorites/mine", json=favorite_payload, headers=test_headers)
+        if favorite.status_code != 200 or not (favorite.get_json() or {}).get("ok"):
+            failures.append("weekly auto opt-in: 관심단지 저장 API가 실패했습니다.")
+        else:
+            assert_opted_in("관심단지 저장")
+
+        reset_auto_eligible()
+        alert = client.post("/api/alerts/mine", json=favorite_payload, headers=test_headers)
+        if alert.status_code != 200 or not (alert.get_json() or {}).get("ok"):
+            failures.append("weekly auto opt-in: 실거래 알림 구독 API가 실패했습니다.")
+        else:
+            assert_opted_in("실거래 알림 구독")
+
+        reset_auto_eligible()
+        listing = client.post("/api/listing-requests", json={
+            "master_building_id": building["id"],
+            "deal_type": "매매",
+            "deal_mode": "direct",
+            "registrant_type": "owner",
+        }, headers=test_headers)
+        if listing.status_code != 200 or not (listing.get_json() or {}).get("ok"):
+            failures.append(f"weekly auto opt-in: 매물의뢰 API가 실패했습니다. ({listing.get_json()})")
+        else:
+            assert_opted_in("매물의뢰")
+
+        reset_auto_eligible()
+        with patch("app.send_sms", return_value=(False, "test")):
+            buy = client.post("/api/buy-requests", json={
+                "master_building_id": building["id"],
+                "deal_type": "매매",
+                "contact_phone": "010-1234-5678",
+            }, headers=test_headers)
+        if buy.status_code != 200 or not (buy.get_json() or {}).get("ok"):
+            failures.append(f"weekly auto opt-in: 매수의뢰 API가 실패했습니다. ({buy.get_json()})")
+        else:
+            assert_opted_in("매수의뢰")
+
+        # 사용자가 이미 꺼둔 뒤에는 저장 API가 구독을 되살리지 않아야 한다.
+        cur.execute("""
+            UPDATE users
+               SET weekly_email_enabled = FALSE, updated_weekly_email_at = NOW()
+             WHERE id = %s
+        """, (user_id,))
+        conn.commit()
+        client.post("/api/favorites/mine", json=favorite_payload, headers=test_headers)
+        cur.execute("SELECT weekly_email_enabled FROM users WHERE id = %s", (user_id,))
+        if (cur.fetchone() or {}).get("weekly_email_enabled") is not False:
+            failures.append("weekly auto opt-in: 명시적 수신거부가 관심단지 저장으로 되살아났습니다.")
+        if not failures:
+            print("OK  주간 이메일 자동 opt-in 4개 API·명시적 수신거부 보존")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"weekly auto opt-in API 테스트 오류: {exc}")
+    finally:
+        try:
+            if user_id:
+                cur.execute("DELETE FROM listing_request_history WHERE listing_request_id IN "
+                            "(SELECT id FROM listing_requests WHERE user_id = %s)", (user_id,))
+                cur.execute("DELETE FROM listing_requests WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM buy_requests WHERE user_id = %s", (user_id,))
+                cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+                conn.commit()
+            with client.session_transaction() as sess:
+                sess.pop("user_id", None)
+        except Exception:
+            conn.rollback()
         finally:
             cur.close()
             conn.close()

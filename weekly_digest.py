@@ -1066,9 +1066,13 @@ def main():
             n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))
             subject = _build_subject(n_deals, datalab_summary, feature_tip)
 
-            # 수신거부는 /unsubscribe?token=… 대신 마이페이지로 이동
-            # (토큰 링크가 "잘못됐거나 이미 처리된 링크" 오류를 내는 경우 방지)
-            unsubscribe_url = f"{SITE_URL}/mypage"
+            # UUID 토큰이 있는 회원은 이메일에서 바로 수신거부할 수 있다.
+            # 토큰이 없는 과거 행은 마이페이지 설정으로 안전하게 안내한다.
+            unsubscribe_token = user.get("unsubscribe_token") or ""
+            unsubscribe_url = (
+                f"{SITE_URL}/unsubscribe?token={unsubscribe_token}"
+                if unsubscribe_token else f"{SITE_URL}/mypage"
+            )
             html_body = build_html(
                 name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,

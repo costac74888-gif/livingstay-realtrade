@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-24-02"
+SCHEMA_VERSION = "2026-08-24-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -871,8 +871,21 @@ def _run_init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0")
     # 실거래 이메일 알림 수신 여부 (기본 켜짐 — 마이페이지에서 끌 수 있음)
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_alert_enabled BOOLEAN DEFAULT TRUE")
-    # 주간 소식 이메일 수신 동의 (기본 꺼짐 — 회원가입 선택 동의 또는 마이페이지에서 켤 수 있음)
-    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN DEFAULT FALSE")
+    # 주간 소식 이메일 수신 동의 (기본 켜짐 — 마이페이지에서 끌 수 있음)
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN DEFAULT TRUE")
+    cur.execute("ALTER TABLE users ALTER COLUMN weekly_email_enabled SET DEFAULT TRUE")
+    # NULL은 과거 환경에서 동의 상태가 기록되지 않은 행일 수 있으므로 TRUE로 정규화한다.
+    cur.execute("UPDATE users SET weekly_email_enabled = TRUE WHERE weekly_email_enabled IS NULL")
+    # 자동 opt-in이 명시적 수신거부를 되살리지 않도록 마지막 명시적 변경 시각을 보관한다.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_weekly_email_at TIMESTAMP")
+    # 과거에는 변경 시각이 없었으므로 FALSE가 기본 미동의인지 명시적 off인지 구분할 수 없다.
+    # 개인정보 보호상 FALSE는 명시적 off로 간주해 보존한다. 신규 회원은 위 기본값(TRUE)을 받는다.
+    cur.execute("""
+        UPDATE users
+           SET updated_weekly_email_at = NOW()
+         WHERE weekly_email_enabled = FALSE
+           AND updated_weekly_email_at IS NULL
+    """)
     # 원클릭 수신거부용 UUID 토큰 (로그인 없이 이메일 링크 하나로 수신거부 처리)
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS unsubscribe_token UUID")
     cur.execute("UPDATE users SET unsubscribe_token = gen_random_uuid() WHERE unsubscribe_token IS NULL")
@@ -1411,6 +1424,25 @@ def _run_init_db():
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_alert_subs "
         "ON user_alert_subscriptions (user_id, COALESCE(building_name, ''), address)"
     )
+
+    # 일일 관심단지 실거래 이메일 발송 이력 — 같은 회원·거래·KST 날짜의 재발송 방지.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS deal_alert_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        alert_date DATE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        claimed_at TIMESTAMP DEFAULT NOW(),
+        sent_at TIMESTAMP,
+        error_message TEXT,
+        UNIQUE (user_id, transaction_id, alert_date)
+    )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_deal_alert_logs_user_date
+        ON deal_alert_logs (user_id, alert_date)
+    """)
 
     # 알림함 — 새 실거래 발생 시 구독자별로 1건씩 쌓인다. 헤더 벨 아이콘이 읽어간다.
     #   transaction_id: 어떤 실거래로 만든 알림인지(같은 거래로 같은 사용자에게 중복 생성 방지).

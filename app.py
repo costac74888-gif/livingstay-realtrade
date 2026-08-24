@@ -4510,7 +4510,8 @@ def unsubscribe_weekly_email():
         cur = conn.cursor()
         try:
             cur.execute(
-                "UPDATE users SET weekly_email_enabled = FALSE "
+                "UPDATE users SET weekly_email_enabled = FALSE, "
+                "updated_weekly_email_at = NOW() "
                 "WHERE unsubscribe_token = %s::uuid RETURNING id",
                 (token,),
             )
@@ -4678,6 +4679,38 @@ def _valid_email(email):
     return bool(email) and len(email) <= 254 and _EMAIL_RE.match(email) is not None
 
 
+def _best_effort_weekly_email_opt_in(cur, user_id, source):
+    """핵심 저장 트랜잭션을 해치지 않는 자동 주간 이메일 opt-in.
+
+    사용자가 직접 토글하거나 수신거부한 행은 updated_weekly_email_at이 있으므로
+    다시 켜지지 않는다. 보조 UPDATE 자체가 실패해도 SAVEPOINT에서만 되돌린다.
+    """
+    savepoint = "weekly_email_opt_in"
+    try:
+        cur.execute(f"SAVEPOINT {savepoint}")
+        cur.execute(
+            """
+            UPDATE users
+               SET weekly_email_enabled = TRUE,
+                   updated_weekly_email_at = NOW()
+             WHERE id = %s
+               AND COALESCE(weekly_email_enabled, FALSE) = FALSE
+               AND updated_weekly_email_at IS NULL
+            """,
+            (user_id,),
+        )
+        cur.execute(f"RELEASE SAVEPOINT {savepoint}")
+    except Exception as exc:
+        try:
+            cur.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            cur.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except Exception:
+            # 원래 트랜잭션은 호출부가 계속 처리할 수 있도록 보조 오류만 기록한다.
+            pass
+        app.logger.warning("weekly email auto opt-in failed (%s, user=%s): %s",
+                           source, user_id, exc)
+
+
 def current_user():
     """세션의 user_id로 현재 로그인한 일반 회원 행을 돌려준다. 없으면 None."""
     uid = session.get("user_id")
@@ -4689,7 +4722,7 @@ def current_user():
         cur.execute(
             "SELECT id, email, name, provider,"
             " COALESCE(email_alert_enabled, TRUE) AS email_alert_enabled,"
-            " COALESCE(weekly_email_enabled, FALSE) AS weekly_email_enabled,"
+            " COALESCE(weekly_email_enabled, TRUE) AS weekly_email_enabled,"
             " phone, COALESCE(phone_verified, FALSE) AS phone_verified"
             " FROM users WHERE id = %s AND status <> 'withdrawn'",
             (uid,),
@@ -4736,9 +4769,9 @@ def auth_signup():
                                   weekly_email_enabled)
                VALUES (%s, %s, %s, 'email', NOW(),
                        NOW(), NOW(), CASE WHEN %s THEN NOW() ELSE NULL END,
-                       %s)
+                       TRUE)
                RETURNING id""",
-            (email, pw_hash, name, marketing, marketing),
+            (email, pw_hash, name, marketing),
         )
         new_id = cur.fetchone()["id"]
         conn.commit()
@@ -4829,7 +4862,7 @@ def auth_me():
             "email": u.get("email"),
             "provider": u.get("provider"),
             "email_alert_enabled":  bool(u.get("email_alert_enabled", True)),
-            "weekly_email_enabled": bool(u.get("weekly_email_enabled", False)),
+            "weekly_email_enabled": bool(u.get("weekly_email_enabled", True)),
             "phone": u.get("phone"),
             "phone_verified": bool(u.get("phone_verified", False)),
         })
@@ -4931,7 +4964,11 @@ def auth_update_weekly_email():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("UPDATE users SET weekly_email_enabled = %s WHERE id = %s", (raw, u["id"]))
+        cur.execute(
+            "UPDATE users SET weekly_email_enabled = %s, "
+            "updated_weekly_email_at = NOW() WHERE id = %s",
+            (raw, u["id"]),
+        )
         conn.commit()
     finally:
         cur.close()
@@ -5336,6 +5373,7 @@ def favorites_mine_add():
             "SET master_building_id = COALESCE(user_favorites.master_building_id, EXCLUDED.master_building_id)",
             (u["id"], name, addr, bid),
         )
+        _best_effort_weekly_email_opt_in(cur, u["id"], "favorite")
         conn.commit()
     finally:
         cur.close()
@@ -5398,6 +5436,8 @@ def favorites_migrate():
                 "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
                 (u["id"], name, addr),
             )
+        if pairs:
+            _best_effort_weekly_email_opt_in(cur, u["id"], "favorites_migrate")
         # migrate 후 MAX_FAVORITES 초과분 제거 — created_at 오래된 순으로 상위 N개만 유지.
         # "가장 오래 저장한 관심단지 우선" 원칙: 최근 추가분(rn > MAX_FAVORITES)을 삭제.
         cur.execute(
@@ -5507,6 +5547,7 @@ def alerts_mine_add():
             "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
             (u["id"], name, addr),
         )
+        _best_effort_weekly_email_opt_in(cur, u["id"], "deal_alert_subscription")
         conn.commit()
     finally:
         cur.close()
@@ -5568,6 +5609,8 @@ def alerts_migrate():
                 "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
                 (u["id"], name, addr),
             )
+        if pairs:
+            _best_effort_weekly_email_opt_in(cur, u["id"], "alerts_migrate")
         conn.commit()
         cur.execute(
             "SELECT building_name, address FROM user_alert_subscriptions "
@@ -8146,6 +8189,7 @@ def create_listing_request():
                 "building_info_overrides": whole_values["building_info_overrides"] if whole_values else {},
             })]
         )
+        _best_effort_weekly_email_opt_in(cur, user["id"], "listing_request")
         conn.commit()
     finally:
         cur.close()
@@ -8240,6 +8284,7 @@ def create_buy_request():
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
               routed_agent_id, routed_reason, price_krw, monthly_rent_krw])
         req_id = cur.fetchone()["id"]
+        _best_effort_weekly_email_opt_in(cur, user["id"], "buy_request")
         conn.commit()
     finally:
         cur.close()
