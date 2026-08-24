@@ -60,6 +60,7 @@
   border-radius: 14px; overflow: hidden;
   box-shadow: 0 2px 10px rgba(22,32,46,.07);
 }
+.sec-b-card-link { display: block; color: inherit; text-decoration: none; }
 .sec-b-preview {
   background: #F4F5F7; padding: 14px 14px 10px; border-bottom: 1px solid var(--line);
   min-height: 120px; position: relative;
@@ -365,7 +366,6 @@
   margin: 10px 0 0; padding-left: 21px; color: var(--ink-soft); font-size: 11px; line-height: 1.5;
 }
 .guide-checklist-list li { padding-left: 2px; }
-.guide-checklist-list a { color: var(--brass-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .guide-checklist-warning {
   margin-top: 10px; padding: 9px 10px; border-radius: 7px; background: #FFF0EE; color: #6F3A35;
   font-size: 11.5px; line-height: 1.55;
@@ -484,22 +484,41 @@
       </div>
 
       <!-- B3: 데이터랩 -->
-      <div class="sec-b-card" id="guideDataLab">
+      <a href="/" target="_self" class="sec-b-card sec-b-card-link" id="guideDataLab">
         <div class="sec-b-preview">
-          <dl class="guide-datalab-list">
-            <div><dt>① 숙박통계</dt><dd>전국 생활·관광·일반 숙박시설의 건물수·호실수·영업신고율·폐업율</dd></div>
-            <div><dt>② 거래량 TOP</dt><dd>최근 30일 가장 활발히 거래된 건물 TOP5</dd></div>
-            <div><dt>③ 가격변동</dt><dd>최근 30일 동일 건물 내 가격 상승/하락폭이 큰 건물</dd></div>
-            <div><dt>④ 최고가 TOP</dt><dd>건물별 역대 최고가·최저가 기록</dd></div>
-            <div><dt>⑤ 영업신고현황</dt><dd>시도별 생활숙박시설 건물수·호실수·영업신고업체·신고호실·신고율. 건물마스터 + 행안부 영업신고 기준.</dd></div>
-            <div><dt>⑥ 폐업 현황</dt><dd>지역별 폐업율이 높은 시군구</dd></div>
-          </dl>
+          <nav class="datalab-nav" aria-label="데이터랩 항목 미리보기">
+            <button type="button" class="datalab-tab active" data-datalab-key="lodging" aria-pressed="true">
+              <span class="datalab-icon">①</span><span>숙박통계</span>
+            </button>
+            <button type="button" class="datalab-tab" data-datalab-key="volume" aria-pressed="false">
+              <span class="datalab-icon">🔥</span><span>거래량 TOP</span>
+            </button>
+            <button type="button" class="datalab-tab" data-datalab-key="change" aria-pressed="false">
+              <span class="datalab-icon">📊</span><span>가격변동</span>
+            </button>
+            <button type="button" class="datalab-tab" data-datalab-key="highest" aria-pressed="false">
+              <span class="datalab-icon">💰</span><span>최고가 TOP</span>
+            </button>
+            <button type="button" class="datalab-tab" data-datalab-key="consign" aria-pressed="false">
+              <span class="datalab-icon">📋</span><span>영업신고현황</span>
+            </button>
+            <button type="button" class="datalab-tab" data-datalab-key="closure" aria-pressed="false">
+              <span class="datalab-icon">⚫</span><span style="font-weight:700;">폐업 현황</span>
+            </button>
+          </nav>
         </div>
         <div class="sec-b-desc">
           <strong>📈 데이터랩 — 숙박시장 신호</strong>
-          <p>로그인 없이 누구나 볼 수 있는 생활숙박시설 시장 데이터입니다.<br>탭을 클릭하면 각 항목을 바로 확인할 수 있습니다.</p>
+          <dl class="guide-datalab-list">
+            <div><dt>① 숙박통계</dt><dd>전국 생숙·관광·일반 건물수·호실수·신고율·폐업율</dd></div>
+            <div><dt>② 거래량 TOP</dt><dd>최근 30일 가장 활발히 거래된 건물</dd></div>
+            <div><dt>③ 가격변동</dt><dd>최근 30일 가격 상승·하락폭이 큰 건물</dd></div>
+            <div><dt>④ 최고가 TOP</dt><dd>건물별 역대 최고가·최저가</dd></div>
+            <div><dt>⑤ 영업신고현황</dt><dd>시도별 생숙 영업신고업체·신고호실·신고율</dd></div>
+            <div><dt>⑥ 폐업현황</dt><dd>지역별 폐업율이 높은 시군구</dd></div>
+          </dl>
         </div>
-      </div>
+      </a>
 
     </div>
   </div>
@@ -524,7 +543,7 @@
         </div>
 
         <div class="mock-header">
-          <div class="mock-bname">아라트라움 아리스타 <span style="font-size:9px;background:#2C7A7B;color:#fff;border-radius:4px;padding:1px 5px;vertical-align:middle;">생숙</span></div>
+          <div class="mock-bname">홈앤스테이서울 <span style="font-size:9px;background:#2C7A7B;color:#fff;border-radius:4px;padding:1px 5px;vertical-align:middle;">생숙</span></div>
           <div class="mock-addr">경기도 평택시 지산동 735-4</div>
 
           <!-- ② 알림 / ③ 관심저장 -->
@@ -896,14 +915,14 @@
             </div>
             <div class="guide-checklist-callout">
               <strong>숙박업소 거래 체크리스트</strong>
-              <p>건물전체 매물에는 숙박업소 거래 체크리스트 버튼이 제공됩니다. 거래 전 확인해야 할 <b>14개 항목</b>(영업신고 확인, 인허가 이력, 세금 체납 조회 등 공인기관 링크 포함)을 안내합니다.</p>
+              <p>건물전체 매물에는 숙박업소 거래 체크리스트 버튼이 제공됩니다. 거래 전 확인해야 할 <b>14개 항목</b>(영업신고 확인, 인허가 이력, 세금 체납 조회 등)을 안내합니다.</p>
               <ol class="guide-checklist-list">
-                <li>위반건축물 여부 · <a href="https://www.gov.kr/portal/main/nologin" target="_blank" rel="noopener noreferrer">정부24</a></li>
+                <li>위반건축물 여부 · 정부24</li>
                 <li>용도·구조·연면적·사용승인일</li>
-                <li>소유권·압류·가압류 · <a href="https://www.iros.go.kr/" target="_blank" rel="noopener noreferrer">인터넷등기소</a></li>
+                <li>소유권·압류·가압류 · 인터넷등기소</li>
                 <li>용도지역·토지이용계획</li>
-                <li>숙박업 영업신고·행정처분 이력 · <a href="https://www.gov.kr/portal/main/nologin" target="_blank" rel="noopener noreferrer">정부24</a></li>
-                <li>소방점검·완비증명 · <a href="https://www.nfa.go.kr/" target="_blank" rel="noopener noreferrer">소방청</a></li>
+                <li>숙박업 영업신고·행정처분 이력 · 정부24</li>
+                <li>소방점검·완비증명 · 소방청</li>
                 <li>법정 주차대수</li>
                 <li>반경 500m 경쟁업소 수</li>
                 <li>최근접 지하철역 도보거리</li>
@@ -1298,7 +1317,7 @@ if (typeof initHeader === "function") initHeader({ title: "이용안내" });
   } else {
     // 예시 데이터
     label.style.display = "";
-    const examples = ["아라트라움 아리스타","그레이스콘도미니엄","대명콘도미니엄"];
+    const examples = ["홈앤스테이서울","그레이스콘도미니엄","대명콘도미니엄"];
     container.innerHTML = examples.map(n =>
       `<span class="guide-chip example">${n}</span>`
     ).join("");
