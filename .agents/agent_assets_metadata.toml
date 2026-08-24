@@ -33,3 +33,10 @@ uri = "file://screenshots/datalab-building-map-navigation.jpg"
 type = "image"
 title = "데이터랩 건물명 클릭 → 지도 이동"
 description = "실제 거래량 TOP API 좌표로 클릭 후 중심 좌표와 level 3 확대 상태를 확인한 검증 캡처입니다. 캡처 브라우저에서는 외부 Kakao 지도 SDK가 차단되어 같은 클릭 처리 흐름을 별도 검증 화면으로 렌더링했습니다."
+
+[[outputs]]
+id = "P_c_lAuWa_naW9dW_gf3q"
+uri = "file://static/home_stay_share.png"
+type = "image"
+title = "홈앤스테이 네모난 로고"
+description = "홈앤스테이 링크 공유용 정사각형 로고 PNG (1254×1254)."
