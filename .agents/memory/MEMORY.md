@@ -44,3 +44,4 @@
 - [주간 이메일 동의 마이그레이션](weekly-email-consent-migration.md) — 과거 FALSE는 명시적 off와 구별 불가하므로 개인정보 보호상 off로 보존하고, 신규 회원·명시 없는 행동만 자동 opt-in한다.
 - [매수의뢰 철회 상태](buy-request-withdrawal-state.md) — 철회됨은 최종 상태이며, 담당 중개사도 이후 처리 상태로 되돌릴 수 없다.
 - [회원 접속이력](member-login-history.md) — 일반회원의 모든 인증 세션은 원본 IP 없이 해시·UA로 기록하고, 관리자만 최근 이력을 조회한다.
+- [Pooled DB connection ownership](pooled-db-connection-ownership.md) — Legacy conn.close() is a pool-release shim; fallback cleanup must use a unique per-lease token.

@@ -123,8 +123,29 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
     init_db()
     bjdong = BjdongMap(BJDONG_CSV)
     conn = get_conn()
-    cur = conn.cursor()
+    cur = None
+    try:
+        cur = conn.cursor()
+        return _run_with_open_connection(
+            limit=limit,
+            ids=ids,
+            only_missing=only_missing,
+            sleep=sleep,
+            pk_only=pk_only,
+            status_key=status_key,
+            run_id=run_id,
+            bjdong=bjdong,
+            conn=conn,
+            cur=cur,
+        )
+    finally:
+        if cur is not None:
+            cur.close()
+        conn.close()
 
+
+def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
+                              status_key=None, run_id=None, *, bjdong, conn, cur):
     where = ["sgg_cd IS NOT NULL", "umd_nm IS NOT NULL", "jibun IS NOT NULL"]
     params = []
     if ids:

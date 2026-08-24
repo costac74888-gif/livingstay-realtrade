@@ -49,7 +49,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from datetime import datetime, timedelta
-from db import get_conn, init_db
+from db import get_conn, init_db, release_request_connections
 from stats_cache import mark_master_stats_invalidated
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
@@ -427,6 +427,12 @@ def _static_asset_cache(resp):
     if path.startswith("/static/js/") or path.startswith("/static/css/"):
         resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resp
+
+
+@app.teardown_request
+def _release_pooled_request_connections(_error=None):
+    """예외로 기존 호출부의 conn.close()가 건너뛰어도 요청 종료 시 회수한다."""
+    release_request_connections()
 
 
 @app.after_request
@@ -1971,40 +1977,45 @@ def get_buildings_cluster():
         group_by     = "sgg_text, umd_nm"
 
     conn = get_conn()
-    cur  = conn.cursor()
-    cur.execute(f"""
-        WITH grouped_buildings AS (
-            SELECT *,
-                   CASE
-                     WHEN lodging_type = '생활' THEN '생활'
-                     WHEN lodging_type = '관광' THEN '관광'
-                     WHEN lodging_type = '일반' THEN '일반'
-                     WHEN lodging_type = '복합' OR lodging_type LIKE '%%·%%' THEN '복합'
-                     WHEN (lodging_type IS NULL OR lodging_type = '')
-                          AND building_status IN ('허가','착공')
-                          AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
-                     ELSE '미분류'
-                   END AS map_type
-            FROM master_buildings
-            WHERE {where_sql}
-        )
-        SELECT {select_extra},
-               AVG(lat) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS lat,
-               AVG(lng) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS lng,
-               COUNT(*)  AS total,
-               COUNT(*) FILTER (WHERE map_type = '생활')   AS cnt_live,
-               COUNT(*) FILTER (WHERE map_type = '관광')   AS cnt_tour,
-               COUNT(*) FILTER (WHERE map_type = '일반')   AS cnt_gen,
-               COUNT(*) FILTER (WHERE map_type = '복합')   AS cnt_mixed,
-               COUNT(*) FILTER (WHERE map_type = '준공전') AS cnt_pre_completion,
-               COUNT(*) FILTER (WHERE map_type = '미분류') AS cnt_unknown
-        FROM grouped_buildings
-        GROUP BY {group_by}
-        HAVING {having_sql}
-        ORDER BY total DESC
-    """, params + having_params)
-    rows = cur.fetchall()
-    cur.close()
+    cur = None
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            WITH grouped_buildings AS (
+                SELECT *,
+                       CASE
+                         WHEN lodging_type = '생활' THEN '생활'
+                         WHEN lodging_type = '관광' THEN '관광'
+                         WHEN lodging_type = '일반' THEN '일반'
+                         WHEN lodging_type = '복합' OR lodging_type LIKE '%%·%%' THEN '복합'
+                         WHEN (lodging_type IS NULL OR lodging_type = '')
+                              AND building_status IN ('허가','착공')
+                              AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
+                         ELSE '미분류'
+                       END AS map_type
+                FROM master_buildings
+                WHERE {where_sql}
+            )
+            SELECT {select_extra},
+                   AVG(lat) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS lat,
+                   AVG(lng) FILTER (WHERE lat IS NOT NULL AND lng IS NOT NULL) AS lng,
+                   COUNT(*)  AS total,
+                   COUNT(*) FILTER (WHERE map_type = '생활')   AS cnt_live,
+                   COUNT(*) FILTER (WHERE map_type = '관광')   AS cnt_tour,
+                   COUNT(*) FILTER (WHERE map_type = '일반')   AS cnt_gen,
+                   COUNT(*) FILTER (WHERE map_type = '복합')   AS cnt_mixed,
+                   COUNT(*) FILTER (WHERE map_type = '준공전') AS cnt_pre_completion,
+                   COUNT(*) FILTER (WHERE map_type = '미분류') AS cnt_unknown
+            FROM grouped_buildings
+            GROUP BY {group_by}
+            HAVING {having_sql}
+            ORDER BY total DESC
+        """, params + having_params)
+        rows = cur.fetchall()
+    finally:
+        if cur is not None:
+            cur.close()
+        conn.close()
 
     items = []
     for r in rows:
@@ -6537,10 +6548,14 @@ def agent_building_add():
         cur.close()
         conn.close()
     if reassigned_count:
-        cur2 = get_conn().cursor()
-        cur2.execute("SELECT phone FROM agents WHERE id=%s", [agent_id])
-        ph = cur2.fetchone()
-        cur2.connection.close()
+        conn2 = get_conn()
+        cur2 = conn2.cursor()
+        try:
+            cur2.execute("SELECT phone FROM agents WHERE id=%s", [agent_id])
+            ph = cur2.fetchone()
+        finally:
+            cur2.close()
+            conn2.close()
         if ph and ph["phone"]:
             send_sms(ph["phone"], f"[홈앤스테이] 대기 중이던 매물의뢰 {reassigned_count}건이 배정되었습니다. 대시보드에서 확인해주세요.")
     return jsonify({"ok": True, "reassigned": reassigned_count})

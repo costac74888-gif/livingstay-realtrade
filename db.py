@@ -27,21 +27,313 @@ transactions     : 배치 수집으로 쌓이는 실거래 (매매) 데이터
 sync_log         : 배치 실행 이력 (언제, 몇 건, 성공/실패)
 """
 
+import atexit
+import logging
 import os
+import threading
 from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
+from psycopg2.pool import PoolError, ThreadedConnectionPool
 from werkzeug.security import generate_password_hash
+
+
+_logger = logging.getLogger(__name__)
+_POOL_MIN_CONNECTIONS = 2
+_POOL_MAX_CONNECTIONS = 20
+_connection_pool = None
+_connection_pool_pid = None
+_borrowed_connections = {}
+_connection_pool_lock = threading.RLock()
+
+
+class _PooledConnection:
+    """기존 conn.close() 호출을 안전한 풀 반환으로 연결하는 호환 래퍼.
+
+    프로젝트에 오래된 배치가 많아 전부를 동시에 바꾸는 동안에도 물리 연결을 닫거나
+    반환을 빼먹지 않게 한다. 새 코드는 release_conn()/connection()을 명시적으로 쓴다.
+    """
+
+    def __init__(self, raw_connection):
+        object.__setattr__(self, "_raw_connection", raw_connection)
+        object.__setattr__(self, "_released", False)
+        object.__setattr__(self, "_lease_token", object())
+
+    def __getattr__(self, name):
+        return getattr(self._raw_connection, name)
+
+    def __setattr__(self, name, value):
+        if name in {"_raw_connection", "_released", "_lease_token"}:
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._raw_connection, name, value)
+
+    def __enter__(self):
+        self._raw_connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._raw_connection.__exit__(exc_type, exc_value, traceback)
+
+    def close(self):
+        """기존 호출부 호환용: 물리 close 대신 풀로 반환한다."""
+        release_conn(self)
+
+    def __del__(self):
+        # 구형 배치의 예외 경로를 위한 보조 안전망. release_conn은 대여 토큰까지
+        # 일치할 때만 반환하므로, 같은 원시 연결이 재대여된 뒤에는 건드리지 않는다.
+        try:
+            release_conn(self)
+        except Exception:
+            pass
+
+
+def _reset_connection_pool_after_fork():
+    """fork된 자식은 부모의 DB 소켓과 잠금 객체를 절대 이어받지 않는다."""
+    global _connection_pool, _connection_pool_pid, _borrowed_connections, _connection_pool_lock
+    _connection_pool = None
+    _connection_pool_pid = None
+    _borrowed_connections = {}
+    _connection_pool_lock = threading.RLock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_connection_pool_after_fork)
+
+
+def _pool_size_from_env(name, default):
+    """잘못된 환경 설정 하나가 앱 기동을 막지 않게 양수만 반영한다."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        _logger.warning("DB 풀 설정 %s=%r이 올바른 정수가 아니어서 기본값 %s을 사용합니다.", name, raw, default)
+        return default
+    if value < 1:
+        _logger.warning("DB 풀 설정 %s=%r은 1 이상이어야 하므로 기본값 %s을 사용합니다.", name, raw, default)
+        return default
+    return value
+
+
+def _get_connection_pool():
+    """현재 프로세스 전용 풀을 반환한다.
+
+    gunicorn pre-load/fork 뒤 부모 프로세스의 소켓을 자식이 재사용하면 안 된다.
+    PID가 바뀐 경우 상속된 풀은 closeall()하지 않고 버리고, 자식에서 새로 만든다.
+    """
+    global _connection_pool, _connection_pool_pid
+    current_pid = os.getpid()
+
+    with _connection_pool_lock:
+        if _connection_pool is not None and _connection_pool_pid == current_pid:
+            return _connection_pool
+
+        if _connection_pool is not None:
+            if _connection_pool_pid == current_pid:
+                # 이 경로는 현재 없지만, 향후 명시 재설정 시 누수를 막는다.
+                try:
+                    _connection_pool.closeall()
+                except Exception:
+                    _logger.warning("기존 DB 연결 풀 종료 실패", exc_info=True)
+            else:
+                # fork된 자식에서 부모 연결을 닫으면 부모 세션까지 끊길 수 있다.
+                _logger.warning(
+                    "DB 연결 풀이 다른 PID(%s)에서 상속되어 폐기합니다; 새 풀을 생성합니다.",
+                    _connection_pool_pid,
+                )
+            _connection_pool = None
+            _connection_pool_pid = None
+            _borrowed_connections.clear()
+
+        minconn = _pool_size_from_env("DB_POOL_MINCONN", _POOL_MIN_CONNECTIONS)
+        maxconn = _pool_size_from_env("DB_POOL_MAXCONN", _POOL_MAX_CONNECTIONS)
+        if maxconn < minconn:
+            _logger.warning(
+                "DB_POOL_MAXCONN(%s)이 DB_POOL_MINCONN(%s)보다 작아 minconn 값으로 올립니다.",
+                maxconn,
+                minconn,
+            )
+            maxconn = minconn
+
+        database_url = os.environ["DATABASE_URL"]
+        _connection_pool = ThreadedConnectionPool(
+            minconn=minconn,
+            maxconn=maxconn,
+            dsn=database_url,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+        )
+        _connection_pool_pid = current_pid
+        _logger.info(
+            "DB 연결 풀 생성 완료 (pid=%s, min=%s, max=%s)",
+            current_pid,
+            minconn,
+            maxconn,
+        )
+        return _connection_pool
 
 
 def get_conn():
     """
-    DATABASE_URL 환경변수(Replit Secrets에 자동 등록됨)로 접속.
-    RealDictCursor를 써서 기존 sqlite3.Row처럼 row["컬럼명"]으로 접근 가능하게 함.
+    현재 프로세스의 PostgreSQL 연결 풀에서 연결 하나를 대여한다.
+    반드시 release_conn()으로 반환해야 한다.
     """
-    database_url = os.environ["DATABASE_URL"]  # Replit Database 탭에서 Postgres 생성 시 자동 주입
-    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+    pool = _get_connection_pool()
+    try:
+        raw_connection = pool.getconn()
+    except PoolError:
+        _logger.error(
+            "DB 연결 풀이 고갈되었습니다 (pid=%s). DB_POOL_MAXCONN 또는 동시 작업을 확인하세요.",
+            os.getpid(),
+            exc_info=True,
+        )
+        raise
+    except Exception:
+        _logger.error("DB 연결 풀에서 연결 대여 실패", exc_info=True)
+        raise
+
+    conn = _PooledConnection(raw_connection)
+    with _connection_pool_lock:
+        _borrowed_connections[id(raw_connection)] = (pool, os.getpid(), conn._lease_token)
+    _track_request_connection(conn)
     return conn
+
+
+def release_conn(conn):
+    """대여한 연결을 정리한 뒤 원래 풀로 반환한다.
+
+    커밋하지 않은 SELECT/쓰기나 오류 난 트랜잭션은 항상 rollback한다. 반환 전 정리에
+    실패하거나 이미 닫힌 연결은 풀에서 제거해 다음 요청에 재사용되지 않게 한다.
+    """
+    if conn is None:
+        return
+
+    if isinstance(conn, _PooledConnection):
+        if conn._released:
+            return
+        object.__setattr__(conn, "_released", True)
+        raw_connection = conn._raw_connection
+        lease_token = conn._lease_token
+    else:
+        raw_connection = conn
+        lease_token = None
+
+    with _connection_pool_lock:
+        borrowed = _borrowed_connections.get(id(raw_connection))
+        if isinstance(conn, _PooledConnection):
+            # 오래된 래퍼가 GC된 시점에는 같은 원시 연결이 이미 다른 요청에
+            # 재대여됐을 수 있다. 그 경우 새 대여분은 절대 반환하거나 rollback하지 않는다.
+            if borrowed is None or borrowed[2] is not lease_token:
+                return
+        borrowed = _borrowed_connections.pop(id(raw_connection), None)
+
+    if borrowed is None:
+        # database_url 인자를 받은 별도 접속 등, 풀 바깥 연결도 이 함수로 안전하게 닫을 수 있다.
+        try:
+            raw_connection.close()
+        except Exception:
+            _logger.warning("미등록 DB 연결 폐기 실패", exc_info=True)
+        return
+
+    pool, borrowed_pid, _ = borrowed
+    if borrowed_pid != os.getpid():
+        _logger.warning("다른 PID에서 대여한 DB 연결 반환 요청 — 연결을 폐기합니다.")
+        try:
+            raw_connection.close()
+        except Exception:
+            _logger.warning("fork 후 상속된 DB 연결 폐기 실패", exc_info=True)
+        return
+
+    discard = bool(getattr(raw_connection, "closed", True))
+    try:
+        if not discard:
+            # CONCURRENTLY DDL 등 일부 호출부는 autocommit을 켠다. 이 상태를 그대로
+            # 재사용하면 다음 요청의 다중 쓰기가 트랜잭션 밖에서 실행될 수 있다.
+            if raw_connection.autocommit:
+                raw_connection.autocommit = False
+            # IDLE 상태에서도 rollback은 안전하며, 열린 트랜잭션을 다음 요청으로 넘기지 않는다.
+            raw_connection.rollback()
+    except Exception:
+        discard = True
+        _logger.warning("DB 연결 반환 전 rollback 실패 — 연결을 폐기합니다.", exc_info=True)
+
+    try:
+        pool.putconn(raw_connection, close=discard)
+        if discard:
+            _logger.warning("닫혔거나 오류 난 DB 연결을 풀에서 폐기했습니다.")
+    except Exception:
+        _logger.error("DB 연결 풀 반환 실패 — 연결을 폐기합니다.", exc_info=True)
+        try:
+            raw_connection.close()
+        except Exception:
+            pass
+
+
+@contextmanager
+def connection():
+    """새 코드에서 누수를 막기 위한 공용 연결 컨텍스트 관리자."""
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        release_conn(conn)
+
+
+def _track_request_connection(conn):
+    """Flask 요청 안에서 빌린 연결은 teardown에서 결정적으로 반환한다."""
+    try:
+        from flask import g, has_request_context
+        if not has_request_context():
+            return
+        tracked = getattr(g, "_pooled_db_connections", None)
+        if tracked is None:
+            tracked = []
+            g._pooled_db_connections = tracked
+        tracked.append(conn)
+    except (ImportError, RuntimeError):
+        # 배치·CLI에서는 Flask 컨텍스트가 없으며 호출부의 close/finalizer가 처리한다.
+        return
+
+
+def release_request_connections():
+    """요청 중 예외로 누락된 legacy conn.close()를 teardown에서 회수한다."""
+    try:
+        from flask import g, has_request_context
+        if not has_request_context():
+            return
+        tracked = getattr(g, "_pooled_db_connections", [])
+        g._pooled_db_connections = []
+    except (ImportError, RuntimeError):
+        return
+
+    for conn in reversed(tracked):
+        release_conn(conn)
+
+
+def close_connection_pool():
+    """현재 프로세스의 풀을 종료한다. 정상 종료 훅과 테스트 정리에 사용한다."""
+    global _connection_pool, _connection_pool_pid
+    with _connection_pool_lock:
+        pool = _connection_pool
+        pool_pid = _connection_pool_pid
+        _connection_pool = None
+        _connection_pool_pid = None
+        _borrowed_connections.clear()
+
+    if pool is None:
+        return
+    if pool_pid != os.getpid():
+        _logger.warning("다른 PID에서 상속된 DB 풀은 종료하지 않고 폐기합니다.")
+        return
+    try:
+        pool.closeall()
+        _logger.info("DB 연결 풀 종료 완료 (pid=%s)", pool_pid)
+    except Exception:
+        _logger.warning("DB 연결 풀 종료 실패", exc_info=True)
+
+
+atexit.register(close_connection_pool)
 
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
