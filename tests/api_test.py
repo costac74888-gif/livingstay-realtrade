@@ -639,6 +639,8 @@ def run():
     else:
         print("OK  /api/admin/user-stats (날짜 경계·철회 상태·두 페이지뷰 INSERT)")
 
+    failures += _check_member_login_history(client)
+
     # /api/buildings-geo bounds 필터 추가 테스트
     failures += _check_buildings_geo_bounds(client)
 
@@ -703,6 +705,131 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_member_login_history(client):
+    """이메일 로그인 이력 저장과 관리자 회원관리 조회 계약을 확인한다."""
+    from werkzeug.security import generate_password_hash
+
+    failures = []
+    run_id = str(int(time.time() * 1000))
+    email = f"login-history-{run_id}@example.test"
+    user_id = None
+    signup_user_id = None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO users (email, password_hash, name, provider, status)
+            VALUES (%s, %s, %s, 'email', 'active')
+            RETURNING id
+        """, [email, generate_password_hash("login-history-password"), "접속이력 테스트"])
+        user_id = cur.fetchone()["id"]
+        conn.commit()
+
+        headers = {
+            "User-Agent": "LivingstayLoginHistoryTest Chrome/125.0",
+            "X-Forwarded-For": f"198.51.100.{(int(run_id) % 200) + 1}",
+        }
+        with client.session_transaction() as sess:
+            sess.clear()
+        blocked = client.get(f"/api/admin/members/general/{user_id}/login-history")
+        if blocked.status_code != 401:
+            failures.append("회원 접속이력: 비관리자 조회를 차단하지 않습니다.")
+        login = client.post("/api/auth/login", json={
+            "email": email,
+            "password": "login-history-password",
+        }, headers=headers)
+        if login.status_code != 200 or not (login.get_json() or {}).get("ok"):
+            failures.append(f"회원 접속이력: 이메일 로그인에 실패했습니다. ({login.get_json()})")
+            return failures
+
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["admin"] = True
+        listing = client.get("/api/admin/members", query_string={"group": "general", "q": email})
+        payload = listing.get_json() or {}
+        rows = payload.get("items") or []
+        member = next((row for row in rows if row.get("id") == user_id), None)
+        if (
+            listing.status_code != 200
+            or not member
+            or member.get("provider") != "email"
+            or not member.get("created_at")
+            or ":" not in member["created_at"]
+        ):
+            failures.append("회원관리: 가입일시 또는 가입경로(provider)를 반환하지 않습니다.")
+
+        history = client.get(f"/api/admin/members/general/{user_id}/login-history")
+        history_data = history.get_json() or {}
+        items = history_data.get("history") or []
+        if (
+            history.status_code != 200
+            or not history_data.get("last_login_at")
+            or not items
+            or "LivingstayLoginHistoryTest" not in (items[0].get("user_agent") or "")
+        ):
+            failures.append("회원 접속이력: 로그인 저장 또는 최근 10건 조회가 올바르지 않습니다.")
+        non_general = client.get(f"/api/admin/members/agent/{user_id}/login-history")
+        if non_general.status_code != 400:
+            failures.append("회원 접속이력: 일반회원 외 유형 조회를 차단하지 않습니다.")
+
+        signup_email = f"signup-history-{run_id}@example.test"
+        with client.session_transaction() as sess:
+            sess.clear()
+        signup = client.post("/api/auth/signup", json={
+            "email": signup_email,
+            "password": "signup-history-password",
+            "name": "가입 접속이력 테스트",
+            "age14": True,
+            "terms": True,
+            "privacy": True,
+            "marketing": False,
+        }, headers={
+            "User-Agent": "LivingstaySignupHistoryTest Safari/17.0",
+            "X-Forwarded-For": f"198.51.101.{(int(run_id) % 200) + 1}",
+        })
+        if signup.status_code != 200 or not (signup.get_json() or {}).get("ok"):
+            failures.append(f"회원 접속이력: 신규가입에 실패했습니다. ({signup.get_json()})")
+        else:
+            cur.execute("SELECT id FROM users WHERE email = %s", [signup_email])
+            signup_user_id = (cur.fetchone() or {}).get("id")
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["admin"] = True
+            first_session = client.get(
+                f"/api/admin/members/general/{signup_user_id}/login-history"
+            )
+            first_session_data = first_session.get_json() or {}
+            first_items = first_session_data.get("history") or []
+            if (
+                first_session.status_code != 200
+                or not first_items
+                or "LivingstaySignupHistoryTest" not in (first_items[0].get("user_agent") or "")
+            ):
+                failures.append("회원 접속이력: 신규가입 직후 첫 인증 세션이 저장되지 않았습니다.")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"회원 접속이력 API 테스트 오류: {exc}")
+    finally:
+        try:
+            if user_id:
+                cur.execute("DELETE FROM login_history WHERE user_id = %s", [user_id])
+                cur.execute("DELETE FROM users WHERE id = %s", [user_id])
+            if signup_user_id:
+                cur.execute("DELETE FROM login_history WHERE user_id = %s", [signup_user_id])
+                cur.execute("DELETE FROM users WHERE id = %s", [signup_user_id])
+                conn.commit()
+            with client.session_transaction() as sess:
+                sess.clear()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+    if not failures:
+        print("OK  회원관리 가입경로·가입일시·최근 접속이력")
+    return failures
 
 
 def _check_favorite_save_persistence(client):

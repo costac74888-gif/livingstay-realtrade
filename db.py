@@ -46,7 +46,7 @@ def get_conn():
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-24-04"
+SCHEMA_VERSION = "2026-08-24-05"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -896,6 +896,32 @@ def _run_init_db():
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_code TEXT")            # 6자리 OTP
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_code_expires_at TIMESTAMP")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_code_target TEXT")     # 인증 중인 번호
+
+    # 일반회원 로그인 감사 이력 — IP 원문은 저장하지 않고 앱에서 해시해 기록한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS login_history (
+        id           SERIAL PRIMARY KEY,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        logged_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ip_hash      TEXT,
+        user_agent   TEXT
+    )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_login_history_user
+        ON login_history (user_id, logged_in_at DESC)
+    """)
+    # 테이블 도입 전에 로그인한 기존 회원도 마지막 로그인 1건은 표시한다.
+    cur.execute("""
+        INSERT INTO login_history (user_id, logged_in_at)
+        SELECT u.id, u.last_login_at
+          FROM users u
+         WHERE u.last_login_at IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM login_history lh
+                WHERE lh.user_id = u.id
+           )
+    """)
 
     # 사업주 매물 등록 자격 확인 — 사용자·건물별 대표 영업신고번호 인증 캐시
     cur.execute("""

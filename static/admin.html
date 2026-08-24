@@ -4715,7 +4715,11 @@
           <td style="white-space:nowrap;">${badge}</td>
           <td style="white-space:nowrap;" title="${dgEscape(r.category||'')}">${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; min-width:100px;">${dgEscape(r.group_label || "-") || "-"}</td>
-          <td style="white-space:nowrap;">${dgEscape(r.created_at || "-")}</td>
+          <td style="white-space:nowrap;font-size:11px;">${dgEscape(r.created_at || "-")}</td>
+          <td style="white-space:nowrap;">${r.provider === "kakao"
+            ? '<span style="background:#FEE500;color:#191919;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">카카오</span>'
+            : '<span style="background:#F0F0F0;color:#555;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">이메일</span>'
+          }</td>
           <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
           <td>${tagCell}</td>
@@ -4750,9 +4754,9 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>세부업종</th><th>상호</th>
-            <th>가입일</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th>
+            <th>가입일시</th><th>가입경로</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="18" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="19" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pager" style="padding:12px 4px; justify-content:flex-start;">
           <button class="dg-nav-btn" id="membersFirst" ${s.page <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>
@@ -5918,32 +5922,51 @@
       if (d.length === 10) return d.replace(/(\d{3})(\d{2})(\d{5})/, "$1-$2-$3");
       return v;
     }
+    function _memberLoginUaSummary(userAgent) {
+      const ua = String(userAgent || "");
+      if (!ua) return "기록 없음";
+      let browser = "기타";
+      if (/edg\//i.test(ua)) browser = "Edge";
+      else if (/firefox|fxios/i.test(ua)) browser = "Firefox";
+      else if (/chrome|crios/i.test(ua)) browser = "Chrome";
+      else if (/safari/i.test(ua)) browser = "Safari";
+      return /mobile|android|iphone|ipad/i.test(ua) ? `${browser} · Mobile` : browser;
+    }
     const _MD_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" };
     const _MD_STATUS = {
       active: ["정상", "ok"], withdrawn: ["탈퇴", "no"], inactive: ["비활성", ""],
       approved: ["승인됨", "ok"], pending: ["승인대기", "wait"],
       rejected: ["반려됨", "no"], suspended: ["정지", "no"]
     };
+    let _memberDetailRequestSeq = 0;
 
     async function showMemberDetail(memberType, memberId) {
+      const requestSeq = ++_memberDetailRequestSeq;
       if (typeof destroyStatsCharts === "function") destroyStatsCharts();
       if (!mount) return;
       mount.innerHTML = `<div style="padding:40px; text-align:center; color:var(--ink-soft);">불러오는 중…</div>`;
       try {
         const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`);
+        if (requestSeq !== _memberDetailRequestSeq) return;
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         const d = await res.json();
+        if (requestSeq !== _memberDetailRequestSeq) return;
         if (!d.ok) {
           mount.innerHTML = `<div style="padding:24px; color:#c0392b;">${dgEscape(d.message || "조회 오류")}</div>`;
           return;
         }
         _renderMemberDetail(d.data, memberType, memberId);
       } catch (e) {
-        mount.innerHTML = `<div style="padding:24px; color:#c0392b;">불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        if (requestSeq === _memberDetailRequestSeq) {
+          mount.innerHTML = `<div style="padding:24px; color:#c0392b;">불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        }
       }
     }
 
-    function backToMemberList() { activateMenu("members"); }
+    function backToMemberList() {
+      _memberDetailRequestSeq++;
+      activateMenu("members");
+    }
 
     function _renderMemberDetail(data, memberType, memberId) {
       if (!mount) return;
@@ -6267,6 +6290,16 @@
           ${_ar("카카오 ID", _v(data.kakao_id))}
           ${_ar("마케팅 동의일", _v(data.marketing_agreed_at))}
         </div>` : "";
+      const loginHistoryHtml = memberType === "general" ? `
+        <div class="member-detail-card">
+          <div class="member-detail-card-title">마지막 접속</div>
+          ${_ar("마지막 접속일시", _v(data.last_login_at))}
+          ${_ar("가입경로", data.provider==="kakao" ? "카카오" : "이메일")}
+        </div>
+        <div class="member-detail-card">
+          <div class="member-detail-card-title">접속이력 <span style="font-size:11px;font-weight:400;color:var(--ink-soft);">최근 10건</span></div>
+          <div id="memberLoginHistory" data-member-id="${memberId}" style="color:var(--ink-soft);font-size:13px;padding:4px 0;">불러오는 중…</div>
+        </div>` : "";
 
       mount.innerHTML = `
         <div class="member-detail-wrap">
@@ -6295,6 +6328,7 @@
                 ${actHtml}
               </div>
               ${mktHtml}
+              ${loginHistoryHtml}
             </div>
             <div class="member-detail-col">
               <div class="member-detail-card">
@@ -6324,6 +6358,30 @@
         </div>`;
 
       loadMemberNotes(memberType, memberId);
+      if (memberType === "general") loadMemberLoginHistory(memberId);
+    }
+
+    async function loadMemberLoginHistory(memberId) {
+      const box = document.getElementById("memberLoginHistory");
+      if (!box || box.dataset.memberId !== String(memberId)) return;
+      try {
+        const res = await fetch(`/api/admin/members/general/${memberId}/login-history`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || "접속이력을 불러오지 못했습니다.");
+        if (box.dataset.memberId !== String(memberId)) return;
+        const rows = data.history || [];
+        if (!rows.length) {
+          box.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;">접속이력이 없습니다.</div>';
+          return;
+        }
+        box.innerHTML = `<table class="dg-table" style="font-size:12px;"><thead><tr><th>접속일시</th><th>브라우저</th></tr></thead><tbody>${
+          rows.map(row => `<tr><td style="white-space:nowrap;">${dgEscape(row.logged_in_at || "-")}</td><td>${dgEscape(_memberLoginUaSummary(row.user_agent))}</td></tr>`).join("")
+        }</tbody></table>`;
+      } catch (error) {
+        if (box.dataset.memberId === String(memberId)) {
+          box.innerHTML = `<div style="color:var(--brick);font-size:13px;">${dgEscape(error.message || "접속이력을 불러오지 못했습니다.")}</div>`;
+        }
+      }
     }
 
     function toggleMemberInfoEdit() {

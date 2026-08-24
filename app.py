@@ -362,6 +362,20 @@ _PAGE_VIEW_BOT_MARKERS = (
 )
 
 
+def _record_login_history(cur, user_id):
+    """일반회원 로그인 이력을 남긴다. IP 원문 대신 기존 방문기록용 해시를 사용한다."""
+    ip = get_client_ip() or ""
+    ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
+    user_agent = (request.headers.get("User-Agent") or "")[:500]
+    cur.execute(
+        """
+        INSERT INTO login_history (user_id, ip_hash, user_agent)
+        VALUES (%s, %s, %s)
+        """,
+        [user_id, ip_hash, user_agent],
+    )
+
+
 def _should_store_page_view(user_agent):
     """빈 UA와 알려진 크롤러 UA는 신규 페이지뷰로 저장하지 않는다."""
     normalized = str(user_agent or "").strip().lower()
@@ -4774,6 +4788,7 @@ def auth_signup():
             (email, pw_hash, name, marketing),
         )
         new_id = cur.fetchone()["id"]
+        _record_login_history(cur, new_id)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -4809,6 +4824,7 @@ def auth_login():
         if (row and row["password_hash"] and row.get("status") != "withdrawn"
                 and check_password_hash(row["password_hash"], password)):
             cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
+            _record_login_history(cur, row["id"])
             conn.commit()
             session["user_id"] = row["id"]
             session.permanent = bool(data.get("remember"))
@@ -5216,6 +5232,7 @@ def kakao_callback():
         if row:
             uid = row["id"]
             cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (uid,))
+            _record_login_history(cur, uid)
         else:
             # 이메일이 이미 이메일가입으로 존재하면 충돌 방지를 위해 email은 비우고 카카오 계정으로 신규 생성.
             email_to_store = email
@@ -5229,6 +5246,7 @@ def kakao_callback():
                 (email_to_store, nickname, kakao_id),
             )
             uid = cur.fetchone()["id"]
+            _record_login_history(cur, uid)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -18435,7 +18453,7 @@ def admin_applications_list():
 _MEMBER_GROUPS = {"all", "general", "agent", "operator", "loan_consultant", "pending"}
 
 # 그룹별 SELECT — UNION ALL 을 위해 컬럼 구성을 통일한다.
-# (id, member_type, name, email, group_label, phone, status, applicant_type, created_at, admin_tag, points)
+# (id, member_type, name, email, group_label, phone, status, applicant_type, created_at, admin_tag, points, provider)
 # agent/operator 는 inactive(일괄 비활성화)도 목록에 보여야 관리자가 상태를 확인할 수 있다.
 _MEMBER_SELECTS = {
     "general": """
@@ -18443,7 +18461,8 @@ _MEMBER_SELECTS = {
                '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
                NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
                admin_tag, COALESCE(points, 0) AS points, admin_memo,
-               '' AS category, NULL::text AS subdomain_slug
+               '' AS category, NULL::text AS subdomain_slug,
+               COALESCE(provider, 'email') AS provider
         FROM users
     """,
     "agent": """
@@ -18451,7 +18470,8 @@ _MEMBER_SELECTS = {
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
-               '' AS category, subdomain_slug
+               '' AS category, subdomain_slug,
+               'email'::text AS provider
         FROM agents WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "operator": """
@@ -18459,7 +18479,8 @@ _MEMBER_SELECTS = {
                company_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
-               COALESCE(category, '') AS category, subdomain_slug
+               COALESCE(category, '') AS category, subdomain_slug,
+               'email'::text AS provider
         FROM operators WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "loan_consultant": """
@@ -18467,7 +18488,8 @@ _MEMBER_SELECTS = {
                office_name AS group_label, phone, status,
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
-               '' AS category, subdomain_slug
+               '' AS category, subdomain_slug,
+               'email'::text AS provider
         FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "pending": """
@@ -18476,7 +18498,8 @@ _MEMBER_SELECTS = {
                applicant_type, submitted_at AS created_at, NULL::timestamp AS approved_at,
                NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo,
                CASE WHEN applicant_type = 'operator' THEN COALESCE(category, '') ELSE '' END AS category,
-               NULL::text AS subdomain_slug
+                NULL::text AS subdomain_slug,
+                'email'::text AS provider
         FROM applications WHERE status = 'submitted'
     """,
 }
@@ -18527,8 +18550,8 @@ def admin_members_list():
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
                m.status, m.applicant_type, m.admin_tag, m.points, m.admin_memo,
-               m.category, m.subdomain_slug,
-               to_char(m.created_at, 'YYYY-MM-DD') AS created_at,
+               m.category, m.subdomain_slug, m.provider,
+               to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
                to_char(m.approved_at, 'YYYY-MM-DD') AS approved_at
         FROM ({union_sql}) m
         {group_filter}
@@ -19738,6 +19761,38 @@ def admin_me():
     return jsonify({"ok": True, "id": row["id"], "name": row["name"],
                     "email": row["email"], "role": row["role"],
                     "is_super": row["role"] == "super_admin"})
+
+
+@app.route("/api/admin/members/<member_type>/<int:member_id>/login-history")
+@require_admin
+def admin_member_login_history(member_type, member_id):
+    """일반회원의 최근 접속 이력 10건을 반환한다."""
+    if member_type != "general":
+        return jsonify({"ok": False, "message": "접속이력은 일반회원만 조회할 수 있습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT to_char(last_login_at, 'YYYY-MM-DD HH24:MI') AS last_login_at
+              FROM users
+             WHERE id = %s
+        """, [member_id])
+        user = cur.fetchone()
+        if not user:
+            return jsonify({"ok": False, "message": "존재하지 않는 회원입니다."}), 404
+        cur.execute("""
+            SELECT to_char(logged_in_at, 'YYYY-MM-DD HH24:MI') AS logged_in_at,
+                   user_agent
+              FROM login_history
+             WHERE user_id = %s
+             ORDER BY logged_in_at DESC, id DESC
+             LIMIT 10
+        """, [member_id])
+        history = [dict(row) for row in cur.fetchall()]
+        return jsonify({"ok": True, "last_login_at": user["last_login_at"], "history": history})
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/admin/members/<member_type>/<int:member_id>/detail")
