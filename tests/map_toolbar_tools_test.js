@@ -171,6 +171,11 @@ async function checkRoadviewMiniMapBehavior() {
   const elements = new Map();
   const miniMaps = [];
   const miniMapWrap = { dataset: {}, style: {} };
+  const roadviewPanel = {
+    getBoundingClientRect() {
+      return { width: 1000, height: 800 };
+    },
+  };
   const miniMapResize = {
     handlers: {},
     attributes: {},
@@ -178,6 +183,7 @@ async function checkRoadviewMiniMapBehavior() {
     setAttribute(name, value) { this.attributes[name] = value; },
   };
   elements.set("roadviewMiniMapWrap", miniMapWrap);
+  elements.set("roadviewPanel", roadviewPanel);
   elements.set("roadviewMiniMapResize", miniMapResize);
   class LatLng {
     constructor(lat, lng) {
@@ -225,7 +231,7 @@ async function checkRoadviewMiniMapBehavior() {
         return elements.get(id);
       },
     },
-    window: {},
+    window: { innerWidth: 1000, innerHeight: 800 },
     kakao: {
       maps: {
         Map: MiniMap,
@@ -282,6 +288,10 @@ async function checkRoadviewMiniMapBehavior() {
   context.__miniMapTest.resize(420, 280);
   if (miniMapWrap.style.width !== "420px" || miniMapWrap.style.height !== "280px") {
     throw new Error("미니맵을 원하는 폭·높이로 자유롭게 조절하지 못함");
+  }
+  context.__miniMapTest.resize(900, 700);
+  if (miniMapWrap.style.width !== "484px") {
+    throw new Error("미니맵 크기를 화면 절반보다 크게 확장함");
   }
   context.__miniMapTest.resize(80, 70);
   if (miniMapWrap.style.width !== "140px" || miniMapWrap.style.height !== "96px") {

@@ -1318,7 +1318,8 @@ function _roadviewMiniMapResizeLimits(wrap){
   return {
     minWidth: 140,
     minHeight: 96,
-    maxWidth: Math.max(140, panelWidth - left - 8),
+    // 미니맵 박스는 로드뷰와 나란히 볼 수 있도록 화면 절반까지만 확장한다.
+    maxWidth: Math.max(140, panelWidth * 0.5 - left),
     maxHeight: Math.max(96, panelHeight - bottom - 8),
   };
 }

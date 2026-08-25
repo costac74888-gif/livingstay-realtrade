@@ -351,7 +351,7 @@
   .roadview-minimap-wrap{
     position:absolute; left:16px; bottom:50px; z-index:3;
      width:190px; height:132px; min-width:140px; min-height:96px;
-     max-width:calc(100vw - 32px); max-height:calc(100vh - 66px);
+     max-width:calc(50vw - 16px); max-height:calc(100vh - 66px);
      overflow:visible;
   }
   .roadview-minimap{
@@ -635,7 +635,7 @@
     .roadview-canvas{height:100%; min-height:0;}
     .roadview-minimap-wrap{
       left:12px; bottom:48px; width:142px; height:98px;
-      max-width:calc(100vw - 24px); max-height:calc(100vh - 60px);
+      max-width:calc(50vw - 12px); max-height:calc(100vh - 60px);
     }
     .map-measure-panel{
       top:calc(var(--stage-gap) + 54px); right:calc(var(--stage-gap) + 54px);
