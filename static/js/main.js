@@ -1245,7 +1245,13 @@ let _measureLabel = null;
 let _measureFinished = false;
 let _poiRequestSequence = 0;
 let _roadviewRequestSequence = 0;
+
+const POI_REFRESH_DEBOUNCE_MS = 180;
 let _poiRefreshTimer = null;
+let _poiFetchController = null;
+let _poiPendingCenterKey = null;
+let _poiScheduledCenterKey = null;
+let _poiDisplayedCenterKey = null;
 
 function _mapTypeId(key){
   return (window.kakao && kakao.maps && kakao.maps.MapTypeId)
@@ -1407,7 +1413,65 @@ function _openRoadviewAt(latLng){
 
 function _clearPoiResults(){
   _poiRequestSequence++;
+  if (_poiRefreshTimer !== null){
+    clearTimeout(_poiRefreshTimer);
+    _poiRefreshTimer = null;
+  }
+  _poiScheduledCenterKey = null;
+  _poiPendingCenterKey = null;
+  _poiDisplayedCenterKey = null;
+  if (_poiFetchController){
+    _poiFetchController.abort();
+    _poiFetchController = null;
+  }
   _clearMapToolOverlays();
+}
+
+function _poiCenterKey(center){
+  if (!center || typeof center.getLat !== "function" || typeof center.getLng !== "function"){
+    return "";
+  }
+  return `${center.getLat().toFixed(6)},${center.getLng().toFixed(6)}`;
+}
+
+function _schedulePoiRefresh(){
+  if (!kakaoMap || (_activeMapTool !== "education" && _activeMapTool !== "convenience")){
+    return;
+  }
+  const centerKey = _poiCenterKey(kakaoMap.getCenter());
+  if (!centerKey || centerKey === _poiDisplayedCenterKey || centerKey === _poiPendingCenterKey){
+    return;
+  }
+  // 같은 이동/줌 동작에서 이어지는 idle 이벤트는 마지막 이벤트 하나로 합친다.
+  if (_poiRefreshTimer !== null && _poiScheduledCenterKey === centerKey) return;
+  if (_poiRefreshTimer !== null){
+    clearTimeout(_poiRefreshTimer);
+    _poiRefreshTimer = null;
+  }
+  _poiScheduledCenterKey = centerKey;
+
+  // 지도 중심이 바뀌면 이전 위치의 요청·마커를 즉시 폐기한다. AbortController를
+  // 무시하는 fetch 구현에서도 sequence 검사로 늦은 응답이 되살아나지 않는다.
+  _poiRequestSequence++;
+  if (_poiFetchController){
+    _poiFetchController.abort();
+    _poiFetchController = null;
+  }
+  _poiPendingCenterKey = null;
+  _poiDisplayedCenterKey = null;
+  _clearMapToolOverlays();
+
+  _poiRefreshTimer = setTimeout(() => {
+    _poiRefreshTimer = null;
+    _poiScheduledCenterKey = null;
+    if (_activeMapTool !== "education" && _activeMapTool !== "convenience") return;
+    const currentCenterKey = _poiCenterKey(kakaoMap.getCenter());
+    if (currentCenterKey !== centerKey){
+      _schedulePoiRefresh();
+      return;
+    }
+    _loadPoi(_activeMapTool);
+  }, POI_REFRESH_DEBOUNCE_MS);
 }
 
 function _renderPoiResults(items){
@@ -1440,11 +1504,19 @@ function _renderPoiResults(items){
 
 async function _loadPoi(tool){
   if (!kakaoMap || (tool !== "education" && tool !== "convenience")) return;
-  const sequence = ++_poiRequestSequence;
   const center = kakaoMap.getCenter();
-  // 이동 전 위치의 POI가 새 위치로 잘못 보이지 않도록, 새 요청을 시작할 때
-  // 이전 결과를 먼저 숨긴다. 응답 세대 번호가 오래된 요청의 덮어쓰기도 막는다.
-  _clearMapToolOverlays();
+  const centerKey = _poiCenterKey(center);
+  if (!centerKey || _poiPendingCenterKey === centerKey) return;
+  if (_poiRefreshTimer !== null){
+    clearTimeout(_poiRefreshTimer);
+    _poiRefreshTimer = null;
+  }
+  _poiScheduledCenterKey = null;
+  if (_poiFetchController) _poiFetchController.abort();
+  const sequence = ++_poiRequestSequence;
+  _poiPendingCenterKey = centerKey;
+  const controller = new AbortController();
+  _poiFetchController = controller;
   const params = new URLSearchParams({
     type: tool,
     lat: String(center.getLat()),
@@ -1452,32 +1524,32 @@ async function _loadPoi(tool){
     radius: "1500",
   });
   try {
-    const response = await fetch(`/api/map/poi?${params.toString()}`);
+    const response = await fetch(`/api/map/poi?${params.toString()}`, {
+      signal: controller.signal,
+    });
     const data = await response.json().catch(() => ({}));
-    if (sequence !== _poiRequestSequence || _activeMapTool !== tool) return;
+    if (sequence !== _poiRequestSequence || _activeMapTool !== tool ||
+        centerKey !== _poiCenterKey(kakaoMap.getCenter())) return;
     if (!response.ok || data.ok !== true){
       _clearMapToolOverlays();
       showFallbackToast(data.message || "주변정보를 불러오지 못했습니다.");
       return;
     }
+    _poiDisplayedCenterKey = centerKey;
     _renderPoiResults(data.items);
     if (!data.items || data.items.length === 0) showFallbackToast("이 지도 중심 주변에는 표시할 시설이 없습니다.");
   } catch(e){
-    if (sequence !== _poiRequestSequence || _activeMapTool !== tool) return;
+    if (e.name === "AbortError") return;
+    if (sequence !== _poiRequestSequence || _activeMapTool !== tool ||
+        centerKey !== _poiCenterKey(kakaoMap.getCenter())) return;
     _clearMapToolOverlays();
     showFallbackToast("주변정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
-  }
-}
-
-function _schedulePoiRefreshAfterMapMove(){
-  if (_poiRefreshTimer) clearTimeout(_poiRefreshTimer);
-  if (_activeMapTool !== "education" && _activeMapTool !== "convenience") return;
-  _poiRefreshTimer = setTimeout(() => {
-    _poiRefreshTimer = null;
-    if (_activeMapTool === "education" || _activeMapTool === "convenience"){
-      _loadPoi(_activeMapTool);
+  } finally {
+    if (sequence === _poiRequestSequence){
+      _poiFetchController = null;
+      _poiPendingCenterKey = null;
     }
-  }, 240);
+  }
 }
 
 function _deactivateMapTool(){
@@ -2123,14 +2195,15 @@ async function initMap(){
   window.addEventListener("resize", () => setTimeout(liftZoomControlAboveLegend, 150));
 
   // 지도 이동·줌 완료 시 마지막 위치를 localStorage에 저장 — 새로고침 후 복원에 사용
-  // idle은 이동이 멈춘 뒤 한 번만 발생하므로 디바운스 불필요
+  // idle은 이동이 멈춘 뒤 발생한다. 주변정보 도구는 여기서 짧게 디바운스해
+  // 빠른 드래그·확대/축소 중 발생하는 연속 이벤트를 한 번의 요청으로 합친다.
   kakao.maps.event.addListener(kakaoMap, "idle", () => {
     const c = kakaoMap.getCenter();
     localStorage.setItem("map_last_view", JSON.stringify({
       lat: c.getLat(), lng: c.getLng(), level: kakaoMap.getLevel(),
       savedAt: Date.now(),
     }));
-    _schedulePoiRefreshAfterMapMove();
+    _schedulePoiRefresh();
   });
 
   // 확대/축소 시 클러스터 배지↔개별마커 전환 (모드 변경 시만 재로드, 같은 모드면 라벨만 갱신)
