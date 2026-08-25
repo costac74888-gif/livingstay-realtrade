@@ -360,16 +360,16 @@
     background:#E9EDF0; box-shadow:0 3px 16px rgba(0,0,0,.38);
   }
    .roadview-minimap-resize{
-     position:absolute; right:0; bottom:0; z-index:2;
+     position:absolute; top:0; right:0; z-index:2;
      width:30px; height:30px; padding:0; border:0;
-     border-radius:0 0 8px 0; clip-path:polygon(100% 0, 100% 100%, 0 100%);
-     background:rgba(30,42,58,.82); cursor:nwse-resize;
+     border-radius:0 8px 0 0; clip-path:polygon(100% 0, 100% 100%, 0 0);
+     background:rgba(30,42,58,.82); cursor:nesw-resize;
      opacity:0; transition:opacity .14s ease, background .14s ease;
      touch-action:none;
    }
    .roadview-minimap-resize::after{
-     content:""; position:absolute; right:5px; bottom:5px;
-     width:10px; height:10px; border-right:2px solid #fff; border-bottom:2px solid #fff;
+     content:""; position:absolute; right:5px; top:5px;
+     width:10px; height:10px; border-right:2px solid #fff; border-top:2px solid #fff;
    }
    .roadview-minimap-wrap:hover .roadview-minimap-resize,
    .roadview-minimap-resize:focus-visible{

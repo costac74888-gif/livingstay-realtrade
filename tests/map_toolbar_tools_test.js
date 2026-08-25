@@ -34,7 +34,7 @@ const requiredCss = [
   ".roadview-minimap-wrap",
   ".roadview-minimap",
   ".roadview-minimap-resize",
-  "cursor:nwse-resize",
+  "cursor:nesw-resize",
   ".roadview-mini-camera",
   ".map-measure-panel",
   ".map-poi-marker",
