@@ -1426,7 +1426,7 @@ function _ensureRoadviewMiniMap(position){
     _roadviewMiniMap = new kakao.maps.Map(element, {
       center,
       level: 3,
-      draggable: true,
+      draggable: false,
       zoomable: true,
       scrollwheel: true,
       disableDoubleClick: false,
@@ -1443,6 +1443,12 @@ function _ensureRoadviewMiniMap(position){
     });
     _roadviewMiniMarker.setMap(_roadviewMiniMap);
     _setRoadviewMiniMapRoadviewLayer(_activeMapTool === "roadview");
+    if (kakao.maps.event && kakao.maps.event.addListener){
+      kakao.maps.event.addListener(_roadviewMiniMap, "click", event => {
+        if (_activeMapTool !== "roadview" || !event || !event.latLng) return;
+        _openRoadviewAt(event.latLng);
+      });
+    }
   }
   return true;
 }

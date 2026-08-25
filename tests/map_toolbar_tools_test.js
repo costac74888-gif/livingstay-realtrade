@@ -198,6 +198,7 @@ async function checkRoadviewMiniMapBehavior() {
       this.options = options;
       this.relayoutCalls = 0;
       this.overlayMapTypeIds = [];
+      this.listeners = {};
       miniMaps.push(this);
     }
     setCenter(position) { this.center = position; }
@@ -237,6 +238,11 @@ async function checkRoadviewMiniMapBehavior() {
         Map: MiniMap,
         CustomOverlay: MiniOverlay,
         MapTypeId: { ROADVIEW: "ROADVIEW" },
+        event: {
+          addListener(map, type, handler) {
+            map.listeners[type] = handler;
+          },
+        },
       },
     },
   };
@@ -244,13 +250,20 @@ async function checkRoadviewMiniMapBehavior() {
   vm.createContext(context);
   vm.runInContext(`
     let kakaoMap = { getCenter() { return { lat: 37.5, lng: 127.0 }; } };
+    let clickedRoadviewPosition = null;
     ${toolCode}
+    _openRoadviewAt = function(position) { clickedRoadviewPosition = position; };
     globalThis.__miniMapTest = {
       sync: _syncRoadviewMiniMap,
       marker() { return _roadviewMiniMarker; },
       camera() { return _roadviewMiniCamera; },
        resize(width, height) { _resizeRoadviewMiniMap(width, height); },
        setRoadviewLayer(enabled) { _setRoadviewMiniMapRoadviewLayer(enabled); },
+       activateRoadview() { _activeMapTool = "roadview"; },
+       click(position) {
+         _roadviewMiniMap.listeners.click({ latLng: position });
+         return clickedRoadviewPosition;
+       },
       setRoadview(roadview) { _roadview = roadview; },
       syncCamera: _syncRoadviewMiniCamera,
     };
@@ -262,7 +275,7 @@ async function checkRoadviewMiniMapBehavior() {
     throw new Error("로드뷰 미니맵을 생성하고 첫 위치를 중심으로 설정하지 않음");
   }
   if (
-    miniMaps[0].options.draggable !== true ||
+    miniMaps[0].options.draggable !== false ||
     miniMaps[0].options.zoomable !== true ||
     miniMaps[0].options.scrollwheel !== true ||
     miniMaps[0].options.disableDoubleClick !== false
@@ -271,6 +284,11 @@ async function checkRoadviewMiniMapBehavior() {
   }
   if (context.__miniMapTest.marker().position !== first) {
     throw new Error("로드뷰 미니맵의 현재 위치 마커를 생성하지 않음");
+  }
+  const clickedPosition = new LatLng(37.53, 127.03);
+  context.__miniMapTest.activateRoadview();
+  if (context.__miniMapTest.click(clickedPosition) !== clickedPosition) {
+    throw new Error("미니맵의 다른 위치 클릭을 로드뷰 이동으로 연결하지 않음");
   }
   context.__miniMapTest.setRoadviewLayer(true);
   if (miniMaps[0].overlayMapTypeIds[0] !== "ROADVIEW") {
