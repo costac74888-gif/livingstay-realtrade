@@ -85,7 +85,7 @@
     modal.innerHTML =
       '<div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">' +
         '<button class="auth-modal-close" id="authModalClose" aria-label="닫기">&times;</button>' +
-        '<div class="auth-brand">HOME &amp; STAY</div>' +
+        '<img class="auth-brand-logo" src="/static/home_stay_share.png" alt="HOME &amp; STAY">' +
         '<h2 class="auth-modal-title" id="authModalTitle">로그인</h2>' +
         '<div class="auth-error" id="authError" style="display:none;"></div>' +
         '<form id="authForm" autocomplete="on">' +
