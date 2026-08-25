@@ -34,6 +34,7 @@ const requiredCss = [
   ".roadview-minimap-wrap",
   ".roadview-minimap",
   ".roadview-minimap-wrap[data-mini-size=\"3\"]",
+  "width:50%; height:100%",
   ".roadview-mini-camera",
   ".map-measure-panel",
   ".map-poi-marker",

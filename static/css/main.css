@@ -361,7 +361,9 @@
   }
   .roadview-minimap-wrap[data-mini-size="3"]{
     left:0; bottom:0;
-    width:50vw; height:100vh;
+    /* 로드뷰 패널의 정확한 절반 — 첨부 화면처럼 좌측은 지도,
+       우측은 로드뷰가 나란히 보이도록 한다. */
+    width:50%; height:100%;
   }
   .roadview-minimap{
     width:100%; height:100%; overflow:hidden;
