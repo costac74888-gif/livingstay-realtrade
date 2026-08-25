@@ -1391,6 +1391,9 @@ function _ensureRoadview(){
   if (!element) return false;
   _roadviewClient = new kakao.maps.RoadviewClient();
   _roadview = new kakao.maps.Roadview(element);
+  if (kakao.maps.event && kakao.maps.event.trigger){
+    setTimeout(() => kakao.maps.event.trigger(_roadview, "relayout"), 0);
+  }
   // PC에서는 카카오 정식 미니맵 컨트롤을 사용하고, 모바일은 전체화면 단일 뷰로 유지한다.
   if (window.innerWidth > 520 &&
       kakao.maps.RoadviewMapControl && kakao.maps.RoadviewControlPosition){
@@ -1401,7 +1404,6 @@ function _ensureRoadview(){
 }
 
 function _openRoadviewAt(latLng){
-  if (!_ensureRoadview()) return;
   const sequence = ++_roadviewRequestSequence;
   const hint = document.getElementById("roadviewHint");
   const panel = document.getElementById("roadviewPanel");
@@ -1409,6 +1411,7 @@ function _openRoadviewAt(latLng){
     panel.classList.add("open");
     panel.setAttribute("aria-hidden", "false");
   }
+  if (!_ensureRoadview()) return;
   if (hint) hint.textContent = "가까운 로드뷰를 찾는 중…";
   _roadviewClient.getNearestPanoId(latLng, 40, (panoId) => {
     if (sequence !== _roadviewRequestSequence || _activeMapTool !== "roadview") return;

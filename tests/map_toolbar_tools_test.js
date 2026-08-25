@@ -95,18 +95,21 @@ if (
 if (
   openRoadviewStart < 0 ||
   openRoadviewEnd < 0 ||
-  !openRoadviewBlock.includes('panel.classList.add("open")')
+  !openRoadviewBlock.includes('panel.classList.add("open")') ||
+  openRoadviewBlock.indexOf('panel.classList.add("open")') >
+    openRoadviewBlock.indexOf("if (!_ensureRoadview()) return;")
 ) {
-  throw new Error("로드뷰 지점 클릭 시 패널을 여는 흐름이 없습니다.");
+  throw new Error("로드뷰 지점 클릭 시 패널을 먼저 열고 초기화하는 흐름이 없습니다.");
 }
 if (
   ensureRoadviewStart < 0 ||
   ensureRoadviewEnd < 0 ||
   !ensureRoadviewBlock.includes("window.innerWidth > 520") ||
   !ensureRoadviewBlock.includes("RoadviewMapControl") ||
-  !ensureRoadviewBlock.includes("RoadviewControlPosition")
+  !ensureRoadviewBlock.includes("RoadviewControlPosition") ||
+  !ensureRoadviewBlock.includes('kakao.maps.event.trigger(_roadview, "relayout")')
 ) {
-  throw new Error("카카오 정식 로드뷰 미니맵 컨트롤의 PC 전용 조건이 없습니다.");
+  throw new Error("카카오 정식 로드뷰 미니맵 컨트롤 또는 relayout 처리가 없습니다.");
 }
 
 const syntax = spawnSync(process.execPath, ["--check", path.join(root, "static", "js", "main.js")], {
