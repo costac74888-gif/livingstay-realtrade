@@ -1404,7 +1404,7 @@ function _openRoadviewAt(latLng){
     panel.setAttribute("aria-hidden", "false");
   }
   if (hint) hint.textContent = "가까운 로드뷰를 찾는 중…";
-  _roadviewClient.getNearestPanoId(latLng, 100, (panoId) => {
+  _roadviewClient.getNearestPanoId(latLng, 40, (panoId) => {
     if (sequence !== _roadviewRequestSequence || _activeMapTool !== "roadview") return;
     if (!panoId){
       if (hint) hint.textContent = "이 위치 주변에는 로드뷰가 없습니다. 다른 지점을 클릭해보세요.";
@@ -1563,6 +1563,10 @@ function _deactivateMapTool(){
     _poiRefreshTimer = null;
   }
   _roadviewRequestSequence++;
+  if (kakaoMap && kakao.maps && kakao.maps.MapTypeId &&
+      kakao.maps.MapTypeId.ROADVIEW && kakaoMap.removeOverlayMapTypeId){
+    kakaoMap.removeOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW);
+  }
   _activeMapTool = null;
   _clearPoiResults();
   _clearMeasure();
@@ -1579,6 +1583,10 @@ function _activateMapTool(tool){
   _activeMapTool = tool;
   _setMapToolButtonState();
   if (tool === "roadview"){
+    if (kakaoMap && kakao.maps && kakao.maps.MapTypeId &&
+        kakao.maps.MapTypeId.ROADVIEW && kakaoMap.addOverlayMapTypeId){
+      kakaoMap.addOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW);
+    }
     const panel = document.getElementById("roadviewPanel");
     if (panel){
       panel.classList.add("open");
@@ -2256,7 +2264,7 @@ async function initMap(){
   await updateMapForZoom({}, { fit: false });
 }
 
-// 줌 컨트롤을 우측 하단 범례박스(.map-legend) 높이 + 여백만큼 위로 띄워 겹침을 막는다.
+// 줌 컨트롤을 지도 툴바 바로 아래에 붙이고 우측 하단 범례박스와의 겹침을 막는다.
 // SDK DOM에 클래스가 없어 "확대" 버튼(title="확대")에서 절대배치 래퍼를 거슬러 찾는다.
 // 컨트롤 렌더가 살짝 늦을 수 있어 잠시 재시도. 범례는 폭에 따라 줄바꿈되어
 // 높이가 변하므로(모바일) 실제 offsetHeight로 매번 계산.
@@ -2280,11 +2288,14 @@ function liftZoomControlAboveLegend(attempt){
     return;
   }
   const legend = document.querySelector(".map-legend");
-  let lift = (legend ? legend.offsetHeight : 0) + 12 + 12; // 범례 높이 + 범례 bottom 여백(12px) + 간격(12px)
+  const toolbar = document.getElementById("mapToolbar");
+  const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
+  let lift = (legend ? legend.offsetHeight : 0) + 12 + 12
+    + toolbarHeight + 12; // 범례 여백 + 툴바 높이 + 툴바와 줌 사이 간격
   // 방어: 범례 높이가 비정상적으로 크게 계산돼도(레이아웃 깨짐 등)
   // 컨트롤이 지도 밖으로 밀려나지 않도록 상한을 둔다.
   const maxLift = Math.max(24, mapEl.offsetHeight - 120); // 지도 위쪽 120px는 항상 남긴다
-  lift = Math.min(lift, 240, maxLift);
+  lift = Math.min(lift, Math.max(240, toolbarHeight + 120), maxLift);
   // 주의: wrap의 offsetParent가 높이 0인 요소일 수 있어(bottom 기준이 지도가 아님)
   // bottom 지정 시 화면 밖으로 밀려난다 → 지도 실좌표 기준으로 top을 직접 계산한다.
   const mapRect = mapEl.getBoundingClientRect();
@@ -2293,7 +2304,7 @@ function liftZoomControlAboveLegend(attempt){
   wrap.style.bottom = "auto";
   wrap.style.top = topPx + "px";
   const r = wrap.getBoundingClientRect();
-  console.log(`[MAP] 줌 컨트롤을 범례 위로 ${lift}px 올림 — wrap rect: x=${Math.round(r.x)}, y=${Math.round(r.y)}, w=${Math.round(r.width)}, h=${Math.round(r.height)}, 화면(${window.innerWidth}x${window.innerHeight})`);
+  console.log(`[MAP] 줌 컨트롤을 툴바 아래로 ${lift}px 올림 — toolbar=${toolbarHeight}px, wrap rect: x=${Math.round(r.x)}, y=${Math.round(r.y)}, w=${Math.round(r.width)}, h=${Math.round(r.height)}, 화면(${window.innerWidth}x${window.innerHeight})`);
 }
 
 async function openBuildingInfo(b, pos){

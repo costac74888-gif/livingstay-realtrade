@@ -305,30 +305,28 @@
   /* 지도 우측 도구 모음 — SDK 자체 컨트롤과 분리된 DOM 오버레이 */
   .map-toolbar{
     position:absolute; top:calc(var(--stage-gap) + 54px); right:var(--stage-gap);
-    z-index:17; display:flex; flex-direction:column; gap:6px;
-    padding:5px; background:rgba(255,255,255,.96); border:1px solid var(--line);
-    border-radius:12px; box-shadow:0 4px 16px rgba(22,32,46,.16);
+    z-index:17; display:flex; flex-direction:column; gap:2px;
+    padding:4px; background:rgba(255,255,255,.96); border:1px solid var(--line);
+    border-radius:20px; box-shadow:0 4px 16px rgba(22,32,46,.16);
+    width:38px;
   }
   .map-tool-btn{
-    display:flex; align-items:center; justify-content:flex-start; gap:6px;
-    min-width:82px; min-height:34px; padding:6px 8px; border:1px solid transparent;
-    border-radius:8px; background:#fff; color:var(--ink-soft); cursor:pointer;
-    font:600 11.5px/1.2 'Noto Sans KR',sans-serif; text-align:left; white-space:nowrap;
+    display:flex; align-items:center; justify-content:center;
+    width:32px; height:32px; padding:0; border:none;
+    border-radius:50%; background:transparent; color:var(--ink-soft); cursor:pointer;
   }
   .map-tool-btn:hover{ background:var(--brass-tint); color:var(--brass-dark); }
-  .map-tool-btn.active{ border-color:#EAD9B8; background:var(--brass-tint); color:var(--brass-dark); }
+  .map-tool-btn.active{ background:var(--brass-tint); color:var(--brass-dark); }
   .map-tool-btn:focus-visible,.roadview-panel button:focus-visible,.map-measure-panel button:focus-visible{
     outline:2px solid #378ADD; outline-offset:2px;
   }
   .map-tool-icon{
     display:inline-flex; align-items:center; justify-content:center; flex:none;
-    width:21px; height:21px;
-    font-size:11px; font-weight:800; line-height:1;
+    width:18px; height:18px;
   }
   .map-tool-icon svg,.inline-icon svg,.b-icon-btn svg{display:block;}
   .inline-icon{display:inline-flex; vertical-align:middle; align-items:center;}
-  .map-tool-label{min-width:0;}
-  .map-tool-state{margin-left:auto; color:var(--ink-soft); font-size:9.5px; font-weight:500;}
+  .map-tool-label,.map-tool-state{display:none;}
   .roadview-panel{
     position:absolute; left:calc(var(--panel-w) + var(--stage-gap) * 2);
     right:calc(var(--stage-gap) + 104px); bottom:var(--stage-gap);
@@ -568,14 +566,12 @@
     }
     .map-toolbar{
       top:calc(var(--stage-gap) + 54px); right:var(--stage-gap);
-      padding:4px; gap:4px;
+      width:40px; padding:4px; gap:2px;
     }
     .map-tool-btn{
-      min-width:38px; width:38px; min-height:36px; padding:6px 4px;
-      justify-content:center;
+      width:34px; height:34px;
     }
-    .map-tool-label,.map-tool-state{display:none;}
-    .map-tool-icon{width:25px; height:25px; font-size:11px;}
+    .map-tool-icon{width:20px; height:20px;}
     .roadview-panel{
       left:var(--stage-gap); right:var(--stage-gap);
       bottom:calc(var(--stage-gap) + 52px);
