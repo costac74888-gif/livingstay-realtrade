@@ -16,6 +16,8 @@
   var nameInput = document.getElementById("authName");
   var emailInput = document.getElementById("authEmail");
   var passwordInput = document.getElementById("authPassword");
+  var passwordField = passwordInput && passwordInput.closest
+    ? passwordInput.closest(".auth-field") : null;
   var submitBtn = document.getElementById("authSubmit");
   var switchText = document.getElementById("authSwitchText");
   var switchLink = document.getElementById("authSwitchLink");
@@ -41,7 +43,9 @@
     });
   }
 
-  var mode = "login"; // "login" | "signup"
+  var forgotLink = document.getElementById("authForgotLink");
+  var socialLinks = document.getElementById("authSocialLinks");
+  var mode = "login"; // "login" | "signup" | "reset"
 
   // ---- 회원가입 동의 체크박스 (header.js 가 마크업 주입) ----
   var consentBox = document.getElementById("authConsent");
@@ -107,12 +111,23 @@
   }
 
   function showError(msg) {
+    errorEl.style.color = "";
+    errorEl.textContent = msg;
+    errorEl.style.display = "block";
+  }
+  function showSuccess(msg) {
+    errorEl.style.color = "#216e4e";
+    errorEl.style.background = "#edf8f2";
+    errorEl.style.borderColor = "#b8e1ca";
     errorEl.textContent = msg;
     errorEl.style.display = "block";
   }
   function clearError() {
     errorEl.textContent = "";
     errorEl.style.display = "none";
+    errorEl.style.color = "";
+    errorEl.style.background = "";
+    errorEl.style.borderColor = "";
   }
 
   function setMode(next) {
@@ -121,6 +136,8 @@
     if (mode === "signup") {
       titleEl.textContent = "회원가입";
       nameField.style.display = "";
+      if (passwordField) passwordField.style.display = "";
+      if (passwordInput) { passwordInput.disabled = false; passwordInput.required = true; }
       submitBtn.textContent = "가입하기";
       switchText.textContent = "이미 회원이신가요?";
       switchLink.textContent = "로그인";
@@ -128,15 +145,36 @@
       if (rememberRow) rememberRow.style.display = "none"; // 상태 유지는 로그인 전용
       if (consentBox) consentBox.style.display = "";
       resetConsent();
+      if (forgotLink) forgotLink.style.display = "none";
+      if (socialLinks) socialLinks.style.display = "";
+    } else if (mode === "reset") {
+      titleEl.textContent = "비밀번호 찾기";
+      nameField.style.display = "none";
+      if (passwordInput) passwordInput.value = "";
+      if (passwordField) passwordField.style.display = "none";
+      // CSS로 숨긴 required 입력은 브라우저의 기본 검증을 통과하지 못해 submit
+      // 이벤트가 실행되지 않는다. 재설정 모드에서는 완전히 비활성화한다.
+      if (passwordInput) { passwordInput.disabled = true; passwordInput.required = false; }
+      submitBtn.textContent = "재설정 링크 받기";
+      switchText.textContent = "로그인 화면으로 돌아가시겠어요?";
+      switchLink.textContent = "로그인";
+      if (rememberRow) rememberRow.style.display = "none";
+      if (consentBox) consentBox.style.display = "none";
+      if (forgotLink) forgotLink.style.display = "none";
+      if (socialLinks) socialLinks.style.display = "none";
     } else {
       titleEl.textContent = "로그인";
       nameField.style.display = "none";
+      if (passwordField) passwordField.style.display = "";
+      if (passwordInput) { passwordInput.disabled = false; passwordInput.required = true; }
       submitBtn.textContent = "로그인";
       switchText.textContent = "아직 회원이 아니신가요?";
       switchLink.textContent = "회원가입";
       passwordInput.setAttribute("autocomplete", "current-password");
       if (rememberRow) rememberRow.style.display = "";
       if (consentBox) consentBox.style.display = "none";
+      if (forgotLink) forgotLink.style.display = "";
+      if (socialLinks) socialLinks.style.display = "";
     }
     updateSubmitState();
   }
@@ -287,7 +325,28 @@
     var password = passwordInput.value || "";
     var name = (nameInput.value || "").trim();
 
-    if (!email || !password) {
+    if (!email) {
+      showError("이메일을 입력해주세요.");
+      return;
+    }
+    if (mode === "reset") {
+      submitBtn.disabled = true;
+      fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          if (res.ok && res.data && res.data.ok) showSuccess(res.data.message);
+          else showError((res.data && res.data.message) || "요청을 처리하지 못했습니다.");
+        })
+        .catch(function () { showError("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요."); })
+        .finally(function () { submitBtn.disabled = false; });
+      return;
+    }
+    if (!password) {
       showError("이메일과 비밀번호를 입력해주세요.");
       return;
     }
@@ -358,6 +417,12 @@
     e.preventDefault();
     setMode(mode === "login" ? "signup" : "login");
   });
+  if (forgotLink) {
+    forgotLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      setMode("reset");
+    });
+  }
   closeBtn.addEventListener("click", closeModal);
   modal.addEventListener("click", function (e) {
     if (e.target === modal) closeModal();

@@ -1032,6 +1032,11 @@
   font-size:12px; font-weight:500; color:var(--ink-soft); cursor:pointer;
 }
 .auth-remember input{ accent-color:var(--brass); }
+.auth-forgot-link{
+  display:block; margin:-4px 0 14px; text-align:right; color:var(--ink-soft);
+  font-size:12px; text-decoration:none;
+}
+.auth-forgot-link:hover{ color:var(--brass-dark); text-decoration:underline; }
 .auth-submit{
   width:100%; padding:12px; margin-top:4px; background:var(--ink); color:#fff; border:none;
   border-radius:8px; font-size:14px; font-weight:600; font-family:'Noto Sans KR',sans-serif; cursor:pointer;

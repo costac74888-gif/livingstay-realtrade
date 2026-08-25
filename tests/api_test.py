@@ -25,9 +25,11 @@ import sys
 import copy
 import time
 import re
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest.mock import patch
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -700,6 +702,8 @@ def run():
     failures += _check_weekly_email_auto_optin_apis(client)
     # 의뢰 알림 단축 링크의 생성·만료·안전한 리다이렉트와 SMS/이메일 동시 발송을 확인
     failures += _check_lead_short_links(client)
+    # 이메일 회원 비밀번호 재설정의 계정 은닉·토큰 만료/1회 사용·메일·제한을 확인
+    failures += _check_password_reset_flow(client)
 
     if failures:
         print("\nAPI 체크 실패:", file=sys.stderr)
@@ -712,6 +716,224 @@ def run():
         " /api/transactions, /api/buildings-geo, e2e 건물요청→지도노출)"
     )
     return 0
+
+
+def _check_password_reset_flow(client):
+    """이메일 재설정의 보안 경계와 로그인 회귀를 실제 DB 행으로 검증한다."""
+    failures = []
+    tag = f"password-reset-{time.time_ns()}"
+    email = f"{tag}@example.test"
+    kakao_email = f"{tag}-kakao@example.test"
+    unknown_email = f"{tag}-unknown@example.test"
+    rate_email = f"{tag}-rate@example.test"
+    email_user_id = None
+    kakao_user_id = None
+    token = None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            INSERT INTO users (email, password_hash, name, provider, status)
+            VALUES (%s, %s, %s, 'email', 'active')
+            RETURNING id
+            """,
+            (email, generate_password_hash("before-reset-password"), "재설정 테스트"),
+        )
+        email_user_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO users (email, name, provider, status)
+            VALUES (%s, %s, 'kakao', 'active')
+            RETURNING id
+            """,
+            (kakao_email, "카카오 재설정 테스트"),
+        )
+        kakao_user_id = cur.fetchone()["id"]
+        conn.commit()
+
+        raw_token = f"raw-{tag}"
+        with (
+            patch.dict(os.environ, {"PUBLIC_BASE_URL": "https://homenstay.com"}, clear=False),
+            patch.object(app_module._secrets, "token_urlsafe", return_value=raw_token),
+            patch.object(app_module, "_queue_password_reset_email") as queued_email,
+            patch.object(app_module, "send_email") as email_sender,
+        ):
+            email_response = client.post(
+                "/api/auth/request-password-reset",
+                json={"email": email.upper()},
+                headers={"Host": "attacker.example.invalid"},
+            )
+            unknown_response = client.post(
+                "/api/auth/request-password-reset",
+                json={"email": unknown_email},
+            )
+            kakao_response = client.post(
+                "/api/auth/request-password-reset",
+                json={"email": kakao_email},
+            )
+
+            reset_responses = [email_response, unknown_response, kakao_response]
+            if any(response.status_code != 200 for response in reset_responses):
+                failures.append("비밀번호 재설정 요청: 이메일/미존재/카카오 계정이 모두 200 응답하지 않음")
+            else:
+                bodies = [response.get_json() or {} for response in reset_responses]
+                if not all(body == bodies[0] and body.get("ok") is True for body in bodies):
+                    failures.append("비밀번호 재설정 요청: 계정 종류별 응답이 통일되지 않음")
+
+            if email_sender.called:
+                failures.append("비밀번호 재설정 요청: 외부 메일 발송이 HTTP 응답 경로에서 실행됨")
+            if queued_email.call_count != 3:
+                failures.append(f"비밀번호 재설정 요청: 모든 경우의 메일 작업을 큐잉하지 않음 ({queued_email.call_count}건)")
+            elif queued_email.call_args_list:
+                reset_html = queued_email.call_args_list[0].args[1]
+                kakao_html = queued_email.call_args_list[2].args[1]
+                if "https://homenstay.com/reset-password?token=" not in reset_html:
+                    failures.append("비밀번호 재설정 메일: 공식 도메인 재설정 링크가 없음")
+                if "attacker.example.invalid" in reset_html:
+                    failures.append("비밀번호 재설정 메일: 요청 Host가 메일 링크에 반영됨")
+                if "카카오 로그인" not in kakao_html:
+                    failures.append("비밀번호 재설정 메일: 카카오 계정 안내가 없음")
+
+        cur.execute(
+            """
+            SELECT token,
+                   expires_at > NOW() + INTERVAL '29 minutes'
+                   AND expires_at < NOW() + INTERVAL '31 minutes' AS ttl_ok
+              FROM password_reset_tokens
+             WHERE user_id = %s
+             ORDER BY id DESC
+             LIMIT 1
+            """,
+            (email_user_id,),
+        )
+        token_row = cur.fetchone() or {}
+        token = raw_token
+        if not token or not token_row.get("ttl_ok"):
+            failures.append("비밀번호 재설정 요청: 30분 유효 토큰을 저장하지 않음")
+        else:
+            stored_token = token_row.get("token")
+            if stored_token == token or stored_token != hashlib.sha256(token.encode("utf-8")).hexdigest():
+                failures.append("비밀번호 재설정 요청: URL 원문 대신 토큰 다이제스트를 저장하지 않음")
+            short_password = client.post(
+                "/api/auth/reset-password",
+                json={"token": token, "new_password": "short"},
+            )
+            if short_password.status_code != 400:
+                failures.append("비밀번호 재설정: 8자 미만 비밀번호를 차단하지 않음")
+
+            changed = client.post(
+                "/api/auth/reset-password",
+                json={"token": token, "new_password": "after-reset-password"},
+            )
+            if changed.status_code != 200 or not (changed.get_json() or {}).get("ok"):
+                failures.append("비밀번호 재설정: 유효 토큰으로 비밀번호 변경 실패")
+
+            cur.execute(
+                """
+                SELECT u.password_hash, t.used_at IS NOT NULL AS used
+                  FROM users u
+                  JOIN password_reset_tokens t ON t.user_id = u.id
+                 WHERE t.token = %s
+                """,
+                (hashlib.sha256(token.encode("utf-8")).hexdigest(),),
+            )
+            changed_row = cur.fetchone() or {}
+            if not changed_row.get("used") or not check_password_hash(
+                changed_row.get("password_hash") or "", "after-reset-password"
+            ):
+                failures.append("비밀번호 재설정: 해시 갱신 또는 토큰 1회 사용 기록 실패")
+
+            reused = client.post(
+                "/api/auth/reset-password",
+                json={"token": token, "new_password": "another-password"},
+            )
+            if reused.status_code != 400:
+                failures.append("비밀번호 재설정: 이미 사용된 토큰을 차단하지 않음")
+
+            logged_in = client.post(
+                "/api/auth/login",
+                json={"email": email, "password": "after-reset-password"},
+            )
+            if logged_in.status_code != 200 or not (logged_in.get_json() or {}).get("ok"):
+                failures.append("비밀번호 재설정: 새 비밀번호 이메일 로그인이 동작하지 않음")
+
+        expired_token = f"expired-{tag}"
+        cur.execute(
+            """
+            INSERT INTO password_reset_tokens (user_id, token, expires_at)
+            VALUES (%s, %s, NOW() - INTERVAL '1 minute')
+            """,
+            (email_user_id, hashlib.sha256(expired_token.encode("utf-8")).hexdigest()),
+        )
+        conn.commit()
+        expired = client.post(
+            "/api/auth/reset-password",
+            json={"token": expired_token, "new_password": "after-reset-password"},
+        )
+        if expired.status_code != 400:
+            failures.append("비밀번호 재설정: 만료된 토큰을 차단하지 않음")
+
+        race_token = f"race-{tag}"
+        cur.execute(
+            """
+            INSERT INTO password_reset_tokens (user_id, token, expires_at)
+            VALUES (%s, %s, NOW() + INTERVAL '30 minutes')
+            """,
+            (email_user_id, hashlib.sha256(race_token.encode("utf-8")).hexdigest()),
+        )
+        conn.commit()
+
+        def redeem_race(password):
+            race_client = app.test_client()
+            return race_client.post(
+                "/api/auth/reset-password",
+                json={"token": race_token, "new_password": password},
+            ).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            race_statuses = list(executor.map(redeem_race, ("race-password-one", "race-password-two")))
+        if sorted(race_statuses) != [200, 400]:
+            failures.append(f"비밀번호 재설정: 동시 토큰 사용이 1회로 제한되지 않음 ({race_statuses})")
+
+        with patch.object(app_module, "_queue_password_reset_email"):
+            rate_responses = [
+                client.post("/api/auth/request-password-reset", json={"email": rate_email})
+                for _ in range(4)
+            ]
+        if [response.status_code for response in rate_responses[:3]] != [200, 200, 200]:
+            failures.append("비밀번호 재설정 요청: 동일 이메일의 분당 3회 허용이 동작하지 않음")
+        if rate_responses[3].status_code != 429:
+            failures.append("비밀번호 재설정 요청: 동일 이메일의 분당 3회 제한이 동작하지 않음")
+
+        reset_page = client.get("/reset-password")
+        if reset_page.status_code != 200 or b"/api/auth/reset-password" not in reset_page.data:
+            failures.append("비밀번호 재설정 페이지: 정적 페이지 또는 API 연결이 없음")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"비밀번호 재설정 테스트 오류: {exc}")
+    finally:
+        try:
+            if email_user_id or kakao_user_id:
+                cur.execute(
+                    "DELETE FROM password_reset_tokens WHERE user_id = ANY(%s)",
+                    ([uid for uid in (email_user_id, kakao_user_id) if uid],),
+                )
+                cur.execute(
+                    "DELETE FROM users WHERE id = ANY(%s)",
+                    ([uid for uid in (email_user_id, kakao_user_id) if uid],),
+                )
+                conn.commit()
+        except Exception as cleanup_exc:
+            conn.rollback()
+            failures.append(f"비밀번호 재설정 테스트 정리 실패: {cleanup_exc}")
+        finally:
+            cur.close()
+            conn.close()
+
+    if not failures:
+        print("OK  이메일 비밀번호 재설정 (계정 은닉·30분·1회용·메일·제한·로그인)")
+    return failures
 
 
 def _check_lead_short_links(client):

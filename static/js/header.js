@@ -107,6 +107,7 @@
           '<label class="auth-remember" id="authRememberRow">' +
             '<input type="checkbox" id="authRemember" /> 로그인 상태 유지 (31일)' +
           '</label>' +
+          '<a href="#" id="authForgotLink" class="auth-forgot-link">비밀번호를 잊으셨나요?</a>' +
           '<div class="auth-consent" id="authConsent" style="display:none;">' +
             '<div style="background:#fffbf3; border:1px solid #f0ddb0; border-radius:8px; padding:9px 12px; margin-bottom:10px; font-size:12.5px; color:#8a5e1a; line-height:1.55;">' +
               '🎁 회원가입하면 관심단지를 등록하고, 새 실거래가 등록될 때마다 무료로 알림을 받아볼 수 있어요' +
@@ -144,12 +145,14 @@
           '<span id="authSwitchText">아직 회원이 아니신가요?</span>' +
           '<a href="#" id="authSwitchLink">회원가입</a>' +
         '</div>' +
-        '<div class="auth-divider"><span>또는</span></div>' +
-        '<a href="/auth/kakao/start" class="auth-kakao" id="authKakaoBtn">' +
-          '<span class="auth-kakao-icon">💬</span> 카카오로 3초 로그인' +
-        '</a>' +
-        '<div class="auth-partner-link" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line, #e5e8ec); text-align:center;">' +
-          '<a href="/partner" style="font-size:12.5px; color:var(--ink-soft, #6b7684); text-decoration:none;">중개사・운영지원업체이신가요? <b style="color:var(--brass, #B4863F);">파트너 등록 안내 →</b></a>' +
+          '<div id="authSocialLinks">' +
+            '<div class="auth-divider"><span>또는</span></div>' +
+            '<a href="/auth/kakao/start" class="auth-kakao" id="authKakaoBtn">' +
+              '<span class="auth-kakao-icon">💬</span> 카카오로 3초 로그인' +
+            '</a>' +
+            '<div class="auth-partner-link" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line, #e5e8ec); text-align:center;">' +
+              '<a href="/partner" style="font-size:12.5px; color:var(--ink-soft, #6b7684); text-decoration:none;">중개사・운영지원업체이신가요? <b style="color:var(--brass, #B4863F);">파트너 등록 안내 →</b></a>' +
+            '</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(modal);

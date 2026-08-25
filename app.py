@@ -543,6 +543,12 @@ def index():
     return _serve_app_shell()
 
 
+@app.route("/reset-password")
+def reset_password_page():
+    """이메일 비밀번호 재설정 페이지 — 토큰 검증은 API에서 수행한다."""
+    return _serve_static_html("reset-password.html")
+
+
 @app.route("/manifest.json")
 def pwa_manifest():
     """PWA 매니페스트 — 루트 경로로 서빙 (모든 페이지의 <link rel="manifest">가 참조)."""
@@ -4729,10 +4735,111 @@ def admin_legal_update(doc_type):
 # =====================================================================
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_PASSWORD_RESET_REQUEST_MESSAGE = (
+    "입력하신 이메일로 비밀번호 재설정 안내를 보냈습니다. "
+    "메일이 오지 않으면 스팸함도 확인해주세요."
+)
+# 외부 이메일 API가 지연돼도 요청마다 새 스레드를 만들지 않도록, 재설정 메일은
+# 작은 고정 워커 풀과 제한된 대기열에서만 발송한다.
+_PASSWORD_RESET_EMAIL_EXECUTOR = ThreadPoolExecutor(
+    max_workers=2,
+    thread_name_prefix="password-reset-email",
+)
+_PASSWORD_RESET_EMAIL_QUEUE_SLOTS = threading.BoundedSemaphore(20)
 
 
 def _valid_email(email):
     return bool(email) and len(email) <= 254 and _EMAIL_RE.match(email) is not None
+
+
+def _password_reset_rate_key():
+    """재설정 요청을 이메일별로 제한한다(대소문자·앞뒤 공백 정규화)."""
+    data = request.get_json(silent=True) or {}
+    raw_email = data.get("email") if isinstance(data, dict) else ""
+    email = raw_email.strip().lower() if isinstance(raw_email, str) else ""
+    if email:
+        return f"password-reset:{email}"
+    return f"password-reset:{get_remote_address()}"
+
+
+def _password_reset_token_digest(token):
+    """URL로 전달된 재설정 토큰의 DB 조회용 SHA-256 다이제스트."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _password_reset_email_html(reset_url=None, kakao=False):
+    """비밀번호 재설정 또는 카카오 로그인 안내 메일 본문."""
+    if kakao:
+        login_url = _html.escape(f"{_public_base_url().rstrip('/')}/?login=1", quote=True)
+        return (
+            '<div style="font-family:Arial, sans-serif;max-width:520px;margin:0 auto;'
+            'padding:32px 24px;color:#16202E;">'
+            '<h2 style="margin:0 0 18px;">HOME &amp; STAY</h2>'
+            '<p style="line-height:1.7;">카카오 계정으로 가입하신 회원입니다.</p>'
+            '<p style="line-height:1.7;">비밀번호를 별도로 사용하지 않으므로 '
+            '아래 버튼에서 카카오 로그인을 이용해주세요.</p>'
+            f'<p style="margin:28px 0;"><a href="{login_url}" '
+            'style="display:inline-block;padding:12px 20px;background:#16202E;color:#fff;'
+            'border-radius:8px;text-decoration:none;">카카오 로그인으로 이동</a></p>'
+            '<p style="font-size:12px;color:#7a8490;line-height:1.6;">'
+            '본인이 요청하지 않았다면 이 메일을 무시해주세요.</p></div>'
+        )
+    safe_url = _html.escape(reset_url or "", quote=True)
+    return (
+        '<div style="font-family:Arial, sans-serif;max-width:520px;margin:0 auto;'
+        'padding:32px 24px;color:#16202E;">'
+        '<h2 style="margin:0 0 18px;">HOME &amp; STAY</h2>'
+        '<p style="line-height:1.7;">비밀번호 재설정 요청이 접수되었습니다.</p>'
+        '<p style="line-height:1.7;">아래 버튼을 눌러 새 비밀번호를 설정해주세요. '
+        '이 링크는 <b>30분 동안만</b> 유효하며 한 번만 사용할 수 있습니다.</p>'
+        f'<p style="margin:28px 0;"><a href="{safe_url}" '
+        'style="display:inline-block;padding:12px 20px;background:#16202E;color:#fff;'
+        'border-radius:8px;text-decoration:none;">비밀번호 재설정하기</a></p>'
+        f'<p style="font-size:12px;color:#7a8490;line-height:1.6;">'
+        f'버튼이 열리지 않으면 다음 주소를 브라우저에 붙여 넣으세요:<br>{safe_url}</p>'
+        '<p style="font-size:12px;color:#7a8490;line-height:1.6;">'
+        '본인이 요청하지 않았다면 이 메일을 무시해주세요.</p></div>'
+    )
+
+
+def _deliver_password_reset_email(to_email, html_body):
+    """요청 응답과 분리해 재설정 안내 메일을 best-effort로 발송한다."""
+    if not to_email or not html_body:
+        return
+    try:
+        sent, message = send_email(
+            to_email,
+            "[홈앤스테이] 비밀번호 재설정 안내",
+            html_body,
+        )
+        if not sent:
+            app.logger.warning("password reset email failed: %s", message)
+    except Exception:
+        app.logger.exception("password reset email worker failed")
+
+
+def _queue_password_reset_email(to_email, html_body):
+    """모든 요청에서 같은 제한된 비동기 경로를 타도록 메일 발송을 큐잉한다.
+
+    계정이 없는 경우에는 빈 작업이 즉시 끝난다. 외부 이메일 API의 네트워크
+    지연이 HTTP 응답 시간에 반영되지 않아 계정 존재 추측을 어렵게 만든다. 대기열이
+    찬 경우에는 새 작업을 버려 앱 워커·메모리 고갈을 막는다.
+    """
+    if not _PASSWORD_RESET_EMAIL_QUEUE_SLOTS.acquire(blocking=False):
+        app.logger.warning("password reset email queue full; delivery skipped")
+        return
+
+    def deliver():
+        try:
+            _deliver_password_reset_email(to_email, html_body)
+        finally:
+            _PASSWORD_RESET_EMAIL_QUEUE_SLOTS.release()
+
+    try:
+        _PASSWORD_RESET_EMAIL_EXECUTOR.submit(deliver)
+    except Exception:
+        _PASSWORD_RESET_EMAIL_QUEUE_SLOTS.release()
+        app.logger.exception("password reset email queue failed")
 
 
 def _best_effort_weekly_email_opt_in(cur, user_id, source):
@@ -4784,6 +4891,146 @@ def current_user():
             (uid,),
         )
         return cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/auth/request-password-reset", methods=["POST"])
+@limiter.limit("20 per minute", key_func=get_remote_address)
+@limiter.limit("3 per minute", key_func=_password_reset_rate_key)
+def auth_request_password_reset():
+    """이메일 회원 비밀번호 재설정 링크 요청.
+
+    응답은 계정이 없거나 카카오 계정이어도 동일하게 반환해 계정 존재 여부를
+    노출하지 않는다. 토큰 저장을 먼저 커밋한 뒤 메일 발송은 best-effort로 처리한다.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    raw_email = data.get("email") if isinstance(data, dict) else ""
+    email = raw_email.strip().lower() if isinstance(raw_email, str) else ""
+    send_to = None
+    email_html = None
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if _valid_email(email):
+            cur.execute(
+                """
+                SELECT id, password_hash, COALESCE(provider, 'email') AS provider, status
+                  FROM users
+                 WHERE LOWER(email) = %s
+                """,
+                (email,),
+            )
+            user = cur.fetchone()
+            active_user = bool(user and user.get("status") != "withdrawn")
+            if active_user and user.get("provider") == "email" and user.get("password_hash"):
+                token = _secrets.token_urlsafe(32)
+                cur.execute(
+                    """
+                    INSERT INTO password_reset_tokens
+                        (user_id, token, expires_at)
+                    VALUES (%s, %s, NOW() + INTERVAL '30 minutes')
+                    """,
+                    (user["id"], _password_reset_token_digest(token)),
+                )
+                conn.commit()
+                reset_url = (
+                    f"{_public_base_url().rstrip('/')}/reset-password?token="
+                    f"{quote(token, safe='')}"
+                )
+                send_to = email
+                email_html = _password_reset_email_html(reset_url=reset_url)
+            elif active_user and user.get("provider") == "kakao":
+                conn.rollback()
+                send_to = email
+                email_html = _password_reset_email_html(kakao=True)
+            else:
+                conn.rollback()
+        else:
+            conn.rollback()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("password reset request processing failed")
+    finally:
+        cur.close()
+        conn.close()
+
+    # 유효·무효·카카오 요청 모두 응답 전에 같은 큐잉 경로를 거친다. 실제 메일
+    # 전송은 별도 daemon에서 수행되어 외부 API 지연이 계정 존재 신호가 되지 않는다.
+    _queue_password_reset_email(send_to, email_html)
+
+    return jsonify({"ok": True, "message": _PASSWORD_RESET_REQUEST_MESSAGE})
+
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+@limiter.limit("10 per minute")
+def auth_reset_password():
+    """재설정 토큰으로 이메일 회원 비밀번호를 원자적으로 변경한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    token = data.get("token") if isinstance(data, dict) else ""
+    new_password = data.get("new_password") if isinstance(data, dict) else ""
+    invalid_msg = "재설정 링크가 올바르지 않거나 만료되었습니다."
+    if not isinstance(token, str) or not token or len(token) > 256:
+        return jsonify({"ok": False, "message": invalid_msg}), 400
+    if not isinstance(new_password, str) or len(new_password) < 8:
+        return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 토큰 행을 잠근 상태에서 users 갱신과 used_at 기록을 같은 트랜잭션으로
+        # 처리한다. 동시에 제출된 요청 중 하나만 이 행을 통과한다.
+        cur.execute(
+            """
+            SELECT id, user_id
+              FROM password_reset_tokens
+             WHERE token = %s
+               AND used_at IS NULL
+               AND expires_at > NOW()
+             FOR UPDATE
+            """,
+            (_password_reset_token_digest(token),),
+        )
+        reset_row = cur.fetchone()
+        if not reset_row:
+            conn.rollback()
+            return jsonify({"ok": False, "message": invalid_msg}), 400
+
+        cur.execute(
+            """
+            UPDATE users
+               SET password_hash = %s
+             WHERE id = %s
+               AND COALESCE(provider, 'email') = 'email'
+               AND status <> 'withdrawn'
+             RETURNING id
+            """,
+            (generate_password_hash(new_password), reset_row["user_id"]),
+        )
+        if not cur.fetchone():
+            conn.rollback()
+            return jsonify({"ok": False, "message": invalid_msg}), 400
+
+        cur.execute(
+            """
+            UPDATE password_reset_tokens
+               SET used_at = NOW()
+             WHERE id = %s AND used_at IS NULL
+             RETURNING id
+            """,
+            (reset_row["id"],),
+        )
+        if not cur.fetchone():
+            conn.rollback()
+            return jsonify({"ok": False, "message": invalid_msg}), 400
+        conn.commit()
+        return jsonify({"ok": True, "message": "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해주세요."})
+    except Exception:
+        conn.rollback()
+        app.logger.exception("password reset failed")
+        return jsonify({"ok": False, "message": "비밀번호를 변경하지 못했습니다. 잠시 후 다시 시도해주세요."}), 500
     finally:
         cur.close()
         conn.close()

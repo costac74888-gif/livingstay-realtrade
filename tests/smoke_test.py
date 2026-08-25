@@ -30,6 +30,7 @@ smoke_test.py — 홈페이지가 빈/무스타일 화면으로 뜨는 것을 �
 
 import os
 import sys
+import subprocess
 
 # (경로, 기대하는 content-type 부분문자열)
 CHECKS = [
@@ -96,6 +97,23 @@ def run_local():
             continue
 
         print(f"OK  {path}  ({resp.status_code}, {content_type})")
+
+    modal_test = os.path.join(os.path.dirname(__file__), "auth_reset_modal_test.js")
+    try:
+        result = subprocess.run(
+            ["node", modal_test],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            failures.append(f"로그인 모달 비밀번호 찾기 흐름: {detail}")
+        else:
+            print("OK  로그인 모달 비밀번호 찾기 (숨김 비밀번호 비활성화·요청 API 호출)")
+    except (OSError, subprocess.SubprocessError) as exc:
+        failures.append(f"로그인 모달 비밀번호 찾기 흐름 테스트 실행 실패: {exc}")
 
     return failures
 
