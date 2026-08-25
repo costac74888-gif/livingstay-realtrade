@@ -1617,14 +1617,7 @@ function _activateMapTool(tool){
         kakao.maps.MapTypeId.ROADVIEW && kakaoMap.addOverlayMapTypeId){
       kakaoMap.addOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW);
     }
-    const panel = document.getElementById("roadviewPanel");
-    if (panel){
-      panel.classList.add("open");
-      panel.setAttribute("aria-hidden", "false");
-    }
-    const hint = document.getElementById("roadviewHint");
-    if (hint) hint.textContent = "지도를 클릭하면 해당 위치의 로드뷰를 찾습니다.";
-    _ensureRoadview();
+    showFallbackToast("파란색 도로에서 원하는 지점을 클릭하면 로드뷰가 열립니다.");
   } else if (tool === "measure"){
     const panel = document.getElementById("measurePanel");
     if (panel) panel.hidden = false;

@@ -65,6 +65,29 @@ if (missingJs.length) {
   throw new Error(`지도 툴바 JS 계약 누락: ${missingJs.join(", ")}`);
 }
 
+const activateStart = js.indexOf("function _activateMapTool(tool){");
+const activateEnd = js.indexOf("\nfunction _initMapToolControls()", activateStart);
+const activateBlock = js.slice(activateStart, activateEnd);
+const openRoadviewStart = js.indexOf("function _openRoadviewAt(latLng){");
+const openRoadviewEnd = js.indexOf("\nfunction _clearPoiResults()", openRoadviewStart);
+const openRoadviewBlock = js.slice(openRoadviewStart, openRoadviewEnd);
+if (
+  activateStart < 0 ||
+  activateEnd < 0 ||
+  !activateBlock.includes("addOverlayMapTypeId") ||
+  !activateBlock.includes("파란색 도로에서 원하는 지점을 클릭하면 로드뷰가 열립니다.") ||
+  activateBlock.includes('panel.classList.add("open")')
+) {
+  throw new Error("로드뷰 버튼 활성화 시 파란 도로 안내만 표시하고 패널을 즉시 열지 않아야 합니다.");
+}
+if (
+  openRoadviewStart < 0 ||
+  openRoadviewEnd < 0 ||
+  !openRoadviewBlock.includes('panel.classList.add("open")')
+) {
+  throw new Error("로드뷰 지점 클릭 시 패널을 여는 흐름이 없습니다.");
+}
+
 const syntax = spawnSync(process.execPath, ["--check", path.join(root, "static", "js", "main.js")], {
   encoding: "utf8",
 });
