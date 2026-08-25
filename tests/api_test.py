@@ -840,6 +840,7 @@ def _check_password_reset_flow(client):
     rate_email = f"{tag}-rate@example.test"
     email_user_id = None
     kakao_user_id = None
+    partner_ids = {}
     token = None
     conn = get_conn()
     cur = conn.cursor()
@@ -862,12 +863,64 @@ def _check_password_reset_flow(client):
             (kakao_email, "카카오 재설정 테스트"),
         )
         kakao_user_id = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO agents
+                (office_name, owner_name, reg_number, email, status, password_hash)
+            VALUES (%s, %s, %s, %s, 'approved', %s)
+            RETURNING id
+            """,
+            (
+                "중개사무소 테스트", "중개사 대표", f"{tag}-agent-reg",
+                email, generate_password_hash("before-agent-password"),
+            ),
+        )
+        partner_ids["agent"] = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO operators
+                (company_name, owner_name, category, email, status, password_hash)
+            VALUES (%s, %s, '위탁', %s, 'approved', %s)
+            RETURNING id
+            """,
+            (
+                "운영업체 테스트", "운영업체 대표", f"{tag}-operator@example.test",
+                generate_password_hash("before-operator-password"),
+            ),
+        )
+        partner_ids["operator"] = cur.fetchone()["id"]
+        cur.execute(
+            """
+            INSERT INTO loan_consultants
+                (office_name, owner_name, license_number, email, status, password_hash)
+            VALUES (%s, %s, %s, %s, 'approved', %s)
+            RETURNING id
+            """,
+            (
+                "대출상담사무소 테스트", "대출상담사 대표", f"{tag}-loan-license",
+                f"{tag}-loan@example.test", generate_password_hash("before-loan-password"),
+            ),
+        )
+        partner_ids["loan_consultant"] = cur.fetchone()["id"]
         conn.commit()
 
         raw_token = f"raw-{tag}"
+        partner_tokens = {
+            "agent": f"raw-agent-{tag}",
+            "operator": f"raw-operator-{tag}",
+            "loan_consultant": f"raw-loan-{tag}",
+        }
+        partner_emails = {
+            "operator": f"{tag}-operator@example.test",
+            "loan_consultant": f"{tag}-loan@example.test",
+        }
         with (
             patch.dict(os.environ, {"PUBLIC_BASE_URL": "https://homenstay.com"}, clear=False),
-            patch.object(app_module._secrets, "token_urlsafe", return_value=raw_token),
+            patch.object(
+                app_module._secrets,
+                "token_urlsafe",
+                side_effect=[raw_token, *partner_tokens.values()],
+            ),
             patch.object(app_module, "_queue_password_reset_email") as queued_email,
             patch.object(app_module, "send_email") as email_sender,
         ):
@@ -884,8 +937,17 @@ def _check_password_reset_flow(client):
                 "/api/auth/request-password-reset",
                 json={"email": kakao_email},
             )
+            partner_responses = {
+                account_type: client.post(
+                    "/api/auth/request-password-reset",
+                    json={"email": partner_email},
+                )
+                for account_type, partner_email in partner_emails.items()
+            }
 
-            reset_responses = [email_response, unknown_response, kakao_response]
+            reset_responses = [
+                email_response, unknown_response, kakao_response, *partner_responses.values()
+            ]
             if any(response.status_code != 200 for response in reset_responses):
                 failures.append("비밀번호 재설정 요청: 이메일/미존재/카카오 계정이 모두 200 응답하지 않음")
             else:
@@ -895,23 +957,37 @@ def _check_password_reset_flow(client):
 
             if email_sender.called:
                 failures.append("비밀번호 재설정 요청: 외부 메일 발송이 HTTP 응답 경로에서 실행됨")
-            if queued_email.call_count != 3:
+            if queued_email.call_count != 6:
                 failures.append(f"비밀번호 재설정 요청: 모든 경우의 메일 작업을 큐잉하지 않음 ({queued_email.call_count}건)")
             elif queued_email.call_args_list:
                 reset_html = queued_email.call_args_list[0].args[1]
-                kakao_html = queued_email.call_args_list[2].args[1]
+                kakao_html = next(
+                    (
+                        call.args[1] for call in queued_email.call_args_list
+                        if "카카오 로그인" in (call.args[1] or "")
+                    ),
+                    "",
+                )
                 if "https://homenstay.com/reset-password?token=" not in reset_html:
                     failures.append("비밀번호 재설정 메일: 공식 도메인 재설정 링크가 없음")
                 if "attacker.example.invalid" in reset_html:
                     failures.append("비밀번호 재설정 메일: 요청 Host가 메일 링크에 반영됨")
                 if "카카오 로그인" not in kakao_html:
                     failures.append("비밀번호 재설정 메일: 카카오 계정 안내가 없음")
+                queued_recipients = [call.args[0] for call in queued_email.call_args_list]
+                reset_links = [call.args[1] for call in queued_email.call_args_list
+                               if "/reset-password?token=" in (call.args[1] or "")]
+                if queued_recipients.count(email) != 2:
+                    failures.append("비밀번호 재설정 요청: 같은 이메일의 일반회원·중개사 토큰을 모두 큐잉하지 않음")
+                if len(reset_links) != 4:
+                    failures.append("비밀번호 재설정 메일: 네 계정 유형의 재설정 링크가 모두 없음")
 
         cur.execute(
             """
             SELECT token,
                    expires_at > NOW() + INTERVAL '29 minutes'
                    AND expires_at < NOW() + INTERVAL '31 minutes' AS ttl_ok
+                   , account_type
               FROM password_reset_tokens
              WHERE user_id = %s
              ORDER BY id DESC
@@ -921,7 +997,7 @@ def _check_password_reset_flow(client):
         )
         token_row = cur.fetchone() or {}
         token = raw_token
-        if not token or not token_row.get("ttl_ok"):
+        if not token or not token_row.get("ttl_ok") or token_row.get("account_type") != "user":
             failures.append("비밀번호 재설정 요청: 30분 유효 토큰을 저장하지 않음")
         else:
             stored_token = token_row.get("token")
@@ -969,6 +1045,57 @@ def _check_password_reset_flow(client):
             )
             if logged_in.status_code != 200 or not (logged_in.get_json() or {}).get("ok"):
                 failures.append("비밀번호 재설정: 새 비밀번호 이메일 로그인이 동작하지 않음")
+
+        partner_tables = {
+            "agent": "agents",
+            "operator": "operators",
+            "loan_consultant": "loan_consultants",
+        }
+        for index, (account_type, table_name) in enumerate(partner_tables.items(), start=1):
+            cur.execute(
+                """
+                SELECT token, account_type
+                  FROM password_reset_tokens
+                 WHERE user_id = %s AND account_type = %s
+                 ORDER BY id DESC
+                 LIMIT 1
+                """,
+                (partner_ids[account_type], account_type),
+            )
+            partner_token_row = cur.fetchone() or {}
+            partner_token = partner_tokens[account_type]
+            if (
+                partner_token_row.get("account_type") != account_type
+                or partner_token_row.get("token") != hashlib.sha256(partner_token.encode("utf-8")).hexdigest()
+            ):
+                failures.append(f"비밀번호 재설정 요청: {account_type} account_type 토큰 저장 실패")
+                continue
+            partner_client = app.test_client()
+            reset_partner = partner_client.post(
+                "/api/auth/reset-password",
+                json={"token": partner_token, "new_password": f"after-{account_type}-password"},
+                environ_overrides={"REMOTE_ADDR": f"198.51.100.{index}"},
+            )
+            cur.execute(
+                f"SELECT password_hash FROM {table_name} WHERE id = %s",
+                (partner_ids[account_type],),
+            )
+            partner_password_row = cur.fetchone() or {}
+            if (
+                reset_partner.status_code != 200
+                or not check_password_hash(
+                    partner_password_row.get("password_hash") or "",
+                    f"after-{account_type}-password",
+                )
+            ):
+                failures.append(f"비밀번호 재설정: {account_type} 비밀번호 변경 실패")
+            reused_partner = partner_client.post(
+                "/api/auth/reset-password",
+                json={"token": partner_token, "new_password": "reused-partner-password"},
+                environ_overrides={"REMOTE_ADDR": f"198.51.100.{index}"},
+            )
+            if reused_partner.status_code != 400:
+                failures.append(f"비밀번호 재설정: {account_type} 토큰 재사용을 차단하지 않음")
 
         expired_token = f"expired-{tag}"
         cur.execute(
@@ -1026,14 +1153,21 @@ def _check_password_reset_flow(client):
         failures.append(f"비밀번호 재설정 테스트 오류: {exc}")
     finally:
         try:
-            if email_user_id or kakao_user_id:
+            all_account_ids = [uid for uid in (email_user_id, kakao_user_id, *partner_ids.values()) if uid]
+            if all_account_ids:
                 cur.execute(
                     "DELETE FROM password_reset_tokens WHERE user_id = ANY(%s)",
-                    ([uid for uid in (email_user_id, kakao_user_id) if uid],),
+                    (all_account_ids,),
                 )
                 cur.execute(
                     "DELETE FROM users WHERE id = ANY(%s)",
                     ([uid for uid in (email_user_id, kakao_user_id) if uid],),
+                )
+                cur.execute("DELETE FROM agents WHERE id = ANY(%s)", ([partner_ids.get("agent")] if partner_ids.get("agent") else [],))
+                cur.execute("DELETE FROM operators WHERE id = ANY(%s)", ([partner_ids.get("operator")] if partner_ids.get("operator") else [],))
+                cur.execute(
+                    "DELETE FROM loan_consultants WHERE id = ANY(%s)",
+                    ([partner_ids.get("loan_consultant")] if partner_ids.get("loan_consultant") else [],),
                 )
                 conn.commit()
         except Exception as cleanup_exc:

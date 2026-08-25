@@ -5082,7 +5082,7 @@ def current_user():
 @limiter.limit("20 per minute", key_func=get_remote_address)
 @limiter.limit("3 per minute", key_func=_password_reset_rate_key)
 def auth_request_password_reset():
-    """이메일 회원 비밀번호 재설정 링크 요청.
+    """모든 회원 유형의 이메일 비밀번호 재설정 링크 요청.
 
     응답은 계정이 없거나 카카오 계정이어도 동일하게 반환해 계정 존재 여부를
     노출하지 않는다. 토큰 저장을 먼저 커밋한 뒤 메일 발송은 best-effort로 처리한다.
@@ -5090,8 +5090,7 @@ def auth_request_password_reset():
     data = request.get_json(force=True, silent=True) or {}
     raw_email = data.get("email") if isinstance(data, dict) else ""
     email = raw_email.strip().lower() if isinstance(raw_email, str) else ""
-    send_to = None
-    email_html = None
+    email_jobs = []
 
     conn = get_conn()
     cur = conn.cursor()
@@ -5099,35 +5098,63 @@ def auth_request_password_reset():
         if _valid_email(email):
             cur.execute(
                 """
-                SELECT id, password_hash, COALESCE(provider, 'email') AS provider, status
+                SELECT id, password_hash, COALESCE(provider, 'email') AS provider,
+                       status, 'user' AS account_type
                   FROM users
                  WHERE LOWER(email) = %s
+                UNION ALL
+                SELECT id, password_hash, 'email' AS provider, status, 'agent' AS account_type
+                  FROM agents
+                 WHERE LOWER(email) = %s
+                UNION ALL
+                SELECT id, password_hash, 'email' AS provider, status, 'operator' AS account_type
+                  FROM operators
+                 WHERE LOWER(email) = %s
+                UNION ALL
+                SELECT id, password_hash, 'email' AS provider, status,
+                       'loan_consultant' AS account_type
+                  FROM loan_consultants
+                 WHERE LOWER(email) = %s
                 """,
-                (email,),
+                (email, email, email, email),
             )
-            user = cur.fetchone()
-            active_user = bool(user and user.get("status") != "withdrawn")
-            if active_user and user.get("provider") == "email" and user.get("password_hash"):
-                token = _secrets.token_urlsafe(32)
-                cur.execute(
-                    """
-                    INSERT INTO password_reset_tokens
-                        (user_id, token, expires_at)
-                    VALUES (%s, %s, NOW() + INTERVAL '30 minutes')
-                    """,
-                    (user["id"], _password_reset_token_digest(token)),
-                )
+            accounts = cur.fetchall()
+            for account in accounts:
+                active_account = account.get("status") != "withdrawn"
+                account_type = account.get("account_type")
+                if (
+                    active_account
+                    and account.get("provider") == "email"
+                    and account.get("password_hash")
+                ):
+                    token = _secrets.token_urlsafe(32)
+                    cur.execute(
+                        """
+                        INSERT INTO password_reset_tokens
+                            (user_id, account_type, token, expires_at)
+                        VALUES (%s, %s, %s, NOW() + INTERVAL '30 minutes')
+                        """,
+                        (
+                            account["id"],
+                            account_type,
+                            _password_reset_token_digest(token),
+                        ),
+                    )
+                    reset_url = (
+                        f"{_public_base_url().rstrip('/')}/reset-password?token="
+                        f"{quote(token, safe='')}"
+                    )
+                    email_jobs.append((
+                        email, _password_reset_email_html(reset_url=reset_url)
+                    ))
+                elif (
+                    active_account
+                    and account_type == "user"
+                    and account.get("provider") == "kakao"
+                ):
+                    email_jobs.append((email, _password_reset_email_html(kakao=True)))
+            if accounts:
                 conn.commit()
-                reset_url = (
-                    f"{_public_base_url().rstrip('/')}/reset-password?token="
-                    f"{quote(token, safe='')}"
-                )
-                send_to = email
-                email_html = _password_reset_email_html(reset_url=reset_url)
-            elif active_user and user.get("provider") == "kakao":
-                conn.rollback()
-                send_to = email
-                email_html = _password_reset_email_html(kakao=True)
             else:
                 conn.rollback()
         else:
@@ -5141,7 +5168,10 @@ def auth_request_password_reset():
 
     # 유효·무효·카카오 요청 모두 응답 전에 같은 큐잉 경로를 거친다. 실제 메일
     # 전송은 별도 daemon에서 수행되어 외부 API 지연이 계정 존재 신호가 되지 않는다.
-    _queue_password_reset_email(send_to, email_html)
+    # 같은 이메일에 서로 다른 회원 유형 계정이 있으면 각각 별도 토큰을 보낸다.
+    # 매칭이 없을 때도 동일한 큐잉 경로를 한 번 거쳐 계정 존재 여부를 드러내지 않는다.
+    for send_to, email_html in email_jobs or [(None, None)]:
+        _queue_password_reset_email(send_to, email_html)
 
     return jsonify({"ok": True, "message": _PASSWORD_RESET_REQUEST_MESSAGE})
 
@@ -5149,7 +5179,7 @@ def auth_request_password_reset():
 @app.route("/api/auth/reset-password", methods=["POST"])
 @limiter.limit("10 per minute")
 def auth_reset_password():
-    """재설정 토큰으로 이메일 회원 비밀번호를 원자적으로 변경한다."""
+    """재설정 토큰으로 모든 회원 유형의 비밀번호를 원자적으로 변경한다."""
     data = request.get_json(force=True, silent=True) or {}
     token = data.get("token") if isinstance(data, dict) else ""
     new_password = data.get("new_password") if isinstance(data, dict) else ""
@@ -5162,11 +5192,11 @@ def auth_reset_password():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # 토큰 행을 잠근 상태에서 users 갱신과 used_at 기록을 같은 트랜잭션으로
+        # 토큰 행을 잠근 상태에서 계정 갱신과 used_at 기록을 같은 트랜잭션으로
         # 처리한다. 동시에 제출된 요청 중 하나만 이 행을 통과한다.
         cur.execute(
             """
-            SELECT id, user_id
+            SELECT id, user_id, account_type
               FROM password_reset_tokens
              WHERE token = %s
                AND used_at IS NULL
@@ -5180,17 +5210,39 @@ def auth_reset_password():
             conn.rollback()
             return jsonify({"ok": False, "message": invalid_msg}), 400
 
-        cur.execute(
-            """
-            UPDATE users
-               SET password_hash = %s
-             WHERE id = %s
-               AND COALESCE(provider, 'email') = 'email'
-               AND status <> 'withdrawn'
-             RETURNING id
+        account_update_sql = {
+            "user": """
+                UPDATE users
+                   SET password_hash = %s
+                 WHERE id = %s
+                   AND COALESCE(provider, 'email') = 'email'
+                   AND status <> 'withdrawn'
+                 RETURNING id
             """,
-            (generate_password_hash(new_password), reset_row["user_id"]),
-        )
+            "agent": """
+                UPDATE agents
+                   SET password_hash = %s
+                 WHERE id = %s AND status <> 'withdrawn'
+                 RETURNING id
+            """,
+            "operator": """
+                UPDATE operators
+                   SET password_hash = %s
+                 WHERE id = %s AND status <> 'withdrawn'
+                 RETURNING id
+            """,
+            "loan_consultant": """
+                UPDATE loan_consultants
+                   SET password_hash = %s
+                 WHERE id = %s AND status <> 'withdrawn'
+                 RETURNING id
+            """,
+        }
+        update_sql = account_update_sql.get(reset_row.get("account_type"))
+        if not update_sql:
+            conn.rollback()
+            return jsonify({"ok": False, "message": invalid_msg}), 400
+        cur.execute(update_sql, (generate_password_hash(new_password), reset_row["user_id"]))
         if not cur.fetchone():
             conn.rollback()
             return jsonify({"ok": False, "message": invalid_msg}), 400
