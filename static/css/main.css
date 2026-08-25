@@ -350,44 +350,34 @@
   }
   .roadview-minimap-wrap{
     position:absolute; left:16px; bottom:50px; z-index:3;
-    width:190px; height:132px; overflow:visible;
-    transition:width .18s ease, height .18s ease;
-  }
-  .roadview-minimap-wrap[data-mini-size="1"]{
-    width:270px; height:188px;
-  }
-  .roadview-minimap-wrap[data-mini-size="2"]{
-    width:380px; height:264px;
-  }
-  .roadview-minimap-wrap[data-mini-size="3"]{
-    left:0; bottom:0;
-    /* 로드뷰 패널의 정확한 절반 — 첨부 화면처럼 좌측은 지도,
-       우측은 로드뷰가 나란히 보이도록 한다. */
-    width:50%; height:100%;
+     width:190px; height:132px; min-width:140px; min-height:96px;
+     max-width:calc(100vw - 32px); max-height:calc(100vh - 66px);
+     overflow:visible;
   }
   .roadview-minimap{
     width:100%; height:100%; overflow:hidden;
     border:2px solid rgba(255,255,255,.94); border-radius:10px;
     background:#E9EDF0; box-shadow:0 3px 16px rgba(0,0,0,.38);
   }
-  .roadview-minimap-expand{
-    position:absolute; top:2px; right:2px; z-index:2;
-    width:32px; height:32px; padding:0; border:0;
-    border-radius:0 7px 0 0; clip-path:polygon(100% 0, 100% 100%, 0 0);
-    background:rgba(30,42,58,.82); color:#fff; cursor:pointer;
-    opacity:0; transition:opacity .14s ease, background .14s ease;
-  }
-  .roadview-minimap-expand::after{
-    content:"↗"; position:absolute; top:2px; right:5px;
-    font:800 14px/1 sans-serif;
-  }
-  .roadview-minimap-wrap:hover .roadview-minimap-expand,
-  .roadview-minimap-expand:focus-visible{
-    opacity:1;
-  }
-  .roadview-minimap-expand:hover,
-  .roadview-minimap-expand:focus-visible{
-    background:rgba(180,134,63,.96); outline:2px solid #fff; outline-offset:-3px;
+   .roadview-minimap-resize{
+     position:absolute; right:0; bottom:0; z-index:2;
+     width:30px; height:30px; padding:0; border:0;
+     border-radius:0 0 8px 0; clip-path:polygon(100% 0, 100% 100%, 0 100%);
+     background:rgba(30,42,58,.82); cursor:nwse-resize;
+     opacity:0; transition:opacity .14s ease, background .14s ease;
+     touch-action:none;
+   }
+   .roadview-minimap-resize::after{
+     content:""; position:absolute; right:5px; bottom:5px;
+     width:10px; height:10px; border-right:2px solid #fff; border-bottom:2px solid #fff;
+   }
+   .roadview-minimap-wrap:hover .roadview-minimap-resize,
+   .roadview-minimap-resize:focus-visible{
+     opacity:1;
+   }
+   .roadview-minimap-resize:hover,
+   .roadview-minimap-resize:focus-visible{
+     background:rgba(180,134,63,.96); outline:2px solid #fff; outline-offset:-3px;
   }
   .roadview-mini-camera{
     position:relative; width:25px; height:25px; border:2px solid #fff;
@@ -645,15 +635,7 @@
     .roadview-canvas{height:100%; min-height:0;}
     .roadview-minimap-wrap{
       left:12px; bottom:48px; width:142px; height:98px;
-    }
-    .roadview-minimap-wrap[data-mini-size="1"]{
-      width:220px; height:152px;
-    }
-    .roadview-minimap-wrap[data-mini-size="2"]{
-      width:calc(100vw - 24px); height:220px;
-    }
-    .roadview-minimap-wrap[data-mini-size="3"]{
-      left:0; bottom:0; width:100vw; height:55vh;
+      max-width:calc(100vw - 24px); max-height:calc(100vh - 60px);
     }
     .map-measure-panel{
       top:calc(var(--stage-gap) + 54px); right:calc(var(--stage-gap) + 54px);

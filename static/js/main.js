@@ -1247,8 +1247,8 @@ let _roadview = null;
 let _roadviewMiniMap = null;
 let _roadviewMiniMarker = null;
 let _roadviewMiniCamera = null;
-let _roadviewMiniMapControlsBound = false;
-let _roadviewMiniMapSize = 0;
+let _roadviewMiniMapResizeBound = false;
+let _roadviewMiniMapResizeObserver = null;
 let _measurePoints = [];
 let _measureLine = null;
 let _measureLabel = null;
@@ -1303,35 +1303,97 @@ function _roadviewMiniMapCenter(){
   return kakaoMap && kakaoMap.getCenter ? kakaoMap.getCenter() : null;
 }
 
-function _roadviewMiniMapSizeLabel(){
-  return _roadviewMiniMapSize >= 3 ? "미니맵 축소" : "미니맵 확대";
-}
-
-function _setRoadviewMiniMapSize(size){
-  const wrap = document.getElementById("roadviewMiniMapWrap");
-  const button = document.getElementById("roadviewMiniMapExpand");
-  _roadviewMiniMapSize = size > 3 ? 0 : Math.max(0, size);
-  if (wrap) wrap.dataset.miniSize = String(_roadviewMiniMapSize);
-  if (button){
-    const expanded = _roadviewMiniMapSize > 0;
-    button.setAttribute("aria-expanded", String(expanded));
-    button.setAttribute("aria-label", _roadviewMiniMapSizeLabel());
-    button.setAttribute("title", _roadviewMiniMapSizeLabel());
+function _roadviewMiniMapResizeLimits(wrap){
+  const panel = document.getElementById("roadviewPanel");
+  const panelRect = panel && panel.getBoundingClientRect ? panel.getBoundingClientRect() : null;
+  const panelWidth = Number(panelRect && panelRect.width) || Number(window.innerWidth) || 1280;
+  const panelHeight = Number(panelRect && panelRect.height) || Number(window.innerHeight) || 720;
+  let left = 16;
+  let bottom = 50;
+  if (typeof window.getComputedStyle === "function"){
+    const computed = window.getComputedStyle(wrap);
+    left = Number.parseFloat(computed.left) || left;
+    bottom = Number.parseFloat(computed.bottom) || bottom;
   }
-  setTimeout(() => {
-    if (_roadviewMiniMap) _roadviewMiniMap.relayout();
-  }, 180);
+  return {
+    minWidth: 140,
+    minHeight: 96,
+    maxWidth: Math.max(140, panelWidth - left - 8),
+    maxHeight: Math.max(96, panelHeight - bottom - 8),
+  };
 }
 
-function _bindRoadviewMiniMapControls(){
-  if (_roadviewMiniMapControlsBound) return;
+function _resizeRoadviewMiniMap(width, height){
   const wrap = document.getElementById("roadviewMiniMapWrap");
-  const button = document.getElementById("roadviewMiniMapExpand");
-  if (!wrap || !button || !button.addEventListener) return;
-  _roadviewMiniMapControlsBound = true;
-  button.addEventListener("click", () => {
-    _setRoadviewMiniMapSize(_roadviewMiniMapSize + 1);
+  if (!wrap) return;
+  const limits = _roadviewMiniMapResizeLimits(wrap);
+  const nextWidth = Math.max(limits.minWidth, Math.min(limits.maxWidth, Number(width) || limits.minWidth));
+  const nextHeight = Math.max(limits.minHeight, Math.min(limits.maxHeight, Number(height) || limits.minHeight));
+  wrap.style.width = `${Math.round(nextWidth)}px`;
+  wrap.style.height = `${Math.round(nextHeight)}px`;
+  if (_roadviewMiniMap) _roadviewMiniMap.relayout();
+}
+
+function _bindRoadviewMiniMapResize(){
+  if (_roadviewMiniMapResizeBound) return;
+  const wrap = document.getElementById("roadviewMiniMapWrap");
+  const handle = document.getElementById("roadviewMiniMapResize");
+  if (!wrap || !handle || !handle.addEventListener) return;
+  _roadviewMiniMapResizeBound = true;
+
+  let resizeState = null;
+  const finishResize = (event) => {
+    if (!resizeState || (event && event.pointerId !== resizeState.pointerId)) return;
+    resizeState = null;
+    document.removeEventListener("pointermove", moveResize);
+    document.removeEventListener("pointerup", finishResize);
+    document.removeEventListener("pointercancel", finishResize);
+  };
+  const moveResize = (event) => {
+    if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+    _resizeRoadviewMiniMap(
+      resizeState.width + event.clientX - resizeState.clientX,
+      resizeState.height - event.clientY + resizeState.clientY,
+    );
+  };
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const rect = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : null;
+    resizeState = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      width: Number(rect && rect.width) || wrap.offsetWidth || 190,
+      height: Number(rect && rect.height) || wrap.offsetHeight || 132,
+    };
+    if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+    document.addEventListener("pointermove", moveResize);
+    document.addEventListener("pointerup", finishResize);
+    document.addEventListener("pointercancel", finishResize);
+    if (event.preventDefault) event.preventDefault();
   });
+  handle.addEventListener("keydown", (event) => {
+    const increments = {
+      ArrowRight: [16, 0],
+      ArrowLeft: [-16, 0],
+      ArrowUp: [0, 16],
+      ArrowDown: [0, -16],
+    };
+    const increment = increments[event.key];
+    if (!increment) return;
+    const rect = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : null;
+    _resizeRoadviewMiniMap(
+      (Number(rect && rect.width) || wrap.offsetWidth || 190) + increment[0],
+      (Number(rect && rect.height) || wrap.offsetHeight || 132) + increment[1],
+    );
+    if (event.preventDefault) event.preventDefault();
+  });
+  if (typeof ResizeObserver !== "undefined"){
+    _roadviewMiniMapResizeObserver = new ResizeObserver(() => {
+      if (_roadviewMiniMap) _roadviewMiniMap.relayout();
+    });
+    _roadviewMiniMapResizeObserver.observe(wrap);
+  }
 }
 
 function _syncRoadviewMiniCamera(){
@@ -1348,7 +1410,7 @@ function _ensureRoadviewMiniMap(position){
   const element = document.getElementById("roadviewMiniMap");
   const center = position || _roadviewMiniMapCenter();
   if (!element || !center) return false;
-  _bindRoadviewMiniMapControls();
+  _bindRoadviewMiniMapResize();
   if (!_roadviewMiniMap){
     _roadviewMiniMap = new kakao.maps.Map(element, {
       center,

@@ -19,7 +19,7 @@ const requiredHtml = [
   'id="roadviewPanel"',
   'id="roadviewMiniMapWrap"',
   'id="roadviewMiniMap"',
-  'id="roadviewMiniMapExpand"',
+  'id="roadviewMiniMapResize"',
   'id="measurePanel"',
 ];
 const missingHtml = requiredHtml.filter((token) => !html.includes(token));
@@ -33,8 +33,8 @@ const requiredCss = [
   ".roadview-panel.open",
   ".roadview-minimap-wrap",
   ".roadview-minimap",
-  ".roadview-minimap-wrap[data-mini-size=\"3\"]",
-  "width:50%; height:100%",
+  ".roadview-minimap-resize",
+  "cursor:nwse-resize",
   ".roadview-mini-camera",
   ".map-measure-panel",
   ".map-poi-marker",
@@ -49,8 +49,8 @@ const requiredJs = [
   "RoadviewClient",
   "function _ensureRoadviewMiniMap",
   "function _syncRoadviewMiniMap",
-  "function _bindRoadviewMiniMapControls",
-  "function _setRoadviewMiniMapSize",
+  "function _bindRoadviewMiniMapResize",
+  "function _resizeRoadviewMiniMap",
   "function _syncRoadviewMiniCamera",
   "new kakao.maps.Map",
   "new kakao.maps.CustomOverlay",
@@ -169,15 +169,15 @@ async function checkRoadviewMiniMapBehavior() {
   const toolCode = js.slice(blockStart, blockEnd);
   const elements = new Map();
   const miniMaps = [];
-  const miniMapWrap = { dataset: {} };
-  const miniMapExpand = {
+  const miniMapWrap = { dataset: {}, style: {} };
+  const miniMapResize = {
     handlers: {},
     attributes: {},
     addEventListener(type, handler) { this.handlers[type] = handler; },
     setAttribute(name, value) { this.attributes[name] = value; },
   };
   elements.set("roadviewMiniMapWrap", miniMapWrap);
-  elements.set("roadviewMiniMapExpand", miniMapExpand);
+  elements.set("roadviewMiniMapResize", miniMapResize);
   class LatLng {
     constructor(lat, lng) {
       this.lat = Number(lat);
@@ -235,7 +235,7 @@ async function checkRoadviewMiniMapBehavior() {
       sync: _syncRoadviewMiniMap,
       marker() { return _roadviewMiniMarker; },
       camera() { return _roadviewMiniCamera; },
-      expand() { document.getElementById("roadviewMiniMapExpand").handlers.click(); },
+       resize(width, height) { _resizeRoadviewMiniMap(width, height); },
       setRoadview(roadview) { _roadview = roadview; },
       syncCamera: _syncRoadviewMiniCamera,
     };
@@ -254,12 +254,14 @@ async function checkRoadviewMiniMapBehavior() {
   if (miniMaps[0].center !== second || context.__miniMapTest.marker().position !== second) {
     throw new Error("로드뷰 위치 변경을 미니맵과 마커에 반영하지 않음");
   }
-  ["1", "2", "3", "0"].forEach((expectedSize) => {
-    context.__miniMapTest.expand();
-    if (miniMapWrap.dataset.miniSize !== expectedSize) {
-      throw new Error(`미니맵 확대 단계가 순차적으로 전환되지 않음: ${expectedSize} 단계`);
-    }
-  });
+  context.__miniMapTest.resize(420, 280);
+  if (miniMapWrap.style.width !== "420px" || miniMapWrap.style.height !== "280px") {
+    throw new Error("미니맵을 원하는 폭·높이로 자유롭게 조절하지 못함");
+  }
+  context.__miniMapTest.resize(80, 70);
+  if (miniMapWrap.style.width !== "140px" || miniMapWrap.style.height !== "96px") {
+    throw new Error("미니맵 크기에 최소값을 적용하지 않음");
+  }
   context.__miniMapTest.setRoadview({
     getViewpoint() { return { pan: 135 }; },
   });
