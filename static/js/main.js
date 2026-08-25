@@ -479,6 +479,13 @@ function showFallbackToast(msg){
   }, 2800);
 }
 
+function showMapEmptyBanner(msg = "이 지역은 아직 등록된 매물이 없어요"){
+  const emptyEl = document.getElementById("mapEmpty");
+  if (!emptyEl) return;
+  emptyEl.textContent = msg;
+  emptyEl.style.display = "flex";
+}
+
 let _favOverflowPopover = null;
 let _favOverflowPopoverButton = null;
 function closeFavOverflowPopover(){
@@ -1508,7 +1515,14 @@ async function loadMapMarkers(filters = {}, opts = {}){
     }
 
     // 전체 완료 후 처리
-    if (emptyEl) emptyEl.style.display = (placed === 0) ? "flex" : "none";
+    if (emptyEl) {
+      if (placed === 0) {
+        if (!filters.q) emptyEl.textContent = "이 지역은 아직 등록된 매물이 없어요";
+        emptyEl.style.display = "flex";
+      } else {
+        emptyEl.style.display = "none";
+      }
+    }
     if (placed > 0 && opts.fit === true) {
       kakaoMap.setBounds(bounds);
       // 카카오맵은 단일 좌표에 setBounds를 하면 지나치게 넓은 레벨로 남는 특성이 있음.
@@ -1518,6 +1532,14 @@ async function loadMapMarkers(filters = {}, opts = {}){
     updateMarkerLabels();
     _finishMapLayerSwap(previousCustomOverlays);
     console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
+    if (placed === 1 && filters.q && validItems[0]?.building_name) {
+      const normalizeSearchText = (value) => String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+      const searchedName = normalizeSearchText(filters.q);
+      const matchedName = normalizeSearchText(validItems[0].building_name);
+      if (searchedName && matchedName && searchedName !== matchedName) {
+        showFallbackToast(`정확히 일치하는 건물은 없어 '${String(filters.q).trim()}'을(를) 찾았습니다`);
+      }
+    }
     // 완료 콜백 — updateMapForZoom의 0건 폴백 판단에 사용
     if (opts.onComplete) opts.onComplete(placed);
   }
@@ -1576,7 +1598,13 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
 
   // 클러스터 모드에서도 0건이면 mapEmpty 표시, 있으면 숨김
   const _mapEmptyEl = document.getElementById("mapEmpty");
-  if (_mapEmptyEl) _mapEmptyEl.style.display = items.length === 0 ? "flex" : "none";
+  if (_mapEmptyEl) {
+    if (items.length === 0) {
+      showMapEmptyBanner();
+    } else {
+      _mapEmptyEl.style.display = "none";
+    }
+  }
 
   // 새 클러스터 배지를 만든 뒤 이전 레이어를 페이드아웃한다.
   const previousCustomOverlays = _beginMapLayerSwap();
@@ -1711,9 +1739,15 @@ async function updateMapForZoom(filters = {}, opts = {}){
         if (placed === 0){
           const fallback = Object.assign({}, filters);
           delete fallback.q;  // 검색어 제거 — 지역 필터만으로 umd 집계
-          _currentMapMode = "umd";
-          loadClusterOverlays("umd", fallback);
-          console.log("[MAP] q=0건 → umd 클러스터 폴백");
+          const hasRegionFilter = !!(fallback.si_do || fallback.sgg_nm || fallback.umd_nm);
+          if (hasRegionFilter){
+            _currentMapMode = "umd";
+            loadClusterOverlays("umd", fallback);
+            console.log("[MAP] q=0건 → umd 클러스터 폴백");
+          } else {
+            showMapEmptyBanner("검색 결과가 없습니다. 건물명을 다시 확인해주세요.");
+            console.log("[MAP] 지역 필터 없는 q=0건 → 전국 클러스터 폴백 생략");
+          }
         }
       };
     }
