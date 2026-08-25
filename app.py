@@ -7910,8 +7910,8 @@ def _whole_listing_values(data, *, existing=None):
     ota_revenue_ratio, error = _parse_listing_ratio(data.get("ota_revenue_ratio"), "OTA 매출 비중")
     if error:
         return None, error
-    if deal_type == "매매" and succession_loan_krw is not None and price_krw is not None and succession_loan_krw > price_krw:
-        return None, "승계융자는 매매가보다 클 수 없습니다."
+    if succession_loan_krw is not None and price_krw is not None and succession_loan_krw > price_krw:
+        return None, "승계융자는 거래금액보다 클 수 없습니다."
     operation_status = (data.get("operation_status") or "").strip()
     if operation_status and operation_status not in _WHOLE_OPERATION_STATUSES:
         return None, "운영상태는 영업중/휴업/폐업 중 하나여야 합니다."
@@ -7952,7 +7952,7 @@ def _whole_listing_context_data(cur, building_id):
     cur.execute("""
             SELECT id, building_name, lat, lng, plat_area, tot_area,
                    grnd_flr_cnt, ugrnd_flr_cnt, use_apr_day, jiyuk_nm,
-                   strct_nm,
+                   strct_nm, road_address, jibun_address, sgg_text, umd_nm, jibun,
                    CASE WHEN tot_pkng_cnt IS NULL AND indr_auto_utcnt IS NULL
                              AND oudr_auto_utcnt IS NULL AND indr_mech_utcnt IS NULL
                              AND oudr_mech_utcnt IS NULL
@@ -7980,6 +7980,13 @@ def _whole_listing_context_data(cur, building_id):
         "elevators": building["elevators"],
         "structure": building["strct_nm"],
     }
+    lodging_rows, lodging_match_source = matched_lodgings(cur, dict(building), active_only=True)
+    representative_lodging = choose_representative(lodging_rows)
+    suggested_room_count = representative_lodging.get("room_count") if representative_lodging else None
+    try:
+        suggested_room_count = int(suggested_room_count) if suggested_room_count is not None else None
+    except (TypeError, ValueError):
+        suggested_room_count = None
     counts = {"일반": 0, "관광": 0, "복합": 0, "생활": 0}
     subway = None
     if building["lat"] is not None and building["lng"] is not None:
@@ -8047,6 +8054,8 @@ def _whole_listing_context_data(cur, building_id):
         },
         "nearby_lodgings": counts,
         "subway": subway,
+        "suggested_room_count": suggested_room_count,
+        "suggested_room_count_source": lodging_match_source if suggested_room_count else None,
     }
 
 
@@ -8370,9 +8379,11 @@ def _apply_public_business_listing_summary(listing, financial_details_visible=Fa
         listing["disclosure_scope"] = disclosure_scope
         listing["financial_details_visible"] = bool(financial_details_visible)
         listing["has_succession_loan"] = listing.get("succession_loan_krw") is not None
+        listing["has_key_money"] = listing.get("key_money_krw") is not None
         listing["has_monthly_revenue"] = listing.get("monthly_revenue_krw") is not None
         if not financial_details_visible:
             listing["succession_loan_krw"] = None
+            listing["key_money_krw"] = None
             listing["monthly_revenue_krw"] = None
             listing["annual_revenue_krw"] = None
         return listing
@@ -8391,7 +8402,50 @@ def _apply_public_business_listing_summary(listing, financial_details_visible=Fa
     return listing
 
 
-def _apply_limited_whole_listing_privacy(listing):
+def _limited_whole_listing_approx_location(cur, listing):
+    """제한공개 매물에만 제공할 충분히 넓은 지역 단위의 좌표를 만든다.
+
+    한두 건의 건물 평균은 사실상 원 건물 좌표가 될 수 있으므로, 동 단위는 최소
+    5건, 시군구 단위 폴백은 최소 10건의 좌표가 모인 경우에만 제공한다.
+    """
+    sgg_text = (listing.get("sgg_text") or "").strip()
+    umd_nm = (listing.get("umd_nm") or "").strip()
+    if sgg_text and umd_nm:
+        cur.execute("""
+            SELECT ROUND(AVG(lat)::numeric, 3) AS approx_lat,
+                   ROUND(AVG(lng)::numeric, 3) AS approx_lng
+              FROM master_buildings
+             WHERE sgg_text = %s AND umd_nm = %s
+               AND lat IS NOT NULL AND lng IS NOT NULL
+            HAVING COUNT(*) >= 5
+        """, [sgg_text, umd_nm])
+        row = cur.fetchone()
+        if row and row["approx_lat"] is not None and row["approx_lng"] is not None:
+            return {
+                "approx_lat": float(row["approx_lat"]),
+                "approx_lng": float(row["approx_lng"]),
+                "approx_location_label": "동 중심 근처",
+            }
+    if sgg_text:
+        cur.execute("""
+            SELECT ROUND(AVG(lat)::numeric, 2) AS approx_lat,
+                   ROUND(AVG(lng)::numeric, 2) AS approx_lng
+              FROM master_buildings
+             WHERE sgg_text = %s
+               AND lat IS NOT NULL AND lng IS NOT NULL
+            HAVING COUNT(*) >= 10
+        """, [sgg_text])
+        row = cur.fetchone()
+        if row and row["approx_lat"] is not None and row["approx_lng"] is not None:
+            return {
+                "approx_lat": float(row["approx_lat"]),
+                "approx_lng": float(row["approx_lng"]),
+                "approx_location_label": "시군구 중심 근처",
+            }
+    return None
+
+
+def _apply_limited_whole_listing_privacy(listing, approx_location=None):
     """제한공개 건물전체 매물은 지역·카드 표시에 필요한 값만 남긴다.
 
     로그인 회원은 월 매출과 승계융자만 볼 수 있으며, 설명·사진·건물 보조정보처럼
@@ -8408,6 +8462,9 @@ def _apply_limited_whole_listing_privacy(listing):
         listing.pop(key, None)
     listing["building_name"] = location_label
     listing["is_limited_listing"] = True
+    listing["location_precision"] = "approximate"
+    if approx_location:
+        listing.update(approx_location)
     return listing
 
 
@@ -8739,7 +8796,7 @@ def create_listing_request():
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"ok": False, "message": "총 호실수는 1~100,000 사이의 숫자로 입력해주세요."}), 400
-    if registrant_type != "business":
+    if registrant_type != "business" and transaction_target != "whole":
         room_count = None
     if err1 or err2 or err3 or err4 or err5:
         return jsonify({"ok": False, "message": err1 or err2 or err3 or err4 or err5}), 400
@@ -8760,7 +8817,6 @@ def create_listing_request():
                          f"{deal_type} {price_krw:,}만원" if price_krw else deal_type)
         area_sqm = None
         dong = ho = None
-        room_count = None
         yield_rate = None
 
     if not mb_id:
@@ -9642,7 +9698,11 @@ def public_listings():
                 dict(r), financial_details_visible=bool(viewer_user)
             )
             if disclosure_scope_filter == "limited":
-                d = _apply_limited_whole_listing_privacy(d)
+                d = _apply_limited_whole_listing_privacy(
+                    d, _limited_whole_listing_approx_location(cur, d)
+                )
+            elif d.get("is_whole_listing") and d.get("lat") is not None and d.get("lng") is not None:
+                d["location_precision"] = "exact"
             ph = d.pop("verified_phone", "") or ""
             if disclosure_scope_filter != "limited":
                 d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
@@ -10441,7 +10501,7 @@ def update_listing_request(req_id):
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"ok": False, "message": "총 호실수는 1~100,000 사이의 숫자로 입력해주세요."}), 400
-    if registrant_type != "business":
+    if registrant_type != "business" and transaction_target != "whole":
         room_count = None
     if err1 or err2 or err3 or err4 or err5:
         return jsonify({"ok": False, "message": err1 or err2 or err3 or err4 or err5}), 400
@@ -10460,7 +10520,6 @@ def update_listing_request(req_id):
                           (f"{deal_type} {price_krw:,}만원" if price_krw else deal_type)))
         area_sqm = None
         dong = ho = None
-        room_count = None
         yield_rate = None
     conn = get_conn()
     cur = conn.cursor()

@@ -4529,12 +4529,26 @@ def _check_whole_building_listing(client):
     conn = get_conn()
     cur = conn.cursor()
     user_id = listing_id = None
+    created_building_ids = []
     try:
-        cur.execute("SELECT id FROM master_buildings ORDER BY id LIMIT 1")
-        building = cur.fetchone()
-        if not building:
-            return ["whole listing: 테스트용 master_buildings 행이 없습니다."]
         run_id = str(int(_time.time() * 1000))
+        test_sgg = f"매물테스트시{run_id}"
+        test_umd = "권리금동"
+        for index in range(5):
+            cur.execute(
+                """INSERT INTO master_buildings
+                    (building_name, road_address, sgg_text, umd_nm, lat, lng, lodging_type)
+                   VALUES (%s, %s, %s, %s, %s, %s, '생활') RETURNING id""",
+                (
+                    f"건물전체 테스트 {run_id}-{index}", f"매물 테스트로 {index + 1}",
+                    test_sgg, test_umd, 37.100 + index * 0.002, 127.100 + index * 0.002,
+                ),
+            )
+            created_building_ids.append(cur.fetchone()["id"])
+        building = {
+            "id": created_building_ids[0],
+            "building_name": f"건물전체 테스트 {run_id}-0",
+        }
         cur.execute(
             "INSERT INTO users (email, name, phone, phone_verified) VALUES (%s, %s, '01000000000', TRUE) RETURNING id",
             (f"whole-listing-{run_id}@example.test", "건물전체 매물 테스트"),
@@ -4549,6 +4563,7 @@ def _check_whole_building_listing(client):
             "master_building_id": building["id"], "deal_mode": "direct",
             "registrant_type": "building_owner", "transaction_target": "whole",
             "deal_type": "매매", "price_krw": 200000, "succession_loan_krw": 120000,
+             "key_money_krw": 5000, "room_count": 22,
              "monthly_revenue_krw": 3000, "annual_revenue_krw": 36000,
              "short_stay_ratio": 32.5, "ota_revenue_ratio": 71.2,
             "operation_status": "폐업", "closed_at": "2026-08-01",
@@ -4563,7 +4578,7 @@ def _check_whole_building_listing(client):
         context_data = context.get_json() or {}
         if (context.status_code != 200 or not context_data.get("ok")
                 or "building" not in context_data or "nearby_lodgings" not in context_data
-                or "subway" not in context_data):
+                or "subway" not in context_data or "suggested_room_count" not in context_data):
             failures.append("whole listing: 건물자동채움·주변 숙박시설 컨텍스트 API 실패")
         detail = client.get(f"/api/building/{building['id']}")
         detail_item = next(
@@ -4596,6 +4611,9 @@ def _check_whole_building_listing(client):
             or limited_item.get("succession_loan_krw") is not None
             or not limited_item.get("has_monthly_revenue")
             or not limited_item.get("has_succession_loan")
+            or limited_item.get("location_precision") != "approximate"
+            or limited_item.get("approx_lat") is None
+            or limited_item.get("approx_lng") is None
             or any(key in limited_item for key in (
                 "description", "photo_url", "photos", "building_info_overrides",
                 "key_money_krw", "annual_revenue_krw", "remodeling_info",
@@ -4646,13 +4664,14 @@ def _check_whole_building_listing(client):
         ):
             failures.append("whole listing: 제한공개 카드 열람자 기록 또는 고유 IP 집계가 누락됨")
 
-        cur.execute("""SELECT transaction_target, deal_type, price_krw, succession_loan_krw,
+        cur.execute("""SELECT transaction_target, deal_type, price_krw, succession_loan_krw, key_money_krw, room_count,
                                short_stay_ratio, ota_revenue_ratio,
                               operation_status, closed_at, is_urgent, disclosure_scope, building_info_overrides
                        FROM listing_requests WHERE id=%s""", (listing_id,))
         stored = cur.fetchone() or {}
         if not (stored.get("transaction_target") == "whole" and stored.get("deal_type") == "매매"
                 and stored.get("price_krw") == 200000 and stored.get("succession_loan_krw") == 120000
+                and stored.get("key_money_krw") == 5000 and stored.get("room_count") == 22
                 and float(stored.get("short_stay_ratio") or -1) == 32.5
                 and float(stored.get("ota_revenue_ratio") or -1) == 71.2
                 and stored.get("operation_status") == "폐업" and stored.get("is_urgent")
@@ -4661,22 +4680,47 @@ def _check_whole_building_listing(client):
 
         updated = client.put(f"/api/listing-requests/{listing_id}", json={
             "transaction_target": "whole", "deal_type": "통임대", "price_krw": 5000,
-            "monthly_rent_krw": 400, "key_money_krw": 2500, "operation_status": "영업중",
+            "monthly_rent_krw": 400, "key_money_krw": 2500, "succession_loan_krw": 1200,
+             "room_count": 33, "operation_status": "영업중",
              "short_stay_ratio": 40, "ota_revenue_ratio": 80,
              "disclosure_scope": "public", "building_info_overrides": {"zoning": "상업지역"},
         })
         cur.execute("""SELECT deal_type, price_krw, monthly_rent_krw, key_money_krw,
                                short_stay_ratio, ota_revenue_ratio,
-                              succession_loan_krw, operation_status, disclosure_scope, building_info_overrides
+                               succession_loan_krw, room_count, operation_status, disclosure_scope, building_info_overrides
                        FROM listing_requests WHERE id=%s""", (listing_id,))
         changed = cur.fetchone() or {}
         if (updated.status_code != 200 or changed.get("deal_type") != "통임대"
                 or changed.get("monthly_rent_krw") != 400 or changed.get("key_money_krw") != 2500
-                or changed.get("succession_loan_krw") is not None
+                or changed.get("succession_loan_krw") != 1200 or changed.get("room_count") != 33
                 or float(changed.get("short_stay_ratio") or -1) != 40
                 or float(changed.get("ota_revenue_ratio") or -1) != 80
                 or changed.get("operation_status") != "영업중" or changed.get("disclosure_scope") != "public"):
             failures.append("whole listing: 통임대 수정 또는 매매 필드 초기화 실패")
+
+        for whole_deal_type, price, key_money, loan in (
+            ("운영권양도", 7000, 1800, 900),
+            ("위탁운영", 6000, 1400, 800),
+        ):
+            response = client.put(f"/api/listing-requests/{listing_id}", json={
+                "transaction_target": "whole", "deal_type": whole_deal_type,
+                "price_krw": price, "key_money_krw": key_money,
+                "succession_loan_krw": loan, "room_count": 33,
+                "short_stay_ratio": 40, "ota_revenue_ratio": 80,
+                "operation_status": "영업중", "disclosure_scope": "public",
+                "building_info_overrides": {"zoning": "상업지역"},
+            })
+            cur.execute(
+                """SELECT deal_type, price_krw, key_money_krw, succession_loan_krw
+                     FROM listing_requests WHERE id=%s""",
+                (listing_id,),
+            )
+            stored_terms = cur.fetchone() or {}
+            if (response.status_code != 200 or stored_terms.get("deal_type") != whole_deal_type
+                    or stored_terms.get("price_krw") != price
+                    or stored_terms.get("key_money_krw") != key_money
+                    or stored_terms.get("succession_loan_krw") != loan):
+                failures.append(f"whole listing: {whole_deal_type} 권리금·승계융자 저장 실패")
 
         public_items_after = (client.get("/api/listings?disclosure_scope=public").get_json() or {}).get("items") or []
         public_item_after = next((item for item in public_items_after if item.get("id") == listing_id), {})
@@ -4720,7 +4764,7 @@ def _check_whole_building_listing(client):
 
         mine = client.get("/api/listing-requests/mine")
         mine_item = next((x for x in ((mine.get_json() or {}).get("items") or []) if x.get("id") == listing_id), {})
-        if mine.status_code != 200 or mine_item.get("transaction_target") != "whole" or mine_item.get("key_money_krw") != 2500:
+        if mine.status_code != 200 or mine_item.get("transaction_target") != "whole" or mine_item.get("key_money_krw") != 1400:
             failures.append("whole listing: 내 매물 조회 전용 필드 누락")
 
         from app import _whole_listing_values
@@ -4747,6 +4791,8 @@ def _check_whole_building_listing(client):
                 cur.execute("DELETE FROM listing_requests WHERE id=%s", (listing_id,))
             if user_id:
                 cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+            if created_building_ids:
+                cur.execute("DELETE FROM master_buildings WHERE id = ANY(%s)", (created_building_ids,))
             conn.commit()
         finally:
             cur.close()

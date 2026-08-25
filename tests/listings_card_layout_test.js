@@ -26,7 +26,6 @@ for (const needle of [
   'LivingstayListingIcons.share()',
   'LivingstayListingIcons.heart(!!item.liked)',
   'LivingstayListingIcons.photoCount(photoCount)',
-  'highlightCardItem(div)',
   'e.stopPropagation();\n      openChat(item.id);',
 ]) {
   expect(listings.includes(needle), `목록 카드 4줄/사진/행동 UI 누락: ${needle}`);
@@ -58,20 +57,20 @@ expect(
   iconContext.window.LivingstayListingIcons.photoCount(1) === "",
   "사진 2장 이상 배지 또는 1장 이하 숨김 규칙이 정확하지 않습니다."
 );
-const boardBlock = listings.slice(listings.indexOf("function renderBoardRow"), listings.indexOf("function renderCardItem"));
+const boardBlock = listings.slice(listings.indexOf("function renderBoardRow"), listings.indexOf("function renderWholeListingCard"));
 const cardBlock = listings.slice(listings.indexOf("function renderCardItem"), listings.indexOf("// ── 목록 로드"));
 const detailBlock = main.slice(main.indexOf("function _renderListings"), main.indexOf("_renderListings(allListings)"));
 for (const [name, block] of [["게시판형", boardBlock], ["카드형", cardBlock]]) {
   expect(
-    block.indexOf("LivingstayListingIcons.chat()") < block.indexOf("LivingstayListingIcons.share()") &&
-    block.indexOf("LivingstayListingIcons.share()") < block.indexOf("LivingstayListingIcons.heart("),
-    `${name} 행동 버튼 순서가 채팅 → 공유 → 찜이 아닙니다.`
+    block.indexOf("LivingstayListingIcons.heart(") < block.indexOf("LivingstayListingIcons.chat()") &&
+    block.indexOf("LivingstayListingIcons.chat()") < block.indexOf("LivingstayListingIcons.share()"),
+    `${name} 행동 버튼 순서가 찜 → 채팅 → 공유가 아닙니다.`
   );
 }
 const normalDetailBlock = detailBlock.slice(detailBlock.indexOf("return `<div class=\"b-listing-card\""), detailBlock.indexOf("}).join(\"\");"));
 expect(
-  normalDetailBlock.indexOf("LivingstayListingIcons.chat()") < normalDetailBlock.indexOf("LivingstayListingIcons.share()") &&
-  normalDetailBlock.indexOf("LivingstayListingIcons.share()") < normalDetailBlock.indexOf("LivingstayListingIcons.heart("),
+  normalDetailBlock.indexOf("LivingstayListingIcons.heart(") < normalDetailBlock.indexOf("LivingstayListingIcons.chat()") &&
+  normalDetailBlock.indexOf("LivingstayListingIcons.chat()") < normalDetailBlock.indexOf("LivingstayListingIcons.share()"),
   "기존 개별호실 건물상세 카드의 행동 버튼 순서가 바뀌었습니다."
 );
 for (const [name, block] of [
@@ -125,6 +124,21 @@ expect(
   listings.includes("item.is_limited_listing") &&
   listings.includes('shareUrl.searchParams.set("disclosure_scope", "limited")'),
   "공개범위 탭 또는 제한공개 익명·공유 처리 연결이 없습니다."
+);
+expect(
+  wholeCardBlock.includes("const keyMoney = Number(item.key_money_krw || 0)") &&
+  wholeCardBlock.includes("price - loan + keyMoney + (price * 0.061)") &&
+  wholeCardBlock.indexOf('<div class="whole-metrics">') < wholeCardBlock.indexOf('<div class="whole-badges">') &&
+  wholeCardBlock.indexOf('<div class="whole-badges">') < wholeCardBlock.indexOf("${limitedNotice}"),
+  "건물전체 카드의 권리금 반영 실인수가 또는 배지 하단 배치가 없습니다."
+);
+const modal = fs.readFileSync("static/js/listing_modal.js", "utf8");
+expect(
+  modal.includes("data-listing-detail-map") &&
+  modal.includes("location_precision === \"approximate\"") &&
+  modal.includes("approx_lat") &&
+  modal.includes("https://map.kakao.com/link/map/"),
+  "공개범위별 정확·근사 지도위치 버튼 연결이 없습니다."
 );
 
 expect(

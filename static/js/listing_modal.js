@@ -169,22 +169,24 @@
            }).join("") + '</div><div id="lrWholeDealButtons" style="display:' + (transactionTarget === "whole" ? "flex" : "none") + ';gap:6px;flex-wrap:wrap;">' + WHOLE_DEAL_TYPES.map(function (dt) {
              return '<button type="button" class="lr-deal" data-type="' + dt + '" style="padding:7px 11px;border-radius:7px;border:1px solid ' + (dt === dealType ? "var(--brass,#b4863f)" : "var(--line,#e2ddd8)") + ';background:' + (dt === dealType ? "var(--brass,#b4863f)" : "#fff") + ';color:' + (dt === dealType ? "#fff" : "var(--ink,#16202e)") + ';font:700 12.5px inherit;cursor:pointer;">' + dt + '</button>';
            }).join("") + '</div></section>' +
-           '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 정보</div>' +
-          '<div id="lrPriceSale"><input id="lrSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
-          '<div id="lrPriceJeonse"><input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="전세 보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
-          '<div id="lrPriceWolse" style="display:flex;gap:7px;"><input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" value="' + esc(prefill.monthly_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
-           '<div id="lrPriceWolseBusiness" style="display:none;align-items:center;gap:7px;"><input id="lrWolsePriceMin" type="number" min="1" inputmode="numeric" placeholder="월 최저가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><span style="color:var(--ink-soft);">~</span><input id="lrWolsePriceMax" type="number" min="1" inputmode="numeric" placeholder="월 최고가 (만원)" value="' + esc(prefill.price_krw_max || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
-           '<div id="lrShortTerm"><input id="lrDesiredPrice" maxlength="100" placeholder="희망 조건 (선택)" value="' + esc(prefill.desired_price || "") + '" style="' + inputStyle() + '"></div>' +
-            '<div id="lrShortTermBusiness" style="display:none;align-items:center;gap:7px;"><input id="lrShortPriceMin" type="number" min="1" inputmode="numeric" placeholder="최저가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;") + '"><span style="color:var(--ink-soft);">~</span><input id="lrShortPriceMax" type="number" min="1" inputmode="numeric" placeholder="최고가 (만원)" value="' + esc(prefill.price_krw_max || "") + '" style="' + inputStyle("flex:1;") + '"></div>' +
-            '<div id="lrWholeSale" style="display:none;"><input id="lrWholeSalePrice" type="number" min="1" inputmode="numeric" placeholder="매매가 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"><div style="display:flex;gap:7px;margin-top:7px;"><input id="lrSuccessionLoan" type="number" min="1" inputmode="numeric" placeholder="승계융자 (만원)" value="' + esc(prefill.succession_loan_krw || "") + '" style="' + inputStyle("flex:1;") + '"><div id="lrRealTakeover" style="flex:1;padding:10px 11px;border-radius:8px;background:#fff7ea;color:var(--brass,#b4863f);font-size:12px;font-weight:700;">실인수가 계산</div></div><div style="margin-top:5px;font-size:11px;color:var(--ink-soft);">예상 취득부대비용 6.1%를 포함한 참고값이며 저장되지 않습니다.</div></div>' +
-            '<div id="lrWholeLease" style="display:none;gap:7px;flex-wrap:wrap;"><input id="lrWholeDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle("flex:1;min-width:130px;") + '"><input id="lrWholeRent" type="number" min="1" inputmode="numeric" placeholder="월세 (만원)" value="' + esc(prefill.monthly_rent_krw || "") + '" style="' + inputStyle("flex:1;min-width:130px;") + '"><input id="lrKeyMoney" type="number" min="1" inputmode="numeric" placeholder="권리금 (만원)" value="' + esc(prefill.key_money_krw || "") + '" style="' + inputStyle("width:100%;") + '"></div></section>' +
+            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 정보</div>' +
+           '<div id="lrPriceSale" class="lr-field"><label class="lr-field-label" for="lrSalePrice">매매가</label><input id="lrSalePrice" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
+           '<div id="lrPriceJeonse" class="lr-field"><label class="lr-field-label" for="lrJeonseDeposit">전세 보증금</label><input id="lrJeonseDeposit" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div>' +
+           '<div id="lrPriceWolse" class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrWolseDeposit">보증금</label><input id="lrWolseDeposit" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrWolseRent">월세</label><input id="lrWolseRent" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.monthly_rent_krw || "") + '" style="' + inputStyle() + '"></div></div>' +
+            '<div id="lrPriceWolseBusiness" class="lr-field-row" style="display:none;"><div class="lr-field"><label class="lr-field-label" for="lrWolsePriceMin">월 최저가</label><input id="lrWolsePriceMin" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrWolsePriceMax">월 최고가</label><input id="lrWolsePriceMax" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw_max || "") + '" style="' + inputStyle() + '"></div></div>' +
+            '<div id="lrShortTerm" class="lr-field"><label class="lr-field-label" for="lrDesiredPrice">희망 조건</label><input id="lrDesiredPrice" maxlength="100" placeholder="선택" value="' + esc(prefill.desired_price || "") + '" style="' + inputStyle() + '"></div>' +
+             '<div id="lrShortTermBusiness" class="lr-field-row" style="display:none;"><div class="lr-field"><label class="lr-field-label" for="lrShortPriceMin">최저가</label><input id="lrShortPriceMin" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw || "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrShortPriceMax">최고가</label><input id="lrShortPriceMax" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.price_krw_max || "") + '" style="' + inputStyle() + '"></div></div>' +
+             '<div id="lrWholeSale" class="lr-whole-terms" style="display:none;"><div class="lr-field"><label class="lr-field-label" for="lrWholeSalePrice">매매가</label><input id="lrWholeSalePrice" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "매매" ? prefill.price_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrSaleKeyMoney">권리금</label><input id="lrSaleKeyMoney" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "매매" ? prefill.key_money_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrSaleLoan">승계융자</label><input id="lrSaleLoan" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "매매" ? prefill.succession_loan_krw || "" : "") + '" style="' + inputStyle() + '"></div></div></div>' +
+             '<div id="lrWholeLease" class="lr-whole-terms" style="display:none;"><div class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrWholeLeaseDeposit">보증금</label><input id="lrWholeLeaseDeposit" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "통임대" ? prefill.price_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrWholeLeaseRent">월세</label><input id="lrWholeLeaseRent" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "통임대" ? prefill.monthly_rent_krw || "" : "") + '" style="' + inputStyle() + '"></div></div><div class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrLeaseKeyMoney">권리금</label><input id="lrLeaseKeyMoney" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "통임대" ? prefill.key_money_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrLeaseLoan">승계융자</label><input id="lrLeaseLoan" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "통임대" ? prefill.succession_loan_krw || "" : "") + '" style="' + inputStyle() + '"></div></div></div>' +
+             '<div id="lrWholeTransfer" class="lr-whole-terms" style="display:none;"><div class="lr-field"><label class="lr-field-label" for="lrWholeTransferPrice">양도금</label><input id="lrWholeTransferPrice" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "운영권양도" ? prefill.price_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrTransferKeyMoney">권리금</label><input id="lrTransferKeyMoney" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "운영권양도" ? prefill.key_money_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrTransferLoan">승계융자</label><input id="lrTransferLoan" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "운영권양도" ? prefill.succession_loan_krw || "" : "") + '" style="' + inputStyle() + '"></div></div></div>' +
+             '<div id="lrWholeConsign" class="lr-whole-terms" style="display:none;"><div class="lr-field"><label class="lr-field-label" for="lrWholeConsignDeposit">보증금</label><input id="lrWholeConsignDeposit" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "위탁운영" ? prefill.price_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrConsignKeyMoney">권리금</label><input id="lrConsignKeyMoney" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "위탁운영" ? prefill.key_money_krw || "" : "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrConsignLoan">승계융자</label><input id="lrConsignLoan" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(dealType === "위탁운영" ? prefill.succession_loan_krw || "" : "") + '" style="' + inputStyle() + '"></div></div></div><div id="lrWholeFinanceSummary" style="display:none;margin-top:8px;"><div id="lrRealTakeover" style="padding:10px 11px;border-radius:8px;background:#fff7ea;color:var(--brass,#b4863f);font-size:12px;font-weight:700;">실인수가 계산</div><div style="margin-top:5px;font-size:11px;color:var(--ink-soft);">거래금액 - 승계융자 + 권리금 + 예상 부대비용 6.1%의 참고값이며 저장되지 않습니다.</div></div></section>' +
              '<section id="lrUnitDetailSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">상세 정보 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
             '<div style="display:flex;gap:7px;margin-bottom:7px;"><div style="flex:1;"><div id="lrAreaOwnerWrap"><select id="lrArea" style="' + inputStyle() + '"><option value="">전용면적 선택</option></select><input id="lrAreaManual" type="number" min="0" step="0.01" inputmode="decimal" placeholder="전용면적 직접 입력 ㎡" style="' + inputStyle("display:none;margin-top:6px;") + '"></div><div id="lrAreaBusinessWrap" style="display:none;"><input id="lrAreaBusiness" type="number" min="0" step="0.01" inputmode="decimal" placeholder="평균 전용면적(㎡) 예: 18" value="' + esc(prefill.area_sqm || "") + '" style="' + inputStyle() + '"></div></div><input id="lrDong" maxlength="20" placeholder="동" value="' + esc(prefill.dong || "") + '" style="' + inputStyle("flex:.55;") + '"><input id="lrHo" maxlength="20" placeholder="호" value="' + esc(prefill.ho || "") + '" style="' + inputStyle("flex:.55;") + '"></div>' +
            '</section>' +
-           '<section id="lrRoomCountSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">총 호실수</div><input id="lrRoomCount" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="총 호실수" value="' + esc(prefill.room_count || "") + '" style="' + inputStyle() + '"><div id="lrRoomCountHelp" style="display:none;margin-top:6px;font-size:11.5px;color:var(--ink-soft);"></div></section>' +
+            '<section id="lrRoomCountSection" style="display:none;margin-bottom:17px;"><div class="lr-field"><label class="lr-field-label" for="lrRoomCount">총 객실수</label><input id="lrRoomCount" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="직접 입력 가능" value="' + esc(prefill.room_count || "") + '" style="' + inputStyle() + '"></div><div id="lrRoomCountHelp" style="display:none;margin-top:6px;font-size:11.5px;color:var(--ink-soft);"></div></section>' +
           '<section id="lrYieldSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">예상 수익률 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div>' +
           '<div style="display:flex;gap:7px;"><input id="lrYieldDeposit" type="number" min="1" inputmode="numeric" placeholder="보증금 (만원)" value="' + esc(prefill.deposit_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrYieldRent" type="number" min="1" inputmode="numeric" placeholder="월 임대료 (만원)" value="' + esc(prefill.yield_rent_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div id="lrYieldResult" style="font-size:11.5px;color:var(--brass,#b4863f);margin-top:6px;"></div></section>' +
-            '<section id="lrWholeOperationSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 5 · 운영정보</div><div style="display:flex;gap:7px;"><input id="lrMonthlyRevenue" type="number" min="1" inputmode="numeric" placeholder="월평균매출 (만원)" value="' + esc(prefill.monthly_revenue_krw || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrAnnualRevenue" type="number" min="1" inputmode="numeric" placeholder="연매출 (만원)" value="' + esc(prefill.annual_revenue_krw || "") + '" style="' + inputStyle("flex:1;") + '"></div><div style="display:flex;gap:7px;margin-top:7px;"><input id="lrShortStayRatio" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="대실 비율 (선택, %)" value="' + esc(prefill.short_stay_ratio || "") + '" style="' + inputStyle("flex:1;") + '"><input id="lrOtaRevenueRatio" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="OTA 매출 비중 (선택, %)" value="' + esc(prefill.ota_revenue_ratio || "") + '" style="' + inputStyle("flex:1;") + '"></div><div style="display:flex;gap:7px;margin-top:7px;"><select id="lrOperationStatus" style="' + inputStyle("flex:1;") + '"><option value="">운영상태 선택</option><option value="영업중">영업중</option><option value="휴업">휴업</option><option value="폐업">폐업</option></select><input id="lrClosedAt" type="date" value="' + esc(prefill.closed_at || "") + '" style="' + inputStyle("display:none;flex:1;") + '"></div><textarea id="lrRemodelingInfo" maxlength="500" rows="2" placeholder="리모델링 정보 (시기·범위·비용 등)" style="' + inputStyle("resize:vertical;margin-top:7px;") + '">' + esc(prefill.remodeling_info || "") + '</textarea><div style="display:flex;gap:12px;align-items:center;margin-top:8px;font-size:12px;"><label><input id="lrUrgentSale" type="checkbox"' + (prefill.is_urgent ? " checked" : "") + '> 급매</label><label>공개범위 <select id="lrDisclosureScope" style="margin-left:4px;border:1px solid var(--line);border-radius:5px;padding:4px;"><option value="limited">제한공개</option><option value="public">전체공개</option></select></label></div><div id="lrDisclosureHelp" style="margin-top:6px;font-size:11.5px;color:var(--ink-soft);line-height:1.5;"></div></section>' +
+             '<section id="lrWholeOperationSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 5 · 운영정보</div><div class="lr-field-row"><div class="lr-field"><label class="lr-field-label" for="lrMonthlyRevenue">월평균매출</label><input id="lrMonthlyRevenue" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.monthly_revenue_krw || "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrAnnualRevenue">연매출</label><input id="lrAnnualRevenue" type="number" min="1" inputmode="numeric" placeholder="만원" value="' + esc(prefill.annual_revenue_krw || "") + '" style="' + inputStyle() + '"></div></div><div class="lr-field-row" style="margin-top:7px;"><div class="lr-field"><label class="lr-field-label" for="lrShortStayRatio">대실 비율</label><input id="lrShortStayRatio" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="선택 · %" value="' + esc(prefill.short_stay_ratio || "") + '" style="' + inputStyle() + '"></div><div class="lr-field"><label class="lr-field-label" for="lrOtaRevenueRatio">OTA 매출 비중</label><input id="lrOtaRevenueRatio" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="선택 · %" value="' + esc(prefill.ota_revenue_ratio || "") + '" style="' + inputStyle() + '"></div></div><div class="lr-field-row" style="margin-top:7px;"><div class="lr-field"><label class="lr-field-label" for="lrOperationStatus">운영상태</label><select id="lrOperationStatus" style="' + inputStyle() + '"><option value="">선택</option><option value="영업중">영업중</option><option value="휴업">휴업</option><option value="폐업">폐업</option></select></div><div class="lr-field"><label class="lr-field-label" for="lrClosedAt">폐업일</label><input id="lrClosedAt" type="date" value="' + esc(prefill.closed_at || "") + '" style="' + inputStyle("display:none;") + '"></div></div><div class="lr-field" style="margin-top:7px;"><label class="lr-field-label" for="lrRemodelingInfo">리모델링 정보</label><textarea id="lrRemodelingInfo" maxlength="500" rows="2" placeholder="시기·범위·비용 등" style="' + inputStyle("resize:vertical;") + '">' + esc(prefill.remodeling_info || "") + '</textarea></div><div style="display:flex;gap:12px;align-items:center;margin-top:8px;font-size:12px;"><label><input id="lrUrgentSale" type="checkbox"' + (prefill.is_urgent ? " checked" : "") + '> 급매</label><label>공개범위 <select id="lrDisclosureScope" style="margin-left:4px;border:1px solid var(--line);border-radius:5px;padding:4px;"><option value="limited">제한공개</option><option value="public">전체공개</option></select></label></div><div id="lrDisclosureHelp" style="margin-top:6px;font-size:11.5px;color:var(--ink-soft);line-height:1.5;"></div></section>' +
            '<section id="lrWholeBuildingSection" style="display:none;margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 6 · 건물정보</div><div id="lrWholeBuildingInfo" style="padding:10px;border:1px solid var(--line);border-radius:8px;background:#fcfbf9;font-size:12px;color:var(--ink-soft);">건물 정보를 불러오는 중…</div><a href="/contact" style="display:inline-block;margin-top:7px;font-size:11.5px;color:var(--brass,#b4863f);">건물정보 수정 요청하기</a></section>' +
            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">매물 설명 <span style="font-weight:400;color:var(--ink-soft);">선택</span></div><textarea id="lrDescription" maxlength="500" rows="4" aria-describedby="lrDescriptionHint" placeholder="매물의 장점, 입주 가능일 등을 적어주세요." style="' + inputStyle("resize:vertical;line-height:1.5;") + '">' + esc(prefill.description || "") + '</textarea><div id="lrDescriptionHint" style="margin-top:5px;font-size:11px;color:var(--ink-soft);">Enter 키를 누르면 다음 줄에 작성할 수 있습니다.</div></section>' +
            '<section style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">사진 <span style="font-weight:400;color:var(--ink-soft);">최대 10장 · JPG/PNG · 장당 5MB · 첫 사진이 대표사진</span></div>' +
@@ -213,6 +215,54 @@
 
     function isWholeListing() {
       return transactionTarget === "whole";
+    }
+
+    var WHOLE_TERM_FIELDS = {
+      "매매": {section: "#lrWholeSale", price: "#lrWholeSalePrice", rent: null, keyMoney: "#lrSaleKeyMoney", loan: "#lrSaleLoan"},
+      "통임대": {section: "#lrWholeLease", price: "#lrWholeLeaseDeposit", rent: "#lrWholeLeaseRent", keyMoney: "#lrLeaseKeyMoney", loan: "#lrLeaseLoan"},
+      "운영권양도": {section: "#lrWholeTransfer", price: "#lrWholeTransferPrice", rent: null, keyMoney: "#lrTransferKeyMoney", loan: "#lrTransferLoan"},
+      "위탁운영": {section: "#lrWholeConsign", price: "#lrWholeConsignDeposit", rent: null, keyMoney: "#lrConsignKeyMoney", loan: "#lrConsignLoan"}
+    };
+
+    function wholeTermsForCurrentDeal() {
+      return WHOLE_TERM_FIELDS[dealType] || WHOLE_TERM_FIELDS["매매"];
+    }
+
+    function wholeTermValue(name) {
+      var fields = wholeTermsForCurrentDeal();
+      return fields[name] ? numValue($(fields[name])) : null;
+    }
+
+    function setWholeTermValues(values) {
+      var fields = wholeTermsForCurrentDeal();
+      ["price", "rent", "keyMoney", "loan"].forEach(function (name) {
+        if (fields[name] && values[name] != null) $(fields[name]).value = values[name];
+      });
+    }
+
+    function wholeTermsDraftData() {
+      var result = {};
+      Object.keys(WHOLE_TERM_FIELDS).forEach(function (wholeDealType) {
+        var fields = WHOLE_TERM_FIELDS[wholeDealType];
+        result[wholeDealType] = {
+          price: fields.price ? $(fields.price).value || "" : "",
+          rent: fields.rent ? $(fields.rent).value || "" : "",
+          keyMoney: fields.keyMoney ? $(fields.keyMoney).value || "" : "",
+          loan: fields.loan ? $(fields.loan).value || "" : ""
+        };
+      });
+      return result;
+    }
+
+    function applyWholeTermsDraftData(values) {
+      if (!values || typeof values !== "object") return;
+      Object.keys(WHOLE_TERM_FIELDS).forEach(function (wholeDealType) {
+        var fields = WHOLE_TERM_FIELDS[wholeDealType];
+        var terms = values[wholeDealType] || {};
+        ["price", "rent", "keyMoney", "loan"].forEach(function (name) {
+          if (fields[name] && terms[name] != null) $(fields[name]).value = terms[name];
+        });
+      });
     }
 
     function formatBuildingInfoValue(key, value) {
@@ -259,6 +309,13 @@
         .then(function (data) {
           if (!data || !data.ok) throw new Error("건물 정보를 불러오지 못했습니다.");
           renderWholeBuildingInfo((data.building || {}).info || {}, data.nearby_lodgings, data.subway);
+          if (data.suggested_room_count != null) {
+            var roomInput = $("#lrRoomCount");
+            if (!roomInput.value) roomInput.value = String(data.suggested_room_count);
+            var roomHelp = $("#lrRoomCountHelp");
+            roomHelp.textContent = "영업신고 기준 " + Number(data.suggested_room_count).toLocaleString() + "실을 입력했습니다. 실제와 다르면 수정해주세요.";
+            roomHelp.style.display = "block";
+          }
         })
         .catch(function () {
           $("#lrWholeBuildingInfo").textContent = "건물 정보를 불러오지 못했습니다. 직접 입력 항목은 저장할 수 있습니다.";
@@ -355,8 +412,9 @@
         : "기존 호실 단위 매물 등록 흐름으로 진행합니다.";
       $("#lrUnitDealButtons").style.display = whole ? "none" : "flex";
       $("#lrWholeDealButtons").style.display = whole ? "flex" : "none";
-      $("#lrWholeOperationSection").style.display = whole ? "block" : "none";
+       $("#lrWholeOperationSection").style.display = whole ? "block" : "none";
       $("#lrWholeBuildingSection").style.display = whole ? "block" : "none";
+       $("#lrRoomCountSection").style.display = whole || $("#lrRegistrantType").value === "business" ? "block" : "none";
       updateDisclosureHelp();
       if (whole) {
         if (!isEdit && !($("#lrDescription").value || "").trim()) $("#lrDescription").value = WHOLE_DESCRIPTION_TEMPLATE;
@@ -387,8 +445,10 @@
       $("#lrPriceWolseBusiness").style.display = dealType === "월세" && isBusiness && !whole ? "flex" : "none";
       $("#lrShortTerm").style.display = dealType === "단기임대" && !isBusiness && !whole ? "block" : "none";
       $("#lrShortTermBusiness").style.display = dealType === "단기임대" && isBusiness && !whole ? "flex" : "none";
-      $("#lrWholeSale").style.display = whole && dealType === "매매" ? "block" : "none";
-      $("#lrWholeLease").style.display = whole && dealType !== "매매" ? "flex" : "none";
+       Object.keys(WHOLE_TERM_FIELDS).forEach(function (wholeDealType) {
+         $(WHOLE_TERM_FIELDS[wholeDealType].section).style.display = whole && dealType === wholeDealType ? "block" : "none";
+       });
+       $("#lrWholeFinanceSummary").style.display = whole ? "block" : "none";
       $("#lrUnitDetailSection").style.display = whole ? "none" : "block";
       $("#lrYieldSection").style.display = !whole && dealType === "매매" ? "block" : "none";
       updateYield();
@@ -401,14 +461,15 @@
         ? "예상 수익률 약 " + ((rent * 12 / Math.max(price - deposit, 1)) * 100).toFixed(1) + "%" : "";
     }
     function updateRealTakeover() {
-      var price = numValue($("#lrWholeSalePrice"));
-      var loan = numValue($("#lrSuccessionLoan")) || 0;
+       var price = wholeTermValue("price");
+       var loan = wholeTermValue("loan") || 0;
+       var keyMoney = wholeTermValue("keyMoney") || 0;
       var output = $("#lrRealTakeover");
-      if (!isWholeListing() || dealType !== "매매" || !price) {
+       if (!isWholeListing() || !price) {
         output.textContent = "실인수가 계산";
         return;
       }
-      var realTakeover = price - loan + (price * WHOLE_ACQUISITION_COST_RATE);
+       var realTakeover = price - loan + keyMoney + (price * WHOLE_ACQUISITION_COST_RATE);
       output.textContent = "예상 실인수가 약 " + Math.round(realTakeover).toLocaleString() + "만원";
     }
     function collectBuildingInfoOverrides() {
@@ -424,7 +485,7 @@
       try {
         var isBusiness = $("#lrRegistrantType").value === "business";
         var whole = isWholeListing();
-        var draftPrice = whole ? (dealType === "매매" ? $("#lrWholeSalePrice").value : $("#lrWholeDeposit").value)
+        var draftPrice = whole ? (wholeTermValue("price") || "")
           : (dealType === "월세" && isBusiness ? $("#lrWolsePriceMin").value
           : (dealType === "단기임대" && isBusiness ? $("#lrShortPriceMin").value
             : (dealType === "전세" ? $("#lrJeonseDeposit").value
@@ -439,20 +500,21 @@
             deal_mode: dealMode,
             price_krw: draftPrice || "",
             price_krw_max: draftPriceMax || "",
-            monthly_rent_krw: $("#lrWolseRent").value || "",
+             monthly_rent_krw: whole ? (wholeTermValue("rent") || "") : ($("#lrWolseRent").value || ""),
             desired_price: $("#lrDesiredPrice").value || "",
             area_sqm: isBusiness
               ? ($("#lrAreaBusiness").value || "")
               : ($("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "") : ($("#lrArea").value || "")),
-            room_count: isBusiness ? ($("#lrRoomCount").value || "") : "",
+             room_count: (whole || isBusiness) ? ($("#lrRoomCount").value || "") : "",
             dong: $("#lrDong").value || "",
             ho: $("#lrHo").value || "",
             registrant_type: $("#lrRegistrantType").value || "owner",
             deposit_krw: $("#lrYieldDeposit").value || "",
             yield_rent_krw: $("#lrYieldRent").value || "",
              description: $("#lrDescription").value || "",
-             succession_loan_krw: $("#lrSuccessionLoan").value || "",
-             key_money_krw: $("#lrKeyMoney").value || "",
+              succession_loan_krw: whole ? (wholeTermValue("loan") || "") : "",
+              key_money_krw: whole ? (wholeTermValue("keyMoney") || "") : "",
+              whole_terms: whole ? wholeTermsDraftData() : {},
              monthly_revenue_krw: $("#lrMonthlyRevenue").value || "",
              annual_revenue_krw: $("#lrAnnualRevenue").value || "",
               short_stay_ratio: $("#lrShortStayRatio").value || "",
@@ -487,11 +549,13 @@
        $("#lrWolsePriceMax").value = draft.price_krw_max || "";
        $("#lrShortPriceMin").value = draft.price_krw || "";
        $("#lrShortPriceMax").value = draft.price_krw_max || "";
-       $("#lrWholeSalePrice").value = draft.price_krw || "";
-       $("#lrWholeDeposit").value = draft.price_krw || "";
-       $("#lrWholeRent").value = draft.monthly_rent_krw || "";
-       $("#lrSuccessionLoan").value = draft.succession_loan_krw || "";
-       $("#lrKeyMoney").value = draft.key_money_krw || "";
+        applyWholeTermsDraftData(draft.whole_terms);
+        setWholeTermValues({
+          price: draft.price_krw || "",
+          rent: draft.monthly_rent_krw || "",
+          loan: draft.succession_loan_krw || "",
+          keyMoney: draft.key_money_krw || ""
+        });
        $("#lrMonthlyRevenue").value = draft.monthly_revenue_krw || "";
        $("#lrAnnualRevenue").value = draft.annual_revenue_krw || "";
         $("#lrShortStayRatio").value = draft.short_stay_ratio || "";
@@ -573,7 +637,7 @@
       form.dataset.registrantType = registrantType;
       $("#lrAreaOwnerWrap").style.display = !whole && !isBusiness ? "block" : "none";
       $("#lrAreaBusinessWrap").style.display = !whole && isBusiness ? "block" : "none";
-      $("#lrRoomCountSection").style.display = !whole && isBusiness ? "block" : "none";
+       $("#lrRoomCountSection").style.display = whole || isBusiness ? "block" : "none";
       if (!whole && isBusiness) loadLodgingSummary();
       else if (!whole) loadAreaTypes();
       updateDealType();
@@ -594,8 +658,11 @@
       "#lrWolsePriceMin", "#lrWolsePriceMax", "#lrShortPriceMin", "#lrShortPriceMax",
       "#lrDesiredPrice", "#lrArea", "#lrAreaManual", "#lrAreaBusiness", "#lrRoomCount",
       "#lrDong", "#lrHo", "#lrRegistrantType", "#lrYieldDeposit", "#lrYieldRent",
-      "#lrDescription", "#lrWholeSalePrice", "#lrSuccessionLoan", "#lrWholeDeposit",
-      "#lrWholeRent", "#lrKeyMoney", "#lrMonthlyRevenue", "#lrAnnualRevenue",
+      "#lrDescription", "#lrWholeSalePrice", "#lrSaleKeyMoney", "#lrSaleLoan",
+      "#lrWholeLeaseDeposit", "#lrWholeLeaseRent", "#lrLeaseKeyMoney", "#lrLeaseLoan",
+      "#lrWholeTransferPrice", "#lrTransferKeyMoney", "#lrTransferLoan",
+      "#lrWholeConsignDeposit", "#lrConsignKeyMoney", "#lrConsignLoan",
+      "#lrMonthlyRevenue", "#lrAnnualRevenue",
       "#lrShortStayRatio", "#lrOtaRevenueRatio",
       "#lrClosedAt", "#lrRemodelingInfo", "#lrUrgentSale", "#lrDisclosureScope"].forEach(function (selector) {
       $(selector).addEventListener("input", updateYield);
@@ -987,11 +1054,9 @@
       var isBusiness = $("#lrRegistrantType").value === "business";
       var isWhole = isWholeListing();
       var price = null, priceMax = null, rent = null;
-      if (isWhole && dealType === "매매") {
-        price = numValue($("#lrWholeSalePrice"));
-      } else if (isWhole) {
-        price = numValue($("#lrWholeDeposit"));
-        rent = numValue($("#lrWholeRent"));
+      if (isWhole) {
+        price = wholeTermValue("price");
+        rent = wholeTermValue("rent");
       } else if (dealType === "매매") {
         price = numValue($("#lrSalePrice"));
       }
@@ -1021,13 +1086,13 @@
         area_sqm: isWhole ? "" : (isBusiness
           ? ($("#lrAreaBusiness").value || "").trim()
           : ($("#lrArea").value === "__manual__" ? ($("#lrAreaManual").value || "").trim() : ($("#lrArea").value || "").trim())),
-        room_count: isBusiness && !isWhole ? numValue($("#lrRoomCount")) : null,
+        room_count: (isWhole || isBusiness) ? numValue($("#lrRoomCount")) : null,
         dong: isWhole ? "" : ($("#lrDong").value || "").trim(), ho: isWhole ? "" : ($("#lrHo").value || "").trim(),
         registrant_type: $("#lrRegistrantType").value, description: ($("#lrDescription").value || "").trim(),
         deposit_krw: !isWhole && dealType === "매매" ? numValue($("#lrYieldDeposit")) : null,
         yield_rent_krw: !isWhole && dealType === "매매" ? numValue($("#lrYieldRent")) : null,
-        succession_loan_krw: isWhole && dealType === "매매" ? numValue($("#lrSuccessionLoan")) : null,
-        key_money_krw: isWhole && dealType !== "매매" ? numValue($("#lrKeyMoney")) : null,
+        succession_loan_krw: isWhole ? wholeTermValue("loan") : null,
+        key_money_krw: isWhole ? wholeTermValue("keyMoney") : null,
         monthly_revenue_krw: isWhole ? numValue($("#lrMonthlyRevenue")) : null,
         annual_revenue_krw: isWhole ? numValue($("#lrAnnualRevenue")) : null,
         short_stay_ratio: isWhole ? ($("#lrShortStayRatio").value || "").trim() : "",
@@ -1133,6 +1198,18 @@
     var yieldText = listing.yield_rate != null ? "수익률 " + Number(listing.yield_rate).toFixed(1) + "%" : "";
     var meta = [listing.listing_number, listing.listing_date ? "최근 수정 " + listing.listing_date : ""].filter(Boolean).join(" · ");
     var detail = [areaText, roomText, yieldText].filter(Boolean).join(" · ");
+    var isLimitedLocation = isWhole && listing.location_precision === "approximate";
+    var locationLat = Number(isLimitedLocation ? listing.approx_lat : listing.lat);
+    var locationLng = Number(isLimitedLocation ? listing.approx_lng : listing.lng);
+    var hasMapLocation = isWhole && Number.isFinite(locationLat) && Number.isFinite(locationLng);
+    var mapLocationLabel = isLimitedLocation
+      ? (listing.approx_location_label || "대략적인 위치")
+      : "정확한 위치";
+    var mapLocationAction = hasMapLocation
+      ? '<div style="margin:10px 0 0;"><button type="button" data-listing-detail-map style="border:1px solid var(--brass,#B4863F);border-radius:7px;background:#fffaf2;color:var(--brass-dark,#7D4A00);padding:7px 9px;font:700 12px inherit;cursor:pointer;">📍 지도에서 ' + esc(mapLocationLabel) + ' 보기</button>' +
+        (isLimitedLocation ? '<div style="margin-top:5px;color:var(--ink-soft);font-size:11px;line-height:1.45;">제한공개 매물은 정확한 건물 위치 대신 ' + esc(mapLocationLabel) + '만 표시합니다.</div>' : "") +
+        '</div>'
+      : "";
     var description = listing.description ? esc(listing.description) : "";
     var photoIndex = 0;
     var icons = window.LivingstayListingIcons;
@@ -1167,6 +1244,7 @@
           '</div>' +
           '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">' + esc(priceText) + '</div>' +
           (detail ? '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">' + esc(detail) + '</div>' : "") +
+           mapLocationAction +
           (description ? '<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin:12px 0;">' + description + '</div>' : "") +
           '<div style="display:flex;justify-content:flex-end;gap:7px;">' +
             '<button type="button" data-listing-detail-like class="listing-like-btn' + (listing.liked ? " is-liked" : "") + '" title="찜">' + icons.heart(!!listing.liked) + '<span class="like-cnt">' + (listing.like_count || 0) + '</span></button>' +
@@ -1196,6 +1274,15 @@
     overlay.querySelector("[data-listing-detail-share]").addEventListener("click", function () {
       if (typeof options.onShare === "function") options.onShare(listing);
     });
+    var mapButton = overlay.querySelector("[data-listing-detail-map]");
+    if (mapButton) {
+      mapButton.addEventListener("click", function () {
+        var label = isLimitedLocation ? "대략적인 위치" : (listing.building_name || "매물 위치");
+        var mapUrl = "https://map.kakao.com/link/map/" + encodeURIComponent(label) + "," +
+          encodeURIComponent(locationLat) + "," + encodeURIComponent(locationLng);
+        window.open(mapUrl, "_blank", "noopener,noreferrer");
+      });
+    }
     overlay.querySelector("[data-listing-detail-like]").addEventListener("click", function (event) {
       var button = event.currentTarget;
       fetch("/api/listing-requests/" + encodeURIComponent(listing.id) + "/like", {method:"POST", credentials:"same-origin"})

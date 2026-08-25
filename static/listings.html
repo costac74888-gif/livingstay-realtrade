@@ -914,9 +914,10 @@
     div.dataset.listingId = item.id;
     const price = Number(item.price_krw || 0);
     const loan = Number(item.succession_loan_krw || 0);
+    const keyMoney = Number(item.key_money_krw || 0);
     const hasFinance = item.financial_details_visible;
     const acquisition = price > 0 && hasFinance
-      ? price - loan + (price * 0.061) : null;
+      ? price - loan + keyMoney + (price * 0.061) : null;
     const recentlyClosed = item.operation_status === "폐업" && item.closed_at
       && Date.now() - new Date(item.closed_at).getTime() <= 90 * 24 * 60 * 60 * 1000;
     const badges = [
@@ -938,8 +939,8 @@
     const grossText = item.gross_area_pyeong != null
       ? `연면적 ${Number(item.gross_area_pyeong).toFixed(1)}평` : "연면적 정보 없음";
     const financeText = hasFinance
-      ? `실인수가 ${acquisition != null ? formatKrw(acquisition) : "-"} · 융자 ${item.has_succession_loan ? formatKrw(loan) : "없음"}`
-      : `실인수가 🔒 로그인하고 보기 · 융자${item.has_succession_loan ? " 🔒 로그인하고 보기" : " 없음"}`;
+      ? `실인수가 ${acquisition != null ? formatKrw(acquisition) : "-"} · 융자 ${item.has_succession_loan ? formatKrw(loan) : "없음"} · 권리금 ${item.has_key_money ? formatKrw(keyMoney) : "없음"}`
+      : `실인수가 🔒 로그인하고 보기 · 융자${item.has_succession_loan ? " 🔒 로그인하고 보기" : " 없음"} · 권리금${item.has_key_money ? " 🔒 로그인하고 보기" : " 없음"}`;
     const revenueText = item.has_monthly_revenue
       ? (hasFinance ? `월 매출 ${formatKrw(item.monthly_revenue_krw)}` : "월 매출 🔒 로그인하고 보기")
       : "";
@@ -961,13 +962,13 @@
       ${isLimitedListing ? cardPhotoHtml : ""}
       <div class="ls-card-info">
         <div class="ls-card-l1">${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}</div>
-        <div class="whole-badges">${badges}</div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(listingPriceText(item))}</div>
         <div class="whole-finance">${esc(financeText)}${revenueText ? ` · ${esc(revenueText)}` : ""}</div>
         <div class="whole-metrics">${esc(roomText)} · ${esc(parkingText)}<br>${esc(landText)} · ${esc(grossText)}</div>
+        <div class="whole-badges">${badges}</div>
         ${wholeLocationHint(item)}
         <div class="whole-viewers">최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
-        <div class="whole-caution">※ 실제 인수금은 매매가·승계융자·부대비용 기준의 참고값입니다.</div>
+        <div class="whole-caution">※ 실제 인수금은 거래금액·승계융자·권리금·부대비용 기준의 참고값입니다.</div>
         ${limitedNotice}
         ${checklistButton}
         <div class="ls-card-l4">

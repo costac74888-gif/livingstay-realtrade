@@ -1267,6 +1267,17 @@
 .btn-secondary-outline{display:block; width:100%; box-sizing:border-box; text-align:center; background:transparent; color:var(--brass-dark, #8a6a2f); border:1.5px solid var(--brass, #B4863F); border-radius:10px; padding:11px 14px; font-size:14px; font-weight:700; text-decoration:none; cursor:pointer;}
 .btn-secondary-outline:hover{background:var(--brass-tint, #F4EDDF);}
 
+/* 매물의뢰 폼 공통 입력 라벨 */
+.lr-field{display:flex;min-width:0;flex:1;flex-direction:column;gap:5px;}
+.lr-field-label{color:var(--ink,#16202e);font-size:11.5px;font-weight:750;line-height:1.2;}
+.lr-field-row{display:flex;gap:7px;align-items:flex-start;}
+.lr-field-row + .lr-field-row{margin-top:7px;}
+.lr-whole-terms{display:none;}
+@media (max-width:360px){
+  .lr-field-row{flex-direction:column;}
+  .lr-field-row .lr-field{width:100%;}
+}
+
 /* 건물 상세 · 직거래 매물 4줄 카드 */
 .b-listing-card{display:flex;align-items:stretch;min-height:100px;padding:8px 0;border-bottom:1px solid var(--line,#eee);transition:background .4s;}
 .b-listing-info{display:flex;flex:1;min-width:0;flex-direction:column;justify-content:center;gap:2px;}
