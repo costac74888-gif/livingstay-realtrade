@@ -2274,6 +2274,14 @@ def get_ranking(_as_payload=False):
     if master_payload and master_payload.get("ranking"):
         return jsonify(master_payload["ranking"])
 
+    if _master_stats_cold_starting():
+        return jsonify({
+            "ok": False,
+            "status": "warming",
+            "price_highs": [],
+            "most_traded": [],
+        })
+
     # [LEGACY] 원본 캐시가 비어 있거나 거래 섹션이 실패한 경우의 기존 랭킹 쿼리.
     import time as _time
     _cache = getattr(get_ranking, "_cache", None)
@@ -14443,6 +14451,16 @@ def _master_stats_cache_is_valid():
     return _MASTER_STATS_CACHE["invalidation_token"] == _master_stats_invalidation_token()
 
 
+def _master_stats_cold_starting():
+    """워커가 아직 정밀 마스터 통계를 보유하지 않은지 반환한다."""
+    cache = _MASTER_STATS_CACHE
+    return (
+        not _master_stats_is_rebuilding()
+        and not cache.get("ts")
+        and not cache.get("data")
+    )
+
+
 def _master_stats_add_section(data, sections, name, builder):
     try:
         result = builder()
@@ -14623,11 +14641,18 @@ def _master_stats_schedule_revalidation():
 
 
 def _master_stats_section(name):
-    """통계 섹션을 반환하고, 만료된 이전 값은 stale 상태로 즉시 제공한다."""
+    """통계 섹션을 반환하고, 빈 캐시는 비차단 워밍업으로 넘긴다."""
     if _master_stats_is_rebuilding():
         return None
     cache = _MASTER_STATS_CACHE
     section_data = cache.get("data", {}).get(name)
+    if section_data is None:
+        # 배포 직후 어떤 공개 통계 API가 먼저 와도 요청 워커가 전체 마스터
+        # 집계나 그 전역 락을 기다리지 않는다. 단일 비동기 재검증만 예약하고
+        # 라우트별 경량/준비 상태 응답으로 넘긴다.
+        _MASTER_STATS_NEEDS_REFRESH.set()
+        _master_stats_schedule_revalidation()
+        return None
     if _master_stats_cache_is_valid():
         if cache["sections"].get(name, {}).get("status") == "ok":
             return section_data
@@ -14639,10 +14664,6 @@ def _master_stats_section(name):
         # 만료된 데이터는 바로 돌려주고 다음 백그라운드 폴링에 재계산만 맡긴다.
         _MASTER_STATS_NEEDS_REFRESH.set()
         return section_data
-    cache = _rebuild_master_stats()
-    if cache["sections"].get(name, {}).get("status") == "ok":
-        return cache["data"].get(name)
-    # 최초 재계산 중 해당 섹션이 실패한 경우에는 레거시 경로가 응답한다.
     return None
 
 
@@ -14676,6 +14697,34 @@ def _master_stats_background_loop():
             app.logger.exception("[master-stats] background refresh failed")
             first_run = False
         time.sleep(_MASTER_STATS_BACKGROUND_POLL)
+
+
+def _master_stats_warm_then_loop():
+    """워커 기동 뒤 정밀 통계를 채우고 이후 주기 갱신을 계속한다."""
+    try:
+        with app.app_context():
+            # 워밍업도 지도·검색 요청보다 낮은 우선순위의 DB 예산 안에서만 돈다.
+            # fork 훅의 호출 스레드를 막지 않도록 이 함수는 daemon에서 실행된다.
+            with background_connection_priority():
+                _rebuild_master_stats(force=True)
+        app.logger.info("[master-stats] worker cache warmup completed")
+    except Exception:
+        # 콜드스타트 API는 COUNT 요약을 반환하므로 워밍업 장애가 워커 기동이나
+        # 사용자 요청을 막지 않는다. 주기 루프가 다음 간격에 재시도한다.
+        app.logger.exception("[master-stats] worker cache warmup failed")
+    finally:
+        _master_stats_background_loop()
+
+
+def start_master_stats_worker():
+    """Gunicorn 워커별 통계 워밍업·갱신 서비스를 비차단으로 시작한다."""
+    worker_thread = threading.Thread(
+        target=_master_stats_warm_then_loop,
+        daemon=True,
+        name="master-stats-worker",
+    )
+    worker_thread.start()
+    return worker_thread
 
 
 GENERAL_LODGING_SUB_TYPES = ("일반호텔", "여관업", "여인숙업", "숙박업(생활)")
@@ -14727,6 +14776,139 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
     }
 
 
+def _lodging_count_summary_payload():
+    """콜드스타트에 공개할 가벼운 용도별 건물 요약을 만든다.
+
+    정밀 통계는 주소 정규화와 영업신고·상가·매물 데이터를 모두 결합한다. 캐시가
+    비어 있는 첫 요청에는 그 작업 대신 건물마스터의 분류별 COUNT/SUM 한 번만
+    수행해, 공개 API의 행 구조를 유지하면서 워커를 빠르게 반환시킨다.
+    """
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH classified AS (
+                SELECT
+                    CASE
+                        WHEN building_status IN ('허가', '착공')
+                             AND use_apr_day IS NULL THEN '준공전'
+                        WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type
+                        WHEN lodging_type = '복합' OR lodging_type LIKE '%%·%%' THEN '복합'
+                        WHEN COALESCE(lodging_type, '') = '' THEN '미분류'
+                        ELSE NULL
+                    END AS map_type,
+                    COALESCE(units, 0) AS units
+                FROM master_buildings
+                WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+            )
+            SELECT
+                map_type,
+                COUNT(*) AS building_count,
+                COALESCE(SUM(units), 0) AS units
+            FROM classified
+            GROUP BY map_type
+        """)
+        count_rows = cur.fetchall()
+    except Exception:
+        # DB 연결 자체가 지연·장애여도 정밀 레거시 쿼리로 확대하지 않는다.
+        # 공개 API는 명시적인 준비 상태로 응답하고 다음 백그라운드 주기에 재시도한다.
+        app.logger.warning("[master-stats] cold-start COUNT summary failed", exc_info=True)
+        return {
+            "ok": False,
+            "status": "warming",
+            "rows": [],
+        }
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    counts = {}
+    total_building_cnt = total_units = 0
+    for raw in count_rows:
+        label = raw.get("map_type") or "기타"
+        building_count = int(raw.get("building_count") or 0)
+        units = int(raw.get("units") or 0)
+        counts[label] = {
+            "building_count": building_count,
+            "units": units,
+        }
+        total_building_cnt += building_count
+        total_units += units
+
+    def summary_row(label):
+        values = counts.get(label, {})
+        row = {
+            "type": label,
+            "building_count": values.get("building_count", 0),
+            "units": values.get("units", 0),
+            "favorites": 0,
+            "listing_requests": 0,
+            "broker_badge": 0,
+            "store_realty": 0,
+            "store_total": 0,
+            "report_rate": None,
+            "permit_count": 0,
+            "room_count": 0,
+            "closed_rate": None,
+            "lodging_metric": (
+                "businesses_per_building"
+                if label == REPORT_RATE_EXCLUDED_LODGING_TYPE
+                else "report_rate"
+            ),
+            "report_rate_numerator": 0,
+            "report_rate_denominator": 0,
+            "report_rate_basis": (
+                "businesses_per_building"
+                if label == REPORT_RATE_EXCLUDED_LODGING_TYPE
+                else "reported_rooms_per_units"
+            ),
+            "report_rate_room_count": 0,
+            "report_rate_units": 0,
+            "report_rate_building_count": 0,
+            "report_rate_excludes_general": False,
+        }
+        if label == REPORT_RATE_EXCLUDED_LODGING_TYPE:
+            row["sub_rows"] = [
+                {
+                    "type": hygiene_type,
+                    "building_count": 0,
+                    "permit_count": 0,
+                    "room_count": 0,
+                    "report_rate": None,
+                }
+                for hygiene_type in GENERAL_LODGING_SUB_TYPES
+            ]
+        return row
+
+    rows = [
+        {
+            **summary_row("전체"),
+            "building_count": total_building_cnt,
+            "units": total_units,
+            "lodging_metric": "type_weighted",
+            "report_rate_basis": "type_weighted",
+        },
+        *[
+            summary_row(label)
+            for label in ("생활", "관광", REPORT_RATE_EXCLUDED_LODGING_TYPE, "복합", "준공전", "미분류")
+        ],
+    ]
+    return {
+        "ok": True,
+        "status": "warming",
+        "rows": rows,
+        "total_building_cnt": total_building_cnt,
+        "building_count_by_type": {
+            label: values["building_count"]
+            for label, values in counts.items()
+            if label != "기타"
+        },
+    }
+
+
 def _lodging_full_stats_payload():
     """건물마스터 용도별 세부 통계표 — 항상 전체 데이터 기준 (필터 무관, 5분 캐시)."""
     global _bld_full_stats_cache
@@ -14750,6 +14932,18 @@ def _lodging_full_stats_payload():
         response_payload.pop("total_building_cnt", None)
         response_payload.pop("building_count_by_type", None)
         return jsonify(response_payload)
+
+    if (
+        not _master_stats_is_rebuilding()
+        and not _MASTER_STATS_CACHE.get("data", {}).get("lodging_stats")
+    ):
+        # 정밀 마스터 통계가 아직 없는 콜드스타트에는 전체 건물을 모두 읽고
+        # 주소·신고·상가를 조합하는 레거시 집계를 실행하지 않는다. 이 요약은
+        # 지도와 같은 건물 분류 기준만 사용하며, 상세 값은 백그라운드 워밍업
+        # 완료 뒤 다음 요청에서 자동으로 교체된다.
+        summary = _lodging_count_summary_payload()
+        _MASTER_STATS_NEEDS_REFRESH.set()
+        return jsonify(summary)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -15082,7 +15276,10 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
                 for sub in (row.get("sub_rows") or [])
             ]
         public_rows.append(compact)
-    return {"ok": payload.get("ok") is True, "rows": public_rows}
+    response = {"ok": payload.get("ok") is True, "rows": public_rows}
+    if payload.get("status"):
+        response["status"] = payload["status"]
+    return response
 
 
 def _live_master_building_count():
@@ -22108,6 +22305,10 @@ def stats_price_change_top(_direction=None, _as_payload=False):
     ):
         return jsonify(master_payload["price_change"][direction])
 
+    if _master_stats_cold_starting():
+        payload = {"ok": False, "status": "warming", "direction": direction, "items": []}
+        return payload if _as_payload else jsonify(payload)
+
     # [LEGACY] 원본 캐시의 거래 섹션이 없거나 실패했을 때의 기존 직접 집계.
     conn = get_conn()
     cur = conn.cursor()
@@ -22215,6 +22416,10 @@ def stats_highest_price_top(_order=None, _as_payload=False):
         and order in (master_payload.get("highest_price") or {})
     ):
         return jsonify(master_payload["highest_price"][order])
+
+    if _master_stats_cold_starting():
+        payload = {"ok": False, "status": "warming", "order": order, "items": []}
+        return payload if _as_payload else jsonify(payload)
 
     # [LEGACY] 원본 캐시의 거래 섹션이 없거나 실패했을 때의 기존 직접 집계.
     conn = get_conn()
@@ -22405,6 +22610,13 @@ def stats_closure_rate_by_region():
     master_payload = _master_stats_section("closure_stats")
     if master_payload is not None:
         return jsonify(master_payload)
+    if _master_stats_cold_starting():
+        return jsonify({
+            "ok": False,
+            "status": "warming",
+            "items": [],
+            "minimum_sample_size": 5,
+        })
     return jsonify(_closure_rate_payload())
 
 
@@ -22659,6 +22871,10 @@ def stats_consign_by_sido(_as_payload=False):
     if master_payload is not None:
         return master_payload if _as_payload else jsonify(master_payload)
 
+    if _master_stats_cold_starting():
+        payload = {"ok": False, "status": "warming", "items": [], "total": {}}
+        return payload if _as_payload else jsonify(payload)
+
     # [LEGACY] 원본 캐시 섹션 장애에도 같은 행안부 영업신고 기준으로 폴백한다.
     payload = _report_rate_by_sido_payload()
     return payload if _as_payload else jsonify(payload)
@@ -22881,6 +23097,17 @@ def stats_registration_rate():
             "total_units": legacy_units,
             "biz_units": legacy_rooms,
             "rate": round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None,
+            "general_excluded": True,
+        })
+
+    if _master_stats_cold_starting():
+        return jsonify({
+            "ok": False,
+            "status": "warming",
+            "buildings": 0,
+            "total_units": 0,
+            "biz_units": 0,
+            "rate": None,
             "general_excluded": True,
         })
 
@@ -23355,15 +23582,6 @@ def admin_feature_tips_update(tip_id):
     finally:
         cur.close()
         conn.close()
-
-
-# 통계 원본은 앱 모듈과 모든 라우트가 로드된 뒤 백그라운드에서 선제 집계한다.
-_master_stats_background_thread = threading.Thread(
-    target=_master_stats_background_loop,
-    daemon=True,
-    name="master-stats-background",
-)
-_master_stats_background_thread.start()
 
 
 if __name__ == "__main__":

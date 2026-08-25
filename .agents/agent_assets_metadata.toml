@@ -40,3 +40,10 @@ uri = "file://static/home_stay_share.png"
 type = "image"
 title = "홈앤스테이 네모난 로고"
 description = "홈앤스테이 링크 공유용 정사각형 로고 PNG (1254×1254)."
+
+[[outputs]]
+id = "fftacieJ9XZqN-TuRm6x3"
+uri = "file://screenshots/map-toolbar-icons-clean.jpg"
+type = "image"
+title = "지도 툴바 아이콘 교체 확인"
+description = "실제 지도 화면에서 지도전환(접힌 지도), 로드뷰(위치핀), 편의(쇼핑백) 아이콘이 반영된 캡처입니다."

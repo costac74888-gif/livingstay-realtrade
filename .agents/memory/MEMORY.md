@@ -47,4 +47,5 @@
 - [Pooled DB connection ownership](pooled-db-connection-ownership.md) — Legacy conn.close() is a pool-release shim; fallback cleanup must use a unique per-lease token.
 - [Outbound notification URLs](outbound-notification-urls.md) — SMS/email links must use a validated canonical origin, never request Host or URL root.
 - [Background stats DB priority](background-stats-db-priority.md) — stats refreshes use a bounded, nonblocking DB budget that always preserves capacity for user map searches.
+- [Master stats cold starts](master-stats-coldstart-nonblocking.md) — public stats routes must return bounded warming data on an empty master cache; only worker background services may run full rebuilds.
 - [Password reset security](password-reset-security.md) — reset links use digest-at-rest, canonical URLs, bounded async delivery, and both per-email and per-IP throttles.

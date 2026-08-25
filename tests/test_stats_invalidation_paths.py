@@ -158,12 +158,9 @@ class AppMutationInvalidationTests(unittest.TestCase):
             app_module._MASTER_STATS_CACHE.update(original_cache)
             app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
 
-    def test_empty_master_stats_still_rebuilds_synchronously(self):
+    def test_empty_lodging_stats_skips_sync_rebuild_and_requests_refresh(self):
         original_cache = dict(app_module._MASTER_STATS_CACHE)
-        rebuilt = {
-            "data": {"consign_stats": {"ok": True}},
-            "sections": {"consign_stats": {"status": "ok"}},
-        }
+        refresh_signal = Mock()
         try:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update({
@@ -174,17 +171,144 @@ class AppMutationInvalidationTests(unittest.TestCase):
             })
             with (
                 patch.object(app_module, "_master_stats_cache_is_valid", return_value=False),
-                patch.object(app_module, "_rebuild_master_stats", return_value=rebuilt) as rebuild,
+                patch.object(app_module, "_rebuild_master_stats") as rebuild,
+                patch.object(app_module, "_MASTER_STATS_NEEDS_REFRESH", refresh_signal),
                 patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
             ):
-                result = app_module._master_stats_section("consign_stats")
+                result = app_module._master_stats_section("lodging_stats")
 
-            self.assertEqual(result, rebuilt["data"]["consign_stats"])
-            rebuild.assert_called_once_with()
-            schedule.assert_not_called()
+            self.assertIsNone(result)
+            rebuild.assert_not_called()
+            refresh_signal.set.assert_called_once_with()
+            schedule.assert_called_once_with()
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(original_cache)
+
+    def test_cold_lodging_table_returns_count_summary_without_sync_rebuild(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        original_legacy_cache = dict(app_module._bld_full_stats_cache)
+        cursor = FakeCursor(lambda sql, _params: [
+            {"map_type": "생활", "building_count": 3, "units": 40},
+            {"map_type": "관광", "building_count": 2, "units": 30},
+            {"map_type": "일반", "building_count": 1, "units": 10},
+            {"map_type": "복합", "building_count": 4, "units": 50},
+            {"map_type": None, "building_count": 1, "units": 5},
+        ] if "WITH classified AS" in sql else None)
+        try:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 0.0,
+                "data": {},
+                "sections": {},
+                "invalidation_token": None,
+            })
+            app_module._bld_full_stats_cache = {"ts": 0.0, "data": None}
+            with (
+                patch.object(app_module, "get_conn", return_value=FakeConnection(cursor)),
+                patch.object(app_module, "_rebuild_master_stats") as rebuild,
+                patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+            ):
+                response = self.client.get("/api/stats/lodging-full-table")
+
+            payload = response.get_json() or {}
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(payload.get("status"), "warming")
+            self.assertTrue(payload.get("ok"))
+            self.assertEqual(
+                [row.get("type") for row in payload.get("rows") or []],
+                ["전체", "생활", "관광", "일반", "복합"],
+            )
+            self.assertEqual(payload["rows"][0]["building_count"], 11)
+            self.assertEqual(payload["rows"][1]["units"], 40)
+            rebuild.assert_not_called()
+            schedule.assert_called_once_with()
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+            app_module._bld_full_stats_cache = original_legacy_cache
+
+    def test_cold_ranking_returns_warming_payload_without_direct_aggregation(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        original_ranking_cache = getattr(app_module.get_ranking, "_cache", None)
+        try:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 0.0,
+                "data": {},
+                "sections": {},
+                "invalidation_token": None,
+            })
+            if hasattr(app_module.get_ranking, "_cache"):
+                delattr(app_module.get_ranking, "_cache")
+            with (
+                patch.object(app_module, "_rebuild_master_stats") as rebuild,
+                patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+                patch.object(
+                    app_module,
+                    "get_conn",
+                    side_effect=AssertionError("cold ranking must not run direct SQL"),
+                ),
+            ):
+                response = self.client.get("/api/ranking")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {
+                "ok": False,
+                "status": "warming",
+                "price_highs": [],
+                "most_traded": [],
+            })
+            rebuild.assert_not_called()
+            schedule.assert_called_once_with()
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+            if original_ranking_cache is None:
+                if hasattr(app_module.get_ranking, "_cache"):
+                    delattr(app_module.get_ranking, "_cache")
+            else:
+                app_module.get_ranking._cache = original_ranking_cache
+
+    def test_cold_registration_rate_returns_warming_without_detailed_matching(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        original_legacy_cache = dict(app_module._bld_full_stats_cache)
+        try:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 0.0,
+                "data": {},
+                "sections": {},
+                "invalidation_token": None,
+            })
+            app_module._bld_full_stats_cache = {"ts": 0.0, "data": None}
+            with (
+                patch.object(app_module, "_rebuild_master_stats") as rebuild,
+                patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+                patch.object(
+                    app_module,
+                    "_matched_lodging_by_region",
+                    side_effect=AssertionError("cold registration rate must not match all addresses"),
+                ),
+            ):
+                response = self.client.get("/api/stats/registration-rate")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {
+                "ok": False,
+                "status": "warming",
+                "buildings": 0,
+                "total_units": 0,
+                "biz_units": 0,
+                "rate": None,
+                "general_excluded": True,
+            })
+            rebuild.assert_not_called()
+            schedule.assert_called_once_with()
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+            app_module._bld_full_stats_cache = original_legacy_cache
 
     def test_master_stats_revalidation_is_single_flight_and_start_failure_retries(self):
         original_pending = app_module._MASTER_STATS_REVALIDATION_PENDING

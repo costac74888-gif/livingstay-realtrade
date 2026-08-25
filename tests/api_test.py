@@ -4426,8 +4426,9 @@ def _check_datalab_stats(client):
             app_module._MASTER_STATS_INVALIDATION_STATE.update(saved_invalidation_state)
             app_module._MASTER_STATS_NEEDS_REFRESH = saved_refresh_signal
 
-        # 마스터 캐시 한 섹션이 실패해도 해당 공개 API는 기존 직접 집계로
-        # 폴백해야 하며, 빈 캐시는 다음 요청에서 전체 원본을 다시 만든다.
+        # 마스터 캐시 한 섹션이 실패하면 기존 직접 집계로 폴백한다. 단, 배포
+        # 직후처럼 캐시 시각조차 없는 콜드스타트는 요청에서 전체 원본을 만들지
+        # 않고 비동기 워밍업 상태를 반환한다.
         saved_master_cache = copy.deepcopy(app_module._MASTER_STATS_CACHE)
         try:
             app_module._MASTER_STATS_CACHE.update({
@@ -4446,9 +4447,15 @@ def _check_datalab_stats(client):
                 "sections": {},
                 "invalidation_token": None,
             })
-            rebuilt_consign = client.get("/api/stats/consign-by-sido").get_json() or {}
-            if rebuilt_consign != consign:
-                failures.append("통계 원본 창고: 빈 캐시 재생성 뒤 영업신고현황 결과가 달라짐")
+            with patch.object(app_module, "_master_stats_schedule_revalidation") as schedule:
+                rebuilt_consign = client.get("/api/stats/consign-by-sido").get_json() or {}
+            if (
+                rebuilt_consign.get("ok") is not False
+                or rebuilt_consign.get("status") != "warming"
+                or rebuilt_consign.get("items") != []
+                or not schedule.called
+            ):
+                failures.append("통계 원본 창고: 빈 캐시가 비동기 워밍업 상태로 응답하지 않음")
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(saved_master_cache)
