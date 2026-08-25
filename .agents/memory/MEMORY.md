@@ -3,6 +3,7 @@
 - [livingstay data/schema quirks](livingstay-data-quirks.md) — master_buildings has sgg_text/umd_nm (NO si_do/sgg_nm); transactions.si_do dirty (서울 vs 서울특별시); umd_nm spacing differs; lodging_type 복합=LIKE '%·%' else exact.
 - [Replit workflow tooling](replit-workflow-tooling.md) — configureWorkflow(autoStart:false) does NOT stop a running workflow (use removeWorkflow); workspace repls sleep so bg workflows don't run overnight; adding a secret auto-restarts ALL workflows.
 - [Kakao Maps JS SDK](kakao-maps-js-sdk.md) — blank map + "SDK not loaded" = Referer/domain not registered in Kakao console (sdk.js 401 domain mismatched), NOT a bad key; user must add dev+prod domains. Verify via curl -H Referer.
+- [Kakao Roadview minimap](kakao-roadview-minimap.md) — Roadview has no built-in map-control API; embed a second Map and sync it to the panorama position.
 - [RTMS backfill 429 & retry](rtms-backfill-retry.md) — data.go.kr RTMS 429s once daily quota is burnt; retry backs off BETWEEN rounds (not per-item) via sync_failures queue; run detached `--retry-failures`.
 - [Untracking files on Replit](git-untrack-on-replit.md) — agent is blocked from `git rm --cached` (even in a project task); adding .gitignore does NOT untrack already-committed files; the USER must run `git rm -r --cached . && git add .` in the Shell.
 - [Postgres ON CONFLICT + partial index](postgres-on-conflict-partial-index.md) — ON CONFLICT can't infer a partial unique index unless you restate its WHERE; for nullable dedup cols use a FULL unique index (NULLs are distinct).

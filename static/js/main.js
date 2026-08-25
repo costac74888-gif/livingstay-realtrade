@@ -1244,6 +1244,8 @@ let _activeMapTool = null; // null | roadview | measure | education | convenienc
 let _mapToolOverlays = [];
 let _roadviewClient = null;
 let _roadview = null;
+let _roadviewMiniMap = null;
+let _roadviewMiniMarker = null;
 let _measurePoints = [];
 let _measureLine = null;
 let _measureLabel = null;
@@ -1292,6 +1294,45 @@ function _closeRoadviewPanel(){
     panel.classList.remove("open");
     panel.setAttribute("aria-hidden", "true");
   }
+}
+
+function _roadviewMiniMapCenter(){
+  return kakaoMap && kakaoMap.getCenter ? kakaoMap.getCenter() : null;
+}
+
+function _ensureRoadviewMiniMap(position){
+  if (!window.kakao || !kakao.maps || !kakao.maps.Map || !kakao.maps.Marker) return false;
+  const element = document.getElementById("roadviewMiniMap");
+  const center = position || _roadviewMiniMapCenter();
+  if (!element || !center) return false;
+  if (!_roadviewMiniMap){
+    _roadviewMiniMap = new kakao.maps.Map(element, {
+      center,
+      level: 3,
+      draggable: false,
+      zoomable: false,
+      scrollwheel: false,
+      disableDoubleClick: true,
+    });
+    _roadviewMiniMarker = new kakao.maps.Marker({
+      position: center,
+      map: _roadviewMiniMap,
+    });
+  }
+  return true;
+}
+
+function _syncRoadviewMiniMap(position){
+  if (!_ensureRoadviewMiniMap(position)) return;
+  if (position){
+    _roadviewMiniMap.setCenter(position);
+    if (_roadviewMiniMarker) _roadviewMiniMarker.setPosition(position);
+  }
+  // 패널을 막 연 직후에는 미니맵 컨테이너의 크기가 확정되지 않아 타일이
+  // 회색으로 남을 수 있다. 레이아웃이 반영된 다음 다시 맞춘다.
+  setTimeout(() => {
+    if (_roadviewMiniMap) _roadviewMiniMap.relayout();
+  }, 0);
 }
 
 function _clearMeasure(){
@@ -1381,7 +1422,10 @@ function _addMeasurePoint(latLng){
 }
 
 function _ensureRoadview(){
-  if (_roadview && _roadviewClient) return true;
+  if (_roadview && _roadviewClient){
+    _syncRoadviewMiniMap();
+    return true;
+  }
   if (!window.kakao || !kakao.maps || !kakao.maps.Roadview ||
       !kakao.maps.RoadviewClient){
     showFallbackToast("로드뷰를 불러올 수 없습니다. 카카오 지도 SDK 설정을 확인해주세요.");
@@ -1391,15 +1435,17 @@ function _ensureRoadview(){
   if (!element) return false;
   _roadviewClient = new kakao.maps.RoadviewClient();
   _roadview = new kakao.maps.Roadview(element);
-  if (kakao.maps.event && kakao.maps.event.trigger){
-    setTimeout(() => kakao.maps.event.trigger(_roadview, "relayout"), 0);
+  _syncRoadviewMiniMap();
+  if (kakao.maps.event && kakao.maps.event.addListener){
+    kakao.maps.event.addListener(_roadview, "panoid_changed", () => {
+      if (!_roadview || _activeMapTool !== "roadview") return;
+      _syncRoadviewMiniMap(_roadview.getPosition());
+    });
   }
-  // PC에서는 카카오 정식 미니맵 컨트롤을 사용하고, 모바일은 전체화면 단일 뷰로 유지한다.
-  if (window.innerWidth > 520 &&
-      kakao.maps.RoadviewMapControl && kakao.maps.RoadviewControlPosition){
-    const rvMapControl = new kakao.maps.RoadviewMapControl(true);
-    _roadview.addControl(kakao.maps.RoadviewControlPosition.LOWER_LEFT, rvMapControl);
-  }
+  setTimeout(() => {
+    if (_roadview) _roadview.relayout();
+    _syncRoadviewMiniMap();
+  }, 0);
   return true;
 }
 
@@ -1421,6 +1467,7 @@ function _openRoadviewAt(latLng){
       return;
     }
     _roadview.setPanoId(panoId, latLng);
+    _syncRoadviewMiniMap(latLng);
     if (hint) hint.textContent = "지도를 다시 클릭하면 다른 위치의 로드뷰를 확인합니다.";
   });
 }

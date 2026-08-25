@@ -17,6 +17,7 @@ const requiredHtml = [
   'id="educationTool"',
   'id="convenienceTool"',
   'id="roadviewPanel"',
+  'id="roadviewMiniMap"',
   'id="measurePanel"',
 ];
 const missingHtml = requiredHtml.filter((token) => !html.includes(token));
@@ -28,6 +29,7 @@ const requiredCss = [
   ".map-toolbar",
   ".map-tool-btn.active",
   ".roadview-panel.open",
+  ".roadview-minimap",
   ".map-measure-panel",
   ".map-poi-marker",
   "@media (max-width: 980px)",
@@ -36,19 +38,13 @@ const missingCss = requiredCss.filter((token) => !css.includes(token));
 if (missingCss.length) {
   throw new Error(`지도 툴바 CSS 요소 누락: ${missingCss.join(", ")}`);
 }
-if (
-  html.includes('id="roadviewMiniMap"') ||
-  css.includes(".roadview-minimap") ||
-  js.includes("roadviewMiniMap") ||
-  js.includes("_roadviewMiniMap") ||
-  js.includes("_roadviewMiniMarker")
-) {
-  throw new Error("커스텀 로드뷰 미니맵 코드·DOM·CSS가 남아 있습니다.");
-}
-
 const requiredJs = [
   "MAP_TYPE_STEPS",
   "RoadviewClient",
+  "function _ensureRoadviewMiniMap",
+  "function _syncRoadviewMiniMap",
+  "new kakao.maps.Map",
+  "new kakao.maps.Marker",
   "new kakao.maps.Polyline",
   "new kakao.maps.CustomOverlay",
   "/api/map/poi?",
@@ -104,12 +100,14 @@ if (
 if (
   ensureRoadviewStart < 0 ||
   ensureRoadviewEnd < 0 ||
-  !ensureRoadviewBlock.includes("window.innerWidth > 520") ||
-  !ensureRoadviewBlock.includes("RoadviewMapControl") ||
-  !ensureRoadviewBlock.includes("RoadviewControlPosition") ||
-  !ensureRoadviewBlock.includes('kakao.maps.event.trigger(_roadview, "relayout")')
+  !ensureRoadviewBlock.includes("_syncRoadviewMiniMap") ||
+  !ensureRoadviewBlock.includes("_roadview.relayout()") ||
+  ensureRoadviewBlock.includes("RoadviewMapControl")
 ) {
-  throw new Error("카카오 정식 로드뷰 미니맵 컨트롤 또는 relayout 처리가 없습니다.");
+  throw new Error("로드뷰 미니맵 동기화 또는 relayout 처리가 없습니다.");
+}
+if (!openRoadviewBlock.includes("_syncRoadviewMiniMap(latLng)")) {
+  throw new Error("로드뷰 위치를 미니맵에 동기화하지 않습니다.");
 }
 
 const syntax = spawnSync(process.execPath, ["--check", path.join(root, "static", "js", "main.js")], {
@@ -134,6 +132,7 @@ function poiResponse(lat, lng, name) {
 
 (async () => {
   await checkPoiMovementBehavior();
+  await checkRoadviewMiniMapBehavior();
   console.log("OK  지도 툴바 마크업·모바일 CSS·SDK·POI 이동 갱신 계약");
 })().catch(error => {
   console.error(error.stack || error);
@@ -150,6 +149,79 @@ function waitFor(predicate, label) {
     };
     check();
   });
+}
+
+async function checkRoadviewMiniMapBehavior() {
+  const blockStart = js.indexOf("const MAP_TYPE_STEPS =");
+  const blockEnd = js.indexOf("// 새 레이어가 준비될 때까지 기존 CustomOverlay");
+  if (blockStart < 0 || blockEnd < 0) {
+    throw new Error("로드뷰 미니맵 테스트용 소스 범위를 찾지 못함");
+  }
+  const toolCode = js.slice(blockStart, blockEnd);
+  const elements = new Map();
+  const miniMaps = [];
+  class LatLng {
+    constructor(lat, lng) {
+      this.lat = Number(lat);
+      this.lng = Number(lng);
+    }
+  }
+  class MiniMap {
+    constructor(element, options) {
+      this.element = element;
+      this.center = options.center;
+      this.relayoutCalls = 0;
+      miniMaps.push(this);
+    }
+    setCenter(position) { this.center = position; }
+    relayout() { this.relayoutCalls++; }
+  }
+  class Marker {
+    constructor(options) { this.position = options.position; }
+    setPosition(position) { this.position = position; }
+  }
+  const context = {
+    clearTimeout,
+    setTimeout,
+    document: {
+      getElementById(id) {
+        if (!elements.has(id)) elements.set(id, {});
+        return elements.get(id);
+      },
+    },
+    window: {},
+    kakao: {
+      maps: {
+        Map: MiniMap,
+        Marker,
+      },
+    },
+  };
+  context.window.kakao = context.kakao;
+  vm.createContext(context);
+  vm.runInContext(`
+    let kakaoMap = { getCenter() { return { lat: 37.5, lng: 127.0 }; } };
+    ${toolCode}
+    globalThis.__miniMapTest = {
+      sync: _syncRoadviewMiniMap,
+      marker() { return _roadviewMiniMarker; },
+    };
+  `, context);
+
+  const first = new LatLng(37.51, 127.01);
+  context.__miniMapTest.sync(first);
+  if (miniMaps.length !== 1 || miniMaps[0].center !== first) {
+    throw new Error("로드뷰 미니맵을 생성하고 첫 위치를 중심으로 설정하지 않음");
+  }
+  if (context.__miniMapTest.marker().position !== first) {
+    throw new Error("로드뷰 미니맵의 현재 위치 마커를 생성하지 않음");
+  }
+  const second = new LatLng(37.52, 127.02);
+  context.__miniMapTest.sync(second);
+  if (miniMaps[0].center !== second || context.__miniMapTest.marker().position !== second) {
+    throw new Error("로드뷰 위치 변경을 미니맵과 마커에 반영하지 않음");
+  }
+  await waitFor(() => miniMaps[0].relayoutCalls > 0, "로드뷰 미니맵 relayout");
 }
 
 async function checkPoiMovementBehavior() {
