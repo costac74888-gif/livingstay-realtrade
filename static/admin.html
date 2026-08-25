@@ -6292,11 +6292,6 @@
         </div>` : "";
       const loginHistoryHtml = memberType === "general" ? `
         <div class="member-detail-card">
-          <div class="member-detail-card-title">마지막 접속</div>
-          ${_ar("마지막 접속일시", _v(data.last_login_at))}
-          ${_ar("가입경로", data.provider==="kakao" ? "카카오" : "이메일")}
-        </div>
-        <div class="member-detail-card">
           <div class="member-detail-card-title">접속이력 <span style="font-size:11px;font-weight:400;color:var(--ink-soft);">최근 10건</span></div>
           <div id="memberLoginHistory" data-member-id="${memberId}" style="color:var(--ink-soft);font-size:13px;padding:4px 0;">불러오는 중…</div>
         </div>` : "";
