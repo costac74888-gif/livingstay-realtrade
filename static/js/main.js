@@ -1246,6 +1246,7 @@ let _roadviewClient = null;
 let _roadview = null;
 let _roadviewMiniMap = null;
 let _roadviewMiniMarker = null;
+let _roadviewMiniMapControlsBound = false;
 let _measurePoints = [];
 let _measureLine = null;
 let _measureLabel = null;
@@ -1300,11 +1301,29 @@ function _roadviewMiniMapCenter(){
   return kakaoMap && kakaoMap.getCenter ? kakaoMap.getCenter() : null;
 }
 
+function _bindRoadviewMiniMapControls(){
+  if (_roadviewMiniMapControlsBound) return;
+  const wrap = document.getElementById("roadviewMiniMapWrap");
+  const button = document.getElementById("roadviewMiniMapExpand");
+  if (!wrap || !button || !button.addEventListener) return;
+  _roadviewMiniMapControlsBound = true;
+  button.addEventListener("click", () => {
+    const expanded = wrap.classList.toggle("is-expanded");
+    button.setAttribute("aria-expanded", String(expanded));
+    button.setAttribute("aria-label", expanded ? "미니맵 축소" : "미니맵 확대");
+    button.setAttribute("title", expanded ? "미니맵 축소" : "미니맵 확대");
+    setTimeout(() => {
+      if (_roadviewMiniMap) _roadviewMiniMap.relayout();
+    }, 180);
+  });
+}
+
 function _ensureRoadviewMiniMap(position){
   if (!window.kakao || !kakao.maps || !kakao.maps.Map || !kakao.maps.Marker) return false;
   const element = document.getElementById("roadviewMiniMap");
   const center = position || _roadviewMiniMapCenter();
   if (!element || !center) return false;
+  _bindRoadviewMiniMapControls();
   if (!_roadviewMiniMap){
     _roadviewMiniMap = new kakao.maps.Map(element, {
       center,

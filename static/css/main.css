@@ -348,11 +348,38 @@
     width:100%; height:100%; min-height:0; background:#000;
     touch-action:none; user-select:none;
   }
+  .roadview-minimap-wrap{
+    position:absolute; left:16px; bottom:50px; z-index:3;
+    width:190px; height:132px; overflow:visible;
+    transition:width .18s ease, height .18s ease;
+  }
+  .roadview-minimap-wrap.is-expanded{
+    width:min(360px, calc(100vw - 32px));
+    height:min(250px, calc(100vh - 96px));
+  }
   .roadview-minimap{
-    position:absolute; right:16px; bottom:50px; z-index:3;
-    width:190px; height:132px; overflow:hidden;
+    width:100%; height:100%; overflow:hidden;
     border:2px solid rgba(255,255,255,.94); border-radius:10px;
     background:#E9EDF0; box-shadow:0 3px 16px rgba(0,0,0,.38);
+  }
+  .roadview-minimap-expand{
+    position:absolute; top:2px; right:2px; z-index:2;
+    width:32px; height:32px; padding:0; border:0;
+    border-radius:0 7px 0 0; clip-path:polygon(100% 0, 100% 100%, 0 0);
+    background:rgba(30,42,58,.82); color:#fff; cursor:pointer;
+    opacity:0; transition:opacity .14s ease, background .14s ease;
+  }
+  .roadview-minimap-expand::after{
+    content:"↗"; position:absolute; top:2px; right:5px;
+    font:800 14px/1 sans-serif;
+  }
+  .roadview-minimap-wrap:hover .roadview-minimap-expand,
+  .roadview-minimap-expand:focus-visible{
+    opacity:1;
+  }
+  .roadview-minimap-expand:hover,
+  .roadview-minimap-expand:focus-visible{
+    background:rgba(180,134,63,.96); outline:2px solid #fff; outline-offset:-3px;
   }
   .roadview-hint{
     position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
@@ -591,8 +618,12 @@
       inset:0;
     }
     .roadview-canvas{height:100%; min-height:0;}
-    .roadview-minimap{
-      right:12px; bottom:48px; width:142px; height:98px;
+    .roadview-minimap-wrap{
+      left:12px; bottom:48px; width:142px; height:98px;
+    }
+    .roadview-minimap-wrap.is-expanded{
+      width:min(280px, calc(100vw - 24px));
+      height:min(190px, calc(100vh - 84px));
     }
     .map-measure-panel{
       top:calc(var(--stage-gap) + 54px); right:calc(var(--stage-gap) + 54px);

@@ -17,7 +17,9 @@ const requiredHtml = [
   'id="educationTool"',
   'id="convenienceTool"',
   'id="roadviewPanel"',
+  'id="roadviewMiniMapWrap"',
   'id="roadviewMiniMap"',
+  'id="roadviewMiniMapExpand"',
   'id="measurePanel"',
 ];
 const missingHtml = requiredHtml.filter((token) => !html.includes(token));
@@ -29,6 +31,7 @@ const requiredCss = [
   ".map-toolbar",
   ".map-tool-btn.active",
   ".roadview-panel.open",
+  ".roadview-minimap-wrap",
   ".roadview-minimap",
   ".map-measure-panel",
   ".map-poi-marker",
@@ -43,6 +46,7 @@ const requiredJs = [
   "RoadviewClient",
   "function _ensureRoadviewMiniMap",
   "function _syncRoadviewMiniMap",
+  "function _bindRoadviewMiniMapControls",
   "new kakao.maps.Map",
   "new kakao.maps.Marker",
   "new kakao.maps.Polyline",
