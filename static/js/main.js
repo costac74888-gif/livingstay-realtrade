@@ -1334,6 +1334,16 @@ function _resizeRoadviewMiniMap(width, height){
   if (_roadviewMiniMap) _roadviewMiniMap.relayout();
 }
 
+function _setRoadviewMiniMapRoadviewLayer(enabled){
+  if (!_roadviewMiniMap || !kakao.maps || !kakao.maps.MapTypeId) return;
+  const roadviewType = kakao.maps.MapTypeId.ROADVIEW;
+  if (!roadviewType) return;
+  const method = enabled ? "addOverlayMapTypeId" : "removeOverlayMapTypeId";
+  if (typeof _roadviewMiniMap[method] === "function"){
+    _roadviewMiniMap[method](roadviewType);
+  }
+}
+
 function _bindRoadviewMiniMapResize(){
   if (_roadviewMiniMapResizeBound) return;
   const wrap = document.getElementById("roadviewMiniMapWrap");
@@ -1431,6 +1441,7 @@ function _ensureRoadviewMiniMap(position){
       zIndex: 10,
     });
     _roadviewMiniMarker.setMap(_roadviewMiniMap);
+    _setRoadviewMiniMapRoadviewLayer(_activeMapTool === "roadview");
   }
   return true;
 }
@@ -1742,6 +1753,7 @@ function _deactivateMapTool(){
       kakao.maps.MapTypeId.ROADVIEW && kakaoMap.removeOverlayMapTypeId){
     kakaoMap.removeOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW);
   }
+  _setRoadviewMiniMapRoadviewLayer(false);
   _activeMapTool = null;
   _clearPoiResults();
   _clearMeasure();
@@ -1762,6 +1774,7 @@ function _activateMapTool(tool){
         kakao.maps.MapTypeId.ROADVIEW && kakaoMap.addOverlayMapTypeId){
       kakaoMap.addOverlayMapTypeId(kakao.maps.MapTypeId.ROADVIEW);
     }
+    _setRoadviewMiniMapRoadviewLayer(true);
     showFallbackToast("파란색 도로에서 원하는 지점을 클릭하면 로드뷰가 열립니다.");
   } else if (tool === "measure"){
     const panel = document.getElementById("measurePanel");

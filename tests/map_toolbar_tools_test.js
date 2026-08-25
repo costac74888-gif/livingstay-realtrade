@@ -51,6 +51,7 @@ const requiredJs = [
   "function _syncRoadviewMiniMap",
   "function _bindRoadviewMiniMapResize",
   "function _resizeRoadviewMiniMap",
+  "function _setRoadviewMiniMapRoadviewLayer",
   "function _syncRoadviewMiniCamera",
   "new kakao.maps.Map",
   "new kakao.maps.CustomOverlay",
@@ -189,10 +190,15 @@ async function checkRoadviewMiniMapBehavior() {
       this.element = element;
       this.center = options.center;
       this.relayoutCalls = 0;
+      this.overlayMapTypeIds = [];
       miniMaps.push(this);
     }
     setCenter(position) { this.center = position; }
     relayout() { this.relayoutCalls++; }
+    addOverlayMapTypeId(typeId) { this.overlayMapTypeIds.push(typeId); }
+    removeOverlayMapTypeId(typeId) {
+      this.overlayMapTypeIds = this.overlayMapTypeIds.filter(id => id !== typeId);
+    }
   }
   class MiniOverlay {
     constructor(options) {
@@ -223,6 +229,7 @@ async function checkRoadviewMiniMapBehavior() {
       maps: {
         Map: MiniMap,
         CustomOverlay: MiniOverlay,
+        MapTypeId: { ROADVIEW: "ROADVIEW" },
       },
     },
   };
@@ -236,6 +243,7 @@ async function checkRoadviewMiniMapBehavior() {
       marker() { return _roadviewMiniMarker; },
       camera() { return _roadviewMiniCamera; },
        resize(width, height) { _resizeRoadviewMiniMap(width, height); },
+       setRoadviewLayer(enabled) { _setRoadviewMiniMapRoadviewLayer(enabled); },
       setRoadview(roadview) { _roadview = roadview; },
       syncCamera: _syncRoadviewMiniCamera,
     };
@@ -248,6 +256,14 @@ async function checkRoadviewMiniMapBehavior() {
   }
   if (context.__miniMapTest.marker().position !== first) {
     throw new Error("로드뷰 미니맵의 현재 위치 마커를 생성하지 않음");
+  }
+  context.__miniMapTest.setRoadviewLayer(true);
+  if (miniMaps[0].overlayMapTypeIds[0] !== "ROADVIEW") {
+    throw new Error("로드뷰 미니맵에 파란 로드뷰 도로 레이어를 추가하지 않음");
+  }
+  context.__miniMapTest.setRoadviewLayer(false);
+  if (miniMaps[0].overlayMapTypeIds.length !== 0) {
+    throw new Error("로드뷰 미니맵의 로드뷰 도로 레이어를 끄지 않음");
   }
   const second = new LatLng(37.52, 127.02);
   context.__miniMapTest.sync(second);
