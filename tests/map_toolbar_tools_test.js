@@ -275,7 +275,7 @@ async function checkRoadviewMiniMapBehavior() {
     throw new Error("로드뷰 미니맵을 생성하고 첫 위치를 중심으로 설정하지 않음");
   }
   if (
-    miniMaps[0].options.draggable !== false ||
+    miniMaps[0].options.draggable !== true ||
     miniMaps[0].options.zoomable !== true ||
     miniMaps[0].options.scrollwheel !== true ||
     miniMaps[0].options.disableDoubleClick !== false

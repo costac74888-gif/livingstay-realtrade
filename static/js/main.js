@@ -1426,7 +1426,7 @@ function _ensureRoadviewMiniMap(position){
     _roadviewMiniMap = new kakao.maps.Map(element, {
       center,
       level: 3,
-      draggable: false,
+      draggable: true,
       zoomable: true,
       scrollwheel: true,
       disableDoubleClick: false,
