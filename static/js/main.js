@@ -1245,6 +1245,7 @@ let _measureLabel = null;
 let _measureFinished = false;
 let _poiRequestSequence = 0;
 let _roadviewRequestSequence = 0;
+let _poiRefreshTimer = null;
 
 function _mapTypeId(key){
   return (window.kakao && kakao.maps && kakao.maps.MapTypeId)
@@ -1441,6 +1442,9 @@ async function _loadPoi(tool){
   if (!kakaoMap || (tool !== "education" && tool !== "convenience")) return;
   const sequence = ++_poiRequestSequence;
   const center = kakaoMap.getCenter();
+  // 이동 전 위치의 POI가 새 위치로 잘못 보이지 않도록, 새 요청을 시작할 때
+  // 이전 결과를 먼저 숨긴다. 응답 세대 번호가 오래된 요청의 덮어쓰기도 막는다.
+  _clearMapToolOverlays();
   const params = new URLSearchParams({
     type: tool,
     lat: String(center.getLat()),
@@ -1465,7 +1469,22 @@ async function _loadPoi(tool){
   }
 }
 
+function _schedulePoiRefreshAfterMapMove(){
+  if (_poiRefreshTimer) clearTimeout(_poiRefreshTimer);
+  if (_activeMapTool !== "education" && _activeMapTool !== "convenience") return;
+  _poiRefreshTimer = setTimeout(() => {
+    _poiRefreshTimer = null;
+    if (_activeMapTool === "education" || _activeMapTool === "convenience"){
+      _loadPoi(_activeMapTool);
+    }
+  }, 240);
+}
+
 function _deactivateMapTool(){
+  if (_poiRefreshTimer){
+    clearTimeout(_poiRefreshTimer);
+    _poiRefreshTimer = null;
+  }
   _roadviewRequestSequence++;
   _activeMapTool = null;
   _clearPoiResults();
@@ -2111,6 +2130,7 @@ async function initMap(){
       lat: c.getLat(), lng: c.getLng(), level: kakaoMap.getLevel(),
       savedAt: Date.now(),
     }));
+    _schedulePoiRefreshAfterMapMove();
   });
 
   // 확대/축소 시 클러스터 배지↔개별마커 전환 (모드 변경 시만 재로드, 같은 모드면 라벨만 갱신)
