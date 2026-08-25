@@ -13,6 +13,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/static/js/icons.js"></script>
 <style>
   .agent-tabbar{ display:flex; gap:4px; margin:18px 0 14px; border-bottom:1px solid var(--line); overflow-x:auto; }
   .agent-tab{
@@ -55,7 +57,7 @@
     <!-- 헤더 카드 -->
     <div class="panel-card" style="margin-top:16px;">
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-        <div style="width:54px; height:54px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;">👤</div>
+        <div style="width:54px; height:54px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; flex-shrink:0;" aria-hidden="true"><span id="mypageProfileIcon"></span></div>
         <div style="flex:1; min-width:160px;">
           <div id="profileName" style="font-size:18px; font-weight:700; color:var(--ink);"></div>
           <div id="profileEmail" style="font-size:12.5px; color:var(--ink-soft); margin-top:3px;"></div>
@@ -81,7 +83,7 @@
     <!-- ── 탭: 관심단지 ── -->
     <div class="agent-tabpanel is-active" data-tabpanel="favorites">
       <div class="panel-card" style="margin-top:14px;">
-        <div class="agent-guide">건물 상세페이지에서 <b>♥</b> 를 눌러 관심단지로 저장할 수 있습니다. 새 실거래가 등록되면 이메일로 알려드립니다.</div>
+        <div class="agent-guide">건물 상세페이지에서 <span id="mypageFavoriteIcon" class="inline-icon" aria-hidden="true"></span> 를 눌러 관심단지로 저장할 수 있습니다. 새 실거래가 등록되면 이메일로 알려드립니다.</div>
 
         <!-- 이메일 알림 토글 -->
         <div style="display:flex; align-items:center; gap:9px; margin-bottom:8px; padding:10px 14px; border:1px solid var(--line); border-radius:8px;">
@@ -164,6 +166,12 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
       return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
     });
+  }
+  function iconLabel(icon, size, label){
+    return '<span style="display:inline-flex;align-items:center;gap:4px;">' + icon(size) + '<span>' + label + '</span></span>';
+  }
+  function alertLabel(enabled){
+    return iconLabel(Icons.bell, 13, enabled ? "알림 중" : "알림 켜기");
   }
   function showMsg(id, text, ok){
     var el = document.getElementById(id);
@@ -286,7 +294,7 @@
     // ── 채팅 문의 버튼 (매도자 입장 — 내 매물에 온 문의) ──
     var chatCount = parseInt(it.chat_room_count, 10) || 0;
     var chatBtn = chatCount > 0
-      ? '<button class="lr-chat-btn" data-id="' + it.id + '" data-count="' + chatCount + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;margin-top:4px;">💬 채팅 ' + chatCount + '건</button>'
+      ? '<button class="lr-chat-btn" data-id="' + it.id + '" data-count="' + chatCount + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--brass);border-radius:5px;background:none;color:var(--brass);cursor:pointer;margin-top:4px;">' + iconLabel(Icons.messageCircle, 13, '채팅 ' + chatCount + '건') + '</button>'
       : '';
     var actionBtns = "";
     if (it.status === "submitted" || it.status === "보류") {
@@ -831,7 +839,7 @@
     overlay.innerHTML =
       '<div id="mpChatBox" style="background:#fff;width:100%;max-width:520px;height:72vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #eee;background:#fff;">' +
-          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 <span id="mpChatOpponentName">상대방</span></span>' +
+          '<span style="font-size:15px;font-weight:700;color:#B4863F;display:inline-flex;align-items:center;gap:5px;">' + Icons.messageCircle(17) + '<span id="mpChatOpponentName">상대방</span></span>' +
           '<button id="mpChatClose" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">×</button>' +
         '</div>' +
         '<div id="mpChatMsgs" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;"></div>' +
@@ -1070,7 +1078,7 @@
     overlay.innerHTML =
       '<div style="background:#fff;width:100%;max-width:520px;max-height:55vh;display:flex;flex-direction:column;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 -4px 24px rgba(0,0,0,.18);">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #eee;">' +
-          '<span style="font-size:15px;font-weight:700;color:#B4863F;">💬 채팅 목록</span>' +
+          '<span style="font-size:15px;font-weight:700;color:#B4863F;display:inline-flex;align-items:center;gap:5px;">' + Icons.messageCircle(17) + '<span>채팅 목록</span></span>' +
           '<button id="mpChatListClose" style="border:none;background:none;font-size:22px;cursor:pointer;color:#999;line-height:1;">×</button>' +
         '</div>' +
         '<div style="overflow-y:auto;">' + listHtml + '</div>' +
@@ -1101,28 +1109,28 @@
       : '<span style="font-size:12px;color:var(--ink-soft);font-weight:400;white-space:nowrap;">실거래 정보 없음</span>';
     var alertBtn = hasAlert
       ? '<button class="myfav-alert-off" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 끄기" '
-          + 'style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 중</button>'
+          + 'style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(true) + '</button>'
       : '<button class="myfav-alert-on" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 켜기" '
-          + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 켜기</button>';
+          + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(false) + '</button>';
     var listingBtn = bid
       ? '<button class="myfav-listing-btn" data-bid="' + escapeHtml(bid) + '" data-bname="' + escapeHtml(name) + '" title="매물내놓기" '
           + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">매물내놓기</button>'
       : '';
     // 2행 레이아웃:
-    //   1행 — 건물명(flex:1, ellipsis) + ★해제버튼
+    //   1행 — 건물명(flex:1, ellipsis) + 관심단지 해제 버튼
     //   2행 — 최신 실거래가 + 매물내놓기 + 알림버튼
     // 기존 1행 구조는 모바일에서 버튼이 공간을 차지해 건물명이 1~2글자로 잘리는 버그 발생.
     return '' +
       '<div class="myfav-item" data-bid="' + escapeHtml(bid) + '" ' +
            'style="padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
-        // 1행: 건물명 + 주소 + ★
+    // 1행: 건물명 + 주소 + 관심단지 해제 버튼
         '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:8px;">' +
           '<div style="flex:1; min-width:0;">' +
             '<div style="font-size:14px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
             '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
           '</div>' +
           '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
-                  'style="background:none; border:none; color:var(--brass); font-size:18px; line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0;">★</button>' +
+                  'style="background:none; border:none; color:var(--brass); line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0;">' + Icons.heart(18, true) + '</button>' +
         '</div>' +
         // 2행: 가격 + 버튼들
         '<div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">' +
@@ -1170,12 +1178,12 @@
           }).then(function(r){ return r.json(); })
             .then(function(j){
               if (j && j.ok){
-                btn.outerHTML = '<button class="myfav-alert-off" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 끄기" style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 중</button>';
+                btn.outerHTML = '<button class="myfav-alert-off" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 끄기" style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(true) + '</button>';
                 // 새로 삽입된 버튼에 핸들러 재바인딩
                 var newBtn = box.querySelector('.myfav-alert-off[data-addr="' + (btn.getAttribute("data-addr")||"") + '"]');
                 if (newBtn) bindAlertOff(newBtn);
-              } else { btn.disabled = false; btn.textContent = "🔔 알림 켜기"; }
-            }).catch(function(){ btn.disabled = false; btn.textContent = "🔔 알림 켜기"; });
+              } else { btn.disabled = false; btn.innerHTML = alertLabel(false); }
+            }).catch(function(){ btn.disabled = false; btn.innerHTML = alertLabel(false); });
         });
       });
       Array.prototype.forEach.call(box.querySelectorAll(".myfav-alert-off"), function(btn){
@@ -1204,9 +1212,9 @@
       }).then(function(r){ return r.json(); })
         .then(function(j){
           if (j && j.ok){
-            btn.outerHTML = '<button class="myfav-alert-on" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 켜기" style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">🔔 알림 켜기</button>';
-          } else { btn.disabled = false; btn.textContent = "🔔 알림 중"; }
-        }).catch(function(){ btn.disabled = false; btn.textContent = "🔔 알림 중"; });
+            btn.outerHTML = '<button class="myfav-alert-on" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 켜기" style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(false) + '</button>';
+          } else { btn.disabled = false; btn.innerHTML = alertLabel(true); }
+        }).catch(function(){ btn.disabled = false; btn.innerHTML = alertLabel(true); });
     });
   }
 
@@ -1541,5 +1549,12 @@
 <script src="/static/js/pw_toggle.js"></script>
 <script src="/static/js/listing_modal.js"></script>
 <script src="/static/js/listing_checklist.js"></script>
+<script>
+  if (window.Icons) {
+    document.getElementById("mypageProfileIcon").innerHTML = Icons.users(25);
+    document.getElementById("mypageFavoriteIcon").innerHTML = Icons.heart(15);
+  }
+  if (window.lucide) lucide.createIcons();
+</script>
 </body>
 </html>

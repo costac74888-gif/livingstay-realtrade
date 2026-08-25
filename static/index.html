@@ -28,6 +28,8 @@
 <link rel="dns-prefetch" href="//dapi.kakao.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/static/js/icons.js"></script>
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JS_KEY}}&autoload=false&_v={{KAKAO_SDK_V}}" defer onload="window.__kakaoSdkLoaded=true;if(window.__onKakaoSdkLoad)window.__onKakaoSdkLoad();"></script>
 </head>
 <body>
@@ -69,12 +71,12 @@
 
   <!-- ①⑧ 관심저장 유도 배너 — 오버레이/내건물시세 검색 직후 세션당 1회 -->
   <div id="favHintBanner" style="display:none; position:absolute; top:0; left:0; right:0; z-index:200; background:rgba(180,134,63,0.93); color:#fff; font-size:13px; font-weight:600; text-align:center; padding:9px 44px 9px 16px; line-height:1.5; pointer-events:auto;">
-    이 건물이 궁금하시면 ☆로 저장하고 🔔 실거래알림을 켜두세요 — 새 거래 발생 시 바로 알려드려요
+    이 건물이 궁금하시면 <span id="welcomeFavoriteIcon" class="inline-icon" aria-hidden="true"></span>로 저장하고 <span id="welcomeAlertIcon" class="inline-icon" aria-hidden="true"></span> 실거래알림을 켜두세요 — 새 거래 발생 시 바로 알려드려요
     <button type="button" id="favHintClose" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#fff; font-size:20px; line-height:1; cursor:pointer; padding:2px 6px;" aria-label="닫기">×</button>
   </div>
 
   <!-- 지도 우측 상단: 검색바 접기/펼치기 버튼 -->
-  <button class="searchbar-toggle" id="btnToggleSearch">🔍 검색</button>
+  <button class="searchbar-toggle" id="btnToggleSearch"><span id="searchToggleIcon" class="inline-icon" aria-hidden="true"></span><span>검색</span></button>
 
   <!-- 지도 좌측 상단: 좌측 패널(목록) 토글 — side-panel이 열리는 쪽, 모바일(≤980px) 전용 -->
   <button type="button" class="map-list-toggle" id="btnTogglePanel" aria-label="목록 열기">☰ <span class="htoggle-label">목록</span></button>
@@ -83,24 +85,24 @@
   <div class="map-toolbar" id="mapToolbar" role="toolbar" aria-label="지도 도구">
     <button type="button" class="map-tool-btn" id="mapTypeTool" aria-pressed="false"
       title="지도전환" aria-label="지도전환: 일반지도">
-      <span class="map-tool-icon" aria-hidden="true">▦</span><span class="map-tool-label">지도전환</span>
+      <span class="map-tool-icon" id="iconMapType" aria-hidden="true"></span><span class="map-tool-label">지도전환</span>
       <span class="map-tool-state" id="mapTypeState">일반</span>
     </button>
     <button type="button" class="map-tool-btn" id="roadviewTool" aria-pressed="false"
       title="로드뷰" aria-label="로드뷰 켜기">
-      <span class="map-tool-icon" aria-hidden="true">↗</span><span class="map-tool-label">로드뷰</span>
+      <span class="map-tool-icon" id="iconRoadview" aria-hidden="true"></span><span class="map-tool-label">로드뷰</span>
     </button>
     <button type="button" class="map-tool-btn" id="measureTool" aria-pressed="false"
       title="거리 측정" aria-label="거리 측정 켜기">
-      <span class="map-tool-icon" aria-hidden="true">⌁</span><span class="map-tool-label">측정</span>
+      <span class="map-tool-icon" id="iconMeasure" aria-hidden="true"></span><span class="map-tool-label">측정</span>
     </button>
     <button type="button" class="map-tool-btn" id="educationTool" aria-pressed="false"
       title="교육시설 보기" aria-label="교육시설 보기">
-      <span class="map-tool-icon" aria-hidden="true">학</span><span class="map-tool-label">교육</span>
+      <span class="map-tool-icon" id="iconEducation" aria-hidden="true"></span><span class="map-tool-label">교육</span>
     </button>
     <button type="button" class="map-tool-btn" id="convenienceTool" aria-pressed="false"
       title="편의시설 보기" aria-label="편의시설 보기">
-      <span class="map-tool-icon" aria-hidden="true">편</span><span class="map-tool-label">편의</span>
+      <span class="map-tool-icon" id="iconConvenience" aria-hidden="true"></span><span class="map-tool-label">편의</span>
     </button>
   </div>
 
@@ -369,10 +371,15 @@
   var sbBtn = document.getElementById("btnToggleSearch");
   var searchbar = document.querySelector(".map-searchbar");
   if (sbBtn && searchbar){
+    function updateSearchToggle(open){
+      sbBtn.querySelector("#searchToggleIcon").innerHTML = open ? "" : Icons.search(15);
+      sbBtn.querySelector("span:last-child").textContent = open ? "닫기" : "검색";
+    }
     sbBtn.addEventListener("click", function(){
       var open = !searchbar.classList.toggle("collapsed");
-      sbBtn.textContent = open ? "✕ 닫기" : "🔍 검색";
+      updateSearchToggle(open);
     });
+    updateSearchToggle(!searchbar.classList.contains("collapsed"));
     // 데스크톱 자동펼침은 아래 오버레이 로직이 결정 — 오버레이가 뜨면 건너뜀
   }
 
@@ -388,7 +395,10 @@
     function openSearchbar(){
       if (searchbar && searchbar.classList.contains("collapsed")){
         searchbar.classList.remove("collapsed");
-        if (sbBtn) sbBtn.textContent = "✕ 닫기";
+        if (sbBtn) {
+          sbBtn.querySelector("#searchToggleIcon").innerHTML = "";
+          sbBtn.querySelector("span:last-child").textContent = "닫기";
+        }
       }
     }
 
@@ -486,6 +496,18 @@
 <script src="/static/js/main.js" defer></script>
 <script src="/static/js/listing_modal.js" defer></script>
 <script src="/static/js/auth.js" defer></script>
+<script>
+  if (window.Icons) {
+    document.getElementById("welcomeFavoriteIcon").innerHTML = Icons.heart(14);
+    document.getElementById("welcomeAlertIcon").innerHTML = Icons.bell(14);
+    document.getElementById("iconMapType").innerHTML = Icons.layers(15);
+    document.getElementById("iconRoadview").innerHTML = Icons.navigation(15);
+    document.getElementById("iconMeasure").innerHTML = Icons.ruler(15);
+    document.getElementById("iconEducation").innerHTML = Icons.graduationCap(15);
+    document.getElementById("iconConvenience").innerHTML = Icons.storeIcon(15);
+  }
+  if (window.lucide) lucide.createIcons();
+</script>
 
 </body>
 </html>

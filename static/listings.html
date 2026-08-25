@@ -14,6 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="/static/js/icons.js"></script>
 <style>
   /* ── 페이지 레이아웃 ── */
   .listings-page { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
@@ -329,7 +331,7 @@
 
     <!-- 채팅중 칩 바 (로그인 시만 노출) -->
     <div class="tx-favbar" id="lsChatBar" style="display:none;">
-      <span class="bar-label">💬 채팅중인 매물</span>
+      <span class="bar-label" style="display:inline-flex; align-items:center; gap:4px;"><span id="listingsChatBarIcon" aria-hidden="true"></span><span>채팅중인 매물</span></span>
       <div id="lsChatChips"></div>
     </div>
   </div>
@@ -388,6 +390,10 @@
 <script src="/static/js/listing_icons.js"></script>
 <script src="/static/js/listing_checklist.js"></script>
 <script src="/static/js/listing_modal.js"></script>
+<script>
+  if (window.Icons) document.getElementById("listingsChatBarIcon").innerHTML = Icons.messageCircle(14);
+  if (window.lucide) lucide.createIcons();
+</script>
 <script>
 (function(){
   "use strict";
@@ -685,7 +691,7 @@
         chip.style.cursor = "pointer";
         const lbl = document.createElement("span");
         lbl.className = "label";
-        lbl.textContent = "💬 " + (it.building_name || "(건물명 없음)");
+        lbl.innerHTML = Icons.messageCircle(14) + " " + esc(it.building_name || "(건물명 없음)");
         lbl.title = "이 매물만 보기";
         lbl.addEventListener("click", () => {
           chatFilterId = it.listing_request_id;
@@ -798,12 +804,12 @@
     const countBadge = window.LivingstayListingIcons.photoCount(photoCount);
     if (isCard){
       return `<span class="ls-photo-frame">${photoUrl
-        ? `<img src="${esc(photoUrl)}" alt="매물 사진" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML='🏠'">`
-        : `🏠`}${countBadge}</span>`;
+        ? `<img src="${esc(photoUrl)}" alt="매물 사진" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML=window.Icons.home(44)">`
+        : `${Icons.home(44)}`}${countBadge}</span>`;
     }
     return `<span class="ls-photo-frame">${photoUrl
-      ? `<img class="td-thumb" src="${esc(photoUrl)}" alt="매물 사진" onerror="this.outerHTML='<span class=td-thumb-placeholder>🏠</span>'">`
-      : `<span class="td-thumb-placeholder">🏠</span>`}${countBadge}</span>`;
+      ? `<img class="td-thumb" src="${esc(photoUrl)}" alt="매물 사진" onerror="this.outerHTML='<span class=td-thumb-placeholder>'+window.Icons.home(24)+'</span>'">`
+      : `<span class="td-thumb-placeholder">${Icons.home(24)}</span>`}${countBadge}</span>`;
   }
 
   // ── NEW 뱃지 ────────────────────────────────────────────────────────

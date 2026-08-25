@@ -27,7 +27,7 @@ function syncFavBtn(){
     if (!item) return;
     const on = isFav(item);
     td.classList.toggle("on", on);
-    td.textContent = on ? "★" : "☆";
+    td.innerHTML = Icons.heart(16, on);
   });
 }
 
@@ -202,12 +202,12 @@ function escapeHtml(v){
   ));
 }
 
-// 💬 채팅방 열기 — listing_request_id로 방 생성 후 채팅 모달 오픈
+// 채팅방 열기 — listing_request_id로 방 생성 후 채팅 모달 오픈
 function _openListingChat(listingRequestId){
   return window.LivingstayChat.startListingChat(listingRequestId, openChatModal);
 }
 
-// 💬 인앱 채팅 모달 — room_id로 메시지 조회·전송
+// 인앱 채팅 모달 — room_id로 메시지 조회·전송
 function openChatModal(roomId){
   document.getElementById("chatModalOverlay")?.remove();
   const ov = document.createElement("div");
@@ -217,7 +217,7 @@ function openChatModal(roomId){
   ov.innerHTML = `
     <div id="chatModalBox" style="width:100%; max-width:520px; background:#fff; border-radius:16px 16px 0 0; display:flex; flex-direction:column; max-height:80vh; box-shadow:0 -4px 24px rgba(0,0,0,.18);">
       <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px 12px; border-bottom:1px solid var(--line); flex-shrink:0;">
-        <span style="font-size:15px; font-weight:700; color:var(--ink);">💬 <span id="chatOpponentName">상대방</span></span>
+        <span style="font-size:15px; font-weight:700; color:var(--ink); display:inline-flex; align-items:center; gap:5px;">${Icons.messageCircle(17)}<span id="chatOpponentName">상대방</span></span>
         <button id="chatModalClose" style="background:none; border:none; font-size:22px; color:var(--ink-soft); cursor:pointer; line-height:1; padding:0 4px;">×</button>
       </div>
       <div id="chatMsgList" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:8px;">
@@ -648,7 +648,7 @@ function rowHTML(t, idx){
   const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
   return `
     <tr>
-      <td class="col-star ${fav?'on':''}" onclick="handleStarClick(this)">${fav?'★':'☆'}</td>
+      <td class="col-star ${fav?'on':''}" onclick="handleStarClick(this)">${Icons.heart(16, fav)}</td>
       <td class="col-name">${t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)"} ${lodgingTag}</td>
       <td class="col-addr">${escapeHtml(t.si_do||'')} ${escapeHtml(t.sgg_nm||'')} ${escapeHtml(t.umd_nm||'')} ${escapeHtml(t.jibun||'')}</td>
       <td class="col-num col-area">${Number(t.area).toFixed(1)} ㎡</td>
@@ -668,7 +668,7 @@ function handleStarClick(td){
   const ok = toggleFav(item);
   if (ok === false) return;  // 상한 초과 시 표시 변경 안 함
   td.classList.toggle("on");
-  td.textContent = td.classList.contains("on") ? "★" : "☆";
+  td.innerHTML = Icons.heart(16, td.classList.contains("on"));
 }
 
 async function loadBoard(){
@@ -781,7 +781,12 @@ document.getElementById("btnSearch").addEventListener("click", async ()=>{
   const _sbt = document.getElementById("btnToggleSearch");
   if (_sb && !_sb.classList.contains("collapsed")){
     _sb.classList.add("collapsed");
-    if (_sbt) _sbt.textContent = "🔍 검색";
+    if (_sbt) {
+      const icon = _sbt.querySelector("#searchToggleIcon");
+      const label = _sbt.querySelector("span:last-child");
+      if (icon) icon.innerHTML = Icons.search(15);
+      if (label) label.textContent = "검색";
+    }
   }
   // q(건물명·주소) 또는 지역 필터(si_do/sgg_nm/umd_nm)가 있으면 fit:true로 지도를 해당 지역으로 이동
   const hasFit = !!(state.q || state.si_do || state.sgg_nm || state.umd_nm);
@@ -1750,8 +1755,8 @@ function updateMarkerLabels(){
   });
 }
 
-// ★ 마커 정보 내용 공용 빌더 — 호버 툴팁과 클릭 InfoWindow가 완전히 동일한
-// 내용(건물명·용도·최근 실거래 + ☆관심저장 버튼 + "상세보기 →" 링크)을 쓰도록
+// 마커 정보 내용 공용 빌더 — 호버 툴팁과 클릭 InfoWindow가 완전히 동일한
+// 내용(건물명·용도·최근 실거래 + 관심저장 버튼 + "상세보기 →" 링크)을 쓰도록
 // 한 곳에서 HTML을 만든다. 두 곳의 내용이 갈라지며 "이중 마커"처럼 느껴지던
 // 문제를 없애기 위한 단일 소스.
 function buildingInfoInnerHtml(b){
@@ -1782,13 +1787,13 @@ function buildingInfoInnerHtml(b){
     if (showMarkerTip){ try { localStorage.setItem("hs_marker_fav_tip_seen", "1"); } catch(e){} }
   }
   const markerTipHtml = showMarkerTip
-    ? `<div style="display:inline-block; font-size:11px; color:#B4863F; background:#fffbf3; border:1px solid #f0ddb0; border-radius:6px; padding:2px 8px; margin-bottom:3px;">☆를 눌러 저장해보세요</div><br>`
+    ? `<div style="display:inline-flex; align-items:center; gap:3px; font-size:11px; color:#B4863F; background:#fffbf3; border:1px solid #f0ddb0; border-radius:6px; padding:2px 8px; margin-bottom:3px;">${Icons.heart(13)}<span>를 눌러 저장해보세요</span></div><br>`
     : "";
   const favBtn = canFav
     ? markerTipHtml + `<button type="button" data-name="${escapeHtml(b.building_name || "")}" data-address="${escapeHtml(favAddr)}" data-bid="${b.id != null ? b.id : ""}"
          onclick="return window.toggleFavFromInfo(this);"
          style="border:none; background:none; cursor:pointer; padding:0; font-size:12.5px; font-weight:700; color:${favActive ? "#B4863F" : "#8a94a0"};">
-         ${favActive ? "★ 관심저장됨" : "☆ 관심저장"}</button>`
+         <span style="display:inline-flex; align-items:center; gap:4px;">${Icons.heart(14, favActive)}<span>${favActive ? "관심저장됨" : "관심저장"}</span></span></button>`
     : "";
   const actionRow = (favBtn || detailLink)
     ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">${favBtn}${detailLink}</div>`
@@ -2174,10 +2179,26 @@ async function updateMapForZoom(filters = {}, opts = {}){
   }
 }
 
+function initMapToolIcons(){
+  if (!window.Icons) return;
+  const toolIcons = {
+    iconMapType: Icons.layers,
+    iconRoadview: Icons.navigation,
+    iconMeasure: Icons.ruler,
+    iconEducation: Icons.graduationCap,
+    iconConvenience: Icons.storeIcon,
+  };
+  Object.entries(toolIcons).forEach(([id, icon]) => {
+    const element = document.getElementById(id);
+    if (element) element.innerHTML = icon(15);
+  });
+}
+
 async function initMap(){
   const container = document.getElementById("map");
   if (!container) return;
 
+  initMapToolIcons();
   const dv = mapDefaultView();
   kakaoMap = new kakao.maps.Map(container, {
     center: new kakao.maps.LatLng(dv.center.lat, dv.center.lng),
@@ -2189,7 +2210,7 @@ async function initMap(){
   // 확대/축소(+/-) 버튼 — 휠/핀치줌이 불안정할 때를 위한 명시적 컨트롤.
   // 우측 하단(BOTTOMRIGHT)에 배치하되, 같은 자리의 범례박스(.map-legend)와
   // 겹치지 않도록 범례 높이만큼 bottom 오프셋을 JS로 계산해 위로 띄운다.
-  // (우측 상단은 "🔍 검색" 버튼 자리라 비워둔다)
+  // (우측 상단은 검색 토글 버튼 자리라 비워둔다)
   kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.BOTTOMRIGHT);
   liftZoomControlAboveLegend();
   window.addEventListener("resize", () => setTimeout(liftZoomControlAboveLegend, 150));
@@ -2300,7 +2321,7 @@ window.toggleFavFromInfo = function(btn){
   const ok = toggleFav(item);
   if (ok === false) return false; // 상한 초과 시 표시 변경 안 함
   const active = isFav(item);
-  btn.textContent = active ? "★ 관심저장됨" : "☆ 관심저장";
+  btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:4px;">${Icons.heart(14, active)}<span>${active ? "관심저장됨" : "관심저장"}</span></span>`;
   btn.style.color = active ? "#B4863F" : "#8a94a0";
   return false;
 };
@@ -2465,7 +2486,7 @@ async function loadSideFavorites(){
   const allFavKeys = (typeof getFavorites === "function" ? getFavorites() : [])
     .slice().reverse(); // 최근 저장 우선
   if (!allFavKeys.length){
-    box.innerHTML = `<div class="side-empty">저장된 관심물건이 없습니다.<br>목록에서 ☆를 눌러 추가하세요.</div>`;
+    box.innerHTML = `<div class="side-empty">저장된 관심물건이 없습니다.<br><span style="display:inline-flex;align-items:center;gap:4px;">${Icons.heart(14)}<span>를 눌러 추가하세요.</span></span></div>`;
     return;
   }
 
@@ -4179,10 +4200,10 @@ async function loadBuildingHeader(id){
       </div>
     </div>` : ""}
     <div class="b-actions">
-      <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">🔔<span class="b-icon-label">실거래알림</span></button>
-      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">⭐<span class="b-icon-label">관심저장</span></button>
-      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">🔗<span class="b-icon-label">공유</span></button>
-      ${b.lat != null && b.lng != null ? `<button type="button" id="bMapLocBtn" class="b-icon-btn" title="지도 위치 보기">📍<span class="b-icon-label">지도위치</span></button>` : ""}
+      <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">${Icons.bell(18)}<span class="b-icon-label">실거래알림</span></button>
+      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">${Icons.star(18)}<span class="b-icon-label">관심저장</span></button>
+      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(18)}<span class="b-icon-label">공유</span></button>
+      ${b.lat != null && b.lng != null ? `<button type="button" id="bMapLocBtn" class="b-icon-btn" title="지도 위치 보기">${Icons.mapPin(18)}<span class="b-icon-label">지도위치</span></button>` : ""}
     </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
 
@@ -4319,7 +4340,7 @@ async function loadBuildingHeader(id){
               <span id="directListingPhotoCount" style="position:absolute;right:12px;bottom:10px;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:11px;font-weight:700;">1 / ${photos.length}</span>
               <div id="directListingPhotoThumbs" style="position:absolute;left:10px;bottom:9px;display:flex;gap:5px;max-width:calc(100% - 86px);overflow:auto;">${photos.map((src, index) => `<button type="button" data-photo-index="${index}" aria-label="사진 ${index + 1} 보기" style="width:34px;height:27px;padding:0;flex:0 0 auto;border:${index === 0 ? "2px solid #fff" : "1px solid rgba(255,255,255,.72)"};border-radius:4px;overflow:hidden;background:#fff;cursor:pointer;"><img src="${escapeHtml(src)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"></button>`).join("")}</div>` : ""}
             </div>`
-          : `<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>`;
+          : `<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;">${Icons.home(56)}</div>`;
         const isWholeListing = lr.is_whole_listing || lr.transaction_target === "whole";
         const sqm = !isWholeListing && lr.area_sqm ? `${parseFloat(lr.area_sqm).toFixed(1)}㎡` : "";
         const listingMeta = [
@@ -4559,8 +4580,8 @@ async function loadBuildingHeader(id){
         const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
         const photoSrc = photos[0] ? escapeHtml(photos[0]) : null;
         const photoHtml = photoSrc
-          ? `<img src="${photoSrc}" alt="매물 사진" onerror="this.parentElement.innerHTML='🏠'">`
-          : "🏠";
+          ? `<img src="${photoSrc}" alt="매물 사진" onerror="this.parentElement.innerHTML=window.Icons.home(40)">`
+          : Icons.home(40);
         if (isWholeListing) {
           return _wholeListingCard(lr, lrId, photoHtml, photos.length, dt);
         }
@@ -5073,12 +5094,12 @@ function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
 
   const applyHref = `/apply/operator?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
   box.innerHTML = consignItems.map(it => {
-    const badge = it.tier === "premium" ? "🧭" : "📍";
+    const badge = it.tier === "premium" ? Icons.compass(14) : Icons.mapPin(14);
     const nameEl = it.tier === "premium" && it.subdomain_slug
       ? `<a href="/operator/${encodeURIComponent(it.subdomain_slug)}?building_id=${buildingId}&building_name=${encodeURIComponent(buildingName||"")}" style="font-size:13px; font-weight:700; color:var(--ink); text-decoration:none;">${escapeHtml(it.company_name)}</a>`
       : `<span style="font-size:13px; font-weight:600; color:var(--ink);">${escapeHtml(it.company_name)}</span>`;
     return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
-      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0;">${badge} 위탁</span>
+      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0; display:inline-flex; align-items:center; gap:3px;">${badge}<span>위탁</span></span>
       <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nameEl}</span>
       ${it.phone ? `<a href="tel:${escapeHtml(it.phone)}" style="font-size:16px; text-decoration:none;" onclick="event.stopPropagation();">📞</a>` : ""}
     </div>`;
@@ -5109,7 +5130,7 @@ function renderBuildingLoanConsultants(consultants, buildingId, buildingName, bu
     const contactRow = c.phone ? `
       <div style="display:flex;gap:14px;margin-top:6px;">
         <a href="tel:${escapeHtml(c.phone)}" style="font-size:18px;text-decoration:none;" onclick="event.stopPropagation();" aria-label="전화">📞</a>
-        <a href="sms:${escapeHtml(c.phone)}" style="font-size:18px;text-decoration:none;" onclick="event.stopPropagation();" aria-label="문자">💬</a>
+        <a href="sms:${escapeHtml(c.phone)}" style="font-size:18px;text-decoration:none;display:inline-flex;" onclick="event.stopPropagation();" aria-label="문자">${Icons.messageCircle(17)}</a>
         ${isGold && kakaoUrl ? `<a href="${escapeHtml(kakaoUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:18px;text-decoration:none;" aria-label="카카오">💛</a>` : ""}
       </div>` : "";
     return `<div ${wrap}><div style="display:flex;align-items:center;gap:12px;">${avatar}<div style="flex:1;min-width:0;">${nameEl}</div>${contactRow}</div></div>`;
@@ -5134,10 +5155,10 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
     if (agentCard) agentCard.style.display = "";
     // 최대 3명 카드 스택 — 기존 단일 카드 스타일을 세로로 나열 (서버가 priority_score DESC, RANDOM()으로 최대 3명 반환)
     box.innerHTML = list.map((agent) => {
-      // 프로필 사진(photo_src)이 있으면 원형 썸네일, 없으면 기존 🏢 아이콘 (아실 스타일)
+      // 프로필 사진(photo_src)이 없으면 건물 아이콘을 원형 썸네일에 표시한다.
       const avatar = agent.photo_src
-        ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;&quot;>🏢</div>'">`
-        : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center; font-size:18px;">🏢</div>`;
+        ? `<img src="${escapeHtml(agent.photo_src)}" alt="담당중개사 사진" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid var(--line); flex-shrink:0;" onerror="this.outerHTML='<div style=&quot;width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center;&quot;>'+window.Icons.building(18)+'</div>'">`
+        : `<div style="width:40px; height:40px; border-radius:50%; background:var(--brass-tint); color:var(--brass-dark); display:flex; align-items:center; justify-content:center;">${Icons.building(18)}</div>`;
       // 이 건물 한정 매물 건수 배지 4개 — 값이 0이어도 표시, 한 줄 고정 (agent_buildings 기준)
       const cnt = (v) => (v == null ? 0 : v);
       const badge = (label, v) => `<span style="display:inline-flex; align-items:center; font-size:8.4px; font-weight:700; color:var(--brass-dark); white-space:nowrap;">${label}(${cnt(v)})</span>`;
@@ -5148,8 +5169,8 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
       const hasBadge = agent.has_priority_badge && !isRegion;
       const avatarWrap = `<div style="position:relative; flex-shrink:0; padding-bottom:${hasBadge || isRegion ? "14" : "0"}px;">
         ${avatar}
-        ${hasBadge ? `<span style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:2px; font-size:9.5px; font-weight:700; color:#fff; background:var(--brass-dark); padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">🧭 단지</span>` : ""}
-        ${isRegion ? `<span style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:2px; font-size:9.5px; font-weight:700; color:#fff; background:#9AA5B1; padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">📍 지역담당</span>` : ""}
+        ${hasBadge ? `<span style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:2px; font-size:9.5px; font-weight:700; color:#fff; background:var(--brass-dark); padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">${Icons.compass(11)}<span>단지</span></span>` : ""}
+        ${isRegion ? `<span style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:2px; font-size:9.5px; font-weight:700; color:#fff; background:#9AA5B1; padding:2px 7px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3); white-space:nowrap;">${Icons.mapPin(11)}<span>지역담당</span></span>` : ""}
       </div>`;
       return `
       <div style="padding:10px 0; border-bottom:1px solid var(--line, #eee);">
@@ -5162,7 +5183,7 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
             ${isRegion ? "" : badges}
             ${agent.phone ? `<div style="display:flex; gap:24px; margin-top:6px;">
               <a href="tel:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">📞 전화</a>
-              <a href="sms:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none;" onclick="event.stopPropagation();">💬 문자</a>
+              <a href="sms:${escapeHtml(agent.phone)}" style="font-size:12px; color:var(--brass-dark); text-decoration:none; display:inline-flex; align-items:center; gap:3px;" onclick="event.stopPropagation();">${Icons.messageCircle(13)}<span>문자</span></a>
             </div>` : ""}
             ${agent.office_phone ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">☎️ ${escapeHtml(window.formatPhone ? formatPhone(agent.office_phone) : agent.office_phone)}</div>` : ""}
           </div>
