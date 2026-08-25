@@ -189,6 +189,7 @@ async function checkRoadviewMiniMapBehavior() {
     constructor(element, options) {
       this.element = element;
       this.center = options.center;
+      this.options = options;
       this.relayoutCalls = 0;
       this.overlayMapTypeIds = [];
       miniMaps.push(this);
@@ -253,6 +254,14 @@ async function checkRoadviewMiniMapBehavior() {
   context.__miniMapTest.sync(first);
   if (miniMaps.length !== 1 || miniMaps[0].center !== first) {
     throw new Error("로드뷰 미니맵을 생성하고 첫 위치를 중심으로 설정하지 않음");
+  }
+  if (
+    miniMaps[0].options.draggable !== true ||
+    miniMaps[0].options.zoomable !== true ||
+    miniMaps[0].options.scrollwheel !== true ||
+    miniMaps[0].options.disableDoubleClick !== false
+  ) {
+    throw new Error("로드뷰 미니맵의 마우스 이동·확대·축소 설정이 활성화되지 않음");
   }
   if (context.__miniMapTest.marker().position !== first) {
     throw new Error("로드뷰 미니맵의 현재 위치 마커를 생성하지 않음");

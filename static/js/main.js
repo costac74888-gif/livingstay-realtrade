@@ -1426,9 +1426,9 @@ function _ensureRoadviewMiniMap(position){
       center,
       level: 3,
       draggable: true,
-      zoomable: false,
-      scrollwheel: false,
-      disableDoubleClick: true,
+      zoomable: true,
+      scrollwheel: true,
+      disableDoubleClick: false,
     });
     _roadviewMiniCamera = document.createElement("div");
     _roadviewMiniCamera.className = "roadview-mini-camera";
