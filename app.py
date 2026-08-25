@@ -31,7 +31,7 @@ import hmac
 import threading
 import subprocess
 import secrets as _secrets
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from functools import wraps
 from urllib.parse import quote, urlencode, urlparse
 import requests
@@ -1858,6 +1858,188 @@ def get_transactions():
 # 키 = 필터 파라미터 문자열, 값 = (저장시각, 직렬화된 JSON 바이트)
 _geo_cache: dict = {}
 _GEO_CACHE_TTL = 45  # seconds
+
+# 지도 주변정보 조회는 브라우저에 REST 키를 노출하지 않도록 서버에서만 호출한다.
+_MAP_POI_CATEGORIES = {
+    "education": (
+        ("SC4", "학교"),
+        ("AC5", "학원"),
+    ),
+    "convenience": (
+        ("CS2", "편의점"),
+        ("HP8", "병원"),
+        ("PM9", "약국"),
+        ("PK6", "주차장"),
+    ),
+}
+_KAKAO_LOCAL_CATEGORY_URL = "https://dapi.kakao.com/v2/local/search/category.json"
+_MAP_POI_CACHE_TTL = 30
+_MAP_POI_CACHE: dict = {}
+# 외부 API가 지연돼도 단일 sync worker를 길게 점유하지 않도록, 동시에 두 지도
+# 요청만 외부 호출을 시작하고 카테고리는 제한된 공유 executor에서 병렬로 조회한다.
+_MAP_POI_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="map-poi")
+_MAP_POI_INFLIGHT = threading.BoundedSemaphore(2)
+
+
+def _fetch_map_poi_category(client_id, category_code, lng, lat, radius):
+    response = requests.get(
+        _KAKAO_LOCAL_CATEGORY_URL,
+        headers={"Authorization": f"KakaoAK {client_id}"},
+        params={
+            "category_group_code": category_code,
+            "x": lng,
+            "y": lat,
+            "radius": radius,
+            "sort": "distance",
+            "size": 15,
+        },
+        timeout=5,
+    )
+    response.raise_for_status()
+    return response.json().get("documents", [])
+
+
+@app.route("/api/map/poi")
+@limiter.limit("12 per minute")
+def map_poi():
+    """현재 지도 중심 주변의 교육·편의시설을 Kakao Local에서 조회한다.
+
+    카카오 REST 키는 서버에서만 사용하고, 클라이언트에는 장소에 필요한
+    표시 정보만 반환한다. category/type과 좌표를 엄격히 검증해 잘못된
+    요청이나 과도한 검색 반경이 외부 API 호출로 이어지지 않게 한다.
+    """
+    poi_type = request.args.get("type", "").strip().lower()
+    if poi_type not in _MAP_POI_CATEGORIES:
+        return jsonify({
+            "ok": False,
+            "message": "type은 education 또는 convenience여야 합니다.",
+        }), 400
+
+    try:
+        lat = float(request.args.get("lat", ""))
+        lng = float(request.args.get("lng", ""))
+        radius = int(request.args.get("radius", "1500"))
+    except (TypeError, ValueError):
+        return jsonify({
+            "ok": False,
+            "message": "lat, lng, radius 값을 확인해주세요.",
+        }), 400
+    if (
+        not math.isfinite(lat) or not math.isfinite(lng)
+        or not -90 <= lat <= 90
+        or not -180 <= lng <= 180
+        or radius < 100
+        or radius > 5000
+    ):
+        return jsonify({
+            "ok": False,
+            "message": "좌표 또는 검색 반경이 올바르지 않습니다.",
+        }), 400
+
+    client_id = os.environ.get("KAKAO_REST_API_KEY", "").strip()
+    if not client_id:
+        app.logger.warning("[map-poi] KAKAO_REST_API_KEY 미설정")
+        return jsonify({
+            "ok": False,
+            "message": "주변정보 기능을 사용할 수 없습니다. 카카오 API 설정을 확인해주세요.",
+        }), 503
+
+    cache_key = f"{poi_type}:{round(lat, 4)}:{round(lng, 4)}:{radius}"
+    cached = _MAP_POI_CACHE.get(cache_key)
+    if cached and time.time() - cached["ts"] < _MAP_POI_CACHE_TTL:
+        return jsonify(cached["payload"])
+    if not _MAP_POI_INFLIGHT.acquire(blocking=False):
+        return jsonify({
+            "ok": False,
+            "message": "주변정보 요청이 많습니다. 잠시 후 다시 시도해주세요.",
+        }), 503
+
+    items = []
+    seen_ids = set()
+    try:
+        futures = {
+            _MAP_POI_EXECUTOR.submit(
+                _fetch_map_poi_category,
+                client_id,
+                category_code,
+                lng,
+                lat,
+                radius,
+            ): category_label
+            for category_code, category_label in _MAP_POI_CATEGORIES[poi_type]
+        }
+        completed, pending = wait(futures, timeout=2.5)
+        if pending:
+            for future in pending:
+                future.cancel()
+            app.logger.warning(
+                "[map-poi] Kakao Local 응답 제한 시간 초과 (%s, %d/%d 완료)",
+                poi_type,
+                len(completed),
+                len(futures),
+            )
+            return jsonify({
+                "ok": False,
+                "message": "주변정보를 불러오는 데 시간이 걸립니다. 잠시 후 다시 시도해주세요.",
+            }), 502
+        for future, category_label in futures.items():
+            for document in future.result():
+                place_id = str(document.get("id") or "").strip()
+                if place_id and place_id in seen_ids:
+                    continue
+                if place_id:
+                    seen_ids.add(place_id)
+                try:
+                    item_lng = float(document.get("x"))
+                    item_lat = float(document.get("y"))
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(item_lat) or not math.isfinite(item_lng):
+                    continue
+                items.append({
+                    "id": place_id,
+                    "name": str(document.get("place_name") or "").strip(),
+                    "category": category_label,
+                    "category_name": str(document.get("category_name") or "").strip(),
+                    "address": str(document.get("road_address_name") or document.get("address_name") or "").strip(),
+                    "phone": str(document.get("phone") or "").strip(),
+                    "url": str(document.get("place_url") or "").strip(),
+                    "lat": item_lat,
+                    "lng": item_lng,
+                    "distance": str(document.get("distance") or "").strip(),
+                })
+    except requests.RequestException as exc:
+        app.logger.warning("[map-poi] Kakao Local 요청 실패: %s", str(exc)[:160])
+        return jsonify({
+            "ok": False,
+            "message": "주변정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
+        }), 502
+    except (ValueError, TypeError, KeyError, AttributeError):
+        app.logger.warning("[map-poi] Kakao Local 응답 형식 오류", exc_info=True)
+        return jsonify({
+            "ok": False,
+            "message": "주변정보 응답을 처리하지 못했습니다.",
+        }), 502
+    finally:
+        _MAP_POI_INFLIGHT.release()
+
+    items.sort(key=lambda item: (
+        float(item["distance"]) if item["distance"].isdigit() else float("inf")
+    ))
+    payload = {
+        "ok": True,
+        "type": poi_type,
+        "center": {"lat": lat, "lng": lng},
+        "radius": radius,
+        "items": items,
+    }
+    if len(_MAP_POI_CACHE) >= 200:
+        now = time.time()
+        for key, entry in list(_MAP_POI_CACHE.items()):
+            if now - entry["ts"] >= _MAP_POI_CACHE_TTL:
+                _MAP_POI_CACHE.pop(key, None)
+    _MAP_POI_CACHE[cache_key] = {"ts": time.time(), "payload": payload}
+    return jsonify(payload)
 
 # /api/buildings-cluster 서버 메모리 TTL 캐시 — GROUP BY 집계 결과 재사용
 _cluster_cache: dict = {}

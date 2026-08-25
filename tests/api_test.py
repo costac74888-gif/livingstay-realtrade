@@ -163,6 +163,112 @@ def check_user_stats_admin_api(client):
     return None
 
 
+def _check_map_poi_api(client):
+    """지도 주변정보 프록시의 입력 검증·키 은닉·응답 형태를 네트워크 없이 확인한다."""
+    failures = []
+    app_module._MAP_POI_CACHE.clear()
+    invalid_type = client.get("/api/map/poi?type=unknown&lat=37.5&lng=127.0")
+    if invalid_type.status_code != 400:
+        failures.append("지도 POI API가 잘못된 type을 거절하지 않음")
+    invalid_coords = client.get("/api/map/poi?type=education&lat=oops&lng=127.0")
+    if invalid_coords.status_code != 400:
+        failures.append("지도 POI API가 잘못된 좌표를 거절하지 않음")
+
+    with patch.dict(os.environ, {"KAKAO_REST_API_KEY": ""}, clear=False):
+        missing_key = client.get("/api/map/poi?type=education&lat=37.5&lng=127.0")
+    if missing_key.status_code != 503 or (missing_key.get_json() or {}).get("ok") is not False:
+        failures.append("지도 POI API가 REST 키 누락을 명시적으로 처리하지 않음")
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    requests_seen = []
+
+    def fake_get(url, headers, params, timeout):
+        requests_seen.append((url, headers, params, timeout))
+        code = params["category_group_code"]
+        return FakeResponse({"documents": [{
+            "id": f"fixture-{code}",
+            "place_name": f"{code} 장소",
+            "category_name": f"교육 > {code}",
+            "address_name": "서울시 테스트구",
+            "road_address_name": "",
+            "phone": "0212345678",
+            "place_url": "https://place.map.kakao.com/fixture",
+            "x": "127.0123",
+            "y": "37.5012",
+            "distance": "120",
+        }]})
+
+    with (
+        patch.dict(os.environ, {"KAKAO_REST_API_KEY": "test-kakao-key"}, clear=False),
+        patch.object(app_module.requests, "get", side_effect=fake_get),
+    ):
+        success = client.get("/api/map/poi?type=education&lat=37.5&lng=127.0&radius=1500")
+    payload = success.get_json() or {}
+    if success.status_code != 200 or payload.get("ok") is not True:
+        failures.append("지도 POI API가 정상 카카오 응답을 반환하지 않음")
+    elif (
+        payload.get("type") != "education"
+        or payload.get("radius") != 1500
+        or len(payload.get("items") or []) != 2
+        or any(not {"name", "category", "lat", "lng"} <= set(item) for item in payload["items"])
+    ):
+        failures.append("지도 POI API의 성공 응답 형태가 잘못됨")
+    if len(requests_seen) != 2 or any(
+        call[0] != app_module._KAKAO_LOCAL_CATEGORY_URL
+        or call[1].get("Authorization") != "KakaoAK test-kakao-key"
+        or call[3] != 5
+        for call in requests_seen
+    ):
+        failures.append("지도 POI API가 카카오 Local 카테고리 호출 계약을 지키지 않음")
+    with patch.object(
+        app_module.requests,
+        "get",
+        side_effect=AssertionError("캐시된 지도 POI 요청이 외부 호출을 다시 시도함"),
+    ):
+        cached = client.get("/api/map/poi?type=education&lat=37.5&lng=127.0&radius=1500")
+    if cached.status_code != 200 or (cached.get_json() or {}).get("items") != payload.get("items"):
+        failures.append("지도 POI API가 짧은 TTL 캐시를 재사용하지 않음")
+
+    with (
+        patch.dict(os.environ, {"KAKAO_REST_API_KEY": "test-kakao-key"}, clear=False),
+        patch.object(
+            app_module.requests,
+            "get",
+            side_effect=app_module.requests.RequestException("fixture"),
+        ),
+    ):
+        upstream_error = client.get("/api/map/poi?type=convenience&lat=37.5&lng=127.0")
+    if upstream_error.status_code != 502:
+        failures.append("지도 POI API가 카카오 Local 장애를 502로 처리하지 않음")
+
+    app_module._MAP_POI_CACHE.clear()
+
+    def slow_get(*_args, **_kwargs):
+        time.sleep(3)
+        return FakeResponse({"documents": []})
+
+    started = time.monotonic()
+    with (
+        patch.dict(os.environ, {"KAKAO_REST_API_KEY": "test-kakao-key"}, clear=False),
+        patch.object(app_module.requests, "get", side_effect=slow_get),
+    ):
+        timed_out = client.get("/api/map/poi?type=convenience&lat=37.6&lng=127.1")
+    elapsed = time.monotonic() - started
+    if timed_out.status_code != 502 or elapsed > 2.8:
+        failures.append("지도 POI API가 지연된 카카오 응답을 전체 제한 시간 안에 중단하지 않음")
+
+    return failures
+
+
 def _daily_count(payload, series_key, day):
     row = next((item for item in payload[series_key] if item["date"] == day.isoformat()), None)
     return None if row is None else row["count"]
@@ -645,6 +751,12 @@ def run():
         failures.append(user_stats_data_error)
     else:
         print("OK  /api/admin/user-stats (날짜 경계·철회 상태·두 페이지뷰 INSERT)")
+
+    poi_errors = _check_map_poi_api(client)
+    if poi_errors:
+        failures += poi_errors
+    else:
+        print("OK  /api/map/poi (입력 검증·카카오 Local 응답·오류 처리)")
 
     failures += _check_member_login_history(client)
 

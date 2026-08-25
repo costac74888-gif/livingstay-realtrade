@@ -115,6 +115,23 @@ def run_local():
     except (OSError, subprocess.SubprocessError) as exc:
         failures.append(f"로그인 모달 비밀번호 찾기 흐름 테스트 실행 실패: {exc}")
 
+    toolbar_test = os.path.join(os.path.dirname(__file__), "map_toolbar_tools_test.js")
+    try:
+        result = subprocess.run(
+            ["node", toolbar_test],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            failures.append(f"지도 우측 툴바 계약: {detail}")
+        else:
+            print("OK  지도 우측 툴바 (도구 마크업·모바일 CSS·SDK 계약)")
+    except (OSError, subprocess.SubprocessError) as exc:
+        failures.append(f"지도 우측 툴바 계약 테스트 실행 실패: {exc}")
+
     return failures
 
 

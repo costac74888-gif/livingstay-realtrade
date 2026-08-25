@@ -79,6 +79,45 @@
   <!-- 지도 좌측 상단: 좌측 패널(목록) 토글 — side-panel이 열리는 쪽, 모바일(≤980px) 전용 -->
   <button type="button" class="map-list-toggle" id="btnTogglePanel" aria-label="목록 열기">☰ <span class="htoggle-label">목록</span></button>
 
+  <!-- 지도 우측 도구 모음: 지도 SDK 기능과 주변 장소 조회 -->
+  <div class="map-toolbar" id="mapToolbar" role="toolbar" aria-label="지도 도구">
+    <button type="button" class="map-tool-btn" id="mapTypeTool" aria-pressed="false"
+      title="지도전환" aria-label="지도전환: 일반지도">
+      <span class="map-tool-icon" aria-hidden="true">▦</span><span class="map-tool-label">지도전환</span>
+      <span class="map-tool-state" id="mapTypeState">일반</span>
+    </button>
+    <button type="button" class="map-tool-btn" id="roadviewTool" aria-pressed="false"
+      title="로드뷰" aria-label="로드뷰 켜기">
+      <span class="map-tool-icon" aria-hidden="true">↗</span><span class="map-tool-label">로드뷰</span>
+    </button>
+    <button type="button" class="map-tool-btn" id="measureTool" aria-pressed="false"
+      title="거리 측정" aria-label="거리 측정 켜기">
+      <span class="map-tool-icon" aria-hidden="true">⌁</span><span class="map-tool-label">측정</span>
+    </button>
+    <button type="button" class="map-tool-btn" id="educationTool" aria-pressed="false"
+      title="교육시설 보기" aria-label="교육시설 보기">
+      <span class="map-tool-icon" aria-hidden="true">학</span><span class="map-tool-label">교육</span>
+    </button>
+    <button type="button" class="map-tool-btn" id="convenienceTool" aria-pressed="false"
+      title="편의시설 보기" aria-label="편의시설 보기">
+      <span class="map-tool-icon" aria-hidden="true">편</span><span class="map-tool-label">편의</span>
+    </button>
+  </div>
+
+  <div class="roadview-panel" id="roadviewPanel" aria-hidden="true">
+    <div class="roadview-panel-head">
+      <strong>로드뷰</strong>
+      <button type="button" id="roadviewClose" aria-label="로드뷰 닫기">×</button>
+    </div>
+    <div id="roadview" class="roadview-canvas"></div>
+    <p id="roadviewHint" class="roadview-hint">지도를 클릭하면 해당 위치의 로드뷰를 찾습니다.</p>
+  </div>
+
+  <div class="map-measure-panel" id="measurePanel" aria-live="polite" hidden>
+    <span id="measureStatus">지도를 클릭해 측정을 시작하세요.</span>
+    <button type="button" id="measureReset">초기화</button>
+  </div>
+
   <!-- 지도 위 상단 검색바 (기본 접힘) -->
   <div class="map-searchbar collapsed">
     <div class="search-grid">
