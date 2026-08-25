@@ -36,6 +36,15 @@ const missingCss = requiredCss.filter((token) => !css.includes(token));
 if (missingCss.length) {
   throw new Error(`지도 툴바 CSS 요소 누락: ${missingCss.join(", ")}`);
 }
+if (
+  html.includes('id="roadviewMiniMap"') ||
+  css.includes(".roadview-minimap") ||
+  js.includes("roadviewMiniMap") ||
+  js.includes("_roadviewMiniMap") ||
+  js.includes("_roadviewMiniMarker")
+) {
+  throw new Error("커스텀 로드뷰 미니맵 코드·DOM·CSS가 남아 있습니다.");
+}
 
 const requiredJs = [
   "MAP_TYPE_STEPS",
@@ -71,6 +80,9 @@ const activateBlock = js.slice(activateStart, activateEnd);
 const openRoadviewStart = js.indexOf("function _openRoadviewAt(latLng){");
 const openRoadviewEnd = js.indexOf("\nfunction _clearPoiResults()", openRoadviewStart);
 const openRoadviewBlock = js.slice(openRoadviewStart, openRoadviewEnd);
+const ensureRoadviewStart = js.indexOf("function _ensureRoadview(){");
+const ensureRoadviewEnd = js.indexOf("\nfunction _openRoadviewAt(latLng)", ensureRoadviewStart);
+const ensureRoadviewBlock = js.slice(ensureRoadviewStart, ensureRoadviewEnd);
 if (
   activateStart < 0 ||
   activateEnd < 0 ||
@@ -86,6 +98,15 @@ if (
   !openRoadviewBlock.includes('panel.classList.add("open")')
 ) {
   throw new Error("로드뷰 지점 클릭 시 패널을 여는 흐름이 없습니다.");
+}
+if (
+  ensureRoadviewStart < 0 ||
+  ensureRoadviewEnd < 0 ||
+  !ensureRoadviewBlock.includes("window.innerWidth > 520") ||
+  !ensureRoadviewBlock.includes("RoadviewMapControl") ||
+  !ensureRoadviewBlock.includes("RoadviewControlPosition")
+) {
+  throw new Error("카카오 정식 로드뷰 미니맵 컨트롤의 PC 전용 조건이 없습니다.");
 }
 
 const syntax = spawnSync(process.execPath, ["--check", path.join(root, "static", "js", "main.js")], {
