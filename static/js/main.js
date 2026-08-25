@@ -1244,6 +1244,8 @@ let _activeMapTool = null; // null | roadview | measure | education | convenienc
 let _mapToolOverlays = [];
 let _roadviewClient = null;
 let _roadview = null;
+let _roadviewMiniMap = null;
+let _roadviewMiniMarker = null;
 let _measurePoints = [];
 let _measureLine = null;
 let _measureLabel = null;
@@ -1391,6 +1393,34 @@ function _ensureRoadview(){
   if (!element) return false;
   _roadviewClient = new kakao.maps.RoadviewClient();
   _roadview = new kakao.maps.Roadview(element);
+  const miniMapElement = document.getElementById("roadviewMiniMap");
+  if (miniMapElement && kakao.maps.Map){
+    const center = kakaoMap && kakaoMap.getCenter
+      ? kakaoMap.getCenter()
+      : new kakao.maps.LatLng(37.5, 127);
+    _roadviewMiniMap = new kakao.maps.Map(miniMapElement, {
+      center,
+      level: 3,
+    });
+  }
+  if (kakao.maps.RoadviewMapControl && kakao.maps.RoadviewControlPosition){
+    const rvMapControl = new kakao.maps.RoadviewMapControl(true);
+    _roadview.addControl(kakao.maps.RoadviewControlPosition.LOWER_LEFT, rvMapControl);
+  } else if (_roadviewMiniMap && kakao.maps.Marker){
+    _roadview.addListener("position_changed", () => {
+      const position = _roadview.getPosition && _roadview.getPosition();
+      if (!position) return;
+      if (!_roadviewMiniMarker){
+        _roadviewMiniMarker = new kakao.maps.Marker({
+          map: _roadviewMiniMap,
+          position,
+        });
+      } else {
+        _roadviewMiniMarker.setPosition(position);
+      }
+      _roadviewMiniMap.setCenter(position);
+    });
+  }
   return true;
 }
 
@@ -2285,6 +2315,10 @@ function liftZoomControlAboveLegend(attempt){
   if (!btn || !wrap || wrap === mapEl){
     if (attempt < 15){ setTimeout(() => liftZoomControlAboveLegend(attempt + 1), 200); return; }
     console.warn("[MAP] 줌 컨트롤 버튼을 찾지 못함 — SDK DOM 구조 변경 가능성. 기본 위치 유지");
+    return;
+  }
+  if (window.innerWidth <= 520){
+    wrap.style.display = "none";
     return;
   }
   const legend = document.querySelector(".map-legend");

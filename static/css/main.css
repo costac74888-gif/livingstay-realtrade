@@ -328,23 +328,38 @@
   .inline-icon{display:inline-flex; vertical-align:middle; align-items:center;}
   .map-tool-label,.map-tool-state{display:none;}
   .roadview-panel{
-    position:absolute; left:calc(var(--panel-w) + var(--stage-gap) * 2);
-    right:calc(var(--stage-gap) + 104px); bottom:var(--stage-gap);
-    z-index:19; display:none; overflow:hidden; background:#fff;
-    border:1px solid var(--line); border-radius:12px; box-shadow:0 6px 24px rgba(22,32,46,.22);
+    position:fixed; inset:0;
+    z-index:300; display:none; overflow:hidden; background:#000;
   }
   .roadview-panel.open{display:block;}
   .roadview-panel-head{
+    position:absolute; top:0; left:0; right:0; z-index:2;
     display:flex; align-items:center; justify-content:space-between; gap:8px;
-    min-height:34px; padding:6px 10px; border-bottom:1px solid var(--line);
-    font-size:12px; color:var(--ink);
+    padding:10px 14px;
+    background:linear-gradient(180deg, rgba(0,0,0,.55), transparent);
+    color:#fff; font-size:13px;
   }
   .roadview-panel-head button{
-    width:25px; height:25px; border:0; border-radius:50%; background:#F1F3F5;
+    width:32px; height:32px; border:0; border-radius:50%;
+    background:rgba(255,255,255,.9);
     color:var(--ink); font-size:19px; line-height:1; cursor:pointer;
   }
-  .roadview-canvas{width:100%; height:min(38vh,300px); min-height:180px; background:#E9EDF0;}
-  .roadview-hint{margin:0; padding:6px 10px; color:var(--ink-soft); font-size:10.5px; line-height:1.4;}
+  .roadview-canvas{
+    width:100%; height:100%; min-height:0; background:#000;
+    touch-action:none; user-select:none;
+  }
+  .roadview-minimap{
+    position:absolute; left:12px; bottom:12px; z-index:2;
+    width:200px; height:150px; border-radius:8px; overflow:hidden;
+    border:2px solid #fff; box-shadow:0 4px 16px rgba(0,0,0,.3);
+    background:#E9EDF0;
+  }
+  .roadview-hint{
+    position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+    z-index:2; margin:0; padding:6px 14px; border-radius:20px;
+    background:rgba(0,0,0,.6); color:#fff; font-size:11.5px;
+    white-space:nowrap;
+  }
   .map-measure-panel{
     position:absolute; top:calc(var(--stage-gap) + 54px); right:calc(var(--stage-gap) + 102px);
     z-index:18; display:flex; align-items:center; gap:8px; max-width:260px;
@@ -573,10 +588,10 @@
     }
     .map-tool-icon{width:20px; height:20px;}
     .roadview-panel{
-      left:var(--stage-gap); right:var(--stage-gap);
-      bottom:calc(var(--stage-gap) + 52px);
+      inset:0;
     }
-    .roadview-canvas{height:min(42vh,280px);}
+    .roadview-canvas{height:100%; min-height:0;}
+    .roadview-minimap{width:120px; height:90px;}
     .map-measure-panel{
       top:calc(var(--stage-gap) + 54px); right:calc(var(--stage-gap) + 54px);
       max-width:calc(100vw - 116px);
@@ -633,6 +648,14 @@
       box-shadow:0 4px 14px rgba(0,0,0,.28);
     }
   }
+
+@media (max-width:520px){
+  /* 카카오맵 기본 줌 컨트롤 — 모바일에서 숨김 (핀치줌으로 대체) */
+  #map .zoomcontrol,
+  #map [class*="zoom"]{
+    display:none !important;
+  }
+}
 
 /* ============================================================
    관리자(E화면) 전용 스타일 — admin_login.html / admin.html / 재사용 DataGrid
