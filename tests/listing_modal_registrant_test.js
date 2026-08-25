@@ -144,9 +144,34 @@ expect(
   modal.includes("else showListingForm()"),
   "기존 휴대폰 인증 계정 건너뛰기 또는 사업주 신고번호 인증 흐름이 없습니다."
 );
+const targetSwitchAt = modal.indexOf('transactionTarget = nextTarget;');
+const targetSwitchEnd = modal.indexOf("\n      });\n    });", targetSwitchAt);
+const targetSwitchBlock = modal.slice(targetSwitchAt, targetSwitchEnd);
+expect(
+  targetSwitchAt >= 0 &&
+  targetSwitchBlock.includes('$("#lrRegistrantType").value === "business" && transactionTarget === "whole"') &&
+  targetSwitchBlock.includes("checkBusinessVerification();") &&
+  targetSwitchBlock.includes("showListingForm();"),
+  "거래대상을 건물전체로 전환할 때 사업주 인증 재판단이 없습니다."
+);
+const registrantChangeAt = modal.indexOf('$("#lrRegistrantType").addEventListener("change"');
+const registrantChangeEnd = modal.indexOf("\n    function updateClosedAt()", registrantChangeAt);
+const registrantChangeBlock = modal.slice(registrantChangeAt, registrantChangeEnd);
+expect(
+  registrantChangeBlock.includes('this.value === "business" && transactionTarget === "whole"') &&
+  registrantChangeBlock.includes("checkBusinessVerification();") &&
+  registrantChangeBlock.includes("showListingForm();"),
+  "개별호실 사업주 선택 시 영업신고번호 검증을 건너뛰는 조건이 없습니다."
+);
 const verifyStart = modal.indexOf("function checkBusinessVerification()");
 const verifyEnd = modal.indexOf("\n    }\n    $(\"#lrBusinessVerifySubmit\")", verifyStart);
 const verifyBlock = modal.slice(verifyStart, verifyEnd);
+expect(
+  verifyBlock.includes('$("#lrRegistrantType").value !== "business"') &&
+  verifyBlock.includes('transactionTarget !== "whole"') &&
+  verifyBlock.indexOf("showListingForm();") < verifyBlock.indexOf('fetch("/api/building/"'),
+  "영업신고번호 검증 함수의 사업주·건물전체 이중 가드가 없습니다."
+);
 const verifyFetchAt = verifyBlock.indexOf('fetch("/api/building/"');
 const verifyGateAfterFetchAt = verifyBlock.indexOf("showBusinessGate();", verifyFetchAt);
 expect(

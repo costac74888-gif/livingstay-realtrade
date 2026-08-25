@@ -622,6 +622,11 @@
           : (DEAL_TYPES.indexOf(dealType) >= 0 ? dealType : "매매");
         updateTransactionTarget();
         saveDraft();
+        if ($("#lrRegistrantType").value === "business" && transactionTarget === "whole") {
+          checkBusinessVerification();
+        } else {
+          showListingForm();
+        }
       });
     });
     Array.prototype.forEach.call(overlay.querySelectorAll(".lr-deal"), function (button) {
@@ -645,8 +650,11 @@
     $("#lrRegistrantType").addEventListener("change", function () {
       updateRegistrantTypeFlag();
       saveDraft();
-      if (this.value === "business") checkBusinessVerification();
-      else if (!isEdit || form.style.display !== "none") showListingForm();
+      if (this.value === "business" && transactionTarget === "whole") {
+        checkBusinessVerification();
+      } else {
+        showListingForm();
+      }
     });
     function updateClosedAt() {
       $("#lrClosedAt").style.display = $("#lrOperationStatus").value === "폐업" ? "block" : "none";
@@ -686,7 +694,8 @@
     updateMode();
     updateClosedAt();
     updateTransactionTarget();
-    if (isEdit && $("#lrRegistrantType").value === "business") checkBusinessVerification();
+    if (isEdit && $("#lrRegistrantType").value === "business"
+        && transactionTarget === "whole") checkBusinessVerification();
     if (draftRestored) {
       setTimeout(function () { setMessage("이전에 작성 중이던 내용을 불러왔습니다."); }, 0);
     }
@@ -729,7 +738,8 @@
       businessGate.style.display = "block";
     }
     function checkBusinessVerification() {
-      if ($("#lrRegistrantType").value !== "business") {
+      if ($("#lrRegistrantType").value !== "business"
+          || transactionTarget !== "whole") {
         showListingForm();
         return;
       }
@@ -868,7 +878,8 @@
           if (typeof window.livingstayRefreshAuth === "function") window.livingstayRefreshAuth();
           window.dispatchEvent(new CustomEvent("livingstay:auth"));
           restoreDraftForUser(draftUser);
-          if ($("#lrRegistrantType").value === "business") checkBusinessVerification();
+          if ($("#lrRegistrantType").value === "business"
+              && transactionTarget === "whole") checkBusinessVerification();
           else showListingForm();
         }).catch(function (error) {
           button.disabled = false;
@@ -888,7 +899,8 @@
           }
           if (user && user.phone_verified && user.phone) {
             restoreDraftForUser(draftUser);
-            if ($("#lrRegistrantType").value === "business") checkBusinessVerification();
+            if ($("#lrRegistrantType").value === "business"
+                && transactionTarget === "whole") checkBusinessVerification();
             else showListingForm();
             return;
           }
