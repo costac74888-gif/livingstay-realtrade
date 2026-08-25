@@ -353,9 +353,15 @@
     width:190px; height:132px; overflow:visible;
     transition:width .18s ease, height .18s ease;
   }
-  .roadview-minimap-wrap.is-expanded{
-    width:min(360px, calc(100vw - 32px));
-    height:min(250px, calc(100vh - 96px));
+  .roadview-minimap-wrap[data-mini-size="1"]{
+    width:270px; height:188px;
+  }
+  .roadview-minimap-wrap[data-mini-size="2"]{
+    width:380px; height:264px;
+  }
+  .roadview-minimap-wrap[data-mini-size="3"]{
+    left:0; bottom:0;
+    width:50vw; height:100vh;
   }
   .roadview-minimap{
     width:100%; height:100%; overflow:hidden;
@@ -380,6 +386,23 @@
   .roadview-minimap-expand:hover,
   .roadview-minimap-expand:focus-visible{
     background:rgba(180,134,63,.96); outline:2px solid #fff; outline-offset:-3px;
+  }
+  .roadview-mini-camera{
+    position:relative; width:25px; height:25px; border:2px solid #fff;
+    border-radius:50%; background:#378ADD;
+    box-shadow:0 2px 7px rgba(22,32,46,.45);
+    transform-origin:center;
+  }
+  .roadview-mini-camera::before{
+    content:""; position:absolute; left:50%; top:-8px;
+    width:0; height:0; transform:translateX(-50%);
+    border-left:6px solid transparent; border-right:6px solid transparent;
+    border-bottom:10px solid #378ADD;
+    filter:drop-shadow(0 -1px 0 #fff);
+  }
+  .roadview-mini-camera::after{
+    content:""; position:absolute; inset:6px; border-radius:50%;
+    background:#fff;
   }
   .roadview-hint{
     position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
@@ -621,9 +644,14 @@
     .roadview-minimap-wrap{
       left:12px; bottom:48px; width:142px; height:98px;
     }
-    .roadview-minimap-wrap.is-expanded{
-      width:min(280px, calc(100vw - 24px));
-      height:min(190px, calc(100vh - 84px));
+    .roadview-minimap-wrap[data-mini-size="1"]{
+      width:220px; height:152px;
+    }
+    .roadview-minimap-wrap[data-mini-size="2"]{
+      width:calc(100vw - 24px); height:220px;
+    }
+    .roadview-minimap-wrap[data-mini-size="3"]{
+      left:0; bottom:0; width:100vw; height:55vh;
     }
     .map-measure-panel{
       top:calc(var(--stage-gap) + 54px); right:calc(var(--stage-gap) + 54px);

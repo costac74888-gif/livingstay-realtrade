@@ -33,6 +33,8 @@ const requiredCss = [
   ".roadview-panel.open",
   ".roadview-minimap-wrap",
   ".roadview-minimap",
+  ".roadview-minimap-wrap[data-mini-size=\"3\"]",
+  ".roadview-mini-camera",
   ".map-measure-panel",
   ".map-poi-marker",
   "@media (max-width: 980px)",
@@ -47,8 +49,10 @@ const requiredJs = [
   "function _ensureRoadviewMiniMap",
   "function _syncRoadviewMiniMap",
   "function _bindRoadviewMiniMapControls",
+  "function _setRoadviewMiniMapSize",
+  "function _syncRoadviewMiniCamera",
   "new kakao.maps.Map",
-  "new kakao.maps.Marker",
+  "new kakao.maps.CustomOverlay",
   "new kakao.maps.Polyline",
   "new kakao.maps.CustomOverlay",
   "/api/map/poi?",
@@ -164,6 +168,15 @@ async function checkRoadviewMiniMapBehavior() {
   const toolCode = js.slice(blockStart, blockEnd);
   const elements = new Map();
   const miniMaps = [];
+  const miniMapWrap = { dataset: {} };
+  const miniMapExpand = {
+    handlers: {},
+    attributes: {},
+    addEventListener(type, handler) { this.handlers[type] = handler; },
+    setAttribute(name, value) { this.attributes[name] = value; },
+  };
+  elements.set("roadviewMiniMapWrap", miniMapWrap);
+  elements.set("roadviewMiniMapExpand", miniMapExpand);
   class LatLng {
     constructor(lat, lng) {
       this.lat = Number(lat);
@@ -180,14 +193,25 @@ async function checkRoadviewMiniMapBehavior() {
     setCenter(position) { this.center = position; }
     relayout() { this.relayoutCalls++; }
   }
-  class Marker {
-    constructor(options) { this.position = options.position; }
+  class MiniOverlay {
+    constructor(options) {
+      this.position = options.position;
+      this.content = options.content;
+    }
+    setMap() {}
     setPosition(position) { this.position = position; }
   }
   const context = {
     clearTimeout,
     setTimeout,
     document: {
+      createElement() {
+        return {
+          className: "",
+          style: {},
+          setAttribute() {},
+        };
+      },
       getElementById(id) {
         if (!elements.has(id)) elements.set(id, {});
         return elements.get(id);
@@ -197,7 +221,7 @@ async function checkRoadviewMiniMapBehavior() {
     kakao: {
       maps: {
         Map: MiniMap,
-        Marker,
+        CustomOverlay: MiniOverlay,
       },
     },
   };
@@ -209,6 +233,10 @@ async function checkRoadviewMiniMapBehavior() {
     globalThis.__miniMapTest = {
       sync: _syncRoadviewMiniMap,
       marker() { return _roadviewMiniMarker; },
+      camera() { return _roadviewMiniCamera; },
+      expand() { document.getElementById("roadviewMiniMapExpand").handlers.click(); },
+      setRoadview(roadview) { _roadview = roadview; },
+      syncCamera: _syncRoadviewMiniCamera,
     };
   `, context);
 
@@ -224,6 +252,19 @@ async function checkRoadviewMiniMapBehavior() {
   context.__miniMapTest.sync(second);
   if (miniMaps[0].center !== second || context.__miniMapTest.marker().position !== second) {
     throw new Error("로드뷰 위치 변경을 미니맵과 마커에 반영하지 않음");
+  }
+  ["1", "2", "3", "0"].forEach((expectedSize) => {
+    context.__miniMapTest.expand();
+    if (miniMapWrap.dataset.miniSize !== expectedSize) {
+      throw new Error(`미니맵 확대 단계가 순차적으로 전환되지 않음: ${expectedSize} 단계`);
+    }
+  });
+  context.__miniMapTest.setRoadview({
+    getViewpoint() { return { pan: 135 }; },
+  });
+  context.__miniMapTest.syncCamera();
+  if (context.__miniMapTest.camera().style.transform !== "rotate(135deg)") {
+    throw new Error("로드뷰 시선 방향을 미니맵 카메라에 반영하지 않음");
   }
   await waitFor(() => miniMaps[0].relayoutCalls > 0, "로드뷰 미니맵 relayout");
 }

@@ -1246,7 +1246,9 @@ let _roadviewClient = null;
 let _roadview = null;
 let _roadviewMiniMap = null;
 let _roadviewMiniMarker = null;
+let _roadviewMiniCamera = null;
 let _roadviewMiniMapControlsBound = false;
+let _roadviewMiniMapSize = 0;
 let _measurePoints = [];
 let _measureLine = null;
 let _measureLabel = null;
@@ -1301,6 +1303,26 @@ function _roadviewMiniMapCenter(){
   return kakaoMap && kakaoMap.getCenter ? kakaoMap.getCenter() : null;
 }
 
+function _roadviewMiniMapSizeLabel(){
+  return _roadviewMiniMapSize >= 3 ? "미니맵 축소" : "미니맵 확대";
+}
+
+function _setRoadviewMiniMapSize(size){
+  const wrap = document.getElementById("roadviewMiniMapWrap");
+  const button = document.getElementById("roadviewMiniMapExpand");
+  _roadviewMiniMapSize = size > 3 ? 0 : Math.max(0, size);
+  if (wrap) wrap.dataset.miniSize = String(_roadviewMiniMapSize);
+  if (button){
+    const expanded = _roadviewMiniMapSize > 0;
+    button.setAttribute("aria-expanded", String(expanded));
+    button.setAttribute("aria-label", _roadviewMiniMapSizeLabel());
+    button.setAttribute("title", _roadviewMiniMapSizeLabel());
+  }
+  setTimeout(() => {
+    if (_roadviewMiniMap) _roadviewMiniMap.relayout();
+  }, 180);
+}
+
 function _bindRoadviewMiniMapControls(){
   if (_roadviewMiniMapControlsBound) return;
   const wrap = document.getElementById("roadviewMiniMapWrap");
@@ -1308,18 +1330,21 @@ function _bindRoadviewMiniMapControls(){
   if (!wrap || !button || !button.addEventListener) return;
   _roadviewMiniMapControlsBound = true;
   button.addEventListener("click", () => {
-    const expanded = wrap.classList.toggle("is-expanded");
-    button.setAttribute("aria-expanded", String(expanded));
-    button.setAttribute("aria-label", expanded ? "미니맵 축소" : "미니맵 확대");
-    button.setAttribute("title", expanded ? "미니맵 축소" : "미니맵 확대");
-    setTimeout(() => {
-      if (_roadviewMiniMap) _roadviewMiniMap.relayout();
-    }, 180);
+    _setRoadviewMiniMapSize(_roadviewMiniMapSize + 1);
   });
 }
 
+function _syncRoadviewMiniCamera(){
+  if (!_roadview || !_roadviewMiniCamera || !_roadview.getViewpoint) return;
+  const viewpoint = _roadview.getViewpoint();
+  const pan = Number(viewpoint && viewpoint.pan);
+  if (Number.isFinite(pan)){
+    _roadviewMiniCamera.style.transform = `rotate(${pan}deg)`;
+  }
+}
+
 function _ensureRoadviewMiniMap(position){
-  if (!window.kakao || !kakao.maps || !kakao.maps.Map || !kakao.maps.Marker) return false;
+  if (!window.kakao || !kakao.maps || !kakao.maps.Map || !kakao.maps.CustomOverlay) return false;
   const element = document.getElementById("roadviewMiniMap");
   const center = position || _roadviewMiniMapCenter();
   if (!element || !center) return false;
@@ -1328,15 +1353,22 @@ function _ensureRoadviewMiniMap(position){
     _roadviewMiniMap = new kakao.maps.Map(element, {
       center,
       level: 3,
-      draggable: false,
+      draggable: true,
       zoomable: false,
       scrollwheel: false,
       disableDoubleClick: true,
     });
-    _roadviewMiniMarker = new kakao.maps.Marker({
+    _roadviewMiniCamera = document.createElement("div");
+    _roadviewMiniCamera.className = "roadview-mini-camera";
+    _roadviewMiniCamera.setAttribute("aria-hidden", "true");
+    _roadviewMiniMarker = new kakao.maps.CustomOverlay({
       position: center,
-      map: _roadviewMiniMap,
+      content: _roadviewMiniCamera,
+      xAnchor: 0.5,
+      yAnchor: 0.5,
+      zIndex: 10,
     });
+    _roadviewMiniMarker.setMap(_roadviewMiniMap);
   }
   return true;
 }
@@ -1347,6 +1379,7 @@ function _syncRoadviewMiniMap(position){
     _roadviewMiniMap.setCenter(position);
     if (_roadviewMiniMarker) _roadviewMiniMarker.setPosition(position);
   }
+  _syncRoadviewMiniCamera();
   // 패널을 막 연 직후에는 미니맵 컨테이너의 크기가 확정되지 않아 타일이
   // 회색으로 남을 수 있다. 레이아웃이 반영된 다음 다시 맞춘다.
   setTimeout(() => {
@@ -1460,6 +1493,10 @@ function _ensureRoadview(){
       if (!_roadview || _activeMapTool !== "roadview") return;
       _syncRoadviewMiniMap(_roadview.getPosition());
     });
+    kakao.maps.event.addListener(_roadview, "viewpoint_changed", () => {
+      if (!_roadview || _activeMapTool !== "roadview") return;
+      _syncRoadviewMiniCamera();
+    });
   }
   setTimeout(() => {
     if (_roadview) _roadview.relayout();
@@ -1487,6 +1524,7 @@ function _openRoadviewAt(latLng){
     }
     _roadview.setPanoId(panoId, latLng);
     _syncRoadviewMiniMap(latLng);
+    _syncRoadviewMiniCamera();
     if (hint) hint.textContent = "지도를 다시 클릭하면 다른 위치의 로드뷰를 확인합니다.";
   });
 }
