@@ -2290,8 +2290,9 @@ function liftZoomControlAboveLegend(attempt){
   const legend = document.querySelector(".map-legend");
   const toolbar = document.getElementById("mapToolbar");
   const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
-  let lift = (legend ? legend.offsetHeight : 0) + 12 + 12
-    + toolbarHeight + 12; // 범례 여백 + 툴바 높이 + 툴바와 줌 사이 간격
+  // 툴바와 줌 컨트롤이 하나의 세로 라인으로 붙어야 하므로
+  // 툴바 높이 + 최소 간격(8px)만 반영한다. 범례 높이는 이 위치 계산에 사용하지 않는다.
+  let lift = toolbarHeight + 8;
   // 방어: 범례 높이가 비정상적으로 크게 계산돼도(레이아웃 깨짐 등)
   // 컨트롤이 지도 밖으로 밀려나지 않도록 상한을 둔다.
   const maxLift = Math.max(24, mapEl.offsetHeight - 120); // 지도 위쪽 120px는 항상 남긴다
