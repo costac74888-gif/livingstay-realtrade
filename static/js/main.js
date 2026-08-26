@@ -14,6 +14,9 @@ let serverFavKeys = new Set();
 function getFavorites(){ return [...serverFavKeys]; }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
 function isFav(item){ return serverFavKeys.has(favKey(item)); }
+function addFavoriteFirst(key){
+  serverFavKeys = new Set([key, ...serverFavKeys]);
+}
 
 // 관심저장 실패로 낙관적 상태를 되돌릴 때, 열려 있는 건물상세 버튼과 게시판 별도 함께 맞춘다.
 function syncFavBtn(){
@@ -64,6 +67,7 @@ function toggleFav(item){
   const k = favKey(item);
   let clearedActiveFilter = false;
   const wasFav = serverFavKeys.has(k);
+  const previousFavOrder = [...serverFavKeys];
   const restoreActiveFilter = wasFav && state.favKey === k;
   if (wasFav){
     serverFavKeys.delete(k);
@@ -83,7 +87,7 @@ function toggleFav(item){
     .catch(function(){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
       if (wasFav) {
-        serverFavKeys.add(k);
+        serverFavKeys = new Set(previousFavOrder);
         if (restoreActiveFilter) {
           state.favKey = k;
           state.favOnly = true;
@@ -104,7 +108,7 @@ function toggleFav(item){
       alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
       return false;
     }
-    serverFavKeys.add(k);
+    addFavoriteFirst(k);
     fetch("/api/favorites/mine", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
@@ -2687,8 +2691,7 @@ async function loadSideTx(size){
 async function loadSideFavorites(){
   const box = document.getElementById("sideFavList");
   if (!box) return;
-  const allFavKeys = (typeof getFavorites === "function" ? getFavorites() : [])
-    .slice().reverse(); // 최근 저장 우선
+  const allFavKeys = typeof getFavorites === "function" ? getFavorites() : [];
   if (!allFavKeys.length){
     box.innerHTML = `<div class="side-empty">저장된 관심물건이 없습니다.<br><span style="display:inline-flex;align-items:center;gap:4px;">${Icons.heart(14)}<span>를 눌러 추가하세요.</span></span></div>`;
     return;
@@ -2891,7 +2894,9 @@ function renderRecentChips(){
   if (!row || !container) return;
   let list = [];
   try { list = JSON.parse(localStorage.getItem(HS_RECENT_KEY) || "[]"); } catch(e){}
-  list = Array.isArray(list) ? list.slice(0, HS_RECENT_MAX) : [];
+  list = Array.isArray(list)
+    ? list.slice().sort((a, b) => (Number(b.viewed_at) || 0) - (Number(a.viewed_at) || 0)).slice(0, HS_RECENT_MAX)
+    : [];
   if (!list.length){ row.style.display = "none"; return; }
   row.style.display = "";
   container.innerHTML = list.map(b => {
@@ -5082,7 +5087,7 @@ async function loadBuildingHeader(id){
           new_listing_alert_enabled: detailSignalEnabled,
           permit_change_alert_enabled: detailSignalEnabled
         });
-        if (detailSignalEnabled) serverFavKeys.add(favKeyStr);
+        if (detailSignalEnabled) addFavoriteFirst(favKeyStr);
         else serverFavKeys.delete(favKeyStr);
         syncSignalBtn(); syncFavBtn();
       } catch(e) {

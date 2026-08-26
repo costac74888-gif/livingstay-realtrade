@@ -131,6 +131,9 @@
   function getFavorites(){ return [...serverFavKeys]; }
   function favKey(item){ return `${item.building_name}|${item.address}`; }
   function isFav(item){ return serverFavKeys.has(favKey(item)); }
+  function addFavoriteFirst(key){
+    serverFavKeys = new Set([key, ...serverFavKeys]);
+  }
 
   async function loadServerFavKeys(){
     serverFavKeys = new Set();
@@ -172,7 +175,7 @@
         alert(`관심단지는 최대 ${MAX_FAVORITES}개까지 저장할 수 있습니다.`);
         return false;
       }
-      serverFavKeys.add(k);
+      addFavoriteFirst(k);
       fetch("/api/favorites/mine", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },

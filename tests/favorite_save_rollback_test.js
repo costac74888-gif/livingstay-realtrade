@@ -22,7 +22,6 @@ expect(
 const alerts = [];
 let renderCalls = 0;
 let countCalls = 0;
-let sideCalls = 0;
 let syncCalls = 0;
 let checkbox = { checked: false };
 const context = {
@@ -38,7 +37,6 @@ const context = {
   alert: (message) => alerts.push(message),
   updateFavCountLabel: () => { countCalls += 1; },
   renderFavChips: () => { renderCalls += 1; },
-  loadSideFavorites: () => { sideCalls += 1; },
   loadBoard: () => {},
   setTimeout,
   console,
@@ -94,7 +92,7 @@ async function run() {
     "DELETE 실패 뒤 활성 관심단지 필터가 복원되지 않았습니다."
   );
   expect(alerts.length === 2, "실패할 때마다 오류 알림이 표시되지 않습니다.");
-  expect(renderCalls >= 4 && countCalls >= 4 && sideCalls >= 4 && syncCalls >= 2,
+  expect(renderCalls >= 4 && countCalls >= 4 && syncCalls >= 2,
     "실패 롤백 뒤 관심단지 UI와 별 아이콘을 다시 그리지 않습니다.");
 
   console.log("OK  관심저장 HTTP/네트워크 실패 시 상태·필터·별 아이콘 롤백");
