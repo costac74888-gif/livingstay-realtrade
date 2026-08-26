@@ -4048,11 +4048,6 @@ function buildingPanelSkeleton(){
       <div class="side-empty">불러오는 중…</div>
     </section>
 
-    <section class="side-card" id="bPriceCompareCard">
-      <div class="side-card-title">매물가 · 최근 실거래 비교</div>
-      <div id="bPriceCompareBody" class="side-empty">불러오는 중…</div>
-    </section>
-
     <section class="side-card" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
         <label for="bAreaFilter" style="font-size:12px; color:var(--ink-soft); white-space:nowrap; font-weight:600;">전용면적 타입</label>
@@ -4403,48 +4398,17 @@ async function loadBuildingHeader(id){
         <div id="bNameSuggestMsg" style="display:none; margin-top:7px; font-size:12px;"></div>
       </div>
     </div>` : ""}
-    <div class="b-actions">
-      <button type="button" id="bAlertBtn" class="b-icon-btn" title="실거래 알림">${Icons.bell(18)}<span class="b-icon-label">실거래알림</span></button>
-      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심 저장">${Icons.star(18)}<span class="b-icon-label">관심저장</span></button>
-      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(18)}<span class="b-icon-label">공유</span></button>
-      ${b.lat != null && b.lng != null ? `<button type="button" id="bMapLocBtn" class="b-icon-btn" title="지도 위치 보기">${Icons.mapPin(18)}<span class="b-icon-label">지도위치</span></button>` : ""}
+    <button type="button" id="bSignalBtn" class="b-signal-btn" title="숙박알리미" data-enabled="false"
+      style="width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--brass,#B4863F);cursor:pointer;text-align:left;background:none;">
+      <span class="b-signal-label" style="font-size:12px;font-weight:800;color:var(--brass-dark,#8A6812);">🔔 숙박알리미 받기</span>
+      <span style="font-size:10px;color:var(--ink-soft);">실거래 · 급매 · 신규매물 · 신고변동</span>
+    </button>
+    <div class="b-actions" style="display:flex;gap:6px;">
+      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심저장">${Icons.heart(14)}<span class="b-icon-label">관심저장</span></button>
+      <button type="button" id="bMapBtn" class="b-icon-btn" title="지도위치">${Icons.navigation(14)}<span class="b-icon-label">지도위치</span></button>
+      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(14)}<span class="b-icon-label">공유</span></button>
     </div>
-    ${canFav ? `<div id="bFavHint" style="font-size:11.5px; color:var(--ink-soft); margin:2px 0 8px; text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
-
-  const priceCompareCard = document.getElementById("bPriceCompareCard");
-  const priceCompareBody = document.getElementById("bPriceCompareBody");
-  if (priceCompareCard && priceCompareBody) {
-    const recentDealPrice = Number(b.recent_deal_price);
-    const listingMinPrice = Number(b.listing_min_price);
-    const hasPriceComparison = Number.isFinite(recentDealPrice) && recentDealPrice > 0
-      && Number.isFinite(listingMinPrice) && listingMinPrice > 0
-      && b.price_gap_percent != null;
-    priceCompareCard.style.display = "";
-    if (!hasPriceComparison) {
-      priceCompareBody.textContent = "최근 실거래가와 공개 매물가가 모두 있어야 비교할 수 있습니다.";
-    } else {
-      const gap = Number(b.price_gap_percent);
-      const gapColor = gap > 0 ? "#C85A36" : (gap < 0 ? "#2F7D52" : "var(--ink-soft)");
-      const gapLabel = gap > 0 ? "매물가가 더 높음" : (gap < 0 ? "매물가가 더 낮음" : "동일");
-      const gapValue = `${gap > 0 ? "+" : ""}${gap.toFixed(1)}%`;
-      const fmtComparePrice = (value) => `${Number(value).toLocaleString("ko-KR")}만원`;
-      priceCompareBody.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-          <div style="padding:9px 10px;border:1px solid var(--line);border-radius:8px;">
-            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">최근 실거래가</div>
-            <div style="font-size:16px;font-weight:800;color:var(--ink);">${fmtComparePrice(recentDealPrice)}</div>
-          </div>
-          <div style="padding:9px 10px;border:1px solid var(--line);border-radius:8px;">
-            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">공개 매물 최저가</div>
-            <div style="font-size:16px;font-weight:800;color:var(--ink);">${fmtComparePrice(listingMinPrice)}</div>
-          </div>
-        </div>
-        <div style="text-align:center;color:${gapColor};font-size:14px;font-weight:800;">
-          ${gapValue} <span style="font-size:11px;font-weight:600;">(${gapLabel})</span>
-        </div>
-        <div style="margin-top:5px;text-align:center;font-size:11px;color:var(--ink-soft);">최근 실거래가 대비 공개 매물 최저가</div>`;
-    }
-  }
+    ${canFav ? `<div id="bFavHint" style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
 
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");
@@ -5019,8 +4983,8 @@ async function loadBuildingHeader(id){
     inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") doSubmit(); });
   }
 
-  // 헤더 액션 버튼 배선 — 관심저장/실거래알림 상태 동기화 + 공유
-  const alertBtn = document.getElementById("bAlertBtn");
+  // 헤더 액션 버튼 배선 — 관심저장/숙박알리미 통합 알림/공유
+  const signalBtn = document.getElementById("bSignalBtn");
   const favBtn = document.getElementById("bFavBtn");
   const shareBtn = document.getElementById("bShareBtn");
   function syncFavBtn(){
@@ -5031,45 +4995,107 @@ async function loadBuildingHeader(id){
     const hint = document.getElementById("bFavHint");
     if (hint) hint.style.display = on ? "none" : "";
   }
-  function syncAlertBtn(){
-    const on = canFav && isAlertOn(favKeyStr);
-    alertBtn.classList.toggle("on", on);
-    alertBtn.querySelector(".b-icon-label").textContent = on ? "실거래알림켜짐" : "실거래알림";
+  let detailFavorite = null;
+  let detailSignalEnabled = false;
+  async function loadDetailFavorite(){
+    if (!window.__livingstayLoggedIn) return null;
+    try {
+      const res = await fetch("/api/favorites/mine", { credentials: "same-origin" });
+      const data = await res.json();
+      const items = data.items || [];
+      return items.find(item =>
+        (item.master_building_id != null && Number(item.master_building_id) === Number(b.building_id)) ||
+        (`${item.building_name}|${item.address}` === favKeyStr)
+      ) || null;
+    } catch(e){ return null; }
   }
-  // 헤더 알림 새로고침(refreshAlertsUI) 시 현재 열린 B패널 버튼을 다시 그리기 위한 훅.
-  window.__syncOpenAlertBtn = function(){ if (canFav) syncAlertBtn(); };
+  function syncSignalBtn(){
+    if (!signalBtn) return;
+    signalBtn.dataset.enabled = detailSignalEnabled ? "true" : "false";
+    signalBtn.classList.toggle("on", detailSignalEnabled);
+    signalBtn.style.background = detailSignalEnabled ? "#FFF8EE" : "none";
+    const label = signalBtn.querySelector(".b-signal-label");
+    if (label) label.textContent = detailSignalEnabled ? "🔔 숙박알리미 켜짐" : "🔔 숙박알리미 받기";
+  }
+  // 헤더 알림 새로고침(refreshAlertsUI) 시 현재 열린 B패널도 최신 상태를 반영한다.
+  window.__syncOpenAlertBtn = function(){
+    if (canFav) loadDetailFavorite().then(item => {
+      detailFavorite = item;
+      detailSignalEnabled = !!(item && item.urgent_alert_enabled &&
+        item.new_listing_alert_enabled && item.permit_change_alert_enabled);
+      syncSignalBtn();
+    });
+  };
   if (canFav){
     window.__syncOpenFavBtn = syncFavBtn;
-    // 서버 구독 목록이 아직 로드 전이면 로드 후 버튼 상태 반영.
-    if (window.__livingstayLoggedIn && !alertsLoaded) loadServerAlerts(syncAlertBtn);
-    syncFavBtn(); syncAlertBtn();
-    favBtn.addEventListener("click", () => { const ok = toggleFav(favItem); if (ok !== false) syncFavBtn(); });
-    alertBtn.addEventListener("click", () => {
-      // 사업자 체크를 비로그인 체크보다 먼저 (사업자도 __livingstayLoggedIn=false임)
-      if (window.__livingstayAccountType && window.__livingstayAccountType !== "user"){ alert("실거래 알림은 일반회원 전용 기능입니다. 개인 이용을 원하시면 별도로 일반회원 가입해주세요."); return; }
-      if (!window.__livingstayLoggedIn){ alert("실거래 알림은 로그인이 필요합니다."); return; }
-      const wasOn = alertKeySet.has(favKeyStr);
-      // 낙관적 업데이트 → 서버 반영. 실패하면 되돌린다.
-      if (wasOn) alertKeySet.delete(favKeyStr); else alertKeySet.add(favKeyStr);
-      syncAlertBtn();
-      fetch("/api/alerts/mine", {
-        method: wasOn ? "DELETE" : "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ building_name: favItem.building_name, address: favItem.address })
-      })
-      .then(function(r){ if (!r.ok) throw new Error("fail"); })
-      .catch(function(){
-        if (wasOn) alertKeySet.add(favKeyStr); else alertKeySet.delete(favKeyStr);
-        syncAlertBtn();
-        alert("알림 설정에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      });
+    syncFavBtn();
+    loadDetailFavorite().then(item => {
+      detailFavorite = item;
+      detailSignalEnabled = !!(item && item.urgent_alert_enabled &&
+        item.new_listing_alert_enabled && item.permit_change_alert_enabled);
+      syncSignalBtn();
+    });
+    favBtn.addEventListener("click", () => {
+      const wasFav = isFav(favItem);
+      const ok = toggleFav(favItem);
+      if (ok !== false) {
+        syncFavBtn();
+        if (wasFav) {
+          // 관심단지를 해제하면 통합 알림도 함께 사용할 수 없으므로 화면 상태를 즉시 초기화한다.
+          detailFavorite = null;
+          detailSignalEnabled = false;
+          syncSignalBtn();
+        }
+      }
+    });
+    signalBtn.addEventListener("click", async () => {
+      if (window.__livingstayAccountType && window.__livingstayAccountType !== "user"){
+        alert("숙박알리미는 일반회원 전용 기능입니다."); return;
+      }
+      if (!window.__livingstayLoggedIn){ promptLogin("로그인하고 숙박알리미를 받아보세요."); return; }
+      if (signalBtn.disabled) return;
+      const wasOn = detailSignalEnabled;
+      signalBtn.disabled = true;
+      try {
+        let favorite = detailFavorite || await loadDetailFavorite();
+        if (!favorite && !wasOn){
+          const addRes = await fetch("/api/favorites/mine", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(favItem)
+          });
+          const addData = await addRes.json().catch(() => ({}));
+          if (!addRes.ok || !addData.ok) throw new Error(addData.message || "favorite");
+          favorite = await loadDetailFavorite();
+        }
+        if (!favorite || !favorite.favorite_id) throw new Error("favorite");
+        const res = await fetch("/api/favorites/mine/signal-alert", {
+          method: wasOn ? "DELETE" : "PUT", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ favorite_id: favorite.favorite_id, building_id: b.building_id })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "signal");
+        detailSignalEnabled = !wasOn;
+        detailFavorite = Object.assign({}, favorite, {
+          urgent_alert_enabled: detailSignalEnabled,
+          new_listing_alert_enabled: detailSignalEnabled,
+          permit_change_alert_enabled: detailSignalEnabled
+        });
+        if (detailSignalEnabled) serverFavKeys.add(favKeyStr);
+        else serverFavKeys.delete(favKeyStr);
+        syncSignalBtn(); syncFavBtn();
+      } catch(e) {
+        alert(e.message || "숙박알리미 설정에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      } finally {
+        signalBtn.disabled = false;
+      }
     });
   } else {
-    [favBtn, alertBtn].forEach(btn => {
+    [favBtn, signalBtn].forEach(btn => {
       btn.disabled = true;
       btn.classList.add("disabled");
-      btn.title = "실거래 이력이 있는 건물만 이용할 수 있습니다";
+      btn.title = "주소 정보가 있는 건물만 이용할 수 있습니다";
     });
   }
   shareBtn.addEventListener("click", async () => {
@@ -5086,7 +5112,7 @@ async function loadBuildingHeader(id){
   });
 
   // 지도위치 버튼 — 좌표가 있는 건물에만 렌더링됨
-  const mapLocBtn = document.getElementById("bMapLocBtn");
+  const mapLocBtn = document.getElementById("bMapBtn");
   if (mapLocBtn){
     mapLocBtn.addEventListener("click", () => {
       if (!kakaoMap || b.lat == null || b.lng == null) return;

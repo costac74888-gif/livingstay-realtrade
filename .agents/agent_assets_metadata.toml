@@ -47,3 +47,17 @@ uri = "file://screenshots/map-toolbar-icons-clean.jpg"
 type = "image"
 title = "지도 툴바 아이콘 교체 확인"
 description = "실제 지도 화면에서 지도전환(접힌 지도), 로드뷰(위치핀), 편의(쇼핑백) 아이콘이 반영된 캡처입니다."
+
+[[outputs]]
+id = "IcaKjNuYHyYrJZGrDCZPG"
+uri = "file://screenshots/integrated-lodging-alerts-building-detail-final.jpg"
+type = "image"
+title = "건물 상세페이지 숙박알리미 통합 버튼 캡처"
+description = "건물 상세페이지의 숙박알리미 통합 버튼과 관심저장·지도위치·공유 2행 액션을 확인한 실제 미리보기 캡처입니다. 비로그인 상태라 로그인 유도 모달이 함께 표시됩니다."
+
+[[outputs]]
+id = "Kvid8zNdu9J8atUzYrMQA"
+uri = "file://screenshots/building-detail-without-price-comparison.jpg"
+type = "image"
+title = "가격 비교 섹션 제거 후 건물 상세페이지"
+description = "건물 상세페이지에서 ‘매물가 · 최근 실거래 비교’ 카드가 제거된 실제 미리보기 캡처입니다. 비로그인 상태라 로그인 유도 모달이 함께 표시됩니다."

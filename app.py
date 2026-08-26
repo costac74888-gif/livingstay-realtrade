@@ -660,27 +660,6 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
         app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
 
 
-def _building_price_comparison(recent_deal_price, listing_min_price):
-    """최근 실거래가와 공개 매물 최저가를 비교할 수 있을 때만 세 값을 반환한다."""
-    try:
-        recent = int(recent_deal_price) if recent_deal_price is not None else None
-        listing = int(listing_min_price) if listing_min_price is not None else None
-    except (TypeError, ValueError):
-        recent = listing = None
-
-    if recent is None or listing is None or recent <= 0 or listing <= 0:
-        return {
-            "recent_deal_price": None,
-            "listing_min_price": None,
-            "price_gap_percent": None,
-        }
-    return {
-        "recent_deal_price": recent,
-        "listing_min_price": listing,
-        "price_gap_percent": round((listing - recent) * 100.0 / recent, 1),
-    }
-
-
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -708,42 +687,8 @@ def get_building(building_id):
                mb.booking_url,
                mb.booking_url_expires_at,
                mb.zip_code,
-                lt.address AS address,
-                lt.recent_deal_price,
-                lp.listing_min_price
+                 mb.jibun_address AS address
         FROM master_buildings mb
-        LEFT JOIN LATERAL (
-            SELECT t.address, t.price AS recent_deal_price
-            FROM transactions t
-            WHERE (
-                    (
-                      mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
-                      AND t.sgg_cd = mb.sgg_cd
-                      AND t.umd_nm = mb.umd_nm
-                      AND t.jibun  = mb.jibun
-                    )
-                 OR (
-                      (mb.sgg_cd IS NULL OR mb.umd_nm IS NULL OR mb.jibun IS NULL)
-                      AND mb.building_name <> '-'
-                      AND t.building_name = mb.building_name
-                    )
-                  )
-              AND t.price IS NOT NULL
-              AND t.price > 0
-            ORDER BY (t.building_name = mb.building_name) DESC NULLS LAST, t.deal_date DESC, t.id DESC
-            LIMIT 1
-        ) lt ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT MIN(lr.price_krw) AS listing_min_price
-            FROM listing_requests lr
-            WHERE lr.master_building_id = mb.id
-              AND lr.deal_mode = 'direct'
-              AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
-              AND COALESCE(lr.disclosure_scope, 'public') = 'public'
-              AND lr.deal_type = '매매'
-              AND lr.price_krw IS NOT NULL
-              AND lr.price_krw > 0
-        ) lp ON TRUE
         WHERE mb.id = %s
     """, [building_id])
     row = cur.fetchone()
@@ -1106,10 +1051,6 @@ def get_building(building_id):
     conn.close()
 
     result = building
-    result.update(_building_price_comparison(
-        result.get("recent_deal_price"),
-        result.get("listing_min_price"),
-    ))
     agents_list = []
     for r in agent_rows:
         agent_d = dict(r)
