@@ -769,6 +769,8 @@ def run():
     failures += _check_master_stats_partial_success_invalidation()
     # 관심저장 POST가 실제 DB에 남고, 새로고침 조회 뒤에도 유지되는지 확인
     failures += _check_favorite_save_persistence(client)
+    # 급매 금·은색 등급, 관심단지 전용 토글과 회원/매물별 중복 알림을 확인
+    failures += _check_urgent_listing_tiers_and_alerts(client)
     # 채팅 시작은 휴대폰 인증된 사용자만 가능한지 확인
     failures += _check_chat_phone_verification(client)
     # 방 재고의 보증금·만기일 저장·공실 초기화·소유자 권한을 확인
@@ -1524,6 +1526,172 @@ def _check_favorite_save_persistence(client):
         finally:
             cur.close()
             conn.close()
+    return failures
+
+
+def _check_urgent_listing_tiers_and_alerts(client):
+    """급매 등급·관심단지 전용 토글·회원/매물별 중복 방지를 확인한다."""
+    from app import (
+        _queue_urgent_listing_alerts,
+        _send_urgent_listing_email,
+        _urgent_tier_for_values,
+        _whole_listing_values,
+    )
+
+    failures = []
+    run_id = str(int(time.time() * 1000))
+    conn = get_conn()
+    cur = conn.cursor()
+    user_id = building_id = listing_id = scope_listing_id = None
+    try:
+        if (
+            _urgent_tier_for_values("매매", False, 900, 1000) != "gold"
+            or _urgent_tier_for_values("매매", True, 900, None) != "silver"
+            or _urgent_tier_for_values("매매", False, 900, None) is not None
+            or _urgent_tier_for_values("매매", True, 1100, 1000) is not None
+            or _urgent_tier_for_values("통임대", True, 900, None) is not None
+        ):
+            failures.append("urgent listing: 최신 실거래 비교 금색·실거래 없는 은색 등급 규칙이 잘못됨")
+            return failures
+        _, invalid_urgent_error = _whole_listing_values({
+            "transaction_target": "whole", "deal_type": "매매",
+            "disclosure_scope": "public", "is_urgent": "false",
+        })
+        if not invalid_urgent_error:
+            failures.append("urgent listing: 문자열 false가 급매로 저장될 수 있음")
+            return failures
+
+        cur.execute("""
+            INSERT INTO master_buildings
+                (building_name, road_address, sgg_text, umd_nm, lodging_type)
+            VALUES (%s, %s, %s, %s, '생활')
+            RETURNING id
+        """, (f"급매 테스트 {run_id}", f"급매 테스트로 {run_id}", "급매테스트시", "급매동"))
+        building_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO users (email, name, phone, phone_verified)
+            VALUES (%s, '급매 알림 테스트', '01000000000', TRUE)
+            RETURNING id
+        """, (f"urgent-{run_id}@example.test",))
+        user_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO user_favorites (user_id, building_name, address, master_building_id)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, [user_id, f"급매 테스트 {run_id}", f"급매 테스트로 {run_id}", building_id])
+        favorite_id = cur.fetchone()["id"]
+        conn.commit()
+
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["user_id"] = user_id
+        toggled = client.put("/api/favorites/mine/urgent-alert", json={
+            "favorite_id": favorite_id, "building_id": building_id,
+        })
+        cur.execute(
+            "SELECT urgent_alert_enabled FROM user_favorites WHERE id=%s",
+            [favorite_id],
+        )
+        if (
+            toggled.status_code != 200
+            or not (toggled.get_json() or {}).get("ok")
+            or not (cur.fetchone() or {}).get("urgent_alert_enabled")
+        ):
+            failures.append("urgent listing: 관심단지와 독립된 급매알림 토글이 저장되지 않음")
+            return failures
+
+        cur.execute("""
+            INSERT INTO listing_requests
+                (user_id, master_building_id, deal_type, contact_phone, deal_mode,
+                 transaction_target, disclosure_scope, price_krw, is_urgent)
+            VALUES (%s, %s, '매매', '01000000000', 'direct', 'whole', 'public', 900, TRUE)
+            RETURNING id
+        """, [user_id, building_id])
+        listing_id = cur.fetchone()["id"]
+        jobs = _queue_urgent_listing_alerts(
+            cur, listing_id, building_id, f"급매 테스트 {run_id}",
+            f"급매 테스트로 {run_id}", 900, "silver",
+        )
+        duplicate_jobs = _queue_urgent_listing_alerts(
+            cur, listing_id, building_id, f"급매 테스트 {run_id}",
+            f"급매 테스트로 {run_id}", 900, "silver",
+        )
+        conn.commit()
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM notifications WHERE user_id=%s AND listing_request_id=%s",
+            [user_id, listing_id],
+        )
+        notification_count = int(cur.fetchone()["count"])
+        if len(jobs) != 1 or duplicate_jobs or notification_count != 1:
+            failures.append("urgent listing: 같은 회원·매물의 인앱 급매알림이 중복 생성됨")
+            return failures
+
+        with patch.object(app_module, "send_email", return_value=(False, "planned failure")) as email_mock:
+            _send_urgent_listing_email(jobs[0])
+        cur.execute("""
+            SELECT email_state FROM urgent_listing_alert_logs
+             WHERE user_id=%s AND listing_request_id=%s
+        """, [user_id, listing_id])
+        email_state = (cur.fetchone() or {}).get("email_state")
+        if email_mock.call_count != 1 or email_state != "failed" or notification_count != 1:
+            failures.append("urgent listing: 이메일 실패가 인앱 알림을 되돌리거나 발송 이력을 남기지 않음")
+
+        cur.execute("""
+            INSERT INTO listing_requests
+                (user_id, master_building_id, deal_type, contact_phone, deal_mode,
+                 transaction_target, disclosure_scope, price_krw, is_urgent)
+            VALUES (%s, %s, '매매', '01000000000', 'direct', 'whole', 'limited', 800, TRUE)
+            RETURNING id
+        """, [user_id, building_id])
+        scope_listing_id = cur.fetchone()["id"]
+        conn.commit()
+        with patch.object(app_module, "send_email", return_value=(True, "sent")):
+            made_public = client.patch(
+                f"/api/listing-requests/{scope_listing_id}/disclosure-scope",
+                json={"disclosure_scope": "public"},
+            )
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM notifications WHERE user_id=%s AND listing_request_id=%s",
+            [user_id, scope_listing_id],
+        )
+        if (
+            made_public.status_code != 200
+            or not (made_public.get_json() or {}).get("ok")
+            or int(cur.fetchone()["count"]) != 1
+        ):
+            failures.append("urgent listing: 제한공개에서 전체공개 전환 시 급매알림이 생성되지 않음")
+
+        turned_off = client.delete("/api/favorites/mine/urgent-alert", json={"favorite_id": favorite_id})
+        if turned_off.status_code != 200 or not (turned_off.get_json() or {}).get("ok"):
+            failures.append("urgent listing: 급매알림 끄기 API가 실패함")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"urgent listing 테스트 오류: {exc}")
+    finally:
+        try:
+            if listing_id:
+                cur.execute(
+                    "DELETE FROM listing_request_history WHERE listing_request_id = ANY(%s)",
+                    [[value for value in (listing_id, scope_listing_id) if value]],
+                )
+                cur.execute(
+                    "DELETE FROM listing_requests WHERE id = ANY(%s)",
+                    [[value for value in (listing_id, scope_listing_id) if value]],
+                )
+            if user_id:
+                cur.execute("DELETE FROM users WHERE id=%s", [user_id])
+            if building_id:
+                cur.execute("DELETE FROM master_buildings WHERE id=%s", [building_id])
+            conn.commit()
+            with client.session_transaction() as sess:
+                sess.pop("user_id", None)
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+    if not failures:
+        print("OK  급매 등급·관심단지 토글·회원/매물 중복 알림 방지")
     return failures
 
 

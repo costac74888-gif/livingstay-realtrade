@@ -4531,6 +4531,11 @@ async function loadBuildingHeader(id){
           });
           return;
         }
+        function _urgentBadgeMarkup(lr){
+          if (!lr || !lr.urgent_tier) return "";
+          const gold = lr.urgent_tier === "gold";
+          return `<span class="urgent-tier-badge urgent-tier-${gold ? "gold" : "silver"}" title="${gold ? "최신 실거래가보다 낮은 매물" : "판매자가 급매로 등록한 매물"}">${gold ? "금색 급매" : "은색 급매"}</span>`;
+        }
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;
        const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
@@ -4735,7 +4740,7 @@ async function loadBuildingHeader(id){
           ? `경쟁업소 ${_fmtN(nearbyTotal)}곳${stationName && subway.walk_minutes != null ? ` · ${stationName}까지 도보 약 ${_fmtN(subway.walk_minutes)}분` : ""}`
           : "입지정보 불러오는 중…";
         const badges = [
-          lr.is_urgent ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;animation:wholeUrgentPulse 1.25s ease-in-out infinite;">급매</span>' : "",
+          _urgentBadgeMarkup(lr),
           isRecentClosure ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E5E5E5;color:#222;font-size:10px;font-weight:800;">최근 폐업</span>' : "",
            lr.has_monthly_revenue ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#E7F2FC;color:#275B88;font-size:10px;font-weight:800;">매출정보 있음</span>' : "",
            _operationRatioMarkup(lr)

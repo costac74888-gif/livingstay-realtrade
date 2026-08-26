@@ -50,3 +50,4 @@
 - [Background stats DB priority](background-stats-db-priority.md) — stats refreshes use a bounded, nonblocking DB budget that always preserves capacity for user map searches.
 - [Master stats cold starts](master-stats-coldstart-nonblocking.md) — public stats routes must return bounded warming data on an empty master cache; only worker background services may run full rebuilds.
 - [Password reset security](password-reset-security.md) — reset links use digest-at-rest, canonical URLs, bounded async delivery, and both per-email and per-IP throttles.
+- [급매 등급·알림 규칙](urgent-listing-rules.md) — 급매 판정·구독 알림은 공개 건물전체 ‘매매’ 직거래에만 적용하고, 공개 전환도 신규 알림 계기로 본다.

@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-25-04"
+SCHEMA_VERSION = "2026-08-26-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1824,10 +1824,19 @@ def _run_init_db():
     # 관심저장 시점에 프론트가 알고 있는 master_buildings.id를 직접 저장 —
     # 실거래가 없는 건물도 마이페이지/홈 위젯에서 상세 링크가 끊기지 않게 한다.
     cur.execute("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS master_building_id INTEGER")
+    # 관심단지 저장과 독립적인 급매 알림 토글. 기존 관심단지는 기본적으로 꺼져 있다.
+    cur.execute(
+        "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS urgent_alert_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+    )
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_favorites "
         "ON user_favorites (user_id, COALESCE(building_name, ''), address)"
     )
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_favorites_urgent_alert
+        ON user_favorites(master_building_id)
+        WHERE urgent_alert_enabled = TRUE AND master_building_id IS NOT NULL
+    """)
 
     # 실거래 알림 구독 — user_favorites 와 구조는 같지만 별도 테이블(관심저장과 독립적으로
     # 켜고 끌 수 있어야 함). 새 실거래가 들어오면 sync_batch 가 이 구독을 조회해 notifications 를 만든다.
@@ -1878,10 +1887,15 @@ def _run_init_db():
         building_name TEXT,
         address TEXT,
         transaction_id INTEGER,            -- 원본 실거래 id (수동 생성 알림이면 NULL)
+        listing_request_id INTEGER REFERENCES listing_requests(id) ON DELETE CASCADE,
         is_read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
     )
     """)
+    cur.execute(
+        "ALTER TABLE notifications "
+        "ADD COLUMN IF NOT EXISTS listing_request_id INTEGER REFERENCES listing_requests(id) ON DELETE CASCADE"
+    )
     # 헤더 벨: 안읽음 우선 + 최신순 조회용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC)")
     # 같은 거래로 같은 사용자에게 알림 중복 생성 방지.
@@ -1891,6 +1905,31 @@ def _run_init_db():
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_tx "
         "ON notifications (user_id, transaction_id)"
     )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_user_listing "
+        "ON notifications (user_id, listing_request_id)"
+    )
+
+    # 신규 급매 알림의 이메일 시도 이력 — 인앱 알림과 독립적으로 기록하며,
+    # 같은 회원·같은 매물에는 이메일을 다시 시도하지 않는다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS urgent_listing_alert_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id) ON DELETE CASCADE,
+        notification_id INTEGER REFERENCES notifications(id) ON DELETE SET NULL,
+        email_state TEXT NOT NULL DEFAULT 'pending',
+        email_attempted_at TIMESTAMP,
+        email_sent_at TIMESTAMP,
+        email_error TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, listing_request_id)
+    )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_urgent_listing_alert_logs_listing
+        ON urgent_listing_alert_logs(listing_request_id)
+    """)
 
     # 계약만기 알림 발송 이력 — 인앱/이메일 상태를 분리해 임계치별 중복을 막는다.
     cur.execute("""

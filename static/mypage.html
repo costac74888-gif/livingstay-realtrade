@@ -1103,6 +1103,8 @@
     var clickable = bid ? "cursor:pointer;" : "cursor:default;";
     var alertKey = (t.building_name != null ? t.building_name : "null") + "|" + addr;
     var hasAlert = alertKeys && alertKeys.has(alertKey);
+    var urgentEnabled = !!t.urgent_alert_enabled;
+    var favoriteId = t.favorite_id != null ? String(t.favorite_id) : "";
     // 가격: null이면 회색 소자로 표시
     var priceHtml = (t.price != null)
       ? '<span style="font-size:14px;font-weight:700;color:var(--brass-dark);white-space:nowrap;">' + escapeHtml(Number(t.price).toLocaleString() + "만") + '</span>'
@@ -1115,6 +1117,11 @@
     var listingBtn = bid
       ? '<button class="myfav-listing-btn" data-bid="' + escapeHtml(bid) + '" data-bname="' + escapeHtml(name) + '" title="매물내놓기" '
           + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">매물내놓기</button>'
+      : '';
+    var urgentBtn = bid && favoriteId
+      ? '<button class="myfav-urgent-alert" data-favorite-id="' + escapeHtml(favoriteId) + '" data-bid="' + escapeHtml(bid) + '" data-enabled="' + (urgentEnabled ? "true" : "false") + '" title="급매알림 ' + (urgentEnabled ? "끄기" : "켜기") + '" '
+          + 'style="background:' + (urgentEnabled ? "#EAF1F7" : "none") + ';border:1px solid ' + (urgentEnabled ? "#758696" : "#9A7A22") + ';color:' + (urgentEnabled ? "#455564" : "#8A6812") + ';border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">'
+          + (urgentEnabled ? "급매알림 켜짐" : "급매알림 받기") + '</button>'
       : '';
     // 2행 레이아웃:
     //   1행 — 건물명(flex:1, ellipsis) + 관심단지 해제 버튼
@@ -1137,6 +1144,7 @@
           '<div style="margin-right:auto;">' + priceHtml + '</div>' +
           listingBtn +
           alertBtn +
+          urgentBtn +
         '</div>' +
       '</div>';
   }
@@ -1188,6 +1196,32 @@
       });
       Array.prototype.forEach.call(box.querySelectorAll(".myfav-alert-off"), function(btn){
         bindAlertOff(btn);
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-urgent-alert"), function(btn){
+        btn.addEventListener("click", function(e){
+          e.stopPropagation();
+          var enabled = btn.getAttribute("data-enabled") === "true";
+          btn.disabled = true;
+          btn.textContent = "처리 중…";
+          fetch("/api/favorites/mine/urgent-alert", {
+            method: enabled ? "DELETE" : "PUT", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              favorite_id: btn.getAttribute("data-favorite-id"),
+              building_id: btn.getAttribute("data-bid")
+            })
+          }).then(function(r){ return r.json(); })
+            .then(function(j){
+              if (j && j.ok) loadMyFavorites();
+              else {
+                btn.disabled = false;
+                btn.textContent = enabled ? "급매알림 켜짐" : "급매알림 받기";
+              }
+            }).catch(function(){
+              btn.disabled = false;
+              btn.textContent = enabled ? "급매알림 켜짐" : "급매알림 받기";
+            });
+        });
       });
       Array.prototype.forEach.call(box.querySelectorAll(".myfav-listing-btn"), function(btn){
         btn.addEventListener("click", function(e){
