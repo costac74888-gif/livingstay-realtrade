@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-26-01"
+SCHEMA_VERSION = "2026-08-26-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1828,6 +1828,13 @@ def _run_init_db():
     cur.execute(
         "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS urgent_alert_enabled BOOLEAN NOT NULL DEFAULT FALSE"
     )
+    # 숙박알리미의 추가 신호. 기존 관심단지는 명시적으로 켜기 전까지 구독하지 않는다.
+    cur.execute(
+        "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS new_listing_alert_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    cur.execute(
+        "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS permit_change_alert_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+    )
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_favorites "
         "ON user_favorites (user_id, COALESCE(building_name, ''), address)"
@@ -1836,6 +1843,16 @@ def _run_init_db():
         CREATE INDEX IF NOT EXISTS idx_user_favorites_urgent_alert
         ON user_favorites(master_building_id)
         WHERE urgent_alert_enabled = TRUE AND master_building_id IS NOT NULL
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_favorites_new_listing_alert
+        ON user_favorites(master_building_id)
+        WHERE new_listing_alert_enabled = TRUE AND master_building_id IS NOT NULL
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_favorites_permit_change_alert
+        ON user_favorites(master_building_id)
+        WHERE permit_change_alert_enabled = TRUE AND master_building_id IS NOT NULL
     """)
 
     # 실거래 알림 구독 — user_favorites 와 구조는 같지만 별도 테이블(관심저장과 독립적으로
@@ -1896,6 +1913,10 @@ def _run_init_db():
         "ALTER TABLE notifications "
         "ADD COLUMN IF NOT EXISTS listing_request_id INTEGER REFERENCES listing_requests(id) ON DELETE CASCADE"
     )
+    cur.execute(
+        "ALTER TABLE notifications "
+        "ADD COLUMN IF NOT EXISTS master_building_id INTEGER REFERENCES master_buildings(id) ON DELETE SET NULL"
+    )
     # 헤더 벨: 안읽음 우선 + 최신순 조회용 인덱스
     cur.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read, created_at DESC)")
     # 같은 거래로 같은 사용자에게 알림 중복 생성 방지.
@@ -1929,6 +1950,81 @@ def _run_init_db():
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_urgent_listing_alert_logs_listing
         ON urgent_listing_alert_logs(listing_request_id)
+    """)
+    cur.execute(
+        "ALTER TABLE urgent_listing_alert_logs ADD COLUMN IF NOT EXISTS tier TEXT"
+    )
+
+    # 신규 공개 건물전체 매물 알림 — 급매 알림과 같은 매물에는 둘 중 하나만 예약한다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS new_listing_alert_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            listing_request_id INTEGER NOT NULL REFERENCES listing_requests(id) ON DELETE CASCADE,
+            notification_id INTEGER REFERENCES notifications(id) ON DELETE SET NULL,
+            email_state TEXT NOT NULL DEFAULT 'pending',
+            email_attempted_at TIMESTAMP,
+            email_sent_at TIMESTAMP,
+            email_error TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE (user_id, listing_request_id)
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_new_listing_alert_logs_listing
+        ON new_listing_alert_logs(listing_request_id)
+    """)
+
+    # 숙박업 동기화의 이전 상태. 최초 전체 수집에서는 이 테이블만 채우고 알림은 보내지 않는다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS lodging_registry_alert_snapshots (
+            permit_number TEXT PRIMARY KEY,
+            master_building_id INTEGER REFERENCES master_buildings(id) ON DELETE SET NULL,
+            biz_status_name TEXT,
+            biz_status_detail TEXT,
+            room_count INTEGER,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_alert_snapshots_building
+        ON lodging_registry_alert_snapshots(master_building_id)
+    """)
+
+    # 건물별·KST 날짜별 신고변동 요약과 회원별 전달 상태를 분리한다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS permit_change_alert_logs (
+            id SERIAL PRIMARY KEY,
+            master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+            change_date DATE NOT NULL,
+            change_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+            delivery_queued_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE (master_building_id, change_date)
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_permit_change_alert_logs_pending
+        ON permit_change_alert_logs(change_date, delivery_queued_at)
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS permit_change_alert_deliveries (
+            id SERIAL PRIMARY KEY,
+            permit_change_alert_log_id INTEGER NOT NULL REFERENCES permit_change_alert_logs(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            notification_id INTEGER REFERENCES notifications(id) ON DELETE SET NULL,
+            email_state TEXT NOT NULL DEFAULT 'pending',
+            email_attempted_at TIMESTAMP,
+            email_sent_at TIMESTAMP,
+            email_error TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            UNIQUE (permit_change_alert_log_id, user_id)
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_permit_change_alert_deliveries_user
+        ON permit_change_alert_deliveries(user_id, created_at DESC)
     """)
 
     # 계약만기 알림 발송 이력 — 인앱/이메일 상태를 분리해 임계치별 중복을 막는다.

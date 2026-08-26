@@ -79,7 +79,7 @@ class WeeklyDigestTests(unittest.TestCase):
             tip, "https://example.test/mypage",
         )
         headings = [
-            "관심단지 실거래 알림",
+            "관심단지 숙박알리미",
             "매물의뢰 진행 현황",
             "이번 주 시세 랭킹",
             "이번 주 기능 소개",

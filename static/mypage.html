@@ -1103,49 +1103,44 @@
     var clickable = bid ? "cursor:pointer;" : "cursor:default;";
     var alertKey = (t.building_name != null ? t.building_name : "null") + "|" + addr;
     var hasAlert = alertKeys && alertKeys.has(alertKey);
-    var urgentEnabled = !!t.urgent_alert_enabled;
     var favoriteId = t.favorite_id != null ? String(t.favorite_id) : "";
+    var signalEnabled = !!(hasAlert && t.urgent_alert_enabled &&
+                           t.new_listing_alert_enabled && t.permit_change_alert_enabled);
     // 가격: null이면 회색 소자로 표시
     var priceHtml = (t.price != null)
       ? '<span style="font-size:14px;font-weight:700;color:var(--brass-dark);white-space:nowrap;">' + escapeHtml(Number(t.price).toLocaleString() + "만") + '</span>'
       : '<span style="font-size:12px;color:var(--ink-soft);font-weight:400;white-space:nowrap;">실거래 정보 없음</span>';
-    var alertBtn = hasAlert
-      ? '<button class="myfav-alert-off" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 끄기" '
-          + 'style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(true) + '</button>'
-      : '<button class="myfav-alert-on" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" title="실거래알림 켜기" '
-          + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(false) + '</button>';
     var listingBtn = bid
       ? '<button class="myfav-listing-btn" data-bid="' + escapeHtml(bid) + '" data-bname="' + escapeHtml(name) + '" title="매물내놓기" '
-          + 'style="background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">매물내놓기</button>'
+          + 'style="margin-top:8px;background:none;border:1px solid var(--brass,#B4863F);color:var(--brass,#B4863F);border-radius:5px;font-size:11px;padding:4px 8px;cursor:pointer;white-space:nowrap;line-height:1.4;">매물내놓기</button>'
       : '';
-    var urgentBtn = bid && favoriteId
-      ? '<button class="myfav-urgent-alert" data-favorite-id="' + escapeHtml(favoriteId) + '" data-bid="' + escapeHtml(bid) + '" data-enabled="' + (urgentEnabled ? "true" : "false") + '" title="급매알림 ' + (urgentEnabled ? "끄기" : "켜기") + '" '
-          + 'style="background:' + (urgentEnabled ? "#EAF1F7" : "none") + ';border:1px solid ' + (urgentEnabled ? "#758696" : "#9A7A22") + ';color:' + (urgentEnabled ? "#455564" : "#8A6812") + ';border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">'
-          + (urgentEnabled ? "급매알림 켜짐" : "급매알림 받기") + '</button>'
-      : '';
-    // 2행 레이아웃:
-    //   1행 — 건물명(flex:1, ellipsis) + 관심단지 해제 버튼
-    //   2행 — 최신 실거래가 + 매물내놓기 + 알림버튼
-    // 기존 1행 구조는 모바일에서 버튼이 공간을 차지해 건물명이 1~2글자로 잘리는 버그 발생.
+    var signalBtn = bid && favoriteId
+      ? '<button class="myfav-signal-btn" data-favorite-id="' + escapeHtml(favoriteId) + '" data-bid="' + escapeHtml(bid) + '" data-enabled="' + (signalEnabled ? "true" : "false") + '" title="숙박알리미 ' + (signalEnabled ? "끄기" : "켜기") + '" '
+          + 'style="width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:8px;margin:0 0 7px;border:1px solid var(--brass,#B4863F);background:' + (signalEnabled ? "#FFF8EE" : "none") + ';cursor:pointer;text-align:left;">'
+          + '<span style="font-size:12px;font-weight:800;color:var(--brass-dark,#8A6812);">🔔 숙박알리미 ' + (signalEnabled ? "켜짐" : "받기") + '</span>'
+          + '<span style="font-size:10px;color:var(--ink-soft);">실거래 · 급매 · 신규매물 · 신고변동</span></button>'
+      : '<div style="padding:8px 12px;border-radius:8px;margin:0 0 7px;border:1px solid var(--line);font-size:11px;color:var(--ink-soft);">🔔 숙박알리미 — 건물 상세와 연결되면 설정할 수 있어요</div>';
+    var mapIcon = Icons.mapPin ? Icons.mapPin(14) : Icons.navigation(14);
     return '' +
       '<div class="myfav-item" data-bid="' + escapeHtml(bid) + '" ' +
            'style="padding:11px 12px; border:1px solid var(--line); border-radius:9px; margin-bottom:8px; ' + clickable + '">' +
-    // 1행: 건물명 + 주소 + 관심단지 해제 버튼
+    // 제목
         '<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:8px;">' +
           '<div style="flex:1; min-width:0;">' +
             '<div style="font-size:14px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
             '<div style="font-size:12px; color:var(--ink-soft); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(addr) + '</div>' +
           '</div>' +
-          '<button class="myfav-remove" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" ' +
-                  'style="background:none; border:none; color:var(--brass); line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0;">' + Icons.heart(18, true) + '</button>' +
         '</div>' +
-        // 2행: 가격 + 버튼들
-        '<div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">' +
-          '<div style="margin-right:auto;">' + priceHtml + '</div>' +
-          listingBtn +
-          alertBtn +
-          urgentBtn +
+        // 1행: 숙박알리미
+        signalBtn +
+        // 2행: 관심저장 · 지도위치 · 공유
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+          '<button class="myfav-remove myfav-remove-btn" title="관심단지 해제" data-name="' + escapeHtml(dataName) + '" data-addr="' + escapeHtml(addr) + '" style="background:none;border:1px solid var(--line);color:var(--brass);border-radius:5px;font-size:11px;padding:4px 7px;cursor:pointer;">' + Icons.heart(14, true) + ' 관심저장</button>' +
+          (bid ? '<button class="myfav-map-btn" data-bid="' + escapeHtml(bid) + '" title="지도위치" style="background:none;border:1px solid var(--line);color:var(--ink-soft);border-radius:5px;font-size:11px;padding:4px 7px;cursor:pointer;">' + mapIcon + ' 지도위치</button>' : '') +
+          (bid ? '<button class="myfav-share-btn" data-bid="' + escapeHtml(bid) + '" title="공유" style="background:none;border:1px solid var(--line);color:var(--ink-soft);border-radius:5px;font-size:11px;padding:4px 7px;cursor:pointer;">' + Icons.share(14) + ' 공유</button>' : '') +
+          '<span style="margin-left:auto;">' + priceHtml + '</span>' +
         '</div>' +
+        listingBtn +
       '</div>';
   }
   function loadMyFavorites(){
@@ -1173,37 +1168,13 @@
           removeMyFavorite(btn.getAttribute("data-name"), btn.getAttribute("data-addr"), btn);
         });
       });
-      Array.prototype.forEach.call(box.querySelectorAll(".myfav-alert-on"), function(btn){
-        btn.addEventListener("click", function(e){
-          e.stopPropagation();
-          btn.disabled = true;
-          btn.textContent = "처리 중…";
-          fetch("/api/alerts/mine", {
-            method: "POST", credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ building_name: btn.getAttribute("data-name") || null,
-                                   address: btn.getAttribute("data-addr") })
-          }).then(function(r){ return r.json(); })
-            .then(function(j){
-              if (j && j.ok){
-                btn.outerHTML = '<button class="myfav-alert-off" data-name="' + (btn.getAttribute("data-name")||"") + '" data-addr="' + (btn.getAttribute("data-addr")||"") + '" title="실거래알림 끄기" style="background:none;border:1px solid #ccc;color:var(--ink-soft);border-radius:5px;font-size:11px;padding:3px 7px;cursor:pointer;white-space:nowrap;flex-shrink:0;line-height:1.4;">' + alertLabel(true) + '</button>';
-                // 새로 삽입된 버튼에 핸들러 재바인딩
-                var newBtn = box.querySelector('.myfav-alert-off[data-addr="' + (btn.getAttribute("data-addr")||"") + '"]');
-                if (newBtn) bindAlertOff(newBtn);
-              } else { btn.disabled = false; btn.innerHTML = alertLabel(false); }
-            }).catch(function(){ btn.disabled = false; btn.innerHTML = alertLabel(false); });
-        });
-      });
-      Array.prototype.forEach.call(box.querySelectorAll(".myfav-alert-off"), function(btn){
-        bindAlertOff(btn);
-      });
-      Array.prototype.forEach.call(box.querySelectorAll(".myfav-urgent-alert"), function(btn){
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-signal-btn"), function(btn){
         btn.addEventListener("click", function(e){
           e.stopPropagation();
           var enabled = btn.getAttribute("data-enabled") === "true";
           btn.disabled = true;
           btn.textContent = "처리 중…";
-          fetch("/api/favorites/mine/urgent-alert", {
+          fetch("/api/favorites/mine/signal-alert", {
             method: enabled ? "DELETE" : "PUT", credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1215,12 +1186,28 @@
               if (j && j.ok) loadMyFavorites();
               else {
                 btn.disabled = false;
-                btn.textContent = enabled ? "급매알림 켜짐" : "급매알림 받기";
+                btn.textContent = enabled ? "숙박알리미 켜짐" : "숙박알리미 받기";
               }
             }).catch(function(){
               btn.disabled = false;
-              btn.textContent = enabled ? "급매알림 켜짐" : "급매알림 받기";
+              btn.textContent = enabled ? "숙박알리미 켜짐" : "숙박알리미 받기";
             });
+        });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-map-btn"), function(btn){
+        btn.addEventListener("click", function(e){
+          e.stopPropagation();
+          window.location.href = "/building/" + btn.getAttribute("data-bid");
+        });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".myfav-share-btn"), function(btn){
+        btn.addEventListener("click", function(e){
+          e.stopPropagation();
+          var url = window.location.origin + "/building/" + btn.getAttribute("data-bid");
+          var done = function(){ btn.textContent = "링크 복사됨"; setTimeout(function(){ btn.innerHTML = Icons.share(14) + " 공유"; }, 1400); };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(done).catch(function(){ window.prompt("링크를 복사하세요", url); });
+          } else { window.prompt("링크를 복사하세요", url); }
         });
       });
       Array.prototype.forEach.call(box.querySelectorAll(".myfav-listing-btn"), function(btn){

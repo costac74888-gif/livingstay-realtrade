@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import requests
 from psycopg2.extras import execute_values
@@ -66,7 +66,9 @@ SLEEP_DEFAULT = 0.3
 HEARTBEAT_SEC = 30
 LODGING_SYNC_LOCK_ID = 918273
 ROOM_EXPIRY_ALERT_LOCK_ID = 918274
+PERMIT_CHANGE_ALERT_LOCK_ID = 918275
 ROOM_EXPIRY_THRESHOLDS = (90, 60, 30, 7)
+PERMIT_ALERT_BOOTSTRAP_META_KEY = "lodging_permit_alert_snapshot_ready"
 
 
 @contextmanager
@@ -451,6 +453,174 @@ def send_room_expiry_alerts(today=None):
         conn.close()
 
 
+def _permit_change_summary_text(summary):
+    labels = (
+        ("new", "신규신고"),
+        ("closed", "폐업"),
+        ("status", "상태변경"),
+        ("room", "호실변경"),
+    )
+    parts = [
+        f"{label} {int(summary.get(key) or 0)}건"
+        for key, label in labels
+        if int(summary.get(key) or 0) > 0
+    ]
+    return ", ".join(parts) or "영업신고 정보가 변경됐어요"
+
+
+def send_permit_change_alerts():
+    """완료된 숙박업 동기화의 건물별 일일 신고변동을 한 번씩 전달한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    acquired = False
+    stats = {"target_count": 0, "in_app_count": 0, "email_sent_count": 0, "failed_count": 0}
+    try:
+        cur.execute(
+            "SELECT pg_try_advisory_lock(%s) AS acquired",
+            (PERMIT_CHANGE_ALERT_LOCK_ID,),
+        )
+        acquired = bool(cur.fetchone()["acquired"])
+        if not acquired:
+            print("[permit-alert] 이미 다른 신고변동 알림이 진행 중입니다 — 이번 실행을 건너뜁니다.")
+            return stats
+        cur.execute("""
+            SELECT pcl.id, pcl.master_building_id, pcl.change_summary,
+                   mb.building_name, mb.road_address, mb.jibun_address
+              FROM permit_change_alert_logs pcl
+              JOIN master_buildings mb ON mb.id = pcl.master_building_id
+             WHERE pcl.delivery_queued_at IS NULL
+               AND pcl.change_date >= %s
+             ORDER BY pcl.change_date, pcl.id
+        """, (_korean_today() - timedelta(days=7),))
+        logs = cur.fetchall()
+        stats["target_count"] = len(logs)
+        for log_row in logs:
+            summary = dict(log_row.get("change_summary") or {})
+            summary_text = _permit_change_summary_text(summary)
+            building_name = log_row.get("building_name") or "관심 단지"
+            address = log_row.get("road_address") or log_row.get("jibun_address")
+            title = f"{building_name} 영업신고 현황이 변경됐어요"
+            had_storage_error = False
+            cur.execute("""
+                SELECT uf.user_id, u.email,
+                       COALESCE(u.email_alert_enabled, TRUE) AS email_alert_enabled
+                  FROM user_favorites uf
+                  JOIN users u ON u.id = uf.user_id
+                 WHERE uf.master_building_id=%s
+                   AND uf.permit_change_alert_enabled=TRUE
+                   AND COALESCE(u.status, 'active') = 'active'
+            """, (log_row["master_building_id"],))
+            recipients = cur.fetchall()
+            for recipient in recipients:
+                delivery_id = None
+                try:
+                    initial_email_state = (
+                        "pending"
+                        if recipient.get("email") and recipient.get("email_alert_enabled")
+                        else "not_required"
+                    )
+                    cur.execute("""
+                        INSERT INTO permit_change_alert_deliveries
+                            (permit_change_alert_log_id, user_id, email_state)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (permit_change_alert_log_id, user_id) DO NOTHING
+                        RETURNING id
+                    """, (log_row["id"], recipient["user_id"], initial_email_state))
+                    delivery = cur.fetchone()
+                    if not delivery:
+                        conn.commit()
+                        continue
+                    delivery_id = delivery["id"]
+                    cur.execute("""
+                        INSERT INTO notifications
+                            (user_id, title, body, building_name, address, master_building_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        recipient["user_id"], title, summary_text, building_name,
+                        address, log_row["master_building_id"],
+                    ))
+                    notification_id = cur.fetchone()["id"]
+                    cur.execute("""
+                        UPDATE permit_change_alert_deliveries
+                           SET notification_id=%s
+                         WHERE id=%s
+                    """, (notification_id, delivery_id))
+                    conn.commit()
+                    stats["in_app_count"] += 1
+                except Exception as exc:
+                    conn.rollback()
+                    had_storage_error = True
+                    stats["failed_count"] += 1
+                    print(f"[permit-alert] 인앱 알림 기록 실패(log={log_row['id']}): {_redact(str(exc))[:300]}")
+                    continue
+
+                if not recipient.get("email") or not recipient.get("email_alert_enabled"):
+                    continue
+                try:
+                    cur.execute("""
+                        UPDATE permit_change_alert_deliveries
+                           SET email_state='attempting', email_attempted_at=NOW()
+                         WHERE id=%s AND email_state='pending'
+                     RETURNING id
+                    """, (delivery_id,))
+                    if not cur.fetchone():
+                        conn.rollback()
+                        continue
+                    conn.commit()
+                    email_html = (
+                        f"<p>{html.escape(title)}</p>"
+                        f"<p>{html.escape(summary_text)}</p>"
+                        '<p><a href="https://livingstay-realtrade.replit.app/mypage">'
+                        "마이페이지에서 알림 설정 확인하기</a></p>"
+                    )
+                    ok, message = send_email(
+                        recipient["email"], f"[홈앤스테이] {title}", email_html,
+                        idempotency_key=f"permit-change/{log_row['id']}/{recipient['user_id']}",
+                    )
+                    cur.execute("""
+                        UPDATE permit_change_alert_deliveries
+                           SET email_state=%s,
+                               email_sent_at=CASE WHEN %s THEN NOW() ELSE NULL END,
+                               email_error=CASE WHEN %s THEN NULL ELSE %s END
+                         WHERE id=%s AND email_state='attempting'
+                    """, (
+                        "sent" if ok else "failed", bool(ok), bool(ok),
+                        None if ok else str(message or "")[:500], delivery_id,
+                    ))
+                    conn.commit()
+                    if ok:
+                        stats["email_sent_count"] += 1
+                    else:
+                        stats["failed_count"] += 1
+                        print(f"[permit-alert] 이메일 발송 실패({recipient['email']}): {message}")
+                except Exception as exc:
+                    conn.rollback()
+                    stats["failed_count"] += 1
+                    print(f"[permit-alert] 이메일 처리 실패(log={log_row['id']}): {_redact(str(exc))[:300]}")
+            if not had_storage_error:
+                cur.execute("""
+                    UPDATE permit_change_alert_logs
+                       SET delivery_queued_at=NOW(), updated_at=NOW()
+                     WHERE id=%s AND delivery_queued_at IS NULL
+                """, (log_row["id"],))
+                conn.commit()
+        return stats
+    finally:
+        if acquired:
+            try:
+                cur.execute(
+                    "SELECT pg_advisory_unlock(%s) AS released",
+                    (PERMIT_CHANGE_ALERT_LOCK_ID,),
+                )
+                cur.fetchone()["released"]
+                conn.commit()
+            except Exception:
+                conn.rollback()
+        cur.close()
+        conn.close()
+
+
 # ---- 관리자 버튼용 상태 기록 (run_id 펜싱 + 하트비트) ----
 def _read_status(status_key):
     conn = get_conn()
@@ -604,7 +774,154 @@ def _to_int(v):
         return 0
 
 
-def _upsert(cur, it):
+def _korean_today():
+    """알림 중복 키는 서비스 기준일(KST)로 고정한다."""
+    return (datetime.utcnow() + timedelta(hours=9)).date()
+
+
+def _permit_number_for_item(it, biz_name, road_address, jibun_address):
+    permit_number = (it.get("MNG_NO") or "").strip()
+    if permit_number:
+        return permit_number
+    base = biz_name + "|" + (road_address or jibun_address or "")
+    return "NOMNG:" + hashlib.sha256(base.encode("utf-8")).hexdigest()[:20]
+
+
+def _permit_alert_snapshot_ready(cur):
+    cur.execute(
+        "SELECT value FROM app_meta WHERE key=%s",
+        (PERMIT_ALERT_BOOTSTRAP_META_KEY,),
+    )
+    row = cur.fetchone()
+    return bool(row and row.get("value") == "1")
+
+
+def _mark_permit_alert_snapshot_ready(cur, conn):
+    """최초 전체 수집이 끝난 뒤부터만 신규 신고 이벤트를 허용한다."""
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, '1', NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """, (PERMIT_ALERT_BOOTSTRAP_META_KEY,))
+    conn.commit()
+
+
+def _unique_building_lookup(cur):
+    """주소 정규화 키가 하나의 건물만 가리킬 때만 알림 연결에 사용한다."""
+    cur.execute("""
+        SELECT id, road_address, jibun_address, umd_nm, jibun
+          FROM master_buildings
+         WHERE COALESCE(lodging_type, '') <> 'mixed_use_excluded'
+    """)
+    road_candidates = {}
+    jibun_candidates = {}
+    for row in cur.fetchall():
+        road_key = normalize_road_prefix(row.get("road_address"))
+        jibun_key = get_building_jibun_key(row)
+        if road_key:
+            road_candidates.setdefault(road_key, set()).add(row["id"])
+        if jibun_key:
+            jibun_candidates.setdefault(jibun_key, set()).add(row["id"])
+    return (
+        {key: next(iter(ids)) for key, ids in road_candidates.items() if len(ids) == 1},
+        {key: next(iter(ids)) for key, ids in jibun_candidates.items() if len(ids) == 1},
+    )
+
+
+def _building_id_for_lodging_item(it, road_lookup, jibun_lookup):
+    keys = _lodging_item_match_keys(it)
+    if not keys:
+        return None
+    road_key, jibun_key = keys
+    return (road_lookup.get(road_key) if road_key else None) or (
+        jibun_lookup.get(jibun_key) if jibun_key else None
+    )
+
+
+def _is_closed_status(status_name, status_detail):
+    text = f"{status_name or ''} {status_detail or ''}"
+    return "폐업" in text
+
+
+def _add_permit_change_summary(cur, building_id, changes):
+    """같은 건물·같은 KST 날짜의 여러 변화를 하나의 요약 행에 누적한다."""
+    if not building_id or not changes:
+        return
+    change_date = _korean_today()
+    cur.execute("""
+        SELECT id, change_summary
+          FROM permit_change_alert_logs
+         WHERE master_building_id=%s AND change_date=%s
+         FOR UPDATE
+    """, (building_id, change_date))
+    row = cur.fetchone()
+    if row:
+        summary = dict(row.get("change_summary") or {})
+        for key, count in changes.items():
+            summary[key] = int(summary.get(key) or 0) + int(count or 0)
+        cur.execute("""
+            UPDATE permit_change_alert_logs
+               SET change_summary=%s::jsonb, updated_at=NOW()
+             WHERE id=%s
+        """, (json.dumps(summary), row["id"]))
+        return
+    cur.execute("""
+        INSERT INTO permit_change_alert_logs
+            (master_building_id, change_date, change_summary)
+        VALUES (%s, %s, %s::jsonb)
+    """, (building_id, change_date, json.dumps(changes)))
+
+
+def _record_permit_alert_snapshot(cur, *, permit_number, building_id,
+                                  status_name, status_detail, room_count,
+                                  alerts_enabled):
+    """현재 상태를 기록하고, 기준 스냅샷 이후의 네 가지 변화만 집계한다."""
+    cur.execute("""
+        SELECT master_building_id, biz_status_name, biz_status_detail, room_count
+          FROM lodging_registry_alert_snapshots
+         WHERE permit_number=%s
+         FOR UPDATE
+    """, (permit_number,))
+    previous = cur.fetchone()
+    if previous is None:
+        cur.execute("""
+            INSERT INTO lodging_registry_alert_snapshots
+                (permit_number, master_building_id, biz_status_name, biz_status_detail, room_count)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (permit_number, building_id, status_name, status_detail, room_count))
+        if alerts_enabled and building_id:
+            _add_permit_change_summary(cur, building_id, {"new": 1})
+        return
+
+    previous_building_id = previous.get("master_building_id")
+    effective_building_id = building_id or previous_building_id
+    changes = {}
+    old_closed = _is_closed_status(
+        previous.get("biz_status_name"), previous.get("biz_status_detail")
+    )
+    new_closed = _is_closed_status(status_name, status_detail)
+    if not old_closed and new_closed:
+        changes["closed"] = 1
+    elif (
+        previous.get("biz_status_name") != status_name
+        or previous.get("biz_status_detail") != status_detail
+    ):
+        changes["status"] = 1
+    if previous.get("room_count") != room_count:
+        changes["room"] = 1
+    cur.execute("""
+        UPDATE lodging_registry_alert_snapshots
+           SET master_building_id=%s,
+               biz_status_name=%s,
+               biz_status_detail=%s,
+               room_count=%s,
+               updated_at=NOW()
+         WHERE permit_number=%s
+    """, (effective_building_id, status_name, status_detail, room_count, permit_number))
+    if alerts_enabled and effective_building_id:
+        _add_permit_change_summary(cur, effective_building_id, changes)
+
+
+def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
     """수집 대상 생활·일반숙박 업태 1행 UPSERT. 저장 시 True."""
     hygiene = normalize_hygiene_type(
         it.get("SNTTN_BZSTAT_NM") or it.get("BZSTAT_SE_NM")
@@ -614,13 +931,12 @@ def _upsert(cur, it):
     biz_name = (it.get("BPLC_NM") or "").strip()
     if not biz_name:
         return False
-    permit_number = (it.get("MNG_NO") or "").strip()
     road_address = (it.get("ROAD_NM_ADDR") or "").strip() or None
     jibun_address = (it.get("LOTNO_ADDR") or "").strip() or None
-    if not permit_number:
-        base = biz_name + "|" + (road_address or jibun_address or "")
-        permit_number = "NOMNG:" + hashlib.sha256(base.encode("utf-8")).hexdigest()[:20]
+    permit_number = _permit_number_for_item(it, biz_name, road_address, jibun_address)
     room_count = _to_int(it.get("KSRM_CNT")) + _to_int(it.get("WSRM_CNT"))
+    status_name = (it.get("SALS_STTS_NM") or "").strip() or None
+    status_detail = (it.get("DTL_SALS_STTS_NM") or "").strip() or None
     cur.execute("""
         INSERT INTO lodging_registry
             (biz_name, permit_number, road_address, jibun_address, permit_date,
@@ -673,15 +989,24 @@ def _upsert(cur, it):
          )
     """, (biz_name, permit_number, road_address, jibun_address,
           (it.get("LCPMT_YMD") or "").strip() or None,
-          (it.get("SALS_STTS_NM") or "").strip() or None,
-          (it.get("DTL_SALS_STTS_NM") or "").strip() or None,
+           status_name, status_detail,
           room_count, hygiene,
           (it.get("TELNO") or "").strip() or None,
           normalize_road_prefix(road_address),
           normalize_jibun_prefix(jibun_address),
           normalize_name(biz_name),
-          (it.get("DAT_UPDT_PNT") or "").strip() or None))
-    return bool(cur.rowcount)
+           (it.get("DAT_UPDT_PNT") or "").strip() or None))
+    changed = bool(cur.rowcount)
+    _record_permit_alert_snapshot(
+        cur,
+        permit_number=permit_number,
+        building_id=building_id,
+        status_name=status_name,
+        status_detail=status_detail,
+        room_count=room_count,
+        alerts_enabled=permit_alerts_enabled,
+    )
+    return changed
 
 
 def _lodging_item_match_keys(it):
@@ -822,6 +1147,9 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
         calls_today = _daily_calls_today(cur)
         first_item_logged = False
         daily_match_keys = set()
+        # 기준 스냅샷이 아직 없을 때는 전체 수집 완료 전까지 알림을 만들지 않는다.
+        permit_alerts_enabled = _permit_alert_snapshot_ready(cur)
+        road_buildings, jibun_buildings = _unique_building_lookup(cur)
 
         while True:
             # run_id 펜싱: 상태행 소유권을 잃었으면(다른 실행이 시작됨) 즉시 중단 —
@@ -853,6 +1181,8 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
+                if not permit_alerts_enabled:
+                    _mark_permit_alert_snapshot_ready(cur, conn)
                 renamed = refresh_auto_building_names(conn)
                 if renamed:
                     _signal_stats_change()
@@ -865,7 +1195,13 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
 
             saved = 0
             for it in items:
-                changed = _upsert(cur, it)
+                building_id = _building_id_for_lodging_item(
+                    it, road_buildings, jibun_buildings
+                )
+                changed = _upsert(
+                    cur, it, building_id=building_id,
+                    permit_alerts_enabled=permit_alerts_enabled,
+                )
                 if changed:
                     saved += 1
                 match_keys = _lodging_item_match_keys(it)
@@ -888,6 +1224,8 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 cur.execute("SELECT COUNT(*) AS c FROM lodging_registry")
                 total_rows = cur.fetchone()["c"]
                 _mark_last_sync(cur, conn, total_rows)
+                if not permit_alerts_enabled:
+                    _mark_permit_alert_snapshot_ready(cur, conn)
                 renamed = refresh_auto_building_names(conn)
                 if renamed:
                     _signal_stats_change()
@@ -936,6 +1274,14 @@ def _run(args):
 
     if not error and completed:
         _refresh_master_stats_after_completion()
+        try:
+            permit_stats = send_permit_change_alerts()
+            print(
+                "[permit-alert] 대상 {target_count}건, 인앱 {in_app_count}건, "
+                "이메일 {email_sent_count}건, 실패 {failed_count}건".format(**permit_stats)
+            )
+        except Exception as e:
+            print(f"[permit-alert] 배치 실패: {_redact(str(e))[:500]}")
 
     # 숙박업 수집과 독립적으로 매일 계약만기 알림을 점검한다.
     # 수집 실패나 이메일 설정 문제로 숙박업 배치 자체가 실패하지 않게 한다.

@@ -439,8 +439,8 @@ def _bld_url(building_id, building_name=""):
     return SITE_URL
 
 
-def _zone1_1(favs, deals_by_fav, alert_off_count=0):
-    """관심단지 실거래"""
+def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
+    """관심단지의 실거래·급매·신규매물·신고변동을 한 영역에 요약한다."""
     if not favs:
         return f"""
         <p style="color:#555;font-size:14px;margin:0 0 12px;">
@@ -453,7 +453,37 @@ def _zone1_1(favs, deals_by_fav, alert_off_count=0):
           관심단지 등록하고 실거래 알림 받기 →
         </a>"""
 
-    rows = ""
+    signal_counts = signal_counts or {}
+    total_signals = sum(int(v or 0) for v in signal_counts.values())
+    if not total_signals:
+        return f"""
+        <p style="color:#555;font-size:14px;margin:0 0 12px;">
+          이번 주 관심단지의 새로운 알림이 없어요.
+        </p>
+        <a href="{SITE_URL}/mypage"
+           style="display:inline-block;background:#B4863F;color:#fff;
+                  text-decoration:none;padding:10px 22px;border-radius:6px;
+                  font-size:14px;font-weight:700;">
+          관심단지 알림 설정 확인하기 →
+        </a>"""
+
+    summary_rows = [
+        ("새 실거래", signal_counts.get("deal", 0), "#B4863F"),
+        ("금 급매", signal_counts.get("gold", 0), "#9A7A22"),
+        ("은 급매", signal_counts.get("silver", 0), "#758696"),
+        ("신규매물", signal_counts.get("new_listing", 0), "#4A7A18"),
+        ("신규신고", signal_counts.get("permit_new", 0), "#4A7A18"),
+        ("폐업", signal_counts.get("permit_closed", 0), "#A44B4B"),
+        ("영업상태 변경", signal_counts.get("permit_status", 0), "#6E5A9E"),
+        ("호실수 변경", signal_counts.get("permit_room", 0), "#356D9A"),
+    ]
+    rows = "".join(
+        f"""<tr>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee;color:#555;">{label}</td>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:{color};">{int(count or 0)}건</td>
+        </tr>"""
+        for label, count, color in summary_rows if int(count or 0) > 0
+    )
     for bname, addr, mid in favs:
         deal = deals_by_fav.get((bname, addr))
         url  = _bld_url(mid or (deal and deal.get("building_id")), bname)
@@ -495,11 +525,9 @@ def _zone1_1(favs, deals_by_fav, alert_off_count=0):
       <thead>
         <tr>
           <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
-                     border-bottom:2px solid #eee;">건물명</th>
+                     border-bottom:2px solid #eee;">이번 주 신호</th>
           <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
-                     border-bottom:2px solid #eee;white-space:nowrap;">거래금액</th>
-          <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
-                     border-bottom:2px solid #eee;">계약일</th>
+                     border-bottom:2px solid #eee;">건수</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
@@ -741,12 +769,12 @@ def _zone4(feature_tip):
 
 
 def build_html(user_name, favs, deals_by_fav,
-               listing_reqs, buy_reqs,
+                listing_reqs, buy_reqs,
                price_highs, most_traded,
                datalab_summary, feature_tip,
-               unsubscribe_url, alert_off_count=0):
+                unsubscribe_url, alert_off_count=0, signal_counts=None):
     z0  = _zone0(datalab_summary)
-    z1  = _zone1_1(favs, deals_by_fav, alert_off_count)
+    z1  = _zone1_1(favs, deals_by_fav, signal_counts, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
     z2  = _zone2(price_highs, most_traded)
     z3  = _zone3(datalab_summary)
@@ -842,12 +870,12 @@ def build_html(user_name, favs, deals_by_fav,
 
   {zone0_block}
 
-  <!-- ── Zone 1-1: 관심단지 실거래 ── -->
+   <!-- ── Zone 1-1: 관심단지 숙박알리미 ── -->
   <tr>
     <td style="padding:20px 28px 0;">
       <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
                  padding-bottom:8px;border-bottom:2px solid #B4863F;">
-        📌 관심단지 실거래 알림
+         📌 관심단지 숙박알리미
       </h2>
       {z1}
     </td>
@@ -1036,6 +1064,53 @@ def main():
                     if key in set((f[0], f[1]) for f in favs):
                         deals_by_fav[key] = dict(r)
 
+            # 최근 7일 통합 알림 신호. 각 로그의 회원별 전달 이력만 집계한다.
+            signal_counts = {
+                "deal": len(deals_by_fav), "gold": 0, "silver": 0,
+                "new_listing": 0, "permit_new": 0, "permit_closed": 0,
+                "permit_status": 0, "permit_room": 0,
+            }
+            favorite_ids = [f[2] for f in favs if f[2] is not None]
+            if favorite_ids:
+                cur.execute("""
+                    SELECT COALESCE(ul.tier, '') AS tier, COUNT(*) AS cnt
+                      FROM urgent_listing_alert_logs ul
+                      JOIN listing_requests lr ON lr.id=ul.listing_request_id
+                     WHERE ul.user_id=%s
+                       AND ul.created_at >= %s
+                       AND lr.master_building_id = ANY(%s)
+                     GROUP BY COALESCE(ul.tier, '')
+                """, (uid, week_ago, favorite_ids))
+                for row in cur.fetchall():
+                    if row["tier"] == "gold":
+                        signal_counts["gold"] += int(row["cnt"] or 0)
+                    elif row["tier"] == "silver":
+                        signal_counts["silver"] += int(row["cnt"] or 0)
+                cur.execute("""
+                    SELECT COUNT(*) AS cnt
+                      FROM new_listing_alert_logs nl
+                      JOIN listing_requests lr ON lr.id=nl.listing_request_id
+                     WHERE nl.user_id=%s
+                       AND nl.created_at >= %s
+                       AND lr.master_building_id = ANY(%s)
+                """, (uid, week_ago, favorite_ids))
+                signal_counts["new_listing"] = int((cur.fetchone() or {}).get("cnt") or 0)
+                cur.execute("""
+                    SELECT pcl.change_summary
+                      FROM permit_change_alert_deliveries pcd
+                      JOIN permit_change_alert_logs pcl
+                        ON pcl.id=pcd.permit_change_alert_log_id
+                     WHERE pcd.user_id=%s
+                       AND pcd.created_at >= %s
+                       AND pcl.master_building_id = ANY(%s)
+                """, (uid, week_ago, favorite_ids))
+                for row in cur.fetchall():
+                    summary = dict(row.get("change_summary") or {})
+                    signal_counts["permit_new"] += int(summary.get("new") or 0)
+                    signal_counts["permit_closed"] += int(summary.get("closed") or 0)
+                    signal_counts["permit_status"] += int(summary.get("status") or 0)
+                    signal_counts["permit_room"] += int(summary.get("room") or 0)
+
             # 진행 중 매물의뢰
             cur.execute("""
                 SELECT lr.id, lr.status, lr.master_building_id,
@@ -1079,6 +1154,7 @@ def main():
                 price_highs, most_traded,
                 datalab_summary, feature_tip,
                 unsubscribe_url, alert_off_count,
+                signal_counts=signal_counts,
             )
 
             if dry_run:

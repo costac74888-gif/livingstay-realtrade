@@ -5838,6 +5838,8 @@ def favorites_mine():
         cur.execute("""
             SELECT uf.id AS favorite_id, uf.building_name, uf.address, uf.created_at,
                    COALESCE(uf.urgent_alert_enabled, FALSE) AS urgent_alert_enabled,
+                   COALESCE(uf.new_listing_alert_enabled, FALSE) AS new_listing_alert_enabled,
+                   COALESCE(uf.permit_change_alert_enabled, FALSE) AS permit_change_alert_enabled,
                    lt.price, lt.deal_date, lt.area, lt.floor, lt.deal_type,
                    lt.lodging_type, lt.lodging_type_detail,
                    COALESCE(uf.master_building_id, bid.id, bid2.id) AS building_id
@@ -6023,6 +6025,92 @@ def favorites_mine_urgent_alert():
             "ok": True,
             "favorite_id": favorite_id,
             "enabled": request.method != "DELETE",
+        })
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/favorites/mine/signal-alert", methods=["PUT", "DELETE"])
+def favorites_mine_signal_alert():
+    """숙박알리미 통합 토글 — 실거래·급매·신규매물·신고변동을 함께 관리한다."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        favorite_id = int(data.get("favorite_id") or 0)
+    except (TypeError, ValueError):
+        favorite_id = 0
+    if not favorite_id:
+        return jsonify({"ok": False, "message": "관심단지 정보가 올바르지 않습니다."}), 400
+    try:
+        building_id = int(data.get("building_id") or 0)
+    except (TypeError, ValueError):
+        building_id = 0
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if request.method == "PUT":
+            cur.execute("""
+                UPDATE user_favorites uf
+                   SET urgent_alert_enabled = TRUE,
+                       new_listing_alert_enabled = TRUE,
+                       permit_change_alert_enabled = TRUE,
+                       master_building_id = COALESCE(uf.master_building_id, %s)
+                 WHERE uf.id = %s
+                   AND uf.user_id = %s
+                   AND (
+                       uf.master_building_id IS NOT NULL
+                       OR EXISTS (SELECT 1 FROM master_buildings mb WHERE mb.id = %s)
+                   )
+             RETURNING id, building_name, address, master_building_id
+            """, [building_id or None, favorite_id, u["id"], building_id])
+            favorite = cur.fetchone()
+            if not favorite:
+                conn.rollback()
+                return jsonify({
+                    "ok": False,
+                    "message": "건물 상세와 연결된 관심단지에서만 숙박알리미를 설정할 수 있습니다.",
+                }), 400
+            # 기존 실거래 알림은 별도 테이블을 유지하되, 통합 버튼은 이를 함께 켠다.
+            cur.execute("""
+                INSERT INTO user_alert_subscriptions (user_id, building_name, address)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING
+            """, [u["id"], favorite["building_name"], favorite["address"]])
+            # 사용자의 명시적인 통합 알림 켜기이므로 과거 수신거부 상태도 새 동의로 갱신한다.
+            cur.execute("""
+                UPDATE users
+                   SET weekly_email_enabled = TRUE, updated_weekly_email_at = NOW()
+                 WHERE id = %s
+            """, [u["id"]])
+        else:
+            cur.execute("""
+                UPDATE user_favorites
+                   SET urgent_alert_enabled = FALSE,
+                       new_listing_alert_enabled = FALSE,
+                       permit_change_alert_enabled = FALSE
+                 WHERE id = %s AND user_id = %s
+             RETURNING id, building_name, address
+            """, [favorite_id, u["id"]])
+            favorite = cur.fetchone()
+            if not favorite:
+                conn.rollback()
+                return jsonify({"ok": False, "message": "관심단지를 찾을 수 없습니다."}), 404
+            # 통합 버튼으로 끈 경우에만 해당 관심단지의 실거래 구독도 함께 해제한다.
+            cur.execute("""
+                DELETE FROM user_alert_subscriptions
+                 WHERE user_id = %s
+                   AND COALESCE(building_name, '') = COALESCE(%s, '')
+                   AND address = %s
+            """, [u["id"], favorite["building_name"], favorite["address"]])
+        conn.commit()
+        return jsonify({
+            "ok": True,
+            "favorite_id": favorite_id,
+            "enabled": request.method == "PUT",
         })
     finally:
         cur.close()
@@ -6263,7 +6351,7 @@ def notifications_mine():
         cur.execute("""
             SELECT n.id, n.title, n.body, n.building_name, n.address,
                    n.is_read, n.created_at,
-                   COALESCE(listing.master_building_id, bid.id) AS building_id
+                    COALESCE(n.master_building_id, listing.master_building_id, bid.id) AS building_id
             FROM notifications n
             LEFT JOIN listing_requests listing ON listing.id = n.listing_request_id
             LEFT JOIN LATERAL (
@@ -8641,11 +8729,11 @@ def _queue_urgent_listing_alerts(cur, listing_id, building_id, building_name,
             continue
         cur.execute("""
             INSERT INTO urgent_listing_alert_logs
-                (user_id, listing_request_id, notification_id)
-            VALUES (%s, %s, %s)
+                (user_id, listing_request_id, notification_id, tier)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id, listing_request_id) DO NOTHING
             RETURNING id
-        """, [subscriber["user_id"], listing_id, notification["id"]])
+        """, [subscriber["user_id"], listing_id, notification["id"], tier])
         log_row = cur.fetchone()
         if log_row and subscriber.get("email") and subscriber.get("email_alert_enabled"):
             jobs.append({
@@ -8725,6 +8813,136 @@ def _send_urgent_listing_email(job):
         """, [
             "sent" if ok else "failed", bool(ok), bool(ok),
             str(message or "")[:500], job["log_id"]
+        ])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _is_public_whole_direct_listing(listing):
+    """신규매물 알림 대상인 공개 건물전체 직거래인지 확인한다."""
+    return bool(
+        listing.get("deal_mode") == "direct"
+        and (listing.get("transaction_target") or "unit") == "whole"
+        and (listing.get("disclosure_scope") or "limited") == "public"
+        and listing.get("status") not in ("withdrawn", "철회됨", "보류")
+    )
+
+
+def _queue_new_listing_alerts(cur, listing_id, building_id, building_name,
+                              address, price_krw, deal_type):
+    """급매가 아닌 신규 공개 건물전체 매물을 구독자별로 한 번만 예약한다."""
+    cur.execute("""
+        SELECT uf.user_id, u.email, COALESCE(u.email_alert_enabled, TRUE) AS email_alert_enabled
+          FROM user_favorites uf
+          JOIN users u ON u.id = uf.user_id
+         WHERE uf.master_building_id = %s
+           AND uf.new_listing_alert_enabled = TRUE
+    """, [building_id])
+    jobs = []
+    name_disp = building_name or address or "관심 단지"
+    price_text = f"{int(price_krw):,}만원" if price_krw is not None else "가격 협의"
+    for subscriber in cur.fetchall():
+        cur.execute("""
+            INSERT INTO notifications
+                (user_id, title, body, building_name, address, listing_request_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, listing_request_id) DO NOTHING
+            RETURNING id
+        """, [
+            subscriber["user_id"], f"{name_disp}에 새 매물이 등록됐어요",
+            f"{deal_type or '매물'} · {price_text}", building_name, address, listing_id,
+        ])
+        notification = cur.fetchone()
+        if not notification:
+            continue
+        cur.execute("""
+            INSERT INTO new_listing_alert_logs
+                (user_id, listing_request_id, notification_id)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, listing_request_id) DO NOTHING
+            RETURNING id
+        """, [subscriber["user_id"], listing_id, notification["id"]])
+        log_row = cur.fetchone()
+        if log_row and subscriber.get("email") and subscriber.get("email_alert_enabled"):
+            jobs.append({
+                "log_id": log_row["id"],
+                "user_id": subscriber["user_id"],
+                "listing_id": listing_id,
+                "email": subscriber["email"],
+                "building_name": name_disp,
+                "address": address,
+                "price_krw": price_krw,
+                "deal_type": deal_type,
+            })
+    return jobs
+
+
+def _send_new_listing_email(job):
+    """커밋 후 신규매물 이메일을 한 번 시도하고 결과만 이력에 남긴다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE new_listing_alert_logs
+               SET email_state = 'attempting', email_attempted_at = NOW()
+             WHERE id = %s AND email_state = 'pending'
+         RETURNING id
+        """, [job["log_id"]])
+        if not cur.fetchone():
+            conn.rollback()
+            return
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    try:
+        from email_util import render_newsletter_email
+        price_text = (
+            f"{int(job['price_krw']):,}만원"
+            if job["price_krw"] is not None else "가격 협의"
+        )
+        has_content, email_html = render_newsletter_email(
+            unsubscribe_link=f"{_public_base_url()}/mypage",
+            greeting_line="관심 단지에 새 매물이 등록됐어요.",
+            transactions=[{
+                "building_name": job["building_name"],
+                "deal_type": job.get("deal_type") or "매물",
+                "area_text": "-",
+                "price_text": price_text,
+                "floor": "-",
+                "deal_date": datetime.now().strftime("%Y-%m-%d"),
+            }],
+            news_items=None, agent_info=None, operator_info=None,
+        )
+        if not has_content:
+            ok, message = False, "이메일 콘텐츠가 없어 발송하지 않았습니다."
+        else:
+            ok, message = send_email(
+                job["email"],
+                f"[홈앤스테이] 새 매물 — {job['building_name']}",
+                email_html,
+                idempotency_key=f"new-listing/{job['listing_id']}/{job['user_id']}",
+            )
+    except Exception as exc:
+        ok, message = False, str(exc)
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE new_listing_alert_logs
+               SET email_state = %s,
+                   email_sent_at = CASE WHEN %s THEN NOW() ELSE NULL END,
+                   email_error = CASE WHEN %s THEN NULL ELSE %s END
+             WHERE id = %s
+        """, [
+            "sent" if ok else "failed", bool(ok), bool(ok),
+            str(message or "")[:500], job["log_id"],
         ])
         conn.commit()
     except Exception:
@@ -9170,6 +9388,7 @@ def create_listing_request():
     contact_phone = verified_phone
 
     urgent_email_jobs = []
+    new_listing_email_jobs = []
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -9272,20 +9491,17 @@ def create_listing_request():
             })]
         )
         _best_effort_weekly_email_opt_in(cur, user["id"], "listing_request")
-        # 공개 건물전체 직거래의 새 급매만 알림 대상으로 삼는다. 알림 저장 실패는
-        # SAVEPOINT로 격리해 매물 등록·이력 커밋을 되돌리지 않는다.
-        if (
-            deal_mode == "direct"
-            and transaction_target == "whole"
-            and (whole_values or {}).get("disclosure_scope") == "public"
-        ):
-            urgent_tier = _urgent_tier_for_listing(cur, {
-                "deal_mode": deal_mode, "transaction_target": transaction_target,
-                "disclosure_scope": (whole_values or {}).get("disclosure_scope"),
-                "status": "submitted", "master_building_id": mb_id,
-                "deal_type": deal_type, "is_urgent": (whole_values or {}).get("is_urgent"),
-                "price_krw": price_krw,
-            })
+        # 신규 공개 건물전체 직거래는 급매 또는 일반 신규매물 중 한 신호만 예약한다.
+        # 알림 저장 실패는 SAVEPOINT로 격리해 매물 등록·이력 커밋을 되돌리지 않는다.
+        listing_alert_values = {
+            "deal_mode": deal_mode, "transaction_target": transaction_target,
+            "disclosure_scope": (whole_values or {}).get("disclosure_scope"),
+            "status": "submitted", "master_building_id": mb_id,
+            "deal_type": deal_type, "is_urgent": (whole_values or {}).get("is_urgent"),
+            "price_krw": price_krw,
+        }
+        if _is_public_whole_direct_listing(listing_alert_values):
+            urgent_tier = _urgent_tier_for_listing(cur, listing_alert_values)
             if urgent_tier:
                 cur.execute("SAVEPOINT urgent_listing_alerts")
                 try:
@@ -9300,6 +9516,20 @@ def create_listing_request():
                     cur.execute("RELEASE SAVEPOINT urgent_listing_alerts")
                     urgent_email_jobs = []
                     app.logger.exception("급매 알림 예약 실패(listing_id=%s)", req_id)
+            else:
+                cur.execute("SAVEPOINT new_listing_alerts")
+                try:
+                    new_listing_email_jobs = _queue_new_listing_alerts(
+                        cur, req_id, mb_id, bld["building_name"],
+                        bld.get("road_address") or bld.get("jibun_address"),
+                        price_krw, deal_type,
+                    )
+                    cur.execute("RELEASE SAVEPOINT new_listing_alerts")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT new_listing_alerts")
+                    cur.execute("RELEASE SAVEPOINT new_listing_alerts")
+                    new_listing_email_jobs = []
+                    app.logger.exception("신규매물 알림 예약 실패(listing_id=%s)", req_id)
         conn.commit()
     finally:
         cur.close()
@@ -9320,6 +9550,8 @@ def create_listing_request():
     )
     for urgent_email_job in urgent_email_jobs:
         _send_urgent_listing_email(urgent_email_job)
+    for new_listing_email_job in new_listing_email_jobs:
+        _send_new_listing_email(new_listing_email_job)
 
     return jsonify({
         "ok": True, "id": req_id,
