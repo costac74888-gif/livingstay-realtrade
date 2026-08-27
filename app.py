@@ -15585,32 +15585,32 @@ def _lodging_full_stats_payload():
     by_type: dict = {t: [] for t in TYPES}
     all_list: list = []
     building_count_by_type: dict = {}
-    for b in all_blds:
-        lt = b["lodging_type"] or "미분류"
-        if lt not in by_type: lt = "미분류"
-        by_type[lt].append(b)
-        all_list.append(b)
 
-        # 지도 /api/building-count의 CASE 분류와 동일한 순서로 집계한다.
-        # 준공전은 lodging_type보다 우선하며, 사용승인일이 있으면 완공 건물이다.
+    def _map_lodging_type(building: dict) -> str:
+        """지도와 건물마스터 통계표가 공유하는 건물 분류 기준."""
         if (
-            b.get("building_status") in ("허가", "착공")
-            and not b.get("use_apr_day")
+            building.get("building_status") in ("허가", "착공")
+            and not building.get("use_apr_day")
         ):
-            map_type = "준공전"
-        elif b.get("lodging_type") in ("생활", "관광", "일반"):
-            map_type = b["lodging_type"]
-        elif (
-            b.get("lodging_type") == "복합"
-            or "·" in (b.get("lodging_type") or "")
+            return "준공전"
+        if building.get("lodging_type") in ("생활", "관광", "일반"):
+            return building["lodging_type"]
+        if (
+            building.get("lodging_type") == "복합"
+            or "·" in (building.get("lodging_type") or "")
         ):
-            map_type = "복합"
-        elif not b.get("lodging_type"):
+            return "복합"
+        if not building.get("lodging_type"):
+            return "미분류"
+        return "미분류"
+
+    for b in all_blds:
+        all_list.append(b)
+        map_type = _map_lodging_type(b)
+        if map_type not in by_type:
             map_type = "미분류"
-        else:
-            map_type = None
-        if map_type is not None:
-            building_count_by_type[map_type] = building_count_by_type.get(map_type, 0) + 1
+        by_type[map_type].append(b)
+        building_count_by_type[map_type] = building_count_by_type.get(map_type, 0) + 1
 
     def _permits_for(blds: list) -> dict:
         permits: dict = {}

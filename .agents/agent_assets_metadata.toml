@@ -61,3 +61,10 @@ uri = "file://screenshots/building-detail-without-price-comparison.jpg"
 type = "image"
 title = "가격 비교 섹션 제거 후 건물 상세페이지"
 description = "건물 상세페이지에서 ‘매물가 · 최근 실거래 비교’ 카드가 제거된 실제 미리보기 캡처입니다. 비로그인 상태라 로그인 유도 모달이 함께 표시됩니다."
+
+[[outputs]]
+id = "n8bSsl-nQSRyRMP8oc5zZ"
+uri = "file://screenshots/admin-map-type-counts-verification.jpg"
+type = "image"
+title = "지도·통계표 분류 수치 검증"
+description = "운영 DB 읽기 전용 계산 결과: 준공전 357건, 미분류 85건이 지도 범례와 관리자 통계표에서 일치합니다."

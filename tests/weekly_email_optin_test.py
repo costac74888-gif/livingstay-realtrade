@@ -14,7 +14,7 @@ class WeeklyEmailOptInTests(unittest.TestCase):
         self.assertIn("weekly_email_enabled BOOLEAN DEFAULT TRUE", DB)
         self.assertIn("updated_weekly_email_at TIMESTAMP", DB)
         self.assertIn("AND updated_weekly_email_at IS NULL", DB)
-        self.assertIn('SCHEMA_VERSION = "2026-08-24-04"', DB)
+        self.assertIn('SCHEMA_VERSION = "2026-08-26-02"', DB)
         self.assertIn("WHERE weekly_email_enabled = FALSE", DB)
 
     def test_manual_toggle_and_unsubscribe_record_explicit_change(self):
