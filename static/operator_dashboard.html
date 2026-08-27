@@ -111,7 +111,7 @@
           <li>담당 단지는 최대 <b id="guideBuildingCap">–</b>개까지 무료 등록할 수 있습니다.</li>
           <li>등록한 단지 중 원하는 곳에 <b>단지뱃지</b>를 신청하면 그 단지 담당업체 영역 최상단에 단독 노출됩니다 (같은 업종 1곳만 가능).</li>
           <li>단지뱃지는 1인당 최대 <b id="guideBadgeCap">–</b>개까지 보유 가능합니다.</li>
-          <li>신청 즉시 <b>3개월 무료</b> 적용됩니다.</li>
+          <li>신청 즉시 <b>2026년 12월 31일까지 무료</b> 적용됩니다.</li>
           <li>이미 같은 업종의 다른 업체가 단지뱃지를 보유한 단지는 신청할 수 없습니다.</li>
           <li>한 단지당 단지뱃지 무료 혜택은 <b>1회만</b> 받을 수 있습니다 (만료 후 재신청 불가).</li>
         </ul>
@@ -151,10 +151,9 @@
     <div class="panel-card">
       <div class="side-card-title">뱃지기한</div>
       <div class="agent-guide">
-        실제 결제 기능은 아직 준비 중이며, 현재는 3개월 무료체험 기간이
-        적용되고 있습니다.
+        모든 단지뱃지(골드)·지역뱃지(실버)는 <b>2026년 12월 31일까지 무료</b>입니다.
       </div>
-      <div class="badge-meter"><div class="num" id="opBadgeMeterNum">-/5</div>
+      <div class="badge-meter"><div class="num" id="opBadgeMeterNum">-/10</div>
         <div style="font-size:13px; color:var(--ink);">골드뱃지(단지뱃지) 보유 현황</div></div>
       <div id="opBillingList"></div>
     </div>
@@ -453,12 +452,12 @@ document.querySelectorAll(".agent-tab").forEach(btn => {
 
 // ---- 단지뱃지 신청 ----
 window.claimBadge = async function(mbid) {
-  if (!confirm("이 단지에 단지뱃지를 신청합니다.\n신청 즉시 3개월 무료 적용되며, 무료 혜택은 1회만 제공됩니다.\n계속하시겠습니까?")) return;
+  if (!confirm("이 단지에 단지뱃지를 신청합니다.\n신청 즉시 2026년 12월 31일까지 무료 적용되며, 무료 혜택은 1회만 제공됩니다.\n계속하시겠습니까?")) return;
   const { ok, data } = await api(`/api/operator/buildings/${mbid}/claim-premium`, { method: "POST" });
   if (!ok) { alert(data && data.message ? data.message : "신청에 실패했습니다."); return; }
   // GA4: 운영지원업체 단지뱃지 신청 완료 — API 성공 응답 직후
   if (typeof gtag === "function") gtag("event", "generate_lead_support");
-  alert("단지뱃지가 신청되었습니다. 3개월간 해당 단지 담당업체 영역 최상단에 노출됩니다.");
+  alert("단지뱃지가 신청되었습니다. 2026년 12월 31일까지 해당 단지 담당업체 영역 최상단에 노출됩니다.");
   // ME 갱신 후 화면 재렌더
   const res = await api("/api/operator/me");
   if (res.ok) { ME = res.data; render(); }
@@ -572,7 +571,7 @@ async function loadOpBilling(){
   const res = await fetch("/api/operator/tier-status");
   const d = await res.json().catch(()=>({}));
   if (!d.ok) return;
-  document.getElementById("opBadgeMeterNum").textContent = `${d.buildings.length}/5`;
+  document.getElementById("opBadgeMeterNum").textContent = `${d.buildings.length}/${ME.badge_cap || 100}`;
   const box = document.getElementById("opBillingList");
   const rows = [];
   d.buildings.forEach(b => {

@@ -75,18 +75,18 @@ from lodging_matching import (
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
 
-# 파트너(중개사/운영업체) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
-# 가격정책 확정 전 임시 무료 캡 — 정책 확정 시 이 상수만 조정하면 됨.
-MAX_FREE_BUILDINGS = 5
+# 파트너(중개사/운영업체/대출상담사) 1곳이 무료로 담당 등록할 수 있는 건물 수 상한.
+MAX_FREE_BUILDINGS = 10
+# 승인된 파트너에게 적용하는 현재 무료 뱃지 정책의 종료 시각.
+# SQL에는 문자열 바인딩으로 넣어 서버·DB 타임존이 달라도 같은 현지 만료일을 보장한다.
+PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
 MAX_FAVORITES = 30         # 회원 1인당 관심단지 최대 저장 수 (클라이언트와 동일값 유지)
-AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 한정 트라이얼 기간 단지 등록 한도 (15 → 10, 프리미엄도 이 한도 안에서만 가능)
+AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
 OPERATOR_REGION_BUILDING_CAP = 20  # 지역 안에서 담당단지로 선택 가능한 건물 수
-OPERATOR_REGION_SLOT_CAP = 20      # 시군구 하나당 등록 가능한 운영업체 수(업종 무관 공유)
 AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(시군구) 수 (20 → 1)
 AGENT_REGION_BUILDING_CAP = 20  # 등록한 지역 안에서 담당단지로 선택 가능한 건물 수
-REGION_SLOT_CAP = 20            # 시군구 하나당 지역Master로 등록 가능한 중개사 수
 
 # 일반숙박은 건축물대장 호실수와 실제 영업 객실수가 같은 모집단이 아니다.
 # 따라서 일반 건물은 신고율 대신 행안부 영업신고 객실수 절대값을 보여준다.
@@ -7315,10 +7315,12 @@ def agent_building_add():
     cur = conn.cursor()
     reassigned_count = 0
     try:
+        # 같은 중개사의 서로 다른 단지 동시 등록도 무료 담당단지 한도를 넘지 않게 직렬화한다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911002, agent_id])
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
-        # 트라이얼 캡: 중개사는 15개까지(운영업체/대출상담사는 MAX_FREE_BUILDINGS=5 그대로, 안 건드림)
+        # 무료 담당단지 한도는 모든 파트너 유형에 10개로 동일하다.
         cur.execute("SELECT COUNT(*) c FROM agent_buildings WHERE agent_id = %s", [agent_id])
         if cur.fetchone()["c"] >= AGENT_TRIAL_BUILDING_CAP:
             return jsonify({
@@ -7326,10 +7328,22 @@ def agent_building_add():
                 "message": f"무료 등록 가능 건물 수({AGENT_TRIAL_BUILDING_CAP}개)를 초과했습니다. 추가 등록은 준비 중입니다.",
             }), 400
         try:
-            cur.execute(
-                "INSERT INTO agent_buildings (agent_id, master_building_id) VALUES (%s, %s)",
-                [agent_id, mbid],
-            )
+            # 전속단지는 등록과 동시에 단지뱃지를 부여한다. 건물 단위 락으로
+            # 동시 등록 때도 단지당 중개사 뱃지가 둘 생기지 않게 한다.
+            cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911001, mbid])
+            cur.execute("""
+                SELECT 1 FROM agent_buildings
+                WHERE master_building_id=%s AND agent_id<>%s
+                  AND has_priority_badge
+                  AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+            """, [mbid, agent_id])
+            if cur.fetchone():
+                return jsonify({"ok": False, "message": "이미 다른 부동산이 입점한 단지입니다."}), 400
+            cur.execute("""
+                INSERT INTO agent_buildings
+                    (agent_id, master_building_id, has_priority_badge, premium_granted_at, premium_expires_at)
+                VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
+            """, [agent_id, mbid, PARTNER_BADGE_FREE_EXPIRES_AT])
             reassigned_count = _reassign_house_requests_for_building(cur, agent_id, mbid)
             conn.commit()
         except psycopg2_errors.UniqueViolation:
@@ -7389,7 +7403,7 @@ def agent_building_add():
 @app.route("/api/agent/buildings/<int:mbid>/claim-premium", methods=["POST"])
 @require_agent
 def agent_building_claim_premium(mbid):
-    """전속 단지를 3개월 무료 프리미엄으로 즉시 승격 — 단지당 1회 한정."""
+    """구버전 대시보드 호환용: 신규 전속단지는 등록 시 이미 단지뱃지가 부여된다."""
     agent_id = session["agent_id"]
     conn = get_conn()
     cur = conn.cursor()
@@ -7416,9 +7430,9 @@ def agent_building_claim_premium(mbid):
     cur.execute("""
         UPDATE agent_buildings
         SET has_priority_badge = TRUE, premium_granted_at = NOW(),
-            premium_expires_at = NOW() + INTERVAL '3 months'
+            premium_expires_at = %s::timestamp
         WHERE agent_id=%s AND master_building_id=%s
-    """, [agent_id, mbid])
+    """, [PARTNER_BADGE_FREE_EXPIRES_AT, agent_id, mbid])
     # 대기 알림 목록 초기화 — 새 입점자가 생겼으므로 기존 waitlist는 더 이상 유효하지 않음
     cur.execute("DELETE FROM premium_waitlist WHERE master_building_id=%s", [mbid])
     # 이 단지가 본인의 지역담당단지 목록에 있었다면 정리(중복 방지)
@@ -7433,7 +7447,7 @@ def agent_building_claim_premium(mbid):
 @app.route("/api/agent/service-regions", methods=["POST"])
 @require_agent
 def agent_service_region_claim():
-    """시군구 단위 지역Master를 3개월 무료로 즉시 등록 — 지역당 1회 한정, 최대 25개."""
+    """시군구 단위 지역뱃지를 즉시 등록한다. 지역 전체 정원은 두지 않는다."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
     sgg = (data.get("sgg_text") or "").strip()
@@ -7441,6 +7455,8 @@ def agent_service_region_claim():
         return jsonify({"ok": False, "message": "지역을 입력해주세요."}), 400
     conn = get_conn()
     cur = conn.cursor()
+    # 서로 다른 지역을 동시에 등록해도 중개사별 담당 지역 1개 제한을 지킨다.
+    cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
     cur.execute(
         "SELECT 1 FROM agent_service_regions WHERE agent_id=%s AND sgg_text=%s", [agent_id, sgg])
     if cur.fetchone():
@@ -7450,15 +7466,10 @@ def agent_service_region_claim():
     if cur.fetchone()["c"] >= AGENT_TRIAL_REGION_CAP:
         cur.close(); conn.close()
         return jsonify({"ok": False, "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요."}), 400
-    # 시군구당 슬롯 캡 — 이 지역에 이미 등록된 중개사 수
-    cur.execute("SELECT COUNT(*) c FROM agent_service_regions WHERE sgg_text=%s", [sgg])
-    if cur.fetchone()["c"] >= REGION_SLOT_CAP:
-        cur.close(); conn.close()
-        return jsonify({"ok": False, "message": f"이 지역은 이미 정원({REGION_SLOT_CAP}명)이 찼습니다."}), 400
     cur.execute("""
         INSERT INTO agent_service_regions (agent_id, sgg_text, expires_at)
-        VALUES (%s, %s, NOW() + INTERVAL '3 months')
-    """, [agent_id, sgg])
+        VALUES (%s, %s, %s::timestamp)
+    """, [agent_id, sgg, PARTNER_BADGE_FREE_EXPIRES_AT])
     conn.commit()
     cur.close()
     conn.close()
@@ -11664,7 +11675,7 @@ def operator_me():
     out = dict(me)
     out["logo_src"] = f"/api/partners/operator-logo/{operator_id}" if out.get("logo_url") else None
     out["buildings"] = buildings
-    out["building_cap"] = OPERATOR_REGION_BUILDING_CAP
+    out["building_cap"] = MAX_FREE_BUILDINGS
     out["badge_cap"] = OPERATOR_PREMIUM_BADGE_CAP
     return jsonify(out)
 
@@ -12393,6 +12404,8 @@ def loan_consultant_building_add():
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # 같은 상담사의 병렬 등록 요청이 담당단지 10개 한도를 우회하지 않게 한다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911004, lc_id])
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
@@ -12403,10 +12416,12 @@ def loan_consultant_building_add():
                 "message": f"무료 등록 가능 건물 수({MAX_FREE_BUILDINGS}개)를 초과했습니다.",
             }), 400
         try:
-            cur.execute(
-                "INSERT INTO loan_consultant_buildings (loan_consultant_id, master_building_id) VALUES (%s, %s)",
-                [lc_id, mbid],
-            )
+            cur.execute("""
+                INSERT INTO loan_consultant_buildings
+                    (loan_consultant_id, master_building_id, has_priority_badge,
+                     premium_granted_at, premium_expires_at)
+                VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
+            """, [lc_id, mbid, PARTNER_BADGE_FREE_EXPIRES_AT])
             conn.commit()
         except psycopg2_errors.UniqueViolation:
             conn.rollback()
@@ -12607,10 +12622,12 @@ def operator_building_add():
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # 같은 업체의 병렬 등록 요청이 담당단지 10개 한도를 우회하지 않게 한다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911005, operator_id])
         cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", [mbid])
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
-        # 무료 캡: 담당 건물 수가 MAX_FREE_BUILDINGS 이상이면 추가 등록 차단(안내만, 결제 미도입)
+        # 무료 담당단지 한도는 파트너 유형별로 동일하게 10개다.
         cur.execute("SELECT COUNT(*) c FROM operator_buildings WHERE operator_id = %s", [operator_id])
         if cur.fetchone()["c"] >= MAX_FREE_BUILDINGS:
             return jsonify({
@@ -12636,7 +12653,7 @@ def operator_building_add():
 @app.route("/api/operator/buildings/<int:mbid>/claim-premium", methods=["POST"])
 @require_operator
 def operator_building_claim_premium(mbid):
-    """전속 단지를 3개월 무료 단지뱃지로 즉시 승격 — 단지당 1회 한정,
+    """전속 단지를 무료 단지뱃지로 즉시 승격 — 단지당 1회 한정,
     같은 업종끼리만 독점(다른 업종끼리는 동시에 뱃지 보유 가능)."""
     operator_id = session["operator_id"]
     conn = get_conn()
@@ -12657,6 +12674,9 @@ def operator_building_claim_premium(mbid):
         if row["premium_granted_at"]:
             return jsonify({"ok": False, "message": "이미 이 단지는 단지뱃지 혜택을 사용했습니다."}), 400
 
+        # 같은 단지·업종의 동시 신청도 독점 규칙을 우회하지 않게 직렬화한다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                    [911008, f"{mbid}:{my_category}"])
         cur.execute("""
             SELECT 1 FROM operator_buildings ob
             JOIN operators o ON o.id = ob.operator_id
@@ -12683,9 +12703,9 @@ def operator_building_claim_premium(mbid):
         cur.execute("""
             UPDATE operator_buildings
             SET has_priority_badge = TRUE, premium_granted_at = NOW(),
-                premium_expires_at = NOW() + INTERVAL '3 months'
+                premium_expires_at = %s::timestamp
             WHERE operator_id=%s AND master_building_id=%s
-        """, [operator_id, mbid])
+        """, [PARTNER_BADGE_FREE_EXPIRES_AT, operator_id, mbid])
         # 단지뱃지 입점 성공 시 지역담당단지 목록에서 중복 제거
         cur.execute("DELETE FROM operator_region_buildings WHERE operator_id=%s AND master_building_id=%s",
                     [operator_id, mbid])
@@ -12699,8 +12719,7 @@ def operator_building_claim_premium(mbid):
 @app.route("/api/operator/service-regions", methods=["POST"])
 @require_operator
 def operator_service_region_claim():
-    """시군구 단위 지역Master를 3개월 무료로 즉시 등록 — 1인당 1개,
-    시군구당 최대 20명(업종 무관 공유)."""
+    """시군구 단위 지역뱃지를 즉시 등록한다. 지역 전체 정원은 두지 않는다."""
     operator_id = session["operator_id"]
     data = request.get_json(force=True, silent=True) or {}
     sgg = (data.get("sgg_text") or "").strip()
@@ -12709,16 +12728,15 @@ def operator_service_region_claim():
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # 서로 다른 지역을 동시에 등록해도 운영업체별 담당 지역 1개 제한을 지킨다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911007, operator_id])
         cur.execute("SELECT COUNT(*) c FROM operator_service_regions WHERE operator_id=%s", [operator_id])
         if cur.fetchone()["c"] >= OPERATOR_REGION_CAP:
             return jsonify({"ok": False, "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요."}), 400
-        cur.execute("SELECT COUNT(*) c FROM operator_service_regions WHERE sgg_text=%s", [sgg])
-        if cur.fetchone()["c"] >= OPERATOR_REGION_SLOT_CAP:
-            return jsonify({"ok": False, "message": f"이 지역은 이미 정원({OPERATOR_REGION_SLOT_CAP}명)이 찼습니다."}), 400
         cur.execute("""
             INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
-            VALUES (%s, %s, NOW() + INTERVAL '3 months')
-        """, [operator_id, sgg])
+            VALUES (%s, %s, %s::timestamp)
+        """, [operator_id, sgg, PARTNER_BADGE_FREE_EXPIRES_AT])
         conn.commit()
     finally:
         cur.close()
@@ -20379,24 +20397,52 @@ def admin_premium_status():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT 'building' AS kind, a.office_name, mb.building_name AS target,
+        SELECT 'agent' AS partner_type, 'building' AS kind,
+               ab.agent_id AS partner_id, a.office_name, mb.building_name AS target,
                ab.premium_granted_at AS granted_at, ab.premium_expires_at AS expires_at,
-               ab.reminder_sent_at,
-               ab.agent_id, ab.master_building_id,
+               ab.reminder_sent_at, ab.master_building_id,
                COALESCE(ab.is_paid, FALSE) AS is_paid
         FROM agent_buildings ab
         JOIN agents a ON a.id = ab.agent_id
         JOIN master_buildings mb ON mb.id = ab.master_building_id
         WHERE ab.premium_granted_at IS NOT NULL
         UNION ALL
-        SELECT 'region' AS kind, a.office_name, sr.sgg_text AS target,
+        SELECT 'agent', 'region',
+               sr.agent_id, a.office_name, sr.sgg_text,
                sr.granted_at, sr.expires_at,
-               sr.reminder_sent_at,
-               sr.agent_id, NULL AS master_building_id,
-               COALESCE(sr.is_paid, FALSE) AS is_paid
+               sr.reminder_sent_at, NULL::integer,
+               COALESCE(sr.is_paid, FALSE)
         FROM agent_service_regions sr
         JOIN agents a ON a.id = sr.agent_id
-        ORDER BY expires_at ASC
+        UNION ALL
+        SELECT 'operator', 'building',
+               ob.operator_id, o.company_name, mb.building_name,
+               ob.premium_granted_at, ob.premium_expires_at,
+               NULL::timestamp, ob.master_building_id,
+               COALESCE(ob.is_paid, FALSE)
+        FROM operator_buildings ob
+        JOIN operators o ON o.id = ob.operator_id
+        JOIN master_buildings mb ON mb.id = ob.master_building_id
+        WHERE ob.premium_granted_at IS NOT NULL
+        UNION ALL
+        SELECT 'operator', 'region',
+               sr.operator_id, o.company_name, sr.sgg_text,
+               sr.granted_at, sr.expires_at,
+               NULL::timestamp, NULL::integer,
+               COALESCE(sr.is_paid, FALSE)
+        FROM operator_service_regions sr
+        JOIN operators o ON o.id = sr.operator_id
+        UNION ALL
+        SELECT 'loan_consultant', 'building',
+               lcb.loan_consultant_id, lc.office_name, mb.building_name,
+               lcb.premium_granted_at, lcb.premium_expires_at,
+               NULL::timestamp, lcb.master_building_id,
+               COALESCE(lcb.is_paid, FALSE)
+        FROM loan_consultant_buildings lcb
+        JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id
+        JOIN master_buildings mb ON mb.id = lcb.master_building_id
+        WHERE lcb.premium_granted_at IS NOT NULL
+        ORDER BY expires_at ASC NULLS LAST, partner_type ASC, office_name ASC
     """)
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
@@ -20407,6 +20453,105 @@ def admin_premium_status():
         r["reminder_sent"] = bool(r.get("reminder_sent_at"))
         r["is_paid"] = bool(r.get("is_paid"))
     return jsonify({"ok": True, "items": rows})
+
+
+@app.route("/api/admin/premium-status/extend", methods=["POST"])
+@require_admin
+def admin_extend_premium_status():
+    """예외적인 수동 조정용: 지정 뱃지를 현재 무료 정책 만료일까지 연장한다."""
+    data = request.get_json(force=True, silent=True) or {}
+    partner_type = data.get("partner_type")
+    kind = data.get("kind")
+    target = data.get("target")
+    try:
+        partner_id = int(data.get("partner_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "파트너 ID가 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if kind == "building":
+            try:
+                mbid = int(data.get("master_building_id"))
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "message": "건물 ID가 올바르지 않습니다."}), 400
+            if partner_type == "agent":
+                # 중개사 단지뱃지는 단지당 하나만 활성화될 수 있다.
+                cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911001, mbid])
+                cur.execute("""
+                    SELECT 1 FROM agent_buildings
+                    WHERE master_building_id=%s AND agent_id<>%s
+                      AND has_priority_badge
+                      AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+                """, [mbid, partner_id])
+                if cur.fetchone():
+                    return jsonify({"ok": False, "message": "이미 다른 부동산이 입점한 단지입니다."}), 400
+                cur.execute("""
+                    UPDATE agent_buildings
+                    SET has_priority_badge=TRUE, premium_granted_at=COALESCE(premium_granted_at, NOW()),
+                        premium_expires_at=%s::timestamp, reminder_sent_at=NULL
+                    WHERE agent_id=%s AND master_building_id=%s
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, mbid])
+            elif partner_type == "operator":
+                cur.execute("""
+                    SELECT o.category FROM operator_buildings ob
+                    JOIN operators o ON o.id=ob.operator_id
+                    WHERE ob.operator_id=%s AND ob.master_building_id=%s
+                """, [partner_id, mbid])
+                operator_row = cur.fetchone()
+                if not operator_row:
+                    return jsonify({"ok": False, "message": "대상을 찾을 수 없습니다."}), 404
+                category = operator_row["category"]
+                cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                            [911008, f"{mbid}:{category}"])
+                cur.execute("""
+                    SELECT 1 FROM operator_buildings ob
+                    JOIN operators o ON o.id=ob.operator_id
+                    WHERE ob.master_building_id=%s AND ob.operator_id<>%s
+                      AND o.category=%s AND ob.has_priority_badge
+                      AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
+                """, [mbid, partner_id, category])
+                if cur.fetchone():
+                    return jsonify({"ok": False, "message": f"이미 같은 업종({category})의 다른 업체가 입점한 단지입니다."}), 400
+                cur.execute("""
+                    UPDATE operator_buildings
+                    SET has_priority_badge=TRUE, premium_granted_at=COALESCE(premium_granted_at, NOW()),
+                        premium_expires_at=%s::timestamp
+                    WHERE operator_id=%s AND master_building_id=%s
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, mbid])
+            elif partner_type == "loan_consultant":
+                cur.execute("""
+                    UPDATE loan_consultant_buildings
+                    SET has_priority_badge=TRUE, premium_granted_at=COALESCE(premium_granted_at, NOW()),
+                        premium_expires_at=%s::timestamp
+                    WHERE loan_consultant_id=%s AND master_building_id=%s
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, mbid])
+            else:
+                return jsonify({"ok": False, "message": "지원하지 않는 파트너 유형입니다."}), 400
+        elif kind == "region" and isinstance(target, str) and target.strip():
+            if partner_type == "agent":
+                cur.execute("""
+                    UPDATE agent_service_regions
+                    SET expires_at=%s::timestamp, reminder_sent_at=NULL
+                    WHERE agent_id=%s AND sgg_text=%s
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, target.strip()])
+            elif partner_type == "operator":
+                cur.execute("""
+                    UPDATE operator_service_regions
+                    SET expires_at=%s::timestamp
+                    WHERE operator_id=%s AND sgg_text=%s
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, target.strip()])
+            else:
+                return jsonify({"ok": False, "message": "지원하지 않는 파트너 유형입니다."}), 400
+        else:
+            return jsonify({"ok": False, "message": "뱃지 대상이 올바르지 않습니다."}), 400
+        if cur.rowcount != 1:
+            return jsonify({"ok": False, "message": "대상을 찾을 수 없습니다."}), 404
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "expires_at": PARTNER_BADGE_FREE_EXPIRES_AT})
 
 
 @app.route("/api/admin/premium-status/toggle-paid", methods=["POST"])
@@ -21844,9 +21989,6 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "이미 등록된 중개사무소입니다."}), 400
-            # subdomain_slug: 전화번호 숫자만 추출, 중복이면 -2, -3 … 붙여 유니크화.
-            # 동시 승인 경쟁 대비: SAVEPOINT + UNIQUE 충돌 시 새 slug로 재시도(최대 5회).
-            base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"agent{app_id}"
             # 비밀번호: 신청 시 설정했으면 그걸 그대로 사용, 없으면 임시 발급
             if ap.get("password_hash"):
                 pw_hash = ap["password_hash"]
@@ -21855,46 +21997,19 @@ def admin_applications_approve(app_id):
                 alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
                 temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
                 pw_hash = generate_password_hash(temp_pw)
-            created_id = None
-            n = 2
-            slug = base_slug
-            for _attempt in range(5):
-                # 다음 빈 slug 후보 탐색
-                while True:
-                    cur.execute("SELECT 1 FROM agents WHERE subdomain_slug=%s", [slug])
-                    if not cur.fetchone():
-                        break
-                    slug = f"{base_slug}-{n}"
-                    n += 1
-                cur.execute("SAVEPOINT sp_agent_insert")
-                try:
-                    cur.execute("""
-                        INSERT INTO agents
-                            (office_name, owner_name, reg_number, biz_reg_number,
-                             phone, email, status, subdomain_slug, password_hash,
-                             photo_url, intro_title, office_address, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, %s, NOW())
-                        RETURNING id
-                    """, [ap["office_or_company_name"], ap["owner_name"], _digits_only(ap["reg_number"]) or ap["reg_number"],
-                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
-                          ap.get("doc_photo_url"), ap.get("intro_title"), ap.get("office_address")])
-                    created_id = cur.fetchone()["id"]
-                    cur.execute("RELEASE SAVEPOINT sp_agent_insert")
-                    break
-                except psycopg2_errors.UniqueViolation as ue:
-                    cur.execute("ROLLBACK TO SAVEPOINT sp_agent_insert")
-                    cname = getattr(getattr(ue, "diag", None), "constraint_name", "") or ""
-                    if "slug" in cname:
-                        # 동시 승인으로 slug 선점됨 — 다음 후보로 재시도
-                        slug = f"{base_slug}-{n}"
-                        n += 1
-                        continue
-                    raise  # reg_number 등 다른 UNIQUE 충돌은 일반 오류로 처리
-            if created_id is None:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({"ok": False, "message": "페이지 주소(slug) 발급에 실패했습니다. 다시 시도해주세요."}), 409
+            # 신규 승인에서는 개별페이지 slug를 더 이상 발급하지 않는다.
+            # 기존 파트너의 slug 값은 갱신하지 않아 기존 링크가 유지된다.
+            cur.execute("""
+                INSERT INTO agents
+                    (office_name, owner_name, reg_number, biz_reg_number,
+                     phone, email, status, password_hash,
+                     photo_url, intro_title, office_address, approved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, NOW())
+                RETURNING id
+            """, [ap["office_or_company_name"], ap["owner_name"], _digits_only(ap["reg_number"]) or ap["reg_number"],
+                   _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], pw_hash,
+                   ap.get("doc_photo_url"), ap.get("intro_title"), ap.get("office_address")])
+            created_id = cur.fetchone()["id"]
             cur.execute(
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_agent_id=%s WHERE id=%s",
                 [created_id, app_id],
@@ -21920,10 +22035,12 @@ def admin_applications_approve(app_id):
                     cur.execute("SAVEPOINT sp_agent_assign")
                     try:
                         cur.execute("""
-                            INSERT INTO agent_buildings (agent_id, master_building_id)
-                            VALUES (%s, %s)
+                        INSERT INTO agent_buildings
+                            (agent_id, master_building_id, has_priority_badge,
+                             premium_granted_at, premium_expires_at)
+                        VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
                             ON CONFLICT ON CONSTRAINT agent_buildings_agent_building_unique DO NOTHING
-                        """, [created_id, pref_bid])
+                    """, [created_id, pref_bid, PARTNER_BADGE_FREE_EXPIRES_AT])
                         if cur.rowcount > 0:
                             reassigned_leads = _reassign_house_requests_for_building(cur, created_id, pref_bid)
                         cur.execute("RELEASE SAVEPOINT sp_agent_assign")
@@ -21937,8 +22054,6 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "업종 정보가 없어 승인할 수 없습니다."}), 400
-            # subdomain_slug + 비밀번호 — agent 승인 로직과 완전히 동일한 패턴.
-            base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"operator{app_id}"
             if ap.get("password_hash"):
                 pw_hash = ap["password_hash"]
                 temp_pw = None
@@ -21946,46 +22061,18 @@ def admin_applications_approve(app_id):
                 alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
                 temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
                 pw_hash = generate_password_hash(temp_pw)
-            created_id = None
-            n = 2
-            slug = base_slug
-            for _attempt in range(5):
-                # 다음 빈 slug 후보 탐색
-                while True:
-                    cur.execute("SELECT 1 FROM operators WHERE subdomain_slug=%s", [slug])
-                    if not cur.fetchone():
-                        break
-                    slug = f"{base_slug}-{n}"
-                    n += 1
-                cur.execute("SAVEPOINT sp_operator_insert")
-                try:
-                    cur.execute("""
-                        INSERT INTO operators
-                            (company_name, owner_name, category, biz_reg_number,
-                             phone, email, website_url, status, subdomain_slug,
-                             password_hash, logo_url, office_address, approved_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s, NOW())
-                        RETURNING id
-                    """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
-                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], ap["website_url"],
-                          slug, pw_hash, ap.get("doc_logo_url"), ap.get("office_address")])
-                    created_id = cur.fetchone()["id"]
-                    cur.execute("RELEASE SAVEPOINT sp_operator_insert")
-                    break
-                except psycopg2_errors.UniqueViolation as ue:
-                    cur.execute("ROLLBACK TO SAVEPOINT sp_operator_insert")
-                    cname = getattr(getattr(ue, "diag", None), "constraint_name", "") or ""
-                    if "slug" in cname:
-                        # 동시 승인으로 slug 선점됨 — 다음 후보로 재시도
-                        slug = f"{base_slug}-{n}"
-                        n += 1
-                        continue
-                    raise
-            if created_id is None:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({"ok": False, "message": "페이지 주소(slug) 발급에 실패했습니다. 다시 시도해주세요."}), 409
+            # 신규 승인에서는 개별페이지 slug를 발급하지 않는다. 기존 slug는 보존된다.
+            cur.execute("""
+                INSERT INTO operators
+                    (company_name, owner_name, category, biz_reg_number,
+                     phone, email, website_url, status,
+                     password_hash, logo_url, office_address, approved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s, %s, %s, NOW())
+                RETURNING id
+            """, [ap["office_or_company_name"], ap["owner_name"], ap["category"],
+                   _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], ap["website_url"],
+                   pw_hash, ap.get("doc_logo_url"), ap.get("office_address")])
+            created_id = cur.fetchone()["id"]
             cur.execute(
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_operator_id=%s WHERE id=%s",
                 [created_id, app_id],
@@ -22023,8 +22110,6 @@ def admin_applications_approve(app_id):
                 cur.close()
                 conn.close()
                 return jsonify({"ok": False, "message": "이미 등록된 이메일의 대출상담사가 있습니다."}), 400
-            # subdomain_slug — agent 승인 로직과 동일 패턴 (전화번호 기반, 충돌 시 -2, -3 …)
-            base_slug = re.sub(r"\D", "", ap["phone"] or "") or f"loan{app_id}"
             # 비밀번호: 신청 시 설정했으면 그걸 그대로 사용, 없으면 임시 발급
             if ap.get("password_hash"):
                 pw_hash = ap["password_hash"]
@@ -22033,47 +22118,20 @@ def admin_applications_approve(app_id):
                 alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
                 temp_pw = "".join(_secrets.choice(alphabet) for _ in range(8))
                 pw_hash = generate_password_hash(temp_pw)
-            created_id = None
-            n = 2
-            slug = base_slug
-            for _attempt in range(5):
-                while True:
-                    cur.execute("SELECT 1 FROM loan_consultants WHERE subdomain_slug=%s", [slug])
-                    if not cur.fetchone():
-                        break
-                    slug = f"{base_slug}-{n}"
-                    n += 1
-                cur.execute("SAVEPOINT sp_loan_insert")
-                try:
-                    # 취급지역 — 신청서의 preferred_region(재사용 컬럼)을 복사, 허용값 외/미입력은 NULL(=전국 표시)
-                    _sr = (ap.get("preferred_region") or "").strip()
-                    service_region = _sr if _sr in LOAN_SERVICE_REGIONS else None
-                    cur.execute("""
-                        INSERT INTO loan_consultants
-                            (office_name, owner_name, license_number, biz_reg_number,
-                             phone, email, status, subdomain_slug, password_hash, approved_at,
-                             service_region, office_address)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, %s, NOW(), %s, %s)
-                        RETURNING id
-                    """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
-                          _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], slug, pw_hash,
-                          service_region, ap.get("office_address")])
-                    created_id = cur.fetchone()["id"]
-                    cur.execute("RELEASE SAVEPOINT sp_loan_insert")
-                    break
-                except psycopg2_errors.UniqueViolation as ue:
-                    cur.execute("ROLLBACK TO SAVEPOINT sp_loan_insert")
-                    cname = getattr(getattr(ue, "diag", None), "constraint_name", "") or ""
-                    if "slug" in cname:
-                        slug = f"{base_slug}-{n}"
-                        n += 1
-                        continue
-                    raise
-            if created_id is None:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({"ok": False, "message": "페이지 주소(slug) 발급에 실패했습니다. 다시 시도해주세요."}), 409
+            # 취급지역 — 신청서의 preferred_region(재사용 컬럼)을 복사, 허용값 외/미입력은 NULL(=전국 표시)
+            _sr = (ap.get("preferred_region") or "").strip()
+            service_region = _sr if _sr in LOAN_SERVICE_REGIONS else None
+            cur.execute("""
+                INSERT INTO loan_consultants
+                    (office_name, owner_name, license_number, biz_reg_number,
+                     phone, email, status, password_hash, approved_at,
+                     service_region, office_address)
+                VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, NOW(), %s, %s)
+                RETURNING id
+            """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
+                   _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], pw_hash,
+                   service_region, ap.get("office_address")])
+            created_id = cur.fetchone()["id"]
             cur.execute(
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_loan_consultant_id=%s WHERE id=%s",
                 [created_id, app_id],
@@ -22085,10 +22143,12 @@ def admin_applications_approve(app_id):
                 cur.execute("SAVEPOINT sp_loan_assign")
                 try:
                     cur.execute("""
-                        INSERT INTO loan_consultant_buildings (loan_consultant_id, master_building_id)
-                        VALUES (%s, %s)
+                        INSERT INTO loan_consultant_buildings
+                            (loan_consultant_id, master_building_id, has_priority_badge,
+                             premium_granted_at, premium_expires_at)
+                        VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
                         ON CONFLICT ON CONSTRAINT loan_consultant_buildings_unique DO NOTHING
-                    """, [created_id, pref_bid])
+                    """, [created_id, pref_bid, PARTNER_BADGE_FREE_EXPIRES_AT])
                     cur.execute("RELEASE SAVEPOINT sp_loan_assign")
                 except Exception:
                     cur.execute("ROLLBACK TO SAVEPOINT sp_loan_assign")

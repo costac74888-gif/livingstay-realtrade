@@ -758,6 +758,9 @@ def run():
     else:
         print("OK  /api/map/poi (입력 검증·카카오 Local 응답·오류 처리)")
 
+    # 파트너별 즉시 뱃지·무료 만료일·지역 정원 폐지·신규 slug 미발급을 실제 등록으로 확인
+    failures += _check_partner_badge_policy(client)
+
     failures += _check_member_login_history(client)
 
     # /api/buildings-geo bounds 필터 추가 테스트
@@ -1320,6 +1323,401 @@ def _check_lead_short_links(client):
 
     if not failures:
         print("OK  의뢰 알림 6자리 단축 URL·72시간 만료·SMS/이메일 동시 발송")
+    return failures
+
+
+def _check_partner_badge_policy(client):
+    """테스트 전용 파트너를 실제 API로 등록해 새 뱃지 정책의 핵심 흐름을 확인한다."""
+    failures = []
+    tag = f"partner-badge-{time.time_ns()}"
+    agent_ids, operator_ids, loan_ids, application_ids = [], [], [], []
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT mb.id
+            FROM master_buildings mb
+            WHERE NOT EXISTS (
+                SELECT 1 FROM agent_buildings ab
+                WHERE ab.master_building_id=mb.id AND ab.has_priority_badge
+                  AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+            )
+              AND NOT EXISTS (
+                SELECT 1 FROM operator_buildings ob
+                JOIN operators o ON o.id=ob.operator_id
+                WHERE ob.master_building_id=mb.id AND o.category='청소' AND ob.has_priority_badge
+                  AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
+            )
+            ORDER BY mb.id
+            LIMIT 40
+        """)
+        building_ids = [row["id"] for row in cur.fetchall()]
+        if len(building_ids) < 37:
+            return ["파트너 뱃지: 테스트용 마스터 건물이 37개 미만입니다."]
+        agent_bld, operator_bld, loan_bld, agent_approval_bld, loan_approval_bld, *_ = building_ids
+        deadline = app_module.PARTNER_BADGE_FREE_EXPIRES_AT
+
+        def create_agent(label):
+            cur.execute("""
+                INSERT INTO agents (office_name, owner_name, reg_number, phone, email, status)
+                VALUES (%s, %s, %s, '01000000000', %s, 'approved') RETURNING id
+            """, (f"{tag}-{label}", "정책테스트", f"{tag}-{label}", f"{tag}-{label}@example.test"))
+            partner_id = cur.fetchone()["id"]
+            agent_ids.append(partner_id)
+            return partner_id
+
+        def create_operator(label, category="청소"):
+            cur.execute("""
+                INSERT INTO operators (company_name, owner_name, category, phone, email, status)
+                VALUES (%s, %s, %s, '01000000000', %s, 'approved') RETURNING id
+            """, (f"{tag}-{label}", "정책테스트", category, f"{tag}-{label}@example.test"))
+            partner_id = cur.fetchone()["id"]
+            operator_ids.append(partner_id)
+            return partner_id
+
+        def create_loan(label):
+            cur.execute("""
+                INSERT INTO loan_consultants (office_name, owner_name, license_number, phone, email, status)
+                VALUES (%s, %s, %s, '01000000000', %s, 'approved') RETURNING id
+            """, (f"{tag}-{label}", "정책테스트", f"{tag}-{label}", f"{tag}-{label}@example.test"))
+            partner_id = cur.fetchone()["id"]
+            loan_ids.append(partner_id)
+            return partner_id
+
+        # ① 중개사 전속단지: 등록 즉시 골드뱃지와 고정 만료일.
+        agent_id = create_agent("agent")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = agent_id
+        agent_add = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
+        if agent_add.status_code != 200 or not (agent_add.get_json() or {}).get("ok"):
+            failures.append(f"파트너 뱃지: 중개사 전속단지 등록 실패 ({agent_add.get_json()})")
+        cur.execute("""
+            SELECT has_priority_badge, premium_expires_at::text AS expires_at
+            FROM agent_buildings WHERE agent_id=%s AND master_building_id=%s
+        """, (agent_id, agent_bld))
+        row = cur.fetchone() or {}
+        if not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 중개사 전속단지에 즉시 골드뱃지/고정 만료일이 저장되지 않음")
+
+        # 같은 중개사가 9개를 가진 상태의 동시 등록도 10개 한도를 넘지 않아야 한다.
+        capacity_agent_id = create_agent("agent-capacity")
+        for building_id in building_ids[5:14]:
+            cur.execute(
+                "INSERT INTO agent_buildings (agent_id, master_building_id) VALUES (%s, %s)",
+                (capacity_agent_id, building_id),
+            )
+        conn.commit()
+
+        def parallel_agent_add(building_id):
+            with app.test_client() as parallel_client:
+                with parallel_client.session_transaction() as sess:
+                    sess["agent_id"] = capacity_agent_id
+                return parallel_client.post(
+                    "/api/agent/buildings", json={"master_building_id": building_id}
+                ).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            capacity_results = list(executor.map(parallel_agent_add, building_ids[14:16]))
+        cur.execute("SELECT COUNT(*) AS count FROM agent_buildings WHERE agent_id=%s", (capacity_agent_id,))
+        if sorted(capacity_results) != [200, 400] or (cur.fetchone() or {}).get("count") != 10:
+            failures.append("파트너 뱃지: 중개사 동시 등록이 담당단지 10개 한도를 우회함")
+
+        # ② 운영업체 단지뱃지: 기존 같은 업종 독점은 유지하고 만료일만 고정.
+        operator_id = create_operator("operator-primary")
+        operator_conflict_id = create_operator("operator-conflict")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = operator_id
+        op_add = client.post("/api/operator/buildings", json={"master_building_id": operator_bld})
+        op_claim = client.post(f"/api/operator/buildings/{operator_bld}/claim-premium")
+        if op_add.status_code != 200 or op_claim.status_code != 200:
+            failures.append("파트너 뱃지: 운영업체 단지 등록 또는 뱃지 신청에 실패함")
+        cur.execute("""
+            SELECT has_priority_badge, premium_expires_at::text AS expires_at
+            FROM operator_buildings WHERE operator_id=%s AND master_building_id=%s
+        """, (operator_id, operator_bld))
+        row = cur.fetchone() or {}
+        if not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 운영업체 단지뱃지의 고정 만료일이 저장되지 않음")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = operator_conflict_id
+        client.post("/api/operator/buildings", json={"master_building_id": operator_bld})
+        conflict = client.post(f"/api/operator/buildings/{operator_bld}/claim-premium")
+        if conflict.status_code != 400:
+            failures.append("파트너 뱃지: 운영업체 같은 업종 단지뱃지 독점이 해제됨")
+
+        # 두 운영업체가 같은 단지·업종에 동시에 신청해도 한 곳만 단지뱃지를 받는다.
+        operator_race_a = create_operator("operator-race-a")
+        operator_race_b = create_operator("operator-race-b")
+        operator_race_bld = building_ids[16]
+        conn.commit()
+        for operator_race_id in (operator_race_a, operator_race_b):
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["operator_id"] = operator_race_id
+            added = client.post("/api/operator/buildings", json={"master_building_id": operator_race_bld})
+            if added.status_code != 200:
+                failures.append("파트너 뱃지: 운영업체 독점 동시성 테스트용 단지 등록에 실패함")
+
+        def parallel_operator_claim(operator_race_id):
+            with app.test_client() as parallel_client:
+                with parallel_client.session_transaction() as sess:
+                    sess["operator_id"] = operator_race_id
+                return parallel_client.post(
+                    f"/api/operator/buildings/{operator_race_bld}/claim-premium"
+                ).status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            operator_race_results = list(executor.map(
+                parallel_operator_claim, (operator_race_a, operator_race_b)
+            ))
+        if sorted(operator_race_results) != [200, 400]:
+            failures.append("파트너 뱃지: 운영업체 같은 업종 동시 신청이 독점 규칙을 우회함")
+
+        # ③ 대출상담사 담당단지: 등록 즉시 골드뱃지와 고정 만료일.
+        loan_id = create_loan("loan")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["loan_consultant_id"] = loan_id
+        loan_add = client.post("/api/loan-consultant/buildings", json={"master_building_id": loan_bld})
+        if loan_add.status_code != 200 or not (loan_add.get_json() or {}).get("ok"):
+            failures.append(f"파트너 뱃지: 대출상담사 담당단지 등록 실패 ({loan_add.get_json()})")
+        cur.execute("""
+            SELECT has_priority_badge, premium_expires_at::text AS expires_at
+            FROM loan_consultant_buildings WHERE loan_consultant_id=%s AND master_building_id=%s
+        """, (loan_id, loan_bld))
+        row = cur.fetchone() or {}
+        if not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 대출상담사 담당단지에 즉시 골드뱃지/고정 만료일이 저장되지 않음")
+
+        # 운영업체와 대출상담사도 10개를 넘겨 등록할 수 없다.
+        for building_id in building_ids[17:26]:
+            cur.execute(
+                "INSERT INTO operator_buildings (operator_id, master_building_id) VALUES (%s, %s)",
+                (operator_id, building_id),
+            )
+        for building_id in building_ids[27:36]:
+            cur.execute(
+                "INSERT INTO loan_consultant_buildings (loan_consultant_id, master_building_id) VALUES (%s, %s)",
+                (loan_id, building_id),
+            )
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = operator_id
+        operator_over_cap = client.post("/api/operator/buildings", json={"master_building_id": building_ids[26]})
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["loan_consultant_id"] = loan_id
+        loan_over_cap = client.post("/api/loan-consultant/buildings", json={"master_building_id": building_ids[36]})
+        if operator_over_cap.status_code != 400 or loan_over_cap.status_code != 400:
+            failures.append("파트너 뱃지: 운영업체 또는 대출상담사 담당단지 10개 한도가 적용되지 않음")
+
+        # ④ 중개사 지역뱃지: 개인 1개 제한은 유지하되 지역 전체 정원은 적용하지 않는다.
+        agent_region_id = create_agent("agent-region")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = agent_region_id
+        agent_region = client.post("/api/agent/service-regions", json={"sgg_text": tag})
+        if agent_region.status_code != 200:
+            failures.append("파트너 뱃지: 중개사 지역뱃지 등록에 실패함")
+        cur.execute("""
+            SELECT expires_at::text AS expires_at FROM agent_service_regions
+            WHERE agent_id=%s AND sgg_text=%s
+        """, (agent_region_id, tag))
+        if not ((cur.fetchone() or {}).get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 중개사 지역뱃지의 고정 만료일이 저장되지 않음")
+        # 악의적인 지역명도 관리자 현황에서 문자열 데이터로만 취급되어야 한다.
+        xss_region = f"{tag}'><img src=x onerror=alert(1)>"
+        xss_agent_id = create_agent("agent-xss-region")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = xss_agent_id
+        xss_region_add = client.post("/api/agent/service-regions", json={"sgg_text": xss_region})
+        if xss_region_add.status_code != 200:
+            failures.append("파트너 뱃지: 관리자 XSS 회귀 테스트용 지역 등록에 실패함")
+
+        # ⑤·⑥ 운영업체 지역뱃지: 이미 20개 업체가 있어도 21번째 신청을 허용한다.
+        for index in range(20):
+            filler_id = create_operator(f"operator-slot-{index}", category="세탁")
+            cur.execute("""
+                INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
+                VALUES (%s, %s, %s::timestamp)
+            """, (filler_id, f"{tag}-full", deadline))
+        operator_region_id = create_operator("operator-region", category="위탁")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = operator_region_id
+        operator_region = client.post("/api/operator/service-regions", json={"sgg_text": f"{tag}-full"})
+        if operator_region.status_code != 200 or not (operator_region.get_json() or {}).get("ok"):
+            failures.append(f"파트너 뱃지: 운영업체 21번째 지역뱃지 신청이 거절됨 ({operator_region.get_json()})")
+        cur.execute("""
+            SELECT expires_at::text AS expires_at FROM operator_service_regions
+            WHERE operator_id=%s AND sgg_text=%s
+        """, (operator_region_id, f"{tag}-full"))
+        if not ((cur.fetchone() or {}).get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 운영업체 지역뱃지의 고정 만료일이 저장되지 않음")
+
+        # 신규 승인에서는 세 파트너 유형 모두 slug를 비워 두고, 중개사/대출 희망단지는 자동 뱃지 처리한다.
+        def create_application(applicant_type, label, preferred_building_id=None, category=None):
+            cur.execute("""
+                INSERT INTO applications
+                    (applicant_type, office_or_company_name, owner_name, reg_number, biz_reg_number,
+                     category, phone, email, preferred_building_id, password_hash)
+                VALUES (%s, %s, '승인테스트', %s, %s, %s, '01000000000', %s, %s, %s)
+                RETURNING id
+            """, (applicant_type, f"{tag}-{label}", f"{tag}-{label}-license", f"{tag}-{label}-biz",
+                  category, f"{tag}-{label}-approval@example.test", preferred_building_id,
+                  generate_password_hash("partner-badge-test-password")))
+            application_id = cur.fetchone()["id"]
+            application_ids.append(application_id)
+            return application_id
+
+        approval_agent = create_application("agent", "approval-agent", agent_approval_bld)
+        approval_operator = create_application("operator", "approval-operator", category="청소")
+        approval_loan = create_application("loan_consultant", "approval-loan", loan_approval_bld)
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["admin"] = True
+        with (
+            patch.object(app_module, "send_sms", return_value=(True, "test")),
+            patch.object(app_module, "_send_approval_email", return_value=(True, "test")),
+        ):
+            approval_responses = [
+                client.post(f"/api/admin/applications/{application_id}/approve")
+                for application_id in (approval_agent, approval_operator, approval_loan)
+            ]
+        if any(response.status_code != 200 or not (response.get_json() or {}).get("ok")
+               for response in approval_responses):
+            failures.append("파트너 뱃지: 테스트 파트너 승인에 실패함")
+        cur.execute("""
+            SELECT a.subdomain_slug, ab.has_priority_badge, ab.premium_expires_at::text AS expires_at
+            FROM applications ap
+            JOIN agents a ON a.id=ap.linked_agent_id
+            LEFT JOIN agent_buildings ab ON ab.agent_id=a.id AND ab.master_building_id=%s
+            WHERE ap.id=%s
+        """, (agent_approval_bld, approval_agent))
+        row = cur.fetchone() or {}
+        if row.get("subdomain_slug") is not None or not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 신규 중개사 승인 slug 또는 희망단지 자동 뱃지 정책이 잘못됨")
+        cur.execute("""
+            SELECT o.subdomain_slug FROM applications ap
+            JOIN operators o ON o.id=ap.linked_operator_id WHERE ap.id=%s
+        """, (approval_operator,))
+        if (cur.fetchone() or {}).get("subdomain_slug") is not None:
+            failures.append("파트너 뱃지: 신규 운영업체 승인에서 slug가 자동 발급됨")
+        cur.execute("""
+            SELECT lc.subdomain_slug, lcb.has_priority_badge, lcb.premium_expires_at::text AS expires_at
+            FROM applications ap
+            JOIN loan_consultants lc ON lc.id=ap.linked_loan_consultant_id
+            LEFT JOIN loan_consultant_buildings lcb
+              ON lcb.loan_consultant_id=lc.id AND lcb.master_building_id=%s
+            WHERE ap.id=%s
+        """, (loan_approval_bld, approval_loan))
+        row = cur.fetchone() or {}
+        if row.get("subdomain_slug") is not None or not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 신규 대출상담사 승인 slug 또는 희망단지 자동 뱃지 정책이 잘못됨")
+
+        # 관리자 목록은 세 유형의 단지·지역 뱃지를 모두 반환하며, 화면은 만기연장만 노출한다.
+        premium_status = client.get("/api/admin/premium-status")
+        items = (premium_status.get_json() or {}).get("items") or []
+        expected = {
+            ("agent", "building", agent_id), ("operator", "building", operator_id),
+            ("loan_consultant", "building", loan_id), ("agent", "region", agent_region_id),
+            ("operator", "region", operator_region_id),
+        }
+        actual = {(item.get("partner_type"), item.get("kind"), item.get("partner_id")) for item in items}
+        if premium_status.status_code != 200 or not expected <= actual:
+            failures.append("파트너 뱃지: 관리자 현황 목록에 세 파트너 유형의 등록 건이 모두 표시되지 않음")
+        if not any(item.get("partner_id") == xss_agent_id and item.get("target") == xss_region for item in items):
+            failures.append("파트너 뱃지: 악성 형태 지역명이 관리자 현황 API에서 변형됨")
+        with open("static/admin.html", encoding="utf-8") as admin_file:
+            admin_source = admin_file.read()
+        if (
+            'onclick="extendPremiumBadge(' in admin_source
+            or 'class="admin-btn premium-extend-btn" data-premium-index="${index}"' not in admin_source
+            or "window.extendPremiumBadge = async function(row)" not in admin_source
+        ):
+            failures.append("파트너 뱃지: 관리자 만기연장 버튼이 외부 입력을 인라인 스크립트로 렌더링함")
+        # 만기연장은 현재 유료 분류를 건드리지 않고, 활성 독점 뱃지가 있으면 재활성화를 거절한다.
+        cur.execute(
+            "UPDATE agent_buildings SET is_paid=TRUE WHERE agent_id=%s AND master_building_id=%s",
+            (agent_id, agent_bld),
+        )
+        conn.commit()
+        extension = client.post("/api/admin/premium-status/extend", json={
+            "partner_type": "agent", "partner_id": agent_id, "kind": "building",
+            "master_building_id": agent_bld,
+        })
+        cur.execute(
+            "SELECT is_paid FROM agent_buildings WHERE agent_id=%s AND master_building_id=%s",
+            (agent_id, agent_bld),
+        )
+        if extension.status_code != 200 or not (cur.fetchone() or {}).get("is_paid"):
+            failures.append("파트너 뱃지: 관리자 만기연장이 기존 유료 분류를 보존하지 않음")
+        expired_agent_id = create_agent("agent-expired")
+        cur.execute("""
+            INSERT INTO agent_buildings
+                (agent_id, master_building_id, has_priority_badge, premium_granted_at, premium_expires_at)
+            VALUES (%s, %s, TRUE, NOW() - INTERVAL '1 year', NOW() - INTERVAL '1 day')
+        """, (expired_agent_id, agent_bld))
+        cur.execute("""
+            UPDATE operator_buildings
+            SET has_priority_badge=TRUE, premium_granted_at=NOW() - INTERVAL '1 year',
+                premium_expires_at=NOW() - INTERVAL '1 day'
+            WHERE operator_id=%s AND master_building_id=%s
+        """, (operator_conflict_id, operator_bld))
+        conn.commit()
+        agent_extension_conflict = client.post("/api/admin/premium-status/extend", json={
+            "partner_type": "agent", "partner_id": expired_agent_id, "kind": "building",
+            "master_building_id": agent_bld,
+        })
+        operator_extension_conflict = client.post("/api/admin/premium-status/extend", json={
+            "partner_type": "operator", "partner_id": operator_conflict_id, "kind": "building",
+            "master_building_id": operator_bld,
+        })
+        if agent_extension_conflict.status_code != 400 or operator_extension_conflict.status_code != 400:
+            failures.append("파트너 뱃지: 관리자 만기연장이 기존 단지 독점과 충돌하는 뱃지를 활성화함")
+        admin_page = client.get("/admin")
+        markup = admin_page.get_data(as_text=True)
+        if (
+            "모든 뱃지는 신청 즉시 자동 부여되며, 2026.12.31까지 무료입니다." not in markup
+            or "만기연장" not in markup
+            or "유료전환" in markup
+        ):
+            failures.append("파트너 뱃지: 관리자 안내 문구 또는 만기연장 전용 UI가 잘못됨")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"파트너 뱃지 정책 테스트 오류: {exc}")
+    finally:
+        try:
+            if application_ids:
+                cur.execute("DELETE FROM applications WHERE id = ANY(%s)", (application_ids,))
+            if agent_ids:
+                cur.execute("DELETE FROM agents WHERE id = ANY(%s)", (agent_ids,))
+            if operator_ids:
+                cur.execute("DELETE FROM operators WHERE id = ANY(%s)", (operator_ids,))
+            if loan_ids:
+                cur.execute("DELETE FROM loan_consultants WHERE id = ANY(%s)", (loan_ids,))
+            conn.commit()
+            with client.session_transaction() as sess:
+                sess.clear()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+    if not failures:
+        print("OK  파트너 즉시 뱃지·고정 만료·지역 정원 폐지·신규 slug 미발급")
     return failures
 
 

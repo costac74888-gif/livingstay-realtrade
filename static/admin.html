@@ -3795,9 +3795,11 @@
       if (res.status === 401) { window.location.href = "/admin/login"; return; }
       const d = await res.json().catch(() => ({}));
       if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
-      const rows = d.items.map((r) => `
+      const partnerLabel = { agent: "중개사", operator: "운영업체", loan_consultant: "대출상담사" };
+      const rows = d.items.map((r, index) => `
         <tr>
           <td>${r.kind === "building" ? "단지뱃지(골드)" : "지역뱃지(실버)"}</td>
+          <td>${dgEscape(partnerLabel[r.partner_type] || "-")}</td>
           <td>${dgEscape(r.office_name || "-")}</td>
           <td>${r.kind === "building" && r.master_building_id ? `<a href="/building/${r.master_building_id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(r.target || "-")}</a>` : dgEscape(r.target || "-")}</td>
           <td>${dgEscape((r.granted_at||"").slice(0,10))}</td>
@@ -3805,20 +3807,34 @@
           <td>${new Date(r.expires_at) > new Date() ? "적용중" : "종료"}</td>
           <td>${r.reminder_sent ? "발송함" : "-"}</td>
           <td>
-            <button type="button" class="admin-btn" onclick="togglePaid('${r.kind}', ${r.agent_id}, ${r.kind === 'building' ? r.master_building_id : 'null'})">
-              ${r.is_paid ? "유료✓" : "무료체험"}
+            <button type="button" class="admin-btn premium-extend-btn" data-premium-index="${index}">
+              만기연장
             </button>
           </td>
         </tr>`).join("");
       box.innerHTML = `<table class="dg-table" style="width:100%">
-        <thead><tr><th>구분</th><th>중개사</th><th>대상</th><th>부여일</th><th>만료일</th><th>상태</th><th>발송</th><th>유료전환</th></tr></thead>
-        <tbody>${rows || "<tr><td colspan=8>없음</td></tr>"}</tbody></table>`;
-    }
-    window.togglePaid = async function(kind, agentId, mbid){
-      await fetch("/api/admin/premium-status/toggle-paid", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, agent_id: agentId, master_building_id: mbid })
+        <thead><tr><th>구분</th><th>파트너 유형</th><th>파트너</th><th>대상</th><th>부여일</th><th>만료일</th><th>상태</th><th>발송</th><th>관리</th></tr></thead>
+        <tbody>${rows || "<tr><td colspan=9>없음</td></tr>"}</tbody></table>`;
+      box.querySelectorAll(".premium-extend-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.premiumIndex);
+          const row = d.items[index];
+          if (row) window.extendPremiumBadge(row);
+        });
       });
+    }
+    window.extendPremiumBadge = async function(row){
+      if (!confirm("이 뱃지의 만료일을 2026.12.31까지 연장할까요?")) return;
+      const res = await fetch("/api/admin/premium-status/extend", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partner_type: row.partner_type, partner_id: row.partner_id, kind: row.kind,
+          master_building_id: row.kind === "building" ? row.master_building_id : null,
+          target: row.kind === "region" ? row.target : null
+        })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { alert(d.message || "만기연장에 실패했습니다."); return; }
       loadPremiumStatus();
     };
     function showPremiumStatus() {
@@ -3826,7 +3842,7 @@
       mount.innerHTML = `
         <div class="legal-admin" style="max-width:none">
           <div class="legal-admin-head"><h2 class="legal-admin-title">단지뱃지(골드)·지역뱃지(실버) 현황</h2></div>
-          <p class="legal-admin-hint">만료 임박/만료된 대상은 추후 별도 이메일 안내 대상 추출에 활용하세요.</p>
+          <p class="legal-admin-hint">모든 뱃지는 신청 즉시 자동 부여되며, 2026.12.31까지 무료입니다.</p>
           <div id="premiumStatusBox"></div>
         </div>`;
       loadPremiumStatus();
