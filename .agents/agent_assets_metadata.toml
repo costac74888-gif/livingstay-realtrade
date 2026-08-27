@@ -82,3 +82,17 @@ uri = "file://screenshots/task-206-broker-cards.jpg"
 type = "image"
 title = "라군부동산 매칭·상태 카드 검증"
 description = "라군 센트럴 스테이에 실제 매칭된 라군부동산중개법인의 영업중 카드와 비영업 상태 뱃지 표시 규칙을 함께 확인한 캡처입니다."
+
+[[outputs]]
+id = "xAcOumG_ttwV8LtLRyI48"
+uri = "file://screenshots/task-206-sync-brokers-complete.jpg"
+type = "image"
+title = "전국 브로커 재수집 완료 로그"
+description = "sync_brokers.py를 처음부터 실행한 실제 완료 요약: 68페이지, 67,963건 처리, 67,821건 저장, 오류 없음."
+
+[[outputs]]
+id = "5P-ttP-RI1fvS6iTOuL6X"
+uri = "file://screenshots/task-206-lagoon-modal-recheck.jpg"
+type = "image"
+title = "라군 센트럴 스테이 입점부동산 재확인"
+description = "실제 관리자 인증 API 응답으로 재확인한 건물 ID 3085의 모달 카드: 주식회사 라군부동산중개법인 1건, 영업중."
