@@ -14423,16 +14423,11 @@ ADMIN_BLD_SORT = {
         "             OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', ''))"
         "        AND (uf.building_name IS NULL OR uf.building_name = mb.building_name))), 0)"
     ),
-    # building_stores 서브쿼리 — 전체 기준, 0 → NULL
-    "store_realty_count": (
-        "NULLIF((SELECT COUNT(*) FROM building_stores bs"
-        " WHERE bs.master_building_id = mb.id AND bs.category = '부동산'), 0)"
-    ),
     "store_count": (
         "NULLIF((SELECT COUNT(*) FROM building_stores bs"
         " WHERE bs.master_building_id = mb.id), 0)"
     ),
-    # 신고율·영업신고호실은 lodging_registry 주소 정규화 매칭으로 계산한다.
+    # 입점부동산·신고율·영업신고호실은 주소 정규화 매칭 결과로 계산한다.
     # SQL만으로 현재 Python 정규화 규칙을 정확히 재현할 수 없어 목록 서버 정렬에는 제공하지 않는다.
 }
 # 생성/수정 가능한 컬럼 화이트리스트 (이 목록의 키만 반영)
@@ -14651,18 +14646,15 @@ def admin_buildings_list():
     cur.close()
     conn.close()
 
-    # 단지부동산(이 건물 주소와 정확히 일치하는 중개업소명) — 현재
-    # 페이지(최대 200건) 한정으로 매칭, 없으면 빈 값. 서버사이드 정렬은
-    # 지원하지 않음(정규화 매칭이라 DB 컬럼 정렬 불가 — 클라이언트에서
-    # 필요시 텍스트 정렬만 가능).
-    # 단지부동산(이 건물 주소와 정확히 일치하는 중개업소명) — 현재
-    # 페이지(최대 200건) 한정으로 매칭, 없으면 빈 값. 서버사이드 정렬은
-    # 지원하지 않음(정규화 매칭이라 DB 컬럼 정렬 불가 — 클라이언트에서
-    # 필요시 텍스트 정렬만 가능).
+    # 단지부동산(이 건물 주소와 정확히 일치하는 broker_registry 원본) —
+    # 현재 페이지(최대 200건) 한정으로 매칭. 도로명 결과가 있으면 그것만
+    # 사용하고, 도로명 결과가 없을 때만 지번 결과를 보조로 사용한다.
+    # 정규화 매칭이라 서버사이드 정렬은 지원하지 않는다.
     # 상가정보 API(storeListInPnu) 방식은 건당 평균 3초로 200건 시 ≈600초 —
     # gunicorn 30초 timeout 초과 확정이라 broker_registry 로컬 DB 배치 방식 유지.
     if items:
         road_key_map, jibun_key_map = {}, {}
+        rkeys, jkeys = [], []
         for it in items:
             rk = addr_norm.normalize_road_prefix(it.get("road_address"))
             jk = addr_norm.normalize_jibun_prefix(it.get("jibun_address") or it.get("road_address"))
@@ -14675,20 +14667,35 @@ def admin_buildings_list():
             conn2 = get_conn()
             cur2 = conn2.cursor()
             cur2.execute("""
-                SELECT office_name, road_norm, jibun_norm
+                SELECT id, office_name, road_norm, jibun_norm
                 FROM broker_registry
                 WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
             """, (rkeys, jkeys))
+            broker_road_groups, broker_jibun_groups = {}, {}
             for br in cur2.fetchall():
-                targets = road_key_map.get(br["road_norm"], []) + jibun_key_map.get(br["jibun_norm"], [])
-                for t in targets:
-                    names = t.setdefault("_broker_names", [])
-                    if br["office_name"] not in names:
-                        names.append(br["office_name"])
+                if br["road_norm"]:
+                    broker_road_groups.setdefault(br["road_norm"], []).append(dict(br))
+                if br["jibun_norm"]:
+                    broker_jibun_groups.setdefault(br["jibun_norm"], []).append(dict(br))
             cur2.close()
             conn2.close()
-        for it in items:
-            it["matched_broker_name"] = ", ".join(it.pop("_broker_names", [])) or None
+            for it in items:
+                road_matches = broker_road_groups.get(
+                    addr_norm.normalize_road_prefix(it.get("road_address")), []
+                )
+                matches = road_matches or broker_jibun_groups.get(
+                    addr_norm.normalize_jibun_prefix(
+                        it.get("jibun_address") or it.get("road_address")
+                    ), []
+                )
+                it["broker_realty_count"] = len({row["id"] for row in matches})
+                it["matched_broker_name"] = ", ".join(
+                    row["office_name"] for row in matches if row.get("office_name")
+                ) or None
+        else:
+            for it in items:
+                it["broker_realty_count"] = 0
+                it["matched_broker_name"] = None
 
     # ── 입점상가/입점부동산 — building_stores 캐시 배치 조회 ──────────────────
     if items:
@@ -14719,7 +14726,14 @@ def admin_buildings_list():
         for it in items:
             it["store_count"] = store_cnt_map.get(it["id"], 0)
             it["store_realty_list"] = realty_map.get(it["id"], [])
-            it["store_realty_count"] = len(it["store_realty_list"])
+            legacy_realty_count = len(it["store_realty_list"])
+            broker_realty_count = int(it.get("broker_realty_count") or 0)
+            it["store_realty_count"] = broker_realty_count or legacy_realty_count
+            it["store_realty_source"] = (
+                "broker_registry" if broker_realty_count
+                else "상권정보" if legacy_realty_count
+                else None
+            )
 
     # ── lodging_registry 영업신고 배치 매칭 ──────────────────────────────────
     # road_key_map / jibun_key_map은 위 broker 매칭 블록에서 이미 계산됨.
@@ -14870,6 +14884,15 @@ def admin_buildings_list():
         store_agg_t = cur_t.fetchone()
         total_store_count_t = int(store_agg_t["store_total"])
         total_store_realty_t = int(store_agg_t["store_realty"])
+        cur_t.execute("""
+            SELECT master_building_id, COUNT(*) FILTER (WHERE category = '부동산') AS cnt
+            FROM building_stores
+            WHERE master_building_id = ANY(%s)
+            GROUP BY master_building_id
+        """, [all_ids_t or [0]])
+        legacy_realty_by_building_t = {
+            row["master_building_id"]: int(row["cnt"]) for row in cur_t.fetchall()
+        }
 
         # 영업사업장(lodging_registry) — 주소 정규화 후 매칭 (full-stats와 동일 로직)
         t_road_norms: list = []
@@ -14883,6 +14906,32 @@ def admin_buildings_list():
             bld_jk_t[b["id"]] = jk
             if rk: t_road_norms.append(rk)
             if jk: t_jibun_norms.append(jk)
+
+        # 목록의 입점부동산 합계도 브로커 표준데이터 우선·상권정보 보조
+        # 정책을 그대로 사용한다. 같은 브로커가 도로명·지번 양쪽에 걸려도
+        # 도로명 결과만 사용하므로 중복 집계하지 않는다.
+        broker_road_map_t, broker_jibun_map_t = {}, {}
+        if t_road_norms or t_jibun_norms:
+            cur_t.execute("""
+                SELECT id, road_norm, jibun_norm
+                FROM broker_registry
+                WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
+            """, [
+                list(set(t_road_norms)) or ["__none__"],
+                list(set(t_jibun_norms)) or ["__none__"],
+            ])
+            for broker in cur_t.fetchall():
+                if broker["road_norm"]:
+                    broker_road_map_t.setdefault(broker["road_norm"], set()).add(broker["id"])
+                if broker["jibun_norm"]:
+                    broker_jibun_map_t.setdefault(broker["jibun_norm"], set()).add(broker["id"])
+        total_store_realty_t = sum(
+            len(
+                broker_road_map_t.get(bld_rk_t[b["id"]], set())
+                or broker_jibun_map_t.get(bld_jk_t[b["id"]], set())
+            ) or legacy_realty_by_building_t.get(b["id"], 0)
+            for b in all_blds_t
+        )
 
         lr_road_map_t: dict = {}
         lr_jibun_map_t: dict = {}
@@ -16445,24 +16494,40 @@ def admin_buildings_export():
     rkeys_x = list(road_key_map_x.keys())
     jkeys_x = list(jibun_key_map_x.keys())
 
-    # ── broker_registry 매칭 → 단지뱃지 ────────────────────────────────────
+    # ── broker_registry 매칭 → 입점부동산 표준데이터 ───────────────────────
     if rkeys_x or jkeys_x:
         conn_b = get_conn(); cur_b = conn_b.cursor()
         cur_b.execute(
-            "SELECT office_name, road_norm, jibun_norm FROM broker_registry "
+            "SELECT id, office_name, road_norm, jibun_norm FROM broker_registry "
             "WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
             (rkeys_x or ['__none__'], jkeys_x or ['__none__'])
         )
+        broker_road_groups_x, broker_jibun_groups_x = {}, {}
         for br in cur_b.fetchall():
-            targets = road_key_map_x.get(br["road_norm"], []) + \
-                      jibun_key_map_x.get(br["jibun_norm"], [])
-            for t in targets:
-                names = t.setdefault("_broker_names", [])
-                if br["office_name"] not in names:
-                    names.append(br["office_name"])
+            br_d = dict(br)
+            if br_d.get("road_norm"):
+                broker_road_groups_x.setdefault(br_d["road_norm"], []).append(br_d)
+            if br_d.get("jibun_norm"):
+                broker_jibun_groups_x.setdefault(br_d["jibun_norm"], []).append(br_d)
         cur_b.close(); conn_b.close()
     for r in rows:
-        r["matched_broker_name"] = ", ".join(r.pop("_broker_names", [])) or None
+        road_matches = broker_road_groups_x.get(
+            addr_norm.normalize_road_prefix(r.get("road_address")), []
+        ) if rkeys_x or jkeys_x else []
+        broker_matches = road_matches or (
+            broker_jibun_groups_x.get(
+                addr_norm.normalize_jibun_prefix(r.get("jibun_address") or r.get("road_address")), []
+            ) if rkeys_x or jkeys_x else []
+        )
+        seen_broker_ids = set()
+        r["broker_realty_list"] = [
+            {"name": broker["office_name"], "ho_no": None}
+            for broker in broker_matches
+            if broker["id"] not in seen_broker_ids and not seen_broker_ids.add(broker["id"])
+        ]
+        r["matched_broker_name"] = ", ".join(
+            broker["name"] for broker in r["broker_realty_list"] if broker.get("name")
+        ) or None
 
     # ── building_stores 입점상가(전체수) + 입점부동산(명단+수) ───────────────
     bld_ids_x = [r["id"] for r in rows]
@@ -16487,8 +16552,13 @@ def admin_buildings_export():
     cur_bs_x.close(); conn_bs_x.close()
     for r in rows:
         r["store_count"]        = store_cnt_map_x.get(r["id"], 0)
-        r["store_realty_list"]  = realty_list_map_x.get(r["id"], [])
+        cached_realty_list      = realty_list_map_x.get(r["id"], [])
+        broker_realty_list      = r.pop("broker_realty_list", [])
+        r["store_realty_list"]  = broker_realty_list or cached_realty_list
         r["store_realty_count"] = len(r["store_realty_list"])
+        r["store_realty_source"] = "broker_registry" if broker_realty_list else (
+            "상권정보" if cached_realty_list else None
+        )
 
     # ── lodging_registry 배치 매칭 ────────────────────────────────────────────
     if rkeys_x or jkeys_x:
@@ -16961,7 +17031,7 @@ def _broker_candidates_query(building_id, radius_km):
 
 
 def _broker_exact_match_query(building_id):
-    """건물 주소와 도로명/지번이 정확히 일치하는 중개업소만 조회."""
+    """건물 주소에 매칭되는 중개업소 원본을 도로명 우선·지번 보조로 조회한다."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -16976,18 +17046,53 @@ def _broker_exact_match_query(building_id):
         jibun_key = addr_norm.normalize_jibun_prefix(bld["jibun_address"] or bld["road_address"])
         if not road_key and not jibun_key:
             return bld, []
-        cur.execute("""
-            SELECT office_name, reg_number, road_address, jibun_address,
-                   phone, reg_date, owner_name, homepage_url
-            FROM broker_registry
-            WHERE (road_norm = %s AND %s IS NOT NULL)
-               OR (jibun_norm = %s AND %s IS NOT NULL)
-            ORDER BY office_name ASC
-        """, (road_key, road_key, jibun_key, jibun_key))
-        return bld, cur.fetchall()
+        broker_fields = """
+            id, office_name, reg_number, owner_name, phone,
+            road_address, jibun_address, reg_date, homepage_url,
+            source_updated_at, lat, lng
+        """
+        # 도로명 주소가 매칭되면 지번 매칭을 섞지 않는다. 건물의 도로명과 지번
+        # 모두 기록된 동일 중개업소를 두 번 반환하는 문제와, 인접 지번의 오매칭을
+        # 동시에 피하면서 관리자 목록의 개수 계산과도 같은 규칙을 유지한다.
+        rows = []
+        if road_key:
+            cur.execute(f"""
+                SELECT {broker_fields}
+                FROM broker_registry
+                WHERE road_norm = %s
+                ORDER BY office_name ASC, id ASC
+            """, (road_key,))
+            rows = cur.fetchall()
+        if not rows and jibun_key:
+            cur.execute(f"""
+                SELECT {broker_fields}
+                FROM broker_registry
+                WHERE jibun_norm = %s
+                ORDER BY office_name ASC, id ASC
+            """, (jibun_key,))
+            rows = cur.fetchall()
+        return bld, rows
     finally:
         cur.close()
         conn.close()
+
+
+@app.route("/api/admin/buildings/<int:mbid>/brokers")
+@require_admin
+def admin_building_brokers(mbid):
+    """건물 주소 정규화 키에 매칭된 중개업소 표준데이터 전체를 반환한다."""
+    building, rows = _broker_exact_match_query(mbid)
+    if building is None:
+        return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+    return jsonify({
+        "ok": True,
+        "building_id": building["id"],
+        "building_name": building["building_name"],
+        "road_address": building["road_address"],
+        "jibun_address": building["jibun_address"],
+        "count": len(rows),
+        "items": [dict(row) for row in rows],
+    })
 
 
 @app.route("/api/admin/broker-exact-match")

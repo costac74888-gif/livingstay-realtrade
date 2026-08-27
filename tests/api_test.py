@@ -26,6 +26,7 @@ import copy
 import time
 import re
 import hashlib
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest.mock import patch
@@ -760,6 +761,8 @@ def run():
 
     # 파트너별 즉시 뱃지·무료 만료일·지역 정원 폐지·신규 slug 미발급을 실제 등록으로 확인
     failures += _check_partner_badge_policy(client)
+    # 관리자 건물의 브로커 표준데이터 상세·상권정보 폴백·목록 수 우선순위를 확인
+    failures += _check_admin_building_broker_details(client)
 
     failures += _check_member_login_history(client)
 
@@ -1718,6 +1721,213 @@ def _check_partner_badge_policy(client):
             conn.close()
     if not failures:
         print("OK  파트너 즉시 뱃지·고정 만료·지역 정원 폐지·신규 slug 미발급")
+    return failures
+
+
+def _check_admin_building_broker_details(client):
+    """브로커 표준데이터 상세 API·목록 우선수·상권정보 폴백을 임시 행으로 확인한다."""
+    failures = []
+    run_id = str(time.time_ns())
+    token = run_id[-8:]
+    matched_building_id = fallback_building_id = None
+    broker_numbers = []
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        with client.session_transaction() as sess:
+            sess.clear()
+        blocked = client.get("/api/admin/buildings/999999999/brokers")
+        if blocked.status_code != 401:
+            failures.append("건물 브로커 상세 API가 비관리자 요청을 차단하지 않음")
+
+        matched_name = f"브로커상세매칭 {token}"
+        fallback_name = f"브로커상세폴백 {token}"
+        road = f"테스트특별시 브로커검증구 상세로 {token[-3:]}"
+        jibun = f"테스트특별시 브로커검증동 {token[-3:]}-1번지"
+        fallback_road = f"테스트특별시 브로커검증구 폴백로 {token[-3:]}"
+        fallback_jibun = f"테스트특별시 브로커검증동 {token[-3:]}-2번지"
+        cur.execute("""
+            INSERT INTO master_buildings
+                (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun, source)
+            VALUES (%s, %s, %s, '테스트특별시 브로커검증구', '브로커검증동', %s, 'api_test')
+            RETURNING id
+        """, (matched_name, road, jibun, f"{token[-3:]}-1"))
+        matched_building_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO master_buildings
+                (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun, source)
+            VALUES (%s, %s, %s, '테스트특별시 브로커검증구', '브로커검증동', %s, 'api_test')
+            RETURNING id
+        """, (fallback_name, fallback_road, fallback_jibun, f"{token[-3:]}-2"))
+        fallback_building_id = cur.fetchone()["id"]
+
+        # 동일 주소의 2건은 반환하고, 지번만 일치하는 1건은 도로명 우선 규칙상 제외한다.
+        broker_specs = [
+            (
+                f"TEST-BROKER-{run_id}-1", '<script>alert(1)</script> 표준중개',
+                road, jibun, "https://example.test/broker?a=1&b=2",
+            ),
+            (
+                f"TEST-BROKER-{run_id}-2", "두번째 표준중개",
+                road, f"테스트특별시 다른동 {token[-3:]}-7번지", "https://example.test/second",
+            ),
+            (
+                f"TEST-BROKER-{run_id}-J", "지번전용 중개",
+                f"테스트특별시 다른구 무관로 {token[-3:]}", jibun, "javascript:alert(1)",
+            ),
+        ]
+        for index, (reg_number, office_name, broker_road, broker_jibun, homepage_url) in enumerate(broker_specs):
+            broker_numbers.append(reg_number)
+            cur.execute("""
+                INSERT INTO broker_registry
+                    (office_name, reg_number, owner_name, phone, road_address, jibun_address,
+                     reg_date, homepage_url, source_updated_at, lat, lng, road_norm, jibun_norm)
+                VALUES (%s, %s, %s, %s, %s, %s, '2026-01-02', %s, '2026-08-27',
+                        %s, %s, %s, %s)
+            """, (
+                office_name, reg_number, f"대표자{index + 1}", f"02123456{index}",
+                broker_road, broker_jibun, homepage_url, 37.5 + index / 100, 127.0 + index / 100,
+                addr_norm.normalize_road_prefix(broker_road),
+                addr_norm.normalize_jibun_prefix(broker_jibun),
+            ))
+        cur.execute("""
+            INSERT INTO building_stores (master_building_id, store_name, category, floor, ho_no)
+            VALUES (%s, '<img src=x onerror=alert(1)> 캐시부동산', '부동산', '3', '301')
+        """, (fallback_building_id,))
+        conn.commit()
+
+        with client.session_transaction() as sess:
+            sess["admin"] = True
+
+        detail = client.get(f"/api/admin/buildings/{matched_building_id}/brokers")
+        payload = detail.get_json() or {}
+        expected_fields = {
+            "office_name", "reg_number", "owner_name", "phone", "road_address", "jibun_address",
+            "reg_date", "homepage_url", "source_updated_at", "lat", "lng",
+        }
+        if (
+            detail.status_code != 200 or payload.get("ok") is not True
+            or payload.get("count") != 2 or len(payload.get("items") or []) != 2
+            or any(not expected_fields <= set(item) for item in payload.get("items") or [])
+        ):
+            failures.append("건물 브로커 상세 API가 표준데이터 전체 필드 또는 도로명 우선 매칭을 지키지 않음")
+        elif not any(item.get("office_name", "").startswith("<script>") for item in payload["items"]):
+            failures.append("건물 브로커 상세 API가 원본 사무소명 데이터를 반환하지 않음")
+
+        fallback_detail = client.get(f"/api/admin/buildings/{fallback_building_id}/brokers")
+        if fallback_detail.status_code != 200 or (fallback_detail.get_json() or {}).get("count") != 0:
+            failures.append("브로커 표준데이터 없는 건물이 빈 상세 목록을 반환하지 않음")
+        missing = client.get("/api/admin/buildings/999999999/brokers")
+        if missing.status_code != 404:
+            failures.append("건물 브로커 상세 API가 없는 건물을 404로 처리하지 않음")
+
+        listing = client.get(f"/api/admin/buildings?q={matched_name}&size=10")
+        list_items = (listing.get_json() or {}).get("items") or []
+        matched_row = next((row for row in list_items if row.get("id") == matched_building_id), None)
+        if (
+            listing.status_code != 200 or not matched_row
+            or matched_row.get("broker_realty_count") != 2
+            or matched_row.get("store_realty_count") != 2
+            or matched_row.get("store_realty_source") != "broker_registry"
+        ):
+            failures.append("건물 목록이 브로커 표준데이터 수를 입점부동산 우선값으로 표시하지 않음")
+        fallback_listing = client.get(f"/api/admin/buildings?q={fallback_name}&size=10")
+        fallback_items = (fallback_listing.get_json() or {}).get("items") or []
+        fallback_row = next((row for row in fallback_items if row.get("id") == fallback_building_id), None)
+        if (
+            fallback_listing.status_code != 200 or not fallback_row
+            or fallback_row.get("broker_realty_count") != 0
+            or fallback_row.get("store_realty_count") != 1
+            or fallback_row.get("store_realty_source") != "상권정보"
+        ):
+            failures.append("건물 목록이 브로커 미매칭 시 상권정보 부동산 수로 폴백하지 않음")
+        total_realty = ((listing.get_json() or {}).get("totals") or {}).get("total_store_realty")
+        fallback_total_realty = ((fallback_listing.get_json() or {}).get("totals") or {}).get("total_store_realty")
+        if total_realty != 2 or fallback_total_realty != 1:
+            failures.append("건물 목록 합계가 브로커 표준데이터 우선·상권정보 폴백 수와 일치하지 않음")
+        from io import BytesIO
+        from openpyxl import load_workbook
+        export_response = client.get(
+            f"/api/admin/buildings/export.xlsx?ids={matched_building_id},{fallback_building_id}"
+        )
+        if export_response.status_code != 200:
+            failures.append("건물 엑셀 내보내기가 브로커 표준데이터 표본에서 실패함")
+        else:
+            sheet = load_workbook(BytesIO(export_response.data), data_only=True).active
+            headers = [cell.value for cell in sheet[1]]
+            name_col = headers.index("건물명")
+            broker_name_col = headers.index("입점부동산_업체명")
+            count_col = headers.index("입점부동산수")
+            exported = {}
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                if row[name_col] in {matched_name, fallback_name}:
+                    exported.setdefault(row[name_col], []).append(
+                        (row[broker_name_col], row[count_col])
+                    )
+            matched_export = exported.get(matched_name, [])
+            fallback_export = exported.get(fallback_name, [])
+            matched_exported_names = {name for name, _count in matched_export if name}
+            if (
+                not {"<script>alert(1)</script> 표준중개", "두번째 표준중개"} <= matched_exported_names
+                or 2 not in {count for _name, count in matched_export}
+                or fallback_export != [("<img src=x onerror=alert(1)> 캐시부동산", 1)]
+            ):
+                failures.append("건물 엑셀이 브로커 표준데이터 우선·상권정보 폴백 입점부동산을 일치하게 내보내지 않음")
+
+        with open(os.path.join(os.path.dirname(__file__), "..", "static", "admin.html"), encoding="utf-8") as fh:
+            markup = fh.read()
+        required_markup = (
+            "safeBrokerHomepage", "parsed.protocol !== \"https:\" && parsed.protocol !== \"http:\"",
+            "renderBrokerRegistryTable", "브로커 표준데이터", "상권정보 참고",
+            "bld-realty-modal-card", "min-width: 820px", "dgEscape(value || \"-\")",
+        )
+        if any(text not in markup for text in required_markup):
+            failures.append("관리자 브로커 상세 모달의 안전한 URL/문자열 렌더링 또는 상세표 마크업이 누락됨")
+        else:
+            start = markup.index("function safeBrokerHomepage")
+            end = markup.index("function renderCachedRealtyTable")
+            frontend_check = """
+                function dgEscape(v) {
+                  if (v === null || v === undefined) return "";
+                  return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+                }
+            """ + markup[start:end] + """
+                const html = renderBrokerRegistryTable([{
+                  office_name: "<img src=x onerror=alert(1)>", reg_number: "R", owner_name: "O",
+                  phone: "P", road_address: "A", jibun_address: "J", reg_date: "D",
+                  homepage_url: "javascript:alert(1)", source_updated_at: "U", lat: 1, lng: 2
+                }]);
+                if (html.includes("<img") || html.includes('href="javascript:')) process.exit(1);
+                if (!html.includes("&lt;img") || !html.includes("javascript:alert(1)")) process.exit(2);
+            """
+            rendered = subprocess.run(
+                ["node", "-e", frontend_check], capture_output=True, text=True, timeout=10
+            )
+            if rendered.returncode:
+                failures.append("관리자 브로커 상세 모달이 악성 문자열·비HTTP URL을 안전하게 렌더링하지 않음")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"관리자 건물 브로커 상세 테스트 오류: {exc}")
+    finally:
+        try:
+            if broker_numbers:
+                cur.execute("DELETE FROM broker_registry WHERE reg_number = ANY(%s)", (broker_numbers,))
+            if matched_building_id or fallback_building_id:
+                cur.execute(
+                    "DELETE FROM master_buildings WHERE id = ANY(%s)",
+                    ([building_id for building_id in (matched_building_id, fallback_building_id) if building_id],),
+                )
+            conn.commit()
+            with client.session_transaction() as sess:
+                sess.clear()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+    if not failures:
+        print("OK  관리자 건물 브로커 표준데이터 상세·목록 우선수·상권정보 폴백")
     return failures
 
 

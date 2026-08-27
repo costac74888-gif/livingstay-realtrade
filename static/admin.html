@@ -54,6 +54,25 @@
     border-bottom: 1px solid #B4863F; cursor: pointer;
   }
   .member-name-link:hover { color: #8F6A2F; }
+   /* 건물마스터 입점부동산: 브로커 표준데이터 10개 필드를 가로로 확인하는 관리자 전용 표 */
+   .bld-realty-modal-card {
+     width: min(1280px, 95vw); min-width: 820px; max-width: 95vw;
+     max-height: 84vh; overflow: auto; background: #fff; border-radius: 12px;
+     padding: 24px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,.18);
+   }
+   .bld-realty-section { margin-top: 18px; }
+   .bld-realty-section:first-child { margin-top: 0; }
+   .bld-realty-section-title { font-size: 13px; font-weight: 700; color: #16202E; margin: 0 0 8px; }
+   .bld-realty-section-note { color: #5B6572; font-size: 11.5px; margin: -3px 0 8px; }
+   .bld-realty-scroll { overflow-x: auto; border: 1px solid #E8E3D9; border-radius: 7px; }
+   .bld-realty-table { width: 100%; min-width: 1120px; border-collapse: collapse; font-size: 11.5px; }
+   .bld-realty-table th { background: #F0EBE1; padding: 7px 8px; text-align: left; white-space: nowrap; border-bottom: 1px solid #D4C9B0; }
+   .bld-realty-table td { padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee; line-height: 1.45; word-break: break-word; }
+   .bld-realty-table tr:last-child td { border-bottom: none; }
+   .bld-realty-url { color: #8F6A2F; text-decoration: underline; overflow-wrap: anywhere; }
+   @media (max-width: 860px) {
+     .bld-realty-modal-card { min-width: 0; width: 95vw; padding: 18px 14px; }
+   }
   </style>
 </head>
 <body>
@@ -282,40 +301,109 @@
     }
 
     // ── 입점부동산 목록 모달 ─────────────────────────────────────────────────
+    function safeBrokerHomepage(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "-";
+      try {
+        const parsed = new URL(raw);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+          return dgEscape(raw);
+        }
+        const href = dgEscape(parsed.href);
+        return `<a class="bld-realty-url" href="${href}" target="_blank" rel="noopener noreferrer">${dgEscape(raw)}</a>`;
+      } catch (e) {
+        // 원본 URL을 잃지 않되 href에는 절대 넣지 않는다.
+        return dgEscape(raw);
+      }
+    }
+
+    function renderBrokerRegistryTable(items) {
+      const columns = [
+        ["사무소명", (item) => item.office_name],
+        ["등록번호", (item) => item.reg_number],
+        ["대표자", (item) => item.owner_name],
+        ["전화번호", (item) => item.phone],
+        ["도로명주소", (item) => item.road_address],
+        ["지번주소", (item) => item.jibun_address],
+        ["등록일자", (item) => item.reg_date],
+        ["홈페이지", (item) => safeBrokerHomepage(item.homepage_url)],
+        ["데이터 기준일", (item) => item.source_updated_at],
+        ["좌표", (item) => (
+          item.lat == null && item.lng == null ? "-" :
+            `${item.lat == null ? "-" : item.lat}, ${item.lng == null ? "-" : item.lng}`
+        )],
+      ];
+      let html = `<div class="bld-realty-scroll"><table class="bld-realty-table"><thead><tr>`;
+      html += columns.map(([label]) => `<th>${label}</th>`).join("");
+      html += `</tr></thead><tbody>`;
+      for (const item of items) {
+        html += `<tr>${columns.map(([label, getValue]) => {
+          const value = getValue(item);
+          // 홈페이지 셀만 검증된 http(s) 링크를 포함할 수 있다. 나머지 원본 필드는 항상 이스케이프한다.
+          return `<td>${label === "홈페이지" ? value : dgEscape(value || "-")}</td>`;
+        }).join("")}</tr>`;
+      }
+      return html + `</tbody></table></div>`;
+    }
+
+    function renderCachedRealtyTable(items) {
+      let html = `<div class="bld-realty-scroll"><table class="bld-realty-table" style="min-width:620px;"><thead>` +
+        `<tr><th>상호명</th><th>호번호</th><th>층</th></tr></thead><tbody>`;
+      for (const item of items) {
+        html += `<tr><td>${dgEscape(item.store_name || "-")}</td>` +
+          `<td>${dgEscape(item.ho_no || "-")}</td>` +
+          `<td>${dgEscape(item.floor || "-")}</td></tr>`;
+      }
+      return html + `</tbody></table></div>`;
+    }
+
     async function openRealtyModal(buildingId) {
       document.querySelector(".bld-realty-overlay")?.remove();
       const overlay = document.createElement("div");
       overlay.className = "bld-realty-overlay";
       overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:center;justify-content:center;";
       overlay.innerHTML =
-        `<div style="background:#fff;border-radius:12px;padding:24px;min-width:380px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18);">` +
+        `<div class="bld-realty-modal-card" role="dialog" aria-modal="true" aria-labelledby="realtyModalTitle">` +
         `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">` +
-        `<b style="font-size:15px;">입점부동산 목록</b>` +
-        `<button onclick="this.closest('.bld-realty-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
+        `<b id="realtyModalTitle" style="font-size:15px;">입점부동산 상세</b>` +
+        `<button type="button" class="bld-realty-close" aria-label="닫기" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
         `</div><div id="realtyModalBody" style="min-height:40px;">로딩 중…</div></div>`;
       document.body.appendChild(overlay);
       overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+      overlay.querySelector(".bld-realty-close").addEventListener("click", () => overlay.remove());
       try {
-        const r = await fetch(`/api/admin/buildings/${buildingId}/stores`);
-        const d = await r.json();
-        const items = (d.items || []).filter(s => s.category === "부동산");
-        if (!items.length) {
-          document.getElementById("realtyModalBody").textContent = "캐시된 부동산 업소 없음 (건물 상세 방문 시 수집됩니다)";
+        const [brokerResponse, storeResponse] = await Promise.all([
+          fetch(`/api/admin/buildings/${buildingId}/brokers`),
+          fetch(`/api/admin/buildings/${buildingId}/stores`),
+        ]);
+        const brokerData = await brokerResponse.json().catch(() => ({}));
+        const storeData = await storeResponse.json().catch(() => ({}));
+        const body = document.getElementById("realtyModalBody");
+        if (!body || !brokerResponse.ok || !brokerData.ok || !storeResponse.ok) {
+          if (body) body.textContent = brokerData.message || "불러오기 실패";
           return;
         }
-        let html = `<table style="width:100%;font-size:12px;border-collapse:collapse;">`;
-        html += `<thead><tr style="background:#F0EBE1;"><th style="padding:4px 8px;text-align:left;">상호명</th><th style="text-align:center;">호번호</th><th style="text-align:center;">층</th></tr></thead><tbody>`;
-        for (const s of items) {
-          html += `<tr style="border-bottom:1px solid #eee;">` +
-            `<td style="padding:3px 8px;">${dgEscape(s.store_name || "-")}</td>` +
-            `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.ho_no || "-")}</td>` +
-            `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.floor || "-")}</td>` +
-            `</tr>`;
+        const brokers = brokerData.items || [];
+        const cachedRealty = (storeData.items || []).filter((item) => item.category === "부동산");
+        if (brokers.length) {
+          body.innerHTML =
+            `<section class="bld-realty-section"><h3 class="bld-realty-section-title">브로커 표준데이터 (${brokers.length}건)</h3>` +
+            `<p class="bld-realty-section-note">건물 주소와 도로명 우선·지번 보조로 매칭된 공인중개사사무소 표준데이터입니다.</p>` +
+            `${renderBrokerRegistryTable(brokers)}</section>`;
+          return;
         }
-        html += `</tbody></table>`;
-        document.getElementById("realtyModalBody").innerHTML = html;
+        const fallback = cachedRealty.length
+          ? `<section class="bld-realty-section"><h3 class="bld-realty-section-title">상권정보 참고 (${cachedRealty.length}건)</h3>` +
+            `<p class="bld-realty-section-note">브로커 표준데이터 매칭이 없어, 건물 상세 방문 때 수집된 상권정보 캐시를 참고용으로 표시합니다.</p>` +
+            `${renderCachedRealtyTable(cachedRealty)}</section>`
+          : `<p class="bld-realty-section-note">브로커 표준데이터와 상권정보 캐시에 매칭된 부동산 업소가 없습니다.</p>`;
+        body.innerHTML =
+          `<section class="bld-realty-section"><h3 class="bld-realty-section-title">브로커 표준데이터 (0건)</h3>` +
+          `<p class="bld-realty-section-note">주소 기준으로 매칭된 공인중개사사무소 표준데이터가 없습니다.</p></section>` +
+          fallback;
       } catch(e) {
-        document.getElementById("realtyModalBody").textContent = "불러오기 실패";
+        const body = document.getElementById("realtyModalBody");
+        if (body) body.textContent = "불러오기 실패";
       }
     }
 
@@ -434,13 +522,19 @@
             render: (v, row) => v > 0
               ? `<span class="dg-badge dg-badge-ok" title="${row.premium_expires_at ? '만료 ' + dgEscape(row.premium_expires_at) : '무기한'}">${v > 1 ? v + "명 보유" : "보유"}</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          // 입점부동산: 부동산 업소 수만 표시, 클릭 시 모달 (입점상가와 동일 패턴)
-          { key: "store_realty_count", label: "입점부동산", sortable: true,
-            render: (v, row) => (v > 0)
-              ? `<button class="bld-realty-modal-btn" data-id="${row.id}" ` +
+          // 입점부동산: 브로커 표준데이터 수 우선, 없을 때만 상권정보 캐시 수를 표시.
+          { key: "store_realty_count", label: "입점부동산", sortable: false,
+            render: (v, row) => {
+              if (!(v > 0)) return `<span style="color:var(--ink-soft);">-</span>`;
+              const isBrokerRegistry = Number(row.broker_realty_count || 0) > 0;
+              const sourceLabel = isBrokerRegistry ? "" : ` <small style="font-size:10px;">상권정보 기준</small>`;
+              const title = isBrokerRegistry
+                ? "브로커 표준데이터 주소 매칭 수"
+                : "브로커 표준데이터 매칭 없음 · 상권정보 캐시 기준";
+              return `<button class="bld-realty-modal-btn" data-id="${row.id}" title="${title}" ` +
                 `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
-                `🏠 ${v}개</button>`
-              : `<span style="color:var(--ink-soft);">-</span>` },
+                `🏠 ${v}개${sourceLabel}</button>`;
+            } },
           // 입점상가: 전체 개수 표시, 클릭 시 모달
           { key: "store_count", label: "입점상가", sortable: true,
             render: (v, row) => (v > 0)

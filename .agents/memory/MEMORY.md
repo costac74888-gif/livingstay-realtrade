@@ -51,3 +51,4 @@
 - [Master stats cold starts](master-stats-coldstart-nonblocking.md) — public stats routes must return bounded warming data on an empty master cache; only worker background services may run full rebuilds.
 - [Password reset security](password-reset-security.md) — reset links use digest-at-rest, canonical URLs, bounded async delivery, and both per-email and per-IP throttles.
 - [급매 등급·알림 규칙](urgent-listing-rules.md) — 급매 판정·구독 알림은 공개 건물전체 ‘매매’ 직거래에만 적용하고, 공개 전환도 신규 알림 계기로 본다.
+- [관리자 입점부동산 기준](admin-broker-realty-source.md) — 관리자 입점부동산은 브로커 표준데이터를 우선하고, 없을 때만 상권정보 캐시를 보조로 쓴다.
