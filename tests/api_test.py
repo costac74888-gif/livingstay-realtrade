@@ -36,6 +36,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import app as app_module  # noqa: E402
+import sync_brokers  # noqa: E402
 from app import (  # noqa: E402
     _building_share_meta,
     _canonical_sido_name,
@@ -763,6 +764,8 @@ def run():
     failures += _check_partner_badge_policy(client)
     # 관리자 건물의 브로커 표준데이터 상세·상권정보 폴백·목록 수 우선순위를 확인
     failures += _check_admin_building_broker_details(client)
+    # 수집 응답 구조·정규화 키·영업상태 저장 및 실제 라군 표본을 함께 확인
+    failures += _check_broker_sync_normalization_and_status(client)
 
     failures += _check_member_login_history(client)
 
@@ -1765,30 +1768,31 @@ def _check_admin_building_broker_details(client):
         broker_specs = [
             (
                 f"TEST-BROKER-{run_id}-1", '<script>alert(1)</script> 표준중개',
-                road, jibun, "https://example.test/broker?a=1&b=2",
+                road, jibun, "https://example.test/broker?a=1&b=2", "영업중",
             ),
             (
                 f"TEST-BROKER-{run_id}-2", "두번째 표준중개",
-                road, f"테스트특별시 다른동 {token[-3:]}-7번지", "https://example.test/second",
+                road, f"테스트특별시 다른동 {token[-3:]}-7번지", "https://example.test/second", "휴업",
             ),
             (
                 f"TEST-BROKER-{run_id}-J", "지번전용 중개",
-                f"테스트특별시 다른구 무관로 {token[-3:]}", jibun, "javascript:alert(1)",
+                f"테스트특별시 다른구 무관로 {token[-3:]}", jibun, "javascript:alert(1)", None,
             ),
         ]
-        for index, (reg_number, office_name, broker_road, broker_jibun, homepage_url) in enumerate(broker_specs):
+        for index, (reg_number, office_name, broker_road, broker_jibun, homepage_url, biz_status) in enumerate(broker_specs):
             broker_numbers.append(reg_number)
             cur.execute("""
                 INSERT INTO broker_registry
                     (office_name, reg_number, owner_name, phone, road_address, jibun_address,
-                     reg_date, homepage_url, source_updated_at, lat, lng, road_norm, jibun_norm)
+                     reg_date, homepage_url, source_updated_at, lat, lng, road_norm, jibun_norm, biz_status)
                 VALUES (%s, %s, %s, %s, %s, %s, '2026-01-02', %s, '2026-08-27',
-                        %s, %s, %s, %s)
+                        %s, %s, %s, %s, %s)
             """, (
                 office_name, reg_number, f"대표자{index + 1}", f"02123456{index}",
                 broker_road, broker_jibun, homepage_url, 37.5 + index / 100, 127.0 + index / 100,
                 addr_norm.normalize_road_prefix(broker_road),
                 addr_norm.normalize_jibun_prefix(broker_jibun),
+                biz_status,
             ))
         cur.execute("""
             INSERT INTO building_stores (master_building_id, store_name, category, floor, ho_no)
@@ -1803,7 +1807,7 @@ def _check_admin_building_broker_details(client):
         payload = detail.get_json() or {}
         expected_fields = {
             "office_name", "reg_number", "owner_name", "phone", "road_address", "jibun_address",
-            "reg_date", "homepage_url", "source_updated_at", "lat", "lng",
+            "reg_date", "homepage_url", "source_updated_at", "lat", "lng", "biz_status",
         }
         if (
             detail.status_code != 200 or payload.get("ok") is not True
@@ -1878,8 +1882,8 @@ def _check_admin_building_broker_details(client):
             markup = fh.read()
         required_markup = (
             "safeBrokerHomepage", "parsed.protocol !== \"https:\" && parsed.protocol !== \"http:\"",
-            "renderBrokerRegistryTable", "브로커 표준데이터", "상권정보 참고",
-            "bld-realty-modal-card", "min-width: 820px", "dgEscape(value || \"-\")",
+            "renderBrokerRegistryCards", "brokerStatusBadge", "전국공인중개사사무소 표준데이터",
+            "상권정보 참고", "bld-realty-modal-card", "bld-broker-card", "dgEscape(value || \"-\")",
         )
         if any(text not in markup for text in required_markup):
             failures.append("관리자 브로커 상세 모달의 안전한 URL/문자열 렌더링 또는 상세표 마크업이 누락됨")
@@ -1893,13 +1897,17 @@ def _check_admin_building_broker_details(client):
                     .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
                 }
             """ + markup[start:end] + """
-                const html = renderBrokerRegistryTable([{
+                const html = renderBrokerRegistryCards([{
                   office_name: "<img src=x onerror=alert(1)>", reg_number: "R", owner_name: "O",
                   phone: "P", road_address: "A", jibun_address: "J", reg_date: "D",
-                  homepage_url: "javascript:alert(1)", source_updated_at: "U", lat: 1, lng: 2
+                  homepage_url: "javascript:alert(1)", source_updated_at: "U", lat: 1, lng: 2,
+                  biz_status: "영업중"
+                }, {
+                  office_name: "비영업 중개", reg_number: "R2", biz_status: "휴업"
                 }]);
                 if (html.includes("<img") || html.includes('href="javascript:')) process.exit(1);
                 if (!html.includes("&lt;img") || !html.includes("javascript:alert(1)")) process.exit(2);
+                if (!html.includes("bld-broker-status is-active") || !html.includes("bld-broker-status is-inactive")) process.exit(3);
             """
             rendered = subprocess.run(
                 ["node", "-e", frontend_check], capture_output=True, text=True, timeout=10
@@ -1927,7 +1935,99 @@ def _check_admin_building_broker_details(client):
             cur.close()
             conn.close()
     if not failures:
-        print("OK  관리자 건물 브로커 표준데이터 상세·목록 우선수·상권정보 폴백")
+        print("OK  관리자 건물 브로커 표준데이터 카드·상태 뱃지·목록 우선수·상권정보 폴백")
+    return failures
+
+
+def _check_broker_sync_normalization_and_status(client):
+    """실제 API 구조와 라군 주소 표기 편차, 상태 기본값/명시값 저장을 고정한다."""
+    failures = []
+    run_id = str(time.time_ns())
+    reg_number = f"TEST-BROKER-SYNC-{run_id}"
+    conn = get_conn()
+    cur = conn.cursor()
+    lagoon_building = "경기도 안산시 단원구 엠티브이17로 35 (성곡동)"
+    lagoon_broker = "경기도 안산시 단원구 엠티브이17로 35, 성곡동 118호 (성곡동)"
+    try:
+        # 2026-08-27에 확인한 실 API 형식(최상위 header/body)과 레거시 wrapper를 모두 허용한다.
+        current_payload = {
+            "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
+            "body": {"items": {"item": [{"medOfficeNm": "형식검증중개"}]}, "totalCount": 1},
+        }
+        legacy_payload = {
+            "response": {"header": {"resultCode": "00"}, "body": {"items": [{"medOfficeNm": "레거시중개"}], "totalCount": 1}},
+        }
+        current_items, current_total = sync_brokers._parse_page_payload(current_payload)
+        legacy_items, legacy_total = sync_brokers._parse_page_payload(legacy_payload)
+        if current_total != 1 or current_items[0].get("medOfficeNm") != "형식검증중개" or legacy_total != 1 or legacy_items[0].get("medOfficeNm") != "레거시중개":
+            failures.append("브로커 수집기가 현재/레거시 공공데이터 응답 구조를 처리하지 못함")
+
+        building_key = addr_norm.normalize_road_prefix(lagoon_building)
+        broker_key = addr_norm.normalize_road_prefix(lagoon_broker)
+        if building_key != "경기도안산시단원구성곡동엠티브이17로35" or broker_key != building_key:
+            failures.append("라군 주소의 괄호 동·호수 표기 차이가 같은 도로명 매칭 키로 정규화되지 않음")
+
+        cur.execute("""
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'broker_registry' AND column_name = 'biz_status'
+        """)
+        if not cur.fetchone():
+            failures.append("broker_registry에 영업상태(biz_status) 컬럼이 없음")
+            return failures
+
+        source_item = {
+            "medOfficeNm": "수집상태검증중개", "estblRegNo": reg_number,
+            "lctnRoadNmAddr": lagoon_broker, "lctnLotnoAddr": "경기도 안산시 단원구 성곡동 999-1",
+            "telno": "0212345678", "estblRegYmd": "2026-01-02", "rprsvNm": "검증대표",
+            "crtrYmd": "2026-08-27",
+        }
+        if not sync_brokers._upsert(cur, source_item):
+            failures.append("상태 없는 브로커 원본 행을 저장하지 못함")
+        conn.commit()
+        cur.execute("SELECT road_norm, biz_status FROM broker_registry WHERE reg_number=%s", (reg_number,))
+        saved = cur.fetchone() or {}
+        if saved.get("road_norm") != building_key or saved.get("biz_status") != "영업중":
+            failures.append("상태 없는 현재 개업 표준데이터가 영업중/정규화 키로 저장되지 않음")
+
+        source_item["bizStatus"] = "휴업"
+        sync_brokers._upsert(cur, source_item)
+        conn.commit()
+        cur.execute("SELECT biz_status FROM broker_registry WHERE reg_number=%s", (reg_number,))
+        if (cur.fetchone() or {}).get("biz_status") != "휴업":
+            failures.append("원본 상태 필드가 제공될 때 영업상태를 갱신하지 못함")
+
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["admin"] = True
+        cur.execute("SELECT id FROM master_buildings WHERE building_name = %s", ("라군 센트럴 스테이",))
+        lagoon = cur.fetchone()
+        if not lagoon:
+            failures.append("라군 센트럴 스테이 실매칭 검증용 건물을 찾지 못함")
+        else:
+            response = client.get(f"/api/admin/buildings/{lagoon['id']}/brokers")
+            items = (response.get_json() or {}).get("items") or []
+            matched = next((item for item in items if "라군부동산중개법인" in (item.get("office_name") or "")), None)
+            if response.status_code != 200 or not matched:
+                failures.append("라군 센트럴 스테이와 라군부동산중개법인이 실제 도로명 매칭되지 않음")
+            elif matched.get("biz_status") != "영업중":
+                failures.append("라군부동산중개법인의 최신 수집 영업상태가 영업중으로 표시되지 않음")
+    except Exception as exc:
+        conn.rollback()
+        failures.append(f"브로커 수집/라군 매칭 검증 오류: {exc}")
+    finally:
+        try:
+            cur.execute("DELETE FROM broker_registry WHERE reg_number=%s", (reg_number,))
+            conn.commit()
+            with client.session_transaction() as sess:
+                sess.clear()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+    if not failures:
+        print("OK  브로커 현재 API 형식·라군 주소 매칭·영업상태 저장")
     return failures
 
 

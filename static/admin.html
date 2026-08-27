@@ -54,9 +54,9 @@
     border-bottom: 1px solid #B4863F; cursor: pointer;
   }
   .member-name-link:hover { color: #8F6A2F; }
-   /* 건물마스터 입점부동산: 브로커 표준데이터 10개 필드를 가로로 확인하는 관리자 전용 표 */
+   /* 건물마스터 입점부동산: 브로커 표준데이터를 세로 카드로 확인하는 관리자 전용 UI */
    .bld-realty-modal-card {
-     width: min(1280px, 95vw); min-width: 820px; max-width: 95vw;
+      width: min(760px, 95vw); max-width: 95vw;
      max-height: 84vh; overflow: auto; background: #fff; border-radius: 12px;
      padding: 24px; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,.18);
    }
@@ -70,8 +70,21 @@
    .bld-realty-table td { padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee; line-height: 1.45; word-break: break-word; }
    .bld-realty-table tr:last-child td { border-bottom: none; }
    .bld-realty-url { color: #8F6A2F; text-decoration: underline; overflow-wrap: anywhere; }
+    .bld-broker-card-list { display: grid; gap: 12px; }
+    .bld-broker-card { border: 1px solid #E4DED2; border-radius: 10px; overflow: hidden; background: #fff; }
+    .bld-broker-card-head { padding: 12px 14px; background: #FAF8F0; display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+    .bld-broker-office-name { color: #16202E; font-size: 14px; font-weight: 700; word-break: break-word; }
+    .bld-broker-fields { margin: 0; padding: 4px 14px; }
+    .bld-broker-field { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid #F0EBE1; font-size: 12px; line-height: 1.45; }
+    .bld-broker-field:last-child { border-bottom: 0; }
+    .bld-broker-field dt { margin: 0; color: #68717D; font-weight: 600; }
+    .bld-broker-field dd { margin: 0; color: #16202E; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .bld-broker-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .bld-broker-status.is-active { background: #E8F5EC; color: #217A42; }
+    .bld-broker-status.is-inactive { background: #EEF0F2; color: #68717D; }
    @media (max-width: 860px) {
      .bld-realty-modal-card { min-width: 0; width: 95vw; padding: 18px 14px; }
+      .bld-broker-field { grid-template-columns: 78px minmax(0, 1fr); }
    }
   </style>
 </head>
@@ -317,33 +330,32 @@
       }
     }
 
-    function renderBrokerRegistryTable(items) {
-      const columns = [
-        ["사무소명", (item) => item.office_name],
-        ["등록번호", (item) => item.reg_number],
-        ["대표자", (item) => item.owner_name],
-        ["전화번호", (item) => item.phone],
-        ["도로명주소", (item) => item.road_address],
-        ["지번주소", (item) => item.jibun_address],
-        ["등록일자", (item) => item.reg_date],
-        ["홈페이지", (item) => safeBrokerHomepage(item.homepage_url)],
-        ["데이터 기준일", (item) => item.source_updated_at],
-        ["좌표", (item) => (
-          item.lat == null && item.lng == null ? "-" :
-            `${item.lat == null ? "-" : item.lat}, ${item.lng == null ? "-" : item.lng}`
-        )],
-      ];
-      let html = `<div class="bld-realty-scroll"><table class="bld-realty-table"><thead><tr>`;
-      html += columns.map(([label]) => `<th>${label}</th>`).join("");
-      html += `</tr></thead><tbody>`;
-      for (const item of items) {
-        html += `<tr>${columns.map(([label, getValue]) => {
-          const value = getValue(item);
-          // 홈페이지 셀만 검증된 http(s) 링크를 포함할 수 있다. 나머지 원본 필드는 항상 이스케이프한다.
-          return `<td>${label === "홈페이지" ? value : dgEscape(value || "-")}</td>`;
-        }).join("")}</tr>`;
-      }
-      return html + `</tbody></table></div>`;
+    function brokerStatusBadge(value) {
+      const status = String(value || "").trim() || "상태 정보 없음";
+      const active = status === "영업중";
+      return `<span class="bld-broker-status ${active ? "is-active" : "is-inactive"}">${dgEscape(status)}</span>`;
+    }
+
+    function renderBrokerRegistryCards(items) {
+      const text = (value) => dgEscape(value || "-");
+      return `<div class="bld-broker-card-list">${items.map((item) => {
+        const address = [item.road_address, item.jibun_address]
+          .filter((value, index, values) => value && values.indexOf(value) === index)
+          .join(" · ");
+        const fields = [
+          ["등록번호", text(item.reg_number)],
+          ["대표자", text(item.owner_name)],
+          ["소재지", text(address)],
+          ["전화번호", text(item.phone)],
+          ["상태", brokerStatusBadge(item.biz_status)],
+          ["등록일자", text(item.reg_date)],
+          ["홈페이지", safeBrokerHomepage(item.homepage_url)],
+        ];
+        return `<article class="bld-broker-card">` +
+          `<header class="bld-broker-card-head"><div class="bld-broker-office-name">${text(item.office_name)}</div>${brokerStatusBadge(item.biz_status)}</header>` +
+          `<dl class="bld-broker-fields">${fields.map(([label, value]) => `<div class="bld-broker-field"><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>` +
+          `</article>`;
+      }).join("")}</div>`;
     }
 
     function renderCachedRealtyTable(items) {
@@ -365,7 +377,7 @@
       overlay.innerHTML =
         `<div class="bld-realty-modal-card" role="dialog" aria-modal="true" aria-labelledby="realtyModalTitle">` +
         `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">` +
-        `<b id="realtyModalTitle" style="font-size:15px;">입점부동산 상세</b>` +
+        `<b id="realtyModalTitle" style="font-size:15px;">전국공인중개사사무소 표준데이터</b>` +
         `<button type="button" class="bld-realty-close" aria-label="닫기" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
         `</div><div id="realtyModalBody" style="min-height:40px;">로딩 중…</div></div>`;
       document.body.appendChild(overlay);
@@ -387,9 +399,9 @@
         const cachedRealty = (storeData.items || []).filter((item) => item.category === "부동산");
         if (brokers.length) {
           body.innerHTML =
-            `<section class="bld-realty-section"><h3 class="bld-realty-section-title">브로커 표준데이터 (${brokers.length}건)</h3>` +
+            `<section class="bld-realty-section"><h3 class="bld-realty-section-title">주소 매칭 결과 (${brokers.length}건)</h3>` +
             `<p class="bld-realty-section-note">건물 주소와 도로명 우선·지번 보조로 매칭된 공인중개사사무소 표준데이터입니다.</p>` +
-            `${renderBrokerRegistryTable(brokers)}</section>`;
+            `${renderBrokerRegistryCards(brokers)}</section>`;
           return;
         }
         const fallback = cachedRealty.length

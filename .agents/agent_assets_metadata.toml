@@ -75,3 +75,10 @@ uri = "file://screenshots/admin-broker-modal.jpg"
 type = "image"
 title = "관리자 입점부동산 브로커 상세표"
 description = "브로커 표준데이터 10개 필드, HTTPS 링크, XSS 이스케이프를 확인한 관리자 모달 검증 캡처입니다."
+
+[[outputs]]
+id = "HwsiWkjqmBnfcJZ983PGO"
+uri = "file://screenshots/task-206-broker-cards.jpg"
+type = "image"
+title = "라군부동산 매칭·상태 카드 검증"
+description = "라군 센트럴 스테이에 실제 매칭된 라군부동산중개법인의 영업중 카드와 비영업 상태 뱃지 표시 규칙을 함께 확인한 캡처입니다."

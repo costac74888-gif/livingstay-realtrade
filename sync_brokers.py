@@ -55,8 +55,12 @@ FIELD_CANDIDATES = {
     "lat": ["latitude", "lat"],
     "lng": ["longitude", "lot", "lng"],
     "homepage_url": ["hmpgAddr", "homepageUrl", "hmpgAdres", "homepage"],
+    # 현재 공공데이터포털 응답은 개업 사무소 목록이라 별도 상태 필드가 없다.
+    # 이후 상태 필드가 포함된 데이터셋 변형은 이 후보 값을 우선 저장한다.
+    "biz_status": ["opbizSttusNm", "opbizSttus", "bizStatus", "businessStatus", "status"],
     "source_updated_at": ["crtrYmd", "referenceDate", "dataStdDe", "stdrDe"],
 }
+DEFAULT_BIZ_STATUS = "영업중"
 
 
 def _pick(item, field):
@@ -196,6 +200,37 @@ def _redact(text):
     return text.replace(key, "***") if key else text
 
 
+def _parse_page_payload(data):
+    """공공데이터포털 응답에서 (items, total_count)를 추출한다.
+
+    이 API는 일반적인 ``response.header/body`` 구조와 달리 현재
+    최상위 ``header/body`` 구조를 반환한다. 두 구조를 모두 받아야 API 형식
+    변경이 수집 중단으로 이어지지 않는다.
+    """
+    if not isinstance(data, dict):
+        raise RuntimeError("API JSON 응답이 객체가 아닙니다.")
+    payload = data.get("response") if isinstance(data.get("response"), dict) else data
+    header = payload.get("header") or {}
+    code = str(header.get("resultCode", "")).strip()
+    if code == "03":  # NODATA
+        return [], 0
+    if code not in ("00", "0"):
+        raise RuntimeError(f"API 오류 resultCode={code} msg={header.get('resultMsg')}")
+    body = payload.get("body") or {}
+    items = body.get("items") or []
+    if isinstance(items, dict):
+        items = items.get("item") or []
+    if isinstance(items, dict):
+        items = [items]
+    if not isinstance(items, list):
+        raise RuntimeError("API items 형식이 배열이 아닙니다.")
+    try:
+        total = int(body.get("totalCount") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    return items, total
+
+
 def _fetch_page(key, page, num_rows):
     """API 1페이지 호출 → (items, total_count). 오류 시 RuntimeError."""
     resp = requests.get(API_URL, params={
@@ -209,20 +244,7 @@ def _fetch_page(key, page, num_rows):
         data = resp.json()
     except ValueError:
         raise RuntimeError(f"JSON 파싱 실패: {_redact(resp.text[:200])}")
-    header = (data.get("response") or {}).get("header") or {}
-    code = str(header.get("resultCode", "")).strip()
-    if code == "03":  # NODATA
-        return [], 0
-    if code not in ("00", "0"):
-        raise RuntimeError(f"API 오류 resultCode={code} msg={header.get('resultMsg')}")
-    body = (data.get("response") or {}).get("body") or {}
-    items = body.get("items") or []
-    if isinstance(items, dict):  # XML→JSON 변환형 케이스 방어
-        items = items.get("item") or []
-    if isinstance(items, dict):
-        items = [items]
-    total = int(body.get("totalCount") or 0)
-    return items, total
+    return _parse_page_payload(data)
 
 
 def _is_429(exc):
@@ -254,6 +276,9 @@ def _upsert(cur, item):
     row = {f: _pick(item, f) for f in FIELD_CANDIDATES}
     if not row["office_name"]:
         return False
+    # 실응답에는 영업상태 컬럼이 없지만, 이 표준데이터는 "개업" 사무소만 제공한다.
+    # 따라서 지금 수집한 행만 영업중으로 표시한다. 기존 NULL 값을 임의 추정하지 않는다.
+    row["biz_status"] = row["biz_status"] or DEFAULT_BIZ_STATUS
     if not row["reg_number"]:
         base = (row["office_name"] or "") + "|" + (row["road_address"] or row["jibun_address"] or "")
         # 주의: hash()는 프로세스마다 시드가 달라 재실행 시 값이 바뀜 → sha256으로 결정적 키 생성
@@ -268,8 +293,8 @@ def _upsert(cur, item):
         INSERT INTO broker_registry
             (office_name, reg_number, road_address, jibun_address, phone, reg_date,
              owner_name, lat, lng, homepage_url, source_updated_at, updated_at,
-             road_norm, jibun_norm)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,%s)
+              road_norm, jibun_norm, biz_status)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s,%s,%s)
         ON CONFLICT (reg_number) DO UPDATE SET
             office_name = EXCLUDED.office_name,
             road_address = EXCLUDED.road_address,
@@ -283,12 +308,14 @@ def _upsert(cur, item):
             source_updated_at = EXCLUDED.source_updated_at,
             updated_at = NOW(),
             road_norm = EXCLUDED.road_norm,
-            jibun_norm = EXCLUDED.jibun_norm
+            jibun_norm = EXCLUDED.jibun_norm,
+            biz_status = EXCLUDED.biz_status
     """, (row["office_name"], row["reg_number"], row["road_address"], row["jibun_address"],
           row["phone"], row["reg_date"], row["owner_name"], lat, lng,
           row["homepage_url"], row["source_updated_at"],
           normalize_road_prefix(row["road_address"]),
-          normalize_jibun_prefix(row["jibun_address"] or row["road_address"])))
+           normalize_jibun_prefix(row["jibun_address"] or row["road_address"]),
+           row["biz_status"]))
     return True
 
 

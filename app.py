@@ -17049,7 +17049,7 @@ def _broker_exact_match_query(building_id):
         broker_fields = """
             id, office_name, reg_number, owner_name, phone,
             road_address, jibun_address, reg_date, homepage_url,
-            source_updated_at, lat, lng
+            source_updated_at, lat, lng, biz_status
         """
         # 도로명 주소가 매칭되면 지번 매칭을 섞지 않는다. 건물의 도로명과 지번
         # 모두 기록된 동일 중개업소를 두 번 반환하는 문제와, 인접 지번의 오매칭을
