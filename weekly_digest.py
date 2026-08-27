@@ -86,53 +86,58 @@ def _get_ranking(cur):
     """신고가 갱신 TOP5, 거래량 TOP5 (최근 7일)"""
     week_ago = (date.today() - timedelta(days=7)).isoformat()
 
-    # 신고가 갱신: 이번 주 거래 중 해당 건물의 역대 최고가를 경신한 것
-    # ※ 동명 건물이 여러 master_buildings 행으로 매칭될 수 있어 LATERAL 서브쿼리로
-    #    building_id를 1건만 선택. GROUP BY에 mb.id를 넣으면 중복 행이 생겨 오류 발생.
+    # 신고가 갱신: 이번 주 거래 중 해당 건물의 역대 최고가를 경신한 것.
+    # building_id가 비어도 발송 직전 거래 식별자(sgg_cd·umd_nm·jibun)로 보정할 수
+    # 있도록 거래 원본 키와 주소를 함께 반환한다.
     cur.execute("""
         WITH this_week AS (
-            SELECT building_name, jibun,
+            SELECT building_name, address, sgg_cd, umd_nm, jibun,
                    MAX(price) AS new_peak
             FROM transactions
             WHERE deal_date >= %s
-            GROUP BY building_name, jibun
+            GROUP BY building_name, address, sgg_cd, umd_nm, jibun
         ),
         prev_peak AS (
-            SELECT building_name, jibun,
+            SELECT building_name, address, sgg_cd, umd_nm, jibun,
                    MAX(price) AS old_peak
             FROM transactions
             WHERE deal_date < %s
-            GROUP BY building_name, jibun
+            GROUP BY building_name, address, sgg_cd, umd_nm, jibun
         )
-        SELECT t.building_name,
+        SELECT t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun,
                t.new_peak AS price,
                (SELECT mb2.id FROM master_buildings mb2
-                WHERE REPLACE(mb2.building_name,' ','') = REPLACE(t.building_name,' ','')
+                WHERE mb2.sgg_cd = t.sgg_cd
+                  AND REPLACE(mb2.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
                   AND mb2.jibun = t.jibun
                 ORDER BY mb2.id LIMIT 1)  AS building_id,
                ROUND((t.new_peak - COALESCE(p.old_peak, 0))::numeric
                      * 100.0 / NULLIF(COALESCE(p.old_peak, t.new_peak), 0), 1) AS pct_gain
         FROM this_week t
         LEFT JOIN prev_peak p
-               ON p.building_name = t.building_name AND p.jibun = t.jibun
+               ON p.building_name = t.building_name
+              AND p.address = t.address
+              AND p.sgg_cd = t.sgg_cd
+              AND REPLACE(p.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
+              AND p.jibun = t.jibun
         WHERE t.new_peak > COALESCE(p.old_peak, 0)
         ORDER BY pct_gain DESC NULLS LAST
         LIMIT 5
     """, (week_ago, week_ago))
     price_highs = cur.fetchall()
 
-    # 거래량 TOP5 (최근 7일)
-    # ※ 동일하게 correlated 서브쿼리로 building_id 1건만 선택 → 중복/오매칭 방지
+    # 거래량 TOP5 (최근 7일) — 위와 같이 거래 식별자를 유지한다.
     cur.execute("""
-        SELECT t.building_name,
+        SELECT t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun,
                COUNT(*) AS deal_count,
                (SELECT mb2.id FROM master_buildings mb2
-                WHERE REPLACE(mb2.building_name,' ','') = REPLACE(t.building_name,' ','')
+                WHERE mb2.sgg_cd = t.sgg_cd
+                  AND REPLACE(mb2.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
                   AND mb2.jibun = t.jibun
                 ORDER BY mb2.id LIMIT 1)  AS building_id
         FROM transactions t
         WHERE t.deal_date >= %s
-        GROUP BY t.building_name, t.jibun
+        GROUP BY t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun
         ORDER BY deal_count DESC
         LIMIT 5
     """, (week_ago,))
@@ -241,13 +246,15 @@ def _get_datalab_summary_db_fallback():
                     active_rooms += int(lodging.get("room_count") or 0)
         report_rate = round(100.0 * active_rooms / total_units, 1) if total_units else None
 
-        # fallback ② 최근 30일 거래량 TOP1
+        # fallback ② 최근 30일 거래량 TOP1. 같은 이름의 다른 건물을 합치지 않고,
+        # 이름·주소·거래 식별자를 함께 보존해 상세 링크를 안전하게 찾는다.
         cur.execute("""
-            SELECT building_name, COUNT(*) AS deal_count
+            SELECT building_name, address, sgg_cd, umd_nm, jibun,
+                   COUNT(*) AS deal_count
             FROM transactions
             WHERE deal_date >= TO_CHAR(NOW() - INTERVAL '30 days', 'YYYY-MM-DD')
               AND price > 0
-            GROUP BY building_name
+            GROUP BY building_name, address, sgg_cd, umd_nm, jibun
             ORDER BY deal_count DESC
             LIMIT 1
         """)
@@ -284,13 +291,12 @@ def _get_datalab_summary_db_fallback():
                 FROM grouped
             )
             SELECT
-                building_name, address, sgg_nm, umd_nm, transaction_count,
+                building_name, address, sgg_nm, sgg_cd, umd_nm, jibun, transaction_count,
                 first_price, latest_price, first_deal_date, latest_deal_date,
                 area_sqm, change_percent,
                 (SELECT id FROM master_buildings
-                 WHERE building_name = changed.building_name
-                   AND sgg_cd = changed.sgg_cd
-                   AND umd_nm = changed.umd_nm
+                 WHERE sgg_cd = changed.sgg_cd
+                   AND REPLACE(umd_nm, ' ', '') = REPLACE(changed.umd_nm, ' ', '')
                    AND jibun = changed.jibun
                  ORDER BY id LIMIT 1) AS building_id
             FROM changed
@@ -305,12 +311,20 @@ def _get_datalab_summary_db_fallback():
         if volume_row:
             result["volume_top"] = {
                 "building_name": volume_row.get("building_name"),
+                "address": volume_row.get("address"),
+                "sgg_cd": volume_row.get("sgg_cd"),
+                "umd_nm": volume_row.get("umd_nm"),
+                "jibun": volume_row.get("jibun"),
                 "deal_count": int(volume_row.get("deal_count") or 0),
             }
         if price_row:
             result["price_change"] = {
                 "building_name": price_row.get("building_name"),
                 "building_id": price_row.get("building_id"),
+                "address": price_row.get("address"),
+                "sgg_cd": price_row.get("sgg_cd"),
+                "umd_nm": price_row.get("umd_nm"),
+                "jibun": price_row.get("jibun"),
                 "change_percent": round(float(price_row.get("change_percent")), 1),
             }
         return result
@@ -378,46 +392,201 @@ def _get_datalab_summary(app_module=None):
         return _get_datalab_summary_db_fallback()
 
 
+# ── 건물 링크 보정 ─────────────────────────────────────────────────────────────
+
+def _compact(value):
+    return "".join(str(value or "").split())
+
+
+def _transaction_key(row):
+    """거래의 법정동 식별자가 모두 있을 때만 매칭 키를 만든다."""
+    sgg_cd = str(row.get("sgg_cd") or "").strip()
+    umd_nm = _compact(row.get("umd_nm"))
+    jibun = str(row.get("jibun") or "").strip()
+    return (sgg_cd, umd_nm, jibun) if sgg_cd and umd_nm and jibun else None
+
+
+def _address_keys(row):
+    """도로명·지번 prefix를 함께 써서 표기 차이에도 같은 주소를 찾는다."""
+    values = (
+        row.get("address"),
+        row.get("road_address"),
+        row.get("jibun_address"),
+    )
+    keys = set()
+    for value in values:
+        if not value:
+            continue
+        for normalizer in (normalize_road_prefix, normalize_jibun_prefix):
+            key = normalizer(value)
+            if key:
+                keys.add(key)
+    return keys
+
+
+def _valid_building_id(value):
+    try:
+        building_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return building_id if building_id > 0 else None
+
+
+def _resolve_building_ids(cur, rows):
+    """이메일 행의 누락 building_id를 안전한 우선순위로 일괄 보정한다.
+
+    거래 법정동 키가 가장 정확하고, 다음은 건물명+주소, 마지막은 전국에서 이름이
+    하나뿐인 건물명이다. 어느 단계에서도 후보가 복수면 연결하지 않는다.
+    """
+    unresolved = []
+    for row in rows:
+        current_id = _valid_building_id(
+            row.get("building_id") or row.get("master_building_id")
+        )
+        if current_id:
+            row["building_id"] = current_id
+            if "master_building_id" in row:
+                row["master_building_id"] = current_id
+        elif _compact(row.get("building_name")):
+            unresolved.append(row)
+
+    if not unresolved:
+        return 0
+
+    names = sorted({_compact(row.get("building_name")) for row in unresolved})
+    transaction_keys = {
+        _transaction_key(row) for row in unresolved if _transaction_key(row)
+    }
+    compact_addresses = {
+        _compact(value)
+        for row in unresolved
+        for value in (row.get("address"), row.get("road_address"), row.get("jibun_address"))
+        if _compact(value)
+    }
+    where_clauses = [
+        "REPLACE(COALESCE(mb.building_name, ''), ' ', '') = ANY(%s)",
+    ]
+    params = [names]
+    if transaction_keys:
+        where_clauses.append(
+            "CONCAT_WS(CHR(31), mb.sgg_cd, REPLACE(mb.umd_nm, ' ', ''), mb.jibun) = ANY(%s)"
+        )
+        params.append([CHR.join(key) for key in sorted(transaction_keys)])
+    if compact_addresses:
+        where_clauses.append(
+            "(REPLACE(COALESCE(mb.road_address, ''), ' ', '') = ANY(%s) "
+            "OR REPLACE(COALESCE(mb.jibun_address, ''), ' ', '') = ANY(%s))"
+        )
+        params.extend([sorted(compact_addresses), sorted(compact_addresses)])
+
+    cur.execute(f"""
+        SELECT mb.id, mb.building_name, mb.road_address, mb.jibun_address,
+               mb.sgg_cd, mb.umd_nm, mb.jibun
+        FROM master_buildings mb
+        WHERE {' OR '.join(where_clauses)}
+    """, params)
+    candidates = [dict(row) for row in cur.fetchall()]
+    for candidate in candidates:
+        candidate["_name_key"] = _compact(candidate.get("building_name"))
+        candidate["_transaction_key"] = _transaction_key(candidate)
+        candidate["_address_keys"] = _address_keys(candidate)
+
+    resolved = 0
+    for row in unresolved:
+        name_key = _compact(row.get("building_name"))
+        tx_key = _transaction_key(row)
+        address_keys = _address_keys(row)
+
+        def unique_id(matches):
+            ids = {candidate["id"] for candidate in matches}
+            return next(iter(ids)) if len(ids) == 1 else None
+
+        matches = []
+        if tx_key:
+            matches = [candidate for candidate in candidates
+                       if candidate["_transaction_key"] == tx_key]
+            if len(matches) > 1:
+                named_matches = [candidate for candidate in matches
+                                 if candidate["_name_key"] == name_key]
+                matches = named_matches or matches
+
+        building_id = unique_id(matches)
+        if not building_id and address_keys:
+            building_id = unique_id([
+                candidate for candidate in candidates
+                if candidate["_name_key"] == name_key
+                and candidate["_address_keys"] & address_keys
+            ])
+        if not building_id:
+            building_id = unique_id([
+                candidate for candidate in candidates
+                if candidate["_name_key"] == name_key
+            ])
+
+        if building_id:
+            row["building_id"] = building_id
+            if "master_building_id" in row:
+                row["master_building_id"] = building_id
+            resolved += 1
+
+    if resolved != len(unresolved):
+        log.warning(
+            "주간 이메일 건물 상세 링크 %d/%d건을 보정하지 못했습니다. 이름은 링크 없이 표시합니다.",
+            len(unresolved) - resolved, len(unresolved),
+        )
+    return resolved
+
+
+CHR = chr(31)
+
+
 # ── HTML 조립 ─────────────────────────────────────────────────────────────────
 
 def _zone0(summary):
-     """데이터랩 요약에서 이번 주 핵심 수치 하나를 보여준다."""
-     summary = summary or {}
-     rate = summary.get("report_rate")
-     volume = summary.get("volume_top") or {}
+    """데이터랩 요약에서 이번 주 핵심 수치 하나를 보여준다."""
+    summary = summary or {}
+    rate = summary.get("report_rate")
+    volume = summary.get("volume_top") or {}
 
-     hero_value = hero_label = hero_href = None
-     if rate is not None:
-         try:
-             hero_value = f"{float(rate):.1f}%"
-             hero_label = "전국 생숙 영업신고율"
-             hero_href = f"{SITE_URL}/?datalab=consign"
-         except (TypeError, ValueError):
-             pass
+    hero_value = hero_label = hero_href = None
+    if rate is not None:
+        try:
+            hero_value = f"{float(rate):.1f}%"
+            hero_label = "전국 생숙 영업신고율"
+            hero_href = f"{SITE_URL}/?datalab=consign"
+        except (TypeError, ValueError):
+            pass
 
-     if hero_value is None and volume.get("building_name"):
-         volume_count = int(volume.get("deal_count") or 0)
-         hero_value = f"{html.escape(str(volume.get('building_name')))} {volume_count:,}건"
-         hero_label = "최근 30일 거래량 TOP1"
-         hero_href = html.escape(
-             _bld_url(volume.get("building_id"), volume.get("building_name") or ""),
-             quote=True,
-         )
+    if hero_value is None and volume.get("building_name"):
+        volume_count = int(volume.get("deal_count") or 0)
+        hero_value = _building_link(
+            volume.get("building_id"),
+            f"{volume.get('building_name')} {volume_count:,}건",
+            "font-size:28px;line-height:1.2;font-weight:800;"
+            "color:#B4863F;text-decoration:none;overflow-wrap:anywhere;",
+        )
+        hero_label = "최근 30일 거래량 TOP1"
 
-     if hero_value is None:
-         return ""
+    if hero_value is None:
+        return ""
 
-     return f"""
+    if hero_href:
+        hero_value_html = f"""
+           <a href="{hero_href}"
+              style="font-size:28px;line-height:1.2;font-weight:800;
+                     color:#B4863F;text-decoration:none;overflow-wrap:anywhere;">
+             {hero_value}
+           </a>"""
+    else:
+        hero_value_html = hero_value
+
+    return f"""
      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
             style="border-collapse:collapse;background:#F8F4EE;
                    border-left:4px solid #B4863F;">
        <tr>
          <td style="padding:17px 22px 16px;">
-           <a href="{hero_href}"
-              style="font-size:28px;line-height:1.2;font-weight:800;
-                     color:#B4863F;text-decoration:none;overflow-wrap:anywhere;">
-             {hero_value}
-           </a>
+           {hero_value_html}
            <div style="font-size:11px;color:#888;margin-top:5px;">
              {hero_label}
            </div>
@@ -431,12 +600,25 @@ def _zone0(summary):
      </table>"""
 
 
-def _bld_url(building_id, building_name=""):
-    """building_id 가 있으면 상세 페이지 직링크, 없으면 홈으로.
-    /?q= 검색 URL은 지도 패널을 자동으로 열지 않아 '건물 정보 못 불러옴'처럼 보이므로 사용하지 않는다."""
-    if building_id:
-        return f"{SITE_URL}/building/{building_id}"
-    return SITE_URL
+def _bld_url(building_id):
+    """검증된 ID에만 상세 페이지 URL을 만든다. 미매칭 행은 링크로 만들지 않는다."""
+    building_id = _valid_building_id(building_id)
+    return f"{SITE_URL}/building/{building_id}" if building_id else None
+
+
+def _building_link(building_id, building_name, style):
+    """건물명은 상세 링크로만 표시하고, 미매칭 이름을 홈 링크로 위장하지 않는다."""
+    name = html.escape(str(building_name or "-"))
+    if not building_name:
+        return name
+    url = _bld_url(building_id)
+    if url:
+        return f'<a href="{html.escape(url, quote=True)}" style="{style}">{name}</a>'
+    return (
+        f'<span style="{style}">{name}</span>'
+        '<span style="display:block;margin-top:2px;font-size:11px;color:#999;'
+        'font-weight:400;">상세 정보 준비 중</span>'
+    )
 
 
 def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
@@ -486,12 +668,16 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
     )
     for bname, addr, mid in favs:
         deal = deals_by_fav.get((bname, addr))
-        url  = _bld_url(mid or (deal and deal.get("building_id")), bname)
+        name_html = _building_link(
+            mid or (deal and deal.get("building_id")),
+            bname,
+            "color:#16202E;font-weight:700;text-decoration:none;",
+        )
         if deal:
             rows += f"""
             <tr>
               <td style="padding:8px 4px;border-bottom:1px solid #eee;vertical-align:top;">
-                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">{bname}</a>
+                {name_html}
               </td>
               <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;
                          white-space:nowrap;font-weight:700;color:#B4863F;">
@@ -506,7 +692,7 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
             rows += f"""
             <tr>
               <td colspan="3" style="padding:8px 4px;border-bottom:1px solid #eee;color:#888;">
-                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">{bname}</a>
+                {name_html}
                 <span style="margin-left:8px;font-size:12px;">— 이번 주 새로운 실거래가 없었어요</span>
               </td>
             </tr>"""
@@ -554,15 +740,19 @@ def _zone1_2(listing_reqs, buy_reqs):
 
     rows = ""
     for kind, r in all_reqs:
-        url  = _bld_url(r.get("master_building_id"), r.get("building_name") or "")
         name = r.get("building_name") or "-"
+        name_html = _building_link(
+            r.get("master_building_id") or r.get("building_id"),
+            name,
+            "color:#16202E;text-decoration:none;",
+        )
         badge_style = _status_badge_style(r["status"])
         rows += f"""
         <tr>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:12px;
                      color:#888;white-space:nowrap;">{kind}</td>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;font-weight:700;">
-            <a href="{url}" style="color:#16202E;text-decoration:none;">{name}</a>
+            {name_html}
           </td>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;">
             <span style="{badge_style}padding:2px 8px;border-radius:10px;
@@ -595,16 +785,18 @@ def _zone2(price_highs, most_traded):
             return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 신고가 갱신 건물이 없습니다.</td></tr>"
         html = ""
         for i, r in enumerate(price_highs, 1):
-            url  = _bld_url(r.get("building_id"), r["building_name"])
+            name_html = _building_link(
+                r.get("building_id"),
+                r["building_name"],
+                "color:#16202E;font-weight:700;text-decoration:none;",
+            )
             gain = f"+{r['pct_gain']}%" if r.get("pct_gain") else ""
             html += f"""
             <tr>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;
                          color:#aaa;width:20px;font-size:13px;">{i}</td>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;font-size:13px;">
-                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">
-                  {r['building_name']}
-                </a>
+                {name_html}
               </td>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;text-align:right;
                          color:#E53E3E;font-weight:700;white-space:nowrap;font-size:13px;">
@@ -618,15 +810,17 @@ def _zone2(price_highs, most_traded):
             return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 거래 데이터가 없습니다.</td></tr>"
         html = ""
         for i, r in enumerate(most_traded, 1):
-            url = _bld_url(r.get("building_id"), r["building_name"])
+            name_html = _building_link(
+                r.get("building_id"),
+                r["building_name"],
+                "color:#16202E;font-weight:700;text-decoration:none;",
+            )
             html += f"""
             <tr>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;
                          color:#aaa;width:20px;font-size:13px;">{i}</td>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;font-size:13px;">
-                <a href="{url}" style="color:#16202E;font-weight:700;text-decoration:none;">
-                  {r['building_name']}
-                </a>
+                {name_html}
               </td>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;text-align:right;
                          font-weight:700;white-space:nowrap;color:#B4863F;font-size:13px;">
@@ -677,11 +871,13 @@ def _zone3(summary):
          pct = price.get("change_percent")
          pct_text = f"{float(pct):+.1f}%" if pct is not None else "변동률 집계 중"
          price_text = (
-             f'<a href="{html.escape(_bld_url(price.get("building_id"), price.get("building_name") or ""), quote=True)}" '
-             'style="color:#16202E;font-weight:800;text-decoration:none;'
-             'overflow-wrap:anywhere;">'
-             f'{html.escape(str(price.get("building_name") or "-"))}</a>'
-             f'<br><span style="font-size:13px;color:#B4863F;">{pct_text}</span>'
+             _building_link(
+                 price.get("building_id"),
+                 price.get("building_name") or "",
+                 "color:#16202E;font-weight:800;text-decoration:none;"
+                 "overflow-wrap:anywhere;",
+             )
+             + f'<br><span style="font-size:13px;color:#B4863F;">{pct_text}</span>'
          )
      else:
          price_text = "-"
@@ -695,12 +891,14 @@ def _zone3(summary):
 
      if volume:
          volume_text = (
-             f'<a href="{html.escape(_bld_url(volume.get("building_id"), volume.get("building_name") or ""), quote=True)}" '
-             'style="color:#16202E;font-weight:800;text-decoration:none;'
-             'overflow-wrap:anywhere;">'
-             f'{html.escape(str(volume.get("building_name") or "-"))}</a>'
-             f'<br><span style="font-size:13px;color:#B4863F;">'
-             f'{int(volume.get("deal_count") or 0):,}건</span>'
+             _building_link(
+                 volume.get("building_id"),
+                 volume.get("building_name") or "",
+                 "color:#16202E;font-weight:800;text-decoration:none;"
+                 "overflow-wrap:anywhere;",
+             )
+             + f'<br><span style="font-size:13px;color:#B4863F;">'
+             + f'{int(volume.get("deal_count") or 0):,}건</span>'
          )
      else:
          volume_text = "-"
@@ -973,6 +1171,20 @@ def main():
         price_highs, most_traded = _get_ranking(cur)
         datalab_summary          = _get_datalab_summary()
         feature_tip              = _get_active_feature_tip(cur)
+        _resolve_building_ids(
+            cur,
+            [
+                *price_highs,
+                *most_traded,
+                *[
+                    item for item in (
+                        (datalab_summary or {}).get("price_change"),
+                        (datalab_summary or {}).get("volume_top"),
+                    )
+                    if item
+                ],
+            ],
+        )
 
         # 발송 대상 회원 조회
         uid_filter = "AND u.id = %s" if target_uid else ""
@@ -1026,8 +1238,10 @@ def main():
                 WHERE uf.user_id = %s
                 ORDER BY uf.created_at DESC, uf.id DESC
             """, (uid,))
+            favorite_rows = [dict(r) for r in cur.fetchall()]
+            _resolve_building_ids(cur, favorite_rows)
             favs = [(r["building_name"], r["address"], r["master_building_id"])
-                    for r in cur.fetchall()]
+                    for r in favorite_rows]
 
             # 알림 꺼진 관심단지 수 (user_alert_subscriptions 미등록)
             alert_off_count = 0
@@ -1049,10 +1263,13 @@ def main():
                 cur.execute("""
                     SELECT DISTINCT ON (t.building_name, t.address)
                         t.building_name, t.address, t.price, t.deal_date,
+                        t.sgg_cd, t.umd_nm, t.jibun,
                         mb.id AS building_id
                     FROM transactions t
                     LEFT JOIN master_buildings mb
-                           ON REPLACE(mb.building_name,' ','') = REPLACE(t.building_name,' ','')
+                           ON mb.sgg_cd = t.sgg_cd
+                          AND REPLACE(mb.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
+                          AND mb.jibun = t.jibun
                     WHERE t.building_name = ANY(%s)
                       AND t.address       = ANY(%s)
                       AND t.deal_date    >= %s
@@ -1122,7 +1339,7 @@ def main():
                 ORDER BY lr.created_at DESC
                 LIMIT 5
             """, (uid,))
-            listing_reqs = cur.fetchall()
+            listing_reqs = [dict(r) for r in cur.fetchall()]
 
             # 진행 중 매수의뢰
             cur.execute("""
@@ -1135,7 +1352,11 @@ def main():
                 ORDER BY br.created_at DESC
                 LIMIT 5
             """, (uid,))
-            buy_reqs = cur.fetchall()
+            buy_reqs = [dict(r) for r in cur.fetchall()]
+            _resolve_building_ids(
+                cur,
+                [*deals_by_fav.values(), *listing_reqs, *buy_reqs],
+            )
 
             # 이메일 제목 구성: 관심단지 새 실거래 → 가격변동 TOP1 → 기능 소개 → 기본.
             n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))

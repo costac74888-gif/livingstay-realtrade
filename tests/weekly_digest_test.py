@@ -1,6 +1,7 @@
 """주간 이메일의 회차·제목·Zone 순서·통계 캐시 방어를 검증한다."""
 
 import os
+import re
 import sys
 import unittest
 from datetime import date
@@ -10,6 +11,22 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import weekly_digest as digest
+
+
+class _CandidateCursor:
+    """_resolve_building_ids 단위 테스트용 최소 커서."""
+
+    def __init__(self, candidates):
+        self.candidates = candidates
+        self.query = None
+        self.params = None
+
+    def execute(self, query, params):
+        self.query = query
+        self.params = params
+
+    def fetchall(self):
+        return self.candidates
 
 
 class WeeklyDigestTests(unittest.TestCase):
@@ -64,6 +81,144 @@ class WeeklyDigestTests(unittest.TestCase):
 
         self.assertEqual(digest._get_datalab_summary(app_module), fallback.return_value)
         fallback.assert_called_once_with()
+
+    def test_missing_building_ids_use_transaction_then_address_then_unique_name(self):
+        cursor = _CandidateCursor([
+            {
+                "id": 8450,
+                "building_name": "제주에어포트호텔",
+                "road_address": "제주특별자치도 제주시 공항로 2",
+                "jibun_address": "제주특별자치도 제주시 용담이동 1",
+                "sgg_cd": "50110",
+                "umd_nm": "용담이동",
+                "jibun": "1",
+            },
+            {
+                "id": 8451,
+                "building_name": "제주에어포트호텔",
+                "road_address": "제주특별자치도 제주시 공항로 99",
+                "jibun_address": "제주특별자치도 제주시 용담이동 99",
+                "sgg_cd": "50110",
+                "umd_nm": "용담이동",
+                "jibun": "99",
+            },
+            {
+                "id": 302,
+                "building_name": "주소 매칭 호텔",
+                "road_address": "강원특별자치도 속초시 바다로 10",
+                "jibun_address": None,
+                "sgg_cd": "51820",
+                "umd_nm": "대포동",
+                "jibun": "20",
+            },
+            {
+                "id": 303,
+                "building_name": "전국 유일 호텔",
+                "road_address": "서울특별시 중구 남대문로 1",
+                "jibun_address": None,
+                "sgg_cd": "11140",
+                "umd_nm": "회현동",
+                "jibun": "3",
+            },
+        ])
+        rows = [
+            {
+                "building_name": "제주에어포트호텔",
+                "sgg_cd": "50110",
+                "umd_nm": "용담 이 동",
+                "jibun": "1",
+            },
+            {
+                "building_name": "주소 매칭 호텔",
+                "address": "강원특별자치도 속초시 바다로 10",
+            },
+            {"building_name": "전국 유일 호텔"},
+            {"building_name": "제주에어포트호텔"},
+        ]
+
+        self.assertEqual(digest._resolve_building_ids(cursor, rows), 3)
+        self.assertEqual(rows[0]["building_id"], 8450)
+        self.assertEqual(rows[1]["building_id"], 302)
+        self.assertEqual(rows[2]["building_id"], 303)
+        self.assertNotIn("building_id", rows[3])
+        self.assertIn("CONCAT_WS", cursor.query)
+
+    def test_all_building_name_links_in_generated_email_are_detail_links(self):
+        html = digest.build_html(
+            "테스터",
+            [("관심 단지", "서울특별시 중구 테스트로 1", 101)],
+            {
+                ("관심 단지", "서울특별시 중구 테스트로 1"): {
+                    "price": 10000,
+                    "deal_date": "2026-08-26",
+                    "building_id": 101,
+                },
+            },
+            [{
+                "master_building_id": 102,
+                "building_name": "매물 의뢰 단지",
+                "status": "submitted",
+            }],
+            [{
+                "master_building_id": 103,
+                "building_name": "매수 의뢰 단지",
+                "status": "consulting",
+            }],
+            [{"building_id": 104, "building_name": "신고가 랭킹 단지", "pct_gain": 4.2}],
+            [{"building_id": 105, "building_name": "거래량 랭킹 단지", "deal_count": 9}],
+            {
+                "report_rate": None,
+                "price_change": {
+                    "building_id": 106,
+                    "building_name": "데이터랩 가격 단지",
+                    "change_percent": 8.2,
+                },
+                "volume_top": {
+                    "building_id": 8450,
+                    "building_name": "제주에어포트호텔",
+                    "deal_count": 17,
+                },
+            },
+            None,
+            "https://example.test/unsubscribe",
+            signal_counts={"deal": 1},
+        )
+
+        expected_links = {
+            "관심 단지": 101,
+            "매물 의뢰 단지": 102,
+            "매수 의뢰 단지": 103,
+            "신고가 랭킹 단지": 104,
+            "거래량 랭킹 단지": 105,
+            "데이터랩 가격 단지": 106,
+            "제주에어포트호텔 17건": 8450,
+            "제주에어포트호텔": 8450,
+        }
+        for building_name, building_id in expected_links.items():
+            self.assertRegex(
+                html,
+                rf'<a href="{re.escape(digest.SITE_URL)}/building/{building_id}"[^>]*>'
+                rf'{re.escape(building_name)}</a>',
+                building_name,
+            )
+
+    def test_unmatched_building_name_is_not_disguised_as_a_home_link(self):
+        html = digest.build_html(
+            "테스터", [], {}, [], [], [], [],
+            {
+                "report_rate": None,
+                "price_change": {
+                    "building_name": "미매칭 단지",
+                    "change_percent": 3.1,
+                },
+                "volume_top": None,
+            },
+            None,
+            "https://example.test/unsubscribe",
+        )
+        self.assertRegex(html, r'<span[^>]*>미매칭 단지</span>')
+        self.assertIn("상세 정보 준비 중", html)
+        self.assertNotRegex(html, r'<a [^>]*>미매칭 단지</a>')
 
     def test_email_zone_order_and_empty_state_ctas(self):
         tip = {

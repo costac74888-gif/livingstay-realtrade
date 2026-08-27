@@ -2304,6 +2304,9 @@ def get_ranking(_as_payload=False):
                 {
                     "building_name": row["building_name"],
                     "address": row["address"],
+                    "sgg_cd": row["sgg_cd"],
+                    "umd_nm": row["umd_nm"],
+                    "jibun": row["jibun"],
                     "new_price": row["new_price"],
                     "old_max": row["old_max"],
                     "pct_gain": float(row["pct_gain"]) if row["pct_gain"] is not None else 0,
@@ -2352,7 +2355,9 @@ def get_ranking(_as_payload=False):
                     "building_name": row["building_name"],
                     "address": row["address"],
                     "sgg_nm": row["sgg_nm"],
+                    "sgg_cd": row["sgg_cd"],
                     "umd_nm": row["umd_nm"],
+                    "jibun": row["jibun"],
                     "deal_count": row["deal_count"],
                     "max_price": row["max_price"],
                     "latest_date": row["latest_date"],
@@ -22897,7 +22902,7 @@ def stats_price_change_top(_direction=None, _as_payload=False):
                 FROM grouped
             )
             SELECT
-                building_name, address, sgg_nm, umd_nm, transaction_count,
+                building_name, address, sgg_nm, sgg_cd, umd_nm, jibun, transaction_count,
                 first_price, latest_price, first_deal_date, latest_deal_date,
                 area_sqm, change_percent,
                 (SELECT id FROM master_buildings
@@ -22928,7 +22933,9 @@ def stats_price_change_top(_direction=None, _as_payload=False):
                 "building_name": row["building_name"],
                 "address": row["address"],
                 "sgg_nm": row["sgg_nm"],
+                "sgg_cd": row["sgg_cd"],
                 "umd_nm": row["umd_nm"],
+                "jibun": row["jibun"],
                 "building_id": row["building_id"],
                 "lat": float(row["lat"]) if row["lat"] is not None else None,
                 "lng": float(row["lng"]) if row["lng"] is not None else None,
