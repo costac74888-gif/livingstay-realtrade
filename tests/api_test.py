@@ -2181,7 +2181,7 @@ def _check_broker_sync_normalization_and_status(client):
 
         building_key = addr_norm.normalize_road_prefix(lagoon_building)
         broker_key = addr_norm.normalize_road_prefix(lagoon_broker)
-        if building_key != "경기도안산시단원구성곡동엠티브이17로35" or broker_key != building_key:
+        if building_key != "경기도안산시단원구엠티브이17로35" or broker_key != building_key:
             failures.append("라군 주소의 괄호 동·호수 표기 차이가 같은 도로명 매칭 키로 정규화되지 않음")
 
         cur.execute("""
@@ -2229,6 +2229,24 @@ def _check_broker_sync_normalization_and_status(client):
                 failures.append("라군 센트럴 스테이와 라군부동산중개법인이 실제 도로명 매칭되지 않음")
             elif matched.get("biz_status") != "영업중":
                 failures.append("라군부동산중개법인의 최신 수집 영업상태가 영업중으로 표시되지 않음")
+            listing = client.get("/api/admin/buildings", query_string={
+                "q": "라군 센트럴 스테이",
+                "size": 10,
+            })
+            lagoon_row = next(
+                (
+                    item for item in ((listing.get_json() or {}).get("items") or [])
+                    if item.get("id") == lagoon["id"]
+                ),
+                None,
+            )
+            if (
+                listing.status_code != 200
+                or not lagoon_row
+                or int(lagoon_row.get("broker_realty_count") or 0) < 1
+                or lagoon_row.get("store_realty_source") != "broker_registry"
+            ):
+                failures.append("라군 센트럴 스테이 관리자 목록이 브로커 매칭 뱃지를 표시하지 않음")
     except Exception as exc:
         conn.rollback()
         failures.append(f"브로커 수집/라군 매칭 검증 오류: {exc}")

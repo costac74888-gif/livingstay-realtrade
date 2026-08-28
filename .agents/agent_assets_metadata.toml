@@ -110,3 +110,17 @@ uri = "file://screenshots/task-208-admin-tabs.jpg"
 type = "image"
 title = "관리자 뱃지 현황 3탭"
 description = "관리자 뱃지 현황의 전체·단지뱃지·지역뱃지 탭과 읍·면·동 열을 확인하는 캡처입니다."
+
+[[outputs]]
+id = "xsL0A-0CoSVPhmhV2UaUe"
+uri = "file://screenshots/lagoon-broker-match-badge.jpg"
+type = "image"
+title = "라군 센트럴 스테이 입점부동산 뱃지"
+description = "실제 관리자 건물마스터 화면에서 라군 센트럴 스테이 1건을 조회하고 입점부동산이 1개로 표시된 브라우저 캡처입니다."
+
+[[outputs]]
+id = "FjY6IeFeTGMzGlPmyoXIh"
+uri = "file://screenshots/lagoon-broker-match-modal.jpg"
+type = "image"
+title = "라군부동산중개법인 실제 매칭 모달"
+description = "실제 관리자 화면의 표준데이터 모달에서 주소 매칭 결과 1건, 주식회사 라군부동산중개법인과 영업중 상태가 표시된 브라우저 캡처입니다."
