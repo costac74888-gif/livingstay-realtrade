@@ -7528,6 +7528,108 @@ def _send_badge_waitlist_available_email(email, office_name, target_label):
         return False, str(exc)
 
 
+def _process_badge_waitlist_notifications():
+    """빈자리가 생긴 지역·단지뱃지 대기자에게 재실행 가능한 알림을 보낸다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    sent_count = 0
+    try:
+        # 여러 gunicorn 워커와 관리자 조회가 겹쳐도 한 번에 한 실행만 발송한다.
+        cur.execute("SELECT pg_try_advisory_xact_lock(%s, %s) AS locked", [911012, 1])
+        if not (cur.fetchone() or {}).get("locked"):
+            conn.rollback()
+            return 0
+        cur.execute("""
+            SELECT rw.id, rw.agent_id, rw.sgg_text, a.office_name, a.email
+            FROM region_badge_waitlist rw
+            JOIN agents a ON a.id = rw.agent_id
+            WHERE rw.notified_at IS NULL
+              AND (
+                  SELECT COUNT(*) FROM agent_service_regions sr
+                  WHERE sr.sgg_text=rw.sgg_text AND sr.expires_at > NOW()
+              ) < %s
+            ORDER BY rw.created_at ASC
+        """, [AGENT_REGION_SGG_SLOT_CAP])
+        region_rows = cur.fetchall()
+        cur.execute("""
+            SELECT pw.id, pw.agent_id, pw.master_building_id,
+                   mb.building_name, a.office_name, a.email
+            FROM premium_waitlist pw
+            JOIN agents a ON a.id = pw.agent_id
+            JOIN master_buildings mb ON mb.id = pw.master_building_id
+            WHERE pw.notified_at IS NULL
+              AND (
+                  SELECT COUNT(*) FROM agent_buildings ab
+                  WHERE ab.master_building_id=pw.master_building_id
+                    AND ab.has_priority_badge
+                    AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+              ) < %s
+            ORDER BY pw.created_at ASC
+        """, [AGENT_BUILDING_BADGE_SLOT_CAP])
+        building_rows = cur.fetchall()
+        for row in region_rows:
+            ok, message = _send_badge_waitlist_available_email(
+                row["email"], row["office_name"], f"'{row['sgg_text']}' 지역뱃지",
+            )
+            if ok:
+                cur.execute(
+                    "UPDATE region_badge_waitlist SET notified_at=NOW() WHERE id=%s",
+                    [row["id"]],
+                )
+                sent_count += 1
+            else:
+                app.logger.warning(
+                    "지역뱃지 빈자리 이메일 발송 실패 (agent_id=%s, sgg=%s): %s",
+                    row["agent_id"], row["sgg_text"], message,
+                )
+        for row in building_rows:
+            ok, message = _send_badge_waitlist_available_email(
+                row["email"], row["office_name"], f"'{row['building_name']}' 단지뱃지",
+            )
+            if ok:
+                cur.execute(
+                    "UPDATE premium_waitlist SET notified_at=NOW() WHERE id=%s",
+                    [row["id"]],
+                )
+                sent_count += 1
+            else:
+                app.logger.warning(
+                    "단지뱃지 빈자리 이메일 발송 실패 (agent_id=%s, building_id=%s): %s",
+                    row["agent_id"], row["master_building_id"], message,
+                )
+        conn.commit()
+        return sent_count
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _badge_waitlist_notification_loop():
+    """워커에서 5분마다 빈자리 대기 알림을 확인한다."""
+    while True:
+        try:
+            with app.app_context(), background_connection_priority():
+                _process_badge_waitlist_notifications()
+        except BackgroundConnectionUnavailable:
+            pass
+        except Exception:
+            app.logger.exception("뱃지 대기 빈자리 알림 처리 실패")
+        time.sleep(300)
+
+
+def start_badge_waitlist_worker():
+    worker_thread = threading.Thread(
+        target=_badge_waitlist_notification_loop,
+        daemon=True,
+        name="badge-waitlist-worker",
+    )
+    worker_thread.start()
+    return worker_thread
+
+
 @app.route("/api/agent/buildings", methods=["POST"])
 @require_agent
 def agent_building_add():

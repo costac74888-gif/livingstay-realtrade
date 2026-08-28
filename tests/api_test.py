@@ -1467,12 +1467,6 @@ def _check_partner_badge_policy(client):
             or not (slot_third_rejected.get_json() or {}).get("waitlisted")
         ):
             failures.append("파트너 뱃지: 건물당 두 번째 중개사를 허용하거나 세 번째를 대기 등록하지 못함")
-        cur.execute("""
-            UPDATE premium_waitlist
-            SET notified_at=NOW()
-            WHERE agent_id=%s AND master_building_id=%s
-        """, (slot_third_id, agent_bld))
-        conn.commit()
         waitlisted_dashboard = app_module._agent_me_data(slot_third_id) or {}
         waitlisted_items = [
             item for item in waitlisted_dashboard.get("buildings", [])
@@ -1481,10 +1475,10 @@ def _check_partner_badge_policy(client):
         if (
             len(waitlisted_items) != 1
             or not waitlisted_items[0].get("waitlist_only")
-            or not waitlisted_items[0].get("waitlist_notified")
+            or waitlisted_items[0].get("waitlist_notified")
             or not waitlisted_items[0].get("occupied_by_other")
         ):
-            failures.append("파트너 뱃지: 빈자리 알림 전후에도 대기 전용 단지 상태를 대시보드에 유지하지 못함")
+            failures.append("파트너 뱃지: 정원이 찬 대기 전용 단지 상태를 대시보드에 유지하지 못함")
         detail = client.get(f"/api/building/{agent_bld}")
         detail_agent_ids = {item.get("id") for item in (detail.get_json() or {}).get("agents", [])}
         if detail.status_code != 200 or not {agent_id, slot_second_id} <= detail_agent_ids:
@@ -1497,13 +1491,19 @@ def _check_partner_badge_policy(client):
             WHERE agent_id=%s AND master_building_id=%s
         """, (slot_second_id, agent_bld))
         conn.commit()
+        if app_module._process_badge_waitlist_notifications() < 1:
+            failures.append("파트너 뱃지: 단지 빈자리 발생 뒤 자동 대기 알림을 처리하지 못함")
         available_dashboard = app_module._agent_me_data(slot_third_id) or {}
         available_items = [
             item for item in available_dashboard.get("buildings", [])
             if item.get("master_building_id") == agent_bld
         ]
-        if len(available_items) != 1 or available_items[0].get("occupied_by_other"):
-            failures.append("파트너 뱃지: 빈자리가 생긴 대기 전용 단지를 신청 가능 상태로 표시하지 못함")
+        if (
+            len(available_items) != 1
+            or available_items[0].get("occupied_by_other")
+            or not available_items[0].get("waitlist_notified")
+        ):
+            failures.append("파트너 뱃지: 빈자리 알림이 끝난 대기 전용 단지를 신청 가능 상태로 표시하지 못함")
         slot_after_expiry = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
         if slot_after_expiry.status_code != 200:
             failures.append("파트너 뱃지: 만료된 뱃지를 활성 두 자리 정원에서 제외하지 않음")

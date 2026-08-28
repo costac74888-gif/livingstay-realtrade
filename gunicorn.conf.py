@@ -8,10 +8,11 @@ preload_app = True
 
 def post_fork(server, worker):
     """Start each fork's private cache worker without blocking worker readiness."""
-    from app import start_master_stats_worker
+    from app import start_badge_waitlist_worker, start_master_stats_worker
 
     try:
         start_master_stats_worker()
+        start_badge_waitlist_worker()
         server.log.info("worker %s started master stats warmup", worker.pid)
     except Exception:
         # Starting the best-effort worker must not prevent the web worker from
