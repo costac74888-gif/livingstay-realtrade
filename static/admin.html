@@ -4794,10 +4794,6 @@
           }</td>
           <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
-          <td>${tagCell}</td>
-          <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
-          <td style="text-align:right;">${pointsCell}</td>
-          <td style="min-width:220px;">${adCell}</td>
           <td style="white-space:nowrap; text-align:center; font-size:12.5px;">${r.listing_direct_count != null ? ((r.listing_direct_count === 0 && r.listing_broker_count === 0) ? '<span style="color:var(--ink-soft);">-</span>' : `${r.listing_direct_count}/${r.listing_broker_count}`) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `<a href="#" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}'); return false;" title="단지마크 관리" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span></a>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${(r.member_type === "agent" && r.region_sgg) ? `${dgEscape(r.region_sgg)} <span style="color:var(--ink-soft);">(${r.region_bld_cnt||0}/10)</span>${r.region_active ? "" : ' <span style="color:var(--brick);">종료</span>'}` : '<span style="color:var(--ink-soft);">-</span>'}</td>
@@ -4806,6 +4802,10 @@
             : (r.member_type === "pending" ? '<span style="color:var(--ink-soft);">-</span>' : "0")
           }</td>
           <td style="white-space:nowrap;">${actions}</td>
+          <td>${tagCell}</td>
+          <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
+          <td style="text-align:right;">${pointsCell}</td>
+          <td style="min-width:220px;">${adCell}</td>
         </tr>`;
       }).join("");
 
@@ -4826,7 +4826,7 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>세부업종</th><th>상호</th>
-            <th>가입일시</th><th>가입경로</th><th>승인일</th><th>상태</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th>
+            <th>가입일시</th><th>가입경로</th><th>승인일</th><th>상태</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th>
           </tr></thead>
           <tbody>${rows || `<tr><td colspan="19" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
