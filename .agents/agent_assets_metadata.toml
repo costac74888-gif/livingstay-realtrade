@@ -159,3 +159,10 @@ uri = "file://screenshots/admin-broker-horizontal-table.jpg"
 type = "image"
 title = "관리자 입점부동산 가로 테이블"
 description = "홈페이지 컬럼을 제거하고 사무소명·등록번호·대표자·소재지·전화번호·상태·등록일자 7개 컬럼으로 전환한 검증 화면입니다."
+
+[[outputs]]
+id = "Emk4yZjmfe6bFygbQyFgS"
+uri = "file://screenshots/admin-realty-inline.jpg"
+type = "image"
+title = "관리자 입점부동산 인라인 검증"
+description = "입점부동산·영업사업장 버튼 인접 배치, 행 아래 인라인 상세표, 상태 정보 없음 표시를 확인한 화면입니다."
