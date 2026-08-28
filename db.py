@@ -407,7 +407,7 @@ SCHEMA_VERSION = "2026-08-29-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
-_SGG_REGION_MIGRATION_KEY = "migration:agent_service_regions:sgg_v1"
+_SGG_REGION_MIGRATION_KEY = "migration:agent_service_regions:sgg_v2"
 
 
 def _migrate_agent_regions_to_sgg(cur):
