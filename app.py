@@ -20661,6 +20661,28 @@ _DOC_LABELS = {
     "biz_license": "영업허가증",
     "photo": "여권용 사진",
 }
+_DOC_FILENAME_LABELS = {
+    "office_reg": "중개사무소등록증",
+    "biz_reg": "사업자등록증",
+}
+
+
+def _safe_member_document_component(value):
+    """ZIP 파일명 구성요소에서 경로·제어 문자를 제거한다."""
+    return re.sub(r'[\x00-\x1f\x7f\\/:*?"<>|]', "_", str(value or "").strip())
+
+
+def _member_document_names(row):
+    """회원 신청서의 상호·대표자 기준 ZIP 이름과 내부 파일용 식별자를 만든다."""
+    office_name = str(row.get("office_or_company_name") or "").strip()
+    owner_name = str(row.get("owner_name") or "").strip()
+    if office_name and owner_name:
+        return (
+            f"{office_name}({owner_name})",
+            f"{office_name}_{owner_name}",
+        )
+    fallback = office_name or owner_name or f"applicant_{row['id']}"
+    return fallback, fallback
 
 
 def _resolve_member_application_row(member_type, member_id):
@@ -21128,9 +21150,9 @@ def admin_member_docs(member_type, member_id):
 def admin_member_docs_zip(member_type, member_id):
     """회원이 신청 시 올린 첨부서류 전체를 zip 하나로 묶어 다운로드.
 
-    zip 파일명은 회원관리 목록의 "닉네임(이름)"과 동일한 값(owner_name, 없으면
-    업체명)을 사용한다. 압축 내부 파일명은 "서류라벨.확장자"로 구성하고,
-    같은 라벨이 중복되면 뒤에 (2), (3)…을 붙인다.
+    zip 파일명은 "상호(대표자)"를 사용한다. 압축 내부의 사업자등록증·
+    중개사무소등록증은 "서류라벨(상호_대표자)"로 구성하고, 나머지는 기존
+    서류라벨을 유지한다. 같은 파일명이 중복되면 뒤에 (2), (3)…을 붙인다.
     """
     row, err = _resolve_member_application_row(member_type, member_id)
     if err:
@@ -21138,24 +21160,42 @@ def admin_member_docs_zip(member_type, member_id):
     if not row:
         return jsonify({"ok": False, "message": "연결된 신청서가 없습니다. (구버전 가입 등)"}), 404
 
-    entries = []  # (ref, label)
+    entries = []  # (ref, doc_key, label)
     for doc_key, col in _APP_DOC_COLUMNS.items():
         ref = row.get(col)
         if ref and storage_util.is_valid_doc_ref(ref):
-            entries.append((ref, _DOC_LABELS.get(doc_key, doc_key)))
+            entries.append((ref, doc_key, _DOC_LABELS.get(doc_key, doc_key)))
     if not entries:
         return jsonify({"ok": False, "message": "첨부된 서류가 없습니다."}), 404
+
+    zip_name, document_identity = _member_document_names(row)
+    # 파일시스템/헤더에 위험한 문자만 치환 (한글은 그대로 두고 RFC5987로 인코딩)
+    safe_zip_name = _safe_member_document_component(zip_name) or "서류"
+    safe_document_identity = _safe_member_document_component(document_identity) or safe_zip_name
 
     import zipfile
     zip_buffer = io.BytesIO()
     used_names = {}
     added = 0
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for ref, label in entries:
+        for ref, doc_key, label in entries:
             ext = ref.rsplit(".", 1)[-1].lower() if "." in ref else "bin"
-            base_name = f"{label}.{ext}"
+            filename_label = _DOC_FILENAME_LABELS.get(doc_key)
+            base_name = (
+                f"{filename_label}({safe_document_identity}).{ext}"
+                if filename_label
+                else f"{label}.{ext}"
+            )
             n = used_names.get(base_name, 0)
-            entry_name = base_name if n == 0 else f"{label}({n + 1}).{ext}"
+            entry_name = (
+                base_name
+                if n == 0
+                else (
+                    f"{filename_label}({safe_document_identity})({n + 1}).{ext}"
+                    if filename_label
+                    else f"{label}({n + 1}).{ext}"
+                )
+            )
             used_names[base_name] = n + 1
             try:
                 data = storage_util.download_bytes(ref)
@@ -21168,11 +21208,8 @@ def admin_member_docs_zip(member_type, member_id):
         return jsonify({"ok": False, "message": "서류 파일을 불러오지 못했습니다. 잠시 후 다시 시도해주세요."}), 500
 
     zip_buffer.seek(0)
-    nickname = (row.get("owner_name") or row.get("office_or_company_name") or f"applicant_{row['id']}").strip()
-    # 파일시스템/헤더에 위험한 문자만 최소한으로 치환 (한글은 그대로 두고 RFC5987로 인코딩)
-    safe_nickname = re.sub(r'[\\/:*?"<>|]', "_", nickname) or "서류"
-    ascii_fallback = re.sub(r"[^A-Za-z0-9_.-]", "_", safe_nickname) or "documents"
-    encoded = quote(f"{safe_nickname}.zip", safe="")
+    ascii_fallback = re.sub(r"[^A-Za-z0-9_.-]", "_", safe_zip_name) or "documents"
+    encoded = quote(f"{safe_zip_name}.zip", safe="")
     resp = Response(zip_buffer.read(), mimetype="application/zip")
     resp.headers["Content-Disposition"] = (
         f"attachment; filename=\"{ascii_fallback}.zip\"; filename*=UTF-8''{encoded}"
