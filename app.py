@@ -83,7 +83,7 @@ PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
 MAX_FAVORITES = 10         # 일반회원 관심단지 한도
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 AGENT_BUILDING_BADGE_SLOT_CAP = 2  # 건물별 활성 중개사 단지뱃지 정원
-AGENT_REGION_SGG_SLOT_CAP = 10         # 시군구당 실버뱃지 중개사 정원
+AGENT_REGION_SGG_SLOT_CAP = 5          # 시군구당 실버뱃지 중개사 정원
 OPERATOR_BUILDING_BADGE_SLOT_CAP = 2    # 운영업체: 건물당 업종별 골드뱃지 정원
 LOAN_BUILDING_BADGE_SLOT_CAP = 2        # 대출상담사: 건물당 골드뱃지 정원
 OPERATOR_REGION_CATEGORY_SLOT_CAP = 2   # 운영업체: 시군구+업종당 실버뱃지 정원
@@ -6948,14 +6948,38 @@ def _agent_me_data(agent_id):
                        SELECT 1 FROM premium_waitlist pw
                        WHERE pw.master_building_id = ab.master_building_id
                          AND pw.agent_id = ab.agent_id
-                         AND pw.notified_at IS NULL
-                   )) AS on_waitlist
+                   )) AS on_waitlist,
+                   (SELECT BOOL_OR(pw.notified_at IS NOT NULL)
+                      FROM premium_waitlist pw
+                     WHERE pw.master_building_id = ab.master_building_id
+                       AND pw.agent_id = ab.agent_id
+                   ) AS waitlist_notified
             FROM agent_buildings ab
             JOIN master_buildings mb ON mb.id = ab.master_building_id
             WHERE ab.agent_id = %s
             ORDER BY mb.building_name
         """, [AGENT_BUILDING_BADGE_SLOT_CAP, agent_id])
         buildings = [dict(r) for r in cur.fetchall()]
+        cur.execute("""
+            SELECT pw.master_building_id, mb.building_name, mb.lodging_type,
+                   0 AS sale_count, 0 AS jeonse_count, 0 AS wolse_count, 0 AS shortterm_count,
+                   NULL::timestamp AS premium_granted_at,
+                   FALSE AS has_priority_badge,
+                   TRUE AS occupied_by_other,
+                   TRUE AS on_waitlist,
+                   TRUE AS waitlist_only,
+                   (pw.notified_at IS NOT NULL) AS waitlist_notified
+            FROM premium_waitlist pw
+            JOIN master_buildings mb ON mb.id = pw.master_building_id
+            WHERE pw.agent_id=%s
+              AND NOT EXISTS (
+                  SELECT 1 FROM agent_buildings ab
+                  WHERE ab.agent_id=pw.agent_id
+                    AND ab.master_building_id=pw.master_building_id
+              )
+            ORDER BY mb.building_name
+        """, [agent_id])
+        buildings.extend(dict(r) for r in cur.fetchall())
     finally:
         cur.close()
         conn.close()
@@ -7446,6 +7470,60 @@ def _reassign_house_requests_for_building(cur, agent_id, mbid):
     return len(ids)
 
 
+def _send_badge_waitlist_confirmation(email, office_name, target_label):
+    """대기 등록 확인 메일을 보낸다. 호출자는 성공 시 발송 시각을 저장한다."""
+    if not email:
+        return False, "이메일 주소 없음"
+    safe_target = _html.escape(target_label)
+    safe_office = _html.escape(office_name or "담당자")
+    safe_url = _html.escape(_public_base_url() + "/agent/dashboard", quote=True)
+    body = f"""
+    <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;max-width:560px;margin:0 auto;color:#16202E;">
+      <h2 style="font-size:18px;border-bottom:2px solid #B4863F;padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
+      <p>{safe_office} 담당자님,</p>
+      <p><b>{safe_target}</b> 대기 등록이 완료되었습니다.</p>
+      <p>현재 정원이 가득 차 있어 자리가 생기면 이메일로 알려드리겠습니다.</p>
+      <p><a href="{safe_url}" style="display:inline-block;background:#B4863F;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;">대시보드에서 확인하기</a></p>
+    </div>
+    """
+    try:
+        return send_email(
+            email,
+            f"[홈앤스테이] {target_label} 대기 등록 완료",
+            body,
+        )
+    except Exception as exc:
+        app.logger.exception("뱃지 대기 등록 확인 이메일 발송 중 오류: %s", target_label)
+        return False, str(exc)
+
+
+def _send_badge_waitlist_available_email(email, office_name, target_label):
+    """대기 중인 뱃지에 빈자리가 생겼다는 메일을 보낸다."""
+    if not email:
+        return False, "이메일 주소 없음"
+    safe_target = _html.escape(target_label)
+    safe_office = _html.escape(office_name or "담당자")
+    safe_url = _html.escape(_public_base_url() + "/agent/dashboard", quote=True)
+    body = f"""
+    <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;max-width:560px;margin:0 auto;color:#16202E;">
+      <h2 style="font-size:18px;border-bottom:2px solid #B4863F;padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
+      <p>{safe_office} 담당자님,</p>
+      <p>알림 신청하신 <b>{safe_target}</b>에 빈자리가 생겼습니다.</p>
+      <p>대시보드에서 지금 뱃지를 신청해 주세요. 자리는 선착순으로 배정됩니다.</p>
+      <p><a href="{safe_url}" style="display:inline-block;background:#B4863F;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;">대시보드에서 신청하기</a></p>
+    </div>
+    """
+    try:
+        return send_email(
+            email,
+            f"[홈앤스테이] {target_label} 자리가 생겼습니다",
+            body,
+        )
+    except Exception as exc:
+        app.logger.exception("뱃지 빈자리 이메일 발송 중 오류: %s", target_label)
+        return False, str(exc)
+
+
 @app.route("/api/agent/buildings", methods=["POST"])
 @require_agent
 def agent_building_add():
@@ -7482,15 +7560,66 @@ def agent_building_add():
                   AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
             """, [mbid])
             if cur.fetchone()["count"] >= AGENT_BUILDING_BADGE_SLOT_CAP:
+                cur.execute("""
+                    INSERT INTO premium_waitlist (agent_id, master_building_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (agent_id, master_building_id) DO NOTHING
+                    RETURNING id, confirmation_sent_at
+                """, [agent_id, mbid])
+                waitlist_row = cur.fetchone()
+                already_waitlisted = waitlist_row is None
+                if waitlist_row is None:
+                    cur.execute("""
+                        SELECT id, confirmation_sent_at
+                        FROM premium_waitlist
+                        WHERE agent_id=%s AND master_building_id=%s
+                        FOR UPDATE
+                    """, [agent_id, mbid])
+                    waitlist_row = cur.fetchone()
+                if waitlist_row and not waitlist_row["confirmation_sent_at"]:
+                    cur.execute("""
+                        SELECT a.office_name, a.email, mb.building_name
+                        FROM agents a
+                        JOIN master_buildings mb ON mb.id=%s
+                        WHERE a.id=%s
+                    """, [mbid, agent_id])
+                    recipient = cur.fetchone()
+                    if recipient:
+                        sent, message = _send_badge_waitlist_confirmation(
+                            recipient["email"],
+                            recipient["office_name"],
+                            f"'{recipient['building_name']}' 단지뱃지",
+                        )
+                        if sent:
+                            cur.execute(
+                                "UPDATE premium_waitlist SET confirmation_sent_at=NOW() WHERE id=%s",
+                                [waitlist_row["id"]],
+                            )
+                        else:
+                            app.logger.warning(
+                                "단지뱃지 대기 등록 확인 이메일 발송 실패 (agent_id=%s, building_id=%s): %s",
+                                agent_id, mbid, message,
+                            )
+                conn.commit()
                 return jsonify({
-                    "ok": False,
-                    "message": f"이 단지는 단지뱃지 정원({AGENT_BUILDING_BADGE_SLOT_CAP}명)이 모두 찼습니다.",
-                }), 400
+                    "ok": True,
+                    "waitlisted": True,
+                    "already_waitlisted": already_waitlisted,
+                    "message": (
+                        "이미 이 단지뱃지 대기 명단에 등록되어 있습니다."
+                        if already_waitlisted
+                        else "단지뱃지 정원이 가득 차 대기 등록되었습니다. 빈자리가 생기면 이메일로 알려드립니다."
+                    ),
+                })
             cur.execute("""
                 INSERT INTO agent_buildings
                     (agent_id, master_building_id, has_priority_badge, premium_granted_at, premium_expires_at)
                 VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
             """, [agent_id, mbid, PARTNER_BADGE_FREE_EXPIRES_AT])
+            cur.execute(
+                "DELETE FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
+                [agent_id, mbid],
+            )
             reassigned_count = _reassign_house_requests_for_building(cur, agent_id, mbid)
             conn.commit()
         except psycopg2_errors.UniqueViolation:
@@ -7573,19 +7702,70 @@ def agent_building_claim_premium(mbid):
           AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
     """, [mbid, agent_id])
     if cur.fetchone()["count"] >= AGENT_BUILDING_BADGE_SLOT_CAP:
-        cur.close(); conn.close()
+        cur.execute("""
+            INSERT INTO premium_waitlist (agent_id, master_building_id)
+            VALUES (%s, %s)
+            ON CONFLICT (agent_id, master_building_id) DO NOTHING
+            RETURNING id, confirmation_sent_at
+        """, [agent_id, mbid])
+        waitlist_row = cur.fetchone()
+        already_waitlisted = waitlist_row is None
+        if waitlist_row is None:
+            cur.execute("""
+                SELECT id, confirmation_sent_at
+                FROM premium_waitlist
+                WHERE agent_id=%s AND master_building_id=%s
+                FOR UPDATE
+            """, [agent_id, mbid])
+            waitlist_row = cur.fetchone()
+        if waitlist_row and not waitlist_row["confirmation_sent_at"]:
+            cur.execute("""
+                SELECT a.office_name, a.email, mb.building_name
+                FROM agents a
+                JOIN master_buildings mb ON mb.id=%s
+                WHERE a.id=%s
+            """, [mbid, agent_id])
+            recipient = cur.fetchone()
+            if recipient:
+                sent, message = _send_badge_waitlist_confirmation(
+                    recipient["email"],
+                    recipient["office_name"],
+                    f"'{recipient['building_name']}' 단지뱃지",
+                )
+                if sent:
+                    cur.execute(
+                        "UPDATE premium_waitlist SET confirmation_sent_at=NOW() WHERE id=%s",
+                        [waitlist_row["id"]],
+                    )
+                else:
+                    app.logger.warning(
+                        "단지뱃지 대기 등록 확인 이메일 발송 실패 (agent_id=%s, building_id=%s): %s",
+                        agent_id, mbid, message,
+                    )
+        conn.commit()
+        cur.close()
+        conn.close()
         return jsonify({
-            "ok": False,
-            "message": f"이 단지는 단지뱃지 정원({AGENT_BUILDING_BADGE_SLOT_CAP}명)이 모두 찼습니다.",
-        }), 400
+            "ok": True,
+            "waitlisted": True,
+            "already_waitlisted": already_waitlisted,
+            "message": (
+                "이미 이 단지뱃지 대기 명단에 등록되어 있습니다."
+                if already_waitlisted
+                else "단지뱃지 정원이 가득 차 대기 등록되었습니다. 빈자리가 생기면 이메일로 알려드립니다."
+            ),
+        })
     cur.execute("""
         UPDATE agent_buildings
         SET has_priority_badge = TRUE, premium_granted_at = NOW(),
             premium_expires_at = %s::timestamp
         WHERE agent_id=%s AND master_building_id=%s
     """, [PARTNER_BADGE_FREE_EXPIRES_AT, agent_id, mbid])
-    # 대기 알림 목록 초기화 — 새 입점자가 생겼으므로 기존 waitlist는 더 이상 유효하지 않음
-    cur.execute("DELETE FROM premium_waitlist WHERE master_building_id=%s", [mbid])
+    # 본인이 신청에 성공한 대기 건만 정리한다. 다른 대기자는 다음 빈자리 알림 대상이다.
+    cur.execute(
+        "DELETE FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
+        [agent_id, mbid],
+    )
     # 이 단지가 본인의 지역담당단지 목록에 있었다면 정리(중복 방지)
     cur.execute("DELETE FROM agent_region_buildings WHERE agent_id=%s AND master_building_id=%s",
                 [agent_id, mbid])
@@ -7598,7 +7778,7 @@ def agent_building_claim_premium(mbid):
 @app.route("/api/agent/service-regions", methods=["POST"])
 @require_agent
 def agent_service_region_claim():
-    """시군구 단위 지역뱃지를 시군구별 활성 정원 안에서 즉시 등록한다."""
+    """시군구 단위 지역뱃지를 등록하고, 정원이 찼으면 대기 명단에 넣는다."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
     sgg = (data.get("sgg_text") or "").strip()
@@ -7617,7 +7797,7 @@ def agent_service_region_claim():
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "선택한 시·군·구를 확인할 수 없습니다."}), 400
 
-        # 중개사별 1개 제한과 시군구별 활성 10명 정원을 직렬화한다.
+        # 중개사별 1개 제한과 시군구별 활성 정원을 직렬화한다.
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
         cur.execute("""
             SELECT 1 FROM agent_service_regions
@@ -7645,16 +7825,62 @@ def agent_service_region_claim():
               AND agent_id <> %s
         """, [sgg, agent_id])
         if cur.fetchone()["count"] >= AGENT_REGION_SGG_SLOT_CAP:
+            cur.execute("""
+                INSERT INTO region_badge_waitlist (agent_id, sgg_text)
+                VALUES (%s, %s)
+                ON CONFLICT (agent_id, sgg_text) DO NOTHING
+                RETURNING id, confirmation_sent_at
+            """, [agent_id, sgg])
+            waitlist_row = cur.fetchone()
+            already_waitlisted = waitlist_row is None
+            if waitlist_row is None:
+                cur.execute("""
+                    SELECT id, confirmation_sent_at
+                    FROM region_badge_waitlist
+                    WHERE agent_id=%s AND sgg_text=%s
+                    FOR UPDATE
+                """, [agent_id, sgg])
+                waitlist_row = cur.fetchone()
+            if waitlist_row and not waitlist_row["confirmation_sent_at"]:
+                cur.execute("SELECT office_name, email FROM agents WHERE id=%s", [agent_id])
+                recipient = cur.fetchone()
+                if recipient:
+                    sent, message = _send_badge_waitlist_confirmation(
+                        recipient["email"],
+                        recipient["office_name"],
+                        f"'{sgg}' 지역뱃지",
+                    )
+                    if sent:
+                        cur.execute(
+                            "UPDATE region_badge_waitlist SET confirmation_sent_at=NOW() WHERE id=%s",
+                            [waitlist_row["id"]],
+                        )
+                    else:
+                        app.logger.warning(
+                            "지역뱃지 대기 등록 확인 이메일 발송 실패 (agent_id=%s, sgg=%s): %s",
+                            agent_id, sgg, message,
+                        )
+            conn.commit()
             return jsonify({
-                "ok": False,
-                "message": f"이 시·군·구는 지역뱃지 정원({AGENT_REGION_SGG_SLOT_CAP}명)이 찼습니다. 다른 시·군·구를 선택해주세요.",
-            }), 400
+                "ok": True,
+                "waitlisted": True,
+                "already_waitlisted": already_waitlisted,
+                "message": (
+                    "이미 이 지역뱃지 대기 명단에 등록되어 있습니다."
+                    if already_waitlisted
+                    else "지역뱃지 정원이 가득 차 대기 등록되었습니다. 빈자리가 생기면 이메일로 알려드립니다."
+                ),
+            })
         cur.execute("""
             INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, granted_at, expires_at)
             VALUES (%s, %s, NULL, NOW(), %s::timestamp)
             ON CONFLICT (agent_id, sgg_text) DO UPDATE
             SET granted_at=NOW(), expires_at=EXCLUDED.expires_at, reminder_sent_at=NULL
         """, [agent_id, sgg, PARTNER_BADGE_FREE_EXPIRES_AT])
+        cur.execute(
+            "DELETE FROM region_badge_waitlist WHERE agent_id=%s AND sgg_text=%s",
+            [agent_id, sgg],
+        )
         conn.commit()
     finally:
         cur.close()
@@ -7823,12 +8049,56 @@ def agent_building_notify_me(mbid):
             INSERT INTO premium_waitlist (agent_id, master_building_id)
             VALUES (%s, %s)
             ON CONFLICT (agent_id, master_building_id) DO NOTHING
+            RETURNING id, confirmation_sent_at
         """, [agent_id, mbid])
+        waitlist_row = cur.fetchone()
+        already_waitlisted = waitlist_row is None
+        if waitlist_row is None:
+            cur.execute("""
+                SELECT id, confirmation_sent_at
+                FROM premium_waitlist
+                WHERE agent_id=%s AND master_building_id=%s
+                FOR UPDATE
+            """, [agent_id, mbid])
+            waitlist_row = cur.fetchone()
+        if waitlist_row and not waitlist_row["confirmation_sent_at"]:
+            cur.execute("""
+                SELECT a.office_name, a.email, mb.building_name
+                FROM agents a
+                JOIN master_buildings mb ON mb.id=%s
+                WHERE a.id=%s
+            """, [mbid, agent_id])
+            recipient = cur.fetchone()
+            if recipient:
+                sent, message = _send_badge_waitlist_confirmation(
+                    recipient["email"],
+                    recipient["office_name"],
+                    f"'{recipient['building_name']}' 단지뱃지",
+                )
+                if sent:
+                    cur.execute(
+                        "UPDATE premium_waitlist SET confirmation_sent_at=NOW() WHERE id=%s",
+                        [waitlist_row["id"]],
+                    )
+                else:
+                    app.logger.warning(
+                        "단지뱃지 대기 등록 확인 이메일 발송 실패 (agent_id=%s, building_id=%s): %s",
+                        agent_id, mbid, message,
+                    )
         conn.commit()
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True,
+        "waitlisted": True,
+        "already_waitlisted": already_waitlisted,
+        "message": (
+            "이미 이 단지뱃지 대기 명단에 등록되어 있습니다."
+            if already_waitlisted
+            else "단지뱃지 대기 등록이 완료되었습니다. 빈자리가 생기면 이메일로 알려드립니다."
+        ),
+    })
 
 
 @app.route("/api/agent/tier-status")
@@ -7859,13 +8129,29 @@ def agent_tier_status():
         WHERE arb.agent_id = %s
     """, [agent_id])
     region_buildings = [dict(r) for r in cur.fetchall()]
+    cur.execute("""
+        SELECT sgg_text, created_at, confirmation_sent_at, notified_at
+        FROM region_badge_waitlist
+        WHERE agent_id=%s
+        ORDER BY created_at DESC
+    """, [agent_id])
+    region_waitlist = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
-    for r in buildings + regions:
-        for k in ("premium_granted_at", "premium_expires_at", "granted_at", "expires_at"):
+    for r in buildings + regions + region_waitlist:
+        for k in (
+            "premium_granted_at", "premium_expires_at", "granted_at", "expires_at",
+            "created_at", "confirmation_sent_at", "notified_at",
+        ):
             if k in r and r[k]:
                 r[k] = r[k].isoformat()
-    return jsonify({"ok": True, "buildings": buildings, "regions": regions, "region_buildings": region_buildings})
+    return jsonify({
+        "ok": True,
+        "buildings": buildings,
+        "regions": regions,
+        "region_buildings": region_buildings,
+        "region_waitlist": region_waitlist,
+    })
 
 
 @app.route("/api/agent/buildings/<int:mbid>", methods=["DELETE"])
@@ -7932,14 +8218,18 @@ def agent_building_search():
     try:
         cur.execute("""
             SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
-                   (ab.id IS NOT NULL) AS already_added
+                   (ab.id IS NOT NULL) AS already_added,
+                   (pw.id IS NOT NULL) AS already_waitlisted,
+                   (pw.notified_at IS NOT NULL) AS waitlist_notified
             FROM master_buildings mb
             LEFT JOIN agent_buildings ab
               ON ab.master_building_id = mb.id AND ab.agent_id = %s
+            LEFT JOIN premium_waitlist pw
+              ON pw.master_building_id = mb.id AND pw.agent_id = %s
             WHERE mb.building_name ILIKE %s AND mb.building_name <> '-'
             ORDER BY mb.building_name
             LIMIT 20
-        """, [agent_id, f"%{q}%"])
+        """, [agent_id, agent_id, f"%{q}%"])
         items = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
@@ -20822,6 +21112,8 @@ def admin_premium_status():
 
     conn2 = get_conn()
     cur2 = conn2.cursor()
+    # 동일 배치를 여러 관리자가 동시에 열어도 같은 대기자에게 중복 발송하지 않는다.
+    cur2.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911012, 1])
     cur2.execute("""
         SELECT ab.agent_id, ab.master_building_id, mb.building_name, a.office_name, a.email, ab.premium_expires_at
         FROM agent_buildings ab
@@ -20849,9 +21141,40 @@ def admin_premium_status():
                                   f"'{r['sgg_text']}' 지역뱃지", r["expires_at"]):
             cur2.execute("UPDATE agent_service_regions SET reminder_sent_at=NOW() "
                          "WHERE id=%s", [r["service_region_id"]])
-    # 단지부동산 대기자 알림 — 기존 입점 프리미엄이 만료되어 자리가 생긴 경우
+    # 지역뱃지 대기자 알림 — 기존 지역뱃지가 만료되어 자리가 생긴 경우
     cur2.execute("""
-        SELECT pw.agent_id, pw.master_building_id, mb.building_name, a.office_name, a.email
+        SELECT rw.id, rw.agent_id, rw.sgg_text, a.office_name, a.email
+        FROM region_badge_waitlist rw
+        JOIN agents a ON a.id = rw.agent_id
+        WHERE rw.notified_at IS NULL
+          AND (
+              SELECT COUNT(*)
+              FROM agent_service_regions sr2
+              WHERE sr2.sgg_text = rw.sgg_text
+                AND sr2.expires_at > NOW()
+          ) < %s
+        ORDER BY rw.created_at ASC
+    """, [AGENT_REGION_SGG_SLOT_CAP])
+    for r in cur2.fetchall():
+        sent, message = _send_badge_waitlist_available_email(
+            r["email"],
+            r["office_name"],
+            f"'{r['sgg_text']}' 지역뱃지",
+        )
+        if sent:
+            cur2.execute(
+                "UPDATE region_badge_waitlist SET notified_at=NOW() WHERE id=%s",
+                [r["id"]],
+            )
+        else:
+            app.logger.warning(
+                "지역뱃지 빈자리 이메일 발송 실패 (agent_id=%s, sgg=%s): %s",
+                r["agent_id"], r["sgg_text"], message,
+            )
+
+    # 단지뱃지 대기자 알림 — 기존 입점 프리미엄이 만료되어 자리가 생긴 경우
+    cur2.execute("""
+        SELECT pw.id, pw.agent_id, pw.master_building_id, mb.building_name, a.office_name, a.email
         FROM premium_waitlist pw
         JOIN agents a ON a.id = pw.agent_id
         JOIN master_buildings mb ON mb.id = pw.master_building_id
@@ -20865,17 +21188,21 @@ def admin_premium_status():
           ) < %s
     """, [AGENT_BUILDING_BADGE_SLOT_CAP])
     for r in cur2.fetchall():
-        if r["email"]:
-            subj = f"[홈앤스테이] '{r['building_name']}' 단지부동산 자리가 생겼습니다"
-            body = (f"<p>{r['office_name']} 담당자님,</p>"
-                    f"<p>알림 신청하신 <b>'{r['building_name']}'</b> 단지의 기존 입점 부동산이 퇴장했습니다.</p>"
-                    f"<p>지금 대시보드에서 단지부동산을 신청하실 수 있습니다.</p>")
-            ok2, _ = send_email(r["email"], subj, body)
-            if ok2:
-                cur2.execute(
-                    "UPDATE premium_waitlist SET notified_at=NOW() "
-                    "WHERE agent_id=%s AND master_building_id=%s",
-                    [r["agent_id"], r["master_building_id"]])
+        sent, message = _send_badge_waitlist_available_email(
+            r["email"],
+            r["office_name"],
+            f"'{r['building_name']}' 단지뱃지",
+        )
+        if sent:
+            cur2.execute(
+                "UPDATE premium_waitlist SET notified_at=NOW() WHERE id=%s",
+                [r["id"]],
+            )
+        else:
+            app.logger.warning(
+                "단지뱃지 빈자리 이메일 발송 실패 (agent_id=%s, building_id=%s): %s",
+                r["agent_id"], r["master_building_id"], message,
+            )
     conn2.commit()
     cur2.close()
     conn2.close()

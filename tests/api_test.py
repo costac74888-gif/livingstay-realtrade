@@ -1339,6 +1339,8 @@ def _check_partner_badge_policy(client):
     failures = []
     tag = f"partner-badge-{time.time_ns()}"
     agent_ids, operator_ids, loan_ids, application_ids = [], [], [], []
+    email_patcher = patch.object(app_module, "send_email", return_value=(True, "테스트 발송 성공"))
+    email_patcher.start()
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -1447,7 +1449,7 @@ def _check_partner_badge_policy(client):
         if not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
             failures.append("파트너 뱃지: 중개사 전속단지에 즉시 골드뱃지/고정 만료일이 저장되지 않음")
 
-        # 같은 단지에는 두 중개사까지 성공하고, 세 번째 활성 신청은 거절된다.
+        # 같은 단지에는 두 중개사까지 성공하고, 세 번째 활성 신청은 대기 등록된다.
         slot_second_id = create_agent("agent-slot-second")
         slot_third_id = create_agent("agent-slot-third")
         conn.commit()
@@ -1459,8 +1461,12 @@ def _check_partner_badge_policy(client):
             sess.clear()
             sess["agent_id"] = slot_third_id
         slot_third_rejected = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
-        if slot_second.status_code != 200 or slot_third_rejected.status_code != 400:
-            failures.append("파트너 뱃지: 건물당 두 번째 중개사를 허용하거나 세 번째를 차단하지 못함")
+        if (
+            slot_second.status_code != 200
+            or slot_third_rejected.status_code != 200
+            or not (slot_third_rejected.get_json() or {}).get("waitlisted")
+        ):
+            failures.append("파트너 뱃지: 건물당 두 번째 중개사를 허용하거나 세 번째를 대기 등록하지 못함")
         detail = client.get(f"/api/building/{agent_bld}")
         detail_agent_ids = {item.get("id") for item in (detail.get_json() or {}).get("agents", [])}
         if detail.status_code != 200 or not {agent_id, slot_second_id} <= detail_agent_ids:
@@ -1486,9 +1492,10 @@ def _check_partner_badge_policy(client):
             with app.test_client() as parallel_client:
                 with parallel_client.session_transaction() as sess:
                     sess["agent_id"] = race_agent_id
-                return parallel_client.post(
+                response = parallel_client.post(
                     "/api/agent/buildings", json={"master_building_id": slot_race_bld}
-                ).status_code
+                )
+                return response.status_code, bool((response.get_json() or {}).get("waitlisted"))
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             slot_race_results = list(executor.map(
@@ -1499,7 +1506,12 @@ def _check_partner_badge_policy(client):
             WHERE master_building_id=%s AND has_priority_badge
               AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
         """, (slot_race_bld,))
-        if sorted(slot_race_results) != [200, 200, 400] or cur.fetchone()["count"] != 2:
+        active_slot_count = cur.fetchone()["count"]
+        if (
+            [item[0] for item in slot_race_results].count(200) != 3
+            or [item[1] for item in slot_race_results].count(True) != 1
+            or active_slot_count != 2
+        ):
             failures.append(f"파트너 뱃지: 단지뱃지 동시 신청이 두 자리 정원을 우회함 ({slot_race_results})")
 
         # 같은 중개사가 9개를 가진 상태의 동시 등록도 10개 한도를 넘지 않아야 한다.
@@ -1687,7 +1699,7 @@ def _check_partner_badge_policy(client):
         if operator_over_cap.status_code != 400 or loan_over_cap.status_code != 400:
             failures.append("파트너 뱃지: 운영업체 또는 대출상담사 담당단지 10개 한도가 적용되지 않음")
 
-        # ④ 중개사 지역뱃지: 시군구별 열 명까지 허용하고 담당단지 선택 없이 자동 노출한다.
+        # ④ 중개사 지역뱃지: 시군구별 다섯 명까지 허용하고 초과 신청은 대기 등록한다.
         region_sgg = region_fixture["sgg_text"]
         region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(11)]
         agent_region_id = region_agent_ids[0]
@@ -1700,8 +1712,11 @@ def _check_partner_badge_policy(client):
             region_responses.append(client.post("/api/agent/service-regions", json={
                 "sgg_text": region_sgg,
             }))
-        if [response.status_code for response in region_responses] != ([200] * 10 + [400]):
-            failures.append("파트너 뱃지: 시군구 지역뱃지 열 명 정원이 적용되지 않음")
+        if (
+            [response.status_code for response in region_responses] != ([200] * 11)
+            or sum(bool((response.get_json() or {}).get("waitlisted")) for response in region_responses) != 6
+        ):
+            failures.append("파트너 뱃지: 시군구 지역뱃지 5명 정원과 대기 등록이 적용되지 않음")
         cur.execute("""
             SELECT umd_nm, expires_at::text AS expires_at FROM agent_service_regions
             WHERE agent_id=%s AND sgg_text=%s
@@ -1713,7 +1728,7 @@ def _check_partner_badge_policy(client):
         region_detail_agent_ids = {
             item.get("id") for item in (region_detail.get_json() or {}).get("agents", [])
         }
-        if not region_detail_agent_ids.intersection(region_agent_ids[:10]):
+        if not region_detail_agent_ids.intersection(region_agent_ids[:5]):
             failures.append("파트너 뱃지: 중개사 지역뱃지가 담당단지 선택 없이 같은 시군구 건물에 자동 노출되지 않음")
 
         # 임의/XSS 형태 지역 문자열은 마스터 조합 검증으로 거절한다.
@@ -1784,7 +1799,7 @@ def _check_partner_badge_policy(client):
                 f"파트너 뱃지: 지역 담당단지 동시 추가가 10개 제한을 우회함 ({region_building_results})"
             )
 
-        # 열한 명이 같은 시군구에 동시에 신청해도 정확히 열 명만 성공한다.
+        # 열한 명이 같은 시군구에 동시에 신청해도 정확히 다섯 명만 활성화되고 나머지는 대기한다.
         region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(11)]
         conn.commit()
 
@@ -1792,9 +1807,10 @@ def _check_partner_badge_policy(client):
             with app.test_client() as parallel_client:
                 with parallel_client.session_transaction() as sess:
                     sess["agent_id"] = race_agent_id
-                return parallel_client.post("/api/agent/service-regions", json={
+                response = parallel_client.post("/api/agent/service-regions", json={
                     "sgg_text": region_race_fixture["sgg_text"],
-                }).status_code
+                })
+                return response.status_code, bool((response.get_json() or {}).get("waitlisted"))
 
         with ThreadPoolExecutor(max_workers=11) as executor:
             region_race_results = list(executor.map(
@@ -1805,11 +1821,11 @@ def _check_partner_badge_policy(client):
             WHERE sgg_text=%s AND expires_at > NOW()
         """, (region_race_fixture["sgg_text"],))
         if (
-            region_race_results.count(200) != 10
-            or region_race_results.count(400) != 1
-            or cur.fetchone()["count"] != 10
+            [item[0] for item in region_race_results].count(200) != 11
+            or [item[1] for item in region_race_results].count(True) != 6
+            or cur.fetchone()["count"] != 5
         ):
-            failures.append(f"파트너 뱃지: 중개사 지역뱃지 동시 신청이 열 명 정원을 우회함 ({region_race_results})")
+            failures.append(f"파트너 뱃지: 중개사 지역뱃지 동시 신청이 5명 정원을 우회함 ({region_race_results})")
 
         # 동 단위 레거시 행은 시군구 한 행으로 병합되고 담당단지는 보존되며 재실행은 무해하다.
         legacy_agent_id = create_agent("agent-region-legacy")
@@ -2103,7 +2119,7 @@ def _check_partner_badge_policy(client):
         with open("static/operator_dashboard.html", encoding="utf-8") as dashboard_file:
             operator_dashboard_source = dashboard_file.read()
         if (
-            "시·군·구별 선착순 <b>10명</b>" not in agent_dashboard_source
+            "시·군·구별 선착순 <b>5명</b>" not in agent_dashboard_source
             or "모든 건물에 자동으로 실버뱃지가 노출" not in agent_dashboard_source
             or 'id="regionUmdInput"' in agent_dashboard_source
             or '"umd_nm": umd' in agent_dashboard_source
@@ -2131,6 +2147,7 @@ def _check_partner_badge_policy(client):
         except Exception:
             conn.rollback()
         finally:
+            email_patcher.stop()
             cur.close()
             conn.close()
     if not failures:

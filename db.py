@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-29-01"
+SCHEMA_VERSION = "2026-08-29-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -847,9 +847,29 @@ def _run_init_db():
             agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
             master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
             created_at TIMESTAMP DEFAULT NOW(),
+            confirmation_sent_at TIMESTAMP,
             notified_at TIMESTAMP,
             CONSTRAINT premium_waitlist_unique UNIQUE (agent_id, master_building_id)
         )
+    """)
+    cur.execute(
+        "ALTER TABLE premium_waitlist ADD COLUMN IF NOT EXISTS confirmation_sent_at TIMESTAMP"
+    )
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS region_badge_waitlist (
+            id SERIAL PRIMARY KEY,
+            agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+            sgg_text TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            confirmation_sent_at TIMESTAMP,
+            notified_at TIMESTAMP,
+            CONSTRAINT region_badge_waitlist_unique UNIQUE (agent_id, sgg_text)
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_region_badge_waitlist_sgg_pending
+        ON region_badge_waitlist(sgg_text, notified_at)
     """)
 
     cur.execute("""

@@ -98,7 +98,7 @@
         <ul>
           <li>전속단지는 등록 즉시 <b>2026년 12월 31일까지 무료</b> 단지뱃지가 적용됩니다</li>
           <li>단지뱃지는 <b>건물당 최대 2명</b>까지 선착순으로 등록할 수 있습니다</li>
-          <li>두 자리가 모두 찬 단지는 빈자리가 생길 때까지 추가 등록할 수 없습니다</li>
+          <li>두 자리가 모두 찬 단지는 대기 등록되며, 빈자리가 생기면 이메일로 알려드립니다</li>
         </ul>
       </div>
       <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
@@ -112,7 +112,7 @@
       <div class="agent-guide">
         담당 지역은 시·군·구 단위로 <b>1개만</b> 신청할 수 있습니다.
         <ul>
-          <li>시·군·구별 선착순 <b>10명</b>까지 등록 가능하며, 정원이 차면 다른 시·군·구를 선택해주세요</li>
+          <li>시·군·구별 선착순 <b>5명</b>까지 등록 가능하며, 정원이 차면 대기 등록됩니다</li>
           <li>등록 즉시 해당 시·군·구의 <b>모든 건물에 자동으로 실버뱃지가 노출</b>됩니다</li>
           <li>단지를 개별 선택하지 않아도 해당 시군구 전체가 담당 지역으로 적용됩니다</li>
         </ul>
@@ -123,6 +123,7 @@
           <select id="regionSggInput" class="admin-input" style="flex:1; min-width:210px;"><option value="">시·군·구 선택…</option></select>
           <button id="btnClaimRegion" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">지역 등록</button>
         </div>
+        <div id="regionWaitlistNotice" style="display:none;font-size:12.5px;color:var(--brass-dark);background:#FBF7ED;border:1px solid #E7D8B6;border-radius:7px;padding:8px 10px;margin-bottom:8px;"></div>
       </div>
       <div id="regionActiveBox" style="display:none;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
@@ -445,12 +446,12 @@ function render(){
         <span style="flex:1;"></span>
         ${b.occupied_by_other
           ? (b.on_waitlist
-              ? `<span style="font-size:11px; color:var(--ink-soft);">🔔 알림신청완료</span>`
+              ? `<span style="font-size:11px; color:var(--ink-soft);">${b.waitlist_notified ? "📩 빈자리 알림 발송됨 — 지금 신청" : "🔔 단지뱃지 대기중"}</span>`
               : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--ink-soft); border-color:var(--ink-soft);" onclick="notifyMe(${b.master_building_id})">🔔 단지신청알림</button>`)
           : (b.has_priority_badge
               ? `<span style="font-size:11px; font-weight:700; color:var(--brass-dark);">🧭 단지뱃지 적용중</span>`
               : `<span style="font-size:11px; color:var(--ink-soft);">단지뱃지 종료</span>`)}
-        ${PREVIEW_MODE ? "" : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
+        ${PREVIEW_MODE || b.waitlist_only ? "" : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
         <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>`}
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">${countBadges(b)}</div>
@@ -466,6 +467,11 @@ async function claimPremium(mbid){
   if (!confirm(msg)) return;
   const { ok, data } = await api(`/api/agent/buildings/${mbid}/claim-premium`, { method: "POST" });
   if (ok) {
+    if (data.waitlisted) {
+      alert(data.message || "단지뱃지 대기 등록이 완료되었습니다.");
+      load();
+      return;
+    }
     // GA4: 담당중개사 단지부동산 신청 완료 — API 성공 응답 직후
     if (typeof gtag === "function") gtag("event", "generate_lead_agent");
     alert("적용되었습니다."); load();
@@ -474,7 +480,7 @@ async function claimPremium(mbid){
 
 async function notifyMe(mbid){
   const { ok, data } = await api(`/api/agent/buildings/${mbid}/notify-me`, { method: "POST" });
-  if (ok) { alert("자리가 생기면 이메일로 알려드립니다."); load(); }
+  if (ok) { alert(data.message || "자리가 생기면 이메일로 알려드립니다."); load(); }
   else alert(data.message || "등록에 실패했습니다.");
 }
 
@@ -484,6 +490,14 @@ async function loadRegions(){
   const { ok, data } = await api("/api/agent/tier-status");
   if (!ok) return;
   const hasRegion = data.regions.length > 0;
+  const waitingRegions = Array.isArray(data.region_waitlist) ? data.region_waitlist : [];
+  const waitlistNotice = document.getElementById("regionWaitlistNotice");
+  if (waitlistNotice) {
+    waitlistNotice.style.display = !hasRegion && waitingRegions.length ? "block" : "none";
+    waitlistNotice.textContent = waitingRegions.length
+      ? `${waitingRegions.map(item => item.sgg_text).join(", ")} 지역뱃지 대기 중 — 빈자리가 생기면 이메일로 알려드립니다.`
+      : "";
+  }
   document.getElementById("regionClaimBox").style.display = hasRegion ? "none" : "block";
   document.getElementById("regionActiveBox").style.display = hasRegion ? "block" : "none";
   if (!hasRegion) return;
@@ -530,7 +544,12 @@ document.getElementById("btnClaimRegion").addEventListener("click", async () => 
   // 상단 고정 안내문에 같은 유의사항이 이미 노출되므로 재확인 팝업 없이 바로 등록한다.
   const { ok, data } = await api("/api/agent/service-regions", {
     method: "POST", body: JSON.stringify({ sgg_text: sgg }) });
-  if (ok) { loadRegions(); } else { alert(data.message || "등록에 실패했습니다."); }
+  if (ok) {
+    if (data.waitlisted) alert(data.message || "지역뱃지 대기 등록이 완료되었습니다.");
+    loadRegions();
+  } else {
+    alert(data.message || "등록에 실패했습니다.");
+  }
 });
 
 let REGION_OPTIONS = [];
@@ -785,6 +804,8 @@ async function doSearch(){
       </div>
       ${it.already_added
         ? `<span style="font-size:11.5px; color:var(--ink-soft);">이미 등록됨</span>`
+        : it.already_waitlisted
+          ? `<span style="font-size:11.5px; color:var(--ink-soft);">${it.waitlist_notified ? "빈자리 알림 발송됨 — 다시 신청 가능" : "단지뱃지 대기중"}</span>`
         : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="addBuilding(${it.id})">추가</button>`}
     </div>`).join("");
 }
@@ -792,6 +813,12 @@ window.addBuilding = async function(mbid){
   const msg = document.getElementById("msgAdd");
   const { ok, data } = await api("/api/agent/buildings", { method: "POST", body: JSON.stringify({ master_building_id: mbid }) });
   if (!ok){ msg.textContent = data.message || "추가에 실패했습니다."; return; }
+  if (data.waitlisted) {
+    msg.textContent = data.message || "단지뱃지 대기 등록이 완료되었습니다.";
+    await load();
+    await doSearch();
+    return;
+  }
   msg.textContent = "";
   await load();
   await doSearch(); // "이미 등록됨" 상태 갱신
