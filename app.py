@@ -6965,7 +6965,11 @@ def _agent_me_data(agent_id):
                    0 AS sale_count, 0 AS jeonse_count, 0 AS wolse_count, 0 AS shortterm_count,
                    NULL::timestamp AS premium_granted_at,
                    FALSE AS has_priority_badge,
-                   TRUE AS occupied_by_other,
+                   ((SELECT COUNT(*) FROM agent_buildings ab2
+                      WHERE ab2.master_building_id = pw.master_building_id
+                        AND ab2.has_priority_badge
+                        AND (ab2.premium_expires_at IS NULL OR ab2.premium_expires_at > NOW())
+                    ) >= %s) AS occupied_by_other,
                    TRUE AS on_waitlist,
                    TRUE AS waitlist_only,
                    (pw.notified_at IS NOT NULL) AS waitlist_notified
@@ -6978,7 +6982,7 @@ def _agent_me_data(agent_id):
                     AND ab.master_building_id=pw.master_building_id
               )
             ORDER BY mb.building_name
-        """, [agent_id])
+        """, [AGENT_BUILDING_BADGE_SLOT_CAP, agent_id])
         buildings.extend(dict(r) for r in cur.fetchall())
     finally:
         cur.close()
@@ -8220,7 +8224,12 @@ def agent_building_search():
             SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
                    (ab.id IS NOT NULL) AS already_added,
                    (pw.id IS NOT NULL) AS already_waitlisted,
-                   (pw.notified_at IS NOT NULL) AS waitlist_notified
+                   (pw.notified_at IS NOT NULL) AS waitlist_notified,
+                   ((SELECT COUNT(*) FROM agent_buildings ab2
+                      WHERE ab2.master_building_id = mb.id
+                        AND ab2.has_priority_badge
+                        AND (ab2.premium_expires_at IS NULL OR ab2.premium_expires_at > NOW())
+                    ) < %s) AS badge_has_capacity
             FROM master_buildings mb
             LEFT JOIN agent_buildings ab
               ON ab.master_building_id = mb.id AND ab.agent_id = %s
@@ -8229,7 +8238,7 @@ def agent_building_search():
             WHERE mb.building_name ILIKE %s AND mb.building_name <> '-'
             ORDER BY mb.building_name
             LIMIT 20
-        """, [agent_id, agent_id, f"%{q}%"])
+        """, [AGENT_BUILDING_BADGE_SLOT_CAP, agent_id, agent_id, f"%{q}%"])
         items = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
