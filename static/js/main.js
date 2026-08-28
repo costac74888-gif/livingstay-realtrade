@@ -5320,26 +5320,23 @@ async function loadBuildingStores(buildingId){
   }
 }
 
-// 위탁운영 카드 — '위탁운영' 카테고리 담당 업체가 있으면 업체 카드 표시,
-// 없으면 기본 모집 박스(recruitBoxHTML "consign") 그대로 유지.
-// ※ 청소·세탁·용품·소독·세무·인테리어 업종 행은 이 카드에서 표시하지 않는다
-//   (해당 업종 모집은 운영지원업체 섹션에서 일괄 안내).
+// 운영지원업체 카드 — 단지뱃지를 우선하고 지역뱃지로 보충한 모든 지원 업종을 표시한다.
 function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
   const box = document.getElementById("bOperatorBox");
   if (!box) return;
   const all = Array.isArray(operatorByCategory) ? operatorByCategory : [];
-  // 위탁운영 카테고리만 추려낸다
-  const consignItems = all.filter(it => it.category === "위탁운영" && it.company_name);
-  if (!consignItems.length){ box.innerHTML = ""; return; }  // 통합 배너에서 안내
+  const items = all.filter(it => it && it.company_name);
+  if (!items.length){ box.innerHTML = ""; return; }  // 통합 배너에서 안내
 
   const applyHref = `/apply/operator?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
-  box.innerHTML = consignItems.map(it => {
+  box.innerHTML = items.map(it => {
+    const categoryLabel = it.category === "위탁운영" ? "위탁" : (it.category || "운영지원");
     const badge = it.tier === "premium" ? Icons.compass(14) : Icons.mapPin(14);
     const nameEl = it.tier === "premium" && it.subdomain_slug
       ? `<a href="/operator/${encodeURIComponent(it.subdomain_slug)}?building_id=${buildingId}&building_name=${encodeURIComponent(buildingName||"")}" style="font-size:13px; font-weight:700; color:var(--ink); text-decoration:none;">${escapeHtml(it.company_name)}</a>`
       : `<span style="font-size:13px; font-weight:600; color:var(--ink);">${escapeHtml(it.company_name)}</span>`;
-    return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
-      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0; display:inline-flex; align-items:center; gap:3px;">${badge}<span>위탁</span></span>
+    return `<div data-operator-category="${escapeHtml(categoryLabel)}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 2px; border-bottom:1px solid var(--line,#eee);">
+      <span style="font-size:11.5px; color:var(--ink-soft); width:52px; flex-shrink:0; display:inline-flex; align-items:center; gap:3px;">${badge}<span>${escapeHtml(categoryLabel)}</span></span>
       <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nameEl}</span>
       ${it.phone ? `<a href="tel:${escapeHtml(it.phone)}" style="font-size:16px; text-decoration:none;" onclick="event.stopPropagation();">📞</a>` : ""}
     </div>`;

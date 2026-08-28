@@ -83,6 +83,10 @@ PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
 MAX_FAVORITES = 10         # 일반회원 관심단지 한도
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 AGENT_BUILDING_BADGE_SLOT_CAP = 2  # 건물별 활성 중개사 단지뱃지 정원
+AGENT_REGION_DONG_SLOT_CAP = 2          # 읍면동당 실버뱃지 중개사 정원
+OPERATOR_BUILDING_BADGE_SLOT_CAP = 2    # 운영업체: 건물당 업종별 골드뱃지 정원
+LOAN_BUILDING_BADGE_SLOT_CAP = 2        # 대출상담사: 건물당 골드뱃지 정원
+OPERATOR_REGION_CATEGORY_SLOT_CAP = 2   # 운영업체: 시군구+업종당 실버뱃지 정원
 OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
 OPERATOR_REGION_BUILDING_CAP = 10  # 운영업체 지역내 담당단지
@@ -781,7 +785,7 @@ def get_building(building_id):
     """, [building_id, AGENT_BUILDING_BADGE_SLOT_CAP])
     agent_rows = cur.fetchall()
 
-    # 지역Master 보충: 전체 담당중개사 3명 미만일 때 해당 동의 지역담당으로 빈 자리를 채운다.
+    # 지역Master 보충: 전체 담당중개사 3명 미만일 때 같은 읍·면·동의 지역담당으로 빈 자리를 채운다.
     if len(agent_rows) < 3:
         cur.execute("""
             SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
@@ -790,8 +794,9 @@ def get_building(building_id):
                    FALSE AS has_priority_badge, TRUE AS is_region_agent
             FROM agent_service_regions sr
             JOIN agents a ON a.id = sr.agent_id
-            JOIN agent_region_buildings arb ON arb.agent_id = sr.agent_id AND arb.master_building_id = %s
             WHERE sr.expires_at > NOW()
+              AND sr.sgg_text = %s
+              AND sr.umd_nm = %s
               AND a.status = 'approved'
               AND COALESCE(a.is_visible, TRUE)
               AND a.id NOT IN (
@@ -801,7 +806,12 @@ def get_building(building_id):
               )
             ORDER BY RANDOM()
             LIMIT %s
-        """, [building_id, building_id, 3 - len(agent_rows)])
+        """, [
+            (building.get("sgg_text") or "").strip(),
+            building.get("umd_nm", ""),
+            building_id,
+            3 - len(agent_rows),
+        ])
         agent_rows = list(agent_rows) + list(cur.fetchall())
 
     # 무료등록 중개사 — 메인 3자리에는 안 넣고 "더보기"용으로 따로 모은다
@@ -826,7 +836,7 @@ def get_building(building_id):
     # 화면(B화면 위탁운영/하우스키핑 카드)에서 category별로 골라 최대 3곳씩 표시한다.
     # 정렬은 중개사와 동일하게 priority_score DESC, RANDOM() (카드별 LIMIT은 화면에서 적용).
     cur.execute("""
-        SELECT o.company_name, o.category, o.subdomain_slug, o.intro_text, o.phone, o.website_url,
+        SELECT o.id, o.company_name, o.category, o.subdomain_slug, o.intro_text, o.phone, o.website_url,
                (COALESCE(ob.has_priority_badge, FALSE)
                 AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())) AS is_premium
         FROM operator_buildings ob
@@ -846,32 +856,51 @@ def get_building(building_id):
         _o_region_match.append("수도권")
     if _o_prov_nm:
         _o_region_match.append(_o_prov_nm)
+    _o_sgg_text = (building.get("sgg_text") or "").strip()
     cur.execute("""
-        SELECT DISTINCT o.company_name, o.category, o.subdomain_slug, o.phone
-        FROM operator_service_areas osa
-        JOIN operators o ON o.id = osa.operator_id
-        WHERE osa.region_name = ANY(%s)
+        SELECT DISTINCT o.id, o.company_name, o.category, o.subdomain_slug, o.phone
+        FROM operator_service_regions osr
+        JOIN operators o ON o.id = osr.operator_id
+        WHERE osr.sgg_text = %s
+          AND osr.expires_at > NOW()
           AND o.status = 'approved' AND COALESCE(o.is_visible, TRUE)
-    """, [_o_region_match])
+    """, [_o_sgg_text])
     operator_region_rows = [dict(r) for r in cur.fetchall()]
 
     operator_by_category = []
     for cat in ("위탁", "청소", "세탁", "용품", "소독", "세무", "인테리어"):
-        premium = next((r for r in operator_rows if r["category"] == cat and r["is_premium"]), None)
-        pick, tier = premium, ("premium" if premium else None)
-        if not pick:
-            region = next((r for r in operator_region_rows if r["category"] == cat), None)
-            if region:
-                pick, tier = region, "region"
-        operator_by_category.append({
-            "category": cat,
-            "company_name": pick["company_name"] if pick else None,
-            "subdomain_slug": pick["subdomain_slug"] if pick else None,
-            "phone": pick["phone"] if pick else None,
-            "tier": tier,
-        })
+        def _same_operator_category(row):
+            row_cat = "위탁" if row["category"] == "위탁운영" else row["category"]
+            return row_cat == cat
 
-    # 담당 대출상담사 — 지역(전국/광역시·도 다중선택) 매칭
+        picks = [
+            (row, "premium")
+            for row in operator_rows
+            if _same_operator_category(row) and row["is_premium"]
+        ][:OPERATOR_BUILDING_BADGE_SLOT_CAP]
+        picked_ids = {row["id"] for row, _tier in picks}
+        for row in operator_region_rows:
+            if len(picks) >= OPERATOR_BUILDING_BADGE_SLOT_CAP:
+                break
+            if _same_operator_category(row) and row["id"] not in picked_ids:
+                picks.append((row, "region"))
+                picked_ids.add(row["id"])
+        if not picks:
+            operator_by_category.append({
+                "category": cat, "company_name": None, "subdomain_slug": None,
+                "phone": None, "tier": None,
+            })
+            continue
+        for pick, tier in picks:
+            operator_by_category.append({
+                "category": cat,
+                "company_name": pick["company_name"],
+                "subdomain_slug": pick["subdomain_slug"],
+                "phone": pick["phone"],
+                "tier": tier,
+            })
+
+    # 담당 대출상담사 — 활성 단지뱃지 2명을 먼저 노출하고, 빈 자리는 지역 매칭으로 채운다.
     sgg_cd = str(building.get("sgg_cd") or "")
     prov_prefix = sgg_cd[:2]
     prov_nm = _PROV_SGG_MAP.get(prov_prefix)
@@ -882,6 +911,26 @@ def get_building(building_id):
         region_match.append(prov_nm)
     loan_consultant_rows = []
     cur.execute("""
+        SELECT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
+               lc.logo_url, lc.intro_text, lc.consultant_products,
+               lc.kakao_chat_url, lc.license_number, lc.service_region
+        FROM loan_consultant_buildings lcb
+        JOIN loan_consultants lc ON lc.id = lcb.loan_consultant_id
+        WHERE lcb.master_building_id = %s
+          AND lcb.has_priority_badge
+          AND (lcb.premium_expires_at IS NULL OR lcb.premium_expires_at > NOW())
+          AND lc.status = 'approved'
+          AND COALESCE(lc.is_visible, TRUE)
+        ORDER BY RANDOM()
+        LIMIT %s
+    """, [building_id, LOAN_BUILDING_BADGE_SLOT_CAP])
+    for r in cur.fetchall():
+        d = dict(r)
+        d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
+        d["registered"] = True
+        loan_consultant_rows.append(d)
+
+    cur.execute("""
         SELECT * FROM (
             SELECT DISTINCT lc.id, lc.office_name, lc.owner_name, lc.phone, lc.subdomain_slug,
                    lc.logo_url, lc.intro_text, lc.consultant_products,
@@ -891,10 +940,15 @@ def get_building(building_id):
             WHERE lsa.region_name = ANY(%s)
               AND lc.status = 'approved'
               AND COALESCE(lc.is_visible, TRUE)
+              AND lc.id NOT IN %s
         ) sub
         ORDER BY RANDOM()
-        LIMIT 3
-    """, [region_match])
+        LIMIT %s
+    """, [
+        region_match,
+        tuple(row["id"] for row in loan_consultant_rows) or (-1,),
+        max(0, 3 - len(loan_consultant_rows)),
+    ])
     for r in cur.fetchall():
         d = dict(r)
         d["logo_src"] = f"/api/partners/loan-consultant-logo/{d['id']}" if d.pop("logo_url", None) else None
@@ -7290,8 +7344,7 @@ def _route_loan_lead(cur, mb_id):
 
 
 def _route_operator_lead(cur, mb_id, category):
-    """운영업체 상담 배정. ①담당단지(전속) 유료우선→전체(업종
-    일치) ②없으면 다중선택 지역(전국/광역시·도, 업종 일치)."""
+    """운영업체 상담 배정. 담당단지를 우선하고 없으면 같은 시군구 지역뱃지로 배정한다."""
     cur.execute("""
         SELECT o.id, o.phone, o.company_name, COALESCE(ob.is_paid, FALSE) AS is_paid
         FROM operator_buildings ob
@@ -7305,27 +7358,19 @@ def _route_operator_lead(cur, mb_id, category):
         pool = paid if paid else rows
         return pool[0]["id"], "exclusive"
 
-    cur.execute("SELECT sgg_cd FROM master_buildings WHERE id=%s", [mb_id])
+    cur.execute("SELECT sgg_text FROM master_buildings WHERE id=%s", [mb_id])
     b = cur.fetchone()
-    sgg_cd = str((b["sgg_cd"] if b else "") or "")
-    prov_prefix = sgg_cd[:2]
-    prov_nm = _PROV_SGG_MAP.get(prov_prefix)
-    region_match = ["전국"]
-    if prov_prefix in _SUDO_PREFIXES:
-        region_match.append("수도권")
-    if prov_nm:
-        region_match.append(prov_nm)
-
     cur.execute("""
         SELECT * FROM (
             SELECT DISTINCT o.id, o.phone, o.company_name
-            FROM operator_service_areas osa
-            JOIN operators o ON o.id = osa.operator_id
+            FROM operator_service_regions osr
+            JOIN operators o ON o.id = osr.operator_id
                 AND o.status = 'approved' AND o.category = %s AND COALESCE(o.is_visible, TRUE)
-            WHERE osa.region_name = ANY(%s)
+            WHERE osr.sgg_text = %s
+              AND osr.expires_at > NOW()
         ) sub
         ORDER BY RANDOM()
-    """, [category, region_match])
+    """, [category, (b["sgg_text"] if b else "") or ""])
     rows = cur.fetchall()
     if rows:
         return rows[0]["id"], "region"
@@ -7533,7 +7578,7 @@ def agent_service_region_claim():
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "선택한 읍·면·동을 확인할 수 없습니다."}), 400
 
-        # 중개사별 1개 제한을 직렬화한다.
+        # 중개사별 1개 제한과 읍면동별 활성 2명 정원을 직렬화한다.
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
         cur.execute("""
             SELECT 1 FROM agent_service_regions
@@ -7550,6 +7595,20 @@ def agent_service_region_claim():
             return jsonify({
                 "ok": False,
                 "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요.",
+            }), 400
+        cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                    [911009, f"{sgg}\x1f{umd}"])
+        cur.execute("""
+            SELECT COUNT(*) AS count
+            FROM agent_service_regions
+            WHERE sgg_text=%s AND umd_nm=%s
+              AND expires_at > NOW()
+              AND agent_id <> %s
+        """, [sgg, umd, agent_id])
+        if cur.fetchone()["count"] >= AGENT_REGION_DONG_SLOT_CAP:
+            return jsonify({
+                "ok": False,
+                "message": f"이 읍·면·동은 지역뱃지 정원({AGENT_REGION_DONG_SLOT_CAP}명)이 찼습니다. 다른 읍·면·동을 선택해주세요.",
             }), 400
         cur.execute("""
             INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, granted_at, expires_at)
@@ -12515,6 +12574,19 @@ def loan_consultant_building_add():
                 "ok": False,
                 "message": f"무료 등록 가능 건물 수({MAX_FREE_BUILDINGS}개)를 초과했습니다.",
             }), 400
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911010, mbid])
+        cur.execute("""
+            SELECT COUNT(*) c FROM loan_consultant_buildings
+            WHERE master_building_id = %s
+              AND has_priority_badge
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+              AND loan_consultant_id <> %s
+        """, [mbid, lc_id])
+        if cur.fetchone()["c"] >= LOAN_BUILDING_BADGE_SLOT_CAP:
+            return jsonify({
+                "ok": False,
+                "message": f"이 단지는 대출상담사 단지뱃지가 이미 {LOAN_BUILDING_BADGE_SLOT_CAP}명 등록되어 있습니다.",
+            }), 400
         try:
             cur.execute("""
                 INSERT INTO loan_consultant_buildings
@@ -12754,7 +12826,7 @@ def operator_building_add():
 @require_operator
 def operator_building_claim_premium(mbid):
     """전속 단지를 무료 단지뱃지로 즉시 승격 — 단지당 1회 한정,
-    같은 업종끼리만 독점(다른 업종끼리는 동시에 뱃지 보유 가능)."""
+    같은 업종은 건물당 두 곳까지 허용한다."""
     operator_id = session["operator_id"]
     conn = get_conn()
     cur = conn.cursor()
@@ -12774,19 +12846,23 @@ def operator_building_claim_premium(mbid):
         if row["premium_granted_at"]:
             return jsonify({"ok": False, "message": "이미 이 단지는 단지뱃지 혜택을 사용했습니다."}), 400
 
-        # 같은 단지·업종의 동시 신청도 독점 규칙을 우회하지 않게 직렬화한다.
+        # 같은 단지·업종의 동시 신청도 두 자리 정원을 우회하지 않게 직렬화한다.
         cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
                     [911008, f"{mbid}:{my_category}"])
         cur.execute("""
-            SELECT 1 FROM operator_buildings ob
+            SELECT COUNT(*) c
+            FROM operator_buildings ob
             JOIN operators o ON o.id = ob.operator_id
             WHERE ob.master_building_id=%s AND ob.operator_id<>%s
               AND o.category = %s
               AND ob.has_priority_badge
               AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
         """, [mbid, operator_id, my_category])
-        if cur.fetchone():
-            return jsonify({"ok": False, "message": f"이미 같은 업종({my_category})의 다른 업체가 입점한 단지입니다."}), 400
+        if cur.fetchone()["c"] >= OPERATOR_BUILDING_BADGE_SLOT_CAP:
+            return jsonify({
+                "ok": False,
+                "message": f"이 단지는 해당 업종의 단지뱃지가 이미 {OPERATOR_BUILDING_BADGE_SLOT_CAP}개 등록되어 있습니다.",
+            }), 400
 
         cur.execute("""
             SELECT COUNT(*) c FROM operator_buildings
@@ -12816,10 +12892,35 @@ def operator_building_claim_premium(mbid):
     return jsonify({"ok": True})
 
 
+@app.route("/api/operator/service-regions", methods=["GET"])
+@require_operator
+def operator_service_regions_mine():
+    """현재 운영업체의 시군구 지역뱃지 등록 상태를 반환한다."""
+    operator_id = session["operator_id"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT sgg_text, granted_at, expires_at
+            FROM operator_service_regions
+            WHERE operator_id=%s
+            ORDER BY granted_at DESC
+        """, [operator_id])
+        regions = [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    for region in regions:
+        for key in ("granted_at", "expires_at"):
+            if region.get(key):
+                region[key] = region[key].isoformat()
+    return jsonify({"ok": True, "regions": regions})
+
+
 @app.route("/api/operator/service-regions", methods=["POST"])
 @require_operator
 def operator_service_region_claim():
-    """시군구 단위 지역뱃지를 즉시 등록한다. 지역 전체 정원은 두지 않는다."""
+    """시군구 단위 지역뱃지를 업종별 활성 정원 안에서 즉시 등록한다."""
     operator_id = session["operator_id"]
     data = request.get_json(force=True, silent=True) or {}
     sgg = (data.get("sgg_text") or "").strip()
@@ -12833,6 +12934,27 @@ def operator_service_region_claim():
         cur.execute("SELECT COUNT(*) c FROM operator_service_regions WHERE operator_id=%s", [operator_id])
         if cur.fetchone()["c"] >= OPERATOR_REGION_CAP:
             return jsonify({"ok": False, "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요."}), 400
+        cur.execute("SELECT category FROM operators WHERE id=%s", [operator_id])
+        operator_row = cur.fetchone()
+        if not operator_row:
+            return jsonify({"ok": False, "message": "운영업체 정보를 찾을 수 없습니다."}), 404
+        category = operator_row["category"]
+        cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                    [911011, f"{sgg}\x1f{category}"])
+        cur.execute("""
+            SELECT COUNT(*) c
+            FROM operator_service_regions osr
+            JOIN operators o ON o.id = osr.operator_id
+            WHERE osr.sgg_text = %s
+              AND o.category = %s
+              AND osr.expires_at > NOW()
+              AND osr.operator_id <> %s
+        """, [sgg, category, operator_id])
+        if cur.fetchone()["c"] >= OPERATOR_REGION_CATEGORY_SLOT_CAP:
+            return jsonify({
+                "ok": False,
+                "message": f"이 지역은 해당 업종의 지역뱃지 정원({OPERATOR_REGION_CATEGORY_SLOT_CAP}개)이 찼습니다. 다른 지역을 선택해주세요.",
+            }), 400
         cur.execute("""
             INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
             VALUES (%s, %s, %s::timestamp)
@@ -20730,14 +20852,17 @@ def admin_extend_premium_status():
                 cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
                             [911008, f"{mbid}:{category}"])
                 cur.execute("""
-                    SELECT 1 FROM operator_buildings ob
+                    SELECT COUNT(*) AS count FROM operator_buildings ob
                     JOIN operators o ON o.id=ob.operator_id
                     WHERE ob.master_building_id=%s AND ob.operator_id<>%s
                       AND o.category=%s AND ob.has_priority_badge
                       AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
                 """, [mbid, partner_id, category])
-                if cur.fetchone():
-                    return jsonify({"ok": False, "message": f"이미 같은 업종({category})의 다른 업체가 입점한 단지입니다."}), 400
+                if cur.fetchone()["count"] >= OPERATOR_BUILDING_BADGE_SLOT_CAP:
+                    return jsonify({
+                        "ok": False,
+                        "message": f"이 단지는 해당 업종의 단지뱃지가 이미 {OPERATOR_BUILDING_BADGE_SLOT_CAP}개 등록되어 있습니다.",
+                    }), 400
                 cur.execute("""
                     UPDATE operator_buildings
                     SET has_priority_badge=TRUE, premium_granted_at=COALESCE(premium_granted_at, NOW()),
@@ -20745,6 +20870,19 @@ def admin_extend_premium_status():
                     WHERE operator_id=%s AND master_building_id=%s
                 """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, mbid])
             elif partner_type == "loan_consultant":
+                cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911010, mbid])
+                cur.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM loan_consultant_buildings
+                    WHERE master_building_id=%s AND loan_consultant_id<>%s
+                      AND has_priority_badge
+                      AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+                """, [mbid, partner_id])
+                if cur.fetchone()["count"] >= LOAN_BUILDING_BADGE_SLOT_CAP:
+                    return jsonify({
+                        "ok": False,
+                        "message": f"이 단지는 대출상담사 단지뱃지가 이미 {LOAN_BUILDING_BADGE_SLOT_CAP}명 등록되어 있습니다.",
+                    }), 400
                 cur.execute("""
                     UPDATE loan_consultant_buildings
                     SET has_priority_badge=TRUE, premium_granted_at=COALESCE(premium_granted_at, NOW()),
@@ -20781,17 +20919,50 @@ def admin_extend_premium_status():
                         "ok": False,
                         "message": "이 중개사는 이미 다른 읍·면·동의 지역뱃지를 사용 중입니다.",
                     }), 400
+                cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                            [911009, f"{region_sgg}\x1f{region_umd}"])
+                cur.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM agent_service_regions
+                    WHERE sgg_text=%s AND umd_nm=%s
+                      AND expires_at > NOW() AND agent_id<>%s
+                """, [region_sgg, region_umd, partner_id])
+                if cur.fetchone()["count"] >= AGENT_REGION_DONG_SLOT_CAP:
+                    return jsonify({
+                        "ok": False,
+                        "message": f"이 읍·면·동은 지역뱃지 정원({AGENT_REGION_DONG_SLOT_CAP}명)이 찼습니다.",
+                    }), 400
                 cur.execute("""
                     UPDATE agent_service_regions
                     SET expires_at=%s::timestamp, reminder_sent_at=NULL
                     WHERE agent_id=%s AND sgg_text=%s AND umd_nm=%s
                 """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, region_sgg, region_umd])
             elif partner_type == "operator":
+                region_sgg = target.strip()
+                cur.execute("SELECT category FROM operators WHERE id=%s", [partner_id])
+                operator_row = cur.fetchone()
+                if not operator_row:
+                    return jsonify({"ok": False, "message": "운영업체 정보를 찾을 수 없습니다."}), 404
+                category = operator_row["category"]
+                cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                            [911011, f"{region_sgg}\x1f{category}"])
+                cur.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM operator_service_regions osr
+                    JOIN operators o ON o.id=osr.operator_id
+                    WHERE osr.sgg_text=%s AND o.category=%s
+                      AND osr.expires_at > NOW() AND osr.operator_id<>%s
+                """, [region_sgg, category, partner_id])
+                if cur.fetchone()["count"] >= OPERATOR_REGION_CATEGORY_SLOT_CAP:
+                    return jsonify({
+                        "ok": False,
+                        "message": f"이 지역은 해당 업종의 지역뱃지 정원({OPERATOR_REGION_CATEGORY_SLOT_CAP}개)이 찼습니다.",
+                    }), 400
                 cur.execute("""
                     UPDATE operator_service_regions
                     SET expires_at=%s::timestamp
                     WHERE operator_id=%s AND sgg_text=%s
-                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, target.strip()])
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, region_sgg])
             else:
                 return jsonify({"ok": False, "message": "지원하지 않는 파트너 유형입니다."}), 400
         else:
@@ -22412,19 +22583,27 @@ def admin_applications_approve(app_id):
             # 실패해도 승인 자체는 유지 (자동 등록은 부가 기능)
             pref_bid = ap.get("preferred_building_id")
             if pref_bid:
-                cur.execute("SAVEPOINT sp_loan_assign")
-                try:
-                    cur.execute("""
-                        INSERT INTO loan_consultant_buildings
-                            (loan_consultant_id, master_building_id, has_priority_badge,
-                             premium_granted_at, premium_expires_at)
-                        VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
-                        ON CONFLICT ON CONSTRAINT loan_consultant_buildings_unique DO NOTHING
-                    """, [created_id, pref_bid, PARTNER_BADGE_FREE_EXPIRES_AT])
-                    cur.execute("RELEASE SAVEPOINT sp_loan_assign")
-                except Exception:
-                    cur.execute("ROLLBACK TO SAVEPOINT sp_loan_assign")
-                    app.logger.exception("승인 시 대출상담사 담당건물 자동 등록 실패 (application=%s, building=%s)", app_id, pref_bid)
+                cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911010, pref_bid])
+                cur.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM loan_consultant_buildings
+                    WHERE master_building_id=%s AND has_priority_badge
+                      AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+                """, [pref_bid])
+                if cur.fetchone()["count"] < LOAN_BUILDING_BADGE_SLOT_CAP:
+                    cur.execute("SAVEPOINT sp_loan_assign")
+                    try:
+                        cur.execute("""
+                            INSERT INTO loan_consultant_buildings
+                                (loan_consultant_id, master_building_id, has_priority_badge,
+                                 premium_granted_at, premium_expires_at)
+                            VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
+                            ON CONFLICT ON CONSTRAINT loan_consultant_buildings_unique DO NOTHING
+                        """, [created_id, pref_bid, PARTNER_BADGE_FREE_EXPIRES_AT])
+                        cur.execute("RELEASE SAVEPOINT sp_loan_assign")
+                    except Exception:
+                        cur.execute("ROLLBACK TO SAVEPOINT sp_loan_assign")
+                        app.logger.exception("승인 시 대출상담사 담당건물 자동 등록 실패 (application=%s, building=%s)", app_id, pref_bid)
         else:
             cur.close()
             conn.close()

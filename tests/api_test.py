@@ -1369,12 +1369,28 @@ def _check_partner_badge_policy(client):
             WHERE mb.sgg_text IS NOT NULL AND mb.sgg_text <> ''
               AND mb.umd_nm IS NOT NULL AND mb.umd_nm <> ''
               AND mb.building_name <> '-'
+              AND EXISTS (
+                  SELECT 1
+                  FROM master_buildings other
+                  WHERE other.umd_nm=mb.umd_nm
+                    AND other.sgg_text IS NOT NULL AND other.sgg_text <> ''
+                    AND other.sgg_text<>mb.sgg_text
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM agent_buildings ab
+                  WHERE ab.master_building_id=mb.id AND ab.has_priority_badge
+                    AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
+              )
               AND (
                   SELECT COUNT(*)
                   FROM agent_service_regions sr
                   WHERE sr.sgg_text=mb.sgg_text AND sr.umd_nm=mb.umd_nm
                     AND sr.expires_at > NOW()
               ) = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM operator_service_regions osr
+                  WHERE osr.sgg_text=mb.sgg_text AND osr.expires_at > NOW()
+              )
             ORDER BY mb.sgg_text, mb.umd_nm, mb.id
             LIMIT 2
         """)
@@ -1382,6 +1398,16 @@ def _check_partner_badge_policy(client):
         if len(region_fixtures) < 2:
             return ["파트너 뱃지: 동 단위 지역뱃지 테스트용 지역을 2개 찾지 못했습니다."]
         region_fixture, region_race_fixture = region_fixtures
+        cur.execute("""
+            SELECT id, sgg_text, umd_nm
+            FROM master_buildings
+            WHERE umd_nm=%s AND sgg_text<>%s
+            ORDER BY id
+            LIMIT 1
+        """, (region_fixture["umd_nm"], region_fixture["sgg_text"]))
+        cross_sgg_same_umd_fixture = cur.fetchone()
+        if not cross_sgg_same_umd_fixture:
+            return ["파트너 뱃지: 같은 읍면동 이름을 쓰는 다른 시군구 테스트 건물을 찾지 못했습니다."]
         deadline = app_module.PARTNER_BADGE_FREE_EXPIRES_AT
 
         def create_agent(label):
@@ -1506,9 +1532,10 @@ def _check_partner_badge_policy(client):
         if sorted(capacity_results) != [200, 400] or (cur.fetchone() or {}).get("count") != 10:
             failures.append("파트너 뱃지: 중개사 동시 등록이 담당단지 10개 한도를 우회함")
 
-        # ② 운영업체 단지뱃지: 기존 같은 업종 독점은 유지하고 만료일만 고정.
+        # ② 운영업체 단지뱃지: 같은 단지·업종은 두 곳까지 허용하고 세 번째를 거절한다.
         operator_id = create_operator("operator-primary")
-        operator_conflict_id = create_operator("operator-conflict")
+        operator_second_id = create_operator("operator-second")
+        operator_third_id = create_operator("operator-third")
         conn.commit()
         with client.session_transaction() as sess:
             sess.clear()
@@ -1526,18 +1553,22 @@ def _check_partner_badge_policy(client):
             failures.append("파트너 뱃지: 운영업체 단지뱃지의 고정 만료일이 저장되지 않음")
         with client.session_transaction() as sess:
             sess.clear()
-            sess["operator_id"] = operator_conflict_id
+            sess["operator_id"] = operator_second_id
         client.post("/api/operator/buildings", json={"master_building_id": operator_bld})
-        conflict = client.post(f"/api/operator/buildings/{operator_bld}/claim-premium")
-        if conflict.status_code != 400:
-            failures.append("파트너 뱃지: 운영업체 같은 업종 단지뱃지 독점이 해제됨")
+        operator_second = client.post(f"/api/operator/buildings/{operator_bld}/claim-premium")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = operator_third_id
+        client.post("/api/operator/buildings", json={"master_building_id": operator_bld})
+        operator_third = client.post(f"/api/operator/buildings/{operator_bld}/claim-premium")
+        if operator_second.status_code != 200 or operator_third.status_code != 400:
+            failures.append("파트너 뱃지: 운영업체 업종별 두 번째 단지뱃지를 허용하거나 세 번째를 차단하지 못함")
 
-        # 두 운영업체가 같은 단지·업종에 동시에 신청해도 한 곳만 단지뱃지를 받는다.
-        operator_race_a = create_operator("operator-race-a")
-        operator_race_b = create_operator("operator-race-b")
+        # 세 운영업체가 동시에 신청해도 정확히 두 곳만 단지뱃지를 받는다.
+        operator_race_ids = [create_operator(f"operator-race-{index}") for index in range(3)]
         operator_race_bld = building_ids[16]
         conn.commit()
-        for operator_race_id in (operator_race_a, operator_race_b):
+        for operator_race_id in operator_race_ids:
             with client.session_transaction() as sess:
                 sess.clear()
                 sess["operator_id"] = operator_race_id
@@ -1553,12 +1584,12 @@ def _check_partner_badge_policy(client):
                     f"/api/operator/buildings/{operator_race_bld}/claim-premium"
                 ).status_code
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             operator_race_results = list(executor.map(
-                parallel_operator_claim, (operator_race_a, operator_race_b)
+                parallel_operator_claim, operator_race_ids
             ))
-        if sorted(operator_race_results) != [200, 400]:
-            failures.append("파트너 뱃지: 운영업체 같은 업종 동시 신청이 독점 규칙을 우회함")
+        if sorted(operator_race_results) != [200, 200, 400]:
+            failures.append("파트너 뱃지: 운영업체 같은 업종 동시 신청이 두 자리 정원을 우회함")
 
         # ③ 대출상담사 담당단지: 등록 즉시 골드뱃지와 고정 만료일.
         loan_id = create_loan("loan")
@@ -1576,6 +1607,36 @@ def _check_partner_badge_policy(client):
         row = cur.fetchone() or {}
         if not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
             failures.append("파트너 뱃지: 대출상담사 담당단지에 즉시 골드뱃지/고정 만료일이 저장되지 않음")
+        loan_second_id = create_loan("loan-second")
+        loan_third_id = create_loan("loan-third")
+        conn.commit()
+        loan_slot_results = []
+        for loan_slot_id in (loan_second_id, loan_third_id):
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["loan_consultant_id"] = loan_slot_id
+            loan_slot_results.append(client.post(
+                "/api/loan-consultant/buildings", json={"master_building_id": loan_bld}
+            ).status_code)
+        if loan_slot_results != [200, 400]:
+            failures.append("파트너 뱃지: 대출상담사 두 번째 단지뱃지를 허용하거나 세 번째를 차단하지 못함")
+        loan_region_only_id = create_loan("loan-region-only")
+        cur.execute("""
+            INSERT INTO loan_consultant_service_areas (loan_consultant_id, region_name)
+            VALUES (%s, '전국'), (%s, '전국')
+        """, (loan_id, loan_region_only_id))
+        conn.commit()
+        loan_detail = client.get(f"/api/building/{loan_bld}")
+        loan_detail_rows = (loan_detail.get_json() or {}).get("loan_consultants", [])
+        loan_detail_ids = [item.get("id") for item in loan_detail_rows]
+        if (
+            len(loan_detail_ids) != 3
+            or set(loan_detail_ids[:2]) != {loan_id, loan_second_id}
+            or len(set(loan_detail_ids)) != 3
+            or not all(item.get("registered") for item in loan_detail_rows[:2])
+            or loan_detail_rows[2].get("registered")
+        ):
+            failures.append("파트너 뱃지: 대출상담사 단지뱃지 우선 노출·지역 보충·중복 제외가 잘못됨")
 
         # 운영업체와 대출상담사도 10개를 넘겨 등록할 수 없다.
         for building_id in building_ids[17:26]:
@@ -1600,10 +1661,10 @@ def _check_partner_badge_policy(client):
         if operator_over_cap.status_code != 400 or loan_over_cap.status_code != 400:
             failures.append("파트너 뱃지: 운영업체 또는 대출상담사 담당단지 10개 한도가 적용되지 않음")
 
-        # ④ 중개사 지역뱃지: 동일 읍면동에 여러 중개사가 제한 없이 등록된다.
+        # ④ 중개사 지역뱃지: 읍면동별 두 명까지 허용하고 담당단지 선택 없이 자동 노출한다.
         region_sgg = region_fixture["sgg_text"]
         region_umd = region_fixture["umd_nm"]
-        region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(10)]
+        region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(3)]
         agent_region_id = region_agent_ids[0]
         conn.commit()
         region_responses = []
@@ -1614,18 +1675,8 @@ def _check_partner_badge_policy(client):
             region_responses.append(client.post("/api/agent/service-regions", json={
                 "sgg_text": region_sgg, "umd_nm": region_umd,
             }))
-        if any(response.status_code != 200 for response in region_responses):
-            failures.append("파트너 뱃지: 읍면동 지역뱃지 10명 등록 중 정원 전에 거절됨")
-        region_overflow_id = create_agent("agent-region-overflow")
-        conn.commit()
-        with client.session_transaction() as sess:
-            sess.clear()
-            sess["agent_id"] = region_overflow_id
-        region_overflow = client.post("/api/agent/service-regions", json={
-            "sgg_text": region_sgg, "umd_nm": region_umd,
-        })
-        if region_overflow.status_code != 200 or not (region_overflow.get_json() or {}).get("ok"):
-            failures.append("파트너 뱃지: 읍면동 지역뱃지 정원 폐지 후 추가 신청이 거절됨")
+        if [response.status_code for response in region_responses] != [200, 200, 400]:
+            failures.append("파트너 뱃지: 읍면동 지역뱃지 두 명 정원이 적용되지 않음")
         cur.execute("""
             SELECT umd_nm, expires_at::text AS expires_at FROM agent_service_regions
             WHERE agent_id=%s AND sgg_text=%s
@@ -1633,6 +1684,18 @@ def _check_partner_badge_policy(client):
         region_row = cur.fetchone() or {}
         if region_row.get("umd_nm") != region_umd or not (region_row.get("expires_at") or "").startswith(deadline):
             failures.append("파트너 뱃지: 중개사 지역뱃지의 동 또는 고정 만료일이 저장되지 않음")
+        region_detail = client.get(f"/api/building/{region_fixture['id']}")
+        region_detail_agent_ids = {
+            item.get("id") for item in (region_detail.get_json() or {}).get("agents", [])
+        }
+        if not set(region_agent_ids[:2]) <= region_detail_agent_ids:
+            failures.append("파트너 뱃지: 중개사 지역뱃지가 담당단지 선택 없이 같은 읍면동 건물에 자동 노출되지 않음")
+        cross_region_detail = client.get(f"/api/building/{cross_sgg_same_umd_fixture['id']}")
+        cross_region_agent_ids = {
+            item.get("id") for item in (cross_region_detail.get_json() or {}).get("agents", [])
+        }
+        if set(region_agent_ids[:2]) & cross_region_agent_ids:
+            failures.append("파트너 뱃지: 같은 이름의 읍면동을 쓰는 다른 시군구에 중개사 지역뱃지가 잘못 노출됨")
 
         # 임의/XSS 형태 지역 문자열은 마스터 조합 검증으로 거절한다.
         xss_region = f"{region_umd}'><img src=x onerror=alert(1)>"
@@ -1666,8 +1729,8 @@ def _check_partner_badge_policy(client):
         if region_building_add.status_code != 200 or not outside_add or outside_add.status_code != 400:
             failures.append("파트너 뱃지: 담당단지를 신청한 읍면동 안으로 제한하지 못함")
 
-        # 11명이 같은 읍면동에 동시에 신청해도 모두 성공한다.
-        region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(11)]
+        # 세 명이 같은 읍면동에 동시에 신청해도 정확히 두 명만 성공한다.
+        region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(3)]
         conn.commit()
 
         def parallel_region_claim(race_agent_id):
@@ -1679,7 +1742,7 @@ def _check_partner_badge_policy(client):
                     "umd_nm": region_race_fixture["umd_nm"],
                 }).status_code
 
-        with ThreadPoolExecutor(max_workers=11) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             region_race_results = list(executor.map(
                 parallel_region_claim, region_race_agent_ids
             ))
@@ -1688,11 +1751,11 @@ def _check_partner_badge_policy(client):
             WHERE sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
         """, (region_race_fixture["sgg_text"], region_race_fixture["umd_nm"]))
         if (
-            region_race_results.count(200) != 11
-            or region_race_results.count(400) != 0
-            or cur.fetchone()["count"] != 11
+            region_race_results.count(200) != 2
+            or region_race_results.count(400) != 1
+            or cur.fetchone()["count"] != 2
         ):
-            failures.append(f"파트너 뱃지: 지역뱃지 정원 폐지 후 동시 신청 결과가 올바르지 않음 ({region_race_results})")
+            failures.append(f"파트너 뱃지: 중개사 지역뱃지 동시 신청이 두 명 정원을 우회함 ({region_race_results})")
 
         # 레거시 정리는 한 번만 실행되어 이후 새 동 담당단지를 다시 삭제하지 않는다.
         legacy_agent_id = create_agent("agent-region-legacy")
@@ -1733,27 +1796,76 @@ def _check_partner_badge_policy(client):
         ):
             failures.append("파트너 뱃지: 레거시 지역 만료·담당단지 1회 정리가 멱등적이지 않음")
 
-        # ⑤·⑥ 운영업체 지역뱃지: 이미 20개 업체가 있어도 21번째 신청을 허용한다.
-        for index in range(20):
-            filler_id = create_operator(f"operator-slot-{index}", category="세탁")
-            cur.execute("""
-                INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
-                VALUES (%s, %s, %s::timestamp)
-            """, (filler_id, f"{tag}-full", deadline))
-        operator_region_id = create_operator("operator-region", category="위탁")
+        # ⑤·⑥ 운영업체 지역뱃지: 시군구+업종별 두 곳까지 허용하고 건물에 자동 노출한다.
+        operator_region_ids = [
+            create_operator(f"operator-region-{index}", category="세탁") for index in range(3)
+        ]
+        operator_region_id = operator_region_ids[0]
         conn.commit()
-        with client.session_transaction() as sess:
-            sess.clear()
-            sess["operator_id"] = operator_region_id
-        operator_region = client.post("/api/operator/service-regions", json={"sgg_text": f"{tag}-full"})
-        if operator_region.status_code != 200 or not (operator_region.get_json() or {}).get("ok"):
-            failures.append(f"파트너 뱃지: 운영업체 21번째 지역뱃지 신청이 거절됨 ({operator_region.get_json()})")
+        operator_region_results = []
+        for region_operator_id in operator_region_ids:
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["operator_id"] = region_operator_id
+            operator_region_results.append(client.post(
+                "/api/operator/service-regions", json={"sgg_text": region_sgg}
+            ))
+        if [response.status_code for response in operator_region_results] != [200, 200, 400]:
+            failures.append("파트너 뱃지: 운영업체 시군구+업종별 두 곳 정원이 적용되지 않음")
         cur.execute("""
             SELECT expires_at::text AS expires_at FROM operator_service_regions
             WHERE operator_id=%s AND sgg_text=%s
-        """, (operator_region_id, f"{tag}-full"))
+        """, (operator_region_id, region_sgg))
         if not ((cur.fetchone() or {}).get("expires_at") or "").startswith(deadline):
             failures.append("파트너 뱃지: 운영업체 지역뱃지의 고정 만료일이 저장되지 않음")
+        operator_region_detail = client.get(f"/api/building/{region_fixture['id']}")
+        operator_card = next((
+            item for item in (operator_region_detail.get_json() or {}).get("operator_by_category", [])
+            if item.get("category") == "세탁"
+        ), {})
+        if (
+            operator_card.get("tier") != "region"
+            or operator_card.get("company_name")
+            not in {f"{tag}-operator-region-0", f"{tag}-operator-region-1"}
+        ):
+            failures.append("파트너 뱃지: 운영업체 지역뱃지가 같은 시군구 건물에 자동 노출되지 않음")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = operator_region_id
+        operator_region_mine = client.get("/api/operator/service-regions")
+        mine_regions = (operator_region_mine.get_json() or {}).get("regions", [])
+        if (
+            operator_region_mine.status_code != 200
+            or not mine_regions
+            or mine_regions[0].get("sgg_text") != region_sgg
+        ):
+            failures.append("파트너 뱃지: 운영업체 대시보드가 현재 시군구 지역뱃지를 조회하지 못함")
+        routed_operator_id, routed_operator_reason = app_module._route_operator_lead(
+            cur, region_fixture["id"], "세탁"
+        )
+        if (
+            routed_operator_id not in set(operator_region_ids[:2])
+            or routed_operator_reason != "region"
+        ):
+            failures.append("파트너 뱃지: 시군구 지역뱃지 운영업체가 같은 지역 상담에 배정되지 않음")
+        with open("static/js/main.js", encoding="utf-8") as main_js_file:
+            main_js_source = main_js_file.read()
+        with open("static/operator_dashboard.html", encoding="utf-8") as operator_dashboard_file:
+            operator_dashboard_source = operator_dashboard_file.read()
+        if (
+            'const items = all.filter(it => it && it.company_name);' not in main_js_source
+            or 'data-operator-category="${escapeHtml(categoryLabel)}"' not in main_js_source
+            or 'it.category === "위탁운영" ? "위탁"' not in main_js_source
+            or 'all.filter(it => it.category === "위탁운영"' in main_js_source
+        ):
+            failures.append("파트너 뱃지: 건물 화면이 비위탁 운영업체 지역뱃지 또는 위탁 표준 라벨을 렌더링하지 않음")
+        if (
+            'fetch("/api/operator/service-regions")' not in operator_dashboard_source
+            or 'body: JSON.stringify({ sgg_text: sgg })' not in operator_dashboard_source
+            or 'fetch("/api/regions")' not in operator_dashboard_source
+            or "/api/operator/service-areas" in operator_dashboard_source
+        ):
+            failures.append("파트너 뱃지: 운영업체 대시보드의 시군구 선택·등록·조회 흐름이 새 지역뱃지 API와 연결되지 않음")
 
         # 신규 승인에서는 세 파트너 유형 모두 slug를 비워 두고, 중개사/대출 희망단지는 자동 뱃지 처리한다.
         def create_application(applicant_type, label, preferred_building_id=None, category=None):
@@ -1773,6 +1885,7 @@ def _check_partner_badge_policy(client):
         approval_agent = create_application("agent", "approval-agent", agent_approval_bld)
         approval_operator = create_application("operator", "approval-operator", category="청소")
         approval_loan = create_application("loan_consultant", "approval-loan", loan_approval_bld)
+        approval_loan_full = create_application("loan_consultant", "approval-loan-full", loan_bld)
         conn.commit()
         with client.session_transaction() as sess:
             sess.clear()
@@ -1783,7 +1896,9 @@ def _check_partner_badge_policy(client):
         ):
             approval_responses = [
                 client.post(f"/api/admin/applications/{application_id}/approve")
-                for application_id in (approval_agent, approval_operator, approval_loan)
+                for application_id in (
+                    approval_agent, approval_operator, approval_loan, approval_loan_full
+                )
             ]
         if any(response.status_code != 200 or not (response.get_json() or {}).get("ok")
                for response in approval_responses):
@@ -1815,6 +1930,17 @@ def _check_partner_badge_policy(client):
         row = cur.fetchone() or {}
         if row.get("subdomain_slug") is not None or not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
             failures.append("파트너 뱃지: 신규 대출상담사 승인 slug 또는 희망단지 자동 뱃지 정책이 잘못됨")
+        cur.execute("""
+            SELECT lc.id AS loan_consultant_id, lcb.id AS building_link_id
+            FROM applications ap
+            JOIN loan_consultants lc ON lc.id=ap.linked_loan_consultant_id
+            LEFT JOIN loan_consultant_buildings lcb
+              ON lcb.loan_consultant_id=lc.id AND lcb.master_building_id=%s
+            WHERE ap.id=%s
+        """, (loan_bld, approval_loan_full))
+        full_approval_row = cur.fetchone() or {}
+        if not full_approval_row.get("loan_consultant_id") or full_approval_row.get("building_link_id"):
+            failures.append("파트너 뱃지: 대출상담사 승인이 찬 단지의 세 번째 뱃지를 자동 배정함")
 
         # 관리자 목록은 세 유형의 단지·지역 뱃지를 모두 반환하며, 화면은 만기연장만 노출한다.
         premium_status = client.get("/api/admin/premium-status")
@@ -1894,18 +2020,18 @@ def _check_partner_badge_policy(client):
             SET has_priority_badge=TRUE, premium_granted_at=NOW() - INTERVAL '1 year',
                 premium_expires_at=NOW() - INTERVAL '1 day'
             WHERE operator_id=%s AND master_building_id=%s
-        """, (operator_conflict_id, operator_bld))
+        """, (operator_third_id, operator_bld))
         conn.commit()
         agent_extension_conflict = client.post("/api/admin/premium-status/extend", json={
             "partner_type": "agent", "partner_id": expired_agent_id, "kind": "building",
             "master_building_id": agent_bld,
         })
         operator_extension_conflict = client.post("/api/admin/premium-status/extend", json={
-            "partner_type": "operator", "partner_id": operator_conflict_id, "kind": "building",
+            "partner_type": "operator", "partner_id": operator_third_id, "kind": "building",
             "master_building_id": operator_bld,
         })
         if agent_extension_conflict.status_code != 400 or operator_extension_conflict.status_code != 400:
-            failures.append("파트너 뱃지: 관리자 만기연장이 기존 단지 독점과 충돌하는 뱃지를 활성화함")
+            failures.append("파트너 뱃지: 관리자 만기연장이 이미 찬 단지 정원과 충돌하는 뱃지를 활성화함")
         admin_page = client.get("/admin")
         markup = admin_page.get_data(as_text=True)
         if (
@@ -1918,6 +2044,18 @@ def _check_partner_badge_policy(client):
             or "유료전환" in markup
         ):
             failures.append("파트너 뱃지: 관리자 안내 문구 또는 만기연장 전용 UI가 잘못됨")
+        with open("static/agent_dashboard.html", encoding="utf-8") as dashboard_file:
+            agent_dashboard_source = dashboard_file.read()
+        with open("static/operator_dashboard.html", encoding="utf-8") as dashboard_file:
+            operator_dashboard_source = dashboard_file.read()
+        if (
+            "읍·면·동 선착순 <b>2명</b>" not in agent_dashboard_source
+            or "모든 건물에 자동으로 실버뱃지가 노출" not in agent_dashboard_source
+            or "업종별 선착순 <b>2개</b>" not in operator_dashboard_source
+            or "같은 업종 2곳까지 가능" not in operator_dashboard_source
+            or "최상단에 단독 노출" in operator_dashboard_source
+        ):
+            failures.append("파트너 뱃지: 중개사·운영업체 대시보드 안내가 새 자동 매칭·정원 정책과 다름")
     except Exception as exc:
         conn.rollback()
         failures.append(f"파트너 뱃지 정책 테스트 오류: {exc}")
@@ -1940,7 +2078,7 @@ def _check_partner_badge_policy(client):
             cur.close()
             conn.close()
     if not failures:
-        print("OK  파트너 즉시 뱃지·고정 만료·지역 정원 폐지·신규 slug 미발급")
+        print("OK  파트너 자동 매칭·유형별 두 자리 정원·고정 만료·신규 slug 미발급")
     return failures
 
 

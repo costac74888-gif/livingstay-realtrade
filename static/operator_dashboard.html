@@ -108,10 +108,10 @@
         <div style="font-weight:700;color:var(--ink);margin-bottom:4px;">🏅 단지뱃지 안내</div>
         <ul style="margin:0;padding-left:18px;">
           <li>담당 단지는 최대 <b id="guideBuildingCap">–</b>개까지 무료 등록할 수 있습니다.</li>
-          <li>등록한 단지 중 원하는 곳에 <b>단지뱃지</b>를 신청하면 그 단지 담당업체 영역 최상단에 단독 노출됩니다 (같은 업종 1곳만 가능).</li>
+          <li>등록한 단지 중 원하는 곳에 <b>단지뱃지</b>를 신청하면 그 단지 담당업체 영역에 우선 노출됩니다 (같은 업종 2곳까지 가능).</li>
           <li>단지뱃지는 1인당 최대 <b id="guideBadgeCap">–</b>개까지 보유 가능합니다.</li>
           <li>신청 즉시 <b>2026년 12월 31일까지 무료</b> 적용됩니다.</li>
-          <li>이미 같은 업종의 다른 업체가 단지뱃지를 보유한 단지는 신청할 수 없습니다.</li>
+          <li>같은 단지·업종에 이미 2곳이 단지뱃지를 보유 중이면 신청할 수 없습니다.</li>
           <li>한 단지당 단지뱃지 무료 혜택은 <b>1회만</b> 받을 수 있습니다 (만료 후 재신청 불가).</li>
         </ul>
       </div>
@@ -138,10 +138,14 @@
     <div class="panel-card">
       <div class="side-card-title">담당 지역</div>
       <div class="agent-guide">
-        전국 또는 여러 개의 광역시·도를 동시에 선택할 수 있습니다.
-        선택한 지역의 건물 상세페이지에 해당 업종 취급업체로 노출됩니다.
+        담당 지역은 시·군·구 단위로 <b>1개만</b> 신청할 수 있습니다.
+        <ul>
+          <li>업종별 선착순 <b>2개</b>까지 등록 가능하며, 동일 업종 정원이 차면 다른 지역을 선택해주세요</li>
+          <li>등록 즉시 해당 시·군·구의 <b>모든 건물에 자동으로 실버뱃지가 노출</b>됩니다</li>
+        </ul>
       </div>
-      <div id="opRegionOptions" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+      <div id="opRegionOptions" style="margin-bottom:10px;"></div>
+      <div id="opRegionMsg" class="form-msg" role="status" aria-live="polite"></div>
     </div>
   </div>
 
@@ -587,25 +591,63 @@ async function loadOpBilling(){
 
 // ---- 담당 지역 ----
 async function loadOpRegions(){
-  const res = await fetch("/api/operator/service-areas/mine");
-  const d = await res.json().catch(()=>({}));
-  if (!d.ok) return;
   const box = document.getElementById("opRegionOptions");
-  box.innerHTML = d.options.map(opt => {
-    const active = d.regions.includes(opt);
-    return `<button type="button" class="side-more" style="width:auto; margin-top:0; padding:7px 14px; ${active ? 'background:var(--brass-dark); color:#fff;' : ''}" onclick="toggleOpRegion('${opt}', ${active})">${opt}</button>`;
-  }).join("");
-}
-window.toggleOpRegion = async function(region, isActive){
-  if (isActive) {
-    await fetch(`/api/operator/service-areas/${encodeURIComponent(region)}`, { method: "DELETE" });
-  } else {
-    await fetch("/api/operator/service-areas", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ region_name: region }) });
+  const msg = document.getElementById("opRegionMsg");
+  msg.textContent = "";
+  const [mineRes, treeRes] = await Promise.all([
+    fetch("/api/operator/service-regions"),
+    fetch("/api/regions")
+  ]);
+  const mine = await mineRes.json().catch(()=>({}));
+  const tree = await treeRes.json().catch(()=>({}));
+  if (!mineRes.ok || !mine.ok) {
+    box.innerHTML = "";
+    msg.textContent = mine.message || "담당 지역을 불러오지 못했습니다.";
+    return;
   }
-  loadOpRegions();
-};
+  const current = Array.isArray(mine.regions) ? mine.regions[0] : null;
+  if (current) {
+    box.innerHTML = `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:8px;">
+      <span><b>📍 ${esc(current.sgg_text)}</b><br><small style="color:var(--ink-soft);">현재 담당 지역</small></span>
+      <button type="button" id="btnRemoveOpRegion" class="side-more" style="width:auto; margin-top:0;">지역 변경</button>
+    </div>`;
+    document.getElementById("btnRemoveOpRegion").addEventListener("click", removeOpRegion);
+    return;
+  }
+  const groups = Object.keys(tree).sort((a, b) => a.localeCompare(b, "ko")).map(sido => {
+    const sggNames = Object.keys((tree[sido] || {}).sgg || {}).sort((a, b) => a.localeCompare(b, "ko"));
+    return `<optgroup label="${esc(sido)}">${sggNames.map(sgg => `<option value="${esc(sgg)}">${esc(sgg)}</option>`).join("")}</optgroup>`;
+  }).join("");
+  box.innerHTML = `<label for="opSggSelect" style="display:block; font-size:12.5px; font-weight:700; margin-bottom:6px;">시·군·구 선택</label>
+    <div style="display:flex; gap:8px;">
+      <select id="opSggSelect" style="flex:1; min-width:0;"><option value="">선택해주세요</option>${groups}</select>
+      <button type="button" id="btnClaimOpRegion" class="side-more" style="width:auto; margin-top:0;">등록</button>
+    </div>`;
+  document.getElementById("btnClaimOpRegion").addEventListener("click", claimOpRegion);
+}
+async function claimOpRegion(){
+  const select = document.getElementById("opSggSelect");
+  const msg = document.getElementById("opRegionMsg");
+  const sgg = select ? select.value : "";
+  if (!sgg){ msg.textContent = "시·군·구를 선택해주세요."; return; }
+  const res = await fetch("/api/operator/service-regions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sgg_text: sgg })
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok || !data.ok){ msg.textContent = data.message || "담당 지역 등록에 실패했습니다."; return; }
+  await loadOpRegions();
+  loadOpBilling();
+}
+async function removeOpRegion(){
+  const msg = document.getElementById("opRegionMsg");
+  if (!confirm("현재 담당 지역을 삭제하고 다른 지역을 선택하시겠습니까?")) return;
+  const res = await fetch("/api/operator/service-regions", { method: "DELETE" });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok || !data.ok){ msg.textContent = data.message || "담당 지역 삭제에 실패했습니다."; return; }
+  await loadOpRegions();
+  loadOpBilling();
+}
 
 // ---- 노출중지/재개 토글 ----
 document.getElementById("btnToggleVisible").addEventListener("click", async () => {
