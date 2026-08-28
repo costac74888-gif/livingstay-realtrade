@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-28-02"
+SCHEMA_VERSION = "2026-08-28-03"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1829,9 +1829,10 @@ def _run_init_db():
     )
     """)
 
-    # 전국공인중개사사무소 표준데이터(공공데이터포털) 수집본 — 인근 중개업소 후보 매칭용.
-    # 수집은 sync_brokers.py(일일 1,000건 쿼터 체크포인트 방식), 매칭은 하버사인 거리 계산.
-    # reg_number(개설등록번호)가 유일키 — 재수집 시 UPSERT로 갱신.
+    # 전국공인중개사사무소 표준데이터 수집본 — 인근 중개업소 후보 및 주소 매칭용.
+    # 공공데이터포털 API는 원본 등록번호를 reg_number에 저장한다.
+    # V-World D171은 원본 등록번호 충돌을 보존하기 위해 reg_number에 결정적 내부키를,
+    # source_reg_number에 화면 표시용 원본 번호를 저장한다.
     cur.execute("""
     CREATE TABLE IF NOT EXISTS broker_registry (
         id SERIAL PRIMARY KEY,
@@ -1855,8 +1856,42 @@ def _run_init_db():
     cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS road_norm TEXT")
     cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS jibun_norm TEXT")
     cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS biz_status TEXT")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS source_reg_number TEXT")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS source_region_code TEXT")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS source_name TEXT")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS phone_numbers TEXT[] NOT NULL DEFAULT '{}'")
+    cur.execute("ALTER TABLE broker_registry ADD COLUMN IF NOT EXISTS member_count INTEGER NOT NULL DEFAULT 0")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_road_norm ON broker_registry(road_norm)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_broker_registry_jibun_norm ON broker_registry(jibun_norm)")
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_broker_registry_source_reg
+        ON broker_registry(source_region_code, source_reg_number)
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS broker_registry_members (
+            id SERIAL PRIMARY KEY,
+            source_row_key TEXT NOT NULL UNIQUE,
+            source_name TEXT NOT NULL,
+            region_code TEXT,
+            region_name TEXT,
+            reg_number TEXT NOT NULL,
+            office_name TEXT,
+            member_name TEXT,
+            member_type_code TEXT,
+            member_type_name TEXT,
+            license_number TEXT,
+            license_date TEXT,
+            position_code TEXT,
+            position_name TEXT,
+            source_updated_at TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_broker_registry_members_office
+        ON broker_registry_members(region_code, reg_number, office_name)
+    """)
 
     # 행안부 '문화_숙박업 조회서비스'(apis.data.go.kr/1741000/lodgings/info) 수집본.
     # 수집은 sync_lodgings.py — 실제 API 업태명 기준 생활숙박·일반숙박을 저장. permit_number(관리번호) 유일키 UPSERT.

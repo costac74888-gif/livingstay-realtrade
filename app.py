@@ -3531,6 +3531,20 @@ def format_phone(p):
     return p or ""
 
 
+def format_phone_numbers(values, fallback=None):
+    """저장된 전화번호 배열을 중복 없이 모두 표시 형식으로 반환한다."""
+    result = []
+    for value in values or []:
+        formatted = format_phone(value)
+        if formatted and formatted not in result:
+            result.append(formatted)
+    if not result and fallback:
+        formatted = format_phone(fallback)
+        if formatted:
+            result.append(formatted)
+    return result
+
+
 def format_biz_reg_number(b):
     """숫자만 저장된 사업자등록번호(10자리)를 000-00-00000 형태로 포맷한다."""
     d = _digits_only(b)
@@ -17233,9 +17247,10 @@ def _broker_candidates_query(building_id, radius_km):
         # 1차 바운딩박스(인덱스 활용) → 2차 하버사인 정밀 필터
         deg = radius_km / 111.0
         cur.execute(f"""
-            SELECT br.office_name, br.reg_number, br.road_address, br.jibun_address,
-                   br.phone, br.reg_date, br.owner_name, br.homepage_url,
-                   br.biz_status,
+            SELECT br.office_name, COALESCE(br.source_reg_number, br.reg_number) AS reg_number,
+                   br.road_address, br.jibun_address, br.phone, br.phone_numbers,
+                   br.reg_date, br.owner_name, br.homepage_url,
+                   br.biz_status, br.member_count,
                    ROUND(({_HAVERSINE_KM})::numeric, 2) AS distance_km
             FROM broker_registry br
             WHERE br.lat IS NOT NULL AND br.lng IS NOT NULL
@@ -17247,7 +17262,11 @@ def _broker_candidates_query(building_id, radius_km):
         """, (lat, lng, lat,
               lat - deg, lat + deg, lng - deg * 1.3, lng + deg * 1.3,
               lat, lng, lat, radius_km))
-        return bld, cur.fetchall()
+        rows = cur.fetchall()
+        for row in rows:
+            row["phone_numbers"] = format_phone_numbers(row.get("phone_numbers"), row.get("phone"))
+            row["phone"] = row["phone_numbers"][0] if row["phone_numbers"] else None
+        return bld, rows
     finally:
         cur.close()
         conn.close()
@@ -17270,7 +17289,8 @@ def _broker_exact_match_query(building_id):
         if not road_key and not jibun_key:
             return bld, []
         broker_fields = """
-            id, office_name, reg_number, owner_name, phone,
+            id, office_name, COALESCE(source_reg_number, reg_number) AS reg_number,
+            owner_name, phone, phone_numbers, member_count,
             road_address, jibun_address, reg_date, homepage_url,
             source_updated_at, lat, lng, biz_status
         """
@@ -17294,6 +17314,9 @@ def _broker_exact_match_query(building_id):
                 ORDER BY office_name ASC, id ASC
             """, (jibun_key,))
             rows = cur.fetchall()
+        for row in rows:
+            row["phone_numbers"] = format_phone_numbers(row.get("phone_numbers"), row.get("phone"))
+            row["phone"] = row["phone_numbers"][0] if row["phone_numbers"] else None
         return bld, rows
     finally:
         cur.close()
@@ -17353,11 +17376,11 @@ def admin_broker_exact_match_export():
     ws.title = "건물 입주 중개업소"
     ws.append([f"건물: {bld['building_name']} ({bld['road_address'] or '-'})"])
     ws.append(["업소명", "등록번호", "도로명주소", "지번주소", "전화번호",
-               "등록일자", "대표자명", "홈페이지"])
+               "등록일자", "대표자명", "소속인원", "홈페이지"])
     for r in rows:
         ws.append([r["office_name"], r["reg_number"], r["road_address"],
-                   r["jibun_address"], r["phone"], r["reg_date"],
-                   r["owner_name"], r["homepage_url"]])
+                   r["jibun_address"], "\n".join(r.get("phone_numbers") or []), r["reg_date"],
+                   r["owner_name"], r.get("member_count") or 0, r["homepage_url"]])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -17371,8 +17394,9 @@ def admin_broker_registry_export():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT office_name, reg_number, road_address, jibun_address,
-               phone, reg_date, owner_name, homepage_url, lat, lng
+        SELECT office_name, COALESCE(source_reg_number, reg_number) AS reg_number,
+               road_address, jibun_address, phone, phone_numbers, reg_date,
+               owner_name, member_count, homepage_url, lat, lng
         FROM broker_registry
         ORDER BY office_name
     """)
@@ -17386,11 +17410,13 @@ def admin_broker_registry_export():
     ws = wb.active
     ws.title = "중개업소 전체"
     ws.append(["업소명", "등록번호", "도로명주소", "지번주소", "전화번호",
-               "등록일자", "대표자명", "홈페이지", "위도", "경도"])
+               "등록일자", "대표자명", "소속인원", "홈페이지", "위도", "경도"])
     for r in rows:
         ws.append([r["office_name"], r["reg_number"], r["road_address"],
-                   r["jibun_address"], r["phone"], r["reg_date"],
-                   r["owner_name"], r["homepage_url"], r["lat"], r["lng"]])
+                   r["jibun_address"],
+                   "\n".join(format_phone_numbers(r.get("phone_numbers"), r.get("phone"))),
+                   r["reg_date"], r["owner_name"], r.get("member_count") or 0,
+                   r["homepage_url"], r["lat"], r["lng"]])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -17575,11 +17601,12 @@ def admin_broker_candidates_export():
     ws.title = "인근 중개업소 후보"
     ws.append([f"건물: {bld['building_name']} ({bld['road_address'] or '-'}) · 반경 {radius_km}km"])
     ws.append(["업소명", "거리(km)", "전화번호", "홈페이지", "등록일자",
-               "대표자", "개설등록번호", "도로명주소", "지번주소"])
+               "대표자", "소속인원", "개설등록번호", "도로명주소", "지번주소"])
     for r in (rows or []):
         ws.append([
-            r["office_name"], float(r["distance_km"]), r["phone"] or "", r["homepage_url"] or "",
-            r["reg_date"] or "", r["owner_name"] or "", r["reg_number"],
+            r["office_name"], float(r["distance_km"]), "\n".join(r.get("phone_numbers") or []),
+            r["homepage_url"] or "", r["reg_date"] or "", r["owner_name"] or "",
+            r.get("member_count") or 0, r["reg_number"],
             r["road_address"] or "", r["jibun_address"] or "",
         ])
     buf = io.BytesIO()

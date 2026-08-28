@@ -302,10 +302,16 @@
 
     function renderBrokerRegistryCards(items) {
       const text = (value) => dgEscape(value || "-");
+      const phones = (item) => {
+        const values = Array.isArray(item.phone_numbers) && item.phone_numbers.length
+          ? item.phone_numbers
+          : (item.phone ? [item.phone] : []);
+        return values.length ? values.map((value) => dgEscape(value)).join("<br>") : "-";
+      };
       let html = `<div class="bld-realty-scroll">` +
-        `<table class="bld-realty-table" style="min-width:960px;"><thead><tr>` +
+        `<table class="bld-realty-table" style="min-width:1040px;"><thead><tr>` +
         `<th>사무소명</th><th>등록번호</th><th>대표자</th>` +
-        `<th>소재지</th><th>전화번호</th><th>상태</th><th>등록일자</th>` +
+        `<th>소재지</th><th>전화번호</th><th>소속인원</th><th>상태</th><th>등록일자</th>` +
         `</tr></thead><tbody>`;
       for (const item of items) {
         const address = [item.road_address, item.jibun_address]
@@ -316,7 +322,8 @@
           `<td>${text(item.reg_number)}</td>` +
           `<td>${text(item.owner_name)}</td>` +
           `<td style="font-size:11px;color:var(--ink-soft);">${text(address)}</td>` +
-          `<td>${text(item.phone)}</td>` +
+          `<td>${phones(item)}</td>` +
+          `<td>${Number.isFinite(Number(item.member_count)) ? Number(item.member_count) : 0}명</td>` +
           `<td>${brokerStatusBadge(item.biz_status)}</td>` +
           `<td>${text(item.reg_date)}</td>` +
           `</tr>`;

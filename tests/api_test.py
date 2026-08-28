@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import app as app_module  # noqa: E402
 import db as db_module  # noqa: E402
+import import_vworld_brokers  # noqa: E402
 import sync_brokers  # noqa: E402
 from app import (  # noqa: E402
     _building_share_meta,
@@ -2139,12 +2140,16 @@ def _check_admin_building_broker_details(client):
             cur.execute("""
                 INSERT INTO broker_registry
                     (office_name, reg_number, owner_name, phone, road_address, jibun_address,
-                     reg_date, homepage_url, source_updated_at, lat, lng, road_norm, jibun_norm, biz_status)
-                VALUES (%s, %s, %s, %s, %s, %s, '2026-01-02', %s, '2026-08-27',
+                     phone_numbers, member_count, reg_date, homepage_url, source_updated_at,
+                     lat, lng, road_norm, jibun_norm, biz_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '2026-01-02', %s, '2026-08-27',
                         %s, %s, %s, %s, %s)
             """, (
-                office_name, reg_number, f"대표자{index + 1}", f"02123456{index}",
-                broker_road, broker_jibun, homepage_url, 37.5 + index / 100, 127.0 + index / 100,
+                office_name, reg_number, f"대표자{index + 1}", f"021234560{index}",
+                broker_road, broker_jibun,
+                [f"021234560{index}", f"021234990{index}"] if index == 0 else [f"021234560{index}"],
+                3 if index == 0 else 1,
+                homepage_url, 37.5 + index / 100, 127.0 + index / 100,
                 addr_norm.normalize_road_prefix(broker_road),
                 addr_norm.normalize_jibun_prefix(broker_jibun),
                 biz_status,
@@ -2162,7 +2167,8 @@ def _check_admin_building_broker_details(client):
         payload = detail.get_json() or {}
         expected_fields = {
             "office_name", "reg_number", "owner_name", "phone", "road_address", "jibun_address",
-            "reg_date", "homepage_url", "source_updated_at", "lat", "lng", "biz_status",
+            "phone_numbers", "member_count", "reg_date", "homepage_url",
+            "source_updated_at", "lat", "lng", "biz_status",
         }
         if (
             detail.status_code != 200 or payload.get("ok") is not True
@@ -2172,6 +2178,15 @@ def _check_admin_building_broker_details(client):
             failures.append("건물 브로커 상세 API가 표준데이터 전체 필드 또는 도로명 우선 매칭을 지키지 않음")
         elif not any(item.get("office_name", "").startswith("<script>") for item in payload["items"]):
             failures.append("건물 브로커 상세 API가 원본 사무소명 데이터를 반환하지 않음")
+        else:
+            multi_phone = next(
+                (item for item in payload["items"] if item.get("reg_number") == broker_numbers[0]),
+                {},
+            )
+            if multi_phone.get("phone_numbers") != ["02-1234-5600", "02-1234-9900"]:
+                failures.append("건물 브로커 상세 API가 여러 전화번호를 모두 포맷해 반환하지 않음")
+            if multi_phone.get("member_count") != 3:
+                failures.append("건물 브로커 상세 API가 중개업소 소속인원 수를 반환하지 않음")
 
         candidates = client.get(
             f"/api/admin/broker-candidates?building_id={matched_building_id}&radius_km=5"
@@ -2280,7 +2295,8 @@ def _check_admin_building_broker_details(client):
             """ + markup[start:end] + """
                 const html = renderBrokerRegistryCards([{
                   office_name: "<img src=x onerror=alert(1)>", reg_number: "R", owner_name: "O",
-                  phone: "P", road_address: "A", jibun_address: "J", reg_date: "D",
+                  phone: "P", phone_numbers: ["02-419-9600", "<img src=x onerror=alert(2)>"],
+                  member_count: 2, road_address: "A", jibun_address: "J", reg_date: "D",
                   homepage_url: "javascript:alert(1)", source_updated_at: "U", lat: 1, lng: 2,
                   biz_status: "영업중"
                 }, {
@@ -2290,9 +2306,10 @@ def _check_admin_building_broker_details(client):
                 }]);
                 if (html.includes("<img") || html.includes("javascript:alert(1)")) process.exit(1);
                 if (!html.includes("&lt;img")) process.exit(2);
-                if (!html.includes("bld-broker-status is-active") || !html.includes("bld-broker-status is-inactive")) process.exit(3);
+                if (!html.includes("02-419-9600<br>&lt;img") || !html.includes("2명")) process.exit(3);
+                if (!html.includes("bld-broker-status is-active") || !html.includes("bld-broker-status is-inactive")) process.exit(4);
                 if (!html.includes("사무소명</th><th>등록번호</th><th>대표자")) process.exit(4);
-                if ((html.match(/<th>/g) || []).length !== 7) process.exit(5);
+                if ((html.match(/<th>/g) || []).length !== 8) process.exit(5);
                 if (!html.includes("상태 정보 없음")) process.exit(6);
             """
             rendered = subprocess.run(
