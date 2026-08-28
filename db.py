@@ -803,8 +803,8 @@ def _run_init_db():
             umd_nm TEXT,
             granted_at TIMESTAMP DEFAULT NOW(),
             expires_at TIMESTAMP NOT NULL,
-            CONSTRAINT agent_service_regions_unique
-                UNIQUE (agent_id, sgg_text)
+            CONSTRAINT agent_service_regions_agent_sgg_umd_unique
+                UNIQUE (agent_id, sgg_text, umd_nm)
         )
     """)
     cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS umd_nm TEXT")
@@ -820,32 +820,21 @@ def _run_init_db():
         )
     """)
 
-    # 기존 동 단위 행은 같은 중개사·시군구별 한 행으로 병합한 뒤 시군구 행으로 전환한다.
-    # 중개사 기준 담당단지 연결은 삭제하지 않는다.
-    cur.execute(
-        "ALTER TABLE agent_service_regions "
-        "DROP CONSTRAINT IF EXISTS agent_service_regions_agent_sgg_umd_unique"
-    )
+    # 정책: 중개사 지역뱃지는 읍면동 단위 → UNIQUE(agent_id, sgg_text, umd_nm) 유지
     cur.execute(
         "ALTER TABLE agent_service_regions "
         "DROP CONSTRAINT IF EXISTS agent_service_regions_unique"
     )
-    merged_region_count, normalized_region_count = _migrate_agent_regions_to_sgg(cur)
     cur.execute("""
         ALTER TABLE agent_service_regions
-        ADD CONSTRAINT agent_service_regions_unique UNIQUE (agent_id, sgg_text)
+        ADD CONSTRAINT agent_service_regions_agent_sgg_umd_unique
+            UNIQUE (agent_id, sgg_text, umd_nm)
     """)
     cur.execute("DROP INDEX IF EXISTS idx_agent_service_regions_dong_expiry")
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_agent_service_regions_sgg_expiry
         ON agent_service_regions(sgg_text, expires_at)
     """)
-    if merged_region_count or normalized_region_count:
-        print(
-            "시군구 단위 지역뱃지 마이그레이션: "
-            f"중복 지역 {merged_region_count}건 병합, "
-            f"동 값 {normalized_region_count}건 초기화"
-        )
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS premium_waitlist (
