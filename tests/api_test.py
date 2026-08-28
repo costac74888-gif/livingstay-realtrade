@@ -2106,8 +2106,8 @@ def _check_admin_building_broker_details(client):
         fallback_jibun = f"테스트특별시 브로커검증동 {token[-3:]}-2번지"
         cur.execute("""
             INSERT INTO master_buildings
-                (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun, source)
-            VALUES (%s, %s, %s, '테스트특별시 브로커검증구', '브로커검증동', %s, 'api_test')
+                (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun, source, lat, lng)
+            VALUES (%s, %s, %s, '테스트특별시 브로커검증구', '브로커검증동', %s, 'api_test', 37.5, 127.0)
             RETURNING id
         """, (matched_name, road, jibun, f"{token[-3:]}-1"))
         matched_building_id = cur.fetchone()["id"]
@@ -2172,6 +2172,21 @@ def _check_admin_building_broker_details(client):
             failures.append("건물 브로커 상세 API가 표준데이터 전체 필드 또는 도로명 우선 매칭을 지키지 않음")
         elif not any(item.get("office_name", "").startswith("<script>") for item in payload["items"]):
             failures.append("건물 브로커 상세 API가 원본 사무소명 데이터를 반환하지 않음")
+
+        candidates = client.get(
+            f"/api/admin/broker-candidates?building_id={matched_building_id}&radius_km=5"
+        )
+        candidate_items = (candidates.get_json() or {}).get("items") or []
+        candidate_statuses = {
+            item.get("reg_number"): item.get("biz_status")
+            for item in candidate_items
+            if item.get("reg_number") in set(broker_numbers[:2])
+        }
+        if candidate_statuses != {
+            broker_numbers[0]: "영업중",
+            broker_numbers[1]: "휴업",
+        }:
+            failures.append("인근 중개사 후보 API가 저장된 정상·휴업 영업상태를 반환하지 않음")
 
         fallback_detail = client.get(f"/api/v1/r/4c2/{fallback_building_id}")
         if fallback_detail.status_code != 200 or (fallback_detail.get_json() or {}).get("count") != 0:

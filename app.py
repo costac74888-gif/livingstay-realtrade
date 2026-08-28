@@ -17235,6 +17235,7 @@ def _broker_candidates_query(building_id, radius_km):
         cur.execute(f"""
             SELECT br.office_name, br.reg_number, br.road_address, br.jibun_address,
                    br.phone, br.reg_date, br.owner_name, br.homepage_url,
+                   br.biz_status,
                    ROUND(({_HAVERSINE_KM})::numeric, 2) AS distance_km
             FROM broker_registry br
             WHERE br.lat IS NOT NULL AND br.lng IS NOT NULL
