@@ -55,3 +55,4 @@
 - [도로명 괄호 지역 보정](road-address-parenthetical-locality.md) — 도로명 매칭 키에는 괄호의 일반 동을 넣지 않고, 본문에서 생략될 수 있는 읍·면만 복원한다.
 - [프론트 배포 릴리스](frontend-release-builds.md) — 배포 HTML·JS는 content-addressed 디렉터리로 원자 교체하고, 검증된 마커가 있을 때만 원본 접근을 차단한다.
 - [Publish 런타임 스키마 초기화](publish-runtime-schema-init.md) — Promote는 이미 반영된 스키마를 앱 시작 때 다시 DDL 처리하지 않으며, 프런트 빌드도 Build 단계에서 끝낸다.
+- [파트너 지역뱃지 범위](partner-region-badge-scopes.md) — 중개사·운영지원업체는 개인당 지역뱃지 1개, 지역 내 담당단지는 별도 10개; 대출상담사는 다중 취급지역을 유지한다.

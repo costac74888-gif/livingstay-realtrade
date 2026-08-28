@@ -704,9 +704,15 @@
           { key: "office_or_company_name", label: "이름/업체명" },
           { key: "owner_name", label: "대표자" },
           { key: "phone", label: "연락처", render: (v) => v ? dgEscape(formatPhone(v)) : '<span style="color:var(--ink-soft);">—</span>' },
-          { key: "biz_reg_number", label: "사업자번호", render: (v) => v ? dgEscape(formatBizRegNumber(v)) : '<span style="color:var(--ink-soft);">—</span>' },
+          { key: "biz_reg_number", label: "사업자번호", render: (v, row) => row.applicant_type === "loan_consultant" ? '<span style="color:var(--ink-soft);">—</span>' : (v ? dgEscape(formatBizRegNumber(v)) : '<span style="color:var(--ink-soft);">—</span>') },
           { key: "email", label: "이메일" },
           { key: "preferred_region", label: "희망지역" },
+          { key: "kakao_chat_url", label: "카카오톡 링크", render: (v, row) => {
+            if (row.applicant_type !== "loan_consultant" || !/^https?:\/\//i.test(String(v || ""))) {
+              return '<span style="color:var(--ink-soft);">—</span>';
+            }
+            return `<a href="${dgEscape(v)}" target="_blank" rel="noopener noreferrer">상담 링크 ↗</a>`;
+          } },
           // 대출상담사 행: 대출모집인 등록번호 + 금감원 통합조회 링크 (승인 전 확인용)
           { key: "reg_number", label: "등록번호", render: (v, row) => {
             if (row.applicant_type !== "loan_consultant") return v ? dgEscape(v) : '<span style="color:var(--ink-soft);">—</span>';
@@ -4725,7 +4731,11 @@
 
       // 메모 인라인 수정용 현재값 캐시 (prompt 초기값)
       window.__memberRowsCache = {};
-      (d.items || []).forEach((r) => { window.__memberRowsCache[r.member_type + ":" + r.id] = r.admin_memo || ""; });
+      window.__memberRowsData = {};
+      (d.items || []).forEach((r) => {
+        window.__memberRowsCache[r.member_type + ":" + r.id] = r.admin_memo || "";
+        window.__memberRowsData[r.member_type + ":" + r.id] = r;
+      });
 
       const rows = (d.items || []).map((r) => {
         const typeShort = MEMBER_TYPE_SHORT[r.member_type] || r.member_type;
@@ -4751,11 +4761,12 @@
           dashBtn = `<a class="dg-icon-btn" href="/admin/preview/loan_consultant/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
         }
         const actions = r.member_type === "pending"
-          ? `<button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
+          ? `<button class="dg-icon-btn" onclick="memberApplicationDetail(${r.id})">상세</button>
+             <button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
           : (isReReview
-            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn} ${dashBtn}`
-            : ((docsBtn || dashBtn) ? `${docsBtn} ${dashBtn}` : `<span style="color:var(--ink-soft);">—</span>`));
+            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn}`
+            : (docsBtn || `<span style="color:var(--ink-soft);">—</span>`));
         // 광고 컬럼 — 파트너(중개사/운영지원업체/대출상담사)만. 클릭 시 이력/입력 팝업.
         let adCell = '<span style="color:var(--ink-soft);">-</span>';
         if (isPartner) {
@@ -4780,6 +4791,18 @@
         const memoCell = r.member_type === "pending"
           ? '<span style="color:var(--ink-soft);">-</span>'
           : `<a href="#" onclick="adminEditMemberMemo(event, '${r.member_type}', ${r.id})" title="클릭해서 메모 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); white-space:pre-line;">${memoTxt}</a>`;
+        let regionCell = '<span style="color:var(--ink-soft);">-</span>';
+        if (isPartner) {
+          const address = r.office_address
+            ? `<div title="${dgEscape(r.office_address)}">${dgEscape(r.office_address)}</div>`
+            : '<div style="color:var(--ink-soft);">주소 미등록</div>';
+          if (r.member_type === "loan_consultant") {
+            const areaCount = Number(r.service_area_count) || (r.preferred_region ? 1 : 0);
+            regionCell = `${address}<div style="color:var(--ink-soft);font-size:11px;margin-top:3px;">취급지역 ${areaCount}개</div>`;
+          } else {
+            regionCell = `${address}<div style="color:var(--ink-soft);font-size:11px;margin-top:3px;">지역뱃지 ${Number(r.region_badge_count)||0}/${Number(r.region_badge_limit)||1} · 지역담당단지 ${Number(r.region_bld_cnt)||0}/10</div>`;
+          }
+        }
         return `<tr>
           <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
           <td>${r.member_type !== "pending" ? `<a href="#" class="member-name-link" onclick="showMemberDetail('${r.member_type}', ${r.id}); return false;">${dgEscape(r.name || "-")}</a>` : dgEscape(r.name || "-")}</td>
@@ -4787,16 +4810,10 @@
           <td style="white-space:nowrap;">${badge}</td>
           <td style="white-space:nowrap;" title="${dgEscape(r.category||'')}">${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; min-width:100px;">${dgEscape(r.group_label || "-") || "-"}</td>
-          <td style="white-space:nowrap;font-size:11px;">${dgEscape(r.created_at || "-")}</td>
-          <td style="white-space:nowrap;">${r.provider === "kakao"
-            ? '<span style="background:#FEE500;color:#191919;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">카카오</span>'
-            : '<span style="background:#F0F0F0;color:#555;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">이메일</span>'
-          }</td>
-          <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
           <td style="white-space:nowrap; text-align:center; font-size:12.5px;">${r.listing_direct_count != null ? ((r.listing_direct_count === 0 && r.listing_broker_count === 0) ? '<span style="color:var(--ink-soft);">-</span>' : `${r.listing_direct_count}/${r.listing_broker_count}`) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `<a href="#" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}'); return false;" title="단지마크 관리" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span></a>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
-          <td style="white-space:nowrap; font-size:12.5px;">${(r.member_type === "agent" && r.region_sgg) ? `${dgEscape(r.region_sgg)} <span style="color:var(--ink-soft);">(${r.region_bld_cnt||0}/10)</span>${r.region_active ? "" : ' <span style="color:var(--brick);">종료</span>'}` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="min-width:190px;max-width:280px;font-size:12.5px;">${regionCell}</td>
           <td style="text-align:center; white-space:nowrap;">${(r.bug_report_count > 0 && r.member_type !== "pending")
             ? `<a href="#" onclick="openBugReportsForUser('${r.member_type}', ${r.id}); return false;" style="color:var(--brass-dark); font-weight:700;">${r.bug_report_count}건</a>`
             : (r.member_type === "pending" ? '<span style="color:var(--ink-soft);">-</span>' : "0")
@@ -4806,6 +4823,13 @@
           <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
           <td style="text-align:right;">${pointsCell}</td>
           <td style="min-width:220px;">${adCell}</td>
+          <td style="white-space:nowrap;font-size:11px;">${dgEscape(r.created_at || "-")}</td>
+          <td style="white-space:nowrap;">${r.provider === "kakao"
+            ? '<span style="background:#FEE500;color:#191919;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">카카오</span>'
+            : '<span style="background:#F0F0F0;color:#555;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">이메일</span>'
+          }</td>
+          <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap;">${dashBtn || '<span style="color:var(--ink-soft);">-</span>'}</td>
         </tr>`;
       }).join("");
 
@@ -4826,9 +4850,10 @@
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
             <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>세부업종</th><th>상호</th>
-            <th>가입일시</th><th>가입경로</th><th>승인일</th><th>상태</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th>
+            <th>상태</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th>
+            <th>가입일시</th><th>가입경로</th><th>승인일</th><th>오픈링크</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="19" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="20" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pager" style="padding:12px 4px; justify-content:flex-start;">
           <button class="dg-nav-btn" id="membersFirst" ${s.page <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>
@@ -5162,6 +5187,66 @@
         window.alert(data.message || "반려에 실패했습니다.");
       } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
       finally { btn.disabled = false; }
+    };
+
+    window.memberApplicationDetail = function (appId) {
+      const r = (window.__memberRowsData || {})["pending:" + appId];
+      if (!r) {
+        window.alert("신청 상세정보를 찾을 수 없습니다. 목록을 새로고침해주세요.");
+        return;
+      }
+      const typeLabel = { agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" }[r.applicant_type] || r.applicant_type || "-";
+      const empty = '<span style="color:var(--ink-soft);">-</span>';
+      const value = (v) => v ? dgEscape(v) : empty;
+      const phone = window.formatPhone ? window.formatPhone(r.phone || "") : (r.phone || "");
+      const rows = [
+        ["신청유형", value(typeLabel)],
+        [r.applicant_type === "agent" ? "중개사무소명" : "소속/업체명", value(r.group_label)],
+        [r.applicant_type === "loan_consultant" ? "성명" : "대표자", value(r.name)],
+        ["이메일", value(r.email)],
+        ["연락처", value(phone)],
+      ];
+      if (r.applicant_type === "agent") {
+        rows.push(["중개사무소 등록번호", value(r.reg_number)]);
+        rows.push(["사업자등록번호", value(r.biz_reg_number)]);
+        rows.push(["희망지역", value(r.preferred_region)]);
+        rows.push(["희망건물", value(r.preferred_building)]);
+        rows.push(["소재지", value(r.office_address)]);
+      } else if (r.applicant_type === "operator") {
+        rows.push(["세부업종", value(r.category)]);
+        rows.push(["사업자등록번호", value(r.biz_reg_number)]);
+        rows.push(["홈페이지", value(r.website_url)]);
+        rows.push(["희망지역", value(r.preferred_region)]);
+        rows.push(["희망건물", value(r.preferred_building)]);
+        rows.push(["소재지", value(r.office_address)]);
+      } else if (r.applicant_type === "loan_consultant") {
+        rows.push(["대출모집인 등록번호", value(r.reg_number)]);
+        rows.push(["취급지역", value(r.preferred_region)]);
+        const safeKakao = /^https?:\/\//i.test(String(r.kakao_chat_url || ""));
+        rows.push(["카카오톡 상담 링크", safeKakao
+          ? `<a href="${dgEscape(r.kakao_chat_url)}" target="_blank" rel="noopener noreferrer">${dgEscape(r.kakao_chat_url)}</a>`
+          : empty]);
+      }
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="applicationDetailTitle">
+          <div class="admin-modal-head">
+            <h3 id="applicationDetailTitle">${dgEscape(typeLabel)} 승인신청 상세</h3>
+            <button class="admin-modal-close" type="button" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body">
+            ${rows.map(([label, val]) => `<div class="member-info-row"><span class="member-info-label">${dgEscape(label)}</span><span class="member-info-value">${val}</span></div>`).join("")}
+          </div>
+          <div class="admin-modal-foot">
+            <button class="admin-btn admin-modal-cancel" type="button">닫기</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
     };
 
     // ---- 첨부서류 목록 모달 — 신청 시 올린 서류를 회원관리에서 바로 열람/다운로드 ----

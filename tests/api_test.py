@@ -1356,6 +1356,11 @@ def _check_partner_badge_policy(client):
                 WHERE ob.master_building_id=mb.id AND o.category='청소' AND ob.has_priority_badge
                   AND (ob.premium_expires_at IS NULL OR ob.premium_expires_at > NOW())
             )
+              AND NOT EXISTS (
+                SELECT 1 FROM loan_consultant_buildings lcb
+                WHERE lcb.master_building_id=mb.id AND lcb.has_priority_badge
+                  AND (lcb.premium_expires_at IS NULL OR lcb.premium_expires_at > NOW())
+            )
             ORDER BY mb.id
             LIMIT 40
         """)
@@ -1524,7 +1529,40 @@ def _check_partner_badge_policy(client):
         operator_id = create_operator("operator-primary")
         operator_second_id = create_operator("operator-second")
         operator_third_id = create_operator("operator-third")
+        expired_operator_id = create_operator("operator-expired-region")
+        cur.execute("""
+            INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
+            VALUES (%s, %s, NOW() - INTERVAL '1 day')
+        """, (expired_operator_id, f"{tag}-expired"))
         conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["operator_id"] = expired_operator_id
+        expired_same_reclaim = client.post(
+            "/api/operator/service-regions",
+            json={"sgg_text": f"{tag}-expired"},
+        )
+        cur.execute("""
+            UPDATE operator_service_regions
+            SET expires_at=NOW() - INTERVAL '1 day'
+            WHERE operator_id=%s
+        """, (expired_operator_id,))
+        conn.commit()
+        expired_other_reclaim = client.post(
+            "/api/operator/service-regions",
+            json={"sgg_text": f"{tag}-new-region"},
+        )
+        active_regions = client.get("/api/operator/service-regions")
+        active_region_names = [
+            item.get("sgg_text")
+            for item in ((active_regions.get_json() or {}).get("regions") or [])
+        ]
+        if (
+            expired_same_reclaim.status_code != 200
+            or expired_other_reclaim.status_code != 200
+            or active_region_names != [f"{tag}-new-region"]
+        ):
+            failures.append("파트너 뱃지: 운영업체 만료 지역의 동일지역 갱신·새 지역 선택·활성지역 조회가 일치하지 않음")
         with client.session_transaction() as sess:
             sess.clear()
             sess["operator_id"] = operator_id

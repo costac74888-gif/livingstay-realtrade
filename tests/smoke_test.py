@@ -161,6 +161,23 @@ def run_local():
     except (OSError, subprocess.SubprocessError) as exc:
         failures.append(f"지도 우측 툴바 계약 테스트 실행 실패: {exc}")
 
+    member_loan_test = os.path.join(os.path.dirname(__file__), "member_admin_loan_contract_test.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, member_loan_test],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            failures.append(f"회원관리·대출상담사 신청 계약: {detail}")
+        else:
+            print("OK  회원관리 열 순서·지역뱃지·대출상담사 신청 필드")
+    except (OSError, subprocess.SubprocessError) as exc:
+        failures.append(f"회원관리·대출상담사 신청 계약 테스트 실행 실패: {exc}")
+
     return failures
 
 

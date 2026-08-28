@@ -87,8 +87,8 @@
           <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890" />
         </div>
         <div class="field loan-only" style="display:none; margin-bottom:14px;">
-          <label>사업자등록번호 (선택)</label>
-          <input type="text" id="biz_reg_number_loan" placeholder="예) 123-45-67890" />
+          <label>카카오톡 상담 링크</label>
+          <input type="url" id="kakao_chat_url" placeholder="https://open.kakao.com/o/..." maxlength="300" />
         </div>
 
         <div class="field" style="margin-bottom:14px;">
@@ -129,7 +129,7 @@
   const API = "/api/applications/token/" + encodeURIComponent(token);
 
   const TYPE_KR = { agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" };
-  const LOAN_REGIONS = ["서울·경기", "인천", "강원", "충청", "대전", "대구", "광주", "부산", "제주"];
+  const LOAN_REGIONS = ["전국","수도권","강원","경기","경남","경북","광주","대구","대전","부산","서울","세종","울산","인천","전남","전북","제주","충남","충북"];
   (function fillRegionSelect(){
     const sel = document.getElementById("service_region");
     LOAN_REGIONS.forEach(r => {
@@ -209,7 +209,7 @@
     } else if (currentType === "loan_consultant"){
       document.getElementById("license_number").value = d.reg_number || "";
       document.getElementById("service_region").value = d.preferred_region || "";
-      document.getElementById("biz_reg_number_loan").value = d.biz_reg_number || d.biz_reg_number_digits || "";
+      document.getElementById("kakao_chat_url").value = d.kakao_chat_url || "";
     }
 
     hideAll();
@@ -252,7 +252,7 @@
     } else if (currentType === "loan_consultant"){
       payload.license_number = document.getElementById("license_number").value.trim();
       payload.service_region = document.getElementById("service_region").value;
-      payload.biz_reg_number = digitsOnly(document.getElementById("biz_reg_number_loan").value);
+      payload.kakao_chat_url = document.getElementById("kakao_chat_url").value.trim();
     }
 
     const saveBtn = document.getElementById("saveBtn");
@@ -309,10 +309,8 @@
 (function(){
   var ph   = document.getElementById("phone");
   var biz  = document.getElementById("biz_reg_number");
-  var biz2 = document.getElementById("biz_reg_number_loan");
   if (ph)   autoHyphenPhone(ph);
   if (biz)  autoHyphenBizReg(biz);
-  if (biz2) autoHyphenBizReg(biz2);
 })();
 </script>
 <script src="/static/js/header.js"></script>

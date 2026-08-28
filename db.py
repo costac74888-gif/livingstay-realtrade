@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-28-04"
+SCHEMA_VERSION = "2026-08-29-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -803,8 +803,8 @@ def _run_init_db():
             umd_nm TEXT,
             granted_at TIMESTAMP DEFAULT NOW(),
             expires_at TIMESTAMP NOT NULL,
-            CONSTRAINT agent_service_regions_agent_sgg_umd_unique
-                UNIQUE (agent_id, sgg_text, umd_nm)
+            CONSTRAINT agent_service_regions_unique
+                UNIQUE (agent_id, sgg_text)
         )
     """)
     cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS umd_nm TEXT")
@@ -820,15 +820,20 @@ def _run_init_db():
         )
     """)
 
-    # 정책: 중개사 지역뱃지는 읍면동 단위 → UNIQUE(agent_id, sgg_text, umd_nm) 유지
+    # 정책: 중개사 지역뱃지는 시군구 단위 → 개인별 같은 시군구 행은 하나만 유지
+    _migrate_agent_regions_to_sgg(cur)
     cur.execute(
         "ALTER TABLE agent_service_regions "
         "DROP CONSTRAINT IF EXISTS agent_service_regions_unique"
     )
+    cur.execute(
+        "ALTER TABLE agent_service_regions "
+        "DROP CONSTRAINT IF EXISTS agent_service_regions_agent_sgg_umd_unique"
+    )
     cur.execute("""
         ALTER TABLE agent_service_regions
-        ADD CONSTRAINT agent_service_regions_agent_sgg_umd_unique
-            UNIQUE (agent_id, sgg_text, umd_nm)
+        ADD CONSTRAINT agent_service_regions_unique
+            UNIQUE (agent_id, sgg_text)
     """)
     cur.execute("DROP INDEX IF EXISTS idx_agent_service_regions_dong_expiry")
     cur.execute("""
@@ -1064,6 +1069,7 @@ def _run_init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_biz_license_url TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_logo_url TEXT")  # 로고 이미지(선택, 운영지원업체)
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS office_address TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS kakao_chat_url TEXT")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS office_address TEXT")
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS office_address TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'submitted'")

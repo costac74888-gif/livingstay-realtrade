@@ -3559,6 +3559,23 @@ def _validate_phone_digits(d):
     return 10 <= len(d) <= 11
 
 
+def _validate_kakao_chat_url(value):
+    """공개 상담 버튼에는 카카오 오픈채팅 호스트만 허용한다."""
+    if not value or len(value) > 300:
+        return False
+    try:
+        parsed = urlparse(value)
+        return (
+            parsed.scheme in {"http", "https"}
+            and parsed.hostname == "open.kakao.com"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port is None
+        )
+    except ValueError:
+        return False
+
+
 def _validate_biz_reg_digits(d):
     """숫자만 남긴 사업자등록번호가 10자리인지 검사."""
     return len(d) == 10
@@ -3981,14 +3998,13 @@ def apply_loan():
     office_or_company_name = (data.get("office_or_company_name") or "").strip()
     owner_name = (data.get("owner_name") or "").strip()
     license_number = _digits_only(data.get("license_number"))
-    biz_reg_number = _digits_only(data.get("biz_reg_number"))
     phone = _digits_only(data.get("phone"))
     email = (data.get("email") or "").strip()
     password = (data.get("password") or "")
     if len(password) < 8:
         return jsonify({"ok": False, "message": "비밀번호는 8자 이상이어야 합니다."}), 400
     apply_password_hash = generate_password_hash(password)
-    office_address = (data.get("office_address") or "").strip()
+    kakao_chat_url = (data.get("kakao_chat_url") or "").strip()
     # 건물상세(B화면)에서 진입 시 희망건물 — agent 신청과 동일 패턴 (승인 시 담당건물 자동 등록)
     raw_bid = str(data.get("preferred_building_id") or "").strip()
     preferred_building_id = int(raw_bid) if raw_bid.isdigit() else None
@@ -4014,13 +4030,13 @@ def apply_loan():
     if service_region not in LOAN_SERVICE_REGIONS:
         return jsonify({"ok": False, "message": "취급지역은 다음 중 하나여야 합니다: " + ", ".join(LOAN_SERVICE_REGIONS)}), 400
 
-    # 번호 형식 검증 — 전화번호·등록번호는 필수, 사업자등록번호는 선택(입력 시에만 검사)
+    # 번호 형식 검증 — 전화번호·등록번호는 필수.
     if not _validate_phone_digits(phone):
         return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
     if not _validate_license_digits(license_number):
         return jsonify({"ok": False, "message": "대출모집인 등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
-    if biz_reg_number and not _validate_biz_reg_digits(biz_reg_number):
-        return jsonify({"ok": False, "message": "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"}), 400
+    if kakao_chat_url and not _validate_kakao_chat_url(kakao_chat_url):
+        return jsonify({"ok": False, "message": "카카오톡 상담 링크는 open.kakao.com 주소여야 합니다."}), 400
 
     # 법적 동의 서버측 재검증 — 클라이언트 우회 방지 (둘 다 명시적 true여야 함)
     if data.get("terms") is not True or data.get("privacy") is not True:
@@ -4050,12 +4066,12 @@ def apply_loan():
     cur.execute("""
         INSERT INTO applications
             (applicant_type, office_or_company_name, owner_name, reg_number,
-             biz_reg_number, phone, email, status, terms_agreed_at, privacy_agreed_at,
-             preferred_building_id, preferred_region, office_address, edit_token, password_hash)
-        VALUES ('loan_consultant', %s, %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s, %s, %s)
+             phone, email, status, terms_agreed_at, privacy_agreed_at,
+             preferred_building_id, preferred_region, kakao_chat_url, edit_token, password_hash)
+        VALUES ('loan_consultant', %s, %s, %s, %s, %s, 'submitted', NOW(), NOW(), %s, %s, %s, %s, %s)
         RETURNING id
-    """, (office_or_company_name, owner_name, license_number,
-          biz_reg_number or None, phone, email, preferred_building_id, service_region, office_address or None, edit_token, apply_password_hash))
+    """, (office_or_company_name, owner_name, license_number, phone, email,
+          preferred_building_id, service_region, kakao_chat_url or None, edit_token, apply_password_hash))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close()
@@ -4101,6 +4117,7 @@ def _application_public_dict(row):
         "biz_reg_number": format_biz_reg_number(row.get("biz_reg_number")) if row.get("biz_reg_number") else "",
         "biz_reg_number_digits": row.get("biz_reg_number") or "",
         "preferred_region": row.get("preferred_region") or "",
+        "kakao_chat_url": row.get("kakao_chat_url") or "",
         "docs": {
             k: bool(row.get(k)) for k in (
                 "doc_license_url", "doc_office_reg_url", "doc_biz_reg_url", "doc_photo_url",
@@ -4201,19 +4218,19 @@ def _revalidate_application_fields(applicant_type, data, is_update=True):
         })
     elif applicant_type == "loan_consultant":
         license_number = (data.get("license_number") or data.get("reg_number") or "").strip()
-        biz_reg_number = _digits_only(data.get("biz_reg_number"))
         service_region = (data.get("service_region") or data.get("preferred_region") or "").strip()
+        kakao_chat_url = (data.get("kakao_chat_url") or "").strip()
         if not license_number:
             missing.append("대출모집인 등록번호")
         if not service_region:
             missing.append("취급지역")
         elif service_region not in LOAN_SERVICE_REGIONS:
             return False, "취급지역은 다음 중 하나여야 합니다: " + ", ".join(LOAN_SERVICE_REGIONS)
-        if biz_reg_number and not _validate_biz_reg_digits(biz_reg_number):
-            return False, "사업자등록번호 형식이 올바르지 않습니다. (숫자 10자리)"
+        if kakao_chat_url and not _validate_kakao_chat_url(kakao_chat_url):
+            return False, "카카오톡 상담 링크는 open.kakao.com 주소여야 합니다."
         fields.update({
-            "reg_number": license_number, "biz_reg_number": biz_reg_number or None,
-            "preferred_region": service_region,
+            "reg_number": license_number, "preferred_region": service_region,
+            "kakao_chat_url": kakao_chat_url or None,
         })
     else:
         return False, "알 수 없는 신청유형입니다."
@@ -6875,7 +6892,7 @@ def admin_preview_lc_profile(lc_id):
     finally:
         cur.close()
         conn.close()
-    kakao_url = lc["kakao_chat_url"] if (lc["kakao_chat_url"] or "").startswith(("http://", "https://")) else None
+    kakao_url = lc["kakao_chat_url"] if _validate_kakao_chat_url(lc["kakao_chat_url"]) else None
     return jsonify({
         "office_name":   lc["office_name"],
         "owner_name":    lc["owner_name"],
@@ -12138,7 +12155,7 @@ def loan_consultant_public_profile(slug):
     finally:
         cur.close()
         conn.close()
-    kakao_url = lc["kakao_chat_url"] if (lc["kakao_chat_url"] or "").startswith(("http://", "https://")) else None
+    kakao_url = lc["kakao_chat_url"] if _validate_kakao_chat_url(lc["kakao_chat_url"]) else None
     return jsonify({
         "office_name": lc["office_name"],
         "owner_name": lc["owner_name"],
@@ -12314,8 +12331,8 @@ def loan_consultant_me_update():
                 v = _digits_only(v) or None
                 if v and not _validate_phone_digits(v):
                     return jsonify({"ok": False, "message": "전화번호 형식이 올바르지 않습니다. (숫자 10~11자리)"}), 400
-            if k == "kakao_chat_url" and v and not (v.startswith("http://") or v.startswith("https://")):
-                return jsonify({"ok": False, "message": "카카오톡 상담 링크는 http(s)://로 시작하는 URL이어야 합니다."}), 400
+            if k == "kakao_chat_url" and v and not _validate_kakao_chat_url(v):
+                return jsonify({"ok": False, "message": "카카오톡 상담 링크는 open.kakao.com 주소여야 합니다."}), 400
             if k == "intro_text" and v and len(v) > 5000:
                 return jsonify({"ok": False, "message": "소개글은 5000자 이내로 입력해주세요."}), 400
             if k == "logo_url" and v and not (v.startswith("http://") or v.startswith("https://")):
@@ -12921,7 +12938,7 @@ def operator_service_regions_mine():
         cur.execute("""
             SELECT sgg_text, granted_at, expires_at
             FROM operator_service_regions
-            WHERE operator_id=%s
+            WHERE operator_id=%s AND expires_at > NOW()
             ORDER BY granted_at DESC
         """, [operator_id])
         regions = [dict(row) for row in cur.fetchall()]
@@ -12949,7 +12966,11 @@ def operator_service_region_claim():
     try:
         # 서로 다른 지역을 동시에 등록해도 운영업체별 담당 지역 1개 제한을 지킨다.
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911007, operator_id])
-        cur.execute("SELECT COUNT(*) c FROM operator_service_regions WHERE operator_id=%s", [operator_id])
+        cur.execute("""
+            SELECT COUNT(*) c
+            FROM operator_service_regions
+            WHERE operator_id=%s AND expires_at > NOW()
+        """, [operator_id])
         if cur.fetchone()["c"] >= OPERATOR_REGION_CAP:
             return jsonify({"ok": False, "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요."}), 400
         cur.execute("SELECT category FROM operators WHERE id=%s", [operator_id])
@@ -12976,6 +12997,8 @@ def operator_service_region_claim():
         cur.execute("""
             INSERT INTO operator_service_regions (operator_id, sgg_text, expires_at)
             VALUES (%s, %s, %s::timestamp)
+            ON CONFLICT (operator_id, sgg_text) DO UPDATE
+            SET granted_at=NOW(), expires_at=EXCLUDED.expires_at
         """, [operator_id, sgg, PARTNER_BADGE_FREE_EXPIRES_AT])
         conn.commit()
     finally:
@@ -20356,6 +20379,7 @@ def admin_applications_list():
     cur.execute(f"""
         SELECT id, applicant_type, office_or_company_name, owner_name, reg_number,
                biz_reg_number, category, phone, email, preferred_region, preferred_building, status, reject_reason,
+               office_address, website_url, kakao_chat_url,
                doc_license_url, doc_office_reg_url, doc_biz_reg_url,
                doc_business_card_url, doc_biz_license_url, doc_logo_url, doc_photo_url,
                linked_operator_id,
@@ -20386,7 +20410,11 @@ _MEMBER_SELECTS = {
                NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
                admin_tag, COALESCE(points, 0) AS points, admin_memo,
                '' AS category, NULL::text AS subdomain_slug,
-               COALESCE(provider, 'email') AS provider
+               COALESCE(provider, 'email') AS provider,
+               NULL::text AS office_address, NULL::text AS reg_number,
+               NULL::text AS biz_reg_number, NULL::text AS website_url,
+               NULL::text AS preferred_region, NULL::text AS preferred_building,
+               NULL::text AS kakao_chat_url
         FROM users
     """,
     "agent": """
@@ -20395,7 +20423,10 @@ _MEMBER_SELECTS = {
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
                '' AS category, subdomain_slug,
-               'email'::text AS provider
+               'email'::text AS provider,
+               office_address, reg_number, biz_reg_number,
+               NULL::text AS website_url, NULL::text AS preferred_region,
+               NULL::text AS preferred_building, NULL::text AS kakao_chat_url
         FROM agents WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "operator": """
@@ -20404,7 +20435,10 @@ _MEMBER_SELECTS = {
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
                COALESCE(category, '') AS category, subdomain_slug,
-               'email'::text AS provider
+               'email'::text AS provider,
+               office_address, NULL::text AS reg_number, biz_reg_number,
+               website_url, NULL::text AS preferred_region,
+               NULL::text AS preferred_building, NULL::text AS kakao_chat_url
         FROM operators WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "loan_consultant": """
@@ -20413,7 +20447,10 @@ _MEMBER_SELECTS = {
                NULL AS applicant_type, created_at, approved_at,
                admin_tag, NULL::integer AS points, admin_memo,
                '' AS category, subdomain_slug,
-               'email'::text AS provider
+               'email'::text AS provider,
+               office_address, license_number AS reg_number, biz_reg_number,
+               NULL::text AS website_url, service_region AS preferred_region,
+               NULL::text AS preferred_building, kakao_chat_url
         FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')
     """,
     "pending": """
@@ -20423,7 +20460,9 @@ _MEMBER_SELECTS = {
                NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo,
                CASE WHEN applicant_type = 'operator' THEN COALESCE(category, '') ELSE '' END AS category,
                 NULL::text AS subdomain_slug,
-                'email'::text AS provider
+                'email'::text AS provider,
+                office_address, reg_number, biz_reg_number, website_url,
+                preferred_region, preferred_building, kakao_chat_url
         FROM applications WHERE status = 'submitted'
     """,
 }
@@ -20474,7 +20513,9 @@ def admin_members_list():
     cur.execute(f"""
         SELECT m.id, m.member_type, m.name, m.email, m.group_label, m.phone,
                m.status, m.applicant_type, m.admin_tag, m.points, m.admin_memo,
-               m.category, m.subdomain_slug, m.provider,
+               m.category, m.subdomain_slug, m.provider, m.office_address,
+               m.reg_number, m.biz_reg_number, m.website_url,
+               m.preferred_region, m.preferred_building, m.kakao_chat_url,
                to_char(m.created_at, 'YYYY-MM-DD HH24:MI') AS created_at,
                to_char(m.approved_at, 'YYYY-MM-DD') AS approved_at
         FROM ({union_sql}) m
@@ -20579,7 +20620,9 @@ def admin_members_list():
         cur.execute("""
             SELECT DISTINCT ON (sr.agent_id)
                    sr.agent_id, sr.sgg_text, sr.umd_nm, sr.expires_at,
-                   (SELECT COUNT(*) FROM agent_region_buildings arb WHERE arb.agent_id = sr.agent_id) AS bld_cnt
+                    (SELECT COUNT(*) FROM agent_region_buildings arb WHERE arb.agent_id = sr.agent_id) AS bld_cnt,
+                    (SELECT COUNT(*) FROM agent_service_regions sr2
+                     WHERE sr2.agent_id = sr.agent_id AND sr2.expires_at > NOW()) AS badge_cnt
             FROM agent_service_regions sr
             WHERE sr.agent_id = ANY(%s) AND sr.expires_at > NOW()
             ORDER BY sr.agent_id, sr.expires_at DESC, sr.granted_at DESC, sr.id DESC
@@ -20589,6 +20632,7 @@ def admin_members_list():
             t["region_sgg"] = r["sgg_text"]
             t["region_umd"] = r["umd_nm"]
             t["region_bld_cnt"] = int(r["bld_cnt"])
+            t["region_badge_count"] = int(r["badge_cnt"])
             t["region_active"] = True
     for it in items:
         if it["member_type"] == "agent":
@@ -20598,7 +20642,53 @@ def admin_members_list():
             it["region_sgg"] = t.get("region_sgg")
             it["region_umd"] = t.get("region_umd")
             it["region_bld_cnt"] = t.get("region_bld_cnt", 0)
+            it["region_badge_count"] = t.get("region_badge_count", 0)
+            it["region_badge_limit"] = AGENT_TRIAL_REGION_CAP
             it["region_active"] = t.get("region_active", False)
+
+    operator_ids = [it["id"] for it in items if it["member_type"] == "operator"]
+    operator_region_map = {}
+    if operator_ids:
+        cur.execute("""
+            SELECT DISTINCT ON (osr.operator_id)
+                   osr.operator_id, osr.sgg_text,
+                   (SELECT COUNT(*) FROM operator_service_regions osr2
+                    WHERE osr2.operator_id = osr.operator_id AND osr2.expires_at > NOW()) AS badge_cnt,
+                   (SELECT COUNT(*) FROM operator_region_buildings orb
+                    WHERE orb.operator_id = osr.operator_id) AS bld_cnt
+            FROM operator_service_regions osr
+            WHERE osr.operator_id = ANY(%s) AND osr.expires_at > NOW()
+            ORDER BY osr.operator_id, osr.expires_at DESC, osr.granted_at DESC, osr.id DESC
+        """, [operator_ids])
+        for r in cur.fetchall():
+            operator_region_map[r["operator_id"]] = {
+                "region_sgg": r["sgg_text"],
+                "region_badge_count": int(r["badge_cnt"]),
+                "region_bld_cnt": int(r["bld_cnt"]),
+            }
+    for it in items:
+        if it["member_type"] == "operator":
+            region = operator_region_map.get(it["id"], {})
+            it.update(region)
+            it["region_badge_count"] = region.get("region_badge_count", 0)
+            it["region_bld_cnt"] = region.get("region_bld_cnt", 0)
+            it["region_badge_limit"] = OPERATOR_REGION_CAP
+
+    loan_ids = [it["id"] for it in items if it["member_type"] == "loan_consultant"]
+    loan_area_counts = {}
+    if loan_ids:
+        cur.execute("""
+            SELECT loan_consultant_id, COUNT(*) AS area_cnt
+            FROM loan_consultant_service_areas
+            WHERE loan_consultant_id = ANY(%s)
+            GROUP BY loan_consultant_id
+        """, [loan_ids])
+        loan_area_counts = {
+            r["loan_consultant_id"]: int(r["area_cnt"]) for r in cur.fetchall()
+        }
+    for it in items:
+        if it["member_type"] == "loan_consultant":
+            it["service_area_count"] = loan_area_counts.get(it["id"], 0)
 
     # 중개사 등급 서브통계 (탭 상단에 "무료전용/단지뱃지보유/지역Master보유"로 표시)
     cur.execute("""
@@ -22193,6 +22283,8 @@ def admin_member_detail_update(member_type, member_id):
 
     if not updates:
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
+    if "kakao_chat_url" in updates and updates["kakao_chat_url"] and not _validate_kakao_chat_url(updates["kakao_chat_url"]):
+        return jsonify({"ok": False, "message": "카카오톡 상담 링크는 open.kakao.com 주소여야 합니다."}), 400
 
     conn = get_conn()
     cur = conn.cursor()
@@ -22630,13 +22722,19 @@ def admin_applications_approve(app_id):
                 INSERT INTO loan_consultants
                     (office_name, owner_name, license_number, biz_reg_number,
                      phone, email, status, password_hash, approved_at,
-                     service_region, office_address)
-                VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, NOW(), %s, %s)
+                     service_region, office_address, kakao_chat_url)
+                VALUES (%s, %s, %s, %s, %s, %s, 'approved', %s, NOW(), %s, %s, %s)
                 RETURNING id
             """, [ap["office_or_company_name"], ap["owner_name"], ap["reg_number"],
                    _digits_only(ap["biz_reg_number"]) or None, _digits_only(ap["phone"]), ap["email"], pw_hash,
-                   service_region, ap.get("office_address")])
+                   service_region, ap.get("office_address"), ap.get("kakao_chat_url")])
             created_id = cur.fetchone()["id"]
+            if service_region:
+                cur.execute("""
+                    INSERT INTO loan_consultant_service_areas (loan_consultant_id, region_name)
+                    VALUES (%s, %s)
+                    ON CONFLICT (loan_consultant_id, region_name) DO NOTHING
+                """, [created_id, service_region])
             cur.execute(
                 "UPDATE applications SET status='approved', reviewed_at=NOW(), linked_loan_consultant_id=%s WHERE id=%s",
                 [created_id, app_id],
