@@ -537,10 +537,13 @@ def _log_page_view(resp):
     return resp
 
 
-# 앱 부팅 시 스키마를 보장한다 (building_requests 정정 컬럼 등).
-# init_db는 CREATE/ALTER ... IF NOT EXISTS라 여러 번 호출해도 안전(멱등).
-# 이렇게 해야 배포 직후(아직 sync 스크립트가 안 돈 시점)에도 요청 API가 500 없이 동작한다.
-init_db()
+# 개발 환경은 앱 부팅 시 스키마를 보장한다.
+# 운영 Publish는 Promote 전에 스키마 차이를 별도로 적용하므로 런타임에서 DDL을 다시
+# 실행하지 않는다. 대형 테이블 잠금 때문에 포트를 열기 전에 Promote가 끝날 수 있다.
+if os.environ.get("SKIP_STARTUP_SCHEMA_INIT", "").strip().lower() not in {"1", "true", "yes"}:
+    init_db()
+else:
+    app.logger.info("운영 런타임 시작 시 스키마 초기화 생략")
 
 # ── 부팅 시 상거래정보 의존 환경 검증 ──────────────────────────────────────
 # 두 조건 중 하나라도 누락되면 건물상세 상거래정보 카드가 항상 "준비 중"으로 남는다.

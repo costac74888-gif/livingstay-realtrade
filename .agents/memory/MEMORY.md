@@ -54,3 +54,4 @@
 - [관리자 입점부동산 기준](admin-broker-realty-source.md) — 관리자 입점부동산은 브로커 표준데이터를 우선하고, 없을 때만 상권정보 캐시를 보조로 쓴다.
 - [도로명 괄호 지역 보정](road-address-parenthetical-locality.md) — 도로명 매칭 키에는 괄호의 일반 동을 넣지 않고, 본문에서 생략될 수 있는 읍·면만 복원한다.
 - [프론트 배포 릴리스](frontend-release-builds.md) — 배포 HTML·JS는 content-addressed 디렉터리로 원자 교체하고, 검증된 마커가 있을 때만 원본 접근을 차단한다.
+- [Publish 런타임 스키마 초기화](publish-runtime-schema-init.md) — Promote는 이미 반영된 스키마를 앱 시작 때 다시 DDL 처리하지 않으며, 프런트 빌드도 Build 단계에서 끝낸다.

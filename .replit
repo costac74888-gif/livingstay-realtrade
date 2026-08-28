@@ -185,6 +185,7 @@ SITE_URL = "https://homenstay.com"
 [deployment]
 deploymentTarget = "autoscale"
 run = ["bash", "scripts/start-prod.sh"]
+build = ["npm", "run", "build:frontend"]
 
 [postMerge]
 path = "scripts/post-merge.sh"

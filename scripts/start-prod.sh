@@ -1,11 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ ! -x node_modules/.bin/terser ]; then
-  npm ci --omit=dev --no-audit
-fi
-npm run build:frontend
 export SERVE_MINIFIED_ASSETS=1
+export SKIP_STARTUP_SCHEMA_INIT=1
 
 exec gunicorn \
   --bind 0.0.0.0:5000 \
