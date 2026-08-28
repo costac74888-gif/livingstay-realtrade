@@ -2098,12 +2098,23 @@ def _check_admin_building_broker_details(client):
         with open(os.path.join(os.path.dirname(__file__), "..", "static", "admin.html"), encoding="utf-8") as fh:
             markup = fh.read()
         required_markup = (
-            "renderBrokerRegistryCards", "brokerStatusBadge", "홈앤스테이 중개업소 데이터",
-            "입점업소 참고", "bld-realty-modal-card", "bld-realty-table",
+            "renderBrokerRegistryCards", "brokerStatusBadge", "주소 매칭 결과",
+            "입점업소 참고", "bld-realty-expand", "bld-realty-sub-row", "bld-realty-table",
             "사무소명</th><th>등록번호</th><th>대표자", "dgEscape(value || \"-\")",
         )
-        if any(text not in markup for text in required_markup) or "safeBrokerHomepage" in markup:
-            failures.append("관리자 브로커 상세 모달의 안전한 문자열 렌더링 또는 가로 테이블 마크업이 누락됨")
+        disallowed_markup = (
+            "safeBrokerHomepage", "openRealtyModal", "bld-realty-modal-btn", "bld-realty-modal-card",
+        )
+        buildings_start = markup.index("buildings:")
+        realty_col = markup.index('{ key: "store_realty_count"', buildings_start)
+        lodging_col = markup.index('{ key: "lodging_expand"', buildings_start)
+        report_col = markup.index('{ key: "report_rate"', buildings_start)
+        if (
+            any(text not in markup for text in required_markup)
+            or any(text in markup for text in disallowed_markup)
+            or not (realty_col < lodging_col < report_col)
+        ):
+            failures.append("관리자 브로커 인라인 펼치기·안전한 문자열 렌더링·컬럼 순서가 올바르지 않음")
         else:
             start = markup.index("function brokerStatusBadge")
             end = markup.index("function renderCachedRealtyTable")
@@ -2121,18 +2132,21 @@ def _check_admin_building_broker_details(client):
                   biz_status: "영업중"
                 }, {
                   office_name: "비영업 중개", reg_number: "R2", biz_status: "휴업"
+                }, {
+                  office_name: "상태 미확인 중개", reg_number: "R3", biz_status: null
                 }]);
                 if (html.includes("<img") || html.includes("javascript:alert(1)")) process.exit(1);
                 if (!html.includes("&lt;img")) process.exit(2);
                 if (!html.includes("bld-broker-status is-active") || !html.includes("bld-broker-status is-inactive")) process.exit(3);
                 if (!html.includes("사무소명</th><th>등록번호</th><th>대표자")) process.exit(4);
                 if ((html.match(/<th>/g) || []).length !== 7) process.exit(5);
+                if (!html.includes("상태 정보 없음")) process.exit(6);
             """
             rendered = subprocess.run(
                 ["node", "-e", frontend_check], capture_output=True, text=True, timeout=10
             )
             if rendered.returncode:
-                failures.append("관리자 브로커 상세 모달이 악성 문자열을 안전하게 렌더링하거나 가로 테이블로 표시하지 않음")
+                failures.append("관리자 브로커 인라인 표가 악성 문자열·상태 미확인을 안전하게 표시하지 않음")
     except Exception as exc:
         conn.rollback()
         failures.append(f"관리자 건물 브로커 상세 테스트 오류: {exc}")
@@ -2154,7 +2168,7 @@ def _check_admin_building_broker_details(client):
             cur.close()
             conn.close()
     if not failures:
-        print("OK  관리자 건물 브로커 표준데이터 가로 테이블·상태 뱃지·목록 우선수·상권정보 폴백")
+        print("OK  관리자 건물 브로커 인라인 표·상태 뱃지·목록 우선수·상권정보 폴백")
     return failures
 
 
@@ -2212,8 +2226,8 @@ def _check_broker_sync_normalization_and_status(client):
         conn.commit()
         cur.execute("SELECT road_norm, biz_status FROM broker_registry WHERE reg_number=%s", (reg_number,))
         saved = cur.fetchone() or {}
-        if saved.get("road_norm") != building_key or saved.get("biz_status") != "영업중":
-            failures.append("상태 없는 현재 개업 표준데이터가 영업중/정규화 키로 저장되지 않음")
+        if saved.get("road_norm") != building_key or saved.get("biz_status") is not None:
+            failures.append("상태 없는 현재 표준데이터가 상태 NULL/정규화 키로 저장되지 않음")
 
         source_item["bizStatus"] = "휴업"
         sync_brokers._upsert(cur, source_item)
@@ -2235,8 +2249,8 @@ def _check_broker_sync_normalization_and_status(client):
             matched = next((item for item in items if "라군부동산중개법인" in (item.get("office_name") or "")), None)
             if response.status_code != 200 or not matched:
                 failures.append("라군 센트럴 스테이와 라군부동산중개법인이 실제 도로명 매칭되지 않음")
-            elif matched.get("biz_status") != "영업중":
-                failures.append("라군부동산중개법인의 최신 수집 영업상태가 영업중으로 표시되지 않음")
+            elif matched.get("biz_status") is not None:
+                failures.append("라군부동산중개법인의 원본 미제공 영업상태가 NULL로 표시되지 않음")
             listing = client.get("/api/admin/buildings", query_string={
                 "q": "라군 센트럴 스테이",
                 "size": 10,

@@ -37,6 +37,7 @@ MAX_DAILY_CALLS = 900
 DAILY_CALLS_META_KEY = "broker_daily_calls"
 PROGRESS_META_KEY = "broker_sync_progress"   # {"next_page": N, "total_count": M}
 LAST_SYNC_META_KEY = "broker_last_sync"      # {"finished_at": ..., "total": ...}
+STATUS_NULL_MIGRATION_META_KEY = "broker_status_null_migration_v1"
 
 NUM_ROWS_DEFAULT = 1000
 SLEEP_DEFAULT = 0.3
@@ -56,12 +57,11 @@ FIELD_CANDIDATES = {
     "lat": ["latitude", "lat"],
     "lng": ["longitude", "lot", "lng"],
     "homepage_url": ["hmpgAddr", "homepageUrl", "hmpgAdres", "homepage"],
-    # 현재 공공데이터포털 응답은 개업 사무소 목록이라 별도 상태 필드가 없다.
+    # 현재 공공데이터포털 응답에는 별도 상태 필드가 없다.
     # 이후 상태 필드가 포함된 데이터셋 변형은 이 후보 값을 우선 저장한다.
     "biz_status": ["opbizSttusNm", "opbizSttus", "bizStatus", "businessStatus", "status"],
     "source_updated_at": ["crtrYmd", "referenceDate", "dataStdDe", "stdrDe"],
 }
-DEFAULT_BIZ_STATUS = "영업중"
 
 
 def _pick(item, field):
@@ -148,6 +148,28 @@ def _mark_last_sync(cur, conn, total):
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     """, (LAST_SYNC_META_KEY, payload))
     conn.commit()
+
+
+def _clear_legacy_inferred_active_statuses(cur, conn):
+    """과거 기본값으로 채운 '영업중'을 한 번만 NULL로 되돌린다."""
+    cur.execute("SELECT 1 FROM app_meta WHERE key=%s", (STATUS_NULL_MIGRATION_META_KEY,))
+    if cur.fetchone():
+        return 0
+    cur.execute(
+        "UPDATE broker_registry SET biz_status=NULL, updated_at=NOW() WHERE biz_status='영업중'"
+    )
+    changed = cur.rowcount
+    payload = json.dumps({
+        "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "cleared_rows": changed,
+    })
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO NOTHING
+    """, (STATUS_NULL_MIGRATION_META_KEY, payload))
+    conn.commit()
+    print(f"[brokers] 과거 추정 영업중 상태 {changed}건을 NULL로 정리했습니다")
+    return changed
 
 
 # ---- 관리자 버튼용 상태 기록 (run_id 펜싱 + 하트비트) ----
@@ -277,9 +299,8 @@ def _upsert(cur, item):
     row = {f: _pick(item, f) for f in FIELD_CANDIDATES}
     if not row["office_name"]:
         return False
-    # 실응답에는 영업상태 컬럼이 없지만, 이 표준데이터는 "개업" 사무소만 제공한다.
-    # 따라서 지금 수집한 행만 영업중으로 표시한다. 기존 NULL 값을 임의 추정하지 않는다.
-    row["biz_status"] = row["biz_status"] or DEFAULT_BIZ_STATUS
+    # 원본에 영업상태가 없으면 추정하지 않고 NULL로 저장한다.
+    # 관리자 화면은 NULL을 "상태 정보 없음"으로 중립 표기한다.
     if not row["reg_number"]:
         base = (row["office_name"] or "") + "|" + (row["road_address"] or row["jibun_address"] or "")
         # 주의: hash()는 프로세스마다 시드가 달라 재실행 시 값이 바뀜 → sha256으로 결정적 키 생성
@@ -330,6 +351,7 @@ def sync_brokers(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
     conn = get_conn()
     cur = conn.cursor()
     try:
+        _clear_legacy_inferred_active_statuses(cur, conn)
         if reset:
             _clear_progress(cur, conn)
         prog = _load_progress(cur)
@@ -366,6 +388,20 @@ def sync_brokers(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
 
             if not first_item_logged:
                 print(f"[brokers] 응답 필드: {sorted(items[0].keys())}")
+                status_fields = [
+                    key_name for key_name in FIELD_CANDIDATES["biz_status"]
+                    if any(key_name in item for item in items)
+                ]
+                if status_fields:
+                    status_values = sorted({
+                        str(item.get(key_name)).strip()
+                        for item in items
+                        for key_name in status_fields
+                        if item.get(key_name) not in (None, "")
+                    })
+                    print(f"[brokers] 영업상태 필드: {status_fields} / 값: {status_values or ['(빈 값)']}")
+                else:
+                    print("[brokers] 영업상태 필드: 없음 — 상태를 추정하지 않고 NULL로 저장합니다")
                 first_item_logged = True
 
             saved = 0
