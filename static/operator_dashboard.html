@@ -66,7 +66,6 @@
         </div>
         <div id="meOwner" style="font-size:13px; color:var(--ink-soft); margin-top:3px;"></div>
       </div>
-      <a id="lnkProfile" href="#" target="_blank" rel="noopener" style="font-size:12.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">내 프로필 보기 →</a>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
       <button id="btnEditProfile" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">프로필 수정</button>
@@ -314,7 +313,7 @@ const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#6
 const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
 function markerColor(v){ if(!v) return "#9AA5B1"; return LODGING_COLORS[v.split("·")[0]] || "#9AA5B1"; }
 function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
-const OP_REGION_BUILDING_CAP = 20;
+const OP_REGION_BUILDING_CAP = 10;
 
 let ME = null;
 
@@ -380,10 +379,6 @@ function render(){
   if (ME.category){ cat.textContent = ME.category; cat.style.display = "inline-block"; }
   else cat.style.display = "none";
   document.getElementById("meOwner").textContent = "대표 " + (ME.owner_name || "-");
-  const lnk = document.getElementById("lnkProfile");
-  if (ME.subdomain_slug){ lnk.href = "/operator/" + encodeURIComponent(ME.subdomain_slug); lnk.style.display = ""; }
-  else lnk.style.display = "none";
-
   const list = document.getElementById("bldList");
   document.getElementById("bldCount").textContent = (ME.buildings || []).length + "개";
 

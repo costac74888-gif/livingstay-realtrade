@@ -761,7 +761,7 @@ def run():
     else:
         print("OK  지도 편의정보 API (입력 검증·외부 응답·오류 처리)")
 
-    # 단지 2명·동 10명 정원, 동 단위 지역뱃지, 관리자 탭을 실제 등록으로 확인
+    # 단지 2명 정원·지역 단위 담당단지 한도·관리자 탭을 실제 등록으로 확인
     failures += _check_partner_badge_policy(client)
     # 관리자 건물의 브로커 표준데이터 상세·상권정보 폴백·목록 수 우선순위를 확인
     failures += _check_admin_building_broker_details(client)
@@ -1600,7 +1600,7 @@ def _check_partner_badge_policy(client):
         if operator_over_cap.status_code != 400 or loan_over_cap.status_code != 400:
             failures.append("파트너 뱃지: 운영업체 또는 대출상담사 담당단지 10개 한도가 적용되지 않음")
 
-        # ④ 중개사 지역뱃지: 실제 읍면동 조합에서 10명까지 성공하고 11번째는 거절된다.
+        # ④ 중개사 지역뱃지: 동일 읍면동에 여러 중개사가 제한 없이 등록된다.
         region_sgg = region_fixture["sgg_text"]
         region_umd = region_fixture["umd_nm"]
         region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(10)]
@@ -1624,8 +1624,8 @@ def _check_partner_badge_policy(client):
         region_overflow = client.post("/api/agent/service-regions", json={
             "sgg_text": region_sgg, "umd_nm": region_umd,
         })
-        if region_overflow.status_code != 400 or "10명" not in ((region_overflow.get_json() or {}).get("message") or ""):
-            failures.append("파트너 뱃지: 읍면동 지역뱃지 11번째 신청을 정원 초과로 거절하지 않음")
+        if region_overflow.status_code != 200 or not (region_overflow.get_json() or {}).get("ok"):
+            failures.append("파트너 뱃지: 읍면동 지역뱃지 정원 폐지 후 추가 신청이 거절됨")
         cur.execute("""
             SELECT umd_nm, expires_at::text AS expires_at FROM agent_service_regions
             WHERE agent_id=%s AND sgg_text=%s
@@ -1666,7 +1666,7 @@ def _check_partner_badge_policy(client):
         if region_building_add.status_code != 200 or not outside_add or outside_add.status_code != 400:
             failures.append("파트너 뱃지: 담당단지를 신청한 읍면동 안으로 제한하지 못함")
 
-        # 11명이 빈 동에 동시에 신청해도 정확히 10명만 성공한다.
+        # 11명이 같은 읍면동에 동시에 신청해도 모두 성공한다.
         region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(11)]
         conn.commit()
 
@@ -1688,11 +1688,11 @@ def _check_partner_badge_policy(client):
             WHERE sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
         """, (region_race_fixture["sgg_text"], region_race_fixture["umd_nm"]))
         if (
-            region_race_results.count(200) != 10
-            or region_race_results.count(400) != 1
-            or cur.fetchone()["count"] != 10
+            region_race_results.count(200) != 11
+            or region_race_results.count(400) != 0
+            or cur.fetchone()["count"] != 11
         ):
-            failures.append(f"파트너 뱃지: 지역뱃지 동시 신청이 10명 정원을 우회함 ({region_race_results})")
+            failures.append(f"파트너 뱃지: 지역뱃지 정원 폐지 후 동시 신청 결과가 올바르지 않음 ({region_race_results})")
 
         # 레거시 정리는 한 번만 실행되어 이후 새 동 담당단지를 다시 삭제하지 않는다.
         legacy_agent_id = create_agent("agent-region-legacy")

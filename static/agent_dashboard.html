@@ -67,7 +67,6 @@
         <div id="meOffice" style="font-size:18px; font-weight:700; color:var(--ink);">불러오는 중…</div>
         <div id="meOwner" style="font-size:13px; color:var(--ink-soft); margin-top:3px;"></div>
       </div>
-      <a id="lnkProfile" href="#" target="_blank" rel="noopener" style="font-size:12.5px; font-weight:600; color:var(--brass-dark); text-decoration:none;">내 프로필 보기 →</a>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
       <button id="btnEditProfile" class="side-more" style="width:auto; margin-top:0; padding:8px 16px;">프로필 수정</button>
@@ -111,10 +110,10 @@
     <div class="panel-card" style="margin-top:14px;">
       <div class="side-card-title" style="margin-bottom:4px;">담당 지역</div>
       <div class="agent-guide">
-        담당 지역은 시·군·구 단위로 <b>1개만</b> 신청할 수 있습니다.
+        담당 지역은 읍·면·동 단위로 <b>1개만</b> 신청할 수 있습니다.
         <ul>
-          <li>신청한 시·군·구 안에서 최대 10개 단지까지 담당단지로 직접 선택할 수 있습니다</li>
-          <li>시·군·구 전체가 자동으로 매칭되는 것이 아니라, 선택한 단지에만 매칭됩니다</li>
+          <li>신청한 읍·면·동 안에서 최대 10개 단지까지 담당단지로 직접 선택할 수 있습니다</li>
+          <li>읍·면·동 전체가 자동으로 매칭되는 것이 아니라, 선택한 단지에만 매칭됩니다</li>
         </ul>
         지역 등록도 신청 즉시 <b>2026년 12월 31일까지 무료</b>로 적용됩니다.
       </div>
@@ -432,10 +431,6 @@ function render(){
   renderAvatar();
   document.getElementById("meOffice").textContent = ME.office_name || "-";
   document.getElementById("meOwner").textContent = "대표 " + (ME.owner_name || "-");
-  const lnk = document.getElementById("lnkProfile");
-  if (ME.subdomain_slug){ lnk.href = "/agent/" + encodeURIComponent(ME.subdomain_slug); lnk.style.display = ""; }
-  else lnk.style.display = "none";
-
   const list = document.getElementById("bldList");
   document.getElementById("bldCount").textContent = (ME.buildings || []).length + "개";
   if (!(ME.buildings || []).length){

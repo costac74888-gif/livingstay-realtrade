@@ -80,15 +80,14 @@ MAX_FREE_BUILDINGS = 10
 # 승인된 파트너에게 적용하는 현재 무료 뱃지 정책의 종료 시각.
 # SQL에는 문자열 바인딩으로 넣어 서버·DB 타임존이 달라도 같은 현지 만료일을 보장한다.
 PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
-MAX_FAVORITES = 30         # 회원 1인당 관심단지 최대 저장 수 (클라이언트와 동일값 유지)
+MAX_FAVORITES = 10         # 일반회원 관심단지 한도
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 AGENT_BUILDING_BADGE_SLOT_CAP = 2  # 건물별 활성 중개사 단지뱃지 정원
-AGENT_REGION_DONG_SLOT_CAP = 10    # 읍·면·동별 활성 중개사 지역뱃지 정원
 OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
-OPERATOR_REGION_BUILDING_CAP = 20  # 지역 안에서 담당단지로 선택 가능한 건물 수
+OPERATOR_REGION_BUILDING_CAP = 10  # 운영업체 지역내 담당단지
 AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(읍·면·동) 수
-AGENT_REGION_BUILDING_CAP = 20  # 등록한 지역 안에서 담당단지로 선택 가능한 건물 수
+AGENT_REGION_BUILDING_CAP = 10  # 중개사 지역내 담당단지
 
 # 일반숙박은 건축물대장 호실수와 실제 영업 객실수가 같은 모집단이 아니다.
 # 따라서 일반 건물은 신고율 대신 행안부 영업신고 객실수 절대값을 보여준다.
@@ -7534,10 +7533,8 @@ def agent_service_region_claim():
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "선택한 읍·면·동을 확인할 수 없습니다."}), 400
 
-        # 중개사별 1개 제한과 동별 10명 제한을 각각 직렬화한다.
+        # 중개사별 1개 제한을 직렬화한다.
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
-        cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
-                    [911009, f"{sgg}\x1f{umd}"])
         cur.execute("""
             SELECT 1 FROM agent_service_regions
             WHERE agent_id=%s AND sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
@@ -7553,16 +7550,6 @@ def agent_service_region_claim():
             return jsonify({
                 "ok": False,
                 "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요.",
-            }), 400
-        cur.execute("""
-            SELECT COUNT(*) AS count
-            FROM agent_service_regions
-            WHERE sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
-        """, [sgg, umd])
-        if cur.fetchone()["count"] >= AGENT_REGION_DONG_SLOT_CAP:
-            return jsonify({
-                "ok": False,
-                "message": f"이 읍·면·동은 지역뱃지 정원({AGENT_REGION_DONG_SLOT_CAP}명)이 모두 찼습니다.",
             }), 400
         cur.execute("""
             INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, granted_at, expires_at)
@@ -20783,8 +20770,6 @@ def admin_extend_premium_status():
                 if not cur.fetchone():
                     return jsonify({"ok": False, "message": "선택한 읍·면·동을 확인할 수 없습니다."}), 400
                 cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, partner_id])
-                cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
-                            [911009, f"{region_sgg}\x1f{region_umd}"])
                 cur.execute("""
                     SELECT COUNT(*) AS count
                     FROM agent_service_regions
@@ -20795,17 +20780,6 @@ def admin_extend_premium_status():
                     return jsonify({
                         "ok": False,
                         "message": "이 중개사는 이미 다른 읍·면·동의 지역뱃지를 사용 중입니다.",
-                    }), 400
-                cur.execute("""
-                    SELECT COUNT(*) AS count
-                    FROM agent_service_regions
-                    WHERE sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
-                      AND agent_id<>%s
-                """, [region_sgg, region_umd, partner_id])
-                if cur.fetchone()["count"] >= AGENT_REGION_DONG_SLOT_CAP:
-                    return jsonify({
-                        "ok": False,
-                        "message": f"이 읍·면·동은 지역뱃지 정원({AGENT_REGION_DONG_SLOT_CAP}명)이 모두 찼습니다.",
                     }), 400
                 cur.execute("""
                     UPDATE agent_service_regions
