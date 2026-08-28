@@ -103,11 +103,46 @@ def uses_lodging_report_rate(lodging_type):
 # 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
 # 하드코딩하지 않고 서버 기동 시각(=배포마다 갱신)을 재사용한다.
 _ASSET_VER_RE = re.compile(r'(src|href)="(/static/(?:js|css)/[^"?]+\.(?:js|css))"')
+_FRONTEND_BUILD_MARKER = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "static", "generated", ".frontend-build.json"
+)
+_FRONTEND_RELEASE_CACHE = {"mtime_ns": None, "release": None}
+
+
+def _frontend_release():
+    """원자적으로 교체된 현재 프론트 릴리스 ID를 검증해 반환한다."""
+    enabled = os.environ.get("SERVE_MINIFIED_ASSETS", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return None
+    try:
+        stat = os.stat(_FRONTEND_BUILD_MARKER)
+        if _FRONTEND_RELEASE_CACHE["mtime_ns"] != stat.st_mtime_ns:
+            with open(_FRONTEND_BUILD_MARKER, encoding="utf-8") as marker_file:
+                marker = json.load(marker_file)
+            release = str(marker.get("release") or "")
+            release_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "static", "dist", release
+            )
+            if not re.fullmatch(r"[0-9a-f]{16}", release) or not os.path.isdir(release_dir):
+                release = None
+            _FRONTEND_RELEASE_CACHE.update(mtime_ns=stat.st_mtime_ns, release=release)
+        return _FRONTEND_RELEASE_CACHE["release"]
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _minified_assets_enabled():
+    """배포 모드이면서 완성된 릴리스가 있는 경우에만 보호 경계를 켠다."""
+    return _frontend_release() is not None
 
 
 def _inject_asset_version(html):
+    def versioned(match):
+        asset_path = match.group(2)
+        return f'{match.group(1)}="{asset_path}?v={SERVER_BOOT_V}"'
+
     return _ASSET_VER_RE.sub(
-        lambda m: f'{m.group(1)}="{m.group(2)}?v={SERVER_BOOT_V}"', html
+        versioned, html
     )
 
 
@@ -257,6 +292,19 @@ def _building_share_meta(building_id, listing_id=None):
 
 app = Flask(__name__, static_folder="static")
 Compress(app)   # gzip 응답 압축 (API JSON + HTML 전체)
+
+
+@app.before_request
+def _block_unminified_frontend_sources():
+    """배포 모드에서는 원본 JS와 raw HTML의 정적 직접 접근을 막는다."""
+    if not _minified_assets_enabled():
+        return None
+    path = request.path
+    if path.startswith("/static/js/") and path.endswith(".js") and not path.endswith(".min.js"):
+        abort(404)
+    if path.startswith("/static/") and path.lower().endswith((".html", ".htm")):
+        abort(404)
+    return None
 
 
 def _mark_master_stats_invalidated_safely(source):
@@ -513,7 +561,7 @@ def _serve_app_shell(building_id=None, listing_id=None):
     # 정적 index.html을 읽어 카카오맵 JS 키만 서버에서 주입해 서빙한다.
     # (프론트 소스에 키를 직접 박지 않고, 환경변수/시크릿에서 안전하게 넣는다.)
     kakao_js_key = os.environ.get("KAKAO_JS_KEY", "")
-    html_path = os.path.join(app.static_folder, "index.html")
+    html_path = _frontend_html_path("index.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
     share_meta = (
@@ -1855,7 +1903,7 @@ def _fetch_map_poi_category(client_id, category_code, lng, lat, radius):
     return response.json().get("documents", [])
 
 
-@app.route("/api/map/poi")
+@app.route("/api/v1/m/6b4")
 @limiter.limit("12 per minute")
 def map_poi():
     """현재 지도 중심 주변의 교육·편의시설을 Kakao Local에서 조회한다.
@@ -3316,7 +3364,7 @@ def apply_agent_page():
 
     카카오맵이 필요 없는 단순 정적 폼이므로 키 주입 없이 그대로 서빙한다.
     """
-    html_path = os.path.join(app.static_folder, "apply_agent.html")
+    html_path = _frontend_html_path("apply_agent.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
     html = _inject_asset_version(html)
@@ -3682,7 +3730,7 @@ def apply_operator_page():
     apply_agent_page()과 동일하게, 카카오맵이 필요 없는 단순 정적 폼이므로
     키 주입 없이 그대로 서빙한다.
     """
-    html_path = os.path.join(app.static_folder, "apply_operator.html")
+    html_path = _frontend_html_path("apply_operator.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
     html = _inject_asset_version(html)
@@ -3815,7 +3863,7 @@ def apply_operator():
 @app.route("/apply/loan")
 def apply_loan_page():
     """대출상담사 등록신청 정적 폼 HTML 서빙 (apply_agent_page()와 동일 패턴)."""
-    html_path = os.path.join(app.static_folder, "apply_loan_consultant.html")
+    html_path = _frontend_html_path("apply_loan_consultant.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
     html = _inject_asset_version(html)
@@ -4196,7 +4244,7 @@ def apply_edit_page(token):
     apply_agent_page()와 동일하게 정적 HTML을 그대로 서빙하고, 실제 데이터는
     클라이언트 JS가 URL의 token으로 /api/applications/token/<token>을 호출해 채운다.
     """
-    html_path = os.path.join(app.static_folder, "apply_edit.html")
+    html_path = _frontend_html_path("apply_edit.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
     html = _inject_asset_version(html)
@@ -4676,7 +4724,7 @@ def require_admin(f):
 
 def _serve_static_html(filename):
     """정적 HTML을 no-cache 헤더와 함께 서빙 (apply 페이지들과 동일 방식)."""
-    html_path = os.path.join(app.static_folder, filename)
+    html_path = _frontend_html_path(filename)
     with open(html_path, encoding="utf-8") as fp:
         html = fp.read()
     html = html.replace("{{PUBLIC_BASE_URL}}", _html.escape(_public_base_url(), quote=True))
@@ -4687,6 +4735,17 @@ def _serve_static_html(filename):
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
+
+
+def _frontend_html_path(filename):
+    """배포 모드에서는 완성된 현재 릴리스의 HTML만 사용한다."""
+    release = _frontend_release()
+    if release:
+        generated = os.path.join(app.static_folder, "dist", release, "html", filename)
+        if not os.path.isfile(generated):
+            abort(503)
+        return generated
+    return os.path.join(app.static_folder, filename)
 
 
 @app.route("/guide")
@@ -16014,7 +16073,7 @@ def admin_buildings_full_stats():
     return _lodging_full_stats_payload()
 
 
-@app.route("/api/stats/lodging-full-table")
+@app.route("/api/v1/d/3f7")
 @limiter.limit("20 per minute")
 def stats_lodging_full_table():
     """인증 없이 공개하는 데이터랩 전국 숙박업 통계표."""
@@ -16189,7 +16248,7 @@ def admin_building_lodgings(building_id):
     return jsonify({"ok": True, "items": [dict(r) for r in rows]})
 
 
-@app.route("/api/admin/buildings/<int:mbid>/stores")
+@app.route("/api/v1/r/8a1/<int:mbid>")
 @require_admin
 def admin_building_stores(mbid):
     """건물 입점상가 전체 목록 (building_stores 캐시 기준)."""
@@ -17131,7 +17190,7 @@ def _broker_exact_match_query(building_id):
         conn.close()
 
 
-@app.route("/api/admin/buildings/<int:mbid>/brokers")
+@app.route("/api/v1/r/4c2/<int:mbid>")
 @require_admin
 def admin_building_brokers(mbid):
     """건물 주소 정규화 키에 매칭된 중개업소 표준데이터 전체를 반환한다."""

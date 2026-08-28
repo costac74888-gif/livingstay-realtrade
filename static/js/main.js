@@ -1726,7 +1726,7 @@ async function _loadPoi(tool){
     radius: "1500",
   });
   try {
-    const response = await fetch(`/api/map/poi?${params.toString()}`, {
+    const response = await fetch(`/api/v1/m/6b4?${params.toString()}`, {
       signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
@@ -3208,7 +3208,7 @@ async function loadDataLab(key, option = "up", {
   const requestId = ++dataLabRequestSequence;
   setDataLabActive(key);
   const urls = {
-    lodging: "/api/stats/lodging-full-table",
+    lodging: "/api/v1/d/3f7",
     volume: "/api/ranking",
     change: `/api/stats/price-change-top?direction=${encodeURIComponent(option)}`,
     highest: `/api/stats/highest-price-top?order=${encodeURIComponent(option === "lowest" ? "lowest" : "highest")}`,
@@ -4316,7 +4316,7 @@ async function loadBuildingHeader(id){
   }
   const bName = b.building_name || "(건물명 미확인)";
   const lodgingNameTag = b.building_name_source === "lodging_report"
-    ? `<span title="행안부 숙박업 영업신고의 현재 영업 사업장명으로 임시 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대 사업장" : ""}</span>`
+    ? `<span title="홈앤스테이가 확인한 현재 영업 사업장명으로 임시 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대 사업장" : ""}</span>`
     : "";
   const namePendingNeedsReview = b.name_pending && b.building_name_source !== "lodging_report";
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
@@ -5154,7 +5154,7 @@ async function loadBuildingHeader(id){
 
     // 타임라인은 _renderDetailCards()가 담당 (폴링 갱신과 공유)
   } else {
-    // [2] 행정운영 표 — 행안부 영업신고 데이터(영업/정상만) 기반.
+    // [2] 행정운영 표 — 확인된 영업신고 데이터(영업/정상만) 기반.
     //     일반숙박은 건축물대장 호실수와 객실수가 비교 대상이 아니므로 절대 객실수만 표시한다.
     const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
     const roomTotal = Number(b.lodging_room_total || 0);
@@ -5166,7 +5166,7 @@ async function loadBuildingHeader(id){
     } else if (b.lodging_report_rate != null){
       rateDisplay = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (roomTotal > 0 && _adminUnits > 0){
-      // lodging_room_total(행안부 합산)로 즉석 계산 — 헤더 신고율과 동일 소스
+      // lodging_room_total(영업신고 합산)로 즉석 계산 — 헤더 신고율과 동일 소스
       rateDisplay = Number((roomTotal * 100 / _adminUnits).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (_adminUnits > 0 && lodgings.length === 0){
       rateDisplay = "0%";

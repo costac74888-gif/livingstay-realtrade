@@ -124,3 +124,24 @@ uri = "file://screenshots/lagoon-broker-match-modal.jpg"
 type = "image"
 title = "라군부동산중개법인 실제 매칭 모달"
 description = "실제 관리자 화면의 표준데이터 모달에서 주소 매칭 결과 1건, 주식회사 라군부동산중개법인과 영업중 상태가 표시된 브라우저 캡처입니다."
+
+[[outputs]]
+id = "TZFZcrvrp4aC6Ni93qR8p"
+uri = "file://screenshots/home-prod.jpg"
+type = "image"
+title = "배포 모드 홈 화면"
+description = "압축 릴리스 자산으로 실제 렌더링한 홈 화면 캡처입니다."
+
+[[outputs]]
+id = "yMdEGKt5JvbnCciN3SRoC"
+uri = "file://screenshots/main-minified.jpg"
+type = "image"
+title = "압축 JavaScript 화면"
+description = "content-addressed 릴리스 경로에서 제공된 main.min.js 캡처입니다."
+
+[[outputs]]
+id = "T1jgCc4lrgnK8wGIXT1i6"
+uri = "file://verification/network-prod.txt"
+type = "text"
+title = "배포 Network 검증 기록"
+description = "새 API 성공, 기존 API·원본 JS·raw HTML 404, 릴리스 자산 경로와 크기를 기록했습니다."

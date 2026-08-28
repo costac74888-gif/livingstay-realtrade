@@ -57,7 +57,7 @@ const requiredJs = [
   "new kakao.maps.CustomOverlay",
   "new kakao.maps.Polyline",
   "new kakao.maps.CustomOverlay",
-  "/api/map/poi?",
+  "/api/v1/m/6b4?",
   "_roadviewRequestSequence",
   "sequence !== _roadviewRequestSequence",
   "POI_REFRESH_DEBOUNCE_MS",

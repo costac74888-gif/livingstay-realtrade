@@ -4,8 +4,8 @@ smoke_test.py — 홈페이지가 빈/무스타일 화면으로 뜨는 것을 �
 
 홈페이지는 이제 세 정적 파일에 의존한다:
   - /static/css/main.css  (스타일)
-  - /static/js/chat_common.js (채팅 인증·안전 공통 흐름)
-  - /static/js/main.js    (데이터 + 상호작용)
+  - /static/js/chat_common.min.js (채팅 인증·안전 공통 흐름)
+  - /static/js/main.min.js    (데이터 + 상호작용)
 하나라도 로드에 실패하면(경로 이동/정적 서빙 변경 등) 화면이 통째로 깨진다.
 이 체크는 네 경로가 각각 HTTP 200 + 기대 content-type을 돌려주는지 검증한다.
 하나라도 어긋나면 즉시 실패(exit 1)한다.
@@ -29,6 +29,7 @@ smoke_test.py — 홈페이지가 빈/무스타일 화면으로 뜨는 것을 �
 """
 
 import os
+import re
 import sys
 import subprocess
 
@@ -36,9 +37,12 @@ import subprocess
 CHECKS = [
     ("/", "text/html"),
     ("/static/css/main.css", "text/css"),
-    ("/static/js/chat_common.js", "javascript"),
-    ("/static/js/main.js", "javascript"),
 ]
+REQUIRED_ASSET_NAMES = ("chat_common", "main")
+ASSET_RE = re.compile(
+    r'src="(?P<path>/static/dist/[0-9a-f]{16}/js/'
+    r'(?P<name>chat_common|main)\.min\.js)"'
+)
 
 
 def _truthy(v):
@@ -73,8 +77,20 @@ def _ca_bundle():
 
 def run_local():
     """Flask 테스트 클라이언트로 in-process 검사."""
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    build = subprocess.run(
+        ["npm", "run", "build:frontend"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    if build.returncode != 0:
+        return [f"프론트 배포 빌드 실패: {(build.stderr or build.stdout).strip()}"]
+    os.environ["SERVE_MINIFIED_ASSETS"] = "1"
     # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    sys.path.insert(0, root)
     from app import app  # noqa: E402
 
     print("모드: 로컬 (Flask 테스트 클라이언트)")
@@ -97,6 +113,19 @@ def run_local():
             continue
 
         print(f"OK  {path}  ({resp.status_code}, {content_type})")
+
+    home_html = client.get("/").get_data(as_text=True)
+    assets = {match.group("name"): match.group("path") for match in ASSET_RE.finditer(home_html)}
+    for name in REQUIRED_ASSET_NAMES:
+        path = assets.get(name)
+        if not path:
+            failures.append(f"홈페이지에 {name}.min.js 릴리스 경로 없음")
+            continue
+        resp = client.get(path)
+        if resp.status_code != 200 or "javascript" not in resp.headers.get("Content-Type", ""):
+            failures.append(f"{path}: 압축 JS 로드 실패 ({resp.status_code})")
+        else:
+            print(f"OK  {path}  ({resp.status_code}, 압축 JS)")
 
     modal_test = os.path.join(os.path.dirname(__file__), "auth_reset_modal_test.js")
     try:
@@ -166,6 +195,27 @@ def run_live(base_url):
 
         print(f"OK  {path}  ({resp.status_code}, {content_type})")
 
+    try:
+        home_html = requests.get(base_url + "/", timeout=15, verify=verify).text
+    except requests.RequestException as e:
+        failures.append(f"릴리스 JS 경로 확인 실패 ({e})")
+        return failures
+    assets = {match.group("name"): match.group("path") for match in ASSET_RE.finditer(home_html)}
+    for name in REQUIRED_ASSET_NAMES:
+        path = assets.get(name)
+        if not path:
+            failures.append(f"홈페이지에 {name}.min.js 릴리스 경로 없음")
+            continue
+        try:
+            resp = requests.get(base_url + path, timeout=15, verify=verify)
+        except requests.RequestException as e:
+            failures.append(f"{path}: 요청 실패 ({e})")
+            continue
+        if resp.status_code != 200 or "javascript" not in resp.headers.get("Content-Type", ""):
+            failures.append(f"{path}: 압축 JS 로드 실패 ({resp.status_code})")
+        else:
+            print(f"OK  {path}  ({resp.status_code}, 압축 JS)")
+
     return failures
 
 
@@ -182,7 +232,7 @@ def run():
             print(f"  - {f}", file=sys.stderr)
         return 1
 
-    print("\n모든 스모크 체크 통과 (/, main.css, chat_common.js, main.js)")
+    print("\n모든 스모크 체크 통과 (/, main.css, 현재 릴리스 압축 JS)")
     return 0
 
 

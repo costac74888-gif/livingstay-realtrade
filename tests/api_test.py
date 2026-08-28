@@ -170,15 +170,15 @@ def _check_map_poi_api(client):
     """지도 주변정보 프록시의 입력 검증·키 은닉·응답 형태를 네트워크 없이 확인한다."""
     failures = []
     app_module._MAP_POI_CACHE.clear()
-    invalid_type = client.get("/api/map/poi?type=unknown&lat=37.5&lng=127.0")
+    invalid_type = client.get("/api/v1/m/6b4?type=unknown&lat=37.5&lng=127.0")
     if invalid_type.status_code != 400:
         failures.append("지도 POI API가 잘못된 type을 거절하지 않음")
-    invalid_coords = client.get("/api/map/poi?type=education&lat=oops&lng=127.0")
+    invalid_coords = client.get("/api/v1/m/6b4?type=education&lat=oops&lng=127.0")
     if invalid_coords.status_code != 400:
         failures.append("지도 POI API가 잘못된 좌표를 거절하지 않음")
 
     with patch.dict(os.environ, {"KAKAO_REST_API_KEY": ""}, clear=False):
-        missing_key = client.get("/api/map/poi?type=education&lat=37.5&lng=127.0")
+        missing_key = client.get("/api/v1/m/6b4?type=education&lat=37.5&lng=127.0")
     if missing_key.status_code != 503 or (missing_key.get_json() or {}).get("ok") is not False:
         failures.append("지도 POI API가 REST 키 누락을 명시적으로 처리하지 않음")
 
@@ -214,7 +214,7 @@ def _check_map_poi_api(client):
         patch.dict(os.environ, {"KAKAO_REST_API_KEY": "test-kakao-key"}, clear=False),
         patch.object(app_module.requests, "get", side_effect=fake_get),
     ):
-        success = client.get("/api/map/poi?type=education&lat=37.5&lng=127.0&radius=1500")
+        success = client.get("/api/v1/m/6b4?type=education&lat=37.5&lng=127.0&radius=1500")
     payload = success.get_json() or {}
     if success.status_code != 200 or payload.get("ok") is not True:
         failures.append("지도 POI API가 정상 카카오 응답을 반환하지 않음")
@@ -237,7 +237,7 @@ def _check_map_poi_api(client):
         "get",
         side_effect=AssertionError("캐시된 지도 POI 요청이 외부 호출을 다시 시도함"),
     ):
-        cached = client.get("/api/map/poi?type=education&lat=37.5&lng=127.0&radius=1500")
+        cached = client.get("/api/v1/m/6b4?type=education&lat=37.5&lng=127.0&radius=1500")
     if cached.status_code != 200 or (cached.get_json() or {}).get("items") != payload.get("items"):
         failures.append("지도 POI API가 짧은 TTL 캐시를 재사용하지 않음")
 
@@ -249,7 +249,7 @@ def _check_map_poi_api(client):
             side_effect=app_module.requests.RequestException("fixture"),
         ),
     ):
-        upstream_error = client.get("/api/map/poi?type=convenience&lat=37.5&lng=127.0")
+        upstream_error = client.get("/api/v1/m/6b4?type=convenience&lat=37.5&lng=127.0")
     if upstream_error.status_code != 502:
         failures.append("지도 POI API가 카카오 Local 장애를 502로 처리하지 않음")
 
@@ -264,7 +264,7 @@ def _check_map_poi_api(client):
         patch.dict(os.environ, {"KAKAO_REST_API_KEY": "test-kakao-key"}, clear=False),
         patch.object(app_module.requests, "get", side_effect=slow_get),
     ):
-        timed_out = client.get("/api/map/poi?type=convenience&lat=37.6&lng=127.1")
+        timed_out = client.get("/api/v1/m/6b4?type=convenience&lat=37.6&lng=127.1")
     elapsed = time.monotonic() - started
     if timed_out.status_code != 502 or elapsed > 2.8:
         failures.append("지도 POI API가 지연된 카카오 응답을 전체 제한 시간 안에 중단하지 않음")
@@ -476,7 +476,7 @@ def check_platform_summary(payload):
 
 
 def check_datalab_lodging_table(payload):
-    """/api/stats/lodging-full-table: 공개 데이터랩 ①의 최소 컬럼."""
+    """공개 데이터랩 ①의 최소 컬럼."""
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return "응답이 성공 객체가 아님"
     rows = payload.get("rows")
@@ -694,7 +694,7 @@ CHECKS = [
     ("/api/transactions?with_total=1&building_id=999999999", check_transactions),
     ("/api/buildings-geo", check_buildings_geo),
     ("/api/stats/platform-summary", check_platform_summary),
-    ("/api/stats/lodging-full-table", check_datalab_lodging_table),
+    ("/api/v1/d/3f7", check_datalab_lodging_table),
     ("/api/stats/price-change-top?direction=up", check_datalab_items),
     ("/api/stats/price-change-top?direction=down", check_datalab_items),
     ("/api/stats/highest-price-top?order=highest", check_datalab_items),
@@ -759,7 +759,7 @@ def run():
     if poi_errors:
         failures += poi_errors
     else:
-        print("OK  /api/map/poi (입력 검증·카카오 Local 응답·오류 처리)")
+        print("OK  지도 편의정보 API (입력 검증·외부 응답·오류 처리)")
 
     # 단지 2명·동 10명 정원, 동 단위 지역뱃지, 관리자 탭을 실제 등록으로 확인
     failures += _check_partner_badge_policy(client)
@@ -1956,7 +1956,7 @@ def _check_admin_building_broker_details(client):
     try:
         with client.session_transaction() as sess:
             sess.clear()
-        blocked = client.get("/api/admin/buildings/999999999/brokers")
+        blocked = client.get("/api/v1/r/4c2/999999999")
         if blocked.status_code != 401:
             failures.append("건물 브로커 상세 API가 비관리자 요청을 차단하지 않음")
 
@@ -2020,7 +2020,7 @@ def _check_admin_building_broker_details(client):
         with client.session_transaction() as sess:
             sess["admin"] = True
 
-        detail = client.get(f"/api/admin/buildings/{matched_building_id}/brokers")
+        detail = client.get(f"/api/v1/r/4c2/{matched_building_id}")
         payload = detail.get_json() or {}
         expected_fields = {
             "office_name", "reg_number", "owner_name", "phone", "road_address", "jibun_address",
@@ -2035,10 +2035,10 @@ def _check_admin_building_broker_details(client):
         elif not any(item.get("office_name", "").startswith("<script>") for item in payload["items"]):
             failures.append("건물 브로커 상세 API가 원본 사무소명 데이터를 반환하지 않음")
 
-        fallback_detail = client.get(f"/api/admin/buildings/{fallback_building_id}/brokers")
+        fallback_detail = client.get(f"/api/v1/r/4c2/{fallback_building_id}")
         if fallback_detail.status_code != 200 or (fallback_detail.get_json() or {}).get("count") != 0:
             failures.append("브로커 표준데이터 없는 건물이 빈 상세 목록을 반환하지 않음")
-        missing = client.get("/api/admin/buildings/999999999/brokers")
+        missing = client.get("/api/v1/r/4c2/999999999")
         if missing.status_code != 404:
             failures.append("건물 브로커 상세 API가 없는 건물을 404로 처리하지 않음")
 
@@ -2099,8 +2099,8 @@ def _check_admin_building_broker_details(client):
             markup = fh.read()
         required_markup = (
             "safeBrokerHomepage", "parsed.protocol !== \"https:\" && parsed.protocol !== \"http:\"",
-            "renderBrokerRegistryCards", "brokerStatusBadge", "전국공인중개사사무소 표준데이터",
-            "상권정보 참고", "bld-realty-modal-card", "bld-broker-card", "dgEscape(value || \"-\")",
+            "renderBrokerRegistryCards", "brokerStatusBadge", "홈앤스테이 중개업소 데이터",
+            "입점업소 참고", "bld-realty-modal-card", "bld-broker-card", "dgEscape(value || \"-\")",
         )
         if any(text not in markup for text in required_markup):
             failures.append("관리자 브로커 상세 모달의 안전한 URL/문자열 렌더링 또는 상세표 마크업이 누락됨")
@@ -2222,7 +2222,7 @@ def _check_broker_sync_normalization_and_status(client):
         if not lagoon:
             failures.append("라군 센트럴 스테이 실매칭 검증용 건물을 찾지 못함")
         else:
-            response = client.get(f"/api/admin/buildings/{lagoon['id']}/brokers")
+            response = client.get(f"/api/v1/r/4c2/{lagoon['id']}")
             items = (response.get_json() or {}).get("items") or []
             matched = next((item for item in items if "라군부동산중개법인" in (item.get("office_name") or "")), None)
             if response.status_code != 200 or not matched:
@@ -5420,7 +5420,7 @@ def _check_datalab_stats(client):
         ):
             failures.append("데이터랩 영업신고현황: 전국 합계 신고율 계산이 잘못됨")
 
-        public_stats = client.get("/api/stats/lodging-full-table").get_json() or {}
+        public_stats = client.get("/api/v1/d/3f7").get_json() or {}
 
         clusters = client.get("/api/buildings-cluster?level=sido").get_json() or {}
         for item in clusters.get("items") or []:

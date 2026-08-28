@@ -1,0 +1,57 @@
+release=e8e47e247255ecf5
+=== HOME HEADERS ===
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Fri, 28 Aug 2026 00:59:21 GMT
+Connection: close
+Content-Type: text/html; charset=utf-8
+Content-Length: 26599
+Cache-Control: no-cache, no-store, must-revalidate
+Vary: Accept-Encoding
+
+=== MINIFIED JS HEADERS ===
+HTTP/1.1 200 OK
+Server: gunicorn
+Date: Fri, 28 Aug 2026 00:59:21 GMT
+Connection: close
+Content-Disposition: inline; filename=main.min.js
+Content-Type: text/javascript; charset=utf-8
+Content-Length: 213377
+Last-Modified: Fri, 28 Aug 2026 00:56:53 GMT
+Cache-Control: no-cache
+ETag: "1787878613.394462-213377-597890868"
+Accept-Ranges: bytes
+Vary: Accept-Encoding
+
+=== ORIGINAL SOURCE STATUSES ===
+404 http://127.0.0.1:8008/static/js/main.js
+404 http://127.0.0.1:8008/static/admin.html
+404 http://127.0.0.1:8008/static/dist/e8e47e247255ecf5/html/index.html
+=== REMOVED API STATUSES ===
+404 http://127.0.0.1:8008/api/map/poi
+404 http://127.0.0.1:8008/api/stats/lodging-full-table
+404 http://127.0.0.1:8008/api/admin/buildings/999999999/brokers
+404 http://127.0.0.1:8008/api/admin/buildings/999999999/stores
+=== NEW API STATUSES ===
+200 http://127.0.0.1:8008/api/v1/d/3f7
+200 http://127.0.0.1:8008/api/v1/m/6b4?type=education&lat=37.5&lng=127.0
+=== HOME RELEASE SCRIPT REFERENCES ===
+/static/dist/e8e47e247255ecf5/js/auth.min.js
+/static/dist/e8e47e247255ecf5/js/chat_common.min.js
+/static/dist/e8e47e247255ecf5/js/format_util.min.js
+/static/dist/e8e47e247255ecf5/js/header.min.js
+/static/dist/e8e47e247255ecf5/js/icons.min.js
+/static/dist/e8e47e247255ecf5/js/inline-index-1.min.js
+/static/dist/e8e47e247255ecf5/js/inline-index-2.min.js
+/static/dist/e8e47e247255ecf5/js/inline-index-3.min.js
+/static/dist/e8e47e247255ecf5/js/inline-index-4.min.js
+/static/dist/e8e47e247255ecf5/js/listing_checklist.min.js
+/static/dist/e8e47e247255ecf5/js/listing_icons.min.js
+/static/dist/e8e47e247255ecf5/js/listing_modal.min.js
+/static/dist/e8e47e247255ecf5/js/main.min.js
+=== SOURCE/MINIFIED SIZE ===
+299162 static/js/main.js
+213377 /tmp/prod-main-final.js
+512539 total
+=== SOURCE MAP MARKERS ===
+0

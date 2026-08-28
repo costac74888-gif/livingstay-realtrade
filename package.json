@@ -1,0 +1,14 @@
+{
+  "name": "home-and-stay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "홈앤스테이 프론트엔드 배포 자산 빌드",
+  "scripts": {
+    "build:frontend": "python scripts/build_frontend.py",
+    "build:js": "python scripts/build_frontend.py",
+    "test:frontend": "python tests/frontend_distribution_test.py"
+  },
+  "dependencies": {
+    "terser": "^5.51.2"
+  }
+}

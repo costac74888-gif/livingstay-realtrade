@@ -209,7 +209,7 @@ class AppMutationInvalidationTests(unittest.TestCase):
                 patch.object(app_module, "_rebuild_master_stats") as rebuild,
                 patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
             ):
-                response = self.client.get("/api/stats/lodging-full-table")
+                response = self.client.get("/api/v1/d/3f7")
 
             payload = response.get_json() or {}
             self.assertEqual(response.status_code, 200)

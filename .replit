@@ -184,7 +184,7 @@ SITE_URL = "https://homenstay.com"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--timeout=120", "--workers=2", "--preload", "--config=gunicorn.conf.py", "app:app"]
+run = ["bash", "scripts/start-prod.sh"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
@@ -193,6 +193,7 @@ timeoutMs = 120000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
 
 
 [[workflows.workflow]]

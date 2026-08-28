@@ -53,3 +53,4 @@
 - [급매 등급·알림 규칙](urgent-listing-rules.md) — 급매 판정·구독 알림은 공개 건물전체 ‘매매’ 직거래에만 적용하고, 공개 전환도 신규 알림 계기로 본다.
 - [관리자 입점부동산 기준](admin-broker-realty-source.md) — 관리자 입점부동산은 브로커 표준데이터를 우선하고, 없을 때만 상권정보 캐시를 보조로 쓴다.
 - [도로명 괄호 지역 보정](road-address-parenthetical-locality.md) — 도로명 매칭 키에는 괄호의 일반 동을 넣지 않고, 본문에서 생략될 수 있는 읍·면만 복원한다.
+- [프론트 배포 릴리스](frontend-release-builds.md) — 배포 HTML·JS는 content-addressed 디렉터리로 원자 교체하고, 검증된 마커가 있을 때만 원본 접근을 차단한다.

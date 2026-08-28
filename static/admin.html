@@ -54,7 +54,7 @@
     border-bottom: 1px solid #B4863F; cursor: pointer;
   }
   .member-name-link:hover { color: #8F6A2F; }
-   /* 건물마스터 입점부동산: 브로커 표준데이터를 세로 카드로 확인하는 관리자 전용 UI */
+   /* 건물마스터 입점부동산을 세로 카드로 확인하는 관리자 전용 UI */
    .bld-realty-modal-card {
       width: min(760px, 95vw); max-width: 95vw;
      max-height: 84vh; overflow: auto; background: #fff; border-radius: 12px;
@@ -377,7 +377,7 @@
       overlay.innerHTML =
         `<div class="bld-realty-modal-card" role="dialog" aria-modal="true" aria-labelledby="realtyModalTitle">` +
         `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">` +
-        `<b id="realtyModalTitle" style="font-size:15px;">전국공인중개사사무소 표준데이터</b>` +
+        `<b id="realtyModalTitle" style="font-size:15px;">홈앤스테이 중개업소 데이터</b>` +
         `<button type="button" class="bld-realty-close" aria-label="닫기" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
         `</div><div id="realtyModalBody" style="min-height:40px;">로딩 중…</div></div>`;
       document.body.appendChild(overlay);
@@ -385,8 +385,8 @@
       overlay.querySelector(".bld-realty-close").addEventListener("click", () => overlay.remove());
       try {
         const [brokerResponse, storeResponse] = await Promise.all([
-          fetch(`/api/admin/buildings/${buildingId}/brokers`),
-          fetch(`/api/admin/buildings/${buildingId}/stores`),
+          fetch(`/api/v1/r/4c2/${buildingId}`),
+          fetch(`/api/v1/r/8a1/${buildingId}`),
         ]);
         const brokerData = await brokerResponse.json().catch(() => ({}));
         const storeData = await storeResponse.json().catch(() => ({}));
@@ -400,18 +400,18 @@
         if (brokers.length) {
           body.innerHTML =
             `<section class="bld-realty-section"><h3 class="bld-realty-section-title">주소 매칭 결과 (${brokers.length}건)</h3>` +
-            `<p class="bld-realty-section-note">건물 주소와 도로명 우선·지번 보조로 매칭된 공인중개사사무소 표준데이터입니다.</p>` +
+            `<p class="bld-realty-section-note">홈앤스테이가 건물 주소를 기준으로 확인한 중개업소 정보입니다.</p>` +
             `${renderBrokerRegistryCards(brokers)}</section>`;
           return;
         }
         const fallback = cachedRealty.length
-          ? `<section class="bld-realty-section"><h3 class="bld-realty-section-title">상권정보 참고 (${cachedRealty.length}건)</h3>` +
-            `<p class="bld-realty-section-note">브로커 표준데이터 매칭이 없어, 건물 상세 방문 때 수집된 상권정보 캐시를 참고용으로 표시합니다.</p>` +
+          ? `<section class="bld-realty-section"><h3 class="bld-realty-section-title">입점업소 참고 (${cachedRealty.length}건)</h3>` +
+            `<p class="bld-realty-section-note">주소 일치 결과가 없어 홈앤스테이가 확인한 입점업소 정보를 참고용으로 표시합니다.</p>` +
             `${renderCachedRealtyTable(cachedRealty)}</section>`
-          : `<p class="bld-realty-section-note">브로커 표준데이터와 상권정보 캐시에 매칭된 부동산 업소가 없습니다.</p>`;
+          : `<p class="bld-realty-section-note">확인된 부동산 업소가 없습니다.</p>`;
         body.innerHTML =
-          `<section class="bld-realty-section"><h3 class="bld-realty-section-title">브로커 표준데이터 (0건)</h3>` +
-          `<p class="bld-realty-section-note">주소 기준으로 매칭된 공인중개사사무소 표준데이터가 없습니다.</p></section>` +
+          `<section class="bld-realty-section"><h3 class="bld-realty-section-title">주소 일치 결과 (0건)</h3>` +
+          `<p class="bld-realty-section-note">주소 기준으로 확인된 중개업소가 없습니다.</p></section>` +
           fallback;
       } catch(e) {
         const body = document.getElementById("realtyModalBody");
@@ -434,7 +434,7 @@
       document.body.appendChild(overlay);
       overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
       try {
-        const r = await fetch(`/api/admin/buildings/${buildingId}/stores`);
+        const r = await fetch(`/api/v1/r/8a1/${buildingId}`);
         const d = await r.json();
         const items = d.items || [];
         if (!items.length) {
@@ -508,7 +508,7 @@
               const link = `<a href="/building/${row.id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(v || "")}</a>`;
                const pending = row && row.name_pending && row.building_name_source !== "lodging_report" ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : "";
                const auto = row && row.building_name_source === "lodging_report"
-                 ? ` <span class="dg-badge dg-badge-ok" title="행안부 영업신고의 영업/정상 사업장명으로 자동 표시">${Number(row.building_name_candidate_count || 0) > 1 ? "영업신고 기준 · 규모 최대" : "영업신고 기준"}</span>`
+                 ? ` <span class="dg-badge dg-badge-ok" title="홈앤스테이가 확인한 현재 영업 사업장명으로 자동 표시">${Number(row.building_name_candidate_count || 0) > 1 ? "영업신고 기준 · 규모 최대" : "영업신고 기준"}</span>`
                  : "";
                return `${link}${pending}${auto}`;
             } },
@@ -534,15 +534,15 @@
             render: (v, row) => v > 0
               ? `<span class="dg-badge dg-badge-ok" title="${row.premium_expires_at ? '만료 ' + dgEscape(row.premium_expires_at) : '무기한'}">${v > 1 ? v + "명 보유" : "보유"}</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          // 입점부동산: 브로커 표준데이터 수 우선, 없을 때만 상권정보 캐시 수를 표시.
+          // 입점부동산: 주소 일치 데이터 우선, 없을 때만 입점업소 참고 수를 표시.
           { key: "store_realty_count", label: "입점부동산", sortable: false,
             render: (v, row) => {
               if (!(v > 0)) return `<span style="color:var(--ink-soft);">-</span>`;
               const isBrokerRegistry = Number(row.broker_realty_count || 0) > 0;
-              const sourceLabel = isBrokerRegistry ? "" : ` <small style="font-size:10px;">상권정보 기준</small>`;
+              const sourceLabel = isBrokerRegistry ? "" : ` <small style="font-size:10px;">입점업소 참고</small>`;
               const title = isBrokerRegistry
-                ? "브로커 표준데이터 주소 매칭 수"
-                : "브로커 표준데이터 매칭 없음 · 상권정보 캐시 기준";
+                ? "홈앤스테이 주소 일치 중개업소 수"
+                : "주소 일치 없음 · 입점업소 참고 기준";
               return `<button class="bld-realty-modal-btn" data-id="${row.id}" title="${title}" ` +
                 `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
                 `🏠 ${v}개${sourceLabel}</button>`;
@@ -2055,7 +2055,7 @@
       selectLegalTab("terms");
     }
 
-    // ---- 지도 좌표 채우기 (카카오맵 API 실시간, 백그라운드 러너) ----
+    // ---- 지도 좌표 채우기 (지도 주소검색 실시간, 백그라운드 러너) ----
     // lat/lng가 NULL인 건물만 대상 — 기존 좌표는 재작업하지 않는다.
     let geoTimer = null;
     function stopGeoPolling() {
@@ -2134,7 +2134,7 @@
       }
     }
 
-    // ---- 중개업소 좌표 채우기 (geocode_brokers.py, 카카오맵 API) ----
+    // ---- 중개업소 좌표 채우기 (geocode_brokers.py, 지도 주소검색) ----
     let brokerGeoTimer = null;
     function stopBrokerGeoPolling() {
       if (brokerGeoTimer) { clearInterval(brokerGeoTimer); brokerGeoTimer = null; }
@@ -2212,7 +2212,7 @@
       }
     }
 
-    // ---- 건축정보(표제부) 채우기 (건축HUB API 실시간, 백그라운드 러너) ----
+    // ---- 건축정보(표제부) 채우기 (건축정보 조회, 백그라운드 러너) ----
     // 미백필(title_backfilled_at NULL) 건물만 대상.
     let titleInfoTimer = null;
     function stopTitleInfoPolling() {
@@ -2354,7 +2354,7 @@
       }
     }
 
-    // ---- 건물수집(전국) — 건축HUB 표제부 전수 스캔 (sync_brhub.py) ----
+    // ---- 건물수집(전국) — 건축정보 전수 스캔 (sync_brhub.py) ----
     let brhubSyncTimer = null;
     function stopBrhubSyncPolling() {
       if (brhubSyncTimer) { clearInterval(brhubSyncTimer); brhubSyncTimer = null; }
@@ -3132,7 +3132,7 @@
             <h2 class="legal-admin-title">① 건물수집 (전국)</h2>
           </div>
           <p class="legal-admin-hint">
-            국토교통부 <b>건축HUB 건축물대장(표제부)</b>을 전국 법정동 20,276곳 기준으로 전수 스캔해
+            홈앤스테이 <b>전국 건축정보 데이터</b>를 법정동 20,276곳 기준으로 전수 확인해
             생활숙박시설·분양형호텔·콘도 건물을 새로 발견합니다. 일일 한도(캡 8,000호출)에 도달하면
             체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다. (실행 제한: 시간당 2회)
           </p>
@@ -3170,7 +3170,7 @@
             <h2 class="legal-admin-title">③ 건축정보 채우기</h2>
           </div>
           <p class="legal-admin-hint">
-            국토교통부 <b>건축HUB 표제부 API</b>로 건축정보(사용승인일·층수·면적 등)가 아직 없는
+            홈앤스테이 <b>건축정보 확인 시스템</b>으로 사용승인일·층수·면적 등이 아직 없는
             건물만 실시간 조회해 채웁니다. 이미 채워진 건물은 건드리지 않으므로 여러 번 눌러도
             안전합니다. 백그라운드로 실행되며 완료 후 건물 상세 화면에 즉시 반영됩니다.
           </p>
@@ -3195,7 +3195,7 @@
             <h2 class="legal-admin-title">④ 실거래 동기화</h2>
           </div>
           <p class="legal-admin-hint">
-            국토교통부 실거래가를 이 앱이 연결된 DB(<b>배포된 사이트에서 누르면 운영 DB</b>)에
+            홈앤스테이 실거래 데이터를 이 앱이 연결된 DB(<b>배포된 사이트에서 누르면 운영 DB</b>)에
             바로 수집합니다. 백그라운드로 실행되며 수 분~수십 분 걸릴 수 있습니다.
             이미 있는 거래는 건너뛰므로 여러 번 눌러도 데이터가 중복되지 않습니다.
             (실행 제한: 시간당 2회 — 국토부 API 사용량 보호)
@@ -3235,7 +3235,7 @@
             <h2 class="legal-admin-title">⑥ 인근 중개업소 후보 동기화</h2>
           </div>
           <p class="legal-admin-hint">
-            공공데이터포털 <b>전국공인중개사사무소표준데이터</b>를 수집합니다.
+            홈앤스테이 <b>전국 중개업소 데이터</b>를 갱신합니다.
             일일 API 한도가 <b>1,000건</b>으로 매우 적어, 한 번에 최대(1,000행/호출)로 받아오고
             한도에 도달하면 체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
             후보 검색·엑셀 다운로드는 <b>인근 중개업소 후보</b> 메뉴에서 이용하세요.
@@ -3251,7 +3251,7 @@
             <h2 class="legal-admin-title">⑦ 중개업소 좌표 채우기</h2>
           </div>
           <p class="legal-admin-hint">
-            수집된 중개업소의 도로명주소를 카카오맵 API로 조회해 위경도(lat/lng)를 채웁니다.
+            수집된 중개업소의 도로명주소를 지도 주소검색으로 확인해 위경도(lat/lng)를 채웁니다.
             좌표가 있어야 건물 상세 화면의 <b>인근 중개업소 후보</b> 검색이 정상 작동합니다.
             (실행 제한: 시간당 6회 / 도로명주소가 없는 행은 자동 제외)
           </p>
@@ -3408,7 +3408,7 @@
       loadLodgingSyncStatus();
     }
 
-    // ---- 인근 중개업소 후보 (공공데이터 '전국공인중개사사무소표준데이터') ----
+    // ---- 인근 중개업소 후보 (홈앤스테이 전국 중개업소 데이터) ----
     // 후보 리스트를 '생성'만 한다 — 자동 이메일·SMS 발송 없음(사람이 검토 후 수동 진행).
     let brokerSyncTimer = null;
     let brokerSelectedBuilding = null;
