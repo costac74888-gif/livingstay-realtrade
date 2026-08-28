@@ -127,6 +127,14 @@ def run_local():
         else:
             print(f"OK  {path}  ({resp.status_code}, 압축 JS)")
 
+    listings_html = client.get("/listings").get_data(as_text=True)
+    if "{{KAKAO_JS_KEY}}" in listings_html or "{{KAKAO_SDK_V}}" in listings_html:
+        failures.append("/listings: 카카오 지도 SDK 설정값이 치환되지 않음")
+    elif "dapi.kakao.com/v2/maps/sdk.js" not in listings_html:
+        failures.append("/listings: 카카오 지도 SDK 경로 없음")
+    else:
+        print("OK  /listings 카카오 지도 SDK 설정값 치환")
+
     modal_test = os.path.join(os.path.dirname(__file__), "auth_reset_modal_test.js")
     try:
         result = subprocess.run(

@@ -428,7 +428,7 @@
       if (!help) return;
       help.textContent = $("#lrDisclosureScope").value === "public"
         ? "전체공개: 건물명·매물 조건·공개로 선택한 사진이 목록과 건물 상세에 표시됩니다."
-        : "제한공개: 지역과 조건만 공개됩니다. 건물명·상세지번·사진은 공개 목록에 표시되지 않으며, 언제든 마이페이지에서 전체공개로 변경할 수 있습니다.";
+        : "제한공개: 지역·조건과 직접 작성한 매물 설명이 공개됩니다. 건물명·상세지번·사진은 공개 목록에 표시되지 않으며, 언제든 마이페이지에서 전체공개로 변경할 수 있습니다.";
     }
     function updateDealType() {
       var isBusiness = $("#lrRegistrantType").value === "business";
@@ -1162,6 +1162,91 @@
     });
   };
 
+  function openApproximateLocationMap(lat, lng, returnFocus) {
+    var old = document.getElementById("ls-listing-location-map");
+    if (old) {
+      var oldClose = old.querySelector("[data-approx-map-close]");
+      if (oldClose) oldClose.click();
+      else old.remove();
+    }
+
+    var mapOverlay = document.createElement("div");
+    mapOverlay.id = "ls-listing-location-map";
+    mapOverlay.style.cssText = "position:fixed;inset:0;z-index:4700;background:rgba(22,32,46,.58);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
+    mapOverlay.innerHTML =
+      '<div role="dialog" aria-modal="true" aria-labelledby="lsApproxMapTitle" tabindex="-1" style="width:min(100%,620px);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.3);">' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:15px 16px;border-bottom:1px solid var(--line,#e2ddd8);">' +
+          '<div><div id="lsApproxMapTitle" style="font-size:17px;font-weight:800;color:var(--ink,#16202e);">대략적인 위치</div>' +
+          '<div style="margin-top:4px;color:var(--ink-soft,#6b7684);font-size:12px;line-height:1.5;">파란 원은 중심 기준 반경 500m이며 정확한 건물 위치가 아닙니다.</div></div>' +
+          '<button type="button" data-approx-map-close aria-label="지도 닫기" style="flex:0 0 auto;width:34px;height:34px;border:0;border-radius:50%;background:#6B7280;color:#fff;font-size:22px;line-height:1;cursor:pointer;">×</button>' +
+        '</div>' +
+        '<div data-approx-map-canvas style="height:min(62vh,480px);min-height:320px;background:#eef3f8;"></div>' +
+        '<div style="padding:10px 16px;color:#275B88;background:#F3F8FD;font-size:11.5px;font-weight:700;text-align:center;">정확한 주소와 위치 핀은 제한공개 정책에 따라 표시하지 않습니다.</div>' +
+      '</div>';
+    document.body.appendChild(mapOverlay);
+
+    var dialog = mapOverlay.querySelector('[role="dialog"]');
+    var close = function () {
+      document.removeEventListener("keydown", onKeydown);
+      mapOverlay.remove();
+      if (returnFocus && typeof returnFocus.focus === "function") returnFocus.focus();
+    };
+    var onKeydown = function (event) {
+      if (event.key === "Escape") close();
+      if (event.key === "Tab") {
+        var focusables = Array.from(
+          dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+        );
+        if (!focusables.length) {
+          event.preventDefault();
+          dialog.focus();
+          return;
+        }
+        var first = focusables[0];
+        var last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeydown);
+    mapOverlay.addEventListener("click", function (event) {
+      if (event.target === mapOverlay) close();
+    });
+    mapOverlay.querySelector("[data-approx-map-close]").addEventListener("click", close);
+
+    var canvas = mapOverlay.querySelector("[data-approx-map-canvas]");
+    var renderMap = function () {
+      if (!mapOverlay.isConnected) return;
+      try {
+        var center = new kakao.maps.LatLng(lat, lng);
+        var map = new kakao.maps.Map(canvas, {center:center, level:4});
+        new kakao.maps.Circle({
+          center:center,
+          radius:500,
+          strokeWeight:3,
+          strokeColor:"#378ADD",
+          strokeOpacity:0.95,
+          strokeStyle:"solid",
+          fillColor:"#378ADD",
+          fillOpacity:0.18
+        }).setMap(map);
+      } catch (error) {
+        canvas.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:#6b7684;font-size:13px;">지도를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+      }
+    };
+    if (window.kakao && kakao.maps && typeof kakao.maps.load === "function") {
+      kakao.maps.load(renderMap);
+    } else {
+      canvas.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:#6b7684;font-size:13px;">지도를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+    }
+    requestAnimationFrame(function () { dialog.focus(); });
+  }
+
   // 직거래 목록과 건물 상세 화면에서 공용으로 사용하는 읽기 전용 매물 상세 팝업.
   // 등록/수정 모달(openListingRequestModal)과 분리해, 어느 화면에서도 같은 상세
   // 정보·사진·액션을 제공한다.
@@ -1218,11 +1303,21 @@
       ? (listing.approx_location_label || "대략적인 위치")
       : "정확한 위치";
     var mapLocationAction = hasMapLocation
-      ? '<div style="margin:10px 0 0;"><button type="button" data-listing-detail-map style="border:1px solid var(--brass,#B4863F);border-radius:7px;background:#fffaf2;color:var(--brass-dark,#7D4A00);padding:7px 9px;font:700 12px inherit;cursor:pointer;">📍 지도에서 ' + esc(mapLocationLabel) + ' 보기</button>' +
-        (isLimitedLocation ? '<div style="margin-top:5px;color:var(--ink-soft);font-size:11px;line-height:1.45;">제한공개 매물은 정확한 건물 위치 대신 ' + esc(mapLocationLabel) + '만 표시합니다.</div>' : "") +
+      ? '<div style="margin:10px 0 0;"><button type="button" data-listing-detail-map style="border:1px solid ' + (isLimitedLocation ? "#378ADD" : "var(--brass,#B4863F)") + ';border-radius:7px;background:' + (isLimitedLocation ? "#F3F8FD" : "#fffaf2") + ';color:' + (isLimitedLocation ? "#275B88" : "var(--brass-dark,#7D4A00)") + ';padding:7px 9px;font:700 12px inherit;cursor:pointer;">' + (isLimitedLocation ? "◎ 반경 500m 위치 보기" : "📍 지도에서 " + esc(mapLocationLabel) + " 보기") + '</button>' +
+        (isLimitedLocation ? '<div style="margin-top:5px;color:var(--ink-soft);font-size:11px;line-height:1.45;">제한공개 매물은 정확한 핀 대신 대략적인 중심의 반경 500m 파란 원만 표시합니다.</div>' : "") +
         '</div>'
       : "";
     var description = listing.description ? esc(listing.description) : "";
+    var rawDescription = String(listing.description || "").trim();
+    var descriptionIsLong = rawDescription.length > 180 || rawDescription.split(/\r?\n/).length > 5;
+    var descriptionMarkup = description
+      ? '<div style="margin:12px 0;padding:11px 12px;border:1px solid #D7E4F2;border-radius:8px;background:#F7FAFD;color:#34475A;font-size:13px;line-height:1.65;">' +
+          '<div style="margin-bottom:5px;color:#275B88;font-size:11px;font-weight:800;">매물 설명</div>' +
+          '<div data-listing-description-text style="white-space:pre-wrap;overflow-wrap:anywhere;' +
+            (descriptionIsLong ? 'display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;' : '') + '">' + description + '</div>' +
+          (descriptionIsLong ? '<button type="button" data-listing-description-toggle aria-expanded="false" style="display:block;margin:7px 0 0 auto;padding:2px 0;border:0;background:transparent;color:#275B88;font:700 11.5px inherit;cursor:pointer;">설명 전체보기</button>' : '') +
+        '</div>'
+      : "";
     var photoIndex = 0;
     var icons = window.LivingstayListingIcons;
     if (!icons) return;
@@ -1257,7 +1352,7 @@
           '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">' + esc(priceText) + '</div>' +
           (detail ? '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">' + esc(detail) + '</div>' : "") +
            mapLocationAction +
-          (description ? '<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin:12px 0;">' + description + '</div>' : "") +
+          descriptionMarkup +
           '<div style="display:flex;justify-content:flex-end;gap:7px;">' +
             '<button type="button" data-listing-detail-like class="listing-like-btn' + (listing.liked ? " is-liked" : "") + '" title="찜">' + icons.heart(!!listing.liked) + '<span class="like-cnt">' + (listing.like_count || 0) + '</span></button>' +
             '<button type="button" data-listing-detail-chat class="listing-chat-btn" title="채팅">' + icons.chat() + '</button>' +
@@ -1289,10 +1384,28 @@
     var mapButton = overlay.querySelector("[data-listing-detail-map]");
     if (mapButton) {
       mapButton.addEventListener("click", function () {
+        if (isLimitedLocation) {
+          openApproximateLocationMap(locationLat, locationLng, mapButton);
+          return;
+        }
         var label = isLimitedLocation ? "대략적인 위치" : (listing.building_name || "매물 위치");
         var mapUrl = "https://map.kakao.com/link/map/" + encodeURIComponent(label) + "," +
           encodeURIComponent(locationLat) + "," + encodeURIComponent(locationLng);
         window.open(mapUrl, "_blank", "noopener,noreferrer");
+      });
+    }
+    var descriptionToggle = overlay.querySelector("[data-listing-description-toggle]");
+    if (descriptionToggle) {
+      descriptionToggle.addEventListener("click", function () {
+        var text = overlay.querySelector("[data-listing-description-text]");
+        var expanding = descriptionToggle.getAttribute("aria-expanded") !== "true";
+        descriptionToggle.setAttribute("aria-expanded", expanding ? "true" : "false");
+        if (text) {
+          text.style.display = expanding ? "block" : "-webkit-box";
+          text.style.webkitLineClamp = expanding ? "unset" : "6";
+          text.style.overflow = expanding ? "visible" : "hidden";
+        }
+        descriptionToggle.textContent = expanding ? "설명 접기" : "설명 전체보기";
       });
     }
     overlay.querySelector("[data-listing-detail-like]").addEventListener("click", function (event) {

@@ -14,6 +14,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
+<link rel="preconnect" href="https://dapi.kakao.com">
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JS_KEY}}&autoload=false&_v={{KAKAO_SDK_V}}" defer></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="/static/js/icons.js"></script>
 <style>
@@ -205,6 +207,19 @@
   .whole-limited-notice {
     margin-top:10px; padding:10px 12px; background:#FFF8EE; border:1px solid #EAD9B8;
     border-radius:8px; text-align:center; font-size:13px; font-weight:700; color:#8F6A2F; line-height:1.6;
+  }
+  .whole-listing-description {
+    margin-top:9px; padding:11px 12px; border:1px solid #D7E4F2; border-radius:8px;
+    background:#F7FAFD; color:#34475A; font-size:12.5px; line-height:1.65;
+  }
+  .whole-listing-description-title { margin-bottom:5px; color:#275B88; font-size:11px; font-weight:800; }
+  .whole-listing-description-text { white-space:pre-wrap; overflow:hidden; overflow-wrap:anywhere; }
+  .whole-listing-description-text.is-collapsed {
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5;
+  }
+  .whole-listing-description-toggle {
+    display:block; margin:7px 0 0 auto; padding:2px 0; border:0; background:transparent;
+    color:#275B88; font:700 11.5px inherit; cursor:pointer;
   }
   .whole-viewers { color:#356212; font-size:11px; font-weight:700; }
 
@@ -962,6 +977,15 @@
     const limitedNotice = isLimitedListing
       ? '<div class="whole-limited-notice">상세한 매물 내용은 채팅 상담으로 직접 문의해 주시기 바랍니다.</div>'
       : "";
+    const description = String(item.description || "").trim();
+    const descriptionIsLong = description.length > 180 || description.split(/\r?\n/).length > 5;
+    const limitedDescription = isLimitedListing && description
+      ? `<div class="whole-listing-description">
+          <div class="whole-listing-description-title">매물 설명</div>
+          <div class="whole-listing-description-text${descriptionIsLong ? " is-collapsed" : ""}">${esc(description)}</div>
+          ${descriptionIsLong ? '<button type="button" class="whole-listing-description-toggle" aria-expanded="false">설명 전체보기</button>' : ""}
+        </div>`
+      : "";
     const checklistButton = isLimitedListing
       ? ""
       : '<button type="button" class="listing-checklist-open">숙박업소 거래 체크리스트 열어보기</button>';
@@ -980,6 +1004,7 @@
         ${wholeLocationHint(item)}
         <div class="whole-viewers">최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
         <div class="whole-caution">※ 실제 인수금은 거래금액·승계융자·권리금·부대비용 기준의 참고값입니다.</div>
+        ${limitedDescription}
         ${limitedNotice}
         ${checklistButton}
         <div class="ls-card-l4">
@@ -996,8 +1021,17 @@
 
     // 카드 전체와 사진에서 공용 상세 팝업을 연다.
     div.addEventListener("click", (e) => {
-      if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link, .ls-card-photo-right, .ls-card-photo-top")) return;
+      if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link, .ls-card-photo-right, .ls-card-photo-top, .whole-listing-description-toggle")) return;
       openListingDetail(item);
+    });
+    div.querySelector(".whole-listing-description-toggle")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const button = e.currentTarget;
+      const text = div.querySelector(".whole-listing-description-text");
+      const expanding = button.getAttribute("aria-expanded") !== "true";
+      button.setAttribute("aria-expanded", expanding ? "true" : "false");
+      text?.classList.toggle("is-collapsed", !expanding);
+      button.textContent = expanding ? "설명 접기" : "설명 전체보기";
     });
     div.querySelector("." + photoClass).addEventListener("click", (e) => {
       e.stopPropagation();

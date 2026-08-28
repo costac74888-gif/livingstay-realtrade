@@ -4813,6 +4813,11 @@ def _serve_static_html(filename):
     with open(html_path, encoding="utf-8") as fp:
         html = fp.read()
     html = html.replace("{{PUBLIC_BASE_URL}}", _html.escape(_public_base_url(), quote=True))
+    html = html.replace(
+        "{{KAKAO_JS_KEY}}",
+        quote(os.environ.get("KAKAO_JS_KEY", ""), safe=""),
+    )
+    html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
     html = _inject_asset_version(html)
     # 관리자 전용 페이지는 GA4 트래킹 제외
     if not filename.startswith("admin"):
@@ -9149,14 +9154,15 @@ def _limited_whole_listing_approx_location(cur, listing):
 def _apply_limited_whole_listing_privacy(listing, approx_location=None):
     """제한공개 건물전체 매물은 지역·카드 표시에 필요한 값만 남긴다.
 
-    로그인 회원은 월 매출과 승계융자만 볼 수 있으며, 설명·사진·건물 보조정보처럼
-    정확한 건물을 역추적할 수 있는 원문은 어떤 공개 목록 응답에도 포함하지 않는다.
+    판매자가 공개용으로 직접 작성한 설명은 카드에 제공한다. 로그인 회원은 월
+    매출과 승계융자도 볼 수 있지만, 사진·건물 보조정보처럼 정확한 건물을
+    역추적할 수 있는 값은 어떤 공개 목록 응답에도 포함하지 않는다.
     """
     location_label = " ".join(
         part for part in (listing.get("sgg_text"), listing.get("umd_nm")) if part
     ).strip() or "지역 비공개"
     for key in (
-        "building_id", "lat", "lng", "description", "photo_url", "photos",
+        "building_id", "lat", "lng", "photo_url", "photos",
         "building_info_overrides", "key_money_krw", "annual_revenue_krw",
         "remodeling_info", "verified_phone", "phone_tail",
     ):

@@ -6058,6 +6058,7 @@ def _check_whole_building_listing(client):
             sess.clear()
             sess["user_id"] = user_id
 
+        listing_description = "■ 매물 개요\n- 테스트 제한공개 매물 설명입니다."
         created = client.post("/api/listing-requests", json={
             "master_building_id": building["id"], "deal_mode": "direct",
             "registrant_type": "building_owner", "transaction_target": "whole",
@@ -6067,7 +6068,8 @@ def _check_whole_building_listing(client):
              "short_stay_ratio": 32.5, "ota_revenue_ratio": 71.2,
             "operation_status": "폐업", "closed_at": "2026-08-01",
             "remodeling_info": "객실 일부 리모델링", "is_urgent": True,
-            "disclosure_scope": "limited", "building_info_overrides": {"structure": "철근콘크리트"},
+            "disclosure_scope": "limited", "description": listing_description,
+            "building_info_overrides": {"structure": "철근콘크리트"},
         })
         body = created.get_json() or {}
         listing_id = body.get("id")
@@ -6113,8 +6115,9 @@ def _check_whole_building_listing(client):
             or limited_item.get("location_precision") != "approximate"
             or limited_item.get("approx_lat") is None
             or limited_item.get("approx_lng") is None
+            or limited_item.get("description") != listing_description
             or any(key in limited_item for key in (
-                "description", "photo_url", "photos", "building_info_overrides",
+                "photo_url", "photos", "building_info_overrides",
                 "key_money_krw", "annual_revenue_krw", "remodeling_info",
                 "phone_tail", "lat", "lng",
             ))
@@ -6144,8 +6147,9 @@ def _check_whole_building_listing(client):
         logged_limited_item = next((item for item in logged_limited_items if item.get("id") == listing_id), {})
         if (logged_limited_item.get("monthly_revenue_krw") != 3000
                 or logged_limited_item.get("succession_loan_krw") != 120000
+                or logged_limited_item.get("description") != listing_description
                 or any(key in logged_limited_item for key in (
-                    "description", "photo_url", "photos", "building_info_overrides",
+                    "photo_url", "photos", "building_info_overrides",
                     "key_money_krw", "annual_revenue_krw", "remodeling_info",
                     "phone_tail", "lat", "lng",
                 ))):

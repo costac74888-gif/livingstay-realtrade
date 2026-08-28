@@ -78,7 +78,7 @@ for (const [name, block] of [
   ["건물상세 건물전체", detailBlock.slice(detailBlock.indexOf("function _wholeListingCard"), detailBlock.indexOf("const cards = listings.map"))],
 ]) {
   expect(
-    block.includes("급매") && block.includes("최근 폐업") && block.includes("매출정보 있음") &&
+    listings.includes("급매") && block.includes("최근 폐업") && block.includes("매출정보 있음") &&
     block.includes("실인수가") && block.includes("🔒 로그인하고 보기") &&
     block.includes("최근 열람") && block.includes("부대비용 기준의 참고값"),
     `${name} 전용 카드의 거래조건·마스킹·열람자·유의문구가 누락되었습니다.`
@@ -105,8 +105,11 @@ expect(
   listings.includes(".ls-card-photo-top") &&
   wholeCardBlock.includes('const photoClass = isLimitedListing ? "ls-card-photo-top" : "ls-card-photo-right"') &&
   wholeCardBlock.includes("whole-limited-notice") &&
+  wholeCardBlock.includes("whole-listing-description") &&
+  wholeCardBlock.includes("whole-listing-description-toggle") &&
+  wholeCardBlock.includes("설명 전체보기") &&
   wholeCardBlock.includes("const checklistButton = isLimitedListing"),
-  "제한공개 카드의 상단 사진·안내문·체크리스트 조건이 없습니다."
+  "제한공개 카드의 상단 사진·설명 접기·안내문·체크리스트 조건이 없습니다."
 );
 expect(
   wholeCardBlock.includes("openListingDetail(item);") &&
@@ -137,8 +140,13 @@ expect(
   modal.includes("data-listing-detail-map") &&
   modal.includes("location_precision === \"approximate\"") &&
   modal.includes("approx_lat") &&
+  modal.includes("new kakao.maps.Circle") &&
+  modal.includes("radius:500") &&
+  modal.includes('strokeColor:"#378ADD"') &&
+  modal.includes("정확한 주소와 위치 핀은 제한공개 정책에 따라 표시하지 않습니다.") &&
+  modal.includes("data-listing-description-toggle") &&
   modal.includes("https://map.kakao.com/link/map/"),
-  "공개범위별 정확·근사 지도위치 버튼 연결이 없습니다."
+  "제한공개 500m 파란 원·설명 접기 또는 전체공개 정확 위치 연결이 없습니다."
 );
 
 expect(
