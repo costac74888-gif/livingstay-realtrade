@@ -83,14 +83,14 @@ PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
 MAX_FAVORITES = 10         # 일반회원 관심단지 한도
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 AGENT_BUILDING_BADGE_SLOT_CAP = 2  # 건물별 활성 중개사 단지뱃지 정원
-AGENT_REGION_DONG_SLOT_CAP = 2          # 읍면동당 실버뱃지 중개사 정원
+AGENT_REGION_SGG_SLOT_CAP = 10         # 시군구당 실버뱃지 중개사 정원
 OPERATOR_BUILDING_BADGE_SLOT_CAP = 2    # 운영업체: 건물당 업종별 골드뱃지 정원
 LOAN_BUILDING_BADGE_SLOT_CAP = 2        # 대출상담사: 건물당 골드뱃지 정원
 OPERATOR_REGION_CATEGORY_SLOT_CAP = 2   # 운영업체: 시군구+업종당 실버뱃지 정원
 OPERATOR_PREMIUM_BADGE_CAP = 100  # 운영업체 1인당 골드뱃지(단지뱃지) 총 보유 한도 — 100개 초과분은 별도 신청 필요
 OPERATOR_REGION_CAP = 1            # 운영업체 1인당 등록 가능 지역(시군구) 수
 OPERATOR_REGION_BUILDING_CAP = 10  # 운영업체 지역내 담당단지
-AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(읍·면·동) 수
+AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(시군구) 수
 AGENT_REGION_BUILDING_CAP = 10  # 중개사 지역내 담당단지
 
 # 일반숙박은 건축물대장 호실수와 실제 영업 객실수가 같은 모집단이 아니다.
@@ -785,7 +785,7 @@ def get_building(building_id):
     """, [building_id, AGENT_BUILDING_BADGE_SLOT_CAP])
     agent_rows = cur.fetchall()
 
-    # 지역Master 보충: 전체 담당중개사 3명 미만일 때 같은 읍·면·동의 지역담당으로 빈 자리를 채운다.
+    # 지역Master 보충: 전체 담당중개사 3명 미만일 때 같은 시군구의 지역담당으로 빈 자리를 채운다.
     if len(agent_rows) < 3:
         cur.execute("""
             SELECT a.id, a.office_name, a.owner_name, a.phone, a.office_phone,
@@ -796,7 +796,6 @@ def get_building(building_id):
             JOIN agents a ON a.id = sr.agent_id
             WHERE sr.expires_at > NOW()
               AND sr.sgg_text = %s
-              AND sr.umd_nm = %s
               AND a.status = 'approved'
               AND COALESCE(a.is_visible, TRUE)
               AND a.id NOT IN (
@@ -808,7 +807,6 @@ def get_building(building_id):
             LIMIT %s
         """, [
             (building.get("sgg_text") or "").strip(),
-            building.get("umd_nm", ""),
             building_id,
             3 - len(agent_rows),
         ])
@@ -6661,8 +6659,9 @@ def agent_public_profile(slug):
         SELECT arb.master_building_id, mb.building_name, mb.lodging_type,
                0 AS sale_count, 0 AS jeonse_count, 0 AS wolse_count, 0 AS shortterm_count
         FROM agent_region_buildings arb
-        JOIN agent_service_regions sr ON sr.agent_id = arb.agent_id
         JOIN master_buildings mb ON mb.id = arb.master_building_id
+        JOIN agent_service_regions sr
+          ON sr.agent_id = arb.agent_id AND sr.sgg_text = mb.sgg_text
         WHERE arb.agent_id = %s AND sr.expires_at > NOW()
         ORDER BY mb.building_name
     """, [agent["id"]])
@@ -7133,7 +7132,9 @@ def _route_lead(cur, mb_id):
     cur.execute("""
         SELECT a.id, a.phone, a.email, a.office_name, COALESCE(sr.is_paid, FALSE) AS is_paid
         FROM agent_region_buildings arb
-        JOIN agent_service_regions sr ON sr.agent_id = arb.agent_id
+        JOIN master_buildings mb ON mb.id = arb.master_building_id
+        JOIN agent_service_regions sr
+          ON sr.agent_id = arb.agent_id AND sr.sgg_text = mb.sgg_text
         JOIN agents a ON a.id = arb.agent_id AND a.status = 'approved'
         WHERE arb.master_building_id = %s
           AND sr.expires_at > NOW()
@@ -7572,34 +7573,33 @@ def agent_building_claim_premium(mbid):
 @app.route("/api/agent/service-regions", methods=["POST"])
 @require_agent
 def agent_service_region_claim():
-    """읍·면·동 단위 지역뱃지를 동별 활성 정원 안에서 즉시 등록한다."""
+    """시군구 단위 지역뱃지를 시군구별 활성 정원 안에서 즉시 등록한다."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
     sgg = (data.get("sgg_text") or "").strip()
-    umd = normalize_umd_nm((data.get("umd_nm") or "").strip())
-    if not sgg or not umd:
-        return jsonify({"ok": False, "message": "시·군·구와 읍·면·동을 모두 선택해주세요."}), 400
+    if not sgg:
+        return jsonify({"ok": False, "message": "시·군·구를 선택해주세요."}), 400
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # 자유 문자열로 다른 동의 정원을 우회하지 못하게 마스터의 실제 조합만 허용한다.
+        # 자유 문자열로 존재하지 않는 지역의 정원을 우회하지 못하게 마스터의 실제 시군구만 허용한다.
         cur.execute("""
             SELECT 1
             FROM master_buildings
-            WHERE sgg_text=%s AND umd_nm=%s
+            WHERE sgg_text=%s
             LIMIT 1
-        """, [sgg, umd])
+        """, [sgg])
         if not cur.fetchone():
-            return jsonify({"ok": False, "message": "선택한 읍·면·동을 확인할 수 없습니다."}), 400
+            return jsonify({"ok": False, "message": "선택한 시·군·구를 확인할 수 없습니다."}), 400
 
-        # 중개사별 1개 제한과 읍면동별 활성 2명 정원을 직렬화한다.
+        # 중개사별 1개 제한과 시군구별 활성 10명 정원을 직렬화한다.
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
         cur.execute("""
             SELECT 1 FROM agent_service_regions
-            WHERE agent_id=%s AND sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
-        """, [agent_id, sgg, umd])
+            WHERE agent_id=%s AND sgg_text=%s AND expires_at > NOW()
+        """, [agent_id, sgg])
         if cur.fetchone():
-            return jsonify({"ok": False, "message": "이미 이 읍·면·동의 지역뱃지를 사용 중입니다."}), 400
+            return jsonify({"ok": False, "message": "이미 이 시·군·구의 지역뱃지를 사용 중입니다."}), 400
         cur.execute("""
             SELECT COUNT(*) AS count
             FROM agent_service_regions
@@ -7611,25 +7611,25 @@ def agent_service_region_claim():
                 "message": "담당 지역은 1개만 등록할 수 있습니다. 지역을 바꾸려면 먼저 기존 지역을 삭제해주세요.",
             }), 400
         cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
-                    [911009, f"{sgg}\x1f{umd}"])
+                    [911009, sgg])
         cur.execute("""
             SELECT COUNT(*) AS count
             FROM agent_service_regions
-            WHERE sgg_text=%s AND umd_nm=%s
+            WHERE sgg_text=%s
               AND expires_at > NOW()
               AND agent_id <> %s
-        """, [sgg, umd, agent_id])
-        if cur.fetchone()["count"] >= AGENT_REGION_DONG_SLOT_CAP:
+        """, [sgg, agent_id])
+        if cur.fetchone()["count"] >= AGENT_REGION_SGG_SLOT_CAP:
             return jsonify({
                 "ok": False,
-                "message": f"이 읍·면·동은 지역뱃지 정원({AGENT_REGION_DONG_SLOT_CAP}명)이 찼습니다. 다른 읍·면·동을 선택해주세요.",
+                "message": f"이 시·군·구는 지역뱃지 정원({AGENT_REGION_SGG_SLOT_CAP}명)이 찼습니다. 다른 시·군·구를 선택해주세요.",
             }), 400
         cur.execute("""
             INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, granted_at, expires_at)
-            VALUES (%s, %s, %s, NOW(), %s::timestamp)
-            ON CONFLICT (agent_id, sgg_text, umd_nm) DO UPDATE
+            VALUES (%s, %s, NULL, NOW(), %s::timestamp)
+            ON CONFLICT (agent_id, sgg_text) DO UPDATE
             SET granted_at=NOW(), expires_at=EXCLUDED.expires_at, reminder_sent_at=NULL
-        """, [agent_id, sgg, umd, PARTNER_BADGE_FREE_EXPIRES_AT])
+        """, [agent_id, sgg, PARTNER_BADGE_FREE_EXPIRES_AT])
         conn.commit()
     finally:
         cur.close()
@@ -7645,6 +7645,7 @@ def agent_service_region_delete():
     conn = get_conn()
     cur = conn.cursor()
     try:
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
         cur.execute("DELETE FROM agent_region_buildings WHERE agent_id=%s", [agent_id])
         cur.execute("DELETE FROM agent_service_regions WHERE agent_id=%s", [agent_id])
         conn.commit()
@@ -7657,7 +7658,7 @@ def agent_service_region_delete():
 @app.route("/api/agent/region-buildings/search")
 @require_agent
 def agent_region_building_search():
-    """담당지역 내 단지 검색 — 본인이 등록한 읍·면·동 안의 건물만,
+    """담당지역 내 단지 검색 — 본인이 등록한 시군구 안의 건물만,
     본인이 이미 프리미엄으로 입점한 단지는 제외하고 검색된다."""
     agent_id = session["agent_id"]
     q = (request.args.get("q") or "").strip()
@@ -7667,7 +7668,7 @@ def agent_region_building_search():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT sgg_text, umd_nm FROM agent_service_regions
+            SELECT sgg_text FROM agent_service_regions
             WHERE agent_id=%s AND expires_at > NOW()
             ORDER BY granted_at DESC LIMIT 1
         """, [agent_id])
@@ -7686,11 +7687,11 @@ def agent_region_building_search():
             FROM master_buildings mb
             LEFT JOIN agent_region_buildings arb
               ON arb.master_building_id = mb.id AND arb.agent_id = %s
-            WHERE mb.sgg_text = %s AND mb.umd_nm = %s
+            WHERE mb.sgg_text = %s
               AND mb.building_name ILIKE %s AND mb.building_name <> '-'
             ORDER BY mb.building_name
             LIMIT 20
-        """, [agent_id, agent_id, row["sgg_text"], row["umd_nm"], f"%{q}%"])
+        """, [agent_id, agent_id, row["sgg_text"], f"%{q}%"])
         items = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
@@ -7701,7 +7702,7 @@ def agent_region_building_search():
 @app.route("/api/agent/region-buildings", methods=["POST"])
 @require_agent
 def agent_region_building_add():
-    """담당지역 내 담당단지 추가 — 지역당(=중개사당) 최대 20개.
+    """담당지역 내 담당단지 추가 — 지역당(=중개사당) 최대 10개.
     본인이 이미 프리미엄으로 입점한 단지는 추가할 수 없다(중복 방지)."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
@@ -7712,19 +7713,20 @@ def agent_region_building_add():
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # 지역 신청·삭제와 같은 잠금을 먼저 잡아, 삭제 직후 고아 연결이 생기지 않게 한다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
         cur.execute("""
-            SELECT sgg_text, umd_nm FROM agent_service_regions
+            SELECT sgg_text FROM agent_service_regions
             WHERE agent_id=%s AND expires_at > NOW()
             ORDER BY granted_at DESC LIMIT 1
         """, [agent_id])
         region = cur.fetchone()
         if not region:
             return jsonify({"ok": False, "message": "먼저 담당 지역을 등록해주세요."}), 400
-        cur.execute("SELECT sgg_text, umd_nm FROM master_buildings WHERE id=%s", [mbid])
+        cur.execute("SELECT sgg_text FROM master_buildings WHERE id=%s", [mbid])
         b = cur.fetchone()
-        if (not b or b["sgg_text"] != region["sgg_text"]
-                or b["umd_nm"] != region["umd_nm"]):
-            return jsonify({"ok": False, "message": "선택한 읍·면·동 안에 있는 단지만 추가할 수 있습니다."}), 400
+        if not b or b["sgg_text"] != region["sgg_text"]:
+            return jsonify({"ok": False, "message": "선택한 시·군·구 안에 있는 단지만 추가할 수 있습니다."}), 400
         cur.execute("""
             SELECT 1 FROM agent_buildings
             WHERE agent_id=%s AND master_building_id=%s AND has_priority_badge
@@ -7763,14 +7765,13 @@ def agent_region_building_remove(mbid):
 @app.route("/api/agent/sgg-options")
 @require_agent
 def agent_sgg_options():
-    """지역뱃지에서 선택할 수 있는 실제 시군구·읍면동 조합."""
+    """지역뱃지에서 선택할 수 있는 실제 시군구 목록."""
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-        SELECT DISTINCT sgg_text, umd_nm FROM master_buildings
+        SELECT DISTINCT sgg_text FROM master_buildings
         WHERE sgg_text IS NOT NULL AND sgg_text <> ''
-          AND umd_nm IS NOT NULL AND umd_nm <> ''
-        ORDER BY sgg_text, umd_nm
+        ORDER BY sgg_text
     """)
     options = [dict(r) for r in cur.fetchall()]
     cur.close()
@@ -7821,7 +7822,7 @@ def agent_tier_status():
     """, [agent_id])
     buildings = [dict(r) for r in cur.fetchall()]
     cur.execute(
-        """SELECT sgg_text, umd_nm, granted_at, expires_at
+        """SELECT sgg_text, granted_at, expires_at
            FROM agent_service_regions
            WHERE agent_id=%s AND expires_at > NOW()
            ORDER BY granted_at DESC""", [agent_id])
@@ -20715,7 +20716,7 @@ def admin_premium_status():
             cur2.execute("UPDATE agent_buildings SET reminder_sent_at=NOW() "
                          "WHERE agent_id=%s AND master_building_id=%s", [r["agent_id"], r["master_building_id"]])
     cur2.execute("""
-        SELECT sr.id AS service_region_id, sr.agent_id, sr.sgg_text, sr.umd_nm,
+        SELECT sr.id AS service_region_id, sr.agent_id, sr.sgg_text,
                a.office_name, a.email, sr.expires_at
         FROM agent_service_regions sr
         JOIN agents a ON a.id = sr.agent_id
@@ -20724,7 +20725,7 @@ def admin_premium_status():
     """)
     for r in cur2.fetchall():
         if _send_expiry_reminder("region", r["agent_id"], r["office_name"], r["email"],
-                                  f"'{r['sgg_text']} {r['umd_nm']}' 지역뱃지", r["expires_at"]):
+                                  f"'{r['sgg_text']}' 지역뱃지", r["expires_at"]):
             cur2.execute("UPDATE agent_service_regions SET reminder_sent_at=NOW() "
                          "WHERE id=%s", [r["service_region_id"]])
     # 단지부동산 대기자 알림 — 기존 입점 프리미엄이 만료되어 자리가 생긴 경우
@@ -20834,7 +20835,6 @@ def admin_extend_premium_status():
     partner_type = data.get("partner_type")
     kind = data.get("kind")
     target = data.get("target")
-    region_umd = (data.get("umd_nm") or "").strip()
     try:
         partner_id = int(data.get("partner_id"))
     except (TypeError, ValueError):
@@ -20921,50 +20921,44 @@ def admin_extend_premium_status():
                 return jsonify({"ok": False, "message": "지원하지 않는 파트너 유형입니다."}), 400
         elif kind == "region" and isinstance(target, str) and target.strip():
             if partner_type == "agent":
-                if not region_umd:
-                    return jsonify({
-                        "ok": False,
-                        "message": "읍·면·동 정보가 없는 기존 지역뱃지는 연장할 수 없습니다.",
-                    }), 400
                 region_sgg = target.strip()
-                region_umd = normalize_umd_nm(region_umd)
                 cur.execute("""
                     SELECT 1 FROM master_buildings
-                    WHERE sgg_text=%s AND umd_nm=%s
+                    WHERE sgg_text=%s
                     LIMIT 1
-                """, [region_sgg, region_umd])
+                """, [region_sgg])
                 if not cur.fetchone():
-                    return jsonify({"ok": False, "message": "선택한 읍·면·동을 확인할 수 없습니다."}), 400
+                    return jsonify({"ok": False, "message": "선택한 시·군·구를 확인할 수 없습니다."}), 400
                 cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, partner_id])
                 cur.execute("""
                     SELECT COUNT(*) AS count
                     FROM agent_service_regions
                     WHERE agent_id=%s AND expires_at > NOW()
-                      AND NOT (sgg_text=%s AND umd_nm=%s)
-                """, [partner_id, region_sgg, region_umd])
+                      AND sgg_text<>%s
+                """, [partner_id, region_sgg])
                 if cur.fetchone()["count"] >= AGENT_TRIAL_REGION_CAP:
                     return jsonify({
                         "ok": False,
-                        "message": "이 중개사는 이미 다른 읍·면·동의 지역뱃지를 사용 중입니다.",
+                        "message": "이 중개사는 이미 다른 시·군·구의 지역뱃지를 사용 중입니다.",
                     }), 400
                 cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
-                            [911009, f"{region_sgg}\x1f{region_umd}"])
+                            [911009, region_sgg])
                 cur.execute("""
                     SELECT COUNT(*) AS count
                     FROM agent_service_regions
-                    WHERE sgg_text=%s AND umd_nm=%s
+                    WHERE sgg_text=%s
                       AND expires_at > NOW() AND agent_id<>%s
-                """, [region_sgg, region_umd, partner_id])
-                if cur.fetchone()["count"] >= AGENT_REGION_DONG_SLOT_CAP:
+                """, [region_sgg, partner_id])
+                if cur.fetchone()["count"] >= AGENT_REGION_SGG_SLOT_CAP:
                     return jsonify({
                         "ok": False,
-                        "message": f"이 읍·면·동은 지역뱃지 정원({AGENT_REGION_DONG_SLOT_CAP}명)이 찼습니다.",
+                        "message": f"이 시·군·구는 지역뱃지 정원({AGENT_REGION_SGG_SLOT_CAP}명)이 찼습니다.",
                     }), 400
                 cur.execute("""
                     UPDATE agent_service_regions
-                    SET expires_at=%s::timestamp, reminder_sent_at=NULL
-                    WHERE agent_id=%s AND sgg_text=%s AND umd_nm=%s
-                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, region_sgg, region_umd])
+                    SET umd_nm=NULL, expires_at=%s::timestamp, reminder_sent_at=NULL
+                    WHERE agent_id=%s AND sgg_text=%s
+                """, [PARTNER_BADGE_FREE_EXPIRES_AT, partner_id, region_sgg])
             elif partner_type == "operator":
                 region_sgg = target.strip()
                 cur.execute("SELECT category FROM operators WHERE id=%s", [partner_id])

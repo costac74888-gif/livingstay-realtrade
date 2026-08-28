@@ -1364,19 +1364,16 @@ def _check_partner_badge_policy(client):
             return ["파트너 뱃지: 테스트용 마스터 건물이 37개 미만입니다."]
         agent_bld, operator_bld, loan_bld, agent_approval_bld, loan_approval_bld, *_ = building_ids
         cur.execute("""
-            SELECT DISTINCT ON (mb.sgg_text, mb.umd_nm)
+            SELECT DISTINCT ON (mb.sgg_text)
                    mb.id, mb.building_name, mb.sgg_text, mb.umd_nm
             FROM master_buildings mb
             WHERE mb.sgg_text IS NOT NULL AND mb.sgg_text <> ''
-              AND mb.umd_nm IS NOT NULL AND mb.umd_nm <> ''
               AND mb.building_name <> '-'
-              AND EXISTS (
-                  SELECT 1
-                  FROM master_buildings other
-                  WHERE other.umd_nm=mb.umd_nm
-                    AND other.sgg_text IS NOT NULL AND other.sgg_text <> ''
-                    AND other.sgg_text<>mb.sgg_text
-              )
+              AND (
+                  SELECT COUNT(*) FROM master_buildings same_sgg
+                  WHERE same_sgg.sgg_text=mb.sgg_text
+                    AND same_sgg.building_name <> '-'
+              ) >= 12
               AND NOT EXISTS (
                   SELECT 1 FROM agent_buildings ab
                   WHERE ab.master_building_id=mb.id AND ab.has_priority_badge
@@ -1385,30 +1382,20 @@ def _check_partner_badge_policy(client):
               AND (
                   SELECT COUNT(*)
                   FROM agent_service_regions sr
-                  WHERE sr.sgg_text=mb.sgg_text AND sr.umd_nm=mb.umd_nm
+                  WHERE sr.sgg_text=mb.sgg_text
                     AND sr.expires_at > NOW()
               ) = 0
               AND NOT EXISTS (
                   SELECT 1 FROM operator_service_regions osr
                   WHERE osr.sgg_text=mb.sgg_text AND osr.expires_at > NOW()
               )
-            ORDER BY mb.sgg_text, mb.umd_nm, mb.id
+            ORDER BY mb.sgg_text, mb.id
             LIMIT 2
         """)
         region_fixtures = cur.fetchall()
         if len(region_fixtures) < 2:
-            return ["파트너 뱃지: 동 단위 지역뱃지 테스트용 지역을 2개 찾지 못했습니다."]
+            return ["파트너 뱃지: 시군구 지역뱃지 테스트용 지역을 2개 찾지 못했습니다."]
         region_fixture, region_race_fixture = region_fixtures
-        cur.execute("""
-            SELECT id, sgg_text, umd_nm
-            FROM master_buildings
-            WHERE umd_nm=%s AND sgg_text<>%s
-            ORDER BY id
-            LIMIT 1
-        """, (region_fixture["umd_nm"], region_fixture["sgg_text"]))
-        cross_sgg_same_umd_fixture = cur.fetchone()
-        if not cross_sgg_same_umd_fixture:
-            return ["파트너 뱃지: 같은 읍면동 이름을 쓰는 다른 시군구 테스트 건물을 찾지 못했습니다."]
         deadline = app_module.PARTNER_BADGE_FREE_EXPIRES_AT
 
         def create_agent(label):
@@ -1662,10 +1649,9 @@ def _check_partner_badge_policy(client):
         if operator_over_cap.status_code != 400 or loan_over_cap.status_code != 400:
             failures.append("파트너 뱃지: 운영업체 또는 대출상담사 담당단지 10개 한도가 적용되지 않음")
 
-        # ④ 중개사 지역뱃지: 읍면동별 두 명까지 허용하고 담당단지 선택 없이 자동 노출한다.
+        # ④ 중개사 지역뱃지: 시군구별 열 명까지 허용하고 담당단지 선택 없이 자동 노출한다.
         region_sgg = region_fixture["sgg_text"]
-        region_umd = region_fixture["umd_nm"]
-        region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(3)]
+        region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(11)]
         agent_region_id = region_agent_ids[0]
         conn.commit()
         region_responses = []
@@ -1674,44 +1660,38 @@ def _check_partner_badge_policy(client):
                 sess.clear()
                 sess["agent_id"] = region_agent_id
             region_responses.append(client.post("/api/agent/service-regions", json={
-                "sgg_text": region_sgg, "umd_nm": region_umd,
+                "sgg_text": region_sgg,
             }))
-        if [response.status_code for response in region_responses] != [200, 200, 400]:
-            failures.append("파트너 뱃지: 읍면동 지역뱃지 두 명 정원이 적용되지 않음")
+        if [response.status_code for response in region_responses] != ([200] * 10 + [400]):
+            failures.append("파트너 뱃지: 시군구 지역뱃지 열 명 정원이 적용되지 않음")
         cur.execute("""
             SELECT umd_nm, expires_at::text AS expires_at FROM agent_service_regions
             WHERE agent_id=%s AND sgg_text=%s
         """, (agent_region_id, region_sgg))
         region_row = cur.fetchone() or {}
-        if region_row.get("umd_nm") != region_umd or not (region_row.get("expires_at") or "").startswith(deadline):
-            failures.append("파트너 뱃지: 중개사 지역뱃지의 동 또는 고정 만료일이 저장되지 않음")
+        if region_row.get("umd_nm") is not None or not (region_row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 중개사 지역뱃지가 시군구 행 또는 고정 만료일로 저장되지 않음")
         region_detail = client.get(f"/api/building/{region_fixture['id']}")
         region_detail_agent_ids = {
             item.get("id") for item in (region_detail.get_json() or {}).get("agents", [])
         }
-        if not set(region_agent_ids[:2]) <= region_detail_agent_ids:
-            failures.append("파트너 뱃지: 중개사 지역뱃지가 담당단지 선택 없이 같은 읍면동 건물에 자동 노출되지 않음")
-        cross_region_detail = client.get(f"/api/building/{cross_sgg_same_umd_fixture['id']}")
-        cross_region_agent_ids = {
-            item.get("id") for item in (cross_region_detail.get_json() or {}).get("agents", [])
-        }
-        if set(region_agent_ids[:2]) & cross_region_agent_ids:
-            failures.append("파트너 뱃지: 같은 이름의 읍면동을 쓰는 다른 시군구에 중개사 지역뱃지가 잘못 노출됨")
+        if not region_detail_agent_ids.intersection(region_agent_ids[:10]):
+            failures.append("파트너 뱃지: 중개사 지역뱃지가 담당단지 선택 없이 같은 시군구 건물에 자동 노출되지 않음")
 
         # 임의/XSS 형태 지역 문자열은 마스터 조합 검증으로 거절한다.
-        xss_region = f"{region_umd}'><img src=x onerror=alert(1)>"
+        xss_region = f"{region_sgg}'><img src=x onerror=alert(1)>"
         xss_agent_id = create_agent("agent-xss-region")
         conn.commit()
         with client.session_transaction() as sess:
             sess.clear()
             sess["agent_id"] = xss_agent_id
         xss_region_add = client.post("/api/agent/service-regions", json={
-            "sgg_text": region_sgg, "umd_nm": xss_region,
+            "sgg_text": xss_region,
         })
         if xss_region_add.status_code != 400:
-            failures.append("파트너 뱃지: 마스터에 없는 임의/XSS 읍면동 문자열을 허용함")
+            failures.append("파트너 뱃지: 마스터에 없는 임의/XSS 시군구 문자열을 허용함")
 
-        # 담당단지 선택도 신청한 동 안의 건물만 허용한다.
+        # 담당단지 선택도 신청한 시군구 안의 건물만 허용한다.
         with client.session_transaction() as sess:
             sess.clear()
             sess["agent_id"] = agent_region_id
@@ -1720,18 +1700,54 @@ def _check_partner_badge_policy(client):
         })
         cur.execute("""
             SELECT id FROM master_buildings
-            WHERE (sgg_text, umd_nm) <> (%s, %s)
+            WHERE sgg_text <> %s
             ORDER BY id LIMIT 1
-        """, (region_sgg, region_umd))
+        """, (region_sgg,))
         outside_region = cur.fetchone()
         outside_add = client.post("/api/agent/region-buildings", json={
             "master_building_id": outside_region["id"],
         }) if outside_region else None
         if region_building_add.status_code != 200 or not outside_add or outside_add.status_code != 400:
-            failures.append("파트너 뱃지: 담당단지를 신청한 읍면동 안으로 제한하지 못함")
+            failures.append("파트너 뱃지: 담당단지를 신청한 시군구 안으로 제한하지 못함")
 
-        # 세 명이 같은 읍면동에 동시에 신청해도 정확히 두 명만 성공한다.
-        region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(3)]
+        # 서로 다른 담당단지를 동시에 추가해도 중개사별 10개 제한을 넘지 않는다.
+        cur.execute("DELETE FROM agent_region_buildings WHERE agent_id=%s", (agent_region_id,))
+        cur.execute("""
+            SELECT id FROM master_buildings
+            WHERE sgg_text=%s AND building_name <> '-'
+            ORDER BY id LIMIT 11
+        """, (region_sgg,))
+        region_capacity_buildings = [row["id"] for row in cur.fetchall()]
+        conn.commit()
+
+        def parallel_region_building_add(building_id):
+            with app.test_client() as parallel_client:
+                with parallel_client.session_transaction() as sess:
+                    sess["agent_id"] = agent_region_id
+                return parallel_client.post("/api/agent/region-buildings", json={
+                    "master_building_id": building_id,
+                }).status_code
+
+        with ThreadPoolExecutor(max_workers=11) as executor:
+            region_building_results = list(executor.map(
+                parallel_region_building_add, region_capacity_buildings
+            ))
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM agent_region_buildings WHERE agent_id=%s",
+            (agent_region_id,),
+        )
+        if (
+            len(region_capacity_buildings) != 11
+            or region_building_results.count(200) != 10
+            or region_building_results.count(400) != 1
+            or cur.fetchone()["count"] != 10
+        ):
+            failures.append(
+                f"파트너 뱃지: 지역 담당단지 동시 추가가 10개 제한을 우회함 ({region_building_results})"
+            )
+
+        # 열한 명이 같은 시군구에 동시에 신청해도 정확히 열 명만 성공한다.
+        region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(11)]
         conn.commit()
 
         def parallel_region_claim(race_agent_id):
@@ -1740,62 +1756,61 @@ def _check_partner_badge_policy(client):
                     sess["agent_id"] = race_agent_id
                 return parallel_client.post("/api/agent/service-regions", json={
                     "sgg_text": region_race_fixture["sgg_text"],
-                    "umd_nm": region_race_fixture["umd_nm"],
                 }).status_code
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=11) as executor:
             region_race_results = list(executor.map(
                 parallel_region_claim, region_race_agent_ids
             ))
         cur.execute("""
             SELECT COUNT(*) AS count FROM agent_service_regions
-            WHERE sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
-        """, (region_race_fixture["sgg_text"], region_race_fixture["umd_nm"]))
+            WHERE sgg_text=%s AND expires_at > NOW()
+        """, (region_race_fixture["sgg_text"],))
         if (
-            region_race_results.count(200) != 2
+            region_race_results.count(200) != 10
             or region_race_results.count(400) != 1
-            or cur.fetchone()["count"] != 2
+            or cur.fetchone()["count"] != 10
         ):
-            failures.append(f"파트너 뱃지: 중개사 지역뱃지 동시 신청이 두 명 정원을 우회함 ({region_race_results})")
+            failures.append(f"파트너 뱃지: 중개사 지역뱃지 동시 신청이 열 명 정원을 우회함 ({region_race_results})")
 
-        # 레거시 정리는 한 번만 실행되어 이후 새 동 담당단지를 다시 삭제하지 않는다.
+        # 동 단위 레거시 행은 시군구 한 행으로 병합되고 담당단지는 보존되며 재실행은 무해하다.
         legacy_agent_id = create_agent("agent-region-legacy")
+        legacy_sgg = f"{tag}-legacy"
+        cur.execute("ALTER TABLE agent_service_regions DROP CONSTRAINT agent_service_regions_unique")
         cur.execute("""
             INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, expires_at)
-            VALUES (%s, %s, NULL, NOW() + INTERVAL '30 days')
-        """, (legacy_agent_id, f"{tag}-legacy"))
+            VALUES (%s, %s, '이충동', NOW() + INTERVAL '30 days'),
+                   (%s, %s, '고덕동', NOW() + INTERVAL '20 days')
+        """, (legacy_agent_id, legacy_sgg, legacy_agent_id, legacy_sgg))
         cur.execute("""
             INSERT INTO agent_region_buildings (agent_id, master_building_id)
             VALUES (%s, %s)
         """, (legacy_agent_id, region_fixture["id"]))
-        cur.execute("DELETE FROM app_meta WHERE key=%s", (db_module._DONG_REGION_MIGRATION_KEY,))
-        expired_count, deleted_count = db_module._migrate_agent_regions_to_dong(cur)
+        cur.execute("DELETE FROM app_meta WHERE key=%s", (db_module._SGG_REGION_MIGRATION_KEY,))
+        merged_count, normalized_count = db_module._migrate_agent_regions_to_sgg(cur)
         cur.execute("""
-            SELECT expires_at <= NOW() AS expired FROM agent_service_regions
-            WHERE agent_id=%s AND umd_nm IS NULL
-        """, (legacy_agent_id,))
-        legacy_expired = (cur.fetchone() or {}).get("expired")
+            SELECT COUNT(*) AS count, BOOL_AND(umd_nm IS NULL) AS all_null
+            FROM agent_service_regions WHERE agent_id=%s AND sgg_text=%s
+        """, (legacy_agent_id, legacy_sgg))
+        legacy_row = cur.fetchone() or {}
         cur.execute("SELECT COUNT(*) AS count FROM agent_region_buildings WHERE agent_id=%s",
                     (legacy_agent_id,))
         first_remaining = cur.fetchone()["count"]
-        cur.execute("""
-            INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, expires_at)
-            VALUES (%s, %s, %s, %s::timestamp)
-        """, (legacy_agent_id, region_fixture["sgg_text"], region_fixture["umd_nm"], deadline))
-        cur.execute("""
-            INSERT INTO agent_region_buildings (agent_id, master_building_id)
-            VALUES (%s, %s)
-        """, (legacy_agent_id, region_fixture["id"]))
-        rerun_counts = db_module._migrate_agent_regions_to_dong(cur)
+        rerun_counts = db_module._migrate_agent_regions_to_sgg(cur)
         cur.execute("SELECT COUNT(*) AS count FROM agent_region_buildings WHERE agent_id=%s",
                     (legacy_agent_id,))
         second_remaining = cur.fetchone()["count"]
+        cur.execute("""
+            ALTER TABLE agent_service_regions
+            ADD CONSTRAINT agent_service_regions_unique UNIQUE (agent_id, sgg_text)
+        """)
         conn.commit()
         if (
-            expired_count != 1 or deleted_count != 1 or not legacy_expired
-            or first_remaining != 0 or rerun_counts != (0, 0) or second_remaining != 1
+            merged_count != 1 or normalized_count != 1
+            or legacy_row.get("count") != 1 or not legacy_row.get("all_null")
+            or first_remaining != 1 or rerun_counts != (0, 0) or second_remaining != 1
         ):
-            failures.append("파트너 뱃지: 레거시 지역 만료·담당단지 1회 정리가 멱등적이지 않음")
+            failures.append("파트너 뱃지: 동 단위 지역 병합·담당단지 보존·재실행이 안전하지 않음")
 
         # ⑤·⑥ 운영업체 지역뱃지: 시군구+업종별 두 곳까지 허용하고 건물에 자동 노출한다.
         operator_region_ids = [
@@ -1957,10 +1972,10 @@ def _check_partner_badge_policy(client):
         if not any(
             item.get("partner_id") == agent_region_id
             and item.get("target") == region_sgg
-            and item.get("umd_nm") == region_umd
+            and item.get("umd_nm") is None
             for item in items
         ):
-            failures.append("파트너 뱃지: 관리자 현황 API에 지역뱃지 읍면동 정보가 누락됨")
+            failures.append("파트너 뱃지: 관리자 현황 API의 중개사 지역뱃지가 시군구 기준이 아님")
         building_status = client.get("/api/admin/premium-status?kind=building")
         region_status = client.get("/api/admin/premium-status?kind=region")
         if (
@@ -1978,20 +1993,20 @@ def _check_partner_badge_policy(client):
         detail_regions = ((member_detail.get_json() or {}).get("data") or {}).get("service_regions") or []
         if (
             not legacy_member
-            or legacy_member.get("region_sgg") != region_fixture["sgg_text"]
-            or legacy_member.get("region_umd") != region_fixture["umd_nm"]
+            or legacy_member.get("region_sgg") != legacy_sgg
+            or legacy_member.get("region_umd") is not None
             or not detail_regions
-            or detail_regions[0].get("umd_nm") != region_fixture["umd_nm"]
+            or detail_regions[0].get("umd_nm") is not None
         ):
-            failures.append("파트너 뱃지: 관리자 회원관리에서 만료 레거시 대신 활성 읍면동을 표시하지 않음")
+            failures.append("파트너 뱃지: 관리자 회원관리에서 병합된 시군구 지역뱃지를 표시하지 않음")
         with open("static/admin.html", encoding="utf-8") as admin_file:
             admin_source = admin_file.read()
         if (
             'onclick="extendPremiumBadge(' in admin_source
             or 'class="admin-btn premium-extend-btn" data-premium-index="${index}"' not in admin_source
             or "window.extendPremiumBadge = async function(row)" not in admin_source
-            or "[r.region_sgg, r.region_umd].filter(Boolean).join" not in admin_source
-            or "[r.sgg_text, r.umd_nm].filter(Boolean).join" not in admin_source
+            or "dgEscape(r.sgg_text || \"-\")" not in admin_source
+            or "<th>읍·면·동</th>" in admin_source
         ):
             failures.append("파트너 뱃지: 관리자 만기연장 버튼이 외부 입력을 인라인 스크립트로 렌더링함")
         # 만기연장은 현재 유료 분류를 건드리지 않고, 활성 독점 뱃지가 있으면 재활성화를 거절한다.
@@ -2040,7 +2055,7 @@ def _check_partner_badge_policy(client):
             or 'data-kind="all">전체<' not in markup
             or 'data-kind="building">단지뱃지<' not in markup
             or 'data-kind="region">지역뱃지<' not in markup
-            or "읍·면·동" not in markup
+            or "<th>읍·면·동</th>" in markup
             or "만기연장" not in markup
             or "유료전환" in markup
         ):
@@ -2050,8 +2065,10 @@ def _check_partner_badge_policy(client):
         with open("static/operator_dashboard.html", encoding="utf-8") as dashboard_file:
             operator_dashboard_source = dashboard_file.read()
         if (
-            "읍·면·동 선착순 <b>2명</b>" not in agent_dashboard_source
+            "시·군·구별 선착순 <b>10명</b>" not in agent_dashboard_source
             or "모든 건물에 자동으로 실버뱃지가 노출" not in agent_dashboard_source
+            or 'id="regionUmdInput"' in agent_dashboard_source
+            or '"umd_nm": umd' in agent_dashboard_source
             or "업종별 선착순 <b>2개</b>" not in operator_dashboard_source
             or "같은 업종 2곳까지 가능" not in operator_dashboard_source
             or "최상단에 단독 노출" in operator_dashboard_source

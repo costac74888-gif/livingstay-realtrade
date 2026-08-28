@@ -403,18 +403,19 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-28-03"
+SCHEMA_VERSION = "2026-08-28-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
-_DONG_REGION_MIGRATION_KEY = "migration:agent_service_regions:dong_v1"
+_SGG_REGION_MIGRATION_KEY = "migration:agent_service_regions:sgg_v1"
 
 
-def _migrate_agent_regions_to_dong(cur):
-    """시군구 단위 지역뱃지를 한 번만 만료·정리한다.
+def _migrate_agent_regions_to_sgg(cur):
+    """동 단위 지역뱃지를 시군구별 한 행으로 병합하고 동 값을 비운다.
 
     완료 표식을 같은 트랜잭션에서 선점하므로 실패하면 표식도 롤백되고,
-    이후 스키마 버전이 바뀌어도 새 동 단위 담당단지를 다시 지우지 않는다.
+    활성·만료 시각이 가장 최신인 행을 보존한다. 담당단지는 중개사 기준
+    테이블이므로 행 병합 뒤에도 그대로 유지된다.
     """
     cur.execute("""
         CREATE TABLE IF NOT EXISTS app_meta (
@@ -428,26 +429,30 @@ def _migrate_agent_regions_to_dong(cur):
         VALUES (%s, 'completed', NOW())
         ON CONFLICT (key) DO NOTHING
         RETURNING key
-    """, (_DONG_REGION_MIGRATION_KEY,))
+    """, (_SGG_REGION_MIGRATION_KEY,))
     if not cur.fetchone():
         return 0, 0
     cur.execute("""
-        DELETE FROM agent_region_buildings arb
-        WHERE EXISTS (
-            SELECT 1
-            FROM agent_service_regions sr
-            WHERE sr.agent_id = arb.agent_id
-              AND sr.umd_nm IS NULL
+        WITH ranked AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY agent_id, sgg_text
+                       ORDER BY (expires_at > NOW()) DESC, expires_at DESC,
+                                granted_at DESC NULLS LAST, id DESC
+                   ) AS row_num
+            FROM agent_service_regions
         )
+        DELETE FROM agent_service_regions sr
+        USING ranked r
+        WHERE sr.id = r.id AND r.row_num > 1
     """)
-    building_count = cur.rowcount
+    merged_count = cur.rowcount
     cur.execute("""
         UPDATE agent_service_regions
-        SET expires_at = NOW()
-        WHERE umd_nm IS NULL
-          AND expires_at > NOW()
+        SET umd_nm = NULL
+        WHERE umd_nm IS NOT NULL
     """)
-    return cur.rowcount, building_count
+    return merged_count, cur.rowcount
 
 
 def _schema_version_is_current(conn, cur):
@@ -798,39 +803,13 @@ def _run_init_db():
             umd_nm TEXT,
             granted_at TIMESTAMP DEFAULT NOW(),
             expires_at TIMESTAMP NOT NULL,
-            CONSTRAINT agent_service_regions_agent_sgg_umd_unique
-                UNIQUE (agent_id, sgg_text, umd_nm)
+            CONSTRAINT agent_service_regions_unique
+                UNIQUE (agent_id, sgg_text)
         )
     """)
     cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS umd_nm TEXT")
     cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP")
     cur.execute("ALTER TABLE agent_service_regions ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT FALSE")
-    # 구버전의 (agent_id, sgg_text) 유일 제약은 같은 시군구에서 동을 바꿔
-    # 재신청하는 것도 막는다. 동 단위 키로 교체하되 NULL인 레거시 행은 보존한다.
-    cur.execute(
-        "ALTER TABLE agent_service_regions "
-        "DROP CONSTRAINT IF EXISTS agent_service_regions_unique"
-    )
-    cur.execute("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_constraint
-                WHERE conrelid = 'agent_service_regions'::regclass
-                  AND conname = 'agent_service_regions_agent_sgg_umd_unique'
-            ) THEN
-                ALTER TABLE agent_service_regions
-                ADD CONSTRAINT agent_service_regions_agent_sgg_umd_unique
-                UNIQUE (agent_id, sgg_text, umd_nm);
-            END IF;
-        END $$;
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_agent_service_regions_dong_expiry
-        ON agent_service_regions(sgg_text, umd_nm, expires_at)
-    """)
-
     cur.execute("""
         CREATE TABLE IF NOT EXISTS agent_region_buildings (
             id SERIAL PRIMARY KEY,
@@ -841,16 +820,31 @@ def _run_init_db():
         )
     """)
 
-    # 시군구 단위 레거시 행은 범위를 알 수 없어 만료하고 연결 담당단지를 제거한다.
-    # 완료 표식으로 이 정리는 전체 서비스 수명 동안 정확히 한 번만 실행된다.
-    legacy_region_expired_count, legacy_region_building_count = (
-        _migrate_agent_regions_to_dong(cur)
+    # 기존 동 단위 행은 같은 중개사·시군구별 한 행으로 병합한 뒤 시군구 행으로 전환한다.
+    # 중개사 기준 담당단지 연결은 삭제하지 않는다.
+    cur.execute(
+        "ALTER TABLE agent_service_regions "
+        "DROP CONSTRAINT IF EXISTS agent_service_regions_agent_sgg_umd_unique"
     )
-    if legacy_region_building_count or legacy_region_expired_count:
+    cur.execute(
+        "ALTER TABLE agent_service_regions "
+        "DROP CONSTRAINT IF EXISTS agent_service_regions_unique"
+    )
+    merged_region_count, normalized_region_count = _migrate_agent_regions_to_sgg(cur)
+    cur.execute("""
+        ALTER TABLE agent_service_regions
+        ADD CONSTRAINT agent_service_regions_unique UNIQUE (agent_id, sgg_text)
+    """)
+    cur.execute("DROP INDEX IF EXISTS idx_agent_service_regions_dong_expiry")
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_service_regions_sgg_expiry
+        ON agent_service_regions(sgg_text, expires_at)
+    """)
+    if merged_region_count or normalized_region_count:
         print(
-            "동 단위 지역뱃지 마이그레이션: "
-            f"레거시 지역 {legacy_region_expired_count}건 만료, "
-            f"담당단지 {legacy_region_building_count}건 삭제"
+            "시군구 단위 지역뱃지 마이그레이션: "
+            f"중복 지역 {merged_region_count}건 병합, "
+            f"동 값 {normalized_region_count}건 초기화"
         )
 
     cur.execute("""
