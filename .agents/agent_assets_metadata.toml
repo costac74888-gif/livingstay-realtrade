@@ -145,3 +145,17 @@ uri = "file://verification/network-prod.txt"
 type = "text"
 title = "배포 Network 검증 기록"
 description = "새 API 성공, 기존 API·원본 JS·raw HTML 404, 릴리스 자산 경로와 크기를 기록했습니다."
+
+[[outputs]]
+id = "Wxdwez735GuN8ExV9H3gn"
+uri = "file://screenshots/region-claim-no-confirm.jpg"
+type = "image"
+title = "지역 등록 팝업 제거 확인 화면"
+description = "지역 등록 버튼 자동 클릭 후 등록 API 호출 완료와 window.confirm 호출 0회를 확인한 캡처입니다."
+
+[[outputs]]
+id = "XhQF-mUsxp16UAHCnCmtA"
+uri = "file://screenshots/admin-broker-horizontal-table.jpg"
+type = "image"
+title = "관리자 입점부동산 가로 테이블"
+description = "홈페이지 컬럼을 제거하고 사무소명·등록번호·대표자·소재지·전화번호·상태·등록일자 7개 컬럼으로 전환한 검증 화면입니다."

@@ -2098,14 +2098,14 @@ def _check_admin_building_broker_details(client):
         with open(os.path.join(os.path.dirname(__file__), "..", "static", "admin.html"), encoding="utf-8") as fh:
             markup = fh.read()
         required_markup = (
-            "safeBrokerHomepage", "parsed.protocol !== \"https:\" && parsed.protocol !== \"http:\"",
             "renderBrokerRegistryCards", "brokerStatusBadge", "홈앤스테이 중개업소 데이터",
-            "입점업소 참고", "bld-realty-modal-card", "bld-broker-card", "dgEscape(value || \"-\")",
+            "입점업소 참고", "bld-realty-modal-card", "bld-realty-table",
+            "사무소명</th><th>등록번호</th><th>대표자", "dgEscape(value || \"-\")",
         )
-        if any(text not in markup for text in required_markup):
-            failures.append("관리자 브로커 상세 모달의 안전한 URL/문자열 렌더링 또는 상세표 마크업이 누락됨")
+        if any(text not in markup for text in required_markup) or "safeBrokerHomepage" in markup:
+            failures.append("관리자 브로커 상세 모달의 안전한 문자열 렌더링 또는 가로 테이블 마크업이 누락됨")
         else:
-            start = markup.index("function safeBrokerHomepage")
+            start = markup.index("function brokerStatusBadge")
             end = markup.index("function renderCachedRealtyTable")
             frontend_check = """
                 function dgEscape(v) {
@@ -2122,15 +2122,17 @@ def _check_admin_building_broker_details(client):
                 }, {
                   office_name: "비영업 중개", reg_number: "R2", biz_status: "휴업"
                 }]);
-                if (html.includes("<img") || html.includes('href="javascript:')) process.exit(1);
-                if (!html.includes("&lt;img") || !html.includes("javascript:alert(1)")) process.exit(2);
+                if (html.includes("<img") || html.includes("javascript:alert(1)")) process.exit(1);
+                if (!html.includes("&lt;img")) process.exit(2);
                 if (!html.includes("bld-broker-status is-active") || !html.includes("bld-broker-status is-inactive")) process.exit(3);
+                if (!html.includes("사무소명</th><th>등록번호</th><th>대표자")) process.exit(4);
+                if ((html.match(/<th>/g) || []).length !== 7) process.exit(5);
             """
             rendered = subprocess.run(
                 ["node", "-e", frontend_check], capture_output=True, text=True, timeout=10
             )
             if rendered.returncode:
-                failures.append("관리자 브로커 상세 모달이 악성 문자열·비HTTP URL을 안전하게 렌더링하지 않음")
+                failures.append("관리자 브로커 상세 모달이 악성 문자열을 안전하게 렌더링하거나 가로 테이블로 표시하지 않음")
     except Exception as exc:
         conn.rollback()
         failures.append(f"관리자 건물 브로커 상세 테스트 오류: {exc}")
@@ -2152,7 +2154,7 @@ def _check_admin_building_broker_details(client):
             cur.close()
             conn.close()
     if not failures:
-        print("OK  관리자 건물 브로커 표준데이터 카드·상태 뱃지·목록 우선수·상권정보 폴백")
+        print("OK  관리자 건물 브로커 표준데이터 가로 테이블·상태 뱃지·목록 우선수·상권정보 폴백")
     return failures
 
 
@@ -2178,6 +2180,12 @@ def _check_broker_sync_normalization_and_status(client):
         legacy_items, legacy_total = sync_brokers._parse_page_payload(legacy_payload)
         if current_total != 1 or current_items[0].get("medOfficeNm") != "형식검증중개" or legacy_total != 1 or legacy_items[0].get("medOfficeNm") != "레거시중개":
             failures.append("브로커 수집기가 현재/레거시 공공데이터 응답 구조를 처리하지 못함")
+        expected_phone_fields = {
+            "telno", "phoneNumber", "telNo", "tel",
+            "cnpsTelno", "reprsvTelno", "bsshTelno", "phoneNo",
+        }
+        if not expected_phone_fields.issubset(sync_brokers.FIELD_CANDIDATES["phone"]):
+            failures.append("브로커 전화번호 응답 필드 후보가 누락됨")
 
         building_key = addr_norm.normalize_road_prefix(lagoon_building)
         broker_key = addr_norm.normalize_road_prefix(lagoon_broker)
