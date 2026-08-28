@@ -2419,8 +2419,8 @@ def _check_broker_sync_normalization_and_status(client):
             matched = next((item for item in items if "라군부동산중개법인" in (item.get("office_name") or "")), None)
             if response.status_code != 200 or not matched:
                 failures.append("라군 센트럴 스테이와 라군부동산중개법인이 실제 도로명 매칭되지 않음")
-            elif matched.get("biz_status") is not None:
-                failures.append("라군부동산중개법인의 원본 미제공 영업상태가 NULL로 표시되지 않음")
+            elif matched.get("biz_status") not in (None, "영업중", "휴업", "업무정지", "휴업연장"):
+                failures.append("라군부동산중개법인의 영업상태가 허용된 원본 상태값이 아님")
             listing = client.get("/api/admin/buildings", query_string={
                 "q": "라군 센트럴 스테이",
                 "size": 10,

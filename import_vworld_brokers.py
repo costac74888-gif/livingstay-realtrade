@@ -83,11 +83,78 @@ def _csv_rows_from_zip(path, expected_prefix):
 
 
 def _flush_offices(cur, rows):
+    """기존 API 전화번호는 보존하고 D171 상태·날짜·주소 정보만 병합한다."""
     if not rows:
         return 0
     # 원본에 완전히 같은 업소 행이 중복될 수 있다. 같은 INSERT 문 안에서 동일
     # 유일키를 두 번 갱신하면 PostgreSQL이 거부하므로 내부키 기준 마지막 행만 남긴다.
     rows = list({row[1]: row for row in rows}.values())
+
+    source_reg_numbers = list({row[2] for row in rows if row[2]})
+    existing = {}
+    if source_reg_numbers:
+        cur.execute(
+            """
+            SELECT reg_number, office_name, road_norm, jibun_norm
+            FROM broker_registry
+            WHERE reg_number = ANY(%s)
+            """,
+            (source_reg_numbers,),
+        )
+        existing = {row["reg_number"]: row for row in cur.fetchall()}
+
+    def matches_existing(row):
+        saved = existing.get(row[2])
+        if not saved:
+            return False
+        return (
+            saved["office_name"] == row[0]
+            or bool(saved["road_norm"] and saved["road_norm"] == row[13])
+            or bool(saved["jibun_norm"] and saved["jibun_norm"] == row[14])
+        )
+
+    update_rows = list({
+        row[2]: row for row in rows if matches_existing(row)
+    }.values())
+    update_keys = {row[1] for row in update_rows}
+    insert_rows = [row for row in rows if row[1] not in update_keys]
+
+    if update_rows:
+        execute_values(cur, """
+            UPDATE broker_registry SET
+                biz_status = d.biz_status,
+                reg_date = CASE
+                    WHEN d.reg_date IS NOT NULL AND d.reg_date <> '1900-01-01'
+                    THEN d.reg_date ELSE broker_registry.reg_date END,
+                source_updated_at = d.source_updated_at,
+                source_name = d.source_name,
+                source_reg_number = d.source_reg_number,
+                source_region_code = d.source_region_code,
+                owner_name = COALESCE(NULLIF(d.owner_name, ''), broker_registry.owner_name),
+                road_norm = COALESCE(NULLIF(d.road_norm, ''), broker_registry.road_norm),
+                jibun_norm = COALESCE(NULLIF(d.jibun_norm, ''), broker_registry.jibun_norm),
+                updated_at = NOW()
+            FROM (VALUES %s) AS d(
+                source_reg_number, biz_status, reg_date, source_updated_at,
+                source_name, source_region_code, owner_name, road_norm, jibun_norm
+            )
+            WHERE broker_registry.reg_number = d.source_reg_number
+        """, [
+            (row[2], row[11], row[9], row[12], row[4], row[3],
+             row[10], row[13], row[14])
+            for row in update_rows
+        ], page_size=len(update_rows))
+        # 실제로 기존 API 행에 병합한 현재 D171 행의 결정적 내부키만 제거한다.
+        # 원본 등록번호만 같은 다른 지역·다른 업소의 충돌 행은 건드리지 않는다.
+        cur.execute(
+            """
+            DELETE FROM broker_registry
+            WHERE reg_number = ANY(%s)
+              AND reg_number LIKE 'VWORLD:%%'
+            """,
+            ([row[1] for row in update_rows],),
+        )
+
     execute_values(cur, """
         INSERT INTO broker_registry (
             office_name, reg_number, source_reg_number, source_region_code, source_name,
@@ -101,8 +168,6 @@ def _flush_offices(cur, rows):
             source_name = EXCLUDED.source_name,
             road_address = EXCLUDED.road_address,
             jibun_address = EXCLUDED.jibun_address,
-            phone = EXCLUDED.phone,
-            phone_numbers = EXCLUDED.phone_numbers,
             reg_date = EXCLUDED.reg_date,
             owner_name = EXCLUDED.owner_name,
             biz_status = EXCLUDED.biz_status,
@@ -110,7 +175,7 @@ def _flush_offices(cur, rows):
             road_norm = EXCLUDED.road_norm,
             jibun_norm = EXCLUDED.jibun_norm,
             updated_at = NOW()
-    """, rows, page_size=len(rows))
+    """, insert_rows, page_size=max(len(insert_rows), 1))
     return len(rows)
 
 
@@ -148,6 +213,22 @@ def import_d171(cur, path, batch_size=DEFAULT_BATCH_SIZE):
             batch.clear()
     total += _flush_offices(cur, batch)
     return total
+
+
+def remove_vworld_duplicates(cur):
+    """기존 API 행과 원본 등록번호가 같은 V-World 내부키 행만 제거한다."""
+    cur.execute("""
+        DELETE FROM broker_registry vw
+        USING broker_registry canonical
+        WHERE vw.source_name = %s
+          AND vw.reg_number LIKE 'VWORLD:%%'
+          AND canonical.reg_number = vw.source_reg_number
+          AND canonical.reg_number NOT LIKE 'VWORLD:%%'
+          AND canonical.source_region_code = vw.source_region_code
+          AND canonical.office_name = vw.office_name
+          AND canonical.id <> vw.id
+    """, (SOURCE_D171,))
+    return cur.rowcount
 
 
 def _flush_members(cur, rows):
@@ -231,7 +312,34 @@ def refresh_member_counts(cur):
           AND br.source_reg_number = counts.reg_number
           AND br.office_name = counts.office_name
     """, (SOURCE_D172, SOURCE_D171))
-    return cur.rowcount
+    updated = cur.rowcount
+    # 기존 API의 사무소명이 잘리거나 과거 상호인 경우에도, 동일 지역·등록번호가
+    # 양쪽에서 각각 한 업소로만 식별되면 안전하게 인원 수를 연결한다.
+    cur.execute("""
+        UPDATE broker_registry br
+        SET member_count = counts.member_count,
+            updated_at = NOW()
+        FROM (
+            SELECT region_code, reg_number, COUNT(*)::int AS member_count
+            FROM broker_registry_members
+            WHERE source_name = %s
+            GROUP BY region_code, reg_number
+            HAVING COUNT(DISTINCT office_name) = 1
+        ) counts
+        WHERE br.source_name = %s
+          AND br.member_count = 0
+          AND br.source_region_code = counts.region_code
+          AND br.source_reg_number = counts.reg_number
+          AND NOT EXISTS (
+              SELECT 1
+              FROM broker_registry other
+              WHERE other.source_name = br.source_name
+                AND other.source_region_code = br.source_region_code
+                AND other.source_reg_number = br.source_reg_number
+                AND other.id <> br.id
+          )
+    """, (SOURCE_D172, SOURCE_D171))
+    return updated + cur.rowcount
 
 
 def main():
@@ -257,6 +365,7 @@ def main():
     try:
         if args.only in ("all", "d171"):
             import_d171(cur, args.d171, args.batch_size)
+            deleted = remove_vworld_duplicates(cur)
             conn.commit()
             cur.execute(
                 "SELECT COUNT(*) AS c FROM broker_registry WHERE source_name = %s",
@@ -264,6 +373,7 @@ def main():
             )
             offices = cur.fetchone()["c"]
             print(f"D171 업소 {offices:,}건 적재 완료")
+            print(f"기존 API와 겹친 V-World 중복 {deleted:,}건 정리 완료")
         if args.only in ("all", "d172"):
             import_d172(cur, args.d172, args.batch_size)
             conn.commit()
