@@ -36,6 +36,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import app as app_module  # noqa: E402
+import db as db_module  # noqa: E402
 import sync_brokers  # noqa: E402
 from app import (  # noqa: E402
     _building_share_meta,
@@ -760,7 +761,7 @@ def run():
     else:
         print("OK  /api/map/poi (입력 검증·카카오 Local 응답·오류 처리)")
 
-    # 파트너별 즉시 뱃지·무료 만료일·지역 정원 폐지·신규 slug 미발급을 실제 등록으로 확인
+    # 단지 2명·동 10명 정원, 동 단위 지역뱃지, 관리자 탭을 실제 등록으로 확인
     failures += _check_partner_badge_policy(client)
     # 관리자 건물의 브로커 표준데이터 상세·상권정보 폴백·목록 수 우선순위를 확인
     failures += _check_admin_building_broker_details(client)
@@ -1361,6 +1362,26 @@ def _check_partner_badge_policy(client):
         if len(building_ids) < 37:
             return ["파트너 뱃지: 테스트용 마스터 건물이 37개 미만입니다."]
         agent_bld, operator_bld, loan_bld, agent_approval_bld, loan_approval_bld, *_ = building_ids
+        cur.execute("""
+            SELECT DISTINCT ON (mb.sgg_text, mb.umd_nm)
+                   mb.id, mb.building_name, mb.sgg_text, mb.umd_nm
+            FROM master_buildings mb
+            WHERE mb.sgg_text IS NOT NULL AND mb.sgg_text <> ''
+              AND mb.umd_nm IS NOT NULL AND mb.umd_nm <> ''
+              AND mb.building_name <> '-'
+              AND (
+                  SELECT COUNT(*)
+                  FROM agent_service_regions sr
+                  WHERE sr.sgg_text=mb.sgg_text AND sr.umd_nm=mb.umd_nm
+                    AND sr.expires_at > NOW()
+              ) = 0
+            ORDER BY mb.sgg_text, mb.umd_nm, mb.id
+            LIMIT 2
+        """)
+        region_fixtures = cur.fetchall()
+        if len(region_fixtures) < 2:
+            return ["파트너 뱃지: 동 단위 지역뱃지 테스트용 지역을 2개 찾지 못했습니다."]
+        region_fixture, region_race_fixture = region_fixtures
         deadline = app_module.PARTNER_BADGE_FREE_EXPIRES_AT
 
         def create_agent(label):
@@ -1406,6 +1427,61 @@ def _check_partner_badge_policy(client):
         row = cur.fetchone() or {}
         if not row.get("has_priority_badge") or not (row.get("expires_at") or "").startswith(deadline):
             failures.append("파트너 뱃지: 중개사 전속단지에 즉시 골드뱃지/고정 만료일이 저장되지 않음")
+
+        # 같은 단지에는 두 중개사까지 성공하고, 세 번째 활성 신청은 거절된다.
+        slot_second_id = create_agent("agent-slot-second")
+        slot_third_id = create_agent("agent-slot-third")
+        conn.commit()
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = slot_second_id
+        slot_second = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = slot_third_id
+        slot_third_rejected = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
+        if slot_second.status_code != 200 or slot_third_rejected.status_code != 400:
+            failures.append("파트너 뱃지: 건물당 두 번째 중개사를 허용하거나 세 번째를 차단하지 못함")
+        detail = client.get(f"/api/building/{agent_bld}")
+        detail_agent_ids = {item.get("id") for item in (detail.get_json() or {}).get("agents", [])}
+        if detail.status_code != 200 or not {agent_id, slot_second_id} <= detail_agent_ids:
+            failures.append("파트너 뱃지: 건물 상세에 활성 단지뱃지 중개사 2명이 함께 표시되지 않음")
+
+        # 만료된 뱃지는 정원에서 제외되어 직전에 거절된 세 번째 중개사가 입점할 수 있다.
+        cur.execute("""
+            UPDATE agent_buildings
+            SET premium_expires_at=NOW() - INTERVAL '1 second'
+            WHERE agent_id=%s AND master_building_id=%s
+        """, (slot_second_id, agent_bld))
+        conn.commit()
+        slot_after_expiry = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
+        if slot_after_expiry.status_code != 200:
+            failures.append("파트너 뱃지: 만료된 뱃지를 활성 두 자리 정원에서 제외하지 않음")
+
+        # 세 중개사가 빈 단지에 동시에 등록해도 정확히 두 명만 성공한다.
+        slot_race_bld = building_ids[36]
+        slot_race_agent_ids = [create_agent(f"agent-slot-race-{index}") for index in range(3)]
+        conn.commit()
+
+        def parallel_building_slot_claim(race_agent_id):
+            with app.test_client() as parallel_client:
+                with parallel_client.session_transaction() as sess:
+                    sess["agent_id"] = race_agent_id
+                return parallel_client.post(
+                    "/api/agent/buildings", json={"master_building_id": slot_race_bld}
+                ).status_code
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            slot_race_results = list(executor.map(
+                parallel_building_slot_claim, slot_race_agent_ids
+            ))
+        cur.execute("""
+            SELECT COUNT(*) AS count FROM agent_buildings
+            WHERE master_building_id=%s AND has_priority_badge
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+        """, (slot_race_bld,))
+        if sorted(slot_race_results) != [200, 200, 400] or cur.fetchone()["count"] != 2:
+            failures.append(f"파트너 뱃지: 단지뱃지 동시 신청이 두 자리 정원을 우회함 ({slot_race_results})")
 
         # 같은 중개사가 9개를 가진 상태의 동시 등록도 10개 한도를 넘지 않아야 한다.
         capacity_agent_id = create_agent("agent-capacity")
@@ -1524,31 +1600,138 @@ def _check_partner_badge_policy(client):
         if operator_over_cap.status_code != 400 or loan_over_cap.status_code != 400:
             failures.append("파트너 뱃지: 운영업체 또는 대출상담사 담당단지 10개 한도가 적용되지 않음")
 
-        # ④ 중개사 지역뱃지: 개인 1개 제한은 유지하되 지역 전체 정원은 적용하지 않는다.
-        agent_region_id = create_agent("agent-region")
+        # ④ 중개사 지역뱃지: 실제 읍면동 조합에서 10명까지 성공하고 11번째는 거절된다.
+        region_sgg = region_fixture["sgg_text"]
+        region_umd = region_fixture["umd_nm"]
+        region_agent_ids = [create_agent(f"agent-region-{index}") for index in range(10)]
+        agent_region_id = region_agent_ids[0]
+        conn.commit()
+        region_responses = []
+        for region_agent_id in region_agent_ids:
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["agent_id"] = region_agent_id
+            region_responses.append(client.post("/api/agent/service-regions", json={
+                "sgg_text": region_sgg, "umd_nm": region_umd,
+            }))
+        if any(response.status_code != 200 for response in region_responses):
+            failures.append("파트너 뱃지: 읍면동 지역뱃지 10명 등록 중 정원 전에 거절됨")
+        region_overflow_id = create_agent("agent-region-overflow")
         conn.commit()
         with client.session_transaction() as sess:
             sess.clear()
-            sess["agent_id"] = agent_region_id
-        agent_region = client.post("/api/agent/service-regions", json={"sgg_text": tag})
-        if agent_region.status_code != 200:
-            failures.append("파트너 뱃지: 중개사 지역뱃지 등록에 실패함")
+            sess["agent_id"] = region_overflow_id
+        region_overflow = client.post("/api/agent/service-regions", json={
+            "sgg_text": region_sgg, "umd_nm": region_umd,
+        })
+        if region_overflow.status_code != 400 or "10명" not in ((region_overflow.get_json() or {}).get("message") or ""):
+            failures.append("파트너 뱃지: 읍면동 지역뱃지 11번째 신청을 정원 초과로 거절하지 않음")
         cur.execute("""
-            SELECT expires_at::text AS expires_at FROM agent_service_regions
+            SELECT umd_nm, expires_at::text AS expires_at FROM agent_service_regions
             WHERE agent_id=%s AND sgg_text=%s
-        """, (agent_region_id, tag))
-        if not ((cur.fetchone() or {}).get("expires_at") or "").startswith(deadline):
-            failures.append("파트너 뱃지: 중개사 지역뱃지의 고정 만료일이 저장되지 않음")
-        # 악의적인 지역명도 관리자 현황에서 문자열 데이터로만 취급되어야 한다.
-        xss_region = f"{tag}'><img src=x onerror=alert(1)>"
+        """, (agent_region_id, region_sgg))
+        region_row = cur.fetchone() or {}
+        if region_row.get("umd_nm") != region_umd or not (region_row.get("expires_at") or "").startswith(deadline):
+            failures.append("파트너 뱃지: 중개사 지역뱃지의 동 또는 고정 만료일이 저장되지 않음")
+
+        # 임의/XSS 형태 지역 문자열은 마스터 조합 검증으로 거절한다.
+        xss_region = f"{region_umd}'><img src=x onerror=alert(1)>"
         xss_agent_id = create_agent("agent-xss-region")
         conn.commit()
         with client.session_transaction() as sess:
             sess.clear()
             sess["agent_id"] = xss_agent_id
-        xss_region_add = client.post("/api/agent/service-regions", json={"sgg_text": xss_region})
-        if xss_region_add.status_code != 200:
-            failures.append("파트너 뱃지: 관리자 XSS 회귀 테스트용 지역 등록에 실패함")
+        xss_region_add = client.post("/api/agent/service-regions", json={
+            "sgg_text": region_sgg, "umd_nm": xss_region,
+        })
+        if xss_region_add.status_code != 400:
+            failures.append("파트너 뱃지: 마스터에 없는 임의/XSS 읍면동 문자열을 허용함")
+
+        # 담당단지 선택도 신청한 동 안의 건물만 허용한다.
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = agent_region_id
+        region_building_add = client.post("/api/agent/region-buildings", json={
+            "master_building_id": region_fixture["id"],
+        })
+        cur.execute("""
+            SELECT id FROM master_buildings
+            WHERE (sgg_text, umd_nm) <> (%s, %s)
+            ORDER BY id LIMIT 1
+        """, (region_sgg, region_umd))
+        outside_region = cur.fetchone()
+        outside_add = client.post("/api/agent/region-buildings", json={
+            "master_building_id": outside_region["id"],
+        }) if outside_region else None
+        if region_building_add.status_code != 200 or not outside_add or outside_add.status_code != 400:
+            failures.append("파트너 뱃지: 담당단지를 신청한 읍면동 안으로 제한하지 못함")
+
+        # 11명이 빈 동에 동시에 신청해도 정확히 10명만 성공한다.
+        region_race_agent_ids = [create_agent(f"agent-region-race-{index}") for index in range(11)]
+        conn.commit()
+
+        def parallel_region_claim(race_agent_id):
+            with app.test_client() as parallel_client:
+                with parallel_client.session_transaction() as sess:
+                    sess["agent_id"] = race_agent_id
+                return parallel_client.post("/api/agent/service-regions", json={
+                    "sgg_text": region_race_fixture["sgg_text"],
+                    "umd_nm": region_race_fixture["umd_nm"],
+                }).status_code
+
+        with ThreadPoolExecutor(max_workers=11) as executor:
+            region_race_results = list(executor.map(
+                parallel_region_claim, region_race_agent_ids
+            ))
+        cur.execute("""
+            SELECT COUNT(*) AS count FROM agent_service_regions
+            WHERE sgg_text=%s AND umd_nm=%s AND expires_at > NOW()
+        """, (region_race_fixture["sgg_text"], region_race_fixture["umd_nm"]))
+        if (
+            region_race_results.count(200) != 10
+            or region_race_results.count(400) != 1
+            or cur.fetchone()["count"] != 10
+        ):
+            failures.append(f"파트너 뱃지: 지역뱃지 동시 신청이 10명 정원을 우회함 ({region_race_results})")
+
+        # 레거시 정리는 한 번만 실행되어 이후 새 동 담당단지를 다시 삭제하지 않는다.
+        legacy_agent_id = create_agent("agent-region-legacy")
+        cur.execute("""
+            INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, expires_at)
+            VALUES (%s, %s, NULL, NOW() + INTERVAL '30 days')
+        """, (legacy_agent_id, f"{tag}-legacy"))
+        cur.execute("""
+            INSERT INTO agent_region_buildings (agent_id, master_building_id)
+            VALUES (%s, %s)
+        """, (legacy_agent_id, region_fixture["id"]))
+        cur.execute("DELETE FROM app_meta WHERE key=%s", (db_module._DONG_REGION_MIGRATION_KEY,))
+        expired_count, deleted_count = db_module._migrate_agent_regions_to_dong(cur)
+        cur.execute("""
+            SELECT expires_at <= NOW() AS expired FROM agent_service_regions
+            WHERE agent_id=%s AND umd_nm IS NULL
+        """, (legacy_agent_id,))
+        legacy_expired = (cur.fetchone() or {}).get("expired")
+        cur.execute("SELECT COUNT(*) AS count FROM agent_region_buildings WHERE agent_id=%s",
+                    (legacy_agent_id,))
+        first_remaining = cur.fetchone()["count"]
+        cur.execute("""
+            INSERT INTO agent_service_regions (agent_id, sgg_text, umd_nm, expires_at)
+            VALUES (%s, %s, %s, %s::timestamp)
+        """, (legacy_agent_id, region_fixture["sgg_text"], region_fixture["umd_nm"], deadline))
+        cur.execute("""
+            INSERT INTO agent_region_buildings (agent_id, master_building_id)
+            VALUES (%s, %s)
+        """, (legacy_agent_id, region_fixture["id"]))
+        rerun_counts = db_module._migrate_agent_regions_to_dong(cur)
+        cur.execute("SELECT COUNT(*) AS count FROM agent_region_buildings WHERE agent_id=%s",
+                    (legacy_agent_id,))
+        second_remaining = cur.fetchone()["count"]
+        conn.commit()
+        if (
+            expired_count != 1 or deleted_count != 1 or not legacy_expired
+            or first_remaining != 0 or rerun_counts != (0, 0) or second_remaining != 1
+        ):
+            failures.append("파트너 뱃지: 레거시 지역 만료·담당단지 1회 정리가 멱등적이지 않음")
 
         # ⑤·⑥ 운영업체 지역뱃지: 이미 20개 업체가 있어도 21번째 신청을 허용한다.
         for index in range(20):
@@ -1644,14 +1827,44 @@ def _check_partner_badge_policy(client):
         actual = {(item.get("partner_type"), item.get("kind"), item.get("partner_id")) for item in items}
         if premium_status.status_code != 200 or not expected <= actual:
             failures.append("파트너 뱃지: 관리자 현황 목록에 세 파트너 유형의 등록 건이 모두 표시되지 않음")
-        if not any(item.get("partner_id") == xss_agent_id and item.get("target") == xss_region for item in items):
-            failures.append("파트너 뱃지: 악성 형태 지역명이 관리자 현황 API에서 변형됨")
+        if not any(
+            item.get("partner_id") == agent_region_id
+            and item.get("target") == region_sgg
+            and item.get("umd_nm") == region_umd
+            for item in items
+        ):
+            failures.append("파트너 뱃지: 관리자 현황 API에 지역뱃지 읍면동 정보가 누락됨")
+        building_status = client.get("/api/admin/premium-status?kind=building")
+        region_status = client.get("/api/admin/premium-status?kind=region")
+        if (
+            any(item.get("kind") != "building" for item in (building_status.get_json() or {}).get("items", []))
+            or any(item.get("kind") != "region" for item in (region_status.get_json() or {}).get("items", []))
+        ):
+            failures.append("파트너 뱃지: 관리자 전체/단지/지역 탭용 API 필터가 잘못됨")
+        legacy_email = f"{tag}-agent-region-legacy@example.test"
+        member_listing = client.get("/api/admin/members", query_string={
+            "group": "agent", "q": legacy_email,
+        })
+        member_rows = (member_listing.get_json() or {}).get("items") or []
+        legacy_member = next((item for item in member_rows if item.get("id") == legacy_agent_id), None)
+        member_detail = client.get(f"/api/admin/members/agent/{legacy_agent_id}/detail")
+        detail_regions = ((member_detail.get_json() or {}).get("data") or {}).get("service_regions") or []
+        if (
+            not legacy_member
+            or legacy_member.get("region_sgg") != region_fixture["sgg_text"]
+            or legacy_member.get("region_umd") != region_fixture["umd_nm"]
+            or not detail_regions
+            or detail_regions[0].get("umd_nm") != region_fixture["umd_nm"]
+        ):
+            failures.append("파트너 뱃지: 관리자 회원관리에서 만료 레거시 대신 활성 읍면동을 표시하지 않음")
         with open("static/admin.html", encoding="utf-8") as admin_file:
             admin_source = admin_file.read()
         if (
             'onclick="extendPremiumBadge(' in admin_source
             or 'class="admin-btn premium-extend-btn" data-premium-index="${index}"' not in admin_source
             or "window.extendPremiumBadge = async function(row)" not in admin_source
+            or "[r.region_sgg, r.region_umd].filter(Boolean).join" not in admin_source
+            or "[r.sgg_text, r.umd_nm].filter(Boolean).join" not in admin_source
         ):
             failures.append("파트너 뱃지: 관리자 만기연장 버튼이 외부 입력을 인라인 스크립트로 렌더링함")
         # 만기연장은 현재 유료 분류를 건드리지 않고, 활성 독점 뱃지가 있으면 재활성화를 거절한다.
@@ -1697,6 +1910,10 @@ def _check_partner_badge_policy(client):
         markup = admin_page.get_data(as_text=True)
         if (
             "모든 뱃지는 신청 즉시 자동 부여되며, 2026.12.31까지 무료입니다." not in markup
+            or 'data-kind="all">전체<' not in markup
+            or 'data-kind="building">단지뱃지<' not in markup
+            or 'data-kind="region">지역뱃지<' not in markup
+            or "읍·면·동" not in markup
             or "만기연장" not in markup
             or "유료전환" in markup
         ):

@@ -98,7 +98,8 @@
         단지뱃지가 즉시 자동 부여되어 담당중개사 영역 최상단에 노출됩니다.
         <ul>
           <li>전속단지는 등록 즉시 <b>2026년 12월 31일까지 무료</b> 단지뱃지가 적용됩니다</li>
-          <li>이미 다른 중개사가 단지뱃지를 갖고 있는 단지는 등록할 수 없습니다</li>
+          <li>단지뱃지는 <b>건물당 최대 2명</b>까지 선착순으로 등록할 수 있습니다</li>
+          <li>두 자리가 모두 찬 단지는 빈자리가 생길 때까지 추가 등록할 수 없습니다</li>
         </ul>
       </div>
       <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
@@ -110,19 +111,21 @@
     <div class="panel-card" style="margin-top:14px;">
       <div class="side-card-title" style="margin-bottom:4px;">담당 지역</div>
       <div class="agent-guide">
-        시·군·구 단위로 담당 지역을 <b>1개만</b> 등록할 수 있습니다. 등록한
+        읍·면·동 단위로 담당 지역을 <b>1개만</b> 등록할 수 있습니다. 등록한
         지역 안에서 담당단지를 최대 20개까지 직접 골라서 추가하면, 그
         단지들의 담당중개사 영역에 "지역담당"으로 노출됩니다(단지뱃지/지역뱃지순).
         <ul>
-          <li>지역별 등록 인원 정원은 없습니다</li>
+          <li>지역뱃지는 <b>읍·면·동당 최대 10명</b>까지 선착순으로 등록할 수 있습니다</li>
+          <li>정원이 찬 읍·면·동은 빈자리가 생길 때까지 신청할 수 없습니다</li>
           <li>이미 본인이 단지뱃지로 입점한 단지는 담당단지로 중복 추가할 수 없습니다</li>
           <li><b>지역을 변경하면 현재 등록된 담당단지가 모두 삭제됩니다</b> — 신중히 선택해주세요</li>
           <li>지역 등록도 신청 즉시 <b>2026년 12월 31일까지 무료</b> 적용됩니다</li>
         </ul>
       </div>
       <div id="regionClaimBox">
-        <div style="display:flex; gap:6px; margin-bottom:8px;">
-          <select id="regionInput" class="admin-input" style="flex:1;"><option value="">지역 선택…</option></select>
+        <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+          <select id="regionSggInput" class="admin-input" style="flex:1; min-width:210px;"><option value="">시·군·구 선택…</option></select>
+          <select id="regionUmdInput" class="admin-input" style="flex:1; min-width:160px;" disabled><option value="">읍·면·동 선택…</option></select>
           <button id="btnClaimRegion" class="side-more" style="width:auto; margin-top:0; padding:7px 14px;">지역 등록</button>
         </div>
       </div>
@@ -465,7 +468,7 @@ function render(){
 
 async function claimPremium(mbid){
   const msg = "단지부동산 신청 안내\n\n"
-    + "1. 한 단지에는 1개 부동산만 입점할 수 있습니다 (선착순)\n"
+    + "1. 한 단지에는 최대 2개 부동산이 입점할 수 있습니다 (선착순)\n"
     + "2. 입점 시 해당 단지 담당중개사 영역 최상단에 고정 노출됩니다\n"
     + "3. 잔여기간은 이후 정식 전환 시 그대로 이어서 적용됩니다\n\n"
     + "신규 전속단지는 등록 시 자동으로 단지뱃지가 적용됩니다.";
@@ -497,7 +500,7 @@ async function loadRegions(){
   const active = new Date(r.expires_at) > new Date();
   const blds = data.region_buildings || [];
   document.getElementById("regionActiveLabel").textContent =
-    `${r.sgg_text} — ${active ? "적용중" : "종료"} (담당단지 ${blds.length}/${AGENT_REGION_BUILDING_CAP_JS})`;
+    `${r.sgg_text} ${r.umd_nm || ""} — ${active ? "적용중" : "종료"} (담당단지 ${blds.length}/${AGENT_REGION_BUILDING_CAP_JS})`;
   const bldBox = document.getElementById("regionBldList");
   if (!blds.length) { bldBox.innerHTML = `<div class="side-empty">담당단지를 추가해주세요.</div>`; }
   else {
@@ -528,27 +531,50 @@ document.getElementById("btnChangeRegion").addEventListener("click", async () =>
 });
 
 document.getElementById("btnClaimRegion").addEventListener("click", async () => {
-  const sgg = document.getElementById("regionInput").value.trim();
-  if (!sgg) return;
+  const sgg = document.getElementById("regionSggInput").value.trim();
+  const umd = document.getElementById("regionUmdInput").value.trim();
+  if (!sgg || !umd) {
+    alert("시·군·구와 읍·면·동을 모두 선택해주세요.");
+    return;
+  }
   const msg = "담당 지역 신청 안내\n\n"
     + "1. 담당 지역은 1개만 신청할 수 있습니다\n"
-    + "2. 신청한 지역 안에서 최대 20개 단지까지 담당단지로 직접 선택할 수 있습니다\n"
-    + "3. 지역 전체가 자동으로 매칭되는 것이 아니라, 선택한 단지에만 매칭됩니다\n\n"
-    + "신청 즉시 2026년 12월 31일까지 무료로 적용됩니다. '" + sgg + "' 지역을 신청하시겠습니까?";
+    + "2. 읍·면·동당 최대 10명까지 선착순으로 등록됩니다\n"
+    + "3. 신청한 동 안에서 최대 20개 단지까지 담당단지로 직접 선택할 수 있습니다\n"
+    + "4. 동 전체가 자동으로 매칭되는 것이 아니라, 선택한 단지에만 매칭됩니다\n\n"
+    + "신청 즉시 2026년 12월 31일까지 무료로 적용됩니다. '" + sgg + " " + umd + "' 지역을 신청하시겠습니까?";
   if (!confirm(msg)) return;
   const { ok, data } = await api("/api/agent/service-regions", {
-    method: "POST", body: JSON.stringify({ sgg_text: sgg }) });
+    method: "POST", body: JSON.stringify({ sgg_text: sgg, umd_nm: umd }) });
   if (ok) { loadRegions(); } else { alert(data.message || "등록에 실패했습니다."); }
+});
+
+let REGION_OPTIONS = [];
+document.getElementById("regionSggInput").addEventListener("change", function(){
+  const umdSelect = document.getElementById("regionUmdInput");
+  const selectedSgg = this.value;
+  umdSelect.innerHTML = `<option value="">읍·면·동 선택…</option>`;
+  const umds = REGION_OPTIONS
+    .filter(item => item.sgg_text === selectedSgg)
+    .map(item => item.umd_nm);
+  umds.forEach(umd => {
+    const opt = document.createElement("option");
+    opt.value = umd;
+    opt.textContent = umd;
+    umdSelect.appendChild(opt);
+  });
+  umdSelect.disabled = !selectedSgg;
 });
 
 async function loadSggOptions(){
   const { ok, data } = await api("/api/agent/sgg-options");
   if (!ok) return;
-  const sel = document.getElementById("regionInput");
+  const sel = document.getElementById("regionSggInput");
   if (!sel) return;
+  REGION_OPTIONS = Array.isArray(data.options) ? data.options : [];
   // 기존 옵션 제거 후 다시 채움 (중복 방지)
   while (sel.options.length > 1) sel.remove(1);
-  data.options.forEach(sgg => {
+  [...new Set(REGION_OPTIONS.map(item => item.sgg_text))].forEach(sgg => {
     const opt = document.createElement("option");
     opt.value = sgg; opt.textContent = sgg;
     sel.appendChild(opt);
@@ -999,7 +1025,7 @@ async function loadBilling(){
   (data.regions || []).forEach(r => {
     const active = new Date(r.expires_at) > new Date();
     rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
-      <span>📍 ${esc(r.sgg_text)} (지역뱃지(실버))</span>
+      <span>📍 ${esc([r.sgg_text, r.umd_nm].filter(Boolean).join(" "))} (지역뱃지(실버))</span>
       <span style="color:${active ? 'var(--ink-soft)' : 'var(--brick)'};">${active ? new Date(r.expires_at).toLocaleDateString("ko-KR") + "까지" : "종료"}</span>
     </div>`);
   });

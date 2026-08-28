@@ -96,3 +96,17 @@ uri = "file://screenshots/task-206-lagoon-modal-recheck.jpg"
 type = "image"
 title = "라군 센트럴 스테이 입점부동산 재확인"
 description = "실제 관리자 인증 API 응답으로 재확인한 건물 ID 3085의 모달 카드: 주식회사 라군부동산중개법인 1건, 영업중."
+
+[[outputs]]
+id = "XNzkzbfkm1YEhHFdqnMYv"
+uri = "file://screenshots/task-208-policy-scenarios.jpg"
+type = "image"
+title = "단지 2명·동 10명 정책 검증"
+description = "실제 API 회귀검사에서 두 번째 단지뱃지 성공, 세 번째 거절, 지역뱃지 10명 성공과 11번째 거절, 동시 신청 정원 준수를 확인한 캡처입니다."
+
+[[outputs]]
+id = "VQBxCYMDctUq0x3rpeSUU"
+uri = "file://screenshots/task-208-admin-tabs.jpg"
+type = "image"
+title = "관리자 뱃지 현황 3탭"
+description = "관리자 뱃지 현황의 전체·단지뱃지·지역뱃지 탭과 읍·면·동 열을 확인하는 캡처입니다."
