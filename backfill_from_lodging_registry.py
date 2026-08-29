@@ -14,6 +14,9 @@ discover_new_buildings.py(실거래가 기반)에서 buildingUse='오피스텔'�
 
     # dry-run (실제 등록 없이 후보만 출력)
     python backfill_from_lodging_registry.py --dry-run
+
+    # 건축HUB 정밀 분류 사용
+    python backfill_from_lodging_registry.py --use-hub
 """
 
 import os
@@ -83,7 +86,7 @@ def hygiene_to_lodging_type(hygiene_type: str, biz_name: str = ""):
     return ("기타", hygiene_type or "")
 
 
-def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
+def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=False):
     init_db()
 
     def _status_update(**updates):
@@ -239,27 +242,43 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
             _maybe_write_status()
             continue
 
-        # ── 5. 건축HUB 표제부 조회 → lodging_type 판정 ─────────
-        time.sleep(REQUEST_SLEEP)
+        # ── 5. lodging_type 판정 ──────────────────────────────────
         sgg_text = sgg_text_local
-        plat_gb, bun2, ji2 = parse_jibun(jibun_str)
+        _use_hub_this = False
+        if use_hub:
+            # 법정동 코드·지번 파싱도 HUB를 사용할 때만 수행한다.
+            try:
+                bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
+                if not bjdong_cd:
+                    raise ValueError(f"법정동 코드 없음: {sgg_cd} {umd_nm}")
+                plat_gb, bun2, ji2 = parse_jibun(jibun_str)
+                _use_hub_this = True
+            except Exception as e:
+                print(f"  [HUB 전처리 실패→fallback] {biz_name}: {e}")
 
-        try:
-            bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
-            if not bjdong_cd:
-                raise ValueError(f"법정동 코드 없음: {sgg_cd} {umd_nm}")
-            label, detail, subtype, title, reason = classify_lodging_type(
-                sgg_cd, bjdong_cd, plat_gb, bun2, ji2
-            )
-            if not label:
-                raise ValueError(f"건축HUB 판정불가: {reason}")
-            ho_cnt = (title or {}).get("ho_cnt") or lr["room_count"] or 0
-        except Exception as e:
-            # 건축HUB 실패 시 영업신고 hygiene_type으로 fallback
+        if _use_hub_this:
+            # 건축HUB 정밀분류 (--use-hub 옵션 시에만)
+            time.sleep(REQUEST_SLEEP)
+            try:
+                label, detail, subtype, title, reason = classify_lodging_type(
+                    sgg_cd, bjdong_cd, plat_gb, bun2, ji2
+                )
+                if not label:
+                    raise ValueError(f"건축HUB 판정불가: {reason}")
+                ho_cnt = (title or {}).get("ho_cnt") or lr["room_count"] or 0
+            except Exception as e:
+                # 건축HUB 실패 시 영업신고 hygiene_type으로 fallback
+                label, detail = hygiene_to_lodging_type(
+                    lr["hygiene_type"], biz_name
+                )
+                subtype = ""
+                ho_cnt = lr["room_count"] or 0
+                print(f"  [건축HUB실패→fallback] {biz_name}: {e}")
+        else:
+            # 기본: hygiene_type + 건물명 키워드만으로 즉시 분류 (빠름)
             label, detail = hygiene_to_lodging_type(lr["hygiene_type"], biz_name)
             subtype = ""
             ho_cnt = lr["room_count"] or 0
-            print(f"  [건축HUB실패→fallback] {biz_name}: {e}")
 
         if dry_run:
             print(f"  [DRY] {biz_name} | {sgg_text} {umd_nm} {jibun_str} | {label}")
@@ -311,6 +330,8 @@ if __name__ == "__main__":
                         help="실제 등록 없이 후보만 출력")
     parser.add_argument("--status-key", default=None,
                         help="app_meta에 진행상황을 기록할 키")
+    parser.add_argument("--use-hub", action="store_true",
+                        help="건축HUB API로 lodging_type 정밀분류 (기본: hygiene_type+키워드만)")
     args = parser.parse_args()
     sgg_filter = {args.sgg} if args.sgg else None
 
@@ -340,6 +361,7 @@ if __name__ == "__main__":
             dry_run=args.dry_run,
             status_key=args.status_key,
             run_id=run_id,
+            use_hub=args.use_hub,
         )
     except Exception as e:
         error = str(e)[:500]
