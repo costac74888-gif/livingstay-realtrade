@@ -146,6 +146,12 @@ def run_local():
     else:
         print("OK  지도위치 원형 마커 대상 고정·2.4초 무한 점멸")
 
+    admin_html = open(os.path.join(root, "static", "admin.html"), encoding="utf-8").read()
+    if "📋 복사 ${copyCount}회" not in admin_html or "✅ 복사됨 · ${copyCount}회" not in admin_html:
+        failures.append("카카오 복사 버튼에 최신 복사 횟수가 표시되지 않음")
+    else:
+        print("OK  카카오 복사 버튼에 복사 횟수 표시")
+
     modal_test = os.path.join(os.path.dirname(__file__), "auth_reset_modal_test.js")
     try:
         result = subprocess.run(
