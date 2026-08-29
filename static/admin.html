@@ -2402,6 +2402,128 @@
       }
     }
 
+    // ---- 영업신고 누락건물 보완수집 ----
+    let backfillLodgingTimer = null;
+
+    function stopBackfillLodgingPolling() {
+      if (backfillLodgingTimer) {
+        clearInterval(backfillLodgingTimer);
+        backfillLodgingTimer = null;
+      }
+    }
+
+    function renderBackfillLodgingStatus(d) {
+      const statusDiv = document.getElementById("backfillLodgingStatus");
+      const btn = document.getElementById("backfillLodgingRunBtn");
+      if (!statusDiv || !btn) {
+        stopBackfillLodgingPolling();
+        return;
+      }
+      if (!d.state || d.state === "idle") {
+        statusDiv.textContent = "대기 중 (미실행)";
+        btn.textContent = "보완수집 실행";
+        btn.disabled = false;
+        stopBackfillLodgingPolling();
+        return;
+      }
+
+      const rows = [];
+      if (d.started_at) rows.push(`마지막 실행: ${d.started_at}`);
+      if (d.total != null) rows.push(`대상: ${num(d.total)}건`);
+      if (d.registered != null) rows.push(`신규등록: ${num(d.registered)}건`);
+      if (d.skipped != null) rows.push(`기존매핑: ${num(d.skipped)}건`);
+      if (d.failed != null) rows.push(`실패: ${num(d.failed)}건`);
+      if (d.finished_at) rows.push(`완료: ${d.finished_at}`);
+      if (d.error) rows.push(`오류: ${d.error}`);
+      statusDiv.textContent = rows.join(" · ");
+
+      const running = d.state === "running";
+      btn.textContent = running ? "실행 중…" : "보완수집 실행";
+      btn.disabled = running;
+      if (running && !backfillLodgingTimer) {
+        backfillLodgingTimer = setInterval(loadBackfillLodgingStatus, 5000);
+      } else if (!running) {
+        stopBackfillLodgingPolling();
+      }
+    }
+
+    async function loadBackfillLodgingStatus() {
+      const statusDiv = document.getElementById("backfillLodgingStatus");
+      if (!statusDiv) {
+        stopBackfillLodgingPolling();
+        return;
+      }
+      try {
+        const res = await fetch("/api/admin/backfill-lodging-status");
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          statusDiv.textContent = d.message || "상태 조회 실패";
+          return;
+        }
+        renderBackfillLodgingStatus(d);
+      } catch (e) {
+        statusDiv.textContent = "상태 조회 실패";
+      }
+    }
+
+    async function runBackfillLodging() {
+      const btn = document.getElementById("backfillLodgingRunBtn");
+      const msg = document.getElementById("backfillLodgingMsg");
+      btn.disabled = true;
+      btn.textContent = "시작 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/backfill-lodging-run", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        msg.textContent = d.message || "";
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          setTimeout(loadBackfillLodgingStatus, 2000);
+        } else {
+          msg.style.color = "#b3261e";
+          btn.disabled = false;
+          btn.textContent = "보완수집 실행";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "요청 실패";
+        btn.disabled = false;
+        btn.textContent = "보완수집 실행";
+      }
+    }
+
+    async function runReclassifyLodgingKeywords() {
+      const btn = document.getElementById("reclassifyKeywordBtn");
+      const msg = document.getElementById("reclassifyKeywordMsg");
+      btn.disabled = true;
+      btn.textContent = "처리 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/reclassify-lodging-keywords", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
+        msg.textContent = d.message || (res.ok ? "" : "요청 실패");
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "요청 실패";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "기타 → 키워드 재분류 실행";
+      }
+    }
+
     // ---- 과거 구간 재수집 ----
     function renderBrhubRescanStatus(d) {
       const box = document.getElementById("brhubRescanStatus");
@@ -3092,6 +3214,34 @@
             <button id="brhubRescanRunBtn" class="admin-btn" style="margin-top:8px;">과거 구간 재수집 실행</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBackfillLodging">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">① - 보완 영업신고 누락건물 등록</h2>
+          </div>
+          <p class="legal-admin-hint">
+            실거래가 없어 누락된 건물을 <b>영업신고(숙박업 허가) 데이터</b> 기반으로 발굴해
+            master_buildings에 등록합니다. 이미 등록된 건물은 자동으로 건너뜁니다.<br>
+            <b>전국 약 27,000건</b> 대상 · 일일 건축HUB 한도 도달 시 다음날 이어서 실행.
+            건축HUB 판정 실패 시 건물명 키워드(여관·여인숙·모텔 등)로 자동 분류합니다.
+          </p>
+          <div id="backfillLodgingStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="backfillLodgingMsg" class="legal-msg" role="alert"></span>
+            <button id="backfillLodgingRunBtn" class="admin-btn admin-btn-primary">
+              보완수집 실행
+            </button>
+          </div>
+          <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">
+              기존에 등록된 건물 중 lodging_type이 '기타'인 것을
+              건물명 키워드(여관·여인숙·모텔 → 일반, 레지던스·스테이 → 생숙 등)로 재분류합니다.
+            </div>
+            <button id="reclassifyKeywordBtn" class="admin-btn" style="margin-top:4px;">
+              기타 → 키워드 재분류 실행
+            </button>
+            <span id="reclassifyKeywordMsg" class="legal-msg" style="margin-left:10px;"></span>
+          </div>
+        </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecGeo">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">② 지도 좌표 채우기</h2>
@@ -3320,6 +3470,8 @@
       `;
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
+      document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
+      document.getElementById("reclassifyKeywordBtn").addEventListener("click", runReclassifyLodgingKeywords);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
       document.getElementById("titleInfoRunBtn").addEventListener("click", runTitleInfoBackfill);
       document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
@@ -3341,6 +3493,7 @@
       loadDataSyncBanner();
       loadBrhubSyncStatus();
       loadBrhubRescanStatus();
+      loadBackfillLodgingStatus();
       loadGeocodeStatus();
       loadTitleInfoStatus();
       loadTxSyncStatus();

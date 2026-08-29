@@ -18338,6 +18338,7 @@ _BRHUB_RESCAN_PROGRESS_KEY = "brhub_rescan_progress"
 _BRHUB_DAILY_CAP = 8000  # sync_brhub.py --daily-cap 기본값과 동일 유지
 _BRHUB_TOTAL_DONGS = None  # bjdong_codes.json 법정동 총수 캐시
 _BRHUB_SIDO_LAYOUT = None  # bjdong_codes.json 순서 기반 시도별 법정동 위치 캐시
+_BACKFILL_LODGING_META_KEY = "admin:backfill_lodging_registry:status"
 
 
 def _brhub_total_dongs():
@@ -18466,6 +18467,159 @@ def admin_brhub_sync_run():
         return jsonify({"ok": False, "message": "동기화 프로세스를 시작하지 못했습니다."}), 500
 
     return jsonify({"ok": True, "message": "건물수집(전국)을 시작했습니다.", "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/backfill-lodging-run", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_backfill_lodging_run():
+    """영업신고 기반 누락건물 보완수집 시작."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        status = {
+            "run_id": _secrets.token_hex(8),
+            "state": "running",
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "finished_at": None,
+            "total": None,
+            "registered": None,
+            "skipped": None,
+            "failed": None,
+            "error": None,
+        }
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+                   OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes')
+              AND ((app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'done'
+                   OR app_meta.updated_at < NOW() - INTERVAL '5 minutes')
+        """, (_BACKFILL_LODGING_META_KEY, json.dumps(status, ensure_ascii=False)))
+        acquired = cur.rowcount > 0
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not acquired:
+        return jsonify({
+            "ok": False,
+            "message": "이미 실행 중이거나 최근에 완료됐습니다.",
+        }), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                os.path.join(base_dir, "backfill_from_lodging_registry.py"),
+                "--status-key",
+                _BACKFILL_LODGING_META_KEY,
+            ],
+            cwd=base_dir,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as e:
+        status.update({
+            "state": "failed",
+            "error": f"러너 실행 실패: {e}"[:300],
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                UPDATE app_meta
+                SET value = %s, updated_at = NOW()
+                WHERE key = %s AND (value::jsonb ->> 'run_id') = %s
+            """, (
+                json.dumps(status, ensure_ascii=False),
+                _BACKFILL_LODGING_META_KEY,
+                status["run_id"],
+            ))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "보완수집 프로세스를 시작하지 못했습니다."}), 500
+
+    return jsonify({
+        "ok": True,
+        "message": "보완수집을 시작했습니다.",
+        "started_at": status["started_at"],
+    }), 202
+
+
+@app.route("/api/admin/backfill-lodging-status")
+@require_admin
+def admin_backfill_lodging_status():
+    """영업신고 누락건물 보완수집 진행상황."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT value, updated_at FROM app_meta WHERE key = %s",
+            (_BACKFILL_LODGING_META_KEY,),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row:
+        return jsonify({"state": "idle"})
+    try:
+        status = json.loads(row["value"])
+    except (TypeError, ValueError):
+        return jsonify({"state": "idle"})
+    if status.get("state") == "running" and row["updated_at"]:
+        age = (datetime.now() - row["updated_at"]).total_seconds()
+        if age > _SYNC_STALE_MIN * 60:
+            status["state"] = "stale"
+            status["error"] = "이전 실행이 장시간 응답하지 않았습니다. 다시 실행할 수 있습니다."
+    return jsonify(status)
+
+
+@app.route("/api/admin/reclassify-lodging-keywords", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_reclassify_lodging_keywords():
+    """건물명 키워드로 lodging_type='기타' 건물을 일괄 재분류한다."""
+    keyword_map = {
+        "일반": ["여관", "여인숙", "모텔", "민박", "게스트하우스", "호스텔"],
+        "생숙": ["레지던스", "스테이", "생활숙박"],
+        "관광": ["관광호텔", "리조트", "콘도"],
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    updated = 0
+    try:
+        for lodging_type, keywords in keyword_map.items():
+            for keyword in keywords:
+                cur.execute("""
+                    UPDATE master_buildings
+                    SET lodging_type = %s, verified_at = NOW()
+                    WHERE lodging_type = '기타'
+                      AND building_name LIKE %s
+                """, (lodging_type, f"%{keyword}%"))
+                updated += cur.rowcount
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if updated:
+        _mark_master_stats_invalidated_safely("reclassify_lodging_keywords")
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "message": f"키워드 재분류 완료: {updated}건을 '기타' → 적정 용도로 변경했습니다.",
+    })
 
 
 @app.route("/api/admin/brhub-rescan-run", methods=["POST"])

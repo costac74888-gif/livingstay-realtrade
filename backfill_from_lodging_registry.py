@@ -18,12 +18,16 @@ discover_new_buildings.py(실거래가 기반)에서 buildingUse='오피스텔'�
 
 import os
 import argparse
+import json
+import threading
 import time
+from datetime import datetime
 
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
 from stats_cache import mark_master_stats_invalidated
+from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 REQUEST_SLEEP = 0.3  # 건축HUB API 쿼터 보호
@@ -45,17 +49,56 @@ HYGIENE_TYPE_MAP = {
     "외국인관광도시민박업": ("생숙",      "외국인관광도시민박업"),
 }
 
+# 건물명 키워드 기반 분류 (hygiene_type 없거나 매핑 안 될 때 2차 판단)
+LODGING_NAME_KEYWORDS = {
+    "일반": ["여관", "여인숙", "모텔", "민박", "게스트하우스", "호스텔"],
+    "생숙": ["레지던스", "스테이", "생활숙박"],
+    "관광": ["관광호텔", "리조트", "콘도"],
+}
 
-def hygiene_to_lodging_type(hygiene_type: str):
+
+def name_to_lodging_type(biz_name: str):
+    """건물명 키워드로 lodging_type 추정. 매칭 없으면 None."""
+    for ltype, keywords in LODGING_NAME_KEYWORDS.items():
+        for kw in keywords:
+            if kw in (biz_name or ""):
+                return ltype
+    return None
+
+
+def hygiene_to_lodging_type(hygiene_type: str, biz_name: str = ""):
     """영업신고 업종명 → (lodging_type, lodging_type_detail)"""
     for key, val in HYGIENE_TYPE_MAP.items():
         if key in (hygiene_type or ""):
             return val
+    # 2차: 건물명 키워드 판단
+    name_type = name_to_lodging_type(biz_name)
+    if name_type:
+        return (name_type, hygiene_type or "")
     return ("기타", hygiene_type or "")
 
 
-def run(sgg_filter=None, dry_run=False):
+def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
     init_db()
+
+    def _status_update(**updates):
+        if not status_key or not run_id:
+            return
+        try:
+            status = _read_status(status_key) or {}
+            if status.get("run_id") != run_id:
+                return
+            status.update(updates)
+            _write_status(status_key, status, run_id)
+        except Exception as e:
+            print(f"[상태 저장 실패] {e}")
+
+    _status_update(
+        state="running",
+        started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        total=0, registered=0, skipped=0, failed=0,
+    )
+
     bjdong = BjdongMap(BJDONG_CODE_CSV)
     conn = get_conn()
     cur = conn.cursor()
@@ -107,10 +150,35 @@ def run(sgg_filter=None, dry_run=False):
     cur.execute(query, addr_params)
     candidates = cur.fetchall()
     print(f"[후보] 총 {len(candidates)}건")
+    _status_update(
+        state="running",
+        started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        total=len(candidates), registered=0, skipped=0, failed=0,
+    )
 
     registered = skipped = failed = 0
 
-    for lr in candidates:
+    def _maybe_write_status():
+        processed = registered + skipped + failed
+        if processed and processed % 100 == 0:
+            _status_update(
+                state="running",
+                total=len(candidates),
+                registered=registered,
+                skipped=skipped,
+                failed=failed,
+            )
+
+    for index, lr in enumerate(candidates, 1):
+        if (
+            status_key
+            and run_id
+            and index % 20 == 0
+            and not _still_owner(cur, status_key, run_id)
+        ):
+            print("[중단] 상태 소유권을 잃었습니다(다른 실행 감지). 종료합니다.")
+            break
+
         road_addr = lr["road_address"] or ""
         jibun_addr = lr["jibun_address"] or ""
         biz_name = lr["biz_name"]
@@ -121,12 +189,14 @@ def run(sgg_filter=None, dry_run=False):
         if not target_addr:
             failed += 1
             print(f"  [스킵] {biz_name} — 주소 없음")
+            _maybe_write_status()
             continue
 
         juso = road_to_jibun(target_addr)
         if not juso:
             failed += 1
             print(f"  [실패] {biz_name} — 주소 변환 실패: {target_addr}")
+            _maybe_write_status()
             continue
 
         si_do  = juso.get("siNm", "")
@@ -142,6 +212,7 @@ def run(sgg_filter=None, dry_run=False):
         if not sgg_cd:
             failed += 1
             print(f"  [실패] {biz_name} — SGG 코드 없음: {si_do} {sgg_nm}")
+            _maybe_write_status()
             continue
 
         # ── 4. master_buildings 중복 확인 ──────────────────────
@@ -159,6 +230,7 @@ def run(sgg_filter=None, dry_run=False):
                 conn.commit()
             skipped += 1
             print(f"  [중복] {biz_name} → #{dup['id']}")
+            _maybe_write_status()
             continue
 
         # ── 5. 건축HUB 표제부 조회 → lodging_type 판정 ─────────
@@ -178,13 +250,14 @@ def run(sgg_filter=None, dry_run=False):
             ho_cnt = (title or {}).get("ho_cnt") or lr["room_count"] or 0
         except Exception as e:
             # 건축HUB 실패 시 영업신고 hygiene_type으로 fallback
-            label, detail = hygiene_to_lodging_type(lr["hygiene_type"])
+            label, detail = hygiene_to_lodging_type(lr["hygiene_type"], biz_name)
             subtype = ""
             ho_cnt = lr["room_count"] or 0
             print(f"  [건축HUB실패→fallback] {biz_name}: {e}")
 
         if dry_run:
             print(f"  [DRY] {biz_name} | {sgg_text} {umd_nm} {jibun_str} | {label}")
+            _maybe_write_status()
             continue
 
         # ── 6. master_buildings 등록 ───────────────────────────
@@ -209,10 +282,20 @@ def run(sgg_filter=None, dry_run=False):
         mark_master_stats_invalidated("backfill_lodging_registry")
         registered += 1
         print(f"  [등록] {biz_name} → #{mb_id} ({label})")
+        _maybe_write_status()
 
     cur.close()
     conn.close()
     print(f"\n완료 — 신규등록: {registered} / 기존매핑: {skipped} / 실패: {failed}")
+    _status_update(
+        state="done",
+        finished_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        total=len(candidates),
+        registered=registered,
+        skipped=skipped,
+        failed=failed,
+    )
+    return registered, skipped, failed
 
 
 if __name__ == "__main__":
@@ -220,6 +303,61 @@ if __name__ == "__main__":
     parser.add_argument("--sgg", help="특정 시군구 코드만 실행 (예: 28110)")
     parser.add_argument("--dry-run", action="store_true",
                         help="실제 등록 없이 후보만 출력")
+    parser.add_argument("--status-key", default=None,
+                        help="app_meta에 진행상황을 기록할 키")
     args = parser.parse_args()
     sgg_filter = {args.sgg} if args.sgg else None
-    run(sgg_filter=sgg_filter, dry_run=args.dry_run)
+
+    run_id = None
+    stop_beat = threading.Event()
+    if args.status_key:
+        status = _read_status(args.status_key)
+        if not status or status.get("state") != "running":
+            print("[backfill] running 상태가 아니므로 종료합니다.")
+            raise SystemExit(0)
+        run_id = status.get("run_id") or ""
+
+        def _beat():
+            while not stop_beat.wait(HEARTBEAT_SEC):
+                try:
+                    _touch(args.status_key, run_id)
+                except Exception:
+                    pass
+
+        threading.Thread(target=_beat, daemon=True).start()
+
+    error = None
+    counts = (None, None, None)
+    try:
+        counts = run(
+            sgg_filter=sgg_filter,
+            dry_run=args.dry_run,
+            status_key=args.status_key,
+            run_id=run_id,
+        )
+    except Exception as e:
+        error = str(e)[:500]
+        print(f"[backfill] 실패: {error}")
+    finally:
+        stop_beat.set()
+
+    if args.status_key and run_id is not None:
+        try:
+            status = _read_status(args.status_key) or {}
+            final_status = {
+                "state": "failed" if error else "done",
+                "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "error": error,
+            }
+            if counts[0] is not None:
+                final_status.update({
+                    "registered": counts[0],
+                    "skipped": counts[1],
+                    "failed": counts[2],
+                })
+            status.update(final_status)
+            _write_status(args.status_key, status, run_id)
+        except Exception as e:
+            print(f"[backfill] 최종 상태 저장 실패: {e}")
+    if error and not args.status_key:
+        raise SystemExit(1)
