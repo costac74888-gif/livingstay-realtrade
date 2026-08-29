@@ -206,7 +206,7 @@ def run(sgg_filter=None, dry_run=False):
             [mb_id, lr_id]
         )
         conn.commit()
-        mark_master_stats_invalidated()
+        mark_master_stats_invalidated("backfill_lodging_registry")
         registered += 1
         print(f"  [등록] {biz_name} → #{mb_id} ({label})")
 
