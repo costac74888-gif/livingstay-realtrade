@@ -21136,7 +21136,7 @@ _MEMBER_GROUPS = {"all", "general", "agent", "operator", "loan_consultant", "pen
 _MEMBER_SELECTS = {
     "general": """
         SELECT id, 'general' AS member_type, COALESCE(name, '-') AS name, email,
-               '' AS group_label, NULL AS phone, COALESCE(status, 'active') AS status,
+               '' AS group_label, phone, COALESCE(status, 'active') AS status,
                NULL AS applicant_type, created_at, NULL::timestamp AS approved_at,
                admin_tag, COALESCE(points, 0) AS points, admin_memo,
                '' AS category, NULL::text AS subdomain_slug,
@@ -21350,6 +21350,23 @@ def admin_members_list():
             it["listing_direct_count"] = None
             it["listing_broker_count"] = None
 
+    # 관심단지 수 — general 회원에 한해 배치 조회
+    fav_count_map = {}
+    if general_ids:
+        cur.execute("""
+            SELECT user_id, COUNT(*) AS cnt
+            FROM user_favorites
+            WHERE user_id = ANY(%s)
+            GROUP BY user_id
+        """, [general_ids])
+        for r in cur.fetchall():
+            fav_count_map[r["user_id"]] = int(r["cnt"])
+    for it in items:
+        it["favorite_count"] = (
+            fav_count_map.get(it["id"], 0)
+            if it["member_type"] == "general" else None
+        )
+
     agent_ids = [it["id"] for it in items if it["member_type"] == "agent"]
     agent_tier_map = {}
     if agent_ids:
@@ -21476,6 +21493,22 @@ def admin_members_list():
     cur.execute("SELECT COUNT(*) AS c FROM loan_consultants WHERE status IN ('approved', 'inactive', 'pending')")
     lc_tier_stats = {"free_only": int(cur.fetchone()["c"]), "has_badge": 0, "has_region": 0}
 
+    # 일반회원 가입경로 통계
+    cur.execute("""
+        SELECT provider, COUNT(*) AS cnt
+        FROM users
+        WHERE status != 'withdrawn'
+        GROUP BY provider
+    """)
+    provider_rows = cur.fetchall()
+    general_provider_stats = {"kakao": 0, "email": 0}
+    for pr in provider_rows:
+        key = pr["provider"] or "email"
+        if key == "kakao":
+            general_provider_stats["kakao"] += int(pr["cnt"])
+        else:
+            general_provider_stats["email"] += int(pr["cnt"])
+
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "counts": counts,
@@ -21483,6 +21516,7 @@ def admin_members_list():
                      "agent_tier_stats": agent_tier_stats,
                      "operator_category_stats": operator_category_stats,
                      "lc_tier_stats": lc_tier_stats,
+                     "general_provider_stats": general_provider_stats,
                      "items": items})
 
 

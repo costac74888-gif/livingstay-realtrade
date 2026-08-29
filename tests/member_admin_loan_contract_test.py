@@ -18,7 +18,11 @@ def run():
     member_start = admin.find('<table class="dg-table">', admin.find("async function loadMembers"))
     member_end = admin.find("</table>", member_start)
     member_table = admin[member_start:member_end]
-    ordered_headers = ["작업", "태그", "메모", "포인트", "광고", "가입일시", "가입경로", "승인일", "오픈링크"]
+    ordered_headers = [
+        "전화번호", "회원유형", "상태", "가입경로", "관심(단지지정)",
+        "매물의뢰(직/중)", "작업", "태그", "메모", "포인트", "광고",
+        "가입일시", "승인일", "오픈링크",
+    ]
     positions = [member_table.find(f">{label}<") for label in ordered_headers]
     if member_start < 0 or any(pos < 0 for pos in positions) or positions != sorted(positions):
         failures.append("회원관리의 관리열·가입정보·오픈링크 순서가 잘못됨")

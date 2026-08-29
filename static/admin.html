@@ -4887,6 +4887,16 @@
           sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">무료전용 ${d.agent_tier_stats.free_only} · 단지뱃지(골드) ${d.agent_tier_stats.has_premium} · 지역뱃지(실버) ${d.agent_tier_stats.has_region}</div>`;
         }
       }
+      // 일반회원 탭 서브텍스트
+      if (d.general_provider_stats) {
+        const generalBtn = document.querySelector(".member-group-btn[data-group='general']");
+        if (generalBtn) {
+          let sub = generalBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; generalBtn.appendChild(sub); }
+          const ps = d.general_provider_stats;
+          sub.innerHTML = `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">카카오 ${Number(ps.kakao) || 0} · 이메일 ${Number(ps.email) || 0}</div>`;
+        }
+      }
       // 운영지원업체 탭 서브텍스트 — 7개 업종 전부 표시(0 포함)
       if (d.operator_category_stats) {
         const opBtn = document.querySelector(".member-group-btn[data-group='operator']");
@@ -4982,8 +4992,13 @@
           : `<a href="#" onclick="adminEditMemberMemo(event, '${r.member_type}', ${r.id})" title="클릭해서 메모 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); white-space:pre-line;">${memoTxt}</a>`;
         let regionCell = '<span style="color:var(--ink-soft);">-</span>';
         if (isPartner) {
-          const address = r.office_address
-            ? `<div title="${dgEscape(r.office_address)}">${dgEscape(r.office_address)}</div>`
+          const _addrFull = r.office_address || "";
+          const _addrParts = _addrFull.trim().split(/\s+/);
+          const _addrSgg = _addrParts.length >= 2
+            ? _addrParts.slice(0, 2).join(" ")
+            : _addrFull;
+          const address = _addrFull
+            ? `<div title="${dgEscape(_addrFull)}">${dgEscape(_addrSgg)}</div>`
             : '<div style="color:var(--ink-soft);">주소 미등록</div>';
           if (r.member_type === "loan_consultant") {
             const areaCount = Number(r.service_area_count) || (r.preferred_region ? 1 : 0);
@@ -4996,10 +5011,21 @@
           <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
           <td>${r.member_type !== "pending" ? `<a href="#" class="member-name-link" onclick="showMemberDetail('${r.member_type}', ${r.id}); return false;">${dgEscape(r.name || "-")}</a>` : dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
+          <td style="white-space:nowrap;font-size:12px;">${dgEscape(r.phone || "-")}</td>
           <td style="white-space:nowrap;">${badge}</td>
           <td style="white-space:nowrap;" title="${dgEscape(r.category||'')}">${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; min-width:100px;">${dgEscape(r.group_label || "-") || "-"}</td>
           <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
+          <td style="white-space:nowrap;">${r.provider === "kakao"
+            ? '<span style="background:#FEE500;color:#191919;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">카카오</span>'
+            : '<span style="background:#F0F0F0;color:#555;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">이메일</span>'
+          }</td>
+          <td style="white-space:nowrap;text-align:center;font-size:12.5px;">${r.member_type === "general"
+            ? (r.favorite_count > 0
+              ? `<span style="font-weight:600;color:var(--brass-dark);">${r.favorite_count}개</span>`
+              : '<span style="color:var(--ink-soft);">-</span>')
+            : '<span style="color:var(--ink-soft);">-</span>'
+          }</td>
           <td style="white-space:nowrap; text-align:center; font-size:12.5px;">${r.listing_direct_count != null ? ((r.listing_direct_count === 0 && r.listing_broker_count === 0) ? '<span style="color:var(--ink-soft);">-</span>' : `${r.listing_direct_count}/${r.listing_broker_count}`) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `<a href="#" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}'); return false;" title="단지마크 관리" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span></a>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="min-width:190px;max-width:280px;font-size:12.5px;">${regionCell}</td>
@@ -5013,10 +5039,6 @@
           <td style="text-align:right;">${pointsCell}</td>
           <td style="min-width:220px;">${adCell}</td>
           <td style="white-space:nowrap;font-size:11px;">${dgEscape(r.created_at || "-")}</td>
-          <td style="white-space:nowrap;">${r.provider === "kakao"
-            ? '<span style="background:#FEE500;color:#191919;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">카카오</span>'
-            : '<span style="background:#F0F0F0;color:#555;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">이메일</span>'
-          }</td>
           <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
           <td style="white-space:nowrap;">${dashBtn || '<span style="color:var(--ink-soft);">-</span>'}</td>
         </tr>`;
@@ -5038,11 +5060,11 @@
         <table class="dg-table">
           <thead><tr>
             <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
-            <th>닉네임(이름)</th><th>계정(이메일)</th><th>회원유형</th><th>세부업종</th><th>상호</th>
-            <th>상태</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th>
-            <th>가입일시</th><th>가입경로</th><th>승인일</th><th>오픈링크</th>
+            <th>닉네임(이름)</th><th>계정(이메일)</th><th>전화번호</th><th>회원유형</th><th>세부업종</th><th>상호</th>
+            <th>상태</th><th>가입경로</th><th>관심(단지지정)</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th>
+            <th>가입일시</th><th>승인일</th><th>오픈링크</th>
           </tr></thead>
-          <tbody>${rows || `<tr><td colspan="20" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="22" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
         </table>
         <div class="dg-pager" style="padding:12px 4px; justify-content:flex-start;">
           <button class="dg-nav-btn" id="membersFirst" ${s.page <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>
