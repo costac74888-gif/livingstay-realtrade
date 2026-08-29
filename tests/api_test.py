@@ -3054,6 +3054,46 @@ def _check_urgent_listing_tiers_and_alerts(client):
         turned_off = client.delete("/api/favorites/mine/urgent-alert", json={"favorite_id": favorite_id})
         if turned_off.status_code != 200 or not (turned_off.get_json() or {}).get("ok"):
             failures.append("urgent listing: 급매알림 끄기 API가 실패함")
+
+        signal_columns = (
+            "urgent_alert_enabled",
+            "new_listing_alert_enabled",
+            "permit_change_alert_enabled",
+            "favorite_increase_alert_enabled",
+            "nearby_change_alert_enabled",
+        )
+        signal_on = client.put("/api/favorites/mine/signal-alert", json={
+            "favorite_id": favorite_id, "building_id": building_id,
+        })
+        cur.execute(
+            "SELECT " + ", ".join(signal_columns) + " FROM user_favorites WHERE id=%s",
+            [favorite_id],
+        )
+        signal_flags_on = cur.fetchone() or {}
+        signal_items = (client.get("/api/favorites/mine").get_json() or {}).get("items", [])
+        signal_item = next((item for item in signal_items if item.get("favorite_id") == favorite_id), {})
+        if (
+            signal_on.status_code != 200
+            or not (signal_on.get_json() or {}).get("ok")
+            or not all(signal_flags_on.get(column) for column in signal_columns)
+            or not all(signal_item.get(column) for column in signal_columns)
+        ):
+            failures.append("숙박알리미: 통합 켜기 시 5개 알림 플래그 저장·조회가 일치하지 않음")
+
+        signal_off = client.delete("/api/favorites/mine/signal-alert", json={
+            "favorite_id": favorite_id,
+        })
+        cur.execute(
+            "SELECT " + ", ".join(signal_columns) + " FROM user_favorites WHERE id=%s",
+            [favorite_id],
+        )
+        signal_flags_off = cur.fetchone() or {}
+        if (
+            signal_off.status_code != 200
+            or not (signal_off.get_json() or {}).get("ok")
+            or any(signal_flags_off.get(column) for column in signal_columns)
+        ):
+            failures.append("숙박알리미: 통합 끄기 시 5개 알림 플래그가 모두 해제되지 않음")
     except Exception as exc:
         conn.rollback()
         failures.append(f"urgent listing 테스트 오류: {exc}")

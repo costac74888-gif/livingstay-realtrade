@@ -4457,7 +4457,10 @@ async function loadBuildingHeader(id){
     <button type="button" id="bSignalBtn" class="b-signal-btn" title="숙박알리미" data-enabled="false"
       style="width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--brass,#B4863F);cursor:pointer;text-align:left;background:none;">
       <span class="b-signal-label" style="font-size:12px;font-weight:800;color:var(--brass-dark,#8A6812);">🔔 숙박알리미 받기</span>
-      <span style="font-size:10px;color:var(--ink-soft);">실거래 · 급매 · 신규매물 · 신고변동</span>
+      <span style="font-size:10px;color:var(--ink-soft);line-height:1.6;">
+        실거래 · 급매 · 신규매물 · 영업신고변동<br>
+        관심자증가 · 주변 신규등록·폐업
+      </span>
     </button>
     <div class="b-actions" style="display:flex;gap:6px;">
       <button type="button" id="bFavBtn" class="b-icon-btn" title="관심저장">${Icons.heart(14)}<span class="b-icon-label">관심저장</span></button>
@@ -5133,7 +5136,8 @@ async function loadBuildingHeader(id){
     if (canFav) loadDetailFavorite().then(item => {
       detailFavorite = item;
       detailSignalEnabled = !!(item && item.urgent_alert_enabled &&
-        item.new_listing_alert_enabled && item.permit_change_alert_enabled);
+        item.new_listing_alert_enabled && item.permit_change_alert_enabled &&
+        item.favorite_increase_alert_enabled && item.nearby_change_alert_enabled);
       syncSignalBtn();
     });
   };
@@ -5143,7 +5147,8 @@ async function loadBuildingHeader(id){
     loadDetailFavorite().then(item => {
       detailFavorite = item;
       detailSignalEnabled = !!(item && item.urgent_alert_enabled &&
-        item.new_listing_alert_enabled && item.permit_change_alert_enabled);
+        item.new_listing_alert_enabled && item.permit_change_alert_enabled &&
+        item.favorite_increase_alert_enabled && item.nearby_change_alert_enabled);
       syncSignalBtn();
     });
     favBtn.addEventListener("click", () => {
@@ -5191,7 +5196,9 @@ async function loadBuildingHeader(id){
         detailFavorite = Object.assign({}, favorite, {
           urgent_alert_enabled: detailSignalEnabled,
           new_listing_alert_enabled: detailSignalEnabled,
-          permit_change_alert_enabled: detailSignalEnabled
+          permit_change_alert_enabled: detailSignalEnabled,
+          favorite_increase_alert_enabled: detailSignalEnabled,
+          nearby_change_alert_enabled: detailSignalEnabled
         });
         if (detailSignalEnabled) addFavoriteFirst(favKeyStr);
         else serverFavKeys.delete(favKeyStr);

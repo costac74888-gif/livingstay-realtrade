@@ -5944,6 +5944,8 @@ def favorites_mine():
                    COALESCE(uf.urgent_alert_enabled, FALSE) AS urgent_alert_enabled,
                    COALESCE(uf.new_listing_alert_enabled, FALSE) AS new_listing_alert_enabled,
                    COALESCE(uf.permit_change_alert_enabled, FALSE) AS permit_change_alert_enabled,
+                   COALESCE(uf.favorite_increase_alert_enabled, FALSE) AS favorite_increase_alert_enabled,
+                   COALESCE(uf.nearby_change_alert_enabled, FALSE) AS nearby_change_alert_enabled,
                    lt.price, lt.deal_date, lt.area, lt.floor, lt.deal_type,
                    lt.lodging_type, lt.lodging_type_detail,
                    COALESCE(uf.master_building_id, bid.id, bid2.id) AS building_id
@@ -6162,6 +6164,8 @@ def favorites_mine_signal_alert():
                    SET urgent_alert_enabled = TRUE,
                        new_listing_alert_enabled = TRUE,
                        permit_change_alert_enabled = TRUE,
+                       favorite_increase_alert_enabled = TRUE,
+                       nearby_change_alert_enabled = TRUE,
                        master_building_id = COALESCE(uf.master_building_id, %s)
                  WHERE uf.id = %s
                    AND uf.user_id = %s
@@ -6195,7 +6199,9 @@ def favorites_mine_signal_alert():
                 UPDATE user_favorites
                    SET urgent_alert_enabled = FALSE,
                        new_listing_alert_enabled = FALSE,
-                       permit_change_alert_enabled = FALSE
+                       permit_change_alert_enabled = FALSE,
+                       favorite_increase_alert_enabled = FALSE,
+                       nearby_change_alert_enabled = FALSE
                  WHERE id = %s AND user_id = %s
              RETURNING id, building_name, address
             """, [favorite_id, u["id"]])
