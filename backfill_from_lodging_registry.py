@@ -28,6 +28,12 @@ from stats_cache import mark_master_stats_invalidated
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 REQUEST_SLEEP = 0.3  # 건축HUB API 쿼터 보호
 
+LEGACY_SGG_TEXT_MAP = {
+    # 2026년 제물포구·영종구 분리 전 인천광역시 중구 코드.
+    # lodging_registry의 기존 주소는 여전히 이 명칭으로 저장되어 있다.
+    "28110": "인천광역시 중구",
+}
+
 HYGIENE_TYPE_MAP = {
     "생활숙박시설":        ("생숙",      "생활숙박시설"),
     "관광숙박업":          ("분양형호텔", "관광숙박업"),
@@ -64,11 +70,15 @@ def run(sgg_filter=None, dry_run=False):
                     (name for cd, name in bjdong._all_sgg_rows if cd == sgg_cd_f),
                     None,
                 )
+            if not sgg_text_f:
+                sgg_text_f = LEGACY_SGG_TEXT_MAP.get(sgg_cd_f)
             if sgg_text_f:
                 addr_filters.append(
                     "(lr.road_address LIKE %s OR lr.jibun_address LIKE %s)"
                 )
                 addr_params += [f"{sgg_text_f}%", f"{sgg_text_f}%"]
+            else:
+                raise ValueError(f"시군구 코드에 해당하는 주소명을 찾을 수 없습니다: {sgg_cd_f}")
 
     where_extra = ("AND (" + " OR ".join(addr_filters) + ")") if addr_filters else ""
 
@@ -122,9 +132,6 @@ def run(sgg_filter=None, dry_run=False):
         if not sgg_cd:
             failed += 1
             print(f"  [실패] {biz_name} — SGG 코드 없음: {si_do} {sgg_nm}")
-            continue
-
-        if sgg_filter and sgg_cd not in sgg_filter:
             continue
 
         # ── 4. master_buildings 중복 확인 ──────────────────────
