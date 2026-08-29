@@ -192,7 +192,7 @@ def run(sgg_filter=None, dry_run=False):
             INSERT INTO master_buildings
                 (building_name, sgg_cd, sgg_text, umd_nm, jibun,
                  road_address, lodging_type, lodging_type_detail,
-                 lodging_subtype, units, match_source, name_pending)
+                 lodging_subtype, units, source, name_pending)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'lodging_registry',TRUE)
             RETURNING id
         """, [
