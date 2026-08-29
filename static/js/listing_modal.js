@@ -1246,6 +1246,7 @@
     }
     requestAnimationFrame(function () { dialog.focus(); });
   }
+  window.openApproximateLocationMap = openApproximateLocationMap;
 
   // 직거래 목록과 건물 상세 화면에서 공용으로 사용하는 읽기 전용 매물 상세 팝업.
   // 등록/수정 모달(openListingRequestModal)과 분리해, 어느 화면에서도 같은 상세

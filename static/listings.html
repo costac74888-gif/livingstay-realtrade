@@ -986,6 +986,12 @@
           ${descriptionIsLong ? '<button type="button" class="whole-listing-description-toggle" aria-expanded="false">설명 전체보기</button>' : ""}
         </div>`
       : "";
+    const hasApproximateLocation = isLimitedListing
+      && Number.isFinite(Number(item.approx_lat))
+      && Number.isFinite(Number(item.approx_lng));
+    const approximateLocationButton = hasApproximateLocation
+      ? `<button type="button" class="whole-approx-location-btn">◎ 반경 500m 위치 보기</button>`
+      : "";
     const checklistButton = isLimitedListing
       ? ""
       : '<button type="button" class="listing-checklist-open">숙박업소 거래 체크리스트 열어보기</button>';
@@ -1005,6 +1011,7 @@
         <div class="whole-viewers">최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
         <div class="whole-caution">※ 실제 인수금은 거래금액·승계융자·권리금·부대비용 기준의 참고값입니다.</div>
         ${limitedDescription}
+        ${approximateLocationButton}
         ${limitedNotice}
         ${checklistButton}
         <div class="ls-card-l4">
@@ -1032,6 +1039,12 @@
       button.setAttribute("aria-expanded", expanding ? "true" : "false");
       text?.classList.toggle("is-collapsed", !expanding);
       button.textContent = expanding ? "설명 접기" : "설명 전체보기";
+    });
+    div.querySelector(".whole-approx-location-btn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (typeof window.openApproximateLocationMap === "function") {
+        window.openApproximateLocationMap(Number(item.approx_lat), Number(item.approx_lng), e.currentTarget);
+      }
     });
     div.querySelector("." + photoClass).addEventListener("click", (e) => {
       e.stopPropagation();

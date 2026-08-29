@@ -4537,6 +4537,12 @@ async function loadBuildingHeader(id){
             ? `총 ${formatNumber(lr.room_count)}실` : "");
         const statusMarkup = _operationStatusMarkup(lr);
         const desc = lr.description ? escapeHtml(lr.description) : "";
+        const hasApproximateLocation = !!lr.is_limited_listing
+          && Number.isFinite(Number(lr.approx_lat))
+          && Number.isFinite(Number(lr.approx_lng));
+        const approximateLocationButton = hasApproximateLocation
+          ? `<button type="button" id="directListingApproxLocation" style="display:inline-block;margin:0 0 12px;padding:7px 9px;border:1px solid #378ADD;border-radius:7px;background:#F3F8FD;color:#275B88;font:700 12px inherit;cursor:pointer;">◎ 반경 500m 위치 보기</button>`
+          : "";
        const ov = document.createElement("div");
        ov.id = "directListingCardOverlay";
        ov.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
@@ -4559,6 +4565,7 @@ async function loadBuildingHeader(id){
               ${_permitBadgeMarkup(lr)}
            ${yieldText ? `<div style="font-size:12px;color:var(--brass-dark,#7D4A00);font-weight:700;margin-bottom:7px;">${escapeHtml(yieldText)}</div>` : ""}
             ${desc ? `<div style="font-size:13px;color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:12px;">${desc}</div>` : ""}
+             ${approximateLocationButton}
              ${isWholeListing ? `<button type="button" class="listing-checklist-open" id="directListingChecklistOpen">숙박업소 거래 체크리스트 열어보기</button>` : ""}
              ${listingActionsMarkup}
          </div>
@@ -4596,6 +4603,12 @@ async function loadBuildingHeader(id){
         };
         document.addEventListener("keydown", handleCardKeydown);
        ov.querySelector("#directListingCardClose").addEventListener("click", close);
+         ov.querySelector("#directListingApproxLocation")?.addEventListener("click", (event) => {
+           event.stopPropagation();
+           if (typeof window.openApproximateLocationMap === "function") {
+             window.openApproximateLocationMap(Number(lr.approx_lat), Number(lr.approx_lng), event.currentTarget);
+           }
+         });
          ov.querySelector("#directListingChecklistOpen")?.addEventListener("click", () => {
            window.LivingstayListingChecklist?.open(lr.id);
          });
@@ -4675,6 +4688,12 @@ async function loadBuildingHeader(id){
         return `<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:${_lodgingColors[label] || _lodgingColors["미분류"]};color:#fff;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap;">${label}</span>`;
       }
       function _wholeListingCard(lr, lrId, photoHtml, photoCount, dt){
+         const hasApproximateLocation = !!lr.is_limited_listing
+           && Number.isFinite(Number(lr.approx_lat))
+           && Number.isFinite(Number(lr.approx_lng));
+         const approximateLocationButton = hasApproximateLocation
+           ? `<button type="button" class="b-approx-location-btn" data-lat="${Number(lr.approx_lat)}" data-lng="${Number(lr.approx_lng)}" style="display:inline-block;margin:5px 0 0;padding:7px 9px;border:1px solid #378ADD;border-radius:7px;background:#F3F8FD;color:#275B88;font:700 12px inherit;cursor:pointer;">◎ 반경 500m 위치 보기</button>`
+           : "";
         const price = Number(lr.price_krw || 0);
         const loan = Number(lr.succession_loan_krw || 0);
         const keyMoney = Number(lr.key_money_krw || 0);
@@ -4722,6 +4741,7 @@ async function loadBuildingHeader(id){
             <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.55;">${escapeHtml(metrics[0])} · ${escapeHtml(metrics[1])}<br>${escapeHtml(metrics[2])} · ${escapeHtml(metrics[3])}</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0;">${badges}</div>
             <div class="b-whole-location" style="font-size:11px;color:var(--ink-soft);">${escapeHtml(locationText)}</div>
+             ${approximateLocationButton}
             <div class="b-whole-viewers" style="font-size:11px;font-weight:700;color:#356212;margin-top:3px;">최근 열람 ${_fmtN(lr.viewer_count || 0)}명</div>
             <div style="border-top:1px solid var(--line,#ddd);margin-top:6px;padding-top:6px;color:var(--ink-soft);font-size:10.5px;line-height:1.45;">※ 실제 인수금은 거래금액·승계융자·권리금·부대비용 기준의 참고값입니다.</div>
             <div class="b-listing-l4">
@@ -4848,6 +4868,14 @@ async function loadBuildingHeader(id){
           if (window.innerWidth <= 520) return;
           openRow();
         });
+       listingsBody.querySelectorAll(".b-approx-location-btn").forEach(btn => {
+         btn.addEventListener("click", (event) => {
+           event.stopPropagation();
+           if (typeof window.openApproximateLocationMap === "function") {
+             window.openApproximateLocationMap(Number(btn.dataset.lat), Number(btn.dataset.lng), btn);
+           }
+         });
+       });
         trigger.addEventListener("keydown", (e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
