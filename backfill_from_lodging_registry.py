@@ -30,8 +30,12 @@ REQUEST_SLEEP = 0.3  # 건축HUB API 쿼터 보호
 
 LEGACY_SGG_TEXT_MAP = {
     # 2026년 제물포구·영종구 분리 전 인천광역시 중구 코드.
-    # lodging_registry의 기존 주소는 여전히 이 명칭으로 저장되어 있다.
-    "28110": "인천광역시 중구",
+    # 과거 중구 주소와 분리 후 두 구 주소를 모두 같은 실행 범위로 본다.
+    "28110": (
+        "인천광역시 중구",
+        "인천광역시 제물포구",
+        "인천광역시 영종구",
+    ),
 }
 
 HYGIENE_TYPE_MAP = {
@@ -70,13 +74,19 @@ def run(sgg_filter=None, dry_run=False):
                     (name for cd, name in bjdong._all_sgg_rows if cd == sgg_cd_f),
                     None,
                 )
-            if not sgg_text_f:
-                sgg_text_f = LEGACY_SGG_TEXT_MAP.get(sgg_cd_f)
-            if sgg_text_f:
+            sgg_texts = [sgg_text_f] if sgg_text_f else list(
+                LEGACY_SGG_TEXT_MAP.get(sgg_cd_f, ())
+            )
+            if sgg_texts:
+                prefix_filters = []
+                for sgg_text in sgg_texts:
+                    prefix_filters.append(
+                        "(lr.road_address LIKE %s OR lr.jibun_address LIKE %s)"
+                    )
+                    addr_params += [f"{sgg_text}%", f"{sgg_text}%"]
                 addr_filters.append(
-                    "(lr.road_address LIKE %s OR lr.jibun_address LIKE %s)"
+                    "(" + " OR ".join(prefix_filters) + ")"
                 )
-                addr_params += [f"{sgg_text_f}%", f"{sgg_text_f}%"]
             else:
                 raise ValueError(f"시군구 코드에 해당하는 주소명을 찾을 수 없습니다: {sgg_cd_f}")
 
