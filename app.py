@@ -21027,6 +21027,25 @@ def admin_members_list():
         counts.setdefault(k, 0)
     counts["all"] = sum(counts.values())
 
+    # 승인대기 탭은 전체 건수만으로는 신청 유형별 처리 대상을 바로 알 수 없다.
+    # 검색어가 적용된 동일한 집합에서 유형별 건수를 함께 반환한다.
+    pending_type_filter = (where_sql + (" AND " if where_sql else " WHERE ")
+                           + "m.member_type = 'pending'")
+    cur.execute(f"""
+        SELECT m.applicant_type, COUNT(*) AS c
+        FROM ({union_sql}) m
+        {pending_type_filter}
+        GROUP BY m.applicant_type
+    """, params)
+    pending_type_counts = {
+        "agent": 0,
+        "operator": 0,
+        "loan_consultant": 0,
+    }
+    for r in cur.fetchall():
+        if r["applicant_type"] in pending_type_counts:
+            pending_type_counts[r["applicant_type"]] = int(r["c"])
+
     group_filter = where_sql
     group_params = list(params)
     if group != "all":
@@ -21256,6 +21275,7 @@ def admin_members_list():
     cur.close()
     conn.close()
     return jsonify({"total": total, "page": page, "size": size, "counts": counts,
+                     "pending_type_counts": pending_type_counts,
                      "agent_tier_stats": agent_tier_stats,
                      "operator_category_stats": operator_category_stats,
                      "lc_tier_stats": lc_tier_stats,

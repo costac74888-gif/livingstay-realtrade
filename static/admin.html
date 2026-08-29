@@ -4717,6 +4717,16 @@
           sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">${d.operator_category_stats.map(c => `${c.category} ${c.count}`).join(" · ")}</div>`;
         }
       }
+      // 승인대기 탭 서브텍스트 — 신청 유형별 대기 건수
+      if (d.pending_type_counts) {
+        const pendingBtn = document.querySelector(".member-group-btn[data-group='pending']");
+        if (pendingBtn) {
+          let sub = pendingBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; pendingBtn.appendChild(sub); }
+          const pc = d.pending_type_counts;
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">중개사 ${Number(pc.agent) || 0} · 운영지원업체 ${Number(pc.operator) || 0} · 대출상담사 ${Number(pc.loan_consultant) || 0}</div>`;
+        }
+      }
       // 대출상담사 탭 서브텍스트 — 세부유형 분포
       if (d.lc_tier_stats) {
         const lcBtn = document.querySelector(".member-group-btn[data-group='loan_consultant']");

@@ -2224,6 +2224,16 @@ def _check_partner_badge_policy(client):
             or detail_regions[0].get("umd_nm") is not None
         ):
             failures.append("파트너 뱃지: 관리자 회원관리에서 병합된 시군구 지역뱃지를 표시하지 않음")
+        pending_listing = client.get("/api/admin/members", query_string={"group": "pending"})
+        pending_payload = pending_listing.get_json() or {}
+        pending_type_counts = pending_payload.get("pending_type_counts")
+        if (
+            pending_listing.status_code != 200
+            or not isinstance(pending_type_counts, dict)
+            or set(pending_type_counts) != {"agent", "operator", "loan_consultant"}
+            or any(not isinstance(v, int) or v < 0 for v in pending_type_counts.values())
+        ):
+            failures.append("회원관리 승인대기 유형별 건수 필드가 없거나 형식이 잘못됨")
         with open("static/admin.html", encoding="utf-8") as admin_file:
             admin_source = admin_file.read()
         if (
@@ -2232,6 +2242,8 @@ def _check_partner_badge_policy(client):
             or "window.extendPremiumBadge = async function(row)" not in admin_source
             or "dgEscape(r.sgg_text || \"-\")" not in admin_source
             or "<th>읍·면·동</th>" in admin_source
+            or "pending_type_counts" not in admin_source
+            or "중개사 ${Number(pc.agent) || 0}" not in admin_source
         ):
             failures.append("파트너 뱃지: 관리자 만기연장 버튼이 외부 입력을 인라인 스크립트로 렌더링함")
         # 만기연장은 현재 유료 분류를 건드리지 않고, 활성 독점 뱃지가 있으면 재활성화를 거절한다.
