@@ -24,7 +24,7 @@ import time
 from datetime import datetime
 
 from db import get_conn, init_db
-from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
+from address_utils import BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
 from stats_cache import mark_master_stats_invalidated
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
@@ -184,36 +184,37 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
         biz_name = lr["biz_name"]
         lr_id = lr["id"]
 
-        # ── 3. 지번 변환 ──────────────────────────────────────
-        target_addr = road_addr or jibun_addr
-        if not target_addr:
+        # ── 3. 로컬 주소 파싱 (외부 API 없음) ───────────────────
+        # 우선순위: jibun_address > road_address (지번주소가 파싱이 쉬움)
+        parse_src = jibun_addr or road_addr
+        if not parse_src:
             failed += 1
             print(f"  [스킵] {biz_name} — 주소 없음")
             _maybe_write_status()
             continue
 
-        juso = road_to_jibun(target_addr)
-        if not juso:
+        # BjdongMap 로컬 매핑으로 시군구 추출 (API 호출 없음)
+        sgg_info = bjdong.extract_sgg_from_address(parse_src)
+        if not sgg_info:
             failed += 1
-            print(f"  [실패] {biz_name} — 주소 변환 실패: {target_addr}")
+            print(f"  [실패] {biz_name} — 시군구 인식 실패: {parse_src[:40]}")
             _maybe_write_status()
             continue
 
-        si_do  = juso.get("siNm", "")
-        sgg_nm = juso.get("sggNm", "")
-        umd_nm = normalize_umd_nm(
-            juso.get("emdNm", "") + juso.get("liNm", "")
-        )
-        bun    = juso.get("lnbrMnnm", "0")
-        ji     = juso.get("lnbrSlno", "0")
-        jibun_str = f"{bun}-{ji}" if ji not in ("0", "", None) else bun
+        si_do, sgg_nm, sgg_cd = sgg_info
+        sgg_text_local = f"{si_do} {sgg_nm}".strip()
 
-        sgg_cd = bjdong.find_sgg_cd(si_do, sgg_nm)
-        if not sgg_cd:
+        # 시군구명 이후 부분 파싱 → "중산동 1234-5" 형태
+        remainder = parse_src[len(sgg_text_local):].strip()
+        tokens = remainder.split()
+        if len(tokens) < 2:
             failed += 1
-            print(f"  [실패] {biz_name} — SGG 코드 없음: {si_do} {sgg_nm}")
+            print(f"  [실패] {biz_name} — umd/jibun 파싱 불가: {remainder[:30]}")
             _maybe_write_status()
             continue
+
+        umd_nm = normalize_umd_nm(tokens[0])
+        jibun_str = tokens[1]
 
         # ── 4. master_buildings 중복 확인 ──────────────────────
         cur.execute("""
@@ -235,7 +236,7 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
 
         # ── 5. 건축HUB 표제부 조회 → lodging_type 판정 ─────────
         time.sleep(REQUEST_SLEEP)
-        sgg_text = f"{si_do} {sgg_nm}".strip()
+        sgg_text = sgg_text_local
         plat_gb, bun2, ji2 = parse_jibun(jibun_str)
 
         try:
