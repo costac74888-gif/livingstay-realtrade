@@ -51,7 +51,21 @@ def run(sgg_filter=None, dry_run=False):
     cur = conn.cursor()
 
     # ── 1. 후보 추출 ────────────────────────────────────────
-    query = """
+    # sgg_filter가 있으면 BjdongMap으로 시군구 텍스트 변환 후 SQL에서 먼저 필터
+    addr_filters = []
+    addr_params = []
+    if sgg_filter:
+        for sgg_cd_f in sgg_filter:
+            sgg_text_f = bjdong.sgg_text(sgg_cd_f)
+            if sgg_text_f:
+                addr_filters.append(
+                    "(lr.road_address LIKE %s OR lr.jibun_address LIKE %s)"
+                )
+                addr_params += [f"{sgg_text_f}%", f"{sgg_text_f}%"]
+
+    where_extra = ("AND (" + " OR ".join(addr_filters) + ")") if addr_filters else ""
+
+    query = f"""
         SELECT lr.id, lr.biz_name, lr.road_address, lr.jibun_address,
                lr.road_norm, lr.jibun_norm, lr.hygiene_type,
                lr.room_count, lr.phone
@@ -61,8 +75,9 @@ def run(sgg_filter=None, dry_run=False):
           AND lr.dismissed_at IS NULL
           AND lr.hygiene_type IS NOT NULL
           AND lr.hygiene_type != ''
+          {where_extra}
     """
-    cur.execute(query)
+    cur.execute(query, addr_params)
     candidates = cur.fetchall()
     print(f"[후보] 총 {len(candidates)}건")
 
