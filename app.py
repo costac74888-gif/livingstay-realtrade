@@ -7539,35 +7539,57 @@ def _process_badge_waitlist_notifications():
         if not (cur.fetchone() or {}).get("locked"):
             conn.rollback()
             return 0
+        # 알림 후 30분 동안만 신청 순번을 예약한다. 응답이 없으면
+        # 다음 주기에 빈자리를 다음 대기자에게 넘긴다.
         cur.execute("""
-            SELECT rw.id, rw.agent_id, rw.sgg_text, a.office_name, a.email
+            DELETE FROM region_badge_waitlist
+            WHERE notified_at < NOW() - INTERVAL '30 minutes'
+        """)
+        cur.execute("""
+            DELETE FROM premium_waitlist
+            WHERE notified_at < NOW() - INTERVAL '30 minutes'
+        """)
+        cur.execute("""
+            SELECT rw.id, rw.agent_id, rw.sgg_text, a.office_name, a.email,
+                   (SELECT COUNT(*) FROM agent_service_regions sr
+                    WHERE sr.sgg_text=rw.sgg_text AND sr.expires_at > NOW()) AS active_count,
+                   (SELECT COUNT(*) FROM region_badge_waitlist rw2
+                    WHERE rw2.sgg_text=rw.sgg_text AND rw2.notified_at IS NOT NULL) AS reserved_count
             FROM region_badge_waitlist rw
             JOIN agents a ON a.id = rw.agent_id
             WHERE rw.notified_at IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM region_badge_waitlist rw2
-                  WHERE rw2.sgg_text=rw.sgg_text AND rw2.notified_at IS NOT NULL
-              )
               AND (
                   SELECT COUNT(*) FROM agent_service_regions sr
                   WHERE sr.sgg_text=rw.sgg_text AND sr.expires_at > NOW()
               ) < %s
             ORDER BY rw.created_at ASC
-            LIMIT 1
         """, [AGENT_REGION_SGG_SLOT_CAP])
-        region_rows = cur.fetchall()
+        region_candidates = cur.fetchall()
+        region_selected = {}
+        region_rows = []
+        for row in region_candidates:
+            available = max(
+                0,
+                AGENT_REGION_SGG_SLOT_CAP - row["active_count"] - row["reserved_count"],
+            )
+            used = region_selected.get(row["sgg_text"], 0)
+            if used < available:
+                region_rows.append(row)
+                region_selected[row["sgg_text"]] = used + 1
         cur.execute("""
             SELECT pw.id, pw.agent_id, pw.master_building_id,
-                   mb.building_name, a.office_name, a.email
+                   mb.building_name, a.office_name, a.email,
+                   (SELECT COUNT(*) FROM agent_buildings ab
+                    WHERE ab.master_building_id=pw.master_building_id
+                      AND ab.has_priority_badge
+                      AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())) AS active_count,
+                   (SELECT COUNT(*) FROM premium_waitlist pw2
+                    WHERE pw2.master_building_id=pw.master_building_id
+                      AND pw2.notified_at IS NOT NULL) AS reserved_count
             FROM premium_waitlist pw
             JOIN agents a ON a.id = pw.agent_id
             JOIN master_buildings mb ON mb.id = pw.master_building_id
             WHERE pw.notified_at IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM premium_waitlist pw2
-                  WHERE pw2.master_building_id=pw.master_building_id
-                    AND pw2.notified_at IS NOT NULL
-              )
               AND (
                   SELECT COUNT(*) FROM agent_buildings ab
                   WHERE ab.master_building_id=pw.master_building_id
@@ -7575,9 +7597,19 @@ def _process_badge_waitlist_notifications():
                     AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
               ) < %s
             ORDER BY pw.created_at ASC
-            LIMIT 1
         """, [AGENT_BUILDING_BADGE_SLOT_CAP])
-        building_rows = cur.fetchall()
+        building_candidates = cur.fetchall()
+        building_selected = {}
+        building_rows = []
+        for row in building_candidates:
+            available = max(
+                0,
+                AGENT_BUILDING_BADGE_SLOT_CAP - row["active_count"] - row["reserved_count"],
+            )
+            used = building_selected.get(row["master_building_id"], 0)
+            if used < available:
+                building_rows.append(row)
+                building_selected[row["master_building_id"]] = used + 1
         for row in region_rows:
             ok, message = _send_badge_waitlist_available_email(
                 row["email"], row["office_name"], f"'{row['sgg_text']}' 지역뱃지",
@@ -8028,6 +8060,7 @@ def agent_service_region_delete():
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911006, agent_id])
         cur.execute("DELETE FROM agent_region_buildings WHERE agent_id=%s", [agent_id])
         cur.execute("DELETE FROM agent_service_regions WHERE agent_id=%s", [agent_id])
+        cur.execute("DELETE FROM region_badge_waitlist WHERE agent_id=%s", [agent_id])
         conn.commit()
     finally:
         cur.close()
@@ -8295,12 +8328,17 @@ def agent_building_delete(mbid):
             [agent_id, mbid],
         )
         deleted = cur.rowcount
+        cur.execute(
+            "DELETE FROM premium_waitlist WHERE agent_id = %s AND master_building_id = %s",
+            [agent_id, mbid],
+        )
+        deleted += cur.rowcount
         conn.commit()
     finally:
         cur.close()
         conn.close()
     if not deleted:
-        return jsonify({"ok": False, "message": "등록되지 않은 단지입니다."}), 404
+        return jsonify({"ok": False, "message": "등록된 단지 또는 대기 신청이 없습니다."}), 404
     return jsonify({"ok": True})
 
 
@@ -21275,80 +21313,7 @@ def admin_premium_status():
                                   f"'{r['sgg_text']}' 지역뱃지", r["expires_at"]):
             cur2.execute("UPDATE agent_service_regions SET reminder_sent_at=NOW() "
                          "WHERE id=%s", [r["service_region_id"]])
-    # 지역뱃지 대기자 알림 — 기존 지역뱃지가 만료되어 자리가 생긴 경우
-    cur2.execute("""
-        SELECT rw.id, rw.agent_id, rw.sgg_text, a.office_name, a.email
-        FROM region_badge_waitlist rw
-        JOIN agents a ON a.id = rw.agent_id
-        WHERE rw.notified_at IS NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM region_badge_waitlist rw2
-              WHERE rw2.sgg_text=rw.sgg_text AND rw2.notified_at IS NOT NULL
-          )
-          AND (
-              SELECT COUNT(*)
-              FROM agent_service_regions sr2
-              WHERE sr2.sgg_text = rw.sgg_text
-                AND sr2.expires_at > NOW()
-          ) < %s
-        ORDER BY rw.created_at ASC
-        LIMIT 1
-    """, [AGENT_REGION_SGG_SLOT_CAP])
-    for r in cur2.fetchall():
-        sent, message = _send_badge_waitlist_available_email(
-            r["email"],
-            r["office_name"],
-            f"'{r['sgg_text']}' 지역뱃지",
-        )
-        if sent:
-            cur2.execute(
-                "UPDATE region_badge_waitlist SET notified_at=NOW() WHERE id=%s",
-                [r["id"]],
-            )
-        else:
-            app.logger.warning(
-                "지역뱃지 빈자리 이메일 발송 실패 (agent_id=%s, sgg=%s): %s",
-                r["agent_id"], r["sgg_text"], message,
-            )
-
-    # 단지뱃지 대기자 알림 — 기존 입점 프리미엄이 만료되어 자리가 생긴 경우
-    cur2.execute("""
-        SELECT pw.id, pw.agent_id, pw.master_building_id, mb.building_name, a.office_name, a.email
-        FROM premium_waitlist pw
-        JOIN agents a ON a.id = pw.agent_id
-        JOIN master_buildings mb ON mb.id = pw.master_building_id
-        WHERE pw.notified_at IS NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM premium_waitlist pw2
-              WHERE pw2.master_building_id=pw.master_building_id
-                AND pw2.notified_at IS NOT NULL
-          )
-          AND (
-              SELECT COUNT(*)
-              FROM agent_buildings ab2
-              WHERE ab2.master_building_id = pw.master_building_id
-                AND ab2.has_priority_badge
-                AND (ab2.premium_expires_at IS NULL OR ab2.premium_expires_at > NOW())
-          ) < %s
-        ORDER BY pw.created_at ASC
-        LIMIT 1
-    """, [AGENT_BUILDING_BADGE_SLOT_CAP])
-    for r in cur2.fetchall():
-        sent, message = _send_badge_waitlist_available_email(
-            r["email"],
-            r["office_name"],
-            f"'{r['building_name']}' 단지뱃지",
-        )
-        if sent:
-            cur2.execute(
-                "UPDATE premium_waitlist SET notified_at=NOW() WHERE id=%s",
-                [r["id"]],
-            )
-        else:
-            app.logger.warning(
-                "단지뱃지 빈자리 이메일 발송 실패 (agent_id=%s, building_id=%s): %s",
-                r["agent_id"], r["master_building_id"], message,
-            )
+    # 빈자리 대기 알림은 관리자 페이지 조회와 분리된 백그라운드 워커가 담당한다.
     conn2.commit()
     cur2.close()
     conn2.close()

@@ -453,8 +453,8 @@ function render(){
             : (b.has_priority_badge
               ? `<span style="font-size:11px; font-weight:700; color:var(--brass-dark);">🧭 단지뱃지 적용중</span>`
               : `<span style="font-size:11px; color:var(--ink-soft);">단지뱃지 종료</span>`)}
-        ${PREVIEW_MODE || b.waitlist_only ? "" : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>
-        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>`}
+        ${PREVIEW_MODE ? "" : `${b.waitlist_only ? "" : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openCounts(${b.master_building_id})">매물현황 수정</button>`}
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">${b.waitlist_only ? "대기 취소" : "삭제"}</button>`}
       </div>
       <div style="display:flex; gap:6px; flex-wrap:wrap;">${countBadges(b)}</div>
     </div>`).join("");

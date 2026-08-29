@@ -1561,6 +1561,53 @@ def _check_partner_badge_policy(client):
         )
         if final_waiter_claim.status_code != 200 or (final_waiter_claim.get_json() or {}).get("waitlisted"):
             failures.append("파트너 뱃지: 다음 빈자리 알림을 받은 대기자가 단지뱃지를 신청하지 못함")
+        timeout_first_id = create_agent("agent-timeout-first")
+        timeout_next_id = create_agent("agent-timeout-next")
+        conn.commit()
+        for waiting_id in (timeout_first_id, timeout_next_id):
+            with client.session_transaction() as sess:
+                sess.clear()
+                sess["agent_id"] = waiting_id
+            queued = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
+            if not (queued.get_json() or {}).get("waitlisted"):
+                failures.append("파트너 뱃지: 만료 순번 검증용 대기 등록에 실패함")
+        cur.execute(
+            "UPDATE agent_buildings SET premium_expires_at=NOW()-INTERVAL '1 day' "
+            "WHERE agent_id=%s AND master_building_id=%s",
+            (agent_id, agent_bld),
+        )
+        conn.commit()
+        app_module._process_badge_waitlist_notifications()
+        cur.execute(
+            "UPDATE premium_waitlist SET notified_at=NOW()-INTERVAL '31 minutes' "
+            "WHERE agent_id=%s AND master_building_id=%s",
+            (timeout_first_id, agent_bld),
+        )
+        conn.commit()
+        app_module._process_badge_waitlist_notifications()
+        cur.execute(
+            "SELECT agent_id, notified_at FROM premium_waitlist "
+            "WHERE agent_id IN (%s,%s) AND master_building_id=%s",
+            (timeout_first_id, timeout_next_id, agent_bld),
+        )
+        timeout_rows = {r["agent_id"]: r for r in cur.fetchall()}
+        if timeout_first_id in timeout_rows or not timeout_rows.get(timeout_next_id, {}).get("notified_at"):
+            failures.append("파트너 뱃지: 신청 기한이 지난 대기자 다음 순번으로 알림이 진행되지 않음")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = timeout_next_id
+        cancel_wait = client.delete(f"/api/agent/buildings/{agent_bld}")
+        cur.execute(
+            "SELECT 1 FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
+            (timeout_next_id, agent_bld),
+        )
+        if cancel_wait.status_code != 200 or cur.fetchone():
+            failures.append("파트너 뱃지: 단지뱃지 대기 취소가 대기 행을 정리하지 못함")
+        cur.execute(
+            "UPDATE agent_buildings SET premium_expires_at=%s WHERE agent_id=%s AND master_building_id=%s",
+            (app_module.PARTNER_BADGE_FREE_EXPIRES_AT, agent_id, agent_bld),
+        )
+        conn.commit()
 
         # 세 중개사가 빈 단지에 동시에 등록해도 정확히 두 명만 성공한다.
         slot_race_bld = building_ids[36]
