@@ -2935,13 +2935,13 @@ def _check_urgent_listing_tiers_and_alerts(client):
     user_id = building_id = listing_id = scope_listing_id = None
     try:
         if (
-            _urgent_tier_for_values("매매", False, 900, 1000) != "gold"
-            or _urgent_tier_for_values("매매", True, 900, None) != "silver"
+            _urgent_tier_for_values("매매", False, 900, 1000) != "urgent"
+            or _urgent_tier_for_values("매매", True, 900, None) != "urgent"
             or _urgent_tier_for_values("매매", False, 900, None) is not None
-            or _urgent_tier_for_values("매매", True, 1100, 1000) is not None
+            or _urgent_tier_for_values("매매", True, 1100, 1000) != "urgent"
             or _urgent_tier_for_values("통임대", True, 900, None) is not None
         ):
-            failures.append("urgent listing: 최신 실거래 비교 금색·실거래 없는 은색 등급 규칙이 잘못됨")
+            failures.append("urgent listing: 사용자 체크·최신 실거래 비교 단일 급매 규칙이 잘못됨")
             return failures
         _, invalid_urgent_error = _whole_listing_values({
             "transaction_target": "whole", "deal_type": "매매",
@@ -3000,11 +3000,11 @@ def _check_urgent_listing_tiers_and_alerts(client):
         listing_id = cur.fetchone()["id"]
         jobs = _queue_urgent_listing_alerts(
             cur, listing_id, building_id, f"급매 테스트 {run_id}",
-            f"급매 테스트로 {run_id}", 900, "silver",
+            f"급매 테스트로 {run_id}", 900, "urgent",
         )
         duplicate_jobs = _queue_urgent_listing_alerts(
             cur, listing_id, building_id, f"급매 테스트 {run_id}",
-            f"급매 테스트로 {run_id}", 900, "silver",
+            f"급매 테스트로 {run_id}", 900, "urgent",
         )
         conn.commit()
         cur.execute(

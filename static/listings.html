@@ -470,9 +470,11 @@
     return `<span title="인증된 숙박업 신고번호의 일부를 마스킹해 표시합니다." style="display:inline-block;margin-left:5px;padding:1px 5px;border-radius:4px;background:#EDF6EC;color:#356212;font-size:10px;font-weight:800;vertical-align:middle;white-space:nowrap;">신고 ${esc(item.permit_number_masked)}</span>`;
   }
   function urgentBadgeHtml(item){
-    if (!item || !item.urgent_tier) return "";
-    const gold = item.urgent_tier === "gold";
-    return `<span class="urgent-tier-badge urgent-tier-${gold ? "gold" : "silver"}" title="${gold ? "최신 실거래가보다 낮은 매물" : "판매자가 급매로 등록한 매물"}">${gold ? "금색 급매" : "은색 급매"}</span>`;
+    if (!item || item.urgent_tier !== "urgent") return "";
+    const urgentTitle = item.is_urgent
+      ? "판매자가 급매로 등록한 매물"
+      : "최신 실거래가보다 낮은 매물";
+    return `<span class="urgent-tier-badge" title="${urgentTitle}" style="display:inline-block;padding:2px 7px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;letter-spacing:0.3px;">🔥 급매</span>`;
   }
   function operationRatioBadgesHtml(item){
     const badges = [];

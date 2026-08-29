@@ -4475,6 +4475,8 @@ async function loadBuildingHeader(id){
   if (listingsCard && listingsBody) {
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
+    let _urgentOnly = false;
+    const _isUrgentListing = (listing) => !!(listing && (listing.urgent_tier || listing.is_urgent));
     const _trackedWholeListingViews = new Set();
       const _liveWholeListingViews = new Set();
       let _wholeViewerRefreshTimer = null;
@@ -4579,9 +4581,14 @@ async function loadBuildingHeader(id){
           return;
         }
         function _urgentBadgeMarkup(lr){
-          if (!lr || !lr.urgent_tier) return "";
-          const gold = lr.urgent_tier === "gold";
-          return `<span class="urgent-tier-badge urgent-tier-${gold ? "gold" : "silver"}" title="${gold ? "최신 실거래가보다 낮은 매물" : "판매자가 급매로 등록한 매물"}">${gold ? "금색 급매" : "은색 급매"}</span>`;
+          if (!lr || lr.urgent_tier !== "urgent") return "";
+          const urgentTitle = lr.is_urgent
+            ? "판매자가 급매로 등록한 매물"
+            : "최신 실거래가보다 낮은 매물";
+          return `<span class="urgent-tier-badge" title="${urgentTitle}"
+            style="display:inline-block;padding:2px 7px;border-radius:4px;
+                   background:#C85A36;color:#fff;font-size:10px;font-weight:800;
+                   letter-spacing:0.3px;">🔥 급매</span>`;
         }
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;
@@ -4751,15 +4758,23 @@ async function loadBuildingHeader(id){
      }
 
     function _renderListings(listings){
-      if (!listings.length){ listingsCard.style.display = "none"; return; }
+      if (!listings.length && !_urgentOnly){ listingsCard.style.display = "none"; return; }
       listingsCard.style.display = "";
       const _fmtN = (v) => v != null ? Number(v).toLocaleString() : "-";
       const now = Date.now();
       const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
-      const sortBar = [["latest","최신순"],["price","가격순"],["yield","수익률순"]].map(([v,l])=>
+      const _sortBtns = [["latest","최신순"],["price","가격순"],["yield","수익률순"]].map(([v,l])=>
         `<button type="button" data-lsort="${v}" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1px solid ${_lsSort===v?"var(--brass,#B4863F)":"var(--line,#ddd)"};background:${_lsSort===v?"var(--brass-tint,#FFF5E0)":"#fff"};color:${_lsSort===v?"var(--brass-dark,#7D4A00)":"var(--ink-soft)"};cursor:pointer;margin-right:4px;">${l}</button>`
       ).join("");
+      const _urgentOnlyBtn = `<button type="button" id="lsUrgentFilter"
+        style="font-size:11px;padding:3px 9px;border-radius:12px;
+          border:1px solid ${_urgentOnly?"#C85A36":"var(--line,#ddd)"};
+          background:${_urgentOnly?"#FFF0EC":"#fff"};
+          color:${_urgentOnly?"#C85A36":"var(--ink-soft)"};
+          cursor:pointer;margin-left:2px;font-weight:${_urgentOnly?700:400};">
+        🔥 급매</button>`;
+      const sortBar = _sortBtns + _urgentOnlyBtn;
       const _lodgingColors = { "생활":"#378ADD", "관광":"#639922", "일반":"#D46BA3", "복합":"#B39DDB", "준공전":"#616161", "미분류":"#E0E0E0" };
       function _lodgingBadge(raw){
         const label = raw && raw.includes("·") ? "복합" : (raw || "미분류");
@@ -4880,7 +4895,10 @@ async function loadBuildingHeader(id){
         </div>`;
       }).join("");
 
-      listingsBody.innerHTML = `<div style="margin-bottom:8px;">${sortBar}</div><div>${cards}</div><div style="font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:6px;">직거래 시 계약 전 등기부등본 확인을 권장합니다.</div>`;
+      const emptyMessage = !listings.length
+        ? `<div style="padding:12px 4px;color:var(--ink-soft);font-size:12px;">현재 급매 매물이 없습니다.</div>`
+        : cards;
+      listingsBody.innerHTML = `<div style="margin-bottom:8px;">${sortBar}</div><div>${emptyMessage}</div><div style="font-size:11px;color:var(--ink-soft);line-height:1.6;margin-top:6px;">직거래 시 계약 전 등기부등본 확인을 권장합니다.</div>`;
       const wholeListingIds = listings
         .filter(lr => (lr.is_whole_listing || lr.transaction_target === "whole")
           && !_trackedWholeListingViews.has(lr.id))
@@ -4912,7 +4930,9 @@ async function loadBuildingHeader(id){
       listingsBody.querySelectorAll("[data-lsort]").forEach(btn => {
         btn.addEventListener("click", () => {
           _lsSort = btn.dataset.lsort;
-          let sorted = [...allListings];
+          let sorted = _urgentOnly
+            ? allListings.filter(_isUrgentListing)
+            : [...allListings];
           if (_lsSort === "price") sorted.sort((a,b)=>(
             (a.is_business_listing ? a.room_price_min : a.price_krw) || 0
           ) - (
@@ -4923,6 +4943,17 @@ async function loadBuildingHeader(id){
           _renderListings(sorted);
         });
       });
+      // 급매 필터 버튼
+      const urgentFilterBtn = listingsBody.querySelector("#lsUrgentFilter");
+      if (urgentFilterBtn) {
+        urgentFilterBtn.addEventListener("click", () => {
+          _urgentOnly = !_urgentOnly;
+          const base = _urgentOnly
+            ? allListings.filter(_isUrgentListing)
+            : [...allListings];
+          _renderListings(base);
+        });
+      }
       // listing card click: 모바일에서 액션 버튼 외 카드 전체를 공용 listing modal로 연다.
       listingsBody.querySelectorAll(".b-listing-card").forEach(card => {
         card.addEventListener("click", (e) => {

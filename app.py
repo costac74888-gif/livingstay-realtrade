@@ -9289,21 +9289,20 @@ def _listing_financial_details_visible():
 
 
 def _urgent_tier_for_values(deal_type, is_urgent, price_krw, latest_transaction_price):
-    """건물전체 공개 매물의 급매 등급을 최신 실거래와 비교해 계산한다."""
+    """급매 판정 — 사용자 체크 또는 실거래가 미만이면 급매."""
     if deal_type != "매매":
         return None
+    # ① 사용자가 급매 체크 → 무조건 급매
+    if bool(is_urgent):
+        return "urgent"
+    # ② 매물가 < 최신 실거래가 → 급매
     try:
         price = int(price_krw) if price_krw is not None else None
-    except (TypeError, ValueError):
-        price = None
-    try:
         latest = int(latest_transaction_price) if latest_transaction_price is not None else None
     except (TypeError, ValueError):
-        latest = None
-    if price is not None and price > 0 and latest is not None and latest > 0 and price < latest:
-        return "gold"
-    if bool(is_urgent) and latest is None:
-        return "silver"
+        return None
+    if price and latest and price > 0 and latest > 0 and price < latest:
+        return "urgent"
     return None
 
 
@@ -9360,7 +9359,7 @@ def _urgent_tier_for_listing(cur, listing):
 def _queue_urgent_listing_alerts(cur, listing_id, building_id, building_name,
                                  address, price_krw, tier, deal_type="매매"):
     """커밋 전에는 인앱 알림·이메일 시도 이력만 원자적으로 예약한다."""
-    if tier not in ("gold", "silver"):
+    if tier != "urgent":
         return []
     cur.execute("""
         SELECT uf.user_id, u.email, COALESCE(u.email_alert_enabled, TRUE) AS email_alert_enabled
@@ -9373,7 +9372,7 @@ def _queue_urgent_listing_alerts(cur, listing_id, building_id, building_name,
     name_disp = building_name or address or "관심 단지"
     title = f"{name_disp}에 새 급매가 등록됐어요"
     price_text = f"{int(price_krw):,}만원" if price_krw is not None else "가격 협의"
-    tier_text = "금색 급매" if tier == "gold" else "은색 급매"
+    tier_text = "급매"
     body = f"{tier_text} · {price_text}"
     for subscriber in cur.fetchall():
         cur.execute("""
@@ -9432,7 +9431,7 @@ def _send_urgent_listing_email(job):
 
     try:
         from email_util import render_newsletter_email
-        tier_text = "금색 급매" if job["tier"] == "gold" else "은색 급매"
+        tier_text = "급매"
         price_text = (
             f"{int(job['price_krw']):,}만원"
             if job["price_krw"] is not None else "가격 협의"
