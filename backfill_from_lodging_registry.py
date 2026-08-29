@@ -167,9 +167,15 @@ def run(sgg_filter=None, dry_run=False):
         plat_gb, bun2, ji2 = parse_jibun(jibun_str)
 
         try:
-            label, detail, subtype, ho_cnt, _ = classify_lodging_type(
-                sgg_cd, umd_nm, jibun_str, plat_gb, bun2, ji2
+            bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
+            if not bjdong_cd:
+                raise ValueError(f"법정동 코드 없음: {sgg_cd} {umd_nm}")
+            label, detail, subtype, title, reason = classify_lodging_type(
+                sgg_cd, bjdong_cd, plat_gb, bun2, ji2
             )
+            if not label:
+                raise ValueError(f"건축HUB 판정불가: {reason}")
+            ho_cnt = (title or {}).get("ho_cnt") or lr["room_count"] or 0
         except Exception as e:
             # 건축HUB 실패 시 영업신고 hygiene_type으로 fallback
             label, detail = hygiene_to_lodging_type(lr["hygiene_type"])
