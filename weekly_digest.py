@@ -625,34 +625,61 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
     """관심단지의 실거래·급매·신규매물·신고변동을 한 영역에 요약한다."""
     if not favs:
         return f"""
-        <p style="color:#555;font-size:14px;margin:0 0 12px;">
-          아직 등록하신 관심단지가 없어요.
-        </p>
-        <a href="{SITE_URL}/"
-           style="display:inline-block;background:#B4863F;color:#fff;
-                  text-decoration:none;padding:10px 22px;border-radius:6px;
-                  font-size:14px;font-weight:700;">
-          관심단지 등록하고 실거래 알림 받기 →
-        </a>"""
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:18px;background:#FFFDF7;border-radius:8px;
+                        border:1px solid #E8D9BB;">
+              <p style="color:#7D4A00;font-size:15px;font-weight:700;
+                        margin:0 0 10px;">
+                📌 관심단지를 등록하면 이런 알림을 받을 수 있어요
+              </p>
+              <table cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
+                <tr><td style="padding:4px 0;color:#555;font-size:13px;">
+                  ✅ &nbsp;새 실거래 발생 시 즉시 이메일
+                </td></tr>
+                <tr><td style="padding:4px 0;color:#555;font-size:13px;">
+                  ✅ &nbsp;급매 등록 시 즉시 알림
+                </td></tr>
+                <tr><td style="padding:4px 0;color:#555;font-size:13px;">
+                  ✅ &nbsp;숙박업 신고변동 (폐업·신규·호실수 변경)
+                </td></tr>
+                <tr><td style="padding:4px 0;color:#555;font-size:13px;">
+                  ✅ &nbsp;매주 금요일 관심단지 요약 리포트
+                </td></tr>
+              </table>
+              <a href="{SITE_URL}/?utm_source=weekly&utm_medium=email&utm_campaign=no_fav_cta"
+                 style="display:inline-block;background:#B4863F;color:#fff;
+                        text-decoration:none;padding:11px 26px;border-radius:6px;
+                        font-size:14px;font-weight:700;letter-spacing:0.3px;">
+                지금 관심단지 등록하기 →
+              </a>
+              <p style="margin:10px 0 0;font-size:11.5px;color:#999;">
+                건물명 또는 주소 검색 후 ♡ 버튼을 누르면 등록됩니다.
+              </p>
+            </td>
+          </tr>
+        </table>"""
 
     signal_counts = signal_counts or {}
     total_signals = sum(int(v or 0) for v in signal_counts.values())
     if not total_signals:
         return f"""
-        <p style="color:#555;font-size:14px;margin:0 0 12px;">
-          이번 주 관심단지의 새로운 알림이 없어요.
+        <p style="color:#555;font-size:14px;margin:0 0 8px;">
+          이번 주 관심단지의 새로운 알림이 없었어요.
         </p>
-        <a href="{SITE_URL}/mypage"
+        <p style="color:#888;font-size:12.5px;margin:0 0 12px;">
+          관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.
+        </p>
+        <a href="{SITE_URL}/mypage?utm_source=weekly&utm_medium=email&utm_campaign=no_signal_cta"
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
-          관심단지 알림 설정 확인하기 →
+          관심단지 추가·알림 설정 확인 →
         </a>"""
 
     summary_rows = [
         ("새 실거래", signal_counts.get("deal", 0), "#B4863F"),
-        ("금 급매", signal_counts.get("gold", 0), "#9A7A22"),
-        ("은 급매", signal_counts.get("silver", 0), "#758696"),
+        ("🔥 급매", signal_counts.get("urgent", 0), "#C85A36"),
         ("신규매물", signal_counts.get("new_listing", 0), "#4A7A18"),
         ("신규신고", signal_counts.get("permit_new", 0), "#4A7A18"),
         ("폐업", signal_counts.get("permit_closed", 0), "#A44B4B"),
@@ -1283,7 +1310,7 @@ def main():
 
             # 최근 7일 통합 알림 신호. 각 로그의 회원별 전달 이력만 집계한다.
             signal_counts = {
-                "deal": len(deals_by_fav), "gold": 0, "silver": 0,
+                "deal": len(deals_by_fav), "urgent": 0,
                 "new_listing": 0, "permit_new": 0, "permit_closed": 0,
                 "permit_status": 0, "permit_room": 0,
             }
@@ -1299,10 +1326,8 @@ def main():
                      GROUP BY COALESCE(ul.tier, '')
                 """, (uid, week_ago, favorite_ids))
                 for row in cur.fetchall():
-                    if row["tier"] == "gold":
-                        signal_counts["gold"] += int(row["cnt"] or 0)
-                    elif row["tier"] == "silver":
-                        signal_counts["silver"] += int(row["cnt"] or 0)
+                    if row["tier"] in ('gold', 'silver', 'urgent'):
+                        signal_counts["urgent"] += int(row["cnt"] or 0)
                 cur.execute("""
                     SELECT COUNT(*) AS cnt
                       FROM new_listing_alert_logs nl

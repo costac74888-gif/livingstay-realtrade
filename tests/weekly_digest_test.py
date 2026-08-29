@@ -241,12 +241,56 @@ class WeeklyDigestTests(unittest.TestCase):
         ]
         indexes = [html.index(heading) for heading in headings]
         self.assertEqual(indexes, sorted(indexes))
-        self.assertIn("관심단지 등록하고 실거래 알림 받기", html)
-        self.assertIn(f'href="{digest.SITE_URL}/"', html)
+        self.assertIn("관심단지를 등록하면 이런 알림을 받을 수 있어요", html)
+        self.assertIn("지금 관심단지 등록하기", html)
+        self.assertIn(
+            f'href="{digest.SITE_URL}/?utm_source=weekly&utm_medium=email&utm_campaign=no_fav_cta"',
+            html,
+        )
         self.assertIn("제휴 중개법인 통해 수수료 0원", html)
         self.assertIn("/guide#listing-guide", html)
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertIn("기능 소개 제목", html)
+
+    def test_zone1_empty_signal_cta_mentions_more_favorites(self):
+        html = digest.build_html(
+            "테스터",
+            [("관심 단지", "서울특별시 중구 테스트로 1", 101)],
+            {},
+            [],
+            [],
+            [],
+            [],
+            {"report_rate": None, "price_change": None, "volume_top": None},
+            None,
+            "https://example.test/mypage",
+            signal_counts={"deal": 0, "urgent": 0},
+        )
+        self.assertIn("이번 주 관심단지의 새로운 알림이 없었어요.", html)
+        self.assertIn("관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.", html)
+        self.assertIn(
+            f'href="{digest.SITE_URL}/mypage?utm_source=weekly&utm_medium=email&utm_campaign=no_signal_cta"',
+            html,
+        )
+
+    def test_urgent_signal_is_rendered_as_one_summary_row(self):
+        html = digest.build_html(
+            "테스터",
+            [("관심 단지", "서울특별시 중구 테스트로 1", 101)],
+            {},
+            [],
+            [],
+            [],
+            [],
+            {"report_rate": None, "price_change": None, "volume_top": None},
+            None,
+            "https://example.test/mypage",
+            signal_counts={"urgent": 3},
+        )
+        self.assertIn("🔥 급매", html)
+        self.assertIn("3건", html)
+        self.assertNotIn("금 급매", html)
+        self.assertNotIn("은 급매", html)
 
     def test_zone0_prefers_report_rate_and_has_hero_style(self):
         html = digest.build_html(
