@@ -7544,11 +7544,16 @@ def _process_badge_waitlist_notifications():
             FROM region_badge_waitlist rw
             JOIN agents a ON a.id = rw.agent_id
             WHERE rw.notified_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM region_badge_waitlist rw2
+                  WHERE rw2.sgg_text=rw.sgg_text AND rw2.notified_at IS NOT NULL
+              )
               AND (
                   SELECT COUNT(*) FROM agent_service_regions sr
                   WHERE sr.sgg_text=rw.sgg_text AND sr.expires_at > NOW()
               ) < %s
             ORDER BY rw.created_at ASC
+            LIMIT 1
         """, [AGENT_REGION_SGG_SLOT_CAP])
         region_rows = cur.fetchall()
         cur.execute("""
@@ -7558,6 +7563,11 @@ def _process_badge_waitlist_notifications():
             JOIN agents a ON a.id = pw.agent_id
             JOIN master_buildings mb ON mb.id = pw.master_building_id
             WHERE pw.notified_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM premium_waitlist pw2
+                  WHERE pw2.master_building_id=pw.master_building_id
+                    AND pw2.notified_at IS NOT NULL
+              )
               AND (
                   SELECT COUNT(*) FROM agent_buildings ab
                   WHERE ab.master_building_id=pw.master_building_id
@@ -7565,6 +7575,7 @@ def _process_badge_waitlist_notifications():
                     AND (ab.premium_expires_at IS NULL OR ab.premium_expires_at > NOW())
               ) < %s
             ORDER BY pw.created_at ASC
+            LIMIT 1
         """, [AGENT_BUILDING_BADGE_SLOT_CAP])
         building_rows = cur.fetchall()
         for row in region_rows:
@@ -7723,6 +7734,10 @@ def agent_building_add():
                 VALUES (%s, %s, TRUE, NOW(), %s::timestamp)
             """, [agent_id, mbid, PARTNER_BADGE_FREE_EXPIRES_AT])
             cur.execute(
+                "UPDATE premium_waitlist SET notified_at=NULL WHERE master_building_id=%s",
+                [mbid],
+            )
+            cur.execute(
                 "DELETE FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
                 [agent_id, mbid],
             )
@@ -7867,6 +7882,10 @@ def agent_building_claim_premium(mbid):
             premium_expires_at = %s::timestamp
         WHERE agent_id=%s AND master_building_id=%s
     """, [PARTNER_BADGE_FREE_EXPIRES_AT, agent_id, mbid])
+    cur.execute(
+        "UPDATE premium_waitlist SET notified_at=NULL WHERE master_building_id=%s",
+        [mbid],
+    )
     # 본인이 신청에 성공한 대기 건만 정리한다. 다른 대기자는 다음 빈자리 알림 대상이다.
     cur.execute(
         "DELETE FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
@@ -7983,6 +8002,10 @@ def agent_service_region_claim():
             ON CONFLICT (agent_id, sgg_text) DO UPDATE
             SET granted_at=NOW(), expires_at=EXCLUDED.expires_at, reminder_sent_at=NULL
         """, [agent_id, sgg, PARTNER_BADGE_FREE_EXPIRES_AT])
+        cur.execute(
+            "UPDATE region_badge_waitlist SET notified_at=NULL WHERE sgg_text=%s",
+            [sgg],
+        )
         cur.execute(
             "DELETE FROM region_badge_waitlist WHERE agent_id=%s AND sgg_text=%s",
             [agent_id, sgg],
@@ -21258,6 +21281,10 @@ def admin_premium_status():
         FROM region_badge_waitlist rw
         JOIN agents a ON a.id = rw.agent_id
         WHERE rw.notified_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM region_badge_waitlist rw2
+              WHERE rw2.sgg_text=rw.sgg_text AND rw2.notified_at IS NOT NULL
+          )
           AND (
               SELECT COUNT(*)
               FROM agent_service_regions sr2
@@ -21265,6 +21292,7 @@ def admin_premium_status():
                 AND sr2.expires_at > NOW()
           ) < %s
         ORDER BY rw.created_at ASC
+        LIMIT 1
     """, [AGENT_REGION_SGG_SLOT_CAP])
     for r in cur2.fetchall():
         sent, message = _send_badge_waitlist_available_email(
@@ -21290,6 +21318,11 @@ def admin_premium_status():
         JOIN agents a ON a.id = pw.agent_id
         JOIN master_buildings mb ON mb.id = pw.master_building_id
         WHERE pw.notified_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM premium_waitlist pw2
+              WHERE pw2.master_building_id=pw.master_building_id
+                AND pw2.notified_at IS NOT NULL
+          )
           AND (
               SELECT COUNT(*)
               FROM agent_buildings ab2
@@ -21297,6 +21330,8 @@ def admin_premium_status():
                 AND ab2.has_priority_badge
                 AND (ab2.premium_expires_at IS NULL OR ab2.premium_expires_at > NOW())
           ) < %s
+        ORDER BY pw.created_at ASC
+        LIMIT 1
     """, [AGENT_BUILDING_BADGE_SLOT_CAP])
     for r in cur2.fetchall():
         sent, message = _send_badge_waitlist_available_email(

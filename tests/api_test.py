@@ -1452,6 +1452,7 @@ def _check_partner_badge_policy(client):
         # 같은 단지에는 두 중개사까지 성공하고, 세 번째 활성 신청은 대기 등록된다.
         slot_second_id = create_agent("agent-slot-second")
         slot_third_id = create_agent("agent-slot-third")
+        slot_fourth_id = create_agent("agent-slot-fourth")
         conn.commit()
         with client.session_transaction() as sess:
             sess.clear()
@@ -1461,12 +1462,18 @@ def _check_partner_badge_policy(client):
             sess.clear()
             sess["agent_id"] = slot_third_id
         slot_third_rejected = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = slot_fourth_id
+        slot_fourth_rejected = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
         if (
             slot_second.status_code != 200
             or slot_third_rejected.status_code != 200
             or not (slot_third_rejected.get_json() or {}).get("waitlisted")
+            or slot_fourth_rejected.status_code != 200
+            or not (slot_fourth_rejected.get_json() or {}).get("waitlisted")
         ):
-            failures.append("파트너 뱃지: 건물당 두 번째 중개사를 허용하거나 세 번째를 대기 등록하지 못함")
+            failures.append("파트너 뱃지: 건물당 두 번째 중개사를 허용하거나 초과 신청을 대기 등록하지 못함")
         waitlisted_dashboard = app_module._agent_me_data(slot_third_id) or {}
         waitlisted_items = [
             item for item in waitlisted_dashboard.get("buildings", [])
@@ -1493,6 +1500,14 @@ def _check_partner_badge_policy(client):
         conn.commit()
         if app_module._process_badge_waitlist_notifications() < 1:
             failures.append("파트너 뱃지: 단지 빈자리 발생 뒤 자동 대기 알림을 처리하지 못함")
+        cur.execute("""
+            SELECT agent_id, notified_at IS NOT NULL AS notified
+            FROM premium_waitlist
+            WHERE master_building_id=%s AND agent_id=ANY(%s)
+        """, (agent_bld, [slot_third_id, slot_fourth_id]))
+        first_cycle = {row["agent_id"]: row["notified"] for row in cur.fetchall()}
+        if first_cycle != {slot_third_id: True, slot_fourth_id: False}:
+            failures.append("파트너 뱃지: 한 빈자리에는 가장 먼저 등록한 대기자 한 명만 알리지 못함")
         available_dashboard = app_module._agent_me_data(slot_third_id) or {}
         available_items = [
             item for item in available_dashboard.get("buildings", [])
@@ -1504,6 +1519,9 @@ def _check_partner_badge_policy(client):
             or not available_items[0].get("waitlist_notified")
         ):
             failures.append("파트너 뱃지: 빈자리 알림이 끝난 대기 전용 단지를 신청 가능 상태로 표시하지 못함")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = slot_third_id
         slot_after_expiry = client.post("/api/agent/buildings", json={"master_building_id": agent_bld})
         if slot_after_expiry.status_code != 200:
             failures.append("파트너 뱃지: 만료된 뱃지를 활성 두 자리 정원에서 제외하지 않음")
@@ -1513,6 +1531,36 @@ def _check_partner_badge_policy(client):
         )
         if cur.fetchone()["count"] != 0:
             failures.append("파트너 뱃지: 빈자리 신청 성공 뒤 단지 대기 행을 정리하지 못함")
+        cur.execute(
+            "SELECT notified_at FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
+            (slot_fourth_id, agent_bld),
+        )
+        remaining_waiter = cur.fetchone()
+        if not remaining_waiter or remaining_waiter["notified_at"] is not None:
+            failures.append("파트너 뱃지: 먼저 알림받은 대기자가 입점한 뒤 다음 대기자를 재대기 상태로 유지하지 못함")
+        cur.execute("""
+            UPDATE agent_buildings
+            SET premium_expires_at=NOW() - INTERVAL '1 second'
+            WHERE agent_id=%s AND master_building_id=%s
+        """, (slot_third_id, agent_bld))
+        conn.commit()
+        if app_module._process_badge_waitlist_notifications() < 1:
+            failures.append("파트너 뱃지: 다음 빈자리에서 남은 대기자에게 다시 알리지 못함")
+        cur.execute(
+            "SELECT notified_at IS NOT NULL AS notified FROM premium_waitlist WHERE agent_id=%s AND master_building_id=%s",
+            (slot_fourth_id, agent_bld),
+        )
+        remaining_waiter = cur.fetchone()
+        if not remaining_waiter or not remaining_waiter["notified"]:
+            failures.append("파트너 뱃지: 두 번째 빈자리 알림 상태를 저장하지 못함")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = slot_fourth_id
+        final_waiter_claim = client.post(
+            "/api/agent/buildings", json={"master_building_id": agent_bld}
+        )
+        if final_waiter_claim.status_code != 200 or (final_waiter_claim.get_json() or {}).get("waitlisted"):
+            failures.append("파트너 뱃지: 다음 빈자리 알림을 받은 대기자가 단지뱃지를 신청하지 못함")
 
         # 세 중개사가 빈 단지에 동시에 등록해도 정확히 두 명만 성공한다.
         slot_race_bld = building_ids[36]
@@ -1761,6 +1809,51 @@ def _check_partner_badge_policy(client):
         }
         if not region_detail_agent_ids.intersection(region_agent_ids[:5]):
             failures.append("파트너 뱃지: 중개사 지역뱃지가 담당단지 선택 없이 같은 시군구 건물에 자동 노출되지 않음")
+        cur.execute("""
+            UPDATE agent_service_regions
+            SET expires_at=NOW() - INTERVAL '1 second'
+            WHERE agent_id=%s AND sgg_text=%s
+        """, (region_agent_ids[4], region_sgg))
+        conn.commit()
+        if app_module._process_badge_waitlist_notifications() < 1:
+            failures.append("파트너 뱃지: 지역 빈자리 발생 뒤 자동 대기 알림을 처리하지 못함")
+        cur.execute("""
+            SELECT agent_id, notified_at IS NOT NULL AS notified
+            FROM region_badge_waitlist
+            WHERE sgg_text=%s AND agent_id=ANY(%s)
+        """, (region_sgg, region_agent_ids[5:7]))
+        first_region_cycle = {row["agent_id"]: row["notified"] for row in cur.fetchall()}
+        if first_region_cycle != {region_agent_ids[5]: True, region_agent_ids[6]: False}:
+            failures.append("파트너 뱃지: 지역 빈자리에는 가장 먼저 등록한 대기자 한 명만 알리지 못함")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = region_agent_ids[5]
+        region_claim = client.post("/api/agent/service-regions", json={"sgg_text": region_sgg})
+        if region_claim.status_code != 200 or (region_claim.get_json() or {}).get("waitlisted"):
+            failures.append("파트너 뱃지: 지역 빈자리 알림을 받은 대기자가 지역뱃지를 신청하지 못함")
+        cur.execute("""
+            SELECT notified_at FROM region_badge_waitlist
+            WHERE agent_id=%s AND sgg_text=%s
+        """, (region_agent_ids[6], region_sgg))
+        next_region_waiter = cur.fetchone()
+        if not next_region_waiter or next_region_waiter["notified_at"] is not None:
+            failures.append("파트너 뱃지: 지역 입점 뒤 다음 대기자를 재대기 상태로 유지하지 못함")
+        cur.execute("""
+            UPDATE agent_service_regions
+            SET expires_at=NOW() - INTERVAL '1 second'
+            WHERE agent_id=%s AND sgg_text=%s
+        """, (region_agent_ids[5], region_sgg))
+        conn.commit()
+        if app_module._process_badge_waitlist_notifications() < 1:
+            failures.append("파트너 뱃지: 다음 지역 빈자리에서 남은 대기자에게 다시 알리지 못함")
+        cur.execute("""
+            SELECT notified_at IS NOT NULL AS notified
+            FROM region_badge_waitlist
+            WHERE agent_id=%s AND sgg_text=%s
+        """, (region_agent_ids[6], region_sgg))
+        next_region_waiter = cur.fetchone()
+        if not next_region_waiter or not next_region_waiter["notified"]:
+            failures.append("파트너 뱃지: 두 번째 지역 빈자리 알림 상태를 저장하지 못함")
 
         # 임의/XSS 형태 지역 문자열은 마스터 조합 검증으로 거절한다.
         xss_region = f"{region_sgg}'><img src=x onerror=alert(1)>"
