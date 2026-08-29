@@ -4422,6 +4422,30 @@ async function loadBuildingHeader(id){
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
     const _trackedWholeListingViews = new Set();
+      const _liveWholeListingViews = new Set();
+      let _wholeViewerRefreshTimer = null;
+      const _refreshWholeViewerCounts = async () => {
+        const ids = [..._liveWholeListingViews];
+        if (!ids.length) return;
+        try {
+          const query = ids.map(id => `listing_ids=${encodeURIComponent(id)}`).join("&");
+          const response = await fetch(`/api/listings/views?${query}`, {credentials:"same-origin"});
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) return;
+          (data.items || []).forEach(item => {
+            listingsBody.querySelectorAll(`[data-listing-id="${item.id}"] .b-whole-viewers`).forEach(el => {
+              el.textContent = `최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명`;
+            });
+            document.querySelectorAll(`[data-listing-viewer-count="${item.id}"]`).forEach(el => {
+              el.textContent = `최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명`;
+            });
+          });
+        } catch (error) {}
+      };
+      const _startWholeViewerRefresh = () => {
+        if (_wholeViewerRefreshTimer) return;
+        _wholeViewerRefreshTimer = setInterval(_refreshWholeViewerCounts, 15000);
+      };
     let _wholeLocationContext = null;
       const _dealTypeColors = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1", "통임대":"#5A7FA6", "운영권양도":"#8B6BB1", "위탁운영":"#557A5B" };
      function _dealTypeBadge(raw){
@@ -4735,8 +4759,8 @@ async function loadBuildingHeader(id){
         ].filter(Boolean).join(" ");
         return `<div class="b-listing-card b-whole-listing-card" data-listing-id="${lrId}" style="border-color:var(--brass,#B4863F);">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="건물전체 매물 카드로 보기">
-            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${escapeHtml(bName)}${_permitBadgeMarkup(lr)}${_operationStatusHtml(lr)}</div>
-            <div class="b-listing-l2">${dt}${escapeHtml(_listingPriceText(lr, _fmtN))}</div>
+             <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${dt}${escapeHtml(bName)}${_permitBadgeMarkup(lr)}${_operationStatusHtml(lr)}</div>
+             <div class="b-listing-l2">${escapeHtml(_listingPriceText(lr, _fmtN))}</div>
             <div style="font-size:12px;font-weight:700;color:var(--brass-dark,#7D4A00);margin:4px 0;">${escapeHtml(finance)}${revenue ? ` · ${escapeHtml(revenue)}` : ""}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.55;">${escapeHtml(metrics[0])} · ${escapeHtml(metrics[1])}<br>${escapeHtml(metrics[2])} · ${escapeHtml(metrics[3])}</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin:5px 0;">${badges}</div>
@@ -4809,6 +4833,8 @@ async function loadBuildingHeader(id){
         .map(lr => lr.id);
       if (wholeListingIds.length) {
         wholeListingIds.forEach(id => _trackedWholeListingViews.add(id));
+            wholeListingIds.forEach(id => _liveWholeListingViews.add(id));
+            _startWholeViewerRefresh();
         fetch("/api/listings/views", {
           method: "POST",
           credentials: "same-origin",
@@ -4824,6 +4850,7 @@ async function loadBuildingHeader(id){
                 if (count) count.textContent = `최근 열람 ${_fmtN(item.viewer_count || 0)}명`;
               });
             });
+            _refreshWholeViewerCounts();
           })
           .catch(() => wholeListingIds.forEach(id => _trackedWholeListingViews.delete(id)));
       }

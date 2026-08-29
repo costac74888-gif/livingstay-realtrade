@@ -10980,7 +10980,7 @@ def public_listings():
     return jsonify({"ok": True, "items": items, "has_more": has_more})
 
 
-@app.route("/api/listings/views", methods=["POST"])
+@app.route("/api/listings/views", methods=["GET", "POST"])
 @limiter.limit("60 per minute")
 def record_listing_views():
     """목록에서 실제로 표시된 건물전체 매물을 최근 열람자로 기록한다.
@@ -10988,8 +10988,11 @@ def record_listing_views():
     제한공개 카드도 건물 식별자를 넘기지 않고 이 API의 매물 ID만 사용한다.
     응답에는 건물·주소 정보 없이 갱신된 고유 IP 수만 반환한다.
     """
-    data = request.get_json(force=True, silent=True) or {}
-    raw_ids = data.get("listing_ids")
+    if request.method == "GET":
+        raw_ids = request.args.getlist("listing_ids")
+    else:
+        data = request.get_json(force=True, silent=True) or {}
+        raw_ids = data.get("listing_ids")
     if not isinstance(raw_ids, list):
         return jsonify({"ok": False, "message": "listing_ids 배열이 필요합니다."}), 400
     listing_ids = []
@@ -11018,15 +11021,41 @@ def record_listing_views():
         if not visible_ids:
             return jsonify({"ok": True, "items": []})
 
-        ip = get_client_ip() or ""
-        ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
-        ua = (request.headers.get("User-Agent") or "")[:500]
-        if _should_store_page_view(ua):
-            cur.executemany(
-                "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) "
-                "VALUES ('/listings', %s, %s, %s)",
-                [(listing_id, ip_hash, ua) for listing_id in visible_ids],
-            )
+        if request.method == "POST":
+            ip = get_client_ip() or ""
+            ip_hash = hashlib.sha256((ip + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
+            ua = (request.headers.get("User-Agent") or "")[:500]
+            if _should_store_page_view(ua):
+                view_rows = [(listing_id, ip_hash, ua) for listing_id in visible_ids]
+                cur.execute("SAVEPOINT listing_view_insert")
+                try:
+                    cur.executemany(
+                        "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) "
+                        "VALUES ('/listings', %s, %s, %s)",
+                        view_rows,
+                    )
+                    cur.execute("RELEASE SAVEPOINT listing_view_insert")
+                except Exception as exc:
+                    cur.execute("ROLLBACK TO SAVEPOINT listing_view_insert")
+                    cur.execute("RELEASE SAVEPOINT listing_view_insert")
+                    if getattr(getattr(exc, "diag", None), "constraint_name", None) == "page_views_pkey":
+                        # 운영 데이터 이관 뒤 serial sequence가 MAX(id)보다 뒤처진 경우
+                        # 현재 최대값으로 맞춘 뒤 이번 열람 기록을 한 번만 재시도한다.
+                        cur.execute("""
+                            SELECT setval(
+                                pg_get_serial_sequence('page_views', 'id'),
+                                GREATEST(COALESCE((SELECT MAX(id) FROM page_views), 1), 1),
+                                TRUE
+                            )
+                        """)
+                        cur.executemany(
+                            "INSERT INTO page_views (path, listing_request_id, ip_hash, user_agent) "
+                            "VALUES ('/listings', %s, %s, %s)",
+                            view_rows,
+                        )
+                        app.logger.warning("page_views id sequence repaired after primary-key collision")
+                    else:
+                        raise
         cur.execute("""
             SELECT listing_request_id, COUNT(DISTINCT ip_hash) AS viewer_count
             FROM page_views

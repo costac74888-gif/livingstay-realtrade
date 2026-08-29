@@ -6359,6 +6359,11 @@ def _check_whole_building_listing(client):
             sess["user_id"] = user_id
         first_view = client.post("/api/listings/views", json={"listing_ids": [listing_id]})
         second_view = client.post("/api/listings/views", json={"listing_ids": [listing_id]})
+        live_view = client.get("/api/listings/views", query_string=[
+            ("listing_ids", listing_id),
+        ])
+        live_view_items = (live_view.get_json() or {}).get("items") or []
+        live_view_item = next((item for item in live_view_items if item.get("id") == listing_id), {})
         limited_after_view = (
             client.get("/api/listings?disclosure_scope=limited").get_json() or {}
         ).get("items") or []
@@ -6366,9 +6371,11 @@ def _check_whole_building_listing(client):
         if (
             first_view.status_code != 200
             or second_view.status_code != 200
+            or live_view.status_code != 200
+            or live_view_item.get("viewer_count") != 1
             or limited_view_item.get("viewer_count") != 1
         ):
-            failures.append("whole listing: 제한공개 카드 열람자 기록 또는 고유 IP 집계가 누락됨")
+            failures.append("whole listing: 제한공개 카드 열람자 기록·실시간 조회 또는 고유 IP 집계가 누락됨")
 
         cur.execute("""SELECT transaction_target, deal_type, price_krw, succession_loan_krw, key_money_krw, room_count,
                                short_stay_ratio, ota_revenue_ratio,

@@ -1368,6 +1368,9 @@
         '</div>' +
         (listing.is_limited_listing ? '<div style="margin:0 0 12px;padding:9px 11px;border-radius:8px;background:#F3F8FD;color:#275B88;font-size:11.5px;line-height:1.55;">건물명·정확한 주소·사진은 보호됩니다. 상세 조건은 채팅으로 확인해 주세요.</div>' : "")
       : "";
+    var viewerCountMarkup = isWhole
+      ? '<div data-listing-viewer-count="' + esc(listing.id) + '" style="margin:3px 0 0;color:#356212;font-size:11px;font-weight:700;">최근 열람 ' + formatNumber(listing.viewer_count || 0) + '명</div>'
+      : "";
     var photoIndex = 0;
     var icons = window.LivingstayListingIcons;
     if (!icons) return;
@@ -1402,6 +1405,7 @@
           '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">' + esc(priceText) + '</div>' +
           (detail ? '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">' + esc(detail) + '</div>' : "") +
           wholeDetailsMarkup +
+          viewerCountMarkup +
           mapLocationAction +
           descriptionMarkup +
           '<div style="display:flex;justify-content:flex-end;gap:7px;">' +

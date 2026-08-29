@@ -757,6 +757,30 @@
     });
   }
   const trackedWholeListingViews = new Set();
+  const liveWholeListingViews = new Set();
+  let wholeViewerRefreshTimer = null;
+  async function refreshWholeListingViewCounts(){
+    const ids = [...liveWholeListingViews];
+    if (!ids.length) return;
+    try {
+      const query = ids.map(id => `listing_ids=${encodeURIComponent(id)}`).join("&");
+      const res = await fetch(`/api/listings/views?${query}`, { credentials: "same-origin" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) return;
+      (data.items || []).forEach(item => {
+        document.querySelectorAll(`[data-listing-id="${item.id}"] .whole-viewers, [data-listing-id="${item.id}"] .b-whole-viewers`).forEach(el => {
+          el.textContent = `최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명`;
+        });
+        document.querySelectorAll(`[data-listing-viewer-count="${item.id}"]`).forEach(el => {
+          el.textContent = `최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명`;
+        });
+      });
+    } catch (err) {}
+  }
+  function startWholeViewerRefresh(){
+    if (wholeViewerRefreshTimer) return;
+    wholeViewerRefreshTimer = setInterval(refreshWholeListingViewCounts, 15000);
+  }
   async function recordWholeListingViews(items){
     const listingIds = (items || [])
       .filter(item => (item.is_whole_listing || item.transaction_target === "whole")
@@ -764,6 +788,8 @@
       .map(item => item.id);
     if (!listingIds.length) return;
     listingIds.forEach(id => trackedWholeListingViews.add(id));
+    listingIds.forEach(id => liveWholeListingViews.add(id));
+    startWholeViewerRefresh();
     try {
       const res = await fetch("/api/listings/views", {
         method: "POST",
@@ -778,6 +804,7 @@
           el.textContent = `최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명`;
         });
       });
+      refreshWholeListingViewCounts();
     } catch (err) {
       // 일시 네트워크 오류면 다음 목록 새로고침에서 다시 시도한다.
       listingIds.forEach(id => trackedWholeListingViews.delete(id));
@@ -1029,14 +1056,14 @@
       ? ""
       : '<button type="button" class="listing-checklist-open">숙박업소 거래 체크리스트 열어보기</button>';
     const buildingLabel = item.is_limited_listing
-      ? `<span class="ls-card-bldg">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:#6B7280;color:#fff;">제한공개</span>${esc(item.building_name || "지역 비공개")}</span>`
-      : `<span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span>${esc(item.building_name || "(건물명 없음)")}</span>`;
+      ? `<span class="ls-card-bldg">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span><span class="whole-badge" style="background:#6B7280;color:#fff;">제한공개</span>${dealTypeBadgeHtml(item.deal_type)}${esc(item.building_name || "지역 비공개")}</span>`
+      : `<span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span>${dealTypeBadgeHtml(item.deal_type)}${esc(item.building_name || "(건물명 없음)")}</span>`;
 
     div.innerHTML = `
       ${isLimitedListing ? cardPhotoHtml : ""}
       <div class="ls-card-info">
         <div class="ls-card-l1">${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}</div>
-        <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(listingPriceText(item))}</div>
+        <div class="ls-card-l2">${esc(listingPriceText(item))}</div>
         <div class="whole-info-groups">
           ${groupHtml("거래 조건", [listingPriceText(item)])}
           ${groupHtml("금융 · 인수", financeValues)}
