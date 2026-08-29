@@ -57,6 +57,13 @@ def run(sgg_filter=None, dry_run=False):
     if sgg_filter:
         for sgg_cd_f in sgg_filter:
             sgg_text_f = bjdong.sgg_text(sgg_cd_f)
+            if not sgg_text_f:
+                # 하위 읍면동이 있는 시군구는 sgg_text()의 leaf 목록에서
+                # 제외되므로, 전체 시군구 행에서 상위 텍스트를 보완한다.
+                sgg_text_f = next(
+                    (name for cd, name in bjdong._all_sgg_rows if cd == sgg_cd_f),
+                    None,
+                )
             if sgg_text_f:
                 addr_filters.append(
                     "(lr.road_address LIKE %s OR lr.jibun_address LIKE %s)"
