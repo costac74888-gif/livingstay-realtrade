@@ -74,30 +74,6 @@ def run(sgg_filter=None, dry_run=False):
         biz_name = lr["biz_name"]
         lr_id = lr["id"]
 
-        # ── 2. 주소 매칭 — 이미 master_buildings에 있는지 확인 ──
-        road_norm = lr["road_norm"] or ""
-        jibun_norm = lr["jibun_norm"] or ""
-
-        cur.execute("""
-            SELECT id FROM master_buildings
-            WHERE (road_norm = %s AND %s != '')
-               OR (jibun_norm = %s AND %s != '')
-            LIMIT 1
-        """, [road_norm, road_norm, jibun_norm, jibun_norm])
-        existing_mb = cur.fetchone()
-
-        if existing_mb:
-            # 매핑만 업데이트
-            if not dry_run:
-                cur.execute(
-                    "UPDATE lodging_registry SET applied_building_id=%s WHERE id=%s",
-                    [existing_mb["id"], lr_id]
-                )
-                conn.commit()
-            skipped += 1
-            print(f"  [매핑] {biz_name} → master_buildings #{existing_mb['id']}")
-            continue
-
         # ── 3. 지번 변환 ──────────────────────────────────────
         target_addr = road_addr or jibun_addr
         if not target_addr:
