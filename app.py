@@ -1099,7 +1099,7 @@ def get_building(building_id):
     _direct_listings = []
     for _lr in cur.fetchall():
         _d = _apply_urgent_tier(_apply_public_business_listing_summary(
-            dict(_lr), financial_details_visible=bool(session.get("user_id"))
+            dict(_lr), financial_details_visible=_listing_financial_details_visible()
         ))
         # 전화번호 마스킹 — 뒤 4자리만 노출
         _phone = _d.pop("verified_phone", None) or ""
@@ -9268,6 +9268,13 @@ def _apply_public_business_listing_summary(listing, financial_details_visible=Fa
     return listing
 
 
+def _listing_financial_details_visible():
+    """공개 매물의 상세 재무정보를 볼 수 있는 로그인 세션인지 확인한다."""
+    return any(session.get(key) for key in (
+        "user_id", "agent_id", "operator_id", "loan_consultant_id",
+    ))
+
+
 def _urgent_tier_for_values(deal_type, is_urgent, price_krw, latest_transaction_price):
     """건물전체 공개 매물의 급매 등급을 최신 실거래와 비교해 계산한다."""
     if deal_type != "매매":
@@ -9639,17 +9646,16 @@ def _limited_whole_listing_approx_location(cur, listing):
 def _apply_limited_whole_listing_privacy(listing, approx_location=None):
     """제한공개 건물전체 매물은 지역·카드 표시에 필요한 값만 남긴다.
 
-    판매자가 공개용으로 직접 작성한 설명은 카드에 제공한다. 로그인 회원은 월
-    매출과 승계융자도 볼 수 있지만, 사진·건물 보조정보처럼 정확한 건물을
-    역추적할 수 있는 값은 어떤 공개 목록 응답에도 포함하지 않는다.
+    판매자가 직접 입력한 거래·운영 정보는 카드에 제공한다. 사진·정확한 위치와
+    자동 건물정보처럼 특정 건물을 역추적할 수 있는 값은 공개 목록 응답에서
+    제외한다.
     """
     location_label = " ".join(
         part for part in (listing.get("sgg_text"), listing.get("umd_nm")) if part
     ).strip() or "지역 비공개"
     for key in (
         "building_id", "lat", "lng", "photo_url", "photos",
-        "building_info_overrides", "key_money_krw", "annual_revenue_krw",
-        "remodeling_info", "verified_phone", "phone_tail",
+        "building_info_overrides", "verified_phone", "phone_tail",
     ):
         listing.pop(key, None)
     listing["building_name"] = location_label
@@ -10944,7 +10950,7 @@ def public_listings():
         items = []
         for r in rows[:limit]:
             d = _apply_urgent_tier(_apply_public_business_listing_summary(
-                dict(r), financial_details_visible=bool(viewer_user)
+                dict(r), financial_details_visible=_listing_financial_details_visible()
             ))
             if disclosure_scope_filter == "limited":
                 d = _apply_limited_whole_listing_privacy(

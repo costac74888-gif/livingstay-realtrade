@@ -202,6 +202,14 @@
   .whole-badge-revenue { color:#275B88; background:#E7F2FC; }
   @keyframes wholeUrgentPulse { 50% { transform:scale(1.06); box-shadow:0 0 0 4px rgba(200,90,54,.16); } }
   .whole-finance { font-size:12px; color:var(--brass-dark,#7D4A00); font-weight:700; }
+  .whole-info-groups { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+  .whole-info-group { padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fcfbf9; }
+  .whole-info-title { margin-bottom:5px;color:var(--ink-soft);font-size:10.5px;font-weight:800;letter-spacing:.02em; }
+  .whole-info-values { color:var(--ink);font-size:11.5px;line-height:1.55;overflow-wrap:anywhere; }
+  .whole-info-more { grid-column:1/-1; }
+  .whole-info-more[hidden] { display:none; }
+  .whole-info-toggle { justify-self:start;border:0;background:transparent;color:#275B88;padding:1px 0;font:700 11.5px inherit;cursor:pointer; }
+  @media(max-width:520px){ .whole-info-groups{grid-template-columns:1fr;} .whole-info-more{grid-column:auto;} }
   .whole-metrics { font-size:11.5px; color:var(--ink-soft); line-height:1.55; }
   .whole-caution { padding-top:7px; border-top:1px solid var(--line); color:var(--ink-soft); font-size:10.5px; line-height:1.45; }
   .whole-limited-notice {
@@ -970,6 +978,31 @@
     const revenueText = item.has_monthly_revenue
       ? (hasFinance ? `월 매출 ${formatKrw(item.monthly_revenue_krw)}` : "월 매출 🔒 로그인하고 보기")
       : "";
+    const visibleValue = (value, formatter) => value != null && value !== "" ? formatter(value) : "";
+    const financeValues = hasFinance
+      ? [
+          acquisition != null ? `실인수가 ${formatKrw(acquisition)}` : "",
+          item.has_succession_loan ? `승계융자 ${formatKrw(loan)}` : "",
+          item.has_key_money ? `권리금 ${formatKrw(keyMoney)}` : ""
+        ].filter(Boolean)
+      : ["실인수가·승계융자·권리금은 로그인 후 확인"];
+    const operationValues = [
+      hasFinance && item.has_monthly_revenue ? `월평균매출 ${formatKrw(item.monthly_revenue_krw)}` : (item.has_monthly_revenue ? "월평균매출은 로그인 후 확인" : ""),
+      hasFinance ? visibleValue(item.annual_revenue_krw, v => `연매출 ${formatKrw(v)}`) : (item.annual_revenue_krw != null ? "연매출은 로그인 후 확인" : ""),
+      visibleValue(item.short_stay_ratio, v => `대실 ${Number(v).toLocaleString()}%`),
+      visibleValue(item.ota_revenue_ratio, v => `OTA ${Number(v).toLocaleString()}%`),
+      item.operation_status ? `운영상태 ${item.operation_status}` : "",
+      item.closed_at ? `폐업일 ${item.closed_at}` : ""
+    ].filter(Boolean);
+    const facilityValues = [roomText, parkingText, landText, grossText].filter(Boolean);
+    const extraValues = [
+      item.remodeling_info ? `리모델링 ${item.remodeling_info}` : "",
+      `공개범위 ${isLimitedListing ? "제한공개" : "전체공개"}`,
+      item.permit_number_masked ? `영업신고 인증 ${item.permit_number_masked}` : ""
+    ].filter(Boolean);
+    const groupHtml = (title, values, extraClass) => values.length
+      ? `<div class="whole-info-group${extraClass ? " " + extraClass : ""}"><div class="whole-info-title">${esc(title)}</div><div class="whole-info-values">${values.map(esc).join("<br>")}</div></div>`
+      : "";
     const chatTitle = myChattingIds.has(item.id) ? "채팅 이어하기" : "문의하기";
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     const photoClass = isLimitedListing ? "ls-card-photo-top" : "ls-card-photo-right";
@@ -1004,8 +1037,14 @@
       <div class="ls-card-info">
         <div class="ls-card-l1">${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}</div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(listingPriceText(item))}</div>
-        <div class="whole-finance">${esc(financeText)}${revenueText ? ` · ${esc(revenueText)}` : ""}</div>
-        <div class="whole-metrics">${esc(roomText)} · ${esc(parkingText)}<br>${esc(landText)} · ${esc(grossText)}</div>
+        <div class="whole-info-groups">
+          ${groupHtml("거래 조건", [listingPriceText(item)])}
+          ${groupHtml("금융 · 인수", financeValues)}
+          ${groupHtml("운영 · 매출", operationValues)}
+          ${groupHtml("시설 · 건물", facilityValues)}
+          ${groupHtml("추가 정보", extraValues, "whole-info-more")}
+          <button type="button" class="whole-info-toggle" aria-expanded="false">전체 정보 보기</button>
+        </div>
         <div class="whole-badges">${badges}</div>
         ${wholeLocationHint(item)}
         <div class="whole-viewers">최근 열람 ${Number(item.viewer_count || 0).toLocaleString()}명</div>
@@ -1028,7 +1067,7 @@
 
     // 카드 전체와 사진에서 공용 상세 팝업을 연다.
     div.addEventListener("click", (e) => {
-      if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link, .ls-card-photo-right, .ls-card-photo-top, .whole-listing-description-toggle")) return;
+      if (e.target.closest(".ls-card-actions button, .listing-checklist-open, .ls-bldg-link, .ls-card-photo-right, .ls-card-photo-top, .whole-listing-description-toggle, .whole-info-toggle")) return;
       openListingDetail(item);
     });
     div.querySelector(".whole-listing-description-toggle")?.addEventListener("click", (e) => {
@@ -1040,6 +1079,20 @@
       text?.classList.toggle("is-collapsed", !expanding);
       button.textContent = expanding ? "설명 접기" : "설명 전체보기";
     });
+    const moreInfo = div.querySelector(".whole-info-more");
+    const moreButton = div.querySelector(".whole-info-toggle");
+    if (moreInfo && moreButton) {
+      moreInfo.hidden = true;
+      moreButton.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const expanding = moreButton.getAttribute("aria-expanded") !== "true";
+        moreButton.setAttribute("aria-expanded", expanding ? "true" : "false");
+        moreInfo.hidden = !expanding;
+        moreButton.textContent = expanding ? "정보 접기" : "전체 정보 보기";
+      });
+    } else if (moreButton) {
+      moreButton.remove();
+    }
     div.querySelector(".whole-approx-location-btn")?.addEventListener("click", (e) => {
       e.stopPropagation();
       if (typeof window.openApproximateLocationMap === "function") {

@@ -1319,6 +1319,55 @@
           (descriptionIsLong ? '<button type="button" data-listing-description-toggle aria-expanded="false" style="display:block;margin:7px 0 0 auto;padding:2px 0;border:0;background:transparent;color:#275B88;font:700 11.5px inherit;cursor:pointer;">설명 전체보기</button>' : '') +
         '</div>'
       : "";
+    var detailGroup = function (title, rows) {
+      rows = rows.filter(function (row) { return row && row[1] !== null && row[1] !== undefined && row[1] !== ""; });
+      if (!rows.length) return "";
+      return '<section style="padding:11px 12px;border:1px solid var(--line,#e2ddd8);border-radius:9px;background:#fcfbf9;">' +
+        '<div style="margin-bottom:7px;color:var(--ink-soft,#6b7684);font-size:11px;font-weight:800;">' + esc(title) + '</div>' +
+        rows.map(function (row) {
+          return '<div style="display:flex;justify-content:space-between;gap:14px;padding:2px 0;font-size:12.5px;line-height:1.5;">' +
+            '<span style="color:var(--ink-soft,#6b7684);">' + esc(row[0]) + '</span><b style="color:var(--ink,#16202e);text-align:right;overflow-wrap:anywhere;">' + esc(row[1]) + '</b></div>';
+        }).join("") + '</section>';
+    };
+    var formatMoney = function (value) { return formatNumber(value) + "만원"; };
+    var financeVisible = !!listing.financial_details_visible;
+    var acquisitionValue = financeVisible && listing.price_krw != null
+      ? Number(listing.price_krw) - Number(listing.succession_loan_krw || 0) +
+        Number(listing.key_money_krw || 0) + Number(listing.price_krw) * 0.061
+      : null;
+    var wholeDetailsMarkup = isWhole
+      ? '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0;" data-listing-detail-groups>' +
+          detailGroup("거래 조건", [
+            [listing.deal_type === "매매" ? "매매가" : "보증금·양도금", listing.price_krw != null ? formatMoney(listing.price_krw) : "조건 협의"],
+            ["월세", listing.monthly_rent_krw != null ? formatMoney(listing.monthly_rent_krw) : ""]
+          ]) +
+          detailGroup("금융 · 인수", financeVisible ? [
+            ["실인수가", acquisitionValue != null ? formatMoney(Math.round(acquisitionValue)) : "-"],
+            ["승계융자", listing.succession_loan_krw != null ? formatMoney(listing.succession_loan_krw) : "없음"],
+            ["권리금", listing.key_money_krw != null ? formatMoney(listing.key_money_krw) : "없음"]
+          ] : [["상세 금융정보", "로그인 후 확인"]]) +
+          detailGroup("운영 · 매출", [
+            ["월평균매출", listing.has_monthly_revenue ? (financeVisible ? formatMoney(listing.monthly_revenue_krw) : "로그인 후 확인") : ""],
+            ["연매출", listing.annual_revenue_krw != null ? (financeVisible ? formatMoney(listing.annual_revenue_krw) : "로그인 후 확인") : ""],
+            ["대실 비율", listing.short_stay_ratio != null ? formatNumber(listing.short_stay_ratio) + "%" : ""],
+            ["OTA 매출 비중", listing.ota_revenue_ratio != null ? formatNumber(listing.ota_revenue_ratio) + "%" : ""],
+            ["운영상태", listing.operation_status || ""],
+            ["폐업일", listing.closed_at || ""]
+          ]) +
+          detailGroup("시설 · 건물", [
+            ["객실", listing.room_count != null ? formatNumber(listing.room_count) + "실" : ""],
+            ["주차", listing.parking_count != null ? formatNumber(listing.parking_count) + "대" : ""],
+            ["대지면적", listing.land_area_pyeong != null ? Number(listing.land_area_pyeong).toFixed(1) + "평" : ""],
+            ["연면적", listing.gross_area_pyeong != null ? Number(listing.gross_area_pyeong).toFixed(1) + "평" : ""]
+          ]) +
+          detailGroup("설명 · 공개 상태", [
+            ["리모델링", listing.remodeling_info || ""],
+            ["공개범위", listing.is_limited_listing ? "제한공개" : "전체공개"],
+            ["영업신고 인증", listing.permit_number_masked || ""]
+          ]) +
+        '</div>' +
+        (listing.is_limited_listing ? '<div style="margin:0 0 12px;padding:9px 11px;border-radius:8px;background:#F3F8FD;color:#275B88;font-size:11.5px;line-height:1.55;">건물명·정확한 주소·사진은 보호됩니다. 상세 조건은 채팅으로 확인해 주세요.</div>' : "")
+      : "";
     var photoIndex = 0;
     var icons = window.LivingstayListingIcons;
     if (!icons) return;
@@ -1352,7 +1401,8 @@
           '</div>' +
           '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">' + esc(priceText) + '</div>' +
           (detail ? '<div style="font-size:12px;color:var(--ink-soft);font-weight:700;margin-bottom:7px;">' + esc(detail) + '</div>' : "") +
-           mapLocationAction +
+          wholeDetailsMarkup +
+          mapLocationAction +
           descriptionMarkup +
           '<div style="display:flex;justify-content:flex-end;gap:7px;">' +
             '<button type="button" data-listing-detail-like class="listing-like-btn' + (listing.liked ? " is-liked" : "") + '" title="찜">' + icons.heart(!!listing.liked) + '<span class="like-cnt">' + (listing.like_count || 0) + '</span></button>' +

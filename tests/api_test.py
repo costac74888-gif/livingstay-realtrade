@@ -6304,9 +6304,9 @@ def _check_whole_building_listing(client):
             or limited_item.get("approx_lat") is None
             or limited_item.get("approx_lng") is None
             or limited_item.get("description") != listing_description
+            or limited_item.get("remodeling_info") != "객실 일부 리모델링"
             or any(key in limited_item for key in (
                 "photo_url", "photos", "building_info_overrides",
-                "key_money_krw", "annual_revenue_krw", "remodeling_info",
                 "phone_tail", "lat", "lng",
             ))
         ):
@@ -6335,13 +6335,28 @@ def _check_whole_building_listing(client):
         logged_limited_item = next((item for item in logged_limited_items if item.get("id") == listing_id), {})
         if (logged_limited_item.get("monthly_revenue_krw") != 3000
                 or logged_limited_item.get("succession_loan_krw") != 120000
+                or logged_limited_item.get("key_money_krw") != 5000
+                or logged_limited_item.get("annual_revenue_krw") != 36000
+                or logged_limited_item.get("remodeling_info") != "객실 일부 리모델링"
                 or logged_limited_item.get("description") != listing_description
                 or any(key in logged_limited_item for key in (
                     "photo_url", "photos", "building_info_overrides",
-                    "key_money_krw", "annual_revenue_krw", "remodeling_info",
                     "phone_tail", "lat", "lng",
                 ))):
             failures.append("whole listing: 로그인 제한공개 응답의 허용 금융정보 또는 익명화가 잘못됨")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["agent_id"] = -999999
+        partner_items = (client.get("/api/listings?disclosure_scope=limited").get_json() or {}).get("items") or []
+        partner_item = next((item for item in partner_items if item.get("id") == listing_id), {})
+        if (not partner_item.get("financial_details_visible")
+                or partner_item.get("monthly_revenue_krw") != 3000
+                or partner_item.get("succession_loan_krw") != 120000
+                or partner_item.get("key_money_krw") != 5000):
+            failures.append("whole listing: 파트너 로그인 세션의 금융정보가 숨겨짐")
+        with client.session_transaction() as sess:
+            sess.clear()
+            sess["user_id"] = user_id
         first_view = client.post("/api/listings/views", json={"listing_ids": [listing_id]})
         second_view = client.post("/api/listings/views", json={"listing_ids": [listing_id]})
         limited_after_view = (
