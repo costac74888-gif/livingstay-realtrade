@@ -587,15 +587,13 @@
     background:var(--brass); box-shadow:0 0 0 2px var(--brass), 0 1px 4px rgba(22,32,46,.3);
   }
   .map-location-target{
-    animation:map-location-target-pulse 2.4s ease-in-out infinite;
+    animation:map-location-target-pulse 2.4s ease-in-out infinite !important;
     transform-origin:center center;
+    will-change:opacity,transform;
   }
   @keyframes map-location-target-pulse{
     0%, 100%{opacity:1; transform:scale(1);}
     50%{opacity:.42; transform:scale(1.18);}
-  }
-  @media (prefers-reduced-motion: reduce){
-    .map-location-target{animation:none;}
   }
   @keyframes datalab-map-highlight-in{
     from{opacity:0; transform:translateY(-4px) scale(.94);}

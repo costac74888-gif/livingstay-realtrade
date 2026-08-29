@@ -2506,6 +2506,7 @@ def get_buildings_geo():
                  위해 공백 제거 후 포함 매칭
     """
     q = request.args.get("q", "").strip()
+    building_id = request.args.get("building_id", type=int)
     si_do = request.args.get("si_do", "").strip()
     sgg_nm = request.args.get("sgg_nm", "").strip()
     umd_nm = request.args.get("umd_nm", "").strip()
@@ -2526,7 +2527,10 @@ def get_buildings_geo():
 
     # bounds가 없는 필터 전용 요청만 캐시 — bounds는 뷰포트마다 달라 고카디낼리티
     _has_bounds = bool(sw_lat and sw_lng and ne_lat and ne_lng)
-    _cache_key = f"{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}" if not _has_bounds else None
+    _cache_key = (
+        f"{building_id or ''}|{q}|{si_do}|{sgg_nm}|{umd_nm}|{lodging_type}"
+        if not _has_bounds else None
+    )
     if _cache_key:
         _cached = _geo_cache.get(_cache_key)
         if _cached and (_now - _cached[0]) < _GEO_CACHE_TTL:
@@ -2537,6 +2541,9 @@ def get_buildings_geo():
              "lodging_type IS DISTINCT FROM 'mixed_use_excluded'"]
     params = []
 
+    if building_id is not None:
+        where.append("id = %s")
+        params.append(building_id)
     if q:
         # jibun 컬럼 직접 매칭 추가 — jibun_address = NULL인 건물도 지번 검색으로 발견.
         # 공백 제거 후 비교(nospace) 추가 — "그레이스경희"→"더 그레이스 경희",

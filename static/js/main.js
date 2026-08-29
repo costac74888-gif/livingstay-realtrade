@@ -1062,6 +1062,16 @@ function clearMapLocationTarget(){
   });
 }
 
+function syncMapLocationTargetElement(el, buildingId){
+  if (!el || buildingId == null) return;
+  const id = String(buildingId);
+  el.dataset.mapBuildingId = id;
+  el.classList.toggle(
+    "map-location-target",
+    mapLocationTargetId != null && String(mapLocationTargetId) === id
+  );
+}
+
 function applyMapLocationTarget(){
   const targetId = mapLocationTargetId == null ? null : String(mapLocationTargetId);
   document.querySelectorAll(".map-location-target").forEach(el => {
@@ -1073,13 +1083,11 @@ function applyMapLocationTarget(){
 
   mapOverlays.forEach(overlay => {
     if (String(overlay.__buildingId) !== targetId || !overlay.__contentEl) return;
-    overlay.__contentEl.dataset.mapBuildingId = targetId;
-    overlay.__contentEl.classList.add("map-location-target");
+    syncMapLocationTargetElement(overlay.__contentEl, overlay.__buildingId);
   });
   mapLabelData.forEach(data => {
     if (String(data.b?.id) !== targetId || !data.el) return;
-    data.el.dataset.mapBuildingId = targetId;
-    data.el.classList.add("map-location-target");
+    syncMapLocationTargetElement(data.el, data.b.id);
   });
 }
 
@@ -1189,6 +1197,7 @@ function _buildCircleBadgeEl(b){
     "font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:800;line-height:1;" +
     "text-shadow:0 1px 1px rgba(0,0,0,.22);box-shadow:0 2px 7px rgba(0,0,0,.28);" +
     "cursor:pointer;pointer-events:auto;transition:opacity .18s ease,transform .18s ease;";
+  syncMapLocationTargetElement(badge, b.id);
   badge.addEventListener("click", (e) => {
     e.stopPropagation();
     _openBuildingFromMap(b);
@@ -2055,7 +2064,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
   const emptyEl = document.getElementById("mapEmpty");
 
   const params = new URLSearchParams();
-  ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
+  ["building_id", "q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
     if (filters[k]) params.set(k, filters[k]);
   });
 
@@ -2144,6 +2153,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
           `width:14px;height:14px;padding:0;border:2px solid #fff;border-radius:50%;background:${color};` +
           "box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.24);cursor:pointer;" +
           "pointer-events:auto;transition:opacity .18s ease;";
+        syncMapLocationTargetElement(el, b.id);
         el.addEventListener("click", (event) => {
           event.stopPropagation();
           _openBuildingFromMap(b);
@@ -2373,7 +2383,10 @@ async function updateMapForZoom(filters = {}, opts = {}){
 
   // 검색어(q)가 있으면 줌 레벨과 무관하게 개별 마커 모드로 강제 전환.
   // 클러스터 배지 단계를 건너뛰어 검색 결과 위치로 바로 확대 이동한다.
-  const forceMarkers = !!(filters.q && filters.q.trim());
+  const forceMarkers = !!(
+    (filters.q && filters.q.trim())
+    || filters.building_id != null
+  );
   const mode = forceMarkers ? "markers" : _clusterModeForLevel(kakaoMap.getLevel());
 
   if (mode === "markers"){
@@ -5218,7 +5231,9 @@ async function loadBuildingHeader(id){
       // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
-      updateMapForZoom(mapFiltersFromState(), { force: true });
+      // 현재 검색·지역 필터와 무관하게 이 건물 ID만 정확히 조회한다.
+      // skipBounds가 적용되어 setCenter 반영 전의 이전 뷰포트에 잘리는 문제도 막는다.
+      updateMapForZoom({ building_id: b.id }, { force: true });
     });
   }
 
