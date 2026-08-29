@@ -576,7 +576,9 @@
         allowSelect: true,
         bulkDeleteEndpoint: "/api/admin/listings/bulk-delete",
         bulkDeleteLabel: "영구 삭제",
-        searchPlaceholder: "건물명·건물ID 검색",
+        defaultSort: "created_at",
+        defaultOrder: "desc",
+        searchPlaceholder: "건물명·주소·건물ID 검색",
         columns: [
           { key: "id", label: "ID", sortable: true },
           { key: "building_name", label: "건물명", sortable: true },

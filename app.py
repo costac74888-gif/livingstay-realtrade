@@ -19745,18 +19745,31 @@ def _admin_paging():
 def _admin_lst_filters():
     """직거래 매물 목록/엑셀 공용: sort_expr, order, WHERE절(deal_mode 제외), 파라미터."""
     q = (request.args.get("q") or "").strip()
-    sort_key = (request.args.get("sort") or "id").strip()
-    sort_expr = ADMIN_LST_SORT.get(sort_key, "lr.id")
-    order = "DESC" if (request.args.get("order") or "asc").strip().lower() == "desc" else "ASC"
+    sort_key = (request.args.get("sort") or "created_at").strip()
+    sort_expr = ADMIN_LST_SORT.get(sort_key, ADMIN_LST_SORT["created_at"])
+    order = "DESC" if (request.args.get("order") or "desc").strip().lower() == "desc" else "ASC"
     where = "1=1"
     params = []
     if q:
+        # 홈 화면 검색처럼 건물명·도로명주소·지번주소를 모두 검색한다.
+        # 공백을 넣거나 빼서 입력해도 주소 검색이 되도록 정규화 비교도 함께 지원한다.
+        q_ns = q.replace(" ", "")
+        like = f"%{q}%"
+        search_parts = [
+            "mb.building_name ILIKE %s",
+            "mb.road_address ILIKE %s",
+            "mb.jibun_address ILIKE %s",
+            "mb.jibun ILIKE %s",
+            "REPLACE(COALESCE(mb.building_name, ''), ' ', '') ILIKE %s",
+            "REPLACE(COALESCE(mb.road_address, ''), ' ', '') ILIKE %s",
+            "REPLACE(COALESCE(mb.jibun_address, ''), ' ', '') ILIKE %s",
+            "REPLACE(COALESCE(mb.jibun, ''), ' ', '') ILIKE %s",
+        ]
+        params = [like] * 4 + [f"%{q_ns}%"] * 4
         if q.isdigit():
-            where = "lr.master_building_id = %s"
-            params = [int(q)]
-        else:
-            where = "mb.building_name ILIKE %s"
-            params = [f"%{q}%"]
+            search_parts.insert(0, "lr.master_building_id = %s")
+            params.insert(0, int(q))
+        where = "(" + " OR ".join(search_parts) + ")"
     return sort_expr, order, where, params
 
 
