@@ -2339,10 +2339,6 @@
         else done = "일시 중단(다음 실행 때 이어서)";
         rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
         rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 법정동 ${d.processed == null ? "-" : num(d.processed) + "곳"} 처리 · 신규 발견 ${d.found == null ? "-" : num(d.found) + "건"}</div>`);
-        if (d.failed_dongs && d.failed_dongs.length) {
-          const recent = d.failed_dongs.slice(-5).map(f => dgEscape(`${f.name}: ${f.error}`)).join(" / ");
-          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패한 법정동(누적 ${d.failed_dongs.length}건, 최근 5건):</b> ${recent}</div>`);
-        }
         if (d.cooldowns && d.cooldowns.length) {
           rows.push(`<div class="geo-stat-row" style="color:#8a6d00"><b>연속실패 쿨다운 발생:</b> ${d.cooldowns.length}회 (5분씩 자동 대기 후 재개됨, 마지막: ${dgEscape(d.cooldowns[d.cooldowns.length - 1].at)})</div>`);
         }
@@ -2405,6 +2401,18 @@
     // ---- 영업신고 누락건물 보완수집 ----
     let backfillLodgingTimer = null;
 
+    function toKST(s) {
+      if (!s) return "-";
+      // "2026-08-29 04:12:35" 형식(UTC)을 KST(+9)로 변환
+      const d = new Date(s.replace(" ", "T") + "Z");
+      return isNaN(d) ? s : d.toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        hour12: false
+      }) + " (KST)";
+    }
+
     function stopBackfillLodgingPolling() {
       if (backfillLodgingTimer) {
         clearInterval(backfillLodgingTimer);
@@ -2428,12 +2436,12 @@
       }
 
       const rows = [];
-      if (d.started_at) rows.push(`마지막 실행: ${d.started_at}`);
+      if (d.started_at) rows.push(`마지막 실행: ${toKST(d.started_at)}`);
       if (d.total != null) rows.push(`대상: ${num(d.total)}건`);
       if (d.registered != null) rows.push(`신규등록: ${num(d.registered)}건`);
       if (d.skipped != null) rows.push(`기존매핑: ${num(d.skipped)}건`);
       if (d.failed != null) rows.push(`실패: ${num(d.failed)}건`);
-      if (d.finished_at) rows.push(`완료: ${d.finished_at}`);
+      if (d.finished_at) rows.push(`완료: ${toKST(d.finished_at)}`);
       if (d.error) rows.push(`오류: ${d.error}`);
       statusDiv.textContent = rows.join(" · ");
 

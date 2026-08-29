@@ -21,7 +21,7 @@ import argparse
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from db import get_conn, init_db
 from address_utils import BjdongMap, parse_jibun, normalize_umd_nm
@@ -31,6 +31,11 @@ from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEA
 
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")
 REQUEST_SLEEP = 0.3  # 건축HUB API 쿼터 보호
+
+
+def _status_now():
+    """상태 시각을 UTC 기준의 기존 문자열 형식으로 반환한다."""
+    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
 
 LEGACY_SGG_TEXT_MAP = {
     # 2026년 제물포구·영종구 분리 전 인천광역시 중구 코드.
@@ -95,7 +100,7 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
 
     _status_update(
         state="running",
-        started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        started_at=_status_now(),
         total=0, registered=0, skipped=0, failed=0,
     )
 
@@ -152,7 +157,7 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
     print(f"[후보] 총 {len(candidates)}건")
     _status_update(
         state="running",
-        started_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        started_at=_status_now(),
         total=len(candidates), registered=0, skipped=0, failed=0,
     )
 
@@ -290,7 +295,7 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None):
     print(f"\n완료 — 신규등록: {registered} / 기존매핑: {skipped} / 실패: {failed}")
     _status_update(
         state="done",
-        finished_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        finished_at=_status_now(),
         total=len(candidates),
         registered=registered,
         skipped=skipped,
@@ -347,7 +352,7 @@ if __name__ == "__main__":
             status = _read_status(args.status_key) or {}
             final_status = {
                 "state": "failed" if error else "done",
-                "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "finished_at": _status_now(),
                 "error": error,
             }
             if counts[0] is not None:
