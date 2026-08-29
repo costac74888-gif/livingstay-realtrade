@@ -15406,6 +15406,7 @@ def admin_buildings_list():
                mb.road_address, mb.jibun_address,
                mb.sgg_text, mb.sgg_cd, mb.umd_nm, mb.jibun, mb.units,
                mb.biz_units AS biz_units_snapshot_legacy,
+               COALESCE(mb.kakao_promo_copy_count, 0) AS kakao_promo_copy_count,
                mb.lodging_type, mb.lodging_type_detail,
                (SELECT COUNT(*) FROM user_favorites uf
                 WHERE uf.master_building_id = mb.id
@@ -17023,6 +17024,30 @@ def admin_buildings_update(building_id):
     conn.close()
     _mark_master_stats_invalidated_safely("admin_buildings_update")
     return jsonify({"ok": True})
+
+
+@app.route("/api/admin/buildings/<int:building_id>/kakao-promo-copy", methods=["POST"])
+@require_admin
+def admin_building_kakao_promo_copy(building_id):
+    """관리자용 카카오 홍보 문구 복사 횟수를 원자적으로 1회 증가한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE master_buildings
+               SET kakao_promo_copy_count = COALESCE(kakao_promo_copy_count, 0) + 1
+             WHERE id = %s
+         RETURNING kakao_promo_copy_count
+        """, [building_id])
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "존재하지 않는 건물입니다."}), 404
+        conn.commit()
+        return jsonify({"ok": True, "copy_count": row["kakao_promo_copy_count"]})
+    finally:
+        cur.close()
+        conn.close()
 
 
 @app.route("/api/admin/pending-completion")
