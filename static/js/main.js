@@ -1053,6 +1053,41 @@ let _mapRenderGen = 0;                // 마커·클러스터 공용 세대 — 
 let _mapFetchController = null;       // 다음 지도 요청이 이전 네트워크 요청을 취소한다.
 let selectedDataLabBuilding = null;   // 데이터랩에서 마지막으로 선택한 건물
 let selectedDataLabOverlay = null;    // 선택 건물 전용 CustomOverlay — 레이어 교체와 분리
+let mapLocationTargetId = null;       // 지도위치 버튼으로 선택된 건물 원형의 지속 강조 대상
+
+function clearMapLocationTarget(){
+  mapLocationTargetId = null;
+  document.querySelectorAll(".map-location-target").forEach(el => {
+    el.classList.remove("map-location-target");
+  });
+}
+
+function applyMapLocationTarget(){
+  const targetId = mapLocationTargetId == null ? null : String(mapLocationTargetId);
+  document.querySelectorAll(".map-location-target").forEach(el => {
+    if (targetId == null || el.dataset.mapBuildingId !== targetId) {
+      el.classList.remove("map-location-target");
+    }
+  });
+  if (targetId == null) return;
+
+  mapOverlays.forEach(overlay => {
+    if (String(overlay.__buildingId) !== targetId || !overlay.__contentEl) return;
+    overlay.__contentEl.dataset.mapBuildingId = targetId;
+    overlay.__contentEl.classList.add("map-location-target");
+  });
+  mapLabelData.forEach(data => {
+    if (String(data.b?.id) !== targetId || !data.el) return;
+    data.el.dataset.mapBuildingId = targetId;
+    data.el.classList.add("map-location-target");
+  });
+}
+
+function setMapLocationTarget(buildingId){
+  if (buildingId == null) return;
+  mapLocationTargetId = String(buildingId);
+  applyMapLocationTarget();
+}
 
 // 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
 // 거래·매물 합계가 1건 이상인 건물은 CustomOverlay 원형 숫자 배지로 표시한다.
@@ -1130,6 +1165,7 @@ function showDataLabBuildingHighlight(building){
 
 function _openBuildingFromMap(b){
   if (b.id == null) return;
+  clearMapLocationTarget();
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
   history.pushState({ buildingId: b.id }, "", "/building/" + b.id);
   if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + b.id });
@@ -2116,6 +2152,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
           position: pos, content: el, xAnchor: 0.5, yAnchor: 0.5,
           clickable: true, zIndex: 5,
         });
+        overlay.__buildingId = b.id;
         overlay.__contentEl = el;
         overlay.setMap(kakaoMap);
         mapOverlays.push(overlay);
@@ -2148,6 +2185,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
       if (placed <= 2) kakaoMap.setLevel(3);
     }
     updateMarkerLabels();
+    applyMapLocationTarget();
     _finishMapLayerSwap(previousCustomOverlays);
     console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
     if (placed === 1 && filters.q && validItems[0]?.building_name) {
@@ -5176,6 +5214,7 @@ async function loadBuildingHeader(id){
   if (mapLocBtn){
     mapLocBtn.addEventListener("click", () => {
       if (!kakaoMap || b.lat == null || b.lng == null) return;
+      setMapLocationTarget(b.id);
       // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
@@ -5642,6 +5681,7 @@ async function loadBuildingTx(id, buildingStatus, areaFilter=""){
 function renderBuildingPanel(id){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  clearMapLocationTarget();
   _cancelDetailPoll(); // 이전 건물의 폴링이 살아있으면 즉시 중단
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
@@ -5745,6 +5785,7 @@ function renderBuildingPanel(id){
 function restoreDefaultPanel(){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  clearMapLocationTarget();
   closeFavOverflowPopover();
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
