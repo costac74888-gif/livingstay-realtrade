@@ -83,7 +83,7 @@ PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
 MAX_FAVORITES = 10         # 일반회원 관심단지 한도
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 AGENT_BUILDING_BADGE_SLOT_CAP = 2  # 건물별 활성 중개사 단지뱃지 정원
-AGENT_REGION_SGG_SLOT_CAP = 5          # 시군구당 실버뱃지 중개사 정원
+AGENT_REGION_SGG_SLOT_CAP = 5          # 사용자 승인 정책: 시군구당 중개사 정원 5명
 OPERATOR_BUILDING_BADGE_SLOT_CAP = 2    # 운영업체: 건물당 업종별 골드뱃지 정원
 LOAN_BUILDING_BADGE_SLOT_CAP = 2        # 대출상담사: 건물당 골드뱃지 정원
 OPERATOR_REGION_CATEGORY_SLOT_CAP = 2   # 운영업체: 시군구+업종당 실버뱃지 정원
@@ -7611,6 +7611,17 @@ def _process_badge_waitlist_notifications():
                 building_rows.append(row)
                 building_selected[row["master_building_id"]] = used + 1
         for row in region_rows:
+            # 신청 API와 같은 지역 잠금을 잡은 뒤 빈자리를 다시 확인한다.
+            cur.execute("SELECT pg_advisory_xact_lock(%s, hashtext(%s))", [911009, row["sgg_text"]])
+            cur.execute("""
+                SELECT
+                    (SELECT COUNT(*) FROM agent_service_regions
+                     WHERE sgg_text=%s AND expires_at > NOW())
+                  + (SELECT COUNT(*) FROM region_badge_waitlist
+                     WHERE sgg_text=%s AND notified_at IS NOT NULL) AS occupied
+            """, [row["sgg_text"], row["sgg_text"]])
+            if cur.fetchone()["occupied"] >= AGENT_REGION_SGG_SLOT_CAP:
+                continue
             ok, message = _send_badge_waitlist_available_email(
                 row["email"], row["office_name"], f"'{row['sgg_text']}' 지역뱃지",
             )
@@ -7626,6 +7637,18 @@ def _process_badge_waitlist_notifications():
                     row["agent_id"], row["sgg_text"], message,
                 )
         for row in building_rows:
+            # 신청 API와 같은 단지 잠금을 잡은 뒤 빈자리를 다시 확인한다.
+            cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [911001, row["master_building_id"]])
+            cur.execute("""
+                SELECT
+                    (SELECT COUNT(*) FROM agent_buildings
+                     WHERE master_building_id=%s AND has_priority_badge
+                       AND (premium_expires_at IS NULL OR premium_expires_at > NOW()))
+                  + (SELECT COUNT(*) FROM premium_waitlist
+                     WHERE master_building_id=%s AND notified_at IS NOT NULL) AS occupied
+            """, [row["master_building_id"], row["master_building_id"]])
+            if cur.fetchone()["occupied"] >= AGENT_BUILDING_BADGE_SLOT_CAP:
+                continue
             ok, message = _send_badge_waitlist_available_email(
                 row["email"], row["office_name"], f"'{row['building_name']}' 단지뱃지",
             )
