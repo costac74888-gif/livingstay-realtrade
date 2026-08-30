@@ -4476,7 +4476,7 @@ async function loadBuildingHeader(id){
     const allListings = Array.isArray(b.direct_listings) ? b.direct_listings : [];
     let _lsSort = "latest";
     let _urgentOnly = false;
-    const _isUrgentListing = (listing) => !!(listing && (listing.urgent_tier || listing.is_urgent));
+    const _isUrgentListing = (listing) => !!(listing && listing.urgent_tier === "urgent");
     const _trackedWholeListingViews = new Set();
       const _liveWholeListingViews = new Set();
       let _wholeViewerRefreshTimer = null;
@@ -4551,6 +4551,16 @@ async function loadBuildingHeader(id){
          if (lr && lr.ota_revenue_ratio != null) badges.push(`OTA ${Number(lr.ota_revenue_ratio).toLocaleString()}%`);
          return badges.map(label => `<span style="display:inline-block;margin:0 4px 7px 0;padding:2px 5px;border-radius:4px;background:#EEF5FF;color:#275B88;font-size:10px;font-weight:800;">${escapeHtml(label)}</span>`).join("");
        }
+       function _urgentBadgeMarkup(lr){
+         if (!lr || lr.urgent_tier !== "urgent") return "";
+         const urgentTitle = lr.is_urgent
+           ? "판매자가 급매로 등록한 매물"
+           : "최신 실거래가보다 낮은 매물";
+         return `<span class="urgent-tier-badge" title="${urgentTitle}"
+           style="display:inline-block;padding:2px 7px;border-radius:4px;
+                  background:#C85A36;color:#fff;font-size:10px;font-weight:800;
+                  letter-spacing:0.3px;">🔥 급매</span>`;
+       }
       function _openDirectListingCard(lr){
         if (typeof window.openListingDetailModal === "function") {
           const shareListing = async () => {
@@ -4579,16 +4589,6 @@ async function loadBuildingHeader(id){
             onShare: shareListing,
           });
           return;
-        }
-        function _urgentBadgeMarkup(lr){
-          if (!lr || lr.urgent_tier !== "urgent") return "";
-          const urgentTitle = lr.is_urgent
-            ? "판매자가 급매로 등록한 매물"
-            : "최신 실거래가보다 낮은 매물";
-          return `<span class="urgent-tier-badge" title="${urgentTitle}"
-            style="display:inline-block;padding:2px 7px;border-radius:4px;
-                   background:#C85A36;color:#fff;font-size:10px;font-weight:800;
-                   letter-spacing:0.3px;">🔥 급매</span>`;
         }
        document.getElementById("directListingCardOverlay")?.remove();
         const previousFocus = document.activeElement;

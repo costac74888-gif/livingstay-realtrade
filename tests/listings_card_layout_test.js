@@ -137,6 +137,22 @@ expect(
 );
 const modal = fs.readFileSync("static/js/listing_modal.js", "utf8");
 expect(
+  modal.includes('id="lrUrgentSection"') &&
+  modal.includes("🔥 급매로 등록") &&
+  modal.includes('dealMode === "direct" && isWholeListing() && dealType === "매매"') &&
+  modal.includes('is_urgent: isWhole && dealMode === "direct" && dealType === "매매"'),
+  "매물 내놓기 모달의 건물전체·매매·직거래 급매 체크 또는 제출 제한이 없습니다."
+);
+const urgentBadgeDefinition = main.indexOf("function _urgentBadgeMarkup");
+const directListingOpener = main.indexOf("function _openDirectListingCard");
+const wholeListingRenderer = main.indexOf("function _wholeListingCard");
+expect(
+  urgentBadgeDefinition >= 0 &&
+  urgentBadgeDefinition < directListingOpener &&
+  urgentBadgeDefinition < wholeListingRenderer,
+  "건물상세 직거래 목록의 급매 배지 함수가 카드 렌더러 공통 범위에 없습니다."
+);
+expect(
   modal.includes("data-listing-detail-map") &&
   modal.includes("location_precision === \"approximate\"") &&
   modal.includes("approx_lat") &&
