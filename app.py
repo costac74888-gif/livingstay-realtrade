@@ -10824,6 +10824,7 @@ def public_listings():
       q                  — 건물명 ILIKE 검색
        date_range         — '1month' / '3months' / '' (전체) — 최근 수정일 우선 기준
        disclosure_scope   — 'public'(기본: 개별호실+전체공개) / 'limited'(제한공개 건물전체)
+      urgent_only       — '1'이면 급매(판매자 체크 또는 최신 실거래가 미만)만 표시
     """
     try:
         limit = min(int(request.args.get("limit") or 20), 50)
@@ -10838,6 +10839,7 @@ def public_listings():
     q_filter         = (request.args.get("q")         or "").strip()
     date_range       = (request.args.get("date_range") or "").strip()
     disclosure_scope_filter = (request.args.get("disclosure_scope") or "public").strip()
+    urgent_only      = (request.args.get("urgent_only") or "").strip().lower() in ("1", "true", "yes")
     if disclosure_scope_filter not in ("public", "limited"):
         disclosure_scope_filter = "public"
     viewer_user = current_user()
@@ -10884,6 +10886,14 @@ def public_listings():
             clauses.append("COALESCE(lr.updated_at, lr.created_at) >= NOW() - INTERVAL '1 month'")
         elif date_range == "3months":
             clauses.append("COALESCE(lr.updated_at, lr.created_at) >= NOW() - INTERVAL '3 months'")
+
+        if urgent_only:
+            clauses.append(
+                "lr.deal_type = '매매' AND "
+                "(COALESCE(lr.is_urgent, FALSE) OR "
+                "(recent_tx.price IS NOT NULL AND lr.price_krw IS NOT NULL "
+                "AND lr.price_krw < recent_tx.price))"
+            )
 
         lodging_type_filter = (request.args.get("lodging_type") or "").strip()
         if lodging_type_filter == "복합":

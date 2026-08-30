@@ -3023,6 +3023,14 @@ def _check_urgent_listing_tiers_and_alerts(client):
             f"급매 테스트로 {run_id}", 900, "urgent",
         )
         conn.commit()
+        urgent_only_response = client.get("/api/listings?urgent_only=1&limit=50")
+        urgent_only_items = (urgent_only_response.get_json() or {}).get("items") or []
+        if (
+            urgent_only_response.status_code != 200
+            or not any(item.get("id") == listing_id for item in urgent_only_items)
+        ):
+            failures.append("urgent listing: 급매 전용 목록 필터에서 급매 매물이 누락됨")
+            return failures
         cur.execute(
             "SELECT COUNT(*) AS count FROM notifications WHERE user_id=%s AND listing_request_id=%s",
             [user_id, listing_id],

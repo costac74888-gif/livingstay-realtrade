@@ -179,6 +179,13 @@ expect(
   !listings.includes("🔥 급매"),
   "카드·직거래 목록의 불꽃 없는 금색 급매 배지가 적용되지 않았습니다."
 );
+expect(
+  listings.includes('id="lsUrgentToggle"') &&
+  listings.includes("state.urgent_only = !state.urgent_only") &&
+  listings.includes('params.set("urgent_only", "1")') &&
+  listings.includes("${urgentBadgeHtml(item)}${permitBadgeHtml(item)}"),
+  "직거래 목록의 급매 필터 버튼·서버 파라미터·개별호실 카드 배지가 연결되지 않았습니다."
+);
 
 expect(
   main.includes('<div class="side-card-title">직거래 매물</div>') &&

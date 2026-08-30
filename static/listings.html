@@ -66,6 +66,14 @@
     border-color: var(--brass, #B4863F); background: var(--brass-tint, #FFF5E0);
     color: var(--brass-dark, #7D4A00);
   }
+  .ls-urgent-toggle {
+    padding: 6px 16px; border-radius: 20px; border: 1.5px solid var(--brass, #B4863F);
+    background: #fff; color: var(--brass-dark, #7D4A00); font-size: 13px; font-weight: 700;
+    cursor: pointer; font-family: inherit; transition: all .15s;
+  }
+  .ls-urgent-toggle.active {
+    background: var(--brass, #B4863F); color: #fff;
+  }
   .ls-view-tabs .ls-count { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
   .ls-disclosure-tabs { display:flex; gap:6px; margin:0 0 10px; align-items:center; }
   .ls-disclosure-tabs button {
@@ -367,6 +375,7 @@
   <div class="ls-view-tabs">
     <button data-view="board" class="active">📋 게시판형</button>
     <button data-view="card">🖼 카드형</button>
+    <button type="button" id="lsUrgentToggle" class="ls-urgent-toggle" aria-pressed="false">급매</button>
     <span class="ls-count" id="lsTotalCount"></span>
   </div>
 
@@ -506,7 +515,8 @@
   const requestedDisclosureScope = new URLSearchParams(location.search).get("disclosure_scope");
   const state = {
     sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"", lodging_type:"",
-    disclosure_scope: requestedDisclosureScope === "limited" ? "limited" : "public"
+    disclosure_scope: requestedDisclosureScope === "limited" ? "limited" : "public",
+    urgent_only: false
   };
   let offset = 0;
   const PAGE = 20;
@@ -532,13 +542,20 @@
     // 카드형일 때 grid 복원 (초기 display:none 덮어씀)
     if (mode === "card") cardGrid.style.display = "";
     else cardGrid.style.display = "none";
-    document.querySelectorAll(".ls-view-tabs button").forEach(btn => {
+    document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === mode);
     });
   }
 
   document.querySelectorAll(".ls-view-tabs button[data-view]").forEach(btn => {
     btn.addEventListener("click", () => setView(btn.dataset.view));
+  });
+  const urgentToggle = document.getElementById("lsUrgentToggle");
+  urgentToggle.addEventListener("click", () => {
+    state.urgent_only = !state.urgent_only;
+    urgentToggle.classList.toggle("active", state.urgent_only);
+    urgentToggle.setAttribute("aria-pressed", state.urgent_only ? "true" : "false");
+    loadListings(true);
   });
   document.querySelectorAll("[data-disclosure-scope]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1189,7 +1206,7 @@
     div.innerHTML = `
       <div class="ls-card-info">
         <div class="ls-card-l1">
-          <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>${permitBadgeHtml(item)}
+           <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>${urgentBadgeHtml(item)}${permitBadgeHtml(item)}
         </div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(priceStr)}</div>
         <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}</div>
@@ -1260,7 +1277,8 @@
 
     try {
       if (chatFilterId != null){
-        const res = await fetch(`/api/listings?limit=50&offset=0&disclosure_scope=${encodeURIComponent(state.disclosure_scope)}`, { credentials: "same-origin" });
+        const urgentParam = state.urgent_only ? "&urgent_only=1" : "";
+        const res = await fetch(`/api/listings?limit=50&offset=0&disclosure_scope=${encodeURIComponent(state.disclosure_scope)}${urgentParam}`, { credentials: "same-origin" });
         const d = await res.json().catch(() => ({}));
         const filtered = (d.items || []).filter(it => it.id === chatFilterId);
         boardBody.innerHTML = "";
@@ -1278,6 +1296,7 @@
 
       const params = new URLSearchParams({ limit: PAGE, offset });
       params.set("disclosure_scope", state.disclosure_scope);
+      if (state.urgent_only) params.set("urgent_only", "1");
       if (state.sido)       params.set("sido",       state.sido);
       if (state.sgg_nm)     params.set("sgg_nm",     state.sgg_nm);
       if (state.umd_nm)     params.set("umd_nm",     state.umd_nm);
