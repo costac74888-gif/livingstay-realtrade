@@ -166,3 +166,10 @@ uri = "file://screenshots/admin-realty-inline.jpg"
 type = "image"
 title = "관리자 입점부동산 인라인 검증"
 description = "입점부동산·영업사업장 버튼 인접 배치, 행 아래 인라인 상세표, 상태 정보 없음 표시를 확인한 화면입니다."
+
+[[outputs]]
+id = "zvFKHPC2pZ9r2fYJxV9Pi"
+uri = "file://lodging-classification-review.md"
+type = "text"
+title = "숙박시설 용도 분류 검토 문서"
+description = "운영 DB 확인 결과, 분류 기준, 기타·생숙 미리보기 및 안전한 재분류 처리안을 정리한 문서입니다."
