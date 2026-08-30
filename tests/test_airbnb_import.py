@@ -138,6 +138,9 @@ class AirbnbUpsertTests(unittest.TestCase):
 
         self.assertIn("applied_building_id = NULL", cursor.sql)
 
+    def test_importer_does_not_initialize_schema_on_its_own(self):
+        self.assertFalse(hasattr(importer, "init_db"))
+
 
 if __name__ == "__main__":
     unittest.main()

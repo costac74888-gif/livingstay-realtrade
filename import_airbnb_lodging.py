@@ -27,7 +27,7 @@ from addr_norm import (
     normalize_road_prefix,
 )
 from address_utils import BjdongMap, normalize_umd_nm
-from db import get_conn, init_db
+from db import get_conn
 from stats_cache import mark_master_stats_invalidated
 
 
@@ -333,6 +333,34 @@ def _upsert_registry(cur, data):
     return cur.fetchone()
 
 
+def _assert_schema(cur):
+    cur.execute("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'lodging_registry'
+          AND column_name = ANY(%s)
+    """, [[
+        "bld_use_nm",
+        "facility_area",
+        "region_name",
+        "applied_building_id",
+    ]])
+    found = {row["column_name"] for row in cur.fetchall()}
+    required = {
+        "bld_use_nm",
+        "facility_area",
+        "region_name",
+        "applied_building_id",
+    }
+    missing = required - found
+    if missing:
+        raise RuntimeError(
+            "운영 DB 스키마가 아직 Publish되지 않았습니다. 누락: "
+            + ", ".join(sorted(missing))
+        )
+
+
 def _create_master(cur, data, location):
     address = data.get("road_address") or data.get("jibun_address")
     cur.execute("""
@@ -400,7 +428,6 @@ def run(filepath, dry_run=False):
             "skipped": skipped,
         }
 
-    init_db()
     bjdong = BjdongMap(BJDONG_CODE_CSV)
     conn = get_conn()
     cur = conn.cursor()
@@ -414,6 +441,7 @@ def run(filepath, dry_run=False):
         "failed": 0,
     }
     try:
+        _assert_schema(cur)
         road_index, jibun_index = _load_master_indexes(cur)
         for data in parsed:
             try:
