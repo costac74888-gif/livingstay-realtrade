@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-30-01"
+SCHEMA_VERSION = "2026-08-30-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1927,6 +1927,9 @@ def _run_init_db():
         jibun_norm TEXT,                   -- 정규화 지번주소(동/읍/면+번지) — 도로명 매칭 실패 시 2차 매칭용
         biz_name_norm TEXT,                -- 정규화 사업장명 (operators 매칭용)
         source_updated_at TEXT,            -- 데이터갱신일자 (DAT_UPDT_PNT)
+        bld_use_nm TEXT,                    -- 건물용도명 (외국인관광도시민박업 원본)
+        facility_area NUMERIC,              -- 시설규모(m²)
+        region_name TEXT,                   -- 지역구분명
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     )
@@ -1938,6 +1941,9 @@ def _run_init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_registry_name_norm ON lodging_registry(biz_name_norm)")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS applied_building_id INTEGER REFERENCES master_buildings(id)")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS bld_use_nm TEXT")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS facility_area NUMERIC")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS region_name TEXT")
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

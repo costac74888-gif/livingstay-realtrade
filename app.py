@@ -15581,10 +15581,10 @@ def admin_buildings_list():
         cur3 = conn3.cursor()
         cur3.execute("""
             SELECT biz_name, permit_number, permit_date, biz_status_name,
-                   room_count, hygiene_type, phone,
+                   biz_status_detail, room_count, hygiene_type, phone,
                    road_address  AS lr_road_address,
                    jibun_address AS lr_jibun_address,
-                   source_updated_at,
+                   source_updated_at, bld_use_nm, facility_area, region_name,
                    road_norm, jibun_norm
             FROM lodging_registry
             WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
@@ -15641,12 +15641,16 @@ def admin_buildings_list():
                 "permit_number":     lr.get("permit_number"),
                 "room_count":        lr.get("room_count"),
                 "biz_status_name":   lr.get("biz_status_name"),
+                "biz_status_detail": lr.get("biz_status_detail"),
                 "permit_date":       lr.get("permit_date"),
                 "phone":             lr.get("phone"),
                 "road_address":      lr.get("lr_road_address") or lr.get("lr_jibun_address"),
                 "source_updated_at": lr.get("source_updated_at"),
                 "biz_name":          lr.get("biz_name"),
                 "hygiene_type":      lr.get("hygiene_type"),
+                "bld_use_nm":        lr.get("bld_use_nm"),
+                "facility_area":     lr.get("facility_area"),
+                "region_name":       lr.get("region_name"),
             }
             for lr in lr_list
         ]
@@ -16971,7 +16975,8 @@ def admin_building_lodgings(building_id):
         cur.execute("""
             SELECT biz_name, permit_number, permit_date, biz_status_name, biz_status_detail,
                    room_count, hygiene_type, phone,
-                   road_address, jibun_address, source_updated_at
+                   road_address, jibun_address, source_updated_at,
+                   bld_use_nm, facility_area, region_name
             FROM lodging_registry WHERE road_norm = %s
             ORDER BY source_updated_at DESC NULLS LAST
         """, [rk])
@@ -16980,7 +16985,8 @@ def admin_building_lodgings(building_id):
         cur.execute("""
             SELECT biz_name, permit_number, permit_date, biz_status_name, biz_status_detail,
                    room_count, hygiene_type, phone,
-                   road_address, jibun_address, source_updated_at
+                   road_address, jibun_address, source_updated_at,
+                   bld_use_nm, facility_area, region_name
             FROM lodging_registry WHERE jibun_norm = %s
             ORDER BY source_updated_at DESC NULLS LAST
         """, [jk])
