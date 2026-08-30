@@ -5321,14 +5321,48 @@ async function loadBuildingHeader(id){
     const notReported = (!isGeneralLodging && b.units != null && Number(b.units) > 0)
       ? Math.max(Number(b.units) - roomTotal, 0).toLocaleString('ko-KR') + "실"
       : "-";
+    // 영업신고 업종 → 상세페이지 용도 뱃지 매핑
+    function _hygieneBadge(hygiene) {
+      const MAP = {
+        "숙박업(생활)":         ["생숙", "#378ADD", "#fff"],
+        "생활숙박업":           ["생숙", "#378ADD", "#fff"],
+        "생활숙박시설":         ["생숙", "#378ADD", "#fff"],
+        "관광숙박업":           ["관광", "#639922", "#fff"],
+        "관광호텔업":           ["관광", "#639922", "#fff"],
+        "휴양콘도미니엄업":       ["관광", "#639922", "#fff"],
+        "가족호텔업":            ["관광", "#639922", "#fff"],
+        "소형호텔업":            ["관광", "#639922", "#fff"],
+        "한국전통호텔업":         ["관광", "#639922", "#fff"],
+        "의료관광호텔업":         ["관광", "#639922", "#fff"],
+        "일반숙박업":            ["일반", "#D46BA3", "#fff"],
+        "숙박업(일반)":           ["일반", "#D46BA3", "#fff"],
+        "일반호텔":              ["일반", "#D46BA3", "#fff"],
+        "여관업":                ["일반", "#D46BA3", "#fff"],
+        "여인숙업":              ["일반", "#D46BA3", "#fff"],
+        "외국인관광도시민박업":     ["에어비앤비", "#FF5A5F", "#fff"],
+        "농어촌민박업":           ["농어촌민박", "#8BC34A", "#333"],
+        "야영장업":              ["캠핑", "#795548", "#fff"],
+        "일반야영장업":           ["캠핑", "#795548", "#fff"],
+        "한옥체험업":            ["한옥", "#FF8F00", "#fff"],
+      };
+      const found = MAP[String(hygiene || "").trim()] || ["기타", "#999", "#fff"];
+      return `<span style="display:inline-block;font-size:10px;font-weight:700;line-height:1.25;
+                            padding:1px 6px;border-radius:10px;white-space:nowrap;margin-right:4px;
+                            background:${found[1]};color:${found[2]};">${found[0]}</span>`;
+    }
+
     // 영업신고 사업장 목록 — 서버가 이미 등록운영업체(priority 순) → 미등록(랜덤)으로 정렬해서 내려줌
     const lodgingRows = lodgings.map((l) => {
+      const badge = _hygieneBadge(l.hygiene_type);
       const name = l.registered && l.operator_slug
         ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}?building_id=${b.building_id}&building_name=${encodeURIComponent(b.building_name||"")}" style="display:inline-block; font-size:12.5px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 8px; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
         : escapeHtml(l.biz_name);
       const rooms = (l.room_count != null && Number(l.room_count) > 0)
         ? Number(l.room_count).toLocaleString('ko-KR') + "실" : "-";
-      return `<tr><td style="text-align:left;">${name}</td><td style="white-space:nowrap;">${rooms}</td></tr>`;
+      return `<tr>
+        <td style="text-align:left;vertical-align:middle;padding:3px 0;">${badge}${name}</td>
+        <td style="white-space:nowrap;vertical-align:middle;padding:3px 0;">${rooms}</td>
+      </tr>`;
     }).join("");
     const lodgingListHtml = lodgings.length
       ? `<div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:10px 0 4px;">영업 중 신고업소 ${lodgings.length}곳</div>

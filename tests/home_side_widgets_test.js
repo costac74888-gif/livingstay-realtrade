@@ -128,6 +128,12 @@ expect(css.includes(".datalab-region") && css.includes("font-size:12px; font-wei
   "폐업 현황 지역명이 건물명 크기·일반 굵기로 지정되지 않았습니다.");
 expect(main.includes("dataLabArea(item.area_sqm)"), "가격변동 데이터랩에 동일 전용면적 표시가 없습니다.");
 expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국숙박업통계 캡션이 현재수집 기준이 아닙니다.");
+expect(main.includes("function _hygieneBadge") &&
+  main.includes("const badge = _hygieneBadge(l.hygiene_type)") &&
+  main.includes('"외국인관광도시민박업":     ["에어비앤비"') &&
+  main.includes('"농어촌민박업":           ["농어촌민박"') &&
+  main.includes('"한옥체험업":            ["한옥"'),
+  "영업신고 업종별 상세 용도 뱃지가 없습니다.");
 expect(main.includes("<th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th>") &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
