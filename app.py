@@ -49,6 +49,7 @@ from lodging_classification import (
     CLASSIFICATION_SOURCE_BUILDING_REGISTRY,
     GENERAL_LODGING_SUBTYPE_ORDER,
     HYGIENE_TYPE_TO_LODGING_TYPE,
+    PRIMARY_LODGING_TYPES,
     choose_primary_lodging_type,
     is_active_status,
     iter_chunks,
@@ -15420,7 +15421,7 @@ def _admin_bld_filters():
             " AND building_status IN ('허가','착공')"
             " AND (use_apr_day IS NULL OR use_apr_day = '')"
         )
-    elif lt_filter in ("생활", "관광", "일반", "복합"):
+    elif lt_filter in PRIMARY_LODGING_TYPES + ("복합",):
         where += " AND lodging_type = %s"
         params.append(lt_filter)
     # 지역 검색 필터 — 시/도(LIKE 전두), 시/군/구(exact), 읍/면/동(exact)
@@ -15646,12 +15647,29 @@ def admin_buildings_list():
             lr for lr in lr_list
             if lr.get("biz_status_name") == ACTIVE_LODGING_STATUS
         ]
+        representative_lodging = active_lodgings[0] if active_lodgings else None
+        show_current_report_name = bool(
+            representative_lodging
+            and representative_lodging.get("biz_name")
+            and (
+                it.get("name_pending")
+                or it.get("building_name_source") == "lodging_report"
+            )
+        )
+        it["display_building_name"] = (
+            representative_lodging.get("biz_name")
+            if show_current_report_name
+            else it.get("building_name")
+        )
         it["building_name_auto"] = (
             it.get("building_name_source") == "lodging_report"
         )
+        it["building_name_report_display"] = (
+            show_current_report_name
+        )
         it["building_name_auto_representative"] = (
-            it["building_name_auto"]
-            and int(it.get("building_name_candidate_count") or 0) > 1
+            it["building_name_report_display"]
+            and len(active_lodgings) > 1
         )
         # 후보 수가 아직 저장되지 않은 기존 행도 목록에서 현재 상태를
         # 설명할 수 있도록, 매칭된 활성 사업장 기준으로 보정한다.
@@ -15663,10 +15681,18 @@ def admin_buildings_list():
                 "room_count":        lr.get("room_count"),
                 "biz_status_name":   lr.get("biz_status_name"),
                 "biz_status_detail": lr.get("biz_status_detail"),
-                "permit_date":       lr.get("permit_date"),
+                "permit_date":       (
+                    lr.get("permit_date").strftime("%Y-%m-%d")
+                    if hasattr(lr.get("permit_date"), "strftime")
+                    else str(lr.get("permit_date") or "")[:10] or None
+                ),
                 "phone":             lr.get("phone"),
                 "road_address":      lr.get("lr_road_address") or lr.get("lr_jibun_address"),
-                "source_updated_at": lr.get("source_updated_at"),
+                "source_updated_at": (
+                    lr.get("source_updated_at").strftime("%Y-%m-%d")
+                    if hasattr(lr.get("source_updated_at"), "strftime")
+                    else str(lr.get("source_updated_at") or "")[:10] or None
+                ),
                 "biz_name":          lr.get("biz_name"),
                 "hygiene_type":      lr.get("hygiene_type"),
                 "bld_use_nm":        lr.get("bld_use_nm"),
@@ -15681,6 +15707,10 @@ def admin_buildings_list():
             (lr.get("room_count") or 0)
             for lr in lr_list
             if is_active_status(lr.get("biz_status_name"))
+        )
+        it["lodging_room_known"] = bool(active_lodgings) and all(
+            lr.get("room_count") is not None
+            for lr in active_lodgings
         )
         it["lodging_metric"] = (
             "report_rate" if uses_lodging_report_rate(it.get("lodging_type")) else "room_count"

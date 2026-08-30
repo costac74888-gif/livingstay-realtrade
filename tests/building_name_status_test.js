@@ -65,9 +65,14 @@ const adminBuildingColumn = admin.slice(
 );
 expect(
   adminBuildingColumn.includes(
-    'row && row.name_pending && row.building_name_source !== "lodging_report"',
+    "row && row.name_pending && !row.building_name_report_display",
   ),
-  "관리자 목록의 명칭 미확정 배지가 영업신고 기준 자동명명을 제외하지 않습니다.",
+  "관리자 목록의 명칭 미확정 배지가 활성 영업신고 대표 표시를 제외하지 않습니다.",
+);
+expect(
+  adminBuildingColumn.includes("row.display_building_name || v") &&
+    adminBuildingColumn.includes("row && row.building_name_report_display"),
+  "관리자 목록이 활성 영업신고 상호와 영업신고 기준 배지를 표시하지 않습니다.",
 );
 
 expect(

@@ -109,6 +109,8 @@ class DataGrid {
     });
     this.total = 0;
     this.items = [];
+    this._reloadSeq = 0;
+    this._reloadController = null;
     this.selected = new Set();  // allowSelect 모드 선택 상태 (idField 값 문자열 Set)
     this._build();
     this.reload();
@@ -278,6 +280,12 @@ class DataGrid {
   }
 
   async reload() {
+    const requestSeq = ++this._reloadSeq;
+    if (this._reloadController) this._reloadController.abort();
+    this._reloadController = new AbortController();
+    const signal = this._reloadController.signal;
+    this._bodyMessage("불러오는 중…");
+    this.$count.textContent = "조회 중…";
     const s = this.state;
     const params = new URLSearchParams({
       q: s.q,
@@ -291,20 +299,34 @@ class DataGrid {
     });
     let res;
     try {
-      res = await fetch(this.cfg.endpoint + "?" + params.toString());
+      res = await fetch(this.cfg.endpoint + "?" + params.toString(), { signal });
     } catch (e) {
+      if (e && e.name === "AbortError") return;
+      if (requestSeq !== this._reloadSeq) return;
       this._bodyMessage("네트워크 오류가 발생했습니다.");
+      this.$count.textContent = "조회 실패";
       return;
     }
+    if (requestSeq !== this._reloadSeq) return;
     if (res.status === 401) {
       window.location.href = "/admin/login";
       return;
     }
     if (!res.ok) {
       this._bodyMessage("목록을 불러오지 못했습니다.");
+      this.$count.textContent = "조회 실패";
       return;
     }
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      if (requestSeq !== this._reloadSeq) return;
+      this._bodyMessage("목록 응답을 확인하지 못했습니다.");
+      this.$count.textContent = "조회 실패";
+      return;
+    }
+    if (requestSeq !== this._reloadSeq) return;
     this.items = data.items || [];
     this.total = data.total || 0;
     this.totals = data.totals || null;

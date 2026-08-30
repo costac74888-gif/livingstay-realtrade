@@ -531,10 +531,11 @@
           // ── 건물 자체 정보 1~9 ─────────────────────────────────────────────
           { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
             render: (v, row) => {
-              const link = `<a href="/building/${row.id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(v || "")}</a>`;
-               const pending = row && row.name_pending && row.building_name_source !== "lodging_report" ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : "";
-               const auto = row && row.building_name_source === "lodging_report"
-                 ? ` <span class="dg-badge dg-badge-ok" title="홈앤스테이가 확인한 현재 영업 사업장명으로 자동 표시">${Number(row.building_name_candidate_count || 0) > 1 ? "영업신고 기준 · 규모 최대" : "영업신고 기준"}</span>`
+              const displayName = row.display_building_name || v || "";
+              const link = `<a href="/building/${row.id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(displayName)}</a>`;
+               const pending = row && row.name_pending && !row.building_name_report_display ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : "";
+               const auto = row && row.building_name_report_display
+                  ? ` <span class="dg-badge dg-badge-ok" title="현재 활성 영업신고 사업장명을 대표 명칭으로 표시">영업신고 기준</span>`
                  : "";
                return `${link}${pending}${auto}`;
             } },
@@ -586,9 +587,10 @@
             } },
           { key: "report_rate", label: "신고율 / 객실수", clientSort: true,
             sortValue: (row) => row.lodging_type === "일반"
-              ? Number(row.lodging_room_total || 0)
-              : (row.units ? Number(row.lodging_room_total || 0) / Number(row.units) : null),
+              ? (row.lodging_room_known ? Number(row.lodging_room_total || 0) : null)
+              : (row.units && row.lodging_room_known ? Number(row.lodging_room_total || 0) / Number(row.units) : null),
             render: (_, row) => {
+              if (!row.lodging_room_known) return `<span style="color:var(--ink-soft);">미확인</span>`;
               if (row.lodging_type === "일반") {
                 return `<span style="font-weight:600;">${Number(row.lodging_room_total || 0).toLocaleString()}실</span>`;
               }
@@ -6339,9 +6341,9 @@
             const badge = lr.biz_status_name
               ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
             const roomInfo = [
-              lr.room_count != null ? `${Number(lr.room_count).toLocaleString()}실` : null,
+              lr.room_count != null ? `${Number(lr.room_count).toLocaleString()}실` : "객실수 미확인",
               lr.facility_area != null ? `${Number(lr.facility_area).toLocaleString()}㎡` : null,
-            ].filter(Boolean).join(" / ") || "-";
+            ].filter(Boolean).join(" / ");
             return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
               `<td style="text-align:center;font-weight:600;">${roomInfo} ${badge}</td>` +
