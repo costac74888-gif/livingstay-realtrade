@@ -18689,7 +18689,19 @@ def admin_reclassify_lodging_keywords():
     conn = get_conn()
     cur = conn.cursor()
     updated = 0
+    keyword_patterns = [
+        f"%{keyword}%"
+        for keywords in keyword_map.values()
+        for keyword in keywords
+    ]
     try:
+        cur.execute("""
+            SELECT COUNT(*) AS count
+            FROM master_buildings
+            WHERE lodging_type = '기타'
+              AND building_name LIKE ANY(%s)
+        """, [keyword_patterns])
+        candidate_total = int((cur.fetchone() or {}).get("count") or 0)
         for lodging_type, keywords in keyword_map.items():
             for keyword in keywords:
                 cur.execute("""
@@ -18709,6 +18721,8 @@ def admin_reclassify_lodging_keywords():
     return jsonify({
         "ok": True,
         "updated": updated,
+        "candidate_total": candidate_total,
+        "progress_percent": 100,
         "message": f"키워드 재분류 완료: {updated}건을 '기타' → 적정 용도로 변경했습니다.",
     })
 
@@ -18739,8 +18753,25 @@ def admin_reclassify_by_hygiene():
     conn = get_conn()
     cur = conn.cursor()
     total_updated = 0
+    candidate_total = 0
     results = {}
     try:
+        mapping_values = ", ".join(["(%s, %s)"] * len(hygiene_map))
+        mapping_params = [
+            value
+            for hygiene_type, new_lodging_type in hygiene_map.items()
+            for value in (hygiene_type, new_lodging_type)
+        ]
+        cur.execute(f"""
+            SELECT COUNT(DISTINCT mb.id) AS count
+            FROM master_buildings mb
+            JOIN lodging_registry lr
+              ON lr.applied_building_id = mb.id
+            JOIN (VALUES {mapping_values}) AS hm(hygiene_type, new_lodging_type)
+              ON hm.hygiene_type = lr.hygiene_type
+            WHERE mb.lodging_type IS DISTINCT FROM hm.new_lodging_type
+        """, mapping_params)
+        candidate_total = int((cur.fetchone() or {}).get("count") or 0)
         for hygiene_type, new_lodging_type in hygiene_map.items():
             cur.execute("""
                 UPDATE master_buildings mb
@@ -18767,6 +18798,8 @@ def admin_reclassify_by_hygiene():
     return jsonify({
         "ok": True,
         "total_updated": total_updated,
+        "candidate_total": candidate_total,
+        "progress_percent": 100,
         "detail": results,
         "message": f"영업신고 업종 기준 소급 재분류 완료: {total_updated}건 업데이트",
     })

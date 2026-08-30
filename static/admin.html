@@ -2558,12 +2558,43 @@
       }
     }
 
+    function renderReclassifyProgress(elementId, state, data) {
+      const progress = document.getElementById(elementId);
+      if (!progress) return;
+      if (state === "running") {
+        progress.innerHTML =
+          `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">`
+          + `<div style="flex:1;background:#eee;border-radius:4px;height:7px;overflow:hidden;">`
+          + `<div style="width:0%;background:var(--brass,#B4863F);height:100%;border-radius:4px;"></div></div>`
+          + `<b style="color:var(--brass-dark,#7D4A00);white-space:nowrap;">0%</b></div>`
+          + `<div>대상 건수 계산 및 재분류 중… · 진행률: <b>0%</b></div>`;
+        return;
+      }
+      if (state !== "done") {
+        progress.textContent = "";
+        return;
+      }
+      const total = Math.max(0, Number(data.candidate_total) || 0);
+      const updated = Math.max(0, Number(data.updated ?? data.total_updated) || 0);
+      const pct = total > 0
+        ? Math.min(100, Math.round(updated / total * 100))
+        : 100;
+      progress.innerHTML =
+        `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">`
+        + `<div style="flex:1;background:#eee;border-radius:4px;height:7px;overflow:hidden;">`
+        + `<div style="width:${pct}%;background:#639922;height:100%;border-radius:4px;"></div></div>`
+        + `<b style="color:#639922;white-space:nowrap;">${pct}%</b></div>`
+        + `<div>재분류 대상: <b>${num(total)}건</b> · 변경: <b>${num(updated)}건</b>`
+        + ` · 진행률: <b>${pct}%</b></div>`;
+    }
+
     async function runReclassifyLodgingKeywords() {
       const btn = document.getElementById("reclassifyKeywordBtn");
       const msg = document.getElementById("reclassifyKeywordMsg");
       btn.disabled = true;
       btn.textContent = "처리 중…";
       msg.textContent = "";
+      renderReclassifyProgress("reclassifyKeywordProgress", "running");
       try {
         const res = await fetch("/api/admin/reclassify-lodging-keywords", { method: "POST" });
         if (res.status === 401) {
@@ -2573,9 +2604,15 @@
         const d = await res.json().catch(() => ({}));
         msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
         msg.textContent = d.message || (res.ok ? "" : "요청 실패");
+        renderReclassifyProgress(
+          "reclassifyKeywordProgress",
+          res.ok && d.ok ? "done" : "error",
+          d,
+        );
       } catch (e) {
         msg.style.color = "#b3261e";
         msg.textContent = "요청 실패";
+        renderReclassifyProgress("reclassifyKeywordProgress", "error");
       } finally {
         btn.disabled = false;
         btn.textContent = "기타 → 키워드 재분류 실행";
@@ -2588,6 +2625,7 @@
       btn.disabled = true;
       btn.textContent = "처리 중…";
       msg.textContent = "";
+      renderReclassifyProgress("reclassifyHygieneProgress", "running");
       try {
         const res = await fetch("/api/admin/reclassify-by-hygiene", { method: "POST" });
         if (res.status === 401) {
@@ -2597,9 +2635,15 @@
         const d = await res.json().catch(() => ({}));
         msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
         msg.textContent = d.message || (res.ok ? "" : "요청 실패");
+        renderReclassifyProgress(
+          "reclassifyHygieneProgress",
+          res.ok && d.ok ? "done" : "error",
+          d,
+        );
       } catch (e) {
         msg.style.color = "#b3261e";
         msg.textContent = "요청 실패";
+        renderReclassifyProgress("reclassifyHygieneProgress", "error");
       } finally {
         btn.disabled = false;
         btn.textContent = "영업신고 기준 소급 재분류";
@@ -3332,6 +3376,8 @@
               기타 → 키워드 재분류 실행
             </button>
             <span id="reclassifyKeywordMsg" class="legal-msg" style="margin-left:10px;"></span>
+            <div id="reclassifyKeywordProgress" aria-live="polite"
+                 style="font-size:12px;color:var(--ink-soft);margin-top:8px;"></div>
           </div>
           <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">
             <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">
@@ -3344,6 +3390,8 @@
             </button>
             <span id="reclassifyHygieneMsg" class="legal-msg"
                   style="margin-left:10px;"></span>
+            <div id="reclassifyHygieneProgress" aria-live="polite"
+                 style="font-size:12px;color:var(--ink-soft);margin-top:8px;"></div>
           </div>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecGeo">
