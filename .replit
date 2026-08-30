@@ -27,38 +27,6 @@ args = "smoke"
 task = "workflow.run"
 args = "api"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Backfill Retry"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Fast Sync"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Fill PK"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "BRHUB Sync"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Merge Dev→Prod (dry-run)"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Merge Dev→Prod (실제반영)"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Backfill General Lodging"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Prewarm Unit Areas"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -226,13 +194,13 @@ args = "python deal_alert_digest.py"
 outputType = "console"
 
 [[workflows.workflow]]
-name = "Rural Hanok Sync"
+name = "정기 API 통합 동기화"
 author = "agent"
 schedule = "0 2 * * *"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = 'env DATABASE_URL="$PROD_DATABASE_URL" python -u sync_rural_hanok.py --status-key rural_hanok_sync_status'
+args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --status-key scheduled_sync_status'
 
 [workflows.workflow.metadata]
 outputType = "console"

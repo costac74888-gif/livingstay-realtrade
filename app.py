@@ -14539,6 +14539,64 @@ def admin_bug_report_screenshot(report_id):
 _GEOCODE_META_KEY = "geocode_sync_status"
 _TITLE_INFO_META_KEY = "title_info_sync_status"
 _APP_STARTED_AT = datetime.now()  # 배포/재시작 시각 추정(워커 부팅 시각) — 배너 "배포 후 미실행" 판정용
+_SCHEDULED_SYNC_META_KEY = "scheduled_sync_status"
+_SCHEDULED_SYNC_STALE_MIN = 12 * 60
+_SCHEDULED_SYNC_STAGES = (
+    ("transactions", "실거래", "거래", "매일"),
+    ("building_registry", "건축물대장", "건물·허가", "월·수·금"),
+    ("building_permits", "준공 전 건축인허가", "건물·허가", "화·목·토"),
+    ("lodging", "일반·생활숙박·캠핑", "숙박", "매일"),
+    ("rural_hanok", "농어촌민박·한옥체험업", "숙박", "매일"),
+    ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
+    ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
+    ("realty", "건물 내 부동산", "중개·상가", "매일"),
+    ("stores", "건물 내 상가", "중개·상가", "매일"),
+)
+_MANUAL_SYNC_POST_PATHS = {
+    "/api/admin/geocode-buildings",
+    "/api/admin/geocode-brokers",
+    "/api/admin/backfill-title-info",
+    "/api/admin/sync-transactions",
+    "/api/admin/sync-backfill",
+    "/api/admin/sync-brokers",
+    "/api/admin/sync-lodgings",
+    "/api/admin/sync-brhub",
+    "/api/admin/backfill-lodging-run",
+    "/api/admin/sync-stores",
+    "/api/admin/sync-permits",
+    "/api/admin/sync-realty",
+}
+
+
+@app.before_request
+def _block_manual_sync_during_scheduled_run():
+    """통합 배치와 개별 수동 수집기가 같은 원본을 동시에 갱신하지 않게 한다."""
+    if request.method != "POST" or request.path not in _MANUAL_SYNC_POST_PATHS:
+        return None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            (_SCHEDULED_SYNC_META_KEY,),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    try:
+        status = json.loads(row["value"]) if row and row["value"] else {}
+    except (TypeError, ValueError):
+        status = {}
+    if status.get("state") == "running":
+        return jsonify({
+            "ok": False,
+            "message": (
+                "정기 자동 동기화가 실행 중입니다. 완료 후 수동 보완 작업을 "
+                "실행해 주세요."
+            ),
+        }), 409
+    return None
 
 
 def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=30):
@@ -14815,20 +14873,14 @@ def admin_datasync_overview():
         """)
         c = cur.fetchone()
         cur.execute("SELECT key, updated_at FROM app_meta WHERE key = ANY(%s)",
-                    (["brhub_sync_status", "tx_sync_status",
-                      "broker_sync_status", "lodging_sync_status",
-                      "rural_hanok_sync_status"],))
+                    (["scheduled_sync_status"],))
         metas = {r["key"]: r["updated_at"] for r in cur.fetchall()}
     finally:
         cur.close()
         conn.close()
 
     labels = [
-        ("brhub_sync_status", "건물수집"),
-        ("tx_sync_status", "실거래 동기화"),
-        ("broker_sync_status", "중개업소 동기화"),
-        ("lodging_sync_status", "숙박업 동기화"),
-        ("rural_hanok_sync_status", "농어촌민박·한옥 자동 동기화"),
+        ("scheduled_sync_status", "정기 API 통합 동기화"),
     ]
     stale_syncs = []
     for key, label in labels:
@@ -14848,6 +14900,159 @@ def admin_datasync_overview():
         "stale_syncs": stale_syncs,
         "booted_at": _kst_label(_APP_STARTED_AT),
     })
+
+
+@app.route("/api/admin/scheduled-sync-status")
+@require_admin
+def admin_scheduled_sync_status():
+    """정기 API 통합 배치의 전체/단계별 상태를 한 번에 반환한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT value, updated_at,
+                   EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age
+              FROM app_meta
+             WHERE key=%s
+            """,
+            (_SCHEDULED_SYNC_META_KEY,),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    status = {}
+    if row and row["value"]:
+        try:
+            status = json.loads(row["value"])
+        except (TypeError, ValueError):
+            status = {}
+    state = status.get("state")
+    stale = bool(
+        state == "running"
+        and row
+        and row["age"] is not None
+        and float(row["age"]) > _SCHEDULED_SYNC_STALE_MIN * 60
+    )
+    if stale:
+        state = "stale"
+
+    saved_stages = status.get("stages") or {}
+    stages = []
+    for key, label, group, cadence in _SCHEDULED_SYNC_STAGES:
+        stage = dict(saved_stages.get(key) or {})
+        stage.update({
+            "key": key,
+            "label": label,
+            "group": group,
+            "cadence": cadence,
+        })
+        stage.setdefault("state", "pending")
+        for field in ("started_at", "finished_at"):
+            if stage.get(field):
+                stage[field] = _kst_label(stage[field])
+        stages.append(stage)
+
+    error = status.get("error")
+    if stale and not error:
+        error = (
+            "통합 배치 하트비트가 12시간 이상 갱신되지 않았습니다. "
+            "실패 단계 재시도를 실행할 수 있습니다."
+        )
+    return jsonify({
+        "ok": True,
+        "running": state == "running",
+        "state": state,
+        "started_at": _kst_label(status.get("started_at")),
+        "finished_at": _kst_label(status.get("finished_at")),
+        "last_success_at": _kst_label(status.get("last_success_at")),
+        "current_stage": status.get("current_stage"),
+        "schedule": status.get("schedule") or "매일 02:00",
+        "stages": stages,
+        "error": error,
+        "retryable": bool(
+            stale
+            or status.get("retryable")
+            or state in ("failed", "partial")
+        ),
+        "status_updated_at": (
+            _kst_label(row["updated_at"]) if row and row["updated_at"] else None
+        ),
+    })
+
+
+@app.route("/api/admin/scheduled-sync/retry", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_scheduled_sync_retry():
+    """자동 배치의 실패·중단 단계만 체크포인트에서 재개한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT value,
+                   EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age
+              FROM app_meta
+             WHERE key=%s
+            """,
+            (_SCHEDULED_SYNC_META_KEY,),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row or not row["value"]:
+        return jsonify({
+            "ok": False,
+            "message": "아직 자동 배치 실행 기록이 없습니다.",
+        }), 409
+    try:
+        status = json.loads(row["value"])
+    except (TypeError, ValueError):
+        status = {}
+    state = status.get("state")
+    age = float(row["age"] or 0)
+    if state == "running" and age <= _SCHEDULED_SYNC_STALE_MIN * 60:
+        return jsonify({
+            "ok": False,
+            "message": "정기 자동 동기화가 이미 실행 중입니다.",
+        }), 409
+    if state not in ("failed", "partial", "running", "stale"):
+        return jsonify({
+            "ok": False,
+            "message": "재시도가 필요한 실패 단계가 없습니다.",
+        }), 409
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                os.path.join(base_dir, "scheduled_sync.py"),
+                "--status-key",
+                _SCHEDULED_SYNC_META_KEY,
+                "--retry-failures",
+            ],
+            cwd=base_dir,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as exc:
+        app.logger.exception("정기 API 통합 배치 재시작 실패")
+        return jsonify({
+            "ok": False,
+            "message": f"재시도 프로세스를 시작하지 못했습니다: {exc}"[:300],
+        }), 500
+    return jsonify({
+        "ok": True,
+        "message": "실패·중단 단계 재시도를 시작했습니다.",
+    }), 202
 
 
 # ---- 실거래 동기화 (관리자 버튼) ----
@@ -25836,6 +26041,52 @@ def _resume_interrupted_sync_jobs():
 
 
 _resume_interrupted_sync_jobs()
+
+
+def _resume_interrupted_scheduled_sync():
+    """배포 중 끊긴 통합 배치를 단계 체크포인트에서 자동 재개한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            (_SCHEDULED_SYNC_META_KEY,),
+        )
+        row = cur.fetchone()
+    except Exception:
+        app.logger.exception("[auto-resume] 통합 배치 상태 확인 실패")
+        return
+    finally:
+        cur.close()
+        conn.close()
+    try:
+        status = json.loads(row["value"]) if row and row["value"] else {}
+    except (TypeError, ValueError):
+        status = {}
+    if status.get("state") != "running":
+        return
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                os.path.join(base_dir, "scheduled_sync.py"),
+                "--status-key",
+                _SCHEDULED_SYNC_META_KEY,
+            ],
+            cwd=base_dir,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+        app.logger.info("[auto-resume] 정기 API 통합 배치 재개 시도")
+    except Exception:
+        app.logger.exception("[auto-resume] 정기 API 통합 배치 재개 실패")
+
+
+_resume_interrupted_scheduled_sync()
 
 
 # ---- 우편번호 백필 일일 자동 실행 (소량, 사람 개입 없이 서서히 완료) ----
