@@ -138,13 +138,15 @@ expect(
 const modal = fs.readFileSync("static/js/listing_modal.js", "utf8");
 expect(
   modal.includes('id="lrUrgentSection"') &&
-  modal.includes("🔥 급매로 등록") &&
-  modal.includes('dealMode === "direct" && isWholeListing() && dealType === "매매"') &&
-  modal.includes('section.style.display = "block"') &&
+  modal.includes('id="lrUnitUrgentSlot"') &&
+  modal.includes('id="lrWholeUrgentSlot"') &&
+  modal.includes('dealMode === "direct" && dealType === "매매"') &&
+  modal.includes('section.style.display = eligible ? "inline-flex" : "none"') &&
   modal.includes('checkbox.disabled = !eligible') &&
-  modal.includes("급매 체크는 직거래 · 건물전체 · 매매를 선택하면 활성화됩니다.") &&
-  modal.includes('is_urgent: isWhole && dealMode === "direct" && dealType === "매매"'),
-  "매물 내놓기 모달의 상시 표시 급매 체크·조건 안내 또는 제출 제한이 없습니다."
+  !modal.includes('id="lrUrgentHelp"') &&
+  !modal.includes("🔥 급매로 등록") &&
+  modal.includes('is_urgent: dealMode === "direct" && dealType === "매매"'),
+  "개별·건물전체 매매가 옆의 조용한 급매 체크 또는 제출 조건이 없습니다."
 );
 const urgentBadgeDefinition = main.indexOf("function _urgentBadgeMarkup");
 const directListingOpener = main.indexOf("function _openDirectListingCard");
@@ -158,7 +160,8 @@ expect(
 expect(
   modal.includes("data-listing-detail-map") &&
   modal.includes('listing.urgent_tier === "urgent"') &&
-  modal.includes("🔥 급매") &&
+  modal.includes("background:var(--brass,#B4863F)") &&
+  !modal.includes("🔥 급매") &&
   modal.includes("location_precision === \"approximate\"") &&
   modal.includes("approx_lat") &&
   modal.includes("new kakao.maps.Circle") &&
@@ -168,6 +171,13 @@ expect(
   modal.includes("data-listing-description-toggle") &&
   modal.includes("https://map.kakao.com/link/map/"),
   "제한공개 500m 파란 원·설명 접기 또는 전체공개 정확 위치 연결이 없습니다."
+);
+expect(
+  main.includes("background:var(--brass,#B4863F)") &&
+  listings.includes("background:var(--brass,#B4863F)") &&
+  !main.includes("🔥 급매") &&
+  !listings.includes("🔥 급매"),
+  "카드·직거래 목록의 불꽃 없는 금색 급매 배지가 적용되지 않았습니다."
 );
 
 expect(

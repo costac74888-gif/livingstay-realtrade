@@ -4558,8 +4558,8 @@ async function loadBuildingHeader(id){
            : "최신 실거래가보다 낮은 매물";
          return `<span class="urgent-tier-badge" title="${urgentTitle}"
            style="display:inline-block;padding:2px 7px;border-radius:4px;
-                  background:#C85A36;color:#fff;font-size:10px;font-weight:800;
-                  letter-spacing:0.3px;">🔥 급매</span>`;
+                  background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;
+                  letter-spacing:0.3px;">급매</span>`;
        }
       function _openDirectListingCard(lr){
         if (typeof window.openListingDetailModal === "function") {
@@ -4769,11 +4769,11 @@ async function loadBuildingHeader(id){
       ).join("");
       const _urgentOnlyBtn = `<button type="button" id="lsUrgentFilter"
         style="font-size:11px;padding:3px 9px;border-radius:12px;
-          border:1px solid ${_urgentOnly?"#C85A36":"var(--line,#ddd)"};
+          border:1px solid ${_urgentOnly?"var(--brass,#B4863F)":"var(--line,#ddd)"};
           background:${_urgentOnly?"#FFF0EC":"#fff"};
-          color:${_urgentOnly?"#C85A36":"var(--ink-soft)"};
+          color:${_urgentOnly?"var(--brass-dark,#7D4A00)":"var(--ink-soft)"};
           cursor:pointer;margin-left:2px;font-weight:${_urgentOnly?700:400};">
-        🔥 급매</button>`;
+        급매</button>`;
       const sortBar = _sortBtns + _urgentOnlyBtn;
       const _lodgingColors = { "생활":"#378ADD", "관광":"#639922", "일반":"#D46BA3", "복합":"#B39DDB", "준공전":"#616161", "미분류":"#E0E0E0" };
       function _lodgingBadge(raw){

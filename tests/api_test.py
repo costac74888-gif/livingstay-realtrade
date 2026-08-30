@@ -2922,6 +2922,7 @@ def _check_favorite_save_persistence(client):
 def _check_urgent_listing_tiers_and_alerts(client):
     """급매 등급·관심단지 전용 토글·회원/매물별 중복 방지를 확인한다."""
     from app import (
+        _apply_urgent_tier,
         _queue_urgent_listing_alerts,
         _send_urgent_listing_email,
         _urgent_tier_for_values,
@@ -2949,6 +2950,21 @@ def _check_urgent_listing_tiers_and_alerts(client):
         })
         if not invalid_urgent_error:
             failures.append("urgent listing: 문자열 false가 급매로 저장될 수 있음")
+            return failures
+        unit_values, unit_values_error = _whole_listing_values({
+            "transaction_target": "unit", "deal_type": "매매", "is_urgent": True,
+        })
+        unit_public = _apply_urgent_tier({
+            "deal_mode": "direct", "transaction_target": "unit",
+            "deal_type": "매매", "is_urgent": True, "price_krw": 900,
+            "latest_transaction_price": None,
+        })
+        if (
+            unit_values_error
+            or not unit_values.get("is_urgent")
+            or unit_public.get("urgent_tier") != "urgent"
+        ):
+            failures.append("urgent listing: 개별호실 매매의 급매 저장·공개 판정이 누락됨")
             return failures
 
         cur.execute("""

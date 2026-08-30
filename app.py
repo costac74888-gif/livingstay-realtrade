@@ -8760,7 +8760,15 @@ def _whole_listing_values(data, *, existing=None):
         )
 
     if transaction_target == "unit":
-        return {"transaction_target": "unit", "deal_type": deal_type}, None
+        raw_is_urgent = data.get("is_urgent", False)
+        if raw_is_urgent is not None and raw_is_urgent != "" and not isinstance(raw_is_urgent, bool):
+            return None, "급매 여부는 선택값으로만 입력해주세요."
+        return {
+            "transaction_target": "unit",
+            "deal_type": deal_type,
+            "is_urgent": raw_is_urgent is True,
+            "disclosure_scope": None,
+        }, None
 
     price_krw, error = _parse_listing_krw(data.get("price_krw"), "매매가" if deal_type == "매매" else "보증금")
     if error:
@@ -9307,11 +9315,14 @@ def _urgent_tier_for_values(deal_type, is_urgent, price_krw, latest_transaction_
 
 
 def _apply_urgent_tier(listing):
-    """공개 응답에만 급매 등급을 추가하고 내부 비교가는 제거한다."""
+    """공개 직거래 응답에만 급매 등급을 추가하고 내부 비교가는 제거한다."""
     latest_price = listing.pop("latest_transaction_price", None)
+    is_whole = bool(listing.get("is_whole_listing")
+                    or listing.get("transaction_target") == "whole")
+    is_public = not is_whole or (listing.get("disclosure_scope") or "limited") == "public"
     if (
-        listing.get("is_whole_listing")
-        and (listing.get("disclosure_scope") or "limited") == "public"
+        listing.get("deal_mode") == "direct"
+        and is_public
         and not listing.get("is_limited_listing")
     ):
         tier = _urgent_tier_for_values(
@@ -9342,10 +9353,10 @@ def _latest_transaction_price_for_building(cur, building_id):
 
 def _urgent_tier_for_listing(cur, listing):
     """현재 상태의 매물이 급매 공개·알림 대상인지 판정한다."""
+    is_whole = (listing.get("transaction_target") or "unit") == "whole"
     if (
         listing.get("deal_mode") != "direct"
-        or (listing.get("transaction_target") or "unit") != "whole"
-        or (listing.get("disclosure_scope") or "limited") != "public"
+        or (is_whole and (listing.get("disclosure_scope") or "limited") != "public")
         or listing.get("status") in ("withdrawn", "철회됨", "보류")
     ):
         return None
@@ -9482,12 +9493,12 @@ def _send_urgent_listing_email(job):
         conn.close()
 
 
-def _is_public_whole_direct_listing(listing):
-    """신규매물 알림 대상인 공개 건물전체 직거래인지 확인한다."""
+def _is_public_direct_listing(listing):
+    """신규매물 알림 대상인 공개 직거래인지 확인한다."""
+    is_whole = (listing.get("transaction_target") or "unit") == "whole"
     return bool(
         listing.get("deal_mode") == "direct"
-        and (listing.get("transaction_target") or "unit") == "whole"
-        and (listing.get("disclosure_scope") or "limited") == "public"
+        and (not is_whole or (listing.get("disclosure_scope") or "limited") == "public")
         and listing.get("status") not in ("withdrawn", "철회됨", "보류")
     )
 
@@ -9941,12 +9952,12 @@ def create_listing_request():
     transaction_target = (data.get("transaction_target") or data.get("listing_target") or "unit").strip()
     if transaction_target not in _LISTING_TARGETS:
         return jsonify({"ok": False, "message": "거래대상은 개별호실 또는 건물전체 중 하나여야 합니다."}), 400
-    whole_values = None
-    if transaction_target == "whole":
-        whole_values, whole_error = _whole_listing_values(data)
-        if whole_error:
-            return jsonify({"ok": False, "message": whole_error}), 400
-        deal_type = whole_values["deal_type"]
+    listing_values, listing_error = _whole_listing_values(data)
+    if listing_error:
+        return jsonify({"ok": False, "message": listing_error}), 400
+    deal_type = listing_values["deal_type"]
+    whole_values = listing_values if transaction_target == "whole" else None
+    is_urgent = listing_values["is_urgent"]
     deal_mode = (data.get("deal_mode") or "broker").strip()
     if deal_mode not in ("direct", "broker"):
         deal_mode = "broker"
@@ -10118,7 +10129,7 @@ def create_listing_request():
                whole_values["operation_status"] if whole_values else None,
                whole_values["closed_at"] if whole_values else None,
                whole_values["remodeling_info"] if whole_values else None,
-               whole_values["is_urgent"] if whole_values else False,
+               is_urgent,
                whole_values["disclosure_scope"] if whole_values else None,
                json.dumps(whole_values["building_info_overrides"]) if whole_values else "{}"])
         req_id = cur.fetchone()["id"]
@@ -10145,22 +10156,22 @@ def create_listing_request():
                 "operation_status": whole_values["operation_status"] if whole_values else None,
                 "closed_at": str(whole_values["closed_at"]) if whole_values and whole_values["closed_at"] else None,
                 "remodeling_info": whole_values["remodeling_info"] if whole_values else None,
-                "is_urgent": whole_values["is_urgent"] if whole_values else False,
+                "is_urgent": is_urgent,
                 "disclosure_scope": whole_values["disclosure_scope"] if whole_values else None,
                 "building_info_overrides": whole_values["building_info_overrides"] if whole_values else {},
             })]
         )
         _best_effort_weekly_email_opt_in(cur, user["id"], "listing_request")
-        # 신규 공개 건물전체 직거래는 급매 또는 일반 신규매물 중 한 신호만 예약한다.
+        # 신규 공개 직거래는 급매 또는 일반 신규매물 중 한 신호만 예약한다.
         # 알림 저장 실패는 SAVEPOINT로 격리해 매물 등록·이력 커밋을 되돌리지 않는다.
         listing_alert_values = {
             "deal_mode": deal_mode, "transaction_target": transaction_target,
             "disclosure_scope": (whole_values or {}).get("disclosure_scope"),
             "status": "submitted", "master_building_id": mb_id,
-            "deal_type": deal_type, "is_urgent": (whole_values or {}).get("is_urgent"),
+            "deal_type": deal_type, "is_urgent": is_urgent,
             "price_krw": price_krw,
         }
-        if _is_public_whole_direct_listing(listing_alert_values):
+        if _is_public_direct_listing(listing_alert_values):
             urgent_tier = _urgent_tier_for_listing(cur, listing_alert_values)
             if urgent_tier:
                 cur.execute("SAVEPOINT urgent_listing_alerts")
@@ -11736,12 +11747,12 @@ def update_listing_request(req_id):
     transaction_target = (data.get("transaction_target") or data.get("listing_target") or "unit").strip()
     if transaction_target not in _LISTING_TARGETS:
         return jsonify({"ok": False, "message": "거래대상은 개별호실 또는 건물전체 중 하나여야 합니다."}), 400
-    whole_values = None
-    if transaction_target == "whole":
-        whole_values, whole_error = _whole_listing_values(data)
-        if whole_error:
-            return jsonify({"ok": False, "message": whole_error}), 400
-        deal_type = whole_values["deal_type"]
+    listing_values, listing_error = _whole_listing_values(data)
+    if listing_error:
+        return jsonify({"ok": False, "message": listing_error}), 400
+    deal_type = listing_values["deal_type"]
+    whole_values = listing_values if transaction_target == "whole" else None
+    is_urgent = listing_values["is_urgent"]
 
     if transaction_target == "unit" and deal_type not in _LISTING_DEAL_TYPES:
         return jsonify({"ok": False, "message": "거래유형이 올바르지 않습니다."}), 400
@@ -11893,7 +11904,7 @@ def update_listing_request(req_id):
             "operation_status": whole_values["operation_status"] if whole_values else None,
             "closed_at": whole_values["closed_at"] if whole_values else None,
             "remodeling_info": whole_values["remodeling_info"] if whole_values else None,
-            "is_urgent": whole_values["is_urgent"] if whole_values else False,
+            "is_urgent": is_urgent,
             "disclosure_scope": whole_values["disclosure_scope"] if whole_values else None,
             "building_info_overrides": whole_values["building_info_overrides"] if whole_values else {},
         }

@@ -197,7 +197,7 @@
   .whole-listing-card .ls-card-l3 { white-space:normal; overflow:visible; text-overflow:clip; }
   .whole-badges { display:flex; flex-wrap:wrap; gap:4px; }
   .whole-badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; line-height:1.35; }
-  .whole-badge-urgent { color:#fff; background:#C85A36; animation:wholeUrgentPulse 1.25s ease-in-out infinite; }
+  .whole-badge-urgent { color:#fff; background:var(--brass,#B4863F); animation:wholeUrgentPulse 1.25s ease-in-out infinite; }
   .whole-badge-closed { color:#222; background:#E5E5E5; }
   .whole-badge-revenue { color:#275B88; background:#E7F2FC; }
   @keyframes wholeUrgentPulse { 50% { transform:scale(1.06); box-shadow:0 0 0 4px rgba(200,90,54,.16); } }
@@ -474,7 +474,7 @@
     const urgentTitle = item.is_urgent
       ? "판매자가 급매로 등록한 매물"
       : "최신 실거래가보다 낮은 매물";
-    return `<span class="urgent-tier-badge" title="${urgentTitle}" style="display:inline-block;padding:2px 7px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;letter-spacing:0.3px;">🔥 급매</span>`;
+    return `<span class="urgent-tier-badge" title="${urgentTitle}" style="display:inline-block;padding:2px 7px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;letter-spacing:0.3px;">급매</span>`;
   }
   function operationRatioBadgesHtml(item){
     const badges = [];
