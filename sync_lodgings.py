@@ -28,6 +28,7 @@ from datetime import date, datetime, timedelta
 import requests
 from psycopg2.extras import execute_values
 
+import import_camping_lodging as camping_importer
 from addr_norm import (
     get_building_jibun_key,
     normalize_name,
@@ -46,11 +47,18 @@ from lodging_matching import refresh_auto_building_names
 
 API_URL = "https://apis.data.go.kr/1741000/lodgings/info"
 SERVICE_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 계정 공용 일반인증키 재사용
+CAMPING_API_URL = "https://apis.data.go.kr/B551011/GoCamping/basedList"
+CAMPING_SERVICE_KEY_ENV = "LODGING_SERVICE_KEY"
 
 MAX_DAILY_CALLS = 8000  # 일일 쿼터 10,000 — 여유분을 남기고 멈춘다.
 DAILY_CALLS_META_KEY = "lodging_daily_calls"
 PROGRESS_META_KEY = "lodging_sync_progress"
 LAST_SYNC_META_KEY = "lodging_last_sync"
+CAMPING_MAX_DAILY_CALLS = 800
+CAMPING_NUM_ROWS_DEFAULT = 100
+CAMPING_DAILY_CALLS_META_KEY = "camping_daily_calls"
+CAMPING_PROGRESS_META_KEY = "camping_sync_progress"
+CAMPING_LAST_SYNC_META_KEY = "camping_last_sync"
 _INTERNAL_STATS_REFRESH_URL = os.environ.get(
     "MASTER_STATS_REFRESH_URL",
     "http://127.0.0.1:5000/api/admin/stats/refresh",
@@ -69,6 +77,10 @@ ROOM_EXPIRY_ALERT_LOCK_ID = 918274
 PERMIT_CHANGE_ALERT_LOCK_ID = 918275
 ROOM_EXPIRY_THRESHOLDS = (90, 60, 30, 7)
 PERMIT_ALERT_BOOTSTRAP_META_KEY = "lodging_permit_alert_snapshot_ready"
+
+
+class _CampingDailyCapReached(RuntimeError):
+    pass
 
 
 @contextmanager
@@ -102,8 +114,8 @@ def _lodging_sync_lock():
         conn.close()
 
 
-def _daily_calls_today(cur):
-    cur.execute("SELECT value FROM app_meta WHERE key=%s", (DAILY_CALLS_META_KEY,))
+def _daily_calls_today(cur, meta_key):
+    cur.execute("SELECT value FROM app_meta WHERE key=%s", (meta_key,))
     row = cur.fetchone()
     if not row or not row["value"]:
         return 0
@@ -116,7 +128,7 @@ def _daily_calls_today(cur):
     return 0
 
 
-def _bump_daily_calls(cur, conn):
+def _bump_daily_calls(cur, conn, meta_key):
     today = datetime.now().strftime("%Y-%m-%d")
     fresh = json.dumps({"date": today, "count": 1})
     cur.execute("""
@@ -132,7 +144,7 @@ def _bump_daily_calls(cur, conn):
             END,
             updated_at = NOW()
         RETURNING (value::jsonb ->> 'count')::int AS count
-    """, (DAILY_CALLS_META_KEY, fresh, today, today))
+    """, (meta_key, fresh, today, today))
     count = cur.fetchone()["count"]
     conn.commit()
     return count
@@ -668,8 +680,12 @@ def _touch(status_key, run_id):
 
 
 def _redact(text):
-    key = os.environ.get(SERVICE_KEY_ENV, "")
-    return text.replace(key, "***") if key else text
+    redacted = text
+    for env_name in (SERVICE_KEY_ENV, CAMPING_SERVICE_KEY_ENV):
+        key = os.environ.get(env_name, "")
+        if key:
+            redacted = redacted.replace(key, "***")
+    return redacted
 
 
 def _signal_stats_change():
@@ -765,6 +781,121 @@ def _fetch_page_retry(key, page, num_rows):
         time.sleep(wait)
         items, total = _fetch_page(key, page, num_rows)
         return items, total, saw_429
+
+
+def _load_camping_progress(cur):
+    cur.execute(
+        "SELECT value FROM app_meta WHERE key=%s",
+        (CAMPING_PROGRESS_META_KEY,),
+    )
+    row = cur.fetchone()
+    if not row or not row["value"]:
+        return {"next_page": 1, "total_count": None}
+    try:
+        data = json.loads(row["value"])
+        return {
+            "next_page": max(1, int(data.get("next_page", 1))),
+            "total_count": data.get("total_count"),
+        }
+    except (TypeError, ValueError):
+        return {"next_page": 1, "total_count": None}
+
+
+def _save_camping_progress(cur, conn, next_page, total_count):
+    payload = json.dumps({
+        "next_page": next_page,
+        "total_count": total_count,
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """, (CAMPING_PROGRESS_META_KEY, payload))
+    conn.commit()
+
+
+def _clear_camping_progress(cur, conn):
+    cur.execute(
+        "DELETE FROM app_meta WHERE key=%s",
+        (CAMPING_PROGRESS_META_KEY,),
+    )
+    conn.commit()
+
+
+def _mark_camping_last_sync(cur, conn, total):
+    payload = json.dumps({
+        "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total": total,
+    })
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """, (CAMPING_LAST_SYNC_META_KEY, payload))
+    conn.commit()
+
+
+def _fetch_camping_page(key, page, num_rows):
+    response = requests.get(
+        CAMPING_API_URL,
+        params={
+            "serviceKey": key,
+            "pageNo": str(page),
+            "numOfRows": str(num_rows),
+            "MobileOS": "ETC",
+            "MobileApp": "LivingStay",
+            "_type": "json",
+        },
+        timeout=60,
+    )
+    response.raise_for_status()
+    try:
+        data = response.json()
+    except ValueError:
+        raise RuntimeError(
+            f"고캠핑 JSON 파싱 실패: {_redact(response.text[:200])}"
+        )
+    envelope = data.get("response") or {}
+    header = envelope.get("header") or {}
+    code = str(header.get("resultCode", "")).strip()
+    if code not in ("0000", "00", "0", ""):
+        raise RuntimeError(
+            f"고캠핑 API 오류 resultCode={code} "
+            f"msg={header.get('resultMsg')}"
+        )
+    body = envelope.get("body") or {}
+    items = body.get("items") or []
+    if isinstance(items, dict):
+        items = items.get("item") or []
+    if isinstance(items, dict):
+        items = [items]
+    if not isinstance(items, list):
+        raise RuntimeError("고캠핑 API items 형식이 목록이 아닙니다.")
+    try:
+        total = int(body.get("totalCount") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    return items, total
+
+
+def _fetch_camping_page_retry(
+    key, page, num_rows, *, on_attempt=None, retry_waits=(15, 45)
+):
+    """고캠핑 페이지를 최대 3회 시도하고, 각 실제 호출을 카운터에 반영한다."""
+    for attempt in range(len(retry_waits) + 1):
+        if on_attempt:
+            on_attempt()
+        try:
+            return _fetch_camping_page(key, page, num_rows)
+        except Exception as exc:
+            if attempt >= len(retry_waits):
+                raise
+            wait = 45 if _is_429(exc) else retry_waits[attempt]
+            print(
+                f"[camping] 페이지 {page} 오류: "
+                f"{_redact(repr(exc))[:160]} — {wait}초 후 재시도 "
+                f"({attempt + 2}/{len(retry_waits) + 1})"
+            )
+            time.sleep(wait)
 
 
 def _to_int(v):
@@ -1127,6 +1258,288 @@ def _still_owner(cur, status_key, run_id):
     return d.get("run_id") == run_id and d.get("state") == "running"
 
 
+def _reconcile_camping_source_key(cur, data):
+    """유일하게 같은 XLSX 캠핑 행이 있으면 고캠핑 contentId 키로 승계한다."""
+    road_norm = data.get("road_norm")
+    jibun_norm = data.get("jibun_norm")
+    if not data.get("biz_name_norm") or not (road_norm or jibun_norm):
+        return False
+
+    cur.execute(
+        "SELECT id FROM lodging_registry WHERE permit_number=%s",
+        (data["permit_number"],),
+    )
+    canonical = cur.fetchone()
+    cur.execute("""
+        SELECT id, applied_building_id
+          FROM lodging_registry
+         WHERE permit_number LIKE 'CAMPING:%:%'
+           AND hygiene_type = %s
+           AND biz_name_norm = %s
+           AND (
+                (%s IS NOT NULL AND road_norm = %s)
+                OR (%s IS NOT NULL AND jibun_norm = %s)
+           )
+         ORDER BY id
+         LIMIT 2
+         FOR UPDATE
+    """, (
+        camping_importer.HYGIENE_TYPE_FIXED,
+        data["biz_name_norm"],
+        road_norm,
+        road_norm,
+        jibun_norm,
+        jibun_norm,
+    ))
+    legacy_rows = cur.fetchall()
+    if len(legacy_rows) != 1:
+        return False
+    legacy = legacy_rows[0]
+
+    if canonical:
+        cur.execute("""
+            UPDATE lodging_registry
+               SET applied_building_id = COALESCE(
+                       applied_building_id, %s
+                   )
+             WHERE id = %s
+        """, (legacy.get("applied_building_id"), canonical["id"]))
+        cur.execute(
+            "DELETE FROM lodging_registry WHERE id=%s",
+            (legacy["id"],),
+        )
+    else:
+        cur.execute(
+            "UPDATE lodging_registry SET permit_number=%s WHERE id=%s",
+            (data["permit_number"], legacy["id"]),
+        )
+    return True
+
+
+def sync_camping(
+    num_rows=CAMPING_NUM_ROWS_DEFAULT,
+    sleep_sec=SLEEP_DEFAULT,
+    max_calls=CAMPING_MAX_DAILY_CALLS,
+    reset=False,
+    dry_run=False,
+    status_key=None,
+    run_id=None,
+):
+    """한국관광공사 고캠핑 목록을 CAMPING 원본키로 이어받아 동기화한다."""
+    key = os.environ.get(CAMPING_SERVICE_KEY_ENV, "")
+    if not key:
+        raise RuntimeError(
+            f"환경변수 {CAMPING_SERVICE_KEY_ENV} 가 설정되어 있지 않습니다."
+        )
+    if num_rows < 1 or max_calls < 1:
+        raise ValueError("num_rows와 max_calls는 1 이상이어야 합니다.")
+
+    conn = get_conn()
+    cur = conn.cursor()
+    counters = {
+        "inserted": 0,
+        "updated": 0,
+        "matched": 0,
+        "created": 0,
+        "inactive": 0,
+        "unmatched": 0,
+        "skipped": 0,
+    }
+    try:
+        camping_importer.common._assert_schema(cur)
+        if reset and not dry_run:
+            _clear_camping_progress(cur, conn)
+        progress = _load_camping_progress(cur)
+        page = 1 if (reset and dry_run) else progress["next_page"]
+        total_count = progress["total_count"]
+        calls_today = _daily_calls_today(cur, CAMPING_DAILY_CALLS_META_KEY)
+        processed = 0
+        sample_count = 0
+
+        road_index = jibun_index = None
+        bjdong = None
+        if not dry_run:
+            road_index, jibun_index = (
+                camping_importer.common._load_master_indexes(cur)
+            )
+
+        def _count_attempt():
+            nonlocal calls_today
+            if calls_today >= max_calls:
+                raise _CampingDailyCapReached
+            calls_today = _bump_daily_calls(
+                cur, conn, CAMPING_DAILY_CALLS_META_KEY
+            )
+
+        while True:
+            if status_key and run_id and not _still_owner(cur, status_key, run_id):
+                raise RuntimeError("캠핑 동기화 소유권 상실(다른 실행이 시작됨)")
+            if calls_today >= max_calls:
+                print(
+                    f"[camping] 일일 소프트 캡({max_calls}건) 도달 — "
+                    f"다음 페이지 {page}부터 이어서 실행합니다."
+                )
+                return False, counters, calls_today
+
+            print(
+                f"[camping] 페이지 {page} 호출 "
+                f"(오늘 {calls_today + 1}/{max_calls})"
+            )
+            try:
+                items, total = _fetch_camping_page_retry(
+                    key,
+                    page,
+                    num_rows,
+                    on_attempt=_count_attempt,
+                )
+            except _CampingDailyCapReached:
+                print(
+                    f"[camping] 재시도 전 일일 소프트 캡({max_calls}건) "
+                    f"도달 — 페이지 {page}부터 이어서 실행합니다."
+                )
+                return False, counters, calls_today
+            if total:
+                total_count = total
+            if not items:
+                if not dry_run:
+                    _clear_camping_progress(cur, conn)
+                    cur.execute("""
+                        SELECT COUNT(*) AS c
+                          FROM lodging_registry
+                         WHERE permit_number LIKE 'CAMPING:%'
+                    """)
+                    _mark_camping_last_sync(
+                        cur, conn, cur.fetchone()["c"]
+                    )
+                print(
+                    f"[camping] 전체 수집 완료 — 이번 실행 처리 "
+                    f"{processed:,}건"
+                )
+                return True, counters, calls_today
+
+            for item in items:
+                data = camping_importer.parse_api_item(item)
+                if not data:
+                    counters["skipped"] += 1
+                    continue
+                processed += 1
+                if dry_run:
+                    if sample_count < camping_importer.DRY_RUN_SAMPLE_LIMIT:
+                        print(
+                            f"  [DRY] {data['permit_number']} | "
+                            f"{data['biz_name']} | "
+                            f"{data['biz_status_name'] or '-'} | "
+                            f"사이트 "
+                            f"{data['camping_site_count'] if data['camping_site_count'] is not None else '-'}"
+                        )
+                        sample_count += 1
+                    continue
+
+                _reconcile_camping_source_key(cur, data)
+                registry = camping_importer.common._upsert_registry(
+                    cur,
+                    data,
+                    reset_applied_building_id=False,
+                )
+                counters[
+                    "inserted" if registry["is_new"] else "updated"
+                ] += 1
+
+                building_id = None
+                new_building_id = None
+                if data["biz_status_name"] != ACTIVE_STATUS:
+                    counters["inactive"] += 1
+                elif not data.get("road_norm") and not data.get("jibun_norm"):
+                    counters["unmatched"] += 1
+                else:
+                    building_id, match_reason = (
+                        camping_importer.common._match_master(
+                            data, road_index, jibun_index
+                        )
+                    )
+                    if building_id:
+                        counters["matched"] += 1
+                    elif match_reason:
+                        counters["unmatched"] += 1
+                        print(
+                            f"  [검토] {data['biz_name']} — {match_reason}: "
+                            f"{data['road_address'] or '-'}"
+                        )
+                    else:
+                        if bjdong is None:
+                            bjdong = camping_importer.common.BjdongMap(
+                                camping_importer.common.BJDONG_CODE_CSV
+                            )
+                        location = (
+                            camping_importer.common._location_from_addresses(
+                                bjdong,
+                                data.get("road_address"),
+                                data.get("jibun_address"),
+                            )
+                        )
+                        if location:
+                            building_id = camping_importer._create_master(
+                                cur, data, location
+                            )
+                            new_building_id = building_id
+                            counters["created"] += 1
+                        else:
+                            counters["unmatched"] += 1
+
+                if building_id:
+                    cur.execute(
+                        "UPDATE lodging_registry "
+                        "SET applied_building_id=%s WHERE id=%s",
+                        (building_id, registry["id"]),
+                    )
+                if new_building_id:
+                    camping_importer.common._register_new_master_in_indexes(
+                        new_building_id, data, road_index, jibun_index
+                    )
+
+            if not dry_run:
+                conn.commit()
+                _signal_stats_change()
+            next_page = page + 1
+            if not dry_run:
+                _save_camping_progress(
+                    cur, conn, next_page, total_count
+                )
+            print(
+                f"[camping] 페이지 {page} 완료 — 응답 {len(items):,}건 / "
+                f"이번 실행 처리 {processed:,}건 / 전체 {total_count or '?'}건"
+            )
+
+            completed = (
+                bool(total_count)
+                and ((page - 1) * num_rows + len(items) >= total_count)
+            )
+            page = next_page
+            if completed:
+                if not dry_run:
+                    _clear_camping_progress(cur, conn)
+                    cur.execute("""
+                        SELECT COUNT(*) AS c
+                          FROM lodging_registry
+                         WHERE permit_number LIKE 'CAMPING:%'
+                    """)
+                    _mark_camping_last_sync(
+                        cur, conn, cur.fetchone()["c"]
+                    )
+                print(
+                    f"[camping] 전체 수집 완료 — 이번 실행 처리 "
+                    f"{processed:,}건"
+                )
+                return True, counters, calls_today
+            time.sleep(sleep_sec)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                   max_calls=MAX_DAILY_CALLS, reset=False,
                   status_key=None, run_id=None):
@@ -1144,7 +1557,7 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
         total_count = prog["total_count"]
         processed = 0
         page_size = None  # 실제 페이지 크기 — API가 numOfRows보다 적게 줄 수 있어 응답으로 판정
-        calls_today = _daily_calls_today(cur)
+        calls_today = _daily_calls_today(cur, DAILY_CALLS_META_KEY)
         first_item_logged = False
         daily_match_keys = set()
         # 기준 스냅샷이 아직 없을 때는 전체 수집 완료 전까지 알림을 만들지 않는다.
@@ -1166,7 +1579,9 @@ def sync_lodgings(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                 print(f"[lodgings] 오늘 처리분 신고 기준 자동명칭 반영 — 변경 {renamed}건")
                 return False, processed, calls_today
 
-            calls_today = _bump_daily_calls(cur, conn)
+            calls_today = _bump_daily_calls(
+                cur, conn, DAILY_CALLS_META_KEY
+            )
             print(f"[lodgings] 페이지 {page} 호출 (오늘 {calls_today}/{max_calls})")
             items, total, saw_429 = _fetch_page_retry(key, page, num_rows)
             if saw_429:
@@ -1244,6 +1659,10 @@ def _run(args):
         _refresh_master_stats_after_completion()
         return
 
+    if bool(getattr(args, "camping", False)):
+        _run_camping(args)
+        return
+
     run_id = None
     stop_beat = threading.Event()
     if args.status_key:
@@ -1265,15 +1684,50 @@ def _run(args):
     completed, processed, calls_today = False, 0, None
     try:
         completed, processed, calls_today = sync_lodgings(
-            num_rows=args.num_rows, sleep_sec=args.sleep,
-            max_calls=args.max_calls, reset=args.reset,
+            num_rows=args.num_rows or NUM_ROWS_DEFAULT, sleep_sec=args.sleep,
+            max_calls=args.max_calls or MAX_DAILY_CALLS, reset=args.reset,
             status_key=args.status_key, run_id=run_id)
     except Exception as e:
         error = _redact(str(e))[:500]
         print(f"[lodgings] 실패: {error}")
 
-    if not error and completed:
+    lodging_error = error
+    camping_completed = None
+    camping_counters = None
+    camping_calls_today = None
+    camping_error = None
+    include_camping = bool(getattr(args, "include_camping", False))
+    if include_camping:
+        try:
+            (
+                camping_completed,
+                camping_counters,
+                camping_calls_today,
+            ) = sync_camping(
+                num_rows=CAMPING_NUM_ROWS_DEFAULT,
+                sleep_sec=args.sleep,
+                max_calls=CAMPING_MAX_DAILY_CALLS,
+                reset=False,
+                dry_run=False,
+                status_key=args.status_key,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            camping_error = _redact(str(exc))[:500]
+            print(f"[camping] 실패: {camping_error}")
+        error = lodging_error or camping_error
+
+    if (
+        (not lodging_error and completed)
+        or (
+            include_camping
+            and not camping_error
+            and camping_completed
+        )
+    ):
         _refresh_master_stats_after_completion()
+
+    if not lodging_error and completed:
         try:
             permit_stats = send_permit_change_alerts()
             print(
@@ -1304,6 +1758,10 @@ def _run(args):
             "processed": processed,
             "completed": (None if error else completed),
             "calls_today": calls_today,
+            "camping_completed": camping_completed,
+            "camping_counters": camping_counters,
+            "camping_calls_today": camping_calls_today,
+            "camping_error": camping_error,
             "error": error,
         })
         for attempt in range(3):
@@ -1317,12 +1775,94 @@ def _run(args):
         sys.exit(1)
 
 
+def _run_camping(args):
+    run_id = None
+    stop_beat = threading.Event()
+    if args.status_key:
+        status = _read_status(args.status_key)
+        if not status or status.get("state") != "running":
+            print("[camping] running 상태가 아니므로 종료합니다.")
+            return
+        run_id = status.get("run_id") or ""
+
+        def _beat():
+            while not stop_beat.wait(HEARTBEAT_SEC):
+                try:
+                    _touch(args.status_key, run_id)
+                except Exception:
+                    pass
+        threading.Thread(target=_beat, daemon=True).start()
+
+    error = None
+    completed = False
+    counters = {}
+    calls_today = None
+    try:
+        completed, counters, calls_today = sync_camping(
+            num_rows=args.num_rows or CAMPING_NUM_ROWS_DEFAULT,
+            sleep_sec=args.sleep,
+            max_calls=args.max_calls or CAMPING_MAX_DAILY_CALLS,
+            reset=args.reset,
+            dry_run=args.dry_run,
+            status_key=args.status_key,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        error = _redact(str(exc))[:500]
+        print(f"[camping] 실패: {error}")
+
+    if not error and completed and not args.dry_run:
+        _refresh_master_stats_after_completion()
+
+    if args.status_key and run_id is not None:
+        stop_beat.set()
+        status = _read_status(args.status_key) or {}
+        status.update({
+            "state": "failed" if error else "done",
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "completed": None if error else completed,
+            "counters": counters,
+            "calls_today": calls_today,
+            "dry_run": bool(args.dry_run),
+            "error": error,
+        })
+        for attempt in range(3):
+            try:
+                _write_status(args.status_key, status, run_id)
+                break
+            except Exception as exc:
+                print(
+                    f"[camping] 상태 저장 실패({attempt + 1}/3): {exc}"
+                )
+                time.sleep(5)
+    if error and not args.status_key:
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num-rows", type=int, default=NUM_ROWS_DEFAULT)
+    parser.add_argument("--num-rows", type=int, default=None)
     parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
-    parser.add_argument("--max-calls", type=int, default=MAX_DAILY_CALLS)
+    parser.add_argument("--max-calls", type=int, default=None)
     parser.add_argument("--reset", action="store_true")
+    parser.add_argument(
+        "--camping",
+        action="store_true",
+        help="한국관광공사 고캠핑 API를 별도 체크포인트로 수집",
+    )
+    parser.add_argument(
+        "--include-camping",
+        action="store_true",
+        help="일반 숙박업 수집 뒤 고캠핑 API도 이어서 수집",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "고캠핑 API를 조회·검증하되 레지스트리·체크포인트는 변경하지 않음 "
+            "(실제 호출량은 일일 카운터에 반영)"
+        ),
+    )
     parser.add_argument("--reindex-norms", action="store_true")
     parser.add_argument("--status-key", default=None)
     args = parser.parse_args()

@@ -27,6 +27,23 @@ SOURCE_KEY_PREFIX = "CAMPING"
 MASTER_SOURCE = "camping_import"
 DRY_RUN_SAMPLE_LIMIT = 20
 
+_SITE_COUNT_HEADERS = (
+    "야영사이트수",
+    "야영사이트 수",
+    "사이트수",
+    "사이트 수",
+    "캠핑사이트수",
+    "캠핑사이트 수",
+)
+
+
+def _camping_site_count(row):
+    """표준 파일에 있는 사이트 수를 객실 수와 별도로 읽는다."""
+    for header in _SITE_COUNT_HEADERS:
+        if header in row:
+            return common._integer(row.get(header))
+    return None
+
 
 def _permit_number(authority_code, source_permit_number):
     authority = common._identity_text(authority_code)
@@ -53,7 +70,97 @@ def parse_row(row):
 
     # 일반야영장업의 '객실수'는 비어 있거나 객실 의미가 아니므로 객실 통계에 넣지 않는다.
     data["room_count"] = None
+    data["camping_site_count"] = _camping_site_count(row)
     return data if data["permit_number"] else None
+
+
+def _first_value(item, *keys):
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def _camping_site_count_from_api(item):
+    """고캠핑 API의 유형별 사이트 수 합계. 모든 값이 없으면 NULL."""
+    fields = (
+        "gnrlSiteCo",
+        "autoSiteCo",
+        "glampSiteCo",
+        "caravSiteCo",
+        "indvdlCaravSiteCo",
+    )
+    values = [_first_value(item, field) for field in fields]
+    if not any(value is not None for value in values):
+        return None
+    return sum(common._integer(value) or 0 for value in values)
+
+
+def _camping_status(value):
+    """고캠핑 운영상태를 서비스의 영업상태 표기로 정규화한다."""
+    status = common._text(value)
+    if not status:
+        return None
+    if status in {"운영", "운영중", "영업", "영업중", "정상", "Y", "1"}:
+        return "영업/정상"
+    if status in {"휴장", "휴업", "일시휴업"}:
+        return "휴업"
+    if status in {"폐업", "폐장", "운영종료", "N", "0"}:
+        return "폐업"
+    return status
+
+
+def parse_api_item(item):
+    """고캠핑 basedList 응답 한 건을 lodging_registry 형태로 변환한다."""
+    if not isinstance(item, dict):
+        return None
+    original_key = common._identity_text(
+        _first_value(item, "contentId", "contentid", "contentID")
+    )
+    biz_name = common._text(_first_value(item, "facltNm", "facltNM"))
+    if not original_key or not biz_name:
+        return None
+
+    address = common._text(_first_value(item, "addr1", "address"))
+    status_source = _first_value(
+        item, "manageSttus", "manageStNm", "manageSt", "manageStCd"
+    )
+    status = _camping_status(status_source)
+    status_detail = common._text(
+        _first_value(
+            item, "hvofReason", "manageSttus", "manageStNm", "manageSt"
+        )
+    )
+    return {
+        "permit_number": f"{SOURCE_KEY_PREFIX}:{original_key}",
+        "permit_date": common._text(
+            _first_value(
+                item, "prmisnDe", "operDe", "operDeYmd", "createdtime"
+            )
+        ),
+        "biz_name": biz_name,
+        "room_count": None,
+        "camping_site_count": _camping_site_count_from_api(item),
+        "bld_use_nm": None,
+        "source_updated_at": common._text(
+            _first_value(item, "modifiedtime", "modifiedTime", "lastUpdate")
+        ),
+        "road_address": address,
+        "hygiene_type": HYGIENE_TYPE_FIXED,
+        "biz_status_name": status,
+        "biz_status_detail": status_detail,
+        "facility_area": common._decimal(_first_value(item, "allar", "allAr")),
+        "phone": common._phone(_first_value(item, "tel", "TELNO")),
+        # 고캠핑은 addr1 한 필드만 제공하므로 도로명 주소를 지번 칼럼에 복제하지 않는다.
+        "jibun_address": None,
+        "region_name": common._text(
+            _first_value(item, "doNm", "sigunguNm", "lctCl")
+        ),
+        "road_norm": common.normalize_road_prefix(address),
+        "jibun_norm": common.normalize_jibun_prefix(address),
+        "biz_name_norm": common.normalize_name(biz_name),
+    }
 
 
 def _create_master(cur, data, location):

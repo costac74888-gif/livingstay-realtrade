@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-30-05"
+SCHEMA_VERSION = "2026-08-30-06"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1931,6 +1931,7 @@ def _run_init_db():
         biz_status_name TEXT,              -- 영업상태명 (SALS_STTS_NM: 영업/정상, 폐업 등)
         biz_status_detail TEXT,            -- 상세영업상태명 (DTL_SALS_STTS_NM)
         room_count INTEGER,                -- 객실수 = 한실(KSRM_CNT)+양실(WSRM_CNT)
+        camping_site_count INTEGER,        -- 캠핑 사이트 수 (객실 수와 별도)
         hygiene_type TEXT,                 -- 위생업태명 (SNTTN_BZSTAT_NM)
         phone TEXT,                        -- 전화번호 (TELNO)
         road_norm TEXT,                    -- 정규화 주소(도로명+건물번호)
@@ -1954,6 +1955,9 @@ def _run_init_db():
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS bld_use_nm TEXT")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS facility_area NUMERIC")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS region_name TEXT")
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_site_count INTEGER"
+    )
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

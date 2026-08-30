@@ -18345,6 +18345,7 @@ def admin_broker_candidates_export():
 # 후보 리스트는 '생성'만 하며 자동 이메일·SMS 발송은 하지 않는다.
 _LODGING_SYNC_META_KEY = "lodging_sync_status"
 _LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
+_CAMPING_DAILY_CAP = 800  # sync_lodgings.CAMPING_MAX_DAILY_CALLS 와 동일 값 유지
 
 # 영업 중으로 인정하는 영업상태명 — 정확히 '영업/정상'만 (휴업/폐업/취소/말소/만료/정지/중지/제외/삭제/전출/기타 전부 제외)
 _LODGING_ACTIVE_STATUS = LEGAL_LODGING_ACTIVE_STATUS
@@ -18357,6 +18358,8 @@ def admin_lodging_sync_run():
     """영업신고 데이터 동기화 시작 — 중개업소 동기화와 동일한 잠금/러너 패턴."""
     if not os.environ.get("DATA_GO_KR_BROKER_API_KEY"):
         return jsonify({"ok": False, "message": "DATA_GO_KR_BROKER_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    if not os.environ.get("LODGING_SERVICE_KEY"):
+        return jsonify({"ok": False, "message": "LODGING_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -18402,7 +18405,7 @@ def admin_lodging_sync_run():
     try:
         proc = subprocess.Popen(
             [sys.executable, "-u", os.path.join(base_dir, "sync_lodgings.py"),
-             "--status-key", _LODGING_SYNC_META_KEY],
+             "--include-camping", "--status-key", _LODGING_SYNC_META_KEY],
             cwd=base_dir, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -18443,6 +18446,12 @@ def admin_lodging_sync_status():
         prog_row = cur.fetchone()
         cur.execute("SELECT value FROM app_meta WHERE key = 'lodging_last_sync'")
         last_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'camping_daily_calls'")
+        camping_calls_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'camping_sync_progress'")
+        camping_prog_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'camping_last_sync'")
+        camping_last_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
@@ -18456,7 +18465,17 @@ def admin_lodging_sync_status():
         except (TypeError, ValueError):
             pass
 
+    camping_calls_today = 0
+    if camping_calls_row and camping_calls_row["value"]:
+        try:
+            d = json.loads(camping_calls_row["value"])
+            if d.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                camping_calls_today = int(d.get("count", 0))
+        except (TypeError, ValueError):
+            pass
+
     progress = last_sync = status = None
+    camping_progress = camping_last_sync = None
     try:
         progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
     except (TypeError, ValueError):
@@ -18467,6 +18486,20 @@ def admin_lodging_sync_status():
         pass
     try:
         status = json.loads(meta["value"]) if meta and meta["value"] else None
+    except (TypeError, ValueError):
+        pass
+    try:
+        camping_progress = (
+            json.loads(camping_prog_row["value"])
+            if camping_prog_row and camping_prog_row["value"] else None
+        )
+    except (TypeError, ValueError):
+        pass
+    try:
+        camping_last_sync = (
+            json.loads(camping_last_row["value"])
+            if camping_last_row and camping_last_row["value"] else None
+        )
     except (TypeError, ValueError):
         pass
 
@@ -18494,6 +18527,24 @@ def admin_lodging_sync_status():
         "progress": progress,
         "last_sync": (dict(last_sync, finished_at=_kst_label(last_sync.get("finished_at")))
                       if last_sync else None),
+        "camping": {
+            "completed": (status.get("camping_completed") if status else None),
+            "counters": (status.get("camping_counters") if status else None),
+            "error": (status.get("camping_error") if status else None),
+            "calls_today": camping_calls_today,
+            "calls_remaining": max(0, _CAMPING_DAILY_CAP - camping_calls_today),
+            "daily_cap": _CAMPING_DAILY_CAP,
+            "progress": camping_progress,
+            "last_sync": (
+                dict(
+                    camping_last_sync,
+                    finished_at=_kst_label(
+                        camping_last_sync.get("finished_at")
+                    ),
+                )
+                if camping_last_sync else None
+            ),
+        },
     })
 
 
@@ -25641,7 +25692,7 @@ def _resume_interrupted_sync_jobs():
         (_SYNC_META_KEY,          "sync_runner.py",          []),
         (_BACKFILL_META_KEY,      "sync_runner.py",          ["--meta-key", _BACKFILL_META_KEY, "--months", "60", "--progress-key", "tx_backfill_progress"]),
         (_BROKER_SYNC_META_KEY,   "sync_brokers.py",         ["--status-key", _BROKER_SYNC_META_KEY]),
-        (_LODGING_SYNC_META_KEY,  "sync_lodgings.py",        ["--status-key", _LODGING_SYNC_META_KEY]),
+        (_LODGING_SYNC_META_KEY,  "sync_lodgings.py",        ["--include-camping", "--status-key", _LODGING_SYNC_META_KEY]),
         (_BRHUB_SYNC_META_KEY,    "sync_brhub.py",           ["--status-key", _BRHUB_SYNC_META_KEY]),
         (_PERMITS_SYNC_META_KEY,  "sync_permits.py",              ["--status-key", _PERMITS_SYNC_META_KEY]),
         (_REALTY_SYNC_META_KEY,   "sync_realty_stores.py",        ["--status-key", _REALTY_SYNC_META_KEY]),

@@ -203,6 +203,8 @@ def parse_row(row):
         "permit_date": _date_text(row.get("인허가일자")),
         "biz_name": biz_name,
         "room_count": _integer(row.get("객실수")),
+        # 캠핑장은 객실과 다른 단위로 저장한다. 일반 숙박 원본에는 없음.
+        "camping_site_count": None,
         "bld_use_nm": _text(row.get("건물용도명")),
         "source_updated_at": _date_text(row.get("데이터갱신시점")),
         "road_address": road_address,
@@ -297,20 +299,27 @@ def _location_from_addresses(bjdong, road_address, jibun_address):
     }
 
 
-def _upsert_registry(cur, data):
-    cur.execute("""
+def _upsert_registry(cur, data, *, reset_applied_building_id=True):
+    applied_building_update = (
+        "applied_building_id = NULL"
+        if reset_applied_building_id
+        else "applied_building_id = lodging_registry.applied_building_id"
+    )
+    cur.execute(f"""
         INSERT INTO lodging_registry (
             permit_number, biz_name, road_address, jibun_address,
             permit_date, biz_status_name, biz_status_detail,
             room_count, hygiene_type, phone,
             road_norm, jibun_norm, biz_name_norm,
-            source_updated_at, bld_use_nm, facility_area, region_name
+            source_updated_at, bld_use_nm, facility_area, region_name,
+            camping_site_count
         ) VALUES (
             %(permit_number)s, %(biz_name)s, %(road_address)s, %(jibun_address)s,
             %(permit_date)s, %(biz_status_name)s, %(biz_status_detail)s,
             %(room_count)s, %(hygiene_type)s, %(phone)s,
             %(road_norm)s, %(jibun_norm)s, %(biz_name_norm)s,
-            %(source_updated_at)s, %(bld_use_nm)s, %(facility_area)s, %(region_name)s
+            %(source_updated_at)s, %(bld_use_nm)s, %(facility_area)s, %(region_name)s,
+            %(camping_site_count)s
         )
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
@@ -320,6 +329,7 @@ def _upsert_registry(cur, data):
             biz_status_name = EXCLUDED.biz_status_name,
             biz_status_detail = EXCLUDED.biz_status_detail,
             room_count = EXCLUDED.room_count,
+            camping_site_count = EXCLUDED.camping_site_count,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
@@ -329,7 +339,7 @@ def _upsert_registry(cur, data):
             bld_use_nm = EXCLUDED.bld_use_nm,
             facility_area = EXCLUDED.facility_area,
             region_name = EXCLUDED.region_name,
-            applied_building_id = NULL,
+            {applied_building_update},
             updated_at = NOW()
         RETURNING id, (xmax = 0) AS is_new
     """, data)
@@ -348,6 +358,7 @@ def _assert_schema(cur):
         "facility_area",
         "region_name",
         "applied_building_id",
+        "camping_site_count",
     ]])
     found = {row["column_name"] for row in cur.fetchall()}
     required = {
@@ -355,6 +366,7 @@ def _assert_schema(cur):
         "facility_area",
         "region_name",
         "applied_building_id",
+        "camping_site_count",
     }
     missing = required - found
     if missing:
