@@ -1109,6 +1109,7 @@ function setMapLocationTarget(buildingId){
 
 function showMapLocationTargetPoint(buildingId, lat, lng){
   if (!kakaoMap || buildingId == null) return;
+  if (mapLocationTargetId == null || String(mapLocationTargetId) !== String(buildingId)) return;
   const latitude = Number(lat);
   const longitude = Number(lng);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
@@ -1132,6 +1133,9 @@ function showMapLocationTargetPoint(buildingId, lat, lng){
   mapLocationTargetOverlay.__contentEl = point;
   mapLocationTargetOverlay.__buildingId = buildingId;
   mapLocationTargetOverlay.setMap(kakaoMap);
+  if (typeof mapLocationTargetOverlay.setZIndex === "function") {
+    mapLocationTargetOverlay.setZIndex(50);
+  }
 }
 
 // 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
@@ -5317,6 +5321,8 @@ async function loadBuildingHeader(id){
   if (mapLocBtn){
     mapLocBtn.addEventListener("click", () => {
       if (!kakaoMap || b.lat == null || b.lng == null) return;
+      const targetBuildingId = Number(b.building_id ?? id);
+      if (!Number.isInteger(targetBuildingId) || targetBuildingId <= 0) return;
       const closeDetailOnMobile = window.matchMedia("(max-width: 980px)").matches;
       if (closeDetailOnMobile){
         history.pushState({}, "", "/");
@@ -5324,14 +5330,25 @@ async function loadBuildingHeader(id){
         restoreDefaultPanel();
         closeMapSearchbar();
       }
-      setMapLocationTarget(b.id);
-      showMapLocationTargetPoint(b.id, b.lat, b.lng);
+      setMapLocationTarget(targetBuildingId);
       // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
+      // 지도 이동 직후에는 화면 밖 CustomOverlay가 DOM에 늦게 붙을 수 있어,
+      // 다음 페인트와 마커 재렌더 완료 시점에 선택 포인트를 다시 보장한다.
+      showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng));
+      });
       // 현재 검색·지역 필터와 무관하게 이 건물 ID만 정확히 조회한다.
       // skipBounds가 적용되어 setCenter 반영 전의 이전 뷰포트에 잘리는 문제도 막는다.
-      updateMapForZoom({ building_id: b.id }, { force: true });
+      Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then(
+        () => showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng),
+        (error) => {
+          console.error("[MAP] 선택 건물 마커 재조회 실패:", error);
+          showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng);
+        },
+      );
     });
   }
 

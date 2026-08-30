@@ -137,14 +137,17 @@ def run_local():
 
     main_js = open(os.path.join(root, "static", "js", "main.js"), encoding="utf-8").read()
     main_css = open(os.path.join(root, "static", "css", "main.css"), encoding="utf-8").read()
-    if 'updateMapForZoom({ building_id: b.id }, { force: true })' not in main_js:
+    if (
+        "const targetBuildingId = Number(b.building_id ?? id)" not in main_js
+        or "updateMapForZoom({ building_id: targetBuildingId }, { force: true })" not in main_js
+    ):
         failures.append("지도위치 버튼이 대상 건물 ID 전용 조회를 사용하지 않음")
-    elif "map-location-target-pulse 2.4s ease-in-out infinite" not in main_css:
-        failures.append("지도위치 원형 마커의 2.4초 무한 점멸 CSS가 없음")
+    elif "map-location-target-pulse 1.4s ease-in-out infinite" not in main_css:
+        failures.append("지도위치 원형 마커의 1.4초 무한 점멸 CSS가 없음")
     elif "prefers-reduced-motion" in main_css and ".map-location-target{animation:none;}" in main_css:
         failures.append("동작 줄이기 설정에서 지도위치 점멸이 꺼짐")
     else:
-        print("OK  지도위치 원형 마커 대상 고정·2.4초 무한 점멸")
+        print("OK  지도위치 원형 마커 대상 고정·1.4초 무한 점멸")
 
     admin_html = open(os.path.join(root, "static", "admin.html"), encoding="utf-8").read()
     if "📋 복사 ${copyCount}회" not in admin_html or "✅ 복사됨 · ${copyCount}회" not in admin_html:

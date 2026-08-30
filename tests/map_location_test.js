@@ -18,13 +18,17 @@ expect(
   "모바일 지도위치 클릭 시 상세·검색 패널을 함께 닫는 동작이 없습니다.",
 );
 expect(
-  source.includes("showMapLocationTargetPoint(b.id, b.lat, b.lng)") &&
-    source.includes("new kakao.maps.CustomOverlay"),
-  "지도위치 전용 원형 포인트가 없습니다.",
+  source.includes("const targetBuildingId = Number(b.building_id ?? id)") &&
+    source.includes("showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng)") &&
+    source.includes("new kakao.maps.CustomOverlay") &&
+    source.includes("requestAnimationFrame(() => {") &&
+    source.includes("Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then("),
+  "지도 이동·마커 재렌더 뒤 지도위치 전용 원형 포인트를 다시 보장하지 않습니다.",
 );
 expect(
   css.includes(".map-location-target-pin") &&
-    css.includes("map-location-target-pulse"),
+    css.includes("map-location-target-pulse") &&
+    css.includes("map-location-target-ring"),
   "지도위치 포인트 점멸 스타일이 없습니다.",
 );
 
