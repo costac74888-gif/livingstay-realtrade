@@ -1047,9 +1047,14 @@ let _mapFetchController = null;       // 다음 지도 요청이 이전 네트�
 let selectedDataLabBuilding = null;   // 데이터랩에서 마지막으로 선택한 건물
 let selectedDataLabOverlay = null;    // 선택 건물 전용 CustomOverlay — 레이어 교체와 분리
 let mapLocationTargetId = null;       // 지도위치 버튼으로 선택된 건물 원형의 지속 강조 대상
+let mapLocationTargetOverlay = null;  // 지도위치 버튼용 전용 점멸 원형 — 마커 종류와 무관
 
 function clearMapLocationTarget(){
   mapLocationTargetId = null;
+  if (mapLocationTargetOverlay){
+    mapLocationTargetOverlay.setMap(null);
+    mapLocationTargetOverlay = null;
+  }
   document.querySelectorAll(".map-location-target").forEach(el => {
     el.classList.remove("map-location-target");
   });
@@ -1088,6 +1093,33 @@ function setMapLocationTarget(buildingId){
   if (buildingId == null) return;
   mapLocationTargetId = String(buildingId);
   applyMapLocationTarget();
+}
+
+function showMapLocationTargetPoint(buildingId, lat, lng){
+  if (!kakaoMap || buildingId == null) return;
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+  if (mapLocationTargetOverlay){
+    mapLocationTargetOverlay.setMap(null);
+    mapLocationTargetOverlay = null;
+  }
+  const point = document.createElement("div");
+  point.className = "map-location-target map-location-target-pin";
+  point.setAttribute("aria-label", "선택한 건물 위치");
+  point.setAttribute("role", "status");
+  point.dataset.mapBuildingId = String(buildingId);
+  mapLocationTargetOverlay = new kakao.maps.CustomOverlay({
+    position: new kakao.maps.LatLng(latitude, longitude),
+    content: point,
+    xAnchor: 0.5,
+    yAnchor: 0.5,
+    zIndex: 50,
+    clickable: false,
+  });
+  mapLocationTargetOverlay.__contentEl = point;
+  mapLocationTargetOverlay.__buildingId = buildingId;
+  mapLocationTargetOverlay.setMap(kakaoMap);
 }
 
 // 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
@@ -5267,7 +5299,14 @@ async function loadBuildingHeader(id){
   if (mapLocBtn){
     mapLocBtn.addEventListener("click", () => {
       if (!kakaoMap || b.lat == null || b.lng == null) return;
+      const closeDetailOnMobile = window.matchMedia("(max-width: 980px)").matches;
+      if (closeDetailOnMobile){
+        history.pushState({}, "", "/");
+        if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
+        restoreDefaultPanel();
+      }
       setMapLocationTarget(b.id);
+      showMapLocationTargetPoint(b.id, b.lat, b.lng);
       // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
