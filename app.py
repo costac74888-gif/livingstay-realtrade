@@ -48,6 +48,7 @@ from lodging_classification import (
     HYGIENE_TYPE_TO_LODGING_TYPE,
     choose_primary_lodging_type,
     is_active_status,
+    iter_chunks,
     lodging_type_for_hygiene,
 )
 from psycopg2 import errors as psycopg2_errors
@@ -18848,19 +18849,20 @@ def admin_reclassify_by_hygiene():
                 )
                 for item in candidates
             ]
-            execute_values(cur, """
-                UPDATE master_buildings AS mb
-                SET lodging_type = changes.new_type,
-                    lodging_classification_source = changes.classification_source,
-                    lodging_classification_confidence = changes.confidence,
-                    verified_at = NOW()
-                FROM (VALUES %s) AS changes(
-                    new_type, classification_source, confidence, building_id, old_type
-                )
-                WHERE mb.id = changes.building_id
-                  AND mb.lodging_type IS NOT DISTINCT FROM changes.old_type
-            """, update_rows)
-            total_updated = cur.rowcount
+            for update_chunk in iter_chunks(update_rows, 1000):
+                execute_values(cur, """
+                    UPDATE master_buildings AS mb
+                    SET lodging_type = changes.new_type,
+                        lodging_classification_source = changes.classification_source,
+                        lodging_classification_confidence = changes.confidence,
+                        verified_at = NOW()
+                    FROM (VALUES %s) AS changes(
+                        new_type, classification_source, confidence, building_id, old_type
+                    )
+                    WHERE mb.id = changes.building_id
+                      AND mb.lodging_type IS NOT DISTINCT FROM changes.old_type
+                """, update_chunk, page_size=len(update_chunk))
+                total_updated += cur.rowcount
             if total_updated != len(candidates):
                 raise RuntimeError(
                     f"후보 {len(candidates)}건과 실제 변경 {total_updated}건이 달라 롤백합니다."

@@ -113,3 +113,11 @@ def classify_building_use(raw_value):
 def is_active_status(value) -> bool:
     """현재 영업으로 인정하는 상태는 정확히 영업/정상뿐이다."""
     return normalize_hygiene_type(value) == ACTIVE_STATUS
+
+
+def iter_chunks(items, size=100):
+    """대량 SQL 작업을 예측 가능한 크기로 나눈다."""
+    if size < 1:
+        raise ValueError("chunk size must be positive")
+    for offset in range(0, len(items), size):
+        yield items[offset:offset + size]

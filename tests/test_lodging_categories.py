@@ -14,6 +14,7 @@ from lodging_classification import (
     classify_building_use,
     choose_primary_lodging_type,
     is_active_status,
+    iter_chunks,
     lodging_type_for_hygiene,
 )
 from sync_lodgings import PROGRESS_TARGET_HYGIENES, _load_progress
@@ -102,6 +103,12 @@ class LodgingCategoriesTest(unittest.TestCase):
         self.assertEqual(classify_building_use("청소년수련시설"), "수련시설")
         self.assertEqual(classify_building_use("관광숙박시설"), "숙박시설")
         self.assertEqual(classify_building_use(None), "확인불가")
+
+    def test_bulk_updates_over_one_hundred_are_split_without_loss(self):
+        chunks = list(iter_chunks(list(range(250)), 100))
+
+        self.assertEqual([len(chunk) for chunk in chunks], [100, 100, 50])
+        self.assertEqual([item for chunk in chunks for item in chunk], list(range(250)))
 
 
 if __name__ == "__main__":
