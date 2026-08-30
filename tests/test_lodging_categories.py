@@ -11,11 +11,18 @@ from lodging_categories import (
     is_target_lodging_hygiene,
 )
 from lodging_classification import (
+    CLASSIFICATION_CONFIDENCE_HIGH,
+    CLASSIFICATION_SOURCE_ACTIVE_PERMIT,
+    CLASSIFICATION_SOURCE_BUILDING_REGISTRY,
+    BUILDING_REGISTRY_LINEAGE_SOURCES,
     classify_building_use,
     choose_primary_lodging_type,
     is_active_status,
     iter_chunks,
+    lodging_type_for_building_registry_detail,
     lodging_type_for_hygiene,
+    recover_classification_provenance,
+    should_protect_from_active_permit_reclassification,
 )
 from sync_lodgings import PROGRESS_TARGET_HYGIENES, _load_progress
 
@@ -120,6 +127,125 @@ class LodgingCategoriesTest(unittest.TestCase):
 
         self.assertEqual([len(chunk) for chunk in chunks], [100, 100, 50])
         self.assertEqual([item for chunk in chunks for item in chunk], list(range(250)))
+
+    def test_building_registry_provenance_wins_over_conflicting_active_permit(self):
+        self.assertEqual(
+            recover_classification_provenance(
+                "생활",
+                "숙박시설 생활숙박시설",
+                next(iter(BUILDING_REGISTRY_LINEAGE_SOURCES)),
+                "2026-08-30",
+                ["일반호텔"],
+            ),
+            (
+                CLASSIFICATION_SOURCE_BUILDING_REGISTRY,
+                CLASSIFICATION_CONFIDENCE_HIGH,
+            ),
+        )
+
+    def test_building_registry_detail_is_reparsed_before_recovery(self):
+        self.assertEqual(
+            lodging_type_for_building_registry_detail("숙박시설 콘도미니엄"),
+            "관광",
+        )
+        self.assertEqual(
+            lodging_type_for_building_registry_detail(
+                "생활숙박시설 및 일반숙박시설"
+            ),
+            "복합",
+        )
+        self.assertEqual(
+            lodging_type_for_building_registry_detail("건물명 기반 일반숙박 분류"),
+            None,
+        )
+
+    def test_matching_active_permit_provenance_is_recovered(self):
+        self.assertEqual(
+            recover_classification_provenance(
+                "에어비앤비",
+                "외국인관광도시민박업",
+                "airbnb_import",
+                None,
+                ["숙박업(생활)", "외국인관광도시민박업"],
+            ),
+            (
+                CLASSIFICATION_SOURCE_ACTIVE_PERMIT,
+                CLASSIFICATION_CONFIDENCE_HIGH,
+            ),
+        )
+
+    def test_official_camping_permit_recovers_active_permit_provenance(self):
+        self.assertEqual(
+            lodging_type_for_hygiene("일반야영장업"),
+            "캠핑",
+        )
+        self.assertEqual(
+            choose_primary_lodging_type(["일반야영장업"]),
+            "캠핑",
+        )
+        self.assertEqual(
+            recover_classification_provenance(
+                "캠핑",
+                None,
+                "camping_import",
+                None,
+                ["일반야영장업"],
+            ),
+            (
+                CLASSIFICATION_SOURCE_ACTIVE_PERMIT,
+                CLASSIFICATION_CONFIDENCE_HIGH,
+            ),
+        )
+
+    def test_conflicting_or_unverifiable_provenance_stays_missing(self):
+        self.assertEqual(
+            recover_classification_provenance(
+                "일반", "숙박업(생활)", "original", "2026-08-30", ["숙박업(생활)"]
+            ),
+            (None, None),
+        )
+        self.assertEqual(
+            recover_classification_provenance(
+                "일반", "건물명 기반 일반숙박 분류", "original", "2026-08-30", []
+            ),
+            (None, None),
+        )
+        self.assertEqual(
+            recover_classification_provenance(
+                "일반", "숙박시설", "original", "2026-08-30", ["숙박업(생활)"]
+            ),
+            (None, None),
+        )
+        self.assertEqual(
+            recover_classification_provenance(
+                "관광",
+                "숙박시설 콘도미니엄",
+                "original",
+                "2026-08-30",
+                [],
+            ),
+            (None, None),
+        )
+
+    def test_recovered_source_does_not_broaden_protected_set(self):
+        self.assertFalse(
+            should_protect_from_active_permit_reclassification(
+                "일반",
+                "생활",
+                "숙박시설",
+                "original",
+                CLASSIFICATION_SOURCE_BUILDING_REGISTRY,
+            )
+        )
+        self.assertTrue(
+            should_protect_from_active_permit_reclassification(
+                "관광",
+                "일반",
+                "숙박시설 콘도미니엄",
+                "original",
+                CLASSIFICATION_SOURCE_BUILDING_REGISTRY,
+            )
+        )
 
 
 if __name__ == "__main__":

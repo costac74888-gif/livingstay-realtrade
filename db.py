@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-30-04"
+SCHEMA_VERSION = "2026-08-30-05"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -558,25 +558,8 @@ def _run_init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_use_detail TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_classification_source TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_classification_confidence TEXT")
-    # 기존 건축물대장 확정 행만 보수적으로 출처를 복원한다. 과거 영업신고 재분류가
-    # verified_at을 찍은 행은 상세값이 신고 업태명이므로 이 조건에서 제외된다.
-    cur.execute("""
-        UPDATE master_buildings
-        SET lodging_classification_source = 'building_registry',
-            lodging_classification_confidence = 'high'
-        WHERE lodging_classification_source IS NULL
-          AND verified_at IS NOT NULL
-          AND lodging_type_detail IS NOT NULL
-          AND lodging_type_detail <> ''
-          AND COALESCE(source, '') <> 'airbnb_import'
-          AND lodging_type_detail <> ALL(%s)
-    """, ([
-        "숙박업(일반)", "일반숙박업", "일반호텔", "여관업", "여인숙업",
-        "숙박업(생활)", "생활숙박업", "생활숙박시설", "관광숙박업",
-        "관광호텔업", "휴양콘도미니엄업", "한국전통호텔업", "가족호텔업",
-        "소형호텔업", "의료관광호텔업", "외국인관광도시민박업",
-        "농어촌민박업", "야영장업", "한옥체험업",
-    ],))
+    # 과거 분류 근거 복원은 활성 신고와의 충돌까지 함께 판정해야 하므로 관리자
+    # 점검 API에서만 수행한다. 스키마 초기화 중에는 출처를 추정해 채우지 않는다.
     # 기존 '호텔'/'콘도'/병기 데이터를 새 체계로 이관 (lodging_type_detail 원문은 보존).
     cur.execute("""
         UPDATE master_buildings

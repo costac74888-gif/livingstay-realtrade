@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 import import_camping_lodging as importer
 
@@ -54,9 +55,12 @@ class CampingImportTests(unittest.TestCase):
         self.assertEqual(parsed["biz_status_name"], "폐업")
 
     def test_real_xlsx_is_read_by_shared_header_parser(self):
-        rows = importer.common.read_rows(
+        fixture = Path(
             "attached_assets/문화_일반야영장업1_1788079511098.xlsx"
         )
+        if not fixture.exists():
+            self.skipTest("선택적 원본 야영장 XLSX가 작업공간에 없음")
+        rows = importer.common.read_rows(str(fixture))
 
         self.assertEqual(len(rows), 4901)
         self.assertEqual(rows[0]["문화체육업종명"], "일반야영장업")

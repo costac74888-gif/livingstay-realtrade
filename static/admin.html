@@ -2762,6 +2762,49 @@
       }
     }
 
+    async function loadLodgingClassificationProvenance() {
+      const box = document.getElementById("lodgingClassificationProvenance");
+      if (!box) return;
+      try {
+        const res = await fetch("/api/admin/lodging-classification-provenance");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.message || "점검 실패");
+        const recovered = d.source_counts || {};
+        const candidates = d.recoverable_counts || {};
+        box.innerHTML =
+          `<div class="geo-stat-row"><b>분류 완료:</b> ${num(d.classified_total)}건</div>` +
+          `<div class="geo-stat-row"><b>출처 없음:</b> ${num(d.missing_source)}건 · <b>신뢰도 없음:</b> ${num(d.missing_confidence)}건</div>` +
+          `<div class="geo-stat-row"><b>기록된 출처:</b> 건축물대장 ${num(recovered.building_registry || 0)}건 · 활성 신고 ${num(recovered.active_permit || 0)}건</div>` +
+          `<div class="geo-stat-row"><b>안전 복원 가능:</b> 건축물대장 ${num(candidates.building_registry || 0)}건 · 활성 신고 ${num(candidates.active_permit || 0)}건</div>`;
+      } catch (e) {
+        box.textContent = "분류 근거 현황을 불러오지 못했습니다: " + e.message;
+      }
+    }
+
+    async function restoreLodgingClassificationProvenance() {
+      const btn = document.getElementById("lodgingClassificationRestoreBtn");
+      const msg = document.getElementById("lodgingClassificationRestoreMsg");
+      if (!btn || !msg) return;
+      if (!confirm("검증 가능한 건축물대장·현재 활성 신고 원본이 있는 분류만 출처와 신뢰도를 복원할까요? 분류값 자체는 바뀌지 않습니다.")) return;
+      btn.disabled = true;
+      msg.textContent = "복원 중…";
+      try {
+        const res = await fetch("/api/admin/lodging-classification-provenance", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.message || "복원 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = d.message;
+        await loadLodgingClassificationProvenance();
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = e.message || "복원 실패";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     // ---- 과거 구간 재수집 ----
     function renderBrhubRescanStatus(d) {
       const box = document.getElementById("brhubRescanStatus");
@@ -3682,6 +3725,21 @@
             <button id="reclassifyRunBtn" class="admin-btn admin-btn-primary">미분류 재분류 실행</button>
           </div>
         </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecClassificationProvenance">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑫ 법정분류 근거 점검</h2>
+          </div>
+          <p class="legal-admin-hint">
+            분류값은 그대로 두고, 건축물대장 재검증 원문 또는 현재 <b>영업/정상</b> 신고와
+            저장 분류가 정확히 일치하는 경우만 출처·신뢰도를 복원합니다.
+            충돌하거나 추정만 가능한 분류는 출처 없음으로 남겨 수동 점검 대상에 포함합니다.
+          </p>
+          <div id="lodgingClassificationProvenance" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="lodgingClassificationRestoreMsg" class="legal-msg" role="alert"></span>
+            <button id="lodgingClassificationRestoreBtn" class="admin-btn admin-btn-primary">검증 가능한 근거 복원</button>
+          </div>
+        </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecStores">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">⑫ 상가정보 사전수집</h2>
@@ -3749,10 +3807,12 @@
       document.getElementById("permitsCleanupExecBtn").addEventListener("click", () => runPermitsCleanup(false));
       document.getElementById("realtySyncRunBtn").addEventListener("click", runRealtySync);
       document.getElementById("reclassifyRunBtn").addEventListener("click", runReclassify);
+      document.getElementById("lodgingClassificationRestoreBtn").addEventListener("click", restoreLodgingClassificationProvenance);
       document.getElementById("storesSyncRunBtn").addEventListener("click", runStoresSync);
       loadStoresSyncStatus();
       loadRealtySyncStatus();
       loadReclassifyStatus();
+      loadLodgingClassificationProvenance();
       loadPermitsSyncStatus();
       loadPendingCompletion();
       loadDataSyncBanner();

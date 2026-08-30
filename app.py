@@ -44,12 +44,17 @@ import addr_norm
 from lodging_categories import GENERAL_LODGING_HYGIENE_TYPES
 from lodging_classification import (
     ACTIVE_STATUS as LEGAL_LODGING_ACTIVE_STATUS,
+    CLASSIFICATION_CONFIDENCE_HIGH,
+    CLASSIFICATION_SOURCE_ACTIVE_PERMIT,
+    CLASSIFICATION_SOURCE_BUILDING_REGISTRY,
     GENERAL_LODGING_SUBTYPE_ORDER,
     HYGIENE_TYPE_TO_LODGING_TYPE,
     choose_primary_lodging_type,
     is_active_status,
     iter_chunks,
     lodging_type_for_hygiene,
+    recover_classification_provenance,
+    should_protect_from_active_permit_reclassification,
 )
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
@@ -18800,28 +18805,17 @@ def admin_reclassify_by_hygiene():
 
         candidates = []
         protected = 0
-        specific_types = {"에어비앤비", "농어촌민박", "캠핑", "한옥", "관광"}
         for row in cur.fetchall():
             target_type = choose_primary_lodging_type(row["hygiene_types"])
             current_type = row["lodging_type"]
             if not target_type or current_type == target_type:
                 continue
-            if row["lodging_classification_source"] == "building_registry":
-                protected += 1
-                continue
-            if row["source"] == "airbnb_import" and current_type == "에어비앤비":
-                protected += 1
-                continue
-            if (
-                current_type in specific_types
-                and target_type in {"일반", "생활"}
-            ):
-                protected += 1
-                continue
-            if (
-                current_type == "생활"
-                and "생활숙박시설" in (row["lodging_type_detail"] or "")
-                and target_type != "생활"
+            if should_protect_from_active_permit_reclassification(
+                current_type,
+                target_type,
+                row["lodging_type_detail"],
+                row["source"],
+                row["lodging_classification_source"],
             ):
                 protected += 1
                 continue
@@ -18891,6 +18885,156 @@ def admin_reclassify_by_hygiene():
             f"법정 영업분류 적용 완료: {total_updated}건 업데이트"
             if apply_changes
             else f"드라이런 완료: 후보 {len(candidates)}건, 보호 {protected}건"
+        ),
+    })
+
+
+def _load_lodging_classification_provenance(cur):
+    cur.execute("""
+        SELECT mb.id, mb.lodging_type, mb.lodging_type_detail, mb.source,
+               mb.verified_at, mb.lodging_classification_source,
+               mb.lodging_classification_confidence,
+               COALESCE(
+                   ARRAY_AGG(DISTINCT lr.hygiene_type ORDER BY lr.hygiene_type)
+                       FILTER (
+                           WHERE lr.biz_status_name = %s
+                       ),
+                   ARRAY[]::TEXT[]
+               ) AS active_hygiene_types
+        FROM master_buildings mb
+        LEFT JOIN lodging_registry lr
+          ON lr.applied_building_id = mb.id
+        WHERE NULLIF(BTRIM(mb.lodging_type), '') IS NOT NULL
+        GROUP BY mb.id
+        ORDER BY mb.id
+    """, [_LODGING_ACTIVE_STATUS])
+    rows = cur.fetchall()
+    recoverable = []
+    source_counts = {}
+    missing_source = 0
+    missing_confidence = 0
+    for row in rows:
+        source = (row["lodging_classification_source"] or "").strip()
+        confidence = (row["lodging_classification_confidence"] or "").strip()
+        source_counts[source or "missing"] = source_counts.get(source or "missing", 0) + 1
+        if not source:
+            missing_source += 1
+        if not confidence:
+            missing_confidence += 1
+        if source and confidence:
+            continue
+        recovered_source, recovered_confidence = recover_classification_provenance(
+            row["lodging_type"],
+            row["lodging_type_detail"],
+            row["source"],
+            row["verified_at"],
+            row["active_hygiene_types"],
+        )
+        if recovered_source:
+            recoverable.append((
+                recovered_source,
+                recovered_confidence,
+                row["id"],
+                source or None,
+                confidence or None,
+                row["lodging_type"],
+                row["lodging_type_detail"],
+                row["source"],
+                row["verified_at"],
+                row["active_hygiene_types"],
+            ))
+    recoverable_counts = {}
+    for source, _confidence, *_rest in recoverable:
+        recoverable_counts[source] = recoverable_counts.get(source, 0) + 1
+    return {
+        "classified_total": len(rows),
+        "missing_source": missing_source,
+        "missing_confidence": missing_confidence,
+        "source_counts": source_counts,
+        "recoverable_counts": recoverable_counts,
+        "recoverable": recoverable,
+    }
+
+
+@app.route("/api/admin/lodging-classification-provenance", methods=["GET", "POST"])
+@require_admin
+@limiter.limit("4 per hour")
+def admin_lodging_classification_provenance():
+    """법정분류 출처 누락을 점검하고 검증 가능한 원본만 보수적으로 복원한다."""
+    apply_changes = request.method == "POST"
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if apply_changes:
+            # 후보 계산부터 반영 완료까지 신고의 상태·업태·연결이 바뀌지 않게 한다.
+            # 일반 수집/연결은 RowExclusiveLock을 사용하므로 이 짧은 관리자 작업과
+            # 직렬화되고, 오래된 신고 스냅샷을 active_permit 근거로 기록하지 않는다.
+            cur.execute("LOCK TABLE lodging_registry IN SHARE MODE")
+        audit = _load_lodging_classification_provenance(cur)
+        updated = 0
+        if apply_changes and audit["recoverable"]:
+            for update_chunk in iter_chunks(audit["recoverable"], 1000):
+                execute_values(cur, """
+                    UPDATE master_buildings AS mb
+                    SET lodging_classification_source = changes.new_source,
+                        lodging_classification_confidence = changes.new_confidence
+                    FROM (VALUES %s) AS changes(
+                        new_source, new_confidence, building_id,
+                        old_source, old_confidence, old_lodging_type,
+                        old_lodging_type_detail, old_record_source,
+                        old_verified_at, old_active_hygiene_types
+                    )
+                    WHERE mb.id = changes.building_id
+                      AND NULLIF(BTRIM(mb.lodging_classification_source), '')
+                          IS NOT DISTINCT FROM changes.old_source
+                      AND NULLIF(BTRIM(mb.lodging_classification_confidence), '')
+                          IS NOT DISTINCT FROM changes.old_confidence
+                      AND mb.lodging_type
+                          IS NOT DISTINCT FROM changes.old_lodging_type
+                      AND mb.lodging_type_detail
+                          IS NOT DISTINCT FROM changes.old_lodging_type_detail
+                      AND mb.source
+                          IS NOT DISTINCT FROM changes.old_record_source
+                      AND mb.verified_at
+                          IS NOT DISTINCT FROM changes.old_verified_at
+                      AND COALESCE((
+                          SELECT ARRAY_AGG(
+                              DISTINCT lr.hygiene_type ORDER BY lr.hygiene_type
+                          )
+                          FROM lodging_registry lr
+                          WHERE lr.applied_building_id = mb.id
+                            AND lr.biz_status_name = '영업/정상'
+                      ), ARRAY[]::TEXT[])
+                          IS NOT DISTINCT FROM changes.old_active_hygiene_types
+                """, update_chunk, page_size=len(update_chunk))
+                updated += cur.rowcount
+            if updated != len(audit["recoverable"]):
+                raise RuntimeError(
+                    f"복원 후보 {len(audit['recoverable'])}건과 실제 반영 {updated}건이 달라 롤백합니다."
+                )
+            conn.commit()
+            audit = _load_lodging_classification_provenance(cur)
+        else:
+            conn.rollback()
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "message": str(exc)}), 500
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "classified_total": audit["classified_total"],
+        "missing_source": audit["missing_source"],
+        "missing_confidence": audit["missing_confidence"],
+        "source_counts": audit["source_counts"],
+        "recoverable_counts": audit["recoverable_counts"],
+        "recoverable_total": len(audit["recoverable"]),
+        "message": (
+            f"검증 가능한 분류 근거 {updated}건을 복원했습니다."
+            if apply_changes
+            else f"출처 없는 분류 {audit['missing_source']}건을 확인했습니다."
         ),
     })
 
