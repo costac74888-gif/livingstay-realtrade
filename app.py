@@ -2915,7 +2915,7 @@ def get_building_count():
                 CASE
                     WHEN building_status IN ('허가','착공')
                          AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
-                    WHEN lodging_type = '생활'                               THEN '생활'
+                    WHEN lodging_type IN ('생활', '생숙')                    THEN '생활'
                     WHEN lodging_type = '관광'                               THEN '관광'
                     WHEN lodging_type = '일반'                               THEN '일반'
                     WHEN lodging_type = '에어비앤비'                         THEN '에어비앤비'
@@ -16260,6 +16260,7 @@ def _lodging_count_summary_payload():
                             '생활', '관광', '일반', '에어비앤비',
                             '농어촌민박', '캠핑', '한옥'
                         ) THEN lodging_type
+                        WHEN lodging_type = '생숙' THEN '생활'
                         WHEN lodging_type = '복합' OR lodging_type LIKE '%%·%%' THEN '복합'
                         WHEN COALESCE(lodging_type, '') = '' THEN '미분류'
                         ELSE NULL
@@ -16518,6 +16519,8 @@ def _lodging_full_stats_payload():
             "생활", "관광", "일반", "에어비앤비", "농어촌민박", "캠핑", "한옥",
         ):
             return building["lodging_type"]
+        if building.get("lodging_type") == "생숙":
+            return "생활"
         if (
             building.get("lodging_type") == "복합"
             or "·" in (building.get("lodging_type") or "")
@@ -18699,9 +18702,15 @@ def admin_reclassify_lodging_keywords():
             SELECT COUNT(*) AS count
             FROM master_buildings
             WHERE lodging_type = '기타'
+        """)
+        candidate_total = int((cur.fetchone() or {}).get("count") or 0)
+        cur.execute("""
+            SELECT COUNT(*) AS count
+            FROM master_buildings
+            WHERE lodging_type = '기타'
               AND building_name LIKE ANY(%s)
         """, [keyword_patterns])
-        candidate_total = int((cur.fetchone() or {}).get("count") or 0)
+        matched_total = int((cur.fetchone() or {}).get("count") or 0)
         for lodging_type, keywords in keyword_map.items():
             for keyword in keywords:
                 cur.execute("""
@@ -18722,8 +18731,12 @@ def admin_reclassify_lodging_keywords():
         "ok": True,
         "updated": updated,
         "candidate_total": candidate_total,
+        "matched_total": matched_total,
         "progress_percent": 100,
-        "message": f"키워드 재분류 완료: {updated}건을 '기타' → 적정 용도로 변경했습니다.",
+        "message": (
+            f"키워드 재분류 완료: 전체 '기타' {candidate_total}건 중 "
+            f"키워드 일치 {matched_total}건, {updated}건을 적정 용도로 변경했습니다."
+        ),
     })
 
 
@@ -18747,7 +18760,7 @@ def admin_reclassify_by_hygiene():
         "가족호텔업":           "관광",
         "소형호텔업":           "관광",
         "의료관광호텔업":       "관광",
-        "생활숙박시설":         "생숙",
+        "생활숙박시설":         "생활",
         "일반숙박업":           "일반",
     }
     conn = get_conn()

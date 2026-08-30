@@ -361,6 +361,47 @@ class AppMutationInvalidationTests(unittest.TestCase):
             "tx_count": 777,
         })
 
+    def test_cold_stats_summary_groups_sinhuk_alias_as_living(self):
+        def responder(sql, _params):
+            self.assertIn("WHEN lodging_type = '생숙' THEN '생활'", sql)
+            return [{"map_type": "생활", "building_count": 623, "units": 1000}]
+
+        with patch.object(
+            app_module,
+            "get_conn",
+            return_value=FakeConnection(FakeCursor(responder)),
+        ):
+            payload = app_module._lodging_count_summary_payload()
+
+        self.assertEqual(payload["building_count_by_type"]["생활"], 623)
+        self.assertEqual(payload["building_count_by_type"].get("미분류"), None)
+
+    def test_keyword_reclassification_reports_all_other_buildings_as_candidates(self):
+        count_calls = 0
+
+        def responder(sql, _params):
+            nonlocal count_calls
+            if sql.startswith("SELECT COUNT(*) AS count"):
+                count_calls += 1
+                return {"count": 5534 if count_calls == 1 else 0}
+            if sql.startswith("UPDATE master_buildings"):
+                return ("rowcount", 0)
+            return None
+
+        with patch.object(
+            app_module,
+            "get_conn",
+            return_value=FakeConnection(FakeCursor(responder)),
+        ):
+            response = self.client.post("/api/admin/reclassify-lodging-keywords")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["candidate_total"], 5534)
+        self.assertEqual(payload["matched_total"], 0)
+        self.assertEqual(payload["updated"], 0)
+        self.assertEqual(payload["progress_percent"], 100)
+
     def test_admin_full_stats_marks_refresh_when_total_differs_by_fifty(self):
         refresh_signal = Mock()
         with (
