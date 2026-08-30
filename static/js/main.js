@@ -1209,7 +1209,7 @@ function _buildCircleBadgeEl(b){
   });
   return badge;
 }
-const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
+const LABEL_MAX_LEVEL = 5;            // 이 확대 레벨 이하(더 가까이)일 때만 라벨 표시
 // 클러스터 배지 줌 레벨 임계값 — Kakao Maps 레벨: 숫자 클수록 더 넓은 시야
 // level ≥ CLUSTER_SIDO_MIN_LEVEL → 시도 집계 배지
 // level CLUSTER_SGG_MIN_LEVEL ~ CLUSTER_SIDO_MIN_LEVEL-1 → 시군구 집계 배지
@@ -1217,7 +1217,7 @@ const LABEL_MAX_LEVEL = 6;            // 이 확대 레벨 이하(더 가까이)
 // level ≤ LABEL_MAX_LEVEL → 기존 개별 마커
 const CLUSTER_SIDO_MIN_LEVEL = 10;
 const CLUSTER_SGG_MIN_LEVEL  = 8;
-const CLUSTER_UMD_MIN_LEVEL  = 7;
+const CLUSTER_UMD_MIN_LEVEL  = 6;
 
 // sido 레벨 배지 좌표 — 도청(시청)소재지 기준.
 // xAnchor:0 렌더링과 함께 사용 → 배지 왼쪽 끝이 해당 좌표에 고정되어
@@ -2299,8 +2299,8 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     { key: "미분류", color: LODGING_COLORS["미분류"] },
   ];
 
-  // 클릭 시 드릴다운: 시도→시군구 레벨(9), 시군구→개별마커 레벨(6)
-  const drillLevel = clusterLevel === "sido" ? 9 : 6;
+  // 클릭 시 드릴다운: 시도→시군구(9), 시군구→읍면동(7), 읍면동→개별마커(5)
+  const drillLevel = clusterLevel === "sido" ? 9 : (clusterLevel === "sgg" ? 7 : 5);
 
   items.forEach(item => {
     if (item.lat == null || item.lng == null) return;
