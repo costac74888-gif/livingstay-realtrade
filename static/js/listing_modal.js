@@ -201,6 +201,11 @@
         '</form><div id="lrDone" style="display:none;text-align:center;padding:46px 20px;color:var(--ink);"><div style="font-size:18px;font-weight:800;">' + (isEdit ? "변경 내용을 저장했습니다" : "매물의뢰가 접수됐습니다") + '</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">' + (isEdit ? "최신 정보로 매물이 업데이트됩니다." : "등록 후에도 마이페이지에서 수정할 수 있습니다.") + '</div></div>' +
       '</div>';
     document.body.appendChild(overlay);
+    var urgentSection = overlay.querySelector("#lrUrgentSection");
+    var listingInfoSection = overlay.querySelector("#lrPriceSale").parentElement;
+    if (urgentSection && listingInfoSection && listingInfoSection.parentElement) {
+      listingInfoSection.parentElement.insertBefore(urgentSection, listingInfoSection);
+    }
 
     var $ = function (selector) { return overlay.querySelector(selector); };
     var form = $("#lrForm"), message = $("#lrMessage"), submit = $("#lrSubmit");
@@ -405,7 +410,15 @@
     }
     function updateUrgentVisibility() {
       var eligible = dealMode === "direct" && isWholeListing() && dealType === "매매";
-      $("#lrUrgentSection").style.display = eligible ? "block" : "none";
+      var section = $("#lrUrgentSection");
+      var checkbox = $("#lrUrgentSale");
+      section.style.display = "block";
+      section.style.opacity = eligible ? "1" : "0.68";
+      checkbox.disabled = !eligible;
+      section.setAttribute("aria-disabled", eligible ? "false" : "true");
+      $("#lrUrgentHelp").textContent = eligible
+        ? "체크하면 전체공개 후 직거래 매물목록에 급매로 표시됩니다. 체크하지 않아도 최신 실거래가보다 낮으면 자동으로 급매 표시됩니다."
+        : "급매 체크는 직거래 · 건물전체 · 매매를 선택하면 활성화됩니다.";
     }
     function updateTransactionTarget() {
       var whole = isWholeListing();
@@ -1398,6 +1411,9 @@
           : "") +
         '</div>'
       : '<div style="height:220px;background:var(--brass-tint,#FFF5E0);display:flex;align-items:center;justify-content:center;font-size:56px;">🏠</div>';
+    var urgentBadge = listing.urgent_tier === "urgent"
+      ? '<span title="' + (listing.is_urgent ? "판매자가 급매로 등록한 매물" : "최신 실거래가보다 낮은 매물") + '" style="display:inline-block;margin-left:5px;padding:2px 7px;border-radius:4px;background:#C85A36;color:#fff;font-size:10px;font-weight:800;">🔥 급매</span>'
+      : "";
 
     overlay.innerHTML =
       '<div role="dialog" aria-modal="true" aria-label="직거래 매물 상세" tabindex="-1" style="width:min(100%,420px);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 36px rgba(0,0,0,.25);">' +
@@ -1410,6 +1426,7 @@
             '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:' + (lodgingColors[lodging] || lodgingColors["미분류"]) + ';color:#fff;font-size:10px;">' + esc(lodging) + '</span>' +
             (isWhole ? '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;">건물전체</span>' : "") +
             '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:' + (dealColors[listing.deal_type] || "#7B8794") + ';color:#fff;font-size:10px;">' + esc(listing.deal_type || "-") + '</span>' +
+             urgentBadge +
             (areaText ? ' · ' + esc(areaText) : "") +
           '</div>' +
           '<div style="font-size:20px;font-weight:800;color:var(--ink);margin-bottom:7px;">' + esc(priceText) + '</div>' +
