@@ -2453,17 +2453,44 @@
         return;
       }
 
+      // 진행률 계산
+      const processed = (d.registered || 0) + (d.skipped || 0) + (d.failed || 0);
+      const total     = d.total || 0;
+      const pct       = total > 0 ? Math.min(100, Math.round(processed / total * 100)) : 0;
+      const running   = d.state === "running";
+
+      // 진행률 바 HTML
+      const progressBar = (running || d.state === "done") && total > 0
+        ? `<div style="margin:6px 0 4px;">
+             <div style="display:flex;align-items:center;gap:8px;">
+               <div style="flex:1;background:#eee;border-radius:4px;height:8px;overflow:hidden;">
+                 <div style="width:${pct}%;background:${d.state==='done'?'#639922':'var(--brass,#B4863F)'};
+                              height:100%;border-radius:4px;transition:width 0.4s;"></div>
+               </div>
+               <span style="font-size:12px;font-weight:700;color:${d.state==='done'?'#639922':'var(--brass-dark,#7D4A00)'};">
+                 ${pct}%
+               </span>
+             </div>
+             <div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">
+               ${num(processed)} / ${num(total)}건 처리
+               ${d.state==='done' ? ' · <b style="color:#639922;">완료</b>' : ''}
+             </div>
+           </div>`
+        : "";
+
       const rows = [];
       if (d.started_at) rows.push(`마지막 실행: ${toKST(d.started_at)}`);
-      if (d.total != null) rows.push(`대상: ${num(d.total)}건`);
       if (d.registered != null) rows.push(`신규등록: ${num(d.registered)}건`);
-      if (d.skipped != null) rows.push(`기존매핑: ${num(d.skipped)}건`);
-      if (d.failed != null) rows.push(`실패: ${num(d.failed)}건`);
+      if (d.skipped    != null) rows.push(`기존매핑: ${num(d.skipped)}건`);
+      if (d.failed     != null) rows.push(`실패: ${num(d.failed)}건`);
       if (d.finished_at) rows.push(`완료: ${toKST(d.finished_at)}`);
       if (d.error) rows.push(`오류: ${d.error}`);
-      statusDiv.textContent = rows.join(" · ");
 
-      const running = d.state === "running";
+      statusDiv.innerHTML = progressBar
+        + `<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">`
+        + rows.join(" · ")
+        + `</div>`;
+
       btn.textContent = running ? "실행 중…" : "보완수집 실행";
       btn.disabled = running;
       if (running && !backfillLodgingTimer) {
@@ -3248,7 +3275,10 @@
             실거래가 없어 누락된 건물을 <b>영업신고(숙박업 허가) 데이터</b> 기반으로 발굴해
             master_buildings에 등록합니다. 이미 등록된 건물은 자동으로 건너뜁니다.<br>
             <b>전국 약 27,000건</b> 대상 · 일일 건축HUB 한도 도달 시 다음날 이어서 실행.
-            건축HUB 판정 실패 시 건물명 키워드(여관·여인숙·모텔 등)로 자동 분류합니다.
+            건축HUB 판정 실패 시 건물명 키워드·영업신고 업종 기준으로 10개 용도로 자동 분류합니다.<br>
+            <span style="font-size:11px;color:var(--ink-soft);">
+              생숙 / 관광 / 일반 / 에어비앤비 / 농어촌민박 / 캠핑 / 한옥 / 복합 / 준공전 / 미분류
+            </span>
           </p>
           <div id="backfillLodgingStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">
@@ -3259,8 +3289,15 @@
           </div>
           <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
             <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">
-              기존에 등록된 건물 중 lodging_type이 '기타'인 것을
-              건물명 키워드(여관·여인숙·모텔 → 일반, 레지던스·스테이 → 생숙 등)로 재분류합니다.
+              lodging_type이 '기타'인 건물을 아래 기준으로 10개 용도로 재분류합니다.<br>
+              <span style="font-size:11px;color:var(--ink-soft);">
+                생숙: 레지던스·스테이·서비스드 &nbsp;|&nbsp;
+                관광: 관광호텔·리조트·콘도 &nbsp;|&nbsp;
+                일반: 여관·여인숙·모텔·펜션·게스트하우스<br>
+                농어촌민박: 농어촌민박·농가민박 &nbsp;|&nbsp;
+                캠핑: 캠핑·야영·글램핑·카라반·차박 &nbsp;|&nbsp;
+                한옥: 한옥·한옥스테이
+              </span>
             </div>
             <button id="reclassifyKeywordBtn" class="admin-btn" style="margin-top:4px;">
               기타 → 키워드 재분류 실행
