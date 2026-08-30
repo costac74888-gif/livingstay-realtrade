@@ -1,0 +1,12 @@
+[
+  {
+    "building_id": 12736,
+    "building_name": "강현면용호리 135-1",
+    "current_type": "생활",
+    "target_type": "농어촌민박",
+    "active_hygiene_types": [
+      "농어촌민박업"
+    ],
+    "reason": "protected_classification"
+  }
+]
