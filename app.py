@@ -18713,6 +18713,65 @@ def admin_reclassify_lodging_keywords():
     })
 
 
+@app.route("/api/admin/reclassify-by-hygiene", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_reclassify_by_hygiene():
+    """
+    lodging_registry.hygiene_type 기준으로
+    이미 매핑된 master_buildings.lodging_type을 소급 업데이트한다.
+    에어비앤비·농어촌민박·캠핑·한옥 0건 문제 해결용.
+    """
+    hygiene_map = {
+        "외국인관광도시민박업": "에어비앤비",
+        "농어촌민박업":         "농어촌민박",
+        "야영장업":             "캠핑",
+        "한옥체험업":           "한옥",
+        "관광숙박업":           "관광",
+        "관광호텔업":           "관광",
+        "휴양콘도미니엄업":     "관광",
+        "가족호텔업":           "관광",
+        "소형호텔업":           "관광",
+        "의료관광호텔업":       "관광",
+        "생활숙박시설":         "생숙",
+        "일반숙박업":           "일반",
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    total_updated = 0
+    results = {}
+    try:
+        for hygiene_type, new_lodging_type in hygiene_map.items():
+            cur.execute("""
+                UPDATE master_buildings mb
+                SET    lodging_type = %s,
+                       verified_at  = NOW()
+                FROM   lodging_registry lr
+                WHERE  lr.applied_building_id = mb.id
+                  AND  lr.hygiene_type        = %s
+                  AND  mb.lodging_type IS DISTINCT FROM %s
+            """, [new_lodging_type, hygiene_type, new_lodging_type])
+            cnt = cur.rowcount
+            if cnt > 0:
+                results[hygiene_type] = cnt
+                total_updated += cnt
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"ok": False, "message": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+    if total_updated:
+        _mark_master_stats_invalidated_safely("reclassify_by_hygiene")
+    return jsonify({
+        "ok": True,
+        "total_updated": total_updated,
+        "detail": results,
+        "message": f"영업신고 업종 기준 소급 재분류 완료: {total_updated}건 업데이트",
+    })
+
+
 @app.route("/api/admin/brhub-rescan-run", methods=["POST"])
 @require_admin
 @limiter.limit("2 per hour")

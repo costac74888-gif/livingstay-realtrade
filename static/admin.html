@@ -423,6 +423,10 @@
             { value: "생활", label: "생활" },
             { value: "관광", label: "관광" },
             { value: "일반", label: "일반" },
+            { value: "에어비앤비", label: "에어비앤비" },
+            { value: "농어촌민박", label: "농어촌민박" },
+            { value: "캠핑", label: "캠핑" },
+            { value: "한옥", label: "한옥" },
             { value: "복합", label: "복합" },
             { value: "준공전", label: "준공전" },
             { value: "미분류", label: "미분류" },
@@ -460,7 +464,8 @@
                 `</div>`;
             } },
           { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select",
-            options: ["생활", "관광", "일반", "복합", "준공전", "미분류"] },
+            options: ["생활", "관광", "일반", "에어비앤비", "농어촌민박",
+                      "캠핑", "한옥", "복합", "준공전", "미분류"] },
           { key: "units", label: "총호실수", sortable: true, editable: true, type: "number" },
           { key: "favorite_count", label: "관심저장", sortable: true,
             render: (v, row) => v > 0
@@ -2577,6 +2582,30 @@
       }
     }
 
+    async function runReclassifyByHygiene() {
+      const btn = document.getElementById("reclassifyHygieneBtn");
+      const msg = document.getElementById("reclassifyHygieneMsg");
+      btn.disabled = true;
+      btn.textContent = "처리 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/reclassify-by-hygiene", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
+        msg.textContent = d.message || (res.ok ? "" : "요청 실패");
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "요청 실패";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "영업신고 기준 소급 재분류";
+      }
+    }
+
     // ---- 과거 구간 재수집 ----
     function renderBrhubRescanStatus(d) {
       const box = document.getElementById("brhubRescanStatus");
@@ -3304,6 +3333,18 @@
             </button>
             <span id="reclassifyKeywordMsg" class="legal-msg" style="margin-left:10px;"></span>
           </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">
+            <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">
+              영업신고 업종(hygiene_type) 기준으로 이미 매핑된 건물의 용도를 소급 업데이트합니다.
+              에어비앤비·농어촌민박·캠핑·한옥 등이 0건일 때 실행하세요.
+            </div>
+            <button id="reclassifyHygieneBtn" class="admin-btn"
+                    style="margin-top:4px;">
+              영업신고 기준 소급 재분류
+            </button>
+            <span id="reclassifyHygieneMsg" class="legal-msg"
+                  style="margin-left:10px;"></span>
+          </div>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecGeo">
           <div class="legal-admin-head">
@@ -3535,6 +3576,7 @@
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
       document.getElementById("reclassifyKeywordBtn").addEventListener("click", runReclassifyLodgingKeywords);
+      document.getElementById("reclassifyHygieneBtn").addEventListener("click", runReclassifyByHygiene);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
       document.getElementById("titleInfoRunBtn").addEventListener("click", runTitleInfoBackfill);
       document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
