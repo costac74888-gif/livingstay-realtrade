@@ -14778,7 +14778,8 @@ def admin_datasync_overview():
         c = cur.fetchone()
         cur.execute("SELECT key, updated_at FROM app_meta WHERE key = ANY(%s)",
                     (["brhub_sync_status", "tx_sync_status",
-                      "broker_sync_status", "lodging_sync_status"],))
+                      "broker_sync_status", "lodging_sync_status",
+                      "rural_hanok_sync_status"],))
         metas = {r["key"]: r["updated_at"] for r in cur.fetchall()}
     finally:
         cur.close()
@@ -14789,6 +14790,7 @@ def admin_datasync_overview():
         ("tx_sync_status", "실거래 동기화"),
         ("broker_sync_status", "중개업소 동기화"),
         ("lodging_sync_status", "숙박업 동기화"),
+        ("rural_hanok_sync_status", "농어촌민박·한옥 자동 동기화"),
     ]
     stale_syncs = []
     for key, label in labels:
@@ -18344,6 +18346,8 @@ def admin_broker_candidates_export():
 # 일일 쿼터 10,000건 — sync_lodgings.py가 소프트 캡 8,000에서 멈추고 체크포인트로 이어서 수집.
 # 후보 리스트는 '생성'만 하며 자동 이메일·SMS 발송은 하지 않는다.
 _LODGING_SYNC_META_KEY = "lodging_sync_status"
+_RURAL_HANOK_SYNC_META_KEY = "rural_hanok_sync_status"
+_RURAL_HANOK_LAST_SYNC_META_KEY = "rural_hanok_last_sync"
 _LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
 _CAMPING_DAILY_CAP = 800  # sync_lodgings.CAMPING_MAX_DAILY_CALLS 와 동일 값 유지
 
@@ -18452,6 +18456,10 @@ def admin_lodging_sync_status():
         camping_prog_row = cur.fetchone()
         cur.execute("SELECT value FROM app_meta WHERE key = 'camping_last_sync'")
         camping_last_row = cur.fetchone()
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_RURAL_HANOK_SYNC_META_KEY,))
+        rural_hanok_meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", (_RURAL_HANOK_LAST_SYNC_META_KEY,))
+        rural_hanok_last_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
@@ -18476,6 +18484,7 @@ def admin_lodging_sync_status():
 
     progress = last_sync = status = None
     camping_progress = camping_last_sync = None
+    rural_hanok_status = rural_hanok_last_sync = None
     try:
         progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
     except (TypeError, ValueError):
@@ -18502,6 +18511,20 @@ def admin_lodging_sync_status():
         )
     except (TypeError, ValueError):
         pass
+    try:
+        rural_hanok_status = (
+            json.loads(rural_hanok_meta["value"])
+            if rural_hanok_meta and rural_hanok_meta["value"] else None
+        )
+    except (TypeError, ValueError):
+        pass
+    try:
+        rural_hanok_last_sync = (
+            json.loads(rural_hanok_last_row["value"])
+            if rural_hanok_last_row and rural_hanok_last_row["value"] else None
+        )
+    except (TypeError, ValueError):
+        pass
 
     running = bool(status and status.get("state") == "running")
     stale = False
@@ -18509,6 +18532,14 @@ def admin_lodging_sync_status():
         age = (datetime.now() - meta["updated_at"]).total_seconds()
         if age > _SYNC_STALE_MIN * 60:
             running, stale = False, True
+    rural_hanok_running = bool(
+        rural_hanok_status and rural_hanok_status.get("state") == "running"
+    )
+    rural_hanok_stale = False
+    if rural_hanok_running and rural_hanok_meta and rural_hanok_meta["updated_at"]:
+        rural_age = (datetime.now() - rural_hanok_meta["updated_at"]).total_seconds()
+        if rural_age > 120 * 60:
+            rural_hanok_running, rural_hanok_stale = False, True
 
     return jsonify({
         "ok": True,
@@ -18543,6 +18574,42 @@ def admin_lodging_sync_status():
                     ),
                 )
                 if camping_last_sync else None
+            ),
+        },
+        "rural_hanok": {
+            "running": rural_hanok_running,
+            "state": ("stale" if rural_hanok_stale else (
+                rural_hanok_status.get("state") if rural_hanok_status else None
+            )),
+            "started_at": _kst_label(
+                rural_hanok_status.get("started_at") if rural_hanok_status else None
+            ),
+            "finished_at": _kst_label(
+                rural_hanok_status.get("finished_at") if rural_hanok_status else None
+            ),
+            "sources": (
+                rural_hanok_status.get("sources") if rural_hanok_status else None
+            ),
+            "counters": (
+                rural_hanok_status.get("counters") if rural_hanok_status else None
+            ),
+            "error": (
+                (rural_hanok_status.get("error") if rural_hanok_status else None)
+                or (
+                    "이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). "
+                    "다시 실행할 수 있습니다."
+                    if rural_hanok_stale else None
+                )
+            ),
+            "retryable": bool(
+                rural_hanok_status and rural_hanok_status.get("retryable")
+            ),
+            "last_sync": (
+                dict(
+                    rural_hanok_last_sync,
+                    finished_at=_kst_label(rural_hanok_last_sync.get("finished_at")),
+                )
+                if rural_hanok_last_sync else None
             ),
         },
     })

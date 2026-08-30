@@ -4,8 +4,12 @@
 import argparse
 import json
 import os
+import secrets
+import threading
 import time
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import requests
 
@@ -17,7 +21,7 @@ from lodging_classification import (
     classify_building_use,
     should_protect_from_active_permit_reclassification,
 )
-from stats_cache import mark_master_stats_invalidated
+from stats_cache import mark_master_stats_invalidated_in_transaction
 
 
 SERVICE_KEY_ENV = "LODGING_SERVICE_KEY"
@@ -25,6 +29,9 @@ API_ROOT = "https://apis.data.go.kr/1741000"
 PAGE_SIZE = 1000
 REPORT_PATH = Path("reports/rural_hanok_classification_conflicts.json")
 LODGING_SYNC_LOCK_ID = 918273
+STATUS_META_KEY = "rural_hanok_sync_status"
+LAST_SYNC_META_KEY = "rural_hanok_last_sync"
+HEARTBEAT_SEC = 30
 
 SOURCES = {
     "rural": {
@@ -291,7 +298,192 @@ def _write_conflict_report(conflicts, affected_buildings):
     )
 
 
-def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
+def _read_status(status_key):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT value FROM app_meta WHERE key=%s", (status_key,))
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row or not row["value"]:
+        return None
+    try:
+        return json.loads(row["value"])
+    except (TypeError, ValueError):
+        return None
+
+
+def _claim_status(status_key, run_id, started_at):
+    payload = {
+        "run_id": run_id,
+        "state": "running",
+        "started_at": started_at,
+        "finished_at": None,
+        "sources": list(SOURCES),
+        "counters": None,
+        "error": None,
+        "retryable": False,
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    lock_acquired = False
+    try:
+        cur.execute(
+            "SELECT pg_try_advisory_lock(%s) AS acquired",
+            (LODGING_SYNC_LOCK_ID,),
+        )
+        lock_acquired = bool(cur.fetchone()["acquired"])
+        if not lock_acquired:
+            conn.rollback()
+            return False
+        cur.execute(
+            """
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE
+              SET value = EXCLUDED.value, updated_at = NOW()
+            WHERE (app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+               OR app_meta.updated_at < NOW() - INTERVAL '2 hours'
+            """,
+            (status_key, json.dumps(payload, ensure_ascii=False)),
+        )
+        acquired = cur.rowcount > 0
+        conn.commit()
+        return acquired
+    finally:
+        if lock_acquired:
+            try:
+                cur.execute(
+                    "SELECT pg_advisory_unlock(%s) AS released",
+                    (LODGING_SYNC_LOCK_ID,),
+                )
+                cur.fetchone()
+                conn.commit()
+            except Exception:
+                conn.rollback()
+        cur.close()
+        conn.close()
+
+
+def _write_status(status_key, payload, run_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE app_meta
+               SET value=%s, updated_at=NOW()
+             WHERE key=%s
+               AND (value::jsonb ->> 'run_id')=%s
+            """,
+            (json.dumps(payload, ensure_ascii=False), status_key, run_id),
+        )
+        if cur.rowcount != 1:
+            raise RuntimeError("동기화 최종 상태 소유권을 확인하지 못했습니다.")
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _touch_status(status_key, run_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE app_meta SET updated_at=NOW()
+             WHERE key=%s AND (value::jsonb ->> 'run_id')=%s
+            """,
+            (status_key, run_id),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _still_owner(cur, status_key, run_id):
+    if not status_key or not run_id:
+        return True
+    cur.execute("SELECT value FROM app_meta WHERE key=%s", (status_key,))
+    row = cur.fetchone()
+    if not row or not row["value"]:
+        return False
+    try:
+        return json.loads(row["value"]).get("run_id") == run_id
+    except (TypeError, ValueError):
+        return False
+
+
+def _mark_last_sync(cur, source_names, counters):
+    payload = json.dumps(
+        {
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sources": list(source_names),
+            "counters": counters,
+        },
+        ensure_ascii=False,
+    )
+    cur.execute(
+        """
+        INSERT INTO app_meta (key, value, updated_at)
+        VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE
+          SET value=EXCLUDED.value, updated_at=NOW()
+        """,
+        (LAST_SYNC_META_KEY, payload),
+    )
+
+
+def _mark_success_status(cur, status_key, run_id, source_names, counters):
+    if not status_key or not run_id:
+        return
+    patch = json.dumps(
+        {
+            "state": "done",
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sources": list(source_names),
+            "counters": counters,
+            "error": None,
+            "retryable": False,
+            "dry_run": False,
+        },
+        ensure_ascii=False,
+    )
+    cur.execute(
+        """
+        UPDATE app_meta
+           SET value=(value::jsonb || %s::jsonb)::text,
+               updated_at=NOW()
+         WHERE key=%s
+           AND (value::jsonb ->> 'run_id')=%s
+           AND (value::jsonb ->> 'state')='running'
+        """,
+        (patch, status_key, run_id),
+    )
+    if cur.rowcount != 1:
+        raise RuntimeError("완료 상태 기록 전 동기화 소유권을 상실했습니다.")
+
+
+def _redact(text):
+    key = os.environ.get(SERVICE_KEY_ENV, "")
+    if not key:
+        return text
+    return text.replace(key, "***").replace(quote_plus(key), "***")
+
+
+def sync(
+    source_names,
+    *,
+    max_pages=None,
+    sleep_sec=0.3,
+    dry_run=False,
+    status_key=None,
+    run_id=None,
+):
     key = os.environ.get(SERVICE_KEY_ENV, "")
     if not key:
         raise RuntimeError(f"환경변수 {SERVICE_KEY_ENV}가 설정되어 있지 않습니다.")
@@ -303,6 +495,7 @@ def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
     conn = get_conn()
     cur = conn.cursor()
     lock_acquired = False
+    committed_mutations = False
     affected_buildings = set()
     conflicts = []
     try:
@@ -313,6 +506,8 @@ def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
         lock_acquired = bool(cur.fetchone()["acquired"])
         if not lock_acquired:
             raise RuntimeError("다른 숙박업 공식 수집이 실행 중입니다.")
+        if not _still_owner(cur, status_key, run_id):
+            raise RuntimeError("동기화 상태 소유권을 확인하지 못했습니다.")
         common._assert_schema(cur)
         road_index, jibun_index = common._load_master_indexes(cur)
         bjdong = common.BjdongMap(common.BJDONG_CODE_CSV)
@@ -322,6 +517,8 @@ def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
             source_fetched = 0
             expected_total = None
             while True:
+                if not _still_owner(cur, status_key, run_id):
+                    raise RuntimeError("동기화 소유권 상실(다른 실행이 시작됨)")
                 items, total = _fetch_page_retry(config, key, page)
                 if expected_total is None:
                     expected_total = total
@@ -393,11 +590,17 @@ def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
                             )
                             affected_buildings.add(building_id)
                         conn.commit()
+                        committed_mutations = True
                     except Exception as exc:
                         conn.rollback()
                         counters["failed"] += 1
                         print(f"  [실패] {data['biz_name']}: {exc}")
                 if max_pages and page >= max_pages:
+                    if not dry_run and not page_complete:
+                        raise RuntimeError(
+                            f"{source_name} API 전체 수집 전 최대 페이지에 도달했습니다: "
+                            f"{source_fetched}/{expected_total}"
+                        )
                     break
                 if page_complete:
                     break
@@ -405,15 +608,46 @@ def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
                 time.sleep(sleep_sec)
 
         if not dry_run:
-            classified, conflicts = _classify_connected(cur, affected_buildings)
-            counters["classified"] = classified
-            counters["protected"] = len(conflicts)
-            conn.commit()
-            _write_conflict_report(conflicts, affected_buildings)
             if counters["failed"]:
                 raise RuntimeError(
                     f"공식 신고 {counters['failed']}건 처리 실패 — 재실행이 필요합니다."
                 )
+            if not _still_owner(cur, status_key, run_id):
+                raise RuntimeError("완료 처리 전 동기화 소유권을 상실했습니다.")
+            classified, conflicts = _classify_connected(cur, affected_buildings)
+            counters["classified"] = classified
+            counters["protected"] = len(conflicts)
+            if not _still_owner(cur, status_key, run_id):
+                raise RuntimeError("완료 커밋 전 동기화 소유권을 상실했습니다.")
+            _mark_last_sync(cur, source_names, counters)
+            mark_master_stats_invalidated_in_transaction(
+                cur,
+                "rural_hanok_sync",
+            )
+            _mark_success_status(
+                cur,
+                status_key,
+                run_id,
+                source_names,
+                counters,
+            )
+            conn.commit()
+            try:
+                _write_conflict_report(conflicts, affected_buildings)
+            except Exception as exc:
+                print(
+                    f"[rural-hanok] 분류 충돌 보고서 저장 실패: "
+                    f"{_redact(str(exc))[:300]}"
+                )
+    except Exception:
+        conn.rollback()
+        if not dry_run and committed_mutations:
+            mark_master_stats_invalidated_in_transaction(
+                cur,
+                "rural_hanok_sync_partial",
+            )
+            conn.commit()
+        raise
     finally:
         if lock_acquired:
             try:
@@ -426,8 +660,6 @@ def sync(source_names, *, max_pages=None, sleep_sec=0.3, dry_run=False):
                 pass
         cur.close()
         conn.close()
-    if not dry_run and (counters["inserted"] or counters["updated"] or counters["classified"]):
-        mark_master_stats_invalidated("rural_hanok_sync")
     print(json.dumps(counters, ensure_ascii=False))
     return counters
 
@@ -442,14 +674,64 @@ def main():
     parser.add_argument("--max-pages", type=int)
     parser.add_argument("--sleep", type=float, default=0.3)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--status-key", default=STATUS_META_KEY)
     args = parser.parse_args()
     source_names = list(SOURCES) if args.source == "all" else [args.source]
-    sync(
-        source_names,
-        max_pages=args.max_pages,
-        sleep_sec=args.sleep,
-        dry_run=args.dry_run,
-    )
+    run_id = secrets.token_hex(8)
+    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if not _claim_status(args.status_key, run_id, started_at):
+        print("[rural-hanok] 이미 다른 실행이 진행 중입니다 — 이번 실행을 건너뜁니다.")
+        return
+
+    stop_beat = threading.Event()
+
+    def _beat():
+        while not stop_beat.wait(HEARTBEAT_SEC):
+            try:
+                _touch_status(args.status_key, run_id)
+            except Exception:
+                pass
+
+    threading.Thread(target=_beat, daemon=True).start()
+    error = None
+    counters = None
+    try:
+        counters = sync(
+            source_names,
+            max_pages=args.max_pages,
+            sleep_sec=args.sleep,
+            dry_run=args.dry_run,
+            status_key=args.status_key,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        error = _redact(str(exc))[:500]
+        print(f"[rural-hanok] 실패: {error}")
+    finally:
+        stop_beat.set()
+
+    if error or args.dry_run:
+        status = _read_status(args.status_key) or {}
+        status.update(
+            {
+                "state": "failed" if error else "done",
+                "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "sources": source_names,
+                "counters": counters,
+                "error": error,
+                "retryable": bool(error),
+                "dry_run": bool(args.dry_run),
+            }
+        )
+        try:
+            _write_status(args.status_key, status, run_id)
+        except Exception as exc:
+            status_error = _redact(str(exc))[:300]
+            print(f"[rural-hanok] 최종 상태 저장 실패: {status_error}")
+            if not error:
+                error = f"최종 상태 저장 실패: {status_error}"
+    if error:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

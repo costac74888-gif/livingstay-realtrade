@@ -158,5 +158,84 @@ class RuralHanokClassificationTests(unittest.TestCase):
             self.assertEqual([item["building_id"] for item in saved], [1, 2])
 
 
+class RuralHanokStatusTests(unittest.TestCase):
+    @patch("sys.argv", ["sync_rural_hanok.py"])
+    @patch.object(syncer.threading.Thread, "start")
+    @patch.object(syncer, "_write_status")
+    @patch.object(syncer, "_read_status")
+    @patch.object(syncer, "_claim_status", return_value=True)
+    @patch.object(syncer, "sync")
+    def test_success_is_finalized_by_sync_transaction(
+        self,
+        sync_mock,
+        _claim_mock,
+        read_mock,
+        write_mock,
+        _thread_start_mock,
+    ):
+        counters = {"fetched": 20, "failed": 0}
+        sync_mock.return_value = counters
+        read_mock.return_value = {"run_id": "owned", "state": "running"}
+
+        syncer.main()
+
+        write_mock.assert_not_called()
+        self.assertEqual(sync_mock.call_args.kwargs["status_key"], syncer.STATUS_META_KEY)
+        self.assertIsNotNone(sync_mock.call_args.kwargs["run_id"])
+
+    @patch("sys.argv", ["sync_rural_hanok.py"])
+    @patch.object(syncer.threading.Thread, "start")
+    @patch.object(syncer, "_write_status")
+    @patch.object(syncer, "_read_status")
+    @patch.object(syncer, "_claim_status", return_value=True)
+    @patch.object(syncer, "sync", side_effect=RuntimeError("API total mismatch"))
+    def test_failure_is_retryable_and_never_recorded_as_done(
+        self,
+        _sync_mock,
+        _claim_mock,
+        read_mock,
+        write_mock,
+        _thread_start_mock,
+    ):
+        read_mock.return_value = {"run_id": "owned", "state": "running"}
+
+        with self.assertRaises(SystemExit) as raised:
+            syncer.main()
+
+        self.assertEqual(raised.exception.code, 1)
+        payload = write_mock.call_args.args[1]
+        self.assertEqual(payload["state"], "failed")
+        self.assertTrue(payload["retryable"])
+        self.assertIn("total mismatch", payload["error"])
+
+    def test_success_status_update_requires_current_running_owner(self):
+        class Cursor:
+            rowcount = 0
+
+            def execute(self, _sql, _params):
+                pass
+
+        with self.assertRaisesRegex(RuntimeError, "소유권"):
+            syncer._mark_success_status(
+                Cursor(),
+                syncer.STATUS_META_KEY,
+                "old-run",
+                ["rural", "hanok"],
+                {"failed": 0},
+            )
+
+    def test_admin_result_is_rendered_in_lodging_not_broker_status(self):
+        admin_html = Path("static/admin.html").read_text(encoding="utf-8")
+        broker_renderer = admin_html.split(
+            "function renderBrokerSyncStatus(d)", 1
+        )[1].split("async function loadBrokerSyncStatus()", 1)[0]
+        lodging_renderer = admin_html.split(
+            "function renderLodgingSyncStatus(d)", 1
+        )[1].split("async function loadLodgingSyncStatus()", 1)[0]
+
+        self.assertNotIn("const rh = d.rural_hanok", broker_renderer)
+        self.assertIn("const rh = d.rural_hanok", lodging_renderer)
+
+
 if __name__ == "__main__":
     unittest.main()

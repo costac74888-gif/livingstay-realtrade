@@ -224,3 +224,15 @@ args = "python deal_alert_digest.py"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "Rural Hanok Sync"
+author = "agent"
+schedule = "0 2 * * *"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = 'env DATABASE_URL="$PROD_DATABASE_URL" python -u sync_rural_hanok.py --status-key rural_hanok_sync_status'
+
+[workflows.workflow.metadata]
+outputType = "console"

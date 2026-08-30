@@ -3689,7 +3689,8 @@
             행정안전부 <b>숙박업 조회서비스</b>(지방행정 인허가데이터)를 수집합니다.
             위생업태가 <b>숙박업(생활) · 일반호텔 · 여관업 · 여인숙업</b>인 사업장을 저장하며, 일일 한도(캡 8,000호출)에 도달하면
             체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
-            후보 검색·엑셀 다운로드는 <b>미등록 위탁운영 후보</b> 메뉴에서 이용하세요.
+            후보 검색·엑셀 다운로드는 <b>미등록 위탁운영 후보</b> 메뉴에서 이용하세요.<br>
+            <b>농어촌민박·한옥 신고 데이터는 매일 자동으로 운영 DB에 갱신</b>되며, 아래 현황에서 최근 성공·실패 결과를 확인할 수 있습니다.
           </p>
           <div id="lodgingSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">
@@ -4114,6 +4115,20 @@
       if (d.last_sync && d.last_sync.finished_at) {
         rows.push(`<div class="geo-stat-row"><b>마지막 전체 수집 완료:</b> ${dgEscape(d.last_sync.finished_at)}</div>`);
       }
+      const rh = d.rural_hanok || {};
+      if (rh.running) {
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 자동 동기화:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(rh.started_at || "-")})</div>`);
+      } else if (rh.state === "done") {
+        const rc = rh.counters || {};
+        const changed = Number(rc.inserted || 0) + Number(rc.updated || 0);
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 자동 동기화:</b> ${dgEscape(rh.finished_at || "-")} 완료 · 신규/갱신 ${num(changed)}건 · 연결 ${num(rc.matched || 0)}건 · 실패 ${num(rc.failed || 0)}건</div>`);
+      } else if (rh.state === "failed" || rh.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>농어촌민박·한옥 자동 동기화 실패:</b> ${dgEscape(rh.error || "원인 미상")} (재실행 가능)</div>`);
+      } else if (rh.last_sync && rh.last_sync.finished_at) {
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 마지막 성공:</b> ${dgEscape(rh.last_sync.finished_at)}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last"><b>농어촌민박·한옥 자동 동기화:</b> 아직 실행된 적 없음</div>`);
+      }
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
       } else if (d.state === "done") {
@@ -4140,7 +4155,9 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
         renderLodgingSyncStatus(d);
-        if (d.running && !lodgingSyncTimer) lodgingSyncTimer = setInterval(loadLodgingSyncStatus, 5000);
+        if ((d.running || (d.rural_hanok && d.rural_hanok.running)) && !lodgingSyncTimer) {
+          lodgingSyncTimer = setInterval(loadLodgingSyncStatus, 5000);
+        }
       } catch (e) {
         box.textContent = "네트워크 오류가 발생했습니다.";
       }
