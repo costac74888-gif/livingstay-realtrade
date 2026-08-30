@@ -92,6 +92,17 @@ class LodgingCategoriesTest(unittest.TestCase):
             choose_primary_lodging_type(["야영장업", "한옥체험업"]),
             "복합",
         )
+        for other_type in (
+            "외국인관광도시민박업",
+            "농어촌민박업",
+            "야영장업",
+            "한옥체험업",
+        ):
+            with self.subTest(other_type=other_type):
+                self.assertEqual(
+                    choose_primary_lodging_type(["관광호텔업", other_type]),
+                    "복합",
+                )
 
     def test_only_exact_normal_status_is_active(self):
         self.assertTrue(is_active_status("영업/정상"))

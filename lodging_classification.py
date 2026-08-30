@@ -37,7 +37,7 @@ HYGIENE_TYPE_TO_LODGING_TYPE = {
 }
 
 _SPECIFIC_LAW_TYPES = frozenset(
-    {"에어비앤비", "농어촌민박", "캠핑", "한옥"}
+    {"관광", "에어비앤비", "농어촌민박", "캠핑", "한옥"}
 )
 
 
