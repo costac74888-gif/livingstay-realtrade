@@ -13,8 +13,9 @@ function expect(condition, message) {
 expect(
   source.includes('window.matchMedia("(max-width: 980px)").matches') &&
     source.includes('history.pushState({}, "", "/")') &&
-    source.includes("restoreDefaultPanel();"),
-  "모바일 지도위치 클릭 시 상세 패널을 닫는 동작이 없습니다.",
+    source.includes("restoreDefaultPanel();") &&
+    source.includes("closeMapSearchbar();"),
+  "모바일 지도위치 클릭 시 상세·검색 패널을 함께 닫는 동작이 없습니다.",
 );
 expect(
   source.includes("showMapLocationTargetPoint(b.id, b.lat, b.lng)") &&

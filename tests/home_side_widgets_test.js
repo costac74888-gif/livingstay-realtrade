@@ -53,9 +53,9 @@ expect(
   "홈 순서가 검색영역 최근검색 → 실거래추세 → 실거래목록 → 데이터랩이 아닙니다."
 );
 expect(
-  main.includes('const HS_RECENT_MAX = 3') &&
+  main.includes('const HS_RECENT_MAX = 5') &&
   main.includes("list.slice(0, HS_RECENT_MAX)"),
-  "최근검색 화면 표시 개수가 3개로 제한되지 않았습니다."
+  "최근검색 화면 표시 개수가 5개로 제한되지 않았습니다."
 );
 expect(
   css.includes("grid-template-columns:repeat(3,minmax(0,1fr))") &&

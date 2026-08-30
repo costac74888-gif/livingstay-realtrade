@@ -71,15 +71,29 @@ const trackContext = {
 };
 vm.createContext(trackContext);
 vm.runInContext(
-  "const HS_RECENT_KEY = 'hs_recent_buildings'; const HS_RECENT_MAX = 3;\n" +
+  "const HS_RECENT_KEY = 'hs_recent_buildings'; const HS_RECENT_MAX = 5;\n" +
   main.slice(trackStart, trackEnd + 2),
   trackContext
 );
-vm.runInContext("trackRecentBuilding(2654, '정동진 솔라뷰', '강원특별자치도 강릉시');", trackContext);
+for (let id = 1; id <= 6; id += 1) {
+  vm.runInContext(`trackRecentBuilding(${id}, '건물 ${id}', '주소 ${id}');`, trackContext);
+}
 const recent = JSON.parse(storage.hs_recent_buildings || "[]");
 expect(
-  recent.length === 1 && recent[0].id === 2654 && recent[0].name === "정동진 솔라뷰",
-  "최근 본 건물이 localStorage에 실제로 기록되지 않습니다."
+  recent.length === 5 && recent[0].id === 6 && recent[4].id === 2,
+  "최근 본 건물이 최신순 5개로 보관되지 않습니다."
+);
+vm.runInContext("trackRecentBuilding('6', '건물 6 갱신', '주소 6');", trackContext);
+const refreshed = JSON.parse(storage.hs_recent_buildings || "[]");
+expect(
+  refreshed.length === 5 && refreshed[0].id === 6 && refreshed[0].name === "건물 6 갱신",
+  "최근 본 건물의 문자열·숫자 ID 중복이 정리되지 않습니다."
+);
+expect(
+  main.includes('onclick="openBuildingDetail(${Number(b.id)}); return false;"') &&
+  main.includes("function closeMapSearchbar()") &&
+  main.includes("closeMapSearchbar();"),
+  "최근검색과 모바일 지도위치가 공통 상세 이동·검색바 닫기 동작을 사용하지 않습니다."
 );
 
 console.log("OK  홈 검색바 압축·관심단지 더보기·최근 본 건물 기록·모바일 UI");

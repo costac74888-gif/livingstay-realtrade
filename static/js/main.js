@@ -590,6 +590,18 @@ function filterToFav(key){
   loadBoard();
 }
 
+function closeMapSearchbar(){
+  const searchbar = document.querySelector(".map-searchbar");
+  if (!searchbar) return;
+  searchbar.classList.add("collapsed");
+  const toggle = document.getElementById("btnToggleSearch");
+  if (!toggle) return;
+  const icon = toggle.querySelector("#searchToggleIcon");
+  const label = toggle.querySelector("span:last-child");
+  if (icon && window.Icons) icon.innerHTML = Icons.search(15);
+  if (label) label.textContent = "검색";
+}
+
 async function loadRegions(){
   const res = await fetch("/api/regions");
   regionTree = await res.json();
@@ -2958,14 +2970,16 @@ function financeEmptyHTML(){
 
 // ── 최근 본 건물 (localStorage, 비로그인 포함) ──────────────────────────────
 const HS_RECENT_KEY = "hs_recent_buildings";
-const HS_RECENT_MAX = 3;
+const HS_RECENT_MAX = 5;
 
 function trackRecentBuilding(id, name, addr){
   try {
+    const normalizedId = Number(id);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0) return;
     let list = JSON.parse(localStorage.getItem(HS_RECENT_KEY) || "[]");
     // 중복 제거 (같은 id가 있으면 맨 앞으로)
-    list = list.filter(b => b.id !== id);
-    list.unshift({ id, name, addr, viewed_at: Date.now() });
+    list = Array.isArray(list) ? list.filter(b => Number(b && b.id) !== normalizedId) : [];
+    list.unshift({ id: normalizedId, name, addr, viewed_at: Date.now() });
     if (list.length > HS_RECENT_MAX) list = list.slice(0, HS_RECENT_MAX);
     localStorage.setItem(HS_RECENT_KEY, JSON.stringify(list));
     renderRecentChips();
@@ -2979,7 +2993,11 @@ function renderRecentChips(){
   let list = [];
   try { list = JSON.parse(localStorage.getItem(HS_RECENT_KEY) || "[]"); } catch(e){}
   list = Array.isArray(list)
-    ? list.slice().sort((a, b) => (Number(b.viewed_at) || 0) - (Number(a.viewed_at) || 0)).slice(0, HS_RECENT_MAX)
+    ? list
+      .filter(b => Number.isInteger(Number(b && b.id)) && Number(b.id) > 0)
+      .slice()
+      .sort((a, b) => (Number(b.viewed_at) || 0) - (Number(a.viewed_at) || 0))
+      .slice(0, HS_RECENT_MAX)
     : [];
   if (!list.length){ row.style.display = "none"; return; }
   row.style.display = "";
@@ -2987,7 +3005,7 @@ function renderRecentChips(){
     const label = escapeHtml(b.name || "(건물명 미확인)");
     return `<button type="button"
       class="recent-search-chip"
-      onclick="history.pushState({buildingId:${b.id}},'','/building/${b.id}');renderBuildingPanel(${b.id});"
+      onclick="openBuildingDetail(${Number(b.id)}); return false;"
       title="${label}">${label}</button>`;
   }).join("");
 }
@@ -5304,6 +5322,7 @@ async function loadBuildingHeader(id){
         history.pushState({}, "", "/");
         if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
         restoreDefaultPanel();
+        closeMapSearchbar();
       }
       setMapLocationTarget(b.id);
       showMapLocationTargetPoint(b.id, b.lat, b.lng);
