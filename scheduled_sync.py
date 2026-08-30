@@ -22,9 +22,11 @@ from pathlib import Path
 from typing import Iterable
 
 from db import get_conn
+from quota_policy import cap_for_source, korea_today, quotas_for_stage, regular_cap
 
 
 STATUS_META_KEY = "scheduled_sync_status"
+SCHEDULED_EVIDENCE_META_KEY = "scheduled_sync_last_scheduled"
 LOCK_ID = 918299
 HEARTBEAT_SEC = 30
 MAX_OUTPUT_LINES = 40
@@ -76,7 +78,7 @@ STAGES = (
         "building_registry",
         "건축물대장",
         "건물·허가",
-        ("sync_brhub.py", "--daily-cap", "7800", "--sleep", "1.0"),
+        ("sync_brhub.py", "--daily-cap", str(regular_cap("building_hub")), "--sleep", "1.0"),
         "월·수·금",
         weekdays=(0, 2, 4),
         metric_query="SELECT COUNT(*) AS c FROM master_buildings",
@@ -87,7 +89,7 @@ STAGES = (
         "building_permits",
         "준공 전 건축인허가",
         "건물·허가",
-        ("sync_permits.py", "--daily-cap", "7800", "--sleep", "1.5"),
+        ("sync_permits.py", "--daily-cap", str(regular_cap("building_hub")), "--sleep", "1.5"),
         "화·목·토",
         weekdays=(1, 3, 5),
         metric_query=(
@@ -144,7 +146,7 @@ STAGES = (
         "realty",
         "건물 내 부동산",
         "중개·상가",
-        ("sync_realty_stores.py", "--daily-cap", "300", "--sleep", "1.5"),
+        ("sync_realty_stores.py", "--daily-cap", str(regular_cap("realty_store")), "--sleep", "1.5"),
         "매일",
         metric_query=(
             "SELECT COUNT(*) AS c FROM master_buildings "
@@ -157,7 +159,7 @@ STAGES = (
         "stores",
         "건물 내 상가",
         "중개·상가",
-        ("sync_stores.py", "--daily-cap", "6000", "--sleep", "1.0"),
+        ("sync_stores.py", "--daily-cap", str(regular_cap("store_info")), "--sleep", "1.0"),
         "매일",
         metric_query="SELECT COUNT(*) AS c FROM building_stores",
         metric_label="입점상가",
@@ -248,6 +250,37 @@ def _write_status(status_key: str, status: dict, run_id: str) -> None:
         conn.close()
 
 
+def _write_scheduled_evidence(run_id: str, state: str, **timestamps) -> None:
+    """Persist deployment evidence separately from manual-run status."""
+    evidence = {
+        "run_id": run_id,
+        "source": "scheduled",
+        "state": state,
+        "scheduled_date": korea_today(),
+        **timestamps,
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE
+              SET value=EXCLUDED.value, updated_at=NOW()
+            WHERE (app_meta.value::jsonb ->> 'run_id')=%s
+               OR %s='running'
+        """, (
+            SCHEDULED_EVIDENCE_META_KEY,
+            json.dumps(evidence, ensure_ascii=False),
+            run_id,
+            state,
+        ))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _touch(status_key: str, run_id: str) -> None:
     conn = get_conn()
     cur = conn.cursor()
@@ -323,6 +356,8 @@ def _blank_stage(stage: Stage) -> dict:
         "state": "pending",
         "started_at": None,
         "finished_at": None,
+        "last_success_at": None,
+        "last_error": None,
         "metric_label": stage.metric_label,
         "before": None,
         "after": None,
@@ -353,6 +388,12 @@ def prepare_stage_statuses(
             result[stage.key]["resumed"] = True
             continue
         item = _blank_stage(stage)
+        # Keep a compact per-stage history when a single-stage manual run
+        # replaces the outer status document.
+        item["last_success_at"] = old.get("last_success_at") or (
+            old.get("finished_at") if old_state == "done" else None
+        )
+        item["last_error"] = old.get("last_error") or old.get("error")
         if selected_stage and stage.key != selected_stage:
             item.update(
                 state="skipped",
@@ -379,8 +420,55 @@ def prepare_stage_statuses(
     return result
 
 
-def _run_stage(stage: Stage) -> tuple[int, list[str]]:
-    cmd = [sys.executable, "-u", *stage.command]
+def stage_command(stage: Stage, source: str = "scheduled", used_by_counter: dict | None = None) -> list[str]:
+    """Return collector command with the source's portion of shared quota."""
+    command = list(stage.command)
+    if source == "manual" and stage.key == "lodging":
+        # Camping has no manual reserve and its collector offers no independent
+        # cap argument in --include-camping mode.
+        command = [arg for arg in command if arg != "--include-camping"]
+    # Only collectors that already expose a CLI cap are source-aware.  Their
+    # existing app_meta counter remains the shared authoritative counter.
+    for policy in quotas_for_stage(stage.key):
+        option = policy["cli_option"]
+        if option == "--unsupported":
+            continue
+        # Counters are absolute daily totals.  A manual child may use only its
+        # reserved increment beyond the usage observed after the global lock,
+        # never the whole provider total/realtime reserve.
+        cap = cap_for_source(policy, source)
+        if source == "manual":
+            cap = min(int(policy["total"]), int((used_by_counter or {}).get(
+                policy["counter_key"], 0)) + int(policy["manual"]))
+        try:
+            index = command.index(option)
+            command[index + 1] = str(cap)
+        except ValueError:
+            command.extend((option, str(cap)))
+    return command
+
+
+def _run_stage(stage: Stage, source: str = "scheduled") -> tuple[int, list[str]]:
+    used = {}
+    if source == "manual":
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            keys = [p["counter_key"] for p in quotas_for_stage(stage.key)]
+            if keys:
+                cur.execute("SELECT key, value FROM app_meta WHERE key = ANY(%s)", (keys,))
+                today = korea_today()
+                for row in cur.fetchall():
+                    try:
+                        value = json.loads(row["value"] or "{}")
+                        used[row["key"]] = int(value.get("count", value.get("calls_today", 0)) or 0) if value.get("date", value.get("calls_date")) == today else 0
+                    except (TypeError, ValueError):
+                        used[row["key"]] = 0
+        finally:
+            cur.close()
+            conn.close()
+    command = stage_command(stage, source, used)
+    cmd = [sys.executable, "-u", *command]
     tail: deque[str] = deque(maxlen=MAX_OUTPUT_LINES)
     proc = subprocess.Popen(
         cmd,
@@ -437,16 +525,39 @@ def run(
     status_key: str = STATUS_META_KEY,
     selected_stage: str | None = None,
     retry_failures_only: bool = False,
+    source: str = "scheduled",
+    run_id: str | None = None,
 ) -> int:
     lock_conn, lock_cur = _acquire_lock()
     if lock_conn is None:
+        if run_id:
+            previous = _read_status(status_key) or {}
+            if previous.get("run_id") == run_id:
+                previous.update(
+                    state="failed", finished_at=_now(), retryable=True,
+                    error="통합 배치 잠금을 얻지 못했습니다. 다른 실행이 진행 중입니다.",
+                )
+                _write_status(status_key, previous, run_id)
         print("[scheduled-sync] 다른 통합 배치가 실행 중입니다.", flush=True)
         return 2
 
     stop_heartbeat = threading.Event()
-    run_id = secrets.token_hex(8)
+    run_id = run_id or secrets.token_hex(8)
     try:
         previous = _read_status(status_key)
+        if (
+            previous
+            and previous.get("state") == "running"
+            and previous.get("run_id") != run_id
+            and float(previous.get("_age_seconds") or 0) < STALE_HOURS * 3600
+        ):
+            # A web/manual claim is durable before its child gets the
+            # advisory lock.  A scheduled invocation must not steal it.
+            print("[scheduled-sync] 이미 승인된 다른 실행이 시작을 기다리고 있습니다.", flush=True)
+            return 2
+        if source == "manual" and (not previous or previous.get("run_id") != run_id):
+            print("[scheduled-sync] 수동 실행 소유권을 잃었습니다.", flush=True)
+            return 2
         stages = prepare_stage_statuses(
             previous,
             weekday=datetime.now().weekday(),
@@ -460,6 +571,7 @@ def run(
             "finished_at": None,
             "current_stage": None,
             "schedule": "매일 02:00",
+            "source": source,
             "selected_stage": selected_stage,
             "retry_failures_only": retry_failures_only,
             "stages": stages,
@@ -467,7 +579,16 @@ def run(
             "retryable": False,
             "last_success_at": (previous or {}).get("last_success_at"),
         }
-        _write_initial_status(status_key, status)
+        if source == "manual":
+            # Web endpoint has already atomically written this exact claim.
+            # Fencing it here prevents a late child from taking another run's
+            # status document.
+            _write_status(status_key, status, run_id)
+        else:
+            _write_initial_status(status_key, status)
+            _write_scheduled_evidence(
+                run_id, "running", started_at=status["started_at"], finished_at=None
+            )
 
         def _heartbeat():
             while not stop_heartbeat.wait(HEARTBEAT_SEC):
@@ -508,7 +629,7 @@ def run(
             _write_status(status_key, status, run_id)
             print(f"\n[scheduled-sync] {stage.label} 시작", flush=True)
             try:
-                returncode, output_tail = _run_stage(stage)
+                returncode, output_tail = _run_stage(stage, source)
             except Exception as exc:
                 returncode, output_tail = 1, []
                 item["error"] = _redact(str(exc))[:500]
@@ -519,6 +640,8 @@ def run(
             item["finished_at"] = _now()
             if returncode == 0:
                 item["state"] = "done"
+                item["last_success_at"] = item["finished_at"]
+                item["last_error"] = None
                 print(f"[scheduled-sync] {stage.label} 완료", flush=True)
             else:
                 item["state"] = "failed"
@@ -529,6 +652,7 @@ def run(
                         f"종료 코드 {returncode}"
                         + (f": {tail_text}" if tail_text else "")
                     )[:800]
+                item["last_error"] = item["error"]
                 print(
                     f"[scheduled-sync] {stage.label} 실패 — 독립 단계는 계속합니다.",
                     flush=True,
@@ -559,6 +683,13 @@ def run(
             status["error"] = None
             status["last_success_at"] = status["finished_at"]
         _write_status(status_key, status, run_id)
+        if source == "scheduled":
+            _write_scheduled_evidence(
+                run_id,
+                status["state"],
+                started_at=status["started_at"],
+                finished_at=status["finished_at"],
+            )
         print(
             f"[scheduled-sync] 전체 완료 — state={status['state']}",
             flush=True,
@@ -573,6 +704,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="정기 API 통합 동기화")
     parser.add_argument("--status-key", default=STATUS_META_KEY)
     parser.add_argument("--stage", choices=tuple(STAGE_MAP))
+    parser.add_argument("--source", choices=("scheduled", "manual"), default="scheduled")
+    parser.add_argument("--run-id", default=None)
     parser.add_argument(
         "--retry-failures",
         action="store_true",
@@ -603,6 +736,8 @@ def main() -> None:
         status_key=args.status_key,
         selected_stage=args.stage,
         retry_failures_only=args.retry_failures,
+        source=args.source,
+        run_id=args.run_id,
     ))
 
 

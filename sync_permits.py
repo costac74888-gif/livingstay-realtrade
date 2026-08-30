@@ -39,6 +39,7 @@ import psycopg2
 import requests
 
 from db import get_conn
+from quota_policy import QuotaExhausted, claim_building_hub_request, korea_today, regular_cap
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from address_utils import normalize_umd_nm
 from stats_cache import mark_master_stats_invalidated
@@ -99,6 +100,7 @@ def _jibun_from_bunji(bun, ji):
 def _fetch_page(key, sgg, bjd, page):
     params = {"serviceKey": key, "sigunguCd": sgg, "bjdongCd": bjd,
               "numOfRows": str(NUM_ROWS), "pageNo": str(page), "_type": "json"}
+    claim_building_hub_request()
     r = requests.get(API_URL, params=params, timeout=30)
     if r.status_code != 200:
         print(f"[HTTP {r.status_code}] 응답 본문: {r.text[:1000]}")
@@ -203,7 +205,7 @@ def run(args, status_key=None, run_id=None):
     cur = conn.cursor()
     prog = {"idx": 0, "calls_date": "", "calls_today": 0, "found_total": 0} if args.reset else _get_progress(cur)
 
-    today = date.today().isoformat()
+    today = korea_today()
     if prog.get("calls_date") != today:
         prog["calls_date"] = today
         prog["calls_today"] = 0
@@ -244,6 +246,10 @@ def run(args, status_key=None, run_id=None):
                     items = _fetch_page(key, sgg_cd, bjd_cd, page)
                     break
                 except Exception as e:
+                    if isinstance(e, QuotaExhausted):
+                        print(f"Building HUB 공유 일일한도 도달 — 체크포인트를 유지하고 중단합니다.")
+                        _save_progress(conn, cur, prog)
+                        return False, processed, found_run, prog["calls_today"]
                     print(f"  [{dong_name}] p{page} 오류(시도 {attempt}/3): {repr(e)[:160]} — {wait_sec}초 후 재시도")
                     time.sleep(wait_sec)
             if items is None:
@@ -467,7 +473,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", action="store_true", help="법정동 1곳만 조회해 원본 필드명 확인 (DB 안 씀)")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--daily-cap", type=int, default=8000)
+    ap.add_argument("--daily-cap", type=int, default=regular_cap("building_hub"))
     ap.add_argument("--sleep", type=float, default=1.5)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--reset", action="store_true")

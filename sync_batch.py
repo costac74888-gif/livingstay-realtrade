@@ -29,6 +29,7 @@ from xml.etree import ElementTree as ET
 import requests
 
 from db import get_conn, init_db
+from quota_policy import korea_today, regular_cap
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
 from stats_cache import mark_master_stats_invalidated as _mark_master_stats_invalidated
@@ -55,7 +56,7 @@ RTMS_SLEEP = 0.5
 # 날짜별로 저장 → 프로세스 재시작/동시 실행(Fast Sync + Backfill Retry)에도
 # 하나의 카운터를 공유하고, 날짜가 바뀌면 자동으로 0부터 다시 시작한다.
 # ------------------------------------------------------------------
-MAX_DAILY_BACKFILL_CALLS = 8000          # 정기동기화+재시도 공유 총 한도 (조정 시 이 상수만 변경)
+MAX_DAILY_BACKFILL_CALLS = regular_cap("rtms")  # 중앙 정책의 정기 수집 몫
 MAX_DAILY_BACKFILL_ONLY_CALLS = 5000     # 백필 전용 일일 한도 — 나머지 3,000건은 정기동기화·재시도 몫
 DAILY_CALLS_META_KEY = "rtms_daily_calls"             # 정기동기화·재시도 공유 카운터
 DAILY_CALLS_META_KEY_BACKFILL = "rtms_daily_calls_backfill"  # 백필 전용 카운터(독립 예산)
@@ -71,7 +72,7 @@ def _daily_calls_today(cur, key=None):
         return 0
     try:
         data = json.loads(row["value"])
-        if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+        if data.get("date") == korea_today():
             return int(data.get("count", 0))
     except (TypeError, ValueError):
         pass
@@ -83,7 +84,7 @@ def _bump_daily_calls(cur, conn, key=None):
     날짜가 바뀌었으면 1부터 다시 시작한다.
     key 미지정 시 공유 카운터(DAILY_CALLS_META_KEY) 사용."""
     _key = key or DAILY_CALLS_META_KEY
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = korea_today()
     fresh = json.dumps({"date": today, "count": 1})
     cur.execute("""
         INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())

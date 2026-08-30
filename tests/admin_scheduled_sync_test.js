@@ -13,7 +13,9 @@ function expect(condition, message) {
 
 expect(
   app.includes('@app.route("/api/admin/scheduled-sync-status")') &&
-    app.includes('@app.route("/api/admin/scheduled-sync/retry", methods=["POST"])'),
+    app.includes('@app.route("/api/admin/scheduled-sync/retry", methods=["POST"])') &&
+    app.includes('@app.route("/api/admin/scheduled-sync/run", methods=["POST"])') &&
+    app.includes("_claim_scheduled_sync_start"),
   "통합 동기화 상태·재시도 API가 없습니다.",
 );
 
@@ -21,6 +23,8 @@ expect(
   admin.includes('id="dsSecScheduled"') &&
     admin.includes('id="scheduledSyncStages"') &&
     admin.includes("실패·중단 단계 재시도") &&
+    admin.includes("지금 수집") &&
+    admin.includes("Scheduled Deployment") &&
     admin.includes('id="manualSyncDetails"'),
   "관리자 통합 동기화 카드 또는 수동 보완 접기 영역이 없습니다.",
 );

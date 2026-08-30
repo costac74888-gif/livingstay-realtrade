@@ -25,6 +25,7 @@ from datetime import date, datetime
 import psycopg2
 
 from db import get_conn
+from quota_policy import korea_today, regular_cap
 from address_utils import BjdongMap, parse_jibun
 from store_info_util import get_stores_by_pnu, build_pnu
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
@@ -83,7 +84,7 @@ def _load_progress(conn):
 def _save_progress(conn, prog):
     cur = conn.cursor()
     try:
-        today_str = date.today().isoformat()
+        today_str = korea_today()
         batch_count = int(prog.get("calls_today") or 0) if prog.get("calls_date") == today_str else 0
         batch_val   = json.dumps({"date": today_str, "count": batch_count}, ensure_ascii=False)
         cur.execute("""
@@ -108,7 +109,7 @@ def run(args, status_key=None, run_id=None):
     limit        = getattr(args, "limit", None)
     verbose      = getattr(args, "verbose", False)
 
-    today = date.today().isoformat()
+    today = korea_today()
 
     conn = get_conn()
     prog = _load_progress(conn)
@@ -328,7 +329,7 @@ def run(args, status_key=None, run_id=None):
 # ── CLI 진입점 ────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="상가정보 사전수집 (building_stores 테이블)")
-    parser.add_argument("--daily-cap",   type=int,   default=6000,  help="오늘 최대 API 호출 수 (기본 6000 — 실시간 4,000건 예약 후 나머지)")
+    parser.add_argument("--daily-cap",   type=int,   default=regular_cap("store_info"),  help="오늘 최대 API 호출 수 (중앙 정책의 정기 몫)")
     parser.add_argument("--sleep",       type=float, default=1.0,   help="건물당 API 호출 후 대기(초, 기본 1.0)")
     parser.add_argument("--limit",       type=int,   default=None,  help="이번 실행에서 처리할 최대 건물 수")
     parser.add_argument("--reset",       action="store_true",       help="체크포인트 초기화 후 처음부터")

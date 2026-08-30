@@ -1534,6 +1534,46 @@ class SyncInvalidationTests(unittest.TestCase):
         self.assertEqual(result[2], 1)
         self.assertEqual(events.count("marker"), 1)
 
+    def test_brhub_quota_keeps_checkpoint_at_first_unprocessed_dong(self):
+        events = []
+        conn = FakeConnection(FakeCursor(lambda _sql, _params: None), events)
+        args = Namespace(
+            reset=True, start_idx=-1, progress_key="test_progress", daily_cap=99,
+            sleep=0, workers=3, end_idx=-1, limit=0, dry_run=False,
+        )
+        saved = []
+        rows = {"11111": "서울 테스트구"}
+        dongs = [
+            ["1111100001", "서울 테스트구 일동"],
+            ["1111100002", "서울 테스트구 이동"],
+            ["1111100003", "서울 테스트구 삼동"],
+        ]
+        fetch_results = [
+            ([], 1, None, False),
+            (None, 0, sync_brhub._SHARED_QUOTA_ERROR_PREFIX + "cap", False),
+            # This submitted future must not advance idx even if completed.
+            ([], 1, None, False),
+        ]
+
+        with (
+            patch.object(sync_brhub, "get_conn", return_value=conn),
+            patch.object(sync_brhub, "_load_codes", return_value=(rows, dongs)),
+            patch.object(sync_brhub, "_load_existing_keys", return_value=(set(), set(), set())),
+            patch.object(sync_brhub, "_combined_calls_today", return_value=0),
+            patch.object(sync_brhub, "_fetch_all_dong_pages", side_effect=fetch_results),
+            patch.object(sync_brhub, "_save_progress",
+                         side_effect=lambda _c, _u, prog, _key: saved.append(dict(prog))),
+            patch.object(sync_brhub, "refresh_auto_building_names", return_value=0),
+        ):
+            completed, processed, _found, calls, reason = sync_brhub.run(args)
+
+        self.assertFalse(completed)
+        self.assertEqual(processed, 1)
+        self.assertEqual(calls, 1)  # denied claim and later unprocessed result excluded
+        self.assertEqual(reason, "provider_daily_cap")
+        self.assertEqual(saved[-1]["idx"], 1)
+        self.assertNotIn("failed_dongs", saved[-1])
+
     def test_brhub_progress_commit_is_followed_by_invalidation_marker(self):
         events = []
 

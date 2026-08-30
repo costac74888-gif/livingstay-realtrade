@@ -24,6 +24,7 @@ import time
 from datetime import date, datetime
 
 from db import get_conn
+from quota_policy import korea_today, regular_cap
 from address_utils import BjdongMap, parse_jibun
 from store_info_util import build_pnu, get_stores_by_pnu, STORE_INFO_SERVICE_KEY
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
@@ -150,7 +151,7 @@ def run(args, status_key=None, run_id=None):
     cur  = conn.cursor()
     prog = _get_progress(cur)
 
-    today = date.today().isoformat()
+    today = korea_today()
     if prog.get("calls_date") != today:
         prog["calls_date"]  = today
         prog["calls_today"] = 0
@@ -275,7 +276,7 @@ def main():
     ap.add_argument("--probe",      action="store_true", help="PNU 확인 + raw 응답 출력 후 종료 (DB 안 씀)")
     ap.add_argument("--dry-run",    action="store_true", help="UPDATE 없이 결과만 출력")
     ap.add_argument("--limit",      type=int, default=0, help="처리 건수 상한 (0=무제한)")
-    ap.add_argument("--daily-cap",  type=int, default=300, dest="daily_cap", help="일일 처리 건수 상한 (기본 300)")
+    ap.add_argument("--daily-cap",  type=int, default=regular_cap("realty_store"), dest="daily_cap", help="일일 처리 건수 상한 (중앙 정책의 정기 몫)")
     ap.add_argument("--sleep",      type=float, default=1.5, help="API 호출 간 대기 초 (기본 1.5)")
     ap.add_argument("--reset",      action="store_true", help="체크포인트 초기화 후 처음부터")
     ap.add_argument("--status-key", default=None, dest="status_key", help="app_meta heartbeat 키 (관리자 버튼용)")

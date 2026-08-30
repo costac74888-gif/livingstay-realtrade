@@ -3437,8 +3437,32 @@
         stopScheduledSyncPolling();
         return;
       }
+
+      async function runScheduledStage(stage, button) {
+        const msg = document.getElementById("scheduledSyncMsg");
+        button.disabled = true;
+        msg.textContent = "";
+        try {
+          const res = await fetch("/api/admin/scheduled-sync/run", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ stage }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) throw new Error(data.message || "단계 시작 실패");
+          msg.style.color = "#15803d";
+          msg.textContent = data.message;
+          setTimeout(loadScheduledSyncStatus, 500);
+          if (!scheduledSyncTimer) scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 10000);
+        } catch (error) {
+          msg.style.color = "#b3261e";
+          msg.textContent = error.message || "단계를 시작하지 못했습니다.";
+          button.disabled = false;
+        }
+      }
       const current = (data.stages || []).find((stage) => stage.key === data.current_stage);
-      let headline = "아직 자동 동기화 실행 기록이 없습니다.";
+      let headline = data.schedule_observation === "scheduled-deployment-not-observed"
+        ? "예약 실행이 아직 관측되지 않았습니다."
+        : "아직 자동 동기화 실행 기록이 없습니다.";
       let headlineColor = "var(--ink-soft)";
       if (data.running) {
         headline = `자동 동기화 실행 중${current ? ` · ${current.label}` : ""}`;
@@ -3481,10 +3505,18 @@
             const error = stage.error && !["선택 실행 대상이 아님"].includes(stage.error)
               ? `<div style="font-size:11px;color:${stage.state === "failed" ? "#b3261e" : "var(--ink-soft)"};margin-top:2px">${dgEscape(stage.error)}</div>`
               : "";
-            return `<div style="display:grid;grid-template-columns:minmax(150px,1fr) 92px 80px;gap:8px;align-items:start;padding:5px 0">
-              <div><b>${dgEscape(stage.label)}</b>${error}</div>
+            const quota = stage.quota
+              ? (stage.quotas || [stage.quota]).map((q) =>
+                  `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(q.provider)} · 오늘 ${num(q.used)}/${num(q.limit)} 호출 · 잔여 ${num(q.remaining)} (실시간 ${num(q.reserved_realtime)}·수동 ${num(q.reserved_manual)} 예약)</div>`
+                ).join("")
+              : "";
+            const last = stage.last_success_at || stage.last_error
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at || "-")} · 최근 오류 ${dgEscape(stage.last_error || "-")}</div>` : "";
+            return `<div style="display:grid;grid-template-columns:minmax(150px,1fr) 92px 80px 74px;gap:8px;align-items:start;padding:5px 0">
+              <div><b>${dgEscape(stage.label)}</b>${quota}${last}${error}</div>
               <div style="font-size:12px;color:var(--ink-soft)">${dgEscape(stage.cadence)}</div>
               <div style="font-size:12px;font-weight:700;color:${state[1]}">${state[0]}${delta}</div>
+              <button class="admin-btn" style="font-size:11px;padding:5px 7px" ${data.running || stage.manual_allowed === false ? "disabled" : ""} title="${stage.manual_allowed === false ? "공유 일일 한도 보호를 위해 수동 실행 불가" : ""}" onclick="runScheduledStage('${stage.key}', this)">지금 수집</button>
             </div>`;
           }).join("")}
         </div>`).join("");
@@ -3607,7 +3639,8 @@
             <h2 class="legal-admin-title">데이터 동기화</h2>
           </div>
           <p class="legal-admin-hint">
-            정기 API는 매일 하나의 통합 배치에서 자동으로 실행됩니다.
+            정기 API는 Replit <b>Scheduled Deployment</b>가 매일 하나의 통합 배치를 실행할 때 갱신됩니다.
+            워크스페이스 워크플로의 일정만으로는 무인 실행이 보장되지 않습니다.
             평소에는 아래 단계별 성공·실패만 확인하면 됩니다. 개별 버튼은 최초 적재나
             실패 복구가 필요할 때만 <b>수동 보완·재처리 도구</b>에서 사용하세요.
           </p>
@@ -3620,7 +3653,7 @@
           </div>
           <p class="legal-admin-hint">
             실거래·건축물·인허가·숙박·농어촌민박·한옥체험업·중개·상가 API를
-            매일 새벽 2시에 순서대로 갱신합니다. 건축물대장과 건축인허가는 같은 일일 한도를
+            Scheduled Deployment에서 매일 새벽 2시에 순서대로 갱신합니다. 건축물대장과 건축인허가는 같은 일일 한도를
             보호하기 위해 요일을 나눠 실행합니다.
           </p>
           <div id="scheduledSyncSummary" class="geo-status">현황 불러오는 중…</div>

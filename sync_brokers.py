@@ -27,6 +27,7 @@ from datetime import datetime
 import requests
 
 from db import get_conn
+from quota_policy import korea_today
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 
 API_URL = "https://api.data.go.kr/openapi/tn_pubr_public_med_office_api"
@@ -78,7 +79,7 @@ def _daily_calls_today(cur):
         return 0
     try:
         data = json.loads(row["value"])
-        if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+        if data.get("date") == korea_today():
             return int(data.get("count", 0))
     except (TypeError, ValueError):
         pass
@@ -86,7 +87,7 @@ def _daily_calls_today(cur):
 
 
 def _bump_daily_calls(cur, conn):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = korea_today()
     fresh = json.dumps({"date": today, "count": 1})
     cur.execute("""
         INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())

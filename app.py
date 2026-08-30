@@ -64,6 +64,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from db import (
     BackgroundConnectionUnavailable,
     background_connection_limit,
@@ -80,6 +81,10 @@ from address_utils import (
     BjdongMap, parse_jibun,
 )
 from store_info_util import build_pnu, get_stores_by_pnu
+from quota_policy import (
+    BUILDING_HUB_DAILY_COUNTER_KEY, PROVIDER_COUNTER_KEYS, quota_for_stage,
+    quotas_for_stage,
+)
 import building_registry
 from lodging_matching import (
     ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
@@ -1606,8 +1611,8 @@ _stores_cache_lock = threading.Lock()
 # └──────────────────────────────────────────────┘
 STORE_DAILY_CALLS_REALTIME_KEY = "store_daily_calls_realtime"  # app_meta 키
 STORE_DAILY_CALLS_BATCH_KEY    = "store_daily_calls_batch"     # app_meta 키
-_STORE_REALTIME_DAILY_CAP      = 4_000   # 실시간 전용 일일 쿼터
-_STORE_BATCH_DAILY_CAP         = 6_000   # 배치 최대 일일 쿼터 (sync_stores.py 참조용)
+_STORE_REALTIME_DAILY_CAP      = quota_for_stage("stores")["realtime"]
+_STORE_BATCH_DAILY_CAP         = quota_for_stage("stores")["regular"]
 
 
 def _stores_result_from_rows(db_rows):
@@ -14541,6 +14546,7 @@ _TITLE_INFO_META_KEY = "title_info_sync_status"
 _APP_STARTED_AT = datetime.now()  # 배포/재시작 시각 추정(워커 부팅 시각) — 배너 "배포 후 미실행" 판정용
 _SCHEDULED_SYNC_META_KEY = "scheduled_sync_status"
 _SCHEDULED_SYNC_STALE_MIN = 12 * 60
+_KST = ZoneInfo("Asia/Seoul")
 _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
     ("building_registry", "건축물대장", "건물·허가", "월·수·금"),
@@ -14919,6 +14925,11 @@ def admin_scheduled_sync_status():
             (_SCHEDULED_SYNC_META_KEY,),
         )
         row = cur.fetchone()
+        cur.execute(
+            "SELECT value, updated_at FROM app_meta WHERE key=%s",
+            ("scheduled_sync_last_scheduled",),
+        )
+        scheduled_evidence_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
@@ -14939,6 +14950,39 @@ def admin_scheduled_sync_status():
     if stale:
         state = "stale"
 
+    # Usage is read from the collectors' own checkpoint/counter records.  Do
+    # not create a dashboard-only counter: a restart must see the same budget
+    # that the collectors enforce.
+    quota_values = {}
+    quota_policies = {
+        key: quotas_for_stage(key) for key, *_ in _SCHEDULED_SYNC_STAGES
+    }
+    quota_keys = list({
+        p["counter_key"] for policies in quota_policies.values() for p in policies
+    } | {
+        counter_key for keys in PROVIDER_COUNTER_KEYS.values() for counter_key in keys
+    } | {BUILDING_HUB_DAILY_COUNTER_KEY})
+    if quota_keys:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT key, value FROM app_meta WHERE key = ANY(%s)", (quota_keys,))
+            for usage_row in cur.fetchall():
+                try:
+                    value = json.loads(usage_row["value"] or "{}")
+                except (TypeError, ValueError):
+                    value = {}
+                today = datetime.now(_KST).strftime("%Y-%m-%d")
+                if value.get("date") == today:
+                    quota_values[usage_row["key"]] = int(value.get("count") or 0)
+                elif value.get("calls_date") == today:
+                    quota_values[usage_row["key"]] = int(value.get("calls_today") or 0)
+                else:
+                    quota_values[usage_row["key"]] = 0
+        finally:
+            cur.close()
+            conn.close()
+
     saved_stages = status.get("stages") or {}
     stages = []
     for key, label, group, cadence in _SCHEDULED_SYNC_STAGES:
@@ -14950,7 +14994,41 @@ def admin_scheduled_sync_status():
             "cadence": cadence,
         })
         stage.setdefault("state", "pending")
-        for field in ("started_at", "finished_at"):
+        policies = quota_policies[key]
+        stage["manual_allowed"] = any(
+            p["manual"] and p["cli_option"] != "--unsupported" for p in policies
+        )
+        if policies:
+            quotas = []
+            for policy in policies:
+                # Registry, its rescan, and permits consume one Building HUB
+                # provider allowance even though legacy collectors persist
+                # separate checkpoint counters.
+                if (
+                    policy["provider"] == "building_hub"
+                    and BUILDING_HUB_DAILY_COUNTER_KEY in quota_values
+                ):
+                    used = quota_values[BUILDING_HUB_DAILY_COUNTER_KEY]
+                else:
+                    counter_keys = PROVIDER_COUNTER_KEYS.get(
+                        policy["provider"], (policy["counter_key"],)
+                    )
+                    used = sum(quota_values.get(counter_key, 0) for counter_key in counter_keys)
+                limit = int(policy["regular"])
+                quotas.append({
+                    "provider": policy["provider"],
+                    "used": used,
+                    "remaining": max(0, limit - used),
+                    "limit": limit,
+                    "total_limit": int(policy["total"]),
+                    "reserved_realtime": int(policy["realtime"]),
+                    "reserved_manual": int(policy["manual"]),
+                })
+            # Backwards-compatible primary quota and an explicit separate
+            # record for lodging's general/camping APIs.
+            stage["quota"] = quotas[0]
+            stage["quotas"] = quotas
+        for field in ("started_at", "finished_at", "last_success_at"):
             if stage.get(field):
                 stage[field] = _kst_label(stage[field])
         stages.append(stage)
@@ -14961,6 +15039,37 @@ def admin_scheduled_sync_status():
             "통합 배치 하트비트가 12시간 이상 갱신되지 않았습니다. "
             "실패 단계 재시도를 실행할 수 있습니다."
         )
+    scheduled_evidence = {}
+    if scheduled_evidence_row and scheduled_evidence_row["value"]:
+        try:
+            scheduled_evidence = json.loads(scheduled_evidence_row["value"])
+        except (TypeError, ValueError):
+            scheduled_evidence = {}
+    now_kst = datetime.now(_KST)
+    expected_date = (
+        now_kst.date() if now_kst.hour >= 2
+        else (now_kst - timedelta(days=1)).date()
+    ).isoformat()
+    evidence_state = scheduled_evidence.get("state")
+    evidence_date = scheduled_evidence.get("scheduled_date")
+    if (
+        not scheduled_evidence
+        or scheduled_evidence.get("source") != "scheduled"
+        or not evidence_date
+    ):
+        observation = "scheduled-deployment-not-observed"
+    elif evidence_date < expected_date:
+        observation = "stale"
+    elif evidence_state in ("failed", "partial"):
+        observation = "failed"
+    elif (
+        evidence_state == "running"
+        and status.get("run_id") == scheduled_evidence.get("run_id")
+        and stale
+    ):
+        observation = "stale"
+    else:
+        observation = "observed"
     return jsonify({
         "ok": True,
         "running": state == "running",
@@ -14980,7 +15089,125 @@ def admin_scheduled_sync_status():
         "status_updated_at": (
             _kst_label(row["updated_at"]) if row and row["updated_at"] else None
         ),
+        "schedule_observation": observation,
+        "scheduled_evidence": {
+            "state": evidence_state,
+            "scheduled_date": evidence_date,
+            "started_at": _kst_label(scheduled_evidence.get("started_at")),
+            "finished_at": _kst_label(scheduled_evidence.get("finished_at")),
+        } if scheduled_evidence else None,
+        "source": status.get("source"),
     })
+
+
+def _claim_scheduled_sync_start(*, selected_stage=None, retry_failures_only=False):
+    """Atomically reserve the one scheduled-sync slot before spawning a runner."""
+    run_id = _secrets.token_hex(8)
+    started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Preserve prior per-stage outcomes so --retry-failures continues from the
+    # correct checkpoint after the atomic claim replaces the outer document.
+    previous_stages = {}
+    read_conn = get_conn()
+    read_cur = read_conn.cursor()
+    try:
+        read_cur.execute("SELECT value FROM app_meta WHERE key=%s", (_SCHEDULED_SYNC_META_KEY,))
+        previous_row = read_cur.fetchone()
+        if previous_row and previous_row["value"]:
+            previous_stages = (json.loads(previous_row["value"]) or {}).get("stages") or {}
+    except (TypeError, ValueError):
+        previous_stages = {}
+    finally:
+        read_cur.close()
+        read_conn.close()
+    stages = {}
+    for key, label, group, cadence in _SCHEDULED_SYNC_STAGES:
+        prior = dict(previous_stages.get(key) or {})
+        claim_state = (
+            prior.get("state", "pending") if retry_failures_only else
+            ("pending" if not selected_stage or key == selected_stage else "skipped")
+        )
+        stages[key] = {
+            **prior,
+            "key": key, "label": label, "group": group, "cadence": cadence,
+            "state": claim_state,
+            "started_at": None, "finished_at": None, "error": None,
+        }
+    value = {
+        "run_id": run_id, "state": "running", "started_at": started_at,
+        "finished_at": None, "current_stage": None, "stages": stages,
+        "source": "manual", "selected_stage": selected_stage,
+        "retry_failures_only": retry_failures_only, "error": None,
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+            WHERE (app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+               OR app_meta.updated_at < NOW() - INTERVAL '{_SCHEDULED_SYNC_STALE_MIN} minutes'
+        """, (_SCHEDULED_SYNC_META_KEY, json.dumps(value, ensure_ascii=False)))
+        acquired = cur.rowcount == 1
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return acquired, value
+
+
+def _spawn_claimed_scheduled_sync(claim, extra_args):
+    """The claim is durable before Popen, so an abrupt web-worker stop is visible."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "scheduled_sync.py"),
+             "--status-key", _SCHEDULED_SYNC_META_KEY, "--source", "manual",
+             "--run-id", claim["run_id"]] + extra_args,
+            cwd=base_dir, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+        return None
+    except Exception as exc:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            failed = dict(claim)
+            failed.update(state="failed", finished_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                          error=f"러너 실행 실패: {exc}"[:300], retryable=True)
+            cur.execute("""UPDATE app_meta SET value=%s, updated_at=NOW()
+                           WHERE key=%s AND (value::jsonb ->> 'run_id')=%s""",
+                        (json.dumps(failed, ensure_ascii=False), _SCHEDULED_SYNC_META_KEY, claim["run_id"]))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return exc
+
+
+@app.route("/api/admin/scheduled-sync/run", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_scheduled_sync_stage_run():
+    """Safely run one existing checkpoint-aware stage as a manual source."""
+    body = request.get_json(silent=True) or {}
+    stage = body.get("stage")
+    valid = {key for key, *_ in _SCHEDULED_SYNC_STAGES}
+    if stage not in valid:
+        return jsonify({"ok": False, "message": "알 수 없는 동기화 단계입니다."}), 400
+    policies = quotas_for_stage(stage)
+    if not any(p["manual"] and p["cli_option"] != "--unsupported" for p in policies):
+        return jsonify({
+            "ok": False,
+            "message": "이 단계는 공유 일일 한도 보호를 위해 수동 실행이 허용되지 않습니다.",
+        }), 409
+    acquired, claim = _claim_scheduled_sync_start(selected_stage=stage)
+    if not acquired:
+        return jsonify({"ok": False, "message": "통합 동기화가 이미 실행 중입니다."}), 409
+    error = _spawn_claimed_scheduled_sync(claim, ["--stage", stage])
+    if error:
+        return jsonify({"ok": False, "message": "프로세스를 시작하지 못했습니다."}), 500
+    return jsonify({"ok": True, "message": f"{stage} 단계를 시작했습니다.", "started_at": claim["started_at"]}), 202
 
 
 @app.route("/api/admin/scheduled-sync/retry", methods=["POST"])
@@ -15026,29 +15253,12 @@ def admin_scheduled_sync_retry():
             "message": "재시도가 필요한 실패 단계가 없습니다.",
         }), 409
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    try:
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-u",
-                os.path.join(base_dir, "scheduled_sync.py"),
-                "--status-key",
-                _SCHEDULED_SYNC_META_KEY,
-                "--retry-failures",
-            ],
-            cwd=base_dir,
-            start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        threading.Thread(target=proc.wait, daemon=True).start()
-    except Exception as exc:
-        app.logger.exception("정기 API 통합 배치 재시작 실패")
-        return jsonify({
-            "ok": False,
-            "message": f"재시도 프로세스를 시작하지 못했습니다: {exc}"[:300],
-        }), 500
+    acquired, claim = _claim_scheduled_sync_start(retry_failures_only=True)
+    if not acquired:
+        return jsonify({"ok": False, "message": "통합 동기화가 이미 실행 중입니다."}), 409
+    error = _spawn_claimed_scheduled_sync(claim, ["--retry-failures"])
+    if error:
+        return jsonify({"ok": False, "message": "재시도 프로세스를 시작하지 못했습니다."}), 500
     return jsonify({
         "ok": True,
         "message": "실패·중단 단계 재시도를 시작했습니다.",

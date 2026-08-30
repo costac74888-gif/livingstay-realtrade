@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import scheduled_sync
+import quota_policy
 
 
 class ScheduledSyncPlanTests(unittest.TestCase):
@@ -53,6 +54,133 @@ class ScheduledSyncPlanTests(unittest.TestCase):
                 if key != "rural_hanok"
             )
         )
+
+    def test_stage_status_keeps_last_result_history(self):
+        stages = scheduled_sync.prepare_stage_statuses(
+            {"state": "done", "stages": {
+                "lodging": {"state": "done", "finished_at": "2026-08-30 02:10:00"}
+            }},
+            weekday=0,
+            selected_stage="lodging",
+        )
+        self.assertEqual(stages["lodging"]["last_success_at"], "2026-08-30 02:10:00")
+        self.assertIsNone(stages["lodging"]["last_error"])
+
+    def test_manual_source_is_recorded_before_stage_work(self):
+        writes = []
+        with (
+            patch.object(scheduled_sync, "_acquire_lock", return_value=(object(), object())),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value={
+                "run_id": "manual-claim", "state": "running", "stages": {}
+            }),
+            patch.object(scheduled_sync, "_write_initial_status"),
+            patch.object(scheduled_sync, "_write_status",
+                         side_effect=lambda key, value, run_id: writes.append(dict(value))),
+            patch.object(scheduled_sync, "_source_busy", return_value=None),
+            patch.object(scheduled_sync, "_metric_value", return_value=0),
+            patch.object(scheduled_sync, "_run_stage", return_value=(0, [])),
+            patch.object(scheduled_sync, "_write_scheduled_evidence") as evidence,
+        ):
+            scheduled_sync.run(selected_stage="lodging", source="manual", run_id="manual-claim")
+        self.assertEqual(writes[0]["source"], "manual")
+        self.assertEqual(writes[0]["state"], "running")
+        evidence.assert_not_called()
+
+    def test_source_specific_caps_preserve_manual_reserve(self):
+        regular = scheduled_sync.stage_command(
+            scheduled_sync.STAGE_MAP["realty"], "scheduled"
+        )
+        manual = scheduled_sync.stage_command(
+            scheduled_sync.STAGE_MAP["realty"], "manual", {"realty_stores_progress": 300}
+        )
+        self.assertEqual(regular[regular.index("--daily-cap") + 1], "300")
+        self.assertEqual(manual[manual.index("--daily-cap") + 1], "500")
+
+    def test_manual_lodging_command_excludes_camping_without_reserve(self):
+        command = scheduled_sync.stage_command(
+            scheduled_sync.STAGE_MAP["lodging"], "manual",
+            {"lodging_daily_calls": 8000},
+        )
+        self.assertNotIn("--include-camping", command)
+        self.assertEqual(command[command.index("--max-calls") + 1], "10000")
+
+    def test_lodging_and_broker_known_counter_policies_are_listed(self):
+        lodging = scheduled_sync.quotas_for_stage("lodging")
+        self.assertEqual(
+            {(p["provider"], p["counter_key"]) for p in lodging},
+            {("lodging", "lodging_daily_calls"), ("camping", "camping_daily_calls")},
+        )
+        broker = scheduled_sync.quotas_for_stage("brokers")[0]
+        self.assertEqual(broker["counter_key"], "broker_daily_calls")
+        self.assertEqual(scheduled_sync.cap_for_source(broker, "manual"), 1000)
+
+    def test_building_provider_includes_registry_and_permits_counters(self):
+        from quota_policy import PROVIDER_COUNTER_KEYS
+        self.assertEqual(
+            set(PROVIDER_COUNTER_KEYS["building_hub"]),
+            {"brhub_progress", "brhub_rescan_progress", "permits_progress"},
+        )
+
+    def test_building_hub_claim_is_atomic_and_hard_capped(self):
+        class Cursor:
+            def __init__(self):
+                self.sql = ""
+            def execute(self, sql, params):
+                self.sql = sql
+            def fetchone(self):
+                return {"count": 8000}
+            def close(self):
+                pass
+        class Conn:
+            def __init__(self):
+                self.cursor_obj = Cursor()
+            def cursor(self):
+                return self.cursor_obj
+            def commit(self):
+                pass
+            def close(self):
+                pass
+        conn = Conn()
+        with patch("db.get_conn", return_value=conn):
+            self.assertEqual(quota_policy.claim_building_hub_request(), 8000)
+        self.assertIn("ON CONFLICT", conn.cursor_obj.sql)
+        self.assertIn("< %s", conn.cursor_obj.sql)
+
+    def test_both_building_collectors_claim_before_outbound_request(self):
+        with open("sync_brhub.py", encoding="utf-8") as f:
+            brhub = f.read()
+        with open("sync_permits.py", encoding="utf-8") as f:
+            permits = f.read()
+        self.assertIn("claim_building_hub_request()\n    r = requests.get", brhub)
+        self.assertIn("claim_building_hub_request()\n    r = requests.get", permits)
+
+    def test_manual_child_lock_failure_fences_its_claim(self):
+        writes = []
+        claim = {"run_id": "claimed", "state": "running", "stages": {}}
+        with (
+            patch.object(scheduled_sync, "_acquire_lock", return_value=(None, None)),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value=claim),
+            patch.object(scheduled_sync, "_write_status",
+                         side_effect=lambda key, value, run_id: writes.append((value, run_id))),
+        ):
+            self.assertEqual(
+                scheduled_sync.run(source="manual", run_id="claimed"), 2
+            )
+        self.assertEqual(writes[0][0]["state"], "failed")
+        self.assertEqual(writes[0][1], "claimed")
+
+    def test_scheduled_runner_does_not_steal_fresh_manual_claim(self):
+        claim = {"run_id": "manual", "state": "running", "stages": {}}
+        with (
+            patch.object(scheduled_sync, "_acquire_lock", return_value=(object(), object())),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value=claim),
+            patch.object(scheduled_sync, "_write_initial_status") as initial,
+        ):
+            self.assertEqual(scheduled_sync.run(source="scheduled"), 2)
+        initial.assert_not_called()
 
     def test_failed_cadence_stage_retries_on_another_weekday(self):
         previous = {
@@ -117,12 +245,15 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             patch.object(scheduled_sync, "_source_busy", return_value=None),
             patch.object(scheduled_sync, "_metric_value", return_value=0),
             patch.object(scheduled_sync, "_run_stage", return_value=(1, ["inner failure"])),
+            patch.object(scheduled_sync, "_write_scheduled_evidence") as evidence,
         ):
             result = scheduled_sync.run(selected_stage="lodging")
         self.assertEqual(result, 1)
         self.assertEqual(writes[-1]["state"], "failed")
         self.assertEqual(writes[-1]["stages"]["lodging"]["state"], "failed")
         self.assertTrue(writes[-1]["stages"]["lodging"]["retryable"])
+        self.assertEqual(evidence.call_args_list[0].args[1], "running")
+        self.assertEqual(evidence.call_args_list[-1].args[1], "failed")
 
     def test_secret_values_are_redacted(self):
         with patch.dict(os.environ, {"LODGING_SERVICE_KEY": "top-secret"}):

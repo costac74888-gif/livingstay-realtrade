@@ -44,6 +44,7 @@ from datetime import date, datetime
 import requests
 
 from db import get_conn
+from quota_policy import QuotaExhausted, claim_building_hub_request, korea_today, regular_cap
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from address_utils import normalize_umd_nm
 from building_registry import _find_categories, _combine_labels
@@ -67,6 +68,7 @@ _INTERNAL_STATS_REFRESH_URL = os.environ.get(
 
 
 _PENDING_BUILDING_NAMES = ("", "-", "(이름 미상)")
+_SHARED_QUOTA_ERROR_PREFIX = "building_hub_quota_exhausted:"
 
 
 def _signal_stats_change():
@@ -132,7 +134,7 @@ def _combined_calls_today(cur):
     """메인 수집 + 과거구간 재수집의 오늘 호출량 합계.
     둘 중 하나가 8,000건을 다 써도 나머지가 또 8,000건을 쓸 수 없도록
     일일 캡을 두 실행이 공유하게 만든다."""
-    today = date.today().isoformat()
+    today = korea_today()
     total = 0
     for key in _SIBLING_PROGRESS_KEYS:
         cur.execute("SELECT value FROM app_meta WHERE key=%s", (key,))
@@ -182,6 +184,7 @@ def _jibun_from_bunji(bun, ji):
 def _fetch_page(key, sgg, bjd, page):
     params = {"serviceKey": key, "sigunguCd": sgg, "bjdongCd": bjd,
               "numOfRows": str(NUM_ROWS), "pageNo": str(page), "_type": "json"}
+    claim_building_hub_request()
     r = requests.get(API_URL, params=params, timeout=30)
     r.raise_for_status()
     d = r.json()
@@ -232,6 +235,13 @@ def _fetch_all_dong_pages(key, sgg_cd, bjd_cd, sleep_s):
                 last_exc = None
                 break
             except Exception as e:
+                if isinstance(e, QuotaExhausted):
+                    return (
+                        None,
+                        page - 1,
+                        f"{_SHARED_QUOTA_ERROR_PREFIX}{e}",
+                        saw_429,
+                    )
                 last_exc = e
                 is_r429 = _is_429(e)
                 if is_r429:
@@ -262,7 +272,7 @@ def run(args, status_key=None, run_id=None):
     if args.start_idx >= 0:
         prog["idx"] = args.start_idx
 
-    today = date.today().isoformat()
+    today = korea_today()
     if prog.get("calls_date") != today:
         prog["calls_date"] = today
         prog["calls_today"] = 0
@@ -406,9 +416,33 @@ def run(args, status_key=None, run_id=None):
                 f = pool.submit(_fetch_all_dong_pages, key, sgg_cd_b, bjd_cd_b, current_sleep)
                 fetch_jobs.append((f, code, dong_name, sgg_cd_b, bjd_cd_b))
 
-            for f, code, dong_name, sgg_cd, bjd_cd in fetch_jobs:
+            for job_index, (f, code, dong_name, sgg_cd, bjd_cd) in enumerate(fetch_jobs):
                 items, pages_used, error, saw_429 = f.result()
-                prog["calls_today"] += pages_used + (1 if error and pages_used == 0 else 0)
+                quota_exhausted = bool(
+                    error and error.startswith(_SHARED_QUOTA_ERROR_PREFIX)
+                )
+                # A rejected hard-quota claim made no outbound request.  Keep
+                # successful pages from this district, but never add the old
+                # generic "+1 error" approximation for a denied claim.
+                prog["calls_today"] += pages_used + (
+                    1 if error and pages_used == 0 and not quota_exhausted else 0
+                )
+
+                if quota_exhausted:
+                    print(
+                        "Building HUB 공유 일일한도 도달 — 현재 법정동부터 "
+                        "체크포인트를 유지하고 전체 실행을 중단합니다."
+                    )
+                    stop_reason = "provider_daily_cap"
+                    # Futures later in submission order must not advance the
+                    # contiguous checkpoint, even if they already completed.
+                    for later, *_unused in fetch_jobs[job_index + 1:]:
+                        if later is not f:
+                            later.cancel()
+                    if not args.dry_run:
+                        conn.commit()
+                        _save_progress(conn, cur, prog, args.progress_key)
+                    break
 
                 # 429 감지 시 이후 동 간 딜레이를 adaptive하게 늘린다
                 if saw_429:
@@ -464,6 +498,8 @@ def run(args, status_key=None, run_id=None):
                 if current_sleep > 0:
                     time.sleep(current_sleep)
 
+            if stop_reason == "provider_daily_cap":
+                break
             if processed % 50 == 0:
                 print(f"  진행 {prog['idx']}/{len(dongs)} 법정동, 오늘 호출 {prog['calls_today']}, 이번 실행 발견 {found_run}")
         else:
@@ -488,7 +524,7 @@ def run(args, status_key=None, run_id=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="이번 실행에서 처리할 법정동 수 (0=일일캡까지)")
-    ap.add_argument("--daily-cap", type=int, default=6000)
+    ap.add_argument("--daily-cap", type=int, default=regular_cap("building_hub"))
     ap.add_argument("--workers", type=int, default=1,
                     help="동시 법정동 조회 스레드 수 (기본 4)")
     ap.add_argument("--sleep", type=float, default=1.0,

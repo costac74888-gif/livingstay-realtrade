@@ -36,6 +36,7 @@ from addr_norm import (
     normalize_jibun_prefix,
 )
 from db import get_conn
+from quota_policy import korea_today
 from stats_cache import mark_master_stats_invalidated
 from email_util import send_email
 from lodging_categories import (
@@ -121,7 +122,7 @@ def _daily_calls_today(cur, meta_key):
         return 0
     try:
         data = json.loads(row["value"])
-        if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+        if data.get("date") == korea_today():
             return int(data.get("count", 0))
     except (TypeError, ValueError):
         pass
@@ -129,7 +130,7 @@ def _daily_calls_today(cur, meta_key):
 
 
 def _bump_daily_calls(cur, conn, meta_key):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = korea_today()
     fresh = json.dumps({"date": today, "count": 1})
     cur.execute("""
         INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
