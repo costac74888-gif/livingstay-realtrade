@@ -740,7 +740,7 @@ def get_building(building_id):
     cur.execute("""
         SELECT mb.id AS building_id,
                mb.building_name, mb.name_pending, mb.building_name_source,
-               mb.building_name_candidate_count,
+               mb.building_name_candidate_count, mb.building_name_pending_base,
                mb.road_address, mb.jibun_address,
                mb.lodging_type, mb.lodging_type_detail, mb.lodging_subtype,
                mb.building_status, mb.completion_expected_date,
@@ -1194,13 +1194,51 @@ def get_building(building_id):
     result["lodgings"] = lodgings
     result["lodging_room_total"] = lodging_room_total  # 영업신고 목록의 객실수 합계 (행정 카드 목록 표시용)
     result["lodging_active_business_count"] = len(lodgings)
+    active_named_lodgings = [
+        lodging for lodging in lodgings
+        if str(lodging.get("biz_name") or "").strip()
+    ]
+    representative_lodging = choose_representative(active_named_lodgings)
+    report_name_eligible = bool(
+        result.get("name_pending")
+        or result.get("building_name_source") == "lodging_report"
+    )
+    report_name_display = bool(
+        report_name_eligible and representative_lodging
+    )
+    pending_base_name = result.pop("building_name_pending_base", None)
+    result["display_building_name"] = (
+        representative_lodging.get("biz_name")
+        if report_name_display
+        else (
+            pending_base_name
+            if (
+                report_name_eligible
+                and not representative_lodging
+                and pending_base_name
+            )
+            else result.get("building_name")
+        )
+    )
+    result["building_name_report_display"] = report_name_display
+    result["building_name_needs_review"] = bool(
+        report_name_eligible and not report_name_display
+    )
+    result["building_name_candidate_count"] = len(active_named_lodgings)
     result["building_name_auto"] = (
         result.get("building_name_source") == "lodging_report"
     )
     result["building_name_auto_representative"] = (
-        result["building_name_auto"]
-        and int(result.get("building_name_candidate_count") or 0) > 1
+        report_name_display and len(active_named_lodgings) > 1
     )
+    result["building_name_representative_room_count"] = (
+        int(representative_lodging.get("room_count") or 0)
+        if representative_lodging else None
+    )
+    for lodging in lodgings:
+        lodging["building_name_representative"] = bool(
+            report_name_display and lodging is representative_lodging
+        )
     result["lodging_metric"] = (
         "report_rate" if uses_lodging_report_rate(result.get("lodging_type")) else "room_count"
     )
@@ -15649,7 +15687,7 @@ def admin_buildings_list():
             lr for lr in lr_list
             if lr.get("biz_status_name") == ACTIVE_LODGING_STATUS
         ]
-        representative_lodging = active_lodgings[0] if active_lodgings else None
+        representative_lodging = choose_representative(active_lodgings)
         show_current_report_name = bool(
             representative_lodging
             and representative_lodging.get("biz_name")

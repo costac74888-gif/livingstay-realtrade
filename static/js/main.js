@@ -4363,11 +4363,16 @@ async function loadBuildingHeader(id){
   } else if (b.lodging_type !== "일반" && lodgingRoomTotal != null && unitsNum && unitsNum > 0) {
     headerRate = Number((lodgingRoomTotal * 100 / unitsNum).toFixed(1)).toLocaleString('ko-KR') + "%";
   }
-  const bName = b.building_name || "(건물명 미확인)";
-  const lodgingNameTag = b.building_name_source === "lodging_report"
-    ? `<span title="홈앤스테이가 확인한 현재 영업 사업장명으로 임시 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대 사업장" : ""}</span>`
+  const bName = b.display_building_name || b.building_name || "(건물명 미확인)";
+  const lodgingNameTag = b.building_name_report_display
+    ? `<span title="건축물대장 명칭이 확인되지 않아 현재 활성 영업신고 중 객실 수가 가장 많은 사업장명을 대표로 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고(최다) 기준</span>`
     : "";
-  const namePendingNeedsReview = b.name_pending && b.building_name_source !== "lodging_report";
+  const namePendingNeedsReview = b.building_name_needs_review != null
+    ? Boolean(b.building_name_needs_review)
+    : Boolean(
+        (b.name_pending || b.building_name_source === "lodging_report")
+        && !b.building_name_report_display
+      );
   bCurrentName = bName; // "매물 내놓기" 모달 제목 등에서 사용
   // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
   const txAllLink = document.getElementById("bTxAllLink");
@@ -5354,19 +5359,25 @@ async function loadBuildingHeader(id){
     // 영업신고 사업장 목록 — 서버가 이미 등록운영업체(priority 순) → 미등록(랜덤)으로 정렬해서 내려줌
     const lodgingRows = lodgings.map((l) => {
       const badge = _hygieneBadge(l.hygiene_type);
+      const representativeTag = l.building_name_representative
+        ? `<span title="건물 대표 명칭으로 표시 중인 최다 객실 영업신고" style="font-size:10px;font-weight:700;color:#386641;white-space:nowrap;margin-right:4px;">(최다)</span>`
+        : "";
       const name = l.registered && l.operator_slug
         ? `<a href="/operator/${encodeURIComponent(l.operator_slug)}?building_id=${b.building_id}&building_name=${encodeURIComponent(b.building_name||"")}" style="display:inline-block; font-size:12.5px; font-weight:700; color:#fff; background:var(--brass-dark); border-radius:5px; padding:2px 8px; text-decoration:none;">${escapeHtml(l.biz_name)}</a>`
         : escapeHtml(l.biz_name);
       const rooms = (l.room_count != null && Number(l.room_count) > 0)
         ? Number(l.room_count).toLocaleString('ko-KR') + "실" : "-";
       return `<tr>
-        <td style="text-align:left;vertical-align:middle;padding:3px 0;">${badge}${name}</td>
+        <td style="text-align:left;vertical-align:middle;padding:3px 0;">${badge}${representativeTag}${name}</td>
         <td style="white-space:nowrap;vertical-align:middle;padding:3px 0;">${rooms}</td>
       </tr>`;
     }).join("");
     const lodgingListHtml = lodgings.length
       ? `<div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:10px 0 4px;">영업 중 신고업소 ${lodgings.length}곳</div>
-         <table class="b-info-table" style="margin-bottom:12px;"><tbody>${lodgingRows}</tbody></table>`
+         <table class="b-info-table" style="margin-bottom:12px;">
+           <thead><tr><th style="text-align:left;">영업상호명</th><th style="white-space:nowrap;">객실수</th></tr></thead>
+           <tbody>${lodgingRows}</tbody>
+         </table>`
       : "";
     // 담당부처/연락처: 매칭된 경우만 표시. 시/도 대표 폴백이면 부서명 뒤에 작은 회색 꼬리표.
     const authMatched = b.authority_dept != null && b.authority_dept !== "";
