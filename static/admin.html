@@ -289,6 +289,92 @@
           }
         });
         html += `</tbody></table></div>`;
+        html += `
+          <section aria-labelledby="lodgingLegalCriteriaTitle"
+            style="margin-top:10px;border:1px solid #DCCFB8;border-radius:8px;background:#FFFEFB;overflow:hidden;">
+            <div style="padding:8px 10px;background:#F4EFE5;border-bottom:1px solid #E5DCCB;">
+              <h3 id="lodgingLegalCriteriaTitle"
+                style="margin:0;color:var(--ink);font-size:13px;font-weight:700;">
+                숙박법정분류기준
+              </h3>
+              <p style="margin:3px 0 0;color:var(--ink-soft);font-size:11px;line-height:1.5;">
+                법정 영업분류와 건축물대장 용도는 별도로 관리합니다. 현재 영업 통계는 영업상태가
+                <b>영업/정상</b>인 신고만 포함합니다.
+              </p>
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;min-width:760px;border-collapse:collapse;font-size:11.5px;white-space:normal;">
+                <thead>
+                  <tr style="background:#FAF8F0;color:var(--ink);">
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;width:90px;">법정분류</th>
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;">대표 신고·등록 유형</th>
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;">건축물 용도 참고</th>
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;">판정·집계 기준</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">일반</td>
+                    <td style="padding:6px 8px;">일반호텔 · 여관업 · 여인숙업</td>
+                    <td style="padding:6px 8px;">숙박시설</td>
+                    <td style="padding:6px 8px;">일반 신고업체 ÷ 건물수 (호실수는 참고용)</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">생활</td>
+                    <td style="padding:6px 8px;">숙박업(생활)</td>
+                    <td style="padding:6px 8px;">숙박시설</td>
+                    <td style="padding:6px 8px;">신고 객실수 ÷ 건축물대장 호실수</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">관광</td>
+                    <td style="padding:6px 8px;">관광숙박업 · 관광호텔업 · 휴양콘도미니엄업 등</td>
+                    <td style="padding:6px 8px;">숙박시설</td>
+                    <td style="padding:6px 8px;">관광 관련 등록을 법정 영업분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">에어비앤비</td>
+                    <td style="padding:6px 8px;">외국인관광도시민박업</td>
+                    <td style="padding:6px 8px;">주택</td>
+                    <td style="padding:6px 8px;">주택이라는 용도만으로 법정분류를 추정하지 않음</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">농어촌민박</td>
+                    <td style="padding:6px 8px;">농어촌민박업</td>
+                    <td style="padding:6px 8px;">주택</td>
+                    <td style="padding:6px 8px;">농어촌민박 등록을 별도 법정분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">캠핑</td>
+                    <td style="padding:6px 8px;">야영장업</td>
+                    <td style="padding:6px 8px;">수련시설</td>
+                    <td style="padding:6px 8px;">야영장 등록을 별도 법정분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">한옥</td>
+                    <td style="padding:6px 8px;">한옥체험업</td>
+                    <td style="padding:6px 8px;">용도 제한 없음(자동 주택 단정 안 함)</td>
+                    <td style="padding:6px 8px;">한옥체험업 등록을 별도 법정분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">복합</td>
+                    <td style="padding:6px 8px;">서로 다른 법정 등록 유형이 같은 건물에 함께 존재</td>
+                    <td style="padding:6px 8px;">실제 건축물대장 용도 별도 확인</td>
+                    <td style="padding:6px 8px;">임의로 한 유형을 선택하지 않고 복합으로 유지</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 8px;font-weight:700;">미분류</td>
+                    <td style="padding:6px 8px;">활성 법정 신고·등록 근거 없음 또는 판정 보류</td>
+                    <td style="padding:6px 8px;">건축물대장 원문 별도 보존</td>
+                    <td style="padding:6px 8px;">주소가 여러 건물에 맞으면 자동 반영하지 않음</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="padding:7px 10px;color:var(--ink-soft);font-size:10.5px;line-height:1.55;background:#FCFBF7;">
+              ※ 건물수는 <b>master_buildings 고유 건물</b> 기준이며, 영업신고 업체수·객실수는 별도 집계합니다.
+              건축물대장으로 확정된 분류와 에어비앤비 수입 건물은 소급 재분류로 덮어쓰지 않습니다.
+            </div>
+          </section>`;
         box.innerHTML = html;
       } catch(e) { box.innerHTML = ""; }
     }
