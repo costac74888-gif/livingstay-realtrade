@@ -47,15 +47,42 @@ class GunicornStatsLifecycleTests(unittest.TestCase):
         start_badge_worker.assert_called_once_with()
         server.log.exception.assert_not_called()
 
-    def test_worker_service_warms_then_starts_background_loop(self):
+    def test_worker_service_defers_cold_rebuild_to_background_loop(self):
         with (
             patch.object(app_module, "_rebuild_master_stats") as rebuild,
             patch.object(app_module, "_master_stats_background_loop") as background_loop,
         ):
             app_module._master_stats_warm_then_loop()
 
-        rebuild.assert_called_once_with(force=True)
+        rebuild.assert_not_called()
         background_loop.assert_called_once_with()
+
+    def test_background_loop_does_not_rebuild_empty_cache_until_requested(self):
+        class StopLoop(Exception):
+            pass
+
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        refresh_was_set = app_module._MASTER_STATS_NEEDS_REFRESH.is_set()
+        app_module._MASTER_STATS_NEEDS_REFRESH.clear()
+        try:
+            app_module._MASTER_STATS_CACHE.update({
+                "ts": 0.0,
+                "data": {},
+                "sections": {},
+                "invalidation_token": None,
+            })
+            with (
+                patch.object(app_module, "_master_stats_schedule_revalidation") as schedule,
+                patch.object(app_module.time, "sleep", side_effect=StopLoop),
+                self.assertRaises(StopLoop),
+            ):
+                app_module._master_stats_background_loop()
+            schedule.assert_not_called()
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+            if refresh_was_set:
+                app_module._MASTER_STATS_NEEDS_REFRESH.set()
 
     def test_worker_service_is_started_as_a_daemon_thread(self):
         worker_thread = Mock()

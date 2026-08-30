@@ -13,11 +13,11 @@ def post_fork(server, worker):
     try:
         start_master_stats_worker()
         start_badge_waitlist_worker()
-        server.log.info("worker %s started master stats warmup", worker.pid)
+        server.log.info("worker %s started on-demand master stats service", worker.pid)
     except Exception:
         # Starting the best-effort worker must not prevent the web worker from
         # serving the cold-start COUNT summary.
         server.log.exception(
-            "worker %s could not start master stats warmup; continuing",
+            "worker %s could not start master stats service; continuing",
             worker.pid,
         )

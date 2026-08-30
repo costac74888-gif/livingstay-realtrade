@@ -16433,12 +16433,12 @@ def _master_stats_section(name):
 
 
 def _master_stats_background_loop():
-    """부팅 직후와 캐시 만료 전 통계 원본을 미리 갱신한다.
+    """요청된 콜드 캐시와 만료 전 통계 원본을 백그라운드에서 갱신한다.
 
-    통계 집계는 요청 스레드에서 선행하되, 실패가 앱 기동이나 일반 요청을
-    방해하지 않도록 daemon 스레드에서 best effort로 실행한다.
+    빈 캐시는 공개 통계 API가 warming 응답을 돌려주며 갱신을 요청할 때만
+    계산한다. 배포 직후 워커마다 전국 통계를 동시에 만들면 콜드스타트 중
+    CPU·메모리·DB를 잠식해 홈 요청까지 타임아웃될 수 있기 때문이다.
     """
-    first_run = True
     while True:
         try:
             # app_meta 무효화 표식 조회도 공유 풀을 사용한다. 이 루프는 사용자
@@ -16447,9 +16447,8 @@ def _master_stats_background_loop():
                 cache_ts = _MASTER_STATS_CACHE["ts"]
                 now = time.time()
                 refresh_due = (
-                    first_run
-                    or not cache_ts
-                    or now - cache_ts >= _MASTER_STATS_CACHE_TTL - _MASTER_STATS_REFRESH_LEAD
+                    bool(cache_ts)
+                    and now - cache_ts >= _MASTER_STATS_CACHE_TTL - _MASTER_STATS_REFRESH_LEAD
                 )
                 invalidated = bool(cache_ts) and not _master_stats_cache_is_valid()
                 refresh_requested = _MASTER_STATS_NEEDS_REFRESH.is_set()
@@ -16457,32 +16456,18 @@ def _master_stats_background_loop():
                     if _master_stats_schedule_revalidation():
                         reason = "requested" if refresh_requested else "scheduled"
                         app.logger.info("[master-stats] background refresh %s", reason)
-            first_run = False
         except Exception:
             app.logger.exception("[master-stats] background refresh failed")
-            first_run = False
         time.sleep(_MASTER_STATS_BACKGROUND_POLL)
 
 
 def _master_stats_warm_then_loop():
-    """워커 기동 뒤 정밀 통계를 채우고 이후 주기 갱신을 계속한다."""
-    try:
-        with app.app_context():
-            # 워밍업도 지도·검색 요청보다 낮은 우선순위의 DB 예산 안에서만 돈다.
-            # fork 훅의 호출 스레드를 막지 않도록 이 함수는 daemon에서 실행된다.
-            with background_connection_priority():
-                _rebuild_master_stats(force=True)
-        app.logger.info("[master-stats] worker cache warmup completed")
-    except Exception:
-        # 콜드스타트 API는 COUNT 요약을 반환하므로 워밍업 장애가 워커 기동이나
-        # 사용자 요청을 막지 않는다. 주기 루프가 다음 간격에 재시도한다.
-        app.logger.exception("[master-stats] worker cache warmup failed")
-    finally:
-        _master_stats_background_loop()
+    """워커 기동을 방해하지 않고 요청 기반 통계 갱신 루프만 시작한다."""
+    _master_stats_background_loop()
 
 
 def start_master_stats_worker():
-    """Gunicorn 워커별 통계 워밍업·갱신 서비스를 비차단으로 시작한다."""
+    """Gunicorn 워커별 통계 갱신 서비스를 비차단으로 시작한다."""
     worker_thread = threading.Thread(
         target=_master_stats_warm_then_loop,
         daemon=True,
