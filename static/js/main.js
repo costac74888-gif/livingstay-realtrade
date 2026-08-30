@@ -1059,14 +1059,9 @@ let _mapFetchController = null;       // 다음 지도 요청이 이전 네트�
 let selectedDataLabBuilding = null;   // 데이터랩에서 마지막으로 선택한 건물
 let selectedDataLabOverlay = null;    // 선택 건물 전용 CustomOverlay — 레이어 교체와 분리
 let mapLocationTargetId = null;       // 지도위치 버튼으로 선택된 건물 원형의 지속 강조 대상
-let mapLocationTargetOverlay = null;  // 지도위치 버튼용 전용 점멸 원형 — 마커 종류와 무관
 
 function clearMapLocationTarget(){
   mapLocationTargetId = null;
-  if (mapLocationTargetOverlay){
-    mapLocationTargetOverlay.setMap(null);
-    mapLocationTargetOverlay = null;
-  }
   document.querySelectorAll(".map-location-target").forEach(el => {
     el.classList.remove("map-location-target");
   });
@@ -1105,37 +1100,6 @@ function setMapLocationTarget(buildingId){
   if (buildingId == null) return;
   mapLocationTargetId = String(buildingId);
   applyMapLocationTarget();
-}
-
-function showMapLocationTargetPoint(buildingId, lat, lng){
-  if (!kakaoMap || buildingId == null) return;
-  if (mapLocationTargetId == null || String(mapLocationTargetId) !== String(buildingId)) return;
-  const latitude = Number(lat);
-  const longitude = Number(lng);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-  if (mapLocationTargetOverlay){
-    mapLocationTargetOverlay.setMap(null);
-    mapLocationTargetOverlay = null;
-  }
-  const point = document.createElement("div");
-  point.className = "map-location-target map-location-target-pin";
-  point.setAttribute("aria-label", "선택한 건물 위치");
-  point.setAttribute("role", "status");
-  point.dataset.mapBuildingId = String(buildingId);
-  mapLocationTargetOverlay = new kakao.maps.CustomOverlay({
-    position: new kakao.maps.LatLng(latitude, longitude),
-    content: point,
-    xAnchor: 0.5,
-    yAnchor: 0.5,
-    zIndex: 50,
-    clickable: false,
-  });
-  mapLocationTargetOverlay.__contentEl = point;
-  mapLocationTargetOverlay.__buildingId = buildingId;
-  mapLocationTargetOverlay.setMap(kakaoMap);
-  if (typeof mapLocationTargetOverlay.setZIndex === "function") {
-    mapLocationTargetOverlay.setZIndex(50);
-  }
 }
 
 // 색상별 0건 점 마커 캐시 — SVG 데이터 URI를 반복 생성하지 않는다.
@@ -2026,6 +1990,7 @@ function updateMarkerLabels(){
         // 최초 줌인 시 1회만 DOM + CustomOverlay 생성
         d.el = _buildCircleBadgeEl(d.b);
         if (!d.el) return;
+        syncMapLocationTargetElement(d.el, d.b.id);
         d.overlay = new kakao.maps.CustomOverlay({
           position: d.pos, content: d.el,
           xAnchor: 0.5, yAnchor: 1.0, zIndex: 20, // Kakao 기본 POI(~3)·마커(5)보다 위
@@ -5334,19 +5299,12 @@ async function loadBuildingHeader(id){
       // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
-      // 지도 이동 직후에는 화면 밖 CustomOverlay가 DOM에 늦게 붙을 수 있어,
-      // 다음 페인트와 마커 재렌더 완료 시점에 선택 포인트를 다시 보장한다.
-      showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng));
-      });
       // 현재 검색·지역 필터와 무관하게 이 건물 ID만 정확히 조회한다.
-      // skipBounds가 적용되어 setCenter 반영 전의 이전 뷰포트에 잘리는 문제도 막는다.
+      // 조회된 기존 포인트 자체에 점멸 클래스를 적용해 클릭 동작을 그대로 유지한다.
       Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then(
-        () => showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng),
+        applyMapLocationTarget,
         (error) => {
           console.error("[MAP] 선택 건물 마커 재조회 실패:", error);
-          showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng);
         },
       );
     });

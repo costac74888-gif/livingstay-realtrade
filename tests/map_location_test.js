@@ -19,17 +19,21 @@ expect(
 );
 expect(
   source.includes("const targetBuildingId = Number(b.building_id ?? id)") &&
-    source.includes("showMapLocationTargetPoint(targetBuildingId, b.lat, b.lng)") &&
-    source.includes("new kakao.maps.CustomOverlay") &&
-    source.includes("requestAnimationFrame(() => {") &&
-    source.includes("Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then("),
-  "지도 이동·마커 재렌더 뒤 지도위치 전용 원형 포인트를 다시 보장하지 않습니다.",
+    source.includes("setMapLocationTarget(targetBuildingId)") &&
+    source.includes("syncMapLocationTargetElement(d.el, d.b.id)") &&
+    source.includes("_openBuildingFromMap(b)") &&
+    source.includes("clickable: true") &&
+    source.includes("Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then(") &&
+    !source.includes("mapLocationTargetOverlay") &&
+    !source.includes("showMapLocationTargetPoint"),
+  "별도 오버레이 없이 기존 건물 포인트 자체를 점멸시키지 않습니다.",
 );
 expect(
-  css.includes(".map-location-target-pin") &&
+  css.includes(".map-location-target") &&
     css.includes("map-location-target-pulse") &&
-    css.includes("map-location-target-ring"),
-  "지도위치 포인트 점멸 스타일이 없습니다.",
+    !css.includes(".map-location-target-pin") &&
+    !css.includes("map-location-target-ring"),
+  "기존 건물 포인트용 작은 점멸 스타일이 없습니다.",
 );
 
 console.log("OK  모바일 지도위치 상세 닫기·점멸 포인트");
