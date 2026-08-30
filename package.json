@@ -6,9 +6,11 @@
   "scripts": {
     "build:frontend": "python scripts/build_frontend.py",
     "build:js": "python scripts/build_frontend.py",
-    "test:frontend": "python tests/frontend_distribution_test.py"
+    "test:frontend": "python tests/frontend_distribution_test.py",
+    "test:map-mobile": "node tests/map_location_browser_test.js"
   },
   "dependencies": {
+    "playwright": "^1.62.1",
     "terser": "^5.51.2"
   }
 }
