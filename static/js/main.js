@@ -1025,8 +1025,30 @@ document.getElementById("btnCloseCorrection").addEventListener("click", () => {
 });
 
 // ---------- 카카오맵 ----------
-const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "준공전": "#616161", "미분류": "#E0E0E0" };
-const LODGING_LABELS = { "생활": "생활숙박시설", "관광": "관광숙박시설", "일반": "일반숙박시설", "복합": "복합", "준공전": "준공전", "미분류": "미분류" };
+const LODGING_COLORS = {
+  "생활":      "#378ADD",
+  "관광":      "#639922",
+  "일반":      "#D46BA3",
+  "에어비앤비":"#FF5A5F",
+  "농어촌민박":"#8BC34A",
+  "캠핑":      "#795548",
+  "한옥":      "#FF8F00",
+  "복합":      "#B39DDB",
+  "준공전":    "#616161",
+  "미분류":    "#E0E0E0",
+};
+const LODGING_LABELS = {
+  "생활":      "생활숙박시설",
+  "관광":      "관광숙박",
+  "일반":      "일반숙박",
+  "에어비앤비":"에어비앤비",
+  "농어촌민박":"농어촌민박",
+  "캠핑":      "캠핑·야영",
+  "한옥":      "한옥",
+  "복합":      "복합",
+  "준공전":    "준공전",
+  "미분류":    "미분류",
+};
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 function markerColor(lodgingType, buildingStatus){
@@ -2111,16 +2133,20 @@ async function loadMapMarkers(filters = {}, opts = {}){
   let placed = 0;
 
   // 유효 좌표만 필터링
-  // 겹침 우선순위: 생숙 > 관광 > 복합 > 일반 > 준공전 > 미분류
+  // 겹침 우선순위: 생활 > 관광 > 복합 > 일반 > 에어비앤비 > 한옥 > 농어촌민박 > 캠핑 > 준공전 > 미분류
   // Kakao Maps 캔버스는 나중에 추가된 마커가 위에 그려지므로
   // 우선순위 낮은 타입부터 먼저 추가해야 높은 타입이 위에 표시된다.
-  const _DRAW_ORDER = { "미분류": 0, "준공전": 1, "일반": 2, "복합": 3, "관광": 4, "생활": 5 };
+  const _DRAW_ORDER = {
+    "미분류": 0, "준공전": 1,
+    "캠핑": 2, "농어촌민박": 3, "한옥": 4, "에어비앤비": 5,
+    "일반": 6, "복합": 7, "관광": 8, "생활": 9,
+  };
   function _markerDrawOrder(b){
     if (!b.lodging_type){
       // lodging_type 없음 — building_status로 준공전/미분류 구분
       return (b.building_status === "허가" || b.building_status === "착공") ? 1 : 0;
     }
-    if (b.lodging_type.includes("·")) return 3;     // 복합
+    if (b.lodging_type.includes("·")) return _DRAW_ORDER["복합"];
     return _DRAW_ORDER[b.lodging_type] ?? 0;
   }
   const validItems = items
@@ -2280,6 +2306,10 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     { key: "생활",   color: LODGING_COLORS["생활"]   },
     { key: "관광",   color: LODGING_COLORS["관광"]   },
     { key: "일반",   color: LODGING_COLORS["일반"]   },
+    { key: "에어비앤비", color: LODGING_COLORS["에어비앤비"] },
+    { key: "농어촌민박", color: LODGING_COLORS["농어촌민박"] },
+    { key: "캠핑",   color: LODGING_COLORS["캠핑"]   },
+    { key: "한옥",   color: LODGING_COLORS["한옥"]   },
     { key: "복합",   color: LODGING_COLORS["복합"]   },
     { key: "준공전", color: LODGING_COLORS["준공전"] },
     { key: "미분류", color: LODGING_COLORS["미분류"] },
@@ -5880,7 +5910,7 @@ async function loadBuildingCountLabel(){
 
     // 타이틀: "1,399건/실거래 10,726건"
     if (countEl && typeof d.count === "number") {
-      const bldStr = d.count.toLocaleString("ko-KR") + "건";
+      const bldStr = d.count.toLocaleString("ko-KR") + "개";
       const txStr  = typeof d.tx_count === "number"
         ? "/실거래 " + d.tx_count.toLocaleString("ko-KR") + "건"
         : "";

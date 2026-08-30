@@ -2257,9 +2257,13 @@ def get_buildings_cluster():
             WITH grouped_buildings AS (
                 SELECT *,
                        CASE
-                         WHEN lodging_type = '생활' THEN '생활'
-                         WHEN lodging_type = '관광' THEN '관광'
-                         WHEN lodging_type = '일반' THEN '일반'
+                         WHEN lodging_type = '생활'                               THEN '생활'
+                         WHEN lodging_type = '관광'                               THEN '관광'
+                         WHEN lodging_type = '일반'                               THEN '일반'
+                         WHEN lodging_type = '에어비앤비'                         THEN '에어비앤비'
+                         WHEN lodging_type = '농어촌민박'                         THEN '농어촌민박'
+                         WHEN lodging_type = '캠핑'                               THEN '캠핑'
+                         WHEN lodging_type = '한옥'                               THEN '한옥'
                          WHEN lodging_type = '복합' OR lodging_type LIKE '%%·%%' THEN '복합'
                          WHEN (lodging_type IS NULL OR lodging_type = '')
                               AND building_status IN ('허가','착공')
@@ -2275,8 +2279,12 @@ def get_buildings_cluster():
                    COUNT(*)  AS total,
                    COUNT(*) FILTER (WHERE map_type = '생활')   AS cnt_live,
                    COUNT(*) FILTER (WHERE map_type = '관광')   AS cnt_tour,
-                   COUNT(*) FILTER (WHERE map_type = '일반')   AS cnt_gen,
-                   COUNT(*) FILTER (WHERE map_type = '복합')   AS cnt_mixed,
+                   COUNT(*) FILTER (WHERE map_type = '일반')       AS cnt_gen,
+                   COUNT(*) FILTER (WHERE map_type = '에어비앤비') AS cnt_airbnb,
+                   COUNT(*) FILTER (WHERE map_type = '농어촌민박') AS cnt_farm,
+                   COUNT(*) FILTER (WHERE map_type = '캠핑')       AS cnt_camping,
+                   COUNT(*) FILTER (WHERE map_type = '한옥')       AS cnt_hanok,
+                   COUNT(*) FILTER (WHERE map_type = '복합')       AS cnt_mixed,
                    COUNT(*) FILTER (WHERE map_type = '준공전') AS cnt_pre_completion,
                    COUNT(*) FILTER (WHERE map_type = '미분류') AS cnt_unknown
             FROM grouped_buildings
@@ -2310,8 +2318,12 @@ def get_buildings_cluster():
             "by_type": {
                 "생활":   int(r["cnt_live"]            or 0),
                 "관광":   int(r["cnt_tour"]            or 0),
-                "일반":   int(r["cnt_gen"]             or 0),
-                "복합":   int(r["cnt_mixed"]           or 0),
+                "일반":       int(r["cnt_gen"]      or 0),
+                "에어비앤비": int(r["cnt_airbnb"]  or 0),
+                "농어촌민박": int(r["cnt_farm"]     or 0),
+                "캠핑":       int(r["cnt_camping"]  or 0),
+                "한옥":       int(r["cnt_hanok"]    or 0),
+                "복합":       int(r["cnt_mixed"]    or 0),
                 "준공전": int(r["cnt_pre_completion"]  or 0),
                 "미분류": int(r["cnt_unknown"]         or 0),
             },
@@ -2906,6 +2918,10 @@ def get_building_count():
                     WHEN lodging_type = '생활'                               THEN '생활'
                     WHEN lodging_type = '관광'                               THEN '관광'
                     WHEN lodging_type = '일반'                               THEN '일반'
+                    WHEN lodging_type = '에어비앤비'                         THEN '에어비앤비'
+                    WHEN lodging_type = '농어촌민박'                         THEN '농어촌민박'
+                    WHEN lodging_type = '캠핑'                               THEN '캠핑'
+                    WHEN lodging_type = '한옥'                               THEN '한옥'
                     WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
                     WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
                     ELSE NULL   -- mixed_use_excluded 등 → 제외
@@ -16230,7 +16246,10 @@ def _lodging_count_summary_payload():
                     CASE
                         WHEN building_status IN ('허가', '착공')
                              AND use_apr_day IS NULL THEN '준공전'
-                        WHEN lodging_type IN ('생활', '관광', '일반') THEN lodging_type
+                        WHEN lodging_type IN (
+                            '생활', '관광', '일반', '에어비앤비',
+                            '농어촌민박', '캠핑', '한옥'
+                        ) THEN lodging_type
                         WHEN lodging_type = '복합' OR lodging_type LIKE '%%·%%' THEN '복합'
                         WHEN COALESCE(lodging_type, '') = '' THEN '미분류'
                         ELSE NULL
@@ -16330,7 +16349,11 @@ def _lodging_count_summary_payload():
         },
         *[
             summary_row(label)
-            for label in ("생활", "관광", REPORT_RATE_EXCLUDED_LODGING_TYPE, "복합", "준공전", "미분류")
+            for label in (
+                "생활", "관광", REPORT_RATE_EXCLUDED_LODGING_TYPE,
+                "에어비앤비", "농어촌민박", "캠핑", "한옥",
+                "복합", "준공전", "미분류",
+            )
         ],
     ]
     return {
@@ -16466,7 +16489,10 @@ def _lodging_full_stats_payload():
     cur.close(); conn.close()
 
     # 그룹화
-    TYPES = ["생활", "관광", "일반", "복합", "준공전", "미분류"]
+    TYPES = [
+        "생활", "관광", "일반", "에어비앤비", "농어촌민박",
+        "캠핑", "한옥", "복합", "준공전", "미분류",
+    ]
     by_type: dict = {t: [] for t in TYPES}
     all_list: list = []
     building_count_by_type: dict = {}
@@ -16478,7 +16504,9 @@ def _lodging_full_stats_payload():
             and not building.get("use_apr_day")
         ):
             return "준공전"
-        if building.get("lodging_type") in ("생활", "관광", "일반"):
+        if building.get("lodging_type") in (
+            "생활", "관광", "일반", "에어비앤비", "농어촌민박", "캠핑", "한옥",
+        ):
             return building["lodging_type"]
         if (
             building.get("lodging_type") == "복합"
@@ -18639,9 +18667,14 @@ def admin_backfill_lodging_status():
 def admin_reclassify_lodging_keywords():
     """건물명 키워드로 lodging_type='기타' 건물을 일괄 재분류한다."""
     keyword_map = {
-        "일반": ["여관", "여인숙", "모텔", "민박", "게스트하우스", "호스텔"],
-        "생숙": ["레지던스", "스테이", "생활숙박"],
-        "관광": ["관광호텔", "리조트", "콘도"],
+        "생숙":       ["레지던스", "스테이", "생활숙박", "서비스드"],
+        "관광":       ["관광호텔", "리조트", "콘도", "콘도미니엄"],
+        "일반":       ["여관", "여인숙", "모텔", "게스트하우스", "호스텔",
+                       "펜션", "가든", "빌리지", "하우스"],
+        "농어촌민박": ["농어촌민박", "농가민박", "농촌민박"],
+        "캠핑":       ["캠핑", "야영", "글램핑", "카라반", "차박",
+                       "오토캠핑", "글램"],
+        "한옥":       ["한옥", "한옥스테이"],
     }
     conn = get_conn()
     cur = conn.cursor()
