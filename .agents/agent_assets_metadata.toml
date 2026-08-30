@@ -171,5 +171,5 @@ description = "입점부동산·영업사업장 버튼 인접 배치, 행 아래
 id = "zvFKHPC2pZ9r2fYJxV9Pi"
 uri = "file://lodging-classification-review.md"
 type = "text"
-title = "숙박시설 용도 분류 검토 문서"
-description = "운영 DB 확인 결과, 분류 기준, 기타·생숙 미리보기 및 안전한 재분류 처리안을 정리한 문서입니다."
+title = "숙박시설 용도 분류 검토 문서 다운로드"
+description = "숙박시설 분류 기준과 재분류 미리보기 결과를 정리한 Markdown 문서입니다."
