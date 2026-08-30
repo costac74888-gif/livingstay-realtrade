@@ -206,6 +206,31 @@ async function run() {
     if (url.pathname === `/api/building/${BUILDING_ID}/area-types`) {
       return json(route, { items: [] });
     }
+    if (url.pathname === "/api/buildings-geo") {
+      return json(route, {
+        total: 2,
+        items: [
+          {
+            id: BUILDING_ID,
+            building_name: BUILDING_NAME,
+            building_status: "완공",
+            lodging_type: "생활",
+            lat: 37.5665,
+            lng: 126.978,
+            total_count: 0,
+          },
+          {
+            id: 202,
+            building_name: "주변 지도 테스트 호텔",
+            building_status: "완공",
+            lodging_type: "관광",
+            lat: 37.567,
+            lng: 126.979,
+            total_count: 0,
+          },
+        ],
+      });
+    }
     if (url.pathname === "/api/favorites") {
       return json(route, {
         total: 1,
@@ -265,7 +290,28 @@ async function run() {
       await page.locator(".map-searchbar").evaluate((element) => element.classList.contains("collapsed")),
       "지도위치 클릭 후 검색 패널이 닫히지 않았습니다.",
     );
-    await page.locator(`.map-location-target-pin[data-map-building-id="${BUILDING_ID}"]`)
+    const targetMarker = page.locator(`.map-location-target[data-map-building-id="${BUILDING_ID}"]`);
+    await targetMarker.waitFor({ state: "visible" });
+    await page.locator('[data-map-building-id="202"]').waitFor({ state: "visible" });
+    expect(
+      await page.locator("[data-map-building-id]").count() >= 2,
+      "지도위치 클릭 후 주변 건물 포인트가 유지되지 않았습니다.",
+    );
+
+    await targetMarker.click();
+    await page.waitForURL(`**/building/${BUILDING_ID}`);
+    await page.locator("#bHeaderCard").getByText(BUILDING_NAME).waitFor({ state: "visible" });
+    expect(
+      await page.locator(".map-location-target").count() === 0,
+      "점멸 포인트 클릭 후 지도위치 강조가 해제되지 않았습니다.",
+    );
+
+    await page.locator("#bMapBtn").click();
+    await page.waitForURL((url) => url.pathname === "/");
+    await page.waitForFunction((buildingId) =>
+      document.querySelectorAll(`.map-location-target[data-map-building-id="${buildingId}"]`).length === 1,
+    BUILDING_ID);
+    await page.locator(`.map-location-target[data-map-building-id="${BUILDING_ID}"]`)
       .waitFor({ state: "visible" });
 
     await openSearchPanel();

@@ -5299,9 +5299,12 @@ async function loadBuildingHeader(id){
       // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
-      // 현재 검색·지역 필터와 무관하게 이 건물 ID만 정확히 조회한다.
-      // 조회된 기존 포인트 자체에 점멸 클래스를 적용해 클릭 동작을 그대로 유지한다.
-      Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then(
+      // 지도위치 이동은 특정 건물 하나만 조회하지 않는다. 기존 검색어만
+      // 제외하고 현재 지역·숙박유형 필터의 전체 포인트를 다시 표시해야
+      // 주변 포인트가 사라지지 않는다.
+      const locationMapFilters = Object.assign({}, mapFiltersFromState());
+      delete locationMapFilters.q;
+      Promise.resolve(updateMapForZoom(locationMapFilters, { force: true })).then(
         applyMapLocationTarget,
         (error) => {
           console.error("[MAP] 선택 건물 마커 재조회 실패:", error);

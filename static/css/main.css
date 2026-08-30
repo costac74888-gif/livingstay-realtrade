@@ -589,11 +589,11 @@
   .map-location-target{
     position:relative; z-index:30;
     animation:map-location-target-pulse 1.4s ease-in-out infinite !important;
-    transform-origin:center center; will-change:opacity,transform,box-shadow;
+    will-change:opacity,box-shadow;
   }
   @keyframes map-location-target-pulse{
-    0%, 100%{opacity:1; transform:scale(.94); box-shadow:0 0 0 1px #fff,0 0 0 3px rgba(180,134,63,.42);}
-    50%{opacity:.42; transform:scale(1.04); box-shadow:0 0 0 1px #fff,0 0 0 5px rgba(180,134,63,.68);}
+    0%, 100%{opacity:1; box-shadow:0 0 0 1px #fff,0 0 0 3px rgba(180,134,63,.42);}
+    50%{opacity:.42; box-shadow:0 0 0 1px #fff,0 0 0 5px rgba(180,134,63,.68);}
   }
   @keyframes datalab-map-highlight-in{
     from{opacity:0; transform:translateY(-4px) scale(.94);}

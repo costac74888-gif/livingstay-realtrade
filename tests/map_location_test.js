@@ -23,10 +23,13 @@ expect(
     source.includes("syncMapLocationTargetElement(d.el, d.b.id)") &&
     source.includes("_openBuildingFromMap(b)") &&
     source.includes("clickable: true") &&
-    source.includes("Promise.resolve(updateMapForZoom({ building_id: targetBuildingId }, { force: true })).then(") &&
+    source.includes("const locationMapFilters = Object.assign({}, mapFiltersFromState())") &&
+    source.includes("delete locationMapFilters.q") &&
+    source.includes("Promise.resolve(updateMapForZoom(locationMapFilters, { force: true })).then(") &&
+    !source.includes("updateMapForZoom({ building_id: targetBuildingId }") &&
     !source.includes("mapLocationTargetOverlay") &&
     !source.includes("showMapLocationTargetPoint"),
-  "별도 오버레이 없이 기존 건물 포인트 자체를 점멸시키지 않습니다.",
+  "지도위치 이동 시 전체 포인트를 유지하면서 기존 건물 포인트 자체를 점멸시키지 않습니다.",
 );
 expect(
   css.includes(".map-location-target") &&
