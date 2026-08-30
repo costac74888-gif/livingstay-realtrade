@@ -18767,6 +18767,11 @@ def admin_reclassify_by_hygiene():
         "숙박업(생활)":         "일반",
         "여인숙업":             "일반",
     }
+    # 건축물대장으로 확정된 '생활'은 영업신고 업종만으로 일반으로
+    # 덮어쓰지 않는다. 기타·기존 휴리스틱 생숙만 소급 보정한다.
+    heuristic_general_hygiene_types = {
+        "여관업", "일반호텔", "숙박업(생활)", "여인숙업",
+    }
     conn = get_conn()
     cur = conn.cursor()
     total_updated = 0
@@ -18787,7 +18792,11 @@ def admin_reclassify_by_hygiene():
             JOIN (VALUES {mapping_values}) AS hm(hygiene_type, new_lodging_type)
               ON hm.hygiene_type = lr.hygiene_type
             WHERE mb.lodging_type IS DISTINCT FROM hm.new_lodging_type
-        """, mapping_params)
+              AND (
+                    hm.hygiene_type NOT IN %s
+                    OR mb.lodging_type IN ('기타', '생숙')
+              )
+        """, mapping_params + [tuple(heuristic_general_hygiene_types)])
         candidate_total = int((cur.fetchone() or {}).get("count") or 0)
         for hygiene_type, new_lodging_type in hygiene_map.items():
             cur.execute("""
@@ -18798,7 +18807,14 @@ def admin_reclassify_by_hygiene():
                 WHERE  lr.applied_building_id = mb.id
                   AND  lr.hygiene_type        = %s
                   AND  mb.lodging_type IS DISTINCT FROM %s
-            """, [new_lodging_type, hygiene_type, new_lodging_type])
+                  AND  (
+                        %s <> '일반'
+                        OR mb.lodging_type IN ('기타', '생숙')
+                  )
+            """, [
+                new_lodging_type, hygiene_type, new_lodging_type,
+                hygiene_type,
+            ])
             cnt = cur.rowcount
             if cnt > 0:
                 results[hygiene_type] = cnt
