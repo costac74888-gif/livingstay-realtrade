@@ -217,7 +217,10 @@ class AppMutationInvalidationTests(unittest.TestCase):
             self.assertTrue(payload.get("ok"))
             self.assertEqual(
                 [row.get("type") for row in payload.get("rows") or []],
-                ["전체", "생활", "관광", "일반", "복합"],
+                [
+                    "전체", "생활", "관광", "일반", "에어비앤비",
+                    "농어촌민박", "캠핑", "한옥", "복합", "준공전", "미분류",
+                ],
             )
             self.assertEqual(payload["rows"][0]["building_count"], 11)
             self.assertEqual(payload["rows"][1]["units"], 40)

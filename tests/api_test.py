@@ -481,9 +481,12 @@ def check_datalab_lodging_table(payload):
     if not isinstance(payload, dict) or payload.get("ok") is not True:
         return "응답이 성공 객체가 아님"
     rows = payload.get("rows")
-    if not isinstance(rows, list) or len(rows) != 5:
-        return "'rows'가 공개 대상 5개 상위행 배열이 아님"
-    expected_types = ["전체", "생활", "관광", "일반", "복합"]
+    if not isinstance(rows, list) or len(rows) != 11:
+        return "'rows'가 개정 법정분류 11개 상위행 배열이 아님"
+    expected_types = [
+        "전체", "생활", "관광", "일반", "에어비앤비",
+        "농어촌민박", "캠핑", "한옥", "복합", "준공전", "미분류",
+    ]
     if [row.get("type") for row in rows] != expected_types:
         return "공개 용도별 행 순서가 잘못됨"
     allowed = {"type", "building_count", "units", "biz_count", "room_count", "report_rate", "sub_rows"}
@@ -497,8 +500,6 @@ def check_datalab_lodging_table(payload):
             for sub in sub_rows:
                 if set(sub) != {"type", "building_count", "units", "biz_count", "room_count", "report_rate"}:
                     return "일반숙박 세부행에 공개 최소 컬럼 외 필드가 있음"
-    if any(row.get("type") in {"준공전", "미분류"} for row in rows):
-        return "준공전·미분류 행이 공개 응답에 남아 있음"
     return None
 
 
@@ -6096,8 +6097,12 @@ def _check_datalab_stats(client):
         public_allowed = {"type", "building_count", "units", "biz_count", "room_count", "report_rate", "sub_rows"}
         if any(set(row) - public_allowed for row in public_rows):
             failures.append("데이터랩 전국숙박업통계: 공개 응답에 내부 운영지표가 남아 있음")
-        if any(row.get("type") in {"준공전", "미분류"} for row in public_rows):
-            failures.append("데이터랩 전국숙박업통계: 준공전·미분류 행이 공개 응답에 남아 있음")
+        expected_public_types = [
+            "전체", "생활", "관광", "일반", "에어비앤비",
+            "농어촌민박", "캠핑", "한옥", "복합", "준공전", "미분류",
+        ]
+        if [row.get("type") for row in public_rows] != expected_public_types:
+            failures.append("데이터랩 전국숙박업통계: 개정 법정분류 행 순서가 관리자 통계와 다름")
         admin_by_type = {row.get("type"): row for row in admin_rows}
         for public_row in public_rows:
             admin_row = admin_by_type.get(public_row.get("type")) or {}

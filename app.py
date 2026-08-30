@@ -16789,7 +16789,19 @@ def _lodging_full_stats_payload():
     return jsonify(response_payload)
 
 
-_PUBLIC_LODGING_STATS_TYPES = {"전체", "생활", "관광", REPORT_RATE_EXCLUDED_LODGING_TYPE, "복합"}
+_PUBLIC_LODGING_STATS_TYPES = (
+    "전체",
+    "생활",
+    "관광",
+    REPORT_RATE_EXCLUDED_LODGING_TYPE,
+    "에어비앤비",
+    "농어촌민박",
+    "캠핑",
+    "한옥",
+    "복합",
+    "준공전",
+    "미분류",
+)
 _PUBLIC_LODGING_STATS_FIELDS = ("type", "building_count", "units", "biz_count", "room_count", "report_rate")
 
 
