@@ -376,6 +376,9 @@
             </div>
           </section>`;
         box.innerHTML = html;
+        const statsTable = box.firstElementChild;
+        const legalCriteria = box.querySelector("#lodgingLegalCriteriaTitle")?.closest("section");
+        if (statsTable && legalCriteria) box.insertBefore(legalCriteria, statsTable);
       } catch(e) { box.innerHTML = ""; }
     }
 
