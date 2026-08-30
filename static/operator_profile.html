@@ -29,12 +29,8 @@
 
 <script src="/static/js/format_util.js"></script>
 <script>
-  // 지도 마커와 동일한 용도 색상(main.js LODGING_COLORS와 일치)
-  const LODGING_COLORS = { "생활": "#378ADD", "호텔": "#7F77DD", "콘도": "#639922" };
-  const DEFAULT_MARKER_COLOR = "#9AA5B1";
-  const LODGING_BADGE = { "생활": "생숙", "호텔": "호텔", "콘도": "콘도" };
-  function markerColor(v){ if(!v) return DEFAULT_MARKER_COLOR; return LODGING_COLORS[v.split("·")[0]] || DEFAULT_MARKER_COLOR; }
-  function badgeLabel(v){ if(!v) return "미분류"; return v.split("·").map(x => LODGING_BADGE[x] || x).join("·"); }
+  function markerColor(v, status){ return window.LodgingTypes.color(v, status); }
+  function badgeLabel(v, status){ return window.LodgingTypes.badge(v, null, status); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
   const slug = decodeURIComponent(location.pathname.split("/").pop());
@@ -73,12 +69,12 @@
       : "";
 
     const buildings = (p.buildings || []).map(b => {
-      const color = markerColor(b.lodging_type);
+      const color = markerColor(b.lodging_type, b.building_status);
       return `
         <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <a href="/building/${b.master_building_id}" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
-            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type))}</span>
+            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.building_status))}</span>
           </div>
           ${(b.note || "").trim() ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">📝 ${esc(b.note)}</div>` : ""}
         </div>`;

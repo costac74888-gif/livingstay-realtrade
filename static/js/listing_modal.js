@@ -1301,9 +1301,8 @@
         : "-";
     }
 
-    var lodging = listing.lodging_type && String(listing.lodging_type).indexOf("·") >= 0
-      ? "복합" : (listing.lodging_type || "미분류");
-    var lodgingColors = {"생활":"#378ADD","관광":"#639922","일반":"#D46BA3","복합":"#B39DDB","미분류":"#E0E0E0"};
+    var lodging = window.LodgingTypes.badge(listing.lodging_type);
+    var lodgingColor = window.LodgingTypes.color(listing.lodging_type);
     var dealColors = {"매매":"#C85A36","전세":"#378ADD","월세":"#639922","단기임대":"#8B6BB1","통임대":"#5A7FA6","운영권양도":"#8B6BB1","위탁운영":"#557A5B"};
     var areaText = !isWhole && listing.area_sqm ? Number(listing.area_sqm).toFixed(1) + "㎡" : "";
     var roomText = listing.room_count != null && Number(listing.room_count) > 0
@@ -1415,7 +1414,7 @@
         '<div style="padding:16px 18px 18px;">' +
           (meta ? '<div style="font-size:11px;color:var(--ink-soft);margin:-4px 0 8px;">' + esc(meta) + '</div>' : "") +
           '<div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">' +
-            '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:' + (lodgingColors[lodging] || lodgingColors["미분류"]) + ';color:#fff;font-size:10px;">' + esc(lodging) + '</span>' +
+            '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:' + lodgingColor + ';color:#fff;font-size:10px;">' + esc(lodging) + '</span>' +
             (isWhole ? '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;">건물전체</span>' : "") +
             '<span style="display:inline-block;padding:2px 6px;border-radius:4px;background:' + (dealColors[listing.deal_type] || "#7B8794") + ';color:#fff;font-size:10px;">' + esc(listing.deal_type || "-") + '</span>' +
              urgentBadge +

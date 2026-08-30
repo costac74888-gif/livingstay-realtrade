@@ -336,7 +336,13 @@
           <option value="생활">생활</option>
           <option value="관광">관광</option>
           <option value="일반">일반</option>
+          <option value="에어비앤비">에어비앤비</option>
+          <option value="농어촌민박">농어촌민박</option>
+          <option value="캠핑">캠핑·야영</option>
+          <option value="한옥">한옥</option>
           <option value="복합">복합</option>
+          <option value="준공전">준공전</option>
+          <option value="미분류">미분류</option>
         </select>
       </div>
       <div class="field">
@@ -497,13 +503,11 @@
   const cardGrid  = document.getElementById("lsCardGrid");
   const moreBtn   = document.getElementById("listingsMore");
   const countEl   = document.getElementById("lsTotalCount");
-  // ── 용도 색상 — main.js 848줄과 동일 값 유지(이중 관리 방지) ──────────
-  const LODGING_COLORS = { "생활":"#378ADD", "관광":"#639922", "일반":"#D46BA3", "복합":"#B39DDB", "준공전":"#616161", "미분류":"#E0E0E0" };
-  function lodgingLabel(raw){ return (raw && raw.includes("·")) ? "복합" : (raw || "미분류"); }
+  function lodgingLabel(raw){ return window.LodgingTypes.badge(raw); }
   function lodgeBadgeHtml(raw){
     const lbl = lodgingLabel(raw);
-    const col = LODGING_COLORS[lbl] || LODGING_COLORS["미분류"];
-    return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${col};padding:1px 6px;border-radius:4px;margin-right:5px;white-space:nowrap;vertical-align:middle;">${lbl}</span>`;
+    const col = window.LodgingTypes.color(raw);
+    return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${col};padding:1px 6px;border-radius:4px;margin-right:5px;white-space:nowrap;vertical-align:middle;">${esc(lbl)}</span>`;
   }
    const DEAL_TYPE_COLORS = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1" };
    function dealTypeBadgeHtml(raw){

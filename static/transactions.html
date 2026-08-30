@@ -45,7 +45,12 @@
           <option value="생활">생활</option>
           <option value="관광">관광</option>
           <option value="일반">일반</option>
+          <option value="에어비앤비">에어비앤비</option>
+          <option value="농어촌민박">농어촌민박</option>
+          <option value="캠핑">캠핑·야영</option>
+          <option value="한옥">한옥</option>
           <option value="복합">복합</option>
+          <option value="준공전">준공전</option>
           <option value="미분류">미분류</option>
         </select>
       </div>
@@ -119,6 +124,7 @@
   }
 </style>
 
+<script src="/static/js/format_util.js"></script>
 <script>
   let regionTree = {};
   const FAV_KEY = "livingstay_favorites"; // 마이그레이션 호환용 — 직접 쓰기는 하지 않음
@@ -249,11 +255,8 @@
     const typeTag = t.deal_type === "직거래"
       ? `<span class="tag brk">직거래</span>`
       : `<span class="tag med">중개거래</span>`;
-    // static/js/main.js의 LODGING_COLORS와 반드시 동일하게 유지
-    const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#BDBDBD" };
-    const isCombined = (t.lodging_type || "").includes("·");
-    const lodgingLabel = isCombined ? "복합" : (t.lodging_type || "미분류");
-    const lodgingColor = LODGING_COLORS[lodgingLabel] || LODGING_COLORS["미분류"];
+    const lodgingLabel = window.LodgingTypes.badge(t.lodging_type);
+    const lodgingColor = window.LodgingTypes.color(t.lodging_type);
     const lodgingTag = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${lodgingColor}; padding:2px 8px; border-radius:5px;">${escapeHtml(lodgingLabel)}</span>`;
     const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
     const nameText = t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)";

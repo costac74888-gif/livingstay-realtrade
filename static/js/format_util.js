@@ -78,6 +78,61 @@
     return "-";
   }
 
+  // 법정 숙박분류 공용 표시 규칙. 화면별 중복 색상/약칭이 서로 달라지지 않게
+  // 모든 공개·파트너·관리자 화면에서 이 객체를 사용한다.
+  var lodgingTypeOrder = [
+    "생활", "관광", "일반", "에어비앤비", "농어촌민박",
+    "캠핑", "한옥", "복합", "준공전", "미분류"
+  ];
+  var lodgingTypeColors = {
+    "생활": "#378ADD",
+    "관광": "#639922",
+    "일반": "#D46BA3",
+    "에어비앤비": "#FF5A5F",
+    "농어촌민박": "#8BC34A",
+    "캠핑": "#795548",
+    "한옥": "#FF8F00",
+    "복합": "#B39DDB",
+    "준공전": "#616161",
+    "미분류": "#9AA5B1"
+  };
+  var lodgingTypeLabels = {
+    "생활": "생활숙박시설",
+    "관광": "관광숙박",
+    "일반": "일반숙박",
+    "에어비앤비": "에어비앤비",
+    "농어촌민박": "농어촌민박",
+    "캠핑": "캠핑·야영",
+    "한옥": "한옥",
+    "복합": "복합",
+    "준공전": "준공전",
+    "미분류": "미분류"
+  };
+  var lodgingTypeBadges = Object.assign({}, lodgingTypeLabels, { "생활": "생숙" });
+
+  function normalizeLodgingType(value, buildingStatus) {
+    var raw = String(value || "").trim();
+    if (raw.indexOf("·") >= 0 || raw === "복합") return "복합";
+    // 과거 화면/API 값은 관광 법정분류로만 표시해 새 체계와 섞이지 않게 한다.
+    if (raw === "호텔" || raw === "콘도") return "관광";
+    if (lodgingTypeColors[raw]) return raw;
+    if (!raw && (buildingStatus === "허가" || buildingStatus === "착공")) return "준공전";
+    return "미분류";
+  }
+
+  function lodgingTypeColor(value, buildingStatus) {
+    return lodgingTypeColors[normalizeLodgingType(value, buildingStatus)];
+  }
+
+  function lodgingTypeLabel(value, buildingStatus) {
+    return lodgingTypeLabels[normalizeLodgingType(value, buildingStatus)];
+  }
+
+  function lodgingTypeBadge(value, subtype, buildingStatus) {
+    var label = lodgingTypeBadges[normalizeLodgingType(value, buildingStatus)];
+    return subtype ? label + "(" + subtype + ")" : label;
+  }
+
   window.formatPhone = formatPhone;
   window.formatBizRegNumber = formatBizRegNumber;
   window.formatLicenseNumber = formatLicenseNumber;
@@ -85,4 +140,13 @@
   window.autoHyphenPhone = autoHyphenPhone;
   window.autoHyphenBizReg = autoHyphenBizReg;
   window.autoHyphenLicense = autoHyphenLicense;
+  window.LodgingTypes = Object.freeze({
+    order: Object.freeze(lodgingTypeOrder.slice()),
+    colors: Object.freeze(Object.assign({}, lodgingTypeColors)),
+    labels: Object.freeze(Object.assign({}, lodgingTypeLabels)),
+    normalize: normalizeLodgingType,
+    color: lodgingTypeColor,
+    label: lodgingTypeLabel,
+    badge: lodgingTypeBadge
+  });
 })();

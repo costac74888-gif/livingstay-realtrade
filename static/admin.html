@@ -1101,11 +1101,8 @@
       palette: ["#B4863F", "#16202E", "#C9A063", "#5A6B7B", "#8A6D3B", "#A9B4BF", "#D8C29A", "#3C4A5A", "#E0D2B4", "#7E8A96"],
     };
     // 지도 범례와 동일한 용도별 색상 (순서 독립적 항목명 매칭)
-    const LODGING_COLORS_ADMIN = {
-      "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3",
-      "복합": "#B39DDB", "준공전": "#616161", "미분류": "#E0E0E0",
-    };
-    const LODGING_ORDER = ["생활", "관광", "일반", "복합", "준공전", "미분류"];
+    const LODGING_COLORS_ADMIN = window.LodgingTypes.colors;
+    const LODGING_ORDER = window.LodgingTypes.order;
 
     async function showStats(menuKey) {
       destroyStatsCharts();
@@ -6024,7 +6021,7 @@
       { key: "umd_nm",        label: "읍면동",       type: "text" },
       { key: "jibun",         label: "지번",         type: "text" },
     ];
-    const BLD_LODGING_OPTS = ["생활", "관광", "일반", "복합", "준공전", "미분류"];
+    const BLD_LODGING_OPTS = window.LodgingTypes.order;
 
     // ── lodging 상세 모달 ────────────────────────────────────────────────────
     async function openLodgingDetailModal(buildingId) {

@@ -29,11 +29,8 @@
 
 <script src="/static/js/format_util.js"></script>
 <script>
-  const LODGING_COLORS = { "생활": "#378ADD", "관광": "#639922", "일반": "#D46BA3", "복합": "#B39DDB", "미분류": "#B39DDB" };
-  const DEFAULT_MARKER_COLOR = "#9AA5B1";
-  const LODGING_BADGE = { "생활": "생숙", "관광": "관광숙박", "일반": "일반숙박", "복합": "복합" };
-  function markerColor(v){ if(!v) return DEFAULT_MARKER_COLOR; return LODGING_COLORS[v] || DEFAULT_MARKER_COLOR; }
-  function badgeLabel(v, subtype){ if(!v) return "미분류"; const b = LODGING_BADGE[v] || v; return subtype ? b + `(${subtype})` : b; }
+  function markerColor(v, status){ return window.LodgingTypes.color(v, status); }
+  function badgeLabel(v, subtype, status){ return window.LodgingTypes.badge(v, subtype, status); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
   const slug = decodeURIComponent(location.pathname.split("/").pop());
@@ -81,7 +78,7 @@
       : "";
 
     const buildings = (p.buildings || []).map(b => {
-      const color = markerColor(b.lodging_type);
+      const color = markerColor(b.lodging_type, b.building_status);
       const tierBadge = b.badge_type === "premium"
         ? `<span style="font-size:10.5px; font-weight:700; color:var(--brass-dark); background:var(--brass-tint); padding:2px 8px; border-radius:5px;">🧭 단지뱃지</span>`
         : b.badge_type === "region"
@@ -91,7 +88,7 @@
         <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:7px;">
             <a href="/building/${b.master_building_id}" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
-            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.lodging_subtype))}</span>
+            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>
             ${tierBadge}
           </div>
           <div style="display:flex; gap:6px; flex-wrap:wrap;">${countBadges(b)}</div>

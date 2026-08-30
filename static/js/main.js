@@ -643,12 +643,11 @@ async function loadYears(){
 function rowHTML(t, idx){
   const fav = isFav(t);
   const typeTag = t.deal_type === "직거래" ? `<span class="tag brk">직거래</span>` : `<span class="tag med">중개거래</span>`;
-  const lodgingColors = { "생활": "med", "관광": "brk", "일반": "src", "복합": "mixed" };
-  const lodgingClass = lodgingColors[t.lodging_type] || "unknown";
-  const lodgingLabel = t.lodging_type || "미확인";
-  const lodgingTag = `<span class="tag ${lodgingClass}" style="cursor:pointer;"
+  const lodgingLabel = window.LodgingTypes.badge(t.lodging_type);
+  const lodgingColor = window.LodgingTypes.color(t.lodging_type);
+  const lodgingTag = `<span class="tag" style="cursor:pointer;background:${lodgingColor};color:#fff;"
       title="${(t.lodging_type_detail||'용도 미확인 — 건축물대장 재검증 필요').replace(/"/g,'&quot;')} (클릭하면 정정 요청)"
-      onclick="openCorrectionModal(${idx})">${lodgingLabel} ✎</span>`;
+      onclick="openCorrectionModal(${idx})">${escapeHtml(lodgingLabel)} ✎</span>`;
   const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
   return `
     <tr>
@@ -1025,46 +1024,18 @@ document.getElementById("btnCloseCorrection").addEventListener("click", () => {
 });
 
 // ---------- 카카오맵 ----------
-const LODGING_COLORS = {
-  "생활":      "#378ADD",
-  "관광":      "#639922",
-  "일반":      "#D46BA3",
-  "에어비앤비":"#FF5A5F",
-  "농어촌민박":"#8BC34A",
-  "캠핑":      "#795548",
-  "한옥":      "#FF8F00",
-  "복합":      "#B39DDB",
-  "준공전":    "#616161",
-  "미분류":    "#E0E0E0",
-};
-const LODGING_LABELS = {
-  "생활":      "생활숙박시설",
-  "관광":      "관광숙박",
-  "일반":      "일반숙박",
-  "에어비앤비":"에어비앤비",
-  "농어촌민박":"농어촌민박",
-  "캠핑":      "캠핑·야영",
-  "한옥":      "한옥",
-  "복합":      "복합",
-  "준공전":    "준공전",
-  "미분류":    "미분류",
-};
+const LODGING_COLORS = window.LodgingTypes.colors;
+const LODGING_LABELS = window.LodgingTypes.labels;
 const DEFAULT_MARKER_COLOR = "#9AA5B1";
 
 function markerColor(lodgingType, buildingStatus){
-  // 4분류 확정 타입 우선 — 준공전 상태여도 타입색 표시
-  if (lodgingType && lodgingType.includes("·")) return LODGING_COLORS["복합"];
-  if (lodgingType && LODGING_COLORS[lodgingType]) return LODGING_COLORS[lodgingType];
-  // 확정 타입 없음 — building_status로 준공전/미분류 구분
-  if (buildingStatus === "허가" || buildingStatus === "착공") return LODGING_COLORS["준공전"];
-  return LODGING_COLORS["미분류"];
+  return window.LodgingTypes.color(lodgingType, buildingStatus);
 }
 // DEFAULT_MARKER_COLOR(회색)는 이제 "준공전" 배지 전용으로만 남겨둠
 // (headerCard의 isPreCompletion 분기에서 이미 "#9AA5B1"로 별도 하드코딩해서
 // 쓰고 있으므로 이 변경과 충돌 없음)
-function lodgingLabelKo(lodgingType){
-  if (!lodgingType) return "미분류";
-  return LODGING_LABELS[lodgingType] || lodgingType;
+function lodgingLabelKo(lodgingType, buildingStatus){
+  return window.LodgingTypes.label(lodgingType, buildingStatus);
 }
 
 let kakaoMap = null;
@@ -2031,7 +2002,7 @@ function buildingInfoInnerHtml(b){
   const nameSource = b.building_name_source === "lodging_report"
     ? `<span style="font-size:10.5px; font-weight:600; color:#386641;">(영업신고 기준${Number(b.building_name_candidate_count || 0) > 1 ? " · 규모 최대" : ""})</span>`
     : "";
-  const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type));
+  const typeKo = escapeHtml(lodgingLabelKo(b.lodging_type, b.building_status));
   const dealHtml = dealDetailHtml({
     price: b.latest_price, deal_date: b.latest_deal_date,
     floor: b.latest_floor, area: b.latest_area, deal_type: b.latest_deal_type,
@@ -2733,7 +2704,7 @@ function renderSideTx(t, rank){
   const metaRight = t.deal_date ? ` · ${escapeHtml(t.deal_date)}` : "";
   const rankHtml = rank ? `<span class="st-rank">${rank}</span>` : "";
   // 지도 범례와 동일한 markerColor()로 색점 생성 — LODGING_COLORS를 이중 관리하지 않음
-  const dot = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${markerColor(t.lodging_type)}; margin-right:5px; flex-shrink:0; vertical-align:middle;"></span>`;
+  const dot = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${markerColor(t.lodging_type, t.building_status)}; margin-right:5px; flex-shrink:0; vertical-align:middle;"></span>`;
   // master_building_id가 있으면 건물상세 좌측패널 전환(페이지 이동 없이) — 기존 로직 재사용.
   const mbid = t.master_building_id;
   const clickable = mbid != null && mbid !== "";
@@ -4113,11 +4084,8 @@ function openBuyRequestModal(buildingId, buildingName){
   });
 }
 
-const B_LODGING_BADGE = { "생활": "생숙", "관광": "관광숙박", "일반": "일반숙박", "복합": "복합" };
-function detailBadgeLabel(v, subtype){
-  if (!v) return "미분류";
-  const base = B_LODGING_BADGE[v] || v;
-  return subtype ? `${base}(${subtype})` : base;
+function detailBadgeLabel(v, subtype, buildingStatus){
+  return window.LodgingTypes.badge(v, subtype, buildingStatus);
 }
 
 function buildingPanelSkeleton(){
@@ -4373,7 +4341,7 @@ async function loadBuildingHeader(id){
   const isPreCompletion = b.building_status && b.building_status !== "완공";
   const hasType = !!(b.lodging_type && b.lodging_type !== "mixed_use_excluded");
   const typeBadge = hasType
-    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, "완공")}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(detailBadgeLabel(b.lodging_type, b.lodging_subtype))}</span>`
+    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>`
     : "";
   const preBadge = isPreCompletion
     ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:#9AA5B1; padding:2px 9px; border-radius:6px; vertical-align:middle; margin-left:${hasType ? "5px" : "0"};">🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}</span>`
@@ -4805,10 +4773,9 @@ async function loadBuildingHeader(id){
           cursor:pointer;margin-left:2px;font-weight:${_urgentOnly?700:400};">
         급매</button>`;
       const sortBar = _sortBtns + _urgentOnlyBtn;
-      const _lodgingColors = { "생활":"#378ADD", "관광":"#639922", "일반":"#D46BA3", "복합":"#B39DDB", "준공전":"#616161", "미분류":"#E0E0E0" };
       function _lodgingBadge(raw){
-        const label = raw && raw.includes("·") ? "복합" : (raw || "미분류");
-        return `<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:${_lodgingColors[label] || _lodgingColors["미분류"]};color:#fff;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap;">${label}</span>`;
+        const label = window.LodgingTypes.badge(raw);
+        return `<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:${window.LodgingTypes.color(raw)};color:#fff;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap;">${escapeHtml(label)}</span>`;
       }
       function _wholeListingCard(lr, lrId, photoHtml, photoCount, dt){
          const hasApproximateLocation = !!lr.is_limited_listing
