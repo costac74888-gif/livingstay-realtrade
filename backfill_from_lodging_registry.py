@@ -29,6 +29,11 @@ from datetime import datetime, timezone
 from db import get_conn, init_db
 from address_utils import BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
+from lodging_classification import (
+    ACTIVE_STATUS,
+    HYGIENE_TYPE_TO_LODGING_TYPE,
+    classify_building_use,
+)
 from stats_cache import mark_master_stats_invalidated
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
@@ -51,24 +56,8 @@ LEGACY_SGG_TEXT_MAP = {
 }
 
 HYGIENE_TYPE_MAP = {
-    "생활숙박시설":         ("생숙",       "생활숙박시설"),
-    "관광숙박업":           ("관광",       "관광숙박업"),
-    "관광호텔업":           ("관광",       "관광호텔업"),
-    "휴양콘도미니엄업":     ("관광",       "휴양콘도미니엄업"),
-    "한국전통호텔업":       ("관광",       "한국전통호텔업"),
-    "가족호텔업":           ("관광",       "가족호텔업"),
-    "소형호텔업":           ("관광",       "소형호텔업"),
-    "의료관광호텔업":       ("관광",       "의료관광호텔업"),
-    "일반숙박업":           ("일반",       "일반숙박업"),
-    "생활숙박업":           ("일반",       "생활숙박업"),
-    "여관업":               ("일반",       "여관업"),
-    "일반호텔":             ("일반",       "일반호텔"),
-    "숙박업(생활)":         ("생활",       "숙박업(생활)"),
-    "여인숙업":             ("일반",       "여인숙업"),
-    "외국인관광도시민박업": ("에어비앤비", "외국인관광도시민박업"),
-    "농어촌민박업":         ("농어촌민박", "농어촌민박업"),
-    "야영장업":             ("캠핑",       "야영장업"),
-    "한옥체험업":           ("한옥",       "한옥체험업"),
+    hygiene_type: (lodging_type, hygiene_type)
+    for hygiene_type, lodging_type in HYGIENE_TYPE_TO_LODGING_TYPE.items()
 }
 
 # 건물명 키워드 기반 분류 (hygiene_type 없거나 매핑 안 될 때 2차 판단)
@@ -165,16 +154,16 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=Fa
     query = f"""
         SELECT lr.id, lr.biz_name, lr.road_address, lr.jibun_address,
                lr.road_norm, lr.jibun_norm, lr.hygiene_type,
-               lr.room_count, lr.phone
+               lr.room_count, lr.phone, lr.bld_use_nm
         FROM lodging_registry lr
-        WHERE lr.biz_status_name IN ('영업/정상', '영업중', '영업')
+        WHERE lr.biz_status_name = %s
           AND lr.applied_building_id IS NULL
           AND lr.dismissed_at IS NULL
           AND lr.hygiene_type IS NOT NULL
           AND lr.hygiene_type != ''
           {where_extra}
     """
-    cur.execute(query, addr_params)
+    cur.execute(query, [ACTIVE_STATUS, *addr_params])
     candidates = cur.fetchall()
     print(f"[후보] 총 {len(candidates)}건")
     _status_update(
@@ -247,9 +236,20 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=Fa
         cur.execute("""
             SELECT id FROM master_buildings
             WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
+            ORDER BY id
+            LIMIT 2
         """, [sgg_cd, umd_nm, jibun_str])
-        dup = cur.fetchone()
-        if dup:
+        duplicate_matches = cur.fetchall()
+        if len(duplicate_matches) > 1:
+            skipped += 1
+            print(
+                f"  [보류] {biz_name} — 같은 주소의 건물 "
+                f"{len(duplicate_matches)}건 이상(자동 연결 안 함)"
+            )
+            _maybe_write_status()
+            continue
+        if duplicate_matches:
+            dup = duplicate_matches[0]
             if not dry_run:
                 cur.execute(
                     "UPDATE lodging_registry SET applied_building_id=%s WHERE id=%s",
@@ -275,6 +275,9 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=Fa
             except Exception as e:
                 print(f"  [HUB 전처리 실패→fallback] {biz_name}: {e}")
 
+        classification_source = "active_permit"
+        classification_confidence = "high"
+        building_use_detail = lr.get("bld_use_nm")
         if _use_hub_this:
             # 건축HUB 정밀분류 (--use-hub 옵션 시에만)
             time.sleep(REQUEST_SLEEP)
@@ -285,6 +288,8 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=Fa
                 if not label:
                     raise ValueError(f"건축HUB 판정불가: {reason}")
                 ho_cnt = (title or {}).get("ho_cnt") or lr["room_count"] or 0
+                building_use_detail = detail
+                classification_source = "building_registry"
             except Exception as e:
                 # 건축HUB 실패 시 영업신고 hygiene_type으로 fallback
                 label, detail = hygiene_to_lodging_type(
@@ -305,16 +310,22 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=Fa
             continue
 
         # ── 6. master_buildings 등록 ───────────────────────────
+        building_use_type = classify_building_use(building_use_detail)
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, sgg_cd, sgg_text, umd_nm, jibun,
                  road_address, lodging_type, lodging_type_detail,
-                 lodging_subtype, units, source, name_pending)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'lodging_registry',TRUE)
+                 lodging_subtype, units, source, name_pending,
+                 building_use_type, building_use_detail,
+                 lodging_classification_source, lodging_classification_confidence)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'lodging_registry',TRUE,
+                    %s,%s,%s,%s)
             RETURNING id
         """, [
             biz_name, sgg_cd, sgg_text, umd_nm, jibun_str,
-            road_addr, label, detail, subtype, ho_cnt
+            road_addr, label, detail, subtype, ho_cnt,
+            building_use_type, building_use_detail,
+            classification_source, classification_confidence,
         ])
         mb_id = cur.fetchone()["id"]
 

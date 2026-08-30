@@ -115,6 +115,14 @@ class AirbnbMasterMatchingTests(unittest.TestCase):
         self.assertIsNone(parsed["road_norm"])
         self.assertIsNone(parsed["jibun_norm"])
 
+    def test_airbnb_building_use_is_classified_as_housing(self):
+        parsed = importer.parse_row(_active_row())
+
+        self.assertEqual(
+            importer.classify_building_use(parsed["bld_use_nm"]),
+            "주택",
+        )
+
 
 class _CaptureCursor:
     def __init__(self):

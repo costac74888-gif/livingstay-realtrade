@@ -32,7 +32,11 @@ class GunicornStatsLifecycleTests(unittest.TestCase):
     def test_post_fork_starts_async_stats_worker_without_sync_rebuild(self):
         config = _load_gunicorn_config()
         start_worker = Mock()
-        fake_app_module = SimpleNamespace(start_master_stats_worker=start_worker)
+        start_badge_worker = Mock()
+        fake_app_module = SimpleNamespace(
+            start_master_stats_worker=start_worker,
+            start_badge_waitlist_worker=start_badge_worker,
+        )
         server = SimpleNamespace(log=Mock())
         worker = SimpleNamespace(pid=12345)
 
@@ -40,6 +44,7 @@ class GunicornStatsLifecycleTests(unittest.TestCase):
             config.post_fork(server, worker)
 
         start_worker.assert_called_once_with()
+        start_badge_worker.assert_called_once_with()
         server.log.exception.assert_not_called()
 
     def test_worker_service_warms_then_starts_background_loop(self):

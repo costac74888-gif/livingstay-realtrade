@@ -28,13 +28,16 @@ from addr_norm import (
 )
 from address_utils import BjdongMap, normalize_umd_nm
 from db import get_conn
+from lodging_classification import (
+    ACTIVE_STATUS,
+    classify_building_use,
+)
 from stats_cache import mark_master_stats_invalidated
 
 
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
 HYGIENE_TYPE_FIXED = "외국인관광도시민박업"
 LODGING_TYPE_FIXED = "에어비앤비"
-ACTIVE_STATUS = "영업/정상"
 SOURCE_KEY_PREFIX = "AIRBNB"
 DRY_RUN_SAMPLE_LIMIT = 20
 
@@ -367,11 +370,12 @@ def _create_master(cur, data, location):
         INSERT INTO master_buildings (
             building_name, sgg_cd, sgg_text, umd_nm, jibun,
             road_address, jibun_address, lodging_type, lodging_type_detail,
-            units, source, name_pending
+            units, source, name_pending, building_use_type, building_use_detail,
+            lodging_classification_source, lodging_classification_confidence
         ) VALUES (
             %s, %s, %s, %s, %s,
             %s, %s, %s, %s,
-            %s, 'airbnb_import', TRUE
+            %s, 'airbnb_import', TRUE, %s, %s, 'active_permit', 'high'
         )
         RETURNING id
     """, (
@@ -385,6 +389,8 @@ def _create_master(cur, data, location):
         LODGING_TYPE_FIXED,
         HYGIENE_TYPE_FIXED,
         data.get("room_count") or 0,
+        classify_building_use(data.get("bld_use_nm")),
+        data.get("bld_use_nm"),
     ))
     return cur.fetchone()["id"]
 

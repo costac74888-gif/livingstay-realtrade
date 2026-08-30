@@ -85,7 +85,9 @@ def reclassify(force: bool, dry_run: bool):
         if not dry_run and label:
             cur.execute("""
                 UPDATE master_buildings
-                SET lodging_type = %s, lodging_type_detail = %s, verified_at = NOW()
+                SET lodging_type = %s, lodging_type_detail = %s, verified_at = NOW(),
+                    lodging_classification_source = 'building_registry',
+                    lodging_classification_confidence = 'high'
                 WHERE id = %s
             """, (label, detail, row["id"]))
             changed = cur.rowcount > 0

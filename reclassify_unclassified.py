@@ -209,7 +209,9 @@ def run(args, status_key=None, run_id=None):
                     upd_cur.execute("""
                         UPDATE master_buildings
                         SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s,
-                            verified_at=NOW()
+                            verified_at=NOW(),
+                            lodging_classification_source='building_registry',
+                            lodging_classification_confidence='high'
                         WHERE id=%s
                     """, (label, detail, subtype, row["id"]))
                     row_changed = upd_cur.rowcount

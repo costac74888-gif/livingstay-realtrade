@@ -56,3 +56,4 @@
 - [프론트 배포 릴리스](frontend-release-builds.md) — 배포 HTML·JS는 content-addressed 디렉터리로 원자 교체하고, 검증된 마커가 있을 때만 원본 접근을 차단한다.
 - [Publish 런타임 스키마 초기화](publish-runtime-schema-init.md) — Promote는 이미 반영된 스키마를 앱 시작 때 다시 DDL 처리하지 않으며, 프런트 빌드도 Build 단계에서 끝낸다.
 - [파트너 지역뱃지 범위](partner-region-badge-scopes.md) — 중개사·운영지원업체는 개인당 지역뱃지 1개, 지역 내 담당단지는 별도 10개; 대출상담사는 다중 취급지역을 유지한다.
+- [숙박 법정분류와 건축물 용도](lodging-legal-vs-building-use.md) — 영업분류와 건축물 용도를 분리하고, 활성 신고는 영업/정상만 인정하며 건축물대장 확정값을 우선 보호한다.

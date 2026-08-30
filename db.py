@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-30-02"
+SCHEMA_VERSION = "2026-08-30-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -538,7 +538,11 @@ def _run_init_db():
         verified_at TIMESTAMP,         -- is_living_stay로 실검증된 시각 (NULL이면 미검증 → 재분류 대상)
         lodging_type TEXT,             -- '생활'|'관광'|'일반'|'복합' (reclassify가 채움, NULL이면 미분류)
         lodging_type_detail TEXT,      -- 건축물대장 원문 용도 표기 (분류 근거, 화면 배지 툴팁용)
-        lodging_subtype TEXT           -- 관광숙박시설 세부유형(관광호텔/호스텔/휴양콘도미니엄 등), 해당없으면 NULL
+        lodging_subtype TEXT,          -- 관광숙박시설 세부유형(관광호텔/호스텔/휴양콘도미니엄 등), 해당없으면 NULL
+        building_use_type TEXT,        -- 건축물 용도 표준값(숙박시설/주택/수련시설/복합/기타/확인불가)
+        building_use_detail TEXT,      -- 건축물대장·공식 원본의 건물용도명
+        lodging_classification_source TEXT,
+        lodging_classification_confidence TEXT
     )
     """)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'original'")
@@ -550,6 +554,29 @@ def _run_init_db():
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_type_detail TEXT")
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_subtype TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_use_type TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS building_use_detail TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_classification_source TEXT")
+    cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS lodging_classification_confidence TEXT")
+    # 기존 건축물대장 확정 행만 보수적으로 출처를 복원한다. 과거 영업신고 재분류가
+    # verified_at을 찍은 행은 상세값이 신고 업태명이므로 이 조건에서 제외된다.
+    cur.execute("""
+        UPDATE master_buildings
+        SET lodging_classification_source = 'building_registry',
+            lodging_classification_confidence = 'high'
+        WHERE lodging_classification_source IS NULL
+          AND verified_at IS NOT NULL
+          AND lodging_type_detail IS NOT NULL
+          AND lodging_type_detail <> ''
+          AND COALESCE(source, '') <> 'airbnb_import'
+          AND lodging_type_detail <> ALL(%s)
+    """, ([
+        "숙박업(일반)", "일반숙박업", "일반호텔", "여관업", "여인숙업",
+        "숙박업(생활)", "생활숙박업", "생활숙박시설", "관광숙박업",
+        "관광호텔업", "휴양콘도미니엄업", "한국전통호텔업", "가족호텔업",
+        "소형호텔업", "의료관광호텔업", "외국인관광도시민박업",
+        "농어촌민박업", "야영장업", "한옥체험업",
+    ],))
     # 기존 '호텔'/'콘도'/병기 데이터를 새 체계로 이관 (lodging_type_detail 원문은 보존).
     cur.execute("""
         UPDATE master_buildings

@@ -492,8 +492,8 @@ def check_datalab_lodging_table(payload):
             return "공개 응답에 최소 컬럼 외 필드가 있거나 필수 필드가 없음"
         if row["type"] == "일반":
             sub_rows = row.get("sub_rows")
-            if [sub.get("type") for sub in sub_rows or []] != ["일반호텔", "여관업", "여인숙업", "숙박업(생활)"]:
-                return "일반숙박 세부 4종이 공개 응답에 없음"
+            if [sub.get("type") for sub in sub_rows or []] != ["일반호텔", "여관업", "여인숙업"]:
+                return "일반숙박 세부 3종이 공개 응답에 없음"
             for sub in sub_rows:
                 if set(sub) != {"type", "building_count", "units", "biz_count", "room_count", "report_rate"}:
                     return "일반숙박 세부행에 공개 최소 컬럼 외 필드가 있음"
@@ -608,7 +608,7 @@ def expected_consign_by_sido():
             for permit_number, permit in matched_permits.items():
                 if (
                     not permit_number
-                    or "폐업" in (permit.get("biz_status_name") or "")
+                    or permit.get("biz_status_name") != "영업/정상"
                     or permit_number in assigned_active_permits
                 ):
                     continue
@@ -621,7 +621,7 @@ def expected_consign_by_sido():
             matches = road_permits.get(building.get("_road_key"), {})
             matches = matches or jibun_permits.get(building.get("_jibun_key"), {})
             for permit_number, permit in matches.items():
-                if "폐업" in (permit.get("biz_status_name") or ""):
+                if permit.get("biz_status_name") != "영업/정상":
                     continue
                 candidates_by_permit.setdefault(permit_number, {
                     "permit": permit,
@@ -3374,7 +3374,7 @@ def _check_datalab_report_source_contract():
             (permit_numbers[2], road_closed, None, "폐업", 90),
             # 하나의 신고번호가 두 건물 키에 걸려도 전국 합계에는 한 번만 포함한다.
             (permit_numbers[3], road_duplicate, jibun_duplicate, "영업/정상", 7),
-            # 명시된 기준은 폐업 제외이므로 휴업은 포함한다.
+            # 활성 기준은 정확히 영업/정상이며 휴업은 제외한다.
             (permit_numbers[4], road_primary, None, "휴업", 9),
         ]
         for permit_number, road_address, jibun_address, status, room_count in registry_specs:
@@ -3400,8 +3400,8 @@ def _check_datalab_report_source_contract():
         expected_delta = {
             "building_cnt": 5,
             "total_units": 200,
-            "active_biz_cnt": 4,
-            "active_room_cnt": 61,
+            "active_biz_cnt": 3,
+            "active_room_cnt": 52,
         }
         for field, delta in expected_delta.items():
             if int(after.get(field) or 0) != int(before.get(field) or 0) + delta:
@@ -4229,10 +4229,10 @@ def _check_lodging_metric_contract(client):
         ):
             failures.append("lodging metric: 관리자 일반숙박 신고율이 업체수 ÷ 건물수 기준이 아님")
         else:
-            expected_sub_types = ["일반호텔", "여관업", "여인숙업", "숙박업(생활)"]
+            expected_sub_types = ["일반호텔", "여관업", "여인숙업"]
             sub_rows = general_row.get("sub_rows")
             if not isinstance(sub_rows, list) or [row.get("type") for row in sub_rows] != expected_sub_types:
-                failures.append("lodging metric: 관리자 일반숙박 세분류 행이 4개 업태로 반환되지 않음")
+                failures.append("lodging metric: 관리자 일반숙박 세분류 행이 3개 업태로 반환되지 않음")
             elif (
                 sum(int(row.get("permit_count") or 0) for row in sub_rows) != general_row.get("permit_count")
                 or sum(int(row.get("room_count") or 0) for row in sub_rows) != general_row.get("room_count")
@@ -4252,7 +4252,7 @@ def _check_lodging_metric_contract(client):
                 failures.append("lodging metric: 일반숙박 세분류 업체수·객실수 또는 업체÷건물 신고율이 잘못됨")
             else:
                 print(
-                    f"OK  관리자 일반숙박 4개 세분류·업체÷건물 신고율 "
+                    f"OK  관리자 일반숙박 3개 세분류·업체÷건물 신고율 "
                     f"({general_row.get('permit_count')}개 / {general_row.get('building_count')}건)"
                 )
 

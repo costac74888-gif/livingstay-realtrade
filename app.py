@@ -42,6 +42,14 @@ from email_util import send_email
 import storage_util
 import addr_norm
 from lodging_categories import GENERAL_LODGING_HYGIENE_TYPES
+from lodging_classification import (
+    ACTIVE_STATUS as LEGAL_LODGING_ACTIVE_STATUS,
+    GENERAL_LODGING_SUBTYPE_ORDER,
+    HYGIENE_TYPE_TO_LODGING_TYPE,
+    choose_primary_lodging_type,
+    is_active_status,
+    lodging_type_for_hygiene,
+)
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
@@ -3352,6 +3360,8 @@ def submit_building():
         cur.execute("""
             UPDATE master_buildings
             SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW(),
+                lodging_classification_source='building_registry',
+                lodging_classification_confidence='high',
                 zip_code=COALESCE(zip_code, NULLIF(%s,''))
             WHERE id=%s
         """, (label, detail, subtype, zip_code_val, master_id))
@@ -3377,9 +3387,10 @@ def submit_building():
             INSERT INTO master_buildings
                 (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units, source,
                  lodging_type, lodging_type_detail, lodging_subtype, verified_at, name_pending,
-                 building_name_source, building_name_candidate_count, building_name_pending_base, zip_code)
+                 building_name_source, building_name_candidate_count, building_name_pending_base, zip_code,
+                 lodging_classification_source, lodging_classification_confidence)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'user_submitted', %s, %s, %s, NOW(), %s,
-                    %s, 0, %s, NULLIF(%s,''))
+                    %s, 0, %s, NULLIF(%s,''), 'building_registry', 'high')
             RETURNING id
         """, (building_name, road_addr_final, sgg_text, sgg_cd, umd_nm, jibun_str,
               title["ho_cnt"], label, detail, subtype, name_pending,
@@ -4744,7 +4755,11 @@ def request_correction():
 
     if changed:
         cur.execute("""
-            UPDATE master_buildings SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s, verified_at=NOW()
+            UPDATE master_buildings
+            SET lodging_type=%s, lodging_type_detail=%s, lodging_subtype=%s,
+                verified_at=NOW(),
+                lodging_classification_source='building_registry',
+                lodging_classification_confidence='high'
             WHERE id=%s
         """, (label, detail, subtype, building["id"]))
         cur.execute("""
@@ -15659,7 +15674,7 @@ def admin_buildings_list():
         it["lodging_room_total"] = sum(
             (lr.get("room_count") or 0)
             for lr in lr_list
-            if "폐업" not in (lr.get("biz_status_name") or "")
+            if is_active_status(lr.get("biz_status_name"))
         )
         it["lodging_metric"] = (
             "report_rate" if uses_lodging_report_rate(it.get("lodging_type")) else "room_count"
@@ -15808,11 +15823,13 @@ def admin_buildings_list():
             if uses_lodging_report_rate(b.get("lodging_type")):
                 report_rate_permits_t.update(bld_permits)
 
-        active_permits_t = [v for v in all_permits_t.values()
-                            if "폐업" not in (v["biz_status_name"] or "")]
+        active_permits_t = [
+            v for v in all_permits_t.values()
+            if is_active_status(v["biz_status_name"])
+        ]
         report_rate_active_permits_t = [
             v for v in report_rate_permits_t.values()
-            if "폐업" not in (v["biz_status_name"] or "")
+            if is_active_status(v["biz_status_name"])
         ]
         total_biz_units_t  = sum(int(v["room_count"] or 0) for v in report_rate_active_permits_t)
         total_lodging_t    = len(active_permits_t)
@@ -16194,7 +16211,7 @@ def start_master_stats_worker():
     return worker_thread
 
 
-GENERAL_LODGING_SUB_TYPES = ("일반호텔", "여관업", "여인숙업", "숙박업(생활)")
+GENERAL_LODGING_SUB_TYPES = GENERAL_LODGING_SUBTYPE_ORDER
 
 
 def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_matches):
@@ -16219,7 +16236,7 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
         if not matches:
             continue
         for permit, lodging in matches.items():
-            if "폐업" in (lodging["biz_status_name"] or ""):
+            if not is_active_status(lodging["biz_status_name"]):
                 continue
             entry = candidates_by_permit.setdefault(permit, {"lodging": lodging, "buildings": []})
             entry["buildings"].append(building)
@@ -16589,7 +16606,14 @@ def _lodging_full_stats_payload():
         # 폐업 제외: 영업신고업체·영업신고호실은 현재 운영 중인 사업장만 집계한다.
         total_pc = len(permits)
         cc       = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
-        active_vals = [v for v in permits.values() if "폐업" not in (v["biz_status_name"] or "")]
+        active_vals = [
+            v for v in permits.values()
+            if is_active_status(v["biz_status_name"])
+            and (
+                type_label in {"전체", "복합"}
+                or lodging_type_for_hygiene(v.get("hygiene_type")) == type_label
+            )
+        ]
         pc = len(active_vals)   # 현재 운영 영업신고업체 수 (폐업 제외)
         rc = sum(int(v["room_count"] or 0) for v in active_vals)  # 현재 운영 영업신고호실 (폐업 제외)
         is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
@@ -16614,7 +16638,7 @@ def _lodging_full_stats_payload():
             legacy_rate_tu = sum(int(building["units"] or 0) for building in room_rate_blds)
             general_active_count = sum(
                 1 for permit in _permits_for(general_blds).values()
-                if "폐업" not in (permit["biz_status_name"] or "")
+                if is_active_status(permit["biz_status_name"])
             )
             rate_numerator = legacy_rate_rc + general_active_count
             rate_denominator = legacy_rate_tu + len(general_blds)
@@ -16676,11 +16700,10 @@ def _lodging_full_stats_payload():
                     hygiene_type = permit.get("hygiene_type")
                     if hygiene_type not in sub_stats:
                         continue
-                    # 분모는 해당 세부 업태로 매칭된 일반숙박 건물 수이며, 폐업 신고도
-                    # 기존 건물이므로 분모에 남긴다. 분자는 현재 영업 중 신고업체만 센다.
+                    if not is_active_status(permit.get("biz_status_name")):
+                        continue
                     sub_stats[hygiene_type]["building_ids"].add(building["id"])
-                    if "폐업" not in (permit.get("biz_status_name") or ""):
-                        sub_stats[hygiene_type]["permits"][permit_number] = permit
+                    sub_stats[hygiene_type]["permits"][permit_number] = permit
             row["sub_rows"] = [
                 {
                     "type": hygiene_type,
@@ -16940,7 +16963,7 @@ def admin_buildings_stats():
     active_rate_rooms = sum(
         int(v["room_count"] or 0)
         for v in rate_permit_data.values()
-        if "폐업" not in (v["biz_status_name"] or "")
+        if is_active_status(v["biz_status_name"])
     )
 
     report_rate = round(active_rate_rooms * 100.0 / total_units, 1) if total_units > 0 else None
@@ -17506,7 +17529,7 @@ def admin_buildings_export():
         active_rooms  = sum(
             (lr.get("room_count") or 0)
             for lr in lr_list
-            if "폐업" not in (lr.get("biz_status_name") or "")
+            if is_active_status(lr.get("biz_status_name"))
         )
         report_metric = (
             round(active_rooms / units * 100, 1)
@@ -18276,7 +18299,7 @@ _LODGING_SYNC_META_KEY = "lodging_sync_status"
 _LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
 
 # 영업 중으로 인정하는 영업상태명 — 정확히 '영업/정상'만 (휴업/폐업/취소/말소/만료/정지/중지/제외/삭제/전출/기타 전부 제외)
-_LODGING_ACTIVE_STATUS = "영업/정상"
+_LODGING_ACTIVE_STATUS = LEGAL_LODGING_ACTIVE_STATUS
 
 
 @app.route("/api/admin/sync-lodgings", methods=["POST"])
@@ -18750,97 +18773,123 @@ def admin_reclassify_lodging_keywords():
 @require_admin
 @limiter.limit("2 per hour")
 def admin_reclassify_by_hygiene():
-    """
-    lodging_registry.hygiene_type 기준으로
-    이미 매핑된 master_buildings.lodging_type을 소급 업데이트한다.
-    에어비앤비·농어촌민박·캠핑·한옥 0건 문제 해결용.
-    """
-    hygiene_map = {
-        "외국인관광도시민박업": "에어비앤비",
-        "농어촌민박업":         "농어촌민박",
-        "야영장업":             "캠핑",
-        "한옥체험업":           "한옥",
-        "관광숙박업":           "관광",
-        "관광호텔업":           "관광",
-        "휴양콘도미니엄업":     "관광",
-        "가족호텔업":           "관광",
-        "소형호텔업":           "관광",
-        "의료관광호텔업":       "관광",
-        "생활숙박시설":         "생활",
-        "일반숙박업":           "일반",
-        "여관업":               "일반",
-        "일반호텔":             "일반",
-        "숙박업(생활)":         "생활",
-        "여인숙업":             "일반",
-    }
+    """활성 공식 신고를 건물별로 합쳐 법정 영업분류를 드라이런/적용한다."""
+    payload = request.get_json(silent=True) or {}
+    apply_changes = payload.get("apply") is True
     conn = get_conn()
     cur = conn.cursor()
-    total_updated = 0
-    candidate_total = 0
-    results = {}
     try:
-        mapping_values = ", ".join(["(%s, %s)"] * len(hygiene_map))
-        mapping_params = [
-            value
-            for hygiene_type, new_lodging_type in hygiene_map.items()
-            for value in (hygiene_type, new_lodging_type)
-        ]
-        cur.execute(f"""
-            SELECT COUNT(DISTINCT mb.id) AS count
+        cur.execute("""
+            SELECT mb.id, mb.lodging_type, mb.lodging_type_detail, mb.source,
+                   mb.lodging_classification_source,
+                   ARRAY_AGG(DISTINCT lr.hygiene_type ORDER BY lr.hygiene_type)
+                       AS hygiene_types
             FROM master_buildings mb
             JOIN lodging_registry lr
               ON lr.applied_building_id = mb.id
-            JOIN (VALUES {mapping_values}) AS hm(hygiene_type, new_lodging_type)
-              ON hm.hygiene_type = lr.hygiene_type
-            WHERE mb.lodging_type IS DISTINCT FROM hm.new_lodging_type
-              -- 건축물대장 확정 생활 보호: 절대 덮어쓰기 금지
-              AND NOT (
-                    mb.lodging_type = '생활'
-                    AND mb.lodging_type_detail LIKE '%생활숙박시설%'
-              )
-              -- 기타·생숙만 재분류 대상
-              AND mb.lodging_type IN ('기타', '생숙')
-        """, mapping_params)
-        candidate_total = int((cur.fetchone() or {}).get("count") or 0)
-        for hygiene_type, new_lodging_type in hygiene_map.items():
-            cur.execute("""
-                UPDATE master_buildings mb
-                SET    lodging_type = %s,
-                       verified_at  = NOW()
-                FROM   lodging_registry lr
-                WHERE  lr.applied_building_id = mb.id
-                  AND  lr.hygiene_type        = %s
-                  AND  mb.lodging_type IS DISTINCT FROM %s
-                  -- 건축물대장 확정 생활 보호: 절대 덮어쓰기 금지
-                  AND  NOT (
-                        mb.lodging_type = '생활'
-                        AND mb.lodging_type_detail LIKE '%생활숙박시설%'
-                  )
-                  -- 기타·생숙만 재분류 대상
-                  AND  mb.lodging_type IN ('기타', '생숙')
-            """, [
-                new_lodging_type, hygiene_type, new_lodging_type,
-            ])
-            cnt = cur.rowcount
-            if cnt > 0:
-                results[hygiene_type] = cnt
-                total_updated += cnt
-        conn.commit()
+            WHERE lr.biz_status_name = %s
+              AND lr.hygiene_type = ANY(%s)
+            GROUP BY mb.id, mb.lodging_type, mb.lodging_type_detail, mb.source,
+                     mb.lodging_classification_source
+            ORDER BY mb.id
+        """, [
+            _LODGING_ACTIVE_STATUS,
+            sorted(HYGIENE_TYPE_TO_LODGING_TYPE),
+        ])
+
+        candidates = []
+        protected = 0
+        specific_types = {"에어비앤비", "농어촌민박", "캠핑", "한옥", "관광"}
+        for row in cur.fetchall():
+            target_type = choose_primary_lodging_type(row["hygiene_types"])
+            current_type = row["lodging_type"]
+            if not target_type or current_type == target_type:
+                continue
+            if row["lodging_classification_source"] == "building_registry":
+                protected += 1
+                continue
+            if row["source"] == "airbnb_import" and current_type == "에어비앤비":
+                protected += 1
+                continue
+            if (
+                current_type in specific_types
+                and target_type in {"일반", "생활"}
+            ):
+                protected += 1
+                continue
+            if (
+                current_type == "생활"
+                and "생활숙박시설" in (row["lodging_type_detail"] or "")
+                and target_type != "생활"
+            ):
+                protected += 1
+                continue
+            candidates.append({
+                "id": row["id"],
+                "old_type": current_type,
+                "new_type": target_type,
+                "hygiene_types": row["hygiene_types"],
+            })
+
+        by_change = {}
+        for item in candidates:
+            key = f"{item['old_type'] or '미분류'} → {item['new_type']}"
+            by_change[key] = by_change.get(key, 0) + 1
+
+        total_updated = 0
+        if apply_changes and candidates:
+            update_rows = [
+                (
+                    item["new_type"],
+                    "active_permit",
+                    "high",
+                    item["id"],
+                    item["old_type"],
+                )
+                for item in candidates
+            ]
+            execute_values(cur, """
+                UPDATE master_buildings AS mb
+                SET lodging_type = changes.new_type,
+                    lodging_classification_source = changes.classification_source,
+                    lodging_classification_confidence = changes.confidence,
+                    verified_at = NOW()
+                FROM (VALUES %s) AS changes(
+                    new_type, classification_source, confidence, building_id, old_type
+                )
+                WHERE mb.id = changes.building_id
+                  AND mb.lodging_type IS NOT DISTINCT FROM changes.old_type
+            """, update_rows)
+            total_updated = cur.rowcount
+            if total_updated != len(candidates):
+                raise RuntimeError(
+                    f"후보 {len(candidates)}건과 실제 변경 {total_updated}건이 달라 롤백합니다."
+                )
+            conn.commit()
+        else:
+            conn.rollback()
     except Exception as e:
         conn.rollback()
         return jsonify({"ok": False, "message": str(e)}), 500
     finally:
         cur.close()
         conn.close()
-    if total_updated:
+    if apply_changes and total_updated:
         _mark_master_stats_invalidated_safely("reclassify_by_hygiene")
     return jsonify({
         "ok": True,
+        "dry_run": not apply_changes,
         "total_updated": total_updated,
-        "candidate_total": candidate_total,
+        "candidate_total": len(candidates),
+        "protected_total": protected,
         "progress_percent": 100,
-        "detail": results,
-        "message": f"영업신고 업종 기준 소급 재분류 완료: {total_updated}건 업데이트",
+        "detail": by_change,
+        "sample": candidates[:20],
+        "message": (
+            f"법정 영업분류 적용 완료: {total_updated}건 업데이트"
+            if apply_changes
+            else f"드라이런 완료: 후보 {len(candidates)}건, 보호 {protected}건"
+        ),
     })
 
 
@@ -24985,7 +25034,7 @@ def _report_rate_by_sido_payload():
             for permit_number, permit in matched_permits.items():
                 if (
                     not permit_number
-                    or "폐업" in (permit.get("biz_status_name") or "")
+                    or not is_active_status(permit.get("biz_status_name"))
                     or permit_number in assigned_active_permits
                 ):
                     continue
@@ -25148,7 +25197,7 @@ def _master_stats_admin_snapshot(*, force=False):
     all_permits = region_match[3] if region_match else {}
     active_permits = [
         permit for permit in all_permits.values()
-        if "폐업" not in (permit.get("biz_status_name") or "")
+        if is_active_status(permit.get("biz_status_name"))
     ]
     consign_total = data.get("consign_stats", {}).get("total") or {}
     closure_items = data.get("closure_stats", {}).get("items") or []

@@ -2628,7 +2628,35 @@
       msg.textContent = "";
       renderReclassifyProgress("reclassifyHygieneProgress", "running");
       try {
-        const res = await fetch("/api/admin/reclassify-by-hygiene", { method: "POST" });
+        const previewRes = await fetch("/api/admin/reclassify-by-hygiene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apply: false }),
+        });
+        if (previewRes.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const preview = await previewRes.json().catch(() => ({}));
+        if (!previewRes.ok || !preview.ok) {
+          throw new Error(preview.message || "드라이런 실패");
+        }
+        renderReclassifyProgress("reclassifyHygieneProgress", "done", preview);
+        msg.textContent = preview.message || "";
+        if (!preview.candidate_total) return;
+        const detail = Object.entries(preview.detail || {})
+          .map(([key, value]) => `${key}: ${num(value)}건`)
+          .join("\n");
+        if (!confirm(
+          `분류 후보 ${num(preview.candidate_total)}건을 실제 반영할까요?\n\n${detail}\n\n` +
+          `건물별 현재값이 달라지면 전체 작업은 롤백됩니다.`
+        )) return;
+        renderReclassifyProgress("reclassifyHygieneProgress", "running");
+        const res = await fetch("/api/admin/reclassify-by-hygiene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apply: true }),
+        });
         if (res.status === 401) {
           window.location.href = "/admin/login";
           return;
@@ -2643,7 +2671,7 @@
         );
       } catch (e) {
         msg.style.color = "#b3261e";
-        msg.textContent = "요청 실패";
+        msg.textContent = e.message || "요청 실패";
         renderReclassifyProgress("reclassifyHygieneProgress", "error");
       } finally {
         btn.disabled = false;
