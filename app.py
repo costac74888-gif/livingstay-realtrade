@@ -15013,6 +15013,7 @@ def admin_scheduled_sync_status():
     saved_stages = status.get("stages") or {}
     running_stage_keys = []
     running_buckets = set()
+    running_execution_buckets = set()
     stages = []
     for key, label, group, cadence in _SCHEDULED_SYNC_STAGES:
         stage = dict(saved_stages.get(key) or {})
@@ -15056,6 +15057,7 @@ def admin_scheduled_sync_status():
         if stage["running"]:
             running_stage_keys.append(key)
             running_buckets.add(stage["quota_bucket"])
+            running_execution_buckets.add(stage["execution_bucket"])
         policies = quota_policies[key]
         # 쿼터가 없는 단계(좌표·농어촌·한옥)도 자체 체크포인트/잠금으로
         # 안전하게 수동 실행할 수 있다. 캠핑은 별도 실행 모드가 있으므로 허용한다.
@@ -15123,7 +15125,11 @@ def admin_scheduled_sync_status():
         stages.append(stage)
     for stage in stages:
         stage["conflict_running"] = (
-            stage["quota_bucket"] in running_buckets and not stage["running"]
+            (
+                stage["quota_bucket"] in running_buckets
+                or stage["execution_bucket"] in running_execution_buckets
+            )
+            and not stage["running"]
         )
 
     error = status.get("error")
@@ -15168,6 +15174,7 @@ def admin_scheduled_sync_status():
         "running": bool(running_stage_keys) or state == "running",
         "running_stages": running_stage_keys,
         "running_buckets": sorted(running_buckets),
+        "running_execution_buckets": sorted(running_execution_buckets),
         "state": state,
         "started_at": _kst_label(status.get("started_at")),
         "finished_at": _kst_label(status.get("finished_at")),

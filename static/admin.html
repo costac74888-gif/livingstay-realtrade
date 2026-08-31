@@ -3448,14 +3448,65 @@
 
     function scheduledStageState(state) {
       return {
-        pending: ["대기", "#64748b"],
+        pending: ["대기 중", "#64748b"],
         running: ["⏳ 실행 중", "#2563eb"],
-        done: ["완료", "#15803d"],
-        failed: ["실패", "#b3261e"],
-        deferred: ["다음 실행 대기", "#b45309"],
-        skipped: ["예약 일정 아님 · 수동 가능", "#64748b"],
-        not_selected: ["수동 대기", "#64748b"],
-      }[state] || ["미실행", "#64748b"];
+        done: ["✅ 완료", "#15803d"],
+        failed: ["❌ 실패", "#b3261e"],
+        deferred: ["대기 중", "#b45309"],
+        skipped: ["대기 중", "#64748b"],
+        not_selected: ["대기 중", "#64748b"],
+      }[state] || ["대기 중", "#64748b"];
+    }
+
+    function renderQuotaBars(stages) {
+      const providers = [];
+      const seen = new Set();
+      (stages || []).forEach((stage) => {
+        (stage.quotas || (stage.quota ? [stage.quota] : [])).forEach((q) => {
+          if (seen.has(q.provider)) return;
+          seen.add(q.provider);
+          providers.push(q);
+        });
+      });
+      if (!providers.length) {
+        return `<div style="font-size:11px;color:var(--ink-soft)">확인된 API 한도 정보가 없습니다.</div>`;
+      }
+      return providers.map((p) => {
+        const used = Number(p.used || 0);
+        const total = p.total_limit == null ? null : Number(p.total_limit);
+        const pct = total ? Math.min(100, Math.round(used / total * 100)) : 0;
+        const color = pct >= 80 ? "#C85A36" : pct >= 60 ? "#E8A000" : "var(--brass)";
+        return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="width:150px;font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ${dgEscape(p.label || p.provider)}
+            </div>
+            <div style="flex:1;background:#e0e0e0;border-radius:4px;height:6px;">
+              <div style="width:${pct}%;background:${color};height:6px;border-radius:4px;transition:width .4s"></div>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:${color};white-space:nowrap;min-width:145px;text-align:right">
+              ${num(used)} / ${total == null ? "?" : num(total)}회 · 잔여 ${total == null ? "?" : num(Math.max(0, total - used))}회
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    function renderCollectionProgress(stage, visuallyRunning) {
+      if (stage.target == null) return "";
+      const target = Number(stage.target || 0);
+      const current = Number(stage.progress || 0);
+      const pct = target > 0 ? Math.min(100, Math.round(current / target * 100)) : 0;
+      const color = visuallyRunning ? "#2563eb" : "var(--brass)";
+      return `
+        <div style="margin:6px 0 2px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-bottom:3px;">
+            <span>${visuallyRunning ? "⏳ " : ""}목표치 ${num(target)}건 · 수집건 ${num(current)}건</span>
+            <b style="color:${color}">${pct}%</b>
+          </div>
+          <div style="background:#e6e1d8;border-radius:4px;height:6px;">
+            <div style="width:${pct}%;background:${color};height:6px;border-radius:4px;transition:width .4s"></div>
+          </div>
+        </div>`;
     }
 
     async function runScheduledStage(stage, button) {
@@ -3541,6 +3592,8 @@
           · 상태 갱신 ${dgEscape(data.status_updated_at || "-")}
         </div>`;
 
+      const quotaSummary = document.getElementById("quotaBars");
+      if (quotaSummary) quotaSummary.innerHTML = renderQuotaBars(data.stages);
       const groups = [];
       (data.stages || []).forEach((stage) => {
         let group = groups.find((item) => item.name === stage.group);
@@ -3551,23 +3604,23 @@
         group.stages.push(stage);
       });
       stageBox.innerHTML = groups.map((group) => `
-        <div style="border-top:1px solid var(--line);padding:10px 0 4px">
-          <div style="font-size:12px;font-weight:750;color:var(--ink-soft);margin-bottom:6px">${dgEscape(group.name)}</div>
+        <div style="border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin:10px 0 12px">
+          <div style="font-size:12px;font-weight:750;color:var(--ink);margin-bottom:8px">
+            ${group.name === "건물·허가" ? "🏗 건축HUB 공유 그룹" : group.name === "숙박" ? "🏨 숙박업 그룹" : dgEscape(group.name)}
+            ${group.name === "건물·허가" ? `<span style="font-size:10px;font-weight:400;color:var(--ink-soft)"> (건축물대장·인허가·건축정보 공유 자원 · 순서 실행)</span>` : ""}
+            ${group.name === "숙박" ? `<span style="font-size:10px;font-weight:400;color:var(--ink-soft)"> (일반·캠핑 공유, 농어촌·한옥 각 정기 4,000회 배정)</span>` : ""}
+          </div>
           ${group.stages.map((stage) => {
             const visuallyRunning = stage.running
               || stage.state === "running"
               || scheduledSyncStartingStages.has(stage.key);
-            const state = scheduledStageState(visuallyRunning ? "running" : stage.state);
+            const waitingForAnother = stage.conflict_running || stage.state === "deferred";
+            const state = scheduledStageState(visuallyRunning ? "running" : waitingForAnother ? "deferred" : stage.state);
             const delta = stage.changed == null
               ? ""
               : ` · ${dgEscape(stage.metric_label || "데이터")} ${stage.changed >= 0 ? "+" : ""}${num(stage.changed)}건`;
             const progressCount = stage.target != null
-              ? `<div style="font-size:12px;color:${visuallyRunning ? "#2563eb" : "var(--ink-soft)"};margin-top:3px">
-                   ${visuallyRunning ? "⏳ " : ""}목표치 ${num(stage.target)}건
-                   · 수집건 ${num(stage.progress == null ? 0 : stage.progress)}건
-                   · 수집률 ${Number(stage.collection_rate || 0).toFixed(1)}%
-                   <span style="color:var(--ink-faint)">(${dgEscape(stage.target_label || stage.metric_label || "대상")})</span>
-                 </div>`
+              ? renderCollectionProgress(stage, visuallyRunning)
               : (visuallyRunning && stage.current != null
                 ? `<div style="font-size:12px;color:#2563eb;margin-top:3px">
                      ⏳ 현재 ${dgEscape(stage.metric_label || "데이터")} ${num(stage.current)}건
@@ -3577,22 +3630,28 @@
             const progressMessage = visuallyRunning && stage.progress_message
               ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(stage.progress_message)}</div>`
               : "";
-            const error = stage.error && !["선택 실행 대상이 아님"].includes(stage.error)
-              ? `<div style="font-size:11px;color:${stage.state === "failed" ? "#b3261e" : "var(--ink-soft)"};margin-top:2px">${dgEscape(stage.error)}</div>`
+            const ignoredErrors = ["선택 실행 대상이 아님", "독립 예약 워크플로에서 실행"];
+            const errorLines = [
+              ...(stage.output_tail || []).filter((line) => /실패|오류|Error|timeout|Timeout|deadlock/i.test(line)),
+              stage.last_error,
+              stage.error,
+            ].filter((line) => line && !ignoredErrors.includes(line)).slice(-3);
+            const error = errorLines.length
+              ? `<details style="margin-top:4px"><summary style="font-size:11px;color:#C85A36;cursor:pointer">최근 오류 ${errorLines.length}건 ▾</summary><div style="font-size:10.5px;color:#C85A36;margin-top:4px;background:#fff8f8;padding:6px;border-radius:4px;max-height:80px;overflow:auto">${errorLines.map((line) => `<div>${dgEscape(line)}</div>`).join("")}</div></details>`
               : "";
             const quota = stage.quota
-              ? (stage.quotas || [stage.quota]).map((q) => q.total_limit == null
-                  ? `<div style="font-size:11px;color:#b45309;margin-top:2px">${dgEscape(q.label)} · ${dgEscape(q.basis || "한도 확인 필요")}</div>`
-                  : `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(q.label)} · 기준 ${num(q.total_limit)}호출 · 정기 80% 목표 ${num(q.limit)} · 오늘 ${num(q.used)} · 잔여 ${num(q.remaining)} · 20% 보존</div>`
-                ).join("")
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape((stage.quotas || [stage.quota]).map((q) => q.label).join(" · "))}</div>`
               : "";
-            const last = stage.last_success_at || stage.last_error
-              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at || "-")} · 최근 오류 ${dgEscape(stage.last_error || "-")}</div>` : "";
+            const last = stage.last_success_at
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at)}</div>` : "";
+            const waitingNote = !visuallyRunning && data.running && (waitingForAnother || stage.state === "pending")
+              ? `<div style="font-size:10.5px;color:#64748b;margin-top:2px">앞 수집 완료 후 자동 시작</div>`
+              : "";
             return `<div class="scheduled-stage-row">
-              <div><b>${dgEscape(stage.label)}</b>${quota}${progressCount}${progressMessage}${last}${error}</div>
+              <div><b>${dgEscape(stage.label)}</b>${quota}${progressCount}<div style="font-size:10px;color:var(--ink-faint);margin-top:2px">${dgEscape(stage.target_label || stage.metric_label || "수집 대상")}</div>${progressMessage}${last}${error}</div>
               <div class="scheduled-stage-cadence">${dgEscape(stage.cadence)}</div>
-              <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}</div>
-              <button class="admin-btn scheduled-stage-button" ${visuallyRunning || (data.running_buckets || []).includes(stage.quota_bucket) || stage.manual_allowed === false ? "disabled" : ""} title="${(data.running_buckets || []).includes(stage.quota_bucket) && !visuallyRunning ? "같은 API 한도를 쓰는 단계가 실행 중" : ""}" onclick="runScheduledStage('${stage.key}', this)">${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}</button>
+              <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}${waitingNote}</div>
+              <button class="admin-btn scheduled-stage-button" ${visuallyRunning || (data.running_buckets || []).includes(stage.quota_bucket) || stage.manual_allowed === false ? "disabled" : ""} title="${waitingForAnother ? "앞 수집이 끝나면 다시 실행할 수 있습니다." : ""}" onclick="runScheduledStage('${stage.key}', this)">${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}</button>
             </div>`;
           }).join("")}
         </div>`).join("");
@@ -3766,6 +3825,10 @@
             <b>에어비앤비:</b> 현재 공식 정기 API가 없어 외국인관광도시민박업 파일 수입 자료를 사용합니다.
             API 수집 단계와 혼동하지 않도록 별도로 표시하며, 제주처럼 원본이 빠진 지역은 별도 데이터원 확보가 필요합니다.
           </p>
+           <div id="quotaSummary" style="position:sticky;top:8px;z-index:2;background:#f8f5ef;border:1px solid var(--brass-tint,#E8D9BB);border-radius:8px;padding:12px 16px;margin:12px 0 16px;box-shadow:0 2px 8px rgba(34,27,18,.06)">
+             <div style="font-size:12px;font-weight:700;color:var(--brass-dark);margin-bottom:8px;">📊 오늘 API 한도 현황</div>
+             <div id="quotaBars"><span style="font-size:11px;color:var(--ink-soft)">현황 불러오는 중…</span></div>
+           </div>
           <div id="scheduledSyncSummary" class="geo-status">현황 불러오는 중…</div>
           <div id="scheduledSyncStages" style="margin-top:8px"></div>
           <div class="legal-admin-actions">
