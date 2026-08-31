@@ -163,6 +163,7 @@ def run(args, status_key=None, run_id=None):
 
     total_buildings = len(buildings)
     processed = 0
+    print(f"[시작] 처리 대상 {total_buildings}건", flush=True)
     saved     = 0
     stop_reason = None
 
@@ -274,6 +275,11 @@ def run(args, status_key=None, run_id=None):
                 print(f"[ok] bld_id={bld_id} pnu={pnu} stores={len(stores or [])}")
 
             processed += 1
+            if processed == 1 or processed % 25 == 0 or processed == total_buildings:
+                print(
+                    f"[수집진행] 대상 {processed}/{total_buildings}",
+                    flush=True,
+                )
             last_id = bld_id
 
             # 체크포인트 저장 (10건마다)

@@ -506,6 +506,10 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
     print(f"[STEP2] 배치 대상 시군구 {len(sgg_list)}개, 최근 {months}개월"
           + (f" (sgg 한정: {sorted(sgg_filter)})" if sgg_filter else "")
           + f" — 요청간격 {RTMS_SLEEP:.2f}s")
+    print(
+        f"[수집진행] 시군구 0/{len(sgg_list)} · 최근 {months}개월",
+        flush=True,
+    )
 
     deal_ymds = []
     today = datetime.today()
@@ -521,6 +525,7 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
     rate_limited = 0
     capped = False  # 일일 소프트 캡 도달로 중단됐는지
 
+    completed_sgg = 0
     for sgg_cd in sgg_list:
         if capped:
             break
@@ -572,9 +577,14 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
         # 지역별 커밋: 장시간 백필 중 진행 상황을 즉시 반영하고,
         # 중간에 중단되어도 직전 지역까지는 안전하게 보존한다.
         conn.commit()
+        completed_sgg += 1
         print(f"  [진행] {sgg_cd} 완료 — 누적 신규 {stats['inserted']}건 "
               f"(마스터매칭 {stats['matched_master']})"
               + (f" [체크포인트로 {skipped}개월 건너뜀]" if skipped else ""), flush=True)
+        print(
+            f"[수집진행] 시군구 {completed_sgg}/{len(sgg_list)}",
+            flush=True,
+        )
 
     conn.commit()
 

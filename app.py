@@ -15102,14 +15102,21 @@ def admin_scheduled_sync_status():
             # record for lodging's general/camping APIs.
             stage["quota"] = quotas[0]
             stage["quotas"] = quotas
-        if key in _SCHEDULED_SYNC_TARGETS:
+        if stage.get("collection_target") is not None:
+            stage["target"] = int(stage["collection_target"])
+            stage["progress"] = int(stage.get("collection_current") or 0)
+            stage["target_label"] = stage.get("collection_label") or "원본"
+        elif key in _SCHEDULED_SYNC_TARGETS:
             stage["target"] = collection_targets.get(key)
             stage["target_label"] = _SCHEDULED_SYNC_TARGETS[key][1]
             stage["progress"] = stage.get("current")
-        elif stage.get("quota") and stage["quota"].get("limit") is not None:
-            stage["target"] = stage["quota"]["limit"]
-            stage["target_label"] = "API 호출"
-            stage["progress"] = stage["quota"]["used"]
+        if stage.get("target") is not None:
+            target = int(stage["target"] or 0)
+            progress = int(stage.get("progress") or 0)
+            stage["collection_rate"] = (
+                round(min(100.0, progress * 100.0 / target), 1)
+                if target > 0 else 0.0
+            )
         for field in ("started_at", "finished_at", "last_success_at"):
             if stage.get(field):
                 stage[field] = _kst_label(stage[field])

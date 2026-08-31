@@ -8,6 +8,26 @@ import quota_policy
 
 
 class ScheduledSyncPlanTests(unittest.TestCase):
+    def test_collection_progress_parser_handles_api_and_work_units(self):
+        self.assertEqual(
+            scheduled_sync._parse_collection_progress(
+                "[rural] 1페이지 100건 (누적 원본 100 / API 55,419)"
+            ),
+            (100, 55419, "원본"),
+        )
+        self.assertEqual(
+            scheduled_sync._parse_collection_progress(
+                "[hanok] 1페이지 100건 (누적 원본 100 / API 3,164)"
+            ),
+            (100, 3164, "원본"),
+        )
+        self.assertEqual(
+            scheduled_sync._parse_collection_progress(
+                "[수집진행] 시군구 17/250"
+            ),
+            (17, 250, "시군구"),
+        )
+
     def test_admin_stage_button_handler_is_globally_callable_and_shows_progress(self):
         html = Path("static/admin.html").read_text(encoding="utf-8")
         handler_pos = html.index("async function runScheduledStage(stage, button)")

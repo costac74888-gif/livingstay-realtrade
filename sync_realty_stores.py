@@ -210,6 +210,11 @@ def run(args, status_key=None, run_id=None):
 
             name, was_skipped = _process_building(row)
             processed += 1
+            if processed == 1 or processed % 25 == 0 or processed == total_bldgs:
+                print(
+                    f"[수집진행] 대상 {processed}/{total_bldgs}",
+                    flush=True,
+                )
             prog["calls_today"] += 1
 
             bname = row.get("building_name") or f"id={row['id']}"

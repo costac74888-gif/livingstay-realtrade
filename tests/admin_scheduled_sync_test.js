@@ -25,7 +25,10 @@ expect(
     admin.includes("실패·중단 단계 재시도") &&
     admin.includes("지금 수집") &&
     admin.includes("Scheduled Deployment") &&
-    admin.includes('id="manualSyncDetails"'),
+    admin.includes('id="manualSyncDetails"') &&
+    admin.includes("목표치 ${num(stage.target)}건") &&
+    admin.includes("수집건 ${num(stage.progress == null ? 0 : stage.progress)}건") &&
+    admin.includes("수집률 ${Number(stage.collection_rate || 0).toFixed(1)}%"),
   "관리자 통합 동기화 카드 또는 수동 보완 접기 영역이 없습니다.",
 );
 

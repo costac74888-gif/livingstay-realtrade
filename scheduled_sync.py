@@ -11,6 +11,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -458,10 +459,44 @@ def _blank_stage(stage: Stage) -> dict:
         "current": None,
         "target": None,
         "progress_message": None,
+        "collection_current": None,
+        "collection_target": None,
+        "collection_label": None,
         "error": None,
         "output_tail": [],
         "retryable": False,
     }
+
+
+def _parse_collection_progress(message: str) -> tuple[int | None, int | None, str | None]:
+    """Extract collector work progress from the existing human-readable logs."""
+    patterns = (
+        (r"누적 원본\s+([\d,]+)\s*/\s*API\s+([\d,]+)", "원본"),
+        (r"누적 이번 실행\s+([\d,]+)건,\s*전체\s+([\d,]+)건", "원본"),
+        (r"전체 현황:\s*([\d,]+)건 중\s*([\d,]+)건", "대상"),
+        (r"법정동\s+([\d,]+)\s*/\s*([\d,]+)", "법정동"),
+        (r"시군구\s+([\d,]+)\s*/\s*([\d,]+)", "시군구"),
+        (r"(?:진행\s+|\[)([\d,]+)\s*/\s*([\d,]+)\]?", "대상"),
+    )
+    for pattern, label in patterns:
+        match = re.search(pattern, message)
+        if not match:
+            continue
+        first = int(match.group(1).replace(",", ""))
+        second = int(match.group(2).replace(",", ""))
+        if pattern.startswith(r"전체 현황"):
+            return second, first, label
+        return first, second, label
+    target_match = re.search(
+        r"(?:처리 대상|좌표 미확보 건물|좌표 미확보 중개업소|대상)\s+([\d,]+)건",
+        message,
+    )
+    if target_match:
+        return 0, int(target_match.group(1).replace(",", "")), "대상"
+    current_match = re.search(r"\[완료\]\s*처리\s+([\d,]+)건", message)
+    if current_match:
+        return int(current_match.group(1).replace(",", "")), None, "대상"
+    return None, None, None
 
 
 def prepare_stage_statuses(
@@ -820,6 +855,15 @@ def run(
 
             def _record_progress(message):
                 now = time.monotonic()
+                collected, collection_target, collection_label = (
+                    _parse_collection_progress(message)
+                )
+                if collection_target is not None:
+                    item["collection_target"] = collection_target
+                if collected is not None:
+                    item["collection_current"] = collected
+                if collection_label:
+                    item["collection_label"] = collection_label
                 # 수집기가 건별 로그를 남길 수 있으므로 상태 DB 갱신은
                 # 제한하되, 첫 진행 메시지는 즉시 반영한다.
                 if last_progress_write[0] and now - last_progress_write[0] < 2:

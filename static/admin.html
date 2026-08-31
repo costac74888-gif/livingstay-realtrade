@@ -3563,8 +3563,10 @@
               : ` · ${dgEscape(stage.metric_label || "데이터")} ${stage.changed >= 0 ? "+" : ""}${num(stage.changed)}건`;
             const progressCount = stage.target != null
               ? `<div style="font-size:12px;color:${visuallyRunning ? "#2563eb" : "var(--ink-soft)"};margin-top:3px">
-                   ${visuallyRunning ? "⏳ " : ""}${dgEscape(stage.target_label || stage.metric_label || "수집")}
-                   현재 ${num(stage.progress == null ? 0 : stage.progress)} / 목표 ${num(stage.target)}
+                   ${visuallyRunning ? "⏳ " : ""}목표치 ${num(stage.target)}건
+                   · 수집건 ${num(stage.progress == null ? 0 : stage.progress)}건
+                   · 수집률 ${Number(stage.collection_rate || 0).toFixed(1)}%
+                   <span style="color:var(--ink-faint)">(${dgEscape(stage.target_label || stage.metric_label || "대상")})</span>
                  </div>`
               : (visuallyRunning && stage.current != null
                 ? `<div style="font-size:12px;color:#2563eb;margin-top:3px">
