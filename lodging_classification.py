@@ -34,7 +34,12 @@ HYGIENE_TYPE_TO_LODGING_TYPE = {
     "농어촌민박업": "농어촌민박",
     "야영장업": "캠핑",
     "일반야영장업": "캠핑",
+    "자동차야영장업": "캠핑",
     "한옥체험업": "한옥",
+}
+
+LODGING_SUBTYPE_BY_HYGIENE_TYPE = {
+    "자동차야영장업": "자동차야영",
 }
 
 _SPECIFIC_LAW_TYPES = frozenset(
@@ -73,6 +78,11 @@ def normalize_hygiene_type(value) -> str:
 def lodging_type_for_hygiene(value):
     """공식 신고·등록 업태를 서비스의 법정 영업분류로 변환한다."""
     return HYGIENE_TYPE_TO_LODGING_TYPE.get(normalize_hygiene_type(value))
+
+
+def lodging_subtype_for_hygiene(value):
+    """공식 신고·등록 업태를 서비스의 하위 용도로 변환한다."""
+    return LODGING_SUBTYPE_BY_HYGIENE_TYPE.get(normalize_hygiene_type(value))
 
 
 def choose_primary_lodging_type(hygiene_types):

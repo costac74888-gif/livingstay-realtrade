@@ -34,6 +34,10 @@ expect(lodging.badge("", null, "허가") === "준공전", "허가 건물의 준�
 expect(lodging.color("", "착공") === lodging.colors["준공전"], "착공 건물의 준공전 색상이 깨졌습니다.");
 expect(lodging.badge("생활") === "생숙", "생활 분류 약칭이 깨졌습니다.");
 expect(lodging.badge("에어비앤비") === "에어비앤비", "에어비앤비 배지가 깨졌습니다.");
+expect(
+  lodging.badge("캠핑", "자동차야영") === "캠핑·야영(자동차야영)",
+  "자동차야영 하위 용도 배지가 깨졌습니다.",
+);
 
 for (const page of ["static/index.html", "static/transactions.html", "static/listings.html"]) {
   const html = fs.readFileSync(page, "utf8");
@@ -43,6 +47,10 @@ for (const page of ["static/index.html", "static/transactions.html", "static/lis
       `${page} 용도 필터에 ${type} 옵션이 없습니다.`,
     );
   }
+  expect(
+    html.includes('<option value="자동차야영"'),
+    `${page} 용도 필터에 자동차야영 하위 옵션이 없습니다.`,
+  );
 }
 
 const sharedBadgePages = [

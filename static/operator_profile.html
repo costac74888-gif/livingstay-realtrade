@@ -30,7 +30,7 @@
 <script src="/static/js/format_util.js"></script>
 <script>
   function markerColor(v, status){ return window.LodgingTypes.color(v, status); }
-  function badgeLabel(v, status){ return window.LodgingTypes.badge(v, null, status); }
+  function badgeLabel(v, subtype, status){ return window.LodgingTypes.badge(v, subtype, status); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
   const slug = decodeURIComponent(location.pathname.split("/").pop());
@@ -74,7 +74,7 @@
         <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <a href="/building/${b.master_building_id}" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
-            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.building_status))}</span>
+            <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${color}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>
           </div>
           ${(b.note || "").trim() ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">📝 ${esc(b.note)}</div>` : ""}
         </div>`;

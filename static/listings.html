@@ -339,6 +339,7 @@
           <option value="에어비앤비">에어비앤비</option>
           <option value="농어촌민박">농어촌민박</option>
           <option value="캠핑">캠핑·야영</option>
+          <option value="자동차야영">　└ 자동차야영</option>
           <option value="한옥">한옥</option>
           <option value="복합">복합</option>
           <option value="준공전">준공전</option>
@@ -503,9 +504,9 @@
   const cardGrid  = document.getElementById("lsCardGrid");
   const moreBtn   = document.getElementById("listingsMore");
   const countEl   = document.getElementById("lsTotalCount");
-  function lodgingLabel(raw){ return window.LodgingTypes.badge(raw); }
-  function lodgeBadgeHtml(raw){
-    const lbl = lodgingLabel(raw);
+  function lodgingLabel(raw, subtype){ return window.LodgingTypes.badge(raw, subtype); }
+  function lodgeBadgeHtml(raw, subtype){
+    const lbl = lodgingLabel(raw, subtype);
     const col = window.LodgingTypes.color(raw);
     return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${col};padding:1px 6px;border-radius:4px;margin-right:5px;white-space:nowrap;vertical-align:middle;">${esc(lbl)}</span>`;
   }
@@ -930,7 +931,7 @@
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     tr.innerHTML = `
       <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount)}</td>
-      <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type)}</td>
+      <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}</td>
       <td class="td-bldg" title="${bName}">
           ${buildingLabel}${urgentBadgeHtml(item)}${permitBadgeHtml(item)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}
       </td>
@@ -1079,8 +1080,8 @@
       ? ""
       : '<button type="button" class="listing-checklist-open">숙박업소 거래 체크리스트 열어보기</button>';
     const buildingLabel = item.is_limited_listing
-      ? `<span class="ls-card-bldg">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span><span class="whole-badge" style="background:#6B7280;color:#fff;">제한공개</span>${dealTypeBadgeHtml(item.deal_type)}${esc(item.building_name || "지역 비공개")}</span>`
-      : `<span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span>${dealTypeBadgeHtml(item.deal_type)}${esc(item.building_name || "(건물명 없음)")}</span>`;
+      ? `<span class="ls-card-bldg">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span><span class="whole-badge" style="background:#6B7280;color:#fff;">제한공개</span>${dealTypeBadgeHtml(item.deal_type)}${esc(item.building_name || "지역 비공개")}</span>`
+      : `<span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}<span class="whole-badge" style="background:var(--brass,#B4863F);color:#fff;">건물전체</span>${dealTypeBadgeHtml(item.deal_type)}${esc(item.building_name || "(건물명 없음)")}</span>`;
 
     div.innerHTML = `
       ${isLimitedListing ? cardPhotoHtml : ""}
@@ -1210,7 +1211,7 @@
     div.innerHTML = `
       <div class="ls-card-info">
         <div class="ls-card-l1">
-           <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>${urgentBadgeHtml(item)}${permitBadgeHtml(item)}
+           <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>${urgentBadgeHtml(item)}${permitBadgeHtml(item)}
         </div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(priceStr)}</div>
         <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}</div>

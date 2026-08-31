@@ -48,6 +48,7 @@
           <option value="에어비앤비">에어비앤비</option>
           <option value="농어촌민박">농어촌민박</option>
           <option value="캠핑">캠핑·야영</option>
+          <option value="자동차야영">　└ 자동차야영</option>
           <option value="한옥">한옥</option>
           <option value="복합">복합</option>
           <option value="준공전">준공전</option>
@@ -255,7 +256,7 @@
     const typeTag = t.deal_type === "직거래"
       ? `<span class="tag brk">직거래</span>`
       : `<span class="tag med">중개거래</span>`;
-    const lodgingLabel = window.LodgingTypes.badge(t.lodging_type);
+    const lodgingLabel = window.LodgingTypes.badge(t.lodging_type, t.lodging_subtype);
     const lodgingColor = window.LodgingTypes.color(t.lodging_type);
     const lodgingTag = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${lodgingColor}; padding:2px 8px; border-radius:5px;">${escapeHtml(lodgingLabel)}</span>`;
     const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');

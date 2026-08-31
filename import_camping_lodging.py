@@ -21,11 +21,13 @@ from lodging_classification import ACTIVE_STATUS, classify_building_use
 from stats_cache import mark_master_stats_invalidated
 
 
-HYGIENE_TYPE_FIXED = "일반야영장업"
 LODGING_TYPE_FIXED = "캠핑"
+HYGIENE_TYPE_FIXED = "일반야영장업"
 SOURCE_KEY_PREFIX = "CAMPING"
 MASTER_SOURCE = "camping_import"
 DRY_RUN_SAMPLE_LIMIT = 20
+AUTOMOTIVE_HYGIENE_TYPE = "자동차야영장업"
+AUTOMOTIVE_SUBTYPE = "자동차야영"
 
 _SITE_COUNT_HEADERS = (
     "야영사이트수",
@@ -64,8 +66,12 @@ def parse_row(row):
         row.get("개방자치단체코드"),
         row.get("관리번호"),
     )
-    data["hygiene_type"] = HYGIENE_TYPE_FIXED
+    source_type = common._text(row.get("문화체육업종명")) or HYGIENE_TYPE_FIXED
+    data["hygiene_type"] = source_type
     data["lodging_type"] = LODGING_TYPE_FIXED
+    data["lodging_subtype"] = (
+        AUTOMOTIVE_SUBTYPE if source_type == AUTOMOTIVE_HYGIENE_TYPE else None
+    )
     data["master_source"] = MASTER_SOURCE
 
     # 일반야영장업의 '객실수'는 비어 있거나 객실 의미가 아니므로 객실 통계에 넣지 않는다.
@@ -148,6 +154,7 @@ def parse_api_item(item):
         ),
         "road_address": address,
         "hygiene_type": HYGIENE_TYPE_FIXED,
+        "lodging_subtype": None,
         "biz_status_name": status,
         "biz_status_detail": status_detail,
         "facility_area": common._decimal(_first_value(item, "allar", "allAr")),
@@ -170,12 +177,12 @@ def _create_master(cur, data, location):
         """
         INSERT INTO master_buildings (
             building_name, sgg_cd, sgg_text, umd_nm, jibun,
-            road_address, jibun_address, lodging_type, lodging_type_detail,
+            road_address, jibun_address, lodging_type, lodging_type_detail, lodging_subtype,
             units, source, name_pending, building_use_type, building_use_detail,
             lodging_classification_source, lodging_classification_confidence
         ) VALUES (
             %s, %s, %s, %s, %s,
-            %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
             %s, %s, TRUE, %s, %s, 'active_permit', 'high'
         )
         RETURNING id
@@ -189,7 +196,8 @@ def _create_master(cur, data, location):
             address,
             data.get("jibun_address"),
             LODGING_TYPE_FIXED,
-            HYGIENE_TYPE_FIXED,
+            data["hygiene_type"],
+            data.get("lodging_subtype"),
             0,
             MASTER_SOURCE,
             classify_building_use(data.get("bld_use_nm")),
@@ -288,6 +296,24 @@ def run(filepath, dry_run=False):
                             outcome_counter = "created"
 
                 if building_id:
+                    if data.get("lodging_subtype"):
+                        cur.execute(
+                            """
+                            UPDATE master_buildings
+                            SET lodging_type = %s,
+                                lodging_type_detail = %s,
+                                lodging_subtype = %s,
+                                lodging_classification_source = 'active_permit',
+                                lodging_classification_confidence = 'high'
+                            WHERE id = %s
+                            """,
+                            (
+                                LODGING_TYPE_FIXED,
+                                data["hygiene_type"],
+                                data["lodging_subtype"],
+                                building_id,
+                            ),
+                        )
                     cur.execute(
                         "UPDATE lodging_registry "
                         "SET applied_building_id = %s WHERE id = %s",

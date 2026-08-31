@@ -1883,7 +1883,19 @@ def get_transactions():
     if year and year != "all":
         where.append("deal_date LIKE %s")
         params.append(f"{year}-%")
-    if lodging_type == "복합":
+    if lodging_type == "자동차야영":
+        where.append(
+            """
+            lodging_type = '캠핑' AND EXISTS (
+                SELECT 1 FROM master_buildings mb_subtype
+                WHERE mb_subtype.sgg_cd = transactions.sgg_cd
+                  AND mb_subtype.umd_nm = transactions.umd_nm
+                  AND mb_subtype.jibun = transactions.jibun
+                  AND mb_subtype.lodging_subtype = '자동차야영'
+            )
+            """
+        )
+    elif lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "준공전":
         where.append("building_status IN ('허가','착공') AND (use_apr_day IS NULL OR use_apr_day = '')")
@@ -1952,7 +1964,13 @@ def get_transactions():
     cur.execute(f"""
         SELECT building_name, address, si_do, sgg_nm, umd_nm, jibun, sgg_cd,
                area, price, deal_date, deal_type, floor,
-               lodging_type, lodging_type_detail, match_source,
+               lodging_type, lodging_type_detail,
+               (SELECT mb.lodging_subtype FROM master_buildings mb
+                 WHERE mb.sgg_cd = transactions.sgg_cd
+                   AND mb.umd_nm = transactions.umd_nm
+                   AND mb.jibun = transactions.jibun
+                 ORDER BY mb.id LIMIT 1) AS lodging_subtype,
+               match_source,
                (SELECT mb.id FROM master_buildings mb
                  WHERE mb.sgg_cd = transactions.sgg_cd
                    AND mb.umd_nm = transactions.umd_nm
@@ -2266,7 +2284,9 @@ def get_buildings_cluster():
     if umd_nm:
         where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
         params.append(f"%{umd_nm.replace(' ', '')}%")
-    if lodging_type == "복합":
+    if lodging_type == "자동차야영":
+        where.append("lodging_type = '캠핑' AND lodging_subtype = '자동차야영'")
+    elif lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "준공전":
         where.append("building_status IN ('허가','착공') AND (use_apr_day IS NULL OR use_apr_day = '')")
@@ -2636,7 +2656,9 @@ def get_buildings_geo():
     if umd_nm:
         where.append("REPLACE(umd_nm, ' ', '') ILIKE %s")
         params.append(f"%{umd_nm.replace(' ', '')}%")
-    if lodging_type == "복합":
+    if lodging_type == "자동차야영":
+        where.append("lodging_type = '캠핑' AND lodging_subtype = '자동차야영'")
+    elif lodging_type == "복합":
         where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
     elif lodging_type == "준공전":
         where.append("building_status IN ('허가','착공') AND (use_apr_day IS NULL OR use_apr_day = '')")
@@ -10961,9 +10983,15 @@ def public_listings():
             )
 
         lodging_type_filter = (request.args.get("lodging_type") or "").strip()
-        if lodging_type_filter == "복합":
+        if lodging_type_filter == "자동차야영":
+            clauses.append(
+                "mb.lodging_type = '캠핑' AND mb.lodging_subtype = '자동차야영'"
+            )
+        elif lodging_type_filter == "복합":
             clauses.append("(mb.lodging_type = '복합' OR mb.lodging_type LIKE '%%·%%')")
-        elif lodging_type_filter in ("생활", "관광", "일반"):
+        elif lodging_type_filter in (
+            "생활", "관광", "일반", "에어비앤비", "농어촌민박", "캠핑", "한옥"
+        ):
             clauses.append("mb.lodging_type = %s")
             params.append(lodging_type_filter)
 
@@ -10994,7 +11022,8 @@ def public_listings():
                     COALESCE(ll.like_count, 0) AS like_count,
                     COALESCE(pv.viewer_count, 0) AS viewer_count,
                     lp.photo_url, lp.photos,
-                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.umd_nm, mb.lodging_type,
+                    mb.id AS building_id, mb.building_name, mb.sgg_text, mb.umd_nm,
+                    mb.lodging_type, mb.lodging_subtype,
                     mb.plat_area / 3.305785 AS land_area_pyeong,
                     mb.tot_area / 3.305785 AS gross_area_pyeong,
                     CASE WHEN mb.tot_pkng_cnt IS NULL AND mb.indr_auto_utcnt IS NULL

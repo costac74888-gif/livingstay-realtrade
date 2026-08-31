@@ -21,6 +21,7 @@ from lodging_classification import (
     iter_chunks,
     lodging_type_for_building_registry_detail,
     lodging_type_for_hygiene,
+    lodging_subtype_for_hygiene,
     recover_classification_provenance,
     should_protect_from_active_permit_reclassification,
 )
@@ -80,6 +81,10 @@ class LodgingCategoriesTest(unittest.TestCase):
         self.assertEqual(lodging_type_for_hygiene("관광호텔업"), "관광")
         self.assertEqual(lodging_type_for_hygiene("외국인관광도시민박업"), "에어비앤비")
         self.assertEqual(lodging_type_for_hygiene("야영장업"), "캠핑")
+        self.assertEqual(lodging_type_for_hygiene("자동차야영장업"), "캠핑")
+        self.assertEqual(
+            lodging_subtype_for_hygiene("자동차야영장업"), "자동차야영"
+        )
         self.assertEqual(lodging_type_for_hygiene("한옥체험업"), "한옥")
 
     def test_specific_law_registration_wins_over_deemed_hygiene_report(self):

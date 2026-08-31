@@ -1301,7 +1301,7 @@
         : "-";
     }
 
-    var lodging = window.LodgingTypes.badge(listing.lodging_type);
+    var lodging = window.LodgingTypes.badge(listing.lodging_type, listing.lodging_subtype);
     var lodgingColor = window.LodgingTypes.color(listing.lodging_type);
     var dealColors = {"매매":"#C85A36","전세":"#378ADD","월세":"#639922","단기임대":"#8B6BB1","통임대":"#5A7FA6","운영권양도":"#8B6BB1","위탁운영":"#557A5B"};
     var areaText = !isWhole && listing.area_sqm ? Number(listing.area_sqm).toFixed(1) + "㎡" : "";

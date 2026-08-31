@@ -655,7 +655,7 @@ async function loadYears(){
 function rowHTML(t, idx){
   const fav = isFav(t);
   const typeTag = t.deal_type === "직거래" ? `<span class="tag brk">직거래</span>` : `<span class="tag med">중개거래</span>`;
-  const lodgingLabel = window.LodgingTypes.badge(t.lodging_type);
+  const lodgingLabel = window.LodgingTypes.badge(t.lodging_type, t.lodging_subtype);
   const lodgingColor = window.LodgingTypes.color(t.lodging_type);
   const lodgingTag = `<span class="tag" style="cursor:pointer;background:${lodgingColor};color:#fff;"
       title="${(t.lodging_type_detail||'용도 미확인 — 건축물대장 재검증 필요').replace(/"/g,'&quot;')} (클릭하면 정정 요청)"
@@ -4797,8 +4797,8 @@ async function loadBuildingHeader(id){
           cursor:pointer;margin-left:2px;font-weight:${_urgentOnly?700:400};">
         급매</button>`;
       const sortBar = _sortBtns + _urgentOnlyBtn;
-      function _lodgingBadge(raw){
-        const label = window.LodgingTypes.badge(raw);
+      function _lodgingBadge(raw, subtype){
+        const label = window.LodgingTypes.badge(raw, subtype);
         return `<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:${window.LodgingTypes.color(raw)};color:#fff;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap;">${escapeHtml(label)}</span>`;
       }
       function _wholeListingCard(lr, lrId, photoHtml, photoCount, dt){
@@ -4849,7 +4849,7 @@ async function loadBuildingHeader(id){
         ].filter(Boolean).join(" ");
         return `<div class="b-listing-card b-whole-listing-card" data-listing-id="${lrId}" style="border-color:var(--brass,#B4863F);">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="건물전체 매물 카드로 보기">
-             <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${dt}${escapeHtml(bName)}${_permitBadgeMarkup(lr)}${_operationStatusHtml(lr)}</div>
+             <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type, lr.lodging_subtype || b.lodging_subtype)}<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>${dt}${escapeHtml(bName)}${_permitBadgeMarkup(lr)}${_operationStatusHtml(lr)}</div>
              <div class="b-listing-l2">${escapeHtml(_listingPriceText(lr, _fmtN))}</div>
             <div style="font-size:12px;font-weight:700;color:var(--brass-dark,#7D4A00);margin:4px 0;">${escapeHtml(finance)}${revenue ? ` · ${escapeHtml(revenue)}` : ""}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.55;">${escapeHtml(metrics[0])} · ${escapeHtml(metrics[1])}<br>${escapeHtml(metrics[2])} · ${escapeHtml(metrics[3])}</div>
@@ -4899,7 +4899,7 @@ async function loadBuildingHeader(id){
         }
         return `<div class="b-listing-card" data-listing-id="${lrId}">
           <div class="b-listing-info listing-card-trigger" role="button" tabindex="0" data-lrid="${lrId}" aria-label="매물 카드로 보기">
-            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${escapeHtml(bName)}${newBadge}${_permitBadgeMarkup(lr)}</div>
+            <div class="b-listing-l1">${_lodgingBadge(lr.lodging_type || b.lodging_type, lr.lodging_subtype || b.lodging_subtype)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${escapeHtml(bName)}${newBadge}${_permitBadgeMarkup(lr)}</div>
             <div class="b-listing-l2">${dt}${escapeHtml(priceText)}</div>
             <div class="b-listing-l3" title="${escapeHtml(detailText)}">${escapeHtml(detailText)}${_operationRatioMarkup(lr)}</div>
             <div class="b-listing-l4">

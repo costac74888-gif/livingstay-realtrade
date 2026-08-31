@@ -60,6 +60,15 @@ class CampingImportTests(unittest.TestCase):
 
         self.assertEqual(parsed["biz_status_name"], "폐업")
 
+    def test_automotive_camping_uses_parent_type_and_subtype(self):
+        parsed = importer.parse_row(
+            _camping_row(문화체육업종명="자동차야영장업")
+        )
+
+        self.assertEqual(parsed["hygiene_type"], "자동차야영장업")
+        self.assertEqual(parsed["lodging_type"], "캠핑")
+        self.assertEqual(parsed["lodging_subtype"], "자동차야영")
+
     def test_gocamping_item_uses_content_id_and_separate_site_count(self):
         parsed = importer.parse_api_item({
             "contentId": "217764",

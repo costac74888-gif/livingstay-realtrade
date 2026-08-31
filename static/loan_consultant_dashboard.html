@@ -245,7 +245,7 @@
 <script>
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 function markerColor(v, status){ return window.LodgingTypes.color(v, status); }
-function badgeLabel(v, status){ return window.LodgingTypes.badge(v, null, status); }
+function badgeLabel(v, subtype, status){ return window.LodgingTypes.badge(v, subtype, status); }
 
 let ME = null;
 
@@ -335,7 +335,7 @@ function renderLcBuildings(){
     <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
-        <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.building_status))}</span>
+        <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>
         <span style="flex:1;"></span>
         <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delLcBuilding(${b.master_building_id})">삭제</button>
       </div>
