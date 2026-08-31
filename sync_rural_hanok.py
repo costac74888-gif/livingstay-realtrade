@@ -140,6 +140,7 @@ def parse_item(item, config):
         "biz_name_norm": common.normalize_name(biz_name),
         "lodging_type": config["lodging_type"],
         "master_source": config["master_source"],
+        "camping_site_count": None,
     }
 
 
