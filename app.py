@@ -14668,6 +14668,12 @@ def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=3
             "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "finished_at": None,
             "error": None,
+            "connection_state": "connected",
+            "reconnect_count": 0,
+            "reconnect_attempts": 0,
+            "reconnect_failures": 0,
+            "last_reconnect_at": None,
+            "last_reconnect_error": None,
         }
         cur.execute(f"""
             INSERT INTO app_meta (key, value, updated_at)

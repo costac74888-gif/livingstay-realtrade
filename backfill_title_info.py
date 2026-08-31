@@ -23,7 +23,8 @@ backfill_title_info.py — 건축물대장 표제부(getBrTitleInfo) 값을
 사용법
 ------------------------------------------------------------
 python backfill_title_info.py --limit 5          # 앞 5건만 (샘플 확인)
-python backfill_title_info.py --ids 2654,2655    # 특정 id만
+python backfill_title_info.py --ids 2654,2655    # 특정 id 중 미백필분만
+python backfill_title_info.py --ids 2654 --all   # 특정 id 강제 재조회
 python backfill_title_info.py                    # 미백필분 전체
 python backfill_title_info.py --all              # 이미 채운 것도 재조회
 """
@@ -51,14 +52,201 @@ from stats_cache import mark_master_stats_invalidated
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
 BJDONG_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
+MAX_DB_RECONNECT_ATTEMPTS = 3
+DB_RECONNECT_DELAY_SEC = 5.0
 
 
-class _RowHandled(Exception):
-    """현재 행 처리는 정상 종료됐고 공통 commit 단계로 이동한다."""
+class _DatabaseReconnectExhausted(RuntimeError):
+    """표제부 백필이 DB 재접속 한도를 모두 소진했을 때의 오류."""
 
 
 class _RunOwnershipLost(RuntimeError):
     """재접속 중 app_meta 실행 lease가 다른 run_id로 넘어갔다."""
+
+
+def _is_connection_lost(exc, conn):
+    """API 오류와 DB 연결 단절을 구분한다.
+
+    PostgreSQL의 SSL 단절은 보통 OperationalError로 오지만, 이미 닫힌
+    연결에서 후속 cursor/commit이 실패하면 InterfaceError가 될 수 있다.
+    """
+    if isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError)):
+        return True
+    closed = getattr(conn, "closed", 0)
+    if isinstance(closed, bool) and closed:
+        return True
+    if isinstance(closed, int) and closed != 0:
+        return True
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "ssl connection has been closed",
+            "server closed the connection",
+            "connection already closed",
+            "connection is closed",
+            "connection not open",
+        )
+    )
+
+
+def _close_connection(conn, cur):
+    for resource in (cur, conn):
+        if resource is None:
+            continue
+        try:
+            resource.close()
+        except Exception:
+            pass
+
+
+def _update_reconnect_status(status_key, run_id, updates):
+    """재접속 상태를 best-effort로 기록한다.
+
+    연결이 끊긴 순간에는 이 기록 자체도 실패할 수 있으므로, 상태 기록
+    실패가 백필 재시도를 방해하지 않게 한다. 새 연결이 확보된 뒤에는
+    다시 기록하여 관리자 화면의 최종 상태를 보정한다.
+    """
+    if not status_key or run_id is None:
+        return
+    try:
+        status = _read_status(status_key) or {}
+        if status.get("run_id") != run_id:
+            return
+        status.update(updates)
+        _write_status(status_key, status, run_id)
+    except Exception as e:
+        print(f"[title-info] 재접속 상태 저장 실패: {_mask_key(e)[:300]}", flush=True)
+
+
+def _reconnect_connection(conn, cur, *, status_key=None, run_id=None,
+                          reconnect_state=None):
+    """끊긴 연결을 실행 전체의 제한된 예산 안에서 교체한다."""
+    _close_connection(conn, cur)
+    try:
+        status = _read_status(status_key) if status_key and run_id is not None else None
+    except Exception as e:
+        # 원래 연결이 끊긴 직후에는 상태 조회도 같은 장애를 만날 수 있다.
+        # 재접속 자체는 계속 시도하고, 연결을 얻은 뒤 상태를 다시 기록한다.
+        status = None
+        print(
+            f"[title-info] 재접속 전 상태 조회 실패: {_mask_key(e)[:300]}",
+            flush=True,
+        )
+    if reconnect_state is None:
+        reconnect_state = {}
+    if "attempts" not in reconnect_state:
+        try:
+            reconnect_state["attempts"] = int(
+                (status or {}).get("reconnect_attempts") or 0
+            )
+        except (TypeError, ValueError):
+            reconnect_state["attempts"] = 0
+    if "successes" not in reconnect_state:
+        try:
+            reconnect_state["successes"] = int(
+                (status or {}).get("reconnect_count") or 0
+            )
+        except (TypeError, ValueError):
+            reconnect_state["successes"] = 0
+    if "failures" not in reconnect_state:
+        try:
+            reconnect_state["failures"] = int(
+                (status or {}).get("reconnect_failures") or 0
+            )
+        except (TypeError, ValueError):
+            reconnect_state["failures"] = 0
+
+    last_error = None
+    while reconnect_state["attempts"] < MAX_DB_RECONNECT_ATTEMPTS:
+        reconnect_state["attempts"] += 1
+        attempt = reconnect_state["attempts"]
+        _update_reconnect_status(
+            status_key,
+            run_id,
+            {
+                "connection_state": "reconnecting",
+                "reconnect_attempts": reconnect_state["attempts"],
+                "last_reconnect_error": (
+                    None if last_error is None else _mask_key(last_error)[:500]
+                ),
+            },
+        )
+        new_conn = None
+        new_cur = None
+        try:
+            new_conn = get_conn()
+            new_cur = new_conn.cursor()
+            if status_key and run_id is not None:
+                owner = _still_owner(new_cur, status_key, run_id)
+                if not owner:
+                    raise _RunOwnershipLost(
+                        "DB 재접속 중 건축정보 채우기 실행 소유권이 변경되어 중단합니다."
+                    )
+            reconnect_state["successes"] += 1
+            _update_reconnect_status(
+                status_key,
+                run_id,
+                {
+                    "connection_state": "connected",
+                    "reconnect_count": reconnect_state["successes"],
+                    "reconnect_attempts": reconnect_state["attempts"],
+                    "last_reconnect_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "last_reconnect_error": None,
+                },
+            )
+            print(
+                f"[title-info] DB 재접속 성공 ({attempt}/{MAX_DB_RECONNECT_ATTEMPTS})",
+                flush=True,
+            )
+            return new_conn, new_cur
+        except _RunOwnershipLost:
+            _close_connection(new_conn, new_cur)
+            raise
+        except Exception as e:
+            last_error = e
+            reconnect_state["failures"] += 1
+            _close_connection(new_conn, new_cur)
+            _update_reconnect_status(
+                status_key,
+                run_id,
+                {
+                    "connection_state": "reconnecting",
+                    "reconnect_attempts": reconnect_state["attempts"],
+                    "reconnect_failures": reconnect_state["failures"],
+                    "last_reconnect_error": _mask_key(e)[:500],
+                },
+            )
+            print(
+                f"[title-info] DB 재접속 실패 ({attempt}/{MAX_DB_RECONNECT_ATTEMPTS}): "
+                f"{_mask_key(e)[:300]}",
+                flush=True,
+            )
+            if attempt < MAX_DB_RECONNECT_ATTEMPTS:
+                time.sleep(DB_RECONNECT_DELAY_SEC)
+
+    reason = (
+        "새 연결도 다시 끊겨 실행 전체 재접속 예산을 모두 사용했습니다."
+        if last_error is None
+        else _mask_key(last_error)[:300]
+    )
+    message = (
+        f"DB 재접속 시도 한도 {MAX_DB_RECONNECT_ATTEMPTS}회 소진 "
+        f"(성공 {reconnect_state['successes']}회, 실패 "
+        f"{reconnect_state['failures']}회): {reason}"
+    )
+    _update_reconnect_status(
+        status_key,
+        run_id,
+        {
+            "connection_state": "failed",
+            "reconnect_attempts": reconnect_state["attempts"],
+            "reconnect_failures": reconnect_state["failures"],
+            "last_reconnect_error": message[:500],
+            "error": message[:500],
+        },
+    )
+    raise _DatabaseReconnectExhausted(message) from last_error
 
 
 def _mask_key(text):
@@ -69,98 +257,6 @@ def _mask_key(text):
         for variant in (BLD_SERVICE_KEY, quote(BLD_SERVICE_KEY, safe=""), quote(BLD_SERVICE_KEY)):
             text = text.replace(variant, "***")
     return text
-
-
-def _is_connection_error(exc):
-    """DB 연결이 끊겨 기존 connection/cursor를 재사용할 수 없는 오류인지 판별."""
-    if isinstance(exc, (psycopg2.InterfaceError, psycopg2.OperationalError)):
-        return True
-    text = str(exc).lower()
-    return any(
-        marker in text
-        for marker in (
-            "ssl connection has been closed",
-            "connection already closed",
-            "server closed the connection",
-            "connection not open",
-        )
-    )
-
-
-def _reconnect(conn, cur, attempts=5, base_delay=1):
-    """죽은 연결을 정리하고 제한된 backoff로 새 연결/cursor를 반환한다."""
-    try:
-        conn.rollback()
-    except Exception:
-        pass
-    try:
-        cur.close()
-    except Exception:
-        pass
-    try:
-        conn.close()
-    except Exception:
-        pass
-    last_error = None
-    for attempt in range(1, attempts + 1):
-        new_conn = None
-        try:
-            new_conn = get_conn()
-            try:
-                new_cur = new_conn.cursor()
-            except Exception:
-                new_conn.close()
-                raise
-            return new_conn, new_cur
-        except Exception as e:
-            last_error = e
-            if attempt >= attempts or not _is_connection_error(e):
-                raise
-            delay = min(base_delay * (2 ** (attempt - 1)), 10)
-            print(
-                f"[DB 재접속] 새 연결 실패({attempt}/{attempts}) — "
-                f"{delay}초 후 재시도: {type(e).__name__}: {_mask_key(e)}",
-                flush=True,
-            )
-            time.sleep(delay)
-    raise last_error
-
-
-def _reconnect_and_verify(
-    conn, cur, db_state, status_key, run_id, attempts=5, base_delay=1
-):
-    """재접속과 run_id 소유권 확인을 하나의 제한된 복구 루프로 수행."""
-    last_error = None
-    for attempt in range(1, attempts + 1):
-        try:
-            conn, cur = _reconnect(conn, cur, attempts=1)
-            db_state.update(conn=conn, cur=cur)
-            if status_key and run_id:
-                try:
-                    owner = _still_owner(cur, status_key, run_id)
-                except Exception as e:
-                    if not _is_connection_error(e):
-                        raise
-                    raise e
-                if not owner:
-                    raise _RunOwnershipLost(
-                        "DB 재접속 중 건축정보 채우기 실행 소유권이 변경되어 중단합니다."
-                    )
-            return conn, cur
-        except _RunOwnershipLost:
-            raise
-        except Exception as e:
-            last_error = e
-            if attempt >= attempts or not _is_connection_error(e):
-                raise
-            delay = min(base_delay * (2 ** (attempt - 1)), 10)
-            print(
-                f"[DB 재접속] 연결 또는 실행 소유권 확인 실패({attempt}/{attempts}) — "
-                f"{delay}초 후 재시도: {type(e).__name__}: {_mask_key(e)}",
-                flush=True,
-            )
-            time.sleep(delay)
-    raise last_error
 
 
 def _to_int(v):
@@ -224,12 +320,26 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
     (전체 표제부 재조회 없이 건물관리번호만 추가 확보하는 용도)"""
     init_db()
     bjdong = BjdongMap(BJDONG_CSV)
-    conn = get_conn()
+    reconnect_state = {"attempts": 0, "successes": 0, "failures": 0}
+    conn = None
     cur = None
-    db_state = {"conn": conn, "cur": cur}
+    connection_state = {"conn": conn, "cur": cur}
     try:
-        cur = conn.cursor()
-        db_state["cur"] = cur
+        try:
+            conn = get_conn()
+            cur = conn.cursor()
+        except Exception as e:
+            if not _is_connection_lost(e, conn):
+                raise
+            conn, cur = _reconnect_connection(
+                conn,
+                cur,
+                status_key=status_key,
+                run_id=run_id,
+                reconnect_state=reconnect_state,
+            )
+        connection_state["conn"] = conn
+        connection_state["cur"] = cur
         return _run_with_open_connection(
             limit=limit,
             ids=ids,
@@ -241,270 +351,251 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
             bjdong=bjdong,
             conn=conn,
             cur=cur,
-            db_state=db_state,
+            connection_state=connection_state,
+            reconnect_state=reconnect_state,
         )
     finally:
-        if db_state["cur"] is not None:
-            db_state["cur"].close()
-        db_state["conn"].close()
+        _close_connection(connection_state.get("conn"), connection_state.get("cur"))
 
 
 def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
                               status_key=None, run_id=None, *, bjdong, conn, cur,
-                              db_state=None):
-    if db_state is None:
-        db_state = {"conn": conn, "cur": cur}
+                              connection_state=None, reconnect_state=None):
+    if connection_state is None:
+        connection_state = {"conn": conn, "cur": cur}
+    if reconnect_state is None:
+        reconnect_state = {"attempts": 0, "successes": 0, "failures": 0}
+
+    def reconnect_after(exc):
+        nonlocal conn, cur
+        print(
+            f"[title-info] DB 연결 단절 감지: {type(exc).__name__}: "
+            f"{_mask_key(exc)[:300]} — 현재 건물부터 이어갑니다.",
+            flush=True,
+        )
+        conn, cur = _reconnect_connection(
+            conn,
+            cur,
+            status_key=status_key,
+            run_id=run_id,
+            reconnect_state=reconnect_state,
+        )
+        connection_state.update({"conn": conn, "cur": cur})
+
     where = ["sgg_cd IS NOT NULL", "umd_nm IS NOT NULL", "jibun IS NOT NULL"]
     params = []
     if ids:
         where.append("id = ANY(%s)")
         params.append(ids)
+        if only_missing:
+            where.append("title_backfilled_at IS NULL")
     elif pk_only:
         where.append("mgm_bldrgst_pk IS NULL")
     elif only_missing:
         where.append("title_backfilled_at IS NULL")
+    if pk_only:
+        checkpoint_condition = " AND mgm_bldrgst_pk IS NULL"
+    elif only_missing:
+        checkpoint_condition = " AND title_backfilled_at IS NULL"
+    else:
+        checkpoint_condition = ""
     sql = f"SELECT id, building_name, sgg_cd, umd_nm, jibun FROM master_buildings WHERE {' AND '.join(where)} ORDER BY id"
     if limit:
         sql += f" LIMIT {int(limit)}"
-    cur.execute(sql, params)
-    targets = cur.fetchall()
+    while True:
+        try:
+            cur.execute(sql, params)
+            targets = cur.fetchall()
+            break
+        except Exception as e:
+            if not _is_connection_lost(e, conn):
+                raise
+            reconnect_after(e)
 
     total = len(targets)
-    mode = "pk_only" if pk_only else f"only_missing={only_missing and not ids}"
+    mode = "pk_only" if pk_only else f"only_missing={only_missing}"
     print(f"[시작] 대상 {total}건 ({mode}, limit={limit})", flush=True)
 
     n_ok = n_empty = n_skip = n_err = 0
     changed = 0
     consec_err = 0
-    db_reconnect_streak = 0
-    max_db_reconnect_streak = 5
+    stop_for_errors = False
 
-    # 연결이 끊긴 현재 건은 완료 처리하지 않고 새 연결로 같은 건부터
-    # 다시 시도한다. UPDATE는 동일 값에 대한 멱등 연산이므로 commit 응답이
-    # 유실된 경우에도 중복 반영이 되지 않는다.
-    i = 1
-    while i <= total:
-        b = targets[i - 1]
+    for i, b in enumerate(targets, 1):
         # run_id 펜싱: 다른 실행이 상태를 가져갔으면 즉시 중단 (split-brain 방지)
         if status_key and run_id and i % 20 == 0:
-            try:
-                owner = _still_owner(cur, status_key, run_id)
-            except Exception as e:
-                if not _is_connection_error(e):
-                    raise
-                db_reconnect_streak += 1
-                if db_reconnect_streak > max_db_reconnect_streak:
-                    raise RuntimeError(
-                        f"DB 연결이 {max_db_reconnect_streak}회 연속 끊겨 "
-                        "이번 실행을 중단합니다. 다시 실행하면 미완료 건부터 이어갑니다."
-                    ) from e
-                print(
-                    f"[DB 재접속] 상태 확인 중 연결 단절 — 현재 건부터 재시도: "
-                    f"{type(e).__name__}: {_mask_key(e)}",
-                    flush=True,
-                )
-                conn, cur = _reconnect_and_verify(
-                    conn, cur, db_state, status_key, run_id
-                )
-                continue
+            while True:
+                try:
+                    owner = _still_owner(cur, status_key, run_id)
+                    break
+                except Exception as e:
+                    if not _is_connection_lost(e, conn):
+                        raise
+                    reconnect_after(e)
             if not owner:
                 print("[중단] 상태 소유권을 잃었습니다(다른 실행 감지). 종료합니다.", flush=True)
                 break
         bid, name = b["id"], b["building_name"]
-        item_counts = (n_ok, n_empty, n_skip, n_err, changed, consec_err)
-        try:
-            bjd = bjdong.find_bjdong_cd(b["sgg_cd"], b["umd_nm"])
-            if not bjd:
-                n_skip += 1
-                if not pk_only:
-                    # pk_only 보강 모드에선 title_backfilled_at을 건드리지 않는다
-                    # (표제부 미백필 건물을 '백필 완료'로 오기록하지 않기 위함)
-                    cur.execute(
-                        "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
-                    )
-                    changed += cur.rowcount
-                print(f"  [{i}/{total}] SKIP id={bid} {name} — bjdong_cd 못찾음(umd={b['umd_nm']})", flush=True)
-                raise _RowHandled
-            plat_gb, bun, ji = parse_jibun(b["jibun"])
-            rows = _fetch_title_rows(b["sgg_cd"], bjd, plat_gb, bun, ji)
-            consec_err = 0  # 성공적으로 응답 받음
-            rep = _pick_representative(rows)
-            if not rep:
-                n_empty += 1
-                if not pk_only:
-                    cur.execute(
-                        "UPDATE master_buildings SET title_backfilled_at=NOW() WHERE id=%s", (bid,)
-                    )
-                    changed += cur.rowcount
-                print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부 없음", flush=True)
-                raise _RowHandled
-            vals = _extract(rep)
-            official_name = resolve_api_building_name({
-                "bld_nm": rep.get("bldNm"),
-                "dong_nm": rep.get("dongNm"),
-            })
-            if pk_only:
-                if vals["mgm_bldrgst_pk"]:
-                    cur.execute(
-                        """
-                        UPDATE master_buildings
-                           SET mgm_bldrgst_pk=%s,
-                               building_name=CASE
-                                   WHEN name_pending IS TRUE AND %s <> '' THEN %s
-                                   ELSE building_name
-                               END,
-                               name_pending=CASE
-                                   WHEN name_pending IS TRUE AND %s <> '' THEN FALSE
-                                   ELSE name_pending
-                               END,
-                               building_name_source=CASE
-                                   WHEN name_pending IS TRUE AND %s <> '' THEN 'official'
-                                   ELSE building_name_source
-                               END,
-                               building_name_candidate_count=CASE
-                                   WHEN name_pending IS TRUE AND %s <> '' THEN 0
-                                   ELSE building_name_candidate_count
-                               END
-                         WHERE id=%s
-                        """,
-                        (
-                            vals["mgm_bldrgst_pk"], official_name, official_name,
-                            official_name, official_name, official_name, bid,
-                        ),
-                    )
-                    changed += cur.rowcount
-                    n_ok += 1
-                    print(f"  [{i}/{total}] OK   id={bid} {name} — pk={vals['mgm_bldrgst_pk']}", flush=True)
-                else:
+        item_done = False
+        while not item_done:
+            try:
+                bjd = bjdong.find_bjdong_cd(b["sgg_cd"], b["umd_nm"])
+                if not bjd:
+                    outcome_detail = f"bjdong_cd 못찾음(umd={b['umd_nm']})"
+                    row_changed = 0
+                    if not pk_only:
+                        # pk_only 보강 모드에선 title_backfilled_at을 건드리지 않는다
+                        # (표제부 미백필 건물을 '백필 완료'로 오기록하지 않기 위함)
+                        cur.execute(
+                            "UPDATE master_buildings SET title_backfilled_at=NOW() "
+                            f"WHERE id=%s{checkpoint_condition}",
+                            (bid,),
+                        )
+                        row_changed = cur.rowcount
+                    conn.commit()
+                    item_done = True
+                    changed += row_changed
+                    n_skip += 1
+                    print(f"  [{i}/{total}] SKIP id={bid} {name} — {outcome_detail}", flush=True)
+                    continue
+                plat_gb, bun, ji = parse_jibun(b["jibun"])
+                rows = _fetch_title_rows(b["sgg_cd"], bjd, plat_gb, bun, ji)
+                consec_err = 0  # 성공적으로 응답 받음
+                rep = _pick_representative(rows)
+                if not rep:
+                    row_changed = 0
+                    if not pk_only:
+                        cur.execute(
+                            "UPDATE master_buildings SET title_backfilled_at=NOW() "
+                            f"WHERE id=%s{checkpoint_condition}",
+                            (bid,),
+                        )
+                        row_changed = cur.rowcount
+                    conn.commit()
+                    item_done = True
+                    changed += row_changed
                     n_empty += 1
-                    print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부에 mgmBldrgstPk 없음", flush=True)
-            else:
-                cur.execute(
-                    """UPDATE master_buildings SET
-                         use_apr_day=%(use_apr_day)s, tot_pkng_cnt=%(tot_pkng_cnt)s,
-                         grnd_flr_cnt=%(grnd_flr_cnt)s, ugrnd_flr_cnt=%(ugrnd_flr_cnt)s,
-                         tot_area=%(tot_area)s, plat_area=%(plat_area)s,
-                         hhld_cnt=%(hhld_cnt)s, strct_nm=%(strct_nm)s,
-                         mgm_bldrgst_pk=COALESCE(%(mgm_bldrgst_pk)s, mgm_bldrgst_pk),
-                         building_name=CASE
-                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
-                             THEN %(official_name)s ELSE building_name
-                         END,
-                         name_pending=CASE
-                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
-                             THEN FALSE ELSE name_pending
-                         END,
-                         building_name_source=CASE
-                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
-                             THEN 'official' ELSE building_name_source
-                         END,
-                         building_name_candidate_count=CASE
-                             WHEN name_pending IS TRUE AND %(official_name)s <> ''
-                             THEN 0 ELSE building_name_candidate_count
-                         END,
-                         title_backfilled_at=NOW(),
-                         building_status=CASE
-                             WHEN %(use_apr_day)s IS NOT NULL AND %(use_apr_day)s != ''
-                                  AND building_status IN ('허가','착공')
-                             THEN '완공'
-                             ELSE building_status
-                         END
-                       WHERE id=%(id)s""",
-                    {**vals, "id": bid, "official_name": official_name},
-                )
-                changed += cur.rowcount
-                n_ok += 1
-                print(
-                    f"  [{i}/{total}] OK   id={bid} {name} — 준공={vals['use_apr_day']} "
-                    f"연면적={vals['tot_area']} 대지={vals['plat_area']} 세대={vals['hhld_cnt']} "
-                    f"지상/지하={vals['grnd_flr_cnt']}/{vals['ugrnd_flr_cnt']} 주차={vals['tot_pkng_cnt']} "
-                    f"구조={vals['strct_nm']} pk={vals['mgm_bldrgst_pk']}",
-                    flush=True,
-                )
-        except _RowHandled:
-            pass
-        except Exception as e:
-            if _is_connection_error(e):
-                n_ok, n_empty, n_skip, n_err, changed, consec_err = item_counts
-                db_reconnect_streak += 1
-                if db_reconnect_streak > max_db_reconnect_streak:
-                    raise RuntimeError(
-                        f"DB 연결이 {max_db_reconnect_streak}회 연속 끊겨 "
-                        "이번 실행을 중단합니다. 다시 실행하면 미완료 건부터 이어갑니다."
-                    ) from e
-                print(
-                    f"  [{i}/{total}] DB 연결 단절 — 현재 건부터 새 연결로 재시도: "
-                    f"{type(e).__name__}: {_mask_key(e)}",
-                    flush=True,
-                )
-                conn, cur = _reconnect_and_verify(
-                    conn, cur, db_state, status_key, run_id
-                )
-                continue
-            n_err += 1
-            consec_err += 1
-            print(f"  [{i}/{total}] ERR  id={bid} {name} — {type(e).__name__}: {_mask_key(e)}", flush=True)
-            if consec_err >= 10:
-                print("[중단] 연속 오류 10건 — API 쿼터 소진/장애 추정. 남은 건은 나중에 재실행하세요.", flush=True)
-                break
+                    print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부 없음", flush=True)
+                    continue
+                vals = _extract(rep)
+                official_name = resolve_api_building_name({
+                    "bld_nm": rep.get("bldNm"),
+                    "dong_nm": rep.get("dongNm"),
+                })
+                if pk_only:
+                    if vals["mgm_bldrgst_pk"]:
+                        cur.execute(
+                            f"""
+                            UPDATE master_buildings
+                               SET mgm_bldrgst_pk=%s,
+                                   building_name=CASE
+                                       WHEN name_pending IS TRUE AND %s <> '' THEN %s
+                                       ELSE building_name
+                                   END,
+                                   name_pending=CASE
+                                       WHEN name_pending IS TRUE AND %s <> '' THEN FALSE
+                                       ELSE name_pending
+                                   END,
+                                   building_name_source=CASE
+                                       WHEN name_pending IS TRUE AND %s <> '' THEN 'official'
+                                       ELSE building_name_source
+                                   END,
+                                   building_name_candidate_count=CASE
+                                       WHEN name_pending IS TRUE AND %s <> '' THEN 0
+                                       ELSE building_name_candidate_count
+                                   END
+                             WHERE id=%s{checkpoint_condition}
+                            """,
+                            (
+                                vals["mgm_bldrgst_pk"], official_name, official_name,
+                                official_name, official_name, official_name, bid,
+                            ),
+                        )
+                    conn.commit()
+                    item_done = True
+                    if vals["mgm_bldrgst_pk"]:
+                        changed += cur.rowcount
+                        n_ok += 1
+                        print(f"  [{i}/{total}] OK   id={bid} {name} — pk={vals['mgm_bldrgst_pk']}", flush=True)
+                    else:
+                        n_empty += 1
+                        print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부에 mgmBldrgstPk 없음", flush=True)
+                else:
+                    cur.execute(
+                        f"""UPDATE master_buildings SET
+                             use_apr_day=%(use_apr_day)s, tot_pkng_cnt=%(tot_pkng_cnt)s,
+                             grnd_flr_cnt=%(grnd_flr_cnt)s, ugrnd_flr_cnt=%(ugrnd_flr_cnt)s,
+                             tot_area=%(tot_area)s, plat_area=%(plat_area)s,
+                             hhld_cnt=%(hhld_cnt)s, strct_nm=%(strct_nm)s,
+                             mgm_bldrgst_pk=COALESCE(%(mgm_bldrgst_pk)s, mgm_bldrgst_pk),
+                             building_name=CASE
+                                 WHEN %(official_name)s <> '' AND name_pending IS TRUE
+                                 THEN %(official_name)s ELSE building_name
+                             END,
+                             name_pending=CASE
+                                 WHEN %(official_name)s <> '' AND name_pending IS TRUE
+                                 THEN FALSE ELSE name_pending
+                             END,
+                             building_name_source=CASE
+                                 WHEN %(official_name)s <> '' AND name_pending IS TRUE
+                                 THEN 'official' ELSE building_name_source
+                             END,
+                             building_name_candidate_count=CASE
+                                 WHEN %(official_name)s <> '' AND name_pending IS TRUE
+                                 THEN 0 ELSE building_name_candidate_count
+                             END,
+                             title_backfilled_at=NOW(),
+                             building_status=CASE
+                                 WHEN %(use_apr_day)s IS NOT NULL AND %(use_apr_day)s != ''
+                                      AND building_status IN ('허가','착공')
+                                 THEN '완공'
+                                 ELSE building_status
+                             END
+                           WHERE id=%(id)s{checkpoint_condition}""",
+                        {**vals, "id": bid, "official_name": official_name},
+                    )
+                    row_changed = cur.rowcount
+                    conn.commit()
+                    item_done = True
+                    changed += row_changed
+                    n_ok += 1
+                    print(
+                        f"  [{i}/{total}] OK   id={bid} {name} — 준공={vals['use_apr_day']} "
+                        f"연면적={vals['tot_area']} 대지={vals['plat_area']} 세대={vals['hhld_cnt']} "
+                        f"지상/지하={vals['grnd_flr_cnt']}/{vals['ugrnd_flr_cnt']} 주차={vals['tot_pkng_cnt']} "
+                        f"구조={vals['strct_nm']} pk={vals['mgm_bldrgst_pk']}",
+                        flush=True,
+                    )
+            except Exception as e:
+                if _is_connection_lost(e, conn):
+                    reconnect_after(e)
+                    continue
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                n_err += 1
+                consec_err += 1
+                item_done = True
+                print(f"  [{i}/{total}] ERR  id={bid} {name} — {type(e).__name__}: {_mask_key(e)}", flush=True)
+                if consec_err >= 10:
+                    print("[중단] 연속 오류 10건 — API 쿼터 소진/장애 추정. 남은 건은 나중에 재실행하세요.", flush=True)
+                    stop_for_errors = True
 
-        try:
-            # API 호출 간격(기본 0.2초)당 한 번만 commit하므로 과도한 부하 없이
-            # 연결 단절 시 재처리 범위를 현재 한 건으로 제한할 수 있다.
-            conn.commit()
-        except Exception as e:
-            if not _is_connection_error(e):
-                raise
-            n_ok, n_empty, n_skip, n_err, changed, consec_err = item_counts
-            db_reconnect_streak += 1
-            if db_reconnect_streak > max_db_reconnect_streak:
-                raise RuntimeError(
-                    f"DB commit 연결이 {max_db_reconnect_streak}회 연속 끊겨 "
-                    "이번 실행을 중단합니다. 다시 실행하면 미완료 건부터 이어갑니다."
-                ) from e
-            print(
-                f"  [{i}/{total}] DB commit 연결 단절 — 현재 건부터 새 연결로 재시도: "
-                f"{type(e).__name__}: {_mask_key(e)}",
-                flush=True,
-            )
-            conn, cur = _reconnect_and_verify(
-                conn, cur, db_state, status_key, run_id
-            )
-            continue
         if i % 20 == 0:
             print(f"  ...진행 {i}/{total} (OK={n_ok} EMPTY={n_empty} SKIP={n_skip} ERR={n_err})", flush=True)
-        db_reconnect_streak = 0
+        if stop_for_errors:
+            break
         time.sleep(sleep)
-        i += 1
 
-    try:
-        conn.commit()
-    except Exception as e:
-        if not _is_connection_error(e):
-            raise
-        print(
-            f"[DB 재접속] 최종 commit 연결 단절 — 새 연결에서 commit 재시도: "
-            f"{type(e).__name__}: {_mask_key(e)}",
-            flush=True,
-        )
-        conn, cur = _reconnect_and_verify(
-            conn, cur, db_state, status_key, run_id
-        )
-        conn.commit()
-    try:
-        renamed = refresh_auto_building_names(conn)
-    except Exception as e:
-        if not _is_connection_error(e):
-            raise
-        print(
-            f"[DB 재접속] 자동명칭 정리 중 연결 단절 — 새 연결로 재시도: "
-            f"{type(e).__name__}: {_mask_key(e)}",
-            flush=True,
-        )
-        conn, cur = _reconnect_and_verify(
-            conn, cur, db_state, status_key, run_id
-        )
-        renamed = refresh_auto_building_names(conn)
+    while True:
+        try:
+            renamed = refresh_auto_building_names(conn)
+            break
+        except Exception as e:
+            if not _is_connection_lost(e, conn):
+                raise
+            reconnect_after(e)
     changed += renamed
     if changed > 0:
         try:
@@ -552,19 +643,20 @@ def main():
         threading.Thread(target=_beat, daemon=True).start()
 
     error = None
+    connection_failed = False
     n_ok = n_empty = n_skip = n_err = None
     try:
         n_ok, n_empty, n_skip, n_err = run(
             limit=args.limit, ids=ids, only_missing=not args.all, sleep=args.sleep,
             pk_only=args.fill_pk, status_key=args.status_key, run_id=run_id)
     except Exception as e:
+        connection_failed = isinstance(e, _DatabaseReconnectExhausted)
         error = _mask_key(e)[:500]
         print(f"[title-info] 실패: {error}")
 
     if args.status_key and run_id is not None:
         stop_beat.set()
-        status = _read_status(args.status_key) or {}
-        status.update({
+        final_status = {
             "state": "failed" if error else "done",
             "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "ok": n_ok,
@@ -572,9 +664,17 @@ def main():
             "skip": n_skip,
             "err": n_err,
             "error": error,
-        })
+        }
         for attempt in range(3):
             try:
+                status = _read_status(args.status_key) or {}
+                status.update(final_status)
+                if connection_failed:
+                    status["connection_state"] = "failed"
+                else:
+                    status["connection_state"] = status.get(
+                        "connection_state", "connected"
+                    )
                 _write_status(args.status_key, status, run_id)
                 break
             except Exception as e:

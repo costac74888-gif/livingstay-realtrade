@@ -2285,13 +2285,22 @@
       const running = s.state === "running";
       if (running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+        if (s.connection_state === "reconnecting") {
+          rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>DB 연결:</b> 재접속 중… (${num(s.reconnect_attempts || 0)}회 시도)</div>`);
+        } else if (s.reconnect_count) {
+          rows.push(`<div class="geo-stat-row"><b>DB 연결:</b> 재접속 ${num(s.reconnect_count)}회 성공</div>`);
+        }
         if (!titleInfoTimer) titleInfoTimer = setInterval(loadTitleInfoStatus, 5000);
       } else {
         stopTitleInfoPolling();
         if (s.state === "done") {
           rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · 성공 ${num(s.ok || 0)}건 / 표제부없음 ${num(s.empty || 0)}건 / 오류 ${num(s.err || 0)}건</div>`);
+          if (s.reconnect_count) rows.push(`<div class="geo-stat-row"><b>DB 연결:</b> 재접속 ${num(s.reconnect_count)}회 성공</div>`);
         } else if (s.state === "failed" || s.state === "stale") {
           rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+          if (s.connection_state === "failed" && s.last_reconnect_error) {
+            rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>DB 연결:</b> ${dgEscape(s.last_reconnect_error)}</div>`);
+          }
         } else {
           rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
         }
