@@ -1,0 +1,7609 @@
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      try {
+        await fetch("/api/admin/logout", { method: "POST" });
+      } catch (e) {}
+      window.location.href = "/admin/login";
+    });
+
+    // 비밀번호 변경 모달
+    const pwModal = document.getElementById("pwModal");
+    const pwForm = document.getElementById("pwForm");
+    const pwMsg = document.getElementById("pwMsg");
+    const pwSubmit = document.getElementById("pwSubmit");
+
+    function openPwModal() {
+      pwForm.reset();
+      pwMsg.textContent = "";
+      pwModal.hidden = false;
+    }
+    function closePwModal() {
+      pwModal.hidden = true;
+    }
+
+    document.getElementById("changePwBtn").addEventListener("click", openPwModal);
+    document.getElementById("pwCancel").addEventListener("click", closePwModal);
+    pwModal.addEventListener("click", (e) => {
+      if (e.target === pwModal) closePwModal();
+    });
+
+    pwForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const current = document.getElementById("pwCurrent").value;
+      const next = document.getElementById("pwNew").value;
+      const next2 = document.getElementById("pwNew2").value;
+      pwMsg.textContent = "";
+      if (next.length < 8) {
+        pwMsg.textContent = "새 비밀번호는 8자 이상이어야 합니다.";
+        return;
+      }
+      if (next !== next2) {
+        pwMsg.textContent = "새 비밀번호가 서로 일치하지 않습니다.";
+        return;
+      }
+      pwSubmit.disabled = true;
+      pwSubmit.textContent = "변경 중…";
+      try {
+        const res = await fetch("/api/admin/password", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password: current, new_password: next }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          pwMsg.style.color = "";
+          alert("비밀번호가 변경되었습니다. 다시 로그인해주세요.");
+          window.location.href = "/admin/login";
+          return;
+        }
+        pwMsg.textContent = data.message || "비밀번호 변경에 실패했습니다.";
+      } catch (err) {
+        pwMsg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+      } finally {
+        pwSubmit.disabled = false;
+        pwSubmit.textContent = "변경";
+      }
+    });
+
+    // ── data 속성용 JSON 직렬화 헬퍼 (HTML attribute 안전) ──────────────────
+    function jsonAttr(obj) {
+      return JSON.stringify(obj)
+        .replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // ── 용도별 세부 통계표 로더 ───────────────────────────────────────────────
+    async function loadBldFullStats() {
+      const box = document.getElementById("bldFullStats");
+      if (!box) return;
+      try {
+        const r = await fetch("/api/admin/buildings/full-stats");
+        const d = await r.json();
+        if (!d || !d.ok) { box.innerHTML = ""; return; }
+        const rows = d.rows || [];
+        const pct  = (v) => v == null ? "-" : v.toFixed(1) + "%";
+        const n    = (v) => (v == null || v === 0) ? "-" : Number(v).toLocaleString();
+        const GENERAL_UNITS_TOOLTIP =
+          "일반숙박시설은 구분소유 호수 개념이 없어 이 값이 실제 객실수를 반영하지 않습니다. 실제 객실수는 '신고율/객실수' 컬럼을 참고하세요";
+        const generalUnitsCell = (value) => {
+          const formatted = n(value);
+          const label = formatted === "-"
+            ? "-"
+            : `${formatted} <span style="font-size:10px;">(참고용, 신뢰불가)</span>`;
+          return `<td title="${GENERAL_UNITS_TOOLTIP}" style="text-align:right;padding:4px 8px;color:var(--ink-soft);font-size:10px;cursor:help;">${label}</td>`;
+        };
+        const COLS = [
+          { label: "용도",        key: null,                fmt: (row) => `<td style="padding:4px 8px;font-weight:inherit;">${row.type}</td>` },
+          { label: "건물수",      key: "building_count",    fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${row.building_count.toLocaleString()}</td>` },
+          { label: "호실수",      key: "units",             fmt: (row) => row.type === "일반" ? generalUnitsCell(row.units) : `<td style="text-align:right;padding:4px 8px;">${n(row.units)}</td>` },
+          { label: "관심저장",    key: "favorites",         fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.favorites)}</td>` },
+          { label: "매물내놓기",  key: "listing_requests",  fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.listing_requests)}</td>` },
+          { label: "단지뱃지",    key: "broker_badge",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.broker_badge)}</td>` },
+          { label: "입점부동산",  key: "store_realty",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.store_realty)}</td>` },
+          { label: "입점상가",    key: "store_total",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.store_total)}</td>` },
+          { label: "영업신고율", key: "report_rate", fmt: (row) => {
+              const color = row.report_rate >= 80 ? "color:var(--brass-dark);" : "";
+              const title = row.report_rate_basis === "businesses_per_building"
+                ? "일반숙박 기준: 현재 영업신고업체 수 ÷ 건물 수"
+                : row.report_rate_basis === "type_weighted"
+                  ? "전체 기준: 생활·관광·복합은 신고호실÷호실수, 일반은 신고업체÷건물수를 유형별로 합산"
+                  : "생활·관광·복합 기준: 영업신고호실 합 ÷ 건물 호실수 합";
+              return `<td title="${title}" style="text-align:right;padding:4px 8px;${color}">${pct(row.report_rate)}</td>`;
+            } },
+          { label: "영업신고업체",key: "permit_count",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.permit_count)}</td>` },
+          { label: "영업신고호실",key: "room_count",        fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.room_count)}</td>` },
+          { label: "폐업율",      key: "closed_rate",       fmt: (row) => `<td style="text-align:right;padding:4px 8px;${row.closed_rate >= 30 ? "color:#b3261e;" : ""}">${pct(row.closed_rate)}</td>` },
+        ];
+        let html = `<div style="overflow-x:auto;margin-bottom:6px;border:1px solid #E8E3D9;border-radius:8px;">` +
+          `<table style="width:100%;border-collapse:collapse;font-size:11.5px;white-space:nowrap;">` +
+          `<thead><tr style="background:#F0EBE1;">`;
+        for (const c of COLS) html += `<th style="padding:5px 8px;font-weight:600;text-align:${c.label==="용도"?"left":"right"};border-bottom:2px solid #D4C9B0;">${c.label}</th>`;
+        html += `</tr></thead><tbody>`;
+        const subRowCells = (sub) => COLS.map((c) => {
+          if (c.label === "용도") {
+            const guide = sub.type === "숙박업(생활)"
+              ? `<span title="건물은 '일반'으로 분류됐으나 등록된 사업자 업태는 생활숙박업인 경우" style="margin-left:4px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>`
+              : "";
+            return `<td style="padding:4px 8px 4px 28px;color:var(--ink-soft);">↳ ${sub.type}${guide}</td>`;
+          }
+          if (c.key === "report_rate") {
+            return `<td title="현재 영업신고업체 수 ÷ 해당 세부 업태로 매칭된 건물 수" style="text-align:right;padding:4px 8px;color:var(--ink-soft);">${pct(sub.report_rate)}</td>`;
+          }
+          if (c.key === "units") {
+            return generalUnitsCell(sub.units);
+          }
+          if (c.key === "building_count") {
+            return `<td style="text-align:right;padding:4px 8px;">${n(sub.building_count)}</td>`;
+          }
+          if (c.key === "permit_count" || c.key === "room_count") {
+            return `<td style="text-align:right;padding:4px 8px;">${n(sub[c.key])}</td>`;
+          }
+          return `<td style="padding:4px 8px;"></td>`;
+        }).join("");
+        rows.forEach((row, i) => {
+          const isTotal = row.type === "전체";
+          const bg = isTotal ? "#FAF8F0" : (i % 2 === 0 ? "#fff" : "#FAFAFA");
+          html += `<tr style="background:${bg};${isTotal ? "font-weight:700;" : ""}border-bottom:1px solid #EEE;">`;
+          for (const c of COLS) html += c.fmt(row);
+          html += `</tr>`;
+          if (row.type === "일반" && Array.isArray(row.sub_rows)) {
+            row.sub_rows.forEach((sub) => {
+              html += `<tr style="background:#FCFCFC;border-bottom:1px solid #F0F0F0;">${subRowCells(sub)}</tr>`;
+            });
+          }
+        });
+        html += `</tbody></table></div>`;
+        html += `
+          <section aria-labelledby="lodgingLegalCriteriaTitle"
+            style="margin-top:10px;border:1px solid #DCCFB8;border-radius:8px;background:#FFFEFB;overflow:hidden;">
+            <div style="padding:8px 10px;background:#F4EFE5;border-bottom:1px solid #E5DCCB;">
+              <h3 id="lodgingLegalCriteriaTitle"
+                style="margin:0;color:var(--ink);font-size:13px;font-weight:700;">
+                숙박법정분류기준
+              </h3>
+              <p style="margin:3px 0 0;color:var(--ink-soft);font-size:11px;line-height:1.5;">
+                법정 영업분류와 건축물대장 용도는 별도로 관리합니다. 현재 영업 통계는 영업상태가
+                <b>영업/정상</b>인 신고만 포함합니다.
+              </p>
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;min-width:760px;border-collapse:collapse;font-size:11.5px;white-space:normal;">
+                <thead>
+                  <tr style="background:#FAF8F0;color:var(--ink);">
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;width:90px;">법정분류</th>
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;">대표 신고·등록 유형</th>
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;">건축물 용도 참고</th>
+                    <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5DCCB;">판정·집계 기준</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">일반</td>
+                    <td style="padding:6px 8px;">일반호텔 · 여관업 · 여인숙업</td>
+                    <td style="padding:6px 8px;">숙박시설</td>
+                    <td style="padding:6px 8px;">일반 신고업체 ÷ 건물수 (호실수는 참고용)</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">생활</td>
+                    <td style="padding:6px 8px;">숙박업(생활)</td>
+                    <td style="padding:6px 8px;">숙박시설</td>
+                    <td style="padding:6px 8px;">신고 객실수 ÷ 건축물대장 호실수</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">관광</td>
+                    <td style="padding:6px 8px;">관광숙박업 · 관광호텔업 · 휴양콘도미니엄업 등</td>
+                    <td style="padding:6px 8px;">숙박시설</td>
+                    <td style="padding:6px 8px;">관광 관련 등록을 법정 영업분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">에어비앤비</td>
+                    <td style="padding:6px 8px;">외국인관광도시민박업</td>
+                    <td style="padding:6px 8px;">주택</td>
+                    <td style="padding:6px 8px;">주택이라는 용도만으로 법정분류를 추정하지 않음</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">농어촌민박</td>
+                    <td style="padding:6px 8px;">농어촌민박업</td>
+                    <td style="padding:6px 8px;">주택</td>
+                    <td style="padding:6px 8px;">농어촌민박 등록을 별도 법정분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">캠핑</td>
+                    <td style="padding:6px 8px;">야영장업</td>
+                    <td style="padding:6px 8px;">수련시설</td>
+                    <td style="padding:6px 8px;">야영장 등록을 별도 법정분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">한옥</td>
+                    <td style="padding:6px 8px;">한옥체험업</td>
+                    <td style="padding:6px 8px;">용도 제한 없음(자동 주택 단정 안 함)</td>
+                    <td style="padding:6px 8px;">한옥체험업 등록을 별도 법정분류로 반영</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid #F0ECE4;">
+                    <td style="padding:6px 8px;font-weight:700;">복합</td>
+                    <td style="padding:6px 8px;">서로 다른 법정 등록 유형이 같은 건물에 함께 존재</td>
+                    <td style="padding:6px 8px;">실제 건축물대장 용도 별도 확인</td>
+                    <td style="padding:6px 8px;">임의로 한 유형을 선택하지 않고 복합으로 유지</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 8px;font-weight:700;">미분류</td>
+                    <td style="padding:6px 8px;">활성 법정 신고·등록 근거 없음 또는 판정 보류</td>
+                    <td style="padding:6px 8px;">건축물대장 원문 별도 보존</td>
+                    <td style="padding:6px 8px;">주소가 여러 건물에 맞으면 자동 반영하지 않음</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="padding:7px 10px;color:var(--ink-soft);font-size:10.5px;line-height:1.55;background:#FCFBF7;">
+              ※ 건물수는 <b>master_buildings 고유 건물</b> 기준이며, 영업신고 업체수·객실수는 별도 집계합니다.
+              건축물대장으로 확정된 분류와 에어비앤비 수입 건물은 소급 재분류로 덮어쓰지 않습니다.
+            </div>
+          </section>`;
+        box.innerHTML = html;
+        const statsTable = box.firstElementChild;
+        const legalCriteria = box.querySelector("#lodgingLegalCriteriaTitle")?.closest("section");
+        if (statsTable && legalCriteria) box.insertBefore(legalCriteria, statsTable);
+      } catch(e) { box.innerHTML = ""; }
+    }
+
+    // ── 입점부동산 목록 모달 ─────────────────────────────────────────────────
+    function brokerStatusBadge(value) {
+      const status = String(value || "").trim() || "상태 정보 없음";
+      const active = status === "영업중";
+      return `<span class="bld-broker-status ${active ? "is-active" : "is-inactive"}">${dgEscape(status)}</span>`;
+    }
+
+    function renderBrokerRegistryCards(items) {
+      const text = (value) => dgEscape(value || "-");
+      const phones = (item) => {
+        const values = Array.isArray(item.phone_numbers) && item.phone_numbers.length
+          ? item.phone_numbers
+          : (item.phone ? [item.phone] : []);
+        return values.length ? values.map((value) => dgEscape(value)).join("<br>") : "-";
+      };
+      let html = `<div class="bld-realty-scroll">` +
+        `<table class="bld-realty-table" style="min-width:1040px;"><thead><tr>` +
+        `<th>사무소명</th><th>등록번호</th><th>대표자</th>` +
+        `<th>소재지</th><th>전화번호</th><th>소속인원</th><th>상태</th><th>등록일자</th>` +
+        `</tr></thead><tbody>`;
+      for (const item of items) {
+        const address = [item.road_address, item.jibun_address]
+          .filter((value, index, values) => value && values.indexOf(value) === index)
+          .join(" · ");
+        html += `<tr>` +
+          `<td>${text(item.office_name)}</td>` +
+          `<td>${text(item.reg_number)}</td>` +
+          `<td>${text(item.owner_name)}</td>` +
+          `<td style="font-size:11px;color:var(--ink-soft);">${text(address)}</td>` +
+          `<td>${phones(item)}</td>` +
+          `<td>${Number.isFinite(Number(item.member_count)) ? Number(item.member_count) : 0}명</td>` +
+          `<td>${brokerStatusBadge(item.biz_status)}</td>` +
+          `<td>${text(item.reg_date)}</td>` +
+          `</tr>`;
+      }
+      return html + `</tbody></table></div>`;
+    }
+
+    function renderCachedRealtyTable(items) {
+      let html = `<div class="bld-realty-scroll"><table class="bld-realty-table" style="min-width:620px;"><thead>` +
+        `<tr><th>상호명</th><th>호번호</th><th>층</th></tr></thead><tbody>`;
+      for (const item of items) {
+        html += `<tr><td>${dgEscape(item.store_name || "-")}</td>` +
+          `<td>${dgEscape(item.ho_no || "-")}</td>` +
+          `<td>${dgEscape(item.floor || "-")}</td></tr>`;
+      }
+      return html + `</tbody></table></div>`;
+    }
+
+    function renderRealtySubRow(content, colCount) {
+      return `<tr class="bld-realty-sub-row"><td colspan="${colCount}" ` +
+        `style="padding:10px 12px;background:#FFFBF3;border-bottom:2px solid #D4C9B0;">` +
+        content + `</td></tr>`;
+    }
+
+    function renderRealtyLoadingSubRow(colCount) {
+      return renderRealtySubRow(
+        `<p class="bld-realty-section-note" style="margin:0;">입점부동산 정보를 불러오는 중…</p>`,
+        colCount
+      );
+    }
+
+    // ── 입점상가 전체 목록 모달 ───────────────────────────────────────────────
+    async function openStoreModal(buildingId) {
+      document.querySelector(".bld-store-overlay")?.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "bld-store-overlay";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:center;justify-content:center;";
+      overlay.innerHTML =
+        `<div style="background:#fff;border-radius:12px;padding:24px;min-width:480px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18);">` +
+        `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">` +
+        `<b style="font-size:15px;">입점상가 전체 목록</b>` +
+        `<button onclick="this.closest('.bld-store-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>` +
+        `</div><div id="storeModalBody" style="min-height:40px;">로딩 중…</div></div>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+      try {
+        const r = await fetch(`/api/v1/r/8a1/${buildingId}`);
+        const d = await r.json();
+        const items = d.items || [];
+        if (!items.length) {
+          document.getElementById("storeModalBody").textContent = "캐시된 상가정보 없음 (건물 상세 페이지 방문 시 수집됩니다)";
+          return;
+        }
+        let html = `<table style="width:100%;font-size:12px;border-collapse:collapse;">`;
+        html += `<thead><tr style="background:#F0EBE1;"><th style="padding:4px 8px;text-align:left;">상호명</th><th style="padding:4px 8px;">업종</th><th style="text-align:center;">호번호</th><th style="text-align:center;">층</th></tr></thead><tbody>`;
+        for (const s of items) {
+          html += `<tr style="border-bottom:1px solid #eee;">`;
+          html += `<td style="padding:3px 8px;">${dgEscape(s.store_name || "-")}</td>`;
+          const cat = s.category + (s.inds_mcls_nm ? " · " + s.inds_mcls_nm : "");
+          html += `<td style="padding:3px 8px;color:var(--ink-soft);">${dgEscape(cat || "-")}</td>`;
+          html += `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.ho_no || "-")}</td>`;
+          html += `<td style="text-align:center;padding:3px 8px;">${dgEscape(s.floor || "-")}</td>`;
+          html += `</tr>`;
+        }
+        html += `</tbody></table>`;
+        document.getElementById("storeModalBody").innerHTML = html;
+      } catch (e) {
+        document.getElementById("storeModalBody").textContent = "불러오기 실패";
+      }
+    }
+
+    // 거래유형별 희망가 포맷 헬퍼 (만원 단위)
+    function formatLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max) {
+      var fmt = function(v){ return v != null ? Number(v).toLocaleString() : "-"; };
+      if (deal_type === "매매" || deal_type === "전세") return price_krw_max != null ? fmt(price_krw) + " ~ " + fmt(price_krw_max) : fmt(price_krw);
+      if (deal_type === "월세") return price_krw_max != null ? fmt(price_krw) + " ~ " + fmt(price_krw_max) : "보" + fmt(price_krw) + "/" + fmt(monthly_rent_krw);
+      if (deal_type === "단기임대") return price_krw != null ? fmt(price_krw) + (price_krw_max != null ? " ~ " + fmt(price_krw_max) : "") : "-";
+      return "-";
+    }
+
+    // 메뉴별 그리드 설정 — 같은 DataGrid에 컬럼 정의만 바꿔 그대로 재사용한다.
+    const GRID_CONFIGS = {
+      buildings: {
+        endpoint: "/api/admin/buildings",
+        exportUrl: "/api/admin/buildings/export.xlsx",
+        title: "건물마스터",
+        entityLabel: "건물",
+        searchPlaceholder: "건물명·주소 검색",
+        allowSelect: true,   // 체크박스 일괄선택 활성화
+        allowEdit: false,    // 행별 수정버튼 제거 → 일괄수정 툴바로 대체
+        allowDelete: false,  // 행별 삭제버튼 제거 → 일괄삭제 툴바로 대체
+        defaultSort: "units",
+        defaultOrder: "desc",
+        filters: [
+          { key: "lodging_type_filter", default: "", options: [
+            { value: "", label: "전체 용도" },
+            { value: "생활", label: "생활" },
+            { value: "관광", label: "관광" },
+            { value: "일반", label: "일반" },
+            { value: "에어비앤비", label: "에어비앤비" },
+            { value: "농어촌민박", label: "농어촌민박" },
+            { value: "캠핑", label: "캠핑" },
+            { value: "한옥", label: "한옥" },
+            { value: "복합", label: "복합" },
+            { value: "준공전", label: "준공전" },
+            { value: "미분류", label: "미분류" },
+          ] },
+          { key: "name_pending", default: "", options: [
+            { value: "", label: "전체 명칭상태" },
+            { value: "1", label: "명칭 미확정만" },
+          ] },
+          { key: "biz_status_filter", default: "", options: [
+            { value: "", label: "전체 상태" },
+            { value: "active", label: "정상 운영중만" },
+            { value: "closed", label: "폐업만" },
+          ] },
+        ],
+        columns: [
+          // ── 건물 자체 정보 1~9 ─────────────────────────────────────────────
+          { key: "building_name", label: "건물명", sortable: true, editable: true, required: true,
+            render: (v, row) => {
+              const displayName = row.display_building_name || v || "";
+              const link = `<a href="/building/${row.id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(displayName)}</a>`;
+               const pending = row && row.name_pending && !row.building_name_report_display ? ' <span class="dg-badge dg-badge-wait">명칭 미확정</span>' : "";
+               const auto = row && row.building_name_report_display
+                  ? ` <span class="dg-badge dg-badge-ok" title="현재 활성 영업신고 사업장명을 대표 명칭으로 표시">영업신고 기준</span>`
+                 : "";
+               return `${link}${pending}${auto}`;
+            } },
+          { key: "road_address_toggle", label: "주소(도로명⇄지번)",
+            render: (_, row) => {
+              const mb = dgEscape(row.road_address || "-");
+              const jb = dgEscape(row.jibun_address || "");
+              if (!jb) return mb;
+              return `<div class="bld-addr-cell">` +
+                `<span class="bld-addr-mb">${mb}</span>` +
+                `<span class="bld-addr-lr" style="display:none;color:var(--brass-dark);">${jb}</span>` +
+                `<button class="bld-addr-toggle" title="지번주소로 보기" style="margin-left:4px;background:none;border:1px solid var(--brass);color:var(--brass);border-radius:3px;font-size:10px;padding:1px 5px;cursor:pointer;white-space:nowrap;">⇄</button>` +
+                `</div>`;
+            } },
+          { key: "lodging_type", label: "용도", sortable: true, editable: true, type: "select",
+            options: ["생활", "관광", "일반", "에어비앤비", "농어촌민박",
+                      "캠핑", "한옥", "복합", "준공전", "미분류"] },
+          { key: "units", label: "총호실수", sortable: true, editable: true, type: "number" },
+          { key: "favorite_count", label: "관심저장", sortable: true,
+            render: (v, row) => v > 0
+              ? `<a href="/api/admin/buildings/${row.id}/favorites/export.xlsx" style="color:var(--brass-dark);font-weight:700;text-decoration:none;" title="관심저장 회원 명단 다운로드">${v}명 📥</a>`
+              : `<span style="color:var(--ink-soft);">0</span>` },
+          { key: "priority_badge_count", label: "단지뱃지", clientSort: true,
+            render: (v, row) => v > 0
+              ? `<span class="dg-badge dg-badge-ok" title="${row.premium_expires_at ? '만료 ' + dgEscape(row.premium_expires_at) : '무기한'}">${v > 1 ? v + "명 보유" : "보유"}</span>`
+              : `<span style="color:var(--ink-soft);">-</span>` },
+          // 표시 순서: 입점부동산 → 영업사업장 → 신고율 / 객실수 → 입점상가
+          // 입점부동산: 주소 일치 데이터 우선, 없을 때만 입점업소 참고 수를 표시.
+          { key: "store_realty_count", label: "입점부동산", sortable: false,
+            render: (v, row) => {
+              if (!(v > 0)) return `<span style="color:var(--ink-soft);">-</span>`;
+              const isBrokerRegistry = Number(row.broker_realty_count || 0) > 0;
+              const title = isBrokerRegistry
+                ? "홈앤스테이 주소 일치 중개업소 수"
+                : "주소 일치 없음 · 입점업소 참고 기준";
+              return `<button class="bld-realty-expand" data-id="${row.id}" data-cnt="${v}" title="${title}" ` +
+                `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
+                `🏠 ${v}건 펼치기</button>`;
+            } },
+          // 영업사업장: 펼치기 버튼 — 입점부동산 바로 옆에서 같은 아코디언 패턴을 사용.
+          { key: "lodging_expand", label: "영업사업장",
+            render: (_, row) => {
+              if (!row.lodging_count) return `<span style="font-size:11px;color:#aaa;border:1px solid #ddd;border-radius:4px;padding:2px 8px;">미매칭</span>`;
+              return `<button class="bld-lodging-expand" data-id="${row.id}" ` +
+                `data-cnt="${row.lodging_count}" data-list="${jsonAttr(row.lodging_list || [])}" ` +
+                `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;` +
+                `padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
+                `🏢 ${row.lodging_count}건 펼치기</button>`;
+            } },
+          { key: "report_rate", label: "신고율 / 객실수", clientSort: true,
+            sortValue: (row) => row.lodging_type === "일반"
+              ? (row.lodging_room_known ? Number(row.lodging_room_total || 0) : null)
+              : (row.units && row.lodging_room_known ? Number(row.lodging_room_total || 0) / Number(row.units) : null),
+            render: (_, row) => {
+              if (!row.lodging_room_known) return `<span style="color:var(--ink-soft);">미확인</span>`;
+              if (row.lodging_type === "일반") {
+                return `<span style="font-weight:600;">${Number(row.lodging_room_total || 0).toLocaleString()}실</span>`;
+              }
+              if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
+              // 신고율은 lodging_registry의 비폐업 객실수 합계만 사용한다.
+              const rate = Math.round((row.lodging_room_total || 0) / row.units * 1000) / 10;
+              const color = rate >= 80 ? "var(--brass-dark)" : rate >= 50 ? "var(--ink)" : "var(--ink-soft)";
+              return `<span style="color:${color};font-weight:600;">${rate}%</span>`;
+            } },
+          { key: "kakao_promo", label: "홍보채널(카카오)",
+            render: (_, row) => {
+              const url = `https://homenstay.com/building/${row.id}?utm_source=katalk&utm_medium=chat&utm_campaign=ownergroup_promo2`;
+              const msg = `안녕하세요. 우리 단지 국토부 실거래 추세선이랑 숙박업 영업신고 현황 데이터 한눈에 볼 수 있는 사이트인데 참고 되실 것 같아 링크 공유드립니다.\n${url}`;
+              const copyCount = Math.max(0, Number(row.kakao_promo_copy_count || 0));
+              return `<button class="bld-kakao-copy-btn"
+                data-id="${row.id}"
+                data-msg="${msg.replace(/"/g, '&quot;')}"
+                data-copy-count="${copyCount}"
+                title="카카오 공유 메시지 복사"
+                style="background:none;border:1px solid var(--brass);color:var(--brass);
+                       border-radius:4px;padding:2px 8px;font-size:11.5px;
+                       cursor:pointer;white-space:nowrap;">
+                📋 복사 ${copyCount}회
+              </button>`;
+            } },
+          // 입점상가: 전체 개수 표시, 클릭 시 모달
+          { key: "store_count", label: "입점상가", sortable: true,
+            render: (v, row) => (v > 0)
+              ? `<button class="bld-store-modal-btn" data-id="${row.id}" ` +
+                `style="background:none;border:1px solid #aaa;border-radius:4px;padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
+                `🏪 ${v}개</button>`
+              : `<span style="color:var(--ink-soft);">-</span>` },
+          // ── 편집·필터 전용 숨김 컬럼 ──────────────────────────────────────────
+          { key: "id", label: "ID", sortable: true, hideInTable: true },
+          { key: "road_address", label: "도로명주소", sortable: true, editable: true, required: true, hideInTable: true },
+          { key: "sgg_cd", label: "법정동코드", editable: true, hideInTable: true },
+          { key: "sgg_text", label: "시군구", sortable: true, editable: true, hideInTable: true },
+          { key: "umd_nm", label: "읍면동", sortable: true, editable: true, hideInTable: true },
+          { key: "jibun", label: "지번", sortable: true, editable: true, hideInTable: true },
+          { key: "jibun_address", label: "지번주소", editable: true, hideInTable: true },
+          { key: "lodging_type_detail", label: "용도상세", editable: true, hideInTable: true },
+          { key: "booking_url", label: "운영확인 링크(OTA)", editable: true, hideInTable: true,
+            placeholder: "https://www.yanolja.com/..." },
+        ],
+        // ── 합계 행: 헤더 바로 아래 고정, 현재 검색/필터 기준 전체 합계 ────────
+        // 합산이 의미 없는 컬럼(건물명, 주소 등)은 여기에 없으면 빈 칸으로 표시됨.
+        totalsRow: {
+          building_name:       () => `<strong style="font-size:12px;">합계</strong>`,
+          units:               (t) => t.total_units != null
+                                      ? `<strong>${t.total_units.toLocaleString()}</strong>` : "",
+          favorite_count:      (t) => t.total_favorites != null
+                                      ? `<strong>${t.total_favorites.toLocaleString()}</strong>` : "",
+          priority_badge_count:(t) => t.total_badges != null
+                                      ? `<strong>${t.total_badges.toLocaleString()}</strong>` : "",
+          store_realty_count:  (t) => t.total_store_realty != null
+                                      ? `<strong>${t.total_store_realty.toLocaleString()}</strong>` : "",
+          store_count:         (t) => t.total_store_count != null
+                                      ? `<strong>${t.total_store_count.toLocaleString()}</strong>` : "",
+           // 요약 신고율은 일반숙박을 제외한 신고호실 합 ÷ 해당 호실 합으로 계산한 가중평균.
+          report_rate:         (t) => t.weighted_report_rate != null
+                                       ? `<strong title="가중평균 기준: 일반숙박 제외, 생활·관광·복합 등 신고율 적용 대상만 계산">${t.weighted_report_rate}%</strong><span title="가중평균 기준: 일반숙박 제외, 생활·관광·복합 등 신고율 적용 대상만 계산" style="margin-left:3px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>` : "",
+          lodging_expand:      (t) => t.total_lodging_count != null
+                                      ? `<strong>${t.total_lodging_count.toLocaleString()}건</strong>` : "",
+        },
+      },
+      // 직거래 매물: listing_requests(deal_mode='direct') 읽기 전용 뷰.
+      // 삭제 시 상태를 '철회됨'으로 변경 (데이터 보존). 수정은 매물의뢰 탭에서.
+      listings: {
+        endpoint: "/api/admin/listings",
+        exportUrl: "/api/admin/listings/export.xlsx",
+        title: "매물관리",
+        entityLabel: "직거래매물",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: true,
+        allowSelect: true,
+        bulkDeleteEndpoint: "/api/admin/listings/bulk-delete",
+        bulkDeleteLabel: "영구 삭제",
+        defaultSort: "created_at",
+        defaultOrder: "desc",
+        searchPlaceholder: "건물명·주소·건물ID 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명", sortable: true },
+          { key: "deal_type", label: "거래유형", sortable: true },
+          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw, row.price_krw_max) },
+          { key: "area_sqm", label: "면적(㎡)" },
+          { key: "contact_phone", label: "연락처" },
+          { key: "status", label: "상태", sortable: true, render: (v) => {
+            const m = { submitted: ["공개중", "ok"], "철회됨": ["철회됨", "no"] };
+            const x = m[v] || [v || "-", ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          }},
+          { key: "created_at", label: "최근 수정일", sortable: true },
+        ],
+      },
+      // 매물의뢰: 회원이 접수한 매물의뢰. 관리자는 조회 + 비고(admin_note)만 수정 가능,
+      // status는 배정된 중개사만 변경(여기서는 배지로 읽기전용 표시).
+      listing_requests: {
+        endpoint: "/api/admin/listing-requests",
+        exportUrl: "/api/admin/listing-requests/export.xlsx",
+        title: "매물의뢰",
+        entityLabel: "매물의뢰",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        allowSelect: true,
+        bulkDeleteEndpoint: "/api/admin/listing-requests/bulk-delete",
+        bulkDeleteLabel: "영구 삭제",
+        defaultSort: "created_at",
+        defaultOrder: "desc",
+        searchPlaceholder: "건물명·닉네임·연락처·중개사 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "listing_number", label: "번호", render: (v) => v ? `<span style="font-weight:700; white-space:nowrap;">${dgEscape(v)}</span>` : '<span style="color:var(--ink-soft);">—</span>' },
+          { key: "building_name", label: "건물명", sortable: true },
+          { key: "requester_name", label: "회원닉네임(이름)", render: (v) => v ? dgEscape(v) : '<span style="color:var(--ink-soft);">—</span>' },
+          { key: "contact_phone", label: "의뢰자 연락처" },
+          { key: "deal_type", label: "거래유형", sortable: true },
+          { key: "deal_mode", label: "방식", render: (v) => {
+            if (v === "direct") return '<span class="dg-badge dg-badge-ok">직거래</span>';
+            if (v === "broker") return '<span class="dg-badge dg-badge-wait">중개</span>';
+            return dgEscape(v || "-");
+          } },
+          { key: "price_display", label: "희망가(만원)", render: (v, row) => formatLrPrice(row.deal_type, row.price_krw, row.monthly_rent_krw, row.price_krw_max) },
+          { key: "routed_reason", label: "전달구분", render: (v) => {
+            const m = { exclusive: ["전속", "ok"], region: ["관할", "wait"], house: ["제휴", "no"] };
+            const x = m[v] || [v || "-", ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+          { key: "agent_office_name", label: "전달받은 중개사", render: (v, row) => {
+            if (!v) return '<span style="color:var(--ink-soft);">—</span>';
+            return `${dgEscape(v)}${row.agent_phone ? `<br><span style="color:var(--ink-soft); font-size:12px;">${dgEscape(formatPhone(row.agent_phone))}</span>` : ""}`;
+          } },
+          { key: "status", label: "상태", sortable: true, render: (v, row) => {
+            const m = { submitted: ["신규", "wait"], in_progress: ["처리중", ""], done: ["완료", "ok"] };
+            const x = m[v] || [v || "-", ""];
+            const style = x[1] === "" ? ' style="background:#E8F0FE; color:#1A5DB8;"' : "";
+            let html = `<span class="dg-badge${x[1] ? ` dg-badge-${x[1]}` : ""}"${style}>${dgEscape(x[0])}</span>`;
+            if (row.is_delayed) html += ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;" title="배정 후 7일 경과, 중개사 미응답">⏰ 응답 지연</span>';
+            return html;
+          } },
+          { key: "admin_note", label: "비고", render: (v, row) => {
+            const txt = v ? dgEscape(v) : '<span style="color:var(--ink-soft);">메모 입력</span>';
+            return `<a href="#" onclick="adminEditLeadNote(event, ${row.id})" title="클릭해서 비고 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${txt}</a>`;
+          } },
+          { key: "created_at", label: "최근 수정일", sortable: true },
+        ],
+      },
+      buy_requests: {
+        endpoint: "/api/admin/buy-requests",
+        exportUrl: "/api/admin/buy-requests/export.xlsx",
+        title: "매수의뢰",
+        entityLabel: "매수의뢰",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        allowSelect: true,
+        bulkDeleteEndpoint: "/api/admin/buy-requests/bulk-delete",
+        bulkDeleteLabel: "영구 삭제",
+        defaultSort: "created_at",
+        defaultOrder: "desc",
+        searchPlaceholder: "건물명·연락처·중개사 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명", sortable: true },
+          { key: "contact_phone", label: "의뢰자 연락처" },
+          { key: "deal_type", label: "거래유형", sortable: true },
+          { key: "desired_price", label: "희망가" },
+          { key: "routed_reason", label: "전달구분", render: (v) => {
+            const m = { exclusive: ["전속", "ok"], region: ["관할", "wait"], house: ["제휴", "no"] };
+            const x = m[v] || [v || "-", ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+          { key: "agent_office_name", label: "전달받은 중개사", render: (v, row) => {
+            if (!v) return '<span style="color:var(--ink-soft);">—</span>';
+            return `${dgEscape(v)}${row.agent_phone ? `<br><span style="color:var(--ink-soft); font-size:12px;">${dgEscape(formatPhone(row.agent_phone))}</span>` : ""}`;
+          } },
+          { key: "status", label: "상태", sortable: true, render: (v, row) => {
+            const m = { submitted: ["신규", "wait"], in_progress: ["처리중", ""], done: ["완료", "ok"] };
+            const x = m[v] || [v || "-", ""];
+            const style = x[1] === "" ? ' style="background:#E8F0FE; color:#1A5DB8;"' : "";
+            let html = `<span class="dg-badge${x[1] ? ` dg-badge-${x[1]}` : ""}"${style}>${dgEscape(x[0])}</span>`;
+            if (row.is_delayed) html += ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;" title="배정 후 7일 경과, 중개사 미응답">⏰ 응답 지연</span>';
+            return html;
+          } },
+          { key: "admin_note", label: "비고", render: (v, row) => {
+            const txt = v ? dgEscape(v) : '<span style="color:var(--ink-soft);">메모 입력</span>';
+            return `<a href="#" onclick="adminEditBuyNote(event, ${row.id})" title="클릭해서 비고 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${txt}</a>`;
+          } },
+          { key: "created_at", label: "접수일", sortable: true },
+        ],
+      },
+      // 신청승인: C/D에서 들어온 중개사/운영지원업체 신청 큐. 승인 시 agents/operators로 INSERT.
+      // 추가/수정/삭제 없음 — 대기중 행에서만 "승인"/"반려" 커스텀 액션.
+      applications: {
+        endpoint: "/api/admin/applications",
+        exportUrl: "/api/admin/applications/export.xlsx",
+        title: "신청 승인",
+        entityLabel: "신청",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        searchPlaceholder: "업체명·대표자·이메일 검색",
+        filters: [
+          { key: "status", default: "submitted", options: [
+            { value: "submitted", label: "대기중" },
+            { value: "approved", label: "승인됨" },
+            { value: "rejected", label: "반려됨" },
+            { value: "all", label: "전체 상태" },
+          ] },
+          { key: "applicant_type", default: "all", options: [
+            { value: "all", label: "전체 유형" },
+            { value: "agent", label: "중개사" },
+            { value: "operator", label: "지원업체" },
+            { value: "loan_consultant", label: "대출상담사" },
+          ] },
+        ],
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "applicant_type", label: "신청유형", render: (v) => v === "agent" ? "중개사" : (v === "operator" ? "지원업체" : (v === "loan_consultant" ? "대출상담사" : dgEscape(v))) },
+          { key: "office_or_company_name", label: "이름/업체명" },
+          { key: "owner_name", label: "대표자" },
+          { key: "phone", label: "연락처", render: (v) => v ? dgEscape(formatPhone(v)) : '<span style="color:var(--ink-soft);">—</span>' },
+          { key: "biz_reg_number", label: "사업자번호", render: (v, row) => row.applicant_type === "loan_consultant" ? '<span style="color:var(--ink-soft);">—</span>' : (v ? dgEscape(formatBizRegNumber(v)) : '<span style="color:var(--ink-soft);">—</span>') },
+          { key: "email", label: "이메일" },
+          { key: "preferred_region", label: "희망지역" },
+          { key: "kakao_chat_url", label: "카카오톡 링크", render: (v, row) => {
+            if (row.applicant_type !== "loan_consultant" || !/^https?:\/\//i.test(String(v || ""))) {
+              return '<span style="color:var(--ink-soft);">—</span>';
+            }
+            return `<a href="${dgEscape(v)}" target="_blank" rel="noopener noreferrer">상담 링크 ↗</a>`;
+          } },
+          // 대출상담사 행: 대출모집인 등록번호 + 금감원 통합조회 링크 (승인 전 확인용)
+          { key: "reg_number", label: "등록번호", render: (v, row) => {
+            if (row.applicant_type !== "loan_consultant") return v ? dgEscape(v) : '<span style="color:var(--ink-soft);">—</span>';
+            const num = v ? dgEscape(v) : '<span style="color:var(--brick);">(없음)</span>';
+            return `${num}<br><a href="https://www.loanconsultant.or.kr" target="_blank" rel="noopener noreferrer" style="font-size:11px; white-space:nowrap;">금감원 조회 ↗</a>`;
+          } },
+          // 첨부 서류: 있는 문서만 "보기" 링크 노출. 클릭 시 관리자 전용 서명 URL(5분)을
+          // 발급받아 새 탭으로 연다 (window.adminOpenAppDoc — 아래 정의).
+          { key: "id", label: "서류", render: (v, row) => {
+            const docs = [
+              ["license", "자격증", row.doc_license_url],
+              ["office_reg", "등록증", row.doc_office_reg_url],
+              ["biz_reg", "사업자", row.doc_biz_reg_url],
+              ["business_card", "명함", row.doc_business_card_url],
+              ["biz_license", "영업허가", row.doc_biz_license_url],
+              ["photo", "사진", row.doc_photo_url],
+            ].filter((d) => d[2]);
+            if (!docs.length) return '<span style="color:var(--ink-soft);">—</span>';
+            return docs.map((d) =>
+              `<a href="#" onclick="adminOpenAppDoc(event, ${row.id}, '${d[0]}')" style="margin-right:4px; white-space:nowrap;">${dgEscape(d[1])}</a>` +
+              `<a href="#" onclick="adminDownloadAppDoc(${row.id}, '${d[0]}', '${dgEscape(d[1])}'); return false;" style="margin-right:8px; font-size:12px; color:var(--brass-dark); white-space:nowrap;">⬇</a>`
+            ).join("");
+          } },
+          { key: "submitted_at", label: "신청일", sortable: true },
+          { key: "status", label: "상태", render: (v) => {
+            const m = { submitted: ["대기중", "wait"], approved: ["승인됨", "ok"], rejected: ["반려됨", "no"] };
+            const x = m[v] || [v, ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+        ],
+        rowActions: [
+          {
+            label: "승인", className: "dg-approve",
+            hidden: (row) => row.status !== "submitted",
+            onClick: async (row, grid) => {
+              const name = row.office_or_company_name || "";
+              if (!window.confirm(`'${name}' 신청을 승인할까요? 승인하면 정식 등록됩니다.`)) return;
+              try {
+                const res = await fetch(`${grid.cfg.endpoint}/${row.id}/approve`, { method: "POST" });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) {
+                  if (typeof data.sms_sent !== "undefined") {
+                    if (data.sms_sent) {
+                      window.alert("승인 완료 — 임시비밀번호가 문자로 발송되었습니다.");
+                    } else {
+                      window.alert(
+                        "승인 완료 — 문자 발송 실패. 아래 임시비밀번호를 직접 전달하세요: "
+                        + (data.temp_password || "(없음)")
+                        + "\n(사유: " + (data.sms_message || "알 수 없음") + ")"
+                      );
+                    }
+                  }
+                  grid.reload();
+                  return;
+                }
+                window.alert(data.message || "승인에 실패했습니다.");
+              } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+          {
+            // 승인된 운영지원업체: 신청 때 로고를 안 올렸어도 나중에 등록/수정 가능 (PUT /api/admin/operators/<id>/logo)
+            label: "로고", className: "dg-edit",
+            hidden: (row) => !(row.applicant_type === "operator" && row.status === "approved" && row.linked_operator_id),
+            onClick: async (row) => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".jpg,.jpeg,.png";
+              input.onchange = async () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
+                if (file.size > 5 * 1024 * 1024) { window.alert("파일 크기는 5MB 이하여야 합니다."); return; }
+                const fd = new FormData();
+                fd.append("file", file);
+                try {
+                  const res = await fetch(`/api/admin/operators/${row.linked_operator_id}/logo`, { method: "PUT", body: fd });
+                  if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                  const data = await res.json().catch(() => ({}));
+                  if (res.ok && data.ok) { window.alert("로고가 등록되었습니다. /partner 파트너 소개에 노출됩니다."); return; }
+                  window.alert(data.message || "로고 등록에 실패했습니다.");
+                } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+              };
+              input.click();
+            },
+          },
+          {
+            label: "반려", className: "dg-reject",
+            hidden: (row) => row.status !== "submitted",
+            onClick: async (row, grid) => {
+              const reason = await dgPromptModal({
+                title: "신청 반려", label: "반려 사유",
+                placeholder: "반려 사유를 입력하세요", submitLabel: "반려", submitClass: "admin-btn-danger",
+              });
+              if (reason == null) return;
+              try {
+                const res = await fetch(`${grid.cfg.endpoint}/${row.id}/reject`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ reason }),
+                });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) { grid.reload(); return; }
+                window.alert(data.message || "반려에 실패했습니다.");
+              } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+        ],
+      },
+      // 수정요청 이력: submit_building()에서 건축물대장 재검증으로 자동 처리됨 → 읽기 전용 모니터링.
+      requests: {
+        endpoint: "/api/admin/building-requests",
+        title: "수정요청 이력",
+        allowAdd: false,
+        allowEdit: false,
+        allowDelete: false,
+        searchPlaceholder: "주소·건물명 검색",
+        filters: [
+          { key: "status", default: "all", options: [
+            { value: "all", label: "전체 상태" },
+            { value: "pending", label: "대기중" },
+            { value: "verified", label: "확인됨" },
+            { value: "rejected", label: "거절됨" },
+            { value: "name_review", label: "명칭 확인 필요" },
+          ] },
+        ],
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "request_type", label: "요청유형", render: (v) => v === "new" ? "신규 등록" : (v === "correction" ? "정정 요청" : dgEscape(v)) },
+          { key: "road_address", label: "주소", width: "220px" },
+          { key: "building_name_hint", label: "건물명", width: "140px" },
+          { key: "suggested_building_name", label: "제안 명칭", width: "140px" },
+          { key: "status", label: "상태", sortable: true, render: (v) => {
+            const m = { pending: ["대기중", "wait"], verified: ["확인됨", "ok"], rejected: ["거절됨", "no"], name_review: ["명칭 확인 필요", "wait"] };
+            const x = m[v] || [v, ""];
+            return `<span class="dg-badge dg-badge-${x[1]}">${dgEscape(x[0])}</span>`;
+          } },
+          { key: "reject_reason", label: "거절사유" },
+          { key: "processed_at", label: "처리일시", sortable: true },
+        ],
+        rowActions: [
+          {
+            label: "제안명 승인", className: "dg-approve",
+            hidden: (row) => row.status !== "name_review" || !row.suggested_building_name || !row.master_building_id,
+            onClick: async (row, grid) => {
+              const nm = row.suggested_building_name || "";
+              if (!window.confirm(`제안된 건물명 '${nm}'(으)로 확정할까요?\n건물마스터의 이름이 바뀌고 '명칭 확인중' 표시가 해제됩니다.`)) return;
+              try {
+                const res = await fetch(`${grid.cfg.endpoint}/${row.id}/approve-name`, { method: "POST" });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok) {
+                  window.alert(`승인 완료 — 건물명이 '${data.building_name}'(으)로 확정되었습니다.`);
+                  grid.reload();
+                } else {
+                  window.alert(data.message || "승인에 실패했습니다.");
+                }
+              } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+        ],
+      },
+      // 실거래: 공공데이터 원본 — 삭제 없음, 이상치 정정만. 수정 시 사유(reason) 필수 → admin_edit_log 기록.
+      transactions: {
+        endpoint: "/api/admin/transactions",
+        exportUrl: "/api/admin/transactions/export.xlsx",
+        title: "실거래관리",
+        entityLabel: "실거래",
+        allowAdd: false,
+        allowDelete: false,
+        searchPlaceholder: "건물명·주소 검색",
+        defaultSort: "deal_date",
+        defaultOrder: "desc",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "building_name", label: "건물명" },
+          { key: "address", label: "주소" },
+          { key: "area", label: "면적(㎡)", sortable: true, editable: true, type: "number" },
+          { key: "floor", label: "층", editable: true },
+          { key: "price", label: "거래금액(만원)", sortable: true, editable: true, type: "number" },
+          { key: "deal_date", label: "계약일", sortable: true, editable: true },
+          { key: "deal_type", label: "거래유형", editable: true },
+          { key: "reason", label: "수정 사유", editable: true, required: true, hideInTable: true },
+        ],
+      },
+      // 공지사항: 관리자가 직접 작성/수정/삭제. 기본 정렬은 서버에서 고정 우선 → 최신순.
+      emailbanners: {
+        endpoint: "/api/admin/email-banners",
+        title: "이메일 광고배너 관리",
+        entityLabel: "배너",
+        searchPlaceholder: "링크 URL 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "image_url", label: "이미지 URL", editable: true, required: true, type: "imageUrl",
+            uploadEndpoint: "/api/admin/email-banners/upload-image", placeholder: "https://… (파일 선택으로 자동 입력 가능)" },
+          { key: "link_url",  label: "클릭 링크",  editable: true, required: true, placeholder: "https://..." },
+          { key: "start_date", label: "시작일", editable: true, required: true, type: "date" },
+          { key: "end_date",   label: "종료일", editable: true, required: true, type: "date" },
+          { key: "is_active", label: "활성", sortable: true, editable: true, type: "boolean",
+            trueLabel: "활성", falseLabel: "비활성",
+            render: (v) => v ? `<span class="dg-badge dg-badge-ok">활성</span>` : `<span class="dg-badge">비활성</span>` },
+          { key: "created_at", label: "등록일", sortable: true },
+        ],
+        rowActions: [
+          {
+            // 활성 배너 → "정지" 버튼 (비활성이면 숨김)
+            label: "정지",
+            hidden: (row) => !row.is_active,
+            onClick: async (row, grid) => {
+              try {
+                const res = await fetch(`/api/admin/email-banners/${row.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ is_active: false }),
+                });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok || !d.ok) { window.alert(d.message || "정지에 실패했습니다."); return; }
+                grid.reload();
+              } catch (_) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+          {
+            // 비활성 배너 → "재개" 버튼 (활성이면 숨김)
+            label: "재개",
+            hidden: (row) => !!row.is_active,
+            onClick: async (row, grid) => {
+              try {
+                const res = await fetch(`/api/admin/email-banners/${row.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ is_active: true }),
+                });
+                if (res.status === 401) { window.location.href = "/admin/login"; return; }
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok || !d.ok) { window.alert(d.message || "재개에 실패했습니다."); return; }
+                grid.reload();
+              } catch (_) { window.alert("네트워크 오류가 발생했습니다."); }
+            },
+          },
+        ],
+      },
+      notices: {
+        endpoint: "/api/admin/notices",
+        title: "공지사항 관리",
+        entityLabel: "공지",
+        searchPlaceholder: "제목·본문 검색",
+        columns: [
+          { key: "id", label: "ID", sortable: true },
+          { key: "title", label: "제목", sortable: true, editable: true, required: true,
+            default: () => {
+              const d = new Date();
+              return `[월간리포트] ${d.getFullYear()}년 ${d.getMonth() + 1}월호`;
+            } },
+          { key: "body", label: "본문", editable: true, required: true, type: "textarea", hideInTable: true,
+            default: () => "■ 이달의 정책\n- \n\n■ 이달의 시세\n- \n\n■ 이달의 판례\n- \n\n■ 영업 활용 포인트\n- \n\n전체 리포트(표·그래프 포함)는 첨부된 PDF를 확인해주세요." },
+          { key: "attachment_key", label: "첨부파일(PDF)", editable: true, type: "file",
+            uploadEndpoint: "/api/admin/notices/upload-attachment", hideInTable: true },
+          { key: "is_pinned", label: "고정", sortable: true, editable: true, type: "boolean", trueLabel: "고정", falseLabel: "일반",
+            render: (v) => v ? `<span class="dg-badge dg-badge-ok">고정</span>` : "일반" },
+          { key: "created_at", label: "등록일", sortable: true },
+        ],
+      },
+    };
+
+    const mount = document.getElementById("grid");
+    let currentGrid = null;
+    let statsCharts = [];
+
+    function destroyStatsCharts() {
+      statsCharts.forEach((c) => { try { c.destroy(); } catch (e) {} });
+      statsCharts = [];
+    }
+
+    // 브랜드 컬러 팔레트 (GOLD/BLACK 계열)
+    const BRAND = {
+      brass: "#B4863F", brassSoft: "rgba(180,134,63,0.18)", ink: "#16202E",
+      palette: ["#B4863F", "#16202E", "#C9A063", "#5A6B7B", "#8A6D3B", "#A9B4BF", "#D8C29A", "#3C4A5A", "#E0D2B4", "#7E8A96"],
+    };
+    // 지도 범례와 동일한 용도별 색상 (순서 독립적 항목명 매칭)
+    const LODGING_COLORS_ADMIN = window.LodgingTypes.colors;
+    const LODGING_ORDER = window.LodgingTypes.order;
+
+    async function showStats(menuKey) {
+      destroyStatsCharts();
+      mount.innerHTML = `<div class="stats-loading">통계를 불러오는 중…</div>`;
+      let data, mapBld;
+      try {
+        // /api/building-count : 지도 필터 기준 용도별 건수 (mixed_use_excluded 제외)
+        // /api/admin/stats    : 대시보드 집계 (mixed_use_excluded 포함)
+        // 두 숫자 차이(복합 불일치)를 화면에 명시하기 위해 병렬 로드
+        const [res, bldRes] = await Promise.all([
+          fetch("/api/admin/stats"),
+          fetch("/api/building-count"),
+        ]);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("stats fetch failed");
+        data = await res.json();
+        mapBld = bldRes.ok ? await bldRes.json() : {};
+      } catch (e) {
+        mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        return;
+      }
+      renderStats(data, mapBld);
+      loadPartnerBuildingCounts();
+    }
+
+    // 파트너(중개사/운영지원업체)별 담당 건물 수 — 무료 캡 대비 현황
+    async function loadPartnerBuildingCounts() {
+      const wrap = document.getElementById("pbcWrap");
+      if (!wrap) return;
+      let d;
+      try {
+        const res = await fetch("/api/admin/partner-building-counts");
+        if (!res.ok) throw new Error("fetch failed");
+        d = await res.json();
+      } catch (e) {
+        wrap.innerHTML = '<div class="stats-loading">담당 건물 수를 불러오지 못했습니다.</div>';
+        return;
+      }
+      const cap = d.max_free_buildings || 5;
+      const capEl = document.getElementById("pbcCap");
+      if (capEl) capEl.textContent = cap;
+      const stBadge = (s) => s === "approved" ? '<span class="dg-badge dg-badge-ok">승인</span>'
+        : (s === "pending" ? '<span class="dg-badge dg-badge-wait">대기</span>' : `<span class="dg-badge dg-badge-no">${dgEscape(s || "-")}</span>`);
+      const table = (rows, label) => {
+        if (!rows.length) return `<div class="stats-member-group"><h4 class="stats-member-title">${label}</h4><div class="stats-loading">등록된 ${label}가 없습니다.</div></div>`;
+        const trs = rows.map((r) => {
+          const full = r.building_count >= cap;
+          const cnt = `<b style="color:${full ? "#B3261E" : "var(--ink)"};">${r.building_count}</b> / ${cap}${full ? ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;">캡 도달</span>' : ""}`;
+          return `<tr><td>${r.id}</td><td>${dgEscape(r.name || "-")}</td><td>${dgEscape(r.phone || "-")}</td><td>${stBadge(r.status)}</td><td>${cnt}</td></tr>`;
+        }).join("");
+        return `<div class="stats-member-group"><h4 class="stats-member-title">${label}</h4>
+          <table class="dg-table" style="width:100%; font-size:13px;">
+            <thead><tr><th>ID</th><th>업체명</th><th>연락처</th><th>상태</th><th>담당 건물 수</th></tr></thead>
+            <tbody>${trs}</tbody></table></div>`;
+      };
+      wrap.innerHTML = table(d.agents || [], "중개사") + table(d.operators || [], "운영지원업체");
+    }
+
+    function num(n) { return (n || 0).toLocaleString("ko-KR"); }
+
+    async function loadMasterStats(force) {
+      const grid = document.getElementById("masterStatsGrid");
+      const meta = document.getElementById("masterStatsMeta");
+      const refreshBtn = document.getElementById("masterStatsRefresh");
+      if (!grid || !meta) return;
+      if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = force ? "갱신 중…" : "새로고침";
+      }
+      try {
+        const res = await fetch("/api/admin/stats/master", {
+          method: force ? "POST" : "GET",
+          headers: force ? { "Content-Type": "application/json" } : undefined,
+        });
+        if (!res.ok) throw new Error("master stats fetch failed");
+        const data = await res.json();
+        const ttl = Math.max(0, Number(data.expires_in_seconds || 0));
+        const minutes = Math.floor(ttl / 60);
+        const seconds = ttl % 60;
+        meta.textContent = `마지막 갱신 ${data.refreshed_at || "-"} · 만료까지 ${minutes}분 ${seconds}초`;
+        grid.innerHTML = (data.sections || []).map((section) => {
+          const isOk = section.status === "ok";
+          const color = isOk ? "#2E7D32" : "#B3261E";
+          const state = isOk ? "정상" : "폴백";
+          const error = !isOk && section.error ? `<div style="font-size:10px; color:#B3261E; margin-top:4px;">${dgEscape(section.error)}</div>` : "";
+          return `<div style="border:1px solid #DDE1E6; border-radius:8px; padding:10px; min-width:0;">
+            <div style="display:flex; justify-content:space-between; gap:6px; align-items:center; font-size:12px;">
+              <b>${dgEscape(section.label || "-")}</b>
+              <span style="color:${color}; font-weight:700;">${state}</span>
+            </div>
+            <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.45;">${dgEscape(section.summary || "-")}</div>
+            ${error}
+          </div>`;
+        }).join("") || '<div class="stats-loading">원본 상태가 없습니다.</div>';
+      } catch (e) {
+        meta.textContent = "원본 상태를 불러오지 못했습니다.";
+        grid.innerHTML = '<div class="stats-loading">기존 통계 경로로 표시 중입니다.</div>';
+      } finally {
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = "새로고침";
+        }
+      }
+    }
+
+    function featureTipField(row, field) {
+      return row.querySelector(`[data-feature-tip-field="${field}"]`);
+    }
+
+    async function saveFeatureTip(row) {
+      const id = row.getAttribute("data-feature-tip-id");
+      const feedback = row.querySelector("[data-feature-tip-feedback]");
+      const btn = row.querySelector("[data-feature-tip-save]");
+      const payload = {
+        title: featureTipField(row, "title").value.trim(),
+        body: featureTipField(row, "body").value.trim(),
+        cta_url: featureTipField(row, "cta_url").value.trim(),
+        cta_label: featureTipField(row, "cta_label").value.trim(),
+        is_active: featureTipField(row, "is_active").checked,
+      };
+      if (btn) { btn.disabled = true; btn.textContent = "저장 중…"; }
+      if (feedback) feedback.textContent = "";
+      try {
+        const res = await fetch(`/api/admin/feature-tips/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "저장에 실패했습니다.");
+        if (feedback) { feedback.style.color = "#2E7D32"; feedback.textContent = "저장했습니다."; }
+      } catch (e) {
+        if (feedback) { feedback.style.color = "#B3261E"; feedback.textContent = e.message || "저장에 실패했습니다."; }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "수정 저장"; }
+      }
+    }
+
+    function renderFeatureTips(items) {
+      const wrap = document.getElementById("featureTipsList");
+      if (!wrap) return;
+      if (!items.length) {
+        wrap.innerHTML = '<div class="stats-loading">등록된 기능 소개 회차가 없습니다.</div>';
+        return;
+      }
+      wrap.innerHTML = items.map((tip) => `
+        <article data-feature-tip-id="${tip.id}" style="border:1px solid #DDE1E6;border-radius:8px;padding:12px;margin-top:9px;">
+          <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <b style="font-size:13px;">${dgEscape(String(tip.episode))}회차</b>
+            <label style="font-size:12px;color:var(--ink-soft);display:flex;gap:5px;align-items:center;">
+              <input type="checkbox" data-feature-tip-field="is_active" ${tip.is_active ? "checked" : ""}> 활성
+            </label>
+            <button type="button" class="admin-btn" data-feature-tip-save style="margin-left:auto;font-size:12px;">수정 저장</button>
+          </div>
+          <input class="admin-input" data-feature-tip-field="title" value="${dgEscape(tip.title || "")}" placeholder="제목" style="width:100%;box-sizing:border-box;margin-bottom:7px;">
+          <textarea class="admin-input" data-feature-tip-field="body" placeholder="본문" style="width:100%;box-sizing:border-box;min-height:74px;resize:vertical;margin-bottom:7px;">${dgEscape(tip.body || "")}</textarea>
+          <input class="admin-input" data-feature-tip-field="cta_label" value="${dgEscape(tip.cta_label || "")}" placeholder="CTA 버튼 문구" style="width:100%;box-sizing:border-box;margin-bottom:7px;">
+          <input class="admin-input" data-feature-tip-field="cta_url" value="${dgEscape(tip.cta_url || "")}" placeholder="/guide 또는 https://…" style="width:100%;box-sizing:border-box;">
+          <div data-feature-tip-feedback style="font-size:12px;margin-top:7px;min-height:16px;"></div>
+        </article>
+      `).join("");
+      wrap.querySelectorAll("[data-feature-tip-save]").forEach((btn) => {
+        btn.addEventListener("click", () => saveFeatureTip(btn.closest("[data-feature-tip-id]")));
+      });
+    }
+
+    async function loadFeatureTips() {
+      const wrap = document.getElementById("featureTipsList");
+      if (!wrap) return;
+      try {
+        const res = await fetch("/api/admin/feature-tips");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "조회에 실패했습니다.");
+        renderFeatureTips(data.items || []);
+      } catch (e) {
+        wrap.innerHTML = `<div class="stats-loading" style="color:#B3261E;">${dgEscape(e.message || "기능 소개를 불러오지 못했습니다.")}</div>`;
+      }
+    }
+
+    async function createFeatureTip() {
+      const feedback = document.getElementById("featureTipCreateFeedback");
+      const btn = document.getElementById("featureTipCreate");
+      const episodeRaw = document.getElementById("featureTipEpisode").value.trim();
+      const payload = {
+        episode: Number(episodeRaw),
+        title: document.getElementById("featureTipTitle").value.trim(),
+        body: document.getElementById("featureTipBody").value.trim(),
+        cta_label: document.getElementById("featureTipCtaLabel").value.trim(),
+        cta_url: document.getElementById("featureTipUrl").value.trim(),
+        is_active: document.getElementById("featureTipActive").checked,
+      };
+      if (btn) { btn.disabled = true; btn.textContent = "추가 중…"; }
+      if (feedback) feedback.textContent = "";
+      try {
+        const res = await fetch("/api/admin/feature-tips", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "추가에 실패했습니다.");
+        document.getElementById("featureTipEpisode").value = "";
+        document.getElementById("featureTipTitle").value = "";
+        document.getElementById("featureTipBody").value = "";
+        document.getElementById("featureTipCtaLabel").value = "";
+        document.getElementById("featureTipUrl").value = "";
+        document.getElementById("featureTipActive").checked = true;
+        if (feedback) { feedback.style.color = "#2E7D32"; feedback.textContent = "새 회차를 추가했습니다."; }
+        await loadFeatureTips();
+      } catch (e) {
+        if (feedback) { feedback.style.color = "#B3261E"; feedback.textContent = e.message || "추가에 실패했습니다."; }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "새 회차 추가"; }
+      }
+    }
+
+    function userStatChange(current, previous) {
+      if (Number(previous) === 0) return { text: "—", color: "var(--ink-soft)" };
+      const rate = ((Number(current || 0) - Number(previous || 0)) / Number(previous)) * 100;
+      const rounded = rate.toFixed(1);
+      return {
+        text: `${rate > 0 ? "+" : ""}${rounded}%`,
+        color: rate > 0 ? "#2E7D32" : rate < 0 ? "#B3261E" : "var(--ink-soft)",
+      };
+    }
+
+    function userStatsLineSvg(data) {
+      const active = (data.daily_active || []).map((row) => Number(row.count || 0));
+      const fresh = (data.daily_new || []).map((row) => Number(row.count || 0));
+      const listings = (data.daily_listing || []).map((row) => Number(row.count || 0));
+      const days = data.daily_active || [];
+      const width = 760, height = 290, left = 42, right = 14, top = 18, bottom = 38;
+      const plotWidth = width - left - right, plotHeight = height - top - bottom;
+      const max = Math.max(1, ...active, ...fresh, ...listings);
+      const x = (i) => left + (days.length <= 1 ? 0 : (i / (days.length - 1)) * plotWidth);
+      const y = (value) => top + plotHeight - (value / max) * plotHeight;
+      const points = (values) => values.map((value, i) => `${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+      const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+        const gy = top + plotHeight * (1 - ratio);
+        const label = Math.round(max * ratio).toLocaleString("ko-KR");
+        return `<line x1="${left}" y1="${gy}" x2="${width - right}" y2="${gy}" stroke="#E8EBEF" stroke-width="1"/>
+          <text x="${left - 7}" y="${gy + 4}" text-anchor="end" fill="#7A8490" font-size="10">${label}</text>`;
+      }).join("");
+      const labels = [0, 7, 14, 21, 28].filter((i) => i < days.length).map((i) => {
+        const label = String(days[i].date || "").slice(5);
+        return `<text x="${x(i)}" y="${height - 12}" text-anchor="middle" fill="#7A8490" font-size="10">${dgEscape(label)}</text>`;
+      }).join("");
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="최근 30일 이용자·가입·매물등록 추이" style="width:100%;height:auto;display:block;">
+        ${grid}
+        <polyline points="${points(active)}" fill="none" stroke="#378ADD" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polyline points="${points(fresh)}" fill="none" stroke="#2E8B57" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polyline points="${points(listings)}" fill="none" stroke="#B4863F" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        ${labels}
+      </svg>`;
+    }
+
+    function renderUserStats(data) {
+      const cards = [
+        ["MAU", "mau", "mau_prev", "명"],
+        ["WAU", "wau", "wau_prev", "명"],
+        ["DAU", "dau", "dau_prev", "명"],
+        ["신규가입(주간)", "new_this_week", null, "명"],
+        ["관심단지(주간)", "fav_this_week", null, "건"],
+        ["매물등록(주간)", "listing_this_week", null, "건"],
+      ];
+      const cardHtml = cards.map(([label, key, previousKey, unit]) => {
+        const value = Number(data[key] || 0);
+        const change = previousKey ? userStatChange(value, data[previousKey]) : null;
+        return `<div style="background:#fff;border:1px solid #DDE1E6;border-radius:10px;padding:14px 15px;min-width:0;">
+          <div style="font-size:12px;color:var(--ink-soft);font-weight:600;">${label}</div>
+          <div style="display:flex;align-items:baseline;gap:5px;margin-top:4px;">
+            <b style="font-size:26px;color:var(--ink);">${num(value)}</b><span style="font-size:11px;color:var(--ink-soft);">${unit}</span>
+          </div>
+          ${change ? `<div style="font-size:11px;color:${change.color};margin-top:4px;">전 기간 대비 ${change.text}</div>` : '<div style="height:16px;margin-top:4px;"></div>'}
+        </div>`;
+      }).join("");
+
+      const daily = data.daily_active || [];
+      const segments = data.segment_counts || {};
+      const segmentRows = [
+        ["일반회원", Number(segments.general || 0), "#378ADD"],
+        ["중개사", Number(segments.agent || 0), "#2E8B57"],
+        ["운영업체", Number(segments.operator || 0), "#B4863F"],
+      ];
+      const segmentMax = Math.max(1, ...segmentRows.map((row) => row[1]));
+      const segmentHtml = segmentRows.map(([label, value, color]) => `
+        <div style="margin:13px 0;">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;">
+            <span>${label}</span><b>${num(value)}명</b>
+          </div>
+          <div style="height:9px;background:#EEF1F4;border-radius:5px;margin-top:6px;overflow:hidden;">
+            <div style="height:100%;width:${(value / segmentMax) * 100}%;background:${color};border-radius:5px;"></div>
+          </div>
+        </div>
+      `).join("");
+      const topPaths = ((data.page_views || {}).top_paths || []);
+      const pathRows = topPaths.length ? topPaths.map((row) => `
+        <tr>
+          <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${dgEscape(row.path || "/")}</td>
+          <td style="text-align:right;">${num(row.count)}</td>
+          <td style="text-align:right;color:var(--ink-soft);">${Number(row.percent || 0).toFixed(1)}%</td>
+        </tr>
+      `).join("") : '<tr><td colspan="3" style="text-align:center;color:var(--ink-soft);padding:18px;">최근 7일 페이지뷰가 없습니다.</td></tr>';
+
+      mount.innerHTML = `
+        <div class="stats-head">
+          <h2 class="stats-title">이용자 현황</h2>
+          <p class="stats-sub">최근 활동·가입·관심단지·매물등록과 페이지뷰를 기존 서비스 데이터 기준으로 집계합니다.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          ${cardHtml}
+        </div>
+        <section class="stats-card stats-card-wide" style="margin-top:14px;">
+          <h3 class="stats-card-title">최근 30일 활동 추이</h3>
+          <div style="display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin:8px 0 2px;">
+            <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;border-radius:50%;margin-right:5px;"></i>활성사용자</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#2E8B57;border-radius:50%;margin-right:5px;"></i>신규가입</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#B4863F;border-radius:50%;margin-right:5px;"></i>매물등록</span>
+          </div>
+          <div style="overflow:hidden;margin-top:5px;">${userStatsLineSvg(data)}</div>
+        </section>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;">
+          <section class="stats-card">
+            <h3 class="stats-card-title">사용자 세그먼트</h3>
+            ${segmentHtml}
+          </section>
+          <section class="stats-card">
+            <h3 class="stats-card-title">페이지뷰 TOP5 <span class="stats-card-hint">오늘 ${num((data.page_views || {}).pv_today || 0)} · 이번 주 ${num((data.page_views || {}).pv_this_week || 0)}</span></h3>
+            <table class="dg-table" style="width:100%;font-size:12px;">
+              <thead><tr><th>경로</th><th style="text-align:right;">조회수</th><th style="text-align:right;">비율</th></tr></thead>
+              <tbody>${pathRows}</tbody>
+            </table>
+          </section>
+        </div>
+      `;
+    }
+
+    async function showUserStats() {
+      destroyStatsCharts();
+      mount.innerHTML = '<div class="stats-loading">이용자 현황을 불러오는 중…</div>';
+      try {
+        const res = await fetch("/api/admin/user-stats");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("user stats fetch failed");
+        const data = await res.json();
+        renderUserStats(data);
+      } catch (e) {
+        mount.innerHTML = '<div class="stats-loading">이용자 현황을 불러오지 못했습니다. 새로고침 해주세요.</div>';
+      }
+    }
+
+    function showWarehouse() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="stats-head">
+          <h2 class="stats-title">데이터 원본 창고</h2>
+          <p class="stats-sub">데이터랩과 관리자 통계가 사용하는 원본 집계 상태입니다.</p>
+        </div>
+        <section class="stats-card stats-card-wide" id="masterStatsCard">
+          <h3 class="stats-card-title" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            통합 원본 집계
+            <span id="masterStatsMeta" class="stats-card-hint">불러오는 중…</span>
+            <button type="button" class="stats-toggle-btn" id="masterStatsRefresh" style="margin-left:auto;">새로고침</button>
+          </h3>
+          <div id="masterStatsGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:10px;">
+            <div class="stats-loading">원본 상태를 불러오는 중…</div>
+          </div>
+        </section>
+        <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
+          <h3 class="stats-card-title">주간 이메일 기능 소개</h3>
+          <p class="stats-card-hint" style="margin:4px 0 10px;">ISO 주차를 기준으로 1~8회차를 순환합니다. 비활성 회차는 이메일에 표시되지 않습니다.</p>
+          <div id="featureTipsList"><div class="stats-loading">기능 소개를 불러오는 중…</div></div>
+          <div style="border-top:1px solid #DDE1E6;margin-top:14px;padding-top:12px;">
+            <b style="font-size:13px;">새 회차 추가</b>
+            <div style="display:grid;grid-template-columns:90px minmax(160px,1fr);gap:7px;margin-top:8px;">
+              <input id="featureTipEpisode" class="admin-input" inputmode="numeric" placeholder="회차">
+              <input id="featureTipTitle" class="admin-input" placeholder="제목">
+            </div>
+            <textarea id="featureTipBody" class="admin-input" placeholder="본문" style="width:100%;box-sizing:border-box;min-height:74px;resize:vertical;margin-top:7px;"></textarea>
+            <input id="featureTipCtaLabel" class="admin-input" placeholder="CTA 버튼 문구 (예: 데이터랩 열기)" style="width:100%;box-sizing:border-box;margin-top:7px;">
+            <input id="featureTipUrl" class="admin-input" placeholder="/guide 또는 https://…" style="width:100%;box-sizing:border-box;margin-top:7px;">
+            <div style="display:flex;align-items:center;gap:9px;margin-top:8px;">
+              <label style="font-size:12px;color:var(--ink-soft);"><input id="featureTipActive" type="checkbox" checked> 활성</label>
+              <button id="featureTipCreate" type="button" class="admin-btn">새 회차 추가</button>
+              <span id="featureTipCreateFeedback" style="font-size:12px;min-height:16px;"></span>
+            </div>
+          </div>
+        </section>
+      `;
+      loadMasterStats(false);
+      document.getElementById("masterStatsRefresh").addEventListener("click", () => loadMasterStats(true));
+      document.getElementById("featureTipCreate").addEventListener("click", createFeatureTip);
+      loadFeatureTips();
+    }
+
+    function renderStats(d, mapBld) {
+      mapBld = mapBld || {};
+      const m = d.members || {};
+      const ag = m.agent || { pending: 0, approved: 0, rejected: 0 };
+      const op = m.operator || { pending: 0, approved: 0, rejected: 0 };
+      const tx = (d.transactions && d.transactions.monthly) || [];
+      const txGranularity = (d.transactions && d.transactions.granularity) || "month";
+      // KPI "누적 거래"는 실거래관리 목록과 동일 기준(transactions 전체 행 수).
+      const totalTx = (d.transactions && typeof d.transactions.total_count === "number")
+        ? d.transactions.total_count
+        : tx.reduce((s, r) => s + (r.count || 0), 0);
+      // 라벨은 실제 가장 오래된 계약월(earliest_ym) 기준으로 자동 갱신 (백필 진행 시 자동 반영)
+      const earliestYm = (d.transactions && d.transactions.earliest_ym) || null;
+      const totalTxLabel = earliestYm ? `${earliestYm} 이후 거래` : "누적 거래";
+      const txRecent24 = (d.transactions && d.transactions.recent24) || [];
+      const totalBld = ((d.buildings && d.buildings.by_type) || []).reduce((s, r) => s + (r.count || 0), 0);
+      const collectStart = (d.views && d.views.collect_start) || "-";
+
+      mount.innerHTML = `
+        <div class="stats-head">
+          <h2 class="stats-title">통계 대시보드</h2>
+          <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
+        </div>
+        <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
+
+        <div class="stats-kpi-row">
+          <div class="stats-kpi">
+            <span class="stats-kpi-label">등록 건물</span><span class="stats-kpi-val">${num(totalBld)}</span><span class="stats-kpi-unit">건</span>
+            <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px; line-height:1.6;">
+              ${(() => {
+                const byType = (d.buildings && d.buildings.by_type) || [];
+                const find = (name) => (byType.find(r => r.lodging_type === name) || {}).count || 0;
+                const preCompletion = (d.buildings && d.buildings.pre_completion_count) || 0;
+                // 지도 복합: mixed_use_excluded 제외한 실제 복합 건수 (/api/building-count 기준)
+                const mapComplex  = (mapBld.by_type && mapBld.by_type["복합"]) || 0;
+                const dashComplex = find("복합");
+                const hiddenComplex = Math.max(0, dashComplex - mapComplex);
+                const complexNote = mapComplex > 0
+                  ? `<small style="color:var(--ink-soft); font-size:10px; margin-left:3px;">(지도표시 ${num(mapComplex)}건 · 지도미노출 ${num(hiddenComplex)}건)</small>`
+                  : "";
+                const preNote = `<small style="color:var(--ink-soft); font-size:10px; margin-left:3px;">※ 지도에서는 '미분류'로 표시됨</small>`;
+                return `생숙 ${num(find("생활"))} · 관광숙박 ${num(find("관광"))} · 일반숙박 ${num(find("일반"))} · 복합 ${num(dashComplex)}${complexNote} · 준공전 ${num(preCompletion)}${preNote}`;
+              })()}
+            </div>
+          </div>
+          <div class="stats-kpi">
+            <span class="stats-kpi-label">${totalTxLabel}</span><span class="stats-kpi-val">${num(totalTx)}</span><span class="stats-kpi-unit">건</span>
+            <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px; line-height:1.6;">
+              ${(() => {
+                const byType = (d.transactions && d.transactions.by_type) || [];
+                const find = (name) => (byType.find(r => r.lodging_type === name) || {}).count || 0;
+                return `생숙 ${num(find("생활"))} · 관광숙박 ${num(find("관광"))} · 일반숙박 ${num(find("일반"))} · 복합 ${num(find("복합"))}`;
+              })()}
+            </div>
+          </div>
+          <div class="stats-kpi"><span class="stats-kpi-label">승인 중개사</span><span class="stats-kpi-val">${num(ag.approved)}</span><span class="stats-kpi-unit">명</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">승인 운영지원업체</span><span class="stats-kpi-val">${num(op.approved)}</span><span class="stats-kpi-unit">곳</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">이번달 매출</span><span class="stats-kpi-val">${num((d.revenue && d.revenue.month_total) || 0)}</span><span class="stats-kpi-unit">원</span></div>
+        </div>
+
+        <section class="stats-card stats-card-wide" id="syncProgressCard">
+          <h3 class="stats-card-title">데이터 수집 현황</h3>
+          <div id="syncProgressGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-top:10px;">
+            불러오는 중…
+          </div>
+        </section>
+
+        <div class="stats-grid">
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              실거래 추이 <span class="stats-card-hint" id="txHint"></span>
+              <span style="margin-left:auto; display:inline-flex; gap:4px;">
+                <button type="button" class="stats-toggle-btn" id="txToggleAll">전체 기간</button>
+                <button type="button" class="stats-toggle-btn" id="txToggleRecent">최근 2년</button>
+              </span>
+            </h3>
+            <div class="stats-chart-box"><canvas id="chartTx"></canvas></div>
+          </section>
+
+          <section class="stats-card">
+            <h3 class="stats-card-title">용도별 건물 분포</h3>
+            <div class="stats-chart-box"><canvas id="chartType"></canvas></div>
+          </section>
+
+          <section class="stats-card">
+            <h3 class="stats-card-title">회원 및 파트너 가입현황</h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div>
+                <div style="text-align:center; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">중개사</div>
+                <div style="position:relative; height:195px;"><canvas id="chartMemAgent"></canvas></div>
+              </div>
+              <div>
+                <div style="text-align:center; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">운영지원업체</div>
+                <div style="position:relative; height:195px;"><canvas id="chartMemOp"></canvas></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">시·도별 건물 TOP 10</h3>
+            <div style="position:relative; height:520px;"><canvas id="chartSido"></canvas></div>
+          </section>
+
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">파트너별 담당 건물 수 <span class="stats-card-hint">무료 등록 상한: <b id="pbcCap">-</b>개 (초과 등록은 준비 중)</span></h3>
+            <div id="pbcWrap" class="stats-member-wrap"><div class="stats-loading">불러오는 중…</div></div>
+          </section>
+
+          <section class="stats-card stats-card-wide">
+            <h3 class="stats-card-title">일별 방문자 추이 <span class="stats-card-hint">데이터 수집 시작: ${dgEscape(collectStart)}부터 (이전 기록은 없습니다)</span></h3>
+            <div class="stats-chart-box"><canvas id="chartViews"></canvas></div>
+            <div id="statsTopPaths" class="stats-toppaths"></div>
+          </section>
+        </div>
+      `;
+
+      fetch("/api/admin/sync-progress-summary").then(r => r.json()).then(d => {
+        if (!d.ok) return;
+        const grid = document.getElementById("syncProgressGrid");
+        if (!grid) return;
+        const bar = (pct) => `<div style="background:#eee; border-radius:4px; height:6px; margin-top:6px;">
+          <div style="background:var(--brass-dark, #B4863F); height:100%; border-radius:4px; width:${Math.min(pct,100)}%;"></div>
+        </div>`;
+        grid.innerHTML = `
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">건물수집(brhub)</div>
+            <div style="font-size:15px; font-weight:700;">${d.brhub.found}건 · ${d.brhub.percent}%</div>
+            ${bar(d.brhub.percent)}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.brhub.idx}/${d.brhub.total_dongs}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">준공전 건물수집</div>
+            <div style="font-size:15px; font-weight:700;">${d.permits.found}건 · ${d.permits.percent}%</div>
+            ${bar(d.permits.percent)}
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:3px;">법정동 ${d.permits.idx}/${d.permits.total_dongs}</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">중개업소 좌표</div>
+            <div style="font-size:15px; font-weight:700;">${d.broker_geo.have}/${d.broker_geo.total} · ${d.broker_geo.percent}%</div>
+            ${bar(d.broker_geo.percent)}
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">중개업소 전체</div>
+            <div style="font-size:15px; font-weight:700;">${d.broker_total.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">숙박업 영업신고</div>
+            <div style="font-size:15px; font-weight:700;">${d.lodging_total.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--ink-soft);">실거래(RTMS)</div>
+            <div style="font-size:15px; font-weight:700;">${d.tx_total.toLocaleString()}건</div>
+          </div>`;
+      }).catch(() => {});
+
+      const commonOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: BRAND.ink } } } };
+
+      // 실거래 추이 (막대+선 콤보) — "전체 기간"/"최근 2년" 토글로 데이터 교체
+      let txChart = null;
+      function renderTxChart(mode) {
+        const rows = (mode === "recent") ? txRecent24 : tx;
+        const hintEl = document.getElementById("txHint");
+        if (hintEl) {
+          hintEl.textContent = (mode === "recent")
+            ? `최근 ${rows.length}개월 · 막대=거래건수, 선=거래금액(만원)`
+            : ((txGranularity === "quarter")
+              ? `전체 기간 분기별 표시(24개월 초과, ${rows.length}개 분기) · 막대=거래건수, 선=거래금액(만원)`
+              : `전체 기간 ${rows.length}개월 · 막대=거래건수, 선=거래금액(만원)`);
+        }
+        document.getElementById("txToggleAll").classList.toggle("is-active", mode !== "recent");
+        document.getElementById("txToggleRecent").classList.toggle("is-active", mode === "recent");
+        if (txChart) { txChart.destroy(); statsCharts = statsCharts.filter((c) => c !== txChart); }
+        txChart = new Chart(document.getElementById("chartTx"), {
+          data: {
+            labels: rows.map((r) => r.month),
+            datasets: [
+              { type: "bar", label: "거래건수", data: rows.map((r) => r.count), backgroundColor: BRAND.brassSoft, borderColor: BRAND.brass, borderWidth: 1, yAxisID: "y", order: 2 },
+              { type: "line", label: "거래금액(만원)", data: rows.map((r) => r.amount), borderColor: BRAND.ink, backgroundColor: BRAND.ink, tension: 0.3, yAxisID: "y1", order: 1 },
+            ],
+          },
+          options: Object.assign({}, commonOpts, {
+            scales: {
+              y: { position: "left", beginAtZero: true, title: { display: true, text: "건수" }, ticks: { color: BRAND.ink } },
+              y1: { position: "right", beginAtZero: true, title: { display: true, text: "금액(만원)" }, grid: { drawOnChartArea: false }, ticks: { color: BRAND.ink } },
+              x: { ticks: { color: BRAND.ink } },
+            },
+          }),
+        });
+        statsCharts.push(txChart);
+      }
+      document.getElementById("txToggleAll").addEventListener("click", () => renderTxChart("all"));
+      document.getElementById("txToggleRecent").addEventListener("click", () => renderTxChart("recent"));
+      renderTxChart("all");
+
+      // 용도별 건물 분포 (도넛) — 지도 범례와 동일 색상, 라벨에 건수 병기
+      const byType = (d.buildings && d.buildings.by_type) || [];
+      statsCharts.push(new Chart(document.getElementById("chartType"), {
+        type: "doughnut",
+        data: {
+          labels: byType.map((r) => r.lodging_type + " (" + num(r.count) + ")"),
+          datasets: [{
+            data: byType.map((r) => r.count),
+            backgroundColor: byType.map((r) => LODGING_COLORS_ADMIN[r.lodging_type] || "#999"),
+            borderColor: "#fff", borderWidth: 2,
+          }],
+        },
+        options: Object.assign({}, commonOpts, {
+          cutout: "58%",
+          plugins: { legend: { position: "bottom", labels: { color: BRAND.ink, boxWidth: 14, font: { size: 12 } } } },
+        }),
+      }));
+
+      // 시도별 TOP10 — 용도별 색상 스택 막대 + 세그먼트 안 숫자 + 막대 끝 합계
+      const bySido = (d.buildings && d.buildings.by_sido) || [];
+      const sidoDatasets = LODGING_ORDER
+        .filter((lt) => bySido.some((r) => r.by_type && r.by_type[lt]))
+        .map((lt) => ({
+          label: lt,
+          data: bySido.map((r) => (r.by_type && r.by_type[lt]) || 0),
+          backgroundColor: LODGING_COLORS_ADMIN[lt] || "#999",
+        }));
+      // 총합 기준으로 세그먼트 내 라벨 임계값 결정 (전체 최대값의 3% 이상인 세그먼트만 표시)
+      const sidoMaxTotal = Math.max(...bySido.map((r) => r.total || 0), 1);
+      statsCharts.push(new Chart(document.getElementById("chartSido"), {
+        type: "bar",
+        data: { labels: bySido.map((r) => r.sido), datasets: sidoDatasets },
+        options: Object.assign({}, commonOpts, {
+          indexAxis: "y",
+          plugins: {
+            legend: { display: true, position: "bottom", labels: { color: BRAND.ink, boxWidth: 12, font: { size: 11 } } },
+            datalabels: {
+              labels: {
+                // ① 세그먼트 안 숫자 — 세그먼트가 전체 최대값의 3% 이상일 때만 표시
+                value: {
+                  anchor: "center", align: "center",
+                  display: (ctx) => ctx.dataset.data[ctx.dataIndex] >= sidoMaxTotal * 0.03,
+                  formatter: (v) => num(v),
+                  color: "#fff", font: { size: 10, weight: "600" },
+                  textShadowColor: "rgba(0,0,0,0.35)", textShadowBlur: 3,
+                },
+                // ② 막대 끝 합계 — 마지막 세그먼트(값 > 0)에만 표시
+                total: {
+                  anchor: "end", align: "end",
+                  display: (ctx) => {
+                    const ds = ctx.chart.data.datasets;
+                    for (let i = ds.length - 1; i >= 0; i--) {
+                      if (ds[i].data[ctx.dataIndex] > 0) return ctx.datasetIndex === i;
+                    }
+                    return false;
+                  },
+                  formatter: (val, ctx) => {
+                    const total = bySido[ctx.dataIndex] && bySido[ctx.dataIndex].total;
+                    return total ? num(total) : "";
+                  },
+                  color: BRAND.ink, font: { size: 11, weight: "bold" },
+                },
+              },
+            },
+          },
+          scales: {
+            x: { stacked: true, beginAtZero: true, ticks: { color: BRAND.ink } },
+            y: { stacked: true, ticks: { color: BRAND.ink, font: { size: 12 } } },
+          },
+          layout: { padding: { right: 50 } },
+        }),
+        plugins: [ChartDataLabels],
+      }));
+
+      // 회원 및 파트너 가입현황 도넛 차트
+      const memColors = { "대기중": "#F9A825", "승인됨": "#388E3C", "반려됨": "#D32F2F" };
+      const memLabels = ["대기중", "승인됨", "반려됨"];
+      const memCommonOpts = Object.assign({}, commonOpts, {
+        cutout: "55%",
+        plugins: {
+          legend: { position: "bottom", labels: { color: BRAND.ink, boxWidth: 12, font: { size: 11 } } },
+          datalabels: {
+            display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0,
+            formatter: (v, ctx) => {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              return total > 0 ? num(v) : "";
+            },
+            color: "#fff", font: { size: 11, weight: "bold" },
+            textShadowColor: "rgba(0,0,0,0.3)", textShadowBlur: 3,
+          },
+        },
+      });
+      statsCharts.push(new Chart(document.getElementById("chartMemAgent"), {
+        type: "doughnut",
+        data: {
+          labels: memLabels,
+          datasets: [{ data: [ag.pending, ag.approved, ag.rejected], backgroundColor: memLabels.map((l) => memColors[l]), borderColor: "#fff", borderWidth: 2 }],
+        },
+        options: memCommonOpts,
+        plugins: [ChartDataLabels],
+      }));
+      statsCharts.push(new Chart(document.getElementById("chartMemOp"), {
+        type: "doughnut",
+        data: {
+          labels: memLabels,
+          datasets: [{ data: [op.pending, op.approved, op.rejected], backgroundColor: memLabels.map((l) => memColors[l]), borderColor: "#fff", borderWidth: 2 }],
+        },
+        options: memCommonOpts,
+        plugins: [ChartDataLabels],
+      }));
+
+      // 일별 방문자 추이 (선) — 14일 이하일 때 꼭짓점에 숫자 표시
+      const daily = (d.views && d.views.daily) || [];
+      statsCharts.push(new Chart(document.getElementById("chartViews"), {
+        type: "line",
+        data: {
+          labels: daily.map((r) => r.day.slice(5)),
+          datasets: [{ label: "일별 방문(페이지뷰)", data: daily.map((r) => r.count), borderColor: BRAND.brass, backgroundColor: BRAND.brassSoft, fill: true, tension: 0.3, pointRadius: 3 }],
+        },
+        options: Object.assign({}, commonOpts, {
+          plugins: {
+            legend: { display: false },
+            datalabels: {
+              display: daily.length <= 14,
+              anchor: "end", align: "top",
+              formatter: (v) => v > 0 ? num(v) : null,
+              color: BRAND.ink, font: { size: 10 },
+            },
+          },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0, color: BRAND.ink } }, x: { ticks: { color: BRAND.ink } } },
+          layout: { padding: { top: 20 } },
+        }),
+        plugins: [ChartDataLabels],
+      }));
+
+      // 오늘 경로별 조회수 상위 5
+      const top = (d.views && d.views.top_paths) || [];
+      const topEl = document.getElementById("statsTopPaths");
+      if (top.length) {
+        topEl.innerHTML = `<div class="stats-toppaths-title">오늘 인기 경로 TOP 5</div>` +
+          top.map((r) => `<div class="stats-toppath-row"><span class="stats-toppath-path">${dgEscape(r.path)}</span><span class="stats-toppath-cnt">${num(r.count)}회</span></div>`).join("");
+      } else {
+        topEl.innerHTML = `<div class="stats-toppaths-title">오늘 인기 경로 TOP 5</div><div class="stats-toppath-empty">아직 오늘 방문 기록이 없습니다.</div>`;
+      }
+    }
+
+    function showGrid(menuKey) {
+      const cfg = GRID_CONFIGS[menuKey];
+      if (!cfg) return;
+      destroyStatsCharts();
+      currentGrid = new DataGrid(Object.assign({ mount: mount, idField: "id", pageSize: 50 }, cfg));
+    }
+
+    // ---- 매물관리: "매물" / "매물의뢰" / "매수의뢰" 서브탭 ----
+    // 매물관리 메뉴 하나에 세 그리드를 담는다. 탭 클릭 시 gridMount에만 새 그리드를 그린다.
+    let listingsSubTab = "listings";
+    function showListings() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-tabs" style="margin-bottom:14px;">
+          <button class="admin-btn lst-subtab" data-sub="listings">매물</button>
+          <button class="admin-btn lst-subtab" data-sub="listing_requests">매물의뢰</button>
+          <button class="admin-btn lst-subtab" data-sub="buy_requests">매수의뢰</button>
+        </div>
+        <div id="listingsSubMount"></div>`;
+      const subMount = document.getElementById("listingsSubMount");
+      const ROUTE_NOTE_KEYS = ["listing_requests", "buy_requests"];
+      const activate = (key) => {
+        listingsSubTab = key;
+        mount.querySelectorAll(".lst-subtab").forEach((b) => {
+          b.classList.toggle("admin-btn-primary", b.getAttribute("data-sub") === key);
+        });
+        // 매물/매수의뢰 탭에 자동 배정 규칙 안내 표시
+        subMount.parentNode.querySelectorAll(".lst-route-note").forEach((n) => n.remove());
+        if (ROUTE_NOTE_KEYS.includes(key)) {
+          const wrap = document.createElement("div");
+          wrap.className = "lst-route-note";
+          wrap.innerHTML = `<div style="font-size:12.5px; color:#5B6472; line-height:1.6; background:#F4F1EA; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+            <b>자동 배정 규칙</b> — 접수 시 배정사유(routed_reason)별 처리:
+            <b>exclusive</b>: 해당 건물의 담당중개사 중 우선순위(priority_score 높은 순, 동점은 무작위) 1명에게 배정, 나머지 담당중개사에게는 참고용 SMS만 발송 ·
+            <b>region</b>: 담당중개사가 없으면 같은 시군구에 건물을 등록한 중개사 중 1명에게 배정 ·
+            <b>house</b>: 지역 중개사도 없으면 홈스퀘어 중개법인(하우스 계정)으로 배정. 상태변경 권한은 배정된 1명에게만 있습니다.
+          </div>`;
+          subMount.parentNode.insertBefore(wrap, subMount);
+        }
+        // 매물의뢰 탭: 전체/직거래/중개 분류 탭 (deal_mode 필터로 그리드 재조회)
+        if (key === "listing_requests") {
+          const modeWrap = document.createElement("div");
+          modeWrap.className = "lst-route-note"; // 탭 전환 시 함께 제거되도록 같은 클래스 사용
+          modeWrap.innerHTML = `<div style="display:flex; gap:6px; margin-bottom:10px;">
+            <button class="admin-btn lreq-mode-tab admin-btn-primary" data-mode="">전체</button>
+            <button class="admin-btn lreq-mode-tab" data-mode="direct">직거래</button>
+            <button class="admin-btn lreq-mode-tab" data-mode="broker">중개</button>
+          </div>`;
+          subMount.parentNode.insertBefore(modeWrap, subMount);
+          currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
+          modeWrap.querySelectorAll(".lreq-mode-tab").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              modeWrap.querySelectorAll(".lreq-mode-tab").forEach((b) =>
+                b.classList.toggle("admin-btn-primary", b === btn));
+              currentGrid.state.filters.deal_mode = btn.getAttribute("data-mode");
+              currentGrid.state.page = 1; // 분류 전환 시 첫 페이지부터
+              currentGrid.reload();
+            });
+          });
+        } else {
+          currentGrid = new DataGrid(Object.assign({ mount: subMount, idField: "id", pageSize: 50 }, GRID_CONFIGS[key]));
+        }
+      };
+      mount.querySelectorAll(".lst-subtab").forEach((b) => {
+        b.addEventListener("click", () => activate(b.getAttribute("data-sub")));
+      });
+      activate(listingsSubTab);
+    }
+
+    // 매물의뢰 비고(admin_note) 인라인 수정 — 클릭 → prompt → PUT(admin_note만 전송)
+    window.adminEditLeadNote = async function(ev, reqId) {
+      ev.preventDefault();
+      const row = (currentGrid && currentGrid.items || []).find((r) => r.id === reqId) || {};
+      const cur = row.admin_note || "";
+      const next = window.prompt("비고(관리자 메모)를 입력하세요. 비우면 삭제됩니다.", cur);
+      if (next === null) return;
+      try {
+        const res = await fetch(`/api/admin/listing-requests/${reqId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_note: next }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) { currentGrid.reload(); return; }
+        window.alert(d.message || "비고 저장에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    };
+
+    // 매수의뢰 비고(admin_note) 인라인 수정
+    window.adminEditBuyNote = async function(ev, reqId) {
+      ev.preventDefault();
+      const row = (currentGrid && currentGrid.items || []).find((r) => r.id === reqId) || {};
+      const cur = row.admin_note || "";
+      const next = window.prompt("비고(관리자 메모)를 입력하세요. 비우면 삭제됩니다.", cur);
+      if (next === null) return;
+      try {
+        const res = await fetch(`/api/admin/buy-requests/${reqId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_note: next }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) { currentGrid.reload(); return; }
+        window.alert(d.message || "비고 저장에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    };
+
+    // ---- 신청 서류 다운로드: 서명 URL로 Blob 받아 강제 다운로드 ----
+    window.adminDownloadAppDoc = async function(appId, docType, label) {
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/doc-url?doc=${encodeURIComponent(docType)}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { window.alert(d.message || "다운로드 URL 발급에 실패했습니다."); return; }
+        const fileRes = await fetch(d.url);
+        const blob = await fileRes.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = label || "서류";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (e) {
+        window.alert("다운로드 중 오류가 발생했습니다.");
+      }
+    };
+
+    // ---- 신청 서류 열람: 관리자 전용 서명 URL(5분)을 발급받아 새 탭으로 연다 ----
+    window.adminOpenAppDoc = async function(ev, appId, docType) {
+      ev.preventDefault();
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/doc-url?doc=${encodeURIComponent(docType)}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok && d.url) {
+          window.open(d.url, "_blank", "noopener");
+        } else {
+          window.alert(d.message || "서류 열람 URL 발급에 실패했습니다.");
+        }
+      } catch (e) {
+        window.alert("네트워크 오류가 발생했습니다.");
+      }
+    };
+
+    // ---- 약관 관리 (이용약관 / 개인정보처리방침) ----
+    // 각 문서를 큰 textarea로 편집하고 "저장"하면 /api/admin/legal/<type> PUT로 즉시 반영된다.
+    const LEGAL_DOCS = [
+      { type: "terms", label: "이용약관" },
+      { type: "privacy", label: "개인정보처리방침" },
+    ];
+    let legalCurrentType = "terms";
+
+    async function loadLegalDoc(type) {
+      const ta = document.getElementById("legalTextarea");
+      const meta = document.getElementById("legalMeta");
+      const msg = document.getElementById("legalMsg");
+      msg.textContent = "";
+      ta.disabled = true;
+      ta.value = "불러오는 중…";
+      try {
+        const res = await fetch(`/api/admin/legal/${type}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          ta.value = d.content || "";
+          meta.textContent = d.updated_at ? `최종 수정: ${d.updated_at}` : "";
+        } else {
+          ta.value = "";
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "불러오지 못했습니다.";
+        }
+      } catch (e) {
+        ta.value = "";
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      } finally {
+        ta.disabled = false;
+      }
+    }
+
+    async function saveLegalDoc() {
+      const ta = document.getElementById("legalTextarea");
+      const msg = document.getElementById("legalMsg");
+      const btn = document.getElementById("legalSaveBtn");
+      const content = ta.value.trim();
+      msg.textContent = "";
+      if (!content) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "본문은 비울 수 없습니다.";
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "저장 중…";
+      try {
+        const res = await fetch(`/api/admin/legal/${legalCurrentType}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "저장되었습니다. 공개 페이지에 즉시 반영됩니다.";
+          loadLegalDoc(legalCurrentType);
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "저장에 실패했습니다.";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "저장";
+      }
+    }
+
+    function selectLegalTab(type) {
+      legalCurrentType = type;
+      document.querySelectorAll(".legal-tab").forEach((b) => {
+        b.classList.toggle("is-active", b.getAttribute("data-legal") === type);
+      });
+      const doc = LEGAL_DOCS.find((x) => x.type === type) || LEGAL_DOCS[0];
+      const preview = document.getElementById("legalPreviewLink");
+      preview.href = type === "privacy" ? "/privacy" : "/terms";
+      preview.textContent = `${doc.label} 공개 페이지 열기 ↗`;
+      loadLegalDoc(type);
+    }
+
+    function showLegal() {
+      destroyStatsCharts();
+      legalCurrentType = "terms";
+      mount.innerHTML = `
+        <div class="legal-admin">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">약관 관리</h2>
+            <a id="legalPreviewLink" class="legal-preview-link" href="/terms" target="_blank" rel="noopener">이용약관 공개 페이지 열기 ↗</a>
+          </div>
+          <div class="legal-tabs">
+            ${LEGAL_DOCS.map((d, i) => `<button class="legal-tab${i === 0 ? " is-active" : ""}" data-legal="${d.type}">${d.label}</button>`).join("")}
+          </div>
+          <p class="legal-admin-hint">본문은 간단한 HTML(&lt;h2&gt;, &lt;p&gt;, &lt;ul&gt;/&lt;li&gt;)을 사용할 수 있습니다. 저장 시 별도 배포 없이 공개 페이지에 즉시 반영됩니다.</p>
+          <textarea id="legalTextarea" class="legal-textarea" spellcheck="false"></textarea>
+          <div class="legal-admin-actions">
+            <span id="legalMeta" class="legal-meta"></span>
+            <span id="legalMsg" class="legal-msg" role="alert"></span>
+            <button id="legalSaveBtn" class="admin-btn admin-btn-primary">저장</button>
+          </div>
+        </div>
+      `;
+      document.querySelectorAll(".legal-tab").forEach((b) => {
+        b.addEventListener("click", () => selectLegalTab(b.getAttribute("data-legal")));
+      });
+      document.getElementById("legalSaveBtn").addEventListener("click", saveLegalDoc);
+      selectLegalTab("terms");
+    }
+
+    // ---- 지도 좌표 채우기 (지도 주소검색 실시간, 백그라운드 러너) ----
+    // lat/lng가 NULL인 건물만 대상 — 기존 좌표는 재작업하지 않는다.
+    let geoTimer = null;
+    function stopGeoPolling() {
+      if (geoTimer) { clearInterval(geoTimer); geoTimer = null; }
+    }
+
+    function renderGeoStatus(d) {
+      const box = document.getElementById("geoStatus");
+      const btn = document.getElementById("geoRunBtn");
+      if (!box || !btn) { stopGeoPolling(); return; }
+      const pct = d.total ? ((d.with_geo / d.total) * 100).toFixed(1) : "0.0";
+      const rows = [
+        `<div class="geo-stat-row"><b>좌표 확보:</b> ${num(d.with_geo)} / ${num(d.total)}건 (${pct}%)</div>`,
+        `<div class="geo-stat-row"><b>좌표 대기(미확보):</b> ${num(d.missing)}건</div>`,
+      ];
+      const s = d.status || {};
+      const running = s.state === "running";
+      if (running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+        if (!geoTimer) geoTimer = setInterval(loadGeocodeStatus, 5000);
+      } else {
+        stopGeoPolling();
+        if (s.state === "done") {
+          rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · 성공 ${num(s.updated || 0)}건 / 건너뜀 ${num(s.skipped || 0)}건</div>`);
+        } else if (s.state === "failed" || s.state === "stale") {
+          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+        } else {
+          rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+        }
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = running;
+      btn.textContent = running ? "실행 중…" : "좌표 채우기 실행";
+    }
+
+    async function loadGeocodeStatus() {
+      const box = document.getElementById("geoStatus");
+      if (!box) { stopGeoPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/geocode-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "현황을 불러오지 못했습니다."; return; }
+        renderGeoStatus(d);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runGeocode() {
+      const btn = document.getElementById("geoRunBtn");
+      const msg = document.getElementById("geoMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/geocode-buildings", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = d.message || "좌표 채우기를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "좌표 채우기 실행";
+        }
+        loadGeocodeStatus();
+        if (!geoTimer) geoTimer = setInterval(loadGeocodeStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "좌표 채우기 실행";
+      }
+    }
+
+    // ---- 중개업소 좌표 채우기 (geocode_brokers.py, 지도 주소검색) ----
+    let brokerGeoTimer = null;
+    function stopBrokerGeoPolling() {
+      if (brokerGeoTimer) { clearInterval(brokerGeoTimer); brokerGeoTimer = null; }
+    }
+
+    function renderBrokerGeocodeStatus(d) {
+      const box = document.getElementById("brokerGeoStatus");
+      const btn = document.getElementById("brokerGeoRunBtn");
+      if (!box || !btn) { stopBrokerGeoPolling(); return; }
+      const pct = d.total ? ((d.with_geo / d.total) * 100).toFixed(1) : "0.0";
+      const rows = [
+        `<div class="geo-stat-row"><b>좌표 확보:</b> ${num(d.with_geo)} / ${num(d.total)}건 (${pct}%)</div>`,
+        `<div class="geo-stat-row"><b>좌표 대기(미확보):</b> ${num(d.missing)}건</div>`,
+      ];
+      const s = d.status || {};
+      const running = s.state === "running";
+      if (running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+        if (!brokerGeoTimer) brokerGeoTimer = setInterval(loadBrokerGeocodeStatus, 5000);
+      } else {
+        stopBrokerGeoPolling();
+        if (s.state === "done") {
+          rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · 성공 ${num(s.updated || 0)}건 / 건너뜀 ${num(s.skipped || 0)}건</div>`);
+        } else if (s.state === "failed" || s.state === "stale") {
+          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+        } else {
+          rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+        }
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = running;
+      btn.textContent = running ? "실행 중…" : "좌표 채우기 실행";
+    }
+
+    async function loadBrokerGeocodeStatus() {
+      const box = document.getElementById("brokerGeoStatus");
+      if (!box) { stopBrokerGeoPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/geocode-brokers-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "현황을 불러오지 못했습니다."; return; }
+        renderBrokerGeocodeStatus(d);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBrokerGeocode() {
+      const btn = document.getElementById("brokerGeoRunBtn");
+      const msg = document.getElementById("brokerGeoMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/geocode-brokers", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = d.message || "좌표 채우기를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "좌표 채우기 실행";
+        }
+        loadBrokerGeocodeStatus();
+        if (!brokerGeoTimer) brokerGeoTimer = setInterval(loadBrokerGeocodeStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "좌표 채우기 실행";
+      }
+    }
+
+    // ---- 건축정보(표제부) 채우기 (건축정보 조회, 백그라운드 러너) ----
+    // 미백필(title_backfilled_at NULL) 건물만 대상.
+    let titleInfoTimer = null;
+    function stopTitleInfoPolling() {
+      if (titleInfoTimer) { clearInterval(titleInfoTimer); titleInfoTimer = null; }
+    }
+
+    function renderTitleInfoStatus(d) {
+      const box = document.getElementById("titleInfoStatus");
+      const btn = document.getElementById("titleInfoRunBtn");
+      if (!box || !btn) { stopTitleInfoPolling(); return; }
+      const pct = d.total ? ((d.with_title / d.total) * 100).toFixed(1) : "0.0";
+      const rows = [
+        `<div class="geo-stat-row"><b>표제부 확보:</b> ${num(d.with_title)} / ${num(d.total)}건 (${pct}%)</div>`,
+        `<div class="geo-stat-row"><b>표제부 대기(미백필):</b> ${num(d.missing)}건</div>`,
+      ];
+      const s = d.status || {};
+      const running = s.state === "running";
+      if (running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+        if (!titleInfoTimer) titleInfoTimer = setInterval(loadTitleInfoStatus, 5000);
+      } else {
+        stopTitleInfoPolling();
+        if (s.state === "done") {
+          rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · 성공 ${num(s.ok || 0)}건 / 표제부없음 ${num(s.empty || 0)}건 / 오류 ${num(s.err || 0)}건</div>`);
+        } else if (s.state === "failed" || s.state === "stale") {
+          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+        } else {
+          rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+        }
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = running;
+      btn.textContent = running ? "실행 중…" : "건축정보 채우기 실행";
+    }
+
+    async function loadTitleInfoStatus() {
+      const box = document.getElementById("titleInfoStatus");
+      if (!box) { stopTitleInfoPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/title-info-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "현황을 불러오지 못했습니다."; return; }
+        renderTitleInfoStatus(d);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runTitleInfoBackfill() {
+      const btn = document.getElementById("titleInfoRunBtn");
+      const msg = document.getElementById("titleInfoMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/backfill-title-info", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = d.message || "건축정보 채우기를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "건축정보 채우기 실행";
+        }
+        loadTitleInfoStatus();
+        if (!titleInfoTimer) titleInfoTimer = setInterval(loadTitleInfoStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "건축정보 채우기 실행";
+      }
+    }
+
+    // ---- 데이터 동기화 배너 (배포 후 미실행 항목 안내) ----
+    async function loadDataSyncBanner() {
+      const box = document.getElementById("dsBanner");
+      if (!box) return;
+      try {
+        const res = await fetch("/api/admin/datasync-overview");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.style.display = "none"; return; }
+        const items = [];
+        if (d.missing_geo > 0) items.push({ sec: "dsSecGeo", text: `좌표 채우기(${num(d.missing_geo)}건 대기)` });
+        if (d.missing_title > 0) items.push({ sec: "dsSecTitle", text: `건축정보 채우기(${num(d.missing_title)}건 대기)` });
+        const secBySync = {
+          scheduled_sync_status: "dsSecScheduled",
+          brhub_sync_status: "dsSecBrhub",
+          tx_sync_status: "dsSecTx",
+          broker_sync_status: "dsSecBroker",
+          lodging_sync_status: "dsSecLodging",
+        };
+        (d.stale_syncs || []).forEach((s) => {
+          const when = s.last_run_at ? `마지막 실행 ${s.last_run_at}` : "실행 기록 없음";
+          items.push({ sec: secBySync[s.key], text: `${s.label}(${when})` });
+        });
+        // 우편번호 백필 진행률 (조용히 표시 — 경고 아님)
+        const zipEl = document.getElementById("zipBackfillProgress");
+        if (zipEl && typeof d.zip_total === "number" && d.zip_total > 0) {
+          if (d.zip_filled >= d.zip_total) {
+            zipEl.textContent = "✅ 완료 — 전체 " + num(d.zip_total) + "건 채움";
+          } else {
+            const pct = Math.round(d.zip_filled / d.zip_total * 100);
+            const barFill = `<span style="display:block;width:${pct}%;height:100%;background:var(--brass);border-radius:4px"></span>`;
+            const bar = `<span style="display:inline-block;width:120px;height:6px;background:#eee;border-radius:4px;vertical-align:middle;margin:0 8px">${barFill}</span>`;
+            zipEl.innerHTML = `${num(d.zip_filled)} / ${num(d.zip_total)}건 채움${bar}${pct}% · 매일 자동 실행 중`;
+          }
+        }
+
+        if (!items.length) {
+          box.style.display = "";
+          box.style.background = "#e6f4ea";
+          box.style.border = "1px solid #b7e1c1";
+          box.style.color = "#1a7f37";
+          box.innerHTML = "✅ 모두 최신 상태입니다.";
+          return;
+        }
+        box.style.display = "";
+        box.style.background = "#fff8e1";
+        box.style.border = "1px solid #f2d98c";
+        box.style.color = "#7a5b00";
+        const links = items.map((it) =>
+          `<a href="#" data-ds-sec="${it.sec || ""}" style="color:#7a5b00;text-decoration:underline;font-weight:600">${dgEscape(it.text)}</a>`
+        ).join(", ");
+        box.innerHTML = `⚠ 배포 후 아직 실행되지 않았거나 대기 중인 항목이 있습니다: ${links}. 아래에서 순서대로 실행해 주세요.`;
+        box.querySelectorAll("a[data-ds-sec]").forEach((a) => {
+          a.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const sec = document.getElementById(a.getAttribute("data-ds-sec"));
+            if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        });
+      } catch (e) {
+        box.style.display = "none";
+      }
+    }
+
+    // ---- 건물수집(전국) — 건축정보 전수 스캔 (sync_brhub.py) ----
+    let brhubSyncTimer = null;
+    function stopBrhubSyncPolling() {
+      if (brhubSyncTimer) { clearInterval(brhubSyncTimer); brhubSyncTimer = null; }
+    }
+
+    function renderBrhubSyncStatus(d) {
+      const box = document.getElementById("brhubSyncStatus");
+      const btn = document.getElementById("brhubSyncRunBtn");
+      if (!box || !btn) { stopBrhubSyncPolling(); return; }
+      const t = d.by_type || {};
+      const typeParts = [
+        `생활 ${num(t.living_stay || 0)}`,
+        `관광 ${num(t.tourist || 0)}`,
+        `일반 ${num(t.general || 0)}`,
+        `복합 ${num(t.mixed || 0)}`,
+        `준공전 ${num(t.pre_completion || 0)}`,
+        `미분류 ${num(t.unclassified || 0)}`,
+        `복합제외 ${num(t.excluded || 0)}`,
+      ];
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집된 건물(전국수집+실거래발견):</b> 총 ${num(d.brhub_total)}건 (${typeParts.join(" · ")})</div>`);
+      rows.push(`<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">※ 전국 대량수집(brhub_bulk) + 실거래로 새로 발견된 건물(api_discovered)만 포함 — 준공전 파이프라인·사용자 제출 등 다른 경로로 등록된 건물은 이 숫자에서 제외됩니다.</div>`);
+      rows.push(`<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">※ 이 화면의 숫자는 통계대시보드·지도 범례와 다를 수 있습니다 — 집계 범위(출처 포함 여부)와 "복합"·"준공전" 정의가 화면마다 다르게 설계되어 있습니다(추후 통일 예정).</div>`);
+      rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 법정동 ${num(d.checkpoint_idx)} / ${num(d.total_dongs)}곳${d.checkpoint_idx >= d.total_dongs ? " — 전국 완료" : " — 미완(다음 실행 때 이어서 수집)"}</div>`);
+      if (d.progress_by_sido && d.progress_by_sido.length) {
+        const sidoProgress = d.progress_by_sido.map(p =>
+          `<span style="display:inline-block; margin:2px 8px 2px 0; white-space:nowrap;">${dgEscape(p.sido)} ${num(p.processed)}/${num(p.total)} (${num(p.percent)}%)</span>`
+        ).join("");
+        rows.push(`<div class="geo-stat-row"><b>시도별 진행:</b><div style="margin-top:3px; line-height:1.5;">${sidoProgress}</div></div>`);
+      }
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        let done;
+        if (d.completed) done = "전국 수집 완료";
+        else if (d.stop_reason === "daily_cap") done = "일일 한도로 일시 중단(다음 실행 때 이어서)";
+        else if (d.stop_reason === "consecutive_failures") done = "연속 오류로 중단(아래 실패 목록 확인 — API 문제 가능성)";
+        else if (d.stop_reason === "limit") done = "--limit 설정으로 중단(테스트 실행)";
+        else done = "일시 중단(다음 실행 때 이어서)";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 법정동 ${d.processed == null ? "-" : num(d.processed) + "곳"} 처리 · 신규 발견 ${d.found == null ? "-" : num(d.found) + "건"}</div>`);
+        if (d.cooldowns && d.cooldowns.length) {
+          rows.push(`<div class="geo-stat-row" style="color:#8a6d00"><b>연속실패 쿨다운 발생:</b> ${d.cooldowns.length}회 (5분씩 자동 대기 후 재개됨, 마지막: ${dgEscape(d.cooldowns[d.cooldowns.length - 1].at)})</div>`);
+        }
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+        rows.push(`<div class="geo-stat-row">체크포인트가 저장되어 있어 다시 실행하면 이어서 수집합니다.</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 버튼으로 실행된 적 없음 (워크플로우 실행분은 체크포인트에 반영됨)</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "건물수집 실행";
+      if (!d.running) stopBrhubSyncPolling();
+    }
+
+    async function loadBrhubSyncStatus() {
+      const box = document.getElementById("brhubSyncStatus");
+      if (!box) { stopBrhubSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/brhub-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderBrhubSyncStatus(d);
+        if (d.running && !brhubSyncTimer) brhubSyncTimer = setInterval(loadBrhubSyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBrhubSync() {
+      const btn = document.getElementById("brhubSyncRunBtn");
+      const msg = document.getElementById("brhubSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-brhub", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "건물수집을 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다. 잠시 후 다시 시도해 주세요." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "건물수집 실행";
+        }
+        loadBrhubSyncStatus();
+        if (!brhubSyncTimer) brhubSyncTimer = setInterval(loadBrhubSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "건물수집 실행";
+      }
+    }
+
+    // ---- 영업신고 누락건물 보완수집 ----
+    let backfillLodgingTimer = null;
+
+    function toKST(s) {
+      if (!s) return "-";
+      // "2026-08-29 04:12:35" 형식(UTC)을 KST(+9)로 변환
+      const d = new Date(s.replace(" ", "T") + "Z");
+      return isNaN(d) ? s : d.toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        hour12: false
+      }) + " (KST)";
+    }
+
+    function stopBackfillLodgingPolling() {
+      if (backfillLodgingTimer) {
+        clearInterval(backfillLodgingTimer);
+        backfillLodgingTimer = null;
+      }
+    }
+
+    function renderBackfillLodgingStatus(d) {
+      const statusDiv = document.getElementById("backfillLodgingStatus");
+      const btn = document.getElementById("backfillLodgingRunBtn");
+      if (!statusDiv || !btn) {
+        stopBackfillLodgingPolling();
+        return;
+      }
+      if (!d.state || d.state === "idle") {
+        statusDiv.textContent = "대기 중 (미실행)";
+        btn.textContent = "보완수집 실행";
+        btn.disabled = false;
+        stopBackfillLodgingPolling();
+        return;
+      }
+
+      // 진행률 계산
+      const processed = (d.registered || 0) + (d.skipped || 0) + (d.failed || 0);
+      const total     = d.total || 0;
+      const pct       = total > 0 ? Math.min(100, Math.round(processed / total * 100)) : 0;
+      const running   = d.state === "running";
+
+      // 진행률 바 HTML
+      const progressBar = (running || d.state === "done") && total > 0
+        ? `<div style="margin:6px 0 4px;">
+             <div style="display:flex;align-items:center;gap:8px;">
+               <div style="flex:1;background:#eee;border-radius:4px;height:8px;overflow:hidden;">
+                 <div style="width:${pct}%;background:${d.state==='done'?'#639922':'var(--brass,#B4863F)'};
+                              height:100%;border-radius:4px;transition:width 0.4s;"></div>
+               </div>
+               <span style="font-size:12px;font-weight:700;color:${d.state==='done'?'#639922':'var(--brass-dark,#7D4A00)'};">
+                 ${pct}%
+               </span>
+             </div>
+             <div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">
+               ${num(processed)} / ${num(total)}건 처리
+               ${d.state==='done' ? ' · <b style="color:#639922;">완료</b>' : ''}
+             </div>
+           </div>`
+        : "";
+
+      const rows = [];
+      if (d.started_at) rows.push(`마지막 실행: ${toKST(d.started_at)}`);
+      if (d.registered != null) rows.push(`신규등록: ${num(d.registered)}건`);
+      if (d.skipped    != null) rows.push(`기존매핑: ${num(d.skipped)}건`);
+      if (d.failed     != null) rows.push(`실패: ${num(d.failed)}건`);
+      if (d.finished_at) rows.push(`완료: ${toKST(d.finished_at)}`);
+      if (d.error) rows.push(`오류: ${d.error}`);
+
+      statusDiv.innerHTML = progressBar
+        + `<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;">`
+        + rows.join(" · ")
+        + `</div>`;
+
+      btn.textContent = running ? "실행 중…" : "보완수집 실행";
+      btn.disabled = running;
+      if (running && !backfillLodgingTimer) {
+        backfillLodgingTimer = setInterval(loadBackfillLodgingStatus, 5000);
+      } else if (!running) {
+        stopBackfillLodgingPolling();
+      }
+    }
+
+    async function loadBackfillLodgingStatus() {
+      const statusDiv = document.getElementById("backfillLodgingStatus");
+      if (!statusDiv) {
+        stopBackfillLodgingPolling();
+        return;
+      }
+      try {
+        const res = await fetch("/api/admin/backfill-lodging-status");
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          statusDiv.textContent = d.message || "상태 조회 실패";
+          return;
+        }
+        renderBackfillLodgingStatus(d);
+      } catch (e) {
+        statusDiv.textContent = "상태 조회 실패";
+      }
+    }
+
+    async function runBackfillLodging() {
+      const btn = document.getElementById("backfillLodgingRunBtn");
+      const msg = document.getElementById("backfillLodgingMsg");
+      btn.disabled = true;
+      btn.textContent = "시작 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/backfill-lodging-run", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        msg.textContent = d.message || "";
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          setTimeout(loadBackfillLodgingStatus, 2000);
+        } else {
+          msg.style.color = "#b3261e";
+          btn.disabled = false;
+          btn.textContent = "보완수집 실행";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "요청 실패";
+        btn.disabled = false;
+        btn.textContent = "보완수집 실행";
+      }
+    }
+
+    function renderReclassifyProgress(elementId, state, data) {
+      const progress = document.getElementById(elementId);
+      if (!progress) return;
+      if (state === "running") {
+        progress.innerHTML =
+          `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">`
+          + `<div style="flex:1;background:#eee;border-radius:4px;height:7px;overflow:hidden;">`
+          + `<div style="width:0%;background:var(--brass,#B4863F);height:100%;border-radius:4px;"></div></div>`
+          + `<b style="color:var(--brass-dark,#7D4A00);white-space:nowrap;">0%</b></div>`
+          + `<div>대상 건수 계산 및 재분류 중… · 진행률: <b>0%</b></div>`;
+        return;
+      }
+      if (state !== "done") {
+        progress.textContent = "";
+        return;
+      }
+      const total = Math.max(0, Number(data.candidate_total) || 0);
+      const updated = Math.max(0, Number(data.updated ?? data.total_updated) || 0);
+      const pct = Math.max(0, Math.min(100, Number(data.progress_percent) || 0));
+      const matched = data.matched_total == null
+        ? ""
+        : ` · 키워드 일치: <b>${num(Number(data.matched_total) || 0)}건</b>`;
+      progress.innerHTML =
+        `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">`
+        + `<div style="flex:1;background:#eee;border-radius:4px;height:7px;overflow:hidden;">`
+        + `<div style="width:${pct}%;background:#639922;height:100%;border-radius:4px;"></div></div>`
+        + `<b style="color:#639922;white-space:nowrap;">${pct}%</b></div>`
+        + `<div>재분류 대상: <b>${num(total)}건</b>${matched} · 변경: <b>${num(updated)}건</b>`
+        + ` · 진행률: <b>${pct}%</b></div>`;
+    }
+
+    async function runReclassifyLodgingKeywords() {
+      const btn = document.getElementById("reclassifyKeywordBtn");
+      const msg = document.getElementById("reclassifyKeywordMsg");
+      btn.disabled = true;
+      btn.textContent = "처리 중…";
+      msg.textContent = "";
+      renderReclassifyProgress("reclassifyKeywordProgress", "running");
+      try {
+        const res = await fetch("/api/admin/reclassify-lodging-keywords", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
+        msg.textContent = d.message || (res.ok ? "" : "요청 실패");
+        renderReclassifyProgress(
+          "reclassifyKeywordProgress",
+          res.ok && d.ok ? "done" : "error",
+          d,
+        );
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "요청 실패";
+        renderReclassifyProgress("reclassifyKeywordProgress", "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "기타 → 키워드 재분류 실행";
+      }
+    }
+
+    async function runReclassifyByHygiene() {
+      const btn = document.getElementById("reclassifyHygieneBtn");
+      const msg = document.getElementById("reclassifyHygieneMsg");
+      btn.disabled = true;
+      btn.textContent = "처리 중…";
+      msg.textContent = "";
+      renderReclassifyProgress("reclassifyHygieneProgress", "running");
+      try {
+        const previewRes = await fetch("/api/admin/reclassify-by-hygiene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apply: false }),
+        });
+        if (previewRes.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const preview = await previewRes.json().catch(() => ({}));
+        if (!previewRes.ok || !preview.ok) {
+          throw new Error(preview.message || "드라이런 실패");
+        }
+        renderReclassifyProgress("reclassifyHygieneProgress", "done", preview);
+        msg.textContent = preview.message || "";
+        if (!preview.candidate_total) return;
+        const detail = Object.entries(preview.detail || {})
+          .map(([key, value]) => `${key}: ${num(value)}건`)
+          .join("\n");
+        if (!confirm(
+          `분류 후보 ${num(preview.candidate_total)}건을 실제 반영할까요?\n\n${detail}\n\n` +
+          `건물별 현재값이 달라지면 전체 작업은 롤백됩니다.`
+        )) return;
+        renderReclassifyProgress("reclassifyHygieneProgress", "running");
+        const res = await fetch("/api/admin/reclassify-by-hygiene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apply: true }),
+        });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const d = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
+        msg.textContent = d.message || (res.ok ? "" : "요청 실패");
+        renderReclassifyProgress(
+          "reclassifyHygieneProgress",
+          res.ok && d.ok ? "done" : "error",
+          d,
+        );
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = e.message || "요청 실패";
+        renderReclassifyProgress("reclassifyHygieneProgress", "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "영업신고 기준 소급 재분류";
+      }
+    }
+
+    async function loadLodgingClassificationProvenance() {
+      const box = document.getElementById("lodgingClassificationProvenance");
+      if (!box) return;
+      try {
+        const res = await fetch("/api/admin/lodging-classification-provenance");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.message || "점검 실패");
+        const recovered = d.source_counts || {};
+        const candidates = d.recoverable_counts || {};
+        box.innerHTML =
+          `<div class="geo-stat-row"><b>분류 완료:</b> ${num(d.classified_total)}건</div>` +
+          `<div class="geo-stat-row"><b>출처 없음:</b> ${num(d.missing_source)}건 · <b>신뢰도 없음:</b> ${num(d.missing_confidence)}건</div>` +
+          `<div class="geo-stat-row"><b>기록된 출처:</b> 건축물대장 ${num(recovered.building_registry || 0)}건 · 활성 신고 ${num(recovered.active_permit || 0)}건</div>` +
+          `<div class="geo-stat-row"><b>안전 복원 가능:</b> 건축물대장 ${num(candidates.building_registry || 0)}건 · 활성 신고 ${num(candidates.active_permit || 0)}건</div>`;
+      } catch (e) {
+        box.textContent = "분류 근거 현황을 불러오지 못했습니다: " + e.message;
+      }
+    }
+
+    async function restoreLodgingClassificationProvenance() {
+      const btn = document.getElementById("lodgingClassificationRestoreBtn");
+      const msg = document.getElementById("lodgingClassificationRestoreMsg");
+      if (!btn || !msg) return;
+      if (!confirm("검증 가능한 건축물대장·현재 활성 신고 원본이 있는 분류만 출처와 신뢰도를 복원할까요? 분류값 자체는 바뀌지 않습니다.")) return;
+      btn.disabled = true;
+      msg.textContent = "복원 중…";
+      try {
+        const res = await fetch("/api/admin/lodging-classification-provenance", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.message || "복원 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = d.message;
+        await loadLodgingClassificationProvenance();
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = e.message || "복원 실패";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ---- 과거 구간 재수집 ----
+    function renderBrhubRescanStatus(d) {
+      const box = document.getElementById("brhubRescanStatus");
+      const btn = document.getElementById("brhubRescanRunBtn");
+      if (!box || !btn) return;
+      const rows = [];
+      if (d.state === "running") {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 재수집 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+        rows.push(`<div class="geo-stat-row"><b>재수집 체크포인트:</b> ${num(d.checkpoint_idx)} / ${num(d.end_idx)}</div>`);
+      } else if (d.state === "done") {
+        rows.push(`<div class="geo-stat-row"><b>마지막 재수집:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · 신규 발견 ${d.found == null ? "-" : num(d.found) + "건"}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>재수집 체크포인트:</b> ${num(d.checkpoint_idx)} / ${num(d.end_idx)}</div>`);
+      } else if (d.state === "failed") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>재수집 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 재수집이 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = d.state === "running";
+      btn.textContent = d.state === "running" ? "재수집 중…" : "과거 구간 재수집 실행";
+    }
+
+    async function loadBrhubRescanStatus() {
+      const box = document.getElementById("brhubRescanStatus");
+      if (!box) return;
+      try {
+        const res = await fetch("/api/admin/brhub-rescan-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "재수집 현황을 불러오지 못했습니다."; return; }
+        renderBrhubRescanStatus(d);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBrhubRescan() {
+      const btn = document.getElementById("brhubRescanRunBtn");
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/brhub-rescan-run", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) {
+          alert(d.message || "재수집 실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "과거 구간 재수집 실행";
+        } else {
+          loadBrhubRescanStatus();
+          setInterval(loadBrhubRescanStatus, 5000);
+        }
+      } catch (e) {
+        alert("네트워크 오류가 발생했습니다.");
+        btn.disabled = false;
+        btn.textContent = "과거 구간 재수집 실행";
+      }
+    }
+
+    // ---- 단지부동산(상가정보) 동기화 ----
+    let realtySyncTimer = null;
+    function stopRealtySyncPolling() {
+      if (realtySyncTimer) { clearInterval(realtySyncTimer); realtySyncTimer = null; }
+    }
+
+    function renderRealtySyncStatus(d) {
+      const box = document.getElementById("realtySyncStatus");
+      const btn = document.getElementById("realtySyncRunBtn");
+      if (!box || !btn) { stopRealtySyncPolling(); return; }
+      const pct = d.percent ?? 0;
+      const bar = `<div style="height:6px;background:#eee;border-radius:4px;margin:6px 0 2px;">
+        <div style="height:6px;background:var(--brass);border-radius:4px;width:${Math.min(pct,100)}%"></div></div>`;
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>확보 현황:</b> ${num(d.checked)}건 / 전체 ${num(d.total)}건 (${pct}%)${bar}</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전체 완료(재순회 시작)" : "일일 한도 도달 — 다음 실행 때 이어서";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 처리 ${d.processed == null ? "-" : num(d.processed) + "건"} · UPDATE ${d.updated == null ? "-" : num(d.updated) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음 (셸 직접 실행분은 DB에 반영됨)</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "상가정보 동기화 실행";
+      if (!d.running) stopRealtySyncPolling();
+    }
+
+    async function loadRealtySyncStatus() {
+      const box = document.getElementById("realtySyncStatus");
+      if (!box) { stopRealtySyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/realty-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderRealtySyncStatus(d);
+        if (d.running && !realtySyncTimer) realtySyncTimer = setInterval(loadRealtySyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runRealtySync() {
+      const btn = document.getElementById("realtySyncRunBtn");
+      const msg = document.getElementById("realtySyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/run-realty-sync", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "동기화를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "상가정보 동기화 실행";
+        }
+        loadRealtySyncStatus();
+        if (!realtySyncTimer) realtySyncTimer = setInterval(loadRealtySyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "상가정보 동기화 실행";
+      }
+    }
+
+    // ---- 상가정보 사전수집 ----
+    let storesSyncTimer = null;
+    function stopStoresSyncPolling() {
+      if (storesSyncTimer) { clearInterval(storesSyncTimer); storesSyncTimer = null; }
+    }
+
+    function renderStoresSyncStatus(d) {
+      const box = document.getElementById("storesSyncStatus");
+      const btn = document.getElementById("storesSyncRunBtn");
+      if (!box || !btn) { stopStoresSyncPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집 건물 수:</b> ${num(d.covered_buildings)} / ${num(d.total_buildings)}건 · 저장 업소 ${num(d.total_stored)}개</div>`);
+      rows.push(`<div class="geo-stat-row"><b>체크포인트 (마지막 처리 건물 id):</b> ${num(d.checkpoint_id)}</div>`);
+      // 분리 카운터: 배치/실시간 개별 표시
+      const bCap = d.batch_daily_cap || 6000;
+      const rCap = d.realtime_daily_cap || 4000;
+      const bToday = d.batch_calls_today != null ? d.batch_calls_today : d.calls_today;
+      const rToday = d.realtime_calls_today != null ? d.realtime_calls_today : "-";
+      const bColor = bToday >= bCap ? "color:#b3261e" : bToday >= bCap * 0.8 ? "color:#b45309" : "";
+      const rColor = (typeof rToday === "number" && rToday >= rCap) ? "color:#b3261e" : (typeof rToday === "number" && rToday >= rCap * 0.8) ? "color:#b45309" : "";
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출 — 배치:</b> <span style="${bColor}">${num(bToday)} / ${num(bCap)}건</span> &nbsp;|&nbsp; <b>실시간:</b> <span style="${rColor}">${num(rToday)} / ${num(rCap)}건</span></div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const reason = d.stop_reason === "all_done" ? "전체 완료" : d.stop_reason === "daily_cap" ? "일일 한도 도달 — 다음 실행 때 이어서" : (d.stop_reason || "완료");
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${reason}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 처리 ${d.processed == null ? "-" : num(d.processed) + "건"} · 저장 ${d.saved == null ? "-" : num(d.saved) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "상가정보 수집 실행";
+      if (!d.running) stopStoresSyncPolling();
+    }
+
+    async function loadStoresSyncStatus() {
+      const box = document.getElementById("storesSyncStatus");
+      if (!box) { stopStoresSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/stores-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderStoresSyncStatus(d);
+        if (d.running && !storesSyncTimer) storesSyncTimer = setInterval(loadStoresSyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runStoresSync() {
+      const btn = document.getElementById("storesSyncRunBtn");
+      const msg = document.getElementById("storesSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-stores", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "상가정보 수집을 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "상가정보 수집 실행";
+        }
+        loadStoresSyncStatus();
+        if (!storesSyncTimer) storesSyncTimer = setInterval(loadStoresSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "상가정보 수집 실행";
+      }
+    }
+
+    // ---- 미분류 건물 재분류 ----
+    let reclassifyTimer = null;
+    function stopReclassifyPolling() {
+      if (reclassifyTimer) { clearInterval(reclassifyTimer); reclassifyTimer = null; }
+    }
+
+    function renderReclassifyStatus(d) {
+      const box = document.getElementById("reclassifyStatus");
+      const btn = document.getElementById("reclassifyRunBtn");
+      if (!box || !btn) { stopReclassifyPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>현재 미분류 건수:</b> ${num(d.unclassified)}건 (판정 성공 누적 ${num(d.updated_total)}건)</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전체 완료" : "일일 한도 도달 — 다음 실행 때 이어서";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 처리 ${d.processed == null ? "-" : num(d.processed) + "건"} · 판정성공 ${d.updated == null ? "-" : num(d.updated) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "미분류 재분류 실행";
+      if (!d.running) stopReclassifyPolling();
+    }
+
+    async function loadReclassifyStatus() {
+      const box = document.getElementById("reclassifyStatus");
+      if (!box) { stopReclassifyPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/reclassify-unclassified-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderReclassifyStatus(d);
+        if (d.running && !reclassifyTimer) reclassifyTimer = setInterval(loadReclassifyStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runReclassify() {
+      const btn = document.getElementById("reclassifyRunBtn");
+      const msg = document.getElementById("reclassifyMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/run-reclassify-unclassified", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "미분류 재분류를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "미분류 재분류 실행";
+        }
+        loadReclassifyStatus();
+        if (!reclassifyTimer) reclassifyTimer = setInterval(loadReclassifyStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "미분류 재분류 실행";
+      }
+    }
+
+    // ---- 준공전 건물수집(인허가) ----
+    let permitsSyncTimer = null;
+    function stopPermitsSyncPolling() {
+      if (permitsSyncTimer) { clearInterval(permitsSyncTimer); permitsSyncTimer = null; }
+    }
+
+    function renderPermitsSyncStatus(d) {
+      const box = document.getElementById("permitsSyncStatus");
+      const btn = document.getElementById("permitsSyncRunBtn");
+      if (!box || !btn) { stopPermitsSyncPolling(); return; }
+      const st = d.by_status || {};
+      const statusParts = Object.keys(st).map((k) => `${dgEscape(k)} ${num(st[k] || 0)}`);
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집된 준공전 건물:</b> 총 ${num(d.permits_total)}건${statusParts.length ? " (" + statusParts.join(" · ") + ")" : ""}</div>`);
+      rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 법정동 ${num(d.checkpoint_idx)} / ${num(d.total_dongs)}곳${d.checkpoint_idx >= d.total_dongs ? " — 전국 완료" : " — 미완(다음 실행 때 이어서 수집)"}</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
+      if (d.db_reconnect_events && d.db_reconnect_events.length) {
+        rows.push(`<div class="geo-stat-row" style="color:#8a6d00"><b>DB 재접속 대기 발생:</b> ${d.db_reconnect_events.length}회 (마지막: ${dgEscape(d.db_reconnect_events[d.db_reconnect_events.length - 1].at)})</div>`);
+      }
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전국 수집 완료" : "일일 한도로 일시 중단(다음 실행 때 이어서)";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행:</b> 법정동 ${d.processed == null ? "-" : num(d.processed) + "곳"} 처리 · 신규 발견 ${d.found == null ? "-" : num(d.found) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+        rows.push(`<div class="geo-stat-row">체크포인트가 저장되어 있어 다시 실행하면 이어서 수집합니다.</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 버튼으로 실행된 적 없음 (셸 실행분은 체크포인트에 반영됨)</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "준공전 건물수집 실행";
+      if (!d.running) stopPermitsSyncPolling();
+    }
+
+    async function loadPermitsSyncStatus() {
+      const box = document.getElementById("permitsSyncStatus");
+      if (!box) { stopPermitsSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/permits-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderPermitsSyncStatus(d);
+        if (d.running && !permitsSyncTimer) permitsSyncTimer = setInterval(loadPermitsSyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runPermitsSync() {
+      const btn = document.getElementById("permitsSyncRunBtn");
+      const msg = document.getElementById("permitsSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-permits", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "준공전 건물수집을 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다. 잠시 후 다시 시도해 주세요." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "준공전 건물수집 실행";
+        }
+        loadPermitsSyncStatus();
+        if (!permitsSyncTimer) permitsSyncTimer = setInterval(loadPermitsSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "준공전 건물수집 실행";
+      }
+    }
+
+    // ---- 준공전 건물 정리(오염·완공 건물 삭제) ----
+    async function runPermitsCleanup(dryRun) {
+      const msg     = document.getElementById("permitsCleanupMsg");
+      const dryBtn  = document.getElementById("permitsCleanupDryBtn");
+      const execBtn = document.getElementById("permitsCleanupExecBtn");
+      msg.textContent = "";
+      dryBtn.disabled = execBtn.disabled = true;
+      msg.style.color = "#555";
+      msg.textContent = dryRun ? "대상 건수 계산 중…" : "삭제 실행 중…";
+      try {
+        const res = await fetch("/api/admin/permits-cleanup", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ dry_run: dryRun }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = dryRun ? "#1a5fa8" : "#1a7f37";
+          msg.textContent = d.message;
+          if (!dryRun) { loadPendingCompletion(); loadPermitsSyncStatus(); }
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "오류가 발생했습니다.";
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      } finally {
+        dryBtn.disabled = execBtn.disabled = false;
+      }
+    }
+
+    // ---- 실거래 동기화 ----
+    // 배포된 앱(=운영 DB)에서 sync_batch.py --master-only 를 백그라운드로 실행.
+    // 시작 후에는 몇 초 간격 폴링으로 진행상황(신규 적재 건수)을 자동 갱신한다.
+    let txSyncTimer = null;
+
+    function stopTxSyncPolling() {
+      if (txSyncTimer) { clearInterval(txSyncTimer); txSyncTimer = null; }
+    }
+
+    function renderTxSyncStatus(d) {
+      const box = document.getElementById("txSyncStatus");
+      const btn = document.getElementById("txSyncRunBtn");
+      if (!box || !btn) { stopTxSyncPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 최근 계약일 ${d.max_deal_date ? dgEscape(d.max_deal_date) : "-"}</div>`);
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행 신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"} (실시간)</div>`);
+      } else if (d.state === "done") {
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · 완료</div>`);
+        rows.push(`<div class="geo-stat-row"><b>신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+        if (d.started_at) rows.push(`<div class="geo-stat-row">시작 ${dgEscape(d.started_at)}${d.finished_at ? " ~ " + dgEscape(d.finished_at) : ""}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "실거래 동기화 실행";
+      if (!d.running) stopTxSyncPolling();
+    }
+
+    async function loadTxSyncStatus() {
+      const box = document.getElementById("txSyncStatus");
+      if (!box) { stopTxSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderTxSyncStatus(d);
+        if (d.running && !txSyncTimer) {
+          txSyncTimer = setInterval(loadTxSyncStatus, 5000);
+        }
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runTxSync() {
+      const btn = document.getElementById("txSyncRunBtn");
+      const msg = document.getElementById("txSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-transactions", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "동기화를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "실행 횟수 제한(시간당 2회)을 초과했습니다. 잠시 후 다시 시도해 주세요." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "실거래 동기화 실행";
+        }
+        loadTxSyncStatus();
+        if (!txSyncTimer) txSyncTimer = setInterval(loadTxSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "실거래 동기화 실행";
+      }
+    }
+
+    // ---- 과거 데이터 백필 ----
+    let backfillTimer = null;
+
+    function stopBackfillPolling() {
+      if (backfillTimer) { clearInterval(backfillTimer); backfillTimer = null; }
+    }
+
+    function renderBackfillStatus(d) {
+      const box = document.getElementById("backfillStatus");
+      const btn = document.getElementById("backfillRunBtn");
+      if (!box || !btn) { stopBackfillPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 가장 오래된 계약일 ${d.min_deal_date ? dgEscape(d.min_deal_date) : "-"}</div>`);
+      if (d.sgg_total) {
+        const done = d.sgg_done || 0;
+        const pct = Math.round(done / d.sgg_total * 100);
+        const barFill = `<span style="display:block;width:${pct}%;height:100%;background:var(--moss,#4a7a18);border-radius:3px;"></span>`;
+        const bar = `<span style="display:inline-block;width:80px;height:8px;background:#dde2e8;border-radius:3px;vertical-align:middle;margin:0 6px;">${barFill}</span>`;
+        rows.push(`<div class="geo-stat-row"><b>완료 시군구:</b> ${done} / ${d.sgg_total}개 ${bar}${pct}% ${done === 0 ? '<span style="color:var(--ink-soft);font-size:11px;">(백필 미실행 또는 체크포인트 없음)</span>' : ''}</div>`);
+      }
+      if (d.api_calls_limit) {
+        const used = d.api_calls_today || 0;
+        const atCap = used >= d.api_calls_limit;
+        rows.push(`<div class="geo-stat-row"${atCap ? ' style="color:#b3261e"' : ""}><b>오늘 백필 API 사용량:</b> ${num(used)} / ${num(d.api_calls_limit)}건 (전용 예산, 정기동기화와 분리)${atCap ? " · 일일 한도 도달 (내일 자동 재개)" : ""}</div>`);
+      }
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 백필 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")}${d.months ? " · " + num(d.months) + "개월치" : ""})</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행 신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"} (실시간)</div>`);
+      } else if (d.state === "done") {
+        rows.push(`<div class="geo-stat-row"><b>마지막 백필:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · 완료${d.months ? " (" + num(d.months) + "개월치)" : ""}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 백필 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+        if (d.started_at) rows.push(`<div class="geo-stat-row">시작 ${dgEscape(d.started_at)}${d.finished_at ? " ~ " + dgEscape(d.finished_at) : ""}</div>`);
+        rows.push(`<div class="geo-stat-row">실패해도 데이터가 중복되지 않으므로 바로 다시 실행할 수 있습니다.</div>`);
+        if (d.has_log) {
+          rows.push(`<div class="geo-stat-row"><button type="button" id="backfillLogBtn" class="admin-btn" style="font-size:12px; padding:4px 10px;">실패 로그 보기 (마지막 50줄)</button></div>`);
+          rows.push(`<pre id="backfillLogPre" style="display:none; max-height:300px; overflow:auto; background:#1d232b; color:#d7dee7; font-size:11.5px; line-height:1.5; padding:10px 12px; border-radius:8px; white-space:pre-wrap; word-break:break-all;"></pre>`);
+        }
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      const logBtn = document.getElementById("backfillLogBtn");
+      if (logBtn) logBtn.addEventListener("click", async () => {
+        const pre = document.getElementById("backfillLogPre");
+        if (pre.style.display !== "none") { pre.style.display = "none"; logBtn.textContent = "실패 로그 보기 (마지막 50줄)"; return; }
+        logBtn.disabled = true;
+        try {
+          const res = await fetch("/api/admin/backfill-log");
+          const ld = await res.json().catch(() => ({}));
+          pre.textContent = (res.ok && ld.ok)
+            ? `# ${ld.log_file} (전체 ${num(ld.total_lines)}줄 중 마지막 부분)\n` + (ld.tail || "(비어 있음)")
+            : (ld.message || "로그를 불러오지 못했습니다.");
+        } catch (e) { pre.textContent = "네트워크 오류가 발생했습니다."; }
+        pre.style.display = "block";
+        logBtn.textContent = "로그 접기";
+        logBtn.disabled = false;
+      });
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "백필 실행 중…" : "과거 데이터 백필 실행";
+      if (!d.running) stopBackfillPolling();
+    }
+
+    async function loadBackfillStatus() {
+      const box = document.getElementById("backfillStatus");
+      if (!box) { stopBackfillPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/backfill-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderBackfillStatus(d);
+        if (d.running && !backfillTimer) {
+          backfillTimer = setInterval(loadBackfillStatus, 5000);
+        }
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBackfill() {
+      if (!confirm("2020년 1월부터 현재까지 전체 기간을 다시 수집합니다.\n국토부 API 사용량이 많아 성공 완료 후에는 24시간 동안 재실행할 수 없습니다.\n(실패한 경우에는 당일 바로 재시도할 수 있습니다.) 진행할까요?")) return;
+      const btn = document.getElementById("backfillRunBtn");
+      const msg = document.getElementById("backfillMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-backfill", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = d.message || "백필을 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || (res.status === 429 ? "성공 완료 후 24시간이 지나지 않았거나 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요." : "실행에 실패했습니다.");
+          btn.disabled = false;
+          btn.textContent = "과거 데이터 백필 실행";
+        }
+        loadBackfillStatus();
+        if (!backfillTimer) backfillTimer = setInterval(loadBackfillStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "과거 데이터 백필 실행";
+      }
+    }
+
+    // ---- 데이터 동기화 통합 페이지 ----
+    let scheduledSyncTimer = null;
+    const scheduledSyncStartingStages = new Set();
+
+    function stopScheduledSyncPolling() {
+      if (scheduledSyncTimer) {
+        clearInterval(scheduledSyncTimer);
+        scheduledSyncTimer = null;
+      }
+    }
+
+    function scheduledStageState(state) {
+      return {
+        pending: ["대기 중", "#64748b"],
+        running: ["⏳ 실행 중", "#2563eb"],
+        done: ["✅ 완료", "#15803d"],
+        failed: ["❌ 실패", "#b3261e"],
+        deferred: ["대기 중", "#b45309"],
+        skipped: ["대기 중", "#64748b"],
+        not_selected: ["대기 중", "#64748b"],
+      }[state] || ["대기 중", "#64748b"];
+    }
+
+    function renderQuotaBars(stages) {
+      const providers = [];
+      const seen = new Set();
+      (stages || []).forEach((stage) => {
+        (stage.quotas || (stage.quota ? [stage.quota] : [])).forEach((q) => {
+          if (seen.has(q.provider)) return;
+          seen.add(q.provider);
+          providers.push(q);
+        });
+      });
+      if (!providers.length) {
+        return `<div style="font-size:11px;color:var(--ink-soft)">확인된 API 한도 정보가 없습니다.</div>`;
+      }
+      return providers.map((p) => {
+        const used = Number(p.used || 0);
+        const total = p.total_limit == null ? null : Number(p.total_limit);
+        const pct = total ? Math.min(100, Math.round(used / total * 100)) : 0;
+        const color = pct >= 80 ? "#C85A36" : pct >= 60 ? "#E8A000" : "var(--brass)";
+        return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="width:150px;font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ${dgEscape(p.label || p.provider)}
+            </div>
+            <div style="flex:1;background:#e0e0e0;border-radius:4px;height:6px;">
+              <div style="width:${pct}%;background:${color};height:6px;border-radius:4px;transition:width .4s"></div>
+            </div>
+            <div style="font-size:11px;font-weight:600;color:${color};white-space:nowrap;min-width:145px;text-align:right">
+              ${num(used)} / ${total == null ? "?" : num(total)}회 · 잔여 ${total == null ? "?" : num(Math.max(0, total - used))}회
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    function renderCollectionProgress(stage, visuallyRunning) {
+      if (stage.target == null) return "";
+      const target = Number(stage.target || 0);
+      const current = Number(stage.progress || 0);
+      const pct = target > 0 ? Math.min(100, Math.round(current / target * 100)) : 0;
+      const color = visuallyRunning ? "#2563eb" : "var(--brass)";
+      return `
+        <div style="margin:6px 0 2px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-bottom:3px;">
+            <span>${visuallyRunning ? "⏳ " : ""}목표치 ${num(target)}건 · 수집건 ${num(current)}건</span>
+            <b style="color:${color}">${pct}%</b>
+          </div>
+          <div style="background:#e6e1d8;border-radius:4px;height:6px;">
+            <div style="width:${pct}%;background:${color};height:6px;border-radius:4px;transition:width .4s"></div>
+          </div>
+        </div>`;
+    }
+
+    async function runScheduledStage(stage, button) {
+      const msg = document.getElementById("scheduledSyncMsg");
+      scheduledSyncStartingStages.add(stage);
+      button.disabled = true;
+      button.textContent = "⏳ 시작 중";
+      const row = button.closest(".scheduled-stage-row");
+      const stateEl = row && row.querySelector(".scheduled-stage-state");
+      if (stateEl) {
+        stateEl.style.color = "#2563eb";
+        stateEl.textContent = "⏳ 실행 요청 중";
+      }
+      if (msg) msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/scheduled-sync/run", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "단계 시작 실패");
+        if (msg) {
+          msg.style.color = "#15803d";
+          msg.textContent = data.message;
+        }
+        await loadScheduledSyncStatus();
+        if (!scheduledSyncTimer) {
+          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 5000);
+        }
+      } catch (error) {
+        scheduledSyncStartingStages.delete(stage);
+        if (msg) {
+          msg.style.color = "#b3261e";
+          msg.textContent = error.message || "단계를 시작하지 못했습니다.";
+        }
+        button.disabled = false;
+        button.textContent = "지금 수집";
+        if (stateEl) {
+          stateEl.style.color = "#b3261e";
+          stateEl.textContent = "실행 실패";
+        }
+      }
+    }
+
+    function renderScheduledSyncStatus(data) {
+      const summary = document.getElementById("scheduledSyncSummary");
+      const stageBox = document.getElementById("scheduledSyncStages");
+      const retryBtn = document.getElementById("scheduledSyncRetryBtn");
+      const runAllBtn = document.getElementById("scheduledSyncRunAllBtn");
+      const msg = document.getElementById("scheduledSyncMsg");
+      if (!summary || !stageBox || !retryBtn || !runAllBtn) {
+        stopScheduledSyncPolling();
+        return;
+      }
+
+      if (!data.running) scheduledSyncStartingStages.clear();
+      const runningLabels = (data.stages || [])
+        .filter((stage) => stage.running)
+        .map((stage) => stage.label);
+      let headline = data.schedule_observation === "scheduled-deployment-not-observed"
+        ? "예약 실행이 아직 관측되지 않았습니다."
+        : "아직 자동 동기화 실행 기록이 없습니다.";
+      let headlineColor = "var(--ink-soft)";
+      if (data.running) {
+        const runKind = data.source === "manual" ? "수동 동기화" : "자동 동기화";
+        headline = `⏳ ${runKind} 실행 중${runningLabels.length ? ` · ${runningLabels.join(", ")}` : ""}`;
+        headlineColor = "#2563eb";
+      } else if (data.state === "done") {
+        headline = `마지막 자동 동기화 완료 · ${data.finished_at || "-"}`;
+        headlineColor = "#15803d";
+      } else if (data.state === "failed" || data.state === "stale") {
+        headline = `자동 동기화 점검 필요 · ${data.error || "실패 원인을 확인해 주세요."}`;
+        headlineColor = "#b3261e";
+      } else if (data.state === "partial") {
+        headline = `일부 단계가 다음 실행을 기다립니다 · ${data.error || ""}`;
+        headlineColor = "#b45309";
+      }
+      summary.innerHTML = `
+        <div style="font-weight:750;color:${headlineColor}">${dgEscape(headline)}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:4px">
+          실행 일정 ${dgEscape(data.schedule || "실거래 02:00 · 농어촌민박/한옥 02:10 · 나머지 02:30")}
+          · 마지막 전체 성공 ${dgEscape(data.last_success_at || "-")}
+          · 상태 갱신 ${dgEscape(data.status_updated_at || "-")}
+        </div>`;
+
+      const quotaSummary = document.getElementById("quotaBars");
+      if (quotaSummary) quotaSummary.innerHTML = renderQuotaBars(data.stages);
+      const groups = [];
+      (data.stages || []).forEach((stage) => {
+        let group = groups.find((item) => item.name === stage.group);
+        if (!group) {
+          group = { name: stage.group, stages: [] };
+          groups.push(group);
+        }
+        group.stages.push(stage);
+      });
+      stageBox.innerHTML = groups.map((group) => `
+        <div style="border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin:10px 0 12px">
+          <div style="font-size:12px;font-weight:750;color:var(--ink);margin-bottom:8px">
+            ${group.name === "건물·허가" ? "🏗 건축HUB 공유 그룹" : group.name === "숙박" ? "🏨 숙박업 그룹" : dgEscape(group.name)}
+            ${group.name === "건물·허가" ? `<span style="font-size:10px;font-weight:400;color:var(--ink-soft)"> (건축물대장·인허가·건축정보 공유 자원 · 순서 실행)</span>` : ""}
+            ${group.name === "숙박" ? `<span style="font-size:10px;font-weight:400;color:var(--ink-soft)"> (일반·캠핑 공유, 농어촌·한옥 각 정기 4,000회 배정)</span>` : ""}
+          </div>
+          ${group.stages.map((stage) => {
+            const visuallyRunning = stage.running
+              || stage.state === "running"
+              || scheduledSyncStartingStages.has(stage.key);
+            const waitingForAnother = stage.conflict_running || stage.state === "deferred";
+            const state = scheduledStageState(visuallyRunning ? "running" : waitingForAnother ? "deferred" : stage.state);
+            const delta = stage.changed == null
+              ? ""
+              : ` · ${dgEscape(stage.metric_label || "데이터")} ${stage.changed >= 0 ? "+" : ""}${num(stage.changed)}건`;
+            const progressCount = stage.target != null
+              ? renderCollectionProgress(stage, visuallyRunning)
+              : (visuallyRunning && stage.current != null
+                ? `<div style="font-size:12px;color:#2563eb;margin-top:3px">
+                     ⏳ 현재 ${dgEscape(stage.metric_label || "데이터")} ${num(stage.current)}건
+                     · 이번 실행 ${stage.changed >= 0 ? "+" : ""}${num(stage.changed || 0)}건
+                   </div>`
+                : "");
+            const progressMessage = visuallyRunning && stage.progress_message
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(stage.progress_message)}</div>`
+              : "";
+            const ignoredErrors = ["선택 실행 대상이 아님", "독립 예약 워크플로에서 실행"];
+            const errorLines = [
+              ...(stage.output_tail || []).filter((line) => /실패|오류|Error|timeout|Timeout|deadlock/i.test(line)),
+              stage.last_error,
+              stage.error,
+            ].filter((line) => line && !ignoredErrors.includes(line)).slice(-3);
+            const error = errorLines.length
+              ? `<details style="margin-top:4px"><summary style="font-size:11px;color:#C85A36;cursor:pointer">최근 오류 ${errorLines.length}건 ▾</summary><div style="font-size:10.5px;color:#C85A36;margin-top:4px;background:#fff8f8;padding:6px;border-radius:4px;max-height:80px;overflow:auto">${errorLines.map((line) => `<div>${dgEscape(line)}</div>`).join("")}</div></details>`
+              : "";
+            const quota = stage.quota
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape((stage.quotas || [stage.quota]).map((q) => q.label).join(" · "))}</div>`
+              : "";
+            const isRuralHanok = stage.key === "rural" || stage.key === "hanok";
+            const apiLabel = isRuralHanok
+              ? ` <span style="font-size:10px;color:#C85A36;font-weight:600">※ API 경로 확인 필요</span>`
+              : "";
+            const ruralHanokNotice = isRuralHanok
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:4px;background:#fff8f8;padding:6px 8px;border-radius:4px;border-left:3px solid #C85A36">
+                   현재 API 엔드포인트가 응답하지 않습니다. data.go.kr에서 올바른 서비스 경로 확인 후 수정이 필요합니다.
+                   임시 방법: localdata.go.kr CSV 다운로드 후 "보완수집 실행" 버튼으로 임포트할 수 있습니다.
+                 </div>`
+              : "";
+            const last = stage.last_success_at
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at)}</div>` : "";
+            const waitingNote = !visuallyRunning && data.running && (waitingForAnother || stage.state === "pending")
+              ? `<div style="font-size:10.5px;color:#64748b;margin-top:2px">앞 수집 완료 후 자동 시작</div>`
+              : "";
+            return `<div class="scheduled-stage-row">
+              <div><b>${dgEscape(stage.label)}</b>${apiLabel}${quota}${progressCount}<div style="font-size:10px;color:var(--ink-faint);margin-top:2px">${dgEscape(stage.target_label || stage.metric_label || "수집 대상")}</div>${ruralHanokNotice}${progressMessage}${last}${error}</div>
+              <div class="scheduled-stage-cadence">${dgEscape(stage.cadence)}</div>
+              <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}${waitingNote}</div>
+              <button class="admin-btn scheduled-stage-button" ${visuallyRunning || (data.running_buckets || []).includes(stage.quota_bucket) || stage.manual_allowed === false ? "disabled" : ""} title="${waitingForAnother ? "앞 수집이 끝나면 다시 실행할 수 있습니다." : ""}" onclick="runScheduledStage('${stage.key}', this)">${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}</button>
+            </div>`;
+          }).join("")}
+        </div>`).join("");
+      retryBtn.style.display = data.retryable && !data.running ? "" : "none";
+      retryBtn.disabled = false;
+      retryBtn.textContent = "실패·중단 단계 재시도";
+      runAllBtn.disabled = !!data.running;
+      runAllBtn.textContent = data.running ? "⏳ 전체 수집 진행 중" : "전체 수집 시작";
+      if (!data.running) stopScheduledSyncPolling();
+      if (msg && data.running) msg.textContent = "";
+    }
+
+    async function loadScheduledSyncStatus() {
+      const summary = document.getElementById("scheduledSyncSummary");
+      if (!summary) {
+        stopScheduledSyncPolling();
+        return;
+      }
+      try {
+        const res = await fetch("/api/admin/scheduled-sync-status");
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "상태 조회 실패");
+        renderScheduledSyncStatus(data);
+        if (data.running && !scheduledSyncTimer) {
+          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 10000);
+        }
+      } catch (error) {
+        summary.textContent = "정기 자동 동기화 현황을 불러오지 못했습니다.";
+      }
+    }
+
+    async function retryScheduledSync() {
+      const btn = document.getElementById("scheduledSyncRetryBtn");
+      const msg = document.getElementById("scheduledSyncMsg");
+      btn.disabled = true;
+      btn.textContent = "재시도 시작 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/scheduled-sync/retry", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "재시도 시작 실패");
+        msg.style.color = "#15803d";
+        msg.textContent = data.message;
+        setTimeout(loadScheduledSyncStatus, 1200);
+        if (!scheduledSyncTimer) {
+          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 10000);
+        }
+      } catch (error) {
+        msg.style.color = "#b3261e";
+        msg.textContent = error.message || "재시도를 시작하지 못했습니다.";
+        btn.disabled = false;
+        btn.textContent = "실패·중단 단계 재시도";
+      }
+    }
+
+    async function runAllScheduledSync() {
+      const btn = document.getElementById("scheduledSyncRunAllBtn");
+      const msg = document.getElementById("scheduledSyncMsg");
+      btn.disabled = true;
+      btn.textContent = "⏳ 시작 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/scheduled-sync/run-all", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "전체 수집 시작 실패");
+        msg.style.color = "#15803d";
+        msg.textContent = data.message;
+        setTimeout(loadScheduledSyncStatus, 500);
+        if (!scheduledSyncTimer) {
+          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 5000);
+        }
+      } catch (error) {
+        msg.style.color = "#b3261e";
+        msg.textContent = error.message || "전체 수집을 시작하지 못했습니다.";
+        btn.disabled = false;
+        btn.textContent = "전체 수집 시작";
+      }
+    }
+
+    async function loadPendingCompletion() {
+      const statusBox = document.getElementById("pendingCompletionStatus");
+      const listBox = document.getElementById("pendingCompletionList");
+      if (!statusBox || !listBox) return;
+      try {
+        const res = await fetch("/api/admin/pending-completion");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        if (!data.count) {
+          statusBox.textContent = "표제부 확인 대기 중인 건물이 없습니다";
+          listBox.innerHTML = "";
+          return;
+        }
+        statusBox.textContent = `표제부 확인 대기 중인 건물 ${data.count.toLocaleString("ko-KR")}건`;
+        const esc = (v) => String(v == null ? "-" : v)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const rows = data.buildings.map((b) => `
+          <tr>
+            <td>${esc(b.building_name)}</td>
+            <td>${esc(b.road_address)}</td>
+            <td>${esc(b.building_status)}</td>
+            <td>${esc(b.completion_expected_date)}</td>
+            <td><button class="admin-btn admin-btn-primary pc-complete-btn" data-id="${b.id}">완공으로 전환</button></td>
+          </tr>`).join("");
+        listBox.innerHTML = `
+          <table class="admin-table" style="width:100%">
+            <thead><tr><th>건물명</th><th>주소</th><th>건물상태</th><th>완공추정일</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+        listBox.querySelectorAll(".pc-complete-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            if (!confirm("이 건물을 '완공' 상태로 전환할까요? (분양권 건수는 매매로 자동 합산됩니다)")) return;
+            btn.disabled = true;
+            try {
+              const r = await fetch(`/api/admin/buildings/${btn.dataset.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ building_status: "완공" }),
+              });
+              const d = await r.json().catch(() => ({}));
+              if (!r.ok || d.ok === false) throw new Error(d.message || "HTTP " + r.status);
+              loadPendingCompletion();
+            } catch (e) {
+              alert("전환 실패: " + e.message);
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (e) {
+        statusBox.textContent = "목록을 불러오지 못했습니다: " + e.message;
+      }
+    }
+
+    function showDataSync() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">데이터 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            정기 API는 Replit <b>Scheduled Deployment</b>가 매일 하나의 통합 배치를 실행할 때 갱신됩니다.
+            워크스페이스 워크플로의 일정만으로는 무인 실행이 보장되지 않습니다.
+            평소에는 아래 단계별 성공·실패만 확인하면 됩니다. 개별 버튼은 최초 적재나
+            실패 복구가 필요할 때만 <b>수동 보완·재처리 도구</b>에서 사용하세요.
+          </p>
+          <div id="dsBanner" role="alert"
+               style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:14px;line-height:1.6"></div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecScheduled">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">정기 자동 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            실거래·건축물·인허가·숙박·농어촌민박·한옥체험업·중개·상가 API를
+            Scheduled Deployment에서 매일 새벽 2시에 순서대로 갱신합니다. 건축물대장과 건축인허가는 같은 일일 한도를
+            보호하기 위해 요일을 나눠 실행합니다.
+          </p>
+          <p class="legal-admin-hint" style="margin-top:6px">
+            <b>에어비앤비:</b> 현재 공식 정기 API가 없어 외국인관광도시민박업 파일 수입 자료를 사용합니다.
+            API 수집 단계와 혼동하지 않도록 별도로 표시하며, 제주처럼 원본이 빠진 지역은 별도 데이터원 확보가 필요합니다.
+          </p>
+           <div id="quotaSummary" style="position:sticky;top:8px;z-index:2;background:#f8f5ef;border:1px solid var(--brass-tint,#E8D9BB);border-radius:8px;padding:12px 16px;margin:12px 0 16px;box-shadow:0 2px 8px rgba(34,27,18,.06)">
+             <div style="font-size:12px;font-weight:700;color:var(--brass-dark);margin-bottom:8px;">📊 오늘 API 한도 현황</div>
+             <div id="quotaBars"><span style="font-size:11px;color:var(--ink-soft)">현황 불러오는 중…</span></div>
+           </div>
+          <div id="scheduledSyncSummary" class="geo-status">현황 불러오는 중…</div>
+          <div id="scheduledSyncStages" style="margin-top:8px"></div>
+          <div class="legal-admin-actions">
+            <span id="scheduledSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="scheduledSyncRunAllBtn" class="admin-btn admin-btn-primary">
+              전체 수집 시작
+            </button>
+            <button id="scheduledSyncRetryBtn" class="admin-btn admin-btn-primary" style="display:none">
+              실패·중단 단계 재시도
+            </button>
+          </div>
+        </div>
+        <details id="manualSyncDetails" style="margin-top:16px">
+          <summary class="legal-admin" style="cursor:pointer;font-weight:750;color:var(--ink);">
+            수동 보완·재처리 도구 열기
+            <span style="display:block;font-size:12px;font-weight:400;color:var(--ink-soft);margin-top:4px">
+              최초 대량 적재, 누락 보완, 실패 복구가 필요할 때만 사용
+            </span>
+          </summary>
+          <div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBrhub">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">① 건물수집 (전국)</h2>
+          </div>
+          <p class="legal-admin-hint">
+            홈앤스테이 <b>전국 건축정보 데이터</b>를 법정동 20,276곳 기준으로 전수 확인해
+            생활숙박시설·분양형호텔·콘도 건물을 새로 발견합니다. 일일 한도(캡 8,000호출)에 도달하면
+            체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다. (실행 제한: 시간당 2회)
+          </p>
+          <div id="brhubSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="brhubSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="brhubSyncRunBtn" class="admin-btn admin-btn-primary">건물수집 실행</button>
+          </div>
+          <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">
+              일반건축물(모텔·여관 등) 수집 범위를 넓히기 전, 이미 지나간 구간에서
+              놓쳤을 수 있는 건물을 별도로 다시 훑습니다(메인 진행상태에는 영향 없음).
+            </div>
+            <div id="brhubRescanStatus" class="geo-status">현황 불러오는 중…</div>
+            <button id="brhubRescanRunBtn" class="admin-btn" style="margin-top:8px;">과거 구간 재수집 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBackfillLodging">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">① - 보완 영업신고 누락건물 등록</h2>
+          </div>
+          <p class="legal-admin-hint">
+            실거래가 없어 누락된 건물을 <b>영업신고(숙박업 허가) 데이터</b> 기반으로 발굴해
+            master_buildings에 등록합니다. 이미 등록된 건물은 자동으로 건너뜁니다.<br>
+            <b>전국 약 27,000건</b> 대상 · 일일 건축HUB 한도 도달 시 다음날 이어서 실행.
+            건축HUB 판정 실패 시 건물명 키워드·영업신고 업종 기준으로 10개 용도로 자동 분류합니다.<br>
+            <span style="font-size:11px;color:var(--ink-soft);">
+              생숙 / 관광 / 일반 / 에어비앤비 / 농어촌민박 / 캠핑 / 한옥 / 복합 / 준공전 / 미분류
+            </span>
+          </p>
+          <div id="backfillLodgingStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="backfillLodgingMsg" class="legal-msg" role="alert"></span>
+            <button id="backfillLodgingRunBtn" class="admin-btn admin-btn-primary">
+              보완수집 실행
+            </button>
+          </div>
+          <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">
+              lodging_type이 '기타'인 건물을 아래 기준으로 10개 용도로 재분류합니다.<br>
+              <span style="font-size:11px;color:var(--ink-soft);">
+                생숙: 레지던스·스테이·서비스드 &nbsp;|&nbsp;
+                관광: 관광호텔·리조트·콘도 &nbsp;|&nbsp;
+                일반: 여관·여인숙·모텔·펜션·게스트하우스<br>
+                농어촌민박: 농어촌민박·농가민박 &nbsp;|&nbsp;
+                캠핑: 캠핑·야영·글램핑·카라반·차박 &nbsp;|&nbsp;
+                한옥: 한옥·한옥스테이
+              </span>
+            </div>
+            <button id="reclassifyKeywordBtn" class="admin-btn" style="margin-top:4px;">
+              기타 → 키워드 재분류 실행
+            </button>
+            <span id="reclassifyKeywordMsg" class="legal-msg" style="margin-left:10px;"></span>
+            <div id="reclassifyKeywordProgress" aria-live="polite"
+                 style="font-size:12px;color:var(--ink-soft);margin-top:8px;"></div>
+          </div>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">
+            <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">
+              영업신고 업종(hygiene_type) 기준으로 이미 매핑된 건물의 용도를 소급 업데이트합니다.
+              에어비앤비·농어촌민박·캠핑·한옥 등이 0건일 때 실행하세요.
+            </div>
+            <button id="reclassifyHygieneBtn" class="admin-btn"
+                    style="margin-top:4px;">
+              영업신고 기준 소급 재분류
+            </button>
+            <span id="reclassifyHygieneMsg" class="legal-msg"
+                  style="margin-left:10px;"></span>
+            <div id="reclassifyHygieneProgress" aria-live="polite"
+                 style="font-size:12px;color:var(--ink-soft);margin-top:8px;"></div>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecGeo">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">② 지도 좌표 채우기</h2>
+          </div>
+          <p class="legal-admin-hint">
+            <b>카카오맵 주소검색 API</b>로 좌표가 없는(lat/lng 미확보) 건물만 실시간
+            지오코딩합니다. 이미 좌표가 있는 건물은 건드리지 않으므로 여러 번 눌러도 안전합니다.
+            백그라운드로 실행되며 완료 후 메인 지도에 즉시 반영됩니다.
+          </p>
+          <div id="geoStatus" class="geo-status"></div>
+          <div class="legal-admin-actions">
+            <span id="geoMsg" class="legal-msg" role="alert"></span>
+            <button id="geoRunBtn" class="admin-btn admin-btn-primary">좌표 채우기 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecTitle">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">③ 건축정보 채우기</h2>
+          </div>
+          <p class="legal-admin-hint">
+            홈앤스테이 <b>건축정보 확인 시스템</b>으로 사용승인일·층수·면적 등이 아직 없는
+            건물만 실시간 조회해 채웁니다. 이미 채워진 건물은 건드리지 않으므로 여러 번 눌러도
+            안전합니다. 백그라운드로 실행되며 완료 후 건물 상세 화면에 즉시 반영됩니다.
+          </p>
+          <div id="titleInfoStatus" class="geo-status"></div>
+          <div class="legal-admin-actions">
+            <span id="titleInfoMsg" class="legal-msg" role="alert"></span>
+            <button id="titleInfoRunBtn" class="admin-btn admin-btn-primary">건축정보 채우기 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecZip">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">③-① 우편번호 자동채움</h2>
+          </div>
+          <p class="legal-admin-hint">
+            JUSO API로 도로명주소가 있는 건물의 우편번호를 채웁니다.
+            매일 자동 실행(300건/일)되므로 별도 조작이 필요 없습니다. 며칠에 걸쳐 서서히 완료됩니다.
+          </p>
+          <div id="zipBackfillProgress" style="font-size:13px;color:var(--ink-soft);padding:4px 0;min-height:20px;">불러오는 중…</div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecTx">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">④ 실거래 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            홈앤스테이 실거래 데이터를 이 앱이 연결된 DB(<b>배포된 사이트에서 누르면 운영 DB</b>)에
+            바로 수집합니다. 백그라운드로 실행되며 수 분~수십 분 걸릴 수 있습니다.
+            이미 있는 거래는 건너뛰므로 여러 번 눌러도 데이터가 중복되지 않습니다.
+            (실행 제한: 시간당 2회 — 국토부 API 사용량 보호)
+          </p>
+          <p class="legal-admin-hint" style="background:#f4f1ea; border-left:3px solid var(--brass); padding:8px 12px; margin-top:4px;">
+            <b>📌 수집 범위 참고 (RTMS 구조적 한계)</b><br>
+            사용 API(<code>RTMSDataSvcNrgTrade</code>)는 <b>집합건물(구분소유) 상업업무용 매매</b>만
+            대상입니다. <b>통소유 모텔·여관</b>은 이 API로 구조적으로 수집되지 않습니다.<br>
+            ※ DB 검증(2026-08-05): lodging_type='일반' 2,989건은 비발디파크·소노벨·켄싱턴리조트·
+            제주노형호텔 등 <b>구분소유 리조트·호텔 호실 매매</b>이며, 일반 모텔·여관 건수는 없음.
+          </p>
+          <div id="txSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="txSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="txSyncRunBtn" class="admin-btn admin-btn-primary">실거래 동기화 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑤ 과거 데이터 백필</h2>
+          </div>
+          <p class="legal-admin-hint">
+            <b>2020년 1월부터 현재까지</b> 전체 기간의 실거래가를 수집합니다(개월 수는 자동 계산).
+            기간이 길어 수십 분~수 시간 걸릴 수 있고, 국토부 API 일일 사용량을 초과하면
+            남은 건은 실패 큐에 쌓여 다음 실행 때 이어서 수집됩니다.
+            이미 있는 거래는 건너뛰므로 중복되지 않습니다.
+            (실행 제한: <b>성공 완료 후 24시간</b> — 국토부 API 사용량 보호. 실패 시에는 당일 재시도 가능)
+          </p>
+          <div id="backfillStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="backfillMsg" class="legal-msg" role="alert"></span>
+            <button id="backfillRunBtn" class="admin-btn admin-btn-primary">과거 데이터 백필 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBroker">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑥ 인근 중개업소 후보 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            홈앤스테이 <b>전국 중개업소 데이터</b>를 갱신합니다.
+            일일 API 한도가 <b>1,000건</b>으로 매우 적어, 한 번에 최대(1,000행/호출)로 받아오고
+            한도에 도달하면 체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
+            후보 검색·엑셀 다운로드는 <b>인근 중개업소 후보</b> 메뉴에서 이용하세요.
+          </p>
+          <div id="brokerSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="brokerSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="brokerSyncRunBtn" class="admin-btn admin-btn-primary">중개업소 데이터 동기화</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBrokerGeo">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑦ 중개업소 좌표 채우기</h2>
+          </div>
+          <p class="legal-admin-hint">
+            수집된 중개업소의 도로명주소를 지도 주소검색으로 확인해 위경도(lat/lng)를 채웁니다.
+            좌표가 있어야 건물 상세 화면의 <b>인근 중개업소 후보</b> 검색이 정상 작동합니다.
+            (실행 제한: 시간당 6회 / 도로명주소가 없는 행은 자동 제외)
+          </p>
+          <div id="brokerGeoStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="brokerGeoMsg" class="legal-msg" role="alert"></span>
+            <button id="brokerGeoRunBtn" class="admin-btn admin-btn-primary">좌표 채우기 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecRealty">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑧ 단지부동산(상가정보) 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            소상공인시장진흥공단 <b>상가정보 API(storeListInPnu)</b>로 각 건물의 입주
+            부동산 중개업소를 조회해 건물마스터에 저장합니다. 건당 평균 3초 소요 — 하루
+            300건씩 며칠에 나눠 백그라운드로 진행합니다. 완료 후 건물목록 "단지부동산" 컬럼에
+            표시됩니다. (실행 제한: 시간당 2회)
+          </p>
+          <div id="realtySyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="realtySyncMsg" class="legal-msg" role="alert"></span>
+            <button id="realtySyncRunBtn" class="admin-btn admin-btn-primary">상가정보 동기화 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecLodging">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑨ 숙박업 영업신고 동기화</h2>
+          </div>
+          <p class="legal-admin-hint">
+            행정안전부 <b>숙박업 조회서비스</b>(지방행정 인허가데이터)를 수집합니다.
+            위생업태가 <b>숙박업(생활) · 일반호텔 · 여관업 · 여인숙업</b>인 사업장을 저장하며, 일일 한도(캡 8,000호출)에 도달하면
+            체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
+            후보 검색·엑셀 다운로드는 <b>미등록 위탁운영 후보</b> 메뉴에서 이용하세요.<br>
+            <b>농어촌민박·한옥 신고 데이터는 매일 자동으로 운영 DB에 갱신</b>되며, 아래 현황에서 최근 성공·실패 결과를 확인할 수 있습니다.
+          </p>
+          <div id="lodgingSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="lodgingSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="lodgingSyncRunBtn" class="admin-btn admin-btn-primary">영업신고 데이터 동기화</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecPermits">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑩ 준공전 건물수집(인허가)</h2>
+          </div>
+          <p class="legal-admin-hint">
+            국토교통부 <b>건축인허가정보 API</b>로 전국 준공 전 생활숙박시설 프로젝트(허가·착공 단계)를
+            수집합니다. 이 API는 현재 불안정하여 실패가 잦을 수 있으며, 실패해도 체크포인트가
+            보존되어 다음 실행 때 이어서 진행됩니다. (실행 제한: 시간당 2회)
+          </p>
+          <div id="permitsSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="permitsSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="permitsSyncRunBtn" class="admin-btn admin-btn-primary">준공전 건물수집 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecReclassify">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑪ 미분류 건물 재분류</h2>
+          </div>
+          <p class="legal-admin-hint">
+            <b>lodging_type이 NULL/빈값</b>인 건물에 대해 건축물대장(표제부·층별개요) API를 호출해
+            생활/관광/일반/복합 중 하나로 재판정하고 DB를 업데이트합니다.
+            판정 불가 건물은 건너뜁니다. 일일 200건 캡. (실행 제한: 시간당 2회)
+          </p>
+          <p class="legal-admin-hint" style="margin-top:4px;">
+            👉 <a href="#" class="legal-link" id="goBldUnclassified" style="color:var(--brass-dark);text-decoration:underline;">건물마스터에서 미분류 건물 목록 바로보기</a>
+          </p>
+          <div id="reclassifyStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="reclassifyMsg" class="legal-msg" role="alert"></span>
+            <button id="reclassifyRunBtn" class="admin-btn admin-btn-primary">미분류 재분류 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecClassificationProvenance">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑫ 법정분류 근거 점검</h2>
+          </div>
+          <p class="legal-admin-hint">
+            분류값은 그대로 두고, 건축물대장 재검증 원문 또는 현재 <b>영업/정상</b> 신고와
+            저장 분류가 정확히 일치하는 경우만 출처·신뢰도를 복원합니다.
+            충돌하거나 추정만 가능한 분류는 출처 없음으로 남겨 수동 점검 대상에 포함합니다.
+          </p>
+          <div id="lodgingClassificationProvenance" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="lodgingClassificationRestoreMsg" class="legal-msg" role="alert"></span>
+            <button id="lodgingClassificationRestoreBtn" class="admin-btn admin-btn-primary">검증 가능한 근거 복원</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecStores">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑫ 상가정보 사전수집</h2>
+          </div>
+          <p class="legal-admin-hint">
+            소상공인시장진흥공단 <b>상가업소 API(storeListInPnu)</b>로 각 건물의 입주
+            상가업소를 미리 수집해 DB에 저장합니다. 이후 건물 상세 화면의 "상가정보" 탭이
+            즉시 응답합니다(실시간 API 대기 없음). 건당 1초 소요 — 일일 캡(500건)에 도달하면
+            체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다. (실행 제한: 시간당 2회)
+             <br><b style="color:#b45309">⚠ API 한도 분리:</b> STORE_INFO_SERVICE_KEY 일일 10,000건 중
+             배치 최대 6,000건 · 실시간 전용 4,000건 예약. 배치 실행 중에도 실시간 조회는 항상 보호됩니다.
+          </p>
+          <div id="storesSyncStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="storesSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="storesSyncRunBtn" class="admin-btn admin-btn-primary">상가정보 수집 실행</button>
+          </div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecPendingCompletion">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">완공 대기 중</h2>
+          </div>
+          <p class="legal-admin-hint">
+            준공 전(허가·착공) 상태로 등록된 건물 중 <b>추정 완공일이 이미 지난</b> 건물 목록입니다.
+            표제부(건축물대장)가 아직 안 붙었는지 확인한 뒤, 실제로 완공되었으면
+            "완공으로 전환"을 눌러주세요. (전환 시 담당중개사 분양권 건수는 매매로 자동 합산됩니다)
+          </p>
+          <div id="pendingCompletionStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions" style="margin-top:10px">
+            <span id="permitsCleanupMsg" class="legal-msg" role="alert"></span>
+            <button id="permitsCleanupDryBtn"  class="admin-btn admin-btn-secondary">정리 대상 미리보기</button>
+            <button id="permitsCleanupExecBtn" class="admin-btn" style="background:#b3261e;color:#fff;">오염 건물 삭제 실행</button>
+          </div>
+          <div id="pendingCompletionList" style="margin-top:10px"></div>
+        </div>
+          </div>
+        </details>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecBackup">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">데이터 백업</h2>
+          </div>
+          <p class="legal-admin-hint">
+            핵심 테이블 10개(건물마스터·파트너·실거래·숙박업·중개업소 등) CSV와
+            스키마 스냅샷을 zip 파일 하나로 다운로드합니다.
+            <b>운영 데이터 백업은 반드시 운영 사이트의 관리자 페이지에서 눌러주세요</b>
+            (개발 미리보기에서 누르면 개발 DB가 백업됩니다).
+          </p>
+          <div class="legal-admin-actions">
+            <a href="/api/admin/backup-export" class="admin-btn admin-btn-primary" style="text-decoration:none;">📦 전체 데이터 백업(zip 다운로드)</a>
+          </div>
+        </div>
+      `;
+      document.getElementById("scheduledSyncRetryBtn").addEventListener("click", retryScheduledSync);
+      document.getElementById("scheduledSyncRunAllBtn").addEventListener("click", runAllScheduledSync);
+      document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
+      document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
+      document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
+      document.getElementById("reclassifyKeywordBtn").addEventListener("click", runReclassifyLodgingKeywords);
+      document.getElementById("reclassifyHygieneBtn").addEventListener("click", runReclassifyByHygiene);
+      document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
+      document.getElementById("titleInfoRunBtn").addEventListener("click", runTitleInfoBackfill);
+      document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
+      document.getElementById("backfillRunBtn").addEventListener("click", runBackfill);
+      document.getElementById("brokerSyncRunBtn").addEventListener("click", runBrokerSync);
+      document.getElementById("brokerGeoRunBtn").addEventListener("click", runBrokerGeocode);
+      document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
+      document.getElementById("permitsSyncRunBtn").addEventListener("click", runPermitsSync);
+      document.getElementById("permitsCleanupDryBtn").addEventListener("click", () => runPermitsCleanup(true));
+      document.getElementById("permitsCleanupExecBtn").addEventListener("click", () => runPermitsCleanup(false));
+      document.getElementById("realtySyncRunBtn").addEventListener("click", runRealtySync);
+      document.getElementById("reclassifyRunBtn").addEventListener("click", runReclassify);
+      document.getElementById("lodgingClassificationRestoreBtn").addEventListener("click", restoreLodgingClassificationProvenance);
+      document.getElementById("storesSyncRunBtn").addEventListener("click", runStoresSync);
+      loadScheduledSyncStatus();
+      loadDataSyncBanner();
+      document.getElementById("manualSyncDetails").addEventListener("toggle", (event) => {
+        if (!event.currentTarget.open) return;
+        loadStoresSyncStatus();
+        loadRealtySyncStatus();
+        loadReclassifyStatus();
+        loadLodgingClassificationProvenance();
+        loadPermitsSyncStatus();
+        loadPendingCompletion();
+        loadBrhubSyncStatus();
+        loadBrhubRescanStatus();
+        loadBackfillLodgingStatus();
+        loadGeocodeStatus();
+        loadTitleInfoStatus();
+        loadTxSyncStatus();
+        loadBackfillStatus();
+        loadBrokerSyncStatus();
+        loadBrokerGeocodeStatus();
+        loadLodgingSyncStatus();
+      });
+    }
+
+    // ---- 인근 중개업소 후보 (홈앤스테이 전국 중개업소 데이터) ----
+    // 후보 리스트를 '생성'만 한다 — 자동 이메일·SMS 발송 없음(사람이 검토 후 수동 진행).
+    let brokerSyncTimer = null;
+    let brokerSelectedBuilding = null;
+
+    function stopBrokerSyncPolling() {
+      if (brokerSyncTimer) { clearInterval(brokerSyncTimer); brokerSyncTimer = null; }
+    }
+
+    function renderBrokerSyncStatus(d) {
+      const box = document.getElementById("brokerSyncStatus");
+      const btn = document.getElementById("brokerSyncRunBtn");
+      if (!box || !btn) { stopBrokerSyncPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집된 중개업소:</b> 총 ${num(d.broker_total)}건</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
+      if (d.progress && d.progress.next_page) {
+        const tot = d.progress.total_count ? ` / 전체 약 ${num(d.progress.total_count)}건` : "";
+        rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 다음 페이지 ${num(d.progress.next_page)}${tot} — 미완(다음 실행 때 이어서 수집)</div>`);
+      }
+      if (d.last_sync && d.last_sync.finished_at) {
+        rows.push(`<div class="geo-stat-row"><b>마지막 전체 수집 완료:</b> ${dgEscape(d.last_sync.finished_at)}</div>`);
+      }
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전체 수집 완료" : "일일 한도로 일시 중단(다음 실행 때 이어서)";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행 처리:</b> ${d.processed == null ? "-" : num(d.processed) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "중개업소 데이터 동기화";
+      if (!d.running) stopBrokerSyncPolling();
+    }
+
+    async function loadBrokerSyncStatus() {
+      const box = document.getElementById("brokerSyncStatus");
+      if (!box) { stopBrokerSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/broker-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderBrokerSyncStatus(d);
+        if (d.running && !brokerSyncTimer) brokerSyncTimer = setInterval(loadBrokerSyncStatus, 5000);
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runBrokerSync() {
+      const btn = document.getElementById("brokerSyncRunBtn");
+      const msg = document.getElementById("brokerSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-brokers", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "동기화를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "중개업소 데이터 동기화";
+        }
+        loadBrokerSyncStatus();
+        if (!brokerSyncTimer) brokerSyncTimer = setInterval(loadBrokerSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "중개업소 데이터 동기화";
+      }
+    }
+
+    async function searchNoAgentBuildings() {
+      const q = document.getElementById("brokerBldSearch").value.trim();
+      const listBox = document.getElementById("brokerBldList");
+      listBox.innerHTML = `<div class="geo-stat-row">검색 중…</div>`;
+      try {
+        const res = await fetch("/api/admin/buildings-without-agent?q=" + encodeURIComponent(q));
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { listBox.textContent = "목록을 불러오지 못했습니다."; return; }
+        if (!d.items.length) { listBox.innerHTML = `<div class="geo-stat-row">담당중개사 없는 건물이 없습니다.</div>`; return; }
+        listBox.innerHTML = d.items.map((b) => `
+          <button type="button" class="broker-bld-item" data-id="${b.id}" data-name="${dgEscape(b.building_name || "")}"
+                  style="display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid #e3e6ea;border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer">
+            <b><a href="/building/${b.id}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name || "(이름없음)")}</a></b>
+            <span style="color:#667">${dgEscape(b.road_address || b.sgg_text || "")}</span>
+            ${b.has_coords ? "" : `<span style="color:#b3261e"> · 좌표 없음</span>`}
+          </button>`).join("");
+        listBox.querySelectorAll(".broker-bld-item").forEach((el) => {
+          el.addEventListener("click", () => {
+            brokerSelectedBuilding = { id: parseInt(el.getAttribute("data-id"), 10), name: el.getAttribute("data-name") };
+            listBox.querySelectorAll(".broker-bld-item").forEach((x) => x.style.borderColor = "#e3e6ea");
+            el.style.borderColor = "#B4863F";
+            loadBrokerCandidates();
+          });
+        });
+      } catch (e) {
+        listBox.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    function brokerCell(v) {
+      return v ? dgEscape(v) : `<span style="color:#aab;">정보없음</span>`;
+    }
+
+    async function loadBrokerExactMatch(buildingId) {
+      const box = document.getElementById("brokerExactBox");
+      if (!box) return;
+      box.innerHTML = `<div class="geo-stat-row">정확매칭 조회 중…</div>`;
+      try {
+        const res = await fetch(`/api/admin/broker-exact-match?building_id=${buildingId}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "조회에 실패했습니다."; return; }
+        if (!d.count) {
+          box.innerHTML = `<div class="geo-stat-row"><b>정확매칭 0곳</b> — 이 건물 주소와 정확히 일치하는 중개업소가 없습니다.</div>`;
+          return;
+        }
+        const rows = d.items.map((r) => `
+          <tr>
+            <td>${dgEscape(r.office_name)}</td>
+            <td>${brokerCell(r.phone)}</td>
+            <td>${dgEscape(r.road_address || "-")}</td>
+            <td>${brokerCell(r.reg_date)}</td>
+            <td>${dgEscape(r.owner_name || "-")}</td>
+          </tr>`).join("");
+        box.innerHTML = `<div class="geo-stat-row" style="margin-bottom:8px"><b>정확매칭 ${num(d.count)}곳</b> — ${dgEscape(d.building_name)} (${dgEscape(d.road_address || "-")})
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-exact-match/export.xlsx?building_id=${buildingId}">정확매칭 결과 엑셀 다운로드</a></div>
+          <div style="overflow-x:auto">
+          <table class="dg-table" style="width:100%">
+            <thead><tr><th>업소명</th><th>전화번호</th><th>도로명주소</th><th>등록일자</th><th>대표자</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>`;
+      } catch (e) {
+        box.textContent = "조회 중 오류가 발생했습니다.";
+      }
+    }
+
+    async function loadBrokerCandidates() {
+      if (!brokerSelectedBuilding) return;
+      const radius = document.getElementById("brokerRadius").value;
+      const box = document.getElementById("brokerCandBox");
+      box.innerHTML = `<div class="geo-stat-row">인근 중개업소 조회 중…</div>`;
+      try {
+        const res = await fetch(`/api/admin/broker-candidates?building_id=${brokerSelectedBuilding.id}&radius_km=${encodeURIComponent(radius)}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = d.message || "조회에 실패했습니다."; return; }
+        const head = `<div class="geo-stat-row" style="margin-bottom:8px"><b>${dgEscape(d.building.building_name || "")}</b> (${dgEscape(d.building.road_address || "-")}) · 반경 ${d.radius_km}km · 후보 ${num(d.items.length)}곳
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-candidates/export.xlsx?building_id=${d.building.id}&radius_km=${encodeURIComponent(radius)}">엑셀 다운로드</a>
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/broker-registry/export.xlsx">중개업소 전체 다운로드</a>
+          <button type="button" class="admin-btn" style="margin-left:8px" onclick="loadBrokerExactMatch(${d.building.id})">이 건물 입주 중개업소만 보기</button></div>`;
+        if (!d.building.has_coords) { box.innerHTML = head + `<div class="geo-stat-row" style="color:#b3261e">이 건물은 좌표(lat/lng)가 없어 인근 조회를 할 수 없습니다. '지도 좌표 채우기'를 먼저 실행해 주세요.</div>`; return; }
+        if (!d.items.length) { box.innerHTML = head + `<div class="geo-stat-row">반경 내 수집된 중개업소가 없습니다. (동기화가 아직 다 안 됐다면 데이터가 부족할 수 있습니다)</div>`; return; }
+        const rows = d.items.map((r) => `
+          <tr>
+            <td>${dgEscape(r.office_name)}</td>
+            <td style="text-align:right">${r.distance_km}km</td>
+            <td>${brokerCell(r.phone)}</td>
+            <td>${r.homepage_url ? `<a href="${dgEscape(r.homepage_url)}" target="_blank" rel="noopener">${dgEscape(r.homepage_url)}</a>` : `<span style="color:#aab;">정보없음</span>`}</td>
+            <td>${brokerCell(r.reg_date)}</td>
+            <td><button type="button" class="admin-btn broker-copy-btn" data-name="${dgEscape(r.office_name)}">링크 복사</button></td>
+          </tr>`).join("");
+        box.innerHTML = head + `
+          <div style="overflow-x:auto">
+          <table class="dg-table" style="width:100%">
+            <thead><tr><th>업소명</th><th>거리</th><th>전화번호</th><th>홈페이지</th><th>등록일자</th><th>제안 링크</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+          <p class="legal-admin-hint" style="margin-top:8px">※ 이 목록은 후보 '생성'용입니다 — 자동 발송되지 않으며, 연락은 검토 후 직접 진행해 주세요.</p>`;
+        box.querySelectorAll(".broker-copy-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const link = window.location.origin + "/agents?company=" + encodeURIComponent(btn.getAttribute("data-name"));
+            try {
+              await navigator.clipboard.writeText(link);
+              btn.textContent = "복사됨!";
+            } catch (e) {
+              window.prompt("아래 링크를 복사하세요:", link);
+            }
+            setTimeout(() => { btn.textContent = "링크 복사"; }, 1500);
+          });
+        });
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    // 후보 페이지 상단 "마지막 동기화: … · [데이터 동기화로 이동]" 한 줄 렌더
+    async function loadLastSyncLine(boxId, statusUrl) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      let lastText = "-";
+      try {
+        const res = await fetch(statusUrl);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          if (d.running) lastText = "지금 실행 중…";
+          else if (d.last_sync && d.last_sync.finished_at) lastText = d.last_sync.finished_at;
+          else if (d.finished_at) lastText = d.finished_at;
+          else lastText = "아직 실행된 적 없음";
+        }
+      } catch (e) { /* 표시용 — 실패해도 무시 */ }
+      const link = `<a href="#" id="${boxId}GoLink" style="color:#B4863F">데이터 동기화로 이동</a>`;
+      box.innerHTML = `<div class="geo-stat-row"><b>마지막 동기화:</b> ${dgEscape(lastText)} · ${link}</div>`;
+      const a = document.getElementById(boxId + "GoLink");
+      if (a) a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const btn = document.querySelector('.admin-menu-item[data-menu="datasync"]');
+        if (btn) btn.click();
+      });
+    }
+
+    function showBrokers() {
+      destroyStatsCharts();
+      brokerSelectedBuilding = null;
+      mount.innerHTML = `
+        <div class="legal-admin">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">인근 중개업소 후보</h2>
+          </div>
+          <div id="brokerLastSync" class="geo-status" style="margin-bottom:10px">불러오는 중…</div>
+          <p class="legal-admin-hint">
+            담당중개사가 <b>아직 없는 건물</b>을 선택하면, 건물 좌표 기준 반경 내 등록 중개업소를
+            거리순으로 보여줍니다. 목록은 후보 생성용이며 자동 발송은 하지 않습니다.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <input id="brokerBldSearch" class="dg-input" placeholder="건물명/주소 검색" style="min-width:220px">
+            <button id="brokerBldSearchBtn" class="admin-btn">건물 검색</button>
+            <label style="margin-left:8px">반경
+              <select id="brokerRadius" class="dg-input" style="width:auto">
+                <option value="1">1km</option>
+                <option value="2" selected>2km</option>
+              </select>
+            </label>
+          </div>
+          <div id="brokerBldList" style="max-height:220px;overflow-y:auto;margin-bottom:12px"></div>
+          <div id="brokerCandBox"></div>
+          <div id="brokerExactBox" style="margin-top:16px;"></div>
+        </div>
+      `;
+      document.getElementById("brokerBldSearchBtn").addEventListener("click", searchNoAgentBuildings);
+      document.getElementById("brokerBldSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") searchNoAgentBuildings(); });
+      document.getElementById("brokerRadius").addEventListener("change", loadBrokerCandidates);
+      loadLastSyncLine("brokerLastSync", "/api/admin/broker-sync-status");
+      searchNoAgentBuildings();
+    }
+
+    // ---- 숙박업 영업신고 동기화 + 미등록 위탁운영 후보 ----
+    let lodgingSyncTimer = null;
+    function stopLodgingSyncPolling() {
+      if (lodgingSyncTimer) { clearInterval(lodgingSyncTimer); lodgingSyncTimer = null; }
+    }
+
+    function renderLodgingSyncStatus(d) {
+      const box = document.getElementById("lodgingSyncStatus");
+      const btn = document.getElementById("lodgingSyncRunBtn");
+      if (!box || !btn) { stopLodgingSyncPolling(); return; }
+      const rows = [];
+      rows.push(`<div class="geo-stat-row"><b>수집된 숙박업 사업장(생활+일반):</b> 총 ${num(d.lodging_total)}건</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건 사용 · 남은 호출 ${num(d.calls_remaining)}건 (일일 캡 ${num(d.daily_cap)}건)</div>`);
+      if (d.progress && d.progress.next_page) {
+        const tot = d.progress.total_count ? ` / 전체 약 ${num(d.progress.total_count)}건` : "";
+        rows.push(`<div class="geo-stat-row"><b>진행 체크포인트:</b> 다음 페이지 ${num(d.progress.next_page)}${tot} — 미완(다음 실행 때 이어서 수집)</div>`);
+      }
+      if (d.last_sync && d.last_sync.finished_at) {
+        rows.push(`<div class="geo-stat-row"><b>마지막 전체 수집 완료:</b> ${dgEscape(d.last_sync.finished_at)}</div>`);
+      }
+      const rh = d.rural_hanok || {};
+      if (rh.running) {
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 자동 동기화:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(rh.started_at || "-")})</div>`);
+      } else if (rh.state === "done") {
+        const rc = rh.counters || {};
+        const changed = Number(rc.inserted || 0) + Number(rc.updated || 0);
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 자동 동기화:</b> ${dgEscape(rh.finished_at || "-")} 완료 · 신규/갱신 ${num(changed)}건 · 연결 ${num(rc.matched || 0)}건 · 실패 ${num(rc.failed || 0)}건</div>`);
+      } else if (rh.state === "failed" || rh.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>농어촌민박·한옥 자동 동기화 실패:</b> ${dgEscape(rh.error || "원인 미상")} (재실행 가능)</div>`);
+      } else if (rh.last_sync && rh.last_sync.finished_at) {
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 마지막 성공:</b> ${dgEscape(rh.last_sync.finished_at)}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last"><b>농어촌민박·한옥 자동 동기화:</b> 아직 실행된 적 없음</div>`);
+      }
+      if (d.running) {
+        rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
+      } else if (d.state === "done") {
+        const done = d.completed ? "전체 수집 완료" : "일일 한도로 일시 중단(다음 실행 때 이어서)";
+        rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(d.started_at || "-")} ~ ${dgEscape(d.finished_at || "-")} · ${done}</div>`);
+        rows.push(`<div class="geo-stat-row"><b>이번 실행 처리:</b> ${d.processed == null ? "-" : num(d.processed) + "건"}</div>`);
+      } else if (d.state === "failed" || d.state === "stale") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(d.error || "원인 미상")}</div>`);
+      } else {
+        rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
+      }
+      box.innerHTML = rows.join("");
+      btn.disabled = !!d.running;
+      btn.textContent = d.running ? "실행 중…" : "영업신고 데이터 동기화";
+      if (!d.running) stopLodgingSyncPolling();
+    }
+
+    async function loadLodgingSyncStatus() {
+      const box = document.getElementById("lodgingSyncStatus");
+      if (!box) { stopLodgingSyncPolling(); return; }
+      try {
+        const res = await fetch("/api/admin/lodging-sync-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "현황을 불러오지 못했습니다."; return; }
+        renderLodgingSyncStatus(d);
+        if ((d.running || (d.rural_hanok && d.rural_hanok.running)) && !lodgingSyncTimer) {
+          lodgingSyncTimer = setInterval(loadLodgingSyncStatus, 5000);
+        }
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    async function runLodgingSync() {
+      const btn = document.getElementById("lodgingSyncRunBtn");
+      const msg = document.getElementById("lodgingSyncMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/sync-lodgings", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.ok) {
+          msg.style.color = "#1a7f37";
+          msg.textContent = "동기화를 시작했습니다. 진행상황이 아래에 자동 갱신됩니다.";
+        } else {
+          msg.style.color = "#b3261e";
+          msg.textContent = d.message || "실행에 실패했습니다.";
+          btn.disabled = false;
+          btn.textContent = "영업신고 데이터 동기화";
+        }
+        loadLodgingSyncStatus();
+        if (!lodgingSyncTimer) lodgingSyncTimer = setInterval(loadLodgingSyncStatus, 5000);
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        btn.disabled = false;
+        btn.textContent = "영업신고 데이터 동기화";
+      }
+    }
+
+    async function loadLodgingCandidates() {
+      const q = document.getElementById("lodgingSearch").value.trim();
+      const box = document.getElementById("lodgingCandBox");
+      box.innerHTML = `<div class="geo-stat-row">조회 중…</div>`;
+      try {
+        const res = await fetch("/api/admin/unregistered-lodging-candidates?q=" + encodeURIComponent(q));
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
+        const head = `<div class="geo-stat-row" style="margin-bottom:8px"><b>미등록 후보 ${num(d.total)}곳</b> (표시 최대 300곳 · 건물 총호실수 → 사업장 객실수 많은 순)
+          <a class="admin-btn" style="margin-left:8px" href="/api/admin/unregistered-lodging-candidates/export.xlsx?q=${encodeURIComponent(q)}">엑셀 다운로드</a></div>`;
+        if (!d.items.length) { box.innerHTML = head + `<div class="geo-stat-row">조건에 맞는 후보가 없습니다. (동기화가 아직 다 안 됐다면 데이터가 부족할 수 있습니다)</div>`; return; }
+        // 같은 건물이 연속되는 행은 옅은 배경색으로 그룹핑 (건물 바뀔 때마다 tint 토글)
+        let prevBld = null, tint = false;
+        const rows = d.items.map((r) => {
+          const bld = r.matched_building_name || "";
+          if (bld !== prevBld) { tint = !tint; prevBld = bld; }
+          const bg = (bld && tint) ? " style=\"background:#faf6ee\"" : "";
+          return `
+          <tr${bg}>
+            <td style="font-weight:600"><span class="lodging-clamp2">${r.matched_building_name ? (r.matched_building_id ? `<a href="/building/${r.matched_building_id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(r.matched_building_name)}</a>` : dgEscape(r.matched_building_name)) : `<span style="color:#aab;">-</span>`}</span></td>
+            <td style="text-align:right">${r.building_total_units != null ? num(r.building_total_units) + "실" : `<span style="color:#aab;">-</span>`}</td>
+            <td><span class="lodging-clamp2">${dgEscape(r.biz_name)}</span></td>
+            <td style="text-align:right">${r.room_count ? num(r.room_count) + "실" : `<span style="color:#aab;">-</span>`}</td>
+            <td style="white-space:nowrap">${brokerCell(r.phone)}</td>
+            <td style="min-width:220px; max-width:280px">${brokerCell(r.road_address || r.jibun_address)}</td>
+            <td style="white-space:nowrap">${brokerCell(r.permit_date)}</td>
+            <td><button type="button" class="admin-btn lodging-copy-btn" data-name="${dgEscape(r.biz_name)}">링크 복사</button></td>
+          </tr>`;
+        }).join("");
+        box.innerHTML = head + `
+          <div class="lodging-cand-scroll">
+          <table class="dg-table lodging-cand-table" style="width:100%; min-width:1400px">
+            <thead><tr>
+              <th style="width:190px">건물명</th><th style="width:80px">총호실수</th>
+              <th style="width:190px">사업장명</th><th style="width:100px">영업신고호실수</th>
+              <th style="width:120px">전화번호</th><th>주소</th>
+              <th style="width:95px">인허가일</th><th style="width:95px">제안 링크</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+          <p class="legal-admin-hint" style="margin-top:8px">※ 이 목록은 후보 '생성'용입니다 — 자동 발송되지 않으며, 연락은 검토 후 직접 진행해 주세요.</p>`;
+        box.querySelectorAll(".lodging-copy-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const link = window.location.origin + "/operators?company=" + encodeURIComponent(btn.getAttribute("data-name"));
+            try {
+              await navigator.clipboard.writeText(link);
+              btn.textContent = "복사됨!";
+            } catch (e) {
+              window.prompt("아래 링크를 복사하세요:", link);
+            }
+            setTimeout(() => { btn.textContent = "링크 복사"; }, 1500);
+          });
+        });
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    function showLodgings() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin" style="max-width:none">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">미등록 위탁운영 후보</h2>
+          </div>
+          <div id="lodgingLastSync" class="geo-status" style="margin-bottom:10px">불러오는 중…</div>
+          <p class="legal-admin-hint">
+            영업상태가 <b>영업/정상</b>인 생활숙박업 사업장 중, 아직 홈앤스테이 운영업체(operators)로
+            등록되지 않은 곳입니다. 건물 총호실수 → 사업장 객실수가 많은 순으로 표시합니다.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <input id="lodgingSearch" class="dg-input" placeholder="사업장명/주소 검색" style="min-width:220px">
+            <button id="lodgingSearchBtn" class="admin-btn">검색</button>
+          </div>
+          <div id="lodgingCandBox"></div>
+        </div>
+      `;
+      document.getElementById("lodgingSearchBtn").addEventListener("click", loadLodgingCandidates);
+      document.getElementById("lodgingSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadLodgingCandidates(); });
+      loadLastSyncLine("lodgingLastSync", "/api/admin/lodging-sync-status");
+      loadLodgingCandidates();
+    }
+
+    // ---- 신규건물 후보(일반숙박) ----
+    async function loadNewBuildingCandidates() {
+      const q = document.getElementById("newBldSearch").value.trim();
+      const box = document.getElementById("newBldCandBox");
+      box.innerHTML = `<div class="geo-stat-row">조회 중…</div>`;
+      try {
+        const res = await fetch("/api/admin/unmatched-building-candidates?q=" + encodeURIComponent(q));
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
+        if (!d.items.length) { box.innerHTML = `<div class="geo-stat-row">신규 건물 후보 ${num(d.total)}곳 (조건에 맞는 항목 없음)</div>`; return; }
+        const rows = d.items.map((r) => `
+          <tr>
+            <td><span class="lodging-clamp2">${dgEscape(r.biz_name)}</span></td>
+            <td style="text-align:right">${r.room_count ? num(r.room_count) + "실" : "-"}</td>
+            <td style="white-space:nowrap">${brokerCell(r.phone)}</td>
+            <td style="min-width:220px; max-width:280px">${brokerCell(r.road_address || r.jibun_address)}</td>
+            <td style="white-space:nowrap">${brokerCell(r.permit_date)}</td>
+            <td style="white-space:nowrap">
+              <button type="button" class="admin-btn nb-create-btn" data-permit="${dgEscape(r.permit_number)}">건물등록</button>
+              <button type="button" class="admin-btn nb-dismiss-btn" data-permit="${dgEscape(r.permit_number)}">무시</button>
+            </td>
+          </tr>`).join("");
+        box.innerHTML = `<div class="geo-stat-row" style="margin-bottom:8px"><b>신규 건물 후보 ${num(d.total)}곳</b></div>
+          <div class="lodging-cand-scroll">
+          <table class="dg-table lodging-cand-table" style="width:100%; min-width:1200px">
+            <thead><tr>
+              <th style="width:220px">사업장명</th><th style="width:100px">객실수</th>
+              <th style="width:120px">전화번호</th><th>주소</th>
+              <th style="width:95px">인허가일</th><th style="width:170px">처리</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>`;
+        box.querySelectorAll(".nb-create-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            if (!window.confirm("이 사업장을 신규 건물로 등록할까요?")) return;
+            btn.disabled = true;
+            try {
+              const r = await fetch(`/api/admin/unmatched-building-candidates/${encodeURIComponent(btn.getAttribute("data-permit"))}/create-building`, { method: "POST" });
+              const d2 = await r.json().catch(() => ({}));
+              if (r.ok && d2.ok) { loadNewBuildingCandidates(); } else { window.alert(d2.message || "등록 실패"); btn.disabled = false; }
+            } catch (e) { window.alert("네트워크 오류"); btn.disabled = false; }
+          });
+        });
+        box.querySelectorAll(".nb-dismiss-btn").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            if (!window.confirm("이 후보를 목록에서 제외할까요? (건물로 등록되지 않습니다)")) return;
+            btn.disabled = true;
+            try {
+              const r = await fetch(`/api/admin/unmatched-building-candidates/${encodeURIComponent(btn.getAttribute("data-permit"))}/dismiss`, { method: "POST" });
+              const d2 = await r.json().catch(() => ({}));
+              if (r.ok && d2.ok) { loadNewBuildingCandidates(); } else { window.alert(d2.message || "처리 실패"); btn.disabled = false; }
+            } catch (e) { window.alert("네트워크 오류"); btn.disabled = false; }
+          });
+        });
+      } catch (e) {
+        box.textContent = "네트워크 오류가 발생했습니다.";
+      }
+    }
+
+    let premiumStatusKind = "all";
+    async function loadPremiumStatus(kind = premiumStatusKind) {
+      premiumStatusKind = kind;
+      const box = document.getElementById("premiumStatusBox");
+      box.innerHTML = `<div class="geo-stat-row">조회 중…</div>`;
+      const res = await fetch("/api/admin/premium-status?kind=" + encodeURIComponent(kind));
+      if (res.status === 401) { window.location.href = "/admin/login"; return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { box.textContent = "목록을 불러오지 못했습니다."; return; }
+      const partnerLabel = { agent: "중개사", operator: "운영업체", loan_consultant: "대출상담사" };
+      const rows = d.items.map((r, index) => `
+        <tr>
+          <td>${r.kind === "building" ? "단지뱃지(골드)" : "지역뱃지(실버)"}</td>
+          <td>${dgEscape(partnerLabel[r.partner_type] || "-")}</td>
+          <td>${dgEscape(r.office_name || "-")}</td>
+          <td>${r.kind === "building" && r.master_building_id ? `<a href="/building/${r.master_building_id}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(r.target || "-")}</a>` : dgEscape(r.target || "-")}</td>
+          <td>${dgEscape((r.granted_at||"").slice(0,10))}</td>
+          <td>${dgEscape((r.expires_at||"").slice(0,10))}</td>
+          <td>${new Date(r.expires_at) > new Date() ? "적용중" : "종료"}</td>
+          <td>${r.reminder_sent ? "발송함" : "-"}</td>
+          <td>
+            <button type="button" class="admin-btn premium-extend-btn" data-premium-index="${index}">
+              만기연장
+            </button>
+          </td>
+        </tr>`).join("");
+      box.innerHTML = `<table class="dg-table" style="width:100%">
+        <thead><tr><th>구분</th><th>파트너 유형</th><th>파트너</th><th>대상</th><th>부여일</th><th>만료일</th><th>상태</th><th>발송</th><th>관리</th></tr></thead>
+        <tbody>${rows || "<tr><td colspan=9>없음</td></tr>"}</tbody></table>`;
+      box.querySelectorAll(".premium-extend-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.premiumIndex);
+          const row = d.items[index];
+          if (row) window.extendPremiumBadge(row);
+        });
+      });
+    }
+    window.extendPremiumBadge = async function(row){
+      if (!confirm("이 뱃지의 만료일을 2026.12.31까지 연장할까요?")) return;
+      const res = await fetch("/api/admin/premium-status/extend", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partner_type: row.partner_type, partner_id: row.partner_id, kind: row.kind,
+          master_building_id: row.kind === "building" ? row.master_building_id : null,
+          target: row.kind === "region" ? row.target : null
+        })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { alert(d.message || "만기연장에 실패했습니다."); return; }
+      loadPremiumStatus();
+    };
+    function showPremiumStatus() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin" style="max-width:none">
+          <div class="legal-admin-head"><h2 class="legal-admin-title">단지뱃지(골드)·지역뱃지(실버) 현황</h2></div>
+          <p class="legal-admin-hint">모든 뱃지는 신청 즉시 자동 부여되며, 2026.12.31까지 무료입니다.</p>
+          <div id="premiumStatusTabs" style="display:flex;gap:6px;margin:14px 0;flex-wrap:wrap;">
+            <button type="button" class="admin-btn premium-status-tab admin-btn-primary" data-kind="all">전체</button>
+            <button type="button" class="admin-btn premium-status-tab" data-kind="building">단지뱃지</button>
+            <button type="button" class="admin-btn premium-status-tab" data-kind="region">지역뱃지</button>
+          </div>
+          <div id="premiumStatusBox"></div>
+        </div>`;
+      document.querySelectorAll(".premium-status-tab").forEach(button => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".premium-status-tab").forEach(tab => tab.classList.remove("admin-btn-primary"));
+          button.classList.add("admin-btn-primary");
+          loadPremiumStatus(button.dataset.kind);
+        });
+      });
+      loadPremiumStatus("all");
+    }
+
+    // ---- OTA 링크 신청 심사 ----
+    function showOtaRequests() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin" style="max-width:none">
+          <div class="legal-admin-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h2 class="legal-admin-title" style="margin:0;">OTA 링크 신청 심사</h2>
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" id="otaPendingOnly"> 대기중만 보기
+            </label>
+            <input id="otaSearch" class="dg-input" placeholder="건물명·업체명 검색" style="min-width:180px;font-size:13px;">
+            <button class="admin-btn" id="otaRefreshBtn">새로고침</button>
+            <a href="/api/admin/booking-url-requests/export.xlsx" class="admin-btn" style="text-decoration:none;background:#E6F4EA;border-color:#A3D9B1;color:#1a7a3c;" id="otaExcelBtn">📥 엑셀 다운로드</a>
+          </div>
+          <p class="legal-admin-hint">위탁운영업체가 신청한 OTA(야놀자·여기어때 등) 링크입니다. 링크 확인 후 승인하면 해당 건물 상세에 <b>✓ OTA 등록확인</b> 배지가 표시됩니다. 승인 후 3개월간 유효합니다.</p>
+          <div id="otaRequestsBox"><div style="padding:20px;color:#aaa;">불러오는 중…</div></div>
+        </div>`;
+      document.getElementById("otaRefreshBtn").addEventListener("click", loadOtaRequests);
+      document.getElementById("otaPendingOnly").addEventListener("change", loadOtaRequests);
+      let otaSearchTimer;
+      document.getElementById("otaSearch").addEventListener("input", () => {
+        clearTimeout(otaSearchTimer);
+        otaSearchTimer = setTimeout(loadOtaRequests, 280);
+      });
+      loadOtaRequests();
+    }
+
+    async function loadOtaRequests() {
+      const pendingOnly = document.getElementById("otaPendingOnly") && document.getElementById("otaPendingOnly").checked;
+      const searchQ = (document.getElementById("otaSearch") ? document.getElementById("otaSearch").value : "").trim().toLowerCase();
+      const box = document.getElementById("otaRequestsBox");
+      if (!box) return;
+
+      // 요약 카운트 + 목록 병렬 패치 (목록은 항상 전체 조회, 클라이언트에서 필터)
+      const [sumRes, listRes] = await Promise.all([
+        fetch("/api/admin/booking-url-requests/summary"),
+        fetch("/api/admin/booking-url-requests?status=all")
+      ]);
+      const sum = await sumRes.json().catch(()=>({}));
+      const d   = await listRes.json().catch(()=>({}));
+
+      // 클라이언트 필터링
+      if (d.items) {
+        if (pendingOnly) d.items = d.items.filter(r => r.status === 'pending');
+        if (searchQ) d.items = d.items.filter(r =>
+          (r.building_name||"").toLowerCase().includes(searchQ) ||
+          (r.company_name||"").toLowerCase().includes(searchQ) ||
+          (r.road_address||"").toLowerCase().includes(searchQ)
+        );
+      }
+
+      // 현황 요약 바 (항상 표시)
+      const summaryHtml = (sum.ok !== false) ? `
+        <div id="otaSummaryBar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+          <div style="flex:1;min-width:100px;background:#FDF6E3;border:1px solid #E8D9A0;border-radius:7px;padding:10px 14px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#8a6d1f;">${sum.pending||0}</div>
+            <div style="font-size:11.5px;color:#8a6d1f;margin-top:2px;">검토 대기중</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:#E6F4EA;border:1px solid #A3D9B1;border-radius:7px;padding:10px 14px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#1a7a3c;">${sum.active||0}</div>
+            <div style="font-size:11.5px;color:#1a7a3c;margin-top:2px;">운영중</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:${(sum.expiring||0)>0?'#FFF3E0':'#F5F5F5'};border:1px solid ${(sum.expiring||0)>0?'#FFB74D':'#ddd'};border-radius:7px;padding:10px 14px;text-align:center;cursor:${(sum.expiring||0)>0?'pointer':'default'};" id="otaExpiringCard">
+            <div style="font-size:22px;font-weight:800;color:${(sum.expiring||0)>0?'#E65100':'#aaa'};">${sum.expiring||0}</div>
+            <div style="font-size:11.5px;color:${(sum.expiring||0)>0?'#E65100':'#aaa'};margin-top:2px;">만료임박(7일)</div>
+          </div>
+        </div>` : "";
+
+      if (!d.ok || !d.items || !d.items.length) {
+        box.innerHTML = summaryHtml +
+          `<div style="padding:20px;color:#aaa;">신청 이력이 없습니다.</div>`;
+        // 만료임박 카드 클릭 → 전체 + 만료임박 필터
+        const card = document.getElementById("otaExpiringCard");
+        if (card && (sum.expiring||0) > 0) {
+          card.addEventListener("click", () => {
+            const cb = document.getElementById("otaShowAll");
+            if (cb && !cb.checked) { cb.checked = true; loadOtaRequests(); }
+          });
+        }
+        return;
+      }
+
+      const statusBadge = (s, expires_at) => {
+        if (s === 'approved') {
+          const exp = expires_at ? new Date(expires_at) : null;
+          if (exp && exp > new Date()) {
+            return `<span style="font-size:11.5px;font-weight:700;color:#1a7a3c;background:#E6F4EA;border-radius:5px;padding:2px 8px;">운영중</span>`;
+          } else if (exp) {
+            return `<span style="font-size:11.5px;font-weight:700;color:#888;background:#F0F0F0;border-radius:5px;padding:2px 8px;">만료됨</span>`;
+          }
+          return `<span style="font-size:11.5px;font-weight:700;color:#1a7a3c;background:#E6F4EA;border-radius:5px;padding:2px 8px;">승인됨</span>`;
+        }
+        const m = { pending:'검토중|#8a6d1f|#fdf6e3', rejected:'거절됨|#B23A3A|#FBEAEA', cancelled:'취소됨|#aaa|#f5f5f5' };
+        const [label, color, bg] = (m[s] || `${s}|#666|#eee`).split("|");
+        return `<span style="font-size:11.5px;font-weight:700;color:${color};background:${bg};border-radius:5px;padding:2px 8px;">${label}</span>`;
+      };
+
+      const dDayBadge = expires_at => {
+        if (!expires_at) return `<span style="color:#ccc;">—</span>`;
+        const diff = Math.round((new Date(expires_at) - new Date()) / 86400000);
+        if (diff < 0)  return `<span style="color:#aaa;font-size:12px;">만료됨</span>`;
+        if (diff === 0) return `<span style="color:#E65100;font-weight:700;font-size:12px;">D-0</span>`;
+        if (diff <= 7)  return `<span style="color:#E65100;font-weight:700;font-size:12px;">D-${diff}</span>`;
+        return `<span style="color:#555;font-size:12px;">D-${diff}</span>`;
+      };
+
+      const renewalBadge = n => {
+        if (n === 0) return `<span style="font-size:11px;color:#666;">1차</span>`;
+        return `<span style="font-size:11px;color:#1a6a9a;font-weight:700;">연장(2차)</span>`;
+      };
+
+      box.innerHTML = summaryHtml +
+        `<table style="width:100%;border-collapse:collapse;font-size:13.5px;">
+        <thead><tr style="background:#F9F5EE;text-align:left;">
+          <th style="padding:9px 10px;">상태</th>
+          <th style="padding:9px 10px;">건물명</th>
+          <th style="padding:9px 10px;">업체명</th>
+          <th style="padding:9px 10px;max-width:200px;">OTA 링크</th>
+          <th style="padding:9px 10px;">차수</th>
+          <th style="padding:9px 10px;">만료일</th>
+          <th style="padding:9px 10px;">신청일</th>
+          <th style="padding:9px 10px;">처리</th>
+        </tr></thead>
+        <tbody>` +
+        d.items.map(r => `<tr style="border-bottom:1px solid #F0EBDF;" data-id="${r.id}">
+          <td style="padding:9px 10px;">${statusBadge(r.status, r.booking_url_expires_at)}</td>
+          <td style="padding:9px 10px;font-weight:600;">
+            <a href="/building/${r.building_id}" target="_blank" rel="noopener" style="color:var(--ink);text-decoration:none;">${dgEscape(r.building_name)}</a>
+            <div style="font-size:11px;color:var(--ink-soft);">${dgEscape(r.road_address||"")}</div>
+          </td>
+          <td style="padding:9px 10px;">${dgEscape(r.company_name)}<br><span style="font-size:11px;color:var(--ink-soft);">${dgEscape(r.category||"")}</span></td>
+          <td style="padding:9px 10px;max-width:200px;word-break:break-all;">
+            <a href="${dgEscape(r.booking_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);font-size:12.5px;">${dgEscape(r.booking_url)}</a>
+            ${r.admin_note ? `<div style="font-size:11px;color:var(--brick);margin-top:3px;">거절사유: ${dgEscape(r.admin_note)}</div>` : ""}
+          </td>
+          <td style="padding:9px 10px;text-align:center;">${renewalBadge(r.renewal_count||0)}</td>
+          <td style="padding:9px 10px;text-align:center;">${dDayBadge(r.booking_url_expires_at)}</td>
+          <td style="padding:9px 10px;white-space:nowrap;">${dgEscape(r.submitted_at||"")}</td>
+          <td style="padding:9px 10px;white-space:nowrap;">
+            ${r.status === 'pending' ? `
+              <button class="admin-btn" style="margin-right:4px;" onclick="otaApprove(${r.id})">승인</button>
+              <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;margin-right:4px;" onclick="otaReject(${r.id})">거절</button>
+              <button class="admin-btn" style="background:#F5F5F5;border-color:#ccc;color:#666;" onclick="otaCancel(${r.id})">취소</button>
+            ` : r.status === 'approved' ? `
+              <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                <button class="admin-btn" style="background:#E8F0FE;border-color:#93B4F7;color:#1a4a9a;" onclick="otaExtend(${r.id})">연장</button>
+                <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;" onclick="otaRevoke(${r.id})">승인철회</button>
+              </div>
+              <div style="font-size:11px;color:var(--ink-soft);margin-top:3px;">${dgEscape(r.reviewed_at||"")}</div>
+            ` : `<span style="font-size:11.5px;color:var(--ink-soft);">${dgEscape(r.reviewed_at||"")}</span>`}
+          </td>
+        </tr>`).join("") +
+        `</tbody></table>`;
+
+      // 만료임박 카드 클릭 → 전체 표시로 전환
+      const card = document.getElementById("otaExpiringCard");
+      if (card && (sum.expiring||0) > 0) {
+        card.addEventListener("click", () => {
+          const cb = document.getElementById("otaShowAll");
+          if (cb && !cb.checked) { cb.checked = true; loadOtaRequests(); }
+        });
+      }
+    }
+
+    window.otaApprove = async function(id) {
+      if (!confirm("이 OTA 링크를 승인합니다. 건물 상세에 배지가 표시되며 3개월간 유효합니다.")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/approve`, { method: "POST" });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      loadOtaRequests();
+    };
+
+    window.otaReject = async function(id) {
+      const note = prompt("거절 사유를 입력하세요 (선택, 업체에게 표시됩니다):");
+      if (note === null) return;  // 취소
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_note: note })
+      });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      loadOtaRequests();
+    };
+
+    window.otaCancel = async function(id) {
+      if (!confirm("이 신청을 취소합니다. 신청이 검토중 상태로 취소되며 업체에게 알림은 발송되지 않습니다.")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/cancel`, { method: "POST" });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      loadOtaRequests();
+    };
+
+    window.otaExtend = async function(id) {
+      if (!confirm("이 OTA 링크를 현재 시점에서 3개월 연장합니다.")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/extend`, { method: "POST" });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      alert(d.message || "연장되었습니다.");
+      loadOtaRequests();
+    };
+
+    window.otaRevoke = async function(id) {
+      if (!confirm("승인을 철회합니다.\n건물 상세에서 OTA 등록확인 배지가 제거됩니다.\n계속하시겠습니까?")) return;
+      const res = await fetch(`/api/admin/booking-url-requests/${id}/revoke`, { method: "POST" });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리에 실패했습니다."); return; }
+      loadOtaRequests();
+    };
+
+    function showBugReports() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin" style="max-width:none">
+          <div class="legal-admin-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h2 class="legal-admin-title" style="margin:0;">🐛 오류신고 관리</h2>
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" id="brShowResolved"> 해결됨 포함
+            </label>
+            <button class="admin-btn" id="brRefreshBtn">새로고침</button>
+          </div>
+          <p class="legal-admin-hint">사용자가 플로팅 버튼으로 제출한 사이트 오류 신고입니다. 심각도 <span style="color:#B23A3A;font-weight:700;">🚫 긴급</span>이 먼저 표시됩니다.</p>
+          <div id="bugReportsBox"><div style="padding:20px;color:#aaa;">불러오는 중…</div></div>
+        </div>`;
+      document.getElementById("brRefreshBtn").addEventListener("click", loadBugReports);
+      document.getElementById("brShowResolved").addEventListener("change", loadBugReports);
+      loadBugReports();
+    }
+
+    async function loadBugReports() {
+      const showResolved = document.getElementById("brShowResolved") && document.getElementById("brShowResolved").checked;
+      const box = document.getElementById("bugReportsBox");
+      if (!box) return;
+      const status = showResolved ? "all" : "open";
+      const [sumRes, listRes] = await Promise.all([
+        fetch("/api/admin/bug-reports/summary"),
+        fetch(`/api/admin/bug-reports?status=${status}`)
+      ]);
+      const sum = await sumRes.json().catch(()=>({}));
+      const d   = await listRes.json().catch(()=>({}));
+
+      const summaryHtml = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+          <div style="flex:1;min-width:100px;background:#FDF6E3;border:1px solid #E8D9A0;border-radius:7px;padding:10px 14px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#8a6d1f;">${sum.new||0}</div>
+            <div style="font-size:11.5px;color:#8a6d1f;margin-top:2px;">신규</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:#E8F0FE;border:1px solid #93B4F7;border-radius:7px;padding:10px 14px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#1a4a9a;">${sum.checking||0}</div>
+            <div style="font-size:11.5px;color:#1a4a9a;margin-top:2px;">확인중</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:${(sum.blocking||0)>0?'#FBEAEA':'#F5F5F5'};border:1px solid ${(sum.blocking||0)>0?'#E0AAAA':'#ddd'};border-radius:7px;padding:10px 14px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:${(sum.blocking||0)>0?'#B23A3A':'#aaa'};">${sum.blocking||0}</div>
+            <div style="font-size:11.5px;color:${(sum.blocking||0)>0?'#B23A3A':'#aaa'};margin-top:2px;">긴급(미해결)</div>
+          </div>
+        </div>`;
+
+      if (!d.ok || !d.items || !d.items.length) {
+        box.innerHTML = summaryHtml + `<div style="padding:20px;color:#aaa;">신고 내역이 없습니다.</div>`;
+        return;
+      }
+
+      const severityBadge = s => {
+        if (s === 'blocking') return `<span style="font-size:11.5px;font-weight:700;color:#fff;background:#B23A3A;border-radius:5px;padding:2px 8px;">🚫 긴급</span>`;
+        if (s === 'annoying') return `<span style="font-size:11.5px;font-weight:700;color:#E65100;background:#FFF3E0;border-radius:5px;padding:2px 8px;">😕 불편함</span>`;
+        return `<span style="font-size:11.5px;color:#666;background:#F5F5F5;border-radius:5px;padding:2px 8px;">🔹 사소함</span>`;
+      };
+
+      const statusBadge = s => {
+        if (s === 'new')      return `<span style="font-size:11px;background:#FDF6E3;color:#8a6d1f;border-radius:4px;padding:2px 7px;">신규</span>`;
+        if (s === 'checking') return `<span style="font-size:11px;background:#E8F0FE;color:#1a4a9a;border-radius:4px;padding:2px 7px;">확인중</span>`;
+        return `<span style="font-size:11px;background:#E6F4EA;color:#1a7a3c;border-radius:4px;padding:2px 7px;">해결됨</span>`;
+      };
+
+      box.innerHTML = summaryHtml +
+        `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:#F9F5EE;text-align:left;">
+          <th style="padding:9px 10px;">심각도</th>
+          <th style="padding:9px 10px;">신고내용</th>
+          <th style="padding:9px 10px;">발생 페이지</th>
+          <th style="padding:9px 10px;">신고자</th>
+          <th style="padding:9px 10px;">연락처</th>
+          <th style="padding:9px 10px;">신고일</th>
+          <th style="padding:9px 10px;">상태</th>
+          <th style="padding:9px 10px;">처리</th>
+        </tr></thead>
+        <tbody>` +
+        d.items.map(r => {
+          const descId = `brDesc_${r.id}`;
+          const uaShort = (r.user_agent||"").replace(/(Mozilla\/[\d.]+\s?\()/,"").slice(0,60);
+          return `<tr style="border-bottom:1px solid #F0EBDF;vertical-align:top;">
+            <td style="padding:9px 10px;">${severityBadge(r.severity)}</td>
+            <td style="padding:9px 10px;max-width:220px;">
+              <div id="${descId}" style="overflow:hidden;max-height:60px;cursor:pointer;font-size:13px;"
+                onclick="this.style.maxHeight=this.style.maxHeight==='none'?'60px':'none'">
+                ${dgEscape(r.description)}
+              </div>
+              ${r.screenshot_key ? `<button class="admin-btn" style="margin-top:4px;font-size:11px;" onclick="brViewScreenshot(${r.id})">📷 스크린샷</button>` : ""}
+              ${r.admin_note ? `<div style="font-size:11px;color:#666;margin-top:4px;">메모: ${dgEscape(r.admin_note)}</div>` : ""}
+            </td>
+            <td style="padding:9px 10px;max-width:160px;word-break:break-all;font-size:12px;">
+              ${r.page_url ? `<a href="${dgEscape(r.page_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">${dgEscape(r.page_url)}</a>` : '<span style="color:#ccc;">-</span>'}
+              <div style="font-size:10.5px;color:#aaa;margin-top:2px;">${dgEscape(uaShort)}</div>
+            </td>
+            <td style="padding:9px 10px;white-space:nowrap;font-size:12px;">
+              ${r.account_type ? `${dgEscape(r.account_type)} #${r.user_id}` : '<span style="color:#aaa;">비로그인</span>'}
+            </td>
+            <td style="padding:9px 10px;font-size:12px;">${dgEscape(r.contact||"")}</td>
+            <td style="padding:9px 10px;white-space:nowrap;font-size:12px;">${dgEscape(r.created_at||"")}</td>
+            <td style="padding:9px 10px;">${statusBadge(r.status)}</td>
+            <td style="padding:9px 10px;white-space:nowrap;">
+              ${r.status !== 'checking'  ? `<button class="admin-btn" style="margin-bottom:3px;font-size:11.5px;" onclick="brSetStatus(${r.id},'checking')">확인중으로</button><br>` : ""}
+              ${r.status !== 'resolved'  ? `<button class="admin-btn" style="font-size:11.5px;background:#E6F4EA;border-color:#A3D9B1;color:#1a7a3c;" onclick="brSetStatus(${r.id},'resolved')">해결됨으로</button>` : ""}
+            </td>
+          </tr>`;
+        }).join("") +
+        `</tbody></table>`;
+    }
+
+    window.openBugReportsForUser = function(accountType, userId) {
+      // 오류신고 관리 화면으로 이동 후 해당 회원 신고만 필터해서 보여줌
+      showBugReports();
+      // 화면 마운트 후 해당 회원 신고만 로드 (showBugReports 내 loadBugReports를 덮어씀)
+      setTimeout(async function () {
+        const box = document.getElementById("bugReportsBox");
+        if (!box) return;
+        box.innerHTML = `<div style="padding:12px;color:#888;font-size:13px;">회원(${dgEscape(accountType)} #${userId}) 신고 이력 불러오는 중…</div>`;
+        const res = await fetch(`/api/admin/bug-reports?status=all&account_type=${encodeURIComponent(accountType)}&user_id=${userId}`);
+        const d   = await res.json().catch(()=>({}));
+        if (!d.ok || !d.items || !d.items.length) {
+          box.innerHTML = `<div style="padding:20px;color:#aaa;">해당 회원의 신고 내역이 없습니다.</div>`;
+          return;
+        }
+        // 요약 없이 테이블만 표시 (회원 단건 필터)
+        const severityBadge = s => {
+          if (s === 'blocking') return `<span style="font-size:11.5px;font-weight:700;color:#fff;background:#B23A3A;border-radius:5px;padding:2px 8px;">🚫 긴급</span>`;
+          if (s === 'annoying') return `<span style="font-size:11.5px;font-weight:700;color:#E65100;background:#FFF3E0;border-radius:5px;padding:2px 8px;">😕 불편함</span>`;
+          return `<span style="font-size:11.5px;color:#666;background:#F5F5F5;border-radius:5px;padding:2px 8px;">🔹 사소함</span>`;
+        };
+        const statusBadge = s => {
+          if (s === 'new')      return `<span style="font-size:11px;background:#FDF6E3;color:#8a6d1f;border-radius:4px;padding:2px 7px;">신규</span>`;
+          if (s === 'checking') return `<span style="font-size:11px;background:#E8F0FE;color:#1a4a9a;border-radius:4px;padding:2px 7px;">확인중</span>`;
+          return `<span style="font-size:11px;background:#E6F4EA;color:#1a7a3c;border-radius:4px;padding:2px 7px;">해결됨</span>`;
+        };
+        box.innerHTML = `<div style="padding:8px 0 10px;font-size:13px;color:var(--brass-dark);font-weight:600;">📋 ${dgEscape(accountType)} #${userId} 의 전체 신고 이력 (${d.items.length}건)</div>` +
+          `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:#F9F5EE;text-align:left;">
+            <th style="padding:9px 10px;">심각도</th><th style="padding:9px 10px;">신고내용</th>
+            <th style="padding:9px 10px;">페이지</th><th style="padding:9px 10px;">신고일</th>
+            <th style="padding:9px 10px;">상태</th><th style="padding:9px 10px;">처리</th>
+          </tr></thead><tbody>` +
+          d.items.map(r => `<tr style="border-bottom:1px solid #F0EBDF;vertical-align:top;">
+            <td style="padding:9px 10px;">${severityBadge(r.severity)}</td>
+            <td style="padding:9px 10px;max-width:260px;">
+              <div style="overflow:hidden;max-height:60px;cursor:pointer;font-size:13px;"
+                onclick="this.style.maxHeight=this.style.maxHeight==='none'?'60px':'none'">${dgEscape(r.description)}</div>
+              ${r.screenshot_key ? `<button class="admin-btn" style="margin-top:4px;font-size:11px;" onclick="brViewScreenshot(${r.id})">📷 스크린샷</button>` : ""}
+            </td>
+            <td style="padding:9px 10px;max-width:160px;word-break:break-all;font-size:12px;">
+              ${r.page_url ? `<a href="${dgEscape(r.page_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">${dgEscape(r.page_url)}</a>` : '-'}
+            </td>
+            <td style="padding:9px 10px;white-space:nowrap;font-size:12px;">${dgEscape(r.created_at||"")}</td>
+            <td style="padding:9px 10px;">${statusBadge(r.status)}</td>
+            <td style="padding:9px 10px;white-space:nowrap;">
+              ${r.status !== 'checking' ? `<button class="admin-btn" style="margin-bottom:3px;font-size:11.5px;" onclick="brSetStatus(${r.id},'checking')">확인중으로</button><br>` : ""}
+              ${r.status !== 'resolved' ? `<button class="admin-btn" style="font-size:11.5px;background:#E6F4EA;border-color:#A3D9B1;color:#1a7a3c;" onclick="brSetStatus(${r.id},'resolved')">해결됨으로</button>` : ""}
+            </td>
+          </tr>`).join("") + `</tbody></table>`;
+      }, 50);
+    };
+
+    window.brSetStatus = async function(id, status) {
+      const res = await fetch(`/api/admin/bug-reports/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok) { alert(d.message || "처리 실패"); return; }
+      loadBugReports();
+    };
+
+    window.brViewScreenshot = async function(id) {
+      const res = await fetch(`/api/admin/bug-reports/${id}/screenshot`);
+      const d = await res.json().catch(()=>({}));
+      if (!d.ok || !d.url) { alert("스크린샷을 불러올 수 없습니다."); return; }
+      window.open(d.url, "_blank", "noopener");
+    };
+
+    function showNewBuildingCandidates() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-admin" style="max-width:none">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">신규건물 후보(일반숙박)</h2>
+          </div>
+          <p class="legal-admin-hint">
+            영업상태가 <b>영업/정상</b>인 일반숙박업(모텔·여관) 사업장 중, 아직
+            건물마스터에 없는 곳입니다. 검수 후 건물로 등록하거나 무시할 수 있습니다.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <input id="newBldSearch" class="dg-input" placeholder="사업장명/주소 검색" style="min-width:220px">
+            <button id="newBldSearchBtn" class="admin-btn">검색</button>
+          </div>
+          <div id="newBldCandBox"></div>
+        </div>
+      `;
+      document.getElementById("newBldSearchBtn").addEventListener("click", loadNewBuildingCandidates);
+      document.getElementById("newBldSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadNewBuildingCandidates(); });
+      loadNewBuildingCandidates();
+    }
+
+    // ---- 팝업관리 ----
+    // 이미지 업로드가 필요해 DataGrid 폼 대신 전용 목록+모달을 쓴다(API는 E-1과 같은 CRUD 패턴).
+    function popupPeriodText(p) {
+      const s = p.start_at || "";
+      const e = p.end_at || "";
+      if (!s && !e) return "상시";
+      return `${s || "즉시"} ~ ${e || "무기한"}`;
+    }
+
+    function popupLiveBadge(p) {
+      if (!p.is_active) return `<span class="dg-badge dg-badge-no">중지</span>`;
+      const now = new Date();
+      const s = p.start_at ? new Date(p.start_at.replace(" ", "T")) : null;
+      const e = p.end_at ? new Date(p.end_at.replace(" ", "T")) : null;
+      if (s && now < s) return `<span class="dg-badge dg-badge-wait">대기</span>`;
+      if (e && now > e) return `<span class="dg-badge dg-badge-no">종료</span>`;
+      return `<span class="dg-badge dg-badge-ok">게재중</span>`;
+    }
+
+    async function loadPopupList() {
+      const body = document.getElementById("popupListBody");
+      if (!body) return;
+      body.innerHTML = `<tr><td class="dg-empty" colspan="6">불러오는 중…</td></tr>`;
+      let d;
+      try {
+        const res = await fetch("/api/admin/popups");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        d = await res.json();
+      } catch (e) {
+        body.innerHTML = `<tr><td class="dg-empty" colspan="6">목록을 불러오지 못했습니다.</td></tr>`;
+        return;
+      }
+      const items = d.items || [];
+      if (!items.length) {
+        body.innerHTML = `<tr><td class="dg-empty" colspan="6">등록된 팝업이 없습니다. "+ 팝업 추가"로 만들어보세요.</td></tr>`;
+        return;
+      }
+      body.innerHTML = items.map((p) => `
+        <tr>
+          <td>${p.id}</td>
+          <td>${dgEscape(p.title)}</td>
+          <td>${p.display_type === "top_banner" ? "상단배너" : "팝업"}</td>
+          <td>${dgEscape(popupPeriodText(p))}</td>
+          <td>${[p.show_desktop ? "PC" : "", p.show_mobile ? "모바일" : ""].filter(Boolean).join("·") || "—"}</td>
+          <td>${popupLiveBadge(p)}
+            <button class="dg-icon-btn popup-toggle" data-id="${p.id}" data-active="${p.is_active ? 1 : 0}">${p.is_active ? "중지" : "게재"}</button>
+            <button class="dg-icon-btn popup-edit" data-id="${p.id}">수정</button>
+            <button class="dg-icon-btn popup-del" data-id="${p.id}">삭제</button>
+          </td>
+        </tr>`).join("");
+      body.querySelectorAll(".popup-edit").forEach((b) => b.addEventListener("click", () => {
+        const row = items.find((x) => String(x.id) === b.getAttribute("data-id"));
+        openPopupForm(row);
+      }));
+      body.querySelectorAll(".popup-del").forEach((b) => b.addEventListener("click", async () => {
+        const row = items.find((x) => String(x.id) === b.getAttribute("data-id"));
+        if (!window.confirm(`'${row ? row.title : ""}' 팝업을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+        try {
+          const res = await fetch(`/api/admin/popups/${b.getAttribute("data-id")}`, { method: "DELETE" });
+          const dd = await res.json().catch(() => ({}));
+          if (res.ok && dd.ok) { loadPopupList(); return; }
+          window.alert(dd.message || "삭제에 실패했습니다.");
+        } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      }));
+      body.querySelectorAll(".popup-toggle").forEach((b) => b.addEventListener("click", async () => {
+        const next = b.getAttribute("data-active") !== "1";
+        try {
+          const res = await fetch(`/api/admin/popups/${b.getAttribute("data-id")}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: next }),
+          });
+          const dd = await res.json().catch(() => ({}));
+          if (res.ok && dd.ok) { loadPopupList(); return; }
+          window.alert(dd.message || "변경에 실패했습니다.");
+        } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      }));
+    }
+
+    function openPopupForm(row) {
+      const isEdit = !!row;
+      const v = (k, def) => (isEdit && row[k] != null ? row[k] : def);
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true" style="max-height:90vh; overflow-y:auto;">
+          <div class="admin-modal-head">
+            <h3>팝업 ${isEdit ? "수정" : "추가"}</h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <form class="admin-modal-body">
+            <label class="admin-form-row">
+              <span class="admin-form-label">제목(관리용) <em class="req">*</em></span>
+              <input class="admin-input" id="ppTitle" value="${dgEscape(v("title", ""))}" placeholder="예: 7월 오픈기념 이벤트" />
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">게재 시작일시</span>
+              <input class="admin-input" id="ppStart" type="datetime-local" value="${dgEscape((v("start_at", "") || "").replace(" ", "T"))}" />
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">게재 종료일시</span>
+              <input class="admin-input" id="ppEnd" type="datetime-local" value="${dgEscape((v("end_at", "") || "").replace(" ", "T"))}" />
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">대상 기기</span>
+              <span>
+                <label style="margin-right:14px;"><input type="checkbox" id="ppDesktop" ${v("show_desktop", true) ? "checked" : ""} /> PC</label>
+                <label><input type="checkbox" id="ppMobile" ${v("show_mobile", true) ? "checked" : ""} /> 모바일</label>
+              </span>
+            </div>
+            <label class="admin-form-row">
+              <span class="admin-form-label">노출 범위</span>
+              <select class="admin-input" id="ppScope">
+                <option value="all" ${v("scope", "all") === "all" ? "selected" : ""}>전체 페이지</option>
+                <option value="home_only" ${v("scope", "all") === "home_only" ? "selected" : ""}>홈화면만</option>
+              </select>
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">노출 대상</span>
+              <select class="admin-input" id="ppAudience">
+                <option value="all" ${v("audience", "all") === "all" ? "selected" : ""}>전체 방문자</option>
+                <option value="logged_in" ${v("audience", "all") === "logged_in" ? "selected" : ""}>로그인 회원만</option>
+              </select>
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">형태</span>
+              <select class="admin-input" id="ppType">
+                <option value="popup" ${v("display_type", "popup") === "popup" ? "selected" : ""}>팝업(모달)</option>
+                <option value="top_banner" ${v("display_type", "popup") === "top_banner" ? "selected" : ""}>상단배너</option>
+              </select>
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">이미지 <em class="req">*</em></span>
+              <span>
+                <input type="file" id="ppFile" accept=".jpg,.jpeg,.png" />
+                <div id="ppUpMsg" style="font-size:12px; color:var(--ink-soft); margin-top:4px;"></div>
+                <img id="ppPreview" src="${isEdit && row.image_ref ? "/api/popups/image/" + dgEscape(row.image_ref) : ""}"
+                     style="margin-top:8px; max-width:220px; max-height:160px; border:1px solid #eee; ${isEdit && row.image_ref ? "" : "display:none;"}" alt="미리보기" />
+              </span>
+            </div>
+            <label class="admin-form-row">
+              <span class="admin-form-label">링크 URL</span>
+              <input class="admin-input" id="ppLink" value="${dgEscape(v("link_url", "") || "")}" placeholder="https://… 또는 /notices (없으면 비워두세요)" />
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">링크 열기</span>
+              <label><input type="checkbox" id="ppNewTab" ${v("open_new_tab", true) ? "checked" : ""} /> 새 창(탭)에서 열기</label>
+            </div>
+            <label class="admin-form-row">
+              <span class="admin-form-label">팝업 너비(px)</span>
+              <input class="admin-input" id="ppWidth" type="number" min="200" max="1200" value="${dgEscape(v("width_px", 400))}" />
+            </label>
+            <label class="admin-form-row">
+              <span class="admin-form-label">닫기 옵션</span>
+              <select class="admin-input" id="ppClose">
+                <option value="close" ${v("close_mode", "close") === "close" ? "selected" : ""}>닫기 버튼만</option>
+                <option value="hide_today" ${v("close_mode", "close") === "hide_today" ? "selected" : ""}>"오늘 하루 안 보기" 포함</option>
+              </select>
+            </label>
+            <div class="admin-form-row">
+              <span class="admin-form-label">게재 상태</span>
+              <label><input type="checkbox" id="ppActive" ${v("is_active", true) ? "checked" : ""} /> 게재중</label>
+            </div>
+          </form>
+          <div class="admin-modal-msg" role="alert"></div>
+          <div class="admin-modal-foot">
+            <button class="admin-btn admin-modal-cancel" type="button">취소</button>
+            <button class="admin-btn admin-btn-primary admin-modal-save" type="button">${isEdit ? "저장" : "추가"}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+      let imageRef = isEdit ? (row.image_ref || "") : "";
+      const upMsg = overlay.querySelector("#ppUpMsg");
+      const preview = overlay.querySelector("#ppPreview");
+      overlay.querySelector("#ppFile").addEventListener("change", async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        upMsg.style.color = "";
+        upMsg.textContent = "업로드 중…";
+        const fd = new FormData();
+        fd.append("file", f);
+        try {
+          const res = await fetch("/api/admin/popups/upload-image", { method: "POST", body: fd });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) {
+            imageRef = d.image_ref;
+            preview.src = d.image_url;
+            preview.style.display = "";
+            upMsg.style.color = "#1a7f37";
+            upMsg.textContent = "업로드 완료";
+          } else {
+            upMsg.style.color = "#b3261e";
+            upMsg.textContent = d.message || "업로드에 실패했습니다.";
+          }
+        } catch (err) {
+          upMsg.style.color = "#b3261e";
+          upMsg.textContent = "네트워크 오류가 발생했습니다.";
+        }
+      });
+
+      const msgBox = overlay.querySelector(".admin-modal-msg");
+      const saveBtn = overlay.querySelector(".admin-modal-save");
+      saveBtn.addEventListener("click", async () => {
+        const g = (id) => overlay.querySelector(id);
+        const payload = {
+          title: g("#ppTitle").value.trim(),
+          start_at: g("#ppStart").value,
+          end_at: g("#ppEnd").value,
+          show_desktop: g("#ppDesktop").checked,
+          show_mobile: g("#ppMobile").checked,
+          scope: g("#ppScope").value,
+          audience: g("#ppAudience").value,
+          display_type: g("#ppType").value,
+          image_ref: imageRef,
+          link_url: g("#ppLink").value.trim(),
+          open_new_tab: g("#ppNewTab").checked,
+          width_px: g("#ppWidth").value,
+          close_mode: g("#ppClose").value,
+          is_active: g("#ppActive").checked,
+        };
+        if (!payload.title) { msgBox.textContent = "제목(관리용)은 필수입니다."; return; }
+        if (!payload.image_ref) { msgBox.textContent = "이미지를 업로드해주세요."; return; }
+        if (!payload.show_desktop && !payload.show_mobile) { msgBox.textContent = "대상 기기를 하나 이상 선택해주세요."; return; }
+        saveBtn.disabled = true;
+        const prevText = saveBtn.textContent;
+        saveBtn.textContent = "저장 중…";
+        try {
+          const url = isEdit ? `/api/admin/popups/${row.id}` : "/api/admin/popups";
+          const res = await fetch(url, {
+            method: isEdit ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) { close(); loadPopupList(); return; }
+          msgBox.textContent = d.message || "저장에 실패했습니다.";
+        } catch (e) {
+          msgBox.textContent = "네트워크 오류가 발생했습니다.";
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = prevText;
+        }
+      });
+    }
+
+    function showPopups() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="dg-header">
+          <h2 class="dg-title">팝업관리</h2>
+          <div class="dg-actions">
+            <button class="admin-btn admin-btn-primary" id="popupAddBtn">+ 팝업 추가</button>
+          </div>
+        </div>
+        <p class="legal-admin-hint">사이트 방문자에게 보이는 팝업/상단배너를 관리합니다. 여러 개가 게재중이면 <b>가장 최근에 등록한 1개만</b> 노출됩니다.</p>
+        <div class="dg-table-wrap">
+          <table class="dg-table">
+            <thead><tr><th>ID</th><th>제목(관리용)</th><th>형태</th><th>게재 기간</th><th>기기</th><th>상태 / 관리</th></tr></thead>
+            <tbody id="popupListBody"></tbody>
+          </table>
+        </div>
+      `;
+      document.getElementById("popupAddBtn").addEventListener("click", () => openPopupForm(null));
+      loadPopupList();
+    }
+
+    // ---- 회원관리: users/agents/operators/applications 통합 조회 뷰 ----
+    // 조회는 /api/admin/members, 승인대기 행의 승인/반려는 기존 신청승인 API를 그대로 호출.
+    const MEMBER_GROUPS = [
+      { key: "all", label: "전체" },
+      { key: "general", label: "일반회원" },
+      { key: "agent", label: "중개사" },
+      { key: "operator", label: "운영지원업체" },
+      { key: "loan_consultant", label: "대출상담사" },
+      { key: "pending", label: "승인대기" },
+    ];
+    const MEMBER_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사", pending: "승인대기" };
+    // 목록 테이블 전용 축약 표기 (상세페이지/다른 화면에서는 MEMBER_TYPE_LABEL 사용)
+    const MEMBER_TYPE_SHORT = { general: "일반", agent: "중개", operator: "운영", loan_consultant: "대출", pending: "대기" };
+    const MEMBER_PARTNER_TYPES = ["agent", "operator", "loan_consultant"];
+    const AD_PRODUCT_LABEL = { building_slot: "담당건물 추가", priority_exposure: "우선노출" };
+    const AD_STATUS_BADGE = { "대기": "wait", "완료": "ok", "만료": "no" };
+    const MEMBER_STATUS_BADGE = {
+      active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"],
+      suspended: ["정지", "no"], deleted: ["탈퇴", "no"],
+      withdrawn: ["탈퇴", "no"], inactive: ["비활성", "no"],
+    };
+    let membersState = { group: "all", q: "", page: 1, size: 50 };
+    // 선택 상태 — key "type:id" → {type, id}. 목록을 다시 그리면 초기화된다.
+    let membersSelected = new Map();
+
+    // 여러 입력 필드를 받는 간단 모달 (dgPromptModal 확장판) — 확인 시 {key: 값}, 취소 시 null
+    function memberFormModal(opts) {
+      return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.className = "admin-modal-overlay";
+        overlay.innerHTML = `
+          <div class="admin-modal" role="dialog" aria-modal="true">
+            <div class="admin-modal-head">
+              <h3>${dgEscape(opts.title)}</h3>
+              <button class="admin-modal-close" aria-label="닫기">×</button>
+            </div>
+            <form class="admin-modal-body">
+              ${(opts.fields || []).map((f) => `
+                <label class="admin-form-row">
+                  <span class="admin-form-label">${dgEscape(f.label)}${f.required ? ' <em class="req">*</em>' : ""}</span>
+                  ${f.type === "textarea"
+                    ? `<textarea class="admin-input" rows="3" data-key="${dgEscape(f.key)}" placeholder="${dgEscape(f.placeholder || "")}"></textarea>`
+                    : `<input class="admin-input" type="${f.type === "number" ? "number" : "text"}" data-key="${dgEscape(f.key)}" placeholder="${dgEscape(f.placeholder || "")}" />`}
+                </label>`).join("")}
+            </form>
+            <div class="admin-modal-msg" role="alert"></div>
+            <div class="admin-modal-foot">
+              <button class="admin-btn admin-modal-cancel" type="button">취소</button>
+              <button class="admin-btn ${dgEscape(opts.submitClass || "admin-btn-primary")} admin-modal-ok" type="button">${dgEscape(opts.submitLabel || "확인")}</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        // 수정 모드 등 초기값 주입 (opts.initialValues = { key: 값 })
+        if (opts.initialValues) {
+          Object.entries(opts.initialValues).forEach(([k, v]) => {
+            const el = overlay.querySelector(`[data-key="${k}"]`);
+            if (el) el.value = v == null ? "" : v;
+          });
+        }
+        const msgBox = overlay.querySelector(".admin-modal-msg");
+        const first = overlay.querySelector("[data-key]");
+        if (first) first.focus();
+        const done = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector(".admin-modal-close").addEventListener("click", () => done(null));
+        overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => done(null));
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) done(null); });
+        overlay.querySelector(".admin-modal-ok").addEventListener("click", () => {
+          const out = {};
+          for (const f of opts.fields || []) {
+            const v = overlay.querySelector(`[data-key="${f.key}"]`).value.trim();
+            if (f.required && !v) { msgBox.textContent = `${f.label}은(는) 필수입니다.`; return; }
+            out[f.key] = v;
+          }
+          if (typeof opts.validate === "function") {
+            const errMsg = opts.validate(out);
+            if (errMsg) { msgBox.textContent = errMsg; return; }
+          }
+          done(out);
+        });
+      });
+    }
+
+    async function loadMembers() {
+      const s = membersState;
+      const listEl = document.getElementById("membersList");
+      if (!listEl) return;
+      listEl.innerHTML = `<div class="stats-loading">불러오는 중…</div>`;
+      let d;
+      try {
+        const params = new URLSearchParams({ group: s.group, page: s.page, size: s.size });
+        if (s.q) params.set("q", s.q);
+        const res = await fetch(`/api/admin/members?${params}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("members fetch failed");
+        d = await res.json();
+      } catch (e) {
+        listEl.innerHTML = `<div class="stats-loading">회원 목록을 불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        return;
+      }
+
+      // 그룹 필터 버튼의 인원수 갱신
+      MEMBER_GROUPS.forEach((g) => {
+        const el = document.getElementById(`memberCount_${g.key}`);
+        if (el) el.textContent = (d.counts && d.counts[g.key] != null) ? d.counts[g.key].toLocaleString("ko-KR") : "0";
+      });
+      // 중개사 탭 서브텍스트 — 등급 분포
+      if (d.agent_tier_stats) {
+        const agentBtn = document.querySelector(".member-group-btn[data-group='agent']");
+        if (agentBtn) {
+          let sub = agentBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; agentBtn.appendChild(sub); }
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">무료전용 ${d.agent_tier_stats.free_only} · 단지뱃지(골드) ${d.agent_tier_stats.has_premium} · 지역뱃지(실버) ${d.agent_tier_stats.has_region}</div>`;
+        }
+      }
+      // 일반회원 탭 서브텍스트
+      if (d.general_provider_stats) {
+        const generalBtn = document.querySelector(".member-group-btn[data-group='general']");
+        if (generalBtn) {
+          let sub = generalBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; generalBtn.appendChild(sub); }
+          const ps = d.general_provider_stats;
+          sub.innerHTML = `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px;">카카오 ${Number(ps.kakao) || 0} · 이메일 ${Number(ps.email) || 0}</div>`;
+        }
+      }
+      // 운영지원업체 탭 서브텍스트 — 7개 업종 전부 표시(0 포함)
+      if (d.operator_category_stats) {
+        const opBtn = document.querySelector(".member-group-btn[data-group='operator']");
+        if (opBtn) {
+          let sub = opBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; opBtn.appendChild(sub); }
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">${d.operator_category_stats.map(c => `${c.category} ${c.count}`).join(" · ")}</div>`;
+        }
+      }
+      // 승인대기 탭 서브텍스트 — 신청 유형별 대기 건수
+      if (d.pending_type_counts) {
+        const pendingBtn = document.querySelector(".member-group-btn[data-group='pending']");
+        if (pendingBtn) {
+          let sub = pendingBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; pendingBtn.appendChild(sub); }
+          const pc = d.pending_type_counts;
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">중개사 ${Number(pc.agent) || 0} · 운영지원업체 ${Number(pc.operator) || 0} · 대출상담사 ${Number(pc.loan_consultant) || 0}</div>`;
+        }
+      }
+      // 대출상담사 탭 서브텍스트 — 세부유형 분포
+      if (d.lc_tier_stats) {
+        const lcBtn = document.querySelector(".member-group-btn[data-group='loan_consultant']");
+        if (lcBtn) {
+          let sub = lcBtn.querySelector(".member-tier-sub");
+          if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; lcBtn.appendChild(sub); }
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">무료전용 ${d.lc_tier_stats.free_only} · 단지뱃지(골드) ${d.lc_tier_stats.has_badge} · 지역뱃지(실버) ${d.lc_tier_stats.has_region}</div>`;
+        }
+      }
+
+      membersSelected = new Map();  // 목록이 바뀌면 선택 초기화 (다른 페이지의 유령 선택 방지)
+
+      // 메모 인라인 수정용 현재값 캐시 (prompt 초기값)
+      window.__memberRowsCache = {};
+      window.__memberRowsData = {};
+      (d.items || []).forEach((r) => {
+        window.__memberRowsCache[r.member_type + ":" + r.id] = r.admin_memo || "";
+        window.__memberRowsData[r.member_type + ":" + r.id] = r;
+      });
+
+      const rows = (d.items || []).map((r) => {
+        const typeShort = MEMBER_TYPE_SHORT[r.member_type] || r.member_type;
+        const badge = r.member_type === "pending"
+          ? `<span class="dg-badge dg-badge-wait" style="white-space:nowrap;">대기${r.applicant_type === "agent" ? "·중개" : (r.applicant_type === "operator" ? "·운영" : (r.applicant_type === "loan_consultant" ? "·대출" : ""))}</span>`
+          : `<span style="white-space:nowrap;">${dgEscape(typeShort)}</span>`;
+        let st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
+        const isPartner = MEMBER_PARTNER_TYPES.includes(r.member_type);
+        // 파트너가 본인 정보수정(등록번호류)으로 pending 전환된 경우 — 신규 신청과 구분 배지
+        const isReReview = isPartner && r.status === "pending";
+        if (isReReview) {
+          st = (r.admin_memo || "").includes("[본인수정]") ? ["정보변경 재검토", "wait"] : ["승인대기", "wait"];
+        }
+        const docsBtn = (isPartner || r.member_type === "pending")
+          ? `<button class="dg-icon-btn" onclick="memberDocs('${r.member_type}', ${r.id})">서류</button>`
+          : "";
+        let dashBtn = "";
+        if (r.member_type === "agent") {
+          dashBtn = `<a class="dg-icon-btn" href="/admin/preview/agent/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
+        } else if (r.member_type === "operator") {
+          dashBtn = `<a class="dg-icon-btn" href="/admin/preview/operator/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
+        } else if (r.member_type === "loan_consultant") {
+          dashBtn = `<a class="dg-icon-btn" href="/admin/preview/loan_consultant/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
+        }
+        const actions = r.member_type === "pending"
+          ? `<button class="dg-icon-btn" onclick="memberApplicationDetail(${r.id})">상세</button>
+             <button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
+             <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
+          : (isReReview
+            ? `<button class="dg-icon-btn dg-approve" onclick="memberReapprove('${r.member_type}', ${r.id}, this)">재승인</button> ${docsBtn}`
+            : (docsBtn || `<span style="color:var(--ink-soft);">—</span>`));
+        // 광고 컬럼 — 파트너(중개사/운영지원업체/대출상담사)만. 클릭 시 이력/입력 팝업.
+        let adCell = '<span style="color:var(--ink-soft);">-</span>';
+        if (isPartner) {
+          const a = r.ads;
+          const inner = (a && a.latest)
+            ? `<b>${dgEscape(AD_PRODUCT_LABEL[a.latest.product_type] || a.latest.product_type)}</b>
+               <span style="white-space:nowrap;">${dgEscape(a.latest.start_date || "?")}~${dgEscape(a.latest.end_date || "")}</span>
+               · ${(a.latest.amount || 0).toLocaleString("ko-KR")}원
+               <span class="dg-badge dg-badge-${AD_STATUS_BADGE[a.latest.payment_status] || ""}">${dgEscape(a.latest.payment_status)}</span>
+               ${a.count > 1 ? `<span style="color:var(--ink-soft);"> 외 ${a.count - 1}건</span>` : ""}`
+            : '<span style="color:var(--ink-soft);">기록 없음 · 추가 +</span>';
+          adCell = `<a href="#" onclick="memberAds(event, '${r.member_type}', ${r.id}, '${encodeURIComponent(r.name || "")}')" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); display:inline-block;">${inner}</a>`;
+        }
+        const pointsCell = r.member_type === "general"
+          ? (Number(r.points) || 0).toLocaleString("ko-KR") + "P"
+          : `<span style="color:var(--ink-soft);">-</span>`;
+        const tagCell = r.admin_tag
+          ? `<span class="dg-badge">${dgEscape(r.admin_tag)}</span>`
+          : `<span style="color:var(--ink-soft);">-</span>`;
+        // 메모(비고) — 매물의뢰 비고와 동일한 인라인 수정 패턴 (승인대기 행은 수정 불가)
+        const memoTxt = r.admin_memo ? dgEscape(r.admin_memo) : '<span style="color:var(--ink-soft);">메모 추가 +</span>';
+        const memoCell = r.member_type === "pending"
+          ? '<span style="color:var(--ink-soft);">-</span>'
+          : `<a href="#" onclick="adminEditMemberMemo(event, '${r.member_type}', ${r.id})" title="클릭해서 메모 수정" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass); white-space:pre-line;">${memoTxt}</a>`;
+        let regionCell = '<span style="color:var(--ink-soft);">-</span>';
+        if (isPartner) {
+          const _addrFull = r.office_address || "";
+          const _addrParts = _addrFull.trim().split(/\s+/);
+          const _addrSgg = _addrParts.length >= 2
+            ? _addrParts.slice(0, 2).join(" ")
+            : _addrFull;
+          const address = _addrFull
+            ? `<div title="${dgEscape(_addrFull)}">${dgEscape(_addrSgg)}</div>`
+            : '<div style="color:var(--ink-soft);">주소 미등록</div>';
+          if (r.member_type === "loan_consultant") {
+            const areaCount = Number(r.service_area_count) || (r.preferred_region ? 1 : 0);
+            regionCell = `${address}<div style="color:var(--ink-soft);font-size:11px;margin-top:3px;">취급지역 ${areaCount}개</div>`;
+          } else {
+            regionCell = `${address}<div style="color:var(--ink-soft);font-size:11px;margin-top:3px;">지역뱃지 ${Number(r.region_badge_count)||0}/${Number(r.region_badge_limit)||1} · 지역담당단지 ${Number(r.region_bld_cnt)||0}/10</div>`;
+          }
+        }
+        return `<tr>
+          <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
+          <td>${r.member_type !== "pending" ? `<a href="#" class="member-name-link" onclick="showMemberDetail('${r.member_type}', ${r.id}); return false;">${dgEscape(r.name || "-")}</a>` : dgEscape(r.name || "-")}</td>
+          <td>${dgEscape(r.email || "-")}</td>
+          <td style="white-space:nowrap;font-size:12px;">${dgEscape(r.phone || "-")}</td>
+          <td style="white-space:nowrap;">${badge}</td>
+          <td style="white-space:nowrap;" title="${dgEscape(r.category||'')}">${r.category ? dgEscape(r.category) : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap; min-width:100px;">${dgEscape(r.group_label || "-") || "-"}</td>
+          <td><span class="dg-badge dg-badge-${st[1]}">${dgEscape(st[0])}</span></td>
+          <td style="white-space:nowrap;">${r.provider === "kakao"
+            ? '<span style="background:#FEE500;color:#191919;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">카카오</span>'
+            : '<span style="background:#F0F0F0;color:#555;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">이메일</span>'
+          }</td>
+          <td style="white-space:nowrap;text-align:center;font-size:12.5px;">${r.member_type === "general"
+            ? (r.favorite_count > 0
+              ? `<span style="font-weight:600;color:var(--brass-dark);">${r.favorite_count}개</span>`
+              : '<span style="color:var(--ink-soft);">-</span>')
+            : '<span style="color:var(--ink-soft);">-</span>'
+          }</td>
+          <td style="white-space:nowrap; text-align:center; font-size:12.5px;">${r.listing_direct_count != null ? ((r.listing_direct_count === 0 && r.listing_broker_count === 0) ? '<span style="color:var(--ink-soft);">-</span>' : `${r.listing_direct_count}/${r.listing_broker_count}`) : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap; font-size:12.5px;">${r.member_type === "agent" ? `<a href="#" onclick="openPriorityBadgeModal(${r.id}, '${dgEscape(r.name || "")}'); return false;" title="단지마크 관리" style="text-decoration:none; color:inherit; border-bottom:1px dashed var(--brass);">${(r.free_cnt||0) + (r.premium_cnt||0)} <span style="color:var(--ink-soft);">(뱃지 ${r.premium_cnt||0}/5)</span></a>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="min-width:190px;max-width:280px;font-size:12.5px;">${regionCell}</td>
+          <td style="text-align:center; white-space:nowrap;">${(r.bug_report_count > 0 && r.member_type !== "pending")
+            ? `<a href="#" onclick="openBugReportsForUser('${r.member_type}', ${r.id}); return false;" style="color:var(--brass-dark); font-weight:700;">${r.bug_report_count}건</a>`
+            : (r.member_type === "pending" ? '<span style="color:var(--ink-soft);">-</span>' : "0")
+          }</td>
+          <td style="white-space:nowrap;">${actions}</td>
+          <td>${tagCell}</td>
+          <td style="min-width:160px; max-width:260px; font-size:12px;">${memoCell}</td>
+          <td style="text-align:right;">${pointsCell}</td>
+          <td style="min-width:220px;">${adCell}</td>
+          <td style="white-space:nowrap;font-size:11px;">${dgEscape(r.created_at || "-")}</td>
+          <td style="white-space:nowrap;">${r.approved_at ? dgEscape(r.approved_at) : '<span style="color:var(--ink-soft);">-</span>'}</td>
+          <td style="white-space:nowrap;">${dashBtn || '<span style="color:var(--ink-soft);">-</span>'}</td>
+        </tr>`;
+      }).join("");
+
+      const totalPages = Math.max(1, Math.ceil((d.total || 0) / s.size));
+      listEl.innerHTML = `
+        <div id="membersBulkBar" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; margin-bottom:10px; background:var(--panel, #f4f1ea); border:1px solid var(--line, #ddd); border-radius:8px;">
+          <strong id="membersBulkCount" style="font-size:13px;"></strong>
+          <button class="admin-btn" id="bulkApproveBtn">승인</button>
+          <button class="admin-btn" id="bulkRejectBtn">반려</button>
+          <button class="admin-btn" id="bulkTagBtn">태그지정</button>
+          <button class="admin-btn" id="bulkMsgBtn">메시지</button>
+          <button class="admin-btn" id="bulkPointsBtn">포인트</button>
+          <button class="admin-btn admin-btn-danger" id="bulkDeactivateBtn">비활성화</button>
+          <button class="admin-btn" id="bulkReactivateBtn" style="display:none;">재활성화</button>
+          <button class="admin-btn admin-btn-danger" id="bulkDeleteBtn" style="background:#7a1f1f;">삭제</button>
+        </div>
+        <table class="dg-table">
+          <thead><tr>
+            <th style="width:34px; text-align:center;"><input type="checkbox" id="membersCheckAll" /></th>
+            <th>닉네임(이름)</th><th>계정(이메일)</th><th>전화번호</th><th>회원유형</th><th>세부업종</th><th>상호</th>
+            <th>상태</th><th>가입경로</th><th>관심(단지지정)</th><th>매물의뢰(직/중)</th><th>단지</th><th>지역</th><th>오류신고</th><th>작업</th><th>태그</th><th style="min-width:160px;">메모</th><th>포인트</th><th style="min-width:220px;">광고</th>
+            <th>가입일시</th><th>승인일</th><th>오픈링크</th>
+          </tr></thead>
+          <tbody>${rows || `<tr><td colspan="22" style="text-align:center; color:var(--ink-soft); padding:24px;">표시할 회원이 없습니다.</td></tr>`}</tbody>
+        </table>
+        <div class="dg-pager" style="padding:12px 4px; justify-content:flex-start;">
+          <button class="dg-nav-btn" id="membersFirst" ${s.page <= 1 ? "disabled" : ""} title="처음 페이지로 이동" aria-label="처음 페이지로 이동">|«</button>
+          <button class="dg-nav-btn" id="membersPrev" ${s.page <= 1 ? "disabled" : ""} title="이전 10페이지로 이동" aria-label="이전 10페이지로 이동">&#8249;</button>
+          ${buildPageList(s.page, totalPages, 10).map((n) =>
+            n === "..."
+              ? `<span class="dg-page-ellipsis">…</span>`
+              : `<button class="dg-page-btn${n === s.page ? " active" : ""}" data-pg="${n}">${n}</button>`
+          ).join("")}
+          <button class="dg-nav-btn" id="membersNext" ${s.page >= totalPages ? "disabled" : ""} title="다음 10페이지로 이동" aria-label="다음 10페이지로 이동">&#8250;</button>
+          <button class="dg-nav-btn" id="membersLast" ${s.page >= totalPages ? "disabled" : ""} title="마지막 페이지로 이동" aria-label="마지막 페이지로 이동">»|</button>
+          <span style="font-size:12px; color:var(--ink-soft); margin-left:8px;">총 ${(d.total || 0).toLocaleString("ko-KR")}명</span>
+        </div>`;
+      const first = document.getElementById("membersFirst");
+      const prev = document.getElementById("membersPrev");
+      const next = document.getElementById("membersNext");
+      const last = document.getElementById("membersLast");
+      if (first) first.addEventListener("click", () => { membersState.page = 1; loadMembers(); });
+      if (prev) prev.addEventListener("click", () => { membersState.page = jumpPage(membersState.page, totalPages, -1, 10); loadMembers(); });
+      if (next) next.addEventListener("click", () => { membersState.page = jumpPage(membersState.page, totalPages, 1, 10); loadMembers(); });
+      if (last) last.addEventListener("click", () => { membersState.page = totalPages; loadMembers(); });
+      document.querySelectorAll("#membersWrap .dg-page-btn:not(.active)").forEach((btn) => {
+        btn.addEventListener("click", () => { membersState.page = Number(btn.dataset.pg); loadMembers(); });
+      });
+      wireMemberSelection();
+    }
+
+    // ---- 일괄 선택/액션 바 ----
+    function selectedList() { return Array.from(membersSelected.values()); }
+
+    function updateBulkBar() {
+      const bar = document.getElementById("membersBulkBar");
+      if (!bar) return;
+      const sel = selectedList();
+      bar.style.display = sel.length ? "flex" : "none";
+      const cnt = document.getElementById("membersBulkCount");
+      if (cnt) cnt.textContent = `${sel.length}명 선택됨`;
+      const hasPending = sel.some((x) => x.type === "pending");
+      const onlyPending = hasPending && sel.every((x) => x.type === "pending");
+      // 승인/반려는 승인대기만 선택했을 때 활성화
+      const ap = document.getElementById("bulkApproveBtn");
+      const rj = document.getElementById("bulkRejectBtn");
+      if (ap) ap.disabled = !onlyPending;
+      if (rj) rj.disabled = !onlyPending;
+      // 태그/메시지/포인트/비활성화는 승인대기가 섞이면 비활성화 (정식 회원 대상 기능)
+      const nonPending = sel.length && !hasPending;
+      const onlyGeneral = nonPending && sel.every((x) => x.type === "general");
+      const tg = document.getElementById("bulkTagBtn");
+      const mg = document.getElementById("bulkMsgBtn");
+      const pt = document.getElementById("bulkPointsBtn");
+      const da = document.getElementById("bulkDeactivateBtn");
+      const ra = document.getElementById("bulkReactivateBtn");
+      if (tg) tg.disabled = !nonPending;
+      if (mg) mg.disabled = !nonPending;
+      if (pt) pt.disabled = !onlyGeneral;
+      // 비활성화/재활성화 전환 — 선택된 회원의 상태로 판단.
+      // 전부 비활성(탈퇴/비활성)이면 재활성화 버튼만, 전부 정상이면 비활성화 버튼만, 섞이면 둘 다 비활성.
+      const isInactive = (x) => x.status === "withdrawn" || x.status === "inactive";
+      const nonPendingSel = sel.filter((x) => x.type !== "pending");
+      const allInactive = nonPending && nonPendingSel.every(isInactive);
+      const allActive = nonPending && nonPendingSel.every((x) => !isInactive(x));
+      if (da && ra) {
+        da.style.display = allInactive ? "none" : "";
+        ra.style.display = allInactive ? "" : "none";
+        da.disabled = !(nonPending && allActive);
+        ra.disabled = !(nonPending && allInactive);
+        if (nonPending && !allActive && !allInactive) { da.style.display = ""; ra.style.display = ""; }
+      }
+    }
+
+    function wireMemberSelection() {
+      const checks = Array.from(document.querySelectorAll(".member-check"));
+      const all = document.getElementById("membersCheckAll");
+      const syncOne = (cb) => {
+        const key = cb.dataset.type + ":" + cb.dataset.id;
+        if (cb.checked) membersSelected.set(key, { type: cb.dataset.type, id: Number(cb.dataset.id), status: cb.dataset.status || "" });
+        else membersSelected.delete(key);
+      };
+      checks.forEach((cb) => cb.addEventListener("change", () => {
+        syncOne(cb);
+        if (all) all.checked = checks.length > 0 && checks.every((c) => c.checked);
+        updateBulkBar();
+      }));
+      if (all) all.addEventListener("change", () => {
+        checks.forEach((cb) => { cb.checked = all.checked; syncOne(cb); });
+        updateBulkBar();
+      });
+      const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener("click", fn); };
+      on("bulkApproveBtn", bulkApprove);
+      on("bulkRejectBtn", bulkReject);
+      on("bulkTagBtn", bulkTag);
+      on("bulkMsgBtn", bulkMessage);
+      on("bulkPointsBtn", bulkPoints);
+      on("bulkDeactivateBtn", bulkDeactivate);
+      on("bulkReactivateBtn", bulkReactivate);
+      on("bulkDeleteBtn", bulkDelete);
+      updateBulkBar();
+    }
+
+    async function bulkCall(url, payload) {
+      const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401) { window.location.href = "/admin/login"; return null; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        window.alert(data.message || "처리에 실패했습니다.");
+        return null;
+      }
+      return data;
+    }
+
+    async function bulkApprove() {
+      const ids = selectedList().filter((x) => x.type === "pending");
+      if (!ids.length) return;
+      if (!window.confirm(`선택한 ${ids.length}건의 신청을 모두 승인할까요?`)) return;
+      const d = await bulkCall("/api/admin/members/bulk-approve", { ids });
+      if (!d) return;
+      // 문자 발송 실패 건은 임시비밀번호를 직접 전달해야 하므로 알림에 표시
+      const smsFails = (d.results || []).filter((r) => r.ok && r.sms_sent === false);
+      let msg = `일괄 승인 완료 — 성공 ${d.success}건 / 실패 ${d.failed}건`;
+      if (smsFails.length) {
+        msg += "\n\n[문자 발송 실패 — 임시비밀번호 직접 전달 필요]\n"
+          + smsFails.map((r) => `신청 #${r.id}: ${r.temp_password || "(없음)"}`).join("\n");
+      }
+      const fails = (d.results || []).filter((r) => !r.ok);
+      if (fails.length) msg += "\n\n[실패 사유]\n" + fails.map((r) => `신청 #${r.id}: ${r.message}`).join("\n");
+      window.alert(msg);
+      loadMembers();
+    }
+
+    async function bulkReject() {
+      const ids = selectedList().filter((x) => x.type === "pending");
+      if (!ids.length) return;
+      const reason = await dgPromptModal({
+        title: `일괄 반려 (${ids.length}건)`, label: "반려 사유",
+        placeholder: "반려 사유를 입력하세요 (선택한 모든 신청에 동일하게 적용)",
+        submitLabel: "반려", submitClass: "admin-btn-danger",
+      });
+      if (reason == null) return;
+      const d = await bulkCall("/api/admin/members/bulk-reject", { ids, reason });
+      if (!d) return;
+      window.alert(`일괄 반려 완료 — 성공 ${d.success}건 / 실패 ${d.failed}건`);
+      loadMembers();
+    }
+
+    async function bulkTag() {
+      const ids = selectedList().filter((x) => x.type !== "pending");
+      if (!ids.length) return;
+      const out = await memberFormModal({
+        title: `태그 지정 (${ids.length}명)`,
+        fields: [{ key: "tag", label: "태그", placeholder: "예: VIP, 관심고객 — 비워두면 태그 해제", required: false }],
+        submitLabel: "지정",
+      });
+      if (out == null) return;
+      const d = await bulkCall("/api/admin/members/bulk-tag", { ids, tag: out.tag });
+      if (!d) return;
+      window.alert(`태그 ${out.tag ? "지정" : "해제"} 완료 — ${d.success}명 적용`);
+      loadMembers();
+    }
+
+    async function bulkMessage() {
+      const sel = selectedList().filter((x) => x.type !== "pending");
+      if (!sel.length) return;
+      const smsIds = sel.filter((x) => x.type === "agent" || x.type === "operator");
+      const notifyIds = sel.filter((x) => x.type === "general");
+      const fields = [];
+      if (notifyIds.length) fields.push({ key: "title", label: `알림 제목 (일반회원 ${notifyIds.length}명 인앱알림)`, required: true });
+      fields.push({
+        key: "message",
+        label: smsIds.length && notifyIds.length
+          ? `내용 (중개사·운영지원업체 ${smsIds.length}명 SMS + 일반회원 인앱알림 본문)`
+          : (smsIds.length ? `SMS 내용 (${smsIds.length}명 발송)` : "알림 내용"),
+        type: "textarea", required: true,
+      });
+      const out = await memberFormModal({ title: "일괄 메시지", fields, submitLabel: "발송" });
+      if (out == null) return;
+      let report = [];
+      if (smsIds.length) {
+        const d = await bulkCall("/api/admin/members/bulk-sms", { ids: smsIds, message: out.message });
+        if (d) report.push(`SMS: 성공 ${d.success}건 / 실패 ${d.failed}건`);
+        else report.push("SMS: 발송 실패");
+      }
+      if (notifyIds.length) {
+        const d = await bulkCall("/api/admin/members/bulk-notify", { ids: notifyIds, title: out.title, body: out.message });
+        if (d) report.push(`인앱알림: ${d.success}건 생성`);
+        else report.push("인앱알림: 생성 실패");
+      }
+      if (report.length) window.alert(report.join("\n"));
+      loadMembers();
+    }
+
+    async function bulkPoints() {
+      const ids = selectedList().filter((x) => x.type === "general");
+      if (!ids.length) return;
+      const out = await memberFormModal({
+        title: `포인트 지급/차감 (${ids.length}명)`,
+        fields: [
+          { key: "amount", label: "포인트 (양수=지급, 음수=차감)", type: "number", placeholder: "예: 1000 또는 -500", required: true },
+          { key: "reason", label: "사유", type: "textarea", placeholder: "예: 이벤트 보상", required: true },
+        ],
+        submitLabel: "적용",
+        validate: (v) => {
+          const n = Number(v.amount);
+          if (!Number.isInteger(n) || n === 0) return "포인트는 0이 아닌 정수여야 합니다.";
+          return null;
+        },
+      });
+      if (out == null) return;
+      const d = await bulkCall("/api/admin/members/bulk-points", { ids, amount: Number(out.amount), reason: out.reason });
+      if (!d) return;
+      window.alert(`포인트 처리 완료 — ${d.success}명 적용 (${Number(out.amount) > 0 ? "+" : ""}${Number(out.amount).toLocaleString("ko-KR")}P)`);
+      loadMembers();
+    }
+
+    async function bulkDeactivate() {
+      const ids = selectedList().filter((x) => x.type !== "pending");
+      if (!ids.length) return;
+      if (!window.confirm(`선택한 ${ids.length}명을 비활성화할까요?\n\n· 일반회원 → 탈퇴 처리\n· 중개사/운영지원업체 → 로그인·공개페이지 차단\n(계정 정보는 삭제되지 않고 상태만 변경됩니다)`)) return;
+      // 사유 입력 — 입력하면 해당 회원의 메모(admin_memo)에 날짜와 함께 자동 기록
+      const reason = window.prompt("비활성화 사유를 입력하세요. (메모에 자동 기록 — 비워두면 기록 없이 진행)", "");
+      if (reason === null) return; // 취소
+      const d = await bulkCall("/api/admin/members/bulk-deactivate", { ids, reason: reason.trim() });
+      if (!d) return;
+      window.alert(`비활성화 완료 — ${d.success}명 처리`);
+      loadMembers();
+    }
+
+    async function bulkReactivate() {
+      const ids = selectedList().filter((x) => x.type !== "pending");
+      if (!ids.length) return;
+      if (!window.confirm(`선택한 ${ids.length}명을 재활성화할까요?\n\n· 일반회원 → 탈퇴 취소(정상 복구)\n· 중개사/운영지원업체/대출상담사 → 로그인·공개페이지 복구(승인 상태)`)) return;
+      const d = await bulkCall("/api/admin/members/bulk-reactivate", { ids });
+      if (!d) return;
+      window.alert(`재활성화 완료 — ${d.success}명 처리`);
+      loadMembers();
+    }
+
+    async function bulkDelete() {
+      const ids = selectedList();
+      if (!ids.length) return;
+      const typeCount = {};
+      ids.forEach((x) => { typeCount[x.type] = (typeCount[x.type] || 0) + 1; });
+      const summary = Object.entries(typeCount).map(([t, n]) => `${t}: ${n}건`).join(", ");
+      if (!window.confirm(
+        `선택한 ${ids.length}건을 완전히 삭제합니다 (${summary}).\n\n` +
+        `⚠️ 되돌릴 수 없습니다. 계정, 신청서, 매물, 슬롯 등 연관 데이터가 함께 삭제됩니다.\n` +
+        `정말 진행하시겠습니까?`
+      )) return;
+      const typed = window.prompt(`정말 삭제하려면 "삭제"라고 정확히 입력하세요.`, "");
+      if (typed !== "삭제") { window.alert("입력이 일치하지 않아 취소되었습니다."); return; }
+      const d = await bulkCall("/api/admin/members/bulk-delete", { ids, confirm: "삭제" });
+      if (!d) return;
+      window.alert(`삭제 완료 — 성공 ${d.success}건 / 실패 ${d.failed}건`);
+      loadMembers();
+    }
+
+    // 회원 메모(admin_memo) 인라인 수정 — 매물의뢰 비고와 동일 패턴 (클릭 → prompt → PUT)
+    window.adminEditMemberMemo = async function (ev, memberType, memberId) {
+      ev.preventDefault();
+      // 현재 값은 목록 데이터에서 찾기 어렵지 않게 링크 텍스트 대신 서버 값 재사용 위해 행 캐시 사용
+      const cache = window.__memberRowsCache || {};
+      const cur = cache[memberType + ":" + memberId] || "";
+      const next = window.prompt("메모(관리자 비고)를 입력하세요. 비우면 삭제됩니다.", cur);
+      if (next === null) return;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/memo`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ admin_memo: next }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) { window.alert(d.message || "메모 저장에 실패했습니다."); return; }
+        loadMembers();
+      } catch (e) {
+        window.alert("메모 저장 중 오류가 발생했습니다.");
+      }
+    };
+
+    // 승인/반려 — 신청승인 메뉴와 동일한 기존 API 호출 (로직 재사용, 처리 자체는 서버 기존 코드)
+    window.memberApprove = async function (appId, btn) {
+      if (!window.confirm("이 신청을 승인할까요? 승인하면 정식 등록됩니다.")) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/approve`, { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          if (typeof data.sms_sent !== "undefined") {
+            if (data.sms_sent) window.alert("승인 완료 — 임시비밀번호가 문자로 발송되었습니다.");
+            else window.alert("승인 완료 — 문자 발송 실패. 아래 임시비밀번호를 직접 전달하세요: "
+              + (data.temp_password || "(없음)") + "\n(사유: " + (data.sms_message || "알 수 없음") + ")");
+          }
+          loadMembers();
+          return;
+        }
+        window.alert(data.message || "승인에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      finally { btn.disabled = false; }
+    };
+    // 파트너 본인수정(등록번호류)으로 pending 전환된 회원의 인라인 재승인 — 계정 유지, SMS 없음
+    window.memberReapprove = async function (memberType, memberId, btn) {
+      if (!window.confirm("변경된 등록정보를 확인하셨나요? 재승인하면 다시 정상 노출됩니다.")) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/re-approve`, { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) { loadMembers(); return; }
+        window.alert(data.message || "재승인에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      finally { btn.disabled = false; }
+    };
+    window.memberReject = async function (appId, btn) {
+      const reason = await dgPromptModal({
+        title: "신청 반려", label: "반려 사유",
+        placeholder: "반려 사유를 입력하세요", submitLabel: "반려", submitClass: "admin-btn-danger",
+      });
+      if (reason == null) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/applications/${appId}/reject`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) { loadMembers(); return; }
+        window.alert(data.message || "반려에 실패했습니다.");
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      finally { btn.disabled = false; }
+    };
+
+    window.memberApplicationDetail = function (appId) {
+      const r = (window.__memberRowsData || {})["pending:" + appId];
+      if (!r) {
+        window.alert("신청 상세정보를 찾을 수 없습니다. 목록을 새로고침해주세요.");
+        return;
+      }
+      const typeLabel = { agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" }[r.applicant_type] || r.applicant_type || "-";
+      const empty = '<span style="color:var(--ink-soft);">-</span>';
+      const value = (v) => v ? dgEscape(v) : empty;
+      const phone = window.formatPhone ? window.formatPhone(r.phone || "") : (r.phone || "");
+      const rows = [
+        ["신청유형", value(typeLabel)],
+        [r.applicant_type === "agent" ? "중개사무소명" : "소속/업체명", value(r.group_label)],
+        [r.applicant_type === "loan_consultant" ? "성명" : "대표자", value(r.name)],
+        ["이메일", value(r.email)],
+        ["연락처", value(phone)],
+      ];
+      if (r.applicant_type === "agent") {
+        rows.push(["중개사무소 등록번호", value(r.reg_number)]);
+        rows.push(["사업자등록번호", value(r.biz_reg_number)]);
+        rows.push(["희망지역", value(r.preferred_region)]);
+        rows.push(["희망건물", value(r.preferred_building)]);
+        rows.push(["소재지", value(r.office_address)]);
+      } else if (r.applicant_type === "operator") {
+        rows.push(["세부업종", value(r.category)]);
+        rows.push(["사업자등록번호", value(r.biz_reg_number)]);
+        rows.push(["홈페이지", value(r.website_url)]);
+        rows.push(["희망지역", value(r.preferred_region)]);
+        rows.push(["희망건물", value(r.preferred_building)]);
+        rows.push(["소재지", value(r.office_address)]);
+      } else if (r.applicant_type === "loan_consultant") {
+        rows.push(["대출모집인 등록번호", value(r.reg_number)]);
+        rows.push(["취급지역", value(r.preferred_region)]);
+        const safeKakao = /^https?:\/\//i.test(String(r.kakao_chat_url || ""));
+        rows.push(["카카오톡 상담 링크", safeKakao
+          ? `<a href="${dgEscape(r.kakao_chat_url)}" target="_blank" rel="noopener noreferrer">${dgEscape(r.kakao_chat_url)}</a>`
+          : empty]);
+      }
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="applicationDetailTitle">
+          <div class="admin-modal-head">
+            <h3 id="applicationDetailTitle">${dgEscape(typeLabel)} 승인신청 상세</h3>
+            <button class="admin-modal-close" type="button" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body">
+            ${rows.map(([label, val]) => `<div class="member-info-row"><span class="member-info-label">${dgEscape(label)}</span><span class="member-info-value">${val}</span></div>`).join("")}
+          </div>
+          <div class="admin-modal-foot">
+            <button class="admin-btn admin-modal-cancel" type="button">닫기</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+    };
+
+    // ---- 첨부서류 목록 모달 — 신청 시 올린 서류를 회원관리에서 바로 열람/다운로드 ----
+    window.openPriorityBadgeModal = async function(agentId, agentName) {
+      const res = await fetch(`/api/admin/agents/${agentId}/buildings`);
+      if (res.status === 401) { window.location.href = "/admin/login"; return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) { window.alert(d.message || "조회 실패"); return; }
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      const rows = (d.buildings || []).map(b => `
+        <li style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line);">
+          <span>${dgEscape(b.building_name)}</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" ${b.has_priority_badge ? "checked" : ""}
+              onchange="togglePriorityBadge(${agentId}, ${b.master_building_id}, this.checked)" />
+            단지마크
+          </label>
+        </li>`).join("") || `<li style="color:var(--ink-soft);">등록된 전속단지가 없습니다.</li>`;
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true">
+          <div class="admin-modal-head">
+            <h3>단지마크 부여 — ${dgEscape(agentName)}</h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body"><ul style="list-style:none; margin:0; padding:0;">${rows}</ul></div>
+          <div class="admin-modal-foot"><button class="admin-btn admin-modal-cancel" type="button">닫기</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector(".admin-modal-close").addEventListener("click", () => overlay.remove());
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => overlay.remove());
+    };
+
+    window.togglePriorityBadge = async function(agentId, mbid, checked) {
+      const res = await fetch(`/api/admin/agent-buildings/${agentId}/${mbid}/priority-badge`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: checked }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) window.alert(d.message || "변경 실패");
+    };
+
+    window.memberDocs = async function (memberType, memberId) {
+      let d;
+      try {
+        const res = await fetch(`/api/admin/members/${encodeURIComponent(memberType)}/${memberId}/docs`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        d = await res.json();
+        if (!res.ok || !d.ok) { window.alert(d.message || "서류를 불러오지 못했습니다."); return; }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); return; }
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      const docsHtml = (d.docs || []).length
+        ? d.docs.map((x) => `
+            <li style="margin:6px 0;">
+              <a href="#" onclick="adminOpenAppDoc(event, ${d.app_id}, '${dgEscape(x.doc)}')" style="font-weight:600;">
+                ${dgEscape(x.label)}</a>
+              <span style="color:var(--ink-soft); font-size:12px;"> — 클릭 시 새 탭에서 열람/다운로드 (5분 임시 링크)</span>
+            </li>`).join("")
+        : `<li style="color:var(--ink-soft);">${dgEscape(d.message || "첨부된 서류가 없습니다.")}</li>`;
+      const zipBtnHtml = (d.docs || []).length
+        ? `<a class="admin-btn admin-btn-primary" href="/api/admin/members/${encodeURIComponent(memberType)}/${memberId}/docs.zip" style="text-decoration:none;">전체 압축 다운로드(zip)</a>`
+        : "";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true">
+          <div class="admin-modal-head">
+            <h3>첨부서류${d.applicant_name ? ` — ${dgEscape(d.applicant_name)}` : ""}</h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body">
+            ${d.submitted_at ? `<p style="font-size:12px; color:var(--ink-soft); margin:0 0 8px;">신청일: ${dgEscape(d.submitted_at)}</p>` : ""}
+            <ul style="margin:0; padding-left:18px; font-size:14px;">${docsHtml}</ul>
+          </div>
+          <div class="admin-modal-foot">${zipBtnHtml}<button class="admin-btn admin-modal-cancel" type="button">닫기</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector(".admin-modal-close").addEventListener("click", () => overlay.remove());
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", () => overlay.remove());
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    };
+
+    // ---- 광고(매출 기록) 팝업 — 이력 리스트 + 신규추가/수정/삭제 ----
+    window.memberAds = function (ev, partnerType, partnerId, encName) {
+      ev.preventDefault();
+      const name = decodeURIComponent(encName || "");
+      const overlay = document.createElement("div");
+      overlay.className = "admin-modal-overlay";
+      overlay.innerHTML = `
+        <div class="admin-modal" role="dialog" aria-modal="true" style="max-width:640px; width:94%;">
+          <div class="admin-modal-head">
+            <h3>광고/매출 기록 — ${dgEscape(name)} <span style="font-size:12px; color:var(--ink-soft);">(${dgEscape(MEMBER_TYPE_LABEL[partnerType] || partnerType)})</span></h3>
+            <button class="admin-modal-close" aria-label="닫기">×</button>
+          </div>
+          <div class="admin-modal-body" id="adsModalBody" style="max-height:60vh; overflow:auto;">
+            <div class="stats-loading">불러오는 중…</div>
+          </div>
+          <div class="admin-modal-msg" role="alert"></div>
+          <div class="admin-modal-foot">
+            <button class="admin-btn admin-btn-primary" id="adsAddBtn" type="button">+ 신규추가</button>
+            <button class="admin-btn admin-modal-cancel" type="button">닫기</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => { overlay.remove(); loadMembers(); };  // 닫을 때 목록 갱신(광고 컬럼 반영)
+      overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+      overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+      const body = overlay.querySelector("#adsModalBody");
+      const msg = overlay.querySelector(".admin-modal-msg");
+
+      async function reload() {
+        body.innerHTML = `<div class="stats-loading">불러오는 중…</div>`;
+        let d;
+        try {
+          const res = await fetch(`/api/admin/revenue-records?partner_type=${encodeURIComponent(partnerType)}&partner_id=${partnerId}`);
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          d = await res.json();
+          if (!res.ok || !d.ok) throw new Error();
+        } catch (e) { body.innerHTML = `<div class="stats-loading">기록을 불러오지 못했습니다.</div>`; return; }
+        window._adsItems = d.items || [];
+        if (!window._adsItems.length) {
+          body.innerHTML = `<p style="color:var(--ink-soft); font-size:14px; margin:8px 0;">아직 기록이 없습니다. "신규추가"로 첫 기록을 입력하세요.</p>`;
+          return;
+        }
+        body.innerHTML = `
+          <table class="dg-table" style="font-size:13px;">
+            <thead><tr><th>상품</th><th>기간</th><th style="text-align:right;">금액(원)</th><th>상태</th><th>메모</th><th>작업</th></tr></thead>
+            <tbody>${window._adsItems.map((r) => `
+              <tr>
+                <td>${dgEscape(AD_PRODUCT_LABEL[r.product_type] || r.product_type)}</td>
+                <td style="white-space:nowrap;">${dgEscape(r.start_date)} ~ ${dgEscape(r.end_date || "미정")}</td>
+                <td style="text-align:right;">${(r.amount || 0).toLocaleString("ko-KR")}</td>
+                <td><span class="dg-badge dg-badge-${AD_STATUS_BADGE[r.payment_status] || ""}">${dgEscape(r.payment_status)}</span></td>
+                <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${dgEscape(r.memo || "")}">${dgEscape(r.memo || "-")}</td>
+                <td style="white-space:nowrap;">
+                  <button class="dg-icon-btn" data-ads-edit="${r.id}">수정</button>
+                  <button class="dg-icon-btn dg-reject" data-ads-del="${r.id}">삭제</button>
+                </td>
+              </tr>`).join("")}</tbody>
+          </table>`;
+        body.querySelectorAll("[data-ads-edit]").forEach((b) => b.addEventListener("click", () => {
+          const rec = window._adsItems.find((x) => x.id === Number(b.dataset.adsEdit));
+          if (rec) openForm(rec);
+        }));
+        body.querySelectorAll("[data-ads-del]").forEach((b) => b.addEventListener("click", async () => {
+          if (!window.confirm("이 매출 기록을 삭제할까요? (장부에서 완전히 제거됩니다)")) return;
+          try {
+            const res = await fetch(`/api/admin/revenue-records/${b.dataset.adsDel}`, { method: "DELETE" });
+            const x = await res.json().catch(() => ({}));
+            if (!res.ok || !x.ok) { msg.textContent = x.message || "삭제에 실패했습니다."; return; }
+            msg.textContent = "";
+            reload();
+          } catch (e) { msg.textContent = "네트워크 오류가 발생했습니다."; }
+        }));
+      }
+
+      async function openForm(rec) {
+        const out = await memberFormModal({
+          title: rec ? "매출 기록 수정" : "매출 기록 추가",
+          submitLabel: rec ? "수정" : "추가",
+          initialValues: rec ? {
+            product_type: rec.product_type, start_date: rec.start_date,
+            end_date: rec.end_date || "", amount: rec.amount,
+            payment_status: rec.payment_status, memo: rec.memo || "",
+          } : null,
+          fields: [
+            { key: "product_type", label: "상품 (building_slot=담당건물 추가 / priority_exposure=우선노출)", required: true, placeholder: "building_slot 또는 priority_exposure" },
+            { key: "start_date", label: "시작일 (YYYY-MM-DD)", required: true, placeholder: "2026-07-01" },
+            { key: "end_date", label: "종료일 (YYYY-MM-DD, 비우면 미정)", placeholder: "2026-12-31" },
+            { key: "amount", label: "금액 (원, 숫자만)", required: true, type: "number", placeholder: "500000" },
+            { key: "payment_status", label: "상태 (대기/완료/만료)", required: true, placeholder: "대기" },
+            { key: "memo", label: "메모 (선택)", placeholder: "계좌이체 7/20 확인" },
+          ],
+          validate: (o) => {
+            if (!["building_slot", "priority_exposure"].includes(o.product_type)) return "상품은 building_slot 또는 priority_exposure로 입력하세요.";
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(o.start_date)) return "시작일은 YYYY-MM-DD 형식으로 입력하세요.";
+            if (o.end_date && !/^\d{4}-\d{2}-\d{2}$/.test(o.end_date)) return "종료일은 YYYY-MM-DD 형식으로 입력하세요.";
+            if (!/^\d+$/.test(o.amount)) return "금액은 0 이상의 숫자만 입력하세요.";
+            if (!["대기", "완료", "만료"].includes(o.payment_status)) return "상태는 대기/완료/만료 중 하나로 입력하세요.";
+            return null;
+          },
+        });
+        if (!out) return;
+        const payload = {
+          product_type: out.product_type, start_date: out.start_date, end_date: out.end_date || "",
+          amount: Number(out.amount), payment_status: out.payment_status, memo: out.memo || "",
+        };
+        try {
+          let res;
+          if (rec) {
+            res = await fetch(`/api/admin/revenue-records/${rec.id}`, {
+              method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+            });
+          } else {
+            res = await fetch("/api/admin/revenue-records", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ partner_type: partnerType, partner_id: partnerId, ...payload }),
+            });
+          }
+          const x = await res.json().catch(() => ({}));
+          if (!res.ok || !x.ok) { msg.textContent = x.message || "저장에 실패했습니다."; return; }
+          msg.textContent = "";
+          reload();
+        } catch (e) { msg.textContent = "네트워크 오류가 발생했습니다."; }
+      }
+
+      overlay.querySelector("#adsAddBtn").addEventListener("click", () => openForm(null));
+      reload();
+    };
+
+    // ---- 매출관리: revenue_records 월별·상품별·파트너유형별 집계 ----
+    async function showRevenue() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="stats-head" style="margin-bottom:14px;">
+          <h2 class="stats-title">매출관리</h2>
+          <p class="stats-sub">회원관리의 "광고" 컬럼에서 입력한 매출 기록(수동 장부)을 월별·상품별·파트너유형별로 집계합니다. 매출 합계는 결제상태 '완료' 기준입니다.</p>
+        </div>
+        <div id="revenueWrap"><div class="stats-loading">집계를 불러오는 중…</div></div>`;
+      const wrap = document.getElementById("revenueWrap");
+      let d;
+      try {
+        const res = await fetch("/api/admin/revenue-summary");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        d = await res.json();
+        if (!res.ok || !d.ok) throw new Error();
+      } catch (e) { wrap.innerHTML = `<div class="stats-loading">집계를 불러오지 못했습니다.</div>`; return; }
+      const rows = d.rows || [];
+      if (!rows.length) {
+        wrap.innerHTML = `<p style="color:var(--ink-soft); font-size:14px;">아직 매출 기록이 없습니다. 회원관리 → 광고 컬럼에서 첫 기록을 입력하세요.</p>`;
+        return;
+      }
+      // 월별 소계 계산
+      const byMonth = new Map();
+      rows.forEach((r) => {
+        const m = byMonth.get(r.ym) || { done: 0, pending: 0, cnt: 0 };
+        m.done += r.amount_done; m.pending += r.amount_pending; m.cnt += r.cnt;
+        byMonth.set(r.ym, m);
+      });
+      const totalDone = rows.reduce((s, r) => s + r.amount_done, 0);
+      const totalPending = rows.reduce((s, r) => s + r.amount_pending, 0);
+      const won = (n) => (n || 0).toLocaleString("ko-KR");
+      let html = `
+        <div class="stats-kpi-row" style="margin-bottom:16px;">
+          <div class="stats-kpi"><span class="stats-kpi-label">누적 매출 (완료)</span><span class="stats-kpi-val">${won(totalDone)}</span><span class="stats-kpi-unit">원</span></div>
+          <div class="stats-kpi"><span class="stats-kpi-label">입금 대기</span><span class="stats-kpi-val">${won(totalPending)}</span><span class="stats-kpi-unit">원</span></div>
+        </div>
+        <table class="dg-table" style="font-size:13px;">
+          <thead><tr><th>월</th><th>파트너유형</th><th>상품</th><th style="text-align:right;">건수</th><th style="text-align:right;">매출(완료, 원)</th><th style="text-align:right;">대기(원)</th></tr></thead>
+          <tbody>`;
+      let lastYm = null;
+      rows.forEach((r) => {
+        if (lastYm !== null && r.ym !== lastYm) {
+          const m = byMonth.get(lastYm);
+          html += `<tr style="background:#F8F6F1; font-weight:700;"><td>${dgEscape(lastYm)} 소계</td><td></td><td></td><td style="text-align:right;">${won(m.cnt)}</td><td style="text-align:right;">${won(m.done)}</td><td style="text-align:right;">${won(m.pending)}</td></tr>`;
+        }
+        html += `<tr>
+          <td>${dgEscape(r.ym)}</td>
+          <td>${dgEscape(MEMBER_TYPE_LABEL[r.partner_type] || r.partner_type)}</td>
+          <td>${dgEscape(AD_PRODUCT_LABEL[r.product_type] || r.product_type)}</td>
+          <td style="text-align:right;">${won(r.cnt)}</td>
+          <td style="text-align:right;">${won(r.amount_done)}</td>
+          <td style="text-align:right; color:var(--ink-soft);">${won(r.amount_pending)}</td>
+        </tr>`;
+        lastYm = r.ym;
+      });
+      if (lastYm !== null) {
+        const m = byMonth.get(lastYm);
+        html += `<tr style="background:#F8F6F1; font-weight:700;"><td>${dgEscape(lastYm)} 소계</td><td></td><td></td><td style="text-align:right;">${won(m.cnt)}</td><td style="text-align:right;">${won(m.done)}</td><td style="text-align:right;">${won(m.pending)}</td></tr>`;
+      }
+      html += `<tr style="background:var(--brass-tint, #F3EAD9); font-weight:700;"><td>합계</td><td></td><td></td><td style="text-align:right;">${won(rows.reduce((s, r) => s + r.cnt, 0))}</td><td style="text-align:right;">${won(totalDone)}</td><td style="text-align:right;">${won(totalPending)}</td></tr>`;
+      html += `</tbody></table>`;
+      wrap.innerHTML = html;
+    }
+
+    function showMembers() {
+      destroyStatsCharts();
+      membersState = { group: "all", q: "", page: 1, size: 50 };
+      mount.innerHTML = `
+        <div class="stats-head" style="margin-bottom:14px;">
+          <h2 class="stats-title">회원관리</h2>
+          <p class="stats-sub">일반회원·중개사·운영지원업체·승인대기 신청을 한 화면에서 조회합니다. 승인/반려는 신청승인과 동일하게 처리됩니다.</p>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;" id="membersGroupBar">
+          ${MEMBER_GROUPS.map((g) => `
+            <button class="admin-btn member-group-btn ${g.key === "all" ? "admin-btn-primary" : ""}" data-group="${g.key}">
+              ${g.label} <span id="memberCount_${g.key}" style="font-weight:700;">…</span>
+            </button>`).join("")}
+        </div>
+        <div style="display:flex; gap:8px; margin-bottom:12px; max-width:420px;">
+          <input type="text" id="membersSearch" class="admin-input" placeholder="이름·이메일 검색" style="flex:1;" />
+          <button class="admin-btn" id="membersSearchBtn">검색</button>
+        </div>
+        <div id="membersList"></div>`;
+      document.querySelectorAll(".member-group-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".member-group-btn").forEach((b) => b.classList.remove("admin-btn-primary"));
+          btn.classList.add("admin-btn-primary");
+          membersState.group = btn.getAttribute("data-group");
+          membersState.page = 1;
+          loadMembers();
+        });
+      });
+      const searchInput = document.getElementById("membersSearch");
+      const doSearch = () => { membersState.q = searchInput.value.trim(); membersState.page = 1; loadMembers(); };
+      document.getElementById("membersSearchBtn").addEventListener("click", doSearch);
+      searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+      loadMembers();
+    }
+
+    // ---- 건물마스터: 체크박스 일괄선택 + 툴바 ----
+    // DataGrid의 allowSelect 모드를 사용해 체크박스를 띄우고, 상단 툴바에서
+    // 일괄 수정 / 일괄 삭제 / 선택 항목 다운로드를 처리한다.
+    const BLD_BULK_FIELDS = [
+      { key: "lodging_type",  label: "용도",        type: "select" },
+      { key: "building_name", label: "건물명",       type: "text" },
+      { key: "units",         label: "호실수",       type: "number" },
+      { key: "biz_units",     label: "영업신고호수 스냅샷(참고용)", type: "number" },
+      { key: "sgg_text",      label: "시군구",       type: "text" },
+      { key: "umd_nm",        label: "읍면동",       type: "text" },
+      { key: "jibun",         label: "지번",         type: "text" },
+    ];
+    const BLD_LODGING_OPTS = window.LodgingTypes.order;
+
+    // ── lodging 상세 모달 ────────────────────────────────────────────────────
+    async function openLodgingDetailModal(buildingId) {
+      document.getElementById("lodgingDetailOverlay")?.remove();
+      const ov = document.createElement("div");
+      ov.id = "lodgingDetailOverlay";
+      ov.className = "admin-modal-overlay";
+      ov.innerHTML = `<div class="admin-modal" role="dialog" style="max-width:700px;">
+        <div class="admin-modal-head">
+          <h3>영업신고 사업장 목록</h3>
+          <button class="admin-modal-close">×</button>
+        </div>
+        <div class="admin-modal-body" id="lodgingDetailBody">로딩 중…</div>
+      </div>`;
+      document.body.appendChild(ov);
+      ov.addEventListener("click", (e) => { if (e.target === ov) ov.remove(); });
+      ov.querySelector(".admin-modal-close").addEventListener("click", () => ov.remove());
+      try {
+        const r = await fetch(`/api/admin/buildings/${buildingId}/lodgings`);
+        const d = await r.json();
+        const body = document.getElementById("lodgingDetailBody");
+        if (!body) return;
+        if (!d.ok || !d.items.length) {
+          body.innerHTML = `<p style="color:var(--ink-soft);">매칭된 영업신고 없음</p>`;
+          return;
+        }
+        const STATUS_COLOR = {"영업/정상":"#4A7A18", "폐업":"#b3261e", "휴업":"#B4863F"};
+        const rows = d.items.map((it) => {
+          const sc = Object.entries(STATUS_COLOR).find(([k]) => (it.biz_status_name||"").includes(k));
+          const sColor = sc ? sc[1] : "var(--ink-soft)";
+          const roomInfo = [
+            it.room_count != null ? `${Number(it.room_count).toLocaleString()}실` : null,
+            it.facility_area != null ? `${Number(it.facility_area).toLocaleString()}㎡` : null,
+          ].filter(Boolean).join(" / ") || "-";
+          return `<tr>
+            <td style="padding:6px 8px;">${dgEscape(it.biz_name||"-")}</td>
+            <td style="padding:6px 8px;font-size:11.5px;color:var(--ink-soft);">${dgEscape(it.permit_number||"-")}</td>
+            <td style="padding:6px 8px;text-align:center;">${roomInfo}</td>
+            <td style="padding:6px 8px;"><span style="color:${sColor};font-weight:700;font-size:11.5px;">${dgEscape(it.biz_status_name||"-")}</span><br><span style="font-size:10.5px;color:var(--ink-soft);">${dgEscape(it.biz_status_detail||"")}</span></td>
+            <td style="padding:6px 8px;font-size:11.5px;">${dgEscape(it.permit_date||"-")}</td>
+            <td style="padding:6px 8px;font-size:11.5px;">${dgEscape(it.phone||"-")}</td>
+            <td style="padding:6px 8px;font-size:11px;color:var(--ink-soft);">${dgEscape(it.road_address||it.jibun_address||"-")}</td>
+            <td style="padding:6px 8px;font-size:11px;">${dgEscape(it.bld_use_nm||"-")}</td>
+            <td style="padding:6px 8px;font-size:11px;">${dgEscape(it.region_name||"-")}</td>
+          </tr>`;
+        }).join("");
+        body.innerHTML = `<div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead><tr style="background:#F4F1EA;font-weight:700;">
+              <th style="padding:7px 8px;text-align:left;">사업장명</th>
+              <th style="padding:7px 8px;text-align:left;">신고번호</th>
+              <th style="padding:7px 8px;text-align:center;">객실수/규모</th>
+              <th style="padding:7px 8px;text-align:left;">상태</th>
+              <th style="padding:7px 8px;text-align:left;">신고일</th>
+              <th style="padding:7px 8px;text-align:left;">전화</th>
+              <th style="padding:7px 8px;text-align:left;">주소</th>
+              <th style="padding:7px 8px;text-align:left;">건물용도</th>
+              <th style="padding:7px 8px;text-align:left;">지역구분</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      } catch(e) {
+        const body = document.getElementById("lodgingDetailBody");
+        if (body) body.innerHTML = `<p style="color:#b3261e;">불러오기 실패</p>`;
+      }
+    }
+
+    function showBuildings(overrideFilters) {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div id="bldFullStats" style="margin-bottom:10px;">
+          <div style="color:var(--ink-soft);font-size:12px;padding:6px 0;">용도별 통계 로딩 중…</div>
+        </div>
+        <div id="bldBulkBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#F4F1EA;border-radius:8px;flex-wrap:wrap;">
+          <span id="bldSelLabel" style="font-size:13px;color:var(--ink-soft);min-width:60px;">선택 0건</span>
+          <button class="admin-btn" id="bldBulkEditBtn" disabled>일괄 수정</button>
+          <button class="admin-btn" id="bldBulkDeleteBtn" disabled style="color:#b3261e;border-color:#b3261e;">일괄 삭제</button>
+          <button class="admin-btn" id="bldBulkDownloadBtn" disabled>선택 항목 다운로드</button>
+        </div>
+        <div id="bldRegionFilter" style="display:flex;align-items:center;gap:4px;margin-bottom:4px;flex-wrap:nowrap;padding:2px 0;">
+          <span style="font-size:11.5px;color:var(--ink-soft);white-space:nowrap;font-weight:600;">🗺️ 지역:</span>
+          <select id="bldSidoSel" class="admin-input" style="min-width:80px;max-width:100px;font-size:11.5px;padding:3px 4px;">
+            <option value="">시/도</option>
+          </select>
+          <select id="bldSggSel" class="admin-input" style="min-width:90px;max-width:120px;font-size:11.5px;padding:3px 4px;" disabled>
+            <option value="">시/군/구</option>
+          </select>
+          <select id="bldUmdSel" class="admin-input" style="min-width:80px;max-width:110px;font-size:11.5px;padding:3px 4px;" disabled>
+            <option value="">읍/면/동</option>
+          </select>
+          <button id="bldRegionResetBtn" class="admin-btn" style="font-size:11.5px;padding:2px 8px;display:none;">✕ 초기화</button>
+        </div>
+        <div id="bldGridMount"></div>`;
+
+      const gridMount = document.getElementById("bldGridMount");
+      // overrideFilters 지원 — 예: 미분류 바로가기 링크에서 { lodging_type_filter: "미분류" }
+      let bldCfg = GRID_CONFIGS.buildings;
+      if (overrideFilters && Object.keys(overrideFilters).length) {
+        bldCfg = Object.assign({}, bldCfg, {
+          filters: (bldCfg.filters || []).map((f) => {
+            const ov = overrideFilters[f.key];
+            return ov !== undefined ? Object.assign({}, f, { default: ov }) : f;
+          }),
+        });
+      }
+      currentGrid = new DataGrid(Object.assign({ mount: gridMount, idField: "id", pageSize: 50 }, bldCfg));
+
+      // ── 지역 검색 필터 (시/도 → 시/군/구 → 읍/면/동 연동) ──
+      // DataGrid state.filters에 키를 수동 추가하면 load() 시 쿼리 파라미터로 전달됨
+      currentGrid.state.filters.sido_filter     = "";
+      currentGrid.state.filters.sgg_text_filter = "";
+      currentGrid.state.filters.umd_nm_filter   = "";
+      (async () => {
+        try {
+          const res  = await fetch("/api/admin/buildings/region-options");
+          const data = await res.json();
+          if (!data.ok) return;
+          const { sidos, sgg_by_sido, umd_by_sgg } = data;
+          const sidoSel  = document.getElementById("bldSidoSel");
+          const sggSel   = document.getElementById("bldSggSel");
+          const umdSel   = document.getElementById("bldUmdSel");
+          const resetBtn = document.getElementById("bldRegionResetBtn");
+          if (!sidoSel) return;
+          sidos.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s; sidoSel.appendChild(o); });
+
+          function fillSgg(sido) {
+            sggSel.innerHTML = '<option value="">시/군/구 전체</option>';
+            const list = sido ? (sgg_by_sido[sido] || []) : [];
+            list.forEach(sgg => { const o = document.createElement("option"); o.value = sgg; o.textContent = sgg.replace(sido, "").trim(); sggSel.appendChild(o); });
+            sggSel.disabled = !list.length;
+          }
+          function fillUmd(sgg) {
+            umdSel.innerHTML = '<option value="">읍/면/동 전체</option>';
+            const list = sgg ? (umd_by_sgg[sgg] || []) : [];
+            list.forEach(umd => { const o = document.createElement("option"); o.value = umd; o.textContent = umd; umdSel.appendChild(o); });
+            umdSel.disabled = !list.length;
+          }
+          function triggerLoad() {
+            const sido = sidoSel.value, sgg = sggSel.value, umd = umdSel.value;
+            // sgg가 선택되면 sido_filter 불필요(sgg_text exact match로 커버)
+            currentGrid.state.filters.sido_filter     = sgg ? "" : sido;
+            currentGrid.state.filters.sgg_text_filter = sgg;
+            currentGrid.state.filters.umd_nm_filter   = umd;
+            currentGrid.state.page = 1;
+            currentGrid.reload();
+            resetBtn.style.display = (sido || sgg || umd) ? "" : "none";
+          }
+          sidoSel.addEventListener("change", () => { fillSgg(sidoSel.value); sggSel.value = ""; fillUmd(""); umdSel.value = ""; triggerLoad(); });
+          sggSel.addEventListener("change",  () => { fillUmd(sggSel.value); umdSel.value = ""; triggerLoad(); });
+          umdSel.addEventListener("change",  triggerLoad);
+          resetBtn.addEventListener("click", () => {
+            sidoSel.value = ""; sggSel.value = ""; umdSel.value = "";
+            fillSgg(""); fillUmd("");
+            currentGrid.state.filters.sido_filter = currentGrid.state.filters.sgg_text_filter = currentGrid.state.filters.umd_nm_filter = "";
+            currentGrid.state.page = 1; currentGrid.reload();
+            resetBtn.style.display = "none";
+          });
+        } catch(e) { console.warn("지역 옵션 로드 실패", e); }
+      })();
+
+      // ── 용도별 세부 통계표: 1회 로드 (전체 데이터 기준, 필터 무관) ──
+      loadBldFullStats();
+
+      // ── 이벤트 위임: 입점부동산·영업사업장 아코디언 + 주소 토글 + 입점상가 모달 + 더보기 ──
+      gridMount.addEventListener("click", async (e) => {
+        // 입점부동산 아코디언 펼치기/접기
+        const realtyExpandBtn = e.target.closest(".bld-realty-expand");
+        if (realtyExpandBtn) {
+          e.stopPropagation();
+          const tr = realtyExpandBtn.closest("tr");
+          const next = tr.nextElementSibling;
+          const count = realtyExpandBtn.dataset.cnt || "0";
+          if (next && next.classList.contains("bld-realty-sub-row")) {
+            next.remove();
+            realtyExpandBtn.textContent = `🏠 ${count}건 펼치기`;
+            return;
+          }
+          if (next && next.classList.contains("bld-lodging-sub-row")) {
+            next.remove();
+            const lodgingBtn = tr.querySelector(".bld-lodging-expand");
+            if (lodgingBtn) lodgingBtn.textContent = `🏢 ${lodgingBtn.dataset.cnt}건 펼치기`;
+          }
+          const buildingId = realtyExpandBtn.dataset.id;
+          const colCount = tr.querySelectorAll("td").length;
+          tr.insertAdjacentHTML("afterend", renderRealtyLoadingSubRow(colCount));
+          const subRow = tr.nextElementSibling;
+          realtyExpandBtn.disabled = true;
+          realtyExpandBtn.textContent = "🏠 불러오는 중…";
+          try {
+            const [brokerResponse, storeResponse] = await Promise.all([
+              fetch(`/api/v1/r/4c2/${buildingId}`),
+              fetch(`/api/v1/r/8a1/${buildingId}`),
+            ]);
+            const brokerData = await brokerResponse.json().catch(() => ({}));
+            const storeData = await storeResponse.json().catch(() => ({}));
+            if (!brokerResponse.ok || !brokerData.ok || !storeResponse.ok) {
+              throw new Error(brokerData.message || "입점부동산 정보를 불러오지 못했습니다.");
+            }
+            const brokers = brokerData.items || [];
+            const cachedRealty = (storeData.items || []).filter((item) => item.category === "부동산");
+            let content;
+            if (brokers.length) {
+              content =
+                `<section class="bld-realty-section"><h3 class="bld-realty-section-title">주소 매칭 결과 (${brokers.length}건)</h3>` +
+                `<p class="bld-realty-section-note">홈앤스테이가 건물 주소를 기준으로 확인한 중개업소 정보입니다.</p>` +
+                `${renderBrokerRegistryCards(brokers)}</section>`;
+            } else if (cachedRealty.length) {
+              content =
+                `<section class="bld-realty-section"><h3 class="bld-realty-section-title">입점업소 참고 (${cachedRealty.length}건)</h3>` +
+                `<p class="bld-realty-section-note">주소 일치 결과가 없어 홈앤스테이가 확인한 입점업소 정보를 참고용으로 표시합니다.</p>` +
+                `${renderCachedRealtyTable(cachedRealty)}</section>`;
+            } else {
+              content = `<p class="bld-realty-section-note" style="margin:0;">매칭된 부동산 없음</p>`;
+            }
+            if (subRow && subRow.isConnected) {
+              subRow.outerHTML = renderRealtySubRow(content, colCount);
+            }
+            realtyExpandBtn.textContent = `🏠 ${count}건 접기`;
+          } catch (error) {
+            const message = dgEscape(error && error.message ? error.message : "입점부동산 정보를 불러오지 못했습니다.");
+            if (subRow && subRow.isConnected) {
+              subRow.outerHTML = renderRealtySubRow(
+                `<p class="bld-realty-section-note" style="margin:0;color:#b3261e;">${message}</p>`,
+                colCount
+              );
+            }
+            realtyExpandBtn.textContent = `🏠 ${count}건 다시 시도`;
+          } finally {
+            realtyExpandBtn.disabled = false;
+          }
+          return;
+        }
+        // 영업사업장 아코디언 펼치기/접기
+        const expandBtn = e.target.closest(".bld-lodging-expand");
+        if (expandBtn) {
+          e.stopPropagation();
+          const tr = expandBtn.closest("tr");
+          const next = tr.nextElementSibling;
+          if (next && next.classList.contains("bld-lodging-sub-row")) {
+            next.remove();
+            expandBtn.textContent = `🏢 ${expandBtn.dataset.cnt}건 펼치기`;
+            return;
+          }
+          if (next && next.classList.contains("bld-realty-sub-row")) {
+            next.remove();
+            const realtyBtn = tr.querySelector(".bld-realty-expand");
+            if (realtyBtn) realtyBtn.textContent = `🏠 ${realtyBtn.dataset.cnt}건 펼치기`;
+          }
+          const list = JSON.parse(expandBtn.getAttribute("data-list") || "[]");
+          const cnt  = parseInt(expandBtn.dataset.cnt || "0");
+          const colCount = tr.querySelectorAll("td").length;
+          const subFields = (lr) => {
+            const closed = (lr.biz_status_name || "").includes("폐업");
+            const badge = lr.biz_status_name
+              ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
+            const roomInfo = [
+              lr.room_count != null ? `${Number(lr.room_count).toLocaleString()}실` : "객실수 미확인",
+              lr.facility_area != null ? `${Number(lr.facility_area).toLocaleString()}㎡` : null,
+            ].filter(Boolean).join(" / ");
+            return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
+              `<td style="text-align:center;font-weight:600;">${roomInfo} ${badge}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
+              `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.bld_use_nm || "-")}</td>` +
+              `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.region_name || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10px;">${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</td>`;
+          };
+          let subHtml =
+            `<tr class="bld-lodging-sub-row"><td colspan="${colCount}" style="padding:0;background:#FAF8F3;border-bottom:2px solid #E8E3D9;">` +
+            `<table style="width:100%;font-size:11.5px;border-collapse:collapse;">` +
+            `<thead><tr style="background:#F0EBE1;color:var(--ink-soft);font-size:11px;">` +
+            `<th style="padding:3px 8px;text-align:left;font-weight:500;">영업사업장명</th>` +
+            `<th style="padding:3px 8px;text-align:left;font-weight:500;">신고번호</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">객실수/규모(㎡)/상태</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">신고일</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">전화</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">주소</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">건물용도</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">지역구분</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">갱신</th>` +
+            `</tr></thead><tbody class="bld-lodging-sub-body">`;
+          for (const lr of list.slice(0, 3)) {
+            subHtml += `<tr style="border-bottom:1px solid #E8E3D9;">${subFields(lr)}</tr>`;
+          }
+          if (cnt > 3) {
+            subHtml +=
+              `<tr class="bld-lodging-more-row"><td colspan="9" style="padding:4px 8px;text-align:center;">` +
+              `<button class="bld-lodging-more-btn" data-list="${jsonAttr(list.slice(3))}" ` +
+              `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;` +
+              `padding:2px 8px;font-size:11px;cursor:pointer;">+${cnt - 3}건 더보기</button></td></tr>`;
+          }
+          subHtml += `</tbody></table></td></tr>`;
+          tr.insertAdjacentHTML("afterend", subHtml);
+          expandBtn.textContent = `🏢 접기`;
+          return;
+        }
+        // 영업사업장 서브 더보기
+        const lodgMoreBtn = e.target.closest(".bld-lodging-more-btn");
+        if (lodgMoreBtn) {
+          e.stopPropagation();
+          const rest = JSON.parse(lodgMoreBtn.getAttribute("data-list") || "[]");
+          const subBody = lodgMoreBtn.closest("table").querySelector(".bld-lodging-sub-body");
+          const moreRow = lodgMoreBtn.closest(".bld-lodging-more-row");
+          const subFields = (lr) => {
+            const closed = (lr.biz_status_name || "").includes("폐업");
+            const badge = lr.biz_status_name
+              ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
+            const roomInfo = [
+              lr.room_count != null ? `${Number(lr.room_count).toLocaleString()}실` : null,
+              lr.facility_area != null ? `${Number(lr.facility_area).toLocaleString()}㎡` : null,
+            ].filter(Boolean).join(" / ") || "-";
+            return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
+              `<td style="text-align:center;font-weight:600;">${roomInfo} ${badge}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
+              `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.bld_use_nm || "-")}</td>` +
+              `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.region_name || "-")}</td>` +
+              `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10px;">${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</td>`;
+          };
+          let moreHtml = "";
+          for (const lr of rest) moreHtml += `<tr style="border-bottom:1px solid #E8E3D9;">${subFields(lr)}</tr>`;
+          moreRow.insertAdjacentHTML("beforebegin", moreHtml);
+          moreRow.remove();
+          return;
+        }
+        // 입점상가 모달
+        const storeBtn = e.target.closest(".bld-store-modal-btn");
+        if (storeBtn) {
+          e.stopPropagation();
+          openStoreModal(storeBtn.getAttribute("data-id"));
+          return;
+        }
+        // ── 카카오 홍보 메시지 복사 ─────────────────────────────────────────
+        const kakaoCopyBtn = e.target.closest(".bld-kakao-copy-btn");
+        if (kakaoCopyBtn) {
+          e.stopPropagation();
+          const msg = kakaoCopyBtn.dataset.msg;
+          const buildingId = kakaoCopyBtn.dataset.id;
+          const orig = kakaoCopyBtn.innerHTML;
+          let copied = false;
+          (async () => {
+            try {
+              try {
+                if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("clipboard unavailable");
+                await navigator.clipboard.writeText(msg);
+                copied = true;
+              } catch (_) {
+                // clipboard API 실패 시 fallback
+                const ta = document.createElement("textarea");
+                ta.value = msg;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                try {
+                  ta.select();
+                  copied = document.execCommand("copy");
+                } finally {
+                  document.body.removeChild(ta);
+                }
+              }
+              if (!copied) throw new Error("클립보드 복사에 실패했습니다.");
+              const res = await fetch(`/api/admin/buildings/${buildingId}/kakao-promo-copy`, { method: "POST" });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || !data.ok) throw new Error(data.message || "복사 횟수 기록에 실패했습니다.");
+              const copyCount = Math.max(0, Number(data.copy_count || 0));
+             kakaoCopyBtn.dataset.copyCount = String(copyCount);
+             kakaoCopyBtn.innerHTML = `✅ 복사됨 · ${copyCount}회`;
+            kakaoCopyBtn.style.borderColor = "#2a7a2a";
+            kakaoCopyBtn.style.color = "#2a7a2a";
+            setTimeout(() => {
+                if (!kakaoCopyBtn.isConnected) return;
+               kakaoCopyBtn.innerHTML = `📋 복사 ${copyCount}회`;
+              kakaoCopyBtn.style.borderColor = "";
+              kakaoCopyBtn.style.color = "";
+            }, 1500);
+            } catch (error) {
+              kakaoCopyBtn.innerHTML = copied ? "⚠️ 기록 실패" : "❌ 복사 실패";
+              kakaoCopyBtn.style.borderColor = "#b3261e";
+              kakaoCopyBtn.style.color = "#b3261e";
+              setTimeout(() => {
+                if (!kakaoCopyBtn.isConnected) return;
+                kakaoCopyBtn.innerHTML = orig;
+                kakaoCopyBtn.style.borderColor = "";
+                kakaoCopyBtn.style.color = "";
+              }, 1800);
+              console.warn("카카오 홍보 문구 복사 처리 실패:", error);
+            }
+          })();
+          return;
+        }
+        // 주소 토글 (도로명 ⇄ 지번)
+        const toggleBtn = e.target.closest(".bld-addr-toggle");
+        if (toggleBtn) {
+          e.stopPropagation();
+          const cell = toggleBtn.closest(".bld-addr-cell");
+          if (!cell) return;
+          const mbSpan = cell.querySelector(".bld-addr-mb");
+          const lrSpan = cell.querySelector(".bld-addr-lr");
+          const showingMb = mbSpan.style.display !== "none";
+          mbSpan.style.display = showingMb ? "none" : "";
+          lrSpan.style.display = showingMb ? "" : "none";
+          toggleBtn.title = showingMb ? "도로명주소로 보기" : "지번주소로 보기";
+          return;
+        }
+      });
+
+      // 선택 상태 변경 → 툴바 갱신
+      gridMount.addEventListener("dg:selectionchange", (e) => {
+        const n = e.detail.count;
+        document.getElementById("bldSelLabel").textContent = `선택 ${n}건`;
+        const dis = n === 0;
+        ["bldBulkEditBtn", "bldBulkDeleteBtn", "bldBulkDownloadBtn"].forEach((bid) => {
+          const el = document.getElementById(bid);
+          if (el) el.disabled = dis;
+        });
+      });
+
+      // ── 일괄 수정 모달 ──
+      document.getElementById("bldBulkEditBtn").addEventListener("click", () => {
+        const ids = currentGrid.selectedIds();
+        if (!ids.length) return;
+
+        const overlay = document.createElement("div");
+        overlay.className = "admin-modal-overlay";
+        const fieldOpts = BLD_BULK_FIELDS
+          .map((f) => `<option value="${dgEscape(f.key)}">${dgEscape(f.label)}</option>`).join("");
+        overlay.innerHTML = `
+          <div class="admin-modal" role="dialog" aria-modal="true" style="max-width:480px;">
+            <div class="admin-modal-head">
+              <h3>일괄 수정 (${ids.length}건)</h3>
+              <button class="admin-modal-close" aria-label="닫기">×</button>
+            </div>
+            <div class="admin-modal-body">
+              <label class="admin-form-row">
+                <span class="admin-form-label">수정할 필드 <em class="req">*</em></span>
+                <select class="admin-input" id="bulkEditField">${fieldOpts}</select>
+              </label>
+              <div id="bulkEditValueWrap"></div>
+              <div id="bulkEditConfirm" style="display:none;margin-top:8px;padding:8px 10px;background:#FFF8E7;border-radius:7px;font-size:13px;"></div>
+            </div>
+            <div class="admin-modal-msg" role="alert"></div>
+            <div class="admin-modal-foot">
+              <button class="admin-btn admin-modal-cancel">취소</button>
+              <button class="admin-btn admin-btn-primary" id="bulkEditApplyBtn">적용</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+
+        const fieldSel  = overlay.querySelector("#bulkEditField");
+        const valWrap   = overlay.querySelector("#bulkEditValueWrap");
+        const confirmEl = overlay.querySelector("#bulkEditConfirm");
+        const msgBox    = overlay.querySelector(".admin-modal-msg");
+        const applyBtn  = overlay.querySelector("#bulkEditApplyBtn");
+        const close     = () => overlay.remove();
+
+        const rebuildValue = () => {
+          const f = BLD_BULK_FIELDS.find((x) => x.key === fieldSel.value);
+          if (f && f.type === "select") {
+            valWrap.innerHTML = `
+              <label class="admin-form-row">
+                <span class="admin-form-label">새 값 <em class="req">*</em></span>
+                <select class="admin-input" id="bulkEditValue">
+                  ${BLD_LODGING_OPTS.map((o) => `<option value="${dgEscape(o)}">${dgEscape(o)}</option>`).join("")}
+                </select>
+              </label>`;
+          } else {
+            valWrap.innerHTML = `
+              <label class="admin-form-row">
+                <span class="admin-form-label">새 값 <em class="req">*</em></span>
+                <input class="admin-input" id="bulkEditValue" type="${(f && f.type === "number") ? "number" : "text"}" />
+              </label>`;
+          }
+          valWrap.querySelector("#bulkEditValue").addEventListener("input", updateConfirm);
+          valWrap.querySelector("#bulkEditValue").addEventListener("change", updateConfirm);
+          updateConfirm();
+        };
+        const updateConfirm = () => {
+          const f   = BLD_BULK_FIELDS.find((x) => x.key === fieldSel.value);
+          const vel = overlay.querySelector("#bulkEditValue");
+          const val = vel ? vel.value : "";
+          if (f && val !== "") {
+            confirmEl.style.display = "block";
+            confirmEl.textContent = `${ids.length}건의 [${f.label}]을(를) "${val}"(으)로 변경합니다.`;
+          } else {
+            confirmEl.style.display = "none";
+          }
+        };
+
+        overlay.querySelector(".admin-modal-close").addEventListener("click", close);
+        overlay.querySelector(".admin-modal-cancel").addEventListener("click", close);
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+        fieldSel.addEventListener("change", rebuildValue);
+        rebuildValue();
+
+        applyBtn.addEventListener("click", async () => {
+          const field = fieldSel.value;
+          const vel   = overlay.querySelector("#bulkEditValue");
+          const val   = vel ? vel.value : "";
+          if (!field || val === "") { msgBox.textContent = "필드와 값을 모두 입력해주세요."; return; }
+          applyBtn.disabled = true;
+          applyBtn.textContent = "적용 중…";
+          try {
+            const res = await fetch("/api/admin/buildings/bulk-update", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids, field, value: val }),
+            });
+            if (res.status === 401) { window.location.href = "/admin/login"; return; }
+            const d = await res.json().catch(() => ({}));
+            if (res.ok && d.ok) { close(); currentGrid.reload(); }
+            else { msgBox.textContent = d.message || "수정에 실패했습니다."; applyBtn.disabled = false; applyBtn.textContent = "적용"; }
+          } catch (e) {
+            msgBox.textContent = "네트워크 오류가 발생했습니다.";
+            applyBtn.disabled = false;
+            applyBtn.textContent = "적용";
+          }
+        });
+      });
+
+      // ── 일괄 삭제 ──
+      document.getElementById("bldBulkDeleteBtn").addEventListener("click", async () => {
+        const ids = currentGrid.selectedIds();
+        if (!ids.length) return;
+        if (!window.confirm(`선택한 ${ids.length}건을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+        try {
+          const res = await fetch("/api/admin/buildings/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids }),
+          });
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await res.json().catch(() => ({}));
+          if (res.ok && d.ok) {
+            window.alert(`${d.deleted}건이 삭제되었습니다.${d.skipped ? ` (${d.skipped}건은 연결 데이터가 있어 생략)` : ""}`);
+            currentGrid.selected.clear();
+            currentGrid.reload();
+            document.getElementById("bldSelLabel").textContent = "선택 0건";
+            ["bldBulkEditBtn", "bldBulkDeleteBtn", "bldBulkDownloadBtn"].forEach((bid) => {
+              const el = document.getElementById(bid);
+              if (el) el.disabled = true;
+            });
+          } else {
+            window.alert(d.message || "삭제에 실패했습니다.");
+          }
+        } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+      });
+
+      // ── 선택 항목 다운로드 ──
+      document.getElementById("bldBulkDownloadBtn").addEventListener("click", () => {
+        const ids = currentGrid.selectedIds();
+        if (!ids.length) return;
+        window.location.href = `/api/admin/buildings/export.xlsx?ids=${ids.join(",")}`;
+      });
+    }
+
+    function showView(menuKey) {
+      stopScheduledSyncPolling();
+      stopTxSyncPolling();
+      stopBackfillPolling();
+      stopBrokerSyncPolling();
+      stopLodgingSyncPolling();
+      stopBrhubSyncPolling();
+      if (menuKey === "stats") { showStats(menuKey); return; }
+      if (menuKey === "user-stats") { showUserStats(); return; }
+      if (menuKey === "warehouse") { showWarehouse(); return; }
+      if (menuKey === "revenue") { showRevenue(); return; }
+      if (menuKey === "members") { showMembers(); return; }
+      if (menuKey === "legal") { showLegal(); return; }
+      if (menuKey === "datasync") { showDataSync(); return; }
+      if (menuKey === "brokers") { showBrokers(); return; }
+      if (menuKey === "lodgings") { showLodgings(); return; }
+      if (menuKey === "new-buildings") { showNewBuildingCandidates(); return; }
+      if (menuKey === "premium-status") { showPremiumStatus(); return; }
+      if (menuKey === "ota-requests") { showOtaRequests(); return; }
+      if (menuKey === "bug-reports") { showBugReports(); return; }
+      if (menuKey === "listings") { showListings(); return; }
+      if (menuKey === "popups") { showPopups(); return; }
+      if (menuKey === "buildings") { showBuildings(); return; }
+      showGrid(menuKey);
+    }
+
+    // 메뉴 활성화 + hash 동기화 (공통 헬퍼)
+    function activateMenu(menuKey) {
+      document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
+      const btn = document.querySelector(`.admin-menu-item[data-menu="${menuKey}"]`);
+      if (btn) btn.classList.add("is-active");
+      // hash 업데이트 — hashchange가 다시 showView를 부르지 않도록 플래그 사용
+      _suppressHashChange = true;
+      location.hash = menuKey;
+      _suppressHashChange = false;
+      showView(menuKey);
+    }
+
+    let _suppressHashChange = false;
+
+    document.querySelectorAll(".admin-menu-item[data-menu]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activateMenu(btn.getAttribute("data-menu"));
+      });
+    });
+
+    // 브라우저 뒤로/앞으로 버튼 지원
+    window.addEventListener("hashchange", () => {
+      if (_suppressHashChange) return;
+      const key = location.hash.replace(/^#/, "") || "stats";
+      activateMenu(key);
+    });
+
+    // ⑪ 미분류 재분류 섹션 → 건물마스터 미분류 필터 바로가기
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("#goBldUnclassified");
+      if (!link) return;
+      e.preventDefault();
+      _suppressHashChange = true;
+      location.hash = "buildings";
+      _suppressHashChange = false;
+      const bldBtn = document.querySelector(".admin-menu-item[data-menu='buildings']");
+      if (bldBtn) {
+        document.querySelectorAll(".admin-menu-item").forEach((b) => b.classList.remove("is-active"));
+        bldBtn.classList.add("is-active");
+      }
+      showBuildings({ lodging_type_filter: "미분류" });
+    });
+
+    // 초기 진입: hash가 있으면 해당 메뉴로, 없으면 stats
+    const _initKey = location.hash.replace(/^#/, "") || "stats";
+    // 현재 관리자 권한 조회 → 메모 수정/삭제 버튼 노출 분기용
+    window.ADMIN_IS_SUPER = false;
+    fetch("/api/admin/me").then(r => r.json()).then(d => { if (d.ok) window.ADMIN_IS_SUPER = !!d.is_super; }).catch(() => {});
+    activateMenu(_initKey);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //  회원 상세페이지 JS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function _mdPhone(v) {
+      if (!v) return null;
+      const d = v.replace(/\D/g, "");
+      if (d.length === 11) return d.replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3");
+      if (d.length === 10) return d.replace(/(\d{3})(\d{3,4})(\d{4})/, "$1-$2-$3");
+      return v;
+    }
+    function _mdBiz(v) {
+      if (!v) return null;
+      const d = v.replace(/\D/g, "");
+      if (d.length === 10) return d.replace(/(\d{3})(\d{2})(\d{5})/, "$1-$2-$3");
+      return v;
+    }
+    function _memberLoginUaSummary(userAgent) {
+      const ua = String(userAgent || "");
+      if (!ua) return "기록 없음";
+      let browser = "기타";
+      if (/edg\//i.test(ua)) browser = "Edge";
+      else if (/firefox|fxios/i.test(ua)) browser = "Firefox";
+      else if (/chrome|crios/i.test(ua)) browser = "Chrome";
+      else if (/safari/i.test(ua)) browser = "Safari";
+      return /mobile|android|iphone|ipad/i.test(ua) ? `${browser} · Mobile` : browser;
+    }
+    const _MD_TYPE_LABEL = { general: "일반회원", agent: "중개사", operator: "운영지원업체", loan_consultant: "대출상담사" };
+    const _MD_STATUS = {
+      active: ["정상", "ok"], withdrawn: ["탈퇴", "no"], inactive: ["비활성", ""],
+      approved: ["승인됨", "ok"], pending: ["승인대기", "wait"],
+      rejected: ["반려됨", "no"], suspended: ["정지", "no"]
+    };
+    let _memberDetailRequestSeq = 0;
+
+    async function showMemberDetail(memberType, memberId) {
+      const requestSeq = ++_memberDetailRequestSeq;
+      if (typeof destroyStatsCharts === "function") destroyStatsCharts();
+      if (!mount) return;
+      mount.innerHTML = `<div style="padding:40px; text-align:center; color:var(--ink-soft);">불러오는 중…</div>`;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`);
+        if (requestSeq !== _memberDetailRequestSeq) return;
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (requestSeq !== _memberDetailRequestSeq) return;
+        if (!d.ok) {
+          mount.innerHTML = `<div style="padding:24px; color:#c0392b;">${dgEscape(d.message || "조회 오류")}</div>`;
+          return;
+        }
+        _renderMemberDetail(d.data, memberType, memberId);
+      } catch (e) {
+        if (requestSeq === _memberDetailRequestSeq) {
+          mount.innerHTML = `<div style="padding:24px; color:#c0392b;">불러오지 못했습니다. 새로고침 해주세요.</div>`;
+        }
+      }
+    }
+
+    function backToMemberList() {
+      _memberDetailRequestSeq++;
+      activateMenu("members");
+    }
+
+    function _renderMemberDetail(data, memberType, memberId) {
+      if (!mount) return;
+      const tl = _MD_TYPE_LABEL[memberType] || memberType;
+      const [stLabel, stClass] = _MD_STATUS[data.status] || [data.status || "-", ""];
+      const _none = `<span style="color:var(--ink-soft);">미입력</span>`;
+      const _na   = `<span style="color:var(--ink-soft);">해당없음</span>`;
+      const _v    = v => v ? dgEscape(v) : _none;
+      const _ph   = v => { const f = _mdPhone(v); return f ? dgEscape(f) : _none; };
+      const _biz  = v => { const f = _mdBiz(v); return f ? dgEscape(f) : _none; };
+
+      // ── 기본정보 필드 (유형별) ──
+      let infoRows = [];
+      if (memberType === "general") {
+        infoRows = [
+          ["닉네임/이름", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["가입방법", data.provider === "kakao" ? "카카오" : data.provider === "email" ? "이메일" : _v(data.provider)],
+          ["업체명/회사명", _na], ["대표자명", _na], ["세부업종", _na],
+          ["연락처", _na], ["소재지", _na], ["웹사이트", _na],
+          ["희망건물", _na], ["담당자명", _na],
+          ["가입일", _v(data.created_at)],
+          ["마지막 로그인", _v(data.last_login_at)],
+          ["이용약관 동의", _v(data.terms_agreed_at)],
+          ["개인정보 동의", _v(data.privacy_agreed_at)],
+          ["마케팅 수신", data.marketing_agreed_at ? `동의 (${dgEscape(data.marketing_agreed_at)})` : `<span style="color:var(--ink-soft);">미동의</span>`],
+          ["이메일알림", data.email_alert_enabled ? "켜짐" : "꺼짐"],
+          ["포인트(적립금)", `${(Number(data.points)||0).toLocaleString("ko-KR")}P`],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      } else if (memberType === "agent") {
+        infoRows = [
+          ["대표자명", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["중개사무소명", _v(data.office_name)],
+          ["중개사 등록번호", _v(data.reg_number)],
+          ["연락처(휴대폰)", _ph(data.phone)],
+          ["사무실 전화", _ph(data.office_phone)],
+          ["소재지", _v(data.office_address)],
+          ["담당자명", _v(data.manager_name)],
+          ["희망건물", _v(data.desired_building)],
+          ["서브도메인", _v(data.subdomain_slug)],
+          ["우선노출 점수", data.priority_score != null ? String(data.priority_score) : _none],
+          ["마이페이지 노출", data.is_visible ? "노출 중" : `<span style="color:#c0392b;">숨김</span>`],
+          ["가입일", _v(data.created_at)],
+          ["승인일", _v(data.approved_at)],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      } else if (memberType === "operator") {
+        infoRows = [
+          ["대표자명", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["업체명", _v(data.company_name)],
+          ["세부업종", _v(data.category)],
+          ["연락처(휴대폰)", _ph(data.phone)],
+          ["소재지", _v(data.office_address)],
+          ["웹사이트", data.website_url ? `<a href="${dgEscape(data.website_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">${dgEscape(data.website_url)}</a>` : _none],
+          ["담당자명", _v(data.manager_name)],
+          ["희망건물", _v(data.desired_building)],
+          ["서브도메인", _v(data.subdomain_slug)],
+          ["우선노출 점수", data.priority_score != null ? String(data.priority_score) : _none],
+          ["마이페이지 노출", data.is_visible ? "노출 중" : `<span style="color:#c0392b;">숨김</span>`],
+          ["가입일", _v(data.created_at)],
+          ["승인일", _v(data.approved_at)],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      } else {
+        infoRows = [
+          ["상담사명", _v(data.name)],
+          ["이메일(로그인ID)", _v(data.email)],
+          ["소속 회사", _v(data.office_name)],
+          ["대출모집인 등록번호", _v(data.license_number)],
+          ["연락처(휴대폰)", _ph(data.phone)],
+          ["취급 지역", _v(data.service_region)],
+          ["소재지", _v(data.office_address)],
+          ["카카오톡 상담", data.kakao_chat_url ? `<a href="${dgEscape(data.kakao_chat_url)}" target="_blank" rel="noopener" style="color:var(--brass-dark);">링크</a>` : _none],
+          ["상담 상품", _v(data.consultant_products)],
+          ["담당자명", _v(data.manager_name)],
+          ["희망건물", _v(data.desired_building)],
+          ["마이페이지 노출", data.is_visible ? "노출 중" : `<span style="color:#c0392b;">숨김</span>`],
+          ["가입일", _v(data.created_at)],
+          ["승인일", _v(data.approved_at)],
+          ["상태", `<span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>`],
+        ];
+      }
+
+      const bizRegCol = memberType === "general" ? "business_reg_number" : "biz_reg_number";
+      const bizRegVal = memberType === "general" ? (data.business_reg_number || "") : (data.biz_reg_number || "");
+
+      // 공통 필드 (편집 가능 포함)
+      infoRows.push(
+        ["사업자등록번호", _biz(bizRegVal)],
+        ["세금계산서 이메일", _v(data.tax_invoice_email)],
+        ["반려 사유", _v(data.rejection_reason)],
+        ["관리자 태그", data.admin_tag ? `<span class="dg-badge">${dgEscape(data.admin_tag)}</span>` : _none],
+        ["관리자 메모(구)", data.admin_memo ? `<span style="white-space:pre-line; font-size:12px;">${dgEscape(data.admin_memo)}</span>` : _none],
+      );
+
+      const infoViewHtml = infoRows.map(([lbl, v]) =>
+        `<div class="member-info-row"><span class="member-info-label">${dgEscape(lbl)}</span><span class="member-info-value">${v}</span></div>`
+      ).join("");
+
+      // ── 편집 폼 헬퍼 ──
+      const _fi = (lbl, fld, val, typ="text", dtyp="", ex="") =>
+        `<div class="member-info-row"><label class="member-info-label" style="padding-top:6px;">${dgEscape(lbl)}</label>` +
+        `<div class="member-info-value"><input data-field="${fld}" data-type="${dtyp}" class="member-edit-input" type="${typ}" value="${dgEscape(String(val??''))}" ${ex}/></div></div>`;
+      const _ft = (lbl, fld, val, rows=2) =>
+        `<div class="member-info-row"><label class="member-info-label" style="padding-top:6px;">${dgEscape(lbl)}</label>` +
+        `<div class="member-info-value"><textarea data-field="${fld}" class="member-edit-input" rows="${rows}" style="resize:vertical;">${dgEscape(String(val??''))}</textarea></div></div>`;
+      const _fsel = (lbl, fld, optsHtml, dtyp="") =>
+        `<div class="member-info-row"><label class="member-info-label" style="padding-top:6px;">${dgEscape(lbl)}</label>` +
+        `<div class="member-info-value"><select data-field="${fld}" data-type="${dtyp}" class="member-edit-input" style="width:auto;">${optsHtml}</select></div></div>`;
+      const _fbool = (lbl, fld, val, tLbl="노출 중", fLbl="숨김") =>
+        _fsel(lbl, fld,
+          `<option value="true"${val?" selected":""}>` + tLbl + `</option>` +
+          `<option value="false"${!val?" selected":""}>` + fLbl + `</option>`, "bool");
+      const _fstatus_biz = (cur) =>
+        _fsel("상태", "status",
+          `<option value="pending"${cur==="pending"?" selected":""}>대기(pending)</option>` +
+          `<option value="approved"${cur==="approved"?" selected":""}>승인(approved)</option>` +
+          `<option value="rejected"${cur==="rejected"?" selected":""}>반려(rejected)</option>` +
+          `<option value="suspended"${cur==="suspended"?" selected":""}>정지(suspended)</option>`);
+      const _fcommon = `
+        ${_fi("사업자등록번호", bizRegCol, bizRegVal, "text", "", 'maxlength="20" placeholder="000-00-00000"')}
+        ${_fi("세금계산서 이메일", "tax_invoice_email", data.tax_invoice_email, "email", "", 'placeholder="tax@example.com"')}
+        ${_ft("반려 사유", "rejection_reason", data.rejection_reason)}
+        ${_fi("관리자 태그", "admin_tag", data.admin_tag, "text", "", 'maxlength="30"')}
+        ${_ft("관리자 메모(구)", "admin_memo", data.admin_memo, 3)}`;
+
+      let infoFormHtml = "";
+      if (memberType === "general") {
+        infoFormHtml =
+          _fi("닉네임/이름", "name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fsel("상태", "status",
+            `<option value="active"${data.status==="active"?" selected":""}>정상(active)</option>` +
+            `<option value="withdrawn"${data.status==="withdrawn"?" selected":""}>탈퇴(withdrawn)</option>` +
+            `<option value="inactive"${data.status==="inactive"?" selected":""}>비활성(inactive)</option>`) +
+          _fi("포인트(적립금)", "points", data.points??0, "number", "int", 'min="0" step="1"') +
+          _fbool("이메일알림", "email_alert_enabled", data.email_alert_enabled, "켜짐", "꺼짐") +
+          _fcommon;
+      } else if (memberType === "agent") {
+        infoFormHtml =
+          _fi("대표자명", "owner_name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fi("중개사무소명", "office_name", data.office_name, "text", "", 'maxlength="100"') +
+          _fi("중개사 등록번호", "reg_number", data.reg_number, "text", "", 'maxlength="50"') +
+          _fi("연락처(휴대폰)", "phone", data.phone, "text", "", 'maxlength="20"') +
+          _fi("사무실 전화", "office_phone", data.office_phone, "text", "", 'maxlength="20"') +
+          _fi("소재지", "office_address", data.office_address, "text", "", 'maxlength="200"') +
+          _fi("담당자명", "manager_name", data.manager_name, "text", "", 'maxlength="50"') +
+          _fi("희망건물", "desired_building", data.desired_building, "text", "", 'maxlength="200"') +
+          _fi("서브도메인", "subdomain_slug", data.subdomain_slug, "text", "", 'maxlength="50"') +
+          _fi("우선노출 점수", "priority_score", data.priority_score??0, "number", "int", 'step="1"') +
+          _fbool("마이페이지 노출", "is_visible", data.is_visible) +
+          _fstatus_biz(data.status) +
+          _fcommon +
+          _fi("소개글 제목", "intro_title", data.intro_title, "text", "", 'maxlength="100"') +
+          _ft("소개글", "intro_text", data.intro_text, 4);
+      } else if (memberType === "operator") {
+        infoFormHtml =
+          _fi("대표자명", "owner_name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fi("업체명", "company_name", data.company_name, "text", "", 'maxlength="100"') +
+          _fi("세부업종", "category", data.category, "text", "", 'maxlength="50"') +
+          _fi("연락처(휴대폰)", "phone", data.phone, "text", "", 'maxlength="20"') +
+          _fi("소재지", "office_address", data.office_address, "text", "", 'maxlength="200"') +
+          _fi("웹사이트", "website_url", data.website_url, "url", "", 'maxlength="200" placeholder="https://"') +
+          _fi("담당자명", "manager_name", data.manager_name, "text", "", 'maxlength="50"') +
+          _fi("희망건물", "desired_building", data.desired_building, "text", "", 'maxlength="200"') +
+          _fi("서브도메인", "subdomain_slug", data.subdomain_slug, "text", "", 'maxlength="50"') +
+          _fi("우선노출 점수", "priority_score", data.priority_score??0, "number", "int", 'step="1"') +
+          _fbool("마이페이지 노출", "is_visible", data.is_visible) +
+          _fstatus_biz(data.status) +
+          _fcommon +
+          _ft("소개글", "intro_text", data.intro_text, 4);
+      } else { // loan_consultant
+        infoFormHtml =
+          _fi("상담사명", "owner_name", data.name, "text", "", 'maxlength="50"') +
+          _fi("이메일(로그인ID)", "email", data.email, "email", "", 'maxlength="100"') +
+          _fi("소속 회사", "office_name", data.office_name, "text", "", 'maxlength="100"') +
+          _fi("대출모집인 등록번호", "license_number", data.license_number, "text", "", 'maxlength="50"') +
+          _fi("연락처(휴대폰)", "phone", data.phone, "text", "", 'maxlength="20"') +
+          _fi("취급 지역", "service_region", data.service_region, "text", "", 'maxlength="100"') +
+          _fi("소재지", "office_address", data.office_address, "text", "", 'maxlength="200"') +
+          _fi("카카오톡 상담 URL", "kakao_chat_url", data.kakao_chat_url, "url", "", 'maxlength="300" placeholder="https://open.kakao.com/..."') +
+          _fi("상담 상품", "consultant_products", data.consultant_products, "text", "", 'maxlength="200"') +
+          _fi("담당자명", "manager_name", data.manager_name, "text", "", 'maxlength="50"') +
+          _fi("희망건물", "desired_building", data.desired_building, "text", "", 'maxlength="200"') +
+          _fi("서브도메인", "subdomain_slug", data.subdomain_slug, "text", "", 'maxlength="50"') +
+          _fi("우선노출 점수", "priority_score", data.priority_score??0, "number", "int", 'step="1"') +
+          _fbool("마이페이지 노출", "is_visible", data.is_visible) +
+          _fstatus_biz(data.status) +
+          _fcommon +
+          _ft("소개글", "intro_text", data.intro_text, 4);
+      }
+      infoFormHtml += `<div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="admin-btn admin-btn-primary" onclick="saveMemberInfo('${memberType}',${memberId})">저장</button>
+        <button class="admin-btn" onclick="toggleMemberInfoEdit()">취소</button>
+      </div>`;
+
+      // ── 관심단지 / 뱃지 / 담당건물 ──
+      const LIMIT = 5;
+      let buildingHtml = "";
+      function _bldList(items, idKey, showFn, restFn) {
+        const show = items.slice(0, LIMIT);
+        const rest = items.slice(LIMIT);
+        let h = show.map(showFn).join("");
+        if (rest.length) {
+          const rid = `mdBldRest_${idKey}_${memberId}`;
+          h += `<div id="${rid}" style="display:none;">${rest.map(showFn).join("")}</div>`;
+          h += `<a href="#" onclick="document.getElementById('${rid}').style.display='block';this.remove();return false;" style="font-size:12.5px;color:var(--brass-dark);">+ ${rest.length}건 더보기 ▾</a>`;
+        }
+        return h;
+      }
+
+      if (memberType === "general") {
+        const favs = data.favorites || [];
+        if (!favs.length) {
+          buildingHtml = `<div style="color:var(--ink-soft);font-size:13px;padding:6px 0;">관심단지가 없습니다.</div>`;
+        } else {
+          buildingHtml = `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">총 ${favs.length}건</div>`;
+          buildingHtml += _bldList(favs, "fav", f =>
+            `<div class="member-bld-item">${f.building_id ? `<a href="/building/${f.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(f.building_name||"-")}</a>` : `<span class="member-bld-name">${dgEscape(f.building_name||"-")}</span>`}<span style="color:var(--ink-soft);font-size:12px;">${dgEscape((f.address||"").slice(0,40))}</span></div>`);
+        }
+      } else if (memberType === "agent") {
+        const blds = data.buildings || [];
+        const regs  = data.service_regions || [];
+        if (blds.length) {
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
+          buildingHtml += _bldList(blds, "bld", b =>
+            `<div class="member-bld-item"><a href="/building/${b.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name||"-")}</a>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지${b.premium_expires_at?` ~${dgEscape(b.premium_expires_at)}`:""}</span>`:""}
+              <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
+        } else {
+          buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">담당건물 없음</div>`;
+        }
+        if (regs.length) {
+          const now = new Date().toISOString().slice(0,10);
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;">지역뱃지 (${regs.length}건)</div>`;
+          buildingHtml += regs.map(r => {
+            const exp = r.expires_at && r.expires_at < now;
+            return `<div class="member-bld-item"><span style="font-size:13px;">${dgEscape(r.sgg_text || "-")}</span>
+              <span class="dg-badge dg-badge-${exp?"no":"ok"}" style="font-size:11px;">${exp?"만료":"활성"}${r.expires_at?` ~${dgEscape(r.expires_at)}`:""}</span></div>`;
+          }).join("");
+        }
+      } else if (memberType === "operator") {
+        const blds = data.buildings || [];
+        const otas = data.ota_requests || [];
+        if (blds.length) {
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
+          buildingHtml += _bldList(blds, "bld", b =>
+            `<div class="member-bld-item"><a href="/building/${b.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name||"-")}</a>${b.has_priority_badge?`<span class="dg-badge dg-badge-ok" style="font-size:11px;">뱃지</span>`:""}
+              <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
+        } else {
+          buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;margin-bottom:10px;">담당건물 없음</div>`;
+        }
+        if (otas.length) {
+          const _os = {pending:["검토중","wait"],approved:["승인됨","ok"],rejected:["거절됨","no"],cancelled:["취소됨",""]};
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;">OTA 링크 신청 (${otas.length}건)</div>`;
+          buildingHtml += otas.slice(0, LIMIT).map(o => {
+            const [sl,sc] = _os[o.status] || [o.status,""];
+            return `<div class="member-bld-item"><a href="/building/${o.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(o.building_name||"-")}</a>
+              <span class="dg-badge dg-badge-${sc}" style="font-size:11px;">${dgEscape(sl)}</span>
+              <span style="color:var(--ink-soft);font-size:11px;">${dgEscape(o.submitted_at||"")}</span></div>`;
+          }).join("");
+        }
+      } else {
+        const blds = data.buildings || [];
+        if (blds.length) {
+          buildingHtml += `<div style="font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;">담당건물 (${blds.length}건)</div>`;
+          buildingHtml += _bldList(blds, "bld", b =>
+            `<div class="member-bld-item"><a href="/building/${b.building_id}" target="_blank" rel="noopener" class="member-bld-name" style="color:inherit;text-decoration:none;border-bottom:1px dashed var(--brass);">${dgEscape(b.building_name||"-")}</a>
+              <span style="color:var(--ink-soft);font-size:12px;">${dgEscape((b.sgg_text||"").slice(0,20))}</span></div>`);
+        } else {
+          buildingHtml += `<div style="color:var(--ink-soft);font-size:13px;">담당건물 없음</div>`;
+        }
+      }
+
+      // ── 활동정보 ──
+      let actHtml = "";
+      const _ar = (l,v) => `<div class="member-info-row"><span class="member-info-label">${l}</span><span class="member-info-value">${v}</span></div>`;
+      if (memberType === "general") {
+        actHtml = [
+          _ar("마지막 로그인", _v(data.last_login_at)),
+          _ar("매물의뢰 접수", `${data.listing_request_count||0}건`),
+          _ar("매수의뢰 접수", `${data.buy_request_count||0}건`),
+          _ar("포인트(적립금)", `${(Number(data.points)||0).toLocaleString("ko-KR")}P`),
+        ].join("");
+      } else if (memberType === "agent") {
+        actHtml = [
+          _ar("배정된 매물의뢰", `${data.routed_listing_count||0}건`),
+          _ar("담당 건물 수", `${(data.buildings||[]).length}건`),
+          _ar("지역뱃지 수", `${(data.service_regions||[]).length}건`),
+        ].join("");
+      } else if (memberType === "operator") {
+        actHtml = [
+          _ar("담당 건물 수", `${(data.buildings||[]).length}건`),
+          _ar("OTA 신청 수", `${(data.ota_requests||[]).length}건`),
+        ].join("");
+      } else {
+        actHtml = [
+          _ar("담당 건물 수", `${(data.buildings||[]).length}건`),
+          _ar("취급 지역", _v(data.service_region)),
+        ].join("");
+      }
+
+      // ── 승인대기 버튼 ──
+      const isPending = data.status === "pending";
+      const pendingBar = isPending ? `
+        <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;padding:12px 14px;background:#FDFBF5;border:1px solid #EAD9B8;border-radius:8px;">
+          <span style="font-size:13px;font-weight:600;color:#8F6A2F;flex:1;">⏳ 가입 승인 대기 중</span>
+          <button class="admin-btn admin-btn-primary" onclick="memberDetailApprove('${memberType}',${memberId})">✅ 승인</button>
+          <button class="admin-btn" style="background:#FBEAEA;border-color:#E0AAAA;color:#c0392b;" onclick="memberDetailReject('${memberType}',${memberId})">❌ 반려</button>
+        </div>` : "";
+
+      // ── 소셜/마케팅 정보 (일반회원) ──
+      const mktHtml = memberType === "general" ? `
+        <div class="member-detail-card">
+          <div class="member-detail-card-title">마케팅 · 연동 정보</div>
+          ${_ar("소셜 로그인", data.provider==="kakao"?"카카오 연동":"이메일 가입")}
+          ${_ar("카카오 ID", _v(data.kakao_id))}
+          ${_ar("마케팅 동의일", _v(data.marketing_agreed_at))}
+        </div>` : "";
+      const loginHistoryHtml = memberType === "general" ? `
+        <div class="member-detail-card">
+          <div class="member-detail-card-title">접속이력 <span style="font-size:11px;font-weight:400;color:var(--ink-soft);">최근 10건</span></div>
+          <div id="memberLoginHistory" data-member-id="${memberId}" style="color:var(--ink-soft);font-size:13px;padding:4px 0;">불러오는 중…</div>
+        </div>` : "";
+
+      mount.innerHTML = `
+        <div class="member-detail-wrap">
+          <div style="margin-bottom:20px;">
+            <button class="admin-btn" onclick="backToMemberList()" style="margin-bottom:12px;">← 목록으로</button>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span class="dg-badge" style="font-size:13px;">${dgEscape(tl)}</span>
+              <span style="font-size:1.2rem;font-weight:700;">${dgEscape(data.name||"-")}</span>
+              <span style="color:var(--ink-soft);font-size:13.5px;">${dgEscape(data.email||"-")}</span>
+              <span class="dg-badge dg-badge-${stClass}">${dgEscape(stLabel)}</span>
+              <span style="color:var(--ink-soft);font-size:12px;">ID: ${memberId}</span>
+            </div>
+          </div>
+          ${pendingBar}
+          <div class="member-detail-cols">
+            <div class="member-detail-col">
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">기본정보
+                  <button class="admin-btn" style="font-size:12px;padding:2px 10px;margin-left:auto;" onclick="toggleMemberInfoEdit()">수정</button>
+                </div>
+                <div id="memberInfoView">${infoViewHtml}</div>
+                <div id="memberInfoForm" style="display:none;">${infoFormHtml}</div>
+              </div>
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">활동정보</div>
+                ${actHtml}
+              </div>
+              ${mktHtml}
+            </div>
+            <div class="member-detail-col">
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">${memberType==="general"?"관심단지":"담당건물 · 뱃지"}</div>
+                ${buildingHtml || `<div style="color:var(--ink-soft);font-size:13px;">데이터 없음</div>`}
+              </div>
+              <div class="member-detail-card">
+                <div class="member-detail-card-title">관리자 메모 이력</div>
+                <div id="memberNotesList"><div style="color:var(--ink-soft);font-size:13px;padding:4px 0;">불러오는 중…</div></div>
+                <div class="member-note-form">
+                  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                    <div>
+                      <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">날짜</div>
+                      <input type="date" id="noteDate" value="${new Date().toISOString().slice(0,10)}" class="member-edit-input" style="width:auto;min-width:130px;"/>
+                    </div>
+                    <div style="flex:1;min-width:100px;">
+                      <div style="font-size:11px;color:var(--ink-soft);margin-bottom:3px;">담당자</div>
+                      <input type="text" id="noteAuthor" value="관리자" maxlength="50" class="member-edit-input"/>
+                    </div>
+                  </div>
+                  <textarea id="noteContent" rows="3" placeholder="메모 내용을 입력하세요…" class="member-edit-input" style="resize:vertical;"></textarea>
+                  <button class="admin-btn admin-btn-primary" style="margin-top:6px;" onclick="addMemberNote('${memberType}',${memberId})">메모 추가</button>
+                </div>
+              </div>
+              ${loginHistoryHtml}
+            </div>
+          </div>
+        </div>`;
+
+      loadMemberNotes(memberType, memberId);
+      if (memberType === "general") loadMemberLoginHistory(memberId);
+    }
+
+    async function loadMemberLoginHistory(memberId) {
+      const box = document.getElementById("memberLoginHistory");
+      if (!box || box.dataset.memberId !== String(memberId)) return;
+      try {
+        const res = await fetch(`/api/admin/members/general/${memberId}/login-history`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.message || "접속이력을 불러오지 못했습니다.");
+        if (box.dataset.memberId !== String(memberId)) return;
+        const rows = data.history || [];
+        if (!rows.length) {
+          box.innerHTML = '<div style="color:var(--ink-soft);font-size:13px;">접속이력이 없습니다.</div>';
+          return;
+        }
+        box.innerHTML = `<table class="dg-table" style="font-size:12px;"><thead><tr><th>접속일시</th><th>브라우저</th></tr></thead><tbody>${
+          rows.map(row => `<tr><td style="white-space:nowrap;">${dgEscape(row.logged_in_at || "-")}</td><td>${dgEscape(_memberLoginUaSummary(row.user_agent))}</td></tr>`).join("")
+        }</tbody></table>`;
+      } catch (error) {
+        if (box.dataset.memberId === String(memberId)) {
+          box.innerHTML = `<div style="color:var(--brick);font-size:13px;">${dgEscape(error.message || "접속이력을 불러오지 못했습니다.")}</div>`;
+        }
+      }
+    }
+
+    function toggleMemberInfoEdit() {
+      const view = document.getElementById("memberInfoView");
+      const form = document.getElementById("memberInfoForm");
+      if (!view || !form) return;
+      const editing = form.style.display !== "none";
+      view.style.display = editing ? "" : "none";
+      form.style.display = editing ? "none" : "";
+    }
+
+    async function saveMemberInfo(memberType, memberId) {
+      const body = {};
+      document.querySelectorAll("#memberInfoForm [data-field]").forEach(el => {
+        const fld  = el.dataset.field;
+        const dtyp = el.dataset.type || "";
+        let val;
+        if (el.tagName === "SELECT") {
+          val = el.value;
+          if (dtyp === "bool") val = (val === "true");
+          else if (dtyp === "int") val = parseInt(val, 10);
+        } else {
+          val = el.value.trim();
+          if (dtyp === "int") val = val === "" ? null : (parseInt(val, 10) || 0);
+          else val = val === "" ? null : val;
+        }
+        body[fld] = val;
+      });
+      if (!Object.keys(body).length) { window.alert("변경 항목이 없습니다."); return; }
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/detail`, {
+          method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { showMemberDetail(memberType, memberId); }
+        else { window.alert(d.message || "저장에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function loadMemberNotes(memberType, memberId) {
+      const el = document.getElementById("memberNotesList");
+      if (!el) return;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes`);
+        if (!res.ok) throw new Error("fetch failed");
+        const d = await res.json();
+        const notes = d.notes || [];
+        if (!notes.length) {
+          el.innerHTML = `<div style="color:var(--ink-soft);font-size:13px;padding:4px 0;">아직 메모가 없습니다.</div>`;
+          return;
+        }
+        const isSup = !!window.ADMIN_IS_SUPER;
+        el.innerHTML = notes.map(n => `
+          <div class="member-note-item" id="note_${n.id}">
+            <div class="member-note-meta">
+              <span class="member-note-date">${dgEscape(n.memo_date||"")}</span>
+              <span class="member-note-author">${dgEscape(n.author_name||"관리자")}</span>
+              <span style="color:var(--ink-soft);font-size:11px;">(${dgEscape(n.created_at||"")}${n.updated_at?", 수정됨":""})</span>
+              ${isSup&&!n.is_deleted?`
+                <a href="#" onclick="editMemberNote('${memberType}',${memberId},${n.id});return false;" style="font-size:11px;color:var(--brass-dark);margin-left:4px;" title="수정">✏️</a>
+                <a href="#" onclick="deleteMemberNote('${memberType}',${memberId},${n.id});return false;" style="font-size:11px;color:#c0392b;margin-left:2px;" title="삭제">🗑</a>`:""}
+            </div>
+            <div class="member-note-content${n.is_deleted?" is-deleted":""}">${dgEscape(n.content)}</div>
+          </div>`).join("");
+      } catch (e) {
+        const el2 = document.getElementById("memberNotesList");
+        if (el2) el2.innerHTML = `<div style="color:#c0392b;font-size:13px;">메모를 불러오지 못했습니다.</div>`;
+      }
+    }
+
+    async function addMemberNote(memberType, memberId) {
+      const dateEl    = document.getElementById("noteDate");
+      const authorEl  = document.getElementById("noteAuthor");
+      const contentEl = document.getElementById("noteContent");
+      const content = contentEl ? contentEl.value.trim() : "";
+      if (!content) { window.alert("내용을 입력해주세요."); return; }
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes`, {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({
+            memo_date:   dateEl   ? dateEl.value : "",
+            author_name: authorEl ? (authorEl.value.trim() || "관리자") : "관리자",
+            content
+          })
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { if (contentEl) contentEl.value = ""; loadMemberNotes(memberType, memberId); }
+        else { window.alert(d.message || "저장에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function editMemberNote(memberType, memberId, noteId) {
+      const noteEl = document.getElementById(`note_${noteId}`);
+      const current = noteEl ? (noteEl.querySelector(".member-note-content")?.textContent?.trim() || "") : "";
+      const newContent = window.prompt("메모 내용 수정:", current);
+      if (newContent === null || newContent.trim() === current) return;
+      if (!newContent.trim()) { window.alert("내용을 입력해주세요."); return; }
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes/${noteId}`, {
+          method: "PATCH", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ content: newContent.trim() })
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { loadMemberNotes(memberType, memberId); }
+        else { window.alert(d.message || "수정에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function deleteMemberNote(memberType, memberId, noteId) {
+      if (!window.confirm("메모를 삭제(숨김 처리)하시겠습니까?\n복구는 관리자 DB에서만 가능합니다.")) return;
+      try {
+        const res = await fetch(`/api/admin/members/${memberType}/${memberId}/notes/${noteId}`, {
+          method: "DELETE"
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { loadMemberNotes(memberType, memberId); }
+        else { window.alert(d.message || "삭제에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function memberDetailApprove(memberType, memberId) {
+      if (!window.confirm("가입을 승인하시겠습니까?")) return;
+      try {
+        let res;
+        if (memberType === "pending") {
+          res = await fetch("/api/admin/members/bulk-approve", {
+            method: "POST", headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ ids: [{ member_type: "pending", id: memberId }] })
+          });
+        } else {
+          res = await fetch(`/api/admin/members/${memberType}/${memberId}/re-approve`, {
+            method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({})
+          });
+        }
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) { showMemberDetail(memberType, memberId); }
+        else { window.alert(d.message || "승인에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+    async function memberDetailReject(memberType, memberId) {
+      const reason = window.prompt("반려 사유를 입력하세요:", "");
+      if (reason === null) return;
+      try {
+        const res = await fetch("/api/admin/members/bulk-reject", {
+          method: "POST", headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ ids: [{ member_type: memberType, id: memberId }], reason: reason.trim() })
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json();
+        if (d.ok) {
+          // rejection_reason 별도 저장 (파트너 타입만, best-effort)
+          if (reason.trim() && memberType !== "pending") {
+            fetch(`/api/admin/members/${memberType}/${memberId}/detail`, {
+              method: "PUT", headers: {"Content-Type":"application/json"},
+              body: JSON.stringify({ rejection_reason: reason.trim() })
+            }).catch(() => {});
+          }
+          showMemberDetail(memberType, memberId);
+        } else { window.alert(d.message || "반려에 실패했습니다."); }
+      } catch (e) { window.alert("네트워크 오류가 발생했습니다."); }
+    }
+
+  
