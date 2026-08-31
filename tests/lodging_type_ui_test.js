@@ -86,6 +86,25 @@ expect(
   "지도 마커 분류색에 건물 상태가 전달되지 않습니다.",
 );
 
+const appPy = fs.readFileSync("app.py", "utf8");
+for (const endpoint of [
+  "agent_public_profile",
+  "_agent_me_data",
+  "operator_public_profile",
+  "operator_me",
+  "loan_consultant_public_profile",
+  "loan_consultant_me",
+]) {
+  const start = appPy.indexOf(`def ${endpoint}(`);
+  const next = appPy.indexOf("\ndef ", start + 1);
+  const source = appPy.slice(start, next < 0 ? undefined : next);
+  expect(start >= 0, `${endpoint} API를 찾을 수 없습니다.`);
+  expect(
+    source.includes("mb.lodging_subtype"),
+    `${endpoint} API가 자동차야영 하위 용도를 응답하지 않습니다.`,
+  );
+}
+
 for (const page of ["static/index.html", "static/listings.html", "static/mypage.html"]) {
   const html = fs.readFileSync(page, "utf8");
   const utilPos = html.indexOf("/static/js/format_util.js");

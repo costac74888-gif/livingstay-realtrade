@@ -6780,7 +6780,7 @@ def agent_public_profile(slug):
         conn.close()
         return jsonify({"error": "not found"}), 404
     cur.execute("""
-        SELECT ab.master_building_id, mb.building_name, mb.lodging_type,
+        SELECT ab.master_building_id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
                COALESCE(ab.sale_count, 0)      AS sale_count,
                COALESCE(ab.jeonse_count, 0)    AS jeonse_count,
                COALESCE(ab.wolse_count, 0)     AS wolse_count,
@@ -6797,7 +6797,7 @@ def agent_public_profile(slug):
         b["badge_type"] = "premium" if b["is_premium"] else None
 
     cur.execute("""
-        SELECT arb.master_building_id, mb.building_name, mb.lodging_type,
+        SELECT arb.master_building_id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
                0 AS sale_count, 0 AS jeonse_count, 0 AS wolse_count, 0 AS shortterm_count
         FROM agent_region_buildings arb
         JOIN master_buildings mb ON mb.id = arb.master_building_id
@@ -6956,7 +6956,8 @@ def admin_preview_operator_profile(operator_id):
         if not op:
             return jsonify({"error": "not found"}), 404
         cur.execute("""
-            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype, ob.note
             FROM operator_buildings ob
             JOIN master_buildings mb ON mb.id = ob.master_building_id
             WHERE ob.operator_id=%s ORDER BY mb.building_name
@@ -7004,7 +7005,8 @@ def admin_preview_lc_profile(lc_id):
         if not lc:
             return jsonify({"error": "not found"}), 404
         cur.execute("""
-            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type
+            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype
             FROM loan_consultant_buildings lcb
             JOIN master_buildings mb ON mb.id = lcb.master_building_id
             WHERE lcb.loan_consultant_id=%s ORDER BY mb.building_name
@@ -7047,6 +7049,7 @@ def _agent_me_data(agent_id):
             return None
         cur.execute("""
             SELECT ab.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype,
                    COALESCE(ab.sale_count, 0)      AS sale_count,
                    COALESCE(ab.jeonse_count, 0)    AS jeonse_count,
                    COALESCE(ab.wolse_count, 0)     AS wolse_count,
@@ -7078,6 +7081,7 @@ def _agent_me_data(agent_id):
         buildings = [dict(r) for r in cur.fetchall()]
         cur.execute("""
             SELECT pw.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype,
                    0 AS sale_count, 0 AS jeonse_count, 0 AS wolse_count, 0 AS shortterm_count,
                    NULL::timestamp AS premium_granted_at,
                    FALSE AS has_priority_badge,
@@ -8228,7 +8232,8 @@ def agent_region_building_search():
         if not row:
             return jsonify({"ok": False, "message": "먼저 담당 지역을 등록해주세요."}), 400
         cur.execute("""
-            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
+                   mb.sgg_text, mb.umd_nm,
                    (arb.id IS NOT NULL) AS already_added,
                    EXISTS(
                        SELECT 1 FROM agent_buildings ab
@@ -8523,7 +8528,8 @@ def agent_building_search():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
+                   mb.sgg_text, mb.umd_nm,
                    (ab.id IS NOT NULL) AS already_added,
                    (pw.id IS NOT NULL) AS already_waitlisted,
                    (pw.notified_at IS NOT NULL) AS waitlist_notified,
@@ -12444,7 +12450,8 @@ def operator_public_profile(slug):
         if not op:
             return jsonify({"error": "not found"}), 404
         cur.execute("""
-            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype, ob.note
             FROM operator_buildings ob
             JOIN master_buildings mb ON mb.id = ob.master_building_id
             WHERE ob.operator_id = %s
@@ -12492,7 +12499,8 @@ def operator_me():
         if not me:
             return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
         cur.execute("""
-            SELECT ob.master_building_id, mb.building_name, mb.lodging_type, ob.note,
+            SELECT ob.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype, ob.note,
                    ob.has_priority_badge,
                    ob.premium_expires_at,
                    ob.premium_granted_at,
@@ -12814,7 +12822,8 @@ def loan_consultant_public_profile(slug):
         if not lc:
             return jsonify({"error": "not found"}), 404
         cur.execute("""
-            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type
+            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype
             FROM loan_consultant_buildings lcb
             JOIN master_buildings mb ON mb.id = lcb.master_building_id
             WHERE lcb.loan_consultant_id = %s
@@ -12940,7 +12949,8 @@ def loan_consultant_me():
         if not me:
             return jsonify({"ok": False, "message": "계정을 찾을 수 없습니다."}), 404
         cur.execute("""
-            SELECT lcb.master_building_id, mb.building_name
+            SELECT lcb.master_building_id, mb.building_name, mb.lodging_type,
+                   mb.lodging_subtype
             FROM loan_consultant_buildings lcb
             JOIN master_buildings mb ON mb.id = lcb.master_building_id
             WHERE lcb.loan_consultant_id = %s
@@ -13340,7 +13350,8 @@ def loan_consultant_building_search():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
+                   mb.sgg_text, mb.umd_nm,
                    (lcb.id IS NOT NULL) AS already_added
             FROM master_buildings mb
             LEFT JOIN loan_consultant_buildings lcb
@@ -13708,7 +13719,8 @@ def operator_region_building_search():
         if not row:
             return jsonify({"ok": False, "message": "먼저 담당 지역을 등록해주세요."}), 400
         cur.execute("""
-            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
+                   mb.sgg_text, mb.umd_nm,
                    (arb.id IS NOT NULL) AS already_added,
                    EXISTS(
                        SELECT 1 FROM operator_buildings ob
@@ -13862,7 +13874,8 @@ def operator_building_search():
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT mb.id, mb.building_name, mb.lodging_type, mb.sgg_text, mb.umd_nm,
+            SELECT mb.id, mb.building_name, mb.lodging_type, mb.lodging_subtype,
+                   mb.sgg_text, mb.umd_nm,
                    (ob.id IS NOT NULL) AS already_added
             FROM master_buildings mb
             LEFT JOIN operator_buildings ob
