@@ -83,6 +83,39 @@
     "reason": "protected_classification"
   },
   {
+    "building_id": 41609,
+    "building_name": "위리브홍대501",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "외국인관광도시민박업",
+      "한옥체험업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 43993,
+    "building_name": "작은정원",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "외국인관광도시민박업",
+      "한옥체험업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 44946,
+    "building_name": "수연이네",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "외국인관광도시민박업",
+      "한옥체험업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
     "building_id": 45496,
     "building_name": "스테이세인트21캠프",
     "current_type": "에어비앤비",
@@ -112,6 +145,28 @@
     "active_hygiene_types": [
       "농어촌민박업",
       "외국인관광도시민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 45619,
+    "building_name": "강릉 세모집",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "외국인관광도시민박업",
+      "한옥체험업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 46116,
+    "building_name": "온정여관(사랑채)",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "외국인관광도시민박업",
+      "한옥체험업"
     ],
     "reason": "protected_classification"
   }
