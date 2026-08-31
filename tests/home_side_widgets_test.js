@@ -22,11 +22,17 @@ expect(
 expect(
   index.includes('id="btnTogglePanel"') &&
   index.includes('aria-expanded="true"') &&
+  index.includes('data-lodging-type="관광" style="cursor:pointer;"><i style="background:#14B8A6;">') &&
   css.includes(".side-panel.panel-collapsed") &&
   css.includes("body:has(.side-panel.panel-collapsed) .map-list-toggle") &&
   header.includes("window.livingstaySetPanelToggle = setListToggleState") &&
   header.includes('panel.classList.toggle("panel-collapsed", !open)'),
   "데스크톱 좌측 패널 접기·펼치기 계약이 누락됐습니다."
+);
+expect(
+  main.includes('"관광숙박업":           ["관광", LODGING_COLORS["관광"], "#fff"]') &&
+  !main.includes('"관광숙박업":           ["관광", "#639922", "#fff"]'),
+  "상세페이지 관광숙박 배지가 공용 청록 색상을 사용하지 않습니다."
 );
 const recentSection = index.slice(recentStart, sidePanelStart);
 expect(index.includes('class="recent-search-row" id="recentRow"'), "최근검색이 독립 카드가 아닌 보조 칩 행이 아닙니다.");
