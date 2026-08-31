@@ -403,7 +403,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-08-30-06"
+SCHEMA_VERSION = "2026-09-01-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1958,6 +1958,39 @@ def _run_init_db():
     cur.execute(
         "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_site_count INTEGER"
     )
+
+    # 관리자 숙박 원본 파일의 미리보기 → 승인 반영 사이를 안전하게 이어 주는
+    # 단기 초안. 파일은 외부에 공개하지 않으며 승인/실패 결과까지 기록한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_import_staging (
+        token TEXT PRIMARY KEY,
+        source TEXT NOT NULL CHECK (source IN ('airbnb', 'rural', 'hanok')),
+        filename TEXT NOT NULL,
+        file_ext TEXT NOT NULL,
+        file_data BYTEA NOT NULL,
+        preview JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status TEXT NOT NULL DEFAULT 'preview'
+            CHECK (status IN ('preview', 'applying', 'done', 'failed')),
+        run_id TEXT,
+        uploaded_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMP,
+        heartbeat_at TIMESTAMP,
+        finished_at TIMESTAMP,
+        result JSONB,
+        error TEXT
+    )
+    """)
+    cur.execute(
+        "ALTER TABLE lodging_import_staging ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_import_staging ADD COLUMN IF NOT EXISTS run_id TEXT"
+    )
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_import_staging_recent
+        ON lodging_import_staging(source, created_at DESC)
+    """)
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
     #   - building_name: 매칭 성공 시 건물명. 미매칭 거래는 NULL(프론트 favKey의 "null"과 대응).

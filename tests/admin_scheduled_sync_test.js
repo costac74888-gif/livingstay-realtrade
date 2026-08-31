@@ -20,6 +20,16 @@ expect(
 );
 
 expect(
+  app.includes('@app.route("/api/admin/lodging-source-overview")') &&
+    app.includes('@app.route("/api/admin/lodging-import/preview", methods=["POST"])') &&
+    app.includes('@app.route("/api/admin/lodging-import/<token>/apply", methods=["POST"])') &&
+    admin.includes('id="lodgingSourceCards"') &&
+    admin.includes('id="lodgingImportPreviewBtn"') &&
+    admin.includes("승인 반영"),
+  "숙박 원본별 현황·수동 실행 또는 파일 미리보기·승인 기능이 없습니다.",
+);
+
+expect(
   admin.includes('id="dsSecScheduled"') &&
     admin.includes('id="scheduledSyncStages"') &&
     admin.includes("실패·중단 단계 재시도") &&

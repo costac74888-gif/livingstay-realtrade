@@ -14600,6 +14600,7 @@ _SCHEDULED_SYNC_STAGES = (
     ("camping", "캠핑", "숙박", "매일"),
     ("rural", "농어촌민박", "숙박", "매일"),
     ("hanok", "한옥체험업", "숙박", "매일"),
+    ("pension", "관광펜션업", "숙박", "매일"),
     ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
     ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
@@ -15244,6 +15245,280 @@ def admin_scheduled_sync_status():
         } if scheduled_evidence else None,
         "source": status.get("source"),
     })
+
+
+_LODGING_SOURCE_DEFS = (
+    ("camping", "캠핑·야영", "camping", "CAMPING:%"),
+    ("rural", "농어촌민박", "rural", "RURAL:%"),
+    ("hanok", "한옥체험업", "hanok", "HANOK:%"),
+    ("pension", "관광펜션업", "pension", "PENSION:%"),
+    ("airbnb", "에어비앤비", None, "AIRBNB:%"),
+)
+_LODGING_UPLOAD_MAX_BYTES = 15 * 1024 * 1024
+
+
+def _lodging_source_stage_status(stage):
+    if not stage:
+        return {}
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT value, updated_at,
+                   EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age
+              FROM app_meta
+             WHERE key=%s
+            """,
+            (_scheduled_stage_meta_key(stage),),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row or not row["value"]:
+        return {}
+    try:
+        outer = json.loads(row["value"]) or {}
+    except (TypeError, ValueError):
+        return {}
+    item = dict((outer.get("stages") or {}).get(stage) or {})
+    state = item.get("state") or outer.get("state")
+    if (
+        state == "running"
+        and row["age"] is not None
+        and float(row["age"]) > _SCHEDULED_SYNC_STALE_MIN * 60
+    ):
+        state = "stale"
+    return {
+        "state": state,
+        "running": state == "running",
+        "started_at": _kst_label(item.get("started_at") or outer.get("started_at")),
+        "finished_at": _kst_label(item.get("finished_at") or outer.get("finished_at")),
+        "last_success_at": _kst_label(item.get("last_success_at") or outer.get("last_success_at")),
+        "error": item.get("error") or outer.get("error"),
+        "retryable": bool(item.get("retryable") or outer.get("retryable")),
+        "changed": item.get("changed"),
+        "progress_message": item.get("progress_message"),
+    }
+
+
+@app.route("/api/admin/lodging-source-overview")
+@require_admin
+def admin_lodging_source_overview():
+    """원본별 실제 적재·활성·건물 연결과 최근 실행 결과를 함께 반환한다."""
+    counts = {}
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            DELETE FROM lodging_import_staging
+             WHERE created_at < NOW() - INTERVAL '24 hours'
+               AND status IN ('preview', 'done', 'failed')
+        """)
+        for key, _label, _stage, prefix in _LODGING_SOURCE_DEFS:
+            cur.execute(
+                """
+                SELECT COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE biz_status_name=%s) AS active,
+                       COUNT(*) FILTER (WHERE applied_building_id IS NOT NULL) AS linked_rows,
+                       COUNT(DISTINCT applied_building_id)
+                           FILTER (WHERE applied_building_id IS NOT NULL) AS linked_buildings
+                  FROM lodging_registry
+                 WHERE permit_number LIKE %s
+                """,
+                (_LODGING_ACTIVE_STATUS, prefix),
+            )
+            counts[key] = cur.fetchone()
+        cur.execute("""
+            SELECT DISTINCT ON (source)
+                   source, token, filename, preview, status, created_at, started_at,
+                   heartbeat_at, finished_at, result, error
+              FROM lodging_import_staging
+             WHERE source = ANY(%s)
+             ORDER BY source, created_at DESC
+        """, (["airbnb", "rural", "hanok"],))
+        latest_uploads = {row["source"]: row for row in cur.fetchall()}
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    sources = []
+    for key, label, stage, _prefix in _LODGING_SOURCE_DEFS:
+        row = counts.get(key) or {}
+        status = _lodging_source_stage_status(stage)
+        latest_upload = latest_uploads.get(key)
+        upload_status = None
+        if latest_upload:
+            upload_state = latest_upload["status"]
+            if (
+                upload_state == "applying"
+                and latest_upload["heartbeat_at"]
+                and latest_upload["heartbeat_at"] < datetime.now() - timedelta(minutes=5)
+            ):
+                upload_state = "stale"
+            upload_status = {
+                "state": upload_state,
+                "running": upload_state == "applying",
+                "started_at": _kst_label(latest_upload["started_at"]),
+                "finished_at": _kst_label(latest_upload["finished_at"]),
+                "error": latest_upload["error"],
+                "result": latest_upload["result"],
+                "filename": latest_upload["filename"],
+                "preview": latest_upload["preview"],
+                "token": (
+                    latest_upload["token"]
+                    if upload_state in {"preview", "failed", "stale"}
+                    else None
+                ),
+            }
+            if key == "airbnb":
+                status = upload_status
+        sources.append({
+            "key": key,
+            "label": label,
+            "stage": stage,
+            "total": int(row.get("total") or 0),
+            "active": int(row.get("active") or 0),
+            "linked_rows": int(row.get("linked_rows") or 0),
+            "linked_buildings": int(row.get("linked_buildings") or 0),
+            "status": status,
+            "upload": upload_status,
+        })
+    return jsonify({"ok": True, "sources": sources})
+
+
+@app.route("/api/admin/lodging-import/preview", methods=["POST"])
+@require_admin
+@limiter.limit("12 per hour")
+def admin_lodging_import_preview():
+    """파일을 파싱·매칭만 하고 DB 원본/건물 데이터는 변경하지 않는다."""
+    source = (request.form.get("source") or "").strip()
+    upload = request.files.get("file")
+    if source not in {"airbnb", "rural", "hanok"}:
+        return jsonify({"ok": False, "message": "지원하지 않는 숙박 원본입니다."}), 400
+    if not upload or not upload.filename:
+        return jsonify({"ok": False, "message": "파일을 선택해 주세요."}), 400
+    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    from lodging_import_staging import allowed_extensions, preview_file
+    if ext not in allowed_extensions(source):
+        allowed = ", ".join(sorted(allowed_extensions(source)))
+        return jsonify({"ok": False, "message": f"허용 형식은 {allowed}입니다."}), 400
+    file_data = upload.read(_LODGING_UPLOAD_MAX_BYTES + 1)
+    if not file_data:
+        return jsonify({"ok": False, "message": "빈 파일은 업로드할 수 없습니다."}), 400
+    if len(file_data) > _LODGING_UPLOAD_MAX_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 15MB 이하여야 합니다."}), 400
+
+    import tempfile
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as handle:
+            handle.write(file_data)
+            path = handle.name
+        preview = preview_file(source, path)
+    except Exception as exc:
+        app.logger.exception("숙박 원본 파일 미리보기 실패")
+        return jsonify({"ok": False, "message": f"파일 검증 실패: {str(exc)[:300]}"}), 400
+    finally:
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    token = _secrets.token_urlsafe(24)
+    safe_filename = os.path.basename(upload.filename)[:200]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            DELETE FROM lodging_import_staging
+             WHERE created_at < NOW() - INTERVAL '24 hours'
+               AND status IN ('preview', 'done', 'failed')
+        """)
+        cur.execute(
+            """
+            INSERT INTO lodging_import_staging
+                (token, source, filename, file_ext, file_data, preview, uploaded_by)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+            """,
+            (token, source, safe_filename, ext, file_data,
+             json.dumps(preview, ensure_ascii=False), session.get("admin_user_id")),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({"ok": True, "token": token, "source": source, "preview": preview})
+
+
+@app.route("/api/admin/lodging-import/<token>/apply", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_lodging_import_apply(token):
+    """한 번만 승인할 수 있도록 초안을 원자적으로 선점하고 별도 프로세스로 반영한다."""
+    run_id = _secrets.token_hex(8)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            UPDATE lodging_import_staging
+               SET status='applying', run_id=%s, started_at=NOW(),
+                   heartbeat_at=NOW(), finished_at=NULL, error=NULL
+             WHERE token=%s
+               AND (
+                    status='preview'
+                    OR status='failed'
+                    OR (status='applying' AND heartbeat_at < NOW() - INTERVAL '5 minutes')
+               )
+               AND created_at >= NOW() - INTERVAL '24 hours'
+               AND OCTET_LENGTH(file_data) > 0
+            RETURNING source
+            """,
+            (run_id, token),
+        )
+        claimed = cur.fetchone()
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if not claimed:
+        return jsonify({
+            "ok": False,
+            "message": "초안이 만료되었거나 이미 반영을 시작했습니다.",
+        }), 409
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "apply_lodging_import.py"),
+             token, "--run-id", run_id],
+            cwd=base_dir,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as exc:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE lodging_import_staging
+                   SET status='failed', finished_at=NOW(), error=%s
+                 WHERE token=%s AND status='applying' AND run_id=%s
+                """,
+                (f"러너 실행 실패: {str(exc)[:300]}", token, run_id),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "반영 프로세스를 시작하지 못했습니다."}), 500
+    return jsonify({"ok": True, "message": "승인된 파일 반영을 시작했습니다."}), 202
 
 
 def _claim_scheduled_sync_start(*, selected_stage=None, retry_failures_only=False):

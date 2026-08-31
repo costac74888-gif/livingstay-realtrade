@@ -1871,6 +1871,11 @@ def main():
     with _lodging_sync_lock() as acquired:
         if acquired:
             _run(args)
+        else:
+            # 호출자가 실제 수집이 시작되지 않았음을 구분할 수 있어야 한다.
+            # 특히 scheduled_sync가 잠금 충돌을 성공 완료로 기록하면 안 된다.
+            print("[lodgings] 다른 숙박 동기화가 실행 중이어서 시작하지 못했습니다.")
+            raise SystemExit(75)
 
 
 if __name__ == "__main__":

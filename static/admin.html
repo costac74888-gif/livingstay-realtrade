@@ -2344,6 +2344,189 @@
       }
     }
 
+    // ---- 숙박 원본별 수동 동기화·파일 승인 반영 ----
+    let lodgingSourceTimer = null;
+
+    function lodgingSourceState(status) {
+      const state = (status || {}).state;
+      if (state === "running" || state === "applying") return "실행 중";
+      if (state === "done") return "완료";
+      if (state === "preview") return "승인 대기";
+      if (state === "failed") return "실패";
+      if (state === "deferred") return "보류";
+      if (state === "stale") return "중단 의심";
+      return "실행 기록 없음";
+    }
+
+    function renderLodgingSourceOverview(data) {
+      const box = document.getElementById("lodgingSourceCards");
+      if (!box) {
+        if (lodgingSourceTimer) clearInterval(lodgingSourceTimer);
+        lodgingSourceTimer = null;
+        return;
+      }
+      let anyRunning = false;
+      box.innerHTML = (data.sources || []).map((source) => {
+        const st = source.status || {};
+        const running = !!st.running || st.state === "applying";
+        anyRunning = anyRunning || running;
+        const bad = ["failed", "stale", "deferred"].includes(st.state);
+        const when = st.finished_at || st.started_at || st.last_success_at;
+        const result = st.result || {};
+        const upload = source.upload || {};
+        const uploadBad = ["failed", "stale"].includes(upload.state);
+        const uploadLine = source.key !== "airbnb" && upload.state
+          ? `<div style="margin-top:5px;color:${uploadBad ? "#b3261e" : "#52606d"}">파일 반영: ${dgEscape(lodgingSourceState(upload))}${upload.finished_at || upload.started_at ? ` · ${dgEscape(upload.finished_at || upload.started_at)}` : ""}${upload.error ? ` · ${dgEscape(upload.error)}` : ""}</div>`
+          : "";
+        const retryAction = upload.token && ["failed", "stale"].includes(upload.state)
+          ? `<button type="button" class="admin-btn lodging-import-retry" data-token="${dgEscape(upload.token)}">파일 반영 재시도</button>`
+          : "";
+        const resultLine = source.key === "airbnb" && st.state === "done"
+          ? `<div>반영 결과: 신규 ${num(result.inserted || 0)} · 갱신 ${num(result.updated || 0)} · 기존건물 연결 ${num(result.matched || 0)} · 신규건물 ${num(result.created || 0)}</div>`
+          : "";
+        const action = source.stage
+          ? `<button type="button" class="admin-btn lodging-source-run" data-stage="${source.stage}" ${running ? "disabled" : ""}>${running ? "실행 중…" : "지금 동기화"}</button>`
+          : "";
+        return `<article style="border:1px solid #e3ded3;border-radius:10px;padding:12px;background:#fff;">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+            <b>${dgEscape(source.label)}</b>
+            <span style="font-size:12px;color:${bad ? "#b3261e" : running ? "#8a6400" : "#52606d"}">${dgEscape(lodgingSourceState(st))}</span>
+          </div>
+          <div style="font-size:12px;line-height:1.65;margin:8px 0;color:#46515c;">
+            <div>원본 적재 <b>${num(source.total)}</b> · 영업/정상 <b>${num(source.active)}</b></div>
+            <div>연결 신고행 <b>${num(source.linked_rows)}</b> · 고유 건물 <b>${num(source.linked_buildings)}</b></div>
+            ${when ? `<div>최근 실행 ${dgEscape(when)}</div>` : ""}
+            ${st.progress_message ? `<div>${dgEscape(st.progress_message)}</div>` : ""}
+            ${resultLine}
+            ${uploadLine}
+            ${st.error ? `<div style="color:#b3261e">${dgEscape(st.error)}</div>` : ""}
+          </div>
+          ${action}
+          ${retryAction}
+        </article>`;
+      }).join("");
+      box.querySelectorAll(".lodging-source-run").forEach((btn) => {
+        btn.addEventListener("click", () => runLodgingSourceStage(btn.dataset.stage, btn));
+      });
+      box.querySelectorAll(".lodging-import-retry").forEach((btn) => {
+        btn.addEventListener("click", () => applyLodgingImport(btn.dataset.token, btn));
+      });
+      if (anyRunning && !lodgingSourceTimer) {
+        lodgingSourceTimer = setInterval(loadLodgingSourceOverview, 5000);
+      } else if (!anyRunning && lodgingSourceTimer) {
+        clearInterval(lodgingSourceTimer);
+        lodgingSourceTimer = null;
+      }
+    }
+
+    async function loadLodgingSourceOverview() {
+      const box = document.getElementById("lodgingSourceCards");
+      if (!box) return;
+      try {
+        const res = await fetch("/api/admin/lodging-source-overview");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "조회 실패");
+        renderLodgingSourceOverview(data);
+      } catch (err) {
+        box.textContent = "원본별 현황을 불러오지 못했습니다.";
+      }
+    }
+
+    async function runLodgingSourceStage(stage, button) {
+      const msg = document.getElementById("lodgingSourceMsg");
+      button.disabled = true;
+      button.textContent = "시작하는 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/scheduled-sync/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage }),
+        });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && data.ok ? "#1a7f37" : "#b3261e";
+        msg.textContent = data.message || (res.ok ? "동기화를 시작했습니다." : "실행하지 못했습니다.");
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      }
+      await loadLodgingSourceOverview();
+    }
+
+    function renderLodgingImportPreview(source, token, preview) {
+      const box = document.getElementById("lodgingImportPreview");
+      const names = { airbnb: "에어비앤비", rural: "농어촌민박", hanok: "한옥체험업" };
+      const samples = (preview.samples || []).map((row) =>
+        `<tr><td>${dgEscape(row.biz_name || "-")}</td><td>${dgEscape(row.status || "-")}</td><td>${dgEscape(row.address || "-")}</td></tr>`
+      ).join("");
+      box.innerHTML = `
+        <div style="padding:12px;border:1px solid #d8c89f;border-radius:9px;background:#fffdf7;">
+          <b>${dgEscape(names[source] || source)} 파일 미리보기 — DB는 아직 변경되지 않았습니다.</b>
+          <div style="font-size:12px;line-height:1.7;margin:8px 0;">
+            원본 ${num(preview.total_rows)}행 · 식별 가능 ${num(preview.valid_rows)}행 · 제외 ${num(preview.skipped_rows)}행 · 중복 식별자 ${num(preview.duplicate_rows)}행<br>
+            예상 신규 ${num(preview.new_rows)} · 갱신 ${num(preview.update_rows)} · 비활성 보존 ${num(preview.inactive_rows)} · 기존 건물 연결 ${num(preview.matched_existing_buildings)} · 활성 미연결 ${num(preview.unmatched_active_rows)}
+          </div>
+          ${samples ? `<div style="overflow:auto;max-height:220px"><table class="dg-table" style="min-width:620px"><thead><tr><th>사업장</th><th>상태</th><th>주소</th></tr></thead><tbody>${samples}</tbody></table></div>` : ""}
+          <div class="legal-admin-actions" style="margin-top:10px;">
+            <button type="button" id="lodgingImportApplyBtn" class="admin-btn admin-btn-primary">이 내용으로 승인 반영</button>
+          </div>
+        </div>`;
+      document.getElementById("lodgingImportApplyBtn").addEventListener("click", (event) =>
+        applyLodgingImport(token, event.currentTarget)
+      );
+    }
+
+    async function previewLodgingImport() {
+      const fileInput = document.getElementById("lodgingImportFile");
+      const source = document.getElementById("lodgingImportSource").value;
+      const msg = document.getElementById("lodgingImportMsg");
+      const btn = document.getElementById("lodgingImportPreviewBtn");
+      if (!fileInput.files[0]) { msg.textContent = "파일을 선택해 주세요."; return; }
+      btn.disabled = true;
+      msg.style.color = "";
+      msg.textContent = "파일을 검증하고 연결 대상을 계산하는 중…";
+      const form = new FormData();
+      form.append("source", source);
+      form.append("file", fileInput.files[0]);
+      try {
+        const res = await fetch("/api/admin/lodging-import/preview", { method: "POST", body: form });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "미리보기 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = "검증 완료. 아래 내용을 확인한 뒤 승인해 주세요.";
+        renderLodgingImportPreview(data.source, data.token, data.preview);
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = err.message || "파일을 검증하지 못했습니다.";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function applyLodgingImport(token, button) {
+      const msg = document.getElementById("lodgingImportMsg");
+      button.disabled = true;
+      button.textContent = "반영 시작 중…";
+      try {
+        const res = await fetch(`/api/admin/lodging-import/${encodeURIComponent(token)}/apply`, { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "반영 시작 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = data.message;
+        document.getElementById("lodgingImportPreview").innerHTML = "";
+        await loadLodgingSourceOverview();
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = err.message || "반영을 시작하지 못했습니다.";
+        button.disabled = false;
+        button.textContent = "이 내용으로 승인 반영";
+      }
+    }
+
     // ---- 데이터 동기화 배너 (배포 후 미실행 항목 안내) ----
     async function loadDataSyncBanner() {
       const box = document.getElementById("dsBanner");
@@ -3697,6 +3880,29 @@
             <span id="lodgingSyncMsg" class="legal-msg" role="alert"></span>
             <button id="lodgingSyncRunBtn" class="admin-btn admin-btn-primary">영업신고 데이터 동기화</button>
           </div>
+          <h3 style="font-size:15px;margin:20px 0 8px;">원본별 적재·연결 현황과 수동 실행</h3>
+          <p class="legal-admin-hint">
+            버튼은 기존 체크포인트·API 한도·실행 잠금을 그대로 사용합니다.
+            충돌 또는 실제 수집기 미실행은 완료가 아니라 실패·보류로 표시됩니다.
+          </p>
+          <div id="lodgingSourceCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">불러오는 중…</div>
+          <div id="lodgingSourceMsg" class="legal-msg" role="alert" style="display:block;margin-top:8px;"></div>
+          <h3 style="font-size:15px;margin:22px 0 8px;">숙박 원본 파일 미리보기·승인 반영</h3>
+          <p class="legal-admin-hint">
+            에어비앤비(CSV/XLSX), 농어촌민박(CSV), 한옥체험업(CSV/XLSX)을 지원합니다.
+            미리보기는 DB를 변경하지 않으며, 승인 후에만 비활성 이력을 포함해 원본을 보존하고 활성 신고만 건물에 연결합니다.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="lodgingImportSource" class="admin-input" style="width:auto;">
+              <option value="airbnb">에어비앤비</option>
+              <option value="rural">농어촌민박</option>
+              <option value="hanok">한옥체험업</option>
+            </select>
+            <input id="lodgingImportFile" type="file" accept=".csv,.xlsx" />
+            <button id="lodgingImportPreviewBtn" type="button" class="admin-btn">파일 미리보기</button>
+            <span id="lodgingImportMsg" class="legal-msg" role="alert"></span>
+          </div>
+          <div id="lodgingImportPreview" style="margin-top:10px;"></div>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecPermits">
           <div class="legal-admin-head">
@@ -3808,6 +4014,7 @@
       document.getElementById("brokerSyncRunBtn").addEventListener("click", runBrokerSync);
       document.getElementById("brokerGeoRunBtn").addEventListener("click", runBrokerGeocode);
       document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
+      document.getElementById("lodgingImportPreviewBtn").addEventListener("click", previewLodgingImport);
       document.getElementById("permitsSyncRunBtn").addEventListener("click", runPermitsSync);
       document.getElementById("permitsCleanupDryBtn").addEventListener("click", () => runPermitsCleanup(true));
       document.getElementById("permitsCleanupExecBtn").addEventListener("click", () => runPermitsCleanup(false));
@@ -3832,6 +4039,7 @@
       loadBrokerSyncStatus();
       loadBrokerGeocodeStatus();
       loadLodgingSyncStatus();
+      loadLodgingSourceOverview();
     }
 
     // ---- 인근 중개업소 후보 (홈앤스테이 전국 중개업소 데이터) ----
