@@ -94,14 +94,14 @@ def _get_ranking(cur):
             SELECT building_name, address, sgg_cd, umd_nm, jibun,
                    MAX(price) AS new_peak
             FROM transactions
-            WHERE deal_date >= %s
+            WHERE transaction_scope = 'unit' AND deal_date >= %s
             GROUP BY building_name, address, sgg_cd, umd_nm, jibun
         ),
         prev_peak AS (
             SELECT building_name, address, sgg_cd, umd_nm, jibun,
                    MAX(price) AS old_peak
             FROM transactions
-            WHERE deal_date < %s
+            WHERE transaction_scope = 'unit' AND deal_date < %s
             GROUP BY building_name, address, sgg_cd, umd_nm, jibun
         )
         SELECT t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun,
@@ -136,7 +136,7 @@ def _get_ranking(cur):
                   AND mb2.jibun = t.jibun
                 ORDER BY mb2.id LIMIT 1)  AS building_id
         FROM transactions t
-        WHERE t.deal_date >= %s
+        WHERE t.transaction_scope = 'unit' AND t.deal_date >= %s
         GROUP BY t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun
         ORDER BY deal_count DESC
         LIMIT 5
@@ -252,7 +252,8 @@ def _get_datalab_summary_db_fallback():
             SELECT building_name, address, sgg_cd, umd_nm, jibun,
                    COUNT(*) AS deal_count
             FROM transactions
-            WHERE deal_date >= TO_CHAR(NOW() - INTERVAL '30 days', 'YYYY-MM-DD')
+            WHERE transaction_scope = 'unit'
+              AND deal_date >= TO_CHAR(NOW() - INTERVAL '30 days', 'YYYY-MM-DD')
               AND price > 0
             GROUP BY building_name, address, sgg_cd, umd_nm, jibun
             ORDER BY deal_count DESC
@@ -277,7 +278,8 @@ def _get_datalab_summary_db_fallback():
                     (array_agg(deal_date ORDER BY deal_date DESC, id DESC))[1] AS latest_deal_date,
                     area AS area_sqm
                 FROM transactions
-                WHERE deal_date IS NOT NULL
+                WHERE transaction_scope = 'unit'
+                  AND deal_date IS NOT NULL
                   AND deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')
                   AND area > 0
                   AND price > 0
@@ -1299,6 +1301,7 @@ def main():
                           AND mb.jibun = t.jibun
                     WHERE t.building_name = ANY(%s)
                       AND t.address       = ANY(%s)
+                      AND t.transaction_scope = 'unit'
                       AND t.deal_date    >= %s
                     ORDER BY t.building_name, t.address, t.deal_date DESC
                 """, (fav_names, fav_addrs, week_ago))

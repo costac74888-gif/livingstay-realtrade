@@ -10,7 +10,7 @@ STEP 1. prepare_master_addresses()
         (이미 채워진 행은 재호출하지 않음 → API 절약)
 STEP 2. sync_transactions()
         마스터에 있는 시군구(57개)만 대상으로 RTMS 상업업무용 매매 조회
-        유형='집합'만 필터 → 마스터와 법정동+지번 매칭 → 매칭 실패시 건축HUB 표제부 보완
+        집합(호실)·일반(통건물)을 구분 → 마스터와 법정동+지번 정확 매칭
         transactions 테이블에 중복 없이 적재
 
 실행
@@ -287,6 +287,22 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
     return [r for r in items if _is_lodging(r)]
 
 
+def transaction_scope_for_trade(trade):
+    """RTMS 건물유형을 앱의 거래대상 범위로 정규화한다."""
+    return "whole_building" if (trade.get("buildingType") or "").strip() == "일반" else "unit"
+
+
+def whole_building_match_reason(matches):
+    """통건물 자동연결 가능 여부. 정확히 한 일반숙박 마스터만 허용한다."""
+    if not matches:
+        return "no_exact_master"
+    if len(matches) > 1:
+        return "ambiguous_exact_master"
+    if matches[0].get("lodging_type") != "일반":
+        return "not_general_lodging"
+    return None
+
+
 def _process_trades(
     cur, sgg_cd, deal_ymd, trades, bjdong, stats, pending_emails=None,
 ):
@@ -308,25 +324,59 @@ def _process_trades(
 
         deal_date = f"{t.get('dealYear','')}-{t.get('dealMonth','').zfill(2)}-{t.get('dealDay','').zfill(2)}"
         price = t.get("dealAmount", "0").replace(",", "")
+        building_type = (t.get("buildingType") or "").strip()
+        transaction_scope = transaction_scope_for_trade(t)
         area = t.get("buildingAr", t.get("totalFloorAr", "0"))
+        total_floor_area = t.get("totalFloorAr") or None
+        land_area = t.get("landAr") or t.get("landArea") or None
         deal_type = t.get("dealingGbn", "")
         floor_val = (t.get("floor") or t.get("flrNo") or "").strip()
         base_key = f"{sgg_cd}|{umd_key}|{jibun}|{deal_date}|{price}|{floor_val}"
-        occurrence_counter[base_key] = occurrence_counter.get(base_key, 0) + 1
-        raw_key = f"{base_key}|{occurrence_counter[base_key]}"
+        occurrence_key = f"{base_key}|{transaction_scope}"
+        occurrence_counter[occurrence_key] = occurrence_counter.get(occurrence_key, 0) + 1
+        # 기존 집합 거래 raw_key는 그대로 유지해 재수집 중복을 막고,
+        # 일반 통건물만 scope를 넣어 같은 날 같은 금액의 호실 거래와 구분한다.
+        raw_key = (
+            f"{base_key}|{occurrence_counter[occurrence_key]}"
+            if transaction_scope == "unit"
+            else f"{base_key}|whole_building|{occurrence_counter[occurrence_key]}"
+        )
 
         # 1) 마스터파일과 매칭 시도 (건물명 확정)
         cur.execute("""
             SELECT building_name, sgg_text, lodging_type, lodging_type_detail
             FROM master_buildings
             WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
+            ORDER BY id
+            LIMIT 2
         """, (sgg_cd, umd_key, jibun))
-        m_row = cur.fetchone()
+        matches = cur.fetchall()
+        # 호실 거래는 기존 동작대로 첫 일치 마스터를 사용한다. 주소키가 중복된
+        # 기존 마스터까지 단일성 검사를 강제하면 정상 호실 거래가 누락될 수 있다.
+        # 정확히 한 마스터만 허용하는 규칙은 아래 통건물 분기에만 적용한다.
+        m_row = matches[0] if matches else None
 
         building_name = None
         match_source = "unmatched"
         si_do_val, sgg_nm_val = None, None  # 시/군구 계층 검색용
         lodging_type_val, lodging_type_detail_val = None, None  # 용도(생활/호텔/콘도) 라벨
+
+        if transaction_scope == "whole_building":
+            stats["whole_seen"] += 1
+            # 일반건축물 부분 지번·복수 후보·다른 숙박유형은 추정 연결하지 않는다.
+            whole_reject_reason = whole_building_match_reason(matches)
+            if whole_reject_reason == "ambiguous_exact_master":
+                stats["whole_ambiguous"] += 1
+                stats["unmatched"] += 1
+                continue
+            if whole_reject_reason == "no_exact_master":
+                stats["whole_unmatched"] += 1
+                stats["unmatched"] += 1
+                continue
+            if whole_reject_reason == "not_general_lodging":
+                stats["whole_non_general"] += 1
+                stats["unmatched"] += 1
+                continue
 
         if m_row:
             building_name = m_row["building_name"]
@@ -390,23 +440,31 @@ def _process_trades(
         try:
             cur.execute("""
                 INSERT INTO transactions
-                (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
-                 floor, sgg_cd, umd_nm, jibun, lodging_type, lodging_type_detail, match_source, raw_key)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
+                  floor, sgg_cd, umd_nm, jibun, lodging_type, lodging_type_detail, match_source,
+                  transaction_scope, source_api, source_building_type, total_floor_area,
+                  land_area, match_confidence, raw_key)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                         %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (raw_key) DO NOTHING
                 RETURNING id
             """, (building_name, tx_address, si_do_val, sgg_nm_val,
                   float(area or 0), int(price or 0),
                   deal_date, deal_type, floor_val,
-                  sgg_cd, umd_key, jibun, lodging_type_val, lodging_type_detail_val, match_source, raw_key))
+                   sgg_cd, umd_key, jibun, lodging_type_val, lodging_type_detail_val, match_source,
+                   transaction_scope, "RTMSDataSvcNrgTrade", building_type,
+                   float(total_floor_area) if total_floor_area else None,
+                   float(land_area) if land_area else None, "exact", raw_key))
             new_row = cur.fetchone()  # ON CONFLICT 로 스킵되면 None (기존 거래 → 알림 없음)
             if new_row:
                 stats["inserted"] += 1
+                stats[f"{'whole' if transaction_scope == 'whole_building' else 'unit'}_inserted"] += 1
                 # 방금 삽입된 신규 실거래 → 이 (건물명, 주소)를 구독한 회원에게 알림 생성.
-                _notify_subscribers(cur, new_row["id"], building_name, tx_address,
-                                    int(price or 0), deal_date, floor_val,
-                                    deal_type=deal_type, area=area,
-                                    pending_emails=pending_emails)
+                if transaction_scope == "unit":
+                    _notify_subscribers(cur, new_row["id"], building_name, tx_address,
+                                        int(price or 0), deal_date, floor_val,
+                                        deal_type=deal_type, area=area,
+                                        pending_emails=pending_emails)
         except Exception as e:
             if isinstance(e, psycopg2.Error):
                 # DB 오류를 삼키면 현재 트랜잭션이 aborted 상태로 남아 다음
@@ -540,6 +598,14 @@ def _apply_trade_month(
             time.sleep(delay)
 
 
+def _new_stats():
+    return {
+        "inserted": 0, "matched_master": 0, "matched_bld": 0, "unmatched": 0,
+        "unit_inserted": 0, "whole_seen": 0, "whole_inserted": 0,
+        "whole_unmatched": 0, "whole_ambiguous": 0, "whole_non_general": 0,
+    }
+
+
 def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=None):
     conn = get_conn()
     cur = conn.cursor()
@@ -583,7 +649,7 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
             m = 12
             y -= 1
 
-    stats = {"inserted": 0, "matched_master": 0, "matched_bld": 0, "unmatched": 0}
+    stats = _new_stats()
     rate_limited = 0
     capped = False  # 일일 소프트 캡 도달로 중단됐는지
 
@@ -660,6 +726,15 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
         note_parts.append(f"rate_limited={rate_limited}")
     if capped:
         note_parts.append(f"daily_cap={MAX_DAILY_BACKFILL_CALLS}")
+    note_parts.append(
+        "scope="
+        f"unit_inserted:{stats['unit_inserted']},"
+        f"whole_seen:{stats['whole_seen']},"
+        f"whole_inserted:{stats['whole_inserted']},"
+        f"whole_unmatched:{stats['whole_unmatched']},"
+        f"whole_ambiguous:{stats['whole_ambiguous']},"
+        f"whole_non_general:{stats['whole_non_general']}"
+    )
     note = " ".join(note_parts) or None
     cur.execute("""
         INSERT INTO sync_log (started_at, finished_at, regions_processed, rows_inserted,
@@ -754,7 +829,7 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
     _ensure_failures_table(cur)
     conn.commit()
 
-    stats = {"inserted": 0, "matched_master": 0, "matched_bld": 0, "unmatched": 0}
+    stats = _new_stats()
     round_backoff = RETRY_ROUND_BACKOFF0
     round_no = 0
 

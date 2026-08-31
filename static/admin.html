@@ -1003,6 +1003,8 @@
           { key: "id", label: "ID", sortable: true },
           { key: "building_name", label: "건물명" },
           { key: "address", label: "주소" },
+          { key: "transaction_scope", label: "거래대상", sortable: true },
+          { key: "source_building_type", label: "원본 건물유형" },
           { key: "area", label: "면적(㎡)", sortable: true, editable: true, type: "number" },
           { key: "floor", label: "층", editable: true },
           { key: "price", label: "거래금액(만원)", sortable: true, editable: true, type: "number" },
@@ -3423,6 +3425,9 @@
       if (!box || !btn) { stopTxSyncPolling(); return; }
       const rows = [];
       rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 최근 계약일 ${d.max_deal_date ? dgEscape(d.max_deal_date) : "-"}</div>`);
+      if (d.scope_counts) {
+        rows.push(`<div class="geo-stat-row"><b>거래대상 분리:</b> 개별 호실 ${num(d.scope_counts.unit)}건 · 건물 전체 ${num(d.scope_counts.whole_building)}건 · 토지·부지 ${num(d.scope_counts.land_or_site)}건</div>`);
+      }
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
         rows.push(`<div class="geo-stat-row"><b>이번 실행 신규 적재:</b> ${d.inserted == null ? "-" : num(d.inserted) + "건"} (실시간)</div>`);
@@ -3797,11 +3802,11 @@
             (실행 제한: 시간당 2회 — 국토부 API 사용량 보호)
           </p>
           <p class="legal-admin-hint" style="background:#f4f1ea; border-left:3px solid var(--brass); padding:8px 12px; margin-top:4px;">
-            <b>📌 수집 범위 참고 (RTMS 구조적 한계)</b><br>
-            사용 API(<code>RTMSDataSvcNrgTrade</code>)는 <b>집합건물(구분소유) 상업업무용 매매</b>만
-            대상입니다. <b>통소유 모텔·여관</b>은 이 API로 구조적으로 수집되지 않습니다.<br>
-            ※ DB 검증(2026-08-05): lodging_type='일반' 2,989건은 비발디파크·소노벨·켄싱턴리조트·
-            제주노형호텔 등 <b>구분소유 리조트·호텔 호실 매매</b>이며, 일반 모텔·여관 건수는 없음.
+            <b>📌 수집 범위와 연결 원칙</b><br>
+            사용 API(<code>RTMSDataSvcNrgTrade</code>)는 집합건물의 <b>개별 호실</b>과
+            일반건축물의 <b>건물 전체 매매</b>를 제공합니다. 건물 전체 거래는 지번이 완전히
+            공개되고 일반숙박 마스터 한 곳과 정확히 일치할 때만 연결합니다.<br>
+            ※ 건물 전체 매매가격은 개별 호실 가격의 추세·평균·급매 기준과 분리됩니다.
           </p>
           <div id="txSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">

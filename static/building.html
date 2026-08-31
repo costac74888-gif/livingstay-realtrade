@@ -31,7 +31,13 @@
 
   <!-- 상단 안내문구 -->
   <div style="font-size:12px; color:var(--ink-soft); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:9px 12px; margin-bottom:14px;">
-    현재 매매 실거래 기준이며, 전세/월세 데이터는 추후 추가 예정입니다.
+    현재 매매 실거래 기준이며, 개별 호실과 건물 전체 매매는 서로 분리해 표시합니다.
+    <label style="float:right; font-weight:600;">거래대상
+      <select id="transactionScope" style="margin-left:6px;">
+        <option value="unit">개별 호실</option>
+        <option value="whole_building">건물 전체</option>
+      </select>
+    </label>
   </div>
 
   <!-- 헤더 카드: 건물 정보 -->
@@ -216,12 +222,14 @@
     }
   }
 
+  let trendChartInstance = null;
+  let transactionScope = "unit";
   async function loadTrendChart(){
     const canvas = document.getElementById("trendChart");
     if (!canvas || typeof Chart === "undefined") return;
     let items = [];
     try {
-      const res = await fetch("/api/monthly-trend?building_id=" + buildingId);
+      const res = await fetch("/api/monthly-trend?building_id=" + buildingId + "&transaction_scope=" + transactionScope);
       const data = await res.json();
       items = data.items || [];
     } catch(e){ console.error("[상세] 추세 로드 실패:", e); return; }
@@ -237,7 +245,8 @@
     const counts = items.map(i => i.count);
     const sums = items.map(i => Math.round((i.sum_price || 0) / 10000)); // 만원 → 억원
 
-    new Chart(canvas, {
+    if (trendChartInstance) trendChartInstance.destroy();
+    trendChartInstance = new Chart(canvas, {
       data: {
         labels,
         datasets: [
@@ -285,7 +294,7 @@
     wrap.innerHTML = `<div class="side-empty">불러오는 중…</div>`;
     let data;
     try {
-      const res = await fetch(`/api/transactions?building_id=${buildingId}&page=${txPage}&size=${TX_SIZE}`);
+      const res = await fetch(`/api/transactions?building_id=${buildingId}&transaction_scope=${transactionScope}&page=${txPage}&size=${TX_SIZE}&with_total=1`);
       data = await res.json();
     } catch(e){
       wrap.innerHTML = `<div class="side-empty">실거래 목록을 불러오지 못했습니다.</div>`;
@@ -305,8 +314,9 @@
       <tr>
         <td class="col-name">${t.building_name != null ? esc(t.building_name) : "(건물명 미확인)"}</td>
         <td class="col-addr">${txAddr(t)}</td>
+        <td class="col-type">${t.transaction_scope === "whole_building" ? "건물 전체" : "개별 호실"}</td>
         <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
-        <td class="col-num col-floor">${t.floor ? esc(t.floor) + "층" : "-"}</td>
+        <td class="col-num col-floor">${t.transaction_scope === "whole_building" ? "해당없음" : (t.floor ? esc(t.floor) + "층" : "-")}</td>
         <td class="col-price">${t.price != null ? Number(t.price).toLocaleString('ko-KR') : "-"}</td>
         <td class="col-date">${esc(t.deal_date || "-")}</td>
         <td class="col-type">${dealTypeTag(t.deal_type)}</td>
@@ -314,7 +324,7 @@
 
     wrap.innerHTML = `
       <table class="data-table">
-        <thead><tr><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+        <thead><tr><th>건물명</th><th>주소</th><th>거래대상</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
 
@@ -327,6 +337,14 @@
 
   document.getElementById("txPrev").addEventListener("click", () => {
     if (txPage > 1){ txPage--; loadTx(); }
+  });
+  document.getElementById("transactionScope").addEventListener("change", (e) => {
+    transactionScope = e.target.value;
+    txPage = 1;
+    document.getElementById("trendEmpty").style.display = "none";
+    document.getElementById("trendChart").style.display = "";
+    loadTrendChart();
+    loadTx();
   });
   document.getElementById("txNext").addEventListener("click", () => {
     if (txPage < Math.ceil(txTotal / TX_SIZE)){ txPage++; loadTx(); }

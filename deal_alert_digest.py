@@ -144,6 +144,7 @@ def _load_recipients(cur, start_utc, end_utc):
                 OR s.building_name = t.building_name)
           JOIN users u ON u.id = s.user_id
          WHERE t.created_at >= %s AND t.created_at < %s
+           AND t.transaction_scope = 'unit'
            AND COALESCE(u.weekly_email_enabled, TRUE) = TRUE
            AND u.email IS NOT NULL AND u.email <> ''
            AND COALESCE(u.status, 'active') <> 'withdrawn'

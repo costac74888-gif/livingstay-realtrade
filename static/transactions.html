@@ -59,6 +59,13 @@
         <label>검색기간</label>
         <select id="selYear"></select>
       </div>
+      <div class="field">
+        <label>거래대상</label>
+        <select id="selTransactionScope">
+          <option value="unit" selected>개별 호실</option>
+          <option value="whole_building">건물 전체</option>
+        </select>
+      </div>
       <button class="btn-search" id="btnSearch">검색</button>
     </div>
     <div class="tx-favbar">
@@ -92,7 +99,7 @@
 <style>
   .tx-page{ max-width:1240px; margin:0 auto 60px; padding:0 20px; }
   .tx-filter{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
-  .tx-filter-grid{ display:grid; grid-template-columns:repeat(6, 1fr) auto; gap:12px; align-items:end; }
+  .tx-filter-grid{ display:grid; grid-template-columns:repeat(7, 1fr) auto; gap:12px; align-items:end; }
   .tx-filter-grid .field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
   .tx-filter-grid .field label{ font-size:11.5px; color:var(--ink-soft); font-weight:600; }
   .tx-filter-grid .field select,
@@ -129,7 +136,7 @@
 <script>
   let regionTree = {};
   const FAV_KEY = "livingstay_favorites"; // 마이그레이션 호환용 — 직접 쓰기는 하지 않음
-  const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", page:1, size:20, favOnly:false, favKey:null };
+  const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", transaction_scope:"unit", page:1, size:20, favOnly:false, favKey:null };
 
   // 로그인 회원의 관심키(building_name|address) 인메모리 캐시
   // 비로그인 → 항상 빈 Set
@@ -259,6 +266,9 @@
     const lodgingLabel = window.LodgingTypes.badge(t.lodging_type, t.lodging_subtype);
     const lodgingColor = window.LodgingTypes.color(t.lodging_type);
     const lodgingTag = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${lodgingColor}; padding:2px 8px; border-radius:5px;">${escapeHtml(lodgingLabel)}</span>`;
+    const scopeTag = t.transaction_scope === "whole_building"
+      ? `<span class="tag brk">건물 전체</span>`
+      : `<span class="tag med">개별 호실</span>`;
     const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
     const nameText = t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)";
     // master_building_id가 있으면 건물 상세 페이지로 이동하는 일반 링크(<a href>)로 만든다.
@@ -277,8 +287,9 @@
         ${starTd}
         <td class="col-name">${nameCell}</td>
         <td class="col-addr">${escapeHtml(t.si_do||'')} ${escapeHtml(t.sgg_nm||'')} ${escapeHtml(t.umd_nm||'')} ${escapeHtml(t.jibun||'')}</td>
-        <td class="col-num col-area">${Number(t.area).toFixed(1)} ㎡</td>
-        <td class="col-num col-floor">${t.floor ? escapeHtml(t.floor) + '<span class="m-only">층</span>' : '-'}</td>
+        <td class="col-type">${scopeTag}</td>
+        <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
+        <td class="col-num col-floor">${t.transaction_scope === "whole_building" ? "해당없음" : (t.floor ? escapeHtml(t.floor) + '<span class="m-only">층</span>' : '-')}</td>
         <td class="col-price">${priceFormatted}<span class="m-only">만원</span></td>
         <td class="col-date">${escapeHtml(t.deal_date||'')}</td>
         <td class="col-type">${typeTag}</td>
@@ -298,14 +309,14 @@
         if (favs.length === 0){
           items = []; total = 0;
         } else {
-          const res = await fetch(`/api/favorites?keys=${encodeURIComponent(favs.join(","))}`);
+          const res = await fetch(`/api/favorites?keys=${encodeURIComponent(favs.join(","))}&transaction_scope=${state.transaction_scope}`);
           const data = await res.json();
           items = data.items || []; total = data.total || 0;
         }
       } else {
         const params = new URLSearchParams({
           q: state.q, si_do: state.si_do, sgg_nm: state.sgg_nm, umd_nm: state.umd_nm,
-          year: state.year, lodging_type: state.lodging_type, page: state.page, size: state.size,
+          year: state.year, lodging_type: state.lodging_type, transaction_scope: state.transaction_scope, page: state.page, size: state.size,
           with_total: 1
         });
         const res = await fetch(`/api/transactions?${params}`);
@@ -330,7 +341,7 @@
 
     board.innerHTML = `
       <table class="data-table">
-        <thead><tr><th style="width:32px;"></th><th>건물명</th><th>주소</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
+        <thead><tr><th style="width:32px;"></th><th>건물명</th><th>주소</th><th>거래대상</th><th>면적</th><th>층</th><th>거래금액 (만원)</th><th>계약일</th><th>거래유형</th></tr></thead>
         <tbody>${items.map(rowHTML).join("")}</tbody>
       </table>`;
 
@@ -470,6 +481,7 @@
   document.getElementById("selUmdNm").addEventListener("change", e=>{ state.umd_nm = e.target.value; });
   document.getElementById("selYear").addEventListener("change", e=>{ state.year = e.target.value; });
   document.getElementById("selLodgingType").addEventListener("change", e=>{ state.lodging_type = e.target.value; });
+  document.getElementById("selTransactionScope").addEventListener("change", e=>{ state.transaction_scope = e.target.value; });
   document.getElementById("chkFavOnly").addEventListener("change", e=>{
     state.favOnly = e.target.checked; state.favKey = null; state.page = 1;
     renderFavChips(); loadBoard();

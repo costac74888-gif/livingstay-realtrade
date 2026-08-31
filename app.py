@@ -1101,6 +1101,7 @@ def get_building(building_id):
             WHERE t.sgg_cd = urgent_mb.sgg_cd
               AND t.umd_nm = urgent_mb.umd_nm
               AND t.jibun = urgent_mb.jibun
+              AND t.transaction_scope = 'unit'
               AND t.price IS NOT NULL
               AND t.price > 0
             ORDER BY t.deal_date DESC NULLS LAST, t.id DESC
@@ -1395,6 +1396,7 @@ def get_building_area_types(building_id):
                     SELECT DISTINCT ROUND(area::numeric, 1) AS a
                     FROM transactions
                     WHERE sgg_cd = %s AND umd_nm = %s AND jibun = %s
+                      AND transaction_scope = 'unit'
                       AND area IS NOT NULL AND area > 0
                     ORDER BY a LIMIT 30
                 """, [mb["sgg_cd"], mb["umd_nm"], mb["jibun"]])
@@ -1405,7 +1407,8 @@ def get_building_area_types(building_id):
                     cur.execute("""
                         SELECT DISTINCT ROUND(area::numeric, 1) AS a
                         FROM transactions
-                        WHERE building_name = %s AND area IS NOT NULL AND area > 0
+                        WHERE building_name = %s AND transaction_scope = 'unit'
+                          AND area IS NOT NULL AND area > 0
                         ORDER BY a LIMIT 30
                     """, [name])
                     items = [{"sqm": float(r["a"]), "ho_cnt": None} for r in cur.fetchall()]
@@ -1848,8 +1851,14 @@ def get_transactions():
     size = min(int(request.args.get("size", 20)), 200)
     offset = (page - 1) * size
 
+    scope = (request.args.get("transaction_scope") or "unit").strip()
+    if scope not in {"unit", "whole_building", "land_or_site", "all"}:
+        return jsonify({"message": "transaction_scope 값이 올바르지 않습니다."}), 400
     where = ["1=1"]
     params = []
+    if scope != "all":
+        where.append("transaction_scope = %s")
+        params.append(scope)
 
     if q:
         # address = "{umd_nm} {jibun}" 형태 — 역사적으로 umd_nm 공백 정규화 시점 차이로
@@ -1936,7 +1945,7 @@ def get_transactions():
 
     # 선택적 area_sqm → 해당 전용면적 ±0.5㎡ 범위 실거래만 필터
     _area_sqm_raw = request.args.get("area_sqm", "").strip()
-    if _area_sqm_raw:
+    if _area_sqm_raw and scope == "unit":
         try:
             _asqm = float(_area_sqm_raw)
             where.append("area BETWEEN %s AND %s")
@@ -1964,7 +1973,8 @@ def get_transactions():
     cur.execute(f"""
         SELECT building_name, address, si_do, sgg_nm, umd_nm, jibun, sgg_cd,
                area, price, deal_date, deal_type, floor,
-               lodging_type, lodging_type_detail,
+               lodging_type, lodging_type_detail, transaction_scope, source_api,
+               source_building_type, total_floor_area, land_area, match_confidence,
                (SELECT mb.lodging_subtype FROM master_buildings mb
                  WHERE mb.sgg_cd = transactions.sgg_cd
                    AND mb.umd_nm = transactions.umd_nm
@@ -1985,7 +1995,10 @@ def get_transactions():
     cur.close()
     conn.close()
 
-    return jsonify({"total": total, "page": page, "size": size, "items": rows})
+    return jsonify({
+        "total": total, "page": page, "size": size, "items": rows,
+        "transaction_scope": scope,
+    })
 
 
 # /api/buildings-geo 서버 메모리 캐시 — 필터 없는 전체 조회(약 4,700건)용 TTL 캐시.
@@ -2452,6 +2465,7 @@ def get_ranking(_as_payload=False):
                         building_name, address, sgg_cd, umd_nm, jibun, price, deal_date
                     FROM transactions
                     WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
+                      AND transaction_scope = 'unit'
                       AND price > 0
                     ORDER BY building_name, address, price DESC
                 ),
@@ -2459,6 +2473,7 @@ def get_ranking(_as_payload=False):
                     SELECT building_name, address, MAX(price) AS old_max
                     FROM transactions
                     WHERE deal_date < TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
+                      AND transaction_scope = 'unit'
                       AND price > 0
                     GROUP BY building_name, address
                     HAVING MAX(price) > 0
@@ -2539,6 +2554,7 @@ def get_ranking(_as_payload=False):
                      ORDER BY id LIMIT 1) AS lng
                 FROM transactions t
                 WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '7 days', 'YYYY-MM-DD')
+                  AND transaction_scope = 'unit'
                   AND price > 0
                 GROUP BY building_name, address, sgg_nm, sgg_cd, umd_nm, jibun
                 ORDER BY deal_count DESC
@@ -2745,6 +2761,7 @@ def get_buildings_geo():
                     AND mb.building_name <> '-'
                     AND t.building_name = mb.building_name
                   )
+              AND t.transaction_scope = 'unit'
             ORDER BY (t.building_name = mb.building_name) DESC NULLS LAST, t.deal_date DESC
             LIMIT 1
         ) lt ON TRUE
@@ -2869,8 +2886,14 @@ def get_monthly_trend():
     now = datetime.now()
     # 집계 시작월은 '실제 데이터의 최소 계약월'로 하되, 백필 목표 범위(TREND_FLOOR_YM) 이전은 잘라낸다.
     # 버킷 계산(월/분기 전환 포함)은 _trend_bucket_items 공용 헬퍼 사용.
-    where = ["deal_date IS NOT NULL", "substring(deal_date, 1, 7) >= %s"]
-    params = [TREND_FLOOR_YM]
+    scope = (request.args.get("transaction_scope") or "unit").strip()
+    if scope not in {"unit", "whole_building", "land_or_site"}:
+        return jsonify({"message": "transaction_scope 값이 올바르지 않습니다."}), 400
+    where = [
+        "deal_date IS NOT NULL", "substring(deal_date, 1, 7) >= %s",
+        "transaction_scope = %s",
+    ]
+    params = [TREND_FLOOR_YM, scope]
 
     # 선택적 building_id → 해당 건물의 실거래만 집계(하위호환: 없거나 정수 아니면 전체 집계).
     # 정확도: A화면 마커(get_buildings_geo)와 동일한 키 전략을 쓴다.
@@ -2904,7 +2927,7 @@ def get_monthly_trend():
 
     # 선택적 area_sqm → 해당 평형 ±0.5㎡ 거래만 추세 집계
     _trend_asqm = request.args.get("area_sqm", "").strip()
-    if _trend_asqm:
+    if _trend_asqm and scope == "unit":
         try:
             _tasqm = float(_trend_asqm)
             where.append("area BETWEEN %s AND %s")
@@ -2927,7 +2950,10 @@ def get_monthly_trend():
     conn.close()
 
     items, granularity = _trend_bucket_items(agg, now)
-    return jsonify({"items": items, "granularity": granularity})
+    return jsonify({
+        "items": items, "granularity": granularity,
+        "transaction_scope": scope,
+    })
 
 
 @app.route("/api/tx-count")
@@ -2936,7 +2962,7 @@ def get_tx_count():
     메인 지도 상단 '실거래 N건' 표시에 사용. 백필/동기화로 늘어나므로 매 로드마다 조회."""
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS c FROM transactions")
+    cur.execute("SELECT COUNT(*) AS c FROM transactions WHERE transaction_scope = 'unit'")
     count = int(cur.fetchone()["c"])
     cur.close()
     conn.close()
@@ -3020,7 +3046,7 @@ def get_building_count():
     # 실거래 건수
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS c FROM transactions")
+    cur.execute("SELECT COUNT(*) AS c FROM transactions WHERE transaction_scope = 'unit'")
     tx_count = int(cur.fetchone()["c"])
 
     cur.close()
@@ -3102,6 +3128,9 @@ def get_favorites():
     쿼리파라미터: keys = "건물명|주소" 쌍을 쉼표(,)로 연결
     """
     raw_keys = request.args.get("keys", "").strip()
+    scope = (request.args.get("transaction_scope") or "unit").strip()
+    if scope not in {"unit", "whole_building", "land_or_site"}:
+        return jsonify({"message": "transaction_scope 값이 올바르지 않습니다."}), 400
     if not raw_keys:
         return jsonify({"items": [], "total": 0})
 
@@ -3132,16 +3161,16 @@ def get_favorites():
     cur.execute(f"""
         SELECT building_name, address, si_do, sgg_nm, umd_nm, jibun, sgg_cd,
                area, price, deal_date, deal_type, floor,
-               lodging_type, lodging_type_detail, match_source,
+               lodging_type, lodging_type_detail, match_source, transaction_scope,
                (SELECT mb.id FROM master_buildings mb
                  WHERE mb.sgg_cd = transactions.sgg_cd
                    AND mb.umd_nm = transactions.umd_nm
                    AND mb.jibun = transactions.jibun
                  ORDER BY mb.id LIMIT 1) AS master_building_id
         FROM transactions
-        WHERE {conditions}
+        WHERE ({conditions}) AND transaction_scope = %s
         ORDER BY deal_date DESC, id DESC
-    """, params)
+    """, params + [scope])
     rows = [dict(r) for r in cur.fetchall()]
 
     # 실거래가 없는 관심단지 fallback — transactions에서 못 찾은 키는 master_buildings를
@@ -6060,6 +6089,7 @@ def favorites_mine():
                 WHERE ((uf.building_name IS NULL AND t.building_name IS NULL)
                        OR t.building_name = uf.building_name)
                   AND t.address = uf.address
+                  AND t.transaction_scope = 'unit'
                 ORDER BY t.deal_date DESC, t.id DESC
                 LIMIT 1
             ) lt ON TRUE
@@ -6425,6 +6455,7 @@ def alerts_mine():
                 WHERE ((us.building_name IS NULL AND t.building_name IS NULL)
                        OR t.building_name = us.building_name)
                   AND t.address = us.address
+                  AND t.transaction_scope = 'unit'
                 ORDER BY t.deal_date DESC, t.id DESC
                 LIMIT 1
             ) lt ON TRUE
@@ -9451,6 +9482,7 @@ def _latest_transaction_price_for_building(cur, building_id):
           JOIN master_buildings mb
             ON mb.sgg_cd = t.sgg_cd AND mb.umd_nm = t.umd_nm AND mb.jibun = t.jibun
          WHERE mb.id = %s
+           AND t.transaction_scope = 'unit'
            AND t.price IS NOT NULL
            AND t.price > 0
          ORDER BY t.deal_date DESC NULLS LAST, t.id DESC
@@ -11069,6 +11101,7 @@ def public_listings():
                  WHERE t.sgg_cd = mb.sgg_cd
                    AND t.umd_nm = mb.umd_nm
                    AND t.jibun = mb.jibun
+                   AND t.transaction_scope = 'unit'
                    AND t.price IS NOT NULL
                    AND t.price > 0
                  ORDER BY t.deal_date DESC NULLS LAST, t.id DESC
@@ -15854,7 +15887,13 @@ def admin_sync_status():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT COUNT(*) AS c, MAX(deal_date) AS md FROM transactions")
+        cur.execute("""
+            SELECT COUNT(*) AS c, MAX(deal_date) AS md,
+                   COUNT(*) FILTER (WHERE transaction_scope = 'unit') AS unit_count,
+                   COUNT(*) FILTER (WHERE transaction_scope = 'whole_building') AS whole_count,
+                   COUNT(*) FILTER (WHERE transaction_scope = 'land_or_site') AS land_count
+            FROM transactions
+        """)
         row = cur.fetchone()
         cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_SYNC_META_KEY,))
         meta = cur.fetchone()
@@ -15891,6 +15930,11 @@ def admin_sync_status():
         "error": ((status.get("error") if status else None)
                   or ("이전 실행이 비정상 종료된 것으로 보입니다(장시간 응답 없음). 다시 실행할 수 있습니다." if stale else None)),
         "tx_total": row["c"],
+        "scope_counts": {
+            "unit": int(row["unit_count"] or 0),
+            "whole_building": int(row["whole_count"] or 0),
+            "land_or_site": int(row["land_count"] or 0),
+        },
         "max_deal_date": (row["md"].strftime("%Y-%m-%d") if hasattr(row["md"], "strftime") else row["md"]) if row["md"] else None,
     })
 
@@ -21826,7 +21870,10 @@ def admin_buy_requests_export():
 # ---- 실거래(transactions) 관리 (모두 require_admin) ----
 # 실거래는 공공데이터 원본이라 삭제는 만들지 않고, 이상치 정정용 수정만 허용한다.
 # 수정 시 반드시 사유(reason)를 받아 admin_edit_log에 필드 단위로 남긴다.
-ADMIN_TX_SORT = {"id": "id", "deal_date": "deal_date", "price": "price", "area": "area"}
+ADMIN_TX_SORT = {
+    "id": "id", "deal_date": "deal_date", "price": "price", "area": "area",
+    "transaction_scope": "transaction_scope",
+}
 ADMIN_TX_EDITABLE = {
     "price": "int", "area": "float", "floor": "text",
     "deal_type": "text", "deal_date": "text",
@@ -21842,9 +21889,16 @@ def _admin_tx_filters():
     order = "ASC" if (request.args.get("order") or "desc").strip().lower() == "asc" else "DESC"
     where = "1=1"
     params = []
+    clauses = []
     if q:
-        where = "(building_name ILIKE %s OR address ILIKE %s)"
-        params = [f"%{q}%", f"%{q}%"]
+        clauses.append("(building_name ILIKE %s OR address ILIKE %s)")
+        params += [f"%{q}%", f"%{q}%"]
+    scope = (request.args.get("transaction_scope") or "").strip()
+    if scope in {"unit", "whole_building", "land_or_site"}:
+        clauses.append("transaction_scope = %s")
+        params.append(scope)
+    if clauses:
+        where = " AND ".join(clauses)
     return sort_expr, order, where, params
 
 
@@ -21858,7 +21912,9 @@ def admin_transactions_list():
     cur.execute(f"SELECT COUNT(*) c FROM transactions WHERE {where_sql}", params)
     total = cur.fetchone()["c"]
     cur.execute(f"""
-        SELECT id, building_name, address, area, floor, price, deal_date, deal_type
+        SELECT id, building_name, address, area, floor, price, deal_date, deal_type,
+               transaction_scope, source_api, source_building_type,
+               total_floor_area, land_area, match_confidence
         FROM transactions
         WHERE {where_sql}
         ORDER BY {sort_expr} {order}, id ASC
@@ -21934,7 +21990,9 @@ def admin_transactions_export():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"""
-        SELECT id, building_name, address, area, floor, price, deal_date, deal_type
+        SELECT id, building_name, address, area, floor, price, deal_date, deal_type,
+               transaction_scope, source_api, source_building_type,
+               total_floor_area, land_area, match_confidence
         FROM transactions
         WHERE {where_sql}
         ORDER BY {sort_expr} {order}, id ASC
@@ -21948,11 +22006,14 @@ def admin_transactions_export():
     ws = wb.active
     ws.title = "실거래"
     ws.append(["ID", "건물명", "주소", "면적(㎡)", "층", "거래금액(만원)",
-               "계약일", "거래유형"])
+               "계약일", "거래유형", "거래대상", "출처 API", "원본 건물유형",
+               "연면적(㎡)", "토지면적(㎡)", "매칭 신뢰도"])
     for r in rows:
         ws.append([
             r["id"], r["building_name"], r["address"], r["area"], r["floor"],
-            r["price"], r["deal_date"], r["deal_type"],
+            r["price"], r["deal_date"], r["deal_type"], r["transaction_scope"],
+            r["source_api"], r["source_building_type"], r["total_floor_area"],
+            r["land_area"], r["match_confidence"],
         ])
     buf = io.BytesIO()
     wb.save(buf)
@@ -25459,7 +25520,8 @@ def admin_stats():
                COUNT(*) AS cnt,
                COALESCE(SUM(price), 0) AS sum_price
         FROM transactions
-        WHERE deal_date IS NOT NULL AND substring(deal_date, 1, 7) >= %s
+        WHERE transaction_scope = 'unit'
+          AND deal_date IS NOT NULL AND substring(deal_date, 1, 7) >= %s
         GROUP BY ym
     """, [TREND_FLOOR_YM])
     agg = {r["ym"]: {"cnt": r["cnt"], "sum_price": int(r["sum_price"] or 0)} for r in cur.fetchall()}
@@ -25481,7 +25543,10 @@ def admin_stats():
     # KPI "누적 거래" — 실거래관리 목록과 동일 기준(transactions 전체 행 수, 실시간 COUNT).
     # earliest_ym: 가장 오래된 계약월(YYYY.MM). 백필로 과거 데이터가 늘면 라벨/값이 자동 갱신된다.
     # deal_date는 TEXT('YYYY-MM-DD') — ISO 형식이라 MIN이 사전순=시간순으로 동작한다.
-    cur.execute("SELECT COUNT(*) AS c, replace(left(MIN(deal_date), 7), '-', '.') AS earliest FROM transactions")
+    cur.execute("""
+        SELECT COUNT(*) AS c, replace(left(MIN(deal_date), 7), '-', '.') AS earliest
+        FROM transactions WHERE transaction_scope = 'unit'
+    """)
     _row = cur.fetchone()
     tx_total_count = int(_row["c"])
     tx_earliest_ym = _row["earliest"]
@@ -25787,7 +25852,8 @@ def stats_price_change_top(_direction=None, _as_payload=False):
                     (array_agg(deal_date ORDER BY deal_date DESC, id DESC))[1] AS latest_deal_date,
                     area AS area_sqm
                 FROM transactions
-                WHERE deal_date IS NOT NULL
+                WHERE transaction_scope = 'unit'
+                  AND deal_date IS NOT NULL
                   AND deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')
                   AND area > 0
                   AND price > 0
@@ -25888,7 +25954,8 @@ def stats_highest_price_top(_order=None, _as_payload=False):
                 SELECT DISTINCT ON (building_name, address)
                     building_name, address, sgg_nm, sgg_cd, umd_nm, jibun, price, deal_date, id
                 FROM transactions
-                WHERE price > 0 AND deal_date IS NOT NULL
+                WHERE transaction_scope = 'unit'
+                  AND price > 0 AND deal_date IS NOT NULL
                 ORDER BY building_name, address, price {price_order}, deal_date DESC, id DESC
             )
             SELECT

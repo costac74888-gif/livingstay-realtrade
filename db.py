@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-01-02"
+SCHEMA_VERSION = "2026-09-01-03"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -700,6 +700,14 @@ def _run_init_db():
         lodging_type TEXT,            -- '생활' | '호텔' | '콘도' (매칭된 건물 기준, reclassify가 채움)
         lodging_type_detail TEXT,     -- 건축물대장 원문 용도 표기 (배지 툴팁용)
         match_source TEXT,            -- 'master' | 'buildinghub' | 'unmatched'
+        transaction_scope TEXT NOT NULL DEFAULT 'unit'
+            CHECK (transaction_scope IN ('unit', 'whole_building', 'land_or_site')),
+        source_api TEXT NOT NULL DEFAULT 'RTMSDataSvcNrgTrade',
+        source_building_type TEXT,
+        total_floor_area REAL,
+        land_area REAL,
+        match_confidence TEXT NOT NULL DEFAULT 'exact'
+            CHECK (match_confidence IN ('exact', 'unmatched')),
         raw_key TEXT UNIQUE,          -- 중복 적재 방지용 (sgg_cd+umd_nm+jibun+deal_date+price)
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP
@@ -712,6 +720,24 @@ def _run_init_db():
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS floor TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lodging_type TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lodging_type_detail TEXT")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transaction_scope TEXT NOT NULL DEFAULT 'unit'")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_api TEXT NOT NULL DEFAULT 'RTMSDataSvcNrgTrade'")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_building_type TEXT")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS total_floor_area REAL")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS land_area REAL")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS match_confidence TEXT NOT NULL DEFAULT 'exact'")
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE transactions ADD CONSTRAINT transactions_scope_check
+            CHECK (transaction_scope IN ('unit', 'whole_building', 'land_or_site'));
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """)
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE transactions ADD CONSTRAINT transactions_match_confidence_check
+            CHECK (match_confidence IN ('exact', 'unmatched'));
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sync_log (

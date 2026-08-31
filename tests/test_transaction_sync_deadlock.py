@@ -20,6 +20,42 @@ class _Connection:
 
 
 class TransactionSyncDeadlockTests(unittest.TestCase):
+    def test_transaction_scope_uses_rtms_building_type(self):
+        self.assertEqual(
+            sync_batch.transaction_scope_for_trade({"buildingType": "일반"}),
+            "whole_building",
+        )
+        self.assertEqual(
+            sync_batch.transaction_scope_for_trade({"buildingType": "집합"}),
+            "unit",
+        )
+        self.assertEqual(sync_batch.transaction_scope_for_trade({}), "unit")
+
+    def test_whole_building_requires_one_exact_general_lodging_master(self):
+        exact = [{"lodging_type": "일반"}]
+        self.assertIsNone(sync_batch.whole_building_match_reason(exact))
+        self.assertEqual(
+            sync_batch.whole_building_match_reason([]),
+            "no_exact_master",
+        )
+        self.assertEqual(
+            sync_batch.whole_building_match_reason([*exact, *exact]),
+            "ambiguous_exact_master",
+        )
+        self.assertEqual(
+            sync_batch.whole_building_match_reason([{"lodging_type": "생활"}]),
+            "not_general_lodging",
+        )
+
+    def test_unit_trade_keeps_legacy_first_master_behavior(self):
+        matches = [{"lodging_type": "생활"}, {"lodging_type": "일반"}]
+        first_match = matches[0] if matches else None
+        self.assertEqual(first_match["lodging_type"], "생활")
+        self.assertEqual(
+            sync_batch.whole_building_match_reason(matches),
+            "ambiguous_exact_master",
+        )
+
     def test_schema_init_retries_deadlock_with_backoff(self):
         with (
             patch.object(
