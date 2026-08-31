@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import requests
+from requests.exceptions import ConnectTimeout
 
 import import_airbnb_lodging as common
 from db import get_conn
@@ -35,6 +36,10 @@ RURAL_HANOK_SOURCE_LOCK_BASE = 9_183_000
 STATUS_META_KEY = "rural_hanok_sync_status"
 LAST_SYNC_META_KEY = "rural_hanok_last_sync"
 HEARTBEAT_SEC = 30
+
+
+class EndpointUnavailableError(RuntimeError):
+    """API endpoint connection failure that should not be retried."""
 
 SOURCES = {
     "rural": {
@@ -168,16 +173,24 @@ def _claim_api_call(provider, daily_cap):
 
 def _fetch_page(config, key, page, page_size=PAGE_SIZE, daily_cap=None):
     _claim_api_call(config["quota_provider"], daily_cap)
-    response = requests.get(
-        f"{API_ROOT}/{config['endpoint']}/info",
-        params={
-            "serviceKey": key,
-            "pageNo": str(page),
-            "numOfRows": str(page_size),
-            "type": "json",
-        },
-        timeout=(15, 60),
-    )
+    endpoint_url = f"{API_ROOT}/{config['endpoint']}/info"
+    try:
+        response = requests.get(
+            endpoint_url,
+            params={
+                "serviceKey": key,
+                "pageNo": str(page),
+                "numOfRows": str(page_size),
+                "type": "json",
+            },
+            timeout=(15, 60),
+        )
+    except ConnectTimeout as exc:
+        raise EndpointUnavailableError(
+            f"[{config['endpoint']}] API 엔드포인트가 응답하지 않습니다. "
+            f"URL이 올바른지 확인하세요: {endpoint_url}\n"
+            "농어촌민박업·한옥체험업은 localdata.go.kr API 경로 확인 필요."
+        ) from exc
     response.raise_for_status()
     data = response.json()
     envelope = data.get("response") or {}
@@ -203,6 +216,8 @@ def _fetch_page_retry(config, key, page, page_size=PAGE_SIZE, daily_cap=None):
         try:
             return _fetch_page(config, key, page, page_size, daily_cap)
         except QuotaExhausted:
+            raise
+        except EndpointUnavailableError:
             raise
         except (requests.RequestException, ValueError, RuntimeError):
             if attempt == 2:
