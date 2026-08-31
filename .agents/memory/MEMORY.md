@@ -61,3 +61,4 @@
 - [모바일 패널 브라우저 테스트](mobile-panel-browser-tests.md) — 검색 패널 토글은 상태 반전이므로 재진입 테스트는 현재 상태를 확인한 뒤 필요할 때만 연다.
 - [API 동기화 병렬 실행](api-sync-parallel-buckets.md) — 단계 상태는 분리 저장하고 API·서비스키 버킷만 직렬화; 확인된 한도의 80%만 정기 배정하며 미확인 한도는 추정하지 않는다.
 - [장시간 백필 DB 재접속](long-backfill-db-reconnect.md) — commit 단위를 재처리 가능한 크기로 제한하고, 재접속 뒤 run_id 소유권을 다시 확인한 후 멱등 재실행한다.
+- [실거래 동기화 deadlock](transaction-sync-deadlocks.md) — 스키마 초기화 deadlock은 제한 재시도하고, 거래는 API 재호출 없이 월 단위 rollback·재적재한다.

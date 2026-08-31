@@ -27,6 +27,7 @@ from datetime import datetime
 from xml.etree import ElementTree as ET
 
 import requests
+import psycopg2
 
 from db import get_conn, init_db
 from quota_policy import korea_today, regular_cap
@@ -286,7 +287,9 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
     return [r for r in items if _is_lodging(r)]
 
 
-def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
+def _process_trades(
+    cur, sgg_cd, deal_ymd, trades, bjdong, stats, pending_emails=None,
+):
     """한 (시군구, 거래년월)의 거래 목록을 매칭·적재한다.
     stats(dict, 키: inserted/matched_master/matched_bld/unmatched)를 갱신한다.
     본 루프/재시도 루프가 공유하는 핵심 로직 — 여기 한 곳에서만 유지보수한다.
@@ -402,13 +405,18 @@ def _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats):
                 # 방금 삽입된 신규 실거래 → 이 (건물명, 주소)를 구독한 회원에게 알림 생성.
                 _notify_subscribers(cur, new_row["id"], building_name, tx_address,
                                     int(price or 0), deal_date, floor_val,
-                                    deal_type=deal_type, area=area)
+                                    deal_type=deal_type, area=area,
+                                    pending_emails=pending_emails)
         except Exception as e:
+            if isinstance(e, psycopg2.Error):
+                # DB 오류를 삼키면 현재 트랜잭션이 aborted 상태로 남아 다음
+                # _clear_failure/commit에서 원인을 잃은 채 전체 배치가 종료된다.
+                raise
             print(f"  적재 실패: {e}")
 
 
 def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, floor_val,
-                        deal_type=None, area=None):
+                        deal_type=None, area=None, pending_emails=None):
     """방금 삽입된 실거래(tx_id)에 대해, 같은 (건물명, 주소)를 구독 중인 회원마다
     notifications 를 1건씩 만든다. 같은 거래로 같은 사용자에게 이미 만든 알림이 있으면
     (user_id, transaction_id) 유니크 제약으로 자동 스킵된다.
@@ -439,8 +447,21 @@ def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, fl
             """, (s["user_id"], title, body, building_name, address, tx_id))
             created = cur.fetchone()  # 중복(이미 알림 있음)이면 None → 이메일도 스킵
             if created and s.get("email") and s.get("email_alert_enabled"):
-                _send_tx_email(s["email"], name_disp, deal_type, area, price, floor_val, deal_date)
+                email_args = (
+                    s["email"], name_disp, deal_type, area,
+                    price, floor_val, deal_date,
+                )
+                if pending_emails is None:
+                    _send_tx_email(*email_args)
+                else:
+                    # DB commit 전 외부 이메일을 보내면 rollback/deadlock 재시도 때
+                    # 중복 또는 phantom 알림이 생긴다. 성공 commit 뒤에만 발송한다.
+                    pending_emails.append(email_args)
     except Exception as e:
+        if isinstance(e, psycopg2.Error):
+            # DB 오류는 현재 트랜잭션 전체를 aborted 상태로 만든다. 여기서
+            # 삼키지 말고 월 단위 rollback/retry 경로로 전달한다.
+            raise
         # 알림 생성 실패가 실거래 적재를 막지 않도록 방어(로그만 남김).
         print(f"  알림 생성 실패(tx {tx_id}): {e}")
 
@@ -479,6 +500,44 @@ def _send_tx_email(to_email, name_disp, deal_type, area, price, floor_val, deal_
             print(f"  이메일 발송 실패({to_email}): {msg}")
     except Exception as e:
         print(f"  이메일 발송 중 오류({to_email}): {e}")
+
+
+def _apply_trade_month(
+    cur, conn, sgg_cd, deal_ymd, trades, bjdong, stats,
+    *, progress_key=None, done=None, attempts=3,
+):
+    """한 시군구·월을 원자적으로 적재하고 deadlock이면 API 재호출 없이 재시도."""
+    before = dict(stats)
+    for attempt in range(1, attempts + 1):
+        pending_emails = []
+        try:
+            _process_trades(
+                cur, sgg_cd, deal_ymd, trades, bjdong, stats,
+                pending_emails=pending_emails,
+            )
+            _clear_failure(cur, sgg_cd, deal_ymd)
+            if progress_key:
+                _save_progress(cur, conn, progress_key, done, sgg_cd, deal_ymd)
+            else:
+                # 월별 즉시 commit으로 master_buildings/transactions 잠금을
+                # 다음 API 호출의 sleep 동안 보유하지 않는다.
+                conn.commit()
+            for email_args in pending_emails:
+                _send_tx_email(*email_args)
+            return
+        except psycopg2.errors.DeadlockDetected:
+            conn.rollback()
+            stats.clear()
+            stats.update(before)
+            if attempt >= attempts:
+                raise
+            delay = attempt * 2
+            print(
+                f"  DB deadlock ({sgg_cd}, {deal_ymd}) "
+                f"{attempt}/{attempts} — {delay}초 후 같은 월 재적재",
+                flush=True,
+            )
+            time.sleep(delay)
 
 
 def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=None):
@@ -570,11 +629,10 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
                 time.sleep(RTMS_SLEEP)
                 continue
 
-            _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats)
-            _clear_failure(cur, sgg_cd, deal_ymd)  # 성공 시 실패큐에서 제거
-            if progress_key:
-                # 거래 적재와 체크포인트를 함께 커밋 → 중단돼도 "완료 지점"이 정확히 남는다
-                _save_progress(cur, conn, progress_key, done, sgg_cd, deal_ymd)
+            _apply_trade_month(
+                cur, conn, sgg_cd, deal_ymd, trades, bjdong, stats,
+                progress_key=progress_key, done=done,
+            )
             time.sleep(RTMS_SLEEP)
 
         # 지역별 커밋: 장시간 백필 중 진행 상황을 즉시 반영하고,
@@ -673,9 +731,7 @@ def _retry_round(cur, conn, bjdong, stats, item_sleep):
             time.sleep(item_sleep)
             continue
 
-        _process_trades(cur, sgg_cd, deal_ymd, trades, bjdong, stats)
-        _clear_failure(cur, sgg_cd, deal_ymd)
-        conn.commit()
+        _apply_trade_month(cur, conn, sgg_cd, deal_ymd, trades, bjdong, stats)
         resolved += 1
         consecutive_429 = 0
         time.sleep(item_sleep)

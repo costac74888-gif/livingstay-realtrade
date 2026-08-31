@@ -31,6 +31,7 @@ import atexit
 import logging
 import os
 import threading
+import time
 from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
@@ -468,6 +469,9 @@ def _schema_version_is_current(conn, cur):
         # SELECT도 트랜잭션을 열기 때문에, 장시간 초기화 전에 깨끗하게 끝낸다.
         conn.rollback()
         return is_current
+    except psycopg2.errors.DeadlockDetected:
+        conn.rollback()
+        raise
     except psycopg2.Error:
         conn.rollback()
         return False
@@ -494,7 +498,7 @@ def _schema_initialization_lock():
             conn.close()
 
 
-def init_db():
+def _init_db_once():
     """최신 스키마는 즉시 종료하고, 불일치 시에만 직렬화된 전체 초기화를 수행한다."""
     conn = get_conn()
     cur = conn.cursor()
@@ -515,6 +519,25 @@ def init_db():
         finally:
             lock_cur.close()
         _run_init_db()
+
+
+def init_db():
+    """스키마 초기화 deadlock은 제한된 backoff 뒤 전체 시도를 다시 시작한다."""
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        try:
+            return _init_db_once()
+        except psycopg2.errors.DeadlockDetected:
+            if attempt >= attempts:
+                raise
+            delay = attempt * 2
+            _logger.warning(
+                "스키마 초기화 deadlock(%s/%s) — %s초 후 재시도",
+                attempt,
+                attempts,
+                delay,
+            )
+            time.sleep(delay)
 
 
 def _run_init_db():
