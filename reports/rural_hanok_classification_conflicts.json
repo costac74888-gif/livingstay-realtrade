@@ -21,6 +21,57 @@
     "reason": "protected_classification"
   },
   {
+    "building_id": 15621,
+    "building_name": "강현면용호리 135-1",
+    "current_type": "생활",
+    "target_type": "농어촌민박",
+    "active_hygiene_types": [
+      "농어촌민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 20219,
+    "building_name": "북면제령리 535",
+    "current_type": "생활",
+    "target_type": "농어촌민박",
+    "active_hygiene_types": [
+      "농어촌민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 20236,
+    "building_name": "북면제령리 617-8",
+    "current_type": "생활",
+    "target_type": "농어촌민박",
+    "active_hygiene_types": [
+      "농어촌민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 20806,
+    "building_name": "군북면증약리 272-3",
+    "current_type": "생활",
+    "target_type": "농어촌민박",
+    "active_hygiene_types": [
+      "농어촌민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 23695,
+    "building_name": "신흑동 557-1",
+    "current_type": "생활",
+    "target_type": "농어촌민박",
+    "active_hygiene_types": [
+      "농어촌민박업",
+      "숙박업(생활)"
+    ],
+    "reason": "protected_classification"
+  },
+  {
     "building_id": 34567,
     "building_name": "블루오션프라자",
     "current_type": "관광",
@@ -28,6 +79,39 @@
     "active_hygiene_types": [
       "관광펜션업",
       "숙박업(생활)"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 45496,
+    "building_name": "스테이세인트21캠프",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "농어촌민박업",
+      "외국인관광도시민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 45514,
+    "building_name": "Pause Stay",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "농어촌민박업",
+      "외국인관광도시민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 45576,
+    "building_name": "론다",
+    "current_type": "에어비앤비",
+    "target_type": "복합",
+    "active_hygiene_types": [
+      "농어촌민박업",
+      "외국인관광도시민박업"
     ],
     "reason": "protected_classification"
   }
