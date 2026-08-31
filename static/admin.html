@@ -3460,8 +3460,9 @@
       const summary = document.getElementById("scheduledSyncSummary");
       const stageBox = document.getElementById("scheduledSyncStages");
       const retryBtn = document.getElementById("scheduledSyncRetryBtn");
+      const runAllBtn = document.getElementById("scheduledSyncRunAllBtn");
       const msg = document.getElementById("scheduledSyncMsg");
-      if (!summary || !stageBox || !retryBtn) {
+      if (!summary || !stageBox || !retryBtn || !runAllBtn) {
         stopScheduledSyncPolling();
         return;
       }
@@ -3551,6 +3552,8 @@
       retryBtn.style.display = data.retryable && !data.running ? "" : "none";
       retryBtn.disabled = false;
       retryBtn.textContent = "실패·중단 단계 재시도";
+      runAllBtn.disabled = !!data.running;
+      runAllBtn.textContent = data.running ? "⏳ 전체 수집 진행 중" : "전체 수집 시작";
       if (!data.running) stopScheduledSyncPolling();
       if (msg && data.running) msg.textContent = "";
     }
@@ -3603,6 +3606,34 @@
         msg.textContent = error.message || "재시도를 시작하지 못했습니다.";
         btn.disabled = false;
         btn.textContent = "실패·중단 단계 재시도";
+      }
+    }
+
+    async function runAllScheduledSync() {
+      const btn = document.getElementById("scheduledSyncRunAllBtn");
+      const msg = document.getElementById("scheduledSyncMsg");
+      btn.disabled = true;
+      btn.textContent = "⏳ 시작 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/scheduled-sync/run-all", { method: "POST" });
+        if (res.status === 401) {
+          window.location.href = "/admin/login";
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "전체 수집 시작 실패");
+        msg.style.color = "#15803d";
+        msg.textContent = data.message;
+        setTimeout(loadScheduledSyncStatus, 500);
+        if (!scheduledSyncTimer) {
+          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 5000);
+        }
+      } catch (error) {
+        msg.style.color = "#b3261e";
+        msg.textContent = error.message || "전체 수집을 시작하지 못했습니다.";
+        btn.disabled = false;
+        btn.textContent = "전체 수집 시작";
       }
     }
 
@@ -3692,6 +3723,9 @@
           <div id="scheduledSyncStages" style="margin-top:8px"></div>
           <div class="legal-admin-actions">
             <span id="scheduledSyncMsg" class="legal-msg" role="alert"></span>
+            <button id="scheduledSyncRunAllBtn" class="admin-btn admin-btn-primary">
+              전체 수집 시작
+            </button>
             <button id="scheduledSyncRetryBtn" class="admin-btn admin-btn-primary" style="display:none">
               실패·중단 단계 재시도
             </button>
@@ -4027,6 +4061,7 @@
         </div>
       `;
       document.getElementById("scheduledSyncRetryBtn").addEventListener("click", retryScheduledSync);
+      document.getElementById("scheduledSyncRunAllBtn").addEventListener("click", runAllScheduledSync);
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);

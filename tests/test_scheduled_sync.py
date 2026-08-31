@@ -19,6 +19,8 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(stages["camping"]["state"], "pending")
         self.assertEqual(stages["rural"]["state"], "pending")
         self.assertEqual(stages["hanok"]["state"], "pending")
+        self.assertEqual(stages["building_geocode"]["state"], "pending")
+        self.assertEqual(stages["title_info"]["state"], "pending")
 
     def test_scheduled_run_uses_korea_weekday_for_cadence(self):
         writes = []

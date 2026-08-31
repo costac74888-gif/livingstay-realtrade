@@ -14551,6 +14551,8 @@ _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
     ("building_registry", "건축물대장", "건물·허가", "월·수·금"),
     ("building_permits", "준공 전 건축인허가", "건물·허가", "화·목·토"),
+    ("building_geocode", "지도 좌표 채우기", "지도·건축정보", "매일"),
+    ("title_info", "건축정보 채우기", "지도·건축정보", "매일"),
     ("lodging", "일반·생활숙박", "숙박", "매일"),
     ("camping", "캠핑", "숙박", "매일"),
     ("rural", "농어촌민박", "숙박", "매일"),
@@ -15206,6 +15208,24 @@ def admin_scheduled_sync_stage_run():
     if error:
         return jsonify({"ok": False, "message": "프로세스를 시작하지 못했습니다."}), 500
     return jsonify({"ok": True, "message": f"{stage} 단계를 시작했습니다.", "started_at": claim["started_at"]}), 202
+
+
+@app.route("/api/admin/scheduled-sync/run-all", methods=["POST"])
+@require_admin
+@limiter.limit("2 per hour")
+def admin_scheduled_sync_run_all():
+    """예약 실행이 없을 때 관리자가 전체 체크포인트 배치를 즉시 시작한다."""
+    acquired, claim = _claim_scheduled_sync_start()
+    if not acquired:
+        return jsonify({"ok": False, "message": "통합 동기화가 이미 실행 중입니다."}), 409
+    error = _spawn_claimed_scheduled_sync(claim, [])
+    if error:
+        return jsonify({"ok": False, "message": "프로세스를 시작하지 못했습니다."}), 500
+    return jsonify({
+        "ok": True,
+        "message": "전체 데이터 수집을 시작했습니다.",
+        "started_at": claim["started_at"],
+    }), 202
 
 
 @app.route("/api/admin/scheduled-sync/retry", methods=["POST"])

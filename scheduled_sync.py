@@ -106,6 +106,32 @@ STAGES = (
         blocking_status_keys=("permits_sync_status",),
     ),
     Stage(
+        "building_geocode",
+        "지도 좌표 채우기",
+        "지도·건축정보",
+        ("geocode_buildings.py",),
+        "매일",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM master_buildings "
+            "WHERE lat IS NOT NULL AND lng IS NOT NULL"
+        ),
+        metric_label="좌표 확보",
+        blocking_status_keys=("geocode_sync_status",),
+    ),
+    Stage(
+        "title_info",
+        "건축정보 채우기",
+        "지도·건축정보",
+        ("backfill_title_info.py", "--sleep", "0.2"),
+        "매일",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM master_buildings "
+            "WHERE title_backfilled_at IS NOT NULL"
+        ),
+        metric_label="건축정보 확보",
+        blocking_status_keys=("title_info_sync_status",),
+    ),
+    Stage(
         "lodging",
         "일반·생활숙박",
         "숙박",
