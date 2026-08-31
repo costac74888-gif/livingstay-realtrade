@@ -22,7 +22,13 @@ from pathlib import Path
 from typing import Iterable
 
 from db import get_conn
-from quota_policy import cap_for_source, korea_today, quotas_for_stage, regular_cap
+from quota_policy import (
+    KOREA_TZ,
+    cap_for_source,
+    korea_today,
+    quotas_for_stage,
+    regular_cap,
+)
 
 
 STATUS_META_KEY = "scheduled_sync_status"
@@ -172,6 +178,11 @@ STAGE_MAP = {stage.key: stage for stage in STAGES}
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _korea_weekday() -> int:
+    """Return the weekday for the same KST day used by quota counters."""
+    return datetime.now(KOREA_TZ).weekday()
 
 
 def _redact(text: str) -> str:
@@ -560,7 +571,7 @@ def run(
             return 2
         stages = prepare_stage_statuses(
             previous,
-            weekday=datetime.now().weekday(),
+            weekday=_korea_weekday(),
             selected_stage=selected_stage,
             retry_failures_only=retry_failures_only,
         )

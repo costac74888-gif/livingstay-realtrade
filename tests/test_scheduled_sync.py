@@ -18,6 +18,34 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(stages["building_permits"]["state"], "skipped")
         self.assertEqual(stages["rural_hanok"]["state"], "pending")
 
+    def test_scheduled_run_uses_korea_weekday_for_cadence(self):
+        writes = []
+        with patch.object(scheduled_sync, "_korea_weekday", return_value=1) as weekday:
+            with (
+                patch.object(scheduled_sync, "_acquire_lock", return_value=(object(), object())),
+                patch.object(scheduled_sync, "_release_lock"),
+                patch.object(scheduled_sync, "_read_status", return_value=None),
+                patch.object(scheduled_sync, "_write_initial_status"),
+                patch.object(
+                    scheduled_sync,
+                    "_write_status",
+                    side_effect=lambda key, value, run_id: writes.append(
+                        {**value, "stages": {
+                            k: dict(v) for k, v in value["stages"].items()
+                        }}
+                    ),
+                ),
+                patch.object(scheduled_sync, "_write_scheduled_evidence"),
+                patch.object(scheduled_sync, "_source_busy", return_value=None),
+                patch.object(scheduled_sync, "_metric_value", return_value=0),
+                patch.object(scheduled_sync, "_run_stage", return_value=(0, [])),
+            ):
+                self.assertEqual(scheduled_sync.run(), 0)
+        weekday.assert_called_once_with()
+        final = writes[-1]
+        self.assertEqual(final["stages"]["building_registry"]["state"], "skipped")
+        self.assertEqual(final["stages"]["building_permits"]["state"], "done")
+
     def test_failed_run_keeps_successful_stages_for_resume(self):
         previous = {
             "state": "failed",
