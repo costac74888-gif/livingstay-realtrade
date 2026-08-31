@@ -35,6 +35,8 @@ import time
 import argparse
 from datetime import datetime
 
+import psycopg2
+
 from db import get_conn, init_db
 from address_utils import BjdongMap, parse_jibun
 from building_registry import (
@@ -51,6 +53,14 @@ from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEA
 BJDONG_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
 
 
+class _RowHandled(Exception):
+    """현재 행 처리는 정상 종료됐고 공통 commit 단계로 이동한다."""
+
+
+class _RunOwnershipLost(RuntimeError):
+    """재접속 중 app_meta 실행 lease가 다른 run_id로 넘어갔다."""
+
+
 def _mask_key(text):
     """로그/상태에 서비스키(원문·URL인코딩 변형)가 노출되지 않도록 마스킹."""
     text = str(text)
@@ -59,6 +69,98 @@ def _mask_key(text):
         for variant in (BLD_SERVICE_KEY, quote(BLD_SERVICE_KEY, safe=""), quote(BLD_SERVICE_KEY)):
             text = text.replace(variant, "***")
     return text
+
+
+def _is_connection_error(exc):
+    """DB 연결이 끊겨 기존 connection/cursor를 재사용할 수 없는 오류인지 판별."""
+    if isinstance(exc, (psycopg2.InterfaceError, psycopg2.OperationalError)):
+        return True
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "ssl connection has been closed",
+            "connection already closed",
+            "server closed the connection",
+            "connection not open",
+        )
+    )
+
+
+def _reconnect(conn, cur, attempts=5, base_delay=1):
+    """죽은 연결을 정리하고 제한된 backoff로 새 연결/cursor를 반환한다."""
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    try:
+        cur.close()
+    except Exception:
+        pass
+    try:
+        conn.close()
+    except Exception:
+        pass
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        new_conn = None
+        try:
+            new_conn = get_conn()
+            try:
+                new_cur = new_conn.cursor()
+            except Exception:
+                new_conn.close()
+                raise
+            return new_conn, new_cur
+        except Exception as e:
+            last_error = e
+            if attempt >= attempts or not _is_connection_error(e):
+                raise
+            delay = min(base_delay * (2 ** (attempt - 1)), 10)
+            print(
+                f"[DB 재접속] 새 연결 실패({attempt}/{attempts}) — "
+                f"{delay}초 후 재시도: {type(e).__name__}: {_mask_key(e)}",
+                flush=True,
+            )
+            time.sleep(delay)
+    raise last_error
+
+
+def _reconnect_and_verify(
+    conn, cur, db_state, status_key, run_id, attempts=5, base_delay=1
+):
+    """재접속과 run_id 소유권 확인을 하나의 제한된 복구 루프로 수행."""
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            conn, cur = _reconnect(conn, cur, attempts=1)
+            db_state.update(conn=conn, cur=cur)
+            if status_key and run_id:
+                try:
+                    owner = _still_owner(cur, status_key, run_id)
+                except Exception as e:
+                    if not _is_connection_error(e):
+                        raise
+                    raise e
+                if not owner:
+                    raise _RunOwnershipLost(
+                        "DB 재접속 중 건축정보 채우기 실행 소유권이 변경되어 중단합니다."
+                    )
+            return conn, cur
+        except _RunOwnershipLost:
+            raise
+        except Exception as e:
+            last_error = e
+            if attempt >= attempts or not _is_connection_error(e):
+                raise
+            delay = min(base_delay * (2 ** (attempt - 1)), 10)
+            print(
+                f"[DB 재접속] 연결 또는 실행 소유권 확인 실패({attempt}/{attempts}) — "
+                f"{delay}초 후 재시도: {type(e).__name__}: {_mask_key(e)}",
+                flush=True,
+            )
+            time.sleep(delay)
+    raise last_error
 
 
 def _to_int(v):
@@ -124,8 +226,10 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
     bjdong = BjdongMap(BJDONG_CSV)
     conn = get_conn()
     cur = None
+    db_state = {"conn": conn, "cur": cur}
     try:
         cur = conn.cursor()
+        db_state["cur"] = cur
         return _run_with_open_connection(
             limit=limit,
             ids=ids,
@@ -137,15 +241,19 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
             bjdong=bjdong,
             conn=conn,
             cur=cur,
+            db_state=db_state,
         )
     finally:
-        if cur is not None:
-            cur.close()
-        conn.close()
+        if db_state["cur"] is not None:
+            db_state["cur"].close()
+        db_state["conn"].close()
 
 
 def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
-                              status_key=None, run_id=None, *, bjdong, conn, cur):
+                              status_key=None, run_id=None, *, bjdong, conn, cur,
+                              db_state=None):
+    if db_state is None:
+        db_state = {"conn": conn, "cur": cur}
     where = ["sgg_cd IS NOT NULL", "umd_nm IS NOT NULL", "jibun IS NOT NULL"]
     params = []
     if ids:
@@ -168,13 +276,42 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
     n_ok = n_empty = n_skip = n_err = 0
     changed = 0
     consec_err = 0
+    db_reconnect_streak = 0
+    max_db_reconnect_streak = 5
 
-    for i, b in enumerate(targets, 1):
+    # 연결이 끊긴 현재 건은 완료 처리하지 않고 새 연결로 같은 건부터
+    # 다시 시도한다. UPDATE는 동일 값에 대한 멱등 연산이므로 commit 응답이
+    # 유실된 경우에도 중복 반영이 되지 않는다.
+    i = 1
+    while i <= total:
+        b = targets[i - 1]
         # run_id 펜싱: 다른 실행이 상태를 가져갔으면 즉시 중단 (split-brain 방지)
-        if status_key and run_id and i % 20 == 0 and not _still_owner(cur, status_key, run_id):
-            print("[중단] 상태 소유권을 잃었습니다(다른 실행 감지). 종료합니다.", flush=True)
-            break
+        if status_key and run_id and i % 20 == 0:
+            try:
+                owner = _still_owner(cur, status_key, run_id)
+            except Exception as e:
+                if not _is_connection_error(e):
+                    raise
+                db_reconnect_streak += 1
+                if db_reconnect_streak > max_db_reconnect_streak:
+                    raise RuntimeError(
+                        f"DB 연결이 {max_db_reconnect_streak}회 연속 끊겨 "
+                        "이번 실행을 중단합니다. 다시 실행하면 미완료 건부터 이어갑니다."
+                    ) from e
+                print(
+                    f"[DB 재접속] 상태 확인 중 연결 단절 — 현재 건부터 재시도: "
+                    f"{type(e).__name__}: {_mask_key(e)}",
+                    flush=True,
+                )
+                conn, cur = _reconnect_and_verify(
+                    conn, cur, db_state, status_key, run_id
+                )
+                continue
+            if not owner:
+                print("[중단] 상태 소유권을 잃었습니다(다른 실행 감지). 종료합니다.", flush=True)
+                break
         bid, name = b["id"], b["building_name"]
+        item_counts = (n_ok, n_empty, n_skip, n_err, changed, consec_err)
         try:
             bjd = bjdong.find_bjdong_cd(b["sgg_cd"], b["umd_nm"])
             if not bjd:
@@ -187,7 +324,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     )
                     changed += cur.rowcount
                 print(f"  [{i}/{total}] SKIP id={bid} {name} — bjdong_cd 못찾음(umd={b['umd_nm']})", flush=True)
-                continue
+                raise _RowHandled
             plat_gb, bun, ji = parse_jibun(b["jibun"])
             rows = _fetch_title_rows(b["sgg_cd"], bjd, plat_gb, bun, ji)
             consec_err = 0  # 성공적으로 응답 받음
@@ -200,7 +337,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     )
                     changed += cur.rowcount
                 print(f"  [{i}/{total}] EMPTY id={bid} {name} — 표제부 없음", flush=True)
-                continue
+                raise _RowHandled
             vals = _extract(rep)
             official_name = resolve_api_building_name({
                 "bld_nm": rep.get("bldNm"),
@@ -284,7 +421,26 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     f"구조={vals['strct_nm']} pk={vals['mgm_bldrgst_pk']}",
                     flush=True,
                 )
+        except _RowHandled:
+            pass
         except Exception as e:
+            if _is_connection_error(e):
+                n_ok, n_empty, n_skip, n_err, changed, consec_err = item_counts
+                db_reconnect_streak += 1
+                if db_reconnect_streak > max_db_reconnect_streak:
+                    raise RuntimeError(
+                        f"DB 연결이 {max_db_reconnect_streak}회 연속 끊겨 "
+                        "이번 실행을 중단합니다. 다시 실행하면 미완료 건부터 이어갑니다."
+                    ) from e
+                print(
+                    f"  [{i}/{total}] DB 연결 단절 — 현재 건부터 새 연결로 재시도: "
+                    f"{type(e).__name__}: {_mask_key(e)}",
+                    flush=True,
+                )
+                conn, cur = _reconnect_and_verify(
+                    conn, cur, db_state, status_key, run_id
+                )
+                continue
             n_err += 1
             consec_err += 1
             print(f"  [{i}/{total}] ERR  id={bid} {name} — {type(e).__name__}: {_mask_key(e)}", flush=True)
@@ -292,13 +448,63 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 print("[중단] 연속 오류 10건 — API 쿼터 소진/장애 추정. 남은 건은 나중에 재실행하세요.", flush=True)
                 break
 
-        if i % 20 == 0:
+        try:
+            # API 호출 간격(기본 0.2초)당 한 번만 commit하므로 과도한 부하 없이
+            # 연결 단절 시 재처리 범위를 현재 한 건으로 제한할 수 있다.
             conn.commit()
+        except Exception as e:
+            if not _is_connection_error(e):
+                raise
+            n_ok, n_empty, n_skip, n_err, changed, consec_err = item_counts
+            db_reconnect_streak += 1
+            if db_reconnect_streak > max_db_reconnect_streak:
+                raise RuntimeError(
+                    f"DB commit 연결이 {max_db_reconnect_streak}회 연속 끊겨 "
+                    "이번 실행을 중단합니다. 다시 실행하면 미완료 건부터 이어갑니다."
+                ) from e
+            print(
+                f"  [{i}/{total}] DB commit 연결 단절 — 현재 건부터 새 연결로 재시도: "
+                f"{type(e).__name__}: {_mask_key(e)}",
+                flush=True,
+            )
+            conn, cur = _reconnect_and_verify(
+                conn, cur, db_state, status_key, run_id
+            )
+            continue
+        if i % 20 == 0:
             print(f"  ...진행 {i}/{total} (OK={n_ok} EMPTY={n_empty} SKIP={n_skip} ERR={n_err})", flush=True)
+        db_reconnect_streak = 0
         time.sleep(sleep)
+        i += 1
 
-    conn.commit()
-    renamed = refresh_auto_building_names(conn)
+    try:
+        conn.commit()
+    except Exception as e:
+        if not _is_connection_error(e):
+            raise
+        print(
+            f"[DB 재접속] 최종 commit 연결 단절 — 새 연결에서 commit 재시도: "
+            f"{type(e).__name__}: {_mask_key(e)}",
+            flush=True,
+        )
+        conn, cur = _reconnect_and_verify(
+            conn, cur, db_state, status_key, run_id
+        )
+        conn.commit()
+    try:
+        renamed = refresh_auto_building_names(conn)
+    except Exception as e:
+        if not _is_connection_error(e):
+            raise
+        print(
+            f"[DB 재접속] 자동명칭 정리 중 연결 단절 — 새 연결로 재시도: "
+            f"{type(e).__name__}: {_mask_key(e)}",
+            flush=True,
+        )
+        conn, cur = _reconnect_and_verify(
+            conn, cur, db_state, status_key, run_id
+        )
+        renamed = refresh_auto_building_names(conn)
     changed += renamed
     if changed > 0:
         try:
