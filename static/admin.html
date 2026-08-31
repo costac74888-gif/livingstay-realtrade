@@ -66,34 +66,6 @@
     .bld-broker-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .bld-broker-status.is-active { background: #E8F5EC; color: #217A42; }
     .bld-broker-status.is-inactive { background: #EEF0F2; color: #68717D; }
-    .scheduled-stage-row {
-      display:grid;
-      grid-template-columns:minmax(150px,1fr) 92px 96px 82px;
-      gap:8px;
-      align-items:start;
-      padding:7px 0;
-    }
-    .scheduled-stage-cadence { font-size:12px; color:var(--ink-soft); }
-    .scheduled-stage-state { font-size:12px; font-weight:700; }
-    .scheduled-stage-button { font-size:11px; padding:6px 7px; white-space:nowrap; }
-    @media (max-width: 640px) {
-      .scheduled-stage-row {
-        grid-template-columns:minmax(0,1fr) auto;
-        gap:5px 10px;
-        padding:10px 0;
-        border-bottom:1px solid var(--line);
-      }
-      .scheduled-stage-row > div:first-child { grid-column:1 / -1; }
-      .scheduled-stage-cadence { grid-column:1; }
-      .scheduled-stage-state { grid-column:1; }
-      .scheduled-stage-button {
-        grid-column:2;
-        grid-row:2 / span 2;
-        min-width:86px;
-        min-height:38px;
-        align-self:center;
-      }
-    }
   </style>
 </head>
 <body>
@@ -2385,7 +2357,6 @@
         if (d.missing_geo > 0) items.push({ sec: "dsSecGeo", text: `좌표 채우기(${num(d.missing_geo)}건 대기)` });
         if (d.missing_title > 0) items.push({ sec: "dsSecTitle", text: `건축정보 채우기(${num(d.missing_title)}건 대기)` });
         const secBySync = {
-          scheduled_sync_status: "dsSecScheduled",
           brhub_sync_status: "dsSecBrhub",
           tx_sync_status: "dsSecTx",
           broker_sync_status: "dsSecBroker",
@@ -3436,254 +3407,8 @@
     }
 
     // ---- 데이터 동기화 통합 페이지 ----
-    let scheduledSyncTimer = null;
-    const scheduledSyncStartingStages = new Set();
-
-    function stopScheduledSyncPolling() {
-      if (scheduledSyncTimer) {
-        clearInterval(scheduledSyncTimer);
-        scheduledSyncTimer = null;
-      }
-    }
-
-    function scheduledStageState(state) {
-      return {
-        pending: ["대기", "#64748b"],
-        running: ["⏳ 실행 중", "#2563eb"],
-        done: ["완료", "#15803d"],
-        failed: ["실패", "#b3261e"],
-        deferred: ["다음 실행 대기", "#b45309"],
-        skipped: ["예약 일정 아님 · 수동 가능", "#64748b"],
-        not_selected: ["수동 대기", "#64748b"],
-      }[state] || ["미실행", "#64748b"];
-    }
-
-    async function runScheduledStage(stage, button) {
-      const msg = document.getElementById("scheduledSyncMsg");
-      scheduledSyncStartingStages.add(stage);
-      button.disabled = true;
-      button.textContent = "⏳ 시작 중";
-      const row = button.closest(".scheduled-stage-row");
-      const stateEl = row && row.querySelector(".scheduled-stage-state");
-      if (stateEl) {
-        stateEl.style.color = "#2563eb";
-        stateEl.textContent = "⏳ 실행 요청 중";
-      }
-      if (msg) msg.textContent = "";
-      try {
-        const res = await fetch("/api/admin/scheduled-sync/run", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stage }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.message || "단계 시작 실패");
-        if (msg) {
-          msg.style.color = "#15803d";
-          msg.textContent = data.message;
-        }
-        await loadScheduledSyncStatus();
-        if (!scheduledSyncTimer) {
-          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 5000);
-        }
-      } catch (error) {
-        scheduledSyncStartingStages.delete(stage);
-        if (msg) {
-          msg.style.color = "#b3261e";
-          msg.textContent = error.message || "단계를 시작하지 못했습니다.";
-        }
-        button.disabled = false;
-        button.textContent = "지금 수집";
-        if (stateEl) {
-          stateEl.style.color = "#b3261e";
-          stateEl.textContent = "실행 실패";
-        }
-      }
-    }
-
-    function renderScheduledSyncStatus(data) {
-      const summary = document.getElementById("scheduledSyncSummary");
-      const stageBox = document.getElementById("scheduledSyncStages");
-      const retryBtn = document.getElementById("scheduledSyncRetryBtn");
-      const runAllBtn = document.getElementById("scheduledSyncRunAllBtn");
-      const msg = document.getElementById("scheduledSyncMsg");
-      if (!summary || !stageBox || !retryBtn || !runAllBtn) {
-        stopScheduledSyncPolling();
-        return;
-      }
-
-      if (!data.running) scheduledSyncStartingStages.clear();
-      const runningLabels = (data.stages || [])
-        .filter((stage) => stage.running)
-        .map((stage) => stage.label);
-      let headline = data.schedule_observation === "scheduled-deployment-not-observed"
-        ? "예약 실행이 아직 관측되지 않았습니다."
-        : "아직 자동 동기화 실행 기록이 없습니다.";
-      let headlineColor = "var(--ink-soft)";
-      if (data.running) {
-        const runKind = data.source === "manual" ? "수동 동기화" : "자동 동기화";
-        headline = `⏳ ${runKind} 실행 중${runningLabels.length ? ` · ${runningLabels.join(", ")}` : ""}`;
-        headlineColor = "#2563eb";
-      } else if (data.state === "done") {
-        headline = `마지막 자동 동기화 완료 · ${data.finished_at || "-"}`;
-        headlineColor = "#15803d";
-      } else if (data.state === "failed" || data.state === "stale") {
-        headline = `자동 동기화 점검 필요 · ${data.error || "실패 원인을 확인해 주세요."}`;
-        headlineColor = "#b3261e";
-      } else if (data.state === "partial") {
-        headline = `일부 단계가 다음 실행을 기다립니다 · ${data.error || ""}`;
-        headlineColor = "#b45309";
-      }
-      summary.innerHTML = `
-        <div style="font-weight:750;color:${headlineColor}">${dgEscape(headline)}</div>
-        <div style="font-size:12px;color:var(--ink-soft);margin-top:4px">
-          실행 일정 ${dgEscape(data.schedule || "실거래 02:00 · 농어촌민박/한옥 02:10 · 나머지 02:30")}
-          · 마지막 전체 성공 ${dgEscape(data.last_success_at || "-")}
-          · 상태 갱신 ${dgEscape(data.status_updated_at || "-")}
-        </div>`;
-
-      const groups = [];
-      (data.stages || []).forEach((stage) => {
-        let group = groups.find((item) => item.name === stage.group);
-        if (!group) {
-          group = { name: stage.group, stages: [] };
-          groups.push(group);
-        }
-        group.stages.push(stage);
-      });
-      stageBox.innerHTML = groups.map((group) => `
-        <div style="border-top:1px solid var(--line);padding:10px 0 4px">
-          <div style="font-size:12px;font-weight:750;color:var(--ink-soft);margin-bottom:6px">${dgEscape(group.name)}</div>
-          ${group.stages.map((stage) => {
-            const visuallyRunning = stage.running
-              || stage.state === "running"
-              || scheduledSyncStartingStages.has(stage.key);
-            const state = scheduledStageState(visuallyRunning ? "running" : stage.state);
-            const delta = stage.changed == null
-              ? ""
-              : ` · ${dgEscape(stage.metric_label || "데이터")} ${stage.changed >= 0 ? "+" : ""}${num(stage.changed)}건`;
-            const progressCount = stage.target != null
-              ? `<div style="font-size:12px;color:${visuallyRunning ? "#2563eb" : "var(--ink-soft)"};margin-top:3px">
-                   ${visuallyRunning ? "⏳ " : ""}목표치 ${num(stage.target)}건
-                   · 수집건 ${num(stage.progress == null ? 0 : stage.progress)}건
-                   · 수집률 ${Number(stage.collection_rate || 0).toFixed(1)}%
-                   <span style="color:var(--ink-faint)">(${dgEscape(stage.target_label || stage.metric_label || "대상")})</span>
-                 </div>`
-              : (visuallyRunning && stage.current != null
-                ? `<div style="font-size:12px;color:#2563eb;margin-top:3px">
-                     ⏳ 현재 ${dgEscape(stage.metric_label || "데이터")} ${num(stage.current)}건
-                     · 이번 실행 ${stage.changed >= 0 ? "+" : ""}${num(stage.changed || 0)}건
-                   </div>`
-                : "");
-            const progressMessage = visuallyRunning && stage.progress_message
-              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(stage.progress_message)}</div>`
-              : "";
-            const error = stage.error && !["선택 실행 대상이 아님"].includes(stage.error)
-              ? `<div style="font-size:11px;color:${stage.state === "failed" ? "#b3261e" : "var(--ink-soft)"};margin-top:2px">${dgEscape(stage.error)}</div>`
-              : "";
-            const quota = stage.quota
-              ? (stage.quotas || [stage.quota]).map((q) => q.total_limit == null
-                  ? `<div style="font-size:11px;color:#b45309;margin-top:2px">${dgEscape(q.label)} · ${dgEscape(q.basis || "한도 확인 필요")}</div>`
-                  : `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(q.label)} · 기준 ${num(q.total_limit)}호출 · 정기 80% 목표 ${num(q.limit)} · 오늘 ${num(q.used)} · 잔여 ${num(q.remaining)} · 20% 보존</div>`
-                ).join("")
-              : "";
-            const last = stage.last_success_at || stage.last_error
-              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at || "-")} · 최근 오류 ${dgEscape(stage.last_error || "-")}</div>` : "";
-            return `<div class="scheduled-stage-row">
-              <div><b>${dgEscape(stage.label)}</b>${quota}${progressCount}${progressMessage}${last}${error}</div>
-              <div class="scheduled-stage-cadence">${dgEscape(stage.cadence)}</div>
-              <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}</div>
-              <button class="admin-btn scheduled-stage-button" ${visuallyRunning || (data.running_buckets || []).includes(stage.quota_bucket) || stage.manual_allowed === false ? "disabled" : ""} title="${(data.running_buckets || []).includes(stage.quota_bucket) && !visuallyRunning ? "같은 API 한도를 쓰는 단계가 실행 중" : ""}" onclick="runScheduledStage('${stage.key}', this)">${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}</button>
-            </div>`;
-          }).join("")}
-        </div>`).join("");
-      retryBtn.style.display = data.retryable && !data.running ? "" : "none";
-      retryBtn.disabled = false;
-      retryBtn.textContent = "실패·중단 단계 재시도";
-      runAllBtn.disabled = !!data.running;
-      runAllBtn.textContent = data.running ? "⏳ 전체 수집 진행 중" : "전체 수집 시작";
-      if (!data.running) stopScheduledSyncPolling();
-      if (msg && data.running) msg.textContent = "";
-    }
-
-    async function loadScheduledSyncStatus() {
-      const summary = document.getElementById("scheduledSyncSummary");
-      if (!summary) {
-        stopScheduledSyncPolling();
-        return;
-      }
-      try {
-        const res = await fetch("/api/admin/scheduled-sync-status");
-        if (res.status === 401) {
-          window.location.href = "/admin/login";
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.message || "상태 조회 실패");
-        renderScheduledSyncStatus(data);
-        if (data.running && !scheduledSyncTimer) {
-          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 10000);
-        }
-      } catch (error) {
-        summary.textContent = "정기 자동 동기화 현황을 불러오지 못했습니다.";
-      }
-    }
-
-    async function retryScheduledSync() {
-      const btn = document.getElementById("scheduledSyncRetryBtn");
-      const msg = document.getElementById("scheduledSyncMsg");
-      btn.disabled = true;
-      btn.textContent = "재시도 시작 중…";
-      msg.textContent = "";
-      try {
-        const res = await fetch("/api/admin/scheduled-sync/retry", { method: "POST" });
-        if (res.status === 401) {
-          window.location.href = "/admin/login";
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.message || "재시도 시작 실패");
-        msg.style.color = "#15803d";
-        msg.textContent = data.message;
-        setTimeout(loadScheduledSyncStatus, 1200);
-        if (!scheduledSyncTimer) {
-          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 10000);
-        }
-      } catch (error) {
-        msg.style.color = "#b3261e";
-        msg.textContent = error.message || "재시도를 시작하지 못했습니다.";
-        btn.disabled = false;
-        btn.textContent = "실패·중단 단계 재시도";
-      }
-    }
-
-    async function runAllScheduledSync() {
-      const btn = document.getElementById("scheduledSyncRunAllBtn");
-      const msg = document.getElementById("scheduledSyncMsg");
-      btn.disabled = true;
-      btn.textContent = "⏳ 시작 중…";
-      msg.textContent = "";
-      try {
-        const res = await fetch("/api/admin/scheduled-sync/run-all", { method: "POST" });
-        if (res.status === 401) {
-          window.location.href = "/admin/login";
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.message || "전체 수집 시작 실패");
-        msg.style.color = "#15803d";
-        msg.textContent = data.message;
-        setTimeout(loadScheduledSyncStatus, 500);
-        if (!scheduledSyncTimer) {
-          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 5000);
-        }
-      } catch (error) {
-        msg.style.color = "#b3261e";
-        msg.textContent = error.message || "전체 수집을 시작하지 못했습니다.";
-        btn.disabled = false;
-        btn.textContent = "전체 수집 시작";
-      }
-    }
-
+    // UI 배치 순서 = 권장 실행 순서(건물 생성 → 정보 보강 → 거래/외부 데이터 연결).
+    // 자동 체이닝 아님 — 각 버튼은 개별 수동 실행. 기존 라우트는 그대로 호출한다.
     async function loadPendingCompletion() {
       const statusBox = document.getElementById("pendingCompletionStatus");
       const listBox = document.getElementById("pendingCompletionList");
@@ -3745,47 +3470,13 @@
             <h2 class="legal-admin-title">데이터 동기화</h2>
           </div>
           <p class="legal-admin-hint">
-            정기 API는 Replit <b>Scheduled Deployment</b>가 매일 하나의 통합 배치를 실행할 때 갱신됩니다.
-            워크스페이스 워크플로의 일정만으로는 무인 실행이 보장되지 않습니다.
-            평소에는 아래 단계별 성공·실패만 확인하면 됩니다. 개별 버튼은 최초 적재나
-            실패 복구가 필요할 때만 <b>수동 보완·재처리 도구</b>에서 사용하세요.
+            아래 순서는 <b>권장 실행 순서</b>입니다(① 건물 생성 → ②③ 정보 보강 → ④~⑦ 거래·외부 데이터 연결).
+            각 버튼은 개별 실행이며 자동으로 이어지지 않습니다. 모든 작업은 백그라운드로 진행되어
+            <b>브라우저를 닫아도 계속</b> 실행됩니다.
           </p>
           <div id="dsBanner" role="alert"
                style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:14px;line-height:1.6"></div>
         </div>
-        <div class="legal-admin" style="margin-top:16px" id="dsSecScheduled">
-          <div class="legal-admin-head">
-            <h2 class="legal-admin-title">정기 자동 동기화</h2>
-          </div>
-          <p class="legal-admin-hint">
-            실거래·건축물·인허가·숙박·농어촌민박·한옥체험업·중개·상가 API를
-            Scheduled Deployment에서 매일 새벽 2시에 순서대로 갱신합니다. 건축물대장과 건축인허가는 같은 일일 한도를
-            보호하기 위해 요일을 나눠 실행합니다.
-          </p>
-          <p class="legal-admin-hint" style="margin-top:6px">
-            <b>에어비앤비:</b> 현재 공식 정기 API가 없어 외국인관광도시민박업 파일 수입 자료를 사용합니다.
-            API 수집 단계와 혼동하지 않도록 별도로 표시하며, 제주처럼 원본이 빠진 지역은 별도 데이터원 확보가 필요합니다.
-          </p>
-          <div id="scheduledSyncSummary" class="geo-status">현황 불러오는 중…</div>
-          <div id="scheduledSyncStages" style="margin-top:8px"></div>
-          <div class="legal-admin-actions">
-            <span id="scheduledSyncMsg" class="legal-msg" role="alert"></span>
-            <button id="scheduledSyncRunAllBtn" class="admin-btn admin-btn-primary">
-              전체 수집 시작
-            </button>
-            <button id="scheduledSyncRetryBtn" class="admin-btn admin-btn-primary" style="display:none">
-              실패·중단 단계 재시도
-            </button>
-          </div>
-        </div>
-        <details id="manualSyncDetails" style="margin-top:16px">
-          <summary class="legal-admin" style="cursor:pointer;font-weight:750;color:var(--ink);">
-            수동 보완·재처리 도구 열기
-            <span style="display:block;font-size:12px;font-weight:400;color:var(--ink-soft);margin-top:4px">
-              최초 대량 적재, 누락 보완, 실패 복구가 필요할 때만 사용
-            </span>
-          </summary>
-          <div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecBrhub">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">① 건물수집 (전국)</h2>
@@ -4090,8 +3781,6 @@
           </div>
           <div id="pendingCompletionList" style="margin-top:10px"></div>
         </div>
-          </div>
-        </details>
         <div class="legal-admin" style="margin-top:16px" id="dsSecBackup">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">데이터 백업</h2>
@@ -4107,8 +3796,6 @@
           </div>
         </div>
       `;
-      document.getElementById("scheduledSyncRetryBtn").addEventListener("click", retryScheduledSync);
-      document.getElementById("scheduledSyncRunAllBtn").addEventListener("click", runAllScheduledSync);
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
@@ -4128,27 +3815,23 @@
       document.getElementById("reclassifyRunBtn").addEventListener("click", runReclassify);
       document.getElementById("lodgingClassificationRestoreBtn").addEventListener("click", restoreLodgingClassificationProvenance);
       document.getElementById("storesSyncRunBtn").addEventListener("click", runStoresSync);
-      loadScheduledSyncStatus();
+      loadStoresSyncStatus();
+      loadRealtySyncStatus();
+      loadReclassifyStatus();
+      loadLodgingClassificationProvenance();
+      loadPermitsSyncStatus();
+      loadPendingCompletion();
       loadDataSyncBanner();
-      document.getElementById("manualSyncDetails").addEventListener("toggle", (event) => {
-        if (!event.currentTarget.open) return;
-        loadStoresSyncStatus();
-        loadRealtySyncStatus();
-        loadReclassifyStatus();
-        loadLodgingClassificationProvenance();
-        loadPermitsSyncStatus();
-        loadPendingCompletion();
-        loadBrhubSyncStatus();
-        loadBrhubRescanStatus();
-        loadBackfillLodgingStatus();
-        loadGeocodeStatus();
-        loadTitleInfoStatus();
-        loadTxSyncStatus();
-        loadBackfillStatus();
-        loadBrokerSyncStatus();
-        loadBrokerGeocodeStatus();
-        loadLodgingSyncStatus();
-      });
+      loadBrhubSyncStatus();
+      loadBrhubRescanStatus();
+      loadBackfillLodgingStatus();
+      loadGeocodeStatus();
+      loadTitleInfoStatus();
+      loadTxSyncStatus();
+      loadBackfillStatus();
+      loadBrokerSyncStatus();
+      loadBrokerGeocodeStatus();
+      loadLodgingSyncStatus();
     }
 
     // ---- 인근 중개업소 후보 (홈앤스테이 전국 중개업소 데이터) ----
@@ -6982,7 +6665,6 @@
     }
 
     function showView(menuKey) {
-      stopScheduledSyncPolling();
       stopTxSyncPolling();
       stopBackfillPolling();
       stopBrokerSyncPolling();
