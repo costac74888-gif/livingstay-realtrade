@@ -1,11 +1,33 @@
 [
   {
+    "building_id": 11350,
+    "building_name": "비브릿지",
+    "current_type": "생활",
+    "target_type": "캠핑",
+    "active_hygiene_types": [
+      "관광펜션업",
+      "일반야영장업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
     "building_id": 12736,
     "building_name": "강현면용호리 135-1",
     "current_type": "생활",
     "target_type": "농어촌민박",
     "active_hygiene_types": [
       "농어촌민박업"
+    ],
+    "reason": "protected_classification"
+  },
+  {
+    "building_id": 34567,
+    "building_name": "블루오션프라자",
+    "current_type": "관광",
+    "target_type": "생활",
+    "active_hygiene_types": [
+      "관광펜션업",
+      "숙박업(생활)"
     ],
     "reason": "protected_classification"
   }
