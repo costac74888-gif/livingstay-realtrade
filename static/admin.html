@@ -3437,6 +3437,7 @@
 
     // ---- 데이터 동기화 통합 페이지 ----
     let scheduledSyncTimer = null;
+    const scheduledSyncStartingStages = new Set();
 
     function stopScheduledSyncPolling() {
       if (scheduledSyncTimer) {
@@ -3456,6 +3457,48 @@
       }[state] || ["미실행", "#64748b"];
     }
 
+    async function runScheduledStage(stage, button) {
+      const msg = document.getElementById("scheduledSyncMsg");
+      scheduledSyncStartingStages.add(stage);
+      button.disabled = true;
+      button.textContent = "⏳ 시작 중";
+      const row = button.closest(".scheduled-stage-row");
+      const stateEl = row && row.querySelector(".scheduled-stage-state");
+      if (stateEl) {
+        stateEl.style.color = "#2563eb";
+        stateEl.textContent = "⏳ 실행 요청 중";
+      }
+      if (msg) msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/scheduled-sync/run", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "단계 시작 실패");
+        if (msg) {
+          msg.style.color = "#15803d";
+          msg.textContent = data.message;
+        }
+        await loadScheduledSyncStatus();
+        if (!scheduledSyncTimer) {
+          scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 5000);
+        }
+      } catch (error) {
+        scheduledSyncStartingStages.delete(stage);
+        if (msg) {
+          msg.style.color = "#b3261e";
+          msg.textContent = error.message || "단계를 시작하지 못했습니다.";
+        }
+        button.disabled = false;
+        button.textContent = "지금 수집";
+        if (stateEl) {
+          stateEl.style.color = "#b3261e";
+          stateEl.textContent = "실행 실패";
+        }
+      }
+    }
+
     function renderScheduledSyncStatus(data) {
       const summary = document.getElementById("scheduledSyncSummary");
       const stageBox = document.getElementById("scheduledSyncStages");
@@ -3467,27 +3510,7 @@
         return;
       }
 
-      async function runScheduledStage(stage, button) {
-        const msg = document.getElementById("scheduledSyncMsg");
-        button.disabled = true;
-        msg.textContent = "";
-        try {
-          const res = await fetch("/api/admin/scheduled-sync/run", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ stage }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.ok) throw new Error(data.message || "단계 시작 실패");
-          msg.style.color = "#15803d";
-          msg.textContent = data.message;
-          setTimeout(loadScheduledSyncStatus, 500);
-          if (!scheduledSyncTimer) scheduledSyncTimer = setInterval(loadScheduledSyncStatus, 10000);
-        } catch (error) {
-          msg.style.color = "#b3261e";
-          msg.textContent = error.message || "단계를 시작하지 못했습니다.";
-          button.disabled = false;
-        }
-      }
+      if (!data.running) scheduledSyncStartingStages.clear();
       const current = (data.stages || []).find((stage) => stage.key === data.current_stage);
       let headline = data.schedule_observation === "scheduled-deployment-not-observed"
         ? "예약 실행이 아직 관측되지 않았습니다."
@@ -3527,7 +3550,10 @@
         <div style="border-top:1px solid var(--line);padding:10px 0 4px">
           <div style="font-size:12px;font-weight:750;color:var(--ink-soft);margin-bottom:6px">${dgEscape(group.name)}</div>
           ${group.stages.map((stage) => {
-            const state = scheduledStageState(stage.state);
+            const visuallyRunning = stage.state === "running"
+              || data.current_stage === stage.key
+              || scheduledSyncStartingStages.has(stage.key);
+            const state = scheduledStageState(visuallyRunning ? "running" : stage.state);
             const delta = stage.changed == null
               ? ""
               : ` · ${dgEscape(stage.metric_label || "데이터")} ${stage.changed >= 0 ? "+" : ""}${num(stage.changed)}건`;
@@ -3545,7 +3571,7 @@
               <div><b>${dgEscape(stage.label)}</b>${quota}${last}${error}</div>
               <div class="scheduled-stage-cadence">${dgEscape(stage.cadence)}</div>
               <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}</div>
-              <button class="admin-btn scheduled-stage-button" ${data.running || stage.manual_allowed === false ? "disabled" : ""} title="${stage.manual_allowed === false ? "공유 일일 한도 보호를 위해 수동 실행 불가" : ""}" onclick="runScheduledStage('${stage.key}', this)">${stage.state === "running" ? "⏳ 수집 중" : "지금 수집"}</button>
+              <button class="admin-btn scheduled-stage-button" ${data.running || stage.manual_allowed === false ? "disabled" : ""} title="${stage.manual_allowed === false ? "공유 일일 한도 보호를 위해 수동 실행 불가" : ""}" onclick="runScheduledStage('${stage.key}', this)">${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}</button>
             </div>`;
           }).join("")}
         </div>`).join("");

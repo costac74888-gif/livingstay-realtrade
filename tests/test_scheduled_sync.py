@@ -1,5 +1,6 @@
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import scheduled_sync
@@ -7,6 +8,17 @@ import quota_policy
 
 
 class ScheduledSyncPlanTests(unittest.TestCase):
+    def test_admin_stage_button_handler_is_globally_callable_and_shows_progress(self):
+        html = Path("static/admin.html").read_text(encoding="utf-8")
+        handler_pos = html.index("async function runScheduledStage(stage, button)")
+        renderer_pos = html.index("function renderScheduledSyncStatus(data)")
+        self.assertLess(handler_pos, renderer_pos)
+        self.assertIn('button.textContent = "⏳ 시작 중"', html)
+        self.assertIn(
+            '${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}',
+            html,
+        )
+
     def test_building_api_stages_do_not_share_a_weekday(self):
         registry = scheduled_sync.STAGE_MAP["building_registry"]
         permits = scheduled_sync.STAGE_MAP["building_permits"]
