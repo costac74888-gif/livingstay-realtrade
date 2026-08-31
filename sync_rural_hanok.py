@@ -66,6 +66,18 @@ SOURCES = {
         "facility_area_fields": ("FCLT_SCL", "FCAR", "ARCH_TFA"),
         "region_field": "RGN_SE_NM",
     },
+    "pension": {
+        "quota_provider": "pension",
+        "endpoint": "tourist_pensions",
+        "prefix": "PENSION",
+        "hygiene_type": "관광펜션업",
+        "lodging_type": "관광",
+        "master_source": "pension_sync",
+        "room_field": "GSRM_CNT",
+        "building_use_field": "BLDG_SHP_SE_NM",
+        "facility_area_fields": ("HSAR", "LCTN_AREA"),
+        "region_field": "USG_RGN",
+    },
 }
 
 

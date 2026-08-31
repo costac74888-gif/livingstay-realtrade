@@ -195,6 +195,22 @@ STAGES = (
         blocking_status_keys=("rural_hanok_sync_status:hanok",),
     ),
     Stage(
+        "pension",
+        "관광펜션업",
+        "숙박",
+        (
+            "sync_rural_hanok.py", "--source", "pension",
+            "--status-key", "rural_hanok_sync_status:pension",
+        ),
+        "매일",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM lodging_registry "
+            "WHERE hygiene_type = '관광펜션업'"
+        ),
+        metric_label="신고자료",
+        blocking_status_keys=("rural_hanok_sync_status:pension",),
+    ),
+    Stage(
         "brokers",
         "공인중개사 사무소",
         "중개·상가",

@@ -101,6 +101,11 @@ PROVIDER_QUOTAS = {
         "regular": 4000, "realtime": 0, "manual": 1000,
         "basis": "공유 1일 10,000회 중 1/2 배정·정기 80%",
     },
+    "pension": {
+        "label": "행안부 관광펜션업 API", "total": 2000,
+        "regular": 2000, "backfill": 0, "realtime": 0, "manual": 0,
+        "basis": "전국 약 10,000건·정기 2,000회",
+    },
     "kakao_building": {
         "label": "카카오 주소검색 API(건물)", "total": None,
         "regular": None, "realtime": 0, "manual": 0,
@@ -129,6 +134,7 @@ STAGE_QUOTAS = {
     "camping": (("camping", "camping_daily_calls", "--unsupported"),),
     "rural": (("rural", "rural_hanok_daily_calls:rural", "--daily-cap"),),
     "hanok": (("hanok", "rural_hanok_daily_calls:hanok", "--daily-cap"),),
+    "pension": (("pension", "rural_hanok_daily_calls:pension", "--daily-cap"),),
     "brokers": (("broker", "broker_daily_calls", "--max-calls"),),
     "broker_geocode": (("kakao_broker", "geocode_brokers_status", "--unsupported"),),
     "realty": (("realty_store", "realty_stores_progress", "--daily-cap"),),
