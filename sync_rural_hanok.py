@@ -26,6 +26,7 @@ from stats_cache import mark_master_stats_invalidated_in_transaction
 
 
 SERVICE_KEY_ENV = "LODGING_SERVICE_KEY"
+SERVICE_KEY_ENV2 = "DATA_GO_KR_BROKER_API_KEY"
 API_ROOT = "https://apis.data.go.kr/1741000"
 PAGE_SIZE = 1000
 REPORT_PATH = Path("reports/rural_hanok_classification_conflicts.json")
@@ -504,7 +505,10 @@ def _mark_success_status(cur, status_key, run_id, source_names, counters):
 
 
 def _redact(text):
-    key = os.environ.get(SERVICE_KEY_ENV, "")
+    key = (
+        os.environ.get(SERVICE_KEY_ENV)
+        or os.environ.get(SERVICE_KEY_ENV2, "")
+    )
     if not key:
         return text
     return text.replace(key, "***").replace(quote_plus(key), "***")
@@ -520,9 +524,14 @@ def sync(
     run_id=None,
     daily_cap=None,
 ):
-    key = os.environ.get(SERVICE_KEY_ENV, "")
+    key = (
+        os.environ.get(SERVICE_KEY_ENV)
+        or os.environ.get(SERVICE_KEY_ENV2, "")
+    )
     if not key:
-        raise RuntimeError(f"환경변수 {SERVICE_KEY_ENV}가 설정되어 있지 않습니다.")
+        raise RuntimeError(
+            f"환경변수 {SERVICE_KEY_ENV} 또는 {SERVICE_KEY_ENV2}가 필요합니다."
+        )
     counters = {
         "fetched": 0, "valid": 0, "inserted": 0, "updated": 0,
         "matched": 0, "created": 0, "inactive": 0, "unmatched": 0,

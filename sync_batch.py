@@ -37,7 +37,10 @@ from stats_cache import mark_master_stats_invalidated as _mark_master_stats_inva
 # ------------------------------------------------------------------
 # 설정값 — API 키는 Replit Secrets(환경변수)에서 읽음
 # ------------------------------------------------------------------
-RTMS_SERVICE_KEY = os.environ.get("RTMS_SERVICE_KEY", "")
+RTMS_SERVICE_KEY = (
+    os.environ.get("RTMS_SERVICE_KEY")
+    or os.environ.get("DATA_GO_KR_BROKER_API_KEY", "")
+)
 BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
 BJDONG_CODE_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드 전체자료.csv")   # code.go.kr 다운로드 파일 경로
 
