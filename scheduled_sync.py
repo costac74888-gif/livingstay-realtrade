@@ -107,19 +107,42 @@ STAGES = (
     ),
     Stage(
         "lodging",
-        "일반·생활숙박·캠핑",
+        "일반·생활숙박",
         "숙박",
-        ("sync_lodgings.py", "--include-camping"),
+        ("sync_lodgings.py",),
         "매일",
         metric_query="SELECT COUNT(*) AS c FROM lodging_registry",
         metric_label="영업신고",
         blocking_status_keys=("lodging_sync_status",),
     ),
     Stage(
-        "rural_hanok",
-        "농어촌민박·한옥체험업",
+        "camping",
+        "캠핑",
         "숙박",
-        ("sync_rural_hanok.py",),
+        ("sync_lodgings.py", "--camping"),
+        "매일",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM lodging_registry "
+            "WHERE hygiene_type = '야영장업'"
+        ),
+        metric_label="캠핑장",
+        blocking_status_keys=("lodging_sync_status",),
+    ),
+    Stage(
+        "rural",
+        "농어촌민박",
+        "숙박",
+        ("sync_rural_hanok.py", "--source", "rural"),
+        "매일",
+        metric_query="SELECT COUNT(*) AS c FROM lodging_registry",
+        metric_label="영업신고",
+        blocking_status_keys=("rural_hanok_sync_status",),
+    ),
+    Stage(
+        "hanok",
+        "한옥체험업",
+        "숙박",
+        ("sync_rural_hanok.py", "--source", "hanok"),
         "매일",
         metric_query="SELECT COUNT(*) AS c FROM lodging_registry",
         metric_label="영업신고",
@@ -434,10 +457,6 @@ def prepare_stage_statuses(
 def stage_command(stage: Stage, source: str = "scheduled", used_by_counter: dict | None = None) -> list[str]:
     """Return collector command with the source's portion of shared quota."""
     command = list(stage.command)
-    if source == "manual" and stage.key == "lodging":
-        # Camping has no manual reserve and its collector offers no independent
-        # cap argument in --include-camping mode.
-        command = [arg for arg in command if arg != "--include-camping"]
     # Only collectors that already expose a CLI cap are source-aware.  Their
     # existing app_meta counter remains the shared authoritative counter.
     for policy in quotas_for_stage(stage.key):

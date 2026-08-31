@@ -16,7 +16,9 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         stages = scheduled_sync.prepare_stage_statuses(None, weekday=0)
         self.assertEqual(stages["building_registry"]["state"], "pending")
         self.assertEqual(stages["building_permits"]["state"], "skipped")
-        self.assertEqual(stages["rural_hanok"]["state"], "pending")
+        self.assertEqual(stages["camping"]["state"], "pending")
+        self.assertEqual(stages["rural"]["state"], "pending")
+        self.assertEqual(stages["hanok"]["state"], "pending")
 
     def test_scheduled_run_uses_korea_weekday_for_cadence(self):
         writes = []
@@ -58,7 +60,7 @@ class ScheduledSyncPlanTests(unittest.TestCase):
                 },
                 "lodging": {
                     "key": "lodging",
-                    "label": "일반·생활숙박·캠핑",
+                    "label": "일반·생활숙박",
                     "state": "failed",
                 },
             },
@@ -72,14 +74,14 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         stages = scheduled_sync.prepare_stage_statuses(
             {"state": "failed"},
             weekday=6,
-            selected_stage="rural_hanok",
+            selected_stage="rural",
         )
-        self.assertEqual(stages["rural_hanok"]["state"], "pending")
+        self.assertEqual(stages["rural"]["state"], "pending")
         self.assertTrue(
             all(
                 item["state"] == "skipped"
                 for key, item in stages.items()
-                if key != "rural_hanok"
+                if key != "rural"
             )
         )
 
@@ -137,7 +139,12 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         lodging = scheduled_sync.quotas_for_stage("lodging")
         self.assertEqual(
             {(p["provider"], p["counter_key"]) for p in lodging},
-            {("lodging", "lodging_daily_calls"), ("camping", "camping_daily_calls")},
+            {("lodging", "lodging_daily_calls")},
+        )
+        camping = scheduled_sync.quotas_for_stage("camping")
+        self.assertEqual(
+            {(p["provider"], p["counter_key"]) for p in camping},
+            {("camping", "camping_daily_calls")},
         )
         broker = scheduled_sync.quotas_for_stage("brokers")[0]
         self.assertEqual(broker["counter_key"], "broker_daily_calls")

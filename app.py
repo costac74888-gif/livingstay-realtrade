@@ -14551,8 +14551,10 @@ _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
     ("building_registry", "건축물대장", "건물·허가", "월·수·금"),
     ("building_permits", "준공 전 건축인허가", "건물·허가", "화·목·토"),
-    ("lodging", "일반·생활숙박·캠핑", "숙박", "매일"),
-    ("rural_hanok", "농어촌민박·한옥체험업", "숙박", "매일"),
+    ("lodging", "일반·생활숙박", "숙박", "매일"),
+    ("camping", "캠핑", "숙박", "매일"),
+    ("rural", "농어촌민박", "숙박", "매일"),
+    ("hanok", "한옥체험업", "숙박", "매일"),
     ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
     ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
@@ -14995,9 +14997,11 @@ def admin_scheduled_sync_status():
         })
         stage.setdefault("state", "pending")
         policies = quota_policies[key]
-        stage["manual_allowed"] = any(
-            p["manual"] and p["cli_option"] != "--unsupported" for p in policies
-        )
+        # 쿼터가 없는 단계(좌표·농어촌·한옥)도 자체 체크포인트/잠금으로
+        # 안전하게 수동 실행할 수 있다. 캠핑은 별도 실행 모드가 있으므로 허용한다.
+        # 모든 수집기는 자체 체크포인트·공급자 일일 하드캡·통합 실행 잠금을
+        # 그대로 거치므로 관리자 단건 실행을 허용한다.
+        stage["manual_allowed"] = True
         if policies:
             quotas = []
             for policy in policies:
@@ -15195,12 +15199,6 @@ def admin_scheduled_sync_stage_run():
     valid = {key for key, *_ in _SCHEDULED_SYNC_STAGES}
     if stage not in valid:
         return jsonify({"ok": False, "message": "알 수 없는 동기화 단계입니다."}), 400
-    policies = quotas_for_stage(stage)
-    if not any(p["manual"] and p["cli_option"] != "--unsupported" for p in policies):
-        return jsonify({
-            "ok": False,
-            "message": "이 단계는 공유 일일 한도 보호를 위해 수동 실행이 허용되지 않습니다.",
-        }), 409
     acquired, claim = _claim_scheduled_sync_start(selected_stage=stage)
     if not acquired:
         return jsonify({"ok": False, "message": "통합 동기화가 이미 실행 중입니다."}), 409

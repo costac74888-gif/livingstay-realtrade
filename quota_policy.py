@@ -65,11 +65,11 @@ PROVIDER_QUOTAS = {
     # Registry and permits have incompatible legacy counters.  They share the
     # provider limit, so manual launch is disabled until request-level shared
     # quota claiming is available.
-    "building_hub": {"total": 8000, "regular": 7800, "realtime": 0, "manual": 0},
-    "store_info": {"total": 10000, "regular": 6000, "realtime": 4000, "manual": 0},
+    "building_hub": {"total": 8000, "regular": 7600, "realtime": 0, "manual": 400},
+    "store_info": {"total": 10000, "regular": 5500, "realtime": 4000, "manual": 500},
     "realty_store": {"total": 1000, "regular": 300, "realtime": 500, "manual": 200},
     "lodging": {"total": 10000, "regular": 8000, "realtime": 0, "manual": 2000},
-    "camping": {"total": 1000, "regular": 800, "realtime": 0, "manual": 0},
+    "camping": {"total": 1000, "regular": 800, "realtime": 0, "manual": 200},
     "broker": {"total": 1000, "regular": 900, "realtime": 0, "manual": 100},
 }
 
@@ -83,10 +83,8 @@ STAGE_QUOTAS = {
     "transactions": (("rtms", "rtms_daily_calls", "--unsupported"),),
     "building_registry": (("building_hub", "brhub_progress", "--daily-cap"),),
     "building_permits": (("building_hub", "permits_progress", "--daily-cap"),),
-    "lodging": (("lodging", "lodging_daily_calls", "--max-calls"),
-                # include-camping currently has no separate CLI cap; expose
-                # its real counter but never pretend manual reserve is used.
-                ("camping", "camping_daily_calls", "--unsupported")),
+    "lodging": (("lodging", "lodging_daily_calls", "--max-calls"),),
+    "camping": (("camping", "camping_daily_calls", "--unsupported"),),
     "brokers": (("broker", "broker_daily_calls", "--max-calls"),),
     "realty": (("realty_store", "realty_stores_progress", "--daily-cap"),),
     "stores": (("store_info", "stores_progress", "--daily-cap"),),

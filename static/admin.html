@@ -66,6 +66,34 @@
     .bld-broker-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .bld-broker-status.is-active { background: #E8F5EC; color: #217A42; }
     .bld-broker-status.is-inactive { background: #EEF0F2; color: #68717D; }
+    .scheduled-stage-row {
+      display:grid;
+      grid-template-columns:minmax(150px,1fr) 92px 96px 82px;
+      gap:8px;
+      align-items:start;
+      padding:7px 0;
+    }
+    .scheduled-stage-cadence { font-size:12px; color:var(--ink-soft); }
+    .scheduled-stage-state { font-size:12px; font-weight:700; }
+    .scheduled-stage-button { font-size:11px; padding:6px 7px; white-space:nowrap; }
+    @media (max-width: 640px) {
+      .scheduled-stage-row {
+        grid-template-columns:minmax(0,1fr) auto;
+        gap:5px 10px;
+        padding:10px 0;
+        border-bottom:1px solid var(--line);
+      }
+      .scheduled-stage-row > div:first-child { grid-column:1 / -1; }
+      .scheduled-stage-cadence { grid-column:1; }
+      .scheduled-stage-state { grid-column:1; }
+      .scheduled-stage-button {
+        grid-column:2;
+        grid-row:2 / span 2;
+        min-width:86px;
+        min-height:38px;
+        align-self:center;
+      }
+    }
   </style>
 </head>
 <body>
@@ -3420,7 +3448,7 @@
     function scheduledStageState(state) {
       return {
         pending: ["대기", "#64748b"],
-        running: ["실행 중", "#2563eb"],
+        running: ["⏳ 실행 중", "#2563eb"],
         done: ["완료", "#15803d"],
         failed: ["실패", "#b3261e"],
         deferred: ["다음 실행 대기", "#b45309"],
@@ -3465,7 +3493,7 @@
         : "아직 자동 동기화 실행 기록이 없습니다.";
       let headlineColor = "var(--ink-soft)";
       if (data.running) {
-        headline = `자동 동기화 실행 중${current ? ` · ${current.label}` : ""}`;
+        headline = `⏳ 자동 동기화 실행 중${current ? ` · ${current.label}` : ""}`;
         headlineColor = "#2563eb";
       } else if (data.state === "done") {
         headline = `마지막 자동 동기화 완료 · ${data.finished_at || "-"}`;
@@ -3512,11 +3540,11 @@
               : "";
             const last = stage.last_success_at || stage.last_error
               ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at || "-")} · 최근 오류 ${dgEscape(stage.last_error || "-")}</div>` : "";
-            return `<div style="display:grid;grid-template-columns:minmax(150px,1fr) 92px 80px 74px;gap:8px;align-items:start;padding:5px 0">
+            return `<div class="scheduled-stage-row">
               <div><b>${dgEscape(stage.label)}</b>${quota}${last}${error}</div>
-              <div style="font-size:12px;color:var(--ink-soft)">${dgEscape(stage.cadence)}</div>
-              <div style="font-size:12px;font-weight:700;color:${state[1]}">${state[0]}${delta}</div>
-              <button class="admin-btn" style="font-size:11px;padding:5px 7px" ${data.running || stage.manual_allowed === false ? "disabled" : ""} title="${stage.manual_allowed === false ? "공유 일일 한도 보호를 위해 수동 실행 불가" : ""}" onclick="runScheduledStage('${stage.key}', this)">지금 수집</button>
+              <div class="scheduled-stage-cadence">${dgEscape(stage.cadence)}</div>
+              <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}</div>
+              <button class="admin-btn scheduled-stage-button" ${data.running || stage.manual_allowed === false ? "disabled" : ""} title="${stage.manual_allowed === false ? "공유 일일 한도 보호를 위해 수동 실행 불가" : ""}" onclick="runScheduledStage('${stage.key}', this)">${stage.state === "running" ? "⏳ 수집 중" : "지금 수집"}</button>
             </div>`;
           }).join("")}
         </div>`).join("");
@@ -3655,6 +3683,10 @@
             실거래·건축물·인허가·숙박·농어촌민박·한옥체험업·중개·상가 API를
             Scheduled Deployment에서 매일 새벽 2시에 순서대로 갱신합니다. 건축물대장과 건축인허가는 같은 일일 한도를
             보호하기 위해 요일을 나눠 실행합니다.
+          </p>
+          <p class="legal-admin-hint" style="margin-top:6px">
+            <b>에어비앤비:</b> 현재 공식 정기 API가 없어 외국인관광도시민박업 파일 수입 자료를 사용합니다.
+            API 수집 단계와 혼동하지 않도록 별도로 표시하며, 제주처럼 원본이 빠진 지역은 별도 데이터원 확보가 필요합니다.
           </p>
           <div id="scheduledSyncSummary" class="geo-status">현황 불러오는 중…</div>
           <div id="scheduledSyncStages" style="margin-top:8px"></div>
