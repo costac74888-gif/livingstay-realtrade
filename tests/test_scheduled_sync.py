@@ -156,8 +156,33 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         manual = scheduled_sync.stage_command(
             scheduled_sync.STAGE_MAP["realty"], "manual", {"realty_stores_progress": 300}
         )
-        self.assertEqual(regular[regular.index("--daily-cap") + 1], "300")
+        self.assertEqual(regular[regular.index("--daily-cap") + 1], "800")
         self.assertEqual(manual[manual.index("--daily-cap") + 1], "500")
+
+    def test_known_api_quotas_assign_exactly_eighty_percent_to_sync(self):
+        for provider, policy in quota_policy.PROVIDER_QUOTAS.items():
+            if policy["total"] is None:
+                continue
+            self.assertEqual(
+                policy["regular"],
+                int(policy["total"] * 0.8),
+                provider,
+            )
+
+    def test_shared_api_bucket_serializes_only_related_stages(self):
+        registry_lock = scheduled_sync._lock_id_for_stage("building_registry")
+        permits_lock = scheduled_sync._lock_id_for_stage("building_permits")
+        lodging_lock = scheduled_sync._lock_id_for_stage("lodging")
+        self.assertEqual(registry_lock, permits_lock)
+        self.assertNotEqual(registry_lock, lodging_lock)
+
+    def test_collection_targets_are_declared_for_fill_stages(self):
+        self.assertIsNotNone(
+            scheduled_sync.STAGE_MAP["building_geocode"].target_query
+        )
+        self.assertIsNotNone(
+            scheduled_sync.STAGE_MAP["title_info"].target_query
+        )
 
     def test_manual_lodging_command_excludes_camping_without_reserve(self):
         command = scheduled_sync.stage_command(

@@ -83,7 +83,7 @@ from address_utils import (
 from store_info_util import build_pnu, get_stores_by_pnu
 from quota_policy import (
     BUILDING_HUB_DAILY_COUNTER_KEY, PROVIDER_COUNTER_KEYS, quota_for_stage,
-    quotas_for_stage,
+    quotas_for_stage, quota_bucket_for_stage,
 )
 import building_registry
 from lodging_matching import (
@@ -14545,7 +14545,8 @@ _GEOCODE_META_KEY = "geocode_sync_status"
 _TITLE_INFO_META_KEY = "title_info_sync_status"
 _APP_STARTED_AT = datetime.now()  # 배포/재시작 시각 추정(워커 부팅 시각) — 배너 "배포 후 미실행" 판정용
 _SCHEDULED_SYNC_META_KEY = "scheduled_sync_status"
-_SCHEDULED_SYNC_STALE_MIN = 12 * 60
+_SCHEDULED_SYNC_STALE_MIN = 5
+_SCHEDULED_SYNC_STAGE_PREFIX = f"{_SCHEDULED_SYNC_META_KEY}:"
 _KST = ZoneInfo("Asia/Seoul")
 _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
@@ -14562,6 +14563,28 @@ _SCHEDULED_SYNC_STAGES = (
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
     ("stores", "건물 내 상가", "중개·상가", "매일"),
 )
+_SCHEDULED_SYNC_TARGETS = {
+    "building_geocode": (
+        "SELECT COUNT(*) AS c FROM master_buildings",
+        "좌표 확보",
+    ),
+    "title_info": (
+        "SELECT COUNT(*) AS c FROM master_buildings",
+        "건축정보 확보",
+    ),
+    "broker_geocode": (
+        "SELECT COUNT(*) AS c FROM broker_registry",
+        "좌표 확보",
+    ),
+    "realty": (
+        "SELECT COUNT(*) AS c FROM master_buildings",
+        "확인 건물",
+    ),
+}
+
+
+def _scheduled_stage_meta_key(stage):
+    return f"{_SCHEDULED_SYNC_STAGE_PREFIX}{stage}"
 _MANUAL_SYNC_POST_PATHS = {
     "/api/admin/geocode-buildings",
     "/api/admin/geocode-brokers",
@@ -14580,32 +14603,13 @@ _MANUAL_SYNC_POST_PATHS = {
 
 @app.before_request
 def _block_manual_sync_during_scheduled_run():
-    """통합 배치와 개별 수동 수집기가 같은 원본을 동시에 갱신하지 않게 한다."""
+    """Legacy manual runners use their own per-source atomic locks.
+
+    Do not block unrelated API services just because another scheduled-sync
+    stage is running; stage/API-bucket conflicts are handled at launch time.
+    """
     if request.method != "POST" or request.path not in _MANUAL_SYNC_POST_PATHS:
         return None
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT value FROM app_meta WHERE key=%s",
-            (_SCHEDULED_SYNC_META_KEY,),
-        )
-        row = cur.fetchone()
-    finally:
-        cur.close()
-        conn.close()
-    try:
-        status = json.loads(row["value"]) if row and row["value"] else {}
-    except (TypeError, ValueError):
-        status = {}
-    if status.get("state") == "running":
-        return jsonify({
-            "ok": False,
-            "message": (
-                "정기 자동 동기화가 실행 중입니다. 완료 후 수동 보완 작업을 "
-                "실행해 주세요."
-            ),
-        }), 409
     return None
 
 
@@ -14916,6 +14920,8 @@ def admin_datasync_overview():
 @require_admin
 def admin_scheduled_sync_status():
     """정기 API 통합 배치의 전체/단계별 상태를 한 번에 반환한다."""
+    stage_status_rows = {}
+    collection_targets = {}
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -14934,6 +14940,23 @@ def admin_scheduled_sync_status():
             ("scheduled_sync_last_scheduled",),
         )
         scheduled_evidence_row = cur.fetchone()
+        cur.execute(
+            """
+            SELECT key, value, updated_at,
+                   EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age
+              FROM app_meta
+             WHERE key LIKE %s
+            """,
+            (f"{_SCHEDULED_SYNC_STAGE_PREFIX}%",),
+        )
+        stage_status_rows = {item["key"]: item for item in cur.fetchall()}
+        for target_key, (target_sql, _target_label) in _SCHEDULED_SYNC_TARGETS.items():
+            try:
+                cur.execute(target_sql)
+                target_row = cur.fetchone()
+                collection_targets[target_key] = int((target_row or {}).get("c") or 0)
+            except Exception:
+                conn.rollback()
     finally:
         cur.close()
         conn.close()
@@ -14988,9 +15011,29 @@ def admin_scheduled_sync_status():
             conn.close()
 
     saved_stages = status.get("stages") or {}
+    running_stage_keys = []
+    running_buckets = set()
     stages = []
     for key, label, group, cadence in _SCHEDULED_SYNC_STAGES:
         stage = dict(saved_stages.get(key) or {})
+        stage_status_row = stage_status_rows.get(_scheduled_stage_meta_key(key))
+        stage_status = {}
+        stage_stale = False
+        if stage_status_row and stage_status_row["value"]:
+            try:
+                stage_status = json.loads(stage_status_row["value"]) or {}
+            except (TypeError, ValueError):
+                stage_status = {}
+            stage_stale = bool(
+                stage_status.get("state") == "running"
+                and stage_status_row["age"] is not None
+                and float(stage_status_row["age"]) > _SCHEDULED_SYNC_STALE_MIN * 60
+            )
+            latest_stage = dict((stage_status.get("stages") or {}).get(key) or {})
+            if latest_stage:
+                stage = latest_stage
+            if stage_stale and stage.get("state") == "running":
+                stage["state"] = "stale"
         stage.update({
             "key": key,
             "label": label,
@@ -14998,6 +15041,20 @@ def admin_scheduled_sync_status():
             "cadence": cadence,
         })
         stage.setdefault("state", "pending")
+        stage["quota_bucket"] = quota_bucket_for_stage(key)
+        stage["running"] = bool(
+            not stage_stale
+            and (
+                stage.get("state") == "running"
+                or (
+                    state == "running"
+                    and status.get("current_stage") == key
+                )
+            )
+        )
+        if stage["running"]:
+            running_stage_keys.append(key)
+            running_buckets.add(stage["quota_bucket"])
         policies = quota_policies[key]
         # 쿼터가 없는 단계(좌표·농어촌·한옥)도 자체 체크포인트/잠금으로
         # 안전하게 수동 실행할 수 있다. 캠핑은 별도 실행 모드가 있으므로 허용한다.
@@ -15020,13 +15077,23 @@ def admin_scheduled_sync_status():
                         policy["provider"], (policy["counter_key"],)
                     )
                     used = sum(quota_values.get(counter_key, 0) for counter_key in counter_keys)
-                limit = int(policy["regular"])
+                limit = (
+                    int(policy["regular"])
+                    if policy.get("regular") is not None else None
+                )
+                total_limit = (
+                    int(policy["total"])
+                    if policy.get("total") is not None else None
+                )
                 quotas.append({
                     "provider": policy["provider"],
+                    "label": policy.get("label") or policy["provider"],
+                    "basis": policy.get("basis") or "기준 한도 확인 필요",
                     "used": used,
-                    "remaining": max(0, limit - used),
+                    "remaining": max(0, limit - used) if limit is not None else None,
                     "limit": limit,
-                    "total_limit": int(policy["total"]),
+                    "total_limit": total_limit,
+                    "allocation_percent": 80 if total_limit is not None else None,
                     "reserved_realtime": int(policy["realtime"]),
                     "reserved_manual": int(policy["manual"]),
                 })
@@ -15034,15 +15101,27 @@ def admin_scheduled_sync_status():
             # record for lodging's general/camping APIs.
             stage["quota"] = quotas[0]
             stage["quotas"] = quotas
+        if key in _SCHEDULED_SYNC_TARGETS:
+            stage["target"] = collection_targets.get(key)
+            stage["target_label"] = _SCHEDULED_SYNC_TARGETS[key][1]
+            stage["progress"] = stage.get("current")
+        elif stage.get("quota") and stage["quota"].get("limit") is not None:
+            stage["target"] = stage["quota"]["limit"]
+            stage["target_label"] = "API 호출"
+            stage["progress"] = stage["quota"]["used"]
         for field in ("started_at", "finished_at", "last_success_at"):
             if stage.get(field):
                 stage[field] = _kst_label(stage[field])
         stages.append(stage)
+    for stage in stages:
+        stage["conflict_running"] = (
+            stage["quota_bucket"] in running_buckets and not stage["running"]
+        )
 
     error = status.get("error")
     if stale and not error:
         error = (
-            "통합 배치 하트비트가 12시간 이상 갱신되지 않았습니다. "
+            "통합 배치 하트비트가 5분 이상 갱신되지 않았습니다. "
             "실패 단계 재시도를 실행할 수 있습니다."
         )
     scheduled_evidence = {}
@@ -15078,7 +15157,9 @@ def admin_scheduled_sync_status():
         observation = "observed"
     return jsonify({
         "ok": True,
-        "running": state == "running",
+        "running": bool(running_stage_keys) or state == "running",
+        "running_stages": running_stage_keys,
+        "running_buckets": sorted(running_buckets),
         "state": state,
         "started_at": _kst_label(status.get("started_at")),
         "finished_at": _kst_label(status.get("finished_at")),
@@ -15107,16 +15188,20 @@ def admin_scheduled_sync_status():
 
 
 def _claim_scheduled_sync_start(*, selected_stage=None, retry_failures_only=False):
-    """Atomically reserve the one scheduled-sync slot before spawning a runner."""
+    """Atomically reserve a full-run slot or one API stage slot."""
     run_id = _secrets.token_hex(8)
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    status_key = (
+        _scheduled_stage_meta_key(selected_stage)
+        if selected_stage else _SCHEDULED_SYNC_META_KEY
+    )
     # Preserve prior per-stage outcomes so --retry-failures continues from the
     # correct checkpoint after the atomic claim replaces the outer document.
     previous_stages = {}
     read_conn = get_conn()
     read_cur = read_conn.cursor()
     try:
-        read_cur.execute("SELECT value FROM app_meta WHERE key=%s", (_SCHEDULED_SYNC_META_KEY,))
+        read_cur.execute("SELECT value FROM app_meta WHERE key=%s", (status_key,))
         previous_row = read_cur.fetchone()
         if previous_row and previous_row["value"]:
             previous_stages = (json.loads(previous_row["value"]) or {}).get("stages") or {}
@@ -15143,6 +15228,7 @@ def _claim_scheduled_sync_start(*, selected_stage=None, retry_failures_only=Fals
         "finished_at": None, "current_stage": None, "stages": stages,
         "source": "manual", "selected_stage": selected_stage,
         "retry_failures_only": retry_failures_only, "error": None,
+        "_status_key": status_key,
     }
     conn = get_conn()
     cur = conn.cursor()
@@ -15152,7 +15238,7 @@ def _claim_scheduled_sync_start(*, selected_stage=None, retry_failures_only=Fals
             ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
             WHERE (app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
                OR app_meta.updated_at < NOW() - INTERVAL '{_SCHEDULED_SYNC_STALE_MIN} minutes'
-        """, (_SCHEDULED_SYNC_META_KEY, json.dumps(value, ensure_ascii=False)))
+        """, (status_key, json.dumps(value, ensure_ascii=False)))
         acquired = cur.rowcount == 1
         conn.commit()
     finally:
@@ -15165,9 +15251,10 @@ def _spawn_claimed_scheduled_sync(claim, extra_args):
     """The claim is durable before Popen, so an abrupt web-worker stop is visible."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     try:
+        status_key = claim.get("_status_key") or _SCHEDULED_SYNC_META_KEY
         proc = subprocess.Popen(
             [sys.executable, "-u", os.path.join(base_dir, "scheduled_sync.py"),
-             "--status-key", _SCHEDULED_SYNC_META_KEY, "--source", "manual",
+             "--status-key", status_key, "--source", "manual",
              "--run-id", claim["run_id"]] + extra_args,
             cwd=base_dir, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -15183,12 +15270,48 @@ def _spawn_claimed_scheduled_sync(claim, extra_args):
                           error=f"러너 실행 실패: {exc}"[:300], retryable=True)
             cur.execute("""UPDATE app_meta SET value=%s, updated_at=NOW()
                            WHERE key=%s AND (value::jsonb ->> 'run_id')=%s""",
-                        (json.dumps(failed, ensure_ascii=False), _SCHEDULED_SYNC_META_KEY, claim["run_id"]))
+                        (json.dumps(failed, ensure_ascii=False),
+                         claim.get("_status_key") or _SCHEDULED_SYNC_META_KEY,
+                         claim["run_id"]))
             conn.commit()
         finally:
             cur.close()
             conn.close()
         return exc
+
+
+def _scheduled_sync_bucket_conflict(stage):
+    """Return the running stage that shares this stage's API quota bucket."""
+    bucket = quota_bucket_for_stage(stage)
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT value, EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age
+              FROM app_meta
+             WHERE key LIKE %s
+            """,
+            (f"{_SCHEDULED_SYNC_STAGE_PREFIX}%",),
+        )
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
+    for row in rows:
+        try:
+            value = json.loads(row["value"] or "{}")
+        except (TypeError, ValueError):
+            continue
+        running_stage = value.get("selected_stage")
+        if (
+            value.get("state") == "running"
+            and float(row["age"] or 0) <= _SCHEDULED_SYNC_STALE_MIN * 60
+            and running_stage
+            and quota_bucket_for_stage(running_stage) == bucket
+        ):
+            return running_stage
+    return None
 
 
 @app.route("/api/admin/scheduled-sync/run", methods=["POST"])
@@ -15201,9 +15324,18 @@ def admin_scheduled_sync_stage_run():
     valid = {key for key, *_ in _SCHEDULED_SYNC_STAGES}
     if stage not in valid:
         return jsonify({"ok": False, "message": "알 수 없는 동기화 단계입니다."}), 400
+    conflict = _scheduled_sync_bucket_conflict(stage)
+    if conflict:
+        return jsonify({
+            "ok": False,
+            "message": (
+                f"같은 API 한도를 사용하는 {conflict} 단계가 실행 중입니다. "
+                "완료 후 다시 실행해 주세요."
+            ),
+        }), 409
     acquired, claim = _claim_scheduled_sync_start(selected_stage=stage)
     if not acquired:
-        return jsonify({"ok": False, "message": "통합 동기화가 이미 실행 중입니다."}), 409
+        return jsonify({"ok": False, "message": "이 단계가 이미 실행 중입니다."}), 409
     error = _spawn_claimed_scheduled_sync(claim, ["--stage", stage])
     if error:
         return jsonify({"ok": False, "message": "프로세스를 시작하지 못했습니다."}), 500

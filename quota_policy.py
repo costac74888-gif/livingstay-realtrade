@@ -57,20 +57,55 @@ def claim_building_hub_request() -> int:
         cur.close()
         conn.close()
 
-# A provider's total is deliberately below its published ceiling.  The
-# difference is retained for safe request-path/realtime work and operator
-# recovery.  Values are passed to the existing collectors as their daily cap.
+# API별 기준 한도의 80%만 정기 동기화에 사용한다. 나머지 20%는
+# 실시간 조회·수동 복구·재시도 여유로 남긴다. 공식 한도를 확인하지 못한
+# API는 total=None으로 두어 관리자 화면이 임의 숫자를 표시하지 않게 한다.
 PROVIDER_QUOTAS = {
-    "rtms": {"total": 10000, "regular": 7000, "realtime": 2000, "manual": 0},
-    # Registry and permits have incompatible legacy counters.  They share the
-    # provider limit, so manual launch is disabled until request-level shared
-    # quota claiming is available.
-    "building_hub": {"total": 8000, "regular": 7600, "realtime": 0, "manual": 400},
-    "store_info": {"total": 10000, "regular": 5500, "realtime": 4000, "manual": 500},
-    "realty_store": {"total": 1000, "regular": 300, "realtime": 500, "manual": 200},
-    "lodging": {"total": 10000, "regular": 8000, "realtime": 0, "manual": 2000},
-    "camping": {"total": 1000, "regular": 800, "realtime": 0, "manual": 200},
-    "broker": {"total": 1000, "regular": 900, "realtime": 0, "manual": 100},
+    "rtms": {
+        "label": "국토부 실거래가 API", "total": 10000, "regular": 8000,
+        "realtime": 2000, "manual": 0, "basis": "기준 한도의 80%",
+    },
+    # 건축물대장·인허가·표제부 보완은 같은 Building HUB 서비스키와
+    # 요청단위 하드캡을 공유하므로 하나의 버킷에서 직렬 실행한다.
+    "building_hub": {
+        "label": "국토부 건축HUB API", "total": 10000, "regular": 8000,
+        "realtime": 0, "manual": 2000, "basis": "기준 한도의 80%·서비스키 공유",
+    },
+    "store_info": {
+        "label": "소상공인 상가정보 API", "total": 10000, "regular": 8000,
+        "realtime": 1500, "manual": 500, "basis": "기준 한도의 80%",
+    },
+    "realty_store": {
+        "label": "중개업소 상가정보 API", "total": 1000, "regular": 800,
+        "realtime": 0, "manual": 200, "basis": "기준 한도의 80%",
+    },
+    "lodging": {
+        "label": "행안부 숙박업 API", "total": 10000, "regular": 8000,
+        "realtime": 0, "manual": 2000, "basis": "기준 한도의 80%",
+    },
+    "camping": {
+        "label": "한국관광공사 고캠핑 API", "total": 1000, "regular": 800,
+        "realtime": 0, "manual": 200, "basis": "기준 한도의 80%",
+    },
+    "broker": {
+        "label": "전국 공인중개사 표준데이터 API", "total": 1000, "regular": 800,
+        "realtime": 0, "manual": 200, "basis": "기준 한도의 80%",
+    },
+    "rural_hanok": {
+        "label": "행안부 농어촌민박·한옥체험업 API", "total": None,
+        "regular": None, "realtime": 0, "manual": 0,
+        "basis": "공식 한도 확인 필요·서비스키 공유",
+    },
+    "kakao_building": {
+        "label": "카카오 주소검색 API(건물)", "total": None,
+        "regular": None, "realtime": 0, "manual": 0,
+        "basis": "앱별 쿼터 확인 필요",
+    },
+    "kakao_broker": {
+        "label": "카카오 주소검색 API(중개업소)", "total": None,
+        "regular": None, "realtime": 0, "manual": 0,
+        "basis": "앱별 쿼터 확인 필요",
+    },
 }
 
 PROVIDER_COUNTER_KEYS = {
@@ -83,16 +118,24 @@ STAGE_QUOTAS = {
     "transactions": (("rtms", "rtms_daily_calls", "--unsupported"),),
     "building_registry": (("building_hub", "brhub_progress", "--daily-cap"),),
     "building_permits": (("building_hub", "permits_progress", "--daily-cap"),),
+    "building_geocode": (("kakao_building", "geocode_sync_status", "--unsupported"),),
+    "title_info": (("building_hub", "building_hub_daily_calls", "--unsupported"),),
     "lodging": (("lodging", "lodging_daily_calls", "--max-calls"),),
     "camping": (("camping", "camping_daily_calls", "--unsupported"),),
+    "rural": (("rural_hanok", "rural_hanok_sync_status", "--unsupported"),),
+    "hanok": (("rural_hanok", "rural_hanok_sync_status", "--unsupported"),),
     "brokers": (("broker", "broker_daily_calls", "--max-calls"),),
+    "broker_geocode": (("kakao_broker", "geocode_brokers_status", "--unsupported"),),
     "realty": (("realty_store", "realty_stores_progress", "--daily-cap"),),
     "stores": (("store_info", "stores_progress", "--daily-cap"),),
 }
 
 
 def regular_cap(provider: str) -> int:
-    return int(PROVIDER_QUOTAS[provider]["regular"])
+    value = PROVIDER_QUOTAS[provider]["regular"]
+    if value is None:
+        raise ValueError(f"{provider} API의 기준 한도가 확인되지 않았습니다.")
+    return int(value)
 
 
 def quota_for_stage(stage: str) -> dict | None:
@@ -114,6 +157,14 @@ def quotas_for_stage(stage: str) -> list[dict]:
 
 def cap_for_source(policy: dict, source: str) -> int:
     """Manual recovery may consume its reserved tail; normal runs may not."""
+    if policy.get("total") is None or policy.get("regular") is None:
+        raise ValueError(f"{policy['provider']} API의 기준 한도가 확인되지 않았습니다.")
     if source == "manual":
         return int(policy["total"])
     return int(policy["regular"])
+
+
+def quota_bucket_for_stage(stage: str) -> str:
+    """Return the API/service-key bucket that must not run concurrently."""
+    policies = quotas_for_stage(stage)
+    return policies[0]["provider"] if policies else stage

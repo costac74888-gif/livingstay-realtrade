@@ -59,3 +59,4 @@
 - [숙박 법정분류와 건축물 용도](lodging-legal-vs-building-use.md) — 영업분류와 건축물 용도를 분리하고, 활성 신고는 영업/정상만 인정하며 건축물대장 확정값을 우선 보호한다.
 - [고캠핑 API 동기화 의미](gocamping-api-sync.md) — basedList 상태 필드는 manageSttus이고 사이트 수는 유형별 합계; dry-run도 실제 호출 한도에 포함한다.
 - [모바일 패널 브라우저 테스트](mobile-panel-browser-tests.md) — 검색 패널 토글은 상태 반전이므로 재진입 테스트는 현재 상태를 확인한 뒤 필요할 때만 연다.
+- [API 동기화 병렬 실행](api-sync-parallel-buckets.md) — 단계 상태는 분리 저장하고 API·서비스키 버킷만 직렬화; 확인된 한도의 80%만 정기 배정하며 미확인 한도는 추정하지 않는다.

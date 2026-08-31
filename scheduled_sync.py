@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import secrets
@@ -27,6 +28,7 @@ from quota_policy import (
     cap_for_source,
     korea_today,
     quotas_for_stage,
+    quota_bucket_for_stage,
     regular_cap,
 )
 
@@ -36,7 +38,7 @@ SCHEDULED_EVIDENCE_META_KEY = "scheduled_sync_last_scheduled"
 LOCK_ID = 918299
 HEARTBEAT_SEC = 30
 MAX_OUTPUT_LINES = 40
-STALE_HOURS = 12
+STALE_SECONDS = 5 * 60
 BASE_DIR = Path(__file__).resolve().parent
 
 SECRET_ENV_NAMES = (
@@ -61,6 +63,7 @@ class Stage:
     weekdays: tuple[int, ...] | None = None
     metric_query: str | None = None
     metric_label: str | None = None
+    target_query: str | None = None
     blocking_status_keys: tuple[str, ...] = ()
 
     def is_due(self, weekday: int) -> bool:
@@ -116,6 +119,7 @@ STAGES = (
             "WHERE lat IS NOT NULL AND lng IS NOT NULL"
         ),
         metric_label="좌표 확보",
+        target_query="SELECT COUNT(*) AS c FROM master_buildings",
         blocking_status_keys=("geocode_sync_status",),
     ),
     Stage(
@@ -129,6 +133,7 @@ STAGES = (
             "WHERE title_backfilled_at IS NOT NULL"
         ),
         metric_label="건축정보 확보",
+        target_query="SELECT COUNT(*) AS c FROM master_buildings",
         blocking_status_keys=("title_info_sync_status",),
     ),
     Stage(
@@ -201,6 +206,7 @@ STAGES = (
             "WHERE lat IS NOT NULL AND lng IS NOT NULL"
         ),
         metric_label="좌표 확보",
+        target_query="SELECT COUNT(*) AS c FROM broker_registry",
         blocking_status_keys=("geocode_brokers_status",),
     ),
     Stage(
@@ -214,6 +220,7 @@ STAGES = (
             "WHERE realty_checked_at IS NOT NULL"
         ),
         metric_label="확인 건물",
+        target_query="SELECT COUNT(*) AS c FROM master_buildings",
         blocking_status_keys=("realty_sync_status",),
     ),
     Stage(
@@ -229,6 +236,10 @@ STAGES = (
 )
 
 STAGE_MAP = {stage.key: stage for stage in STAGES}
+
+
+def stage_status_key(stage_key: str, base_key: str = STATUS_META_KEY) -> str:
+    return f"{base_key}:{stage_key}"
 
 
 def _now() -> str:
@@ -367,12 +378,20 @@ def _touch(status_key: str, run_id: str) -> None:
 
 
 def _metric_value(stage: Stage) -> int | None:
-    if not stage.metric_query:
+    return _query_count(stage.metric_query)
+
+
+def _target_value(stage: Stage) -> int | None:
+    return _query_count(stage.target_query)
+
+
+def _query_count(query: str | None) -> int | None:
+    if not query:
         return None
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute(stage.metric_query)
+        cur.execute(query)
         row = cur.fetchone()
         return int(row["c"] or 0) if row else None
     except Exception:
@@ -404,7 +423,7 @@ def _source_busy(stage: Stage) -> str | None:
                 continue
             if (
                 value.get("state") == "running"
-                and float(row["age"] or 0) < STALE_HOURS * 3600
+                and float(row["age"] or 0) < STALE_SECONDS
             ):
                 return row["key"]
     finally:
@@ -429,6 +448,7 @@ def _blank_stage(stage: Stage) -> dict:
         "after": None,
         "changed": None,
         "current": None,
+        "target": None,
         "progress_message": None,
         "error": None,
         "output_tail": [],
@@ -566,10 +586,19 @@ def _run_stage(
     return proc.wait(), list(tail)
 
 
-def _acquire_lock():
+def _lock_id_for_stage(stage_key: str | None) -> int:
+    """Stable advisory lock per API/service-key bucket."""
+    if not stage_key:
+        return LOCK_ID
+    bucket = quota_bucket_for_stage(stage_key)
+    buckets = sorted({quota_bucket_for_stage(stage.key) for stage in STAGES})
+    return LOCK_ID + 1 + buckets.index(bucket)
+
+
+def _acquire_lock(lock_id: int = LOCK_ID):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (LOCK_ID,))
+    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (lock_id,))
     acquired = bool(cur.fetchone()["acquired"])
     if not acquired:
         cur.close()
@@ -578,11 +607,11 @@ def _acquire_lock():
     return conn, cur
 
 
-def _release_lock(conn, cur) -> None:
+def _release_lock(conn, cur, lock_id: int = LOCK_ID) -> None:
     if conn is None or cur is None:
         return
     try:
-        cur.execute("SELECT pg_advisory_unlock(%s) AS released", (LOCK_ID,))
+        cur.execute("SELECT pg_advisory_unlock(%s) AS released", (lock_id,))
         cur.fetchone()
         conn.commit()
     except Exception:
@@ -607,8 +636,10 @@ def run(
     retry_failures_only: bool = False,
     source: str = "scheduled",
     run_id: str | None = None,
+    orchestrated: bool = False,
 ) -> int:
-    lock_conn, lock_cur = _acquire_lock()
+    lock_id = _lock_id_for_stage(selected_stage)
+    lock_conn, lock_cur = _acquire_lock(lock_id)
     if lock_conn is None:
         if run_id:
             previous = _read_status(status_key) or {}
@@ -629,13 +660,17 @@ def run(
             previous
             and previous.get("state") == "running"
             and previous.get("run_id") != run_id
-            and float(previous.get("_age_seconds") or 0) < STALE_HOURS * 3600
+            and float(previous.get("_age_seconds") or 0) < STALE_SECONDS
         ):
             # A web/manual claim is durable before its child gets the
             # advisory lock.  A scheduled invocation must not steal it.
             print("[scheduled-sync] 이미 승인된 다른 실행이 시작을 기다리고 있습니다.", flush=True)
             return 2
-        if source == "manual" and (not previous or previous.get("run_id") != run_id):
+        if (
+            source == "manual"
+            and not orchestrated
+            and (not previous or previous.get("run_id") != run_id)
+        ):
             print("[scheduled-sync] 수동 실행 소유권을 잃었습니다.", flush=True)
             return 2
         stages = prepare_stage_statuses(
@@ -660,16 +695,17 @@ def run(
             "retryable": False,
             "last_success_at": (previous or {}).get("last_success_at"),
         }
-        if source == "manual":
+        if source == "manual" and not orchestrated:
             # Web endpoint has already atomically written this exact claim.
             # Fencing it here prevents a late child from taking another run's
             # status document.
             _write_status(status_key, status, run_id)
         else:
             _write_initial_status(status_key, status)
-            _write_scheduled_evidence(
-                run_id, "running", started_at=status["started_at"], finished_at=None
-            )
+            if source == "scheduled" and not orchestrated:
+                _write_scheduled_evidence(
+                    run_id, "running", started_at=status["started_at"], finished_at=None
+                )
 
         def _heartbeat():
             while not stop_heartbeat.wait(HEARTBEAT_SEC):
@@ -704,6 +740,7 @@ def run(
                 state="running",
                 started_at=_now(),
                 before=_metric_value(stage),
+                target=_target_value(stage),
                 current=None,
                 changed=0,
                 progress_message="수집 프로세스를 시작했습니다.",
@@ -788,7 +825,7 @@ def run(
             status["error"] = None
             status["last_success_at"] = status["finished_at"]
         _write_status(status_key, status, run_id)
-        if source == "scheduled":
+        if source == "scheduled" and not orchestrated:
             _write_scheduled_evidence(
                 run_id,
                 status["state"],
@@ -802,7 +839,132 @@ def run(
         return 1 if failed else 0
     finally:
         stop_heartbeat.set()
-        _release_lock(lock_conn, lock_cur)
+        _release_lock(lock_conn, lock_cur, lock_id)
+
+
+def run_parallel(
+    *,
+    status_key: str = STATUS_META_KEY,
+    retry_failures_only: bool = False,
+    source: str = "scheduled",
+    run_id: str | None = None,
+) -> int:
+    """Run independent API/service-key buckets concurrently.
+
+    Stages that share one quota bucket stay sequential inside their bucket.
+    Each stage persists to its own app_meta row so concurrent progress writes
+    cannot overwrite another stage.
+    """
+    lock_conn, lock_cur = _acquire_lock(LOCK_ID)
+    if lock_conn is None:
+        print("[scheduled-sync] 전체 실행이 이미 진행 중입니다.", flush=True)
+        return 2
+
+    run_id = run_id or secrets.token_hex(8)
+    stop_heartbeat = threading.Event()
+    try:
+        previous = _read_status(status_key) or {}
+        stages = prepare_stage_statuses(
+            previous,
+            weekday=_korea_weekday(),
+            retry_failures_only=retry_failures_only,
+            ignore_cadence=(source == "manual"),
+        )
+        status = {
+            "run_id": run_id,
+            "state": "running",
+            "started_at": _now(),
+            "finished_at": None,
+            "current_stage": None,
+            "running_stages": [],
+            "stages": stages,
+            "source": source,
+            "retry_failures_only": retry_failures_only,
+            "error": None,
+        }
+        if previous.get("run_id") == run_id:
+            _write_status(status_key, status, run_id)
+        else:
+            _write_initial_status(status_key, status)
+        if source == "scheduled":
+            _write_scheduled_evidence(
+                run_id, "running", started_at=status["started_at"], finished_at=None
+            )
+
+        def _heartbeat():
+            while not stop_heartbeat.wait(HEARTBEAT_SEC):
+                try:
+                    _touch(status_key, run_id)
+                except Exception as exc:
+                    print(f"[scheduled-sync] 전체 하트비트 실패: {_redact(str(exc))}", flush=True)
+
+        threading.Thread(target=_heartbeat, daemon=True).start()
+
+        runnable = [
+            stage for stage in STAGES
+            if stages[stage.key]["state"] in {"pending", "failed", "deferred", "running"}
+        ]
+        buckets: dict[str, list[Stage]] = {}
+        for stage in runnable:
+            buckets.setdefault(quota_bucket_for_stage(stage.key), []).append(stage)
+
+        def _run_bucket(bucket_stages: list[Stage]) -> list[tuple[str, int]]:
+            results = []
+            for stage in bucket_stages:
+                child_run_id = secrets.token_hex(8)
+                command = [
+                    sys.executable, "-u", str(BASE_DIR / "scheduled_sync.py"),
+                    "--status-key", stage_status_key(stage.key, status_key),
+                    "--source", source,
+                    "--run-id", child_run_id,
+                    "--stage", stage.key,
+                    "--orchestrated",
+                ]
+                code = subprocess.call(command, cwd=BASE_DIR)
+                results.append((stage.key, code))
+            return results
+
+        workers = max(1, len(buckets))
+        all_results: list[tuple[str, int]] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(_run_bucket, group) for group in buckets.values()]
+            for future in concurrent.futures.as_completed(futures):
+                all_results.extend(future.result())
+
+        failed = []
+        for stage in STAGES:
+            child = _read_status(stage_status_key(stage.key, status_key))
+            if child:
+                child.pop("_age_seconds", None)
+                child_stage = (child.get("stages") or {}).get(stage.key)
+                if child_stage:
+                    stages[stage.key] = child_stage
+            if stages[stage.key].get("state") == "failed":
+                failed.append(stages[stage.key])
+
+        status["running_stages"] = []
+        status["current_stage"] = None
+        status["finished_at"] = _now()
+        status["state"] = "failed" if failed else "done"
+        status["retryable"] = bool(failed)
+        status["error"] = (
+            " · ".join(f"{item['label']}: {item.get('error') or '실패'}" for item in failed)[:1000]
+            if failed else None
+        )
+        if not failed:
+            status["last_success_at"] = status["finished_at"]
+        _write_status(status_key, status, run_id)
+        if source == "scheduled":
+            _write_scheduled_evidence(
+                run_id,
+                status["state"],
+                started_at=status["started_at"],
+                finished_at=status["finished_at"],
+            )
+        return 1 if failed else 0
+    finally:
+        stop_heartbeat.set()
+        _release_lock(lock_conn, lock_cur, LOCK_ID)
 
 
 def main() -> None:
@@ -811,6 +973,7 @@ def main() -> None:
     parser.add_argument("--stage", choices=tuple(STAGE_MAP))
     parser.add_argument("--source", choices=("scheduled", "manual"), default="scheduled")
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--orchestrated", action="store_true")
     parser.add_argument(
         "--retry-failures",
         action="store_true",
@@ -837,13 +1000,17 @@ def main() -> None:
                 )
             )
         return
-    raise SystemExit(run(
-        status_key=args.status_key,
-        selected_stage=args.stage,
-        retry_failures_only=args.retry_failures,
-        source=args.source,
-        run_id=args.run_id,
-    ))
+    runner = run if args.stage else run_parallel
+    kwargs = {
+        "status_key": args.status_key,
+        "retry_failures_only": args.retry_failures,
+        "source": args.source,
+        "run_id": args.run_id,
+    }
+    if args.stage:
+        kwargs["selected_stage"] = args.stage
+        kwargs["orchestrated"] = args.orchestrated
+    raise SystemExit(runner(**kwargs))
 
 
 if __name__ == "__main__":
