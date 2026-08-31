@@ -3453,7 +3453,8 @@
         done: ["완료", "#15803d"],
         failed: ["실패", "#b3261e"],
         deferred: ["다음 실행 대기", "#b45309"],
-        skipped: ["오늘 대상 아님", "#64748b"],
+        skipped: ["예약 일정 아님 · 수동 가능", "#64748b"],
+        not_selected: ["수동 대기", "#64748b"],
       }[state] || ["미실행", "#64748b"];
     }
 
@@ -3517,7 +3518,8 @@
         : "아직 자동 동기화 실행 기록이 없습니다.";
       let headlineColor = "var(--ink-soft)";
       if (data.running) {
-        headline = `⏳ 자동 동기화 실행 중${current ? ` · ${current.label}` : ""}`;
+        const runKind = data.source === "manual" ? "수동 동기화" : "자동 동기화";
+        headline = `⏳ ${runKind} 실행 중${current ? ` · ${current.label}` : ""}`;
         headlineColor = "#2563eb";
       } else if (data.state === "done") {
         headline = `마지막 자동 동기화 완료 · ${data.finished_at || "-"}`;
@@ -3557,6 +3559,15 @@
             const delta = stage.changed == null
               ? ""
               : ` · ${dgEscape(stage.metric_label || "데이터")} ${stage.changed >= 0 ? "+" : ""}${num(stage.changed)}건`;
+            const progressCount = visuallyRunning && stage.current != null
+              ? `<div style="font-size:12px;color:#2563eb;margin-top:3px">
+                   현재 ${dgEscape(stage.metric_label || "데이터")} ${num(stage.current)}건
+                   · 이번 실행 ${stage.changed >= 0 ? "+" : ""}${num(stage.changed || 0)}건
+                 </div>`
+              : "";
+            const progressMessage = visuallyRunning && stage.progress_message
+              ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">${dgEscape(stage.progress_message)}</div>`
+              : "";
             const error = stage.error && !["선택 실행 대상이 아님"].includes(stage.error)
               ? `<div style="font-size:11px;color:${stage.state === "failed" ? "#b3261e" : "var(--ink-soft)"};margin-top:2px">${dgEscape(stage.error)}</div>`
               : "";
@@ -3568,7 +3579,7 @@
             const last = stage.last_success_at || stage.last_error
               ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:2px">최근 성공 ${dgEscape(stage.last_success_at || "-")} · 최근 오류 ${dgEscape(stage.last_error || "-")}</div>` : "";
             return `<div class="scheduled-stage-row">
-              <div><b>${dgEscape(stage.label)}</b>${quota}${last}${error}</div>
+              <div><b>${dgEscape(stage.label)}</b>${quota}${progressCount}${progressMessage}${last}${error}</div>
               <div class="scheduled-stage-cadence">${dgEscape(stage.cadence)}</div>
               <div class="scheduled-stage-state" style="color:${state[1]}">${state[0]}${delta}</div>
               <button class="admin-btn scheduled-stage-button" ${data.running || stage.manual_allowed === false ? "disabled" : ""} title="${stage.manual_allowed === false ? "공유 일일 한도 보호를 위해 수동 실행 불가" : ""}" onclick="runScheduledStage('${stage.key}', this)">${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}</button>

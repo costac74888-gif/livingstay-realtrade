@@ -160,8 +160,11 @@ STAGES = (
         "숙박",
         ("sync_rural_hanok.py", "--source", "rural"),
         "매일",
-        metric_query="SELECT COUNT(*) AS c FROM lodging_registry",
-        metric_label="영업신고",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM lodging_registry "
+            "WHERE hygiene_type = '농어촌민박업'"
+        ),
+        metric_label="신고자료",
         blocking_status_keys=("rural_hanok_sync_status",),
     ),
     Stage(
@@ -170,8 +173,11 @@ STAGES = (
         "숙박",
         ("sync_rural_hanok.py", "--source", "hanok"),
         "매일",
-        metric_query="SELECT COUNT(*) AS c FROM lodging_registry",
-        metric_label="영업신고",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM lodging_registry "
+            "WHERE hygiene_type = '한옥체험업'"
+        ),
+        metric_label="신고자료",
         blocking_status_keys=("rural_hanok_sync_status",),
     ),
     Stage(
@@ -422,6 +428,8 @@ def _blank_stage(stage: Stage) -> dict:
         "before": None,
         "after": None,
         "changed": None,
+        "current": None,
+        "progress_message": None,
         "error": None,
         "output_tail": [],
         "retryable": False,
@@ -434,6 +442,7 @@ def prepare_stage_statuses(
     weekday: int,
     selected_stage: str | None = None,
     retry_failures_only: bool = False,
+    ignore_cadence: bool = False,
 ) -> dict[str, dict]:
     """새 실행 상태를 만들되 실패/중단 재개 시 완료 단계는 보존한다."""
     previous = previous or {}
@@ -456,7 +465,7 @@ def prepare_stage_statuses(
         item["last_error"] = old.get("last_error") or old.get("error")
         if selected_stage and stage.key != selected_stage:
             item.update(
-                state="skipped",
+                state="not_selected",
                 finished_at=_now(),
                 error="선택 실행 대상이 아님",
             )
@@ -470,7 +479,7 @@ def prepare_stage_statuses(
         elif old_state in {"failed", "deferred", "running"}:
             # 이전 실패·중단 단계는 재시도 날짜의 요일과 무관하게 복구한다.
             pass
-        elif not selected_stage and not stage.is_due(weekday):
+        elif not selected_stage and not ignore_cadence and not stage.is_due(weekday):
             item.update(
                 state="skipped",
                 finished_at=_now(),
@@ -504,7 +513,11 @@ def stage_command(stage: Stage, source: str = "scheduled", used_by_counter: dict
     return command
 
 
-def _run_stage(stage: Stage, source: str = "scheduled") -> tuple[int, list[str]]:
+def _run_stage(
+    stage: Stage,
+    source: str = "scheduled",
+    on_progress=None,
+) -> tuple[int, list[str]]:
     used = {}
     if source == "manual":
         conn = get_conn()
@@ -539,6 +552,17 @@ def _run_stage(stage: Stage, source: str = "scheduled") -> tuple[int, list[str]]
         line = _redact(raw_line.rstrip())
         tail.append(line)
         print(f"[{stage.key}] {line}", flush=True)
+        if line and on_progress:
+            try:
+                on_progress(line)
+            except Exception as exc:
+                # Progress reporting must never orphan or interrupt the
+                # collector itself when the dashboard DB is temporarily busy.
+                print(
+                    f"[{stage.key}] 진행상황 저장 실패(수집은 계속): "
+                    f"{_redact(str(exc))[:200]}",
+                    flush=True,
+                )
     return proc.wait(), list(tail)
 
 
@@ -619,6 +643,7 @@ def run(
             weekday=_korea_weekday(),
             selected_stage=selected_stage,
             retry_failures_only=retry_failures_only,
+            ignore_cadence=(source == "manual" and not retry_failures_only),
         )
         status = {
             "run_id": run_id,
@@ -661,7 +686,7 @@ def run(
 
         for stage in STAGES:
             item = stages[stage.key]
-            if item["state"] in {"done", "skipped"}:
+            if item["state"] in {"done", "skipped", "not_selected"}:
                 continue
             busy_key = _source_busy(stage)
             if busy_key:
@@ -679,17 +704,41 @@ def run(
                 state="running",
                 started_at=_now(),
                 before=_metric_value(stage),
+                current=None,
+                changed=0,
+                progress_message="수집 프로세스를 시작했습니다.",
                 error=None,
                 retryable=False,
             )
+            item["current"] = item["before"]
             _write_status(status_key, status, run_id)
             print(f"\n[scheduled-sync] {stage.label} 시작", flush=True)
+            last_progress_write = [0.0]
+
+            def _record_progress(message):
+                now = time.monotonic()
+                # 수집기가 건별 로그를 남길 수 있으므로 상태 DB 갱신은
+                # 제한하되, 첫 진행 메시지는 즉시 반영한다.
+                if last_progress_write[0] and now - last_progress_write[0] < 2:
+                    return
+                last_progress_write[0] = now
+                item["progress_message"] = message[:300]
+                current = _metric_value(stage)
+                if current is not None:
+                    item["current"] = current
+                    if item["before"] is not None:
+                        item["changed"] = current - item["before"]
+                _write_status(status_key, status, run_id)
+
             try:
-                returncode, output_tail = _run_stage(stage, source)
+                returncode, output_tail = _run_stage(
+                    stage, source, on_progress=_record_progress
+                )
             except Exception as exc:
                 returncode, output_tail = 1, []
                 item["error"] = _redact(str(exc))[:500]
             item["after"] = _metric_value(stage)
+            item["current"] = item["after"]
             if item["before"] is not None and item["after"] is not None:
                 item["changed"] = item["after"] - item["before"]
             item["output_tail"] = output_tail

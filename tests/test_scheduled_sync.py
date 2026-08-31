@@ -34,6 +34,24 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(stages["building_geocode"]["state"], "pending")
         self.assertEqual(stages["title_info"]["state"], "pending")
 
+    def test_manual_full_run_ignores_scheduled_weekday_cadence(self):
+        stages = scheduled_sync.prepare_stage_statuses(
+            None,
+            weekday=6,
+            ignore_cadence=True,
+        )
+        self.assertTrue(all(stage["state"] == "pending" for stage in stages.values()))
+
+    def test_manual_single_stage_labels_other_stages_as_waiting(self):
+        stages = scheduled_sync.prepare_stage_statuses(
+            None,
+            weekday=6,
+            selected_stage="hanok",
+            ignore_cadence=True,
+        )
+        self.assertEqual(stages["hanok"]["state"], "pending")
+        self.assertEqual(stages["transactions"]["state"], "not_selected")
+
     def test_scheduled_run_uses_korea_weekday_for_cadence(self):
         writes = []
         with patch.object(scheduled_sync, "_korea_weekday", return_value=1) as weekday:
@@ -93,7 +111,7 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(stages["rural"]["state"], "pending")
         self.assertTrue(
             all(
-                item["state"] == "skipped"
+                item["state"] == "not_selected"
                 for key, item in stages.items()
                 if key != "rural"
             )
