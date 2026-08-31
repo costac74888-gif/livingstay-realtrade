@@ -167,16 +167,57 @@
   window.addEventListener("resize", setHeaderH);
   window.addEventListener("load", setHeaderH);
 
-  // ---- (지도 페이지) '목록' 토글(지도 위 플로팅) — .side-panel 열고닫기 (레이아웃 전용) ----
+  // ---- (지도 페이지) '목록' 토글 — 데스크톱은 좌측 패널을 접고, 모바일은 펼친다 ----
   var listToggleBtn = document.getElementById("btnTogglePanel");
   if (listToggleBtn) {
+    function isCompactPanel() {
+      return window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
+    }
+    function setListToggleState(open) {
+      var panel = document.querySelector(".side-panel");
+      if (!panel) return;
+      var compact = isCompactPanel();
+      if (compact) {
+        panel.classList.remove("panel-collapsed");
+        panel.classList.toggle("open", open);
+        listToggleBtn.innerHTML = open
+          ? '✕ <span class="htoggle-label">닫기</span>'
+          : '☰ <span class="htoggle-label">목록</span>';
+        listToggleBtn.setAttribute("aria-label", open ? "목록 패널 닫기" : "목록 패널 열기");
+      } else {
+        panel.classList.remove("open");
+        panel.classList.toggle("panel-collapsed", !open);
+        listToggleBtn.innerHTML = open
+          ? '‹ <span class="htoggle-label">패널 닫기</span>'
+          : '› <span class="htoggle-label">패널 열기</span>';
+        listToggleBtn.setAttribute("aria-label", open ? "목록 패널 접기" : "목록 패널 펼치기");
+      }
+      listToggleBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      listToggleBtn.title = listToggleBtn.getAttribute("aria-label");
+    }
+    window.livingstaySetPanelToggle = setListToggleState;
+
+    var panel = document.querySelector(".side-panel");
+    if (panel) {
+      setListToggleState(isCompactPanel()
+        ? panel.classList.contains("open")
+        : !panel.classList.contains("panel-collapsed"));
+    }
     listToggleBtn.addEventListener("click", function () {
       var panel = document.querySelector(".side-panel");
       if (!panel) return;
-      var open = panel.classList.toggle("open");
-      listToggleBtn.innerHTML = open
-        ? '✕ <span class="htoggle-label">닫기</span>'
-        : '☰ <span class="htoggle-label">목록</span>';
+      var compact = isCompactPanel();
+      var open = compact
+        ? !panel.classList.contains("open")
+        : panel.classList.contains("panel-collapsed");
+      setListToggleState(open);
+    });
+    window.addEventListener("resize", function () {
+      var panel = document.querySelector(".side-panel");
+      if (!panel) return;
+      setListToggleState(isCompactPanel()
+        ? panel.classList.contains("open")
+        : !panel.classList.contains("panel-collapsed"));
     });
   }
 

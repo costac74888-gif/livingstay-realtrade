@@ -921,17 +921,25 @@
 .auth-btn-ghost{ background:transparent; color:var(--ink-soft); border-color:var(--line); }
 .auth-btn-ghost:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
 
-/* 지도 위 '목록' 토글 플로팅 버튼 (index 전용 — 좌측 상단. side-panel이 좌측에서 열리므로
-   버튼도 좌측에 두고, 우측 상단 "🔍 검색" 버튼과 좌우 균형을 맞춘다. 데스크톱 숨김, ≤980px에서만 노출) */
+  /* 지도 위 '목록' 토글 플로팅 버튼 (index 전용)
+     데스크톱에서는 좌측 패널 오른쪽 가장자리에 붙고, 패널을 접으면 좌측 여백으로 이동한다. */
 .map-list-toggle{
-  position:absolute; top:var(--stage-gap); left:var(--stage-gap); z-index:16;
-  display:none; align-items:center; gap:5px;
-  font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:600;
+    position:absolute; top:50%; left:calc(var(--stage-gap) + var(--panel-w) - 1px); z-index:26;
+    transform:translateY(-50%);
+    display:inline-flex; align-items:center; justify-content:center; gap:5px;
+    width:30px; height:64px; padding:0;
+    font-family:'Noto Sans KR',sans-serif; font-size:21px; font-weight:600;
   color:#fff; background:var(--ink); border:none; border-radius:999px;
-  padding:10px 16px; cursor:pointer; white-space:nowrap;
+    border-radius:0 9px 9px 0; cursor:pointer; white-space:nowrap;
   box-shadow:0 4px 14px rgba(0,0,0,.28);
 }
 .map-list-toggle:hover{ filter:brightness(1.12); }
+  .map-list-toggle .htoggle-label{display:none;}
+  .side-panel{transition:transform .25s ease;}
+  .side-panel.panel-collapsed{transform:translateX(-115%);}
+  body:has(.side-panel.panel-collapsed) .map-list-toggle{
+    left:var(--stage-gap); border-radius:9px;
+  }
 
 /* 모바일 햄버거 버튼 (기본 숨김, ≤520px에서만 노출) */
 .hamburger-btn{
@@ -1029,9 +1037,14 @@
   .hnav-btn .hnav-label{ display:none; }
 }
 
-/* 태블릿~모바일: 지도 '목록' 토글 플로팅 버튼 노출 (데스크톱은 좌측 패널 상시 노출이라 불필요) */
+/* 태블릿~모바일: 지도 '목록' 토글 플로팅 버튼은 하단 플로팅 형태로 전환 */
 @media (max-width:980px){
-  .map-list-toggle{ display:inline-flex; }
+  .map-list-toggle{
+    top:auto; left:var(--stage-gap); bottom:var(--stage-gap);
+    transform:none; width:auto; height:auto; padding:10px 16px;
+    border-radius:999px; font-size:13px;
+  }
+  .map-list-toggle .htoggle-label{display:inline;}
 }
 
 /* 모바일: 헤더를 한 줄로 정돈 — [로고 | 공백 | 🔔 | ☰]. 나머지 메뉴는 햄버거 드롭다운 */

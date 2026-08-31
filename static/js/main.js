@@ -5819,7 +5819,11 @@ function renderBuildingPanel(id){
 
   panel.innerHTML = buildingPanelSkeleton();
   panel.scrollTop = 0;
+  panel.classList.remove("panel-collapsed");
   panel.classList.add("open"); // 모바일에서도 상세가 보이도록 패널을 펼친다
+  if (typeof window.livingstaySetPanelToggle === "function") {
+    window.livingstaySetPanelToggle(true);
+  }
 
   // "← 전체 목록으로" 링크: 기본 패널 복귀 + URL "/"
   const closeDetail = () => {
@@ -5920,8 +5924,13 @@ function restoreDefaultPanel(){
   closeFavOverflowPopover();
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
+  panel.classList.remove("panel-collapsed");
   panel.classList.remove("open");
   panel.innerHTML = DEFAULT_SIDE_PANEL_HTML;
+  if (typeof window.livingstaySetPanelToggle === "function") {
+    const compact = window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
+    window.livingstaySetPanelToggle(!compact);
+  }
   initDefaultSidePanel();
 }
 

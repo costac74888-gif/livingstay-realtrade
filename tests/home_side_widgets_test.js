@@ -4,6 +4,7 @@ const path = require("path");
 const vm = require("vm");
 
 const index = fs.readFileSync(path.join(__dirname, "..", "static", "index.html"), "utf8");
+const header = fs.readFileSync(path.join(__dirname, "..", "static", "js", "header.js"), "utf8");
 const main = fs.readFileSync(path.join(__dirname, "..", "static", "js", "main.js"), "utf8");
 const css = fs.readFileSync(path.join(__dirname, "..", "static", "css", "main.css"), "utf8");
 
@@ -17,6 +18,15 @@ const sidePanelStart = index.indexOf('<aside class="side-panel">');
 expect(
   recentStart > favChipsStart && recentStart < sidePanelStart,
   "최근검색이 관심단지 칩 바로 아래 검색영역에 있지 않습니다."
+);
+expect(
+  index.includes('id="btnTogglePanel"') &&
+  index.includes('aria-expanded="true"') &&
+  css.includes(".side-panel.panel-collapsed") &&
+  css.includes("body:has(.side-panel.panel-collapsed) .map-list-toggle") &&
+  header.includes("window.livingstaySetPanelToggle = setListToggleState") &&
+  header.includes('panel.classList.toggle("panel-collapsed", !open)'),
+  "데스크톱 좌측 패널 접기·펼치기 계약이 누락됐습니다."
 );
 const recentSection = index.slice(recentStart, sidePanelStart);
 expect(index.includes('class="recent-search-row" id="recentRow"'), "최근검색이 독립 카드가 아닌 보조 칩 행이 아닙니다.");

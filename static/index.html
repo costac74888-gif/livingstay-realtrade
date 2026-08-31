@@ -78,8 +78,8 @@
   <!-- 지도 우측 상단: 검색바 접기/펼치기 버튼 -->
   <button class="searchbar-toggle" id="btnToggleSearch"><span id="searchToggleIcon" class="inline-icon" aria-hidden="true"></span><span>검색</span></button>
 
-  <!-- 지도 좌측 상단: 좌측 패널(목록) 토글 — side-panel이 열리는 쪽, 모바일(≤980px) 전용 -->
-  <button type="button" class="map-list-toggle" id="btnTogglePanel" aria-label="목록 열기">☰ <span class="htoggle-label">목록</span></button>
+  <!-- 지도 위 좌측 패널(목록) 토글 — 데스크톱은 패널 가장자리, 모바일은 하단 플로팅 -->
+  <button type="button" class="map-list-toggle" id="btnTogglePanel" aria-label="목록 패널 전환" aria-expanded="true">‹ <span class="htoggle-label">패널 닫기</span></button>
 
   <!-- 지도 우측 도구 모음: 지도 SDK 기능과 주변 장소 조회 -->
   <div class="map-toolbar" id="mapToolbar" role="toolbar" aria-label="지도 도구">
@@ -187,7 +187,7 @@
     </div>
   </div>
 
-  <!-- (좌측 패널 토글 버튼은 지도 좌측 상단 플로팅 — #btnTogglePanel) -->
+  <!-- (좌측 패널 토글 버튼은 지도 위 플로팅 — #btnTogglePanel) -->
 
   <!-- 지도 위 좌측 플로팅 패널 -->
   <aside class="side-panel">
