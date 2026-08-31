@@ -91,10 +91,15 @@ PROVIDER_QUOTAS = {
         "label": "전국 공인중개사 표준데이터 API", "total": 1000, "regular": 800,
         "realtime": 0, "manual": 200, "basis": "기준 한도의 80%",
     },
-    "rural_hanok": {
-        "label": "행안부 농어촌민박·한옥체험업 API", "total": None,
-        "regular": None, "realtime": 0, "manual": 0,
-        "basis": "공식 한도 확인 필요·서비스키 공유",
+    "rural": {
+        "label": "행안부 농어촌민박 API", "total": 5000,
+        "regular": 4000, "realtime": 0, "manual": 1000,
+        "basis": "공유 1일 10,000회 중 1/2 배정·정기 80%",
+    },
+    "hanok": {
+        "label": "행안부 한옥체험업 API", "total": 5000,
+        "regular": 4000, "realtime": 0, "manual": 1000,
+        "basis": "공유 1일 10,000회 중 1/2 배정·정기 80%",
     },
     "kakao_building": {
         "label": "카카오 주소검색 API(건물)", "total": None,
@@ -122,8 +127,8 @@ STAGE_QUOTAS = {
     "title_info": (("building_hub", "building_hub_daily_calls", "--unsupported"),),
     "lodging": (("lodging", "lodging_daily_calls", "--max-calls"),),
     "camping": (("camping", "camping_daily_calls", "--unsupported"),),
-    "rural": (("rural_hanok", "rural_hanok_sync_status", "--unsupported"),),
-    "hanok": (("rural_hanok", "rural_hanok_sync_status", "--unsupported"),),
+    "rural": (("rural", "rural_hanok_daily_calls:rural", "--daily-cap"),),
+    "hanok": (("hanok", "rural_hanok_daily_calls:hanok", "--daily-cap"),),
     "brokers": (("broker", "broker_daily_calls", "--max-calls"),),
     "broker_geocode": (("kakao_broker", "geocode_brokers_status", "--unsupported"),),
     "realty": (("realty_store", "realty_stores_progress", "--daily-cap"),),
@@ -168,3 +173,17 @@ def quota_bucket_for_stage(stage: str) -> str:
     """Return the API/service-key bucket that must not run concurrently."""
     policies = quotas_for_stage(stage)
     return policies[0]["provider"] if policies else stage
+
+
+def execution_bucket_for_stage(stage: str) -> str:
+    """Serialize only stages known to deadlock on shared DB resources."""
+    if stage in {
+        "transactions",
+        "building_registry",
+        "building_permits",
+        "building_geocode",
+        "title_info",
+        "realty",
+    }:
+        return "master-transactions-writer"
+    return stage

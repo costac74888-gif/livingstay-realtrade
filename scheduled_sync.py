@@ -29,6 +29,7 @@ from quota_policy import (
     korea_today,
     quotas_for_stage,
     quota_bucket_for_stage,
+    execution_bucket_for_stage,
     regular_cap,
 )
 
@@ -36,6 +37,7 @@ from quota_policy import (
 STATUS_META_KEY = "scheduled_sync_status"
 SCHEDULED_EVIDENCE_META_KEY = "scheduled_sync_last_scheduled"
 LOCK_ID = 918299
+MASTER_WRITER_GATE_LOCK_ID = 9_182_990
 HEARTBEAT_SEC = 30
 MAX_OUTPUT_LINES = 40
 STALE_SECONDS = 5 * 60
@@ -163,27 +165,33 @@ STAGES = (
         "rural",
         "농어촌민박",
         "숙박",
-        ("sync_rural_hanok.py", "--source", "rural"),
+        (
+            "sync_rural_hanok.py", "--source", "rural",
+            "--status-key", "rural_hanok_sync_status:rural",
+        ),
         "매일",
         metric_query=(
             "SELECT COUNT(*) AS c FROM lodging_registry "
             "WHERE hygiene_type = '농어촌민박업'"
         ),
         metric_label="신고자료",
-        blocking_status_keys=("rural_hanok_sync_status",),
+        blocking_status_keys=("rural_hanok_sync_status:rural",),
     ),
     Stage(
         "hanok",
         "한옥체험업",
         "숙박",
-        ("sync_rural_hanok.py", "--source", "hanok"),
+        (
+            "sync_rural_hanok.py", "--source", "hanok",
+            "--status-key", "rural_hanok_sync_status:hanok",
+        ),
         "매일",
         metric_query=(
             "SELECT COUNT(*) AS c FROM lodging_registry "
             "WHERE hygiene_type = '한옥체험업'"
         ),
         metric_label="신고자료",
-        blocking_status_keys=("rural_hanok_sync_status",),
+        blocking_status_keys=("rural_hanok_sync_status:hanok",),
     ),
     Stage(
         "brokers",
@@ -590,29 +598,80 @@ def _lock_id_for_stage(stage_key: str | None) -> int:
     """Stable advisory lock per API/service-key bucket."""
     if not stage_key:
         return LOCK_ID
-    bucket = quota_bucket_for_stage(stage_key)
-    buckets = sorted({quota_bucket_for_stage(stage.key) for stage in STAGES})
+    bucket = execution_bucket_for_stage(stage_key)
+    buckets = sorted({execution_bucket_for_stage(stage.key) for stage in STAGES})
     return LOCK_ID + 1 + buckets.index(bucket)
 
 
-def _acquire_lock(lock_id: int = LOCK_ID):
+def _master_gate_mode(stage_key: str | None) -> str | None:
+    if stage_key in {"rural", "hanok"}:
+        return "shared"
+    if stage_key == "lodging" or (
+        stage_key
+        and execution_bucket_for_stage(stage_key)
+        == "master-transactions-writer"
+    ):
+        return "exclusive"
+    return None
+
+
+def _acquire_lock(lock_id: int = LOCK_ID, stage_key: str | None = None):
     conn = get_conn()
     cur = conn.cursor()
+    gate_mode = _master_gate_mode(stage_key)
+    if gate_mode:
+        gate_fn = (
+            "pg_try_advisory_lock_shared"
+            if gate_mode == "shared"
+            else "pg_try_advisory_lock"
+        )
+        cur.execute(
+            f"SELECT {gate_fn}(%s) AS acquired",
+            (MASTER_WRITER_GATE_LOCK_ID,),
+        )
+        if not bool(cur.fetchone()["acquired"]):
+            cur.close()
+            conn.close()
+            return None, None, None
     cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (lock_id,))
     acquired = bool(cur.fetchone()["acquired"])
     if not acquired:
+        if gate_mode:
+            unlock_fn = (
+                "pg_advisory_unlock_shared"
+                if gate_mode == "shared"
+                else "pg_advisory_unlock"
+            )
+            cur.execute(
+                f"SELECT {unlock_fn}(%s) AS released",
+                (MASTER_WRITER_GATE_LOCK_ID,),
+            )
+            cur.fetchone()
         cur.close()
         conn.close()
-        return None, None
-    return conn, cur
+        return None, None, None
+    return conn, cur, gate_mode
 
 
-def _release_lock(conn, cur, lock_id: int = LOCK_ID) -> None:
+def _release_lock(
+    conn, cur, lock_id: int = LOCK_ID, gate_mode: str | None = None
+) -> None:
     if conn is None or cur is None:
         return
     try:
         cur.execute("SELECT pg_advisory_unlock(%s) AS released", (lock_id,))
         cur.fetchone()
+        if gate_mode:
+            unlock_fn = (
+                "pg_advisory_unlock_shared"
+                if gate_mode == "shared"
+                else "pg_advisory_unlock"
+            )
+            cur.execute(
+                f"SELECT {unlock_fn}(%s) AS released",
+                (MASTER_WRITER_GATE_LOCK_ID,),
+            )
+            cur.fetchone()
         conn.commit()
     except Exception:
         try:
@@ -639,7 +698,12 @@ def run(
     orchestrated: bool = False,
 ) -> int:
     lock_id = _lock_id_for_stage(selected_stage)
-    lock_conn, lock_cur = _acquire_lock(lock_id)
+    lock_result = _acquire_lock(lock_id, selected_stage)
+    if len(lock_result) == 2:  # compatibility with existing test doubles
+        lock_conn, lock_cur = lock_result
+        gate_mode = None
+    else:
+        lock_conn, lock_cur, gate_mode = lock_result
     if lock_conn is None:
         if run_id:
             previous = _read_status(status_key) or {}
@@ -686,7 +750,9 @@ def run(
             "started_at": _now(),
             "finished_at": None,
             "current_stage": None,
-            "schedule": "매일 02:00",
+            "schedule": (
+                "실거래 02:00 · 농어촌민박/한옥 02:10 · 나머지 02:30"
+            ),
             "source": source,
             "selected_stage": selected_stage,
             "retry_failures_only": retry_failures_only,
@@ -839,7 +905,7 @@ def run(
         return 1 if failed else 0
     finally:
         stop_heartbeat.set()
-        _release_lock(lock_conn, lock_cur, lock_id)
+        _release_lock(lock_conn, lock_cur, lock_id, gate_mode)
 
 
 def run_parallel(
@@ -848,6 +914,7 @@ def run_parallel(
     retry_failures_only: bool = False,
     source: str = "scheduled",
     run_id: str | None = None,
+    excluded_stages: tuple[str, ...] = (),
 ) -> int:
     """Run independent API/service-key buckets concurrently.
 
@@ -855,7 +922,12 @@ def run_parallel(
     Each stage persists to its own app_meta row so concurrent progress writes
     cannot overwrite another stage.
     """
-    lock_conn, lock_cur = _acquire_lock(LOCK_ID)
+    lock_result = _acquire_lock(LOCK_ID)
+    if len(lock_result) == 2:  # compatibility with existing test doubles
+        lock_conn, lock_cur = lock_result
+        gate_mode = None
+    else:
+        lock_conn, lock_cur, gate_mode = lock_result
     if lock_conn is None:
         print("[scheduled-sync] 전체 실행이 이미 진행 중입니다.", flush=True)
         return 2
@@ -870,6 +942,14 @@ def run_parallel(
             retry_failures_only=retry_failures_only,
             ignore_cadence=(source == "manual"),
         )
+        for stage_key in excluded_stages:
+            if stage_key in stages:
+                stages[stage_key].update(
+                    state="skipped",
+                    finished_at=_now(),
+                    error="독립 예약 워크플로에서 실행",
+                    retryable=False,
+                )
         status = {
             "run_id": run_id,
             "state": "running",
@@ -906,7 +986,7 @@ def run_parallel(
         ]
         buckets: dict[str, list[Stage]] = {}
         for stage in runnable:
-            buckets.setdefault(quota_bucket_for_stage(stage.key), []).append(stage)
+            buckets.setdefault(execution_bucket_for_stage(stage.key), []).append(stage)
 
         def _run_bucket(bucket_stages: list[Stage]) -> list[tuple[str, int]]:
             results = []
@@ -964,7 +1044,7 @@ def run_parallel(
         return 1 if failed else 0
     finally:
         stop_heartbeat.set()
-        _release_lock(lock_conn, lock_cur, LOCK_ID)
+        _release_lock(lock_conn, lock_cur, LOCK_ID, gate_mode)
 
 
 def main() -> None:
@@ -974,6 +1054,12 @@ def main() -> None:
     parser.add_argument("--source", choices=("scheduled", "manual"), default="scheduled")
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--orchestrated", action="store_true")
+    parser.add_argument(
+        "--skip-stage",
+        action="append",
+        default=[],
+        choices=tuple(STAGE_MAP),
+    )
     parser.add_argument(
         "--retry-failures",
         action="store_true",
@@ -1010,6 +1096,8 @@ def main() -> None:
     if args.stage:
         kwargs["selected_stage"] = args.stage
         kwargs["orchestrated"] = args.orchestrated
+    else:
+        kwargs["excluded_stages"] = tuple(args.skip_stage)
     raise SystemExit(runner(**kwargs))
 
 

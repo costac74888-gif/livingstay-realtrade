@@ -31,9 +31,11 @@ expect(
 
 expect(
   repl.includes('name = "정기 API 통합 동기화"') &&
-    repl.includes("scheduled_sync.py --status-key scheduled_sync_status") &&
-    !repl.includes('name = "Rural Hanok Sync"'),
-  "개별 농어촌민박·한옥 예약이 통합 예약으로 교체되지 않았습니다.",
+    repl.includes("--skip-stage transactions --skip-stage rural --skip-stage hanok") &&
+    repl.includes('name = "최근 실거래 자동 동기화"') &&
+    repl.includes('name = "농어촌민박 자동 동기화"') &&
+    repl.includes('name = "한옥체험업 자동 동기화"'),
+  "실거래·농어촌민박·한옥 독립 예약 워크플로가 없습니다.",
 );
 
 const projectBlock = repl.slice(

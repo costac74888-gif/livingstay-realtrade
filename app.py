@@ -83,7 +83,7 @@ from address_utils import (
 from store_info_util import build_pnu, get_stores_by_pnu
 from quota_policy import (
     BUILDING_HUB_DAILY_COUNTER_KEY, PROVIDER_COUNTER_KEYS, quota_for_stage,
-    quotas_for_stage, quota_bucket_for_stage,
+    quotas_for_stage, quota_bucket_for_stage, execution_bucket_for_stage,
 )
 import building_registry
 from lodging_matching import (
@@ -15042,6 +15042,7 @@ def admin_scheduled_sync_status():
         })
         stage.setdefault("state", "pending")
         stage["quota_bucket"] = quota_bucket_for_stage(key)
+        stage["execution_bucket"] = execution_bucket_for_stage(key)
         stage["running"] = bool(
             not stage_stale
             and (
@@ -15165,7 +15166,9 @@ def admin_scheduled_sync_status():
         "finished_at": _kst_label(status.get("finished_at")),
         "last_success_at": _kst_label(status.get("last_success_at")),
         "current_stage": status.get("current_stage"),
-        "schedule": status.get("schedule") or "매일 02:00",
+        "schedule": status.get("schedule") or (
+            "실거래 02:00 · 농어촌민박/한옥 02:10 · 나머지 02:30"
+        ),
         "stages": stages,
         "error": error,
         "retryable": bool(

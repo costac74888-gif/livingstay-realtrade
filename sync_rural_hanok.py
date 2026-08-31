@@ -15,6 +15,7 @@ import requests
 
 import import_airbnb_lodging as common
 from db import get_conn
+from quota_policy import PROVIDER_QUOTAS, QuotaExhausted, korea_today
 from lodging_classification import (
     ACTIVE_STATUS,
     choose_primary_lodging_type,
@@ -29,12 +30,14 @@ API_ROOT = "https://apis.data.go.kr/1741000"
 PAGE_SIZE = 1000
 REPORT_PATH = Path("reports/rural_hanok_classification_conflicts.json")
 LODGING_SYNC_LOCK_ID = 918273
+RURAL_HANOK_SOURCE_LOCK_BASE = 9_183_000
 STATUS_META_KEY = "rural_hanok_sync_status"
 LAST_SYNC_META_KEY = "rural_hanok_last_sync"
 HEARTBEAT_SEC = 30
 
 SOURCES = {
     "rural": {
+        "quota_provider": "rural",
         "endpoint": "rural_homestays",
         "prefix": "RURAL",
         "hygiene_type": "농어촌민박업",
@@ -46,6 +49,7 @@ SOURCES = {
         "region_field": "USG_RGN",
     },
     "hanok": {
+        "quota_provider": "hanok",
         "endpoint": "hanok_experience",
         "prefix": "HANOK",
         "hygiene_type": "한옥체험업",
@@ -57,6 +61,13 @@ SOURCES = {
         "region_field": "RGN_SE_NM",
     },
 }
+
+
+def _source_lock_ids(source_names):
+    return [
+        RURAL_HANOK_SOURCE_LOCK_BASE + list(SOURCES).index(source_name)
+        for source_name in sorted(source_names)
+    ]
 
 
 def _first_value(item, fields):
@@ -114,7 +125,48 @@ def parse_item(item, config):
     }
 
 
-def _fetch_page(config, key, page, page_size=PAGE_SIZE):
+def _claim_api_call(provider, daily_cap):
+    counter_key = f"rural_hanok_daily_calls:{provider}"
+    today = korea_today()
+    cap = int(daily_cap or PROVIDER_QUOTAS[provider]["total"])
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        fresh = json.dumps({"date": today, "count": 1})
+        cur.execute(
+            """
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET
+              value = CASE
+                WHEN app_meta.value::jsonb ->> 'date' = %s
+                THEN jsonb_build_object(
+                  'date', %s,
+                  'count', COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) + 1
+                )::text
+                ELSE EXCLUDED.value
+              END,
+              updated_at = NOW()
+            WHERE (app_meta.value::jsonb ->> 'date') IS DISTINCT FROM %s
+               OR COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) < %s
+            RETURNING (value::jsonb ->> 'count')::int AS count
+            """,
+            (counter_key, fresh, today, today, today, cap),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        if not row:
+            raise QuotaExhausted(
+                f"{provider} API 일일 배정 한도({cap})에 도달했습니다."
+            )
+        return int(row["count"])
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _fetch_page(config, key, page, page_size=PAGE_SIZE, daily_cap=None):
+    _claim_api_call(config["quota_provider"], daily_cap)
     response = requests.get(
         f"{API_ROOT}/{config['endpoint']}/info",
         params={
@@ -123,7 +175,7 @@ def _fetch_page(config, key, page, page_size=PAGE_SIZE):
             "numOfRows": str(page_size),
             "type": "json",
         },
-        timeout=60,
+        timeout=(15, 60),
     )
     response.raise_for_status()
     data = response.json()
@@ -145,10 +197,12 @@ def _fetch_page(config, key, page, page_size=PAGE_SIZE):
     return items, int(body.get("totalCount") or 0)
 
 
-def _fetch_page_retry(config, key, page, page_size=PAGE_SIZE):
+def _fetch_page_retry(config, key, page, page_size=PAGE_SIZE, daily_cap=None):
     for attempt in range(3):
         try:
-            return _fetch_page(config, key, page, page_size)
+            return _fetch_page(config, key, page, page_size, daily_cap)
+        except QuotaExhausted:
+            raise
         except (requests.RequestException, ValueError, RuntimeError):
             if attempt == 2:
                 raise
@@ -315,29 +369,20 @@ def _read_status(status_key):
         return None
 
 
-def _claim_status(status_key, run_id, started_at):
+def _claim_status(status_key, run_id, started_at, source_names):
     payload = {
         "run_id": run_id,
         "state": "running",
         "started_at": started_at,
         "finished_at": None,
-        "sources": list(SOURCES),
+        "sources": list(source_names),
         "counters": None,
         "error": None,
         "retryable": False,
     }
     conn = get_conn()
     cur = conn.cursor()
-    lock_acquired = False
     try:
-        cur.execute(
-            "SELECT pg_try_advisory_lock(%s) AS acquired",
-            (LODGING_SYNC_LOCK_ID,),
-        )
-        lock_acquired = bool(cur.fetchone()["acquired"])
-        if not lock_acquired:
-            conn.rollback()
-            return False
         cur.execute(
             """
             INSERT INTO app_meta (key, value, updated_at)
@@ -353,16 +398,6 @@ def _claim_status(status_key, run_id, started_at):
         conn.commit()
         return acquired
     finally:
-        if lock_acquired:
-            try:
-                cur.execute(
-                    "SELECT pg_advisory_unlock(%s) AS released",
-                    (LODGING_SYNC_LOCK_ID,),
-                )
-                cur.fetchone()
-                conn.commit()
-            except Exception:
-                conn.rollback()
         cur.close()
         conn.close()
 
@@ -483,6 +518,7 @@ def sync(
     dry_run=False,
     status_key=None,
     run_id=None,
+    daily_cap=None,
 ):
     key = os.environ.get(SERVICE_KEY_ENV, "")
     if not key:
@@ -494,18 +530,21 @@ def sync(
     }
     conn = get_conn()
     cur = conn.cursor()
-    lock_acquired = False
+    acquired_lock_ids = []
     committed_mutations = False
     affected_buildings = set()
     conflicts = []
     try:
-        cur.execute(
-            "SELECT pg_try_advisory_lock(%s) AS acquired",
-            (LODGING_SYNC_LOCK_ID,),
-        )
-        lock_acquired = bool(cur.fetchone()["acquired"])
-        if not lock_acquired:
-            raise RuntimeError("다른 숙박업 공식 수집이 실행 중입니다.")
+        for lock_id in _source_lock_ids(source_names):
+            cur.execute(
+                "SELECT pg_try_advisory_lock(%s) AS acquired",
+                (lock_id,),
+            )
+            if not bool(cur.fetchone()["acquired"]):
+                raise RuntimeError(
+                    "같은 숙박업 원천의 다른 수집이 실행 중입니다."
+                )
+            acquired_lock_ids.append(lock_id)
         if not _still_owner(cur, status_key, run_id):
             raise RuntimeError("동기화 상태 소유권을 확인하지 못했습니다.")
         common._assert_schema(cur)
@@ -519,7 +558,9 @@ def sync(
             while True:
                 if not _still_owner(cur, status_key, run_id):
                     raise RuntimeError("동기화 소유권 상실(다른 실행이 시작됨)")
-                items, total = _fetch_page_retry(config, key, page)
+                items, total = _fetch_page_retry(
+                    config, key, page, daily_cap=daily_cap
+                )
                 if expected_total is None:
                     expected_total = total
                 elif total != expected_total:
@@ -649,11 +690,11 @@ def sync(
             conn.commit()
         raise
     finally:
-        if lock_acquired:
+        for lock_id in reversed(acquired_lock_ids):
             try:
                 cur.execute(
                     "SELECT pg_advisory_unlock(%s) AS released",
-                    (LODGING_SYNC_LOCK_ID,),
+                    (lock_id,),
                 )
                 cur.fetchone()
             except Exception:
@@ -672,6 +713,7 @@ def main():
         default="all",
     )
     parser.add_argument("--max-pages", type=int)
+    parser.add_argument("--daily-cap", type=int)
     parser.add_argument("--sleep", type=float, default=0.3)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--status-key", default=STATUS_META_KEY)
@@ -679,7 +721,7 @@ def main():
     source_names = list(SOURCES) if args.source == "all" else [args.source]
     run_id = secrets.token_hex(8)
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if not _claim_status(args.status_key, run_id, started_at):
+    if not _claim_status(args.status_key, run_id, started_at, source_names):
         print("[rural-hanok] 이미 다른 실행이 진행 중입니다 — 이번 실행을 건너뜁니다.")
         return
 
@@ -703,6 +745,7 @@ def main():
             dry_run=args.dry_run,
             status_key=args.status_key,
             run_id=run_id,
+            daily_cap=args.daily_cap,
         )
     except Exception as exc:
         error = _redact(str(exc))[:500]

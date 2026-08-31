@@ -196,11 +196,47 @@ outputType = "console"
 [[workflows.workflow]]
 name = "정기 API 통합 동기화"
 author = "agent"
+schedule = "30 2 * * *"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --status-key scheduled_sync_status --skip-stage transactions --skip-stage rural --skip-stage hanok'
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "최근 실거래 자동 동기화"
+author = "agent"
 schedule = "0 2 * * *"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --status-key scheduled_sync_status'
+args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --stage transactions --status-key scheduled_sync_status:transactions --orchestrated'
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "농어촌민박 자동 동기화"
+author = "agent"
+schedule = "10 2 * * *"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --stage rural --status-key scheduled_sync_status:rural --orchestrated'
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "한옥체험업 자동 동기화"
+author = "agent"
+schedule = "10 2 * * *"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --stage hanok --status-key scheduled_sync_status:hanok --orchestrated'
 
 [workflows.workflow.metadata]
 outputType = "console"

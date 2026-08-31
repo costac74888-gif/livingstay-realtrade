@@ -176,6 +176,28 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(registry_lock, permits_lock)
         self.assertNotEqual(registry_lock, lodging_lock)
 
+    def test_rural_and_hanok_have_separate_half_quota_and_locks(self):
+        rural = scheduled_sync.quotas_for_stage("rural")[0]
+        hanok = scheduled_sync.quotas_for_stage("hanok")[0]
+        self.assertEqual((rural["total"], rural["regular"]), (5000, 4000))
+        self.assertEqual((hanok["total"], hanok["regular"]), (5000, 4000))
+        self.assertNotEqual(
+            scheduled_sync._lock_id_for_stage("rural"),
+            scheduled_sync._lock_id_for_stage("hanok"),
+        )
+        rural_command = scheduled_sync.stage_command(
+            scheduled_sync.STAGE_MAP["rural"], "scheduled"
+        )
+        self.assertEqual(
+            rural_command[rural_command.index("--daily-cap") + 1],
+            "4000",
+        )
+        self.assertIn("rural_hanok_sync_status:rural", rural_command)
+        self.assertIn(
+            "rural_hanok_sync_status:hanok",
+            scheduled_sync.STAGE_MAP["hanok"].command,
+        )
+
     def test_collection_targets_are_declared_for_fill_stages(self):
         self.assertIsNotNone(
             scheduled_sync.STAGE_MAP["building_geocode"].target_query
