@@ -4240,7 +4240,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos){
   const currentWrap = document.querySelector("#bHeaderCard .bld-photo-wrap");
   const emptyLabel = currentWrap && currentWrap.classList.contains("bld-photo-empty")
     ? currentWrap.querySelector("span") : null;
-  if (emptyLabel) emptyLabel.textContent = "공공데이터 사진 확인 중…";
+  if (emptyLabel) emptyLabel.textContent = "사진데이터 확인 중…";
 
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
