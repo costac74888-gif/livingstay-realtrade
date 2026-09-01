@@ -54,6 +54,26 @@ REQUEST_SLEEP = 0.15  # STEP1 JUSO 주소변환용 딜레이(초)
 RTMS_SLEEP = 0.5
 RTMS_WRITER_LOCK_ID = 9_183_245
 
+
+def _acquire_rtms_writer_lock(cur):
+    """직전 수집기가 있으면 실패하지 않고 끝날 때까지 대기한다."""
+    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (RTMS_WRITER_LOCK_ID,))
+    if cur.fetchone()["acquired"]:
+        return
+    print(
+        "[WAIT] 다른 실거래 수집기가 실행 중입니다. "
+        "완료되면 자동으로 이어서 실행합니다.",
+        flush=True,
+    )
+    cur.execute("SELECT pg_advisory_lock(%s) AS acquired", (RTMS_WRITER_LOCK_ID,))
+    cur.fetchone()
+    print("[WAIT] 실거래 수집 잠금을 확보했습니다. 실행을 시작합니다.", flush=True)
+
+
+def _release_rtms_writer_lock(cur):
+    cur.execute("SELECT pg_advisory_unlock(%s) AS released", (RTMS_WRITER_LOCK_ID,))
+    cur.fetchone()
+
 # ------------------------------------------------------------------
 # 일일 소프트 캡 — 국토부 RTMS 일일 쿼터(10,000건)를 백필이 다 태우면
 # 그날 다른 기능(용도확인, 동기화 테스트 등)이 막히므로, 백필은 스스로
@@ -610,11 +630,7 @@ def _new_stats():
 def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=None):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (RTMS_WRITER_LOCK_ID,))
-    if not cur.fetchone()["acquired"]:
-        cur.close()
-        conn.close()
-        raise RuntimeError("다른 실거래 수집기가 실행 중입니다.")
+    _acquire_rtms_writer_lock(cur)
     _ensure_failures_table(cur)
     conn.commit()
 
@@ -750,8 +766,7 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
     """, (datetime.now(), datetime.now(), len(sgg_list), stats["inserted"],
           stats["matched_master"], stats["matched_bld"], stats["unmatched"], "success", note))
     conn.commit()
-    cur.execute("SELECT pg_advisory_unlock(%s) AS released", (RTMS_WRITER_LOCK_ID,))
-    cur.fetchone()
+    _release_rtms_writer_lock(cur)
     cur.close()
     conn.close()
 
@@ -836,11 +851,8 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
     """
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (RTMS_WRITER_LOCK_ID,))
-    if not cur.fetchone()["acquired"]:
-        cur.close()
-        conn.close()
-        raise RuntimeError("다른 실거래 수집기가 실행 중입니다.")
+    _acquire_rtms_writer_lock(cur)
+    lock_acquired = True
     _ensure_failures_table(cur)
     conn.commit()
 
@@ -861,6 +873,11 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
         resolved, quota_exhausted = _retry_round(cur, conn, bjdong, stats, base_sleep)
         print(f"[RETRY] 라운드 {round_no} 종료 — 이번 라운드 해결 {resolved}건 "
               f"(누적 신규 {stats['inserted']}건)", flush=True)
+        # 쿼터 회복을 기다리는 12~24시간 동안은 잠금을 풀어 관리자·정기
+        # 실거래 동기화가 먼저 실행될 수 있게 한다.
+        _release_rtms_writer_lock(cur)
+        conn.commit()
+        lock_acquired = False
 
         if not loop:
             break
@@ -873,12 +890,14 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
         else:
             # 정상 진행 중이면 대기값을 리셋하고 곧바로 다음 라운드
             round_backoff = RETRY_ROUND_BACKOFF0
+        _acquire_rtms_writer_lock(cur)
+        lock_acquired = True
 
     cur.execute("SELECT COUNT(*) AS c FROM sync_failures")
     remaining = cur.fetchone()["c"]
     conn.commit()
-    cur.execute("SELECT pg_advisory_unlock(%s) AS released", (RTMS_WRITER_LOCK_ID,))
-    cur.fetchone()
+    if lock_acquired:
+        _release_rtms_writer_lock(cur)
     cur.close()
     conn.close()
 

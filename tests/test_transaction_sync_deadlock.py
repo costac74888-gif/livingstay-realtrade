@@ -20,7 +20,39 @@ class _Connection:
         self.rollbacks += 1
 
 
+class _LockCursor:
+    def __init__(self, acquired):
+        self.results = iter([
+            {"acquired": acquired},
+            {"acquired": None},
+        ])
+        self.queries = []
+
+    def execute(self, query, params):
+        self.queries.append((query, params))
+
+    def fetchone(self):
+        return next(self.results)
+
+
 class TransactionSyncDeadlockTests(unittest.TestCase):
+    def test_writer_lock_starts_immediately_when_available(self):
+        cur = _LockCursor(True)
+
+        sync_batch._acquire_rtms_writer_lock(cur)
+
+        self.assertEqual(len(cur.queries), 1)
+        self.assertIn("pg_try_advisory_lock", cur.queries[0][0])
+
+    def test_writer_lock_waits_instead_of_failing_when_busy(self):
+        cur = _LockCursor(False)
+
+        sync_batch._acquire_rtms_writer_lock(cur)
+
+        self.assertEqual(len(cur.queries), 2)
+        self.assertIn("pg_try_advisory_lock", cur.queries[0][0])
+        self.assertIn("pg_advisory_lock", cur.queries[1][0])
+
     def test_recent_sync_runner_skips_address_prepare_only_for_recent_status(self):
         source = Path("sync_runner.py").read_text(encoding="utf-8")
         self.assertIn('if META_KEY == "tx_sync_status":', source)
