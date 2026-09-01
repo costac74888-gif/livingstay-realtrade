@@ -896,7 +896,7 @@ def get_building_photos_on_demand(building_id):
             })
 
         # 한 요청만 원자적으로 조회권을 가져간다. 매칭 없음은 30일, 공급자 오류는
-        # 1시간 동안 재시도하지 않아 클릭 트래픽이 외부 API 폭주로 번지지 않게 한다.
+        # 10분 동안 재시도하지 않아 클릭 트래픽이 외부 API 폭주로 번지지 않게 한다.
         cur.execute("""
             INSERT INTO building_photo_fetches
                 (building_id, source, status, last_attempt_at)
@@ -908,7 +908,7 @@ def get_building_photos_on_demand(building_id):
                  AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '30 days')
                 OR
                 (building_photo_fetches.status IN ('failed', 'unavailable')
-                 AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '1 hour')
+                 AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '10 minutes')
                 OR
                 (building_photo_fetches.status = 'running'
                  AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '2 minutes')
@@ -1030,11 +1030,17 @@ def get_building_photos_on_demand(building_id):
             ),
         })
     except Exception as exc:
+        error_detail = type(exc).__name__
+        try:
+            from sync_building_photos import _redact
+            error_detail = _redact(f"{type(exc).__name__}: {exc}")[:300]
+        except Exception:
+            pass
         app.logger.warning(
             "TourAPI 온디맨드 사진 조회 실패 (building_id=%s): %s",
-            building_id, type(exc).__name__,
+            building_id, error_detail,
         )
-        _finish_photo_fetch(building_id, "failed", type(exc).__name__)
+        _finish_photo_fetch(building_id, "failed", error_detail)
         return jsonify({"ok": True, "photos": photos, "status": "unavailable"})
 
 

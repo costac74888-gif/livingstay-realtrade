@@ -37,6 +37,10 @@ GOOGLE_KEY_ENV = "GOOGLE_MAPS_API_KEY"
 VWORLD_KEY_ENV = "VWORLD_API_KEY"
 
 TOURAPI_DAILY_CAP = 3000
+TOURAPI_CONNECT_RETRIES = 2
+TOURAPI_CONNECT_TIMEOUT = 8
+TOURAPI_READ_TIMEOUT = 20
+TOURAPI_RETRY_SLEEP = 1.5
 STREETVIEW_DAILY_CAP = 20000
 # Street View Static API fallback은 무료 범위 안에서만 보수적으로 사용한다.
 STREETVIEW_MONTHLY_CAP = 10_000
@@ -341,6 +345,27 @@ def _assert_tourapi_success(data):
         raise ProviderFatalError(f"TourAPI 오류 {code}: {message}")
 
 
+def _tour_get_with_retry(session, url, params):
+    """apis.data.go.kr 연결 타임아웃만 짧게 재시도한다.
+
+    HTTP 오류·응답 파싱 오류는 재시도해도 같은 결과일 가능성이 높으므로 호출자가
+    즉시 처리한다. 운영 egress에서 관측된 ConnectTimeout만 제한적으로 복구한다.
+    """
+    last_exc = None
+    for attempt in range(TOURAPI_CONNECT_RETRIES + 1):
+        try:
+            return session.get(
+                url,
+                params=params,
+                timeout=(TOURAPI_CONNECT_TIMEOUT, TOURAPI_READ_TIMEOUT),
+            )
+        except requests.exceptions.ConnectTimeout as exc:
+            last_exc = exc
+            if attempt < TOURAPI_CONNECT_RETRIES:
+                time.sleep(TOURAPI_RETRY_SLEEP * (attempt + 1))
+    raise last_exc
+
+
 _SPACE_RE = re.compile(r"\s+")
 _NON_ADDRESS_RE = re.compile(r"[^0-9A-Za-z가-힣]")
 _ROAD_RE = re.compile(r"[0-9A-Za-z가-힣]+(?:대로|로|길)")
@@ -413,9 +438,10 @@ def make_vworld_url(lat, lng, api_key, size=200):
 
 def _tour_search(session, name, api_key):
     try:
-        response = session.get(
+        response = _tour_get_with_retry(
+            session,
             f"{TOURAPI_URL}/searchKeyword2",
-            params={
+            {
                 "serviceKey": unquote(api_key),
                 "MobileOS": "ETC",
                 "MobileApp": "homenstay",
@@ -426,7 +452,6 @@ def _tour_search(session, name, api_key):
                 "contentTypeId": 32,
                 "_type": "json",
             },
-            timeout=20,
         )
         response.raise_for_status()
         data = response.json()
@@ -441,9 +466,10 @@ def _tour_search(session, name, api_key):
 
 def _tour_images(session, content_id, api_key):
     try:
-        response = session.get(
+        response = _tour_get_with_retry(
+            session,
             f"{TOURAPI_URL}/detailImage2",
-            params={
+            {
                 "serviceKey": unquote(api_key),
                 "MobileOS": "ETC",
                 "MobileApp": "homenstay",
@@ -454,7 +480,6 @@ def _tour_images(session, content_id, api_key):
                 "subImageYN": "Y",
                 "_type": "json",
             },
-            timeout=20,
         )
         response.raise_for_status()
         data = response.json()
