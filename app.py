@@ -15058,7 +15058,7 @@ def admin_building_photos_sync_run():
             "message": "사진 수집원은 tourapi, streetview, vworld 중 하나여야 합니다.",
         }), 400
     required_keys = {
-        "tourapi": "DATA_GO_KR_BROKER_API_KEY",
+        "tourapi": "TOUR_API_SERVICE_KEY",
         "streetview": "GOOGLE_MAPS_API_KEY",
         "vworld": "VWORLD_API_KEY",
     }
@@ -15117,7 +15117,7 @@ def admin_building_photos_sync_status():
             for source in _PHOTO_SYNC_SOURCES
         },
         "sources_available": {
-            "tourapi": bool(os.environ.get("DATA_GO_KR_BROKER_API_KEY")),
+            "tourapi": bool(os.environ.get("TOUR_API_SERVICE_KEY")),
             "streetview": bool(os.environ.get("GOOGLE_MAPS_API_KEY")),
             "vworld": bool(os.environ.get("VWORLD_API_KEY")),
         },

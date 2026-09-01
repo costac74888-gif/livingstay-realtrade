@@ -7,4 +7,4 @@ description: TourAPI·Street View·Vworld 건물사진 수집에서 확인된 �
 
 **Why:** 실제 Replit 호출에서 기존 서비스는 폐기 오류, 현행 서비스는 현재 키 권한 403을 반환했다. Vworld WMS도 도메인 파라미터를 포함한 Replit 서버 요청에 502를 반환했다. Street View Static API는 파노라마가 없어도 안내문 JPEG를 HTTP 200으로 반환한다.
 
-**How to apply:** 공급자별 첫 요청을 사전검증하고 실패 시 진행 위치를 전진시키지 않는다. Street View는 Static 이미지 응답이 아니라 Metadata의 `status=OK`를 확인한 건만 저장한다. Google/Vworld 키가 들어간 원격 URL을 공개 DB/API에 저장하지 말고 키 없는 내부 URL과 서버 중계를 사용한다. Vworld는 실행 환경 접근 가능 여부를 먼저 확인한다.
+**How to apply:** 공급자별 첫 요청을 사전검증하고 실패 시 진행 위치를 전진시키지 않는다. 공공데이터포털의 `%2B`·`%3D` 인코딩 인증키는 요청 전에 한 번 디코딩하고, TourAPI 숙박 대표사진은 `detailImage2`가 아니라 검색 결과의 `firstimage`를 우선 저장한다. Street View는 Static 이미지 응답이 아니라 Metadata의 `status=OK`를 확인한 건만 저장한다. Google/Vworld 키가 들어간 원격 URL을 공개 DB/API에 저장하지 말고 키 없는 내부 URL과 서버 중계를 사용한다. Vworld는 실행 환경 접근 가능 여부를 먼저 확인한다.

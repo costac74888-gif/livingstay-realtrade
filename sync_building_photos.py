@@ -21,7 +21,7 @@ import time
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
-from urllib.parse import quote, quote_plus, urlencode
+from urllib.parse import quote, quote_plus, unquote, urlencode
 
 import requests
 from pyproj import Transformer
@@ -75,9 +75,15 @@ def _redact(text: str) -> str:
     for key_name in (TOURAPI_KEY_ENV, GOOGLE_KEY_ENV, VWORLD_KEY_ENV):
         key = os.environ.get(key_name, "")
         if key:
-            for candidate in (key, quote(key, safe=""), quote_plus(key)):
+            decoded = unquote(key)
+            for candidate in (key, decoded, quote(key, safe=""), quote_plus(key)):
                 result = result.replace(candidate, "***")
     return result
+
+
+def _tour_service_key():
+    """공공데이터포털의 URL 인코딩된 일반 인증키도 한 번만 복원한다."""
+    return unquote(os.environ.get(TOURAPI_KEY_ENV, ""))
 
 
 def _read_status(status_key):
@@ -405,7 +411,7 @@ def _tour_search(session, name, api_key):
         response = session.get(
             f"{TOURAPI_URL}/searchKeyword2",
             params={
-                "serviceKey": api_key,
+                "serviceKey": unquote(api_key),
                 "MobileOS": "ETC",
                 "MobileApp": "homenstay",
                 "arrange": "A",
@@ -433,7 +439,7 @@ def _tour_images(session, content_id, api_key):
         response = session.get(
             f"{TOURAPI_URL}/detailImage2",
             params={
-                "serviceKey": api_key,
+                "serviceKey": unquote(api_key),
                 "MobileOS": "ETC",
                 "MobileApp": "homenstay",
                 "contentId": content_id,
@@ -597,7 +603,7 @@ def _streetview_available(session, lat, lng, api_key):
 
 
 def _run_tourapi(args, session, checkpoint, stats):
-    api_key = os.environ.get(TOURAPI_KEY_ENV)
+    api_key = _tour_service_key()
     if not api_key:
         raise RuntimeError(f"{TOURAPI_KEY_ENV} 시크릿이 없습니다.")
     progress = _read_source_progress("tourapi")
@@ -629,11 +635,22 @@ def _run_tourapi(args, session, checkpoint, stats):
                     ) is None:
                         raise DailyCapReached
                     images = _tour_images(session, match[1], api_key)
-                    photos = [
+                    matched_item = match[2]
+                    representative_url = (
+                        matched_item.get("firstimage")
+                        or matched_item.get("firstImage")
+                        or matched_item.get("firstimage2")
+                        or matched_item.get("firstImage2")
+                    )
+                    photos = ([{
+                        "url": representative_url,
+                        "photo_type": "exterior",
+                        "is_primary": True,
+                    }] if representative_url else []) + [
                         {
                             "url": image.get("originimgurl") or image.get("originImgUrl"),
                             "photo_type": _tour_photo_type(image.get("imgname")),
-                            "is_primary": image_index == 0,
+                            "is_primary": not representative_url and image_index == 0,
                         }
                         for image_index, image in enumerate(images)
                     ]
