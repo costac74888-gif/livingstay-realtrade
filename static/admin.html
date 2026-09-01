@@ -2569,7 +2569,7 @@
             const pct = Math.round(d.zip_filled / d.zip_total * 100);
             const barFill = `<span style="display:block;width:${pct}%;height:100%;background:var(--brass);border-radius:4px"></span>`;
             const bar = `<span style="display:inline-block;width:120px;height:6px;background:#eee;border-radius:4px;vertical-align:middle;margin:0 8px">${barFill}</span>`;
-            zipEl.innerHTML = `${num(d.zip_filled)} / ${num(d.zip_total)}건 채움${bar}${pct}% · 매일 자동 실행 중`;
+            zipEl.innerHTML = `${num(d.zip_filled)} / ${num(d.zip_total)}건 채움${bar}${pct}% · 매일 자동 실행 (1일 최대 5,000건)`;
           }
         }
 
@@ -3787,7 +3787,7 @@
           </div>
           <p class="legal-admin-hint">
             JUSO API로 도로명주소가 있는 건물의 우편번호를 채웁니다.
-            매일 자동 실행(300건/일)되므로 별도 조작이 필요 없습니다. 며칠에 걸쳐 서서히 완료됩니다.
+            매일 자동 실행(1일 최대 5,000건)되므로 별도 조작이 필요 없습니다. 며칠에 걸쳐 서서히 완료됩니다.
           </p>
           <div id="zipBackfillProgress" style="font-size:13px;color:var(--ink-soft);padding:4px 0;min-height:20px;">불러오는 중…</div>
         </div>
