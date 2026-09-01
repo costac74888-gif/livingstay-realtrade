@@ -574,6 +574,28 @@ def _validate_url(session, url):
         return False
 
 
+def _streetview_available(session, lat, lng, api_key):
+    """사진 본문이 아닌 무료 Metadata API로 실제 파노라마 존재 여부를 확인한다."""
+    try:
+        response = session.get(
+            "https://maps.googleapis.com/maps/api/streetview/metadata",
+            params={
+                "location": f"{float(lat)},{float(lng)}",
+                "key": api_key,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        status = str(response.json().get("status") or "").upper()
+    except (requests.RequestException, ValueError) as exc:
+        raise ProviderFatalError("Street View Metadata 조회에 실패했습니다.") from exc
+    if status == "OK":
+        return True
+    if status == "ZERO_RESULTS":
+        return False
+    raise ProviderFatalError(f"Street View Metadata 오류: {status or 'UNKNOWN'}")
+
+
 def _run_tourapi(args, session, checkpoint, stats):
     api_key = os.environ.get(TOURAPI_KEY_ENV)
     if not api_key:
@@ -668,7 +690,8 @@ def _run_url_source(source, args, session, checkpoint, stats):
         if targets:
             first = targets[0]
             preflight_url = (
-                make_streetview_url(first["lat"], first["lng"], api_key)
+                # 키·API 권한 확인은 파노라마가 확실한 서울 좌표로 한다.
+                make_streetview_url(37.5665, 126.9780, api_key)
                 if source == "streetview"
                 else make_vworld_url(first["lat"], first["lng"], api_key)
             )
@@ -683,6 +706,16 @@ def _run_url_source(source, args, session, checkpoint, stats):
                 stats["capped"] = True
                 break
             stats["processed"] += 1
+            if source == "streetview" and not _streetview_available(
+                session, row["lat"], row["lng"], api_key
+            ):
+                stats["skipped"] += 1
+                progress["last_building_id"] = row["id"]
+                progress["total_processed"] = int(progress.get("total_processed") or 0) + 1
+                _write_source_progress(source, progress)
+                cp.update(progress)
+                _write_checkpoint(checkpoint)
+                continue
             provider_url = (
                 make_streetview_url(row["lat"], row["lng"], api_key)
                 if source == "streetview"
