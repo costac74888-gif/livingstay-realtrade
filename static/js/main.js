@@ -894,11 +894,78 @@ function resetToHome(){
   renderFavChips();
   loadBoard();
   resetMapView();
-  localStorage.removeItem("map_last_view"); // 로고 클릭 = "처음부터" 의도 — 저장 위치도 초기화
+  localStorage.removeItem("map_last_view"); // 검색 초기화는 저장된 지도 위치도 초기화
   updateMapForZoom({}, { force: true });   // 지도도 전체로 복귀 (줌 레벨 기준 클러스터 또는 마커)
   window.scrollTo({top:0, behavior:"smooth"});
 }
-document.getElementById("brandHome").addEventListener("click", resetToHome);
+
+const MAP_LAST_VIEW_KEY = "map_last_view";
+const MAP_PREVIOUS_VIEW_KEY = "map_previous_view";
+
+function readStoredMapView(key){
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "null");
+    if (saved && Number.isFinite(Number(saved.lat)) && Number.isFinite(Number(saved.lng))
+        && Number.isFinite(Number(saved.level))) {
+      return {
+        lat: Number(saved.lat),
+        lng: Number(saved.lng),
+        level: Number(saved.level),
+        savedAt: Number(saved.savedAt) || Date.now(),
+      };
+    }
+  } catch(e) {}
+  return null;
+}
+
+function rememberCurrentMapView(){
+  let view = null;
+  if (kakaoMap && kakaoMap.getCenter){
+    const center = kakaoMap.getCenter();
+    view = {
+      lat: center.getLat(),
+      lng: center.getLng(),
+      level: kakaoMap.getLevel(),
+      savedAt: Date.now(),
+    };
+  } else {
+    view = readStoredMapView(MAP_LAST_VIEW_KEY);
+  }
+  if (view){
+    try { localStorage.setItem(MAP_PREVIOUS_VIEW_KEY, JSON.stringify(view)); } catch(e) {}
+  }
+}
+
+// 로고 마크는 현재 화면을 직전 지도 슬롯에 보관한 뒤, 필터·상세 상태까지
+// 버리고 "/"를 다시 읽어 전국 초기지도로 시작한다.
+function resetToNationwide(){
+  rememberCurrentMapView();
+  try { localStorage.removeItem(MAP_LAST_VIEW_KEY); } catch(e) {}
+  window.location.replace("/");
+}
+
+// 상호를 누르면 로고를 누르기 직전의 중심·줌으로 전체 지도 화면을 다시 연다.
+function restorePreviousMap(){
+  const previous = readStoredMapView(MAP_PREVIOUS_VIEW_KEY);
+  if (!previous) return;
+  previous.savedAt = Date.now();
+  try { localStorage.setItem(MAP_LAST_VIEW_KEY, JSON.stringify(previous)); } catch(e) {}
+  window.location.replace("/");
+}
+
+function bindKeyboardClick(element, handler){
+  if (!element) return;
+  element.addEventListener("click", handler);
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " "){
+      event.preventDefault();
+      handler(event);
+    }
+  });
+}
+
+bindKeyboardClick(document.getElementById("brandHomeLogo"), resetToNationwide);
+bindKeyboardClick(document.getElementById("brandPreviousMap"), restorePreviousMap);
 document.getElementById("btnResetSearch").addEventListener("click", resetToHome);
 document.getElementById("inputQ").addEventListener("keydown", e=>{
   if (e.key === "Enter") document.getElementById("btnSearch").click();

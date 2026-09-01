@@ -4,8 +4,8 @@
  *
  * 설정값(페이지에서 header.js 로드 전에 지정):
  *   window.PAGE_TITLE          : 헤더 가운데 페이지 제목 (미지정 시 빈 문자열)
- *   window.HEADER_BRAND_INPLACE: true 면 로고를 링크가 아닌 버튼(div)로 렌더 →
- *                                 index.html에서 main.js resetToHome이 제자리 초기화.
+ *   window.HEADER_BRAND_INPLACE: true 면 지도 홈의 브랜드 영역을 별도 클릭 영역으로 렌더 →
+ *                                 로고 마크는 전국지도 새로고침, 상호는 직전 지도 복귀.
  *                                 (미지정/false: 로고 클릭 시 "/"로 이동)
  *
  * auth.js 는 이 파일이 만든 #authArea, #authModal 을 제어하므로 반드시 header.js
@@ -26,13 +26,24 @@
     });
   }
 
-  // ---- 로고(브랜드) : index는 제자리초기화 버튼, 그 외 페이지는 홈 링크 ----
-  var brandInner =
-    '<img class="brand-mark-img" src="/static/home_stay_share.png" alt="HOME &amp; STAY">' +
+  // ---- 로고(브랜드) : 지도 홈은 로고·상호를 분리, 그 외 페이지는 홈 링크 ----
+  var brandMark =
+    '<img class="brand-mark-img" src="/static/home_stay_share.png" alt="HOME &amp; STAY">';
+  var brandText =
     '<div class="brand-text">' +
       '<div class="name">홈앤스테이</div>' +
       '<div class="sub">대한민국 숙박부동산 데이터 플랫폼</div>' +
     '</div>';
+  // 지도 홈에서는 로고 마크와 상호를 별도 클릭 영역으로 나눈다.
+  // 로고 마크 = 전국지도 새로고침, 상호 = 직전 지도 복귀.
+  var brandInner = inplace
+    ? '<span class="brand-mark-action" id="brandHomeLogo" role="button" tabindex="0" title="전국지도 새로고침" aria-label="전국지도 새로고침">' +
+        brandMark +
+      '</span>' +
+      '<span class="brand-previous-map" id="brandPreviousMap" role="button" tabindex="0" title="직전 지도로 돌아가기" aria-label="직전 지도로 돌아가기">' +
+        brandText +
+      '</span>'
+    : brandMark + brandText;
   var brandHtml = inplace
     ? '<div class="brand" id="brandHome" title="홈으로 (전체 보기)" style="cursor:pointer;">' + brandInner + '</div>'
     : '<a class="brand" id="brandHome" href="/" title="홈으로" style="text-decoration:none;">' + brandInner + '</a>';
