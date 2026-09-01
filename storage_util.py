@@ -29,6 +29,7 @@ _MAGIC = {
 }
 
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 파일당 5MB
+LISTING_PHOTO_MAX_FILE_BYTES = 10 * 1024 * 1024
 
 # 신청 유형별 허용 doc_type (applications 테이블의 doc_* 컬럼과 1:1 매핑)
 AGENT_DOC_TYPES = {"license", "office_reg", "biz_reg", "photo"}

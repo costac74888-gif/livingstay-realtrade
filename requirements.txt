@@ -8,3 +8,5 @@ replit-object-storage
 werkzeug
 flask-compress
 pyproj
+piexif
+Pillow

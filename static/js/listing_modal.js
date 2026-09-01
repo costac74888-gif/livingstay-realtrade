@@ -2,7 +2,7 @@
   "use strict";
 
   var MAX_PHOTOS = 10;
-  var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+  var MAX_PHOTO_BYTES = 10 * 1024 * 1024;
   var DEAL_TYPES = ["매매", "전세", "월세", "단기임대"];
   var WHOLE_DEAL_TYPES = ["매매", "통임대", "운영권양도", "위탁운영"];
   var WHOLE_DESCRIPTION_TEMPLATE = "■ 매물 개요\n- 건물 전체 거래 매물입니다.\n- 매매·임대·운영 조건은 협의 가능합니다.\n\n" +
@@ -1052,7 +1052,7 @@
       candidates.forEach(function (file) {
         var ext = (file.name.split(".").pop() || "").toLowerCase();
         if (["jpg", "jpeg", "png"].indexOf(ext) < 0) errors.push(file.name + ": JPG 또는 PNG만 가능합니다.");
-        else if (file.size > MAX_PHOTO_BYTES) errors.push(file.name + ": 5MB 이하만 가능합니다.");
+        else if (file.size > MAX_PHOTO_BYTES) errors.push(file.name + ": 10MB 이하만 가능합니다.");
         else if (photoItems.length >= MAX_PHOTOS) errors.push("사진은 최대 " + MAX_PHOTOS + "장까지 첨부할 수 있습니다.");
         else photoItems.push({
           kind: "pending", file: file, previewUrl: URL.createObjectURL(file),

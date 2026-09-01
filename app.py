@@ -87,6 +87,7 @@ from quota_policy import (
     korea_today,
 )
 import building_registry
+from utils.photo_validate import validate_photo
 from lodging_matching import (
     ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
     matched_lodgings,
@@ -824,8 +825,26 @@ def _public_building_photo_rows(cur, building_id):
         FROM building_photos p
         WHERE p.building_id = %s
           AND p.source NOT IN ('streetview', 'vworld')
+          AND (
+            p.source <> 'upload'
+            OR EXISTS (
+                SELECT 1
+                  FROM listing_photos lp
+                  JOIN listing_requests lr ON lr.id = lp.listing_request_id
+                 WHERE lp.id = p.listing_photo_id
+                   AND COALESCE(lp.is_public, TRUE)
+                   AND lr.deal_mode = 'direct'
+                   AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
+                   AND NOT (
+                       lr.transaction_target = 'whole'
+                       AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
+                   )
+            )
+          )
         ORDER BY
-          CASE WHEN p.source = 'tourapi' THEN 0 ELSE 1 END,
+          CASE WHEN p.source = 'upload' THEN 0
+               WHEN p.source = 'tourapi' THEN 1
+               ELSE 2 END,
           p.is_primary DESC, p.display_order ASC, p.id ASC
         LIMIT 20
     """, [building_id])
@@ -11610,12 +11629,77 @@ def my_listing_ids():
 
 # ── 직거래 매물 사진 & 찜 ─────────────────────────────────────────────────
 
+def _guess_listing_photo_type(filename):
+    filename = (filename or "").lower()
+    if any(key in filename for key in ("room", "객실", "interior", "실내")):
+        return "room"
+    if any(key in filename for key in ("lobby", "로비", "입구", "entrance")):
+        return "lobby"
+    if any(key in filename for key in ("aerial", "항공", "drone", "드론")):
+        return "aerial"
+    return "exterior"
+
+
+def _exif_taken_at_value(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), "%Y:%m:%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None
+
+
+def _link_listing_photo_to_building(
+    cur, listing, listing_photo_id, image_key, validation, uploader_id, filename
+):
+    building_id = listing.get("master_building_id")
+    if not building_id or listing.get("deal_mode") != "direct":
+        return False
+    photo_url = f"/api/listing-photos/img/{image_key}"
+    cur.execute("""
+        INSERT INTO building_photos
+            (building_id, photo_url, source, photo_type, is_primary, display_order,
+             listing_photo_id,
+             photo_hash, uploaded_by_user_id, registrant_type,
+             gps_lat, gps_lng, gps_verified, exif_taken_at)
+        VALUES (
+            %s, %s, 'upload', %s,
+            NOT EXISTS (
+                SELECT 1 FROM building_photos
+                 WHERE building_id=%s AND source='upload'
+            ),
+            COALESCE((
+                SELECT MAX(display_order)+1 FROM building_photos
+                 WHERE building_id=%s
+            ), 0),
+            %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        ON CONFLICT (building_id, photo_hash) WHERE photo_hash IS NOT NULL
+        DO NOTHING
+    """, [
+        building_id, photo_url, _guess_listing_photo_type(filename),
+        building_id, building_id, listing_photo_id,
+        validation["hash"], uploader_id, listing.get("registrant_type") or "owner",
+        validation["gps_lat"], validation["gps_lng"], validation["gps_verified"],
+        _exif_taken_at_value(validation["exif_taken_at"]),
+    ])
+    return cur.rowcount > 0
+
+
+def _unlink_listing_photo_from_building(cur, image_key):
+    cur.execute(
+        "DELETE FROM building_photos WHERE source='upload' AND photo_url=%s",
+        [f"/api/listing-photos/img/{image_key}"],
+    )
+
+
 @app.route("/api/listing-requests/<int:lr_id>/photos", methods=["POST"])
 @limiter.limit("30 per minute")
 def upload_listing_photo(lr_id):
-    """직거래 매물 사진 업로드 — 매물 등록자만, jpg/png 5MB 이하, 최대 10장."""
+    """직거래 매물 사진 업로드 — 등록자 권한·이미지 품질·EXIF GPS 검증을 수행한다."""
     user = current_user()
-    if not user:
+    is_admin = bool(session.get("admin"))
+    if not user and not is_admin:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     if "file" not in request.files:
         return jsonify({"ok": False, "message": "파일이 없습니다."}), 400
@@ -11626,23 +11710,26 @@ def upload_listing_photo(lr_id):
     ext = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
     if ext not in storage_util.LISTING_PHOTO_EXTENSIONS:
         return jsonify({"ok": False, "message": "jpg, jpeg, png만 첨부 가능합니다."}), 400
-    file_data = f.read(storage_util.MAX_FILE_BYTES + 1)
-    if len(file_data) > storage_util.MAX_FILE_BYTES:
-        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    file_data = f.read(storage_util.LISTING_PHOTO_MAX_FILE_BYTES + 1)
+    if len(file_data) > storage_util.LISTING_PHOTO_MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 10MB 이하여야 합니다."}), 400
     if not storage_util.check_magic_bytes(file_data, ext):
         return jsonify({"ok": False, "message": "파일 형식이 올바르지 않습니다."}), 400
     conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT user_id, transaction_target, disclosure_scope FROM listing_requests WHERE id=%s "
-            "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')",
-            [lr_id]
-        )
+        cur.execute("""
+            SELECT lr.user_id, lr.transaction_target, lr.disclosure_scope,
+                   lr.registrant_type, lr.master_building_id, lr.deal_mode,
+                   mb.lat AS building_lat, mb.lng AS building_lng
+              FROM listing_requests lr
+              LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
+             WHERE lr.id=%s
+               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
+               AND (lr.user_id=%s OR %s)
+        """, [lr_id, user["id"] if user else -1, is_admin])
         lr = cur.fetchone()
         if not lr:
-            return jsonify({"ok": False, "message": "매물을 찾을 수 없습니다."}), 404
-        if lr["user_id"] != user["id"]:
-            return jsonify({"ok": False, "message": "접근 권한이 없습니다."}), 403
+            return jsonify({"ok": False, "message": "매물을 찾을 수 없거나 접근 권한이 없습니다."}), 404
         cur.execute(
             "SELECT COUNT(*) AS cnt FROM listing_photos WHERE listing_request_id=%s", [lr_id]
         )
@@ -11660,20 +11747,63 @@ def upload_listing_photo(lr_id):
             is_public = False
         else:
             return jsonify({"ok": False, "message": "사진 공개 설정이 올바르지 않습니다."}), 400
-        key = storage_util.build_listing_photo_key(lr_id, ext)
-        storage_util.upload_doc(key, file_data)
+        if (
+            lr.get("transaction_target") == "whole"
+            and (lr.get("disclosure_scope") or "limited") == "limited"
+        ):
+            is_public = False
+
         cur.execute(
-            "INSERT INTO listing_photos (listing_request_id, image_key, sort_order, is_public) "
-            "VALUES (%s,%s,(SELECT COALESCE(MAX(sort_order),0)+1 FROM listing_photos WHERE listing_request_id=%s),%s) "
-            "RETURNING id",
-            [lr_id, key, lr_id, is_public]
+            "SELECT 1 FROM agents WHERE LOWER(email)=LOWER(%s) AND status='approved'",
+            [user["email"] if user else ""],
         )
-        photo_id = cur.fetchone()["id"]
-        cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
-        conn.commit()
+        is_certified_agent = cur.fetchone() is not None
+        validation = validate_photo(
+            file_data,
+            (f.mimetype or "").split(";", 1)[0].strip().lower(),
+            None if is_admin else lr["building_lat"],
+            None if is_admin else lr["building_lng"],
+            "admin" if is_admin else (lr.get("registrant_type") or "owner"),
+            is_certified_agent or is_admin,
+        )
+        if not validation["ok"]:
+            return jsonify({"ok": False, "message": validation["error"]}), 400
+
+        key = storage_util.build_listing_photo_key(lr_id, ext)
+        try:
+            storage_util.upload_doc(key, file_data)
+            cur.execute(
+                "INSERT INTO listing_photos (listing_request_id, image_key, sort_order, is_public) "
+                "VALUES (%s,%s,(SELECT COALESCE(MAX(sort_order),0)+1 FROM listing_photos WHERE listing_request_id=%s),%s) "
+                "RETURNING id",
+                [lr_id, key, lr_id, is_public]
+            )
+            photo_id = cur.fetchone()["id"]
+            building_photo_linked = False
+            if is_public:
+                link_listing = dict(lr)
+                link_listing["registrant_type"] = (
+                    "admin" if is_admin else (lr.get("registrant_type") or "owner")
+                )
+                building_photo_linked = _link_listing_photo_to_building(
+                    cur, link_listing, photo_id, key, validation,
+                    user["id"] if user else None, original_name,
+                )
+            cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            try:
+                storage_util.delete_object(key)
+            except Exception:
+                app.logger.warning("매물 사진 롤백 중 객체 삭제 실패", exc_info=True)
+            raise
     finally:
         cur.close(); conn.close()
-    return jsonify({"ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}", "is_public": is_public})
+    return jsonify({
+        "ok": True, "id": photo_id, "src": f"/api/listing-photos/img/{key}",
+        "is_public": is_public, "building_photo_linked": building_photo_linked,
+    })
 
 
 @app.route("/api/listing-requests/<int:lr_id>/photos/order", methods=["PUT"])
@@ -11700,9 +11830,13 @@ def reorder_listing_photos(lr_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT lp.id, COALESCE(lp.is_public, TRUE) AS is_public
+            SELECT lp.id, lp.image_key, COALESCE(lp.is_public, TRUE) AS is_public,
+                   lr.registrant_type, lr.master_building_id, lr.deal_mode,
+                   lr.transaction_target, lr.disclosure_scope,
+                   mb.lat AS building_lat, mb.lng AS building_lng
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
+            LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
             WHERE lp.listing_request_id=%s AND lr.user_id=%s
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨')
             ORDER BY lp.sort_order, lp.id
@@ -11713,6 +11847,12 @@ def reorder_listing_photos(lr_id):
             return jsonify({"ok": False, "message": "사진 목록이 변경되었습니다. 새로고침 후 다시 시도해주세요."}), 409
         if photo_ids:
             current_visibility = {str(row["id"]): bool(row["is_public"]) for row in current_rows}
+            rows_by_id = {row["id"]: row for row in current_rows}
+            cur.execute(
+                "SELECT 1 FROM agents WHERE LOWER(email)=LOWER(%s) AND status='approved'",
+                [user["email"]],
+            )
+            is_certified_agent = cur.fetchone() is not None
             values_sql = ",".join(["(%s,%s,%s)"] * len(photo_ids))
             params = []
             for order, photo_id in enumerate(photo_ids):
@@ -11722,6 +11862,33 @@ def reorder_listing_photos(lr_id):
                     if not isinstance(proposed, bool):
                         return jsonify({"ok": False, "message": "사진 공개 설정이 올바르지 않습니다."}), 400
                     is_public = proposed
+                row = rows_by_id[photo_id]
+                if (
+                    row.get("transaction_target") == "whole"
+                    and (row.get("disclosure_scope") or "limited") == "limited"
+                ):
+                    is_public = False
+                if is_public and not row["is_public"]:
+                    try:
+                        file_data = storage_util.download_bytes(row["image_key"])
+                    except Exception:
+                        return jsonify({"ok": False, "message": "사진 파일을 불러오지 못했습니다."}), 502
+                    ext = row["image_key"].rsplit(".", 1)[-1].lower()
+                    validation = validate_photo(
+                        file_data,
+                        "image/jpeg" if ext in {"jpg", "jpeg"} else "image/png",
+                        row["building_lat"], row["building_lng"],
+                        row.get("registrant_type") or "owner",
+                        is_certified_agent,
+                    )
+                    if not validation["ok"]:
+                        return jsonify({"ok": False, "message": validation["error"]}), 400
+                    _link_listing_photo_to_building(
+                        cur, row, row["id"], row["image_key"], validation,
+                        user["id"], row["image_key"],
+                    )
+                elif not is_public and row["is_public"]:
+                    _unlink_listing_photo_from_building(cur, row["image_key"])
                 params.extend([photo_id, order, is_public])
             cur.execute(f"""
                 UPDATE listing_photos AS lp
@@ -11757,6 +11924,7 @@ def delete_listing_photo(lr_id, photo_id):
         if not photo:
             return jsonify({"ok": False, "message": "사진을 찾을 수 없거나 권한이 없습니다."}), 404
         key = photo["image_key"]
+        _unlink_listing_photo_from_building(cur, key)
         cur.execute("DELETE FROM listing_photos WHERE id=%s AND listing_request_id=%s", [photo_id, lr_id])
         cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
         conn.commit()
@@ -11783,7 +11951,16 @@ def listing_photo_proxy(key):
             WHERE lp.image_key = %s
               AND lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
-              AND (COALESCE(lp.is_public, TRUE) OR lr.user_id = %s)
+              AND (
+                    lr.user_id = %s
+                    OR (
+                        COALESCE(lp.is_public, TRUE)
+                        AND NOT (
+                            lr.transaction_target = 'whole'
+                            AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
+                        )
+                    )
+              )
         """, [key, (current_user() or {}).get("id", -1)])
         photo = cur.fetchone()
         if not photo:
@@ -12417,6 +12594,21 @@ def update_listing_request(req_id):
               after["remodeling_info"], after["is_urgent"], after["disclosure_scope"],
               json.dumps(after["building_info_overrides"] or {}), req_id]
         )
+        if (
+            after["transaction_target"] == "whole"
+            and (after["disclosure_scope"] or "limited") == "limited"
+        ):
+            cur.execute(
+                "UPDATE listing_photos SET is_public=FALSE WHERE listing_request_id=%s",
+                [req_id],
+            )
+            cur.execute("""
+                DELETE FROM building_photos
+                 WHERE source='upload'
+                   AND listing_photo_id IN (
+                       SELECT id FROM listing_photos WHERE listing_request_id=%s
+                   )
+            """, [req_id])
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, before_data, after_data) "
             "VALUES (%s, 'edited', %s, %s)",
@@ -12576,6 +12768,18 @@ def update_listing_disclosure_scope(req_id):
             [scope, req_id],
         )
         item = dict(cur.fetchone())
+        if scope == "limited":
+            cur.execute(
+                "UPDATE listing_photos SET is_public=FALSE WHERE listing_request_id=%s",
+                [req_id],
+            )
+            cur.execute("""
+                DELETE FROM building_photos
+                 WHERE source='upload'
+                   AND listing_photo_id IN (
+                       SELECT id FROM listing_photos WHERE listing_request_id=%s
+                   )
+            """, [req_id])
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, after_data) "
             "VALUES (%s, 'scope_changed', %s)",

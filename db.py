@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-02-01"
+SCHEMA_VERSION = "2026-09-02-03"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1796,6 +1796,16 @@ def _run_init_db():
     """)
     cur.execute("ALTER TABLE listing_photos ADD COLUMN IF NOT EXISTS is_public BOOLEAN")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_listing_photos_lr ON listing_photos(listing_request_id, sort_order)")
+    cur.execute("""
+        ALTER TABLE building_photos
+        ADD COLUMN IF NOT EXISTS listing_photo_id INTEGER
+        REFERENCES listing_photos(id) ON DELETE CASCADE
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_bphotos_listing_photo
+        ON building_photos(listing_photo_id)
+        WHERE listing_photo_id IS NOT NULL
+    """)
 
     # 직거래 매물 찜(♥) — 사용자별 중복 방지 unique constraint
     cur.execute("""
@@ -2580,12 +2590,27 @@ def _run_init_db():
         )
     """)
     cur.execute("""
+        ALTER TABLE building_photos
+        ADD COLUMN IF NOT EXISTS photo_hash TEXT,
+        ADD COLUMN IF NOT EXISTS uploaded_by_user_id INTEGER,
+        ADD COLUMN IF NOT EXISTS registrant_type TEXT,
+        ADD COLUMN IF NOT EXISTS gps_lat DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS gps_lng DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS gps_verified BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS exif_taken_at TIMESTAMPTZ
+    """)
+    cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_bphotos_building
         ON building_photos(building_id, display_order)
     """)
     cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS uq_bphotos_building_url
         ON building_photos(building_id, photo_url)
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_bphotos_hash
+        ON building_photos(building_id, photo_hash)
+        WHERE photo_hash IS NOT NULL
     """)
     # 건물 사진 온디맨드 조회 기록. 사진이 없는 건물도 조회 결과를 캐시해
     # 상세페이지를 열 때마다 같은 외부 API를 반복 호출하지 않게 한다.
