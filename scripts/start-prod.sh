@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+if [[ -z "${PROD_DATABASE_URL:-}" ]]; then
+  echo "PROD_DATABASE_URL is required for the production app." >&2
+  exit 1
+fi
+
+export DATABASE_URL="$PROD_DATABASE_URL"
 export SERVE_MINIFIED_ASSETS=1
 export SKIP_STARTUP_SCHEMA_INIT=1
 
