@@ -14,3 +14,9 @@ Republish 화면에 `Failed`가 표시되어도 `listDeploymentBuilds`에 새 fa
 **Why:** 사용하지 않는 Nix 패키지 하나만 추가되어도 캐시되지 않은 별도 레이어 업로드가 생기며, Publishing이 명시적 오류 없이 시간 초과할 수 있다.
 
 **How to apply:** Python wheel이 필요한 네이티브 라이브러리를 자체 포함하는지 실제 기능으로 확인한 뒤 중복 시스템 패키지를 제거한다. 남은 Nix 패키지도 코드·런타임에서 쓰지 않으면 비워 레이어 자체를 없앤다.
+
+Bundle 단계가 명시적 오류 없이 Repl 레이어 생성 전에 중단되면 Git 미추적 대용량 파일도 확인한다. 개발 입력자료는 삭제하지 말고 `.replitignore`로 운영 번들에서 제외한다.
+
+**Why:** Publish는 Git 추적 여부와 무관하게 작업공간 파일을 번들에 포함할 수 있어, `attached_assets` 같은 대용량 개발 자료가 Repl 레이어 업로드를 불필요하게 키운다.
+
+**How to apply:** 운영 런타임 참조 여부를 grep으로 확인한 뒤 원본은 보존하고 배포에서만 제외한다. Python 런타임 의존성이 있는 `.pythonlibs`는 검증 없이 제외하지 않는다.
