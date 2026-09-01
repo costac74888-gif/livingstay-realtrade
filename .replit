@@ -1,7 +1,7 @@
 modules = ["python-3.11", "nodejs-20", "postgresql-16"]
 [nix]
 channel = "stable-25_05"
-packages = ["glibcLocales", "proj"]
+packages = ["glibcLocales"]
 
 [agent]
 expertMode = true
