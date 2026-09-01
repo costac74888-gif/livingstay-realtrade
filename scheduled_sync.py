@@ -80,7 +80,10 @@ STAGES = (
         "transactions",
         "실거래",
         "거래",
-        ("sync_batch.py", "--months", "3", "--master-only", "--sleep", "0.8"),
+        (
+            "sync_batch.py", "--months", "3", "--master-only",
+            "--skip-address-prepare", "--sleep", "0.8",
+        ),
         "매일",
         metric_query="SELECT COUNT(*) AS c FROM transactions",
         metric_label="거래",

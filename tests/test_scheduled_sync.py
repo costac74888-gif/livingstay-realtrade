@@ -44,6 +44,10 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         permits = scheduled_sync.STAGE_MAP["building_permits"]
         self.assertTrue(set(registry.weekdays).isdisjoint(permits.weekdays))
 
+    def test_recent_transaction_stage_skips_juso_address_prepare(self):
+        command = scheduled_sync.STAGE_MAP["transactions"].command
+        self.assertIn("--skip-address-prepare", command)
+
     def test_fresh_run_obeys_stage_cadence(self):
         stages = scheduled_sync.prepare_stage_statuses(None, weekday=0)
         self.assertEqual(stages["building_registry"]["state"], "pending")

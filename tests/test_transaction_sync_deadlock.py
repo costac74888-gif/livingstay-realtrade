@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import psycopg2
@@ -20,6 +21,11 @@ class _Connection:
 
 
 class TransactionSyncDeadlockTests(unittest.TestCase):
+    def test_recent_sync_runner_skips_address_prepare_only_for_recent_status(self):
+        source = Path("sync_runner.py").read_text(encoding="utf-8")
+        self.assertIn('if META_KEY == "tx_sync_status":', source)
+        self.assertIn('cmd.append("--skip-address-prepare")', source)
+
     def test_transaction_scope_uses_rtms_building_type(self):
         self.assertEqual(
             sync_batch.transaction_scope_for_trade({"buildingType": "일반"}),

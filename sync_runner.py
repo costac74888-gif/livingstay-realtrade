@@ -122,6 +122,10 @@ def main():
 
     try:
         cmd = [sys.executable, "-u", "sync_batch.py", "--master-only"]
+        if META_KEY == "tx_sync_status":
+            # 최근 거래 동기화는 JUSO 주소 전수 보강 때문에 RTMS 수집이
+            # 지연·실패하지 않도록 이미 준비된 마스터로 바로 수집한다.
+            cmd.append("--skip-address-prepare")
         if args.months and args.months > 0:
             cmd += ["--months", str(int(args.months))]
         if args.progress_key:

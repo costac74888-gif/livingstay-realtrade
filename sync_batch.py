@@ -900,6 +900,11 @@ if __name__ == "__main__":
     parser.add_argument("--sgg", default=None, help="STEP2를 특정 시군구코드만 수행, 콤마구분 (예: 50130,41220)")
     parser.add_argument("--master-only", action="store_true",
                         help="마스터에 이미 있는 건물만 매칭(건축HUB 검증 생략) — 빠른 백필용")
+    parser.add_argument(
+        "--skip-address-prepare",
+        action="store_true",
+        help="STEP1 JUSO 주소보강을 생략하고 실거래 수집부터 시작 (매일 최근 거래 동기화용)",
+    )
     parser.add_argument("--sleep", type=float, default=None,
                         help="RTMS 요청간 딜레이(초). 429 방지용, 권장 0.5~1.0 (기본 0.5)")
     parser.add_argument("--retry-failures", action="store_true",
@@ -933,13 +938,16 @@ if __name__ == "__main__":
         # 실패 큐만 재시도 — 신규 수집 없이 429로 놓친 (시군구, 거래년월)만 backoff로 채운다.
         retry_failed_requests(bjdong=bjdong_map, base_sleep=(args.sleep or 1.0))
     else:
-        address_updates = prepare_master_addresses(region_kw=args.region)
-        if address_updates > 0:
-            try:
-                _mark_master_stats_invalidated("master_address_enrichment")
-                print("[STEP1] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
-            except Exception as e:
-                # 주소 보강 커밋은 캐시 표식 기록 문제와 분리해 보존한다.
-                print(f"[STEP1] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
+        if args.skip_address_prepare:
+            print("[STEP1] --skip-address-prepare → JUSO 주소보강 생략")
+        else:
+            address_updates = prepare_master_addresses(region_kw=args.region)
+            if address_updates > 0:
+                try:
+                    _mark_master_stats_invalidated("master_address_enrichment")
+                    print("[STEP1] 통계 원본 캐시 무효화 표식을 갱신했습니다.")
+                except Exception as e:
+                    # 주소 보강 커밋은 캐시 표식 기록 문제와 분리해 보존한다.
+                    print(f"[STEP1] 통계 원본 캐시 표식 갱신 실패: {repr(e)[:200]}")
         sync_transactions(months=args.months, bjdong=bjdong_map, sgg_filter=sgg_filter,
                           progress_key=args.progress_key)
