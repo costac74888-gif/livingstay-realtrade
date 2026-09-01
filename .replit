@@ -167,6 +167,9 @@ externalPort = 80
 localPort = 8008
 externalPort = 8008
 
+[objectStorage]
+defaultBucketID = "replit-objstore-53e4a388-4065-4e16-9794-963b8aab532e"
+
 
 
 [[workflows.workflow]]
