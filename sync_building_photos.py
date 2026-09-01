@@ -35,7 +35,7 @@ CHECKPOINT_FILE = BASE_DIR / "sync_building_photos_checkpoint.json"
 
 # TourAPI 4.0. 기존 KorService1은 2026년 현재 폐기되어 KorService2를 사용한다.
 TOURAPI_URL = "https://apis.data.go.kr/B551011/KorService2"
-TOURAPI_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"
+TOURAPI_KEY_ENV = "TOUR_API_SERVICE_KEY"
 GOOGLE_KEY_ENV = "GOOGLE_MAPS_API_KEY"
 VWORLD_KEY_ENV = "VWORLD_API_KEY"
 
