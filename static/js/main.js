@@ -126,6 +126,14 @@ function toggleFav(item){
     })
     .then(function(result){
       if (!result.ok) throw new Error(result.message || "save-failed");
+      if (result.duplicate) {
+        // 같은 건물이 다른 관심키로 이미 저장돼 있으면 낙관적으로 추가한
+        // 새 키를 제거하고 기존 관심단지 한 건만 유지한다.
+        serverFavKeys.delete(k);
+        updateFavCountLabel();
+        renderFavChips();
+        syncFavBtn();
+      }
     })
     .catch(function(){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
@@ -519,6 +527,24 @@ function createFavChip(key){
       if (item && item.master_building_id) {
         openBuildingDetail(item.master_building_id);
         return;
+      }
+      // 기존 관심단지 중 master_building_id가 비어 있는 행은 건물명으로
+      // 현재 마스터를 다시 찾되, 저장 주소까지 맞는 유일한 후보만 상세를 연다.
+      if (item && item.building_name) {
+        try {
+          const sep = key.indexOf("|");
+          const address = sep >= 0 ? key.slice(sep + 1) : "";
+          const sr = await fetch(
+            `/api/buildings/search?q=${encodeURIComponent(item.building_name)}` +
+            `&address=${encodeURIComponent(address)}`
+          );
+          const sd = await sr.json();
+          const found = sd.items || sd.buildings || [];
+          if (found.length === 1 && found[0].id) {
+            openBuildingDetail(found[0].id);
+            return;
+          }
+        } catch(e){ /* fall through */ }
       }
     } catch(e){ /* fall through */ }
     filterToFav(key);

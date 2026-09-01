@@ -4406,18 +4406,39 @@ def public_building_search():
     이름/소속만 반환하고 already_added 같은 계정 종속 정보는 없다.
     """
     q = (request.args.get("q") or "").strip()
+    address = (request.args.get("address") or "").strip()
     if len(q) < 2:
         return jsonify({"items": []})
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
-            SELECT id, building_name, sgg_text, umd_nm
-            FROM master_buildings
-            WHERE building_name ILIKE %s AND building_name <> '-'
-            ORDER BY building_name
-            LIMIT 10
-        """, [f"%{q}%"])
+        if address:
+            # 관심단지 상세 복구용: 건물명과 저장 주소가 모두 일치하는 후보만
+            # 최대 2건 반환한다. 프런트는 유일한 1건일 때만 상세를 연다.
+            cur.execute("""
+                SELECT id, building_name, sgg_text, umd_nm
+                FROM master_buildings
+                WHERE building_name = %s
+                  AND building_name <> '-'
+                  AND (
+                       road_address = %s
+                    OR jibun_address = %s
+                    OR REPLACE(COALESCE(jibun_address, ''), ' ', '') =
+                       REPLACE(%s, ' ', '')
+                    OR REPLACE(COALESCE(umd_nm, '') || COALESCE(jibun, ''), ' ', '') =
+                       REPLACE(%s, ' ', '')
+                  )
+                ORDER BY id
+                LIMIT 2
+            """, [q, address, address, address, address])
+        else:
+            cur.execute("""
+                SELECT id, building_name, sgg_text, umd_nm
+                FROM master_buildings
+                WHERE building_name ILIKE %s AND building_name <> '-'
+                ORDER BY building_name
+                LIMIT 10
+            """, [f"%{q}%"])
         items = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
@@ -6442,10 +6463,30 @@ def favorites_mine():
             ORDER BY uf.created_at DESC, uf.id DESC
         """, (u["id"],))
         rows = [dict(r) for r in cur.fetchall()]
+        # 동일 건물이 과거 서로 다른 관심키로 저장된 경우 실제 저장시각이 가장
+        # 오래된 행만 남긴다. 목록 응답에서도 즉시 한 건만 반환하고 DB도 정리한다.
+        keep_by_building = {}
+        for row in rows:
+            building_id = row.get("building_id")
+            if building_id is None:
+                continue
+            candidate = (
+                row["created_at"].timestamp() if row.get("created_at") else float("inf"),
+                row["favorite_id"],
+            )
+            if building_id not in keep_by_building or candidate < keep_by_building[building_id][0]:
+                keep_by_building[building_id] = (candidate, row["favorite_id"])
+        duplicate_ids = {
+            row["favorite_id"]
+            for row in rows
+            if row.get("building_id") is not None
+            and row["favorite_id"] != keep_by_building[row["building_id"]][1]
+        }
         repairs = [
             (row["building_id"], row["favorite_id"], u["id"])
             for row in rows
             if row.get("building_id") is not None
+            and row["favorite_id"] not in duplicate_ids
             and row.get("stored_building_id") != row.get("building_id")
         ]
         if repairs:
@@ -6454,6 +6495,17 @@ def favorites_mine():
                 "WHERE id=%s AND user_id=%s",
                 repairs,
             )
+        if duplicate_ids:
+            cur.execute(
+                "DELETE FROM user_favorites "
+                "WHERE user_id=%s AND id=ANY(%s)",
+                (u["id"], list(duplicate_ids)),
+            )
+            rows = [
+                row for row in rows
+                if row["favorite_id"] not in duplicate_ids
+            ]
+        if repairs or duplicate_ids:
             conn.commit()
         for row in rows:
             row.pop("stored_building_id", None)
@@ -6520,6 +6572,24 @@ def favorites_mine_add():
             """, (addr, addr, addr, addr, name))
             matched = cur.fetchone()
             bid = matched["id"] if matched else None
+        if bid is not None:
+            # 같은 사용자가 같은 건물을 다른 fav_key로 동시에 저장하는 경우도
+            # 중복으로 처리한다. 사용자 단위 트랜잭션 잠금으로 SELECT 후 INSERT
+            # 사이의 경쟁 조건을 막는다.
+            cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", (915007, u["id"]))
+            cur.execute("""
+                SELECT id
+                FROM user_favorites
+                WHERE user_id = %s
+                  AND master_building_id = %s
+                LIMIT 1
+            """, (u["id"], bid))
+            if cur.fetchone():
+                return jsonify({
+                    "ok": True,
+                    "duplicate": True,
+                    "master_building_id": bid,
+                })
         # 서버단 개수 상한 체크 — 클라이언트 우회로 MAX_FAVORITES 초과 저장 방지.
         # 이미 저장된 동일 항목은 ON CONFLICT DO UPDATE로 처리되므로 중복은 허용.
         cur.execute(
