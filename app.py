@@ -6158,12 +6158,15 @@ def favorites_mine():
     try:
         # lt: 관심키(건물명+주소)에 해당하는 최신 실거래 1건.
         # building_id 결정 순서(실거래 비의존):
-        #   1) uf.master_building_id — 저장 시점에 프론트가 넘긴 건물 id (가장 확실)
+        #   1) stored: 저장된 id가 현재 관심주소와도 일치할 때만 사용
         #   2) bid: 거래 경유 역매칭 (기존 저장분 하위호환)
         #   3) bid2: master_buildings 직접 매칭 — 도로명주소 일치 또는
         #      "읍면동+지번" 조합이 uf.address와 일치(공백 제거 비교) → 실거래 없어도 링크됨
+        # 운영 마스터를 다시 적재하면 같은 숫자 id가 다른 건물을 가리킬 수 있으므로
+        # 존재 여부만으로 저장 id를 신뢰하면 관심단지가 엉뚱한 상세페이지로 연결된다.
         cur.execute("""
             SELECT uf.id AS favorite_id, uf.building_name, uf.address, uf.created_at,
+                   uf.master_building_id AS stored_building_id,
                    COALESCE(uf.urgent_alert_enabled, FALSE) AS urgent_alert_enabled,
                    COALESCE(uf.new_listing_alert_enabled, FALSE) AS new_listing_alert_enabled,
                    COALESCE(uf.permit_change_alert_enabled, FALSE) AS permit_change_alert_enabled,
@@ -6171,8 +6174,22 @@ def favorites_mine():
                    COALESCE(uf.nearby_change_alert_enabled, FALSE) AS nearby_change_alert_enabled,
                    lt.price, lt.deal_date, lt.area, lt.floor, lt.deal_type,
                    lt.lodging_type, lt.lodging_type_detail,
-                   COALESCE(uf.master_building_id, bid.id, bid2.id) AS building_id
+                   COALESCE(stored.id, bid.id, bid2.id) AS building_id
             FROM user_favorites uf
+            LEFT JOIN LATERAL (
+                SELECT mb.id
+                FROM master_buildings mb
+                WHERE mb.id = uf.master_building_id
+                  AND (
+                       mb.road_address = uf.address
+                    OR mb.jibun_address = uf.address
+                    OR REPLACE(COALESCE(mb.jibun_address, ''), ' ', '') =
+                       REPLACE(uf.address, ' ', '')
+                    OR REPLACE(COALESCE(mb.umd_nm, '') || COALESCE(mb.jibun, ''), ' ', '') =
+                       REPLACE(uf.address, ' ', '')
+                  )
+                LIMIT 1
+            ) stored ON TRUE
             LEFT JOIN LATERAL (
                 SELECT t.price, t.deal_date, t.area, t.floor, t.deal_type,
                        t.lodging_type, t.lodging_type_detail
@@ -6199,6 +6216,9 @@ def favorites_mine():
                 SELECT mb.id
                 FROM master_buildings mb
                 WHERE mb.road_address = uf.address
+                   OR mb.jibun_address = uf.address
+                   OR REPLACE(COALESCE(mb.jibun_address, ''), ' ', '') =
+                      REPLACE(uf.address, ' ', '')
                    OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', '')
                 ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
                 LIMIT 1
@@ -6207,6 +6227,21 @@ def favorites_mine():
             ORDER BY uf.created_at DESC, uf.id DESC
         """, (u["id"],))
         rows = [dict(r) for r in cur.fetchall()]
+        repairs = [
+            (row["building_id"], row["favorite_id"], u["id"])
+            for row in rows
+            if row.get("building_id") is not None
+            and row.get("stored_building_id") != row.get("building_id")
+        ]
+        if repairs:
+            cur.executemany(
+                "UPDATE user_favorites SET master_building_id=%s "
+                "WHERE id=%s AND user_id=%s",
+                repairs,
+            )
+            conn.commit()
+        for row in rows:
+            row.pop("stored_building_id", None)
     finally:
         cur.close()
         conn.close()
@@ -6236,10 +6271,40 @@ def favorites_mine_add():
     cur = conn.cursor()
     try:
         if bid is not None:
-            # 존재하는 건물 id만 저장(임의 값 방지)
-            cur.execute("SELECT 1 FROM master_buildings WHERE id = %s", (bid,))
+            # 존재 여부뿐 아니라 관심주소와 같은 건물인지 검증한다. 운영 마스터 재적재로
+            # 숫자 id가 재사용돼도 다른 지역 건물에 잘못 연결되지 않게 한다.
+            cur.execute("""
+                SELECT id
+                FROM master_buildings
+                WHERE id = %s
+                  AND (
+                       road_address = %s
+                    OR jibun_address = %s
+                    OR REPLACE(COALESCE(jibun_address, ''), ' ', '') =
+                       REPLACE(%s, ' ', '')
+                    OR REPLACE(COALESCE(umd_nm, '') || COALESCE(jibun, ''), ' ', '') =
+                       REPLACE(%s, ' ', '')
+                  )
+            """, (bid, addr, addr, addr, addr))
             if not cur.fetchone():
                 bid = None
+        if bid is None:
+            # 누락되거나 오래된 id는 현재 마스터의 주소로 복구한다. 같은 주소 후보가
+            # 여럿이면 저장된 건물명과 일치하는 행을 우선한다.
+            cur.execute("""
+                SELECT id
+                FROM master_buildings
+                WHERE road_address = %s
+                   OR jibun_address = %s
+                   OR REPLACE(COALESCE(jibun_address, ''), ' ', '') =
+                      REPLACE(%s, ' ', '')
+                   OR REPLACE(COALESCE(umd_nm, '') || COALESCE(jibun, ''), ' ', '') =
+                      REPLACE(%s, ' ', '')
+                ORDER BY (building_name = %s) DESC NULLS LAST, id
+                LIMIT 1
+            """, (addr, addr, addr, addr, name))
+            matched = cur.fetchone()
+            bid = matched["id"] if matched else None
         # 서버단 개수 상한 체크 — 클라이언트 우회로 MAX_FAVORITES 초과 저장 방지.
         # 이미 저장된 동일 항목은 ON CONFLICT DO UPDATE로 처리되므로 중복은 허용.
         cur.execute(
@@ -6265,7 +6330,7 @@ def favorites_mine_add():
             "INSERT INTO user_favorites (user_id, building_name, address, master_building_id) "
             "VALUES (%s, %s, %s, %s) "
             "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO UPDATE "
-            "SET master_building_id = COALESCE(user_favorites.master_building_id, EXCLUDED.master_building_id)",
+            "SET master_building_id = COALESCE(EXCLUDED.master_building_id, user_favorites.master_building_id)",
             (u["id"], name, addr, bid),
         )
         _best_effort_weekly_email_opt_in(cur, u["id"], "favorite")
