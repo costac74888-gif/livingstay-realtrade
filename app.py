@@ -26878,11 +26878,11 @@ _resume_interrupted_scheduled_sync()
 
 # ---- 우편번호 백필 일일 자동 실행 (소량, 사람 개입 없이 서서히 완료) ----
 _ZIP_BACKFILL_AUTO_KEY = "zip_backfill_auto"
-_ZIP_BACKFILL_AUTO_CAP = 1000
+_ZIP_BACKFILL_AUTO_CAP = 5000
 
 
 def _zip_backfill_auto_loop():
-    """앱 기동 후 30분마다 오늘 백필이 실행됐는지 확인, 안됐으면 소량(300건) 실행.
+    """앱 기동 후 30분마다 오늘 백필이 실행됐는지 확인, 안됐으면 5,000건 실행.
     연결 안 되는 날은 자연히 넘어가고, 되는 날은 채워지는 방식으로 며칠에 걸쳐 완료.
     멀티 워커(gunicorn)에서 첫 번째 워커만 실제 실행 — app_meta 원자 UPSERT로 중복 차단."""
     import time as _t
