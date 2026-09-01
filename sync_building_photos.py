@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""건물 상세 사진 자동 수집 배치.
+"""건물 사진 공급자 공용 함수.
 
-기본 실행:
-    env DATABASE_URL="$PROD_DATABASE_URL" python sync_building_photos.py
-
-사진을 내려받아 저장하지 않고, 공개 이미지 URL과 출처만
-building_photos에 저장한다. 각 공급자는 독립적으로 재실행할 수 있으며,
-공급자별 체크포인트와 일일 처리 캡을 사용한다.
+83,000개 건물을 대상으로 한 대량 수집은 비용·약관 위험 때문에 중단되었다.
+공개 앱은 사용자가 상세페이지를 열 때 app.py의 온디맨드 경로에서 TourAPI
+함수만 사용한다. 이 파일을 직접 실행해 공급자를 순회하는 방식은 금지한다.
 """
 
 from __future__ import annotations
@@ -809,6 +806,13 @@ def run(args):
 
 
 def main():
+    raise SystemExit(
+        "대량 건물 사진 수집은 중단되었습니다. "
+        "사진은 건물 상세 진입 시 TourAPI에서 온디맨드로 조회합니다."
+    )
+
+    # 아래 파서는 과거 체크포인트 형식을 읽는 참고 구현으로만 보존한다.
+    # main()의 실패 폐쇄 가드 위로 옮기지 않는다.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", choices=("tourapi", "streetview", "vworld", "all"), default="all")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)

@@ -3874,16 +3874,10 @@
             백그라운드로 실행되며 한 번에 최대 500건씩 처리합니다.
           </p>
           <div id="photoSyncStatus" class="geo-status">현황 불러오는 중…</div>
-          <div class="legal-admin-actions" style="gap:8px;flex-wrap:wrap;">
-            <span id="photoSyncMsg" class="legal-msg" role="alert"></span>
-            <button id="photoTourApiRunBtn" class="admin-btn admin-btn-primary">TourAPI 수집 실행</button>
-            <button id="photoStreetViewRunBtn" class="admin-btn">Street View 수집 실행</button>
-            <button id="photoVworldRunBtn" class="admin-btn">Vworld 수집 실행</button>
-          </div>
           <p class="legal-admin-hint" style="margin-top:8px;">
-            Street View 버튼은 <code>GOOGLE_MAPS_API_KEY</code>, Vworld 버튼은
-            <code>VWORLD_API_KEY</code>가 필요합니다. TourAPI는 기존
-            <code>TOUR_API_SERVICE_KEY</code>를 사용합니다.
+            대량 수집 대신 사용자가 건물 상세를 열 때 <code>TourAPI</code> 사진을
+            자동 조회하고 결과를 캐시합니다. Street View·Vworld 사진은 상세 화면에서
+            자동 호출하지 않아 유료 API 비용이 발생하지 않습니다.
           </p>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecTitle">
@@ -4142,9 +4136,9 @@
       document.getElementById("reclassifyKeywordBtn").addEventListener("click", runReclassifyLodgingKeywords);
       document.getElementById("reclassifyHygieneBtn").addEventListener("click", runReclassifyByHygiene);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
-      document.getElementById("photoTourApiRunBtn").addEventListener("click", () => runPhotoSync("tourapi"));
-      document.getElementById("photoStreetViewRunBtn").addEventListener("click", () => runPhotoSync("streetview"));
-      document.getElementById("photoVworldRunBtn").addEventListener("click", () => runPhotoSync("vworld"));
+      document.getElementById("photoTourApiRunBtn")?.addEventListener("click", () => runPhotoSync("tourapi"));
+      document.getElementById("photoStreetViewRunBtn")?.addEventListener("click", () => runPhotoSync("streetview"));
+      document.getElementById("photoVworldRunBtn")?.addEventListener("click", () => runPhotoSync("vworld"));
       document.getElementById("titleInfoRunBtn").addEventListener("click", runTitleInfoBackfill);
       document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
       document.getElementById("backfillRunBtn").addEventListener("click", runBackfill);

@@ -4230,6 +4230,40 @@ function initBuildingPhotoSlider(photoCount){
   }, { passive: true });
 }
 
+let _activePhotoBuildingId = null;
+async function loadOnDemandBuildingPhotos(buildingId, initialPhotos){
+  _activePhotoBuildingId = buildingId;
+  const hasTourPhoto = (Array.isArray(initialPhotos) ? initialPhotos : [])
+    .some(photo => photo && photo.source === "tourapi");
+  if (hasTourPhoto) return;
+
+  const currentWrap = document.querySelector("#bHeaderCard .bld-photo-wrap");
+  const emptyLabel = currentWrap && currentWrap.classList.contains("bld-photo-empty")
+    ? currentWrap.querySelector("span") : null;
+  if (emptyLabel) emptyLabel.textContent = "공공데이터 사진 확인 중…";
+
+  try {
+    const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
+    const data = await response.json().catch(() => ({}));
+    if (_activePhotoBuildingId !== buildingId) return;
+    const wrap = document.querySelector("#bHeaderCard .bld-photo-wrap");
+    if (!wrap) return;
+    const photos = response.ok && data.ok && Array.isArray(data.photos) ? data.photos : [];
+    const holder = document.createElement("div");
+    holder.innerHTML = buildingPhotoSliderHtml(photos).trim();
+    const replacement = holder.firstElementChild;
+    if (!replacement) return;
+    wrap.replaceWith(replacement);
+    initBuildingPhotoSlider(photos.filter(photo =>
+      photo && typeof photo.url === "string" && photo.url.trim()
+    ).length);
+  } catch(e) {
+    if (_activePhotoBuildingId !== buildingId) return;
+    const label = document.querySelector("#bHeaderCard .bld-photo-empty span");
+    if (label) label.textContent = "등록된 사진이 없습니다";
+  }
+}
+
 function buildingPanelSkeleton(){
   return `
     <section class="side-card b-panel-topbar">
@@ -4618,6 +4652,7 @@ async function loadBuildingHeader(id){
   initBuildingPhotoSlider(buildingPhotos.filter(photo =>
     photo && typeof photo.url === "string" && photo.url.trim()
   ).length);
+  loadOnDemandBuildingPhotos(id, buildingPhotos);
 
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");

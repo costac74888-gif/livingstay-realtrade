@@ -810,6 +810,192 @@ def get_building_provider_photo(building_id, source):
     return response
 
 
+def _public_building_photo_rows(cur, building_id):
+    """공개 상세에 표시할 무료·보유 사진만 반환한다.
+
+    Street View/Vworld 프록시는 기존 데이터 호환을 위해 남겨두되 상세 화면에서는
+    자동 로드하지 않는다. 화면 노출만으로 유료 공급자 호출이 발생하는 것을 막는다.
+    """
+    cur.execute("""
+        SELECT p.photo_url, p.source, p.photo_type
+        FROM building_photos p
+        WHERE p.building_id = %s
+          AND p.source NOT IN ('streetview', 'vworld')
+        ORDER BY
+          CASE WHEN p.source = 'tourapi' THEN 0 ELSE 1 END,
+          p.is_primary DESC, p.display_order ASC, p.id ASC
+        LIMIT 20
+    """, [building_id])
+    return [
+        {
+            "url": photo["photo_url"],
+            "source": photo["source"],
+            "photo_type": photo["photo_type"],
+        }
+        for photo in cur.fetchall()
+    ]
+
+
+def _finish_photo_fetch(building_id, status, error_message=None):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO building_photo_fetches
+                (building_id, source, status, last_attempt_at, error_message)
+            VALUES (%s, 'tourapi', %s, NOW(), %s)
+            ON CONFLICT (building_id, source) DO UPDATE SET
+                status=EXCLUDED.status,
+                last_attempt_at=EXCLUDED.last_attempt_at,
+                error_message=EXCLUDED.error_message
+        """, [building_id, status, (error_message or "")[:300] or None])
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/building/<int:building_id>/photos")
+@limiter.limit("30 per minute")
+def get_building_photos_on_demand(building_id):
+    """상세 진입 시에만 TourAPI 사진을 조회하고 결과(없음 포함)를 캐시한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, building_name, road_address
+            FROM master_buildings
+            WHERE id=%s
+        """, [building_id])
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"error": "not found"}), 404
+
+        photos = _public_building_photo_rows(cur, building_id)
+        if any(photo["source"] == "tourapi" for photo in photos):
+            return jsonify({"ok": True, "photos": photos, "status": "cached"})
+
+        # Publish의 스키마 반영이 아직 끝나지 않은 찰나에도 상세페이지는 500으로
+        # 깨지지 않고 외부 호출 없이 기존 사진만 반환한다.
+        cur.execute("SELECT to_regclass('public.building_photo_fetches') AS table_name")
+        if not cur.fetchone()["table_name"]:
+            return jsonify({
+                "ok": True,
+                "photos": photos,
+                "status": "schema_pending",
+            })
+
+        # 한 요청만 원자적으로 조회권을 가져간다. 매칭 없음은 30일, 공급자 오류는
+        # 1시간 동안 재시도하지 않아 클릭 트래픽이 외부 API 폭주로 번지지 않게 한다.
+        cur.execute("""
+            INSERT INTO building_photo_fetches
+                (building_id, source, status, last_attempt_at)
+            VALUES (%s, 'tourapi', 'running', NOW())
+            ON CONFLICT (building_id, source) DO UPDATE SET
+                status='running', last_attempt_at=NOW(), error_message=NULL
+            WHERE
+                (building_photo_fetches.status = 'no_match'
+                 AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '30 days')
+                OR
+                (building_photo_fetches.status IN ('failed', 'unavailable')
+                 AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '1 hour')
+                OR
+                (building_photo_fetches.status = 'running'
+                 AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '2 minutes')
+            RETURNING building_id
+        """, [building_id])
+        claimed = cur.fetchone() is not None
+        conn.commit()
+        if not claimed:
+            return jsonify({"ok": True, "photos": photos, "status": "recently_checked"})
+    finally:
+        cur.close()
+        conn.close()
+
+    api_key = os.environ.get("TOUR_API_SERVICE_KEY", "")
+    if not api_key:
+        _finish_photo_fetch(building_id, "unavailable", "TourAPI key unavailable")
+        return jsonify({"ok": True, "photos": photos, "status": "unavailable"})
+
+    try:
+        from sync_building_photos import (
+            TOURAPI_DAILY_CAP,
+            _claim_daily_slot,
+            _find_tour_match,
+            _insert_photos,
+            _tour_images,
+            _tour_photo_type,
+            _tour_search,
+        )
+
+        if _claim_daily_slot("building_photos_tourapi_calls", TOURAPI_DAILY_CAP) is None:
+            _finish_photo_fetch(building_id, "unavailable", "TourAPI daily cap reached")
+            return jsonify({"ok": True, "photos": photos, "status": "daily_cap"})
+
+        http = requests.Session()
+        http.headers.update({"User-Agent": "homenstay-building-photos/1.0"})
+        items = _tour_search(http, building["building_name"], api_key)
+        match = _find_tour_match(items, building["road_address"])
+        if not match:
+            _finish_photo_fetch(building_id, "no_match")
+            return jsonify({"ok": True, "photos": photos, "status": "no_match"})
+
+        if _claim_daily_slot("building_photos_tourapi_calls", TOURAPI_DAILY_CAP) is None:
+            _finish_photo_fetch(building_id, "unavailable", "TourAPI daily cap reached")
+            return jsonify({"ok": True, "photos": photos, "status": "daily_cap"})
+
+        images = _tour_images(http, match[1], api_key)
+        matched_item = match[2]
+        representative_url = (
+            matched_item.get("firstimage")
+            or matched_item.get("firstImage")
+            or matched_item.get("firstimage2")
+            or matched_item.get("firstImage2")
+        )
+        candidates = ([{
+            "url": representative_url,
+            "photo_type": "exterior",
+            "is_primary": True,
+        }] if representative_url else []) + [
+            {
+                "url": image.get("originimgurl") or image.get("originImgUrl"),
+                "photo_type": _tour_photo_type(image.get("imgname")),
+                "is_primary": not representative_url and index == 0,
+            }
+            for index, image in enumerate(images)
+        ]
+
+        save_conn = get_conn()
+        save_cur = save_conn.cursor()
+        try:
+            _insert_photos(save_cur, building_id, candidates, "tourapi")
+            save_cur.execute("""
+                UPDATE building_photo_fetches
+                SET status=%s, last_attempt_at=NOW(), error_message=NULL
+                WHERE building_id=%s AND source='tourapi'
+            """, ["success" if candidates else "no_match", building_id])
+            save_conn.commit()
+            photos = _public_building_photo_rows(save_cur, building_id)
+        except Exception:
+            save_conn.rollback()
+            raise
+        finally:
+            save_cur.close()
+            save_conn.close()
+        return jsonify({
+            "ok": True,
+            "photos": photos,
+            "status": "loaded" if candidates else "no_match",
+        })
+    except Exception as exc:
+        app.logger.warning(
+            "TourAPI 온디맨드 사진 조회 실패 (building_id=%s): %s",
+            building_id, type(exc).__name__,
+        )
+        _finish_photo_fetch(building_id, "failed", type(exc).__name__)
+        return jsonify({"ok": True, "photos": photos, "status": "unavailable"})
+
+
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -849,22 +1035,9 @@ def get_building(building_id):
 
     building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
 
-    # 건물 상세 사진은 대표 사진 우선, 등록 순서 보조 순서로 최대 20장만 노출한다.
-    cur.execute("""
-        SELECT p.photo_url, p.source, p.photo_type
-        FROM building_photos p
-        WHERE p.building_id = %s
-        ORDER BY p.is_primary DESC, p.display_order ASC, p.id ASC
-        LIMIT 20
-    """, [building_id])
-    building["photos"] = [
-        {
-            "url": photo["photo_url"],
-            "source": photo["source"],
-            "photo_type": photo["photo_type"],
-        }
-        for photo in cur.fetchall()
-    ]
+    # 상세 자체는 캐시된 무료·보유 사진만 즉시 반환한다. TourAPI 신규 조회는
+    # 별도 온디맨드 API가 담당해 건물 정보 렌더링을 외부 API 응답으로 막지 않는다.
+    building["photos"] = _public_building_photo_rows(cur, building_id)
 
     # 첫 방문 시 표제부·지역지구구역·정기점검을 백그라운드 스레드로 조회해 캐싱.
     # 요청 스레드를 블로킹하지 않으므로 이번 방문자는 "-"로 보이고,
@@ -15122,26 +15295,13 @@ def admin_building_photos_sync_run():
             "ok": False,
             "message": "사진 수집원은 tourapi, streetview, vworld 중 하나여야 합니다.",
         }), 400
-    required_keys = {
-        "tourapi": "TOUR_API_SERVICE_KEY",
-        "streetview": "GOOGLE_MAPS_API_KEY",
-        "vworld": "VWORLD_API_KEY",
-    }
-    key_name = required_keys[source]
-    if not os.environ.get(key_name):
-        return jsonify({
-            "ok": False,
-            "message": f"{key_name} 시크릿이 등록되어 있지 않습니다.",
-        }), 400
-    ok, code, payload = _start_detached_sync(
-        _PHOTO_SYNC_META_KEY,
-        "sync_building_photos.py",
-        ["--source", source, "--limit", "500", "--status-key", _PHOTO_SYNC_META_KEY],
-        done_cooldown_min=5,
-    )
-    if ok:
-        payload["message"] = f"{source} 건물 사진 수집을 시작했습니다."
-    return jsonify(payload), code
+    return jsonify({
+        "ok": False,
+        "message": (
+            "대량 사진 수집은 중단되었습니다. 사진은 사용자가 건물 상세를 열 때 "
+            "TourAPI에서 온디맨드로 조회하고 결과를 캐시합니다."
+        ),
+    }), 409
 
 
 @app.route("/api/admin/sync-photos-status")
