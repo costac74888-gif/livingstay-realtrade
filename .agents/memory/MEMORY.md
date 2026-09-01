@@ -63,3 +63,4 @@
 - [장시간 백필 DB 재접속](long-backfill-db-reconnect.md) — commit 단위를 재처리 가능한 크기로 제한하고, 재접속 뒤 run_id 소유권을 다시 확인한 후 멱등 재실행한다.
 - [실거래 동기화 deadlock](transaction-sync-deadlocks.md) — 스키마 초기화 deadlock은 제한 재시도하고, 거래는 API 재호출 없이 월 단위 rollback·재적재한다.
 - [숙박 부동산 거래 범위](lodging-transaction-scopes.md) — 호실·통건물·토지 거래를 분리하고, 공적 식별정보로 확실한 경우만 숙박 건물에 연결한다.
+- [Publish 사전 실패 구분](publishing-prebuild-failure.md) — Republish가 Failed여도 빌드 기록이 없으면 앱 코드보다 배포 요청 단계 문제로 분리한다.
