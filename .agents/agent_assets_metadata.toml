@@ -173,3 +173,10 @@ uri = "file://lodging-classification-review.md"
 type = "text"
 title = "숙박시설 용도 분류 검토 문서 다운로드"
 description = "숙박시설 분류 기준과 재분류 미리보기 결과를 정리한 Markdown 문서입니다."
+
+[[outputs]]
+id = "2C5-GDvTC4Hof2_eyQeym"
+uri = "file://livingstay-project-code-2026-09-01.zip"
+type = "unspecified"
+title = "LivingStay 프로젝트 전체 코드 ZIP"
+description = "현재 커밋 기준 프로젝트 소스·설정·테스트 전체입니다. Git 이력과 환경변수/시크릿 값은 포함하지 않았습니다."
