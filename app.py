@@ -16940,6 +16940,12 @@ def _master_stats_invalidation_token():
         )
         state.update({"checked_at": now, "token": token})
         return token
+    except BackgroundConnectionUnavailable:
+        # 사용자 요청용 연결을 보호하기 위해 의도적으로 보류된 정상 제어 흐름이다.
+        # traceback 경고로 남기면 Publishing 화면에서 배포 오류처럼 보이므로,
+        # 마지막 토큰을 유지하고 다음 TTL 주기에 조용히 다시 확인한다.
+        state["checked_at"] = now
+        return state["token"]
     except Exception:
         # 무효화 표식을 읽지 못해도 마지막으로 알던 값은 유지하고, 기존 TTL이
         # 만료되면 재계산한다. 통계 화면을 표식 조회 장애로 멈추지 않는다.
