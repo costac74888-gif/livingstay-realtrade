@@ -4200,26 +4200,31 @@ function detailBadgeLabel(v, subtype, buildingStatus){
   return window.LodgingTypes.badge(v, subtype, buildingStatus);
 }
 
-function buildingPhotoSliderHtml(photos){
+function buildingPhotoSliderHtml(){
+  return `<div id="bldPhotoWrap" class="bld-photo-wrap" style="display:none;"></div>`;
+}
+
+function renderPhotoSlider(photos){
+  const wrap = document.getElementById("bldPhotoWrap");
+  if (!wrap) return;
   const usablePhotos = (Array.isArray(photos) ? photos : [])
     .filter(photo => photo && typeof photo.url === "string" && photo.url.trim());
   if (!usablePhotos.length){
-    return `
-      <div class="bld-photo-wrap bld-photo-empty">
-        <span>등록된 사진이 없습니다</span>
-      </div>`;
+    wrap.innerHTML = "";
+    wrap.style.display = "none";
+    return;
   }
   const slides = usablePhotos.map(photo => `
     <img src="${escapeHtml(photo.url.trim())}" class="bld-photo-slide" alt="건물사진" loading="lazy">`
   ).join("");
   const arrowsHidden = usablePhotos.length === 1 ? ` style="display:none;"` : "";
-  return `
-    <div class="bld-photo-wrap">
-      <div class="bld-photo-track" id="photoTrack">${slides}</div>
-      <button type="button" class="photo-prev" aria-label="이전 사진"${arrowsHidden}>&#8249;</button>
-      <button type="button" class="photo-next" aria-label="다음 사진"${arrowsHidden}>&#8250;</button>
-      <span class="photo-counter" id="photoCounter">1 / ${usablePhotos.length}</span>
-    </div>`;
+  wrap.innerHTML = `
+    <div class="bld-photo-track" id="photoTrack">${slides}</div>
+    <button type="button" class="photo-prev" aria-label="이전 사진"${arrowsHidden}>&#8249;</button>
+    <button type="button" class="photo-next" aria-label="다음 사진"${arrowsHidden}>&#8250;</button>
+    <span class="photo-counter" id="photoCounter">1 / ${usablePhotos.length}</span>`;
+  wrap.style.display = "";
+  initBuildingPhotoSlider(usablePhotos.length);
 }
 
 function initBuildingPhotoSlider(photoCount){
@@ -4257,36 +4262,169 @@ function initBuildingPhotoSlider(photoCount){
 }
 
 let _activePhotoBuildingId = null;
-async function loadOnDemandBuildingPhotos(buildingId, initialPhotos){
+const TOUR_API_BROWSER_BASE = "https://apis.data.go.kr/B551011/KorService2";
+
+function normalizeTourAddress(address){
+  let text = String(address || "").trim().replace(/\s+/g, " ");
+  const aliases = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구",
+    "인천광역시": "인천", "광주광역시": "광주", "대전광역시": "대전",
+    "울산광역시": "울산", "세종특별자치시": "세종", "제주특별자치도": "제주"
+  };
+  Object.entries(aliases).forEach(([from, to]) => { text = text.replaceAll(from, to); });
+  return text.replace(/\([^)]*\)/g, " ").replace(/[^0-9A-Za-z가-힣]/g, "");
+}
+
+function tourAddressSimilarity(left, right){
+  const a = normalizeTourAddress(left);
+  const b = normalizeTourAddress(right);
+  if (!a || !b) return 0;
+  const aRoad = a.match(/[0-9A-Za-z가-힣]+(?:대로|로|길)/)?.[0];
+  const bRoad = b.match(/[0-9A-Za-z가-힣]+(?:대로|로|길)/)?.[0];
+  if (aRoad && bRoad && aRoad !== bRoad) return 0;
+  const prev = Array.from({length: b.length + 1}, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1){
+    let left = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1){
+      const above = prev[j];
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        left + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      left = above;
+    }
+  }
+  return 1 - prev[b.length] / Math.max(a.length, b.length);
+}
+
+function extractTourItems(data){
+  const item = data?.response?.body?.items?.item;
+  if (Array.isArray(item)) return item;
+  if (item && typeof item === "object") return [item];
+  return [];
+}
+
+function assertTourApiSuccess(data){
+  const header = data?.response?.header || {};
+  const code = String(header.resultCode || "").trim();
+  if (code && !["0000", "000"].includes(code)){
+    throw new Error(`TourAPI ${code}: ${header.resultMsg || "응답 오류"}`);
+  }
+}
+
+async function tourApiGet(path, params){
+  const apiKey = String(
+    document.querySelector('meta[name="livingstay-tour-api-service-key"]')?.content || ""
+  ).trim();
+  if (!apiKey) throw new Error("TourAPI key unavailable");
+  const url = new URL(`${TOUR_API_BROWSER_BASE}/${path}`);
+  Object.entries({
+    serviceKey: apiKey,
+    MobileOS: "ETC",
+    MobileApp: "homenstay",
+    _type: "json",
+    ...params
+  }).forEach(([key, value]) => url.searchParams.set(key, String(value)));
+  const response = await fetch(url.toString(), { mode: "cors" });
+  if (!response.ok) throw new Error(`TourAPI HTTP ${response.status}`);
+  const data = await response.json();
+  assertTourApiSuccess(data);
+  return data;
+}
+
+async function fetchTourApiPhotos(buildingName, roadAddress){
+  const searchData = await tourApiGet("searchKeyword2", {
+    arrange: "A", numOfRows: 10, pageNo: 1,
+    keyword: buildingName, contentTypeId: 32
+  });
+  const matches = extractTourItems(searchData)
+    .map(item => ({
+      score: tourAddressSimilarity(item.addr1 || item.addr || "", roadAddress),
+      item
+    }))
+    .filter(candidate => candidate.score >= 0.70)
+    .sort((left, right) => right.score - left.score);
+  const matchedItem = matches[0]?.item;
+  const contentId = matchedItem?.contentid || matchedItem?.contentId;
+  if (!contentId) return [];
+
+  const imageData = await tourApiGet("detailImage2", {
+    contentId, numOfRows: 100, pageNo: 1, imageYN: "Y", subImageYN: "Y"
+  });
+  const representative = matchedItem.firstimage
+    || matchedItem.firstImage
+    || matchedItem.firstimage2
+    || matchedItem.firstImage2;
+  const candidates = [];
+  const addPhoto = (url, photoType, isPrimary) => {
+    const normalized = String(url || "").trim().replace(/^http:\/\//i, "https://");
+    if (!normalized || !/^https:\/\//i.test(normalized)) return;
+    if (!candidates.some(photo => photo.url === normalized)){
+      candidates.push({url: normalized, photo_type: photoType || "exterior", is_primary: isPrimary});
+    }
+  };
+  addPhoto(representative, "exterior", true);
+  extractTourItems(imageData).forEach((image, index) => {
+    const name = String(image.imgname || "").toLowerCase();
+    const photoType = name.includes("객실") || name.includes("room")
+      ? "room"
+      : (name.includes("로비") || name.includes("입구") || name.includes("lobby")
+        ? "lobby" : "exterior");
+    addPhoto(image.originimgurl || image.originImgUrl, photoType, !representative && index === 0);
+  });
+  return candidates.slice(0, 20);
+}
+
+async function saveClientBuildingPhotos(buildingId, photos, status, fetchToken){
+  const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos/save`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({photos, status, fetch_token: fetchToken})
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.message || `사진 저장 HTTP ${response.status}`);
+  return data;
+}
+
+async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
   _activePhotoBuildingId = buildingId;
   const hasTourPhoto = (Array.isArray(initialPhotos) ? initialPhotos : [])
     .some(photo => photo && photo.source === "tourapi");
   if (hasTourPhoto) return;
 
-  const currentWrap = document.querySelector("#bHeaderCard .bld-photo-wrap");
-  const emptyLabel = currentWrap && currentWrap.classList.contains("bld-photo-empty")
-    ? currentWrap.querySelector("span") : null;
-  if (emptyLabel) emptyLabel.textContent = "사진데이터 확인 중…";
-
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
     const data = await response.json().catch(() => ({}));
     if (_activePhotoBuildingId !== buildingId) return;
-    const wrap = document.querySelector("#bHeaderCard .bld-photo-wrap");
-    if (!wrap) return;
     const photos = response.ok && data.ok && Array.isArray(data.photos) ? data.photos : [];
-    const holder = document.createElement("div");
-    holder.innerHTML = buildingPhotoSliderHtml(photos).trim();
-    const replacement = holder.firstElementChild;
-    if (!replacement) return;
-    wrap.replaceWith(replacement);
-    initBuildingPhotoSlider(photos.filter(photo =>
-      photo && typeof photo.url === "string" && photo.url.trim()
-    ).length);
+    renderPhotoSlider(photos);
+    if (data.status !== "fetch_needed") return;
+
+    const buildingName = data.building_name || building?.building_name || "";
+    const roadAddress = data.road_address || building?.road_address || "";
+    const clientPhotos = await fetchTourApiPhotos(buildingName, roadAddress);
+    if (_activePhotoBuildingId !== buildingId) return;
+    const mergedPhotos = [...photos];
+    clientPhotos.forEach(photo => {
+      if (!mergedPhotos.some(existing => existing?.url === photo.url)) mergedPhotos.push(photo);
+    });
+    renderPhotoSlider(mergedPhotos);
+    saveClientBuildingPhotos(
+      buildingId,
+      clientPhotos,
+      clientPhotos.length ? "success" : "no_match",
+      data.fetch_token
+    ).then(saved => {
+      if (_activePhotoBuildingId !== buildingId) return;
+      renderPhotoSlider(Array.isArray(saved.photos) && saved.photos.length ? saved.photos : mergedPhotos);
+    }).catch(() => {});
   } catch(e) {
     if (_activePhotoBuildingId !== buildingId) return;
-    const label = document.querySelector("#bHeaderCard .bld-photo-empty span");
-    if (label) label.textContent = "등록된 사진이 없습니다";
+    // 외부 호출 실패 시 기존 캐시 사진은 유지하고, 실제로 사진이 없을 때만 숨긴다.
+    renderPhotoSlider(initialPhotos);
   }
 }
 
@@ -4622,7 +4760,7 @@ async function loadBuildingHeader(id){
   const buildingPhotos = Array.isArray(b.photos) ? b.photos : [];
 
   headerCard.innerHTML = `
-    ${buildingPhotoSliderHtml(buildingPhotos)}
+    ${buildingPhotoSliderHtml()}
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
@@ -4675,10 +4813,8 @@ async function loadBuildingHeader(id){
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(14)}<span class="b-icon-label">공유</span></button>
     </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
-  initBuildingPhotoSlider(buildingPhotos.filter(photo =>
-    photo && typeof photo.url === "string" && photo.url.trim()
-  ).length);
-  loadOnDemandBuildingPhotos(id, buildingPhotos);
+  renderPhotoSlider(buildingPhotos);
+  loadOnDemandBuildingPhotos(id, buildingPhotos, b);
 
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");

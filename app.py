@@ -33,7 +33,7 @@ import subprocess
 import secrets as _secrets
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import wraps
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, unquote, urlencode, urlparse
 import requests
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -585,9 +585,12 @@ if not _bjdong_file_ok:
 
 
 def _serve_app_shell(building_id=None, listing_id=None):
-    # 정적 index.html을 읽어 카카오맵 JS 키만 서버에서 주입해 서빙한다.
-    # (프론트 소스에 키를 직접 박지 않고, 환경변수/시크릿에서 안전하게 넣는다.)
+    # 정적 index.html을 읽어 카카오맵 JS 키와 브라우저용 TourAPI 키를
+    # 서버에서 주입해 서빙한다. TourAPI 키는 클라이언트 호출에 사용되므로
+    # HTML을 보는 사용자에게 노출되며, data.go.kr에서 발급한 공개 호출키만
+    # 사용해야 한다.
     kakao_js_key = os.environ.get("KAKAO_JS_KEY", "")
+    tour_api_key = unquote(os.environ.get("TOUR_API_SERVICE_KEY", "").strip())
     html_path = _frontend_html_path("index.html")
     with open(html_path, encoding="utf-8") as f:
         html = f.read()
@@ -606,6 +609,10 @@ def _serve_app_shell(building_id=None, listing_id=None):
     }.items():
         html = html.replace(key, _html.escape(value, quote=True))
     html = html.replace("{{KAKAO_JS_KEY}}", quote(kakao_js_key, safe=""))
+    html = html.replace(
+        "{{TOUR_API_SERVICE_KEY}}",
+        _html.escape(tour_api_key, quote=True),
+    )
     html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
     html = _inject_asset_version(html)
     html = _inject_ga4(html)
@@ -868,7 +875,7 @@ def _finish_photo_fetch(building_id, status, error_message=None):
 @app.route("/api/building/<int:building_id>/photos")
 @limiter.limit("30 per minute")
 def get_building_photos_on_demand(building_id):
-    """상세 진입 시에만 TourAPI 사진을 조회하고 결과(없음 포함)를 캐시한다."""
+    """사진 캐시를 반환하고, 필요한 경우 브라우저 TourAPI 조회를 안내한다."""
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -886,23 +893,66 @@ def get_building_photos_on_demand(building_id):
             return jsonify({"ok": True, "photos": photos, "status": "cached"})
 
         # Publish의 스키마 반영이 아직 끝나지 않은 찰나에도 상세페이지는 500으로
-        # 깨지지 않고 외부 호출 없이 기존 사진만 반환한다.
+        # 깨지지 않고 브라우저가 직접 호출할 수 있도록 위치 정보만 반환한다.
         cur.execute("SELECT to_regclass('public.building_photo_fetches') AS table_name")
         if not cur.fetchone()["table_name"]:
             return jsonify({
                 "ok": True,
                 "photos": photos,
                 "status": "schema_pending",
+                "building_name": building["building_name"],
+                "road_address": building["road_address"],
+                "lat": building["lat"],
+                "lng": building["lng"],
             })
 
-        # 한 요청만 원자적으로 조회권을 가져간다. 매칭 없음은 30일, 공급자 오류는
-        # 10분 동안 재시도하지 않아 클릭 트래픽이 외부 API 폭주로 번지지 않게 한다.
+        # 브라우저 조회도 정상적인 결과(없음 포함)를 캐시한다. 실패 캐시는
+        # 10분, 매칭 없음은 30일 동안 재호출하지 않아 상세 클릭마다 외부 API를
+        # 무제한 호출하지 않게 한다.
+        cur.execute("""
+            SELECT status,
+                   (
+                     status='no_match'
+                     AND last_attempt_at > NOW() - INTERVAL '30 days'
+                   ) AS is_recent_no_match,
+                   (
+                     status IN ('failed', 'unavailable')
+                     AND last_attempt_at > NOW() - INTERVAL '10 minutes'
+                   ) AS is_recent_failure,
+                   (
+                     status='client_pending'
+                     AND last_attempt_at > NOW() - INTERVAL '2 minutes'
+                   ) AS is_client_pending
+            FROM building_photo_fetches
+            WHERE building_id=%s AND source='tourapi'
+        """, [building_id])
+        recent_fetch = cur.fetchone()
+        is_recent_no_match = bool(recent_fetch and recent_fetch["is_recent_no_match"])
+        is_recent_failure = bool(recent_fetch and recent_fetch["is_recent_failure"])
+        is_client_pending = bool(recent_fetch and recent_fetch["is_client_pending"])
+        if is_recent_no_match or is_recent_failure or is_client_pending:
+            return jsonify({
+                "ok": True,
+                "photos": photos,
+                "status": "recently_checked",
+                "building_name": building["building_name"],
+                "road_address": building["road_address"],
+                "lat": building["lat"],
+                "lng": building["lng"],
+            })
+
+        # 한 브라우저만 2분짜리 조회권을 원자적으로 가져간다. 원문 토큰은
+        # 응답에 한 번만 반환하고 DB에는 SHA-256 digest만 저장한다.
+        fetch_token = _secrets.token_urlsafe(32)
+        fetch_token_digest = hashlib.sha256(fetch_token.encode("utf-8")).hexdigest()
         cur.execute("""
             INSERT INTO building_photo_fetches
-                (building_id, source, status, last_attempt_at)
-            VALUES (%s, 'tourapi', 'running', NOW())
+                (building_id, source, status, last_attempt_at, error_message)
+            VALUES (%s, 'tourapi', 'client_pending', NOW(), %s)
             ON CONFLICT (building_id, source) DO UPDATE SET
-                status='running', last_attempt_at=NOW(), error_message=NULL
+                status='client_pending',
+                last_attempt_at=NOW(),
+                error_message=EXCLUDED.error_message
             WHERE
                 (building_photo_fetches.status = 'no_match'
                  AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '30 days')
@@ -910,138 +960,158 @@ def get_building_photos_on_demand(building_id):
                 (building_photo_fetches.status IN ('failed', 'unavailable')
                  AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '10 minutes')
                 OR
-                (building_photo_fetches.status = 'running'
+                (building_photo_fetches.status = 'client_pending'
                  AND building_photo_fetches.last_attempt_at < NOW() - INTERVAL '2 minutes')
+                OR building_photo_fetches.status = 'success'
             RETURNING building_id
-        """, [building_id])
+        """, [building_id, fetch_token_digest])
         claimed = cur.fetchone() is not None
         conn.commit()
         if not claimed:
-            cur.execute("""
-                SELECT status
-                FROM building_photo_fetches
-                WHERE building_id=%s AND source='tourapi'
-            """, [building_id])
-            recent_fetch = cur.fetchone()
-            fallback = (
-                _streetview_fallback_photos(building)
-                if recent_fetch and recent_fetch["status"] == "no_match"
-                else []
-            )
             return jsonify({
                 "ok": True,
-                "photos": photos + fallback,
-                "status": (
-                    "no_match_streetview_fallback"
-                    if fallback else "recently_checked"
-                ),
+                "photos": photos,
+                "status": "recently_checked",
+                "building_name": building["building_name"],
+                "road_address": building["road_address"],
+                "lat": building["lat"],
+                "lng": building["lng"],
             })
+
+        # 브라우저가 searchKeyword2 + detailImage2를 호출할 수 있으므로 두 슬롯을
+        # 보수적으로 선예약한다. 앱을 통한 동시 호출은 서버 배치와 같은 일일 한도를
+        # 공유한다.
+        from sync_building_photos import TOURAPI_DAILY_CAP, _claim_daily_slot
+        quota_ok = all(
+            _claim_daily_slot("building_photos_tourapi_calls", TOURAPI_DAILY_CAP) is not None
+            for _ in range(2)
+        )
+        if not quota_ok:
+            cur.execute("""
+                UPDATE building_photo_fetches
+                SET status='unavailable', last_attempt_at=NOW(),
+                    error_message='TourAPI daily cap reached'
+                WHERE building_id=%s AND source='tourapi'
+                  AND status='client_pending' AND error_message=%s
+            """, [building_id, fetch_token_digest])
+            conn.commit()
+            return jsonify({
+                "ok": True,
+                "photos": photos,
+                "status": "daily_cap",
+                "building_name": building["building_name"],
+                "road_address": building["road_address"],
+                "lat": building["lat"],
+                "lng": building["lng"],
+            })
+
+        return jsonify({
+            "ok": True,
+            "photos": photos,
+            "status": "fetch_needed",
+            "fetch_token": fetch_token,
+            "building_name": building["building_name"],
+            "road_address": building["road_address"],
+            "lat": building["lat"],
+            "lng": building["lng"],
+        })
     finally:
         cur.close()
         conn.close()
 
-    api_key = os.environ.get("TOUR_API_SERVICE_KEY", "")
-    if not api_key:
-        _finish_photo_fetch(building_id, "unavailable", "TourAPI key unavailable")
-        return jsonify({"ok": True, "photos": photos, "status": "unavailable"})
 
-    try:
-        from sync_building_photos import (
-            TOURAPI_DAILY_CAP,
-            _claim_daily_slot,
-            _find_tour_match,
-            _insert_photos,
-            _tour_images,
-            _tour_photo_type,
-            _tour_search,
-        )
+@app.route("/api/building/<int:building_id>/photos/save", methods=["POST"])
+@limiter.limit("60 per minute")
+def save_building_photos_from_client(building_id):
+    """브라우저가 TourAPI에서 수집한 검증된 이미지 URL만 운영 캐시에 저장한다."""
+    payload = request.get_json(silent=True) or {}
+    raw_photos = payload.get("photos")
+    requested_status = str(payload.get("status") or "").strip().lower()
+    fetch_token = str(payload.get("fetch_token") or "").strip()
+    if not isinstance(raw_photos, list) or len(raw_photos) > 20:
+        return jsonify({"ok": False, "message": "사진 목록 형식이 올바르지 않습니다."}), 400
+    if requested_status not in {"success", "no_match"}:
+        requested_status = "success" if raw_photos else "no_match"
+    if not fetch_token or len(fetch_token) > 256:
+        return jsonify({"ok": False, "message": "사진 조회권이 올바르지 않습니다."}), 409
 
-        if _claim_daily_slot("building_photos_tourapi_calls", TOURAPI_DAILY_CAP) is None:
-            _finish_photo_fetch(building_id, "unavailable", "TourAPI daily cap reached")
-            return jsonify({"ok": True, "photos": photos, "status": "daily_cap"})
-
-        http = requests.Session()
-        http.headers.update({"User-Agent": "homenstay-building-photos/1.0"})
-        items = _tour_search(http, building["building_name"], api_key)
-        match = _find_tour_match(items, building["road_address"])
-        if not match:
-            _finish_photo_fetch(building_id, "no_match")
-            # 키가 들어간 Google URL은 만들지 않고 내부 프록시만 반환한다.
-            fallback = _streetview_fallback_photos(building)
-            return jsonify({
-                "ok": True,
-                "photos": photos + fallback,
-                "status": "no_match_streetview_fallback" if fallback else "no_match",
-            })
-
-        if _claim_daily_slot("building_photos_tourapi_calls", TOURAPI_DAILY_CAP) is None:
-            _finish_photo_fetch(building_id, "unavailable", "TourAPI daily cap reached")
-            return jsonify({"ok": True, "photos": photos, "status": "daily_cap"})
-
-        images = _tour_images(http, match[1], api_key)
-        matched_item = match[2]
-        representative_url = (
-            matched_item.get("firstimage")
-            or matched_item.get("firstImage")
-            or matched_item.get("firstimage2")
-            or matched_item.get("firstImage2")
-        )
-        candidates = ([{
-            "url": representative_url,
-            "photo_type": "exterior",
-            "is_primary": True,
-        }] if representative_url else []) + [
-            {
-                "url": image.get("originimgurl") or image.get("originImgUrl"),
-                "photo_type": _tour_photo_type(image.get("imgname")),
-                "is_primary": not representative_url and index == 0,
-            }
-            for index, image in enumerate(images)
-        ]
-
-        save_conn = get_conn()
-        save_cur = save_conn.cursor()
-        try:
-            _insert_photos(save_cur, building_id, candidates, "tourapi")
-            save_cur.execute("""
-                UPDATE building_photo_fetches
-                SET status=%s, last_attempt_at=NOW(), error_message=NULL
-                WHERE building_id=%s AND source='tourapi'
-            """, ["success" if candidates else "no_match", building_id])
-            save_conn.commit()
-            photos = _public_building_photo_rows(save_cur, building_id)
-        except Exception:
-            save_conn.rollback()
-            raise
-        finally:
-            save_cur.close()
-            save_conn.close()
-        fallback = [] if candidates else _streetview_fallback_photos(building)
-        return jsonify({
-            "ok": True,
-            "photos": photos + fallback,
-            "status": (
-                "loaded" if candidates
-                else (
-                    "no_match_streetview_fallback"
-                    if fallback
-                    else "no_match"
-                )
-            ),
+    candidates = []
+    seen_urls = set()
+    for photo in raw_photos:
+        if not isinstance(photo, dict):
+            return jsonify({"ok": False, "message": "사진 항목 형식이 올바르지 않습니다."}), 400
+        raw_url = str(photo.get("url") or "").strip()
+        parsed = urlparse(raw_url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or host != "tong.visitkorea.or.kr"
+            or parsed.username
+            or parsed.password
+            or parsed.fragment
+            or len(raw_url) > 2048
+        ):
+            return jsonify({"ok": False, "message": "TourAPI 사진 URL만 저장할 수 있습니다."}), 400
+        url = raw_url.replace("http://", "https://", 1)
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        candidates.append({
+            "url": url,
+            "photo_type": str(photo.get("photo_type") or "exterior")[:40],
+            "is_primary": bool(photo.get("is_primary")) and not candidates,
         })
-    except Exception as exc:
-        error_detail = type(exc).__name__
-        try:
-            from sync_building_photos import _redact
-            error_detail = _redact(f"{type(exc).__name__}: {exc}")[:300]
-        except Exception:
-            pass
-        app.logger.warning(
-            "TourAPI 온디맨드 사진 조회 실패 (building_id=%s): %s",
-            building_id, error_detail,
+
+    final_status = "success" if candidates else "no_match"
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        fetch_token_digest = hashlib.sha256(fetch_token.encode("utf-8")).hexdigest()
+        cur.execute("SELECT id FROM master_buildings WHERE id=%s", [building_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+        cur.execute("""
+            SELECT status, last_attempt_at, error_message
+            FROM building_photo_fetches
+            WHERE building_id=%s AND source='tourapi'
+            FOR UPDATE
+        """, [building_id])
+        fetch_state = cur.fetchone()
+        if not fetch_state:
+            return jsonify({"ok": False, "message": "사진 조회권이 만료되었거나 이미 사용되었습니다."}), 409
+        valid_fetch_token = (
+            fetch_state["status"] == "client_pending"
+            and fetch_state["last_attempt_at"] is not None
+            and fetch_state["last_attempt_at"] > datetime.now(fetch_state["last_attempt_at"].tzinfo) - timedelta(minutes=2)
+            and hmac.compare_digest(
+                str(fetch_state["error_message"] or ""),
+                fetch_token_digest,
+            )
         )
-        _finish_photo_fetch(building_id, "failed", error_detail)
-        return jsonify({"ok": True, "photos": photos, "status": "unavailable"})
+        if not valid_fetch_token:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "사진 조회권이 만료되었거나 이미 사용되었습니다."}), 409
+        from sync_building_photos import _insert_photos
+        _insert_photos(cur, building_id, candidates, "tourapi")
+        cur.execute("""
+            UPDATE building_photo_fetches
+            SET status=%s, last_attempt_at=NOW(), error_message=NULL
+            WHERE building_id=%s AND source='tourapi'
+              AND status='client_pending' AND error_message=%s
+        """, [final_status, building_id, fetch_token_digest])
+        conn.commit()
+        photos = _public_building_photo_rows(cur, building_id)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "photos": photos,
+        "status": "loaded" if candidates else final_status,
+    })
 
 
 @app.route("/api/building/<int:building_id>")
