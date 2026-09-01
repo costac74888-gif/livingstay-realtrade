@@ -64,3 +64,4 @@
 - [실거래 동기화 deadlock](transaction-sync-deadlocks.md) — 스키마 초기화 deadlock은 제한 재시도하고, 거래는 API 재호출 없이 월 단위 rollback·재적재한다.
 - [숙박 부동산 거래 범위](lodging-transaction-scopes.md) — 호실·통건물·토지 거래를 분리하고, 공적 식별정보로 확실한 경우만 숙박 건물에 연결한다.
 - [Publish 사전 실패 구분](publishing-prebuild-failure.md) — Republish가 Failed여도 빌드 기록이 없으면 앱 코드보다 배포 요청 단계 문제로 분리한다.
+- [건물사진 공급자 제약](building-photo-providers.md) — TourAPI는 KorService2 승인 필요, Vworld는 Replit발 WMS가 막힐 수 있으며 공급자 키 포함 URL을 공개 저장하지 않는다.

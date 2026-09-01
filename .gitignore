@@ -22,3 +22,4 @@ backups/
 verify_result_*.csv
 
 zip_code_backfill_progress.json
+sync_building_photos_checkpoint.json

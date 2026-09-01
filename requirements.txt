@@ -7,3 +7,4 @@ gunicorn
 replit-object-storage
 werkzeug
 flask-compress
+pyproj

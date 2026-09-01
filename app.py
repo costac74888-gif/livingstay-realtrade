@@ -736,6 +736,80 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
         app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
 
 
+@app.route("/api/building-photo/<int:building_id>/<source>")
+@limiter.limit("60 per minute")
+def get_building_provider_photo(building_id, source):
+    """공급자 키를 노출하지 않고 등록된 건물 사진만 제한적으로 중계한다."""
+    if source not in ("streetview", "vworld"):
+        return jsonify({"error": "not found"}), 404
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT b.lat, b.lng
+            FROM master_buildings b
+            WHERE b.id=%s
+              AND b.lat IS NOT NULL
+              AND b.lng IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM building_photos p
+                WHERE p.building_id=b.id AND p.source=%s
+              )
+        """, (building_id, source))
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+
+    if source == "streetview":
+        key = os.environ.get("GOOGLE_MAPS_API_KEY")
+        base_url = "https://maps.googleapis.com/maps/api/streetview"
+        params = {
+            "size": "640x480",
+            "location": f"{float(row['lat'])},{float(row['lng'])}",
+            "heading": 0,
+            "fov": 90,
+            "pitch": 0,
+            "key": key,
+        }
+    else:
+        key = os.environ.get("VWORLD_API_KEY")
+        half = 200 / 111320
+        base_url = "https://api.vworld.kr/req/wms"
+        params = {
+            "key": key,
+            "LAYERS": "Satellite",
+            "BBOX": (
+                f"{float(row['lng']) - half},{float(row['lat']) - half},"
+                f"{float(row['lng']) + half},{float(row['lat']) + half}"
+            ),
+            "WIDTH": 640,
+            "HEIGHT": 480,
+            "FORMAT": "image/png",
+            "CRS": "EPSG:4326",
+            "SERVICE": "WMS",
+            "VERSION": "1.3.0",
+            "REQUEST": "GetMap",
+        }
+    if not key:
+        return jsonify({"error": "provider unavailable"}), 503
+    try:
+        upstream = requests.get(base_url, params=params, timeout=20)
+        content_type = str(upstream.headers.get("Content-Type") or "").lower()
+        if not (200 <= upstream.status_code < 400 and content_type.startswith("image/")):
+            return jsonify({"error": "provider unavailable"}), 502
+        if len(upstream.content) > 10 * 1024 * 1024:
+            return jsonify({"error": "provider response too large"}), 502
+    except requests.RequestException:
+        return jsonify({"error": "provider unavailable"}), 502
+    response = Response(upstream.content, content_type=content_type.split(";", 1)[0])
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-if-error=604800"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -14692,6 +14766,7 @@ _MANUAL_SYNC_POST_PATHS = {
     "/api/admin/sync-stores",
     "/api/admin/sync-permits",
     "/api/admin/sync-realty",
+    "/api/admin/sync-photos",
 }
 
 
@@ -14963,6 +15038,89 @@ def admin_title_info_status():
         "total": s["total"],
         "with_title": s["with_title"],
         "missing": s["missing"],
+        "status": status,
+    })
+
+
+_PHOTO_SYNC_META_KEY = "building_photos_sync_status"
+_PHOTO_SYNC_SOURCES = ("tourapi", "streetview", "vworld")
+
+
+@app.route("/api/admin/sync-photos", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_building_photos_sync_run():
+    """건물 사진 공급자별 수집을 detached 백그라운드로 시작한다."""
+    source = (request.args.get("source") or "").strip().lower()
+    if source not in _PHOTO_SYNC_SOURCES:
+        return jsonify({
+            "ok": False,
+            "message": "사진 수집원은 tourapi, streetview, vworld 중 하나여야 합니다.",
+        }), 400
+    required_keys = {
+        "tourapi": "DATA_GO_KR_BROKER_API_KEY",
+        "streetview": "GOOGLE_MAPS_API_KEY",
+        "vworld": "VWORLD_API_KEY",
+    }
+    key_name = required_keys[source]
+    if not os.environ.get(key_name):
+        return jsonify({
+            "ok": False,
+            "message": f"{key_name} 시크릿이 등록되어 있지 않습니다.",
+        }), 400
+    ok, code, payload = _start_detached_sync(
+        _PHOTO_SYNC_META_KEY,
+        "sync_building_photos.py",
+        ["--source", source, "--limit", "500", "--status-key", _PHOTO_SYNC_META_KEY],
+        done_cooldown_min=5,
+    )
+    if ok:
+        payload["message"] = f"{source} 건물 사진 수집을 시작했습니다."
+    return jsonify(payload), code
+
+
+@app.route("/api/admin/sync-photos-status")
+@require_admin
+def admin_building_photos_sync_status():
+    """건물 사진 적재·공급자별 현황과 백그라운드 실행 상태."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT
+              COUNT(*) AS total_buildings,
+              COUNT(*) FILTER (
+                WHERE EXISTS (
+                  SELECT 1 FROM building_photos p WHERE p.building_id = b.id
+                )
+              ) AS buildings_with_photos
+            FROM master_buildings b
+        """)
+        totals = cur.fetchone()
+        cur.execute("""
+            SELECT source, COUNT(*) AS count
+            FROM building_photos
+            GROUP BY source
+        """)
+        source_counts = {row["source"]: row["count"] for row in cur.fetchall()}
+        status = _read_sync_status_row(cur, _PHOTO_SYNC_META_KEY)
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "total_buildings": totals["total_buildings"],
+        "buildings_with_photos": totals["buildings_with_photos"],
+        "photo_count": sum(source_counts.values()),
+        "source_counts": {
+            source: source_counts.get(source, 0)
+            for source in _PHOTO_SYNC_SOURCES
+        },
+        "sources_available": {
+            "tourapi": bool(os.environ.get("DATA_GO_KR_BROKER_API_KEY")),
+            "streetview": bool(os.environ.get("GOOGLE_MAPS_API_KEY")),
+            "vworld": bool(os.environ.get("VWORLD_API_KEY")),
+        },
         "status": status,
     })
 
