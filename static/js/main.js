@@ -4263,6 +4263,8 @@ function initBuildingPhotoSlider(photoCount){
 
 let _activePhotoBuildingId = null;
 const TOUR_API_BROWSER_BASE = "https://apis.data.go.kr/B551011/KorService2";
+const BUILDING_PHOTO_LOCAL_CACHE_VERSION = 1;
+const BUILDING_PHOTO_LOCAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function normalizeTourAddress(address){
   let text = String(address || "").trim().replace(/\s+/g, " ");
@@ -4377,16 +4379,52 @@ async function fetchTourApiPhotos(buildingName, roadAddress){
   return candidates.slice(0, 20);
 }
 
-async function saveClientBuildingPhotos(buildingId, photos, status, fetchToken){
-  const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos/save`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({photos, status, fetch_token: fetchToken})
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) throw new Error(data.message || `사진 저장 HTTP ${response.status}`);
-  return data;
+function buildingPhotoLocalCacheKey(buildingId){
+  return `livingstay:building-photos:v${BUILDING_PHOTO_LOCAL_CACHE_VERSION}:${buildingId}`;
+}
+
+function readLocalBuildingPhotos(buildingId, buildingName, roadAddress){
+  try {
+    const cached = JSON.parse(localStorage.getItem(buildingPhotoLocalCacheKey(buildingId)) || "null");
+    const identityMatches = cached
+      && cached.building_name === String(buildingName || "")
+      && cached.road_address === String(roadAddress || "");
+    if (!identityMatches || !Number.isFinite(cached.checked_at)
+        || Date.now() - cached.checked_at > BUILDING_PHOTO_LOCAL_TTL_MS){
+      localStorage.removeItem(buildingPhotoLocalCacheKey(buildingId));
+      return null;
+    }
+    return {
+      status: cached.status === "success" ? "success" : "no_match",
+      photos: Array.isArray(cached.photos) ? cached.photos : []
+    };
+  } catch(e) {
+    return null;
+  }
+}
+
+function writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, photos){
+  try {
+    localStorage.setItem(buildingPhotoLocalCacheKey(buildingId), JSON.stringify({
+      building_name: String(buildingName || ""),
+      road_address: String(roadAddress || ""),
+      checked_at: Date.now(),
+      status: photos.length ? "success" : "no_match",
+      photos
+    }));
+  } catch(e) {
+    // 저장 공간 부족·차단 시에도 현재 화면의 사진 표시는 유지한다.
+  }
+}
+
+function streetViewFallbackPhoto(buildingId, lat, lng){
+  if (lat == null || lng == null || String(lat).trim() === "" || String(lng).trim() === "") return [];
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return [];
+  return [{
+    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview`,
+    source: "streetview",
+    photo_type: "exterior"
+  }];
 }
 
 async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
@@ -4405,22 +4443,26 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
 
     const buildingName = data.building_name || building?.building_name || "";
     const roadAddress = data.road_address || building?.road_address || "";
+    const local = readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
+    if (local){
+      const localOrFallback = local.photos.length || !data.streetview_available
+        ? local.photos
+        : streetViewFallbackPhoto(buildingId, data.lat, data.lng);
+      renderPhotoSlider([...photos, ...localOrFallback]);
+      return;
+    }
+
     const clientPhotos = await fetchTourApiPhotos(buildingName, roadAddress);
     if (_activePhotoBuildingId !== buildingId) return;
+    writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, clientPhotos);
+    const clientOrFallback = clientPhotos.length || !data.streetview_available
+      ? clientPhotos
+      : streetViewFallbackPhoto(buildingId, data.lat, data.lng);
     const mergedPhotos = [...photos];
-    clientPhotos.forEach(photo => {
+    clientOrFallback.forEach(photo => {
       if (!mergedPhotos.some(existing => existing?.url === photo.url)) mergedPhotos.push(photo);
     });
     renderPhotoSlider(mergedPhotos);
-    saveClientBuildingPhotos(
-      buildingId,
-      clientPhotos,
-      clientPhotos.length ? "success" : "no_match",
-      data.fetch_token
-    ).then(saved => {
-      if (_activePhotoBuildingId !== buildingId) return;
-      renderPhotoSlider(Array.isArray(saved.photos) && saved.photos.length ? saved.photos : mergedPhotos);
-    }).catch(() => {});
   } catch(e) {
     if (_activePhotoBuildingId !== buildingId) return;
     // 외부 호출 실패 시 기존 캐시 사진은 유지하고, 실제로 사진이 없을 때만 숨긴다.
