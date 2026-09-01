@@ -36,6 +36,7 @@
       <select id="transactionScope" style="margin-left:6px;">
         <option value="unit">개별 호실</option>
         <option value="whole_building">건물 전체</option>
+        <option value="land_or_site">토지·부지</option>
       </select>
     </label>
   </div>
@@ -314,9 +315,9 @@
       <tr>
         <td class="col-name">${t.building_name != null ? esc(t.building_name) : "(건물명 미확인)"}</td>
         <td class="col-addr">${txAddr(t)}</td>
-        <td class="col-type">${t.transaction_scope === "whole_building" ? "건물 전체" : "개별 호실"}</td>
+        <td class="col-type">${t.transaction_scope === "whole_building" ? "건물 전체" : (t.transaction_scope === "land_or_site" ? "토지·부지" : "개별 호실")}</td>
         <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
-        <td class="col-num col-floor">${t.transaction_scope === "whole_building" ? "해당없음" : (t.floor ? esc(t.floor) + "층" : "-")}</td>
+        <td class="col-num col-floor">${t.transaction_scope !== "unit" ? "해당없음" : (t.floor ? esc(t.floor) + "층" : "-")}</td>
         <td class="col-price">${t.price != null ? Number(t.price).toLocaleString('ko-KR') : "-"}</td>
         <td class="col-date">${esc(t.deal_date || "-")}</td>
         <td class="col-type">${dealTypeTag(t.deal_type)}</td>

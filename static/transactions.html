@@ -64,6 +64,7 @@
         <select id="selTransactionScope">
           <option value="unit" selected>개별 호실</option>
           <option value="whole_building">건물 전체</option>
+          <option value="land_or_site">토지·부지</option>
         </select>
       </div>
       <button class="btn-search" id="btnSearch">검색</button>
@@ -268,7 +269,9 @@
     const lodgingTag = `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${lodgingColor}; padding:2px 8px; border-radius:5px;">${escapeHtml(lodgingLabel)}</span>`;
     const scopeTag = t.transaction_scope === "whole_building"
       ? `<span class="tag brk">건물 전체</span>`
-      : `<span class="tag med">개별 호실</span>`;
+      : t.transaction_scope === "land_or_site"
+        ? `<span class="tag brk">토지·부지</span>`
+        : `<span class="tag med">개별 호실</span>`;
     const priceFormatted = Number(t.price || 0).toLocaleString('ko-KR');
     const nameText = t.building_name != null ? escapeHtml(t.building_name) : "(건물명 미확인)";
     // master_building_id가 있으면 건물 상세 페이지로 이동하는 일반 링크(<a href>)로 만든다.
@@ -289,7 +292,7 @@
         <td class="col-addr">${escapeHtml(t.si_do||'')} ${escapeHtml(t.sgg_nm||'')} ${escapeHtml(t.umd_nm||'')} ${escapeHtml(t.jibun||'')}</td>
         <td class="col-type">${scopeTag}</td>
         <td class="col-num col-area">${t.area != null ? Number(t.area).toFixed(1) + " ㎡" : "-"}</td>
-        <td class="col-num col-floor">${t.transaction_scope === "whole_building" ? "해당없음" : (t.floor ? escapeHtml(t.floor) + '<span class="m-only">층</span>' : '-')}</td>
+        <td class="col-num col-floor">${t.transaction_scope !== "unit" ? "해당없음" : (t.floor ? escapeHtml(t.floor) + '<span class="m-only">층</span>' : '-')}</td>
         <td class="col-price">${priceFormatted}<span class="m-only">만원</span></td>
         <td class="col-date">${escapeHtml(t.deal_date||'')}</td>
         <td class="col-type">${typeTag}</td>

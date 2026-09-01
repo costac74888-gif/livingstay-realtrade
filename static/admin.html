@@ -4338,6 +4338,24 @@
         rows.push(`<div class="geo-stat-row"><b>마지막 전체 수집 완료:</b> ${dgEscape(d.last_sync.finished_at)}</div>`);
       }
       const rh = d.rural_hanok || {};
+      const rht = rh.trades || {};
+      const rtc = rht.counters || {};
+      if (rht.running) {
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 부동산 거래:</b> 실행 중… <span class="tx-sync-spin">⏳</span></div>`);
+      } else if (rht.state === "done") {
+        const reasons = Object.entries(rtc)
+          .filter(([k]) => k.startsWith("reason:"))
+          .map(([k, v]) => `${dgEscape(k.slice(7))} ${num(v)}건`)
+          .join(" · ");
+        const sources = ["SHTrade", "RHTrade", "NrgTrade", "LandTrade"]
+          .map(k => `${k} 조회 ${num(rtc[`fetched:${k}`] || 0)} / 연결 ${num(rtc[`matched:${k}`] || 0)}`)
+          .join(" · ");
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 부동산 거래:</b> 정확 연결 ${num(rtc.matched || 0)}건(농어촌 ${num(rtc["matched_target:rural"] || 0)} / 한옥 ${num(rtc["matched_target:hanok"] || 0)}) · 신규 ${num(rtc.inserted || 0)}건 · 미연결 ${num(rtc.unmatched || 0)}건${reasons ? ` (${reasons})` : ""} · 마지막 월 ${dgEscape(rht.checkpoint || "-")}<br><span style="color:#6b7280">${sources}</span></div>`);
+      } else if (rht.state === "failed") {
+        rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>농어촌민박·한옥 부동산 거래 실패:</b> ${dgEscape(rht.error || "원인 미상")} (다음 실행에서 안전하게 재시도)</div>`);
+      } else if (rht.last_success && rht.last_success.finished_at) {
+        rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 부동산 거래 마지막 성공:</b> ${dgEscape(rht.last_success.finished_at)}</div>`);
+      }
       if (rh.running) {
         rows.push(`<div class="geo-stat-row"><b>농어촌민박·한옥 자동 동기화:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(rh.started_at || "-")})</div>`);
       } else if (rh.state === "done") {

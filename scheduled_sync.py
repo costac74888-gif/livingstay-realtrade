@@ -87,6 +87,19 @@ STAGES = (
         blocking_status_keys=("tx_sync_status", "tx_backfill_status"),
     ),
     Stage(
+        "rural_hanok_trades",
+        "농어촌민박·한옥 실거래",
+        "거래",
+        ("sync_rural_hanok_trades.py", "--months", "3", "--sleep", "0.8"),
+        "매일",
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM transactions "
+            "WHERE source_api IN ('SHTrade', 'RHTrade', 'NrgTrade', 'LandTrade')"
+        ),
+        metric_label="확실한 농어촌·한옥 거래",
+        blocking_status_keys=("rural_hanok_trade_sync_status", "tx_sync_status", "tx_backfill_status"),
+    ),
+    Stage(
         "building_registry",
         "건축물대장",
         "건물·허가",

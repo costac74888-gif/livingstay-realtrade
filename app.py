@@ -14625,6 +14625,7 @@ _SCHEDULED_SYNC_STAGE_PREFIX = f"{_SCHEDULED_SYNC_META_KEY}:"
 _KST = ZoneInfo("Asia/Seoul")
 _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
+    ("rural_hanok_trades", "농어촌민박·한옥 실거래", "거래", "매일"),
     ("building_registry", "건축물대장", "건물·허가", "월·수·금"),
     ("building_permits", "준공 전 건축인허가", "건물·허가", "화·목·토"),
     ("building_geocode", "지도 좌표 채우기", "지도·건축정보", "매일"),
@@ -19320,6 +19321,8 @@ def admin_broker_candidates_export():
 _LODGING_SYNC_META_KEY = "lodging_sync_status"
 _RURAL_HANOK_SYNC_META_KEY = "rural_hanok_sync_status"
 _RURAL_HANOK_LAST_SYNC_META_KEY = "rural_hanok_last_sync"
+_RURAL_HANOK_TRADE_SYNC_META_KEY = "rural_hanok_trade_sync_status"
+_RURAL_HANOK_TRADE_LAST_SUCCESS_META_KEY = "rural_hanok_trade_last_success"
 _LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
 _CAMPING_DAILY_CAP = 800  # sync_lodgings.CAMPING_MAX_DAILY_CALLS 와 동일 값 유지
 
@@ -19432,6 +19435,10 @@ def admin_lodging_sync_status():
         rural_hanok_meta = cur.fetchone()
         cur.execute("SELECT value FROM app_meta WHERE key = %s", (_RURAL_HANOK_LAST_SYNC_META_KEY,))
         rural_hanok_last_row = cur.fetchone()
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key = %s", (_RURAL_HANOK_TRADE_SYNC_META_KEY,))
+        rural_hanok_trade_meta = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = %s", (_RURAL_HANOK_TRADE_LAST_SUCCESS_META_KEY,))
+        rural_hanok_trade_last_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
@@ -19457,6 +19464,7 @@ def admin_lodging_sync_status():
     progress = last_sync = status = None
     camping_progress = camping_last_sync = None
     rural_hanok_status = rural_hanok_last_sync = None
+    rural_hanok_trade_status = rural_hanok_trade_last_success = None
     try:
         progress = json.loads(prog_row["value"]) if prog_row and prog_row["value"] else None
     except (TypeError, ValueError):
@@ -19494,6 +19502,20 @@ def admin_lodging_sync_status():
         rural_hanok_last_sync = (
             json.loads(rural_hanok_last_row["value"])
             if rural_hanok_last_row and rural_hanok_last_row["value"] else None
+        )
+    except (TypeError, ValueError):
+        pass
+    try:
+        rural_hanok_trade_status = (
+            json.loads(rural_hanok_trade_meta["value"])
+            if rural_hanok_trade_meta and rural_hanok_trade_meta["value"] else None
+        )
+    except (TypeError, ValueError):
+        pass
+    try:
+        rural_hanok_trade_last_success = (
+            json.loads(rural_hanok_trade_last_row["value"])
+            if rural_hanok_trade_last_row and rural_hanok_trade_last_row["value"] else None
         )
     except (TypeError, ValueError):
         pass
@@ -19583,6 +19605,19 @@ def admin_lodging_sync_status():
                 )
                 if rural_hanok_last_sync else None
             ),
+            "trades": {
+                "state": rural_hanok_trade_status.get("state") if rural_hanok_trade_status else None,
+                "running": bool(rural_hanok_trade_status and rural_hanok_trade_status.get("state") == "running"),
+                "counters": rural_hanok_trade_status.get("counters") if rural_hanok_trade_status else None,
+                "checkpoint": rural_hanok_trade_status.get("checkpoint") if rural_hanok_trade_status else None,
+                "error": rural_hanok_trade_status.get("error") if rural_hanok_trade_status else None,
+                "retryable": bool(rural_hanok_trade_status and rural_hanok_trade_status.get("retryable")),
+                "last_success": (
+                    dict(rural_hanok_trade_last_success,
+                         finished_at=_kst_label(rural_hanok_trade_last_success.get("finished_at")))
+                    if rural_hanok_trade_last_success else None
+                ),
+            },
         },
     })
 

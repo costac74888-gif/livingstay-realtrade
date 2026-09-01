@@ -30,7 +30,7 @@ import requests
 import psycopg2
 
 from db import get_conn, init_db
-from quota_policy import korea_today, regular_cap
+from quota_policy import QuotaExhausted, claim_rtms_request, korea_today, regular_cap
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
 from building_registry import classify_lodging_type
 from stats_cache import mark_master_stats_invalidated as _mark_master_stats_invalidated
@@ -52,6 +52,7 @@ REQUEST_SLEEP = 0.15  # STEP1 JUSO 주소변환용 딜레이(초)
 # RTMS 요청 사이 기본 딜레이(초). 429(Too Many Requests) 방지용.
 # CLI --sleep 로 조정 (권장 0.5~1.0). sync_transactions()가 실행 시 덮어쓴다.
 RTMS_SLEEP = 0.5
+RTMS_WRITER_LOCK_ID = 9_183_245
 
 # ------------------------------------------------------------------
 # 일일 소프트 캡 — 국토부 RTMS 일일 쿼터(10,000건)를 백필이 다 태우면
@@ -609,6 +610,11 @@ def _new_stats():
 def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=None):
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (RTMS_WRITER_LOCK_ID,))
+    if not cur.fetchone()["acquired"]:
+        cur.close()
+        conn.close()
+        raise RuntimeError("다른 실거래 수집기가 실행 중입니다.")
     _ensure_failures_table(cur)
     conn.commit()
 
@@ -668,14 +674,15 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
             # 남은 (시군구,월)은 체크포인트에 미기록 상태 그대로 → 내일 이어서 진행.
             _cap_key   = DAILY_CALLS_META_KEY_BACKFILL if progress_key else DAILY_CALLS_META_KEY
             _cap_limit = MAX_DAILY_BACKFILL_ONLY_CALLS if progress_key else MAX_DAILY_BACKFILL_CALLS
-            used = _daily_calls_today(cur, _cap_key)
-            if used >= _cap_limit:
+            try:
+                used = claim_rtms_request(_cap_key, _cap_limit)
+            except QuotaExhausted:
+                used = _daily_calls_today(cur, _cap_key)
                 print(f"[CAP] 오늘 {'백필 전용 ' if progress_key else ''}RTMS 호출 {used}건 "
                       f"— 일일 한도({_cap_limit}건) 도달, 백필을 중단합니다. "
                       f"체크포인트가 저장되어 있어 다음 실행에서 이어서 진행됩니다.", flush=True)
                 capped = True
                 break
-            _bump_daily_calls(cur, conn, _cap_key)
             try:
                 trades = fetch_nrg_trade(sgg_cd, deal_ymd)
             except RateLimitError as e:
@@ -743,6 +750,8 @@ def sync_transactions(months: int, bjdong=None, sgg_filter=None, progress_key=No
     """, (datetime.now(), datetime.now(), len(sgg_list), stats["inserted"],
           stats["matched_master"], stats["matched_bld"], stats["unmatched"], "success", note))
     conn.commit()
+    cur.execute("SELECT pg_advisory_unlock(%s) AS released", (RTMS_WRITER_LOCK_ID,))
+    cur.fetchone()
     cur.close()
     conn.close()
 
@@ -781,12 +790,13 @@ def _retry_round(cur, conn, bjdong, stats, item_sleep):
         sgg_cd, deal_ymd = it["sgg_cd"], it["deal_ymd"]
         # 일일 소프트 캡 — 도달 시 '쿼터 소진'과 동일하게 라운드 조기 종료 →
         # 상위 루프의 backoff 대기(12~24시간) 후 다음날(카운터 리셋) 이어서 진행.
-        used = _daily_calls_today(cur)
-        if used >= MAX_DAILY_BACKFILL_CALLS:
+        try:
+            used = claim_rtms_request(DAILY_CALLS_META_KEY, MAX_DAILY_BACKFILL_CALLS)
+        except QuotaExhausted:
+            used = _daily_calls_today(cur)
             print(f"  [CAP] 오늘 RTMS 호출 {used}건 — 일일 한도({MAX_DAILY_BACKFILL_CALLS}건) 도달, "
                   f"라운드 조기 종료(실패큐 보존, 다음 라운드에서 재개)", flush=True)
             return resolved, True
-        _bump_daily_calls(cur, conn)
         try:
             trades = fetch_nrg_trade(sgg_cd, deal_ymd)
         except RateLimitError:
@@ -826,6 +836,11 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
     """
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("SELECT pg_try_advisory_lock(%s) AS acquired", (RTMS_WRITER_LOCK_ID,))
+    if not cur.fetchone()["acquired"]:
+        cur.close()
+        conn.close()
+        raise RuntimeError("다른 실거래 수집기가 실행 중입니다.")
     _ensure_failures_table(cur)
     conn.commit()
 
@@ -862,6 +877,8 @@ def retry_failed_requests(bjdong=None, base_sleep=1.0, loop=True):
     cur.execute("SELECT COUNT(*) AS c FROM sync_failures")
     remaining = cur.fetchone()["c"]
     conn.commit()
+    cur.execute("SELECT pg_advisory_unlock(%s) AS released", (RTMS_WRITER_LOCK_ID,))
+    cur.fetchone()
     cur.close()
     conn.close()
 

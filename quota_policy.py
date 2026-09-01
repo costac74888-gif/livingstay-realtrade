@@ -21,6 +21,53 @@ class QuotaExhausted(RuntimeError):
     """Raised before an outbound request when a provider hard cap is full."""
 
 
+def claim_rtms_request(counter_key="rtms_daily_calls", cap=None) -> int:
+    """Atomically reserve one RTMS request across every transaction collector."""
+    from db import get_conn
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        today = korea_today()
+        limit = int(cap if cap is not None else PROVIDER_QUOTAS["rtms"]["regular"])
+        provider_limit = int(PROVIDER_QUOTAS["rtms"]["total"])
+        fresh = f'{{"date":"{today}","count":1}}'
+        def reserve(key, reservation_limit):
+            cur.execute(
+            """
+            INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET
+              value = CASE
+                WHEN app_meta.value::jsonb ->> 'date' = %s
+                THEN jsonb_build_object(
+                  'date', %s, 'count',
+                  COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) + 1
+                )::text
+                ELSE EXCLUDED.value
+              END,
+              updated_at = NOW()
+            WHERE (app_meta.value::jsonb ->> 'date') IS DISTINCT FROM %s
+               OR COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) < %s
+            RETURNING (value::jsonb ->> 'count')::int AS count
+            """,
+                (key, fresh, today, today, today, reservation_limit),
+            )
+            return cur.fetchone()
+
+        row = reserve(counter_key, limit)
+        provider_row = reserve("rtms_provider_daily_calls", provider_limit) if row else None
+        if not row or not provider_row:
+            conn.rollback()
+            raise QuotaExhausted(
+                f"RTMS provider daily cap ({provider_limit}) or allocation ({limit}) reached"
+            )
+        conn.commit()
+        return int(row["count"])
+    finally:
+        cur.close()
+        conn.close()
+
+
 def claim_building_hub_request() -> int:
     """Atomically reserve one Building HUB request across registry/permits.
 
@@ -126,6 +173,7 @@ PROVIDER_COUNTER_KEYS = {
 # reads exactly these existing records.
 STAGE_QUOTAS = {
     "transactions": (("rtms", "rtms_daily_calls", "--unsupported"),),
+    "rural_hanok_trades": (("rtms", "rtms_daily_calls", "--unsupported"),),
     "building_registry": (("building_hub", "brhub_progress", "--daily-cap"),),
     "building_permits": (("building_hub", "permits_progress", "--daily-cap"),),
     "building_geocode": (("kakao_building", "geocode_sync_status", "--unsupported"),),
@@ -185,6 +233,7 @@ def execution_bucket_for_stage(stage: str) -> str:
     """Serialize only stages known to deadlock on shared DB resources."""
     if stage in {
         "transactions",
+        "rural_hanok_trades",
         "building_registry",
         "building_permits",
         "building_geocode",
