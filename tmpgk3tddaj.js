@@ -1,0 +1,577 @@
+
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+function markerColor(v, status){ return window.LodgingTypes.color(v, status); }
+function badgeLabel(v, subtype, status){ return window.LodgingTypes.badge(v, subtype, status); }
+const OP_REGION_BUILDING_CAP = 10;
+
+let ME = null;
+
+function openModal(id){ document.getElementById(id).hidden = false; }
+function closeModal(id){ document.getElementById(id).hidden = true; }
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.close)));
+document.querySelectorAll(".admin-modal-overlay").forEach(ov => ov.addEventListener("click", e => { if (e.target === ov) ov.hidden = true; }));
+
+async function api(url, opts){
+  const res = await fetch(url, Object.assign({ headers: { "Content-Type": "application/json" } }, opts));
+  if (res.status === 401){ location.href = "/operator/login"; throw new Error("unauthenticated"); }
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
+}
+
+function renderVisibility(){
+  const on = ME.is_visible !== false;
+  const btn = document.getElementById("btnToggleVisible");
+  const badge = document.getElementById("visBadge");
+  btn.textContent = on ? "노출중지" : "노출 재개";
+  badge.style.display = "inline-block";
+  if (on){ badge.textContent = "노출중"; badge.style.background = "#E4F5EA"; badge.style.color = "#1E7C43"; }
+  else { badge.textContent = "노출중지됨"; badge.style.background = "#FBEAEA"; badge.style.color = "#B23A3A"; }
+}
+
+const _AVATAR_CACHE_KEY = "hs_operator_avatar_src";
+
+// bustCache=true 는 업로드 직후에만 — 일반 표시는 브라우저 캐시 활용
+function renderAvatar(bustCache = false){
+  const img  = document.getElementById("meAvatarImg");
+  const icon = document.getElementById("meAvatarIcon");
+  const mImg  = document.getElementById("modalAvatarImg");
+  const mIcon = document.getElementById("modalAvatarIcon");
+  if (ME.logo_src){
+    const src = ME.logo_src + (bustCache ? "?t=" + Date.now() : "");
+    img.src = src; img.style.display = "block"; icon.style.display = "none";
+    if (mImg){ mImg.src = src; mImg.style.display = "block"; }
+    if (mIcon) mIcon.style.display = "none";
+    try { localStorage.setItem(_AVATAR_CACHE_KEY, ME.logo_src); } catch(e){}
+  } else {
+    img.style.display = "none"; icon.style.display = "flex";
+    if (mImg) mImg.style.display = "none";
+    if (mIcon) mIcon.style.display = "flex";
+    try { localStorage.removeItem(_AVATAR_CACHE_KEY); } catch(e){}
+  }
+}
+
+// 페이지 진입 즉시 캐시된 아바타 선표시 — API 응답 전 깜빡임 제거
+(function preFillAvatar(){
+  try {
+    const cached = localStorage.getItem(_AVATAR_CACHE_KEY);
+    if (!cached) return;
+    const img = document.getElementById("meAvatarImg");
+    const icon = document.getElementById("meAvatarIcon");
+    if (img && icon){ img.src = cached; img.style.display = "block"; icon.style.display = "none"; }
+  } catch(e){}
+})();
+
+function render(){
+  renderVisibility();
+  document.getElementById("meCompany").textContent = ME.company_name || "-";
+  const cat = document.getElementById("meCategory");
+  if (ME.category){ cat.textContent = ME.category; cat.style.display = "inline-block"; }
+  else cat.style.display = "none";
+  document.getElementById("meOwner").textContent = "대표 " + (ME.owner_name || "-");
+  const list = document.getElementById("bldList");
+  document.getElementById("bldCount").textContent = (ME.buildings || []).length + "개";
+
+  // 안내 카드 — 데이터 로드 후 캡 숫자 채우고 표시
+  const guideCard = document.getElementById("badgeGuideCard");
+  if (guideCard) {
+    document.getElementById("guideBuildingCap").textContent = ME.building_cap || OP_REGION_BUILDING_CAP;
+    document.getElementById("guideBadgeCap").textContent = ME.badge_cap || 100;
+    guideCard.style.display = "";
+  }
+
+  if (!(ME.buildings || []).length){
+    list.innerHTML = `<div class="side-empty">등록된 담당 단지가 없습니다. 위의 [+ 단지 추가] 버튼으로 등록해보세요.</div>`;
+    return;
+  }
+
+  const now = new Date();
+  list.innerHTML = ME.buildings.map(b => {
+    const expAt = b.premium_expires_at ? new Date(b.premium_expires_at) : null;
+    const active = b.has_priority_badge && expAt && expAt > now;
+    const usedUp = b.premium_granted_at && !active;
+    let badgeBtn;
+    if (active) {
+      badgeBtn = `<button class="side-more" disabled style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;color:#1a7a3c;background:#E6F4EA;border-color:#A3D9B1;cursor:default;" title="만료일: ${expAt.toLocaleDateString('ko-KR')}">✓ 뱃지 적용중</button>`;
+    } else if (usedUp) {
+      badgeBtn = `<button class="side-more" disabled style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;color:#aaa;background:#F5F5F5;border-color:#ddd;cursor:default;">혜택 소진</button>`;
+    } else {
+      badgeBtn = `<button class="side-more" style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;color:var(--brass-dark);border-color:var(--brass-dark);" onclick="claimBadge(${b.master_building_id})">단지뱃지 신청</button>`;
+    }
+    return `
+    <div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14.5px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
+        <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>
+        <span style="flex:1;"></span>
+        ${badgeBtn}
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openNote(${b.master_building_id})">메모 수정</button>
+        <button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px; color:var(--brick);" onclick="delBuilding(${b.master_building_id})">삭제</button>
+      </div>
+      ${(b.note || "").trim() ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">📝 ${esc(b.note)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+async function load(){
+  const { ok, data } = await api("/api/operator/me");
+  if (!ok){ document.getElementById("meCompany").textContent = "정보를 불러오지 못했습니다."; return; }
+  ME = data;
+  render();
+  renderAvatar();
+}
+
+// ---- 탭 전환 ----
+document.querySelectorAll(".agent-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".agent-tab").forEach(b => b.classList.remove("is-active"));
+    document.querySelectorAll(".agent-tabpanel").forEach(p => p.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    document.querySelector(`.agent-tabpanel[data-tabpanel="${btn.dataset.tab}"]`).classList.add("is-active");
+    if (btn.dataset.tab === "leads") loadOpLeads();
+    if (btn.dataset.tab === "ota") loadOta();
+    if (btn.dataset.tab === "region") loadOpRegions();
+    if (btn.dataset.tab === "billing") loadOpBilling();
+  });
+});
+
+// ---- 단지뱃지 신청 ----
+window.claimBadge = async function(mbid) {
+  if (!confirm("이 단지에 단지뱃지를 신청합니다.\n신청 즉시 2026년 12월 31일까지 무료 적용되며, 무료 혜택은 1회만 제공됩니다.\n계속하시겠습니까?")) return;
+  const { ok, data } = await api(`/api/operator/buildings/${mbid}/claim-premium`, { method: "POST" });
+  if (!ok) { alert(data && data.message ? data.message : "신청에 실패했습니다."); return; }
+  // GA4: 운영지원업체 단지뱃지 신청 완료 — API 성공 응답 직후
+  if (typeof gtag === "function") gtag("event", "generate_lead_support");
+  alert("단지뱃지가 신청되었습니다. 2026년 12월 31일까지 해당 단지 담당업체 영역 최상단에 노출됩니다.");
+  // ME 갱신 후 화면 재렌더
+  const res = await api("/api/operator/me");
+  if (res.ok) { ME = res.data; render(); }
+};
+
+// ---- 받은 상담 ----
+async function loadOpLeads(){
+  const res = await fetch("/api/operator/consult-requests/mine");
+  const d = await res.json().catch(()=>({}));
+  const box = document.getElementById("opLeadsList");
+  if (!d.ok || !d.items.length){ box.innerHTML = `<div class="side-empty">받은 상담이 없습니다.</div>`; return; }
+  box.innerHTML = d.items.map(l => `
+    <div style="padding:12px 2px; border-bottom:1px solid #F0EBDF;">
+      <div style="font-weight:700;">${esc(l.building_name)} <span style="font-size:11px; font-weight:400; color:var(--ink-soft);">[${esc(l.category)}] ${l.routed_reason==='exclusive'?'단지 배정':'지역 배정'} · ${l.status==='submitted'?'신규':l.status==='in_progress'?'처리중':'완료'}</span></div>
+      <div style="font-size:13px; color:var(--ink-soft); margin-top:4px;">${l.message ? esc(l.message) + " · " : ""}연락처: ${esc(l.contact_phone)}</div>
+      <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">${esc(l.created_at)}</div>
+      ${l.status !== 'done' ? `<button class="side-more" style="width:auto; margin-top:6px; padding:5px 12px; font-size:12px;" onclick="opSetStatus(${l.id}, '${l.status==='submitted'?'in_progress':'done'}')">${l.status==='submitted'?'처리 시작':'완료 처리'}</button>` : ""}
+    </div>`).join("");
+}
+window.opSetStatus = async function(id, status){
+  await fetch(`/api/operator/consult-requests/${id}/status`, {
+    method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({status})});
+  loadOpLeads();
+};
+
+// ---- OTA 링크 신청 ----
+let otaTarget = null;  // { master_building_id, building_name }
+
+async function loadOta(){
+  const res = await fetch("/api/operator/booking-url-requests");
+  const d = await res.json().catch(()=>({}));
+  const buildings = (ME && ME.buildings) || [];
+  const box = document.getElementById("otaList");
+  if (!buildings.length){
+    box.innerHTML = `<div class="side-empty">등록된 담당 단지가 없습니다. 먼저 담당 단지를 추가해주세요.</div>`;
+    return;
+  }
+  // 최신 신청 내역 맵핑
+  const reqMap = {};
+  if (d.ok) (d.items || []).forEach(r => { reqMap[r.master_building_id] = r; });
+
+  const statusLabel = s => {
+    if (!s) return `<span style="font-size:11.5px; color:var(--ink-soft);">미신청</span>`;
+    const m = { pending: ['검토중', '#8a6d1f', '#fdf6e3'], approved: ['승인됨', '#1a7a3c', '#E6F4EA'], rejected: ['거절됨', '#B23A3A', '#FBEAEA'], cancelled: ['취소됨', '#aaa', '#f5f5f5'] };
+    const [label, color, bg] = m[s] || [s, '#666', '#eee'];
+    return `<span style="font-size:11.5px; font-weight:700; color:${color}; background:${bg}; border-radius:5px; padding:2px 8px;">${label}</span>`;
+  };
+
+  box.innerHTML = buildings.map(b => {
+    const req = reqMap[b.master_building_id];
+    const status = req ? req.status : null;
+    const expireInfo = req && req.status === 'approved' && req.expires_at
+      ? `<span style="font-size:11px; color:${req.is_expired ? 'var(--brick)' : 'var(--ink-soft)'}; margin-left:6px;">${req.is_expired ? '만료됨' : new Date(req.expires_at).toLocaleDateString('ko-KR') + '까지'}</span>`
+      : '';
+    const rejNote = req && req.status === 'rejected' && req.admin_note
+      ? `<div style="font-size:11.5px; color:var(--brick); margin-top:4px;">📋 거절 사유: ${esc(req.admin_note)}</div>` : '';
+    const currentUrl = req && req.booking_url
+      ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px; word-break:break-all;">🔗 ${esc(req.booking_url)}</div>` : '';
+    const canApply = true;  // 등록 위탁 중에는 항상 신청 가능
+    return `<div style="padding:13px 2px; border-bottom:1px solid #F0EBDF;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <a href="/building/${b.master_building_id}" target="_blank" rel="noopener" style="font-size:14px; font-weight:700; color:var(--ink); text-decoration:none;">${esc(b.building_name || "-")}</a>
+        <span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 8px; border-radius:5px;">${esc(badgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>
+        <span style="flex:1;"></span>
+        ${statusLabel(status)}${expireInfo}
+        ${status === 'pending' ? `
+          <button class="side-more" style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;" onclick="openOtaModal(${b.master_building_id}, '${esc(b.building_name || '')}', '${req ? esc(req.booking_url) : ''}')">신청 수정</button>
+          <button class="side-more" style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;background:#F5F5F5;border-color:#ccc;color:#666;" onclick="cancelOtaRequest(${req.id})">신청취소</button>
+        ` : canApply ? `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="openOtaModal(${b.master_building_id}, '${esc(b.building_name || '')}', '${req ? esc(req.booking_url) : ''}')">
+          ${status === 'approved' && !req.is_expired ? '재신청' : 'OTA 신청'}
+        </button>` : ''}
+      </div>
+      ${currentUrl}${rejNote}
+    </div>`;
+  }).join("");
+}
+
+window.openOtaModal = function(mbid, bName, currentUrl){
+  otaTarget = mbid;
+  document.getElementById("otaModalTitle").textContent = `OTA 링크 신청 — ${bName}`;
+  document.getElementById("otaModalDesc").textContent = `"${bName}"의 예약 가능한 OTA 링크를 입력하세요.`;
+  document.getElementById("fOtaUrl").value = currentUrl || "";
+  document.getElementById("msgOta").textContent = "";
+  openModal("mOta");
+  document.getElementById("fOtaUrl").focus();
+};
+
+window.cancelOtaRequest = async function(reqId) {
+  if (!confirm("OTA 링크 신청을 취소합니다. 계속하시겠습니까?")) return;
+  const { ok, data } = await api(`/api/operator/booking-url-requests/${reqId}/cancel`, { method: "POST" });
+  if (!ok) { alert(data.message || "취소에 실패했습니다."); return; }
+  await loadOta();
+};
+
+document.getElementById("btnSubmitOta").addEventListener("click", async () => {
+  const msg = document.getElementById("msgOta");
+  const url = document.getElementById("fOtaUrl").value.trim();
+  if (!url){ msg.textContent = "링크를 입력해주세요."; return; }
+  if (!url.startsWith("http://") && !url.startsWith("https://")){ msg.textContent = "http(s)://로 시작하는 URL을 입력해주세요."; return; }
+  const { ok, data } = await api("/api/operator/booking-url-requests", {
+    method: "POST",
+    body: JSON.stringify({ master_building_id: otaTarget, booking_url: url })
+  });
+  if (!ok){ msg.textContent = data.message || "신청에 실패했습니다."; return; }
+  closeModal("mOta");
+  await loadOta();
+});
+
+// ---- 뱃지기한 ----
+async function loadOpBilling(){
+  const res = await fetch("/api/operator/tier-status");
+  const d = await res.json().catch(()=>({}));
+  if (!d.ok) return;
+  document.getElementById("opBadgeMeterNum").textContent = `${d.buildings.length}/${ME.badge_cap || 100}`;
+  const box = document.getElementById("opBillingList");
+  const rows = [];
+  d.buildings.forEach(b => {
+    rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
+      <span>🧭 ${esc(b.building_name)}</span>
+      <span style="color:var(--ink-soft);">${new Date(b.premium_expires_at).toLocaleDateString("ko-KR")}까지</span>
+    </div>`);
+  });
+  (d.regions || []).forEach(r => {
+    const active = new Date(r.expires_at) > new Date();
+    rows.push(`<div style="display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid #F0EBDF; font-size:13.5px;">
+      <span>📍 ${esc(r.sgg_text)} (지역뱃지)</span>
+      <span style="color:${active ? 'var(--ink-soft)' : 'var(--brick)'};">${active ? new Date(r.expires_at).toLocaleDateString("ko-KR") + "까지" : "종료"}</span>
+    </div>`);
+  });
+  box.innerHTML = rows.length ? rows.join("") : `<div class="side-empty">적용 중인 혜택이 없습니다.</div>`;
+}
+
+// ---- 담당 지역 ----
+async function loadOpRegions(){
+  const box = document.getElementById("opRegionOptions");
+  const msg = document.getElementById("opRegionMsg");
+  msg.textContent = "";
+  const [mineRes, treeRes] = await Promise.all([
+    fetch("/api/operator/service-regions"),
+    fetch("/api/regions")
+  ]);
+  const mine = await mineRes.json().catch(()=>({}));
+  const tree = await treeRes.json().catch(()=>({}));
+  if (!mineRes.ok || !mine.ok) {
+    box.innerHTML = "";
+    msg.textContent = mine.message || "담당 지역을 불러오지 못했습니다.";
+    return;
+  }
+  const current = Array.isArray(mine.regions) ? mine.regions[0] : null;
+  if (current) {
+    box.innerHTML = `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 12px; border:1px solid var(--line); border-radius:8px;">
+      <span><b>📍 ${esc(current.sgg_text)}</b><br><small style="color:var(--ink-soft);">현재 담당 지역</small></span>
+      <button type="button" id="btnRemoveOpRegion" class="side-more" style="width:auto; margin-top:0;">지역 변경</button>
+    </div>`;
+    document.getElementById("btnRemoveOpRegion").addEventListener("click", removeOpRegion);
+    return;
+  }
+  const groups = Object.keys(tree).sort((a, b) => a.localeCompare(b, "ko")).map(sido => {
+    const sggNames = Object.keys((tree[sido] || {}).sgg || {}).sort((a, b) => a.localeCompare(b, "ko"));
+    return `<optgroup label="${esc(sido)}">${sggNames.map(sgg => `<option value="${esc(sgg)}">${esc(sgg)}</option>`).join("")}</optgroup>`;
+  }).join("");
+  box.innerHTML = `<label for="opSggSelect" style="display:block; font-size:12.5px; font-weight:700; margin-bottom:6px;">시·군·구 선택</label>
+    <div style="display:flex; gap:8px;">
+      <select id="opSggSelect" style="flex:1; min-width:0;"><option value="">선택해주세요</option>${groups}</select>
+      <button type="button" id="btnClaimOpRegion" class="side-more" style="width:auto; margin-top:0;">등록</button>
+    </div>`;
+  document.getElementById("btnClaimOpRegion").addEventListener("click", claimOpRegion);
+}
+async function claimOpRegion(){
+  const select = document.getElementById("opSggSelect");
+  const msg = document.getElementById("opRegionMsg");
+  const sgg = select ? select.value : "";
+  if (!sgg){ msg.textContent = "시·군·구를 선택해주세요."; return; }
+  const res = await fetch("/api/operator/service-regions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sgg_text: sgg })
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok || !data.ok){ msg.textContent = data.message || "담당 지역 등록에 실패했습니다."; return; }
+  await loadOpRegions();
+  loadOpBilling();
+}
+async function removeOpRegion(){
+  const msg = document.getElementById("opRegionMsg");
+  if (!confirm("현재 담당 지역을 삭제하고 다른 지역을 선택하시겠습니까?")) return;
+  const res = await fetch("/api/operator/service-regions", { method: "DELETE" });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok || !data.ok){ msg.textContent = data.message || "담당 지역 삭제에 실패했습니다."; return; }
+  await loadOpRegions();
+  loadOpBilling();
+}
+
+// ---- 노출중지/재개 토글 ----
+document.getElementById("btnToggleVisible").addEventListener("click", async () => {
+  const next = !(ME.is_visible !== false);
+  if (!next && !confirm("노출을 중지하면 신규 매물의뢰/리드가 더 이상 배정되지 않습니다. 계속하시겠습니까?")) return;
+  const { ok, data } = await api("/api/operator/visibility", { method: "PUT", body: JSON.stringify({ is_visible: next }) });
+  if (!ok){ alert(data.message || "변경에 실패했습니다."); return; }
+  ME.is_visible = data.is_visible;
+  renderVisibility();
+});
+
+// ---- 프로필 수정 ----
+document.getElementById("btnEditProfile").addEventListener("click", () => {
+  document.getElementById("fCompany").value = ME.company_name || "";
+  document.getElementById("fOwner").value = ME.owner_name || "";
+  document.getElementById("fEmail").value = ME.email || "";
+  document.getElementById("fPhone").value = formatPhone(ME.phone || "");
+  document.getElementById("fIntro").value = ME.intro_text || "";
+  document.getElementById("fBizNo").value = formatBizRegNumber(ME.biz_reg_number || "");
+  document.getElementById("msgProfile").textContent = "";
+  renderAvatar();
+  openModal("mProfile");
+});
+document.getElementById("btnSaveProfile").addEventListener("click", async () => {
+  const body = {
+    company_name: document.getElementById("fCompany").value,
+    owner_name: document.getElementById("fOwner").value,
+    email: document.getElementById("fEmail").value,
+    phone: document.getElementById("fPhone").value,
+    intro_text: document.getElementById("fIntro").value,
+    biz_reg_number: document.getElementById("fBizNo").value,
+  };
+  const { ok, data } = await api("/api/operator/me", { method: "PUT", body: JSON.stringify(body) });
+  if (!ok){ document.getElementById("msgProfile").textContent = data.message || "저장에 실패했습니다."; return; }
+  closeModal("mProfile");
+  if (data.reapproval_required){
+    alert("사업자등록번호가 변경되어 재검토(승인 대기) 상태로 전환되었습니다.\n관리자 재승인 후 다시 정상 노출됩니다.");
+  }
+  await load();
+});
+
+// ---- 아바타 업로드 ----
+document.getElementById("avatarFileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const res = await fetch("/api/operator/avatar", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok || !data.ok){ alert(data.message || "사진 업로드에 실패했습니다."); return; }
+    ME.logo_src = data.photo_src;
+    renderAvatar(true); // 업로드 직후 — 캐시버스터로 새 사진 즉시 반영
+  } catch(err){
+    alert("네트워크 오류로 업로드에 실패했습니다.");
+  } finally {
+    e.target.value = "";
+  }
+});
+
+// ---- 소개글 마크다운 툴바 ----
+(function(){
+  const ta = document.getElementById("fIntro");
+  const msg = document.getElementById("introImgMsg");
+  document.querySelectorAll(".md-tb-btn[data-cmd]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cmd = btn.dataset.cmd;
+      const start = ta.selectionStart, end = ta.selectionEnd;
+      const sel = ta.value.slice(start, end) || "텍스트";
+      let ins = "";
+      if (cmd === "bold")        ins = `**${sel}**`;
+      else if (cmd === "italic") ins = `*${sel}*`;
+      else if (cmd === "link") {
+        const url = prompt("링크 URL:", "https://");
+        if (!url) return;
+        ins = `[${sel}](${url})`;
+      }
+      ta.focus();
+      ta.setRangeText(ins, start, end, "end");
+    });
+  });
+  document.getElementById("introImgInput").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    msg.textContent = "업로드 중...";
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/operator/intro-image", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { msg.textContent = data.message || "업로드 실패"; return; }
+      const pos = ta.selectionStart;
+      ta.setRangeText(`![이미지](${data.url})\n`, pos, pos, "end");
+      msg.textContent = "✓ 업로드 완료";
+      setTimeout(() => { msg.textContent = ""; }, 3000);
+    } catch(_) { msg.textContent = "네트워크 오류"; }
+    finally { e.target.value = ""; }
+  });
+})();
+
+// ---- 소개글 미리보기 ----
+function renderMarkdownSafe(text) {
+  if (!text) return '<span style="color:var(--ink-soft);font-size:12px;">내용을 입력하면 여기에 미리보기가 표시됩니다.</span>';
+  function safeUrl(raw) {
+    const u = raw.trim();
+    if (u.startsWith('http://') || u.startsWith('https://'))
+      return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // 자체 소개글 이미지 경로 허용
+    if (/^\/api\/(?:operator|agent|loan_consultant)\/intro-image-file\/[a-zA-Z0-9/_.-]+$/.test(u))
+      return u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '';
+  }
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
+    const su = safeUrl(url); return su ? `<img src="${su}" alt="${alt}" style="max-width:100%;height:auto;border-radius:4px;">` : m;
+  });
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, t, url) => {
+    const su = safeUrl(url); return su ? `<a href="${su}" target="_blank" rel="noopener noreferrer">${t}</a>` : t;
+  });
+  s = s.replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>');
+  s = s.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
+  s = s.replace(/\n/g, '<br>\n');
+  return s;
+}
+function switchIntroTab(tab) {
+  const editBtn = document.getElementById('introTabEdit');
+  const previewBtn = document.getElementById('introTabPreview');
+  const editArea = document.getElementById('introEditArea');
+  const previewArea = document.getElementById('introPreviewArea');
+  if (tab === 'preview') {
+    previewArea.innerHTML = renderMarkdownSafe(document.getElementById('fIntro').value);
+    editArea.style.display = 'none';
+    previewArea.style.display = 'block';
+    previewBtn.style.cssText += ';background:#f8f9fa;font-weight:600;color:var(--ink);';
+    editBtn.style.cssText += ';background:#fff;font-weight:400;color:var(--ink-soft);';
+  } else {
+    editArea.style.display = '';
+    previewArea.style.display = 'none';
+    editBtn.style.cssText += ';background:#f8f9fa;font-weight:600;color:var(--ink);';
+    previewBtn.style.cssText += ';background:#fff;font-weight:400;color:var(--ink-soft);';
+  }
+}
+
+
+// ---- 비밀번호 변경 ----
+document.getElementById("btnChangePw").addEventListener("click", () => {
+  ["fPwCur","fPwNew","fPwNew2"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("msgPw").textContent = "";
+  openModal("mPw");
+});
+document.getElementById("btnSavePw").addEventListener("click", async () => {
+  const cur = document.getElementById("fPwCur").value;
+  const nw = document.getElementById("fPwNew").value;
+  const nw2 = document.getElementById("fPwNew2").value;
+  const msg = document.getElementById("msgPw");
+  if (nw.length < 8){ msg.textContent = "새 비밀번호는 8자 이상이어야 합니다."; return; }
+  if (nw !== nw2){ msg.textContent = "새 비밀번호가 서로 일치하지 않습니다."; return; }
+  const { ok, data } = await api("/api/operator/password", { method: "PUT", body: JSON.stringify({ current_password: cur, new_password: nw }) });
+  if (!ok){ msg.textContent = data.message || "변경에 실패했습니다."; return; }
+  closeModal("mPw");
+  alert("비밀번호가 변경되었습니다.");
+});
+
+// ---- 메모 수정 ----
+let noteTarget = null;
+window.openNote = function(mbid){
+  const b = (ME.buildings || []).find(x => x.master_building_id === mbid);
+  if (!b) return;
+  noteTarget = mbid;
+  document.getElementById("noteTitle").textContent = `메모 수정 — ${b.building_name || ""}`;
+  document.getElementById("fNote").value = b.note || "";
+  document.getElementById("msgNote").textContent = "";
+  openModal("mNote");
+};
+document.getElementById("btnSaveNote").addEventListener("click", async () => {
+  const msg = document.getElementById("msgNote");
+  const note = document.getElementById("fNote").value;
+  const { ok, data } = await api(`/api/operator/buildings/${noteTarget}/note`, { method: "PUT", body: JSON.stringify({ note }) });
+  if (!ok){ msg.textContent = data.message || "저장에 실패했습니다."; return; }
+  closeModal("mNote");
+  await load();
+});
+
+// ---- 단지 삭제 ----
+window.delBuilding = async function(mbid){
+  const b = (ME.buildings || []).find(x => x.master_building_id === mbid);
+  if (!confirm(`'${(b && b.building_name) || "이 단지"}'를 담당 단지에서 삭제할까요?`)) return;
+  const { ok, data } = await api(`/api/operator/buildings/${mbid}`, { method: "DELETE" });
+  if (!ok){ alert(data.message || "삭제에 실패했습니다."); return; }
+  await load();
+};
+
+// ---- 단지 추가 ----
+document.getElementById("btnAddBld").addEventListener("click", () => {
+  document.getElementById("fSearch").value = "";
+  document.getElementById("searchResults").innerHTML = "";
+  document.getElementById("msgAdd").textContent = "";
+  openModal("mAdd");
+  document.getElementById("fSearch").focus();
+});
+let searchTimer = null;
+document.getElementById("fSearch").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doSearch, 300);
+});
+async function doSearch(){
+  const q = document.getElementById("fSearch").value.trim();
+  const box = document.getElementById("searchResults");
+  if (q.length < 2){ box.innerHTML = ""; return; }
+  const { ok, data } = await api("/api/operator/buildings/search?q=" + encodeURIComponent(q));
+  if (!ok){ box.innerHTML = `<div class="side-empty">검색에 실패했습니다.</div>`; return; }
+  const items = data.items || [];
+  if (!items.length){ box.innerHTML = `<div class="side-empty">검색 결과가 없습니다.</div>`; return; }
+  box.innerHTML = items.map(it => `
+    <div style="display:flex; align-items:center; gap:8px; padding:9px 4px; border-bottom:1px solid #F0EBDF;">
+      <span style="display:inline-block; font-size:10px; font-weight:700; color:#fff; background:${markerColor(it.lodging_type, it.building_status)}; padding:2px 7px; border-radius:5px;">${esc(badgeLabel(it.lodging_type, it.building_status))}</span>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:13.5px; font-weight:600; color:var(--ink);">${esc(it.building_name)}</div>
+        <div style="font-size:11.5px; color:var(--ink-soft);">${esc([it.sgg_text, it.umd_nm].filter(Boolean).join(" "))}</div>
+      </div>
+      ${it.already_added
+        ? `<span style="font-size:11.5px; color:var(--ink-soft);">이미 등록됨</span>`
+        : `<button class="side-more" style="width:auto; margin-top:0; padding:5px 12px; font-size:12px;" onclick="addBuilding(${it.id})">추가</button>`}
+    </div>`).join("");
+}
+window.addBuilding = async function(mbid){
+  const msg = document.getElementById("msgAdd");
+  const { ok, data } = await api("/api/operator/buildings", { method: "POST", body: JSON.stringify({ master_building_id: mbid }) });
+  if (!ok){ msg.textContent = data.message || "추가에 실패했습니다."; return; }
+  msg.textContent = "";
+  await load();
+  await doSearch();
+};
+
+// ---- 로그아웃 ----
+document.getElementById("btnLogout").addEventListener("click", async () => {
+  try { await fetch("/api/operator/logout", { method: "POST" }); } catch(e){}
+  location.href = "/operator/login";
+});
+
+load();
+loadOpLeads();
