@@ -2202,10 +2202,12 @@
       const withPhotos = Number(d.buildings_with_photos || 0);
       const pct = total ? ((withPhotos / total) * 100).toFixed(1) : "0.0";
       const counts = d.source_counts || {};
+      const streetview = d.streetview_monthly || {};
       const rows = [
         `<div class="geo-stat-row"><b>사진 있는 건물:</b> ${num(withPhotos)} / ${num(total)}건 (${pct}%)</div>`,
         `<div class="geo-stat-row"><b>소스별 사진:</b> TourAPI ${num(counts.tourapi || 0)}장 · Street View ${num(counts.streetview || 0)}장 · Vworld ${num(counts.vworld || 0)}장</div>`,
         `<div class="geo-stat-row"><b>전체 저장 사진:</b> ${num(d.photo_count || 0)}장</div>`,
+        `<div class="geo-stat-row" style="${Number(streetview.used || 0) >= 9000 ? "color:#9a6700;" : ""}"><b>이번 달 Street View fallback:</b> ${num(streetview.used || 0)} / ${num(streetview.cap || 10000)}건</div>`,
       ];
       const s = d.status || {};
       if (s.state === "running") {
@@ -3867,11 +3869,10 @@
             <h2 class="legal-admin-title">③ 건물 사진 수집</h2>
           </div>
           <p class="legal-admin-hint">
-            관광숙박·생활숙박은 <b>한국관광공사 TourAPI</b> 사진을 먼저 시도하고,
-            위경도가 있는 건물은 <b>Google Street View</b> 외관과 <b>Vworld</b> 항공뷰를
-            보조 사진으로 추가합니다. 사진 파일은 내려받지 않고 공개 이미지 URL만 저장하며,
-            한 번 처리한 소스는 건너뛰므로 여러 번 실행해도 중복되지 않습니다.
-            백그라운드로 실행되며 한 번에 최대 500건씩 처리합니다.
+            사용자가 건물 상세를 열 때 <b>한국관광공사 TourAPI</b> 사진을 먼저 조회합니다.
+            TourAPI에 매칭되는 사진이 없을 때만 <b>Google Street View</b> 외관을
+            내부 프록시로 보조 표시하며, 이번 달 10,000회에서 자동 중단합니다.
+            사진 파일은 내려받아 대량 저장하지 않습니다.
           </p>
           <div id="photoSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <p class="legal-admin-hint" style="margin-top:8px;">

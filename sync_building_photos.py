@@ -38,6 +38,8 @@ VWORLD_KEY_ENV = "VWORLD_API_KEY"
 
 TOURAPI_DAILY_CAP = 3000
 STREETVIEW_DAILY_CAP = 20000
+# Street View Static API fallback은 무료 범위 안에서만 보수적으로 사용한다.
+STREETVIEW_MONTHLY_CAP = 10_000
 VWORLD_DAILY_CAP = 50000
 DEFAULT_LIMIT = 500
 DEFAULT_SLEEP = 0.5
@@ -257,10 +259,11 @@ def _today_count(meta_key):
         return 0
 
 
-def _claim_daily_slot(meta_key, cap):
-    """처리 시작 전에 원자적으로 일일 캡 한 건을 예약한다."""
-    today = korea_today()
-    fresh = json.dumps({"date": today, "count": 1})
+def _claim_daily_slot(meta_key, cap, window="daily"):
+    """처리 시작 전에 원자적으로 일/월 캡 한 건을 예약한다."""
+    period = korea_today() if window == "daily" else korea_today()[:7]
+    period_field = "date" if window == "daily" else "period"
+    fresh = json.dumps({period_field: period, "count": 1})
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -270,19 +273,24 @@ def _claim_daily_slot(meta_key, cap):
             VALUES (%s, %s, NOW())
             ON CONFLICT (key) DO UPDATE SET
               value = CASE
-                WHEN app_meta.value::jsonb ->> 'date' = %s
+                WHEN app_meta.value::jsonb ->> %s = %s
                 THEN jsonb_build_object(
-                  'date', %s,
+                  %s, %s,
                   'count', COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) + 1
                 )::text
                 ELSE EXCLUDED.value
               END,
               updated_at = NOW()
-            WHERE app_meta.value::jsonb ->> 'date' IS DISTINCT FROM %s
+            WHERE app_meta.value::jsonb ->> %s IS DISTINCT FROM %s
                OR COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) < %s
             RETURNING (value::jsonb ->> 'count')::int AS count
             """,
-            (meta_key, fresh, today, today, today, int(cap)),
+            (
+                meta_key, fresh,
+                period_field, period,
+                period_field, period,
+                period_field, period, int(cap),
+            ),
         )
         row = cur.fetchone()
         if not row:

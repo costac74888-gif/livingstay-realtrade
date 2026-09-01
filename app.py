@@ -84,6 +84,7 @@ from store_info_util import build_pnu, get_stores_by_pnu
 from quota_policy import (
     BUILDING_HUB_DAILY_COUNTER_KEY, PROVIDER_COUNTER_KEYS, quota_for_stage,
     quotas_for_stage, quota_bucket_for_stage, execution_bucket_for_stage,
+    korea_today,
 )
 import building_registry
 from lodging_matching import (
@@ -739,8 +740,8 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
 @app.route("/api/building-photo/<int:building_id>/<source>")
 @limiter.limit("60 per minute")
 def get_building_provider_photo(building_id, source):
-    """공급자 키를 노출하지 않고 등록된 건물 사진만 제한적으로 중계한다."""
-    if source not in ("streetview", "vworld"):
+    """최근 TourAPI no_match 건물의 Street View fallback만 제한적으로 중계한다."""
+    if source != "streetview":
         return jsonify({"error": "not found"}), 404
     conn = get_conn()
     cur = conn.cursor()
@@ -752,10 +753,13 @@ def get_building_provider_photo(building_id, source):
               AND b.lat IS NOT NULL
               AND b.lng IS NOT NULL
               AND EXISTS (
-                SELECT 1 FROM building_photos p
-                WHERE p.building_id=b.id AND p.source=%s
+                SELECT 1 FROM building_photo_fetches f
+                WHERE f.building_id=b.id
+                  AND f.source='tourapi'
+                  AND f.status='no_match'
+                  AND f.last_attempt_at > NOW() - INTERVAL '30 days'
               )
-        """, (building_id, source))
+        """, (building_id,))
         row = cur.fetchone()
     finally:
         cur.close()
@@ -763,38 +767,30 @@ def get_building_provider_photo(building_id, source):
     if not row:
         return jsonify({"error": "not found"}), 404
 
-    if source == "streetview":
-        key = os.environ.get("GOOGLE_MAPS_API_KEY")
-        base_url = "https://maps.googleapis.com/maps/api/streetview"
-        params = {
-            "size": "640x480",
-            "location": f"{float(row['lat'])},{float(row['lng'])}",
-            "heading": 0,
-            "fov": 90,
-            "pitch": 0,
-            "key": key,
-        }
-    else:
-        key = os.environ.get("VWORLD_API_KEY")
-        half = 200 / 111320
-        base_url = "https://api.vworld.kr/req/wms"
-        params = {
-            "key": key,
-            "LAYERS": "Satellite",
-            "BBOX": (
-                f"{float(row['lng']) - half},{float(row['lat']) - half},"
-                f"{float(row['lng']) + half},{float(row['lat']) + half}"
-            ),
-            "WIDTH": 640,
-            "HEIGHT": 480,
-            "FORMAT": "image/png",
-            "CRS": "EPSG:4326",
-            "SERVICE": "WMS",
-            "VERSION": "1.3.0",
-            "REQUEST": "GetMap",
-        }
+    key = os.environ.get("GOOGLE_MAPS_API_KEY")
     if not key:
         return jsonify({"error": "provider unavailable"}), 503
+    # 온디맨드 fallback은 실제 이미지 요청 시점에 월 한도를 차감한다.
+    # 프록시 재호출·새로고침도 포함해 Google 무료 범위를 넘기지 않는다.
+    from sync_building_photos import (
+        STREETVIEW_MONTHLY_CAP,
+        _claim_daily_slot,
+    )
+    if _claim_daily_slot(
+        "building_photos_streetview_monthly",
+        STREETVIEW_MONTHLY_CAP,
+        window="monthly",
+    ) is None:
+        return jsonify({"error": "monthly quota reached"}), 429
+    base_url = "https://maps.googleapis.com/maps/api/streetview"
+    params = {
+        "size": "640x480",
+        "location": f"{float(row['lat'])},{float(row['lng'])}",
+        "heading": 0,
+        "fov": 90,
+        "pitch": 0,
+        "key": key,
+    }
     try:
         upstream = requests.get(base_url, params=params, timeout=20)
         content_type = str(upstream.headers.get("Content-Type") or "").lower()
@@ -813,8 +809,8 @@ def get_building_provider_photo(building_id, source):
 def _public_building_photo_rows(cur, building_id):
     """공개 상세에 표시할 무료·보유 사진만 반환한다.
 
-    Street View/Vworld 프록시는 기존 데이터 호환을 위해 남겨두되 상세 화면에서는
-    자동 로드하지 않는다. 화면 노출만으로 유료 공급자 호출이 발생하는 것을 막는다.
+    Street View/Vworld의 기존 대량수집 행은 자동 노출하지 않는다. Street View는
+    TourAPI no_match일 때만 별도 온디맨드 응답이 내부 프록시 URL을 추가한다.
     """
     cur.execute("""
         SELECT p.photo_url, p.source, p.photo_type
@@ -834,6 +830,20 @@ def _public_building_photo_rows(cur, building_id):
         }
         for photo in cur.fetchall()
     ]
+
+
+def _streetview_fallback_photos(building):
+    if (
+        not os.environ.get("GOOGLE_MAPS_API_KEY")
+        or building["lat"] is None
+        or building["lng"] is None
+    ):
+        return []
+    return [{
+        "url": f"/api/building-photo/{building['id']}/streetview",
+        "source": "streetview",
+        "photo_type": "exterior",
+    }]
 
 
 def _finish_photo_fetch(building_id, status, error_message=None):
@@ -863,7 +873,7 @@ def get_building_photos_on_demand(building_id):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id, building_name, road_address
+            SELECT id, building_name, road_address, lat, lng
             FROM master_buildings
             WHERE id=%s
         """, [building_id])
@@ -907,7 +917,25 @@ def get_building_photos_on_demand(building_id):
         claimed = cur.fetchone() is not None
         conn.commit()
         if not claimed:
-            return jsonify({"ok": True, "photos": photos, "status": "recently_checked"})
+            cur.execute("""
+                SELECT status
+                FROM building_photo_fetches
+                WHERE building_id=%s AND source='tourapi'
+            """, [building_id])
+            recent_fetch = cur.fetchone()
+            fallback = (
+                _streetview_fallback_photos(building)
+                if recent_fetch and recent_fetch["status"] == "no_match"
+                else []
+            )
+            return jsonify({
+                "ok": True,
+                "photos": photos + fallback,
+                "status": (
+                    "no_match_streetview_fallback"
+                    if fallback else "recently_checked"
+                ),
+            })
     finally:
         cur.close()
         conn.close()
@@ -938,7 +966,13 @@ def get_building_photos_on_demand(building_id):
         match = _find_tour_match(items, building["road_address"])
         if not match:
             _finish_photo_fetch(building_id, "no_match")
-            return jsonify({"ok": True, "photos": photos, "status": "no_match"})
+            # 키가 들어간 Google URL은 만들지 않고 내부 프록시만 반환한다.
+            fallback = _streetview_fallback_photos(building)
+            return jsonify({
+                "ok": True,
+                "photos": photos + fallback,
+                "status": "no_match_streetview_fallback" if fallback else "no_match",
+            })
 
         if _claim_daily_slot("building_photos_tourapi_calls", TOURAPI_DAILY_CAP) is None:
             _finish_photo_fetch(building_id, "unavailable", "TourAPI daily cap reached")
@@ -982,10 +1016,18 @@ def get_building_photos_on_demand(building_id):
         finally:
             save_cur.close()
             save_conn.close()
+        fallback = [] if candidates else _streetview_fallback_photos(building)
         return jsonify({
             "ok": True,
-            "photos": photos,
-            "status": "loaded" if candidates else "no_match",
+            "photos": photos + fallback,
+            "status": (
+                "loaded" if candidates
+                else (
+                    "no_match_streetview_fallback"
+                    if fallback
+                    else "no_match"
+                )
+            ),
         })
     except Exception as exc:
         app.logger.warning(
@@ -15329,9 +15371,22 @@ def admin_building_photos_sync_status():
         """)
         source_counts = {row["source"]: row["count"] for row in cur.fetchall()}
         status = _read_sync_status_row(cur, _PHOTO_SYNC_META_KEY)
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            ("building_photos_streetview_monthly",),
+        )
+        monthly_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
+    monthly_used = 0
+    if monthly_row and monthly_row["value"]:
+        try:
+            monthly = json.loads(monthly_row["value"])
+            if monthly.get("period") == korea_today()[:7]:
+                monthly_used = int(monthly.get("count") or 0)
+        except (TypeError, ValueError, KeyError):
+            monthly_used = 0
     return jsonify({
         "ok": True,
         "total_buildings": totals["total_buildings"],
@@ -15345,6 +15400,11 @@ def admin_building_photos_sync_status():
             "tourapi": bool(os.environ.get("TOUR_API_SERVICE_KEY")),
             "streetview": bool(os.environ.get("GOOGLE_MAPS_API_KEY")),
             "vworld": bool(os.environ.get("VWORLD_API_KEY")),
+        },
+        "streetview_monthly": {
+            "period": korea_today()[:7],
+            "used": monthly_used,
+            "cap": 10000,
         },
         "status": status,
     })
