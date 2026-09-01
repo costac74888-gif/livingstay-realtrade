@@ -4174,6 +4174,62 @@ function detailBadgeLabel(v, subtype, buildingStatus){
   return window.LodgingTypes.badge(v, subtype, buildingStatus);
 }
 
+function buildingPhotoSliderHtml(photos){
+  const usablePhotos = (Array.isArray(photos) ? photos : [])
+    .filter(photo => photo && typeof photo.url === "string" && photo.url.trim());
+  if (!usablePhotos.length){
+    return `
+      <div class="bld-photo-wrap bld-photo-empty">
+        <span>등록된 사진이 없습니다</span>
+      </div>`;
+  }
+  const slides = usablePhotos.map(photo => `
+    <img src="${escapeHtml(photo.url.trim())}" class="bld-photo-slide" alt="건물사진" loading="lazy">`
+  ).join("");
+  const arrowsHidden = usablePhotos.length === 1 ? ` style="display:none;"` : "";
+  return `
+    <div class="bld-photo-wrap">
+      <div class="bld-photo-track" id="photoTrack">${slides}</div>
+      <button type="button" class="photo-prev" aria-label="이전 사진"${arrowsHidden}>&#8249;</button>
+      <button type="button" class="photo-next" aria-label="다음 사진"${arrowsHidden}>&#8250;</button>
+      <span class="photo-counter" id="photoCounter">1 / ${usablePhotos.length}</span>
+    </div>`;
+}
+
+function initBuildingPhotoSlider(photoCount){
+  if (!photoCount || photoCount < 2) return;
+  const wrap = document.querySelector("#bHeaderCard .bld-photo-wrap");
+  const track = document.getElementById("photoTrack");
+  const counter = document.getElementById("photoCounter");
+  const prev = wrap && wrap.querySelector(".photo-prev");
+  const next = wrap && wrap.querySelector(".photo-next");
+  if (!wrap || !track || !counter || !prev || !next) return;
+
+  let current = 0;
+  const update = () => {
+    track.style.transform = `translateX(-${current * 100}%)`;
+    counter.textContent = `${current + 1} / ${photoCount}`;
+  };
+  const move = (delta) => {
+    current = (current + delta + photoCount) % photoCount;
+    update();
+  };
+  prev.addEventListener("click", () => move(-1));
+  next.addEventListener("click", () => move(1));
+
+  let touchStartX = null;
+  wrap.addEventListener("touchstart", (event) => {
+    touchStartX = event.changedTouches[0]?.clientX ?? null;
+  }, { passive: true });
+  wrap.addEventListener("touchend", (event) => {
+    if (touchStartX == null) return;
+    const endX = event.changedTouches[0]?.clientX ?? touchStartX;
+    const distance = endX - touchStartX;
+    touchStartX = null;
+    if (Math.abs(distance) >= 40) move(distance < 0 ? 1 : -1);
+  }, { passive: true });
+}
+
 function buildingPanelSkeleton(){
   return `
     <section class="side-card b-panel-topbar">
@@ -4503,8 +4559,10 @@ async function loadBuildingHeader(id){
     : (b.tot_pkng_cnt != null && b.tot_pkng_cnt !== "" ? Number(b.tot_pkng_cnt).toLocaleString("ko-KR") + "대" : "-");
   const flrTxt = (b.grnd_flr_cnt != null || b.ugrnd_flr_cnt != null)
     ? `${b.grnd_flr_cnt != null ? b.grnd_flr_cnt : "-"} / ${b.ugrnd_flr_cnt != null ? b.ugrnd_flr_cnt : "-"}` : "-";
+  const buildingPhotos = Array.isArray(b.photos) ? b.photos : [];
 
   headerCard.innerHTML = `
+    ${buildingPhotoSliderHtml(buildingPhotos)}
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
@@ -4557,6 +4615,9 @@ async function loadBuildingHeader(id){
       <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(14)}<span class="b-icon-label">공유</span></button>
     </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
+  initBuildingPhotoSlider(buildingPhotos.filter(photo =>
+    photo && typeof photo.url === "string" && photo.url.trim()
+  ).length);
 
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");

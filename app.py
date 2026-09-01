@@ -775,6 +775,23 @@ def get_building(building_id):
 
     building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
 
+    # 건물 상세 사진은 대표 사진 우선, 등록 순서 보조 순서로 최대 20장만 노출한다.
+    cur.execute("""
+        SELECT p.photo_url, p.source, p.photo_type
+        FROM building_photos p
+        WHERE p.building_id = %s
+        ORDER BY p.is_primary DESC, p.display_order ASC, p.id ASC
+        LIMIT 20
+    """, [building_id])
+    building["photos"] = [
+        {
+            "url": photo["photo_url"],
+            "source": photo["source"],
+            "photo_type": photo["photo_type"],
+        }
+        for photo in cur.fetchall()
+    ]
+
     # 첫 방문 시 표제부·지역지구구역·정기점검을 백그라운드 스레드로 조회해 캐싱.
     # 요청 스레드를 블로킹하지 않으므로 이번 방문자는 "-"로 보이고,
     # 다음 방문자부터 채워진 값을 본다.

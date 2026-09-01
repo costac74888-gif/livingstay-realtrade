@@ -1129,6 +1129,65 @@
 .b-icon-btn.disabled, .b-icon-btn:disabled{ opacity:.5; cursor:not-allowed; }
 .b-icon-btn.disabled:hover, .b-icon-btn:disabled:hover{ background:#fff; color:var(--ink-soft); border-color:var(--line); }
 
+/* 건물 상세 최상단 사진 슬라이더 */
+.bld-photo-wrap{
+  position:relative;
+  width:calc(100% + 32px);
+  height:220px;
+  margin:-14px -16px 14px;
+  overflow:hidden;
+  background:#e8e7e0;
+}
+.bld-photo-track{
+  display:flex;
+  width:100%;
+  height:100%;
+  transition:transform .3s ease;
+}
+.bld-photo-slide{
+  min-width:100%;
+  height:100%;
+  object-fit:cover;
+  flex-shrink:0;
+}
+.photo-prev, .photo-next{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:32px;
+  height:32px;
+  padding:0;
+  border:none;
+  border-radius:50%;
+  background:rgba(0,0,0,.35);
+  color:#fff;
+  font-size:20px;
+  line-height:1;
+  cursor:pointer;
+}
+.photo-prev{left:8px;}
+.photo-next{right:8px;}
+.photo-counter{
+  position:absolute;
+  right:12px;
+  bottom:10px;
+  padding:2px 8px;
+  border-radius:10px;
+  background:rgba(0,0,0,.45);
+  color:#fff;
+  font-size:11px;
+}
+.bld-photo-empty{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#aaa;
+  font-size:13px;
+}
+
 /* 건물 상세 — 정보/행정운영/금융 표 */
 .b-info-table{ width:100%; font-size:12.5px; border-collapse:collapse; }
 .b-info-table th, .b-info-table td{ padding:6px 8px; }
