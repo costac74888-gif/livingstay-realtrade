@@ -840,6 +840,27 @@ def _public_building_photo_rows(cur, building_id):
                        AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
                    )
             )
+            OR (
+                p.listing_photo_id IS NULL
+                AND (
+                    p.registrant_type = 'admin'
+                    OR EXISTS (
+                        SELECT 1 FROM agents a
+                         WHERE a.id = p.uploaded_by_agent_id
+                           AND a.status = 'approved'
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM listing_requests lr
+                         WHERE lr.id = p.listing_request_id
+                           AND lr.deal_mode = 'direct'
+                           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
+                           AND NOT (
+                               lr.transaction_target = 'whole'
+                               AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
+                           )
+                    )
+                )
+            )
           )
         ORDER BY
           CASE WHEN p.source = 'upload' THEN 0
@@ -934,6 +955,206 @@ def get_building_photos_on_demand(building_id):
     finally:
         cur.close()
         conn.close()
+
+
+def _building_photo_upload_actor(cur, building_id):
+    """건물사진 등록 권한과 기록용 등록자 유형을 반환한다."""
+    if session.get("admin"):
+        return {"registrant_type": "admin", "user_id": None, "agent_id": None,
+                "listing_request_id": None, "certified_agent": True}
+
+    agent_id = session.get("agent_id")
+    if agent_id:
+        cur.execute(
+            "SELECT id FROM agents WHERE id=%s AND status='approved'",
+            [agent_id],
+        )
+        if not cur.fetchone():
+            return None
+        cur.execute("""
+            SELECT 1 FROM agent_buildings
+             WHERE agent_id=%s AND master_building_id=%s
+             LIMIT 1
+        """, [agent_id, building_id])
+        if cur.fetchone():
+            return {"registrant_type": "agent_building", "user_id": None,
+                    "agent_id": agent_id, "listing_request_id": None,
+                    "certified_agent": True}
+        cur.execute("""
+            SELECT 1
+              FROM agent_service_regions sr
+              JOIN master_buildings mb ON mb.sgg_text = sr.sgg_text
+             WHERE sr.agent_id=%s AND mb.id=%s
+               AND (sr.expires_at IS NULL OR sr.expires_at > NOW())
+             LIMIT 1
+        """, [agent_id, building_id])
+        if cur.fetchone():
+            return {"registrant_type": "agent_region", "user_id": None,
+                    "agent_id": agent_id, "listing_request_id": None,
+                    "certified_agent": True}
+        return None
+
+    user = current_user()
+    if not user:
+        return None
+    cur.execute("""
+        SELECT id, registrant_type
+          FROM listing_requests
+         WHERE user_id=%s AND master_building_id=%s
+           AND deal_mode='direct'
+           AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')
+           AND NOT (
+               transaction_target='whole'
+               AND COALESCE(disclosure_scope, 'limited')='limited'
+           )
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1
+    """, [user["id"], building_id])
+    listing = cur.fetchone()
+    if not listing:
+        return None
+    registrant_type = listing.get("registrant_type") or "owner"
+    if registrant_type not in {"owner", "building_owner", "landlord", "business"}:
+        return None
+    return {"registrant_type": registrant_type, "user_id": user["id"],
+            "agent_id": None, "listing_request_id": listing["id"],
+            "certified_agent": False}
+
+
+@app.route("/api/building/<int:building_id>/photos/upload", methods=["POST"])
+@limiter.limit("20 per minute")
+def upload_building_photo(building_id):
+    if not (session.get("admin") or session.get("agent_id") or session.get("user_id")):
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"ok": False, "message": "사진 파일을 선택해주세요."}), 400
+    filename = file.filename.strip()
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in storage_util.LISTING_PHOTO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "jpg 또는 png 파일만 등록 가능합니다."}), 400
+    file_data = file.read(storage_util.LISTING_PHOTO_MAX_FILE_BYTES + 1)
+    if len(file_data) > storage_util.LISTING_PHOTO_MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 10MB 이하만 가능합니다."}), 400
+    if not storage_util.check_magic_bytes(file_data, ext):
+        return jsonify({"ok": False, "message": "파일 형식이 올바르지 않습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    key = None
+    try:
+        cur.execute("SELECT id, lat, lng FROM master_buildings WHERE id=%s", [building_id])
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+        actor = _building_photo_upload_actor(cur, building_id)
+        if not actor:
+            return jsonify({
+                "ok": False,
+                "message": "이 건물의 사진을 등록할 권한이 없습니다. 담당단지 등록, 지역뱃지 보유, 또는 매물 등록 후 이용하세요.",
+            }), 403
+        validation = validate_photo(
+            file_data,
+            (file.mimetype or "").split(";", 1)[0].strip().lower(),
+            building["lat"], building["lng"], actor["registrant_type"],
+            actor["certified_agent"],
+        )
+        if not validation["ok"]:
+            return jsonify({"ok": False, "message": validation["error"]}), 400
+
+        key = storage_util.build_building_photo_key(building_id, ext)
+        storage_util.upload_doc(key, file_data)
+        photo_url = f"/api/building-photo-upload/{key}"
+        cur.execute("""
+            INSERT INTO building_photos
+                (building_id, photo_url, source, photo_type, is_primary, display_order,
+                 photo_hash, uploaded_by_user_id, uploaded_by_agent_id,
+                 listing_request_id, registrant_type, gps_lat, gps_lng,
+                 gps_verified, exif_taken_at)
+            VALUES (
+                %s, %s, 'upload', %s,
+                NOT EXISTS (SELECT 1 FROM building_photos WHERE building_id=%s AND source='upload'),
+                COALESCE((SELECT MAX(display_order)+1 FROM building_photos WHERE building_id=%s), 0),
+                %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (building_id, photo_hash) WHERE photo_hash IS NOT NULL
+            DO NOTHING
+            RETURNING id
+        """, [
+            building_id, photo_url, _guess_listing_photo_type(filename),
+            building_id, building_id, validation["hash"], actor["user_id"],
+            actor["agent_id"], actor["listing_request_id"], actor["registrant_type"],
+            validation["gps_lat"], validation["gps_lng"], validation["gps_verified"],
+            _exif_taken_at_value(validation["exif_taken_at"]),
+        ])
+        inserted = cur.fetchone()
+        conn.commit()
+        if not inserted:
+            try:
+                storage_util.delete_object(key)
+            except Exception:
+                app.logger.warning("중복 건물사진 객체 삭제 실패: %s", key, exc_info=True)
+            return jsonify({"ok": True, "duplicate": True, "message": "이미 등록된 사진입니다."})
+        return jsonify({
+            "ok": True, "id": inserted["id"], "url": photo_url,
+            "registrant_type": actor["registrant_type"],
+            "message": "사진이 등록됐습니다.",
+        })
+    except Exception:
+        conn.rollback()
+        if key:
+            try:
+                storage_util.delete_object(key)
+            except Exception:
+                app.logger.warning("건물사진 업로드 롤백 삭제 실패: %s", key, exc_info=True)
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/building-photo-upload/<path:key>")
+def building_photo_upload_proxy(key):
+    if not storage_util.is_valid_building_photo_ref(key):
+        return jsonify({"ok": False, "message": "잘못된 경로입니다."}), 404
+    photo_url = f"/api/building-photo-upload/{key}"
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT 1 FROM building_photos p
+             WHERE p.photo_url=%s AND p.source='upload'
+               AND (
+                   p.registrant_type='admin'
+                   OR EXISTS (
+                       SELECT 1 FROM agents a
+                        WHERE a.id=p.uploaded_by_agent_id AND a.status='approved'
+                   )
+                   OR EXISTS (
+                       SELECT 1 FROM listing_requests lr
+                        WHERE lr.id=p.listing_request_id AND lr.deal_mode='direct'
+                          AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
+                          AND NOT (
+                              lr.transaction_target='whole'
+                              AND COALESCE(lr.disclosure_scope, 'limited')='limited'
+                          )
+                   )
+               )
+        """, [photo_url])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
+        file_data = storage_util.download_bytes(key)
+    except Exception:
+        return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
+    finally:
+        cur.close()
+        conn.close()
+    ext = key.rsplit(".", 1)[-1].lower()
+    content_type = "image/png" if ext == "png" else "image/jpeg"
+    response = Response(file_data, mimetype=content_type)
+    response.headers["Cache-Control"] = "private, max-age=3600"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/api/building/<int:building_id>")

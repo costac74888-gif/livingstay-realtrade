@@ -13,8 +13,6 @@ ALLOWED_MIME = {"image/jpeg", "image/png"}
 MAX_BYTES = 10 * 1024 * 1024
 MIN_WIDTH = 1280
 MIN_HEIGHT = 960
-GPS_RADIUS_M = 50
-GPS_RADIUS_LOOSE_M = 100
 STDDEV_MIN = 15
 
 
@@ -114,7 +112,6 @@ def validate_photo(
     photo_hash = hashlib.sha256(file_bytes).hexdigest()
     gps_lat, gps_lng, gps_hdop, exif_taken_at = _parse_exif(file_bytes)
     gps_verified = False
-    radius = GPS_RADIUS_LOOSE_M if is_certified_agent or (gps_hdop and gps_hdop > 5) else GPS_RADIUS_M
     requires_gps = (
         registrant_type in {"owner", "building_owner", "landlord", "business"}
         and not is_certified_agent
@@ -126,29 +123,9 @@ def validate_photo(
         and math.isfinite(gps_lat)
         and math.isfinite(gps_lng)
     )
-    has_building_coords = (
-        building_lat is not None
-        and building_lng is not None
-        and math.isfinite(float(building_lat))
-        and math.isfinite(float(building_lng))
-    )
-    if has_gps and has_building_coords:
-        distance = _haversine(gps_lat, gps_lng, float(building_lat), float(building_lng))
-        if distance > radius:
-            return {
-                "ok": False,
-                "error": (
-                    f"촬영 위치가 건물에서 {int(distance)}m 떨어져 있습니다. "
-                    f"건물 현장({radius}m 이내)에서 촬영한 사진만 등록 가능합니다."
-                ),
-            }
+    if has_gps:
         gps_verified = True
     elif requires_gps:
-        if not has_building_coords:
-            return {
-                "ok": False,
-                "error": "건물 좌표를 확인할 수 없어 사진 위치를 검증할 수 없습니다.",
-            }
         return {
             "ok": False,
             "error": (

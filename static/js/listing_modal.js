@@ -198,7 +198,7 @@
           '<div id="lrPhotoGrid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;"></div></section>' +
           '<div id="lrMessage" aria-live="polite" style="display:none;margin-bottom:10px;font-size:12.5px;color:#b42318;"></div>' +
           '<button id="lrSubmit" type="submit" style="width:100%;border:0;border-radius:9px;padding:13px;background:var(--brass,#b4863f);color:#fff;font:800 14px inherit;cursor:pointer;">' + (isEdit ? "저장" : "매물의뢰 접수하기") + '</button>' +
-        '</form><div id="lrDone" style="display:none;text-align:center;padding:46px 20px;color:var(--ink);"><div style="font-size:18px;font-weight:800;">' + (isEdit ? "변경 내용을 저장했습니다" : "매물의뢰가 접수됐습니다") + '</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">' + (isEdit ? "최신 정보로 매물이 업데이트됩니다." : "등록 후에도 마이페이지에서 수정할 수 있습니다.") + '</div></div>' +
+        '</form><div id="lrDone" style="display:none;text-align:center;padding:46px 20px;color:var(--ink);"><div style="font-size:18px;font-weight:800;">' + (isEdit ? "변경 내용을 저장했습니다" : "매물의뢰가 접수됐습니다") + '</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">' + (isEdit ? "최신 정보로 매물이 업데이트됩니다." : "등록 후에도 마이페이지에서 수정할 수 있습니다.") + '</div>' + (isEdit ? "" : '<button id="lrBuildingPhotoCta" type="button" style="margin-top:18px;border:1px solid var(--brass,#b38a3e);background:#fff;color:var(--brass-dark,#785d27);border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer;">📷 건물 사진도 등록하시겠어요?</button>') + '</div>' +
       '</div>';
     document.body.appendChild(overlay);
     var $ = function (selector) { return overlay.querySelector(selector); };
@@ -1066,6 +1066,42 @@
     $("#lrDropZone").addEventListener("click", function () { $("#lrPhotoInput").click(); });
     $("#lrDropZone").addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); $("#lrPhotoInput").click(); } });
     $("#lrPhotoInput").addEventListener("change", function () { addPhotos(this.files); });
+    var buildingPhotoCta = $("#lrBuildingPhotoCta");
+    if (buildingPhotoCta) buildingPhotoCta.addEventListener("click", function () {
+      var input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".jpg,.jpeg,.png,image/jpeg,image/png";
+      input.onchange = function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var ext = (file.name.split(".").pop() || "").toLowerCase();
+        if (["jpg", "jpeg", "png"].indexOf(ext) < 0) {
+          setMessage("JPG 또는 PNG 사진만 등록할 수 있습니다.");
+          return;
+        }
+        if (file.size > MAX_PHOTO_BYTES) {
+          setMessage("파일 크기는 10MB 이하만 가능합니다.");
+          return;
+        }
+        var formData = new FormData();
+        formData.append("file", file);
+        buildingPhotoCta.disabled = true;
+        buildingPhotoCta.textContent = "등록 중…";
+        fetch("/api/building/" + buildingId + "/photos/upload", {
+          method: "POST", credentials: "same-origin", body: formData
+        }).then(function (response) {
+          return response.json().catch(function () { return {}; }).then(function (data) {
+            if (!response.ok) throw new Error(data.message || "사진 등록에 실패했습니다.");
+            buildingPhotoCta.textContent = data.message || "사진이 등록됐습니다.";
+          });
+        }).catch(function (error) {
+          buildingPhotoCta.disabled = false;
+          buildingPhotoCta.textContent = "📷 건물 사진도 등록하시겠어요?";
+          setMessage(error.message || "사진 등록 중 오류가 발생했습니다.");
+        });
+      };
+      input.click();
+    });
     ["dragenter", "dragover"].forEach(function (eventName) {
       $("#lrDropZone").addEventListener(eventName, function (event) { event.preventDefault(); this.style.background = "#fff3df"; });
     });

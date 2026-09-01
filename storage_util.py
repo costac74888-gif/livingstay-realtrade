@@ -57,6 +57,7 @@ def is_valid_intro_img_ref(ref):
 # ---- 직거래 매물 사진 (등록자 업로드, 공개 서빙) ----
 LISTING_PHOTO_EXTENSIONS = {"jpg", "jpeg", "png"}
 LISTING_PHOTO_REF_RE = re.compile(r"^listing_photos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+BUILDING_PHOTO_REF_RE = re.compile(r"^building_photos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$")
 
 
 def build_listing_photo_key(listing_request_id, ext):
@@ -66,6 +67,14 @@ def build_listing_photo_key(listing_request_id, ext):
 
 def is_valid_listing_photo_ref(ref):
     return bool(ref) and bool(LISTING_PHOTO_REF_RE.match(ref))
+
+
+def build_building_photo_key(building_id, ext):
+    return f"building_photos/{building_id}/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_building_photo_ref(ref):
+    return bool(ref) and bool(BUILDING_PHOTO_REF_RE.match(ref))
 
 
 def _bucket_id():

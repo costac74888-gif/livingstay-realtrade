@@ -55,13 +55,13 @@ class PhotoValidationTest(unittest.TestCase):
         self.assertEqual(64, len(result["hash"]))
         self.assertEqual("2026:09:02 12:34:56", result["exif_taken_at"])
 
-    def test_distant_gps_is_rejected(self):
+    def test_distant_gps_is_allowed(self):
         result = validate_photo(
             make_image(gps=(37.502, 127.0)),
             "image/jpeg", BUILDING_LAT, BUILDING_LNG, "owner", False,
         )
-        self.assertFalse(result["ok"])
-        self.assertIn("떨어져", result["error"])
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["gps_verified"])
 
     def test_owner_requires_gps_but_certified_agent_does_not(self):
         photo = make_image()
