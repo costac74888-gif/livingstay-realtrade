@@ -4456,46 +4456,115 @@ function streetViewFallbackPhoto(buildingId, lat, lng){
   }];
 }
 
+function tryShowStreetView(cached, fallbackBuildingId){
+  const buildingId = cached?.building_id ?? fallbackBuildingId;
+  const photos = streetViewFallbackPhoto(buildingId, cached?.lat, cached?.lng);
+  if (!photos.length) return false;
+  // Google Maps 키는 서버 프록시가 보관한다. 브라우저에는 사진 프록시 URL만 노출한다.
+  renderPhotoSlider(photos);
+  return true;
+}
+
+async function savePhotosToServer(buildingId, photos){
+  const response = await fetch(
+    `/api/building/${encodeURIComponent(buildingId)}/photos/tourapi`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({photos}),
+    },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.message || `TourAPI 사진 캐시 저장 실패 (${response.status})`);
+  }
+  return data;
+}
+
 async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
   _activePhotoBuildingId = buildingId;
-  const hasTourPhoto = (Array.isArray(initialPhotos) ? initialPhotos : [])
-    .some(photo => photo && photo.source === "tourapi");
-  if (hasTourPhoto) return;
+  const initial = Array.isArray(initialPhotos) ? initialPhotos : [];
+
+  // 서버 응답을 기다리는 동안에도 DB 사진이 없는 건물은 Street View를 먼저 보여준다.
+  // 이후 upload/tourapi 캐시가 확인되면 아래에서 즉시 그 사진으로 교체한다.
+  const initialHasPhotos = initial.length > 0;
+  if (!initialHasPhotos) {
+    tryShowStreetView({
+      building_id: buildingId,
+      lat: building?.lat,
+      lng: building?.lng,
+    }, buildingId);
+  }
 
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
     const data = await response.json().catch(() => ({}));
     if (_activePhotoBuildingId !== buildingId) return;
     const photos = response.ok && data.ok && Array.isArray(data.photos) ? data.photos : [];
-    renderPhotoSlider(photos);
-    if (data.status !== "fetch_needed") return;
-
-    const buildingName = data.building_name || building?.building_name || "";
-    const roadAddress = data.road_address || building?.road_address || "";
-    const local = readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
-    if (local){
-      const localOrFallback = local.photos.length || !data.streetview_available
-        ? local.photos
-        : streetViewFallbackPhoto(buildingId, data.lat, data.lng);
-      renderPhotoSlider([...photos, ...localOrFallback]);
+    if (photos.length > 0) {
+      renderPhotoSlider(photos);
       return;
     }
 
-    const clientPhotos = await fetchTourApiPhotos(buildingName, roadAddress);
-    if (_activePhotoBuildingId !== buildingId) return;
-    writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, clientPhotos);
-    const clientOrFallback = clientPhotos.length || !data.streetview_available
-      ? clientPhotos
-      : streetViewFallbackPhoto(buildingId, data.lat, data.lng);
-    const mergedPhotos = [...photos];
-    clientOrFallback.forEach(photo => {
-      if (!mergedPhotos.some(existing => existing?.url === photo.url)) mergedPhotos.push(photo);
-    });
-    renderPhotoSlider(mergedPhotos);
+    const buildingName = data.building_name || building?.building_name || "";
+    const roadAddress = data.road_address || building?.road_address || "";
+    const cached = {
+      ...data,
+      building_id: buildingId,
+      building_name: buildingName,
+      road_address: roadAddress,
+      lat: data.lat ?? building?.lat,
+      lng: data.lng ?? building?.lng,
+    };
+
+    // DB에 사진이 없으면 Street View를 즉시 유지한다. 이 값은 TourAPI보다
+    // 먼저 렌더링되며, 좌표가 없으면 renderPhotoSlider([])가 사진 영역을 숨긴다.
+    const svShown = tryShowStreetView(cached, buildingId);
+
+    const local = readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
+    if (local && local.photos.length > 0) {
+      renderPhotoSlider(local.photos);
+      return;
+    }
+    if (local) {
+      // 최근 매칭 실패를 기억하고 있으면 Street View만 계속 보여준다.
+      if (!svShown) renderPhotoSlider([]);
+      return;
+    }
+
+    // TourAPI는 Street View를 막지 않도록 백그라운드에서 실행한다.
+    if (!buildingName) {
+      if (!svShown) renderPhotoSlider([]);
+      return;
+    }
+
+    fetchTourApiPhotos(buildingName, roadAddress)
+      .then(async clientPhotos => {
+        writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, clientPhotos);
+        if (!clientPhotos.length) return;
+        try {
+          await savePhotosToServer(buildingId, clientPhotos);
+        } catch (error) {
+          // 공용 캐시 저장이 실패해도 현재 방문자의 TourAPI 결과는 표시한다.
+          console.warn("[building-photos] TourAPI 서버 캐시 저장 실패", error);
+        }
+        if (_activePhotoBuildingId !== buildingId) return;
+        // TourAPI 매칭 성공 시에만 Street View를 교체한다.
+        renderPhotoSlider(clientPhotos);
+      })
+      .catch(() => {
+        // TourAPI 실패 시 이미 표시한 Street View를 그대로 유지한다.
+      });
   } catch(e) {
     if (_activePhotoBuildingId !== buildingId) return;
-    // 외부 호출 실패 시 기존 캐시 사진은 유지하고, 실제로 사진이 없을 때만 숨긴다.
-    renderPhotoSlider(initialPhotos);
+    // 서버 조회 실패 시에도 초기 DB 사진 또는 즉시 표시한 Street View를 유지한다.
+    if (initial.length > 0) renderPhotoSlider(initial);
+    else if (!tryShowStreetView({
+      building_id: buildingId,
+      lat: building?.lat,
+      lng: building?.lng,
+    }, buildingId)) renderPhotoSlider([]);
   }
 }
 

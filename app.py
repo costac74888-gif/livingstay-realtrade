@@ -1012,6 +1012,74 @@ def get_building_photos_on_demand(building_id):
         conn.close()
 
 
+def _is_allowed_tourapi_photo_url(value):
+    try:
+        parsed = urlparse(str(value or "").strip())
+    except Exception:
+        return False
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.netloc)
+        and (
+            hostname == "visitkorea.or.kr"
+            or hostname.endswith(".visitkorea.or.kr")
+            or hostname == "kakaocdn.net"
+            or hostname.endswith(".kakaocdn.net")
+        )
+    )
+
+
+@app.route("/api/building/<int:building_id>/photos/tourapi", methods=["POST"])
+@limiter.limit("30 per hour")
+def save_tourapi_building_photos(building_id):
+    """브라우저에서 매칭한 신뢰된 TourAPI 사진 URL을 서버 캐시에 저장한다."""
+    payload = request.get_json(silent=True) or {}
+    raw_photos = payload.get("photos")
+    if not isinstance(raw_photos, list) or len(raw_photos) > 20:
+        return jsonify({"ok": False, "message": "사진 목록이 올바르지 않습니다."}), 400
+
+    photos = []
+    allowed_types = {"exterior", "room", "lobby", "aerial"}
+    for item in raw_photos:
+        if not isinstance(item, dict):
+            return jsonify({"ok": False, "message": "사진 정보가 올바르지 않습니다."}), 400
+        url = str(item.get("url") or "").strip()
+        if not _is_allowed_tourapi_photo_url(url):
+            return jsonify({"ok": False, "message": "허용되지 않은 사진 주소입니다."}), 400
+        photo_type = str(item.get("photo_type") or "exterior").strip().lower()
+        if photo_type not in allowed_types:
+            photo_type = "exterior"
+        photos.append((url, photo_type))
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [building_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+
+        inserted = 0
+        for display_order, (url, photo_type) in enumerate(photos):
+            cur.execute("""
+                INSERT INTO building_photos
+                    (building_id, photo_url, source, photo_type,
+                     is_primary, display_order, priority_rank)
+                VALUES (%s, %s, 'tourapi', %s, FALSE, %s, 9)
+                ON CONFLICT (building_id, photo_url) DO NOTHING
+            """, [building_id, url, photo_type, display_order])
+            inserted += cur.rowcount
+        _refresh_building_photo_primary(cur, building_id)
+        conn.commit()
+        return jsonify({"ok": True, "inserted": inserted})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _building_photo_upload_actor(cur, building_id):
     """건물사진 등록 권한과 기록용 등록자 유형을 반환한다."""
     if session.get("admin"):
