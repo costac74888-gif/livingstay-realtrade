@@ -1,5 +1,10 @@
 """숙박업의 법정 영업분류와 건축물 용도를 분리하는 공통 규칙."""
 
+from lodging_data_contract import (
+    RAW_HYGIENE_TYPE_TO_LEGACY_TYPE,
+    legacy_lodging_type_for_hygiene,
+)
+
 ACTIVE_STATUS = "영업/정상"
 
 PRIMARY_LODGING_TYPES = (
@@ -15,17 +20,12 @@ PRIMARY_LODGING_TYPES = (
 GENERAL_LODGING_SUBTYPE_ORDER = ("일반호텔", "여관업", "여인숙업")
 
 HYGIENE_TYPE_TO_LODGING_TYPE = {
+    **RAW_HYGIENE_TYPE_TO_LEGACY_TYPE,
     "숙박업(일반)": "일반",
     "일반숙박업": "일반",
-    "일반호텔": "일반",
-    "여관업": "일반",
-    "여인숙업": "일반",
-    "숙박업(생활)": "생활",
     "생활숙박업": "생활",
     "생활숙박시설": "생활",
-    "관광숙박업": "관광",
     "관광호텔업": "관광",
-    "휴양콘도미니엄업": "관광",
     "한국전통호텔업": "관광",
     "가족호텔업": "관광",
     "소형호텔업": "관광",
@@ -77,7 +77,9 @@ def normalize_hygiene_type(value) -> str:
 
 def lodging_type_for_hygiene(value):
     """공식 신고·등록 업태를 서비스의 법정 영업분류로 변환한다."""
-    return HYGIENE_TYPE_TO_LODGING_TYPE.get(normalize_hygiene_type(value))
+    return HYGIENE_TYPE_TO_LODGING_TYPE.get(normalize_hygiene_type(value)) or (
+        legacy_lodging_type_for_hygiene(value)
+    )
 
 
 def lodging_subtype_for_hygiene(value):
