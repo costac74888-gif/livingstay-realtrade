@@ -1,0 +1,1783 @@
+{
+  "generated_at": "2026-09-02T23:24:59",
+  "read_only": true,
+  "batches": [
+    {
+      "id": 19,
+      "source_key": "auto_camping",
+      "reference_date": "2026-09-03",
+      "total_rows": 969
+    },
+    {
+      "id": 17,
+      "source_key": "foreign_city_homestay",
+      "reference_date": "2026-09-03",
+      "total_rows": 14521
+    },
+    {
+      "id": 18,
+      "source_key": "general_camping",
+      "reference_date": "2026-09-03",
+      "total_rows": 4902
+    },
+    {
+      "id": 20,
+      "source_key": "hanok",
+      "reference_date": "2026-09-03",
+      "total_rows": 3164
+    },
+    {
+      "id": 16,
+      "source_key": "lodging",
+      "reference_date": "2026-09-03",
+      "total_rows": 58693
+    },
+    {
+      "id": 15,
+      "source_key": "rural_homestay",
+      "reference_date": "2026-09-03",
+      "total_rows": 55419
+    },
+    {
+      "id": 13,
+      "source_key": "tourism_lodging",
+      "reference_date": "2026-09-03",
+      "total_rows": 4329
+    },
+    {
+      "id": 14,
+      "source_key": "tourism_pension",
+      "reference_date": "2026-09-03",
+      "total_rows": 1662
+    }
+  ],
+  "master_buildings": {
+    "count": 53869,
+    "road_keys": 52354,
+    "ambiguous_road_keys": 347,
+    "jibun_keys": 46647,
+    "ambiguous_jibun_keys": 197
+  },
+  "overall": {
+    "unmatched": 74375,
+    "road_unique": 63953,
+    "active_rows_matched": 56190,
+    "jibun_unique": 4177,
+    "no_address": 22,
+    "road_ambiguous": 616,
+    "jibun_ambiguous": 32,
+    "address_conflict": 484
+  },
+  "matched_rows": 68130,
+  "matched_unique_buildings": 51596,
+  "buildings_with_multiple_source_rows": 11742,
+  "max_source_rows_on_one_building": 27,
+  "by_source": {
+    "auto_camping": {
+      "road_unique": 757,
+      "unmatched": 114,
+      "jibun_unique": 94,
+      "address_conflict": 2,
+      "road_ambiguous": 1,
+      "no_address": 1
+    },
+    "foreign_city_homestay": {
+      "unmatched": 14443,
+      "road_unique": 69,
+      "jibun_unique": 7,
+      "no_address": 2
+    },
+    "general_camping": {
+      "unmatched": 957,
+      "road_unique": 3433,
+      "jibun_unique": 505,
+      "road_ambiguous": 3,
+      "address_conflict": 2,
+      "no_address": 2
+    },
+    "hanok": {
+      "road_unique": 2424,
+      "unmatched": 414,
+      "jibun_unique": 314,
+      "address_conflict": 5,
+      "no_address": 7
+    },
+    "lodging": {
+      "unmatched": 44780,
+      "road_unique": 11593,
+      "jibun_unique": 1676,
+      "address_conflict": 61,
+      "road_ambiguous": 551,
+      "no_address": 4,
+      "jibun_ambiguous": 28
+    },
+    "rural_homestay": {
+      "unmatched": 10662,
+      "road_unique": 42860,
+      "jibun_unique": 1468,
+      "address_conflict": 405,
+      "no_address": 3,
+      "road_ambiguous": 21
+    },
+    "tourism_lodging": {
+      "unmatched": 2857,
+      "road_unique": 1356,
+      "jibun_unique": 70,
+      "no_address": 2,
+      "road_ambiguous": 33,
+      "jibun_ambiguous": 4,
+      "address_conflict": 7
+    },
+    "tourism_pension": {
+      "road_unique": 1461,
+      "unmatched": 148,
+      "jibun_unique": 43,
+      "address_conflict": 2,
+      "road_ambiguous": 7,
+      "no_address": 1
+    }
+  },
+  "by_service": {
+    "관광숙박": {
+      "unmatched": 4576,
+      "road_unique": 3409,
+      "jibun_unique": 158,
+      "no_address": 3,
+      "road_ambiguous": 70,
+      "jibun_ambiguous": 4,
+      "address_conflict": 10
+    },
+    "농어촌민박": {
+      "unmatched": 10662,
+      "road_unique": 42860,
+      "jibun_unique": 1468,
+      "address_conflict": 405,
+      "no_address": 3,
+      "road_ambiguous": 21
+    },
+    "미분류": {
+      "unmatched": 1
+    },
+    "생활숙박": {
+      "unmatched": 4027,
+      "road_unique": 3726,
+      "jibun_unique": 257,
+      "address_conflict": 35,
+      "road_ambiguous": 319,
+      "jibun_ambiguous": 2
+    },
+    "에어비앤비": {
+      "unmatched": 14443,
+      "road_unique": 69,
+      "jibun_unique": 7,
+      "no_address": 2
+    },
+    "일반숙박": {
+      "unmatched": 39181,
+      "road_unique": 7275,
+      "jibun_unique": 1374,
+      "road_ambiguous": 202,
+      "no_address": 4,
+      "jibun_ambiguous": 26,
+      "address_conflict": 25
+    },
+    "캠핑": {
+      "unmatched": 1071,
+      "road_unique": 4190,
+      "jibun_unique": 599,
+      "road_ambiguous": 4,
+      "address_conflict": 4,
+      "no_address": 3
+    },
+    "한옥": {
+      "road_unique": 2424,
+      "unmatched": 414,
+      "jibun_unique": 314,
+      "address_conflict": 5,
+      "no_address": 7
+    }
+  },
+  "by_status": {
+    "active": {
+      "unmatched": 33980,
+      "road_unique": 54139,
+      "jibun_unique": 2051,
+      "road_ambiguous": 508,
+      "jibun_ambiguous": 10,
+      "address_conflict": 91,
+      "no_address": 8
+    },
+    "closed": {
+      "unmatched": 39985,
+      "jibun_unique": 2122,
+      "road_unique": 9751,
+      "no_address": 13,
+      "road_ambiguous": 108,
+      "address_conflict": 392,
+      "jibun_ambiguous": 22
+    },
+    "excluded": {
+      "road_unique": 1
+    },
+    "temporarily_closed": {
+      "unmatched": 410,
+      "road_unique": 62,
+      "jibun_unique": 4,
+      "address_conflict": 1,
+      "no_address": 1
+    }
+  },
+  "samples": {
+    "unmatched": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 2,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000026",
+        "biz_name": "호텔 인스피룸 종로",
+        "road_address": "서울특별시 종로구 난계로29길 33-5, 삼광빌딩 (숭인동)",
+        "jibun_address": "서울특별시 종로구 숭인동 201-6 삼광빌딩",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000027",
+        "biz_name": "안한스테이 동묘",
+        "road_address": "서울특별시 종로구 종로57길 7, 안한스테이 동묘 (숭인동)",
+        "jibun_address": "서울특별시 종로구 숭인동 99-2 안한스테이 동묘",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 4,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000028",
+        "biz_name": "하우스다 종각",
+        "road_address": "서울특별시 종로구 삼일대로 391, 5층 (관철동)",
+        "jibun_address": "서울특별시 종로구 관철동 7-1",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 5,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000029",
+        "biz_name": "나애집",
+        "road_address": "서울특별시 종로구 삼일대로 391, 6층 (관철동)",
+        "jibun_address": "서울특별시 종로구 관철동 7-1",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 7,
+        "permit_number": "TOURISM:3000000:CDFI2260031974000001",
+        "biz_name": "서울",
+        "road_address": null,
+        "jibun_address": "서울특별시 종로구 청진동 92",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 8,
+        "permit_number": "TOURISM:3000000:CDFI2260032003000001",
+        "biz_name": "(주)올림피아스위트",
+        "road_address": null,
+        "jibun_address": "서울특별시 종로구 평창동 108-2",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 9,
+        "permit_number": "TOURISM:3000000:CDFI2260032003000002",
+        "biz_name": "비원관광호텔",
+        "road_address": "서울특별시 종로구 율곡로 176  (원남동)",
+        "jibun_address": "서울특별시 종로구 원남동 36",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 10,
+        "permit_number": "TOURISM:3000000:CDFI2260032012000002",
+        "biz_name": "(주)아워홈 아벤트리호텔 종로점",
+        "road_address": "서울특별시 종로구 우정국로 46 (견지동)",
+        "jibun_address": "서울특별시 종로구 견지동 65-1",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 11,
+        "permit_number": "TOURISM:3000000:CDFI2260032012000004",
+        "biz_name": "Stay in GAM",
+        "road_address": "서울특별시 종로구 율곡로10길 12 (와룡동)",
+        "jibun_address": "서울특별시 종로구 와룡동 21",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 12,
+        "permit_number": "TOURISM:3000000:CDFI2260032013000005",
+        "biz_name": "Hostel STAY NOW",
+        "road_address": "서울특별시 종로구 삼일대로32가길 38 (익선동)",
+        "jibun_address": "서울특별시 종로구 익선동 89",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 13,
+        "permit_number": "TOURISM:3000000:CDFI2260032014000001",
+        "biz_name": "라마다 서울 종로",
+        "road_address": "서울특별시 종로구 창경궁로 106 (인의동)",
+        "jibun_address": "서울특별시 종로구 인의동 48-26",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 14,
+        "permit_number": "TOURISM:3000000:CDFI2260032014000002",
+        "biz_name": "미오하우스",
+        "road_address": "서울특별시 종로구 청계천로 229, 7층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 314-7 7층",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 15,
+        "permit_number": "TOURISM:3000000:CDFI2260032014000003",
+        "biz_name": "호스텔코리아 10호점",
+        "road_address": "서울특별시 종로구 종로 382, 2층 (숭인동)",
+        "jibun_address": "서울특별시 종로구 숭인동 200-33 2층",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 16,
+        "permit_number": "TOURISM:3000000:CDFI2260032014000004",
+        "biz_name": "24게스트하우스 인사동",
+        "road_address": "서울특별시 종로구 삼일대로17길 8 (관철동)",
+        "jibun_address": "서울특별시 종로구 관철동 7-5",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 17,
+        "permit_number": "TOURISM:3000000:CDFI2260032014000008",
+        "biz_name": "고궁호텔",
+        "road_address": "서울특별시 종로구 율곡로 164 (원남동)",
+        "jibun_address": "서울특별시 종로구 원남동 177-1",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 18,
+        "permit_number": "TOURISM:3000000:CDFI2260032015000003",
+        "biz_name": "아름호스텔",
+        "road_address": "서울특별시 종로구 율곡로4길 11-3, 1층 (견지동)",
+        "jibun_address": "서울특별시 종로구 견지동 21",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 19,
+        "permit_number": "TOURISM:3000000:CDFI2260032015000005",
+        "biz_name": "24 게스트하우스 종로3가",
+        "road_address": "서울특별시 종로구 율곡로10길 105, 5층 (봉익동, 디아망 쥬얼리)",
+        "jibun_address": "서울특별시 종로구 봉익동 10-1 디아망빌딩",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 20,
+        "permit_number": "TOURISM:3000000:CDFI2260032015000007",
+        "biz_name": "베니키아 프리미어 호텔 동대문",
+        "road_address": "서울특별시 종로구 난계로29길 55 (숭인동, 베니키아호텔동대문)",
+        "jibun_address": "서울특별시 종로구 숭인동 207-32",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 21,
+        "permit_number": "TOURISM:3000000:CDFI2260032018000003",
+        "biz_name": "JONGRO ALICE",
+        "road_address": "서울특별시 종로구 삼일대로32길 46 (익선동)",
+        "jibun_address": "서울특별시 종로구 익선동 24",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 22,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000012",
+        "biz_name": "오아시스 트레블러스 종로",
+        "road_address": "서울특별시 종로구 삼일대로 393-1, 4, 5층 (관철동)",
+        "jibun_address": "서울특별시 종로구 관철동 6-2",
+        "candidate_ids": []
+      }
+    ],
+    "road_unique": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 6,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000032",
+        "biz_name": "포게이츠 호스텔",
+        "road_address": "서울특별시 종로구 삼일대로 395, 종로빌딩 7층 (종로2가)",
+        "jibun_address": "서울특별시 종로구 종로2가 71-2 종로빌딩",
+        "candidate_ids": [
+          35418
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 23,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000013",
+        "biz_name": "더온재",
+        "road_address": "서울특별시 종로구 숭인동길 1-3, 2, 3층 (숭인동)",
+        "jibun_address": "서울특별시 종로구 숭인동 1049",
+        "candidate_ids": [
+          35480
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 24,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000014",
+        "biz_name": "VERANDA11",
+        "road_address": "서울특별시 종로구 숭인동길 1-3, 4층 (숭인동)",
+        "jibun_address": "서울특별시 종로구 숭인동 1049",
+        "candidate_ids": [
+          35480
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 31,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000044",
+        "biz_name": "현온슬",
+        "road_address": "서울특별시 종로구 율곡로 278, 동양빌딩 A동 3층 (종로6가)",
+        "jibun_address": "서울특별시 종로구 종로6가 16-6 동양빌딩",
+        "candidate_ids": [
+          35423
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 32,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000052",
+        "biz_name": "주식회사 모시",
+        "road_address": "서울특별시 종로구 종로 232, 2층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 214-3",
+        "candidate_ids": [
+          35404
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 33,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000053",
+        "biz_name": "스테이 5 종로",
+        "road_address": "서울특별시 종로구 동호로38길 24, GLO STAR 5층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 321-27 GLO STAR",
+        "candidate_ids": [
+          35403
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 36,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000031",
+        "biz_name": "호스텔 한온재",
+        "road_address": "서울특별시 종로구 종로 240-1, 4층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 231-5",
+        "candidate_ids": [
+          35456
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 38,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000066",
+        "biz_name": "NOC33 JONGNO",
+        "road_address": "서울특별시 종로구 동호로 408, 흥일빌딩 4, 6층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 182-4 흥일빌딩",
+        "candidate_ids": [
+          35369
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 39,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000067",
+        "biz_name": "스테이 솔솔",
+        "road_address": "서울특별시 종로구 율곡로30길 13, 3층 (종로6가)",
+        "jibun_address": "서울특별시 종로구 종로6가 27-2",
+        "candidate_ids": [
+          35366
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 42,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000070",
+        "biz_name": "현은재",
+        "road_address": "서울특별시 종로구 대학로2길 30, 2층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 40",
+        "candidate_ids": [
+          35370
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 45,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000046",
+        "biz_name": "간소스테이",
+        "road_address": "서울특별시 종로구 삼일대로 395, 종로빌딩 6층 601호 (종로2가)",
+        "jibun_address": "서울특별시 종로구 종로2가 71-2 종로빌딩",
+        "candidate_ids": [
+          35418
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 47,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000020",
+        "biz_name": "진가",
+        "road_address": "서울특별시 종로구 종로 198, 3,4,5층 (종로4가)",
+        "jibun_address": "서울특별시 종로구 종로4가 167-1",
+        "candidate_ids": [
+          35467
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 50,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000072",
+        "biz_name": "THE ARCH",
+        "road_address": "서울특별시 종로구 종로 225, 3층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 65",
+        "candidate_ids": [
+          35399
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 63,
+        "permit_number": "TOURISM:3000000:CDFI2260032024000006",
+        "biz_name": "케이스테이",
+        "road_address": "서울특별시 종로구 종로46길 1, 4, 5층 (창신동)",
+        "jibun_address": "서울특별시 종로구 창신동 464-4",
+        "candidate_ids": [
+          3145
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 73,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000038",
+        "biz_name": "소온",
+        "road_address": "서울특별시 종로구 종로 195, 1층 (종로4가)",
+        "jibun_address": "서울특별시 종로구 종로4가 8",
+        "candidate_ids": [
+          35443
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 82,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000049",
+        "biz_name": "안재",
+        "road_address": "서울특별시 종로구 종로 244-1, 2, 3층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 231-1",
+        "candidate_ids": [
+          35409
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 83,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000050",
+        "biz_name": "서울센트로스테이(광화문)호스텔",
+        "road_address": "서울특별시 종로구 새문안로 85, 3층 (신문로1가)",
+        "jibun_address": "서울특별시 종로구 신문로1가 33",
+        "candidate_ids": [
+          35408
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 85,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000054",
+        "biz_name": "머묾 종로",
+        "road_address": "서울특별시 종로구 동호로38길 24, GLO STAR 4층 (종로5가)",
+        "jibun_address": "서울특별시 종로구 종로5가 321-27 GLO STAR",
+        "candidate_ids": [
+          35403
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 86,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000042",
+        "biz_name": "고요담",
+        "road_address": "서울특별시 종로구 종로41길 13, 수상빌딩 5층 (종로6가)",
+        "jibun_address": "서울특별시 종로구 종로6가 141-1 수상빌딩",
+        "candidate_ids": [
+          35424
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 87,
+        "permit_number": "TOURISM:3000000:CDFI2260032026000043",
+        "biz_name": "현온진",
+        "road_address": "서울특별시 종로구 율곡로 278, 동양빌딩 A동 2층 (종로6가)",
+        "jibun_address": "서울특별시 종로구 종로6가 16-6 동양빌딩",
+        "candidate_ids": [
+          35423
+        ]
+      }
+    ],
+    "jibun_unique": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 303,
+        "permit_number": "TOURISM:3010000:CDFI2260032008000001",
+        "biz_name": "라마다호텔앤스위트 서울센트럴",
+        "road_address": "서울특별시 중구 칠패로 27 (순화동,외 1필지 C동)",
+        "jibun_address": "서울특별시 중구 순화동 151 외 1필지 C동",
+        "candidate_ids": [
+          2927
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1023,
+        "permit_number": "TOURISM:3270000:CDFI2260031977000001",
+        "biz_name": "부산아리랑관광호텔",
+        "road_address": "부산광역시 동구 중앙대로196번길 8 (초량동, 아리랑관광호텔)",
+        "jibun_address": "부산광역시 동구 초량동 1204-1",
+        "candidate_ids": [
+          3377
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1124,
+        "permit_number": "TOURISM:3290000:CDFI2260032011000001",
+        "biz_name": "센트럴 세븐호텔 바이권 부산 서면",
+        "road_address": "부산광역시 부산진구 중앙대로 777 (부전동, 서면호텔 복합시설)",
+        "jibun_address": "부산광역시 부산진구 부전동 573-7",
+        "candidate_ids": [
+          3388
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1314,
+        "permit_number": "TOURISM:3380000:CDFI2260032017000011",
+        "biz_name": "H-AVENUE 광안리점",
+        "road_address": "부산광역시 수영구 민락수변로 29, 민락동 바다마루 11~12층 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 181-223 민락동 바다마루",
+        "candidate_ids": [
+          3453
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1398,
+        "permit_number": "TOURISM:3380000:CDFI2260032025000006",
+        "biz_name": "광안사계스테이",
+        "road_address": "부산광역시 수영구 광안해변로344번길 17-17, 수변PLAZA 4층 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 110-45 수변PLAZA",
+        "candidate_ids": [
+          3443
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1413,
+        "permit_number": "TOURISM:3380000:CDFI2260032025000031",
+        "biz_name": "루미나 더 리안",
+        "road_address": "부산광역시 수영구 광안해변로344번길 17-17, 수변PLAZA 7층 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 110-45 수변PLAZA",
+        "candidate_ids": [
+          3443
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1414,
+        "permit_number": "TOURISM:3380000:CDFI2260032025000032",
+        "biz_name": "스테이리안",
+        "road_address": "부산광역시 수영구 광안해변로344번길 17-17, 수변PLAZA 6층 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 110-45 수변PLAZA",
+        "candidate_ids": [
+          3443
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1422,
+        "permit_number": "TOURISM:3380000:CDFI2260032026000004",
+        "biz_name": "굿스테이",
+        "road_address": "부산광역시 수영구 광안해변로295번길 4-11, 5~6층 (민락동, 주건축물제1동)",
+        "jibun_address": "부산광역시 수영구 민락동 181-52 주건축물제1동",
+        "candidate_ids": [
+          3449
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1433,
+        "permit_number": "TOURISM:3380000:CDFI2260032025000022",
+        "biz_name": "시나몬스테이 광안",
+        "road_address": "부산광역시 수영구 광안해변로344번길 17-17, 수변PLAZA (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 110-45 수변PLAZA",
+        "candidate_ids": [
+          3443
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1439,
+        "permit_number": "TOURISM:3380000:CDFI2260032025000028",
+        "biz_name": "무드온 광안",
+        "road_address": "부산광역시 수영구 광안해변로344번길 17-17, 수변PLAZA 9층 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 110-45 수변PLAZA",
+        "candidate_ids": [
+          3443
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1458,
+        "permit_number": "TOURISM:3380000:CDFI2260032016000005",
+        "biz_name": "Stay here",
+        "road_address": "부산광역시 수영구 광안해변로295번길 4-11 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 181-52",
+        "candidate_ids": [
+          3449
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1758,
+        "permit_number": "TOURISM:3540000:CDFI2260031987000001",
+        "biz_name": "부평관광호텔",
+        "road_address": "인천광역시 부평구 부평대로276번길 2 (갈산동)",
+        "jibun_address": "인천광역시 부평구 갈산동 181",
+        "candidate_ids": [
+          3519
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1838,
+        "permit_number": "TOURISM:3670000:CDFI2260031996000001",
+        "biz_name": "갤러리 관광호텔",
+        "road_address": "대전광역시 유성구 계룡로123번길 2 (봉명동, 갤러리 관광호텔)",
+        "jibun_address": "대전광역시 유성구 봉명동 548-13",
+        "candidate_ids": [
+          3573
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1908,
+        "permit_number": "TOURISM:3740000:CDFI2260032005000003",
+        "biz_name": "호텔리젠시",
+        "road_address": "경기도 수원시 팔달구 매산로 159 (구천동)",
+        "jibun_address": "경기도 수원시 팔달구 구천동 47",
+        "candidate_ids": [
+          2774
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2247,
+        "permit_number": "TOURISM:4170000:CDFI2260032022000001",
+        "biz_name": "휴 빌리지",
+        "road_address": "경기도 양평군 양동면 양동로 758",
+        "jibun_address": "경기도 양평군 양동면 고송리 1793",
+        "candidate_ids": [
+          4012
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2271,
+        "permit_number": "TOURISM:4191000:CDFI2260032019000002",
+        "biz_name": "시티호텔",
+        "road_address": "강원특별자치도 원주시 건강로 4 (반곡동)",
+        "jibun_address": "강원특별자치도 원주시 반곡동 1900-2",
+        "candidate_ids": [
+          10011
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2279,
+        "permit_number": "TOURISM:4191000:CDFI2260032025000001",
+        "biz_name": "원주시티호텔 기업도시점",
+        "road_address": "강원특별자치도 원주시 지정면 신무로 54-9",
+        "jibun_address": "강원특별자치도 원주시 지정면 신평리 170-17",
+        "candidate_ids": [
+          10072
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2289,
+        "permit_number": "TOURISM:4201000:CDFI2260032023000004",
+        "biz_name": "오늘 교동",
+        "road_address": "강원특별자치도 강릉시 강릉대로121번길 20 (교동)",
+        "jibun_address": "강원특별자치도 강릉시 교동 971-23",
+        "candidate_ids": [
+          10337
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2329,
+        "permit_number": "TOURISM:4201000:CDFI2260031971000001",
+        "biz_name": "호텔현대경포대",
+        "road_address": null,
+        "jibun_address": "강원특별자치도 강릉시 강문동 274-1",
+        "candidate_ids": [
+          10401
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2333,
+        "permit_number": "TOURISM:4201000:CDFI2260031992000002",
+        "biz_name": "코리아나관광호텔",
+        "road_address": null,
+        "jibun_address": "강원특별자치도 강릉시 강문동 258-4",
+        "candidate_ids": [
+          10399
+        ]
+      }
+    ],
+    "no_address": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 1006,
+        "permit_number": "TOURISM:3260000:CDFI2260032013000001",
+        "biz_name": "웰호텔",
+        "road_address": null,
+        "jibun_address": "부산광역시 서구 암남동",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3240,
+        "permit_number": "TOURISM:5680000:CDFI2260032007000001",
+        "biz_name": "한중해양개발(주)",
+        "road_address": null,
+        "jibun_address": "충청남도 당진시 신평면 운정리",
+        "candidate_ids": []
+      },
+      {
+        "source": "tourism_pension",
+        "row_number": 797,
+        "permit_number": "PENSION:4620000:CDFI3261092013000001",
+        "biz_name": "아리바다  (arribada)",
+        "road_address": null,
+        "jibun_address": "충청남도 태안군 남면 원청리",
+        "candidate_ids": []
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 7123,
+        "permit_number": "RURAL:4170000:AGCV041700002024000050",
+        "biz_name": "유어시티 서종",
+        "road_address": null,
+        "jibun_address": "경기도 양평군 서종면 황순원로 242      1층",
+        "candidate_ids": []
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 7180,
+        "permit_number": "RURAL:4170000:AGCV041700002025000031",
+        "biz_name": "서종별곡",
+        "road_address": null,
+        "jibun_address": "경기도 양평군 서종면 황순원로 414-14      가동",
+        "candidate_ids": []
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 55217,
+        "permit_number": "RURAL:6520000:AGCV065200002023000128",
+        "biz_name": "스윗해_제주(So sweet_Jeju)",
+        "road_address": null,
+        "jibun_address": "제주특별자치도 서귀포시 표선면 번영로 3478-50      (표선리)",
+        "candidate_ids": []
+      },
+      {
+        "source": "lodging",
+        "row_number": 11982,
+        "permit_number": "3410000-201-1982-00004",
+        "biz_name": "시장",
+        "road_address": null,
+        "jibun_address": "대구광역시 중구 시장북로 88",
+        "candidate_ids": []
+      },
+      {
+        "source": "lodging",
+        "row_number": 12012,
+        "permit_number": "3410000-201-1975-00003",
+        "biz_name": "동경",
+        "road_address": null,
+        "jibun_address": "대구광역시 중구 시장북로 8-1",
+        "candidate_ids": []
+      },
+      {
+        "source": "lodging",
+        "row_number": 12065,
+        "permit_number": "3410000-201-1970-00007",
+        "biz_name": "상희",
+        "road_address": null,
+        "jibun_address": "대구광역시 중구 시장북로 76",
+        "candidate_ids": []
+      },
+      {
+        "source": "lodging",
+        "row_number": 46411,
+        "permit_number": "5380000-201-2003-00007",
+        "biz_name": "발리모텔",
+        "road_address": null,
+        "jibun_address": "경상남도 양산시 평산동 * 20B 6L",
+        "candidate_ids": []
+      },
+      {
+        "source": "foreign_city_homestay",
+        "row_number": 12068,
+        "permit_number": "AIRBNB:3860000:CDFI2262212012000001",
+        "biz_name": "AIN GUEST HOUSE",
+        "road_address": null,
+        "jibun_address": "경기도 부천시 소사구 송내동",
+        "candidate_ids": []
+      },
+      {
+        "source": "foreign_city_homestay",
+        "row_number": 14021,
+        "permit_number": "AIRBNB:5690000:CDFI2262212022000001",
+        "biz_name": "웰포레스트",
+        "road_address": "세종특별자치시 집현서로",
+        "jibun_address": "세종특별자치시 집현동",
+        "candidate_ids": []
+      },
+      {
+        "source": "general_camping",
+        "row_number": 1898,
+        "permit_number": "CAMPING:4341000:CDFI2262132016000009",
+        "biz_name": "공현진1리 해변 야영장",
+        "road_address": null,
+        "jibun_address": "강원특별자치도 고성군 죽왕면 공현진리",
+        "candidate_ids": []
+      },
+      {
+        "source": "general_camping",
+        "row_number": 1899,
+        "permit_number": "CAMPING:4341000:CDFI2262132016000010",
+        "biz_name": "거진 해변 야영장",
+        "road_address": null,
+        "jibun_address": "강원특별자치도 고성군 거진읍 거진리",
+        "candidate_ids": []
+      },
+      {
+        "source": "auto_camping",
+        "row_number": 521,
+        "permit_number": "CAMPING:4791000:CDFI2262142017000002",
+        "biz_name": "가자 변산 비치 캠핑장",
+        "road_address": null,
+        "jibun_address": "전북특별자치도 부안군 변산면 대항리 변산해수욕장 관광지 D5-1",
+        "candidate_ids": []
+      },
+      {
+        "source": "hanok",
+        "row_number": 908,
+        "permit_number": "HANOK:4341000:CDFI2262222010000006",
+        "biz_name": "큰백촌집",
+        "road_address": null,
+        "jibun_address": "강원특별자치도 고성군 죽왕면 오봉리",
+        "candidate_ids": []
+      },
+      {
+        "source": "hanok",
+        "row_number": 1280,
+        "permit_number": "HANOK:4641000:CDFI2262222014000047",
+        "biz_name": "달빛향",
+        "road_address": null,
+        "jibun_address": "전북특별자치도 전주시 완산구 교동",
+        "candidate_ids": []
+      },
+      {
+        "source": "hanok",
+        "row_number": 2586,
+        "permit_number": "HANOK:5680000:CDFI2262222010000002",
+        "biz_name": "벽송재",
+        "road_address": null,
+        "jibun_address": "충청남도 당진시 면천면 삼웅리 -621",
+        "candidate_ids": []
+      },
+      {
+        "source": "hanok",
+        "row_number": 2726,
+        "permit_number": "HANOK:5790000:CDFI3261132010000027",
+        "biz_name": "다리목",
+        "road_address": null,
+        "jibun_address": "전남광주통합특별시 순천시 교량동",
+        "candidate_ids": []
+      },
+      {
+        "source": "hanok",
+        "row_number": 2843,
+        "permit_number": "HANOK:5830000:CDFI2262222014000001",
+        "biz_name": "황토명가(자연당 한옥민박)",
+        "road_address": null,
+        "jibun_address": "전남광주통합특별시 담양군 용면 두장리",
+        "candidate_ids": []
+      }
+    ],
+    "road_ambiguous": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 1494,
+        "permit_number": "TOURISM:3400000:CDFI2260032026000001",
+        "biz_name": "오션스위트",
+        "road_address": "부산광역시 기장군 일광읍 삼성3길 7",
+        "jibun_address": "부산광역시 기장군 일광읍 삼성리 115-49",
+        "candidate_ids": [
+          3472,
+          35365
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 1499,
+        "permit_number": "TOURISM:3400000:CDFI2260032023000009",
+        "biz_name": "카이브 기장일광점",
+        "road_address": "부산광역시 기장군 일광읍 삼성3길 7",
+        "jibun_address": "부산광역시 기장군 일광읍 삼성리 115-49",
+        "candidate_ids": [
+          3472,
+          35365
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2105,
+        "permit_number": "TOURISM:4050000:CDFI2260032006000001",
+        "biz_name": "기흥SK아펠바움콘도",
+        "road_address": "경기도 용인시 기흥구 기흥단지로 394 (고매동)",
+        "jibun_address": "경기도 용인시 기흥구 고매동 5-56",
+        "candidate_ids": [
+          3868,
+          3873
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2120,
+        "permit_number": "TOURISM:4050000:CDFI2260031993000001",
+        "biz_name": "골드훼미리콘도미니엄",
+        "road_address": "경기도 용인시 기흥구 기흥단지로 406 (고매동)",
+        "jibun_address": "경기도 용인시 기흥구 고매동 5-73",
+        "candidate_ids": [
+          3869,
+          3874
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2121,
+        "permit_number": "TOURISM:4050000:CDFI2260031988000001",
+        "biz_name": "한화리조트/용인 베잔송",
+        "road_address": "경기도 용인시 처인구 남사읍 봉무로153번길 79",
+        "jibun_address": "경기도 용인시 처인구 남사읍 방아리 산 57",
+        "candidate_ids": [
+          3862,
+          3864
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2258,
+        "permit_number": "TOURISM:4181000:CDFI2260031998000001",
+        "biz_name": "엘리시안 강촌 콘도미니엄",
+        "road_address": "강원특별자치도 춘천시 남산면 북한강변길 688, 엘리시안 강촌",
+        "jibun_address": "강원특별자치도 춘천시 남산면 백양리 29-1 엘리시안 강촌",
+        "candidate_ids": [
+          2685,
+          9824
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2307,
+        "permit_number": "TOURISM:4201000:CDFI2260032025000001",
+        "biz_name": "영진을담다 2차",
+        "road_address": "강원특별자치도 강릉시 연곡면 영진길 85, 3층",
+        "jibun_address": "강원특별자치도 강릉시 연곡면 영진리 68-1",
+        "candidate_ids": [
+          10671,
+          35707
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2360,
+        "permit_number": "TOURISM:4201000:CDFI2260032026000009",
+        "biz_name": "마젤란",
+        "road_address": "강원특별자치도 강릉시 주문진읍 해안로 1921",
+        "jibun_address": "강원특별자치도 강릉시 주문진읍 주문리 6",
+        "candidate_ids": [
+          10513,
+          35376
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2368,
+        "permit_number": "TOURISM:4201000:CDFI2260032022000003",
+        "biz_name": "영진을 담다",
+        "road_address": "강원특별자치도 강릉시 연곡면 영진길 85",
+        "jibun_address": "강원특별자치도 강릉시 연곡면 영진리 68-1",
+        "candidate_ids": [
+          10671,
+          35707
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2457,
+        "permit_number": "TOURISM:4241000:CDFI2260032012000001",
+        "biz_name": "씨스포빌 콘도",
+        "road_address": "강원특별자치도 삼척시 근덕면 상맹방길 30-80",
+        "jibun_address": "강원특별자치도 삼척시 근덕면 하맹방리 221-45",
+        "candidate_ids": [
+          2663,
+          10876
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2490,
+        "permit_number": "TOURISM:4281000:CDFI2260031995000001",
+        "biz_name": "휘닉스 호텔",
+        "road_address": "강원특별자치도 평창군 봉평면 태기로 174 (주)휘닉스평창",
+        "jibun_address": "강원특별자치도 평창군 봉평면 면온리 1095-1 (주)휘닉스평창",
+        "candidate_ids": [
+          2722,
+          2723,
+          11444
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2491,
+        "permit_number": "TOURISM:4281000:CDFI2260031995000002",
+        "biz_name": "휘닉스 평창 콘도미니엄",
+        "road_address": "강원특별자치도 평창군 봉평면 태기로 174 (주)휘닉스평창",
+        "jibun_address": "강원특별자치도 평창군 봉평면 면온리 1095 (주)휘닉스평창",
+        "candidate_ids": [
+          2722,
+          2723,
+          11444
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2503,
+        "permit_number": "TOURISM:4281000:CDFI2260032009000001",
+        "biz_name": "케이에이치강원개발 알펜시아타운",
+        "road_address": "강원특별자치도 평창군 대관령면 솔봉로 325",
+        "jibun_address": "강원특별자치도 평창군 대관령면 용산리 195-1",
+        "candidate_ids": [
+          2698,
+          2699,
+          2700,
+          11650
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2504,
+        "permit_number": "TOURISM:4281000:CDFI2260032009000002",
+        "biz_name": "인터컨티넨탈 알펜시아 평창 리조트",
+        "road_address": "강원특별자치도 평창군 대관령면 솔봉로 325 (외 9필지)",
+        "jibun_address": "강원특별자치도 평창군 대관령면 용산리 225-3 외 9필지",
+        "candidate_ids": [
+          2698,
+          2699,
+          2700,
+          11650
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2506,
+        "permit_number": "TOURISM:4281000:CDFI2260032010000002",
+        "biz_name": "홀리데이 인 리조트",
+        "road_address": "강원특별자치도 평창군 대관령면 솔봉로 325",
+        "jibun_address": "강원특별자치도 평창군 대관령면 용산리 200-3",
+        "candidate_ids": [
+          2698,
+          2699,
+          2700,
+          11650
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2589,
+        "permit_number": "TOURISM:4351000:CDFI2260032024000004",
+        "biz_name": "에이펙스 호텔",
+        "road_address": "강원특별자치도 양양군 현남면 동산큰길 80",
+        "jibun_address": "강원특별자치도 양양군 현남면 동산리 203-4",
+        "candidate_ids": [
+          12659,
+          35395
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2809,
+        "permit_number": "TOURISM:4721000:CDFI2260032025000001",
+        "biz_name": "소양스테이",
+        "road_address": "전북특별자치도 완주군 소양면 원등산길 46",
+        "jibun_address": "전북특별자치도 완주군 소양면 해월리 37-1",
+        "candidate_ids": [
+          13995,
+          35617
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2994,
+        "permit_number": "TOURISM:5260000:CDFI2260032025000001",
+        "biz_name": "스테이만디",
+        "road_address": "경상북도 울릉군 울릉읍 도동길 149-52",
+        "jibun_address": "경상북도 울릉군 울릉읍 도동리 223-130 관광숙박시설",
+        "candidate_ids": [
+          4429,
+          35711
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3142,
+        "permit_number": "TOURISM:5410000:CDFI2260032000000001",
+        "biz_name": "(주)레이크힐스골프텔부곡",
+        "road_address": "경상남도 창녕군 부곡면 온천2길 41",
+        "jibun_address": "경상남도 창녕군 부곡면 거문리 213-19",
+        "candidate_ids": [
+          7276,
+          7303,
+          7329
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3143,
+        "permit_number": "TOURISM:5410000:CDFI2260031984000001",
+        "biz_name": "로얄관광호텔",
+        "road_address": "경상남도 창녕군 부곡면 온천중앙로 3",
+        "jibun_address": "경상남도 창녕군 부곡면 거문리 215-1",
+        "candidate_ids": [
+          7277,
+          7304,
+          7330
+        ]
+      }
+    ],
+    "jibun_ambiguous": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 2116,
+        "permit_number": "TOURISM:4050000:CDFI2260032010000001",
+        "biz_name": "라센트라(La Centra)",
+        "road_address": null,
+        "jibun_address": "경기도 용인시 처인구 이동읍 서리 770 외 48필지",
+        "candidate_ids": [
+          3861,
+          3863
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2118,
+        "permit_number": "TOURISM:4050000:CDFI2260032004000002",
+        "biz_name": "코리아골프빌리지",
+        "road_address": null,
+        "jibun_address": "경기도 용인시 기흥구 고매동 5-56",
+        "candidate_ids": [
+          3868,
+          3873
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2489,
+        "permit_number": "TOURISM:4281000:CDFI2260031993000001",
+        "biz_name": "드레곤밸리 호텔",
+        "road_address": null,
+        "jibun_address": "강원특별자치도 평창군 대관령면 용산리 130",
+        "candidate_ids": [
+          2707,
+          2708,
+          2709,
+          2710,
+          2711,
+          2712,
+          2713,
+          2714,
+          2715
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3714,
+        "permit_number": "TOURISM:5795000:CDFI2260032005000001",
+        "biz_name": "중흥골드스파&리조트",
+        "road_address": "전남광주통합특별시 나주시 다도면 나주호로 558-314, 중흥골드스파&리조트",
+        "jibun_address": "전남광주통합특별시 나주시 다도면 방산리 1449-4 중흥골드스파&리조트",
+        "candidate_ids": [
+          3282,
+          3284
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 23481,
+        "permit_number": "3980000-201-1994-00003",
+        "biz_name": "뉴그린파크장",
+        "road_address": "경기도 구리시 체육관로172번길 34 (수택동)",
+        "jibun_address": "경기도 구리시 수택동 374-21",
+        "candidate_ids": [
+          3769,
+          3771
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24099,
+        "permit_number": "4010000-201-1997-00008",
+        "biz_name": "한강파크",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1736-3",
+        "candidate_ids": [
+          3793,
+          3805
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24124,
+        "permit_number": "4010000-201-1997-00003",
+        "biz_name": "파레스",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1626-1",
+        "candidate_ids": [
+          3783,
+          3786
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24161,
+        "permit_number": "4010000-201-1997-00012",
+        "biz_name": "갤럭시여관",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1736-6",
+        "candidate_ids": [
+          3794,
+          3806
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24191,
+        "permit_number": "4010000-201-1997-00013",
+        "biz_name": "드림무드",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1736-1",
+        "candidate_ids": [
+          3792,
+          3804
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24194,
+        "permit_number": "4010000-201-1997-00018",
+        "biz_name": "은광모텔",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1732-5",
+        "candidate_ids": [
+          3790,
+          3802
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24203,
+        "permit_number": "4010000-201-1998-00011",
+        "biz_name": "하얏트장",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1781-3",
+        "candidate_ids": [
+          3798,
+          3810
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24210,
+        "permit_number": "4010000-201-1999-00003",
+        "biz_name": "청진모텔",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1745-3 4층",
+        "candidate_ids": [
+          3797,
+          3809
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24214,
+        "permit_number": "4010000-201-1999-00008",
+        "biz_name": "한강코텔",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1736-3",
+        "candidate_ids": [
+          3793,
+          3805
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24228,
+        "permit_number": "4010000-201-2000-00020",
+        "biz_name": "드림무드",
+        "road_address": null,
+        "jibun_address": "경기도 시흥시 정왕동 1736-1 (최초신고 1998.5.29)",
+        "candidate_ids": [
+          3792,
+          3804
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24388,
+        "permit_number": "4020000-201-2002-00002",
+        "biz_name": "OK모텔",
+        "road_address": null,
+        "jibun_address": "경기도 군포시 산본동 1140 동원프라자 7층",
+        "candidate_ids": [
+          3835,
+          3841
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24413,
+        "permit_number": "4040000-201-2019-00001",
+        "biz_name": "호텔 트레비엔",
+        "road_address": "경기도 하남시 미사강변중앙로 164, 미타워 9,10층 (망월동)",
+        "jibun_address": "경기도 하남시 망월동 1108-1 미타워",
+        "candidate_ids": [
+          3847,
+          3850
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24414,
+        "permit_number": "4040000-201-2019-00002",
+        "biz_name": "아크모스호텔",
+        "road_address": "경기도 하남시 미사강변중앙로 164, 미타워 11층 1101호 (망월동)",
+        "jibun_address": "경기도 하남시 망월동 1108-1 미타워",
+        "candidate_ids": [
+          3847,
+          3850
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24416,
+        "permit_number": "4040000-201-2022-00001",
+        "biz_name": "블루힐 호텔",
+        "road_address": "경기도 하남시 미사강변중앙로 160, 미사 리버파크 10, 11층 (망월동)",
+        "jibun_address": "경기도 하남시 망월동 1108-3 미사 리버파크",
+        "candidate_ids": [
+          3848,
+          3851
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24417,
+        "permit_number": "4040000-201-2022-00002",
+        "biz_name": "리버파크호텔",
+        "road_address": "경기도 하남시 미사강변중앙로 160, 미사 리버파크 8,9층 (망월동)",
+        "jibun_address": "경기도 하남시 망월동 1108-3 미사 리버파크",
+        "candidate_ids": [
+          3848,
+          3851
+        ]
+      },
+      {
+        "source": "lodging",
+        "row_number": 24676,
+        "permit_number": "4050000-201-1989-00001",
+        "biz_name": "블루힐",
+        "road_address": "경기도 용인시 처인구 포곡읍 전대로78번길 23",
+        "jibun_address": "경기도 용인시 처인구 포곡읍 전대리 356-1 외 3필지",
+        "candidate_ids": [
+          3857,
+          3859
+        ]
+      }
+    ],
+    "address_conflict": [
+      {
+        "source": "tourism_lodging",
+        "row_number": 2462,
+        "permit_number": "TOURISM:4251000:CDFI2260032004000003",
+        "biz_name": "소노캄 비발디파크",
+        "road_address": "강원특별자치도 홍천군 서면 한치골길 262",
+        "jibun_address": "강원특별자치도 홍천군 서면 팔봉리 1290-17",
+        "candidate_ids": [
+          11013,
+          11015
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2464,
+        "permit_number": "TOURISM:4251000:CDFI2260032010000001",
+        "biz_name": "소노벨 타워 A 비발디파크",
+        "road_address": "강원특별자치도 홍천군 서면 한치골길 262",
+        "jibun_address": "강원특별자치도 홍천군 서면 팔봉리 1290-15",
+        "candidate_ids": [
+          11013,
+          11014
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2666,
+        "permit_number": "TOURISM:4520000:CDFI2260032025000001",
+        "biz_name": "호스텔 아르띠에 도고",
+        "road_address": "충청남도 아산시 선장면 삼봉산길 13-2",
+        "jibun_address": "충청남도 아산시 선장면 신성리 292",
+        "candidate_ids": [
+          4074,
+          35671
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 2806,
+        "permit_number": "TOURISM:4711000:CDFI2260032026000001",
+        "biz_name": "유한회사 죽산스테이",
+        "road_address": "전북특별자치도 김제시 죽산면 해학로 16-13",
+        "jibun_address": "전북특별자치도 김제시 죽산면 홍산리 835-3 , 837-1",
+        "candidate_ids": [
+          13901,
+          13902
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3935,
+        "permit_number": "TOURISM:6510000:CDFI2260032013001063",
+        "biz_name": "제주 조이황토리조트",
+        "road_address": "제주특별자치도 제주시 애월읍 신상로 258",
+        "jibun_address": "제주특별자치도 제주시 애월읍 하가리 120-2",
+        "candidate_ids": [
+          8695,
+          53240
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3996,
+        "permit_number": "TOURISM:6510000:CDFI2260032008001018",
+        "biz_name": "다인호텔앤리조트",
+        "road_address": "제주특별자치도 제주시 애월읍 애월해안로 400-9",
+        "jibun_address": "제주특별자치도 제주시 애월읍 고내리 79-8",
+        "candidate_ids": [
+          8709,
+          8710
+        ]
+      },
+      {
+        "source": "tourism_lodging",
+        "row_number": 3998,
+        "permit_number": "TOURISM:6510000:CDFI2260032009001010",
+        "biz_name": "다인호텔앤리조트(2차)",
+        "road_address": "제주특별자치도 제주시 애월읍 애월해안로 400-9",
+        "jibun_address": "제주특별자치도 제주시 애월읍 고내리 79-8",
+        "candidate_ids": [
+          8709,
+          8710
+        ]
+      },
+      {
+        "source": "tourism_pension",
+        "row_number": 303,
+        "permit_number": "PENSION:4201000:CDFI3261092003000001",
+        "biz_name": "관광팬션 휴심",
+        "road_address": "강원특별자치도 강릉시 저동골길 21 (저동)",
+        "jibun_address": "강원특별자치도 강릉시 저동 64-6",
+        "candidate_ids": [
+          41166,
+          41167
+        ]
+      },
+      {
+        "source": "tourism_pension",
+        "row_number": 1369,
+        "permit_number": "PENSION:5430000:CDFI3261092026000002",
+        "biz_name": "이안 풀빌라",
+        "road_address": "경상남도 남해군 서면 남서대로 1974-39",
+        "jibun_address": "경상남도 남해군 서면 작장리 405",
+        "candidate_ids": [
+          7586,
+          35650
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 340,
+        "permit_number": "RURAL:3570000:AGCV035700002019000153",
+        "biz_name": "나눔 펜션",
+        "road_address": "인천광역시 강화군 화도면 해안남로 2297-21, 나눔펜션",
+        "jibun_address": "인천광역시 강화군 화도면 여차리 931번지 2호 나눔펜션",
+        "candidate_ids": [
+          64619,
+          79817
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 421,
+        "permit_number": "RURAL:3570000:AGCV035700002019000608",
+        "biz_name": "빌리지",
+        "road_address": "인천광역시 강화군 삼산면 삼산동로 250-29, 나무의자펜션",
+        "jibun_address": "인천광역시 강화군 삼산면 매음리 45번지 20호 나무의자펜션",
+        "candidate_ids": [
+          45784,
+          73366
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 635,
+        "permit_number": "RURAL:3570000:AGCV035700002019000538",
+        "biz_name": "에떼르모",
+        "road_address": "인천광역시 강화군 화도면 해안남로 2421-202",
+        "jibun_address": "인천광역시 강화군 화도면 장화리 485번지 3호",
+        "candidate_ids": [
+          67701,
+          79818
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 686,
+        "permit_number": "RURAL:3570000:AGCV035700002019000392",
+        "biz_name": "스테이poc펜션",
+        "road_address": "인천광역시 강화군 삼산면 삼산남로 442-15",
+        "jibun_address": "인천광역시 강화군 삼산면 매음리 251번지 2호",
+        "candidate_ids": [
+          35508,
+          71854
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 872,
+        "permit_number": "RURAL:3570000:AGCV035700002019000637",
+        "biz_name": "쟈밀나하",
+        "road_address": "인천광역시 강화군 화도면 해안남로 2483-14",
+        "jibun_address": "인천광역시 강화군 화도면 장화리 316번지 2호",
+        "candidate_ids": [
+          42534,
+          72442
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 1143,
+        "permit_number": "RURAL:3570000:AGCV035700002019000036",
+        "biz_name": "바다노리펜션",
+        "road_address": "인천광역시 강화군 화도면 해안남로 2266-7, 바다노리펜션 가동",
+        "jibun_address": "인천광역시 강화군 화도면 여차리 872번지 5호 바다노리펜션",
+        "candidate_ids": [
+          48769,
+          75152
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 1146,
+        "permit_number": "RURAL:3570000:AGCV035700002019000039",
+        "biz_name": "바다노리펜션",
+        "road_address": "인천광역시 강화군 화도면 해안남로 2266-7, 가동",
+        "jibun_address": "인천광역시 강화군 화도면 여차리 872번지 5호 가동",
+        "candidate_ids": [
+          48769,
+          75152
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 1178,
+        "permit_number": "RURAL:3570000:AGCV035700002019000004",
+        "biz_name": "프로포즈펜션",
+        "road_address": "인천광역시 강화군 화도면 해안남로 1476-4, 제2동",
+        "jibun_address": "인천광역시 강화군 화도면 동막리 5번지 8호",
+        "candidate_ids": [
+          46517,
+          72464
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 1236,
+        "permit_number": "RURAL:3570000:AGCV035700002019000478",
+        "biz_name": "해비치",
+        "road_address": "인천광역시 강화군 삼산면 삼산남로 752-7",
+        "jibun_address": "인천광역시 강화군 삼산면 매음리 627번지 127호",
+        "candidate_ids": [
+          48085,
+          62657
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 1238,
+        "permit_number": "RURAL:3570000:AGCV035700002019000483",
+        "biz_name": "석모도민박",
+        "road_address": "인천광역시 강화군 삼산면 삼산남로 750",
+        "jibun_address": "인천광역시 강화군 삼산면 매음리 627번지 156호",
+        "candidate_ids": [
+          42843,
+          62657
+        ]
+      },
+      {
+        "source": "rural_homestay",
+        "row_number": 1242,
+        "permit_number": "RURAL:3570000:AGCV035700002019000505",
+        "biz_name": "그랑빌펜션",
+        "road_address": "인천광역시 강화군 길상면 동검길154번길 10",
+        "jibun_address": "인천광역시 강화군 길상면 동검리 299번지 4호",
+        "candidate_ids": [
+          48303,
+          71311
+        ]
+      }
+    ]
+  }
+}
