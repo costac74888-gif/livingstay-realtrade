@@ -814,6 +814,44 @@ def get_building_provider_photo(building_id, source):
     return response
 
 
+PHOTO_PRIORITY = {
+    "admin": 0,
+    "owner": 1,
+    "building_owner": 1,
+    "landlord": 1,
+    "business": 1,
+    "agent_building": 2,
+    "agent_region": 3,
+    "tourapi": 9,
+    "streetview": 10,
+    "vworld": 11,
+}
+
+
+def _building_photo_priority(registrant_type=None, source=None):
+    return PHOTO_PRIORITY.get(registrant_type, PHOTO_PRIORITY.get(source, 99))
+
+
+def _refresh_building_photo_primary(cur, building_id):
+    """주체 우선순위와 등록순에 따라 대표 사진을 하나로 재선정한다."""
+    cur.execute(
+        "UPDATE building_photos SET is_primary=FALSE "
+        "WHERE building_id=%s AND is_primary=TRUE",
+        [building_id],
+    )
+    cur.execute("""
+        UPDATE building_photos
+           SET is_primary=TRUE
+         WHERE id = (
+             SELECT id
+               FROM building_photos
+              WHERE building_id=%s
+              ORDER BY priority_rank ASC, created_at ASC, id ASC
+              LIMIT 1
+         )
+    """, [building_id])
+
+
 def _public_building_photo_rows(cur, building_id):
     """공개 상세에 표시할 무료·보유 사진만 반환한다.
 
@@ -821,7 +859,9 @@ def _public_building_photo_rows(cur, building_id):
     TourAPI no_match일 때만 별도 온디맨드 응답이 내부 프록시 URL을 추가한다.
     """
     cur.execute("""
-        SELECT p.photo_url, p.source, p.photo_type
+        SELECT p.id, p.photo_url, p.source, p.photo_type, p.priority_rank,
+               p.is_primary, p.uploaded_by_user_id, p.uploaded_by_agent_id,
+               p.listing_photo_id
         FROM building_photos p
         WHERE p.building_id = %s
           AND p.source NOT IN ('streetview', 'vworld')
@@ -862,18 +902,33 @@ def _public_building_photo_rows(cur, building_id):
                 )
             )
           )
-        ORDER BY
-          CASE WHEN p.source = 'upload' THEN 0
-               WHEN p.source = 'tourapi' THEN 1
-               ELSE 2 END,
-          p.is_primary DESC, p.display_order ASC, p.id ASC
+        ORDER BY p.priority_rank ASC, p.is_primary DESC,
+                 p.created_at ASC, p.id ASC
         LIMIT 20
     """, [building_id])
     return [
         {
+            "id": photo["id"],
             "url": photo["photo_url"],
             "source": photo["source"],
             "photo_type": photo["photo_type"],
+            "priority_rank": photo["priority_rank"],
+            "is_primary": bool(photo["is_primary"]),
+            "can_delete": bool(
+                photo["source"] == "upload"
+                and photo["listing_photo_id"] is None
+                and (
+                    session.get("admin")
+                    or (
+                        session.get("user_id")
+                        and photo["uploaded_by_user_id"] == session.get("user_id")
+                    )
+                    or (
+                        session.get("agent_id")
+                        and photo["uploaded_by_agent_id"] == session.get("agent_id")
+                    )
+                )
+            ),
         }
         for photo in cur.fetchall()
     ]
@@ -1027,6 +1082,8 @@ def upload_building_photo(building_id):
     if not (session.get("admin") or session.get("agent_id") or session.get("user_id")):
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     file = request.files.get("file")
+    if file is None:
+        file = request.files.get("photo")
     if not file or not file.filename:
         return jsonify({"ok": False, "message": "사진 파일을 선택해주세요."}), 400
     filename = file.filename.strip()
@@ -1053,41 +1110,59 @@ def upload_building_photo(building_id):
                 "ok": False,
                 "message": "이 건물의 사진을 등록할 권한이 없습니다. 담당단지 등록, 지역뱃지 보유, 또는 매물 등록 후 이용하세요.",
             }), 403
-        validation = validate_photo(
-            file_data,
-            (file.mimetype or "").split(";", 1)[0].strip().lower(),
-            building["lat"], building["lng"], actor["registrant_type"],
-            actor["certified_agent"],
-        )
+        if actor["registrant_type"] == "admin":
+            validation = {
+                "ok": True,
+                "hash": hashlib.sha256(file_data).hexdigest(),
+                "gps_lat": None,
+                "gps_lng": None,
+                "gps_verified": False,
+                "exif_taken_at": None,
+            }
+        else:
+            validation = validate_photo(
+                file_data,
+                (file.mimetype or "").split(";", 1)[0].strip().lower(),
+                building["lat"], building["lng"], actor["registrant_type"],
+                actor["certified_agent"],
+            )
         if not validation["ok"]:
             return jsonify({"ok": False, "message": validation["error"]}), 400
 
         key = storage_util.build_building_photo_key(building_id, ext)
         storage_util.upload_doc(key, file_data)
         photo_url = f"/api/building-photo-upload/{key}"
+        priority_rank = _building_photo_priority(actor["registrant_type"], "upload")
         cur.execute("""
             INSERT INTO building_photos
                 (building_id, photo_url, source, photo_type, is_primary, display_order,
                  photo_hash, uploaded_by_user_id, uploaded_by_agent_id,
-                 listing_request_id, registrant_type, gps_lat, gps_lng,
+                 listing_request_id, registrant_type, priority_rank, gps_lat, gps_lng,
                  gps_verified, exif_taken_at)
             VALUES (
-                %s, %s, 'upload', %s,
-                NOT EXISTS (SELECT 1 FROM building_photos WHERE building_id=%s AND source='upload'),
+                %s, %s, 'upload', %s, FALSE,
                 COALESCE((SELECT MAX(display_order)+1 FROM building_photos WHERE building_id=%s), 0),
-                %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (building_id, photo_hash) WHERE photo_hash IS NOT NULL
             DO NOTHING
             RETURNING id
         """, [
             building_id, photo_url, _guess_listing_photo_type(filename),
-            building_id, building_id, validation["hash"], actor["user_id"],
+            building_id, validation["hash"], actor["user_id"],
             actor["agent_id"], actor["listing_request_id"], actor["registrant_type"],
+            priority_rank,
             validation["gps_lat"], validation["gps_lng"], validation["gps_verified"],
             _exif_taken_at_value(validation["exif_taken_at"]),
         ])
         inserted = cur.fetchone()
+        if inserted:
+            _refresh_building_photo_primary(cur, building_id)
+            cur.execute(
+                "SELECT is_primary FROM building_photos WHERE id=%s",
+                [inserted["id"]],
+            )
+            is_primary = bool(cur.fetchone()["is_primary"])
         conn.commit()
         if not inserted:
             try:
@@ -1098,6 +1173,7 @@ def upload_building_photo(building_id):
         return jsonify({
             "ok": True, "id": inserted["id"], "url": photo_url,
             "registrant_type": actor["registrant_type"],
+            "priority_rank": priority_rank, "is_primary": is_primary,
             "message": "사진이 등록됐습니다.",
         })
     except Exception:
@@ -1111,6 +1187,63 @@ def upload_building_photo(building_id):
     finally:
         cur.close()
         conn.close()
+
+
+@app.route("/api/building/<int:building_id>/photos/<int:photo_id>", methods=["DELETE"])
+@limiter.limit("30 per minute")
+def delete_building_photo(building_id, photo_id):
+    user = current_user()
+    agent_id = session.get("agent_id")
+    is_admin = bool(session.get("admin"))
+    if not (user or agent_id or is_admin):
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+
+    conn = get_conn()
+    cur = conn.cursor()
+    object_key = None
+    try:
+        cur.execute("""
+            SELECT id, photo_url, source, listing_photo_id,
+                   uploaded_by_user_id, uploaded_by_agent_id
+              FROM building_photos
+             WHERE id=%s AND building_id=%s
+             FOR UPDATE
+        """, [photo_id, building_id])
+        photo = cur.fetchone()
+        if not photo:
+            return jsonify({"ok": False, "message": "사진을 찾을 수 없습니다."}), 404
+        if photo["source"] != "upload":
+            return jsonify({"ok": False, "message": "직접 등록한 사진만 삭제할 수 있습니다."}), 400
+        if photo["listing_photo_id"] is not None:
+            return jsonify({
+                "ok": False,
+                "message": "매물 사진은 마이페이지의 매물 수정 화면에서 삭제해주세요.",
+            }), 409
+        owns_photo = bool(
+            (user and photo["uploaded_by_user_id"] == user["id"])
+            or (agent_id and photo["uploaded_by_agent_id"] == agent_id)
+        )
+        if not is_admin and not owns_photo:
+            return jsonify({"ok": False, "message": "본인이 등록한 사진만 삭제할 수 있습니다."}), 403
+
+        prefix = "/api/building-photo-upload/"
+        if photo["photo_url"].startswith(prefix):
+            candidate = photo["photo_url"][len(prefix):]
+            if storage_util.is_valid_building_photo_ref(candidate):
+                object_key = candidate
+        cur.execute("DELETE FROM building_photos WHERE id=%s", [photo_id])
+        _refresh_building_photo_primary(cur, building_id)
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    if object_key:
+        try:
+            storage_util.delete_object(object_key)
+        except Exception:
+            app.logger.warning("삭제된 건물사진 객체 정리 실패: %s", object_key, exc_info=True)
+    return jsonify({"ok": True, "message": "사진이 삭제됐습니다."})
 
 
 @app.route("/api/building-photo-upload/<path:key>")
@@ -11876,42 +12009,52 @@ def _link_listing_photo_to_building(
     building_id = listing.get("master_building_id")
     if not building_id or listing.get("deal_mode") != "direct":
         return False
+    registrant_type = listing.get("registrant_type") or "owner"
+    priority_rank = _building_photo_priority(registrant_type, "upload")
     photo_url = f"/api/listing-photos/img/{image_key}"
     cur.execute("""
         INSERT INTO building_photos
             (building_id, photo_url, source, photo_type, is_primary, display_order,
              listing_photo_id,
-             photo_hash, uploaded_by_user_id, registrant_type,
+              photo_hash, uploaded_by_user_id, registrant_type, priority_rank,
              gps_lat, gps_lng, gps_verified, exif_taken_at)
         VALUES (
-            %s, %s, 'upload', %s,
-            NOT EXISTS (
-                SELECT 1 FROM building_photos
-                 WHERE building_id=%s AND source='upload'
-            ),
+            %s, %s, 'upload', %s, FALSE,
             COALESCE((
                 SELECT MAX(display_order)+1 FROM building_photos
                  WHERE building_id=%s
             ), 0),
-            %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
         ON CONFLICT (building_id, photo_hash) WHERE photo_hash IS NOT NULL
         DO NOTHING
     """, [
         building_id, photo_url, _guess_listing_photo_type(filename),
-        building_id, building_id, listing_photo_id,
-        validation["hash"], uploader_id, listing.get("registrant_type") or "owner",
+        building_id, listing_photo_id,
+        validation["hash"], uploader_id, registrant_type, priority_rank,
         validation["gps_lat"], validation["gps_lng"], validation["gps_verified"],
         _exif_taken_at_value(validation["exif_taken_at"]),
     ])
-    return cur.rowcount > 0
+    inserted = cur.rowcount > 0
+    if inserted:
+        _refresh_building_photo_primary(cur, building_id)
+    return inserted
 
 
 def _unlink_listing_photo_from_building(cur, image_key):
+    photo_url = f"/api/listing-photos/img/{image_key}"
+    cur.execute(
+        "SELECT building_id FROM building_photos "
+        "WHERE source='upload' AND photo_url=%s",
+        [photo_url],
+    )
+    building_ids = {row["building_id"] for row in cur.fetchall()}
     cur.execute(
         "DELETE FROM building_photos WHERE source='upload' AND photo_url=%s",
-        [f"/api/listing-photos/img/{image_key}"],
+        [photo_url],
     )
+    for building_id in building_ids:
+        _refresh_building_photo_primary(cur, building_id)
 
 
 @app.route("/api/listing-requests/<int:lr_id>/photos", methods=["POST"])
@@ -12830,6 +12973,7 @@ def update_listing_request(req_id):
                        SELECT id FROM listing_photos WHERE listing_request_id=%s
                    )
             """, [req_id])
+            _refresh_building_photo_primary(cur, row["master_building_id"])
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, before_data, after_data) "
             "VALUES (%s, 'edited', %s, %s)",
@@ -13001,6 +13145,7 @@ def update_listing_disclosure_scope(req_id):
                        SELECT id FROM listing_photos WHERE listing_request_id=%s
                    )
             """, [req_id])
+            _refresh_building_photo_primary(cur, row["master_building_id"])
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, after_data) "
             "VALUES (%s, 'scope_changed', %s)",

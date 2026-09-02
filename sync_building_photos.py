@@ -517,9 +517,15 @@ def _find_tour_match(items, road_address):
 
 
 def _insert_photos(cur, building_id, photos, source, force=False):
+    priority_rank = {
+        "tourapi": 9,
+        "streetview": 10,
+        "vworld": 11,
+    }.get(source, 99)
     if force:
         cur.execute("DELETE FROM building_photos WHERE building_id=%s AND source=%s", (building_id, source))
     if not photos:
+        _refresh_primary(cur, building_id)
         return 0
     cur.execute(
         "SELECT COALESCE(MAX(display_order), -1) AS max_order FROM building_photos WHERE building_id=%s",
@@ -536,12 +542,12 @@ def _insert_photos(cur, building_id, photos, source, force=False):
         url = str(photo.get("url") or "").strip()
         if not url:
             continue
-        is_primary = bool(photo.get("is_primary")) and not had_photos
         cur.execute(
             """
             INSERT INTO building_photos
-                (building_id, photo_url, source, photo_type, is_primary, display_order)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (building_id, photo_url, source, photo_type, is_primary,
+                 display_order, priority_rank)
+            VALUES (%s, %s, %s, %s, FALSE, %s, %s)
             ON CONFLICT (building_id, photo_url) DO NOTHING
             """,
             (
@@ -549,14 +555,36 @@ def _insert_photos(cur, building_id, photos, source, force=False):
                 url,
                 source,
                 photo.get("photo_type") or "exterior",
-                is_primary,
                 next_order + index,
+                priority_rank,
             ),
         )
         if cur.rowcount:
             inserted += cur.rowcount
             had_photos = True
+    _refresh_primary(cur, building_id)
     return inserted
+
+
+def _refresh_primary(cur, building_id):
+    cur.execute(
+        "UPDATE building_photos SET is_primary=FALSE "
+        "WHERE building_id=%s AND is_primary=TRUE",
+        (building_id,),
+    )
+    cur.execute(
+        """
+        UPDATE building_photos
+           SET is_primary=TRUE
+         WHERE id = (
+             SELECT id FROM building_photos
+              WHERE building_id=%s
+              ORDER BY priority_rank ASC, created_at ASC, id ASC
+              LIMIT 1
+         )
+        """,
+        (building_id,),
+    )
 
 
 def _targets(cur, source, lodging_type, last_id, limit, force):

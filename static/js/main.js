@@ -4215,7 +4215,13 @@ function renderPhotoSlider(photos){
     return;
   }
   const slides = usablePhotos.map(photo => `
-    <img src="${escapeHtml(photo.url.trim())}" class="bld-photo-slide" alt="건물사진" loading="lazy">`
+    <div class="bld-photo-slide">
+      <img src="${escapeHtml(photo.url.trim())}" alt="건물사진" loading="lazy">
+      ${photo.can_delete && photo.id ? `
+        <button type="button" class="bld-photo-delete"
+                data-building-photo-delete="${escapeHtml(String(photo.id))}"
+                aria-label="이 사진 삭제" title="이 사진 삭제">🗑</button>` : ""}
+    </div>`
   ).join("");
   const arrowsHidden = usablePhotos.length === 1 ? ` style="display:none;"` : "";
   wrap.innerHTML = `
@@ -4225,6 +4231,29 @@ function renderPhotoSlider(photos){
     <span class="photo-counter" id="photoCounter">1 / ${usablePhotos.length}</span>`;
   wrap.style.display = "";
   initBuildingPhotoSlider(usablePhotos.length);
+  wrap.querySelectorAll("[data-building-photo-delete]").forEach(button => {
+    button.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!_activePhotoBuildingId || !window.confirm("이 건물 사진을 삭제하시겠습니까?")) return;
+      const photoId = button.dataset.buildingPhotoDelete;
+      button.disabled = true;
+      try {
+        const response = await fetch(
+          `/api/building/${encodeURIComponent(_activePhotoBuildingId)}/photos/${encodeURIComponent(photoId)}`,
+          {method: "DELETE", credentials: "same-origin"}
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+          throw new Error(data.message || "사진을 삭제하지 못했습니다.");
+        }
+        renderPhotoSlider(usablePhotos.filter(photo => String(photo.id) !== String(photoId)));
+      } catch (error) {
+        button.disabled = false;
+        window.alert(error.message || "사진 삭제 중 오류가 발생했습니다.");
+      }
+    });
+  });
 }
 
 function initBuildingPhotoSlider(photoCount){

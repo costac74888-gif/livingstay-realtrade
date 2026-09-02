@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-02-04"
+SCHEMA_VERSION = "2026-09-02-06"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2602,7 +2602,45 @@ def _run_init_db():
     cur.execute("""
         ALTER TABLE building_photos
         ADD COLUMN IF NOT EXISTS uploaded_by_agent_id INTEGER REFERENCES agents(id),
-        ADD COLUMN IF NOT EXISTS listing_request_id INTEGER REFERENCES listing_requests(id)
+        ADD COLUMN IF NOT EXISTS listing_request_id INTEGER REFERENCES listing_requests(id),
+        ADD COLUMN IF NOT EXISTS priority_rank SMALLINT DEFAULT 99
+    """)
+    cur.execute("""
+        ALTER TABLE building_photos
+        DROP CONSTRAINT IF EXISTS building_photos_listing_request_id_fkey
+    """)
+    cur.execute("""
+        ALTER TABLE building_photos
+        ADD CONSTRAINT building_photos_listing_request_id_fkey
+        FOREIGN KEY (listing_request_id)
+        REFERENCES listing_requests(id)
+        ON DELETE CASCADE
+    """)
+    cur.execute("""
+        UPDATE building_photos
+           SET priority_rank = CASE
+               WHEN registrant_type = 'admin' THEN 0
+               WHEN registrant_type IN ('owner', 'building_owner', 'landlord', 'business') THEN 1
+               WHEN registrant_type = 'agent_building' THEN 2
+               WHEN registrant_type = 'agent_region' THEN 3
+               WHEN source = 'tourapi' THEN 9
+               WHEN source = 'streetview' THEN 10
+               WHEN source = 'vworld' THEN 11
+               ELSE 99
+           END
+         WHERE priority_rank IS NULL OR priority_rank = 99
+    """)
+    cur.execute("UPDATE building_photos SET is_primary=FALSE WHERE is_primary=TRUE")
+    cur.execute("""
+        WITH primary_candidates AS (
+            SELECT DISTINCT ON (building_id) id
+              FROM building_photos
+             ORDER BY building_id, priority_rank ASC, created_at ASC, id ASC
+        )
+        UPDATE building_photos p
+           SET is_primary=TRUE
+          FROM primary_candidates candidate
+         WHERE p.id=candidate.id
     """)
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_bphotos_building
