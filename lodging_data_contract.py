@@ -61,6 +61,20 @@ SUPPORTED_SOURCE_KEYS = frozenset(GOVERNMENT_LODGING_SOURCES)
 EXCLUDED_SOURCE_KEYS = frozenset({"special_recreation"})
 EXCLUDED_SOURCE_LABELS = frozenset({"전문휴양업"})
 
+# 현재 lodging_registry에서 이미 사용하는 접두어와 호환한다. 일반 숙박 API
+# 원장은 관리번호 원문을 그대로 사용하고, 나머지는 기존 importer 접두어를
+# 유지해 신규로 오인하지 않게 한다.
+REGISTRY_PERMIT_PREFIX_BY_SOURCE = {
+    "tourism_lodging": "TOURISM",
+    "tourism_pension": "PENSION",
+    "rural_homestay": "RURAL",
+    "lodging": None,
+    "foreign_city_homestay": "AIRBNB",
+    "general_camping": "CAMPING",
+    "auto_camping": "CAMPING",
+    "hanok": "HANOK",
+}
+
 SERVICE_CATEGORY_TOURISM = "관광숙박"
 SERVICE_CATEGORY_GENERAL = "일반숙박"
 SERVICE_CATEGORY_LIVING = "생활숙박"
@@ -206,6 +220,29 @@ def build_permit_identity(source_key, authority_code, permit_number):
     return ":".join(
         quote(part, safe="-_.~")
         for part in (source.upper(), authority, permit)
+    )
+
+
+def build_registry_permit_identity(source_key, authority_code, permit_number):
+    """기존 lodging_registry 키와 호환되는 관리번호를 만든다."""
+    source = normalize_text(source_key)
+    if source not in SUPPORTED_SOURCE_KEYS:
+        raise ValueError("지원하지 않는 숙박 원본입니다.")
+    permit = normalize_text(permit_number)
+    if not permit:
+        return None
+    prefix = REGISTRY_PERMIT_PREFIX_BY_SOURCE[source]
+    if prefix is None:
+        return permit
+    authority = normalize_text(authority_code)
+    if authority:
+        return ":".join(
+            quote(part, safe="-_.~")
+            for part in (prefix, authority, permit)
+        )
+    return ":".join(
+        quote(part, safe="-_.~")
+        for part in (prefix, permit)
     )
 
 

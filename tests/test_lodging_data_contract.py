@@ -12,6 +12,7 @@ from lodging_data_contract import (
     STATUS_REVIEW,
     STATUS_TEMPORARILY_CLOSED,
     build_permit_identity,
+    build_registry_permit_identity,
     build_source_snapshot_identity,
     classify_operation_status,
     is_in_active_statistics,
@@ -88,6 +89,22 @@ class LodgingDataContractTests(unittest.TestCase):
         )
         self.assertIsNone(
             build_source_snapshot_identity("lodging", "", "1100000", "A/1")
+        )
+
+    def test_registry_identity_remains_compatible_with_existing_importers(self):
+        self.assertEqual(
+            build_registry_permit_identity("lodging", "1100000", "M-1"),
+            "M-1",
+        )
+        self.assertEqual(
+            build_registry_permit_identity("rural_homestay", "1100000", "M-1"),
+            "RURAL:1100000:M-1",
+        )
+        self.assertEqual(
+            build_registry_permit_identity(
+                "foreign_city_homestay", "1100000", "M-1"
+            ),
+            "AIRBNB:1100000:M-1",
         )
 
 

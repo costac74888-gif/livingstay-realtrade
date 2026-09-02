@@ -68,3 +68,4 @@
 - [관심단지 건물 ID 검증](favorite-building-id-validation.md) — 저장된 master_building_id는 존재 여부만 믿지 말고 관심주소와 대조하며, 불일치하면 현재 마스터 주소로 재연결한다.
 - [숙박 정부 CSV 8종 정책](lodging-government-csv-policy.md) — 일반야영장 포함·전문휴양 제외 8종을 개발 검증 후 운영 승격하며, 복수 인허가와 폐업 원장을 보존한다.
 - [URL 인코딩 인증값 마스킹](encoded-secret-redaction.md) — 외부 API 오류 저장 전 원문·URL 인코딩·인증 쿼리 파라미터를 모두 제거한다.
+- [개발·운영 DB 식별](dev-prod-db-fingerprint.md) — Replit 환경 플래그·URL 문자열은 오판 가능; staging 안전 게이트는 실제 DB 지문을 독립 연결과 비교하고 확인 불가 시 닫는다.

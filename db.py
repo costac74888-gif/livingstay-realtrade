@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-02-06"
+SCHEMA_VERSION = "2026-09-03-03"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -538,6 +538,41 @@ def init_db():
                 delay,
             )
             time.sleep(delay)
+
+
+class _SkippedSchemaCursor:
+    def execute(self, *args, **kwargs):
+        return None
+
+
+def _database_fingerprint(conn):
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT current_database() AS db,
+                   inet_server_addr()::text AS host,
+                   inet_server_port() AS port
+            """
+        )
+        row = cur.fetchone()
+        if isinstance(row, dict):
+            return row["db"], row["host"], row["port"]
+        return tuple(row)
+    finally:
+        cur.close()
+
+
+def _development_staging_schema_allowed(conn):
+    """운영 DB를 확인할 수 있고 현재 연결이 운영과 다를 때만 허용한다."""
+    production_url = os.environ.get("PROD_DATABASE_URL")
+    if not production_url:
+        return False
+    production_conn = psycopg2.connect(production_url, connect_timeout=5)
+    try:
+        return _database_fingerprint(conn) != _database_fingerprint(production_conn)
+    finally:
+        production_conn.close()
 
 
 def _run_init_db():
@@ -2049,6 +2084,162 @@ def _run_init_db():
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_lodging_import_staging_recent
         ON lodging_import_staging(source, created_at DESC)
+    """)
+
+    # 정부 숙박 8종 원본을 운영 원장과 분리해 개발에서 검증하기 위한
+    # 배치·원본행·승인배치 구조. 이 테이블들은 lodging_registry를 직접
+    # 변경하지 않으며, 운영 승격 단계에서만 별도 반영된다.
+    staging_schema_cur = (
+        cur if _development_staging_schema_allowed(conn) else _SkippedSchemaCursor()
+    )
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_source_batches (
+        id BIGSERIAL PRIMARY KEY,
+        batch_key TEXT NOT NULL UNIQUE,
+        source_key TEXT NOT NULL CHECK (source_key IN (
+            'tourism_lodging',
+            'tourism_pension',
+            'rural_homestay',
+            'lodging',
+            'foreign_city_homestay',
+            'general_camping',
+            'auto_camping',
+            'hanok'
+        )),
+        filename TEXT NOT NULL,
+        file_ext TEXT NOT NULL,
+        file_sha256 TEXT NOT NULL,
+        reference_date DATE NOT NULL,
+        file_data BYTEA NOT NULL,
+        status TEXT NOT NULL DEFAULT 'uploaded'
+            CHECK (status IN (
+                'uploaded', 'parsed', 'validating', 'review_required',
+                'validated', 'approved', 'dry_run', 'applied', 'failed'
+            )),
+        total_rows INTEGER NOT NULL DEFAULT 0,
+        parsed_rows INTEGER NOT NULL DEFAULT 0,
+        valid_rows INTEGER NOT NULL DEFAULT 0,
+        review_rows INTEGER NOT NULL DEFAULT 0,
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error TEXT,
+        uploaded_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        run_id TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMP,
+        heartbeat_at TIMESTAMP,
+        finished_at TIMESTAMP
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_lodging_source_batch_snapshot
+        ON lodging_source_batches(source_key, reference_date, file_sha256)
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_source_batches_recent
+        ON lodging_source_batches(source_key, created_at DESC)
+    """)
+
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_source_rows (
+        id BIGSERIAL PRIMARY KEY,
+        batch_id BIGINT NOT NULL REFERENCES lodging_source_batches(id) ON DELETE CASCADE,
+        row_number INTEGER NOT NULL,
+        snapshot_key TEXT NOT NULL,
+        authority_code TEXT,
+        source_permit_number TEXT,
+        permit_number TEXT,
+        biz_name TEXT,
+        raw_hygiene_type TEXT,
+        service_category TEXT,
+        legacy_lodging_type TEXT,
+        raw_status TEXT,
+        status_bucket TEXT NOT NULL,
+        road_address TEXT,
+        jibun_address TEXT,
+        raw_record JSONB NOT NULL,
+        row_state TEXT NOT NULL DEFAULT 'review_required'
+            CHECK (row_state IN ('validated', 'review_required', 'invalid')),
+        review_reason TEXT,
+        diff_kind TEXT NOT NULL DEFAULT 'new'
+            CHECK (diff_kind IN (
+                'new', 'changed', 'unchanged', 'status_change', 'review_required'
+            )),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(batch_id, row_number),
+        -- 같은 기준일의 중복 관리번호도 원문 행을 잃지 않고
+        -- 검토 대상으로 보존해야 하므로 snapshot_key는 유일하지 않다.
+        UNIQUE(batch_id, row_number, snapshot_key)
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_source_rows_batch_state
+        ON lodging_source_rows(batch_id, row_state)
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_source_rows_snapshot
+        ON lodging_source_rows(snapshot_key)
+    """)
+
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_approval_batches (
+        id BIGSERIAL PRIMARY KEY,
+        approval_key TEXT NOT NULL UNIQUE,
+        source_batch_id BIGINT NOT NULL
+            REFERENCES lodging_source_batches(id) ON DELETE RESTRICT,
+        status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (status IN ('draft', 'approved', 'dry_run', 'applied', 'failed')),
+        row_count INTEGER NOT NULL DEFAULT 0,
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error TEXT,
+        run_id TEXT UNIQUE,
+        created_by INTEGER REFERENCES admin_users(id) ON DELETE RESTRICT,
+        approved_by INTEGER REFERENCES admin_users(id) ON DELETE RESTRICT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        approved_at TIMESTAMP,
+        started_at TIMESTAMP,
+        heartbeat_at TIMESTAMP,
+        finished_at TIMESTAMP
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_lodging_approval_source_batch
+        ON lodging_approval_batches(source_batch_id)
+    """)
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_approval_rows (
+        approval_batch_id BIGINT NOT NULL
+            REFERENCES lodging_approval_batches(id) ON DELETE CASCADE,
+        source_row_id BIGINT NOT NULL
+            REFERENCES lodging_source_rows(id) ON DELETE RESTRICT,
+        action TEXT NOT NULL CHECK (action IN ('insert', 'update', 'status_change')),
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (approval_batch_id, source_row_id)
+    )
+    """)
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_approval_attempts (
+        id BIGSERIAL PRIMARY KEY,
+        approval_batch_id BIGINT NOT NULL
+            REFERENCES lodging_approval_batches(id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('dry_run', 'apply')),
+        status TEXT NOT NULL DEFAULT 'running'
+            CHECK (status IN ('running', 'done', 'failed')),
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error TEXT,
+        started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        heartbeat_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        finished_at TIMESTAMP,
+        UNIQUE(approval_batch_id, attempt_number)
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_approval_attempts_run
+        ON lodging_approval_attempts(run_id, attempt_number DESC)
     """)
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.
