@@ -22,6 +22,8 @@
 
 - **스키마 변경 규칙**: `db.py`의 테이블/컬럼/제약/시드를 바꾸면 반드시 `db.py`의 `SCHEMA_VERSION` 상수를 함께 올려야 함. (부팅 시 app_meta의 schema_version이 같으면 DDL 전체를 건너뛰는 빠른 경로가 있어, 버전을 안 올리면 새 스키마가 DB에 반영되지 않음.)
 
+- **운영 확인 완료 기능 보존**: 운영 사이트의 건물 상세에서 건물 사진 표시가 정상 동작하는 것을 확인함. 건물사진 조회·업로드·우선순위·삭제 관련 코드는 임의로 삭제하거나 되돌리지 않음.
+
 - **의존성 규칙**: `requirements.txt`는 배포(프로덕션) 전용 — pandas는 넣지 않음(배포 번들 ~150MB 증가·부팅 지연). pandas는 개발환경에만 설치되어 있고 오프라인 스크립트(`load_master.py`, `verify_units.py`, `load_authority_contacts.py`)에서만 사용. 환경 재설치 시 `pip install pandas`로 별도 설치.
 
 ## 실행/검증
