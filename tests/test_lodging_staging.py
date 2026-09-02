@@ -196,6 +196,10 @@ class LodgingStagingTests(unittest.TestCase):
             _diff_kind({**item, "biz_name": "새 호텔"}, existing),
             "changed",
         )
+        self.assertEqual(
+            _diff_kind({**item, "raw_hygiene_type": None}, existing),
+            "unchanged",
+        )
 
     def test_production_database_and_anonymous_approval_are_blocked(self):
         production_conn = unittest.mock.MagicMock()

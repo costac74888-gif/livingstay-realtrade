@@ -114,6 +114,12 @@ RAW_HYGIENE_TYPE_TO_SERVICE_CATEGORY = {
     "한옥체험업": SERVICE_CATEGORY_HANOK,
 }
 
+# 공공 CSV에서 실제로 확인되는 표기 변형. raw_type 원문은 그대로
+# 보존하고 서비스 분류에서만 표준 업태로 해석한다.
+RAW_HYGIENE_TYPE_ALIASES = {
+    "외국인관광 도시민박업": "외국인관광도시민박업",
+}
+
 # 기존 master_buildings.lodging_type와 호환되는 내부 값이다.
 RAW_HYGIENE_TYPE_TO_LEGACY_TYPE = {
     raw_type: {
@@ -163,6 +169,7 @@ def service_category_for_hygiene(value):
     raw_type = normalize_text(value)
     if not raw_type:
         return SERVICE_CATEGORY_UNCLASSIFIED
+    raw_type = RAW_HYGIENE_TYPE_ALIASES.get(raw_type, raw_type)
     return RAW_HYGIENE_TYPE_TO_SERVICE_CATEGORY.get(raw_type)
 
 

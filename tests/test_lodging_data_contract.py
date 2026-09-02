@@ -41,6 +41,10 @@ class LodgingDataContractTests(unittest.TestCase):
         self.assertEqual(service_category_for_hygiene("숙박업 기타"), SERVICE_CATEGORY_GENERAL)
         self.assertEqual(service_category_for_hygiene("숙박업(생활)"), SERVICE_CATEGORY_LIVING)
         self.assertEqual(service_category_for_hygiene(""), SERVICE_CATEGORY_UNCLASSIFIED)
+        self.assertEqual(
+            service_category_for_hygiene("외국인관광 도시민박업"),
+            "에어비앤비",
+        )
         self.assertIsNone(service_category_for_hygiene("알 수 없는 업태"))
 
     def test_building_use_is_not_part_of_service_category_contract(self):

@@ -294,7 +294,8 @@ def _diff_kind(item, existing):
         item.get("raw_status")
     )
     other_changed = any(
-        normalize_text(existing.get(current_field))
+        item.get(staged_field) is not None
+        and normalize_text(existing.get(current_field))
         != normalize_text(item.get(staged_field))
         for current_field, staged_field in (
             ("biz_name", "biz_name"),
@@ -400,24 +401,13 @@ def stage_csv_file(
                 row["permit_number"]: row
                 for row in cur.fetchall()
             })
+        values = []
         for item in inspected["rows"]:
             item["diff_kind"] = _diff_kind(
                 item,
                 existing_by_permit.get(item.get("permit_number")),
             )
-            cur.execute(
-                """
-                INSERT INTO lodging_source_rows (
-                    batch_id, row_number, snapshot_key, authority_code,
-                    source_permit_number, permit_number, biz_name,
-                    raw_hygiene_type, service_category, legacy_lodging_type,
-                    raw_status, status_bucket, road_address, jibun_address,
-                    raw_record, row_state, review_reason, diff_kind
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                """,
+            values.append(
                 (
                     batch_id,
                     item["row_number"],
@@ -437,8 +427,22 @@ def stage_csv_file(
                     item["row_state"],
                     item["review_reason"],
                     item["diff_kind"],
-                ),
+                )
             )
+        psycopg2.extras.execute_values(
+            cur,
+            """
+            INSERT INTO lodging_source_rows (
+                batch_id, row_number, snapshot_key, authority_code,
+                source_permit_number, permit_number, biz_name,
+                raw_hygiene_type, service_category, legacy_lodging_type,
+                raw_status, status_bucket, road_address, jibun_address,
+                raw_record, row_state, review_reason, diff_kind
+            ) VALUES %s
+            """,
+            values,
+            page_size=1000,
+        )
         conn.commit()
         return {
             "batch_id": batch_id,
