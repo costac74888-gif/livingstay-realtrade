@@ -28,16 +28,17 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             (17, 250, "시군구"),
         )
 
-    def test_admin_stage_button_handler_is_globally_callable_and_shows_progress(self):
+    def test_admin_lodging_source_button_calls_current_stage_handler(self):
         html = Path("static/admin.html").read_text(encoding="utf-8")
-        handler_pos = html.index("async function runScheduledStage(stage, button)")
-        renderer_pos = html.index("function renderScheduledSyncStatus(data)")
-        self.assertLess(handler_pos, renderer_pos)
-        self.assertIn('button.textContent = "⏳ 시작 중"', html)
+        self.assertIn("function renderLodgingSourceOverview(data)", html)
+        self.assertIn("async function runLodgingSourceStage(stage, button)", html)
         self.assertIn(
-            '${visuallyRunning ? "⏳ 수집 중" : "지금 수집"}',
+            'runLodgingSourceStage(btn.dataset.stage, btn)',
             html,
         )
+        self.assertIn('fetch("/api/admin/scheduled-sync/run"', html)
+        self.assertIn('button.textContent = "시작하는 중…"', html)
+        self.assertIn('${running ? "실행 중…" : "지금 동기화"}', html)
 
     def test_building_api_stages_do_not_share_a_weekday(self):
         registry = scheduled_sync.STAGE_MAP["building_registry"]

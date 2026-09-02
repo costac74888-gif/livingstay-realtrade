@@ -150,8 +150,8 @@ PROVIDER_QUOTAS = {
     },
     "pension": {
         "label": "행안부 관광펜션업 API", "total": 2000,
-        "regular": 2000, "backfill": 0, "realtime": 0, "manual": 0,
-        "basis": "전국 약 10,000건·정기 2,000회",
+        "regular": 1600, "backfill": 0, "realtime": 0, "manual": 400,
+        "basis": "기준 한도의 80%·수동 복구 20%",
     },
     "kakao_building": {
         "label": "카카오 주소검색 API(건물)", "total": None,

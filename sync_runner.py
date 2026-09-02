@@ -24,6 +24,7 @@ from collections import deque
 from datetime import datetime
 
 from db import get_conn
+from secret_redaction import redact_env_secrets
 
 META_KEY = "tx_sync_status"  # --meta-key 인자로 변경 가능(과거 데이터 백필은 tx_backfill_status)
 TIMEOUT_SEC = 3 * 3600      # 최대 실행 3시간
@@ -31,10 +32,15 @@ HEARTBEAT_SEC = 30
 
 
 def _redact(text):
-    for key in (os.environ.get("RTMS_SERVICE_KEY", ""), os.environ.get("BLD_SERVICE_KEY", "")):
-        if key:
-            text = text.replace(key, "***")
-    return text
+    return redact_env_secrets(
+        text,
+        (
+            "RTMS_SERVICE_KEY",
+            "DATA_GO_KR_BROKER_API_KEY",
+            "BLD_SERVICE_KEY",
+            "JUSO_API_KEY",
+        ),
+    )
 
 
 def _write_status(payload, run_id):

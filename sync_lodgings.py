@@ -37,6 +37,7 @@ from addr_norm import (
 )
 from db import get_conn
 from quota_policy import korea_today
+from secret_redaction import redact_env_secrets
 from stats_cache import mark_master_stats_invalidated
 from email_util import send_email
 from lodging_categories import (
@@ -681,12 +682,15 @@ def _touch(status_key, run_id):
 
 
 def _redact(text):
-    redacted = text
-    for env_name in (SERVICE_KEY_ENV, CAMPING_SERVICE_KEY_ENV):
-        key = os.environ.get(env_name, "")
-        if key:
-            redacted = redacted.replace(key, "***")
-    return redacted
+    return redact_env_secrets(
+        text,
+        (
+            SERVICE_KEY_ENV,
+            CAMPING_SERVICE_KEY_ENV,
+            "JUSO_API_KEY",
+            "LODGING_SERVICE_KEY",
+        ),
+    )
 
 
 def _signal_stats_change():

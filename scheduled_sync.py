@@ -21,6 +21,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from secret_redaction import redact_env_secrets
 from typing import Iterable
 
 from db import get_conn
@@ -293,12 +294,7 @@ def _korea_weekday() -> int:
 
 
 def _redact(text: str) -> str:
-    redacted = str(text)
-    for name in SECRET_ENV_NAMES:
-        value = os.environ.get(name, "")
-        if value:
-            redacted = redacted.replace(value, "***")
-    return redacted
+    return redact_env_secrets(text, SECRET_ENV_NAMES)
 
 
 def _read_status(status_key: str = STATUS_META_KEY) -> dict | None:
