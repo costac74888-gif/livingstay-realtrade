@@ -764,18 +764,50 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
         app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
 
 
-def _google_streetview_metadata_status(lat, lng, key):
-    """Static API의 'no imagery' 안내 JPEG를 사진으로 오인하지 않게 사전 확인."""
+def _google_streetview_metadata(lat, lng, key):
+    """Static Street View와 같은 실외 파노라마를 찾고 촬영 지점 정보를 반환한다."""
     try:
         metadata = requests.get(
             "https://maps.googleapis.com/maps/api/streetview/metadata",
-            params={"location": f"{float(lat)},{float(lng)}", "key": key},
+            params={
+                "location": f"{float(lat)},{float(lng)}",
+                "radius": 50,
+                "source": "outdoor",
+                "key": key,
+            },
             timeout=20,
         )
         metadata.raise_for_status()
-        return str(metadata.json().get("status") or "").upper() or None
+        payload = metadata.json()
+        status = str(payload.get("status") or "").upper() or None
+        location = payload.get("location") if isinstance(payload.get("location"), dict) else {}
+        return {
+            "status": status,
+            "pano_id": str(payload.get("pano_id") or "").strip() or None,
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
+        }
     except (requests.RequestException, ValueError, TypeError):
         return None
+
+
+def _google_streetview_metadata_status(lat, lng, key):
+    """기존 호출부·테스트 호환용 Metadata 상태 조회."""
+    metadata = _google_streetview_metadata(lat, lng, key)
+    return metadata.get("status") if metadata else None
+
+
+def _bearing_degrees(from_lat, from_lng, to_lat, to_lng):
+    """촬영 지점에서 건물을 바라보는 Google Street View heading(0~360)을 계산한다."""
+    lat1 = math.radians(float(from_lat))
+    lat2 = math.radians(float(to_lat))
+    delta_lng = math.radians(float(to_lng) - float(from_lng))
+    y = math.sin(delta_lng) * math.cos(lat2)
+    x = (
+        math.cos(lat1) * math.sin(lat2)
+        - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lng)
+    )
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
 
 
 @app.route("/api/building-photo/<int:building_id>/<source>")
@@ -811,17 +843,24 @@ def get_building_provider_photo(building_id, source):
     key = os.environ.get("GOOGLE_MAPS_API_KEY")
     if not key:
         return jsonify({"error": "provider unavailable"}), 503
-    metadata_status = _google_streetview_metadata_status(
-        row["lat"], row["lng"], key
-    )
-    if metadata_status is None:
+    metadata = _google_streetview_metadata(row["lat"], row["lng"], key)
+    if metadata is None:
         return jsonify({"error": "provider unavailable"}), 502
-    if metadata_status == "ZERO_RESULTS":
+    if metadata["status"] == "ZERO_RESULTS":
         response = jsonify({"error": "no imagery"})
         response.status_code = 404
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
-    if metadata_status != "OK":
+    if metadata["status"] != "OK":
+        return jsonify({"error": "provider unavailable"}), 502
+    try:
+        heading = _bearing_degrees(
+            metadata["lat"],
+            metadata["lng"],
+            row["lat"],
+            row["lng"],
+        )
+    except (TypeError, ValueError):
         return jsonify({"error": "provider unavailable"}), 502
     # 온디맨드 fallback은 실제 이미지 요청 시점에 월 한도를 차감한다.
     # 프록시 재호출·새로고침도 포함해 Google 무료 범위를 넘기지 않는다.
@@ -838,12 +877,16 @@ def get_building_provider_photo(building_id, source):
     base_url = "https://maps.googleapis.com/maps/api/streetview"
     params = {
         "size": "640x480",
-        "location": f"{float(row['lat'])},{float(row['lng'])}",
-        "heading": 0,
-        "fov": 90,
-        "pitch": 0,
+        "heading": round(heading, 1),
+        "fov": 85,
+        "pitch": 5,
+        "source": "outdoor",
         "key": key,
     }
+    if metadata["pano_id"]:
+        params["pano"] = metadata["pano_id"]
+    else:
+        params["location"] = f"{float(row['lat'])},{float(row['lng'])}"
     try:
         upstream = requests.get(base_url, params=params, timeout=20)
         content_type = str(upstream.headers.get("Content-Type") or "").lower()
