@@ -77,18 +77,45 @@ class BuildingPhotoProviderTest(unittest.TestCase):
             "unofficial panorama",
         )
 
-    def test_old_official_panorama_is_rejected(self):
+    def test_eight_year_old_official_panorama_is_allowed(self):
         metadata = {
             "copyright": "© Google",
             "date": "2018-10",
             "lat": 33.49954034515397,
             "lng": 126.4974937801802,
         }
-        self.assertEqual(
+        self.assertIsNone(
             _streetview_quality_rejection(
                 metadata,
                 33.4994393059707,
                 126.497430428476,
+                now=__import__("datetime").datetime(2026, 9, 1),
+            )
+        )
+
+    def test_official_panorama_without_date_is_allowed(self):
+        metadata = {
+            "copyright": "© Google",
+            "date": None,
+            "lat": 37.5001,
+            "lng": 127.0001,
+        }
+        self.assertIsNone(
+            _streetview_quality_rejection(metadata, 37.5, 127.0)
+        )
+
+    def test_very_old_official_panorama_is_rejected(self):
+        metadata = {
+            "copyright": "© Google",
+            "date": "2013-08",
+            "lat": 37.5001,
+            "lng": 127.0001,
+        }
+        self.assertEqual(
+            _streetview_quality_rejection(
+                metadata,
+                37.5,
+                127.0,
                 now=__import__("datetime").datetime(2026, 9, 1),
             ),
             "stale panorama",

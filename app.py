@@ -827,24 +827,26 @@ def _distance_meters(lat1, lng1, lat2, lng2):
 
 
 def _streetview_quality_rejection(metadata, building_lat, building_lng, now=None):
-    """사용자 업로드·오래되거나 먼 파노라마를 건물 대표사진에서 제외한다."""
+    """사용자 업로드·지나치게 오래되거나 먼 파노라마를 제외한다."""
     copyright_text = str(metadata.get("copyright") or "").strip().lower()
     if "google" not in copyright_text:
         return "unofficial panorama"
 
     date_text = str(metadata.get("date") or "").strip()
-    try:
-        captured = datetime.strptime(date_text, "%Y-%m")
-    except ValueError:
-        return "unknown capture date"
-    current = now or datetime.now()
-    age_months = (
-        (current.year - captured.year) * 12
-        + current.month
-        - captured.month
-    )
-    if age_months > 84:
-        return "stale panorama"
+    if date_text:
+        try:
+            captured = datetime.strptime(date_text, "%Y-%m")
+        except ValueError:
+            captured = None
+        if captured is not None:
+            current = now or datetime.now()
+            age_months = (
+                (current.year - captured.year) * 12
+                + current.month
+                - captured.month
+            )
+            if age_months > 144:
+                return "stale panorama"
 
     try:
         distance = _distance_meters(
