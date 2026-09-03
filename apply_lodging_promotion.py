@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -20,7 +21,9 @@ from lodging_promotion import (
     MANIFEST_CUTOVER_FENCE_LOCK_ID,
     _canonical_hash,
     _fetch_production_snapshot,
+    _lock_staging_sources,
     _validate_target_admission,
+    _verify_manifest_source_snapshot,
     approve_production_manifest_automated,
     create_production_baseline_manifest,
     compare_production_manifest,
@@ -452,52 +455,73 @@ def build_registry_record(payload, existing=None):
     }
 
 
+def _load_manifest_from_cursor(cur, manifest_id):
+    cur.execute(
+        """
+        SELECT id, manifest_key, status, source_batch_ids,
+               production_baseline_fingerprint, target_payload_sha256,
+               row_count, result, run_id
+          FROM lodging_promotion_manifests
+         WHERE id=%s
+        """,
+        (manifest_id,),
+    )
+    manifest = cur.fetchone()
+    if not manifest:
+        raise ValueError("운영 기준 manifest를 찾을 수 없습니다.")
+    cur.execute(
+        """
+        SELECT source_row_id, action, production_match_state,
+               production_building_id, existing_applied_building_id, payload
+          FROM lodging_promotion_rows
+         WHERE promotion_manifest_id=%s
+         ORDER BY source_row_id
+        """,
+        (manifest_id,),
+    )
+    targets = [
+        {
+            "source_row_id": row["source_row_id"],
+            "action": row["action"],
+            "production_match_state": row["production_match_state"],
+            "production_building_id": row["production_building_id"],
+            "existing_applied_building_id": row["existing_applied_building_id"],
+            "payload": dict(row["payload"]),
+        }
+        for row in cur.fetchall()
+    ]
+    if len(targets) != int(manifest["row_count"]):
+        raise RuntimeError("manifest 행 수가 변경되었습니다.")
+    _validate_target_admission(targets, allow_manual_review=False)
+    if _canonical_hash(targets) != manifest["target_payload_sha256"]:
+        raise RuntimeError("manifest payload가 생성 이후 변경되었습니다.")
+    return dict(manifest), targets
+
+
 def _load_manifest(manifest_id):
     conn = get_conn()
     assert_development_connection(conn)
     cur = conn.cursor()
     try:
-        cur.execute(
-            """
-            SELECT id, manifest_key, status, source_batch_ids,
-                   production_baseline_fingerprint, target_payload_sha256,
-                   row_count, result, run_id
-              FROM lodging_promotion_manifests
-             WHERE id=%s
-            """,
-            (manifest_id,),
-        )
-        manifest = cur.fetchone()
-        if not manifest:
-            raise ValueError("운영 기준 manifest를 찾을 수 없습니다.")
-        cur.execute(
-            """
-            SELECT source_row_id, action, production_match_state,
-                   production_building_id, existing_applied_building_id, payload
-              FROM lodging_promotion_rows
-             WHERE promotion_manifest_id=%s
-             ORDER BY source_row_id
-            """,
-            (manifest_id,),
-        )
-        targets = [
-            {
-                "source_row_id": row["source_row_id"],
-                "action": row["action"],
-                "production_match_state": row["production_match_state"],
-                "production_building_id": row["production_building_id"],
-                "existing_applied_building_id": row["existing_applied_building_id"],
-                "payload": dict(row["payload"]),
-            }
-            for row in cur.fetchall()
-        ]
-        if len(targets) != int(manifest["row_count"]):
-            raise RuntimeError("manifest 행 수가 변경되었습니다.")
-        _validate_target_admission(targets, allow_manual_review=False)
-        if _canonical_hash(targets) != manifest["target_payload_sha256"]:
-            raise RuntimeError("manifest payload가 생성 이후 변경되었습니다.")
-        return dict(manifest), targets
+        return _load_manifest_from_cursor(cur, manifest_id)
     finally:
+        cur.close()
+        conn.close()
+
+
+@contextmanager
+def _hold_verified_manifest_source(manifest_id):
+    """운영 커밋이 끝날 때까지 승인 원본을 공유 잠금으로 고정한다."""
+    conn = get_conn()
+    assert_development_connection(conn)
+    cur = conn.cursor()
+    try:
+        _lock_staging_sources(cur)
+        manifest, targets = _load_manifest_from_cursor(cur, manifest_id)
+        _verify_manifest_source_snapshot(cur, manifest)
+        yield manifest, targets
+    finally:
+        conn.rollback()
         cur.close()
         conn.close()
 
@@ -550,62 +574,95 @@ def _mark_development_applied_with_retry(manifest, result):
 
 def _apply_manifest_unfenced(manifest_id, *, confirm_run_id):
     """승인·dry-run 완료 manifest를 운영 DB에 한 트랜잭션으로 반영한다."""
-    manifest, targets = _load_manifest(manifest_id)
-    if manifest["status"] not in {"dry_run", "failed", "applied"}:
+    preflight_manifest, _preflight_targets = _load_manifest(manifest_id)
+    if preflight_manifest["status"] not in {"dry_run", "failed", "applied"}:
         raise ValueError("관리자 승인 후 dry-run이 완료된 manifest만 반영할 수 있습니다.")
-    if confirm_run_id != manifest["run_id"]:
+    if confirm_run_id != preflight_manifest["run_id"]:
         raise ValueError("확인용 run_id가 manifest와 일치하지 않습니다.")
     production_url = os.environ.get("PROD_DATABASE_URL")
     if not production_url:
         raise RuntimeError("PROD_DATABASE_URL이 없습니다.")
-    prod_conn = psycopg2.connect(
+
+    # 운영 커밋 뒤 개발 manifest 상태 갱신만 실패한 재시도는 원본이 이후
+    # 변경됐더라도 기존 감사 표식으로 복구해야 한다. 이 경로는 운영 원장을
+    # 다시 쓰지 않는다. 감사 표식이 없을 때만 아래의 원본 fence로 진입한다.
+    preflight_prod_conn = psycopg2.connect(
         production_url,
         connect_timeout=10,
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
-    prod_conn.set_session(isolation_level="SERIALIZABLE")
-    cur = prod_conn.cursor()
-    audit_key = _AUDIT_KEY_PREFIX + manifest["manifest_key"]
+    preflight_cur = preflight_prod_conn.cursor()
+    audit_key = _AUDIT_KEY_PREFIX + preflight_manifest["manifest_key"]
     try:
-        cur.execute("SELECT pg_try_advisory_xact_lock(%s) AS acquired", (_PROMOTION_LOCK_KEY,))
-        if not cur.fetchone()["acquired"]:
-            raise RuntimeError("다른 숙박 승격 작업이 실행 중입니다.")
-        cur.execute("SELECT value FROM app_meta WHERE key=%s", (audit_key,))
-        audit = cur.fetchone()
-        if audit:
-            previous = json.loads(audit["value"])
-            if previous.get("run_id") != manifest["run_id"]:
-                raise RuntimeError("같은 manifest key에 다른 run_id 반영 기록이 있습니다.")
-            # 운영 트랜잭션은 이미 감사 표식과 함께 커밋되었을 수 있다. 이
-            # 경로에서는 manifest가 dry_run/failed/applied 중 무엇이든 운영
-            # 원장을 다시 쓰지 않고 개발 상태만 복구한다.
-            _mark_development_applied_with_retry(manifest, previous)
-            return {**previous, "already_applied": True}
-
-        if manifest["status"] != "dry_run":
-            raise ValueError("관리자 승인 후 dry-run이 완료된 manifest만 반영할 수 있습니다.")
-
-        current_registry, _buildings, current_fingerprint, production_fingerprint = (
-            _fetch_production_snapshot(prod_conn)
+        preflight_cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            (audit_key,),
         )
-        if _database_fingerprint(prod_conn) != production_fingerprint:
-            raise RuntimeError("운영 DB 기준선 연결이 일치하지 않습니다.")
-        if current_fingerprint != manifest["production_baseline_fingerprint"]:
-            raise RuntimeError("운영 기준선이 변경되어 manifest를 다시 생성해야 합니다.")
-        registry_by_permit = {
-            row["permit_number"]: row
-            for row in current_registry
-            if row.get("permit_number")
-        }
-        records = [
-            build_registry_record(
-                target["payload"],
-                registry_by_permit.get(target["payload"]["permit_number"]),
+        existing_audit = preflight_cur.fetchone()
+    finally:
+        preflight_cur.close()
+        preflight_prod_conn.rollback()
+        preflight_prod_conn.close()
+    if existing_audit:
+        previous = json.loads(existing_audit["value"])
+        if previous.get("run_id") != preflight_manifest["run_id"]:
+            raise RuntimeError("같은 manifest key에 다른 run_id 반영 기록이 있습니다.")
+        _mark_development_applied_with_retry(preflight_manifest, previous)
+        return {**previous, "already_applied": True}
+
+    with _hold_verified_manifest_source(manifest_id) as (manifest, targets):
+        if manifest["status"] not in {"dry_run", "failed", "applied"}:
+            raise ValueError("관리자 승인 후 dry-run이 완료된 manifest만 반영할 수 있습니다.")
+        if confirm_run_id != manifest["run_id"]:
+            raise ValueError("확인용 run_id가 manifest와 일치하지 않습니다.")
+        prod_conn = psycopg2.connect(
+            production_url,
+            connect_timeout=10,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+        )
+        prod_conn.set_session(isolation_level="SERIALIZABLE")
+        cur = prod_conn.cursor()
+        audit_key = _AUDIT_KEY_PREFIX + manifest["manifest_key"]
+        try:
+            cur.execute("SELECT pg_try_advisory_xact_lock(%s) AS acquired", (_PROMOTION_LOCK_KEY,))
+            if not cur.fetchone()["acquired"]:
+                raise RuntimeError("다른 숙박 승격 작업이 실행 중입니다.")
+            cur.execute("SELECT value FROM app_meta WHERE key=%s", (audit_key,))
+            audit = cur.fetchone()
+            if audit:
+                previous = json.loads(audit["value"])
+                if previous.get("run_id") != manifest["run_id"]:
+                    raise RuntimeError("같은 manifest key에 다른 run_id 반영 기록이 있습니다.")
+                # 운영 트랜잭션은 이미 감사 표식과 함께 커밋되었을 수 있다. 이
+                # 경로에서는 manifest가 dry_run/failed/applied 중 무엇이든 운영
+                # 원장을 다시 쓰지 않고 개발 상태만 복구한다.
+                _mark_development_applied_with_retry(manifest, previous)
+                return {**previous, "already_applied": True}
+
+            if manifest["status"] != "dry_run":
+                raise ValueError("관리자 승인 후 dry-run이 완료된 manifest만 반영할 수 있습니다.")
+
+            current_registry, _buildings, current_fingerprint, production_fingerprint = (
+                _fetch_production_snapshot(prod_conn)
             )
-            for target in targets
-        ]
-        psycopg2.extras.execute_batch(
-            cur,
+            if _database_fingerprint(prod_conn) != production_fingerprint:
+                raise RuntimeError("운영 DB 기준선 연결이 일치하지 않습니다.")
+            if current_fingerprint != manifest["production_baseline_fingerprint"]:
+                raise RuntimeError("운영 기준선이 변경되어 manifest를 다시 생성해야 합니다.")
+            registry_by_permit = {
+                row["permit_number"]: row
+                for row in current_registry
+                if row.get("permit_number")
+            }
+            records = [
+                build_registry_record(
+                    target["payload"],
+                    registry_by_permit.get(target["payload"]["permit_number"]),
+                )
+                for target in targets
+            ]
+            psycopg2.extras.execute_batch(
+                cur,
             """
             INSERT INTO lodging_registry (
                 permit_number, biz_name, road_address, jibun_address,
@@ -642,41 +699,41 @@ def _apply_manifest_unfenced(manifest_id, *, confirm_run_id):
                 applied_building_id=lodging_registry.applied_building_id,
                 updated_at=NOW()
             """,
-            records,
-            page_size=500,
-        )
-        previous_result = dict(manifest.get("result") or {})
-        action_counts = dict(previous_result.get("action_counts") or {})
-        result = {
-            **previous_result,
-            "manifest_id": manifest["id"],
-            "manifest_key": manifest["manifest_key"],
-            "run_id": manifest["run_id"],
-            "row_count": len(records),
-            "action_counts": action_counts,
-            "new_permits": int(action_counts.get("insert", 0)),
-            "production_writes": len(records),
-            "applied": True,
-            "already_applied": False,
-        }
-        cur.execute(
+                records,
+                page_size=500,
+            )
+            previous_result = dict(manifest.get("result") or {})
+            action_counts = dict(previous_result.get("action_counts") or {})
+            result = {
+                **previous_result,
+                "manifest_id": manifest["id"],
+                "manifest_key": manifest["manifest_key"],
+                "run_id": manifest["run_id"],
+                "row_count": len(records),
+                "action_counts": action_counts,
+                "new_permits": int(action_counts.get("insert", 0)),
+                "production_writes": len(records),
+                "applied": True,
+                "already_applied": False,
+            }
+            cur.execute(
             """
             INSERT INTO app_meta (key, value, updated_at)
             VALUES (%s, %s, NOW())
             ON CONFLICT (key) DO NOTHING
             """,
-            (audit_key, json.dumps(result, ensure_ascii=False)),
-        )
-        if cur.rowcount != 1:
-            raise RuntimeError("운영 승격 감사 표식을 선점하지 못했습니다.")
-        mark_master_stats_invalidated_in_transaction(cur, "lodging_promotion")
-        prod_conn.commit()
-    except Exception:
-        prod_conn.rollback()
-        raise
-    finally:
-        cur.close()
-        prod_conn.close()
+                (audit_key, json.dumps(result, ensure_ascii=False)),
+            )
+            if cur.rowcount != 1:
+                raise RuntimeError("운영 승격 감사 표식을 선점하지 못했습니다.")
+            mark_master_stats_invalidated_in_transaction(cur, "lodging_promotion")
+            prod_conn.commit()
+        except Exception:
+            prod_conn.rollback()
+            raise
+        finally:
+            cur.close()
+            prod_conn.close()
     _mark_development_applied_with_retry(manifest, result)
     return result
 

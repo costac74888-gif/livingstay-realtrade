@@ -7,6 +7,7 @@ import psycopg2
 import psycopg2.extras
 
 from addr_norm import normalize_jibun_prefix, normalize_road_prefix
+from apply_lodging_promotion import _hold_verified_manifest_source
 from lodging_promotion import (
     _apply_review_decision,
     _build_targets,
@@ -667,6 +668,89 @@ class LodgingPromotionDatabaseFlowTest(unittest.TestCase):
             cur.close()
         with self.assertRaisesRegex(RuntimeError, "payload"):
             run_production_manifest_dry_run(resolved["id"])
+
+    def test_dry_run_rejects_source_row_changed_after_approval(self):
+        _base, _excluded, resolved = self._resolve_and_approve()
+        cur = self.fixture.connection.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE lodging_source_rows
+                   SET biz_name='승인 뒤 바뀐 업체명'
+                 WHERE id=101
+                """
+            )
+            self.fixture.connection.commit()
+        finally:
+            cur.close()
+
+        with self.assertRaisesRegex(RuntimeError, "승인 원본 행"):
+            run_production_manifest_dry_run(resolved["id"])
+
+    def test_apply_guard_rejects_source_row_changed_after_dry_run(self):
+        _base, _excluded, resolved = self._resolve_and_approve()
+        dry_run = run_production_manifest_dry_run(resolved["id"])
+        self.assertEqual(dry_run["status"], "dry_run")
+        cur = self.fixture.connection.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE lodging_source_rows
+                   SET raw_status='폐업', status_bucket='closed'
+                 WHERE id=101
+                """
+            )
+            self.fixture.connection.commit()
+        finally:
+            cur.close()
+
+        with (
+            patch(
+                "apply_lodging_promotion.get_conn",
+                return_value=self.fixture.shared_connection,
+            ),
+            patch("apply_lodging_promotion.assert_development_connection"),
+            self.assertRaisesRegex(RuntimeError, "승인 원본 행"),
+        ):
+            with _hold_verified_manifest_source(resolved["id"]):
+                self.fail("변경된 승인 원본이 apply 경계를 통과했습니다.")
+
+    def test_approval_rejects_newer_source_batch(self):
+        base = self._create_base_manifest()
+        excluded = create_resolved_production_manifest(
+            base["id"],
+            102,
+            decision="exclude",
+            decided_by=1,
+        )
+        resolved = create_resolved_production_manifest(
+            excluded["id"],
+            103,
+            decision="include_unclassified_history",
+            decided_by=1,
+        )
+        cur = self.fixture.connection.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO lodging_source_batches (
+                    id, batch_key, source_key, filename, file_ext,
+                    file_sha256, reference_date, status, total_rows,
+                    parsed_rows, valid_rows, review_rows, file_data
+                ) VALUES (
+                    99, 'fixture:new-tourism', 'tourism_lodging',
+                    'tourism_lodging_new.csv', 'csv', 'sha-new',
+                    '2026-09-02', 'validated', 0, 0, 0, 0, %s
+                )
+                """,
+                (b"new fixture",),
+            )
+            self.fixture.connection.commit()
+        finally:
+            cur.close()
+
+        with self.assertRaisesRegex(RuntimeError, "최신 승인 원본 batch"):
+            approve_production_manifest(resolved["id"], approved_by=1)
 
     def test_dry_run_rejects_changed_production_baseline(self):
         _base, _excluded, resolved = self._resolve_and_approve()

@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from contextlib import nullcontext
 from unittest.mock import patch
 
 import psycopg2
@@ -292,23 +293,31 @@ class ApplyLodgingPromotionTest(unittest.TestCase):
             "1234.50",
         )
 
+    @patch("apply_lodging_promotion._hold_verified_manifest_source")
     @patch("apply_lodging_promotion._load_manifest")
-    def test_apply_rejects_manifest_before_completed_dry_run(self, load_manifest):
+    def test_apply_rejects_manifest_before_completed_dry_run(
+        self, load_manifest, hold_manifest,
+    ):
         load_manifest.return_value = (
             {"status": "approved", "run_id": "run-a"},
             [],
         )
         with self.assertRaisesRegex(ValueError, "dry-run"):
             apply_manifest(1, confirm_run_id="run-a")
+        hold_manifest.assert_not_called()
 
+    @patch("apply_lodging_promotion._hold_verified_manifest_source")
     @patch("apply_lodging_promotion._load_manifest")
-    def test_apply_rejects_wrong_confirmation_run_id(self, load_manifest):
+    def test_apply_rejects_wrong_confirmation_run_id(
+        self, load_manifest, hold_manifest,
+    ):
         load_manifest.return_value = (
             {"status": "dry_run", "run_id": "run-a"},
             [],
         )
         with self.assertRaisesRegex(ValueError, "run_id"):
             apply_manifest(1, confirm_run_id="run-b")
+        hold_manifest.assert_not_called()
 
 
 class ApplyLodgingPromotionDatabaseFlowTest(unittest.TestCase):
@@ -370,13 +379,19 @@ class ApplyLodgingPromotionDatabaseFlowTest(unittest.TestCase):
             "apply_lodging_promotion",
             get_conn=unittest.mock.DEFAULT,
             _load_manifest=unittest.mock.DEFAULT,
+            _hold_verified_manifest_source=unittest.mock.DEFAULT,
             _fetch_production_snapshot=unittest.mock.DEFAULT,
             _database_fingerprint=unittest.mock.DEFAULT,
             assert_development_connection=unittest.mock.DEFAULT,
         )
         mocks = self.patches.start()
         mocks["get_conn"].return_value = self.fixture.staging
-        mocks["_load_manifest"].return_value = (self.manifest, self.targets)
+        mocks["_load_manifest"].side_effect = (
+            lambda _manifest_id: (self.manifest, self.targets)
+        )
+        mocks["_hold_verified_manifest_source"].side_effect = (
+            lambda _manifest_id: nullcontext((self.manifest, self.targets))
+        )
         mocks["_fetch_production_snapshot"].return_value = (
             [],
             [],
@@ -385,7 +400,7 @@ class ApplyLodgingPromotionDatabaseFlowTest(unittest.TestCase):
         )
         mocks["_database_fingerprint"].return_value = self.fixture.PRODUCTION_FINGERPRINT
         mocks["assert_development_connection"].return_value = None
-        self.load_manifest_mock = mocks["_load_manifest"]
+        self.hold_manifest_mock = mocks["_hold_verified_manifest_source"]
         self.connect_patch = patch(
             "apply_lodging_promotion.psycopg2.connect",
             return_value=self.fixture.production,
@@ -523,16 +538,24 @@ class ApplyLodgingPromotionDatabaseFlowTest(unittest.TestCase):
 
         # 실제 재시도에서는 개발 manifest가 이미 applied로 조회된다.
         self.manifest["status"] = "applied"
-        retry = apply_manifest(1, confirm_run_id="run-a")
+        self.hold_manifest_mock.side_effect = RuntimeError(
+            "승인 원본 행이 manifest 생성 이후 변경됨"
+        )
+        with patch(
+            "apply_lodging_promotion.psycopg2.extras.execute_batch",
+            wraps=psycopg2.extras.execute_batch,
+        ) as retry_execute_batch:
+            retry = apply_manifest(1, confirm_run_id="run-a")
         self.assertTrue(retry["already_applied"])
         self.assertEqual(retry["run_id"], first["run_id"])
+        retry_execute_batch.assert_not_called()
         self.assertEqual(self._production_rows(), first_rows)
         self.assertEqual(self._meta(), first_meta)
-        self.assertEqual(self.load_manifest_mock.call_count, 2)
+        self.assertEqual(self.hold_manifest_mock.call_count, 1)
 
         conflicting_manifest = {**self.manifest, "run_id": "run-b"}
         conflicting_manifest["status"] = "failed"
-        self.load_manifest_mock.return_value = (conflicting_manifest, self.targets)
+        self.manifest = conflicting_manifest
         with self.assertRaisesRegex(RuntimeError, "다른 run_id"):
             apply_manifest(1, confirm_run_id="run-b")
 

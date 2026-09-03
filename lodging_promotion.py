@@ -188,6 +188,64 @@ def _fetch_latest_staging(conn):
         cur.close()
 
 
+def _source_snapshot_sha256(batches, staging_rows):
+    """manifest가 근거로 삼은 최신 staging 배치와 유효 원본 행을 고정한다."""
+    batch_snapshot = {
+        key: {
+            "id": int(batches[key]["id"]),
+            "source_key": key,
+            "reference_date": str(batches[key]["reference_date"]),
+            "file_sha256": batches[key]["file_sha256"],
+            "status": batches[key]["status"],
+            "total_rows": int(batches[key]["total_rows"] or 0),
+            "valid_rows": int(batches[key]["valid_rows"] or 0),
+            "review_rows": int(batches[key]["review_rows"] or 0),
+        }
+        for key in GOVERNMENT_LODGING_SOURCES
+    }
+    return _canonical_hash({
+        "batches": batch_snapshot,
+        "rows": staging_rows,
+    })
+
+
+def _lock_staging_sources(cur):
+    """검증부터 운영 커밋까지 원본 배치·행의 변경을 차단한다."""
+    cur.execute(
+        "LOCK TABLE lodging_source_batches, lodging_source_rows IN SHARE MODE"
+    )
+
+
+def _verify_manifest_source_snapshot(cur, manifest):
+    """manifest 생성 뒤 최신 승인 원본이나 그 행이 바뀌지 않았는지 확인한다."""
+    result = dict(manifest.get("result") or {})
+    expected_sha256 = result.get("source_snapshot_sha256")
+    if not expected_sha256:
+        raise RuntimeError(
+            "manifest에 승인 원본 지문이 없어 다시 생성해야 합니다."
+        )
+    expected_batch_ids = {
+        key: int(value)
+        for key, value in dict(manifest.get("source_batch_ids") or {}).items()
+    }
+    if set(expected_batch_ids) != set(GOVERNMENT_LODGING_SOURCES):
+        raise RuntimeError("manifest의 정부 숙박 8종 batch 구성이 완전하지 않습니다.")
+    batches, staging_rows = _fetch_latest_staging(cur.connection)
+    current_batch_ids = {
+        key: int(batches[key]["id"]) for key in GOVERNMENT_LODGING_SOURCES
+    }
+    if current_batch_ids != expected_batch_ids:
+        raise RuntimeError(
+            "최신 승인 원본 batch가 manifest 생성 이후 변경되어 다시 생성해야 합니다."
+        )
+    current_sha256 = _source_snapshot_sha256(batches, staging_rows)
+    if current_sha256 != expected_sha256:
+        raise RuntimeError(
+            "승인 원본 행이 manifest 생성 이후 변경되어 다시 생성해야 합니다."
+        )
+    return current_sha256
+
+
 def _fetch_production_snapshot(conn=None):
     owns_connection = conn is None
     if owns_connection:
@@ -327,12 +385,18 @@ def create_production_baseline_manifest(*, created_by=None):
     dev_conn = get_conn()
     assert_development_connection(dev_conn)
     try:
-        batches, staging_rows = _fetch_latest_staging(dev_conn)
         registry_rows, building_rows, baseline_fingerprint, production_fingerprint = (
             _fetch_production_snapshot()
         )
         if _database_fingerprint(dev_conn) == production_fingerprint:
             raise RuntimeError("개발 DB와 운영 DB가 같아 manifest 생성을 중단했습니다.")
+        lock_cur = dev_conn.cursor()
+        try:
+            _lock_staging_sources(lock_cur)
+        finally:
+            lock_cur.close()
+        batches, staging_rows = _fetch_latest_staging(dev_conn)
+        source_snapshot_sha256 = _source_snapshot_sha256(batches, staging_rows)
         targets, summary = _build_targets(
             staging_rows,
             registry_rows,
@@ -357,6 +421,7 @@ def create_production_baseline_manifest(*, created_by=None):
         manifest_key = "LODGING-PROMOTION:" + _canonical_hash(
             {
                 "source_batch_ids": source_batch_ids,
+                "source_snapshot_sha256": source_snapshot_sha256,
                 "production_baseline_fingerprint": baseline_fingerprint,
                 "target_payload_sha256": target_payload_sha256,
             }
@@ -374,6 +439,7 @@ def create_production_baseline_manifest(*, created_by=None):
             "target_rows": len(targets),
             "new_permits": int(summary["action_counts"].get("insert", 0)),
             "source_files": source_files,
+            "source_snapshot_sha256": source_snapshot_sha256,
             "screen_baseline": screen_baseline,
             "screen_expected_after_apply": screen_expected_after_apply,
             "screen_expected_ranges": _surface_expected_ranges(
@@ -739,6 +805,20 @@ def approve_production_manifest(manifest_id, *, approved_by):
     assert_development_connection(conn)
     cur = conn.cursor()
     try:
+        _lock_staging_sources(cur)
+        cur.execute(
+            """
+            SELECT source_batch_ids, result
+              FROM lodging_promotion_manifests
+             WHERE id=%s AND status='draft'
+             FOR UPDATE
+            """,
+            (manifest_id,),
+        )
+        manifest = cur.fetchone()
+        if not manifest:
+            raise ValueError("승인 초안이 아니거나 이미 처리된 manifest입니다.")
+        _verify_manifest_source_snapshot(cur, manifest)
         cur.execute(
             """
             SELECT COUNT(*) AS count
@@ -786,6 +866,7 @@ def approve_production_manifest_automated(manifest_id):
     assert_development_connection(conn)
     cur = conn.cursor()
     try:
+        _lock_staging_sources(cur)
         cur.execute(
             """
             SELECT result, source_batch_ids
@@ -804,6 +885,7 @@ def approve_production_manifest_automated(manifest_id):
         }
         if set(source_batch_ids) != set(GOVERNMENT_LODGING_SOURCES):
             raise ValueError("manifest의 정부 숙박 8종 batch 구성이 완전하지 않습니다.")
+        _verify_manifest_source_snapshot(cur, manifest)
         for source_key, batch_id in source_batch_ids.items():
             cur.execute(
                 """
@@ -891,10 +973,12 @@ def run_production_manifest_dry_run(manifest_id):
     assert_development_connection(conn)
     cur = conn.cursor()
     try:
+        _lock_staging_sources(cur)
         cur.execute(
             """
             SELECT id, status, production_baseline_fingerprint,
-                   target_payload_sha256, row_count, result, run_id
+                   target_payload_sha256, row_count, result, run_id,
+                   source_batch_ids
               FROM lodging_promotion_manifests
              WHERE id=%s
              FOR UPDATE
@@ -932,6 +1016,7 @@ def run_production_manifest_dry_run(manifest_id):
             raise RuntimeError("manifest 고정 행 수가 변경되었습니다.")
         if _canonical_hash(targets) != manifest["target_payload_sha256"]:
             raise RuntimeError("manifest payload가 생성 이후 변경되었습니다.")
+        _verify_manifest_source_snapshot(cur, manifest)
         result = dict(manifest["result"] or {})
         actual_new_permits = sum(target["action"] == "insert" for target in targets)
         try:
@@ -953,6 +1038,7 @@ def run_production_manifest_dry_run(manifest_id):
             {
                 "dry_run_verified": True,
                 "payload_hash_verified": True,
+                "source_snapshot_verified": True,
                 "production_baseline_unchanged": True,
                 "production_writes": 0,
                 "applied": False,
