@@ -1045,7 +1045,7 @@ def _is_allowed_tourapi_photo_url(value):
 @app.route("/api/building/<int:building_id>/photos/tourapi", methods=["POST"])
 @limiter.limit("30 per hour")
 def save_tourapi_building_photos(building_id):
-    """브라우저에서 매칭한 신뢰된 TourAPI 사진 URL을 서버 캐시에 저장한다."""
+    """브라우저의 TourAPI 조회 결과와 신뢰된 사진 URL을 서버 캐시에 저장한다."""
     payload = request.get_json(silent=True) or {}
     raw_photos = payload.get("photos")
     if not isinstance(raw_photos, list) or len(raw_photos) > 20:
@@ -1067,8 +1067,12 @@ def save_tourapi_building_photos(building_id):
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [building_id])
-        if not cur.fetchone():
+        cur.execute(
+            "SELECT lat, lng FROM master_buildings WHERE id=%s",
+            [building_id],
+        )
+        building = cur.fetchone()
+        if not building:
             return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
 
         inserted = 0
@@ -1081,9 +1085,29 @@ def save_tourapi_building_photos(building_id):
                 ON CONFLICT (building_id, photo_url) DO NOTHING
             """, [building_id, url, photo_type, display_order])
             inserted += cur.rowcount
+        fetch_status = "success" if photos else "no_match"
+        cur.execute("""
+            INSERT INTO building_photo_fetches
+                (building_id, source, status, last_attempt_at, error_message)
+            VALUES (%s, 'tourapi', %s, NOW(), NULL)
+            ON CONFLICT (building_id, source) DO UPDATE SET
+                status=EXCLUDED.status,
+                last_attempt_at=EXCLUDED.last_attempt_at,
+                error_message=NULL
+        """, [building_id, fetch_status])
         _refresh_building_photo_primary(cur, building_id)
         conn.commit()
-        return jsonify({"ok": True, "inserted": inserted})
+        return jsonify({
+            "ok": True,
+            "inserted": inserted,
+            "status": fetch_status,
+            "streetview_available": bool(
+                not photos
+                and os.environ.get("GOOGLE_MAPS_API_KEY")
+                and building["lat"] is not None
+                and building["lng"] is not None
+            ),
+        })
     except Exception:
         conn.rollback()
         raise

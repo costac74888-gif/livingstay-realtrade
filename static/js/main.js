@@ -4540,8 +4540,21 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       return;
     }
     if (local) {
-      // 최근 매칭 실패를 기억하고 있으면 Street View만 계속 보여준다.
-      if (!svShown) renderPhotoSlider([]);
+      // 예전 브라우저 캐시에만 no_match가 남은 경우 서버에도 결과를 기록해야
+      // Street View 프록시의 허용 조건이 열린다.
+      if (!svShown) {
+        try {
+          const saved = await savePhotosToServer(buildingId, []);
+          if (_activePhotoBuildingId !== buildingId) return;
+          if (saved.streetview_available === true) {
+            tryShowStreetView(cached, buildingId);
+          } else {
+            renderPhotoSlider([]);
+          }
+        } catch (error) {
+          renderPhotoSlider([]);
+        }
+      }
       return;
     }
 
@@ -4554,14 +4567,22 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     fetchTourApiPhotos(buildingName, roadAddress)
       .then(async clientPhotos => {
         writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, clientPhotos);
-        if (!clientPhotos.length) return;
+        let saved;
         try {
-          await savePhotosToServer(buildingId, clientPhotos);
+          saved = await savePhotosToServer(buildingId, clientPhotos);
         } catch (error) {
           // 공용 캐시 저장이 실패해도 현재 방문자의 TourAPI 결과는 표시한다.
           console.warn("[building-photos] TourAPI 서버 캐시 저장 실패", error);
         }
         if (_activePhotoBuildingId !== buildingId) return;
+        if (!clientPhotos.length) {
+          if (saved?.streetview_available === true) {
+            tryShowStreetView(cached, buildingId);
+          } else if (!svShown) {
+            renderPhotoSlider([]);
+          }
+          return;
+        }
         // TourAPI 매칭 성공 시에만 Street View를 교체한다.
         renderPhotoSlider(clientPhotos);
       })

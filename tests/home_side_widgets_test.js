@@ -175,9 +175,11 @@ const buildingPhotoLoader = main.slice(
 );
 expect(
   buildingPhotoLoader.includes("data.streetview_available === true") &&
+  buildingPhotoLoader.includes("await savePhotosToServer(buildingId, [])") &&
+  buildingPhotoLoader.includes("saved?.streetview_available === true") &&
   !buildingPhotoLoader.includes("const initialHasPhotos") &&
   main.includes('onerror="handleBuildingPhotoError(this)"'),
-  "Street View가 서버 허용 확인 전에 표시되거나 실패 이미지가 숨겨지지 않습니다."
+  "TourAPI no_match가 서버에 기록되지 않거나 Street View 실패 이미지가 숨겨지지 않습니다."
 );
 
 async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
