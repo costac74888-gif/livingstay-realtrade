@@ -70,3 +70,4 @@
 - [URL 인코딩 인증값 마스킹](encoded-secret-redaction.md) — 외부 API 오류 저장 전 원문·URL 인코딩·인증 쿼리 파라미터를 모두 제거한다.
 - [개발·운영 DB 식별](dev-prod-db-fingerprint.md) — Replit 환경 플래그·URL 문자열은 오판 가능; staging 안전 게이트는 실제 DB 지문을 독립 연결과 비교하고 확인 불가 시 닫는다.
 - [Staging 매칭 기준선](staging-production-match-baseline.md) — 개발 마스터 매칭률을 운영 매칭률로 해석하지 말고, 운영 허가번호·기존 연결을 읽기 전용 기준선으로 대조한다.
+- [수동검토 manifest 계보](lodging-review-manifest-lineage.md) — 검토 결정은 최신 자식으로만 이어지는 선형 계보이며, 부분 해결 자식은 남은 검토행을 보존한다.

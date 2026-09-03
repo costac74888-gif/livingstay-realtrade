@@ -459,6 +459,20 @@ def create_resolved_production_manifest(
 
         cur.execute(
             """
+            SELECT id
+              FROM lodging_promotion_manifests
+             WHERE parent_manifest_id=%s
+             LIMIT 1
+            """,
+            (manifest_id,),
+        )
+        if cur.fetchone():
+            raise ValueError(
+                "새 버전이 이미 생성된 오래된 manifest입니다. 최신 manifest에서 계속 처리하세요."
+            )
+
+        cur.execute(
+            """
             SELECT source_row_id, action, production_match_state,
                    production_building_id, existing_applied_building_id, payload
               FROM lodging_promotion_rows
@@ -499,7 +513,10 @@ def create_resolved_production_manifest(
         if resolved is not None:
             resolved_targets.append(resolved)
         resolved_targets.sort(key=lambda item: int(item["source_row_id"]))
-        _validate_target_admission(resolved_targets, allow_manual_review=False)
+        remaining_manual_reviews = _validate_target_admission(
+            resolved_targets,
+            allow_manual_review=True,
+        )
 
         base_result = dict(base["result"] or {})
         base_resolutions = list(base_result.get("review_resolutions") or [])
@@ -533,7 +550,7 @@ def create_resolved_production_manifest(
                 for item in resolved_targets
             ),
             "new_permits": int(action_counts.get("insert", 0)),
-            "manual_review_targets": 0,
+            "manual_review_targets": remaining_manual_reviews,
             "review_resolutions": [*base_resolutions, resolution],
             "production_writes": 0,
         }
@@ -724,6 +741,16 @@ def run_production_manifest_dry_run(manifest_id):
             raise RuntimeError("manifest 고정 행 수가 변경되었습니다.")
         if _canonical_hash(targets) != manifest["target_payload_sha256"]:
             raise RuntimeError("manifest payload가 생성 이후 변경되었습니다.")
+        result = dict(manifest["result"] or {})
+        actual_new_permits = sum(target["action"] == "insert" for target in targets)
+        try:
+            expected_new_permits = int(result["new_permits"])
+        except (KeyError, TypeError, ValueError):
+            raise RuntimeError("manifest 신규 permit 기대 수가 올바르지 않습니다.") from None
+        if actual_new_permits != expected_new_permits:
+            raise RuntimeError(
+                "manifest 신규 permit 기대 수가 고정 payload와 일치하지 않습니다."
+            )
         _registry, _buildings, current_fingerprint, _db_fingerprint = (
             _fetch_production_snapshot()
         )
@@ -731,7 +758,6 @@ def run_production_manifest_dry_run(manifest_id):
             raise RuntimeError(
                 "운영 기준선이 manifest 생성 이후 변경되어 다시 생성해야 합니다."
             )
-        result = dict(manifest["result"] or {})
         result.update(
             {
                 "dry_run_verified": True,
