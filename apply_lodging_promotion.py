@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import time
 from decimal import Decimal, InvalidOperation
 
 import psycopg2
@@ -25,6 +26,7 @@ from stats_cache import mark_master_stats_invalidated_in_transaction
 
 _PROMOTION_LOCK_KEY = 719_240_392
 _AUDIT_KEY_PREFIX = "lodging_promotion_applied:"
+_DEVELOPMENT_MARK_RETRY_DELAYS = (0, 0.2, 0.8)
 
 
 def _text(value):
@@ -234,10 +236,26 @@ def _mark_development_applied(manifest, result):
         conn.close()
 
 
+def _mark_development_applied_with_retry(manifest, result):
+    """운영 커밋 뒤 개발 manifest 갱신을 제한 횟수로 자동 복구한다."""
+    last_error = None
+    for delay in _DEVELOPMENT_MARK_RETRY_DELAYS:
+        if delay:
+            time.sleep(delay)
+        try:
+            _mark_development_applied(manifest, result)
+            return
+        except Exception as exc:
+            last_error = exc
+    raise RuntimeError(
+        "운영 반영은 완료됐지만 개발 manifest 상태 자동 복구에 실패했습니다."
+    ) from last_error
+
+
 def apply_manifest(manifest_id, *, confirm_run_id):
     """승인·dry-run 완료 manifest를 운영 DB에 한 트랜잭션으로 반영한다."""
     manifest, targets = _load_manifest(manifest_id)
-    if manifest["status"] != "dry_run":
+    if manifest["status"] not in {"dry_run", "failed", "applied"}:
         raise ValueError("관리자 승인 후 dry-run이 완료된 manifest만 반영할 수 있습니다.")
     if confirm_run_id != manifest["run_id"]:
         raise ValueError("확인용 run_id가 manifest와 일치하지 않습니다.")
@@ -262,8 +280,14 @@ def apply_manifest(manifest_id, *, confirm_run_id):
             previous = json.loads(audit["value"])
             if previous.get("run_id") != manifest["run_id"]:
                 raise RuntimeError("같은 manifest key에 다른 run_id 반영 기록이 있습니다.")
-            _mark_development_applied(manifest, previous)
+            # 운영 트랜잭션은 이미 감사 표식과 함께 커밋되었을 수 있다. 이
+            # 경로에서는 manifest가 dry_run/failed/applied 중 무엇이든 운영
+            # 원장을 다시 쓰지 않고 개발 상태만 복구한다.
+            _mark_development_applied_with_retry(manifest, previous)
             return {**previous, "already_applied": True}
+
+        if manifest["status"] != "dry_run":
+            raise ValueError("관리자 승인 후 dry-run이 완료된 manifest만 반영할 수 있습니다.")
 
         current_registry, _buildings, current_fingerprint, production_fingerprint = (
             _fetch_production_snapshot(prod_conn)
@@ -355,7 +379,7 @@ def apply_manifest(manifest_id, *, confirm_run_id):
     finally:
         cur.close()
         prod_conn.close()
-    _mark_development_applied(manifest, result)
+    _mark_development_applied_with_retry(manifest, result)
     return result
 
 

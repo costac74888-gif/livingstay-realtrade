@@ -6,6 +6,7 @@ from unittest.mock import patch
 import psycopg2
 import psycopg2.extras
 
+import apply_lodging_promotion
 from apply_lodging_promotion import apply_manifest, build_registry_record
 
 
@@ -482,11 +483,46 @@ class ApplyLodgingPromotionDatabaseFlowTest(unittest.TestCase):
         self.assertEqual(self._meta(), {})
         self.assertEqual(self._staging_manifest()["status"], "dry_run")
 
+    def test_development_update_is_automatically_retried_after_production_commit(self):
+        # 운영 트랜잭션은 커밋됐지만 두 번째(개발 manifest) 갱신만 실패한
+        # 상태를 재현한다.
+        real_mark_development_applied = (
+            apply_lodging_promotion._mark_development_applied
+        )
+        mark_attempts = 0
+
+        def fail_first_development_update(manifest, result):
+            nonlocal mark_attempts
+            mark_attempts += 1
+            if mark_attempts == 1:
+                raise RuntimeError("fixture development manifest update failure")
+            return real_mark_development_applied(manifest, result)
+
+        real_execute_batch = psycopg2.extras.execute_batch
+        with patch(
+            "apply_lodging_promotion._mark_development_applied",
+            side_effect=fail_first_development_update,
+        ), patch(
+            "apply_lodging_promotion.psycopg2.extras.execute_batch",
+            wraps=real_execute_batch,
+        ) as execute_batch, patch("apply_lodging_promotion.time.sleep") as sleep:
+            result = apply_manifest(1, confirm_run_id="run-a")
+
+        self.assertFalse(result["already_applied"])
+        self.assertEqual(mark_attempts, 2)
+        self.assertEqual(execute_batch.call_count, 1)
+        sleep.assert_called_once_with(0.2)
+        self.assertEqual(len(self._production_rows()), 2)
+        self.assertIn("lodging_promotion_applied:fixture:apply", self._meta())
+        self.assertEqual(self._staging_manifest()["status"], "applied")
+
     def test_same_run_id_retry_is_idempotent_and_different_run_id_is_rejected(self):
         first = apply_manifest(1, confirm_run_id="run-a")
         first_meta = self._meta()
         first_rows = self._production_rows()
 
+        # 실제 재시도에서는 개발 manifest가 이미 applied로 조회된다.
+        self.manifest["status"] = "applied"
         retry = apply_manifest(1, confirm_run_id="run-a")
         self.assertTrue(retry["already_applied"])
         self.assertEqual(retry["run_id"], first["run_id"])
@@ -495,6 +531,7 @@ class ApplyLodgingPromotionDatabaseFlowTest(unittest.TestCase):
         self.assertEqual(self.load_manifest_mock.call_count, 2)
 
         conflicting_manifest = {**self.manifest, "run_id": "run-b"}
+        conflicting_manifest["status"] = "failed"
         self.load_manifest_mock.return_value = (conflicting_manifest, self.targets)
         with self.assertRaisesRegex(RuntimeError, "다른 run_id"):
             apply_manifest(1, confirm_run_id="run-b")
