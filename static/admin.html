@@ -2237,7 +2237,7 @@
       const metadata = d.tourapi_metadata || {};
       const streetview = d.streetview_monthly || {};
       const rows = [
-        `<div class="geo-stat-row"><b>사진 있는 건물:</b> ${num(withPhotos)} / ${num(total)}건 (${pct}%)</div>`,
+        `<div class="geo-stat-row"><b>전체 등록 건물 중 사진 보유:</b> ${num(withPhotos)} / ${num(total)}건 (${pct}%) <span style="color:var(--ink-soft)">(API 조회 건수 아님)</span></div>`,
         `<div class="geo-stat-row"><b>소스별 사진:</b> TourAPI ${num(counts.tourapi || 0)}장 · Street View ${num(counts.streetview || 0)}장 · Vworld ${num(counts.vworld || 0)}장</div>`,
         `<div class="geo-stat-row"><b>전체 저장 사진:</b> ${num(d.photo_count || 0)}장</div>`,
         `<div class="geo-stat-row"><b>TourAPI 숙박 메타데이터:</b> 주소 매칭 ${num(metadata.matched_buildings || 0)}건 · 대표사진 있음 ${num(metadata.with_image || 0)}건 · 없음 ${num(metadata.without_image || 0)}건</div>`,
@@ -2247,15 +2247,22 @@
       if (s.state === "running") {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
         if (Number(s.provider_retry_attempt) > 0) {
-          rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>TourAPI 재접속:</b> ${num(s.provider_retry_attempt)}회차 · ${num(s.provider_retry_remaining_seconds || 0)}초 후 다시 시도 (페이지 ${num(s.provider_retry_page || 1)})</div>`);
+          rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>TourAPI 재접속:</b> ${num(s.provider_retry_attempt)}회차 · ${num(s.provider_retry_remaining_seconds || 0)}초 후 다시 시도 (숙박 목록 페이지 ${num(s.provider_retry_page || 1)})</div>`);
         }
-        rows.push(`<div class="geo-stat-row"><b>진행:</b> ${dgEscape(s.source || "-")} · TourAPI 콘텐츠 ${num(s.catalog_items ?? s.processed ?? 0)}건 · 주소 매칭 ${num(s.matched_buildings ?? s.saved ?? 0)}건</div>`);
+        const catalogTotal = Number(s.catalog_total || 0);
+        const pageTotal = Number(s.catalog_page_count || 0);
+        if (catalogTotal || pageTotal) {
+          rows.push(`<div class="geo-stat-row"><b>TourAPI 외부 조회:</b> 숙박 콘텐츠 ${num(s.catalog_items ?? s.processed ?? 0)} / ${num(catalogTotal)}건 · ${num(s.catalog_pages || 0)} / ${num(pageTotal)}페이지</div>`);
+          rows.push(`<div class="geo-stat-row"><b>내부 주소 매칭:</b> ${num(s.matched_buildings ?? s.saved ?? 0)}건</div>`);
+        } else {
+          rows.push(`<div class="geo-stat-row"><b>TourAPI 외부 조회:</b> 숙박 목록 첫 페이지 연결 중 <span style="color:var(--ink-soft)">(전체 건물 ${num(total)}건을 개별 조회하는 과정이 아닙니다)</span></div>`);
+        }
         if (!photoSyncTimer) photoSyncTimer = setInterval(loadPhotoSyncStatus, 5000);
       } else {
         stopPhotoSyncPolling();
         if (s.state === "done") {
           const cap = s.capped ? " · 일일 캡 도달(다음 실행 때 이어서)" : "";
-          rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · TourAPI 콘텐츠 ${num(s.catalog_items ?? s.processed ?? 0)}건 / 주소 매칭 ${num(s.matched_buildings ?? s.saved ?? 0)}건${cap}</div>`);
+          rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · TourAPI 숙박 콘텐츠 ${num(s.catalog_items ?? s.processed ?? 0)} / ${num(s.catalog_total || s.catalog_items || 0)}건 · ${num(s.catalog_pages || 0)} / ${num(s.catalog_page_count || s.catalog_pages || 0)}페이지 · 내부 주소 매칭 ${num(s.matched_buildings ?? s.saved ?? 0)}건${cap}</div>`);
           if (s.warnings && s.warnings.length) {
             rows.push(`<div class="geo-stat-row" style="color:#9a6700">${dgEscape(s.warnings.join(" "))}</div>`);
           }
@@ -4348,6 +4355,7 @@
             <b>한국관광공사 TourAPI 숙박(contentTypeId=32)</b> 전국 목록을 100건씩
             약 30회 조회해 우리 건물 주소와 매칭합니다. 콘텐츠 ID·대표사진 유무·조회
             시각만 저장하며 사진 파일과 사진 URL은 저장하지 않습니다.
+            <b>우리 건물 전체를 TourAPI에서 한 건씩 조회하지 않습니다.</b>
           </p>
           <div id="photoSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <p class="legal-admin-hint" style="margin-top:8px;">

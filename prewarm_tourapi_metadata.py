@@ -213,6 +213,8 @@ def run(status_key, run_id, sleep_seconds):
         "errors": 0,
         "catalog_items": 0,
         "catalog_pages": 0,
+        "catalog_total": 0,
+        "catalog_page_count": 0,
         "matched_buildings": 0,
         "with_image_buildings": 0,
         "without_image_buildings": 0,
@@ -233,6 +235,19 @@ def run(status_key, run_id, sleep_seconds):
         first_body = first.get("response", {}).get("body", {})
         total = int(first_body.get("totalCount") or 0)
         page_count = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        stats["catalog_total"] = total
+        stats["catalog_page_count"] = page_count
+        if status_key:
+            current = _read_status(status_key) or {}
+            if current.get("run_id") == run_id and current.get("state") == "running":
+                current.update({
+                    "source": "tourapi_metadata",
+                    "catalog_total": total,
+                    "catalog_page_count": page_count,
+                    "catalog_items": 0,
+                    "catalog_pages": 0,
+                })
+                _write_status(status_key, current, run_id)
         for page_no in range(1, page_count + 1):
             if page_no == 1:
                 data = first
@@ -274,6 +289,8 @@ def run(status_key, run_id, sleep_seconds):
                     "errors": stats["errors"],
                     "catalog_items": stats["catalog_items"],
                     "catalog_pages": stats["catalog_pages"],
+                    "catalog_total": stats["catalog_total"],
+                    "catalog_page_count": stats["catalog_page_count"],
                     "matched_buildings": stats["matched_buildings"],
                     "with_image_buildings": stats["with_image_buildings"],
                     "without_image_buildings": stats["without_image_buildings"],
