@@ -118,14 +118,18 @@ OPERATOR_REGION_BUILDING_CAP = 10  # 운영업체 지역내 담당단지
 AGENT_TRIAL_REGION_CAP = 1      # 중개사 한 명이 등록 가능한 지역(시군구) 수
 AGENT_REGION_BUILDING_CAP = 10  # 중개사 지역내 담당단지
 
-# 일반숙박은 건축물대장 호실수와 실제 영업 객실수가 같은 모집단이 아니다.
-# 따라서 일반 건물은 신고율 대신 행안부 영업신고 객실수 절대값을 보여준다.
+# 일반숙박과 관광숙박은 건축물대장 호실수와 실제 영업 객실수가 같은 모집단이 아니다.
+# 관광숙박은 특히 건축물대장 hoCnt가 없는 건물이 많으므로 객실수 대비 신고율에서 제외한다.
 REPORT_RATE_EXCLUDED_LODGING_TYPE = "일반"
+REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE = "관광"
 
 
 def uses_lodging_report_rate(lodging_type):
-    """일반숙박을 제외한 유형에만 객실수 대비 신고율을 적용한다."""
-    return lodging_type != REPORT_RATE_EXCLUDED_LODGING_TYPE
+    """건축물대장 호실수와 신고객실수의 모집단이 비교 가능한 유형만 허용한다."""
+    return lodging_type not in {
+        REPORT_RATE_EXCLUDED_LODGING_TYPE,
+        REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE,
+    }
 
 # 정적 JS/CSS 자산에 배포마다 바뀌는 버전 쿼리스트링(?v=SERVER_BOOT_V)을 붙여
 # 새 배포 때 브라우저가 무조건 새 파일을 받도록 한다(캐시버스팅). 버전 값은
@@ -18951,14 +18955,22 @@ def _lodging_count_summary_payload():
             "lodging_metric": (
                 "businesses_per_building"
                 if label == REPORT_RATE_EXCLUDED_LODGING_TYPE
-                else "report_rate"
+                else (
+                    "buildings_with_active_report"
+                    if label == REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
+                    else "report_rate"
+                )
             ),
             "report_rate_numerator": 0,
             "report_rate_denominator": 0,
             "report_rate_basis": (
                 "businesses_per_building"
                 if label == REPORT_RATE_EXCLUDED_LODGING_TYPE
-                else "reported_rooms_per_units"
+                else (
+                    "buildings_with_active_report"
+                    if label == REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
+                    else "reported_rooms_per_units"
+                )
             ),
             "report_rate_room_count": 0,
             "report_rate_units": 0,
@@ -19188,14 +19200,23 @@ def _lodging_full_stats_payload():
     def _row(blds: list, type_label: str) -> dict:
         if not blds:
             is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
+            is_tourism = type_label == REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
             empty_row = {
                 "type": type_label, "building_count": 0, "units": 0,
                 "favorites": 0, "listing_requests": 0, "broker_badge": 0,
                 "store_realty": 0, "store_total": 0,
                 "report_rate": None, "permit_count": 0, "room_count": 0, "closed_rate": None,
-                "lodging_metric": "businesses_per_building" if is_general else "report_rate",
+                "lodging_metric": (
+                    "businesses_per_building" if is_general
+                    else "buildings_with_active_report" if is_tourism
+                    else "report_rate"
+                ),
                 "report_rate_numerator": 0, "report_rate_denominator": 0,
-                "report_rate_basis": "businesses_per_building" if is_general else "reported_rooms_per_units",
+                "report_rate_basis": (
+                    "businesses_per_building" if is_general
+                    else "buildings_with_active_report" if is_tourism
+                    else "reported_rooms_per_units"
+                ),
                 "report_rate_room_count": 0, "report_rate_units": 0, "report_rate_building_count": 0,
                 "report_rate_excludes_general": False,
             }
@@ -19225,7 +19246,24 @@ def _lodging_full_stats_payload():
         pc = len(active_vals)   # 현재 운영 영업신고업체 수 (폐업 제외)
         rc = sum(int(v["room_count"] or 0) for v in active_vals)
         is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
+        is_tourism = type_label == REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
         is_total = type_label == "전체"
+
+        def _active_report_building_count(target_buildings, expected_type):
+            matched_count = 0
+            for building in target_buildings:
+                road_key = bld_rk[building["id"]]
+                jibun_key = bld_jk[building["id"]]
+                building_permits = lr_road_map.get(road_key) if road_key else None
+                if not building_permits:
+                    building_permits = lr_jibun_map.get(jibun_key) if jibun_key else None
+                if any(
+                    is_active_status(permit.get("biz_status_name"))
+                    and lodging_type_for_hygiene(permit.get("hygiene_type")) == expected_type
+                    for permit in (building_permits or {}).values()
+                ):
+                    matched_count += 1
+            return matched_count
 
         # 생활·관광·복합은 기존처럼 신고 객실수 ÷ 건물 호실수로 계산한다.
         # 일반숙박은 건축물대장 호실수와 객실수가 같은 모집단이 아니므로, 사용자 요청에
@@ -19239,6 +19277,10 @@ def _lodging_full_stats_payload():
                 building for building in blds
                 if building.get("lodging_type") == REPORT_RATE_EXCLUDED_LODGING_TYPE
             ]
+            tourism_blds = [
+                building for building in blds
+                if building.get("lodging_type") == REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
+            ]
             legacy_rate_rc = sum(
                 capped_report_rooms_by_building.get(building["id"], 0)
                 for building in room_rate_blds
@@ -19248,8 +19290,11 @@ def _lodging_full_stats_payload():
                 1 for permit in _permits_for(general_blds).values()
                 if is_active_status(permit["biz_status_name"])
             )
-            rate_numerator = legacy_rate_rc + general_active_count
-            rate_denominator = legacy_rate_tu + len(general_blds)
+            tourism_reported_buildings = _active_report_building_count(
+                tourism_blds, REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
+            )
+            rate_numerator = legacy_rate_rc + general_active_count + tourism_reported_buildings
+            rate_denominator = legacy_rate_tu + len(general_blds) + len(tourism_blds)
             rate_basis = "type_weighted"
             lodging_metric = "type_weighted"
         elif is_general:
@@ -19259,6 +19304,15 @@ def _lodging_full_stats_payload():
             rate_denominator = len(blds)
             rate_basis = "businesses_per_building"
             lodging_metric = "businesses_per_building"
+        elif is_tourism:
+            legacy_rate_rc = 0
+            legacy_rate_tu = 0
+            rate_numerator = _active_report_building_count(
+                blds, REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE
+            )
+            rate_denominator = len(blds)
+            rate_basis = "buildings_with_active_report"
+            lodging_metric = "buildings_with_active_report"
         else:
             legacy_rate_rc = sum(capped_report_rooms_by_building.get(b["id"], 0) for b in blds)
             legacy_rate_tu = tu
@@ -27668,7 +27722,11 @@ _MATCHED_LODGING_REGION_CACHE_TTL = 300  # seconds; 전국 주소 매칭 재계�
 
 
 def _matched_lodging_by_region(*, exclude_general=False):
-    """관리자 통계와 같은 주소 우선순위로 신고사업장을 지역·전국 집계에 연결한다."""
+    """관리자 통계와 같은 주소 우선순위로 신고사업장을 지역·전국 집계에 연결한다.
+
+    exclude_general=True는 하위호환 이름이며, 실제로는 건축물대장 호실수와
+    신고객실수 모집단이 다른 일반·관광 유형을 모두 제외한다.
+    """
     if not exclude_general:
         master_payload = _master_stats_section("region_match")
         if master_payload is not None:
@@ -27693,8 +27751,11 @@ def _matched_lodging_by_region(*, exclude_general=False):
             WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
         """
         if exclude_general:
-            lodging_filter += " AND lodging_type IS DISTINCT FROM %s"
-            lodging_params = [REPORT_RATE_EXCLUDED_LODGING_TYPE]
+            lodging_filter += " AND lodging_type <> ALL(%s)"
+            lodging_params = [[
+                REPORT_RATE_EXCLUDED_LODGING_TYPE,
+                REPORT_RATE_BUILDING_COVERAGE_LODGING_TYPE,
+            ]]
         else:
             lodging_params = []
         cur.execute(f"""
@@ -28263,7 +28324,7 @@ def admin_stats_refresh():
 
 @app.route("/api/stats/registration-rate")
 def stats_registration_rate():
-    """전국 숙박업 영업신고율 — 일반숙박을 제외한 lodging_registry(행안부) 기준.
+    """전국 객실수 대비 신고율 — 일반·관광숙박을 제외한 행안부 원장 기준.
 
     _row() 함수(건물마스터 상단 통계)와 동일한 소스·계산 방식 재사용:
     admin_buildings_full_stats 캐시가 유효하면 그 결과를 직접 사용하고,
@@ -28285,6 +28346,7 @@ def stats_registration_rate():
             "biz_units": legacy_rooms,
             "rate": round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None,
             "general_excluded": True,
+            "tourism_excluded": True,
         })
 
     if _master_stats_cold_starting():
@@ -28296,6 +28358,7 @@ def stats_registration_rate():
             "biz_units": 0,
             "rate": None,
             "general_excluded": True,
+            "tourism_excluded": True,
         })
 
     # [LEGACY] 통합 원본의 숙박 섹션 자체가 실패했을 때만 기존 5분 캐시를
@@ -28314,6 +28377,7 @@ def stats_registration_rate():
             "biz_units": legacy_rooms,
             "rate": round(legacy_rooms / legacy_units * 100, 1) if legacy_units else None,
             "general_excluded": True,
+            "tourism_excluded": True,
         })
     # 캐시 미스도 데이터랩·관리자 통계와 같은 주소 우선 매칭과 건물별 상한 규칙을
     # 사용한다. 별도 SQL 폴백을 두면 중복 주소의 신고 객실이 다시 중복 집계된다.
@@ -28331,6 +28395,7 @@ def stats_registration_rate():
         "biz_units": biz_units,
         "rate": rate,
         "general_excluded": True,
+        "tourism_excluded": True,
     })
 
 

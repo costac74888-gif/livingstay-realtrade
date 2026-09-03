@@ -3183,7 +3183,7 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수</th><th title="건축물대장 표제부 호수(hoCnt) 합계이며 관광숙박은 실제 객실수와 직접 비교하지 않습니다.">대장 호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
@@ -5816,10 +5816,10 @@ async function loadBuildingHeader(id){
     //     일반숙박은 건축물대장 호실수와 객실수가 비교 대상이 아니므로 절대 객실수만 표시한다.
     const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
     const roomTotal = Number(b.lodging_room_total || 0);
-    const isGeneralLodging = b.lodging_type === "일반";
+    const usesAbsoluteRoomMetric = b.lodging_metric === "room_count";
     let rateDisplay;
     const _adminUnits = b.units != null ? Number(b.units) : 0;
-    if (isGeneralLodging) {
+    if (usesAbsoluteRoomMetric) {
       rateDisplay = `${roomTotal.toLocaleString('ko-KR')}실 (현재 영업중 ${lodgings.length}개 사업장)`;
     } else if (b.lodging_report_rate != null){
       rateDisplay = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
@@ -5832,7 +5832,7 @@ async function loadBuildingHeader(id){
       rateDisplay = "확인 불가";
     }
     const reportedRooms = roomTotal > 0 ? roomTotal.toLocaleString('ko-KR') + "실" : "-";
-    const notReported = (!isGeneralLodging && b.units != null && Number(b.units) > 0)
+    const notReported = (!usesAbsoluteRoomMetric && b.units != null && Number(b.units) > 0)
       ? Math.max(Number(b.units) - roomTotal, 0).toLocaleString('ko-KR') + "실"
       : "-";
     // 영업신고 업종 → 상세페이지 용도 뱃지 매핑
@@ -5902,8 +5902,8 @@ async function loadBuildingHeader(id){
       <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
       <table class="b-info-table" style="margin-bottom:12px;">
         <tbody>
-          ${isGeneralLodging
-            ? `<tr><th>영업신고 객실</th><td>${rateDisplay}</td></tr>`
+          ${usesAbsoluteRoomMetric
+            ? `<tr><th>정상영업 신고객실수</th><td>${rateDisplay}</td></tr>`
             : `<tr><th>신고율</th><td>${rateDisplay}</td></tr>
                <tr><th>호실수</th><td>${units}</td></tr>
                <tr><th>신고</th><td>${reportedRooms}</td></tr>

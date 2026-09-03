@@ -150,11 +150,12 @@ expect(main.includes("function _hygieneBadge") &&
   main.includes('"농어촌민박업":           ["농어촌민박"') &&
   main.includes('"한옥체험업":            ["한옥"'),
   "영업신고 업종별 상세 용도 뱃지가 없습니다.");
-expect(main.includes("<th>건물수</th><th>호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th>") &&
+expect(main.includes('title="건축물대장 표제부 호수(hoCnt) 합계이며 관광숙박은 실제 객실수와 직접 비교하지 않습니다.">대장 호실수</th>') &&
+  main.includes("<th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th>") &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
   !main.includes("영업신고율</th>"),
-  "전국숙박업통계의 정상영업 신고객실수 헤더가 누락됐습니다.");
+  "전국숙박업통계의 대장 호실수·정상영업 신고객실수 구분이 누락됐습니다.");
 expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&
   !main.includes("datalab-caption-bottom"),
   "데이터랩 하단 설명문이 남아 있습니다.");

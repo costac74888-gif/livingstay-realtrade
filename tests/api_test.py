@@ -4154,12 +4154,22 @@ def _check_lodging_metric_contract(client):
                 f"lodging metric: 비일반 표본 {non_general['building_name']} 상세 API "
                 f"HTTP {resp.status_code}"
             )
-        elif payload.get("lodging_metric") != "report_rate":
+        elif (
+            payload.get("lodging_type") == "관광"
+            and payload.get("lodging_metric") != "room_count"
+        ):
             failures.append(
-                f"lodging metric: 비일반 표본 {non_general['building_name']}이 신고율 지표가 아님"
+                f"lodging metric: 관광 표본 {non_general['building_name']}이 객실수 지표가 아님"
+            )
+        elif (
+            payload.get("lodging_type") != "관광"
+            and payload.get("lodging_metric") != "report_rate"
+        ):
+            failures.append(
+                f"lodging metric: 비일반·비관광 표본 {non_general['building_name']}이 신고율 지표가 아님"
             )
         else:
-            print(f"OK  {non_general['building_name']} 비일반 신고율 지표 유지")
+            print(f"OK  {non_general['building_name']} 유형별 신고 지표 유지")
     else:
         failures.append("lodging metric: 비일반 표본 건물을 찾지 못했습니다.")
 
@@ -4197,7 +4207,8 @@ def _check_lodging_metric_contract(client):
                 f"(153실 / 286실 = {expected_rate}%)"
             )
 
-    # 관리자 통계는 일반숙박을 업체수 ÷ 건물수로, 생활·관광·복합은 신고호실 ÷ 호실수로 계산한다.
+    # 관리자 통계는 일반숙박을 업체수÷건물수, 관광을 신고 매칭 건물÷관광 건물,
+    # 생활·복합을 신고객실수÷건축물대장 호실수로 계산한다.
     # 별도 지역 비교 API는 기존처럼 일반숙박을 제외한 객실 기준을 유지한다.
     original_cache = app_module._bld_full_stats_cache
     try:
@@ -4213,6 +4224,7 @@ def _check_lodging_metric_contract(client):
         rows = {row.get("type"): row for row in full_stats.get("rows", [])}
         total_row = rows.get("전체") or {}
         general_row = rows.get("일반") or {}
+        tourism_row = rows.get("관광") or {}
 
         if full_stats_response.status_code != 200 or not full_stats.get("ok"):
             failures.append("lodging metric: 관리자 전체 통계를 불러오지 못했습니다.")
@@ -4229,6 +4241,22 @@ def _check_lodging_metric_contract(client):
             )
         ):
             failures.append("lodging metric: 관리자 일반숙박 신고율이 업체수 ÷ 건물수 기준이 아님")
+        elif (
+            tourism_row.get("lodging_metric") != "buildings_with_active_report"
+            or tourism_row.get("report_rate_basis") != "buildings_with_active_report"
+            or tourism_row.get("report_rate")
+            != (
+                round(
+                    int(tourism_row.get("report_rate_numerator") or 0)
+                    / int(tourism_row.get("report_rate_denominator") or 0) * 100,
+                    1,
+                )
+                if int(tourism_row.get("report_rate_denominator") or 0) else None
+            )
+            or int(tourism_row.get("report_rate_denominator") or 0)
+            != int(tourism_row.get("building_count") or 0)
+        ):
+            failures.append("lodging metric: 관리자 관광숙박 신고율이 신고 매칭 건물 ÷ 관광 건물 기준이 아님")
         else:
             expected_sub_types = ["일반호텔", "여관업", "여인숙업"]
             sub_rows = general_row.get("sub_rows")
@@ -4288,6 +4316,7 @@ def _check_lodging_metric_contract(client):
             if (
                 response.status_code != 200
                 or stats_payload.get("general_excluded") is not True
+                or stats_payload.get("tourism_excluded") is not True
                 or stats_payload.get("biz_units") != total_row.get("report_rate_room_count")
                 or stats_payload.get("total_units") != total_row.get("report_rate_units")
                 or stats_payload.get("rate")
