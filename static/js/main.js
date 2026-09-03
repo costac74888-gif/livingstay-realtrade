@@ -4216,7 +4216,8 @@ function renderPhotoSlider(photos){
   }
   const slides = usablePhotos.map(photo => `
     <div class="bld-photo-slide">
-      <img src="${escapeHtml(photo.url.trim())}" alt="건물사진" loading="lazy">
+      <img src="${escapeHtml(photo.url.trim())}" alt="건물사진" loading="lazy"
+           onerror="handleBuildingPhotoError(this)">
       ${photo.can_delete && photo.id ? `
         <button type="button" class="bld-photo-delete"
                 data-building-photo-delete="${escapeHtml(String(photo.id))}"
@@ -4253,6 +4254,27 @@ function renderPhotoSlider(photos){
         window.alert(error.message || "사진 삭제 중 오류가 발생했습니다.");
       }
     });
+  });
+}
+
+function handleBuildingPhotoError(image){
+  const slide = image?.closest(".bld-photo-slide");
+  const wrap = image?.closest(".bld-photo-wrap");
+  if (slide) slide.remove();
+  const remaining = wrap?.querySelectorAll(".bld-photo-slide") || [];
+  if (!wrap || !remaining.length) {
+    if (wrap) {
+      wrap.innerHTML = "";
+      wrap.style.display = "none";
+    }
+    return;
+  }
+  const track = wrap.querySelector(".bld-photo-track");
+  if (track) track.style.transform = "translateX(0)";
+  const counter = wrap.querySelector(".photo-counter");
+  if (counter) counter.textContent = `1 / ${remaining.length}`;
+  wrap.querySelectorAll(".photo-prev, .photo-next").forEach(button => {
+    button.style.display = remaining.length > 1 ? "" : "none";
   });
 }
 
@@ -4486,17 +4508,6 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
   _activePhotoBuildingId = buildingId;
   const initial = Array.isArray(initialPhotos) ? initialPhotos : [];
 
-  // 서버 응답을 기다리는 동안에도 DB 사진이 없는 건물은 Street View를 먼저 보여준다.
-  // 이후 upload/tourapi 캐시가 확인되면 아래에서 즉시 그 사진으로 교체한다.
-  const initialHasPhotos = initial.length > 0;
-  if (!initialHasPhotos) {
-    tryShowStreetView({
-      building_id: buildingId,
-      lat: building?.lat,
-      lng: building?.lng,
-    }, buildingId);
-  }
-
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
     const data = await response.json().catch(() => ({}));
@@ -4518,9 +4529,10 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       lng: data.lng ?? building?.lng,
     };
 
-    // DB에 사진이 없으면 Street View를 즉시 유지한다. 이 값은 TourAPI보다
-    // 먼저 렌더링되며, 좌표가 없으면 renderPhotoSlider([])가 사진 영역을 숨긴다.
-    const svShown = tryShowStreetView(cached, buildingId);
+    // 최근 TourAPI no_match로 서버가 허용한 건물에만 Street View를 표시한다.
+    // 좌표만 보고 먼저 표시하면 프록시의 404 JSON이 깨진 이미지로 노출된다.
+    const svShown = data.streetview_available === true
+      && tryShowStreetView(cached, buildingId);
 
     const local = readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
     if (local && local.photos.length > 0) {
@@ -4558,13 +4570,9 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       });
   } catch(e) {
     if (_activePhotoBuildingId !== buildingId) return;
-    // 서버 조회 실패 시에도 초기 DB 사진 또는 즉시 표시한 Street View를 유지한다.
+    // 서버가 fallback 가능 여부를 확인하지 못했으면 Street View를 추측해 표시하지 않는다.
     if (initial.length > 0) renderPhotoSlider(initial);
-    else if (!tryShowStreetView({
-      building_id: buildingId,
-      lat: building?.lat,
-      lng: building?.lng,
-    }, buildingId)) renderPhotoSlider([]);
+    else renderPhotoSlider([]);
   }
 }
 

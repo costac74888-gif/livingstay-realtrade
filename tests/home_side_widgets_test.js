@@ -150,11 +150,11 @@ expect(main.includes("function _hygieneBadge") &&
   main.includes('"농어촌민박업":           ["농어촌민박"') &&
   main.includes('"한옥체험업":            ["한옥"'),
   "영업신고 업종별 상세 용도 뱃지가 없습니다.");
-expect(main.includes("<th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th>") &&
+expect(main.includes("<th>건물수</th><th>호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th>") &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
   !main.includes("영업신고율</th>"),
-  "전국숙박업통계 헤더가 축약되지 않았습니다.");
+  "전국숙박업통계의 정상영업 신고객실수 헤더가 누락됐습니다.");
 expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&
   !main.includes("datalab-caption-bottom"),
   "데이터랩 하단 설명문이 남아 있습니다.");
@@ -168,6 +168,16 @@ expect(css.includes("--panel-w:440px") &&
   "데이터랩 패널·테이블 폭 축소 CSS가 반영되지 않았습니다.");
 expect(!main.includes("row.favorites") && !main.includes("row.listing_requests"),
   "전국숙박업통계 렌더링에 내부 운영지표가 남아 있습니다.");
+const buildingPhotoLoader = main.slice(
+  main.indexOf("async function loadOnDemandBuildingPhotos"),
+  main.indexOf("function buildingPanelSkeleton")
+);
+expect(
+  buildingPhotoLoader.includes("data.streetview_available === true") &&
+  !buildingPhotoLoader.includes("const initialHasPhotos") &&
+  main.includes('onerror="handleBuildingPhotoError(this)"'),
+  "Street View가 서버 허용 확인 전에 표시되거나 실패 이미지가 숨겨지지 않습니다."
+);
 
 async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
   const sourceStart = main.indexOf("async function loadDataLab");
