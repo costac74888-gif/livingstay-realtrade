@@ -216,6 +216,38 @@ def _lock_staging_sources(cur):
     )
 
 
+def _unresolved_source_review_count(cur, batch_id, source_key):
+    """Count review rows not covered by the lineage of an applied manifest."""
+    cur.execute(
+        """
+        WITH RECURSIVE applied_lineage AS (
+            SELECT id, parent_manifest_id
+              FROM lodging_promotion_manifests
+             WHERE status='applied'
+               AND source_batch_ids->>%s=%s
+            UNION
+            SELECT parent.id, parent.parent_manifest_id
+              FROM lodging_promotion_manifests parent
+              JOIN applied_lineage child
+                ON child.parent_manifest_id=parent.id
+        )
+        SELECT COUNT(*) AS count
+          FROM lodging_source_rows sr
+         WHERE sr.batch_id=%s
+           AND sr.row_state='review_required'
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM lodging_promotion_review_decisions decision
+                 JOIN applied_lineage lineage
+                   ON lineage.id=decision.resulting_manifest_id
+                WHERE decision.source_row_id=sr.id
+           )
+        """,
+        (source_key, str(batch_id), batch_id),
+    )
+    return int(cur.fetchone()["count"] or 0)
+
+
 def _verify_manifest_source_snapshot(cur, manifest):
     """manifest 생성 뒤 최신 승인 원본이나 그 행이 바뀌지 않았는지 확인한다."""
     result = dict(manifest.get("result") or {})
@@ -897,11 +929,22 @@ def approve_production_manifest_automated(manifest_id):
                 (batch_id, source_key),
             )
             batch = cur.fetchone()
-            if not batch or batch["status"] not in {
-                "validated", "approved", "dry_run", "applied",
-            }:
+            unresolved_review_rows = (
+                _unresolved_source_review_count(cur, batch_id, source_key)
+                if batch else 0
+            )
+            status_allowed = batch and (
+                batch["status"] in {
+                    "validated", "approved", "dry_run", "applied",
+                }
+                or (
+                    batch["status"] == "review_required"
+                    and unresolved_review_rows == 0
+                )
+            )
+            if not status_allowed:
                 raise ValueError(f"{source_key} 고정 staging batch가 검증 상태가 아닙니다.")
-            if int(batch["review_rows"] or 0):
+            if unresolved_review_rows:
                 raise ValueError(f"{source_key} 고정 staging batch에 미해결 검토행이 있습니다.")
             cur.execute(
                 """

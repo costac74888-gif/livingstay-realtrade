@@ -7,7 +7,10 @@ import psycopg2
 import psycopg2.extras
 
 from addr_norm import normalize_jibun_prefix, normalize_road_prefix
-from apply_lodging_promotion import _hold_verified_manifest_source
+from apply_lodging_promotion import (
+    _hold_verified_manifest_source,
+    _unresolved_source_review_count,
+)
 from lodging_promotion import (
     _apply_review_decision,
     _build_targets,
@@ -544,7 +547,6 @@ class LodgingPromotionDatabaseFlowTest(unittest.TestCase):
                 decision="include_unclassified_history",
                 decided_by=1,
             )
-
         cur = self.fixture.connection.cursor()
         try:
             cur.execute(
@@ -565,6 +567,43 @@ class LodgingPromotionDatabaseFlowTest(unittest.TestCase):
                 decision="include_unclassified_history",
                 decided_by=1,
             )
+
+    def test_applied_review_decisions_unblock_the_same_source_batch(self):
+        base = self._create_base_manifest()
+        cur = self.fixture.connection.cursor()
+        try:
+            self.assertEqual(
+                _unresolved_source_review_count(cur, 3, "rural_homestay"),
+                1,
+            )
+        finally:
+            cur.close()
+
+        excluded = create_resolved_production_manifest(
+            base["id"],
+            102,
+            decision="exclude",
+            decided_by=1,
+        )
+        resolved = create_resolved_production_manifest(
+            excluded["id"],
+            103,
+            decision="include_unclassified_history",
+            decided_by=1,
+        )
+        cur = self.fixture.connection.cursor()
+        try:
+            cur.execute(
+                "UPDATE lodging_promotion_manifests SET status='applied' WHERE id=%s",
+                (resolved["id"],),
+            )
+            self.fixture.connection.commit()
+            self.assertEqual(
+                _unresolved_source_review_count(cur, 3, "rural_homestay"),
+                0,
+            )
+        finally:
+            cur.close()
 
     def test_review_resolution_is_atomic_when_child_write_fails(self):
         base = self._create_base_manifest()

@@ -103,6 +103,38 @@ def _write_automation_status(
         conn.close()
 
 
+def _unresolved_source_review_count(cur, batch_id, source_key):
+    """Return review rows without an applied, audited manifest decision."""
+    cur.execute(
+        """
+        WITH RECURSIVE applied_lineage AS (
+            SELECT id, parent_manifest_id
+              FROM lodging_promotion_manifests
+             WHERE status='applied'
+               AND source_batch_ids->>%s=%s
+            UNION
+            SELECT parent.id, parent.parent_manifest_id
+              FROM lodging_promotion_manifests parent
+              JOIN applied_lineage child
+                ON child.parent_manifest_id=parent.id
+        )
+        SELECT COUNT(*) AS count
+          FROM lodging_source_rows sr
+         WHERE sr.batch_id=%s
+           AND sr.row_state='review_required'
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM lodging_promotion_review_decisions decision
+                 JOIN applied_lineage lineage
+                   ON lineage.id=decision.resulting_manifest_id
+                WHERE decision.source_row_id=sr.id
+           )
+        """,
+        (source_key, str(batch_id), batch_id),
+    )
+    return int(cur.fetchone()["count"] or 0)
+
+
 def _approved_source_readiness():
     """최신 8종 staging이 검증·승인 dry-run까지 끝났는지 확인한다."""
     from lodging_data_contract import GOVERNMENT_LODGING_SOURCES
@@ -128,9 +160,18 @@ def _approved_source_readiness():
             if not batch:
                 blocked.append(f"{label}(staging 없음)")
                 continue
-            if batch["status"] not in {
+            unresolved_review_rows = _unresolved_source_review_count(
+                cur,
+                batch["id"],
+                source_key,
+            )
+            status_allowed = batch["status"] in {
                 "validated", "approved", "dry_run", "applied",
-            }:
+            } or (
+                batch["status"] == "review_required"
+                and unresolved_review_rows == 0
+            )
+            if not status_allowed:
                 blocked.append(f"{label}({batch['status']})")
             reference_date = batch["reference_date"]
             if reference_date and (
@@ -139,8 +180,8 @@ def _approved_source_readiness():
                 blocked.append(
                     f"{label}(기준일 {reference_date}, {STAGING_MAX_AGE_DAYS}일 초과)"
                 )
-            if int(batch["review_rows"] or 0):
-                blocked.append(f"{label}(검토 {int(batch['review_rows'])}건)")
+            if unresolved_review_rows:
+                blocked.append(f"{label}(검토 {unresolved_review_rows}건)")
             cur.execute(
                 """
                 SELECT id, status, row_count
@@ -172,6 +213,7 @@ def _approved_source_readiness():
                 "changed_rows": changed_count,
                 "approval_id": approval["id"] if approval else None,
                 "approval_status": approval["status"] if approval else None,
+                "unresolved_review_rows": unresolved_review_rows,
             }
     finally:
         cur.close()

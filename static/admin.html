@@ -66,6 +66,26 @@
     .bld-broker-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .bld-broker-status.is-active { background: #E8F5EC; color: #217A42; }
     .bld-broker-status.is-inactive { background: #EEF0F2; color: #68717D; }
+    .admin-env-notice {
+      margin: 0 0 14px; padding: 11px 14px; border-radius: 9px;
+      font-size: 13px; line-height: 1.55; border: 1px solid #d7dce2;
+    }
+    .admin-env-notice.is-production { background: #fff1f1; border-color: #efb4b4; color: #7c2020; }
+    .admin-env-notice.is-development { background: #f4f6f8; color: #46515c; }
+    .ds-scope-notice {
+      margin: 8px 0 10px; padding: 8px 10px; border-radius: 7px;
+      font-size: 12.5px; line-height: 1.55; border-left: 4px solid #6b7280;
+      background: #f6f7f8; color: #34404c;
+    }
+    .ds-scope-notice.is-production { border-left-color: #b3261e; background: #fff4f3; }
+    .ds-scope-notice.is-development { border-left-color: #3b6ea8; background: #f1f6fc; }
+    .ds-scope-notice.is-disabled { border-left-color: #9a6700; background: #fff9e8; }
+    .ds-scope-locked button,
+    .ds-scope-locked input,
+    .ds-scope-locked select,
+    .ds-scope-locked a.admin-btn {
+      opacity: .48 !important; pointer-events: none !important; cursor: not-allowed !important;
+    }
   </style>
 </head>
 <body>
@@ -110,6 +130,7 @@
     </aside>
 
     <main class="admin-main">
+      <div id="adminEnvNotice" class="admin-env-notice" role="status"></div>
       <div id="grid"></div>
     </main>
   </div>
@@ -2479,7 +2500,7 @@
           + Number(snapshot.no_address_rows || 0);
         summary.innerHTML = `
           <div class="geo-stat-row"><b>5단계 운영 기준 분석:</b> 원장 ${num(snapshot.staging_rows)}건 · 운영 기존 ${num(snapshot.production_registry_rows)}건 · 신규 허가 ${num(snapshot.new_permits)}건</div>
-          <div class="geo-stat-row"><b>신규 주소 판정:</b> 기존 건물 연결 ${num(snapshot.new_existing_building_rows)}건 · 신규 건물 후보 신고 ${num(snapshot.new_building_candidate_rows)}건 · 주소 중복 제거 신규 건물 <b>${num(snapshot.new_building_candidate_unique_addresses)}개</b></div>
+          <div class="geo-stat-row"><b>신규 주소 판정:</b> 기존 건물 연결 ${num(snapshot.new_existing_building_rows)}건 · 신규 건물 후보 신고행 ${num(snapshot.new_building_candidate_rows)}건 · 주소 중복 제거 후보 주소 <b>${num(snapshot.new_building_candidate_unique_addresses)}개</b></div>
           <div class="geo-stat-row"><b>확인 보류:</b> 복수 후보·충돌·주소 없음 ${num(unresolved)}건 · 자동 건물 생성 제외</div>
           <div class="geo-stat-row"><b>객실수 안전:</b> ${snapshot.room_count_safe_to_replace ? "기존값 대체 가능" : "CSV 공란은 기존 운영 객실수를 보존해야 함"} · 분석 ${dgEscape(snapshot.generated_at)}</div>`;
       } else {
@@ -2610,7 +2631,7 @@
             ${automationMarkup}
             <div><b>7단계 운영 기준 manifest v${num(manifest.version_no || 1)}:</b> ${dgEscape(lodgingStagingState(manifest.status))} · 총 ${num(manifest.row_count)}건</div>
             <div>신규 신고 <b>${num(actions.insert || 0)}건</b> · 기존 갱신 ${num(actions.update || 0)}건 · 상태변경 ${num(actions.status_change || 0)}건 · 수동검토 ${num(result.manual_review_targets || 0)}건</div>
-            <div>기존 건물 연결 ${num(matches.existing_building || 0)}건 · 신규 건물 후보 ${num(matches.new_building_candidate || 0)}건 · 복수후보/충돌/주소없음 ${num((matches.ambiguous_existing_building || 0) + (matches.address_conflict || 0) + (matches.no_address || 0))}건</div>
+            <div>기존 건물 연결 ${num(matches.existing_building || 0)}건 · 신규 건물 후보 신고행 ${num(matches.new_building_candidate || 0)}건 · 복수후보/충돌/주소없음 ${num((matches.ambiguous_existing_building || 0) + (matches.address_conflict || 0) + (matches.no_address || 0))}건</div>
             <div style="color:#9a6700;">신규 건물 자동 생성 0건 · 운영 DB 반영 0건</div>
             ${auditMarkup}
             ${reviewMarkup}
@@ -4085,6 +4106,61 @@
     // ---- 데이터 동기화 통합 페이지 ----
     // UI 배치 순서 = 권장 실행 순서(건물 생성 → 정보 보강 → 거래/외부 데이터 연결).
     // 자동 체이닝 아님 — 각 버튼은 개별 수동 실행. 기존 라우트는 그대로 호출한다.
+    const ADMIN_IS_PRODUCTION_ENV =
+      /homenstay\.com$|livingstay-realtrade\.replit\.app$/.test(location.hostname);
+
+    const DATA_SYNC_SCOPE_GUIDES = {
+      dsSecBrhub: ["production", "운영 건물마스터에 새 건물을 추가합니다. 실제 서비스 데이터 수집은 운영 관리자에서만 실행합니다."],
+      dsSecBackfillLodging: ["production", "운영 숙박신고를 근거로 누락 건물을 보완합니다. 정부 8종 승인 원장과 별개인 건물마스터 보완 작업입니다."],
+      dsSecGeo: ["production", "운영 건물마스터의 좌표 공란만 채웁니다. 개발에서 실행하면 개발 DB만 바뀝니다."],
+      dsSecPhotos: ["production", "운영 상세화면 요청 시 사진을 조회·캐시합니다. 별도 대량수집 버튼은 사용하지 않습니다."],
+      dsSecTitle: ["production", "운영 건물의 건축정보 공란만 보완합니다."],
+      dsSecZip: ["production", "운영 정기 작업이 자동 처리합니다. 수동 조작이 필요 없습니다."],
+      dsSecTx: ["production", "운영 실거래 테이블에 최근 거래를 수집합니다."],
+      dsSecTxBackfill: ["production", "운영 실거래 과거 이력을 대량 보완합니다. 일상적인 갱신에는 사용하지 않습니다."],
+      dsSecBroker: ["production", "운영 중개업소 후보 DB를 갱신합니다."],
+      dsSecBrokerGeo: ["production", "운영 중개업소의 좌표 공란을 채웁니다."],
+      dsSecRealty: ["production", "운영 건물마스터에 입점 부동산 정보를 연결합니다."],
+      dsSecLodgingStaging: ["development", "정부 숙박 8종 원본 검증·승인·dry-run 전용입니다. 실제 운영 반영은 정기 promotion이 별도로 수행합니다."],
+      dsSecLodging: ["disabled", "기존 직접 수집 경로는 종료됐습니다. 장애 복구를 승인한 경우가 아니면 실행하지 않습니다."],
+      dsSecPermits: ["production", "운영 건물마스터에 준공 전 프로젝트 후보를 수집합니다."],
+      dsSecReclassify: ["production", "운영 건물마스터의 미분류 항목만 재판정합니다."],
+      dsSecClassificationProvenance: ["production", "운영 분류의 근거·신뢰도 공란만 검증 가능한 자료로 복원합니다."],
+      dsSecStores: ["production", "운영 건물의 상가정보 캐시를 미리 채웁니다."],
+      dsSecPendingCompletion: ["production", "운영 건물 상태를 변경하거나 잘못 수집된 후보를 삭제할 수 있는 작업입니다."],
+      dsSecBackup: ["production", "운영 백업은 운영 관리자에서 내려받습니다. 개발 관리자는 개발 DB만 백업합니다."],
+    };
+
+    function applyDataSyncScopeGuides() {
+      Object.entries(DATA_SYNC_SCOPE_GUIDES).forEach(([id, guide]) => {
+        const section = document.getElementById(id);
+        if (!section) return;
+        const [scope, detail] = guide;
+        const scopeLabel = scope === "production"
+          ? "운영 관리자에서 실행"
+          : scope === "development"
+            ? "개발 관리자에서만 실행"
+            : "사용 중지 · 비상 복구 전용";
+        const mismatch = scope === "disabled"
+          || (scope === "production" && !ADMIN_IS_PRODUCTION_ENV)
+          || (scope === "development" && ADMIN_IS_PRODUCTION_ENV);
+        const notice = document.createElement("div");
+        notice.className = `ds-scope-notice is-${scope}`;
+        notice.innerHTML = `<b>${scopeLabel}</b><br>${detail}${
+          mismatch ? "<br><b>현재 환경에서는 실행 버튼이 잠겨 있습니다.</b>" : ""
+        }`;
+        const head = section.querySelector(".legal-admin-head");
+        if (head) head.insertAdjacentElement("afterend", notice);
+        if (mismatch) {
+          section.classList.add("ds-scope-locked");
+          section.querySelectorAll("button, input, select").forEach((control) => {
+            control.disabled = true;
+            control.setAttribute("aria-disabled", "true");
+          });
+        }
+      });
+    }
+
     async function loadPendingCompletion() {
       const statusBox = document.getElementById("pendingCompletionStatus");
       const listBox = document.getElementById("pendingCompletionList");
@@ -4150,6 +4226,13 @@
             각 버튼은 개별 실행이며 자동으로 이어지지 않습니다. 모든 작업은 백그라운드로 진행되어
             <b>브라우저를 닫아도 계속</b> 실행됩니다.
           </p>
+          <div class="ds-scope-notice ${ADMIN_IS_PRODUCTION_ENV ? "is-production" : "is-development"}">
+            <b>현재 위치: ${ADMIN_IS_PRODUCTION_ENV ? "운영 관리자" : "개발 관리자"}</b><br>
+            모든 실행 버튼은 현재 접속한 앱이 연결된 DB만 변경합니다.
+            개발 관리자에서 수집한 값은 운영으로 자동 복사되지 않습니다.<br>
+            <b>원칙:</b> 원본 검증·승인·dry-run은 개발 관리자, 실제 서비스 수집·보완·백업은 운영 관리자에서 실행합니다.
+            숙박 운영 반영은 승인 후 정기 promotion 한 경로만 사용합니다.
+          </div>
           <div id="dsBanner" role="alert"
                style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:14px;line-height:1.6"></div>
         </div>
@@ -4310,7 +4393,7 @@
             <button id="txSyncRunBtn" class="admin-btn admin-btn-primary">실거래 동기화 실행</button>
           </div>
         </div>
-        <div class="legal-admin" style="margin-top:16px">
+        <div class="legal-admin" style="margin-top:16px" id="dsSecTxBackfill">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">⑤ 과거 데이터 백필</h2>
           </div>
@@ -4382,6 +4465,7 @@
             정부 숙박 허가원장 8종을 운영 원장과 분리해 검증합니다.
             원본별 검증 통과 행만 승인 초안에 고정하고, 승인 기록 뒤 dry-run으로 삽입·갱신·상태변경 건수를 확인합니다.
             <b>이 화면에는 운영 반영 기능이 없으며 기존 건물 연결과 운영 객실수를 변경하지 않습니다.</b>
+            신규 건물 후보 신고행과 후보 주소 수는 분석값일 뿐, 이 화면에서 건물마스터를 생성하지 않습니다.
           </p>
           <div id="lodgingStagingSummary" class="geo-status">5단계 분석 결과 불러오는 중…</div>
           <div id="lodgingPromotionManifest" class="geo-status" style="margin-top:10px;">7단계 운영 기준 manifest 불러오는 중…</div>
@@ -4394,29 +4478,27 @@
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecLodging">
           <div class="legal-admin-head">
-            <h2 class="legal-admin-title">⑨-B 기존 운영 직접 동기화·수동 보완</h2>
+            <h2 class="legal-admin-title">⑨-B 기존 직접 동기화 — 종료됨</h2>
           </div>
           <p class="legal-admin-hint">
-            새 8종 승인 경로가 운영 반영 단계까지 검증되기 전까지 보존하는 기존 수집·수동 보완 경로입니다.<br>
-            행정안전부 <b>숙박업 조회서비스</b>(지방행정 인허가데이터)를 수집합니다.
-            위생업태가 <b>숙박업(생활) · 일반호텔 · 여관업 · 여인숙업</b>인 사업장을 저장하며, 일일 한도(캡 8,000호출)에 도달하면
-            체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
-            후보 검색·엑셀 다운로드는 <b>미등록 위탁운영 후보</b> 메뉴에서 이용하세요.<br>
-            <b>농어촌민박·한옥 신고 데이터는 매일 자동으로 운영 DB에 갱신</b>되며, 아래 현황에서 최근 성공·실패 결과를 확인할 수 있습니다.
+            이 영역은 새 정부 숙박 8종 승인·promotion 경로에 장애가 생겼을 때만 복구할 수 있도록 남겨 둔
+            <b>비상용 legacy 경로</b>입니다. 평상시에는 실행하지 않습니다.<br>
+            숙박 신고의 정기 운영 반영은 ⑨-A에서 개발 검증·승인한 원본을
+            <b>정기 숙박 promotion 한 경로</b>로만 처리합니다.
           </p>
           <div id="lodgingSyncStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">
             <span id="lodgingSyncMsg" class="legal-msg" role="alert"></span>
-            <button id="lodgingSyncRunBtn" class="admin-btn admin-btn-primary">영업신고 데이터 동기화</button>
+          <button id="lodgingSyncRunBtn" class="admin-btn" disabled>기존 직접 동기화 종료됨</button>
           </div>
-          <h3 style="font-size:15px;margin:20px 0 8px;">원본별 적재·연결 현황과 수동 실행</h3>
+          <h3 style="font-size:15px;margin:20px 0 8px;">기존 원본별 적재·연결 이력</h3>
           <p class="legal-admin-hint">
-            버튼은 기존 체크포인트·API 한도·실행 잠금을 그대로 사용합니다.
-            충돌 또는 실제 수집기 미실행은 완료가 아니라 실패·보류로 표시됩니다.
+            아래 내용은 과거 직접 수집의 상태 확인용입니다. 새 승인 경로와 별도로 실행하면 원장이 다시 달라질 수 있으므로
+            비상 복구 승인 전에는 수동 실행하지 않습니다.
           </p>
           <div id="lodgingSourceCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">불러오는 중…</div>
           <div id="lodgingSourceMsg" class="legal-msg" role="alert" style="display:block;margin-top:8px;"></div>
-          <h3 style="font-size:15px;margin:22px 0 8px;">숙박 원본 파일 미리보기·승인 반영</h3>
+          <h3 style="font-size:15px;margin:22px 0 8px;">기존 수동 파일 가져오기 — 사용 중지</h3>
           <p class="legal-admin-hint">
             에어비앤비(CSV/XLSX), 농어촌민박(CSV), 한옥체험업(CSV/XLSX)을 지원합니다.
             미리보기는 DB를 변경하지 않으며, 승인 후에만 비활성 이력을 포함해 원본을 보존하고 활성 신고만 건물에 연결합니다.
@@ -4531,6 +4613,7 @@
           </div>
         </div>
       `;
+      applyDataSyncScopeGuides();
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
@@ -8149,11 +8232,19 @@
 <script>
 (function(){
   const badge = document.getElementById("envBadge");
-  if (!badge) return;
   const isProd = /homenstay\.com$|livingstay-realtrade\.replit\.app$/.test(location.hostname);
-  badge.textContent = isProd ? "🔴 운영" : "⚪ 개발";
-  badge.style.background = isProd ? "#FDE8E8" : "#EEE";
-  badge.style.color = isProd ? "#C0392B" : "#666";
+  if (badge) {
+    badge.textContent = isProd ? "🔴 운영" : "⚪ 개발";
+    badge.style.background = isProd ? "#FDE8E8" : "#EEE";
+    badge.style.color = isProd ? "#C0392B" : "#666";
+  }
+  const notice = document.getElementById("adminEnvNotice");
+  if (notice) {
+    notice.classList.add(isProd ? "is-production" : "is-development");
+    notice.innerHTML = isProd
+      ? "<b>현재 운영 관리자입니다.</b> 저장·승인·삭제·수집 버튼은 실제 서비스 운영 DB를 즉시 변경합니다. 원본 검증·승인·dry-run은 개발 관리자에서 먼저 완료하세요."
+      : "<b>현재 개발 관리자입니다.</b> 이 화면의 변경은 개발 DB에만 적용되며 운영으로 자동 복사되지 않습니다. 정부 원본 검증·승인·dry-run만 여기서 하고, 실제 서비스 수집은 운영 관리자에서 실행하세요.";
+  }
 })();
 </script>
 </body>
