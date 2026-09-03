@@ -132,7 +132,7 @@
     const color = markerColor(b.lodging_type, b.building_status);
     const badge = `<span style="display:inline-block; font-size:8.8px; font-weight:700; color:${color}; vertical-align:middle;">${esc(badgeLabel(b.lodging_type, b.building_status))}</span>`;
     const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
-    // 영업신고호실·미신고·신고율은 lodging_registry 비폐업 객실수 합계만 사용한다.
+    // 정상영업 신고객실수·미신고·신고율은 원본 중복을 통합한 객실수 합계를 사용한다.
     // 일반숙박은 units와 객실수가 비교 대상이 아니므로 객실수 절대값만 표시한다.
     const lodgingRoomTotal = b.lodging_room_total != null ? Number(b.lodging_room_total) : null;
     const bizUnits = lodgingRoomTotal != null ? lodgingRoomTotal.toLocaleString('ko-KR') + "실" : "-";

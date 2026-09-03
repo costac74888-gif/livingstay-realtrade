@@ -28,6 +28,7 @@ from lodging_staging import (
     assert_development_staging,
 )
 from legacy_lodging_gate import CUTOVER_LOCK_ID, CONTROL_META_KEY
+from lodging_stats_dedup import deduplicate_cross_source_lodgings
 from validate_lodging_all_production_delta import classify_production_match
 from validate_lodging_approval_promotion import classify_registry_action
 
@@ -1410,10 +1411,10 @@ def _surface_snapshot(registry_rows, building_rows):
             for row in active_matches.values()
         )
 
-    active_stats_rows = [
+    active_stats_rows = deduplicate_cross_source_lodgings([
         row for row in stats_permits.values()
         if row.get("biz_status_name") == "영업/정상"
-    ]
+    ])
     stats_room_count = sum(
         int(row.get("room_count") or 0)
         for row in active_stats_rows

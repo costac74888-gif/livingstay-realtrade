@@ -25,7 +25,7 @@ def matched_lodgings(cur, building, active_only=True):
             SELECT lr.biz_name, lr.permit_number, lr.permit_date,
                    lr.biz_status_name, lr.biz_status_detail, lr.room_count,
                    lr.hygiene_type, lr.phone, lr.road_address, lr.jibun_address,
-                   lr.source_updated_at, lr.biz_name_norm
+                   lr.source_updated_at, lr.biz_name_norm, lr.road_norm, lr.jibun_norm
             FROM lodging_registry lr
             WHERE lr.road_norm = %s{status_clause}
             """,
@@ -42,7 +42,7 @@ def matched_lodgings(cur, building, active_only=True):
             SELECT lr.biz_name, lr.permit_number, lr.permit_date,
                    lr.biz_status_name, lr.biz_status_detail, lr.room_count,
                    lr.hygiene_type, lr.phone, lr.road_address, lr.jibun_address,
-                   lr.source_updated_at, lr.biz_name_norm
+                   lr.source_updated_at, lr.biz_name_norm, lr.road_norm, lr.jibun_norm
             FROM lodging_registry lr
             WHERE lr.jibun_norm = %s{status_clause}
             """,

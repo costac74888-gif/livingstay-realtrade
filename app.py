@@ -95,6 +95,7 @@ from lodging_matching import (
     matched_lodgings,
     choose_representative,
 )
+from lodging_stats_dedup import deduplicate_cross_source_lodgings
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -1611,6 +1612,7 @@ def get_building(building_id):
     lodging_room_total = 0
     try:
         lr_rows, _ = matched_lodgings(cur, building, active_only=True)
+        lr_rows = deduplicate_cross_source_lodgings(lr_rows)
         if lr_rows:
             op_map = {}
             if lr_rows:
@@ -1629,6 +1631,8 @@ def get_building(building_id):
             import random as _random
             for r in lr_rows:
                 d = dict(r)
+                d.pop("road_norm", None)
+                d.pop("jibun_norm", None)
                 norm = d.pop("biz_name_norm", None) or addr_norm.normalize_name(d["biz_name"])
                 op = op_map.get(norm) if norm else None
                 d["registered"] = op is not None
@@ -1877,9 +1881,9 @@ def get_building(building_id):
         "report_rate" if uses_lodging_report_rate(result.get("lodging_type")) else "room_count"
     )
     units    = result.get("units")          # master_buildings.units — 총 호실(단일 소스)
-    reported = result.get("lodging_room_total")  # 행안부 기준 실시간 영업신고호실 (폐업 제외)
+    reported = result.get("lodging_room_total")  # 원본 중복을 통합한 정상영업 신고객실수
     # biz_units_snapshot_legacy(엑셀 스냅샷)은 참고용으로만 보관한다.
-    # 영업신고호실은 아래 lodging_registry 실시간 집계만 사용한다.
+    # 정상영업 신고객실수는 아래 lodging_registry 실시간 집계만 사용한다.
     result["lodging_report_rate"] = (
         round(reported * 100.0 / units, 1)
         if (uses_lodging_report_rate(result.get("lodging_type")) and units and reported is not None)
@@ -18263,16 +18267,16 @@ def admin_buildings_list():
             }
             for lr in lr_list
         ]
-        # 영업신고호실은 주소 매칭된 lodging_registry의 비폐업 객실수 합계만 사용한다.
+        # 정상영업 신고객실수는 폐업을 제외하고 원본 간 동일 신고를 한 번만 센다.
         # legacy 스냅샷이 0/NULL이거나 다른 값이어도 화면·신고율 계산에 영향 주지 않는다.
+        deduplicated_active_lodgings = deduplicate_cross_source_lodgings(active_lodgings)
         it["lodging_room_total"] = sum(
             (lr.get("room_count") or 0)
-            for lr in lr_list
-            if is_active_status(lr.get("biz_status_name"))
+            for lr in deduplicated_active_lodgings
         )
-        it["lodging_room_known"] = bool(active_lodgings) and all(
+        it["lodging_room_known"] = bool(deduplicated_active_lodgings) and all(
             lr.get("room_count") is not None
-            for lr in active_lodgings
+            for lr in deduplicated_active_lodgings
         )
         it["lodging_metric"] = (
             "report_rate" if uses_lodging_report_rate(it.get("lodging_type")) else "room_count"
@@ -18393,7 +18397,8 @@ def admin_buildings_list():
         lr_jibun_map_t: dict = {}
         if t_road_norms or t_jibun_norms:
             cur_t.execute(
-                "SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm "
+                "SELECT permit_number, biz_name, permit_date, room_count, biz_status_name, "
+                "road_norm, jibun_norm "
                 "FROM lodging_registry WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
                 [t_road_norms or ["__none__"], t_jibun_norms or ["__none__"]]
             )
@@ -18421,17 +18426,17 @@ def admin_buildings_list():
             if uses_lodging_report_rate(b.get("lodging_type")):
                 report_rate_permits_t.update(bld_permits)
 
-        active_permits_t = [
+        active_permits_t = deduplicate_cross_source_lodgings([
             v for v in all_permits_t.values()
             if is_active_status(v["biz_status_name"])
-        ]
-        report_rate_active_permits_t = [
+        ])
+        report_rate_active_permits_t = deduplicate_cross_source_lodgings([
             v for v in report_rate_permits_t.values()
             if is_active_status(v["biz_status_name"])
-        ]
+        ])
         total_biz_units_t  = sum(int(v["room_count"] or 0) for v in report_rate_active_permits_t)
         total_lodging_t    = len(active_permits_t)
-        # 가중평균: 일반숙박을 제외한 영업신고호실 합 ÷ 호실 합 × 100.
+        # 가중평균: 일반숙박을 제외한 정상영업 신고객실수 합 ÷ 호실 합 × 100.
         weighted_report_rate_t = (
             round(total_biz_units_t / report_rate_units_t * 100, 1)
             if report_rate_units_t else None
@@ -18811,6 +18816,16 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
     가장 큰 후보(동률이면 낮은 id)를 대표로 택한다. 대표 건물 안에서도 여러
     신고의 객실 합계는 마스터 호실 수까지만 신고율 분자로 인정한다.
     """
+    unique_active_rows = {}
+    for matches in (*road_matches.values(), *jibun_matches.values()):
+        for permit, lodging in matches.items():
+            if is_active_status(lodging.get("biz_status_name")):
+                unique_active_rows.setdefault(permit, lodging)
+    counted_permits = {
+        row.get("permit_number")
+        for row in deduplicate_cross_source_lodgings(unique_active_rows.values())
+    }
+
     candidates_by_permit = {}
     building_by_id = {}
     for building in buildings:
@@ -18825,7 +18840,10 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
         if not matches:
             continue
         for permit, lodging in matches.items():
-            if not is_active_status(lodging["biz_status_name"]):
+            if (
+                not is_active_status(lodging["biz_status_name"])
+                or permit not in counted_permits
+            ):
                 continue
             entry = candidates_by_permit.setdefault(permit, {"lodging": lodging, "buildings": []})
             entry["buildings"].append(building)
@@ -19097,7 +19115,8 @@ def _lodging_full_stats_payload():
     lr_jibun_map: dict = {}
     if all_road_norms or all_jibun_norms:
         cur.execute(
-            "SELECT permit_number, room_count, biz_status_name, hygiene_type, road_norm, jibun_norm "
+            "SELECT permit_number, biz_name, permit_date, room_count, biz_status_name, "
+            "hygiene_type, road_norm, jibun_norm "
             "FROM lodging_registry WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
             [all_road_norms or ["__none__"], all_jibun_norms or ["__none__"]]
         )
@@ -19192,19 +19211,19 @@ def _lodging_full_stats_payload():
         tu = sum(int(b["units"] or 0) for b in blds)
         broker_c = sum(badge_map.get(b["id"], 0) for b in blds)
         permits = _permits_for(blds)
-        # 폐업 제외: 영업신고업체·영업신고호실은 현재 운영 중인 사업장만 집계한다.
+        # 폐업 제외 후 원본 간 동일 신고를 통합해 정상영업 지표를 한 번만 집계한다.
         total_pc = len(permits)
         cc       = sum(1 for v in permits.values() if "폐업" in (v["biz_status_name"] or ""))
-        active_vals = [
+        active_vals = deduplicate_cross_source_lodgings([
             v for v in permits.values()
             if is_active_status(v["biz_status_name"])
             and (
                 type_label in {"전체", "복합"}
                 or lodging_type_for_hygiene(v.get("hygiene_type")) == type_label
             )
-        ]
+        ])
         pc = len(active_vals)   # 현재 운영 영업신고업체 수 (폐업 제외)
-        rc = sum(int(v["room_count"] or 0) for v in active_vals)  # 현재 운영 영업신고호실 (폐업 제외)
+        rc = sum(int(v["room_count"] or 0) for v in active_vals)
         is_general = type_label == REPORT_RATE_EXCLUDED_LODGING_TYPE
         is_total = type_label == "전체"
 
@@ -19535,7 +19554,8 @@ def admin_buildings_stats():
     conn2 = get_conn()
     cur2  = conn2.cursor()
     cur2.execute("""
-        SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+        SELECT permit_number, biz_name, permit_date, room_count, biz_status_name,
+               road_norm, jibun_norm
         FROM lodging_registry
         WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
     """, (road_norms or ['__none__'], jibun_norms or ['__none__']))
@@ -19556,16 +19576,20 @@ def admin_buildings_stats():
     cur2.close()
     conn2.close()
 
+    active_permits = deduplicate_cross_source_lodgings([
+        value for value in permit_data.values()
+        if is_active_status(value["biz_status_name"])
+    ])
+    active_rate_permits = deduplicate_cross_source_lodgings([
+        value for value in rate_permit_data.values()
+        if is_active_status(value["biz_status_name"])
+    ])
     lodging_permit_count = len(permit_data)
     room_total   = sum(int(v["room_count"] or 0) for v in permit_data.values())
     closed_count = sum(1 for v in permit_data.values() if "폐업" in (v["biz_status_name"] or ""))
     rate_buildings = [b for b in buildings if uses_lodging_report_rate(b.get("lodging_type"))]
     total_units  = sum(int(b["units"] or 0) for b in rate_buildings)
-    active_rate_rooms = sum(
-        int(v["room_count"] or 0)
-        for v in rate_permit_data.values()
-        if is_active_status(v["biz_status_name"])
-    )
+    active_rate_rooms = sum(int(v["room_count"] or 0) for v in active_rate_permits)
 
     report_rate = round(active_rate_rooms * 100.0 / total_units, 1) if total_units > 0 else None
     closed_rate = round(closed_count * 100.0 / lodging_permit_count, 1) if lodging_permit_count > 0 else None
@@ -20126,11 +20150,13 @@ def admin_buildings_export():
         lr_list       = r.pop("_lr_list", [])
         realty_list   = r.get("store_realty_list", [])
         units         = r["units"]    or 0
-        # lodging_registry 기반 영업신고호실 (폐업 제외) — biz_units(엑셀) 미사용
+        # lodging_registry 기반 정상영업 신고객실수(원본 중복 통합) — biz_units 미사용
+        active_lodgings = deduplicate_cross_source_lodgings([
+            lr for lr in lr_list if is_active_status(lr.get("biz_status_name"))
+        ])
         active_rooms  = sum(
             (lr.get("room_count") or 0)
-            for lr in lr_list
-            if is_active_status(lr.get("biz_status_name"))
+            for lr in active_lodgings
         )
         report_metric = (
             round(active_rooms / units * 100, 1)
@@ -22750,7 +22776,7 @@ def admin_unregistered_lodging_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "미등록 위탁운영 후보"
-    ws.append(["건물명", "총호실수", "사업장명", "영업신고호실수", "전화번호", "인허가일자", "관리번호", "도로명주소", "지번주소"])
+    ws.append(["건물명", "총호실수", "사업장명", "정상영업 신고객실수", "전화번호", "인허가일자", "관리번호", "도로명주소", "지번주소"])
     for r in items:
         ws.append([r["matched_building_name"] or "-",
                    r["building_total_units"] if r["building_total_units"] is not None else "-",
@@ -27696,7 +27722,8 @@ def _matched_lodging_by_region(*, exclude_general=False):
         jibun_matches = {}
         if road_norms or jibun_norms:
             cur.execute("""
-                SELECT permit_number, room_count, biz_status_name, hygiene_type, road_norm, jibun_norm
+            SELECT permit_number, biz_name, permit_date, room_count, biz_status_name,
+                   hygiene_type, road_norm, jibun_norm
                 FROM lodging_registry
                 WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
             """, [list(road_norms) or ["__none__"], list(jibun_norms) or ["__none__"]])
@@ -27925,7 +27952,8 @@ def _report_rate_by_sido_payload():
                 jibun_keys.add(jibun_key)
 
         cur.execute("""
-            SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+            SELECT permit_number, biz_name, permit_date, room_count, biz_status_name,
+                   road_norm, jibun_norm
             FROM lodging_registry
             WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
             ORDER BY source_updated_at DESC NULLS LAST, id DESC

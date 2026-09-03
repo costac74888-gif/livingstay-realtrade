@@ -3183,7 +3183,7 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>신고호실</th><th>신고율</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수</th><th>호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
@@ -5816,7 +5816,7 @@ async function loadBuildingHeader(id){
     } else if (b.lodging_report_rate != null){
       rateDisplay = Number(Number(b.lodging_report_rate).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (roomTotal > 0 && _adminUnits > 0){
-      // lodging_room_total(영업신고 합산)로 즉석 계산 — 헤더 신고율과 동일 소스
+      // lodging_room_total(정상영업 신고객실수)로 즉석 계산 — 헤더 신고율과 동일 소스
       rateDisplay = Number((roomTotal * 100 / _adminUnits).toFixed(1)).toLocaleString('ko-KR') + "%";
     } else if (_adminUnits > 0 && lodgings.length === 0){
       rateDisplay = "0%";
