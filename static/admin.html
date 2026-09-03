@@ -2493,17 +2493,48 @@
           const result = manifest.result || {};
           const actions = result.action_counts || {};
           const matches = result.new_match_counts || {};
+          const reviewTargets = data.promotion_review_targets || [];
+          const reviewDecisions = data.promotion_review_decisions || [];
           const buttons = [];
           if (manifest.status === "draft") {
             buttons.push(`<button type="button" class="admin-btn admin-btn-primary lodging-promotion-action" data-action="approve" data-id="${manifest.id}">운영 기준 manifest 승인 기록</button>`);
           } else if (["approved", "dry_run", "failed"].includes(manifest.status)) {
             buttons.push(`<button type="button" class="admin-btn lodging-promotion-action" data-action="dry-run" data-id="${manifest.id}">${manifest.status === "dry_run" ? "운영 기준 dry-run 다시 실행" : "운영 기준 dry-run 실행"}</button>`);
           }
+          const reviewMarkup = reviewTargets.map((review) => `
+            <section class="lodging-promotion-review" data-source-row-id="${review.source_row_id}" style="margin-top:10px;padding:12px;border:1px solid #d9a441;border-radius:8px;background:#fffaf0;">
+              <div style="font-weight:700;color:#7a4d00;">수동검토 대상 · 원본 ${dgEscape(review.source_key)} ${dgEscape(review.reference_date)} ${num(review.row_number)}행</div>
+              <div style="font-size:12px;line-height:1.65;margin-top:7px;color:#46515c;">
+                <div>관리번호 <b>${dgEscape(review.source_permit_number || review.permit_number || "-")}</b> · 사업장명 <b>${dgEscape(review.biz_name || "-")}</b></div>
+                <div>원본 업태 <b>${dgEscape(review.raw_hygiene_type || "(공란)")}</b> · 분류 ${dgEscape(review.service_category || "-")} · 영업상태 ${dgEscape(review.raw_status || "-")}</div>
+                <div>도로명 ${dgEscape(review.road_address || "-")}</div>
+                <div>지번 ${dgEscape(review.jibun_address || "-")}</div>
+                <div style="color:#b3261e;">보류 사유: <b>${dgEscape(review.review_reason || "-")}</b></div>
+              </div>
+              <details style="margin-top:7px;">
+                <summary style="cursor:pointer;font-size:12px;">원본 전체값 보기</summary>
+                <pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;background:#f7f5ef;padding:8px;border-radius:6px;">${dgEscape(JSON.stringify(review.raw_record || {}, null, 2))}</pre>
+              </details>
+              <div style="display:grid;gap:6px;margin-top:9px;font-size:12px;">
+                <label><input type="radio" name="lodgingReviewDecision-${review.source_row_id}" value="exclude"> 이 행 제외</label>
+                <label><input type="radio" name="lodgingReviewDecision-${review.source_row_id}" value="include_unclassified_history"> 미분류 역사 원장으로 포함</label>
+                <input type="text" maxlength="500" class="lodging-review-note" placeholder="감사 메모 (선택, 500자 이내)" style="padding:7px;border:1px solid #cfc8bb;border-radius:6px;">
+                <button type="button" class="admin-btn admin-btn-primary lodging-review-resolve" data-manifest-id="${manifest.id}" data-source-row-id="${review.source_row_id}">선택을 새 manifest 버전에 기록</button>
+              </div>
+            </section>`).join("");
+          const auditMarkup = reviewDecisions.map((record) => `
+            <div style="margin-top:7px;padding:8px;border:1px solid #b7d7bd;border-radius:7px;background:#f3fbf4;color:#1a6630;font-size:12px;">
+              수동검토 감사 기록: <b>${record.decision === "exclude" ? "제외" : "미분류 역사 원장 포함"}</b>
+              · 원본행 ${num(record.source_row_id)} · 관리자 #${num(record.decided_by)} · ${dgEscape(record.created_at || "-")}
+              ${record.decision_note ? `· ${dgEscape(record.decision_note)}` : ""}
+            </div>`).join("");
           promotionBox.innerHTML = `
-            <div><b>7단계 운영 기준 manifest:</b> ${dgEscape(lodgingStagingState(manifest.status))} · 총 ${num(manifest.row_count)}건</div>
+            <div><b>7단계 운영 기준 manifest v${num(manifest.version_no || 1)}:</b> ${dgEscape(lodgingStagingState(manifest.status))} · 총 ${num(manifest.row_count)}건</div>
             <div>신규 신고 <b>${num(actions.insert || 0)}건</b> · 기존 갱신 ${num(actions.update || 0)}건 · 상태변경 ${num(actions.status_change || 0)}건 · 수동검토 ${num(result.manual_review_targets || 0)}건</div>
             <div>기존 건물 연결 ${num(matches.existing_building || 0)}건 · 신규 건물 후보 ${num(matches.new_building_candidate || 0)}건 · 복수후보/충돌/주소없음 ${num((matches.ambiguous_existing_building || 0) + (matches.address_conflict || 0) + (matches.no_address || 0))}건</div>
             <div style="color:#9a6700;">신규 건물 자동 생성 0건 · 운영 DB 반영 0건</div>
+            ${auditMarkup}
+            ${reviewMarkup}
             <div style="margin-top:8px;">${buttons.join(" ")}</div>`;
         }
       }
@@ -2558,6 +2589,9 @@
           btn.dataset.id,
           btn,
         ));
+      });
+      document.querySelectorAll(".lodging-review-resolve").forEach((btn) => {
+        btn.addEventListener("click", () => resolveLodgingPromotionReview(btn));
       });
     }
 
@@ -2621,6 +2655,48 @@
       } catch (err) {
         msg.style.color = "#b3261e";
         msg.textContent = err.message || "처리하지 못했습니다.";
+        button.disabled = false;
+      }
+    }
+
+    async function resolveLodgingPromotionReview(button) {
+      const msg = document.getElementById("lodgingStagingMsg");
+      const card = button.closest(".lodging-promotion-review");
+      const sourceRowId = button.dataset.sourceRowId;
+      const selected = card && card.querySelector(
+        `input[name="lodgingReviewDecision-${sourceRowId}"]:checked`
+      );
+      if (!selected) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "제외 또는 미분류 역사 원장 포함 중 하나를 선택해 주세요.";
+        return;
+      }
+      const decisionLabel = selected.value === "exclude"
+        ? "이 행을 제외"
+        : "미분류 역사 원장으로 포함";
+      if (!window.confirm(`${decisionLabel}한 새 manifest 버전을 만드시겠습니까? 기존 manifest는 변경되지 않습니다.`)) return;
+      const note = (card.querySelector(".lodging-review-note") || {}).value || "";
+      button.disabled = true;
+      msg.style.color = "#555";
+      msg.textContent = "수동검토 결정을 새 manifest 버전에 기록 중…";
+      try {
+        const res = await fetch(
+          `/api/admin/lodging-staging/promotion/${button.dataset.manifestId}/review/${sourceRowId}`,
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({decision: selected.value, note}),
+          }
+        );
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "처리 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = `수동검토 결정을 manifest v${data.promotion_manifest.version_no}에 감사 기록으로 고정했습니다.`;
+        await loadLodgingStagingOverview();
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = err.message || "수동검토 결정을 기록하지 못했습니다.";
         button.disabled = false;
       }
     }

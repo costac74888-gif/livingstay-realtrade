@@ -1,6 +1,10 @@
 import unittest
 
-from lodging_promotion import _build_targets, _validate_target_admission
+from lodging_promotion import (
+    _apply_review_decision,
+    _build_targets,
+    _validate_target_admission,
+)
 
 
 class LodgingPromotionTest(unittest.TestCase):
@@ -91,6 +95,69 @@ class LodgingPromotionTest(unittest.TestCase):
             _validate_target_admission(targets, allow_manual_review=True),
             1,
         )
+
+    def test_review_include_creates_resolved_copy_without_mutating_original(self):
+        target = {
+            "source_row_id": 3,
+            "action": "insert",
+            "payload": {
+                "permit_number": "P-3",
+                "row_state": "review_required",
+                "review_reason": "업태 공백·관리자 확인",
+                "raw_hygiene_type": None,
+                "service_category": "미분류",
+                "status_bucket": "closed",
+                "raw_record": {"업태구분명": ""},
+            },
+        }
+        resolved = _apply_review_decision(
+            target,
+            "include_unclassified_history",
+            note="폐업 역사 원장 보존",
+        )
+        self.assertEqual(target["payload"]["row_state"], "review_required")
+        self.assertEqual(resolved["payload"]["row_state"], "validated")
+        self.assertIsNone(resolved["payload"]["review_reason"])
+        self.assertEqual(
+            resolved["payload"]["original_review_reason"],
+            "업태 공백·관리자 확인",
+        )
+        self.assertEqual(
+            resolved["payload"]["review_resolution"]["decision"],
+            "include_unclassified_history",
+        )
+
+    def test_review_exclude_omits_target_from_new_manifest(self):
+        target = {
+            "payload": {
+                "permit_number": "P-4",
+                "row_state": "review_required",
+            }
+        }
+        self.assertIsNone(_apply_review_decision(target, "exclude"))
+
+    def test_review_decision_rejects_non_review_target(self):
+        target = {
+            "payload": {
+                "permit_number": "P-5",
+                "row_state": "validated",
+            }
+        }
+        with self.assertRaisesRegex(ValueError, "이미 해결"):
+            _apply_review_decision(target, "exclude")
+
+    def test_unclassified_history_include_rejects_other_review_reasons(self):
+        target = {
+            "payload": {
+                "permit_number": "P-6",
+                "row_state": "review_required",
+                "raw_hygiene_type": None,
+                "service_category": "미분류",
+                "status_bucket": "active",
+            }
+        }
+        with self.assertRaisesRegex(ValueError, "폐업 원장"):
+            _apply_review_decision(target, "include_unclassified_history")
 
 
 if __name__ == "__main__":

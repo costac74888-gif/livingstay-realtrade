@@ -84,7 +84,14 @@ class LodgingAdminControlTests(unittest.TestCase):
             '"/api/admin/lodging-staging/promotion/<int:manifest_id>/apply"',
             app,
         )
+        self.assertIn(
+            '"/review/<int:source_row_id>"',
+            app,
+        )
         self.assertIn('id="lodgingPromotionManifest"', html)
+        self.assertIn("원본 전체값 보기", html)
+        self.assertIn("include_unclassified_history", html)
+        self.assertIn("새 manifest 버전에 기록", html)
 
     def test_rural_upload_uses_same_source_lock_as_api_collector(self):
         lock_id = sync_rural_hanok._source_lock_ids(["rural"])[0]

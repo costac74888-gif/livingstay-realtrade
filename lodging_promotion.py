@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import secrets
+from copy import deepcopy
 from collections import Counter, defaultdict
 
 import psycopg2
@@ -22,6 +23,12 @@ from lodging_staging import (
 )
 from validate_lodging_all_production_delta import classify_production_match
 from validate_lodging_approval_promotion import classify_registry_action
+
+
+REVIEW_DECISIONS = {
+    "exclude": "제외",
+    "include_unclassified_history": "미분류 역사 원장 포함",
+}
 
 
 def _canonical_hash(value):
@@ -61,6 +68,42 @@ def _validate_target_admission(targets, *, allow_manual_review):
             f"수동 검토 미해결 행 {manual_review_count}건이 있어 진행할 수 없습니다."
         )
     return manual_review_count
+
+
+def _apply_review_decision(target, decision, *, note=None):
+    """수동검토 대상의 새 manifest용 payload를 만든다.
+
+    기존 target/payload를 변경하지 않고, 포함 결정인 경우에만 검토 상태를
+    해소한 복사본을 반환한다. 제외 결정은 None을 반환해 새 manifest에서
+    대상 행 자체를 제거한다.
+    """
+    if decision not in REVIEW_DECISIONS:
+        raise ValueError("수동검토 결정은 제외 또는 미분류 역사 원장 포함이어야 합니다.")
+    if target.get("payload", {}).get("row_state") != "review_required":
+        raise ValueError("이미 해결된 수동검토 행입니다.")
+    if decision == "exclude":
+        return None
+    payload = target["payload"]
+    if (
+        payload.get("service_category") != "미분류"
+        or payload.get("status_bucket") != "closed"
+        or payload.get("raw_hygiene_type")
+    ):
+        raise ValueError(
+            "미분류 역사 원장 포함은 업태가 비어 있는 폐업 원장에만 사용할 수 있습니다."
+        )
+    resolved = deepcopy(target)
+    payload = resolved["payload"]
+    payload["original_row_state"] = payload.get("row_state")
+    payload["original_review_reason"] = payload.get("review_reason")
+    payload["row_state"] = "validated"
+    payload["review_reason"] = None
+    payload["review_resolution"] = {
+        "decision": decision,
+        "decision_label": REVIEW_DECISIONS[decision],
+        "note": note or None,
+    }
+    return resolved
 
 
 def _fetch_latest_staging(conn):
@@ -363,6 +406,232 @@ def create_production_baseline_manifest(*, created_by=None):
             cur.close()
     finally:
         dev_conn.close()
+
+
+def create_resolved_production_manifest(
+    manifest_id,
+    source_row_id,
+    *,
+    decision,
+    decided_by,
+    note=None,
+):
+    """수동검토 결정을 기존 manifest와 분리된 새 버전으로 고정한다."""
+    assert_development_staging()
+    if decision not in REVIEW_DECISIONS:
+        raise ValueError("수동검토 결정은 제외 또는 미분류 역사 원장 포함이어야 합니다.")
+    decided_by = _require_admin_actor(decided_by, "수동검토 해결")
+    note = (str(note).strip() if note is not None else "") or None
+    if note and len(note) > 500:
+        raise ValueError("수동검토 메모는 500자 이내여야 합니다.")
+
+    conn = get_conn()
+    assert_development_connection(conn)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, manifest_key, status, source_batch_ids,
+                   production_baseline_fingerprint, target_payload_sha256,
+                   row_count, result, run_id, version_no
+              FROM lodging_promotion_manifests
+             WHERE id=%s
+             FOR UPDATE
+            """,
+            (manifest_id,),
+        )
+        base = cur.fetchone()
+        if not base:
+            raise ValueError("운영 기준 manifest를 찾을 수 없습니다.")
+        if base["status"] != "draft":
+            raise ValueError("수동검토 해결은 승인 전 draft manifest에서만 할 수 있습니다.")
+
+        cur.execute(
+            """
+            SELECT id
+              FROM lodging_promotion_review_decisions
+             WHERE base_manifest_id=%s AND source_row_id=%s
+            """,
+            (manifest_id, source_row_id),
+        )
+        if cur.fetchone():
+            raise ValueError("이 manifest의 수동검토 행은 이미 해결 기록이 있습니다.")
+
+        cur.execute(
+            """
+            SELECT source_row_id, action, production_match_state,
+                   production_building_id, existing_applied_building_id, payload
+              FROM lodging_promotion_rows
+             WHERE promotion_manifest_id=%s
+             ORDER BY source_row_id
+            """,
+            (manifest_id,),
+        )
+        targets = [
+            {
+                "source_row_id": row["source_row_id"],
+                "action": row["action"],
+                "production_match_state": row["production_match_state"],
+                "production_building_id": row["production_building_id"],
+                "existing_applied_building_id": row["existing_applied_building_id"],
+                "payload": dict(row["payload"]),
+            }
+            for row in cur.fetchall()
+        ]
+        _validate_target_admission(targets, allow_manual_review=True)
+        if len(targets) != int(base["row_count"]):
+            raise RuntimeError("기존 manifest 행 수가 변경되었습니다.")
+        if _canonical_hash(targets) != base["target_payload_sha256"]:
+            raise RuntimeError("기존 manifest payload가 생성 이후 변경되었습니다.")
+
+        target = next(
+            (item for item in targets if int(item["source_row_id"]) == int(source_row_id)),
+            None,
+        )
+        if not target:
+            raise ValueError("manifest에서 수동검토 대상 행을 찾을 수 없습니다.")
+        resolved = _apply_review_decision(target, decision, note=note)
+        resolved_targets = [
+            item
+            for item in targets
+            if int(item["source_row_id"]) != int(source_row_id)
+        ]
+        if resolved is not None:
+            resolved_targets.append(resolved)
+        resolved_targets.sort(key=lambda item: int(item["source_row_id"]))
+        _validate_target_admission(resolved_targets, allow_manual_review=False)
+
+        base_result = dict(base["result"] or {})
+        base_resolutions = list(base_result.get("review_resolutions") or [])
+        resolution = {
+            "source_row_id": int(source_row_id),
+            "permit_number": target["payload"].get("permit_number"),
+            "decision": decision,
+            "decision_label": REVIEW_DECISIONS[decision],
+            "note": note,
+        }
+        action_counts = Counter(item["action"] for item in resolved_targets)
+        match_counts = Counter(
+            item["production_match_state"]
+            for item in resolved_targets
+            if item["production_match_state"]
+        )
+        status_counts = Counter(
+            item["payload"].get("status_bucket") or "unknown"
+            for item in resolved_targets
+        )
+        result = {
+            **base_result,
+            "manifest_version": int(base["version_no"] or 1) + 1,
+            "parent_manifest_id": int(manifest_id),
+            "target_rows": len(resolved_targets),
+            "action_counts": dict(action_counts),
+            "new_match_counts": dict(match_counts),
+            "status_counts": dict(status_counts),
+            "existing_links_preserved": sum(
+                bool(item["existing_applied_building_id"])
+                for item in resolved_targets
+            ),
+            "new_permits": int(action_counts.get("insert", 0)),
+            "manual_review_targets": 0,
+            "review_resolutions": [*base_resolutions, resolution],
+            "production_writes": 0,
+        }
+        target_payload_sha256 = _canonical_hash(resolved_targets)
+        manifest_key = "LODGING-PROMOTION:" + _canonical_hash(
+            {
+                "parent_manifest_id": int(manifest_id),
+                "production_baseline_fingerprint": base[
+                    "production_baseline_fingerprint"
+                ],
+                "target_payload_sha256": target_payload_sha256,
+            }
+        )
+        run_id = secrets.token_hex(16)
+        cur.execute(
+            """
+            INSERT INTO lodging_promotion_manifests (
+                manifest_key, status, source_batch_ids,
+                production_baseline_fingerprint, target_payload_sha256,
+                row_count, result, run_id, created_by,
+                parent_manifest_id, version_no
+            ) VALUES (%s, 'draft', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                manifest_key,
+                psycopg2.extras.Json(base["source_batch_ids"]),
+                base["production_baseline_fingerprint"],
+                target_payload_sha256,
+                len(resolved_targets),
+                psycopg2.extras.Json(result),
+                run_id,
+                decided_by,
+                manifest_id,
+                int(base["version_no"] or 1) + 1,
+            ),
+        )
+        new_manifest_id = cur.fetchone()["id"]
+        values = [
+            (
+                new_manifest_id,
+                item["source_row_id"],
+                item["action"],
+                item["production_match_state"],
+                item["production_building_id"],
+                item["existing_applied_building_id"],
+                psycopg2.extras.Json(item["payload"]),
+            )
+            for item in resolved_targets
+        ]
+        if values:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO lodging_promotion_rows (
+                    promotion_manifest_id, source_row_id, action,
+                    production_match_state, production_building_id,
+                    existing_applied_building_id, payload
+                ) VALUES %s
+                """,
+                values,
+                page_size=1000,
+            )
+        cur.execute(
+            """
+            INSERT INTO lodging_promotion_review_decisions (
+                source_row_id, base_manifest_id, resulting_manifest_id,
+                decision, decision_note, decided_by
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                source_row_id,
+                manifest_id,
+                new_manifest_id,
+                decision,
+                note,
+                decided_by,
+            ),
+        )
+        conn.commit()
+        return {
+            "id": new_manifest_id,
+            "manifest_key": manifest_key,
+            "status": "draft",
+            "row_count": len(resolved_targets),
+            "result": result,
+            "run_id": run_id,
+            "parent_manifest_id": manifest_id,
+            "version_no": int(base["version_no"] or 1) + 1,
+            "review_resolution": resolution,
+            "created": True,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 def approve_production_manifest(manifest_id, *, approved_by):

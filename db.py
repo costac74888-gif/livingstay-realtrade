@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-03-04"
+SCHEMA_VERSION = "2026-09-03-05"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2260,12 +2260,23 @@ def _run_init_db():
         run_id TEXT NOT NULL UNIQUE,
         created_by INTEGER REFERENCES admin_users(id) ON DELETE RESTRICT,
         approved_by INTEGER REFERENCES admin_users(id) ON DELETE RESTRICT,
+        parent_manifest_id BIGINT REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT,
+        version_no INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         approved_at TIMESTAMP,
         started_at TIMESTAMP,
         heartbeat_at TIMESTAMP,
         finished_at TIMESTAMP
     )
+    """)
+    staging_schema_cur.execute("""
+        ALTER TABLE lodging_promotion_manifests
+        ADD COLUMN IF NOT EXISTS parent_manifest_id BIGINT
+            REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT
+    """)
+    staging_schema_cur.execute("""
+        ALTER TABLE lodging_promotion_manifests
+        ADD COLUMN IF NOT EXISTS version_no INTEGER NOT NULL DEFAULT 1
     """)
     staging_schema_cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_lodging_promotion_manifests_recent
@@ -2290,6 +2301,29 @@ def _run_init_db():
     staging_schema_cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_lodging_promotion_rows_action
         ON lodging_promotion_rows(promotion_manifest_id, action)
+    """)
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_promotion_review_decisions (
+        id BIGSERIAL PRIMARY KEY,
+        source_row_id BIGINT NOT NULL
+            REFERENCES lodging_source_rows(id) ON DELETE RESTRICT,
+        base_manifest_id BIGINT NOT NULL
+            REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT,
+        resulting_manifest_id BIGINT NOT NULL
+            REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT,
+        decision TEXT NOT NULL CHECK (
+            decision IN ('exclude', 'include_unclassified_history')
+        ),
+        decision_note TEXT,
+        decided_by INTEGER NOT NULL
+            REFERENCES admin_users(id) ON DELETE RESTRICT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(base_manifest_id, source_row_id)
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_promotion_review_decisions_manifest
+        ON lodging_promotion_review_decisions(resulting_manifest_id, created_at DESC)
     """)
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.

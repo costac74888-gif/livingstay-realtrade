@@ -16505,6 +16505,8 @@ def admin_lodging_staging_overview():
         cur.close()
         conn.close()
     promotion_manifest = None
+    promotion_review_targets = []
+    promotion_review_decisions = []
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -16514,7 +16516,8 @@ def admin_lodging_staging_overview():
         if cur.fetchone()["table_name"]:
             cur.execute(
                 """
-                SELECT id, status, row_count, result, error,
+                SELECT id, manifest_key, status, row_count, result, error,
+                       target_payload_sha256, parent_manifest_id, version_no,
                        created_at, approved_at, finished_at
                   FROM lodging_promotion_manifests
                  ORDER BY created_at DESC, id DESC
@@ -16525,14 +16528,76 @@ def admin_lodging_staging_overview():
             if manifest:
                 promotion_manifest = {
                     "id": manifest["id"],
+                    "manifest_key": manifest["manifest_key"],
                     "status": manifest["status"],
                     "row_count": int(manifest["row_count"] or 0),
                     "result": manifest["result"] or {},
                     "error": manifest["error"],
+                    "target_payload_sha256": manifest["target_payload_sha256"],
+                    "parent_manifest_id": manifest["parent_manifest_id"],
+                    "version_no": int(manifest["version_no"] or 1),
                     "created_at": _kst_label(manifest["created_at"]),
                     "approved_at": _kst_label(manifest["approved_at"]),
                     "finished_at": _kst_label(manifest["finished_at"]),
                 }
+                cur.execute(
+                    """
+                    SELECT pr.source_row_id, sb.source_key, sb.reference_date,
+                           sr.row_number, sr.permit_number, sr.authority_code,
+                           sr.source_permit_number, sr.biz_name,
+                           sr.raw_hygiene_type, sr.service_category,
+                           sr.legacy_lodging_type, sr.raw_status,
+                           sr.status_bucket, sr.road_address, sr.jibun_address,
+                           sr.raw_record, sr.review_reason, pr.payload
+                      FROM lodging_promotion_rows pr
+                      JOIN lodging_source_rows sr ON sr.id=pr.source_row_id
+                      JOIN lodging_source_batches sb ON sb.id=sr.batch_id
+                     WHERE pr.promotion_manifest_id=%s
+                       AND pr.payload->>'row_state'='review_required'
+                     ORDER BY pr.source_row_id
+                    """,
+                    (manifest["id"],),
+                )
+                promotion_review_targets = [
+                    {
+                        "source_row_id": row["source_row_id"],
+                        "source_key": row["source_key"],
+                        "reference_date": str(row["reference_date"]),
+                        "row_number": row["row_number"],
+                        "permit_number": row["permit_number"],
+                        "authority_code": row["authority_code"],
+                        "source_permit_number": row["source_permit_number"],
+                        "biz_name": row["biz_name"],
+                        "raw_hygiene_type": row["raw_hygiene_type"],
+                        "service_category": row["service_category"],
+                        "legacy_lodging_type": row["legacy_lodging_type"],
+                        "raw_status": row["raw_status"],
+                        "status_bucket": row["status_bucket"],
+                        "road_address": row["road_address"],
+                        "jibun_address": row["jibun_address"],
+                        "raw_record": row["raw_record"] or {},
+                        "review_reason": row["review_reason"],
+                    }
+                    for row in cur.fetchall()
+                ]
+                cur.execute(
+                    """
+                    SELECT source_row_id, base_manifest_id,
+                           resulting_manifest_id, decision, decision_note,
+                           decided_by, created_at
+                      FROM lodging_promotion_review_decisions
+                     WHERE resulting_manifest_id=%s
+                     ORDER BY created_at, id
+                    """,
+                    (manifest["id"],),
+                )
+                promotion_review_decisions = [
+                    {
+                        **dict(row),
+                        "created_at": _kst_label(row["created_at"]),
+                    }
+                    for row in cur.fetchall()
+                ]
     finally:
         cur.close()
         conn.close()
@@ -16542,6 +16607,8 @@ def admin_lodging_staging_overview():
         "batches": batches,
         "analysis_snapshot": _lodging_staging_analysis_snapshot(),
         "promotion_manifest": promotion_manifest,
+        "promotion_review_targets": promotion_review_targets,
+        "promotion_review_decisions": promotion_review_decisions,
     })
 
 
@@ -16605,6 +16672,29 @@ def admin_lodging_promotion_approve(manifest_id):
         result = lodging_promotion.approve_production_manifest(
             manifest_id,
             approved_by=session.get("admin_user_id"),
+        )
+        return jsonify({"ok": True, "promotion_manifest": result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+
+
+@app.route(
+    "/api/admin/lodging-staging/promotion/<int:manifest_id>"
+    "/review/<int:source_row_id>",
+    methods=["POST"],
+)
+@require_admin
+@limiter.limit("6 per hour")
+def admin_lodging_promotion_resolve_review(manifest_id, source_row_id):
+    """수동검토 결정을 감사 기록과 함께 새 manifest 버전으로 고정한다."""
+    data = request.get_json(silent=True) or {}
+    try:
+        result = lodging_promotion.create_resolved_production_manifest(
+            manifest_id,
+            source_row_id,
+            decision=data.get("decision"),
+            note=data.get("note"),
+            decided_by=session.get("admin_user_id"),
         )
         return jsonify({"ok": True, "promotion_manifest": result})
     except (ValueError, RuntimeError) as exc:
