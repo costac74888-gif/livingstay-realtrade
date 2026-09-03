@@ -2870,6 +2870,7 @@
       if (state === "preview") return "승인 대기";
       if (state === "failed") return "실패";
       if (state === "deferred") return "보류";
+      if (state === "cancelled") return "중단됨";
       if (state === "stale") return "중단 의심";
       return "실행 기록 없음";
     }
@@ -2888,7 +2889,7 @@
         const st = source.status || {};
         const running = !!st.running || st.state === "applying";
         anyRunning = anyRunning || running;
-        const bad = ["failed", "stale", "deferred"].includes(st.state);
+        const bad = ["failed", "stale", "deferred", "cancelled"].includes(st.state);
         const when = st.finished_at || st.started_at || st.last_success_at;
         const result = st.result || {};
         const upload = source.upload || {};

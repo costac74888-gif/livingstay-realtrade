@@ -1,9 +1,11 @@
 import os
+import signal
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import scheduled_sync
+from scheduled_sync_state import reconcile_stage_state, stage_displayed_running
 import quota_policy
 
 
@@ -201,6 +203,68 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(registry_lock, permits_lock)
         self.assertNotEqual(registry_lock, lodging_lock)
 
+    def test_stage_activity_locks_are_unique_inside_shared_execution_bucket(self):
+        shared_bucket_stages = (
+            "transactions",
+            "building_registry",
+            "building_permits",
+            "building_geocode",
+            "title_info",
+            "realty",
+        )
+        execution_locks = {
+            scheduled_sync._lock_id_for_stage(stage)
+            for stage in shared_bucket_stages
+        }
+        activity_locks = {
+            scheduled_sync._activity_lock_id_for_stage(stage)
+            for stage in shared_bucket_stages
+        }
+
+        self.assertEqual(len(execution_locks), 1)
+        self.assertEqual(len(activity_locks), len(shared_bucket_stages))
+
+    def test_later_shared_bucket_lock_does_not_keep_stopped_stage_running(self):
+        stage_keys = tuple(scheduled_sync.STAGE_MAP)
+        stopped_stage = "transactions"
+        later_stage = "building_registry"
+        active_locks = {
+            scheduled_sync._activity_lock_id_for_stage(later_stage),
+        }
+
+        self.assertFalse(stage_displayed_running(
+            reports_running=True,
+            active_locks=active_locks,
+            stage_keys=stage_keys,
+            stage_key=stopped_stage,
+        ))
+        self.assertTrue(stage_displayed_running(
+            reports_running=True,
+            active_locks=active_locks,
+            stage_keys=stage_keys,
+            stage_key=later_stage,
+        ))
+
+    def test_fresh_running_lodging_status_without_activity_lock_is_stale(self):
+        self.assertEqual(
+            reconcile_stage_state(
+                state="running",
+                age_seconds=1,
+                stale_seconds=300,
+                lock_active=False,
+            ),
+            "stale",
+        )
+        app_source = Path("app.py").read_text(encoding="utf-8")
+        source_status_body = app_source.split(
+            "def _lodging_source_stage_status(stage):", 1
+        )[1].split(
+            '@app.route("/api/admin/lodging-source-overview")', 1
+        )[0]
+        self.assertIn("reconcile_stage_state(", source_status_body)
+        self.assertIn("_scheduled_sync_activity_lock_id(stage)", source_status_body)
+        self.assertIn('"running": state == "running"', source_status_body)
+
     def test_rural_and_hanok_have_separate_half_quota_and_locks(self):
         rural = scheduled_sync.quotas_for_stage("rural")[0]
         hanok = scheduled_sync.quotas_for_stage("hanok")[0]
@@ -313,6 +377,88 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             )
         self.assertEqual(writes[0][0]["state"], "failed")
         self.assertEqual(writes[0][1], "claimed")
+
+    def test_sigterm_marks_running_stage_and_batch_cancelled(self):
+        writes = []
+
+        def cancel_during_stage(_stage, _source, on_progress=None, run_control=None):
+            run_control.request_cancel()
+            return -signal.SIGTERM, []
+
+        with (
+            patch.object(
+                scheduled_sync,
+                "_acquire_lock",
+                return_value=(object(), object()),
+            ),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value=None),
+            patch.object(scheduled_sync, "_read_legacy_lodging_sync_control",
+                         return_value={"enabled": True}),
+            patch.object(scheduled_sync, "_write_initial_status"),
+            patch.object(
+                scheduled_sync,
+                "_write_status",
+                side_effect=lambda key, value, run_id=None: writes.append({
+                    **value,
+                    "stages": {
+                        stage_key: dict(stage_value)
+                        for stage_key, stage_value in value["stages"].items()
+                    },
+                }),
+            ),
+            patch.object(scheduled_sync, "_source_busy", return_value=None),
+            patch.object(scheduled_sync, "_metric_value", return_value=0),
+            patch.object(scheduled_sync, "_run_stage", side_effect=cancel_during_stage),
+            patch.object(scheduled_sync, "_write_scheduled_evidence") as evidence,
+        ):
+            result = scheduled_sync.run(selected_stage="transactions")
+
+        self.assertEqual(result, 130)
+        self.assertEqual(writes[-1]["state"], "cancelled")
+        self.assertEqual(
+            writes[-1]["stages"]["transactions"]["state"],
+            "cancelled",
+        )
+        self.assertTrue(writes[-1]["retryable"])
+        self.assertIsNotNone(writes[-1]["finished_at"])
+        self.assertEqual(evidence.call_args_list[-1].args[1], "cancelled")
+
+    def test_cancelled_stage_is_included_in_retry_plan(self):
+        previous = {
+            "state": "cancelled",
+            "stages": {
+                "transactions": {"state": "cancelled", "error": "SIGTERM"},
+            },
+        }
+
+        stages = scheduled_sync.prepare_stage_statuses(
+            previous,
+            weekday=0,
+            retry_failures_only=True,
+        )
+
+        self.assertEqual(stages["transactions"]["state"], "pending")
+        app_source = Path("app.py").read_text(encoding="utf-8")
+        self.assertIn(
+            '("failed", "partial", "running", "stale", "cancelled")',
+            app_source,
+        )
+
+    def test_admin_running_display_is_fenced_by_advisory_lock(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+        self.assertIn(
+            '"SELECT pg_try_advisory_lock(%s) AS acquired"',
+            app_source,
+        )
+        self.assertIn("stage_reports_running", app_source)
+        self.assertIn("stage_displayed_running(", app_source)
+        self.assertIn(
+            "_scheduled_sync_activity_lock_id(key) in active_locks",
+            app_source,
+        )
+        self.assertIn("stage_stale = stage[\"state\"] == \"stale\"", app_source)
+        self.assertIn('"lock_active": (', app_source)
 
     def test_scheduled_runner_does_not_steal_fresh_manual_claim(self):
         claim = {"run_id": "manual", "state": "running", "stages": {}}

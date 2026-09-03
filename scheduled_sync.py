@@ -13,6 +13,7 @@ import json
 import os
 import re
 import secrets
+import signal
 import subprocess
 import sys
 import threading
@@ -22,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from secret_redaction import redact_env_secrets
+from scheduled_sync_state import stage_activity_lock_id
 from typing import Iterable
 
 from db import get_conn
@@ -59,6 +61,69 @@ SECRET_ENV_NAMES = (
     "JUSO_API_KEY",
     "KAKAO_REST_API_KEY",
 )
+
+
+class _SyncCancelled(Exception):
+    """Raised at safe checkpoints after SIGTERM/SIGINT was requested."""
+
+
+class _RunControl:
+    """Coordinate signal cancellation and terminate active child collectors."""
+
+    def __init__(self) -> None:
+        self.cancelled = threading.Event()
+        self._lock = threading.Lock()
+        self._processes: set[subprocess.Popen] = set()
+        self._previous_handlers: dict[int, object] = {}
+
+    def install(self) -> None:
+        if threading.current_thread() is not threading.main_thread():
+            return
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            self._previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, self._handle_signal)
+
+    def close(self) -> None:
+        if threading.current_thread() is not threading.main_thread():
+            return
+        for signum, handler in self._previous_handlers.items():
+            signal.signal(signum, handler)
+        self._previous_handlers.clear()
+
+    def _handle_signal(self, signum, _frame) -> None:
+        print(
+            f"[scheduled-sync] 종료 신호({signal.Signals(signum).name})를 받았습니다.",
+            flush=True,
+        )
+        was_cancelled = self.cancelled.is_set()
+        self.request_cancel()
+        if not was_cancelled:
+            raise _SyncCancelled()
+
+    def request_cancel(self) -> None:
+        self.cancelled.set()
+        with self._lock:
+            processes = list(self._processes)
+        for proc in processes:
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    pass
+
+    def register(self, proc: subprocess.Popen) -> None:
+        with self._lock:
+            self._processes.add(proc)
+        if self.cancelled.is_set() and proc.poll() is None:
+            proc.terminate()
+
+    def unregister(self, proc: subprocess.Popen) -> None:
+        with self._lock:
+            self._processes.discard(proc)
+
+    def check(self) -> None:
+        if self.cancelled.is_set():
+            raise _SyncCancelled()
 
 
 @dataclass(frozen=True)
@@ -482,6 +547,49 @@ def _touch(status_key: str, run_id: str) -> None:
         conn.close()
 
 
+def _write_cancelled_status(
+    status_key: str,
+    status: dict,
+    run_id: str,
+    *,
+    source: str,
+    orchestrated: bool = False,
+) -> None:
+    """Fence a signalled run so the dashboard never remains at running."""
+    finished_at = _now()
+    current_stage = status.get("current_stage")
+    for stage_key, stage in (status.get("stages") or {}).items():
+        if (
+            stage.get("state") == "running"
+            or (
+                stage_key == current_stage
+                and stage.get("state") in {"failed", "deferred"}
+            )
+        ):
+            stage.update(
+                state="cancelled",
+                finished_at=finished_at,
+                retryable=True,
+                error="외부 종료 신호로 중단되었습니다.",
+            )
+    status.update(
+        state="cancelled",
+        finished_at=finished_at,
+        current_stage=None,
+        running_stages=[],
+        retryable=True,
+        error="외부 종료 신호로 통합 동기화가 중단되었습니다.",
+    )
+    _write_status(status_key, status, run_id)
+    if source == "scheduled" and not orchestrated:
+        _write_scheduled_evidence(
+            run_id,
+            "cancelled",
+            started_at=status.get("started_at"),
+            finished_at=finished_at,
+        )
+
+
 def _metric_value(stage: Stage) -> int | None:
     return _query_count(stage.metric_query)
 
@@ -605,7 +713,9 @@ def prepare_stage_statuses(
 ) -> dict[str, dict]:
     """새 실행 상태를 만들되 실패/중단 재개 시 완료 단계는 보존한다."""
     previous = previous or {}
-    resume = previous.get("state") in {"running", "stale", "failed", "partial"}
+    resume = previous.get("state") in {
+        "running", "stale", "failed", "partial", "cancelled"
+    }
     previous_stages = previous.get("stages") or {}
     result: dict[str, dict] = {}
     for stage in STAGES:
@@ -629,13 +739,13 @@ def prepare_stage_statuses(
                 error="선택 실행 대상이 아님",
             )
         elif retry_failures_only:
-            if old_state not in {"failed", "deferred", "running"}:
+            if old_state not in {"failed", "deferred", "running", "cancelled"}:
                 item.update(
                     state="skipped",
                     finished_at=_now(),
                     error="재시도 대상이 아님",
                 )
-        elif old_state in {"failed", "deferred", "running"}:
+        elif old_state in {"failed", "deferred", "running", "cancelled"}:
             # 이전 실패·중단 단계는 재시도 날짜의 요일과 무관하게 복구한다.
             pass
         elif not selected_stage and not ignore_cadence and not stage.is_due(weekday):
@@ -676,6 +786,7 @@ def _run_stage(
     stage: Stage,
     source: str = "scheduled",
     on_progress=None,
+    run_control: _RunControl | None = None,
 ) -> tuple[int, list[str]]:
     used = {}
     if source == "manual":
@@ -706,23 +817,29 @@ def _run_stage(
         text=True,
         bufsize=1,
     )
+    if run_control:
+        run_control.register(proc)
     assert proc.stdout is not None
-    for raw_line in proc.stdout:
-        line = _redact(raw_line.rstrip())
-        tail.append(line)
-        print(f"[{stage.key}] {line}", flush=True)
-        if line and on_progress:
-            try:
-                on_progress(line)
-            except Exception as exc:
-                # Progress reporting must never orphan or interrupt the
-                # collector itself when the dashboard DB is temporarily busy.
-                print(
-                    f"[{stage.key}] 진행상황 저장 실패(수집은 계속): "
-                    f"{_redact(str(exc))[:200]}",
-                    flush=True,
-                )
-    return proc.wait(), list(tail)
+    try:
+        for raw_line in proc.stdout:
+            line = _redact(raw_line.rstrip())
+            tail.append(line)
+            print(f"[{stage.key}] {line}", flush=True)
+            if line and on_progress:
+                try:
+                    on_progress(line)
+                except Exception as exc:
+                    # Progress reporting must never orphan or interrupt the
+                    # collector itself when the dashboard DB is temporarily busy.
+                    print(
+                        f"[{stage.key}] 진행상황 저장 실패(수집은 계속): "
+                        f"{_redact(str(exc))[:200]}",
+                        flush=True,
+                    )
+        return proc.wait(), list(tail)
+    finally:
+        if run_control:
+            run_control.unregister(proc)
 
 
 def _lock_id_for_stage(stage_key: str | None) -> int:
@@ -732,6 +849,11 @@ def _lock_id_for_stage(stage_key: str | None) -> int:
     bucket = execution_bucket_for_stage(stage_key)
     buckets = sorted({execution_bucket_for_stage(stage.key) for stage in STAGES})
     return LOCK_ID + 1 + buckets.index(bucket)
+
+
+def _activity_lock_id_for_stage(stage_key: str) -> int:
+    """Unique lock proving that this exact stage process is alive."""
+    return stage_activity_lock_id(tuple(STAGE_MAP), stage_key)
 
 
 def _master_gate_mode(stage_key: str | None) -> str | None:
@@ -781,15 +903,51 @@ def _acquire_lock(lock_id: int = LOCK_ID, stage_key: str | None = None):
         cur.close()
         conn.close()
         return None, None, None
+    if stage_key:
+        activity_lock_id = _activity_lock_id_for_stage(stage_key)
+        cur.execute(
+            "SELECT pg_try_advisory_lock(%s) AS acquired",
+            (activity_lock_id,),
+        )
+        if not bool(cur.fetchone()["acquired"]):
+            cur.execute(
+                "SELECT pg_advisory_unlock(%s) AS released",
+                (lock_id,),
+            )
+            cur.fetchone()
+            if gate_mode:
+                unlock_fn = (
+                    "pg_advisory_unlock_shared"
+                    if gate_mode == "shared"
+                    else "pg_advisory_unlock"
+                )
+                cur.execute(
+                    f"SELECT {unlock_fn}(%s) AS released",
+                    (MASTER_WRITER_GATE_LOCK_ID,),
+                )
+                cur.fetchone()
+            cur.close()
+            conn.close()
+            return None, None, None
     return conn, cur, gate_mode
 
 
 def _release_lock(
-    conn, cur, lock_id: int = LOCK_ID, gate_mode: str | None = None
+    conn,
+    cur,
+    lock_id: int = LOCK_ID,
+    gate_mode: str | None = None,
+    stage_key: str | None = None,
 ) -> None:
     if conn is None or cur is None:
         return
     try:
+        if stage_key:
+            cur.execute(
+                "SELECT pg_advisory_unlock(%s) AS released",
+                (_activity_lock_id_for_stage(stage_key),),
+            )
+            cur.fetchone()
         cur.execute("SELECT pg_advisory_unlock(%s) AS released", (lock_id,))
         cur.fetchone()
         if gate_mode:
@@ -828,6 +986,8 @@ def run(
     run_id: str | None = None,
     orchestrated: bool = False,
 ) -> int:
+    run_control = _RunControl()
+    status: dict | None = None
     lock_id = _lock_id_for_stage(selected_stage)
     lock_result = _acquire_lock(lock_id, selected_stage)
     if len(lock_result) == 2:  # compatibility with existing test doubles
@@ -849,6 +1009,7 @@ def run(
 
     stop_heartbeat = threading.Event()
     run_id = run_id or secrets.token_hex(8)
+    run_control.install()
     try:
         previous = _read_status(status_key)
         if (
@@ -959,6 +1120,7 @@ def run(
         threading.Thread(target=_heartbeat, daemon=True).start()
 
         for stage in STAGES:
+            run_control.check()
             item = stages[stage.key]
             if item["state"] in {"done", "skipped", "not_selected"}:
                 continue
@@ -1016,7 +1178,10 @@ def run(
 
             try:
                 returncode, output_tail = _run_stage(
-                    stage, source, on_progress=_record_progress
+                    stage,
+                    source,
+                    on_progress=_record_progress,
+                    run_control=run_control,
                 )
             except Exception as exc:
                 returncode, output_tail = 1, []
@@ -1047,6 +1212,7 @@ def run(
                     flush=True,
                 )
             _write_status(status_key, status, run_id)
+            run_control.check()
 
         failed = [s for s in _status_stage_list(stages) if s["state"] == "failed"]
         deferred = [
@@ -1084,9 +1250,27 @@ def run(
             flush=True,
         )
         return 1 if failed else 0
+    except _SyncCancelled:
+        if status is not None:
+            _write_cancelled_status(
+                status_key,
+                status,
+                run_id,
+                source=source,
+                orchestrated=orchestrated,
+            )
+        return 130
     finally:
+        run_control.request_cancel()
+        run_control.close()
         stop_heartbeat.set()
-        _release_lock(lock_conn, lock_cur, lock_id, gate_mode)
+        _release_lock(
+            lock_conn,
+            lock_cur,
+            lock_id,
+            gate_mode,
+            stage_key=selected_stage,
+        )
 
 
 def run_parallel(
@@ -1103,6 +1287,8 @@ def run_parallel(
     Each stage persists to its own app_meta row so concurrent progress writes
     cannot overwrite another stage.
     """
+    run_control = _RunControl()
+    status: dict | None = None
     lock_result = _acquire_lock(LOCK_ID)
     if len(lock_result) == 2:  # compatibility with existing test doubles
         lock_conn, lock_cur = lock_result
@@ -1115,6 +1301,7 @@ def run_parallel(
 
     run_id = run_id or secrets.token_hex(8)
     stop_heartbeat = threading.Event()
+    run_control.install()
     try:
         previous = _read_status(status_key) or {}
         stages = prepare_stage_statuses(
@@ -1192,6 +1379,8 @@ def run_parallel(
         def _run_bucket(bucket_stages: list[Stage]) -> list[tuple[str, int]]:
             results = []
             for stage in bucket_stages:
+                if run_control.cancelled.is_set():
+                    break
                 child_run_id = secrets.token_hex(8)
                 command = [
                     sys.executable, "-u", str(BASE_DIR / "scheduled_sync.py"),
@@ -1201,7 +1390,12 @@ def run_parallel(
                     "--stage", stage.key,
                     "--orchestrated",
                 ]
-                code = subprocess.call(command, cwd=BASE_DIR)
+                proc = subprocess.Popen(command, cwd=BASE_DIR)
+                run_control.register(proc)
+                try:
+                    code = proc.wait()
+                finally:
+                    run_control.unregister(proc)
                 results.append((stage.key, code))
             return results
 
@@ -1211,6 +1405,7 @@ def run_parallel(
             futures = [executor.submit(_run_bucket, group) for group in buckets.values()]
             for future in concurrent.futures.as_completed(futures):
                 all_results.extend(future.result())
+        run_control.check()
 
         failed = []
         for stage in STAGES:
@@ -1243,7 +1438,18 @@ def run_parallel(
                 finished_at=status["finished_at"],
             )
         return 1 if failed else 0
+    except _SyncCancelled:
+        if status is not None:
+            _write_cancelled_status(
+                status_key,
+                status,
+                run_id,
+                source=source,
+            )
+        return 130
     finally:
+        run_control.request_cancel()
+        run_control.close()
         stop_heartbeat.set()
         _release_lock(lock_conn, lock_cur, LOCK_ID, gate_mode)
 

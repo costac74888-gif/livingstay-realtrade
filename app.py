@@ -75,6 +75,11 @@ from db import (
     release_request_connections,
 )
 from stats_cache import mark_master_stats_invalidated
+from scheduled_sync_state import (
+    reconcile_stage_state,
+    stage_activity_lock_id,
+    stage_displayed_running,
+)
 from address_utils import (
     normalize_umd_nm, sido_core, sido_match_clause,
     build_authority_index, match_authority_contact,
@@ -15589,6 +15594,7 @@ _TITLE_INFO_META_KEY = "title_info_sync_status"
 _APP_STARTED_AT = datetime.now()  # 배포/재시작 시각 추정(워커 부팅 시각) — 배너 "배포 후 미실행" 판정용
 _SCHEDULED_SYNC_META_KEY = "scheduled_sync_status"
 _SCHEDULED_SYNC_STALE_MIN = 5
+_SCHEDULED_SYNC_LOCK_ID = 918299
 _SCHEDULED_SYNC_STAGE_PREFIX = f"{_SCHEDULED_SYNC_META_KEY}:"
 _LODGING_PROMOTION_STATUS_KEY = "lodging_promotion_status"
 _LODGING_PROMOTION_STALE_HOURS = 36
@@ -15634,6 +15640,60 @@ _SCHEDULED_SYNC_TARGETS = {
 
 def _scheduled_stage_meta_key(stage):
     return f"{_SCHEDULED_SYNC_STAGE_PREFIX}{stage}"
+
+
+def _scheduled_sync_lock_id(stage=None):
+    """Keep the dashboard's lock identity aligned with scheduled_sync.py."""
+    if not stage:
+        return _SCHEDULED_SYNC_LOCK_ID
+    buckets = sorted({
+        execution_bucket_for_stage(key)
+        for key, *_ in _SCHEDULED_SYNC_STAGES
+    })
+    return (
+        _SCHEDULED_SYNC_LOCK_ID
+        + 1
+        + buckets.index(execution_bucket_for_stage(stage))
+    )
+
+
+def _scheduled_sync_activity_lock_id(stage):
+    """Unique liveness lock for one stage, separate from its API bucket lock."""
+    stage_keys = tuple(key for key, *_ in _SCHEDULED_SYNC_STAGES)
+    return stage_activity_lock_id(stage_keys, stage)
+
+
+def _scheduled_sync_active_locks(cur):
+    """Probe advisory locks without retaining any lock acquired by the probe."""
+    lock_ids = {_scheduled_sync_lock_id()}
+    lock_ids.update(
+        _scheduled_sync_activity_lock_id(key)
+        for key, *_ in _SCHEDULED_SYNC_STAGES
+    )
+    active = set()
+    for lock_id in sorted(lock_ids):
+        if _advisory_lock_is_active(cur, lock_id):
+            active.add(lock_id)
+    return active
+
+
+def _advisory_lock_is_active(cur, lock_id):
+    """Return whether another DB session currently owns a session lock."""
+    cur.execute(
+        "SELECT pg_try_advisory_lock(%s) AS acquired",
+        (lock_id,),
+    )
+    acquired = bool(cur.fetchone()["acquired"])
+    if not acquired:
+        return True
+    cur.execute(
+        "SELECT pg_advisory_unlock(%s) AS released",
+        (lock_id,),
+    )
+    cur.fetchone()
+    return False
+
+
 _MANUAL_SYNC_POST_PATHS = {
     "/api/admin/geocode-buildings",
     "/api/admin/geocode-brokers",
@@ -16066,6 +16126,7 @@ def admin_scheduled_sync_status():
     """정기 API 통합 배치의 전체/단계별 상태를 한 번에 반환한다."""
     stage_status_rows = {}
     collection_targets = {}
+    active_locks = None
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -16094,6 +16155,11 @@ def admin_scheduled_sync_status():
             (f"{_SCHEDULED_SYNC_STAGE_PREFIX}%",),
         )
         stage_status_rows = {item["key"]: item for item in cur.fetchall()}
+        try:
+            active_locks = _scheduled_sync_active_locks(cur)
+        except Exception:
+            conn.rollback()
+            app.logger.exception("정기 동기화 advisory lock 조회 실패")
         for target_key, (target_sql, _target_label) in _SCHEDULED_SYNC_TARGETS.items():
             try:
                 cur.execute(target_sql)
@@ -16112,14 +16178,19 @@ def admin_scheduled_sync_status():
         except (TypeError, ValueError):
             status = {}
     state = status.get("state")
-    stale = bool(
-        state == "running"
-        and row
-        and row["age"] is not None
-        and float(row["age"]) > _SCHEDULED_SYNC_STALE_MIN * 60
+    full_lock_active = bool(
+        active_locks is not None
+        and _scheduled_sync_lock_id() in active_locks
     )
-    if stale:
-        state = "stale"
+    state = reconcile_stage_state(
+        state=state,
+        age_seconds=row["age"] if row else None,
+        stale_seconds=_SCHEDULED_SYNC_STALE_MIN * 60,
+        lock_active=(
+            full_lock_active if active_locks is not None else None
+        ),
+    )
+    stale = state == "stale"
 
     # Usage is read from the collectors' own checkpoint/counter records.  Do
     # not create a dashboard-only counter: a restart must see the same budget
@@ -16164,6 +16235,11 @@ def admin_scheduled_sync_status():
         stage_status_row = stage_status_rows.get(_scheduled_stage_meta_key(key))
         stage_status = {}
         stage_stale = False
+        stage_age = row["age"] if row else None
+        stage_lock_active = bool(
+            active_locks is not None
+            and _scheduled_sync_activity_lock_id(key) in active_locks
+        )
         if stage_status_row and stage_status_row["value"]:
             try:
                 stage_status = json.loads(stage_status_row["value"]) or {}
@@ -16174,6 +16250,7 @@ def admin_scheduled_sync_status():
                 and stage_status_row["age"] is not None
                 and float(stage_status_row["age"]) > _SCHEDULED_SYNC_STALE_MIN * 60
             )
+            stage_age = stage_status_row["age"]
             latest_stage = dict((stage_status.get("stages") or {}).get(key) or {})
             if latest_stage:
                 stage = latest_stage
@@ -16186,9 +16263,21 @@ def admin_scheduled_sync_status():
             "cadence": cadence,
         })
         stage.setdefault("state", "pending")
+        stage["state"] = reconcile_stage_state(
+            state=stage.get("state"),
+            age_seconds=stage_age,
+            stale_seconds=_SCHEDULED_SYNC_STALE_MIN * 60,
+            lock_active=(
+                stage_lock_active if active_locks is not None else None
+            ),
+        )
+        stage_stale = stage["state"] == "stale"
         stage["quota_bucket"] = quota_bucket_for_stage(key)
         stage["execution_bucket"] = execution_bucket_for_stage(key)
-        stage["running"] = bool(
+        stage["lock_active"] = (
+            stage_lock_active if active_locks is not None else None
+        )
+        stage_reports_running = bool(
             not stage_stale
             and (
                 stage.get("state") == "running"
@@ -16196,6 +16285,14 @@ def admin_scheduled_sync_status():
                     state == "running"
                     and status.get("current_stage") == key
                 )
+            )
+        )
+        stage["running"] = bool(
+            stage_displayed_running(
+                reports_running=stage_reports_running,
+                active_locks=active_locks,
+                stage_keys=tuple(key for key, *_ in _SCHEDULED_SYNC_STAGES),
+                stage_key=key,
             )
         )
         if stage["running"]:
@@ -16303,7 +16400,7 @@ def admin_scheduled_sync_status():
         observation = "scheduled-deployment-not-observed"
     elif evidence_date < expected_date:
         observation = "stale"
-    elif evidence_state in ("failed", "partial"):
+    elif evidence_state in ("failed", "partial", "cancelled"):
         observation = "failed"
     elif (
         evidence_state == "running"
@@ -16315,7 +16412,13 @@ def admin_scheduled_sync_status():
         observation = "observed"
     return jsonify({
         "ok": True,
-        "running": bool(running_stage_keys) or state == "running",
+        "running": bool(running_stage_keys) or bool(
+            state == "running"
+            and (full_lock_active if active_locks is not None else True)
+        ),
+        "lock_active": (
+            full_lock_active if active_locks is not None else None
+        ),
         "running_stages": running_stage_keys,
         "running_buckets": sorted(running_buckets),
         "running_execution_buckets": sorted(running_execution_buckets),
@@ -16867,6 +16970,18 @@ def _lodging_source_stage_status(stage):
             (_scheduled_stage_meta_key(stage),),
         )
         row = cur.fetchone()
+        try:
+            lock_active = _advisory_lock_is_active(
+                cur,
+                _scheduled_sync_activity_lock_id(stage),
+            )
+        except Exception:
+            conn.rollback()
+            lock_active = None
+            app.logger.exception(
+                "숙박 원본 단계 advisory lock 조회 실패: %s",
+                stage,
+            )
     finally:
         cur.close()
         conn.close()
@@ -16878,20 +16993,28 @@ def _lodging_source_stage_status(stage):
         return {}
     item = dict((outer.get("stages") or {}).get(stage) or {})
     state = item.get("state") or outer.get("state")
-    if (
-        state == "running"
-        and row["age"] is not None
-        and float(row["age"]) > _SCHEDULED_SYNC_STALE_MIN * 60
-    ):
-        state = "stale"
+    state = reconcile_stage_state(
+        state=state,
+        age_seconds=row["age"],
+        stale_seconds=_SCHEDULED_SYNC_STALE_MIN * 60,
+        lock_active=lock_active,
+    )
+    error = item.get("error") or outer.get("error")
+    if state == "stale" and not error:
+        error = "실행 프로세스가 종료되었거나 하트비트가 중단되었습니다."
     return {
         "state": state,
         "running": state == "running",
+        "lock_active": lock_active,
         "started_at": _kst_label(item.get("started_at") or outer.get("started_at")),
         "finished_at": _kst_label(item.get("finished_at") or outer.get("finished_at")),
         "last_success_at": _kst_label(item.get("last_success_at") or outer.get("last_success_at")),
-        "error": item.get("error") or outer.get("error"),
-        "retryable": bool(item.get("retryable") or outer.get("retryable")),
+        "error": error,
+        "retryable": bool(
+            state == "stale"
+            or item.get("retryable")
+            or outer.get("retryable")
+        ),
         "changed": item.get("changed"),
         "progress_message": item.get("progress_message"),
     }
@@ -17351,7 +17474,7 @@ def admin_scheduled_sync_retry():
             "ok": False,
             "message": "정기 자동 동기화가 이미 실행 중입니다.",
         }), 409
-    if state not in ("failed", "partial", "running", "stale"):
+    if state not in ("failed", "partial", "running", "stale", "cancelled"):
         return jsonify({
             "ok": False,
             "message": "재시도가 필요한 실패 단계가 없습니다.",
