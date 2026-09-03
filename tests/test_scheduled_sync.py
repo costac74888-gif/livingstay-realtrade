@@ -231,6 +231,10 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             scheduled_sync.STAGE_MAP["title_info"].target_query
         )
 
+    def test_lodging_parallel_comparison_runs_after_legacy_collectors(self):
+        keys = [stage.key for stage in scheduled_sync.STAGES]
+        self.assertGreater(keys.index("lodging_compare"), keys.index("pension"))
+
     def test_manual_lodging_command_excludes_camping_without_reserve(self):
         command = scheduled_sync.stage_command(
             scheduled_sync.STAGE_MAP["lodging"], "manual",

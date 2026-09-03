@@ -228,6 +228,15 @@ STAGES = (
         blocking_status_keys=("rural_hanok_sync_status:pension",),
     ),
     Stage(
+        "lodging_compare",
+        "숙박 운영 병행 비교",
+        "숙박",
+        ("compare_lodging_parallel.py",),
+        "매일",
+        metric_query="SELECT COUNT(*) AS c FROM lodging_parallel_comparisons",
+        metric_label="비교 관측",
+    ),
+    Stage(
         "brokers",
         "공인중개사 사무소",
         "중개·상가",

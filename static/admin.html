@@ -2487,8 +2487,19 @@
       }
       if (promotionBox) {
         const manifest = data.promotion_manifest;
+        const comparison = data.parallel_comparison || {};
+        const latestComparison = comparison.latest || {};
+        const latestComparisonResult = latestComparison.result || {};
+        const outcomes = latestComparisonResult.outcome_counts || {};
+        const comparisonMarkup = comparison.observations
+          ? `<div style="margin-top:10px;padding:9px;border:1px solid ${latestComparison.major_regression_count ? "#efb4b4" : "#b7d7bd"};border-radius:7px;background:${latestComparison.major_regression_count ? "#fff7f7" : "#f3fbf4"};">
+              <b>8단계 병행 비교:</b> 최근 ${num(comparison.observations)}회 관측 · 연속 무회귀 ${num(comparison.consecutive_clean_observations)}회
+              ${comparison.minimum_observations_met ? "· 최소 3회 관찰 충족" : "· 최소 3회 관찰 중"}
+              <div>일치 ${num(outcomes.matched || 0)} · 누락 ${num(outcomes.missing || 0)} · 필드차이 ${num(outcomes.field_difference || 0)} · 연결차이 ${num(outcomes.building_link_difference || 0)} · 중복 ${num(outcomes.duplicate || 0)}</div>
+            </div>`
+          : `<div style="margin-top:10px;color:#9a6700;">8단계 병행 비교 관측이 아직 없습니다.</div>`;
         if (!manifest) {
-          promotionBox.textContent = "운영 기준 승인 manifest가 아직 없습니다.";
+          promotionBox.innerHTML = `운영 기준 승인 manifest가 아직 없습니다.${comparisonMarkup}`;
         } else {
           const result = manifest.result || {};
           const actions = result.action_counts || {};
@@ -2535,6 +2546,7 @@
             <div style="color:#9a6700;">신규 건물 자동 생성 0건 · 운영 DB 반영 0건</div>
             ${auditMarkup}
             ${reviewMarkup}
+            ${comparisonMarkup}
             <div style="margin-top:8px;">${buttons.join(" ")}</div>`;
         }
       }

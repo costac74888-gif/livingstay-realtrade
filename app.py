@@ -15595,6 +15595,7 @@ _SCHEDULED_SYNC_STAGES = (
     ("rural", "농어촌민박", "숙박", "매일"),
     ("hanok", "한옥체험업", "숙박", "매일"),
     ("pension", "관광펜션업", "숙박", "매일"),
+    ("lodging_compare", "숙박 운영 병행 비교", "숙박", "매일"),
     ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
     ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
@@ -16601,6 +16602,17 @@ def admin_lodging_staging_overview():
     finally:
         cur.close()
         conn.close()
+    try:
+        parallel_comparison = lodging_promotion.get_parallel_comparison_overview()
+    except Exception as exc:
+        parallel_comparison = {
+            "observations": 0,
+            "consecutive_clean_observations": 0,
+            "minimum_observations_met": False,
+            "latest": None,
+            "recent": [],
+            "error": str(exc)[:300],
+        }
     return jsonify({
         "ok": True,
         "staging_available": True,
@@ -16609,6 +16621,7 @@ def admin_lodging_staging_overview():
         "promotion_manifest": promotion_manifest,
         "promotion_review_targets": promotion_review_targets,
         "promotion_review_decisions": promotion_review_decisions,
+        "parallel_comparison": parallel_comparison,
     })
 
 

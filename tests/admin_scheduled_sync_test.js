@@ -60,7 +60,8 @@ const projectBlock = repl.slice(
 expect(
   !projectBlock.includes('args = "Fast Sync"') &&
     !projectBlock.includes('args = "Merge Dev→Prod (실제반영)"') &&
-    !projectBlock.includes('args = "Backfill General Lodging"'),
+    !projectBlock.includes('args = "Backfill General Lodging"') &&
+    !projectBlock.includes('args = "정기 API 통합 동기화"'),
   "기본 Project 실행에 운영 데이터 작업이 남아 있습니다.",
 );
 

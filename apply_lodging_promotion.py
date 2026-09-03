@@ -349,8 +349,10 @@ def apply_manifest(manifest_id, *, confirm_run_id):
             records,
             page_size=500,
         )
-        action_counts = dict((manifest.get("result") or {}).get("action_counts") or {})
+        previous_result = dict(manifest.get("result") or {})
+        action_counts = dict(previous_result.get("action_counts") or {})
         result = {
+            **previous_result,
             "manifest_id": manifest["id"],
             "manifest_key": manifest["manifest_key"],
             "run_id": manifest["run_id"],

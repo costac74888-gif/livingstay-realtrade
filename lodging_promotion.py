@@ -8,13 +8,19 @@ import os
 import secrets
 from copy import deepcopy
 from collections import Counter, defaultdict
+from datetime import datetime
+from urllib.parse import quote_plus
 
 import psycopg2
 import psycopg2.extras
 
 from addr_norm import get_building_jibun_key, normalize_jibun_prefix, normalize_road_prefix
 from db import get_conn
-from lodging_data_contract import GOVERNMENT_LODGING_SOURCES
+from lodging_data_contract import (
+    GOVERNMENT_LODGING_SOURCES,
+    STATUS_CLOSED,
+    STATUS_TEMPORARILY_CLOSED,
+)
 from lodging_staging import (
     _database_fingerprint,
     _require_admin_actor,
@@ -29,6 +35,18 @@ REVIEW_DECISIONS = {
     "exclude": "제외",
     "include_unclassified_history": "미분류 역사 원장 포함",
 }
+_COMPARISON_FIELDS = (
+    ("biz_name", "biz_name"),
+    ("road_address", "road_address"),
+    ("jibun_address", "jibun_address"),
+    ("raw_status", "biz_status_name"),
+    ("raw_hygiene_type", "hygiene_type"),
+)
+_HISTORICAL_STATUS_BUCKETS = {
+    STATUS_TEMPORARILY_CLOSED,
+    STATUS_CLOSED,
+    "unknown",
+}
 
 
 def _canonical_hash(value):
@@ -41,7 +59,16 @@ def _canonical_hash(value):
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
-
+def _expected_target_link(target):
+    payload = target.get("payload") or {}
+    if target.get("existing_applied_building_id") is not None:
+        return target.get("existing_applied_building_id")
+    if (
+        payload.get("status_bucket") == "active"
+        and target.get("production_match_state") == "existing_building"
+    ):
+        return target.get("production_building_id")
+    return None
 def _validate_target_admission(targets, *, allow_manual_review):
     permits = []
     manual_review_count = 0
@@ -328,6 +355,11 @@ def create_production_baseline_manifest(*, created_by=None):
             "target_rows": len(targets),
             "new_permits": int(summary["action_counts"].get("insert", 0)),
             "source_files": source_files,
+            "screen_baseline": _surface_snapshot(registry_rows, building_rows),
+            "screen_expected_after_apply": _surface_snapshot(
+                _project_registry_after_apply(registry_rows, targets),
+                building_rows,
+            ),
             "production_writes": 0,
         }
         run_id = secrets.token_hex(16)
@@ -541,6 +573,16 @@ def create_resolved_production_manifest(
             item["payload"].get("status_bucket") or "unknown"
             for item in resolved_targets
         )
+        (
+            baseline_registry_rows,
+            baseline_building_rows,
+            current_baseline_fingerprint,
+            _production_fingerprint,
+        ) = _fetch_production_snapshot()
+        if current_baseline_fingerprint != base["production_baseline_fingerprint"]:
+            raise RuntimeError(
+                "운영 기준선이 변경되어 수동검토 manifest를 다시 생성해야 합니다."
+            )
         result = {
             **base_result,
             "manifest_version": int(base["version_no"] or 1) + 1,
@@ -556,6 +598,17 @@ def create_resolved_production_manifest(
             "new_permits": int(action_counts.get("insert", 0)),
             "manual_review_targets": remaining_manual_reviews,
             "review_resolutions": [*base_resolutions, resolution],
+            "screen_baseline": _surface_snapshot(
+                baseline_registry_rows,
+                baseline_building_rows,
+            ),
+            "screen_expected_after_apply": _surface_snapshot(
+                _project_registry_after_apply(
+                    baseline_registry_rows,
+                    resolved_targets,
+                ),
+                baseline_building_rows,
+            ),
             "production_writes": 0,
         }
         target_payload_sha256 = _canonical_hash(resolved_targets)
@@ -796,3 +849,575 @@ def run_production_manifest_dry_run(manifest_id):
     finally:
         cur.close()
         conn.close()
+
+def compare_production_manifest(manifest_id=None):
+    """최근 적용 manifest를 운영·기존 직접 동기화 결과와 읽기 전용 비교한다."""
+    assert_development_staging()
+    dev_conn = _get_development_connection()
+    cur = dev_conn.cursor()
+    try:
+        if manifest_id is None:
+            cur.execute(
+                """
+                SELECT id, manifest_key, status, source_batch_ids, result,
+                       production_baseline_fingerprint
+                  FROM lodging_promotion_manifests
+                 WHERE status='applied'
+                 ORDER BY finished_at DESC NULLS LAST, id DESC
+                 LIMIT 1
+                """
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id, manifest_key, status, source_batch_ids, result,
+                       production_baseline_fingerprint
+                  FROM lodging_promotion_manifests
+                 WHERE id=%s
+                """,
+                (manifest_id,),
+            )
+        manifest = cur.fetchone()
+        if not manifest:
+            return {
+                "skipped": True,
+                "reason": "비교할 적용 완료 숙박 manifest가 없습니다.",
+                "production_writes": 0,
+            }
+        if manifest["status"] != "applied":
+            raise ValueError("적용 완료된 manifest만 병행 비교할 수 있습니다.")
+        cur.execute(
+            """
+            SELECT source_row_id, action, production_match_state,
+                   production_building_id, existing_applied_building_id, payload
+              FROM lodging_promotion_rows
+             WHERE promotion_manifest_id=%s
+             ORDER BY source_row_id
+            """,
+            (manifest["id"],),
+        )
+        targets = [
+            {
+                **dict(row),
+                "payload": dict(row["payload"] or {}),
+            }
+            for row in cur.fetchall()
+        ]
+        batch_ids = [
+            int(value) for value in dict(manifest["source_batch_ids"] or {}).values()
+        ]
+        cur.execute(
+            """
+            SELECT sr.permit_number, sr.biz_name, sr.raw_status,
+                   sr.status_bucket, sr.raw_hygiene_type, sr.service_category,
+                   sr.road_address, sr.jibun_address, sb.source_key
+              FROM lodging_source_rows sr
+              JOIN lodging_source_batches sb ON sb.id=sr.batch_id
+             WHERE sr.batch_id = ANY(%s)
+               AND sr.permit_number IS NOT NULL
+            """,
+            (batch_ids,),
+        )
+        staging_rows = [dict(row) for row in cur.fetchall()]
+        permits = sorted({
+            target["payload"].get("permit_number")
+            for target in targets
+            if target["payload"].get("permit_number")
+        })
+        cur.execute(
+            """
+            SELECT permit_number, biz_name, biz_status_name, room_count,
+                   hygiene_type, applied_building_id, road_address, jibun_address
+              FROM lodging_registry
+             WHERE permit_number = ANY(%s)
+            """,
+            (permits,),
+        )
+        legacy_rows = [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        dev_conn.close()
+
+    production_url = os.environ.get("PROD_DATABASE_URL")
+    if not production_url:
+        raise RuntimeError("PROD_DATABASE_URL이 없어 병행 비교를 실행할 수 없습니다.")
+    prod_conn = psycopg2.connect(production_url, connect_timeout=10)
+    prod_conn.set_session(readonly=True, isolation_level="REPEATABLE READ")
+    try:
+        (
+            production_rows,
+            production_buildings,
+            production_snapshot_fingerprint,
+            production_fingerprint,
+        ) = _fetch_production_snapshot(prod_conn)
+        prod_cur = prod_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            prod_cur.execute(
+                """
+                SELECT permit_number
+                  FROM lodging_registry
+                 WHERE permit_number IS NOT NULL
+                 GROUP BY permit_number
+                HAVING COUNT(*) > 1
+                """
+            )
+            production_duplicates = [
+                row["permit_number"] for row in prod_cur.fetchall()
+            ]
+        finally:
+            prod_cur.close()
+    finally:
+        prod_conn.close()
+
+    result = compare_parallel_results(
+        targets,
+        staging_rows,
+        legacy_rows,
+        production_rows,
+        production_duplicate_permits=production_duplicates,
+        screen_baseline=dict(manifest["result"] or {}).get("screen_baseline"),
+        screen_expected_after_apply=dict(manifest["result"] or {}).get(
+            "screen_expected_after_apply"
+        ),
+        production_buildings=production_buildings,
+    )
+    result.update({
+        "manifest_id": manifest["id"],
+        "manifest_key": manifest["manifest_key"],
+        "observed_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "production_fingerprint": production_fingerprint,
+        "production_snapshot_fingerprint": production_snapshot_fingerprint,
+        "manifest_baseline_fingerprint": manifest["production_baseline_fingerprint"],
+    })
+    major_regression_count = len({
+        row["permit_number"]
+        for row in result["permit_diffs"]
+        if row["outcome"] != "matched"
+    })
+    if result["screen_comparison"]["status"] == "regression":
+        major_regression_count += 1
+    result["major_regression_count"] = major_regression_count
+    run_id = secrets.token_hex(16)
+
+    write_conn = _get_development_connection()
+    write_cur = write_conn.cursor()
+    try:
+        write_cur.execute(
+            """
+            INSERT INTO lodging_parallel_comparisons (
+                promotion_manifest_id, run_id, production_fingerprint,
+                result, major_regression_count
+            ) VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, created_at
+            """,
+            (
+                manifest["id"],
+                run_id,
+                production_fingerprint,
+                psycopg2.extras.Json(result),
+                major_regression_count,
+            ),
+        )
+        recorded = write_cur.fetchone()
+        write_conn.commit()
+    except Exception:
+        write_conn.rollback()
+        raise
+    finally:
+        write_cur.close()
+        write_conn.close()
+    result["comparison_id"] = recorded["id"]
+    result["run_id"] = run_id
+    return result
+
+def _get_development_connection():
+    """운영 스케줄러 자식에서도 PG* 기반 개발 DB를 명시적으로 선택한다.
+
+    운영 정기 워크플로는 DATABASE_URL만 PROD_DATABASE_URL로 덮어쓰지만,
+    Replit 개발 DB의 PGHOST/PGDATABASE 자격정보는 그대로 제공한다. 이
+    비교 전용 프로세스에서만 우선순위가 높은 운영 URL을 제외한 뒤 개발
+    연결을 만들고, fingerprint 안전 게이트로 운영 연결이 아님을 확인한다.
+    """
+    configured_url = os.environ.get("DATABASE_URL")
+    production_url = os.environ.get("PROD_DATABASE_URL")
+    remove_override = bool(
+        configured_url and production_url and configured_url == production_url
+    )
+    if remove_override:
+        development_url = os.environ.get("DEV_DATABASE_URL")
+        if development_url:
+            os.environ["DATABASE_URL"] = development_url
+        else:
+            required = ("PGUSER", "PGPASSWORD", "PGHOST", "PGPORT", "PGDATABASE")
+            if any(not os.environ.get(key) for key in required):
+                raise RuntimeError(
+                    "운영 스케줄러에서 개발 DB 연결 정보가 없어 병행 비교를 중단했습니다."
+                )
+            os.environ["DATABASE_URL"] = (
+                "postgresql://"
+                f"{quote_plus(os.environ['PGUSER'])}:"
+                f"{quote_plus(os.environ['PGPASSWORD'])}@"
+                f"{os.environ['PGHOST']}:{os.environ['PGPORT']}/"
+                f"{quote_plus(os.environ['PGDATABASE'])}"
+            )
+    try:
+        conn = get_conn()
+    finally:
+        if remove_override:
+            os.environ["DATABASE_URL"] = configured_url
+    try:
+        assert_development_connection(conn)
+    except Exception:
+        conn.close()
+        raise
+    return conn
+
+def _surface_snapshot(registry_rows, building_rows):
+    """숙박 관련 공개·관리 화면이 읽는 최소 집계의 기준선."""
+    status_counts = Counter(row.get("biz_status_name") or "미분류" for row in registry_rows)
+    linked_permits = sum(
+        row.get("applied_building_id") is not None for row in registry_rows
+    )
+    active_rooms = sum(
+        int(row.get("room_count") or 0)
+        for row in registry_rows
+        if row.get("biz_status_name") == "영업/정상"
+    )
+    return {
+        "search": {
+            "master_buildings": len(building_rows),
+            "mapped_buildings": sum(
+                row.get("lat") is not None and row.get("lng") is not None
+                for row in building_rows
+            ),
+            "lodging_registry_rows": len(registry_rows),
+        },
+        "detail": {
+            "lodging_registry_rows": len(registry_rows),
+            "linked_permits": linked_permits,
+        },
+        "stats": {
+            "status_counts": dict(sorted(status_counts.items())),
+            "active_permits": status_counts.get("영업/정상", 0),
+            "active_rooms": active_rooms,
+        },
+        "admin": {
+            "lodging_registry_rows": len(registry_rows),
+            "linked_permits": linked_permits,
+            "unlinked_permits": len(registry_rows) - linked_permits,
+        },
+    }
+
+def get_parallel_comparison_overview(limit=10):
+    """관리자 화면용 최근 관측·연속 무회귀 배치 요약."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id
+              FROM lodging_promotion_manifests
+             WHERE status='applied'
+             ORDER BY finished_at DESC NULLS LAST, id DESC
+             LIMIT 1
+            """
+        )
+        current_manifest = cur.fetchone()
+        if not current_manifest:
+            return {
+                "manifest_id": None,
+                "observations": 0,
+                "consecutive_clean_observations": 0,
+                "minimum_observations_met": False,
+                "latest": None,
+                "recent": [],
+            }
+        manifest_id = current_manifest["id"]
+        cur.execute(
+            """
+            SELECT COUNT(*) AS count
+              FROM lodging_parallel_comparisons
+             WHERE promotion_manifest_id=%s
+            """,
+            (manifest_id,),
+        )
+        observation_count = int(cur.fetchone()["count"] or 0)
+        cur.execute(
+            """
+            SELECT id, promotion_manifest_id, run_id, production_fingerprint,
+                   result, major_regression_count, created_at
+              FROM lodging_parallel_comparisons
+             WHERE promotion_manifest_id=%s
+             ORDER BY created_at DESC, id DESC
+             LIMIT %s
+            """,
+            (manifest_id, max(1, min(int(limit), 50))),
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+    consecutive_clean = 0
+    for row in rows:
+        if int(row["major_regression_count"] or 0):
+            break
+        consecutive_clean += 1
+    return {
+        "manifest_id": manifest_id,
+        "observations": observation_count,
+        "consecutive_clean_observations": consecutive_clean,
+        "minimum_observations_met": consecutive_clean >= 3,
+        "latest": rows[0] if rows else None,
+        "recent": rows,
+    }
+
+def compare_parallel_results(
+    targets,
+    staging_rows,
+    legacy_registry_rows,
+    production_registry_rows,
+    *,
+    production_duplicate_permits=(),
+    screen_baseline=None,
+    screen_expected_after_apply=None,
+    production_buildings=(),
+):
+    """승인 대상과 기존 직접 동기화·운영 결과를 permit별로 비교한다.
+
+    이 함수는 DB에 접근하지 않는 순수 비교 계층이다. 따라서 운영 조회
+    실패나 재실행과 무관하게 동일 입력이면 동일한 판정이 나오며, 실제
+    관측 실행은 그 결과를 개발 DB의 비교 이력으로 보존한다.
+    """
+    legacy = {
+        row.get("permit_number"): row
+        for row in legacy_registry_rows
+        if row.get("permit_number")
+    }
+    production = {
+        row.get("permit_number"): row
+        for row in production_registry_rows
+        if row.get("permit_number")
+    }
+    duplicate_permits = set(production_duplicate_permits)
+    staging_by_permit = {}
+    staging_permit_counts = Counter()
+    for row in staging_rows:
+        permit = row.get("permit_number")
+        if permit:
+            staging_by_permit.setdefault(permit, row)
+            staging_permit_counts[permit] += 1
+    staging_duplicates = {
+        permit for permit, count in staging_permit_counts.items() if count > 1
+    }
+
+    action_counts = Counter()
+    outcome_counts = Counter()
+    legacy_production_counts = Counter()
+    history_status_counts = Counter()
+    history_status_diffs = []
+    building_link_counts = Counter()
+    permit_diffs = []
+
+    for target in targets:
+        payload = target.get("payload") or {}
+        permit = payload.get("permit_number")
+        action = target.get("action") or "unknown"
+        action_counts[action] += 1
+        current = production.get(permit)
+        old = legacy.get(permit)
+        differences = {}
+        if current is None:
+            outcome = "missing"
+        else:
+            # build_registry_record is the single source for raw CSV→registry
+            # conversion. Import lazily to avoid the promotion/apply cycle.
+            from apply_lodging_promotion import build_registry_record
+
+            expected = build_registry_record(payload)
+            for payload_key, registry_key in _COMPARISON_FIELDS:
+                expected_value = expected.get(registry_key)
+                if expected_value is None:
+                    continue  # UPSERT의 COALESCE 보존 규칙
+                actual_value = current.get(registry_key)
+                if str(actual_value or "") != str(expected_value or ""):
+                    differences[registry_key] = {
+                        "expected": expected_value,
+                        "actual": actual_value,
+                    }
+            expected_room = expected.get("room_count")
+            if expected_room is not None and expected_room != current.get("room_count"):
+                differences["room_count"] = {
+                    "expected": expected_room,
+                    "actual": current.get("room_count"),
+                }
+            expected_link = _expected_target_link(target)
+            actual_link = current.get("applied_building_id")
+            if expected_link != actual_link:
+                differences["applied_building_id"] = {
+                    "expected": expected_link,
+                    "actual": actual_link,
+                }
+            if differences:
+                outcome = (
+                    "building_link_difference"
+                    if set(differences) == {"applied_building_id"}
+                    else "field_difference"
+                )
+            else:
+                outcome = "matched"
+        if permit in duplicate_permits or permit in staging_duplicates:
+            outcome = "duplicate"
+        outcome_counts[outcome] += 1
+
+        if old is None and current is None:
+            legacy_production_counts["both_missing"] += 1
+        elif old is None:
+            legacy_production_counts["production_only"] += 1
+        elif current is None:
+            legacy_production_counts["legacy_only"] += 1
+        else:
+            common_keys = [
+                key for _payload_key, key in _COMPARISON_FIELDS
+            ] + ["room_count", "applied_building_id"]
+            common_difference = {
+                key: {
+                    "legacy": old.get(key),
+                    "production": current.get(key),
+                }
+                for key in common_keys
+                if str(old.get(key) or "") != str(current.get(key) or "")
+            }
+            legacy_production_counts[
+                "different" if common_difference else "same"
+            ] += 1
+
+        status_bucket = payload.get("status_bucket") or "unknown"
+        if status_bucket in _HISTORICAL_STATUS_BUCKETS or (
+            payload.get("service_category") == "미분류"
+        ):
+            history_status_counts[status_bucket] += 1
+            expected_status = payload.get("raw_status")
+            actual_status = current.get("biz_status_name") if current else None
+            legacy_status = old.get("biz_status_name") if old else None
+            if (
+                expected_status != actual_status
+                or expected_status != legacy_status
+                or legacy_status != actual_status
+            ):
+                history_status_diffs.append({
+                    "permit_number": permit,
+                    "status_bucket": status_bucket,
+                    "expected_status": expected_status,
+                    "legacy_status": legacy_status,
+                    "production_status": actual_status,
+                })
+
+        expected_link = _expected_target_link(target)
+        actual_link = current.get("applied_building_id") if current else None
+        building_link_counts[
+            "matched" if expected_link == actual_link else "different"
+        ] += 1
+        if outcome != "matched":
+            permit_diffs.append({
+                "permit_number": permit,
+                "source_key": payload.get("source_key"),
+                "action": action,
+                "outcome": outcome,
+                "differences": differences,
+                "staging_present": permit in staging_by_permit,
+                "legacy_present": old is not None,
+                "production_present": current is not None,
+                "expected_building_id": expected_link,
+                "legacy_building_id": old.get("applied_building_id") if old else None,
+                "production_building_id": actual_link,
+            })
+        if permit not in staging_by_permit:
+            permit_diffs.append({
+                "permit_number": permit,
+                "source_key": payload.get("source_key"),
+                "action": action,
+                "outcome": "staging_missing",
+                "differences": {},
+                "staging_present": False,
+                "legacy_present": old is not None,
+                "production_present": current is not None,
+                "expected_building_id": expected_link,
+                "legacy_building_id": old.get("applied_building_id") if old else None,
+                "production_building_id": actual_link,
+            })
+
+    before = screen_baseline or {}
+    after = _surface_snapshot(production_registry_rows, production_buildings)
+    expected_after = screen_expected_after_apply or {}
+    screen_differences = (
+        _surface_differences(expected_after, after) if expected_after else {}
+    )
+    return {
+        "read_only": True,
+        "production_writes": 0,
+        "declared_action_counts": dict(action_counts),
+        "outcome_counts": dict(outcome_counts),
+        "legacy_vs_production_counts": dict(legacy_production_counts),
+        "duplicate_permits": {
+            "staging": sorted(staging_duplicates),
+            "production": sorted(duplicate_permits),
+        },
+        "history_status_counts": dict(history_status_counts),
+        "history_status_diffs": history_status_diffs,
+        "building_link_counts": dict(building_link_counts),
+        "permit_diffs": permit_diffs,
+        "screen_comparison": {
+            "baseline_available": bool(before),
+            "expected_after_available": bool(expected_after),
+            "status": (
+                "expected_match"
+                if expected_after and not screen_differences
+                else "regression"
+                if expected_after
+                else "expected_baseline_unavailable"
+            ),
+            "before": before or None,
+            "expected_after": expected_after or None,
+            "after": after,
+            "differences": screen_differences,
+        },
+    }
+
+def _project_registry_after_apply(registry_rows, targets):
+    """manifest UPSERT 뒤 화면 집계에 필요한 원장 상태를 미리 계산한다."""
+    from apply_lodging_promotion import build_registry_record
+
+    projected = {
+        row.get("permit_number"): dict(row)
+        for row in registry_rows
+        if row.get("permit_number")
+    }
+    for target in targets:
+        payload = target.get("payload") or {}
+        permit = payload.get("permit_number")
+        existing = projected.get(permit)
+        record = build_registry_record(payload, existing)
+        if existing:
+            merged = dict(existing)
+            for key, value in record.items():
+                if value is not None:
+                    merged[key] = value
+            # 운영 UPSERT는 기존 연결을 항상 보존한다.
+            merged["applied_building_id"] = existing.get("applied_building_id")
+            projected[permit] = merged
+        else:
+            projected[permit] = record
+    return list(projected.values())
+
+def _surface_differences(before, after, prefix=""):
+    differences = {}
+    keys = sorted(set((before or {}).keys()) | set((after or {}).keys()))
+    for key in keys:
+        path = f"{prefix}.{key}" if prefix else key
+        old_value = (before or {}).get(key)
+        new_value = (after or {}).get(key)
+        if isinstance(old_value, dict) and isinstance(new_value, dict):
+            differences.update(_surface_differences(old_value, new_value, path))
+        elif old_value != new_value:
+            differences[path] = {"before": old_value, "after": new_value}
+    return differences

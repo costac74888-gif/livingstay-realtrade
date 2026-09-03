@@ -201,12 +201,12 @@ name = "정기 API 통합 동기화"
 author = "agent"
 schedule = "30 2 * * *"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_sync.py --status-key scheduled_sync_status --skip-stage transactions --skip-stage rural --skip-stage hanok'
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "env DEV_DATABASE_URL=\"$DATABASE_URL\" DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 10 python -u scheduled_sync.py --status-key scheduled_sync_status --skip-stage transactions --skip-stage rural --skip-stage hanok"
 
 [[workflows.workflow]]
 name = "최근 실거래 자동 동기화"

@@ -10,9 +10,11 @@ from lodging_promotion import (
     _apply_review_decision,
     _build_targets,
     _canonical_hash,
+    _get_development_connection,
     approve_production_manifest,
     create_production_baseline_manifest,
     create_resolved_production_manifest,
+    compare_parallel_results,
     run_production_manifest_dry_run,
     _validate_target_admission,
 )
@@ -666,6 +668,76 @@ class LodgingPromotionDatabaseFlowTest(unittest.TestCase):
 
 
 class LodgingPromotionTest(unittest.TestCase):
+    def test_scheduler_production_override_routes_comparison_write_to_pg_dev(self):
+        connection = object()
+        seen = []
+
+        def fake_get_conn():
+            seen.append(os.environ.get("DATABASE_URL"))
+            return connection
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "DATABASE_URL": "postgres://production",
+                    "PROD_DATABASE_URL": "postgres://production",
+                    "DEV_DATABASE_URL": "postgres://development",
+                    "PGUSER": "dev-user",
+                    "PGPASSWORD": "dev-password",
+                    "PGHOST": "dev-host",
+                    "PGPORT": "5432",
+                    "PGDATABASE": "dev-db",
+                },
+                clear=False,
+            ),
+            patch("lodging_promotion.get_conn", side_effect=fake_get_conn),
+            patch("lodging_promotion.assert_development_connection") as gate,
+        ):
+            self.assertIs(_get_development_connection(), connection)
+            self.assertEqual(
+                seen,
+                ["postgres://development"],
+            )
+            self.assertEqual(
+                os.environ["DATABASE_URL"],
+                "postgres://production",
+            )
+            gate.assert_called_once_with(connection)
+
+    def test_parallel_comparison_records_permit_status_link_and_duplicates(self):
+        targets = [{
+            "action": "status_change",
+            "production_match_state": "existing_building",
+            "production_building_id": 7,
+            "existing_applied_building_id": None,
+            "payload": {
+                "source_key": "lodging",
+                "permit_number": "P-0",
+                "biz_name": "숙소",
+                "raw_status": "폐업",
+                "status_bucket": "closed",
+                "raw_hygiene_type": "숙박업(일반)",
+                "service_category": "일반숙박업",
+                "raw_record": {},
+            },
+        }]
+        result = compare_parallel_results(
+            targets,
+            [{"permit_number": "P-0"}, {"permit_number": "P-0"}],
+            [{"permit_number": "P-0", "biz_status_name": "영업/정상"}],
+            [{
+                "permit_number": "P-0",
+                "biz_name": "숙소",
+                "biz_status_name": "영업/정상",
+                "hygiene_type": "숙박업(일반)",
+                "applied_building_id": None,
+            }],
+        )
+        self.assertEqual(result["declared_action_counts"]["status_change"], 1)
+        self.assertEqual(result["outcome_counts"]["duplicate"], 1)
+        self.assertEqual(result["history_status_diffs"][0]["permit_number"], "P-0")
+        self.assertEqual(result["building_link_counts"]["matched"], 1)
     def test_new_row_uses_unique_existing_building_without_auto_create(self):
         staging = [
             {
