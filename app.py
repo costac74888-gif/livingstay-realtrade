@@ -786,6 +786,8 @@ def _google_streetview_metadata(lat, lng, key):
             "pano_id": str(payload.get("pano_id") or "").strip() or None,
             "lat": location.get("lat"),
             "lng": location.get("lng"),
+            "date": str(payload.get("date") or "").strip() or None,
+            "copyright": str(payload.get("copyright") or "").strip() or None,
         }
     except (requests.RequestException, ValueError, TypeError):
         return None
@@ -808,6 +810,54 @@ def _bearing_degrees(from_lat, from_lng, to_lat, to_lng):
         - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lng)
     )
     return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+
+def _distance_meters(lat1, lng1, lat2, lng2):
+    """두 WGS84 좌표 사이의 직선거리를 미터로 계산한다."""
+    radius = 6371000.0
+    phi1 = math.radians(float(lat1))
+    phi2 = math.radians(float(lat2))
+    delta_phi = math.radians(float(lat2) - float(lat1))
+    delta_lng = math.radians(float(lng2) - float(lng1))
+    a = (
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lng / 2) ** 2
+    )
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _streetview_quality_rejection(metadata, building_lat, building_lng, now=None):
+    """사용자 업로드·오래되거나 먼 파노라마를 건물 대표사진에서 제외한다."""
+    copyright_text = str(metadata.get("copyright") or "").strip().lower()
+    if "google" not in copyright_text:
+        return "unofficial panorama"
+
+    date_text = str(metadata.get("date") or "").strip()
+    try:
+        captured = datetime.strptime(date_text, "%Y-%m")
+    except ValueError:
+        return "unknown capture date"
+    current = now or datetime.now()
+    age_months = (
+        (current.year - captured.year) * 12
+        + current.month
+        - captured.month
+    )
+    if age_months > 84:
+        return "stale panorama"
+
+    try:
+        distance = _distance_meters(
+            metadata.get("lat"),
+            metadata.get("lng"),
+            building_lat,
+            building_lng,
+        )
+    except (TypeError, ValueError):
+        return "unknown panorama location"
+    if distance > 50:
+        return "panorama too far"
+    return None
 
 
 @app.route("/api/building-photo/<int:building_id>/<source>")
@@ -853,6 +903,21 @@ def get_building_provider_photo(building_id, source):
         return response
     if metadata["status"] != "OK":
         return jsonify({"error": "provider unavailable"}), 502
+    quality_rejection = _streetview_quality_rejection(
+        metadata,
+        row["lat"],
+        row["lng"],
+    )
+    if quality_rejection:
+        app.logger.info(
+            "[streetview] unsuitable panorama building_id=%s reason=%s",
+            building_id,
+            quality_rejection,
+        )
+        response = jsonify({"error": "no suitable exterior imagery"})
+        response.status_code = 404
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
     try:
         heading = _bearing_degrees(
             metadata["lat"],

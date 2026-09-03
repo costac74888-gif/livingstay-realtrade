@@ -4530,7 +4530,7 @@ function streetViewFallbackPhoto(buildingId, lat, lng){
   if (lat == null || lng == null || String(lat).trim() === "" || String(lng).trim() === "") return [];
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return [];
   return [{
-    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview?view=building-v2`,
+    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview?view=building-v3`,
     source: "streetview",
     photo_type: "exterior"
   }];
