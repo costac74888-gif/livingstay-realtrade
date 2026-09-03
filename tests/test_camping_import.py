@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 import time
+from types import SimpleNamespace
 from unittest import mock
 
 import import_camping_lodging as importer
@@ -341,6 +343,295 @@ class CampingSyncTests(unittest.TestCase):
         params = get.call_args.kwargs["params"]
         self.assertEqual(params["_type"], "json")
         self.assertEqual(params["MobileOS"], "ETC")
+
+    def test_camping_fetch_rejects_malformed_page_shapes_with_clear_path(self):
+        malformed_payloads = (
+            ([], "최상위 JSON"),
+            ({"response": []}, "response가 객체"),
+            (
+                {"response": {"header": {}, "body": []}},
+                "response.body가 객체",
+            ),
+            (
+                {
+                    "response": {
+                        "header": {},
+                        "body": {"items": {"item": ("bad",)}, "totalCount": 1},
+                    }
+                },
+                "items.item",
+            ),
+            (
+                {
+                    "response": {
+                        "header": {},
+                        "body": {"items": {"item": []}},
+                    }
+                },
+                "totalCount",
+            ),
+        )
+        for payload, expected in malformed_payloads:
+            with self.subTest(expected=expected):
+                response = mock.Mock()
+                response.json.return_value = payload
+                with (
+                    mock.patch(
+                        "sync_lodgings.requests.get", return_value=response
+                    ),
+                    self.assertRaisesRegex(
+                        sync_lodgings.CampingResponseValidationError,
+                        expected,
+                    ),
+                ):
+                    sync_lodgings._fetch_camping_page("secret", 1, 100)
+
+    def test_camping_sync_skips_bad_row_and_finishes_valid_first_page(self):
+        conn = mock.Mock()
+        conn.cursor.return_value = mock.Mock()
+        items = [
+            ("unexpected", "tuple"),
+            {
+                "contentId": "7",
+                "facltNm": "정상 캠핑장",
+                "manageSttus": "운영",
+            },
+        ]
+
+        def fetch_page(*args, on_attempt, **kwargs):
+            on_attempt()
+            return items, 2
+
+        with (
+            mock.patch.dict(
+                sync_lodgings.os.environ,
+                {sync_lodgings.CAMPING_SERVICE_KEY_ENV: "secret"},
+            ),
+            mock.patch.object(sync_lodgings, "get_conn", return_value=conn),
+            mock.patch.object(
+                sync_lodgings.camping_importer.common, "_assert_schema"
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_load_camping_progress",
+                return_value={"next_page": 1, "total_count": None},
+            ),
+            mock.patch.object(
+                sync_lodgings, "_daily_calls_today", return_value=0
+            ),
+            mock.patch.object(
+                sync_lodgings, "_bump_daily_calls", return_value=1
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_fetch_camping_page_retry",
+                side_effect=fetch_page,
+            ),
+            mock.patch("sys.stdout", new_callable=StringIO) as output,
+        ):
+            completed, counters, calls_today = sync_lodgings.sync_camping(
+                num_rows=100,
+                sleep_sec=0,
+                max_calls=10,
+                dry_run=True,
+            )
+
+        self.assertTrue(completed)
+        self.assertEqual(calls_today, 1)
+        self.assertEqual(counters["skipped"], 1)
+        self.assertEqual(counters["validation_errors"], 1)
+        self.assertIn("페이지 1 행 1 검증 오류", output.getvalue())
+        self.assertIn("type=tuple", output.getvalue())
+
+    def test_empty_page_before_total_preserves_checkpoint_for_retry(self):
+        conn = mock.Mock()
+        conn.cursor.return_value = mock.Mock()
+        with (
+            mock.patch.dict(
+                sync_lodgings.os.environ,
+                {sync_lodgings.CAMPING_SERVICE_KEY_ENV: "secret"},
+            ),
+            mock.patch.object(sync_lodgings, "get_conn", return_value=conn),
+            mock.patch.object(
+                sync_lodgings.camping_importer.common, "_assert_schema"
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_load_camping_progress",
+                return_value={"next_page": 1, "total_count": None},
+            ),
+            mock.patch.object(
+                sync_lodgings, "_daily_calls_today", return_value=0
+            ),
+            mock.patch.object(
+                sync_lodgings, "_bump_daily_calls", return_value=1
+            ),
+            mock.patch.object(
+                sync_lodgings.camping_importer.common,
+                "_load_master_indexes",
+                return_value=({}, {}),
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_fetch_camping_page_retry",
+                return_value=([], 10),
+            ),
+            mock.patch.object(sync_lodgings, "_save_camping_progress") as save,
+            mock.patch.object(sync_lodgings, "_clear_camping_progress") as clear,
+            self.assertRaisesRegex(
+                sync_lodgings.CampingResponseValidationError,
+                "페이지 1가 비어 있지만",
+            ),
+        ):
+            sync_lodgings.sync_camping(
+                num_rows=100,
+                sleep_sec=0,
+                max_calls=10,
+                dry_run=False,
+            )
+
+        save.assert_not_called()
+        clear.assert_not_called()
+        conn.rollback.assert_called_once()
+
+    def test_row_storage_index_error_isolated_and_checkpoint_advances(self):
+        conn = mock.Mock()
+        cursor = mock.Mock()
+        conn.cursor.return_value = cursor
+        items = [
+            {
+                "contentId": "bad-1",
+                "facltNm": "저장 오류 캠핑장",
+                "manageSttus": "운영",
+            },
+            {
+                "contentId": "good-2",
+                "facltNm": "정상 저장 캠핑장",
+                "manageSttus": "운영",
+            },
+        ]
+
+        def fetch_page(*args, on_attempt, **kwargs):
+            on_attempt()
+            return items, 3
+
+        with (
+            mock.patch.dict(
+                sync_lodgings.os.environ,
+                {sync_lodgings.CAMPING_SERVICE_KEY_ENV: "secret"},
+            ),
+            mock.patch.object(sync_lodgings, "get_conn", return_value=conn),
+            mock.patch.object(
+                sync_lodgings.camping_importer.common, "_assert_schema"
+            ),
+            mock.patch.object(
+                sync_lodgings.camping_importer.common,
+                "_load_master_indexes",
+                return_value=({}, {}),
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_load_camping_progress",
+                return_value={"next_page": 1, "total_count": None},
+            ),
+            mock.patch.object(
+                sync_lodgings, "_daily_calls_today", return_value=0
+            ),
+            mock.patch.object(
+                sync_lodgings, "_bump_daily_calls", return_value=1
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_fetch_camping_page_retry",
+                side_effect=fetch_page,
+            ),
+            mock.patch.object(sync_lodgings, "_reconcile_camping_source_key"),
+            mock.patch.object(
+                sync_lodgings.camping_importer.common,
+                "_upsert_registry",
+                side_effect=[
+                    IndexError("tuple index out of range"),
+                    {"id": 2, "is_new": True},
+                ],
+            ),
+            mock.patch.object(
+                sync_lodgings, "_save_camping_progress"
+            ) as save_progress,
+            mock.patch.object(sync_lodgings, "_signal_stats_change"),
+            mock.patch("sys.stdout", new_callable=StringIO) as output,
+        ):
+            completed, counters, calls_today = sync_lodgings.sync_camping(
+                num_rows=100,
+                sleep_sec=0,
+                max_calls=1,
+                dry_run=False,
+            )
+
+        self.assertFalse(completed)
+        self.assertEqual(calls_today, 1)
+        self.assertEqual(counters["failed"], 1)
+        self.assertEqual(counters["inserted"], 1)
+        self.assertEqual(counters["unmatched"], 1)
+        self.assertIn("tuple index out of range", output.getvalue())
+        save_progress.assert_called_once_with(cursor, conn, 2, 3)
+        executed_sql = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertIn("ROLLBACK TO SAVEPOINT camping_item", executed_sql)
+
+    def test_incomplete_camping_run_exits_nonzero_for_scheduled_retry(self):
+        args = SimpleNamespace(
+            status_key=None,
+            num_rows=None,
+            sleep=0,
+            max_calls=None,
+            reset=False,
+            dry_run=False,
+        )
+        with (
+            mock.patch.object(
+                sync_lodgings,
+                "sync_camping",
+                return_value=(False, {"skipped": 0}, 800),
+            ),
+            self.assertRaises(SystemExit) as exit_error,
+        ):
+            sync_lodgings._run_camping(args)
+
+        self.assertEqual(exit_error.exception.code, 1)
+
+    def test_incomplete_camping_status_is_partial_and_retryable(self):
+        args = SimpleNamespace(
+            status_key="camping-status",
+            num_rows=None,
+            sleep=0,
+            max_calls=None,
+            reset=False,
+            dry_run=False,
+        )
+        running = {"state": "running", "run_id": "run-1"}
+        writes = []
+        with (
+            mock.patch.object(
+                sync_lodgings,
+                "_read_status",
+                side_effect=[running, running.copy()],
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "_write_status",
+                side_effect=lambda key, value, run_id: writes.append(value.copy()),
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "sync_camping",
+                return_value=(False, {"skipped": 0}, 800),
+            ),
+        ):
+            sync_lodgings._run_camping(args)
+
+        self.assertEqual(writes[-1]["state"], "partial")
+        self.assertFalse(writes[-1]["completed"])
+        self.assertTrue(writes[-1]["retryable"])
+        self.assertIn("체크포인트부터 재시도", writes[-1]["error"])
 
 
 if __name__ == "__main__":

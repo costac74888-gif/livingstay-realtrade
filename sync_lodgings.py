@@ -22,6 +22,7 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
@@ -84,6 +85,10 @@ PERMIT_ALERT_BOOTSTRAP_META_KEY = "lodging_permit_alert_snapshot_ready"
 
 class _CampingDailyCapReached(RuntimeError):
     pass
+
+
+class CampingResponseValidationError(RuntimeError):
+    """고캠핑 응답이 안전하게 처리할 수 없는 구조일 때 발생한다."""
 
 
 @contextmanager
@@ -860,26 +865,69 @@ def _fetch_camping_page(key, page, num_rows):
         raise RuntimeError(
             f"고캠핑 JSON 파싱 실패: {_redact(response.text[:200])}"
         )
-    envelope = data.get("response") or {}
+    if not isinstance(data, Mapping):
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: 최상위 JSON이 객체가 아닙니다."
+        )
+    envelope = data.get("response")
+    if not isinstance(envelope, Mapping):
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response가 객체가 아닙니다."
+        )
     header = envelope.get("header") or {}
+    if not isinstance(header, Mapping):
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.header가 객체가 아닙니다."
+        )
     code = str(header.get("resultCode", "")).strip()
+    if code == "03":
+        return [], 0
     if code not in ("0000", "00", "0", ""):
         raise RuntimeError(
             f"고캠핑 API 오류 resultCode={code} "
             f"msg={header.get('resultMsg')}"
         )
-    body = envelope.get("body") or {}
-    items = body.get("items") or []
-    if isinstance(items, dict):
-        items = items.get("item") or []
-    if isinstance(items, dict):
+    body = envelope.get("body")
+    if not isinstance(body, Mapping):
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.body가 객체가 아닙니다."
+        )
+    if "items" not in body:
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.body.items 필드가 없습니다."
+        )
+    items_container = body.get("items")
+    if isinstance(items_container, Mapping):
+        if "item" not in items_container:
+            raise CampingResponseValidationError(
+                "고캠핑 응답 검증 오류: response.body.items.item 필드가 없습니다."
+            )
+        items = items_container.get("item")
+    else:
+        items = items_container
+    if isinstance(items, Mapping):
         items = [items]
+    elif items is None:
+        items = []
     if not isinstance(items, list):
-        raise RuntimeError("고캠핑 API items 형식이 목록이 아닙니다.")
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.body.items.item이 "
+            f"목록 또는 객체가 아닙니다(type={type(items).__name__})."
+        )
+    if "totalCount" not in body:
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.body.totalCount 필드가 없습니다."
+        )
     try:
-        total = int(body.get("totalCount") or 0)
+        total = int(body.get("totalCount"))
     except (TypeError, ValueError):
-        total = 0
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.body.totalCount가 정수가 아닙니다."
+        )
+    if total < 0:
+        raise CampingResponseValidationError(
+            "고캠핑 응답 검증 오류: response.body.totalCount가 음수입니다."
+        )
     return items, total
 
 
@@ -1350,6 +1398,8 @@ def sync_camping(
         "inactive": 0,
         "unmatched": 0,
         "skipped": 0,
+        "validation_errors": 0,
+        "failed": 0,
     }
     try:
         camping_importer.common._assert_schema(cur)
@@ -1407,6 +1457,15 @@ def sync_camping(
             if total:
                 total_count = total
             if not items:
+                expected_before_end = (
+                    bool(total_count)
+                    and (page - 1) * num_rows < total_count
+                )
+                if expected_before_end:
+                    raise CampingResponseValidationError(
+                        f"고캠핑 응답 검증 오류: 페이지 {page}가 비어 있지만 "
+                        f"totalCount={total_count} 기준으로 아직 데이터가 남아 있습니다."
+                    )
                 if not dry_run:
                     _clear_camping_progress(cur, conn)
                     cur.execute("""
@@ -1423,10 +1482,37 @@ def sync_camping(
                 )
                 return True, counters, calls_today
 
-            for item in items:
-                data = camping_importer.parse_api_item(item)
+            for row_number, item in enumerate(items, start=1):
+                try:
+                    data = camping_importer.parse_api_item(item)
+                except Exception as exc:
+                    counters["skipped"] += 1
+                    counters["validation_errors"] += 1
+                    print(
+                        f"[camping] 페이지 {page} 행 {row_number} 검증 오류: "
+                        f"{_redact(str(exc))[:300]}"
+                    )
+                    continue
                 if not data:
                     counters["skipped"] += 1
+                    counters["validation_errors"] += 1
+                    if isinstance(item, Mapping):
+                        fields = ", ".join(
+                            sorted(str(key) for key in item.keys())[:20]
+                        ) or "(없음)"
+                        reason = (
+                            "필수 식별 필드 contentId 또는 facltNm이 "
+                            f"없습니다(필드: {fields})."
+                        )
+                    else:
+                        reason = (
+                            "행이 JSON 객체가 아닙니다"
+                            f"(type={type(item).__name__})."
+                        )
+                    print(
+                        f"[camping] 페이지 {page} 행 {row_number} 검증 오류: "
+                        f"{reason}"
+                    )
                     continue
                 processed += 1
                 if dry_run:
@@ -1441,63 +1527,79 @@ def sync_camping(
                         sample_count += 1
                     continue
 
-                _reconcile_camping_source_key(cur, data)
-                registry = camping_importer.common._upsert_registry(
-                    cur,
-                    data,
-                    reset_applied_building_id=False,
-                )
-                counters[
-                    "inserted" if registry["is_new"] else "updated"
-                ] += 1
-
-                building_id = None
-                new_building_id = None
-                if data["biz_status_name"] != ACTIVE_STATUS:
-                    counters["inactive"] += 1
-                elif not data.get("road_norm") and not data.get("jibun_norm"):
-                    counters["unmatched"] += 1
-                else:
-                    building_id, match_reason = (
-                        camping_importer.common._match_master(
-                            data, road_index, jibun_index
-                        )
+                cur.execute("SAVEPOINT camping_item")
+                try:
+                    _reconcile_camping_source_key(cur, data)
+                    registry = camping_importer.common._upsert_registry(
+                        cur,
+                        data,
+                        reset_applied_building_id=False,
                     )
-                    if building_id:
-                        counters["matched"] += 1
-                    elif match_reason:
-                        counters["unmatched"] += 1
-                        print(
-                            f"  [검토] {data['biz_name']} — {match_reason}: "
-                            f"{data['road_address'] or '-'}"
-                        )
+                    registry_counter = (
+                        "inserted" if registry["is_new"] else "updated"
+                    )
+
+                    building_id = None
+                    new_building_id = None
+                    outcome_counter = None
+                    if data["biz_status_name"] != camping_importer.ACTIVE_STATUS:
+                        outcome_counter = "inactive"
+                    elif not data.get("road_norm") and not data.get("jibun_norm"):
+                        outcome_counter = "unmatched"
                     else:
-                        if bjdong is None:
-                            bjdong = camping_importer.common.BjdongMap(
-                                camping_importer.common.BJDONG_CODE_CSV
-                            )
-                        location = (
-                            camping_importer.common._location_from_addresses(
-                                bjdong,
-                                data.get("road_address"),
-                                data.get("jibun_address"),
+                        building_id, match_reason = (
+                            camping_importer.common._match_master(
+                                data, road_index, jibun_index
                             )
                         )
-                        if location:
-                            building_id = camping_importer._create_master(
-                                cur, data, location
+                        if building_id:
+                            outcome_counter = "matched"
+                        elif match_reason:
+                            outcome_counter = "unmatched"
+                            print(
+                                f"  [검토] {data['biz_name']} — {match_reason}: "
+                                f"{data['road_address'] or '-'}"
                             )
-                            new_building_id = building_id
-                            counters["created"] += 1
                         else:
-                            counters["unmatched"] += 1
+                            if bjdong is None:
+                                bjdong = camping_importer.common.BjdongMap(
+                                    camping_importer.common.BJDONG_CODE_CSV
+                                )
+                            location = (
+                                camping_importer.common._location_from_addresses(
+                                    bjdong,
+                                    data.get("road_address"),
+                                    data.get("jibun_address"),
+                                )
+                            )
+                            if location:
+                                building_id = camping_importer._create_master(
+                                    cur, data, location
+                                )
+                                new_building_id = building_id
+                                outcome_counter = "created"
+                            else:
+                                outcome_counter = "unmatched"
 
-                if building_id:
-                    cur.execute(
-                        "UPDATE lodging_registry "
-                        "SET applied_building_id=%s WHERE id=%s",
-                        (building_id, registry["id"]),
+                    if building_id:
+                        cur.execute(
+                            "UPDATE lodging_registry "
+                            "SET applied_building_id=%s WHERE id=%s",
+                            (building_id, registry["id"]),
+                        )
+                    cur.execute("RELEASE SAVEPOINT camping_item")
+                except Exception as exc:
+                    cur.execute("ROLLBACK TO SAVEPOINT camping_item")
+                    cur.execute("RELEASE SAVEPOINT camping_item")
+                    counters["failed"] += 1
+                    print(
+                        f"[camping] 페이지 {page} 행 {row_number} 저장 실패 "
+                        f"({data['permit_number']}): {_redact(str(exc))[:300]}"
                     )
+                    continue
+
+                counters[registry_counter] += 1
+                counters[outcome_counter] += 1
                 if new_building_id:
                     camping_importer.common._register_new_master_in_indexes(
                         new_building_id, data, road_index, jibun_index
@@ -1800,6 +1902,7 @@ def _run_camping(args):
         threading.Thread(target=_beat, daemon=True).start()
 
     error = None
+    incomplete_reason = None
     completed = False
     counters = {}
     calls_today = None
@@ -1816,6 +1919,12 @@ def _run_camping(args):
     except Exception as exc:
         error = _redact(str(exc))[:500]
         print(f"[camping] 실패: {error}")
+    if not error and not completed:
+        incomplete_reason = (
+            "일일 호출 한도에 도달해 캠핑 동기화가 미완료되었습니다. "
+            "저장된 체크포인트부터 재시도할 수 있습니다."
+        )
+        print(f"[camping] 미완료: {incomplete_reason}")
 
     if not error and completed and not args.dry_run:
         _refresh_master_stats_after_completion()
@@ -1824,13 +1933,16 @@ def _run_camping(args):
         stop_beat.set()
         status = _read_status(args.status_key) or {}
         status.update({
-            "state": "failed" if error else "done",
+            "state": (
+                "failed" if error else ("done" if completed else "partial")
+            ),
             "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "completed": None if error else completed,
             "counters": counters,
             "calls_today": calls_today,
             "dry_run": bool(args.dry_run),
-            "error": error,
+            "retryable": bool(error or incomplete_reason),
+            "error": error or incomplete_reason,
         })
         for attempt in range(3):
             try:
@@ -1841,7 +1953,7 @@ def _run_camping(args):
                     f"[camping] 상태 저장 실패({attempt + 1}/3): {exc}"
                 )
                 time.sleep(5)
-    if error and not args.status_key:
+    if (error or incomplete_reason) and not args.status_key:
         sys.exit(1)
 
 
