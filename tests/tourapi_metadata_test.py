@@ -1,8 +1,12 @@
 import unittest
+from unittest.mock import Mock, patch
+
+import requests
 
 from addr_norm import normalize_road_prefix
 from prewarm_tourapi_metadata import (
     _catalog_matches,
+    _tour_catalog_page,
     _upsert_catalog_metadata,
 )
 
@@ -57,6 +61,24 @@ class TourApiMetadataTest(unittest.TestCase):
             cursor.calls[0][1],
             [4114, "catalog_no_photo", "67890", False],
         )
+
+    @patch("prewarm_tourapi_metadata.time.sleep")
+    def test_catalog_connection_timeout_retries_with_backoff(self, sleep):
+        success = Mock()
+        success.raise_for_status.return_value = None
+        success.json.return_value = {"response": {"body": {"items": {"item": []}}}}
+        session = Mock()
+        session.get.side_effect = [
+            requests.ConnectTimeout("temporary outage"),
+            requests.ConnectTimeout("temporary outage"),
+            success,
+        ]
+
+        result = _tour_catalog_page(session, "test-key", 1)
+
+        self.assertEqual(result, success.json.return_value)
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [10, 20])
 
 
 if __name__ == "__main__":

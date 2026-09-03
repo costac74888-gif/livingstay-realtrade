@@ -21,11 +21,9 @@ import requests
 from addr_norm import normalize_jibun_prefix, normalize_road_prefix
 from db import get_conn
 from sync_building_photos import (
-    TOURAPI_CONNECT_RETRIES,
     TOURAPI_CONNECT_TIMEOUT,
     TOURAPI_DAILY_CAP,
     TOURAPI_READ_TIMEOUT,
-    TOURAPI_RETRY_SLEEP,
     TOURAPI_URL,
     _assert_tourapi_success,
     _claim_daily_slot,
@@ -38,9 +36,31 @@ from sync_building_photos import (
 
 TOURAPI_META_KEY = "building_photos_tourapi_catalog"
 PAGE_SIZE = 100
+CATALOG_CONNECT_RETRIES = 7
+CATALOG_RETRY_DELAYS = (10, 20, 40, 80, 120, 120, 120)
 
 
-def _tour_catalog_page(session, api_key, page_no):
+def _wait_for_catalog_retry(status_key, run_id, page_no, attempt, delay, error):
+    """장기 대기 중에도 상태를 갱신해 실행 중인 프로세스가 stale로 보이지 않게 한다."""
+    remaining = delay
+    while remaining > 0:
+        current = _read_status(status_key) or {}
+        if current.get("run_id") != run_id or current.get("state") != "running":
+            raise RuntimeError("TourAPI 사전조회 실행이 취소되었습니다.")
+        current.update({
+            "source": "tourapi_metadata",
+            "provider_retry_attempt": attempt,
+            "provider_retry_page": page_no,
+            "provider_retry_remaining_seconds": remaining,
+            "last_provider_error": _redact(error)[:300],
+        })
+        _write_status(status_key, current, run_id)
+        sleep_for = min(15, remaining)
+        time.sleep(sleep_for)
+        remaining -= sleep_for
+
+
+def _tour_catalog_page(session, api_key, page_no, status_key=None, run_id=None):
     params = {
         "serviceKey": unquote(api_key),
         "MobileOS": "ETC",
@@ -52,7 +72,7 @@ def _tour_catalog_page(session, api_key, page_no):
         "_type": "json",
     }
     last_error = None
-    for attempt in range(TOURAPI_CONNECT_RETRIES + 1):
+    for attempt in range(CATALOG_CONNECT_RETRIES + 1):
         try:
             response = session.get(
                 f"{TOURAPI_URL}/areaBasedList2",
@@ -65,8 +85,19 @@ def _tour_catalog_page(session, api_key, page_no):
             return data
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             last_error = exc
-            if attempt < TOURAPI_CONNECT_RETRIES:
-                time.sleep(TOURAPI_RETRY_SLEEP * (attempt + 1))
+            if attempt < CATALOG_CONNECT_RETRIES:
+                delay = CATALOG_RETRY_DELAYS[attempt]
+                if status_key and run_id:
+                    _wait_for_catalog_retry(
+                        status_key,
+                        run_id,
+                        page_no,
+                        attempt + 1,
+                        delay,
+                        exc,
+                    )
+                else:
+                    time.sleep(delay)
     raise RuntimeError(f"TourAPI 숙박 목록 조회 실패: {_redact(last_error)}")
 
 
@@ -196,7 +227,9 @@ def run(status_key, run_id, sleep_seconds):
         ) is None:
             stats["capped"] = True
             return stats
-        first = _tour_catalog_page(session, api_key, 1)
+        first = _tour_catalog_page(
+            session, api_key, 1, status_key=status_key, run_id=run_id
+        )
         first_body = first.get("response", {}).get("body", {})
         total = int(first_body.get("totalCount") or 0)
         page_count = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -209,7 +242,13 @@ def run(status_key, run_id, sleep_seconds):
                 ) is None:
                     stats["capped"] = True
                     break
-                data = _tour_catalog_page(session, api_key, page_no)
+                data = _tour_catalog_page(
+                    session,
+                    api_key,
+                    page_no,
+                    status_key=status_key,
+                    run_id=run_id,
+                )
             items = _extract_items(data)
             page_stats = _upsert_catalog_metadata(cur, items, road_map, jibun_map)
             conn.commit()
@@ -239,6 +278,10 @@ def run(status_key, run_id, sleep_seconds):
                     "with_image_buildings": stats["with_image_buildings"],
                     "without_image_buildings": stats["without_image_buildings"],
                     "capped": stats["capped"],
+                    "provider_retry_attempt": 0,
+                    "provider_retry_page": None,
+                    "provider_retry_remaining_seconds": 0,
+                    "last_provider_error": None,
                 })
                 _write_status(status_key, current, run_id)
             if sleep_seconds:

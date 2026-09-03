@@ -2246,6 +2246,9 @@
       const s = d.status || {};
       if (s.state === "running") {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+        if (Number(s.provider_retry_attempt) > 0) {
+          rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>TourAPI 재접속:</b> ${num(s.provider_retry_attempt)}회차 · ${num(s.provider_retry_remaining_seconds || 0)}초 후 다시 시도 (페이지 ${num(s.provider_retry_page || 1)})</div>`);
+        }
         rows.push(`<div class="geo-stat-row"><b>진행:</b> ${dgEscape(s.source || "-")} · TourAPI 콘텐츠 ${num(s.catalog_items ?? s.processed ?? 0)}건 · 주소 매칭 ${num(s.matched_buildings ?? s.saved ?? 0)}건</div>`);
         if (!photoSyncTimer) photoSyncTimer = setInterval(loadPhotoSyncStatus, 5000);
       } else {
