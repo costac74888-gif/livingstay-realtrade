@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-03T00:06:14",
+  "generated_at": "2026-09-03T00:18:03",
   "read_only": true,
   "production_baseline": true,
   "source_key": "foreign_city_homestay",
@@ -32,8 +32,10 @@
   "estimated_after_apply": {
     "production_master_buildings": 83721,
     "foreign_registry_rows": 14521,
-    "foreign_active_permits": 11210,
-    "foreign_active_rooms": 10516,
+    "foreign_active_permits": 11209,
+    "foreign_active_rooms": 10515,
+    "foreign_active_permits_net_change": 18,
+    "foreign_active_rooms_net_change": 16,
     "new_master_buildings": 9
   },
   "new_rows": [

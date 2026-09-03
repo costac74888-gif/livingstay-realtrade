@@ -199,6 +199,12 @@ def validate(batch_id, sample_limit=20):
     production_active_rooms = sum(
         int(row.get("room_count") or 0) for row in production_active_rows
     )
+    staging_active_rows = [
+        row for row in staging_rows if row.get("status_bucket") == "active"
+    ]
+    staging_active_rooms = sum(
+        _room_count(row.get("raw_record")) for row in staging_active_rows
+    )
     new_building_count = counts["new_building_candidate_unique_addresses"]
     result = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -215,11 +221,13 @@ def validate(batch_id, sample_limit=20):
         "estimated_after_apply": {
             "production_master_buildings": len(building_rows) + new_building_count,
             "foreign_registry_rows": len(registry_rows) + counts["new_permits"],
-            "foreign_active_permits": (
-                len(production_active_rows) + counts["new_active_permits"]
+            "foreign_active_permits": len(staging_active_rows),
+            "foreign_active_rooms": staging_active_rooms,
+            "foreign_active_permits_net_change": (
+                len(staging_active_rows) - len(production_active_rows)
             ),
-            "foreign_active_rooms": (
-                production_active_rooms + counts["new_active_rooms"]
+            "foreign_active_rooms_net_change": (
+                staging_active_rooms - production_active_rooms
             ),
             "new_master_buildings": new_building_count,
         },

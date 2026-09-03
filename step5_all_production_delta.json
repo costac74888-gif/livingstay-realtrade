@@ -1,0 +1,1380 @@
+{
+  "generated_at": "2026-09-03T00:17:12",
+  "read_only": true,
+  "production_baseline": true,
+  "batches": [
+    {
+      "id": 19,
+      "source_key": "auto_camping",
+      "reference_date": "2026-09-03",
+      "total_rows": 969
+    },
+    {
+      "id": 17,
+      "source_key": "foreign_city_homestay",
+      "reference_date": "2026-09-03",
+      "total_rows": 14521
+    },
+    {
+      "id": 18,
+      "source_key": "general_camping",
+      "reference_date": "2026-09-03",
+      "total_rows": 4902
+    },
+    {
+      "id": 20,
+      "source_key": "hanok",
+      "reference_date": "2026-09-03",
+      "total_rows": 3164
+    },
+    {
+      "id": 16,
+      "source_key": "lodging",
+      "reference_date": "2026-09-03",
+      "total_rows": 58693
+    },
+    {
+      "id": 15,
+      "source_key": "rural_homestay",
+      "reference_date": "2026-09-03",
+      "total_rows": 55419
+    },
+    {
+      "id": 13,
+      "source_key": "tourism_lodging",
+      "reference_date": "2026-09-03",
+      "total_rows": 4329
+    },
+    {
+      "id": 14,
+      "source_key": "tourism_pension",
+      "reference_date": "2026-09-03",
+      "total_rows": 1662
+    }
+  ],
+  "staging_rows": 143659,
+  "production_registry_rows": 128795,
+  "production_master_buildings": 83712,
+  "overall": {
+    "status_counts": {
+      "active": 90787,
+      "closed": 52393,
+      "excluded": 1,
+      "temporarily_closed": 478
+    },
+    "production_existing_permits": 128795,
+    "new_permits": 14864,
+    "new_status_counts": {
+      "active": 11247,
+      "closed": 3308,
+      "excluded": 1,
+      "temporarily_closed": 308
+    },
+    "new_match_counts": {
+      "new_building_candidate": 5102,
+      "existing_building": 9419,
+      "ambiguous_existing_building": 305,
+      "no_address": 5,
+      "address_conflict": 33
+    },
+    "new_existing_building_rows": 9419,
+    "new_building_candidate_rows": 5102,
+    "new_building_candidate_unique_addresses": 3969,
+    "new_building_candidate_duplicate_rows": 1133,
+    "new_active_permits": 11247,
+    "new_active_rooms": 175684,
+    "production_existing_active_permits": 79545,
+    "production_existing_active_rooms": 800149,
+    "staging_reported_active_rooms": 292263,
+    "active_permits_after_apply": 90787,
+    "active_permits_net_change": 11242,
+    "room_count_quality_gate": {
+      "safe_to_replace_existing_values": false,
+      "reason": "CSV 객실수 공란·집계 기준 차이로 기존 운영 합계보다 작음",
+      "preserve_existing_when_csv_blank": true,
+      "new_permits_reported_active_rooms": 175684
+    }
+  },
+  "estimated_after_apply": {
+    "registry_rows": 143659,
+    "master_buildings": 87681,
+    "active_permits": 90787,
+    "active_permits_net_change": 11242,
+    "active_rooms": null,
+    "active_rooms_reason": "기존 호실 보존 규칙을 적용한 뒤에만 확정 가능",
+    "new_master_buildings": 3969
+  },
+  "by_source": {
+    "auto_camping": {
+      "label": "자동차야영장업",
+      "staging_rows": 969,
+      "status_counts": {
+        "active": 805,
+        "closed": 131,
+        "excluded": 1,
+        "temporarily_closed": 32
+      },
+      "production_existing_permits": 0,
+      "new_permits": 969,
+      "new_status_counts": {
+        "active": 805,
+        "closed": 131,
+        "excluded": 1,
+        "temporarily_closed": 32
+      },
+      "production_existing_active_permits": 0,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 0,
+      "new_match_counts": {
+        "new_building_candidate": 864,
+        "existing_building": 94,
+        "ambiguous_existing_building": 10,
+        "no_address": 1
+      },
+      "new_existing_building_rows": 94,
+      "new_building_candidate_rows": 864,
+      "new_building_candidate_unique_addresses": 840,
+      "new_building_candidate_duplicate_rows": 24,
+      "new_active_permits": 805,
+      "new_active_rooms": 196,
+      "new_rooms": 210,
+      "estimated_after_apply": {
+        "registry_rows": 969,
+        "active_permits": 805,
+        "staging_reported_active_rooms": 196,
+        "new_buildings": 840
+      },
+      "samples": {
+        "new_building_candidate": [
+          {
+            "permit_number": "CAMPING:3060000:CDFI2262142015000001",
+            "biz_name": "중랑가족캠핑장",
+            "status_bucket": "active",
+            "rooms": 47,
+            "road_address": "서울특별시 중랑구 망우로87길 110 (망우동)",
+            "jibun_address": "서울특별시 중랑구 망우동 76",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3100000:CDFI2262142018000001",
+            "biz_name": "초안산캠핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 노원구 마들로5가길 66-107 (월계동)",
+            "jibun_address": "서울특별시 노원구 월계동 749",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3160000:CDFI2262142025000001",
+            "biz_name": "사단법인 해피피플",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 구로구 구로중앙로 216-1, 해피피플 3층 (구로동)",
+            "jibun_address": "서울특별시 구로구 구로동 612-9 해피피플",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3160000:CDFI2262142026000001",
+            "biz_name": "신풍국제여행사",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 구로구 구로중앙로 28, 101호 (구로동)",
+            "jibun_address": "서울특별시 구로구 구로동 138-26",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3260000:CDFI2262142017000001",
+            "biz_name": "부산 송도오토캠핑장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "부산광역시 서구 송도해변로 36, 송도오토캠핑장 (암남동)",
+            "jibun_address": "부산광역시 서구 암남동 135-23 송도오토캠핑장",
+            "candidate_ids": []
+          }
+        ],
+        "existing_building": [
+          {
+            "permit_number": "CAMPING:3160000:CDFI2262142026000002",
+            "biz_name": "(주)니니즈",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 구로구 디지털로 300, 지밸리비즈플라자 12층 1254호 (구로동)",
+            "jibun_address": "서울특별시 구로구 구로동 188-25 지밸리비즈플라자",
+            "candidate_ids": [
+              3197
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3360000:CDFI2262142017000001",
+            "biz_name": "대저생태공원 캠핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "부산광역시 강서구 대저로 3 (대저1동)",
+            "jibun_address": "부산광역시 강서구 대저1동 1627-4",
+            "candidate_ids": [
+              47434
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3390000:CDFI2262142014000001",
+            "biz_name": "삼락생태공원 오토캠핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "부산광역시 사상구 삼락동 29-59",
+            "candidate_ids": [
+              47436
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3400000:CDFI2262142013000001",
+            "biz_name": "캠프리카",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "부산광역시 기장군 장안읍 장안로 18",
+            "jibun_address": "부산광역시 기장군 장안읍 기룡리 448",
+            "candidate_ids": [
+              47439
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3570000:CDFI2262142012000001",
+            "biz_name": "삼별초오토캠프장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "인천광역시 강화군 내가면 고비고개로 663",
+            "jibun_address": "인천광역시 강화군 내가면 고천리 293-10",
+            "candidate_ids": [
+              47482
+            ]
+          }
+        ],
+        "ambiguous_existing_building": [
+          {
+            "permit_number": "CAMPING:4160000:CDFI2262142016000001",
+            "biz_name": "크리스월드더레지던스",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "경기도 가평군 가평읍 북한강변로 360-69",
+            "jibun_address": "경기도 가평군 가평읍 금대리 49-4",
+            "candidate_ids": [
+              4758,
+              27879
+            ]
+          },
+          {
+            "permit_number": "CAMPING:4241000:CDFI2262142014000001",
+            "biz_name": "(주)하이원추추파크",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "강원특별자치도 삼척시 도계읍 심포남길 99",
+            "jibun_address": "강원특별자치도 삼척시 도계읍 심포리 231-3",
+            "candidate_ids": [
+              2665,
+              29722
+            ]
+          },
+          {
+            "permit_number": "CAMPING:4741000:CDFI2262142015000003",
+            "biz_name": "(주)밀모빨강치마자동차야영장",
+            "status_bucket": "temporarily_closed",
+            "rooms": 0,
+            "road_address": "전북특별자치도 무주군 적상면 밀모길 79-14",
+            "jibun_address": "전북특별자치도 무주군 적상면 사산리 산 235",
+            "candidate_ids": [
+              18123,
+              27186,
+              36783
+            ]
+          },
+          {
+            "permit_number": "CAMPING:4751000:CDFI2262142017000001",
+            "biz_name": "장수누리파크 오토캠핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "전북특별자치도 장수군 장수읍 논개사당길 65 (누리파크)",
+            "jibun_address": "전북특별자치도 장수군 장수읍 두산리 420-1",
+            "candidate_ids": [
+              18520,
+              31174
+            ]
+          },
+          {
+            "permit_number": "CAMPING:4751000:CDFI2262142013000001",
+            "biz_name": "방화동가족휴가촌 자동차야영장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "전북특별자치도 장수군 번암면 방화동로 778",
+            "jibun_address": "전북특별자치도 장수군 번암면 사암리",
+            "candidate_ids": [
+              18127,
+              31118
+            ]
+          }
+        ],
+        "no_address": [
+          {
+            "permit_number": "CAMPING:4791000:CDFI2262142017000002",
+            "biz_name": "가자 변산 비치 캠핑장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "전북특별자치도 부안군 변산면 대항리 변산해수욕장 관광지 D5-1",
+            "candidate_ids": []
+          }
+        ]
+      }
+    },
+    "foreign_city_homestay": {
+      "label": "외국인관광도시민박업",
+      "staging_rows": 14521,
+      "status_counts": {
+        "closed": 3251,
+        "active": 11209,
+        "temporarily_closed": 61
+      },
+      "production_existing_permits": 14501,
+      "new_permits": 20,
+      "new_status_counts": {
+        "active": 19,
+        "closed": 1
+      },
+      "production_existing_active_permits": 11191,
+      "production_existing_active_rooms": 10499,
+      "production_linked_buildings": 8424,
+      "new_match_counts": {
+        "new_building_candidate": 13,
+        "existing_building": 7
+      },
+      "new_existing_building_rows": 7,
+      "new_building_candidate_rows": 13,
+      "new_building_candidate_unique_addresses": 9,
+      "new_building_candidate_duplicate_rows": 4,
+      "new_active_permits": 19,
+      "new_active_rooms": 17,
+      "new_rooms": 17,
+      "estimated_after_apply": {
+        "registry_rows": 14521,
+        "active_permits": 11209,
+        "staging_reported_active_rooms": 10515,
+        "new_buildings": 9
+      },
+      "samples": {
+        "new_building_candidate": [
+          {
+            "permit_number": "AIRBNB:3000000:CDFI2262212026000125",
+            "biz_name": "노토 스테이",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 명륜7길 21, 1층 (명륜3가)",
+            "jibun_address": "서울특별시 종로구 명륜3가 1-994",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "AIRBNB:3040000:CDFI2262212026000136",
+            "biz_name": "피치스테이",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 광진구 자양로48길 60, 301호 (구의동, 미광하이츠빌라)",
+            "jibun_address": "서울특별시 광진구 구의동 35-20 미광하이츠빌라",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "AIRBNB:3110000:CDFI2262212026000079",
+            "biz_name": "스테이니어 서울",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 은평구 응암로22길 13-1, 2층 (응암동)",
+            "jibun_address": "서울특별시 은평구 응암동 427-69",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "AIRBNB:3130000:CDFI2262212026000470",
+            "biz_name": "아르코 망원 4",
+            "status_bucket": "active",
+            "rooms": 2,
+            "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 401호 (망원동)",
+            "jibun_address": "서울특별시 마포구 망원동 428-20",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "AIRBNB:3130000:CDFI2262212026000471",
+            "biz_name": "아르코 망원5",
+            "status_bucket": "active",
+            "rooms": 2,
+            "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 501호 (망원동)",
+            "jibun_address": "서울특별시 마포구 망원동 428-20",
+            "candidate_ids": []
+          }
+        ],
+        "existing_building": [
+          {
+            "permit_number": "AIRBNB:3110000:CDFI2262212026000078",
+            "biz_name": "우드앤라이트",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 은평구 가좌로 293, 703호 (신사동)",
+            "jibun_address": "서울특별시 은평구 신사동 39-28",
+            "candidate_ids": [
+              40302
+            ]
+          },
+          {
+            "permit_number": "AIRBNB:3130000:CDFI2262212026000472",
+            "biz_name": "더 로즈 가든",
+            "status_bucket": "active",
+            "rooms": 1,
+            "road_address": "서울특별시 마포구 연남로 76, 101동 602호 (연남동, 라센트라 연남)",
+            "jibun_address": "서울특별시 마포구 연남동 361-10 라센트라 연남",
+            "candidate_ids": [
+              40746
+            ]
+          },
+          {
+            "permit_number": "AIRBNB:3130000:CDFI2262212024000496",
+            "biz_name": "JR게스트하우스",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "서울특별시 마포구 광성로 35-16, 지층 1호 (신수동)",
+            "jibun_address": "서울특별시 마포구 신수동 93-29",
+            "candidate_ids": [
+              41284
+            ]
+          },
+          {
+            "permit_number": "AIRBNB:3140000:CDFI2262212026000031",
+            "biz_name": "소울하우스",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 양천구 목동중앙남로3가길 98, 4층 (목동)",
+            "jibun_address": "서울특별시 양천구 목동 720-4",
+            "candidate_ids": [
+              41925
+            ]
+          },
+          {
+            "permit_number": "AIRBNB:3380000:CDFI2262212026000171",
+            "biz_name": "늘다온",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "부산광역시 수영구 감포로48번길 19-6, 101호 (민락동)",
+            "jibun_address": "부산광역시 수영구 민락동 145-13",
+            "candidate_ids": [
+              43985
+            ]
+          }
+        ]
+      }
+    },
+    "general_camping": {
+      "label": "일반야영장업",
+      "staging_rows": 4902,
+      "status_counts": {
+        "temporarily_closed": 184,
+        "closed": 1111,
+        "active": 3607
+      },
+      "production_existing_permits": 0,
+      "new_permits": 4902,
+      "new_status_counts": {
+        "temporarily_closed": 184,
+        "closed": 1111,
+        "active": 3607
+      },
+      "production_existing_active_permits": 0,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 0,
+      "new_match_counts": {
+        "new_building_candidate": 963,
+        "existing_building": 3858,
+        "ambiguous_existing_building": 76,
+        "address_conflict": 3,
+        "no_address": 2
+      },
+      "new_existing_building_rows": 3858,
+      "new_building_candidate_rows": 963,
+      "new_building_candidate_unique_addresses": 735,
+      "new_building_candidate_duplicate_rows": 228,
+      "new_active_permits": 3607,
+      "new_active_rooms": 838,
+      "new_rooms": 894,
+      "estimated_after_apply": {
+        "registry_rows": 4902,
+        "active_permits": 3607,
+        "staging_reported_active_rooms": 838,
+        "new_buildings": 735
+      },
+      "samples": {
+        "new_building_candidate": [
+          {
+            "permit_number": "CAMPING:3030000:CDFI2262132015000001",
+            "biz_name": "성동 서울숲 여름캠핑장",
+            "status_bucket": "temporarily_closed",
+            "rooms": 0,
+            "road_address": "서울특별시 성동구 뚝섬로 273 (성수동1가)",
+            "jibun_address": "서울특별시 성동구 성수동1가 643",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3040000:CDFI2262132015000002",
+            "biz_name": "어린이대공원(캠핑체험장)",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "서울특별시 광진구 능동로 216 (능동, 어린이대공원)",
+            "jibun_address": "서울특별시 광진구 능동 18-14",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3040000:CDFI2262132018000001",
+            "biz_name": "(주)한캠프",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "서울특별시 광진구 자양동 427-12",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3040000:CDFI2262132017000001",
+            "biz_name": "(주)한캠프",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "서울특별시 광진구 자양동 435",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:3040000:CDFI2262132015000001",
+            "biz_name": "(주)엘아이커뮤니케이션즈",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "서울특별시 광진구 자양동 427-13",
+            "candidate_ids": []
+          }
+        ],
+        "existing_building": [
+          {
+            "permit_number": "CAMPING:3080000:CDFI2262132021000001",
+            "biz_name": "우이동 가족캠핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 강북구 삼양로181길 28, 우이동 가족캠핑장 (우이동)",
+            "jibun_address": "서울특별시 강북구 우이동 317 우이동 가족캠핑장 방문자센터",
+            "candidate_ids": [
+              47419
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3090000:CDFI2262132021000001",
+            "biz_name": "무수아취 야영장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 도봉구 도봉로169길 249, 1층 (도봉동)",
+            "jibun_address": "서울특별시 도봉구 도봉동 469-10",
+            "candidate_ids": [
+              47420
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3110000:CDFI2262132025000001",
+            "biz_name": "북한산 진관글램핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 은평구 북한산로 228-28 (진관동)",
+            "jibun_address": "서울특별시 은평구 진관동 334-2",
+            "candidate_ids": [
+              47421
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3110000:CDFI2262132023000002",
+            "biz_name": "앵봉산 가족캠핑장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 은평구 통일로 1053 (진관동)",
+            "jibun_address": "서울특별시 은평구 진관동 83-6 은평환경플랜트",
+            "candidate_ids": [
+              47422
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3110000:CDFI2262132023000001",
+            "biz_name": "북한산 둘레캠프",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 은평구 연서로 608-2, 북한산둘레캠핑장 (진관동)",
+            "jibun_address": "서울특별시 은평구 진관동 335-1 북한산둘레캠핑장",
+            "candidate_ids": [
+              47423
+            ]
+          }
+        ],
+        "ambiguous_existing_building": [
+          {
+            "permit_number": "CAMPING:3570000:CDFI2262132018000002",
+            "biz_name": "민머루잼머",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "인천광역시 강화군 삼산면 어류정길198번길 6",
+            "jibun_address": "인천광역시 강화군 삼산면 매음리 897-1",
+            "candidate_ids": [
+              11967,
+              47511
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3580000:CDFI2262132021000004",
+            "biz_name": "하늘빛",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "인천광역시 옹진군 영흥면 영흥서로 527-26",
+            "jibun_address": "인천광역시 옹진군 영흥면 내리 1659-2",
+            "candidate_ids": [
+              12126,
+              47549
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3580000:CDFI2262132025000001",
+            "biz_name": "덕적도 자연휴양림 야영장",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "인천광역시 옹진군 덕적면 덕적남로 220, 덕적면 자연휴양림",
+            "jibun_address": "인천광역시 옹진군 덕적면 진리 584-7 덕적면 자연휴양림",
+            "candidate_ids": [
+              12028,
+              47563
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3730000:CDFI2262132015000001",
+            "biz_name": "국립신불산폭포자연휴양림",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "울산광역시 울주군 상북면 청수골길 175",
+            "jibun_address": "울산광역시 울주군 상북면 이천리 산 3-1",
+            "candidate_ids": [
+              13607,
+              47602
+            ]
+          },
+          {
+            "permit_number": "CAMPING:3920000:CDFI2262132020000003",
+            "biz_name": "동두천 자연휴양림",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 동두천시 탑동가산로 1, 동두천 자연휴양림 (탑동동)",
+            "jibun_address": "경기도 동두천시 탑동동 산 16 동두천 자연휴양림",
+            "candidate_ids": [
+              16861,
+              47632
+            ]
+          }
+        ],
+        "address_conflict": [
+          {
+            "permit_number": "CAMPING:4140000:CDFI2262132016000011",
+            "biz_name": "반려견호텔 랩도그빌",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 연천군 청산면 청창로200번길 33",
+            "jibun_address": "경기도 연천군 청산면 대전리 406",
+            "candidate_ids": [
+              19217,
+              29471
+            ]
+          },
+          {
+            "permit_number": "CAMPING:4341000:CDFI2262132017000001",
+            "biz_name": "장신리 유원지 야영장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "강원특별자치도 고성군 간성읍 소똥령마을길 75-3",
+            "jibun_address": "강원특별자치도 고성군 간성읍 장신리 513",
+            "candidate_ids": [
+              15195,
+              137588
+            ]
+          },
+          {
+            "permit_number": "CAMPING:5330000:CDFI2262132016000002",
+            "biz_name": "파라다이스 캠핑장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "경상남도 통영시 욕지면 유동길 111 (파라다이스)",
+            "jibun_address": "경상남도 통영시 욕지면 서산리 40-1",
+            "candidate_ids": [
+              50036,
+              120136
+            ]
+          }
+        ],
+        "no_address": [
+          {
+            "permit_number": "CAMPING:4341000:CDFI2262132016000009",
+            "biz_name": "공현진1리 해변 야영장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "강원특별자치도 고성군 죽왕면 공현진리",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "CAMPING:4341000:CDFI2262132016000010",
+            "biz_name": "거진 해변 야영장",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "강원특별자치도 고성군 거진읍 거진리",
+            "candidate_ids": []
+          }
+        ]
+      }
+    },
+    "hanok": {
+      "label": "한옥체험업",
+      "staging_rows": 3164,
+      "status_counts": {
+        "active": 2590,
+        "closed": 563,
+        "temporarily_closed": 11
+      },
+      "production_existing_permits": 3164,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 2590,
+      "production_existing_active_rooms": 2499,
+      "production_linked_buildings": 2506,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 3164,
+        "active_permits": 2590,
+        "staging_reported_active_rooms": 2499,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "lodging": {
+      "label": "숙박업",
+      "staging_rows": 58693,
+      "status_counts": {
+        "active": 31178,
+        "closed": 27515
+      },
+      "production_existing_permits": 54049,
+      "new_permits": 4644,
+      "new_status_counts": {
+        "active": 3364,
+        "closed": 1280
+      },
+      "production_existing_active_permits": 27818,
+      "production_existing_active_rooms": 683569,
+      "production_linked_buildings": 19490,
+      "new_match_counts": {
+        "existing_building": 2528,
+        "new_building_candidate": 2036,
+        "address_conflict": 13,
+        "ambiguous_existing_building": 67
+      },
+      "new_existing_building_rows": 2528,
+      "new_building_candidate_rows": 2036,
+      "new_building_candidate_unique_addresses": 1950,
+      "new_building_candidate_duplicate_rows": 86,
+      "new_active_permits": 3364,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 58693,
+        "active_permits": 31178,
+        "staging_reported_active_rooms": 0,
+        "new_buildings": 1950
+      },
+      "samples": {
+        "existing_building": [
+          {
+            "permit_number": "3000000-201-2018-00001",
+            "biz_name": "준오 호텔",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 인사동16길 6 (관훈동)",
+            "jibun_address": "서울특별시 종로구 관훈동 106",
+            "candidate_ids": [
+              25123
+            ]
+          },
+          {
+            "permit_number": "3000000-201-2020-00007",
+            "biz_name": "Hostel Tommy 호스텔 토미",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 돈화문로 66, 원광빌딩 (와룡동)",
+            "jibun_address": "서울특별시 종로구 와룡동 68 원광빌딩",
+            "candidate_ids": [
+              25131
+            ]
+          },
+          {
+            "permit_number": "3000000-201-2023-00001",
+            "biz_name": "(주)서울큐브 종로",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 삼일대로17길 51, 스타골드빌딩 4,6층 (관철동)",
+            "jibun_address": "서울특별시 종로구 관철동 180 스타골드빌딩",
+            "candidate_ids": [
+              33333
+            ]
+          },
+          {
+            "permit_number": "3000000-201-2026-00005",
+            "biz_name": "zen seoul stay",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 수표로28길 28, 3~5층 (돈의동)",
+            "jibun_address": "서울특별시 종로구 돈의동 30",
+            "candidate_ids": [
+              25212
+            ]
+          },
+          {
+            "permit_number": "3000000-201-2019-00004",
+            "biz_name": "핑크빌",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 삼일대로17길 47-1, 5~7층 (관철동)",
+            "jibun_address": "서울특별시 종로구 관철동 175",
+            "candidate_ids": [
+              38573
+            ]
+          }
+        ],
+        "new_building_candidate": [
+          {
+            "permit_number": "3000000-201-2020-00024",
+            "biz_name": "호스텔 데이",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 창경궁로 224, 2,3층 (명륜4가, 서울씨티빌딩)",
+            "jibun_address": "서울특별시 종로구 명륜4가 188-12 서울씨티빌딩",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "3000000-201-2026-00002",
+            "biz_name": "유닛제이호스텔",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 삼일대로15길 18, 채헌빌딩 4~6층 (관철동)",
+            "jibun_address": "서울특별시 종로구 관철동 12-6 채헌빌딩",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "3000000-201-2026-00001",
+            "biz_name": "스테이 오하나",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 우정국로2길 32, 3,4,5층 (관철동)",
+            "jibun_address": "서울특별시 종로구 관철동 19-22",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "3000000-201-2021-00003",
+            "biz_name": "KD-ONE9",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 종로62길 17, 케이디오피스텔 9층 (숭인동)",
+            "jibun_address": "서울특별시 종로구 숭인동 217-26 케이디오피스텔",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "3000000-201-2024-00006",
+            "biz_name": "U-STAY HOSTEL",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "서울특별시 종로구 지봉로 24-12, 5층 (숭인동)",
+            "jibun_address": "서울특별시 종로구 숭인동 313-2",
+            "candidate_ids": []
+          }
+        ],
+        "address_conflict": [
+          {
+            "permit_number": "3570000-201-2025-00003",
+            "biz_name": "매음3",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "인천광역시 강화군 삼산면 삼산남로 366-24",
+            "jibun_address": "인천광역시 강화군 삼산면 매음리 151-48",
+            "candidate_ids": [
+              11955,
+              16676
+            ]
+          },
+          {
+            "permit_number": "3570000-201-2025-00001",
+            "biz_name": "매음1",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "인천광역시 강화군 삼산면 삼산남로 366-22",
+            "jibun_address": "인천광역시 강화군 삼산면 매음리 151-47",
+            "candidate_ids": [
+              11953,
+              11955
+            ]
+          },
+          {
+            "permit_number": "3670000-201-1991-00004",
+            "biz_name": "유성온천개발(주)호텔아드리아",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "대전광역시 유성구 온천로 27 (봉명동)",
+            "jibun_address": "대전광역시 유성구 봉명동 442-2",
+            "candidate_ids": [
+              12772,
+              12773
+            ]
+          },
+          {
+            "permit_number": "4351000-201-2007-00017",
+            "biz_name": "(주)소노인터내셔널 쏠비치호텔",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "강원특별자치도 양양군 손양면 선사유적로 678",
+            "jibun_address": "강원특별자치도 양양군 손양면 오산리 23-16",
+            "candidate_ids": [
+              15443,
+              26827
+            ]
+          },
+          {
+            "permit_number": "4420000-201-2007-00001",
+            "biz_name": "속리산 관광농원",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": "충청북도 보은군 속리산면 속리산로 699",
+            "jibun_address": "충청북도 보은군 속리산면 상판리 236",
+            "candidate_ids": [
+              20710,
+              20711
+            ]
+          }
+        ],
+        "ambiguous_existing_building": [
+          {
+            "permit_number": "4050000-201-2006-10001",
+            "biz_name": "코리아골프빌리지 기흥아펠바움",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 용인시 기흥구 기흥단지로 394 (고매동)",
+            "jibun_address": "경기도 용인시 기흥구 고매동 5-56",
+            "candidate_ids": [
+              4571,
+              4584
+            ]
+          },
+          {
+            "permit_number": "4050000-201-1993-10001",
+            "biz_name": "골드훼미리콘도미니엄",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 용인시 기흥구 기흥단지로 406 (고매동)",
+            "jibun_address": "경기도 용인시 기흥구 고매동 5-73",
+            "candidate_ids": [
+              4572,
+              4585
+            ]
+          },
+          {
+            "permit_number": "4050000-201-2004-10009",
+            "biz_name": "코리아골프빌리지 대우그린카운티",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 용인시 기흥구 기흥단지로 415 (고매동)",
+            "jibun_address": "경기도 용인시 기흥구 고매동 30-2",
+            "candidate_ids": [
+              4575,
+              4590
+            ]
+          },
+          {
+            "permit_number": "4050000-201-2011-00001",
+            "biz_name": "라센트라",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 용인시 처인구 이동읍 기흥단지로 579-1",
+            "jibun_address": "경기도 용인시 처인구 이동읍 서리 770",
+            "candidate_ids": [
+              4637,
+              4638
+            ]
+          },
+          {
+            "permit_number": "4080000-201-2023-00001",
+            "biz_name": "안성 용설호 관광농원",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "경기도 안성시 죽산면 용설호수길 131-34, 가,나,다동",
+            "jibun_address": "경기도 안성시 죽산면 용설리 1654",
+            "candidate_ids": [
+              18790,
+              47842
+            ]
+          }
+        ]
+      }
+    },
+    "rural_homestay": {
+      "label": "농어촌민박업",
+      "staging_rows": 55419,
+      "status_counts": {
+        "closed": 18709,
+        "active": 36618,
+        "temporarily_closed": 92
+      },
+      "production_existing_permits": 55419,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 36618,
+      "production_existing_active_rooms": 103582,
+      "production_linked_buildings": 34627,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 55419,
+        "active_permits": 36618,
+        "staging_reported_active_rooms": 103582,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "tourism_lodging": {
+      "label": "관광숙박업",
+      "staging_rows": 4329,
+      "status_counts": {
+        "active": 3452,
+        "closed": 785,
+        "temporarily_closed": 92
+      },
+      "production_existing_permits": 0,
+      "new_permits": 4329,
+      "new_status_counts": {
+        "active": 3452,
+        "closed": 785,
+        "temporarily_closed": 92
+      },
+      "production_existing_active_permits": 0,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 0,
+      "new_match_counts": {
+        "existing_building": 2932,
+        "new_building_candidate": 1226,
+        "ambiguous_existing_building": 152,
+        "no_address": 2,
+        "address_conflict": 17
+      },
+      "new_existing_building_rows": 2932,
+      "new_building_candidate_rows": 1226,
+      "new_building_candidate_unique_addresses": 1169,
+      "new_building_candidate_duplicate_rows": 57,
+      "new_active_permits": 3452,
+      "new_active_rooms": 174633,
+      "new_rooms": 206270,
+      "estimated_after_apply": {
+        "registry_rows": 4329,
+        "active_permits": 3452,
+        "staging_reported_active_rooms": 174633,
+        "new_buildings": 1169
+      },
+      "samples": {
+        "existing_building": [
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032026000026",
+            "biz_name": "호텔 인스피룸 종로",
+            "status_bucket": "active",
+            "rooms": 16,
+            "road_address": "서울특별시 종로구 난계로29길 33-5, 삼광빌딩 (숭인동)",
+            "jibun_address": "서울특별시 종로구 숭인동 201-6 삼광빌딩",
+            "candidate_ids": [
+              25684
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032026000027",
+            "biz_name": "안한스테이 동묘",
+            "status_bucket": "active",
+            "rooms": 9,
+            "road_address": "서울특별시 종로구 종로57길 7, 안한스테이 동묘 (숭인동)",
+            "jibun_address": "서울특별시 종로구 숭인동 99-2 안한스테이 동묘",
+            "candidate_ids": [
+              25678
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032026000028",
+            "biz_name": "하우스다 종각",
+            "status_bucket": "active",
+            "rooms": 6,
+            "road_address": "서울특별시 종로구 삼일대로 391, 5층 (관철동)",
+            "jibun_address": "서울특별시 종로구 관철동 7-1",
+            "candidate_ids": [
+              27710
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032026000029",
+            "biz_name": "나애집",
+            "status_bucket": "active",
+            "rooms": 4,
+            "road_address": "서울특별시 종로구 삼일대로 391, 6층 (관철동)",
+            "jibun_address": "서울특별시 종로구 관철동 7-1",
+            "candidate_ids": [
+              27710
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032026000032",
+            "biz_name": "포게이츠 호스텔",
+            "status_bucket": "active",
+            "rooms": 12,
+            "road_address": "서울특별시 종로구 삼일대로 395, 종로빌딩 7층 (종로2가)",
+            "jibun_address": "서울특별시 종로구 종로2가 71-2 종로빌딩",
+            "candidate_ids": [
+              30371
+            ]
+          }
+        ],
+        "new_building_candidate": [
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260031974000001",
+            "biz_name": "서울",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "서울특별시 종로구 청진동 92",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032003000001",
+            "biz_name": "(주)올림피아스위트",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "서울특별시 종로구 평창동 108-2",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032012000004",
+            "biz_name": "Stay in GAM",
+            "status_bucket": "closed",
+            "rooms": 15,
+            "road_address": "서울특별시 종로구 율곡로10길 12 (와룡동)",
+            "jibun_address": "서울특별시 종로구 와룡동 21",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032014000002",
+            "biz_name": "미오하우스",
+            "status_bucket": "closed",
+            "rooms": 10,
+            "road_address": "서울특별시 종로구 청계천로 229, 7층 (종로5가)",
+            "jibun_address": "서울특별시 종로구 종로5가 314-7 7층",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "TOURISM:3000000:CDFI2260032014000003",
+            "biz_name": "호스텔코리아 10호점",
+            "status_bucket": "closed",
+            "rooms": 9,
+            "road_address": "서울특별시 종로구 종로 382, 2층 (숭인동)",
+            "jibun_address": "서울특별시 종로구 숭인동 200-33 2층",
+            "candidate_ids": []
+          }
+        ],
+        "ambiguous_existing_building": [
+          {
+            "permit_number": "TOURISM:3070000:CDFI2260032014000001",
+            "biz_name": "리비에르",
+            "status_bucket": "closed",
+            "rooms": 69,
+            "road_address": "서울특별시 성북구 동소문로20나길 33 (동선동1가, 리비에르 호텔)",
+            "jibun_address": "서울특별시 성북구 동선동1가 91 리비에르 호텔",
+            "candidate_ids": [
+              26006,
+              32796
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3130000:CDFI2260032012000001",
+            "biz_name": "까사빌 신촌 서울",
+            "status_bucket": "closed",
+            "rooms": 183,
+            "road_address": "서울특별시 마포구 서강로 137 (노고산동)",
+            "jibun_address": "서울특별시 마포구 노고산동 57-26",
+            "candidate_ids": [
+              2918,
+              29487
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3270000:CDFI2260032023000001",
+            "biz_name": "정이든 스테이",
+            "status_bucket": "active",
+            "rooms": 1,
+            "road_address": "부산광역시 동구 범곡로28번길 7 (범일동)",
+            "jibun_address": "부산광역시 동구 범일동 65",
+            "candidate_ids": [
+              34537,
+              35544
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3400000:CDFI2260032017000001",
+            "biz_name": "아난티펜트하우스 해운대",
+            "status_bucket": "active",
+            "rooms": 218,
+            "road_address": "부산광역시 기장군 기장읍 기장해안로 268-31",
+            "jibun_address": "부산광역시 기장군 기장읍 시랑리 704",
+            "candidate_ids": [
+              4141,
+              29417
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3400000:CDFI2260032026000001",
+            "biz_name": "오션스위트",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "부산광역시 기장군 일광읍 삼성3길 7",
+            "jibun_address": "부산광역시 기장군 일광읍 삼성리 115-49",
+            "candidate_ids": [
+              4146,
+              28262
+            ]
+          }
+        ],
+        "no_address": [
+          {
+            "permit_number": "TOURISM:3260000:CDFI2260032013000001",
+            "biz_name": "웰호텔",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "부산광역시 서구 암남동",
+            "candidate_ids": []
+          },
+          {
+            "permit_number": "TOURISM:5680000:CDFI2260032007000001",
+            "biz_name": "한중해양개발(주)",
+            "status_bucket": "closed",
+            "rooms": 0,
+            "road_address": null,
+            "jibun_address": "충청남도 당진시 신평면 운정리",
+            "candidate_ids": []
+          }
+        ],
+        "address_conflict": [
+          {
+            "permit_number": "TOURISM:3400000:CDFI2260032024000003",
+            "biz_name": "하이바이풀빌라리조트",
+            "status_bucket": "active",
+            "rooms": 7,
+            "road_address": "부산광역시 기장군 장안읍 반룡로 276",
+            "jibun_address": "부산광역시 기장군 장안읍 반룡리 43",
+            "candidate_ids": [
+              8181,
+              30960
+            ]
+          },
+          {
+            "permit_number": "TOURISM:3410000:CDFI2260032026000001",
+            "biz_name": "스테이305",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "대구광역시 중구 교동길 106-6 (완전동)",
+            "jibun_address": "대구광역시 중구 완전동 1-18",
+            "candidate_ids": [
+              8190,
+              32721
+            ]
+          },
+          {
+            "permit_number": "TOURISM:4160000:CDFI2260032025000002",
+            "biz_name": "아이리스촌캉스",
+            "status_bucket": "active",
+            "rooms": 9,
+            "road_address": "경기도 가평군 청평면 호명리길 242",
+            "jibun_address": "경기도 가평군 청평면 호명리 50-1",
+            "candidate_ids": [
+              19726,
+              30774
+            ]
+          },
+          {
+            "permit_number": "TOURISM:4271000:CDFI2260032025000001",
+            "biz_name": "더한옥헤리티지호텔",
+            "status_bucket": "active",
+            "rooms": 0,
+            "road_address": "강원특별자치도 영월군 남면 문개실길 37-200",
+            "jibun_address": "강원특별자치도 영월군 남면 북쌍리 산 35",
+            "candidate_ids": [
+              14256,
+              26799
+            ]
+          },
+          {
+            "permit_number": "TOURISM:4520000:CDFI2260032025000001",
+            "biz_name": "호스텔 아르띠에 도고",
+            "status_bucket": "active",
+            "rooms": 8,
+            "road_address": "충청남도 아산시 선장면 삼봉산길 13-2",
+            "jibun_address": "충청남도 아산시 선장면 신성리 292",
+            "candidate_ids": [
+              4836,
+              30747
+            ]
+          }
+        ]
+      }
+    },
+    "tourism_pension": {
+      "label": "관광펜션업",
+      "staging_rows": 1662,
+      "status_counts": {
+        "active": 1328,
+        "closed": 328,
+        "temporarily_closed": 6
+      },
+      "production_existing_permits": 1662,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 1328,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 1231,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 1662,
+        "active_permits": 1328,
+        "staging_reported_active_rooms": 0,
+        "new_buildings": 0
+      },
+      "samples": {}
+    }
+  }
+}
