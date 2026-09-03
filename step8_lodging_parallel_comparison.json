@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-03T06:22:04",
+  "generated_at": "2026-09-03T06:38:30",
   "read_only": true,
   "production_baseline": true,
   "batches": [
@@ -72,11 +72,11 @@
     "new_building_candidate_duplicate_rows": 0,
     "new_active_permits": 0,
     "new_active_rooms": 0,
-    "production_existing_active_permits": 90788,
-    "production_existing_active_rooms": 1189039,
+    "production_existing_active_permits": 90787,
+    "production_existing_active_rooms": 1189038,
     "staging_reported_active_rooms": 292263,
     "active_permits_after_apply": 90787,
-    "active_permits_net_change": -1,
+    "active_permits_net_change": 0,
     "room_count_quality_gate": {
       "safe_to_replace_existing_values": false,
       "reason": "CSV 객실수 공란·집계 기준 차이로 기존 운영 합계보다 작음",
@@ -88,7 +88,7 @@
     "registry_rows": 143659,
     "master_buildings": 83712,
     "active_permits": 90787,
-    "active_permits_net_change": -1,
+    "active_permits_net_change": 0,
     "active_rooms": null,
     "active_rooms_reason": "기존 호실 보존 규칙을 적용한 뒤에만 확정 가능",
     "new_master_buildings": 0
@@ -121,7 +121,8 @@
         "registry_rows": 969,
         "active_permits": 805,
         "staging_reported_active_rooms": 196,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -136,8 +137,8 @@
       "production_existing_permits": 14521,
       "new_permits": 0,
       "new_status_counts": {},
-      "production_existing_active_permits": 11210,
-      "production_existing_active_rooms": 10516,
+      "production_existing_active_permits": 11209,
+      "production_existing_active_rooms": 10515,
       "production_linked_buildings": 8424,
       "new_match_counts": {},
       "new_existing_building_rows": 0,
@@ -151,7 +152,8 @@
         "registry_rows": 14521,
         "active_permits": 11209,
         "staging_reported_active_rooms": 10515,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -181,7 +183,8 @@
         "registry_rows": 4902,
         "active_permits": 3607,
         "staging_reported_active_rooms": 838,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -211,7 +214,8 @@
         "registry_rows": 3164,
         "active_permits": 2590,
         "staging_reported_active_rooms": 2499,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -240,7 +244,8 @@
         "registry_rows": 58693,
         "active_permits": 31178,
         "staging_reported_active_rooms": 0,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -270,7 +275,8 @@
         "registry_rows": 55419,
         "active_permits": 36618,
         "staging_reported_active_rooms": 103582,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -300,7 +306,8 @@
         "registry_rows": 4329,
         "active_permits": 3452,
         "staging_reported_active_rooms": 174633,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     },
@@ -330,7 +337,8 @@
         "registry_rows": 1662,
         "active_permits": 1328,
         "staging_reported_active_rooms": 0,
-        "new_buildings": 0
+        "new_buildings": 0,
+        "active_permits_net_change": 0
       },
       "samples": {}
     }
