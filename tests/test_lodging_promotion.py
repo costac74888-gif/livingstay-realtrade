@@ -1,6 +1,6 @@
 import unittest
 
-from lodging_promotion import _build_targets
+from lodging_promotion import _build_targets, _validate_target_admission
 
 
 class LodgingPromotionTest(unittest.TestCase):
@@ -67,6 +67,30 @@ class LodgingPromotionTest(unittest.TestCase):
         self.assertEqual(targets[0]["action"], "update")
         self.assertEqual(targets[0]["existing_applied_building_id"], 99)
         self.assertEqual(summary["existing_links_preserved"], 1)
+
+    def test_duplicate_permit_is_rejected(self):
+        targets = [
+            {"payload": {"permit_number": "P-1", "row_state": "validated"}},
+            {"payload": {"permit_number": "P-1", "row_state": "validated"}},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "중복"):
+            _validate_target_admission(targets, allow_manual_review=True)
+
+    def test_unresolved_review_row_blocks_approval_or_apply(self):
+        targets = [
+            {
+                "payload": {
+                    "permit_number": "P-2",
+                    "row_state": "review_required",
+                }
+            }
+        ]
+        with self.assertRaisesRegex(RuntimeError, "수동 검토"):
+            _validate_target_admission(targets, allow_manual_review=False)
+        self.assertEqual(
+            _validate_target_admission(targets, allow_manual_review=True),
+            1,
+        )
 
 
 if __name__ == "__main__":

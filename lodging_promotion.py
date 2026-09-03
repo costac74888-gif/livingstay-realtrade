@@ -35,6 +35,34 @@ def _canonical_hash(value):
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _validate_target_admission(targets, *, allow_manual_review):
+    permits = []
+    manual_review_count = 0
+    for target in targets:
+        payload = target.get("payload") or {}
+        permit_number = payload.get("permit_number")
+        if not permit_number:
+            raise RuntimeError("manifest 대상에 permit_number가 없습니다.")
+        permits.append(permit_number)
+        if payload.get("row_state") == "review_required":
+            manual_review_count += 1
+    if len(permits) != len(set(permits)):
+        duplicates = [
+            permit
+            for permit, count in Counter(permits).items()
+            if count > 1
+        ]
+        raise RuntimeError(
+            "manifest 대상에 중복 permit_number가 있습니다: "
+            + ", ".join(sorted(duplicates)[:5])
+        )
+    if manual_review_count and not allow_manual_review:
+        raise RuntimeError(
+            f"수동 검토 미해결 행 {manual_review_count}건이 있어 진행할 수 없습니다."
+        )
+    return manual_review_count
+
+
 def _fetch_latest_staging(conn):
     cur = conn.cursor()
     try:
@@ -56,16 +84,18 @@ def _fetch_latest_staging(conn):
         batch_ids = [batches[key]["id"] for key in GOVERNMENT_LODGING_SOURCES]
         cur.execute(
             """
-            SELECT id AS source_row_id, batch_id, snapshot_key,
+            SELECT sr.id AS source_row_id, sr.batch_id, sb.source_key,
+                   snapshot_key,
                    permit_number, authority_code, source_permit_number,
                    biz_name, raw_hygiene_type, service_category,
                    legacy_lodging_type, raw_status, status_bucket,
                    road_address, jibun_address, raw_record,
                    row_state, review_reason, diff_kind
-              FROM lodging_source_rows
-             WHERE batch_id = ANY(%s)
+              FROM lodging_source_rows sr
+              JOIN lodging_source_batches sb ON sb.id=sr.batch_id
+             WHERE sr.batch_id = ANY(%s)
                AND row_state IN ('validated', 'review_required')
-             ORDER BY batch_id, row_number
+             ORDER BY sr.batch_id, row_number
             """,
             (batch_ids,),
         )
@@ -74,12 +104,16 @@ def _fetch_latest_staging(conn):
         cur.close()
 
 
-def _fetch_production_snapshot():
-    production_url = os.environ.get("PROD_DATABASE_URL")
-    if not production_url:
-        raise RuntimeError("PROD_DATABASE_URL이 없어 운영 기준 manifest를 만들 수 없습니다.")
-    conn = psycopg2.connect(production_url, connect_timeout=10)
-    conn.set_session(readonly=True, isolation_level="REPEATABLE READ")
+def _fetch_production_snapshot(conn=None):
+    owns_connection = conn is None
+    if owns_connection:
+        production_url = os.environ.get("PROD_DATABASE_URL")
+        if not production_url:
+            raise RuntimeError(
+                "PROD_DATABASE_URL이 없어 운영 기준 manifest를 만들 수 없습니다."
+            )
+        conn = psycopg2.connect(production_url, connect_timeout=10)
+        conn.set_session(readonly=True, isolation_level="REPEATABLE READ")
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         fingerprint = _database_fingerprint(conn)
@@ -112,7 +146,8 @@ def _fetch_production_snapshot():
         return registry_rows, building_rows, baseline_fingerprint, fingerprint
     finally:
         cur.close()
-        conn.close()
+        if owns_connection:
+            conn.close()
 
 
 def _build_targets(staging_rows, registry_rows, building_rows):
@@ -215,6 +250,7 @@ def create_production_baseline_manifest(*, created_by=None):
             registry_rows,
             building_rows,
         )
+        _validate_target_admission(targets, allow_manual_review=True)
         source_batch_ids = {
             key: int(batches[key]["id"]) for key in GOVERNMENT_LODGING_SOURCES
         }
@@ -338,6 +374,20 @@ def approve_production_manifest(manifest_id, *, approved_by):
     try:
         cur.execute(
             """
+            SELECT COUNT(*) AS count
+              FROM lodging_promotion_rows
+             WHERE promotion_manifest_id=%s
+               AND payload->>'row_state'='review_required'
+            """,
+            (manifest_id,),
+        )
+        unresolved = int(cur.fetchone()["count"])
+        if unresolved:
+            raise ValueError(
+                f"수동 검토 미해결 행 {unresolved}건을 먼저 처리해야 합니다."
+            )
+        cur.execute(
+            """
             UPDATE lodging_promotion_manifests
                SET status='approved', approved_by=%s, approved_at=NOW()
              WHERE id=%s AND status='draft'
@@ -400,6 +450,7 @@ def run_production_manifest_dry_run(manifest_id):
             }
             for row in cur.fetchall()
         ]
+        _validate_target_admission(targets, allow_manual_review=False)
         if len(targets) != int(manifest["row_count"]):
             raise RuntimeError("manifest 고정 행 수가 변경되었습니다.")
         if _canonical_hash(targets) != manifest["target_payload_sha256"]:

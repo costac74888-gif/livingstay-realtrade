@@ -1,6 +1,6 @@
 {
-  "id": 2,
-  "manifest_key": "LODGING-PROMOTION:4f543748e224609ba1e486b83c0a6c6e7fb2db10e3b42bf394bb4d5f88da909b",
+  "id": 3,
+  "manifest_key": "LODGING-PROMOTION:46708f06129fe9a3bff391e3cc69c5c4bd7b1668035891561f999a513f32cb76",
   "status": "draft",
   "row_count": 14879,
   "result": {
@@ -98,6 +98,6 @@
     },
     "production_writes": 0
   },
-  "run_id": "3383df4370edbe44b008f8b514ab9e56",
+  "run_id": "1c8323588cb916650fb1230721b78062",
   "created": true
 }
