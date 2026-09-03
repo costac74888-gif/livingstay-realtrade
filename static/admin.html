@@ -2168,7 +2168,7 @@
         if (s.state === "done") {
           rows.push(`<div class="geo-stat-row"><b>마지막 실행:</b> ${dgEscape(s.started_at || "-")} ~ ${dgEscape(s.finished_at || "-")} · 성공 ${num(s.updated || 0)}건 / 건너뜀 ${num(s.skipped || 0)}건</div>`);
         } else if (s.state === "failed" || s.state === "stale") {
-          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+          rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 중단:</b> ${dgEscape(s.error || "상태 갱신이 끊겨 중단된 것으로 판정했습니다.")}</div>`);
         } else {
           rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
         }

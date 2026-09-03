@@ -16023,6 +16023,17 @@ def _read_sync_status_row(cur, meta_key):
     if (status.get("state") == "running" and meta["age"] is not None
             and float(meta["age"]) > _SYNC_STALE_MIN * 60):
         status["state"] = "stale"
+        if not status.get("error"):
+            if status.get("provider_retry_attempt"):
+                status["error"] = (
+                    "외부 API 연결 재시도 중 상태 갱신이 끊겼습니다. "
+                    "배포 재시작 또는 실행 환경 종료로 작업이 중단됐을 수 있습니다."
+                )
+            else:
+                status["error"] = (
+                    "상태 갱신이 장시간 끊겨 작업이 중단된 것으로 판정했습니다. "
+                    "배포 재시작 또는 실행 환경 종료 여부를 확인해 주세요."
+                )
     if meta["updated_at"]:
         status["status_updated_at"] = _kst_label(meta["updated_at"])
     for k in ("started_at", "finished_at"):
