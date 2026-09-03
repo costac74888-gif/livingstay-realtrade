@@ -10,6 +10,7 @@ let defaultYear = "";
 // 로그인 회원의 관심키(building_name|address) 인메모리 캐시
 // 비로그인 → 항상 빈 Set → 관심 기능 전체가 로그인 유도로 동작
 let serverFavKeys = new Set();
+let serverFavBuildingIds = new Map();
 
 function getFavorites(){ return [...serverFavKeys]; }
 function favKey(item){ return `${item.building_name}|${item.address}`; }
@@ -37,11 +38,19 @@ function syncFavBtn(){
 // 서버 /api/favorites/mine 에서 내 관심키 전체를 로드해 인메모리 캐시를 채운다.
 async function loadServerFavKeys(){
   serverFavKeys = new Set();
+  serverFavBuildingIds = new Map();
   if (!window.__livingstayLoggedIn) return;
   try {
     const res = await fetch("/api/favorites/mine", { credentials: "same-origin" });
     const data = await res.json();
-    (data.items || []).forEach(item => serverFavKeys.add(`${item.building_name}|${item.address}`));
+    (data.items || []).forEach(item => {
+      const key = `${item.building_name}|${item.address}`;
+      serverFavKeys.add(key);
+      const buildingId = Number(item.building_id ?? item.master_building_id);
+      if (Number.isInteger(buildingId) && buildingId > 0) {
+        serverFavBuildingIds.set(key, buildingId);
+      }
+    });
   } catch(e) {}
 }
 
@@ -68,9 +77,11 @@ function toggleFav(item){
   let clearedActiveFilter = false;
   const wasFav = serverFavKeys.has(k);
   const previousFavOrder = [...serverFavKeys];
+  const previousFavBuildingIds = new Map(serverFavBuildingIds);
   const restoreActiveFilter = wasFav && state.favKey === k;
   if (wasFav){
     serverFavKeys.delete(k);
+    serverFavBuildingIds.delete(k);
     if (state.favKey === k){ state.favKey = null; state.favOnly = false; clearedActiveFilter = true; }
     fetch("/api/favorites/mine", {
       method: "DELETE", credentials: "same-origin",
@@ -88,6 +99,7 @@ function toggleFav(item){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
       if (wasFav) {
         serverFavKeys = new Set(previousFavOrder);
+        serverFavBuildingIds = new Map(previousFavBuildingIds);
         if (restoreActiveFilter) {
           state.favKey = k;
           state.favOnly = true;
@@ -109,6 +121,10 @@ function toggleFav(item){
       return false;
     }
     addFavoriteFirst(k);
+    const buildingId = Number(item.building_id);
+    if (Number.isInteger(buildingId) && buildingId > 0) {
+      serverFavBuildingIds.set(k, buildingId);
+    }
     fetch("/api/favorites/mine", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
@@ -138,7 +154,10 @@ function toggleFav(item){
     .catch(function(){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
       if (wasFav) { serverFavKeys.add(k); }
-      else { serverFavKeys.delete(k); }
+      else {
+        serverFavKeys.delete(k);
+        serverFavBuildingIds.delete(k);
+      }
       updateFavCountLabel();
       renderFavChips();
       syncFavBtn();
@@ -152,6 +171,7 @@ function toggleFav(item){
 }
 function removeFav(key){
   serverFavKeys.delete(key);
+  serverFavBuildingIds.delete(key);
   const sep = key.indexOf("|");
   if (sep >= 0){
     fetch("/api/favorites/mine", {
@@ -520,6 +540,11 @@ function createFavChip(key){
   label.addEventListener("click", async () => {
     // 팝오버 안에서 상세로 이동해도 팝오버가 상세 패널 위에 잔류하지 않게 한다.
     closeFavOverflowPopover();
+    const knownBuildingId = serverFavBuildingIds.get(key);
+    if (knownBuildingId) {
+      openBuildingDetail(knownBuildingId);
+      return;
+    }
     try {
       const res = await fetch(`/api/favorites?keys=${encodeURIComponent(key)}`);
       const data = await res.json();
