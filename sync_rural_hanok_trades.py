@@ -34,6 +34,9 @@ STATUS_KEY = "rural_hanok_trade_sync_status"
 CHECKPOINT_KEY = "rural_hanok_trade_sync_checkpoint"
 LAST_SUCCESS_KEY = "rural_hanok_trade_last_success"
 QUOTA_KEY = "rtms_daily_calls"
+# 국토부 RTMS API는 서비스별로 0/00/000 형식의 성공 코드를 사용한다.
+# 특히 NrgTrade는 성공 응답에 resultCode=000, resultMsg=OK를 반환한다.
+SUCCESS_RESULT_CODES = frozenset({"", "0", "00", "000"})
 # Collector-specific lock.  The scheduler separately holds its exclusive
 # master/transaction gate; reusing that lock here would deadlock the child.
 SYNC_LOCK_ID = 9_183_245
@@ -176,7 +179,7 @@ def fetch_trade(source_api, sgg_cd, ymd, key, page_size=1000):
         response.raise_for_status()
         root = ET.fromstring(response.content)
         code = (root.findtext(".//resultCode") or "").strip()
-        if code not in {"", "0", "00"}:
+        if code not in SUCCESS_RESULT_CODES:
             message = (root.findtext(".//resultMsg") or "unknown error").strip()
             raise RuntimeError(f"{source_api} API error {code}: {message}")
         page_rows = [

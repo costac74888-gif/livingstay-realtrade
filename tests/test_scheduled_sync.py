@@ -398,6 +398,84 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(evidence.call_args_list[0].args[1], "running")
         self.assertEqual(evidence.call_args_list[-1].args[1], "failed")
 
+    def test_rural_hanok_trade_stage_success_is_done(self):
+        writes = []
+        with (
+            patch.object(
+                scheduled_sync, "_acquire_lock",
+                return_value=(object(), object()),
+            ),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value=None),
+            patch.object(scheduled_sync, "_write_initial_status"),
+            patch.object(
+                scheduled_sync,
+                "_write_status",
+                side_effect=lambda key, value, run_id=None: writes.append(
+                    {
+                        **value,
+                        "stages": {
+                            k: dict(v) for k, v in value["stages"].items()
+                        },
+                    }
+                ),
+            ),
+            patch.object(scheduled_sync, "_source_busy", return_value=None),
+            patch.object(scheduled_sync, "_metric_value", return_value=0),
+            patch.object(scheduled_sync, "_run_stage", return_value=(0, [])),
+            patch.object(scheduled_sync, "_write_scheduled_evidence"),
+        ):
+            result = scheduled_sync.run(selected_stage="rural_hanok_trades")
+
+        self.assertEqual(result, 0)
+        self.assertEqual(writes[-1]["state"], "done")
+        self.assertEqual(
+            writes[-1]["stages"]["rural_hanok_trades"]["state"],
+            "done",
+        )
+        self.assertFalse(
+            writes[-1]["stages"]["rural_hanok_trades"]["retryable"]
+        )
+
+    def test_rural_hanok_trade_stage_failure_is_retryable(self):
+        writes = []
+        with (
+            patch.object(
+                scheduled_sync, "_acquire_lock",
+                return_value=(object(), object()),
+            ),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value=None),
+            patch.object(scheduled_sync, "_write_initial_status"),
+            patch.object(
+                scheduled_sync,
+                "_write_status",
+                side_effect=lambda key, value, run_id=None: writes.append(
+                    {
+                        **value,
+                        "stages": {
+                            k: dict(v) for k, v in value["stages"].items()
+                        },
+                    }
+                ),
+            ),
+            patch.object(scheduled_sync, "_source_busy", return_value=None),
+            patch.object(scheduled_sync, "_metric_value", return_value=0),
+            patch.object(
+                scheduled_sync,
+                "_run_stage",
+                return_value=(1, ["NrgTrade API error 401"]),
+            ),
+            patch.object(scheduled_sync, "_write_scheduled_evidence"),
+        ):
+            result = scheduled_sync.run(selected_stage="rural_hanok_trades")
+
+        self.assertEqual(result, 1)
+        stage = writes[-1]["stages"]["rural_hanok_trades"]
+        self.assertEqual(writes[-1]["state"], "failed")
+        self.assertEqual(stage["state"], "failed")
+        self.assertTrue(stage["retryable"])
+
     def test_admin_cutover_skips_legacy_stage_without_spawning_collector(self):
         writes = []
         disabled = {

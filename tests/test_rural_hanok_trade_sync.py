@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock, patch
 
 import sync_rural_hanok_trades as syncer
 
@@ -20,6 +21,77 @@ def _master(**overrides):
 
 
 class RuralHanokTradeSyncTests(unittest.TestCase):
+    @staticmethod
+    def _api_response(code="000", message="OK", total_count=0, items=()):
+        item_xml = "".join(
+            f"<item>{''.join(f'<{key}>{value}</{key}>' for key, value in item.items())}</item>"
+            for item in items
+        )
+        return Mock(
+            content=(
+                f"<response><header><resultCode>{code}</resultCode>"
+                f"<resultMsg>{message}</resultMsg></header><body>"
+                f"<items>{item_xml}</items><totalCount>{total_count}</totalCount>"
+                "</body></response>"
+            ).encode(),
+        )
+
+    def test_nrg_trade_success_code_000_returns_rows(self):
+        response = self._api_response(
+            total_count=1,
+            items=(
+                {
+                    "umdNm": "청운동",
+                    "jibun": "12-3",
+                    "dealYear": "2026",
+                    "dealMonth": "8",
+                    "dealDay": "1",
+                    "dealAmount": "12,300",
+                },
+            ),
+        )
+        with (
+            patch.object(syncer, "_claim_call"),
+            patch.object(syncer.requests, "get", return_value=response),
+        ):
+            rows = syncer.fetch_trade("NrgTrade", "11110", "202608", "key")
+
+        self.assertEqual(rows, [
+            {
+                "umdNm": "청운동",
+                "jibun": "12-3",
+                "dealYear": "2026",
+                "dealMonth": "8",
+                "dealDay": "1",
+                "dealAmount": "12,300",
+            },
+        ])
+
+    def test_nrg_trade_success_code_000_with_no_rows_is_empty(self):
+        response = self._api_response(total_count=0)
+        with (
+            patch.object(syncer, "_claim_call"),
+            patch.object(syncer.requests, "get", return_value=response),
+        ):
+            rows = syncer.fetch_trade("NrgTrade", "11110", "202608", "key")
+
+        self.assertEqual(rows, [])
+
+    def test_nrg_trade_error_response_still_raises(self):
+        response = self._api_response(
+            code="401",
+            message="SERVICE KEY IS NOT REGISTERED ERROR",
+        )
+        with (
+            patch.object(syncer, "_claim_call"),
+            patch.object(syncer.requests, "get", return_value=response),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "NrgTrade API error 401: SERVICE KEY IS NOT REGISTERED ERROR",
+            ):
+                syncer.fetch_trade("NrgTrade", "11110", "202608", "key")
+
     def test_permit_type_selects_target_but_public_use_selects_api(self):
         self.assertEqual(syncer.target_kind(_master()), "hanok")
         self.assertEqual(syncer.source_apis_for_use(_master()), ("SHTrade",))
