@@ -15582,6 +15582,8 @@ _APP_STARTED_AT = datetime.now()  # 배포/재시작 시각 추정(워커 부팅
 _SCHEDULED_SYNC_META_KEY = "scheduled_sync_status"
 _SCHEDULED_SYNC_STALE_MIN = 5
 _SCHEDULED_SYNC_STAGE_PREFIX = f"{_SCHEDULED_SYNC_META_KEY}:"
+_LODGING_PROMOTION_STATUS_KEY = "lodging_promotion_status"
+_LODGING_PROMOTION_STALE_HOURS = 36
 _KST = ZoneInfo("Asia/Seoul")
 _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
@@ -15596,6 +15598,7 @@ _SCHEDULED_SYNC_STAGES = (
     ("hanok", "한옥체험업", "숙박", "매일"),
     ("pension", "관광펜션업", "숙박", "매일"),
     ("lodging_compare", "숙박 운영 병행 비교", "숙박", "매일"),
+    ("lodging_promotion", "숙박 승인 원장 자동 반영", "숙박", "매일"),
     ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
     ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
@@ -16508,6 +16511,7 @@ def admin_lodging_staging_overview():
     promotion_manifest = None
     promotion_review_targets = []
     promotion_review_decisions = []
+    lodging_promotion_status = None
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -16599,6 +16603,66 @@ def admin_lodging_staging_overview():
                     }
                     for row in cur.fetchall()
                 ]
+        cur.execute(
+            """
+            SELECT value, updated_at,
+                   EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_seconds
+              FROM app_meta
+             WHERE key=%s
+            """,
+            (_LODGING_PROMOTION_STATUS_KEY,),
+        )
+        status_row = cur.fetchone()
+        if status_row and status_row["value"]:
+            try:
+                lodging_promotion_status = json.loads(status_row["value"])
+            except (TypeError, ValueError):
+                lodging_promotion_status = {
+                    "state": "failed",
+                    "last_error": "자동 반영 상태 기록을 읽을 수 없습니다.",
+                }
+            if isinstance(lodging_promotion_status, dict):
+                lodging_promotion_status["status_updated_at"] = _kst_label(
+                    status_row["updated_at"]
+                )
+                last_success_at = lodging_promotion_status.get("last_success_at")
+                if last_success_at:
+                    try:
+                        parsed_success = datetime.fromisoformat(
+                            str(last_success_at).replace("Z", "+00:00")
+                        )
+                        if parsed_success.tzinfo is not None:
+                            parsed_success = parsed_success.astimezone(
+                                timezone.utc
+                            ).replace(tzinfo=None)
+                        age_hours = max(
+                            0.0,
+                            (datetime.utcnow() - parsed_success).total_seconds()
+                            / 3600,
+                        )
+                        lodging_promotion_status["last_success_age_hours"] = round(
+                            age_hours, 1
+                        )
+                        lodging_promotion_status["stale"] = (
+                            age_hours > _LODGING_PROMOTION_STALE_HOURS
+                        )
+                    except (TypeError, ValueError):
+                        lodging_promotion_status["stale"] = True
+                elif lodging_promotion_status.get("state") != "running":
+                    lodging_promotion_status["stale"] = True
+                if (
+                    lodging_promotion_status.get("state") == "running"
+                    and float(status_row["age_seconds"] or 0)
+                    > _SCHEDULED_SYNC_STALE_MIN * 60
+                ):
+                    lodging_promotion_status["state"] = "stale"
+                    lodging_promotion_status["stale"] = True
+                    lodging_promotion_status["last_error"] = (
+                        "자동 반영 실행 상태가 5분 이상 갱신되지 않았습니다."
+                    )
+                lodging_promotion_status["stale_after_hours"] = (
+                    _LODGING_PROMOTION_STALE_HOURS
+                )
     finally:
         cur.close()
         conn.close()
@@ -16634,6 +16698,7 @@ def admin_lodging_staging_overview():
         "promotion_review_decisions": promotion_review_decisions,
         "parallel_comparison": parallel_comparison,
         "legacy_sync_control": legacy_sync_control,
+        "lodging_promotion_status": lodging_promotion_status,
     })
 
 

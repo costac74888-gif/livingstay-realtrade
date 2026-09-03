@@ -2494,6 +2494,29 @@
         const policy = comparison.policy || {};
         const period = comparison.observation_period || {};
         const control = data.legacy_sync_control || { enabled: true, history: [] };
+        const automation = data.lodging_promotion_status || {};
+        const automationHistory = Array.isArray(automation.history) ? automation.history : [];
+        const automationState = automation.stale ? "stale" : automation.state;
+        const automationColor = automationState === "done" ? "#1a7f37"
+          : (automation.state === "running" ? "#9a6700" : "#b3261e");
+        const automationLabel = {
+          running: "실행 중",
+          done: "자동 반영 완료",
+          blocked: "승인 대기",
+          stale: "오래된 상태",
+          failed: "자동 반영 실패",
+        }[automationState] || "아직 자동 실행 기록 없음";
+        const automationMarkup = automation.state
+          ? `<div style="margin-top:10px;padding:9px;border:1px solid ${automation.state === "done" ? "#b7d7bd" : "#efb4b4"};border-radius:7px;background:${automation.state === "done" ? "#f3fbf4" : "#fff7f7"};">
+              <b>정기 숙박 자동 반영:</b> <span style="color:${automationColor};">${automationLabel}</span>
+              ${automation.manifest_id ? ` · manifest #${num(automation.manifest_id)}` : ""}
+              ${automation.last_success_at ? `<div>마지막 성공: ${dgEscape(automation.last_success_at)}</div>` : ""}
+              ${automation.stale ? `<div style="color:#b3261e;">마지막 성공이 ${num(automation.stale_after_hours || 36)}시간보다 오래됐습니다.</div>` : ""}
+              ${automation.last_error ? `<div style="color:#b3261e;">${dgEscape(automation.last_error)}</div>` : ""}
+              ${automation.blocked_sources && automation.blocked_sources.length ? `<div style="color:#9a6700;">미승인/검토 대기 원본: ${automation.blocked_sources.map(dgEscape).join(", ")}</div>` : ""}
+              ${automationHistory.length ? `<details style="margin-top:5px;"><summary style="cursor:pointer;">최근 자동 처리 단계</summary>${automationHistory.slice(-8).reverse().map((event) => `<div style="font-size:12px;color:#46515c;">${dgEscape(event.phase || "-")} · ${dgEscape(event.at || "-")}</div>`).join("")}</details>` : ""}
+            </div>`
+          : "";
         const periodLabel = period.first_observed_at
           ? `${dgEscape(period.first_observed_at)} ~ ${dgEscape(period.last_observed_at)} (${num(period.elapsed_hours || 0)}시간)`
           : "관찰 기록 없음";
@@ -2533,7 +2556,7 @@
             ${controlHistory ? `<details style="margin-top:8px;"><summary style="cursor:pointer;">종료·복구 감사 기록</summary>${controlHistory}</details>` : ""}
           </div>`;
         if (!manifest) {
-          promotionBox.innerHTML = `운영 기준 승인 manifest가 아직 없습니다.${comparisonMarkup}${controlMarkup}`;
+          promotionBox.innerHTML = `${automationMarkup}운영 기준 승인 manifest가 아직 없습니다.${comparisonMarkup}${controlMarkup}`;
         } else {
           const result = manifest.result || {};
           const actions = result.action_counts || {};
@@ -2574,6 +2597,7 @@
               ${record.decision_note ? `· ${dgEscape(record.decision_note)}` : ""}
             </div>`).join("");
           promotionBox.innerHTML = `
+            ${automationMarkup}
             <div><b>7단계 운영 기준 manifest v${num(manifest.version_no || 1)}:</b> ${dgEscape(lodgingStagingState(manifest.status))} · 총 ${num(manifest.row_count)}건</div>
             <div>신규 신고 <b>${num(actions.insert || 0)}건</b> · 기존 갱신 ${num(actions.update || 0)}건 · 상태변경 ${num(actions.status_change || 0)}건 · 수동검토 ${num(result.manual_review_targets || 0)}건</div>
             <div>기존 건물 연결 ${num(matches.existing_building || 0)}건 · 신규 건물 후보 ${num(matches.new_building_candidate || 0)}건 · 복수후보/충돌/주소없음 ${num((matches.ambiguous_existing_building || 0) + (matches.address_conflict || 0) + (matches.no_address || 0))}건</div>

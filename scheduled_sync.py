@@ -241,6 +241,15 @@ STAGES = (
         metric_label="비교 관측",
     ),
     Stage(
+        "lodging_promotion",
+        "숙박 승인 원장 자동 반영",
+        "숙박",
+        ("apply_lodging_promotion.py", "--scheduled"),
+        "매일",
+        metric_query="SELECT COUNT(*) AS c FROM lodging_registry",
+        metric_label="운영 숙박 원장",
+    ),
+    Stage(
         "brokers",
         "공인중개사 사무소",
         "중개·상가",
@@ -869,13 +878,20 @@ def run(
         legacy_sync_control = _read_legacy_lodging_sync_control()
         legacy_stage_disabled = bool(
             selected_stage in LEGACY_LODGING_STAGES
-            and legacy_sync_control.get("enabled") is False
+            and (
+                legacy_sync_control.get("enabled") is False
+                or source == "scheduled"
+            )
         )
         if legacy_stage_disabled:
             stages[selected_stage].update(
                 state="skipped",
                 finished_at=_now(),
-                error=_legacy_lodging_skip_reason(legacy_sync_control),
+                error=(
+                    _legacy_lodging_skip_reason(legacy_sync_control)
+                    if legacy_sync_control.get("enabled") is False
+                    else "숙박 승인 원장 자동 반영 경로로 대체됨"
+                ),
                 retryable=False,
             )
         status = {
@@ -1109,7 +1125,14 @@ def run_parallel(
         )
         legacy_sync_control = _read_legacy_lodging_sync_control()
         policy_excluded_stages = set(excluded_stages)
-        if legacy_sync_control.get("enabled") is False:
+        # The legacy collectors remain addressable for explicit recovery and
+        # their gate remains fail-open until an administrator cuts over.  The
+        # regular scheduler must never start them again: promotion is now the
+        # only scheduled lodging writer.
+        if source == "scheduled":
+            policy_excluded_stages.update(LEGACY_LODGING_STAGES)
+            policy_excluded_stages.add("lodging_compare")
+        elif legacy_sync_control.get("enabled") is False:
             policy_excluded_stages.update(LEGACY_LODGING_STAGES)
         for stage_key in policy_excluded_stages:
             if stage_key in stages:
@@ -1120,6 +1143,9 @@ def run_parallel(
                         _legacy_lodging_skip_reason(legacy_sync_control)
                         if stage_key in LEGACY_LODGING_STAGES
                         and legacy_sync_control.get("enabled") is False
+                        else "숙박 승인 원장 자동 반영 경로로 대체됨"
+                        if source == "scheduled"
+                        and stage_key in LEGACY_LODGING_STAGES | {"lodging_compare"}
                         else "독립 예약 워크플로에서 실행"
                     ),
                     retryable=False,

@@ -7,6 +7,8 @@ import json
 import os
 import re
 import time
+from datetime import datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 import psycopg2
@@ -19,6 +21,9 @@ from lodging_promotion import (
     _canonical_hash,
     _fetch_production_snapshot,
     _validate_target_admission,
+    approve_production_manifest_automated,
+    create_production_baseline_manifest,
+    compare_production_manifest,
     run_production_manifest_dry_run,
 )
 from lodging_staging import _database_fingerprint, assert_development_connection
@@ -28,6 +33,257 @@ from stats_cache import mark_master_stats_invalidated_in_transaction
 _PROMOTION_LOCK_KEY = 719_240_392
 _AUDIT_KEY_PREFIX = "lodging_promotion_applied:"
 _DEVELOPMENT_MARK_RETRY_DELAYS = (0, 0.2, 0.8)
+AUTOMATION_STATUS_KEY = "lodging_promotion_status"
+STAGING_MAX_AGE_DAYS = int(os.environ.get("LODGING_STAGING_MAX_AGE_DAYS", "45"))
+
+
+def _automation_timestamp():
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def _write_automation_status(
+    *,
+    state,
+    phase=None,
+    manifest_id=None,
+    last_error=None,
+    blocked_sources=None,
+    last_success_at=None,
+):
+    """정기 실행의 마지막 상태를 staging DB에 남긴다."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT value FROM app_meta WHERE key=%s FOR UPDATE",
+                (AUTOMATION_STATUS_KEY,),
+            )
+            row = cur.fetchone()
+            try:
+                previous = json.loads(row["value"]) if row and row["value"] else {}
+            except (TypeError, ValueError):
+                previous = {}
+            history = list(previous.get("history") or [])
+            if phase:
+                history.append({
+                    "phase": phase,
+                    "at": _automation_timestamp(),
+                    "manifest_id": manifest_id,
+                })
+            status = {
+                **previous,
+                "state": state,
+                "manifest_id": manifest_id or previous.get("manifest_id"),
+                "last_error": last_error,
+                "blocked_sources": list(blocked_sources or []),
+                "history": history[-100:],
+            }
+            if last_success_at:
+                status["last_success_at"] = last_success_at
+            cur.execute(
+                """
+                INSERT INTO app_meta (key, value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE
+                  SET value=EXCLUDED.value, updated_at=NOW()
+                """,
+                (AUTOMATION_STATUS_KEY, json.dumps(status, ensure_ascii=False)),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
+def _approved_source_readiness():
+    """최신 8종 staging이 검증·승인 dry-run까지 끝났는지 확인한다."""
+    from lodging_data_contract import GOVERNMENT_LODGING_SOURCES
+
+    conn = get_conn()
+    cur = conn.cursor()
+    blocked = []
+    readiness = {}
+    try:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (source_key)
+                   id, source_key, reference_date, status,
+                   total_rows, valid_rows, review_rows
+              FROM lodging_source_batches
+             ORDER BY source_key, reference_date DESC, created_at DESC, id DESC
+            """
+        )
+        batches = {row["source_key"]: row for row in cur.fetchall()}
+        for source_key, definition in GOVERNMENT_LODGING_SOURCES.items():
+            batch = batches.get(source_key)
+            label = definition["label"]
+            if not batch:
+                blocked.append(f"{label}(staging 없음)")
+                continue
+            if batch["status"] not in {
+                "validated", "approved", "dry_run", "applied",
+            }:
+                blocked.append(f"{label}({batch['status']})")
+            reference_date = batch["reference_date"]
+            if reference_date and (
+                date.today() - reference_date
+            ).days > STAGING_MAX_AGE_DAYS:
+                blocked.append(
+                    f"{label}(기준일 {reference_date}, {STAGING_MAX_AGE_DAYS}일 초과)"
+                )
+            if int(batch["review_rows"] or 0):
+                blocked.append(f"{label}(검토 {int(batch['review_rows'])}건)")
+            cur.execute(
+                """
+                SELECT id, status, row_count
+                  FROM lodging_approval_batches
+                 WHERE source_batch_id=%s
+                """,
+                (batch["id"],),
+            )
+            approval = cur.fetchone()
+            cur.execute(
+                """
+                SELECT COUNT(*) AS count
+                  FROM lodging_source_rows
+                 WHERE batch_id=%s
+                   AND row_state='validated'
+                   AND diff_kind <> 'unchanged'
+                """,
+                (batch["id"],),
+            )
+            changed_count = int(cur.fetchone()["count"] or 0)
+            if changed_count and (
+                not approval or approval["status"] not in {"dry_run", "applied"}
+            ):
+                blocked.append(f"{label}(변경 {changed_count}건 미승인)")
+            readiness[source_key] = {
+                "batch_id": int(batch["id"]),
+                "reference_date": str(batch["reference_date"]),
+                "status": batch["status"],
+                "changed_rows": changed_count,
+                "approval_id": approval["id"] if approval else None,
+                "approval_status": approval["status"] if approval else None,
+            }
+    finally:
+        cur.close()
+        conn.close()
+    return readiness, blocked
+
+
+def run_scheduled_promotion():
+    """승인된 staging만 운영 원장에 정기적으로 승격한다.
+
+    scheduled_sync는 운영 DB를 DATABASE_URL로 사용하므로 manifest와 상태
+    기록을 위해 이 함수의 범위에서만 개발 DB를 선택한다. 운영 쓰기는
+    apply_manifest가 PROD_DATABASE_URL을 통해 별도로 수행한다.
+    """
+    production_url = os.environ.get("PROD_DATABASE_URL")
+    development_url = os.environ.get("DEV_DATABASE_URL")
+    original_url = os.environ.get("DATABASE_URL")
+    if not production_url or not development_url:
+        raise RuntimeError("정기 숙박 반영에 개발·운영 DB 연결 정보가 모두 필요합니다.")
+    os.environ["DATABASE_URL"] = development_url
+    manifest = None
+    try:
+        _write_automation_status(state="running", phase="started")
+        _readiness, blocked = _approved_source_readiness()
+        if blocked:
+            _write_automation_status(
+                state="blocked",
+                phase="blocked_unapproved_source",
+                blocked_sources=blocked,
+                last_error="승인되지 않은 staging 원천이 있어 운영 반영을 보류했습니다.",
+            )
+            print(json.dumps({
+                "state": "blocked",
+                "blocked_sources": blocked,
+            }, ensure_ascii=False), flush=True)
+            # A scheduled run without fresh, approved inputs did not maintain
+            # the registry. Surface it as a retryable scheduler failure rather
+            # than allowing the outer workflow to report false success.
+            return 1
+
+        manifest = create_production_baseline_manifest()
+        manifest_id = int(manifest["id"])
+        _write_automation_status(
+            state="running",
+            phase="manifest_created",
+            manifest_id=manifest_id,
+        )
+        status = manifest.get("status")
+        if status == "applied":
+            comparison = compare_production_manifest(manifest_id)
+            _write_automation_status(
+                state="done",
+                phase="parallel_comparison",
+                manifest_id=manifest_id,
+                last_success_at=_automation_timestamp(),
+            )
+            print(json.dumps({
+                "state": "done",
+                "manifest_id": manifest_id,
+                "already_applied": True,
+                "comparison_id": comparison.get("comparison_id"),
+            }, ensure_ascii=False), flush=True)
+            return 0
+        if status == "draft":
+            approved = approve_production_manifest_automated(manifest_id)
+            _write_automation_status(
+                state="running",
+                phase="promotion_approved",
+                manifest_id=manifest_id,
+            )
+            manifest_run_id = approved["run_id"]
+        else:
+            manifest_run_id = manifest["run_id"]
+        dry_run = run_production_manifest_dry_run(manifest_id)
+        _write_automation_status(
+            state="running",
+            phase="dry_run",
+            manifest_id=manifest_id,
+        )
+        result = apply_manifest(manifest_id, confirm_run_id=manifest_run_id)
+        _write_automation_status(
+            state="running",
+            phase="applied",
+            manifest_id=manifest_id,
+        )
+        comparison = compare_production_manifest(manifest_id)
+        _write_automation_status(
+            state="done",
+            phase="parallel_comparison",
+            manifest_id=manifest_id,
+            last_success_at=_automation_timestamp(),
+        )
+        print(json.dumps({
+            "state": "done",
+            "manifest_id": manifest_id,
+            "dry_run": dry_run.get("id"),
+            "production_writes": result.get("production_writes", 0),
+            "comparison_id": comparison.get("comparison_id"),
+        }, ensure_ascii=False), flush=True)
+        return 0
+    except Exception as exc:
+        message = str(exc)[:800]
+        _write_automation_status(
+            state="failed",
+            phase="failed",
+            manifest_id=int(manifest["id"]) if manifest else None,
+            last_error=message,
+        )
+        print(f"[lodging-promotion] 실패: {message}", flush=True)
+        return 1
+    finally:
+        if original_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = original_url
 
 
 def _text(value):
@@ -415,10 +671,19 @@ def apply_manifest(manifest_id, *, confirm_run_id):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("manifest_id", type=int)
+    parser.add_argument("manifest_id", type=int, nargs="?")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--confirm-run-id")
+    parser.add_argument(
+        "--scheduled",
+        action="store_true",
+        help="승인된 staging manifest를 생성·검증·반영·비교한다",
+    )
     args = parser.parse_args()
+    if args.scheduled:
+        raise SystemExit(run_scheduled_promotion())
+    if args.manifest_id is None:
+        parser.error("manifest_id 또는 --scheduled가 필요합니다.")
     if args.apply:
         if not args.confirm_run_id:
             parser.error("--apply에는 --confirm-run-id가 필요합니다.")

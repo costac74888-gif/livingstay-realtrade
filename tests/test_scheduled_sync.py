@@ -390,11 +390,11 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             patch.object(scheduled_sync, "_run_stage", return_value=(1, ["inner failure"])),
             patch.object(scheduled_sync, "_write_scheduled_evidence") as evidence,
         ):
-            result = scheduled_sync.run(selected_stage="lodging")
+            result = scheduled_sync.run(selected_stage="lodging_promotion")
         self.assertEqual(result, 1)
         self.assertEqual(writes[-1]["state"], "failed")
-        self.assertEqual(writes[-1]["stages"]["lodging"]["state"], "failed")
-        self.assertTrue(writes[-1]["stages"]["lodging"]["retryable"])
+        self.assertEqual(writes[-1]["stages"]["lodging_promotion"]["state"], "failed")
+        self.assertTrue(writes[-1]["stages"]["lodging_promotion"]["retryable"])
         self.assertEqual(evidence.call_args_list[0].args[1], "running")
         self.assertEqual(evidence.call_args_list[-1].args[1], "failed")
 
@@ -497,7 +497,9 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             patch.object(scheduled_sync, "_run_stage") as run_stage,
             patch.object(scheduled_sync, "_write_scheduled_evidence"),
         ):
-            result = scheduled_sync.run(selected_stage="lodging")
+            result = scheduled_sync.run(
+                selected_stage="lodging", source="manual", orchestrated=True
+            )
         self.assertEqual(result, 0)
         run_stage.assert_not_called()
         self.assertEqual(writes[-1]["state"], "done")

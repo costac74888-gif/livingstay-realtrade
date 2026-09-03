@@ -758,6 +758,116 @@ def approve_production_manifest(manifest_id, *, approved_by):
         conn.close()
 
 
+def approve_production_manifest_automated(manifest_id):
+    """승인된 staging을 근거로 정기 실행자가 manifest 승인을 기록한다.
+
+    사람의 관리자 승인과 구분하기 위해 approved_by는 비워 두고 result에
+    실행 주체를 남긴다. 수동 검토 행이 하나라도 있으면 자동 승인을 하지
+    않는다.
+    """
+    conn = get_conn()
+    assert_development_connection(conn)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT result, source_batch_ids
+              FROM lodging_promotion_manifests
+             WHERE id=%s AND status='draft'
+             FOR UPDATE
+            """,
+            (manifest_id,),
+        )
+        manifest = cur.fetchone()
+        if not manifest:
+            raise ValueError("자동 승인할 draft manifest를 찾을 수 없습니다.")
+        source_batch_ids = {
+            key: int(value)
+            for key, value in dict(manifest["source_batch_ids"] or {}).items()
+        }
+        if set(source_batch_ids) != set(GOVERNMENT_LODGING_SOURCES):
+            raise ValueError("manifest의 정부 숙박 8종 batch 구성이 완전하지 않습니다.")
+        for source_key, batch_id in source_batch_ids.items():
+            cur.execute(
+                """
+                SELECT status, review_rows
+                  FROM lodging_source_batches
+                 WHERE id=%s AND source_key=%s
+                 FOR SHARE
+                """,
+                (batch_id, source_key),
+            )
+            batch = cur.fetchone()
+            if not batch or batch["status"] not in {
+                "validated", "approved", "dry_run", "applied",
+            }:
+                raise ValueError(f"{source_key} 고정 staging batch가 검증 상태가 아닙니다.")
+            if int(batch["review_rows"] or 0):
+                raise ValueError(f"{source_key} 고정 staging batch에 미해결 검토행이 있습니다.")
+            cur.execute(
+                """
+                SELECT COUNT(*) AS count
+                  FROM lodging_source_rows
+                 WHERE batch_id=%s
+                   AND row_state='validated'
+                   AND diff_kind <> 'unchanged'
+                """,
+                (batch_id,),
+            )
+            changed_count = int(cur.fetchone()["count"] or 0)
+            if changed_count:
+                cur.execute(
+                    """
+                    SELECT status
+                      FROM lodging_approval_batches
+                     WHERE source_batch_id=%s
+                     FOR SHARE
+                    """,
+                    (batch_id,),
+                )
+                approval = cur.fetchone()
+                if not approval or approval["status"] not in {"dry_run", "applied"}:
+                    raise ValueError(f"{source_key} 고정 staging 변경분이 승인 dry-run 상태가 아닙니다.")
+        cur.execute(
+            """
+            SELECT COUNT(*) AS count
+              FROM lodging_promotion_rows
+             WHERE promotion_manifest_id=%s
+               AND payload->>'row_state'='review_required'
+            """,
+            (manifest_id,),
+        )
+        unresolved = int(cur.fetchone()["count"] or 0)
+        if unresolved:
+            raise ValueError(f"수동 검토 미해결 행 {unresolved}건이 있어 자동 승인할 수 없습니다.")
+        result = dict(manifest["result"] or {})
+        result["promotion_approval"] = {
+            "mode": "scheduled",
+            "actor": "scheduled_lodging_promotion",
+        }
+        cur.execute(
+            """
+            UPDATE lodging_promotion_manifests
+               SET status='approved', approved_by=NULL, approved_at=NOW(),
+                   result=%s, error=NULL
+             WHERE id=%s AND status='draft'
+             RETURNING id, status, row_count, run_id, result
+            """,
+            (psycopg2.extras.Json(result), manifest_id),
+        )
+        updated = cur.fetchone()
+        if not updated:
+            raise RuntimeError("자동 승인 중 manifest 상태가 변경되었습니다.")
+        conn.commit()
+        return dict(updated)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
 def run_production_manifest_dry_run(manifest_id):
     """고정 payload와 운영 기준선이 그대로인지 확인하고 운영에는 쓰지 않는다."""
     conn = get_conn()
