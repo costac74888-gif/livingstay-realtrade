@@ -88,6 +88,7 @@ from quota_policy import (
 )
 import building_registry
 import lodging_staging
+import lodging_promotion
 from utils.photo_validate import validate_photo
 from lodging_matching import (
     ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
@@ -16503,11 +16504,44 @@ def admin_lodging_staging_overview():
     finally:
         cur.close()
         conn.close()
+    promotion_manifest = None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT to_regclass('public.lodging_promotion_manifests') AS table_name"
+        )
+        if cur.fetchone()["table_name"]:
+            cur.execute(
+                """
+                SELECT id, status, row_count, result, error,
+                       created_at, approved_at, finished_at
+                  FROM lodging_promotion_manifests
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 1
+                """
+            )
+            manifest = cur.fetchone()
+            if manifest:
+                promotion_manifest = {
+                    "id": manifest["id"],
+                    "status": manifest["status"],
+                    "row_count": int(manifest["row_count"] or 0),
+                    "result": manifest["result"] or {},
+                    "error": manifest["error"],
+                    "created_at": _kst_label(manifest["created_at"]),
+                    "approved_at": _kst_label(manifest["approved_at"]),
+                    "finished_at": _kst_label(manifest["finished_at"]),
+                }
+    finally:
+        cur.close()
+        conn.close()
     return jsonify({
         "ok": True,
         "staging_available": True,
         "batches": batches,
         "analysis_snapshot": _lodging_staging_analysis_snapshot(),
+        "promotion_manifest": promotion_manifest,
     })
 
 
@@ -16555,6 +16589,39 @@ def admin_lodging_staging_dry_run(approval_id):
     try:
         result = lodging_staging.run_approval_dry_run(approval_id)
         return jsonify({"ok": True, "dry_run": result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+
+
+@app.route(
+    "/api/admin/lodging-staging/promotion/<int:manifest_id>/approve",
+    methods=["POST"],
+)
+@require_admin
+@limiter.limit("6 per hour")
+def admin_lodging_promotion_approve(manifest_id):
+    """운영 기준 manifest의 관리자 승인만 기록한다."""
+    try:
+        result = lodging_promotion.approve_production_manifest(
+            manifest_id,
+            approved_by=session.get("admin_user_id"),
+        )
+        return jsonify({"ok": True, "promotion_manifest": result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+
+
+@app.route(
+    "/api/admin/lodging-staging/promotion/<int:manifest_id>/dry-run",
+    methods=["POST"],
+)
+@require_admin
+@limiter.limit("6 per hour")
+def admin_lodging_promotion_dry_run(manifest_id):
+    """고정 payload와 운영 기준선만 재검증하며 운영에는 쓰지 않는다."""
+    try:
+        result = lodging_promotion.run_production_manifest_dry_run(manifest_id)
+        return jsonify({"ok": True, "promotion_manifest": result})
     except (ValueError, RuntimeError) as exc:
         return jsonify({"ok": False, "message": str(exc)[:500]}), 400
 

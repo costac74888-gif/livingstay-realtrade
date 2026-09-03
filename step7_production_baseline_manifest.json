@@ -1,0 +1,103 @@
+{
+  "id": 2,
+  "manifest_key": "LODGING-PROMOTION:4f543748e224609ba1e486b83c0a6c6e7fb2db10e3b42bf394bb4d5f88da909b",
+  "status": "draft",
+  "row_count": 14879,
+  "result": {
+    "action_counts": {
+      "insert": 14864,
+      "update": 11,
+      "status_change": 4
+    },
+    "new_match_counts": {
+      "existing_building": 9419,
+      "new_building_candidate": 5102,
+      "ambiguous_existing_building": 305,
+      "no_address": 5,
+      "address_conflict": 33
+    },
+    "status_counts": {
+      "active": 11258,
+      "closed": 3312,
+      "temporarily_closed": 308,
+      "excluded": 1
+    },
+    "existing_links_preserved": 15,
+    "manual_review_targets": 1,
+    "would_auto_create_master_buildings": 0,
+    "production_registry_rows": 128795,
+    "production_master_buildings": 83712,
+    "staging_valid_rows": 143659,
+    "target_rows": 14879,
+    "new_permits": 14864,
+    "source_files": {
+      "tourism_lodging": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "726a0ee840cc67e9d8635ceb8ab5c30cc30e6710d7f1878e8898ad8063653bfd",
+        "status": "validated",
+        "total_rows": 4329,
+        "valid_rows": 4329,
+        "review_rows": 0
+      },
+      "tourism_pension": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "7fd17ddc58543225a07b7b48fafaf8d63a93de319c0172a83ab83d4f91f9d968",
+        "status": "validated",
+        "total_rows": 1662,
+        "valid_rows": 1662,
+        "review_rows": 0
+      },
+      "rural_homestay": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "bb6dd499928923774df10f6871ab9e0aa7ffc34b23fcf1a1a82bf6eeb1279908",
+        "status": "validated",
+        "total_rows": 55419,
+        "valid_rows": 55419,
+        "review_rows": 0
+      },
+      "lodging": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "278ad7b494141abe1e1894ec1e6e2a55355b4b6dba59d05f03584da1182152a3",
+        "status": "review_required",
+        "total_rows": 58693,
+        "valid_rows": 58692,
+        "review_rows": 1
+      },
+      "foreign_city_homestay": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "b4965a84da8cfa3ef45b86cb843cd04d13fec8a0fcf4d1797f0e10603b478de5",
+        "status": "validated",
+        "total_rows": 14521,
+        "valid_rows": 14521,
+        "review_rows": 0
+      },
+      "general_camping": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "db16309f4253aeaed5f8883291c521e9021d53a189e6e5c98bb3bc9432e86a6e",
+        "status": "validated",
+        "total_rows": 4902,
+        "valid_rows": 4902,
+        "review_rows": 0
+      },
+      "auto_camping": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "d2a28f00a5f9d8a2ac39c2b0e361628dcaa7ee3cca70504fee98ac681fd215f3",
+        "status": "validated",
+        "total_rows": 969,
+        "valid_rows": 969,
+        "review_rows": 0
+      },
+      "hanok": {
+        "reference_date": "2026-09-03",
+        "file_sha256": "f98116d7701bf3d924242d55a2c6a2e56752a4c8bd6a611c1707f8ea4261f361",
+        "status": "validated",
+        "total_rows": 3164,
+        "valid_rows": 3164,
+        "review_rows": 0
+      }
+    },
+    "production_writes": 0
+  },
+  "run_id": "3383df4370edbe44b008f8b514ab9e56",
+  "created": true
+}

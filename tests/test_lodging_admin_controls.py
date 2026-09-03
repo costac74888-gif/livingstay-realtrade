@@ -72,6 +72,19 @@ class LodgingAdminControlTests(unittest.TestCase):
         self.assertIn('id="lodgingStagingCards"', html)
         self.assertIn("운영 DB는 아직 변경되지 않습니다.", html)
         self.assertIn("loadLodgingStagingOverview();", html)
+        self.assertIn(
+            '"/api/admin/lodging-staging/promotion/<int:manifest_id>/approve"',
+            app,
+        )
+        self.assertIn(
+            '"/api/admin/lodging-staging/promotion/<int:manifest_id>/dry-run"',
+            app,
+        )
+        self.assertNotIn(
+            '"/api/admin/lodging-staging/promotion/<int:manifest_id>/apply"',
+            app,
+        )
+        self.assertIn('id="lodgingPromotionManifest"', html)
 
     def test_rural_upload_uses_same_source_lock_as_api_collector(self):
         lock_id = sync_rural_hanok._source_lock_ids(["rural"])[0]

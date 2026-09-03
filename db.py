@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-03-03"
+SCHEMA_VERSION = "2026-09-03-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2240,6 +2240,56 @@ def _run_init_db():
     staging_schema_cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_lodging_approval_attempts_run
         ON lodging_approval_attempts(run_id, attempt_number DESC)
+    """)
+
+    # 개발 원장 기준 승인배치와 분리된 운영 기준 승격 manifest.
+    # 운영 DB는 읽기 전용 기준선으로만 조회하며, 실제 승인 전까지 이 개발
+    # 테이블에 대상 payload와 기준선 fingerprint를 고정한다.
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_promotion_manifests (
+        id BIGSERIAL PRIMARY KEY,
+        manifest_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (status IN ('draft', 'approved', 'dry_run', 'applied', 'failed')),
+        source_batch_ids JSONB NOT NULL,
+        production_baseline_fingerprint TEXT NOT NULL,
+        target_payload_sha256 TEXT NOT NULL,
+        row_count INTEGER NOT NULL DEFAULT 0,
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error TEXT,
+        run_id TEXT NOT NULL UNIQUE,
+        created_by INTEGER REFERENCES admin_users(id) ON DELETE RESTRICT,
+        approved_by INTEGER REFERENCES admin_users(id) ON DELETE RESTRICT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        approved_at TIMESTAMP,
+        started_at TIMESTAMP,
+        heartbeat_at TIMESTAMP,
+        finished_at TIMESTAMP
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_promotion_manifests_recent
+        ON lodging_promotion_manifests(created_at DESC)
+    """)
+    staging_schema_cur.execute("""
+    CREATE TABLE IF NOT EXISTS lodging_promotion_rows (
+        promotion_manifest_id BIGINT NOT NULL
+            REFERENCES lodging_promotion_manifests(id) ON DELETE CASCADE,
+        source_row_id BIGINT NOT NULL
+            REFERENCES lodging_source_rows(id) ON DELETE RESTRICT,
+        action TEXT NOT NULL
+            CHECK (action IN ('insert', 'update', 'status_change')),
+        production_match_state TEXT,
+        production_building_id INTEGER,
+        existing_applied_building_id INTEGER,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (promotion_manifest_id, source_row_id)
+    )
+    """)
+    staging_schema_cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lodging_promotion_rows_action
+        ON lodging_promotion_rows(promotion_manifest_id, action)
     """)
 
     # 로그인 회원의 관심단지 — 프론트 localStorage favKey(building_name|address)와 동일 규칙으로 저장.

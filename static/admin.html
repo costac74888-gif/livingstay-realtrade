@@ -2470,6 +2470,7 @@
     function renderLodgingStagingOverview(data) {
       const summary = document.getElementById("lodgingStagingSummary");
       const box = document.getElementById("lodgingStagingCards");
+      const promotionBox = document.getElementById("lodgingPromotionManifest");
       if (!summary || !box) return;
       const snapshot = data.analysis_snapshot || {};
       if (snapshot.generated_at) {
@@ -2483,6 +2484,28 @@
           <div class="geo-stat-row"><b>객실수 안전:</b> ${snapshot.room_count_safe_to_replace ? "기존값 대체 가능" : "CSV 공란은 기존 운영 객실수를 보존해야 함"} · 분석 ${dgEscape(snapshot.generated_at)}</div>`;
       } else {
         summary.textContent = "5단계 운영 기준 분석 결과를 불러오지 못했습니다.";
+      }
+      if (promotionBox) {
+        const manifest = data.promotion_manifest;
+        if (!manifest) {
+          promotionBox.textContent = "운영 기준 승인 manifest가 아직 없습니다.";
+        } else {
+          const result = manifest.result || {};
+          const actions = result.action_counts || {};
+          const matches = result.new_match_counts || {};
+          const buttons = [];
+          if (manifest.status === "draft") {
+            buttons.push(`<button type="button" class="admin-btn admin-btn-primary lodging-promotion-action" data-action="approve" data-id="${manifest.id}">운영 기준 manifest 승인 기록</button>`);
+          } else if (["approved", "dry_run", "failed"].includes(manifest.status)) {
+            buttons.push(`<button type="button" class="admin-btn lodging-promotion-action" data-action="dry-run" data-id="${manifest.id}">${manifest.status === "dry_run" ? "운영 기준 dry-run 다시 실행" : "운영 기준 dry-run 실행"}</button>`);
+          }
+          promotionBox.innerHTML = `
+            <div><b>7단계 운영 기준 manifest:</b> ${dgEscape(lodgingStagingState(manifest.status))} · 총 ${num(manifest.row_count)}건</div>
+            <div>신규 신고 <b>${num(actions.insert || 0)}건</b> · 기존 갱신 ${num(actions.update || 0)}건 · 상태변경 ${num(actions.status_change || 0)}건 · 수동검토 ${num(result.manual_review_targets || 0)}건</div>
+            <div>기존 건물 연결 ${num(matches.existing_building || 0)}건 · 신규 건물 후보 ${num(matches.new_building_candidate || 0)}건 · 복수후보/충돌/주소없음 ${num((matches.ambiguous_existing_building || 0) + (matches.address_conflict || 0) + (matches.no_address || 0))}건</div>
+            <div style="color:#9a6700;">신규 건물 자동 생성 0건 · 운영 DB 반영 0건</div>
+            <div style="margin-top:8px;">${buttons.join(" ")}</div>`;
+        }
       }
       box.innerHTML = (data.batches || []).map((item) => {
         const batch = item.batch;
@@ -2529,6 +2552,13 @@
           btn.dataset.action, btn.dataset.id, btn
         ));
       });
+      document.querySelectorAll(".lodging-promotion-action").forEach((btn) => {
+        btn.addEventListener("click", () => runLodgingPromotionAction(
+          btn.dataset.action,
+          btn.dataset.id,
+          btn,
+        ));
+      });
     }
 
     async function loadLodgingStagingOverview() {
@@ -2564,6 +2594,29 @@
         msg.textContent = action === "dry-run"
           ? "dry-run이 완료됐습니다. 운영 DB에는 반영되지 않았습니다."
           : "승인 단계를 기록했습니다.";
+        await loadLodgingStagingOverview();
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = err.message || "처리하지 못했습니다.";
+        button.disabled = false;
+      }
+    }
+
+    async function runLodgingPromotionAction(action, id, button) {
+      const msg = document.getElementById("lodgingStagingMsg");
+      if (action === "approve" && !window.confirm("운영 permit_number 기준 manifest의 승인 기록을 남기시겠습니까? 운영 DB는 아직 변경되지 않습니다.")) return;
+      const url = `/api/admin/lodging-staging/promotion/${id}/${action}`;
+      button.disabled = true;
+      msg.textContent = "처리 중…";
+      try {
+        const res = await fetch(url, { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "처리 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = action === "dry-run"
+          ? "운영 기준선과 payload 검증이 완료됐습니다. 운영 DB에는 반영되지 않았습니다."
+          : "운영 기준 manifest 승인 기록을 남겼습니다.";
         await loadLodgingStagingOverview();
       } catch (err) {
         msg.style.color = "#b3261e";
@@ -4122,6 +4175,7 @@
             <b>이 화면에는 운영 반영 기능이 없으며 기존 건물 연결과 운영 객실수를 변경하지 않습니다.</b>
           </p>
           <div id="lodgingStagingSummary" class="geo-status">5단계 분석 결과 불러오는 중…</div>
+          <div id="lodgingPromotionManifest" class="geo-status" style="margin-top:10px;">7단계 운영 기준 manifest 불러오는 중…</div>
           <div id="lodgingStagingCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-top:12px;">8종 staging 현황 불러오는 중…</div>
           <div id="lodgingStagingMsg" class="legal-msg" role="alert" style="display:block;margin-top:8px;"></div>
           <p class="legal-admin-hint" style="margin-top:12px;color:#9a6700;">
