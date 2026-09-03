@@ -244,6 +244,7 @@
           "일반숙박시설은 구분소유 호수 개념이 없어 이 값이 실제 객실수를 반영하지 않습니다. 실제 객실수는 '신고율/객실수' 컬럼을 참고하세요";
         const TOURISM_UNITS_TOOLTIP =
           "건축물대장 표제부의 호수(hoCnt) 합계입니다. 관광호텔·리조트는 이 값이 없거나 실제 객실수와 달라 신고객실수와 직접 비교하지 않습니다.";
+        const COVERAGE_TYPES = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"]);
         const generalUnitsCell = (value) => {
           const formatted = n(value);
           const label = formatted === "-"
@@ -256,7 +257,7 @@
           { label: "건물수",      key: "building_count",    fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${row.building_count.toLocaleString()}</td>` },
           { label: "건축물대장 호실수", key: "units", fmt: (row) => row.type === "일반"
               ? generalUnitsCell(row.units)
-              : row.type === "관광"
+              : COVERAGE_TYPES.has(row.type)
                 ? `<td title="${TOURISM_UNITS_TOOLTIP}" style="text-align:right;padding:4px 8px;color:var(--ink-soft);cursor:help;">${n(row.units)} <span style="font-size:10px;">(참고)</span></td>`
                 : `<td style="text-align:right;padding:4px 8px;">${n(row.units)}</td>` },
           { label: "관심저장",    key: "favorites",         fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.favorites)}</td>` },
@@ -269,10 +270,12 @@
               const title = row.report_rate_basis === "businesses_per_building"
                 ? "일반숙박 기준: 현재 영업신고업체 수 ÷ 건물 수"
                 : row.report_rate_basis === "buildings_with_active_report"
-                  ? "관광숙박 기준: 정상 관광 신고가 하나 이상 매칭된 건물 수 ÷ 관광 건물 수"
+                  ? row.type === "복합"
+                    ? "복합 기준: 활성 법정 숙박 신고가 하나 이상 매칭된 복합 건물 수 ÷ 복합 건물 수 (원장에는 복합 업태가 없음)"
+                    : `${row.type} 기준: 같은 유형의 정상 신고가 하나 이상 매칭된 건물 수 ÷ ${row.type} 건물 수`
                 : row.report_rate_basis === "type_weighted"
-                  ? "전체 기준: 생활·복합은 신고객실÷대장 호실수, 관광은 신고 매칭 건물÷관광 건물, 일반은 신고업체÷건물수를 합산"
-                  : "생활·복합 기준: 정상영업 신고객실수 합 ÷ 건축물대장 호실수 합";
+                  ? "전체 기준: 생활은 신고객실÷대장 호실수, 일반은 신고업체÷건물수, 나머지 확정 유형은 신고 매칭 건물÷유형 건물수를 합산"
+                  : "생활 기준: 정상영업 신고객실수 합 ÷ 건축물대장 호실수 합";
               return `<td title="${title}" style="text-align:right;padding:4px 8px;${color}">${pct(row.report_rate)}</td>`;
             } },
           { label: "영업신고업체",key: "permit_count",      fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${n(row.permit_count)}</td>` },
@@ -358,37 +361,37 @@
                     <td style="padding:6px 8px;font-weight:700;">관광</td>
                     <td style="padding:6px 8px;">관광숙박업 · 관광호텔업 · 휴양콘도미니엄업 등</td>
                     <td style="padding:6px 8px;">숙박시설</td>
-                    <td style="padding:6px 8px;">관광 관련 등록을 법정 영업분류로 반영</td>
+                    <td style="padding:6px 8px;">활성 관광 신고가 매칭된 건물수 ÷ 관광 건물수</td>
                   </tr>
                   <tr style="border-bottom:1px solid #F0ECE4;">
                     <td style="padding:6px 8px;font-weight:700;">에어비앤비</td>
                     <td style="padding:6px 8px;">외국인관광도시민박업</td>
                     <td style="padding:6px 8px;">주택</td>
-                    <td style="padding:6px 8px;">주택이라는 용도만으로 법정분류를 추정하지 않음</td>
+                    <td style="padding:6px 8px;">활성 신고가 매칭된 건물수 ÷ 에어비앤비 건물수</td>
                   </tr>
                   <tr style="border-bottom:1px solid #F0ECE4;">
                     <td style="padding:6px 8px;font-weight:700;">농어촌민박</td>
                     <td style="padding:6px 8px;">농어촌민박업</td>
                     <td style="padding:6px 8px;">주택</td>
-                    <td style="padding:6px 8px;">농어촌민박 등록을 별도 법정분류로 반영</td>
+                    <td style="padding:6px 8px;">활성 신고가 매칭된 건물수 ÷ 농어촌민박 건물수</td>
                   </tr>
                   <tr style="border-bottom:1px solid #F0ECE4;">
                     <td style="padding:6px 8px;font-weight:700;">캠핑</td>
                     <td style="padding:6px 8px;">야영장업</td>
                     <td style="padding:6px 8px;">수련시설</td>
-                    <td style="padding:6px 8px;">야영장 등록을 별도 법정분류로 반영</td>
+                    <td style="padding:6px 8px;">활성 신고가 매칭된 건물수 ÷ 캠핑 건물수 (사이트수는 객실수와 분리)</td>
                   </tr>
                   <tr style="border-bottom:1px solid #F0ECE4;">
                     <td style="padding:6px 8px;font-weight:700;">한옥</td>
                     <td style="padding:6px 8px;">한옥체험업</td>
                     <td style="padding:6px 8px;">용도 제한 없음(자동 주택 단정 안 함)</td>
-                    <td style="padding:6px 8px;">한옥체험업 등록을 별도 법정분류로 반영</td>
+                    <td style="padding:6px 8px;">활성 신고가 매칭된 건물수 ÷ 한옥 건물수</td>
                   </tr>
                   <tr style="border-bottom:1px solid #F0ECE4;">
                     <td style="padding:6px 8px;font-weight:700;">복합</td>
                     <td style="padding:6px 8px;">서로 다른 법정 등록 유형이 같은 건물에 함께 존재</td>
                     <td style="padding:6px 8px;">실제 건축물대장 용도 별도 확인</td>
-                    <td style="padding:6px 8px;">임의로 한 유형을 선택하지 않고 복합으로 유지</td>
+                    <td style="padding:6px 8px;">활성 법정 숙박 신고가 매칭된 건물수 ÷ 복합 건물수 (원장에 복합 업태 없음)</td>
                   </tr>
                   <tr>
                     <td style="padding:6px 8px;font-weight:700;">미분류</td>
@@ -618,12 +621,12 @@
                 `🏢 ${row.lodging_count}건 펼치기</button>`;
             } },
           { key: "report_rate", label: "신고율 / 객실수", clientSort: true,
-            sortValue: (row) => row.lodging_type === "일반"
+            sortValue: (row) => row.lodging_metric === "room_count"
               ? (row.lodging_room_known ? Number(row.lodging_room_total || 0) : null)
               : (row.units && row.lodging_room_known ? Number(row.lodging_room_total || 0) / Number(row.units) : null),
             render: (_, row) => {
               if (!row.lodging_room_known) return `<span style="color:var(--ink-soft);">미확인</span>`;
-              if (row.lodging_type === "일반") {
+              if (row.lodging_metric === "room_count") {
                 return `<span style="font-weight:600;">${Number(row.lodging_room_total || 0).toLocaleString()}실</span>`;
               }
               if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
@@ -681,9 +684,9 @@
                                       ? `<strong>${t.total_store_realty.toLocaleString()}</strong>` : "",
           store_count:         (t) => t.total_store_count != null
                                       ? `<strong>${t.total_store_count.toLocaleString()}</strong>` : "",
-           // 요약 신고율은 일반숙박을 제외한 신고호실 합 ÷ 해당 호실 합으로 계산한 가중평균.
+           // 건물 목록 합계의 신고율은 객실수 모집단이 맞는 생활숙박만 계산한다.
           report_rate:         (t) => t.weighted_report_rate != null
-                                       ? `<strong title="객실수 대비 신고율 기준: 관광·일반숙박 제외, 건축물대장 호실수와 비교 가능한 유형만 계산">${t.weighted_report_rate}%</strong><span title="객실수 대비 신고율 기준: 관광·일반숙박 제외, 건축물대장 호실수와 비교 가능한 유형만 계산" style="margin-left:3px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>` : "",
+                                       ? `<strong title="건물 목록 합계: 생활숙박 정상영업 신고객실수 ÷ 생활숙박 건축물대장 호실수">${t.weighted_report_rate}%</strong><span title="생활숙박만 객실수 모집단 비교 가능" style="margin-left:3px;font-size:10px;color:var(--ink-soft);cursor:help;">ⓘ</span>` : "",
           lodging_expand:      (t) => t.total_lodging_count != null
                                       ? `<strong>${t.total_lodging_count.toLocaleString()}건</strong>` : "",
         },

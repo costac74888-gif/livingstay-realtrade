@@ -812,7 +812,7 @@ def run():
     failures += _check_public_business_listing_summary(client)
     # 괄호 안 읍·면·동 표기와 신고 주소의 행정구역 표기가 같은 키가 되는지 확인
     failures += _check_lodging_address_normalization()
-    # 일반숙박은 객실수 절대값, 비일반 유형은 신고율을 사용하는지 확인
+    # 생활만 객실수 대비 신고율, 나머지는 절대 객실수를 사용하는지 확인
     failures += _check_lodging_metric_contract(client)
     # 명칭 미확정 일반숙박은 영업신고 대표 사업장명으로 자동 표시되는지 확인
     failures += _check_lodging_auto_naming(client)
@@ -4043,7 +4043,7 @@ def _check_lodging_cap_auto_naming():
 
 
 def _check_general_units_table_markup(client):
-    """관리자 통계표에서 일반숙박 호실수만 참고용으로 표시하는지 확인."""
+    """관리자 통계표에서 생활 외 호실수와 유형별 신고율 기준을 설명하는지 확인."""
     failures = []
     response = client.get("/admin")
     if response.status_code != 200:
@@ -4054,7 +4054,12 @@ def _check_general_units_table_markup(client):
         "일반숙박시설은 구분소유 호수 개념이 없어 이 값이 실제 객실수를 반영하지 않습니다.",
         "실제 객실수는 '신고율/객실수' 컬럼을 참고하세요",
         "const generalUnitsCell =",
-        'row.type === "일반" ? generalUnitsCell(row.units)',
+        'row.type === "일반"',
+        "? generalUnitsCell(row.units)",
+        'const COVERAGE_TYPES = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"])',
+        "나머지 확정 유형은 신고 매칭 건물÷유형 건물수를 합산",
+        "사이트수는 객실수와 분리",
+        "원장에는 복합 업태가 없음",
         'if (c.key === "units")',
         "${n(row.units)}",
     ]
@@ -4065,7 +4070,7 @@ def _check_general_units_table_markup(client):
             f"({', '.join(missing)})"
         )
     else:
-        print("OK  관리자 통계표 일반숙박 호실수 참고용 표시 및 비일반 회귀")
+        print("OK  관리자 통계표 생활 외 호실수 참고·유형별 신고율 설명")
     return failures
 
 
@@ -4155,18 +4160,18 @@ def _check_lodging_metric_contract(client):
                 f"HTTP {resp.status_code}"
             )
         elif (
-            payload.get("lodging_type") == "관광"
-            and payload.get("lodging_metric") != "room_count"
-        ):
-            failures.append(
-                f"lodging metric: 관광 표본 {non_general['building_name']}이 객실수 지표가 아님"
-            )
-        elif (
-            payload.get("lodging_type") != "관광"
+            payload.get("lodging_type") == "생활"
             and payload.get("lodging_metric") != "report_rate"
         ):
             failures.append(
-                f"lodging metric: 비일반·비관광 표본 {non_general['building_name']}이 신고율 지표가 아님"
+                f"lodging metric: 생활 표본 {non_general['building_name']}이 신고율 지표가 아님"
+            )
+        elif (
+            payload.get("lodging_type") != "생활"
+            and payload.get("lodging_metric") != "room_count"
+        ):
+            failures.append(
+                f"lodging metric: 비생활 표본 {non_general['building_name']}이 객실수 지표가 아님"
             )
         else:
             print(f"OK  {non_general['building_name']} 유형별 신고 지표 유지")
@@ -4207,9 +4212,9 @@ def _check_lodging_metric_contract(client):
                 f"(153실 / 286실 = {expected_rate}%)"
             )
 
-    # 관리자 통계는 일반숙박을 업체수÷건물수, 관광을 신고 매칭 건물÷관광 건물,
-    # 생활·복합을 신고객실수÷건축물대장 호실수로 계산한다.
-    # 별도 지역 비교 API는 기존처럼 일반숙박을 제외한 객실 기준을 유지한다.
+    # 관리자 통계는 일반숙박을 업체수÷건물수, 생활만 신고객실수÷대장 호실수,
+    # 나머지 확정 유형을 신고 매칭 건물÷유형 건물수로 계산한다.
+    # 별도 객실수 비교 API에도 생활숙박만 포함한다.
     original_cache = app_module._bld_full_stats_cache
     try:
         app_module._bld_full_stats_cache = {"ts": 0.0, "data": None}
@@ -4224,7 +4229,9 @@ def _check_lodging_metric_contract(client):
         rows = {row.get("type"): row for row in full_stats.get("rows", [])}
         total_row = rows.get("전체") or {}
         general_row = rows.get("일반") or {}
-        tourism_row = rows.get("관광") or {}
+        building_coverage_types = {
+            "관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합",
+        }
 
         if full_stats_response.status_code != 200 or not full_stats.get("ok"):
             failures.append("lodging metric: 관리자 전체 통계를 불러오지 못했습니다.")
@@ -4241,22 +4248,26 @@ def _check_lodging_metric_contract(client):
             )
         ):
             failures.append("lodging metric: 관리자 일반숙박 신고율이 업체수 ÷ 건물수 기준이 아님")
-        elif (
-            tourism_row.get("lodging_metric") != "buildings_with_active_report"
-            or tourism_row.get("report_rate_basis") != "buildings_with_active_report"
-            or tourism_row.get("report_rate")
+        elif not building_coverage_types <= set(rows):
+            failures.append("lodging metric: 건물 커버리지 유형 행이 누락됨")
+        elif any(
+            row.get("lodging_metric") != "buildings_with_active_report"
+            or row.get("report_rate_basis") != "buildings_with_active_report"
+            or row.get("report_rate")
             != (
                 round(
-                    int(tourism_row.get("report_rate_numerator") or 0)
-                    / int(tourism_row.get("report_rate_denominator") or 0) * 100,
+                    int(row.get("report_rate_numerator") or 0)
+                    / int(row.get("report_rate_denominator") or 0) * 100,
                     1,
                 )
-                if int(tourism_row.get("report_rate_denominator") or 0) else None
+                if int(row.get("report_rate_denominator") or 0) else None
             )
-            or int(tourism_row.get("report_rate_denominator") or 0)
-            != int(tourism_row.get("building_count") or 0)
+            or int(row.get("report_rate_denominator") or 0)
+            != int(row.get("building_count") or 0)
+            for label in building_coverage_types
+            for row in [rows.get(label) or {}]
         ):
-            failures.append("lodging metric: 관리자 관광숙박 신고율이 신고 매칭 건물 ÷ 관광 건물 기준이 아님")
+            failures.append("lodging metric: 건물 커버리지 유형의 신고율 분자·분모가 잘못됨")
         else:
             expected_sub_types = ["일반호텔", "여관업", "여인숙업"]
             sub_rows = general_row.get("sub_rows")
@@ -4287,8 +4298,21 @@ def _check_lodging_metric_contract(client):
 
             expected_numerator = int(total_row.get("report_rate_numerator") or 0)
             expected_denominator = int(total_row.get("report_rate_denominator") or 0)
+            component_types = {"생활", "일반"} | building_coverage_types
+            component_numerator = sum(
+                int((rows.get(label) or {}).get("report_rate_numerator") or 0)
+                for label in component_types
+            )
+            component_denominator = sum(
+                int((rows.get(label) or {}).get("report_rate_denominator") or 0)
+                for label in component_types
+            )
             expected_rate = round(expected_numerator * 100.0 / expected_denominator, 1) if expected_denominator else None
-            if total_row.get("report_rate") != expected_rate:
+            if (
+                expected_numerator != component_numerator
+                or expected_denominator != component_denominator
+                or total_row.get("report_rate") != expected_rate
+            ):
                 failures.append("lodging metric: 관리자 전체 신고율의 유형별 분자·분모가 불일치")
             else:
                 print(
@@ -4317,6 +4341,7 @@ def _check_lodging_metric_contract(client):
                 response.status_code != 200
                 or stats_payload.get("general_excluded") is not True
                 or stats_payload.get("tourism_excluded") is not True
+                or stats_payload.get("non_living_excluded") is not True
                 or stats_payload.get("biz_units") != total_row.get("report_rate_room_count")
                 or stats_payload.get("total_units") != total_row.get("report_rate_units")
                 or stats_payload.get("rate")
@@ -4354,7 +4379,7 @@ def _check_lodging_metric_contract(client):
                 wb = load_workbook(BytesIO(export_response.data), data_only=True)
                 ws = wb.active
                 headers = [cell.value for cell in ws[1]]
-                metric_col = headers.index("신고 지표(일반=객실수)") + 1
+                metric_col = headers.index("신고 지표(생활=신고율, 그 외=객실수)") + 1
                 metric_value = ws.cell(2, metric_col).value
                 if not isinstance(metric_value, str) or not metric_value.endswith("실"):
                     failures.append("lodging metric: 관리자 건물 엑셀에 일반숙박 객실수 표기가 없음")

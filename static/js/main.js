@@ -3181,6 +3181,14 @@ function dataLabRankList(items, makeMeta, makeValue){
 function renderDataLabLodging(data){
   const rows = Array.isArray(data.rows) ? data.rows : [];
   if (!rows.length) return '<div class="side-empty">전국 숙박업 통계가 없습니다.</div>';
+  const roomRateTypes = new Set(["생활"]);
+  const buildingCoverageTypes = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"]);
+  const rateTitle = row => {
+    if (row.type === "일반") return "현재 영업신고업체 수 ÷ 일반 건물 수";
+    if (roomRateTypes.has(row.type)) return "정상영업 신고객실수 ÷ 건축물대장 호실수";
+    if (buildingCoverageTypes.has(row.type)) return `활성 신고가 매칭된 건물 수 ÷ ${row.type} 건물 수`;
+    return "유형별 모집단에 맞춘 신고 커버리지";
+  };
   const body = rows.map(row => {
     const base = `
       <tr>
@@ -3189,7 +3197,7 @@ function renderDataLabLodging(data){
         <td>${dataLabNum(row.units)}</td>
         <td>${dataLabNum(row.biz_count)}</td>
         <td>${dataLabNum(row.room_count)}</td>
-        <td>${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
+        <td title="${rateTitle(row)}">${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
       </tr>`;
     const subRows = (row.sub_rows || []).map(sub => `
       <tr class="datalab-sub-row">
@@ -3208,7 +3216,7 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물수</th><th title="건축물대장 표제부 호수(hoCnt) 합계이며 관광숙박은 실제 객실수와 직접 비교하지 않습니다.">대장 호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th>신고율</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수</th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다.">대장 호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다.">신고율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
