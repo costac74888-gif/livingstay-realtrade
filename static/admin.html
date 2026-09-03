@@ -2453,7 +2453,126 @@
       }
     }
 
-    // ---- 숙박 원본별 수동 동기화·파일 승인 반영 ----
+    // ---- 정부 숙박 8종 staging 검증·승인 dry-run ----
+    function lodgingStagingState(state) {
+      const labels = {
+        validated: "검증 완료",
+        review_required: "검토 필요",
+        draft: "승인 초안",
+        approved: "승인 기록 완료",
+        dry_run: "dry-run 완료",
+        applied: "운영 반영 완료",
+        failed: "실패",
+      };
+      return labels[state] || state || "기록 없음";
+    }
+
+    function renderLodgingStagingOverview(data) {
+      const summary = document.getElementById("lodgingStagingSummary");
+      const box = document.getElementById("lodgingStagingCards");
+      if (!summary || !box) return;
+      const snapshot = data.analysis_snapshot || {};
+      if (snapshot.generated_at) {
+        const unresolved = Number(snapshot.ambiguous_rows || 0)
+          + Number(snapshot.conflict_rows || 0)
+          + Number(snapshot.no_address_rows || 0);
+        summary.innerHTML = `
+          <div class="geo-stat-row"><b>5단계 운영 기준 분석:</b> 원장 ${num(snapshot.staging_rows)}건 · 운영 기존 ${num(snapshot.production_registry_rows)}건 · 신규 허가 ${num(snapshot.new_permits)}건</div>
+          <div class="geo-stat-row"><b>신규 주소 판정:</b> 기존 건물 연결 ${num(snapshot.new_existing_building_rows)}건 · 신규 건물 후보 신고 ${num(snapshot.new_building_candidate_rows)}건 · 주소 중복 제거 신규 건물 <b>${num(snapshot.new_building_candidate_unique_addresses)}개</b></div>
+          <div class="geo-stat-row"><b>확인 보류:</b> 복수 후보·충돌·주소 없음 ${num(unresolved)}건 · 자동 건물 생성 제외</div>
+          <div class="geo-stat-row"><b>객실수 안전:</b> ${snapshot.room_count_safe_to_replace ? "기존값 대체 가능" : "CSV 공란은 기존 운영 객실수를 보존해야 함"} · 분석 ${dgEscape(snapshot.generated_at)}</div>`;
+      } else {
+        summary.textContent = "5단계 운영 기준 분석 결과를 불러오지 못했습니다.";
+      }
+      box.innerHTML = (data.batches || []).map((item) => {
+        const batch = item.batch;
+        const approval = item.approval;
+        if (!batch) {
+          return `<article style="border:1px solid #e3ded3;border-radius:10px;padding:12px;background:#fff;">
+            <b>${dgEscape(item.label)}</b>
+            <div style="font-size:12px;color:#b3261e;margin-top:8px;">staging 배치 없음</div>
+          </article>`;
+        }
+        const status = batch.status_counts || {};
+        const dry = (approval || {}).result || {};
+        const actions = [];
+        if (!approval && ["validated", "review_required"].includes(batch.status)) {
+          actions.push(`<button type="button" class="admin-btn lodging-staging-action" data-action="create" data-id="${batch.id}">승인 초안 만들기</button>`);
+        } else if (approval && approval.status === "draft") {
+          actions.push(`<button type="button" class="admin-btn admin-btn-primary lodging-staging-action" data-action="approve" data-id="${approval.id}">승인 기록</button>`);
+        } else if (approval && ["approved", "dry_run", "failed"].includes(approval.status)) {
+          actions.push(`<button type="button" class="admin-btn lodging-staging-action" data-action="dry-run" data-id="${approval.id}">${approval.status === "dry_run" ? "dry-run 다시 실행" : "dry-run 실행"}</button>`);
+        }
+        const actionCounts = dry.action_counts || {};
+        const resultLine = approval && approval.status === "dry_run"
+          ? `<div style="color:#1a7f37;">dry-run: 삽입 ${num(actionCounts.insert || 0)} · 갱신 ${num(actionCounts.update || 0)} · 상태변경 ${num(actionCounts.status_change || 0)} · 운영 반영 안 함</div>`
+          : "";
+        return `<article style="border:1px solid #e3ded3;border-radius:10px;padding:12px;background:#fff;">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+            <b>${dgEscape(item.label)}</b>
+            <span style="font-size:12px;color:${batch.review_rows ? "#9a6700" : "#1a7f37"}">${dgEscape(lodgingStagingState(batch.status))}</span>
+          </div>
+          <div style="font-size:12px;line-height:1.65;margin:8px 0;color:#46515c;">
+            <div>기준일 ${dgEscape(batch.reference_date)} · 원본 ${num(batch.total_rows)}건</div>
+            <div>정상 ${num(status.active || 0)} · 휴업 ${num(status.temporarily_closed || 0)} · 폐업성 ${num(status.closed || 0)}</div>
+            <div>검증 통과 ${num(batch.valid_rows)} · 관리자 검토 ${num(batch.review_rows)}</div>
+            <div>승인 상태: <b>${dgEscape(lodgingStagingState(approval && approval.status))}</b>${approval ? ` · 대상 ${num(approval.row_count)}건` : ""}</div>
+            ${resultLine}
+            ${batch.error ? `<div style="color:#b3261e">${dgEscape(batch.error)}</div>` : ""}
+            ${approval && approval.error ? `<div style="color:#b3261e">${dgEscape(approval.error)}</div>` : ""}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${actions.join("")}</div>
+        </article>`;
+      }).join("");
+      box.querySelectorAll(".lodging-staging-action").forEach((btn) => {
+        btn.addEventListener("click", () => runLodgingStagingAction(
+          btn.dataset.action, btn.dataset.id, btn
+        ));
+      });
+    }
+
+    async function loadLodgingStagingOverview() {
+      const box = document.getElementById("lodgingStagingCards");
+      if (!box) return;
+      try {
+        const res = await fetch("/api/admin/lodging-staging/overview");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "조회 실패");
+        renderLodgingStagingOverview(data);
+      } catch (err) {
+        box.textContent = "8종 staging 현황을 불러오지 못했습니다.";
+      }
+    }
+
+    async function runLodgingStagingAction(action, id, button) {
+      const msg = document.getElementById("lodgingStagingMsg");
+      if (action === "approve" && !window.confirm("이 배치의 승인 기록을 남기시겠습니까? 운영 DB는 아직 변경되지 않습니다.")) return;
+      const urls = {
+        create: `/api/admin/lodging-staging/${id}/approval`,
+        approve: `/api/admin/lodging-staging/approval/${id}/approve`,
+        "dry-run": `/api/admin/lodging-staging/approval/${id}/dry-run`,
+      };
+      button.disabled = true;
+      msg.textContent = "처리 중…";
+      try {
+        const res = await fetch(urls[action], { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || "처리 실패");
+        msg.style.color = "#1a7f37";
+        msg.textContent = action === "dry-run"
+          ? "dry-run이 완료됐습니다. 운영 DB에는 반영되지 않았습니다."
+          : "승인 단계를 기록했습니다.";
+        await loadLodgingStagingOverview();
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = err.message || "처리하지 못했습니다.";
+        button.disabled = false;
+      }
+    }
+
+    // ---- 기존 숙박 원본별 수동 동기화·파일 승인 반영 ----
     let lodgingSourceTimer = null;
 
     function lodgingSourceState(status) {
@@ -3993,11 +4112,29 @@
             <button id="realtySyncRunBtn" class="admin-btn admin-btn-primary">상가정보 동기화 실행</button>
           </div>
         </div>
-        <div class="legal-admin" style="margin-top:16px" id="dsSecLodging">
+        <div class="legal-admin" style="margin-top:16px" id="dsSecLodgingStaging">
           <div class="legal-admin-head">
-            <h2 class="legal-admin-title">⑨ 숙박업 영업신고 동기화</h2>
+            <h2 class="legal-admin-title">⑨-A 정부 숙박 8종 staging·승인</h2>
           </div>
           <p class="legal-admin-hint">
+            정부 숙박 허가원장 8종을 운영 원장과 분리해 검증합니다.
+            원본별 검증 통과 행만 승인 초안에 고정하고, 승인 기록 뒤 dry-run으로 삽입·갱신·상태변경 건수를 확인합니다.
+            <b>이 화면에는 운영 반영 기능이 없으며 기존 건물 연결과 운영 객실수를 변경하지 않습니다.</b>
+          </p>
+          <div id="lodgingStagingSummary" class="geo-status">5단계 분석 결과 불러오는 중…</div>
+          <div id="lodgingStagingCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-top:12px;">8종 staging 현황 불러오는 중…</div>
+          <div id="lodgingStagingMsg" class="legal-msg" role="alert" style="display:block;margin-top:8px;"></div>
+          <p class="legal-admin-hint" style="margin-top:12px;color:#9a6700;">
+            객실 수는 원본별 공란과 기준 차이가 있으므로 전면 대체하지 않습니다.
+            복수 건물 후보·주소 충돌·주소 없음은 자동 건물 생성 대상에서 제외합니다.
+          </p>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecLodging">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">⑨-B 기존 운영 직접 동기화·수동 보완</h2>
+          </div>
+          <p class="legal-admin-hint">
+            새 8종 승인 경로가 운영 반영 단계까지 검증되기 전까지 보존하는 기존 수집·수동 보완 경로입니다.<br>
             행정안전부 <b>숙박업 조회서비스</b>(지방행정 인허가데이터)를 수집합니다.
             위생업태가 <b>숙박업(생활) · 일반호텔 · 여관업 · 여인숙업</b>인 사업장을 저장하며, 일일 한도(캡 8,000호출)에 도달하면
             체크포인트를 저장한 뒤 <b>다음날 이어서</b> 수집합니다.
@@ -4173,6 +4310,7 @@
       loadBrokerGeocodeStatus();
       loadLodgingSyncStatus();
       loadLodgingSourceOverview();
+      loadLodgingStagingOverview();
     }
 
     // ---- 인근 중개업소 후보 (홈앤스테이 전국 중개업소 데이터) ----

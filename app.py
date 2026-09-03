@@ -87,6 +87,7 @@ from quota_policy import (
     korea_today,
 )
 import building_registry
+import lodging_staging
 from utils.photo_validate import validate_photo
 from lodging_matching import (
     ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
@@ -16342,6 +16343,220 @@ _LODGING_SOURCE_DEFS = (
     ("airbnb", "에어비앤비", None, "AIRBNB:%"),
 )
 _LODGING_UPLOAD_MAX_BYTES = 15 * 1024 * 1024
+
+
+def _lodging_staging_analysis_snapshot():
+    """5단계 보완 분석 결과 중 관리자 표시용 요약만 읽는다."""
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "step5_all_production_delta.json",
+    )
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, TypeError, ValueError):
+        return None
+    overall = payload.get("overall") or {}
+    estimated = payload.get("estimated_after_apply") or {}
+    match_counts = overall.get("new_match_counts") or {}
+    quality_gate = overall.get("room_count_quality_gate") or {}
+    return {
+        "generated_at": payload.get("generated_at"),
+        "staging_rows": payload.get("staging_rows"),
+        "production_registry_rows": payload.get("production_registry_rows"),
+        "production_master_buildings": payload.get("production_master_buildings"),
+        "new_permits": overall.get("new_permits"),
+        "new_active_permits": overall.get("new_active_permits"),
+        "new_active_rooms": overall.get("new_active_rooms"),
+        "new_existing_building_rows": overall.get("new_existing_building_rows"),
+        "new_building_candidate_rows": overall.get("new_building_candidate_rows"),
+        "new_building_candidate_unique_addresses": overall.get(
+            "new_building_candidate_unique_addresses"
+        ),
+        "ambiguous_rows": match_counts.get("ambiguous_existing_building", 0),
+        "conflict_rows": match_counts.get("address_conflict", 0),
+        "no_address_rows": match_counts.get("no_address", 0),
+        "active_permits_after_apply": estimated.get("active_permits"),
+        "new_master_buildings": estimated.get("new_master_buildings"),
+        "room_count_safe_to_replace": quality_gate.get(
+            "safe_to_replace_existing_values", False
+        ),
+    }
+
+
+@app.route("/api/admin/lodging-staging/overview")
+@require_admin
+def admin_lodging_staging_overview():
+    """8종 staging 배치·승인 상태와 운영 기준 보완 요약을 반환한다."""
+    from lodging_data_contract import GOVERNMENT_LODGING_SOURCES
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT to_regclass('public.lodging_source_batches') AS table_name"
+        )
+        if not cur.fetchone()["table_name"]:
+            return jsonify({
+                "ok": True,
+                "staging_available": False,
+                "batches": [
+                    {
+                        "source_key": source_key,
+                        "label": definition["label"],
+                        "batch": None,
+                        "approval": None,
+                    }
+                    for source_key, definition
+                    in GOVERNMENT_LODGING_SOURCES.items()
+                ],
+                "analysis_snapshot": _lodging_staging_analysis_snapshot(),
+            })
+        cur.execute(
+            """
+            SELECT DISTINCT ON (source_key)
+                   id, source_key, filename, reference_date, status,
+                   total_rows, parsed_rows, valid_rows, review_rows,
+                   error, created_at, updated_at, finished_at
+              FROM lodging_source_batches
+             ORDER BY source_key, reference_date DESC, created_at DESC, id DESC
+            """
+        )
+        latest = {row["source_key"]: dict(row) for row in cur.fetchall()}
+        batches = []
+        for source_key, definition in GOVERNMENT_LODGING_SOURCES.items():
+            row = latest.get(source_key)
+            if not row:
+                batches.append({
+                    "source_key": source_key,
+                    "label": definition["label"],
+                    "batch": None,
+                    "approval": None,
+                })
+                continue
+            cur.execute(
+                """
+                SELECT status_bucket, COUNT(*) AS count
+                  FROM lodging_source_rows
+                 WHERE batch_id=%s
+                 GROUP BY status_bucket
+                """,
+                (row["id"],),
+            )
+            status_counts = {
+                item["status_bucket"]: int(item["count"])
+                for item in cur.fetchall()
+            }
+            cur.execute(
+                """
+                SELECT row_state, COUNT(*) AS count
+                  FROM lodging_source_rows
+                 WHERE batch_id=%s
+                 GROUP BY row_state
+                """,
+                (row["id"],),
+            )
+            state_counts = {
+                item["row_state"]: int(item["count"])
+                for item in cur.fetchall()
+            }
+            cur.execute(
+                """
+                SELECT id, status, row_count, result, error,
+                       created_at, approved_at, finished_at
+                  FROM lodging_approval_batches
+                 WHERE source_batch_id=%s
+                """,
+                (row["id"],),
+            )
+            approval = cur.fetchone()
+            batches.append({
+                "source_key": source_key,
+                "label": definition["label"],
+                "batch": {
+                    "id": row["id"],
+                    "reference_date": str(row["reference_date"]),
+                    "filename": row["filename"],
+                    "status": row["status"],
+                    "total_rows": int(row["total_rows"] or 0),
+                    "parsed_rows": int(row["parsed_rows"] or 0),
+                    "valid_rows": int(row["valid_rows"] or 0),
+                    "review_rows": int(row["review_rows"] or 0),
+                    "status_counts": status_counts,
+                    "state_counts": state_counts,
+                    "error": row["error"],
+                    "created_at": _kst_label(row["created_at"]),
+                    "updated_at": _kst_label(row["updated_at"]),
+                    "finished_at": _kst_label(row["finished_at"]),
+                },
+                "approval": ({
+                    "id": approval["id"],
+                    "status": approval["status"],
+                    "row_count": int(approval["row_count"] or 0),
+                    "result": approval["result"] or {},
+                    "error": approval["error"],
+                    "created_at": _kst_label(approval["created_at"]),
+                    "approved_at": _kst_label(approval["approved_at"]),
+                    "finished_at": _kst_label(approval["finished_at"]),
+                } if approval else None),
+            })
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "staging_available": True,
+        "batches": batches,
+        "analysis_snapshot": _lodging_staging_analysis_snapshot(),
+    })
+
+
+@app.route("/api/admin/lodging-staging/<int:batch_id>/approval", methods=["POST"])
+@require_admin
+@limiter.limit("12 per hour")
+def admin_lodging_staging_create_approval(batch_id):
+    """검증 통과한 staging 배치의 승인 초안을 개발 DB에 만든다."""
+    try:
+        result = lodging_staging.create_approval_batch(
+            batch_id,
+            created_by=session.get("admin_user_id"),
+        )
+        return jsonify({"ok": True, "approval": result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+
+
+@app.route(
+    "/api/admin/lodging-staging/approval/<int:approval_id>/approve",
+    methods=["POST"],
+)
+@require_admin
+@limiter.limit("12 per hour")
+def admin_lodging_staging_approve(approval_id):
+    """승인을 기록하되 운영 원장은 변경하지 않는다."""
+    try:
+        result = lodging_staging.approve_batch(
+            approval_id,
+            approved_by=session.get("admin_user_id"),
+        )
+        return jsonify({"ok": True, "approval": result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+
+
+@app.route(
+    "/api/admin/lodging-staging/approval/<int:approval_id>/dry-run",
+    methods=["POST"],
+)
+@require_admin
+@limiter.limit("12 per hour")
+def admin_lodging_staging_dry_run(approval_id):
+    """승인 배치의 변경 건수만 개발 DB에서 검증한다."""
+    try:
+        result = lodging_staging.run_approval_dry_run(approval_id)
+        return jsonify({"ok": True, "dry_run": result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
 
 
 def _lodging_source_stage_status(stage):

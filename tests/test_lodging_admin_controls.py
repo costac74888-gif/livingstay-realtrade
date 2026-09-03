@@ -45,6 +45,34 @@ class LodgingAdminControlTests(unittest.TestCase):
         self.assertIn("AND run_id=%s", Path("apply_lodging_import.py").read_text())
         self.assertIn("lodging-import-retry", html)
 
+    def test_admin_has_eight_source_staging_approval_flow_without_apply(self):
+        app = Path("app.py").read_text(encoding="utf-8")
+        html = Path("static/admin.html").read_text(encoding="utf-8")
+        self.assertIn(
+            '@app.route("/api/admin/lodging-staging/overview")',
+            app,
+        )
+        self.assertIn(
+            '"/api/admin/lodging-staging/<int:batch_id>/approval"',
+            app,
+        )
+        self.assertIn(
+            '"/api/admin/lodging-staging/approval/<int:approval_id>/approve"',
+            app,
+        )
+        self.assertIn(
+            '"/api/admin/lodging-staging/approval/<int:approval_id>/dry-run"',
+            app,
+        )
+        self.assertNotIn(
+            '"/api/admin/lodging-staging/approval/<int:approval_id>/apply"',
+            app,
+        )
+        self.assertIn('id="lodgingStagingSummary"', html)
+        self.assertIn('id="lodgingStagingCards"', html)
+        self.assertIn("운영 DB는 아직 변경되지 않습니다.", html)
+        self.assertIn("loadLodgingStagingOverview();", html)
+
     def test_rural_upload_uses_same_source_lock_as_api_collector(self):
         lock_id = sync_rural_hanok._source_lock_ids(["rural"])[0]
         calls = []
