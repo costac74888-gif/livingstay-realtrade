@@ -1,0 +1,14 @@
+{
+  "manifest_id": 4,
+  "read_only": true,
+  "target_rows": 14879,
+  "production_rows_found_for_manifest": 14879,
+  "production_rows_missing_for_manifest": 0,
+  "production_registry_total": 143659,
+  "missing_permits_sample": [],
+  "mismatch_count": 0,
+  "mismatch_sample": [],
+  "all_permits_present": true,
+  "all_compared_fields_match": true,
+  "result": "pass"
+}
