@@ -72,3 +72,4 @@
 - [Staging 매칭 기준선](staging-production-match-baseline.md) — 개발 마스터 매칭률을 운영 매칭률로 해석하지 말고, 운영 허가번호·기존 연결을 읽기 전용 기준선으로 대조한다.
 - [수동검토 manifest 계보](lodging-review-manifest-lineage.md) — 검토 결정은 최신 자식으로만 이어지는 선형 계보이며, 부분 해결 자식은 남은 검토행을 보존한다.
 - [숙박 legacy 컷오버 잠금](lodging-legacy-cutover-locking.md) — 실제 수집기 전체 수명과 종료 승인을 shared/exclusive DB 잠금으로 직렬화하고 manifest 관찰·적용도 별도 fence로 묶는다.
+- [숙박 승격 원본 경합 방지](lodging-promotion-source-fence.md) — 새 운영 쓰기는 staging 원본 지문·공유잠금으로 보호하되, 이미 커밋된 감사 표식 복구는 원본 변경과 무관하게 허용한다.
