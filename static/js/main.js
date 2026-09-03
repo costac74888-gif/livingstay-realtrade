@@ -4380,11 +4380,20 @@ async function tourApiGet(path, params){
     _type: "json",
     ...params
   }).forEach(([key, value]) => url.searchParams.set(key, String(value)));
-  const response = await fetch(url.toString(), { mode: "cors" });
-  if (!response.ok) throw new Error(`TourAPI HTTP ${response.status}`);
-  const data = await response.json();
-  assertTourApiSuccess(data);
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url.toString(), {
+      mode: "cors",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`TourAPI HTTP ${response.status}`);
+    const data = await response.json();
+    assertTourApiSuccess(data);
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchTourApiPhotos(buildingName, roadAddress, prewarmed){
@@ -4410,10 +4419,10 @@ async function fetchTourApiPhotos(buildingName, roadAddress, prewarmed){
   const imageData = await tourApiGet("detailImage2", {
     contentId, numOfRows: 100, pageNo: 1, imageYN: "Y", subImageYN: "Y"
   });
-  const representative = matchedItem.firstimage
-    || matchedItem.firstImage
-    || matchedItem.firstimage2
-    || matchedItem.firstImage2;
+  const representative = matchedItem?.firstimage
+    || matchedItem?.firstImage
+    || matchedItem?.firstimage2
+    || matchedItem?.firstImage2;
   const candidates = [];
   const addPhoto = (url, photoType, isPrimary) => {
     const normalized = String(url || "").trim().replace(/^http:\/\//i, "https://");

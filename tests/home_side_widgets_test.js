@@ -178,7 +178,9 @@ expect(
   buildingPhotoLoader.includes("await savePhotosToServer(buildingId, [])") &&
   buildingPhotoLoader.includes("saved?.streetview_available === true") &&
   !buildingPhotoLoader.includes("const initialHasPhotos") &&
-  main.includes('onerror="handleBuildingPhotoError(this)"'),
+  main.includes('onerror="handleBuildingPhotoError(this)"') &&
+  main.includes("matchedItem?.firstimage") &&
+  main.includes("const timeout = setTimeout(() => controller.abort(), 15000)"),
   "TourAPI no_match가 서버에 기록되지 않거나 Street View 실패 이미지가 숨겨지지 않습니다."
 );
 

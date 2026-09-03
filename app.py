@@ -757,6 +757,20 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
         app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
 
 
+def _google_streetview_metadata_status(lat, lng, key):
+    """Static API의 'no imagery' 안내 JPEG를 사진으로 오인하지 않게 사전 확인."""
+    try:
+        metadata = requests.get(
+            "https://maps.googleapis.com/maps/api/streetview/metadata",
+            params={"location": f"{float(lat)},{float(lng)}", "key": key},
+            timeout=20,
+        )
+        metadata.raise_for_status()
+        return str(metadata.json().get("status") or "").upper() or None
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
 @app.route("/api/building-photo/<int:building_id>/<source>")
 @limiter.limit("60 per minute")
 def get_building_provider_photo(building_id, source):
@@ -790,6 +804,18 @@ def get_building_provider_photo(building_id, source):
     key = os.environ.get("GOOGLE_MAPS_API_KEY")
     if not key:
         return jsonify({"error": "provider unavailable"}), 503
+    metadata_status = _google_streetview_metadata_status(
+        row["lat"], row["lng"], key
+    )
+    if metadata_status is None:
+        return jsonify({"error": "provider unavailable"}), 502
+    if metadata_status == "ZERO_RESULTS":
+        response = jsonify({"error": "no imagery"})
+        response.status_code = 404
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+    if metadata_status != "OK":
+        return jsonify({"error": "provider unavailable"}), 502
     # 온디맨드 fallback은 실제 이미지 요청 시점에 월 한도를 차감한다.
     # 프록시 재호출·새로고침도 포함해 Google 무료 범위를 넘기지 않는다.
     from sync_building_photos import (
