@@ -6,6 +6,7 @@ from unittest.mock import DEFAULT, patch
 import psycopg2
 import psycopg2.extras
 
+from addr_norm import normalize_jibun_prefix, normalize_road_prefix
 from lodging_promotion import (
     _apply_review_decision,
     _build_targets,
@@ -16,6 +17,8 @@ from lodging_promotion import (
     create_resolved_production_manifest,
     compare_parallel_results,
     run_production_manifest_dry_run,
+    _surface_expected_ranges,
+    _surface_snapshot,
     _validate_target_admission,
     _decode_legacy_sync_control,
     CUTOVER_MINIMUM_CONSECUTIVE_CLEAN,
@@ -616,6 +619,10 @@ class LodgingPromotionDatabaseFlowTest(unittest.TestCase):
         self.assertEqual(dry_run["result"]["new_permits"], 2)
         self.assertEqual(dry_run["result"]["production_writes"], 0)
         self.assertFalse(dry_run["result"]["applied"])
+        self.assertEqual(
+            dry_run["result"]["screen_expected_ranges"]["stats"]["room_count"],
+            {"expected": 10, "min": 10, "max": 10},
+        )
 
         final_snapshot = self._manifest_snapshot(resolved["id"])
         self.assertEqual(final_snapshot["status"], "dry_run")
@@ -741,6 +748,190 @@ class LodgingPromotionTest(unittest.TestCase):
         self.assertEqual(result["outcome_counts"]["duplicate"], 1)
         self.assertEqual(result["history_status_diffs"][0]["permit_number"], "P-0")
         self.assertEqual(result["building_link_counts"]["matched"], 1)
+
+    def test_surface_comparison_is_clean_only_with_complete_expected_baseline(self):
+        road_address = "서울특별시 중구 세종대로 1"
+        registry = [{
+            "permit_number": "P-1",
+            "biz_status_name": "영업/정상",
+            "room_count": 12,
+            "applied_building_id": 7,
+            "road_norm": normalize_road_prefix(road_address),
+        }]
+        buildings = [{
+            "id": 7,
+            "lat": 37.0,
+            "lng": 127.0,
+            "road_address": road_address,
+        }]
+        snapshot = _surface_snapshot(registry, buildings)
+        result = compare_parallel_results(
+            [],
+            [],
+            [],
+            registry,
+            screen_baseline=snapshot,
+            screen_expected_after_apply=snapshot,
+            screen_expected_ranges=_surface_expected_ranges(snapshot),
+            production_buildings=buildings,
+        )
+        comparison = result["screen_comparison"]
+        self.assertEqual(comparison["status"], "expected_match")
+        self.assertEqual(comparison["verification_status"], "clean")
+        self.assertFalse(comparison["blocking"])
+        self.assertEqual(comparison["out_of_range"], {})
+
+    def test_surface_metric_outside_manifest_range_is_a_blocking_regression(self):
+        road_address = "서울특별시 중구 세종대로 1"
+        expected_registry = [{
+            "permit_number": "P-1",
+            "biz_status_name": "영업/정상",
+            "room_count": 12,
+            "applied_building_id": 7,
+            "road_norm": normalize_road_prefix(road_address),
+        }]
+        actual_registry = [{
+            **expected_registry[0],
+            "room_count": 3,
+        }]
+        buildings = [{
+            "id": 7,
+            "lat": 37.0,
+            "lng": 127.0,
+            "road_address": road_address,
+        }]
+        expected = _surface_snapshot(expected_registry, buildings)
+        result = compare_parallel_results(
+            [],
+            [],
+            [],
+            actual_registry,
+            screen_baseline=expected,
+            screen_expected_after_apply=expected,
+            screen_expected_ranges=_surface_expected_ranges(expected),
+            production_buildings=buildings,
+        )
+        comparison = result["screen_comparison"]
+        self.assertEqual(comparison["status"], "regression")
+        self.assertTrue(comparison["blocking"])
+        self.assertIn("stats.room_count", comparison["out_of_range"])
+
+    def test_address_normalization_regression_breaks_detail_stats_and_admin(self):
+        road_address = "서울특별시 중구 세종대로 1"
+        expected_registry = [{
+            "permit_number": "P-1",
+            "biz_status_name": "영업/정상",
+            "room_count": 12,
+            "road_norm": normalize_road_prefix(road_address),
+            "jibun_norm": None,
+        }]
+        buildings = [{
+            "id": 7,
+            "road_address": road_address,
+            "lat": 37.0,
+            "lng": 127.0,
+            "units": 20,
+        }]
+        expected = _surface_snapshot(expected_registry, buildings)
+        broken_registry = [{**expected_registry[0], "road_norm": "깨진-도로명-키"}]
+        result = compare_parallel_results(
+            [],
+            [],
+            [],
+            broken_registry,
+            screen_baseline=expected,
+            screen_expected_after_apply=expected,
+            screen_expected_ranges=_surface_expected_ranges(expected),
+            production_buildings=buildings,
+        )
+        comparison = result["screen_comparison"]
+        self.assertEqual(comparison["status"], "regression")
+        self.assertIn("detail.link_count", comparison["out_of_range"])
+        self.assertIn("stats.active_count", comparison["out_of_range"])
+        self.assertIn("admin.registry_count", comparison["out_of_range"])
+
+    def test_detail_active_lookup_falls_back_to_jibun_when_road_has_only_closed(self):
+        road_address = "서울특별시 중구 세종대로 1"
+        jibun_address = "서울특별시 중구 태평로1가 31"
+        registry = [
+            {
+                "permit_number": "P-CLOSED",
+                "biz_status_name": "폐업",
+                "room_count": 5,
+                "road_norm": normalize_road_prefix(road_address),
+                "jibun_norm": None,
+            },
+            {
+                "permit_number": "P-ACTIVE",
+                "biz_status_name": "영업/정상",
+                "room_count": 9,
+                "road_norm": None,
+                "jibun_norm": normalize_jibun_prefix(jibun_address),
+            },
+        ]
+        snapshot = _surface_snapshot(
+            registry,
+            [{
+                "id": 7,
+                "road_address": road_address,
+                "jibun_address": jibun_address,
+            }],
+        )
+        self.assertEqual(snapshot["detail"]["active_count"], 1)
+        self.assertEqual(snapshot["detail"]["room_count"], 9)
+        self.assertEqual(snapshot["stats"]["active_count"], 0)
+        self.assertEqual(snapshot["admin"]["registry_count"], 1)
+
+    def test_search_and_admin_use_visible_building_set(self):
+        snapshot = _surface_snapshot(
+            [],
+            [
+                {"id": 1, "lodging_type": "생활", "lat": 37.0, "lng": 127.0},
+                {
+                    "id": 2,
+                    "lodging_type": "mixed_use_excluded",
+                    "lat": 37.1,
+                    "lng": 127.1,
+                },
+            ],
+        )
+        self.assertEqual(snapshot["search"]["building_count"], 1)
+        self.assertEqual(snapshot["search"]["mapped_building_count"], 1)
+        self.assertEqual(snapshot["admin"]["building_count"], 1)
+
+    def test_missing_surface_baseline_is_pending_and_never_clean(self):
+        result = compare_parallel_results([], [], [], [])
+        comparison = result["screen_comparison"]
+        self.assertEqual(
+            comparison["status"],
+            "expected_baseline_unavailable",
+        )
+        self.assertEqual(comparison["verification_status"], "pending")
+        self.assertTrue(comparison["blocking"])
+        self.assertTrue(comparison["blocking_reasons"])
+
+    def test_missing_surface_ranges_are_pending_even_when_snapshots_match(self):
+        legacy_snapshot = {
+            "search": {"lodging_registry_rows": 0},
+            "detail": {"lodging_registry_rows": 0, "linked_permits": 0},
+            "stats": {"status_counts": {}, "active_permits": 0, "active_rooms": 0},
+            "admin": {
+                "lodging_registry_rows": 0,
+                "linked_permits": 0,
+                "unlinked_permits": 0,
+            },
+        }
+        result = compare_parallel_results(
+            [],
+            [],
+            [],
+            [],
+            screen_baseline=legacy_snapshot,
+            screen_expected_after_apply=legacy_snapshot,
+        )
+        comparison = result["screen_comparison"]
+        self.assertEqual(comparison["verification_status"], "pending")
+        self.assertTrue(comparison["blocking"])
     def test_new_row_uses_unique_existing_building_without_auto_create(self):
         staging = [
             {

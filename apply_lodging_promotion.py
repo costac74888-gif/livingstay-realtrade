@@ -176,6 +176,41 @@ def _approved_source_readiness():
     return readiness, blocked
 
 
+def _comparison_block_message(comparison):
+    screen_comparison = comparison.get("screen_comparison") or {}
+    if (
+        int(comparison.get("major_regression_count") or 0) <= 0
+        and screen_comparison.get("blocking") is not True
+    ):
+        return None
+    reasons = list(screen_comparison.get("blocking_reasons") or [])
+    message = (
+        "운영 반영 후 검색·상세·통계·관리자 화면 검증이 보류 또는 실패했습니다."
+    )
+    if reasons:
+        message += " " + " ".join(str(reason) for reason in reasons[:3])
+    return message
+
+
+def _record_blocked_comparison(manifest_id, comparison):
+    message = _comparison_block_message(comparison)
+    if not message:
+        return False
+    _write_automation_status(
+        state="blocked",
+        phase="parallel_comparison_blocked",
+        manifest_id=manifest_id,
+        last_error=message,
+    )
+    print(json.dumps({
+        "state": "blocked",
+        "manifest_id": manifest_id,
+        "comparison_id": comparison.get("comparison_id"),
+        "message": message,
+    }, ensure_ascii=False), flush=True)
+    return True
+
+
 def run_scheduled_promotion():
     """승인된 staging만 운영 원장에 정기적으로 승격한다.
 
@@ -219,6 +254,8 @@ def run_scheduled_promotion():
         status = manifest.get("status")
         if status == "applied":
             comparison = compare_production_manifest(manifest_id)
+            if _record_blocked_comparison(manifest_id, comparison):
+                return 1
             _write_automation_status(
                 state="done",
                 phase="parallel_comparison",
@@ -255,6 +292,8 @@ def run_scheduled_promotion():
             manifest_id=manifest_id,
         )
         comparison = compare_production_manifest(manifest_id)
+        if _record_blocked_comparison(manifest_id, comparison):
+            return 1
         _write_automation_status(
             state="done",
             phase="parallel_comparison",

@@ -54,6 +54,13 @@ CUTOVER_MINIMUM_OBSERVATIONS = 3
 CUTOVER_MINIMUM_CONSECUTIVE_CLEAN = 3
 MANIFEST_CUTOVER_FENCE_LOCK_ID = 9_182_992
 _SCHEDULED_SYNC_STALE_SECONDS = 5 * 60
+_SURFACE_NAMES = ("search", "detail", "stats", "admin")
+_SURFACE_GUARD_METRICS = {
+    "search": ("building_count", "mapped_building_count"),
+    "detail": ("link_count", "active_count", "room_count"),
+    "stats": ("active_count", "room_count"),
+    "admin": ("building_count", "registry_count", "link_count"),
+}
 
 
 def _canonical_hash(value):
@@ -198,7 +205,7 @@ def _fetch_production_snapshot(conn=None):
             """
             SELECT permit_number, biz_name, biz_status_name, room_count,
                    hygiene_type, applied_building_id, road_address,
-                   jibun_address, updated_at
+                   jibun_address, road_norm, jibun_norm, updated_at
               FROM lodging_registry
              ORDER BY permit_number
             """
@@ -207,7 +214,7 @@ def _fetch_production_snapshot(conn=None):
         cur.execute(
             """
             SELECT id, road_address, jibun_address, sgg_cd, umd_nm, jibun,
-                   lat, lng, lodging_type
+                   lat, lng, lodging_type, building_status, use_apr_day, units
               FROM master_buildings
              ORDER BY id
             """
@@ -354,6 +361,11 @@ def create_production_baseline_manifest(*, created_by=None):
                 "target_payload_sha256": target_payload_sha256,
             }
         )
+        screen_baseline = _surface_snapshot(registry_rows, building_rows)
+        screen_expected_after_apply = _surface_snapshot(
+            _project_registry_after_apply(registry_rows, targets),
+            building_rows,
+        )
         result = {
             **summary,
             "production_registry_rows": len(registry_rows),
@@ -362,10 +374,10 @@ def create_production_baseline_manifest(*, created_by=None):
             "target_rows": len(targets),
             "new_permits": int(summary["action_counts"].get("insert", 0)),
             "source_files": source_files,
-            "screen_baseline": _surface_snapshot(registry_rows, building_rows),
-            "screen_expected_after_apply": _surface_snapshot(
-                _project_registry_after_apply(registry_rows, targets),
-                building_rows,
+            "screen_baseline": screen_baseline,
+            "screen_expected_after_apply": screen_expected_after_apply,
+            "screen_expected_ranges": _surface_expected_ranges(
+                screen_expected_after_apply
             ),
             "production_writes": 0,
         }
@@ -590,6 +602,17 @@ def create_resolved_production_manifest(
             raise RuntimeError(
                 "운영 기준선이 변경되어 수동검토 manifest를 다시 생성해야 합니다."
             )
+        screen_baseline = _surface_snapshot(
+            baseline_registry_rows,
+            baseline_building_rows,
+        )
+        screen_expected_after_apply = _surface_snapshot(
+            _project_registry_after_apply(
+                baseline_registry_rows,
+                resolved_targets,
+            ),
+            baseline_building_rows,
+        )
         result = {
             **base_result,
             "manifest_version": int(base["version_no"] or 1) + 1,
@@ -605,16 +628,10 @@ def create_resolved_production_manifest(
             "new_permits": int(action_counts.get("insert", 0)),
             "manual_review_targets": remaining_manual_reviews,
             "review_resolutions": [*base_resolutions, resolution],
-            "screen_baseline": _surface_snapshot(
-                baseline_registry_rows,
-                baseline_building_rows,
-            ),
-            "screen_expected_after_apply": _surface_snapshot(
-                _project_registry_after_apply(
-                    baseline_registry_rows,
-                    resolved_targets,
-                ),
-                baseline_building_rows,
+            "screen_baseline": screen_baseline,
+            "screen_expected_after_apply": screen_expected_after_apply,
+            "screen_expected_ranges": _surface_expected_ranges(
+                screen_expected_after_apply
             ),
             "production_writes": 0,
         }
@@ -1096,6 +1113,9 @@ def compare_production_manifest(manifest_id=None):
         screen_expected_after_apply=dict(manifest["result"] or {}).get(
             "screen_expected_after_apply"
         ),
+        screen_expected_ranges=dict(manifest["result"] or {}).get(
+            "screen_expected_ranges"
+        ),
         production_buildings=production_buildings,
     )
     result.update({
@@ -1111,7 +1131,7 @@ def compare_production_manifest(manifest_id=None):
         for row in result["permit_diffs"]
         if row["outcome"] != "matched"
     })
-    if result["screen_comparison"]["status"] == "regression":
+    if result["screen_comparison"]["blocking"]:
         major_regression_count += 1
     result["major_regression_count"] = major_regression_count
     run_id = secrets.token_hex(16)
@@ -1194,40 +1214,203 @@ def _get_development_connection():
     return conn
 
 def _surface_snapshot(registry_rows, building_rows):
-    """숙박 관련 공개·관리 화면이 읽는 최소 집계의 기준선."""
-    status_counts = Counter(row.get("biz_status_name") or "미분류" for row in registry_rows)
-    linked_permits = sum(
-        row.get("applied_building_id") is not None for row in registry_rows
-    )
-    active_rooms = sum(
-        int(row.get("room_count") or 0)
-        for row in registry_rows
+    """실제 검색·상세·통계·관리자 주소 매칭 규칙으로 화면 집계를 계산한다."""
+    visible_buildings = [
+        row for row in building_rows
+        if row.get("lodging_type") != "mixed_use_excluded"
+    ]
+    road_registry = defaultdict(dict)
+    jibun_registry = defaultdict(dict)
+    for row in registry_rows:
+        permit = row.get("permit_number")
+        if not permit:
+            continue
+        road_norm = (
+            row.get("road_norm")
+            if "road_norm" in row
+            else normalize_road_prefix(row.get("road_address"))
+        )
+        jibun_norm = (
+            row.get("jibun_norm")
+            if "jibun_norm" in row
+            else normalize_jibun_prefix(row.get("jibun_address"))
+        )
+        if road_norm:
+            road_registry[road_norm][permit] = row
+        if jibun_norm:
+            jibun_registry[jibun_norm][permit] = row
+
+    detail_link_count = 0
+    detail_room_count = 0
+    detail_permits = set()
+    admin_link_count = 0
+    admin_permits = set()
+    stats_permits = {}
+    active_buildings = 0
+    for building in visible_buildings:
+        road_key = normalize_road_prefix(building.get("road_address"))
+        jibun_key = get_building_jibun_key(building)
+
+        admin_matches = road_registry.get(road_key, {}) if road_key else {}
+        if not admin_matches and jibun_key:
+            admin_matches = jibun_registry.get(jibun_key, {})
+        admin_link_count += len(admin_matches)
+        admin_permits.update(admin_matches)
+        stats_permits.update(admin_matches)
+
+        active_road_matches = {
+            permit: row
+            for permit, row in (
+                road_registry.get(road_key, {}).items() if road_key else ()
+            )
+            if row.get("biz_status_name") == "영업/정상"
+        }
+        active_matches = active_road_matches
+        if not active_matches and jibun_key:
+            active_matches = {
+                permit: row
+                for permit, row in jibun_registry.get(jibun_key, {}).items()
+                if row.get("biz_status_name") == "영업/정상"
+            }
+        if active_matches:
+            active_buildings += 1
+        detail_link_count += len(active_matches)
+        detail_permits.update(active_matches)
+        detail_room_count += sum(
+            int(row.get("room_count") or 0)
+            for row in active_matches.values()
+        )
+
+    active_stats_rows = [
+        row for row in stats_permits.values()
         if row.get("biz_status_name") == "영업/정상"
+    ]
+    stats_room_count = sum(
+        int(row.get("room_count") or 0)
+        for row in active_stats_rows
+    )
+    status_counts = Counter(
+        row.get("biz_status_name") or "미분류"
+        for row in stats_permits.values()
+    )
+    visible_building_count = len(visible_buildings)
+    mapped_building_count = sum(
+        row.get("lat") is not None and row.get("lng") is not None
+        for row in visible_buildings
     )
     return {
         "search": {
-            "master_buildings": len(building_rows),
-            "mapped_buildings": sum(
-                row.get("lat") is not None and row.get("lng") is not None
-                for row in building_rows
-            ),
-            "lodging_registry_rows": len(registry_rows),
+            "master_buildings": visible_building_count,
+            "mapped_buildings": mapped_building_count,
+            "building_count": visible_building_count,
+            "mapped_building_count": mapped_building_count,
         },
         "detail": {
-            "lodging_registry_rows": len(registry_rows),
-            "linked_permits": linked_permits,
+            "lodging_registry_rows": len(detail_permits),
+            "linked_permits": detail_link_count,
+            "link_count": detail_link_count,
+            "active_count": len(detail_permits),
+            "room_count": detail_room_count,
+            "building_count": active_buildings,
         },
         "stats": {
             "status_counts": dict(sorted(status_counts.items())),
-            "active_permits": status_counts.get("영업/정상", 0),
-            "active_rooms": active_rooms,
+            "active_permits": len(active_stats_rows),
+            "active_rooms": stats_room_count,
+            "active_count": len(active_stats_rows),
+            "room_count": stats_room_count,
+            "registry_count": len(stats_permits),
         },
         "admin": {
-            "lodging_registry_rows": len(registry_rows),
-            "linked_permits": linked_permits,
-            "unlinked_permits": len(registry_rows) - linked_permits,
+            "building_count": visible_building_count,
+            "lodging_registry_rows": len(admin_permits),
+            "linked_permits": admin_link_count,
+            "unlinked_permits": max(0, len(registry_rows) - len(admin_permits)),
+            "registry_count": len(admin_permits),
+            "link_count": admin_link_count,
         },
     }
+
+
+def _surface_expected_ranges(expected_after):
+    """핵심 사용자 노출 지표의 허용 범위를 manifest에 명시적으로 고정한다."""
+    ranges = {}
+    for surface, metrics in _SURFACE_GUARD_METRICS.items():
+        values = (expected_after or {}).get(surface) or {}
+        ranges[surface] = {}
+        for metric in metrics:
+            value = values.get(metric)
+            if isinstance(value, bool) or not isinstance(value, int):
+                continue
+            ranges[surface][metric] = {
+                "expected": value,
+                "min": value,
+                "max": value,
+            }
+    return ranges
+
+
+def _surface_snapshot_available(snapshot):
+    if not isinstance(snapshot, dict):
+        return False
+    return all(
+        isinstance(snapshot.get(surface), dict)
+        for surface in _SURFACE_NAMES
+    )
+
+
+def _surface_ranges_available(ranges):
+    if not isinstance(ranges, dict):
+        return False
+    for surface, metrics in _SURFACE_GUARD_METRICS.items():
+        surface_ranges = ranges.get(surface)
+        if not isinstance(surface_ranges, dict):
+            return False
+        for metric in metrics:
+            bounds = surface_ranges.get(metric)
+            if (
+                not isinstance(bounds, dict)
+                or isinstance(bounds.get("min"), bool)
+                or not isinstance(bounds.get("min"), int)
+                or isinstance(bounds.get("max"), bool)
+                or not isinstance(bounds.get("max"), int)
+            ):
+                return False
+    return True
+
+
+def _surface_range_differences(expected_ranges, actual):
+    differences = {}
+    for surface, metrics in (expected_ranges or {}).items():
+        actual_surface = (actual or {}).get(surface) or {}
+        for metric, bounds in (metrics or {}).items():
+            value = actual_surface.get(metric)
+            minimum = bounds.get("min")
+            maximum = bounds.get("max")
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < minimum
+                or value > maximum
+            ):
+                differences[f"{surface}.{metric}"] = {
+                    "expected": bounds.get("expected"),
+                    "min": minimum,
+                    "max": maximum,
+                    "actual": value,
+                }
+    return differences
+
+
+def _parallel_comparison_is_clean(row):
+    result = dict(row.get("result") or {})
+    screen = dict(result.get("screen_comparison") or {})
+    return (
+        int(row.get("major_regression_count") or 0) == 0
+        and screen.get("status") == "expected_match"
+        and screen.get("blocking") is False
+    )
+
 
 def get_parallel_comparison_overview(limit=10):
     """관리자 화면용 최근 관측·연속 무회귀 배치 요약."""
@@ -1290,16 +1473,14 @@ def get_parallel_comparison_overview(limit=10):
         conn.close()
     consecutive_clean = 0
     for row in rows:
-        if int(row["major_regression_count"] or 0):
+        if not _parallel_comparison_is_clean(row):
             break
         consecutive_clean += 1
     minimum_observations_met = observation_count >= CUTOVER_MINIMUM_OBSERVATIONS
     consecutive_clean_met = (
         consecutive_clean >= CUTOVER_MINIMUM_CONSECUTIVE_CLEAN
     )
-    latest_clean = bool(
-        rows and int(rows[0]["major_regression_count"] or 0) == 0
-    )
+    latest_clean = bool(rows and _parallel_comparison_is_clean(rows[0]))
     first_observed_at = observation_summary["first_observed_at"]
     last_observed_at = observation_summary["last_observed_at"]
     elapsed_hours = None
@@ -1473,8 +1654,13 @@ def _set_legacy_lodging_sync_enabled_unfenced(
                 "최소 관찰 횟수와 연속 무회귀 조건을 모두 충족한 뒤 종료할 수 있습니다."
             )
         latest_result = dict((comparison.get("latest") or {}).get("result") or {})
-        if (latest_result.get("screen_comparison") or {}).get("status") == "regression":
-            raise ValueError("공개 검색·상세·통계 기준선 회귀가 있어 종료할 수 없습니다.")
+        screen_status = (
+            latest_result.get("screen_comparison") or {}
+        ).get("status")
+        if screen_status != "expected_match":
+            raise ValueError(
+                "검색·상세·통계·관리자 화면 기준선 검증이 완료되지 않아 종료할 수 없습니다."
+            )
 
     conn = _production_write_connection()
     cur = conn.cursor()
@@ -1602,6 +1788,7 @@ def compare_parallel_results(
     production_duplicate_permits=(),
     screen_baseline=None,
     screen_expected_after_apply=None,
+    screen_expected_ranges=None,
     production_buildings=(),
 ):
     """승인 대상과 기존 직접 동기화·운영 결과를 permit별로 비교한다.
@@ -1771,9 +1958,49 @@ def compare_parallel_results(
     before = screen_baseline or {}
     after = _surface_snapshot(production_registry_rows, production_buildings)
     expected_after = screen_expected_after_apply or {}
+    expected_ranges = (
+        screen_expected_ranges
+        or (_surface_expected_ranges(expected_after) if expected_after else {})
+    )
+    baseline_available = _surface_snapshot_available(before)
+    expected_after_available = _surface_snapshot_available(expected_after)
+    expected_ranges_available = _surface_ranges_available(expected_ranges)
     screen_differences = (
         _surface_differences(expected_after, after) if expected_after else {}
     )
+    out_of_range = (
+        _surface_range_differences(expected_ranges, after)
+        if expected_ranges_available
+        else {}
+    )
+    if (
+        not baseline_available
+        or not expected_after_available
+        or not expected_ranges_available
+    ):
+        screen_status = "expected_baseline_unavailable"
+        verification_status = "pending"
+    elif screen_differences or out_of_range:
+        screen_status = "regression"
+        verification_status = "regression"
+    else:
+        screen_status = "expected_match"
+        verification_status = "clean"
+    blocking_reasons = []
+    if not baseline_available:
+        blocking_reasons.append("전환 전 화면 기준선이 없습니다.")
+    if not expected_after_available:
+        blocking_reasons.append("반영 후 화면 기대 결과가 없습니다.")
+    if not expected_ranges_available:
+        blocking_reasons.append("핵심 화면 지표의 허용 범위가 없습니다.")
+    if screen_differences:
+        blocking_reasons.append(
+            f"화면 기대 결과와 다른 항목이 {len(screen_differences)}개입니다."
+        )
+    if out_of_range:
+        blocking_reasons.append(
+            f"핵심 지표 허용 범위를 벗어난 항목이 {len(out_of_range)}개입니다."
+        )
     return {
         "read_only": True,
         "production_writes": 0,
@@ -1789,19 +2016,19 @@ def compare_parallel_results(
         "building_link_counts": dict(building_link_counts),
         "permit_diffs": permit_diffs,
         "screen_comparison": {
-            "baseline_available": bool(before),
-            "expected_after_available": bool(expected_after),
-            "status": (
-                "expected_match"
-                if expected_after and not screen_differences
-                else "regression"
-                if expected_after
-                else "expected_baseline_unavailable"
-            ),
+            "baseline_available": baseline_available,
+            "expected_after_available": expected_after_available,
+            "expected_ranges_available": expected_ranges_available,
+            "status": screen_status,
+            "verification_status": verification_status,
+            "blocking": screen_status != "expected_match",
+            "blocking_reasons": blocking_reasons,
             "before": before or None,
             "expected_after": expected_after or None,
+            "expected_ranges": expected_ranges or None,
             "after": after,
             "differences": screen_differences,
+            "out_of_range": out_of_range,
         },
     }
 

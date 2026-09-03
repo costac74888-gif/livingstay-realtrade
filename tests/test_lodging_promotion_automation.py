@@ -150,6 +150,114 @@ class LodgingPromotionAutomationTest(unittest.TestCase):
             ],
         )
 
+    def test_post_apply_surface_regression_is_reported_as_blocked(self):
+        writes = []
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "DATABASE_URL": "postgres://production",
+                    "DEV_DATABASE_URL": "postgres://development",
+                    "PROD_DATABASE_URL": "postgres://production",
+                },
+                clear=False,
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "_write_automation_status",
+                side_effect=lambda **value: writes.append(value),
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "_approved_source_readiness",
+                return_value=({"lodging": {}}, []),
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "create_production_baseline_manifest",
+                return_value={"id": 18, "status": "draft", "run_id": "run-18"},
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "approve_production_manifest_automated",
+                return_value={"id": 18, "status": "approved", "run_id": "run-18"},
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "run_production_manifest_dry_run",
+                return_value={"id": 18, "status": "dry_run"},
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "apply_manifest",
+                return_value={"production_writes": 1},
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "compare_production_manifest",
+                return_value={
+                    "comparison_id": 6,
+                    "major_regression_count": 1,
+                    "screen_comparison": {
+                        "blocking": True,
+                        "blocking_reasons": ["객실 수가 허용 범위를 벗어났습니다."],
+                    },
+                },
+            ),
+        ):
+            result = apply_lodging_promotion.run_scheduled_promotion()
+
+        self.assertEqual(result, 1)
+        self.assertEqual(writes[-1]["state"], "blocked")
+        self.assertEqual(writes[-1]["phase"], "parallel_comparison_blocked")
+        self.assertIn("객실 수", writes[-1]["last_error"])
+
+    def test_already_applied_manifest_recheck_cannot_hide_surface_regression(self):
+        writes = []
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "DATABASE_URL": "postgres://production",
+                    "DEV_DATABASE_URL": "postgres://development",
+                    "PROD_DATABASE_URL": "postgres://production",
+                },
+                clear=False,
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "_write_automation_status",
+                side_effect=lambda **value: writes.append(value),
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "_approved_source_readiness",
+                return_value=({"lodging": {}}, []),
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "create_production_baseline_manifest",
+                return_value={"id": 19, "status": "applied", "run_id": "run-19"},
+            ),
+            patch.object(
+                apply_lodging_promotion,
+                "compare_production_manifest",
+                return_value={
+                    "comparison_id": 7,
+                    "major_regression_count": 1,
+                    "screen_comparison": {
+                        "blocking": True,
+                        "blocking_reasons": ["전환 전 화면 기준선이 없습니다."],
+                    },
+                },
+            ),
+        ):
+            result = apply_lodging_promotion.run_scheduled_promotion()
+
+        self.assertEqual(result, 1)
+        self.assertEqual(writes[-1]["state"], "blocked")
+        self.assertEqual(writes[-1]["manifest_id"], 19)
+
 
 if __name__ == "__main__":
     unittest.main()

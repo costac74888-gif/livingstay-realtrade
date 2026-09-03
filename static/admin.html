@@ -2491,6 +2491,7 @@
         const latestComparison = comparison.latest || {};
         const latestComparisonResult = latestComparison.result || {};
         const outcomes = latestComparisonResult.outcome_counts || {};
+        const screenComparison = latestComparisonResult.screen_comparison || {};
         const policy = comparison.policy || {};
         const period = comparison.observation_period || {};
         const control = data.legacy_sync_control || { enabled: true, history: [] };
@@ -2520,6 +2521,14 @@
         const periodLabel = period.first_observed_at
           ? `${dgEscape(period.first_observed_at)} ~ ${dgEscape(period.last_observed_at)} (${num(period.elapsed_hours || 0)}시간)`
           : "관찰 기록 없음";
+        const screenStatusLabel = screenComparison.status === "expected_match"
+          ? "화면 기준선 일치"
+          : screenComparison.status === "regression"
+            ? "화면 회귀 감지"
+            : "화면 검증 보류";
+        const screenReasons = Array.isArray(screenComparison.blocking_reasons)
+          ? screenComparison.blocking_reasons
+          : [];
         const comparisonMarkup = comparison.observations
           ? `<div style="margin-top:10px;padding:9px;border:1px solid ${latestComparison.major_regression_count ? "#efb4b4" : "#b7d7bd"};border-radius:7px;background:${latestComparison.major_regression_count ? "#fff7f7" : "#f3fbf4"};">
               <b>8단계 병행 비교 · 최신 적용 manifest #${num(comparison.manifest_id)}:</b>
@@ -2529,6 +2538,7 @@
                 연속 무회귀 ${num(comparison.consecutive_clean_observations)}/${num(policy.minimum_consecutive_clean || 3)}회
                 ${comparison.consecutive_clean_met ? "✓" : "미충족"}</div>
               <div>일치 ${num(outcomes.matched || 0)} · 누락 ${num(outcomes.missing || 0)} · 필드차이 ${num(outcomes.field_difference || 0)} · 연결차이 ${num(outcomes.building_link_difference || 0)} · 중복 ${num(outcomes.duplicate || 0)}</div>
+              <div style="color:${screenComparison.status === "expected_match" ? "#1a7f37" : "#b3261e"};"><b>${screenStatusLabel}</b>${screenReasons.length ? ` · ${screenReasons.map(dgEscape).join(" ")}` : ""}</div>
               <div style="font-weight:700;color:${comparison.eligible_for_cutover ? "#1a7f37" : "#9a6700"};">${comparison.eligible_for_cutover ? "종료 승인 가능: 관찰·무회귀·공개 화면 기준선 검증 완료" : "기존 동기화 유지: 종료 조건 검증 중"}</div>
             </div>`
           : `<div style="margin-top:10px;color:#9a6700;">8단계 병행 비교 관측이 아직 없습니다.</div>`;
