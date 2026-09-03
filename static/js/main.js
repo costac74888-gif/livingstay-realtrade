@@ -4387,20 +4387,24 @@ async function tourApiGet(path, params){
   return data;
 }
 
-async function fetchTourApiPhotos(buildingName, roadAddress){
-  const searchData = await tourApiGet("searchKeyword2", {
-    arrange: "A", numOfRows: 10, pageNo: 1,
-    keyword: buildingName, contentTypeId: 32
-  });
-  const matches = extractTourItems(searchData)
-    .map(item => ({
-      score: tourAddressSimilarity(item.addr1 || item.addr || "", roadAddress),
-      item
-    }))
-    .filter(candidate => candidate.score >= 0.70)
-    .sort((left, right) => right.score - left.score);
-  const matchedItem = matches[0]?.item;
-  const contentId = matchedItem?.contentid || matchedItem?.contentId;
+async function fetchTourApiPhotos(buildingName, roadAddress, prewarmed){
+  let matchedItem = null;
+  let contentId = String(prewarmed?.content_id || "").trim();
+  if (!contentId) {
+    const searchData = await tourApiGet("searchKeyword2", {
+      arrange: "A", numOfRows: 10, pageNo: 1,
+      keyword: buildingName, contentTypeId: 32
+    });
+    const matches = extractTourItems(searchData)
+      .map(item => ({
+        score: tourAddressSimilarity(item.addr1 || item.addr || "", roadAddress),
+        item
+      }))
+      .filter(candidate => candidate.score >= 0.70)
+      .sort((left, right) => right.score - left.score);
+    matchedItem = matches[0]?.item;
+    contentId = matchedItem?.contentid || matchedItem?.contentId;
+  }
   if (!contentId) return [];
 
   const imageData = await tourApiGet("detailImage2", {
@@ -4427,6 +4431,18 @@ async function fetchTourApiPhotos(buildingName, roadAddress){
         ? "lobby" : "exterior");
     addPhoto(image.originimgurl || image.originImgUrl, photoType, !representative && index === 0);
   });
+  if (!candidates.length && prewarmed?.photo_available === true) {
+    const commonData = await tourApiGet("detailCommon2", {
+      contentId, defaultYN: "Y", firstImageYN: "Y", addrinfoYN: "N",
+      mapinfoYN: "N", overviewYN: "N"
+    });
+    const common = extractTourItems(commonData)[0] || {};
+    addPhoto(
+      common.firstimage || common.firstImage || common.firstimage2 || common.firstImage2,
+      "exterior",
+      true
+    );
+  }
   return candidates.slice(0, 20);
 }
 
@@ -4520,6 +4536,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
 
     const buildingName = data.building_name || building?.building_name || "";
     const roadAddress = data.road_address || building?.road_address || "";
+    const prewarmed = data.tourapi_prewarm || null;
     const cached = {
       ...data,
       building_id: buildingId,
@@ -4539,7 +4556,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       renderPhotoSlider(local.photos);
       return;
     }
-    if (local) {
+    if (local && !prewarmed?.content_id) {
       // 예전 브라우저 캐시에만 no_match가 남은 경우 서버에도 결과를 기록해야
       // Street View 프록시의 허용 조건이 열린다.
       if (!svShown) {
@@ -4564,7 +4581,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       return;
     }
 
-    fetchTourApiPhotos(buildingName, roadAddress)
+    fetchTourApiPhotos(buildingName, roadAddress, prewarmed)
       .then(async clientPhotos => {
         writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, clientPhotos);
         let saved;

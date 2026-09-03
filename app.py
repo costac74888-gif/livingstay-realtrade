@@ -776,7 +776,7 @@ def get_building_provider_photo(building_id, source):
                 SELECT 1 FROM building_photo_fetches f
                 WHERE f.building_id=b.id
                   AND f.source='tourapi'
-                  AND f.status='no_match'
+                  AND f.status IN ('no_match', 'catalog_no_photo')
                   AND f.last_attempt_at > NOW() - INTERVAL '30 days'
               )
         """, (building_id,))
@@ -1000,20 +1000,32 @@ def get_building_photos_on_demand(building_id):
             return jsonify({"ok": True, "photos": photos, "status": "cached"})
 
         cur.execute("""
-            SELECT EXISTS (
-                SELECT 1 FROM building_photo_fetches
-                WHERE building_id=%s
-                  AND source='tourapi'
-                  AND status='no_match'
-                  AND last_attempt_at > NOW() - INTERVAL '30 days'
-            ) AS available
+            SELECT status, provider_ref, photo_available
+            FROM building_photo_fetches
+            WHERE building_id=%s
+              AND source='tourapi'
+              AND last_attempt_at > NOW() - INTERVAL '30 days'
         """, [building_id])
-        streetview_available = bool(cur.fetchone()["available"])
+        fetch = cur.fetchone()
+        streetview_available = bool(
+            fetch and fetch["status"] in ("no_match", "catalog_no_photo")
+        )
         return jsonify({
             "ok": True,
             "photos": photos,
             "status": "fetch_needed",
             "streetview_available": streetview_available,
+            "tourapi_prewarm": (
+                {
+                    "status": fetch["status"],
+                    "content_id": str(fetch["provider_ref"]),
+                    "photo_available": bool(fetch["photo_available"]),
+                }
+                if fetch
+                and fetch["status"] in ("catalog_matched", "catalog_no_photo")
+                and fetch["provider_ref"]
+                else None
+            ),
             "building_name": building["building_name"],
             "road_address": building["road_address"],
             "lat": building["lat"],
@@ -1093,7 +1105,15 @@ def save_tourapi_building_photos(building_id):
             ON CONFLICT (building_id, source) DO UPDATE SET
                 status=EXCLUDED.status,
                 last_attempt_at=EXCLUDED.last_attempt_at,
-                error_message=NULL
+                error_message=NULL,
+                provider_ref=CASE
+                    WHEN EXCLUDED.status='no_match' THEN NULL
+                    ELSE building_photo_fetches.provider_ref
+                END,
+                photo_available=CASE
+                    WHEN EXCLUDED.status='no_match' THEN FALSE
+                    ELSE building_photo_fetches.photo_available
+                END
         """, [building_id, fetch_status])
         _refresh_building_photo_primary(cur, building_id)
         conn.commit()
@@ -15732,6 +15752,7 @@ _MANUAL_SYNC_POST_PATHS = {
     "/api/admin/sync-permits",
     "/api/admin/sync-realty",
     "/api/admin/sync-photos",
+    "/api/admin/prewarm-tourapi-metadata",
 }
 
 
@@ -16031,6 +16052,30 @@ def admin_building_photos_sync_run():
     }), 409
 
 
+@app.route("/api/admin/prewarm-tourapi-metadata", methods=["POST"])
+@require_admin
+@limiter.limit("3 per hour")
+def admin_tourapi_metadata_prewarm_run():
+    """TourAPI 숙박 목록을 한 번 읽어 contentId·대표사진 유무만 저장한다."""
+    if not os.environ.get("TOUR_API_SERVICE_KEY"):
+        return jsonify({
+            "ok": False,
+            "message": "TOUR_API_SERVICE_KEY 시크릿이 등록되어 있지 않습니다.",
+        }), 400
+    ok, code, payload = _start_detached_sync(
+        _PHOTO_SYNC_META_KEY,
+        "prewarm_tourapi_metadata.py",
+        ["--status-key", _PHOTO_SYNC_META_KEY],
+        done_cooldown_min=5,
+    )
+    if ok:
+        payload["message"] = (
+            "TourAPI 전국 숙박 목록 사전조회를 시작했습니다. "
+            "사진 파일·사진 URL은 저장하지 않습니다."
+        )
+    return jsonify(payload), code
+
+
 @app.route("/api/admin/sync-photos-status")
 @require_admin
 def admin_building_photos_sync_status():
@@ -16055,6 +16100,21 @@ def admin_building_photos_sync_status():
             GROUP BY source
         """)
         source_counts = {row["source"]: row["count"] for row in cur.fetchall()}
+        cur.execute("""
+            SELECT
+              COUNT(*) FILTER (
+                WHERE provider_ref IS NOT NULL
+              ) AS matched_buildings,
+              COUNT(*) FILTER (
+                WHERE provider_ref IS NOT NULL AND photo_available IS TRUE
+              ) AS with_image,
+              COUNT(*) FILTER (
+                WHERE provider_ref IS NOT NULL AND photo_available IS FALSE
+              ) AS without_image
+            FROM building_photo_fetches
+            WHERE source='tourapi'
+        """)
+        tourapi_metadata = cur.fetchone()
         status = _read_sync_status_row(cur, _PHOTO_SYNC_META_KEY)
         cur.execute(
             "SELECT value FROM app_meta WHERE key=%s",
@@ -16080,6 +16140,11 @@ def admin_building_photos_sync_status():
         "source_counts": {
             source: source_counts.get(source, 0)
             for source in _PHOTO_SYNC_SOURCES
+        },
+        "tourapi_metadata": {
+            "matched_buildings": tourapi_metadata["matched_buildings"],
+            "with_image": tourapi_metadata["with_image"],
+            "without_image": tourapi_metadata["without_image"],
         },
         "sources_available": {
             "tourapi": bool(os.environ.get("TOUR_API_SERVICE_KEY")),
