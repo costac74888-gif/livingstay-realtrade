@@ -1,0 +1,475 @@
+{
+  "generated_at": "2026-09-03T00:06:14",
+  "read_only": true,
+  "production_baseline": true,
+  "source_key": "foreign_city_homestay",
+  "batch": {
+    "id": 17,
+    "source_key": "foreign_city_homestay",
+    "reference_date": "2026-09-03",
+    "total_rows": 14521
+  },
+  "staging_rows": 14521,
+  "production_registry_rows": 14501,
+  "production_linked_buildings": 8424,
+  "production_master_buildings": 83712,
+  "counts": {
+    "existing_permits": 14501,
+    "existing_permits_with_building": 11191,
+    "new_permits": 20,
+    "new_active_permits": 19,
+    "new_active_rooms": 17,
+    "new:new_building_candidate": 13,
+    "new:existing_building": 7,
+    "new_permits_matching_existing_building": 7,
+    "new_building_candidate_unique_addresses": 9,
+    "new_building_candidate_duplicate_rows": 4
+  },
+  "new_by_status": {
+    "active": 19,
+    "closed": 1
+  },
+  "estimated_after_apply": {
+    "production_master_buildings": 83721,
+    "foreign_registry_rows": 14521,
+    "foreign_active_permits": 11210,
+    "foreign_active_rooms": 10516,
+    "new_master_buildings": 9
+  },
+  "new_rows": [
+    {
+      "permit_number": "AIRBNB:3000000:CDFI2262212026000125",
+      "biz_name": "노토 스테이",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 종로구 명륜7길 21, 1층 (명륜3가)",
+      "jibun_address": "서울특별시 종로구 명륜3가 1-994"
+    },
+    {
+      "permit_number": "AIRBNB:3040000:CDFI2262212026000136",
+      "biz_name": "피치스테이",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 광진구 자양로48길 60, 301호 (구의동, 미광하이츠빌라)",
+      "jibun_address": "서울특별시 광진구 구의동 35-20 미광하이츠빌라"
+    },
+    {
+      "permit_number": "AIRBNB:3110000:CDFI2262212026000078",
+      "biz_name": "우드앤라이트",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        40302
+      ],
+      "road_address": "서울특별시 은평구 가좌로 293, 703호 (신사동)",
+      "jibun_address": "서울특별시 은평구 신사동 39-28"
+    },
+    {
+      "permit_number": "AIRBNB:3110000:CDFI2262212026000079",
+      "biz_name": "스테이니어 서울",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 은평구 응암로22길 13-1, 2층 (응암동)",
+      "jibun_address": "서울특별시 은평구 응암동 427-69"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000470",
+      "biz_name": "아르코 망원 4",
+      "status_bucket": "active",
+      "rooms": 2,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 401호 (망원동)",
+      "jibun_address": "서울특별시 마포구 망원동 428-20"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000471",
+      "biz_name": "아르코 망원5",
+      "status_bucket": "active",
+      "rooms": 2,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 501호 (망원동)",
+      "jibun_address": "서울특별시 마포구 망원동 428-20"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000472",
+      "biz_name": "더 로즈 가든",
+      "status_bucket": "active",
+      "rooms": 1,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        40746
+      ],
+      "road_address": "서울특별시 마포구 연남로 76, 101동 602호 (연남동, 라센트라 연남)",
+      "jibun_address": "서울특별시 마포구 연남동 361-10 라센트라 연남"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000473",
+      "biz_name": "아르코 302",
+      "status_bucket": "active",
+      "rooms": 2,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 302호 (망원동)",
+      "jibun_address": "서울특별시 마포구 망원동 428-20"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000474",
+      "biz_name": "아르코 301",
+      "status_bucket": "active",
+      "rooms": 2,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 301호 (망원동)",
+      "jibun_address": "서울특별시 마포구 망원동 428-20"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212024000496",
+      "biz_name": "JR게스트하우스",
+      "status_bucket": "closed",
+      "rooms": 0,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        41284
+      ],
+      "road_address": "서울특별시 마포구 광성로 35-16, 지층 1호 (신수동)",
+      "jibun_address": "서울특별시 마포구 신수동 93-29"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000475",
+      "biz_name": "홍대 로이 스테이",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 와우산로29다길 6, 401호 (서교동)",
+      "jibun_address": "서울특별시 마포구 서교동 334-5 401호"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000476",
+      "biz_name": "스테이헤리티지 공덕 지니",
+      "status_bucket": "active",
+      "rooms": 1,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 새창로4나길 16-1, 3층 (도화동)",
+      "jibun_address": "서울특별시 마포구 도화동 185-10"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000477",
+      "biz_name": "나눔하우스",
+      "status_bucket": "active",
+      "rooms": 3,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 와우산로32길 19, 2층 (동교동)",
+      "jibun_address": "서울특별시 마포구 동교동 188-30"
+    },
+    {
+      "permit_number": "AIRBNB:3130000:CDFI2262212026000478",
+      "biz_name": "아나나하우스",
+      "status_bucket": "active",
+      "rooms": 3,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "서울특별시 마포구 와우산로32길 19, 1층 (동교동)",
+      "jibun_address": "서울특별시 마포구 동교동 188-30"
+    },
+    {
+      "permit_number": "AIRBNB:3140000:CDFI2262212026000031",
+      "biz_name": "소울하우스",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        41925
+      ],
+      "road_address": "서울특별시 양천구 목동중앙남로3가길 98, 4층 (목동)",
+      "jibun_address": "서울특별시 양천구 목동 720-4"
+    },
+    {
+      "permit_number": "AIRBNB:3380000:CDFI2262212026000171",
+      "biz_name": "늘다온",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        43985
+      ],
+      "road_address": "부산광역시 수영구 감포로48번길 19-6, 101호 (민락동)",
+      "jibun_address": "부산광역시 수영구 민락동 145-13"
+    },
+    {
+      "permit_number": "AIRBNB:3380000:CDFI2262212026000172",
+      "biz_name": "마린미니하우스",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "부산광역시 수영구 민락본동로27번길 55-2 (민락동)",
+      "jibun_address": "부산광역시 수영구 민락동 33-20"
+    },
+    {
+      "permit_number": "AIRBNB:3660000:CDFI2262212026000062",
+      "biz_name": "정앤홈 플러스",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        44823
+      ],
+      "road_address": "대전광역시 서구 계룡로 658-10, 204호 (용문동)",
+      "jibun_address": "대전광역시 서구 용문동 257-6"
+    },
+    {
+      "permit_number": "AIRBNB:3740000:CDFI2262212026000065",
+      "biz_name": "행궁스테이",
+      "status_bucket": "active",
+      "rooms": 0,
+      "match_state": "existing_building",
+      "candidate_ids": [
+        45080
+      ],
+      "road_address": "경기도 수원시 팔달구 화서문로31번길 8-16, B101호 (장안동)",
+      "jibun_address": "경기도 수원시 팔달구 장안동 313-3"
+    },
+    {
+      "permit_number": "AIRBNB:5805000:CDFI2262212026000003",
+      "biz_name": "스테이하우스",
+      "status_bucket": "active",
+      "rooms": 1,
+      "match_state": "new_building_candidate",
+      "candidate_ids": [],
+      "road_address": "전남광주통합특별시 동구 지산로56번길 8-3, 스테이하우스 304호 (지산동)",
+      "jibun_address": "전남광주통합특별시 동구 지산동 447-13"
+    }
+  ],
+  "samples": {
+    "new_building_candidate": [
+      {
+        "permit_number": "AIRBNB:3000000:CDFI2262212026000125",
+        "biz_name": "노토 스테이",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 종로구 명륜7길 21, 1층 (명륜3가)",
+        "jibun_address": "서울특별시 종로구 명륜3가 1-994"
+      },
+      {
+        "permit_number": "AIRBNB:3040000:CDFI2262212026000136",
+        "biz_name": "피치스테이",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 광진구 자양로48길 60, 301호 (구의동, 미광하이츠빌라)",
+        "jibun_address": "서울특별시 광진구 구의동 35-20 미광하이츠빌라"
+      },
+      {
+        "permit_number": "AIRBNB:3110000:CDFI2262212026000079",
+        "biz_name": "스테이니어 서울",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 은평구 응암로22길 13-1, 2층 (응암동)",
+        "jibun_address": "서울특별시 은평구 응암동 427-69"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000470",
+        "biz_name": "아르코 망원 4",
+        "status_bucket": "active",
+        "rooms": 2,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 401호 (망원동)",
+        "jibun_address": "서울특별시 마포구 망원동 428-20"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000471",
+        "biz_name": "아르코 망원5",
+        "status_bucket": "active",
+        "rooms": 2,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 501호 (망원동)",
+        "jibun_address": "서울특별시 마포구 망원동 428-20"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000473",
+        "biz_name": "아르코 302",
+        "status_bucket": "active",
+        "rooms": 2,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 302호 (망원동)",
+        "jibun_address": "서울특별시 마포구 망원동 428-20"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000474",
+        "biz_name": "아르코 301",
+        "status_bucket": "active",
+        "rooms": 2,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 월드컵로25길 108, 아르코망원 301호 (망원동)",
+        "jibun_address": "서울특별시 마포구 망원동 428-20"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000475",
+        "biz_name": "홍대 로이 스테이",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 와우산로29다길 6, 401호 (서교동)",
+        "jibun_address": "서울특별시 마포구 서교동 334-5 401호"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000476",
+        "biz_name": "스테이헤리티지 공덕 지니",
+        "status_bucket": "active",
+        "rooms": 1,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 새창로4나길 16-1, 3층 (도화동)",
+        "jibun_address": "서울특별시 마포구 도화동 185-10"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000477",
+        "biz_name": "나눔하우스",
+        "status_bucket": "active",
+        "rooms": 3,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 와우산로32길 19, 2층 (동교동)",
+        "jibun_address": "서울특별시 마포구 동교동 188-30"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000478",
+        "biz_name": "아나나하우스",
+        "status_bucket": "active",
+        "rooms": 3,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "서울특별시 마포구 와우산로32길 19, 1층 (동교동)",
+        "jibun_address": "서울특별시 마포구 동교동 188-30"
+      },
+      {
+        "permit_number": "AIRBNB:3380000:CDFI2262212026000172",
+        "biz_name": "마린미니하우스",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "부산광역시 수영구 민락본동로27번길 55-2 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 33-20"
+      },
+      {
+        "permit_number": "AIRBNB:5805000:CDFI2262212026000003",
+        "biz_name": "스테이하우스",
+        "status_bucket": "active",
+        "rooms": 1,
+        "match_state": "new_building_candidate",
+        "candidate_ids": [],
+        "road_address": "전남광주통합특별시 동구 지산로56번길 8-3, 스테이하우스 304호 (지산동)",
+        "jibun_address": "전남광주통합특별시 동구 지산동 447-13"
+      }
+    ],
+    "existing_building": [
+      {
+        "permit_number": "AIRBNB:3110000:CDFI2262212026000078",
+        "biz_name": "우드앤라이트",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          40302
+        ],
+        "road_address": "서울특별시 은평구 가좌로 293, 703호 (신사동)",
+        "jibun_address": "서울특별시 은평구 신사동 39-28"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212026000472",
+        "biz_name": "더 로즈 가든",
+        "status_bucket": "active",
+        "rooms": 1,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          40746
+        ],
+        "road_address": "서울특별시 마포구 연남로 76, 101동 602호 (연남동, 라센트라 연남)",
+        "jibun_address": "서울특별시 마포구 연남동 361-10 라센트라 연남"
+      },
+      {
+        "permit_number": "AIRBNB:3130000:CDFI2262212024000496",
+        "biz_name": "JR게스트하우스",
+        "status_bucket": "closed",
+        "rooms": 0,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          41284
+        ],
+        "road_address": "서울특별시 마포구 광성로 35-16, 지층 1호 (신수동)",
+        "jibun_address": "서울특별시 마포구 신수동 93-29"
+      },
+      {
+        "permit_number": "AIRBNB:3140000:CDFI2262212026000031",
+        "biz_name": "소울하우스",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          41925
+        ],
+        "road_address": "서울특별시 양천구 목동중앙남로3가길 98, 4층 (목동)",
+        "jibun_address": "서울특별시 양천구 목동 720-4"
+      },
+      {
+        "permit_number": "AIRBNB:3380000:CDFI2262212026000171",
+        "biz_name": "늘다온",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          43985
+        ],
+        "road_address": "부산광역시 수영구 감포로48번길 19-6, 101호 (민락동)",
+        "jibun_address": "부산광역시 수영구 민락동 145-13"
+      },
+      {
+        "permit_number": "AIRBNB:3660000:CDFI2262212026000062",
+        "biz_name": "정앤홈 플러스",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          44823
+        ],
+        "road_address": "대전광역시 서구 계룡로 658-10, 204호 (용문동)",
+        "jibun_address": "대전광역시 서구 용문동 257-6"
+      },
+      {
+        "permit_number": "AIRBNB:3740000:CDFI2262212026000065",
+        "biz_name": "행궁스테이",
+        "status_bucket": "active",
+        "rooms": 0,
+        "match_state": "existing_building",
+        "candidate_ids": [
+          45080
+        ],
+        "road_address": "경기도 수원시 팔달구 화서문로31번길 8-16, B101호 (장안동)",
+        "jibun_address": "경기도 수원시 팔달구 장안동 313-3"
+      }
+    ]
+  }
+}
