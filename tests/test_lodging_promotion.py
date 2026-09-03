@@ -730,6 +730,72 @@ class LodgingPromotionTest(unittest.TestCase):
         self.assertEqual(targets[0]["existing_applied_building_id"], 99)
         self.assertEqual(summary["existing_links_preserved"], 1)
 
+    def test_production_status_change_is_not_hidden_by_development_new_diff(self):
+        staging = [
+            {
+                "source_row_id": 3,
+                "batch_id": 10,
+                "permit_number": "P-3",
+                "biz_name": "운 스테이",
+                "raw_status": "폐업",
+                "status_bucket": "closed",
+                "road_address": "서울특별시 중구 세종대로 3",
+                "jibun_address": None,
+                "raw_hygiene_type": "외국인관광도시민박업",
+                "raw_record": {},
+                "diff_kind": "new",
+            }
+        ]
+        registry = [
+            {
+                "permit_number": "P-3",
+                "biz_name": "운 스테이",
+                "biz_status_name": "영업/정상",
+                "room_count": None,
+                "hygiene_type": "외국인관광도시민박업",
+                "applied_building_id": 101,
+                "road_address": "서울특별시 중구 세종대로 3",
+                "jibun_address": None,
+            }
+        ]
+        targets, summary = _build_targets(staging, registry, [])
+        self.assertEqual(len(targets), 1)
+        self.assertEqual(targets[0]["action"], "status_change")
+        self.assertEqual(targets[0]["existing_applied_building_id"], 101)
+        self.assertEqual(summary["action_counts"], {"status_change": 1})
+
+    def test_production_non_status_update_still_respects_development_diff(self):
+        staging = [
+            {
+                "source_row_id": 4,
+                "batch_id": 10,
+                "permit_number": "P-4",
+                "biz_name": "새 이름",
+                "raw_status": "영업/정상",
+                "status_bucket": "active",
+                "road_address": "서울특별시 중구 세종대로 4",
+                "jibun_address": None,
+                "raw_hygiene_type": "외국인관광도시민박업",
+                "raw_record": {},
+                "diff_kind": "new",
+            }
+        ]
+        registry = [
+            {
+                "permit_number": "P-4",
+                "biz_name": "기존 이름",
+                "biz_status_name": "영업/정상",
+                "room_count": None,
+                "hygiene_type": "외국인관광도시민박업",
+                "applied_building_id": 102,
+                "road_address": "서울특별시 중구 세종대로 4",
+                "jibun_address": None,
+            }
+        ]
+        targets, summary = _build_targets(staging, registry, [])
+        self.assertEqual(targets, [])
+        self.assertEqual(summary["action_counts"], {})
+
     def test_duplicate_permit_is_rejected(self):
         targets = [
             {"payload": {"permit_number": "P-1", "row_state": "validated"}},

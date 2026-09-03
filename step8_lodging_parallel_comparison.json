@@ -1,0 +1,338 @@
+{
+  "generated_at": "2026-09-03T06:22:04",
+  "read_only": true,
+  "production_baseline": true,
+  "batches": [
+    {
+      "id": 19,
+      "source_key": "auto_camping",
+      "reference_date": "2026-09-03",
+      "total_rows": 969
+    },
+    {
+      "id": 17,
+      "source_key": "foreign_city_homestay",
+      "reference_date": "2026-09-03",
+      "total_rows": 14521
+    },
+    {
+      "id": 18,
+      "source_key": "general_camping",
+      "reference_date": "2026-09-03",
+      "total_rows": 4902
+    },
+    {
+      "id": 20,
+      "source_key": "hanok",
+      "reference_date": "2026-09-03",
+      "total_rows": 3164
+    },
+    {
+      "id": 16,
+      "source_key": "lodging",
+      "reference_date": "2026-09-03",
+      "total_rows": 58693
+    },
+    {
+      "id": 15,
+      "source_key": "rural_homestay",
+      "reference_date": "2026-09-03",
+      "total_rows": 55419
+    },
+    {
+      "id": 13,
+      "source_key": "tourism_lodging",
+      "reference_date": "2026-09-03",
+      "total_rows": 4329
+    },
+    {
+      "id": 14,
+      "source_key": "tourism_pension",
+      "reference_date": "2026-09-03",
+      "total_rows": 1662
+    }
+  ],
+  "staging_rows": 143659,
+  "production_registry_rows": 143659,
+  "production_master_buildings": 83712,
+  "overall": {
+    "status_counts": {
+      "active": 90787,
+      "closed": 52393,
+      "excluded": 1,
+      "temporarily_closed": 478
+    },
+    "production_existing_permits": 143659,
+    "new_permits": 0,
+    "new_status_counts": {},
+    "new_match_counts": {},
+    "new_existing_building_rows": 0,
+    "new_building_candidate_rows": 0,
+    "new_building_candidate_unique_addresses": 0,
+    "new_building_candidate_duplicate_rows": 0,
+    "new_active_permits": 0,
+    "new_active_rooms": 0,
+    "production_existing_active_permits": 90788,
+    "production_existing_active_rooms": 1189039,
+    "staging_reported_active_rooms": 292263,
+    "active_permits_after_apply": 90787,
+    "active_permits_net_change": -1,
+    "room_count_quality_gate": {
+      "safe_to_replace_existing_values": false,
+      "reason": "CSV 객실수 공란·집계 기준 차이로 기존 운영 합계보다 작음",
+      "preserve_existing_when_csv_blank": true,
+      "new_permits_reported_active_rooms": 0
+    }
+  },
+  "estimated_after_apply": {
+    "registry_rows": 143659,
+    "master_buildings": 83712,
+    "active_permits": 90787,
+    "active_permits_net_change": -1,
+    "active_rooms": null,
+    "active_rooms_reason": "기존 호실 보존 규칙을 적용한 뒤에만 확정 가능",
+    "new_master_buildings": 0
+  },
+  "by_source": {
+    "auto_camping": {
+      "label": "자동차야영장업",
+      "staging_rows": 969,
+      "status_counts": {
+        "active": 805,
+        "closed": 131,
+        "excluded": 1,
+        "temporarily_closed": 32
+      },
+      "production_existing_permits": 969,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 805,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 67,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 969,
+        "active_permits": 805,
+        "staging_reported_active_rooms": 196,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "foreign_city_homestay": {
+      "label": "외국인관광도시민박업",
+      "staging_rows": 14521,
+      "status_counts": {
+        "closed": 3251,
+        "active": 11209,
+        "temporarily_closed": 61
+      },
+      "production_existing_permits": 14521,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 11210,
+      "production_existing_active_rooms": 10516,
+      "production_linked_buildings": 8424,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 14521,
+        "active_permits": 11209,
+        "staging_reported_active_rooms": 10515,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "general_camping": {
+      "label": "일반야영장업",
+      "staging_rows": 4902,
+      "status_counts": {
+        "temporarily_closed": 184,
+        "closed": 1111,
+        "active": 3607
+      },
+      "production_existing_permits": 4902,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 3607,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 3516,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 4902,
+        "active_permits": 3607,
+        "staging_reported_active_rooms": 838,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "hanok": {
+      "label": "한옥체험업",
+      "staging_rows": 3164,
+      "status_counts": {
+        "active": 2590,
+        "closed": 563,
+        "temporarily_closed": 11
+      },
+      "production_existing_permits": 3164,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 2590,
+      "production_existing_active_rooms": 2499,
+      "production_linked_buildings": 2506,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 3164,
+        "active_permits": 2590,
+        "staging_reported_active_rooms": 2499,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "lodging": {
+      "label": "숙박업",
+      "staging_rows": 58693,
+      "status_counts": {
+        "active": 31178,
+        "closed": 27515
+      },
+      "production_existing_permits": 58693,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 31178,
+      "production_existing_active_rooms": 897809,
+      "production_linked_buildings": 21464,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 58693,
+        "active_permits": 31178,
+        "staging_reported_active_rooms": 0,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "rural_homestay": {
+      "label": "농어촌민박업",
+      "staging_rows": 55419,
+      "status_counts": {
+        "closed": 18709,
+        "active": 36618,
+        "temporarily_closed": 92
+      },
+      "production_existing_permits": 55419,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 36618,
+      "production_existing_active_rooms": 103582,
+      "production_linked_buildings": 34627,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 55419,
+        "active_permits": 36618,
+        "staging_reported_active_rooms": 103582,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "tourism_lodging": {
+      "label": "관광숙박업",
+      "staging_rows": 4329,
+      "status_counts": {
+        "active": 3452,
+        "closed": 785,
+        "temporarily_closed": 92
+      },
+      "production_existing_permits": 4329,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 3452,
+      "production_existing_active_rooms": 174633,
+      "production_linked_buildings": 2338,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 4329,
+        "active_permits": 3452,
+        "staging_reported_active_rooms": 174633,
+        "new_buildings": 0
+      },
+      "samples": {}
+    },
+    "tourism_pension": {
+      "label": "관광펜션업",
+      "staging_rows": 1662,
+      "status_counts": {
+        "active": 1328,
+        "closed": 328,
+        "temporarily_closed": 6
+      },
+      "production_existing_permits": 1662,
+      "new_permits": 0,
+      "new_status_counts": {},
+      "production_existing_active_permits": 1328,
+      "production_existing_active_rooms": 0,
+      "production_linked_buildings": 1231,
+      "new_match_counts": {},
+      "new_existing_building_rows": 0,
+      "new_building_candidate_rows": 0,
+      "new_building_candidate_unique_addresses": 0,
+      "new_building_candidate_duplicate_rows": 0,
+      "new_active_permits": 0,
+      "new_active_rooms": 0,
+      "new_rooms": 0,
+      "estimated_after_apply": {
+        "registry_rows": 1662,
+        "active_permits": 1328,
+        "staging_reported_active_rooms": 0,
+        "new_buildings": 0
+      },
+      "samples": {}
+    }
+  }
+}

@@ -220,10 +220,14 @@ def _build_targets(staging_rows, registry_rows, building_rows):
         if not permit_number:
             continue
         existing = registry.get(permit_number)
-        if existing and row.get("diff_kind") not in {"changed", "status_change"}:
-            continue
         action = classify_registry_action(row, existing)
         if action == "unchanged":
+            continue
+        if (
+            existing
+            and action != "status_change"
+            and row.get("diff_kind") not in {"changed", "status_change"}
+        ):
             continue
         match_state = None
         production_building_id = None

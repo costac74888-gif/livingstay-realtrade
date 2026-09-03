@@ -1,0 +1,21 @@
+{
+  "read_only": true,
+  "staging_permit_count": 143659,
+  "production_permit_count": 143659,
+  "source_status_conflict_permit_count": 0,
+  "production_status_mismatch_permit_count": 1,
+  "source_conflict_sample": [],
+  "status_mismatch_sample": [
+    {
+      "permit_number": "AIRBNB:3010000:CDFI2262212026000030",
+      "biz_name": "운 스테이",
+      "source_status_bucket": "closed",
+      "source_raw_status": "폐업",
+      "production_raw_status": "영업/정상",
+      "production_status_bucket": "active",
+      "source_row_id": 264413
+    }
+  ],
+  "status_classifier": "lodging_data_contract.classify_operation_status",
+  "result": "review"
+}
