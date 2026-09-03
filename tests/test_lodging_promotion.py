@@ -17,6 +17,9 @@ from lodging_promotion import (
     compare_parallel_results,
     run_production_manifest_dry_run,
     _validate_target_admission,
+    _decode_legacy_sync_control,
+    CUTOVER_MINIMUM_CONSECUTIVE_CLEAN,
+    CUTOVER_MINIMUM_OBSERVATIONS,
 )
 from lodging_data_contract import GOVERNMENT_LODGING_SOURCES
 
@@ -954,6 +957,20 @@ class LodgingPromotionTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "폐업 원장"):
             _apply_review_decision(target, "include_unclassified_history")
+
+    def test_legacy_sync_control_defaults_to_enabled_without_explicit_approval(self):
+        self.assertTrue(_decode_legacy_sync_control(None)["enabled"])
+        self.assertTrue(_decode_legacy_sync_control("not-json")["enabled"])
+        self.assertTrue(_decode_legacy_sync_control("{}")["enabled"])
+        self.assertFalse(
+            _decode_legacy_sync_control(
+                '{"enabled": false, "state": "disabled", "manifest_id": 7}'
+            )["enabled"]
+        )
+
+    def test_cutover_policy_requires_observation_and_clean_streak(self):
+        self.assertEqual(CUTOVER_MINIMUM_OBSERVATIONS, 3)
+        self.assertEqual(CUTOVER_MINIMUM_CONSECUTIVE_CLEAN, 3)
 
 
 if __name__ == "__main__":

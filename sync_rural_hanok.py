@@ -24,6 +24,7 @@ from lodging_classification import (
     should_protect_from_active_permit_reclassification,
 )
 from stats_cache import mark_master_stats_invalidated_in_transaction
+from legacy_lodging_gate import legacy_lodging_writer_gate
 
 
 SERVICE_KEY_ENV = "LODGING_SERVICE_KEY"
@@ -742,7 +743,7 @@ def sync(
     return counters
 
 
-def main():
+def _main_with_legacy_gate():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--source",
@@ -812,6 +813,14 @@ def main():
                 error = f"최종 상태 저장 실패: {status_error}"
     if error:
         raise SystemExit(1)
+
+
+def main():
+    with legacy_lodging_writer_gate() as enabled:
+        if not enabled:
+            print("[rural-hanok] 관리자 승인으로 기존 숙박 직접 동기화가 종료되어 건너뜁니다.")
+            return
+        _main_with_legacy_gate()
 
 
 if __name__ == "__main__":

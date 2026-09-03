@@ -398,6 +398,45 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(evidence.call_args_list[0].args[1], "running")
         self.assertEqual(evidence.call_args_list[-1].args[1], "failed")
 
+    def test_admin_cutover_skips_legacy_stage_without_spawning_collector(self):
+        writes = []
+        disabled = {
+            "enabled": False,
+            "state": "disabled",
+            "manifest_id": 42,
+        }
+        with (
+            patch.object(scheduled_sync, "_acquire_lock", return_value=(object(), object())),
+            patch.object(scheduled_sync, "_release_lock"),
+            patch.object(scheduled_sync, "_read_status", return_value=None),
+            patch.object(scheduled_sync, "_read_legacy_lodging_sync_control", return_value=disabled),
+            patch.object(scheduled_sync, "_write_initial_status"),
+            patch.object(
+                scheduled_sync,
+                "_write_status",
+                side_effect=lambda key, value, run_id=None: writes.append(value),
+            ),
+            patch.object(scheduled_sync, "_run_stage") as run_stage,
+            patch.object(scheduled_sync, "_write_scheduled_evidence"),
+        ):
+            result = scheduled_sync.run(selected_stage="lodging")
+        self.assertEqual(result, 0)
+        run_stage.assert_not_called()
+        self.assertEqual(writes[-1]["state"], "done")
+        self.assertEqual(writes[-1]["stages"]["lodging"]["state"], "skipped")
+        self.assertIn("manifest #42", writes[-1]["stages"]["lodging"]["error"])
+
+    def test_cutover_admin_controls_are_exposed(self):
+        html = Path("static/admin.html").read_text(encoding="utf-8")
+        app_source = Path("app.py").read_text(encoding="utf-8")
+        self.assertIn("changeLegacyLodgingSync", html)
+        self.assertIn("연속 무회귀", html)
+        self.assertIn("종료·복구 감사 기록", html)
+        self.assertIn(
+            'promotion/<int:manifest_id>/legacy-sync',
+            app_source,
+        )
+
     def test_secret_values_are_redacted(self):
         with patch.dict(os.environ, {"LODGING_SERVICE_KEY": "top-secret"}):
             self.assertEqual(

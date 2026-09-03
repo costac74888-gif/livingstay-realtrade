@@ -27,6 +27,7 @@ from lodging_staging import (
     assert_development_connection,
     assert_development_staging,
 )
+from legacy_lodging_gate import CUTOVER_LOCK_ID, CONTROL_META_KEY
 from validate_lodging_all_production_delta import classify_production_match
 from validate_lodging_approval_promotion import classify_registry_action
 
@@ -47,6 +48,12 @@ _HISTORICAL_STATUS_BUCKETS = {
     STATUS_CLOSED,
     "unknown",
 }
+LEGACY_LODGING_SYNC_CONTROL_KEY = CONTROL_META_KEY
+LEGACY_LODGING_SYNC_STAGES = ("lodging", "camping", "rural", "hanok", "pension")
+CUTOVER_MINIMUM_OBSERVATIONS = 3
+CUTOVER_MINIMUM_CONSECUTIVE_CLEAN = 3
+MANIFEST_CUTOVER_FENCE_LOCK_ID = 9_182_992
+_SCHEDULED_SYNC_STALE_SECONDS = 5 * 60
 
 
 def _canonical_hash(value):
@@ -1003,6 +1010,10 @@ def compare_production_manifest(manifest_id=None):
     write_cur = write_conn.cursor()
     try:
         write_cur.execute(
+            "SELECT pg_advisory_xact_lock(%s)",
+            (MANIFEST_CUTOVER_FENCE_LOCK_ID,),
+        )
+        write_cur.execute(
             """
             INSERT INTO lodging_parallel_comparisons (
                 promotion_manifest_id, run_id, production_fingerprint,
@@ -1115,7 +1126,7 @@ def get_parallel_comparison_overview(limit=10):
     try:
         cur.execute(
             """
-            SELECT id
+            SELECT id, manifest_key, finished_at
               FROM lodging_promotion_manifests
              WHERE status='applied'
              ORDER BY finished_at DESC NULLS LAST, id DESC
@@ -1129,19 +1140,29 @@ def get_parallel_comparison_overview(limit=10):
                 "observations": 0,
                 "consecutive_clean_observations": 0,
                 "minimum_observations_met": False,
+                "consecutive_clean_met": False,
+                "eligible_for_cutover": False,
+                "policy": {
+                    "minimum_observations": CUTOVER_MINIMUM_OBSERVATIONS,
+                    "minimum_consecutive_clean": CUTOVER_MINIMUM_CONSECUTIVE_CLEAN,
+                },
+                "observation_period": None,
                 "latest": None,
                 "recent": [],
             }
         manifest_id = current_manifest["id"]
         cur.execute(
             """
-            SELECT COUNT(*) AS count
+            SELECT COUNT(*) AS count,
+                   MIN(created_at) AS first_observed_at,
+                   MAX(created_at) AS last_observed_at
               FROM lodging_parallel_comparisons
              WHERE promotion_manifest_id=%s
             """,
             (manifest_id,),
         )
-        observation_count = int(cur.fetchone()["count"] or 0)
+        observation_summary = cur.fetchone()
+        observation_count = int(observation_summary["count"] or 0)
         cur.execute(
             """
             SELECT id, promotion_manifest_id, run_id, production_fingerprint,
@@ -1151,7 +1172,7 @@ def get_parallel_comparison_overview(limit=10):
              ORDER BY created_at DESC, id DESC
              LIMIT %s
             """,
-            (manifest_id, max(1, min(int(limit), 50))),
+            (manifest_id, max(1, min(int(limit), 500))),
         )
         rows = [dict(row) for row in cur.fetchall()]
     finally:
@@ -1162,14 +1183,305 @@ def get_parallel_comparison_overview(limit=10):
         if int(row["major_regression_count"] or 0):
             break
         consecutive_clean += 1
+    minimum_observations_met = observation_count >= CUTOVER_MINIMUM_OBSERVATIONS
+    consecutive_clean_met = (
+        consecutive_clean >= CUTOVER_MINIMUM_CONSECUTIVE_CLEAN
+    )
+    latest_clean = bool(
+        rows and int(rows[0]["major_regression_count"] or 0) == 0
+    )
+    first_observed_at = observation_summary["first_observed_at"]
+    last_observed_at = observation_summary["last_observed_at"]
+    elapsed_hours = None
+    if first_observed_at and last_observed_at:
+        elapsed_hours = round(
+            max(0.0, (last_observed_at - first_observed_at).total_seconds() / 3600),
+            1,
+        )
     return {
         "manifest_id": manifest_id,
+        "manifest_key": current_manifest["manifest_key"],
+        "manifest_applied_at": current_manifest["finished_at"],
         "observations": observation_count,
         "consecutive_clean_observations": consecutive_clean,
-        "minimum_observations_met": consecutive_clean >= 3,
+        "minimum_observations_met": minimum_observations_met,
+        "consecutive_clean_met": consecutive_clean_met,
+        "latest_clean": latest_clean,
+        "eligible_for_cutover": (
+            minimum_observations_met and consecutive_clean_met and latest_clean
+        ),
+        "policy": {
+            "minimum_observations": CUTOVER_MINIMUM_OBSERVATIONS,
+            "minimum_consecutive_clean": CUTOVER_MINIMUM_CONSECUTIVE_CLEAN,
+        },
+        "observation_period": {
+            "first_observed_at": first_observed_at,
+            "last_observed_at": last_observed_at,
+            "elapsed_hours": elapsed_hours,
+        } if first_observed_at else None,
         "latest": rows[0] if rows else None,
-        "recent": rows,
+        "recent": rows[:max(1, min(int(limit), 50))],
     }
+
+
+def _production_write_connection():
+    production_url = os.environ.get("PROD_DATABASE_URL")
+    if not production_url:
+        raise RuntimeError("PROD_DATABASE_URL이 없어 기존 동기화 설정을 변경할 수 없습니다.")
+    return psycopg2.connect(
+        production_url,
+        connect_timeout=10,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
+
+
+def _default_legacy_sync_control():
+    return {
+        "enabled": True,
+        "state": "enabled",
+        "manifest_id": None,
+        "updated_at": None,
+        "updated_by": None,
+        "reason": None,
+        "history": [],
+    }
+
+
+def _decode_legacy_sync_control(value):
+    if not value:
+        return _default_legacy_sync_control()
+    try:
+        control = json.loads(value) if isinstance(value, str) else dict(value)
+    except (TypeError, ValueError):
+        return _default_legacy_sync_control()
+    if not isinstance(control, dict) or control.get("enabled") is not False:
+        control = {**_default_legacy_sync_control(), **(
+            control if isinstance(control, dict) else {}
+        )}
+        control["enabled"] = True
+        control["state"] = "enabled"
+    control.setdefault("history", [])
+    return control
+
+
+def _running_legacy_sync_stages(cur):
+    keys = [
+        "scheduled_sync_status",
+        "lodging_sync_status",
+        "rural_hanok_sync_status:rural",
+        "rural_hanok_sync_status:hanok",
+        "rural_hanok_sync_status:pension",
+        *(
+            f"scheduled_sync_status:{stage}"
+            for stage in LEGACY_LODGING_SYNC_STAGES
+        ),
+    ]
+    cur.execute(
+        """
+        SELECT key, value,
+               EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_seconds
+          FROM app_meta
+         WHERE key = ANY(%s)
+        """,
+        (keys,),
+    )
+    running = set()
+    for row in cur.fetchall():
+        if float(row["age_seconds"] or 0) > _SCHEDULED_SYNC_STALE_SECONDS:
+            continue
+        try:
+            status = json.loads(row["value"] or "{}")
+        except (TypeError, ValueError):
+            continue
+        if status.get("state") != "running":
+            continue
+        selected = status.get("selected_stage")
+        current = status.get("current_stage")
+        candidates = {
+            selected,
+            current,
+            *(status.get("running_stages") or []),
+        }
+        for stage in candidates:
+            if stage in LEGACY_LODGING_SYNC_STAGES:
+                running.add(stage)
+        if row["key"] != "scheduled_sync_status":
+            stage = {
+                "lodging_sync_status": "lodging",
+                "rural_hanok_sync_status:rural": "rural",
+                "rural_hanok_sync_status:hanok": "hanok",
+                "rural_hanok_sync_status:pension": "pension",
+            }.get(row["key"], row["key"].rsplit(":", 1)[-1])
+            if stage in LEGACY_LODGING_SYNC_STAGES:
+                running.add(stage)
+    return sorted(running)
+
+
+def get_legacy_lodging_sync_control():
+    """운영 DB의 기존 직접 동기화 설정과 감사 이력을 읽는다.
+
+    설정이 없거나 손상되면 반드시 enabled=True로 해석한다. 관리자 승인 기록
+    없이는 기존 수집이 중단되지 않아야 하기 때문이다.
+    """
+    conn = _production_write_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            (LEGACY_LODGING_SYNC_CONTROL_KEY,),
+        )
+        row = cur.fetchone()
+        control = _decode_legacy_sync_control(row["value"] if row else None)
+        control["running_legacy_stages"] = _running_legacy_sync_stages(cur)
+        return control
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _set_legacy_lodging_sync_enabled_unfenced(
+    manifest_id,
+    *,
+    enabled,
+    actor_id,
+    reason,
+):
+    """관찰 게이트를 재검증한 뒤 기존 직접 동기화를 종료하거나 복구한다."""
+    actor_id = _require_admin_actor(actor_id, "기존 숙박 동기화 설정 변경")
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise ValueError("변경 사유를 5자 이상 입력해 주세요.")
+    if len(reason) > 500:
+        raise ValueError("변경 사유는 500자 이하여야 합니다.")
+    enabled = bool(enabled)
+    comparison = get_parallel_comparison_overview(limit=50)
+    if not enabled:
+        if comparison.get("manifest_id") != int(manifest_id):
+            raise ValueError("최신 적용 manifest만 기존 동기화 종료 기준으로 사용할 수 있습니다.")
+        if not comparison.get("eligible_for_cutover"):
+            raise ValueError(
+                "최소 관찰 횟수와 연속 무회귀 조건을 모두 충족한 뒤 종료할 수 있습니다."
+            )
+        latest_result = dict((comparison.get("latest") or {}).get("result") or {})
+        if (latest_result.get("screen_comparison") or {}).get("status") == "regression":
+            raise ValueError("공개 검색·상세·통계 기준선 회귀가 있어 종료할 수 없습니다.")
+
+    conn = _production_write_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (CUTOVER_LOCK_ID,))
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s FOR UPDATE",
+            (LEGACY_LODGING_SYNC_CONTROL_KEY,),
+        )
+        row = cur.fetchone()
+        previous = _decode_legacy_sync_control(row["value"] if row else None)
+        if previous["enabled"] == enabled:
+            previous["changed"] = False
+            previous["running_legacy_stages"] = _running_legacy_sync_stages(cur)
+            conn.commit()
+            return previous
+        running = _running_legacy_sync_stages(cur)
+        if not enabled and running:
+            raise RuntimeError(
+                "실행 중인 기존 숙박 동기화가 있습니다: "
+                + ", ".join(running)
+                + ". 완료 후 다시 승인해 주세요."
+            )
+        changed_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        event = {
+            "event_id": secrets.token_hex(8),
+            "action": "restore" if enabled else "cutover",
+            "previous_enabled": previous["enabled"],
+            "enabled": enabled,
+            "manifest_id": int(manifest_id),
+            "actor_id": actor_id,
+            "reason": reason,
+            "created_at": changed_at,
+            "verification": {
+                "observations": comparison.get("observations"),
+                "consecutive_clean_observations": comparison.get(
+                    "consecutive_clean_observations"
+                ),
+                "latest_comparison_id": (
+                    (comparison.get("latest") or {}).get("id")
+                ),
+                "public_surfaces": (
+                    ((comparison.get("latest") or {}).get("result") or {}).get(
+                        "screen_comparison"
+                    )
+                ),
+            },
+        }
+        history = list(previous.get("history") or [])
+        history.append(event)
+        control = {
+            "enabled": enabled,
+            "state": "enabled" if enabled else "disabled",
+            "manifest_id": int(manifest_id),
+            "updated_at": changed_at,
+            "updated_by": actor_id,
+            "reason": reason,
+            "history": history[-100:],
+        }
+        cur.execute(
+            """
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE
+              SET value=EXCLUDED.value, updated_at=NOW()
+            """,
+            (
+                LEGACY_LODGING_SYNC_CONTROL_KEY,
+                json.dumps(control, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        control["changed"] = True
+        control["running_legacy_stages"] = []
+        return control
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+def set_legacy_lodging_sync_enabled(
+    manifest_id,
+    *,
+    enabled,
+    actor_id,
+    reason,
+):
+    """Serialize latest-manifest verification with applies and observations."""
+    fence_conn = _get_development_connection()
+    fence_cur = fence_conn.cursor()
+    try:
+        fence_cur.execute(
+            "SELECT pg_advisory_lock(%s)",
+            (MANIFEST_CUTOVER_FENCE_LOCK_ID,),
+        )
+        fence_cur.fetchone()
+        return _set_legacy_lodging_sync_enabled_unfenced(
+            manifest_id,
+            enabled=enabled,
+            actor_id=actor_id,
+            reason=reason,
+        )
+    finally:
+        try:
+            fence_cur.execute(
+                "SELECT pg_advisory_unlock(%s)",
+                (MANIFEST_CUTOVER_FENCE_LOCK_ID,),
+            )
+            fence_cur.fetchone()
+        except Exception:
+            pass
+        fence_cur.close()
+        fence_conn.close()
+
 
 def compare_parallel_results(
     targets,

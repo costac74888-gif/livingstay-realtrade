@@ -2491,15 +2491,49 @@
         const latestComparison = comparison.latest || {};
         const latestComparisonResult = latestComparison.result || {};
         const outcomes = latestComparisonResult.outcome_counts || {};
+        const policy = comparison.policy || {};
+        const period = comparison.observation_period || {};
+        const control = data.legacy_sync_control || { enabled: true, history: [] };
+        const periodLabel = period.first_observed_at
+          ? `${dgEscape(period.first_observed_at)} ~ ${dgEscape(period.last_observed_at)} (${num(period.elapsed_hours || 0)}시간)`
+          : "관찰 기록 없음";
         const comparisonMarkup = comparison.observations
           ? `<div style="margin-top:10px;padding:9px;border:1px solid ${latestComparison.major_regression_count ? "#efb4b4" : "#b7d7bd"};border-radius:7px;background:${latestComparison.major_regression_count ? "#fff7f7" : "#f3fbf4"};">
-              <b>8단계 병행 비교:</b> 최근 ${num(comparison.observations)}회 관측 · 연속 무회귀 ${num(comparison.consecutive_clean_observations)}회
-              ${comparison.minimum_observations_met ? "· 최소 3회 관찰 충족" : "· 최소 3회 관찰 중"}
+              <b>8단계 병행 비교 · 최신 적용 manifest #${num(comparison.manifest_id)}:</b>
+              <div>관찰 기간 ${periodLabel}</div>
+              <div>관찰 ${num(comparison.observations)}/${num(policy.minimum_observations || 3)}회
+                ${comparison.minimum_observations_met ? "✓" : "미충족"} ·
+                연속 무회귀 ${num(comparison.consecutive_clean_observations)}/${num(policy.minimum_consecutive_clean || 3)}회
+                ${comparison.consecutive_clean_met ? "✓" : "미충족"}</div>
               <div>일치 ${num(outcomes.matched || 0)} · 누락 ${num(outcomes.missing || 0)} · 필드차이 ${num(outcomes.field_difference || 0)} · 연결차이 ${num(outcomes.building_link_difference || 0)} · 중복 ${num(outcomes.duplicate || 0)}</div>
+              <div style="font-weight:700;color:${comparison.eligible_for_cutover ? "#1a7f37" : "#9a6700"};">${comparison.eligible_for_cutover ? "종료 승인 가능: 관찰·무회귀·공개 화면 기준선 검증 완료" : "기존 동기화 유지: 종료 조건 검증 중"}</div>
             </div>`
           : `<div style="margin-top:10px;color:#9a6700;">8단계 병행 비교 관측이 아직 없습니다.</div>`;
+        const controlHistory = (control.history || []).slice().reverse().map((event) => `
+          <div style="margin-top:5px;font-size:12px;color:#46515c;">
+            ${event.action === "cutover" ? "종료" : "복구"} · manifest #${num(event.manifest_id)}
+            · 관리자 #${num(event.actor_id)} · ${dgEscape(event.created_at || "-")}
+            · ${dgEscape(event.reason || "-")}
+          </div>`).join("");
+        const controlManifestId = control.enabled === false
+          ? control.manifest_id
+          : comparison.manifest_id;
+        const controlAction = control.enabled === false
+          ? `<button type="button" class="admin-btn lodging-legacy-sync-action" data-enabled="true" data-id="${num(controlManifestId)}">기존 직접 동기화 즉시 복구</button>`
+          : comparison.eligible_for_cutover
+            ? `<button type="button" class="admin-btn lodging-legacy-sync-action" style="background:#b3261e;color:#fff;" data-enabled="false" data-id="${num(controlManifestId)}">검증 완료 · 기존 직접 동기화 종료 승인</button>`
+            : "";
+        const controlMarkup = `
+          <div style="margin-top:10px;padding:10px;border:1px solid ${control.enabled === false ? "#b7d7bd" : "#d8c89f"};border-radius:8px;background:${control.enabled === false ? "#f3fbf4" : "#fffdf7"};">
+            <b>기존 lodging/camping/rural/hanok/pension 직접 동기화:</b>
+            <span style="color:${control.enabled === false ? "#1a7f37" : "#9a6700"};font-weight:700;">${control.enabled === false ? "종료됨" : "유지 중"}</span>
+            ${control.error ? `<div style="color:#b3261e;">설정 확인 실패: ${dgEscape(control.error)}</div>` : ""}
+            ${control.running_legacy_stages && control.running_legacy_stages.length ? `<div style="color:#9a6700;">실행 중: ${control.running_legacy_stages.map(dgEscape).join(", ")}</div>` : ""}
+            <div style="margin-top:7px;">${controlAction}</div>
+            ${controlHistory ? `<details style="margin-top:8px;"><summary style="cursor:pointer;">종료·복구 감사 기록</summary>${controlHistory}</details>` : ""}
+          </div>`;
         if (!manifest) {
-          promotionBox.innerHTML = `운영 기준 승인 manifest가 아직 없습니다.${comparisonMarkup}`;
+          promotionBox.innerHTML = `운영 기준 승인 manifest가 아직 없습니다.${comparisonMarkup}${controlMarkup}`;
         } else {
           const result = manifest.result || {};
           const actions = result.action_counts || {};
@@ -2547,6 +2581,7 @@
             ${auditMarkup}
             ${reviewMarkup}
             ${comparisonMarkup}
+            ${controlMarkup}
             <div style="margin-top:8px;">${buttons.join(" ")}</div>`;
         }
       }
@@ -2605,6 +2640,9 @@
       document.querySelectorAll(".lodging-review-resolve").forEach((btn) => {
         btn.addEventListener("click", () => resolveLodgingPromotionReview(btn));
       });
+      document.querySelectorAll(".lodging-legacy-sync-action").forEach((btn) => {
+        btn.addEventListener("click", () => changeLegacyLodgingSync(btn));
+      });
     }
 
     async function loadLodgingStagingOverview() {
@@ -2618,6 +2656,52 @@
         renderLodgingStagingOverview(data);
       } catch (err) {
         box.textContent = "8종 staging 현황을 불러오지 못했습니다.";
+      }
+    }
+
+    async function changeLegacyLodgingSync(button) {
+      const enabled = button.dataset.enabled === "true";
+      const action = enabled ? "복구" : "종료";
+      const reason = window.prompt(
+        `기존 lodging/camping/rural/hanok/pension 직접 동기화 ${action} 사유를 입력해 주세요. 감사 기록에 남습니다.`,
+        ""
+      );
+      if (reason === null) return;
+      if (reason.trim().length < 5) {
+        window.alert("변경 사유를 5자 이상 입력해 주세요.");
+        return;
+      }
+      const warning = enabled
+        ? "기존 직접 동기화를 즉시 다시 활성화하시겠습니까?"
+        : "최신 적용 manifest의 관찰 조건을 서버에서 다시 확인한 뒤 기존 직접 동기화를 종료합니다. 계속하시겠습니까?";
+      if (!window.confirm(warning)) return;
+      const msg = document.getElementById("lodgingStagingMsg");
+      button.disabled = true;
+      msg.style.color = "#555";
+      msg.textContent = `${action} 승인 처리 중…`;
+      try {
+        const res = await fetch(
+          `/api/admin/lodging-staging/promotion/${button.dataset.id}/legacy-sync`,
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({enabled, reason: reason.trim()}),
+          }
+        );
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.message || `${action} 처리 실패`);
+        msg.style.color = "#1a7f37";
+        msg.textContent = data.message || `${action} 설정과 감사 기록을 저장했습니다.`;
+        await Promise.all([
+          loadLodgingStagingOverview(),
+          loadLodgingSourceOverview(),
+          loadLodgingSyncStatus(),
+        ]);
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = err.message || `${action} 처리에 실패했습니다.`;
+        button.disabled = false;
       }
     }
 
@@ -2735,6 +2819,8 @@
         return;
       }
       let anyRunning = false;
+      const legacyDisabled = data.legacy_sync_control
+        && data.legacy_sync_control.enabled === false;
       box.innerHTML = (data.sources || []).map((source) => {
         const st = source.status || {};
         const running = !!st.running || st.state === "applying";
@@ -2753,8 +2839,9 @@
         const resultLine = source.key === "airbnb" && st.state === "done"
           ? `<div>반영 결과: 신규 ${num(result.inserted || 0)} · 갱신 ${num(result.updated || 0)} · 기존건물 연결 ${num(result.matched || 0)} · 신규건물 ${num(result.created || 0)}</div>`
           : "";
+        const activeActionLabel = `${running ? "실행 중…" : "지금 동기화"}`;
         const action = source.stage
-          ? `<button type="button" class="admin-btn lodging-source-run" data-stage="${source.stage}" ${running ? "disabled" : ""}>${running ? "실행 중…" : "지금 동기화"}</button>`
+          ? `<button type="button" class="admin-btn lodging-source-run" data-stage="${source.stage}" ${(running || legacyDisabled) ? "disabled" : ""}>${legacyDisabled ? "기존 동기화 종료됨" : activeActionLabel}</button>`
           : "";
         return `<article style="border:1px solid #e3ded3;border-radius:10px;padding:12px;background:#fff;">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
@@ -4779,9 +4866,14 @@
       } else {
         rows.push(`<div class="geo-stat-row geo-stat-last">아직 실행된 적 없음</div>`);
       }
+      const legacyDisabled = d.legacy_sync_control
+        && d.legacy_sync_control.enabled === false;
+      rows.unshift(`<div class="geo-stat-row"><b>기존 직접 동기화 설정:</b> <span style="color:${legacyDisabled ? "#1a7f37" : "#9a6700"};font-weight:700;">${legacyDisabled ? "관리자 승인으로 종료됨" : "유지 중"}</span></div>`);
       box.innerHTML = rows.join("");
-      btn.disabled = !!d.running;
-      btn.textContent = d.running ? "실행 중…" : "영업신고 데이터 동기화";
+      btn.disabled = !!d.running || legacyDisabled;
+      btn.textContent = legacyDisabled
+        ? "기존 직접 동기화 종료됨"
+        : d.running ? "실행 중…" : "영업신고 데이터 동기화";
       if (!d.running) stopLodgingSyncPolling();
     }
 

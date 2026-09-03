@@ -46,6 +46,7 @@ from lodging_categories import (
     normalize_hygiene_type,
 )
 from lodging_matching import refresh_auto_building_names
+from legacy_lodging_gate import legacy_lodging_writer_gate
 
 API_URL = "https://apis.data.go.kr/1741000/lodgings/info"
 SERVICE_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 계정 공용 일반인증키 재사용
@@ -1844,7 +1845,7 @@ def _run_camping(args):
         sys.exit(1)
 
 
-def main():
+def _main_with_legacy_gate():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-rows", type=int, default=None)
     parser.add_argument("--sleep", type=float, default=SLEEP_DEFAULT)
@@ -1880,6 +1881,14 @@ def main():
             # 특히 scheduled_sync가 잠금 충돌을 성공 완료로 기록하면 안 된다.
             print("[lodgings] 다른 숙박 동기화가 실행 중이어서 시작하지 못했습니다.")
             raise SystemExit(75)
+
+
+def main():
+    with legacy_lodging_writer_gate() as enabled:
+        if not enabled:
+            print("[lodgings] 관리자 승인으로 기존 숙박 직접 동기화가 종료되어 건너뜁니다.")
+            return
+        _main_with_legacy_gate()
 
 
 if __name__ == "__main__":

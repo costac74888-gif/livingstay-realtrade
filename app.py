@@ -16613,6 +16613,17 @@ def admin_lodging_staging_overview():
             "recent": [],
             "error": str(exc)[:300],
         }
+    try:
+        legacy_sync_control = lodging_promotion.get_legacy_lodging_sync_control()
+    except Exception as exc:
+        legacy_sync_control = {
+            "enabled": True,
+            "state": "unknown",
+            "manifest_id": None,
+            "history": [],
+            "running_legacy_stages": [],
+            "error": str(exc)[:300],
+        }
     return jsonify({
         "ok": True,
         "staging_available": True,
@@ -16622,6 +16633,7 @@ def admin_lodging_staging_overview():
         "promotion_review_targets": promotion_review_targets,
         "promotion_review_decisions": promotion_review_decisions,
         "parallel_comparison": parallel_comparison,
+        "legacy_sync_control": legacy_sync_control,
     })
 
 
@@ -16727,6 +16739,43 @@ def admin_lodging_promotion_dry_run(manifest_id):
         return jsonify({"ok": True, "promotion_manifest": result})
     except (ValueError, RuntimeError) as exc:
         return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+
+
+@app.route(
+    "/api/admin/lodging-staging/promotion/<int:manifest_id>/legacy-sync",
+    methods=["POST"],
+)
+@require_admin
+@limiter.limit("6 per hour")
+def admin_lodging_legacy_sync_control(manifest_id):
+    """명시적 관리자 승인으로 기존 숙박 수집을 종료하거나 복구한다."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("enabled"), bool):
+        return jsonify({
+            "ok": False,
+            "message": "enabled는 true 또는 false여야 합니다.",
+        }), 400
+    try:
+        control = lodging_promotion.set_legacy_lodging_sync_enabled(
+            manifest_id,
+            enabled=body["enabled"],
+            actor_id=session.get("admin_user_id"),
+            reason=body.get("reason"),
+        )
+        action = "복구" if body["enabled"] else "종료"
+        return jsonify({
+            "ok": True,
+            "control": control,
+            "message": (
+                f"기존 숙박 직접 동기화를 {action}했습니다."
+                if control.get("changed")
+                else f"기존 숙박 직접 동기화가 이미 {action} 상태입니다."
+            ),
+        })
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 400
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "message": str(exc)[:500]}), 409
 
 
 def _lodging_source_stage_status(stage):
@@ -16858,7 +16907,19 @@ def admin_lodging_source_overview():
             "status": status,
             "upload": upload_status,
         })
-    return jsonify({"ok": True, "sources": sources})
+    try:
+        legacy_sync_control = lodging_promotion.get_legacy_lodging_sync_control()
+    except Exception as exc:
+        legacy_sync_control = {
+            "enabled": True,
+            "state": "unknown",
+            "error": str(exc)[:300],
+        }
+    return jsonify({
+        "ok": True,
+        "sources": sources,
+        "legacy_sync_control": legacy_sync_control,
+    })
 
 
 @app.route("/api/admin/lodging-import/preview", methods=["POST"])
@@ -17130,6 +17191,20 @@ def admin_scheduled_sync_stage_run():
     valid = {key for key, *_ in _SCHEDULED_SYNC_STAGES}
     if stage not in valid:
         return jsonify({"ok": False, "message": "알 수 없는 동기화 단계입니다."}), 400
+    if stage in lodging_promotion.LEGACY_LODGING_SYNC_STAGES:
+        try:
+            control = lodging_promotion.get_legacy_lodging_sync_control()
+        except Exception:
+            # 승인 상태를 확인할 수 없으면 기존 수집을 보존한다.
+            control = {"enabled": True}
+        if control.get("enabled") is False:
+            return jsonify({
+                "ok": False,
+                "message": (
+                    "관리자 승인으로 기존 숙박 직접 동기화가 종료되었습니다. "
+                    "운영 기준 manifest 카드에서 먼저 복구해 주세요."
+                ),
+            }), 409
     conflict = _scheduled_sync_bucket_conflict(stage)
     if conflict:
         return jsonify({
@@ -20773,6 +20848,18 @@ _LODGING_ACTIVE_STATUS = LEGAL_LODGING_ACTIVE_STATUS
 @limiter.limit("4 per hour")
 def admin_lodging_sync_run():
     """영업신고 데이터 동기화 시작 — 중개업소 동기화와 동일한 잠금/러너 패턴."""
+    try:
+        control = lodging_promotion.get_legacy_lodging_sync_control()
+    except Exception:
+        control = {"enabled": True}
+    if control.get("enabled") is False:
+        return jsonify({
+            "ok": False,
+            "message": (
+                "관리자 승인으로 기존 숙박 직접 동기화가 종료되었습니다. "
+                "운영 기준 manifest 카드에서 먼저 복구해 주세요."
+            ),
+        }), 409
     if not os.environ.get("DATA_GO_KR_BROKER_API_KEY"):
         return jsonify({"ok": False, "message": "DATA_GO_KR_BROKER_API_KEY 시크릿이 등록되어 있지 않습니다."}), 400
     if not os.environ.get("LODGING_SERVICE_KEY"):
@@ -20973,8 +21060,17 @@ def admin_lodging_sync_status():
         if rural_age > 120 * 60:
             rural_hanok_running, rural_hanok_stale = False, True
 
+    try:
+        legacy_sync_control = lodging_promotion.get_legacy_lodging_sync_control()
+    except Exception as exc:
+        legacy_sync_control = {
+            "enabled": True,
+            "state": "unknown",
+            "error": str(exc)[:300],
+        }
     return jsonify({
         "ok": True,
+        "legacy_sync_control": legacy_sync_control,
         "running": running,
         "state": ("stale" if stale else (status.get("state") if status else None)),
         "started_at": _kst_label(status.get("started_at") if status else None),
@@ -28233,6 +28329,12 @@ def _resume_interrupted_sync_jobs():
         (_REALTY_SYNC_META_KEY,   "sync_realty_stores.py",        ["--status-key", _REALTY_SYNC_META_KEY]),
         (_RECLASSIFY_META_KEY,    "reclassify_unclassified.py",   ["--status-key", _RECLASSIFY_META_KEY]),
     ]
+    try:
+        legacy_sync_control = lodging_promotion.get_legacy_lodging_sync_control()
+    except Exception:
+        legacy_sync_control = {"enabled": True}
+    if legacy_sync_control.get("enabled") is False:
+        jobs = [job for job in jobs if job[0] != _LODGING_SYNC_META_KEY]
     conn = get_conn()
     cur = conn.cursor()
     try:

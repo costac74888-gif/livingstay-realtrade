@@ -38,6 +38,10 @@ from quota_policy import (
 
 STATUS_META_KEY = "scheduled_sync_status"
 SCHEDULED_EVIDENCE_META_KEY = "scheduled_sync_last_scheduled"
+LEGACY_LODGING_SYNC_CONTROL_KEY = "lodging_legacy_sync_control"
+LEGACY_LODGING_STAGES = frozenset(
+    {"lodging", "camping", "rural", "hanok", "pension"}
+)
 LOCK_ID = 918299
 MASTER_WRITER_GATE_LOCK_ID = 9_182_990
 HEARTBEAT_SEC = 30
@@ -331,6 +335,52 @@ def _read_status(status_key: str = STATUS_META_KEY) -> dict | None:
         return None
     status["_age_seconds"] = float(row["age"] or 0)
     return status
+
+
+def _read_legacy_lodging_sync_control() -> dict:
+    """Read the fail-open legacy collector switch from the current database."""
+    default = {"enabled": True, "state": "enabled", "manifest_id": None}
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            (LEGACY_LODGING_SYNC_CONTROL_KEY,),
+        )
+        row = cur.fetchone()
+    except Exception as exc:
+        print(
+            f"[scheduled-sync] 기존 숙박 동기화 설정 조회 실패 — 계속 실행: "
+            f"{_redact(str(exc))}",
+            flush=True,
+        )
+        return default
+    finally:
+        cur.close()
+        conn.close()
+    if not row or not row["value"]:
+        return default
+    try:
+        value = json.loads(row["value"])
+    except (TypeError, ValueError):
+        return default
+    # Only an explicit JSON false written by the admin cutover flow disables
+    # collectors. Missing/malformed values must never stop production updates.
+    if not isinstance(value, dict) or value.get("enabled") is not False:
+        return default
+    return {
+        "enabled": False,
+        "state": "disabled",
+        "manifest_id": value.get("manifest_id"),
+        "updated_at": value.get("updated_at"),
+        "reason": value.get("reason"),
+    }
+
+
+def _legacy_lodging_skip_reason(control: dict) -> str:
+    manifest_id = control.get("manifest_id")
+    suffix = f" (manifest #{manifest_id})" if manifest_id else ""
+    return f"관리자 승인으로 기존 숙박 직접 동기화 종료{suffix}"
 
 
 def _write_initial_status(status_key: str, status: dict) -> None:
@@ -816,6 +866,18 @@ def run(
             retry_failures_only=retry_failures_only,
             ignore_cadence=(source == "manual" and not retry_failures_only),
         )
+        legacy_sync_control = _read_legacy_lodging_sync_control()
+        legacy_stage_disabled = bool(
+            selected_stage in LEGACY_LODGING_STAGES
+            and legacy_sync_control.get("enabled") is False
+        )
+        if legacy_stage_disabled:
+            stages[selected_stage].update(
+                state="skipped",
+                finished_at=_now(),
+                error=_legacy_lodging_skip_reason(legacy_sync_control),
+                retryable=False,
+            )
         status = {
             "run_id": run_id,
             "state": "running",
@@ -832,6 +894,7 @@ def run(
             "error": None,
             "retryable": False,
             "last_success_at": (previous or {}).get("last_success_at"),
+            "legacy_lodging_sync_control": legacy_sync_control,
         }
         if source == "manual" and not orchestrated:
             # Web endpoint has already atomically written this exact claim.
@@ -844,6 +907,27 @@ def run(
                 _write_scheduled_evidence(
                     run_id, "running", started_at=status["started_at"], finished_at=None
                 )
+        if legacy_stage_disabled:
+            status.update(
+                state="done",
+                finished_at=_now(),
+                error=None,
+                last_success_at=_now(),
+            )
+            _write_status(status_key, status, run_id)
+            if source == "scheduled" and not orchestrated:
+                _write_scheduled_evidence(
+                    run_id,
+                    "done",
+                    started_at=status["started_at"],
+                    finished_at=status["finished_at"],
+                )
+            print(
+                f"[scheduled-sync] {selected_stage} 건너뜀 — "
+                f"{_legacy_lodging_skip_reason(legacy_sync_control)}",
+                flush=True,
+            )
+            return 0
 
         def _heartbeat():
             while not stop_heartbeat.wait(HEARTBEAT_SEC):
@@ -1023,12 +1107,21 @@ def run_parallel(
             retry_failures_only=retry_failures_only,
             ignore_cadence=(source == "manual"),
         )
-        for stage_key in excluded_stages:
+        legacy_sync_control = _read_legacy_lodging_sync_control()
+        policy_excluded_stages = set(excluded_stages)
+        if legacy_sync_control.get("enabled") is False:
+            policy_excluded_stages.update(LEGACY_LODGING_STAGES)
+        for stage_key in policy_excluded_stages:
             if stage_key in stages:
                 stages[stage_key].update(
                     state="skipped",
                     finished_at=_now(),
-                    error="독립 예약 워크플로에서 실행",
+                    error=(
+                        _legacy_lodging_skip_reason(legacy_sync_control)
+                        if stage_key in LEGACY_LODGING_STAGES
+                        and legacy_sync_control.get("enabled") is False
+                        else "독립 예약 워크플로에서 실행"
+                    ),
                     retryable=False,
                 )
         status = {
@@ -1042,6 +1135,7 @@ def run_parallel(
             "source": source,
             "retry_failures_only": retry_failures_only,
             "error": None,
+            "legacy_lodging_sync_control": legacy_sync_control,
         }
         if previous.get("run_id") == run_id:
             _write_status(status_key, status, run_id)

@@ -15,6 +15,7 @@ import psycopg2.extras
 from addr_norm import normalize_jibun_prefix, normalize_name, normalize_road_prefix
 from db import get_conn
 from lodging_promotion import (
+    MANIFEST_CUTOVER_FENCE_LOCK_ID,
     _canonical_hash,
     _fetch_production_snapshot,
     _validate_target_admission,
@@ -252,7 +253,7 @@ def _mark_development_applied_with_retry(manifest, result):
     ) from last_error
 
 
-def apply_manifest(manifest_id, *, confirm_run_id):
+def _apply_manifest_unfenced(manifest_id, *, confirm_run_id):
     """승인·dry-run 완료 manifest를 운영 DB에 한 트랜잭션으로 반영한다."""
     manifest, targets = _load_manifest(manifest_id)
     if manifest["status"] not in {"dry_run", "failed", "applied"}:
@@ -383,6 +384,33 @@ def apply_manifest(manifest_id, *, confirm_run_id):
         prod_conn.close()
     _mark_development_applied_with_retry(manifest, result)
     return result
+
+
+def apply_manifest(manifest_id, *, confirm_run_id):
+    """Fence manifest application against legacy cutover verification."""
+    fence_conn = get_conn()
+    fence_cur = fence_conn.cursor()
+    try:
+        fence_cur.execute(
+            "SELECT pg_advisory_lock(%s)",
+            (MANIFEST_CUTOVER_FENCE_LOCK_ID,),
+        )
+        fence_cur.fetchone()
+        return _apply_manifest_unfenced(
+            manifest_id,
+            confirm_run_id=confirm_run_id,
+        )
+    finally:
+        try:
+            fence_cur.execute(
+                "SELECT pg_advisory_unlock(%s)",
+                (MANIFEST_CUTOVER_FENCE_LOCK_ID,),
+            )
+            fence_cur.fetchone()
+        except Exception:
+            pass
+        fence_cur.close()
+        fence_conn.close()
 
 
 def main():
