@@ -577,6 +577,23 @@ class CampingSyncTests(unittest.TestCase):
         executed_sql = [call.args[0] for call in cursor.execute.call_args_list]
         self.assertIn("ROLLBACK TO SAVEPOINT camping_item", executed_sql)
 
+    def test_camping_source_reconcile_escapes_sql_like_wildcards(self):
+        cursor = mock.Mock()
+        cursor.fetchone.return_value = None
+        cursor.fetchall.return_value = []
+        data = {
+            "permit_number": "CAMPING:123",
+            "biz_name_norm": "테스트캠핑장",
+            "road_norm": "서울특별시중구세종대로1",
+            "jibun_norm": None,
+        }
+
+        reconciled = sync_lodgings._reconcile_camping_source_key(cursor, data)
+
+        self.assertFalse(reconciled)
+        legacy_query = cursor.execute.call_args_list[1].args[0]
+        self.assertIn("LIKE 'CAMPING:%%:%%'", legacy_query)
+
     def test_incomplete_camping_run_exits_nonzero_for_scheduled_retry(self):
         args = SimpleNamespace(
             status_key=None,

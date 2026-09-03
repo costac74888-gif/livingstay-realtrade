@@ -1327,7 +1327,7 @@ def _reconcile_camping_source_key(cur, data):
     cur.execute("""
         SELECT id, applied_building_id
           FROM lodging_registry
-         WHERE permit_number LIKE 'CAMPING:%:%'
+         WHERE permit_number LIKE 'CAMPING:%%:%%'
            AND hygiene_type = %s
            AND biz_name_norm = %s
            AND (
