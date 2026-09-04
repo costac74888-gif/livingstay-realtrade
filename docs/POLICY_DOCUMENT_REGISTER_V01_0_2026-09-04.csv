@@ -1,8 +1,9 @@
-document_id,title,version,effective_date,status,priority,next_review,file
+document_id,title,version,effective_date,status,priority,next_review,file,replaced_by
+MAN-COMPREHENSIVE-001,홈앤스테이 종합 운영·통계·공개정책 매뉴얼,V.01.0,2026-09-04,current,P0,2026-09-11,docs/HOME_AND_STAY_COMPREHENSIVE_OPERATIONS_MANUAL_V01_0_2026-09-04.md,
 POL-DATA-003,데이터 수집·검증·승격·노출·갱신 통합 정책,V.03.0,2026-09-04,current,P0,2026-09-11,docs/DATA_COLLECTION_GOVERNANCE_OPERATIONS_POLICY_V03_0_2026-09-04.md
 POL-EXPOSURE-001,공개 데이터·개인정보 보호 정책,V.01.0,2026-09-04,current,P0,2026-09-11,docs/PUBLIC_DATA_PRIVACY_PROTECTION_POLICY_V01_0_2026-09-04.md
-MAN-PHOTO-001,건물·숙박시설 사진 호출 및 운영 매뉴얼,V.01.0,2026-09-04,current,P1,2026-10-04,docs/PHOTO_RETRIEVAL_OPERATIONS_MANUAL_V01_0_2026-09-04.md
-REG-DOC-001,정책·매뉴얼 문서대장,V.01.0,2026-09-04,current,P0,2026-09-11,docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.md
+MAN-PHOTO-001,건물·숙박시설 사진 호출 및 운영 매뉴얼,V.01.0,2026-09-04,superseded-preserved,P1,2026-10-04,docs/PHOTO_RETRIEVAL_OPERATIONS_MANUAL_V01_0_2026-09-04.md,MAN-COMPREHENSIVE-001
+REG-DOC-001,정책·매뉴얼 문서대장,V.01.1,2026-09-04,current,P0,2026-09-11,docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.md,
 BASE-MANUAL-001,종합매뉴얼 기준선·목차·작성 기준,V.01.0,2026-09-04,current,P0,2026-09-11,docs/COMPREHENSIVE_MANUAL_BASELINE_AND_OUTLINE_V01_0_2026-09-04.md
 GUIDE-PROJECT,프로젝트 운영 원칙·회귀방지 가이드,,,supporting,,,PROJECT_PRINCIPLES.md
 GUIDE-REPLIT,Replit 프로젝트 빠른 참조,,,supporting,,,replit.md
@@ -18,7 +19,8 @@ RPT-V02-STEP5,5단계 주소·건물 매칭 보고서,,2026-09-03,historical,,,D
 RPT-LODGE-CLASS,숙박 분류 검토 문서,,,historical-supporting,,,lodging-classification-review.md
 RPT-LODGE-AUDIT-20260830,운영 숙박 법정분류 전수 대조 보고서,,2026-08-30,historical,,,reports/lodging_classification_audit_2026-08-30.md
 RPT-CAMP-MATCH-20260830,캠핑장 수동 건물 연결 점검,,2026-08-30,historical,,,reports/camping_manual_match_audit_2026-08-30.md
-RUN-SYNC-001,정기 동기화 운영·재시도 매뉴얼,draft,,planned,P0,2026-09-11,
+RUN-SYNC-001,데이터 수집·동기화 운영매뉴얼,V.01.0,2026-09-04,superseded-preserved,P0,2026-09-11,docs/DATA_COLLECTION_SYNC_OPERATIONS_MANUAL_V01_0_2026-09-04.md,MAN-COMPREHENSIVE-001
+MAN-LODGE-STAT-001,숙박 통계·공개정책 매뉴얼,V.01.0,2026-09-04,superseded-preserved,P1,2026-09-11,docs/LODGING_STATISTICS_PUBLIC_POLICY_MANUAL_V01_0_2026-09-04.md,MAN-COMPREHENSIVE-001
 RUN-RELEASE-001,배포·운영 검증·롤백 매뉴얼,draft,,planned,P0,2026-09-11,
 RUN-INCIDENT-001,장애 대응·복구 매뉴얼,draft,,planned,P0,2026-09-18,
 POL-API-001,외부 API·할당량 정책,draft,,planned,P0,2026-09-18,

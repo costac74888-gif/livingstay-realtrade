@@ -1,0 +1,322 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>홈앤스테이 종합매뉴얼 V.01.0</title><style>
+    @font-face{font-family:PolicyKR;src:url('file:///nix/store/1wd0fbh9pwn9cna5vkj762b72yw974qp-nanum-20200506/share/fonts/NanumBarunGothic.ttf')}@font-face{font-family:PolicyKR;src:url('file:///nix/store/1wd0fbh9pwn9cna5vkj762b72yw974qp-nanum-20200506/share/fonts/NanumBarunGothicBold.ttf');font-weight:700}
+    @page{size:A4;margin:16mm 15mm 18mm;@bottom-center{content:counter(page) " / " counter(pages);font-size:8pt;color:#667}}
+    *{box-sizing:border-box}body{font-family:PolicyKR,'Malgun Gothic',sans-serif;color:#18212f;font-size:9.4pt;line-height:1.55;max-width:190mm;margin:auto}
+    h1{font-size:25pt;color:#17324d;border-bottom:3px solid #c49745;padding-bottom:10px}h2{font-size:16pt;color:#17324d;border-bottom:1px solid #ccd5df;padding-bottom:5px;break-after:avoid}
+    h3{font-size:12.5pt;color:#8a5b16;break-after:avoid}table{width:100%;border-collapse:collapse;margin:8px 0 15px;font-size:8.2pt}tr{break-inside:avoid}
+    th{background:#17324d;color:#fff}th,td{border:1px solid #b9c4cf;padding:4px 5px;vertical-align:top}pre{white-space:pre-wrap;background:#17202b;color:white;padding:9px}
+    code{background:#eef1f4;padding:1px 3px}pre code{background:transparent}.toc{break-after:page}.toc a{color:#17324d;text-decoration:none}a{color:#165a92}
+    </style></head><body><h1 id="홈앤스테이-종합-운영-통계-공개정책-매뉴얼">홈앤스테이 종합 운영·통계·공개정책 매뉴얼</h1><nav class="toc"><h2>문서 목차</h2><ol><li><a href="#목차">목차</a></li><li><a href="#1-문서-목적과-사용법">1. 문서 목적과 사용법</a></li><li><a href="#2-공통-원칙과-환경-경계">2. 공통 원칙과 환경 경계</a></li><li><a href="#3-데이터-원본과-공통-계약">3. 데이터 원본과 공통 계약</a></li><li><a href="#4-수집-동기화-운영">4. 수집·동기화 운영</a></li><li><a href="#5-staging-검증-승격">5. staging·검증·승격</a></li><li><a href="#6-원본별-운영-기준">6. 원본별 운영 기준</a></li><li><a href="#7-통계-산식과-공개-정책">7. 통계 산식과 공개 정책</a></li><li><a href="#8-공개-데이터-개인정보-보호">8. 공개 데이터·개인정보 보호</a></li><li><a href="#9-캐시-지도-사진-갱신">9. 캐시·지도·사진 갱신</a></li><li><a href="#10-관리자-운영과-장애-대응">10. 관리자 운영과 장애 대응</a></li><li><a href="#11-배포-검증-문서관리">11. 배포·검증·문서관리</a></li><li><a href="#12-부록">12. 부록</a></li></ol></nav>
+<p><strong>문서 ID:</strong> MAN-COMPREHENSIVE-001</p>
+<p><strong>문서 유형:</strong> P0 종합매뉴얼</p>
+<p><strong>버전:</strong> V.01.0</p>
+<p><strong>상태:</strong> 현행</p>
+<p><strong>기준일·시행일:</strong> 2026-09-04</p>
+<p><strong>대상:</strong> 데이터 운영자, 승인 관리자, 통계·공개 API 담당자, 개인정보·사진 담당자</p>
+<p><strong>상위 정책:</strong> POL-DATA-003, POL-EXPOSURE-001</p>
+<p><strong>편찬 기준:</strong> BASE-MANUAL-001</p>
+<p><strong>대체 관계:</strong> RUN-SYNC-001, MAN-LODGE-STAT-001, MAN-PHOTO-001의 현행 내용을 통합하여 운영 탐색 기준을 대체한다. 개별 원본은 상세 근거로 보존한다.</p>
+<p><strong>다음 검토일:</strong> 2026-09-11</p>
+<hr>
+<h2 id="목차">목차</h2>
+<ol>
+<li>문서 목적과 사용법</li>
+<li>공통 원칙과 환경 경계</li>
+<li>데이터 원본과 공통 계약</li>
+<li>수집·동기화 운영</li>
+<li>staging·검증·승격</li>
+<li>원본별 운영 기준</li>
+<li>통계 산식과 공개 정책</li>
+<li>공개 데이터·개인정보 보호</li>
+<li>캐시·지도·사진 갱신</li>
+<li>관리자 운영과 장애 대응</li>
+<li>배포·검증·문서관리</li>
+<li>부록 A~F</li>
+</ol>
+<hr>
+<h2 id="1-문서-목적과-사용법">1. 문서 목적과 사용법</h2>
+<h3 id="1-1-목적과-적용-범위">1.1 목적과 적용 범위</h3>
+<p>이 문서는 데이터 수집, 검증, 운영 승격, 통계, 공개, 개인정보와 사진 정책을 한 번호 체계로 연결한다. 운영자는 이 파일과 문서대장만으로 실행 전제, 중단·복구 기준과 상세 근거 문서를 찾을 수 있어야 한다.</p>
+<h3 id="1-2-권위와-충돌-해결">1.2 권위와 충돌 해결</h3>
+<ol>
+<li>법령·동의·계약 중 더 엄격한 기준</li>
+<li>공개·개인정보는 제8장과 POL-EXPOSURE-001</li>
+<li>데이터 수집·승격은 제2~6장과 POL-DATA-003</li>
+<li>통계는 제7장, 사진은 제9장</li>
+<li>실제 코드·워크플로·테스트</li>
+<li>보존된 개별 매뉴얼과 역사자료</li>
+</ol>
+<p>문서와 코드가 다르면 공개 확대나 운영 반영을 중단하고 먼저 일치시킨다.</p>
+<h3 id="1-3-문서-상태와-책임">1.3 문서 상태와 책임</h3>
+<p><code>현행</code>은 현재 판단 기준, <code>보조</code>는 현행을 보완하는 자료, <code>대체됨</code>은 권위를 승계한 문서가 있는 자료, <code>역사자료</code>는 당시 증거다. 운영자는 실행 증거를, 승인자는 dry-run과 중단조건 승인을, 문서 관리자는 원본·대장·배포본의 버전을 책임진다.</p>
+<hr>
+<h2 id="2-공통-원칙과-환경-경계">2. 공통 원칙과 환경 경계</h2>
+<h3 id="2-1-핵심-원칙">2.1 핵심 원칙</h3>
+<ul>
+<li>운영 DB 직접 반영을 최소화하고 신규 대량 원본은 개발 staging에서 검증한다.</li>
+<li>Publish는 코드만 배포하며 개발 데이터를 운영으로 옮기지 않는다.</li>
+<li>확인 불가, 승인 원본 변경, 미해결 검토 또는 기준선 불일치 시 실패로 닫는다.</li>
+<li>작업은 멱등이어야 하며 run ID, heartbeat, commit과 체크포인트를 남긴다.</li>
+<li>비밀값·개인정보·원본 IP를 문서와 로그에 기록하지 않는다.</li>
+</ul>
+<h3 id="2-2-개발-운영-경계">2.2 개발·운영 경계</h3>
+<table>
+<tr><th>구분</th><th>개발</th><th>운영</th></tr>
+<tr><td>목적</td><td>staging, 검증, 승인, 시험</td><td>실제 서비스, 예약 수집, 승인 반영</td></tr>
+<tr><td>DB 판단</td><td>실제 DB 지문으로 확인</td><td>독립 연결의 실제 DB 지문으로 확인</td></tr>
+<tr><td>데이터 이동</td><td>자동 이동 없음</td><td>승인 manifest 또는 명시적 병합으로만 수신</td></tr>
+<tr><td>실패 처리</td><td>원본·검토 상태 보존</td><td>사용자 영향 차단, commit 확인 후 복구</td></tr>
+</table>
+<hr>
+<h2 id="3-데이터-원본과-공통-계약">3. 데이터 원본과 공통 계약</h2>
+<h3 id="3-1-원본과-원장">3.1 원본과 원장</h3>
+<p>원본, 정규화 값, 서비스 분류와 공개 projection을 분리한다. 관리번호·공적 식별키별 원장 이력은 보존하고, 도로명 우선·지번 보조로 주소를 연결한다. 건축물 용도와 영업신고 분류는 서로 덮어쓰지 않는다.</p>
+<h3 id="3-2-정부-숙박-csv-8종">3.2 정부 숙박 CSV 8종</h3>
+<p>관광숙박업, 관광펜션업, 농어촌민박업, 숙박업, 외국인관광도시민박업, 일반야영장업, 자동차야영장업, 한옥체험업을 포함한다. 전문휴양업은 제외한다.</p>
+<h3 id="3-3-상태-처리">3.3 상태 처리</h3>
+<table>
+<tr><th>내부 상태</th><th>원장</th><th>활성 통계</th><th>개별 공개</th><th>관리자</th></tr>
+<tr><td>영업·정상</td><td>보존</td><td>포함</td><td>승인 최소정보</td><td>가능</td></tr>
+<tr><td>휴업</td><td>보존</td><td>제외</td><td>상태·날짜 금지</td><td>업무상 가능</td></tr>
+<tr><td>폐업·취소·말소</td><td>보존</td><td>제외</td><td>상태·날짜 금지</td><td>업무상 가능</td></tr>
+<tr><td>미확인·검토</td><td>원문 보존</td><td>제외</td><td>금지</td><td>검토 필요</td></tr>
+</table>
+<p>같은 건물에 활성과 비활성이 함께 있으면 활성 신고를 우선한다.</p>
+<hr>
+<h2 id="4-수집-동기화-운영">4. 수집·동기화 운영</h2>
+<h3 id="4-1-표준-흐름">4.1 표준 흐름</h3>
+<p>외부 원본 → 원본 지문 기록 → 수집·staging → 형식·중복·상태 검증 → 주소 매칭 → 검토·승인 → dry-run → 운영 반영 → 통계 무효화 → 공개 표본 확인 순서다.</p>
+<h3 id="4-2-실행-규칙">4.2 실행 규칙</h3>
+<ul>
+<li>현재 stage와 옵션은 실행 직전 <code>python -u scheduled_sync.py --list</code>로 확인한다.</li>
+<li>확인된 공급자 한도의 80% 이내만 정기 배정한다.</li>
+<li>같은 공급자·서비스키·writer를 공유하는 작업은 직렬 실행한다.</li>
+<li>완료 stage는 보존하고 failed, deferred, cancelled만 재시도한다.</li>
+<li>장시간 작업은 Shell 임시 백그라운드가 아니라 지정 workflow를 사용한다.</li>
+</ul>
+<h3 id="4-3-체크포인트와-복구">4.3 체크포인트와 복구</h3>
+<p>실거래는 실패 월, 건축HUB는 조회 index, API는 page, 통합 스케줄러는 stage 단위로 재개한다. heartbeat가 5분 이상 멈추고 실제 프로세스가 없을 때만 stale로 회수한다. 체크포인트·호출량을 임의 삭제하거나 commit 확인 없이 전체 재실행하지 않는다.</p>
+<h3 id="4-4-예약-수동-작업과-대상-db">4.4 예약·수동 작업과 대상 DB</h3>
+<table>
+<tr><th>작업</th><th>실행 방식</th><th>대상 DB</th><th>시작 조건</th><th>완료 증거</th></tr>
+<tr><td>최근 실거래 자동 동기화</td><td>예약 workflow</td><td>운영</td><td>동일 stage 미실행, 호출량 여유</td><td>월별 결과·실패 queue·heartbeat</td></tr>
+<tr><td>농어촌민박·한옥 자동 동기화</td><td>독립 예약 workflow</td><td>운영</td><td>source별 배정량·상태 키 확인</td><td>source별 신규·변경·오류</td></tr>
+<tr><td>정기 API 통합 동기화</td><td>예약 workflow</td><td>운영</td><td>독립 stage 제외 확인</td><td>stage별 done/deferred/failed</td></tr>
+<tr><td>실패 단계 재시도</td><td>관리자 수동</td><td>운영</td><td>원인 해소, 완료 stage 보존</td><td>새 run ID와 실패 stage 감소</td></tr>
+<tr><td>정부 숙박 CSV 적재</td><td>운영자 수동</td><td>개발</td><td>실제 DB 지문 확인</td><td>batch·SHA·행 수·review</td></tr>
+<tr><td>숙박 manifest 승격</td><td>예약 또는 승인 수동</td><td>운영</td><td>최신 승인·dry-run·잠금</td><td>감사 표식·비교·통계 갱신</td></tr>
+<tr><td>개발→운영 일반 병합</td><td>workflow 수동</td><td>양 DB</td><td>dry-run 별도 승인</td><td>추가·수정·충돌·통계 marker</td></tr>
+</table>
+<p>일반 Shell에서 <code>--source manual</code>을 단독 실행하지 않는다. 관리자 기능이 만든 run ID 소유권 없이 시작한 수동 명령은 표준 절차가 아니다.</p>
+<h3 id="4-5-서비스키-버킷과-직렬화">4.5 서비스키 버킷과 직렬화</h3>
+<p>국토부 실거래, 건축HUB, 행안부 숙박, 고캠핑, 농어촌·한옥, 관광펜션과 상가정보는 공급자별 카운터를 사용한다. 확인된 일일 한도의 80%를 soft cap으로 두며, 같은 공급자·키를 공유하면 직렬화한다. 건축물대장과 인허가는 서로 다른 요일로 분리하고, 농어촌·한옥은 사전 분할된 독립 배정량만 병렬 사용한다. <code>dry-run</code>도 외부 API를 호출하면 실제 한도를 소모한다.</p>
+<h3 id="4-6-stage-상태-run-id-heartbeat">4.6 stage 상태·run ID·heartbeat</h3>
+<p><code>running</code>은 최근 heartbeat와 실제 프로세스를 함께 확인한다. <code>done</code>은 정상 완료, <code>deferred</code>는 선행조건·한도로 보류, <code>failed</code>는 오류, <code>cancelled</code>는 안전 중단, <code>partial</code>은 일부 commit 가능성을 뜻한다. 상태만 보고 재실행하지 않고 마지막 처리 page·월·index, stop reason, retryable, 호출량과 업무 지표를 함께 본다.</p>
+<h3 id="4-7-장시간-작업과-db-재접속">4.7 장시간 작업과 DB 재접속</h3>
+<p>안전한 처리 단위마다 commit·체크포인트를 남긴다. DB 연결이 끊기면 재접속 후 기존 run ID 소유권을 다시 확인하고 마지막 미완료 단위만 멱등 재실행한다. 새 run이 소유권을 가진 뒤 과거 run이 상태를 덮어쓰지 못하게 한다.</p>
+<h3 id="4-8-레거시-직접-수집-전환기">4.8 레거시 직접 수집 전환기</h3>
+<p>기존 운영 직접 수집과 staging 승격이 병존하는 동안 같은 원본 writer를 DB 잠금으로 직렬화한다. 검증된 대체 경로 없이 기존 수집을 중단하지 않고, 원본별 현재 경로·대상 DB·승인 여부를 상태 기록에 명시한다. 상세 stage와 복구 명령은 배포 묶음의 RUN-SYNC-001을 따른다.</p>
+<hr>
+<h2 id="5-staging-검증-승격">5. staging·검증·승격</h2>
+<h3 id="5-1-검증-게이트">5.1 검증 게이트</h3>
+<p>출처·기준일·SHA-256·행 수, 인코딩·헤더, 관리번호, 업태·상태, 주소, 객실·사이트 수, snapshot 중복과 기존 원장 diff를 확인한다. 미분류·충돌·복수후보는 <code>review_required</code>로 보존한다.</p>
+<h3 id="5-2-승인과-manifest">5.2 승인과 manifest</h3>
+<p>미해결 review가 0건인 변경분만 승인 payload로 고정한다. manifest는 원본 지문, 운영 기준선, 승인 payload와 검토 계보를 묶는다. 승인 후 원본 해시·행 수·계보가 달라지면 새 승인과 manifest가 필요하다.</p>
+<h3 id="5-3-dry-run과-실제-반영">5.3 dry-run과 실제 반영</h3>
+<p>dry-run에서 신규·수정·상태변경·동일·보류, 기존 연결 보존, 신규·충돌·복수후보, 공란 덮어쓰기와 원본 지문을 확인한다. 실제 반영은 잠금과 run ID 소유권을 확보하고 감사 표식·통계 무효화를 같은 흐름에서 기록한다.</p>
+<hr>
+<h2 id="6-원본별-운영-기준">6. 원본별 운영 기준</h2>
+<h3 id="6-1-주요-원본">6.1 주요 원본</h3>
+<ul>
+<li>건축물대장·인허가: 공유 건축HUB 한도를 직렬화하고 실제 응답 건수와 index를 함께 확인한다.</li>
+<li>실거래: 실패한 월만 rollback·재적재하고 API 성공 월은 재호출하지 않는다.</li>
+<li>일반·생활숙박: 서버 업태 필터가 없으므로 전 페이지를 실제 응답 길이 기준으로 순회한다.</li>
+<li>농어촌민박·한옥·관광펜션: source별 상태와 배정량을 분리한다.</li>
+<li>캠핑: 정부 CSV는 법정 허가·상태, 고캠핑은 설명·운영·사이트 세부정보를 보강한다.</li>
+</ul>
+<h3 id="6-2-캠핑-시설수">6.2 캠핑 시설수</h3>
+<pre><code>
+캠핑 시설수
+
+= 정상영업 건물 연결 고유시설
+
+  + 정상영업 미연결 대지형 고유시설
+
+  - 주소+정규화 상호 등 신뢰 가능한 동일 시설 중복
+
+</code></pre>
+<p>건물 연결 행은 건물당 하나로 묶고, 신뢰 키가 없는 미연결 행은 과도하게 합치지 않는다. 고캠핑 응답 건수는 전국 시설수의 단독 기준이 아니다.</p>
+<h3 id="6-3-캠핑-사이트-4분류">6.3 캠핑 사이트 4분류</h3>
+<table>
+<tr><th>분류</th><th>정의</th></tr>
+<tr><td>일반야영</td><td>일반야영 사이트 수</td></tr>
+<tr><td>자동차야영</td><td>자동차야영 사이트 수</td></tr>
+<tr><td>글램핑</td><td>글램핑 사이트 수</td></tr>
+<tr><td>카라반</td><td>설치 카라반 + 개인 카라반 사이트</td></tr>
+</table>
+<p><code>사이트 합계 = 일반야영 + 자동차야영 + 글램핑 + 카라반</code>이다. 둘 이상 양수면 내부 <code>confirmed_mixed</code>, 값이 없거나 모두 0이면 <code>unknown</code>이며 내부에서는 둘을 분리한다.</p>
+<h3 id="6-4-건축물대장-건축인허가">6.4 건축물대장·건축인허가</h3>
+<p>건축물대장은 법정동·조회 index부터 재개하고 빈 HTTP 성공을 완료로 보지 않는다. 표제부·총괄표제부·인허가가 같은 공급자 한도를 공유하는지 확인한다. 신규 건물, 좌표·표제부 보강, 실패 법정동과 마지막 성공 index를 완료 증거로 남긴다.</p>
+<h3 id="6-5-실거래">6.5 실거래</h3>
+<p>최근 자동 수집과 장기 backfill이 같은 버킷을 동시에 소진하지 않게 한다. 월 적재 중 DB 오류는 해당 월을 rollback하고, 실패 queue의 월만 재호출한다. 최신 거래월, 월별 중복과 실패 queue 감소를 확인한다.</p>
+<h3 id="6-6-일반-생활-관광-농어촌-한옥">6.6 일반·생활·관광·농어촌·한옥</h3>
+<p>행안부 숙박은 업태 필터가 없고 응답이 요청 행 수와 무관하게 100행일 수 있으므로 실제 응답 길이로 종료한다. 농어촌·한옥·관광펜션은 source별 상태·체크포인트·배정량을 분리한다. 누락 필드를 기존 값 삭제로 해석하지 않는다.</p>
+<h3 id="6-7-상가-중개업소와-사진">6.7 상가·중개업소와 사진</h3>
+<p>상가·중개업소 수집은 건물 공적 식별키와 공급자별 batch·실시간 배정량을 구분한다. 사진은 제9장의 공급자 우선순위와 제8장의 공개 파생본·인증값 금지 규칙을 동시에 충족해야 한다.</p>
+<hr>
+<h2 id="7-통계-산식과-공개-정책">7. 통계 산식과 공개 정책</h2>
+<h3 id="7-1-유형별-산식표">7.1 유형별 산식표</h3>
+<table>
+<tr><th>유형</th><th>분자</th><th>분모</th><th>단위</th></tr>
+<tr><td>생활</td><td>건물별 호실수 상한 적용 활성 신고객실</td><td>생활숙박 호실수</td><td>객실</td></tr>
+<tr><td>일반</td><td>활성 고유 신고업체</td><td>일반숙박 건물</td><td>업체/건물</td></tr>
+<tr><td>관광·에어비앤비·농어촌·한옥·복합</td><td>활성 신고 연결 건물</td><td>해당 유형 건물</td><td>건물</td></tr>
+<tr><td>캠핑</td><td>활성 신고 연결 건물</td><td>캠핑 건물</td><td>건물, 시설·사이트는 별도</td></tr>
+</table>
+<p>분모 0은 <code>null</code>·화면 <code>-</code>로 표시하고 소수점 첫째 자리로 반올림한다. 같은 신고가 여러 유형 원본에 나타나면 관리번호 등 승인 식별자로 중복 제거한다.</p>
+<h3 id="7-2-캠핑-통계">7.2 캠핑 통계</h3>
+<p>시설수는 6.2, 사이트수는 6.3을 단일 기준으로 사용한다. 사이트 수 확보율은 데이터 품질지표이며 신고율이 아니다. 공개 화면은 캠핑에서 건물수보다 시설수, 호실수보다 사이트수를 우선한다.</p>
+<h3 id="7-3-공개-내부-분리">7.3 공개·내부 분리</h3>
+<p>공개에는 최종 건물·시설·업체·객실·사이트 합계와 최종 신고율만 제공한다. 비활성 상태별 수, 내부 분자·분모, 관리번호·원본·검토 메모·매칭 신뢰도는 관리자 전용이다.</p>
+<hr>
+<h2 id="8-공개-데이터-개인정보-보호">8. 공개 데이터·개인정보 보호</h2>
+<h3 id="8-1-최소-공개">8.1 최소 공개</h3>
+<p>공개, 로그인, 소유자, 배정 중개사, 관리자의 projection을 분리한다. 관리자 객체를 공개 route에서 필터 없이 재사용하지 않는다. 권한·소유권·공개범위를 확인할 수 없으면 응답하지 않는다.</p>
+<h3 id="8-2-금지-항목">8.2 금지 항목</h3>
+<ul>
+<li>휴업·폐업·취소·말소 상태와 날짜, 상태별 통계</li>
+<li>연락처, 인증번호, 비밀번호·세션·재설정 토큰, 원본 IP</li>
+<li>제한공개 매물의 정확 위치·자동 건물값·사진</li>
+<li>내부 ID·run ID·상태 키·검토 메모·원본 오류</li>
+<li>API 키·DB URL·서명 URL·저장소 내부 객체 키</li>
+</ul>
+<h3 id="8-3-사진-파일">8.3 사진·파일</h3>
+<p>공개 사진은 권리·공개범위와 파일 형식을 확인하고 EXIF·GPS·원본 파일명·저장 키를 제거한 파생본을 사용한다. 파일 다운로드도 매 요청마다 권한을 확인하며 사용자별 응답은 공유 캐시하지 않는다.</p>
+<hr>
+<h2 id="9-캐시-지도-사진-갱신">9. 캐시·지도·사진 갱신</h2>
+<h3 id="9-1-캐시와-통계">9.1 캐시와 통계</h3>
+<p>운영 쓰기는 통계 invalidation marker를 기록하고 worker가 polling 후 rebuild한다. 대량 반영 뒤 갱신시각과 여러 worker 응답을 확인한다. cold start·warming이 장시간 지속되면 관리자 refresh 후 원인을 확인한다.</p>
+<h3 id="9-2-사진-공급자">9.2 사진 공급자</h3>
+<p>승인 자체사진 → TourAPI → Google Street View → 기존 호환 공급자 순서다. TourAPI metadata를 먼저 확인하고 최근 no-match/no-photo일 때만 Street View를 보조 사용한다. 공급자 키가 포함된 URL을 저장·반환하지 않는다.</p>
+<h3 id="9-3-갱신-검증">9.3 갱신 검증</h3>
+<p>지도 신규 건물, 건물 상세, 전국·지역 통계, 사진 대표 우선순위를 같은 반영 시점의 표본으로 확인한다. 예열은 지연을 줄이는 유지보수이며 원본 승인이나 운영 승격을 대체하지 않는다.</p>
+<hr>
+<h2 id="10-관리자-운영과-장애-대응">10. 관리자 운영과 장애 대응</h2>
+<h3 id="10-1-상태별-처리표">10.1 상태별 처리표</h3>
+<table>
+<tr><th>증상</th><th>중단 기준</th><th>복구</th><th>완료 증거</th></tr>
+<tr><td>stage 장시간 running</td><td>heartbeat 5분 초과 + 프로세스 없음</td><td>stale 회수 후 실패 stage만 재시도</td><td>새 run ID, 체크포인트 연속</td></tr>
+<tr><td>HTTP 401/403</td><td>인증 실패 지속</td><td>Secret 권한 복구 후 해당 stage 재시도</td><td>로그 비밀값 없음</td></tr>
+<tr><td>HTTP 429</td><td>soft/hard cap 또는 반복 429</td><td>다음 KST 날짜에 체크포인트 재개</td><td>카운터 날짜·호출 연속</td></tr>
+<tr><td>DB 연결·잠금</td><td>소유권 불명 또는 사용자 지연</td><td>commit·blocker 확인 후 멱등 재실행</td><td>중복·부분행 없음</td></tr>
+<tr><td>원본 지문 변경</td><td>승인 후 해시·행 수 변화</td><td>새 staging·승인·manifest</td><td>새 dry-run</td></tr>
+<tr><td>공개 금지정보 발견</td><td>즉시</td><td>route·캐시 차단 후 역할별 회귀검사</td><td>API·HTML·파일 재검사</td></tr>
+</table>
+<h3 id="10-2-운영-체크리스트">10.2 운영 체크리스트</h3>
+<ul>
+<li>[ ] 대상 DB, stage, run ID와 실제 프로세스를 확인했다.</li>
+<li>[ ] 공급자 호출량·공유 writer·중복 실행을 확인했다.</li>
+<li>[ ] 마지막 commit과 체크포인트를 기록했다.</li>
+<li>[ ] 완료 stage는 보존하고 실패 단위만 재시도했다.</li>
+<li>[ ] 반영 뒤 통계·지도·상세·사진과 공개 금지필드를 확인했다.</li>
+</ul>
+<h3 id="10-3-관리자-버튼-route-workflow-db-대응표">10.3 관리자 버튼·route·workflow·DB 대응표</h3>
+<table>
+<tr><th>운영 기능</th><th>시작 위치</th><th>대상 DB</th><th>누르면 안 되는 경우</th><th>확인 지점</th></tr>
+<tr><td>전체 정기 동기화</td><td>관리자 데이터 동기화</td><td>운영</td><td>예약 통합 실행 중</td><td>전체·stage 상태와 heartbeat</td></tr>
+<tr><td>실패 단계 재시도</td><td>관리자 데이터 동기화</td><td>운영</td><td>원인 미해소, 완료 stage 재실행 우려</td><td>failed/deferred/cancelled만 재개</td></tr>
+<tr><td>실거래 동기화</td><td>관리자 또는 지정 workflow</td><td>운영</td><td>같은 월 수집·backfill 실행 중</td><td>실패 월 queue와 최신 거래월</td></tr>
+<tr><td>건축HUB 수집</td><td>지정 workflow</td><td>운영</td><td>인허가와 공유 한도 충돌</td><td>진행 index·실패 법정동</td></tr>
+<tr><td>숙박 CSV inspect/staging</td><td>승인 관리자 절차</td><td>개발</td><td>DB 지문 불명, 8종 불완전</td><td>source batch·review</td></tr>
+<tr><td>숙박 운영 승격</td><td><code>lodging_promotion</code> 또는 승인 CLI</td><td>운영</td><td>미해결 review·원본 지문 변화</td><td>manifest·dry-run·감사 표식</td></tr>
+<tr><td>통계 즉시 갱신</td><td><code>POST /api/admin/stats/refresh</code></td><td>운영 캐시</td><td>원본 반영 미완료</td><td>갱신시각·worker 응답</td></tr>
+<tr><td>사진 metadata 사전조회</td><td><code>POST /api/admin/prewarm-tourapi-metadata</code></td><td>운영</td><td>동일 작업 실행·공급자 장애</td><td>사진 상태 API·페이지·매칭</td></tr>
+<tr><td>개발→운영 병합</td><td>dry-run/실제반영 workflow</td><td>양 DB</td><td>dry-run 미승인</td><td>추가·수정·충돌·marker</td></tr>
+</table>
+<p>실제 화면 문구가 달라져도 기능명, route·workflow와 대상 DB를 기준으로 판단한다. 실행 직전 현재 <code>--help</code>, 관리자 상태와 workflow 설정을 다시 확인한다.</p>
+<h3 id="10-4-장애-기록과-승인">10.4 장애 기록과 승인</h3>
+<p>장애 기록에는 대상 환경, run ID, 마지막 heartbeat·commit·checkpoint, 원인 분류, 중단·복구 조치, 전후 지표와 공개 표본 판정을 넣는다. 인증값·개인정보·공급자 원문 응답은 복사하지 않는다. 대량 증감, 기준선 변화, 공개 사고는 승인자 판정 없이 정상 완료로 닫지 않는다.</p>
+<hr>
+<h2 id="11-배포-검증-문서관리">11. 배포·검증·문서관리</h2>
+<h3 id="11-1-배포-전-후">11.1 배포 전·후</h3>
+<p>코드 변경이 있는 경우 frontend build, Python compile, smoke/API 검사를 실행하고 schema 변경은 버전 적용을 확인한다. Publish 후 health, 공개 API, 실제 HTML 렌더, 관리자 인증과 역할별 공개범위를 확인한다. 데이터 승격은 별도 절차다.</p>
+<h3 id="11-2-문서-배포">11.2 문서 배포</h3>
+<p>원본 Markdown을 단일 권위로 두고 HTML·DOCX·PDF를 생성한다. PDF는 한글 폰트 내장, A4, 페이지 번호를 확인한다. HTML 목차 링크, DOCX 표·제목, ZIP 파일 목록과 문서대장을 검수한다.</p>
+<h3 id="11-3-개정-이력">11.3 개정 이력</h3>
+<table>
+<tr><th>버전</th><th>시행일</th><th>변경</th></tr>
+<tr><td>V.01.0</td><td>2026-09-04</td><td>데이터 수집·동기화, 숙박 통계·공개, 개인정보, 사진 정책과 운영 체크리스트를 11개 장으로 통합</td></tr>
+</table>
+<hr>
+<h2 id="12-부록">12. 부록</h2>
+<h3 id="부록-a-공통-용어집">부록 A. 공통 용어집</h3>
+<table>
+<tr><th>용어</th><th>정의</th></tr>
+<tr><td>원본</td><td>외부 제공 변경 전 자료</td></tr>
+<tr><td>원장</td><td>논리 키별 이력을 보존한 내부 기록</td></tr>
+<tr><td>staging</td><td>운영 반영 전 개발 DB 격리 적재</td></tr>
+<tr><td>승인 payload</td><td>검증·검토 뒤 고정한 변경분</td></tr>
+<tr><td>manifest</td><td>원본 지문·기준선·승인 계보를 묶은 반영 증거</td></tr>
+<tr><td>시설수</td><td>중복 제거한 실제 서비스 시설 단위</td></tr>
+<tr><td>사이트수</td><td>일반야영·자동차야영·글램핑·카라반 합계</td></tr>
+<tr><td>공개 projection</td><td>역할에 허용된 최소 응답 필드 집합</td></tr>
+<tr><td>dry-run</td><td>쓰기 없이 예상 변경과 중단조건을 검증하는 실행</td></tr>
+</table>
+<h3 id="부록-b-원본-작업-대응표">부록 B. 원본·작업 대응표</h3>
+<table>
+<tr><th>영역</th><th>표준 경로</th><th>상세 근거</th></tr>
+<tr><td>정기 API</td><td>scheduled sync stage</td><td>RUN-SYNC-001</td></tr>
+<tr><td>정부 숙박 8종</td><td>개발 staging → 승인 → manifest → 운영</td><td>제5장, RUN-SYNC-001</td></tr>
+<tr><td>통계</td><td>승인 원본 → 중복 제거 → projection</td><td>제7장, MAN-LODGE-STAT-001</td></tr>
+<tr><td>개인정보</td><td>서버 projection → 역할별 응답</td><td>제8장, POL-EXPOSURE-001</td></tr>
+<tr><td>사진</td><td>승인 사진 → TourAPI → Street View</td><td>제9장, MAN-PHOTO-001</td></tr>
+</table>
+<h3 id="부록-c-상태값-분류값-공개범위표">부록 C. 상태값·분류값·공개범위표</h3>
+<table>
+<tr><th>영역</th><th>내부 값</th><th>공개 표현</th><th>처리</th></tr>
+<tr><td>작업</td><td>running/done/deferred/failed/cancelled/partial</td><td>공개 금지</td><td>관리자 상태에서 run ID와 함께 확인</td></tr>
+<tr><td>영업</td><td>active</td><td>승인 최소 시설정보</td><td>활성 통계 포함</td></tr>
+<tr><td>영업</td><td>temporarily_closed/closed/excluded/review</td><td>개별 상태 금지</td><td>원장 보존·활성 통계 제외</td></tr>
+<tr><td>캠핑</td><td>general/auto/glamping/caravan</td><td>일반야영/자동차야영/글램핑/카라반</td><td>사이트 4분류</td></tr>
+<tr><td>캠핑</td><td>confirmed_mixed</td><td>복합</td><td>둘 이상 확인</td></tr>
+<tr><td>캠핑</td><td>unknown</td><td>복합</td><td>내부에서는 실제 복합과 분리</td></tr>
+</table>
+<h3 id="부록-d-기준선-dry-run-승인-장애-기록-양식">부록 D. 기준선·dry-run·승인·장애 기록 양식</h3>
+<table>
+<tr><th>항목</th><th>필수 기록</th></tr>
+<tr><td>대상</td><td>환경, DB 지문 확인 결과, source·stage</td></tr>
+<tr><td>원본</td><td>출처, 기준일, SHA-256, 행 수</td></tr>
+<tr><td>기준선</td><td>기존 건수, 연결률, 상태·통계 시점</td></tr>
+<tr><td>dry-run</td><td>신규·수정·상태변경·동일·보류·충돌</td></tr>
+<tr><td>승인</td><td>승인자, 승인시각, manifest·run ID</td></tr>
+<tr><td>실행</td><td>시작·heartbeat·종료, commit·checkpoint</td></tr>
+<tr><td>결과</td><td>실제 쓰기, 감사 표식, 통계·지도·상세 표본</td></tr>
+<tr><td>장애</td><td>원인, 중단조건, 복구, 재발 방지, 공개 영향</td></tr>
+</table>
+<h3 id="부록-e-검증-명령과-증거-보존표">부록 E. 검증 명령과 증거 보존표</h3>
+<table>
+<tr><th>검증</th><th>명령·방법</th><th>보존 증거</th></tr>
+<tr><td>stage 계약</td><td><code>python -u scheduled_sync.py --list</code></td><td>stage·주기·옵션</td></tr>
+<tr><td>Python 문법</td><td><code>python -m py_compile ...</code></td><td>종료 코드</td></tr>
+<tr><td>smoke/API</td><td>등록된 smoke·api workflow</td><td>성공·실패 항목</td></tr>
+<tr><td>문서 배포</td><td><code>python scripts/build_policy_manual_bundle.py</code></td><td>VALIDATION_REPORT.txt</td></tr>
+<tr><td>PDF</td><td>페이지 렌더·텍스트 추출</td><td>페이지 수·한글·잘림 표본</td></tr>
+<tr><td>DOCX</td><td>OOXML 제목·표 구조 검사</td><td>heading·table 개수</td></tr>
+<tr><td>ZIP</td><td>CRC·필수 파일·대장 교차검사</td><td>파일 목록·해시</td></tr>
+</table>
+<h3 id="부록-f-최종-배포-확인표">부록 F. 최종 배포 확인표</h3>
+<ul>
+<li>[ ] 1~11장 번호와 목차 링크가 연속이다.</li>
+<li>[ ] 캠핑 시설수와 사이트 4분류가 6장·7장·용어집에 일치한다.</li>
+<li>[ ] 상태별 처리표와 운영 체크리스트가 있다.</li>
+<li>[ ] Markdown·CSV 문서대장과 XLSX의 현행 목록이 같다.</li>
+<li>[ ] HTML·DOCX·PDF·ZIP 파일이 열리고 한글이 추출된다.</li>
+<li>[ ] PDF 페이지 번호, 표 너비와 링크를 표본 검수했다.</li>
+<li>[ ] 기존 개별 문서의 보존·대체 관계가 표시됐다.</li>
+</ul>
+<h3 id="부록-g-상세-근거-문서">부록 G. 상세 근거 문서</h3>
+<p>POL-DATA-003, RUN-SYNC-001, MAN-LODGE-STAT-001, POL-EXPOSURE-001, MAN-PHOTO-001, BASE-MANUAL-001은 상세 근거로 보존한다. 충돌 시 제1.2의 권위 순서를 적용한다.</p>
+<h3 id="부록-h-검증-증거">부록 H. 검증 증거</h3>
+<p>배포 묶음의 <code>VALIDATION_REPORT.txt</code>에 원본 해시, 형식별 파일 크기·페이지 수, 한글 추출, 목차 링크, ZIP 일치 판정을 기록한다.</p>
+<h3 id="부록-i-기존-문서-보존">부록 I. 기존 문서 보존</h3>
+<p>V.02 정책과 단계별 보고서는 역사자료로 보존한다. 현행 개별 매뉴얼은 종합매뉴얼이 탐색 기준을 대체하되 상세 근거로 삭제하지 않는다.</p></body></html>

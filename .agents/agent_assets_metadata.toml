@@ -309,14 +309,14 @@ content_type = "text/csv"
 id = "GUZ_2rcc8tHed0IwSbRAb"
 uri = "file://exports/HOME_AND_STAY_POLICY_MANUALS_2026-09-04.zip"
 type = "unspecified"
-title = "홈앤스테이 정책·매뉴얼 전체 묶음"
-description = "데이터 통합 정책, 사진 매뉴얼, 문서대장과 PDF·Word 원본을 한 번에 받을 수 있습니다."
+title = "홈앤스테이 종합매뉴얼 최종 배포 묶음"
+description = "11개 운영 장과 부록, 상세 근거 원문 6개, HTML·DOCX·PDF, 최신 문서대장과 구조·한글·ZIP 검수 보고서를 포함합니다."
 logical_id = "752d884e-a077-456b-b4d7-29c07843d5c0"
-content_hash = "sha256:aa0680d9193a3ae1ce45e63aa106ea93b4b4632e33c9537b3245b46a08d457f4"
-size = 799412
-mtime_ms = 1788488420090
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/752d884e-a077-456b-b4d7-29c07843d5c0/b98d14ca-041f-4c40-bb28-cf849f022b93"
-storage_version_token = "1788488473040399"
+content_hash = "sha256:6cb4ec826956b2cd0d00d08470db1d6d2ab1ed5e8bb42f0d2b41cc0d0a4d9791"
+size = 4450396
+mtime_ms = 1788502063568
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/752d884e-a077-456b-b4d7-29c07843d5c0/5cbe17d6-a77e-47d8-bfe7-9feaee71b4b6"
+storage_version_token = "1788502089549915"
 content_type = "application/octet-stream"
 
 [[outputs]]

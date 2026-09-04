@@ -1,0 +1,10 @@
+HOME & STAY POLICY MANUAL RELEASE VALIDATION
+source_sha256=5a121ec5a2cec9e19352bdfc794eb51a7665885a1d0900368dab9195468cb4dd
+chapters=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+html_toc_links=13
+pdf_pages=7
+pdf_korean_text=PASS
+docx_package_and_korean_text=PASS
+docx_tables=13
+zip_crc_and_required_files=PASS
+camping_facility_and_four_site_categories=PASS
