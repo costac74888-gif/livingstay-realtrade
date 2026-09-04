@@ -5012,6 +5012,12 @@ def partner_lodging_operator_stats():
                 if row["hygiene_type"] in raw_types:
                     totals[key]["count"] += row["business_count"]
                     totals[key]["rooms"] += row["rooms"]
+        if totals["living"]["rooms"] == 0:
+            cur.execute("""
+                SELECT COALESCE(SUM(units), 0)::integer AS rooms
+                FROM master_buildings WHERE lodging_type IN ('생활', '생숙')
+            """)
+            totals["living"]["rooms"] = cur.fetchone()["rooms"]
         result = {}
         for key, values in totals.items():
             label_count = values["rooms"] if key == "living" else values["count"]
@@ -5035,12 +5041,18 @@ def apply_lodging_operator():
     rep_name = (data.get("rep_name") or "").strip()
     phone = _digits_only(data.get("phone"))
     permit_no = (data.get("permit_no") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
     booking_url = _public_http_url(data.get("booking_url"))
     airbnb_url = _public_http_url(data.get("airbnb_url"), airbnb_only=True)
     if op_type not in LODGING_OP_TYPES:
         return jsonify(ok=False, message="운영자 유형이 올바르지 않습니다."), 400
-    if not biz_name or not _validate_phone_digits(phone) or not permit_no:
-        return jsonify(ok=False, message="사업장명, 올바른 연락처, 영업신고/인허가 번호는 필수입니다."), 400
+    if not biz_name or not rep_name or not _validate_phone_digits(phone) or not permit_no:
+        return jsonify(ok=False, message="사업장명, 대표자명, 올바른 연락처, 영업신고/인허가 번호는 필수입니다."), 400
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) or len(password) < 8:
+        return jsonify(ok=False, message="올바른 이메일과 8자 이상 비밀번호는 필수입니다."), 400
+    if data.get("terms") is not True or data.get("privacy") is not True:
+        return jsonify(ok=False, message="필수 약관과 개인정보 수집·이용에 동의해주세요."), 400
     if data.get("booking_url") and not booking_url:
         return jsonify(ok=False, message="예약 URL은 http 또는 https 주소여야 합니다."), 400
     if op_type == "airbnb" and not airbnb_url:
@@ -5053,12 +5065,13 @@ def apply_lodging_operator():
         matched = _find_lodging_permit(cur, permit_no)
         cur.execute("""
             INSERT INTO applications
-              (applicant_type, lodging_op_type, office_or_company_name, owner_name,
-               phone, biz_reg_number, permit_no, booking_url, airbnb_url, intro_text, status, submitted_at)
-            VALUES ('lodging_operator', %s, %s, %s, %s, %s, %s, %s, %s, %s, 'submitted', NOW())
+              (applicant_type, lodging_op_type, office_or_company_name, owner_name, email, password_hash,
+               phone, biz_reg_number, permit_no, booking_url, airbnb_url, intro_text, terms_agreed_at, privacy_agreed_at, status, submitted_at)
+            VALUES ('lodging_operator', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), 'submitted', NOW())
             RETURNING id
-        """, [op_type, biz_name, rep_name or None, phone, _digits_only(data.get("biz_no")) or None,
-              permit_no, booking_url, airbnb_url, (data.get("intro_text") or "").strip()[:2000] or None])
+        """, [op_type, biz_name, rep_name, email, generate_password_hash(password), phone,
+              _digits_only(data.get("biz_no")) or None, permit_no, booking_url, airbnb_url,
+              (data.get("intro_text") or "").strip()[:2000] or None])
         app_id = cur.fetchone()["id"]
         conn.commit()
         return jsonify(ok=True, application_id=app_id, matched_building=bool(matched),
@@ -5067,6 +5080,53 @@ def apply_lodging_operator():
         conn.rollback()
         app.logger.exception("숙박 운영자 신청 저장 실패")
         return jsonify(ok=False, message="신청 저장 중 오류가 발생했습니다."), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _current_lodging_operator(cur):
+    user = current_user()
+    if not user:
+        return None
+    cur.execute("""
+        SELECT id, lodging_op_type, biz_name, rep_name, phone, booking_url, airbnb_url,
+               airbnb_urls, intro_text, photo_url, master_building_id
+        FROM operator_lodging WHERE user_id=%s AND status='approved'
+    """, [user["id"]])
+    return cur.fetchone()
+
+
+@app.route("/api/lodging-operator/me", methods=["GET", "PUT"])
+def lodging_operator_me():
+    """승인된 신고 대표자는 자신의 공개 소개와 링크만 수정할 수 있다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        op = _current_lodging_operator(cur)
+        if not op:
+            return jsonify({"ok": False, "message": "승인된 숙박 운영자 로그인이 필요합니다."}), 401
+        if request.method == "GET":
+            return jsonify({"ok": True, "item": dict(op)})
+        data = request.get_json(force=True, silent=True) or {}
+        booking = _public_http_url(data.get("booking_url"))
+        airbnb = _public_http_url(data.get("airbnb_url"), airbnb_only=True)
+        extra = data.get("airbnb_urls") or []
+        if not isinstance(extra, list) or len(extra) > 10:
+            return jsonify({"ok": False, "message": "추가 에어비앤비 URL은 최대 10개입니다."}), 400
+        extra = [_public_http_url(url, airbnb_only=True) for url in extra]
+        if any(url is None for url in extra) or (data.get("booking_url") and not booking) or (data.get("airbnb_url") and not airbnb):
+            return jsonify({"ok": False, "message": "공개 링크 형식이 올바르지 않습니다."}), 400
+        if op["lodging_op_type"] == "airbnb" and not airbnb:
+            return jsonify({"ok": False, "message": "에어비앤비 운영자는 리스팅 URL이 필요합니다."}), 400
+        intro = (data.get("intro_text") or "").strip()
+        if len(intro) > 2000:
+            return jsonify({"ok": False, "message": "소개글은 2,000자 이내여야 합니다."}), 400
+        cur.execute("""UPDATE operator_lodging SET booking_url=%s, airbnb_url=%s,
+                       airbnb_urls=%s, intro_text=%s, updated_at=NOW() WHERE id=%s""",
+                    [booking, airbnb, json.dumps(extra, ensure_ascii=False) if extra else None, intro or None, op["id"]])
+        conn.commit()
+        return jsonify({"ok": True})
     finally:
         cur.close()
         conn.close()
@@ -27301,7 +27361,7 @@ def admin_operator_logo_put(operator_id):
 def admin_applications_approve(app_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM applications WHERE id=%s", [app_id])
+    cur.execute("SELECT * FROM applications WHERE id=%s FOR UPDATE", [app_id])
     ap = cur.fetchone()
     if not ap:
         cur.close()
@@ -27437,15 +27497,28 @@ def admin_applications_approve(app_id):
                 created_id = ap["linked_op_lodging_id"]
             else:
                 matched = _find_lodging_permit(cur, ap.get("permit_no"))
+                # 승인된 신고 운영자는 일반 로그인 계정으로만 자신의 레코드를 관리한다.
+                # 이메일이 다른 회원에 이미 쓰이면 계정 탈취를 피하기 위해 승인을 중단한다.
+                cur.execute("SELECT id FROM users WHERE LOWER(email)=LOWER(%s) FOR UPDATE", [ap["email"]])
+                existing_user = cur.fetchone()
+                if existing_user:
+                    cur.close()
+                    conn.close()
+                    return jsonify({"ok": False, "message": "이미 사용 중인 이메일입니다."}), 400
+                cur.execute("""
+                    INSERT INTO users (email, password_hash, name, provider, user_type, status)
+                    VALUES (%s, %s, %s, 'email', 'operator', 'active') RETURNING id
+                """, [ap["email"], ap["password_hash"], ap["owner_name"]])
+                lodging_user_id = cur.fetchone()["id"]
                 cur.execute("""
                     INSERT INTO operator_lodging
-                      (lodging_reg_id, master_building_id, lodging_op_type, biz_name, rep_name,
+                      (user_id, lodging_reg_id, master_building_id, lodging_op_type, biz_name, rep_name,
                        phone, biz_no, permit_no, booking_url, airbnb_url, intro_text,
                        status, approved_at, approved_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             'approved', NOW(), %s)
                     RETURNING id
-                """, [matched["id"] if matched else None,
+                """, [lodging_user_id, matched["id"] if matched else None,
                       matched["master_building_id"] if matched else None,
                       ap.get("lodging_op_type"), ap["office_or_company_name"], ap.get("owner_name"),
                       ap.get("phone"), ap.get("biz_reg_number"), ap.get("permit_no"),
@@ -27622,8 +27695,8 @@ def admin_applications_reject(app_id):
         conn.close()
         return jsonify({"ok": False, "message": "이미 처리된 신청입니다."}), 400
     cur.execute(
-        "UPDATE applications SET status='rejected', reject_reason=%s, reviewed_at=NOW() WHERE id=%s",
-        [reason, app_id],
+        "UPDATE applications SET status='rejected', reject_reason=%s, reviewed_at=NOW(), reviewed_by=%s WHERE id=%s",
+        [reason, session.get("admin_user_id"), app_id],
     )
     conn.commit()
     cur.close()

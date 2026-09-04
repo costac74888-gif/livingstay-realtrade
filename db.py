@@ -2073,11 +2073,23 @@ def _run_init_db():
             intro_text TEXT, photo_url TEXT,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
             approved_at TIMESTAMPTZ, approved_by INTEGER REFERENCES admin_users(id), reject_reason TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE (permit_no)
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_permit_unique ON operator_lodging(permit_no)")
+    # ALTER TABLE ADD COLUMN은 table 생성 순서상 FK를 즉시 붙일 수 없으므로,
+    # 원본 테이블 생성 뒤에 조건부로 한 번만 연결한다.
+    cur.execute("""
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='applications_linked_op_lodging_fk') THEN
+            ALTER TABLE applications ADD CONSTRAINT applications_linked_op_lodging_fk
+              FOREIGN KEY (linked_op_lodging_id) REFERENCES operator_lodging(id);
+          END IF;
+        END $$;
+    """)
     cur.execute(
         "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_site_count INTEGER"
     )
