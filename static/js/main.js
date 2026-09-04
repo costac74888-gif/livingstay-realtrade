@@ -4847,10 +4847,13 @@ function _bookingTarget(b){
 function _reservationBar(b, includeConnection = true){
   const target = _bookingTarget(b);
   if (!target) {
+    const typeMap = {에어비앤비:"airbnb", 캠핑:"camping", 농어촌민박:"rural", 한옥:"hanok", 생활:"living"};
+    const manageType = typeMap[b?.lodging_type];
+    const manageHref = `/lodging-operator/manage${manageType ? `?type=${manageType}` : ""}`;
     return includeConnection ? `
       <div class="b-reservation-bar is-empty" role="group" aria-label="예약 및 운영자 연결">
         <div><strong>예약 링크 미연결</strong><span>운영자라면 예약 사이트를 직접 연결할 수 있습니다.</span></div>
-        <a class="b-connect-btn" href="/lodging-operator/manage">운영자이신가요?</a>
+        <a class="b-connect-btn" href="${manageHref}">운영자이신가요?</a>
       </div>` : "";
   }
   return `<div class="b-reservation-bar" role="group" aria-label="예약">

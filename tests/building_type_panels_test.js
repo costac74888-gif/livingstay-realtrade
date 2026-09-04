@@ -17,7 +17,7 @@ expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminC
 expect(main.includes('class="bld-photo-actions bld-photo-actions-left"') && main.includes('class="bld-photo-actions bld-photo-actions-right"'), "사진 위 뒤로가기·관심·공유 버튼이 없습니다.");
 expect(main.includes('class="bld-photo-empty-logo"') && main.includes('/static/home_stay_footer_logo.png'), "사진 없음 상단 바의 가로 로고가 없습니다.");
 expect(main.includes('id="bMapBtn" class="b-map-return-btn"'), "우편번호 줄의 지도위치 버튼이 없습니다.");
-expect(main.includes('href="/lodging-operator/manage"'), "예약 미연결 운영자 연결 링크가 없습니다.");
+expect(main.includes("`/lodging-operator/manage${manageType ? `?type=${manageType}` : \"\"}`"), "예약 미연결 운영자 연결 링크에 숙박 유형이 전달되지 않습니다.");
 expect(main.includes('aria-controls="bOperationsPanel"') && main.includes('role="tabpanel"'), "탭과 패널의 접근성 연결이 없습니다.");
 expect(main.includes("_buildingDetailRequestToken") && main.includes("_isActiveBuilding(id, requestToken)"), "비동기 상세 응답의 요청 세대 차단이 없습니다.");
 expect(main.includes("_buildingTrendRequestSeq") && main.includes("_buildingTxRequestSeq"), "동일 건물의 실거래 재조회 순서 차단이 없습니다.");
