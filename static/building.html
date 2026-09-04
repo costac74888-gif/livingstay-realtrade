@@ -30,7 +30,7 @@
 <div class="search-panel" style="max-width:840px; margin-bottom:40px;">
 
   <!-- 상단 안내문구 -->
-  <div style="font-size:12px; color:var(--ink-soft); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:9px 12px; margin-bottom:14px;">
+  <div id="bTxSection" style="font-size:12px; color:var(--ink-soft); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:9px 12px; margin-bottom:14px;">
     현재 매매 실거래 기준이며, 개별 호실과 건물 전체 매매는 서로 분리해 표시합니다.
     <label style="float:right; font-weight:600;">거래대상
       <select id="transactionScope" style="margin-left:6px;">
@@ -47,7 +47,7 @@
   </div>
 
   <!-- 실거래추세 카드 -->
-  <div class="panel-card" style="margin-top:14px;">
+  <div class="panel-card bTxSection" style="margin-top:14px;">
     <div class="side-card-title">실거래추세 <span class="side-sub">최근 12개월</span></div>
     <div class="side-chart-wrap" style="height:240px;"><canvas id="trendChart"></canvas></div>
     <div class="side-legend">
@@ -58,7 +58,7 @@
   </div>
 
   <!-- 실거래목록 -->
-  <div class="panel-card" style="margin-top:14px;">
+  <div class="panel-card bTxSection" style="margin-top:14px;">
     <div class="side-card-title">실거래목록 <span class="side-sub" id="txTotalLabel"></span></div>
     <div id="txTableWrap" style="overflow-x:auto;">
       <div class="side-empty">불러오는 중…</div>
@@ -74,6 +74,11 @@
   <div class="panel-card" style="margin-top:14px;">
     <div class="side-card-title">담당중개사</div>
     <div id="agentBox"><div class="side-empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="panel-card" id="lodgingOperatorPanel" style="margin-top:14px;display:none;">
+    <div class="side-card-title">시설 운영 파트너</div>
+    <div id="lodgingOperatorBox"></div>
   </div>
 
   <!-- 위탁운영·하우스키핑 CTA -->
@@ -171,7 +176,22 @@
         ${stat("총 주차", totalPkng)}
       </div>`;
 
-    renderAgent(b.agents);
+    const showTx = ["생활","일반","관광"].includes(b.lodging_type);
+    document.querySelectorAll(".bTxSection").forEach(el => el.style.display = showTx ? "" : "none");
+    document.getElementById("bTxSection").style.display = showTx ? "" : "none";
+    document.getElementById("lodgingOperatorPanel").style.display =
+      ["캠핑","에어비앤비","농어촌민박","한옥","생활"].includes(b.lodging_type) ? "" : "none";
+    renderLodgingOperators(b.lodging_operators || [], b.lodging_type);
+    renderAgent(showTx ? b.agents : []);
+  }
+
+  function renderLodgingOperators(items, lodgingType){
+    const box=document.getElementById("lodgingOperatorBox"); if(!box) return;
+    const labels={airbnb:"에어비앤비 호스트",camping:"캠핑 운영파트너",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"생숙 운영자"};
+    const applyType={에어비앤비:"airbnb",캠핑:"camping",농어촌민박:"rural",한옥:"hanok",생활:"living"}[lodgingType]||"living";
+    const safeUrl=u=>{try{const x=new URL(u);return ["http:","https:"].includes(x.protocol)?x.href:null}catch(e){return null}};
+    if(!items.length){box.innerHTML=`<div class="side-empty">이 시설 운영자이신가요?<br><a href="/apply/lodging-operator?type=${applyType}">운영 파트너 등록하기</a></div>`;return;}
+    box.innerHTML=items.map(o=>{const url=safeUrl(o.booking_url)||safeUrl(o.airbnb_url)||safeUrl(o.gocamping_url);const label=o.booking_url?"자체 예약 페이지":o.airbnb_url?"에어비앤비에서 보기":"고캠핑에서 예약";return `<div style="padding:12px 0;border-bottom:1px solid var(--line)"><b>${esc(labels[o.lodging_op_type]||"숙박 운영자")}</b><div style="margin-top:4px">${esc(o.biz_name)}</div>${o.intro_text?`<div style="font-size:12px;color:var(--ink-soft);margin-top:4px">${esc(o.intro_text)}</div>`:""}<div style="display:flex;gap:10px;margin-top:8px">${o.phone?`<a href="tel:${esc(o.phone)}">전화</a><a href="sms:${esc(o.phone)}">문자</a>`:""}${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`:""}</div></div>`}).join("");
   }
 
   function renderAgent(agents){

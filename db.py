@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-02"
+SCHEMA_VERSION = "2026-09-04-03"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1207,6 +1207,13 @@ def _run_init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS preferred_building_id INTEGER REFERENCES master_buildings(id)")
     # 중개사 여권용 사진 (선택 · Object Storage 참조 키 — applications/agent/{uuid}/photo.{ext})
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS doc_photo_url TEXT")
+    # 숙박시설 영업신고 대표자 파트너 신청. 기존 agent/operator 계정과는 별도이며
+    # 영업신고 단위로 공개한다.
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS lodging_op_type TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS booking_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS airbnb_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS permit_no TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_op_lodging_id INTEGER")
     # 단지부동산(상가정보 API 배치 동기화) — 업종대분류 "부동산" 업소 상호를 콤마 join 하여 저장.
     # NULL = 아직 조회 안 됨, "" = 조회했으나 부동산 업소 없음
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS realty_store_name TEXT")
@@ -2054,6 +2061,23 @@ def _run_init_db():
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS bld_use_nm TEXT")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS facility_area NUMERIC")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS region_name TEXT")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_lodging (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
+            lodging_reg_id INTEGER REFERENCES lodging_registry(id),
+            master_building_id INTEGER REFERENCES master_buildings(id),
+            lodging_op_type TEXT NOT NULL CHECK (lodging_op_type IN ('airbnb', 'camping', 'rural', 'hanok', 'living')),
+            biz_name TEXT NOT NULL, rep_name TEXT, phone TEXT, biz_no TEXT, permit_no TEXT NOT NULL,
+            booking_url TEXT, airbnb_url TEXT, airbnb_urls JSONB, gocamping_url TEXT,
+            intro_text TEXT, photo_url TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+            approved_at TIMESTAMPTZ, approved_by INTEGER REFERENCES admin_users(id), reject_reason TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
     cur.execute(
         "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_site_count INTEGER"
     )

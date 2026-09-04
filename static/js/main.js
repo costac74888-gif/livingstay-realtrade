@@ -4710,7 +4710,7 @@ function buildingPanelSkeleton(){
       </div>
     </section>
 
-    <section class="side-card">
+    <section class="side-card" id="bTrendCard">
       <div class="side-card-title">실거래추세 <span class="side-sub" id="bTrendGranularityNote"></span></div>
       <div class="side-chart-wrap"><canvas id="bTrendChart"></canvas></div>
       <div class="side-legend">
@@ -4725,7 +4725,7 @@ function buildingPanelSkeleton(){
       <div id="bTimelineBody"></div>
     </section>
 
-    <section class="side-card">
+    <section class="side-card" id="bTxCard">
       <div class="side-card-title">실거래목록 <span class="side-sub" id="bTxTotalLabel"></span></div>
       <div id="bTxTableWrap" style="overflow-x:auto;"><div class="side-empty">불러오는 중…</div></div>
       <div id="bTxMoreWrap" style="display:none; text-align:center; margin-top:12px;">
@@ -4744,6 +4744,9 @@ function buildingPanelSkeleton(){
     <section class="side-card" id="bAgentCard" style="display:none;">
       <div class="side-card-title">담당중개사</div>
       <div id="bAgentBox"></div>
+    </section>
+    <section class="side-card" id="bLodgingOperatorCard" style="display:none;">
+      <div class="side-card-title">시설 운영 파트너</div><div id="bLodgingOperatorBox"></div>
     </section>
 
     <section class="side-card" id="bAdminCard">
@@ -6039,7 +6042,14 @@ async function loadBuildingHeader(id){
       </a>`;
   }
 
-  renderBuildingAgents(b.agents || (b.agent ? [b.agent] : []), b.more_agents || [], id, bName, b.building_status);
+  const lodgingOperatorTypes = ["캠핑", "에어비앤비", "농어촌민박", "한옥", "생활"];
+  const showTransactions = ["생활", "일반", "관광"].includes(b.lodging_type);
+  ["bTrendCard", "bTxCard"].forEach(cardId => {
+    const card = document.getElementById(cardId);
+    if (card) card.style.display = showTransactions ? "" : "none";
+  });
+  renderBuildingLodgingOperators(b.lodging_operators || [], b.lodging_type);
+  renderBuildingAgents(showTransactions ? (b.agents || (b.agent ? [b.agent] : [])) : [], b.more_agents || [], id, bName, b.building_status);
 
   // 위탁운영/운영지원업체(하우스키핑) 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
   // (실제 업종(category) 선택은 신청폼 안에서 함 — agent 신청 링크와 동일 패턴)
@@ -6390,6 +6400,26 @@ async function loadBuildingTx(id, buildingStatus, areaFilter=""){
     </table>`;
 
   if (moreWrap) moreWrap.style.display = (items.length < bTxTotal) ? "block" : "none";
+}
+
+function renderBuildingLodgingOperators(items, lodgingType){
+  const card = document.getElementById("bLodgingOperatorCard");
+  const box = document.getElementById("bLodgingOperatorBox");
+  if (!card || !box) return;
+  const typeMap = { "에어비앤비":"airbnb", "캠핑":"camping", "농어촌민박":"rural", "한옥":"hanok", "생활":"living" };
+  if (!typeMap[lodgingType]) { card.style.display = "none"; return; }
+  card.style.display = "";
+  const labels = {airbnb:"에어비앤비 호스트",camping:"캠핑 운영파트너",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"생숙 운영자"};
+  const safeUrl = value => { try { const url = new URL(value); return ["http:","https:"].includes(url.protocol) ? url.href : null; } catch(e) { return null; } };
+  if (!items.length) {
+    box.innerHTML = `<div class="side-empty">이 시설 운영자이신가요?<br><a href="/apply/lodging-operator?type=${typeMap[lodgingType]}">운영 파트너 등록하기</a></div>`;
+    return;
+  }
+  box.innerHTML = items.map(op => {
+    const url = safeUrl(op.booking_url) || safeUrl(op.airbnb_url) || safeUrl(op.gocamping_url);
+    const action = op.booking_url ? "자체 예약 페이지" : op.airbnb_url ? "에어비앤비에서 보기" : "고캠핑에서 예약";
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><b>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</b><div>${escapeHtml(op.biz_name || "")}</div>${op.intro_text ? `<div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(op.intro_text)}</div>` : ""}<div style="margin-top:6px;display:flex;gap:10px">${op.phone ? `<a href="tel:${escapeHtml(op.phone)}">전화</a><a href="sms:${escapeHtml(op.phone)}">문자</a>` : ""}${url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}">${action}</a>` : ""}</div></div>`;
+  }).join("");
 }
 
 // 좌측 패널을 건물 상세로 교체하고 데이터를 채운다.

@@ -48,6 +48,12 @@
     </div>
   </div>
 
+  <div class="panel-card" style="margin-bottom:14px;">
+    <h2 class="menu-sec-title" style="margin-bottom:6px;">숙박시설 운영자이신가요?</h2>
+    <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 12px;">캠핑장·에어비앤비·농어촌민박·한옥·생숙 운영자라면 무료로 파트너 등록 후 예약 URL·사진을 직접 관리하세요.</p>
+    <div class="partner-cat-grid" id="lodgingPartnerCards"></div>
+  </div>
+
   <!-- 분야 선택 허브 -->
   <div class="panel-card" style="margin-bottom:14px;">
     <h2 class="menu-sec-title" style="margin-bottom:12px;">분야를 선택하세요</h2>
@@ -122,6 +128,15 @@
 
 </div>
 
+<script>
+// 숙박 운영자는 기존 위탁운영업체와 별도 영업신고 대표자 파트너입니다.
+(function(){
+  const types={airbnb:"에어비앤비 호스트",camping:"캠핑 운영자",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"생숙 운영자"};
+  const box=document.getElementById("lodgingPartnerCards");
+  box.innerHTML=Object.entries(types).map(([key,name])=>`<a class="partner-cat-card" href="/apply/lodging-operator?type=${key}"><div class="partner-cat-title">${name}</div><div class="partner-cat-desc" id="partner-cnt-${key}">영업중 업체 수 불러오는 중…</div><div class="partner-cat-more">등록하기 →</div></a>`).join("");
+  fetch("/api/partner/lodging-operator-stats").then(r=>r.json()).then(d=>Object.keys(types).forEach(k=>{const el=document.getElementById("partner-cnt-"+k);if(el&&d.stats&&d.stats[k])el.textContent=d.stats[k].label;})).catch(()=>{});
+})();
+</script>
 <script>
 // 등록된 파트너 섹션 — 승인 + 로고 보유 운영지원업체만 로고 그리드로 노출.
 // 0곳이면 빈 그리드 대신 "파트너 모집 중입니다" 문구만 표시.
