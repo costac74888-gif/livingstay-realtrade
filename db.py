@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-08"
+SCHEMA_VERSION = "2026-09-04-09"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1224,6 +1224,27 @@ def _run_init_db():
     # status가 'submitted'(검토 시작 전)일 때만 이 토큰으로 본인 신청 내용을 조회·수정·취소할 수 있다.
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS edit_token TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS password_hash TEXT")
+    # 숙박 영업신고 대표자 신청은 선택 건물과 휴대폰 소유를 별도로 검증한다.
+    # OTP 원문은 절대 저장하지 않고 HMAC digest만 보관한다.
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS building_id INTEGER REFERENCES master_buildings(id)")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS phone_verification_challenge_id UUID")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS fast_review_eligible BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS lodging_operator_phone_challenges (
+            id UUID PRIMARY KEY,
+            phone TEXT NOT NULL,
+            otp_digest TEXT NOT NULL,
+            ip_hash TEXT NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            verified_at TIMESTAMPTZ,
+            consumed_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CHECK (attempt_count >= 0 AND attempt_count <= 5)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_op_challenge_phone_created ON lodging_operator_phone_challenges(phone, created_at DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_lodging_op_challenge_ip_created ON lodging_operator_phone_challenges(ip_hash, created_at DESC)")
     cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_edit_token
         ON applications(edit_token) WHERE edit_token IS NOT NULL
@@ -2082,16 +2103,33 @@ def _run_init_db():
             lodging_op_type TEXT NOT NULL CHECK (lodging_op_type IN ('airbnb', 'camping', 'rural', 'hanok', 'living')),
             biz_name TEXT NOT NULL, rep_name TEXT, phone TEXT, biz_no TEXT, permit_no TEXT NOT NULL,
             booking_url TEXT, airbnb_url TEXT, airbnb_urls JSONB, gocamping_url TEXT,
-            intro_text TEXT, photo_url TEXT,
+            intro_text TEXT, photo_url TEXT, doc_biz_reg_url TEXT, doc_biz_license_url TEXT,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
             approved_at TIMESTAMPTZ, approved_by INTEGER REFERENCES admin_users(id), reject_reason TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
             UNIQUE (permit_no)
         )
     """)
+    cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS doc_biz_reg_url TEXT")
+    cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS doc_biz_license_url TEXT")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_permit_unique ON operator_lodging(permit_no)")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_lodging_photos (
+            id SERIAL PRIMARY KEY,
+            operator_lodging_id INTEGER NOT NULL REFERENCES operator_lodging(id) ON DELETE CASCADE,
+            object_key TEXT NOT NULL UNIQUE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_photos_owner_order ON operator_lodging_photos(operator_lodging_id, sort_order, id)")
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_photos_one_primary
+        ON operator_lodging_photos(operator_lodging_id) WHERE is_primary
+    """)
     # 같은 원장 행에 표기만 다른 신고번호로 운영자가 중복 승인되는 것을 DB에서도 차단한다.
     # 기존 중복이 있으면 CREATE UNIQUE INDEX가 명시적으로 실패하며, 임의 삭제/병합하지 않는다.
     cur.execute("""

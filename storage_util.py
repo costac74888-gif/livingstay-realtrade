@@ -58,6 +58,9 @@ def is_valid_intro_img_ref(ref):
 LISTING_PHOTO_EXTENSIONS = {"jpg", "jpeg", "png"}
 LISTING_PHOTO_REF_RE = re.compile(r"^listing_photos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$")
 BUILDING_PHOTO_REF_RE = re.compile(r"^building_photos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+OPERATOR_LODGING_PHOTO_REF_RE = re.compile(
+    r"^operator_lodging_photos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$"
+)
 
 
 def build_listing_photo_key(listing_request_id, ext):
@@ -75,6 +78,14 @@ def build_building_photo_key(building_id, ext):
 
 def is_valid_building_photo_ref(ref):
     return bool(ref) and bool(BUILDING_PHOTO_REF_RE.match(ref))
+
+
+def build_operator_lodging_photo_key(operator_lodging_id, ext):
+    return f"operator_lodging_photos/{int(operator_lodging_id)}/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_operator_lodging_photo_ref(ref):
+    return bool(ref) and bool(OPERATOR_LODGING_PHOTO_REF_RE.match(ref))
 
 
 def _bucket_id():

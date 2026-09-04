@@ -38,6 +38,26 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
     def test_schema_version_advances_for_airbnb_urls_migration(self):
         self.assertGreater(db.SCHEMA_VERSION, "2026-09-04-03")
 
+    def test_schema_has_secure_phone_challenge_and_gallery(self):
+        source = (Path(ROOT) / "db.py").read_text(encoding="utf-8")
+        self.assertIn("lodging_operator_phone_challenges", source)
+        self.assertIn("otp_digest", source)
+        self.assertIn("operator_lodging_photos", source)
+        self.assertGreater(db.SCHEMA_VERSION, "2026-09-04-08")
+
+    def test_otp_digest_is_challenge_bound(self):
+        digest = app_module._lodging_operator_otp_digest("a" * 32, "123456")
+        self.assertNotEqual(digest, "123456")
+        self.assertNotEqual(digest, app_module._lodging_operator_otp_digest("b" * 32, "123456"))
+
+    def test_lodging_application_needs_selected_building_and_challenge(self):
+        response = self.client.post("/api/apply/lodging-operator", json={
+            "lodging_op_type": "camping", "biz_name": "테스트", "rep_name": "대표",
+            "phone": "01012345678", "permit_no": "P-1", "email": "a@test.example",
+            "password": "password123", "terms": True, "privacy": True,
+        })
+        self.assertEqual(response.status_code, 400)
+
     def test_extra_airbnb_urls_are_bound_as_jsonb_not_pg_array(self):
         self.assertEqual(
             app_module._jsonb_airbnb_urls(["https://www.airbnb.com/rooms/123"]),

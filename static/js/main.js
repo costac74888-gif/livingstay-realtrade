@@ -6337,7 +6337,7 @@ async function loadBuildingHeader(id){
     if (card) card.style.display = showTransactions ? "" : "none";
   });
   _renderCampingSection(b);
-  renderBuildingLodgingOperators(b.lodging_operators || [], b.lodging_type);
+  renderBuildingLodgingOperators(b.lodging_operators || [], b.lodging_type, id);
   renderBuildingAgents(showTransactions ? (b.agents || (b.agent ? [b.agent] : [])) : [], b.more_agents || [], id, bName, b.building_status);
 
   // 위탁운영/운영지원업체(하우스키핑) 카드의 "지원업체로 신청하기" 링크에 건물 정보 연결
@@ -6714,7 +6714,7 @@ async function loadBuildingTx(id, buildingStatus, areaFilter=""){
   if (moreWrap) moreWrap.style.display = (items.length < bTxTotal) ? "block" : "none";
 }
 
-function renderBuildingLodgingOperators(items, lodgingType){
+function renderBuildingLodgingOperators(items, lodgingType, buildingId){
   const card = document.getElementById("bLodgingOperatorCard");
   const box = document.getElementById("bLodgingOperatorBox");
   if (!card || !box) return;
@@ -6723,7 +6723,9 @@ function renderBuildingLodgingOperators(items, lodgingType){
   card.style.display = "";
   const labels = {airbnb:"에어비앤비 호스트",camping:"캠핑 운영파트너",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"생숙 운영자"};
   if (!items.length) {
-    box.innerHTML = `<div class="side-empty">이 시설 운영자이신가요?<br><a href="/apply/lodging-operator?type=${typeMap[lodgingType]}">운영 파트너 등록하기</a></div>`;
+    const params = new URLSearchParams({ type: typeMap[lodgingType] });
+    if (Number.isInteger(Number(buildingId)) && Number(buildingId) > 0) params.set("building_id", String(buildingId));
+    box.innerHTML = `<div class="side-empty">이 시설 운영자이신가요?<br><a href="/apply/lodging-operator?${params.toString()}">운영 파트너 등록하기</a></div>`;
     return;
   }
   box.innerHTML = items.map(op => {

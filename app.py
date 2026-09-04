@@ -4714,6 +4714,13 @@ def apply_operator_upload():
     return _handle_apply_upload("operator", storage_util.OPERATOR_DOC_TYPES)
 
 
+@app.route("/api/apply/lodging-operator/upload", methods=["POST"])
+@limiter.limit("10 per hour")
+def apply_lodging_operator_upload():
+    """Optional business/permit evidence for an unauthenticated lodging application."""
+    return _handle_apply_upload("operator", {"biz_reg", "biz_license"})
+
+
 def _clean_doc_ref(value, applicant_type, doc_type):
     """신청서 제출 시 넘어온 서류 참조 키 검증.
 
@@ -5145,6 +5152,131 @@ def _canonical_operator_permit(matched, submitted):
     return matched.get("permit_number") if matched else submitted
 
 
+_LODGING_OPERATOR_OTP_TTL_SECONDS = 10 * 60
+_LODGING_OPERATOR_OTP_MAX_ATTEMPTS = 5
+
+
+def _lodging_operator_otp_digest(challenge_id, code):
+    """Challenge-bound OTP HMAC. A database leak cannot reveal or replay an OTP."""
+    secret = app.secret_key.encode("utf-8")
+    return hmac.new(secret, f"lodging-operator-otp:{challenge_id}:{code}".encode("utf-8"),
+                    hashlib.sha256).hexdigest()
+
+
+def _lodging_operator_ip_hash():
+    return hashlib.sha256((get_client_ip() + _PAGE_VIEW_SALT).encode("utf-8")).hexdigest()
+
+
+@app.route("/api/buildings/<int:building_id>/brief")
+@app.route("/api/apply/lodging-operator/buildings/<int:building_id>/brief")
+@limiter.limit("30 per minute")
+def lodging_operator_building_brief(building_id):
+    """Minimal selected-building data; no registry/permit data is disclosed."""
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id, building_name, road_address, jibun_address, lodging_type
+                       FROM master_buildings WHERE id=%s""", [building_id])
+        row = cur.fetchone()
+        if not row:
+            return jsonify(ok=False, message="선택한 건물을 찾을 수 없습니다."), 404
+        return jsonify(ok=True, building=dict(row))
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/apply/lodging-operator/permit-check", methods=["POST"])
+@limiter.limit("10 per minute")
+def lodging_operator_permit_check():
+    """Exact permit + selected building lookup used solely for fast-review eligibility."""
+    data = request.get_json(force=True, silent=True) or {}
+    building_id = data.get("building_id")
+    permit_no = (data.get("permit_no") or "").strip()
+    if not isinstance(building_id, int) or not permit_no:
+        return jsonify(ok=False, message="건물과 영업신고번호를 입력해주세요."), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [building_id])
+        if not cur.fetchone():
+            return jsonify(ok=False, message="선택한 건물을 찾을 수 없습니다."), 404
+        matched = _find_lodging_permit(cur, permit_no)
+        exact = bool(matched and matched.get("master_building_id") == building_id)
+        return jsonify(ok=True, permit_matches_selected_building=exact,
+                       fast_review_eligible=exact,
+                       message="일치 시 신속 검토 대상입니다. 승인은 관리자가 최종 결정합니다.")
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/apply/lodging-operator/phone-challenge", methods=["POST"])
+@limiter.limit("5 per hour")
+def lodging_operator_phone_challenge():
+    """Unauthenticated, throttled SMS challenge. OTP is never persisted in plaintext."""
+    data = request.get_json(force=True, silent=True) or {}
+    phone = _digits_only(data.get("phone"))
+    if not _validate_phone_digits(phone):
+        return jsonify(ok=False, message="올바른 휴대폰 번호를 입력해주세요."), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        ip_hash = _lodging_operator_ip_hash()
+        # Flask-Limiter's memory backend is per-worker. Serialize the durable
+        # phone/IP quota checks in PostgreSQL so concurrent workers cannot all
+        # pass the same count-before-insert window.
+        for quota_key in sorted((f"lodging-otp:phone:{phone}", f"lodging-otp:ip:{ip_hash}")):
+            cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", [quota_key])
+        cur.execute("""SELECT COUNT(*) AS c FROM lodging_operator_phone_challenges
+                       WHERE phone=%s AND created_at > NOW() - INTERVAL '1 hour'""", [phone])
+        phone_count = cur.fetchone()["c"]
+        cur.execute("""SELECT COUNT(*) AS c FROM lodging_operator_phone_challenges
+                       WHERE ip_hash=%s AND created_at > NOW() - INTERVAL '1 hour'""", [ip_hash])
+        if phone_count >= 3 or cur.fetchone()["c"] >= 8:
+            return jsonify(ok=False, message="인증 요청 횟수를 초과했습니다. 잠시 후 다시 시도해주세요."), 429
+        challenge_id = _secrets.token_hex(16)
+        code = f"{_secrets.randbelow(1000000):06d}"
+        ok, message = send_sms(phone, f"[홈앤스테이] 숙박 운영자 휴대폰 인증번호는 {code}입니다. 10분 내 입력해주세요.")
+        if not ok:
+            return jsonify(ok=False, message="인증번호 발송에 실패했습니다. 잠시 후 다시 시도해주세요."), 503
+        cur.execute("""INSERT INTO lodging_operator_phone_challenges
+                       (id, phone, otp_digest, ip_hash, expires_at)
+                       VALUES (%s::uuid, %s, %s, %s, NOW() + INTERVAL '10 minutes')""",
+                    [challenge_id, phone, _lodging_operator_otp_digest(challenge_id, code), ip_hash])
+        conn.commit()
+        return jsonify(ok=True, challenge_id=challenge_id, expires_in=_LODGING_OPERATOR_OTP_TTL_SECONDS)
+    except Exception:
+        conn.rollback()
+        app.logger.exception("숙박 운영자 SMS challenge 생성 실패")
+        return jsonify(ok=False, message="인증 요청 처리 중 오류가 발생했습니다."), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/apply/lodging-operator/phone-challenge/<challenge_id>/verify", methods=["POST"])
+@limiter.limit("10 per hour")
+def lodging_operator_phone_challenge_verify(challenge_id):
+    data = request.get_json(force=True, silent=True) or {}
+    code = str(data.get("code") or "").strip()
+    if not re.fullmatch(r"\d{6}", code) or not re.fullmatch(r"[0-9a-f]{32}", challenge_id):
+        return jsonify(ok=False, message="인증 정보가 올바르지 않습니다."), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT * FROM lodging_operator_phone_challenges WHERE id=%s::uuid
+                       FOR UPDATE""", [challenge_id])
+        row = cur.fetchone()
+        if not row or row["ip_hash"] != _lodging_operator_ip_hash() or row["expires_at"] <= datetime.now(timezone.utc):
+            return jsonify(ok=False, message="인증번호가 만료되었거나 사용할 수 없습니다."), 400
+        if row["attempt_count"] >= _LODGING_OPERATOR_OTP_MAX_ATTEMPTS:
+            return jsonify(ok=False, message="인증 시도 횟수를 초과했습니다."), 429
+        if not hmac.compare_digest(row["otp_digest"], _lodging_operator_otp_digest(challenge_id, code)):
+            cur.execute("UPDATE lodging_operator_phone_challenges SET attempt_count=attempt_count+1 WHERE id=%s::uuid", [challenge_id])
+            conn.commit()
+            return jsonify(ok=False, message="인증번호가 일치하지 않습니다."), 400
+        cur.execute("""UPDATE lodging_operator_phone_challenges SET verified_at=NOW()
+                       WHERE id=%s::uuid AND verified_at IS NULL""", [challenge_id])
+        conn.commit()
+        return jsonify(ok=True, challenge_id=challenge_id)
+    finally:
+        cur.close(); conn.close()
+
+
 @app.route("/api/partner/lodging-operator-stats")
 @limiter.limit("60 per minute")
 def partner_lodging_operator_stats():
@@ -5204,6 +5336,8 @@ def apply_lodging_operator():
     rep_name = (data.get("rep_name") or "").strip()
     phone = _digits_only(data.get("phone"))
     permit_no = (data.get("permit_no") or "").strip()
+    building_id = data.get("building_id")
+    challenge_id = (data.get("challenge_id") or "").strip()
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     booking_url = _public_http_url(data.get("booking_url"))
@@ -5217,6 +5351,8 @@ def apply_lodging_operator():
         return jsonify(ok=False, message="올바른 이메일과 8자 이상 비밀번호는 필수입니다."), 400
     if data.get("terms") is not True or data.get("privacy") is not True:
         return jsonify(ok=False, message="필수 약관과 개인정보 수집·이용에 동의해주세요."), 400
+    if not isinstance(building_id, int) or not re.fullmatch(r"[0-9a-f]{32}", challenge_id):
+        return jsonify(ok=False, message="선택 건물과 완료된 휴대폰 인증이 필요합니다."), 400
     if data.get("booking_url") and not booking_url:
         return jsonify(ok=False, message="예약 URL은 http 또는 https 주소여야 합니다."), 400
     if op_type == "airbnb" and not airbnb_url:
@@ -5228,23 +5364,47 @@ def apply_lodging_operator():
     airbnb_urls = [_public_http_url(value, airbnb_only=True) for value in airbnb_urls]
     if any(value is None for value in airbnb_urls):
         return jsonify(ok=False, message="추가 에어비앤비 URL 형식이 올바르지 않습니다."), 400
+    doc_biz_reg, doc_error = _clean_doc_ref(data.get("doc_biz_reg_url"), "operator", "biz_reg")
+    if doc_error:
+        return jsonify(ok=False, message=doc_error), 400
+    doc_biz_license, doc_error = _clean_doc_ref(data.get("doc_biz_license_url"), "operator", "biz_license")
+    if doc_error:
+        return jsonify(ok=False, message=doc_error), 400
     conn = get_conn()
     cur = conn.cursor()
     try:
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s", [building_id])
+        if not cur.fetchone():
+            return jsonify(ok=False, message="선택한 건물을 찾을 수 없습니다."), 404
+        cur.execute("""SELECT * FROM lodging_operator_phone_challenges WHERE id=%s::uuid FOR UPDATE""",
+                    [challenge_id])
+        challenge = cur.fetchone()
+        if (not challenge or challenge["phone"] != phone or challenge["ip_hash"] != _lodging_operator_ip_hash()
+                or not challenge["verified_at"] or challenge["consumed_at"]
+                or challenge["expires_at"] <= datetime.now(timezone.utc)):
+            return jsonify(ok=False, message="유효한 휴대폰 인증이 필요합니다."), 400
         matched = _find_lodging_permit(cur, permit_no)
+        fast_review = bool(matched and matched.get("master_building_id") == building_id)
         cur.execute("""
             INSERT INTO applications
               (applicant_type, lodging_op_type, office_or_company_name, owner_name, email, password_hash,
-               phone, biz_reg_number, permit_no, booking_url, airbnb_url, airbnb_urls, intro_text, terms_agreed_at, privacy_agreed_at, status, submitted_at)
-            VALUES ('lodging_operator', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), 'submitted', NOW())
+               phone, biz_reg_number, permit_no, booking_url, airbnb_url, airbnb_urls, intro_text,
+               building_id, phone_verification_challenge_id, fast_review_eligible, doc_biz_reg_url, doc_biz_license_url,
+               terms_agreed_at, privacy_agreed_at, status, submitted_at)
+            VALUES ('lodging_operator', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s::uuid, %s, %s, %s, NOW(), NOW(), 'submitted', NOW())
             RETURNING id
         """, [op_type, biz_name, rep_name, email, generate_password_hash(password), phone,
               _digits_only(data.get("biz_no")) or None, permit_no, booking_url, airbnb_url,
               json.dumps(airbnb_urls, ensure_ascii=False) if airbnb_urls else None,
-              (data.get("intro_text") or "").strip()[:2000] or None])
+               (data.get("intro_text") or "").strip()[:2000] or None, building_id, challenge_id,
+               fast_review, doc_biz_reg, doc_biz_license])
         app_id = cur.fetchone()["id"]
+        cur.execute("UPDATE lodging_operator_phone_challenges SET consumed_at=NOW() WHERE id=%s::uuid",
+                    [challenge_id])
         conn.commit()
-        return jsonify(ok=True, application_id=app_id, matched_building=bool(matched),
+        return jsonify(ok=True, application_id=app_id, matched_building=fast_review,
+                        fast_review_eligible=fast_review,
                        message="등록 신청이 완료됐습니다. 24시간 내 검토 후 안내드립니다.")
     except Exception:
         conn.rollback()
@@ -5344,7 +5504,10 @@ def lodging_operator_photo_proxy(op_id):
         cur.execute("SELECT photo_url FROM operator_lodging WHERE id=%s AND status='approved'", [op_id])
         row = cur.fetchone()
         key = row and row.get("photo_url")
-        if not key or not storage_util.is_valid_doc_ref(key, "operator", {"photo"}):
+        if not key or not (
+            storage_util.is_valid_doc_ref(key, "operator", {"photo"})
+            or storage_util.is_valid_operator_lodging_photo_ref(key)
+        ):
             return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
         data = storage_util.download_bytes(key)
     except Exception:
@@ -5355,6 +5518,154 @@ def lodging_operator_photo_proxy(op_id):
     resp.headers["Cache-Control"] = "public, max-age=3600"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+def _owned_lodging_operator_or_401(cur):
+    op = _current_lodging_operator(cur)
+    if not op:
+        return None, (jsonify(ok=False, message="승인된 숙박 운영자 로그인이 필요합니다."), 401)
+    return op, None
+
+
+@app.route("/api/lodging-operator/photos", methods=["GET", "POST"])
+def lodging_operator_gallery():
+    """Private operator gallery management; each image stays bound to its owner record."""
+    conn = get_conn(); cur = conn.cursor()
+    uploaded_key = None
+    try:
+        op, error = _owned_lodging_operator_or_401(cur)
+        if error:
+            return error
+        if request.method == "GET":
+            cur.execute("""SELECT id, sort_order, is_primary, created_at FROM operator_lodging_photos
+                           WHERE operator_lodging_id=%s ORDER BY sort_order, id""", [op["id"]])
+            items = []
+            for row in cur.fetchall():
+                item = dict(row)
+                item["photo_src"] = f"/api/lodging-operator/photos/{item['id']}"
+                items.append(item)
+            return jsonify(ok=True, items=items)
+        f = request.files.get("file")
+        ext = f.filename.rsplit(".", 1)[-1].lower() if f and f.filename and "." in f.filename else ""
+        data = f.read(storage_util.MAX_FILE_BYTES + 1) if f else b""
+        if ext not in storage_util.LOGO_EXTENSIONS or len(data) < 16 or len(data) > storage_util.MAX_FILE_BYTES or not storage_util.check_magic_bytes(data, ext):
+            return jsonify(ok=False, message="5MB 이하의 실제 JPG 또는 PNG 이미지만 올릴 수 있습니다."), 400
+        # The owner row serializes concurrent uploads; PostgreSQL does not allow
+        # FOR UPDATE on an aggregate COUNT query.
+        cur.execute("SELECT id FROM operator_lodging WHERE id=%s FOR UPDATE", [op["id"]])
+        cur.execute("SELECT COUNT(*) AS c FROM operator_lodging_photos WHERE operator_lodging_id=%s", [op["id"]])
+        if cur.fetchone()["c"] >= 10:
+            return jsonify(ok=False, message="갤러리 사진은 최대 10장입니다."), 400
+        uploaded_key = storage_util.build_operator_lodging_photo_key(op["id"], ext)
+        storage_util.upload_doc(uploaded_key, data)
+        cur.execute("""INSERT INTO operator_lodging_photos (operator_lodging_id, object_key, sort_order, is_primary)
+                       VALUES (%s, %s, (SELECT COALESCE(MAX(sort_order), -1)+1 FROM operator_lodging_photos WHERE operator_lodging_id=%s),
+                               NOT EXISTS (SELECT 1 FROM operator_lodging_photos WHERE operator_lodging_id=%s))
+                       RETURNING id, sort_order, is_primary""", [op["id"], uploaded_key, op["id"], op["id"]])
+        item = dict(cur.fetchone())
+        if item["is_primary"]:
+            cur.execute("UPDATE operator_lodging SET photo_url=%s WHERE id=%s",
+                        [uploaded_key, op["id"]])
+        conn.commit()
+        item["photo_src"] = f"/api/lodging-operator/photos/{item['id']}"
+        return jsonify(ok=True, item=item), 201
+    except Exception:
+        conn.rollback()
+        if uploaded_key:
+            try: storage_util.delete_object(uploaded_key)
+            except Exception: app.logger.warning("고아 갤러리 사진 삭제 실패", exc_info=True)
+        app.logger.exception("숙박 운영자 갤러리 저장 실패")
+        return jsonify(ok=False, message="사진 저장 중 오류가 발생했습니다."), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/lodging-operator/photos/<int:photo_id>", methods=["GET", "DELETE"])
+def lodging_operator_gallery_delete(photo_id):
+    conn = get_conn(); cur = conn.cursor()
+    key = None
+    try:
+        op, error = _owned_lodging_operator_or_401(cur)
+        if error: return error
+        if request.method == "GET":
+            cur.execute("""SELECT object_key FROM operator_lodging_photos
+                           WHERE id=%s AND operator_lodging_id=%s""", [photo_id, op["id"]])
+            row = cur.fetchone()
+            if not row:
+                return jsonify(ok=False, message="사진을 찾을 수 없습니다."), 404
+            try:
+                data = storage_util.download_bytes(row["object_key"])
+            except Exception:
+                return jsonify(ok=False, message="사진을 찾을 수 없습니다."), 404
+            resp = Response(data, mimetype="image/png" if row["object_key"].endswith(".png") else "image/jpeg")
+            resp.headers["X-Content-Type-Options"] = "nosniff"
+            resp.headers["Cache-Control"] = "private, no-store"
+            return resp
+        cur.execute("""DELETE FROM operator_lodging_photos WHERE id=%s AND operator_lodging_id=%s
+                       RETURNING object_key, is_primary""", [photo_id, op["id"]])
+        row = cur.fetchone()
+        if not row: return jsonify(ok=False, message="사진을 찾을 수 없습니다."), 404
+        key = row["object_key"]
+        if row["is_primary"]:
+            cur.execute("""UPDATE operator_lodging_photos SET is_primary=TRUE
+                           WHERE id=(SELECT id FROM operator_lodging_photos WHERE operator_lodging_id=%s
+                                     ORDER BY sort_order, id LIMIT 1)
+                           RETURNING object_key""", [op["id"]])
+            replacement = cur.fetchone()
+            cur.execute("UPDATE operator_lodging SET photo_url=%s WHERE id=%s",
+                        [replacement["object_key"] if replacement else None, op["id"]])
+        conn.commit()
+        try: storage_util.delete_object(key)
+        except Exception: app.logger.warning("삭제 갤러리 객체 정리 실패: %s", key, exc_info=True)
+        return jsonify(ok=True)
+    except Exception:
+        conn.rollback()
+        app.logger.exception("숙박 운영자 갤러리 삭제 실패")
+        return jsonify(ok=False, message="사진 삭제 중 오류가 발생했습니다."), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/lodging-operator/photos/reorder", methods=["PUT"])
+def lodging_operator_gallery_reorder():
+    data = request.get_json(force=True, silent=True) or {}
+    ids = data.get("photo_ids")
+    if not isinstance(ids, list) or not ids or len(ids) > 10 or len(set(ids)) != len(ids) or not all(isinstance(x, int) for x in ids):
+        return jsonify(ok=False, message="사진 순서 정보가 올바르지 않습니다."), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        op, error = _owned_lodging_operator_or_401(cur)
+        if error: return error
+        cur.execute("SELECT id FROM operator_lodging_photos WHERE operator_lodging_id=%s FOR UPDATE", [op["id"]])
+        if {x["id"] for x in cur.fetchall()} != set(ids):
+            return jsonify(ok=False, message="내 갤러리의 전체 사진 순서만 변경할 수 있습니다."), 400
+        for order, photo_id in enumerate(ids):
+            cur.execute("UPDATE operator_lodging_photos SET sort_order=%s WHERE id=%s AND operator_lodging_id=%s",
+                        [order, photo_id, op["id"]])
+        conn.commit()
+        return jsonify(ok=True)
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/lodging-operator/photos/<int:photo_id>/primary", methods=["PUT"])
+def lodging_operator_gallery_primary(photo_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        op, error = _owned_lodging_operator_or_401(cur)
+        if error: return error
+        cur.execute("SELECT id, object_key FROM operator_lodging_photos WHERE id=%s AND operator_lodging_id=%s FOR UPDATE",
+                    [photo_id, op["id"]])
+        selected = cur.fetchone()
+        if not selected: return jsonify(ok=False, message="사진을 찾을 수 없습니다."), 404
+        cur.execute("UPDATE operator_lodging_photos SET is_primary=FALSE WHERE operator_lodging_id=%s", [op["id"]])
+        cur.execute("UPDATE operator_lodging_photos SET is_primary=TRUE WHERE id=%s", [photo_id])
+        cur.execute("UPDATE operator_lodging SET photo_url=%s WHERE id=%s",
+                    [selected["object_key"], op["id"]])
+        conn.commit()
+        return jsonify(ok=True)
+    finally:
+        cur.close(); conn.close()
 
 
 @app.route("/api/apply/operator", methods=["POST"])
@@ -25755,6 +26066,7 @@ def admin_applications_list():
                doc_license_url, doc_office_reg_url, doc_biz_reg_url,
                doc_business_card_url, doc_biz_license_url, doc_logo_url, doc_photo_url,
                 linked_operator_id, linked_op_lodging_id, lodging_op_type, permit_no, booking_url, airbnb_url,
+                building_id, fast_review_eligible, phone_verification_challenge_id,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
         FROM applications
         WHERE {where_sql}
@@ -25770,7 +26082,7 @@ def admin_applications_list():
 # ---- 회원관리(통합 뷰): users/agents/operators/applications 를 한 목록으로 ----
 # 읽기 전용 조회 API. 승인/반려 처리는 기존 /api/admin/applications/<id>/approve|reject 를
 # 프런트에서 그대로 재사용한다(여기서 중복 구현하지 않음).
-_MEMBER_GROUPS = {"all", "general", "agent", "operator", "loan_consultant", "pending"}
+_MEMBER_GROUPS = {"all", "general", "agent", "operator", "lodging_operator", "loan_consultant", "pending"}
 
 # 그룹별 SELECT — UNION ALL 을 위해 컬럼 구성을 통일한다.
 # (id, member_type, name, email, group_label, phone, status, applicant_type, created_at, admin_tag, points, provider)
@@ -25813,6 +26125,19 @@ _MEMBER_SELECTS = {
                NULL::text AS preferred_building, NULL::text AS kakao_chat_url
         FROM operators WHERE status IN ('approved', 'inactive', 'pending')
     """,
+    "lodging_operator": """
+        SELECT ol.id, 'lodging_operator' AS member_type, COALESCE(ol.rep_name, u.name, '-') AS name,
+               u.email, ol.biz_name AS group_label, ol.phone, ol.status,
+               'lodging_operator'::text AS applicant_type, ol.created_at, ol.approved_at,
+               NULL AS admin_tag, NULL::integer AS points, NULL AS admin_memo,
+               ol.lodging_op_type AS category, NULL::text AS subdomain_slug,
+               'email'::text AS provider, NULL::text AS office_address,
+               ol.permit_no AS reg_number, ol.biz_no AS biz_reg_number,
+               ol.booking_url AS website_url, NULL::text AS preferred_region,
+               NULL::text AS preferred_building, NULL::text AS kakao_chat_url
+        FROM operator_lodging ol JOIN users u ON u.id=ol.user_id
+        WHERE ol.status IN ('approved', 'inactive', 'pending')
+    """,
     "loan_consultant": """
         SELECT id, 'loan_consultant' AS member_type, owner_name AS name, email,
                office_name AS group_label, phone, status,
@@ -25845,7 +26170,7 @@ _MEMBER_SELECTS = {
 def admin_members_list():
     group = (request.args.get("group") or "all").strip()
     if group not in _MEMBER_GROUPS:
-        return jsonify({"ok": False, "message": "group은 all|general|agent|operator|loan_consultant|pending 중 하나여야 합니다."}), 400
+        return jsonify({"ok": False, "message": "group은 all|general|agent|operator|lodging_operator|loan_consultant|pending 중 하나여야 합니다."}), 400
     q = (request.args.get("q") or "").strip()
     page, size, offset = _admin_paging()
 
@@ -25869,7 +26194,7 @@ def admin_members_list():
         GROUP BY m.member_type
     """, params)
     counts = {r["member_type"]: r["c"] for r in cur.fetchall()}
-    for k in ("general", "agent", "operator", "loan_consultant", "pending"):
+    for k in ("general", "agent", "operator", "lodging_operator", "loan_consultant", "pending"):
         counts.setdefault(k, 0)
     counts["all"] = sum(counts.values())
 
@@ -26167,6 +26492,7 @@ def admin_members_list():
 _MEMBER_LINK_COLUMNS = {
     "agent": "linked_agent_id",
     "operator": "linked_operator_id",
+    "lodging_operator": "linked_op_lodging_id",
     "loan_consultant": "linked_loan_consultant_id",
 }
 _DOC_LABELS = {
@@ -28101,7 +28427,10 @@ def admin_applications_approve(app_id):
                 created_id = ap["linked_op_lodging_id"]
             else:
                 matched = _find_lodging_permit(cur, ap.get("permit_no"))
-                if _lodging_registry_operator_exists(cur, matched):
+                # A permit match only informs review. It never chooses/changes the applicant's
+                # selected building and only an exact selected-building match is linked on approval.
+                matched_for_building = matched if matched and matched.get("master_building_id") == ap.get("building_id") else None
+                if _lodging_registry_operator_exists(cur, matched_for_building):
                     cur.close()
                     conn.close()
                     return jsonify({"ok": False, "message": "해당 영업신고에는 이미 등록된 운영자가 있습니다."}), 400
@@ -28122,20 +28451,21 @@ def admin_applications_approve(app_id):
                     INSERT INTO operator_lodging
                       (user_id, lodging_reg_id, master_building_id, lodging_op_type, biz_name, rep_name,
                        phone, biz_no, permit_no, booking_url, airbnb_url, airbnb_urls, gocamping_url, intro_text,
-                       status, approved_at, approved_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        doc_biz_reg_url, doc_biz_license_url, status, approved_at, approved_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             'approved', NOW(), %s)
                     RETURNING id
-                """, [lodging_user_id, matched["id"] if matched else None,
-                      matched["master_building_id"] if matched else None,
+                """, [lodging_user_id, matched_for_building["id"] if matched_for_building else None,
+                      ap.get("building_id"),
                       ap.get("lodging_op_type"), ap["office_or_company_name"], ap.get("owner_name"),
                       ap.get("phone"), ap.get("biz_reg_number"),
-                      _canonical_operator_permit(matched, ap.get("permit_no")),
+                      _canonical_operator_permit(matched_for_building, ap.get("permit_no")),
                       _public_http_url(ap.get("booking_url")),
                       _public_http_url(ap.get("airbnb_url"), airbnb_only=True),
                       _jsonb_airbnb_urls(ap.get("airbnb_urls")),
-                      _gocamping_url_for_registry_key(matched.get("permit_number") if matched else None),
-                      ap.get("intro_text"), session.get("admin_user_id")])
+                      _gocamping_url_for_registry_key(matched_for_building.get("permit_number") if matched_for_building else None),
+                      ap.get("intro_text"), ap.get("doc_biz_reg_url"), ap.get("doc_biz_license_url"),
+                      session.get("admin_user_id")])
                 created_id = cur.fetchone()["id"]
             cur.execute("""
                 UPDATE applications
