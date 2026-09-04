@@ -4989,7 +4989,7 @@ def _find_lodging_permit(cur, permit_no):
     if not normalized:
         return None
     cur.execute("""
-        SELECT id, applied_building_id AS master_building_id
+        SELECT id, permit_number, applied_building_id AS master_building_id
         FROM lodging_registry
         WHERE regexp_replace(permit_number, '[[:space:]-]', '', 'g') = %s
            OR regexp_replace(regexp_replace(permit_number, '^[^:]+:', ''), '[[:space:]-]', '', 'g') = %s
@@ -4997,6 +4997,26 @@ def _find_lodging_permit(cur, permit_no):
     """, [normalized, normalized])
     rows = cur.fetchall()
     return rows[0] if len(rows) == 1 else None
+
+
+def _gocamping_url_for_registry_key(permit_number):
+    """동기화가 확정한 CAMPING:<numeric contentId> 키만 공식 링크로 변환한다.
+    과거 CAMPING:<authority>:<permit> 키는 contentId가 아니므로 추정하지 않는다.
+    """
+    match = re.fullmatch(r"CAMPING:(\d+)", str(permit_number or ""))
+    if not match:
+        return None
+    return f"https://www.gocamping.or.kr/bsite/camp/info/read.do?c_sn={match.group(1)}"
+
+
+def _jsonb_airbnb_urls(value):
+    """DB JSONB 반환값/레거시 문자열을 안전하게 JSONB 바인드 문자열로 통일한다."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = []
+    return json.dumps(value if isinstance(value, list) else [], ensure_ascii=False)
 
 
 @app.route("/api/partner/lodging-operator-stats")
@@ -27594,10 +27614,8 @@ def admin_applications_approve(app_id):
                       ap.get("phone"), ap.get("biz_reg_number"), ap.get("permit_no"),
                       _public_http_url(ap.get("booking_url")),
                       _public_http_url(ap.get("airbnb_url"), airbnb_only=True),
-                      ap.get("airbnb_urls"),
-                      (f"https://www.gocamping.or.kr/bsite/camp/info/read.do?c_sn={str(ap.get('permit_no')).split(':', 1)[1]}"
-                       if matched and re.fullmatch(r"CAMPING:\d+", str(ap.get("permit_no") or ""))
-                       else None),
+                      _jsonb_airbnb_urls(ap.get("airbnb_urls")),
+                      _gocamping_url_for_registry_key(matched.get("permit_number") if matched else None),
                       ap.get("intro_text"), session.get("admin_user_id")])
                 created_id = cur.fetchone()["id"]
             cur.execute("""

@@ -34,6 +34,28 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
         response = self.client.get("/api/lodging-operator/me")
         self.assertEqual(response.status_code, 401)
 
+    def test_schema_version_advances_for_airbnb_urls_migration(self):
+        self.assertGreater(db.SCHEMA_VERSION, "2026-09-04-03")
+
+    def test_extra_airbnb_urls_are_bound_as_jsonb_not_pg_array(self):
+        self.assertEqual(
+            app_module._jsonb_airbnb_urls(["https://www.airbnb.com/rooms/123"]),
+            '["https://www.airbnb.com/rooms/123"]',
+        )
+        self.assertEqual(
+            app_module._jsonb_airbnb_urls('["https://www.airbnb.com/rooms/456"]'),
+            '["https://www.airbnb.com/rooms/456"]',
+        )
+
+    def test_gocamping_only_uses_canonical_content_id_key(self):
+        self.assertEqual(
+            app_module._gocamping_url_for_registry_key("CAMPING:12345"),
+            "https://www.gocamping.or.kr/bsite/camp/info/read.do?c_sn=12345",
+        )
+        self.assertIsNone(
+            app_module._gocamping_url_for_registry_key("CAMPING:authority:permit")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
