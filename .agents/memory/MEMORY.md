@@ -73,3 +73,4 @@
 - [수동검토 manifest 계보](lodging-review-manifest-lineage.md) — 검토 결정은 최신 자식으로만 이어지는 선형 계보이며, 부분 해결 자식은 남은 검토행을 보존한다.
 - [숙박 legacy 컷오버 잠금](lodging-legacy-cutover-locking.md) — 실제 수집기 전체 수명과 종료 승인을 shared/exclusive DB 잠금으로 직렬화하고 manifest 관찰·적용도 별도 fence로 묶는다.
 - [숙박 승격 원본 경합 방지](lodging-promotion-source-fence.md) — 새 운영 쓰기는 staging 원본 지문·공유잠금으로 보호하되, 이미 커밋된 감사 표식 복구는 원본 변경과 무관하게 허용한다.
+- [공개 숙박 영업상태 통계](public-lodging-status-privacy.md) — 공개 화면에 휴·폐업을 노출하지 않고 계산에만 사용; 정상+폐업은 정상 우선, 비활성만 있으면 분모 전용.
