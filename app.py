@@ -1709,7 +1709,7 @@ def _choose_camping_detail_row(lodgings):
         "camping_location_types", "camping_theme_types", "camping_amenities",
         "camping_toilet_count", "camping_shower_count", "camping_sink_count",
         "camping_operating_seasons", "camping_animal_policy",
-        "camping_reservation_url", "camping_first_image_url",
+        "camping_reservation_url", "camping_first_image_url", "camping_image_urls",
     )
     return max(
         pool,
@@ -2188,6 +2188,20 @@ def get_building(building_id):
 
     camping = None
     if result_is_camping and camping_row:
+        raw_image_urls = camping_row.get("camping_image_urls")
+        if isinstance(raw_image_urls, str):
+            try:
+                raw_image_urls = json.loads(raw_image_urls)
+            except (TypeError, ValueError):
+                raw_image_urls = []
+        image_urls = []
+        for image_url in raw_image_urls if isinstance(raw_image_urls, list) else []:
+            safe_image_url = _safe_public_url(image_url)
+            if safe_image_url and safe_image_url not in image_urls:
+                image_urls.append(safe_image_url)
+        first_image_url = _safe_public_url(camping_row.get("camping_first_image_url"))
+        if first_image_url and first_image_url not in image_urls:
+            image_urls.insert(0, first_image_url)
         camping = {
             "site_count": camping_row.get("camping_site_count"),
             "general_site_count": camping_row.get("camping_general_site_count"),
@@ -2206,9 +2220,8 @@ def get_building(building_id):
             "reservation_url": _safe_public_url(
                 camping_row.get("camping_reservation_url")
             ),
-            "first_image_url": _safe_public_url(
-                camping_row.get("camping_first_image_url")
-            ),
+            "first_image_url": first_image_url,
+            "image_urls": image_urls,
             "facility_area": camping_row.get("facility_area"),
         }
         if not camping["reservation_url"]:
@@ -2224,14 +2237,14 @@ def get_building(building_id):
                 ),
                 None,
             )
-        if camping["first_image_url"] and not building["photos"]:
+        if camping["image_urls"] and not building["photos"]:
             building["photos"] = [{
-                "url": camping["first_image_url"],
+                "url": image_url,
                 "source": "gocamping",
                 "photo_type": "exterior",
                 "is_primary": True,
                 "can_delete": False,
-            }]
+            } for image_url in camping["image_urls"]]
 
     cur.close()
     conn.close()

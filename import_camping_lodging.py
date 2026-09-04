@@ -232,6 +232,9 @@ def parse_api_item(item):
         "camping_first_image_url": common._text(
             _first_value(item, "firstImageUrl", "firstImageUrl2")
         ),
+        "camping_image_urls": [
+            common._text(_first_value(item, "firstImageUrl", "firstImageUrl2"))
+        ] if common._text(_first_value(item, "firstImageUrl", "firstImageUrl2")) else None,
         "phone": common._phone(_first_value(item, "tel", "TELNO")),
         # 고캠핑은 addr1 한 필드만 제공하므로 도로명 주소를 지번 칼럼에 복제하지 않는다.
         "jibun_address": None,

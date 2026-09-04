@@ -118,6 +118,7 @@ class CampingImportTests(unittest.TestCase):
         self.assertEqual(parsed["camping_animal_policy"], "가능")
         self.assertEqual(parsed["camping_reservation_url"], "https://example.com/reserve")
         self.assertEqual(parsed["camping_first_image_url"], "https://example.com/camp.jpg")
+        self.assertEqual(parsed["camping_image_urls"], ["https://example.com/camp.jpg"])
 
     def test_gocamping_missing_invalid_and_negative_site_counts_are_safe_unknown(self):
         parsed = importer.parse_api_item({

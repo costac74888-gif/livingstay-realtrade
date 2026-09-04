@@ -14,6 +14,7 @@ AIRBNB:{개방자치단체코드}:{관리번호} 복합 식별자를 저장한�
 import argparse
 import csv
 import io
+import json
 import os
 import re
 from datetime import date, datetime
@@ -325,6 +326,11 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
         "camping_animal_policy": data.get("camping_animal_policy"),
         "camping_reservation_url": data.get("camping_reservation_url"),
         "camping_first_image_url": data.get("camping_first_image_url"),
+        "camping_image_urls": (
+            json.dumps(data.get("camping_image_urls"), ensure_ascii=False)
+            if isinstance(data.get("camping_image_urls"), list)
+            else data.get("camping_image_urls")
+        ),
     }
     applied_building_update = (
         "applied_building_id = NULL"
@@ -343,7 +349,7 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             camping_location_types, camping_theme_types, camping_amenities,
             camping_toilet_count, camping_shower_count, camping_sink_count,
             camping_operating_seasons, camping_animal_policy,
-            camping_reservation_url, camping_first_image_url
+            camping_reservation_url, camping_first_image_url, camping_image_urls
         ) VALUES (
             %(permit_number)s, %(biz_name)s, %(road_address)s, %(jibun_address)s,
             %(permit_date)s, %(biz_status_name)s, %(biz_status_detail)s,
@@ -355,7 +361,7 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             %(camping_location_types)s, %(camping_theme_types)s, %(camping_amenities)s,
             %(camping_toilet_count)s, %(camping_shower_count)s, %(camping_sink_count)s,
             %(camping_operating_seasons)s, %(camping_animal_policy)s,
-            %(camping_reservation_url)s, %(camping_first_image_url)s
+            %(camping_reservation_url)s, %(camping_first_image_url)s, %(camping_image_urls)s
         )
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
@@ -381,6 +387,7 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             camping_animal_policy = EXCLUDED.camping_animal_policy,
             camping_reservation_url = EXCLUDED.camping_reservation_url,
             camping_first_image_url = EXCLUDED.camping_first_image_url,
+            camping_image_urls = EXCLUDED.camping_image_urls,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
@@ -425,6 +432,7 @@ def _assert_schema(cur):
         "camping_animal_policy",
         "camping_reservation_url",
         "camping_first_image_url",
+        "camping_image_urls",
     ]])
     found = {row["column_name"] for row in cur.fetchall()}
     required = {
@@ -448,6 +456,7 @@ def _assert_schema(cur):
         "camping_animal_policy",
         "camping_reservation_url",
         "camping_first_image_url",
+        "camping_image_urls",
     }
     missing = required - found
     if missing:

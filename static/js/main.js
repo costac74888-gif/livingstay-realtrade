@@ -5282,7 +5282,12 @@ async function loadBuildingHeader(id){
         </div>
         <div id="bNameSuggestMsg" style="display:none; margin-top:7px; font-size:12px;"></div>
       </div>
-    </div>` : ""}`;
+    </div>` : ""}
+    <div class="b-actions" style="display:flex !important;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심저장">${Icons.heart(14)}<span class="b-icon-label">관심저장</span></button>
+      <button type="button" id="bMapBtn" class="b-icon-btn" title="지도위치">${Icons.navigation(14)}<span class="b-icon-label">지도위치</span></button>
+      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(14)}<span class="b-icon-label">공유</span></button>
+    </div>`;
   signalCard.innerHTML = `
     <button type="button" id="bSignalBtn" class="b-signal-btn" title="숙박알리미" data-enabled="false"
       style="width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--brass,#B4863F);cursor:pointer;text-align:left;background:none;">
@@ -5292,11 +5297,6 @@ async function loadBuildingHeader(id){
         관심자증가 · 주변 신규등록·폐업
       </span>
     </button>
-    <div class="b-actions" style="display:flex;gap:6px;">
-      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심저장">${Icons.heart(14)}<span class="b-icon-label">관심저장</span></button>
-      <button type="button" id="bMapBtn" class="b-icon-btn" title="지도위치">${Icons.navigation(14)}<span class="b-icon-label">지도위치</span></button>
-      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(14)}<span class="b-icon-label">공유</span></button>
-    </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
   renderPhotoSlider(buildingPhotos);
   _setupBuildingPanels(b.lodging_type);

@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-07"
+SCHEMA_VERSION = "2026-09-04-08"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2049,6 +2049,7 @@ def _run_init_db():
         camping_animal_policy TEXT,         -- 고캠핑 반려동물 동반 여부
         camping_reservation_url TEXT,       -- 고캠핑 예약 URL
         camping_first_image_url TEXT,       -- 고캠핑 대표 이미지 URL
+        camping_image_urls JSONB,           -- 고캠핑 imageList 다중 이미지 URL
         hygiene_type TEXT,                 -- 위생업태명 (SNTTN_BZSTAT_NM)
         phone TEXT,                        -- 전화번호 (TELNO)
         road_norm TEXT,                    -- 정규화 주소(도로명+건물번호)
@@ -2155,6 +2156,9 @@ def _run_init_db():
     )
     cur.execute(
         "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_first_image_url TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_image_urls JSONB"
     )
 
     # 관리자 숙박 원본 파일의 미리보기 → 승인 반영 사이를 안전하게 이어 주는

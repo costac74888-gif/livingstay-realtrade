@@ -52,6 +52,7 @@ from legacy_lodging_gate import legacy_lodging_writer_gate
 API_URL = "https://apis.data.go.kr/1741000/lodgings/info"
 SERVICE_KEY_ENV = "DATA_GO_KR_BROKER_API_KEY"  # 계정 공용 일반인증키 재사용
 CAMPING_API_URL = "https://apis.data.go.kr/B551011/GoCamping/basedList"
+CAMPING_IMAGE_API_URL = "https://apis.data.go.kr/B551011/GoCamping/imageList"
 CAMPING_SERVICE_KEY_ENV = "LODGING_SERVICE_KEY"
 
 MAX_DAILY_CALLS = 8000  # 일일 쿼터 10,000 — 여유분을 남기고 멈춘다.
@@ -931,6 +932,32 @@ def _fetch_camping_page(key, page, num_rows):
     return items, total
 
 
+def _fetch_camping_image_urls(key, content_id, first_image_url=None):
+    """고캠핑 imageList에서 대표사진을 포함한 공개 이미지 URL을 중복 없이 읽는다."""
+    urls = []
+    if first_image_url:
+        urls.append(str(first_image_url).strip())
+    response = requests.get(
+        CAMPING_IMAGE_API_URL,
+        params={
+            "serviceKey": key, "MobileOS": "ETC", "MobileApp": "LivingStay",
+            "contentId": str(content_id), "numOfRows": "10", "_type": "json",
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    data = response.json()
+    items = (((data.get("response") or {}).get("body") or {}).get("items") or {})
+    items = items.get("item", []) if isinstance(items, Mapping) else []
+    if isinstance(items, Mapping):
+        items = [items]
+    for image in items if isinstance(items, list) else []:
+        url = str(image.get("imageUrl") or image.get("imageUrl2") or "").strip()
+        if url.lower().startswith(("http://", "https://")) and url not in urls:
+            urls.append(url)
+    return urls
+
+
 def _fetch_camping_page_retry(
     key, page, num_rows, *, on_attempt=None, retry_waits=(15, 45)
 ):
@@ -1514,6 +1541,17 @@ def sync_camping(
                         f"{reason}"
                     )
                     continue
+                content_id = item.get("contentId") or item.get("contentid")
+                if content_id:
+                    try:
+                        data["camping_image_urls"] = _fetch_camping_image_urls(
+                            key, content_id, data.get("camping_first_image_url")
+                        )
+                    except Exception as exc:
+                        print(
+                            f"[camping] {content_id} imageList 조회 실패: "
+                            f"{_redact(str(exc))[:160]}"
+                        )
                 processed += 1
                 if dry_run:
                     if sample_count < camping_importer.DRY_RUN_SAMPLE_LIMIT:
