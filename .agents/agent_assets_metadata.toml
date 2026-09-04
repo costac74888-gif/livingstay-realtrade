@@ -248,3 +248,73 @@ mtime_ms = 1788488060977
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/cb758f48-d2c1-4df3-8a39-5c625f380da4/7cabc4bf-119f-49dd-9f0b-de255c9983c4"
 storage_version_token = "1788488132758184"
 content_type = "text/html"
+
+[[outputs]]
+id = "hgzaBreDTkdKzi7KNsXzI"
+uri = "file://exports/HOME_AND_STAY_PHOTO_OPERATIONS_MANUAL_V01_0_2026-09-04.pdf"
+type = "pdf"
+title = "사진 호출·운영 매뉴얼 V.01.0 (PDF)"
+description = "TourAPI 우선, Street View fallback, 직접 업로드, 캐시·한도·장애복구를 정리한 10페이지 최종본입니다."
+logical_id = "6df6fe72-6fb4-4279-979c-cfbab90bb764"
+content_hash = "sha256:3c174476efbacb1e09db123b0cb93ba42ca0e3fbe0e2cc5b86a7dd456ee94ed2"
+size = 312383
+mtime_ms = 1788488418806
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6df6fe72-6fb4-4279-979c-cfbab90bb764/0d83491e-9b86-4bad-91c1-8ae82b0ce5bc"
+storage_version_token = "1788488467586584"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "EQLpZ9xE9mDbBkioK6i54"
+uri = "file://exports/HOME_AND_STAY_PHOTO_OPERATIONS_MANUAL_V01_0_2026-09-04.docx"
+type = "word_document"
+title = "사진 호출·운영 매뉴얼 V.01.0 (Word)"
+description = "수정 가능한 편집용 Word 문서입니다."
+logical_id = "e90bcb12-d1a3-411c-a40a-2613e22bce43"
+content_hash = "sha256:6eed3185fb1165f06da7cae3314b5f3add0cf0c1119c2ceb4663aa1b6e2f43be"
+size = 8107
+mtime_ms = 1788488369958
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/e90bcb12-d1a3-411c-a40a-2613e22bce43/e4675cc5-c7d4-483c-b478-db70b07a5c40"
+storage_version_token = "1788488468989373"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "1TUtV5ZnqrxY_Q9AbykAl"
+uri = "file://exports/HOME_AND_STAY_POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.pdf"
+type = "pdf"
+title = "정책·매뉴얼 문서대장 V.01.0 (PDF)"
+description = "현행·역사자료·작성 예정 정책과 검토 일정을 정리한 7페이지 문서대장입니다."
+logical_id = "04cddf15-b967-4fa2-b56f-ee54c102f2be"
+content_hash = "sha256:c311b3008e4f561be2aa95bfe987c3b9a246ac6d4f1663cf039cb8937aaf8d82"
+size = 279734
+mtime_ms = 1788488419722
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/04cddf15-b967-4fa2-b56f-ee54c102f2be/2961a93c-a1b6-4a25-a864-ce9ee618cf3a"
+storage_version_token = "1788488470347150"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "iPxHmgXcIwA1y1fLWONV0"
+uri = "file://docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.csv"
+type = "table"
+title = "정책·매뉴얼 문서 목록 (CSV)"
+description = "31개 문서와 계획 항목을 상태·우선순위·검토일 기준으로 관리할 수 있는 목록입니다."
+logical_id = "9a9fb371-2073-49c5-a61e-cfe68cfac28d"
+content_hash = "sha256:aa7f0e780dee283cc3bbbf1221ccaa1abc8baf9c72926f20c17b87872f643b0f"
+size = 3329
+mtime_ms = 1788488338934
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/9a9fb371-2073-49c5-a61e-cfe68cfac28d/9f988242-989c-40a7-be9e-7dd93de4b18a"
+storage_version_token = "1788488471737349"
+content_type = "text/csv"
+
+[[outputs]]
+id = "GUZ_2rcc8tHed0IwSbRAb"
+uri = "file://exports/HOME_AND_STAY_POLICY_MANUALS_2026-09-04.zip"
+type = "unspecified"
+title = "홈앤스테이 정책·매뉴얼 전체 묶음"
+description = "데이터 통합 정책, 사진 매뉴얼, 문서대장과 PDF·Word 원본을 한 번에 받을 수 있습니다."
+logical_id = "752d884e-a077-456b-b4d7-29c07843d5c0"
+content_hash = "sha256:aa0680d9193a3ae1ce45e63aa106ea93b4b4632e33c9537b3245b46a08d457f4"
+size = 799412
+mtime_ms = 1788488420090
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/752d884e-a077-456b-b4d7-29c07843d5c0/b98d14ca-041f-4c40-bb28-cf849f022b93"
+storage_version_token = "1788488473040399"
+content_type = "application/octet-stream"
