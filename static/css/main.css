@@ -1166,7 +1166,7 @@
 .bld-photo-shell{ position:relative; }
 .bld-photo-empty-logo{ display:none; }
 .bld-photo-shell.is-empty .bld-photo-empty-logo{
-  display:block; position:absolute; z-index:4; left:50%; top:50%;
+  display:block; position:absolute; z-index:4; left:calc(50% - 14px); top:50%;
   width:134px; height:auto; transform:translate(-50%,-50%);
 }
 .bld-photo-wrap{
