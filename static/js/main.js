@@ -3187,27 +3187,41 @@ function renderDataLabLodging(data){
   const rateTitle = row => {
     if (row.type === "일반") return "현재 영업신고업체 수 ÷ 일반 건물 수";
     if (roomRateTypes.has(row.type)) return "정상영업 신고객실수 ÷ 건축물대장 호실수";
+    if (row.type === "캠핑") return "마스터와 매칭된 신고시설 수 ÷ 전체 활성 캠핑시설 수";
     if (buildingCoverageTypes.has(row.type)) return `활성 신고가 매칭된 건물 수 ÷ ${row.type} 건물 수`;
     return "유형별 모집단에 맞춘 신고 커버리지";
   };
   const body = rows.map(row => {
-    const campingTypes = row.camping_classification_breakdown || {};
-    const campingMixedCount = Number(campingTypes.confirmed_mixed || 0) + Number(campingTypes.unknown || 0);
+    const campingDetails = row.camping_classification_details || {};
+    const mergeCampingDetails = (...keys) => {
+      const merged = keys.reduce((acc, key) => {
+        const detail = campingDetails[key] || {};
+        acc.facilityCount += Number(detail.facility_count || 0);
+        acc.siteCount += Number(detail.site_count || 0);
+        acc.matchedFacilityCount += Number(detail.matched_facility_count || 0);
+        acc.matchedSiteCount += Number(detail.matched_site_count || 0);
+        return acc;
+      }, { facilityCount:0, siteCount:0, matchedFacilityCount:0, matchedSiteCount:0 });
+      merged.reportRate = merged.facilityCount
+        ? Math.round(merged.matchedFacilityCount / merged.facilityCount * 1000) / 10
+        : null;
+      return merged;
+    };
     const campingSubRows = row.type === "캠핑"
       ? [
-          ["일반야영", campingTypes.general_only, row.camping_general_site_count],
-          ["자동차야영", campingTypes.auto_only, row.camping_auto_site_count],
-          ["글램핑", campingTypes.glamping_only, row.camping_glamping_site_count],
-          ["카라반", campingTypes.caravan_only, row.camping_caravan_site_count],
-          ["복합", campingMixedCount, null],
-        ].map(([type, facilityCount, siteCount]) => `
+          ["일반야영", mergeCampingDetails("general_only")],
+          ["자동차야영", mergeCampingDetails("auto_only")],
+          ["글램핑", mergeCampingDetails("glamping_only")],
+          ["카라반", mergeCampingDetails("caravan_only")],
+          ["복합·미확인", mergeCampingDetails("confirmed_mixed", "unknown")],
+        ].map(([type, detail]) => `
           <tr class="datalab-sub-row">
             <td class="datalab-sub-name">${escapeHtml(type)}</td>
-            <td>${dataLabNum(facilityCount)}</td>
-            <td>${siteCount == null ? "-" : dataLabNum(siteCount)}</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
+            <td>${dataLabNum(detail.facilityCount)}</td>
+            <td>${dataLabNum(detail.siteCount)}</td>
+            <td>${dataLabNum(detail.matchedFacilityCount)}</td>
+            <td>${dataLabNum(detail.matchedSiteCount)}</td>
+            <td title="마스터와 매칭된 신고시설 수 ÷ 전체 활성 시설 수">${detail.reportRate == null ? "-" : `${detail.reportRate}%`}</td>
           </tr>`).join("")
       : "";
     const displayedBuildingCount = row.type === "캠핑"
@@ -3242,7 +3256,7 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수<small>(시설수)</small></span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th><span class="datalab-head-stack">신고<small>업체</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>
+        <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수<small>(시설수)</small></span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th><span class="datalab-head-stack">신고<small>업체</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;

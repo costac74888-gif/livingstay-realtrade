@@ -71,6 +71,8 @@ def summarize_active_camping_facilities(rows):
     )
     result = {
         "camping_facility_count": len(facilities),
+        "camping_matched_facility_count": 0,
+        "camping_matched_site_count": 0,
         "camping_general_site_count": 0,
         "camping_auto_site_count": 0,
         "camping_glamping_site_count": 0,
@@ -78,24 +80,60 @@ def summarize_active_camping_facilities(rows):
         "camping_classification_breakdown": {
             classification: 0 for classification in _CLASSIFICATIONS
         },
+        "camping_classification_details": {
+            classification: {
+                "facility_count": 0,
+                "site_count": 0,
+                "matched_facility_count": 0,
+                "matched_site_count": 0,
+                "report_rate": None,
+            }
+            for classification in _CLASSIFICATIONS
+        },
     }
+    linked_ids = set(linked)
     for row in facilities:
+        site_total = 0
         for key in (
             "camping_general_site_count", "camping_auto_site_count",
             "camping_glamping_site_count", "camping_caravan_site_count",
         ):
             try:
-                result[key] += max(0, int(row.get(key) or 0))
+                value = max(0, int(row.get(key) or 0))
             except (TypeError, ValueError):
-                pass
+                value = 0
+            result[key] += value
+            site_total += value
         classification = row.get("camping_classification")
-        result["camping_classification_breakdown"][
-            classification if classification in _CLASSIFICATIONS else "unknown"
-        ] += 1
+        classification = classification if classification in _CLASSIFICATIONS else "unknown"
+        result["camping_classification_breakdown"][classification] += 1
+        detail = result["camping_classification_details"][classification]
+        detail["facility_count"] += 1
+        detail["site_count"] += site_total
+        if row.get("applied_building_id") in linked_ids:
+            detail["matched_facility_count"] += 1
+            detail["matched_site_count"] += site_total
+            result["camping_matched_facility_count"] += 1
+            result["camping_matched_site_count"] += site_total
     result["camping_site_count"] = sum(
         result[key] for key in (
             "camping_general_site_count", "camping_auto_site_count",
             "camping_glamping_site_count", "camping_caravan_site_count",
         )
+    )
+    for detail in result["camping_classification_details"].values():
+        if detail["facility_count"]:
+            detail["report_rate"] = round(
+                detail["matched_facility_count"] / detail["facility_count"] * 100,
+                1,
+            )
+    result["camping_report_rate"] = (
+        round(
+            result["camping_matched_facility_count"]
+            / result["camping_facility_count"]
+            * 100,
+            1,
+        )
+        if result["camping_facility_count"] else None
     )
     return result

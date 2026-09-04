@@ -497,6 +497,8 @@ def check_datalab_lodging_table(payload):
         "camping_site_count", "camping_general_site_count",
         "camping_auto_site_count", "camping_glamping_site_count",
         "camping_caravan_site_count", "camping_classification_breakdown",
+        "camping_matched_facility_count", "camping_matched_site_count",
+        "camping_report_rate", "camping_classification_details",
     }
     for row in rows:
         if set(row) - allowed or not {"type", "building_count", "units", "biz_count", "room_count", "report_rate"} <= set(row):
@@ -6210,6 +6212,8 @@ def _check_datalab_stats(client):
             "camping_site_count", "camping_general_site_count",
             "camping_auto_site_count", "camping_glamping_site_count",
             "camping_caravan_site_count", "camping_classification_breakdown",
+            "camping_matched_facility_count", "camping_matched_site_count",
+            "camping_report_rate", "camping_classification_details",
         }
         if any(set(row) - public_allowed for row in public_rows):
             failures.append("데이터랩 전국숙박업통계: 공개 응답에 내부 운영지표가 남아 있음")

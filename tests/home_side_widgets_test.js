@@ -152,7 +152,7 @@ expect(main.includes("function _hygieneBadge") &&
   "영업신고 업종별 상세 용도 뱃지가 없습니다.");
 expect(main.includes('class="datalab-head-stack">건물수<small>(시설수)</small>') &&
   main.includes('title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small>') &&
-  main.includes('title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span>') &&
+  main.includes('title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span>') &&
   main.includes('const buildingCoverageTypes = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"])') &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
@@ -166,13 +166,15 @@ expect(main.includes('<td class="datalab-sub-name">${escapeHtml(sub.type)}</td>'
   css.includes(".datalab-sub-name") &&
   css.includes('content:"└"'),
   "일반숙박 세부행의 세로 들여쓰기가 없습니다.");
-expect(main.includes('["일반야영", campingTypes.general_only, row.camping_general_site_count]') &&
-  main.includes('["자동차야영", campingTypes.auto_only, row.camping_auto_site_count]') &&
-  main.includes('["글램핑", campingTypes.glamping_only, row.camping_glamping_site_count]') &&
-  main.includes('["카라반", campingTypes.caravan_only, row.camping_caravan_site_count]') &&
-  main.includes('["복합", campingMixedCount, null]') &&
+expect(main.includes('["일반야영", mergeCampingDetails("general_only")]') &&
+  main.includes('["자동차야영", mergeCampingDetails("auto_only")]') &&
+  main.includes('["글램핑", mergeCampingDetails("glamping_only")]') &&
+  main.includes('["카라반", mergeCampingDetails("caravan_only")]') &&
+  main.includes('["복합·미확인", mergeCampingDetails("confirmed_mixed", "unknown")]') &&
+  main.includes("detail.matchedFacilityCount") &&
+  main.includes("detail.matchedSiteCount") &&
   main.includes("return base + campingSubRows + subRows;"),
-  "캠핑 세부 5개 행이 합계 아래에 세로로 표시되지 않습니다.");
+  "캠핑 세부 5개 행에 신고시설·신고사이트 집계가 표시되지 않습니다.");
 expect(main.includes('row.type === "캠핑"') &&
   main.includes("? row.camping_facility_count") &&
   main.includes("? row.camping_site_count"),

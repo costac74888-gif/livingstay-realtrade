@@ -36,6 +36,12 @@ class CampingFacilityStatsTests(unittest.TestCase):
         self.assertEqual(result["camping_facility_count"], 1)
         # The linked record remains authoritative; a matching unlinked source is not double counted.
         self.assertEqual(result["camping_general_site_count"], 4)
+        self.assertEqual(result["camping_matched_facility_count"], 1)
+        self.assertEqual(result["camping_matched_site_count"], 4)
+        self.assertEqual(result["camping_report_rate"], 100.0)
+        detail = result["camping_classification_details"]["general_only"]
+        self.assertEqual(detail["matched_facility_count"], 1)
+        self.assertEqual(detail["matched_site_count"], 4)
 
     def test_unlinked_rows_dedupe_only_with_reliable_location_and_business_key(self):
         result = summarize_active_camping_facilities([
@@ -56,6 +62,8 @@ class CampingFacilityStatsTests(unittest.TestCase):
         self.assertEqual(result["camping_glamping_site_count"], 5)
         self.assertEqual(result["camping_classification_breakdown"]["auto_only"], 1)
         self.assertEqual(result["camping_classification_breakdown"]["glamping_only"], 2)
+        self.assertEqual(result["camping_matched_facility_count"], 0)
+        self.assertEqual(result["camping_report_rate"], 0.0)
 
     def test_classification_and_subtype_aggregates_include_confirmed_mixed(self):
         result = summarize_active_camping_facilities([
@@ -69,6 +77,10 @@ class CampingFacilityStatsTests(unittest.TestCase):
         self.assertEqual(result["camping_site_count"], 5)
         self.assertEqual(result["camping_caravan_site_count"], 3)
         self.assertEqual(result["camping_classification_breakdown"]["confirmed_mixed"], 1)
+        detail = result["camping_classification_details"]["confirmed_mixed"]
+        self.assertEqual(detail["site_count"], 5)
+        self.assertEqual(detail["matched_facility_count"], 0)
+        self.assertEqual(detail["report_rate"], 0.0)
 
 
 if __name__ == "__main__":

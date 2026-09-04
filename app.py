@@ -20757,6 +20757,14 @@ def _lodging_full_stats_payload():
     for row in rows:
         if row["type"] in {"전체", "캠핑"}:
             row.update(active_camping_stats)
+        if row["type"] == "캠핑":
+            row["permit_count"] = active_camping_stats["camping_matched_facility_count"]
+            row["room_count"] = active_camping_stats["camping_matched_site_count"]
+            row["report_rate"] = active_camping_stats["camping_report_rate"]
+            row["lodging_metric"] = "matched_camping_facilities"
+            row["report_rate_numerator"] = active_camping_stats["camping_matched_facility_count"]
+            row["report_rate_denominator"] = active_camping_stats["camping_facility_count"]
+            row["report_rate_basis"] = "matched_camping_facilities_per_facilities"
     # 전체 행도 지도와 같은 명시적 COUNT 쿼리 결과를 사용한다.
     rows[0]["building_count"] = total_building_cnt
     result = {
@@ -20809,10 +20817,15 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
                 "camping_facility_count", "camping_site_count",
                 "camping_general_site_count", "camping_auto_site_count",
                 "camping_glamping_site_count", "camping_caravan_site_count",
+                "camping_matched_facility_count", "camping_matched_site_count",
+                "camping_report_rate",
             ):
                 compact[key] = row.get(key, 0)
             compact["camping_classification_breakdown"] = dict(
                 row.get("camping_classification_breakdown") or {}
+            )
+            compact["camping_classification_details"] = dict(
+                row.get("camping_classification_details") or {}
             )
         return compact
 
