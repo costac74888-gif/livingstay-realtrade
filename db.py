@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-05"
+SCHEMA_VERSION = "2026-09-04-06"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2039,6 +2039,16 @@ def _run_init_db():
         camping_glamping_site_count INTEGER,-- 글램핑 사이트 수
         camping_caravan_site_count INTEGER, -- 카라반+개인 카라반 사이트 수
         camping_classification TEXT,        -- 캠핑 내부 유형 분류
+        camping_location_types TEXT,        -- 고캠핑 입지구분 (lctCl)
+        camping_theme_types TEXT,           -- 고캠핑 테마환경 (themaEnvrnCl)
+        camping_amenities TEXT,             -- 고캠핑 부대시설 (sbrsCl)
+        camping_toilet_count INTEGER,       -- 고캠핑 화장실 수
+        camping_shower_count INTEGER,       -- 고캠핑 샤워실 수
+        camping_sink_count INTEGER,         -- 고캠핑 개수대 수
+        camping_operating_seasons TEXT,     -- 고캠핑 운영기간 (operPdCl)
+        camping_animal_policy TEXT,         -- 고캠핑 반려동물 동반 여부
+        camping_reservation_url TEXT,       -- 고캠핑 예약 URL
+        camping_first_image_url TEXT,       -- 고캠핑 대표 이미지 URL
         hygiene_type TEXT,                 -- 위생업태명 (SNTTN_BZSTAT_NM)
         phone TEXT,                        -- 전화번호 (TELNO)
         road_norm TEXT,                    -- 정규화 주소(도로명+건물번호)
@@ -2115,6 +2125,36 @@ def _run_init_db():
     )
     cur.execute(
         "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_classification TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_location_types TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_theme_types TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_amenities TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_toilet_count INTEGER"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_shower_count INTEGER"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_sink_count INTEGER"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_operating_seasons TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_animal_policy TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_reservation_url TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS camping_first_image_url TEXT"
     )
 
     # 관리자 숙박 원본 파일의 미리보기 → 승인 반영 사이를 안전하게 이어 주는

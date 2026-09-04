@@ -25,7 +25,16 @@ def matched_lodgings(cur, building, active_only=True):
             SELECT lr.biz_name, lr.permit_number, lr.permit_date,
                    lr.biz_status_name, lr.biz_status_detail, lr.room_count,
                    lr.hygiene_type, lr.phone, lr.road_address, lr.jibun_address,
-                   lr.source_updated_at, lr.biz_name_norm, lr.road_norm, lr.jibun_norm
+                   lr.source_updated_at, lr.biz_name_norm, lr.road_norm, lr.jibun_norm,
+                   lr.facility_area, lr.camping_site_count,
+                   lr.camping_general_site_count, lr.camping_auto_site_count,
+                   lr.camping_glamping_site_count, lr.camping_caravan_site_count,
+                   lr.camping_classification, lr.camping_location_types,
+                   lr.camping_theme_types, lr.camping_amenities,
+                   lr.camping_toilet_count, lr.camping_shower_count,
+                   lr.camping_sink_count, lr.camping_operating_seasons,
+                   lr.camping_animal_policy, lr.camping_reservation_url,
+                   lr.camping_first_image_url
             FROM lodging_registry lr
             WHERE lr.road_norm = %s{status_clause}
             """,
@@ -42,7 +51,16 @@ def matched_lodgings(cur, building, active_only=True):
             SELECT lr.biz_name, lr.permit_number, lr.permit_date,
                    lr.biz_status_name, lr.biz_status_detail, lr.room_count,
                    lr.hygiene_type, lr.phone, lr.road_address, lr.jibun_address,
-                   lr.source_updated_at, lr.biz_name_norm, lr.road_norm, lr.jibun_norm
+                   lr.source_updated_at, lr.biz_name_norm, lr.road_norm, lr.jibun_norm,
+                   lr.facility_area, lr.camping_site_count,
+                   lr.camping_general_site_count, lr.camping_auto_site_count,
+                   lr.camping_glamping_site_count, lr.camping_caravan_site_count,
+                   lr.camping_classification, lr.camping_location_types,
+                   lr.camping_theme_types, lr.camping_amenities,
+                   lr.camping_toilet_count, lr.camping_shower_count,
+                   lr.camping_sink_count, lr.camping_operating_seasons,
+                   lr.camping_animal_policy, lr.camping_reservation_url,
+                   lr.camping_first_image_url
             FROM lodging_registry lr
             WHERE lr.jibun_norm = %s{status_clause}
             """,

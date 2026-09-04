@@ -4606,6 +4606,8 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       renderPhotoSlider(photos);
       return;
     }
+    const gocampingInitial = initial.filter(photo => photo?.source === "gocamping");
+    if (gocampingInitial.length > 0) renderPhotoSlider(gocampingInitial);
 
     const buildingName = data.building_name || building?.building_name || "";
     const roadAddress = data.road_address || building?.road_address || "";
@@ -4621,10 +4623,12 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
 
     // 최근 TourAPI no_match로 서버가 허용한 건물에만 Street View를 표시한다.
     // 좌표만 보고 먼저 표시하면 프록시의 404 JSON이 깨진 이미지로 노출된다.
-    const svShown = data.streetview_available === true
+    const svShown = gocampingInitial.length === 0 && data.streetview_available === true
       && tryShowStreetView(cached, buildingId);
 
-    const local = readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
+    const local = gocampingInitial.length
+      ? null
+      : readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
     if (local && local.photos.length > 0) {
       renderPhotoSlider(local.photos);
       return;
@@ -4668,7 +4672,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
         if (!clientPhotos.length) {
           if (saved?.streetview_available === true) {
             tryShowStreetView(cached, buildingId);
-          } else if (!svShown) {
+          } else if (!svShown && !gocampingInitial.length) {
             renderPhotoSlider([]);
           }
           return;
@@ -4677,7 +4681,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
         renderPhotoSlider(clientPhotos);
       })
       .catch(() => {
-        // TourAPI 실패 시 이미 표시한 Street View를 그대로 유지한다.
+        // TourAPI 실패 시 이미 표시한 고캠핑 대표 이미지나 Street View를 유지한다.
       });
   } catch(e) {
     if (_activePhotoBuildingId !== buildingId) return;
@@ -4685,6 +4689,84 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     if (initial.length > 0) renderPhotoSlider(initial);
     else renderPhotoSlider([]);
   }
+}
+
+function _campingValues(value){
+  return String(value || "")
+    .split(/[,/]/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function _renderCampingSection(b){
+  const card = document.getElementById("bCampCard");
+  const body = document.getElementById("bCampBody");
+  if (!card || !body) return;
+  if (b.lodging_type !== "캠핑") {
+    card.style.display = "none";
+    body.innerHTML = "";
+    return;
+  }
+
+  const camp = b.camping || {};
+  const sites = [
+    ["일반 야영", camp.general_site_count ?? b.camping_general_site_count, "🏕️"],
+    ["오토 캠핑", camp.auto_site_count ?? b.camping_auto_site_count, "🚙"],
+    ["글램핑", camp.glamping_site_count ?? b.camping_glamping_site_count, "⛺"],
+    ["카라반", camp.caravan_site_count ?? b.camping_caravan_site_count, "🚐"],
+  ].filter(([, count]) => Number(count) > 0);
+  const amenities = _campingValues(camp.amenities ?? b.camping_sbrs);
+  const seasons = _campingValues(camp.operating_seasons ?? b.camping_oper_pd);
+  const chips = [
+    ..._campingValues(camp.location_types ?? b.camping_lct_cl),
+    ..._campingValues(camp.theme_types ?? b.camping_thema),
+    camp.animal_policy ?? b.camping_animal,
+  ].filter(Boolean);
+  const facts = [
+    ["화장실", camp.toilet_count ?? b.camping_toilet_co, "개동"],
+    ["샤워실", camp.shower_count ?? b.camping_swrm_co, "개"],
+    ["개수대", camp.sink_count ?? b.camping_wtrpl_co, "개"],
+    ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
+  ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
+  const reservationUrl = camp.reservation_url ?? b.camping_resve_url;
+  const hasContent = sites.length || amenities.length || seasons.length
+    || chips.length || facts.length || reservationUrl;
+  if (!hasContent) {
+    card.style.display = "none";
+    body.innerHTML = "";
+    return;
+  }
+
+  body.innerHTML = `
+    ${chips.length ? `<div class="camp-chips">${chips.map(item =>
+      `<span>${escapeHtml(String(item))}</span>`).join("")}</div>` : ""}
+    ${sites.length ? `
+      <div class="camp-section-label">사이트 구성</div>
+      <div class="camp-site-grid">${sites.map(([label, count, icon]) => `
+        <div class="camp-site-item">
+          <span class="camp-site-icon" aria-hidden="true">${icon}</span>
+          <span><b>${Number(count).toLocaleString("ko-KR")}</b> 사이트<br>
+            <small>${escapeHtml(label)}</small></span>
+        </div>`).join("")}
+      </div>` : ""}
+    ${amenities.length ? `
+      <div class="camp-section-label">편의시설</div>
+      <div class="camp-amenities">${amenities.map(item =>
+        `<span>✓ ${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+    ${facts.length ? `
+      <div class="camp-section-label">시설 정보</div>
+      <div class="camp-facts">${facts.map(([label, value, unit]) => `
+        <div><small>${label}</small><b>${Number(value).toLocaleString("ko-KR")}${unit}</b></div>`
+      ).join("")}</div>` : ""}
+    ${seasons.length ? `
+      <div class="camp-section-label">운영 기간</div>
+      <div class="camp-chips camp-seasons">${seasons.map(item =>
+        `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+    ${reservationUrl ? `
+      <a class="camp-reservation" href="${escapeHtml(String(reservationUrl))}"
+         target="_blank" rel="noopener noreferrer">캠핑장 예약 페이지 열기 ↗</a>` : ""}
+  `;
+  card.style.display = "";
 }
 
 function buildingPanelSkeleton(){
@@ -4701,7 +4783,7 @@ function buildingPanelSkeleton(){
       <div class="side-empty">불러오는 중…</div>
     </section>
 
-    <section class="side-card" style="padding:10px 14px;">
+    <section class="side-card" id="bAreaFilterCard" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
         <label for="bAreaFilter" style="font-size:12px; color:var(--ink-soft); white-space:nowrap; font-weight:600;">전용면적 타입</label>
         <select id="bAreaFilter" style="flex:1; font-size:12.5px; border:1px solid var(--line); border-radius:6px; padding:4px 8px; background:#fff; color:var(--ink); cursor:pointer;">
@@ -4734,6 +4816,11 @@ function buildingPanelSkeleton(){
       <div style="text-align:center; margin-top:8px;">
         <a id="bTxAllLink" class="side-more" style="display:none; width:auto; padding:7px 18px; margin-top:0; text-decoration:none;" href="/transactions">이 건물 전체 실거래 보기 →</a>
       </div>
+    </section>
+
+    <section class="side-card" id="bCampCard" style="display:none;">
+      <div class="side-card-title">캠핑장 안내 <span class="side-sub">고캠핑</span></div>
+      <div id="bCampBody"></div>
     </section>
 
     <section class="side-card" id="bListingsCard" style="display:none;">
@@ -6044,10 +6131,11 @@ async function loadBuildingHeader(id){
 
   const lodgingOperatorTypes = ["캠핑", "에어비앤비", "농어촌민박", "한옥", "생활"];
   const showTransactions = ["생활", "일반", "관광"].includes(b.lodging_type);
-  ["bTrendCard", "bTxCard"].forEach(cardId => {
+  ["bAreaFilterCard", "bTrendCard", "bTxCard"].forEach(cardId => {
     const card = document.getElementById(cardId);
     if (card) card.style.display = showTransactions ? "" : "none";
   });
+  _renderCampingSection(b);
   renderBuildingLodgingOperators(b.lodging_operators || [], b.lodging_type);
   renderBuildingAgents(showTransactions ? (b.agents || (b.agent ? [b.agent] : [])) : [], b.more_agents || [], id, bName, b.building_status);
 

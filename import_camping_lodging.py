@@ -171,6 +171,11 @@ def _camping_status(value):
     return status
 
 
+def _nonnegative_count(value):
+    parsed = common._integer(value)
+    return parsed if parsed is not None and parsed >= 0 else None
+
+
 def parse_api_item(item):
     """고캠핑 basedList 응답 한 건을 lodging_registry 형태로 변환한다."""
     if not isinstance(item, dict):
@@ -213,6 +218,20 @@ def parse_api_item(item):
         "biz_status_name": status,
         "biz_status_detail": status_detail,
         "facility_area": common._decimal(_first_value(item, "allar", "allAr")),
+        "camping_location_types": common._text(item.get("lctCl")),
+        "camping_theme_types": common._text(item.get("themaEnvrnCl")),
+        "camping_amenities": common._text(item.get("sbrsCl")),
+        "camping_toilet_count": _nonnegative_count(item.get("toiletCo")),
+        "camping_shower_count": _nonnegative_count(item.get("swrmCo")),
+        "camping_sink_count": _nonnegative_count(item.get("wtrplCo")),
+        "camping_operating_seasons": common._text(item.get("operPdCl")),
+        "camping_animal_policy": common._text(item.get("animalCmgCl")),
+        "camping_reservation_url": common._text(
+            _first_value(item, "resveUrl", "homepage")
+        ),
+        "camping_first_image_url": common._text(
+            _first_value(item, "firstImageUrl", "firstImageUrl2")
+        ),
         "phone": common._phone(_first_value(item, "tel", "TELNO")),
         # 고캠핑은 addr1 한 필드만 제공하므로 도로명 주소를 지번 칼럼에 복제하지 않는다.
         "jibun_address": None,

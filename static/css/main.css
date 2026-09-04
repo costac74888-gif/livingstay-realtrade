@@ -1103,6 +1103,17 @@
 .b-panel-topbar{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
 }
+
+.camp-chips,.camp-amenities{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.camp-chips span,.camp-amenities span{border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px 9px;font-size:11px;color:var(--ink-soft)}
+.camp-section-label{font-size:12px;font-weight:700;color:var(--ink-soft);margin:12px 0 8px}
+.camp-site-grid,.camp-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.camp-site-item{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px}
+.camp-site-icon{font-size:21px}.camp-site-item b{font-size:18px}.camp-site-item small{color:var(--ink-soft)}
+.camp-facts{gap:1px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.camp-facts div{display:flex;flex-direction:column;background:#fff;padding:9px 10px}.camp-facts small{color:var(--ink-soft);margin-bottom:2px}
+.camp-seasons span{background:#e1f5ee;border-color:#5dcaa5;color:#0f6e56}
+.camp-reservation{display:flex;justify-content:center;margin-top:14px;padding:11px;border-radius:8px;background:#1d9e75;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
 .b-close-btn{
   flex:0 0 auto; width:34px; height:34px; border-radius:50%;
   display:inline-flex; align-items:center; justify-content:center;

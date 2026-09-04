@@ -315,6 +315,16 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
         "camping_glamping_site_count": data.get("camping_glamping_site_count"),
         "camping_caravan_site_count": data.get("camping_caravan_site_count"),
         "camping_classification": data.get("camping_classification"),
+        "camping_location_types": data.get("camping_location_types"),
+        "camping_theme_types": data.get("camping_theme_types"),
+        "camping_amenities": data.get("camping_amenities"),
+        "camping_toilet_count": data.get("camping_toilet_count"),
+        "camping_shower_count": data.get("camping_shower_count"),
+        "camping_sink_count": data.get("camping_sink_count"),
+        "camping_operating_seasons": data.get("camping_operating_seasons"),
+        "camping_animal_policy": data.get("camping_animal_policy"),
+        "camping_reservation_url": data.get("camping_reservation_url"),
+        "camping_first_image_url": data.get("camping_first_image_url"),
     }
     applied_building_update = (
         "applied_building_id = NULL"
@@ -329,7 +339,11 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             road_norm, jibun_norm, biz_name_norm,
             source_updated_at, bld_use_nm, facility_area, region_name,
             camping_site_count, camping_general_site_count, camping_auto_site_count,
-            camping_glamping_site_count, camping_caravan_site_count, camping_classification
+            camping_glamping_site_count, camping_caravan_site_count, camping_classification,
+            camping_location_types, camping_theme_types, camping_amenities,
+            camping_toilet_count, camping_shower_count, camping_sink_count,
+            camping_operating_seasons, camping_animal_policy,
+            camping_reservation_url, camping_first_image_url
         ) VALUES (
             %(permit_number)s, %(biz_name)s, %(road_address)s, %(jibun_address)s,
             %(permit_date)s, %(biz_status_name)s, %(biz_status_detail)s,
@@ -337,7 +351,11 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             %(road_norm)s, %(jibun_norm)s, %(biz_name_norm)s,
             %(source_updated_at)s, %(bld_use_nm)s, %(facility_area)s, %(region_name)s,
             %(camping_site_count)s, %(camping_general_site_count)s, %(camping_auto_site_count)s,
-            %(camping_glamping_site_count)s, %(camping_caravan_site_count)s, %(camping_classification)s
+            %(camping_glamping_site_count)s, %(camping_caravan_site_count)s, %(camping_classification)s,
+            %(camping_location_types)s, %(camping_theme_types)s, %(camping_amenities)s,
+            %(camping_toilet_count)s, %(camping_shower_count)s, %(camping_sink_count)s,
+            %(camping_operating_seasons)s, %(camping_animal_policy)s,
+            %(camping_reservation_url)s, %(camping_first_image_url)s
         )
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
@@ -353,6 +371,16 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             camping_glamping_site_count = EXCLUDED.camping_glamping_site_count,
             camping_caravan_site_count = EXCLUDED.camping_caravan_site_count,
             camping_classification = EXCLUDED.camping_classification,
+            camping_location_types = EXCLUDED.camping_location_types,
+            camping_theme_types = EXCLUDED.camping_theme_types,
+            camping_amenities = EXCLUDED.camping_amenities,
+            camping_toilet_count = EXCLUDED.camping_toilet_count,
+            camping_shower_count = EXCLUDED.camping_shower_count,
+            camping_sink_count = EXCLUDED.camping_sink_count,
+            camping_operating_seasons = EXCLUDED.camping_operating_seasons,
+            camping_animal_policy = EXCLUDED.camping_animal_policy,
+            camping_reservation_url = EXCLUDED.camping_reservation_url,
+            camping_first_image_url = EXCLUDED.camping_first_image_url,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
@@ -387,6 +415,16 @@ def _assert_schema(cur):
         "camping_glamping_site_count",
         "camping_caravan_site_count",
         "camping_classification",
+        "camping_location_types",
+        "camping_theme_types",
+        "camping_amenities",
+        "camping_toilet_count",
+        "camping_shower_count",
+        "camping_sink_count",
+        "camping_operating_seasons",
+        "camping_animal_policy",
+        "camping_reservation_url",
+        "camping_first_image_url",
     ]])
     found = {row["column_name"] for row in cur.fetchall()}
     required = {
@@ -400,6 +438,16 @@ def _assert_schema(cur):
         "camping_glamping_site_count",
         "camping_caravan_site_count",
         "camping_classification",
+        "camping_location_types",
+        "camping_theme_types",
+        "camping_amenities",
+        "camping_toilet_count",
+        "camping_shower_count",
+        "camping_sink_count",
+        "camping_operating_seasons",
+        "camping_animal_policy",
+        "camping_reservation_url",
+        "camping_first_image_url",
     }
     missing = required - found
     if missing:

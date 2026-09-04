@@ -1692,6 +1692,36 @@ def building_photo_upload_proxy(key):
     return response
 
 
+def _choose_camping_detail_row(lodgings):
+    """고캠핑 canonical 원장을 우선하고, 없을 때만 정부 CSV 원장을 사용한다."""
+    candidates = [
+        lodging for lodging in lodgings
+        if str(lodging.get("permit_number") or "").startswith("CAMPING:")
+    ]
+    canonical = [
+        lodging for lodging in candidates
+        if str(lodging.get("permit_number") or "").count(":") == 1
+    ]
+    pool = canonical or candidates
+    if not pool:
+        return None
+    metadata_keys = (
+        "camping_location_types", "camping_theme_types", "camping_amenities",
+        "camping_toilet_count", "camping_shower_count", "camping_sink_count",
+        "camping_operating_seasons", "camping_animal_policy",
+        "camping_reservation_url", "camping_first_image_url",
+    )
+    return max(
+        pool,
+        key=lambda lodging: (
+            sum(lodging.get(key) not in (None, "") for key in metadata_keys),
+            int(lodging.get("camping_site_count") or 0),
+            str(lodging.get("source_updated_at") or ""),
+            str(lodging.get("permit_number") or ""),
+        ),
+    )
+
+
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -2146,6 +2176,63 @@ def get_building(building_id):
     """, [building_id])
     lodging_operator_rows = [dict(row) for row in cur.fetchall()]
 
+    # 고캠핑 basedList 원장을 대표 원장으로 사용한다. 정부 CSV 원장과 함께
+    # 매칭된 경우 사이트·편의시설 메타데이터가 가장 충실한 행을 우선한다.
+    camping_row = None
+    if result_is_camping := (building.get("lodging_type") == "캠핑"):
+        camping_row = _choose_camping_detail_row(lodgings)
+
+    def _safe_public_url(value):
+        value = str(value or "").strip()
+        return value if value.lower().startswith(("https://", "http://")) else None
+
+    camping = None
+    if result_is_camping and camping_row:
+        camping = {
+            "site_count": camping_row.get("camping_site_count"),
+            "general_site_count": camping_row.get("camping_general_site_count"),
+            "auto_site_count": camping_row.get("camping_auto_site_count"),
+            "glamping_site_count": camping_row.get("camping_glamping_site_count"),
+            "caravan_site_count": camping_row.get("camping_caravan_site_count"),
+            "classification": camping_row.get("camping_classification"),
+            "location_types": camping_row.get("camping_location_types"),
+            "theme_types": camping_row.get("camping_theme_types"),
+            "amenities": camping_row.get("camping_amenities"),
+            "toilet_count": camping_row.get("camping_toilet_count"),
+            "shower_count": camping_row.get("camping_shower_count"),
+            "sink_count": camping_row.get("camping_sink_count"),
+            "operating_seasons": camping_row.get("camping_operating_seasons"),
+            "animal_policy": camping_row.get("camping_animal_policy"),
+            "reservation_url": _safe_public_url(
+                camping_row.get("camping_reservation_url")
+            ),
+            "first_image_url": _safe_public_url(
+                camping_row.get("camping_first_image_url")
+            ),
+            "facility_area": camping_row.get("facility_area"),
+        }
+        if not camping["reservation_url"]:
+            camping["reservation_url"] = next(
+                (
+                    _safe_public_url(operator.get("gocamping_url"))
+                    or _safe_public_url(operator.get("booking_url"))
+                    for operator in lodging_operator_rows
+                    if (
+                        _safe_public_url(operator.get("gocamping_url"))
+                        or _safe_public_url(operator.get("booking_url"))
+                    )
+                ),
+                None,
+            )
+        if camping["first_image_url"] and not building["photos"]:
+            building["photos"] = [{
+                "url": camping["first_image_url"],
+                "source": "gocamping",
+                "photo_type": "exterior",
+                "is_primary": True,
+                "can_delete": False,
+            }]
+
     cur.close()
     conn.close()
 
@@ -2172,6 +2259,26 @@ def get_building(building_id):
         {**row, "photo_src": f"/api/lodging-operator/photo/{row['id']}" if row.pop("photo_url", None) else None}
         for row in lodging_operator_rows
     ]
+    result["camping"] = camping
+    # 기존 지시안 및 외부 클라이언트 호환용 평면 필드.
+    if camping:
+        result.update({
+            "camping_general_site_count": camping["general_site_count"],
+            "camping_auto_site_count": camping["auto_site_count"],
+            "camping_glamping_site_count": camping["glamping_site_count"],
+            "camping_caravan_site_count": camping["caravan_site_count"],
+            "camping_lct_cl": camping["location_types"],
+            "camping_thema": camping["theme_types"],
+            "camping_sbrs": camping["amenities"],
+            "camping_toilet_co": camping["toilet_count"],
+            "camping_swrm_co": camping["shower_count"],
+            "camping_wtrpl_co": camping["sink_count"],
+            "camping_oper_pd": camping["operating_seasons"],
+            "camping_animal": camping["animal_policy"],
+            "camping_resve_url": camping["reservation_url"],
+            "camping_first_image": camping["first_image_url"],
+            "camping_area": camping["facility_area"],
+        })
     # B화면 행정 카드용: 영업/정상 영업신고 목록 + 지표.
     # 생활 외 유형은 건축물대장 호실수와 신고객실수가 비교 대상이 아니므로
     # 건물 상세에서는 신고율 대신 영업신고 객실수·활성 사업장 수를 내려준다.

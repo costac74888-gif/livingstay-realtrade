@@ -85,6 +85,16 @@ class CampingImportTests(unittest.TestCase):
             "allar": "1234.5",
             "tel": "055-854-0404",
             "modifiedtime": "20260830123456",
+            "lctCl": "숲,계곡",
+            "themaEnvrnCl": "가을단풍명소",
+            "sbrsCl": "전기,온수,무선인터넷",
+            "toiletCo": "4",
+            "swrmCo": "3",
+            "wtrplCo": "2",
+            "operPdCl": "봄,여름,가을",
+            "animalCmgCl": "가능",
+            "resveUrl": "https://example.com/reserve",
+            "firstImageUrl": "https://example.com/camp.jpg",
         })
 
         self.assertEqual(parsed["permit_number"], "CAMPING:217764")
@@ -98,6 +108,16 @@ class CampingImportTests(unittest.TestCase):
         self.assertEqual(parsed["camping_caravan_site_count"], 3)
         self.assertEqual(parsed["camping_classification"], "confirmed_mixed")
         self.assertEqual(parsed["phone"], "0558540404")
+        self.assertEqual(parsed["camping_location_types"], "숲,계곡")
+        self.assertEqual(parsed["camping_theme_types"], "가을단풍명소")
+        self.assertEqual(parsed["camping_amenities"], "전기,온수,무선인터넷")
+        self.assertEqual(parsed["camping_toilet_count"], 4)
+        self.assertEqual(parsed["camping_shower_count"], 3)
+        self.assertEqual(parsed["camping_sink_count"], 2)
+        self.assertEqual(parsed["camping_operating_seasons"], "봄,여름,가을")
+        self.assertEqual(parsed["camping_animal_policy"], "가능")
+        self.assertEqual(parsed["camping_reservation_url"], "https://example.com/reserve")
+        self.assertEqual(parsed["camping_first_image_url"], "https://example.com/camp.jpg")
 
     def test_gocamping_missing_invalid_and_negative_site_counts_are_safe_unknown(self):
         parsed = importer.parse_api_item({
@@ -217,6 +237,11 @@ class CampingSyncTests(unittest.TestCase):
                     "Popen",
                     return_value=process,
                 ) as popen,
+                mock.patch.object(
+                    app_module.lodging_promotion,
+                    "get_legacy_lodging_sync_control",
+                    return_value={"enabled": True},
+                ),
                 mock.patch.dict(
                     app_module.os.environ,
                     {

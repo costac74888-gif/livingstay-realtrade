@@ -489,7 +489,13 @@ def check_datalab_lodging_table(payload):
     ]
     if [row.get("type") for row in rows] != expected_types:
         return "공개 용도별 행 순서가 잘못됨"
-    allowed = {"type", "building_count", "units", "biz_count", "room_count", "report_rate", "sub_rows"}
+    allowed = {
+        "type", "building_count", "units", "biz_count", "room_count",
+        "report_rate", "sub_rows", "camping_facility_count",
+        "camping_site_count", "camping_general_site_count",
+        "camping_auto_site_count", "camping_glamping_site_count",
+        "camping_caravan_site_count", "camping_classification_breakdown",
+    }
     for row in rows:
         if set(row) - allowed or not {"type", "building_count", "units", "biz_count", "room_count", "report_rate"} <= set(row):
             return "공개 응답에 최소 컬럼 외 필드가 있거나 필수 필드가 없음"
@@ -6148,7 +6154,13 @@ def _check_datalab_stats(client):
         if not admin_rows or any(not admin_required <= set(row) for row in admin_rows):
             failures.append("데이터랩 전국숙박업통계: 관리자 전체 통계 원본 컬럼이 사라짐")
         public_rows = public_stats.get("rows") or []
-        public_allowed = {"type", "building_count", "units", "biz_count", "room_count", "report_rate", "sub_rows"}
+        public_allowed = {
+            "type", "building_count", "units", "biz_count", "room_count",
+            "report_rate", "sub_rows", "camping_facility_count",
+            "camping_site_count", "camping_general_site_count",
+            "camping_auto_site_count", "camping_glamping_site_count",
+            "camping_caravan_site_count", "camping_classification_breakdown",
+        }
         if any(set(row) - public_allowed for row in public_rows):
             failures.append("데이터랩 전국숙박업통계: 공개 응답에 내부 운영지표가 남아 있음")
         expected_public_types = [
