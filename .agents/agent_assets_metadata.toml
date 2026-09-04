@@ -318,3 +318,17 @@ mtime_ms = 1788488420090
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/752d884e-a077-456b-b4d7-29c07843d5c0/b98d14ca-041f-4c40-bb28-cf849f022b93"
 storage_version_token = "1788488473040399"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "WYWOeeNVziPmuNLkdXfNr"
+uri = "file://exports/HOME_AND_STAY_POLICY_BOOK_REGISTER_V01_0_2026-09-04.xlsx"
+type = "table"
+title = "홈앤스테이 정책 책자 문서대장 V.01.0"
+description = "전체 정책 31건, 책자 목차 24장, 순차 작성 일정과 문서 작성기준을 5개 시트로 정리한 관리용 엑셀입니다."
+logical_id = "994d87a1-0c0e-4f7c-94aa-b9698347f362"
+content_hash = "sha256:0435323e6c426d5d8cbec49c5d0ddcb6b12ca82d3d8d79a57a81a793f639abcd"
+size = 21463
+mtime_ms = 1788489004792
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/994d87a1-0c0e-4f7c-94aa-b9698347f362/7ca96f99-dbd0-4aee-bbb2-7e23de736fa4"
+storage_version_token = "1788489042717002"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
