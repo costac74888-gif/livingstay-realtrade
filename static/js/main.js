@@ -6269,9 +6269,7 @@ async function loadBuildingHeader(id){
         return `<div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:6px 0 5px;">OTA 예약 링크</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${btns}</div>`;
       })() : ""}
-      ${STRUCTURE_A_TYPES.includes(b.lodging_type) ? `<a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer" style="display:block; margin-top:0;" title="숙박업등록·위탁운영 무료 상담 신청">
-        <img src="/static/banner_biz_report.png" alt="우수부동산서비스인증 — 숙박업등록·위탁운영 의뢰하기, 무료 상담 신청" style="display:block; width:100%; height:auto; border-radius:10px;" />
-      </a>` : ""}`;
+      `;
   }
 
   const lodgingOperatorTypes = ["캠핑", "에어비앤비", "농어촌민박", "한옥", "생활"];

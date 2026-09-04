@@ -9,7 +9,7 @@ expect(main.includes('const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "�
 expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("airbnb_url")') && main.includes('firstValid("gocamping_url")') && main.includes("b.booking_url"), "예약 URL 우선순위가 없습니다.");
 expect(main.includes('data-panel="operations"') && main.includes('data-panel="property"'), "운영정보/부동산정보 탭이 없습니다.");
 expect(main.includes("window.__openBuildingId === Number(id)") && main.includes("_buildingDetailRequestToken === requestToken"), "건물 전환 시 오래된 응답 차단이 없습니다.");
-expect(main.includes("STRUCTURE_A_TYPES.includes(b.lodging_type) ? `<a href=\"https://jnjclub.co.kr/"), "Structure A 전용 배너 조건이 없습니다.");
+expect(!/jnjclub|banner_biz_report|JnJ/i.test(main), "JnJ 배너 또는 링크가 건물 상세 코드에 남아 있습니다.");
 expect(main.includes("STRUCTURE_B_TYPES.includes(b.lodging_type)") && main.includes("_reservationBar(b)"), "Structure B 운영 예약 영역이 없습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('href="/lodging-operator/manage"'), "예약 미연결 운영자 연결 링크가 없습니다.");
