@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-04"
+SCHEMA_VERSION = "2026-09-04-05"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2081,6 +2081,13 @@ def _run_init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_permit_unique ON operator_lodging(permit_no)")
+    # 같은 원장 행에 표기만 다른 신고번호로 운영자가 중복 승인되는 것을 DB에서도 차단한다.
+    # 기존 중복이 있으면 CREATE UNIQUE INDEX가 명시적으로 실패하며, 임의 삭제/병합하지 않는다.
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_registry_unique
+        ON operator_lodging(lodging_reg_id)
+        WHERE lodging_reg_id IS NOT NULL
+    """)
     # ALTER TABLE ADD COLUMN은 table 생성 순서상 FK를 즉시 붙일 수 없으므로,
     # 원본 테이블 생성 뒤에 조건부로 한 번만 연결한다.
     cur.execute("""

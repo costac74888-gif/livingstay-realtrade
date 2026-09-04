@@ -2,6 +2,7 @@
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -55,6 +56,39 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
         self.assertIsNone(
             app_module._gocamping_url_for_registry_key("CAMPING:authority:permit")
         )
+
+    def test_matched_permit_is_canonicalized_to_registry_key(self):
+        matched = {"id": 7, "permit_number": "CAMPING:12345"}
+        self.assertEqual(
+            app_module._canonical_operator_permit(matched, "123-45"),
+            "CAMPING:12345",
+        )
+        self.assertEqual(
+            app_module._canonical_operator_permit(None, "unmatched-1"),
+            "unmatched-1",
+        )
+
+    def test_registry_duplicate_guard_runs_a_locked_lookup(self):
+        class Cursor:
+            def __init__(self):
+                self.sql = ""
+                self.params = None
+            def execute(self, sql, params):
+                self.sql, self.params = " ".join(sql.split()), params
+            def fetchone(self):
+                return {"id": 99}
+        cursor = Cursor()
+        self.assertTrue(app_module._lodging_registry_operator_exists(cursor, {"id": 7}))
+        self.assertIn("lodging_reg_id=%s", cursor.sql)
+        self.assertIn("FOR UPDATE", cursor.sql)
+        self.assertEqual(cursor.params, [7])
+
+    def test_schema_declares_partial_registry_uniqueness_without_cleanup(self):
+        source = (Path(ROOT) / "db.py").read_text(encoding="utf-8")
+        self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_registry_unique", source)
+        self.assertIn("WHERE lodging_reg_id IS NOT NULL", source)
+        self.assertNotIn("DELETE FROM operator_lodging", source)
+        self.assertGreater(db.SCHEMA_VERSION, "2026-09-04-04")
 
 
 if __name__ == "__main__":

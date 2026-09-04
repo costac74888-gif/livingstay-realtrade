@@ -5019,6 +5019,22 @@ def _jsonb_airbnb_urls(value):
     return json.dumps(value if isinstance(value, list) else [], ensure_ascii=False)
 
 
+def _lodging_registry_operator_exists(cur, matched):
+    """계정 생성 전에 동일 정부 원장 행의 기존 대표자 승인을 확인한다."""
+    if not matched:
+        return False
+    cur.execute(
+        "SELECT id FROM operator_lodging WHERE lodging_reg_id=%s LIMIT 1 FOR UPDATE",
+        [matched["id"]],
+    )
+    return bool(cur.fetchone())
+
+
+def _canonical_operator_permit(matched, submitted):
+    """유일 매칭이면 원장의 정규 키를 저장하고, 미매칭이면 신청 원문을 보존한다."""
+    return matched.get("permit_number") if matched else submitted
+
+
 @app.route("/api/partner/lodging-operator-stats")
 @limiter.limit("60 per minute")
 def partner_lodging_operator_stats():
@@ -27587,6 +27603,10 @@ def admin_applications_approve(app_id):
                 created_id = ap["linked_op_lodging_id"]
             else:
                 matched = _find_lodging_permit(cur, ap.get("permit_no"))
+                if _lodging_registry_operator_exists(cur, matched):
+                    cur.close()
+                    conn.close()
+                    return jsonify({"ok": False, "message": "해당 영업신고에는 이미 등록된 운영자가 있습니다."}), 400
                 # 승인된 신고 운영자는 일반 로그인 계정으로만 자신의 레코드를 관리한다.
                 # 이메일이 다른 회원에 이미 쓰이면 계정 탈취를 피하기 위해 승인을 중단한다.
                 cur.execute("SELECT id FROM users WHERE LOWER(email)=LOWER(%s) FOR UPDATE", [ap["email"]])
@@ -27611,7 +27631,8 @@ def admin_applications_approve(app_id):
                 """, [lodging_user_id, matched["id"] if matched else None,
                       matched["master_building_id"] if matched else None,
                       ap.get("lodging_op_type"), ap["office_or_company_name"], ap.get("owner_name"),
-                      ap.get("phone"), ap.get("biz_reg_number"), ap.get("permit_no"),
+                      ap.get("phone"), ap.get("biz_reg_number"),
+                      _canonical_operator_permit(matched, ap.get("permit_no")),
                       _public_http_url(ap.get("booking_url")),
                       _public_http_url(ap.get("airbnb_url"), airbnb_only=True),
                       _jsonb_airbnb_urls(ap.get("airbnb_urls")),
