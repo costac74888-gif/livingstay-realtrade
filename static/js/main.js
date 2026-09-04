@@ -4703,6 +4703,13 @@ function _campingValues(value){
     .filter(Boolean);
 }
 
+function _campingAnimalLabel(value){
+  const policy = String(value || "").trim();
+  if (!policy) return "";
+  if (policy.startsWith("반려동물")) return policy;
+  return `반려동물 동반 ${policy}`;
+}
+
 function _renderCampingSection(b){
   const card = document.getElementById("bCampCard");
   const body = document.getElementById("bCampBody");
@@ -4725,7 +4732,7 @@ function _renderCampingSection(b){
   const chips = [
     ..._campingValues(camp.location_types ?? b.camping_lct_cl),
     ..._campingValues(camp.theme_types ?? b.camping_thema),
-    camp.animal_policy ?? b.camping_animal,
+    _campingAnimalLabel(camp.animal_policy ?? b.camping_animal),
   ].filter(Boolean);
   const facts = [
     ["화장실", camp.toilet_count ?? b.camping_toilet_co, "개동"],

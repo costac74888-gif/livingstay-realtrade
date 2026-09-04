@@ -37,6 +37,8 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('["bAreaFilterCard", "bTrendCard", "bTxCard"]', self.main_source)
         self.assertIn('if (b.lodging_type !== "캠핑")', self.main_source)
         self.assertIn('card.style.display = "none"', self.main_source)
+        self.assertIn("function _campingAnimalLabel(value)", self.main_source)
+        self.assertIn("`반려동물 동반 ${policy}`", self.main_source)
 
     def test_gocamping_image_is_a_photo_fallback(self):
         self.assertIn('"source": "gocamping"', self.app_source)
