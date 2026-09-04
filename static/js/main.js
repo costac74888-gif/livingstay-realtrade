@@ -4838,8 +4838,9 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bReservationCard", "bAdminCard", "bCampCard", "bLodgingOperatorCard"],
+    operations: ["bReservationCard", "bCampCard", "bLodgingOperatorCard"],
     property: [
+      "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
       "bListingsCard", "bBldgInfoCard", "bAgentCard", "bStoresCard", "bPartnerBannerCard",
     ],
@@ -4891,6 +4892,9 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card" id="bHeaderCard">
+      <div class="side-empty">불러오는 중…</div>
+    </section>
+    <section class="side-card" id="bSignalCard">
       <div class="side-empty">불러오는 중…</div>
     </section>
     <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
@@ -5135,6 +5139,7 @@ function _startDetailPoll(buildingId){
 
 async function loadBuildingHeader(id){
   const headerCard = document.getElementById("bHeaderCard");
+  const signalCard = document.getElementById("bSignalCard");
   const adminCard = document.getElementById("bAdminCard");
   const requestToken = _buildingDetailRequestToken;
   let b;
@@ -5277,7 +5282,8 @@ async function loadBuildingHeader(id){
         </div>
         <div id="bNameSuggestMsg" style="display:none; margin-top:7px; font-size:12px;"></div>
       </div>
-    </div>` : ""}
+    </div>` : ""}`;
+  signalCard.innerHTML = `
     <button type="button" id="bSignalBtn" class="b-signal-btn" title="숙박알리미" data-enabled="false"
       style="width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--brass,#B4863F);cursor:pointer;text-align:left;background:none;">
       <span class="b-signal-label" style="font-size:12px;font-weight:800;color:var(--brass-dark,#8A6812);">🔔 숙박알리미 받기</span>
