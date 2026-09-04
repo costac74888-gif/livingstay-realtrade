@@ -25077,6 +25077,42 @@ def admin_agency_links_create():
         conn.close()
 
 
+@app.route("/api/admin/agency-links/reorder", methods=["POST"])
+@require_admin
+def admin_agency_links_reorder():
+    data = request.get_json(force=True, silent=True) or {}
+    raw_ids = data.get("ordered_ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"ok": False, "message": "변경할 기관 순서가 필요합니다."}), 400
+    try:
+        ordered_ids = [int(link_id) for link_id in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "기관 순서 값이 올바르지 않습니다."}), 400
+    if len(set(ordered_ids)) != len(ordered_ids):
+        return jsonify({"ok": False, "message": "중복된 기관이 포함되어 있습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM agency_links FOR UPDATE")
+        current_ids = {int(row["id"]) for row in cur.fetchall()}
+        if set(ordered_ids) != current_ids:
+            conn.rollback()
+            return jsonify({
+                "ok": False,
+                "message": "목록이 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+            }), 409
+        cur.executemany(
+            "UPDATE agency_links SET display_order=%s, updated_at=NOW() WHERE id=%s",
+            [(index, link_id) for index, link_id in enumerate(ordered_ids, start=1)],
+        )
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/admin/agency-links/<int:link_id>", methods=["PUT"])
 @require_admin
 def admin_agency_links_update(link_id):

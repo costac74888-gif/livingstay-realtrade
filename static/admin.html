@@ -1995,8 +1995,14 @@
         rows = data.links || [];
         list.innerHTML = rows.length ? `<div style="overflow:auto;"><table class="dg-table"><thead><tr>
           <th>순서</th><th>기관명</th><th>로고</th><th>URL</th><th>활성</th><th>관리</th>
-        </tr></thead><tbody>${rows.map((row) => `<tr>
-          <td>${Number(row.display_order || 0)}</td>
+        </tr></thead><tbody>${rows.map((row, index) => `<tr>
+          <td style="white-space:nowrap;">
+            <span style="display:inline-block;min-width:22px;">${index + 1}</span>
+            <button type="button" class="admin-btn" data-agency-move="${row.id}" data-direction="-1"
+                    aria-label="${dgEscape(row.name)} 위로 이동" title="위로 이동" ${index === 0 ? "disabled" : ""}>↑</button>
+            <button type="button" class="admin-btn" data-agency-move="${row.id}" data-direction="1"
+                    aria-label="${dgEscape(row.name)} 아래로 이동" title="아래로 이동" ${index === rows.length - 1 ? "disabled" : ""}>↓</button>
+          </td>
           <td>${dgEscape(row.name)}</td>
           <td>${row.logo_url ? `<img src="${dgEscape(row.logo_url)}" alt="" style="height:28px;max-width:100px;object-fit:contain;">` : "—"}</td>
           <td><a href="${dgEscape(row.link_url)}" target="_blank" rel="noopener noreferrer">${dgEscape(row.link_url)}</a></td>
@@ -2004,6 +2010,27 @@
           <td><button class="admin-btn" data-agency-edit="${row.id}">수정</button>
               <button class="admin-btn" data-agency-delete="${row.id}">삭제</button></td>
         </tr>`).join("")}</tbody></table></div>` : `<div class="stats-loading">등록된 유관기관이 없습니다.</div>`;
+        list.querySelectorAll("[data-agency-move]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const index = rows.findIndex((row) => row.id === Number(button.dataset.agencyMove));
+            const nextIndex = index + Number(button.dataset.direction);
+            if (index < 0 || nextIndex < 0 || nextIndex >= rows.length) return;
+            button.disabled = true;
+            const ordered = rows.map((row) => row.id);
+            [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
+            const response = await fetch("/api/admin/agency-links/reorder", {
+              method: "POST",
+              headers: {"Content-Type":"application/json"},
+              body: JSON.stringify({ordered_ids: ordered}),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+              button.disabled = false;
+              return alert(data.message || "순서 변경에 실패했습니다.");
+            }
+            await load();
+          });
+        });
         list.querySelectorAll("[data-agency-edit]").forEach((button) => {
           button.addEventListener("click", () => openForm(rows.find((row) => row.id === Number(button.dataset.agencyEdit))));
         });
