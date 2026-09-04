@@ -4887,7 +4887,7 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"],
+    operations: ["bCampCard", "bLodgingOperatorCard", "bReservationCard"],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
