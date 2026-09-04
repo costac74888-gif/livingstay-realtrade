@@ -6418,7 +6418,7 @@ function renderBuildingLodgingOperators(items, lodgingType){
   box.innerHTML = items.map(op => {
     const url = safeUrl(op.booking_url) || safeUrl(op.airbnb_url) || safeUrl(op.gocamping_url);
     const action = op.booking_url ? "자체 예약 페이지" : op.airbnb_url ? "에어비앤비에서 보기" : "고캠핑에서 예약";
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)"><b>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</b><div>${escapeHtml(op.biz_name || "")}</div>${op.intro_text ? `<div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(op.intro_text)}</div>` : ""}<div style="margin-top:6px;display:flex;gap:10px">${op.phone ? `<a href="tel:${escapeHtml(op.phone)}">전화</a><a href="sms:${escapeHtml(op.phone)}">문자</a>` : ""}${url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}">${action}</a>` : ""}</div></div>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">${op.photo_src ? `<img src="${escapeHtml(op.photo_src)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;float:right">` : ""}<b>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</b><div>${escapeHtml(op.biz_name || "")}</div>${op.intro_text ? `<div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(op.intro_text)}</div>` : ""}<div style="margin-top:6px;display:flex;gap:10px">${op.phone ? `<a href="tel:${escapeHtml(op.phone)}">전화</a><a href="sms:${escapeHtml(op.phone)}">문자</a>` : ""}${url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}">${action}</a>` : ""}</div></div>`;
   }).join("");
 }
 

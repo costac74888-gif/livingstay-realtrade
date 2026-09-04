@@ -1212,6 +1212,7 @@ def _run_init_db():
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS lodging_op_type TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS booking_url TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS airbnb_url TEXT")
+    cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS airbnb_urls JSONB")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS permit_no TEXT")
     cur.execute("ALTER TABLE applications ADD COLUMN IF NOT EXISTS linked_op_lodging_id INTEGER")
     # 단지부동산(상가정보 API 배치 동기화) — 업종대분류 "부동산" 업소 상호를 콤마 join 하여 저장.
