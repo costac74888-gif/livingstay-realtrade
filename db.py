@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-06"
+SCHEMA_VERSION = "2026-09-04-07"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2758,6 +2758,41 @@ def _run_init_db():
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS attachment_key TEXT")
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'notice'")
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS external_url TEXT")
+    cur.execute("ALTER TABLE notices ADD COLUMN IF NOT EXISTS summary TEXT")
+    cur.execute("UPDATE notices SET category='notice' WHERE category IS NULL")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS agency_links (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            logo_url TEXT,
+            link_url TEXT NOT NULL UNIQUE,
+            display_order INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS agency_links_link_url_uidx
+        ON agency_links (link_url)
+    """)
+    cur.execute("""
+        INSERT INTO agency_links (name, link_url, display_order, is_active)
+        VALUES
+            ('실거래가 조회', 'https://rt.molit.go.kr', 1, TRUE),
+            ('건축물대장(세움터)', 'https://www.eais.go.kr', 2, TRUE),
+            ('공시가격알리미', 'https://www.realtyprice.kr', 3, TRUE),
+            ('국세청 홈택스', 'https://www.hometax.go.kr', 4, TRUE),
+            ('숙박업 신고', 'https://ehealth.mohw.go.kr', 5, TRUE),
+            ('고캠핑', 'https://www.gocamping.or.kr', 6, TRUE),
+            ('정부24', 'https://www.gov.kr', 7, TRUE),
+            ('한국부동산원', 'https://www.r-one.co.kr', 8, TRUE),
+            ('위택스(재산세)', 'https://www.wetax.go.kr', 9, TRUE),
+            ('공공데이터포털', 'https://www.data.go.kr', 10, TRUE)
+        ON CONFLICT (link_url) DO NOTHING
+    """)
 
     # 약관/개인정보처리방침 — 관리자가 admin.html에서 직접 수정하는 DB 기반 법적 문서.
     # doc_type은 'terms'(이용약관) 또는 'privacy'(개인정보처리방침) 두 값만 사용한다.

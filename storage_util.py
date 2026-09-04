@@ -147,6 +147,7 @@ def is_valid_email_banner_ref(ref):
 # ---- 공지사항 첨부파일 (관리자 업로드, 공개 서빙) ----
 NOTICE_ATTACHMENT_EXTENSIONS = {"pdf"}
 NOTICE_ATTACHMENT_REF_RE = re.compile(r"^notices/[0-9a-f]{32}\.pdf$")
+AGENCY_LOGO_REF_RE = re.compile(r"^agency_logos/\d+/[0-9a-f]{32}\.(jpg|jpeg|png)$")
 
 
 def build_notice_attachment_key(ext):
@@ -155,6 +156,14 @@ def build_notice_attachment_key(ext):
 
 def is_valid_notice_attachment_ref(ref):
     return bool(ref) and bool(NOTICE_ATTACHMENT_REF_RE.match(ref))
+
+
+def build_agency_logo_key(agency_id, ext):
+    return f"agency_logos/{int(agency_id)}/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_agency_logo_ref(ref):
+    return bool(ref) and bool(AGENCY_LOGO_REF_RE.match(ref))
 
 
 # ---- 오류신고 스크린샷 (비공개, 관리자 서명 URL로만 열람) ----

@@ -6869,6 +6869,102 @@ async function loadBuildingCountLabel(){
   } catch(e){ console.error("[지도] 건물 건수 로드 실패:", e); }
 }
 
+function initMapLegendSlider(){
+  const root = document.querySelector(".map-legend");
+  if (!root || root.dataset.sliderReady === "true") return;
+  root.dataset.sliderReady = "true";
+  const slides = Array.from(root.querySelectorAll("[data-legend-slide]"));
+  const buttons = Array.from(root.querySelectorAll("[data-legend-go]"));
+  const agencyRow = document.getElementById("mapAgencyRow");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let active = "legend";
+  let links = [];
+  let timer = null;
+  let paused = false;
+
+  const safeUrl = (value) => {
+    try {
+      const url = new URL(String(value || ""), location.origin);
+      return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+    } catch (_) { return ""; }
+  };
+  const renderAgency = () => {
+    if (!agencyRow) return;
+    agencyRow.replaceChildren();
+    if (!links.length) {
+      const fallback = document.createElement("a");
+      fallback.href = "/notices?tab=agency";
+      fallback.textContent = "전체 기관 보기";
+      agencyRow.appendChild(fallback);
+      return;
+    }
+    links.slice(0, 6).forEach((link) => {
+      const anchor = document.createElement("a");
+      anchor.href = link.url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.title = link.name;
+      if (link.logo) {
+        const image = document.createElement("img");
+        image.src = link.logo;
+        image.alt = link.name;
+        anchor.appendChild(image);
+      } else {
+        anchor.textContent = link.name;
+      }
+      agencyRow.appendChild(anchor);
+    });
+  };
+  const show = (name, manual=false) => {
+    active = name;
+    slides.forEach((slide) => {
+      const on = slide.dataset.legendSlide === name;
+      slide.hidden = !on;
+      slide.classList.toggle("is-active", on);
+    });
+    buttons.forEach((button) => button.classList.toggle("is-active", button.dataset.legendGo === name));
+    if (name === "agency") {
+      renderAgency();
+    }
+    requestAnimationFrame(() => liftZoomControlAboveLegend());
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    if (paused || document.hidden || reduceMotion.matches) return;
+    timer = setTimeout(() => {
+      show(active === "legend" ? "agency" : "legend");
+      schedule();
+    }, 5000);
+  };
+  buttons.forEach((button) => button.addEventListener("click", () => {
+    show(button.dataset.legendGo, true);
+    schedule();
+  }));
+  ["mouseenter", "focusin"].forEach((eventName) => root.addEventListener(eventName, () => {
+    paused = true; clearTimeout(timer);
+  }));
+  ["mouseleave", "focusout"].forEach((eventName) => root.addEventListener(eventName, (event) => {
+    if (eventName === "focusout" && root.contains(event.relatedTarget)) return;
+    paused = false; schedule();
+  }));
+  document.addEventListener("visibilitychange", schedule);
+  reduceMotion.addEventListener?.("change", schedule);
+  fetch("/api/agency-links")
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error("agency links")))
+    .then((data) => {
+      links = (data.links || []).map((item) => ({
+        name:String(item.name || ""),
+        url:safeUrl(item.link_url),
+        logo:String(item.logo_url || ""),
+      }))
+        .filter((item) => item.name && item.url);
+      renderAgency();
+    })
+    .catch(() => { links = []; renderAgency(); });
+  show("legend");
+  schedule();
+}
+
 // 검색창 바로 아래 데이터 규모 지표 — 값은 매 로드마다 서버 집계에서 갱신한다.
 async function loadPlatformStats(){
   const platformStats = document.getElementById("platformStats");
@@ -6898,6 +6994,7 @@ async function loadPlatformStats(){
 // 최초 로드: 기본 패널 초기화 후, URL이 /building/<id>면 자동으로 상세를 연다.
 initDefaultSidePanel();
 loadBuildingCountLabel();
+initMapLegendSlider();
 (function(){
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) renderBuildingPanel(Number(m[1]));

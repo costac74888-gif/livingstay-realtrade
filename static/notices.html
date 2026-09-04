@@ -22,6 +22,12 @@
 
   <div class="panel-card">
     <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0 0 16px;">공지사항</h1>
+    <div class="notice-tab-bar" role="tablist" aria-label="공지사항 분류">
+      <button class="ntab on" type="button" role="tab" aria-selected="true" data-tab="notice">📢 공지</button>
+      <button class="ntab" type="button" role="tab" aria-selected="false" data-tab="news">📰 뉴스</button>
+      <button class="ntab" type="button" role="tab" aria-selected="false" data-tab="data">📂 자료</button>
+      <button class="ntab" type="button" role="tab" aria-selected="false" data-tab="agency">🔗 유관기관</button>
+    </div>
     <div id="noticeList">
       <div style="text-align:center; padding:48px 12px; color:var(--ink-soft); font-size:14px;">불러오는 중…</div>
     </div>
@@ -51,6 +57,38 @@
   }
   .notice-item.open .notice-body { display:block; }
   .notice-empty { text-align:center; padding:48px 12px; color:var(--ink-soft); }
+  .notice-tab-bar { display:flex; gap:4px; margin-bottom:16px; border-bottom:2px solid var(--line); }
+  .ntab {
+    flex:1; padding:9px 4px; font-size:13px; font-weight:600; border:none;
+    background:none; cursor:pointer; color:var(--ink-soft); border-bottom:2px solid transparent;
+    margin-bottom:-2px; font-family:inherit; transition:color .15s,border-color .15s;
+  }
+  .ntab.on { color:var(--brass-dark,#8a6a2f); border-bottom-color:var(--brass,#B4863F); }
+  .ntab:hover { color:var(--ink); }
+  .ntab:focus-visible, .agency-card:focus-visible, .notice-news-item:focus-visible,
+  .notice-data-item:focus-visible { outline:2px solid var(--brass); outline-offset:2px; }
+  .notice-news-item, .notice-data-item {
+    display:flex; align-items:flex-start; gap:10px; padding:14px 4px;
+    border-bottom:1px solid var(--line); text-decoration:none; color:inherit;
+  }
+  .notice-news-item:hover .notice-title, .notice-data-item:hover .notice-title { color:var(--brass); }
+  .notice-news-dot { width:6px; height:6px; border-radius:50%; background:var(--brass); flex:none; margin-top:7px; }
+  .notice-data-icon { font-size:22px; flex:none; }
+  .notice-summary { font-size:12px; color:var(--ink-soft); line-height:1.5; margin-top:3px; }
+  .notice-meta { font-size:11px; color:var(--ink-muted); margin-top:4px; }
+  .agency-intro { font-size:12px; color:var(--ink-soft); margin:0 0 12px; }
+  .agency-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:4px 0; }
+  .agency-card {
+    display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px 10px;
+    border-radius:10px; border:1px solid var(--line); background:#fff;
+    text-decoration:none; color:var(--ink); transition:border-color .15s,box-shadow .15s;
+  }
+  .agency-card:hover { border-color:var(--brass); box-shadow:0 2px 8px rgba(180,134,63,.15); }
+  .agency-card img { height:32px; max-width:100%; object-fit:contain; }
+  .agency-card-icon { font-size:28px; line-height:32px; }
+  .agency-card-name { font-size:12px; font-weight:700; text-align:center; }
+  .agency-card-url { max-width:100%; font-size:10px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  @media(min-width:480px){ .agency-grid { grid-template-columns:repeat(3,1fr); } }
   @media (max-width: 520px){
     /* 좁은 폰: 제목이 길어도 날짜/화살표가 짓눌리지 않게 줄바꿈 허용 */
     .notice-head { flex-wrap:wrap; gap:4px 8px; }
@@ -80,12 +118,23 @@
     );
   }
 
-  function renderEmpty(){
+  const TAB_LABELS = {notice:"공지사항",news:"뉴스",data:"자료",agency:"유관기관"};
+  let currentTab = "notice";
+  let loadSeq = 0;
+
+  function safeHttpUrl(value){
+    try {
+      const url = new URL(String(value || ""), location.origin);
+      return (url.protocol === "http:" || url.protocol === "https:") ? url.href : "";
+    } catch (_) { return ""; }
+  }
+
+  function renderEmpty(tab){
+    const label = TAB_LABELS[tab] || "항목";
     return `
       <div class="notice-empty">
         <div style="font-size:40px; margin-bottom:12px;">📭</div>
-        <div style="font-size:15px; font-weight:600; color:var(--ink);">등록된 공지사항이 없습니다.</div>
-        <div style="font-size:13px; margin-top:8px;">새로운 소식이 등록되면 이곳에서 안내해 드립니다.</div>
+        <div style="font-size:15px; font-weight:600; color:var(--ink);">등록된 ${escapeHtml(label)}이 없습니다.</div>
       </div>`;
   }
 
@@ -104,31 +153,95 @@
       </div>`;
   }
 
-  async function loadNotices(){
-    const wrap = document.getElementById("noticeList");
-    let data;
-    try {
-      const res = await fetch("/api/notices?size=100");
-      if (!res.ok) throw new Error("fetch failed");
-      data = await res.json();
-    } catch (e) {
-      wrap.innerHTML = `<div class="notice-empty">공지사항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>`;
-      return;
-    }
-    const items = (data && data.items) || [];
-    if (!items.length){
-      wrap.innerHTML = renderEmpty();
-      return;
-    }
-    wrap.innerHTML = items.map(noticeItemHtml).join("");
-    wrap.querySelectorAll(".notice-head").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        btn.parentElement.classList.toggle("open");
-      });
-    });
+  function newsItemHtml(n){
+    const href = safeHttpUrl(n.external_url);
+    const content = `<span class="notice-news-dot"></span><span style="flex:1;min-width:0;">
+      <span class="notice-title" style="display:block;">${escapeHtml(n.title)}</span>
+      ${n.summary ? `<span class="notice-summary" style="display:block;">${escapeHtml(n.summary)}</span>` : ""}
+      <span class="notice-meta" style="display:block;">${escapeHtml(n.created_at || "")}${href ? " · 외부링크 ↗" : ""}</span>
+    </span>`;
+    return href
+      ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="notice-news-item">${content}</a>`
+      : `<div class="notice-news-item">${content}</div>`;
   }
 
-  loadNotices();
+  function dataItemHtml(n){
+    const external = safeHttpUrl(n.external_url);
+    const href = n.attachment_url || external;
+    const content = `<span class="notice-data-icon">${n.attachment_url ? "📎" : "📄"}</span>
+      <span style="flex:1;min-width:0;"><span class="notice-title" style="display:block;">${escapeHtml(n.title)}</span>
+      ${n.summary ? `<span class="notice-summary" style="display:block;">${escapeHtml(n.summary)}</span>` : ""}
+      <span class="notice-meta" style="display:block;">${escapeHtml(n.created_at || "")}${n.attachment_url ? " · PDF 다운로드" : external ? " · 외부링크 ↗" : ""}</span></span>`;
+    return href
+      ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="notice-data-item">${content}</a>`
+      : `<div class="notice-data-item">${content}</div>`;
+  }
+
+  async function loadAgencyTab(wrap, seq){
+    const res = await fetch("/api/agency-links");
+    if (!res.ok) throw new Error("fetch failed");
+    const data = await res.json();
+    if (seq !== loadSeq) return;
+    const links = (data.links || []).map((link) => ({...link, safe_url:safeHttpUrl(link.link_url)}))
+      .filter((link) => link.safe_url);
+    if (!links.length){ wrap.innerHTML = renderEmpty("agency"); return; }
+    wrap.innerHTML = `<p class="agency-intro">숙박부동산 관련 정부·공공기관 사이트 모음입니다.</p>
+      <div class="agency-grid">${links.map((link) => {
+        const host = new URL(link.safe_url).hostname;
+        return `<a href="${escapeHtml(link.safe_url)}" target="_blank" rel="noopener noreferrer" class="agency-card">
+          ${link.logo_url ? `<img src="${escapeHtml(link.logo_url)}" alt="" loading="lazy">` : `<span class="agency-card-icon" aria-hidden="true">🏛️</span>`}
+          <span class="agency-card-name">${escapeHtml(link.name)}</span>
+          <span class="agency-card-url">${escapeHtml(host)}</span>
+        </a>`;
+      }).join("")}</div>`;
+  }
+
+  async function loadNoticeTab(tab){
+    const wrap = document.getElementById("noticeList");
+    const seq = ++loadSeq;
+    wrap.innerHTML = `<div class="notice-empty">불러오는 중…</div>`;
+    try {
+      if (tab === "agency"){ await loadAgencyTab(wrap, seq); return; }
+      const res = await fetch(`/api/notices?category=${encodeURIComponent(tab)}&size=100`);
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      if (seq !== loadSeq) return;
+      const items = (data && data.items) || [];
+      if (!items.length){ wrap.innerHTML = renderEmpty(tab); return; }
+      if (tab === "notice"){
+        wrap.innerHTML = items.map(noticeItemHtml).join("");
+        wrap.querySelectorAll(".notice-head").forEach((btn) => {
+          btn.addEventListener("click", () => btn.parentElement.classList.toggle("open"));
+        });
+      } else if (tab === "news"){
+        wrap.innerHTML = items.map(newsItemHtml).join("");
+      } else {
+        wrap.innerHTML = items.map(dataItemHtml).join("");
+      }
+    } catch (e) {
+      if (seq === loadSeq) wrap.innerHTML = `<div class="notice-empty">불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>`;
+    }
+  }
+
+  function switchNoticeTab(tab, {replaceHistory=false} = {}){
+    if (!["notice","news","data","agency"].includes(tab)) tab = "notice";
+    currentTab = tab;
+    document.querySelectorAll(".ntab").forEach((button) => {
+      const active = button.dataset.tab === tab;
+      button.classList.toggle("on", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    const url = new URL(location.href);
+    if (tab === "notice") url.searchParams.delete("tab"); else url.searchParams.set("tab", tab);
+    history[replaceHistory ? "replaceState" : "pushState"]({}, "", url);
+    loadNoticeTab(tab);
+  }
+
+  document.querySelectorAll(".ntab").forEach((button) => {
+    button.addEventListener("click", () => switchNoticeTab(button.dataset.tab));
+  });
+  window.addEventListener("popstate", () => switchNoticeTab(new URLSearchParams(location.search).get("tab") || "notice", {replaceHistory:true}));
+  switchNoticeTab(new URLSearchParams(location.search).get("tab") || "notice", {replaceHistory:true});
 </script>
 <script>window.PAGE_TITLE = "공지사항";</script>
 <script src="/static/js/header.js"></script>

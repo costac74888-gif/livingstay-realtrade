@@ -24089,7 +24089,7 @@ def admin_listings_list():
     for it in items:
         if it.get("contact_phone"):
             it["contact_phone"] = format_phone(it["contact_phone"])
-    return jsonify({"total": total, "page": page, "size": size, "items": items})
+    return jsonify({"ok": True, "total": total, "page": page, "size": size, "items": items})
 
 
 @app.route("/api/admin/listings/<int:listing_id>", methods=["PUT"])
@@ -24798,6 +24798,27 @@ def admin_transactions_export():
 ADMIN_NOTICE_SORT = {
     "id": "id", "title": "title", "is_pinned": "is_pinned", "created_at": "created_at",
 }
+_NOTICE_CATEGORIES = {"notice", "news", "data"}
+
+
+def _validated_public_url(value):
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if any(ord(char) < 32 for char in value):
+        return None
+    return value
+
+
+def _notice_category(value):
+    category = (value or "notice").strip().lower()
+    return category if category in _NOTICE_CATEGORIES else None
 
 
 def _admin_notice_filters():
@@ -24806,11 +24827,12 @@ def _admin_notice_filters():
     sort_key = (request.args.get("sort") or "").strip()
     sort_expr = ADMIN_NOTICE_SORT.get(sort_key)
     order = "DESC" if (request.args.get("order") or "").strip().lower() == "desc" else "ASC"
-    where = "1=1"
-    params = []
+    category = _notice_category(request.args.get("category"))
+    where = "category = %s"
+    params = [category or "notice"]
     if q:
-        where = "(title ILIKE %s OR body ILIKE %s)"
-        params = [f"%{q}%", f"%{q}%"]
+        where += " AND (title ILIKE %s OR body ILIKE %s OR COALESCE(summary, '') ILIKE %s)"
+        params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
     return sort_expr, order, where, params
 
 
@@ -24833,7 +24855,7 @@ def admin_notices_list():
     cur.execute(f"SELECT COUNT(*) c FROM notices WHERE {where_sql}", params)
     total = cur.fetchone()["c"]
     cur.execute(f"""
-        SELECT id, title, body, is_pinned,
+        SELECT id, title, body, summary, external_url, category, attachment_key, is_pinned,
                to_char(created_at, 'YYYY-MM-DD') AS created_at,
                to_char(updated_at, 'YYYY-MM-DD') AS updated_at
         FROM notices
@@ -24853,17 +24875,31 @@ def admin_notices_create():
     data = request.get_json(force=True, silent=True) or {}
     title = (data.get("title") or "").strip()
     body = (data.get("body") or "").strip()
+    category = _notice_category(data.get("category"))
     if not title or not body:
         return jsonify({"ok": False, "message": "제목과 본문은 필수입니다."}), 400
+    if not category:
+        return jsonify({"ok": False, "message": "공지 분류가 올바르지 않습니다."}), 400
     is_pinned = _parse_bool(data.get("is_pinned"))
     attachment_key = (data.get("attachment_key") or "").strip() or None
+    summary = (data.get("summary") or "").strip() or None
+    raw_external_url = (data.get("external_url") or "").strip()
+    external_url = _validated_public_url(raw_external_url)
+    if raw_external_url and not external_url:
+        return jsonify({"ok": False, "message": "외부 URL은 http 또는 https 주소여야 합니다."}), 400
     if attachment_key and not storage_util.is_valid_notice_attachment_ref(attachment_key):
         return jsonify({"ok": False, "message": "첨부파일 정보가 올바르지 않습니다."}), 400
+    if category == "news" and not external_url:
+        return jsonify({"ok": False, "message": "뉴스에는 외부 기사 URL이 필요합니다."}), 400
+    if category == "data" and not (attachment_key or external_url):
+        return jsonify({"ok": False, "message": "자료에는 PDF 첨부 또는 외부 URL이 필요합니다."}), 400
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO notices (title, body, is_pinned, attachment_key) VALUES (%s, %s, %s, %s) RETURNING id",
-        [title, body, is_pinned, attachment_key],
+        """INSERT INTO notices
+           (title, body, summary, external_url, category, is_pinned, attachment_key)
+           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        [title, body, summary, external_url, category, is_pinned, attachment_key],
     )
     new_id = cur.fetchone()["id"]
     conn.commit()
@@ -24889,6 +24925,22 @@ def admin_notices_update(notice_id):
             return jsonify({"ok": False, "message": "본문은 비울 수 없습니다."}), 400
         sets.append("body = %s")
         vals.append(body)
+    if "category" in data:
+        category = _notice_category(data.get("category"))
+        if not category:
+            return jsonify({"ok": False, "message": "공지 분류가 올바르지 않습니다."}), 400
+        sets.append("category = %s")
+        vals.append(category)
+    if "summary" in data:
+        sets.append("summary = %s")
+        vals.append((data.get("summary") or "").strip() or None)
+    if "external_url" in data:
+        raw_external_url = (data.get("external_url") or "").strip()
+        external_url = _validated_public_url(raw_external_url)
+        if raw_external_url and not external_url:
+            return jsonify({"ok": False, "message": "외부 URL은 http 또는 https 주소여야 합니다."}), 400
+        sets.append("external_url = %s")
+        vals.append(external_url)
     if "is_pinned" in data:
         sets.append("is_pinned = %s")
         vals.append(_parse_bool(data.get("is_pinned")))
@@ -24902,17 +24954,160 @@ def admin_notices_update(notice_id):
         return jsonify({"ok": False, "message": "수정할 항목이 없습니다."}), 400
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM notices WHERE id=%s", [notice_id])
-    if not cur.fetchone():
+    cur.execute(
+        "SELECT category, external_url, attachment_key FROM notices WHERE id=%s",
+        [notice_id],
+    )
+    existing = cur.fetchone()
+    if not existing:
         cur.close()
         conn.close()
         return jsonify({"ok": False, "message": "존재하지 않는 공지입니다."}), 404
+    final_category = _notice_category(data.get("category")) if "category" in data else existing["category"]
+    final_external_url = (
+        _validated_public_url(data.get("external_url"))
+        if "external_url" in data else existing["external_url"]
+    )
+    final_attachment_key = (
+        (data.get("attachment_key") or "").strip() or None
+        if "attachment_key" in data else existing["attachment_key"]
+    )
+    if final_category == "news" and not final_external_url:
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "뉴스에는 외부 기사 URL이 필요합니다."}), 400
+    if final_category == "data" and not (final_attachment_key or final_external_url):
+        cur.close()
+        conn.close()
+        return jsonify({"ok": False, "message": "자료에는 PDF 첨부 또는 외부 URL이 필요합니다."}), 400
     sets.append("updated_at = NOW()")
     vals.append(notice_id)
     cur.execute(f"UPDATE notices SET {', '.join(sets)} WHERE id = %s", vals)
     conn.commit()
     cur.close()
     conn.close()
+    return jsonify({"ok": True})
+
+
+# ---- 유관기관 링크 관리 ----
+@app.route("/api/admin/agency-links")
+@require_admin
+def admin_agency_links_list():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, name, logo_url, link_url, display_order, is_active,
+                   to_char(updated_at, 'YYYY-MM-DD') AS updated_at
+            FROM agency_links ORDER BY display_order ASC, id ASC
+        """)
+        links = []
+        for row in cur.fetchall():
+            item = dict(row)
+            item["has_logo"] = bool(item.pop("logo_url", None))
+            item["logo_url"] = f"/api/agency-links/{item['id']}/logo" if item["has_logo"] else None
+            links.append(item)
+        return jsonify({"ok": True, "links": links, "items": links, "total": len(links)})
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _agency_payload(data):
+    name = (data.get("name") or "").strip()
+    raw_url = (data.get("link_url") or "").strip()
+    link_url = _validated_public_url(raw_url)
+    if not name or not raw_url:
+        return None, "기관명과 URL은 필수입니다."
+    if not link_url:
+        return None, "URL은 http 또는 https 주소여야 합니다."
+    try:
+        display_order = int(data.get("display_order") or 0)
+    except (TypeError, ValueError):
+        return None, "노출 순서는 정수여야 합니다."
+    return {
+        "name": name,
+        "link_url": link_url,
+        "display_order": display_order,
+        "is_active": _parse_bool(data.get("is_active", True)),
+    }, None
+
+
+@app.route("/api/admin/agency-links", methods=["POST"])
+@require_admin
+def admin_agency_links_create():
+    payload, error = _agency_payload(request.get_json(force=True, silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "message": error}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO agency_links (name, link_url, display_order, is_active)
+               VALUES (%s, %s, %s, %s) RETURNING id""",
+            [payload["name"], payload["link_url"], payload["display_order"], payload["is_active"]],
+        )
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+        return jsonify({"ok": True, "id": new_id})
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 등록된 기관 URL입니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/admin/agency-links/<int:link_id>", methods=["PUT"])
+@require_admin
+def admin_agency_links_update(link_id):
+    payload, error = _agency_payload(request.get_json(force=True, silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "message": error}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """UPDATE agency_links SET name=%s, link_url=%s, display_order=%s,
+                      is_active=%s, updated_at=NOW() WHERE id=%s RETURNING id""",
+            [payload["name"], payload["link_url"], payload["display_order"],
+             payload["is_active"], link_id],
+        )
+        if not cur.fetchone():
+            conn.rollback()
+            return jsonify({"ok": False, "message": "존재하지 않는 유관기관입니다."}), 404
+        conn.commit()
+        return jsonify({"ok": True})
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "이미 등록된 기관 URL입니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/admin/agency-links/<int:link_id>", methods=["DELETE"])
+@require_admin
+def admin_agency_links_delete(link_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    logo_key = None
+    try:
+        cur.execute("DELETE FROM agency_links WHERE id=%s RETURNING logo_url", [link_id])
+        row = cur.fetchone()
+        if not row:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "존재하지 않는 유관기관입니다."}), 404
+        logo_key = row.get("logo_url")
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if logo_key and storage_util.is_valid_agency_logo_ref(logo_key):
+        try:
+            storage_util.delete_object(logo_key)
+        except Exception:
+            app.logger.warning("유관기관 로고 정리 실패: %s", link_id, exc_info=True)
     return jsonify({"ok": True})
 
 
@@ -25217,6 +25412,52 @@ def admin_notices_upload_attachment():
     return jsonify({"ok": True, "attachment_key": key})
 
 
+@app.route("/api/admin/agency-links/<int:link_id>/logo", methods=["POST"])
+@require_admin
+def admin_agency_link_logo(link_id):
+    upload = request.files.get("logo") or request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"ok": False, "message": "로고 파일을 선택해주세요."}), 400
+    ext = upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else ""
+    if ext not in storage_util.LOGO_EXTENSIONS:
+        return jsonify({"ok": False, "message": "JPG 또는 PNG 이미지만 업로드할 수 있습니다."}), 400
+    image_data = upload.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(image_data) > storage_util.MAX_FILE_BYTES:
+        return jsonify({"ok": False, "message": "파일 크기는 5MB 이하여야 합니다."}), 400
+    if len(image_data) < 16 or not storage_util.check_magic_bytes(image_data, ext):
+        return jsonify({"ok": False, "message": "파일 내용이 이미지 형식과 일치하지 않습니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    old_key = None
+    try:
+        cur.execute("SELECT logo_url FROM agency_links WHERE id=%s", [link_id])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "존재하지 않는 유관기관입니다."}), 404
+        old_key = row.get("logo_url")
+        key = storage_util.build_agency_logo_key(link_id, ext)
+        try:
+            storage_util.upload_doc(key, image_data)
+        except Exception:
+            app.logger.exception("유관기관 로고 업로드 실패")
+            return jsonify({"ok": False, "message": "로고 저장 중 오류가 발생했습니다."}), 500
+        cur.execute(
+            "UPDATE agency_links SET logo_url=%s, updated_at=NOW() WHERE id=%s",
+            [key, link_id],
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    if old_key and storage_util.is_valid_agency_logo_ref(old_key):
+        try:
+            storage_util.delete_object(old_key)
+        except Exception:
+            app.logger.warning("이전 유관기관 로고 정리 실패: %s", link_id, exc_info=True)
+    return jsonify({"ok": True, "logo_url": f"/api/agency-links/{link_id}/logo"})
+
+
 # ---- 팝업 공개 API (로그인 불필요) ----
 
 def _is_mobile_ua(ua):
@@ -25325,6 +25566,62 @@ def get_lodging_national_stats():
 
 
 # ---- 공지사항 공개 API (로그인 불필요) ----
+@app.route("/api/agency-links")
+@limiter.limit("30 per minute")
+def get_agency_links():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, name, logo_url, link_url, display_order
+            FROM agency_links
+            WHERE is_active = TRUE
+            ORDER BY display_order ASC, id ASC
+        """)
+        links = []
+        for row in cur.fetchall():
+            item = dict(row)
+            item["logo_url"] = (
+                f"/api/agency-links/{item['id']}/logo"
+                if item.get("logo_url") else None
+            )
+            links.append(item)
+        return jsonify({"ok": True, "links": links})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/agency-links/<int:link_id>/logo")
+@limiter.exempt
+def get_agency_link_logo(link_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT logo_url FROM agency_links WHERE id=%s AND is_active=TRUE",
+            [link_id],
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    key = row.get("logo_url") if row else None
+    if not storage_util.is_valid_agency_logo_ref(key):
+        abort(404)
+    try:
+        data = storage_util.download_bytes(key)
+    except Exception:
+        abort(404)
+    ext = key.rsplit(".", 1)[-1].lower()
+    response = Response(
+        data,
+        mimetype={"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}[ext],
+    )
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
 @app.route("/api/notices")
 @limiter.limit("30 per minute")
 def get_notices():
@@ -25337,18 +25634,23 @@ def get_notices():
         size = min(max(int(request.args.get("size", 10)), 1), 100)
     except (ValueError, TypeError):
         size = 10
+    category = _notice_category(request.args.get("category"))
+    if not category:
+        return jsonify({"ok": False, "message": "공지 분류가 올바르지 않습니다."}), 400
     offset = (page - 1) * size
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) c FROM notices")
+    cur.execute("SELECT COUNT(*) c FROM notices WHERE category=%s", [category])
     total = cur.fetchone()["c"]
     cur.execute("""
-        SELECT id, title, body, is_pinned, attachment_key,
+        SELECT id, title, body, summary, external_url, category,
+               is_pinned, attachment_key,
                to_char(created_at, 'YYYY-MM-DD') AS created_at
         FROM notices
+        WHERE category=%s
         ORDER BY is_pinned DESC, created_at DESC, id DESC
         LIMIT %s OFFSET %s
-    """, [size, offset])
+    """, [category, size, offset])
     items = []
     for r in cur.fetchall():
         row = dict(r)
@@ -25359,7 +25661,7 @@ def get_notices():
         items.append(row)
     cur.close()
     conn.close()
-    return jsonify({"total": total, "page": page, "size": size, "items": items})
+    return jsonify({"ok": True, "total": total, "page": page, "size": size, "items": items})
 
 
 # ---- 신청 승인 큐 (applications, 모두 require_admin) ----

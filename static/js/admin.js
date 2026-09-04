@@ -92,6 +92,7 @@ class DataGrid {
         idField: "id", pageSize: 50, title: "", allowAdd: true, allowEdit: true, allowDelete: true,
         searchPlaceholder: "건물명·주소 검색", entityLabel: "건물",
         filters: [], rowActions: [], bulkDeleteEndpoint: "", bulkDeleteLabel: "선택 삭제",
+        fixedParams: {}, fixedPayload: {},
       },
       config
     );
@@ -296,6 +297,9 @@ class DataGrid {
     });
     Object.keys(s.filters).forEach((k) => {
       if (s.filters[k] !== "" && s.filters[k] != null) params.set(k, s.filters[k]);
+    });
+    Object.keys(this.cfg.fixedParams || {}).forEach((k) => {
+      params.set(k, this.cfg.fixedParams[k]);
     });
     let res;
     try {
@@ -671,7 +675,7 @@ class DataGrid {
     const msgBox = overlay.querySelector(".admin-modal-msg");
     const saveBtn = overlay.querySelector(".admin-modal-save");
     saveBtn.addEventListener("click", async () => {
-      const payload = {};
+      const payload = Object.assign({}, this.cfg.fixedPayload || {});
       // 파일 업로드 먼저 처리 — 업로드 성공 시 반환된 키를 payload에 세팅
       const fileInputs = overlay.querySelectorAll("[data-filekey]");
       for (const fi of fileInputs) {

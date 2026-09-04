@@ -1143,6 +1143,8 @@
         title: "공지사항 관리",
         entityLabel: "공지",
         searchPlaceholder: "제목·본문 검색",
+        fixedParams: { category: "notice" },
+        fixedPayload: { category: "notice" },
         columns: [
           { key: "id", label: "ID", sortable: true },
           { key: "title", label: "제목", sortable: true, editable: true, required: true,
@@ -1152,6 +1154,8 @@
             } },
           { key: "body", label: "본문", editable: true, required: true, type: "textarea", hideInTable: true,
             default: () => "■ 이달의 정책\n- \n\n■ 이달의 시세\n- \n\n■ 이달의 판례\n- \n\n■ 영업 활용 포인트\n- \n\n전체 리포트(표·그래프 포함)는 첨부된 PDF를 확인해주세요." },
+          { key: "summary", label: "목록 요약", editable: true, type: "textarea", hideInTable: true },
+          { key: "external_url", label: "외부 URL", editable: true, hideInTable: true },
           { key: "attachment_key", label: "첨부파일(PDF)", editable: true, type: "file",
             uploadEndpoint: "/api/admin/notices/upload-attachment", hideInTable: true },
           { key: "is_pinned", label: "고정", sortable: true, editable: true, type: "boolean", trueLabel: "고정", falseLabel: "일반",
@@ -1921,6 +1925,151 @@
       if (!cfg) return;
       destroyStatsCharts();
       currentGrid = new DataGrid(Object.assign({ mount: mount, idField: "id", pageSize: 50 }, cfg));
+    }
+
+    let noticeAdminTab = "notice";
+    function showNotices() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="legal-tabs notice-admin-tabs" style="margin-bottom:14px;">
+          <button class="admin-btn" data-notice-tab="notice">공지 관리</button>
+          <button class="admin-btn" data-notice-tab="news">뉴스 관리</button>
+          <button class="admin-btn" data-notice-tab="data">자료 관리</button>
+          <button class="admin-btn" data-notice-tab="agency">유관기관 관리</button>
+        </div>
+        <div id="noticeAdminMount"></div>`;
+      const subMount = document.getElementById("noticeAdminMount");
+      const activate = (category) => {
+        noticeAdminTab = category;
+        mount.querySelectorAll("[data-notice-tab]").forEach((button) => {
+          button.classList.toggle("admin-btn-primary", button.dataset.noticeTab === category);
+        });
+        if (category === "agency") {
+          showAgencyLinks(subMount);
+          return;
+        }
+        const labels = {notice:"공지",news:"뉴스",data:"자료"};
+        const columns = GRID_CONFIGS.notices.columns.map((column) => {
+          const copy = Object.assign({}, column);
+          if (copy.key === "external_url") {
+            copy.label = category === "news" ? "언론사 기사 URL" : "외부 법령·보고서 URL";
+            copy.required = category === "news";
+          }
+          if (copy.key === "attachment_key") copy.hideInTable = category !== "data";
+          if (copy.key === "body" && category !== "notice") copy.default = () => "관련 내용을 입력해주세요.";
+          return copy;
+        });
+        currentGrid = new DataGrid(Object.assign({}, GRID_CONFIGS.notices, {
+          mount: subMount,
+          idField: "id",
+          pageSize: 50,
+          title: `${labels[category]} 관리`,
+          entityLabel: labels[category],
+          fixedParams: {category},
+          fixedPayload: {category},
+          columns,
+        }));
+      };
+      mount.querySelectorAll("[data-notice-tab]").forEach((button) => {
+        button.addEventListener("click", () => activate(button.dataset.noticeTab));
+      });
+      activate(noticeAdminTab);
+    }
+
+    async function showAgencyLinks(target) {
+      target.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h2 style="margin:0;font-size:18px;">유관기관 관리</h2>
+          <button class="admin-btn admin-btn-primary" id="agencyAddBtn">+ 기관 추가</button>
+        </div>
+        <div id="agencyFormWrap"></div>
+        <div id="agencyList">불러오는 중…</div>`;
+      const list = target.querySelector("#agencyList");
+      const formWrap = target.querySelector("#agencyFormWrap");
+      let rows = [];
+
+      const load = async () => {
+        const response = await fetch("/api/admin/agency-links");
+        if (response.status === 401) { location.href = "/admin/login"; return; }
+        const data = await response.json().catch(() => ({}));
+        rows = data.links || [];
+        list.innerHTML = rows.length ? `<div style="overflow:auto;"><table class="dg-table"><thead><tr>
+          <th>순서</th><th>기관명</th><th>로고</th><th>URL</th><th>활성</th><th>관리</th>
+        </tr></thead><tbody>${rows.map((row) => `<tr>
+          <td>${Number(row.display_order || 0)}</td>
+          <td>${dgEscape(row.name)}</td>
+          <td>${row.logo_url ? `<img src="${dgEscape(row.logo_url)}" alt="" style="height:28px;max-width:100px;object-fit:contain;">` : "—"}</td>
+          <td><a href="${dgEscape(row.link_url)}" target="_blank" rel="noopener noreferrer">${dgEscape(row.link_url)}</a></td>
+          <td>${row.is_active ? "활성" : "비활성"}</td>
+          <td><button class="admin-btn" data-agency-edit="${row.id}">수정</button>
+              <button class="admin-btn" data-agency-delete="${row.id}">삭제</button></td>
+        </tr>`).join("")}</tbody></table></div>` : `<div class="stats-loading">등록된 유관기관이 없습니다.</div>`;
+        list.querySelectorAll("[data-agency-edit]").forEach((button) => {
+          button.addEventListener("click", () => openForm(rows.find((row) => row.id === Number(button.dataset.agencyEdit))));
+        });
+        list.querySelectorAll("[data-agency-delete]").forEach((button) => {
+          button.addEventListener("click", async () => {
+            if (!confirm("이 유관기관을 삭제하시겠습니까?")) return;
+            const response = await fetch(`/api/admin/agency-links/${button.dataset.agencyDelete}`, {method:"DELETE"});
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) return alert(data.message || "삭제에 실패했습니다.");
+            load();
+          });
+        });
+      };
+
+      const openForm = (row=null) => {
+        formWrap.innerHTML = `<form id="agencyInlineForm" class="panel-card" style="margin-bottom:14px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+            <label>기관명 *<input class="admin-input" name="name" required value="${dgEscape(row?.name || "")}"></label>
+            <label>URL *<input class="admin-input" name="link_url" type="url" required value="${dgEscape(row?.link_url || "")}"></label>
+            <label>노출 순서<input class="admin-input" name="display_order" type="number" value="${Number(row?.display_order || 0)}"></label>
+            <label>활성 여부<select class="admin-input" name="is_active"><option value="true" ${row?.is_active !== false ? "selected" : ""}>활성</option><option value="false" ${row?.is_active === false ? "selected" : ""}>비활성</option></select></label>
+            <label>로고 이미지<input class="admin-input" name="logo" type="file" accept=".jpg,.jpeg,.png"></label>
+          </div>
+          <div id="agencyFormMsg" role="alert" style="color:#b3261e;margin-top:8px;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+            <button class="admin-btn" type="button" id="agencyCancelBtn">취소</button>
+            <button class="admin-btn admin-btn-primary" type="submit">저장</button>
+          </div>
+        </form>`;
+        const form = formWrap.querySelector("form");
+        form.querySelector("#agencyCancelBtn").onclick = () => { formWrap.innerHTML = ""; };
+        form.onsubmit = async (event) => {
+          event.preventDefault();
+          const fd = new FormData(form);
+          const payload = {
+            name: fd.get("name"),
+            link_url: fd.get("link_url"),
+            display_order: Number(fd.get("display_order") || 0),
+            is_active: fd.get("is_active") === "true",
+          };
+          const response = await fetch(row ? `/api/admin/agency-links/${row.id}` : "/api/admin/agency-links", {
+            method: row ? "PUT" : "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) { form.querySelector("#agencyFormMsg").textContent = data.message || "저장에 실패했습니다."; return; }
+          const id = row ? row.id : data.id;
+          const logo = fd.get("logo");
+          if (logo && logo.size) {
+            const logoData = new FormData();
+            logoData.append("logo", logo);
+            const logoResponse = await fetch(`/api/admin/agency-links/${id}/logo`, {method:"POST", body:logoData});
+            const logoResult = await logoResponse.json().catch(() => ({}));
+            if (!logoResponse.ok || !logoResult.ok) {
+              form.querySelector("#agencyFormMsg").textContent = `기관은 저장됐지만 로고 업로드 실패: ${logoResult.message || "오류"}`;
+              await load();
+              return;
+            }
+          }
+          formWrap.innerHTML = "";
+          load();
+        };
+      };
+      target.querySelector("#agencyAddBtn").onclick = () => openForm();
+      await load();
     }
 
     // ---- 매물관리: "매물" / "매물의뢰" / "매수의뢰" 서브탭 ----
@@ -7617,6 +7766,7 @@
       if (menuKey === "bug-reports") { showBugReports(); return; }
       if (menuKey === "listings") { showListings(); return; }
       if (menuKey === "popups") { showPopups(); return; }
+      if (menuKey === "notices") { showNotices(); return; }
       if (menuKey === "buildings") { showBuildings(); return; }
       showGrid(menuKey);
     }
