@@ -5,7 +5,9 @@ from app import (
     _bearing_degrees,
     _google_streetview_metadata,
     _google_streetview_metadata_status,
+    _select_streetview_metadata,
     _streetview_quality_rejection,
+    _streetview_view_params,
 )
 
 
@@ -59,6 +61,46 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         self.assertAlmostEqual(_bearing_degrees(37.0, 127.0, 37.0, 128.0), 89.7, places=1)
         self.assertAlmostEqual(_bearing_degrees(37.0, 127.0, 36.0, 127.0), 180.0)
         self.assertAlmostEqual(_bearing_degrees(37.0, 127.0, 37.0, 126.0), 270.3, places=1)
+
+    def test_high_rise_view_looks_up_and_widens(self):
+        pitch, fov = _streetview_view_params(30.7, floor_count=42)
+        self.assertEqual(pitch, 35.0)
+        self.assertEqual(fov, 102)
+
+    def test_low_rise_view_stays_near_street_level(self):
+        pitch, fov = _streetview_view_params(30, floor_count=4)
+        self.assertAlmostEqual(pitch, 8.0, places=1)
+        self.assertEqual(fov, 87)
+
+    def test_unknown_height_uses_balanced_exterior_view(self):
+        self.assertEqual(_streetview_view_params(30), (12.0, 90))
+
+    @patch("app._google_streetview_metadata")
+    def test_high_rise_prefers_farther_nearby_official_panorama(self, metadata):
+        nearest = {
+            "status": "OK", "pano_id": "near", "copyright": "© Google",
+            "date": "2024-01", "lat": 37.49973, "lng": 127.0,
+        }
+        opposite = {
+            "status": "OK", "pano_id": "opposite", "copyright": "© Google",
+            "date": "2024-01", "lat": 37.49955, "lng": 127.0,
+        }
+        metadata.side_effect = [nearest, opposite, nearest, nearest, nearest]
+        selected = _select_streetview_metadata(
+            37.5, 127.0, "key", floor_count=40
+        )
+        self.assertEqual(selected["pano_id"], "opposite")
+        self.assertEqual(metadata.call_count, 5)
+
+    @patch("app._google_streetview_metadata")
+    def test_low_rise_does_not_make_extra_panorama_queries(self, metadata):
+        nearest = {"status": "OK", "pano_id": "near"}
+        metadata.return_value = nearest
+        self.assertIs(
+            _select_streetview_metadata(37.5, 127.0, "key", floor_count=5),
+            nearest,
+        )
+        metadata.assert_called_once_with(37.5, 127.0, "key")
 
     def test_user_contributed_panorama_is_rejected(self):
         metadata = {

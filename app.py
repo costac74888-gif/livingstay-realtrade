@@ -764,14 +764,14 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
         app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
 
 
-def _google_streetview_metadata(lat, lng, key):
+def _google_streetview_metadata(lat, lng, key, radius=50):
     """Static Street View와 같은 실외 파노라마를 찾고 촬영 지점 정보를 반환한다."""
     try:
         metadata = requests.get(
             "https://maps.googleapis.com/maps/api/streetview/metadata",
             params={
                 "location": f"{float(lat)},{float(lng)}",
-                "radius": 50,
+                "radius": int(radius),
                 "source": "outdoor",
                 "key": key,
             },
@@ -826,7 +826,43 @@ def _distance_meters(lat1, lng1, lat2, lng2):
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def _streetview_quality_rejection(metadata, building_lat, building_lng, now=None):
+def _streetview_view_params(distance_m, floor_count=None, height_m=None):
+    """건물 높이와 촬영 거리로 외관 전체를 담을 pitch·fov를 계산한다."""
+    try:
+        distance = max(8.0, float(distance_m))
+    except (TypeError, ValueError):
+        distance = 30.0
+    try:
+        floors = max(1.0, float(floor_count))
+    except (TypeError, ValueError):
+        floors = None
+    try:
+        height = float(height_m)
+        if height <= 0:
+            height = None
+    except (TypeError, ValueError):
+        height = None
+    if height is None and floors is not None:
+        height = floors * 3.0
+    if height is None:
+        return 12.0, 90
+
+    # 건물 높이의 약 35% 지점을 화면 중심으로 삼되, 지나치게 하늘만
+    # 보이지 않도록 상향 각도를 제한한다.
+    pitch = math.degrees(math.atan2(height * 0.35, distance))
+    pitch = round(min(35.0, max(5.0, pitch)), 1)
+    estimated_floors = floors if floors is not None else height / 3.0
+    fov = int(round(min(110.0, max(85.0, 85.0 + estimated_floors * 0.4))))
+    return pitch, fov
+
+
+def _streetview_quality_rejection(
+    metadata,
+    building_lat,
+    building_lng,
+    now=None,
+    max_distance_m=50,
+):
     """사용자 업로드·지나치게 오래되거나 먼 파노라마를 제외한다."""
     copyright_text = str(metadata.get("copyright") or "").strip().lower()
     if "google" not in copyright_text:
@@ -857,9 +893,87 @@ def _streetview_quality_rejection(metadata, building_lat, building_lng, now=None
         )
     except (TypeError, ValueError):
         return "unknown panorama location"
-    if distance > 50:
+    if distance > float(max_distance_m):
         return "panorama too far"
     return None
+
+
+def _offset_coordinate(lat, lng, north_m=0.0, east_m=0.0):
+    lat = float(lat)
+    lng = float(lng)
+    return (
+        lat + float(north_m) / 111320.0,
+        lng + float(east_m) / (111320.0 * math.cos(math.radians(lat))),
+    )
+
+
+def _select_streetview_metadata(lat, lng, key, floor_count=None, height_m=None):
+    """고층은 주변 도로 후보를 탐색해 벽 바로 앞 파노라마를 피한다."""
+    nearest = _google_streetview_metadata(lat, lng, key)
+    try:
+        floors = float(floor_count)
+    except (TypeError, ValueError):
+        floors = None
+    try:
+        height = float(height_m)
+        if height <= 0:
+            height = None
+    except (TypeError, ValueError):
+        height = None
+    if height is None and floors is not None:
+        height = floors * 3.0
+    if not nearest or nearest.get("status") != "OK" or not height or height < 36:
+        return nearest
+
+    target_distance = min(50.0, max(30.0, height * 0.4))
+    candidates = [nearest]
+    for north_m, east_m in (
+        (target_distance, 0),
+        (-target_distance, 0),
+        (0, target_distance),
+        (0, -target_distance),
+    ):
+        query_lat, query_lng = _offset_coordinate(
+            lat, lng, north_m=north_m, east_m=east_m
+        )
+        candidate = _google_streetview_metadata(
+            query_lat,
+            query_lng,
+            key,
+            radius=20,
+        )
+        if candidate and candidate.get("status") == "OK":
+            candidates.append(candidate)
+
+    unique = {}
+    for candidate in candidates:
+        pano_id = candidate.get("pano_id")
+        if pano_id:
+            unique[pano_id] = candidate
+    usable = []
+    for candidate in unique.values():
+        rejection = _streetview_quality_rejection(
+            candidate,
+            lat,
+            lng,
+            max_distance_m=55,
+        )
+        if rejection:
+            continue
+        distance = _distance_meters(
+            candidate["lat"],
+            candidate["lng"],
+            lat,
+            lng,
+        )
+        usable.append((distance, candidate))
+    if not usable:
+        return nearest
+    # 고층은 목표 거리 이하에서 가장 먼 도로 지점을 우선해 저층 벽 확대를 피한다.
+    within_target = [
+        item for item in usable if item[0] <= target_distance + 5
+    ]
+    return max(within_target or usable, key=lambda item: item[0])[1]
 
 
 @app.route("/api/building-photo/<int:building_id>/<source>")
@@ -872,7 +986,7 @@ def get_building_provider_photo(building_id, source):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT b.lat, b.lng
+            SELECT b.lat, b.lng, b.grnd_flr_cnt, b.heit
             FROM master_buildings b
             WHERE b.id=%s
               AND b.lat IS NOT NULL
@@ -895,7 +1009,13 @@ def get_building_provider_photo(building_id, source):
     key = os.environ.get("GOOGLE_MAPS_API_KEY")
     if not key:
         return jsonify({"error": "provider unavailable"}), 503
-    metadata = _google_streetview_metadata(row["lat"], row["lng"], key)
+    metadata = _select_streetview_metadata(
+        row["lat"],
+        row["lng"],
+        key,
+        row.get("grnd_flr_cnt"),
+        row.get("heit"),
+    )
     if metadata is None:
         return jsonify({"error": "provider unavailable"}), 502
     if metadata["status"] == "ZERO_RESULTS":
@@ -909,6 +1029,7 @@ def get_building_provider_photo(building_id, source):
         metadata,
         row["lat"],
         row["lng"],
+        max_distance_m=55,
     )
     if quality_rejection:
         app.logger.info(
@@ -921,6 +1042,12 @@ def get_building_provider_photo(building_id, source):
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
     try:
+        distance_m = _distance_meters(
+            metadata["lat"],
+            metadata["lng"],
+            row["lat"],
+            row["lng"],
+        )
         heading = _bearing_degrees(
             metadata["lat"],
             metadata["lng"],
@@ -929,6 +1056,11 @@ def get_building_provider_photo(building_id, source):
         )
     except (TypeError, ValueError):
         return jsonify({"error": "provider unavailable"}), 502
+    pitch, fov = _streetview_view_params(
+        distance_m,
+        row.get("grnd_flr_cnt"),
+        row.get("heit"),
+    )
     # 온디맨드 fallback은 실제 이미지 요청 시점에 월 한도를 차감한다.
     # 프록시 재호출·새로고침도 포함해 Google 무료 범위를 넘기지 않는다.
     from sync_building_photos import (
@@ -945,8 +1077,8 @@ def get_building_provider_photo(building_id, source):
     params = {
         "size": "640x480",
         "heading": round(heading, 1),
-        "fov": 85,
-        "pitch": 5,
+        "fov": fov,
+        "pitch": pitch,
         "source": "outdoor",
         "key": key,
     }

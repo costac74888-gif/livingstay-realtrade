@@ -4245,11 +4245,17 @@ function renderPhotoSlider(photos){
   if (!usablePhotos.length){
     wrap.innerHTML = "";
     wrap.style.display = "none";
+    wrap.classList.remove("has-streetview");
     return;
   }
+  wrap.classList.toggle(
+    "has-streetview",
+    usablePhotos.some(photo => photo.source === "streetview")
+  );
   const slides = usablePhotos.map(photo => `
     <div class="bld-photo-slide">
-      <img src="${escapeHtml(photo.url.trim())}" alt="건물사진" loading="lazy"
+      <img class="${photo.source === "streetview" ? "bld-photo-streetview" : ""}"
+           src="${escapeHtml(photo.url.trim())}" alt="건물사진" loading="lazy"
            onerror="handleBuildingPhotoError(this)">
       ${photo.can_delete && photo.id ? `
         <button type="button" class="bld-photo-delete"
@@ -4530,7 +4536,7 @@ function streetViewFallbackPhoto(buildingId, lat, lng){
   if (lat == null || lng == null || String(lat).trim() === "" || String(lng).trim() === "") return [];
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return [];
   return [{
-    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview?view=building-v4`,
+    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview?view=building-v6`,
     source: "streetview",
     photo_type: "exterior"
   }];
