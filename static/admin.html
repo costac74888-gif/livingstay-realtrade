@@ -254,8 +254,13 @@
         };
         const COLS = [
           { label: "용도",        key: null,                fmt: (row) => `<td style="padding:4px 8px;font-weight:inherit;">${row.type}</td>` },
-          { label: "건물수",      key: "building_count",    fmt: (row) => `<td style="text-align:right;padding:4px 8px;">${row.building_count.toLocaleString()}</td>` },
-          { label: "건축물대장 호실수", key: "units", fmt: (row) => row.type === "일반"
+          { label: "건물수(시설수)", key: "building_count", fmt: (row) => {
+              const value = row.type === "캠핑" ? row.camping_facility_count : row.building_count;
+              return `<td style="text-align:right;padding:4px 8px;">${n(value)}</td>`;
+            } },
+          { label: "호실수(사이트수)", key: "units", fmt: (row) => row.type === "캠핑"
+              ? `<td title="정상영업 캠핑시설의 일반·자동차·글램핑·카라반 사이트수 합계" style="text-align:right;padding:4px 8px;">${n(row.camping_site_count)}</td>`
+              : row.type === "일반"
               ? generalUnitsCell(row.units)
               : COVERAGE_TYPES.has(row.type)
                 ? `<td title="${TOURISM_UNITS_TOOLTIP}" style="text-align:right;padding:4px 8px;color:var(--ink-soft);cursor:help;">${n(row.units)} <span style="font-size:10px;">(참고)</span></td>`
@@ -308,6 +313,29 @@
           }
           return `<td style="padding:4px 8px;"></td>`;
         }).join("");
+        const campingTypes = (row) => {
+          const breakdown = row.camping_classification_breakdown || {};
+          const mixed = Number(breakdown.confirmed_mixed || 0) + Number(breakdown.unknown || 0);
+          return [
+            ["일반야영", breakdown.general_only, row.camping_general_site_count],
+            ["자동차야영", breakdown.auto_only, row.camping_auto_site_count],
+            ["글램핑", breakdown.glamping_only, row.camping_glamping_site_count],
+            ["카라반", breakdown.caravan_only, row.camping_caravan_site_count],
+            ["복합", mixed, null],
+          ];
+        };
+        const campingSubRowCells = ([type, facilityCount, siteCount]) => COLS.map((c) => {
+          if (c.label === "용도") {
+            return `<td style="padding:4px 8px 4px 28px;color:var(--ink-soft);">↳ ${type}</td>`;
+          }
+          if (c.key === "building_count") {
+            return `<td style="text-align:right;padding:4px 8px;">${n(facilityCount)}</td>`;
+          }
+          if (c.key === "units") {
+            return `<td style="text-align:right;padding:4px 8px;">${siteCount == null ? "-" : n(siteCount)}</td>`;
+          }
+          return `<td style="padding:4px 8px;"></td>`;
+        }).join("");
         rows.forEach((row, i) => {
           const isTotal = row.type === "전체";
           const bg = isTotal ? "#FAF8F0" : (i % 2 === 0 ? "#fff" : "#FAFAFA");
@@ -317,6 +345,11 @@
           if (row.type === "일반" && Array.isArray(row.sub_rows)) {
             row.sub_rows.forEach((sub) => {
               html += `<tr style="background:#FCFCFC;border-bottom:1px solid #F0F0F0;">${subRowCells(sub)}</tr>`;
+            });
+          }
+          if (row.type === "캠핑") {
+            campingTypes(row).forEach((sub) => {
+              html += `<tr style="background:#FCFCFC;border-bottom:1px solid #F0F0F0;">${campingSubRowCells(sub)}</tr>`;
             });
           }
         });

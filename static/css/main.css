@@ -682,6 +682,13 @@
     .platform-stats{grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;}
     .platform-stats > div{font-size:10.5px; padding:7px 6px;}
     .datalab-nav{grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px;}
+    .datalab-table-wrap{overflow-x:hidden;}
+    .datalab-table{width:100%; min-width:0; table-layout:fixed; font-size:8.5px;}
+    .datalab-table th,.datalab-table td{padding:5px 1px; white-space:normal; overflow-wrap:anywhere;}
+    .datalab-table th:first-child,.datalab-table td:first-child{width:21%;}
+    .datalab-table .datalab-sub-row td{font-size:8px;}
+    .datalab-table .datalab-sub-name{padding-left:11px;}
+    .datalab-table .datalab-sub-name::before{left:2px;}
      .datalab-map-highlight{max-width:calc(100vw - 48px); font-size:11px; padding:6px 9px 6px 7px;}
     /* 패널이 열려 있는 동안엔 우측 상단 "🔍 검색" 플로팅 버튼 숨김 —
        건물상세 ✕ 닫기 버튼(.b-close-btn)과 같은 자리에 겹쳐 둘 다 다크 색이라
