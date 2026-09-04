@@ -5264,7 +5264,7 @@ async function loadBuildingHeader(id){
   headerCard.innerHTML = `
     ${buildingPhotoSliderHtml()}
     ${STRUCTURE_A_TYPES.includes(b.lodging_type)
-      ? _reservationBar(b, !["생활", "일반"].includes(b.lodging_type))
+      ? _reservationBar(b, false)
       : ""}
     ${STRUCTURE_B_TYPES.includes(b.lodging_type) ? `<div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보">
       <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
