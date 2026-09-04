@@ -137,14 +137,13 @@ def run_local():
 
     main_js = open(os.path.join(root, "static", "js", "main.js"), encoding="utf-8").read()
     main_css = open(os.path.join(root, "static", "css", "main.css"), encoding="utf-8").read()
-    if 'id="bMapBtn"' not in main_js:
-        print("OK  상세 기본정보의 지도위치 버튼 제거")
-    elif (
+    if (
         "const targetBuildingId = Number(b.building_id ?? id)" not in main_js
         or "const locationMapFilters = Object.assign({}, mapFiltersFromState())" not in main_js
         or "delete locationMapFilters.q" not in main_js
         or "updateMapForZoom(locationMapFilters, { force: true })" not in main_js
         or "updateMapForZoom({ building_id: targetBuildingId }" in main_js
+        or 'id="bMapBtn" class="b-map-return-btn"' not in main_js
     ):
         failures.append("지도위치 버튼이 주변 포인트를 유지하는 전체 지도 조회를 사용하지 않음")
     elif "map-location-target-pulse 1.4s ease-in-out infinite" not in main_css:

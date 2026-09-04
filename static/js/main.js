@@ -4260,7 +4260,7 @@ function detailBadgeLabel(v, subtype, buildingStatus){
 
 function buildingPhotoSliderHtml(){
   return `<div class="bld-photo-shell">
-    <div id="bldPhotoWrap" class="bld-photo-wrap"><div class="bld-photo-empty">등록된 사진이 없습니다</div></div>
+    <div id="bldPhotoWrap" class="bld-photo-wrap is-empty"></div>
     <div class="bld-photo-actions bld-photo-actions-left">
       <button type="button" id="btnBackToList" class="bld-photo-action" aria-label="전체 목록으로" title="전체 목록으로">←</button>
     </div>
@@ -4277,11 +4277,13 @@ function renderPhotoSlider(photos){
   const usablePhotos = (Array.isArray(photos) ? photos : [])
     .filter(photo => photo && typeof photo.url === "string" && photo.url.trim());
   if (!usablePhotos.length){
-    wrap.innerHTML = `<div class="bld-photo-empty">등록된 사진이 없습니다</div>`;
+    wrap.innerHTML = "";
     wrap.style.display = "";
+    wrap.classList.add("is-empty");
     wrap.classList.remove("has-streetview");
     return;
   }
+  wrap.classList.remove("is-empty");
   wrap.classList.toggle(
     "has-streetview",
     usablePhotos.some(photo => photo.source === "streetview")
@@ -4337,8 +4339,10 @@ function handleBuildingPhotoError(image){
   const remaining = wrap?.querySelectorAll(".bld-photo-slide") || [];
   if (!wrap || !remaining.length) {
     if (wrap) {
-      wrap.innerHTML = `<div class="bld-photo-empty">등록된 사진이 없습니다</div>`;
+      wrap.innerHTML = "";
       wrap.style.display = "";
+      wrap.classList.add("is-empty");
+      wrap.classList.remove("has-streetview");
     }
     return;
   }
@@ -5282,6 +5286,7 @@ async function loadBuildingHeader(id){
         <span style="width:52px; flex-shrink:0; white-space:nowrap; color:var(--ink-soft2,#999);">우편번호</span>
         <span>${escapeHtml(b.zip_code || "-")}</span>
         ${b.zip_code ? `<button type="button" class="b-addr-copy" data-addr="${escapeHtml(b.zip_code)}" title="우편번호 복사" style="border:none;background:none;cursor:pointer;padding:2px;flex-shrink:0;color:var(--ink-soft2,#999);display:flex;align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="8" height="8" rx="1.3"/><path d="M2 9.5V2.8A.8.8 0 0 1 2.8 2H9.5"/></svg></button>` : ""}
+        ${b.lat != null && b.lng != null ? `<button type="button" id="bMapBtn" class="b-map-return-btn" title="지도에서 위치 보기" aria-label="지도에서 위치 보기">${Icons.navigation(16)}<span>지도위치</span></button>` : ""}
       </div>
     </div>` : `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">주소 미확인</div>`}
     ${namePendingNeedsReview && b.sgg_cd && b.umd_nm && b.jibun ? `
@@ -6112,6 +6117,29 @@ async function loadBuildingHeader(id){
       prompt("아래 주소를 복사하세요:", url);
     }
   });
+
+  // 지도위치 — 상세을 닫고 지도로 복귀한 뒤 대상 건물 포인트를 확대·점멸한다.
+  const mapLocBtn = document.getElementById("bMapBtn");
+  if (mapLocBtn){
+    mapLocBtn.addEventListener("click", () => {
+      if (!kakaoMap || b.lat == null || b.lng == null) return;
+      const targetBuildingId = Number(b.building_id ?? id);
+      if (!Number.isInteger(targetBuildingId) || targetBuildingId <= 0) return;
+      history.pushState({}, "", "/");
+      if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
+      restoreDefaultPanel();
+      closeMapSearchbar();
+      setMapLocationTarget(targetBuildingId);
+      kakaoMap.setLevel(3);
+      kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
+      const locationMapFilters = Object.assign({}, mapFiltersFromState());
+      delete locationMapFilters.q;
+      Promise.resolve(updateMapForZoom(locationMapFilters, { force: true })).then(
+        applyMapLocationTarget,
+        error => console.error("[MAP] 선택 건물 마커 재조회 실패:", error),
+      );
+    });
+  }
 
   // 주소 복사 버튼 — 도로명/지번/우편번호 3줄 공통 (이벤트 위임)
   headerCard.querySelectorAll(".b-addr-copy").forEach(btn => {

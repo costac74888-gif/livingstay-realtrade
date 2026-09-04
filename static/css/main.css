@@ -1172,6 +1172,10 @@
   overflow:hidden;
   background:#e8e7e0;
 }
+.bld-photo-wrap.is-empty{
+  height:72px;
+  background:#1d1d1d;
+}
 .bld-photo-actions{
   position:absolute; top:10px; z-index:5; display:flex; gap:8px;
 }
@@ -1192,6 +1196,13 @@
 }
 .b-request-listing{ background:var(--brass)!important; color:#fff!important; border-color:var(--brass)!important; }
 .b-request-buy{ background:#3B7DD8!important; color:#fff!important; border-color:#3B7DD8!important; }
+.b-map-return-btn{
+  margin-left:auto; display:inline-flex; align-items:center; gap:4px;
+  border:1px solid var(--line); border-radius:7px; background:#fff;
+  color:var(--ink-soft); padding:4px 8px; font:600 11px/1.2 'Noto Sans KR',sans-serif;
+  cursor:pointer; white-space:nowrap;
+}
+.b-map-return-btn:hover{ color:var(--brass-dark); border-color:#d8bd86; background:var(--brass-tint); }
 .bld-photo-wrap.has-streetview{
   height:clamp(240px, 75vw, 320px);
   background:#202020;
