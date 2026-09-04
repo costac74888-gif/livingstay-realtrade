@@ -3,6 +3,11 @@ POL-DATA-003,데이터 수집·검증·승격·노출·갱신 통합 정책,V.03
 POL-EXPOSURE-001,공개 데이터·개인정보 보호 정책,V.01.0,2026-09-04,current,P0,2026-09-11,docs/PUBLIC_DATA_PRIVACY_PROTECTION_POLICY_V01_0_2026-09-04.md
 MAN-PHOTO-001,건물·숙박시설 사진 호출 및 운영 매뉴얼,V.01.0,2026-09-04,current,P1,2026-10-04,docs/PHOTO_RETRIEVAL_OPERATIONS_MANUAL_V01_0_2026-09-04.md
 REG-DOC-001,정책·매뉴얼 문서대장,V.01.0,2026-09-04,current,P0,2026-09-11,docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.md
+BASE-MANUAL-001,종합매뉴얼 기준선·목차·작성 기준,V.01.0,2026-09-04,current,P0,2026-09-11,docs/COMPREHENSIVE_MANUAL_BASELINE_AND_OUTLINE_V01_0_2026-09-04.md
+GUIDE-PROJECT,프로젝트 운영 원칙·회귀방지 가이드,,,supporting,,,PROJECT_PRINCIPLES.md
+GUIDE-REPLIT,Replit 프로젝트 빠른 참조,,,supporting,,,replit.md
+GUIDE-README,설치·실행 가이드,,,supporting-stale,,,README.md
+GUIDE-DOCS,정책·매뉴얼 문서 지도,,2026-09-04,supporting,,,docs/README.md
 POL-DATA-002,숙박·건물 데이터 수집 및 관리 정책,V.02,2026-09-03,superseded,P0,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V01.md
 RPT-V02-PLAN,V.02 단계별 작업 및 최종 데이터 추정보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_ESTIMATION_REPORT.md
 RPT-V02-STEP1,1단계 기준선 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP1_BASELINE_REPORT.md
@@ -10,6 +15,9 @@ RPT-V02-STEP2,2단계 데이터 계약 보고서,,2026-09-03,historical,,,DB_DAT
 RPT-V02-STEP3,3단계 staging·승인 구축 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP3_STAGING_REPORT.md
 RPT-V02-STEP4,4단계 정부 CSV 검증 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP4_CSV_VALIDATION_REPORT.md
 RPT-V02-STEP5,5단계 주소·건물 매칭 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP5_MATCHING_REPORT.md
+RPT-LODGE-CLASS,숙박 분류 검토 문서,,,historical-supporting,,,lodging-classification-review.md
+RPT-LODGE-AUDIT-20260830,운영 숙박 법정분류 전수 대조 보고서,,2026-08-30,historical,,,reports/lodging_classification_audit_2026-08-30.md
+RPT-CAMP-MATCH-20260830,캠핑장 수동 건물 연결 점검,,2026-08-30,historical,,,reports/camping_manual_match_audit_2026-08-30.md
 RUN-SYNC-001,정기 동기화 운영·재시도 매뉴얼,draft,,planned,P0,2026-09-11,
 RUN-RELEASE-001,배포·운영 검증·롤백 매뉴얼,draft,,planned,P0,2026-09-11,
 RUN-INCIDENT-001,장애 대응·복구 매뉴얼,draft,,planned,P0,2026-09-18,
