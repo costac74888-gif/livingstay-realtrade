@@ -562,6 +562,8 @@
   .datalab-consign-rate{color:var(--primary); font-weight:800;}
   .datalab-table tr:nth-child(even) td{background:#FCFBF8;}
   .datalab-table .datalab-sub-row td{background:#FAFAFA; color:var(--ink-soft); font-size:9.5px;}
+   .datalab-table .datalab-sub-name{padding-left:16px; position:relative;}
+   .datalab-table .datalab-sub-name::before{content:"└"; position:absolute; left:5px; color:#AAA18F;}
   .datalab-list{display:flex; flex-direction:column; border-top:1px solid var(--line);}
   .datalab-list-item{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:7px 2px; border-bottom:1px solid var(--line);}
   .datalab-rank{font:700 10px 'JetBrains Mono',monospace; color:var(--brass-dark); text-align:center;}

@@ -162,9 +162,21 @@ expect(main.includes('<th>건물수(시설수)</th>') &&
 expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&
   !main.includes("datalab-caption-bottom"),
   "데이터랩 하단 설명문이 남아 있습니다.");
-expect(main.includes("<td>${escapeHtml(sub.type)}</td>") && !main.includes("└ ${escapeHtml(sub.type)}") &&
-  !css.includes(".datalab-sub-name"),
-  "숙박통계 서브행 들여쓰기가 남아 있습니다.");
+expect(main.includes('<td class="datalab-sub-name">${escapeHtml(sub.type)}</td>') &&
+  css.includes(".datalab-sub-name") &&
+  css.includes('content:"└"'),
+  "일반숙박 세부행의 세로 들여쓰기가 없습니다.");
+expect(main.includes('["일반야영", campingTypes.general_only, row.camping_general_site_count]') &&
+  main.includes('["자동차야영", campingTypes.auto_only, row.camping_auto_site_count]') &&
+  main.includes('["글램핑", campingTypes.glamping_only, row.camping_glamping_site_count]') &&
+  main.includes('["카라반", campingTypes.caravan_only, row.camping_caravan_site_count]') &&
+  main.includes('["복합", campingMixedCount, null]') &&
+  main.includes("return base + campingSubRows + subRows;"),
+  "캠핑 세부 5개 행이 합계 아래에 세로로 표시되지 않습니다.");
+expect(main.includes('row.type === "캠핑"') &&
+  main.includes("? row.camping_facility_count") &&
+  main.includes("? row.camping_site_count"),
+  "캠핑 합계 행이 시설수·사이트수 합계를 유지하지 않습니다.");
 expect(css.includes("--panel-w:440px") &&
   css.includes(".datalab-table{width:100%; min-width:260px;") &&
   css.includes(".datalab-table th{padding:6px 4px;") &&
