@@ -7233,46 +7233,58 @@
             const roomInfo = lr.room_count != null
               ? `${Number(lr.room_count).toLocaleString()}실`
               : "미확인";
+            const siteInfo = lr.camping_site_count != null
+              ? `${Number(lr.camping_site_count).toLocaleString()}개`
+              : "-";
             const facilityInfo = lr.facility_area != null
               ? `${Number(lr.facility_area).toLocaleString()}㎡`
               : "-";
             return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.hygiene_type || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
               `<td style="text-align:center;font-weight:600;">${roomInfo}</td>` +
-              `<td style="text-align:center;font-weight:600;">${facilityInfo} ${badge}</td>` +
+              `<td style="text-align:center;font-weight:600;">${siteInfo}</td>` +
+              `<td style="text-align:center;font-weight:600;">${facilityInfo}</td>` +
+              `<td style="text-align:center;">${badge || "-"}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
               `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
               `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.bld_use_nm || "-")}</td>` +
               `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.region_name || "-")}</td>` +
+              `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.source_label || "-")}</td>` +
               `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10px;">${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</td>`;
           };
           let subHtml =
             `<tr class="bld-lodging-sub-row"><td colspan="${colCount}" style="padding:0;background:#FAF8F3;border-bottom:2px solid #E8E3D9;">` +
-            `<table style="width:100%;font-size:11.5px;border-collapse:collapse;">` +
+            `<div style="width:100%;overflow-x:auto;">` +
+            `<table style="width:100%;min-width:1650px;font-size:11.5px;border-collapse:collapse;">` +
             `<thead><tr style="background:#F0EBE1;color:var(--ink-soft);font-size:11px;">` +
             `<th style="padding:3px 8px;text-align:left;font-weight:500;">영업사업장명</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">업종·시설유형</th>` +
             `<th style="padding:3px 8px;text-align:left;font-weight:500;">신고번호</th>` +
             `<th style="padding:3px 8px;font-weight:500;">객실수</th>` +
-            `<th style="padding:3px 8px;font-weight:500;">시설규모(㎡)/상태</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">사이트수</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">시설규모(㎡)</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">영업상태</th>` +
             `<th style="padding:3px 8px;font-weight:500;">신고일</th>` +
             `<th style="padding:3px 8px;font-weight:500;">전화</th>` +
             `<th style="padding:3px 8px;font-weight:500;">주소</th>` +
             `<th style="padding:3px 8px;font-weight:500;">건물용도</th>` +
             `<th style="padding:3px 8px;font-weight:500;">지역구분</th>` +
-            `<th style="padding:3px 8px;font-weight:500;">갱신</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">원본 출처</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">갱신일</th>` +
             `</tr></thead><tbody class="bld-lodging-sub-body">`;
           for (const lr of list.slice(0, 3)) {
             subHtml += `<tr style="border-bottom:1px solid #E8E3D9;">${subFields(lr)}</tr>`;
           }
           if (cnt > 3) {
             subHtml +=
-              `<tr class="bld-lodging-more-row"><td colspan="10" style="padding:4px 8px;text-align:center;">` +
+              `<tr class="bld-lodging-more-row"><td colspan="14" style="padding:4px 8px;text-align:center;">` +
               `<button class="bld-lodging-more-btn" data-list="${jsonAttr(list.slice(3))}" ` +
               `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;` +
               `padding:2px 8px;font-size:11px;cursor:pointer;">+${cnt - 3}건 더보기</button></td></tr>`;
           }
-          subHtml += `</tbody></table></td></tr>`;
+          subHtml += `</tbody></table></div></td></tr>`;
           tr.insertAdjacentHTML("afterend", subHtml);
           expandBtn.textContent = `🏢 접기`;
           return;
@@ -7291,18 +7303,25 @@
             const roomInfo = lr.room_count != null
               ? `${Number(lr.room_count).toLocaleString()}실`
               : "미확인";
+            const siteInfo = lr.camping_site_count != null
+              ? `${Number(lr.camping_site_count).toLocaleString()}개`
+              : "-";
             const facilityInfo = lr.facility_area != null
               ? `${Number(lr.facility_area).toLocaleString()}㎡`
               : "-";
             return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
+              `<td style="padding:3px 8px;">${dgEscape(lr.hygiene_type || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
               `<td style="text-align:center;font-weight:600;">${roomInfo}</td>` +
-              `<td style="text-align:center;font-weight:600;">${facilityInfo} ${badge}</td>` +
+              `<td style="text-align:center;font-weight:600;">${siteInfo}</td>` +
+              `<td style="text-align:center;font-weight:600;">${facilityInfo}</td>` +
+              `<td style="text-align:center;">${badge || "-"}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
               `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
               `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.bld_use_nm || "-")}</td>` +
               `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.region_name || "-")}</td>` +
+              `<td style="padding:3px 8px;font-size:10.5px;">${dgEscape(lr.source_label || "-")}</td>` +
               `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10px;">${dgEscape((lr.source_updated_at || "").slice(0, 10) || "-")}</td>`;
           };
           let moreHtml = "";

@@ -18389,6 +18389,29 @@ def _clean_bld_value(col, v):
     return s or None
 
 
+def _admin_lodging_source_label(permit_number):
+    """관리자 사업장 목록에 표시할 원본 계열명.
+
+    기존 원장은 별도 source 컬럼이 없으므로, 원본별로 보존된 신고번호
+    접두어를 사용한다. 접두어가 없는 일반 숙박 원장은 API와 정부 CSV를
+    안전하게 포괄하는 이름으로 표시한다.
+    """
+    permit = str(permit_number or "")
+    if permit.startswith("CAMPING:"):
+        return "고캠핑 API" if permit.count(":") == 1 else "정부 야영장 CSV"
+    source_by_prefix = {
+        "TOURISM:": "관광숙박업 CSV",
+        "PENSION:": "관광펜션업 CSV",
+        "RURAL:": "농어촌민박업 CSV",
+        "AIRBNB:": "외국인관광도시민박업 CSV",
+        "HANOK:": "한옥체험업 CSV",
+    }
+    for prefix, label in source_by_prefix.items():
+        if permit.startswith(prefix):
+            return label
+    return "숙박업 정부원본"
+
+
 def _building_ids_by_lodging_status(where_sql, params, status_filter):
     """현재 건물 목록과 같은 주소 정규화 규칙으로 영업상태별 건물 ID를 찾는다.
 
@@ -18672,7 +18695,8 @@ def admin_buildings_list():
         cur3 = conn3.cursor()
         cur3.execute("""
             SELECT biz_name, permit_number, permit_date, biz_status_name,
-                   biz_status_detail, room_count, hygiene_type, phone,
+                   biz_status_detail, room_count, camping_site_count,
+                   hygiene_type, phone,
                    road_address  AS lr_road_address,
                    jibun_address AS lr_jibun_address,
                    source_updated_at, bld_use_nm, facility_area, region_name,
@@ -18748,6 +18772,7 @@ def admin_buildings_list():
             {
                 "permit_number":     lr.get("permit_number"),
                 "room_count":        lr.get("room_count"),
+                "camping_site_count": lr.get("camping_site_count"),
                 "biz_status_name":   lr.get("biz_status_name"),
                 "biz_status_detail": lr.get("biz_status_detail"),
                 "permit_date":       (
@@ -18764,6 +18789,7 @@ def admin_buildings_list():
                 ),
                 "biz_name":          lr.get("biz_name"),
                 "hygiene_type":      lr.get("hygiene_type"),
+                "source_label":      _admin_lodging_source_label(lr.get("permit_number")),
                 "bld_use_nm":        lr.get("bld_use_nm"),
                 "facility_area":     lr.get("facility_area"),
                 "region_name":       lr.get("region_name"),

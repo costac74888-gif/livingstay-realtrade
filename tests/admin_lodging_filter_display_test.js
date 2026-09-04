@@ -27,10 +27,22 @@ expect(
   admin.includes('row.display_building_name || v') &&
     admin.includes("영업신고 기준") &&
     admin.includes(">객실수</th>") &&
-    admin.includes("시설규모(㎡)/상태") &&
+    admin.includes(">사이트수</th>") &&
+    admin.includes("시설규모(㎡)") &&
+    admin.includes(">영업상태</th>") &&
+    admin.includes("업종·시설유형") &&
+    admin.includes("원본 출처") &&
+    admin.includes('colspan="14"') &&
     admin.includes('const roomInfo = lr.room_count != null') &&
+    admin.includes('const siteInfo = lr.camping_site_count != null') &&
     admin.includes(">미확인</span>"),
-  "관리자 영업신고 명칭 또는 독립 객실수 컬럼 표시가 없습니다.",
+  "관리자 영업사업장 공통 14개 컬럼 표시가 없습니다.",
+);
+expect(
+  app.includes('"camping_site_count": lr.get("camping_site_count")') &&
+    app.includes('"source_label":      _admin_lodging_source_label') &&
+    app.includes('return "고캠핑 API" if permit.count(":") == 1 else "정부 야영장 CSV"'),
+  "관리자 영업사업장 응답에 사이트수 또는 원본 출처가 없습니다.",
 );
 expect(
   grid.includes("new AbortController()") &&
