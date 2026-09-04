@@ -305,6 +305,8 @@ class AppMutationInvalidationTests(unittest.TestCase):
                 "biz_units": 0,
                 "rate": None,
                 "general_excluded": True,
+                "non_living_excluded": True,
+                "tourism_excluded": True,
             })
             rebuild.assert_not_called()
             schedule.assert_called_once_with()
@@ -488,8 +490,8 @@ class AppMutationInvalidationTests(unittest.TestCase):
                 app_module._MASTER_STATS_CACHE.clear()
                 app_module._MASTER_STATS_CACHE.update({
                     "ts": 1_700_000_000,
-                    "data": {"consign_stats": previous},
-                    "sections": {"consign_stats": {"status": "ok"}},
+                    "data": {"closure_stats": previous},
+                    "sections": {"closure_stats": {"status": "ok"}},
                     "invalidation_token": "old",
                 })
 
@@ -503,11 +505,114 @@ class AppMutationInvalidationTests(unittest.TestCase):
                 ):
                     rebuilt = app_module._rebuild_master_stats(force=True)
 
-                self.assertEqual(rebuilt["data"]["consign_stats"], previous)
+                self.assertEqual(rebuilt["data"]["closure_stats"], previous)
                 self.assertEqual(
-                    rebuilt["sections"]["consign_stats"]["status"],
+                    rebuilt["sections"]["closure_stats"]["status"],
                     "error",
                 )
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+
+    def test_lodging_and_consign_sections_keep_the_same_cache_generation(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        previous_lodging = {"ok": True, "rows": [{"type": "생활", "building_count": 10}]}
+        previous_consign = {"ok": True, "items": [], "total": {"building_cnt": 10}}
+        try:
+            with app_module._MASTER_STATS_LOCK:
+                app_module._MASTER_STATS_CACHE.clear()
+                app_module._MASTER_STATS_CACHE.update({
+                    "ts": 1_700_000_000,
+                    "data": {
+                        "lodging_stats": previous_lodging,
+                        "consign_stats": previous_consign,
+                    },
+                    "sections": {
+                        "lodging_stats": {"status": "ok"},
+                        "consign_stats": {"status": "ok"},
+                    },
+                    "invalidation_token": "old",
+                })
+
+                def build_sections(data, sections, specs):
+                    for name, _builder in specs:
+                        if name == "lodging_stats":
+                            data[name] = {
+                                "ok": True,
+                                "rows": [{"type": "생활", "building_count": 11}],
+                            }
+                            sections[name] = {"status": "ok", "error": None}
+                        elif name == "consign_stats":
+                            sections[name] = {"status": "error", "error": "test"}
+                        else:
+                            sections[name] = {"status": "error", "error": "test"}
+
+                with (
+                    patch.object(
+                        app_module,
+                        "_master_stats_add_parallel_sections",
+                        side_effect=build_sections,
+                    ),
+                    patch.object(app_module, "_master_stats_invalidation_token", return_value="new"),
+                    patch.object(app_module, "_master_stats_cache_is_valid", return_value=False),
+                ):
+                    rebuilt = app_module._rebuild_master_stats(force=True)
+
+                self.assertIs(rebuilt["data"]["lodging_stats"], previous_lodging)
+                self.assertIs(rebuilt["data"]["consign_stats"], previous_consign)
+                self.assertEqual(rebuilt["sections"]["lodging_stats"]["status"], "error")
+                self.assertEqual(rebuilt["sections"]["consign_stats"]["status"], "error")
+        finally:
+            app_module._MASTER_STATS_CACHE.clear()
+            app_module._MASTER_STATS_CACHE.update(original_cache)
+
+    def test_one_sided_lodging_cache_is_not_restored_after_paired_failure(self):
+        original_cache = dict(app_module._MASTER_STATS_CACHE)
+        cases = (
+            ("lodging_stats", "lodging_stats"),
+            ("consign_stats", "consign_stats"),
+        )
+        try:
+            for previous_name, failed_name in cases:
+                with self.subTest(previous=previous_name, failed=failed_name):
+                    with app_module._MASTER_STATS_LOCK:
+                        app_module._MASTER_STATS_CACHE.clear()
+                        app_module._MASTER_STATS_CACHE.update({
+                            "ts": 1_700_000_000,
+                            "data": {previous_name: {"ok": True, "marker": "previous"}},
+                            "sections": {previous_name: {"status": "ok"}},
+                            "invalidation_token": "old",
+                        })
+
+                        def build_sections(data, sections, specs):
+                            for name, _builder in specs:
+                                if name == failed_name:
+                                    sections[name] = {"status": "error", "error": "test"}
+                                else:
+                                    data[name] = {"ok": True, "marker": "new"}
+                                    sections[name] = {"status": "ok", "error": None}
+
+                        with (
+                            patch.object(
+                                app_module,
+                                "_master_stats_add_parallel_sections",
+                                side_effect=build_sections,
+                            ),
+                            patch.object(
+                                app_module,
+                                "_master_stats_invalidation_token",
+                                return_value="new",
+                            ),
+                            patch.object(
+                                app_module,
+                                "_master_stats_cache_is_valid",
+                                return_value=False,
+                            ),
+                        ):
+                            rebuilt = app_module._rebuild_master_stats(force=True)
+
+                        self.assertNotIn("lodging_stats", rebuilt["data"])
+                        self.assertNotIn("consign_stats", rebuilt["data"])
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(original_cache)

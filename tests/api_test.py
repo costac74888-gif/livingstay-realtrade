@@ -49,6 +49,8 @@ from app import (  # noqa: E402
 )
 from db import get_conn  # noqa: E402
 import addr_norm  # noqa: E402
+from lodging_classification import is_active_status, lodging_type_for_hygiene  # noqa: E402
+from lodging_stats_dedup import deduplicate_cross_source_lodgings  # noqa: E402
 
 
 def check_feature_tips_admin_api(client):
@@ -560,7 +562,11 @@ def expected_consign_by_sido():
             SELECT id, sgg_text, COALESCE(units, 0) AS units,
                    road_address, jibun_address
             FROM master_buildings
-            WHERE lodging_type = '생활'
+            WHERE lodging_type IN ('생활', '생숙')
+              AND NOT (
+                  building_status IN ('허가', '착공')
+                  AND use_apr_day IS NULL
+              )
             ORDER BY id
         """)
         buildings = [dict(row) for row in cur.fetchall()]
@@ -576,7 +582,8 @@ def expected_consign_by_sido():
                 jibun_keys.add(jibun_key)
 
         cur.execute("""
-            SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
+            SELECT permit_number, biz_name, permit_date, room_count, biz_status_name,
+                   hygiene_type, road_norm, jibun_norm
             FROM lodging_registry
             WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
             ORDER BY source_updated_at DESC NULLS LAST, id DESC
@@ -594,7 +601,8 @@ def expected_consign_by_sido():
                 ] = permit
 
         regions = {}
-        assigned_active_permits = set()
+        assigned_permit_numbers = set()
+        assigned_active_rows = []
         for building in buildings:
             sido = _canonical_sido_name(building.get("sgg_text"))
             if not sido:
@@ -615,20 +623,43 @@ def expected_consign_by_sido():
             for permit_number, permit in matched_permits.items():
                 if (
                     not permit_number
-                    or permit.get("biz_status_name") != "영업/정상"
-                    or permit_number in assigned_active_permits
+                    or not is_active_status(permit.get("biz_status_name"))
+                    or lodging_type_for_hygiene(permit.get("hygiene_type")) != "생활"
+                    or permit_number in assigned_permit_numbers
                 ):
                     continue
-                assigned_active_permits.add(permit_number)
-                region["active_permits"][permit_number] = permit
+                assigned_permit_numbers.add(permit_number)
+                assigned = dict(permit)
+                assigned["_sido"] = sido
+                assigned_active_rows.append(assigned)
+
+        deduplicated_active_rows = deduplicate_cross_source_lodgings(assigned_active_rows)
+        for permit in deduplicated_active_rows:
+            regions[permit["_sido"]]["active_permits"][permit["permit_number"]] = permit
 
         candidates_by_permit = {}
+        unique_active_rows = {}
+        for matches in (*road_permits.values(), *jibun_permits.values()):
+            for permit_number, permit in matches.items():
+                if (
+                    is_active_status(permit.get("biz_status_name"))
+                    and lodging_type_for_hygiene(permit.get("hygiene_type")) == "생활"
+                ):
+                    unique_active_rows.setdefault(permit_number, permit)
+        counted_permits = {
+            row.get("permit_number")
+            for row in deduplicate_cross_source_lodgings(unique_active_rows.values())
+        }
         building_by_id = {building["id"]: building for building in buildings}
         for building in buildings:
             matches = road_permits.get(building.get("_road_key"), {})
             matches = matches or jibun_permits.get(building.get("_jibun_key"), {})
             for permit_number, permit in matches.items():
-                if permit.get("biz_status_name") != "영업/정상":
+                if (
+                    permit_number not in counted_permits
+                    or not is_active_status(permit.get("biz_status_name"))
+                    or lodging_type_for_hygiene(permit.get("hygiene_type")) != "생활"
+                ):
                     continue
                 candidates_by_permit.setdefault(permit_number, {
                     "permit": permit,
@@ -680,7 +711,7 @@ def expected_consign_by_sido():
         total = {
             "building_cnt": sum(item["building_cnt"] for item in items),
             "total_units": total_units,
-            "active_biz_cnt": len(assigned_active_permits),
+            "active_biz_cnt": len(deduplicated_active_rows),
             "active_room_cnt": active_room_cnt,
             "report_rate": (
                 round(active_room_cnt / total_units * 100, 1)
@@ -5993,6 +6024,25 @@ def _check_datalab_stats(client):
             failures.append("데이터랩 영업신고현황: 전국 합계 신고율 계산이 잘못됨")
 
         public_stats = client.get("/api/v1/d/3f7").get_json() or {}
+        living_row = next(
+            (row for row in public_stats.get("rows") or [] if row.get("type") == "생활"),
+            None,
+        )
+        living_consign_total = consign.get("total") or {}
+        if not living_row or any((
+            int(living_row.get("building_count") or 0)
+            != int(living_consign_total.get("building_cnt") or 0),
+            int(living_row.get("units") or 0)
+            != int(living_consign_total.get("total_units") or 0),
+            int(living_row.get("biz_count") or 0)
+            != int(living_consign_total.get("active_biz_cnt") or 0),
+            int(living_row.get("room_count") or 0)
+            != int(living_consign_total.get("active_room_cnt") or 0),
+            living_row.get("report_rate") != living_consign_total.get("report_rate"),
+        )):
+            failures.append(
+                "데이터랩 생활 숙박통계와 시도별 영업신고현황 전국 합계가 불일치"
+            )
 
         clusters = client.get("/api/buildings-cluster?level=sido").get_json() or {}
         for item in clusters.get("items") or []:

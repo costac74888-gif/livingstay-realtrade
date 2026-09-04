@@ -2,9 +2,53 @@ import unittest
 from datetime import date
 
 from lodging_stats_dedup import deduplicate_cross_source_lodgings
+from app import _capped_active_report_rooms_by_building
 
 
 class LodgingStatsDedupTest(unittest.TestCase):
+    def test_room_cap_uses_only_completed_living_candidates_and_living_reports(self):
+        completed = {
+            "id": 1,
+            "units": 10,
+            "road_address": "서울 중구 테스트로 1",
+            "jibun_address": None,
+        }
+        pre_completion = {
+            "id": 2,
+            "units": 100,
+            "road_address": "서울 중구 테스트로 1",
+            "jibun_address": None,
+        }
+        road_key = "서울중구테스트로1"
+        living = {
+            "permit_number": "L-1",
+            "biz_name": "생활숙박",
+            "permit_date": "2024-01-01",
+            "room_count": 30,
+            "biz_status_name": "영업/정상",
+            "hygiene_type": "숙박업(생활)",
+            "road_norm": road_key,
+            "jibun_norm": None,
+        }
+        unrelated = {
+            **living,
+            "permit_number": "G-1",
+            "biz_name": "일반숙박",
+            "room_count": 50,
+            "hygiene_type": "숙박업(일반)",
+        }
+        matches = {road_key: {"L-1": living, "G-1": unrelated}}
+
+        completed_only = _capped_active_report_rooms_by_building(
+            [completed], matches, {}, expected_type="생활"
+        )
+        with_pre_completion = _capped_active_report_rooms_by_building(
+            [completed, pre_completion], matches, {}, expected_type="생활"
+        )
+
+        self.assertEqual(completed_only, {1: 10})
+        self.assertEqual(with_pre_completion, {2: 30})
+
     def test_same_address_date_and_rooms_merges_cross_source_alias(self):
         rows = [
             {

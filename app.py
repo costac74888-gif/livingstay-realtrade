@@ -19642,10 +19642,32 @@ def _rebuild_master_stats(*, force=False):
             )
             return _MASTER_STATS_CACHE
 
+        # 생활 숙박통계와 시도별 영업신고현황은 같은 숫자를 서로 다른 표로
+        # 보여준다. 둘 중 하나만 실패하면 새 값과 이전 값이 섞이지 않도록
+        # 반드시 같은 세대의 두 섹션을 함께 유지하거나 함께 비운다.
+        coupled_lodging_sections = ("lodging_stats", "consign_stats")
+        if any(
+            sections.get(name, {}).get("status") == "error"
+            for name in coupled_lodging_sections
+        ):
+            if all(name in previous_data for name in coupled_lodging_sections):
+                for name in coupled_lodging_sections:
+                    data[name] = previous_data[name]
+                    if sections.get(name, {}).get("status") != "error":
+                        sections[name] = {
+                            "status": "error",
+                            "error": "paired lodging statistics section failed",
+                        }
+            else:
+                for name in coupled_lodging_sections:
+                    data.pop(name, None)
+
         # 백그라운드 재검증 중 일부 섹션만 실패해도 직전 성공값을 stale 값으로
         # 유지한다. sections의 error 상태는 관리자 화면과 다음 재시도를 위해
         # 보존하고, 공개 API는 해당 섹션의 stale 데이터를 즉시 제공한다.
         for name, section in sections.items():
+            if name in coupled_lodging_sections:
+                continue
             if section.get("status") == "error" and name in previous_data:
                 data[name] = previous_data[name]
 
@@ -19773,7 +19795,9 @@ def start_master_stats_worker():
 GENERAL_LODGING_SUB_TYPES = GENERAL_LODGING_SUBTYPE_ORDER
 
 
-def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_matches):
+def _capped_active_report_rooms_by_building(
+    buildings, road_matches, jibun_matches, expected_type=None
+):
     """신고 객실을 한 대표 건물에만 귀속해, 건물 호실수를 넘지 않게 집계한다.
 
     한 영업신고 주소가 여러 건물마스터에 매칭될 수 있다. 이 경우 같은 신고 객실을
@@ -19784,7 +19808,13 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
     unique_active_rows = {}
     for matches in (*road_matches.values(), *jibun_matches.values()):
         for permit, lodging in matches.items():
-            if is_active_status(lodging.get("biz_status_name")):
+            if (
+                is_active_status(lodging.get("biz_status_name"))
+                and (
+                    expected_type is None
+                    or lodging_type_for_hygiene(lodging.get("hygiene_type")) == expected_type
+                )
+            ):
                 unique_active_rows.setdefault(permit, lodging)
     counted_permits = {
         row.get("permit_number")
@@ -19807,6 +19837,10 @@ def _capped_active_report_rooms_by_building(buildings, road_matches, jibun_match
         for permit, lodging in matches.items():
             if (
                 not is_active_status(lodging["biz_status_name"])
+                or (
+                    expected_type is not None
+                    and lodging_type_for_hygiene(lodging.get("hygiene_type")) != expected_type
+                )
                 or permit not in counted_permits
             ):
                 continue
@@ -20174,12 +20208,11 @@ def _lodging_full_stats_payload():
                 permits.update(lr_jibun_map[jk])
         return permits
 
-    report_rate_blds = [
-        building for building in all_blds
-        if uses_lodging_report_rate(building.get("lodging_type"))
-    ]
+    # 준공 전 생활/생숙 건물은 by_type에서 이미 준공전으로 분류됐다. 신고객실
+    # 대표 건물 선정에도 같은 완료 건물 집합만 사용해야 지역표와 결과가 일치한다.
+    report_rate_blds = by_type["생활"]
     capped_report_rooms_by_building = _capped_active_report_rooms_by_building(
-        report_rate_blds, lr_road_map, lr_jibun_map
+        report_rate_blds, lr_road_map, lr_jibun_map, expected_type="생활"
     )
 
     def _row(blds: list, type_label: str) -> dict:
@@ -20329,7 +20362,9 @@ def _lodging_full_stats_payload():
             "store_total": sum(store_map.get(b["id"], {}).get("total", 0) for b in blds),
             "report_rate": round(rate_numerator / rate_denominator * 100, 1) if rate_denominator else None,
             "permit_count": pc,
-            "room_count": rc,
+            # 생활숙박의 공개 "신고객실"은 신고율 분자와 같은 건물별 캡 적용값이다.
+            # 원장 객실수 단순합을 노출하면 지역 영업신고현황과 숫자가 어긋난다.
+            "room_count": legacy_rate_rc if is_room_rate else rc,
             "closed_rate": round(cc / total_pc * 100, 1) if total_pc else None,
             "lodging_metric": lodging_metric,
             "report_rate_numerator": rate_numerator,
@@ -29048,7 +29083,11 @@ def _report_rate_by_sido_payload():
             SELECT id, sgg_text, COALESCE(units, 0) AS units,
                    road_address, jibun_address
             FROM master_buildings
-            WHERE lodging_type = '생활'
+            WHERE lodging_type IN ('생활', '생숙')
+              AND NOT (
+                  building_status IN ('허가', '착공')
+                  AND use_apr_day IS NULL
+              )
             ORDER BY id
         """)
         buildings = [dict(row) for row in cur.fetchall()]
@@ -29079,7 +29118,7 @@ def _report_rate_by_sido_payload():
 
         cur.execute("""
             SELECT permit_number, biz_name, permit_date, room_count, biz_status_name,
-                   road_norm, jibun_norm
+                   hygiene_type, road_norm, jibun_norm
             FROM lodging_registry
             WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)
             ORDER BY source_updated_at DESC NULLS LAST, id DESC
@@ -29097,10 +29136,10 @@ def _report_rate_by_sido_payload():
                 ] = permit
 
         regions = {}
-        # 이 지표의 포함 기준은 "영업/정상"만이 아니라, 요구사항대로 폐업이
-        # 아닌 모든 신고다. 주소 우선순위는 상태를 적용하기 전에 결정해 기존
-        # 건물마스터 주소 매칭과 동일한 결과를 유지한다.
-        assigned_active_permits = set()
+        # 전국 숙박통계의 생활 행과 동일하게 활성 생활숙박 신고만 집계하고,
+        # 원본 간 동일 신고도 한 번만 센다. 주소 우선순위는 상태 적용 전에 정한다.
+        assigned_permit_numbers = set()
+        assigned_active_rows = []
         for building in buildings:
             sido = _canonical_sido_name(building.get("sgg_text"))
             if not sido:
@@ -29124,16 +29163,23 @@ def _report_rate_by_sido_payload():
                 if (
                     not permit_number
                     or not is_active_status(permit.get("biz_status_name"))
-                    or permit_number in assigned_active_permits
+                    or lodging_type_for_hygiene(permit.get("hygiene_type")) != "생활"
+                    or permit_number in assigned_permit_numbers
                 ):
                     continue
-                assigned_active_permits.add(permit_number)
-                region["active_permits"][permit_number] = permit
+                assigned_permit_numbers.add(permit_number)
+                assigned = dict(permit)
+                assigned["_sido"] = sido
+                assigned_active_rows.append(assigned)
+
+        deduplicated_active_rows = deduplicate_cross_source_lodgings(assigned_active_rows)
+        for permit in deduplicated_active_rows:
+            regions[permit["_sido"]]["active_permits"][permit["permit_number"]] = permit
 
         # 주소가 여러 건물에 매칭되는 신고는 대표 건물 한 곳에만 귀속하고,
         # 대표 건물 안에서도 마스터 호실수를 넘지 않게 캡처리한다.
         capped_active_rooms_by_building = _capped_active_report_rooms_by_building(
-            buildings, road_permits, jibun_permits
+            buildings, road_permits, jibun_permits, expected_type="생활"
         )
 
         def summary(region):
@@ -29163,7 +29209,7 @@ def _report_rate_by_sido_payload():
         total = {
             "building_cnt": sum(item["building_cnt"] for item in items),
             "total_units": total_units,
-            "active_biz_cnt": len(assigned_active_permits),
+            "active_biz_cnt": len(deduplicated_active_rows),
             "active_room_cnt": active_room_cnt,
             "report_rate": (
                 round(active_room_cnt * 100.0 / total_units, 1)
