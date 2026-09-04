@@ -20318,9 +20318,13 @@ def _lodging_full_stats_payload():
                 for building in room_rate_blds
             )
             legacy_rate_tu = sum(int(building["units"] or 0) for building in room_rate_blds)
-            general_active_count, general_report_linked_count = _report_building_counts(
-                general_blds, REPORT_RATE_EXCLUDED_LODGING_TYPE
-            )
+            general_active_permits = deduplicate_cross_source_lodgings([
+                permit
+                for permit in _permits_for(general_blds).values()
+                if is_active_status(permit.get("biz_status_name"))
+                and lodging_type_for_hygiene(permit.get("hygiene_type"))
+                == REPORT_RATE_EXCLUDED_LODGING_TYPE
+            ])
             coverage_counts = [
                 _report_building_counts(type_buildings, label)
                 for label, type_buildings in coverage_blds_by_type.items()
@@ -20330,18 +20334,17 @@ def _lodging_full_stats_payload():
                 len(type_buildings)
                 for type_buildings in coverage_blds_by_type.values()
             )
-            rate_numerator = legacy_rate_rc + general_active_count + coverage_reported_buildings
-            rate_denominator = legacy_rate_tu + general_report_linked_count + coverage_building_count
+            rate_numerator = legacy_rate_rc + len(general_active_permits) + coverage_reported_buildings
+            rate_denominator = legacy_rate_tu + len(general_blds) + coverage_building_count
             rate_basis = "type_weighted"
             lodging_metric = "type_weighted"
         elif is_general:
             legacy_rate_rc = 0
             legacy_rate_tu = 0
-            rate_numerator, rate_denominator = _report_building_counts(
-                blds, REPORT_RATE_EXCLUDED_LODGING_TYPE
-            )
-            rate_basis = "active_buildings_per_report_linked_buildings"
-            lodging_metric = "buildings_with_active_report"
+            rate_numerator = pc
+            rate_denominator = len(blds)
+            rate_basis = "businesses_per_building"
+            lodging_metric = "businesses_per_building"
         elif is_building_coverage:
             legacy_rate_rc = 0
             legacy_rate_tu = 0
@@ -20414,7 +20417,10 @@ def _lodging_full_stats_payload():
                     sub_stats[hygiene_type]["building_ids"].add(building["id"])
                     if is_active_status(permit.get("biz_status_name")):
                         sub_stats[hygiene_type]["active_building_ids"].add(building["id"])
-                        sub_stats[hygiene_type]["permits"][permit_number] = permit
+            for permit in active_vals:
+                hygiene_type = permit.get("hygiene_type")
+                if hygiene_type in sub_stats:
+                    sub_stats[hygiene_type]["permits"][permit["permit_number"]] = permit
             row["sub_rows"] = [
                 {
                     "type": hygiene_type,
@@ -20426,7 +20432,7 @@ def _lodging_full_stats_payload():
                     ),
                     "report_rate": (
                         round(
-                            len(sub_stats[hygiene_type]["active_building_ids"])
+                            len(sub_stats[hygiene_type]["permits"])
                             / len(sub_stats[hygiene_type]["building_ids"]) * 100,
                             1,
                         )

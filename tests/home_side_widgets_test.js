@@ -150,14 +150,14 @@ expect(main.includes("function _hygieneBadge") &&
   main.includes('"농어촌민박업":           ["농어촌민박"') &&
   main.includes('"한옥체험업":            ["한옥"'),
   "영업신고 업종별 상세 용도 뱃지가 없습니다.");
-expect(main.includes('<th>건물수(시설수)</th>') &&
-  main.includes('title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다.">호실수(사이트수)</th>') &&
-  main.includes('<th title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다.">신고율</th>') &&
+expect(main.includes('class="datalab-head-stack">건물수<small>(시설수)</small>') &&
+  main.includes('title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small>') &&
+  main.includes('title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span>') &&
   main.includes('const buildingCoverageTypes = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"])') &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
   !main.includes("영업신고율</th>"),
-  main.includes("<th>신고객실수(사이트수)</th>"),
+  main.includes('class="datalab-head-stack">신고객실수<small>(사이트수)</small>'),
   "전국숙박업통계의 건물수(시설수)·호실수(사이트수)·신고객실수(사이트수) 구분이 누락됐습니다.");
 expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&
   !main.includes("datalab-caption-bottom"),
@@ -178,9 +178,10 @@ expect(main.includes('row.type === "캠핑"') &&
   main.includes("? row.camping_site_count"),
   "캠핑 합계 행이 시설수·사이트수 합계를 유지하지 않습니다.");
 expect(css.includes("--panel-w:440px") &&
-  css.includes(".datalab-table{width:100%; min-width:260px;") &&
-  css.includes(".datalab-table th{padding:6px 4px;") &&
-  css.includes(".datalab-table td{padding:6px 4px;"),
+  css.includes(".datalab-table-wrap{overflow-x:hidden;") &&
+  css.includes(".datalab-table{width:100%; min-width:0; table-layout:fixed;") &&
+  css.includes(".datalab-table th{padding:6px 2px;") &&
+  css.includes(".datalab-table td{padding:6px 2px;"),
   "데이터랩 패널·테이블 폭 축소 CSS가 반영되지 않았습니다.");
 expect(!main.includes("row.favorites") && !main.includes("row.listing_requests"),
   "전국숙박업통계 렌더링에 내부 운영지표가 남아 있습니다.");

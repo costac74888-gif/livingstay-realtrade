@@ -3419,8 +3419,8 @@ def _check_datalab_report_source_contract():
             cur.execute("""
                 INSERT INTO lodging_registry
                     (biz_name, permit_number, road_address, jibun_address,
-                     biz_status_name, room_count, road_norm, jibun_norm)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     biz_status_name, room_count, road_norm, jibun_norm, hygiene_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '생활숙박업')
             """, (
                 f"{prefix} 신고업체",
                 permit_number,

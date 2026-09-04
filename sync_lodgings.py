@@ -2034,6 +2034,11 @@ def _main_with_legacy_gate():
 
 
 def main():
+    # 고캠핑 전용 수집은 승격 완료된 행안부 숙박 원장 수집과 별도 원천이다.
+    # 기존 숙박 직접 쓰기 종료 후에도 --camping 백필은 계속 허용한다.
+    if "--camping" in sys.argv[1:]:
+        _main_with_legacy_gate()
+        return
     with legacy_lodging_writer_gate() as enabled:
         if not enabled:
             print("[lodgings] 관리자 승인으로 기존 숙박 직접 동기화가 종료되어 건너뜁니다.")

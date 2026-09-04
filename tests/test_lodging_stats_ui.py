@@ -17,8 +17,11 @@ class LodgingStatsUiTests(unittest.TestCase):
 
     def test_mobile_home_table_fits_without_horizontal_scroll(self):
         css = (ROOT / "static" / "css" / "main.css").read_text(encoding="utf-8")
-        self.assertIn(".datalab-table-wrap{overflow-x:hidden;}", css)
+        self.assertIn(".datalab-table-wrap{overflow-x:hidden;", css)
         self.assertIn(".datalab-table{width:100%; min-width:0; table-layout:fixed;", css)
+        main = (ROOT / "static" / "js" / "main.js").read_text(encoding="utf-8")
+        self.assertIn('class="datalab-head-stack">건물수<small>(시설수)</small>', main)
+        self.assertIn('class="datalab-head-stack">호실수<small>(사이트수)</small>', main)
 
 
 if __name__ == "__main__":

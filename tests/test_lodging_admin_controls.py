@@ -11,6 +11,35 @@ import sync_rural_hanok
 
 
 class LodgingAdminControlTests(unittest.TestCase):
+    def test_camping_only_sync_bypasses_disabled_legacy_lodging_gate(self):
+        @contextmanager
+        def disabled_gate():
+            raise AssertionError("camping-only sync must not enter legacy gate")
+            yield False
+
+        with (
+            patch.object(sync_lodgings, "legacy_lodging_writer_gate", disabled_gate),
+            patch.object(sync_lodgings, "_main_with_legacy_gate") as run,
+            patch.object(sys, "argv", ["sync_lodgings.py", "--camping"]),
+        ):
+            sync_lodgings.main()
+
+        run.assert_called_once_with()
+
+    def test_regular_sync_still_honors_disabled_legacy_lodging_gate(self):
+        @contextmanager
+        def disabled_gate():
+            yield False
+
+        with (
+            patch.object(sync_lodgings, "legacy_lodging_writer_gate", disabled_gate),
+            patch.object(sync_lodgings, "_main_with_legacy_gate") as run,
+            patch.object(sys, "argv", ["sync_lodgings.py"]),
+        ):
+            sync_lodgings.main()
+
+        run.assert_not_called()
+
     def test_upload_extensions_are_source_specific(self):
         self.assertEqual(lodging_import_staging.allowed_extensions("rural"), {"csv"})
         self.assertEqual(

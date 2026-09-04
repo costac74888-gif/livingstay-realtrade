@@ -2783,19 +2783,16 @@ def _run_init_db():
         ON agency_links (link_url)
     """)
     cur.execute("""
+        -- 기본 유관기관 3개 INSERT (최초 1회)
         INSERT INTO agency_links (name, link_url, display_order, is_active)
         VALUES
-            ('실거래가 조회', 'https://rt.molit.go.kr', 1, TRUE),
-            ('건축물대장(세움터)', 'https://www.eais.go.kr', 2, TRUE),
-            ('공시가격알리미', 'https://www.realtyprice.kr', 3, TRUE),
-            ('국세청 홈택스', 'https://www.hometax.go.kr', 4, TRUE),
-            ('숙박업 신고', 'https://ehealth.mohw.go.kr', 5, TRUE),
-            ('고캠핑', 'https://www.gocamping.or.kr', 6, TRUE),
-            ('정부24', 'https://www.gov.kr', 7, TRUE),
-            ('한국부동산원', 'https://www.r-one.co.kr', 8, TRUE),
-            ('위택스(재산세)', 'https://www.wetax.go.kr', 9, TRUE),
-            ('공공데이터포털', 'https://www.data.go.kr', 10, TRUE)
-        ON CONFLICT (link_url) DO NOTHING
+            ('고캠핑',
+             'https://www.gocamping.or.kr',       1, TRUE),
+            ('한국관광공사',
+             'https://www.visitkorea.or.kr',      2, TRUE),
+            ('관광기금융자',
+             'https://www.knto.or.kr/loan',       3, TRUE)
+        ON CONFLICT DO NOTHING
     """)
 
     # 약관/개인정보처리방침 — 관리자가 admin.html에서 직접 수정하는 DB 기반 법적 문서.
