@@ -75,3 +75,4 @@
 - [숙박 legacy 컷오버 잠금](lodging-legacy-cutover-locking.md) — 실제 수집기 전체 수명과 종료 승인을 shared/exclusive DB 잠금으로 직렬화하고 manifest 관찰·적용도 별도 fence로 묶는다.
 - [숙박 승격 원본 경합 방지](lodging-promotion-source-fence.md) — 새 운영 쓰기는 staging 원본 지문·공유잠금으로 보호하되, 이미 커밋된 감사 표식 복구는 원본 변경과 무관하게 허용한다.
 - [공개 숙박 영업상태 통계](public-lodging-status-privacy.md) — 공개 화면에 휴·폐업을 노출하지 않고 계산에만 사용; 정상+폐업은 정상 우선, 비활성만 있으면 분모 전용.
+- [숙박 운영자 승인 단위](lodging-operator-approval-integrity.md) — 운영자는 신고 원장 1건당 1명만 승인하며, 입력 문자열이 아닌 정규 원장 ID로 중복을 막는다.
