@@ -1164,6 +1164,11 @@
 
 /* 건물 상세 최상단 사진 슬라이더 */
 .bld-photo-shell{ position:relative; }
+.bld-photo-empty-logo{ display:none; }
+.bld-photo-shell.is-empty .bld-photo-empty-logo{
+  display:block; position:absolute; z-index:4; left:50%; top:50%;
+  width:134px; height:auto; transform:translate(-50%,-50%);
+}
 .bld-photo-wrap{
   position:relative;
   width:calc(100% + 32px);
@@ -1173,7 +1178,7 @@
   background:#e8e7e0;
 }
 .bld-photo-wrap.is-empty{
-  height:72px;
+  height:58px;
   background:#1d1d1d;
 }
 .bld-photo-actions{

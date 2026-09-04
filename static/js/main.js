@@ -4259,8 +4259,9 @@ function detailBadgeLabel(v, subtype, buildingStatus){
 }
 
 function buildingPhotoSliderHtml(){
-  return `<div class="bld-photo-shell">
+  return `<div class="bld-photo-shell is-empty">
     <div id="bldPhotoWrap" class="bld-photo-wrap is-empty"></div>
+    <img class="bld-photo-empty-logo" src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY">
     <div class="bld-photo-actions bld-photo-actions-left">
       <button type="button" id="btnBackToList" class="bld-photo-action" aria-label="전체 목록으로" title="전체 목록으로">←</button>
     </div>
@@ -4280,10 +4281,12 @@ function renderPhotoSlider(photos){
     wrap.innerHTML = "";
     wrap.style.display = "";
     wrap.classList.add("is-empty");
+    wrap.parentElement?.classList.add("is-empty");
     wrap.classList.remove("has-streetview");
     return;
   }
   wrap.classList.remove("is-empty");
+  wrap.parentElement?.classList.remove("is-empty");
   wrap.classList.toggle(
     "has-streetview",
     usablePhotos.some(photo => photo.source === "streetview")
@@ -4342,6 +4345,7 @@ function handleBuildingPhotoError(image){
       wrap.innerHTML = "";
       wrap.style.display = "";
       wrap.classList.add("is-empty");
+      wrap.parentElement?.classList.add("is-empty");
       wrap.classList.remove("has-streetview");
     }
     return;
