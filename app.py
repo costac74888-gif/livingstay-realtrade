@@ -57,6 +57,7 @@ from lodging_classification import (
     recover_classification_provenance,
     should_protect_from_active_permit_reclassification,
 )
+from lodging_report_status import summarize_building_report_status
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
 from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
@@ -19755,27 +19756,25 @@ def _lodging_full_stats_payload():
         is_room_rate = uses_lodging_report_rate(type_label)
         is_total = type_label == "전체"
 
-        def _active_report_building_count(target_buildings, expected_type):
-            matched_count = 0
+        def _report_building_counts(target_buildings, expected_type):
+            active_count = 0
+            report_linked_count = 0
             for building in target_buildings:
                 road_key = bld_rk[building["id"]]
                 jibun_key = bld_jk[building["id"]]
                 building_permits = lr_road_map.get(road_key) if road_key else None
                 if not building_permits:
                     building_permits = lr_jibun_map.get(jibun_key) if jibun_key else None
-                if any(
-                    is_active_status(permit.get("biz_status_name"))
-                    and (
-                        # 원장 업태에는 '복합' 값이 없다. 복합 건물은 서로 다른
-                        # 법정 유형이 함께 분류된 건물이므로 연결된 활성 신고 자체를
-                        # 건물 신고 커버리지의 증거로 사용한다.
-                        expected_type == "복합"
-                        or lodging_type_for_hygiene(permit.get("hygiene_type")) == expected_type
-                    )
-                    for permit in (building_permits or {}).values()
-                ):
-                    matched_count += 1
-            return matched_count
+                has_active, has_report = summarize_building_report_status(
+                    (building_permits or {}).values(), expected_type
+                )
+                if not has_report:
+                    continue
+                report_linked_count += 1
+                # 같은 건물에 과거 폐업과 현재 정상 신고가 함께 있으면 정상 우선.
+                if has_active:
+                    active_count += 1
+            return active_count, report_linked_count
 
         # 생활만 신고객실수 ÷ 건축물대장 호실수를 쓴다. 일반은 업체수 ÷ 건물수,
         # 나머지 확정 유형은 활성 신고가 연결된 건물수 ÷ 유형 건물수를 쓴다.
@@ -19791,37 +19790,34 @@ def _lodging_full_stats_payload():
                 for building in room_rate_blds
             )
             legacy_rate_tu = sum(int(building["units"] or 0) for building in room_rate_blds)
-            general_active_count = len(deduplicate_cross_source_lodgings([
-                permit for permit in _permits_for(general_blds).values()
-                if is_active_status(permit["biz_status_name"])
-                and lodging_type_for_hygiene(permit.get("hygiene_type"))
-                    == REPORT_RATE_EXCLUDED_LODGING_TYPE
-            ]))
-            coverage_reported_buildings = sum(
-                _active_report_building_count(type_buildings, label)
-                for label, type_buildings in coverage_blds_by_type.items()
+            general_active_count, general_report_linked_count = _report_building_counts(
+                general_blds, REPORT_RATE_EXCLUDED_LODGING_TYPE
             )
+            coverage_counts = [
+                _report_building_counts(type_buildings, label)
+                for label, type_buildings in coverage_blds_by_type.items()
+            ]
+            coverage_reported_buildings = sum(active for active, _ in coverage_counts)
             coverage_building_count = sum(
                 len(type_buildings)
                 for type_buildings in coverage_blds_by_type.values()
             )
             rate_numerator = legacy_rate_rc + general_active_count + coverage_reported_buildings
-            rate_denominator = legacy_rate_tu + len(general_blds) + coverage_building_count
+            rate_denominator = legacy_rate_tu + general_report_linked_count + coverage_building_count
             rate_basis = "type_weighted"
             lodging_metric = "type_weighted"
         elif is_general:
             legacy_rate_rc = 0
             legacy_rate_tu = 0
-            rate_numerator = pc
-            rate_denominator = len(blds)
-            rate_basis = "businesses_per_building"
-            lodging_metric = "businesses_per_building"
+            rate_numerator, rate_denominator = _report_building_counts(
+                blds, REPORT_RATE_EXCLUDED_LODGING_TYPE
+            )
+            rate_basis = "active_buildings_per_report_linked_buildings"
+            lodging_metric = "buildings_with_active_report"
         elif is_building_coverage:
             legacy_rate_rc = 0
             legacy_rate_tu = 0
-            rate_numerator = _active_report_building_count(
-                blds, type_label
-            )
+            rate_numerator, _ = _report_building_counts(blds, type_label)
             rate_denominator = len(blds)
             rate_basis = "buildings_with_active_report"
             lodging_metric = "buildings_with_active_report"
@@ -19842,7 +19838,7 @@ def _lodging_full_stats_payload():
 
         row = {
             "type": type_label,
-            "building_count": len(blds),
+            "building_count": rate_denominator if is_general else len(blds),
             "units": tu,
             "favorites": sum(fav_map.get(b["id"], 0) for b in blds),
             "listing_requests": sum(lr_req_map.get(b["id"], 0) for b in blds),
@@ -19868,7 +19864,11 @@ def _lodging_full_stats_payload():
         }
         if is_general:
             sub_stats = {
-                hygiene_type: {"building_ids": set(), "permits": {}}
+                hygiene_type: {
+                    "building_ids": set(),
+                    "active_building_ids": set(),
+                    "permits": {},
+                }
                 for hygiene_type in GENERAL_LODGING_SUB_TYPES
             }
             for building in blds:
@@ -19881,10 +19881,10 @@ def _lodging_full_stats_payload():
                     hygiene_type = permit.get("hygiene_type")
                     if hygiene_type not in sub_stats:
                         continue
-                    if not is_active_status(permit.get("biz_status_name")):
-                        continue
                     sub_stats[hygiene_type]["building_ids"].add(building["id"])
-                    sub_stats[hygiene_type]["permits"][permit_number] = permit
+                    if is_active_status(permit.get("biz_status_name")):
+                        sub_stats[hygiene_type]["active_building_ids"].add(building["id"])
+                        sub_stats[hygiene_type]["permits"][permit_number] = permit
             row["sub_rows"] = [
                 {
                     "type": hygiene_type,
@@ -19896,7 +19896,7 @@ def _lodging_full_stats_payload():
                     ),
                     "report_rate": (
                         round(
-                            len(sub_stats[hygiene_type]["permits"])
+                            len(sub_stats[hygiene_type]["active_building_ids"])
                             / len(sub_stats[hygiene_type]["building_ids"]) * 100,
                             1,
                         )
