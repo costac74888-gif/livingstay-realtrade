@@ -274,6 +274,8 @@
               const color = row.report_rate >= 80 ? "color:var(--brass-dark);" : "";
               const title = row.report_rate_basis === "businesses_per_building"
                 ? "일반숙박 기준: 현재 영업신고업체 수 ÷ 건물 수"
+                : row.report_rate_basis === "matched_camping_facilities_per_facilities"
+                  ? "캠핑 기준: 마스터와 매칭된 신고시설 수 ÷ 전체 활성 캠핑시설 수"
                 : row.report_rate_basis === "buildings_with_active_report"
                   ? row.type === "복합"
                     ? "복합 기준: 활성 법정 숙박 신고가 하나 이상 매칭된 복합 건물 수 ÷ 복합 건물 수 (원장에는 복합 업태가 없음)"
@@ -314,25 +316,47 @@
           return `<td style="padding:4px 8px;"></td>`;
         }).join("");
         const campingTypes = (row) => {
-          const breakdown = row.camping_classification_breakdown || {};
-          const mixed = Number(breakdown.confirmed_mixed || 0) + Number(breakdown.unknown || 0);
+          const details = row.camping_classification_details || {};
+          const merge = (...keys) => {
+            const result = keys.reduce((acc, key) => {
+              const detail = details[key] || {};
+              acc.facilityCount += Number(detail.facility_count || 0);
+              acc.siteCount += Number(detail.site_count || 0);
+              acc.matchedFacilityCount += Number(detail.matched_facility_count || 0);
+              acc.matchedSiteCount += Number(detail.matched_site_count || 0);
+              return acc;
+            }, { facilityCount: 0, siteCount: 0, matchedFacilityCount: 0, matchedSiteCount: 0 });
+            result.reportRate = result.facilityCount
+              ? Math.round(result.matchedFacilityCount / result.facilityCount * 1000) / 10
+              : null;
+            return result;
+          };
           return [
-            ["일반야영", breakdown.general_only, row.camping_general_site_count],
-            ["자동차야영", breakdown.auto_only, row.camping_auto_site_count],
-            ["글램핑", breakdown.glamping_only, row.camping_glamping_site_count],
-            ["카라반", breakdown.caravan_only, row.camping_caravan_site_count],
-            ["복합", mixed, null],
+            ["일반야영", merge("general_only")],
+            ["자동차야영", merge("auto_only")],
+            ["글램핑", merge("glamping_only")],
+            ["카라반", merge("caravan_only")],
+            ["복합·미확인", merge("confirmed_mixed", "unknown")],
           ];
         };
-        const campingSubRowCells = ([type, facilityCount, siteCount]) => COLS.map((c) => {
+        const campingSubRowCells = ([type, detail]) => COLS.map((c) => {
           if (c.label === "용도") {
             return `<td style="padding:4px 8px 4px 28px;color:var(--ink-soft);">↳ ${type}</td>`;
           }
           if (c.key === "building_count") {
-            return `<td style="text-align:right;padding:4px 8px;">${n(facilityCount)}</td>`;
+            return `<td style="text-align:right;padding:4px 8px;">${n(detail.facilityCount)}</td>`;
           }
           if (c.key === "units") {
-            return `<td style="text-align:right;padding:4px 8px;">${siteCount == null ? "-" : n(siteCount)}</td>`;
+            return `<td style="text-align:right;padding:4px 8px;">${n(detail.siteCount)}</td>`;
+          }
+          if (c.key === "permit_count") {
+            return `<td style="text-align:right;padding:4px 8px;">${n(detail.matchedFacilityCount)}</td>`;
+          }
+          if (c.key === "room_count") {
+            return `<td style="text-align:right;padding:4px 8px;">${n(detail.matchedSiteCount)}</td>`;
+          }
+          if (c.key === "report_rate") {
+            return `<td title="마스터와 매칭된 신고시설 수 ÷ 전체 활성 시설 수" style="text-align:right;padding:4px 8px;color:var(--ink-soft);">${pct(detail.reportRate)}</td>`;
           }
           return `<td style="padding:4px 8px;"></td>`;
         }).join("");
