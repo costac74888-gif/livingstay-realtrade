@@ -30,6 +30,7 @@ class CampingDetailUiTests(unittest.TestCase):
             self.assertIn(field, self.db_source)
             self.assertIn(field, self.app_source)
         self.assertIn('result["camping"] = camping', self.app_source)
+        self.assertIn('"info_url": _gocamping_url_for_registry_key(', self.app_source)
 
     def test_camping_card_replaces_transaction_cards_and_resets(self):
         self.assertIn('id="bCampCard"', self.main_source)
@@ -39,6 +40,8 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('card.style.display = "none"', self.main_source)
         self.assertIn("function _campingAnimalLabel(value)", self.main_source)
         self.assertIn("`반려동물 동반 ${policy}`", self.main_source)
+        self.assertIn('id="bCampInfoLink"', self.main_source)
+        self.assertNotIn("캠핑장 예약 페이지 열기 ↗", self.main_source)
 
     def test_gocamping_image_is_a_photo_fallback(self):
         self.assertIn('"source": "gocamping"', self.app_source)

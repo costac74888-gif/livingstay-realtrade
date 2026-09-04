@@ -4738,6 +4738,24 @@ function _renderCampingSection(b){
   }
 
   const camp = b.camping || {};
+  const infoLink = document.getElementById("bCampInfoLink");
+  const infoUrl = _publicHttpUrl(camp.info_url)
+    || (Array.isArray(b.lodging_operators)
+      ? b.lodging_operators.map(op => _publicHttpUrl(op?.gocamping_url)).find(Boolean)
+      : null);
+  if (infoLink) {
+    if (infoUrl) {
+      infoLink.href = infoUrl;
+      infoLink.classList.remove("is-disabled");
+      infoLink.removeAttribute("aria-disabled");
+      infoLink.tabIndex = 0;
+    } else {
+      infoLink.removeAttribute("href");
+      infoLink.classList.add("is-disabled");
+      infoLink.setAttribute("aria-disabled", "true");
+      infoLink.tabIndex = -1;
+    }
+  }
   const sites = [
     ["일반 야영", camp.general_site_count ?? b.camping_general_site_count, "🏕️"],
     ["오토 캠핑", camp.auto_site_count ?? b.camping_auto_site_count, "🚙"],
@@ -4757,9 +4775,8 @@ function _renderCampingSection(b){
     ["개수대", camp.sink_count ?? b.camping_wtrpl_co, "개"],
     ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
   ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
-  const reservationUrl = _publicHttpUrl(camp.reservation_url ?? b.camping_resve_url);
   const hasContent = sites.length || amenities.length || seasons.length
-    || chips.length || facts.length || reservationUrl;
+    || chips.length || facts.length || infoUrl;
   if (!hasContent) {
     card.style.display = "none";
     body.innerHTML = "";
@@ -4791,9 +4808,6 @@ function _renderCampingSection(b){
       <div class="camp-section-label">운영 기간</div>
       <div class="camp-chips camp-seasons">${seasons.map(item =>
         `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-    ${reservationUrl ? `
-      <a class="camp-reservation" href="${escapeHtml(String(reservationUrl))}"
-         target="_blank" rel="noopener noreferrer">캠핑장 예약 페이지 열기 ↗</a>` : ""}
   `;
   card.style.display = "";
 }
@@ -4827,15 +4841,23 @@ function _bookingTarget(b){
     }
     return null;
   };
-  const campingUrl = _publicHttpUrl(b.camping?.reservation_url ?? b.camping_resve_url);
+  const naverReservationUrl = [
+    b.camping?.reservation_url,
+    b.camping_resve_url,
+    b.booking_url,
+  ].map(_publicHttpUrl).find(url => {
+    if (!url) return false;
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "naver.me" || host.endsWith(".naver.com");
+  });
   const url = firstValid("booking_url")
     || firstValid("airbnb_url")
-    || firstValid("gocamping_url")
-    || campingUrl
-    || _publicHttpUrl(b.booking_url);
+    || _publicHttpUrl(b.booking_url)
+    || naverReservationUrl;
   if (!url) return null;
   const host = new URL(url).hostname.toLowerCase();
   const platform = host.includes("airbnb") ? "에어비앤비"
+    : host === "naver.me" || host.endsWith(".naver.com") ? "네이버 예약"
     : host.includes("yanolja") ? "야놀자"
     : host.includes("yeogi") ? "여기어때"
     : host.includes("booking.com") ? "부킹닷컴"
@@ -4865,7 +4887,7 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bReservationCard", "bCampCard", "bLodgingOperatorCard"],
+    operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
@@ -4962,7 +4984,10 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card" id="bCampCard" style="display:none;">
-      <div class="side-card-title">캠핑장 안내 <span class="side-sub">고캠핑</span></div>
+      <div class="side-card-title">캠핑장 안내
+        <a id="bCampInfoLink" class="b-source-link is-disabled" target="_blank"
+           rel="noopener noreferrer" aria-disabled="true" tabindex="-1">고캠핑</a>
+      </div>
       <div id="bCampBody"></div>
     </section>
 
@@ -5329,7 +5354,7 @@ async function loadBuildingHeader(id){
   if (reservationCard) {
     if (STRUCTURE_B_TYPES.includes(b.lodging_type)) {
       reservationCard.innerHTML = _reservationBar(b);
-      reservationCard.style.display = "";
+      reservationCard.style.display = reservationCard.innerHTML ? "" : "none";
     } else {
       reservationCard.style.display = "none";
     }
@@ -6696,15 +6721,12 @@ function renderBuildingLodgingOperators(items, lodgingType){
   if (!typeMap[lodgingType]) { card.style.display = "none"; return; }
   card.style.display = "";
   const labels = {airbnb:"에어비앤비 호스트",camping:"캠핑 운영파트너",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"생숙 운영자"};
-  const safeUrl = value => { try { const url = new URL(value); return ["http:","https:"].includes(url.protocol) ? url.href : null; } catch(e) { return null; } };
   if (!items.length) {
     box.innerHTML = `<div class="side-empty">이 시설 운영자이신가요?<br><a href="/apply/lodging-operator?type=${typeMap[lodgingType]}">운영 파트너 등록하기</a></div>`;
     return;
   }
   box.innerHTML = items.map(op => {
-    const url = safeUrl(op.booking_url) || safeUrl(op.airbnb_url) || safeUrl(op.gocamping_url);
-    const action = op.booking_url ? "자체 예약 페이지" : op.airbnb_url ? "에어비앤비에서 보기" : "고캠핑에서 예약";
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">${op.photo_src ? `<img src="${escapeHtml(op.photo_src)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;float:right">` : ""}<b>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</b><div>${escapeHtml(op.biz_name || "")}</div>${op.intro_text ? `<div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(op.intro_text)}</div>` : ""}<div style="margin-top:6px;display:flex;gap:10px">${op.phone ? `<a href="tel:${escapeHtml(op.phone)}">전화</a><a href="sms:${escapeHtml(op.phone)}">문자</a>` : ""}${url ? `<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(url)}">${action}</a>` : ""}</div></div>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">${op.photo_src ? `<img src="${escapeHtml(op.photo_src)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;float:right">` : ""}<b>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</b><div>${escapeHtml(op.biz_name || "")}</div>${op.intro_text ? `<div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(op.intro_text)}</div>` : ""}${op.phone ? `<div style="margin-top:6px;display:flex;gap:10px"><a href="tel:${escapeHtml(op.phone)}">전화</a><a href="sms:${escapeHtml(op.phone)}">문자</a></div>` : ""}</div>`;
   }).join("");
 }
 

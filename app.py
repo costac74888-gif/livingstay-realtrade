@@ -2220,23 +2220,13 @@ def get_building(building_id):
             "reservation_url": _safe_public_url(
                 camping_row.get("camping_reservation_url")
             ),
+            "info_url": _gocamping_url_for_registry_key(
+                camping_row.get("permit_number")
+            ),
             "first_image_url": first_image_url,
             "image_urls": image_urls,
             "facility_area": camping_row.get("facility_area"),
         }
-        if not camping["reservation_url"]:
-            camping["reservation_url"] = next(
-                (
-                    _safe_public_url(operator.get("gocamping_url"))
-                    or _safe_public_url(operator.get("booking_url"))
-                    for operator in lodging_operator_rows
-                    if (
-                        _safe_public_url(operator.get("gocamping_url"))
-                        or _safe_public_url(operator.get("booking_url"))
-                    )
-                ),
-                None,
-            )
         if camping["image_urls"] and not building["photos"]:
             building["photos"] = [{
                 "url": image_url,
