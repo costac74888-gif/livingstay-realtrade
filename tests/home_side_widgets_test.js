@@ -191,7 +191,7 @@ const buildingPhotoLoader = main.slice(
 expect(
   buildingPhotoLoader.includes("data.streetview_available === true") &&
   buildingPhotoLoader.includes("await savePhotosToServer(buildingId, [])") &&
-  buildingPhotoLoader.includes("saved?.streetview_available === true") &&
+  buildingPhotoLoader.includes("saved?.streetview_available === true && !gocampingInitial.length") &&
   !buildingPhotoLoader.includes("const initialHasPhotos") &&
   main.includes('onerror="handleBuildingPhotoError(this)"') &&
   main.includes("matchedItem?.firstimage") &&

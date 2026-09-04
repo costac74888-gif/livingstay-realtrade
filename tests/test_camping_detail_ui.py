@@ -42,6 +42,10 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('"source": "gocamping"', self.app_source)
         self.assertIn('photo?.source === "gocamping"', self.main_source)
         self.assertIn("renderPhotoSlider(gocampingInitial)", self.main_source)
+        self.assertIn(
+            "saved?.streetview_available === true && !gocampingInitial.length",
+            self.main_source,
+        )
 
     def test_canonical_gocamping_row_wins_over_larger_csv_row(self):
         selected = _choose_camping_detail_row([

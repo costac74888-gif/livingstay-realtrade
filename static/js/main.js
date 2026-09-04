@@ -4673,7 +4673,9 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
         }
         if (!isCurrentPhotoRequest()) return;
         if (!clientPhotos.length) {
-          if (saved?.streetview_available === true) {
+          // 고캠핑 대표사진은 Google Street View보다 우선한다. TourAPI의 비동기
+          // no_match 저장 응답이 늦게 와도 이미 표시한 캠핑 사진을 덮어쓰지 않는다.
+          if (saved?.streetview_available === true && !gocampingInitial.length) {
             tryShowStreetView(cached, buildingId);
           } else if (!svShown && !gocampingInitial.length) {
             renderPhotoSlider([]);
