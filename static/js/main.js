@@ -3216,7 +3216,7 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th>구분</th><th>건물수</th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다.">대장 호실수</th><th>신고업체</th><th>정상영업 신고객실수</th><th title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다.">신고율</th></tr></thead>
+        <thead><tr><th>구분</th><th>건물수(시설수)</th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다.">호실수(사이트수)</th><th>신고업체</th><th>신고객실수(사이트수)</th><th title="생활은 객실 기준, 일반은 업체 기준, 관광·에어비앤비·농어촌민박·캠핑·한옥·복합은 건물 커버리지 기준입니다.">신고율</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
