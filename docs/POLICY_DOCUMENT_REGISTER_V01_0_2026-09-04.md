@@ -35,6 +35,7 @@
 | 문서 ID | 문서명 | 버전/기준일 | 상태 | 권위 |
 |---|---|---|---|---|
 | POL-DATA-003 | 데이터 수집·검증·승격·노출·갱신 통합 정책 | V.03.0 / 2026-09-04 | 현행 | 데이터 운영 최상위 |
+| POL-EXPOSURE-001 | 공개 데이터·개인정보 보호 정책 | V.01.0 / 2026-09-04 | 현행 | 공개범위·개인정보 보호 최상위 |
 | MAN-PHOTO-001 | 건물·숙박시설 사진 호출 및 운영 매뉴얼 | V.01.0 / 2026-09-04 | 현행 | 사진 영역 |
 | REG-DOC-001 | 정책·매뉴얼 문서대장 | V.01.0 / 2026-09-04 | 현행 | 문서 관리 |
 | GUIDE-PROJECT | 프로젝트 운영 원칙·회귀방지 가이드 | 일자 미표기 | 보조 | UI·회귀 원칙 |
@@ -52,6 +53,7 @@
 ### 2.1 파일 위치
 
 - 데이터 통합 현행 정책: `docs/DATA_COLLECTION_GOVERNANCE_OPERATIONS_POLICY_V03_0_2026-09-04.md`
+- 공개 데이터·개인정보 보호 정책: `docs/PUBLIC_DATA_PRIVACY_PROTECTION_POLICY_V01_0_2026-09-04.md`
 - 사진 현행 매뉴얼: `docs/PHOTO_RETRIEVAL_OPERATIONS_MANUAL_V01_0_2026-09-04.md`
 - 중앙 문서대장: `docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.md`
 - 이전 V.02 및 단계 보고서: 프로젝트 루트의 `DB_DATA_COLLECTION_MANAGEMENT_POLICY_*`
@@ -71,7 +73,6 @@
 |---|---|---|---|---|
 | P0 | RUN-SYNC-001 | 정기 동기화 운영·재시도 매뉴얼 | stage별 일정, quota, 상태 키, 실패 재시도, 중복 실행 금지 | 2026-09-11 |
 | P0 | RUN-RELEASE-001 | 배포·운영 검증·롤백 매뉴얼 | build, schema, Publish, live smoke, rollback 기준 | 2026-09-11 |
-| P0 | POL-EXPOSURE-001 | 공개 데이터·개인정보 보호 정책 | 휴·폐업, 제한공개, 관리자 필드, 공개 API 최소화 | 2026-09-11 |
 | P0 | RUN-INCIDENT-001 | 장애 대응·복구 매뉴얼 | API 장애, DB 잠금, 중단 작업, 부분 commit, 캐시 불일치 | 2026-09-18 |
 | P0 | POL-API-001 | 외부 API·할당량 정책 | 서비스키 버킷, 80% 배정, 실시간/배치 분리, 오류 마스킹 | 2026-09-18 |
 | P0 | RUN-SCHEMA-001 | DB 스키마 변경·승격 매뉴얼 | SCHEMA_VERSION, dev/prod 적용, DDL 잠금, rollback | 2026-09-18 |
@@ -236,3 +237,4 @@ HOME_AND_STAY_<문서명>_V<버전>_<YYYY-MM-DD>.html
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | V.01.0 | 2026-09-04 | 기존 정책·보고서 현황, 사진 매뉴얼, P0/P1/P2 작성 후보, 파일명·버전·검토 규칙 최초 정리 |
+| V.01.0.1 | 2026-09-04 | POL-EXPOSURE-001 공개 데이터·개인정보 보호 정책을 현행 문서로 등록 |

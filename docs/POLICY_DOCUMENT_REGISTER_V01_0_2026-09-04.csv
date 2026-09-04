@@ -1,5 +1,6 @@
 document_id,title,version,effective_date,status,priority,next_review,file
 POL-DATA-003,데이터 수집·검증·승격·노출·갱신 통합 정책,V.03.0,2026-09-04,current,P0,2026-09-11,docs/DATA_COLLECTION_GOVERNANCE_OPERATIONS_POLICY_V03_0_2026-09-04.md
+POL-EXPOSURE-001,공개 데이터·개인정보 보호 정책,V.01.0,2026-09-04,current,P0,2026-09-11,docs/PUBLIC_DATA_PRIVACY_PROTECTION_POLICY_V01_0_2026-09-04.md
 MAN-PHOTO-001,건물·숙박시설 사진 호출 및 운영 매뉴얼,V.01.0,2026-09-04,current,P1,2026-10-04,docs/PHOTO_RETRIEVAL_OPERATIONS_MANUAL_V01_0_2026-09-04.md
 REG-DOC-001,정책·매뉴얼 문서대장,V.01.0,2026-09-04,current,P0,2026-09-11,docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.md
 POL-DATA-002,숙박·건물 데이터 수집 및 관리 정책,V.02,2026-09-03,superseded,P0,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V01.md
@@ -11,7 +12,6 @@ RPT-V02-STEP4,4단계 정부 CSV 검증 보고서,,2026-09-03,historical,,,DB_DA
 RPT-V02-STEP5,5단계 주소·건물 매칭 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP5_MATCHING_REPORT.md
 RUN-SYNC-001,정기 동기화 운영·재시도 매뉴얼,draft,,planned,P0,2026-09-11,
 RUN-RELEASE-001,배포·운영 검증·롤백 매뉴얼,draft,,planned,P0,2026-09-11,
-POL-EXPOSURE-001,공개 데이터·개인정보 보호 정책,draft,,planned,P0,2026-09-11,
 RUN-INCIDENT-001,장애 대응·복구 매뉴얼,draft,,planned,P0,2026-09-18,
 POL-API-001,외부 API·할당량 정책,draft,,planned,P0,2026-09-18,
 RUN-SCHEMA-001,DB 스키마 변경·승격 매뉴얼,draft,,planned,P0,2026-09-18,

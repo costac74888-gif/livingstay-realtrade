@@ -332,3 +332,31 @@ mtime_ms = 1788489004792
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/994d87a1-0c0e-4f7c-94aa-b9698347f362/7ca96f99-dbd0-4aee-bbb2-7e23de736fa4"
 storage_version_token = "1788489042717002"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "k_VE_8AlTpqEB-G3trjvw"
+uri = "file://exports/HOME_AND_STAY_PUBLIC_DATA_PRIVACY_POLICY_V01_0_2026-09-04.pdf"
+type = "pdf"
+title = "공개 데이터·개인정보 보호 정책 PDF"
+description = "역할별 열람 범위, 휴·폐업 및 내부 통계 비공개, 채널별 금지 항목과 회귀검사 기준을 담은 현행 정책입니다."
+logical_id = "0d892ac1-a1cc-4746-98d4-68189a1c829c"
+content_hash = "sha256:22f7676af9de38c59a82405b69222a9cbec186163b8dfa9001aa5615cab78af7"
+size = 264166
+mtime_ms = 1788489158961
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/0d892ac1-a1cc-4746-98d4-68189a1c829c/40779b63-4a7a-4ed8-b3de-507285262924"
+storage_version_token = "1788489254176605"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "LlnX7oZg8CGp7dWKm9X1l"
+uri = "file://exports/HOME_AND_STAY_PUBLIC_DATA_PRIVACY_POLICY_V01_0_2026-09-04.docx"
+type = "word_document"
+title = "공개 데이터·개인정보 보호 정책 DOCX"
+description = "편집 가능한 배포본입니다."
+logical_id = "68f7b9e5-9aaa-483a-aad0-1d0a77d66230"
+content_hash = "sha256:51cb7163ef1d0054e7b9448059b6c64ed38ba50da8ec409ce00aa6ecb51016ab"
+size = 9290
+mtime_ms = 1788489158088
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/68f7b9e5-9aaa-483a-aad0-1d0a77d66230/10d64204-ef1f-417d-b17d-cb1eb7b3e2af"
+storage_version_token = "1788489255699220"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
