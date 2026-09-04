@@ -4259,7 +4259,16 @@ function detailBadgeLabel(v, subtype, buildingStatus){
 }
 
 function buildingPhotoSliderHtml(){
-  return `<div id="bldPhotoWrap" class="bld-photo-wrap" style="display:none;"></div>`;
+  return `<div class="bld-photo-shell">
+    <div id="bldPhotoWrap" class="bld-photo-wrap"><div class="bld-photo-empty">등록된 사진이 없습니다</div></div>
+    <div class="bld-photo-actions bld-photo-actions-left">
+      <button type="button" id="btnBackToList" class="bld-photo-action" aria-label="전체 목록으로" title="전체 목록으로">←</button>
+    </div>
+    <div class="bld-photo-actions bld-photo-actions-right">
+      <button type="button" id="bFavBtn" class="bld-photo-action" aria-label="관심저장" title="관심저장">${Icons.heart(18)}</button>
+      <button type="button" id="bShareBtn" class="bld-photo-action" aria-label="공유" title="공유">${Icons.share(18)}</button>
+    </div>
+  </div>`;
 }
 
 function renderPhotoSlider(photos){
@@ -4268,8 +4277,8 @@ function renderPhotoSlider(photos){
   const usablePhotos = (Array.isArray(photos) ? photos : [])
     .filter(photo => photo && typeof photo.url === "string" && photo.url.trim());
   if (!usablePhotos.length){
-    wrap.innerHTML = "";
-    wrap.style.display = "none";
+    wrap.innerHTML = `<div class="bld-photo-empty">등록된 사진이 없습니다</div>`;
+    wrap.style.display = "";
     wrap.classList.remove("has-streetview");
     return;
   }
@@ -4328,8 +4337,8 @@ function handleBuildingPhotoError(image){
   const remaining = wrap?.querySelectorAll(".bld-photo-slide") || [];
   if (!wrap || !remaining.length) {
     if (wrap) {
-      wrap.innerHTML = "";
-      wrap.style.display = "none";
+      wrap.innerHTML = `<div class="bld-photo-empty">등록된 사진이 없습니다</div>`;
+      wrap.style.display = "";
     }
     return;
   }
@@ -4847,7 +4856,7 @@ function _setupBuildingPanels(type){
   const ids = {
     operations: ["bReservationCard", "bCampCard", "bLodgingOperatorCard"],
     property: [
-      "bSignalCard", "bAdminCard",
+      "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
       "bListingsCard", "bBldgInfoCard", "bAgentCard", "bStoresCard", "bPartnerBannerCard",
     ],
@@ -4890,16 +4899,15 @@ function _setupBuildingPanels(type){
 
 function buildingPanelSkeleton(){
   return `
-    <section class="side-card b-panel-topbar">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-        <button id="btnBackToList" class="side-more" style="margin-top:0; text-align:left; width:auto; white-space:nowrap; font-size:12px; padding:6px 10px;">← 전체목록</button>
-        <button id="btnListingRequest" class="side-more" style="margin-top:0; width:auto; padding:6px 10px; background:var(--brass); color:#fff; border-color:var(--brass); font-weight:700; white-space:nowrap; font-size:12px;">매물내놓기</button>
-        <button id="btnBuyRequest" class="side-more" style="display:inline-flex; margin-top:0; width:auto; padding:6px 10px; background:#3B7DD8; color:#fff; border-color:#3B7DD8; font-weight:700; white-space:nowrap; font-size:12px;">매수의뢰</button>
-      </div>
-    </section>
-
     <section class="side-card" id="bHeaderCard">
+      ${buildingPhotoSliderHtml()}
       <div class="side-empty">불러오는 중…</div>
+    </section>
+    <section class="side-card" id="bRequestCard">
+      <div class="b-request-actions">
+        <button id="btnListingRequest" class="side-more b-request-listing">매물내놓기</button>
+        <button id="btnBuyRequest" class="side-more b-request-buy">매수의뢰</button>
+      </div>
     </section>
     <section class="side-card" id="bSignalCard">
       <div class="side-empty">불러오는 중…</div>
@@ -5290,11 +5298,7 @@ async function loadBuildingHeader(id){
         <div id="bNameSuggestMsg" style="display:none; margin-top:7px; font-size:12px;"></div>
       </div>
     </div>` : ""}
-    <div class="b-actions" style="display:flex !important;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
-      <button type="button" id="bFavBtn" class="b-icon-btn" title="관심저장">${Icons.heart(14)}<span class="b-icon-label">관심저장</span></button>
-      <button type="button" id="bMapBtn" class="b-icon-btn" title="지도위치">${Icons.navigation(14)}<span class="b-icon-label">지도위치</span></button>
-      <button type="button" id="bShareBtn" class="b-icon-btn" title="공유">${Icons.share(14)}<span class="b-icon-label">공유</span></button>
-    </div>`;
+    `;
   signalCard.innerHTML = `
     <button type="button" id="bSignalBtn" class="b-signal-btn" title="숙박알리미" data-enabled="false"
       style="width:100%;display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:8px;margin-bottom:6px;border:1px solid var(--brass,#B4863F);cursor:pointer;text-align:left;background:none;">
@@ -5983,7 +5987,8 @@ async function loadBuildingHeader(id){
   function syncFavBtn(){
     const on = canFav && isFav(favItem);
     favBtn.classList.toggle("on", on);
-    favBtn.querySelector(".b-icon-label").textContent = on ? "저장됨" : "관심저장";
+    favBtn.title = on ? "관심저장됨" : "관심저장";
+    favBtn.setAttribute("aria-label", favBtn.title);
     // ② 저장됐을 때 안내 문구 숨김
     const hint = document.getElementById("bFavHint");
     if (hint) hint.style.display = on ? "none" : "";
@@ -6107,38 +6112,6 @@ async function loadBuildingHeader(id){
       prompt("아래 주소를 복사하세요:", url);
     }
   });
-
-  // 지도위치 버튼 — 좌표가 있는 건물에만 렌더링됨
-  const mapLocBtn = document.getElementById("bMapBtn");
-  if (mapLocBtn){
-    mapLocBtn.addEventListener("click", () => {
-      if (!kakaoMap || b.lat == null || b.lng == null) return;
-      const targetBuildingId = Number(b.building_id ?? id);
-      if (!Number.isInteger(targetBuildingId) || targetBuildingId <= 0) return;
-      const closeDetailOnMobile = window.matchMedia("(max-width: 980px)").matches;
-      if (closeDetailOnMobile){
-        history.pushState({}, "", "/");
-        if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
-        restoreDefaultPanel();
-        closeMapSearchbar();
-      }
-      setMapLocationTarget(targetBuildingId);
-      // level 3 = 개별마커 모드(_clusterModeForLevel 기준), 클러스터 단계 생략
-      kakaoMap.setLevel(3);
-      kakaoMap.setCenter(new kakao.maps.LatLng(b.lat, b.lng));
-      // 지도위치 이동은 특정 건물 하나만 조회하지 않는다. 기존 검색어만
-      // 제외하고 현재 지역·숙박유형 필터의 전체 포인트를 다시 표시해야
-      // 주변 포인트가 사라지지 않는다.
-      const locationMapFilters = Object.assign({}, mapFiltersFromState());
-      delete locationMapFilters.q;
-      Promise.resolve(updateMapForZoom(locationMapFilters, { force: true })).then(
-        applyMapLocationTarget,
-        (error) => {
-          console.error("[MAP] 선택 건물 마커 재조회 실패:", error);
-        },
-      );
-    });
-  }
 
   // 주소 복사 버튼 — 도로명/지번/우편번호 3줄 공통 (이벤트 위임)
   headerCard.querySelectorAll(".b-addr-copy").forEach(btn => {
@@ -6717,7 +6690,9 @@ function renderBuildingPanel(id){
     if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
     restoreDefaultPanel();
   };
-  document.getElementById("btnBackToList").addEventListener("click", closeDetail);
+  panel.addEventListener("click", event => {
+    if (event.target.closest("#btnBackToList")) closeDetail();
+  });
   document.getElementById("btnListingRequest").addEventListener("click", () => {
     if (!window.__livingstayLoggedIn){
       if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();

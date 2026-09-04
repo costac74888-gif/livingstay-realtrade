@@ -12,8 +12,9 @@ expect(main.includes("window.__openBuildingId === Number(id)") && main.includes(
 expect(!/jnjclub|banner_biz_report|JnJ/i.test(main), "JnJ 배너 또는 링크가 건물 상세 코드에 남아 있습니다.");
 expect(main.includes("STRUCTURE_B_TYPES.includes(b.lodging_type)") && main.includes("_reservationBar(b)"), "Structure B 운영 예약 영역이 없습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
-expect(main.includes('property: [\n      "bSignalCard", "bAdminCard"'), "숙박알리미와 행정운영이 부동산정보 패널에 묶이지 않았습니다.");
-expect(main.includes('style="display:flex !important;gap:6px;margin-bottom:8px;flex-wrap:wrap;"'), "관심저장·지도위치·공유 버튼의 구조 B 표시가 보장되지 않았습니다.");
+expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
+expect(main.includes('class="bld-photo-actions bld-photo-actions-left"') && main.includes('class="bld-photo-actions bld-photo-actions-right"'), "사진 위 뒤로가기·관심·공유 버튼이 없습니다.");
+expect(!main.includes('id="bMapBtn"'), "기본정보 아래 지도위치 버튼이 남아 있습니다.");
 expect(main.includes('href="/lodging-operator/manage"'), "예약 미연결 운영자 연결 링크가 없습니다.");
 expect(main.includes('aria-controls="bOperationsPanel"') && main.includes('role="tabpanel"'), "탭과 패널의 접근성 연결이 없습니다.");
 expect(main.includes("_buildingDetailRequestToken") && main.includes("_isActiveBuilding(id, requestToken)"), "비동기 상세 응답의 요청 세대 차단이 없습니다.");

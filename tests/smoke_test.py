@@ -137,7 +137,9 @@ def run_local():
 
     main_js = open(os.path.join(root, "static", "js", "main.js"), encoding="utf-8").read()
     main_css = open(os.path.join(root, "static", "css", "main.css"), encoding="utf-8").read()
-    if (
+    if 'id="bMapBtn"' not in main_js:
+        print("OK  상세 기본정보의 지도위치 버튼 제거")
+    elif (
         "const targetBuildingId = Number(b.building_id ?? id)" not in main_js
         or "const locationMapFilters = Object.assign({}, mapFiltersFromState())" not in main_js
         or "delete locationMapFilters.q" not in main_js

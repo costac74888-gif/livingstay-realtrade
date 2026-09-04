@@ -1117,11 +1117,6 @@
   .map-list-toggle{ padding:8px 13px; font-size:12.5px; }
 }
 
-/* 건물 상세 — 상단바: 좌측 "← 전체 목록으로" + 우측 원형 ✕ 닫기 버튼 */
-.b-panel-topbar{
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
-}
-
 .camp-chips,.camp-amenities{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
 .camp-chips span,.camp-amenities span{border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px 9px;font-size:11px;color:var(--ink-soft)}
 .camp-section-label{font-size:12px;font-weight:700;color:var(--ink-soft);margin:12px 0 8px}
@@ -1168,6 +1163,7 @@
 .b-icon-btn.disabled:hover, .b-icon-btn:disabled:hover{ background:#fff; color:var(--ink-soft); border-color:var(--line); }
 
 /* 건물 상세 최상단 사진 슬라이더 */
+.bld-photo-shell{ position:relative; }
 .bld-photo-wrap{
   position:relative;
   width:calc(100% + 32px);
@@ -1176,6 +1172,26 @@
   overflow:hidden;
   background:#e8e7e0;
 }
+.bld-photo-actions{
+  position:absolute; top:10px; z-index:5; display:flex; gap:8px;
+}
+.bld-photo-actions-left{ left:-6px; }
+.bld-photo-actions-right{ right:-6px; }
+.bld-photo-action{
+  width:38px; height:38px; padding:0; border:1px solid rgba(255,255,255,.65);
+  border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+  background:rgba(20,20,20,.58); color:#fff; cursor:pointer;
+  box-shadow:0 2px 9px rgba(0,0,0,.24);
+}
+.bld-photo-action.on{ background:var(--brass); border-color:#fff; }
+.bld-photo-action:disabled{ opacity:.55; cursor:not-allowed; }
+.b-request-actions{ display:flex; gap:8px; }
+.b-request-actions .side-more{
+  flex:1; width:auto; margin-top:0; padding:10px 12px; font-size:13px;
+  font-weight:700; text-align:center; white-space:nowrap;
+}
+.b-request-listing{ background:var(--brass)!important; color:#fff!important; border-color:var(--brass)!important; }
+.b-request-buy{ background:#3B7DD8!important; color:#fff!important; border-color:#3B7DD8!important; }
 .bld-photo-wrap.has-streetview{
   height:clamp(240px, 75vw, 320px);
   background:#202020;

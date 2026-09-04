@@ -11,25 +11,14 @@ function expect(condition, message) {
 }
 
 expect(
-  source.includes('window.matchMedia("(max-width: 980px)").matches') &&
-    source.includes('history.pushState({}, "", "/")') &&
-    source.includes("restoreDefaultPanel();") &&
-    source.includes("closeMapSearchbar();"),
-  "모바일 지도위치 클릭 시 상세·검색 패널을 함께 닫는 동작이 없습니다.",
-);
-expect(
-  source.includes("const targetBuildingId = Number(b.building_id ?? id)") &&
-    source.includes("setMapLocationTarget(targetBuildingId)") &&
+  !source.includes('id="bMapBtn"') &&
+    !source.includes("const targetBuildingId = Number(b.building_id ?? id)") &&
     source.includes("syncMapLocationTargetElement(d.el, d.b.id)") &&
     source.includes("_openBuildingFromMap(b)") &&
     source.includes("clickable: true") &&
-    source.includes("const locationMapFilters = Object.assign({}, mapFiltersFromState())") &&
-    source.includes("delete locationMapFilters.q") &&
-    source.includes("Promise.resolve(updateMapForZoom(locationMapFilters, { force: true })).then(") &&
-    !source.includes("updateMapForZoom({ building_id: targetBuildingId }") &&
     !source.includes("mapLocationTargetOverlay") &&
     !source.includes("showMapLocationTargetPoint"),
-  "지도위치 이동 시 전체 포인트를 유지하면서 기존 건물 포인트 자체를 점멸시키지 않습니다.",
+  "상세 기본정보의 지도위치 버튼 제거 또는 지도 포인트 클릭 흐름이 맞지 않습니다.",
 );
 expect(
   css.includes(".map-location-target") &&
@@ -45,4 +34,4 @@ expect(
   "개별 포인트 표시가 너무 이른 줌 레벨에서 시작하거나 클러스터 드릴다운이 맞지 않습니다.",
 );
 
-console.log("OK  모바일 지도위치 상세 닫기·점멸 포인트");
+console.log("OK  상세 지도위치 버튼 제거·지도 포인트 클릭 흐름");
