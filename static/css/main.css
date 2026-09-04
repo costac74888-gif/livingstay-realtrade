@@ -448,20 +448,19 @@
   .map-legend{
     position:absolute; bottom:var(--stage-gap); right:var(--stage-gap); z-index:15;
     background:var(--card); border:1px solid var(--line); border-radius:10px;
-    box-shadow:0 2px 10px rgba(22,32,46,.12); padding:8px 12px;
+    box-shadow:0 2px 10px rgba(22,32,46,.12); padding:8px 30px 8px 12px;
     font-size:12px; color:var(--ink-soft); max-width:calc(100% - 24px);
   }
   .map-legend-slide{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
   .map-legend-slide[hidden]{display:none;}
   .map-agency-slide{min-height:23px; flex-wrap:nowrap; min-width:260px;}
-  .map-agency-label{font-weight:700; color:var(--ink); white-space:nowrap;}
   .map-agency-row{display:flex;gap:6px;min-width:0;overflow:hidden;flex:1;}
   .map-agency-row a{display:inline-flex;align-items:center;gap:3px;flex:none;max-width:125px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-size:10px;font-weight:700;text-decoration:none;padding:2px 7px;border:1px solid var(--line);border-radius:5px;background:#fff;}
   .map-agency-row a:hover{border-color:var(--brass);color:var(--brass-dark);}
   .map-agency-row a:focus-visible{outline:2px solid var(--brass);outline-offset:2px;}
   .map-agency-row img{height:13px;max-width:84px;object-fit:contain;}
-  .map-legend-controls{display:flex;justify-content:center;gap:5px;margin-top:5px;}
-  .map-legend-controls button{width:18px;height:12px;border:0;background:transparent;position:relative;cursor:pointer;padding:0;}
+  .map-legend-controls{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;justify-content:center;gap:2px;margin:0;}
+  .map-legend-controls button{width:16px;height:11px;border:0;background:transparent;position:relative;cursor:pointer;padding:0;}
   .map-legend-controls button::after{content:"";position:absolute;width:5px;height:5px;border-radius:50%;background:#c3c8ce;left:50%;top:50%;transform:translate(-50%,-50%);}
   .map-legend-controls button.is-active::after{background:var(--brass);width:7px;height:7px;}
   .map-legend-controls button:focus-visible{outline:2px solid var(--brass);outline-offset:1px;}
@@ -476,7 +475,7 @@
   /* 범례 모바일 전용 축소 — 3줄 크게 차지 → 1~2줄로 컴팩트하게 */
   @media (max-width:480px){
     .map-legend{
-      padding:5px 8px; gap:6px 10px; font-size:10px;
+      padding:5px 24px 5px 8px; gap:6px 10px; font-size:10px;
       bottom:calc(var(--stage-gap) / 2);
     }
     .map-legend .map-legend-title{font-size:11px;}
