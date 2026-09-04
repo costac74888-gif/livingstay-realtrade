@@ -20,15 +20,17 @@ expect(
   "활성 영업신고 상호의 관리자 대표 표시가 없습니다.",
 );
 expect(
-  app.includes('it["lodging_room_known"] = bool(active_lodgings) and all('),
+  app.includes('it["lodging_room_known"] = bool(deduplicated_active_lodgings) and all('),
   "다중 활성 신고의 객실 수가 일부 누락돼도 정확한 합계로 표시될 수 있습니다.",
 );
 expect(
   admin.includes('row.display_building_name || v') &&
     admin.includes("영업신고 기준") &&
-    admin.includes("객실수 미확인") &&
+    admin.includes(">객실수</th>") &&
+    admin.includes("시설규모(㎡)/상태") &&
+    admin.includes('const roomInfo = lr.room_count != null') &&
     admin.includes(">미확인</span>"),
-  "관리자 영업신고 명칭·객실 미확인 표시가 없습니다.",
+  "관리자 영업신고 명칭 또는 독립 객실수 컬럼 표시가 없습니다.",
 );
 expect(
   grid.includes("new AbortController()") &&

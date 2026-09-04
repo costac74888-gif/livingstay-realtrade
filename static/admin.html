@@ -7230,13 +7230,16 @@
             const closed = (lr.biz_status_name || "").includes("폐업");
             const badge = lr.biz_status_name
               ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
-            const roomInfo = [
-              lr.room_count != null ? `${Number(lr.room_count).toLocaleString()}실` : "객실수 미확인",
-              lr.facility_area != null ? `${Number(lr.facility_area).toLocaleString()}㎡` : null,
-            ].filter(Boolean).join(" / ");
+            const roomInfo = lr.room_count != null
+              ? `${Number(lr.room_count).toLocaleString()}실`
+              : "미확인";
+            const facilityInfo = lr.facility_area != null
+              ? `${Number(lr.facility_area).toLocaleString()}㎡`
+              : "-";
             return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
-              `<td style="text-align:center;font-weight:600;">${roomInfo} ${badge}</td>` +
+              `<td style="text-align:center;font-weight:600;">${roomInfo}</td>` +
+              `<td style="text-align:center;font-weight:600;">${facilityInfo} ${badge}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
               `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
@@ -7250,7 +7253,8 @@
             `<thead><tr style="background:#F0EBE1;color:var(--ink-soft);font-size:11px;">` +
             `<th style="padding:3px 8px;text-align:left;font-weight:500;">영업사업장명</th>` +
             `<th style="padding:3px 8px;text-align:left;font-weight:500;">신고번호</th>` +
-            `<th style="padding:3px 8px;font-weight:500;">객실수/규모(㎡)/상태</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">객실수</th>` +
+            `<th style="padding:3px 8px;font-weight:500;">시설규모(㎡)/상태</th>` +
             `<th style="padding:3px 8px;font-weight:500;">신고일</th>` +
             `<th style="padding:3px 8px;font-weight:500;">전화</th>` +
             `<th style="padding:3px 8px;font-weight:500;">주소</th>` +
@@ -7263,7 +7267,7 @@
           }
           if (cnt > 3) {
             subHtml +=
-              `<tr class="bld-lodging-more-row"><td colspan="9" style="padding:4px 8px;text-align:center;">` +
+              `<tr class="bld-lodging-more-row"><td colspan="10" style="padding:4px 8px;text-align:center;">` +
               `<button class="bld-lodging-more-btn" data-list="${jsonAttr(list.slice(3))}" ` +
               `style="background:none;border:1px solid var(--brass);color:var(--brass);border-radius:4px;` +
               `padding:2px 8px;font-size:11px;cursor:pointer;">+${cnt - 3}건 더보기</button></td></tr>`;
@@ -7284,13 +7288,16 @@
             const closed = (lr.biz_status_name || "").includes("폐업");
             const badge = lr.biz_status_name
               ? `<span class="dg-badge${closed ? " dg-badge-no" : " dg-badge-ok"}" style="font-size:10px;">${dgEscape(lr.biz_status_name)}</span>` : "";
-            const roomInfo = [
-              lr.room_count != null ? `${Number(lr.room_count).toLocaleString()}실` : null,
-              lr.facility_area != null ? `${Number(lr.facility_area).toLocaleString()}㎡` : null,
-            ].filter(Boolean).join(" / ") || "-";
+            const roomInfo = lr.room_count != null
+              ? `${Number(lr.room_count).toLocaleString()}실`
+              : "미확인";
+            const facilityInfo = lr.facility_area != null
+              ? `${Number(lr.facility_area).toLocaleString()}㎡`
+              : "-";
             return `<td style="padding:3px 8px;font-weight:500;">${dgEscape(lr.biz_name || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_number || "-")}</td>` +
-              `<td style="text-align:center;font-weight:600;">${roomInfo} ${badge}</td>` +
+              `<td style="text-align:center;font-weight:600;">${roomInfo}</td>` +
+              `<td style="text-align:center;font-weight:600;">${facilityInfo} ${badge}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.permit_date || "-")}</td>` +
               `<td style="padding:3px 8px;">${dgEscape(lr.phone || "-")}</td>` +
               `<td style="padding:3px 8px;color:var(--ink-soft);font-size:10.5px;">${dgEscape(lr.road_address || "-")}</td>` +
