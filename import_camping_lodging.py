@@ -77,6 +77,23 @@ def parse_row(row):
     # 일반야영장업의 '객실수'는 비어 있거나 객실 의미가 아니므로 객실 통계에 넣지 않는다.
     data["room_count"] = None
     data["camping_site_count"] = _camping_site_count(row)
+    # 정부 CSV는 유형별 사이트 칼럼을 주지 않는다. 업태로 알 수 있는 단일
+    # 유형만 보수적으로 채우며, 사이트 수 자체가 없으면 유형도 확정하지 않는다.
+    site_count = data["camping_site_count"]
+    data.update({
+        "camping_general_site_count": (
+            site_count if source_type != AUTOMOTIVE_HYGIENE_TYPE else None
+        ),
+        "camping_auto_site_count": (
+            site_count if source_type == AUTOMOTIVE_HYGIENE_TYPE else None
+        ),
+        "camping_glamping_site_count": None,
+        "camping_caravan_site_count": None,
+        "camping_classification": (
+            "auto_only" if source_type == AUTOMOTIVE_HYGIENE_TYPE
+            else "general_only"
+        ) if site_count is not None else "unknown",
+    })
     return data if data["permit_number"] else None
 
 
@@ -89,18 +106,55 @@ def _first_value(item, *keys):
 
 
 def _camping_site_count_from_api(item):
-    """고캠핑 API의 유형별 사이트 수 합계. 모든 값이 없으면 NULL."""
-    fields = (
-        "gnrlSiteCo",
-        "autoSiteCo",
-        "glampSiteCo",
-        "caravSiteCo",
-        "indvdlCaravSiteCo",
+    """고캠핑 API의 유형별 사이트 수 합계(하위 호환용)."""
+    return _camping_site_breakdown_from_api(item)["camping_site_count"]
+
+
+def _nonnegative_site_count(value):
+    """누락·잘못된·음수 사이트 수는 0으로 안전하게 정규화한다."""
+    parsed = common._integer(value)
+    return parsed if parsed is not None and parsed >= 0 else 0
+
+
+def _camping_classification(general, auto, glamping, caravan):
+    """양수로 확인된 유형만으로 보수적인 내부 캠핑 분류를 정한다."""
+    positive = [
+        name for name, count in (
+            ("general_only", general),
+            ("auto_only", auto),
+            ("glamping_only", glamping),
+            ("caravan_only", caravan),
+        ) if count > 0
+    ]
+    if len(positive) >= 2:
+        return "confirmed_mixed"
+    return positive[0] if positive else "unknown"
+
+
+def _camping_site_breakdown_from_api(item):
+    """GoCamping의 다섯 원본 필드를 네 내부 유형과 합계로 정규화한다.
+
+    API가 필드를 아예 누락해도 0으로 보관하고 ``unknown``으로 판정한다.
+    따라서 공개 표시는 복합으로 매핑할 수 있지만, 확인된 혼합 유형과는
+    내부적으로 구분된다.
+    """
+    general = _nonnegative_site_count(item.get("gnrlSiteCo"))
+    auto = _nonnegative_site_count(item.get("autoSiteCo"))
+    glamping = _nonnegative_site_count(item.get("glampSiteCo"))
+    caravan = (
+        _nonnegative_site_count(item.get("caravSiteCo"))
+        + _nonnegative_site_count(item.get("indvdlCaravSiteCo"))
     )
-    values = [_first_value(item, field) for field in fields]
-    if not any(value is not None for value in values):
-        return None
-    return sum(common._integer(value) or 0 for value in values)
+    return {
+        "camping_general_site_count": general,
+        "camping_auto_site_count": auto,
+        "camping_glamping_site_count": glamping,
+        "camping_caravan_site_count": caravan,
+        "camping_site_count": general + auto + glamping + caravan,
+        "camping_classification": _camping_classification(
+            general, auto, glamping, caravan
+        ),
+    }
 
 
 def _camping_status(value):
@@ -138,6 +192,7 @@ def parse_api_item(item):
             item, "hvofReason", "manageSttus", "manageStNm", "manageSt"
         )
     )
+    site_breakdown = _camping_site_breakdown_from_api(item)
     return {
         "permit_number": f"{SOURCE_KEY_PREFIX}:{original_key}",
         "permit_date": common._text(
@@ -147,7 +202,7 @@ def parse_api_item(item):
         ),
         "biz_name": biz_name,
         "room_count": None,
-        "camping_site_count": _camping_site_count_from_api(item),
+        **site_breakdown,
         "bld_use_nm": None,
         "source_updated_at": common._text(
             _first_value(item, "modifiedtime", "modifiedTime", "lastUpdate")

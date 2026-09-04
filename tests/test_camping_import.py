@@ -92,7 +92,39 @@ class CampingImportTests(unittest.TestCase):
         self.assertEqual(parsed["hygiene_type"], "일반야영장업")
         self.assertIsNone(parsed["room_count"])
         self.assertEqual(parsed["camping_site_count"], 28)
+        self.assertEqual(parsed["camping_general_site_count"], 10)
+        self.assertEqual(parsed["camping_auto_site_count"], 12)
+        self.assertEqual(parsed["camping_glamping_site_count"], 3)
+        self.assertEqual(parsed["camping_caravan_site_count"], 3)
+        self.assertEqual(parsed["camping_classification"], "confirmed_mixed")
         self.assertEqual(parsed["phone"], "0558540404")
+
+    def test_gocamping_missing_invalid_and_negative_site_counts_are_safe_unknown(self):
+        parsed = importer.parse_api_item({
+            "contentId": "217765",
+            "facltNm": "유형 미확인 캠핑장",
+            "manageSttus": "운영",
+            "gnrlSiteCo": "not-a-number",
+            "autoSiteCo": "-2",
+            "glampSiteCo": None,
+        })
+
+        self.assertEqual(parsed["camping_site_count"], 0)
+        self.assertEqual(parsed["camping_general_site_count"], 0)
+        self.assertEqual(parsed["camping_auto_site_count"], 0)
+        self.assertEqual(parsed["camping_glamping_site_count"], 0)
+        self.assertEqual(parsed["camping_caravan_site_count"], 0)
+        self.assertEqual(parsed["camping_classification"], "unknown")
+
+    def test_gocamping_single_positive_type_gets_specific_internal_classification(self):
+        parsed = importer.parse_api_item({
+            "contentId": "217766",
+            "facltNm": "글램핑 전용",
+            "manageSttus": "운영",
+            "glampSiteCo": "5",
+        })
+
+        self.assertEqual(parsed["camping_classification"], "glamping_only")
 
     def test_gocamping_status_changes_keep_same_source_key(self):
         active = importer.parse_api_item({

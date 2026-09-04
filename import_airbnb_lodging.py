@@ -205,6 +205,11 @@ def parse_row(row):
         "room_count": _integer(row.get("객실수")),
         # 캠핑장은 객실과 다른 단위로 저장한다. 일반 숙박 원본에는 없음.
         "camping_site_count": None,
+        "camping_general_site_count": None,
+        "camping_auto_site_count": None,
+        "camping_glamping_site_count": None,
+        "camping_caravan_site_count": None,
+        "camping_classification": None,
         "bld_use_nm": _text(row.get("건물용도명")),
         "source_updated_at": _date_text(row.get("데이터갱신시점")),
         "road_address": road_address,
@@ -300,6 +305,17 @@ def _location_from_addresses(bjdong, road_address, jibun_address):
 
 
 def _upsert_registry(cur, data, *, reset_applied_building_id=True):
+    # 모든 기존 importer가 이 공통 upsert를 사용한다. 캠핑 전용 열이 추가돼도
+    # 이전 원본의 payload가 깨지지 않도록 명시적으로 NULL 기본값을 보장한다.
+    data = {
+        **data,
+        "camping_site_count": data.get("camping_site_count"),
+        "camping_general_site_count": data.get("camping_general_site_count"),
+        "camping_auto_site_count": data.get("camping_auto_site_count"),
+        "camping_glamping_site_count": data.get("camping_glamping_site_count"),
+        "camping_caravan_site_count": data.get("camping_caravan_site_count"),
+        "camping_classification": data.get("camping_classification"),
+    }
     applied_building_update = (
         "applied_building_id = NULL"
         if reset_applied_building_id
@@ -312,14 +328,16 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             room_count, hygiene_type, phone,
             road_norm, jibun_norm, biz_name_norm,
             source_updated_at, bld_use_nm, facility_area, region_name,
-            camping_site_count
+            camping_site_count, camping_general_site_count, camping_auto_site_count,
+            camping_glamping_site_count, camping_caravan_site_count, camping_classification
         ) VALUES (
             %(permit_number)s, %(biz_name)s, %(road_address)s, %(jibun_address)s,
             %(permit_date)s, %(biz_status_name)s, %(biz_status_detail)s,
             %(room_count)s, %(hygiene_type)s, %(phone)s,
             %(road_norm)s, %(jibun_norm)s, %(biz_name_norm)s,
             %(source_updated_at)s, %(bld_use_nm)s, %(facility_area)s, %(region_name)s,
-            %(camping_site_count)s
+            %(camping_site_count)s, %(camping_general_site_count)s, %(camping_auto_site_count)s,
+            %(camping_glamping_site_count)s, %(camping_caravan_site_count)s, %(camping_classification)s
         )
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
@@ -330,6 +348,11 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             biz_status_detail = EXCLUDED.biz_status_detail,
             room_count = EXCLUDED.room_count,
             camping_site_count = EXCLUDED.camping_site_count,
+            camping_general_site_count = EXCLUDED.camping_general_site_count,
+            camping_auto_site_count = EXCLUDED.camping_auto_site_count,
+            camping_glamping_site_count = EXCLUDED.camping_glamping_site_count,
+            camping_caravan_site_count = EXCLUDED.camping_caravan_site_count,
+            camping_classification = EXCLUDED.camping_classification,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
@@ -359,6 +382,11 @@ def _assert_schema(cur):
         "region_name",
         "applied_building_id",
         "camping_site_count",
+        "camping_general_site_count",
+        "camping_auto_site_count",
+        "camping_glamping_site_count",
+        "camping_caravan_site_count",
+        "camping_classification",
     ]])
     found = {row["column_name"] for row in cur.fetchall()}
     required = {
@@ -367,6 +395,11 @@ def _assert_schema(cur):
         "region_name",
         "applied_building_id",
         "camping_site_count",
+        "camping_general_site_count",
+        "camping_auto_site_count",
+        "camping_glamping_site_count",
+        "camping_caravan_site_count",
+        "camping_classification",
     }
     missing = required - found
     if missing:
