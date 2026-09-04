@@ -4595,12 +4595,15 @@ async function savePhotosToServer(buildingId, photos){
 
 async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
   _activePhotoBuildingId = buildingId;
+  const requestToken = _buildingDetailRequestToken;
+  const isCurrentPhotoRequest = () =>
+    _activePhotoBuildingId === buildingId && _isActiveBuilding(buildingId, requestToken);
   const initial = Array.isArray(initialPhotos) ? initialPhotos : [];
 
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
     const data = await response.json().catch(() => ({}));
-    if (_activePhotoBuildingId !== buildingId) return;
+    if (!isCurrentPhotoRequest()) return;
     const photos = response.ok && data.ok && Array.isArray(data.photos) ? data.photos : [];
     if (photos.length > 0) {
       renderPhotoSlider(photos);
@@ -4639,14 +4642,14 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       if (!svShown) {
         try {
           const saved = await savePhotosToServer(buildingId, []);
-          if (_activePhotoBuildingId !== buildingId) return;
+          if (!isCurrentPhotoRequest()) return;
           if (saved.streetview_available === true) {
             tryShowStreetView(cached, buildingId);
           } else {
             renderPhotoSlider([]);
           }
         } catch (error) {
-          renderPhotoSlider([]);
+          if (isCurrentPhotoRequest()) renderPhotoSlider([]);
         }
       }
       return;
@@ -4668,7 +4671,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
           // 공용 캐시 저장이 실패해도 현재 방문자의 TourAPI 결과는 표시한다.
           console.warn("[building-photos] TourAPI 서버 캐시 저장 실패", error);
         }
-        if (_activePhotoBuildingId !== buildingId) return;
+        if (!isCurrentPhotoRequest()) return;
         if (!clientPhotos.length) {
           if (saved?.streetview_available === true) {
             tryShowStreetView(cached, buildingId);
@@ -4684,7 +4687,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
         // TourAPI 실패 시 이미 표시한 고캠핑 대표 이미지나 Street View를 유지한다.
       });
   } catch(e) {
-    if (_activePhotoBuildingId !== buildingId) return;
+    if (!isCurrentPhotoRequest()) return;
     // 서버가 fallback 가능 여부를 확인하지 못했으면 Street View를 추측해 표시하지 않는다.
     if (initial.length > 0) renderPhotoSlider(initial);
     else renderPhotoSlider([]);
@@ -4728,7 +4731,7 @@ function _renderCampingSection(b){
     ["개수대", camp.sink_count ?? b.camping_wtrpl_co, "개"],
     ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
   ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
-  const reservationUrl = camp.reservation_url ?? b.camping_resve_url;
+  const reservationUrl = _publicHttpUrl(camp.reservation_url ?? b.camping_resve_url);
   const hasContent = sites.length || amenities.length || seasons.length
     || chips.length || facts.length || reservationUrl;
   if (!hasContent) {
@@ -4769,6 +4772,112 @@ function _renderCampingSection(b){
   card.style.display = "";
 }
 
+const STRUCTURE_A_TYPES = ["생활", "관광", "일반"];
+const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥"];
+let _buildingDetailRequestToken = 0;
+let _buildingTrendRequestSeq = 0;
+let _buildingTxRequestSeq = 0;
+
+function _publicHttpUrl(value){
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+function _isActiveBuilding(id, requestToken){
+  return window.__openBuildingId === Number(id)
+    && _buildingDetailRequestToken === requestToken;
+}
+
+function _bookingTarget(b){
+  const operators = Array.isArray(b.lodging_operators) ? b.lodging_operators : [];
+  const firstValid = field => {
+    for (const operator of operators) {
+      const url = _publicHttpUrl(operator?.[field]);
+      if (url) return url;
+    }
+    return null;
+  };
+  const campingUrl = _publicHttpUrl(b.camping?.reservation_url ?? b.camping_resve_url);
+  const url = firstValid("booking_url")
+    || firstValid("airbnb_url")
+    || firstValid("gocamping_url")
+    || campingUrl
+    || _publicHttpUrl(b.booking_url);
+  if (!url) return null;
+  const host = new URL(url).hostname.toLowerCase();
+  const platform = host.includes("airbnb") ? "에어비앤비"
+    : host.includes("yanolja") ? "야놀자"
+    : host.includes("yeogi") ? "여기어때"
+    : host.includes("booking.com") ? "부킹닷컴"
+    : host.includes("gocamping") ? "고캠핑"
+    : "외부 예약";
+  return { url, platform };
+}
+
+function _reservationBar(b, includeConnection = true){
+  const target = _bookingTarget(b);
+  if (!target) {
+    return includeConnection ? `
+      <div class="b-reservation-bar is-empty" role="group" aria-label="예약 및 운영자 연결">
+        <div><strong>예약 링크 미연결</strong><span>운영자라면 예약 사이트를 직접 연결할 수 있습니다.</span></div>
+        <a class="b-connect-btn" href="/lodging-operator/manage">운영자이신가요?</a>
+      </div>` : "";
+  }
+  return `<div class="b-reservation-bar" role="group" aria-label="예약">
+    <div><strong>${escapeHtml(target.platform)}</strong><span>예약 가능한 외부 페이지로 이동합니다.</span></div>
+    <a class="b-reserve-btn" href="${escapeHtml(target.url)}" target="_blank" rel="noopener noreferrer">예약 페이지 열기</a>
+  </div>`;
+}
+
+function _setupBuildingPanels(type){
+  const isB = STRUCTURE_B_TYPES.includes(type);
+  const ids = {
+    operations: ["bReservationCard", "bAdminCard", "bCampCard", "bLodgingOperatorCard"],
+    property: [
+      "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
+      "bListingsCard", "bBldgInfoCard", "bAgentCard", "bStoresCard", "bPartnerBannerCard",
+    ],
+  };
+  const opPanel = document.getElementById("bOperationsPanel");
+  const propPanel = document.getElementById("bPropertyPanel");
+  if (!isB || !opPanel || !propPanel) return;
+  ids.operations.forEach(id => { const el = document.getElementById(id); if (el) opPanel.appendChild(el); });
+  ids.property.forEach(id => { const el = document.getElementById(id); if (el) propPanel.appendChild(el); });
+  ["bOperatorSupportCard", "bFinanceCard"].forEach(id => {
+    const el = document.getElementById(id); if (el) propPanel.appendChild(el);
+  });
+  const tabBar = document.getElementById("bInlineTypeTabs");
+  const tabs = tabBar ? tabBar.querySelectorAll(".b-detail-tab") : [];
+  const activateTab = tab => {
+    tabs.forEach(t => {
+      const active = t === tab;
+      t.classList.toggle("active", active);
+      t.setAttribute("aria-selected", active ? "true" : "false");
+      t.tabIndex = active ? 0 : -1;
+    });
+    const showOps = tab.dataset.panel === "operations";
+    opPanel.hidden = !showOps; propPanel.hidden = showOps;
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activateTab(tab));
+    tab.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const nextIndex = event.key === "Home" ? 0
+        : event.key === "End" ? tabs.length - 1
+        : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[nextIndex].focus();
+      activateTab(tabs[nextIndex]);
+    });
+  });
+  const first = tabBar?.querySelector('.b-detail-tab[data-panel="operations"]');
+  if (first) activateTab(first);
+}
+
 function buildingPanelSkeleton(){
   return `
     <section class="side-card b-panel-topbar">
@@ -4782,6 +4891,8 @@ function buildingPanelSkeleton(){
     <section class="side-card" id="bHeaderCard">
       <div class="side-empty">불러오는 중…</div>
     </section>
+    <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
+    <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
 
     <section class="side-card" id="bAreaFilterCard" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
@@ -4834,6 +4945,13 @@ function buildingPanelSkeleton(){
     </section>
     <section class="side-card" id="bLodgingOperatorCard" style="display:none;">
       <div class="side-card-title">시설 운영 파트너</div><div id="bLodgingOperatorBox"></div>
+    </section>
+    <section class="side-card" id="bReservationCard" style="display:none;"></section>
+    <section class="side-card" id="bOperatorSupportCard" style="display:none;">
+      <div class="side-card-title">운영지원 파트너</div><div id="bOperatorBox"></div>
+    </section>
+    <section class="side-card" id="bFinanceCard" style="display:none;">
+      <div class="side-card-title">금융 파트너</div><div id="bFinanceBox"></div>
     </section>
 
     <section class="side-card" id="bAdminCard">
@@ -5016,15 +5134,18 @@ function _startDetailPoll(buildingId){
 async function loadBuildingHeader(id){
   const headerCard = document.getElementById("bHeaderCard");
   const adminCard = document.getElementById("bAdminCard");
+  const requestToken = _buildingDetailRequestToken;
   let b;
   try {
     const res = await fetch("/api/building/" + id);
     if (!res.ok) throw new Error(res.status);
     b = await res.json();
   } catch(e){
+    if (!_isActiveBuilding(id, requestToken)) return;
     headerCard.innerHTML = `<div class="side-empty">건물 정보를 불러오지 못했습니다.</div>`;
     return;
   }
+  if (!_isActiveBuilding(id, requestToken)) return;
 
 
   const isPreCompletion = b.building_status && b.building_status !== "완공";
@@ -5079,10 +5200,12 @@ async function loadBuildingHeader(id){
   const useCombined = (use2 && use2 !== "-") ? `${use1}·${use2}` : use1;
 
   // 운영확인(OTA 등록) 배지 — 사실확인 톤만 유지, 행동유도 문구 없음
-  const bookingBadge = b.booking_url
-    ? `<span style="display:inline-block;font-size:12px;font-weight:700;color:#1a7a3c;` +
-      `background:#E6F4EA;border:1px solid #B7E0C4;border-radius:5px;padding:2px 8px;cursor:pointer;" ` +
-      `onclick="window.open('${escapeHtml(b.booking_url)}','_blank','noopener,noreferrer')">✓ OTA 등록확인</span>`
+  const safeBuildingBookingUrl = _publicHttpUrl(b.booking_url);
+  const bookingBadge = safeBuildingBookingUrl
+    ? `<a href="${escapeHtml(safeBuildingBookingUrl)}" target="_blank" rel="noopener noreferrer"
+        style="display:inline-block;font-size:12px;font-weight:700;color:#1a7a3c;
+        background:#E6F4EA;border:1px solid #B7E0C4;border-radius:5px;padding:2px 8px;
+        text-decoration:none;">✓ OTA 등록확인</a>`
     : `<span style="font-size:12px;color:var(--ink-soft);">미확인</span>`;
 
   // 관심저장/실거래알림은 좌측 목록과 동일한 키(building_name|address)를 사용. address가
@@ -5110,6 +5233,11 @@ async function loadBuildingHeader(id){
 
   headerCard.innerHTML = `
     ${buildingPhotoSliderHtml()}
+    ${STRUCTURE_A_TYPES.includes(b.lodging_type) ? _reservationBar(b) : ""}
+    ${STRUCTURE_B_TYPES.includes(b.lodging_type) ? `<div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보">
+      <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
+      <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
+    </div>` : ""}
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
@@ -5163,6 +5291,16 @@ async function loadBuildingHeader(id){
     </div>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
   renderPhotoSlider(buildingPhotos);
+  _setupBuildingPanels(b.lodging_type);
+  const reservationCard = document.getElementById("bReservationCard");
+  if (reservationCard) {
+    if (STRUCTURE_B_TYPES.includes(b.lodging_type)) {
+      reservationCard.innerHTML = _reservationBar(b);
+      reservationCard.style.display = "";
+    } else {
+      reservationCard.style.display = "none";
+    }
+  }
   loadOnDemandBuildingPhotos(id, buildingPhotos, b);
 
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
@@ -6005,8 +6143,13 @@ async function loadBuildingHeader(id){
     });
   });
 
+  const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
   if (isPreCompletion) {
-    adminCard.innerHTML = `
+    adminCard.innerHTML = STRUCTURE_B_TYPES.includes(b.lodging_type) ? `
+      <div class="side-card-title">영업신고 <span class="side-sub">행정운영</span></div>
+      <div style="font-size:12.5px;color:var(--ink);">
+        영업 중 ${lodgings.length.toLocaleString("ko-KR")}개 사업장 신고 완료
+      </div>` : `
       <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
       <div class="side-empty">준공 전입니다. 사용승인 후 영업신고 정보가 표시됩니다.</div>
     `;
@@ -6015,7 +6158,6 @@ async function loadBuildingHeader(id){
   } else {
     // [2] 행정운영 표 — 확인된 영업신고 데이터(영업/정상만) 기반.
     //     일반숙박은 건축물대장 호실수와 객실수가 비교 대상이 아니므로 절대 객실수만 표시한다.
-    const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
     const roomTotal = Number(b.lodging_room_total || 0);
     const usesAbsoluteRoomMetric = b.lodging_metric === "room_count";
     let rateDisplay;
@@ -6115,8 +6257,11 @@ async function loadBuildingHeader(id){
       </table>
       ${lodgingListHtml}
       ${(Array.isArray(b.booking_urls) && b.booking_urls.length > 0) ? (() => {
-        const btns = b.booking_urls.map(bu =>
-          `<a href="${escapeHtml(bu.url)}" target="_blank" rel="noopener noreferrer"
+        const btns = b.booking_urls
+          .map(bu => ({...bu, safe_url: _publicHttpUrl(bu.url)}))
+          .filter(bu => bu.safe_url)
+          .map(bu =>
+          `<a href="${escapeHtml(bu.safe_url)}" target="_blank" rel="noopener noreferrer"
               style="display:inline-block; font-size:12.5px; font-weight:700; color:#fff;
                      background:#1a7a3c; border-radius:6px; padding:4px 12px;
                      text-decoration:none; white-space:nowrap; margin:3px 0;">${escapeHtml(bu.platform)}</a>`
@@ -6124,13 +6269,14 @@ async function loadBuildingHeader(id){
         return `<div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:6px 0 5px;">OTA 예약 링크</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${btns}</div>`;
       })() : ""}
-      <a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer" style="display:block; margin-top:0;" title="숙박업등록·위탁운영 무료 상담 신청">
+      ${STRUCTURE_A_TYPES.includes(b.lodging_type) ? `<a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer" style="display:block; margin-top:0;" title="숙박업등록·위탁운영 무료 상담 신청">
         <img src="/static/banner_biz_report.png" alt="우수부동산서비스인증 — 숙박업등록·위탁운영 의뢰하기, 무료 상담 신청" style="display:block; width:100%; height:auto; border-radius:10px;" />
-      </a>`;
+      </a>` : ""}`;
   }
 
   const lodgingOperatorTypes = ["캠핑", "에어비앤비", "농어촌민박", "한옥", "생활"];
-  const showTransactions = ["생활", "일반", "관광"].includes(b.lodging_type);
+  const showTransactions = STRUCTURE_A_TYPES.includes(b.lodging_type)
+    || STRUCTURE_B_TYPES.includes(b.lodging_type);
   ["bAreaFilterCard", "bTrendCard", "bTxCard"].forEach(cardId => {
     const card = document.getElementById(cardId);
     if (card) card.style.display = showTransactions ? "" : "none";
@@ -6168,6 +6314,7 @@ async function loadBuildingHeader(id){
 // 상거래정보 카드 — /api/building/<id>/nearby-stores 로 이 건물(지번)의
 // 상가업소를 업종별 요약 + 층별 목록으로 그린다. 최대 15개 먼저 보여주고 "더보기".
 async function loadBuildingStores(buildingId){
+  const requestToken = _buildingDetailRequestToken;
   const card = document.getElementById("bStoresCard");
   if (!card) return;
   let data;
@@ -6178,8 +6325,10 @@ async function loadBuildingStores(buildingId){
       if (!res.ok) return;
       data = await res.json();
     } catch(e){ return; }
+    if (!_isActiveBuilding(buildingId, requestToken)) return;
     if (!data.pending) break;
     if (_poll < 4) await new Promise(r => setTimeout(r, 4000));
+    if (!_isActiveBuilding(buildingId, requestToken)) return;
   }
   // 실패 사유를 콘솔에 남겨 다음 번에 브라우저 콘솔만 봐도 원인을 알 수 있게 함
   if (data && data.reason) console.warn("[상거래정보] 실패 사유:", data.reason);
@@ -6230,10 +6379,12 @@ async function loadBuildingStores(buildingId){
 // 운영지원업체 카드 — 단지뱃지를 우선하고 지역뱃지로 보충한 모든 지원 업종을 표시한다.
 function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
   const box = document.getElementById("bOperatorBox");
+  const card = document.getElementById("bOperatorSupportCard");
   if (!box) return;
   const all = Array.isArray(operatorByCategory) ? operatorByCategory : [];
   const items = all.filter(it => it && it.company_name);
-  if (!items.length){ box.innerHTML = ""; return; }  // 통합 배너에서 안내
+  if (!items.length){ box.innerHTML = ""; if (card) card.style.display = "none"; return; }
+  if (card) card.style.display = "";
 
   const applyHref = `/apply/operator?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
   box.innerHTML = items.map(it => {
@@ -6253,12 +6404,14 @@ function renderBuildingOperators(operatorByCategory, buildingId, buildingName){
 // 금융/대출상담 카드 — 지역매칭 상담사 전원 골드 스타일로 바로 노출
 function renderBuildingLoanConsultants(consultants, buildingId, buildingName, buildingStatus){
   const box = document.getElementById("bFinanceBox");
+  const card = document.getElementById("bFinanceCard");
   if (!box) return;
   const isPreCompletion = buildingStatus && buildingStatus !== "완공";
   const items = Array.isArray(consultants) ? consultants : [];
   const applyHref = `/apply/loan?building_id=${buildingId != null ? encodeURIComponent(buildingId) : ""}&building_name=${encodeURIComponent(buildingName || "")}`;
 
-  if (!items.length){ box.innerHTML = ""; return; }  // 통합 배너에서 안내
+  if (!items.length){ box.innerHTML = ""; if (card) card.style.display = "none"; return; }
+  if (card) card.style.display = "";
 
   const mkCard = (c, isGold) => {
     const avatar = c.logo_src
@@ -6354,6 +6507,11 @@ function renderBuildingAgents(agents, moreAgents, buildingId, buildingName, buil
 }
 
 async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
+  const requestToken = _buildingDetailRequestToken;
+  const requestSeq = ++_buildingTrendRequestSeq;
+  const isCurrent = () =>
+    _isActiveBuilding(id, requestToken) && _buildingTrendRequestSeq === requestSeq;
+  if (!isCurrent()) return;
   const canvas = document.getElementById("bTrendChart");
   const empty = document.getElementById("bTrendEmpty");
   if (buildingStatus && buildingStatus !== "완공") {
@@ -6374,6 +6532,7 @@ async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
     items = data.items || [];
     granularity = data.granularity || "month";
   } catch(e){ console.error("[상세] 추세 로드 실패:", e); return; }
+  if (!isCurrent()) return;
 
   if (!items.length || items.every(i => !i.count)){
     canvas.style.display = "none";
@@ -6427,6 +6586,11 @@ function bDealTypeTag(v){
 }
 
 async function loadBuildingTx(id, buildingStatus, areaFilter=""){
+  const requestToken = _buildingDetailRequestToken;
+  const requestSeq = ++_buildingTxRequestSeq;
+  const isCurrent = () =>
+    _isActiveBuilding(id, requestToken) && _buildingTxRequestSeq === requestSeq;
+  if (!isCurrent()) return;
   if (buildingStatus && buildingStatus !== "완공") {
     document.getElementById("bTxTableWrap").innerHTML =
       '<div class="side-empty">준공 전입니다. 준공 후 실거래 목록이 표시됩니다.</div>';
@@ -6441,24 +6605,29 @@ async function loadBuildingTx(id, buildingStatus, areaFilter=""){
   // 200건씩 여러 페이지를 이어 받아 합친 뒤 앞에서 bTxShown개만 보여준다.
   const areaQs = areaFilter ? `&area_sqm=${encodeURIComponent(areaFilter)}` : "";
   let items = [];
-  bTxTotal = 0;
+  let txTotal = 0;
+  const shown = bTxShown;
   try {
-    const size = Math.min(bTxShown, 200);
+    const size = Math.min(shown, 200);
     let page = 1;
     while (true){
       const res = await fetch(`/api/transactions?building_id=${id}&page=${page}&size=${size}&with_total=1${areaQs}`);
       const data = await res.json();
-      bTxTotal = data.total || 0;
+      if (!isCurrent()) return;
+      txTotal = data.total || 0;
       const batch = data.items || [];
       items = items.concat(batch);
-      if (items.length >= bTxShown || items.length >= bTxTotal || batch.length < size) break;
+      if (items.length >= shown || items.length >= txTotal || batch.length < size) break;
       page++;
     }
   } catch(e){
+    if (!isCurrent()) return;
     wrap.innerHTML = `<div class="side-empty">실거래 목록을 불러오지 못했습니다.</div>`;
     return;
   }
-  items = items.slice(0, bTxShown);
+  if (!isCurrent()) return;
+  bTxTotal = txTotal;
+  items = items.slice(0, shown);
   const totalLabel = document.getElementById("bTxTotalLabel");
   if (totalLabel) totalLabel.textContent = bTxTotal ? `총 ${bTxTotal.toLocaleString('ko-KR')}건` : "";
 
@@ -6514,6 +6683,8 @@ function renderBuildingLodgingOperators(items, lodgingType){
 function renderBuildingPanel(id){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  window.__openBuildingId = Number(id);
+  _buildingDetailRequestToken += 1;
   clearMapLocationTarget();
   _cancelDetailPoll(); // 이전 건물의 폴링이 살아있으면 즉시 중단
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
@@ -6573,7 +6744,9 @@ function renderBuildingPanel(id){
   loadBuildingStores(id);
   loadBuildingTrend(id, null);   // null = 완공 가정으로 즉시 API 시작
   loadBuildingTx(id, null);      // 동일
+  const requestToken = _buildingDetailRequestToken;
   loadBuildingHeader(id).then(status => {
+    if (!_isActiveBuilding(id, requestToken)) return;
     // 헤더 응답 후 준공전이면 trend/tx를 status 기준으로 덮어씀
     if (status && status !== "완공") {
       loadBuildingTrend(id, status, _bAreaFilter);
@@ -6582,6 +6755,7 @@ function renderBuildingPanel(id){
     // 전용면적 필터 드롭다운 옵션 채우기 (unit_area_sqms 우선, 없으면 건너뜀)
     if (bAreaFilterEl){
       const _fillAreaFilter = (items) => {
+        if (!_isActiveBuilding(id, requestToken)) return;
         if (items.length > 0){
           const prevVal = bAreaFilterEl.value;
           bAreaFilterEl.innerHTML = `<option value="">전체</option>` +
@@ -6599,6 +6773,7 @@ function renderBuildingPanel(id){
       fetch("/api/building/" + id + "/area-types")
         .then(r => r.json()).catch(() => ({}))
         .then(d => {
+          if (!_isActiveBuilding(id, requestToken)) return;
           const items = d.items || [];
           _fillAreaFilter(items);
           // ho_cnt가 전부 null이면 백그라운드 populate 중 → 8초 후 재시도
@@ -6608,6 +6783,7 @@ function renderBuildingPanel(id){
               fetch("/api/building/" + id + "/area-types")
                 .then(r => r.json()).catch(() => ({}))
                 .then(d2 => {
+                  if (!_isActiveBuilding(id, requestToken)) return;
                   const items2 = d2.items || [];
                   if (items2.some(it => it.ho_cnt != null)) _fillAreaFilter(items2);
                 });
@@ -6622,6 +6798,8 @@ function renderBuildingPanel(id){
 function restoreDefaultPanel(){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  window.__openBuildingId = null;
+  _buildingDetailRequestToken += 1;
   clearMapLocationTarget();
   closeFavOverflowPopover();
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }

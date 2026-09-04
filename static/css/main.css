@@ -1236,6 +1236,48 @@
   font-size:13px;
 }
 
+/* 건물 유형별 정보 전환 — 사진 바로 아래에서 현재 맥락을 고정한다. */
+.b-inline-tabs{
+  display:flex; gap:6px; margin:0 -2px 14px; padding:4px;
+  background:#F7F4ED; border:1px solid #EADFC8; border-radius:10px;
+}
+.b-detail-tab{
+  flex:1; min-height:34px; border:1px solid transparent; border-radius:7px;
+  background:transparent; color:var(--ink-soft); font:700 12px/1.2 'Noto Sans KR',sans-serif;
+  cursor:pointer; transition:background .18s ease,color .18s ease,transform .18s ease;
+}
+.b-detail-tab:hover{background:#fff;color:var(--brass-dark);}
+.b-detail-tab.active{
+  background:#fff; color:var(--brass-dark); border-color:#D8C39E;
+  box-shadow:0 2px 6px rgba(81,62,30,.1);
+}
+.b-detail-tab:focus-visible{outline:2px solid var(--brass);outline-offset:2px;}
+.b-detail-panel{
+  display:flex; flex-direction:column; min-width:0;
+  animation:b-detail-panel-in .2s ease both;
+}
+.b-detail-panel[hidden]{display:none;}
+@keyframes b-detail-panel-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.b-reservation-bar{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin:0 0 14px; padding:11px 12px; border:1px solid #D8C39E;
+  border-radius:10px; background:var(--brass-tint); color:var(--ink);
+}
+.b-reservation-bar > div{min-width:0;display:flex;flex-direction:column;gap:2px;}
+.b-reservation-bar strong{font-size:12.5px;color:var(--brass-dark);}
+.b-reservation-bar span{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.b-reserve-btn,.b-connect-btn{
+  flex:none; border:0; border-radius:7px; padding:8px 11px; background:var(--brass);
+  color:#fff; font:700 11.5px 'Noto Sans KR',sans-serif; text-decoration:none; cursor:pointer;
+}
+.b-reservation-bar.is-empty{background:#FBFAF7;border-color:var(--line);}
+.b-reservation-bar.is-empty strong{color:var(--ink);}
+.b-reservation-bar.is-empty .b-connect-btn{background:var(--ink);}
+@media (max-width:480px){
+  .b-reservation-bar{align-items:flex-start;padding:10px;}.b-reserve-btn,.b-connect-btn{padding:7px 9px;}
+  .b-reservation-bar span{max-width:170px;}
+}
+
 /* 건물 상세 — 정보/행정운영/금융 표 */
 .b-info-table{ width:100%; font-size:12.5px; border-collapse:collapse; }
 .b-info-table th, .b-info-table td{ padding:6px 8px; }
