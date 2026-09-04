@@ -1,0 +1,32 @@
+document_id,title,version,effective_date,status,priority,next_review,file
+POL-DATA-003,데이터 수집·검증·승격·노출·갱신 통합 정책,V.03.0,2026-09-04,current,P0,2026-09-11,docs/DATA_COLLECTION_GOVERNANCE_OPERATIONS_POLICY_V03_0_2026-09-04.md
+MAN-PHOTO-001,건물·숙박시설 사진 호출 및 운영 매뉴얼,V.01.0,2026-09-04,current,P1,2026-10-04,docs/PHOTO_RETRIEVAL_OPERATIONS_MANUAL_V01_0_2026-09-04.md
+REG-DOC-001,정책·매뉴얼 문서대장,V.01.0,2026-09-04,current,P0,2026-09-11,docs/POLICY_DOCUMENT_REGISTER_V01_0_2026-09-04.md
+POL-DATA-002,숙박·건물 데이터 수집 및 관리 정책,V.02,2026-09-03,superseded,P0,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V01.md
+RPT-V02-PLAN,V.02 단계별 작업 및 최종 데이터 추정보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_ESTIMATION_REPORT.md
+RPT-V02-STEP1,1단계 기준선 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP1_BASELINE_REPORT.md
+RPT-V02-STEP2,2단계 데이터 계약 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP2_DATA_CONTRACT_REPORT.md
+RPT-V02-STEP3,3단계 staging·승인 구축 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP3_STAGING_REPORT.md
+RPT-V02-STEP4,4단계 정부 CSV 검증 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP4_CSV_VALIDATION_REPORT.md
+RPT-V02-STEP5,5단계 주소·건물 매칭 보고서,,2026-09-03,historical,,,DB_DATA_COLLECTION_MANAGEMENT_POLICY_V02_STEP5_MATCHING_REPORT.md
+RUN-SYNC-001,정기 동기화 운영·재시도 매뉴얼,draft,,planned,P0,2026-09-11,
+RUN-RELEASE-001,배포·운영 검증·롤백 매뉴얼,draft,,planned,P0,2026-09-11,
+POL-EXPOSURE-001,공개 데이터·개인정보 보호 정책,draft,,planned,P0,2026-09-11,
+RUN-INCIDENT-001,장애 대응·복구 매뉴얼,draft,,planned,P0,2026-09-18,
+POL-API-001,외부 API·할당량 정책,draft,,planned,P0,2026-09-18,
+RUN-SCHEMA-001,DB 스키마 변경·승격 매뉴얼,draft,,planned,P0,2026-09-18,
+RUN-CACHE-001,캐시·통계 갱신 매뉴얼,draft,,planned,P1,2026-09-25,
+RUN-ADMIN-DATA-001,관리자 데이터 버튼 매뉴얼,draft,,planned,P1,2026-09-25,
+MAN-BRHUB-001,건축HUB 수집 매뉴얼,draft,,planned,P1,2026-10-02,
+MAN-RTMS-001,실거래 수집 매뉴얼,draft,,planned,P1,2026-10-02,
+MAN-CAMP-001,캠핑 원본·좌표·사이트 수 매뉴얼,draft,,planned,P1,2026-10-02,
+MAN-STORE-001,소상공인 상가정보 수집 매뉴얼,draft,,planned,P1,2026-10-09,
+POL-AUTH-001,회원·관리자 인증 및 접속기록 정책,draft,,planned,P1,2026-10-09,
+POL-NOTIFY-001,이메일·SMS 알림 운영 정책,draft,,planned,P1,2026-10-09,
+POL-LISTING-001,매물 공개범위·직거래·급매 정책,draft,,planned,P1,2026-10-16,
+POL-QUALITY-001,데이터 품질지표·경보 정책,draft,,planned,P2,2026-10-23,
+RUN-PREWARM-001,예열·백필 작업대장,draft,,planned,P2,2026-10-23,
+POL-RETENTION-001,원본·감사·로그 보존 정책,draft,,planned,P2,2026-10-30,
+POL-ANALYTICS-001,서비스 분석 이벤트 정책,draft,,planned,P2,2026-10-30,
+GUIDE-FRONTEND-001,프런트 릴리스·회귀 점검 가이드,draft,,planned,P2,2026-11-06,
+TEMPLATE-AUDIT-001,검증·장애·배포 보고서 템플릿,draft,,planned,P2,2026-11-06,
