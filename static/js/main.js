@@ -6194,15 +6194,21 @@ async function loadBuildingHeader(id){
   });
 
   const lodgings = Array.isArray(b.lodgings) ? b.lodgings : [];
+  const bizReportBannerHtml = `
+    <a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer"
+       class="b-biz-report-banner" title="숙박업등록·위탁운영 무료 상담 신청">
+      <img src="/static/banner_biz_report.png"
+           alt="숙박업등록 1위 — 생활형숙박시설 숙박업등록부터 위탁운영 무료 상담 신청">
+    </a>`;
   if (isPreCompletion) {
-    adminCard.innerHTML = STRUCTURE_B_TYPES.includes(b.lodging_type) ? `
+    adminCard.innerHTML = (STRUCTURE_B_TYPES.includes(b.lodging_type) ? `
       <div class="side-card-title">영업신고 <span class="side-sub">행정운영</span></div>
       <div style="font-size:12.5px;color:var(--ink);">
         영업 중 ${lodgings.length.toLocaleString("ko-KR")}개 사업장 신고 완료
       </div>` : `
       <div class="side-card-title">행정운영 <span class="side-sub">숙박업영업신고</span></div>
       <div class="side-empty">준공 전입니다. 사용승인 후 영업신고 정보가 표시됩니다.</div>
-    `;
+    `) + bizReportBannerHtml;
 
     // 타임라인은 _renderDetailCards()가 담당 (폴링 갱신과 공유)
   } else {
@@ -6306,12 +6312,7 @@ async function loadBuildingHeader(id){
         </tbody>
       </table>
       ${lodgingListHtml}
-      ${STRUCTURE_A_TYPES.includes(b.lodging_type) ? `
-        <a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer"
-           class="b-biz-report-banner" title="숙박업등록·위탁운영 무료 상담 신청">
-          <img src="/static/banner_biz_report.png"
-               alt="숙박업등록 1위 — 생활형숙박시설 숙박업등록부터 위탁운영 무료 상담 신청">
-        </a>` : ""}
+      ${bizReportBannerHtml}
       ${(Array.isArray(b.booking_urls) && b.booking_urls.length > 0) ? (() => {
         const btns = b.booking_urls
           .map(bu => ({...bu, safe_url: _publicHttpUrl(bu.url)}))
