@@ -152,13 +152,14 @@ expect(main.includes("function _hygieneBadge") &&
   "영업신고 업종별 상세 용도 뱃지가 없습니다.");
 expect(main.includes('class="datalab-head-stack">건물수<small>(시설수)</small>') &&
   main.includes('title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small>') &&
+  main.includes('title="현재 정상영업 중인 신고업체 수입니다."><span class="datalab-head-stack">신고업체<small>(정상)</small>') &&
   main.includes('title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span>') &&
   main.includes('const buildingCoverageTypes = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"])') &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
   !main.includes("영업신고율</th>"),
   main.includes('class="datalab-head-stack">신고객실수<small>(사이트수)</small>'),
-  "전국숙박업통계의 건물수(시설수)·호실수(사이트수)·신고객실수(사이트수) 구분이 누락됐습니다.");
+  "전국숙박업통계의 건물수(시설수)·호실수(사이트수)·신고업체(정상)·신고객실수(사이트수) 구분이 누락됐습니다.");
 expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&
   !main.includes("datalab-caption-bottom"),
   "데이터랩 하단 설명문이 남아 있습니다.");

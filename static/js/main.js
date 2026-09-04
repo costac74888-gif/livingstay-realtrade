@@ -3256,7 +3256,7 @@ function renderDataLabLodging(data){
     </div>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수<small>(시설수)</small></span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th><span class="datalab-head-stack">신고<small>업체</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>
+        <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수<small>(시설수)</small></span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th title="현재 정상영업 중인 신고업체 수입니다."><span class="datalab-head-stack">신고업체<small>(정상)</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
