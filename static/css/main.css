@@ -1208,6 +1208,11 @@
   cursor:pointer; white-space:nowrap;
 }
 .b-map-return-btn:hover{ color:var(--brass-dark); border-color:#d8bd86; background:var(--brass-tint); }
+.b-biz-report-banner{ display:block; margin:2px 0 12px; }
+.b-biz-report-banner img{
+  display:block; width:100%; height:auto; border-radius:10px;
+  border:1px solid rgba(180,134,63,.24);
+}
 .bld-photo-wrap.has-streetview{
   height:clamp(240px, 75vw, 320px);
   background:#202020;

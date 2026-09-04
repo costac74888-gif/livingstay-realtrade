@@ -5263,7 +5263,9 @@ async function loadBuildingHeader(id){
 
   headerCard.innerHTML = `
     ${buildingPhotoSliderHtml()}
-    ${STRUCTURE_A_TYPES.includes(b.lodging_type) ? _reservationBar(b) : ""}
+    ${STRUCTURE_A_TYPES.includes(b.lodging_type)
+      ? _reservationBar(b, !["생활", "일반"].includes(b.lodging_type))
+      : ""}
     ${STRUCTURE_B_TYPES.includes(b.lodging_type) ? `<div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보">
       <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
       <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
@@ -6276,6 +6278,12 @@ async function loadBuildingHeader(id){
         </tbody>
       </table>
       ${lodgingListHtml}
+      ${STRUCTURE_A_TYPES.includes(b.lodging_type) ? `
+        <a href="https://jnjclub.co.kr/" target="_blank" rel="noopener noreferrer"
+           class="b-biz-report-banner" title="숙박업등록·위탁운영 무료 상담 신청">
+          <img src="/static/banner_biz_report.png"
+               alt="숙박업등록 1위 — 생활형숙박시설 숙박업등록부터 위탁운영 무료 상담 신청">
+        </a>` : ""}
       ${(Array.isArray(b.booking_urls) && b.booking_urls.length > 0) ? (() => {
         const btns = b.booking_urls
           .map(bu => ({...bu, safe_url: _publicHttpUrl(bu.url)}))
