@@ -3190,6 +3190,9 @@ function renderDataLabLodging(data){
     return "유형별 모집단에 맞춘 신고 커버리지";
   };
   const body = rows.map(row => {
+    const campingDetail = row.type === "캠핑"
+      ? `<tr class="datalab-sub-row"><td colspan="6">활성 고유 시설 ${dataLabNum(row.camping_facility_count)}곳 · 사이트: 일반 ${dataLabNum(row.camping_general_site_count)}, 자동차 ${dataLabNum(row.camping_auto_site_count)}, 글램핑 ${dataLabNum(row.camping_glamping_site_count)}, 카라반 ${dataLabNum(row.camping_caravan_site_count)} · 유형: 일반 ${dataLabNum(row.camping_classification_breakdown?.general_only)}, 자동차 ${dataLabNum(row.camping_classification_breakdown?.auto_only)}, 글램핑 ${dataLabNum(row.camping_classification_breakdown?.glamping_only)}, 카라반 ${dataLabNum(row.camping_classification_breakdown?.caravan_only)}, 확인복합 ${dataLabNum(row.camping_classification_breakdown?.confirmed_mixed)}, 복합(미확인) ${dataLabNum(row.camping_classification_breakdown?.unknown)}</td></tr>`
+      : "";
     const base = `
       <tr>
         <td>${escapeHtml(row.type)}</td>
@@ -3208,7 +3211,7 @@ function renderDataLabLodging(data){
         <td>${dataLabNum(sub.room_count)}</td>
         <td>${sub.report_rate == null ? "-" : `${sub.report_rate}%`}</td>
       </tr>`).join("");
-    return base + subRows;
+    return base + campingDetail + subRows;
   }).join("");
   return `
     <div class="datalab-heading">

@@ -102,6 +102,8 @@ from lodging_matching import (
     choose_representative,
 )
 from lodging_stats_dedup import deduplicate_cross_source_lodgings
+from camping_stats import summarize_active_camping_facilities
+from lodging_data_contract import is_in_active_statistics
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -18696,6 +18698,9 @@ def admin_buildings_list():
         cur3.execute("""
             SELECT biz_name, permit_number, permit_date, biz_status_name,
                    biz_status_detail, room_count, camping_site_count,
+                   camping_general_site_count, camping_auto_site_count,
+                   camping_glamping_site_count, camping_caravan_site_count,
+                   camping_classification,
                    hygiene_type, phone,
                    road_address  AS lr_road_address,
                    jibun_address AS lr_jibun_address,
@@ -18773,6 +18778,11 @@ def admin_buildings_list():
                 "permit_number":     lr.get("permit_number"),
                 "room_count":        lr.get("room_count"),
                 "camping_site_count": lr.get("camping_site_count"),
+                "camping_general_site_count": lr.get("camping_general_site_count"),
+                "camping_auto_site_count": lr.get("camping_auto_site_count"),
+                "camping_glamping_site_count": lr.get("camping_glamping_site_count"),
+                "camping_caravan_site_count": lr.get("camping_caravan_site_count"),
+                "camping_classification": lr.get("camping_classification"),
                 "biz_status_name":   lr.get("biz_status_name"),
                 "biz_status_detail": lr.get("biz_status_detail"),
                 "permit_date":       (
@@ -19657,7 +19667,9 @@ def _lodging_full_stats_payload():
     if all_road_norms or all_jibun_norms:
         cur.execute(
             "SELECT permit_number, biz_name, permit_date, room_count, biz_status_name, "
-            "hygiene_type, road_norm, jibun_norm "
+            "hygiene_type, road_norm, jibun_norm, applied_building_id, biz_name_norm, "
+            "camping_general_site_count, camping_auto_site_count, "
+            "camping_glamping_site_count, camping_caravan_site_count, camping_classification "
             "FROM lodging_registry WHERE road_norm = ANY(%s) OR jibun_norm = ANY(%s)",
             [all_road_norms or ["__none__"], all_jibun_norms or ["__none__"]]
         )
@@ -19667,6 +19679,24 @@ def _lodging_full_stats_payload():
                 lr_road_map.setdefault(rr["road_norm"], {})[rr["permit_number"]] = rr
             if rr.get("jibun_norm"):
                 lr_jibun_map.setdefault(rr["jibun_norm"], {})[rr["permit_number"]] = rr
+    # 캠핑 시설 수는 GoCamping API의 전체 건수를 인용하지 않는다. 마스터 연결
+    # 여부와 신뢰 가능한 주소·상호 키로 실제 활성 원장 행을 고유 시설로 통합한다.
+    cur.execute(
+        """
+        SELECT permit_number, biz_status_name, applied_building_id, road_norm, jibun_norm,
+               biz_name_norm, camping_general_site_count, camping_auto_site_count,
+               camping_glamping_site_count, camping_caravan_site_count,
+               camping_classification
+        FROM lodging_registry
+        WHERE hygiene_type IN ('일반야영장업', '자동차야영장업')
+        """
+    )
+    active_camping_stats = summarize_active_camping_facilities(
+        [
+            dict(row) for row in cur.fetchall()
+            if is_in_active_statistics(row.get("biz_status_name"))
+        ]
+    )
     cur.close(); conn.close()
 
     # 그룹화
@@ -19941,6 +19971,11 @@ def _lodging_full_stats_payload():
         return row
 
     rows = [_row(all_list, "전체")] + [_row(by_type[t], t) for t in TYPES]
+    # 기존 building_count는 마스터 건물 기준으로 유지한다. 캠핑 시설은 토지·
+    # 사업장까지 포괄하는 별도 지표여서 새 필드로 추가한다.
+    for row in rows:
+        if row["type"] in {"전체", "캠핑"}:
+            row.update(active_camping_stats)
     # 전체 행도 지도와 같은 명시적 COUNT 쿼리 결과를 사용한다.
     rows[0]["building_count"] = total_building_cnt
     result = {
@@ -19987,6 +20022,17 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
             "room_count": row.get("room_count", 0),
             "report_rate": row.get("report_rate"),
         }
+        # 캠핑 행에만 새 집계를 더한다. 기존 소비자는 기존 필드만 읽어도 된다.
+        if row.get("type") in {"전체", "캠핑"}:
+            for key in (
+                "camping_facility_count", "camping_site_count",
+                "camping_general_site_count", "camping_auto_site_count",
+                "camping_glamping_site_count", "camping_caravan_site_count",
+            ):
+                compact[key] = row.get(key, 0)
+            compact["camping_classification_breakdown"] = dict(
+                row.get("camping_classification_breakdown") or {}
+            )
         return compact
 
     public_rows = []

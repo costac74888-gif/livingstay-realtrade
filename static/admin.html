@@ -7234,7 +7234,7 @@
               ? `${Number(lr.room_count).toLocaleString()}실`
               : "미확인";
             const siteInfo = lr.camping_site_count != null
-              ? `${Number(lr.camping_site_count).toLocaleString()}개`
+              ? `${Number(lr.camping_site_count).toLocaleString()}개 <span style="font-size:10px;color:var(--ink-soft);white-space:nowrap;">(일 ${Number(lr.camping_general_site_count || 0).toLocaleString()} · 자 ${Number(lr.camping_auto_site_count || 0).toLocaleString()} · 글 ${Number(lr.camping_glamping_site_count || 0).toLocaleString()} · 카 ${Number(lr.camping_caravan_site_count || 0).toLocaleString()})</span>`
               : "-";
             const facilityInfo = lr.facility_area != null
               ? `${Number(lr.facility_area).toLocaleString()}㎡`
@@ -7304,7 +7304,7 @@
               ? `${Number(lr.room_count).toLocaleString()}실`
               : "미확인";
             const siteInfo = lr.camping_site_count != null
-              ? `${Number(lr.camping_site_count).toLocaleString()}개`
+              ? `${Number(lr.camping_site_count).toLocaleString()}개 <span style="font-size:10px;color:var(--ink-soft);white-space:nowrap;">(일 ${Number(lr.camping_general_site_count || 0).toLocaleString()} · 자 ${Number(lr.camping_auto_site_count || 0).toLocaleString()} · 글 ${Number(lr.camping_glamping_site_count || 0).toLocaleString()} · 카 ${Number(lr.camping_caravan_site_count || 0).toLocaleString()})</span>`
               : "-";
             const facilityInfo = lr.facility_area != null
               ? `${Number(lr.facility_area).toLocaleString()}㎡`
