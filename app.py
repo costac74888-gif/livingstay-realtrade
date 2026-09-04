@@ -5038,42 +5038,51 @@ def _canonical_operator_permit(matched, submitted):
 @app.route("/api/partner/lodging-operator-stats")
 @limiter.limit("60 per minute")
 def partner_lodging_operator_stats():
-    """정부 숙박 원장의 계약상 '영업/정상' 행만 유형별로 집계한다."""
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            SELECT hygiene_type, COUNT(*)::integer AS business_count,
-                   COALESCE(SUM(room_count), 0)::integer AS rooms
-            FROM lodging_registry
-            WHERE biz_status_name = '영업/정상'
-              AND hygiene_type = ANY(%s)
-            GROUP BY hygiene_type
-        """, [sum((list(v) for v in _LODGING_OP_HYGIENE_TYPES.values()), [])])
-        totals = {key: {"count": 0, "rooms": 0} for key in LODGING_OP_TYPES}
-        for row in cur.fetchall():
-            for key, raw_types in _LODGING_OP_HYGIENE_TYPES.items():
-                if row["hygiene_type"] in raw_types:
-                    totals[key]["count"] += row["business_count"]
-                    totals[key]["rooms"] += row["rooms"]
-        if totals["living"]["rooms"] == 0:
-            cur.execute("""
-                SELECT COALESCE(SUM(units), 0)::integer AS rooms
-                FROM master_buildings WHERE lodging_type IN ('생활', '생숙')
-            """)
-            totals["living"]["rooms"] = cur.fetchone()["rooms"]
-        result = {}
-        for key, values in totals.items():
-            label_count = values["rooms"] if key == "living" else values["count"]
+    """파트너 카드 수치를 공개 전국숙박업통계와 같은 행·필드에서 가져온다."""
+    source = _lodging_full_stats_payload().get_json() or {}
+    return jsonify(_lodging_operator_stats_from_full(source))
+
+
+def _lodging_operator_stats_from_full(payload):
+    """전국숙박업통계 표시값을 운영자 유형 카드 구조로 변환한다."""
+    rows = {
+        row.get("type"): row
+        for row in (payload.get("rows") or [])
+        if isinstance(row, dict) and row.get("type")
+    }
+    type_rows = {
+        "airbnb": "에어비앤비",
+        "camping": "캠핑",
+        "rural": "농어촌민박",
+        "hanok": "한옥",
+        "living": "생활",
+    }
+    result = {}
+    for key, row_type in type_rows.items():
+        row = rows.get(row_type) or {}
+        if key == "living":
+            count = int(row.get("room_count") or 0)
             result[key] = {
-                "count": values["count"], "rooms": values["rooms"],
-                "label": (f"전국 {label_count:,} 신고 호실" if key == "living"
-                          else f"전국 {label_count:,}개 영업중 업체"),
+                "count": int(row.get("building_count") or 0),
+                "rooms": count,
+                "label": f"전국 {count:,} 신고 호실",
             }
-        return jsonify({"ok": True, "stats": result})
-    finally:
-        cur.close()
-        conn.close()
+            continue
+        count = int(
+            row.get("camping_facility_count")
+            if key == "camping" and row.get("camping_facility_count") is not None
+            else row.get("building_count") or 0
+        )
+        result[key] = {
+            "count": count,
+            "rooms": int(row.get("room_count") or 0),
+            "label": f"전국 {count:,}개 영업중 업체",
+        }
+    return {
+        "ok": payload.get("ok") is True,
+        "status": payload.get("status"),
+        "stats": result,
+    }
 
 
 @app.route("/api/apply/lodging-operator", methods=["POST"])
