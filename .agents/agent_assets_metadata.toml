@@ -6,12 +6,14 @@ id = "cieGKEWeS3VwuJKZbzvvk"
 uri = "file://신마스터_생활숙박시설현황_20260709.xlsx"
 type = "table"
 title = "신마스터 생활숙박시설 현황 (474건 · 2026-07-09 업데이트)"
+logical_id = "6bb185d7-e401-4375-a5ed-f3a30b396cfc"
 
 [[outputs]]
 id = "lk3Y1wuvV65P1V2B8TuWf"
 uri = "file://vworld_broker_fetch.zip"
 type = "unspecified"
 title = "브이월드 수집 스크립트 (vworld_broker_fetch.py 압축본)"
+logical_id = "b8daf03a-4c00-441c-b374-e2c5bde7a53e"
 
 [[outputs]]
 id = "PZpIVgvk2wXTGjPlaPc2k"
@@ -19,6 +21,7 @@ uri = "file://screenshots/listing-checklist.jpg"
 type = "image"
 title = "숙박업소 거래 체크리스트 화면"
 description = "공개 건물전체 매물에서 확인한 체크리스트 아코디언, 진행률, 면책문구 화면입니다."
+logical_id = "7ac40f21-5abe-49cd-b5e5-7a93ba28ee85"
 
 [[outputs]]
 id = "UzP1kpUdGRCynXLFyCKVc"
@@ -26,6 +29,7 @@ uri = "file://screenshots/public-lodging-table-minimal.jpg"
 type = "image"
 title = "공개 전국숙박업통계 축소 표"
 description = "건물수·영업신고업체·영업신고호실·폐업율 4개 공개 컬럼과 일반 세부 4종 행을 확인한 캡처입니다."
+logical_id = "3cb2dff0-b02f-4c33-b2e2-f7bad4816ae3"
 
 [[outputs]]
 id = "1jQYpLxIOEPDSi-6FUJvr"
@@ -33,6 +37,7 @@ uri = "file://screenshots/datalab-building-map-navigation.jpg"
 type = "image"
 title = "데이터랩 건물명 클릭 → 지도 이동"
 description = "실제 거래량 TOP API 좌표로 클릭 후 중심 좌표와 level 3 확대 상태를 확인한 검증 캡처입니다. 캡처 브라우저에서는 외부 Kakao 지도 SDK가 차단되어 같은 클릭 처리 흐름을 별도 검증 화면으로 렌더링했습니다."
+logical_id = "91cf697c-983e-48d0-956d-50debca840df"
 
 [[outputs]]
 id = "P_c_lAuWa_naW9dW_gf3q"
@@ -40,6 +45,7 @@ uri = "file://static/home_stay_share.png"
 type = "image"
 title = "홈앤스테이 네모난 로고"
 description = "홈앤스테이 링크 공유용 정사각형 로고 PNG (1254×1254)."
+logical_id = "19c8be1c-8e2d-47e8-971a-f5d3a29f6b1b"
 
 [[outputs]]
 id = "fftacieJ9XZqN-TuRm6x3"
@@ -47,6 +53,7 @@ uri = "file://screenshots/map-toolbar-icons-clean.jpg"
 type = "image"
 title = "지도 툴바 아이콘 교체 확인"
 description = "실제 지도 화면에서 지도전환(접힌 지도), 로드뷰(위치핀), 편의(쇼핑백) 아이콘이 반영된 캡처입니다."
+logical_id = "6f976957-15cd-43d3-a9d1-30243d7f6d02"
 
 [[outputs]]
 id = "IcaKjNuYHyYrJZGrDCZPG"
@@ -54,6 +61,7 @@ uri = "file://screenshots/integrated-lodging-alerts-building-detail-final.jpg"
 type = "image"
 title = "건물 상세페이지 숙박알리미 통합 버튼 캡처"
 description = "건물 상세페이지의 숙박알리미 통합 버튼과 관심저장·지도위치·공유 2행 액션을 확인한 실제 미리보기 캡처입니다. 비로그인 상태라 로그인 유도 모달이 함께 표시됩니다."
+logical_id = "d6e3a363-c0d4-4b5b-a767-461ac6c7654a"
 
 [[outputs]]
 id = "Kvid8zNdu9J8atUzYrMQA"
@@ -61,6 +69,7 @@ uri = "file://screenshots/building-detail-without-price-comparison.jpg"
 type = "image"
 title = "가격 비교 섹션 제거 후 건물 상세페이지"
 description = "건물 상세페이지에서 ‘매물가 · 최근 실거래 비교’ 카드가 제거된 실제 미리보기 캡처입니다. 비로그인 상태라 로그인 유도 모달이 함께 표시됩니다."
+logical_id = "bee43362-ce9c-4c64-ba91-f572a6a5d866"
 
 [[outputs]]
 id = "n8bSsl-nQSRyRMP8oc5zZ"
@@ -68,6 +77,7 @@ uri = "file://screenshots/admin-map-type-counts-verification.jpg"
 type = "image"
 title = "지도·통계표 분류 수치 검증"
 description = "운영 DB 읽기 전용 계산 결과: 준공전 357건, 미분류 85건이 지도 범례와 관리자 통계표에서 일치합니다."
+logical_id = "9de4e1f3-6b48-44c5-bc68-83c5bf2a528b"
 
 [[outputs]]
 id = "RgBGVHHUj3H8OLBtPf_Qk"
@@ -75,6 +85,7 @@ uri = "file://screenshots/admin-broker-modal.jpg"
 type = "image"
 title = "관리자 입점부동산 브로커 상세표"
 description = "브로커 표준데이터 10개 필드, HTTPS 링크, XSS 이스케이프를 확인한 관리자 모달 검증 캡처입니다."
+logical_id = "67ca3dd3-c2e5-49de-b47f-6f597971602a"
 
 [[outputs]]
 id = "HwsiWkjqmBnfcJZ983PGO"
@@ -82,6 +93,7 @@ uri = "file://screenshots/task-206-broker-cards.jpg"
 type = "image"
 title = "라군부동산 매칭·상태 카드 검증"
 description = "라군 센트럴 스테이에 실제 매칭된 라군부동산중개법인의 영업중 카드와 비영업 상태 뱃지 표시 규칙을 함께 확인한 캡처입니다."
+logical_id = "476d610a-b823-4617-bb29-d3a4e0836479"
 
 [[outputs]]
 id = "xAcOumG_ttwV8LtLRyI48"
@@ -89,6 +101,7 @@ uri = "file://screenshots/task-206-sync-brokers-complete.jpg"
 type = "image"
 title = "전국 브로커 재수집 완료 로그"
 description = "sync_brokers.py를 처음부터 실행한 실제 완료 요약: 68페이지, 67,963건 처리, 67,821건 저장, 오류 없음."
+logical_id = "7d8aac76-8959-4ba1-8b2e-47cdee5491b7"
 
 [[outputs]]
 id = "5P-ttP-RI1fvS6iTOuL6X"
@@ -96,6 +109,7 @@ uri = "file://screenshots/task-206-lagoon-modal-recheck.jpg"
 type = "image"
 title = "라군 센트럴 스테이 입점부동산 재확인"
 description = "실제 관리자 인증 API 응답으로 재확인한 건물 ID 3085의 모달 카드: 주식회사 라군부동산중개법인 1건, 영업중."
+logical_id = "93743a3f-3941-4ccb-a46d-b62cacedf236"
 
 [[outputs]]
 id = "XNzkzbfkm1YEhHFdqnMYv"
@@ -103,6 +117,7 @@ uri = "file://screenshots/task-208-policy-scenarios.jpg"
 type = "image"
 title = "단지 2명·동 10명 정책 검증"
 description = "실제 API 회귀검사에서 두 번째 단지뱃지 성공, 세 번째 거절, 지역뱃지 10명 성공과 11번째 거절, 동시 신청 정원 준수를 확인한 캡처입니다."
+logical_id = "210ddee4-8373-4290-b463-50e5e5427388"
 
 [[outputs]]
 id = "VQBxCYMDctUq0x3rpeSUU"
@@ -110,6 +125,7 @@ uri = "file://screenshots/task-208-admin-tabs.jpg"
 type = "image"
 title = "관리자 뱃지 현황 3탭"
 description = "관리자 뱃지 현황의 전체·단지뱃지·지역뱃지 탭과 읍·면·동 열을 확인하는 캡처입니다."
+logical_id = "233b44c8-672b-41fc-8534-a5807ac79bca"
 
 [[outputs]]
 id = "xsL0A-0CoSVPhmhV2UaUe"
@@ -117,6 +133,7 @@ uri = "file://screenshots/lagoon-broker-match-badge.jpg"
 type = "image"
 title = "라군 센트럴 스테이 입점부동산 뱃지"
 description = "실제 관리자 건물마스터 화면에서 라군 센트럴 스테이 1건을 조회하고 입점부동산이 1개로 표시된 브라우저 캡처입니다."
+logical_id = "5ac30446-378a-4bc8-ab73-b24e532a40dd"
 
 [[outputs]]
 id = "FjY6IeFeTGMzGlPmyoXIh"
@@ -124,6 +141,7 @@ uri = "file://screenshots/lagoon-broker-match-modal.jpg"
 type = "image"
 title = "라군부동산중개법인 실제 매칭 모달"
 description = "실제 관리자 화면의 표준데이터 모달에서 주소 매칭 결과 1건, 주식회사 라군부동산중개법인과 영업중 상태가 표시된 브라우저 캡처입니다."
+logical_id = "9f2d2227-4072-4379-bc82-0e463f8e26c7"
 
 [[outputs]]
 id = "TZFZcrvrp4aC6Ni93qR8p"
@@ -131,6 +149,7 @@ uri = "file://screenshots/home-prod.jpg"
 type = "image"
 title = "배포 모드 홈 화면"
 description = "압축 릴리스 자산으로 실제 렌더링한 홈 화면 캡처입니다."
+logical_id = "9a21ff15-fa19-4f0e-bdcf-19413a67a6a8"
 
 [[outputs]]
 id = "yMdEGKt5JvbnCciN3SRoC"
@@ -138,6 +157,7 @@ uri = "file://screenshots/main-minified.jpg"
 type = "image"
 title = "압축 JavaScript 화면"
 description = "content-addressed 릴리스 경로에서 제공된 main.min.js 캡처입니다."
+logical_id = "65f58f8e-d0ac-410b-9001-e13cdf92bd4f"
 
 [[outputs]]
 id = "T1jgCc4lrgnK8wGIXT1i6"
@@ -145,6 +165,7 @@ uri = "file://verification/network-prod.txt"
 type = "text"
 title = "배포 Network 검증 기록"
 description = "새 API 성공, 기존 API·원본 JS·raw HTML 404, 릴리스 자산 경로와 크기를 기록했습니다."
+logical_id = "c2e810ae-80de-4c6c-b312-8249f013b551"
 
 [[outputs]]
 id = "Wxdwez735GuN8ExV9H3gn"
@@ -152,6 +173,7 @@ uri = "file://screenshots/region-claim-no-confirm.jpg"
 type = "image"
 title = "지역 등록 팝업 제거 확인 화면"
 description = "지역 등록 버튼 자동 클릭 후 등록 API 호출 완료와 window.confirm 호출 0회를 확인한 캡처입니다."
+logical_id = "7ddcd66b-e9cc-434e-ba76-270d1b1fa6c3"
 
 [[outputs]]
 id = "XhQF-mUsxp16UAHCnCmtA"
@@ -159,6 +181,7 @@ uri = "file://screenshots/admin-broker-horizontal-table.jpg"
 type = "image"
 title = "관리자 입점부동산 가로 테이블"
 description = "홈페이지 컬럼을 제거하고 사무소명·등록번호·대표자·소재지·전화번호·상태·등록일자 7개 컬럼으로 전환한 검증 화면입니다."
+logical_id = "9eae23c9-4722-45da-8993-0494bdfea66f"
 
 [[outputs]]
 id = "Emk4yZjmfe6bFygbQyFgS"
@@ -166,6 +189,7 @@ uri = "file://screenshots/admin-realty-inline.jpg"
 type = "image"
 title = "관리자 입점부동산 인라인 검증"
 description = "입점부동산·영업사업장 버튼 인접 배치, 행 아래 인라인 상세표, 상태 정보 없음 표시를 확인한 화면입니다."
+logical_id = "d77aabf0-a999-4b45-a21d-f4aa10b1a873"
 
 [[outputs]]
 id = "zvFKHPC2pZ9r2fYJxV9Pi"
@@ -173,6 +197,7 @@ uri = "file://lodging-classification-review.md"
 type = "text"
 title = "숙박시설 용도 분류 검토 문서 다운로드"
 description = "숙박시설 분류 기준과 재분류 미리보기 결과를 정리한 Markdown 문서입니다."
+logical_id = "59ef46cc-e167-4166-8668-81a713195a07"
 
 [[outputs]]
 id = "2C5-GDvTC4Hof2_eyQeym"
@@ -180,3 +205,46 @@ uri = "file://livingstay-project-code-2026-09-01.zip"
 type = "unspecified"
 title = "LivingStay 프로젝트 전체 코드 ZIP"
 description = "현재 커밋 기준 프로젝트 소스·설정·테스트 전체입니다. Git 이력과 환경변수/시크릿 값은 포함하지 않았습니다."
+logical_id = "f716f356-a458-4ccc-bee3-604be4161aa4"
+
+[[outputs]]
+id = "fw6DMvI1HWA7CddzfRzj5"
+uri = "file://exports/HOME_AND_STAY_DATA_POLICY_V03_0_2026-09-04.pdf"
+type = "pdf"
+title = "데이터 통합 정책·운영 매뉴얼 V.03.0 (PDF)"
+description = "2026-09-04 기준, A4 18페이지. 인쇄·공유용 최종본입니다."
+logical_id = "57ff082c-fa84-4694-a614-0648a355298f"
+content_hash = "sha256:eab65e87debbe3989ea2bf51e82013c82ba92bc204265bc6c3ab077546afbd06"
+size = 514072
+mtime_ms = 1788488068658
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/57ff082c-fa84-4694-a614-0648a355298f/462fd5b6-cecc-4d43-a359-b84e5e84a640"
+storage_version_token = "1788488130090321"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "X5p87GcSQI0uCSZbbv42x"
+uri = "file://exports/HOME_AND_STAY_DATA_POLICY_V03_0_2026-09-04.docx"
+type = "word_document"
+title = "데이터 통합 정책·운영 매뉴얼 V.03.0 (Word)"
+description = "내용을 수정·보완할 수 있는 편집용 Word 문서입니다."
+logical_id = "50bdfd63-b3ea-4366-b28f-bc69e5efff4c"
+content_hash = "sha256:4211f84ae1b803478673e9ab4c07006a53a7660c7060cf8a4339bb76fdc5785b"
+size = 15161
+mtime_ms = 1788487729723
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/50bdfd63-b3ea-4366-b28f-bc69e5efff4c/aa58b835-4b79-4ba0-bdba-978541004793"
+storage_version_token = "1788488131434966"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "oPzTzCnBBaZhBTmFvfc3n"
+uri = "file://exports/HOME_AND_STAY_DATA_POLICY_V03_0_2026-09-04.html"
+type = "text"
+title = "데이터 통합 정책·운영 매뉴얼 V.03.0 (웹 문서)"
+description = "브라우저에서 열람하거나 다시 PDF로 인쇄할 수 있는 HTML 문서입니다."
+logical_id = "cb758f48-d2c1-4df3-8a39-5c625f380da4"
+content_hash = "sha256:3f071b81ff50513ba95f63f399db1c5b1f3147ac462cb08f960979dea6ba5a9f"
+size = 37857
+mtime_ms = 1788488060977
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/cb758f48-d2c1-4df3-8a39-5c625f380da4/7cabc4bf-119f-49dd-9f0b-de255c9983c4"
+storage_version_token = "1788488132758184"
+content_type = "text/html"
