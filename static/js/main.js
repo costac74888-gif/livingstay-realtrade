@@ -3252,7 +3252,7 @@ function partnerUnifiedBannerHTML(buildingId){
     <div style="text-align:center; padding:12px 10px; background:linear-gradient(135deg,var(--brass-tint,#FFF5E0) 0%,#EEF6E6 100%); border:1px dashed var(--brass,#B4863F); border-radius:10px;">
       <div style="font-size:14px; margin-bottom:4px;">🤝</div>
       <div style="font-size:12px; font-weight:800; color:var(--ink); margin-bottom:3px;">이 건물의 파트너가 되고 싶으신가요?</div>
-      <div style="font-size:10.5px; color:var(--ink-soft); margin-bottom:8px; line-height:1.5;">중개사 · 위탁운영 · 운영지원업체 · 대출상담</div>
+      <div style="font-size:10.5px; color:var(--ink-soft); margin-bottom:8px; line-height:1.5;">중개사 · 위탁운영 · 운영지원업체 · 대출상담 · 분양사</div>
       <a href="${partnerHref}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 16px; font-size:11.5px; text-decoration:none; background:var(--brass,#B4863F); color:#fff; border-color:var(--brass,#B4863F);">파트너 등록하기 →</a>
     </div>`;
 }

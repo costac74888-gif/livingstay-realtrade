@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 
 const partner = fs.readFileSync("static/partner.html", "utf8");
+const index = fs.readFileSync("static/index.html", "utf8");
+const main = fs.readFileSync("static/js/main.js", "utf8");
 
 for (const label of ["운영자", "중개사", "운영지원", "대출상담사", "분양자"]) {
   assert.match(partner, new RegExp(`partner-cat-title">${label}<`));
@@ -16,6 +18,10 @@ assert.match(partner, /href="\/apply\/agent"/);
 assert.match(partner, /href="\/apply\/operator"/);
 assert.match(partner, /href="\/apply\/loan"/);
 assert.match(partner, /href="\/apply\/presale"/);
+assert.ok(
+  index.includes("대출상담 · 분양사") && main.includes("대출상담 · 분양사"),
+  "홈·건물 상세 파트너 등록 배너에 분양사가 표시되지 않습니다.",
+);
 assert.match(partner, /href="\/apply\/lodging-operator\?type=\$\{key\}"/);
 assert.match(partner, /params\.get\("building_id"\)/);
 assert.match(partner, /\/apply\/agent\?\$\{query\}/);
