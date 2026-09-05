@@ -5981,6 +5981,7 @@ function buildingPanelSkeleton(buildingId){
         <button id="btnListingRequest" class="side-more b-request-listing">매물내놓기</button>
         <button id="btnBuyRequest" class="side-more b-request-buy">매수의뢰</button>
       </div>
+      <div class="b-request-privacy-note">매물내놓기와 매수의뢰 비공개 진행가능</div>
     </section>
     <section class="side-card" id="bSignalCard">
       <div class="side-empty">불러오는 중…</div>

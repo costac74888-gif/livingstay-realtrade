@@ -1382,6 +1382,7 @@
 }
 .b-request-listing{ background:var(--brass)!important; color:#fff!important; border-color:var(--brass)!important; }
 .b-request-buy{ background:#3B7DD8!important; color:#fff!important; border-color:#3B7DD8!important; }
+.b-request-privacy-note{ margin-top:8px; color:var(--ink-soft); font-size:11px; line-height:1.4; text-align:center; }
 .b-map-return-btn{
   margin-left:auto; display:inline-flex; align-items:center; gap:4px;
   border:1px solid var(--line); border-radius:7px; background:#fff;

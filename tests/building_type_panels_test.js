@@ -1,6 +1,7 @@
 const fs = require("fs");
 
 const main = fs.readFileSync("static/js/main.js", "utf8");
+const css = fs.readFileSync("static/css/main.css", "utf8");
 const manage = fs.readFileSync("static/lodging_operator_manage.html", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
@@ -17,6 +18,11 @@ expect(main.includes('operations: ["bCampCard", "bReservationCard", "bLodgingOpe
 expect(main.includes("_reservationBar(b, false)"), "생활·관광·일반숙박의 미연결 예약 안내가 숨겨지지 않았습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
+expect(
+  main.includes('<div class="b-request-privacy-note">매물내놓기와 매수의뢰 비공개 진행가능</div>') &&
+  css.includes(".b-request-privacy-note"),
+  "매물내놓기·매수의뢰 비공개 진행 안내가 없습니다.",
+);
 expect(main.includes('class="bld-photo-actions bld-photo-actions-left"') && main.includes('class="bld-photo-actions bld-photo-actions-right"'), "사진 위 뒤로가기·관심·공유 버튼이 없습니다.");
 expect(main.includes('class="bld-photo-empty-logo"') && main.includes('/static/home_stay_footer_logo.png'), "사진 없음 상단 바의 가로 로고가 없습니다.");
 expect(main.includes('id="bMapBtn" class="b-map-return-btn"'), "우편번호 줄의 지도위치 버튼이 없습니다.");
