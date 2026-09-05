@@ -2134,6 +2134,9 @@ def _run_camping(args):
     completed = False
     counters = {}
     calls_today = None
+    image_completed = None
+    image_counters = None
+    image_error = None
     try:
         completed, counters, calls_today = sync_camping(
             num_rows=args.num_rows or CAMPING_NUM_ROWS_DEFAULT,
@@ -2147,13 +2150,37 @@ def _run_camping(args):
     except Exception as exc:
         error = _redact(str(exc))[:500]
         print(f"[camping] 실패: {error}")
+    if not error and completed and not args.dry_run:
+        try:
+            image_completed, image_counters, calls_today = sync_camping_images(
+                sleep_sec=args.sleep,
+                max_calls=args.max_calls or CAMPING_MAX_DAILY_CALLS,
+                reset=False,
+                dry_run=False,
+                status_key=args.status_key,
+                run_id=run_id,
+            )
+        except Exception as exc:
+            image_error = _redact(str(exc))[:500]
+            print(f"[camping-images] 자동 보강 실패: {image_error}")
     if not error and not completed:
         incomplete_reason = (
             "일일 호출 한도에 도달해 캠핑 동기화가 미완료되었습니다. "
             "저장된 체크포인트부터 재시도할 수 있습니다."
         )
         print(f"[camping] 미완료: {incomplete_reason}")
+    elif not error and image_error:
+        error = image_error
+    elif not error and image_completed is False:
+        incomplete_reason = (
+            "기본 캠핑 정보는 완료했지만 일일 호출 한도에 도달해 다중사진 보강이 "
+            "미완료되었습니다. 다음 정기 실행에서 저장된 체크포인트부터 재개합니다."
+        )
+        print(f"[camping-images] 미완료: {incomplete_reason}")
 
+    overall_completed = bool(
+        completed and (args.dry_run or image_completed is True)
+    )
     if not error and completed and not args.dry_run:
         _refresh_master_stats_after_completion()
 
@@ -2162,11 +2189,14 @@ def _run_camping(args):
         status = _read_status(args.status_key) or {}
         status.update({
             "state": (
-                "failed" if error else ("done" if completed else "partial")
+                "failed" if error else ("done" if overall_completed else "partial")
             ),
             "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "completed": None if error else completed,
+            "completed": None if error else overall_completed,
             "counters": counters,
+            "image_completed": image_completed,
+            "image_counters": image_counters,
+            "image_error": image_error,
             "calls_today": calls_today,
             "dry_run": bool(args.dry_run),
             "retryable": bool(error or incomplete_reason),

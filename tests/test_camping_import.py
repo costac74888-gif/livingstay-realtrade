@@ -626,6 +626,39 @@ class CampingSyncTests(unittest.TestCase):
         self.assertIn("jsonb_array_length(lodging_registry.camping_image_urls) > 1", sql)
         self.assertIn("THEN lodging_registry.camping_image_urls", sql)
 
+    def test_regular_camping_run_automatically_resumes_multi_image_backfill(self):
+        args = mock.Mock(
+            status_key=None,
+            num_rows=None,
+            sleep=0,
+            max_calls=None,
+            reset=False,
+            dry_run=False,
+        )
+        with (
+            mock.patch.object(
+                sync_lodgings,
+                "sync_camping",
+                return_value=(True, {"updated": 1}, 32),
+            ),
+            mock.patch.object(
+                sync_lodgings,
+                "sync_camping_images",
+                return_value=(False, {"updated": 768, "skipped": 0, "failed": 0}, 800),
+            ) as image_sync,
+            mock.patch.object(sync_lodgings, "_refresh_master_stats_after_completion"),
+            self.assertRaises(SystemExit),
+        ):
+            sync_lodgings._run_camping(args)
+        image_sync.assert_called_once_with(
+            sleep_sec=0,
+            max_calls=sync_lodgings.CAMPING_MAX_DAILY_CALLS,
+            reset=False,
+            dry_run=False,
+            status_key=None,
+            run_id=None,
+        )
+
     def test_camping_sync_skips_bad_row_and_finishes_valid_first_page(self):
         conn = mock.Mock()
         conn.cursor.return_value = mock.Mock()
