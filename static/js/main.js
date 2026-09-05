@@ -7898,6 +7898,10 @@ function initMapLegendSlider(){
   let links = [];
   let timer = null;
   let paused = false;
+  const slideDuration = {
+    legend: 25000,
+    agency: 5000,
+  };
 
   const safeUrl = (value) => {
     try {
@@ -7951,7 +7955,7 @@ function initMapLegendSlider(){
     timer = setTimeout(() => {
       show(active === "legend" ? "agency" : "legend");
       schedule();
-    }, 5000);
+    }, slideDuration[active]);
   };
   buttons.forEach((button) => button.addEventListener("click", () => {
     show(button.dataset.legendGo, true);

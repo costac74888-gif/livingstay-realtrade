@@ -3,6 +3,7 @@ const fs = require("fs");
 const admin = fs.readFileSync("static/admin.html", "utf8");
 const app = fs.readFileSync("app.py", "utf8");
 const css = fs.readFileSync("static/css/main.css", "utf8");
+const main = fs.readFileSync("static/js/main.js", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
 expect(admin.includes('data-agency-move="${row.id}"'), "유관기관 순서 이동 버튼이 없습니다.");
@@ -15,5 +16,11 @@ expect(css.includes(".map-agency-row img{height:26px;max-width:168px"), "PC 유�
 expect(css.includes(".map-agency-slide{min-width:0;width:calc(100vw - 56px)") && css.includes(".map-agency-row{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden") && css.includes(".map-agency-row a{flex:0 0 auto") && css.includes("height:clamp(22px, 7vw, 30px)"), "모바일 유관기관 로고가 한 줄에서 크게 표시되도록 고정되지 않았습니다.");
 expect(app.includes("SELECT id FROM agency_links FOR UPDATE"), "동시 변경으로부터 순서 저장을 보호하지 않습니다.");
 expect(app.includes("set(ordered_ids) != current_ids"), "오래된 목록으로 순서를 덮어쓰는 것을 차단하지 않습니다.");
+expect(
+  main.includes("legend: 25000") &&
+  main.includes("agency: 5000") &&
+  main.includes("slideDuration[active]"),
+  "지도 범례와 유관기관의 자동 노출시간이 5:1로 설정되지 않았습니다.",
+);
 
 console.log("OK  유관기관 순서 변경 회귀 점검");
