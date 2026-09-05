@@ -5760,27 +5760,9 @@ function _renderCampingSection(b){
   }
 
   const camp = b.camping || {};
-  const infoLink = document.getElementById("bCampInfoLink");
   // info_url이 있으면 고캠핑의 canonical 상세 페이지를 우선한다.
   // source_url은 구버전 응답을 위한 호환 fallback으로만 사용한다.
   const infoUrl = _publicHttpUrl(camp.info_url) || _publicHttpUrl(camp.source_url);
-  if (infoLink) {
-    if (infoUrl) {
-      infoLink.href = infoUrl;
-      infoLink.title = "고캠핑에서 이 캠핑장 상세 보기";
-      infoLink.setAttribute("aria-label", "고캠핑에서 이 캠핑장 상세 보기");
-      infoLink.classList.remove("is-disabled");
-      infoLink.removeAttribute("aria-disabled");
-      infoLink.tabIndex = 0;
-    } else {
-      infoLink.removeAttribute("href");
-      infoLink.removeAttribute("title");
-      infoLink.removeAttribute("aria-label");
-      infoLink.classList.add("is-disabled");
-      infoLink.setAttribute("aria-disabled", "true");
-      infoLink.tabIndex = -1;
-    }
-  }
   const sites = [
     ["일반 야영", camp.general_site_count ?? b.camping_general_site_count, "general"],
     ["오토 캠핑", camp.auto_site_count ?? b.camping_auto_site_count, "auto"],
@@ -5815,12 +5797,15 @@ function _renderCampingSection(b){
   body.innerHTML = `
     ${camp.summary || camp.intro ? `<div class="camp-intro">${escapeHtml(camp.summary || camp.intro)}</div>` : ""}
     <div class="camp-quick-actions">
-      ${camp.phone
-        ? `<a class="camp-contact-btn" href="tel:${escapeHtml(camp.phone)}">☎️ <span>${escapeHtml(camp.phone)}</span></a>`
-        : `<span class="camp-contact-btn is-disabled" aria-disabled="true">☎️ <span>전화번호 없음</span></span>`}
+      ${infoUrl
+        ? `<a class="camp-contact-btn camp-gocamping-btn" href="${escapeHtml(infoUrl)}" target="_blank" rel="noopener noreferrer" title="고캠핑에서 이 캠핑장 상세 보기">⛺ <span>고캠핑</span></a>`
+        : `<span class="camp-contact-btn camp-gocamping-btn is-disabled" aria-disabled="true" title="고캠핑 상세페이지가 등록되지 않았습니다">⛺ <span>고캠핑</span></span>`}
       ${camp.homepage_url && _publicHttpUrl(camp.homepage_url)
         ? `<a class="camp-contact-btn camp-homepage-btn" href="${escapeHtml(_publicHttpUrl(camp.homepage_url))}" target="_blank" rel="noopener noreferrer">🏠 <span>홈페이지</span></a>`
         : `<span class="camp-contact-btn camp-homepage-btn is-disabled" aria-disabled="true" title="홈페이지가 등록되지 않았습니다">🏠 <span>홈페이지</span></span>`}
+      ${camp.phone
+        ? `<a class="camp-contact-btn camp-phone-btn" href="tel:${escapeHtml(camp.phone)}" title="${escapeHtml(camp.phone)}" aria-label="전화번호 ${escapeHtml(camp.phone)}로 전화">☎️ <span>전화번호</span></a>`
+        : `<span class="camp-contact-btn camp-phone-btn is-disabled" aria-disabled="true" title="전화번호가 등록되지 않았습니다">☎️ <span>전화번호</span></span>`}
     </div>
     ${camp.address ? `<dl class="camp-contact"><div><dt>주소</dt><dd>${escapeHtml(camp.address)}</dd></div></dl>` : ""}
     ${chips.length ? `<div class="camp-chips">${chips.map(item =>
@@ -6039,10 +6024,7 @@ function buildingPanelSkeleton(buildingId){
     </section>
 
     <section class="side-card" id="bCampCard" style="display:none;">
-      <div class="side-card-title">캠핑장 안내
-        <a id="bCampInfoLink" class="b-source-link is-disabled" target="_blank"
-           rel="noopener noreferrer" aria-disabled="true" tabindex="-1">고캠핑</a>
-      </div>
+      <div class="side-card-title">캠핑장 안내</div>
       <div id="bCampBody"></div>
     </section>
 

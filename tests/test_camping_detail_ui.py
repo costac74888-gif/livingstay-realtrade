@@ -43,9 +43,13 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('card.style.display = "none"', self.main_source)
         self.assertIn("function _campingAnimalLabel(value)", self.main_source)
         self.assertIn("`반려동물 동반 ${policy}`", self.main_source)
-        self.assertIn('id="bCampInfoLink"', self.main_source)
+        self.assertNotIn('id="bCampInfoLink"', self.main_source)
+        self.assertIn("camp-gocamping-btn", self.main_source)
         self.assertNotIn("캠핑장 예약 페이지 열기 ↗", self.main_source)
-        self.assertIn('infoLink.href = infoUrl', self.main_source)
+        self.assertIn(
+            'class="camp-contact-btn camp-gocamping-btn" href="${escapeHtml(infoUrl)}"',
+            self.main_source,
+        )
         self.assertIn('고캠핑에서 이 캠핑장 상세 보기', self.main_source)
         self.assertIn('class="camp-gocamping-chip"', self.main_source)
         self.assertIn('href="${escapeHtml(infoUrl)}"', self.main_source)
