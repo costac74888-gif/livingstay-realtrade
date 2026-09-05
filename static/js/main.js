@@ -3317,11 +3317,14 @@ function paintDataLabTourismMap(data, key){
   const sortedValues = [...values].sort((a, b) => a - b);
   const percentileMax = sortedValues[Math.max(0, Math.ceil(sortedValues.length * .95) - 1)] || scaleMax;
   const maxValue = Math.max(1, Math.min(scaleMax, percentileMax));
-  const minDiameter = 72;
-  const maxDiameter = 172;
   const ranked = [...items].sort((a, b) => valueOf(b) - valueOf(a));
+  const compactMap = window.matchMedia("(max-width: 980px)").matches;
+  const minDiameter = compactMap ? 36 : 72;
+  const maxDiameter = compactMap ? 118 : 172;
+  // 큰 원부터 먼저 그려 작은 지역이 아래에 가려지지 않게 한다.
+  const renderItems = [...items].sort((a, b) => valueOf(b) - valueOf(a));
   const requestId = ++dataLabTourismRequest;
-  items.forEach(item => {
+  renderItems.forEach(item => {
     if (requestId !== dataLabTourismRequest) return;
     const value = Math.max(0, valueOf(item));
     const ratio = Math.max(0, Math.min(1, value / maxValue));
@@ -3335,7 +3338,11 @@ function paintDataLabTourismMap(data, key){
     bubble.dataset.palette = metric.palette;
     bubble.setAttribute("aria-label", `${name}, ${metric.format(value)}, ${metric.meaning}`);
     bubble.title = `${name} · ${metric.format(value)}`;
-    bubble.innerHTML = `<span class="datalab-map-bubble-name">${escapeHtml(item.sgg || item.sido || "지역 미상")}</span><span class="datalab-map-bubble-value">${escapeHtml(metric.format(value))}</span>`;
+    const showLabel = !compactMap || rank <= 25;
+    bubble.classList.toggle("is-unlabeled", !showLabel);
+    bubble.innerHTML = showLabel
+      ? `<span class="datalab-map-bubble-name">${escapeHtml(item.sgg || item.sido || "지역 미상")}</span><span class="datalab-map-bubble-value">${escapeHtml(metric.format(value))}</span>`
+      : "";
     const position = new kakao.maps.LatLng(Number(item.lat), Number(item.lng));
     const overlay = new kakao.maps.CustomOverlay({ position, content: bubble, yAnchor: 0.5, zIndex: 30 });
     const showInfo = (select = true) => {
@@ -3355,13 +3362,15 @@ function paintDataLabTourismMap(data, key){
       dataLabTourismInfoOverlay.setMap(kakaoMap);
     };
      bubble.addEventListener("click", () => showInfo(true));
-     bubble.addEventListener("mouseenter", () => showInfo(false));
-     bubble.addEventListener("mouseleave", () => {
-       if (!bubble.classList.contains("is-selected") && dataLabTourismInfoOverlay) {
-         dataLabTourismInfoOverlay.setMap(null);
-         dataLabTourismInfoOverlay = null;
-       }
-     });
+     if (window.matchMedia("(hover: hover)").matches) {
+       bubble.addEventListener("mouseenter", () => showInfo(false));
+       bubble.addEventListener("mouseleave", () => {
+         if (!bubble.classList.contains("is-selected") && dataLabTourismInfoOverlay) {
+           dataLabTourismInfoOverlay.setMap(null);
+           dataLabTourismInfoOverlay = null;
+         }
+       });
+     }
      bubble.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showInfo(true); } });
     overlay.setMap(kakaoMap);
     dataLabTourismOverlays.push(overlay);
@@ -3625,6 +3634,27 @@ function bindDataLabControls(content){
   });
 }
 
+function showTourismMapOnMobile(key){
+  if (!DATA_LAB_TOURISM_KEYS.has(key) || !window.matchMedia("(max-width: 980px)").matches) return;
+  const panel = document.querySelector(".side-panel");
+  const toggle = document.getElementById("btnTogglePanel");
+  if (!panel || !toggle) return;
+  toggle.dataset.tourismMapActive = "true";
+  if (panel.classList.contains("open")) toggle.click();
+  toggle.innerHTML = '☰ <span class="htoggle-label">데이터랩</span>';
+  toggle.setAttribute("aria-label", "관광 데이터랩 패널 열기");
+}
+
+function resetTourismMapMobileToggle(){
+  const toggle = document.getElementById("btnTogglePanel");
+  if (!toggle || toggle.dataset.tourismMapActive !== "true") return;
+  delete toggle.dataset.tourismMapActive;
+  if (window.matchMedia("(max-width: 980px)").matches) {
+    toggle.innerHTML = '☰ <span class="htoggle-label">목록</span>';
+    toggle.setAttribute("aria-label", "목록 패널 전환");
+  }
+}
+
 async function loadDataLab(key, option = "up", {
   background = false,
   forceRefresh = false,
@@ -3632,6 +3662,7 @@ async function loadDataLab(key, option = "up", {
   const content = document.getElementById("dataLabContent");
   if (!content) return;
   clearDataLabTourismMap();
+  if (!DATA_LAB_TOURISM_KEYS.has(key)) resetTourismMapMobileToggle();
   const requestId = ++dataLabRequestSequence;
   setDataLabActive(key);
   const urls = {
@@ -3666,7 +3697,10 @@ async function loadDataLab(key, option = "up", {
   if (!forceRefresh && cached && Date.now() - cached.ts < cacheTtl) {
     content.innerHTML = renders[key](cached.data);
     bindDataLabControls(content);
-    if (DATA_LAB_TOURISM_KEYS.has(key)) paintDataLabTourismMap(cached.data, key);
+    if (DATA_LAB_TOURISM_KEYS.has(key)) {
+      paintDataLabTourismMap(cached.data, key);
+      showTourismMapOnMobile(key);
+    }
     return;
   }
   if (dataLabFetchController) dataLabFetchController.abort();
@@ -3683,7 +3717,10 @@ async function loadDataLab(key, option = "up", {
     dataLabResponseCache.set(cacheKey, { ts: Date.now(), data });
     content.innerHTML = renders[key](data);
     bindDataLabControls(content);
-    if (DATA_LAB_TOURISM_KEYS.has(key)) paintDataLabTourismMap(data, key);
+    if (DATA_LAB_TOURISM_KEYS.has(key)) {
+      paintDataLabTourismMap(data, key);
+      showTourismMapOnMobile(key);
+    }
   } catch (error) {
     if (error.name === "AbortError") return;
     if (requestId !== dataLabRequestSequence) return;

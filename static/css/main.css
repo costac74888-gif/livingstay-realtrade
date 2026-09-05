@@ -690,6 +690,7 @@
   .datalab-map-bubble:focus-visible{outline:3px solid #F4C56B; outline-offset:3px;}
   .datalab-map-bubble-name{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 clamp(12px,1.25vw,15px)/1.15 'Noto Sans KR',sans-serif; text-shadow:0 1px 3px rgba(38,25,45,.72);}
   .datalab-map-bubble-value{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 clamp(11px,1.2vw,14px)/1.15 'Noto Sans KR',sans-serif; letter-spacing:-.04em; text-shadow:0 1px 3px rgba(38,25,45,.76);}
+  .datalab-map-bubble.is-unlabeled{padding:0; pointer-events:auto;}
   .datalab-map-info{min-width:184px; padding:10px 11px; border:1px solid #DAD2C4; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(38,45,48,.18); color:var(--ink); font-size:10.5px; line-height:1.55; transform:translateY(-10px);}
   .datalab-map-info strong{display:block; font-size:12px; margin-bottom:2px;}
   .datalab-map-info span{display:block; color:var(--ink-soft);}
@@ -778,6 +779,12 @@
     }
     /* 패널 오픈 시 하단까지 전체 높이 사용 — 관심저장·실거래 등 모든 섹션 스크롤 가능 */
     .side-panel.open{transform:translateX(0); bottom:var(--stage-gap);}
+    .map-list-toggle[data-tourism-map-active="true"]{
+      background:#5B55BC;
+      box-shadow:0 4px 16px rgba(74,68,166,.35);
+    }
+    .datalab-map-bubble-name{font-size:11px;}
+    .datalab-map-bubble-value{font-size:10px;}
     .panel-toggle{
       display:inline-flex; align-items:center; gap:6px;
       position:absolute; left:var(--stage-gap); bottom:var(--stage-gap); z-index:30;

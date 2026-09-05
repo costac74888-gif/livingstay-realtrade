@@ -62,12 +62,18 @@ expect(
   "관광 열지도 API 연결 또는 탭 전환 정리 로직이 없습니다."
 );
 expect(
-  main.includes("const minDiameter = 72") &&
-  main.includes("const maxDiameter = 172") &&
+  main.includes("compactMap ? 36 : 72") &&
+  main.includes("compactMap ? 118 : 172") &&
   main.includes("Math.sqrt(ratio)") &&
   main.includes("외국인 ${Math.round(n / 10000)") &&
   main.includes("도내 소비 ${n.toLocaleString"),
   "관광 열지도 원 크기 비례 또는 지표별 큰 숫자 표기가 없습니다."
+);
+expect(
+  main.includes("rank <= 25") &&
+  main.includes('window.matchMedia("(hover: hover)")') &&
+  main.includes('bubble.classList.toggle("is-unlabeled"'),
+  "모바일 열지도 라벨 밀도 또는 터치 전용 상세정보 처리가 없습니다."
 );
 expect(
   css.includes('[data-palette="domestic"]') &&
@@ -76,6 +82,16 @@ expect(
   css.includes(".datalab-map-bubble-name") &&
   css.includes(".datalab-map-bubble-value"),
   "관광 열지도 지표별 색상 또는 원 내부 가독성 스타일이 없습니다."
+);
+expect(
+  main.includes("function showTourismMapOnMobile(key)") &&
+  main.includes('window.matchMedia("(max-width: 980px)")') &&
+  main.includes('toggle.dataset.tourismMapActive = "true"') &&
+  main.includes('toggle.click()') &&
+  main.includes('>데이터랩</span>') &&
+  css.includes('[data-tourism-map-active="true"]') &&
+  header.includes('listToggleBtn.dataset.tourismMapActive === "true"'),
+  "모바일 관광 열지도에서 패널을 닫고 다시 여는 동작이 없습니다."
 );
 
 expect(main.includes('const HS_RECENT_KEY = "hs_recent_buildings"'), "최근검색 localStorage 키가 바뀌었습니다.");
@@ -264,6 +280,8 @@ async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
     dataLabLoadingHTML: () => "로딩",
     dataLabErrorHTML: () => "오류",
     clearDataLabTourismMap: () => {},
+    resetTourismMapMobileToggle: () => {},
+    showTourismMapOnMobile: () => {},
     DATA_LAB_TOURISM_KEYS: new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]),
     paintDataLabTourismMap: () => {},
     renderDataLabLodging: () => "",

@@ -193,8 +193,15 @@
         panel.classList.toggle("open", open);
         listToggleBtn.innerHTML = open
           ? '✕ <span class="htoggle-label">닫기</span>'
-          : '☰ <span class="htoggle-label">목록</span>';
-        listToggleBtn.setAttribute("aria-label", open ? "목록 패널 닫기" : "목록 패널 열기");
+          : (listToggleBtn.dataset.tourismMapActive === "true"
+            ? '☰ <span class="htoggle-label">데이터랩</span>'
+            : '☰ <span class="htoggle-label">목록</span>');
+        listToggleBtn.setAttribute(
+          "aria-label",
+          open
+            ? "목록 패널 닫기"
+            : (listToggleBtn.dataset.tourismMapActive === "true" ? "관광 데이터랩 패널 열기" : "목록 패널 열기")
+        );
       } else {
         panel.classList.remove("open");
         panel.classList.toggle("panel-collapsed", !open);
