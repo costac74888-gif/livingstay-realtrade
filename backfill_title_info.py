@@ -38,7 +38,7 @@ from datetime import datetime
 
 import psycopg2
 
-from db import get_conn, init_db
+from db import get_conn
 from address_utils import BjdongMap, parse_jibun
 from building_registry import (
     _fetch_title_rows,
@@ -318,7 +318,6 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
     """pk_only=True — 보강 모드: 이미 표제부가 채워진 건물도 포함해
     mgm_bldrgst_pk IS NULL 인 건물만 대상으로 그 컬럼 하나만 채운다.
     (전체 표제부 재조회 없이 건물관리번호만 추가 확보하는 용도)"""
-    init_db()
     bjdong = BjdongMap(BJDONG_CSV)
     reconnect_state = {"attempts": 0, "successes": 0, "failures": 0}
     conn = None

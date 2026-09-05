@@ -35,6 +35,12 @@ def _title_row():
 
 
 class BackfillReconnectTests(unittest.TestCase):
+    def test_backfill_does_not_repeat_full_schema_initialization(self):
+        with open("backfill_title_info.py", encoding="utf-8") as source_file:
+            source = source_file.read()
+        self.assertNotIn("init_db()", source)
+        self.assertNotIn("from db import get_conn, init_db", source)
+
     def test_disconnect_retries_current_building_without_reprocessing_checkpoint(self):
         """건물 1 커밋 뒤 단절되면 건물 2부터 재시도하고 정상 완료한다."""
         initial_conn = MagicMock()
