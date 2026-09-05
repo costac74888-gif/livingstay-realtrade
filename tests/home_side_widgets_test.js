@@ -95,9 +95,14 @@ expect(
   css.includes('[data-palette="domestic"]') &&
   css.includes('[data-palette="foreign"]') &&
   css.includes('[data-palette="consume"]') &&
+  css.includes("--heat-rgb:37 99 235") &&
+  css.includes("--heat-rgb:124 58 237") &&
+  css.includes("--heat-rgb:239 68 68") &&
+  main.includes('bubble.style.setProperty("--heat-opacity"') &&
+  main.includes("const heatOpacity = .16 + .50 * Math.sqrt(ratio)") &&
   css.includes(".datalab-map-bubble-name") &&
   css.includes(".datalab-map-bubble-value"),
-  "관광 열지도 지표별 색상 또는 원 내부 가독성 스타일이 없습니다."
+  "관광 열지도 지표별 단일 색상 또는 수치 비례 농도 설정이 없습니다."
 );
 expect(
   main.includes("function showTourismMapOnMobile(key)") &&

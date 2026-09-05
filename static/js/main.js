@@ -3392,6 +3392,8 @@ function paintDataLabTourismMap(data, key){
       const value = Math.max(0, valueOf(item));
       const ratio = Math.max(0, Math.min(1, value / maxValue));
       const size = Math.round(minDiameter + (maxDiameter - minDiameter) * Math.sqrt(ratio));
+      const heatOpacity = .16 + .50 * Math.sqrt(ratio);
+      const heatHoverOpacity = Math.min(.82, heatOpacity + .16);
       const memberCount = Number(item.member_count || 1);
       const name = memberCount > 1
         ? `${item.sido || "지역"} ${memberCount}개 시군구`
@@ -3402,6 +3404,8 @@ function paintDataLabTourismMap(data, key){
       bubble.type = "button";
       bubble.className = "datalab-map-bubble";
       bubble.style.setProperty("--heat-diameter", `${size}px`);
+      bubble.style.setProperty("--heat-opacity", heatOpacity.toFixed(3));
+      bubble.style.setProperty("--heat-hover-opacity", heatHoverOpacity.toFixed(3));
       bubble.dataset.palette = metric.palette;
       bubble.dataset.clusterCount = String(memberCount);
       bubble.setAttribute("aria-label", `${name}, ${metric.format(value)}, ${metric.meaning}`);
