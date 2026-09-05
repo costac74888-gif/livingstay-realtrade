@@ -4021,7 +4021,7 @@ function bindDataLabControls(content){
   content.querySelectorAll("[data-datalab-price-order]").forEach(button => {
     button.addEventListener("click", () => loadDataLab("highest", button.dataset.datalabPriceOrder));
   });
-  content.querySelectorAll("[data-surge-mode]").forEach(button => {
+  content.querySelectorAll("button[data-surge-mode]").forEach(button => {
     button.addEventListener("click", () => {
       dataLabSurgeMode = button.dataset.surgeMode;
       const cached = dataLabResponseCache.get("visitor_surge:up");

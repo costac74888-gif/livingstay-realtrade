@@ -78,3 +78,4 @@
 - [숙박 운영자 승인 단위](lodging-operator-approval-integrity.md) — 운영자는 신고 원장 1건당 1명만 승인하며, 입력 문자열이 아닌 정규 원장 ID로 중복을 막는다.
 - [관광 데이터랩 열지도 격리](tourism-heatmap-isolation.md) — 방문·소비·고캠핑 데이터랩 원본은 지도 참고용이며 기존 숙박·캠핑 통계 산식과 수치를 바꾸지 않는다.
 - [분양 공개·프로모션 상태 분리](presale-publication-promotion.md) — 분양 진행, 공개, 유료 노출은 별도 상태이며 공개 API는 현재 승인 기간을 서버 시각으로 판정한다.
+- [JS 소스 추출 테스트](js-source-extraction-tests.md) — 함수 본문을 VM 테스트로 추출할 때 접두 이름이 아닌 전체 시그니처로 시작점을 고정한다.

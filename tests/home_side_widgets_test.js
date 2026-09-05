@@ -49,12 +49,13 @@ expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습�
 });
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
-  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge",
-  "기존 데이터랩 6개와 관광 열지도 3개, 급등동네 탭 순서가 아닙니다."
+  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,presale,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge",
+  "기존 데이터랩 6개와 관광 열지도 3개, 급등동네·분양 탭 순서가 아닙니다."
 );
 expect(
   main.includes("/api/tourism/surge/domestic") &&
   main.includes("/api/tourism/surge/foreign") &&
+  main.includes('querySelectorAll("button[data-surge-mode]")') &&
   main.includes("function renderDataLabSurge") &&
   main.includes("function paintDataLabSurgeMap") &&
   main.includes("현재 방문객") &&
@@ -298,7 +299,7 @@ expect(
 );
 
 async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
-  const sourceStart = main.indexOf("async function loadDataLab");
+  const sourceStart = main.indexOf("async function loadDataLab(key");
   const sourceEnd = main.indexOf("\nfunction initDataLab", sourceStart);
   expect(sourceStart >= 0 && sourceEnd > sourceStart, "데이터랩 로더를 동작 검증에 분리할 수 없습니다.");
 
@@ -333,6 +334,7 @@ async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
     dataLabLoadingHTML: () => "로딩",
     dataLabErrorHTML: () => "오류",
     clearDataLabTourismMap: () => {},
+    clearPresaleOverlays: () => {},
     resetTourismMapMobileToggle: () => {},
     showTourismMapOnMobile: () => {},
     DATA_LAB_TOURISM_KEYS: new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]),
