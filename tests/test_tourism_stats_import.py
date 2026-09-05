@@ -1,5 +1,7 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import import_tourism_stats as importer
 
@@ -50,6 +52,64 @@ class TourismStatsImporterTests(unittest.TestCase):
             importer.detect_type("관광숙박_검색순위_202601-202602.csv"),
             "lodging_search_rank",
         )
+        self.assertEqual(
+            importer.detect_type(
+                "20260905141202_지역별_관광지_검색순위.csv"
+            ),
+            "search_ranking",
+        )
+
+    def test_generic_ranking_filename_is_promoted_only_when_all_rows_are_lodging(self):
+        lodging_rows = [
+            {
+                "순위": "1",
+                "광역시/도": "서울특별시",
+                "시/군/구": "중구",
+                "관광지ID": "hotel-1",
+                "관광지명": "테스트호텔",
+                "중분류 카테고리": "숙박",
+                "소분류 카테고리": "호텔",
+                "검색건수": "100",
+            }
+        ]
+        self.assertEqual(
+            importer.detect_type_from_rows(
+                "지역별 관광지 검색순위.csv", lodging_rows
+            ),
+            "lodging_search_rank",
+        )
+        mixed_rows = lodging_rows + [
+            {
+                **lodging_rows[0],
+                "관광지ID": "airport-1",
+                "관광지명": "테스트공항",
+                "중분류 카테고리": "교통",
+            }
+        ]
+        self.assertEqual(
+            importer.detect_type_from_rows(
+                "지역별 관광지 검색순위.csv", mixed_rows
+            ),
+            "search_ranking",
+        )
+
+    def test_duplicate_datalab_ids_with_distinct_aliases_are_preserved(self):
+        header = (
+            "순위,광역시/도,시/군/구,관광지ID,관광지명,"
+            "중분류 카테고리,소분류 카테고리,검색건수\n"
+        )
+        body = (
+            "1,인천광역시,중구,same-id,파라다이스시티호텔,숙박,호텔,200\n"
+            "2,인천광역시,영종구,same-id,파라다이스시티호텔,숙박,호텔,100\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "지역별 관광지 검색순위.csv"
+            path.write_text(header + body, encoding="utf-8-sig")
+            rows, skipped = importer.build_rows([path])
+        self.assertEqual(skipped, [])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row[0] for row in rows}, {"lodging_search_rank"})
+        self.assertNotEqual(rows[0][10], rows[1][10])
 
     def test_lodging_rank_shape_is_canonical_and_hash_ignores_row_order(self):
         first = importer.build_lodging_rank_row(

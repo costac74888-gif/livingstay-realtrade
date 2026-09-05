@@ -169,15 +169,25 @@ def build_lodging_rank_row(row, source_file, period, row_index=None):
         for key in ("datalab_id", "place_name", "sub_category", "mid_category", "search_count")
     }
     datalab_id = dimensions["datalab_id"]
-    identity_key = datalab_id or [
-        "row",
-        row_index,
-        normalize_place_name(sido) or "",
-        normalize_place_name(sgg) or "",
-        normalize_place_name(place_name) or "",
-        normalize_place_name(dimensions["mid_category"]) or "",
-        normalize_place_name(dimensions["sub_category"]) or "",
-    ]
+    identity_key = (
+        [
+            "id",
+            datalab_id,
+            normalize_place_name(sido) or "",
+            normalize_place_name(sgg) or "",
+            normalize_place_name(place_name) or "",
+        ]
+        if datalab_id
+        else [
+            "row",
+            row_index,
+            normalize_place_name(sido) or "",
+            normalize_place_name(sgg) or "",
+            normalize_place_name(place_name) or "",
+            normalize_place_name(dimensions["mid_category"]) or "",
+            normalize_place_name(dimensions["sub_category"]) or "",
+        ]
+    )
     identity = json.dumps(
         [source_file, "lodging_search_rank", identity_key],
         ensure_ascii=False,
@@ -191,10 +201,35 @@ def build_lodging_rank_row(row, source_file, period, row_index=None):
 
 
 def detect_type(filename):
+    normalized_filename = re.sub(r"[\s_-]+", "", filename)
     for needle, stat_type in TYPE_RULES:
-        if needle in filename:
+        if re.sub(r"[\s_-]+", "", needle) in normalized_filename:
             return stat_type
     return None
+
+
+def detect_type_from_rows(filename, rows):
+    """Promote generic ranking exports only when every row is lodging-only."""
+    stat_type = detect_type(filename)
+    if stat_type != "search_ranking" or not rows:
+        return stat_type
+    categories = [
+        normalize_place_name(lodging_rank_value(row, "mid_category"))
+        for row in rows
+    ]
+    required_values_present = all(
+        lodging_rank_value(row, "place_name")
+        and lodging_rank_value(row, "rank")
+        and lodging_rank_value(row, "datalab_id")
+        for row in rows
+    )
+    if (
+        required_values_present
+        and categories
+        and all(category in {"숙박", "관광숙박"} for category in categories)
+    ):
+        return "lodging_search_rank"
+    return stat_type
 
 
 def source_period(path):
@@ -253,21 +288,24 @@ def generic_fields(stat_type, row):
 def build_rows(paths):
     output = []
     skipped = []
+    lodging_hashes = set()
     for outer, filename, raw in iter_csvs(paths):
-        stat_type = detect_type(filename)
+        text = raw.decode("utf-8-sig")
+        csv_rows = list(csv.DictReader(io.StringIO(text)))
+        stat_type = detect_type_from_rows(filename, csv_rows)
         if not stat_type:
             skipped.append(filename)
             continue
-        text = raw.decode("utf-8-sig")
         period = source_period(outer)
         source_file = f"{outer.name}::{filename}"
-        for row_index, row in enumerate(csv.DictReader(io.StringIO(text)), 2):
+        for row_index, row in enumerate(csv_rows, 2):
             if stat_type == "lodging_search_rank":
                 lodging_row = build_lodging_rank_row(
                     row, source_file, period, row_index=row_index
                 )
-                if lodging_row:
+                if lodging_row and lodging_row[10] not in lodging_hashes:
                     output.append(lodging_row)
+                    lodging_hashes.add(lodging_row[10])
                 continue
             sido, sgg, ref, metrics = generic_fields(stat_type, row)
             sido, sgg = normalize_region(sido, sgg)
