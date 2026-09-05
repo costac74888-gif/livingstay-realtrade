@@ -3297,7 +3297,7 @@ let presaleRequestSequence = 0;
 function renderDataLabPresale(data){
   const regions = Array.isArray(data?.regions) ? data.regions : [];
   const total = Number(data?.total || 0);
-  const registerNotice = '<a class="presale-register-notice" href="/apply/presale">현재 분양중이라면 분양 정보를 등록해 주세요 →</a>';
+  const registerNotice = '<a class="presale-register-notice" href="/apply/presale">준공전 건물 중 실제 분양중이라면 분양 정보를 등록해 주세요 →</a>';
   if (!regions.length) return `${registerNotice}<div class="side-empty">준공전 건물이 없습니다.</div>`;
   const rows = regions.map(item => {
     const count = Number(item.building_count || 0);
@@ -3306,7 +3306,7 @@ function renderDataLabPresale(data){
   }).join("");
   return `
     <div class="datalab-heading">
-      <strong>P 준공전 현황</strong><span class="datalab-caption">사용승인 전 건물</span>
+      <strong>준공전 현황</strong><span class="datalab-caption">허가·착공 후 사용승인 전</span>
     </div>
     ${registerNotice}
     <div class="datalab-table-wrap presale-table-wrap">
