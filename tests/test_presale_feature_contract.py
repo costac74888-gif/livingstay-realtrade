@@ -14,7 +14,7 @@ class PresaleFeatureContractTests(unittest.TestCase):
         cls.start = Path("scripts/start-prod.sh").read_text(encoding="utf-8")
 
     def test_schema_and_production_boot_ensure_presale_tables(self):
-        self.assertIn('SCHEMA_VERSION = "2026-09-05-08"', self.db)
+        self.assertIn('SCHEMA_VERSION = "2026-09-05-09"', self.db)
         for table in ("presale_projects", "presale_promotions", "presale_applications", "presale_audit_log"):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table}", self.db)
         self.assertIn("ensure_presale_schema.py", self.start)
@@ -29,6 +29,9 @@ class PresaleFeatureContractTests(unittest.TestCase):
         self.assertIn('id="presaleApplicationForm"', page)
         self.assertIn('name="privacy_consent"', page)
         self.assertIn('name="evidence"', page)
+        self.assertNotIn('name="unit_count"', page)
+        self.assertNotIn('name="price_min"', page)
+        self.assertIn('name="applicant_role"', page)
         self.assertIn('fetch("/api/presale/applications"', page)
 
     def test_public_queries_use_real_precompletion_rule_and_allowlist(self):
@@ -64,8 +67,8 @@ class PresaleFeatureContractTests(unittest.TestCase):
         self.assertIn('@app.route("/api/presale/applications", methods=["POST"])', self.app)
         self.assertIn('@app.route("/api/admin/presale/applications")', self.app)
         self.assertIn("/review\", methods=[\"POST\"]", self.app)
-        self.assertIn('"status": "draft"', self.app)
-        self.assertIn("project_created_from_application", self.app)
+        self.assertIn('"status": "published"', self.app)
+        self.assertIn("public_banner_created_from_application", self.app)
         self.assertGreaterEqual(self.app.count("NULLIF(use_apr_day,'') IS NULL FOR UPDATE"), 3)
         self.assertNotIn('presale_applications a JOIN', self.app[self.app.index("def presale_stats"):self.app.index("def building_presale")])
 

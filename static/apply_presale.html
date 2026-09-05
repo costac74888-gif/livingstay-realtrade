@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>분양 정보 등록 안내 | 홈앤스테이</title>
-  <meta name="description" content="홈앤스테이에 준공 전 숙박 건물의 분양 정보를 등록하기 위한 안내입니다.">
+  <title>분양사 등록신청 | 홈앤스테이</title>
+  <meta name="description" content="선택한 준공 전 건물의 건축주·시행사 파트너 등록신청입니다.">
   <link rel="icon" href="/static/img/favicon.ico">
   <link rel="stylesheet" href="/static/css/main.css">
   <style>
@@ -21,13 +21,6 @@
     .presale-context{min-height:66px;margin-top:28px;padding:15px 17px;background:#fff;border:1px solid #e4dfd4;border-radius:10px;color:var(--ink);font-size:13px;line-height:1.6}
     .presale-context.is-loading{color:var(--ink-soft)}
     .presale-context strong{display:block;font-size:14px}
-    .presale-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
-    .presale-card{padding:22px;background:#fff;border:1px solid #e4dfd4;border-radius:12px;box-shadow:0 4px 16px rgba(32,37,42,.045)}
-    .presale-card h2{margin:0 0 11px;font-size:16px;color:var(--ink)}
-    .presale-card p{margin:0;color:var(--ink-soft);font-size:13px;line-height:1.7}
-    .presale-checklist{display:grid;gap:9px;margin:15px 0 0;padding:0;list-style:none}
-    .presale-checklist li{position:relative;padding-left:18px;color:var(--ink);font-size:13px;line-height:1.5}
-    .presale-checklist li::before{content:"";position:absolute;left:0;top:.53em;width:7px;height:7px;border:1.5px solid var(--brass);border-radius:2px}
     .presale-notice{margin-top:14px;padding:14px 15px;border-left:3px solid var(--brass);background:#fbf6ed;color:#5d4b32;font-size:12.5px;line-height:1.7}
     .presale-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:25px}
     .presale-button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 18px;border-radius:8px;background:var(--ink);color:#fff;text-decoration:none;font-size:13px;font-weight:700}
@@ -36,12 +29,13 @@
     .presale-footnote{margin-top:18px;color:var(--ink-soft);font-size:11.5px;line-height:1.65}
     .presale-form{margin-top:22px;padding:24px;background:#fff;border:1px solid #e4dfd4;border-radius:12px}
     .presale-form h2{margin:0 0 6px;font-size:20px}.presale-form-note{margin:0 0 20px;color:var(--ink-soft);font-size:13px;line-height:1.6}
+    .form-section-title{grid-column:1/-1;margin:8px 0 0;padding-top:18px;border-top:1px solid #ece8df;color:var(--brass-dark);font-size:13px;font-weight:800}.form-section-title:first-child{padding-top:0;border-top:0}
     .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{display:grid;gap:6px;color:var(--ink);font-size:12px;font-weight:700}.field.wide{grid-column:1/-1}
     .field input,.field select,.field textarea{box-sizing:border-box;width:100%;padding:10px 11px;border:1px solid #d9d5cc;border-radius:7px;background:#fff;color:var(--ink);font:inherit;font-weight:400}
     .field small{color:var(--ink-soft);font-weight:400;line-height:1.45}.consent{display:flex;gap:9px;align-items:flex-start;margin:18px 0;color:var(--ink-soft);font-size:12px;line-height:1.55}
     .consent input{margin-top:3px}.submit-row{display:flex;align-items:center;gap:13px;flex-wrap:wrap}.submit-row button{border:0;cursor:pointer}.submit-row button:disabled{opacity:.55;cursor:wait}
     #presaleResult{font-size:13px;line-height:1.55}.is-error{color:#a32820}.is-success{color:#1a6b3d}
-    @media(max-width:680px){.presale-grid,.form-grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.presale-header{padding:12px 16px}.presale-main{width:min(100% - 24px,920px);padding-top:32px}.presale-card,.presale-form{padding:18px}.presale-main h1{font-size:32px}}
+    @media(max-width:680px){.form-grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.presale-header{padding:12px 16px}.presale-main{width:min(100% - 24px,920px);padding-top:32px}.presale-form{padding:18px}.presale-main h1{font-size:32px}}
   </style>
 </head>
 <body>
@@ -55,60 +49,36 @@
     </header>
     <main class="presale-main">
       <p class="presale-kicker">HOME &amp; STAY · PRESALE</p>
-      <h1>준공 전 숙박 건물의<br>분양 정보를 준비해 주세요</h1>
-      <p class="presale-lede">검증된 건물 정보와 함께 프로젝트를 등록하면, 관리자가 내용을 확인한 뒤 홈앤스테이 공개 정보와 분양 프로모션을 검토합니다.</p>
+      <h1>준공 전 분양 정보 등록</h1>
+      <p class="presale-lede">선택한 건물의 건축주·시행사는 분양사 파트너 등록을 요청할 수 있습니다. 별도의 분양 프로젝트 정보는 입력하지 않습니다.</p>
       <section id="presaleContext" class="presale-context is-loading" aria-live="polite">건물 정보를 확인하는 중입니다.</section>
-      <div class="presale-grid">
-        <section class="presale-card" aria-labelledby="presalePrepareTitle">
-          <h2 id="presalePrepareTitle">미리 준비할 정보</h2>
-          <p>아래 자료를 정리해 두면 검토가 빠르고 정확합니다.</p>
-          <ul class="presale-checklist">
-            <li>프로젝트명, 프로젝트 유형, 현재 분양 상태</li>
-            <li>총 세대수와 잔여 세대수</li>
-            <li>분양가 범위와 가격 단위(만원)</li>
-            <li>입주 예정일, 회사명, 담당자 이름과 전화번호</li>
-            <li>소개 문구와 사용할 배너 이미지 또는 슬로건</li>
-            <li>확인 가능한 HTTPS 홈페이지 주소</li>
-          </ul>
-        </section>
-        <section class="presale-card" aria-labelledby="presaleProcessTitle">
-          <h2 id="presaleProcessTitle">등록 후 진행</h2>
-          <p>아래 신청서를 제출하면 관리자만 자료를 확인합니다. 승인 시 비공개 프로젝트 초안으로 전환되며, 별도 공개 검토 전에는 사이트에 표시되지 않습니다.</p>
-          <div class="presale-notice">유료 프로모션은 관리자 승인과 정해진 광고 기간이 모두 확정된 뒤에만 활성화됩니다. 검토 전에는 공개 또는 광고가 시작되지 않습니다.</div>
-        </section>
-      </div>
+      <div class="presale-notice">관리자 승인 후 선택한 건물에 분양 안내 배너가 노출됩니다. 홈페이지가 있으면 해당 홈페이지로, 없으면 홈앤스테이 마이페이지로 연결됩니다. 청약홈 정보가 확인되면 별도 확인 뱃지를 부여할 수 있으며, 매칭되지 않아도 승인에는 문제가 없습니다.</div>
       <form id="presaleApplicationForm" class="presale-form" enctype="multipart/form-data">
-        <h2>분양 정보 검토 신청</h2>
-        <p class="presale-form-note">담당자 정보와 증빙은 심사 목적으로만 사용하며 공개 프로젝트 응답에 포함하지 않습니다. * 표시는 필수입니다.</p>
+        <h2>분양사 파트너 등록신청</h2>
+        <p class="presale-form-note">공통 파트너 등록 순서에 맞춰 업체, 담당자, 연결 정보를 입력합니다. 담당자 정보와 증빙은 관리자 심사에만 사용합니다. * 표시는 필수입니다.</p>
         <input type="hidden" name="master_building_id" id="masterBuildingId">
         <div class="form-grid">
-          <label class="field">프로젝트명 *<input name="title" maxlength="160" required></label>
+          <div class="form-section-title">1. 업체 정보</div>
           <label class="field">회사명 *<input name="company_name" maxlength="200" required></label>
-          <label class="field">프로젝트 유형 *<select name="project_type" required><option value="living">생활숙박시설</option><option value="tourist">관광숙박시설</option><option value="officetel">오피스텔</option><option value="mixed">복합</option></select></label>
-          <label class="field">분양 상태 *<select name="project_status" required><option value="presale">분양 중</option><option value="scheduled">분양 예정</option><option value="sold_out">완판</option></select></label>
-          <label class="field">총 세대수<input name="unit_count" type="number" min="1"></label>
-          <label class="field">잔여 세대수<input name="remaining_units" type="number" min="0"></label>
-          <label class="field">최저 분양가 (만원)<input name="price_min" type="number" min="0"></label>
-          <label class="field">최고 분양가 (만원)<input name="price_max" type="number" min="0"></label>
-          <label class="field">분양 시작일<input name="sale_start_date" type="date"></label>
-          <label class="field">분양 종료일<input name="sale_end_date" type="date"></label>
-          <label class="field">입주 예정일<input name="move_in_date" type="date"></label>
-          <label class="field">HTTPS 홈페이지<input name="homepage_url" type="url" maxlength="2048" placeholder="https://example.com"></label>
-          <label class="field wide">프로젝트 요약<textarea name="summary" rows="3" maxlength="2000"></textarea></label>
+          <label class="field">신청자 관계 *<select name="applicant_role" required><option value="">선택해주세요</option><option value="owner">건축주</option><option value="developer">시행사</option></select></label>
+          <div class="form-section-title">2. 담당자 정보</div>
           <label class="field">담당자 이름 *<input name="contact_name" maxlength="100" autocomplete="name" required></label>
           <label class="field">담당자 전화 *<input name="contact_phone" inputmode="tel" maxlength="20" autocomplete="tel" required></label>
           <label class="field wide">담당자 이메일 *<input name="contact_email" type="email" maxlength="255" autocomplete="email" required></label>
+          <div class="form-section-title">3. 홈페이지·배너 연결</div>
+          <label class="field wide">자사 홈페이지 (선택)<input name="homepage_url" type="url" maxlength="2048" placeholder="https://example.com"><small>승인 후 배너가 이 주소로 연결됩니다. 홈페이지가 없으면 홈앤스테이 마이페이지로 연결됩니다.</small></label>
+          <div class="form-section-title">4. 심사 자료</div>
           <label class="field">사업자·시행사 확인 증빙 *<input name="evidence" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required><small>JPG/PNG 이미지, 최대 5MB. 관리자만 열람합니다.</small></label>
-          <label class="field">배너 후보 이미지<input name="banner" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small>선택, 최대 5MB, 320×100 이상. 승인만으로 공개되지 않습니다.</small></label>
+          <label class="field">배너 이미지 (선택)<input name="banner" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small>선택, 최대 5MB, 320×100 이상. 세부 광고 기간은 전화 협의 후 관리자가 설정합니다.</small></label>
         </div>
         <label class="consent"><input name="privacy_consent" value="yes" type="checkbox" required><span>분양 신청 심사와 결과 안내를 위해 회사명, 담당자 이름·전화·이메일 및 첨부 자료를 수집·이용하는 데 동의합니다. 신청 자료는 공개 프로젝트와 분리하여 관리자만 열람합니다.</span></label>
-        <div class="submit-row"><button id="presaleSubmit" class="presale-button" type="submit">검토 신청 제출</button><span id="presaleResult" role="status" aria-live="polite"></span></div>
+        <div class="submit-row"><button id="presaleSubmit" class="presale-button" type="submit">분양사 등록 신청</button><span id="presaleResult" role="status" aria-live="polite"></span></div>
       </form>
       <div class="presale-actions">
         <a id="presaleBackLink" class="presale-button" href="/">선택한 건물로 돌아가기</a>
         <a class="presale-button secondary" href="/partner">파트너 등록 안내</a>
       </div>
-      <p class="presale-footnote">허위 또는 권한 없는 자료를 제출하면 신청이 반려될 수 있습니다. 신청 접수와 프로젝트 공개는 별개이며 자동 결제는 진행되지 않습니다.</p>
+      <p class="presale-footnote">허위 또는 권한 없는 자료를 제출하면 신청이 반려될 수 있습니다. 청약홈 미매칭은 반려 사유가 아니며, 광고 과금은 전화 협의로 진행합니다.</p>
     </main>
   </div>
   <script>

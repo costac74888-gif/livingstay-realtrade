@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS presale_projects (
  publication_start_at TIMESTAMPTZ, publication_end_at TIMESTAMPTZ, title TEXT NOT NULL, summary TEXT,
  unit_count INTEGER, remaining_units INTEGER, price_min BIGINT, price_max BIGINT, -- 가격은 만원(10,000 KRW) 단위
  sale_start_date DATE, sale_end_date DATE, move_in_date DATE,
- contact_name TEXT, contact_phone TEXT, company_name TEXT, editorial_body TEXT,
+ homepage_url TEXT, contact_name TEXT, contact_phone TEXT, company_name TEXT, editorial_body TEXT,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL, updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  withdrawn_at TIMESTAMPTZ, withdrawn_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS presale_applications (
  project_type TEXT NOT NULL CHECK (project_type IN ('living','tourist','officetel','mixed')),
  summary TEXT, unit_count INTEGER, remaining_units INTEGER, price_min BIGINT, price_max BIGINT,
  sale_start_date DATE, sale_end_date DATE, move_in_date DATE,
- company_name TEXT NOT NULL, contact_name TEXT NOT NULL, contact_phone TEXT NOT NULL, contact_email TEXT NOT NULL,
+ company_name TEXT NOT NULL, applicant_role TEXT, contact_name TEXT NOT NULL, contact_phone TEXT NOT NULL, contact_email TEXT NOT NULL,
  homepage_url TEXT, evidence_object_key TEXT NOT NULL, evidence_filename TEXT NOT NULL,
  banner_object_key TEXT, banner_filename TEXT, consent_version TEXT NOT NULL, consented_at TIMESTAMPTZ NOT NULL,
  receipt_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (receipt_notification_status IN ('pending','sent','failed')),
@@ -65,6 +65,8 @@ ALTER TABLE presale_audit_log ADD COLUMN IF NOT EXISTS application_id BIGINT REF
 ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS receipt_notification_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS decision_notification_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS notification_error TEXT;
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS applicant_role TEXT;
+ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS homepage_url TEXT;
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_status TEXT NOT NULL DEFAULT 'presale';
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_type TEXT NOT NULL DEFAULT 'mixed';
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS remaining_units INTEGER;

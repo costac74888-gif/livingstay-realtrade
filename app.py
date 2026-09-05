@@ -31652,7 +31652,7 @@ def admin_feature_tips_update(tip_id):
 _PRESALE_PROJECT_FIELDS = (
     "status", "project_status", "project_type", "publication_start_at", "publication_end_at", "title", "summary",
     "unit_count", "remaining_units", "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date",
-    "contact_name", "contact_phone", "company_name", "editorial_body",
+    "contact_name", "contact_phone", "company_name", "homepage_url", "editorial_body",
 )
 
 
@@ -31687,6 +31687,10 @@ def _presale_project_payload(data, existing=None):
             values[key] = str(values[key]).strip() or None
             if len(values[key] or "") > (12000 if key == "editorial_body" else 2000):
                 raise ValueError(f"{key} 값이 너무 깁니다.")
+    homepage_raw = str(values.get("homepage_url") or "").strip()
+    values["homepage_url"] = _presale_safe_url(homepage_raw) if homepage_raw else None
+    if homepage_raw and not values["homepage_url"]:
+        raise ValueError("홈페이지는 외부에서 확인 가능한 HTTPS 주소만 입력할 수 있습니다.")
     if values["contact_phone"]:
         values["contact_phone"] = re.sub(r"\D", "", values["contact_phone"])
         if not 7 <= len(values["contact_phone"]) <= 15:
@@ -31803,7 +31807,7 @@ def _send_presale_application_email(to_email, company_name, outcome, reason=None
         company = _html.escape(str(company_name or "신청 업체"))
         messages = {
             "received": ("분양 정보 신청이 접수되었습니다.", "관리자가 자료를 검토한 뒤 결과를 이메일로 안내드립니다."),
-            "approved": ("분양 정보 신청이 승인되었습니다.", "관리자 분양 프로젝트 초안이 생성되었습니다. 공개 전 별도 검토를 거칩니다."),
+            "approved": ("분양사 등록신청이 승인되었습니다.", "선택한 건물에 분양 안내 배너가 공개되었습니다."),
             "rejected": ("분양 정보 신청이 반려되었습니다.", f"사유: {_html.escape(str(reason or '제출 자료를 다시 확인해주세요.'))}"),
         }
         heading, body = messages[outcome]
@@ -31829,9 +31833,7 @@ def _send_presale_application_email(to_email, company_name, outcome, reason=None
 def _presale_application_admin_row(row):
     return {key: row.get(key) for key in (
         "id", "master_building_id", "building_name", "road_address", "status", "project_id",
-        "title", "project_status", "project_type", "summary", "unit_count", "remaining_units",
-        "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date",
-        "company_name", "contact_name", "contact_phone", "contact_email", "homepage_url",
+        "company_name", "applicant_role", "contact_name", "contact_phone", "contact_email", "homepage_url",
         "evidence_filename", "banner_filename", "reject_reason", "consent_version",
         "consented_at", "receipt_notification_status", "decision_notification_status",
         "notification_error", "reviewed_at", "reviewed_by", "created_at", "updated_at",
@@ -31840,7 +31842,7 @@ def _presale_application_admin_row(row):
 
 def _presale_public_project(row):
     # 공개 응답에는 가격 단위(만원), 총/잔여 세대 및 사업 상태만 노출한다.
-    result = {key: row.get(key) for key in ("id", "master_building_id", "title", "summary", "project_status", "project_type", "unit_count", "remaining_units", "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date", "company_name")}
+    result = {key: row.get(key) for key in ("id", "master_building_id", "title", "summary", "project_status", "project_type", "unit_count", "remaining_units", "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date", "company_name", "homepage_url")}
     result["price_unit"] = "ten_thousand_krw"
     return result
 
@@ -31934,17 +31936,18 @@ def create_presale_application():
         homepage_url = _presale_safe_url(homepage_raw) if homepage_raw else None
         if homepage_raw and not homepage_url:
             raise ValueError("홈페이지는 외부에서 확인 가능한 HTTPS 주소만 입력할 수 있습니다.")
-        project_input = {key: data.get(key) for key in _PRESALE_PROJECT_FIELDS}
-        project_input.update({"status": "draft", "publication_start_at": None, "publication_end_at": None})
-        fields = _presale_project_payload(project_input)
         company_name = str(data.get("company_name") or "").strip()
+        applicant_role = str(data.get("applicant_role") or "").strip()
         contact_name = str(data.get("contact_name") or "").strip()
         if not company_name or len(company_name) > 200:
             raise ValueError("회사명을 1~200자로 입력해주세요.")
         if not contact_name or len(contact_name) > 100:
             raise ValueError("담당자 이름을 1~100자로 입력해주세요.")
-        fields["company_name"] = company_name
-        fields["contact_name"] = contact_name
+        if applicant_role not in ("owner", "developer"):
+            raise ValueError("건축주 또는 시행사 중 신청자 관계를 선택해주세요.")
+        contact_phone = re.sub(r"\D", "", str(data.get("contact_phone") or ""))
+        if not 10 <= len(contact_phone) <= 11:
+            raise ValueError("담당자 전화번호 형식이 올바르지 않습니다.")
         evidence = _presale_application_file(request.files.get("evidence"), "evidence")
         banner = _presale_application_file(request.files.get("banner"), "banner", image_only=True)
     except ValueError as exc:
@@ -31953,10 +31956,11 @@ def create_presale_application():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""SELECT 1 FROM master_buildings
+        cur.execute("""SELECT building_name,road_address FROM master_buildings
                        WHERE id=%s AND building_status IN ('허가','착공')
                          AND NULLIF(use_apr_day,'') IS NULL FOR UPDATE""", [building_id])
-        if not cur.fetchone():
+        building = cur.fetchone()
+        if not building:
             return jsonify({"ok": False, "message": "분양 신청 가능한 준공 전 건물이 아닙니다."}), 400
         cur.execute("""SELECT 1 FROM presale_projects WHERE master_building_id=%s
                        UNION ALL
@@ -31969,22 +31973,20 @@ def create_presale_application():
             if item:
                 storage_util.upload_doc(item["key"], item["raw"])
                 uploaded_keys.append(item["key"])
+        title = str(building.get("building_name") or "").strip() or f"{company_name} 분양 안내"
         columns = (
-            "master_building_id,title,project_status,project_type,summary,unit_count,remaining_units,"
-            "price_min,price_max,sale_start_date,sale_end_date,move_in_date,company_name,contact_name,"
+            "master_building_id,title,project_status,project_type,company_name,applicant_role,contact_name,"
             "contact_phone,contact_email,homepage_url,evidence_object_key,evidence_filename,"
             "banner_object_key,banner_filename,consent_version,consented_at"
         )
         values = [
-            building_id, fields["title"], fields["project_status"], fields["project_type"], fields["summary"],
-            fields["unit_count"], fields["remaining_units"], fields["price_min"], fields["price_max"],
-            fields["sale_start_date"], fields["sale_end_date"], fields["move_in_date"], company_name,
-            contact_name, fields["contact_phone"], email, homepage_url, evidence["key"], evidence["filename"],
+            building_id, title[:160], "presale", "mixed", company_name, applicant_role,
+            contact_name, contact_phone, email, homepage_url, evidence["key"], evidence["filename"],
             banner["key"] if banner else None, banner["filename"] if banner else None,
             _PRESALE_APPLICATION_CONSENT_VERSION,
         ]
         cur.execute(f"""INSERT INTO presale_applications({columns})
-                        VALUES({','.join(['%s'] * 22)},NOW()) RETURNING id""", values)
+                        VALUES({','.join(['%s'] * 15)},NOW()) RETURNING id""", values)
         application_id = cur.fetchone()["id"]
         _presale_audit(cur, "application_submitted", application_id=application_id,
                        detail={"building_id": building_id})
@@ -32081,14 +32083,21 @@ def admin_presale_application_review(application_id):
             return jsonify({"ok": False, "message": "이미 심사가 끝난 신청입니다."}), 409
         project_id = None
         if action == "approve":
-            cur.execute("""SELECT 1 FROM master_buildings
+            cur.execute("""SELECT building_name FROM master_buildings
                            WHERE id=%s AND building_status IN ('허가','착공')
                              AND NULLIF(use_apr_day,'') IS NULL FOR UPDATE""", [row["master_building_id"]])
-            if not cur.fetchone():
+            building = cur.fetchone()
+            if not building:
                 return jsonify({"ok": False, "message": "현재 분양 대상 준공 전 건물이 아닙니다."}), 409
-            project_data = {key: row.get(key) for key in _PRESALE_PROJECT_FIELDS}
-            project_data.update({"status": "draft", "publication_start_at": None, "publication_end_at": None,
-                                 "editorial_body": None})
+            project_data = {
+                "status": "published", "publication_start_at": datetime.now(timezone.utc),
+                "publication_end_at": None, "project_status": "presale", "project_type": "mixed",
+                "title": str(building.get("building_name") or row["company_name"] or "분양 안내")[:160],
+                "summary": f"{row['company_name']} 분양 안내",
+                "company_name": row["company_name"], "contact_name": row["contact_name"],
+                "contact_phone": row["contact_phone"], "homepage_url": row.get("homepage_url"),
+                "editorial_body": None,
+            }
             fields = _presale_project_payload(project_data)
             columns = list(fields)
             cur.execute(f"""INSERT INTO presale_projects(master_building_id,{','.join(columns)},created_by,updated_by)
@@ -32102,7 +32111,7 @@ def admin_presale_application_review(application_id):
                         [project_id, session.get("admin_user_id"), application_id])
             _presale_audit(cur, "application_approved", project_id=project_id,
                            application_id=application_id)
-            _presale_audit(cur, "project_created_from_application", project_id=project_id,
+            _presale_audit(cur, "public_banner_created_from_application", project_id=project_id,
                            application_id=application_id)
         else:
             cur.execute("""UPDATE presale_applications

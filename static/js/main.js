@@ -7145,7 +7145,7 @@ async function loadPresaleDetailBanner(id, buildingName, requestToken){
     if (data?.eligible !== true) return;
     const p = data && data.promotion;
     const project = data && data.project;
-    const safeCta = (() => { try { const u=new URL(p?.cta_url||""); return u.protocol === "https:" ? u.href : ""; } catch(e){ return ""; } })();
+    const safeCta = (() => { try { const u=new URL(p?.cta_url||project?.homepage_url||"/mypage",location.origin); return (u.protocol === "https:" || u.origin === location.origin) ? u.href : ""; } catch(e){ return location.origin+"/mypage"; } })();
     const safeBanner = (() => { try { const u=new URL(p?.banner_url||"",location.origin); return u.origin === location.origin && u.pathname.startsWith("/") && !String(p?.banner_url||"").startsWith("//") ? u.href : ""; } catch(e){ return ""; } })();
     const box=document.createElement("section"); box.className="presale-detail-banner";
     const title = project?.title || buildingName;
@@ -7153,9 +7153,10 @@ async function loadPresaleDetailBanner(id, buildingName, requestToken){
     if (p && safeCta) {
       box.innerHTML=`<strong>${escapeHtml(p.slogan || title)}</strong><p>${escapeHtml(summary)}</p>${safeBanner ? `<img alt="분양 안내 배너" src="${escapeHtml(safeBanner)}">` : ""}<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeCta)}">안내 페이지 보기</a>`;
     } else if (project && project.project_status === "presale") {
-      box.innerHTML=`<strong>${escapeHtml(title)}</strong><p>${escapeHtml(summary)}</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
+      const external = safeCta && new URL(safeCta).origin !== location.origin;
+      box.innerHTML=`<strong>${escapeHtml(title)}</strong><p>${escapeHtml(summary)}</p><a ${external?'target="_blank" rel="noopener noreferrer" ':''}href="${escapeHtml(safeCta||"/mypage")}">${project.homepage_url?"분양 홈페이지 보기":"마이페이지에서 확인"}</a>`;
     } else {
-      box.innerHTML=`<strong>준공 전 분양 정보를 등록하세요</strong><p>${escapeHtml(buildingName)}의 분양 안내가 준비되면 이곳에서 확인할 수 있습니다.</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
+      box.innerHTML=`<strong>준공 전 분양 정보 등록</strong><p>${escapeHtml(buildingName)} · 건축주·시행사는 분양 정보 등록을 요청할 수 있습니다.</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
     }
     host.prepend(box);
   } catch(e) { return; }
