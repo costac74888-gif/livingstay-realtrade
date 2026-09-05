@@ -13,7 +13,7 @@ expect(main.includes("window.__openBuildingId === Number(id)") && main.includes(
 expect(main.includes('href="https://jnjclub.co.kr/"') && main.includes('/static/banner_biz_report.png'), "행정운영 영업신고업소 아래 숙박업등록 배너가 없습니다.");
 expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizReportBannerHtml;"), "미준공 건물의 행정운영에 숙박업등록 배너가 없습니다.");
 expect(main.includes("${lodgingListHtml}\n      ${bizReportBannerHtml}"), "영업상호 목록 다음에 숙박업등록 배너가 배치되지 않았습니다.");
-expect(main.includes('operations: ["bCampCard", "bLodgingOperatorCard", "bReservationCard"]'), "Structure B 예약 영역이 운영정보 하단에 배치되지 않았습니다.");
+expect(main.includes('operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"]'), "Structure B 운영 파트너 배너가 운영정보 맨 아래에 배치되지 않았습니다.");
 expect(main.includes("_reservationBar(b, false)"), "생활·관광·일반숙박의 미연결 예약 안내가 숨겨지지 않았습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");

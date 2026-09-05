@@ -1494,14 +1494,14 @@
 @keyframes b-detail-panel-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .b-reservation-bar{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
-  margin:0 0 14px; padding:11px 12px; border:1px solid #D8C39E;
-  border-radius:10px; background:var(--brass-tint); color:var(--ink);
+  margin:0 0 14px; padding:11px 12px; border:1px solid #9BCFC0;
+  border-radius:10px; background:#EEF8F5; color:var(--ink);
 }
 .b-reservation-bar > div{min-width:0;display:flex;flex-direction:column;gap:2px;}
-.b-reservation-bar strong{font-size:12.5px;color:var(--brass-dark);}
+.b-reservation-bar strong{font-size:12.5px;color:#166B57;}
 .b-reservation-bar span{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .b-reserve-btn,.b-connect-btn{
-  flex:none; border:0; border-radius:7px; padding:8px 11px; background:var(--brass);
+  flex:none; border:0; border-radius:7px; padding:8px 11px; background:#16765D;
   color:#fff; font:700 11.5px 'Noto Sans KR',sans-serif; text-decoration:none; cursor:pointer;
 }
 .b-reservation-bar.is-empty{background:#FBFAF7;border-color:var(--line);}

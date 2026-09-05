@@ -60,6 +60,17 @@ expect(
   "camping_resve_url fallback 예약 링크가 유지되지 않습니다."
 );
 expect(main.includes("operator-banner-cta") && main.includes("운영 파트너 등록"), "운영 파트너 CTA 배너가 없습니다.");
+expect(
+  main.includes('operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"]'),
+  "운영 파트너 등록 배너가 캠핑 상세의 맨 아래에 배치되지 않았습니다.",
+);
+expect(
+  css.includes(".b-reservation-bar{") &&
+  css.includes("border:1px solid #9BCFC0") &&
+  css.includes("background:#EEF8F5") &&
+  css.includes("background:#16765D"),
+  "외부 예약 카드가 운영 파트너 배너와 구분되는 색으로 설정되지 않았습니다.",
+);
 expect(css.includes(".camp-facts div:last-child:nth-child(odd)"), "홀수 시설 정보의 빈 셀 처리 계약이 없습니다.");
 
 console.log("OK camping detail contract");

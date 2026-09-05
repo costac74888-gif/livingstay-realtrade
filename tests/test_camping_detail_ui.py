@@ -49,6 +49,10 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('고캠핑에서 이 캠핑장 상세 보기', self.main_source)
         self.assertIn('operator-banner-cta', self.main_source)
         self.assertIn('운영 파트너 등록', self.main_source)
+        self.assertIn(
+            'operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"]',
+            self.main_source,
+        )
 
     def test_camping_booking_does_not_treat_gocamping_guide_as_reservation(self):
         self.assertIn('host.includes("gocamping")', self.main_source)
