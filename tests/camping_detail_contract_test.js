@@ -15,6 +15,18 @@ expect(main.includes("function _campingDetailEntries") && main.includes("camp.de
 expect(css.includes(".b-photo-gallery") && !main.includes("class=\"camp-gallery-strip\""), "중복 캠핑 사진 스트립이 남아 있습니다.");
 expect(facilityIcons.includes("window.FacilityIcons") && facilityIcons.includes("일반 야영"), "공용 시설 아이콘 라이브러리가 없습니다.");
 expect(main.includes("FacilityIcons.html(item)") && main.includes(">고캠핑</a>"), "시설 아이콘·고캠핑 라벨 계약이 없습니다.");
+expect(
+  main.includes('class="camp-gocamping-chip"') &&
+  main.includes('href="${escapeHtml(infoUrl)}"') &&
+  main.includes('title="고캠핑에서 이 캠핑장 상세 보기"'),
+  "캠핑장 유형의 고캠핑 배지가 해당 시설 상세 페이지에 연결되지 않았습니다.",
+);
+expect(
+  css.includes(".camp-chips span,.camp-chips>a") &&
+  css.includes(".camp-chips>a:hover") &&
+  css.includes(".camp-chips>a:focus-visible"),
+  "고캠핑 링크 배지의 표시·키보드 포커스 스타일이 없습니다.",
+);
 expect(main.includes("|| campingReservationUrl;"), "네이버 외 고캠핑 예약 URL이 예약 버튼에 연결되지 않습니다.");
 expect(!main.includes("naverReservationUrl"), "예약 URL이 네이버 주소로만 제한되어 있습니다.");
 

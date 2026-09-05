@@ -5633,7 +5633,9 @@ function _renderCampingSection(b){
       ${camp.homepage_url && _publicHttpUrl(camp.homepage_url) ? `<div><dt>홈페이지</dt><dd><a href="${escapeHtml(_publicHttpUrl(camp.homepage_url))}" target="_blank" rel="noopener noreferrer">공식 홈페이지 열기</a></dd></div>` : ""}
     </dl>` : ""}
     ${chips.length ? `<div class="camp-chips">${chips.map(item =>
-      `<span>${escapeHtml(String(item))}</span>`).join("")}</div>` : ""}
+      String(item) === "고캠핑" && infoUrl
+        ? `<a class="camp-gocamping-chip" href="${escapeHtml(infoUrl)}" target="_blank" rel="noopener noreferrer" title="고캠핑에서 이 캠핑장 상세 보기">고캠핑</a>`
+        : `<span>${escapeHtml(String(item))}</span>`).join("")}</div>` : ""}
     ${sites.length ? `
       <div class="camp-section-label">사이트 구성</div>
       <div class="camp-site-grid">${sites.map(([label, count]) => `

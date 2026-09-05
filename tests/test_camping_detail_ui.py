@@ -47,6 +47,8 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertNotIn("캠핑장 예약 페이지 열기 ↗", self.main_source)
         self.assertIn('infoLink.href = infoUrl', self.main_source)
         self.assertIn('고캠핑에서 이 캠핑장 상세 보기', self.main_source)
+        self.assertIn('class="camp-gocamping-chip"', self.main_source)
+        self.assertIn('href="${escapeHtml(infoUrl)}"', self.main_source)
         self.assertIn('operator-banner-cta', self.main_source)
         self.assertIn('운영 파트너 등록', self.main_source)
         self.assertIn(
