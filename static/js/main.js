@@ -3437,33 +3437,27 @@ function dataLabRankList(items, makeMeta, makeValue){
 }
 
 function renderDataLabLodgingRank(data){
-  const items = Array.isArray(data?.items) ? data.items.slice(0, 100) : [];
-  const rows = items.map((item, index) => {
-    const rank = Number(item.rank) || index + 1;
+  const items = Array.isArray(data?.items) ? data.items.slice(0, 99) : [];
+  const cells = items.map(item => {
     const placeName = escapeHtml(item.place_name || item.building_name || "시설명 미확인");
-    const region = escapeHtml([item.sido, item.sgg].filter(Boolean).join(" ") || "지역 미확인");
     const searchCount = Number(item.search_count);
     const value = Number.isFinite(searchCount) && searchCount > 0
       ? `${dataLabNum(searchCount)}회`
       : "";
     const buildingId = Number(item.building_id || item.master_building_id);
     const linked = Number.isInteger(buildingId) && buildingId > 0;
-    return `<div class="datalab-list-item">
-      <span class="datalab-rank">${dataLabNum(rank)}</span>
-      <div style="min-width:0;">
-        ${linked
-          ? `<button type="button" class="datalab-building" onclick="openBuildingDetail(${buildingId});return false;">${placeName}</button>`
-          : `<span class="datalab-building datalab-building-disabled">${placeName}</span>`}
-        <div class="datalab-meta">${region}</div>
-      </div>
+    return `<div class="datalab-lodging-rank-cell">
+      ${linked
+        ? `<button type="button" class="datalab-building" onclick="openBuildingDetail(${buildingId});return false;" title="${placeName}">${placeName}</button>`
+        : `<span class="datalab-building datalab-building-disabled" title="${placeName}">${placeName}</span>`}
       <span class="datalab-value">${value}</span>
     </div>`;
   }).join("");
   return `<div class="datalab-heading">
-      <strong>🏨 검색TOP500</strong><span class="datalab-caption">관광숙박 검색순위 1~100위</span>
+      <strong>🏨 검색TOP500</strong><span class="datalab-caption">상호·검색수 1~99위</span>
     </div>
-    <div class="datalab-list">${rows || '<div class="side-empty">표시할 검색순위가 없습니다.</div>'}</div>
-    <div class="datalab-map-remainder-note">400개는 지도에서 확인하세요</div>`;
+    <div class="datalab-lodging-rank-grid">${cells || '<div class="side-empty">표시할 검색순위가 없습니다.</div>'}</div>
+    <div class="datalab-map-remainder-note">나머지 401개는 지도에서 확인하세요</div>`;
 }
 
 function clearDataLabLodgingRankOverlays(){
@@ -3517,7 +3511,7 @@ function paintDataLabLodgingRankMap(data){
   clearDataLabLodgingRankOverlays();
   if (!(window.kakao && kakao.maps && kakaoMap && kakao.maps.CustomOverlay)) return;
   const items = Array.isArray(data?.items) ? data.items.filter(item =>
-    Number(item.rank) > 100 &&
+    Number(item.rank) > 99 &&
     Number(item.rank) <= 500 &&
     Number.isFinite(Number(item.lat)) &&
     Number.isFinite(Number(item.lng))
@@ -3588,7 +3582,7 @@ async function loadDataLabLodgingRank({ forceRefresh = false } = {}){
   content.innerHTML = dataLabLoadingHTML();
   try {
     const [topResponse, allResponse] = await Promise.all([
-      fetch("/api/tourism/lodging-rank/top100", { signal: controller.signal }),
+      fetch("/api/tourism/lodging-rank/top99", { signal: controller.signal }),
       fetch("/api/tourism/lodging-rank/all", { signal: controller.signal }),
     ]);
     const [top, all] = await Promise.all([topResponse.json(), allResponse.json()]);

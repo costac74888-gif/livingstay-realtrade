@@ -30294,13 +30294,14 @@ def tourism_lodging_rank_top100():
 @app.route("/api/tourism/lodging-rank/all")
 @limiter.limit("30 per minute")
 def tourism_lodging_rank_all():
-    """최신 숙박 검색순위 원본 전체를 반환한다. 이전 원본과 절대 섞지 않는다."""
+    """최신 숙박 검색순위 원본 TOP 500만 반환한다. 다른 통계와 섞지 않는다."""
     conn = cur = None
     try:
         conn = get_conn()
         cur = conn.cursor()
         return jsonify({"ok": True, "items": [
-            _lodging_search_rank_item(row) for row in _lodging_search_rank_rows(cur)
+            _lodging_search_rank_item(row)
+            for row in _lodging_search_rank_rows(cur, limit=500, max_rank=500)
         ]})
     except (psycopg2_errors.UndefinedTable, psycopg2_errors.UndefinedColumn):
         return jsonify({"ok": True, "items": []})

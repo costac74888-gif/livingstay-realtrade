@@ -51,19 +51,22 @@ expect(html.includes('data-datalab-key="lodging_rank"') &&
   html.includes("검색TOP500") &&
   !html.includes('data-datalab-key="closure"'),
   "폐업 현황을 대체하는 검색TOP500 데이터랩 버튼이 없습니다.");
-expect(main.includes('fetch("/api/tourism/lodging-rank/top100"') &&
+expect(main.includes('fetch("/api/tourism/lodging-rank/top99"') &&
   main.includes('fetch("/api/tourism/lodging-rank/all"') &&
-  main.includes("400개는 지도에서 확인하세요") &&
-  main.includes("Number(item.rank) > 100") &&
+  main.includes("나머지 401개는 지도에서 확인하세요") &&
+  main.includes("Number(item.rank) > 99") &&
   main.includes("Number(item.rank) <= 500"),
-  "검색TOP500의 100개 목록·500개 지도 안내 계약이 없습니다.");
+  "검색TOP500의 99개 목록·401개 지도 안내 계약이 없습니다.");
 expect(main.includes("activateDataLabLodgingRankMap") &&
   main.includes("_beginMapLayerSwap()") &&
   main.includes("clearDataLabLodgingRankMap({ restoreNormal: true })") &&
   main.includes("restoreFromLodgingRank"),
   "검색TOP500 진입·이탈 시 기존 지도 포인트 교체/복원 계약이 없습니다.");
-expect(css.includes(".datalab-rank-map-point") && css.includes(".datalab-map-remainder-note"),
-  "검색TOP500 지도 포인트와 나머지 400개 안내 스타일이 없습니다.");
+expect(css.includes(".datalab-lodging-rank-grid") &&
+  css.includes("grid-template-columns:repeat(3,minmax(0,1fr))") &&
+  css.includes(".datalab-rank-map-point") &&
+  css.includes(".datalab-map-remainder-note"),
+  "검색TOP500 3열 목록·지도 포인트·나머지 401개 안내 스타일이 없습니다.");
 expect(main.includes('item.coordinate_scope === "sido_representative"') &&
   main.includes("시도 대표 위치") &&
   main.includes("시군구 대표 위치"),

@@ -140,10 +140,12 @@ class TourismApiContractTests(unittest.TestCase):
             client = app_module.app.test_client()
             top = client.get("/api/tourism/lodging-rank/top99")
             top100 = client.get("/api/tourism/lodging-rank/top100")
+            all500 = client.get("/api/tourism/lodging-rank/all")
             missing = client.get("/api/building/99/lodging-rank")
 
         self.assertEqual(top.status_code, 200)
         self.assertEqual(top100.status_code, 200)
+        self.assertEqual(all500.status_code, 200)
         self.assertEqual(top.get_json()["items"][0]["rank"], 1)
         self.assertEqual(top.get_json()["items"][0]["search_count"], 12345)
         self.assertEqual(top.get_json()["items"][0]["building_name"], "테스트 숙소")
@@ -153,18 +155,23 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertEqual(top.get_json()["items"][0]["coordinate_scope"], "building")
         self.assertEqual(missing.status_code, 200)
         self.assertIsNone(missing.get_json()["rank"])
-        self.assertEqual(release.call_count, 3)
+        self.assertEqual(release.call_count, 4)
         top100_queries = [
             (query, params) for query, params in connection.cursor_value.queries
             if params and params[-2:] == [100, 100]
         ]
         self.assertTrue(top100_queries)
+        all500_queries = [
+            (query, params) for query, params in connection.cursor_value.queries
+            if params and params[-2:] == [500, 500]
+        ]
+        self.assertTrue(all500_queries)
 
         rank_queries = [
             query for query, _params in connection.cursor_value.queries
             if "lodging_search_rank" in query
         ]
-        self.assertEqual(len(rank_queries), 3)
+        self.assertEqual(len(rank_queries), 4)
         self.assertTrue(all("JOIN latest l ON l.source_file = t.source_file" in q
                             for q in rank_queries))
         self.assertTrue(all("split_part(t.source_period,'-',2)" in q
