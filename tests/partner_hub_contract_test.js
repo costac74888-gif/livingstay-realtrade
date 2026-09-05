@@ -6,6 +6,9 @@ const partner = fs.readFileSync("static/partner.html", "utf8");
 for (const label of ["운영자", "중개사", "운영지원", "대출상담사", "분양자"]) {
   assert.match(partner, new RegExp(`partner-cat-title">${label}<`));
 }
+for (const icon of ["🛎️", "🤝", "🧰", "💰", "🏗️", "🏠", "⛺", "🌾", "🏯", "🏢"]) {
+  assert.ok(partner.includes(icon), `${icon} 분야 아이콘이 없습니다.`);
+}
 assert.match(partner, /class="partner-main-grid"/);
 assert.match(partner, /href="#operator-guide"/);
 assert.match(partner, /id="operator-guide"/);
