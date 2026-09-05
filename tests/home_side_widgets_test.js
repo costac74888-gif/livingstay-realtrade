@@ -43,14 +43,20 @@ expect(!index.includes('id="sideRankingCard"'), "거래량 TOP 별도 위젯이 
 expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습니다.");
 [
   "lodging", "volume", "change", "highest", "consign", "closure",
-  "tourism_domestic", "tourism_foreign", "tourism_consume", "visitor_surge",
+  "tourism_domestic", "tourism_foreign", "tourism_consume", "visitor_surge", "region_volume",
 ].forEach((key) => {
   expect(index.includes(`data-datalab-key="${key}"`), `데이터랩 ${key} 항목이 없습니다.`);
 });
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
-  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,presale,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge",
-  "기존 데이터랩 6개와 관광 열지도 3개, 급등동네·분양 탭 순서가 아닙니다."
+  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,presale,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge,region_volume",
+  "데이터랩 12개 탭 순서가 아닙니다."
+);
+expect(
+  main.includes('region_volume: "/api/stats/transactions-by-sido"') &&
+  main.includes("function renderDataLabRegionVolume") &&
+  main.includes("최근 30일 · 시도별"),
+  "지역별 거래 탭의 API 또는 렌더링이 연결되지 않았습니다."
 );
 expect(
   main.includes("/api/tourism/surge/domestic") &&
@@ -317,6 +323,7 @@ async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
     console,
     dataLabRequestSequence: 0,
     dataLabFetchController: null,
+    dataLabActiveKey: null,
     DATA_LAB_CACHE_TTL_MS: 600000,
     DATA_LAB_SURGE_KEY: "visitor_surge",
     dataLabResponseCache: new Map([
@@ -343,6 +350,7 @@ async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
     renderDataLabVolume: () => "",
     renderDataLabChange: () => "",
     renderDataLabHighest: () => "",
+    renderDataLabRegionVolume: () => "",
     renderDataLabClosure: () => "",
     renderDataLabConsign: (data) => `영업신고현황:${data.marker}`,
     renderDataLabTourism: () => "",

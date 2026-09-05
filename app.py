@@ -30537,6 +30537,43 @@ def stats_closure_rate_by_region():
     return jsonify(_closure_rate_payload())
 
 
+@app.route("/api/stats/transactions-by-sido")
+@limiter.limit("20 per minute")
+def stats_transactions_by_sido():
+    """최근 30일 실거래를 시도 표기 편차를 합쳐 거래 건수 순으로 반환한다."""
+    display_region = {
+        "경상남": "경남", "경상북": "경북",
+        "전라남": "전남", "전라북": "전북",
+        "충청남": "충남", "충청북": "충북",
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT si_do, COUNT(*)::integer AS deal_count, MAX(deal_date) AS latest_date
+            FROM transactions
+            WHERE deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')
+              AND transaction_scope = 'unit'
+              AND price > 0
+              AND NULLIF(TRIM(si_do), '') IS NOT NULL
+            GROUP BY si_do
+        """)
+        merged = {}
+        for row in cur.fetchall():
+            core_region = sido_core(row["si_do"]) or str(row["si_do"]).strip()
+            region = display_region.get(core_region, core_region)
+            item = merged.setdefault(region, {"region": region, "deal_count": 0, "latest_date": None})
+            item["deal_count"] += int(row["deal_count"] or 0)
+            latest_date = row["latest_date"]
+            if latest_date and (item["latest_date"] is None or latest_date > item["latest_date"]):
+                item["latest_date"] = latest_date
+        items = sorted(merged.values(), key=lambda item: (-item["deal_count"], item["region"]))
+        return jsonify({"ok": True, "period_days": 30, "items": items})
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _legacy_operator_consign_by_sido_payload(_as_payload=False):
     """[LEGACY-위탁가입업체] 플랫폼 가입 위탁업체 기반 집계 보존본.
 

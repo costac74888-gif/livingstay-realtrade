@@ -3883,6 +3883,24 @@ function renderDataLabHighest(data){
     )}`;
 }
 
+function renderDataLabRegionVolume(data){
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (!items.length) return '<div class="side-empty">최근 30일 지역별 거래가 없습니다.</div>';
+  return `
+    <div class="datalab-heading">
+      <strong>📍 지역별 거래</strong><span class="datalab-caption">최근 30일 · 시도별</span>
+    </div>
+    <div class="datalab-list">${items.map((item, index) => `
+      <div class="datalab-list-item">
+        <span class="datalab-rank">${index + 1}</span>
+        <div style="min-width:0;">
+          <span class="datalab-region">${escapeHtml(item.region)}</span>
+          <div class="datalab-meta">최근 거래 ${escapeHtml(item.latest_date || "-")}</div>
+        </div>
+        <span class="datalab-value">${dataLabNum(item.deal_count)}건</span>
+      </div>`).join("")}</div>`;
+}
+
 function renderDataLabClosure(data){
   const items = Array.isArray(data.items) ? data.items : [];
   if (!items.length) {
@@ -4115,6 +4133,7 @@ async function loadDataLab(key, option = "up", {
     volume: "/api/ranking",
     change: `/api/stats/price-change-top?direction=${encodeURIComponent(option)}`,
     highest: `/api/stats/highest-price-top?order=${encodeURIComponent(option === "lowest" ? "lowest" : "highest")}`,
+    region_volume: "/api/stats/transactions-by-sido",
     closure: "/api/stats/closure-rate-by-region",
     consign: "/api/stats/consign-by-sido",
     tourism_domestic: "/api/tourism/heatmap/domestic",
@@ -4133,6 +4152,7 @@ async function loadDataLab(key, option = "up", {
     volume: renderDataLabVolume,
     change: renderDataLabChange,
     highest: renderDataLabHighest,
+    region_volume: renderDataLabRegionVolume,
     closure: renderDataLabClosure,
     consign: renderDataLabConsign,
     tourism_domestic: data => renderDataLabTourism(data, "tourism_domestic"),
