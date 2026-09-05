@@ -3296,8 +3296,24 @@ let presaleRequestSequence = 0;
 
 function renderDataLabPresale(data){
   const regions = Array.isArray(data?.regions) ? data.regions : [];
-  const rows = regions.map(item => `<div class="presale-region-item"><strong>${escapeHtml(item.region || "지역 미확인")}</strong><span>${dataLabNum(item.building_count)}개</span></div>`).join("");
-  return `<div class="datalab-heading"><strong>분양중</strong><span class="datalab-caption">미준공 분양 건물 ${dataLabNum(data?.total)}개</span></div><div class="presale-region-list">${rows || '<div class="side-empty">분양중인 미준공 건물이 없습니다.</div>'}</div>`;
+  const total = Number(data?.total || 0);
+  if (!regions.length) return '<div class="side-empty">분양중인 미준공 건물이 없습니다.</div>';
+  const rows = regions.map(item => {
+    const count = Number(item.building_count || 0);
+    const share = total > 0 ? Math.round(count / total * 1000) / 10 : 0;
+    return `<tr><td>${escapeHtml(item.region || "지역 미확인")}</td><td>${dataLabNum(count)}</td><td class="presale-share">${share.toFixed(1)}%</td></tr>`;
+  }).join("");
+  return `
+    <div class="datalab-heading">
+      <strong>P 분양중 현황</strong><span class="datalab-caption">미준공 건물</span>
+    </div>
+    <div class="datalab-table-wrap presale-table-wrap">
+      <table class="datalab-table presale-table">
+        <thead><tr><th>지역</th><th>분양건물</th><th>비중</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><th>합계</th><th>${dataLabNum(total)}</th><th>100.0%</th></tr></tfoot>
+      </table>
+    </div>`;
 }
 async function loadDataLabPresale(){
   const content=document.getElementById("dataLabContent"); if(!content) return;

@@ -564,10 +564,13 @@
   .datalab-icon{flex:none; width:17px; font-size:13px; text-align:center;}
   .datalab-tab > span:last-child{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .datalab-content{min-width:0; min-height:420px; margin-top:10px;}
-  .presale-region-list{display:flex;flex-direction:column;gap:6px}
-  .presale-region-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border:1px solid #f0d0ce;border-radius:8px;background:#fffafa}
-  .presale-region-item strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--ink)}
-  .presale-region-item span{flex:none;color:#d32f2f;font:800 12px 'JetBrains Mono',monospace}
+  .presale-table-wrap{border-color:#efd5d3}
+  .presale-table{table-layout:auto}
+  .presale-table th:first-child,.presale-table td:first-child{width:58%;text-align:left;white-space:nowrap}
+  .presale-table th:not(:first-child),.presale-table td:not(:first-child){text-align:right;white-space:nowrap}
+  .presale-table .presale-share{color:#d32f2f;font-weight:800}
+  .presale-table tfoot th{border-top:2px solid #e7c7c4;background:#fff8f7;color:var(--ink);font-weight:800}
+  .presale-table tfoot th:last-child{color:#d32f2f}
   .presale-building-marker{width:76px;height:38px;padding:0;border:2px solid #fff;border-radius:4px;background:#e53935;color:#fff;box-sizing:border-box;box-shadow:0 2px 7px rgba(90,0,0,.35);cursor:pointer;text-align:center;overflow:hidden;font-family:'Noto Sans KR',sans-serif}
   .presale-building-marker strong,.presale-building-marker span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .presale-building-marker strong{font-size:11px;line-height:17px}
