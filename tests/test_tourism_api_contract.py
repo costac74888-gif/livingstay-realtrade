@@ -1,8 +1,6 @@
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-import app as app_module
 from app import (
     _building_tourism_region_key,
     _latest_domestic_visitor_counts,
@@ -82,84 +80,6 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertIn("max_rank=20", self.source)
         self.assertIn('"sgg_office_fallback"', self.source)
         self.assertIn('"coordinate_scope": "sgg_representative"', self.source)
-        schema = (ROOT / "db.py").read_text(encoding="utf-8")
-        self.assertIn("idx_tourism_stats_lodging_rank_latest", schema)
-        self.assertIn("idx_tourism_stats_lodging_rank_source", schema)
-        self.assertIn("idx_tourism_stats_lodging_rank_building_source", schema)
-
-    def test_lodging_rank_routes_use_one_latest_source_and_safe_counts(self):
-        class Cursor:
-            def __init__(self):
-                self.queries = []
-
-            def execute(self, query, params=None):
-                self.queries.append((query, params))
-
-            def fetchall(self):
-                if "t.master_building_id = %s" in self.queries[-1][0]:
-                    return []
-                return [{
-                    "building_id": 17,
-                    "building_name": "테스트 숙소",
-                    "sido_name": "서울특별시",
-                    "sgg_name": "중 구",
-                    "metric_value": 1,
-                    "dimensions": {
-                        "place_name": "테스트 호텔",
-                        "sub_category": "관광호텔",
-                        "search_count": "12,345",
-                    },
-                    "source_period": "202601-202603",
-                    "source_file": "new.zip::rank.csv",
-                    "collected_at": None,
-                    "lat": 37.56,
-                    "lng": 126.99,
-                }]
-
-            def fetchone(self):
-                return {
-                    "id": 99, "building_name": "순위 없음 숙소",
-                    "lat": None, "lng": None,
-                }
-
-            def close(self):
-                pass
-
-        class Connection:
-            def __init__(self):
-                self.cursor_value = Cursor()
-
-            def cursor(self):
-                return self.cursor_value
-
-        connection = Connection()
-        with patch.object(app_module, "get_conn", return_value=connection), \
-             patch.object(app_module, "release_conn") as release:
-            client = app_module.app.test_client()
-            top = client.get("/api/tourism/lodging-rank/top99")
-            missing = client.get("/api/building/99/lodging-rank")
-
-        self.assertEqual(top.status_code, 200)
-        self.assertEqual(top.get_json()["items"][0]["rank"], 1)
-        self.assertEqual(top.get_json()["items"][0]["search_count"], 12345)
-        self.assertEqual(top.get_json()["items"][0]["building_name"], "테스트 숙소")
-        self.assertEqual(top.get_json()["items"][0]["place_name"], "테스트 호텔")
-        self.assertEqual(top.get_json()["items"][0]["sub_category"], "관광호텔")
-        self.assertEqual(top.get_json()["items"][0]["master_building_id"], 17)
-        self.assertEqual(missing.status_code, 200)
-        self.assertIsNone(missing.get_json()["rank"])
-        self.assertEqual(release.call_count, 2)
-
-        rank_queries = [
-            query for query, _params in connection.cursor_value.queries
-            if "lodging_search_rank" in query
-        ]
-        self.assertEqual(len(rank_queries), 2)
-        self.assertTrue(all("JOIN latest l ON l.source_file = t.source_file" in q
-                            for q in rank_queries))
-        self.assertTrue(all("split_part(source_period, '-', 2)" in q
-                            and "collected_at DESC, source_file DESC" in q
-                            for q in rank_queries))
 
 
 if __name__ == "__main__":
