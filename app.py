@@ -30147,15 +30147,35 @@ def _lodging_search_rank_rows(cur, limit=None, max_rank=None, building_id=None):
         SELECT t.master_building_id AS building_id, b.building_name,
                t.sido_name, t.sgg_name, t.metric_value, t.dimensions,
                t.source_period, t.source_file, t.collected_at,
-               COALESCE(b.lat, c.lat) AS lat, COALESCE(b.lng, c.lng) AS lng
+               COALESCE(
+                   b.lat, c.lat, p.lat,
+                   CASE WHEN left(t.sido_name, 2) = '세종' THEN 36.4801 END
+               ) AS lat,
+               COALESCE(
+                   b.lng, c.lng, p.lng,
+                   CASE WHEN left(t.sido_name, 2) = '세종' THEN 127.2890 END
+               ) AS lng,
+               CASE
+                   WHEN b.lat IS NOT NULL AND b.lng IS NOT NULL THEN 'building'
+                   WHEN c.lat IS NOT NULL AND c.lng IS NOT NULL THEN 'sgg_representative'
+                   WHEN p.lat IS NOT NULL AND p.lng IS NOT NULL THEN 'sido_representative'
+                   WHEN left(t.sido_name, 2) = '세종' THEN 'sido_representative'
+                   ELSE NULL
+               END AS coordinate_scope
         FROM tourism_stats t
         JOIN latest l ON l.source_file = t.source_file
         LEFT JOIN master_buildings b ON b.id = t.master_building_id
         LEFT JOIN sgg_coords c
-          ON regexp_replace(c.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
-               = regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
+          ON regexp_replace(regexp_replace(c.sido_name, '특별자치', ''), '(특별시|광역시|도|시)$', '')
+               = regexp_replace(regexp_replace(t.sido_name, '특별자치', ''), '(특별시|광역시|도|시)$', '')
          AND regexp_replace(trim(c.sgg_name), '\\s+', '', 'g')
                = regexp_replace(trim(t.sgg_name), '\\s+', '', 'g')
+        LEFT JOIN LATERAL (
+            SELECT AVG(pc.lat) AS lat, AVG(pc.lng) AS lng
+            FROM sgg_coords pc
+            WHERE regexp_replace(regexp_replace(pc.sido_name, '특별자치', ''), '(특별시|광역시|도|시)$', '')
+                  = regexp_replace(regexp_replace(t.sido_name, '특별자치', ''), '(특별시|광역시|도|시)$', '')
+        ) p ON TRUE
         WHERE t.stat_type = 'lodging_search_rank' {where_extra}
         ORDER BY t.metric_value ASC NULLS LAST, t.id
         {limit_sql}
@@ -30196,6 +30216,7 @@ def _lodging_search_rank_item(row):
         "sgg": row.get("sgg_name"),
         "lat": float(row["lat"]) if row.get("lat") is not None else None,
         "lng": float(row["lng"]) if row.get("lng") is not None else None,
+        "coordinate_scope": row.get("coordinate_scope"),
         "source_period": row.get("source_period"),
         "source_file": row.get("source_file"),
         "collected_at": row.get("collected_at"),
@@ -30213,6 +30234,29 @@ def tourism_lodging_rank_top99():
         return jsonify({"ok": True, "items": [
             _lodging_search_rank_item(row)
             for row in _lodging_search_rank_rows(cur, limit=99, max_rank=99)
+        ]})
+    except (psycopg2_errors.UndefinedTable, psycopg2_errors.UndefinedColumn):
+        return jsonify({"ok": True, "items": []})
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
+
+
+@app.route("/api/tourism/lodging-rank/top100")
+@limiter.limit("30 per minute")
+def tourism_lodging_rank_top100():
+    """최신 숙박 검색순위 원본의 목록용 TOP 100을 반환한다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        return jsonify({"ok": True, "items": [
+            _lodging_search_rank_item(row)
+            for row in _lodging_search_rank_rows(cur, limit=100, max_rank=100)
         ]})
     except (psycopg2_errors.UndefinedTable, psycopg2_errors.UndefinedColumn):
         return jsonify({"ok": True, "items": []})

@@ -2716,6 +2716,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
 async function updateMapForZoom(filters = {}, opts = {}){
   if (!kakaoMap) return;
   _lastMapFilters = filters;
+  if (dataLabLodgingRankLayerActive && !opts.restoreFromLodgingRank) return;
 
   // 검색어(q)가 있으면 줌 레벨과 무관하게 개별 마커 모드로 강제 전환.
   // 클러스터 배지 단계를 건너뛰어 검색 결과 위치로 바로 확대 이동한다.
@@ -3320,6 +3321,11 @@ let dataLabTourismZoomTimer = null;
 let dataLabTourismViewInitialized = false;
 const DATA_LAB_TOURISM_KEYS = new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]);
 const DATA_LAB_SURGE_KEY = "visitor_surge";
+const DATA_LAB_LODGING_RANK_KEY = "lodging_rank";
+let dataLabLodgingRankOverlays = [];
+let dataLabLodgingRankInfoOverlay = null;
+let dataLabLodgingRankRequest = 0;
+let dataLabLodgingRankLayerActive = false;
 let dataLabSurgeMode = "domestic";
 let dataLabSurgeInfoOverlay = null;
 let presaleRequestSequence = 0;
@@ -3428,6 +3434,182 @@ function dataLabRankList(items, makeMeta, makeValue){
       </div>
       <span class="datalab-value">${makeValue(item)}</span>
     </div>`).join("")}</div>`;
+}
+
+function renderDataLabLodgingRank(data){
+  const items = Array.isArray(data?.items) ? data.items.slice(0, 100) : [];
+  const rows = items.map((item, index) => {
+    const rank = Number(item.rank) || index + 1;
+    const placeName = escapeHtml(item.place_name || item.building_name || "시설명 미확인");
+    const region = escapeHtml([item.sido, item.sgg].filter(Boolean).join(" ") || "지역 미확인");
+    const searchCount = Number(item.search_count);
+    const value = Number.isFinite(searchCount) && searchCount > 0
+      ? `${dataLabNum(searchCount)}회`
+      : "";
+    const buildingId = Number(item.building_id || item.master_building_id);
+    const linked = Number.isInteger(buildingId) && buildingId > 0;
+    return `<div class="datalab-list-item">
+      <span class="datalab-rank">${dataLabNum(rank)}</span>
+      <div style="min-width:0;">
+        ${linked
+          ? `<button type="button" class="datalab-building" onclick="openBuildingDetail(${buildingId});return false;">${placeName}</button>`
+          : `<span class="datalab-building datalab-building-disabled">${placeName}</span>`}
+        <div class="datalab-meta">${region}</div>
+      </div>
+      <span class="datalab-value">${value}</span>
+    </div>`;
+  }).join("");
+  return `<div class="datalab-heading">
+      <strong>🏨 검색TOP500</strong><span class="datalab-caption">관광숙박 검색순위 1~100위</span>
+    </div>
+    <div class="datalab-list">${rows || '<div class="side-empty">표시할 검색순위가 없습니다.</div>'}</div>
+    <div class="datalab-map-remainder-note">400개는 지도에서 확인하세요</div>`;
+}
+
+function clearDataLabLodgingRankOverlays(){
+  dataLabLodgingRankOverlays.forEach(overlay => {
+    try { overlay.setMap(null); } catch(e) {}
+  });
+  dataLabLodgingRankOverlays = [];
+  if (dataLabLodgingRankInfoOverlay) {
+    try { dataLabLodgingRankInfoOverlay.setMap(null); } catch(e) {}
+    dataLabLodgingRankInfoOverlay = null;
+  }
+}
+
+function clearDataLabLodgingRankMap({ restoreNormal = true } = {}){
+  dataLabLodgingRankRequest++;
+  clearDataLabLodgingRankOverlays();
+  const wasActive = dataLabLodgingRankLayerActive;
+  dataLabLodgingRankLayerActive = false;
+  if (restoreNormal && wasActive) {
+    updateMapForZoom(mapFiltersFromState(), { force: true, restoreFromLodgingRank: true });
+  }
+}
+
+function activateDataLabLodgingRankMap(){
+  if (dataLabLodgingRankLayerActive) return;
+  dataLabLodgingRankLayerActive = true;
+  if (_mapFetchController) _mapFetchController.abort();
+  _mapRenderGen++;
+  const previous = _beginMapLayerSwap();
+  _finishMapLayerSwap(previous);
+  if (window.kakao && kakao.maps && kakaoMap) {
+    const center = isMobileMapViewport() ? MAP_DEFAULT_CENTER_MOBILE : MAP_DEFAULT_CENTER;
+    kakaoMap.setLevel(13);
+    kakaoMap.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+  }
+}
+
+function _lodgingRankFanPosition(item, duplicateIndex){
+  const lat = Number(item.lat);
+  const lng = Number(item.lng);
+  if (!duplicateIndex) return { lat, lng };
+  const angle = duplicateIndex * 2.399963229728653;
+  const radius = 0.0025 * Math.sqrt(duplicateIndex);
+  return {
+    lat: lat + Math.sin(angle) * radius,
+    lng: lng + Math.cos(angle) * radius,
+  };
+}
+
+function paintDataLabLodgingRankMap(data){
+  clearDataLabLodgingRankOverlays();
+  if (!(window.kakao && kakao.maps && kakaoMap && kakao.maps.CustomOverlay)) return;
+  const items = Array.isArray(data?.items) ? data.items.filter(item =>
+    Number(item.rank) > 100 &&
+    Number(item.rank) <= 500 &&
+    Number.isFinite(Number(item.lat)) &&
+    Number.isFinite(Number(item.lng))
+  ) : [];
+  const requestId = ++dataLabLodgingRankRequest;
+  const duplicateCounts = new Map();
+  items.forEach(item => {
+    if (requestId !== dataLabLodgingRankRequest || !dataLabLodgingRankLayerActive) return;
+    const coordinateKey = `${Number(item.lat).toFixed(5)},${Number(item.lng).toFixed(5)}`;
+    const duplicateIndex = duplicateCounts.get(coordinateKey) || 0;
+    duplicateCounts.set(coordinateKey, duplicateIndex + 1);
+    const fan = _lodgingRankFanPosition(item, duplicateIndex);
+    const position = new kakao.maps.LatLng(fan.lat, fan.lng);
+    const rank = Number(item.rank) || 0;
+    const placeName = item.place_name || item.building_name || "시설명 미확인";
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = "datalab-rank-map-point";
+    marker.textContent = rank ? String(rank) : "·";
+    marker.title = `${rank ? `${rank}위 · ` : ""}${placeName}`;
+    marker.setAttribute("aria-label", marker.title);
+    const overlay = new kakao.maps.CustomOverlay({
+      position, content: marker, yAnchor: 0.5, zIndex: Math.max(20, 540 - rank),
+    });
+    marker.addEventListener("click", () => {
+      if (dataLabLodgingRankInfoOverlay) dataLabLodgingRankInfoOverlay.setMap(null);
+      const info = document.createElement("div");
+      info.className = "datalab-rank-map-info";
+      const region = [item.sido, item.sgg].filter(Boolean).join(" ");
+      const buildingId = Number(item.building_id || item.master_building_id);
+      const coordinateNotice = item.coordinate_scope === "sido_representative"
+        ? '<span>시도 대표 위치</span>'
+        : item.coordinate_scope === "sgg_representative"
+          ? '<span>시군구 대표 위치</span>'
+          : "";
+      info.innerHTML = `<strong>${escapeHtml(placeName)}</strong><span>${rank ? `${dataLabNum(rank)}위` : "순위 미확인"}${region ? ` · ${escapeHtml(region)}` : ""}</span>${Number.isFinite(Number(item.search_count)) && Number(item.search_count) > 0 ? `<span>검색 ${dataLabNum(item.search_count)}회</span>` : ""}${coordinateNotice}${Number.isInteger(buildingId) && buildingId > 0 ? `<button type="button">시설 상세보기</button>` : '<span>연결된 건물 정보 없음</span>'}`;
+      info.querySelector("button")?.addEventListener("click", () => openBuildingDetail(buildingId));
+      dataLabLodgingRankInfoOverlay = new kakao.maps.CustomOverlay({
+        position, content: info, yAnchor: 1.1, zIndex: 80,
+      });
+      dataLabLodgingRankInfoOverlay.setMap(kakaoMap);
+    });
+    overlay.setMap(kakaoMap);
+    dataLabLodgingRankOverlays.push(overlay);
+  });
+}
+
+async function loadDataLabLodgingRank({ forceRefresh = false } = {}){
+  const content = document.getElementById("dataLabContent");
+  if (!content) return;
+  clearDataLabTourismMap();
+  resetTourismMapMobileToggle();
+  setDataLabActive(DATA_LAB_LODGING_RANK_KEY);
+  activateDataLabLodgingRankMap();
+  const cacheKey = "lodging_rank:top500";
+  const cached = dataLabResponseCache.get(cacheKey);
+  if (!forceRefresh && cached && Date.now() - cached.ts < DATA_LAB_CACHE_TTL_MS) {
+    content.innerHTML = renderDataLabLodgingRank(cached.data.top);
+    paintDataLabLodgingRankMap(cached.data.all);
+    showTourismMapOnMobile(DATA_LAB_LODGING_RANK_KEY);
+    return;
+  }
+  const requestId = ++dataLabRequestSequence;
+  if (dataLabFetchController) dataLabFetchController.abort();
+  const controller = new AbortController();
+  dataLabFetchController = controller;
+  setDataLabTabLoading(DATA_LAB_LODGING_RANK_KEY, true, requestId);
+  content.innerHTML = dataLabLoadingHTML();
+  try {
+    const [topResponse, allResponse] = await Promise.all([
+      fetch("/api/tourism/lodging-rank/top100", { signal: controller.signal }),
+      fetch("/api/tourism/lodging-rank/all", { signal: controller.signal }),
+    ]);
+    const [top, all] = await Promise.all([topResponse.json(), allResponse.json()]);
+    if (requestId !== dataLabRequestSequence || dataLabActiveKey !== DATA_LAB_LODGING_RANK_KEY) return;
+    if (!topResponse.ok || !allResponse.ok || !top.ok || !all.ok) throw new Error("lodging rank request failed");
+    const data = { top, all };
+    dataLabResponseCache.set(cacheKey, { ts: Date.now(), data });
+    content.innerHTML = renderDataLabLodgingRank(top);
+    paintDataLabLodgingRankMap(all);
+    showTourismMapOnMobile(DATA_LAB_LODGING_RANK_KEY);
+  } catch (error) {
+    if (error.name !== "AbortError" && requestId === dataLabRequestSequence) {
+      content.innerHTML = dataLabErrorHTML();
+      content.querySelector("[data-datalab-retry]")?.addEventListener("click", () =>
+        loadDataLabLodgingRank({ forceRefresh: true })
+      );
+    }
+  } finally {
+    setDataLabTabLoading(DATA_LAB_LODGING_RANK_KEY, false, requestId);
+    if (dataLabFetchController === controller) dataLabFetchController = null;
+  }
 }
 
 function clearDataLabTourismOverlays(){
@@ -4089,14 +4271,14 @@ function bindDataLabControls(content){
 }
 
 function showTourismMapOnMobile(key){
-  if (!(DATA_LAB_TOURISM_KEYS.has(key) || key === DATA_LAB_SURGE_KEY) || !window.matchMedia("(max-width: 980px)").matches) return;
+  if (!(DATA_LAB_TOURISM_KEYS.has(key) || key === DATA_LAB_SURGE_KEY || key === DATA_LAB_LODGING_RANK_KEY) || !window.matchMedia("(max-width: 980px)").matches) return;
   const panel = document.querySelector(".side-panel");
   const toggle = document.getElementById("btnTogglePanel");
   if (!panel || !toggle) return;
   toggle.dataset.tourismMapActive = "true";
   if (panel.classList.contains("open")) toggle.click();
   toggle.innerHTML = '☰ <span class="htoggle-label">데이터랩</span>';
-  toggle.setAttribute("aria-label", key === DATA_LAB_SURGE_KEY ? "방문객 급증 지도 열기" : "관광 데이터랩 패널 열기");
+  toggle.setAttribute("aria-label", key === DATA_LAB_SURGE_KEY ? "방문객 급증 지도 열기" : key === DATA_LAB_LODGING_RANK_KEY ? "검색 TOP500 지도 열기" : "관광 데이터랩 패널 열기");
 }
 
 function resetTourismMapMobileToggle(){
@@ -4123,6 +4305,11 @@ async function loadDataLab(key, option = "up", {
 } = {}){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
+  const wasLodgingRank = dataLabActiveKey === DATA_LAB_LODGING_RANK_KEY;
+  if (key === DATA_LAB_LODGING_RANK_KEY) {
+    return loadDataLabLodgingRank({ forceRefresh });
+  }
+  if (wasLodgingRank) clearDataLabLodgingRankMap({ restoreNormal: true });
   if (key === "presale") {
     setDataLabActive(key);
     const presaleFilters = {...mapFiltersFromState(), lodging_type: "준공전"};

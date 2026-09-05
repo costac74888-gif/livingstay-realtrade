@@ -82,6 +82,7 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertIn("max_rank=20", self.source)
         self.assertIn('"sgg_office_fallback"', self.source)
         self.assertIn('"coordinate_scope": "sgg_representative"', self.source)
+        self.assertIn("left(t.sido_name, 2) = '세종'", self.source)
         schema = (ROOT / "db.py").read_text(encoding="utf-8")
         self.assertIn("idx_tourism_stats_lodging_rank_latest", schema)
         self.assertIn("idx_tourism_stats_lodging_rank_source", schema)
@@ -114,6 +115,7 @@ class TourismApiContractTests(unittest.TestCase):
                     "collected_at": None,
                     "lat": 37.56,
                     "lng": 126.99,
+                    "coordinate_scope": "building",
                 }]
 
             def fetchone(self):
@@ -137,24 +139,32 @@ class TourismApiContractTests(unittest.TestCase):
              patch.object(app_module, "release_conn") as release:
             client = app_module.app.test_client()
             top = client.get("/api/tourism/lodging-rank/top99")
+            top100 = client.get("/api/tourism/lodging-rank/top100")
             missing = client.get("/api/building/99/lodging-rank")
 
         self.assertEqual(top.status_code, 200)
+        self.assertEqual(top100.status_code, 200)
         self.assertEqual(top.get_json()["items"][0]["rank"], 1)
         self.assertEqual(top.get_json()["items"][0]["search_count"], 12345)
         self.assertEqual(top.get_json()["items"][0]["building_name"], "테스트 숙소")
         self.assertEqual(top.get_json()["items"][0]["place_name"], "테스트 호텔")
         self.assertEqual(top.get_json()["items"][0]["sub_category"], "관광호텔")
         self.assertEqual(top.get_json()["items"][0]["master_building_id"], 17)
+        self.assertEqual(top.get_json()["items"][0]["coordinate_scope"], "building")
         self.assertEqual(missing.status_code, 200)
         self.assertIsNone(missing.get_json()["rank"])
-        self.assertEqual(release.call_count, 2)
+        self.assertEqual(release.call_count, 3)
+        top100_queries = [
+            (query, params) for query, params in connection.cursor_value.queries
+            if params and params[-2:] == [100, 100]
+        ]
+        self.assertTrue(top100_queries)
 
         rank_queries = [
             query for query, _params in connection.cursor_value.queries
             if "lodging_search_rank" in query
         ]
-        self.assertEqual(len(rank_queries), 2)
+        self.assertEqual(len(rank_queries), 3)
         self.assertTrue(all("JOIN latest l ON l.source_file = t.source_file" in q
                             for q in rank_queries))
         self.assertTrue(all("split_part(t.source_period,'-',2)" in q
