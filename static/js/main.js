@@ -5552,16 +5552,6 @@ function _campingAnimalLabel(value){
   return `반려동물 동반 ${policy}`;
 }
 
-function _campingPhotoList(camp){
-  const result = [];
-  const add = (items, group) => (Array.isArray(items) ? items : []).forEach(item => {
-    const url = typeof item === "string" ? item : item?.url || item?.image_url || item?.src;
-    if (typeof url === "string" && /^https?:\/\//i.test(url.trim())) result.push({url: url.trim(), source: `camping-${group}`});
-  });
-  add(camp.photos, "photo"); add(camp.layout_images, "layout"); add(camp.safety_images, "safety");
-  return result.filter((photo, index, all) => all.findIndex(item => item.url === photo.url) === index);
-}
-
 function _campingDetailEntries(value){
   if (Array.isArray(value)) return value.map(item => {
     if (item && typeof item === "object") return [item.label || item.name || item.key, item.value ?? item.content];
@@ -5616,9 +5606,10 @@ function _renderCampingSection(b){
     ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
   ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
   const details = _campingDetailEntries(camp.detail_fields);
-  const photos = _campingPhotoList(camp);
+  // 대표 사진은 상단 건물 사진 슬라이더가 고캠핑 사진 전체를 제공한다.
+  // 안내 카드 안에서는 같은 이미지를 다시 노출하지 않는다.
   const hasContent = sites.length || amenities.length || seasons.length || chips.length
-    || facts.length || details.length || photos.length || infoUrl || camp.intro || camp.summary
+    || facts.length || details.length || infoUrl || camp.intro || camp.summary
     || camp.homepage_url || camp.phone || camp.address || camp.directions;
   if (!hasContent) {
     card.style.display = "none";
@@ -5627,10 +5618,6 @@ function _renderCampingSection(b){
   }
 
   body.innerHTML = `
-    ${photos.length ? `<div class="camp-gallery-strip" aria-label="캠핑장 사진">
-      ${photos.slice(0, 4).map((photo, index) => `<button type="button" class="camp-gallery-tile" data-camp-photo-index="${index}"><img src="${escapeHtml(photo.url)}" alt="캠핑장 사진 ${index + 1}" loading="lazy"></button>`).join("")}
-      ${photos.length > 4 ? `<button type="button" class="camp-gallery-more" data-camp-photo-index="0">+${photos.length - 4}장 더 보기</button>` : ""}
-    </div>` : ""}
     ${camp.summary || camp.intro ? `<div class="camp-intro">${escapeHtml(camp.summary || camp.intro)}</div>` : ""}
     ${camp.address || camp.phone || camp.homepage_url ? `<dl class="camp-contact">
       ${camp.address ? `<div><dt>주소</dt><dd>${escapeHtml(camp.address)}</dd></div>` : ""}
@@ -5641,9 +5628,9 @@ function _renderCampingSection(b){
       `<span>${escapeHtml(String(item))}</span>`).join("")}</div>` : ""}
     ${sites.length ? `
       <div class="camp-section-label">사이트 구성</div>
-      <div class="camp-site-grid">${sites.map(([label, count, icon]) => `
+      <div class="camp-site-grid">${sites.map(([label, count]) => `
         <div class="camp-site-item">
-          <span class="camp-site-icon camp-site-icon-${icon}" aria-hidden="true"></span>
+          ${FacilityIcons.html(label, "camp-site-icon")}
           <span><b>${Number(count).toLocaleString("ko-KR")}</b> 사이트<br>
             <small>${escapeHtml(label)}</small></span>
         </div>`).join("")}
@@ -5651,7 +5638,7 @@ function _renderCampingSection(b){
     ${amenities.length ? `
       <div class="camp-section-label">편의시설</div>
       <div class="camp-amenities">${amenities.map(item =>
-        `<span>✓ ${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+        `<span>${FacilityIcons.html(item)}<span>${escapeHtml(item)}</span></span>`).join("")}</div>` : ""}
     ${facts.length ? `
       <div class="camp-section-label">시설 정보</div>
       <div class="camp-facts">${facts.map(([label, value, unit]) => `
@@ -5700,19 +5687,14 @@ function _bookingTarget(b){
     }
     return null;
   };
-  const naverReservationUrl = [
+  const campingReservationUrl = [
     b.camping?.reservation_url,
     b.camping_resve_url,
-    b.booking_url,
-  ].map(_publicHttpUrl).find(url => {
-    if (!url) return false;
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "naver.me" || host.endsWith(".naver.com");
-  });
+  ].map(_publicHttpUrl).find(Boolean);
   const url = firstValid("booking_url")
     || firstValid("airbnb_url")
     || _publicHttpUrl(b.booking_url)
-    || naverReservationUrl;
+    || campingReservationUrl;
   if (!url) return null;
   const host = new URL(url).hostname.toLowerCase();
   const platform = host.includes("airbnb") ? "에어비앤비"
@@ -5845,7 +5827,7 @@ function buildingPanelSkeleton(buildingId){
     <section class="side-card" id="bCampCard" style="display:none;">
       <div class="side-card-title">캠핑장 안내
         <a id="bCampInfoLink" class="b-source-link is-disabled" target="_blank"
-           rel="noopener noreferrer" aria-disabled="true" tabindex="-1">공식 정보</a>
+           rel="noopener noreferrer" aria-disabled="true" tabindex="-1">고캠핑</a>
       </div>
       <div id="bCampBody"></div>
     </section>

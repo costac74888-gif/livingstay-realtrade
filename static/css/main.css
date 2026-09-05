@@ -1257,30 +1257,22 @@
 }
 
 .camp-chips,.camp-amenities{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-.camp-chips span,.camp-amenities span{border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px 9px;font-size:11px;color:var(--ink-soft)}
+.camp-chips span,.camp-amenities>span{border:1px solid var(--line);border-radius:999px;background:#fff;padding:4px 9px;font-size:11px;color:var(--ink-soft)}
 .camp-section-label{font-size:12px;font-weight:700;color:var(--ink-soft);margin:12px 0 8px}
 .camp-site-grid,.camp-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .camp-site-item{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px}
-.camp-site-icon{font-size:21px}.camp-site-item b{font-size:18px}.camp-site-item small{color:var(--ink-soft)}
+.camp-site-icon,.facility-icon{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;flex:0 0 25px;font-size:21px;line-height:1}.camp-site-item b{font-size:18px}.camp-site-item small{color:var(--ink-soft)}
+.camp-amenities>span{display:inline-flex;align-items:center;gap:5px}.camp-amenities .facility-icon{width:auto;height:auto;flex-basis:auto;font-size:15px;border:0;padding:0;background:transparent}
 .camp-facts{gap:1px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .camp-facts div{display:flex;flex-direction:column;background:#fff;padding:9px 10px}.camp-facts small{color:var(--ink-soft);margin-bottom:2px}
 .camp-seasons span{background:#e1f5ee;border-color:#5dcaa5;color:#0f6e56}
 .camp-reservation{display:flex;justify-content:center;margin-top:14px;padding:11px;border-radius:8px;background:#1d9e75;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
-.camp-gallery-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:0 0 14px;min-height:64px}
-.camp-gallery-tile,.camp-gallery-more{position:relative;min-width:0;min-height:64px;padding:0;border:0;border-radius:7px;overflow:hidden;background:#e8e7e0;cursor:pointer}
-.camp-gallery-tile img{display:block;width:100%;height:100%;min-height:64px;object-fit:cover}
-.camp-gallery-tile:focus-visible,.camp-gallery-more:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
-.camp-gallery-more{grid-column:span 2;color:#fff;font-weight:700;background:linear-gradient(135deg,#263849,#526575)}
 .camp-intro{margin:0 0 13px;color:var(--ink);font-size:12.5px;line-height:1.65;white-space:pre-line}
 .camp-contact{display:grid;gap:0;margin:0 0 13px;border-top:1px solid var(--line)}
 .camp-contact>div,.camp-detail-list>div{display:grid;grid-template-columns:58px minmax(0,1fr);gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;line-height:1.45}
 .camp-contact dt,.camp-detail-list dt{color:var(--ink-soft);font-weight:600}.camp-contact dd,.camp-detail-list dd{margin:0;word-break:break-word}.camp-contact a{color:var(--brass-dark);font-weight:600}
 .camp-detail-block p{margin:0;color:var(--ink-soft);font-size:12px;line-height:1.65;white-space:pre-line}
 .camp-detail-list{margin:0}.camp-updated{margin-top:12px;color:var(--ink-soft);font-size:10.5px}
-.camp-site-icon{position:relative;width:24px;height:24px;flex:0 0 24px;border:2px solid var(--brass);border-radius:50%}
-.camp-site-icon::after{content:"";position:absolute;left:5px;right:5px;bottom:4px;height:6px;border-top:2px solid var(--brass);transform:skew(-22deg)}
-.camp-site-icon-auto{border-radius:5px}.camp-site-icon-glamping::before{content:"";position:absolute;left:4px;top:4px;width:12px;height:12px;border-left:2px solid var(--brass);border-top:2px solid var(--brass);transform:rotate(45deg)}
-.camp-site-icon-caravan{border-radius:4px}
 .b-photo-gallery{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(18,27,37,.82)}
 .b-photo-gallery-panel{width:min(860px,100%);max-height:calc(100dvh - 24px);overflow:hidden;background:#f7f4ed;border:1px solid rgba(255,255,255,.28);border-radius:14px;box-shadow:0 14px 42px rgba(0,0,0,.32)}
 .b-photo-gallery-head{display:flex;align-items:center;gap:10px;padding:12px 14px;color:var(--ink);border-bottom:1px solid var(--line)}.b-photo-gallery-count{color:var(--ink-soft);font-size:12px}
