@@ -30,13 +30,41 @@ CREATE TABLE IF NOT EXISTS presale_promotions (
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL, updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  CHECK (ends_at > starts_at));
+CREATE TABLE IF NOT EXISTS presale_applications (
+ id BIGSERIAL PRIMARY KEY, master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE RESTRICT,
+ status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','reviewing','approved','rejected')),
+ project_id BIGINT REFERENCES presale_projects(id) ON DELETE SET NULL,
+ title TEXT NOT NULL, project_status TEXT NOT NULL CHECK (project_status IN ('presale','scheduled','sold_out')),
+ project_type TEXT NOT NULL CHECK (project_type IN ('living','tourist','officetel','mixed')),
+ summary TEXT, unit_count INTEGER, remaining_units INTEGER, price_min BIGINT, price_max BIGINT,
+ sale_start_date DATE, sale_end_date DATE, move_in_date DATE,
+ company_name TEXT NOT NULL, contact_name TEXT NOT NULL, contact_phone TEXT NOT NULL, contact_email TEXT NOT NULL,
+ homepage_url TEXT, evidence_object_key TEXT NOT NULL, evidence_filename TEXT NOT NULL,
+ banner_object_key TEXT, banner_filename TEXT, consent_version TEXT NOT NULL, consented_at TIMESTAMPTZ NOT NULL,
+ receipt_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (receipt_notification_status IN ('pending','sent','failed')),
+ decision_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (decision_notification_status IN ('pending','sent','failed')),
+ notification_error TEXT,
+ reject_reason TEXT, reviewed_at TIMESTAMPTZ, reviewed_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ CHECK (unit_count IS NULL OR unit_count > 0),
+ CHECK (remaining_units IS NULL OR (remaining_units >= 0 AND (unit_count IS NULL OR remaining_units <= unit_count))),
+ CHECK (price_min IS NULL OR price_min >= 0), CHECK (price_max IS NULL OR price_max >= 0),
+ CHECK (price_max IS NULL OR price_min IS NULL OR price_max >= price_min),
+ CHECK (sale_end_date IS NULL OR sale_start_date IS NULL OR sale_end_date >= sale_start_date));
 CREATE TABLE IF NOT EXISTS presale_audit_log (
  id BIGSERIAL PRIMARY KEY, project_id BIGINT REFERENCES presale_projects(id) ON DELETE SET NULL,
- promotion_id BIGINT REFERENCES presale_promotions(id) ON DELETE SET NULL, admin_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+ promotion_id BIGINT REFERENCES presale_promotions(id) ON DELETE SET NULL, application_id BIGINT REFERENCES presale_applications(id) ON DELETE SET NULL,
+ admin_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  action TEXT NOT NULL, detail JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 CREATE INDEX IF NOT EXISTS idx_presale_projects_public ON presale_projects(status, publication_start_at, publication_end_at);
 CREATE INDEX IF NOT EXISTS idx_presale_promotions_active ON presale_promotions(presale_project_id,status,starts_at,ends_at,priority DESC);
+CREATE INDEX IF NOT EXISTS idx_presale_applications_review ON presale_applications(status,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_presale_applications_active_building ON presale_applications(master_building_id) WHERE status IN ('submitted','reviewing');
 CREATE INDEX IF NOT EXISTS idx_presale_audit_project ON presale_audit_log(project_id,created_at DESC);
+ALTER TABLE presale_audit_log ADD COLUMN IF NOT EXISTS application_id BIGINT REFERENCES presale_applications(id) ON DELETE SET NULL;
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS receipt_notification_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS decision_notification_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS notification_error TEXT;
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_status TEXT NOT NULL DEFAULT 'presale';
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_type TEXT NOT NULL DEFAULT 'mixed';
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS remaining_units INTEGER;

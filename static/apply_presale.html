@@ -32,9 +32,16 @@
     .presale-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:25px}
     .presale-button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 18px;border-radius:8px;background:var(--ink);color:#fff;text-decoration:none;font-size:13px;font-weight:700}
     .presale-button.secondary{background:#fff;color:var(--ink);border:1px solid #d9d5cc}
-    .presale-actions a:focus-visible{outline:3px solid #d9bd88;outline-offset:3px}
+    .presale-actions a:focus-visible,.presale-form :focus-visible{outline:3px solid #d9bd88;outline-offset:2px}
     .presale-footnote{margin-top:18px;color:var(--ink-soft);font-size:11.5px;line-height:1.65}
-    @media(max-width:680px){.presale-grid{grid-template-columns:1fr}.presale-header{padding:12px 16px}.presale-main{width:min(100% - 24px,920px);padding-top:32px}.presale-card{padding:18px}.presale-main h1{font-size:32px}}
+    .presale-form{margin-top:22px;padding:24px;background:#fff;border:1px solid #e4dfd4;border-radius:12px}
+    .presale-form h2{margin:0 0 6px;font-size:20px}.presale-form-note{margin:0 0 20px;color:var(--ink-soft);font-size:13px;line-height:1.6}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{display:grid;gap:6px;color:var(--ink);font-size:12px;font-weight:700}.field.wide{grid-column:1/-1}
+    .field input,.field select,.field textarea{box-sizing:border-box;width:100%;padding:10px 11px;border:1px solid #d9d5cc;border-radius:7px;background:#fff;color:var(--ink);font:inherit;font-weight:400}
+    .field small{color:var(--ink-soft);font-weight:400;line-height:1.45}.consent{display:flex;gap:9px;align-items:flex-start;margin:18px 0;color:var(--ink-soft);font-size:12px;line-height:1.55}
+    .consent input{margin-top:3px}.submit-row{display:flex;align-items:center;gap:13px;flex-wrap:wrap}.submit-row button{border:0;cursor:pointer}.submit-row button:disabled{opacity:.55;cursor:wait}
+    #presaleResult{font-size:13px;line-height:1.55}.is-error{color:#a32820}.is-success{color:#1a6b3d}
+    @media(max-width:680px){.presale-grid,.form-grid{grid-template-columns:1fr}.field.wide{grid-column:auto}.presale-header{padding:12px 16px}.presale-main{width:min(100% - 24px,920px);padding-top:32px}.presale-card,.presale-form{padding:18px}.presale-main h1{font-size:32px}}
   </style>
 </head>
 <body>
@@ -66,15 +73,42 @@
         </section>
         <section class="presale-card" aria-labelledby="presaleProcessTitle">
           <h2 id="presaleProcessTitle">등록 후 진행</h2>
-          <p>이 페이지에서는 제출, 승인, 결제 기능을 제공하지 않습니다. 프로젝트는 홈앤스테이 관리자에게 등록된 뒤 사실관계와 공개 범위를 검토받습니다.</p>
+          <p>아래 신청서를 제출하면 관리자만 자료를 확인합니다. 승인 시 비공개 프로젝트 초안으로 전환되며, 별도 공개 검토 전에는 사이트에 표시되지 않습니다.</p>
           <div class="presale-notice">유료 프로모션은 관리자 승인과 정해진 광고 기간이 모두 확정된 뒤에만 활성화됩니다. 검토 전에는 공개 또는 광고가 시작되지 않습니다.</div>
         </section>
       </div>
+      <form id="presaleApplicationForm" class="presale-form" enctype="multipart/form-data">
+        <h2>분양 정보 검토 신청</h2>
+        <p class="presale-form-note">담당자 정보와 증빙은 심사 목적으로만 사용하며 공개 프로젝트 응답에 포함하지 않습니다. * 표시는 필수입니다.</p>
+        <input type="hidden" name="master_building_id" id="masterBuildingId">
+        <div class="form-grid">
+          <label class="field">프로젝트명 *<input name="title" maxlength="160" required></label>
+          <label class="field">회사명 *<input name="company_name" maxlength="200" required></label>
+          <label class="field">프로젝트 유형 *<select name="project_type" required><option value="living">생활숙박시설</option><option value="tourist">관광숙박시설</option><option value="officetel">오피스텔</option><option value="mixed">복합</option></select></label>
+          <label class="field">분양 상태 *<select name="project_status" required><option value="presale">분양 중</option><option value="scheduled">분양 예정</option><option value="sold_out">완판</option></select></label>
+          <label class="field">총 세대수<input name="unit_count" type="number" min="1"></label>
+          <label class="field">잔여 세대수<input name="remaining_units" type="number" min="0"></label>
+          <label class="field">최저 분양가 (만원)<input name="price_min" type="number" min="0"></label>
+          <label class="field">최고 분양가 (만원)<input name="price_max" type="number" min="0"></label>
+          <label class="field">분양 시작일<input name="sale_start_date" type="date"></label>
+          <label class="field">분양 종료일<input name="sale_end_date" type="date"></label>
+          <label class="field">입주 예정일<input name="move_in_date" type="date"></label>
+          <label class="field">HTTPS 홈페이지<input name="homepage_url" type="url" maxlength="2048" placeholder="https://example.com"></label>
+          <label class="field wide">프로젝트 요약<textarea name="summary" rows="3" maxlength="2000"></textarea></label>
+          <label class="field">담당자 이름 *<input name="contact_name" maxlength="100" autocomplete="name" required></label>
+          <label class="field">담당자 전화 *<input name="contact_phone" inputmode="tel" maxlength="20" autocomplete="tel" required></label>
+          <label class="field wide">담당자 이메일 *<input name="contact_email" type="email" maxlength="255" autocomplete="email" required></label>
+          <label class="field">사업자·시행사 확인 증빙 *<input name="evidence" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required><small>JPG/PNG 이미지, 최대 5MB. 관리자만 열람합니다.</small></label>
+          <label class="field">배너 후보 이미지<input name="banner" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small>선택, 최대 5MB, 320×100 이상. 승인만으로 공개되지 않습니다.</small></label>
+        </div>
+        <label class="consent"><input name="privacy_consent" value="yes" type="checkbox" required><span>분양 신청 심사와 결과 안내를 위해 회사명, 담당자 이름·전화·이메일 및 첨부 자료를 수집·이용하는 데 동의합니다. 신청 자료는 공개 프로젝트와 분리하여 관리자만 열람합니다.</span></label>
+        <div class="submit-row"><button id="presaleSubmit" class="presale-button" type="submit">검토 신청 제출</button><span id="presaleResult" role="status" aria-live="polite"></span></div>
+      </form>
       <div class="presale-actions">
         <a id="presaleBackLink" class="presale-button" href="/">선택한 건물로 돌아가기</a>
         <a class="presale-button secondary" href="/partner">파트너 등록 안내</a>
       </div>
-      <p class="presale-footnote">등록에 필요한 자료를 준비한 뒤, 파트너 등록 안내에서 기존 운영 절차를 확인해 주세요. 이 안내 페이지에는 허위 정보 제출이나 자동 결제 절차가 없습니다.</p>
+      <p class="presale-footnote">허위 또는 권한 없는 자료를 제출하면 신청이 반려될 수 있습니다. 신청 접수와 프로젝트 공개는 별개이며 자동 결제는 진행되지 않습니다.</p>
     </main>
   </div>
   <script>
@@ -84,9 +118,12 @@
       var raw = params.get("building") || "";
       var id = /^[1-9]\d*$/.test(raw) ? Number(raw) : null;
       var context = document.getElementById("presaleContext");
+      var form = document.getElementById("presaleApplicationForm");
+      var buildingInput = document.getElementById("masterBuildingId");
       var back = document.getElementById("presaleBackLink");
       var top = document.getElementById("presaleTopLink");
       if (id && Number.isSafeInteger(id)) {
+        buildingInput.value = String(id);
         var buildingUrl = "/building/" + id;
         back.href = buildingUrl;
         top.href = buildingUrl;
@@ -115,9 +152,21 @@
             context.textContent = "선택한 건물 정보를 확인하지 못했습니다. 아래 안내는 계속 확인할 수 있습니다.";
           });
       } else {
+        form.querySelector("button[type=submit]").disabled = true;
         context.classList.remove("is-loading");
         context.textContent = "등록할 건물을 선택하지 않았습니다. 홈앤스테이의 건물 상세에서 다시 시작해 주세요.";
       }
+      form.addEventListener("submit", function(event){
+        event.preventDefault();
+        var button = document.getElementById("presaleSubmit");
+        var result = document.getElementById("presaleResult");
+        if (!buildingInput.value) { result.className="is-error"; result.textContent="신청할 건물을 다시 선택해주세요."; return; }
+        button.disabled=true; result.className=""; result.textContent="안전하게 제출하는 중입니다…";
+        fetch("/api/presale/applications", {method:"POST", credentials:"same-origin", body:new FormData(form)})
+          .then(function(res){return res.json().catch(function(){return {};}).then(function(body){if(!res.ok)throw new Error(body.message||"신청을 제출하지 못했습니다.");return body;});})
+          .then(function(body){form.reset();buildingInput.value=String(id);button.disabled=true;result.className="is-success";result.textContent=body.message||"신청이 접수되었습니다.";})
+          .catch(function(error){button.disabled=false;result.className="is-error";result.textContent=error.message;});
+      });
     }());
   </script>
 </body>

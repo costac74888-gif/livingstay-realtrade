@@ -14,8 +14,8 @@ class PresaleFeatureContractTests(unittest.TestCase):
         cls.start = Path("scripts/start-prod.sh").read_text(encoding="utf-8")
 
     def test_schema_and_production_boot_ensure_presale_tables(self):
-        self.assertIn('SCHEMA_VERSION = "2026-09-05-07"', self.db)
-        for table in ("presale_projects", "presale_promotions", "presale_audit_log"):
+        self.assertIn('SCHEMA_VERSION = "2026-09-05-08"', self.db)
+        for table in ("presale_projects", "presale_promotions", "presale_applications", "presale_audit_log"):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table}", self.db)
         self.assertIn("ensure_presale_schema.py", self.start)
         self.assertIn("ADD COLUMN IF NOT EXISTS remaining_units", self.db)
@@ -26,7 +26,10 @@ class PresaleFeatureContractTests(unittest.TestCase):
         page = Path("static/apply_presale.html").read_text(encoding="utf-8")
         self.assertIn("/api/building/", page)
         self.assertIn("URLSearchParams", page)
-        self.assertNotIn("<form", page.lower())
+        self.assertIn('id="presaleApplicationForm"', page)
+        self.assertIn('name="privacy_consent"', page)
+        self.assertIn('name="evidence"', page)
+        self.assertIn('fetch("/api/presale/applications"', page)
 
     def test_public_queries_use_real_precompletion_rule_and_allowlist(self):
         self.assertIn("building_status IN ('허가','착공')", self.app)
@@ -51,6 +54,52 @@ class PresaleFeatureContractTests(unittest.TestCase):
         self.assertIn("_presale_audit(cur,", self.app)
         self.assertIn("이미 현재 분양 프로젝트", self.app)
         self.assertIn("프로모션 이력이 있는 초안", self.app)
+        self.assertIn("application_submitted", self.app)
+        self.assertIn("application_approved", self.app)
+        self.assertIn("application_rejected", self.app)
+
+    def test_applications_are_private_deduplicated_and_reviewed_to_draft(self):
+        self.assertIn("uq_presale_applications_active_building", self.db)
+        self.assertIn("WHERE status IN ('submitted','reviewing')", self.db)
+        self.assertIn('@app.route("/api/presale/applications", methods=["POST"])', self.app)
+        self.assertIn('@app.route("/api/admin/presale/applications")', self.app)
+        self.assertIn("/review\", methods=[\"POST\"]", self.app)
+        self.assertIn('"status": "draft"', self.app)
+        self.assertIn("project_created_from_application", self.app)
+        self.assertGreaterEqual(self.app.count("NULLIF(use_apr_day,'') IS NULL FOR UPDATE"), 3)
+        self.assertNotIn('presale_applications a JOIN', self.app[self.app.index("def presale_stats"):self.app.index("def building_presale")])
+
+    def test_application_files_have_private_namespace_and_signed_admin_access(self):
+        self.assertIn("PRESALE_APPLICATION_REF_RE", self.storage)
+        self.assertIn("def build_presale_application_key", self.storage)
+        self.assertIn("is_valid_presale_application_ref(key, doc_type)", self.app)
+        self.assertIn("signed_get_url(key, ttl_sec=300)", self.app)
+        self.assertIn("check_magic_bytes(raw, ext)", self.app)
+        self.assertIn("decoded.load()", self.app)
+        self.assertIn('PRESALE_APPLICATION_DOC_EXTENSIONS = {"jpg", "jpeg", "png"}', self.storage)
+        self.assertNotIn("(pdf|jpg|jpeg|png)", self.storage[self.storage.index("PRESALE_APPLICATION_REF_RE"):])
+        self.assertIn("application_document_accessed", self.app)
+        self.assertIn("receipt_notification_status", self.db)
+        self.assertIn("decision_notification_status", self.db)
+        self.assertIn("/notify\", methods=[\"POST\"]", self.app)
+        self.assertIn("해당 건물에는 검토 중인 분양 신청이 있습니다.", self.app)
+        self.assertIn("NOT EXISTS (SELECT 1 FROM presale_applications", self.app)
+
+    def test_application_file_validation_rejects_pdf_and_broken_images(self):
+        os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
+        import app as server
+        class Upload:
+            def __init__(self, filename, raw):
+                self.filename = filename
+                self._raw = io.BytesIO(raw)
+            def read(self, size=-1):
+                return self._raw.read(size)
+        with self.assertRaises(ValueError):
+            server._presale_application_file(Upload("evidence.pdf", b"%PDF-1.7\n%%EOF" + b"x" * 20), "evidence")
+        with self.assertRaises(ValueError):
+            server._presale_application_file(
+                Upload("evidence.png", b"\x89PNG\r\n\x1a\n" + b"not-an-image" * 3), "evidence"
+            )
 
     def test_payload_domain_ranges_phone_and_public_allowlist(self):
         # Importing helpers with startup DDL disabled makes this a focused unit test.

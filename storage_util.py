@@ -150,6 +150,10 @@ EMAIL_BANNER_REF_RE = re.compile(r"^email_banners/[0-9a-f]{32}\.(jpg|jpeg|png)$"
 # 서류나 다른 관리용 객체를 읽는 일이 없도록 이 namespace만 허용한다.
 PRESALE_BANNER_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
 PRESALE_BANNER_REF_RE = re.compile(r"^presale_banners/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+PRESALE_APPLICATION_DOC_EXTENSIONS = {"jpg", "jpeg", "png"}
+PRESALE_APPLICATION_REF_RE = re.compile(
+    r"^presale_applications/[0-9a-f]{32}/(evidence|banner)\.(jpg|jpeg|png)$"
+)
 
 
 def build_email_banner_key(ext):
@@ -166,6 +170,17 @@ def build_presale_banner_key(ext):
 
 def is_valid_presale_banner_ref(ref):
     return bool(ref) and bool(PRESALE_BANNER_REF_RE.match(ref))
+
+
+def build_presale_application_key(doc_type, ext):
+    if doc_type not in {"evidence", "banner"} or ext not in PRESALE_APPLICATION_DOC_EXTENSIONS:
+        raise ValueError("유효하지 않은 분양 신청 파일 형식입니다.")
+    return f"presale_applications/{uuid.uuid4().hex}/{doc_type}.{ext}"
+
+
+def is_valid_presale_application_ref(ref, doc_type=None):
+    match = PRESALE_APPLICATION_REF_RE.match(str(ref or ""))
+    return bool(match) and (doc_type is None or match.group(1) == doc_type)
 
 
 # ---- 공지사항 첨부파일 (관리자 업로드, 공개 서빙) ----

@@ -31731,9 +31731,111 @@ def _presale_safe_url(value):
     return value if len(value) <= 2048 else None
 
 
-def _presale_audit(cur, action, project_id=None, promotion_id=None, detail=None):
-    cur.execute("INSERT INTO presale_audit_log(project_id,promotion_id,admin_id,action,detail) VALUES(%s,%s,%s,%s,%s::jsonb)",
-                [project_id, promotion_id, session.get("admin_user_id"), action, json.dumps(detail or {})])
+def _presale_audit(cur, action, project_id=None, promotion_id=None, application_id=None, detail=None):
+    cur.execute("""INSERT INTO presale_audit_log
+                   (project_id,promotion_id,application_id,admin_id,action,detail)
+                   VALUES(%s,%s,%s,%s,%s,%s::jsonb)""",
+                [project_id, promotion_id, application_id, session.get("admin_user_id"),
+                 action, json.dumps(detail or {})])
+
+
+_PRESALE_APPLICATION_CONSENT_VERSION = "presale-application-2026-09-05"
+
+
+def _presale_application_file(upload, doc_type, image_only=False):
+    if not upload or not upload.filename:
+        if doc_type == "evidence":
+            raise ValueError("사업자·시행사 확인 증빙 파일을 첨부해주세요.")
+        return None
+    filename = os.path.basename(str(upload.filename))[:200]
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    allowed = storage_util.PRESALE_APPLICATION_DOC_EXTENSIONS
+    if ext not in allowed:
+        raise ValueError("증빙과 배너 후보는 JPG/PNG 이미지만 첨부할 수 있습니다.")
+    raw = upload.read(storage_util.MAX_FILE_BYTES + 1)
+    if len(raw) < 16 or len(raw) > storage_util.MAX_FILE_BYTES:
+        raise ValueError("첨부 파일은 5MB 이하의 정상 파일이어야 합니다.")
+    if not storage_util.check_magic_bytes(raw, ext):
+        raise ValueError("파일 확장자와 실제 형식이 일치하지 않습니다.")
+    if ext in {"jpg", "jpeg", "png"}:
+        try:
+            import warnings
+            from PIL import Image
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                image = Image.open(io.BytesIO(raw))
+                if image.format not in ("JPEG", "PNG"):
+                    raise ValueError()
+                width, height = image.size
+                if (image_only and (width < 320 or height < 100)) or width > 10000 or height > 10000 or width * height > 25_000_000:
+                    raise ValueError()
+                image.verify()
+            # verify()는 컨테이너 구조만 확인하므로 다시 열어 압축 픽셀을 끝까지 디코딩한다.
+            decoded = Image.open(io.BytesIO(raw))
+            decoded.load()
+        except Exception:
+            message = ("배너 후보는 320×100 이상인 정상 JPG/PNG 이미지여야 합니다."
+                       if image_only else "손상되지 않은 정상 이미지 파일만 첨부할 수 있습니다.")
+            raise ValueError(message)
+    key = storage_util.build_presale_application_key(doc_type, ext)
+    return {"key": key, "raw": raw, "filename": filename}
+
+
+def _record_presale_notification(application_id, outcome, ok, error=None):
+    column = "receipt_notification_status" if outcome == "received" else "decision_notification_status"
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"""UPDATE presale_applications
+                        SET {column}=%s,notification_error=%s,updated_at=NOW() WHERE id=%s""",
+                    ["sent" if ok else "failed", None if ok else str(error or "발송 실패")[:1000], application_id])
+        _presale_audit(cur, f"application_{outcome}_notification_{'sent' if ok else 'failed'}",
+                       application_id=application_id)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("분양 신청 알림 상태 저장 실패 (%s, %s)", application_id, outcome)
+    finally:
+        cur.close(); conn.close()
+
+
+def _send_presale_application_email(to_email, company_name, outcome, reason=None, application_id=None):
+    try:
+        company = _html.escape(str(company_name or "신청 업체"))
+        messages = {
+            "received": ("분양 정보 신청이 접수되었습니다.", "관리자가 자료를 검토한 뒤 결과를 이메일로 안내드립니다."),
+            "approved": ("분양 정보 신청이 승인되었습니다.", "관리자 분양 프로젝트 초안이 생성되었습니다. 공개 전 별도 검토를 거칩니다."),
+            "rejected": ("분양 정보 신청이 반려되었습니다.", f"사유: {_html.escape(str(reason or '제출 자료를 다시 확인해주세요.'))}"),
+        }
+        heading, body = messages[outcome]
+        html = f"""<div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;max-width:520px;margin:auto;color:#16202e">
+        <h2 style="border-bottom:2px solid #b4863f;padding-bottom:8px">홈앤스테이</h2>
+        <p><b>{heading}</b></p><p>업체명: {company}</p><p style="color:#5f6875">{body}</p></div>"""
+        ok, message = send_email(
+            to_email, f"[홈앤스테이] {heading}", html,
+            idempotency_key=f"presale-application-{application_id}-{outcome}",
+        )
+        if not ok:
+            app.logger.warning("분양 신청 이메일 발송 실패 (%s, %s): %s", application_id, outcome, message)
+        if application_id:
+            _record_presale_notification(application_id, outcome, ok, message)
+        return ok
+    except Exception:
+        app.logger.exception("분양 신청 이메일 발송 중 오류 (%s, %s)", application_id, outcome)
+        if application_id:
+            _record_presale_notification(application_id, outcome, False, "발송 중 오류")
+        return False
+
+
+def _presale_application_admin_row(row):
+    return {key: row.get(key) for key in (
+        "id", "master_building_id", "building_name", "road_address", "status", "project_id",
+        "title", "project_status", "project_type", "summary", "unit_count", "remaining_units",
+        "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date",
+        "company_name", "contact_name", "contact_phone", "contact_email", "homepage_url",
+        "evidence_filename", "banner_filename", "reject_reason", "consent_version",
+        "consented_at", "receipt_notification_status", "decision_notification_status",
+        "notification_error", "reviewed_at", "reviewed_by", "created_at", "updated_at",
+    )}
 
 
 def _presale_public_project(row):
@@ -31813,6 +31915,239 @@ def presale_banner(key):
     return Response(data, mimetype="image/png" if key.endswith(".png") else "image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 
+@app.route("/api/presale/applications", methods=["POST"])
+@limiter.limit("2 per minute; 5 per hour")
+def create_presale_application():
+    data = request.form
+    uploaded_keys = []
+    try:
+        if data.get("privacy_consent") != "yes":
+            raise ValueError("개인정보 수집·이용 동의가 필요합니다.")
+        try:
+            building_id = int(data.get("master_building_id", ""))
+        except (TypeError, ValueError):
+            raise ValueError("신청할 건물을 다시 선택해주세요.")
+        email = str(data.get("contact_email") or "").strip().lower()
+        if not re.fullmatch(r"[^@\s]{1,64}@[^@\s]{1,190}", email):
+            raise ValueError("담당자 이메일 형식이 올바르지 않습니다.")
+        homepage_raw = str(data.get("homepage_url") or "").strip()
+        homepage_url = _presale_safe_url(homepage_raw) if homepage_raw else None
+        if homepage_raw and not homepage_url:
+            raise ValueError("홈페이지는 외부에서 확인 가능한 HTTPS 주소만 입력할 수 있습니다.")
+        project_input = {key: data.get(key) for key in _PRESALE_PROJECT_FIELDS}
+        project_input.update({"status": "draft", "publication_start_at": None, "publication_end_at": None})
+        fields = _presale_project_payload(project_input)
+        company_name = str(data.get("company_name") or "").strip()
+        contact_name = str(data.get("contact_name") or "").strip()
+        if not company_name or len(company_name) > 200:
+            raise ValueError("회사명을 1~200자로 입력해주세요.")
+        if not contact_name or len(contact_name) > 100:
+            raise ValueError("담당자 이름을 1~100자로 입력해주세요.")
+        fields["company_name"] = company_name
+        fields["contact_name"] = contact_name
+        evidence = _presale_application_file(request.files.get("evidence"), "evidence")
+        banner = _presale_application_file(request.files.get("banner"), "banner", image_only=True)
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT 1 FROM master_buildings
+                       WHERE id=%s AND building_status IN ('허가','착공')
+                         AND NULLIF(use_apr_day,'') IS NULL FOR UPDATE""", [building_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "분양 신청 가능한 준공 전 건물이 아닙니다."}), 400
+        cur.execute("""SELECT 1 FROM presale_projects WHERE master_building_id=%s
+                       UNION ALL
+                       SELECT 1 FROM presale_applications
+                       WHERE master_building_id=%s AND status IN ('submitted','reviewing')
+                       LIMIT 1""", [building_id, building_id])
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": "이 건물은 이미 분양 프로젝트 또는 검토 중인 신청이 있습니다."}), 409
+        for item in (evidence, banner):
+            if item:
+                storage_util.upload_doc(item["key"], item["raw"])
+                uploaded_keys.append(item["key"])
+        columns = (
+            "master_building_id,title,project_status,project_type,summary,unit_count,remaining_units,"
+            "price_min,price_max,sale_start_date,sale_end_date,move_in_date,company_name,contact_name,"
+            "contact_phone,contact_email,homepage_url,evidence_object_key,evidence_filename,"
+            "banner_object_key,banner_filename,consent_version,consented_at"
+        )
+        values = [
+            building_id, fields["title"], fields["project_status"], fields["project_type"], fields["summary"],
+            fields["unit_count"], fields["remaining_units"], fields["price_min"], fields["price_max"],
+            fields["sale_start_date"], fields["sale_end_date"], fields["move_in_date"], company_name,
+            contact_name, fields["contact_phone"], email, homepage_url, evidence["key"], evidence["filename"],
+            banner["key"] if banner else None, banner["filename"] if banner else None,
+            _PRESALE_APPLICATION_CONSENT_VERSION,
+        ]
+        cur.execute(f"""INSERT INTO presale_applications({columns})
+                        VALUES({','.join(['%s'] * 22)},NOW()) RETURNING id""", values)
+        application_id = cur.fetchone()["id"]
+        _presale_audit(cur, "application_submitted", application_id=application_id,
+                       detail={"building_id": building_id})
+        conn.commit()
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        for key in uploaded_keys:
+            try: storage_util.delete_object(key)
+            except Exception: pass
+        return jsonify({"ok": False, "message": "이 건물은 이미 검토 중인 신청이 있습니다."}), 409
+    except Exception:
+        conn.rollback()
+        for key in uploaded_keys:
+            try: storage_util.delete_object(key)
+            except Exception: pass
+        app.logger.exception("분양 신청 저장 실패")
+        return jsonify({"ok": False, "message": "신청 저장에 실패했습니다. 잠시 후 다시 시도해주세요."}), 500
+    finally:
+        cur.close()
+        conn.close()
+    _send_presale_application_email(email, company_name, "received", application_id=application_id)
+    return jsonify({"ok": True, "application_id": application_id,
+                    "message": "신청이 접수되었습니다. 검토 결과는 이메일로 안내드립니다."}), 201
+
+
+@app.route("/api/admin/presale/applications")
+@require_admin
+@limiter.limit("30 per minute")
+def admin_presale_applications():
+    status = str(request.args.get("status", "")).strip()
+    if status and status not in ("submitted", "reviewing", "approved", "rejected"):
+        return jsonify({"ok": False, "message": "신청 상태가 올바르지 않습니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT a.*,b.building_name,b.road_address
+                       FROM presale_applications a
+                       JOIN master_buildings b ON b.id=a.master_building_id
+                       WHERE (%s='' OR a.status=%s)
+                       ORDER BY CASE WHEN a.status IN ('submitted','reviewing') THEN 0 ELSE 1 END,
+                                a.created_at DESC LIMIT 200""", [status, status])
+        return jsonify({"ok": True, "applications": [_presale_application_admin_row(r) for r in cur.fetchall()]})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/presale/applications/<int:application_id>/document")
+@require_admin
+@limiter.limit("30 per minute")
+def admin_presale_application_document(application_id):
+    doc_type = request.args.get("doc")
+    if doc_type not in ("evidence", "banner"):
+        return jsonify({"ok": False, "message": "문서 종류가 올바르지 않습니다."}), 400
+    column = "evidence_object_key" if doc_type == "evidence" else "banner_object_key"
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT {column} AS object_key FROM presale_applications WHERE id=%s", [application_id])
+        row = cur.fetchone()
+        key = row["object_key"] if row else None
+        if not key or not storage_util.is_valid_presale_application_ref(key, doc_type):
+            return jsonify({"ok": False, "message": "첨부 파일을 찾을 수 없습니다."}), 404
+        try:
+            url = storage_util.signed_get_url(key, ttl_sec=300)
+        except Exception:
+            app.logger.exception("분양 신청 첨부 서명 URL 발급 실패")
+            return jsonify({"ok": False, "message": "파일 열람 주소를 만들지 못했습니다."}), 500
+        _presale_audit(cur, "application_document_accessed", application_id=application_id,
+                       detail={"document_type": doc_type})
+        conn.commit()
+        return jsonify({"ok": True, "url": url})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/presale/applications/<int:application_id>/review", methods=["POST"])
+@require_admin
+@limiter.limit("20 per minute")
+def admin_presale_application_review(application_id):
+    data = request.get_json(force=True, silent=True) or {}
+    action = str(data.get("action") or "").strip()
+    reason = str(data.get("reason") or "").strip()
+    if action not in ("approve", "reject"):
+        return jsonify({"ok": False, "message": "승인 또는 반려를 선택해주세요."}), 400
+    if action == "reject" and not reason:
+        return jsonify({"ok": False, "message": "반려 사유를 입력해주세요."}), 400
+    if len(reason) > 1000:
+        return jsonify({"ok": False, "message": "반려 사유가 너무 깁니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM presale_applications WHERE id=%s FOR UPDATE", [application_id])
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "message": "신청을 찾을 수 없습니다."}), 404
+        if row["status"] not in ("submitted", "reviewing"):
+            return jsonify({"ok": False, "message": "이미 심사가 끝난 신청입니다."}), 409
+        project_id = None
+        if action == "approve":
+            cur.execute("""SELECT 1 FROM master_buildings
+                           WHERE id=%s AND building_status IN ('허가','착공')
+                             AND NULLIF(use_apr_day,'') IS NULL FOR UPDATE""", [row["master_building_id"]])
+            if not cur.fetchone():
+                return jsonify({"ok": False, "message": "현재 분양 대상 준공 전 건물이 아닙니다."}), 409
+            project_data = {key: row.get(key) for key in _PRESALE_PROJECT_FIELDS}
+            project_data.update({"status": "draft", "publication_start_at": None, "publication_end_at": None,
+                                 "editorial_body": None})
+            fields = _presale_project_payload(project_data)
+            columns = list(fields)
+            cur.execute(f"""INSERT INTO presale_projects(master_building_id,{','.join(columns)},created_by,updated_by)
+                            VALUES(%s,{','.join(['%s'] * len(columns))},%s,%s) RETURNING id""",
+                        [row["master_building_id"]] + [fields[x] for x in columns] +
+                        [session.get("admin_user_id"), session.get("admin_user_id")])
+            project_id = cur.fetchone()["id"]
+            cur.execute("""UPDATE presale_applications
+                           SET status='approved',project_id=%s,reject_reason=NULL,reviewed_at=NOW(),
+                               reviewed_by=%s,updated_at=NOW() WHERE id=%s""",
+                        [project_id, session.get("admin_user_id"), application_id])
+            _presale_audit(cur, "application_approved", project_id=project_id,
+                           application_id=application_id)
+            _presale_audit(cur, "project_created_from_application", project_id=project_id,
+                           application_id=application_id)
+        else:
+            cur.execute("""UPDATE presale_applications
+                           SET status='rejected',reject_reason=%s,reviewed_at=NOW(),
+                               reviewed_by=%s,updated_at=NOW() WHERE id=%s""",
+                        [reason, session.get("admin_user_id"), application_id])
+            _presale_audit(cur, "application_rejected", application_id=application_id,
+                           detail={"reason": reason[:200]})
+        conn.commit()
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"ok": False, "message": "해당 건물에는 이미 분양 프로젝트가 있습니다."}), 409
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    finally:
+        cur.close(); conn.close()
+    _send_presale_application_email(row["contact_email"], row["company_name"],
+                                    "approved" if action == "approve" else "rejected",
+                                    reason=reason, application_id=application_id)
+    return jsonify({"ok": True, "project_id": project_id})
+
+
+@app.route("/api/admin/presale/applications/<int:application_id>/notify", methods=["POST"])
+@require_admin
+@limiter.limit("10 per minute")
+def admin_presale_application_notify(application_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id,status,company_name,contact_email,reject_reason
+                       FROM presale_applications WHERE id=%s""", [application_id])
+        row = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "신청을 찾을 수 없습니다."}), 404
+    outcome = {"submitted": "received", "reviewing": "received",
+               "approved": "approved", "rejected": "rejected"}.get(row["status"])
+    ok = _send_presale_application_email(
+        row["contact_email"], row["company_name"], outcome,
+        reason=row["reject_reason"], application_id=application_id,
+    )
+    return jsonify({"ok": ok, "message": "이메일을 다시 발송했습니다." if ok else "이메일 발송에 실패했습니다."}), (200 if ok else 502)
+
+
 @app.route("/api/admin/presale/eligible-buildings")
 @require_admin
 @limiter.limit("30 per minute")
@@ -31823,6 +32158,8 @@ def admin_presale_eligible_buildings():
         cur.execute("""SELECT b.id,b.building_name,b.road_address,b.building_status,b.completion_expected_date,b.lat,b.lng
           FROM master_buildings b LEFT JOIN presale_projects p ON p.master_building_id=b.id
           WHERE p.id IS NULL AND b.building_status IN ('허가','착공') AND NULLIF(b.use_apr_day,'') IS NULL
+            AND NOT EXISTS (SELECT 1 FROM presale_applications a
+                            WHERE a.master_building_id=b.id AND a.status IN ('submitted','reviewing'))
             AND (%s='' OR b.building_name ILIKE '%%'||%s||'%%' OR b.road_address ILIKE '%%'||%s||'%%')
           ORDER BY b.id DESC LIMIT 100""",[q,q,q])
         return jsonify({"ok":True,"buildings":[dict(r) for r in cur.fetchall()]})
@@ -31841,8 +32178,13 @@ def admin_presale_projects():
         data=request.get_json(force=True,silent=True) or {}
         try: building_id=int(data.get("master_building_id")); fields=_presale_project_payload(data)
         except (ValueError,TypeError) as exc: return jsonify({"ok":False,"message":str(exc)}),400
-        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s AND building_status IN ('허가','착공') AND NULLIF(use_apr_day,'') IS NULL",[building_id])
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s AND building_status IN ('허가','착공') AND NULLIF(use_apr_day,'') IS NULL FOR UPDATE",[building_id])
         if not cur.fetchone(): return jsonify({"ok":False,"message":"분양 대상 준공전 건물이 아닙니다."}),400
+        cur.execute("""SELECT 1 FROM presale_applications
+                       WHERE master_building_id=%s AND status IN ('submitted','reviewing') LIMIT 1""",
+                    [building_id])
+        if cur.fetchone():
+            return jsonify({"ok":False,"message":"해당 건물에는 검토 중인 분양 신청이 있습니다."}),409
         cols=list(fields); cur.execute(f"INSERT INTO presale_projects(master_building_id,{','.join(cols)},created_by,updated_by) VALUES(%s,{','.join(['%s']*len(cols))},%s,%s) RETURNING id",[building_id]+[fields[x] for x in cols]+[session.get("admin_user_id")]*2)
         pid=cur.fetchone()["id"]; _presale_audit(cur,"project_created",pid,detail={"building_id":building_id}); conn.commit()
         return jsonify({"ok":True,"id":pid}),201

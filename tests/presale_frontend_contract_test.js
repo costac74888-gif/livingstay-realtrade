@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const main = fs.readFileSync("static/js/main.js", "utf8");
 const index = fs.readFileSync("static/index.html", "utf8");
 const admin = fs.readFileSync("static/admin.html", "utf8");
+const apply = fs.readFileSync("static/apply_presale.html", "utf8");
 const repl = fs.readFileSync(".replit", "utf8");
 
 assert.match(index, /data-datalab-key="presale"/);
@@ -35,6 +36,14 @@ assert.match(admin, /method:editPromotionId\?"PUT":"POST"/);
 assert.match(admin, /method:"DELETE"/);
 assert.match(admin, /optionalNumber/);
 assert.match(admin, /setForm\(document\.getElementById\("presaleForm"\),p\)/);
+assert.match(apply, /id="presaleApplicationForm"/);
+assert.match(apply, /name="privacy_consent"/);
+assert.match(apply, /name="evidence"/);
+assert.match(apply, /\/api\/presale\/applications/);
+assert.match(admin, /\/api\/admin\/presale\/applications/);
+assert.match(admin, /data-app-approve/);
+assert.match(admin, /data-app-reject/);
+assert.match(admin, /data-app-notify/);
 assert.match(main, /onclick="window\.openBuildingDetail\(.+?\); return false;"/);
 assert.match(repl, /build\s*=\s*\["npm",\s*"run",\s*"build:frontend"\]/);
 
