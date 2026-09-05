@@ -19,6 +19,10 @@ expect(manage.includes("/photos/reorder") && manage.includes("photo_ids:photos.m
   "사진 순서·대표·삭제 관리 기능이 없습니다.");
 expect(main.includes('params.set("building_id"') && building.includes("building_id=${encodeURIComponent(buildingId)}"),
   "건물 상세 진입 등록 링크가 building_id를 전달하지 않습니다.");
+expect(apply.includes("typeChosenBeforeFacility") && apply.includes("if(typeChosenBeforeFacility){show(3);return}"),
+  "진입 전에 운영자 유형을 선택한 경우 유형 선택 단계를 건너뛰지 않습니다.");
+expect(apply.includes("selected-building-name") && apply.includes("selected-building-address"),
+  "선택한 시설명과 주소가 구분되어 강조 표시되지 않습니다.");
 expect(admin.includes('key: "lodging_operator"') && admin.includes("숙박시설 운영자"),
   "관리자 회원 그룹에 숙박시설 운영자가 없습니다.");
 console.log("OK  숙박 운영자 마법사·갤러리·회원그룹 회귀 점검");
