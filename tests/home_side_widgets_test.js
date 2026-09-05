@@ -76,6 +76,16 @@ expect(
   "모바일 열지도 라벨 밀도 또는 터치 전용 상세정보 처리가 없습니다."
 );
 expect(
+  main.includes("function clusterDataLabTourismItems") &&
+  main.includes("level >= 13 ? null") &&
+  main.includes("level === 12 ? .7") &&
+  main.includes('addListener(kakaoMap, "zoom_changed", dataLabTourismZoomHandler)') &&
+  main.includes('removeListener(kakaoMap, "zoom_changed", dataLabTourismZoomHandler)') &&
+  main.includes("setTimeout(renderAtCurrentZoom, 140)") &&
+  main.includes("member_count"),
+  "관광 열지도가 확대 수준에 따라 시군구를 합치거나 분리하지 않습니다."
+);
+expect(
   css.includes(".datalab-map-info") &&
   css.includes("pointer-events:none") &&
   !css.includes("transform:scale(1.08)"),
