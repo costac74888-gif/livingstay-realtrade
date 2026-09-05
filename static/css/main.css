@@ -570,9 +570,9 @@
   .presale-table{table-layout:auto}
   .presale-table th:first-child,.presale-table td:first-child{width:58%;text-align:left;white-space:nowrap}
   .presale-table th:not(:first-child),.presale-table td:not(:first-child){text-align:right;white-space:nowrap}
-  .presale-table .presale-share{color:#d32f2f;font-weight:800}
+  .presale-table .presale-share{color:var(--ink);font-weight:800}
   .presale-table tfoot th{border-top:2px solid #e7c7c4;background:#fff8f7;color:var(--ink);font-weight:800}
-  .presale-table tfoot th:last-child{color:#d32f2f}
+  .presale-table tfoot th:last-child{color:var(--ink)}
   .presale-building-marker{width:76px;height:38px;padding:0;border:2px solid #fff;border-radius:4px;background:#e53935;color:#fff;box-sizing:border-box;box-shadow:0 2px 7px rgba(90,0,0,.35);cursor:pointer;text-align:center;overflow:hidden;font-family:'Noto Sans KR',sans-serif}
   .presale-building-marker strong,.presale-building-marker span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .presale-building-marker strong{font-size:11px;line-height:17px}
