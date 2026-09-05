@@ -14,15 +14,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
 <style>
-.partner-cat-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
-@media (max-width: 640px){ .partner-cat-grid{ grid-template-columns:1fr; } }
-.partner-cat-card{ display:flex; flex-direction:column; align-items:flex-start; gap:8px; border:1px solid var(--line); border-radius:12px; padding:16px 14px; text-decoration:none; background:#fff; transition:border-color .15s, box-shadow .15s; }
-.partner-cat-card:hover{ border-color:var(--brass); box-shadow:0 2px 10px rgba(180,134,63,.15); }
+.partner-page{max-width:880px;padding-bottom:56px}
+.partner-hero{margin-bottom:16px;padding:30px clamp(22px,5vw,42px);border-radius:18px;background:var(--ink);box-shadow:0 14px 32px rgba(22,32,46,.13)}
+.partner-hero img{height:32px;display:block;margin-bottom:18px}
+.partner-hero h1{max-width:600px;margin:0 0 10px;color:#fff;font-size:clamp(25px,4vw,36px);line-height:1.3;letter-spacing:-.035em}
+.partner-hero p{max-width:620px;margin:0;color:rgba(255,255,255,.74);font-size:14px;line-height:1.7}
+.partner-section{margin-bottom:16px;padding:26px}
+.partner-section-head{margin-bottom:18px}
+.partner-section-head h2{margin:0;color:var(--ink);font-size:20px;letter-spacing:-.025em}
+.partner-section-head p{margin:5px 0 0;color:var(--ink-soft);font-size:12.5px;line-height:1.55}
+.partner-main-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.partner-cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.partner-cat-card{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:8px;border:1px solid var(--line);border-radius:12px;padding:16px 14px;text-decoration:none;background:#fff;transition:transform .15s,border-color .15s,box-shadow .15s}
+.partner-cat-card:hover{transform:translateY(-2px);border-color:var(--brass);box-shadow:0 7px 18px rgba(180,134,63,.14)}
 .partner-cat-card:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
-.partner-cat-icon{ width:42px; height:42px; border-radius:10px; background:var(--brass-tint, #F4EDDF); display:flex; align-items:center; justify-content:center; font-size:22px; }
+.partner-cat-icon{width:38px;height:38px;border-radius:10px;background:var(--brass-tint,#F4EDDF);display:flex;align-items:center;justify-content:center;color:var(--brass-dark,#8a6a2f);font:700 12px 'JetBrains Mono',monospace}
 .partner-cat-title{ font-size:15px; font-weight:700; color:var(--ink); }
-.partner-cat-desc{ font-size:12.5px; color:var(--ink-soft); line-height:1.55; flex:1; }
-.partner-cat-more{ font-size:13px; font-weight:700; color:var(--brass-dark, #8a6a2f); }
+.partner-cat-desc{font-size:12px;color:var(--ink-soft);line-height:1.55;flex:1;word-break:keep-all}
+.partner-cat-more{font-size:12.5px;font-weight:700;color:var(--brass-dark,#8a6a2f)}
+.partner-main-card{min-height:178px;padding:17px 13px}.partner-main-card .partner-cat-title{font-size:14px}.partner-main-card .partner-cat-more{margin-top:auto}
+.partner-benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.partner-benefit{border:1px solid var(--line);border-radius:11px;padding:16px}.partner-benefit strong{display:block;margin-bottom:5px;color:var(--ink);font-size:13.5px}.partner-benefit span{color:var(--ink-soft);font-size:12px;line-height:1.55}
 .partner-logo-grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
 @media (max-width: 640px){ .partner-logo-grid{ grid-template-columns:repeat(3, 1fr); } }
 .partner-logo-card{ display:flex; flex-direction:column; align-items:center; gap:6px; border:1px solid var(--line); border-radius:12px; padding:14px 8px; text-decoration:none; background:#fff; transition:border-color .15s, box-shadow .15s; }
@@ -30,60 +41,64 @@
 .partner-logo-card:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
 .partner-logo-card img{ width:64px; height:64px; object-fit:contain; border-radius:8px; }
 .partner-logo-name{ font-size:12px; font-weight:600; color:var(--ink); text-align:center; word-break:keep-all; }
+@media (max-width:760px){.partner-main-grid{grid-template-columns:repeat(2,1fr)}.partner-main-card:last-child{grid-column:1/-1}.partner-benefits{grid-template-columns:1fr}.partner-cat-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.partner-page{width:min(100% - 20px,880px)}.partner-hero{padding:25px 20px}.partner-section{padding:20px 16px}.partner-main-grid,.partner-cat-grid{grid-template-columns:1fr}.partner-main-card,.partner-main-card:last-child{grid-column:auto;min-height:0}.partner-logo-grid{grid-template-columns:repeat(3,1fr)}}
 </style>
 </head>
 <body>
 
 <header id="siteHeader"></header>
 
-<div class="search-panel" style="max-width:640px; padding-bottom:48px;">
+<main class="search-panel partner-page">
 
 
   <!-- 히어로 -->
-  <div class="panel-card" style="margin-bottom:14px; background:var(--ink); border:none;">
-    <div style="padding:6px 2px;">
-      <img src="/static/home_stay_share.png" alt="HOME &amp; STAY" style="height:30px; display:block; margin-bottom:14px;">
-      <h1 style="font-size:21px; font-weight:700; color:#fff; margin:0 0 8px; line-height:1.4;">홈앤스테이의<br>5개 분야 파트너를 모집합니다</h1>
-      <p style="font-size:13.5px; color:rgba(255,255,255,.75); margin:0; line-height:1.6;">홈앤스테이 파트너로 등록하고, 전국 숙박시설·분양형호텔·콘도 소유주와 바로 연결되세요.</p>
-    </div>
-  </div>
+  <section class="partner-hero">
+    <img src="/static/home_stay_share.png" alt="HOME &amp; STAY">
+    <h1>필요한 파트너 등록을<br>한곳에서 시작하세요</h1>
+    <p>숙박시설 운영부터 거래·운영지원·금융·분양까지, 활동 분야를 선택하면 자격과 등록 절차를 자세히 안내합니다.</p>
+  </section>
 
-  <div class="panel-card" style="margin-bottom:14px;">
-    <h2 class="menu-sec-title" style="margin-bottom:6px;">숙박시설 운영자이신가요?</h2>
-    <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 12px;">캠핑장·에어비앤비·농어촌민박·한옥·생숙 운영자라면 무료로 파트너 등록 후 예약 URL·사진을 직접 관리하세요.</p>
-    <div class="partner-cat-grid" id="lodgingPartnerCards"></div>
-  </div>
-
-  <!-- 분야 선택 허브 -->
-  <div class="panel-card" style="margin-bottom:14px;">
-    <h2 class="menu-sec-title" style="margin-bottom:12px;">분야를 선택하세요</h2>
-    <div class="partner-cat-grid">
-      <a class="partner-cat-card" href="/agents">
-        <div class="partner-cat-icon" aria-hidden="true">🤝</div>
-        <div class="partner-cat-title">2. 중개사</div>
+  <section class="panel-card partner-section" aria-labelledby="partnerFieldTitle">
+    <div class="partner-section-head"><h2 id="partnerFieldTitle">5개 분야 중 선택하세요</h2><p>선택한 분야의 대상, 혜택, 준비서류와 신청 방법을 확인할 수 있습니다.</p></div>
+    <div class="partner-main-grid">
+      <a class="partner-cat-card partner-main-card" href="#operator-guide">
+        <div class="partner-cat-icon" aria-hidden="true">01</div>
+        <div class="partner-cat-title">운영자</div>
+        <div class="partner-cat-desc">에어비앤비·캠핑·농어촌민박·한옥·생활숙박시설을 직접 운영하시나요?</div>
+        <div class="partner-cat-more">유형 선택 →</div>
+      </a>
+      <a class="partner-cat-card partner-main-card" href="/agents">
+        <div class="partner-cat-icon" aria-hidden="true">02</div>
+        <div class="partner-cat-title">중개사</div>
         <div class="partner-cat-desc">숙박시설 매매·임대 중개를 전문으로 하시나요?</div>
         <div class="partner-cat-more">자세히 보기 →</div>
       </a>
-      <a class="partner-cat-card" href="/operators">
-        <div class="partner-cat-icon" aria-hidden="true">🛎️</div>
-        <div class="partner-cat-title">3. 운영지원업체</div>
+      <a class="partner-cat-card partner-main-card" href="/operators">
+        <div class="partner-cat-icon" aria-hidden="true">03</div>
+        <div class="partner-cat-title">운영지원</div>
         <div class="partner-cat-desc">위탁·청소·세탁·용품·소독·세무·인테리어 7개 업종</div>
         <div class="partner-cat-more">자세히 보기 →</div>
       </a>
-      <a class="partner-cat-card" href="/loan-partners">
-        <div class="partner-cat-icon" aria-hidden="true">🏦</div>
-        <div class="partner-cat-title">4. 대출상담사</div>
+      <a class="partner-cat-card partner-main-card" href="/loan-partners">
+        <div class="partner-cat-icon" aria-hidden="true">04</div>
+        <div class="partner-cat-title">대출상담사</div>
         <div class="partner-cat-desc">숙박시설 담보대출 상담을 전문으로 하시나요?</div>
         <div class="partner-cat-more">자세히 보기 →</div>
       </a>
-      <a class="partner-cat-card" href="/">
-        <div class="partner-cat-icon" aria-hidden="true">🏗️</div>
-        <div class="partner-cat-title">5. 분양사</div>
+      <a class="partner-cat-card partner-main-card" href="/apply/presale">
+        <div class="partner-cat-icon" aria-hidden="true">05</div>
+        <div class="partner-cat-title">분양자</div>
         <div class="partner-cat-desc">건축주·시행사는 준공 전 건물을 선택한 뒤 등록할 수 있습니다.</div>
-        <div class="partner-cat-more">건물 선택하기 →</div>
+        <div class="partner-cat-more">등록 안내 →</div>
       </a>
     </div>
-  </div>
+  </section>
+
+  <section class="panel-card partner-section" id="operator-guide" aria-labelledby="operatorGuideTitle">
+    <div class="partner-section-head"><h2 id="operatorGuideTitle">운영자 세부 유형</h2><p>운영 중인 숙박시설 유형을 선택하면 전용 등록 신청서로 이동합니다.</p></div>
+    <div class="partner-cat-grid" id="lodgingPartnerCards"></div>
+  </section>
 
   <!-- 등록된 파트너 (승인 + 로고 보유 운영지원업체만, 없으면 모집 문구)
        ⚠️ 임시 숨김 (2026-07-23) — 파트너 수 채워지면 아래 주석 해제
@@ -132,7 +147,7 @@
     <p style="font-size:12px; color:var(--ink-soft); margin:0; text-align:center;">신청 후 관리자 승인 시 문자로 안내를 드립니다.</p>
   </div>
 
-</div>
+</main>
 
 <script>
 // 숙박 운영자는 기존 위탁운영업체와 별도 영업신고 대표자 파트너입니다.

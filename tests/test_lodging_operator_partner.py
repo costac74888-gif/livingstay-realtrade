@@ -135,7 +135,9 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
 
     def test_partner_hero_names_lodging_operators(self):
         html = (Path(ROOT) / "static" / "partner.html").read_text(encoding="utf-8")
-        self.assertIn("운영자·중개사·운영지원업체·금융 파트너이신가요?", html)
+        self.assertIn("5개 분야 중 선택하세요", html)
+        for label in ("운영자", "중개사", "운영지원", "대출상담사", "분양자"):
+            self.assertIn(f'<div class="partner-cat-title">{label}</div>', html)
 
     def test_partner_pages_fetch_the_same_public_stats_as_data_lab(self):
         for filename in ("partner.html", "apply_lodging_operator.html"):
