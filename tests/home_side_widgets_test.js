@@ -244,7 +244,14 @@ expect(closureRender.includes('class="datalab-region"') && !closureRender.includ
 expect(css.includes(".datalab-region") && css.includes("font-size:12px; font-weight:400"),
   "폐업 현황 지역명이 건물명 크기·일반 굵기로 지정되지 않았습니다.");
 expect(main.includes("dataLabArea(item.area_sqm)"), "가격변동 데이터랩에 동일 전용면적 표시가 없습니다.");
-expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국숙박업통계 캡션이 현재수집 기준이 아닙니다.");
+expect(main.includes("<span class=\"datalab-caption\">현재수집 기준</span>"), "전국 숙박 허가·영업신고 통계 캡션이 현재수집 기준이 아닙니다.");
+expect(
+  main.includes("① 전국 숙박 허가·영업신고 통계") &&
+  main.includes("외국인관광 도시민박업’ 수치는 Airbnb 등록 숙소 수가 아니며") &&
+  main.includes("지역이 0건이어도 해당 지역에 Airbnb 숙소가 없다는 뜻은 아닙니다.") &&
+  css.includes(".datalab-permit-note"),
+  "허가 업종 통계와 Airbnb 플랫폼 숙소 수를 구분하는 안내가 없습니다.",
+);
 expect(main.includes("function _hygieneBadge") &&
   main.includes("const badge = _hygieneBadge(l.hygiene_type)") &&
   main.includes('"외국인관광도시민박업":     ["에어비앤비"') &&

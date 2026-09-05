@@ -612,6 +612,7 @@
   .datalab-heading strong{font-size:12px; color:var(--ink);}
   .datalab-heading-main{display:inline-flex; align-items:center; gap:5px; min-width:0;}
   .datalab-caption{font-size:10px; color:var(--ink-soft); white-space:nowrap;}
+  .datalab-permit-note{margin:0 0 8px;padding:7px 8px;border:1px solid #E6D6B8;border-radius:7px;background:#FFF9ED;color:#6E5A35;font-size:9.5px;line-height:1.55;word-break:keep-all;}
   .datalab-partial-badge{display:inline-block; padding:2px 5px; border-radius:4px; background:#FFF3CD; color:#8A6200; font-size:9px; font-weight:800; white-space:nowrap;}
    .datalab-table-wrap{overflow-x:hidden; border:1px solid var(--line); border-radius:7px;}
    .datalab-table{width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; font-size:10px;}

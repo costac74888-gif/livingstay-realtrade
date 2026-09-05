@@ -3304,7 +3304,7 @@ function renderRecentChips(){
   }).join("");
 }
 
-// ── 데이터랩: ① 전국숙박업통계 + 시장 신호 5종 ─────────────────────────────
+// ── 데이터랩: ① 전국 숙박 허가·영업신고 통계 + 시장 신호 5종 ──────────────
 let dataLabRequestSequence = 0;
 let dataLabFetchController = null;
 const DATA_LAB_CACHE_TTL_MS = 600000;
@@ -3842,9 +3842,10 @@ function renderDataLabLodging(data){
     const displayedUnits = row.type === "캠핑"
       ? row.camping_site_count
       : row.units;
+    const displayType = lodgingLabelKo(row.type);
     const base = `
       <tr>
-        <td>${escapeHtml(row.type)}</td>
+        <td>${escapeHtml(displayType)}</td>
         <td>${dataLabNum(displayedBuildingCount)}</td>
         <td>${dataLabNum(displayedUnits)}</td>
         <td>${dataLabNum(row.biz_count)}</td>
@@ -3864,8 +3865,9 @@ function renderDataLabLodging(data){
   }).join("");
   return `
     <div class="datalab-heading">
-      <strong>① 전국숙박업통계</strong><span class="datalab-caption">현재수집 기준</span>
+      <strong>① 전국 숙박 허가·영업신고 통계</strong><span class="datalab-caption">현재수집 기준</span>
     </div>
+    <p class="datalab-permit-note">정부 원장의 허가 업종 통계입니다. ‘외국인관광 도시민박업’ 수치는 Airbnb 등록 숙소 수가 아니며, 지역이 0건이어도 해당 지역에 Airbnb 숙소가 없다는 뜻은 아닙니다.</p>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
         <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수<small>(시설수)</small></span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th title="현재 정상영업 중인 신고업체 수입니다."><span class="datalab-head-stack">신고업체<small>(정상)</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>

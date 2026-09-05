@@ -33,7 +33,11 @@ expect(lodging.normalize("", "착공") === "준공전", "착공 건물의 준공
 expect(lodging.badge("", null, "허가") === "준공전", "허가 건물의 준공전 배지가 깨졌습니다.");
 expect(lodging.color("", "착공") === lodging.colors["준공전"], "착공 건물의 준공전 색상이 깨졌습니다.");
 expect(lodging.badge("생활") === "생숙", "생활 분류 약칭이 깨졌습니다.");
-expect(lodging.badge("에어비앤비") === "에어비앤비", "에어비앤비 배지가 깨졌습니다.");
+expect(lodging.badge("에어비앤비") === "외국인관광 도시민박업", "외국인관광 도시민박업 표시명이 깨졌습니다.");
+expect(
+  fs.readFileSync("static/index.html", "utf8").includes('title="정부 원장의 외국인관광 도시민박업 허가·영업신고 건수이며 Airbnb 등록 숙소 수가 아닙니다."'),
+  "지도 범례에 허가 업종 통계 안내가 없습니다.",
+);
 expect(
   lodging.badge("캠핑", "자동차야영") === "캠핑·야영(자동차야영)",
   "자동차야영 하위 용도 배지가 깨졌습니다.",
@@ -50,6 +54,10 @@ for (const page of ["static/index.html", "static/transactions.html", "static/lis
   expect(
     html.includes('<option value="자동차야영"'),
     `${page} 용도 필터에 자동차야영 하위 옵션이 없습니다.`,
+  );
+  expect(
+    html.includes('<option value="에어비앤비">외국인관광 도시민박업</option>'),
+    `${page} 외국인관광 도시민박업이 Airbnb 플랫폼명으로 잘못 표시됩니다.`,
   );
 }
 
