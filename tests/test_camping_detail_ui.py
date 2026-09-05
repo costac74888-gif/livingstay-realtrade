@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from app import _choose_camping_detail_row
+from app import _choose_camping_detail_row, _choose_verified_camping_web_row
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +30,10 @@ class CampingDetailUiTests(unittest.TestCase):
             self.assertIn(field, self.db_source)
             self.assertIn(field, self.app_source)
         self.assertIn('result["camping"] = camping', self.app_source)
-        self.assertIn('"info_url": _gocamping_url_for_registry_key(', self.app_source)
+        self.assertIn('"info_url": info_url', self.app_source)
+        self.assertIn('"content_id": content_id', self.app_source)
+        self.assertIn('"detail_fields": web_detail.get("detail_fields")', self.app_source)
+        self.assertIn('"photos": image_urls', self.app_source)
 
     def test_camping_card_replaces_transaction_cards_and_resets(self):
         self.assertIn('id="bCampCard"', self.main_source)
@@ -73,6 +76,33 @@ class CampingDetailUiTests(unittest.TestCase):
             selected["camping_first_image_url"],
             "https://example.com/camp.jpg",
         )
+
+    def test_verified_web_row_can_enrich_separate_canonical_row(self):
+        canonical = {
+            "permit_number": "CAMPING:100093",
+            "biz_name": "비토애글램핑2호점",
+            "gocamping_content_id": "100093",
+        }
+        csv_row = {
+            "permit_number": "CAMPING:local:permit",
+            "biz_name": "비토애글램핑2호점(BITOLUV GLAMPING Season2)",
+            "gocamping_content_id": "100093",
+            "gocamping_detail": {"intro": "공식 웹 소개"},
+            "gocamping_detail_fetched_at": "2026-09-06",
+        }
+        selected = _choose_verified_camping_web_row([canonical, csv_row], canonical)
+        self.assertIs(selected, csv_row)
+
+    def test_verified_web_row_rejects_conflicting_content_ids(self):
+        canonical = {"permit_number": "CAMPING:1", "biz_name": "같은 이름"}
+        rows = [
+            canonical,
+            {"biz_name": "같은 이름", "gocamping_content_id": "1",
+             "gocamping_detail": {"intro": "A"}},
+            {"biz_name": "같은 이름", "gocamping_content_id": "2",
+             "gocamping_detail": {"intro": "B"}},
+        ]
+        self.assertIsNone(_choose_verified_camping_web_row(rows, canonical))
 
 
 if __name__ == "__main__":

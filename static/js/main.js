@@ -5058,10 +5058,11 @@ function renderPhotoSlider(photos){
     "has-streetview",
     usablePhotos.some(photo => photo.source === "streetview")
   );
-  const slides = usablePhotos.map(photo => `
+  window.__livingstayBuildingPhotos = usablePhotos;
+  const slides = usablePhotos.map((photo, index) => `
     <div class="bld-photo-slide">
       <img class="${photo.source === "streetview" ? "bld-photo-streetview" : ""}"
-           src="${escapeHtml(photo.url.trim())}" alt="건물사진" loading="lazy"
+           src="${escapeHtml(photo.url.trim())}" alt="건물사진 ${index + 1}" loading="lazy"
            onerror="handleBuildingPhotoError(this)">
       ${photo.can_delete && photo.id ? `
         <button type="button" class="bld-photo-delete"
@@ -5076,6 +5077,16 @@ function renderPhotoSlider(photos){
     <button type="button" class="photo-next" aria-label="다음 사진"${arrowsHidden}>&#8250;</button>
     <span class="photo-counter" id="photoCounter">1 / ${usablePhotos.length}</span>`;
   wrap.style.display = "";
+  wrap.querySelectorAll(".bld-photo-slide > img").forEach((image, index) => {
+    image.tabIndex = 0;
+    image.setAttribute("role", "button");
+    image.setAttribute("aria-label", `사진 ${index + 1} 크게 보기`);
+    const open = () => openBuildingPhotoGallery(usablePhotos, index);
+    image.addEventListener("click", open);
+    image.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
+  });
   initBuildingPhotoSlider(usablePhotos.length);
   wrap.querySelectorAll("[data-building-photo-delete]").forEach(button => {
     button.addEventListener("click", async event => {
@@ -5100,6 +5111,53 @@ function renderPhotoSlider(photos){
       }
     });
   });
+}
+
+function openBuildingPhotoGallery(photos, startIndex = 0){
+  const usable = (Array.isArray(photos) ? photos : []).filter(photo => photo?.url);
+  if (!usable.length) return;
+  document.getElementById("buildingPhotoGallery")?.remove();
+  let index = Math.max(0, Math.min(Number(startIndex) || 0, usable.length - 1));
+  const overlay = document.createElement("div");
+  overlay.id = "buildingPhotoGallery";
+  overlay.className = "b-photo-gallery";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "캠핑장 전체 사진");
+  overlay.innerHTML = `<div class="b-photo-gallery-panel">
+    <div class="b-photo-gallery-head"><strong>전체 사진</strong><span class="b-photo-gallery-count"></span>
+      <button type="button" class="b-photo-gallery-close" aria-label="사진 닫기">×</button></div>
+    <div class="b-photo-gallery-stage"><button type="button" class="b-photo-gallery-prev" aria-label="이전 사진">‹</button>
+      <img class="b-photo-gallery-image" alt=""><button type="button" class="b-photo-gallery-next" aria-label="다음 사진">›</button></div>
+    <div class="b-photo-gallery-thumbs" role="list"></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const image = overlay.querySelector(".b-photo-gallery-image");
+  const count = overlay.querySelector(".b-photo-gallery-count");
+  const thumbs = overlay.querySelector(".b-photo-gallery-thumbs");
+  const paint = () => {
+    image.src = usable[index].url; image.alt = `사진 ${index + 1}`; count.textContent = `${index + 1} / ${usable.length}`;
+    thumbs.querySelectorAll("button").forEach((button, i) => button.classList.toggle("is-active", i === index));
+  };
+  usable.forEach((photo, i) => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "b-photo-gallery-thumb"; button.setAttribute("role", "listitem");
+    button.setAttribute("aria-label", `사진 ${i + 1} 보기`);
+    button.innerHTML = `<img src="${escapeHtml(photo.url)}" alt="">`;
+    button.addEventListener("click", () => { index = i; paint(); });
+    thumbs.appendChild(button);
+  });
+  const close = () => overlay.remove();
+  overlay.querySelector(".b-photo-gallery-close").addEventListener("click", close);
+  overlay.querySelector(".b-photo-gallery-prev").addEventListener("click", () => { index = (index - 1 + usable.length) % usable.length; paint(); });
+  overlay.querySelector(".b-photo-gallery-next").addEventListener("click", () => { index = (index + 1) % usable.length; paint(); });
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  overlay.addEventListener("keydown", event => {
+    if (event.key === "Escape") close();
+    if (event.key === "ArrowLeft") overlay.querySelector(".b-photo-gallery-prev").click();
+    if (event.key === "ArrowRight") overlay.querySelector(".b-photo-gallery-next").click();
+  });
+  paint(); overlay.querySelector(".b-photo-gallery-close").focus();
 }
 
 function handleBuildingPhotoError(image){
@@ -5494,6 +5552,24 @@ function _campingAnimalLabel(value){
   return `반려동물 동반 ${policy}`;
 }
 
+function _campingPhotoList(camp){
+  const result = [];
+  const add = (items, group) => (Array.isArray(items) ? items : []).forEach(item => {
+    const url = typeof item === "string" ? item : item?.url || item?.image_url || item?.src;
+    if (typeof url === "string" && /^https?:\/\//i.test(url.trim())) result.push({url: url.trim(), source: `camping-${group}`});
+  });
+  add(camp.photos, "photo"); add(camp.layout_images, "layout"); add(camp.safety_images, "safety");
+  return result.filter((photo, index, all) => all.findIndex(item => item.url === photo.url) === index);
+}
+
+function _campingDetailEntries(value){
+  if (Array.isArray(value)) return value.map(item => {
+    if (item && typeof item === "object") return [item.label || item.name || item.key, item.value ?? item.content];
+    return [String(item), ""];
+  }).filter(([label]) => label);
+  return value && typeof value === "object" ? Object.entries(value) : [];
+}
+
 function _renderCampingSection(b){
   const card = document.getElementById("bCampCard");
   const body = document.getElementById("bCampBody");
@@ -5506,10 +5582,7 @@ function _renderCampingSection(b){
 
   const camp = b.camping || {};
   const infoLink = document.getElementById("bCampInfoLink");
-  const infoUrl = _publicHttpUrl(camp.info_url)
-    || (Array.isArray(b.lodging_operators)
-      ? b.lodging_operators.map(op => _publicHttpUrl(op?.gocamping_url)).find(Boolean)
-      : null);
+  const infoUrl = _publicHttpUrl(camp.info_url) || _publicHttpUrl(camp.source_url);
   if (infoLink) {
     if (infoUrl) {
       infoLink.href = infoUrl;
@@ -5524,10 +5597,10 @@ function _renderCampingSection(b){
     }
   }
   const sites = [
-    ["일반 야영", camp.general_site_count ?? b.camping_general_site_count, "🏕️"],
-    ["오토 캠핑", camp.auto_site_count ?? b.camping_auto_site_count, "🚙"],
-    ["글램핑", camp.glamping_site_count ?? b.camping_glamping_site_count, "⛺"],
-    ["카라반", camp.caravan_site_count ?? b.camping_caravan_site_count, "🚐"],
+    ["일반 야영", camp.general_site_count ?? b.camping_general_site_count, "general"],
+    ["오토 캠핑", camp.auto_site_count ?? b.camping_auto_site_count, "auto"],
+    ["글램핑", camp.glamping_site_count ?? b.camping_glamping_site_count, "glamping"],
+    ["카라반", camp.caravan_site_count ?? b.camping_caravan_site_count, "caravan"],
   ].filter(([, count]) => Number(count) > 0);
   const amenities = _campingValues(camp.amenities ?? b.camping_sbrs);
   const seasons = _campingValues(camp.operating_seasons ?? b.camping_oper_pd);
@@ -5542,8 +5615,11 @@ function _renderCampingSection(b){
     ["개수대", camp.sink_count ?? b.camping_wtrpl_co, "개"],
     ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
   ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
-  const hasContent = sites.length || amenities.length || seasons.length
-    || chips.length || facts.length || infoUrl;
+  const details = _campingDetailEntries(camp.detail_fields);
+  const photos = _campingPhotoList(camp);
+  const hasContent = sites.length || amenities.length || seasons.length || chips.length
+    || facts.length || details.length || photos.length || infoUrl || camp.intro || camp.summary
+    || camp.homepage_url || camp.phone || camp.address || camp.directions;
   if (!hasContent) {
     card.style.display = "none";
     body.innerHTML = "";
@@ -5551,13 +5627,23 @@ function _renderCampingSection(b){
   }
 
   body.innerHTML = `
+    ${photos.length ? `<div class="camp-gallery-strip" aria-label="캠핑장 사진">
+      ${photos.slice(0, 4).map((photo, index) => `<button type="button" class="camp-gallery-tile" data-camp-photo-index="${index}"><img src="${escapeHtml(photo.url)}" alt="캠핑장 사진 ${index + 1}" loading="lazy"></button>`).join("")}
+      ${photos.length > 4 ? `<button type="button" class="camp-gallery-more" data-camp-photo-index="0">+${photos.length - 4}장 더 보기</button>` : ""}
+    </div>` : ""}
+    ${camp.summary || camp.intro ? `<div class="camp-intro">${escapeHtml(camp.summary || camp.intro)}</div>` : ""}
+    ${camp.address || camp.phone || camp.homepage_url ? `<dl class="camp-contact">
+      ${camp.address ? `<div><dt>주소</dt><dd>${escapeHtml(camp.address)}</dd></div>` : ""}
+      ${camp.phone ? `<div><dt>전화</dt><dd><a href="tel:${escapeHtml(camp.phone)}">${escapeHtml(camp.phone)}</a></dd></div>` : ""}
+      ${camp.homepage_url && _publicHttpUrl(camp.homepage_url) ? `<div><dt>홈페이지</dt><dd><a href="${escapeHtml(_publicHttpUrl(camp.homepage_url))}" target="_blank" rel="noopener noreferrer">공식 홈페이지 열기</a></dd></div>` : ""}
+    </dl>` : ""}
     ${chips.length ? `<div class="camp-chips">${chips.map(item =>
       `<span>${escapeHtml(String(item))}</span>`).join("")}</div>` : ""}
     ${sites.length ? `
       <div class="camp-section-label">사이트 구성</div>
       <div class="camp-site-grid">${sites.map(([label, count, icon]) => `
         <div class="camp-site-item">
-          <span class="camp-site-icon" aria-hidden="true">${icon}</span>
+          <span class="camp-site-icon camp-site-icon-${icon}" aria-hidden="true"></span>
           <span><b>${Number(count).toLocaleString("ko-KR")}</b> 사이트<br>
             <small>${escapeHtml(label)}</small></span>
         </div>`).join("")}
@@ -5575,7 +5661,13 @@ function _renderCampingSection(b){
       <div class="camp-section-label">운영 기간</div>
       <div class="camp-chips camp-seasons">${seasons.map(item =>
         `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+    ${camp.directions ? `<div class="camp-detail-block"><div class="camp-section-label">찾아오는 길</div><p>${escapeHtml(camp.directions)}</p></div>` : ""}
+    ${details.length ? `<div class="camp-detail-block"><div class="camp-section-label">상세 운영정보</div><dl class="camp-detail-list">${details.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></div>` : ""}
+    ${camp.updated_at ? `<div class="camp-updated">정보 업데이트 ${escapeHtml(String(camp.updated_at))}</div>` : ""}
   `;
+  body.querySelectorAll("[data-camp-photo-index]").forEach(button => {
+    button.addEventListener("click", () => openBuildingPhotoGallery(photos, Number(button.dataset.campPhotoIndex)));
+  });
   card.style.display = "";
 }
 
@@ -5753,7 +5845,7 @@ function buildingPanelSkeleton(buildingId){
     <section class="side-card" id="bCampCard" style="display:none;">
       <div class="side-card-title">캠핑장 안내
         <a id="bCampInfoLink" class="b-source-link is-disabled" target="_blank"
-           rel="noopener noreferrer" aria-disabled="true" tabindex="-1">고캠핑</a>
+           rel="noopener noreferrer" aria-disabled="true" tabindex="-1">공식 정보</a>
       </div>
       <div id="bCampBody"></div>
     </section>

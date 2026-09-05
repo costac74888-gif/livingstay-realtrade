@@ -1724,6 +1724,35 @@ def _choose_camping_detail_row(lodgings):
     )
 
 
+def _choose_verified_camping_web_row(lodgings, camping_row):
+    """대표 원장과 같은 시설로 확인된 웹 상세 행만 보조 원장으로 선택한다."""
+    if not camping_row:
+        return None
+    canonical_match = re.fullmatch(
+        r"CAMPING:(\d+)", str(camping_row.get("permit_number") or "")
+    )
+    canonical_content_id = canonical_match.group(1) if canonical_match else None
+    canonical_name = addr_norm.normalize_name(camping_row.get("biz_name"))
+    candidates = []
+    for lodging in lodgings:
+        content_id = str(lodging.get("gocamping_content_id") or "").strip()
+        detail = lodging.get("gocamping_detail")
+        same_content = bool(canonical_content_id and content_id == canonical_content_id)
+        same_name = bool(
+            canonical_name
+            and canonical_name == addr_norm.normalize_name(lodging.get("biz_name"))
+        )
+        if content_id and detail and (lodging is camping_row or same_content or same_name):
+            candidates.append(lodging)
+    content_ids = {str(item.get("gocamping_content_id")) for item in candidates}
+    if len(content_ids) != 1:
+        return None
+    return max(
+        candidates,
+        key=lambda item: str(item.get("gocamping_detail_fetched_at") or ""),
+    )
+
+
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -2190,6 +2219,18 @@ def get_building(building_id):
 
     camping = None
     if result_is_camping and camping_row:
+        verified_web_row = _choose_verified_camping_web_row(lodgings, camping_row)
+        web_detail = (
+            verified_web_row.get("gocamping_detail")
+            if verified_web_row else camping_row.get("gocamping_detail")
+        ) or {}
+        if isinstance(web_detail, str):
+            try:
+                web_detail = json.loads(web_detail)
+            except (TypeError, ValueError):
+                web_detail = {}
+        if not isinstance(web_detail, dict):
+            web_detail = {}
         raw_image_urls = camping_row.get("camping_image_urls")
         if isinstance(raw_image_urls, str):
             try:
@@ -2204,7 +2245,17 @@ def get_building(building_id):
         first_image_url = _safe_public_url(camping_row.get("camping_first_image_url"))
         if first_image_url and first_image_url not in image_urls:
             image_urls.insert(0, first_image_url)
+        for image_url in web_detail.get("image_urls") or []:
+            safe_image_url = _safe_public_url(image_url)
+            if safe_image_url and safe_image_url not in image_urls:
+                image_urls.append(safe_image_url)
+        content_id = (
+            verified_web_row.get("gocamping_content_id")
+            if verified_web_row else camping_row.get("gocamping_content_id")
+        )
+        info_url = _gocamping_url_for_content_id(content_id)
         camping = {
+            "content_id": content_id,
             "site_count": camping_row.get("camping_site_count"),
             "general_site_count": camping_row.get("camping_general_site_count"),
             "auto_site_count": camping_row.get("camping_auto_site_count"),
@@ -2222,12 +2273,28 @@ def get_building(building_id):
             "reservation_url": _safe_public_url(
                 camping_row.get("camping_reservation_url")
             ),
-            "info_url": _gocamping_url_for_registry_key(
-                camping_row.get("permit_number")
-            ),
+            "info_url": info_url,
+            "source_url": info_url,
             "first_image_url": first_image_url,
             "image_urls": image_urls,
+            "photos": image_urls,
             "facility_area": camping_row.get("facility_area"),
+            "intro": web_detail.get("intro"),
+            "summary": web_detail.get("summary"),
+            "homepage_url": _safe_public_url(web_detail.get("homepage_url")),
+            "phone": web_detail.get("phone"),
+            "address": web_detail.get("address"),
+            "directions": web_detail.get("directions"),
+            "updated_at": web_detail.get("updated_at"),
+            "detail_fields": web_detail.get("detail_fields") or [],
+            "layout_images": [
+                value for value in (web_detail.get("layout_images") or [])
+                if _safe_public_url(value)
+            ],
+            "safety_images": [
+                value for value in (web_detail.get("safety_images") or [])
+                if _safe_public_url(value)
+            ],
         }
         if camping["image_urls"]:
             gocamping_photos = [{
@@ -5263,7 +5330,14 @@ def _gocamping_url_for_registry_key(permit_number):
     match = re.fullmatch(r"CAMPING:(\d+)", str(permit_number or ""))
     if not match:
         return None
-    return f"https://www.gocamping.or.kr/bsite/camp/info/read.do?c_sn={match.group(1)}"
+    return f"https://www.gocamping.or.kr/bsite/camp/info/read.do?c_no={match.group(1)}"
+
+
+def _gocamping_url_for_content_id(content_id):
+    match = re.fullmatch(r"\d+", str(content_id or "").strip())
+    if not match:
+        return None
+    return f"https://www.gocamping.or.kr/bsite/camp/info/read.do?c_no={match.group(0)}"
 
 
 def _jsonb_airbnb_urls(value):
@@ -22515,6 +22589,7 @@ _RURAL_HANOK_TRADE_LAST_SUCCESS_META_KEY = "rural_hanok_trade_last_success"
 _LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
 _CAMPING_DAILY_CAP = 800  # sync_lodgings.CAMPING_MAX_DAILY_CALLS 와 동일 값 유지
 _CAMPING_IMAGE_BACKFILL_META_KEY = "admin:camping_image_backfill:status"
+_GOCAMPING_WEB_BACKFILL_META_KEY = "admin:gocamping_web_backfill:status"
 _CAMPING_IMAGE_PROGRESS_META_KEY = "camping_image_sync_progress"
 _CAMPING_DAILY_CALLS_META_KEY = "camping_daily_calls"
 
@@ -23015,6 +23090,142 @@ def admin_camping_image_backfill_run():
 @require_admin
 def admin_camping_image_backfill_status():
     return jsonify(_admin_camping_image_backfill_status())
+
+
+def _admin_gocamping_web_backfill_status():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key=%s",
+                    (_GOCAMPING_WEB_BACKFILL_META_KEY,))
+        row = cur.fetchone()
+        try:
+            status = json.loads(row["value"]) if row and row.get("value") else {}
+            status = status if isinstance(status, dict) else {}
+        except (TypeError, ValueError, AttributeError):
+            status = {}
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE permit_number LIKE 'CAMPING:%%') AS camping_total,
+                COUNT(*) FILTER (WHERE gocamping_content_id IS NOT NULL) AS linked_total,
+                COUNT(*) FILTER (WHERE gocamping_detail IS NOT NULL) AS detailed_total,
+                COUNT(*) FILTER (
+                    WHERE camping_reservation_url ~ '^https?://'
+                ) AS reservation_total,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(jsonb_array_length(camping_image_urls), 0) > 0
+                ) AS photo_facility_total,
+                COALESCE(SUM(
+                    CASE WHEN jsonb_typeof(camping_image_urls)='array'
+                         THEN jsonb_array_length(camping_image_urls) ELSE 0 END
+                ), 0) AS photo_total
+            FROM lodging_registry
+            WHERE permit_number LIKE 'CAMPING:%%'
+        """)
+        totals = dict(cur.fetchone())
+    finally:
+        cur.close()
+        conn.close()
+    running = status.get("state") == "running"
+    updated_at = row.get("updated_at") if row else None
+    stale = bool(
+        running and (
+            not updated_at
+            or (datetime.now() - updated_at).total_seconds() > _SYNC_STALE_MIN * 60
+        )
+    )
+    return {
+        "ok": True,
+        "state": "stale" if stale else status.get("state"),
+        "running": bool(running and not stale),
+        "stale": stale,
+        "heartbeat_at": _kst_label(updated_at),
+        "started_at": _kst_label(status.get("started_at")),
+        "finished_at": _kst_label(status.get("finished_at")),
+        "current": int(status.get("current") or 0),
+        "target": int(status.get("target") or 0),
+        "dry_run": bool(status.get("dry_run")),
+        "counters": status.get("counters") if isinstance(status.get("counters"), dict) else {},
+        "error": status.get("error"),
+        "totals": {key: int(value or 0) for key, value in totals.items()},
+    }
+
+
+@app.route("/api/admin/gocamping-web-backfill-status")
+@require_admin
+def admin_gocamping_web_backfill_status():
+    return jsonify(_admin_gocamping_web_backfill_status())
+
+
+@app.route("/api/admin/gocamping-web-backfill", methods=["POST"])
+@require_admin
+@limiter.limit("6 per hour")
+def admin_gocamping_web_backfill_run():
+    body = request.get_json(silent=True) or {}
+    dry_run = bool(body.get("dry_run"))
+    try:
+        max_details = max(1, min(int(body.get("max_details") or 5000), 5000))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "처리 건수 형식이 올바르지 않습니다."}), 400
+    run_id = _secrets.token_hex(8)
+    status = {
+        "run_id": run_id, "state": "running", "dry_run": dry_run,
+        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "finished_at": None, "current": 0, "target": 0,
+        "counters": {}, "error": None,
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            INSERT INTO app_meta (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE
+              SET value=EXCLUDED.value, updated_at=NOW()
+            WHERE (app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+               OR app_meta.updated_at < NOW() - INTERVAL '{int(_SYNC_STALE_MIN)} minutes'
+        """, (_GOCAMPING_WEB_BACKFILL_META_KEY, json.dumps(status, ensure_ascii=False)))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "이미 고캠핑 웹 상세 수집이 실행 중입니다."}), 409
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        args = [
+            sys.executable, "-u", os.path.join(base_dir, "backfill_gocamping_web.py"),
+            "--max-details", str(max_details), "--sleep", "0.2", "--workers", "6",
+            "--status-key", _GOCAMPING_WEB_BACKFILL_META_KEY, "--run-id", run_id,
+        ]
+        if dry_run:
+            args.append("--dry-run")
+        proc = subprocess.Popen(
+            args, cwd=base_dir, env=os.environ.copy(), start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as exc:
+        status.update({
+            "state": "failed",
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "error": f"러너 실행 실패: {exc}"[:300],
+        })
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                UPDATE app_meta SET value=%s, updated_at=NOW()
+                 WHERE key=%s AND (value::jsonb ->> 'run_id')=%s
+            """, (json.dumps(status, ensure_ascii=False),
+                  _GOCAMPING_WEB_BACKFILL_META_KEY, run_id))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "고캠핑 웹 상세 수집을 시작하지 못했습니다."}), 500
+    return jsonify({"ok": True, "started_at": status["started_at"], "dry_run": dry_run}), 202
 
 
 # ---- 건축HUB 전국 건물 발견(sync_brhub.py) 관리자 실행 ----

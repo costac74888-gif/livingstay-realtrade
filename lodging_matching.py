@@ -34,7 +34,9 @@ def matched_lodgings(cur, building, active_only=True):
                    lr.camping_toilet_count, lr.camping_shower_count,
                    lr.camping_sink_count, lr.camping_operating_seasons,
                    lr.camping_animal_policy, lr.camping_reservation_url,
-                   lr.camping_first_image_url
+                    lr.camping_first_image_url, lr.camping_image_urls,
+                    lr.gocamping_content_id, lr.gocamping_detail,
+                    lr.gocamping_detail_fetched_at
             FROM lodging_registry lr
             WHERE lr.road_norm = %s{status_clause}
             """,
@@ -60,7 +62,9 @@ def matched_lodgings(cur, building, active_only=True):
                    lr.camping_toilet_count, lr.camping_shower_count,
                    lr.camping_sink_count, lr.camping_operating_seasons,
                    lr.camping_animal_policy, lr.camping_reservation_url,
-                   lr.camping_first_image_url
+                    lr.camping_first_image_url, lr.camping_image_urls,
+                    lr.gocamping_content_id, lr.gocamping_detail,
+                    lr.gocamping_detail_fetched_at
             FROM lodging_registry lr
             WHERE lr.jibun_norm = %s{status_clause}
             """,

@@ -56,6 +56,29 @@ class GoCampingWebBackfillTests(unittest.TestCase):
         self.assertEqual(len(result["image_urls"]), 3)
         self.assertNotIn("/thumb/thumb.jpg", result["image_urls"])
 
+    def test_parses_all_detail_fields_and_does_not_cap_photos(self):
+        photos = "".join(
+            f'<img src="/upload/camp/77/{index}.jpg" alt="시설 {index}">'
+            for index in range(15)
+        )
+        page = f"""
+        <dl>
+          <dt>문의처</dt><dd>055-123-4567</dd>
+          <dt>주소</dt><dd>경상남도 테스트로 1</dd>
+          <dt>오시는 길</dt><dd>해변 입구에서 우회전</dd>
+        </dl>
+        <table><tr><th>운영기간</th><td>봄, 여름, 가을</td></tr></table>
+        {photos}
+        """
+        result = web.parse_web_detail(page, "77")
+        self.assertEqual(len(result["image_urls"]), 15)
+        self.assertEqual(result["content_id"], "77")
+        self.assertEqual(result["phone"], "055-123-4567")
+        self.assertEqual(result["address"], "경상남도 테스트로 1")
+        self.assertEqual(result["directions"], "해변 입구에서 우회전")
+        self.assertEqual(len(result["detail_fields"]), 4)
+        self.assertTrue(result["source_url"].endswith("c_no=77"))
+
     def test_rejects_non_http_reservation(self):
         page = '<dt>예약페이지</dt><dd><a href="javascript:alert(1)">예약</a></dd>'
         self.assertIsNone(

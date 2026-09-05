@@ -71,11 +71,16 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
     def test_gocamping_only_uses_canonical_content_id_key(self):
         self.assertEqual(
             app_module._gocamping_url_for_registry_key("CAMPING:12345"),
-            "https://www.gocamping.or.kr/bsite/camp/info/read.do?c_sn=12345",
+            "https://www.gocamping.or.kr/bsite/camp/info/read.do?c_no=12345",
         )
         self.assertIsNone(
             app_module._gocamping_url_for_registry_key("CAMPING:authority:permit")
         )
+        self.assertEqual(
+            app_module._gocamping_url_for_content_id("100093"),
+            "https://www.gocamping.or.kr/bsite/camp/info/read.do?c_no=100093",
+        )
+        self.assertIsNone(app_module._gocamping_url_for_content_id("연곡해변"))
 
     def test_matched_permit_is_canonicalized_to_registry_key(self):
         matched = {"id": 7, "permit_number": "CAMPING:12345"}
