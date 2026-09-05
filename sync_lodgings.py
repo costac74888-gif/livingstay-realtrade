@@ -1013,7 +1013,10 @@ def _fetch_camping_image_urls(
     elif isinstance(items_container, list):
         # Empty list is a valid no-image response from some API gateways.
         items = items_container
-    elif items_container is None:
+    elif items_container is None or (
+        isinstance(items_container, str) and not items_container.strip()
+    ):
+        # imageList는 사진이 없는 캠핑장에서 items를 빈 문자열로 보내기도 한다.
         items = []
     else:
         raise CampingResponseValidationError(

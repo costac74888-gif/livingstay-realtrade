@@ -484,6 +484,24 @@ class CampingSyncTests(unittest.TestCase):
         ):
             sync_lodgings._fetch_camping_image_urls("secret", "7")
 
+    def test_camping_image_urls_accept_blank_items_as_no_images(self):
+        response = mock.Mock()
+        response.json.return_value = {
+            "response": {
+                "header": {"resultCode": "0000"},
+                "body": {"items": ""},
+            }
+        }
+        with mock.patch("sync_lodgings.requests.get", return_value=response):
+            urls, api_image_count = sync_lodgings._fetch_camping_image_urls(
+                "secret",
+                "7",
+                "https://representative",
+                include_api_image_count=True,
+            )
+        self.assertEqual(urls, ["https://representative"])
+        self.assertEqual(api_image_count, 0)
+
     def test_camping_image_only_cap_keeps_next_row_checkpoint(self):
         conn = mock.Mock()
         cursor = mock.Mock()
