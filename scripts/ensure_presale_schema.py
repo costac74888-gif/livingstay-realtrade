@@ -4,6 +4,8 @@ import sys
 import psycopg2
 
 LOCK_KEY = 719240393
+# applyhome_status에는 DB CHECK를 두지 않는다. Replit Publish가 PostgreSQL의
+# IN -> ANY(ARRAY) 정규화 결과를 잘못 변환해 운영 마이그레이션 SQL이 깨진다.
 DDL = """
 CREATE TABLE IF NOT EXISTS presale_projects (
  id BIGSERIAL PRIMARY KEY, master_building_id INTEGER NOT NULL UNIQUE REFERENCES master_buildings(id) ON DELETE RESTRICT,
@@ -14,7 +16,7 @@ CREATE TABLE IF NOT EXISTS presale_projects (
  unit_count INTEGER, remaining_units INTEGER, price_min BIGINT, price_max BIGINT, -- 가격은 만원(10,000 KRW) 단위
  sale_start_date DATE, sale_end_date DATE, move_in_date DATE,
  homepage_url TEXT, contact_name TEXT, contact_phone TEXT, company_name TEXT, editorial_body TEXT,
- applyhome_status TEXT NOT NULL DEFAULT 'unverified' CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')),
+ applyhome_status TEXT NOT NULL DEFAULT 'unverified',
  applyhome_notice_id TEXT, applyhome_notice_name TEXT, applyhome_checked_at TIMESTAMPTZ, applyhome_error_code TEXT,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL, updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
@@ -46,7 +48,7 @@ CREATE TABLE IF NOT EXISTS presale_applications (
  receipt_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (receipt_notification_status IN ('pending','sent','failed')),
  decision_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (decision_notification_status IN ('pending','sent','failed')),
  notification_error TEXT,
- applyhome_status TEXT NOT NULL DEFAULT 'unverified' CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')),
+ applyhome_status TEXT NOT NULL DEFAULT 'unverified',
  applyhome_notice_id TEXT, applyhome_notice_name TEXT, applyhome_checked_at TIMESTAMPTZ, applyhome_error_code TEXT,
  reject_reason TEXT, reviewed_at TIMESTAMPTZ, reviewed_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -94,12 +96,6 @@ DO $$ BEGIN
  END IF;
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_remaining_units_check') THEN
   ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_remaining_units_check CHECK (remaining_units IS NULL OR (remaining_units >= 0 AND (unit_count IS NULL OR remaining_units <= unit_count))) NOT VALID;
- END IF;
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_applyhome_status_check') THEN
-  ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_applyhome_status_check CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')) NOT VALID;
- END IF;
- IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_applications_applyhome_status_check') THEN
-  ALTER TABLE presale_applications ADD CONSTRAINT presale_applications_applyhome_status_check CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')) NOT VALID;
  END IF;
 END $$;
 """

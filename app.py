@@ -31891,6 +31891,7 @@ _APPLYHOME_ENDPOINTS = (
     "getAPTLttotPblancDetail",
     "getUrbtyOfctlLttotPblancDetail",
 )
+_APPLYHOME_STATUSES = frozenset(("verified", "unverified", "not_applicable", "error"))
 
 
 def _applyhome_match_key(value):
@@ -31960,6 +31961,8 @@ def _check_applyhome(building_name, road_address, project_type="mixed"):
 def _save_applyhome_check(table, row_id, result, project_id=None):
     if table not in ("presale_projects", "presale_applications"):
         raise ValueError("invalid presale table")
+    if not isinstance(result, dict) or result.get("status") not in _APPLYHOME_STATUSES:
+        raise ValueError("invalid applyhome status")
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute(

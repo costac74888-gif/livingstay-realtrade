@@ -15,13 +15,14 @@ class PresaleFeatureContractTests(unittest.TestCase):
         cls.ensure = Path("scripts/ensure_presale_schema.py").read_text(encoding="utf-8")
 
     def test_schema_and_production_boot_ensure_presale_tables(self):
-        self.assertIn('SCHEMA_VERSION = "2026-09-05-10"', self.db)
+        self.assertIn('SCHEMA_VERSION = "2026-09-05-11"', self.db)
         for table in ("presale_projects", "presale_promotions", "presale_applications", "presale_audit_log"):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table}", self.db)
         self.assertIn("ensure_presale_schema.py", self.start)
         self.assertIn("ADD COLUMN IF NOT EXISTS remaining_units", self.db)
         self.assertIn("ADD COLUMN IF NOT EXISTS applyhome_status", self.ensure)
-        self.assertIn("presale_applications_applyhome_status_check", self.ensure)
+        self.assertNotIn("applyhome_status_check", self.ensure)
+        self.assertNotIn("applyhome_status_check", self.db)
         self.assertIn("NOT VALID", self.db)
 
     def test_registration_cta_has_a_real_page(self):
@@ -137,7 +138,9 @@ class PresaleFeatureContractTests(unittest.TestCase):
 
     def test_applyhome_states_and_approval_are_independent(self):
         for status in ("verified", "unverified", "not_applicable", "error"):
-            self.assertIn(status, self.db)
+            self.assertIn(status, self.app)
+        self.assertIn("_APPLYHOME_STATUSES", self.app)
+        self.assertIn('raise ValueError("invalid applyhome status")', self.app)
         review = self.app[self.app.index("def admin_presale_application_review"):
                           self.app.index("def admin_presale_application_notify")]
         self.assertNotIn('applyhome_status"] != "verified"', review)
