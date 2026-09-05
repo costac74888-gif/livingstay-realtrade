@@ -3311,7 +3311,7 @@ function renderDataLabPresale(data){
     ${registerNotice}
     <div class="datalab-table-wrap presale-table-wrap">
       <table class="datalab-table presale-table">
-        <thead><tr><th>지역</th><th>준공전 건물</th><th>비중</th></tr></thead>
+        <thead><tr><th>시도</th><th>준공전 건물</th><th>비중</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><th>합계</th><th>${dataLabNum(total)}</th><th>100.0%</th></tr></tfoot>
       </table>

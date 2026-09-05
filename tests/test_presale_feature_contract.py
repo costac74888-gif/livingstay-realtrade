@@ -42,6 +42,12 @@ class PresaleFeatureContractTests(unittest.TestCase):
         self.assertIn("building_status IN ('허가','착공')", self.app)
         self.assertIn("NULLIF(b.use_apr_day,'') IS NULL", self.app)
         self.assertIn("NULLIF(use_apr_day,'') IS NULL", self.app)
+        stats_query = self.app[self.app.index("def presale_stats"):
+                               self.app.index("def building_presale")]
+        self.assertIn("split_part(TRIM(sgg_text), ' ', 1)", stats_query)
+        self.assertIn("THEN '강원특별자치도'", stats_query)
+        self.assertIn("THEN '전북특별자치도'", stats_query)
+        self.assertIn("ORDER BY region ASC", stats_query)
         self.assertIn("def _presale_public_project", self.app)
         self.assertNotIn('"banner_object_key": promo', self.app)
         self.assertIn("LEFT JOIN LATERAL", self.app)

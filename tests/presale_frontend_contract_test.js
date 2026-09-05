@@ -18,7 +18,7 @@ assert.match(main, /lodging_type: "준공전"/);
 assert.match(main, /className = "presale-building-marker"/);
 assert.match(main, /<strong>준공전<\/strong><span>/);
 assert.match(main, /<strong>준공전 현황<\/strong>/);
-assert.match(main, /<th>지역<\/th><th>준공전 건물<\/th><th>비중<\/th>/);
+assert.match(main, /<th>시도<\/th><th>준공전 건물<\/th><th>비중<\/th>/);
 assert.match(main, /준공전 건물 중 실제 분양중이라면 분양 정보를 등록해 주세요/);
 assert.match(main, /href="\/apply\/presale"/);
 assert.match(main, /<tfoot><tr><th>합계<\/th>/);

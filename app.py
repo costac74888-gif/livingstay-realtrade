@@ -31988,18 +31988,30 @@ def _save_applyhome_check(table, row_id, result, project_id=None):
 @app.route("/api/stats/presale")
 @limiter.limit("60 per minute")
 def presale_stats():
-    """허가/착공 상태이며 사용승인 전인 준공전 건물을 지역별로 집계한다."""
+    """허가/착공 상태이며 사용승인 전인 준공전 건물을 광역 시·도별로 집계한다."""
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT COALESCE(NULLIF(TRIM(sgg_text), ''), '지역 미확인') AS region,
-                   COUNT(*)::integer AS building_count
-            FROM master_buildings
-            WHERE building_status IN ('허가','착공')
-              AND NULLIF(use_apr_day,'') IS NULL
-              AND lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+            WITH precompletion AS (
+                SELECT CASE
+                         WHEN split_part(TRIM(sgg_text), ' ', 1) = '강원도'
+                           THEN '강원특별자치도'
+                         WHEN split_part(TRIM(sgg_text), ' ', 1) = '전라북도'
+                           THEN '전북특별자치도'
+                         ELSE COALESCE(
+                           NULLIF(split_part(TRIM(sgg_text), ' ', 1), ''),
+                           '지역 미확인'
+                         )
+                       END AS region
+                FROM master_buildings
+                WHERE building_status IN ('허가','착공')
+                  AND NULLIF(use_apr_day,'') IS NULL
+                  AND lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+            )
+            SELECT region, COUNT(*)::integer AS building_count
+            FROM precompletion
             GROUP BY 1
-            ORDER BY building_count DESC, region ASC
+            ORDER BY region ASC
         """)
         regions = [dict(row) for row in cur.fetchall()]
         return jsonify({
