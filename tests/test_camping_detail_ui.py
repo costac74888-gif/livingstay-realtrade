@@ -43,8 +43,10 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('id="bCampInfoLink"', self.main_source)
         self.assertNotIn("캠핑장 예약 페이지 열기 ↗", self.main_source)
 
-    def test_gocamping_image_is_a_photo_fallback(self):
+    def test_gocamping_images_are_available_even_with_existing_photos(self):
         self.assertIn('"source": "gocamping"', self.app_source)
+        self.assertIn("gocamping_photos =", self.app_source)
+        self.assertNotIn('camping["image_urls"] and not building["photos"]', self.app_source)
         self.assertIn('photo?.source === "gocamping"', self.main_source)
         self.assertIn("renderPhotoSlider(gocampingInitial)", self.main_source)
         self.assertIn(

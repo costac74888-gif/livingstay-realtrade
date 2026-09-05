@@ -2229,14 +2229,23 @@ def get_building(building_id):
             "image_urls": image_urls,
             "facility_area": camping_row.get("facility_area"),
         }
-        if camping["image_urls"] and not building["photos"]:
-            building["photos"] = [{
+        if camping["image_urls"]:
+            gocamping_photos = [{
                 "url": image_url,
                 "source": "gocamping",
                 "photo_type": "exterior",
                 "is_primary": True,
                 "can_delete": False,
             } for image_url in camping["image_urls"]]
+            existing_photo_urls = {
+                str(photo.get("url") or "").strip()
+                for photo in building["photos"]
+                if isinstance(photo, dict)
+            }
+            building["photos"] = (
+                [photo for photo in gocamping_photos if photo["url"] not in existing_photo_urls]
+                + building["photos"]
+            )
 
     # 관광 데이터랩 지표는 에어비앤비 상세에만 제공한다. 다른 숙박 유형에는
     # 필드 자체를 추가하지 않아 유형별 데이터 계약이 섞이지 않게 한다.
