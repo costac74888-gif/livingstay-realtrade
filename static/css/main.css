@@ -564,16 +564,14 @@
   .datalab-icon{flex:none; width:17px; font-size:13px; text-align:center;}
   .datalab-tab > span:last-child{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .datalab-content{min-width:0; min-height:420px; margin-top:10px;}
-  .presale-list{display:flex;flex-direction:column;gap:8px}
-  .presale-item{padding:10px 11px;border:1px solid #eadfcf;border-radius:9px;background:#fffdf8}
-  .presale-item strong{display:block;font-size:12.5px;color:var(--ink)}
-  .presale-item .detail-link{text-decoration:none;color:inherit}
-  .presale-item .detail-link:hover strong{color:var(--brass-dark)}
-  .presale-item p{margin:3px 0 0;font-size:10.5px;color:var(--ink-soft);line-height:1.45}
-  .presale-price{float:right;color:#9a5b1a;font:700 11px 'JetBrains Mono',monospace}
-  .presale-ad-badge{font:700 9px 'Noto Sans KR',sans-serif;color:#fff;background:#9a5b1a;border-radius:3px;padding:2px 4px;font-style:normal}
-  .presale-marker{min-width:74px;padding:5px 8px;border:2px solid #fff;border-radius:6px;background:#d86f2d;color:#fff;box-shadow:0 2px 6px rgba(22,32,46,.25);font:700 10px/1.25 'Noto Sans KR',sans-serif;cursor:pointer;text-align:center;white-space:nowrap}
-  .presale-marker.scheduled{background:#4f8a57}.presale-marker.candidate{background:#46515d}
+  .presale-region-list{display:flex;flex-direction:column;gap:6px}
+  .presale-region-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border:1px solid #f0d0ce;border-radius:8px;background:#fffafa}
+  .presale-region-item strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--ink)}
+  .presale-region-item span{flex:none;color:#d32f2f;font:800 12px 'JetBrains Mono',monospace}
+  .presale-building-marker{width:76px;height:38px;padding:0;border:2px solid #fff;border-radius:4px;background:#e53935;color:#fff;box-sizing:border-box;box-shadow:0 2px 7px rgba(90,0,0,.35);cursor:pointer;text-align:center;overflow:hidden;font-family:'Noto Sans KR',sans-serif}
+  .presale-building-marker strong,.presale-building-marker span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .presale-building-marker strong{font-size:11px;line-height:17px}
+  .presale-building-marker span{padding:0 3px;border-top:1px solid rgba(255,255,255,.55);font-size:9px;font-weight:700;line-height:17px}
   .presale-detail-banner{margin:-2px 0 10px;padding:13px;border:1px solid #e7d6b9;border-radius:10px;background:#fff9ed}
   .presale-detail-banner img{width:100%;max-height:150px;object-fit:cover;border-radius:7px;margin-top:8px}
   .presale-detail-banner strong{display:block;font-size:13px;color:#7f4f1e}

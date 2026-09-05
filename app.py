@@ -3941,7 +3941,7 @@ def get_buildings_geo():
     cur.execute(f"""
         SELECT mb.id, mb.building_name, mb.name_pending,
                mb.building_name_source, mb.building_name_candidate_count,
-               mb.road_address, mb.lat, mb.lng, mb.lodging_type,
+               mb.road_address, mb.umd_nm, mb.jibun, mb.lat, mb.lng, mb.lodging_type,
                mb.building_status,
                lt.price AS latest_price, lt.deal_date AS latest_deal_date,
                lt.floor AS latest_floor, lt.area AS latest_area,
@@ -31850,30 +31850,25 @@ def _presale_public_project(row):
 @app.route("/api/stats/presale")
 @limiter.limit("60 per minute")
 def presale_stats():
-    """공개 지도용: 허가/착공 + 사용승인일 없음이라는 실제 준공전 기준만 사용한다."""
+    """허가/착공 상태이며 사용승인 전인 분양중 건물을 지역별로 집계한다."""
     conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute("""SELECT p.id,p.master_building_id,p.title,p.summary,p.project_status,p.project_type,p.unit_count,p.remaining_units,p.price_min,p.price_max,p.sale_start_date,p.sale_end_date,p.move_in_date,
-                              b.building_name,b.road_address,b.lat,b.lng,(promo.id IS NOT NULL) AS is_paid
-                       FROM presale_projects p JOIN master_buildings b ON b.id=p.master_building_id
-                       LEFT JOIN LATERAL (
-                         SELECT pr.id FROM presale_promotions pr
-                         WHERE pr.presale_project_id=p.id AND pr.status='approved' AND pr.approved_at IS NOT NULL
-                           AND pr.starts_at<=NOW() AND pr.ends_at>NOW()
-                         ORDER BY pr.priority DESC,pr.id DESC LIMIT 1
-                       ) promo ON TRUE
-                       WHERE p.status='published' AND p.publication_start_at<=NOW()
-                         AND (p.publication_end_at IS NULL OR p.publication_end_at > NOW())
-                         AND p.project_status IN ('presale','scheduled')
-                       ORDER BY p.publication_start_at NULLS LAST,p.id DESC LIMIT 100""")
-        projects = [{**_presale_public_project(r), "building_name": r["building_name"], "road_address": r["road_address"], "lat": r["lat"], "lng": r["lng"], "is_paid": bool(r["is_paid"])} for r in cur.fetchall()]
-        cur.execute("""SELECT b.id AS master_building_id,b.building_name,b.road_address,b.lat,b.lng,b.completion_expected_date
-                       FROM master_buildings b LEFT JOIN presale_projects p ON p.master_building_id=b.id
-                       WHERE p.id IS NULL AND b.building_status IN ('허가','착공') AND NULLIF(b.use_apr_day,'') IS NULL
-                         AND b.lat IS NOT NULL AND b.lng IS NOT NULL
-                       ORDER BY b.id ASC LIMIT 100""")
-        candidates = [dict(row) for row in cur.fetchall()]
-        return jsonify({"ok": True, "projects": projects, "candidates": candidates})
+        cur.execute("""
+            SELECT COALESCE(NULLIF(TRIM(sgg_text), ''), '지역 미확인') AS region,
+                   COUNT(*)::integer AS building_count
+            FROM master_buildings
+            WHERE building_status IN ('허가','착공')
+              AND NULLIF(use_apr_day,'') IS NULL
+              AND lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+            GROUP BY 1
+            ORDER BY building_count DESC, region ASC
+        """)
+        regions = [dict(row) for row in cur.fetchall()]
+        return jsonify({
+            "ok": True,
+            "total": sum(int(row["building_count"]) for row in regions),
+            "regions": regions,
+        })
     finally: cur.close(); conn.close()
 
 

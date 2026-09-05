@@ -135,21 +135,17 @@ class PresaleFeatureContractTests(unittest.TestCase):
                     "https://127.0.0.1/x", "https://user:pass@example.com/x", "https://intranet/x"):
             self.assertIsNone(server._presale_safe_url(url), url)
 
-    def test_public_stats_uses_one_set_based_query_and_safe_candidate_id(self):
+    def test_public_stats_returns_region_counts_without_building_names(self):
         os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
         import app as server
         class Cursor:
             def __init__(self): self.sql = []; self.n = 0
             def execute(self, sql, args=None): self.sql.append(sql); self.n += 1
             def fetchall(self):
-                if self.n == 1:
-                    return [{"id": 1, "master_building_id": 8, "title": "A", "summary": "s",
-                             "project_status": "presale", "project_type": "living", "unit_count": 10,
-                             "remaining_units": 2, "price_min": 100, "price_max": 200, "sale_start_date": None,
-                             "sale_end_date": None, "move_in_date": None, "company_name": "C",
-                             "building_name": "B", "road_address": "R", "lat": 37.1, "lng": 127.1, "is_paid": True,
-                             "contact_phone": "secret", "editorial_body": "secret"}]
-                return [{"master_building_id": 9, "building_name": "candidate", "road_address": "R", "lat": 1, "lng": 2, "completion_expected_date": None}]
+                return [
+                    {"region": "서울특별시 종로구", "building_count": 3},
+                    {"region": "경기도 광명시", "building_count": 1},
+                ]
             def close(self): pass
         class Conn:
             def __init__(self): self.cur = Cursor()
@@ -162,13 +158,13 @@ class PresaleFeatureContractTests(unittest.TestCase):
             server.get_conn = original
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
-        self.assertEqual(data["candidates"][0]["master_building_id"], 9)
-        self.assertTrue(data["projects"][0]["is_paid"])
-        self.assertNotIn("contact_phone", data["projects"][0])
-        self.assertNotIn("editorial_body", data["projects"][0])
-        self.assertIn("LEFT JOIN LATERAL", conn.cur.sql[0])
-        self.assertIn("p.status='published'", conn.cur.sql[0])
-        self.assertIn("p.project_status IN ('presale','scheduled')", conn.cur.sql[0])
+        self.assertEqual(data["total"], 4)
+        self.assertEqual(data["regions"][0]["region"], "서울특별시 종로구")
+        self.assertNotIn("projects", data)
+        self.assertNotIn("candidates", data)
+        self.assertEqual(conn.cur.n, 1)
+        self.assertIn("GROUP BY 1", conn.cur.sql[0])
+        self.assertIn("building_status IN ('허가','착공')", conn.cur.sql[0])
 
     def test_expired_or_unauthorized_banner_never_downloads_object(self):
         os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"

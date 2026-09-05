@@ -2418,8 +2418,30 @@ async function loadMapMarkers(filters = {}, opts = {}){
       const pos = new kakao.maps.LatLng(b.lat, b.lng);
       const totalCount = Math.max(0, Number(b.total_count) || 0);
 
+      // 분양중 지도는 거래 유무와 관계없이 유료 노출에 적합한 2단 고정 박스를 쓴다.
+      if (filters.lodging_type === "준공전"){
+        const locality = [b.umd_nm, b.jibun].filter(Boolean).join(" ") || "주소 미확인";
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "presale-building-marker";
+        el.innerHTML = `<strong>분양중</strong><span>${escapeHtml(locality)}</span>`;
+        el.title = `분양중 · ${locality}`;
+        el.setAttribute("aria-label", `${locality} 분양중 건물 상세 보기`);
+        syncMapLocationTargetElement(el, b.id);
+        el.addEventListener("click", (event) => {
+          event.stopPropagation();
+          _openBuildingFromMap(b);
+        });
+        const overlay = new kakao.maps.CustomOverlay({
+          position: pos, content: el, xAnchor: 0.5, yAnchor: 0.5,
+          clickable: true, zIndex: 8,
+        });
+        overlay.__buildingId = b.id;
+        overlay.__contentEl = el;
+        overlay.setMap(kakaoMap);
+        mapOverlays.push(overlay);
       // 합계 0건은 기존 점 마커를 유지하고, 1건 이상은 원형 숫자 배지만 표시한다.
-      if (totalCount === 0){
+      } else if (totalCount === 0){
         const color = markerColor(b.lodging_type, b.building_status);
         // 점도 CustomOverlay로 만들어 다른 배지·클러스터와 동일하게 페이드아웃한다.
         const el = document.createElement("button");
@@ -2613,8 +2635,6 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     el.innerHTML =
       `<div style="font-size:11px;font-weight:700;color:#16202E;white-space:nowrap;` +
       `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(clusterLevel === "umd" ? item.name.trim().split(" ").pop() : item.name)}</div>` +
-      `<div style="font-size:13px;font-weight:800;color:#16202E;line-height:1.3;">` +
-      `${total.toLocaleString("ko-KR")}</div>` +
        visitorHtml +
       `<div style="display:flex;height:${BAR_H}px;border-radius:3px;overflow:hidden;` +
       `margin-top:3px;background:${LODGING_COLORS["미분류"]};">` +
@@ -3272,55 +3292,22 @@ const DATA_LAB_TOURISM_KEYS = new Set(["tourism_domestic", "tourism_foreign", "t
 const DATA_LAB_SURGE_KEY = "visitor_surge";
 let dataLabSurgeMode = "domestic";
 let dataLabSurgeInfoOverlay = null;
-let presaleOverlays = [];
 let presaleRequestSequence = 0;
 
-function clearPresaleOverlays(){
-  presaleOverlays.forEach(o => { try { o.setMap(null); } catch(e) {} });
-  presaleOverlays = [];
-}
-function presalePrice(p){
-  if (p.price_min == null && p.price_max == null) return "";
-  const fmt = v => {
-    if (v == null || !Number.isFinite(Number(v))) return "";
-    const n = Math.round(Number(v));
-    const eok = Math.floor(n / 10000), man = n % 10000;
-    return `${eok ? `${eok}억 ` : ""}${man ? `${man.toLocaleString("ko-KR")}만원` : eok ? "" : "0만원"}`.trim();
-  };
-  return fmt(p.price_min) + (p.price_max != null && p.price_max !== p.price_min ? ` ~ ${fmt(p.price_max)}` : "");
-}
-function presaleStatusLabel(p){
-  const s = p.project_status || "unknown";
-  return s === "presale" ? "분양" : s === "scheduled" ? "분양 예정" : "정보 확인중";
-}
 function renderDataLabPresale(data){
-  const projects = Array.isArray(data?.projects) ? data.projects : [];
-  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
-  const rows = projects.map(p => `<div class="presale-item"><span class="presale-price">${presalePrice(p)}${p.is_paid ? ' <em class="presale-ad-badge">광고</em>' : ""}</span>${p.master_building_id ? `<a class="detail-link" href="/building/${Number(p.master_building_id)}" onclick="window.openBuildingDetail(${Number(p.master_building_id)}); return false;"><strong>${escapeHtml(p.title || p.building_name || "분양 프로젝트")}</strong></a>` : `<strong>${escapeHtml(p.title || p.building_name || "분양 프로젝트")}</strong>`}<p>${escapeHtml(presaleStatusLabel(p))} · ${escapeHtml(p.summary || p.road_address || "")}${p.unit_count != null ? ` · 총 ${dataLabNum(p.unit_count)}실` : ""}${p.remaining_units != null ? ` · 잔여 ${dataLabNum(p.remaining_units)}실` : ""}</p></div>`).join("");
-  const crows = candidates.map(p => `<div class="presale-item">${p.master_building_id ? `<a class="detail-link" href="/building/${Number(p.master_building_id)}" onclick="window.openBuildingDetail(${Number(p.master_building_id)}); return false;"><strong>${escapeHtml(p.building_name || "준공 전 건물")}</strong></a>` : `<strong>${escapeHtml(p.building_name || "준공 전 건물")}</strong>`}<p>${escapeHtml(presaleStatusLabel(p))} · ${escapeHtml(p.road_address || "")} · 준공예정 ${escapeHtml(p.completion_expected_date || "미정")}</p></div>`).join("");
-  return `<div class="datalab-heading"><strong>분양·미분양</strong><span class="datalab-caption">공개 프로젝트 ${projects.length}건 · 후보 ${candidates.length}건</span></div><div class="presale-list">${rows || '<div class="side-empty">등록된 분양 프로젝트가 없습니다.</div>'}${crows ? `<div class="datalab-caption" style="margin-top:6px">분양 후보 건물</div>${crows}` : ""}</div>`;
+  const regions = Array.isArray(data?.regions) ? data.regions : [];
+  const rows = regions.map(item => `<div class="presale-region-item"><strong>${escapeHtml(item.region || "지역 미확인")}</strong><span>${dataLabNum(item.building_count)}개</span></div>`).join("");
+  return `<div class="datalab-heading"><strong>분양중</strong><span class="datalab-caption">미준공 분양 건물 ${dataLabNum(data?.total)}개</span></div><div class="presale-region-list">${rows || '<div class="side-empty">분양중인 미준공 건물이 없습니다.</div>'}</div>`;
 }
 async function loadDataLabPresale(){
   const content=document.getElementById("dataLabContent"); if(!content) return;
-  clearDataLabTourismMap(); clearPresaleOverlays();
+  clearDataLabTourismMap();
   const seq=++presaleRequestSequence; content.innerHTML=dataLabLoadingHTML();
   try {
     const res=await fetch("/api/stats/presale",{credentials:"same-origin"}); const data=await res.json();
     if(seq!==presaleRequestSequence) return; if(!res.ok) throw new Error("presale");
-    content.innerHTML=renderDataLabPresale(data); renderPresaleOverlays(data);
+    content.innerHTML=renderDataLabPresale(data);
   } catch(e){ if(seq===presaleRequestSequence) content.innerHTML='<div class="side-empty">분양 정보를 불러오지 못했습니다.</div>'; }
-}
-function renderPresaleOverlays(data){
-  if(!(window.kakao&&kakao.maps&&kakaoMap)) return;
-  const items=[...(data.projects||[]),...(data.candidates||[])];
-  items.forEach(p=>{
-    const lat=Number(p.lat),lng=Number(p.lng); if(!Number.isFinite(lat)||!Number.isFinite(lng)) return;
-    const el=document.createElement("button"); el.type="button"; el.className=`presale-marker ${p.project_status==="presale"?"published":p.project_status==="scheduled"?"scheduled":"candidate"}`;
-    el.textContent=(p.building_name||p.title||"분양").slice(0,12)+(p.price_min!=null?` · ${presalePrice(p)}`:""); el.setAttribute("aria-label",`${p.building_name||p.title||"분양 건물"} 상세 보기`);
-    el.addEventListener("click",()=>{ if(p.master_building_id) openBuildingDetail(Number(p.master_building_id)); });
-    el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click();}});
-    const o=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng),content:el,yAnchor:1,zIndex:35}); o.setMap(kakaoMap); presaleOverlays.push(o);
-  });
 }
 
 function dataLabNum(value){
@@ -4070,10 +4057,12 @@ async function loadDataLab(key, option = "up", {
   if (!content) return;
   if (key === "presale") {
     setDataLabActive(key);
-    clearPresaleOverlays();
+    const presaleFilters = {...mapFiltersFromState(), lodging_type: "준공전"};
+    updateMapForZoom(presaleFilters, { force: true });
     return loadDataLabPresale();
   }
-  clearPresaleOverlays();
+  const wasPresale = dataLabActiveKey === "presale";
+  if (wasPresale) updateMapForZoom(mapFiltersFromState(), { force: true });
   clearDataLabTourismMap();
   if (key === DATA_LAB_SURGE_KEY) {
     const cached = dataLabResponseCache.get("visitor_surge:up");
@@ -4202,7 +4191,6 @@ function initDataLab(){
   if (!nav) return;
   nav.querySelectorAll("[data-datalab-key]").forEach(button => {
     button.addEventListener("click", () => {
-      clearPresaleOverlays();
       loadDataLab(button.dataset.datalabKey);
     });
   });
