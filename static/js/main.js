@@ -3444,7 +3444,7 @@ function clusterDataLabTourismItems(items, level, valueOf, buildingOf){
       building_count: totalBuilding,
       member_count: members.length,
       members: [...members].sort((a, b) => valueOf(b) - valueOf(a)),
-      cluster_label: `${dataLabTourismShortSido(sido)} ${members.length}곳`,
+      cluster_label: dataLabTourismShortSido(sido),
     };
   });
 }

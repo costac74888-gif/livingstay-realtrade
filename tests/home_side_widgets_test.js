@@ -105,6 +105,11 @@ expect(
   "관광 열지도가 확대 수준에 따라 시군구를 합치거나 분리하지 않습니다."
 );
 expect(
+  main.includes("cluster_label: dataLabTourismShortSido(sido)") &&
+  !main.includes("dataLabTourismShortSido(sido)} ${members.length}곳"),
+  "관광 열지도 원에 지역 수 N곳 표기가 남아 있습니다."
+);
+expect(
   main.includes("function prepareInitialTourismMapView") &&
   main.includes("dataLabTourismViewInitialized") &&
   main.includes("kakaoMap.setLevel(13)") &&
