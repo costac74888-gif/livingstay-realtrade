@@ -653,7 +653,10 @@
   .datalab-heatmap-legend span{display:inline-flex; align-items:center; gap:4px;}
   .datalab-heatmap-legend i{display:inline-block; border-radius:50%;}
   .datalab-heatmap-legend .heat-size{width:10px; height:10px; border:1px solid #58717A; background:transparent;}
-  .datalab-heatmap-legend .heat-density{width:10px; height:10px; background:#D06F52;}
+  .datalab-heatmap-legend .heat-density{width:10px; height:10px; background:#635BCE;}
+  .datalab-heatmap-legend .heat-domestic{background:#635BCE;}
+  .datalab-heatmap-legend .heat-foreign{background:#E34B87;}
+  .datalab-heatmap-legend .heat-consume{background:#E46A35;}
   .datalab-heatmap-top{border:1px solid var(--line); border-radius:7px; overflow:hidden;}
   .datalab-heatmap-top-title{padding:6px 8px; background:#F8F9FA; font-size:10px; font-weight:800; color:var(--ink);}
   .datalab-heatmap-row{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:6px 8px; border-top:1px solid var(--line); font-size:10.5px;}
@@ -661,10 +664,33 @@
   .datalab-heatmap-row strong{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .datalab-heatmap-row span{font-size:10px; color:var(--ink-soft); white-space:nowrap;}
   .datalab-heatmap-note{padding:7px 8px; border-radius:7px; background:#F4F7F6; color:#58717A; font-size:10px; line-height:1.45;}
-  .datalab-map-bubble{display:flex; align-items:center; justify-content:center; border:2px solid rgba(255,255,255,.92); border-radius:50%; box-shadow:0 2px 8px rgba(38,54,58,.22); color:#fff; font:700 9px 'JetBrains Mono',monospace; cursor:pointer; transition:transform .16s ease, opacity .16s ease;}
-  .datalab-map-bubble:hover,.datalab-map-bubble.is-selected{transform:scale(1.18); opacity:1; z-index:5;}
-  .datalab-map-bubble:focus{outline:3px solid #D6A34E; outline-offset:2px;}
-  .datalab-map-info{min-width:148px; padding:9px 10px; border:1px solid #DAD2C4; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(38,45,48,.18); color:var(--ink); font-size:10.5px; line-height:1.5; transform:translateY(-10px);}
+  .datalab-heatmap-extra{padding:7px 8px; border:1px solid var(--line); border-radius:7px; background:#FFF;}
+  .datalab-heatmap-extra>strong{display:block; margin-bottom:5px; font-size:10px; color:var(--ink);}
+  .datalab-heatmap-extra>div{display:flex; flex-wrap:wrap; gap:4px;}
+  .datalab-heatmap-extra span{padding:3px 6px; border-radius:999px; background:#F4F1EC; color:var(--ink-soft); font-size:9.5px;}
+  .datalab-map-bubble{
+    width:var(--heat-diameter); height:var(--heat-diameter); padding:12px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:3px; border:2px solid rgba(255,255,255,.72); border-radius:50%;
+    color:#fff; cursor:pointer; isolation:isolate;
+    box-shadow:0 2px 9px rgba(38,54,58,.18), inset 0 0 0 1px rgba(255,255,255,.18);
+    transition:transform .16s ease, opacity .16s ease, box-shadow .16s ease;
+    overflow:hidden;
+  }
+  .datalab-map-bubble[data-palette="domestic"]{background:rgba(78,77,190,.28); border-color:rgba(97,95,215,.58);}
+  .datalab-map-bubble[data-palette="foreign"]{background:rgba(211,55,112,.27); border-color:rgba(241,91,147,.58);}
+  .datalab-map-bubble[data-palette="consume"]{background:rgba(218,91,39,.29); border-color:rgba(239,139,60,.62);}
+  .datalab-map-bubble:hover,.datalab-map-bubble.is-selected{
+    transform:scale(1.08); z-index:5;
+    box-shadow:0 5px 16px rgba(38,54,58,.25), inset 0 0 0 2px rgba(255,255,255,.25);
+  }
+  .datalab-map-bubble[data-palette="domestic"]:hover,.datalab-map-bubble[data-palette="domestic"].is-selected{background:rgba(78,77,190,.52);}
+  .datalab-map-bubble[data-palette="foreign"]:hover,.datalab-map-bubble[data-palette="foreign"].is-selected{background:rgba(211,55,112,.50);}
+  .datalab-map-bubble[data-palette="consume"]:hover,.datalab-map-bubble[data-palette="consume"].is-selected{background:rgba(218,91,39,.52);}
+  .datalab-map-bubble:focus-visible{outline:3px solid #F4C56B; outline-offset:3px;}
+  .datalab-map-bubble-name{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 clamp(12px,1.25vw,15px)/1.15 'Noto Sans KR',sans-serif; text-shadow:0 1px 3px rgba(38,25,45,.72);}
+  .datalab-map-bubble-value{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 clamp(11px,1.2vw,14px)/1.15 'Noto Sans KR',sans-serif; letter-spacing:-.04em; text-shadow:0 1px 3px rgba(38,25,45,.76);}
+  .datalab-map-info{min-width:184px; padding:10px 11px; border:1px solid #DAD2C4; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(38,45,48,.18); color:var(--ink); font-size:10.5px; line-height:1.55; transform:translateY(-10px);}
   .datalab-map-info strong{display:block; font-size:12px; margin-bottom:2px;}
   .datalab-map-info span{display:block; color:var(--ink-soft);}
 

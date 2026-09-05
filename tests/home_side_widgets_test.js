@@ -61,6 +61,22 @@ expect(
   main.includes("clearDataLabTourismMap"),
   "관광 열지도 API 연결 또는 탭 전환 정리 로직이 없습니다."
 );
+expect(
+  main.includes("const minDiameter = 72") &&
+  main.includes("const maxDiameter = 172") &&
+  main.includes("Math.sqrt(ratio)") &&
+  main.includes("외국인 ${Math.round(n / 10000)") &&
+  main.includes("도내 소비 ${n.toLocaleString"),
+  "관광 열지도 원 크기 비례 또는 지표별 큰 숫자 표기가 없습니다."
+);
+expect(
+  css.includes('[data-palette="domestic"]') &&
+  css.includes('[data-palette="foreign"]') &&
+  css.includes('[data-palette="consume"]') &&
+  css.includes(".datalab-map-bubble-name") &&
+  css.includes(".datalab-map-bubble-value"),
+  "관광 열지도 지표별 색상 또는 원 내부 가독성 스타일이 없습니다."
+);
 
 expect(main.includes('const HS_RECENT_KEY = "hs_recent_buildings"'), "최근검색 localStorage 키가 바뀌었습니다.");
 expect(main.includes("function trackRecentBuilding"), "최근검색 기록 함수가 사라졌습니다.");
