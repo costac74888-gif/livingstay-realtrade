@@ -1435,6 +1435,152 @@ let _poiFetchController = null;
 let _poiPendingCenterKey = null;
 let _poiScheduledCenterKey = null;
 let _poiDisplayedCenterKey = null;
+// 관광지 순위 오버레이는 건물/도구 레이어와 독립적으로 유지한다. 껐다 켜도
+// 이미 만든 Kakao overlay 인스턴스를 재사용해 불필요한 API 요청을 막는다.
+let _tourismAttractionOverlays = [];
+let _tourismAttractionsLoaded = false;
+let _tourismAttractionsLoadedAt = 0;
+let _tourismAttractionsLoading = null;
+let _tourismAttractionsVisible = false;
+let _tourismAttractionInfoWindow = null;
+const TOURISM_ATTRACTIONS_TTL_MS = 5 * 60 * 1000;
+
+function _setTourismAttractionsButtonState(){
+  const button = document.getElementById("tourismAttractionsTool");
+  if (!button) return;
+  button.classList.toggle("active", _tourismAttractionsVisible);
+  button.setAttribute("aria-pressed", String(_tourismAttractionsVisible));
+  button.setAttribute("aria-label", _tourismAttractionsVisible ? "관광지 숨기기" : "관광지 보기");
+}
+
+function _tourismAttractionPosition(item){
+  const lat = Number(item.lat ?? item.sgg_lat ?? item.centroid_lat);
+  const lng = Number(item.lng ?? item.sgg_lng ?? item.centroid_lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function _setTourismAttractionsVisible(visible){
+  _tourismAttractionsVisible = Boolean(visible);
+  _tourismAttractionOverlays.forEach(overlay => overlay.setMap(_tourismAttractionsVisible ? kakaoMap : null));
+  if (!_tourismAttractionsVisible && _tourismAttractionInfoWindow) _tourismAttractionInfoWindow.close();
+  _setTourismAttractionsButtonState();
+}
+
+function _clearTourismAttractions(){
+  _tourismAttractionOverlays.forEach(overlay => overlay.setMap(null));
+  _tourismAttractionOverlays = [];
+  if (_tourismAttractionInfoWindow) _tourismAttractionInfoWindow.close();
+  _tourismAttractionInfoWindow = null;
+  _tourismAttractionsLoaded = false;
+  _tourismAttractionsLoadedAt = 0;
+  _setTourismAttractionsVisible(false);
+}
+
+function _tourismAttractionScopeLabel(item){
+  return item?.coordinate_scope === "sgg_office_fallback"
+    ? "시군구청 대표 위치"
+    : "시군구 대표 위치";
+}
+
+function _tourismAttractionFanOffset(coords, duplicateIndex, duplicateCount){
+  if (duplicateCount < 2) return coords;
+  // 동일 시군구 중심점의 마커를 작은 원으로 펼친다. 원본 대표 좌표는 정보창의
+  // 의미로 유지하며, 화면에서의 클릭 가능성만 보완하는 약 5m 반경의 표시 오프셋이다.
+  const angle = (Math.PI * 2 * duplicateIndex / duplicateCount) - Math.PI / 2;
+  const radiusDegrees = .000045;
+  return {
+    lat: coords.lat + Math.sin(angle) * radiusDegrees,
+    lng: coords.lng + Math.cos(angle) * radiusDegrees / Math.max(.2, Math.cos(coords.lat * Math.PI / 180)),
+  };
+}
+
+function _renderTourismAttractions(items){
+  const validItems = (Array.isArray(items) ? items : []).map((item, index) => {
+    const coords = _tourismAttractionPosition(item);
+    const name = String(item.place_name ?? item.name ?? item.attraction_name ?? "").trim();
+    return coords && name ? { item, index, coords, name } : null;
+  }).filter(Boolean);
+  const coordinateGroups = new Map();
+  validItems.forEach(entry => {
+    const key = `${entry.coords.lat.toFixed(7)},${entry.coords.lng.toFixed(7)}`;
+    const group = coordinateGroups.get(key) || [];
+    group.push(entry);
+    coordinateGroups.set(key, group);
+  });
+  validItems.forEach(entry => {
+    const group = coordinateGroups.get(`${entry.coords.lat.toFixed(7)},${entry.coords.lng.toFixed(7)}`);
+    const duplicateIndex = group.indexOf(entry);
+    const displayCoords = _tourismAttractionFanOffset(entry.coords, duplicateIndex, group.length);
+    const { item, index, name } = entry;
+    const rank = Number.isFinite(Number(item.rank)) ? Number(item.rank) : index + 1;
+    const scopeLabel = _tourismAttractionScopeLabel(item);
+    const position = new kakao.maps.LatLng(displayCoords.lat, displayCoords.lng);
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = "map-tourism-marker";
+    marker.setAttribute("aria-label", `${rank}위 관광지 ${name}, ${scopeLabel}`);
+    marker.innerHTML = `<span class="map-tourism-marker-rank">${rank}</span><span class="map-tourism-marker-name">${escapeHtml(name)}</span>`;
+    marker.addEventListener("click", event => {
+      event.stopPropagation();
+      if (_tourismAttractionInfoWindow) _tourismAttractionInfoWindow.close();
+      _tourismAttractionInfoWindow = new kakao.maps.InfoWindow({
+        position,
+        content: `<div class="map-tourism-info"><strong>${escapeHtml(name)}</strong><p>${scopeLabel} · DataLab 검색 순위 ${rank}위</p></div>`,
+        removable: true,
+      });
+      _tourismAttractionInfoWindow.open(kakaoMap);
+    });
+    const overlay = new kakao.maps.CustomOverlay({ position, content: marker, xAnchor: .5, yAnchor: 1, zIndex: 28, clickable: true });
+    _tourismAttractionOverlays.push(overlay);
+  });
+  return _tourismAttractionOverlays.length;
+}
+
+async function toggleTourismAttractions(){
+  if (!kakaoMap) return;
+  if (_tourismAttractionsLoaded){
+    if (_tourismAttractionsVisible){
+      _setTourismAttractionsVisible(false);
+      return;
+    }
+    if (Date.now() - _tourismAttractionsLoadedAt > TOURISM_ATTRACTIONS_TTL_MS){
+      _clearTourismAttractions();
+    } else {
+      if (!_tourismAttractionOverlays.length) {
+        _setTourismAttractionsVisible(false);
+        return;
+      }
+      _setTourismAttractionsVisible(true);
+      return;
+    }
+  }
+  if (_tourismAttractionsLoaded){
+    if (!_tourismAttractionOverlays.length) {
+      _setTourismAttractionsVisible(false);
+      return;
+    }
+    _setTourismAttractionsVisible(true);
+    return;
+  }
+  if (_tourismAttractionsLoading) return;
+  _tourismAttractionsLoading = (async () => {
+    try {
+      const response = await fetch("/api/tourism/attractions/top20");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      const renderedCount = _renderTourismAttractions(data.items ?? data.attractions);
+      _tourismAttractionsLoaded = true;
+      _tourismAttractionsLoadedAt = Date.now();
+      _setTourismAttractionsVisible(renderedCount > 0);
+    } catch (e) {
+      // 실패한 조회는 선택 상태를 바꾸지 않으며, 다음 클릭에서 재시도한다.
+      _setTourismAttractionsButtonState();
+    } finally {
+      _tourismAttractionsLoading = null;
+    }
+  })();
+  await _tourismAttractionsLoading;
+}
 
 function _mapTypeId(key){
   return (window.kakao && kakao.maps && kakao.maps.MapTypeId)
@@ -1984,6 +2130,8 @@ function _initMapToolControls(){
       const button = document.getElementById(id);
       if (button) button.addEventListener("click", () => _activateMapTool(tool));
     });
+  const tourismButton = document.getElementById("tourismAttractionsTool");
+  if (tourismButton) tourismButton.addEventListener("click", toggleTourismAttractions);
   const closeButton = document.getElementById("roadviewClose");
   if (closeButton) closeButton.addEventListener("click", () => {
     if (_activeMapTool === "roadview") _deactivateMapTool();
@@ -2430,6 +2578,13 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     const pos   = new kakao.maps.LatLng(_lat, _lng);
     const total = item.total || 0;
     const bt    = item.by_type || {};
+    // 광역/시군구 집계에서만 관광 방문객 규모를 보조 정보로 보여준다.
+    // 읍면동과 개별 마커의 기존 정보 밀도·클릭 동작은 변경하지 않는다.
+    const visitorCount = Number(item.visitor_count);
+    const visitorHtml = (clusterLevel === "sido" || clusterLevel === "sgg")
+      && Number.isFinite(visitorCount) && visitorCount > 0
+      ? `<div class="cluster-visitor-count">👣 ${Math.round(visitorCount / 10000).toLocaleString("ko-KR")}만명</div>`
+      : "";
 
     // 스택바 width% 계산 — 14px 미만 구간(pct < 12%)은 숫자 생략(겹침 방지)
     const BAR_H = 15;
@@ -2460,6 +2615,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       `overflow:hidden;text-overflow:ellipsis;max-width:116px;">${escapeHtml(clusterLevel === "umd" ? item.name.trim().split(" ").pop() : item.name)}</div>` +
       `<div style="font-size:13px;font-weight:800;color:#16202E;line-height:1.3;">` +
       `${total.toLocaleString("ko-KR")}</div>` +
+       visitorHtml +
       `<div style="display:flex;height:${BAR_H}px;border-radius:3px;overflow:hidden;` +
       `margin-top:3px;background:${LODGING_COLORS["미분류"]};">` +
       barSpans +
@@ -5655,6 +5811,49 @@ function _renderDetailCards(b, buildingId){
       tlCard.style.display = "";
     }
   }
+  _loadDetailTourismStats(b, buildingId);
+}
+
+function _detailTourismAttractionsTarget(b){
+  // B 유형은 운영정보 탭, 그 외에는 해당 시설 안내 카드에 붙인다.
+  return document.getElementById("bOperationsPanel") || document.getElementById("bCampCard");
+}
+
+function _removeDetailTourismAttractions(){
+  document.getElementById("bTourismAttractions")?.remove();
+}
+
+async function _loadDetailTourismStats(b, buildingId){
+  const eligible = new Set(["캠핑", "농어촌민박", "한옥"]);
+  _removeDetailTourismAttractions();
+  if (!eligible.has(b?.lodging_type) || !buildingId) return;
+  const requestToken = _buildingDetailRequestToken;
+  try {
+    const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/tourism-stats`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !_isActiveBuilding(buildingId, requestToken)) return;
+    const attractions = Array.isArray(data.attractions) ? data.attractions
+      : (Array.isArray(data.nearby_attractions) ? data.nearby_attractions : []);
+    if (!attractions.length) return;
+    const target = _detailTourismAttractionsTarget(b);
+    if (!target) return;
+    _removeDetailTourismAttractions();
+    const rows = attractions.slice(0, 5).map((item, index) => {
+      const rank = Number.isFinite(Number(item.rank)) ? Number(item.rank) : index + 1;
+      const name = String(item.name ?? item.place_name ?? item.attraction_name ?? "").trim();
+      return name ? `<li><span class="b-tourism-attractions-rank">${rank}위</span>${escapeHtml(name)}</li>` : "";
+    }).filter(Boolean);
+    if (!rows.length) return;
+    const section = document.createElement("section");
+    section.id = "bTourismAttractions";
+    section.className = "b-tourism-attractions";
+    section.setAttribute("aria-label", "주변 인기 관광지");
+    section.innerHTML = `<h2 class="b-tourism-attractions-title">주변 인기 관광지</h2>
+      <ol class="b-tourism-attractions-list">${rows.join("")}</ol>`;
+    target.appendChild(section);
+  } catch (e) {
+    // 관광 보조 정보 실패는 상세 기본 정보 렌더링에 영향을 주지 않는다.
+  }
 }
 
 // 백그라운드 조회 완료까지 폴링 — detail_fetched_at이 채워지면 카드 자동 갱신.
@@ -5713,6 +5912,17 @@ async function loadBuildingHeader(id){
   const badge = hasType || isPreCompletion
     ? `${typeBadge}${preBadge}`
     : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["미분류"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">미분류</span>`;
+  const foreignVisitorActive = b.lodging_type === "에어비앤비"
+    && Number.isFinite(Number(b.tourism_foreign_ratio))
+    && Number(b.tourism_foreign_ratio) >= .5;
+  const foreignTop3 = Array.isArray(b.foreign_top3) ? b.foreign_top3 : [];
+  const foreignTop3Names = foreignTop3.slice(0, 3).map(item =>
+    escapeHtml(String(item?.country ?? item?.country_name ?? item?.name ?? item ?? "").trim())
+  ).filter(Boolean);
+  const foreignVisitorHtml = foreignVisitorActive
+    ? `<span class="b-foreign-visitor-badge">외국인 방문 활성 지역</span>
+       ${foreignTop3Names.length ? `<span class="b-foreign-visitor-hint">TOP3 방문국: ${foreignTop3Names.join(", ")}</span>` : ""}`
+    : "";
   const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
   // 영업신고 호수·신고율은 lodging_registry 비폐업 객실수 합계만 사용한다.
   // master_buildings의 과거 biz_units 스냅샷은 계산 경로에서 제외한다.
@@ -5799,6 +6009,7 @@ async function loadBuildingHeader(id){
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
       ${lodgingNameTag}
       ${badge}
+      ${foreignVisitorHtml}
     </div>
     ${(b.road_address || b.jibun_address || b.zip_code) ? `
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">

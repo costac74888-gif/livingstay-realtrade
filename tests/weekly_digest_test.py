@@ -29,13 +29,42 @@ class _CandidateCursor:
         return self.candidates
 
 
+class _ConsumptionCursor:
+    """관광소비 단일 원본 조회를 검증하는 최소 커서."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.query = None
+
+    def execute(self, query):
+        self.query = query
+
+    def fetchall(self):
+        return self.rows
+
+    def close(self):
+        pass
+
+
+class _ConsumptionConnection:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def cursor(self):
+        return self._cursor
+
+    def close(self):
+        pass
+
+
 class WeeklyDigestTests(unittest.TestCase):
     def test_iso_week_cycles_through_eight_feature_episodes(self):
         self.assertEqual(digest._weekly_feature_episode(date(2026, 1, 1)), 1)
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 19)), 8)
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 26)), 1)
 
-    def test_datalab_summary_uses_only_successful_master_cache_sections(self):
+    @patch("weekly_digest._get_consumption_summary_db", return_value=None)
+    def test_datalab_summary_uses_only_successful_master_cache_sections(self, consumption_db):
         app_module = SimpleNamespace(
             _MASTER_STATS_CACHE={
                 "sections": {
@@ -69,6 +98,95 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertEqual(partial["report_rate"], 42.5)
         self.assertIsNone(partial["price_change"])
         self.assertIsNone(partial["volume_top"])
+        self.assertEqual(consumption_db.call_count, 2)
+
+    @patch("weekly_digest._get_datalab_summary_db_fallback")
+    @patch("weekly_digest._get_consumption_summary_db")
+    def test_cache_success_without_tourism_cache_uses_lightweight_query(
+        self, consumption_db, fallback,
+    ):
+        consumption_db.return_value = {
+            "ref_yearmonth": "2025-12",
+            "amounts": {"기타숙박": 125000},
+            "other_lodging_mom": 25.0,
+        }
+        app_module = SimpleNamespace(
+            _MASTER_STATS_CACHE={
+                "sections": {"consign_stats": {"status": "ok"}},
+                "data": {"consign_stats": {"total": {"report_rate": 42.5}}},
+            }
+        )
+
+        summary = digest._get_datalab_summary(app_module)
+
+        self.assertEqual(summary["consumption_summary"], consumption_db.return_value)
+        consumption_db.assert_called_once_with()
+        fallback.assert_not_called()
+
+    def test_consumption_summary_uses_latest_two_nationwide_months(self):
+        summary = digest._consumption_summary([
+            {
+                "sido_name": "전국", "ref_yearmonth": "2025-11",
+                "metric_name": "지출액(천원)", "metric_value": 100000,
+                "dimensions": {"중분류": "기타숙박"},
+            },
+            {
+                "sido_name": "전국", "ref_yearmonth": "2025-12",
+                "metric_name": "지출액(천원)", "metric_value": 125000,
+                "dimensions": {"중분류": "기타숙박"},
+            },
+            {
+                "sido_name": "전국", "ref_yearmonth": "2025-12",
+                "metric_name": "지출액(천원)", "metric_value": 200000,
+                "dimensions": {"중분류": "호텔"},
+            },
+            {
+                "sido_name": "전국", "ref_yearmonth": "2025-12",
+                "metric_name": "지출액(천원)", "metric_value": 300000,
+                "dimensions": {"중분류": "캠핑장/펜션"},
+            },
+        ])
+        self.assertEqual(summary["ref_yearmonth"], "2025-12")
+        self.assertEqual(summary["amounts"]["호텔"], 200000)
+        self.assertEqual(summary["amounts"]["캠핑장/펜션"], 300000)
+        self.assertEqual(summary["other_lodging_mom"], 25.0)
+
+    def test_consumption_summary_omits_missing_or_non_nationwide_rows(self):
+        self.assertIsNone(digest._consumption_summary([]))
+        self.assertIsNone(digest._consumption_summary([{
+            "sido_name": "서울", "ref_yearmonth": "2025-12",
+            "metric_name": "지출액(천원)", "metric_value": 100000,
+            "dimensions": {"중분류": "기타숙박"},
+        }]))
+
+    def test_lightweight_consumption_query_isolates_latest_source_file(self):
+        cursor = _ConsumptionCursor([
+            {
+                "ref_yearmonth": "2025-12", "category": "기타숙박",
+                "metric_value": 125000,
+            },
+            {
+                "ref_yearmonth": "2025-11", "category": "기타숙박",
+                "metric_value": 100000,
+            },
+        ])
+        with patch(
+            "weekly_digest.get_conn",
+            return_value=_ConsumptionConnection(cursor),
+        ):
+            summary = digest._get_consumption_summary_db()
+
+        self.assertEqual(summary["amounts"]["기타숙박"], 125000)
+        self.assertIn("WITH latest_source AS", cursor.query)
+        self.assertIn("ORDER BY collected_at DESC, source_file DESC", cursor.query)
+        self.assertEqual(
+            cursor.query.count("JOIN latest_source l ON l.source_file = t.source_file"),
+            2,
+        )
+        self.assertIn(
+            "t.ref_yearmonth IN (SELECT ref_yearmonth FROM latest_months)",
+            cursor.query,
+        )
 
     @patch("weekly_digest._get_datalab_summary_db_fallback")
     def test_datalab_summary_falls_back_when_cache_is_unavailable(self, fallback):
@@ -332,6 +450,32 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 3)
         self.assertIn(f'href="{digest.SITE_URL}/?datalab=lodging"', html)
         self.assertIn("background:#F0F4FF", html)
+
+    def test_zone3_appends_consumption_block_without_changing_three_cards(self):
+        html = digest.build_html(
+            "테스터", [], {}, [], [], [], [],
+            {
+                "report_rate": 42.5,
+                "price_change": {"building_name": "상승 단지", "change_percent": 9.8},
+                "volume_top": {"building_name": "거래 단지", "deal_count": 7},
+                "consumption_summary": {
+                    "ref_yearmonth": "2025-12",
+                    "amounts": {
+                        "기타숙박": 125000, "호텔": 200000,
+                        "캠핑장/펜션": 700000,
+                    },
+                    "other_lodging_mom": 25.0,
+                },
+            },
+            None, "https://example.test/mypage",
+        )
+        self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 3)
+        self.assertIn("2025년 12월 숙박 관광소비", html)
+        self.assertIn("기타숙박</b> 1억원", html)
+        self.assertIn("캠핑·펜션</b> 7억원", html)
+        self.assertIn("전월比 ▲25.0%", html)
+        self.assertIn("관광소비 열지도 보기 →", html)
+        self.assertIn(f'href="{digest.SITE_URL}/?datalab=tourism_consume"', html)
 
     def test_empty_zone3_and_zone4_are_omitted(self):
         html = digest.build_html(

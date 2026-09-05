@@ -21,6 +21,7 @@ import sys
 import argparse
 import html
 import logging
+import re
 from datetime import date, timedelta
 
 import psycopg2
@@ -201,9 +202,101 @@ def _get_active_feature_tip(cur, today=None):
         return None
 
 
+def _consumption_summary(rows):
+    """전국 관광소비 원본 행에서 이메일용 숙박 소비 요약을 만든다.
+
+    원본은 ``dimensions['중분류']``에 업종을, ``metric_value``에 천원 단위
+    지출액을 보관한다. 불완전한 업로드는 억지로 0으로 표시하지 않고 생략한다.
+    """
+    categories = ("기타숙박", "호텔", "캠핑장/펜션")
+    monthly = {}
+    for row in rows or []:
+        try:
+            dimensions = row.get("dimensions") or {}
+            category = row.get("category") or dimensions.get("중분류")
+            yearmonth = str(row.get("ref_yearmonth") or "").strip()
+            metric_name = row.get("metric_name")
+            sido_name = row.get("sido_name")
+            if (
+                category not in categories
+                or not yearmonth
+                or (metric_name is not None and metric_name != "지출액(천원)")
+                or (sido_name is not None and sido_name != "전국")
+            ):
+                continue
+            value = float(row.get("metric_value"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        monthly.setdefault(yearmonth, {})[category] = value
+
+    months = sorted(monthly, reverse=True)
+    if not months:
+        return None
+    latest = months[0]
+    amounts = monthly[latest]
+    latest_other = amounts.get("기타숙박")
+    previous_other = monthly.get(months[1], {}).get("기타숙박") if len(months) > 1 else None
+    other_mom = None
+    if latest_other is not None and previous_other not in (None, 0):
+        other_mom = 100.0 * (latest_other - previous_other) / previous_other
+    return {
+        "ref_yearmonth": latest,
+        "amounts": {category: amounts[category] for category in categories if category in amounts},
+        "other_lodging_mom": other_mom,
+    }
+
+
+def _get_consumption_summary_db():
+    """관광소비 블록만 위한 짧은 원본 조회. 원본이 없으면 조용히 생략한다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            WITH latest_source AS (
+                SELECT source_file
+                FROM tourism_stats
+                WHERE stat_type = 'consumption_trend'
+                ORDER BY collected_at DESC, source_file DESC
+                LIMIT 1
+            ),
+            latest_months AS (
+                SELECT t.ref_yearmonth
+                FROM tourism_stats t
+                JOIN latest_source l ON l.source_file = t.source_file
+                WHERE t.stat_type = 'consumption_trend'
+                  AND t.metric_name = '지출액(천원)'
+                  AND t.sido_name = '전국'
+                GROUP BY t.ref_yearmonth
+                ORDER BY t.ref_yearmonth DESC
+                LIMIT 2
+            )
+            SELECT t.ref_yearmonth, t.dimensions->>'중분류' AS category, t.metric_value
+            FROM tourism_stats t
+            JOIN latest_source l ON l.source_file = t.source_file
+            WHERE t.stat_type = 'consumption_trend'
+              AND t.metric_name = '지출액(천원)'
+              AND t.sido_name = '전국'
+              AND t.dimensions->>'중분류' IN ('기타숙박', '호텔', '캠핑장/펜션')
+              AND t.ref_yearmonth IN (SELECT ref_yearmonth FROM latest_months)
+            ORDER BY t.ref_yearmonth DESC
+        """)
+        return _consumption_summary(cur.fetchall())
+    except Exception:
+        return None
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 def _get_datalab_summary_db_fallback():
     """캐시를 사용할 수 없을 때 주간 이메일이 직접 읽는 최소 통계."""
-    empty = {"report_rate": None, "price_change": None, "volume_top": None}
+    empty = {
+        "report_rate": None, "price_change": None, "volume_top": None,
+        "consumption_summary": None,
+    }
     conn = cur = None
     try:
         conn = get_conn()
@@ -329,6 +422,7 @@ def _get_datalab_summary_db_fallback():
                 "jibun": price_row.get("jibun"),
                 "change_percent": round(float(price_row.get("change_percent")), 1),
             }
+        result["consumption_summary"] = _get_consumption_summary_db()
         return result
     except Exception:
         log.warning("데이터랩 DB 폴백 집계에 실패했습니다.", exc_info=True)
@@ -347,7 +441,10 @@ def _get_datalab_summary(app_module=None):
     비어 있다. 이 경우 app의 섹션 접근자를 한 번 호출해 통합 캐시를 채운 뒤 읽고,
     어떤 섹션이 실패해도 해당 지표만 None으로 남겨 이메일 발송은 계속한다.
     """
-    empty = {"report_rate": None, "price_change": None, "volume_top": None}
+    empty = {
+        "report_rate": None, "price_change": None, "volume_top": None,
+        "consumption_summary": None,
+    }
     cache_fill_failed = False
     try:
         if app_module is None:
@@ -388,6 +485,16 @@ def _get_datalab_summary(app_module=None):
             volume_items = transactions.get("volume_top") or []
             result["price_change"] = dict(price_items[0]) if price_items else None
             result["volume_top"] = dict(volume_items[0]) if volume_items else None
+        tourism_data = (
+            data.get("consumption_trend")
+            or (data.get("tourism_stats") or {}).get("consumption_trend")
+            or (data.get("tourism") or {}).get("consumption_trend")
+            or []
+        )
+        result["consumption_summary"] = (
+            _consumption_summary(tourism_data)
+            if tourism_data else _get_consumption_summary_db()
+        )
         return _get_datalab_summary_db_fallback() if cache_fill_failed else result
     except Exception:
         log.warning("데이터랩 요약 캐시를 읽지 못했습니다. DB 폴백을 시도합니다.", exc_info=True)
@@ -891,8 +998,9 @@ def _zone3(summary):
      rate = summary.get("report_rate")
      price = summary.get("price_change") or {}
      volume = summary.get("volume_top") or {}
+     consumption = summary.get("consumption_summary") or {}
 
-     if rate is None and not price and not volume:
+     if rate is None and not price and not volume and not consumption:
          return ""
 
      rate_text = f"{float(rate):.1f}%" if isinstance(rate, (int, float)) else "-"
@@ -932,6 +1040,62 @@ def _zone3(summary):
      else:
          volume_text = "-"
 
+     consumption_block = ""
+     amounts = consumption.get("amounts") if isinstance(consumption, dict) else None
+     if isinstance(amounts, dict) and amounts:
+         entries = []
+         display_amounts = [
+             ("기타숙박", amounts.get("기타숙박")),
+             ("호텔", amounts.get("호텔")),
+             ("캠핑·펜션", amounts.get("캠핑장/펜션")),
+         ]
+         for category, amount in display_amounts:
+             try:
+                 if amount is None:
+                     continue
+                 amount_text = f"{float(amount) / 100000:,.0f}억원"
+             except (TypeError, ValueError):
+                 continue
+             mom_text = ""
+             if category == "기타숙박":
+                 try:
+                     mom = consumption.get("other_lodging_mom")
+                     if mom is not None:
+                         mom_value = float(mom)
+                         mom_symbol = "▲" if mom_value > 0 else ("▼" if mom_value < 0 else "–")
+                         mom_color = "#C23B32" if mom_value > 0 else ("#185FA5" if mom_value < 0 else "#888888")
+                         mom_text = (
+                             f' <span style="color:{mom_color};">'
+                             f'전월比 {mom_symbol}{abs(mom_value):.1f}%</span>'
+                         )
+                 except (TypeError, ValueError):
+                     pass
+             entries.append(
+                 f'<span style="white-space:nowrap;"><b>{html.escape(category)}</b> '
+                 f'{html.escape(amount_text)}{mom_text}</span>'
+             )
+         if entries:
+             raw_yearmonth = str(consumption.get("ref_yearmonth") or "").strip()
+             month_match = re.fullmatch(r"(\d{4})[-.]?(\d{2})", raw_yearmonth)
+             month_label = (
+                 f"{month_match.group(1)}년 {int(month_match.group(2))}월"
+                 if month_match else "최근"
+             )
+             ref_yearmonth = html.escape(month_label)
+             tourism_url = html.escape(f"{SITE_URL}/?datalab=tourism_consume", quote=True)
+             consumption_block = f"""
+      <div style="margin:10px 4px 0;padding:10px 12px;background:#FFFFFF;
+                  border:1px solid #EEEEEE;border-radius:8px;font-size:12px;
+                  line-height:1.7;color:#555;">
+        🏨 <strong style="color:#16202E;">{ref_yearmonth} 숙박 관광소비</strong><br>
+        {' · '.join(entries)}
+      </div>
+      <p style="margin:6px 4px 0;text-align:right;">
+        <a href="{tourism_url}" style="font-size:12px;color:#B4863F;text-decoration:none;">
+          관광소비 열지도 보기 →
+        </a>
+      </p>"""
+
      def card(label, value):
          return f"""
          <td class="weekly-datalab-card-cell"
@@ -966,6 +1130,7 @@ def _zone3(summary):
          {card("거래량 TOP1", volume_text)}
        </tr>
      </table>
+      {consumption_block}
      <p style="margin:10px 0 0;text-align:right;">
        <a href="{SITE_URL}/?datalab=lodging"
           style="font-size:12px;color:#B4863F;text-decoration:none;">

@@ -424,11 +424,34 @@
     box-shadow:0 2px 7px rgba(22,32,46,.35); cursor:pointer;
   }
   .map-poi-marker span{transform:rotate(45deg); font:800 10px/1 'Noto Sans KR',sans-serif;}
+   .map-tourism-marker{
+     display:flex; align-items:center; gap:3px; max-width:150px; padding:5px 7px;
+     border:1px solid #fff; border-radius:999px; background:#8F6A2F; color:#fff;
+     box-shadow:0 2px 7px rgba(22,32,46,.35); cursor:pointer;
+     font:700 11px/1.2 'Noto Sans KR',sans-serif; white-space:nowrap;
+   }
+   .map-tourism-marker-rank{display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:#fff; color:#8F6A2F; font-size:9px;}
+   .map-tourism-marker-name{overflow:hidden; text-overflow:ellipsis;}
+   .map-tourism-info{min-width:180px; padding:10px 12px; color:var(--ink); font:13px/1.45 'Noto Sans KR',sans-serif;}
+   .map-tourism-info strong{display:block; margin-bottom:3px;}
+   .map-tourism-info p{margin:0; color:var(--ink-soft); font-size:11.5px;}
+   .b-foreign-visitor-badge{
+     display:inline-flex; align-items:center; padding:3px 8px; border:1px solid #c9b4ec;
+     border-radius:999px; background:#f5f0ff; color:#63429a; font-size:11px; font-weight:700;
+     white-space:nowrap;
+   }
+   .b-foreign-visitor-hint{flex-basis:100%; margin-top:-2px; color:var(--ink-soft); font-size:11.5px;}
+   .b-tourism-attractions{margin-top:12px; padding-top:12px; border-top:1px solid var(--line);}
+   .b-tourism-attractions-title{margin:0 0 7px; color:var(--ink); font-size:12px; font-weight:700;}
+   .b-tourism-attractions-list{display:flex; flex-direction:column; gap:5px; margin:0; padding:0; list-style:none;}
+   .b-tourism-attractions-list li{color:var(--ink-soft); font-size:11.5px; line-height:1.4;}
+   .b-tourism-attractions-rank{display:inline-block; min-width:20px; color:var(--brass-dark); font-weight:800;}
   .map-measure-label{
     padding:4px 7px; border:1px solid #EAD9B8; border-radius:6px;
     background:#fff; color:var(--brass-dark); box-shadow:0 2px 7px rgba(22,32,46,.22);
     font:800 11px/1 'Noto Sans KR',sans-serif; white-space:nowrap;
   }
+   .cluster-visitor-count{margin-top:1px; color:#7B8490; font:500 10px/1.25 'Noto Sans KR',sans-serif; white-space:nowrap;}
 
   /* 좌측 플로팅 패널 (흰색 카드, 세로 스크롤) */
   .side-panel{

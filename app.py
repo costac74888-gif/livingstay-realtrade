@@ -2236,6 +2236,72 @@ def get_building(building_id):
                 "can_delete": False,
             } for image_url in camping["image_urls"]]
 
+    # 관광 데이터랩 지표는 에어비앤비 상세에만 제공한다. 다른 숙박 유형에는
+    # 필드 자체를 추가하지 않아 유형별 데이터 계약이 섞이지 않게 한다.
+    if building.get("lodging_type") == "에어비앤비":
+        building["tourism_foreign_ratio"] = None
+        building["foreign_top3"] = []
+        try:
+            region_sido, region_sgg = _building_tourism_region_key(building)
+            cur.execute("""
+                WITH latest AS (
+                    SELECT source_file
+                    FROM tourism_stats
+                    WHERE stat_type = 'foreign_sgg'
+                      AND metric_name = '기초지자체 방문자 비율'
+                    ORDER BY collected_at DESC, source_file DESC,
+                             source_period DESC NULLS LAST
+                    LIMIT 1
+                )
+                SELECT t.metric_value
+                FROM tourism_stats t
+                JOIN latest l ON t.source_file = l.source_file
+                WHERE t.stat_type = 'foreign_sgg'
+                  AND t.metric_name = '기초지자체 방문자 비율'
+                  AND regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s
+                  AND regexp_replace(trim(t.sgg_name), '\\s+', '', 'g') = %s
+                ORDER BY t.collected_at DESC, t.id DESC
+                LIMIT 1
+            """, (region_sido, region_sgg))
+            foreign_ratio = cur.fetchone()
+            if foreign_ratio and foreign_ratio["metric_value"] is not None:
+                building["tourism_foreign_ratio"] = float(foreign_ratio["metric_value"])
+
+            cur.execute("""
+                WITH latest AS (
+                    SELECT source_file
+                    FROM tourism_stats
+                    WHERE stat_type = 'foreign_country'
+                      AND metric_name = '비율(%)'
+                    ORDER BY collected_at DESC, source_file DESC,
+                             source_period DESC NULLS LAST
+                    LIMIT 1
+                )
+                SELECT t.dimensions->>'국가명' AS country, t.metric_value
+                FROM tourism_stats t
+                JOIN latest l ON t.source_file = l.source_file
+                WHERE t.stat_type = 'foreign_country'
+                  AND t.metric_name = '비율(%)'
+                  AND NULLIF(trim(t.dimensions->>'국가명'), '') IS NOT NULL
+                ORDER BY t.metric_value DESC NULLS LAST
+                LIMIT 10
+            """)
+            excluded_countries = {"기타", "unknown", "미상", "알수없음", "알 수 없음", "없음"}
+            for country_row in cur.fetchall():
+                country = str(country_row["country"] or "").strip()
+                if not country or country.lower() in excluded_countries:
+                    continue
+                building["foreign_top3"].append({
+                    "country": country,
+                    "ratio": float(country_row["metric_value"] or 0),
+                })
+                if len(building["foreign_top3"]) == 3:
+                    break
+        except psycopg2_errors.UndefinedTable:
+            # 관광 데이터가 아직 적재되지 않은 초기 설치도 상세 자체는 제공한다.
+            building["tourism_foreign_ratio"] = None
+            building["foreign_top3"] = []
+
     cur.close()
     conn.close()
 
@@ -3331,6 +3397,49 @@ def _canonical_sido_name(sgg_text) -> str:
     return _SIDO_DISPLAY_NAMES.get(sido_core(first), first)
 
 
+def _tourism_region_key(sido, sgg):
+    """관광 데이터랩/마스터의 시도 접미사·시군구 공백 편차를 같은 키로 만든다."""
+    return (
+        sido_core(str(sido or "").strip()),
+        "".join(str(sgg or "").strip().split()),
+    )
+
+
+def _building_tourism_region_key(building):
+    """master_buildings.sgg_text의 첫 토큰은 시도, 나머지는 시군구다."""
+    parts = str(building.get("sgg_text") or "").strip().split()
+    return _tourism_region_key(parts[0] if parts else "", " ".join(parts[1:]))
+
+
+def _latest_domestic_visitor_counts(cur):
+    """최신 국내 시군구 방문자수를 한 번에 읽어 지역 정규화 키로 반환한다."""
+    try:
+        cur.execute("""
+            WITH latest AS (
+                SELECT source_file
+                FROM tourism_stats
+                WHERE stat_type = 'visitor_sgg'
+                  AND metric_name = '기초지자체 방문자 수'
+                ORDER BY collected_at DESC, source_file DESC,
+                         source_period DESC NULLS LAST
+                LIMIT 1
+            )
+            SELECT t.sido_name, t.sgg_name, t.metric_value
+            FROM tourism_stats t
+            JOIN latest l ON t.source_file = l.source_file
+            WHERE t.stat_type = 'visitor_sgg'
+              AND t.metric_name = '기초지자체 방문자 수'
+        """)
+    except psycopg2_errors.UndefinedTable:
+        return {}
+    counts = {}
+    for row in cur.fetchall():
+        key = _tourism_region_key(row["sido_name"], row["sgg_name"])
+        if key[0] and key[1]:
+            counts[key] = float(row["metric_value"]) if row["metric_value"] is not None else None
+    return counts
+
+
 @app.route("/api/buildings-cluster")
 @limiter.limit("60 per minute")
 def get_buildings_cluster():
@@ -3429,6 +3538,7 @@ def get_buildings_cluster():
 
     conn = None
     cur = None
+    domestic_counts = {}
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -3472,6 +3582,8 @@ def get_buildings_cluster():
             ORDER BY total DESC
         """, params + having_params)
         rows = cur.fetchall()
+        if level != "umd":
+            domestic_counts = _latest_domestic_visitor_counts(cur)
     finally:
         # 커서 close가 실패해도 연결 반환은 반드시 실행되어야 한다.
         try:
@@ -3481,6 +3593,13 @@ def get_buildings_cluster():
             if conn is not None:
                 release_conn(conn)
 
+    # 관광 데이터는 클러스터 행마다 조회하지 않는다. 최신 원본을 한 번만 읽어
+    # 아래 집계 행에 붙인다. 읍면동 배지는 의도적으로 관광 수치를 갖지 않는다.
+    domestic_by_sido = {}
+    for (sido, _sgg), value in domestic_counts.items():
+        if value is not None:
+            domestic_by_sido[sido] = domestic_by_sido.get(sido, 0) + value
+
     items = []
     for r in rows:
         name = r["region_name"] or ""
@@ -3489,7 +3608,7 @@ def get_buildings_cluster():
             display = f"{r['sgg_text_full']} {name}".strip()
         else:
             display = name
-        items.append({
+        item = {
             "name":    display,
             "lat":     float(r["lat"])  if r["lat"]  is not None else None,
             "lng":     float(r["lng"])  if r["lng"]  is not None else None,
@@ -3506,7 +3625,18 @@ def get_buildings_cluster():
                 "준공전": int(r["cnt_pre_completion"]  or 0),
                 "미분류": int(r["cnt_unknown"]         or 0),
             },
-        })
+        }
+        if level == "sido":
+            item["visitor_count"] = domestic_by_sido.get(
+                sido_core(name.strip()), None
+            )
+        elif level == "sgg":
+            item["visitor_count"] = domestic_counts.get(
+                _building_tourism_region_key({"sgg_text": r["sgg_text_full"]}), None
+            )
+        else:
+            item["visitor_count"] = None
+        items.append(item)
 
     payload = json.dumps({"level": level, "items": items}, ensure_ascii=False)
     _cluster_cache[_cache_key] = (time.time(), payload.encode("utf-8"))
@@ -29424,6 +29554,174 @@ def tourism_heatmap_consume():
     return jsonify(_tourism_heatmap_payload(
         "consumption_region", "기초지자체 지출액 비율(%)", "관광소비", "%", "consumption_sector"
     ))
+
+
+def _search_ranking_rows(cur, region_key=None, limit=20, max_rank=None):
+    """최신 관광지 검색순위 원본만 읽는다. 순위 문자열의 '위' 등은 안전하게 제거한다."""
+    region_sql = ""
+    params = []
+    if region_key is not None:
+        region_sql = """
+          AND regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s
+          AND regexp_replace(trim(t.sgg_name), '\\s+', '', 'g') = %s
+        """
+        params.extend(region_key)
+    rank_sql = "AND rank <= %s" if max_rank is not None else ""
+    if max_rank is not None:
+        params.append(max_rank)
+    try:
+        cur.execute(f"""
+            WITH latest AS (
+                SELECT source_file
+                FROM tourism_stats
+                WHERE stat_type = 'search_ranking'
+                ORDER BY collected_at DESC, source_file DESC,
+                         source_period DESC NULLS LAST
+                LIMIT 1
+            ),
+            ranked AS (
+                SELECT
+                    t.sido_name, t.sgg_name,
+                    NULLIF(trim(t.dimensions->>'관광지명'), '') AS attraction_name,
+                    NULLIF(regexp_replace(
+                        COALESCE(t.dimensions->>'순위', ''), '[^0-9]', '', 'g'
+                    ), '')::INTEGER AS rank,
+                    t.source_period
+                FROM tourism_stats t
+                JOIN latest l ON t.source_file = l.source_file
+                WHERE t.stat_type = 'search_ranking'
+                {region_sql}
+            )
+            SELECT ranked.sido_name, ranked.sgg_name, ranked.attraction_name,
+                   ranked.rank, ranked.source_period, c.lat, c.lng
+            FROM ranked
+            LEFT JOIN sgg_coords c
+              ON regexp_replace(c.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
+                   = regexp_replace(ranked.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
+             AND regexp_replace(trim(c.sgg_name), '\\s+', '', 'g')
+                   = regexp_replace(trim(ranked.sgg_name), '\\s+', '', 'g')
+            WHERE attraction_name IS NOT NULL AND rank >= 1 {rank_sql}
+            ORDER BY rank, attraction_name
+            LIMIT %s
+        """, params + [limit])
+        return [dict(row) for row in cur.fetchall()]
+    except psycopg2_errors.UndefinedTable:
+        return []
+
+
+# sgg_coords는 마스터 건물 좌표에서 갱신되므로, 해당 시군구에 건물이 아직 없으면
+# 관광지 검색순위 마커가 비게 된다. 아래는 2026-03 현재 그 경우에만 쓰는 관공서
+# (시청·구청·군청) 대표 좌표다. 외부 지오코딩을 요청 시점에 호출하지 않는다.
+_SEARCH_RANKING_OFFICE_CENTROIDS = {
+    _tourism_region_key("강원", "속초시"): (38.206894335257, 128.591938589235),
+    _tourism_region_key("경기", "부천시소사구"): (37.48005602126878, 126.79995139419378),
+    _tourism_region_key("경기", "성남시중원구"): (37.430599014471, 127.137231710026),
+    _tourism_region_key("경기", "용인시수지구"): (37.322115297572424, 127.09768172993404),
+    _tourism_region_key("광주", "광산구"): (35.139547183060515, 126.79363124979741),
+    _tourism_region_key("대구", "서구"): (35.87166757854537, 128.55915424679594),
+    _tourism_region_key("대전", "대덕구"): (36.34670513230572, 127.41556189063058),
+    _tourism_region_key("서울", "강동구"): (37.5301933196226, 127.123792501253),
+    _tourism_region_key("서울", "노원구"): (37.6543617567106, 127.056430475217),
+    _tourism_region_key("서울", "양천구"): (37.5169884752677, 126.86650140966),
+    _tourism_region_key("세종", "세종특별자치시"): (36.48006310909889, 127.28919531800284),
+    _tourism_region_key("울산", "남구"): (35.543809703761, 129.330091790845),
+    _tourism_region_key("인천", "서구"): (37.545433516040895, 126.67602846821862),
+    _tourism_region_key("인천", "영종구"): (37.489768284726516, 126.55993672147271),
+    _tourism_region_key("인천", "중구"): (37.473660523066044, 126.62170176164001),
+    _tourism_region_key("전남", "완도군"): (34.3109789171546, 126.754998729551),
+    _tourism_region_key("충남", "공주시"): (36.4465551158454, 127.11905504092),
+    _tourism_region_key("충북", "단양군"): (36.98465776942097, 128.3655442185559),
+    _tourism_region_key("충북", "청주시상당구"): (36.589734513939916, 127.50510709989605),
+}
+
+
+def _search_ranking_fallback_centroid(sido, sgg):
+    """sgg_coords에 없는 최신 검색순위 지역의 사전 검증된 관공서 대표좌표."""
+    return _SEARCH_RANKING_OFFICE_CENTROIDS.get(_tourism_region_key(sido, sgg))
+
+
+@app.route("/api/building/<int:building_id>/tourism-stats")
+@limiter.limit("60 per minute")
+def get_building_tourism_stats(building_id):
+    """캠핑·농어촌민박·한옥 건물의 같은 시군구 관광지 검색 TOP 3."""
+    conn = None
+    cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT lodging_type, sgg_text
+            FROM master_buildings
+            WHERE id = %s
+        """, (building_id,))
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"error": "not found"}), 404
+        payload = {"building_id": building_id, "nearby_attractions": []}
+        if building["lodging_type"] not in {"캠핑", "농어촌민박", "한옥"}:
+            return jsonify(payload)
+        rows = _search_ranking_rows(
+            cur, _building_tourism_region_key(building), limit=3
+        )
+        payload["nearby_attractions"] = [
+            {
+                "name": row["attraction_name"],
+                "rank": int(row["rank"]),
+                "source_period": row["source_period"],
+            }
+            for row in rows
+        ]
+        return jsonify(payload)
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
+
+
+@app.route("/api/tourism/attractions/top20")
+@limiter.limit("30 per minute")
+def tourism_attractions_top20():
+    """최신 검색순위 TOP 20과 시군구 중심좌표(관광지 실제 좌표 아님)를 반환한다."""
+    conn = None
+    cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        rows = _search_ranking_rows(cur, limit=20, max_rank=20)
+        items = []
+        for row in rows:
+            has_sgg_centroid = row["lat"] is not None and row["lng"] is not None
+            fallback_centroid = (
+                None if has_sgg_centroid
+                else _search_ranking_fallback_centroid(row["sido_name"], row["sgg_name"])
+            )
+            lat, lng = (
+                (float(row["lat"]), float(row["lng"]))
+                if has_sgg_centroid else (fallback_centroid or (None, None))
+            )
+            items.append({
+                "name": row["attraction_name"],
+                "rank": int(row["rank"]),
+                "sido": row["sido_name"],
+                "sgg": row["sgg_name"],
+                "lat": lat,
+                "lng": lng,
+                "coordinate_scope": (
+                    "sgg_centroid" if has_sgg_centroid else "sgg_office_fallback"
+                ),
+                "source_period": row["source_period"],
+            })
+        return jsonify({"items": items, "coordinate_scope": "sgg_representative"})
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
 
 
 def _tourism_surge_payload(stat_type, label):

@@ -545,6 +545,24 @@ def check_tourism_surge(payload):
     return None
 
 
+def check_tourism_attractions_top20(payload):
+    """관광지 검색 TOP20은 시군구 대표좌표(원본 또는 관공서 보완)를 모두 제공한다."""
+    if not isinstance(payload, dict) or payload.get("coordinate_scope") != "sgg_representative":
+        return "TOP20 대표좌표 범위 표기가 없음"
+    items = payload.get("items")
+    if not isinstance(items, list) or len(items) > 20:
+        return "'items'가 최대 20건 배열이 아님"
+    required = {"name", "rank", "sido", "sgg", "lat", "lng", "coordinate_scope"}
+    for item in items:
+        if not required <= set(item):
+            return "TOP20 항목에 관광지·지역·좌표 필드가 없음"
+        if item["lat"] is None or item["lng"] is None:
+            return "현재 TOP20에 좌표 없는 관광지가 남아 있음"
+        if item["coordinate_scope"] not in {"sgg_centroid", "sgg_office_fallback"}:
+            return "항목별 대표좌표 범위가 올바르지 않음"
+    return None
+
+
 def check_datalab_consign(payload):
     """/api/stats/consign-by-sido: 시도별 영업신고현황과 전국 합계."""
     if not isinstance(payload, dict) or payload.get("ok") is not True:
@@ -765,6 +783,7 @@ CHECKS = [
     ("/api/stats/consign-by-sido", check_datalab_consign),
     ("/api/tourism/surge/domestic", check_tourism_surge),
     ("/api/tourism/surge/foreign", check_tourism_surge),
+    ("/api/tourism/attractions/top20", check_tourism_attractions_top20),
 ]
 
 
