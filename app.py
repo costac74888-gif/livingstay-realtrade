@@ -2199,7 +2199,8 @@ def get_building(building_id):
     # 사업자번호·신고번호는 개인정보 및 심사 정보이므로 절대 상세 API에 싣지 않는다.
     cur.execute("""
         SELECT id, lodging_op_type, biz_name, rep_name, phone, photo_url,
-               booking_url, airbnb_url, gocamping_url, intro_text
+               booking_url, airbnb_url, gocamping_url, intro_text,
+               facility_phone, homepage_url
         FROM operator_lodging
         WHERE master_building_id = %s AND status = 'approved'
         ORDER BY approved_at DESC NULLS LAST, id DESC
@@ -2254,6 +2255,21 @@ def get_building(building_id):
             if verified_web_row else camping_row.get("gocamping_content_id")
         )
         info_url = _gocamping_url_for_content_id(content_id)
+        camping_operator = next(
+            (
+                row for row in lodging_operator_rows
+                if row.get("lodging_op_type") == "camping"
+            ),
+            None,
+        )
+        operator_phone = (
+            format_phone(camping_operator.get("facility_phone"))
+            if camping_operator and camping_operator.get("facility_phone")
+            else None
+        )
+        operator_homepage = _safe_public_url(
+            camping_operator.get("homepage_url") if camping_operator else None
+        )
         camping = {
             "content_id": content_id,
             "site_count": camping_row.get("camping_site_count"),
@@ -2281,8 +2297,8 @@ def get_building(building_id):
             "facility_area": camping_row.get("facility_area"),
             "intro": web_detail.get("intro"),
             "summary": web_detail.get("summary"),
-            "homepage_url": _safe_public_url(web_detail.get("homepage_url")),
-            "phone": web_detail.get("phone"),
+            "homepage_url": operator_homepage or _safe_public_url(web_detail.get("homepage_url")),
+            "phone": operator_phone or web_detail.get("phone"),
             "address": web_detail.get("address"),
             "directions": web_detail.get("directions"),
             "updated_at": web_detail.get("updated_at"),
@@ -5635,7 +5651,8 @@ def _current_lodging_operator(cur):
         return None
     cur.execute("""
         SELECT id, lodging_op_type, biz_name, rep_name, phone, booking_url, airbnb_url,
-               airbnb_urls, intro_text, photo_url, master_building_id
+               airbnb_urls, intro_text, photo_url, master_building_id,
+               lodging_reg_id, facility_phone, homepage_url
         FROM operator_lodging WHERE user_id=%s AND status='approved'
     """, [user["id"]])
     return cur.fetchone()
@@ -5653,24 +5670,57 @@ def lodging_operator_me():
         if request.method == "GET":
             item = dict(op)
             item["photo_src"] = f"/api/lodging-operator/photo/{item['id']}" if item.pop("photo_url", None) else None
+            item["source_facility_phone"] = None
+            item["source_homepage_url"] = None
+            if item["lodging_op_type"] == "camping" and item.get("lodging_reg_id"):
+                cur.execute("""
+                    SELECT phone, gocamping_detail
+                    FROM lodging_registry
+                    WHERE id=%s
+                """, [item["lodging_reg_id"]])
+                source = cur.fetchone()
+                if source:
+                    source_detail = source.get("gocamping_detail") or {}
+                    if isinstance(source_detail, str):
+                        try:
+                            source_detail = json.loads(source_detail)
+                        except (TypeError, ValueError):
+                            source_detail = {}
+                    if not isinstance(source_detail, dict):
+                        source_detail = {}
+                    item["source_facility_phone"] = (
+                        source_detail.get("phone") or format_phone(source.get("phone"))
+                    )
+                    item["source_homepage_url"] = _public_http_url(
+                        source_detail.get("homepage_url")
+                    )
             return jsonify({"ok": True, "item": item})
         data = request.get_json(force=True, silent=True) or {}
         booking = _public_http_url(data.get("booking_url"))
+        facility_phone = _digits_only(data.get("facility_phone"))
+        homepage_url = _public_http_url(data.get("homepage_url"))
         airbnb = _public_http_url(data.get("airbnb_url"), airbnb_only=True)
         extra = data.get("airbnb_urls") or []
         if not isinstance(extra, list) or len(extra) > 10:
             return jsonify({"ok": False, "message": "추가 에어비앤비 URL은 최대 10개입니다."}), 400
         extra = [_public_http_url(url, airbnb_only=True) for url in extra]
-        if any(url is None for url in extra) or (data.get("booking_url") and not booking) or (data.get("airbnb_url") and not airbnb):
+        if any(url is None for url in extra) or (data.get("booking_url") and not booking) or (data.get("airbnb_url") and not airbnb) or (data.get("homepage_url") and not homepage_url):
             return jsonify({"ok": False, "message": "공개 링크 형식이 올바르지 않습니다."}), 400
+        if data.get("facility_phone") and not _validate_phone_digits(facility_phone):
+            return jsonify({"ok": False, "message": "시설 전화번호를 정확히 입력해주세요."}), 400
+        if op["lodging_op_type"] != "camping":
+            facility_phone = ""
+            homepage_url = None
         if op["lodging_op_type"] == "airbnb" and not airbnb:
             return jsonify({"ok": False, "message": "에어비앤비 운영자는 리스팅 URL이 필요합니다."}), 400
         intro = (data.get("intro_text") or "").strip()
         if len(intro) > 2000:
             return jsonify({"ok": False, "message": "소개글은 2,000자 이내여야 합니다."}), 400
         cur.execute("""UPDATE operator_lodging SET booking_url=%s, airbnb_url=%s,
-                       airbnb_urls=%s, intro_text=%s, updated_at=NOW() WHERE id=%s""",
-                    [booking, airbnb, json.dumps(extra, ensure_ascii=False) if extra else None, intro or None, op["id"]])
+                       airbnb_urls=%s, intro_text=%s, facility_phone=%s,
+                       homepage_url=%s, updated_at=NOW() WHERE id=%s""",
+                    [booking, airbnb, json.dumps(extra, ensure_ascii=False) if extra else None,
+                     intro or None, facility_phone or None, homepage_url, op["id"]])
         conn.commit()
         return jsonify({"ok": True})
     finally:

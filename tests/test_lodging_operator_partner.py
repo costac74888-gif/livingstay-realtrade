@@ -45,6 +45,19 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
         self.assertIn("operator_lodging_photos", source)
         self.assertGreater(db.SCHEMA_VERSION, "2026-09-04-08")
 
+    def test_camping_operator_can_override_public_contact_fields(self):
+        schema = (Path(ROOT) / "db.py").read_text(encoding="utf-8")
+        app_source = (Path(ROOT) / "app.py").read_text(encoding="utf-8")
+        manage = (Path(ROOT) / "static" / "lodging_operator_manage.html").read_text(encoding="utf-8")
+        self.assertIn("facility_phone TEXT", schema)
+        self.assertIn("homepage_url TEXT", schema)
+        self.assertIn('operator_homepage or _safe_public_url(web_detail.get("homepage_url"))', app_source)
+        self.assertIn('operator_phone or web_detail.get("phone")', app_source)
+        self.assertIn('item["source_facility_phone"]', app_source)
+        self.assertIn('item["source_homepage_url"]', app_source)
+        self.assertIn('id="facility_phone"', manage)
+        self.assertIn('id="homepage_url"', manage)
+
     def test_otp_digest_is_challenge_bound(self):
         digest = app_module._lodging_operator_otp_digest("a" * 32, "123456")
         self.assertNotEqual(digest, "123456")

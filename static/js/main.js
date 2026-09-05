@@ -5627,11 +5627,15 @@ function _renderCampingSection(b){
 
   body.innerHTML = `
     ${camp.summary || camp.intro ? `<div class="camp-intro">${escapeHtml(camp.summary || camp.intro)}</div>` : ""}
-    ${camp.address || camp.phone || camp.homepage_url ? `<dl class="camp-contact">
-      ${camp.address ? `<div><dt>주소</dt><dd>${escapeHtml(camp.address)}</dd></div>` : ""}
-      ${camp.phone ? `<div><dt>전화</dt><dd><a href="tel:${escapeHtml(camp.phone)}">${escapeHtml(camp.phone)}</a></dd></div>` : ""}
-      ${camp.homepage_url && _publicHttpUrl(camp.homepage_url) ? `<div><dt>홈페이지</dt><dd><a href="${escapeHtml(_publicHttpUrl(camp.homepage_url))}" target="_blank" rel="noopener noreferrer">공식 홈페이지 열기</a></dd></div>` : ""}
-    </dl>` : ""}
+    <div class="camp-quick-actions">
+      ${camp.phone
+        ? `<a class="camp-contact-btn" href="tel:${escapeHtml(camp.phone)}">☎️ <span>${escapeHtml(camp.phone)}</span></a>`
+        : `<span class="camp-contact-btn is-disabled" aria-disabled="true">☎️ <span>전화번호 없음</span></span>`}
+      ${camp.homepage_url && _publicHttpUrl(camp.homepage_url)
+        ? `<a class="camp-contact-btn camp-homepage-btn" href="${escapeHtml(_publicHttpUrl(camp.homepage_url))}" target="_blank" rel="noopener noreferrer">🏠 <span>홈페이지</span></a>`
+        : `<span class="camp-contact-btn camp-homepage-btn is-disabled" aria-disabled="true" title="홈페이지가 등록되지 않았습니다">🏠 <span>홈페이지</span></span>`}
+    </div>
+    ${camp.address ? `<dl class="camp-contact"><div><dt>주소</dt><dd>${escapeHtml(camp.address)}</dd></div></dl>` : ""}
     ${chips.length ? `<div class="camp-chips">${chips.map(item =>
       String(item) === "고캠핑" && infoUrl
         ? `<a class="camp-gocamping-chip" href="${escapeHtml(infoUrl)}" target="_blank" rel="noopener noreferrer" title="고캠핑에서 이 캠핑장 상세 보기">고캠핑</a>`

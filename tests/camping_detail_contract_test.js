@@ -29,6 +29,9 @@ expect(
 );
 expect(main.includes("|| campingReservationUrl;"), "네이버 외 고캠핑 예약 URL이 예약 버튼에 연결되지 않습니다.");
 expect(!main.includes("naverReservationUrl"), "예약 URL이 네이버 주소로만 제한되어 있습니다.");
+expect(main.includes('class="camp-contact-btn"') && main.includes("☎️") && main.includes("전화번호 없음"), "캠핑 전화 버튼의 활성·비활성 상태가 없습니다.");
+expect(main.includes('camp-homepage-btn') && main.includes("홈페이지가 등록되지 않았습니다"), "홈페이지 상시 버튼의 활성·비활성 상태가 없습니다.");
+expect(css.includes(".camp-quick-actions") && css.includes(".camp-contact-btn.is-disabled"), "캠핑 연락처 버튼 스타일이 없습니다.");
 
 const bookingStart = main.indexOf("function _bookingTarget(b){");
 const bookingEnd = main.indexOf("\nfunction _reservationBar(", bookingStart);

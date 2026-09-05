@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-05-13"
+SCHEMA_VERSION = "2026-09-06-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2218,6 +2218,7 @@ def _run_init_db():
             lodging_op_type TEXT NOT NULL CHECK (lodging_op_type IN ('airbnb', 'camping', 'rural', 'hanok', 'living')),
             biz_name TEXT NOT NULL, rep_name TEXT, phone TEXT, biz_no TEXT, permit_no TEXT NOT NULL,
             booking_url TEXT, airbnb_url TEXT, airbnb_urls JSONB, gocamping_url TEXT,
+            facility_phone TEXT, homepage_url TEXT,
             intro_text TEXT, photo_url TEXT, doc_biz_reg_url TEXT, doc_biz_license_url TEXT,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
             approved_at TIMESTAMPTZ, approved_by INTEGER REFERENCES admin_users(id), reject_reason TEXT,
@@ -2227,6 +2228,8 @@ def _run_init_db():
     """)
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS doc_biz_reg_url TEXT")
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS doc_biz_license_url TEXT")
+    cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS facility_phone TEXT")
+    cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS homepage_url TEXT")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_permit_unique ON operator_lodging(permit_no)")
