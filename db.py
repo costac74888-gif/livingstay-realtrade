@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-05-02"
+SCHEMA_VERSION = "2026-09-05-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -619,6 +619,7 @@ def _run_init_db():
         source_file TEXT NOT NULL,
         source_period TEXT,
         dimensions JSONB NOT NULL DEFAULT '{}'::jsonb,
+        master_building_id INTEGER REFERENCES master_buildings(id) ON DELETE SET NULL,
         row_hash TEXT NOT NULL UNIQUE,
         collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -626,6 +627,54 @@ def _run_init_db():
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_tourism_stats_lookup
         ON tourism_stats(stat_type, sido_name, sgg_name, ref_yearmonth)
+    """)
+    # 숙박 검색순위는 원본 관광 통계와 건물을 느슨하게 연결한다. 건물이 정리돼도
+    # 원본 통계는 보존되어야 하므로 삭제 시 FK만 NULL로 만든다.
+    cur.execute("""
+        ALTER TABLE tourism_stats
+        ADD COLUMN IF NOT EXISTS master_building_id INTEGER
+            REFERENCES master_buildings(id) ON DELETE SET NULL
+    """)
+    # ADD COLUMN IF NOT EXISTS does not retrofit REFERENCES when an earlier,
+    # incomplete deployment already added the column.
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'tourism_stats'::regclass
+                  AND contype = 'f'
+                  AND confrelid = 'master_buildings'::regclass
+            ) THEN
+                ALTER TABLE tourism_stats
+                ADD CONSTRAINT tourism_stats_master_building_id_fkey
+                FOREIGN KEY (master_building_id)
+                REFERENCES master_buildings(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tourism_stats_lodging_rank_building
+        ON tourism_stats(master_building_id)
+        WHERE stat_type = 'lodging_search_rank'
+          AND master_building_id IS NOT NULL
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tourism_stats_lodging_rank_latest
+        ON tourism_stats(source_period DESC NULLS LAST, collected_at DESC, source_file DESC)
+        WHERE stat_type = 'lodging_search_rank'
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tourism_stats_lodging_rank_source
+        ON tourism_stats(source_file, metric_value, id)
+        WHERE stat_type = 'lodging_search_rank'
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tourism_stats_lodging_rank_building_source
+        ON tourism_stats(master_building_id, source_file, metric_value)
+        WHERE stat_type = 'lodging_search_rank'
+          AND master_building_id IS NOT NULL
     """)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS sgg_coords (

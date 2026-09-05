@@ -18,6 +18,10 @@ from psycopg2.extras import execute_values
 
 
 TYPE_RULES = (
+    # This must precede the generic attraction-ranking rule below: the two
+    # exports have similarly named filenames but describe different entities.
+    ("관광숙박_검색순위", "lodging_search_rank"),
+    ("관광숙박 검색순위", "lodging_search_rank"),
     ("방문자 급등동네(내국인)", "surge_domestic_dong"),
     ("방문자 급등동네(외국인)", "surge_foreign_dong"),
     ("외국인 지역별 방문자 수(기초지자체별)", "foreign_sgg"),
@@ -37,6 +41,22 @@ TYPE_RULES = (
     ("캠핑사이트 유형별 현황", "camping_site_type"),
     ("업종별 분포", "lodging_sector"),
 )
+
+LODGING_RANK_FIELDS = {
+    "datalab_id": (
+        "데이터랩ID", "관광숙박ID", "관광숙박업ID", "관광숙박업명 ID",
+        "관광지ID", "관광지명 ID", "ID",
+    ),
+    "place_name": ("관광숙박명", "관광숙박업명", "관광지명", "명"),
+    "sub_category": (
+        "소분류 카테고리", "소분류", "관광숙박 소분류", "관광숙박업 소분류",
+    ),
+    "mid_category": (
+        "중분류 카테고리", "중분류", "관광숙박 중분류", "관광숙박업 중분류",
+    ),
+    "search_count": ("검색건수",),
+    "rank": ("검색순위", "순위"),
+}
 
 FIELD_MAP = {
     "visitor_sgg": (
@@ -89,6 +109,85 @@ def number(value):
         return float(text)
     except ValueError:
         return None
+
+
+def normalize_place_name(value):
+    """Use the same deliberately small comparison key in Python and SQL."""
+    text = str(value or "").strip().lower()
+    text = re.sub(r"[(\[].*?[)\]]", "", text)
+    text = re.sub(r"[^0-9가-힣a-z]", "", text)
+    return text or None
+
+
+def region_core_sql(sido_expression, sgg_expression):
+    """Return the SQL equivalent of the app's canonical province key."""
+    sido = f"regexp_replace(lower(trim(coalesce({sido_expression}, ''))), '\\s+', '', 'g')"
+    sgg = f"regexp_replace(lower(trim(coalesce({sgg_expression}, ''))), '\\s+', '', 'g')"
+    stripped = (
+        f"regexp_replace({sido}, "
+        "'(특별자치도|특별자치시|특별시|광역시|도|시)$', '')"
+    )
+    abbreviated = (
+        f"regexp_replace(regexp_replace(regexp_replace({stripped}, "
+        "'^전라', '전'), '^충청', '충'), '^경상', '경')"
+    )
+    return (
+        f"CASE WHEN {sido} = '전남광주통합특별시' THEN "
+        f"CASE WHEN {sgg} IN ('동구','서구','남구','북구','광산구') "
+        f"THEN '광주' ELSE '전남' END ELSE {abbreviated} END"
+    )
+
+
+def lodging_rank_value(row, field):
+    for key in LODGING_RANK_FIELDS[field]:
+        value = row.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    # Data Lab exports have used both "관광숙박업명 ID" and
+    # "관광숙박업명ID"; accept presentation-only header changes without
+    # broadening the data contract to unrelated columns.
+    normalized = {
+        re.sub(r"[\s_-]+", "", str(key)).lower(): value
+        for key, value in row.items()
+    }
+    for key in LODGING_RANK_FIELDS[field]:
+        value = normalized.get(re.sub(r"[\s_-]+", "", key).lower())
+        if value not in (None, ""):
+            return str(value).strip()
+    return None
+
+
+def build_lodging_rank_row(row, source_file, period, row_index=None):
+    """Build the one canonical metric emitted by a lodging-rank CSV row."""
+    place_name = lodging_rank_value(row, "place_name")
+    rank = number(lodging_rank_value(row, "rank"))
+    if not place_name or rank is None or rank <= 0:
+        return None
+    sido, sgg = normalize_region(row.get("광역시/도"), row.get("시/군/구"))
+    dimensions = {
+        key: lodging_rank_value(row, key)
+        for key in ("datalab_id", "place_name", "sub_category", "mid_category", "search_count")
+    }
+    datalab_id = dimensions["datalab_id"]
+    identity_key = datalab_id or [
+        "row",
+        row_index,
+        normalize_place_name(sido) or "",
+        normalize_place_name(sgg) or "",
+        normalize_place_name(place_name) or "",
+        normalize_place_name(dimensions["mid_category"]) or "",
+        normalize_place_name(dimensions["sub_category"]) or "",
+    ]
+    identity = json.dumps(
+        [source_file, "lodging_search_rank", identity_key],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return (
+        "lodging_search_rank", sido, sgg, None, "검색순위", rank, "위",
+        source_file, period, json.dumps(dimensions, ensure_ascii=False),
+        hashlib.sha256(identity.encode()).hexdigest(),
+    )
 
 
 def detect_type(filename):
@@ -163,6 +262,13 @@ def build_rows(paths):
         period = source_period(outer)
         source_file = f"{outer.name}::{filename}"
         for row_index, row in enumerate(csv.DictReader(io.StringIO(text)), 2):
+            if stat_type == "lodging_search_rank":
+                lodging_row = build_lodging_rank_row(
+                    row, source_file, period, row_index=row_index
+                )
+                if lodging_row:
+                    output.append(lodging_row)
+                continue
             sido, sgg, ref, metrics = generic_fields(stat_type, row)
             sido, sgg = normalize_region(sido, sgg)
             dimensions = {k: v for k, v in row.items() if v not in (None, "")}
@@ -182,6 +288,86 @@ def build_rows(paths):
                     hashlib.sha256(identity.encode()).hexdigest(),
                 ))
     return output, skipped
+
+
+def match_lodging_rank_to_buildings(cur, source_files):
+    """Attach only unambiguous, same-region lodging-rank rows to buildings."""
+    if not source_files:
+        return {"total": 0, "exact": 0, "containment": 0, "unmatched": 0}
+    scope = ("lodging_search_rank", source_files)
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM tourism_stats
+        WHERE stat_type = %s AND source_file = ANY(%s)
+    """, scope)
+    total = cur.fetchone()[0]
+    building_sido = region_core_sql(
+        "split_part(trim(b.sgg_text), ' ', 1)",
+        "regexp_replace(trim(b.sgg_text), '^\\S+\\s+', '')",
+    )
+    tourism_sido = region_core_sql("t.sido_name", "t.sgg_name")
+    # A candidate is eligible only if both normalized region components agree.
+    # GROUP BY/HAVING deliberately rejects ambiguity rather than choosing an
+    # arbitrary building.
+    cur.execute(f"""
+        WITH candidates AS (
+            SELECT t.id AS tourism_stat_id, MIN(b.id) AS building_id
+            FROM tourism_stats t
+            JOIN master_buildings b
+              ON {building_sido} = {tourism_sido}
+             AND regexp_replace(lower(regexp_replace(trim(b.sgg_text), '^\\S+\\s+', '')), '\\s+', '', 'g')
+                 = regexp_replace(lower(coalesce(t.sgg_name, '')), '\\s+', '', 'g')
+             AND regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g')
+                 = regexp_replace(lower(coalesce(t.dimensions->>'place_name', '')), '[^0-9가-힣a-z]', '', 'g')
+            WHERE t.stat_type = %s AND t.source_file = ANY(%s)
+              AND t.master_building_id IS NULL
+            GROUP BY t.id
+            HAVING COUNT(DISTINCT b.id) = 1
+        )
+        UPDATE tourism_stats t
+        SET master_building_id = c.building_id
+        FROM candidates c
+        WHERE t.id = c.tourism_stat_id
+    """, scope)
+    exact = cur.rowcount
+    cur.execute(f"""
+        WITH candidates AS (
+            SELECT t.id AS tourism_stat_id, MIN(b.id) AS building_id
+            FROM tourism_stats t
+            JOIN master_buildings b
+              ON {building_sido} = {tourism_sido}
+             AND regexp_replace(lower(regexp_replace(trim(b.sgg_text), '^\\S+\\s+', '')), '\\s+', '', 'g')
+                 = regexp_replace(lower(coalesce(t.sgg_name, '')), '\\s+', '', 'g')
+            WHERE t.stat_type = %s AND t.source_file = ANY(%s)
+              AND t.master_building_id IS NULL
+              AND length(regexp_replace(lower(coalesce(t.dimensions->>'place_name', '')), '[^0-9가-힣a-z]', '', 'g')) >= 4
+              AND length(regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g')) >= 4
+              AND (
+                    regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g')
+                    LIKE '%%' || regexp_replace(lower(t.dimensions->>'place_name'), '[^0-9가-힣a-z]', '', 'g') || '%%'
+                 OR regexp_replace(lower(t.dimensions->>'place_name'), '[^0-9가-힣a-z]', '', 'g')
+                    LIKE '%%' || regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g') || '%%'
+              )
+            GROUP BY t.id
+            HAVING COUNT(DISTINCT b.id) = 1
+        )
+        UPDATE tourism_stats t
+        SET master_building_id = c.building_id
+        FROM candidates c
+        WHERE t.id = c.tourism_stat_id
+    """, scope)
+    containment = cur.rowcount
+    result = {
+        "total": total,
+        "exact": exact,
+        "containment": containment,
+        "unmatched": total - exact - containment,
+    }
+    print(
+        "관광숙박 검색순위 건물 매칭: "
+        f"전체 {total}, 정확 {exact}, 포함 {containment}, 미매칭 {result['unmatched']}"
+    )
+    return result
 
 
 def refresh_coords(cur):
@@ -344,6 +530,7 @@ def main():
                 metric_value = EXCLUDED.metric_value,
                 dimensions = EXCLUDED.dimensions
         """, rows, page_size=1000)
+        match_lodging_rank_to_buildings(cur, source_files)
         refresh_coords(cur)
         refresh_dong_coords(cur)
         geocode_missing_dong_coords(cur)

@@ -29640,6 +29640,197 @@ def _search_ranking_fallback_centroid(sido, sgg):
     return _SEARCH_RANKING_OFFICE_CENTROIDS.get(_tourism_region_key(sido, sgg))
 
 
+def _safe_lodging_search_number(value, integer=False):
+    """관광 원본의 '1위'·'12,345건' 등 표시값을 API 숫자로 안전하게 바꾼다."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    else:
+        text = str(value).strip().replace(",", "")
+        match = re.search(r"-?\d+(?:\.\d+)?", text)
+        if not match:
+            return None
+        try:
+            number = float(match.group())
+        except ValueError:
+            return None
+    if not math.isfinite(number):
+        return None
+    return int(number) if integer else (int(number) if number.is_integer() else number)
+
+
+def _lodging_search_rank_rows(cur, limit=None, max_rank=None, building_id=None):
+    """한 개의 최신 숙박 검색순위 원본만 읽고 건물·시군구 좌표를 붙인다."""
+    limit_sql = "LIMIT %s" if limit is not None else ""
+    filters = []
+    params = []
+    if max_rank is not None:
+        filters.append("t.metric_value BETWEEN 1 AND %s")
+        params.append(max_rank)
+    if building_id is not None:
+        filters.append("t.master_building_id = %s")
+        params.append(building_id)
+    where_extra = "".join(f" AND {condition}" for condition in filters)
+    if limit is not None:
+        params.append(limit)
+    cur.execute(f"""
+        WITH latest AS (
+            SELECT source_file
+            FROM tourism_stats
+            WHERE stat_type = 'lodging_search_rank'
+            ORDER BY COALESCE(NULLIF(split_part(source_period, '-', 2), ''),
+                              NULLIF(split_part(source_period, '-', 1), ''), '') DESC,
+                     collected_at DESC, source_file DESC
+            LIMIT 1
+        )
+        SELECT t.master_building_id AS building_id, b.building_name,
+               t.sido_name, t.sgg_name, t.metric_value, t.dimensions,
+               t.source_period, t.source_file, t.collected_at,
+               COALESCE(b.lat, c.lat) AS lat, COALESCE(b.lng, c.lng) AS lng
+        FROM tourism_stats t
+        JOIN latest l ON l.source_file = t.source_file
+        LEFT JOIN master_buildings b ON b.id = t.master_building_id
+        LEFT JOIN sgg_coords c
+          ON regexp_replace(c.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
+               = regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
+         AND regexp_replace(trim(c.sgg_name), '\\s+', '', 'g')
+               = regexp_replace(trim(t.sgg_name), '\\s+', '', 'g')
+        WHERE t.stat_type = 'lodging_search_rank' {where_extra}
+        ORDER BY t.metric_value ASC NULLS LAST, t.id
+        {limit_sql}
+    """, params)
+    return [dict(row) for row in cur.fetchall()]
+
+
+def _lodging_search_rank_item(row):
+    """DB 타입/원본 문자열과 관계없이 공개용 숙박 검색순위 행을 만든다."""
+    dimensions = row.get("dimensions") or {}
+    if not isinstance(dimensions, dict):
+        dimensions = {}
+    rank = _safe_lodging_search_number(
+        dimensions.get("순위", dimensions.get("rank", row.get("metric_value"))),
+        integer=True,
+    )
+    search_count = _safe_lodging_search_number(
+        dimensions.get("검색건수", dimensions.get("search_count"))
+    )
+    return {
+        "place_name": (
+            dimensions.get("place_name")
+            or dimensions.get("관광숙박명")
+            or dimensions.get("관광숙박업명")
+            or dimensions.get("관광지명")
+        ),
+        "sub_category": (
+            dimensions.get("sub_category")
+            or dimensions.get("소분류")
+            or dimensions.get("소분류 카테고리")
+        ),
+        "master_building_id": row.get("building_id"),
+        "building_id": row.get("building_id"),
+        "building_name": row.get("building_name"),
+        "rank": rank,
+        "search_count": search_count,
+        "sido": row.get("sido_name"),
+        "sgg": row.get("sgg_name"),
+        "lat": float(row["lat"]) if row.get("lat") is not None else None,
+        "lng": float(row["lng"]) if row.get("lng") is not None else None,
+        "source_period": row.get("source_period"),
+        "source_file": row.get("source_file"),
+        "collected_at": row.get("collected_at"),
+    }
+
+
+@app.route("/api/tourism/lodging-rank/top99")
+@limiter.limit("30 per minute")
+def tourism_lodging_rank_top99():
+    """최신 숙박 검색순위 원본의 TOP 99(건물명·대표 좌표 포함)를 반환한다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        return jsonify({"ok": True, "items": [
+            _lodging_search_rank_item(row)
+            for row in _lodging_search_rank_rows(cur, limit=99, max_rank=99)
+        ]})
+    except (psycopg2_errors.UndefinedTable, psycopg2_errors.UndefinedColumn):
+        return jsonify({"ok": True, "items": []})
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
+
+
+@app.route("/api/tourism/lodging-rank/all")
+@limiter.limit("30 per minute")
+def tourism_lodging_rank_all():
+    """최신 숙박 검색순위 원본 전체를 반환한다. 이전 원본과 절대 섞지 않는다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        return jsonify({"ok": True, "items": [
+            _lodging_search_rank_item(row) for row in _lodging_search_rank_rows(cur)
+        ]})
+    except (psycopg2_errors.UndefinedTable, psycopg2_errors.UndefinedColumn):
+        return jsonify({"ok": True, "items": []})
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
+
+
+@app.route("/api/building/<int:building_id>/lodging-rank")
+@limiter.limit("60 per minute")
+def get_building_lodging_rank(building_id):
+    """건물의 최신 숙박 검색순위. 최신 원본에 없으면 rank는 명시적으로 null이다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, building_name, lat, lng
+            FROM master_buildings WHERE id = %s
+        """, (building_id,))
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"error": "not found"}), 404
+        rows = _lodging_search_rank_rows(cur, limit=1, building_id=building_id)
+        row = rows[0] if rows else None
+        if row is None:
+            return jsonify({
+                "ok": True,
+                "building_id": building_id,
+                "building_name": building["building_name"],
+                "rank": None,
+                "search_count": None,
+                "lat": float(building["lat"]) if building["lat"] is not None else None,
+                "lng": float(building["lng"]) if building["lng"] is not None else None,
+                "source_period": None,
+                "source_file": None,
+            })
+        return jsonify({"ok": True, **_lodging_search_rank_item(row)})
+    except (psycopg2_errors.UndefinedTable, psycopg2_errors.UndefinedColumn):
+        return jsonify({
+            "ok": True, "building_id": building_id,
+            "rank": None, "search_count": None,
+        })
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        finally:
+            if conn is not None:
+                release_conn(conn)
+
+
 @app.route("/api/building/<int:building_id>/tourism-stats")
 @limiter.limit("60 per minute")
 def get_building_tourism_stats(building_id):
