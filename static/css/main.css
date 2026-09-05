@@ -674,14 +674,14 @@
     gap:3px; border:2px solid rgba(255,255,255,.72); border-radius:50%;
     color:#fff; cursor:pointer; isolation:isolate;
     box-shadow:0 2px 9px rgba(38,54,58,.18), inset 0 0 0 1px rgba(255,255,255,.18);
-    transition:transform .16s ease, opacity .16s ease, box-shadow .16s ease;
+    transition:background-color .16s ease, box-shadow .16s ease;
     overflow:hidden;
   }
   .datalab-map-bubble[data-palette="domestic"]{background:rgba(78,77,190,.28); border-color:rgba(97,95,215,.58);}
   .datalab-map-bubble[data-palette="foreign"]{background:rgba(211,55,112,.27); border-color:rgba(241,91,147,.58);}
   .datalab-map-bubble[data-palette="consume"]{background:rgba(218,91,39,.29); border-color:rgba(239,139,60,.62);}
   .datalab-map-bubble:hover,.datalab-map-bubble.is-selected{
-    transform:scale(1.08); z-index:5;
+    z-index:5;
     box-shadow:0 5px 16px rgba(38,54,58,.25), inset 0 0 0 2px rgba(255,255,255,.25);
   }
   .datalab-map-bubble[data-palette="domestic"]:hover,.datalab-map-bubble[data-palette="domestic"].is-selected{background:rgba(78,77,190,.52);}
@@ -691,7 +691,7 @@
   .datalab-map-bubble-name{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 clamp(12px,1.25vw,15px)/1.15 'Noto Sans KR',sans-serif; text-shadow:0 1px 3px rgba(38,25,45,.72);}
   .datalab-map-bubble-value{max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:800 clamp(11px,1.2vw,14px)/1.15 'Noto Sans KR',sans-serif; letter-spacing:-.04em; text-shadow:0 1px 3px rgba(38,25,45,.76);}
   .datalab-map-bubble.is-unlabeled{padding:0; pointer-events:auto;}
-  .datalab-map-info{min-width:184px; padding:10px 11px; border:1px solid #DAD2C4; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(38,45,48,.18); color:var(--ink); font-size:10.5px; line-height:1.55; transform:translateY(-10px);}
+  .datalab-map-info{min-width:184px; padding:10px 11px; border:1px solid #DAD2C4; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(38,45,48,.18); color:var(--ink); font-size:10.5px; line-height:1.55; transform:translateY(-10px); pointer-events:none;}
   .datalab-map-info strong{display:block; font-size:12px; margin-bottom:2px;}
   .datalab-map-info span{display:block; color:var(--ink-soft);}
 

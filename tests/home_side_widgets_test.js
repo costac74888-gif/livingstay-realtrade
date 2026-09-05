@@ -76,6 +76,12 @@ expect(
   "모바일 열지도 라벨 밀도 또는 터치 전용 상세정보 처리가 없습니다."
 );
 expect(
+  css.includes(".datalab-map-info") &&
+  css.includes("pointer-events:none") &&
+  !css.includes("transform:scale(1.08)"),
+  "열지도 호버 시 원 또는 상세정보창이 포인터 대상을 흔드는 설정이 남아 있습니다."
+);
+expect(
   css.includes('[data-palette="domestic"]') &&
   css.includes('[data-palette="foreign"]') &&
   css.includes('[data-palette="consume"]') &&
