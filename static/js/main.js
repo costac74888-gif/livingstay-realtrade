@@ -3261,7 +3261,7 @@ function financeEmptyHTML(){
 
 // ── 최근 본 건물 (localStorage, 비로그인 포함) ──────────────────────────────
 const HS_RECENT_KEY = "hs_recent_buildings";
-const HS_RECENT_MAX = 5;
+const HS_RECENT_MAX = 10;
 
 function trackRecentBuilding(id, name, addr){
   try {
