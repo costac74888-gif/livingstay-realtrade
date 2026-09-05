@@ -1582,6 +1582,19 @@
             <div class="stats-loading">원본 상태를 불러오는 중…</div>
           </div>
         </section>
+        <section class="stats-card stats-card-wide" id="tourismDatalabCard" style="margin-top:14px;">
+          <h3 class="stats-card-title">관광 데이터랩 갱신</h3>
+          <p class="stats-card-hint">로그인·약관·기간/메뉴 선택이 필요한 공식 포털이므로 다운로드는 수동입니다. 미리보기는 DB를 바꾸지 않고, 적용은 1회만 가능합니다.</p>
+          <p style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;">
+            <a class="admin-btn" target="_blank" rel="noopener noreferrer" href="https://datalab.visitkorea.or.kr/datalab/portal/main/getMainForm.do">공식 포털 열기</a>
+            <a class="admin-btn" href="/api/admin/tourism-datalab/checklist.xlsx">정기 다운로드 체크리스트</a>
+          </p>
+          <label style="font-size:13px;font-weight:700;">ZIP/CSV 선택 (최대 10개)</label>
+          <input id="tourismDatalabFiles" type="file" accept=".zip,.csv" multiple style="display:block;margin:7px 0;">
+          <button type="button" class="admin-btn" id="tourismDatalabPreview">안전 미리보기</button>
+          <button type="button" class="admin-btn" id="tourismDatalabApply" disabled>명시적으로 적용</button>
+          <div id="tourismDatalabResult" class="stats-card-hint" style="margin-top:10px;">최신 커버리지를 불러오는 중…</div>
+        </section>
         <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
           <h3 class="stats-card-title">주간 이메일 기능 소개</h3>
           <p class="stats-card-hint" style="margin:4px 0 10px;">ISO 주차를 기준으로 1~8회차를 순환합니다. 비활성 회차는 이메일에 표시되지 않습니다.</p>
@@ -1604,9 +1617,56 @@
         </section>
       `;
       loadMasterStats(false);
+      setupTourismDatalab();
       document.getElementById("masterStatsRefresh").addEventListener("click", () => loadMasterStats(true));
       document.getElementById("featureTipCreate").addEventListener("click", createFeatureTip);
       loadFeatureTips();
+    }
+
+    let tourismDatalabToken = null;
+    function escapeText(value) {
+      const el = document.createElement("span"); el.textContent = String(value || ""); return el.innerHTML;
+    }
+    async function setupTourismDatalab() {
+      const result = document.getElementById("tourismDatalabResult");
+      const apply = document.getElementById("tourismDatalabApply");
+      const preview = document.getElementById("tourismDatalabPreview");
+      if (!result || !apply || !preview) return;
+      try {
+        const response = await fetch("/api/admin/tourism-datalab/coverage");
+        if (response.status === 401) { window.location.href="/admin/login"; return; }
+        if (!response.ok) throw new Error(`response status ${response.status}`);
+        const d = await response.json();
+        const latest = (d.coverage || []).map(x => `<tr><td>${escapeText(x.stat_type)}</td><td>${escapeText(x.source_period || (x.unknown_period ? "기간 미상" : "미보유"))}</td><td>${escapeText(x.source_file || "-")}</td><td>${escapeText(x.rows)}</td><td>${escapeText(x.collected_at || "-")}</td></tr>`).join("");
+        result.innerHTML = `<b>19개 importer 유형 최신 보유</b><div style="overflow:auto;margin-top:7px"><table class="dg-table" style="font-size:11px;width:100%"><thead><tr><th>유형</th><th>기간</th><th>원본</th><th>행</th><th>수집일</th></tr></thead><tbody>${latest}</tbody></table></div>`;
+      } catch (_) { result.textContent = "커버리지를 불러오지 못했습니다."; }
+      preview.onclick = async () => {
+        const files = document.getElementById("tourismDatalabFiles").files;
+        if (!files.length) { result.textContent = "ZIP 또는 CSV를 선택하세요."; return; }
+        const body = new FormData(); [...files].forEach(file => body.append("files", file));
+        result.textContent = "안전성 및 CSV 형식을 검사하는 중…"; apply.disabled = true; tourismDatalabToken = null;
+        try {
+          const response = await fetch("/api/admin/tourism-datalab/preview", {method:"POST", body});
+          if (response.status === 401) { window.location.href="/admin/login"; return; }
+          if (!response.ok) { const error = await response.json().catch(()=>({})); throw new Error(error.message || `response status ${response.status}`); }
+          const d = await response.json();
+          if (!d.ok) throw new Error(d.message);
+          tourismDatalabToken = d.token; apply.disabled = !d.supported_rows;
+          result.textContent = `미리보기 완료: 지표 행 ${d.supported_rows}개 · ${Object.entries(d.types).map(([k,v])=>`${k} ${v}`).join(", ")} · ${d.files.map(x=>`${x.name}(물리 ${x.physical_rows}, 지표 ${x.metric_rows}, 제외 ${x.skipped_rows})`).join(", ")}${d.unsupported_members.length ? ` · 미지원: ${d.unsupported_members.join(", ")}` : ""}`;
+        } catch (e) { result.textContent = `미리보기 실패: ${e.message}`; }
+      };
+      apply.onclick = async () => {
+        if (!tourismDatalabToken || !confirm("미리보기한 원본만 DB에 적용합니다. 계속할까요?")) return;
+        apply.disabled = true; result.textContent = "트랜잭션으로 적용 중…";
+        try {
+          const response = await fetch("/api/admin/tourism-datalab/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({token:tourismDatalabToken})});
+          if (response.status === 401) { window.location.href="/admin/login"; return; }
+          if (!response.ok) { const error = await response.json().catch(()=>({})); throw new Error(error.message || `response status ${response.status}`); }
+          const d = await response.json();
+          if (!d.ok) throw new Error(d.message);
+          tourismDatalabToken = null; result.textContent = `적용 완료: ${d.applied_rows}개 지표 행, ${d.source_files}개 원본`;
+        } catch (e) { result.textContent = `적용 실패: ${e.message}`; }
+      };
     }
 
     function renderStats(d, mapBld) {

@@ -360,3 +360,17 @@ mtime_ms = 1788489158088
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/68f7b9e5-9aaa-483a-aad0-1d0a77d66230/10d64204-ef1f-417d-b17d-cb1eb7b3e2af"
 storage_version_token = "1788489255699220"
 content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "PpA5xPnmRmfsVK2_qc7Z6"
+uri = "file://exports/관광데이터랩_정기다운로드_목록_20260905.xlsx"
+type = "table"
+title = "관광 데이터랩 정기 다운로드 목록 (2026-09-05)"
+description = "19개 정기 다운로드 유형, 실제 보유 원본 9 ZIP + 1 CSV, 최신 기간, 다음 권장 점검일, 포털 선택 조건을 정리한 운영용 Excel입니다."
+logical_id = "632c30e6-c169-4cec-812b-cdba7ea33583"
+content_hash = "sha256:2351dbdf9975268da5aa8bd4ecd53fe26cf6342a70cf31887da5252679c03866"
+size = 11915
+mtime_ms = 1788592002103
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/632c30e6-c169-4cec-812b-cdba7ea33583/9b6c4c73-272c-4fe8-a9ad-0c3d72999080"
+storage_version_token = "1788592007586942"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

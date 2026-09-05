@@ -157,8 +157,8 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertEqual(len(rank_queries), 2)
         self.assertTrue(all("JOIN latest l ON l.source_file = t.source_file" in q
                             for q in rank_queries))
-        self.assertTrue(all("split_part(source_period, '-', 2)" in q
-                            and "collected_at DESC, source_file DESC" in q
+        self.assertTrue(all("split_part(t.source_period,'-',2)" in q
+                            and "t.collected_at DESC, t.source_file DESC" in q
                             for q in rank_queries))
 
 

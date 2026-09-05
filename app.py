@@ -60,7 +60,7 @@ from lodging_classification import (
 from lodging_report_status import summarize_building_report_status
 from psycopg2 import errors as psycopg2_errors
 from psycopg2.extras import execute_values
-from flask import Flask, request, jsonify, send_from_directory, Response, abort, session, redirect
+from flask import Flask, request, jsonify, send_from_directory, send_file, Response, abort, session, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
@@ -95,6 +95,8 @@ from quota_policy import (
 import building_registry
 import lodging_staging
 import lodging_promotion
+import tourism_datalab_admin
+import import_tourism_stats as tourism_stats_importer
 from utils.photo_validate import validate_photo
 from lodging_matching import (
     ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
@@ -2243,14 +2245,14 @@ def get_building(building_id):
         building["foreign_top3"] = []
         try:
             region_sido, region_sgg = _building_tourism_region_key(building)
-            cur.execute("""
+            latest_order = tourism_stats_importer.latest_source_order_sql("t")
+            cur.execute(f"""
                 WITH latest AS (
                     SELECT source_file
-                    FROM tourism_stats
+                    FROM tourism_stats t
                     WHERE stat_type = 'foreign_sgg'
                       AND metric_name = '기초지자체 방문자 비율'
-                    ORDER BY collected_at DESC, source_file DESC,
-                             source_period DESC NULLS LAST
+                    ORDER BY {latest_order}
                     LIMIT 1
                 )
                 SELECT t.metric_value
@@ -2267,14 +2269,13 @@ def get_building(building_id):
             if foreign_ratio and foreign_ratio["metric_value"] is not None:
                 building["tourism_foreign_ratio"] = float(foreign_ratio["metric_value"])
 
-            cur.execute("""
+            cur.execute(f"""
                 WITH latest AS (
                     SELECT source_file
-                    FROM tourism_stats
+                    FROM tourism_stats t
                     WHERE stat_type = 'foreign_country'
                       AND metric_name = '비율(%)'
-                    ORDER BY collected_at DESC, source_file DESC,
-                             source_period DESC NULLS LAST
+                    ORDER BY {latest_order}
                     LIMIT 1
                 )
                 SELECT t.dimensions->>'국가명' AS country, t.metric_value
@@ -3414,14 +3415,14 @@ def _building_tourism_region_key(building):
 def _latest_domestic_visitor_counts(cur):
     """최신 국내 시군구 방문자수를 한 번에 읽어 지역 정규화 키로 반환한다."""
     try:
-        cur.execute("""
+        latest_order = tourism_stats_importer.latest_source_order_sql("t")
+        cur.execute(f"""
             WITH latest AS (
                 SELECT source_file
-                FROM tourism_stats
+                FROM tourism_stats t
                 WHERE stat_type = 'visitor_sgg'
                   AND metric_name = '기초지자체 방문자 수'
-                ORDER BY collected_at DESC, source_file DESC,
-                         source_period DESC NULLS LAST
+                ORDER BY {latest_order}
                 LIMIT 1
             )
             SELECT t.sido_name, t.sgg_name, t.metric_value
@@ -29634,13 +29635,13 @@ def _tourism_heatmap_payload(stat_type, metric_name, label, unit, extra_type=Non
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
+        latest_order = tourism_stats_importer.latest_source_order_sql("t")
+        cur.execute(f"""
             WITH latest AS (
                 SELECT source_file
-                FROM tourism_stats
+                FROM tourism_stats t
                 WHERE stat_type = %s AND metric_name = %s
-                ORDER BY COALESCE(split_part(source_period, '-', 2), '') DESC,
-                         source_file DESC
+                ORDER BY {latest_order}
                 LIMIT 1
             )
             SELECT t.sido_name, t.sgg_name, t.ref_yearmonth,
@@ -29676,12 +29677,11 @@ def _tourism_heatmap_payload(stat_type, metric_name, label, unit, extra_type=Non
 
         extra = []
         if extra_type:
-            cur.execute("""
+            cur.execute(f"""
                 WITH latest AS (
-                    SELECT source_file FROM tourism_stats
+                    SELECT source_file FROM tourism_stats t
                     WHERE stat_type = %s
-                    ORDER BY COALESCE(split_part(source_period, '-', 2), '') DESC,
-                             source_file DESC
+                    ORDER BY {latest_order}
                     LIMIT 1
                 )
                 SELECT dimensions, metric_name, metric_value
@@ -29755,13 +29755,13 @@ def _search_ranking_rows(cur, region_key=None, limit=20, max_rank=None):
     if max_rank is not None:
         params.append(max_rank)
     try:
+        latest_order = tourism_stats_importer.latest_source_order_sql("t")
         cur.execute(f"""
             WITH latest AS (
                 SELECT source_file
-                FROM tourism_stats
+                FROM tourism_stats t
                 WHERE stat_type = 'search_ranking'
-                ORDER BY collected_at DESC, source_file DESC,
-                         source_period DESC NULLS LAST
+                ORDER BY {latest_order}
                 LIMIT 1
             ),
             ranked AS (
@@ -29859,14 +29859,13 @@ def _lodging_search_rank_rows(cur, limit=None, max_rank=None, building_id=None):
     where_extra = "".join(f" AND {condition}" for condition in filters)
     if limit is not None:
         params.append(limit)
+    latest_order = tourism_stats_importer.latest_source_order_sql("t")
     cur.execute(f"""
         WITH latest AS (
             SELECT source_file
-            FROM tourism_stats
+            FROM tourism_stats t
             WHERE stat_type = 'lodging_search_rank'
-            ORDER BY COALESCE(NULLIF(split_part(source_period, '-', 2), ''),
-                              NULLIF(split_part(source_period, '-', 1), ''), '') DESC,
-                     collected_at DESC, source_file DESC
+            ORDER BY {latest_order}
             LIMIT 1
         )
         SELECT t.master_building_id AS building_id, b.building_name,
@@ -30105,13 +30104,13 @@ def _tourism_surge_payload(stat_type, label):
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
+        latest_order = tourism_stats_importer.latest_source_order_sql("t")
+        cur.execute(f"""
             WITH latest AS (
                 SELECT source_file
-                FROM tourism_stats
+                FROM tourism_stats t
                 WHERE stat_type = %s
-                ORDER BY COALESCE(split_part(source_period, '-', 2), '') DESC,
-                         source_file DESC
+                ORDER BY {latest_order}
                 LIMIT 1
             ),
             source_rows AS (
@@ -30960,6 +30959,82 @@ def _master_stats_admin_snapshot(*, force=False):
 def admin_master_stats():
     """통계 원본 창고 상태 조회와 관리자 수동 새로고침."""
     return jsonify(_master_stats_admin_snapshot(force=request.method == "POST"))
+
+
+@app.route("/api/admin/tourism-datalab/coverage")
+@require_admin
+@limiter.limit("20 per minute")
+def tourism_datalab_coverage():
+    """Coverage only: never downloads from the authenticated Data Lab portal."""
+    canonical = sorted(set(kind for _, kind in tourism_stats_importer.TYPE_RULES))
+    conn = cur = None
+    try:
+        conn, cur = get_conn(), None
+        cur = conn.cursor()
+        latest_order = tourism_stats_importer.latest_source_order_sql("t")
+        cur.execute(f"""WITH latest AS (
+              SELECT DISTINCT ON (stat_type) stat_type, source_file, source_period, collected_at
+              FROM tourism_stats t
+              ORDER BY stat_type, {latest_order}
+            ) SELECT l.stat_type, l.source_file, l.source_period, l.collected_at::text AS collected_at,
+                     COUNT(t.id) AS rows
+              FROM latest l JOIN tourism_stats t ON t.stat_type=l.stat_type AND t.source_file=l.source_file
+              GROUP BY l.stat_type,l.source_file,l.source_period,l.collected_at""")
+        held = {row["stat_type"]: row for row in cur.fetchall()}
+        return jsonify({"ok": True, "coverage": [
+            {"stat_type": kind, "source_file": (held.get(kind) or {}).get("source_file"),
+             "source_period": (held.get(kind) or {}).get("source_period"),
+             "collected_at": (held.get(kind) or {}).get("collected_at"),
+             "unknown_period": bool((held.get(kind) or {}).get("source_file") and not (held.get(kind) or {}).get("source_period")),
+             "rows": int((held.get(kind) or {}).get("rows") or 0)}
+            for kind in canonical
+        ]})
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
+
+@app.route("/api/admin/tourism-datalab/preview", methods=["POST"])
+@require_admin
+@limiter.limit("6 per minute")
+def tourism_datalab_preview():
+    conn = None
+    try:
+        conn = get_conn()
+        result = tourism_datalab_admin.preview(conn, request.files.getlist("files"), session.get("admin_user_id"))
+        return jsonify({"ok": True, **result})
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/admin/tourism-datalab/apply", methods=["POST"])
+@require_admin
+@limiter.limit("3 per minute")
+def tourism_datalab_apply():
+    payload = request.get_json(silent=True) or {}
+    try:
+        conn = get_conn()
+        try:
+            result = tourism_datalab_admin.apply(conn, str(payload.get("token") or ""), session.get("admin_user_id"))
+        finally:
+            conn.close()
+        return jsonify({"ok": True, **result})
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception:
+        app.logger.exception("tourism Data Lab apply failed")
+        return jsonify({"ok": False, "message": "적용에 실패했습니다. 원본은 반영되지 않았습니다."}), 500
+
+
+@app.route("/api/admin/tourism-datalab/checklist.xlsx")
+@require_admin
+@limiter.limit("10 per minute")
+def tourism_datalab_checklist():
+    return send_file(os.path.join(app.root_path, "exports", "관광데이터랩_정기다운로드_목록_20260905.xlsx"),
+                     as_attachment=True, download_name="관광데이터랩_정기다운로드_목록_20260905.xlsx")
 
 
 @app.route("/api/admin/stats/refresh", methods=["POST"])

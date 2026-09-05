@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import urllib.parse
@@ -41,6 +42,18 @@ TYPE_RULES = (
     ("캠핑사이트 유형별 현황", "camping_site_type"),
     ("업종별 분포", "lodging_sector"),
 )
+
+def latest_source_order_sql(alias="t"):
+    """Authoritative, fixed SQL ordering for selecting one source per type."""
+    if alias not in {"t", "tourism_stats"}:
+        raise ValueError("unsafe SQL alias")
+    p = f"{alias}."
+    return (
+        f"CASE WHEN {p}stat_type='search_ranking' THEN {p}collected_at END DESC NULLS LAST, "
+        f"CASE WHEN {p}stat_type<>'search_ranking' THEN split_part({p}source_period,'-',2) END DESC NULLS LAST, "
+        f"CASE WHEN {p}stat_type<>'search_ranking' THEN split_part({p}source_period,'-',1) END DESC NULLS LAST, "
+        f"{p}collected_at DESC, {p}source_file DESC, {p}source_period DESC NULLS LAST"
+    )
 
 LODGING_RANK_FIELDS = {
     "datalab_id": (
@@ -106,7 +119,8 @@ def number(value):
     if not text:
         return None
     try:
-        return float(text)
+        parsed = float(text)
+        return parsed if math.isfinite(parsed) else None
     except ValueError:
         return None
 
@@ -233,7 +247,12 @@ def detect_type_from_rows(filename, rows):
 
 
 def source_period(path):
-    match = re.search(r"_(\d{6})-(\d{6})_", path.name)
+    return source_period_name(path.name)
+
+
+def source_period_name(name):
+    """Extract a Data Lab period from either a Path or an uploaded filename."""
+    match = re.search(r"_(\d{6})-(\d{6})_", name)
     return f"{match.group(1)}-{match.group(2)}" if match else None
 
 
@@ -271,9 +290,15 @@ def generic_fields(stat_type, row):
         return row.get("광역시/도"), row.get("시/군/구"), None, (("검색건수", "건"),)
     if stat_type == "foreign_country":
         return None, None, None, (("비율(%)", "%"),)
-    if stat_type in {"camping_sector", "camping_site_type", "lodging_sector"}:
+    if stat_type == "camping_sector":
         return None, None, row.get("기준년도"), (
             ("현황수", "개"),
+            ("분포율", "%"),
+        )
+    if stat_type == "camping_site_type":
+        return None, None, row.get("기준년도"), (("현황수", "개"),)
+    if stat_type == "lodging_sector":
+        return None, None, row.get("기준년도"), (
             ("숙박영업현황수", "개"),
             ("분포율", "%"),
         )
@@ -285,46 +310,64 @@ def generic_fields(stat_type, row):
     return None, None, None, ()
 
 
+def build_member_metric_rows(source_file, filename, csv_rows, period):
+    """Canonical CSV-member parser used by both CLI and admin staging.
+
+    Row hashes deliberately retain the historical JSON identity format.
+    """
+    stat_type = detect_type_from_rows(filename, csv_rows)
+    if not stat_type:
+        return [], None, len(csv_rows)
+    output, skipped = [], 0
+    for row_index, row in enumerate(csv_rows, 2):
+        if stat_type == "lodging_search_rank":
+            built = build_lodging_rank_row(row, source_file, period, row_index=row_index)
+            if built:
+                output.append(built)
+            else:
+                skipped += 1
+            continue
+        sido, sgg, ref, metrics = generic_fields(stat_type, row)
+        sido, sgg = normalize_region(sido, sgg)
+        dimensions = {k: v for k, v in row.items() if v not in (None, "")}
+        before = len(output)
+        parsed_metrics = []
+        for metric_name, unit in metrics:
+            value = number(row.get(metric_name))
+            if value is None:
+                parsed_metrics = []
+                break
+            parsed_metrics.append((metric_name, unit, value))
+        if not parsed_metrics or len(parsed_metrics) != len(metrics):
+            skipped += 1
+            continue
+        for metric_name, unit, value in parsed_metrics:
+            identity = json.dumps([source_file, stat_type, row_index, metric_name], ensure_ascii=False)
+            output.append((stat_type, sido, sgg, ref, metric_name, value, unit,
+                           source_file, period, json.dumps(dimensions, ensure_ascii=False),
+                           hashlib.sha256(identity.encode()).hexdigest()))
+        if len(output) == before:
+            skipped += 1
+    return output, stat_type, skipped
+
+
 def build_rows(paths):
     output = []
     skipped = []
-    lodging_hashes = set()
     for outer, filename, raw in iter_csvs(paths):
         text = raw.decode("utf-8-sig")
         csv_rows = list(csv.DictReader(io.StringIO(text)))
-        stat_type = detect_type_from_rows(filename, csv_rows)
+        source_file = f"{outer.name}::{filename}"
+        member_rows, stat_type, _ = build_member_metric_rows(
+            source_file, filename, csv_rows, source_period(outer)
+        )
         if not stat_type:
             skipped.append(filename)
             continue
-        period = source_period(outer)
-        source_file = f"{outer.name}::{filename}"
-        for row_index, row in enumerate(csv_rows, 2):
-            if stat_type == "lodging_search_rank":
-                lodging_row = build_lodging_rank_row(
-                    row, source_file, period, row_index=row_index
-                )
-                if lodging_row and lodging_row[10] not in lodging_hashes:
-                    output.append(lodging_row)
-                    lodging_hashes.add(lodging_row[10])
-                continue
-            sido, sgg, ref, metrics = generic_fields(stat_type, row)
-            sido, sgg = normalize_region(sido, sgg)
-            dimensions = {k: v for k, v in row.items() if v not in (None, "")}
-            for metric_name, unit in metrics:
-                value = number(row.get(metric_name))
-                if value is None:
-                    continue
-                # 값이 정정돼도 같은 원본 행·지표는 같은 식별자를 사용한다.
-                # 실제 적재 시 source_file 단위로 교체하므로 삭제/순서변경도 남지 않는다.
-                identity = json.dumps(
-                    [source_file, stat_type, row_index, metric_name],
-                    ensure_ascii=False,
-                )
-                output.append((
-                    stat_type, sido, sgg, ref, metric_name, value, unit,
-                    source_file, period, json.dumps(dimensions, ensure_ascii=False),
-                    hashlib.sha256(identity.encode()).hexdigest(),
-                ))
+        output.extend(member_rows)
+    hashes = [row[10] for row in output]
+    if len(hashes) != len(set(hashes)):
+        raise ValueError("중복 행 해시가 있는 원본입니다.")
     return output, skipped
 
 
