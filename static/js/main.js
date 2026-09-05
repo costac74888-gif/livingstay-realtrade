@@ -526,6 +526,10 @@ function showMapEmptyBanner(msg = "이 지역은 아직 등록된 매물이 없�
 
 let _favOverflowPopover = null;
 let _favOverflowPopoverButton = null;
+let _favMobileExpanded = false;
+function isMobileFavLayout(){
+  return !!(window.matchMedia && window.matchMedia("(max-width: 980px)").matches);
+}
 function closeFavOverflowPopover(){
   if (_favOverflowPopoverButton) {
     _favOverflowPopoverButton.setAttribute("aria-expanded", "false");
@@ -611,16 +615,33 @@ function renderFavChips(){
   if (!wrap) return;
   closeFavOverflowPopover();
   wrap.innerHTML = "";
-  const visibleKeys = favs.slice(0, 3);
+  const mobile = isMobileFavLayout();
+  const visibleKeys = mobile && _favMobileExpanded ? favs : favs.slice(0, 3);
   const hiddenKeys = favs.slice(3);
   visibleKeys.forEach(k => wrap.appendChild(createFavChip(k)));
   if (hiddenKeys.length) {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "fav-more-btn";
-    more.textContent = `+더보기(${hiddenKeys.length})`;
-    more.setAttribute("aria-expanded", "false");
+    more.textContent = mobile && _favMobileExpanded
+      ? "접기"
+      : `+더보기(${hiddenKeys.length})`;
+    more.setAttribute("aria-expanded", mobile && _favMobileExpanded ? "true" : "false");
     more.addEventListener("click", () => {
+      if (isMobileFavLayout()) {
+        _favMobileExpanded = !_favMobileExpanded;
+        renderFavChips();
+        requestAnimationFrame(() => {
+          const currentWrap = document.getElementById("favChips");
+          if (currentWrap) {
+            currentWrap.scrollIntoView({
+              behavior: "smooth",
+              block: _favMobileExpanded ? "center" : "nearest"
+            });
+          }
+        });
+        return;
+      }
       if (_favOverflowPopover) {
         closeFavOverflowPopover();
         more.setAttribute("aria-expanded", "false");

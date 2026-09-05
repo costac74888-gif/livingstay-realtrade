@@ -782,6 +782,8 @@
          가로채는 문제 방지 — 세로 pan 제스처를 패널이 우선 처리하도록 명시 */
       touch-action: pan-y;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y:contain;
+      scroll-padding-block:16px;
     }
     .map-toolbar{
       top:calc(var(--stage-gap) + 54px); right:var(--stage-gap);
@@ -820,6 +822,7 @@
     }
     .map-searchbar .search-row2 #favChips:not(:empty){
       flex:1 1 100%; min-width:0; flex-wrap:wrap; overflow:visible;
+      scroll-margin-block:16px;
     }
      .map-searchbar .recent-search-row{
        align-items:flex-start; flex-wrap:wrap; white-space:normal;
