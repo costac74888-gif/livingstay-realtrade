@@ -1,0 +1,41 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+
+const main = fs.readFileSync("static/js/main.js", "utf8");
+const index = fs.readFileSync("static/index.html", "utf8");
+const admin = fs.readFileSync("static/admin.html", "utf8");
+const repl = fs.readFileSync(".replit", "utf8");
+
+assert.match(index, /data-datalab-key="presale"/);
+assert.match(main, /\/apply\/presale\?building=/);
+assert.match(main, /project_status==="presale"/);
+assert.match(main, /project_status==="scheduled"/);
+assert.match(main, /p\.master_building_id\).*openBuildingDetail/);
+assert.match(main, /clearPresaleOverlays\(\)/);
+const zoomBody = main.match(/async function updateMapForZoom[\s\S]*?\n}/)?.[0] || "";
+assert.doesNotMatch(zoomBody, /clearPresaleOverlays/);
+assert.match(main, /eligible !== true/);
+assert.match(main, /u\.protocol === "https:"/);
+assert.match(main, /u\.origin === location\.origin/);
+assert.match(main, /presalePrice/);
+assert.match(main, /is_paid/);
+assert.match(admin, /name="project_status"/);
+assert.match(admin, /name="project_type"/);
+assert.match(admin, /value="sold_out"/);
+assert.doesNotMatch(admin, /value="scheduled">예약 공개/);
+assert.match(admin, /name="remaining_units"/);
+assert.match(admin, /name="move_in_date"/);
+assert.match(admin, /name="editorial_body"/);
+assert.match(admin, /name="contact_phone"/);
+assert.match(admin, /name="company_name"/);
+assert.match(admin, /name="priority"/);
+assert.match(admin, /fd\.append\("file",file\)/);
+assert.match(admin, /\/api\/admin\/presale\/promotions/);
+assert.match(admin, /method:editPromotionId\?"PUT":"POST"/);
+assert.match(admin, /method:"DELETE"/);
+assert.match(admin, /optionalNumber/);
+assert.match(admin, /setForm\(document\.getElementById\("presaleForm"\),p\)/);
+assert.match(main, /onclick="window\.openBuildingDetail\(.+?\); return false;"/);
+assert.match(repl, /build\s*=\s*\["npm",\s*"run",\s*"build:frontend"\]/);
+
+console.log("presale frontend contract: ok");

@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-05-05"
+SCHEMA_VERSION = "2026-09-05-07"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -3261,6 +3261,94 @@ def _run_init_db():
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_bphoto_fetches_attempt
         ON building_photo_fetches(source, status, last_attempt_at)
+    """)
+
+    # 분양 프로젝트는 건물당 현재 행 하나만 유지한다. withdrawn 행도 보존해
+    # 운영 이력과 감사 추적을 끊지 않는다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS presale_projects (
+        id BIGSERIAL PRIMARY KEY,
+        master_building_id INTEGER NOT NULL UNIQUE REFERENCES master_buildings(id) ON DELETE RESTRICT,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'withdrawn')),
+        publication_start_at TIMESTAMPTZ,
+        publication_end_at TIMESTAMPTZ,
+        title TEXT NOT NULL,
+        summary TEXT,
+        unit_count INTEGER,
+        price_min BIGINT,                -- 만원(10,000 KRW) 단위
+        price_max BIGINT,                -- 만원(10,000 KRW) 단위
+        sale_start_date DATE,
+        sale_end_date DATE,
+        contact_name TEXT,
+        contact_phone TEXT,
+        company_name TEXT,
+        editorial_body TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        withdrawn_at TIMESTAMPTZ,
+        withdrawn_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        CHECK (publication_end_at IS NULL OR publication_start_at IS NULL OR publication_end_at > publication_start_at),
+        CHECK (sale_end_date IS NULL OR sale_start_date IS NULL OR sale_end_date >= sale_start_date),
+        CHECK (unit_count IS NULL OR unit_count > 0),
+        CHECK (price_min IS NULL OR price_min >= 0),
+        CHECK (price_max IS NULL OR price_max >= 0),
+        CHECK (price_max IS NULL OR price_min IS NULL OR price_max >= price_min)
+    )""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS presale_promotions (
+        id BIGSERIAL PRIMARY KEY,
+        presale_project_id BIGINT NOT NULL REFERENCES presale_projects(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'withdrawn')),
+        starts_at TIMESTAMPTZ NOT NULL,
+        ends_at TIMESTAMPTZ NOT NULL,
+        slogan TEXT NOT NULL,
+        cta_url TEXT NOT NULL,
+        banner_object_key TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 10000),
+        approved_at TIMESTAMPTZ,
+        approved_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        CHECK (ends_at > starts_at)
+    )""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS presale_audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        project_id BIGINT REFERENCES presale_projects(id) ON DELETE SET NULL,
+        promotion_id BIGINT REFERENCES presale_promotions(id) ON DELETE SET NULL,
+        admin_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_presale_projects_public ON presale_projects(status, publication_start_at, publication_end_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_presale_promotions_active ON presale_promotions(presale_project_id, status, starts_at, ends_at, priority DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_presale_audit_project ON presale_audit_log(project_id, created_at DESC)")
+    # 이미 첫 배포에서 만들어진 테이블도 무중단으로 도메인 필드를 받는다.
+    # NULL인 과거 행은 허용해 데이터 정리 전 마이그레이션이 실패하지 않게 한다.
+    cur.execute("ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_status TEXT NOT NULL DEFAULT 'presale'")
+    cur.execute("ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_type TEXT NOT NULL DEFAULT 'mixed'")
+    cur.execute("ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS remaining_units INTEGER")
+    cur.execute("ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS move_in_date DATE")
+    cur.execute("""
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_project_status_check') THEN
+        ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_project_status_check
+          CHECK (project_status IN ('presale','scheduled','sold_out')) NOT VALID;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_project_type_check') THEN
+        ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_project_type_check
+          CHECK (project_type IN ('living','tourist','officetel','mixed')) NOT VALID;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_remaining_units_check') THEN
+        ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_remaining_units_check
+          CHECK (remaining_units IS NULL OR (remaining_units >= 0 AND (unit_count IS NULL OR remaining_units <= unit_count))) NOT VALID;
+      END IF;
+    END $$;
     """)
 
     conn.commit()

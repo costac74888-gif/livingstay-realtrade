@@ -3272,6 +3272,56 @@ const DATA_LAB_TOURISM_KEYS = new Set(["tourism_domestic", "tourism_foreign", "t
 const DATA_LAB_SURGE_KEY = "visitor_surge";
 let dataLabSurgeMode = "domestic";
 let dataLabSurgeInfoOverlay = null;
+let presaleOverlays = [];
+let presaleRequestSequence = 0;
+
+function clearPresaleOverlays(){
+  presaleOverlays.forEach(o => { try { o.setMap(null); } catch(e) {} });
+  presaleOverlays = [];
+}
+function presalePrice(p){
+  if (p.price_min == null && p.price_max == null) return "";
+  const fmt = v => {
+    if (v == null || !Number.isFinite(Number(v))) return "";
+    const n = Math.round(Number(v));
+    const eok = Math.floor(n / 10000), man = n % 10000;
+    return `${eok ? `${eok}억 ` : ""}${man ? `${man.toLocaleString("ko-KR")}만원` : eok ? "" : "0만원"}`.trim();
+  };
+  return fmt(p.price_min) + (p.price_max != null && p.price_max !== p.price_min ? ` ~ ${fmt(p.price_max)}` : "");
+}
+function presaleStatusLabel(p){
+  const s = p.project_status || "unknown";
+  return s === "presale" ? "분양" : s === "scheduled" ? "분양 예정" : "정보 확인중";
+}
+function renderDataLabPresale(data){
+  const projects = Array.isArray(data?.projects) ? data.projects : [];
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  const rows = projects.map(p => `<div class="presale-item"><span class="presale-price">${presalePrice(p)}${p.is_paid ? ' <em class="presale-ad-badge">광고</em>' : ""}</span>${p.master_building_id ? `<a class="detail-link" href="/building/${Number(p.master_building_id)}" onclick="window.openBuildingDetail(${Number(p.master_building_id)}); return false;"><strong>${escapeHtml(p.title || p.building_name || "분양 프로젝트")}</strong></a>` : `<strong>${escapeHtml(p.title || p.building_name || "분양 프로젝트")}</strong>`}<p>${escapeHtml(presaleStatusLabel(p))} · ${escapeHtml(p.summary || p.road_address || "")}${p.unit_count != null ? ` · 총 ${dataLabNum(p.unit_count)}실` : ""}${p.remaining_units != null ? ` · 잔여 ${dataLabNum(p.remaining_units)}실` : ""}</p></div>`).join("");
+  const crows = candidates.map(p => `<div class="presale-item">${p.master_building_id ? `<a class="detail-link" href="/building/${Number(p.master_building_id)}" onclick="window.openBuildingDetail(${Number(p.master_building_id)}); return false;"><strong>${escapeHtml(p.building_name || "준공 전 건물")}</strong></a>` : `<strong>${escapeHtml(p.building_name || "준공 전 건물")}</strong>`}<p>${escapeHtml(presaleStatusLabel(p))} · ${escapeHtml(p.road_address || "")} · 준공예정 ${escapeHtml(p.completion_expected_date || "미정")}</p></div>`).join("");
+  return `<div class="datalab-heading"><strong>분양·미분양</strong><span class="datalab-caption">공개 프로젝트 ${projects.length}건 · 후보 ${candidates.length}건</span></div><div class="presale-list">${rows || '<div class="side-empty">등록된 분양 프로젝트가 없습니다.</div>'}${crows ? `<div class="datalab-caption" style="margin-top:6px">분양 후보 건물</div>${crows}` : ""}</div>`;
+}
+async function loadDataLabPresale(){
+  const content=document.getElementById("dataLabContent"); if(!content) return;
+  clearDataLabTourismMap(); clearPresaleOverlays();
+  const seq=++presaleRequestSequence; content.innerHTML=dataLabLoadingHTML();
+  try {
+    const res=await fetch("/api/stats/presale",{credentials:"same-origin"}); const data=await res.json();
+    if(seq!==presaleRequestSequence) return; if(!res.ok) throw new Error("presale");
+    content.innerHTML=renderDataLabPresale(data); renderPresaleOverlays(data);
+  } catch(e){ if(seq===presaleRequestSequence) content.innerHTML='<div class="side-empty">분양 정보를 불러오지 못했습니다.</div>'; }
+}
+function renderPresaleOverlays(data){
+  if(!(window.kakao&&kakao.maps&&kakaoMap)) return;
+  const items=[...(data.projects||[]),...(data.candidates||[])];
+  items.forEach(p=>{
+    const lat=Number(p.lat),lng=Number(p.lng); if(!Number.isFinite(lat)||!Number.isFinite(lng)) return;
+    const el=document.createElement("button"); el.type="button"; el.className=`presale-marker ${p.project_status==="presale"?"published":p.project_status==="scheduled"?"scheduled":"candidate"}`;
+    el.textContent=(p.building_name||p.title||"분양").slice(0,12)+(p.price_min!=null?` · ${presalePrice(p)}`:""); el.setAttribute("aria-label",`${p.building_name||p.title||"분양 건물"} 상세 보기`);
+    el.addEventListener("click",()=>{ if(p.master_building_id) openBuildingDetail(Number(p.master_building_id)); });
+    el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.click();}});
+    const o=new kakao.maps.CustomOverlay({position:new kakao.maps.LatLng(lat,lng),content:el,yAnchor:1,zIndex:35}); o.setMap(kakaoMap); presaleOverlays.push(o);
+  });
+}
 
 function dataLabNum(value){
   return Number(value || 0).toLocaleString("ko-KR");
@@ -4018,6 +4068,12 @@ async function loadDataLab(key, option = "up", {
 } = {}){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
+  if (key === "presale") {
+    setDataLabActive(key);
+    clearPresaleOverlays();
+    return loadDataLabPresale();
+  }
+  clearPresaleOverlays();
   clearDataLabTourismMap();
   if (key === DATA_LAB_SURGE_KEY) {
     const cached = dataLabResponseCache.get("visitor_surge:up");
@@ -4145,7 +4201,10 @@ function initDataLab(){
   const nav = document.getElementById("dataLabNav");
   if (!nav) return;
   nav.querySelectorAll("[data-datalab-key]").forEach(button => {
-    button.addEventListener("click", () => loadDataLab(button.dataset.datalabKey));
+    button.addEventListener("click", () => {
+      clearPresaleOverlays();
+      loadDataLab(button.dataset.datalabKey);
+    });
   });
   loadDataLab("lodging");
 }
@@ -5938,6 +5997,7 @@ async function loadBuildingHeader(id){
     headerRate = Number((lodgingRoomTotal * 100 / unitsNum).toFixed(1)).toLocaleString('ko-KR') + "%";
   }
   const bName = b.display_building_name || b.building_name || "(건물명 미확인)";
+  loadPresaleDetailBanner(id, bName, requestToken);
   const lodgingNameTag = b.building_name_report_display
     ? `<span title="건축물대장 명칭이 확인되지 않아 현재 활성 영업신고 중 객실 수가 가장 많은 사업장명을 대표로 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고(최다) 기준</span>`
     : "";
@@ -7071,6 +7131,34 @@ async function loadBuildingHeader(id){
   }
 
   return b.building_status || "완공";
+}
+
+async function loadPresaleDetailBanner(id, buildingName, requestToken){
+  const host = document.getElementById("bHeaderCard");
+  if (!host || !_isActiveBuilding(id, requestToken)) return;
+  host.querySelector(".presale-detail-banner")?.remove();
+  try {
+    const res = await fetch(`/api/building/${encodeURIComponent(id)}/presale`, { credentials:"same-origin" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!_isActiveBuilding(id, requestToken)) return;
+    if (data?.eligible !== true) return;
+    const p = data && data.promotion;
+    const project = data && data.project;
+    const safeCta = (() => { try { const u=new URL(p?.cta_url||""); return u.protocol === "https:" ? u.href : ""; } catch(e){ return ""; } })();
+    const safeBanner = (() => { try { const u=new URL(p?.banner_url||"",location.origin); return u.origin === location.origin && u.pathname.startsWith("/") && !String(p?.banner_url||"").startsWith("//") ? u.href : ""; } catch(e){ return ""; } })();
+    const box=document.createElement("section"); box.className="presale-detail-banner";
+    const title = project?.title || buildingName;
+    const summary = project?.summary || "공개된 분양 정보를 확인하세요.";
+    if (p && safeCta) {
+      box.innerHTML=`<strong>${escapeHtml(p.slogan || title)}</strong><p>${escapeHtml(summary)}</p>${safeBanner ? `<img alt="분양 안내 배너" src="${escapeHtml(safeBanner)}">` : ""}<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeCta)}">안내 페이지 보기</a>`;
+    } else if (project && project.project_status === "presale") {
+      box.innerHTML=`<strong>${escapeHtml(title)}</strong><p>${escapeHtml(summary)}</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
+    } else {
+      box.innerHTML=`<strong>준공 전 분양 정보를 등록하세요</strong><p>${escapeHtml(buildingName)}의 분양 안내가 준비되면 이곳에서 확인할 수 있습니다.</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
+    }
+    host.prepend(box);
+  } catch(e) { return; }
 }
 
 // 상거래정보 카드 — /api/building/<id>/nearby-stores 로 이 건물(지번)의

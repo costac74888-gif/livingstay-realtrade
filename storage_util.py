@@ -146,6 +146,11 @@ def is_valid_popup_ref(ref):
 EMAIL_BANNER_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
 EMAIL_BANNER_REF_RE = re.compile(r"^email_banners/[0-9a-f]{32}\.(jpg|jpeg|png)$")
 
+# 분양 광고 배너는 다른 공개 객체와 분리한다. 키를 임의로 받아 프록시가
+# 서류나 다른 관리용 객체를 읽는 일이 없도록 이 namespace만 허용한다.
+PRESALE_BANNER_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+PRESALE_BANNER_REF_RE = re.compile(r"^presale_banners/[0-9a-f]{32}\.(jpg|jpeg|png)$")
+
 
 def build_email_banner_key(ext):
     return f"email_banners/{uuid.uuid4().hex}.{ext}"
@@ -153,6 +158,14 @@ def build_email_banner_key(ext):
 
 def is_valid_email_banner_ref(ref):
     return bool(ref) and bool(EMAIL_BANNER_REF_RE.match(ref))
+
+
+def build_presale_banner_key(ext):
+    return f"presale_banners/{uuid.uuid4().hex}.{ext}"
+
+
+def is_valid_presale_banner_ref(ref):
+    return bool(ref) and bool(PRESALE_BANNER_REF_RE.match(ref))
 
 
 # ---- 공지사항 첨부파일 (관리자 업로드, 공개 서빙) ----

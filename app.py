@@ -6942,6 +6942,12 @@ def listings_page():
     return _serve_static_html("listings.html")
 
 
+@app.route("/apply/presale")
+def apply_presale_page():
+    """분양사·시행사 담당자를 위한 분양 정보 등록 안내 화면."""
+    return _serve_static_html("apply_presale.html")
+
+
 # ---- 약관/개인정보처리방침 (legal_documents) ----
 # doc_type은 'terms' 또는 'privacy' 두 값만 허용한다.
 _LEGAL_DOC_TYPES = ("terms", "privacy")
@@ -31641,6 +31647,345 @@ def admin_feature_tips_update(tip_id):
     finally:
         cur.close()
         conn.close()
+
+
+_PRESALE_PROJECT_FIELDS = (
+    "status", "project_status", "project_type", "publication_start_at", "publication_end_at", "title", "summary",
+    "unit_count", "remaining_units", "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date",
+    "contact_name", "contact_phone", "company_name", "editorial_body",
+)
+
+
+def _presale_datetime(value, field, required=False):
+    if value in (None, ""):
+        if required:
+            raise ValueError(f"{field}은(는) 필수입니다.")
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"{field} 형식이 올바르지 않습니다.")
+
+
+def _presale_project_payload(data, existing=None):
+    values = {key: data.get(key, existing.get(key) if existing else None) for key in _PRESALE_PROJECT_FIELDS}
+    if existing is None:
+        values["status"] = values["status"] or "draft"
+        values["project_status"] = values["project_status"] or "presale"
+        values["project_type"] = values["project_type"] or "mixed"
+    values["title"] = str(values["title"] or "").strip()
+    if not values["title"] or len(values["title"]) > 160:
+        raise ValueError("프로젝트명은 1~160자로 입력해주세요.")
+    if values["status"] not in ("draft", "published", "withdrawn"):
+        raise ValueError("프로젝트 상태가 올바르지 않습니다.")
+    if values["project_status"] not in ("presale", "scheduled", "sold_out"):
+        raise ValueError("분양 진행 상태가 올바르지 않습니다.")
+    if values["project_type"] not in ("living", "tourist", "officetel", "mixed"):
+        raise ValueError("프로젝트 유형이 올바르지 않습니다.")
+    for key in ("summary", "contact_name", "contact_phone", "company_name", "editorial_body"):
+        if values[key] is not None:
+            values[key] = str(values[key]).strip() or None
+            if len(values[key] or "") > (12000 if key == "editorial_body" else 2000):
+                raise ValueError(f"{key} 값이 너무 깁니다.")
+    if values["contact_phone"]:
+        values["contact_phone"] = re.sub(r"\D", "", values["contact_phone"])
+        if not 7 <= len(values["contact_phone"]) <= 15:
+            raise ValueError("연락처 형식이 올바르지 않습니다.")
+    for key in ("unit_count", "remaining_units", "price_min", "price_max"):
+        if values[key] in (None, ""):
+            values[key] = None
+        else:
+            try: values[key] = int(values[key])
+            except (TypeError, ValueError): raise ValueError(f"{key}은(는) 정수여야 합니다.")
+    if values["unit_count"] is not None and values["unit_count"] <= 0: raise ValueError("세대수는 1 이상이어야 합니다.")
+    if values["remaining_units"] is not None and values["remaining_units"] < 0: raise ValueError("잔여 세대수는 0 이상이어야 합니다.")
+    if values["remaining_units"] is not None and values["unit_count"] is not None and values["remaining_units"] > values["unit_count"]: raise ValueError("잔여 세대수는 전체 세대수보다 클 수 없습니다.")
+    if any(values[k] is not None and values[k] < 0 for k in ("price_min", "price_max")): raise ValueError("가격은 0 이상이어야 합니다.")
+    if values["price_min"] is not None and values["price_max"] is not None and values["price_min"] > values["price_max"]: raise ValueError("최저 가격은 최고 가격보다 클 수 없습니다.")
+    values["publication_start_at"] = _presale_datetime(values["publication_start_at"], "공개 시작")
+    values["publication_end_at"] = _presale_datetime(values["publication_end_at"], "공개 종료")
+    if values["publication_start_at"] and values["publication_end_at"] and values["publication_end_at"] <= values["publication_start_at"]: raise ValueError("공개 종료는 시작 이후여야 합니다.")
+    for key in ("sale_start_date", "sale_end_date", "move_in_date"):
+        if values[key] in (None, ""): values[key] = None
+        else:
+            try: values[key] = datetime.strptime(str(values[key])[:10], "%Y-%m-%d").date()
+            except ValueError: raise ValueError(f"{key} 날짜가 올바르지 않습니다.")
+    if values["sale_start_date"] and values["sale_end_date"] and values["sale_end_date"] < values["sale_start_date"]: raise ValueError("분양 종료일은 시작일보다 빠를 수 없습니다.")
+    if values["status"] == "published" and not values["publication_start_at"]: raise ValueError("공개 프로젝트에는 공개 시작일이 필요합니다.")
+    return values
+
+
+def _presale_safe_url(value):
+    import ipaddress
+    value = str(value or "").strip()
+    try: parsed = urlparse(value)
+    except ValueError: parsed = None
+    host = (parsed.hostname or "").lower() if parsed else ""
+    if (not parsed or parsed.scheme != "https" or not host or parsed.username or parsed.password
+            or "." not in host or host == "localhost" or host.endswith(".localhost") or host.endswith(".local")):
+        return None
+    try:
+        if not ipaddress.ip_address(host).is_global: return None
+    except ValueError:
+        pass
+    return value if len(value) <= 2048 else None
+
+
+def _presale_audit(cur, action, project_id=None, promotion_id=None, detail=None):
+    cur.execute("INSERT INTO presale_audit_log(project_id,promotion_id,admin_id,action,detail) VALUES(%s,%s,%s,%s,%s::jsonb)",
+                [project_id, promotion_id, session.get("admin_user_id"), action, json.dumps(detail or {})])
+
+
+def _presale_public_project(row):
+    # 공개 응답에는 가격 단위(만원), 총/잔여 세대 및 사업 상태만 노출한다.
+    result = {key: row.get(key) for key in ("id", "master_building_id", "title", "summary", "project_status", "project_type", "unit_count", "remaining_units", "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date", "company_name")}
+    result["price_unit"] = "ten_thousand_krw"
+    return result
+
+
+@app.route("/api/stats/presale")
+@limiter.limit("60 per minute")
+def presale_stats():
+    """공개 지도용: 허가/착공 + 사용승인일 없음이라는 실제 준공전 기준만 사용한다."""
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT p.id,p.master_building_id,p.title,p.summary,p.project_status,p.project_type,p.unit_count,p.remaining_units,p.price_min,p.price_max,p.sale_start_date,p.sale_end_date,p.move_in_date,
+                              b.building_name,b.road_address,b.lat,b.lng,(promo.id IS NOT NULL) AS is_paid
+                       FROM presale_projects p JOIN master_buildings b ON b.id=p.master_building_id
+                       LEFT JOIN LATERAL (
+                         SELECT pr.id FROM presale_promotions pr
+                         WHERE pr.presale_project_id=p.id AND pr.status='approved' AND pr.approved_at IS NOT NULL
+                           AND pr.starts_at<=NOW() AND pr.ends_at>NOW()
+                         ORDER BY pr.priority DESC,pr.id DESC LIMIT 1
+                       ) promo ON TRUE
+                       WHERE p.status='published' AND p.publication_start_at<=NOW()
+                         AND (p.publication_end_at IS NULL OR p.publication_end_at > NOW())
+                         AND p.project_status IN ('presale','scheduled')
+                       ORDER BY p.publication_start_at NULLS LAST,p.id DESC LIMIT 100""")
+        projects = [{**_presale_public_project(r), "building_name": r["building_name"], "road_address": r["road_address"], "lat": r["lat"], "lng": r["lng"], "is_paid": bool(r["is_paid"])} for r in cur.fetchall()]
+        cur.execute("""SELECT b.id AS master_building_id,b.building_name,b.road_address,b.lat,b.lng,b.completion_expected_date
+                       FROM master_buildings b LEFT JOIN presale_projects p ON p.master_building_id=b.id
+                       WHERE p.id IS NULL AND b.building_status IN ('허가','착공') AND NULLIF(b.use_apr_day,'') IS NULL
+                         AND b.lat IS NOT NULL AND b.lng IS NOT NULL
+                       ORDER BY b.id ASC LIMIT 100""")
+        candidates = [dict(row) for row in cur.fetchall()]
+        return jsonify({"ok": True, "projects": projects, "candidates": candidates})
+    finally: cur.close(); conn.close()
+
+
+@app.route("/api/building/<int:building_id>/presale")
+def building_presale(building_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT p.* FROM presale_projects p WHERE p.master_building_id=%s AND p.status='published'
+                       AND p.project_status IN ('presale','scheduled') AND p.publication_start_at <= NOW()
+                       AND (p.publication_end_at IS NULL OR p.publication_end_at > NOW())""", [building_id])
+        project = cur.fetchone()
+        if project:
+            cur.execute("""SELECT slogan,cta_url,banner_object_key FROM presale_promotions
+                           WHERE presale_project_id=%s AND status='approved' AND approved_at IS NOT NULL
+                             AND starts_at<=NOW() AND ends_at>NOW() ORDER BY priority DESC,id DESC LIMIT 1""", [project["id"]])
+            promo = cur.fetchone()
+            result = {"eligible": True, "project": _presale_public_project(project), "promotion": None, "is_paid": bool(promo)}
+            if promo and storage_util.is_valid_presale_banner_ref(promo["banner_object_key"]):
+                result["promotion"] = {"slogan": promo["slogan"], "cta_url": promo["cta_url"], "banner_url": f"/api/presale/banner/{promo['banner_object_key']}"}
+            return jsonify(result)
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s AND building_status IN ('허가','착공') AND NULLIF(use_apr_day,'') IS NULL", [building_id])
+        return jsonify({"eligible": bool(cur.fetchone()), "project": None, "promotion": None})
+    finally: cur.close(); conn.close()
+
+
+@app.route("/api/presale/banner/<path:key>")
+def presale_banner(key):
+    if not storage_util.is_valid_presale_banner_ref(key): abort(404)
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT 1 FROM presale_promotions pr JOIN presale_projects p ON p.id=pr.presale_project_id
+                       WHERE pr.banner_object_key=%s AND pr.status='approved' AND pr.approved_at IS NOT NULL
+                         AND pr.starts_at<=NOW() AND pr.ends_at>NOW() AND p.status='published'
+                         AND p.project_status IN ('presale','scheduled') AND p.publication_start_at<=NOW()
+                         AND (p.publication_end_at IS NULL OR p.publication_end_at>NOW()) LIMIT 1""", [key])
+        if not cur.fetchone(): abort(404)
+    finally:
+        cur.close(); conn.close()
+    try: data = storage_util.download_bytes(key)
+    except Exception: abort(404)
+    return Response(data, mimetype="image/png" if key.endswith(".png") else "image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.route("/api/admin/presale/eligible-buildings")
+@require_admin
+@limiter.limit("30 per minute")
+def admin_presale_eligible_buildings():
+    q = str(request.args.get("q", "")).strip()[:100]
+    conn=get_conn(); cur=conn.cursor()
+    try:
+        cur.execute("""SELECT b.id,b.building_name,b.road_address,b.building_status,b.completion_expected_date,b.lat,b.lng
+          FROM master_buildings b LEFT JOIN presale_projects p ON p.master_building_id=b.id
+          WHERE p.id IS NULL AND b.building_status IN ('허가','착공') AND NULLIF(b.use_apr_day,'') IS NULL
+            AND (%s='' OR b.building_name ILIKE '%%'||%s||'%%' OR b.road_address ILIKE '%%'||%s||'%%')
+          ORDER BY b.id DESC LIMIT 100""",[q,q,q])
+        return jsonify({"ok":True,"buildings":[dict(r) for r in cur.fetchall()]})
+    finally: cur.close();conn.close()
+
+
+@app.route("/api/admin/presale/projects", methods=["GET","POST"])
+@require_admin
+@limiter.limit("20 per minute")
+def admin_presale_projects():
+    conn=get_conn(); cur=conn.cursor()
+    try:
+        if request.method == "GET":
+            cur.execute("SELECT p.*,b.building_name,b.road_address FROM presale_projects p JOIN master_buildings b ON b.id=p.master_building_id ORDER BY p.updated_at DESC LIMIT 200")
+            return jsonify({"ok":True,"projects":[dict(r) for r in cur.fetchall()]})
+        data=request.get_json(force=True,silent=True) or {}
+        try: building_id=int(data.get("master_building_id")); fields=_presale_project_payload(data)
+        except (ValueError,TypeError) as exc: return jsonify({"ok":False,"message":str(exc)}),400
+        cur.execute("SELECT 1 FROM master_buildings WHERE id=%s AND building_status IN ('허가','착공') AND NULLIF(use_apr_day,'') IS NULL",[building_id])
+        if not cur.fetchone(): return jsonify({"ok":False,"message":"분양 대상 준공전 건물이 아닙니다."}),400
+        cols=list(fields); cur.execute(f"INSERT INTO presale_projects(master_building_id,{','.join(cols)},created_by,updated_by) VALUES(%s,{','.join(['%s']*len(cols))},%s,%s) RETURNING id",[building_id]+[fields[x] for x in cols]+[session.get("admin_user_id")]*2)
+        pid=cur.fetchone()["id"]; _presale_audit(cur,"project_created",pid,detail={"building_id":building_id}); conn.commit()
+        return jsonify({"ok":True,"id":pid}),201
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback(); return jsonify({"ok":False,"message":"해당 건물에는 이미 현재 분양 프로젝트가 있습니다."}),409
+    finally: cur.close();conn.close()
+
+
+@app.route("/api/admin/presale/projects/<int:project_id>", methods=["PUT","DELETE"])
+@require_admin
+@limiter.limit("20 per minute")
+def admin_presale_project(project_id):
+    conn=get_conn();cur=conn.cursor()
+    try:
+        cur.execute("SELECT * FROM presale_projects WHERE id=%s FOR UPDATE",[project_id]); row=cur.fetchone()
+        if not row:return jsonify({"ok":False,"message":"프로젝트를 찾을 수 없습니다."}),404
+        if request.method=="DELETE":
+            if row["status"]=="draft":
+                cur.execute("SELECT 1 FROM presale_promotions WHERE presale_project_id=%s LIMIT 1", [project_id])
+                if cur.fetchone():
+                    return jsonify({"ok": False, "message": "프로모션 이력이 있는 초안은 삭제할 수 없습니다."}), 409
+                cur.execute("DELETE FROM presale_projects WHERE id=%s",[project_id]); _presale_audit(cur,"project_deleted",project_id); conn.commit(); return jsonify({"ok":True})
+            cur.execute("UPDATE presale_projects SET status='withdrawn',withdrawn_at=NOW(),withdrawn_by=%s,updated_at=NOW() WHERE id=%s",[session.get("admin_user_id"),project_id]); _presale_audit(cur,"project_withdrawn",project_id);conn.commit();return jsonify({"ok":True})
+        try: fields=_presale_project_payload(request.get_json(force=True,silent=True) or {},row)
+        except ValueError as exc:return jsonify({"ok":False,"message":str(exc)}),400
+        cur.execute("UPDATE presale_projects SET "+",".join(f"{x}=%s" for x in fields)+",updated_at=NOW(),updated_by=%s WHERE id=%s",[fields[x] for x in fields]+[session.get("admin_user_id"),project_id]);_presale_audit(cur,"project_updated",project_id);conn.commit();return jsonify({"ok":True})
+    finally:cur.close();conn.close()
+
+
+@app.route("/api/admin/presale/promotions", methods=["GET","POST"])
+@require_admin
+@limiter.limit("20 per minute")
+def admin_presale_promotions():
+    conn=get_conn();cur=conn.cursor()
+    try:
+        if request.method=="GET":
+            cur.execute("SELECT * FROM presale_promotions ORDER BY updated_at DESC LIMIT 200");return jsonify({"ok":True,"promotions":[dict(x) for x in cur.fetchall()]})
+        data=request.get_json(force=True,silent=True) or {}
+        try:
+            pid=int(data["presale_project_id"]); start=_presale_datetime(data.get("starts_at"),"시작",True); end=_presale_datetime(data.get("ends_at"),"종료",True); priority=int(data.get("priority",0))
+            slogan=str(data.get("slogan","")).strip(); url=_presale_safe_url(data.get("cta_url")); key=str(data.get("banner_object_key",""))
+            if end<=start or not slogan or len(slogan)>300 or not url or not storage_util.is_valid_presale_banner_ref(key) or not 0<=priority<=10000: raise ValueError("프로모션 입력값이 올바르지 않습니다.")
+            status=data.get("status","draft")
+            if status not in ("draft","approved"): raise ValueError("프로모션 상태가 올바르지 않습니다.")
+        except (KeyError,ValueError,TypeError) as exc:return jsonify({"ok":False,"message":str(exc)}),400
+        cur.execute("SELECT 1 FROM presale_projects WHERE id=%s AND status != 'withdrawn'",[pid])
+        if not cur.fetchone():return jsonify({"ok":False,"message":"유효한 프로젝트가 아닙니다."}),400
+        approved_at="NOW()" if status=="approved" else "NULL"; approved_by=session.get("admin_user_id") if status=="approved" else None
+        cur.execute(f"INSERT INTO presale_promotions(presale_project_id,status,starts_at,ends_at,slogan,cta_url,banner_object_key,priority,approved_at,approved_by,created_by,updated_by) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,{approved_at},%s,%s,%s) RETURNING id",[pid,status,start,end,slogan,url,key,priority,approved_by,session.get("admin_user_id"),session.get("admin_user_id")]);rid=cur.fetchone()["id"];_presale_audit(cur,"promotion_created",pid,rid);conn.commit();return jsonify({"ok":True,"id":rid}),201
+    finally:cur.close();conn.close()
+
+
+@app.route("/api/admin/presale/banners", methods=["POST"])
+@require_admin
+@limiter.limit("10 per minute")
+def admin_presale_banner_upload():
+    f=request.files.get("file")
+    if not f or not f.filename:return jsonify({"ok":False,"message":"파일을 선택해주세요."}),400
+    raw=f.read(storage_util.MAX_FILE_BYTES+1)
+    if len(raw)<16 or len(raw)>storage_util.MAX_FILE_BYTES:return jsonify({"ok":False,"message":"이미지는 5MB 이하이어야 합니다."}),400
+    try:
+        import warnings
+        from PIL import Image, ImageOps
+        # 압축 폭탄은 decode 전에 픽셀 수와 가로·세로 모두 제한한다.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            image=Image.open(io.BytesIO(raw))
+            if image.format not in ("JPEG", "PNG"):
+                raise ValueError("지원하지 않는 이미지 형식")
+            width, height = image.size
+            if width < 320 or height < 100 or width > 10000 or height > 10000 or width * height > 25_000_000:
+                raise ValueError("배너 크기 제한")
+            image.verify()
+        image=Image.open(io.BytesIO(raw)); image=ImageOps.exif_transpose(image).convert("RGB")
+        out=io.BytesIO(); image.save(out,format="JPEG",quality=90,optimize=True); encoded=out.getvalue()
+        if len(encoded) > storage_util.MAX_FILE_BYTES:
+            raise ValueError("재인코딩 후 파일이 너무 큼")
+    except Exception:return jsonify({"ok":False,"message":"JPG 또는 PNG 정상 이미지만 업로드할 수 있습니다."}),400
+    key=storage_util.build_presale_banner_key("jpg")
+    try: storage_util.upload_doc(key,encoded)
+    except Exception: app.logger.exception("분양 배너 업로드 실패");return jsonify({"ok":False,"message":"파일 저장에 실패했습니다."}),500
+    return jsonify({"ok":True,"banner_object_key":key,"banner_url":f"/api/presale/banner/{key}"})
+
+
+@app.route("/api/admin/presale/promotions/<int:promotion_id>", methods=["PUT", "DELETE"])
+@require_admin
+@limiter.limit("20 per minute")
+def admin_presale_promotion(promotion_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM presale_promotions WHERE id=%s FOR UPDATE", [promotion_id])
+        old = cur.fetchone()
+        if not old:
+            return jsonify({"ok": False, "message": "프로모션을 찾을 수 없습니다."}), 404
+        if request.method == "DELETE":
+            cur.execute("UPDATE presale_promotions SET status='withdrawn',updated_at=NOW(),updated_by=%s WHERE id=%s",
+                        [session.get("admin_user_id"), promotion_id])
+            _presale_audit(cur, "promotion_withdrawn", old["presale_project_id"], promotion_id)
+            conn.commit()
+            return jsonify({"ok": True})
+        data = request.get_json(force=True, silent=True) or {}
+        try:
+            start = _presale_datetime(data.get("starts_at", old["starts_at"]), "시작", True)
+            end = _presale_datetime(data.get("ends_at", old["ends_at"]), "종료", True)
+            status = data.get("status", old["status"])
+            slogan = str(data.get("slogan", old["slogan"]) or "").strip()
+            url = _presale_safe_url(data.get("cta_url", old["cta_url"]))
+            key = str(data.get("banner_object_key", old["banner_object_key"]) or "")
+            priority = int(data.get("priority", old["priority"]))
+            if status not in ("draft", "approved") or end <= start or not slogan or len(slogan) > 300 or not url or not storage_util.is_valid_presale_banner_ref(key) or not 0 <= priority <= 10000:
+                raise ValueError("프로모션 입력값이 올바르지 않습니다.")
+        except (TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 400
+        cur.execute("""UPDATE presale_promotions SET status=%s,starts_at=%s,ends_at=%s,slogan=%s,cta_url=%s,
+                       banner_object_key=%s,priority=%s,approved_at=CASE WHEN %s='approved' THEN COALESCE(approved_at,NOW()) ELSE NULL END,
+                       approved_by=CASE WHEN %s='approved' THEN %s ELSE NULL END,updated_at=NOW(),updated_by=%s WHERE id=%s""",
+                    [status, start, end, slogan, url, key, priority, status, status, session.get("admin_user_id"), session.get("admin_user_id"), promotion_id])
+        _presale_audit(cur, "promotion_updated", old["presale_project_id"], promotion_id)
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/presale/banners/<path:key>", methods=["DELETE"])
+@require_admin
+@limiter.limit("10 per minute")
+def admin_presale_banner_delete(key):
+    if not storage_util.is_valid_presale_banner_ref(key):
+        return jsonify({"ok": False, "message": "유효하지 않은 배너 키입니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM presale_promotions WHERE banner_object_key=%s LIMIT 1", [key])
+        if cur.fetchone():
+            return jsonify({"ok": False, "message": "프로모션에서 사용 중인 배너는 삭제할 수 없습니다."}), 409
+        try:
+            storage_util.delete_object(key)
+        except Exception:
+            app.logger.exception("분양 배너 삭제 실패")
+            return jsonify({"ok": False, "message": "배너 삭제에 실패했습니다."}), 500
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
 
 
 if __name__ == "__main__":

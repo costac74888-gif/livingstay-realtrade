@@ -124,6 +124,13 @@ def main() -> None:
     admin_html = (release_dir / "html" / "admin.html").read_text(encoding="utf-8")
     if f"/static/dist/{release_id}/js/inline-admin-" not in admin_html:
         fail("관리자 인라인 JS가 압축 릴리스 파일로 추출되지 않음")
+    presale_apply = client.get("/apply/presale?building=1")
+    if (
+        presale_apply.status_code != 200
+        or "분양 정보 등록 안내" not in presale_apply.get_data(as_text=True)
+        or f"/static/dist/{release_id}/js/inline-apply_presale-" not in presale_apply.get_data(as_text=True)
+    ):
+        fail("배포 모드 분양 등록 안내 화면이 현재 릴리스에서 정상 제공되지 않음")
 
     if client.get("/static/js/main.js").status_code != 404:
         fail("배포 모드에서 원본 main.js가 404가 아님")
