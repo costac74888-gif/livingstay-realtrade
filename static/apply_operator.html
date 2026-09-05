@@ -31,6 +31,7 @@
     <div id="buildingNotice" style="display:none; font-size:13px; color:var(--ink); background:var(--brass-tint); border:1px solid #EAD9B8; border-radius:8px; padding:10px 12px; margin-bottom:14px;"></div>
 
     <form id="applyForm" autocomplete="off">
+      <h2 class="menu-sec-title">1. 기본 정보</h2>
       <div class="field" style="margin-bottom:14px;">
         <label>업체명 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="office_or_company_name" placeholder="예) 홈앤스테이위탁운영" />
@@ -56,6 +57,7 @@
         <label>사업자등록번호 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="biz_reg_number" placeholder="예) 123-45-67890" />
       </div>
+      <h2 class="menu-sec-title" style="margin-top:22px;">2. 계정·연락처</h2>
       <div class="field" style="margin-bottom:14px;">
         <label>연락처 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="phone" placeholder="예) 010-1234-5678" />
@@ -73,6 +75,7 @@
         <label>비밀번호 확인 <span style="color:var(--brick);">*</span></label>
         <input type="password" id="applyPasswordConfirm" placeholder="비밀번호를 한번 더 입력해주세요" autocomplete="new-password" />
       </div>
+      <h2 class="menu-sec-title" style="margin-top:22px;">3. 활동·연결 정보</h2>
       <div class="field" style="margin-bottom:14px;">
         <label>소재지 <span style="color:var(--brick);">*</span></label>
         <div style="display:flex; gap:8px;">
@@ -95,7 +98,8 @@
       </div>
 
       <div style="border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px;">
-        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">📎 서류 첨부 (PDF/JPG/PNG, 5MB 이하 · 사업자등록증은 필수)</div>
+        <h2 class="menu-sec-title">4. 자격·증빙</h2>
+        <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:10px;">서류 첨부 (PDF/JPG/PNG, 5MB 이하 · 사업자등록증은 필수)</div>
         <div class="field" style="margin-bottom:12px;">
           <label>사업자등록증 <span style="color:var(--brick);">*</span></label>
           <input type="file" class="doc-input" data-doc-type="biz_reg" accept=".pdf,.jpg,.jpeg,.png" />
@@ -114,6 +118,7 @@
         
       </div>
 
+      <h2 class="menu-sec-title">5. 약관·제출</h2>
       <div class="auth-consent" id="applyConsent">
         <label class="auth-consent-row">
           <input type="checkbox" id="applyAgreeTerms" /> <span class="agree-tag">[필수]</span>&nbsp;<a href="/terms" target="_blank" rel="noopener">이용약관</a>&nbsp;동의

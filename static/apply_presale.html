@@ -58,20 +58,21 @@
         <p class="presale-form-note">공통 파트너 등록 순서에 맞춰 업체, 담당자, 연결 정보를 입력합니다. 담당자 정보와 증빙은 관리자 심사에만 사용합니다. * 표시는 필수입니다.</p>
         <input type="hidden" name="master_building_id" id="masterBuildingId">
         <div class="form-grid">
-          <div class="form-section-title">1. 업체 정보</div>
+          <div class="form-section-title">1. 기본 정보</div>
           <label class="field">회사명 *<input name="company_name" maxlength="200" required></label>
           <label class="field">신청자 관계 *<select name="applicant_role" required><option value="">선택해주세요</option><option value="owner">건축주</option><option value="developer">시행사</option></select></label>
-          <div class="form-section-title">2. 담당자 정보</div>
+          <div class="form-section-title">2. 계정·연락처</div>
           <label class="field">담당자 이름 *<input name="contact_name" maxlength="100" autocomplete="name" required></label>
           <label class="field">담당자 전화 *<input name="contact_phone" inputmode="tel" maxlength="20" autocomplete="tel" required></label>
           <label class="field wide">담당자 이메일 *<input name="contact_email" type="email" maxlength="255" autocomplete="email" required></label>
-          <div class="form-section-title">3. 홈페이지·배너 연결</div>
+          <div class="form-section-title">3. 활동·연결 정보</div>
           <label class="field wide">자사 홈페이지 (선택)<input name="homepage_url" type="url" maxlength="2048" placeholder="https://example.com"><small>승인 후 배너가 이 주소로 연결됩니다. 홈페이지가 없으면 홈앤스테이 마이페이지로 연결됩니다.</small></label>
-          <div class="form-section-title">4. 심사 자료</div>
+          <div class="form-section-title">4. 자격·증빙</div>
           <label class="field">사업자·시행사 확인 증빙 *<input name="evidence" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required><small>JPG/PNG 이미지, 최대 5MB. 관리자만 열람합니다.</small></label>
           <label class="field">배너 이미지 (선택)<input name="banner" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png"><small>선택, 최대 5MB, 320×100 이상. 세부 광고 기간은 전화 협의 후 관리자가 설정합니다.</small></label>
         </div>
-        <label class="consent"><input name="privacy_consent" value="yes" type="checkbox" required><span>분양 신청 심사와 결과 안내를 위해 회사명, 담당자 이름·전화·이메일 및 첨부 자료를 수집·이용하는 데 동의합니다. 신청 자료는 공개 프로젝트와 분리하여 관리자만 열람합니다.</span></label>
+        <div class="form-section-title">5. 약관·제출</div>
+        <label class="consent"><input name="privacy_consent" value="yes" type="checkbox" required><span>분양 신청 심사와 결과 안내를 위해 회사명, 담당자 이름·전화·이메일 및 첨부 자료를 수집·이용하는 데 동의합니다. 신청 자료는 공개 정보와 분리하여 관리자만 열람합니다.</span></label>
         <div class="submit-row"><button id="presaleSubmit" class="presale-button" type="submit">분양사 등록 신청</button><span id="presaleResult" role="status" aria-live="polite"></span></div>
       </form>
       <div class="presale-actions">

@@ -30,6 +30,7 @@
     </div>
 
     <form id="applyForm" autocomplete="off">
+      <h2 class="menu-sec-title">1. 기본 정보</h2>
       <div class="field" style="margin-bottom:14px;">
         <label>소속 회사명 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="office_or_company_name" placeholder="예) OO은행 / OO금융서비스" />
@@ -39,14 +40,11 @@
         <input type="text" id="owner_name" placeholder="예) 홍길동" />
       </div>
       <div class="field" style="margin-bottom:14px;">
-        <label>대출모집인 등록번호 <span style="color:var(--brick);">*</span></label>
-        <input type="text" id="license_number" placeholder="금융감독원 대출모집인 등록번호" />
-      </div>
-      <div class="field" style="margin-bottom:14px;">
         <label>카카오톡 상담 링크</label>
         <input type="url" id="kakao_chat_url" placeholder="예) https://open.kakao.com/o/..." maxlength="300" />
         <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">승인 후 상담 버튼에 연결됩니다. 입력하지 않아도 신청할 수 있습니다.</div>
       </div>
+      <h2 class="menu-sec-title" style="margin-top:22px;">2. 계정·연락처</h2>
       <div class="field" style="margin-bottom:14px;">
         <label>연락처 <span style="color:var(--brick);">*</span></label>
         <input type="text" id="phone" placeholder="예) 010-1234-5678" />
@@ -64,6 +62,7 @@
         <label>비밀번호 확인 <span style="color:var(--brick);">*</span></label>
         <input type="password" id="applyPasswordConfirm" placeholder="비밀번호를 한번 더 입력해주세요" autocomplete="new-password" />
       </div>
+      <h2 class="menu-sec-title" style="margin-top:22px;">3. 활동·연결 정보</h2>
       <div class="field" style="margin-bottom:20px;">
         <label>취급지역 <span style="color:var(--brick);">*</span></label>
         <select id="service_region">
@@ -71,10 +70,16 @@
         </select>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">이 지역 기준으로 취급지역 배지가 노출됩니다</div>
       </div>
+      <h2 class="menu-sec-title" style="margin-top:22px;">4. 자격·증빙</h2>
+      <div class="field" style="margin-bottom:14px;">
+        <label>대출모집인 등록번호 <span style="color:var(--brick);">*</span></label>
+        <input type="text" id="license_number" placeholder="금융감독원 대출모집인 등록번호" />
+      </div>
 
       <!-- 건물 상세(B화면)에서 진입 시 ?building_id= 값이 채워지는 숨은 필드 — 승인 시 담당건물 자동 등록에 사용 -->
       <input type="hidden" id="preferred_building_id" value="" />
 
+      <h2 class="menu-sec-title">5. 약관·제출</h2>
       <div class="auth-consent" id="applyConsent">
         <label class="auth-consent-row">
           <input type="checkbox" id="applyAgreeTerms" /> <span class="agree-tag">[필수]</span>&nbsp;<a href="/terms" target="_blank" rel="noopener">이용약관</a>&nbsp;동의
