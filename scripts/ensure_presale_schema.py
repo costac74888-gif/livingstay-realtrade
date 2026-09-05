@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS presale_projects (
  unit_count INTEGER, remaining_units INTEGER, price_min BIGINT, price_max BIGINT, -- 가격은 만원(10,000 KRW) 단위
  sale_start_date DATE, sale_end_date DATE, move_in_date DATE,
  homepage_url TEXT, contact_name TEXT, contact_phone TEXT, company_name TEXT, editorial_body TEXT,
+ applyhome_status TEXT NOT NULL DEFAULT 'unverified' CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')),
+ applyhome_notice_id TEXT, applyhome_notice_name TEXT, applyhome_checked_at TIMESTAMPTZ, applyhome_error_code TEXT,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL, updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  withdrawn_at TIMESTAMPTZ, withdrawn_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
@@ -44,6 +46,8 @@ CREATE TABLE IF NOT EXISTS presale_applications (
  receipt_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (receipt_notification_status IN ('pending','sent','failed')),
  decision_notification_status TEXT NOT NULL DEFAULT 'pending' CHECK (decision_notification_status IN ('pending','sent','failed')),
  notification_error TEXT,
+ applyhome_status TEXT NOT NULL DEFAULT 'unverified' CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')),
+ applyhome_notice_id TEXT, applyhome_notice_name TEXT, applyhome_checked_at TIMESTAMPTZ, applyhome_error_code TEXT,
  reject_reason TEXT, reviewed_at TIMESTAMPTZ, reviewed_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  CHECK (unit_count IS NULL OR unit_count > 0),
@@ -71,6 +75,16 @@ ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_status TEXT NOT NU
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS project_type TEXT NOT NULL DEFAULT 'mixed';
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS remaining_units INTEGER;
 ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS move_in_date DATE;
+ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS applyhome_status TEXT NOT NULL DEFAULT 'unverified';
+ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS applyhome_notice_id TEXT;
+ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS applyhome_notice_name TEXT;
+ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS applyhome_checked_at TIMESTAMPTZ;
+ALTER TABLE presale_projects ADD COLUMN IF NOT EXISTS applyhome_error_code TEXT;
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS applyhome_status TEXT NOT NULL DEFAULT 'unverified';
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS applyhome_notice_id TEXT;
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS applyhome_notice_name TEXT;
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS applyhome_checked_at TIMESTAMPTZ;
+ALTER TABLE presale_applications ADD COLUMN IF NOT EXISTS applyhome_error_code TEXT;
 DO $$ BEGIN
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_project_status_check') THEN
   ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_project_status_check CHECK (project_status IN ('presale','scheduled','sold_out')) NOT VALID;
@@ -80,6 +94,12 @@ DO $$ BEGIN
  END IF;
  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_remaining_units_check') THEN
   ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_remaining_units_check CHECK (remaining_units IS NULL OR (remaining_units >= 0 AND (unit_count IS NULL OR remaining_units <= unit_count))) NOT VALID;
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_projects_applyhome_status_check') THEN
+  ALTER TABLE presale_projects ADD CONSTRAINT presale_projects_applyhome_status_check CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')) NOT VALID;
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='presale_applications_applyhome_status_check') THEN
+  ALTER TABLE presale_applications ADD CONSTRAINT presale_applications_applyhome_status_check CHECK (applyhome_status IN ('verified','unverified','not_applicable','error')) NOT VALID;
  END IF;
 END $$;
 """

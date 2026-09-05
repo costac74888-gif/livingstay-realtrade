@@ -7139,10 +7139,10 @@ async function loadPresaleDetailBanner(id, buildingName, requestToken){
     const title = project?.title || buildingName;
     const summary = project?.summary || "공개된 분양 정보를 확인하세요.";
     if (p && safeCta) {
-      box.innerHTML=`<strong>${escapeHtml(p.slogan || title)}</strong><p>${escapeHtml(summary)}</p>${safeBanner ? `<img alt="분양 안내 배너" src="${escapeHtml(safeBanner)}">` : ""}<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeCta)}">안내 페이지 보기</a>`;
+      box.innerHTML=`<strong>${escapeHtml(p.slogan || title)}${project?.applyhome_verified === true ? ' <span class="presale-ad-badge" title="청약홈 분양공고와 대조 확인됨">청약홈 분양공고 확인</span>' : ""}</strong><p>${escapeHtml(summary)}</p>${safeBanner ? `<img alt="분양 안내 배너" src="${escapeHtml(safeBanner)}">` : ""}<a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeCta)}">안내 페이지 보기</a>`;
     } else if (project && project.project_status === "presale") {
       const external = safeCta && new URL(safeCta).origin !== location.origin;
-      box.innerHTML=`<strong>${escapeHtml(title)}</strong><p>${escapeHtml(summary)}</p><a ${external?'target="_blank" rel="noopener noreferrer" ':''}href="${escapeHtml(safeCta||"/mypage")}">${project.homepage_url?"분양 홈페이지 보기":"마이페이지에서 확인"}</a>`;
+      box.innerHTML=`<strong>${escapeHtml(title)}${project.applyhome_verified === true ? ' <span class="presale-ad-badge" title="청약홈 분양공고와 대조 확인됨">청약홈 분양공고 확인</span>' : ""}</strong><p>${escapeHtml(summary)}</p><a ${external?'target="_blank" rel="noopener noreferrer" ':''}href="${escapeHtml(safeCta||"/mypage")}">${project.homepage_url?"분양 홈페이지 보기":"마이페이지에서 확인"}</a>`;
     } else {
       box.innerHTML=`<strong>준공 전 분양 정보 등록</strong><p>${escapeHtml(buildingName)} · 건축주·시행사는 분양 정보 등록을 요청할 수 있습니다.</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
     }

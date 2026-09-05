@@ -31837,6 +31837,8 @@ def _presale_application_admin_row(row):
         "evidence_filename", "banner_filename", "reject_reason", "consent_version",
         "consented_at", "receipt_notification_status", "decision_notification_status",
         "notification_error", "reviewed_at", "reviewed_by", "created_at", "updated_at",
+        "applyhome_status", "applyhome_notice_id", "applyhome_notice_name", "applyhome_checked_at",
+        "applyhome_error_code",
     )}
 
 
@@ -31844,7 +31846,103 @@ def _presale_public_project(row):
     # 공개 응답에는 가격 단위(만원), 총/잔여 세대 및 사업 상태만 노출한다.
     result = {key: row.get(key) for key in ("id", "master_building_id", "title", "summary", "project_status", "project_type", "unit_count", "remaining_units", "price_min", "price_max", "sale_start_date", "sale_end_date", "move_in_date", "company_name", "homepage_url")}
     result["price_unit"] = "ten_thousand_krw"
+    result["applyhome_verified"] = row.get("applyhome_status") == "verified"
     return result
+
+
+_APPLYHOME_ENDPOINTS = (
+    "getAPTLttotPblancDetail",
+    "getUrbtyOfctlLttotPblancDetail",
+)
+
+
+def _applyhome_match_key(value):
+    return re.sub(r"[^0-9a-z가-힣]", "", str(value or "").lower())
+
+
+def _check_applyhome(building_name, road_address, project_type="mixed"):
+    """청약홈 공고 대조 결과만 반환한다. 인증값과 원문 오류는 반환·저장하지 않는다."""
+    if project_type == "tourist":
+        return {"status": "not_applicable"}
+    service_key = os.environ.get("DATA_GO_KR_BROKER_API_KEY", "").strip()
+    if not service_key:
+        return {"status": "error", "error_code": "service_unconfigured"}
+    address_key = _applyhome_match_key(road_address)
+    name_key = _applyhome_match_key(building_name)
+    if not address_key:
+        return {"status": "unverified"}
+    try:
+        matches = []
+        for operation in _APPLYHOME_ENDPOINTS:
+            page = 1
+            while page <= 50:
+                response = requests.get(
+                    f"https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1/{operation}",
+                    params={"page": page, "perPage": 1000, "serviceKey": service_key},
+                    timeout=(3, 7),
+                )
+                response.raise_for_status()
+                payload = response.json()
+                items = payload.get("data", [])
+                if not isinstance(items, list):
+                    raise ValueError("invalid provider data")
+                for item in items:
+                    notice_name = str(item.get("HOUSE_NM") or item.get("houseNm") or "").strip()
+                    notice_address = str(item.get("HSSPLY_ADRES") or item.get("hssplyAdres") or "").strip()
+                    candidate_name_key = _applyhome_match_key(notice_name)
+                    if _applyhome_match_key(notice_address) != address_key or candidate_name_key != name_key:
+                        continue
+                    notice_id = str(
+                        item.get("HOUSE_MANAGE_NO") or item.get("houseManageNo")
+                        or item.get("PBLANC_NO") or item.get("pblancNo") or ""
+                    ).strip()[:100]
+                    matches.append({
+                        "status": "verified",
+                        "notice_id": notice_id or None,
+                        "notice_name": notice_name[:200] or None,
+                    })
+                total = int(payload.get("totalCount") or 0)
+                if len(items) < 1000 or (total and page * 1000 >= total):
+                    break
+                page += 1
+            else:
+                return {"status": "error", "error_code": "result_too_large"}
+        unique_matches = {
+            (match.get("notice_id"), match.get("notice_name")): match
+            for match in matches
+        }
+        if len(unique_matches) == 1:
+            return next(iter(unique_matches.values()))
+        return {"status": "unverified"}
+    except requests.Timeout:
+        return {"status": "error", "error_code": "timeout"}
+    except (requests.RequestException, ValueError, TypeError):
+        return {"status": "error", "error_code": "provider_error"}
+
+
+def _save_applyhome_check(table, row_id, result, project_id=None):
+    if table not in ("presale_projects", "presale_applications"):
+        raise ValueError("invalid presale table")
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""UPDATE {table} SET applyhome_status=%s,applyhome_notice_id=%s,
+                applyhome_notice_name=%s,applyhome_checked_at=NOW(),applyhome_error_code=%s,
+                updated_at=NOW() WHERE id=%s""",
+            [result["status"], result.get("notice_id"), result.get("notice_name"),
+             result.get("error_code"), row_id],
+        )
+        if table == "presale_applications" and project_id:
+            cur.execute(
+                """UPDATE presale_projects SET applyhome_status=%s,applyhome_notice_id=%s,
+                   applyhome_notice_name=%s,applyhome_checked_at=NOW(),applyhome_error_code=%s,
+                   updated_at=NOW() WHERE id=%s""",
+                [result["status"], result.get("notice_id"), result.get("notice_name"),
+                 result.get("error_code"), project_id],
+            )
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
 
 
 @app.route("/api/stats/presale")
@@ -31951,7 +32049,7 @@ def create_presale_application():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""SELECT building_name,road_address FROM master_buildings
+        cur.execute("""SELECT building_name,road_address,lodging_type FROM master_buildings
                        WHERE id=%s AND building_status IN ('허가','착공')
                          AND NULLIF(use_apr_day,'') IS NULL FOR UPDATE""", [building_id])
         building = cur.fetchone()
@@ -31974,8 +32072,9 @@ def create_presale_application():
             "contact_phone,contact_email,homepage_url,evidence_object_key,evidence_filename,"
             "banner_object_key,banner_filename,consent_version,consented_at"
         )
+        project_type = "tourist" if building.get("lodging_type") == "관광" else ("living" if building.get("lodging_type") == "생활" else "mixed")
         values = [
-            building_id, title[:160], "presale", "mixed", company_name, applicant_role,
+            building_id, title[:160], "presale", project_type, company_name, applicant_role,
             contact_name, contact_phone, email, homepage_url, evidence["key"], evidence["filename"],
             banner["key"] if banner else None, banner["filename"] if banner else None,
             _PRESALE_APPLICATION_CONSENT_VERSION,
@@ -32003,6 +32102,11 @@ def create_presale_application():
         cur.close()
         conn.close()
     _send_presale_application_email(email, company_name, "received", application_id=application_id)
+    applyhome_result = _check_applyhome(building.get("building_name"), building.get("road_address"), project_type)
+    try:
+        _save_applyhome_check("presale_applications", application_id, applyhome_result)
+    except Exception:
+        app.logger.exception("청약홈 대조 상태 저장 실패 (%s)", application_id)
     return jsonify({"ok": True, "application_id": application_id,
                     "message": "신청이 접수되었습니다. 검토 결과는 이메일로 안내드립니다."}), 201
 
@@ -32086,7 +32190,7 @@ def admin_presale_application_review(application_id):
                 return jsonify({"ok": False, "message": "현재 분양 대상 준공 전 건물이 아닙니다."}), 409
             project_data = {
                 "status": "published", "publication_start_at": datetime.now(timezone.utc),
-                "publication_end_at": None, "project_status": "presale", "project_type": "mixed",
+                "publication_end_at": None, "project_status": "presale", "project_type": row["project_type"],
                 "title": str(building.get("building_name") or row["company_name"] or "분양 안내")[:160],
                 "summary": f"{row['company_name']} 분양 안내",
                 "company_name": row["company_name"], "contact_name": row["contact_name"],
@@ -32100,6 +32204,13 @@ def admin_presale_application_review(application_id):
                         [row["master_building_id"]] + [fields[x] for x in columns] +
                         [session.get("admin_user_id"), session.get("admin_user_id")])
             project_id = cur.fetchone()["id"]
+            cur.execute("""UPDATE presale_projects SET
+                           applyhome_status=%s,applyhome_notice_id=%s,applyhome_notice_name=%s,
+                           applyhome_checked_at=%s,applyhome_error_code=%s
+                           WHERE id=%s""",
+                        [row.get("applyhome_status") or "unverified", row.get("applyhome_notice_id"),
+                         row.get("applyhome_notice_name"), row.get("applyhome_checked_at"),
+                         row.get("applyhome_error_code"), project_id])
             cur.execute("""UPDATE presale_applications
                            SET status='approved',project_id=%s,reject_reason=NULL,reviewed_at=NOW(),
                                reviewed_by=%s,updated_at=NOW() WHERE id=%s""",
@@ -32168,6 +32279,25 @@ def admin_presale_eligible_buildings():
           ORDER BY b.id DESC LIMIT 100""",[q,q,q])
         return jsonify({"ok":True,"buildings":[dict(r) for r in cur.fetchall()]})
     finally: cur.close();conn.close()
+
+
+@app.route("/api/admin/presale/applications/<int:application_id>/applyhome-check", methods=["POST"])
+@require_admin
+@limiter.limit("10 per minute")
+def admin_presale_application_applyhome_check(application_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT a.id,a.project_id,a.project_type,b.building_name,b.road_address
+                       FROM presale_applications a JOIN master_buildings b ON b.id=a.master_building_id
+                       WHERE a.id=%s""", [application_id])
+        row = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not row:
+        return jsonify({"ok": False, "message": "신청을 찾을 수 없습니다."}), 404
+    result = _check_applyhome(row["building_name"], row["road_address"], row["project_type"])
+    _save_applyhome_check("presale_applications", application_id, result, project_id=row.get("project_id"))
+    return jsonify({"ok": True, "applyhome_status": result["status"]})
 
 
 @app.route("/api/admin/presale/projects", methods=["GET","POST"])

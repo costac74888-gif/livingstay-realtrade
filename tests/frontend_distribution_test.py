@@ -127,7 +127,8 @@ def main() -> None:
     presale_apply = client.get("/apply/presale?building=1")
     if (
         presale_apply.status_code != 200
-        or "분양 정보 등록 안내" not in presale_apply.get_data(as_text=True)
+        or "분양사 등록신청" not in presale_apply.get_data(as_text=True)
+        or 'id="presaleApplicationForm"' not in presale_apply.get_data(as_text=True)
         or f"/static/dist/{release_id}/js/inline-apply_presale-" not in presale_apply.get_data(as_text=True)
     ):
         fail("배포 모드 분양 등록 안내 화면이 현재 릴리스에서 정상 제공되지 않음")

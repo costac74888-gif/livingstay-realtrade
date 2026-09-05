@@ -12,13 +12,16 @@ class PresaleFeatureContractTests(unittest.TestCase):
         cls.db = Path("db.py").read_text(encoding="utf-8")
         cls.storage = Path("storage_util.py").read_text(encoding="utf-8")
         cls.start = Path("scripts/start-prod.sh").read_text(encoding="utf-8")
+        cls.ensure = Path("scripts/ensure_presale_schema.py").read_text(encoding="utf-8")
 
     def test_schema_and_production_boot_ensure_presale_tables(self):
-        self.assertIn('SCHEMA_VERSION = "2026-09-05-09"', self.db)
+        self.assertIn('SCHEMA_VERSION = "2026-09-05-10"', self.db)
         for table in ("presale_projects", "presale_promotions", "presale_applications", "presale_audit_log"):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table}", self.db)
         self.assertIn("ensure_presale_schema.py", self.start)
         self.assertIn("ADD COLUMN IF NOT EXISTS remaining_units", self.db)
+        self.assertIn("ADD COLUMN IF NOT EXISTS applyhome_status", self.ensure)
+        self.assertIn("presale_applications_applyhome_status_check", self.ensure)
         self.assertIn("NOT VALID", self.db)
 
     def test_registration_cta_has_a_real_page(self):
@@ -126,6 +129,54 @@ class PresaleFeatureContractTests(unittest.TestCase):
         self.assertNotIn("contact_phone", safe)
         self.assertNotIn("editorial_body", safe)
         self.assertNotIn("created_by", safe)
+        self.assertFalse(safe["applyhome_verified"])
+        verified = server._presale_public_project({"applyhome_status": "verified"})
+        self.assertTrue(verified["applyhome_verified"])
+        self.assertNotIn("applyhome_notice_id", verified)
+        self.assertNotIn("applyhome_error_code", verified)
+
+    def test_applyhome_states_and_approval_are_independent(self):
+        for status in ("verified", "unverified", "not_applicable", "error"):
+            self.assertIn(status, self.db)
+        review = self.app[self.app.index("def admin_presale_application_review"):
+                          self.app.index("def admin_presale_application_notify")]
+        self.assertNotIn('applyhome_status"] != "verified"', review)
+        self.assertIn("row.get(\"applyhome_status\") or \"unverified\"", review)
+        self.assertIn("serviceKey", self.app)
+        self.assertNotIn('result["serviceKey"]', self.app)
+
+    def test_applyhome_matching_requires_exact_address_and_rejects_ambiguity(self):
+        os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
+        os.environ["DATA_GO_KR_BROKER_API_KEY"] = "test-key"
+        import app as server
+        class Response:
+            def __init__(self, items): self.items = items
+            def raise_for_status(self): pass
+            def json(self): return {"data": self.items, "totalCount": len(self.items)}
+        original = server.requests.get
+        try:
+            server.requests.get = lambda *args, **kwargs: Response([
+                {"HOUSE_NM": "같은 이름", "HSSPLY_ADRES": "다른 주소", "HOUSE_MANAGE_NO": "wrong"}
+            ] if args[0].endswith("getAPTLttotPblancDetail") else [])
+            self.assertEqual(server._check_applyhome("같은 이름", "서울시 정확로 1")["status"], "unverified")
+            server.requests.get = lambda *args, **kwargs: Response([
+                {"HOUSE_NM": "정확 단지", "HSSPLY_ADRES": "서울시 정확로 1", "HOUSE_MANAGE_NO": "ok"}
+            ] if args[0].endswith("getAPTLttotPblancDetail") else [])
+            result = server._check_applyhome("정확 단지", "서울시 정확로 1")
+            self.assertEqual(result["status"], "verified")
+            self.assertEqual(result["notice_id"], "ok")
+            server.requests.get = lambda *args, **kwargs: Response([
+                {"HOUSE_NM": "다른 단지", "HSSPLY_ADRES": "서울시 정확로 1", "HOUSE_MANAGE_NO": "wrong"}
+            ] if args[0].endswith("getAPTLttotPblancDetail") else [])
+            self.assertEqual(server._check_applyhome("정확 단지", "서울시 정확로 1")["status"], "unverified")
+            server.requests.get = lambda *args, **kwargs: Response([
+                {"HOUSE_NM": "후보 A", "HSSPLY_ADRES": "서울시 정확로 1"},
+                {"HOUSE_NM": "후보 B", "HSSPLY_ADRES": "서울시 정확로 1"},
+            ] if args[0].endswith("getAPTLttotPblancDetail") else [])
+            self.assertEqual(server._check_applyhome("다른 이름", "서울시 정확로 1")["status"], "unverified")
+        finally:
+            server.requests.get = original
+            os.environ.pop("DATA_GO_KR_BROKER_API_KEY", None)
 
     def test_safe_url_rejects_private_local_and_credentials(self):
         os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
