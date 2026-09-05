@@ -444,6 +444,170 @@ class CampingSyncTests(unittest.TestCase):
                 ):
                     sync_lodgings._fetch_camping_page("secret", 1, 100)
 
+    def test_camping_image_urls_merge_both_fields_dedupe_and_cap(self):
+        response = mock.Mock()
+        response.json.return_value = {
+            "response": {"header": {"resultCode": "0000"}, "body": {"items": {"item": [
+                {"imageUrl": "https://one", "imageUrl2": "https://two"},
+                {"imageUrl": "https://one", "imageUrl2": "https://three"},
+                *[
+                    {"imageUrl": f"https://image-{number}"}
+                    for number in range(4, 15)
+                ],
+            ]}}}
+        }
+        with mock.patch("sync_lodgings.requests.get", return_value=response):
+            urls = sync_lodgings._fetch_camping_image_urls(
+                "secret", "7", "https://representative"
+            )
+        self.assertEqual(
+            urls,
+            ["https://representative", "https://one", "https://two",
+             "https://three", "https://image-4", "https://image-5",
+             "https://image-6", "https://image-7", "https://image-8",
+             "https://image-9"],
+        )
+
+    def test_camping_image_urls_reject_malformed_response(self):
+        response = mock.Mock()
+        response.json.return_value = {
+            "response": {
+                "header": {"resultCode": "0000"},
+                "body": {"items": "bad"},
+            }
+        }
+        with (
+            mock.patch("sync_lodgings.requests.get", return_value=response),
+            self.assertRaisesRegex(
+                sync_lodgings.CampingResponseValidationError, "items가 객체"
+            ),
+        ):
+            sync_lodgings._fetch_camping_image_urls("secret", "7")
+
+    def test_camping_image_only_cap_keeps_next_row_checkpoint(self):
+        conn = mock.Mock()
+        cursor = mock.Mock()
+        conn.cursor.return_value = cursor
+        cursor.fetchall.return_value = [
+            {"id": 11, "permit_number": "CAMPING:one",
+             "camping_first_image_url": "https://one"},
+            {"id": 12, "permit_number": "CAMPING:two",
+             "camping_first_image_url": "https://two"},
+        ]
+        with (
+            mock.patch.dict(
+                sync_lodgings.os.environ,
+                {sync_lodgings.CAMPING_SERVICE_KEY_ENV: "secret"},
+            ),
+            mock.patch.object(sync_lodgings, "get_conn", return_value=conn),
+            mock.patch.object(
+                sync_lodgings, "_load_camping_image_progress",
+                return_value={"last_id": 0},
+            ),
+            mock.patch.object(sync_lodgings, "_daily_calls_today", return_value=0),
+            mock.patch.object(
+                sync_lodgings,
+                "_reserve_camping_call",
+                side_effect=[1, sync_lodgings._CampingDailyCapReached()],
+            ),
+            mock.patch.object(
+                sync_lodgings, "_fetch_camping_image_urls",
+                return_value=(["https://one", "https://image"], 1),
+            ),
+            mock.patch.object(sync_lodgings, "_save_camping_image_progress") as save,
+        ):
+            completed, counters, calls = sync_lodgings.sync_camping_images(
+                sleep_sec=0, max_calls=1
+            )
+        self.assertFalse(completed)
+        self.assertEqual(counters, {"updated": 1, "skipped": 0, "failed": 0})
+        self.assertEqual(calls, 1)
+        save.assert_called_once_with(cursor, conn, 11)
+        update = next(
+            call for call in cursor.execute.call_args_list
+            if "UPDATE lodging_registry SET camping_image_urls" in call.args[0]
+        )
+        self.assertIn("camping_image_urls=%s::jsonb", update.args[0])
+        self.assertEqual(update.args[1][0], '["https://one", "https://image"]')
+
+    def test_camping_image_empty_response_preserves_value_and_advances(self):
+        conn = mock.Mock()
+        cursor = mock.Mock()
+        conn.cursor.return_value = cursor
+        cursor.fetchall.return_value = [{
+            "id": 11, "permit_number": "CAMPING:one",
+            "camping_first_image_url": "https://representative",
+            "camping_image_urls": ["https://representative", "https://old-extra"],
+        }]
+        with (
+            mock.patch.dict(
+                sync_lodgings.os.environ,
+                {sync_lodgings.CAMPING_SERVICE_KEY_ENV: "secret"},
+            ),
+            mock.patch.object(sync_lodgings, "get_conn", return_value=conn),
+            mock.patch.object(
+                sync_lodgings, "_load_camping_image_progress",
+                return_value={"last_id": 0},
+            ),
+            mock.patch.object(sync_lodgings, "_daily_calls_today", return_value=0),
+            mock.patch.object(sync_lodgings, "_reserve_camping_call", return_value=1),
+            mock.patch.object(
+                sync_lodgings,
+                "_fetch_camping_image_urls",
+                return_value=(["https://representative"], 0),
+            ),
+            mock.patch.object(sync_lodgings, "_save_camping_image_progress") as save,
+            mock.patch.object(sync_lodgings, "_clear_camping_image_progress"),
+        ):
+            completed, counters, _ = sync_lodgings.sync_camping_images(
+                sleep_sec=0, max_calls=2
+            )
+        self.assertTrue(completed)
+        self.assertEqual(counters, {"updated": 0, "skipped": 1, "failed": 0})
+        save.assert_called_once_with(cursor, conn, 11)
+        sql = "\n".join(call.args[0] for call in cursor.execute.call_args_list)
+        self.assertNotIn("UPDATE lodging_registry SET camping_image_urls", sql)
+
+    def test_camping_image_query_excludes_legacy_colon_keys(self):
+        conn = mock.Mock()
+        cursor = mock.Mock()
+        conn.cursor.return_value = cursor
+        cursor.fetchall.return_value = []
+        with (
+            mock.patch.dict(
+                sync_lodgings.os.environ,
+                {sync_lodgings.CAMPING_SERVICE_KEY_ENV: "secret"},
+            ),
+            mock.patch.object(sync_lodgings, "get_conn", return_value=conn),
+            mock.patch.object(
+                sync_lodgings, "_load_camping_image_progress",
+                return_value={"last_id": 0},
+            ),
+            mock.patch.object(sync_lodgings, "_daily_calls_today", return_value=0),
+            mock.patch.object(sync_lodgings, "_clear_camping_image_progress"),
+        ):
+            sync_lodgings.sync_camping_images(sleep_sec=0)
+        select_call = next(
+            call for call in cursor.execute.call_args_list
+            if "FROM lodging_registry" in call.args[0]
+        )
+        self.assertIn(
+            "permit_number NOT LIKE 'CAMPING:%%:%%'",
+            select_call.args[0],
+        )
+
+    def test_regular_camping_upsert_preserves_enriched_image_array(self):
+        cursor = mock.Mock()
+        cursor.fetchone.return_value = {"id": 1, "is_new": False}
+        data = importer.parse_api_item({
+            "contentId": "217764", "facltNm": "보존 테스트", "manageSttus": "운영",
+            "firstImageUrl": "https://representative",
+        })
+        importer.common._upsert_registry(cursor, data)
+        sql = cursor.execute.call_args.args[0]
+        self.assertIn("jsonb_array_length(lodging_registry.camping_image_urls) > 1", sql)
+        self.assertIn("THEN lodging_registry.camping_image_urls", sql)
+
     def test_camping_sync_skips_bad_row_and_finishes_valid_first_page(self):
         conn = mock.Mock()
         conn.cursor.return_value = mock.Mock()
@@ -478,7 +642,9 @@ class CampingSyncTests(unittest.TestCase):
                 sync_lodgings, "_daily_calls_today", return_value=0
             ),
             mock.patch.object(
-                sync_lodgings, "_bump_daily_calls", return_value=1
+                sync_lodgings,
+                "_reserve_camping_call",
+                side_effect=[1, sync_lodgings._CampingDailyCapReached()],
             ),
             mock.patch.object(
                 sync_lodgings,
@@ -522,7 +688,7 @@ class CampingSyncTests(unittest.TestCase):
                 sync_lodgings, "_daily_calls_today", return_value=0
             ),
             mock.patch.object(
-                sync_lodgings, "_bump_daily_calls", return_value=1
+                sync_lodgings, "_reserve_camping_call", return_value=1
             ),
             mock.patch.object(
                 sync_lodgings.camping_importer.common,
@@ -596,7 +762,9 @@ class CampingSyncTests(unittest.TestCase):
                 sync_lodgings, "_daily_calls_today", return_value=0
             ),
             mock.patch.object(
-                sync_lodgings, "_bump_daily_calls", return_value=1
+                sync_lodgings,
+                "_reserve_camping_call",
+                side_effect=[1, sync_lodgings._CampingDailyCapReached()],
             ),
             mock.patch.object(
                 sync_lodgings,
@@ -707,6 +875,33 @@ class CampingSyncTests(unittest.TestCase):
         self.assertFalse(writes[-1]["completed"])
         self.assertTrue(writes[-1]["retryable"])
         self.assertIn("체크포인트부터 재시도", writes[-1]["error"])
+
+    def test_image_runner_uses_camping_status_ownership_lifecycle(self):
+        args = SimpleNamespace(
+            status_key="camping-images-status",
+            sleep=0,
+            max_calls=None,
+            reset=False,
+            dry_run=False,
+        )
+        running = {"state": "running", "run_id": "images-run"}
+        writes = []
+        with (
+            mock.patch.object(
+                sync_lodgings, "_read_status",
+                side_effect=[running, running.copy()],
+            ),
+            mock.patch.object(sync_lodgings, "_write_status",
+                              side_effect=lambda *values: writes.append(values)),
+            mock.patch.object(
+                sync_lodgings, "sync_camping_images",
+                return_value=(True, {"updated": 1, "skipped": 0, "failed": 0}, 1),
+            ) as sync,
+        ):
+            sync_lodgings._run_camping_images(args)
+        self.assertEqual(sync.call_args.kwargs["run_id"], "images-run")
+        self.assertEqual(writes[-1][2], "images-run")
+        self.assertEqual(writes[-1][1]["state"], "done")
 
 
 if __name__ == "__main__":

@@ -387,7 +387,12 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             camping_animal_policy = EXCLUDED.camping_animal_policy,
             camping_reservation_url = EXCLUDED.camping_reservation_url,
             camping_first_image_url = EXCLUDED.camping_first_image_url,
-            camping_image_urls = EXCLUDED.camping_image_urls,
+            camping_image_urls = CASE
+                WHEN jsonb_typeof(lodging_registry.camping_image_urls) = 'array'
+                 AND jsonb_array_length(lodging_registry.camping_image_urls) > 1
+                THEN lodging_registry.camping_image_urls
+                ELSE EXCLUDED.camping_image_urls
+            END,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,

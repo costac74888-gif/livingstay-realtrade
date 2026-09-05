@@ -64,6 +64,7 @@ CAMPING_NUM_ROWS_DEFAULT = 100
 CAMPING_DAILY_CALLS_META_KEY = "camping_daily_calls"
 CAMPING_PROGRESS_META_KEY = "camping_sync_progress"
 CAMPING_LAST_SYNC_META_KEY = "camping_last_sync"
+CAMPING_IMAGE_PROGRESS_META_KEY = "camping_image_sync_progress"
 _INTERNAL_STATS_REFRESH_URL = os.environ.get(
     "MASTER_STATS_REFRESH_URL",
     "http://127.0.0.1:5000/api/admin/stats/refresh",
@@ -157,6 +158,38 @@ def _bump_daily_calls(cur, conn, meta_key):
     count = cur.fetchone()["count"]
     conn.commit()
     return count
+
+
+def _reserve_camping_call(cur, conn, max_calls):
+    """Atomically reserve one GoCamping request before it is sent."""
+    today = korea_today()
+    fresh = json.dumps({"date": today, "count": 1})
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET
+            value = CASE
+                WHEN (app_meta.value::jsonb ->> 'date') = %s
+                THEN jsonb_build_object(
+                    'date', %s,
+                    'count', COALESCE((app_meta.value::jsonb ->> 'count')::int, 0) + 1
+                )::text
+                ELSE EXCLUDED.value
+            END,
+            updated_at = NOW()
+        WHERE CASE
+            WHEN (app_meta.value::jsonb ->> 'date') = %s
+            THEN COALESCE((app_meta.value::jsonb ->> 'count')::int, 0)
+            ELSE 0
+        END < %s
+        RETURNING (value::jsonb ->> 'count')::int AS count
+    """, (
+        CAMPING_DAILY_CALLS_META_KEY, fresh, today, today, today, max_calls,
+    ))
+    row = cur.fetchone()
+    conn.commit()
+    if not row:
+        raise _CampingDailyCapReached
+    return row["count"]
 
 
 def _load_progress(cur):
@@ -932,10 +965,14 @@ def _fetch_camping_page(key, page, num_rows):
     return items, total
 
 
-def _fetch_camping_image_urls(key, content_id, first_image_url=None):
+def _fetch_camping_image_urls(
+    key, content_id, first_image_url=None, *, include_api_image_count=False
+):
     """고캠핑 imageList에서 대표사진을 포함한 공개 이미지 URL을 중복 없이 읽는다."""
     urls = []
-    if first_image_url:
+    if first_image_url and str(first_image_url).strip().lower().startswith(
+        ("http://", "https://")
+    ):
         urls.append(str(first_image_url).strip())
     response = requests.get(
         CAMPING_IMAGE_API_URL,
@@ -947,15 +984,181 @@ def _fetch_camping_image_urls(key, content_id, first_image_url=None):
     )
     response.raise_for_status()
     data = response.json()
-    items = (((data.get("response") or {}).get("body") or {}).get("items") or {})
-    items = items.get("item", []) if isinstance(items, Mapping) else []
+    if not isinstance(data, Mapping):
+        raise CampingResponseValidationError("고캠핑 이미지 응답 최상위 JSON이 객체가 아닙니다.")
+    response_data = data.get("response")
+    if not isinstance(response_data, Mapping):
+        raise CampingResponseValidationError("고캠핑 이미지 응답 response가 객체가 아닙니다.")
+    header = response_data.get("header")
+    if not isinstance(header, Mapping):
+        raise CampingResponseValidationError(
+            "고캠핑 이미지 응답 response.header가 객체가 아닙니다."
+        )
+    code = str(header.get("resultCode", "")).strip()
+    if code not in ("0000", "00", "0", ""):
+        raise RuntimeError(
+            f"고캠핑 이미지 API 오류 resultCode={code} "
+            f"msg={header.get('resultMsg')}"
+        )
+    body = response_data.get("body")
+    if not isinstance(body, Mapping):
+        raise CampingResponseValidationError("고캠핑 이미지 응답 response.body가 객체가 아닙니다.")
+    items_container = body.get("items")
+    if isinstance(items_container, Mapping):
+        if "item" not in items_container:
+            raise CampingResponseValidationError(
+                "고캠핑 이미지 응답 response.body.items.item 필드가 없습니다."
+            )
+        items = items_container["item"]
+    elif isinstance(items_container, list):
+        # Empty list is a valid no-image response from some API gateways.
+        items = items_container
+    elif items_container is None:
+        items = []
+    else:
+        raise CampingResponseValidationError(
+            "고캠핑 이미지 응답 response.body.items가 객체가 아닙니다."
+        )
     if isinstance(items, Mapping):
         items = [items]
-    for image in items if isinstance(items, list) else []:
-        url = str(image.get("imageUrl") or image.get("imageUrl2") or "").strip()
-        if url.lower().startswith(("http://", "https://")) and url not in urls:
-            urls.append(url)
-    return urls
+    if not isinstance(items, list):
+        raise CampingResponseValidationError(
+            "고캠핑 이미지 응답 response.body.items.item이 목록 또는 객체가 아닙니다."
+        )
+    api_image_count = 0
+    for image in items:
+        if not isinstance(image, Mapping):
+            raise CampingResponseValidationError(
+                "고캠핑 이미지 응답 항목이 객체가 아닙니다."
+            )
+        for field in ("imageUrl", "imageUrl2"):
+            url = str(image.get(field) or "").strip()
+            if url.lower().startswith(("http://", "https://")):
+                api_image_count += 1
+                if url not in urls:
+                    urls.append(url)
+                    if len(urls) == 10:
+                        return (urls, api_image_count) if include_api_image_count else urls
+    return (urls[:10], api_image_count) if include_api_image_count else urls[:10]
+
+
+def _load_camping_image_progress(cur):
+    cur.execute(
+        "SELECT value FROM app_meta WHERE key=%s", (CAMPING_IMAGE_PROGRESS_META_KEY,)
+    )
+    row = cur.fetchone()
+    try:
+        value = json.loads(row["value"]) if row and row.get("value") else {}
+        return {"last_id": max(0, int(value.get("last_id", 0)))}
+    except (TypeError, ValueError):
+        return {"last_id": 0}
+
+
+def _save_camping_image_progress(cur, conn, last_id):
+    payload = json.dumps({
+        "last_id": int(last_id),
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    cur.execute("""
+        INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+        ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+    """, (CAMPING_IMAGE_PROGRESS_META_KEY, payload))
+    conn.commit()
+
+
+def _clear_camping_image_progress(cur, conn):
+    cur.execute("DELETE FROM app_meta WHERE key=%s", (CAMPING_IMAGE_PROGRESS_META_KEY,))
+    conn.commit()
+
+
+def sync_camping_images(
+    sleep_sec=SLEEP_DEFAULT, max_calls=CAMPING_MAX_DAILY_CALLS, reset=False,
+    dry_run=False, status_key=None, run_id=None,
+):
+    """기존 CAMPING 행을 id 순서로 imageList 한 번씩 보강한다.
+
+    basedList 동기화와 호출량 버킷을 공유하되, 체크포인트는 이미지 작업에만
+    독립적으로 저장한다. 한 행의 실패도 다음 행 진행을 막지 않는다.
+    """
+    key = os.environ.get(CAMPING_SERVICE_KEY_ENV, "")
+    if not key:
+        raise RuntimeError(f"환경변수 {CAMPING_SERVICE_KEY_ENV} 가 설정되어 있지 않습니다.")
+    if max_calls < 1:
+        raise ValueError("max_calls는 1 이상이어야 합니다.")
+    max_calls = min(max_calls, CAMPING_MAX_DAILY_CALLS)
+    conn = get_conn()
+    cur = conn.cursor()
+    counters = {"updated": 0, "skipped": 0, "failed": 0}
+    try:
+        if reset and not dry_run:
+            _clear_camping_image_progress(cur, conn)
+        progress = _load_camping_image_progress(cur)
+        last_id = 0 if (reset and dry_run) else progress["last_id"]
+        calls_today = _daily_calls_today(cur, CAMPING_DAILY_CALLS_META_KEY)
+        cur.execute("""
+            SELECT id, permit_number, camping_first_image_url, camping_image_urls
+              FROM lodging_registry
+             WHERE permit_number LIKE 'CAMPING:%%'
+               AND permit_number NOT LIKE 'CAMPING:%%:%%'
+               AND id > %s
+             ORDER BY id ASC
+        """, (last_id,))
+        rows = cur.fetchall()
+        for row in rows:
+            if status_key and run_id and not _still_owner(cur, status_key, run_id):
+                raise RuntimeError("캠핑 이미지 동기화 소유권 상실(다른 실행이 시작됨)")
+            content_id = str(row["permit_number"])[len("CAMPING:"):]
+            # Commit the shared daily counter before every real network attempt.
+            # _bump_daily_calls is an UPSERT increment, so concurrent workers
+            # cannot lose an attempt (the advisory lock normally serializes them).
+            try:
+                calls_today = _reserve_camping_call(cur, conn, max_calls)
+            except _CampingDailyCapReached:
+                print(f"[camping-images] 일일 소프트 캡({max_calls}건) 도달 — id {row['id']}부터 재시도합니다.")
+                return False, counters, calls_today
+            try:
+                urls, api_image_count = _fetch_camping_image_urls(
+                    key, content_id, row.get("camping_first_image_url"),
+                    include_api_image_count=True,
+                )
+                if not dry_run:
+                    if api_image_count and urls:
+                        cur.execute(
+                            "UPDATE lodging_registry "
+                            "SET camping_image_urls=%s::jsonb WHERE id=%s",
+                            (json.dumps(urls, ensure_ascii=False), row["id"]),
+                        )
+                        conn.commit()
+                        counters["updated"] += 1
+                    else:
+                        # A successful but empty imageList must not erase an
+                        # existing representative/multi-image value.
+                        counters["skipped"] += 1
+                    _save_camping_image_progress(cur, conn, row["id"])
+                elif api_image_count and urls:
+                    counters["updated"] += 1
+                else:
+                    counters["skipped"] += 1
+            except Exception as exc:
+                counters["failed"] += 1
+                print(
+                    f"[camping-images] id {row['id']} imageList 조회 실패: "
+                    f"{_redact(str(exc))[:160]}"
+                )
+                # A failed request deliberately does not write an empty value.
+                if not dry_run:
+                    _save_camping_image_progress(cur, conn, row["id"])
+            if sleep_sec:
+                time.sleep(sleep_sec)
+        if not dry_run:
+            _clear_camping_image_progress(cur, conn)
+        return True, counters, calls_today
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 def _fetch_camping_page_retry(
@@ -1414,6 +1617,7 @@ def sync_camping(
         )
     if num_rows < 1 or max_calls < 1:
         raise ValueError("num_rows와 max_calls는 1 이상이어야 합니다.")
+    max_calls = min(max_calls, CAMPING_MAX_DAILY_CALLS)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -1448,22 +1652,11 @@ def sync_camping(
 
         def _count_attempt():
             nonlocal calls_today
-            if calls_today >= max_calls:
-                raise _CampingDailyCapReached
-            calls_today = _bump_daily_calls(
-                cur, conn, CAMPING_DAILY_CALLS_META_KEY
-            )
+            calls_today = _reserve_camping_call(cur, conn, max_calls)
 
         while True:
             if status_key and run_id and not _still_owner(cur, status_key, run_id):
                 raise RuntimeError("캠핑 동기화 소유권 상실(다른 실행이 시작됨)")
-            if calls_today >= max_calls:
-                print(
-                    f"[camping] 일일 소프트 캡({max_calls}건) 도달 — "
-                    f"다음 페이지 {page}부터 이어서 실행합니다."
-                )
-                return False, counters, calls_today
-
             print(
                 f"[camping] 페이지 {page} 호출 "
                 f"(오늘 {calls_today + 1}/{max_calls})"
@@ -1541,17 +1734,8 @@ def sync_camping(
                         f"{reason}"
                     )
                     continue
-                content_id = item.get("contentId") or item.get("contentid")
-                if content_id:
-                    try:
-                        data["camping_image_urls"] = _fetch_camping_image_urls(
-                            key, content_id, data.get("camping_first_image_url")
-                        )
-                    except Exception as exc:
-                        print(
-                            f"[camping] {content_id} imageList 조회 실패: "
-                            f"{_redact(str(exc))[:160]}"
-                        )
+                # basedList의 대표 이미지는 parse_api_item이 보존한다. imageList는
+                # 별도 체크포인트 작업에서만 호출해 목록 동기화의 쿼터 우회를 막는다.
                 processed += 1
                 if dry_run:
                     if sample_count < camping_importer.DRY_RUN_SAMPLE_LIMIT:
@@ -1808,6 +1992,9 @@ def _run(args):
     if bool(getattr(args, "camping", False)):
         _run_camping(args)
         return
+    if bool(getattr(args, "update_images_only", False)):
+        _run_camping_images(args)
+        return
 
     run_id = None
     stop_beat = threading.Event()
@@ -1995,6 +2182,74 @@ def _run_camping(args):
         sys.exit(1)
 
 
+def _run_camping_images(args):
+    """CLI/status wrapper for the resumable image-only camping enrichment."""
+    run_id = None
+    stop_beat = threading.Event()
+    if args.status_key:
+        status = _read_status(args.status_key)
+        if not status or status.get("state") != "running":
+            print("[camping-images] running 상태가 아니므로 종료합니다.")
+            return
+        run_id = status.get("run_id") or ""
+
+        def _beat():
+            while not stop_beat.wait(HEARTBEAT_SEC):
+                try:
+                    _touch(args.status_key, run_id)
+                except Exception:
+                    pass
+        threading.Thread(target=_beat, daemon=True).start()
+
+    error = None
+    completed = False
+    counters = {}
+    calls_today = None
+    try:
+        completed, counters, calls_today = sync_camping_images(
+            sleep_sec=args.sleep,
+            max_calls=args.max_calls or CAMPING_MAX_DAILY_CALLS,
+            reset=args.reset,
+            dry_run=args.dry_run,
+            status_key=args.status_key,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        error = _redact(str(exc))[:500]
+        print(f"[camping-images] 실패: {error}")
+    incomplete_reason = None
+    if not error and not completed:
+        incomplete_reason = (
+            "일일 호출 한도에 도달해 캠핑 이미지 동기화가 미완료되었습니다. "
+            "저장된 체크포인트부터 재시도할 수 있습니다."
+        )
+        print(f"[camping-images] 미완료: {incomplete_reason}")
+    if args.status_key:
+        stop_beat.set()
+        status = _read_status(args.status_key) or {}
+        status.update({
+            "state": "failed" if error else ("done" if completed else "partial"),
+            "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "completed": None if error else completed,
+            "counters": counters,
+            "calls_today": calls_today,
+            "dry_run": bool(args.dry_run),
+            "retryable": bool(error or incomplete_reason),
+            "error": error or incomplete_reason,
+        })
+        for attempt in range(3):
+            try:
+                _write_status(args.status_key, status, run_id)
+                break
+            except Exception as exc:
+                print(
+                    f"[camping-images] 상태 저장 실패({attempt + 1}/3): {exc}"
+                )
+                time.sleep(5)
+    if (error or incomplete_reason) and not args.status_key:
+        sys.exit(1)
+
+
 def _main_with_legacy_gate():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-rows", type=int, default=None)
@@ -2005,6 +2260,11 @@ def _main_with_legacy_gate():
         "--camping",
         action="store_true",
         help="한국관광공사 고캠핑 API를 별도 체크포인트로 수집",
+    )
+    parser.add_argument(
+        "--update-images-only",
+        action="store_true",
+        help="기존 CAMPING 행의 imageList URL만 id 순서로 재개 가능한 보강",
     )
     parser.add_argument(
         "--include-camping",
@@ -2036,7 +2296,7 @@ def _main_with_legacy_gate():
 def main():
     # 고캠핑 전용 수집은 승격 완료된 행안부 숙박 원장 수집과 별도 원천이다.
     # 기존 숙박 직접 쓰기 종료 후에도 --camping 백필은 계속 허용한다.
-    if "--camping" in sys.argv[1:]:
+    if "--camping" in sys.argv[1:] or "--update-images-only" in sys.argv[1:]:
         _main_with_legacy_gate()
         return
     with legacy_lodging_writer_gate() as enabled:
