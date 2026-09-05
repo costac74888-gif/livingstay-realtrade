@@ -53,8 +53,9 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
         self.assertIn("homepage_url TEXT", schema)
         self.assertIn("operator_homepage", app_source)
         self.assertIn('or _safe_public_url(web_detail.get("homepage_url"))', app_source)
+        self.assertIn('camping_operator.get("booking_url")', app_source)
         self.assertIn(
-            "or _camping_official_homepage_from_reservation(camping_reservation_url)",
+            'or _safe_public_url(camping_row.get("camping_reservation_url"))',
             app_source,
         )
         self.assertIn("operator_phone", app_source)

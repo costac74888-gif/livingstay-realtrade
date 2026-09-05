@@ -1767,21 +1767,6 @@ def _camping_content_id(camping_row, verified_web_row=None):
     return canonical.group(1) if canonical else None
 
 
-def _camping_official_homepage_from_reservation(reservation_url):
-    """공공·기관 자체 예약사이트만 홈페이지 보조값으로 안전하게 사용한다."""
-    try:
-        parsed = urlparse(str(reservation_url or "").strip())
-    except (TypeError, ValueError):
-        return None
-    hostname = (parsed.hostname or "").lower().rstrip(".")
-    if parsed.scheme not in {"http", "https"} or not hostname:
-        return None
-    if not (hostname.endswith(".go.kr") or hostname.endswith(".or.kr")):
-        return None
-    port = f":{parsed.port}" if parsed.port else ""
-    return f"{parsed.scheme}://{hostname}{port}/"
-
-
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -2281,15 +2266,18 @@ def get_building(building_id):
                 image_urls.append(safe_image_url)
         content_id = _camping_content_id(camping_row, verified_web_row)
         info_url = _gocamping_url_for_content_id(content_id)
-        camping_reservation_url = _safe_public_url(
-            camping_row.get("camping_reservation_url")
-        )
         camping_operator = next(
             (
                 row for row in lodging_operator_rows
                 if row.get("lodging_op_type") == "camping"
             ),
             None,
+        )
+        camping_reservation_url = (
+            _safe_public_url(
+                camping_operator.get("booking_url") if camping_operator else None
+            )
+            or _safe_public_url(camping_row.get("camping_reservation_url"))
         )
         operator_phone = (
             format_phone(camping_operator.get("facility_phone"))
@@ -2327,7 +2315,6 @@ def get_building(building_id):
             "homepage_url": (
                 operator_homepage
                 or _safe_public_url(web_detail.get("homepage_url"))
-                or _camping_official_homepage_from_reservation(camping_reservation_url)
             ),
             "phone": (
                 operator_phone

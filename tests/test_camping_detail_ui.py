@@ -3,7 +3,6 @@ from pathlib import Path
 
 from app import (
     _camping_content_id,
-    _camping_official_homepage_from_reservation,
     _choose_camping_detail_row,
     _choose_verified_camping_web_row,
 )
@@ -69,26 +68,18 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn("def _camping_content_id(camping_row, verified_web_row=None)", self.app_source)
         self.assertIn('r"CAMPING:(\\d+)"', self.app_source)
         self.assertIn("or format_phone(camping_row.get(\"phone\"))", self.app_source)
-        self.assertIn(
-            "_camping_official_homepage_from_reservation(camping_reservation_url)",
-            self.app_source,
-        )
-        self.assertIn('hostname.endswith(".go.kr")', self.app_source)
-        self.assertIn('hostname.endswith(".or.kr")', self.app_source)
         self.assertEqual(
             _camping_content_id({"permit_number": "CAMPING:2185"}),
             "2185",
         )
-        self.assertEqual(
-            _camping_official_homepage_from_reservation(
-                "https://camping.gtdc.or.kr/DZ_reservation/reserCamping_v3.php"
-            ),
-            "https://camping.gtdc.or.kr/",
+        self.assertIn('camping_operator.get("booking_url")', self.app_source)
+        self.assertIn(
+            'or _safe_public_url(camping_row.get("camping_reservation_url"))',
+            self.app_source,
         )
-        self.assertIsNone(
-            _camping_official_homepage_from_reservation(
-                "https://booking.naver.com/booking/3/bizes/123"
-            )
+        self.assertNotIn(
+            "_camping_official_homepage_from_reservation",
+            self.app_source,
         )
 
     def test_camping_booking_does_not_treat_gocamping_guide_as_reservation(self):
