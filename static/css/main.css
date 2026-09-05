@@ -1263,8 +1263,10 @@
 .camp-site-item{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px}
 .camp-site-icon,.facility-icon{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;flex:0 0 25px;font-size:21px;line-height:1}.camp-site-item b{font-size:18px}.camp-site-item small{color:var(--ink-soft)}
 .camp-amenities>span{display:inline-flex;align-items:center;gap:5px}.camp-amenities .facility-icon{width:auto;height:auto;flex-basis:auto;font-size:15px;border:0;padding:0;background:transparent}
-.camp-facts{gap:1px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.camp-facts div{display:flex;flex-direction:column;background:#fff;padding:9px 10px}.camp-facts small{color:var(--ink-soft);margin-bottom:2px}
+.camp-facts{gap:8px;background:transparent;border:0;border-radius:0;overflow:visible}
+.camp-facts div{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 10px;min-width:0}
+.camp-facts div:last-child:nth-child(odd){grid-column:1 / -1}
+.camp-facts small{color:var(--ink-soft);margin-bottom:2px}.camp-facts b{overflow-wrap:anywhere}
 .camp-seasons span{background:#e1f5ee;border-color:#5dcaa5;color:#0f6e56}
 .camp-reservation{display:flex;justify-content:center;margin-top:14px;padding:11px;border-radius:8px;background:#1d9e75;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
 .camp-intro{margin:0 0 13px;color:var(--ink);font-size:12.5px;line-height:1.65;white-space:pre-line}
@@ -1287,6 +1289,21 @@
 }
 .b-source-link:not(.is-disabled):hover{background:#dff4ed}
 .b-source-link.is-disabled{border-color:var(--line);background:#f4f5f6;color:#a0a5aa;cursor:default}
+.b-source-link:not(.is-disabled){cursor:pointer}
+.b-source-link:focus-visible,.operator-banner-cta:focus-visible,.operator-banner-links a:focus-visible,.b-reserve-btn:focus-visible,.b-connect-btn:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.operator-banner{display:flex;align-items:center;gap:11px;padding:12px;border:1px solid #dfd2b9;border-radius:12px;background:linear-gradient(135deg,#fffaf0,#f7f1e7);min-width:0}
+.operator-banner + .operator-banner{margin-top:8px}
+.operator-banner-empty{align-items:flex-start;flex-direction:column;gap:10px}
+.operator-banner-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.operator-banner-copy strong{font-size:12px;color:var(--brass-dark)}
+.operator-banner-copy b{font-size:13px;overflow-wrap:anywhere}
+.operator-banner-copy span{font-size:11px;line-height:1.5;color:var(--ink-soft);overflow-wrap:anywhere}
+.operator-banner-cta{align-self:stretch;display:inline-flex;align-items:center;justify-content:center;padding:8px 11px;border-radius:7px;background:var(--brass);color:#fff;text-decoration:none;font-size:11.5px;font-weight:700;white-space:nowrap}
+.operator-banner-empty .operator-banner-cta{align-self:flex-start}
+.operator-banner-photo,.operator-banner-mark{width:48px;height:48px;flex:0 0 48px;border-radius:9px;object-fit:cover}
+.operator-banner-mark{display:flex;align-items:center;justify-content:center;background:var(--ink);color:#fff;font-size:11px;font-weight:700}
+.operator-banner-links{display:flex;gap:10px;margin-top:4px}
+.operator-banner-links a{color:var(--brass-dark);font-size:11px;font-weight:700;text-decoration:underline;text-underline-offset:2px}
 .b-close-btn{
   flex:0 0 auto; width:34px; height:34px; border-radius:50%;
   display:inline-flex; align-items:center; justify-content:center;
@@ -1492,6 +1509,7 @@
 @media (max-width:480px){
   .b-reservation-bar{align-items:flex-start;padding:10px;}.b-reserve-btn,.b-connect-btn{padding:7px 9px;}
   .b-reservation-bar span{max-width:170px;}
+  .operator-banner{align-items:flex-start}.operator-banner-cta{white-space:normal;text-align:center;max-width:92px}
 }
 
 /* 건물 상세 — 정보/행정운영/금융 표 */

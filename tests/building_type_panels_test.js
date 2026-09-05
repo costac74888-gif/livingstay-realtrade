@@ -6,7 +6,7 @@ function expect(ok, message) { if (!ok) throw new Error(message); }
 
 expect(main.includes('const STRUCTURE_A_TYPES = ["생활", "관광", "일반"]'), "Structure A 유형 목록이 없습니다.");
 expect(main.includes('const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥"]'), "Structure B 유형 목록이 없습니다.");
-expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("airbnb_url")') && main.includes("naverReservationUrl"), "운영자 우선·네이버 보조 예약 URL 우선순위가 없습니다.");
+expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("airbnb_url")') && main.includes("campingReservationUrl"), "운영자 우선·캠핑 예약 URL 보조 우선순위가 없습니다.");
 expect(!main.includes('|| firstValid("gocamping_url")'), "고캠핑 정보 링크가 예약 URL 우선순위에 남아 있습니다.");
 expect(main.includes('data-panel="operations"') && main.includes('data-panel="property"'), "운영정보/부동산정보 탭이 없습니다.");
 expect(main.includes("window.__openBuildingId === Number(id)") && main.includes("_buildingDetailRequestToken === requestToken"), "건물 전환 시 오래된 응답 차단이 없습니다.");
@@ -24,7 +24,7 @@ expect(main.includes("`/lodging-operator/manage${manageType ? `?type=${manageTyp
 expect(main.includes('aria-controls="bOperationsPanel"') && main.includes('role="tabpanel"'), "탭과 패널의 접근성 연결이 없습니다.");
 expect(main.includes("_buildingDetailRequestToken") && main.includes("_isActiveBuilding(id, requestToken)"), "비동기 상세 응답의 요청 세대 차단이 없습니다.");
 expect(main.includes("_buildingTrendRequestSeq") && main.includes("_buildingTxRequestSeq"), "동일 건물의 실거래 재조회 순서 차단이 없습니다.");
-expect(main.includes("b.camping?.reservation_url") && main.includes("b.camping_resve_url") && main.includes("_publicHttpUrl(b.booking_url)"), "네이버 예약 후보의 HTTP(S) 검증 또는 구형 캠핑 URL 호환이 누락됐습니다.");
+expect(main.includes("b.camping?.reservation_url") && main.includes("b.camping_resve_url") && main.includes("safeBookingUrl(b.booking_url)"), "예약 후보의 HTTP(S) 검증 또는 구형 캠핑 URL 호환이 누락됐습니다.");
 expect(!main.includes('const action = op.booking_url'), "시설 운영 파트너 카드에 중복 예약 링크가 남아 있습니다.");
 expect(!main.includes("onclick=\"window.open('${escapeHtml(safeBuildingBookingUrl)}"), "예약 URL이 인라인 JavaScript 문자열에 삽입됩니다.");
 expect(main.includes("return { url, platform }") && !main.includes("return { url: safeUrl(url), platform }"), "공유 범위 밖 URL 함수 호출이 남아 있습니다.");

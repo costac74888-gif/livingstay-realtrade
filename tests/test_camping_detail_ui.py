@@ -45,6 +45,18 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn("`반려동물 동반 ${policy}`", self.main_source)
         self.assertIn('id="bCampInfoLink"', self.main_source)
         self.assertNotIn("캠핑장 예약 페이지 열기 ↗", self.main_source)
+        self.assertIn('infoLink.href = infoUrl', self.main_source)
+        self.assertIn('고캠핑에서 이 캠핑장 상세 보기', self.main_source)
+        self.assertIn('operator-banner-cta', self.main_source)
+        self.assertIn('운영 파트너 등록', self.main_source)
+
+    def test_camping_booking_does_not_treat_gocamping_guide_as_reservation(self):
+        self.assertIn('host.includes("gocamping")', self.main_source)
+        self.assertIn('camping_resve_url', self.main_source)
+        self.assertIn('const infoUrl = _publicHttpUrl(b?.camping?.info_url)', self.main_source)
+
+    def test_odd_facility_count_has_no_placeholder_cell(self):
+        self.assertIn('.camp-facts div:last-child:nth-child(odd)', (ROOT / "static/css/main.css").read_text(encoding="utf-8"))
 
     def test_gocamping_images_are_available_even_with_existing_photos(self):
         self.assertIn('"source": "gocamping"', self.app_source)

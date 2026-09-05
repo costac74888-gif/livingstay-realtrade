@@ -5572,15 +5572,21 @@ function _renderCampingSection(b){
 
   const camp = b.camping || {};
   const infoLink = document.getElementById("bCampInfoLink");
+  // info_url이 있으면 고캠핑의 canonical 상세 페이지를 우선한다.
+  // source_url은 구버전 응답을 위한 호환 fallback으로만 사용한다.
   const infoUrl = _publicHttpUrl(camp.info_url) || _publicHttpUrl(camp.source_url);
   if (infoLink) {
     if (infoUrl) {
       infoLink.href = infoUrl;
+      infoLink.title = "고캠핑에서 이 캠핑장 상세 보기";
+      infoLink.setAttribute("aria-label", "고캠핑에서 이 캠핑장 상세 보기");
       infoLink.classList.remove("is-disabled");
       infoLink.removeAttribute("aria-disabled");
       infoLink.tabIndex = 0;
     } else {
       infoLink.removeAttribute("href");
+      infoLink.removeAttribute("title");
+      infoLink.removeAttribute("aria-label");
       infoLink.classList.add("is-disabled");
       infoLink.setAttribute("aria-disabled", "true");
       infoLink.tabIndex = -1;
@@ -5687,13 +5693,26 @@ function _bookingTarget(b){
     }
     return null;
   };
+  const infoUrl = _publicHttpUrl(b?.camping?.info_url) || _publicHttpUrl(b?.camping?.source_url);
+  const safeBookingUrl = value => {
+    const url = _publicHttpUrl(value);
+    if (!url) return null;
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      // 고캠핑 안내 페이지는 예약 페이지가 아니다. 예약 URL 필드에
+      // 잘못 저장된 경우에도 안내 링크를 예약 버튼으로 노출하지 않는다.
+      if (host.includes("gocamping") || (infoUrl && url === infoUrl)) return null;
+    } catch (_) { return null; }
+    return url;
+  };
   const campingReservationUrl = [
     b.camping?.reservation_url,
     b.camping_resve_url,
-  ].map(_publicHttpUrl).find(Boolean);
+  ].map(safeBookingUrl).find(Boolean);
   const url = firstValid("booking_url")
     || firstValid("airbnb_url")
-    || _publicHttpUrl(b.booking_url)
+    || safeBookingUrl(b.booking_url)
     || campingReservationUrl;
   if (!url) return null;
   const host = new URL(url).hostname.toLowerCase();
@@ -7651,11 +7670,23 @@ function renderBuildingLodgingOperators(items, lodgingType, buildingId){
   if (!items.length) {
     const params = new URLSearchParams({ type: typeMap[lodgingType] });
     if (Number.isInteger(Number(buildingId)) && Number(buildingId) > 0) params.set("building_id", String(buildingId));
-    box.innerHTML = `<div class="side-empty">이 시설 운영자이신가요?<br><a href="/apply/lodging-operator?${params.toString()}">운영 파트너 등록하기</a></div>`;
+    box.innerHTML = `<div class="operator-banner operator-banner-empty">
+      <div class="operator-banner-copy"><strong>이 시설을 운영하고 계신가요?</strong>
+        <span>운영 정보를 직접 알리고 예약 연결을 관리해 보세요.</span></div>
+      <a class="operator-banner-cta" href="/apply/lodging-operator?${params.toString()}">운영 파트너 등록</a>
+    </div>`;
     return;
   }
   box.innerHTML = items.map(op => {
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">${op.photo_src ? `<img src="${escapeHtml(op.photo_src)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;float:right">` : ""}<b>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</b><div>${escapeHtml(op.biz_name || "")}</div>${op.intro_text ? `<div style="font-size:12px;color:var(--ink-soft)">${escapeHtml(op.intro_text)}</div>` : ""}${op.phone ? `<div style="margin-top:6px;display:flex;gap:10px"><a href="tel:${escapeHtml(op.phone)}">전화</a><a href="sms:${escapeHtml(op.phone)}">문자</a></div>` : ""}</div>`;
+    const phone = op.phone ? escapeHtml(op.phone) : "";
+    return `<article class="operator-banner operator-banner-live">
+      ${op.photo_src ? `<img class="operator-banner-photo" src="${escapeHtml(op.photo_src)}" alt="">` : `<div class="operator-banner-mark" aria-hidden="true">운영</div>`}
+      <div class="operator-banner-copy"><strong>${escapeHtml(labels[op.lodging_op_type] || "숙박 운영자")}</strong>
+        <b>${escapeHtml(op.biz_name || "등록된 운영 파트너")}</b>
+        ${op.intro_text ? `<span>${escapeHtml(op.intro_text)}</span>` : ""}
+        ${phone ? `<div class="operator-banner-links"><a href="tel:${phone}">전화하기</a><a href="sms:${phone}">문자하기</a></div>` : ""}
+      </div>
+    </article>`;
   }).join("");
 }
 

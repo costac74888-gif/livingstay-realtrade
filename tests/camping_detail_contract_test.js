@@ -42,5 +42,24 @@ expect(
   yeongok?.url === "https://camping.gtdc.or.kr/DZ_reservation/reserCamping_v3.php",
   "연곡해변처럼 네이버가 아닌 고캠핑 예약 URL을 선택하지 못합니다."
 );
+const guideOnly = bookingTarget({
+  camping: {
+    info_url: "https://www.gocamping.or.kr/camp/123",
+    reservation_url: "https://www.gocamping.or.kr/camp/123"
+  }
+});
+expect(guideOnly === null, "고캠핑 안내 URL을 예약 URL로 오인하면 안 됩니다.");
+const fallbackReservation = bookingTarget({
+  camping: {
+    info_url: "https://www.gocamping.or.kr/camp/123"
+  },
+  camping_resve_url: "https://reserve.example.test/camp/123"
+});
+expect(
+  fallbackReservation?.url === "https://reserve.example.test/camp/123",
+  "camping_resve_url fallback 예약 링크가 유지되지 않습니다."
+);
+expect(main.includes("operator-banner-cta") && main.includes("운영 파트너 등록"), "운영 파트너 CTA 배너가 없습니다.");
+expect(css.includes(".camp-facts div:last-child:nth-child(odd)"), "홀수 시설 정보의 빈 셀 처리 계약이 없습니다.");
 
 console.log("OK camping detail contract");
