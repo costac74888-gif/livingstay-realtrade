@@ -3106,6 +3106,10 @@ const DATA_LAB_CONSIGN_REFRESH_MS = 30000;
 const dataLabResponseCache = new Map();
 let dataLabActiveKey = null;
 let dataLabConsignRefreshTimer = null;
+let dataLabTourismOverlays = [];
+let dataLabTourismInfoOverlay = null;
+let dataLabTourismRequest = 0;
+const DATA_LAB_TOURISM_KEYS = new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]);
 
 function dataLabNum(value){
   return Number(value || 0).toLocaleString("ko-KR");
@@ -3177,6 +3181,117 @@ function dataLabRankList(items, makeMeta, makeValue){
       </div>
       <span class="datalab-value">${makeValue(item)}</span>
     </div>`).join("")}</div>`;
+}
+
+function clearDataLabTourismMap(){
+  dataLabTourismRequest++;
+  dataLabTourismOverlays.forEach(overlay => {
+    try { overlay.setMap(null); } catch(e) {}
+  });
+  dataLabTourismOverlays = [];
+  if (dataLabTourismInfoOverlay) {
+    try { dataLabTourismInfoOverlay.setMap(null); } catch(e) {}
+    dataLabTourismInfoOverlay = null;
+  }
+}
+
+function dataLabTourismNumber(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString("ko-KR", { maximumFractionDigits: 1 }) : "-";
+}
+
+function dataLabTourismPeriod(data){
+  const extra = data && data.extra && typeof data.extra === "object" ? data.extra : {};
+  return extra.period || extra.ref_yearmonth || data.ref_yearmonth || data.period || "최근 집계";
+}
+
+function renderDataLabTourism(data, key){
+  const items = Array.isArray(data.items) ? data.items.filter(item =>
+    Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng))
+  ) : [];
+  const label = data.label || ({
+    tourism_domestic: "국내 관광",
+    tourism_foreign: "외래 관광",
+    tourism_consume: "관광 소비",
+  }[key] || "관광 신호");
+  const unit = data.unit || "건";
+  const source = (data.extra && data.extra.source) || "관광 데이터 집계";
+  const period = dataLabTourismPeriod(data);
+  const valueOf = item => Number(item.value ?? item.visitor_count ?? item.spend_ratio ?? 0);
+  const top = [...items].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, 5);
+  const mapReady = !!(window.kakao && kakao.maps && kakaoMap && kakao.maps.CustomOverlay);
+  const mapMessage = mapReady
+    ? "지도에서 원을 선택하면 지역별 세부 수치를 확인할 수 있습니다."
+    : "지도를 준비하는 중입니다. 잠시 후 탭을 다시 선택해 주세요.";
+  return `<div class="datalab-heatmap" data-tourism-key="${escapeHtml(key)}">
+    <div class="datalab-heatmap-head">
+      <div><div class="datalab-heatmap-title">${escapeHtml(label)}</div>
+        <div class="datalab-heatmap-caption">${escapeHtml(source)} · ${escapeHtml(period)}</div></div>
+      <span class="datalab-caption">${items.length.toLocaleString("ko-KR")}개 지역</span>
+    </div>
+    <div class="datalab-heatmap-legend" aria-label="지도 범례">
+      <span><i class="heat-size" aria-hidden="true"></i>원 크기: ${escapeHtml(unit)}</span>
+      <span><i class="heat-density" aria-hidden="true"></i>색상: 건물 밀도</span>
+    </div>
+    <div class="datalab-heatmap-top" aria-label="${escapeHtml(label)} 상위 지역">
+      <div class="datalab-heatmap-top-title">TOP 5 · ${escapeHtml(unit)}</div>
+      ${top.length ? top.map((item, index) => `
+        <div class="datalab-heatmap-row">
+          <b>${index + 1}</b><strong>${escapeHtml([item.sido, item.sgg].filter(Boolean).join(" ") || "지역 미상")}</strong>
+          <span>${dataLabTourismNumber(valueOf(item))}</span>
+        </div>`).join("") : '<div class="side-empty">표시할 지역 데이터가 없습니다.</div>'}
+    </div>
+    <div class="datalab-heatmap-note" role="status">${escapeHtml(mapMessage)}<br>건물 수 ${data.building_count != null ? dataLabTourismNumber(data.building_count) : "—"} · 최대값 ${data.max_value != null ? dataLabTourismNumber(data.max_value) : "—"}</div>
+  </div>`;
+}
+
+function paintDataLabTourismMap(data, key){
+  clearDataLabTourismMap();
+  if (!(window.kakao && kakao.maps && kakaoMap && kakao.maps.CustomOverlay)) return;
+  const items = Array.isArray(data.items) ? data.items.filter(item =>
+    Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng))
+  ) : [];
+  if (!items.length) return;
+  const valueOf = item => Number(item.value ?? item.visitor_count ?? item.spend_ratio ?? 0);
+  const buildingOf = item => Number(item.building_count || 0);
+  const measuredMaxValue = Math.max(1, ...items.map(valueOf));
+  const maxValue = Math.max(1, Number(data.max_value) || measuredMaxValue);
+  const maxBuilding = Math.max(1, ...items.map(buildingOf));
+  const unit = data.unit || "건";
+  const requestId = ++dataLabTourismRequest;
+  items.forEach(item => {
+    if (requestId !== dataLabTourismRequest) return;
+    const value = Math.max(0, valueOf(item));
+    const density = Math.max(0, Math.min(1, buildingOf(item) / maxBuilding));
+    const size = Math.round(22 + 34 * Math.sqrt(Math.max(0, Math.min(1, value / maxValue))));
+    const hue = Math.round(166 - density * 156);
+    const name = [item.sido, item.sgg].filter(Boolean).join(" ") || "지역 미상";
+    const bubble = document.createElement("button");
+    bubble.type = "button";
+    bubble.className = "datalab-map-bubble";
+    bubble.style.width = `${size}px`;
+    bubble.style.height = `${size}px`;
+    bubble.style.background = `hsl(${hue} 48% ${density > .62 ? 46 : 39}%)`;
+    bubble.setAttribute("aria-label", `${name}, ${dataLabTourismNumber(value)} ${unit}, 건물 ${dataLabTourismNumber(buildingOf(item))}개`);
+    bubble.title = `${name} · ${dataLabTourismNumber(value)} ${unit}`;
+    bubble.textContent = value >= maxValue * .12 ? dataLabTourismNumber(value) : "";
+    const position = new kakao.maps.LatLng(Number(item.lat), Number(item.lng));
+    const overlay = new kakao.maps.CustomOverlay({ position, content: bubble, yAnchor: 0.5, zIndex: 30 });
+    const showInfo = () => {
+      document.querySelectorAll(".datalab-map-bubble.is-selected").forEach(el => el.classList.remove("is-selected"));
+      bubble.classList.add("is-selected");
+      if (dataLabTourismInfoOverlay) dataLabTourismInfoOverlay.setMap(null);
+      const info = document.createElement("div");
+      info.className = "datalab-map-info";
+      info.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(unit)} ${dataLabTourismNumber(value)}</span><span>숙박 건물 ${dataLabTourismNumber(buildingOf(item))}개</span>`;
+      dataLabTourismInfoOverlay = new kakao.maps.CustomOverlay({ position, content: info, yAnchor: 1.06, zIndex: 40 });
+      dataLabTourismInfoOverlay.setMap(kakaoMap);
+    };
+    bubble.addEventListener("click", showInfo);
+    bubble.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showInfo(); } });
+    overlay.setMap(kakaoMap);
+    dataLabTourismOverlays.push(overlay);
+  });
 }
 
 function renderDataLabLodging(data){
@@ -3442,6 +3557,7 @@ async function loadDataLab(key, option = "up", {
 } = {}){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
+  clearDataLabTourismMap();
   const requestId = ++dataLabRequestSequence;
   setDataLabActive(key);
   const urls = {
@@ -3451,6 +3567,9 @@ async function loadDataLab(key, option = "up", {
     highest: `/api/stats/highest-price-top?order=${encodeURIComponent(option === "lowest" ? "lowest" : "highest")}`,
     closure: "/api/stats/closure-rate-by-region",
     consign: "/api/stats/consign-by-sido",
+    tourism_domestic: "/api/tourism/heatmap/domestic",
+    tourism_foreign: "/api/tourism/heatmap/foreign",
+    tourism_consume: "/api/tourism/heatmap/consume",
   };
   const url = urls[key];
   if (!url) return;
@@ -3466,10 +3585,14 @@ async function loadDataLab(key, option = "up", {
     highest: renderDataLabHighest,
     closure: renderDataLabClosure,
     consign: renderDataLabConsign,
+    tourism_domestic: data => renderDataLabTourism(data, "tourism_domestic"),
+    tourism_foreign: data => renderDataLabTourism(data, "tourism_foreign"),
+    tourism_consume: data => renderDataLabTourism(data, "tourism_consume"),
   };
   if (!forceRefresh && cached && Date.now() - cached.ts < cacheTtl) {
     content.innerHTML = renders[key](cached.data);
     bindDataLabControls(content);
+    if (DATA_LAB_TOURISM_KEYS.has(key)) paintDataLabTourismMap(cached.data, key);
     return;
   }
   if (dataLabFetchController) dataLabFetchController.abort();
@@ -3486,6 +3609,7 @@ async function loadDataLab(key, option = "up", {
     dataLabResponseCache.set(cacheKey, { ts: Date.now(), data });
     content.innerHTML = renders[key](data);
     bindDataLabControls(content);
+    if (DATA_LAB_TOURISM_KEYS.has(key)) paintDataLabTourismMap(data, key);
   } catch (error) {
     if (error.name === "AbortError") return;
     if (requestId !== dataLabRequestSequence) return;

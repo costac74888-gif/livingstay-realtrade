@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-04-09"
+SCHEMA_VERSION = "2026-09-05-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -601,6 +601,42 @@ def _run_init_db():
         building_use_detail TEXT,      -- 건축물대장·공식 원본의 건물용도명
         lodging_classification_source TEXT,
         lodging_classification_confidence TEXT
+    )
+    """)
+    # 한국관광 데이터랩 CSV 전용 저장소. 기존 숙박·캠핑 통계 산식과 연결하지
+    # 않으며, 열지도 API가 원본별 지표를 선택해 읽는 용도로만 사용한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS tourism_stats (
+        id BIGSERIAL PRIMARY KEY,
+        stat_type TEXT NOT NULL,
+        sido_name TEXT,
+        sgg_name TEXT,
+        ref_yearmonth TEXT,
+        metric_name TEXT NOT NULL,
+        metric_value NUMERIC,
+        unit TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT '한국관광 데이터랩',
+        source_file TEXT NOT NULL,
+        source_period TEXT,
+        dimensions JSONB NOT NULL DEFAULT '{}'::jsonb,
+        row_hash TEXT NOT NULL UNIQUE,
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tourism_stats_lookup
+        ON tourism_stats(stat_type, sido_name, sgg_name, ref_yearmonth)
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sgg_coords (
+        id SERIAL PRIMARY KEY,
+        sido_name TEXT NOT NULL,
+        sgg_name TEXT NOT NULL,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        building_count INTEGER NOT NULL DEFAULT 0,
+        refreshed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(sido_name, sgg_name)
     )
     """)
     cur.execute("ALTER TABLE master_buildings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'original'")
@@ -3870,11 +3906,6 @@ def _normalize_umd_nm_spaces():
         conn.close()
 
 
-if __name__ == "__main__":
-    init_db()
-    print("DB 초기화 완료 (PostgreSQL)")
-
-
 class BackgroundConnectionUnavailable(PoolError):
     """사용자 요청용 연결을 남기기 위해 백그라운드 대여를 미룰 때 사용한다."""
 
@@ -3910,3 +3941,8 @@ def background_connection_priority():
         yield
     finally:
         _connection_priority.background = previous
+
+
+if __name__ == "__main__":
+    init_db()
+    print("DB 초기화 완료 (PostgreSQL)")

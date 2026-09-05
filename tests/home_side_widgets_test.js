@@ -41,16 +41,26 @@ expect(!index.includes("최근 관심물건"), "최근 관심물건 위젯이 �
 expect(!index.includes('id="sideFavList"'), "최근 관심물건 위젯의 목록 컨테이너가 남아 있습니다.");
 expect(!index.includes('id="sideRankingCard"'), "거래량 TOP 별도 위젯이 데이터랩 편입 후에도 남아 있습니다.");
 expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습니다.");
-["lodging", "volume", "change", "highest", "consign", "closure"].forEach((key) => {
+[
+  "lodging", "volume", "change", "highest", "consign", "closure",
+  "tourism_domestic", "tourism_foreign", "tourism_consume",
+].forEach((key) => {
   expect(index.includes(`data-datalab-key="${key}"`), `데이터랩 ${key} 항목이 없습니다.`);
 });
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
-  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure",
-  "데이터랩 ⑤ 위탁현황·⑥ 폐업 현황 탭 순서가 아닙니다."
+  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,tourism_domestic,tourism_foreign,tourism_consume",
+  "기존 데이터랩 6개와 관광 열지도 3개 탭 순서가 아닙니다."
 );
 expect(index.includes("<span>영업신고현황</span>") && !index.includes("위탁현황"),
   "데이터랩 ⑤ 탭 명칭이 영업신고현황으로 교체되지 않았습니다.");
+expect(
+  main.includes("/api/tourism/heatmap/domestic") &&
+  main.includes("/api/tourism/heatmap/foreign") &&
+  main.includes("/api/tourism/heatmap/consume") &&
+  main.includes("clearDataLabTourismMap"),
+  "관광 열지도 API 연결 또는 탭 전환 정리 로직이 없습니다."
+);
 
 expect(main.includes('const HS_RECENT_KEY = "hs_recent_buildings"'), "최근검색 localStorage 키가 바뀌었습니다.");
 expect(main.includes("function trackRecentBuilding"), "최근검색 기록 함수가 사라졌습니다.");
@@ -237,12 +247,16 @@ async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
     bindDataLabControls: () => {},
     dataLabLoadingHTML: () => "로딩",
     dataLabErrorHTML: () => "오류",
+    clearDataLabTourismMap: () => {},
+    DATA_LAB_TOURISM_KEYS: new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]),
+    paintDataLabTourismMap: () => {},
     renderDataLabLodging: () => "",
     renderDataLabVolume: () => "",
     renderDataLabChange: () => "",
     renderDataLabHighest: () => "",
     renderDataLabClosure: () => "",
     renderDataLabConsign: (data) => `영업신고현황:${data.marker}`,
+    renderDataLabTourism: () => "",
     fetch: async () => {
       fetchCalls += 1;
       return {

@@ -76,3 +76,4 @@
 - [숙박 승격 원본 경합 방지](lodging-promotion-source-fence.md) — 새 운영 쓰기는 staging 원본 지문·공유잠금으로 보호하되, 이미 커밋된 감사 표식 복구는 원본 변경과 무관하게 허용한다.
 - [공개 숙박 영업상태 통계](public-lodging-status-privacy.md) — 공개 화면에 휴·폐업을 노출하지 않고 계산에만 사용; 정상+폐업은 정상 우선, 비활성만 있으면 분모 전용.
 - [숙박 운영자 승인 단위](lodging-operator-approval-integrity.md) — 운영자는 신고 원장 1건당 1명만 승인하며, 입력 문자열이 아닌 정규 원장 ID로 중복을 막는다.
+- [관광 데이터랩 열지도 격리](tourism-heatmap-isolation.md) — 방문·소비·고캠핑 데이터랩 원본은 지도 참고용이며 기존 숙박·캠핑 통계 산식과 수치를 바꾸지 않는다.

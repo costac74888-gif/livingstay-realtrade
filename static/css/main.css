@@ -643,6 +643,30 @@
   .datalab-rate-marker{position:absolute; top:-3px; bottom:-3px; width:1px; background:#3E566F; z-index:1;}
   .datalab-rate-legend{display:flex; align-items:center; gap:4px; margin-top:7px; color:var(--ink-soft); font-size:9.5px;}
   .datalab-rate-legend i{display:inline-block; width:1px; height:12px; background:#3E566F;}
+  .datalab-tourism-tab .datalab-icon{display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:5px; background:#EAF0F2; color:#58717A; font:700 9px 'JetBrains Mono',monospace;}
+  .datalab-tourism-tab.active .datalab-icon{background:#58717A; color:#fff;}
+  .datalab-heatmap{display:flex; flex-direction:column; gap:8px; min-height:420px;}
+  .datalab-heatmap-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
+  .datalab-heatmap-title{font-size:12px; font-weight:800; color:var(--ink);}
+  .datalab-heatmap-caption{margin-top:2px; font-size:10px; color:var(--ink-soft); line-height:1.4;}
+  .datalab-heatmap-legend{display:flex; flex-wrap:wrap; gap:5px 9px; padding:6px 8px; border:1px solid var(--line); border-radius:7px; background:#FCFBF8; font-size:9.5px; color:var(--ink-soft);}
+  .datalab-heatmap-legend span{display:inline-flex; align-items:center; gap:4px;}
+  .datalab-heatmap-legend i{display:inline-block; border-radius:50%;}
+  .datalab-heatmap-legend .heat-size{width:10px; height:10px; border:1px solid #58717A; background:transparent;}
+  .datalab-heatmap-legend .heat-density{width:10px; height:10px; background:#D06F52;}
+  .datalab-heatmap-top{border:1px solid var(--line); border-radius:7px; overflow:hidden;}
+  .datalab-heatmap-top-title{padding:6px 8px; background:#F8F9FA; font-size:10px; font-weight:800; color:var(--ink);}
+  .datalab-heatmap-row{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:6px 8px; border-top:1px solid var(--line); font-size:10.5px;}
+  .datalab-heatmap-row b{font:700 10px 'JetBrains Mono',monospace; color:var(--brass-dark);}
+  .datalab-heatmap-row strong{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .datalab-heatmap-row span{font-size:10px; color:var(--ink-soft); white-space:nowrap;}
+  .datalab-heatmap-note{padding:7px 8px; border-radius:7px; background:#F4F7F6; color:#58717A; font-size:10px; line-height:1.45;}
+  .datalab-map-bubble{display:flex; align-items:center; justify-content:center; border:2px solid rgba(255,255,255,.92); border-radius:50%; box-shadow:0 2px 8px rgba(38,54,58,.22); color:#fff; font:700 9px 'JetBrains Mono',monospace; cursor:pointer; transition:transform .16s ease, opacity .16s ease;}
+  .datalab-map-bubble:hover,.datalab-map-bubble.is-selected{transform:scale(1.18); opacity:1; z-index:5;}
+  .datalab-map-bubble:focus{outline:3px solid #D6A34E; outline-offset:2px;}
+  .datalab-map-info{min-width:148px; padding:9px 10px; border:1px solid #DAD2C4; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(38,45,48,.18); color:var(--ink); font-size:10.5px; line-height:1.5; transform:translateY(-10px);}
+  .datalab-map-info strong{display:block; font-size:12px; margin-bottom:2px;}
+  .datalab-map-info span{display:block; color:var(--ink-soft);}
 
   @media (max-width: 980px){
     /* 검색바: 상단 토글 버튼 아래에서 화면 폭을 모두 사용 */

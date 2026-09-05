@@ -29314,6 +29314,118 @@ def stats_platform_summary():
         conn.close()
 
 
+def _tourism_heatmap_payload(stat_type, metric_name, label, unit, extra_type=None):
+    """관광 데이터랩 원본의 최신 업로드 묶음을 시군구 열지도 응답으로 변환한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            WITH latest AS (
+                SELECT source_file
+                FROM tourism_stats
+                WHERE stat_type = %s AND metric_name = %s
+                ORDER BY COALESCE(split_part(source_period, '-', 2), '') DESC,
+                         source_file DESC
+                LIMIT 1
+            )
+            SELECT t.sido_name, t.sgg_name, t.ref_yearmonth,
+                   t.metric_value, t.source_period,
+                   c.lat, c.lng, c.building_count
+            FROM tourism_stats t
+            JOIN latest l ON l.source_file = t.source_file
+            JOIN sgg_coords c
+              ON c.sido_name = t.sido_name AND c.sgg_name = t.sgg_name
+            WHERE t.stat_type = %s AND t.metric_name = %s
+              AND c.lat IS NOT NULL AND c.lng IS NOT NULL
+            ORDER BY t.metric_value DESC, t.sido_name, t.sgg_name
+            LIMIT 500
+        """, (stat_type, metric_name, stat_type, metric_name))
+        rows = cur.fetchall()
+        items = []
+        for row in rows:
+            value = float(row["metric_value"] or 0)
+            item = {
+                "sido": row["sido_name"],
+                "sgg": row["sgg_name"],
+                "lat": float(row["lat"]),
+                "lng": float(row["lng"]),
+                "building_count": int(row["building_count"] or 0),
+                "value": value,
+                "ref_yearmonth": row["ref_yearmonth"] or row["source_period"],
+            }
+            if stat_type == "consumption_region":
+                item["spend_ratio"] = value
+            else:
+                item["visitor_count"] = value
+            items.append(item)
+
+        extra = []
+        if extra_type:
+            cur.execute("""
+                WITH latest AS (
+                    SELECT source_file FROM tourism_stats
+                    WHERE stat_type = %s
+                    ORDER BY COALESCE(split_part(source_period, '-', 2), '') DESC,
+                             source_file DESC
+                    LIMIT 1
+                )
+                SELECT dimensions, metric_name, metric_value
+                FROM tourism_stats t JOIN latest l USING (source_file)
+                WHERE stat_type = %s
+                ORDER BY metric_value DESC NULLS LAST
+                LIMIT 5
+            """, (extra_type, extra_type))
+            extra = [
+                {
+                    "label": (
+                        row["dimensions"].get("국가명")
+                        or row["dimensions"].get("중분류")
+                        or row["metric_name"]
+                    ),
+                    "value": float(row["metric_value"] or 0),
+                }
+                for row in cur.fetchall()
+            ]
+        return {
+            "ok": True,
+            "type": stat_type,
+            "label": label,
+            "unit": unit,
+            "max_value": max((item["value"] for item in items), default=0),
+            "items": items,
+            "extra": extra,
+            "source": "한국관광 데이터랩",
+            "note": "열지도 참고용이며 홈앤스테이 숙박·캠핑 통계에는 반영하지 않습니다.",
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/tourism/heatmap/domestic")
+@limiter.limit("30 per minute")
+def tourism_heatmap_domestic():
+    return jsonify(_tourism_heatmap_payload(
+        "visitor_sgg", "기초지자체 방문자 수", "국내 방문자", "명"
+    ))
+
+
+@app.route("/api/tourism/heatmap/foreign")
+@limiter.limit("30 per minute")
+def tourism_heatmap_foreign():
+    return jsonify(_tourism_heatmap_payload(
+        "foreign_sgg", "기초지자체 방문자 수", "외국인 방문", "명", "foreign_country"
+    ))
+
+
+@app.route("/api/tourism/heatmap/consume")
+@limiter.limit("30 per minute")
+def tourism_heatmap_consume():
+    return jsonify(_tourism_heatmap_payload(
+        "consumption_region", "기초지자체 지출액 비율(%)", "관광소비", "%", "consumption_sector"
+    ))
+
+
 @app.route("/api/stats/price-change-top")
 @limiter.limit("30 per minute")
 def stats_price_change_top(_direction=None, _as_payload=False):
