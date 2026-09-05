@@ -14,8 +14,7 @@ expect(start >= 0 && end > start, "toggleFav 함수 영역을 찾지 못했습�
 const toggleSource = source.slice(start, end);
 expect(
   (toggleSource.match(/\.then\(function\(r\)/g) || []).length === 2 &&
-  toggleSource.includes('if (!r.ok) throw new Error("save-failed");') &&
-  toggleSource.includes('if (!result.ok) throw new Error(result.message || "save-failed");'),
+  (toggleSource.match(/if \(!r\.ok \|\| !result\.ok\) throw new Error\(result\.message \|\| "save-failed"\);/g) || []).length === 2,
   "POST/DELETE 응답 상태와 JSON ok 값을 확인하지 않습니다."
 );
 
@@ -54,7 +53,7 @@ async function run() {
   // HTTP 500 저장 실패: 낙관적으로 추가한 키가 제거되고 오류를 알린다.
   context.fetch = () => Promise.resolve({
     ok: false,
-    json: () => Promise.resolve({ ok: false, message: "저장 실패" }),
+    json: () => Promise.resolve({ ok: false, message: "관심단지는 최대 30개까지 저장할 수 있습니다." }),
   });
   vm.runInContext("serverFavKeys = new Set();", context);
   const saved = vm.runInContext(
@@ -66,6 +65,10 @@ async function run() {
   expect(
     !vm.runInContext("serverFavKeys.has('아이리스모텔|강원특별자치도 양양군 주청2길 18')", context),
     "POST 실패 뒤 관심키가 롤백되지 않았습니다."
+  );
+  expect(
+    alerts[0] === "관심단지는 최대 30개까지 저장할 수 있습니다.",
+    "서버가 보낸 구체적인 저장 실패 이유를 사용자에게 표시하지 않습니다."
   );
 
   // DELETE 네트워크 실패: 낙관적으로 제거한 키와 관심단지 필터를 다시 복원한다.

@@ -115,7 +115,7 @@ MAX_FREE_BUILDINGS = 10
 # 승인된 파트너에게 적용하는 현재 무료 뱃지 정책의 종료 시각.
 # SQL에는 문자열 바인딩으로 넣어 서버·DB 타임존이 달라도 같은 현지 만료일을 보장한다.
 PARTNER_BADGE_FREE_EXPIRES_AT = "2026-12-31 23:59:59"
-MAX_FAVORITES = 10         # 일반회원 관심단지 한도
+MAX_FAVORITES = 30         # static/js/main.js 일반회원 한도와 동일하게 유지
 AGENT_TRIAL_BUILDING_CAP = 10   # 중개사 무료 담당단지 한도
 AGENT_BUILDING_BADGE_SLOT_CAP = 2  # 건물별 활성 중개사 단지뱃지 정원
 AGENT_REGION_SGG_SLOT_CAP = 5          # 사용자 승인 정책: 시군구당 중개사 정원 5명

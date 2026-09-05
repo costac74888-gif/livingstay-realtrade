@@ -89,13 +89,12 @@ function toggleFav(item){
       body: JSON.stringify({ building_name: item.building_name, address: item.address })
     })
     .then(function(r){
-      if (!r.ok) throw new Error("save-failed");
-      return r.json().catch(function(){ return {}; });
+      return r.json().catch(function(){ return {}; }).then(function(result){
+        if (!r.ok || !result.ok) throw new Error(result.message || "save-failed");
+        return result;
+      });
     })
-    .then(function(result){
-      if (!result.ok) throw new Error(result.message || "save-failed");
-    })
-    .catch(function(){
+    .catch(function(error){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
       if (wasFav) {
         serverFavKeys = new Set(previousFavOrder);
@@ -113,7 +112,10 @@ function toggleFav(item){
       renderFavChips();
       syncFavBtn();
       if (restoreActiveFilter) loadBoard();
-      alert("관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      const message = error && error.message && error.message !== "save-failed"
+        ? error.message
+        : "관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.";
+      alert(message);
     });
   } else {
     if (serverFavKeys.size >= MAX_FAVORITES){
@@ -137,11 +139,12 @@ function toggleFav(item){
       })
     })
     .then(function(r){
-      if (!r.ok) throw new Error("save-failed");
-      return r.json().catch(function(){ return {}; });
+      return r.json().catch(function(){ return {}; }).then(function(result){
+        if (!r.ok || !result.ok) throw new Error(result.message || "save-failed");
+        return result;
+      });
     })
     .then(function(result){
-      if (!result.ok) throw new Error(result.message || "save-failed");
       if (result.duplicate) {
         // 같은 건물이 다른 관심키로 이미 저장돼 있으면 낙관적으로 추가한
         // 새 키를 제거하고 기존 관심단지 한 건만 유지한다.
@@ -151,7 +154,7 @@ function toggleFav(item){
         syncFavBtn();
       }
     })
-    .catch(function(){
+    .catch(function(error){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
       if (wasFav) { serverFavKeys.add(k); }
       else {
@@ -161,7 +164,10 @@ function toggleFav(item){
       updateFavCountLabel();
       renderFavChips();
       syncFavBtn();
-      alert("관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      const message = error && error.message && error.message !== "save-failed"
+        ? error.message
+        : "관심단지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.";
+      alert(message);
     });
   }
   updateFavCountLabel();
