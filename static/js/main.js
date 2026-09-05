@@ -3244,13 +3244,16 @@ function recruitBoxHTML(kind, opts = {}){
 
 // ---- 파트너 모집 통합 배너 — B화면 상가정보 아래 + A화면 사이드 전용 ----
 // 담당중개사·위탁운영·운영지원·금융 4개 개별 빈상태 박스를 하나로 통합
-function partnerUnifiedBannerHTML(){
+function partnerUnifiedBannerHTML(buildingId){
+  const partnerHref = Number.isInteger(Number(buildingId)) && Number(buildingId) > 0
+    ? `/partner?building_id=${encodeURIComponent(buildingId)}`
+    : "/partner";
   return `
     <div style="text-align:center; padding:12px 10px; background:linear-gradient(135deg,var(--brass-tint,#FFF5E0) 0%,#EEF6E6 100%); border:1px dashed var(--brass,#B4863F); border-radius:10px;">
       <div style="font-size:14px; margin-bottom:4px;">🤝</div>
       <div style="font-size:12px; font-weight:800; color:var(--ink); margin-bottom:3px;">이 건물의 파트너가 되고 싶으신가요?</div>
       <div style="font-size:10.5px; color:var(--ink-soft); margin-bottom:8px; line-height:1.5;">중개사 · 위탁운영 · 운영지원업체 · 대출상담</div>
-      <a href="/partner" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 16px; font-size:11.5px; text-decoration:none; background:var(--brass,#B4863F); color:#fff; border-color:var(--brass,#B4863F);">파트너 등록하기 →</a>
+      <a href="${partnerHref}" class="side-more" style="display:inline-block; width:auto; margin-top:0; padding:5px 16px; font-size:11.5px; text-decoration:none; background:var(--brass,#B4863F); color:#fff; border-color:var(--brass,#B4863F);">파트너 등록하기 →</a>
     </div>`;
 }
 
@@ -5694,7 +5697,7 @@ function _setupBuildingPanels(type){
   if (first) activateTab(first);
 }
 
-function buildingPanelSkeleton(){
+function buildingPanelSkeleton(buildingId){
   return `
     <section class="side-card" id="bHeaderCard">
       ${buildingPhotoSliderHtml()}
@@ -5793,7 +5796,7 @@ function buildingPanelSkeleton(){
     </section>
 
     <section class="side-card" id="bPartnerBannerCard">
-      ${partnerUnifiedBannerHTML()}
+      ${partnerUnifiedBannerHTML(buildingId)}
     </section>`;
 }
 
@@ -7209,7 +7212,7 @@ async function loadPresaleDetailBanner(id, buildingName, requestToken){
       const external = safeCta && new URL(safeCta).origin !== location.origin;
       box.innerHTML=`<strong>${escapeHtml(title)}${project.applyhome_verified === true ? ' <span class="presale-ad-badge" title="청약홈 분양공고와 대조 확인됨">청약홈 분양공고 확인</span>' : ""}</strong><p>${escapeHtml(summary)}</p><a ${external?'target="_blank" rel="noopener noreferrer" ':''}href="${escapeHtml(safeCta||"/mypage")}">${project.homepage_url?"분양 홈페이지 보기":"마이페이지에서 확인"}</a>`;
     } else {
-      box.innerHTML=`<strong>준공 전 분양 정보 등록</strong><p>${escapeHtml(buildingName)} · 건축주·시행사는 분양 정보 등록을 요청할 수 있습니다.</p><a href="/apply/presale?building=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
+      box.innerHTML=`<strong>준공 전 분양 정보 등록</strong><p>${escapeHtml(buildingName)} · 건축주·시행사는 분양 정보 등록을 요청할 수 있습니다.</p><a href="/apply/presale?building_id=${encodeURIComponent(id)}">분양 정보 등록 요청</a>`;
     }
     host.prepend(box);
   } catch(e) { return; }
@@ -7593,7 +7596,7 @@ function renderBuildingPanel(id){
   if (sideTrendChart){ sideTrendChart.destroy(); sideTrendChart = null; }
   if (buildingDetailChart){ buildingDetailChart.destroy(); buildingDetailChart = null; }
 
-  panel.innerHTML = buildingPanelSkeleton();
+  panel.innerHTML = buildingPanelSkeleton(id);
   panel.scrollTop = 0;
   panel.classList.remove("panel-collapsed");
   panel.classList.add("open"); // 모바일에서도 상세가 보이도록 패널을 펼친다

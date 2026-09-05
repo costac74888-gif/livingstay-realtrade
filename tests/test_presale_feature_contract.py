@@ -28,7 +28,8 @@ class PresaleFeatureContractTests(unittest.TestCase):
     def test_registration_cta_has_a_real_page(self):
         self.assertIn('@app.route("/apply/presale")', self.app)
         page = Path("static/apply_presale.html").read_text(encoding="utf-8")
-        self.assertIn("/api/building/", page)
+        self.assertIn("/api/buildings/", page)
+        self.assertIn("/brief", page)
         self.assertIn("URLSearchParams", page)
         self.assertIn('id="presaleApplicationForm"', page)
         self.assertIn('name="privacy_consent"', page)
