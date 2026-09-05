@@ -1,7 +1,12 @@
 import unittest
 from pathlib import Path
 
-from app import _choose_camping_detail_row, _choose_verified_camping_web_row
+from app import (
+    _camping_content_id,
+    _camping_official_homepage_from_reservation,
+    _choose_camping_detail_row,
+    _choose_verified_camping_web_row,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +63,32 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn(
             'operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"]',
             self.main_source,
+        )
+
+    def test_camping_public_links_fall_back_to_canonical_source_fields(self):
+        self.assertIn("def _camping_content_id(camping_row, verified_web_row=None)", self.app_source)
+        self.assertIn('r"CAMPING:(\\d+)"', self.app_source)
+        self.assertIn("or format_phone(camping_row.get(\"phone\"))", self.app_source)
+        self.assertIn(
+            "_camping_official_homepage_from_reservation(camping_reservation_url)",
+            self.app_source,
+        )
+        self.assertIn('hostname.endswith(".go.kr")', self.app_source)
+        self.assertIn('hostname.endswith(".or.kr")', self.app_source)
+        self.assertEqual(
+            _camping_content_id({"permit_number": "CAMPING:2185"}),
+            "2185",
+        )
+        self.assertEqual(
+            _camping_official_homepage_from_reservation(
+                "https://camping.gtdc.or.kr/DZ_reservation/reserCamping_v3.php"
+            ),
+            "https://camping.gtdc.or.kr/",
+        )
+        self.assertIsNone(
+            _camping_official_homepage_from_reservation(
+                "https://booking.naver.com/booking/3/bizes/123"
+            )
         )
 
     def test_camping_booking_does_not_treat_gocamping_guide_as_reservation(self):

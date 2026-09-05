@@ -51,8 +51,15 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
         manage = (Path(ROOT) / "static" / "lodging_operator_manage.html").read_text(encoding="utf-8")
         self.assertIn("facility_phone TEXT", schema)
         self.assertIn("homepage_url TEXT", schema)
-        self.assertIn('operator_homepage or _safe_public_url(web_detail.get("homepage_url"))', app_source)
-        self.assertIn('operator_phone or web_detail.get("phone")', app_source)
+        self.assertIn("operator_homepage", app_source)
+        self.assertIn('or _safe_public_url(web_detail.get("homepage_url"))', app_source)
+        self.assertIn(
+            "or _camping_official_homepage_from_reservation(camping_reservation_url)",
+            app_source,
+        )
+        self.assertIn("operator_phone", app_source)
+        self.assertIn('or web_detail.get("phone")', app_source)
+        self.assertIn('or format_phone(camping_row.get("phone"))', app_source)
         self.assertIn('item["source_facility_phone"]', app_source)
         self.assertIn('item["source_homepage_url"]', app_source)
         self.assertIn('id="facility_phone"', manage)

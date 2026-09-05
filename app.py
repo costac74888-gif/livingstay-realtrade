@@ -1753,6 +1753,35 @@ def _choose_verified_camping_web_row(lodgings, camping_row):
     )
 
 
+def _camping_content_id(camping_row, verified_web_row=None):
+    """별도 필드가 비어도 canonical permit 번호에서 고캠핑 ID를 복원한다."""
+    for row in (verified_web_row, camping_row):
+        if not row:
+            continue
+        content_id = str(row.get("gocamping_content_id") or "").strip()
+        if content_id.isdigit():
+            return content_id
+    canonical = re.fullmatch(
+        r"CAMPING:(\d+)", str((camping_row or {}).get("permit_number") or "")
+    )
+    return canonical.group(1) if canonical else None
+
+
+def _camping_official_homepage_from_reservation(reservation_url):
+    """공공·기관 자체 예약사이트만 홈페이지 보조값으로 안전하게 사용한다."""
+    try:
+        parsed = urlparse(str(reservation_url or "").strip())
+    except (TypeError, ValueError):
+        return None
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        return None
+    if not (hostname.endswith(".go.kr") or hostname.endswith(".or.kr")):
+        return None
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{hostname}{port}/"
+
+
 @app.route("/api/building/<int:building_id>")
 @limiter.limit("120 per minute")
 def get_building(building_id):
@@ -2250,11 +2279,11 @@ def get_building(building_id):
             safe_image_url = _safe_public_url(image_url)
             if safe_image_url and safe_image_url not in image_urls:
                 image_urls.append(safe_image_url)
-        content_id = (
-            verified_web_row.get("gocamping_content_id")
-            if verified_web_row else camping_row.get("gocamping_content_id")
-        )
+        content_id = _camping_content_id(camping_row, verified_web_row)
         info_url = _gocamping_url_for_content_id(content_id)
+        camping_reservation_url = _safe_public_url(
+            camping_row.get("camping_reservation_url")
+        )
         camping_operator = next(
             (
                 row for row in lodging_operator_rows
@@ -2286,9 +2315,7 @@ def get_building(building_id):
             "sink_count": camping_row.get("camping_sink_count"),
             "operating_seasons": camping_row.get("camping_operating_seasons"),
             "animal_policy": camping_row.get("camping_animal_policy"),
-            "reservation_url": _safe_public_url(
-                camping_row.get("camping_reservation_url")
-            ),
+            "reservation_url": camping_reservation_url,
             "info_url": info_url,
             "source_url": info_url,
             "first_image_url": first_image_url,
@@ -2297,8 +2324,16 @@ def get_building(building_id):
             "facility_area": camping_row.get("facility_area"),
             "intro": web_detail.get("intro"),
             "summary": web_detail.get("summary"),
-            "homepage_url": operator_homepage or _safe_public_url(web_detail.get("homepage_url")),
-            "phone": operator_phone or web_detail.get("phone"),
+            "homepage_url": (
+                operator_homepage
+                or _safe_public_url(web_detail.get("homepage_url"))
+                or _camping_official_homepage_from_reservation(camping_reservation_url)
+            ),
+            "phone": (
+                operator_phone
+                or web_detail.get("phone")
+                or format_phone(camping_row.get("phone"))
+            ),
             "address": web_detail.get("address"),
             "directions": web_detail.get("directions"),
             "updated_at": web_detail.get("updated_at"),
