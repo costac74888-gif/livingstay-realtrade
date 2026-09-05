@@ -2188,13 +2188,18 @@ def _run_camping(args):
 def _run_camping_images(args):
     """CLI/status wrapper for the resumable image-only camping enrichment."""
     run_id = None
+    requested_run_id = getattr(args, "run_id", None)
     stop_beat = threading.Event()
     if args.status_key:
         status = _read_status(args.status_key)
         if not status or status.get("state") != "running":
             print("[camping-images] running 상태가 아니므로 종료합니다.")
             return
-        run_id = status.get("run_id") or ""
+        stored_run_id = status.get("run_id") or ""
+        if requested_run_id and stored_run_id != requested_run_id:
+            print("[camping-images] 실행 소유권이 바뀌어 종료합니다.")
+            return
+        run_id = requested_run_id or stored_run_id
 
         def _beat():
             while not stop_beat.wait(HEARTBEAT_SEC):
@@ -2284,7 +2289,18 @@ def _main_with_legacy_gate():
     )
     parser.add_argument("--reindex-norms", action="store_true")
     parser.add_argument("--status-key", default=None)
+    parser.add_argument("--run-id", default=None)
     args = parser.parse_args()
+
+    if args.status_key and args.run_id:
+        status = _read_status(args.status_key)
+        if (
+            not status
+            or status.get("state") != "running"
+            or status.get("run_id") != args.run_id
+        ):
+            print("[lodgings] 실행 소유권이 바뀌어 잠금 시도 전에 종료합니다.")
+            raise SystemExit(75)
 
     with _lodging_sync_lock() as acquired:
         if acquired:
@@ -2293,6 +2309,18 @@ def _main_with_legacy_gate():
             # 호출자가 실제 수집이 시작되지 않았음을 구분할 수 있어야 한다.
             # 특히 scheduled_sync가 잠금 충돌을 성공 완료로 기록하면 안 된다.
             print("[lodgings] 다른 숙박 동기화가 실행 중이어서 시작하지 못했습니다.")
+            if args.status_key and args.run_id:
+                status = _read_status(args.status_key) or {}
+                status.update({
+                    "state": "failed",
+                    "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "retryable": True,
+                    "error": "다른 숙박 동기화가 실행 중입니다. 잠시 후 다시 시도해 주세요.",
+                })
+                try:
+                    _write_status(args.status_key, status, args.run_id)
+                except Exception as exc:
+                    print(f"[lodgings] 잠금 충돌 상태 저장 실패: {exc}")
             raise SystemExit(75)
 
 

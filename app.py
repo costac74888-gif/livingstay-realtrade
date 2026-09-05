@@ -22498,6 +22498,9 @@ _RURAL_HANOK_TRADE_SYNC_META_KEY = "rural_hanok_trade_sync_status"
 _RURAL_HANOK_TRADE_LAST_SUCCESS_META_KEY = "rural_hanok_trade_last_success"
 _LODGING_DAILY_CAP = 8000  # sync_lodgings.MAX_DAILY_CALLS 와 동일 값 유지
 _CAMPING_DAILY_CAP = 800  # sync_lodgings.CAMPING_MAX_DAILY_CALLS 와 동일 값 유지
+_CAMPING_IMAGE_BACKFILL_META_KEY = "admin:camping_image_backfill:status"
+_CAMPING_IMAGE_PROGRESS_META_KEY = "camping_image_sync_progress"
+_CAMPING_DAILY_CALLS_META_KEY = "camping_daily_calls"
 
 # 영업 중으로 인정하는 영업상태명 — 정확히 '영업/정상'만 (휴업/폐업/취소/말소/만료/정지/중지/제외/삭제/전출/기타 전부 제외)
 _LODGING_ACTIVE_STATUS = LEGAL_LODGING_ACTIVE_STATUS
@@ -22814,6 +22817,188 @@ def admin_lodging_sync_status():
             },
         },
     })
+
+
+def _admin_camping_image_backfill_status():
+    """이미지 전용 백필 메타를 안전하게 API 응답 형식으로 정규화한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM lodging_registry
+             WHERE permit_number LIKE 'CAMPING:%%'
+               AND permit_number NOT LIKE 'CAMPING:%%:%%'
+        """)
+        eligible_total = int(cur.fetchone()["c"] or 0)
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key=%s",
+                    (_CAMPING_IMAGE_BACKFILL_META_KEY,))
+        status_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key=%s",
+                    (_CAMPING_IMAGE_PROGRESS_META_KEY,))
+        progress_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key=%s",
+                    (_CAMPING_DAILY_CALLS_META_KEY,))
+        calls_row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    def parse(row):
+        try:
+            value = json.loads(row["value"]) if row and row.get("value") else {}
+            return value if isinstance(value, dict) else {}
+        except (TypeError, ValueError, AttributeError):
+            return {}
+
+    status = parse(status_row)
+    progress = parse(progress_row)
+    calls = parse(calls_row)
+    try:
+        last_id = max(0, int(progress.get("last_id", 0)))
+    except (TypeError, ValueError):
+        last_id = 0
+    try:
+        calls_today = (max(0, int(calls.get("count", 0)))
+                       if calls.get("date") == korea_today() else 0)
+    except (TypeError, ValueError):
+        calls_today = 0
+    # The worker saves the checkpoint after every attempted eligible row, including
+    # an empty image list or failed request; this is therefore progress, not updates.
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM lodging_registry
+             WHERE permit_number LIKE 'CAMPING:%%'
+               AND permit_number NOT LIKE 'CAMPING:%%:%%' AND id <= %s
+        """, (last_id,))
+        processed = int(cur.fetchone()["c"] or 0)
+    finally:
+        cur.close()
+        conn.close()
+
+    running = status.get("state") == "running"
+    stale = False
+    updated_at = status_row.get("updated_at") if status_row else None
+    if running and updated_at:
+        try:
+            stale = (datetime.now() - updated_at).total_seconds() > _SYNC_STALE_MIN * 60
+        except (TypeError, ValueError):
+            stale = True
+    state = status.get("state") if status.get("state") in {"running", "partial", "done", "failed"} else None
+    counters = status.get("counters") if isinstance(status.get("counters"), dict) else {}
+    if state == "done":
+        processed = eligible_total
+
+    def counter(name):
+        try:
+            return max(0, int(counters.get(name, 0) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "ok": True, "state": state, "running": bool(running and not stale), "stale": stale,
+        "heartbeat_at": _kst_label(updated_at), "started_at": _kst_label(status.get("started_at")),
+        "finished_at": _kst_label(status.get("finished_at")), "error": status.get("error"),
+        "counters": {key: counter(key) for key in ("updated", "skipped", "failed")},
+        "calls_today": calls_today, "daily_cap": _CAMPING_DAILY_CAP,
+        "calls_remaining": max(0, _CAMPING_DAILY_CAP - calls_today),
+        "checkpoint": {"last_id": last_id}, "eligible_total": eligible_total,
+        "processed_through_checkpoint": processed, "remaining_count": max(0, eligible_total - processed),
+    }
+
+
+@app.route("/api/admin/camping-image-backfill", methods=["POST"])
+@require_admin
+@limiter.limit("4 per hour")
+def admin_camping_image_backfill_run():
+    """Start only the resumable GoCamping multi-image backfill."""
+    if not os.environ.get("LODGING_SERVICE_KEY"):
+        return jsonify({"ok": False, "message": "LODGING_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
+    current = _admin_camping_image_backfill_status()
+    if current["calls_today"] >= _CAMPING_DAILY_CAP:
+        return jsonify({
+            "ok": False,
+            "message": "오늘 고캠핑 API 호출 한도(800회)에 도달했습니다. 다음 날 이어서 실행해 주세요.",
+        }), 429
+    status = {
+        "run_id": _secrets.token_hex(8), "state": "running",
+        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "finished_at": None, "counters": {}, "calls_today": None, "error": None,
+    }
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # Row locking + Python JSON parsing keeps malformed legacy app_meta values
+        # from breaking the atomic duplicate-launch decision.  Insert a neutral
+        # row first so two first-ever requests cannot both observe a missing row.
+        cur.execute("""INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                       ON CONFLICT (key) DO NOTHING""",
+                    (_CAMPING_IMAGE_BACKFILL_META_KEY, "{}"))
+        cur.execute("SELECT value, updated_at FROM app_meta WHERE key=%s FOR UPDATE",
+                    (_CAMPING_IMAGE_BACKFILL_META_KEY,))
+        previous = cur.fetchone()
+        previous_status = {}
+        try:
+            parsed = json.loads(previous["value"]) if previous and previous.get("value") else {}
+            previous_status = parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError, AttributeError):
+            pass
+        previous_running = previous_status.get("state") == "running"
+        is_stale = False
+        if previous_running and previous and previous.get("updated_at"):
+            try:
+                is_stale = (datetime.now() - previous["updated_at"]).total_seconds() > _SYNC_STALE_MIN * 60
+            except (TypeError, ValueError):
+                is_stale = True
+        if previous_running and not is_stale:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "이미 캠핑 다중사진 수집이 실행 중입니다."}), 409
+        cur.execute("""INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+                       ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
+                    (_CAMPING_IMAGE_BACKFILL_META_KEY, json.dumps(status, ensure_ascii=False)))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        env = os.environ.copy()  # explicitly retain DATABASE_URL for the detached child
+        proc = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(base_dir, "sync_lodgings.py"),
+             "--update-images-only", "--sleep", "0.2", "--max-calls", "800",
+             "--status-key", _CAMPING_IMAGE_BACKFILL_META_KEY,
+             "--run-id", status["run_id"]],
+            cwd=base_dir, env=env, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=proc.wait, daemon=True).start()
+    except Exception as exc:
+        status.update({"state": "failed", "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                       "error": f"러너 실행 실패: {exc}"[:300]})
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                UPDATE app_meta SET value=%s, updated_at=NOW()
+                 WHERE key=%s AND (value::jsonb ->> 'run_id')=%s
+            """, (
+                json.dumps(status, ensure_ascii=False),
+                _CAMPING_IMAGE_BACKFILL_META_KEY,
+                status["run_id"],
+            ))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"ok": False, "message": "캠핑 이미지 수집 프로세스를 시작하지 못했습니다."}), 500
+    return jsonify({"ok": True, "started_at": status["started_at"]}), 202
+
+
+@app.route("/api/admin/camping-image-backfill-status")
+@require_admin
+def admin_camping_image_backfill_status():
+    return jsonify(_admin_camping_image_backfill_status())
 
 
 # ---- 건축HUB 전국 건물 발견(sync_brhub.py) 관리자 실행 ----

@@ -62,6 +62,64 @@ class LodgingAdminControlTests(unittest.TestCase):
                 sync_lodgings.main()
         self.assertEqual(raised.exception.code, 75)
 
+    def test_camping_image_run_id_is_checked_before_advisory_lock(self):
+        @contextmanager
+        def lock_must_not_run():
+            raise AssertionError("stale owner must stop before advisory lock")
+            yield False
+
+        with (
+            patch.object(sync_lodgings, "_read_status", return_value={
+                "state": "running", "run_id": "new-owner",
+            }),
+            patch.object(sync_lodgings, "_lodging_sync_lock", lock_must_not_run),
+            patch.object(sys, "argv", [
+                "sync_lodgings.py", "--update-images-only",
+                "--status-key", "image-status", "--run-id", "old-owner",
+            ]),
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                sync_lodgings.main()
+        self.assertEqual(raised.exception.code, 75)
+
+    def test_camping_image_lock_conflict_fails_only_claimed_run(self):
+        @contextmanager
+        def denied_lock():
+            yield False
+
+        status = {"state": "running", "run_id": "claimed-run"}
+        with (
+            patch.object(sync_lodgings, "_read_status", return_value=status.copy()),
+            patch.object(sync_lodgings, "_write_status") as write_status,
+            patch.object(sync_lodgings, "_lodging_sync_lock", denied_lock),
+            patch.object(sys, "argv", [
+                "sync_lodgings.py", "--update-images-only",
+                "--status-key", "image-status", "--run-id", "claimed-run",
+            ]),
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                sync_lodgings.main()
+        self.assertEqual(raised.exception.code, 75)
+        payload = write_status.call_args.args[1]
+        self.assertEqual(write_status.call_args.args[2], "claimed-run")
+        self.assertEqual(payload["state"], "failed")
+        self.assertTrue(payload["retryable"])
+
+    def test_camping_image_backfill_admin_contract_is_detached_and_resumable(self):
+        app = Path("app.py").read_text(encoding="utf-8")
+        self.assertIn('@app.route("/api/admin/camping-image-backfill", methods=["POST"])', app)
+        self.assertIn('@app.route("/api/admin/camping-image-backfill-status")', app)
+        self.assertIn('_CAMPING_IMAGE_BACKFILL_META_KEY = "admin:camping_image_backfill:status"', app)
+        self.assertIn('_CAMPING_IMAGE_PROGRESS_META_KEY = "camping_image_sync_progress"', app)
+        self.assertIn('SELECT value, updated_at FROM app_meta WHERE key=%s FOR UPDATE', app)
+        self.assertIn('"--update-images-only", "--sleep", "0.2", "--max-calls", "800"', app)
+        self.assertIn('"--status-key", _CAMPING_IMAGE_BACKFILL_META_KEY', app)
+        self.assertIn('"--run-id", status["run_id"]', app)
+        self.assertNotIn('"--reset", "--status-key", _CAMPING_IMAGE_BACKFILL_META_KEY', app)
+        for field in ("heartbeat_at", "stale", "eligible_total",
+                      "processed_through_checkpoint", "remaining_count"):
+            self.assertIn(f'"{field}"', app)
+
     def test_admin_has_source_stats_and_approval_routes(self):
         app = Path("app.py").read_text(encoding="utf-8")
         html = Path("static/admin.html").read_text(encoding="utf-8")
