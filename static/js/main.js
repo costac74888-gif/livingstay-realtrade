@@ -2418,15 +2418,15 @@ async function loadMapMarkers(filters = {}, opts = {}){
       const pos = new kakao.maps.LatLng(b.lat, b.lng);
       const totalCount = Math.max(0, Number(b.total_count) || 0);
 
-      // 분양중 지도는 거래 유무와 관계없이 유료 노출에 적합한 2단 고정 박스를 쓴다.
+      // 준공전 지도는 거래 유무와 관계없이 2단 고정 박스를 쓴다.
       if (filters.lodging_type === "준공전"){
         const locality = [b.umd_nm, b.jibun].filter(Boolean).join(" ") || "주소 미확인";
         const el = document.createElement("button");
         el.type = "button";
         el.className = "presale-building-marker";
-        el.innerHTML = `<strong>분양중</strong><span>${escapeHtml(locality)}</span>`;
-        el.title = `분양중 · ${locality}`;
-        el.setAttribute("aria-label", `${locality} 분양중 건물 상세 보기`);
+        el.innerHTML = `<strong>준공전</strong><span>${escapeHtml(locality)}</span>`;
+        el.title = `준공전 · ${locality}`;
+        el.setAttribute("aria-label", `${locality} 준공전 건물 상세 보기`);
         syncMapLocationTargetElement(el, b.id);
         el.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -3297,7 +3297,8 @@ let presaleRequestSequence = 0;
 function renderDataLabPresale(data){
   const regions = Array.isArray(data?.regions) ? data.regions : [];
   const total = Number(data?.total || 0);
-  if (!regions.length) return '<div class="side-empty">분양중인 미준공 건물이 없습니다.</div>';
+  const registerNotice = '<a class="presale-register-notice" href="/apply/presale">현재 분양중이라면 분양 정보를 등록해 주세요 →</a>';
+  if (!regions.length) return `${registerNotice}<div class="side-empty">준공전 건물이 없습니다.</div>`;
   const rows = regions.map(item => {
     const count = Number(item.building_count || 0);
     const share = total > 0 ? Math.round(count / total * 1000) / 10 : 0;
@@ -3305,11 +3306,12 @@ function renderDataLabPresale(data){
   }).join("");
   return `
     <div class="datalab-heading">
-      <strong>P 분양중 현황</strong><span class="datalab-caption">미준공 건물</span>
+      <strong>P 준공전 현황</strong><span class="datalab-caption">사용승인 전 건물</span>
     </div>
+    ${registerNotice}
     <div class="datalab-table-wrap presale-table-wrap">
       <table class="datalab-table presale-table">
-        <thead><tr><th>지역</th><th>분양건물</th><th>비중</th></tr></thead>
+        <thead><tr><th>지역</th><th>준공전 건물</th><th>비중</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><th>합계</th><th>${dataLabNum(total)}</th><th>100.0%</th></tr></tfoot>
       </table>

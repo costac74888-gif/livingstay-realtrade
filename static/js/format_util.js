@@ -105,7 +105,7 @@
     "캠핑": "캠핑·야영",
     "한옥": "한옥",
     "복합": "복합",
-    "준공전": "미준공(분양중)",
+    "준공전": "준공전",
     "미분류": "미분류"
   };
   var lodgingTypeBadges = Object.assign({}, lodgingTypeLabels, { "생활": "생숙" });

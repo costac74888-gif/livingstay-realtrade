@@ -31985,7 +31985,7 @@ def _save_applyhome_check(table, row_id, result, project_id=None):
 @app.route("/api/stats/presale")
 @limiter.limit("60 per minute")
 def presale_stats():
-    """허가/착공 상태이며 사용승인 전인 분양중 건물을 지역별로 집계한다."""
+    """허가/착공 상태이며 사용승인 전인 준공전 건물을 지역별로 집계한다."""
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
