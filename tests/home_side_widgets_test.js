@@ -86,6 +86,13 @@ expect(
   "관광 열지도가 확대 수준에 따라 시군구를 합치거나 분리하지 않습니다."
 );
 expect(
+  main.includes("function prepareInitialTourismMapView") &&
+  main.includes("dataLabTourismViewInitialized") &&
+  main.includes("kakaoMap.setLevel(13)") &&
+  main.match(/prepareInitialTourismMapView\(\)/g)?.length === 3,
+  "관광 열지도 최초 진입이 광역시·도 단위 전국 화면에서 시작하지 않습니다."
+);
+expect(
   css.includes(".datalab-map-info") &&
   css.includes("pointer-events:none") &&
   !css.includes("transform:scale(1.08)"),

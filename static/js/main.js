@@ -3111,6 +3111,7 @@ let dataLabTourismInfoOverlay = null;
 let dataLabTourismRequest = 0;
 let dataLabTourismZoomHandler = null;
 let dataLabTourismZoomTimer = null;
+let dataLabTourismViewInitialized = false;
 const DATA_LAB_TOURISM_KEYS = new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]);
 
 function dataLabNum(value){
@@ -3740,6 +3741,14 @@ function resetTourismMapMobileToggle(){
   }
 }
 
+function prepareInitialTourismMapView(){
+  if (dataLabTourismViewInitialized || !(window.kakao && kakao.maps && kakaoMap)) return;
+  dataLabTourismViewInitialized = true;
+  const center = isMobileMapViewport() ? MAP_DEFAULT_CENTER_MOBILE : MAP_DEFAULT_CENTER;
+  kakaoMap.setLevel(13);
+  kakaoMap.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+}
+
 async function loadDataLab(key, option = "up", {
   background = false,
   forceRefresh = false,
@@ -3783,6 +3792,7 @@ async function loadDataLab(key, option = "up", {
     content.innerHTML = renders[key](cached.data);
     bindDataLabControls(content);
     if (DATA_LAB_TOURISM_KEYS.has(key)) {
+      prepareInitialTourismMapView();
       paintDataLabTourismMap(cached.data, key);
       showTourismMapOnMobile(key);
     }
@@ -3803,6 +3813,7 @@ async function loadDataLab(key, option = "up", {
     content.innerHTML = renders[key](data);
     bindDataLabControls(content);
     if (DATA_LAB_TOURISM_KEYS.has(key)) {
+      prepareInitialTourismMapView();
       paintDataLabTourismMap(data, key);
       showTourismMapOnMobile(key);
     }
