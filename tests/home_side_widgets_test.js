@@ -62,6 +62,15 @@ expect(
   "관광 열지도 API 연결 또는 탭 전환 정리 로직이 없습니다."
 );
 expect(
+  main.includes(".slice(0, 10)") &&
+  main.includes("TOP 10 ·") &&
+  main.includes("data-datalab-collapse") &&
+  main.includes('section.classList.toggle("is-collapsed", collapsed)') &&
+  main.includes('button.setAttribute("aria-expanded", String(!collapsed))') &&
+  css.includes(".datalab-heatmap-top.is-collapsed .datalab-heatmap-top-body"),
+  "관광 열지도 TOP 10 목록 또는 접기·펼치기 기능이 없습니다."
+);
+expect(
   main.includes("compactMap ? 36 : 72") &&
   main.includes("compactMap ? 118 : 172") &&
   main.includes("Math.sqrt(ratio)") &&

@@ -3276,7 +3276,7 @@ function renderDataLabTourism(data, key){
     "한국관광 데이터랩";
   const period = dataLabTourismPeriod(data);
   const valueOf = item => Number(item.value ?? item.visitor_count ?? item.spend_ratio ?? 0);
-  const top = [...items].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, 5);
+  const top = [...items].sort((a, b) => valueOf(b) - valueOf(a)).slice(0, 10);
   const buildingTotal = items.reduce((sum, item) => sum + Number(item.building_count || 0), 0);
   const extra = Array.isArray(data.extra) ? data.extra.slice(0, 5) : [];
   const extraTitle = key === "tourism_foreign"
@@ -3297,12 +3297,16 @@ function renderDataLabTourism(data, key){
        <span><i class="heat-density heat-${escapeHtml(metric.palette)}" aria-hidden="true"></i>색상: ${escapeHtml(metric.label)}</span>
     </div>
     <div class="datalab-heatmap-top" aria-label="${escapeHtml(label)} 상위 지역">
-      <div class="datalab-heatmap-top-title">TOP 5 · ${escapeHtml(unit)}</div>
+      <button type="button" class="datalab-heatmap-top-title" data-datalab-collapse aria-expanded="true">
+        <span>TOP 10 · ${escapeHtml(unit)}</span><span class="datalab-collapse-label">접기</span>
+      </button>
+      <div class="datalab-heatmap-top-body">
       ${top.length ? top.map((item, index) => `
         <div class="datalab-heatmap-row">
           <b>${index + 1}</b><strong>${escapeHtml([item.sido, item.sgg].filter(Boolean).join(" ") || "지역 미상")}</strong>
           <span>${escapeHtml(metric.format(valueOf(item)))}</span>
         </div>`).join("") : '<div class="side-empty">표시할 지역 데이터가 없습니다.</div>'}
+      </div>
     </div>
     ${extraTitle && extra.length ? `<div class="datalab-heatmap-extra">
       <strong>${escapeHtml(extraTitle)}</strong>
@@ -3712,6 +3716,16 @@ function dataLabErrorHTML(){
 
 function bindDataLabControls(content){
   bindDataLabBuildingButtons(content);
+  content.querySelectorAll("[data-datalab-collapse]").forEach(button => {
+    button.addEventListener("click", () => {
+      const section = button.closest(".datalab-heatmap-top");
+      const collapsed = !section.classList.contains("is-collapsed");
+      section.classList.toggle("is-collapsed", collapsed);
+      button.setAttribute("aria-expanded", String(!collapsed));
+      const label = button.querySelector(".datalab-collapse-label");
+      if (label) label.textContent = collapsed ? "펼치기" : "접기";
+    });
+  });
   content.querySelectorAll("[data-datalab-direction]").forEach(button => {
     button.addEventListener("click", () => loadDataLab("change", button.dataset.datalabDirection));
   });

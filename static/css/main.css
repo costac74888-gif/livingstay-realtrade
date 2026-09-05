@@ -658,7 +658,13 @@
   .datalab-heatmap-legend .heat-foreign{background:#7C3AED;}
   .datalab-heatmap-legend .heat-consume{background:#EF4444;}
   .datalab-heatmap-top{border:1px solid var(--line); border-radius:7px; overflow:hidden;}
-  .datalab-heatmap-top-title{padding:6px 8px; background:#F8F9FA; font-size:10px; font-weight:800; color:var(--ink);}
+  .datalab-heatmap-top-title{width:100%; padding:6px 8px; border:0; background:#F8F9FA; display:flex; align-items:center; justify-content:space-between; font-size:10px; font-weight:800; color:var(--ink); cursor:pointer; text-align:left;}
+  .datalab-heatmap-top-title:hover{background:#F0F3F4;}
+  .datalab-heatmap-top-title:focus-visible{outline:2px solid var(--brass); outline-offset:-2px;}
+  .datalab-collapse-label{color:var(--ink-soft); font-size:9.5px; font-weight:700;}
+  .datalab-collapse-label::before{content:"▴"; display:inline-block; margin-right:3px;}
+  .datalab-heatmap-top.is-collapsed .datalab-collapse-label::before{content:"▾";}
+  .datalab-heatmap-top.is-collapsed .datalab-heatmap-top-body{display:none;}
   .datalab-heatmap-row{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:6px 8px; border-top:1px solid var(--line); font-size:10.5px;}
   .datalab-heatmap-row b{font:700 10px 'JetBrains Mono',monospace; color:var(--brass-dark);}
   .datalab-heatmap-row strong{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
