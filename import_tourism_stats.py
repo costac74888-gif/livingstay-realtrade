@@ -8,6 +8,8 @@ import io
 import json
 import os
 import re
+import urllib.parse
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -16,6 +18,8 @@ from psycopg2.extras import execute_values
 
 
 TYPE_RULES = (
+    ("방문자 급등동네(내국인)", "surge_domestic_dong"),
+    ("방문자 급등동네(외국인)", "surge_foreign_dong"),
     ("외국인 지역별 방문자 수(기초지자체별)", "foreign_sgg"),
     ("지역별 방문자 수(기초지자체별)", "visitor_sgg"),
     ("외국인 지역별 방문자 수(광역별)", "foreign_sido"),
@@ -112,6 +116,12 @@ def iter_csvs(paths):
 
 
 def generic_fields(stat_type, row):
+    if stat_type in {"surge_domestic_dong", "surge_foreign_dong"}:
+        return row.get("시도명"), row.get("시군구명"), row.get("기준년월"), (
+            ("관광객수", "명"),
+            ("전년동기관광객수", "명"),
+            ("증감율", "%"),
+        )
     if stat_type in FIELD_MAP:
         (sido_key, sgg_key), metrics = FIELD_MAP[stat_type]
         return row.get(sido_key), row.get(sgg_key) if sgg_key else None, None, metrics
@@ -195,6 +205,108 @@ def refresh_coords(cur):
     """)
 
 
+def refresh_dong_coords(cur):
+    """급등동네 행정동을 마스터 건물의 같은 법정동 좌표 중심에 연결한다."""
+    cur.execute("""
+        WITH requested AS (
+            SELECT DISTINCT
+                sido_name,
+                sgg_name,
+                dimensions->>'행정동명' AS dong_name,
+                regexp_replace(dimensions->>'행정동명', '[0-9]+동$', '동') AS legal_dong_name
+            FROM tourism_stats
+            WHERE stat_type IN ('surge_domestic_dong', 'surge_foreign_dong')
+              AND NULLIF(dimensions->>'행정동명', '') IS NOT NULL
+        ),
+        building_points AS (
+            SELECT
+                r.sido_name,
+                r.sgg_name,
+                r.dong_name,
+                AVG(m.lat) AS lat,
+                AVG(m.lng) AS lng,
+                COUNT(*) AS building_count
+            FROM requested r
+            JOIN master_buildings m
+              ON split_part(trim(m.sgg_text), ' ', 1) = r.sido_name
+             AND regexp_replace(trim(m.sgg_text), '^\\S+\\s+', '') = r.sgg_name
+             AND trim(m.umd_nm) = r.legal_dong_name
+            WHERE m.lat IS NOT NULL AND m.lng IS NOT NULL
+            GROUP BY r.sido_name, r.sgg_name, r.dong_name
+        )
+        INSERT INTO tourism_dong_coords
+            (sido_name, sgg_name, dong_name, lat, lng, building_count, refreshed_at)
+        SELECT sido_name, sgg_name, dong_name, lat, lng, building_count, NOW()
+        FROM building_points
+        ON CONFLICT (sido_name, sgg_name, dong_name) DO UPDATE SET
+            lat = EXCLUDED.lat,
+            lng = EXCLUDED.lng,
+            building_count = EXCLUDED.building_count,
+            refreshed_at = NOW()
+    """)
+
+
+def geocode_missing_dong_coords(cur):
+    """건물 중심 좌표가 없는 행정동은 주민센터 검색 좌표로 보완한다."""
+    api_key = os.environ.get("KAKAO_REST_API_KEY")
+    if not api_key:
+        print("경고: KAKAO_REST_API_KEY가 없어 행정동 누락 좌표를 보완하지 못했습니다.")
+        return
+    cur.execute("""
+        SELECT DISTINCT
+            t.sido_name,
+            t.sgg_name,
+            t.dimensions->>'행정동명' AS dong_name
+        FROM tourism_stats t
+        LEFT JOIN tourism_dong_coords c
+          ON c.sido_name = t.sido_name
+         AND c.sgg_name = t.sgg_name
+         AND c.dong_name = t.dimensions->>'행정동명'
+        WHERE t.stat_type IN ('surge_domestic_dong', 'surge_foreign_dong')
+          AND NULLIF(t.dimensions->>'행정동명', '') IS NOT NULL
+          AND (c.id IS NULL OR c.lat IS NULL OR c.lng IS NULL)
+        ORDER BY t.sido_name, t.sgg_name, t.dimensions->>'행정동명'
+    """)
+    missing = cur.fetchall()
+    resolved = 0
+    for sido, sgg, dong in missing:
+        query = f"{sido} {sgg} {dong} 주민센터"
+        url = "https://dapi.kakao.com/v2/local/search/keyword.json?" + urllib.parse.urlencode({
+            "query": query,
+            "size": 1,
+        })
+        request = urllib.request.Request(
+            url,
+            headers={"Authorization": f"KakaoAK {api_key}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                payload = json.load(response)
+            documents = payload.get("documents") or []
+            if not documents:
+                print(f"행정동 좌표 미확인: {sido} {sgg} {dong}")
+                continue
+            lat = float(documents[0]["y"])
+            lng = float(documents[0]["x"])
+            if not (33 <= lat <= 39 and 124 <= lng <= 132):
+                print(f"행정동 좌표 범위 오류: {sido} {sgg} {dong}")
+                continue
+            cur.execute("""
+                INSERT INTO tourism_dong_coords
+                    (sido_name, sgg_name, dong_name, lat, lng, building_count, refreshed_at)
+                VALUES (%s, %s, %s, %s, %s, 0, NOW())
+                ON CONFLICT (sido_name, sgg_name, dong_name) DO UPDATE SET
+                    lat = EXCLUDED.lat,
+                    lng = EXCLUDED.lng,
+                    refreshed_at = NOW()
+            """, (sido, sgg, dong, lat, lng))
+            resolved += 1
+        except Exception as exc:
+            print(f"행정동 좌표 조회 실패: {sido} {sgg} {dong} ({type(exc).__name__})")
+    if missing:
+        print(f"행정동 좌표 보완: {resolved}/{len(missing)}곳")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", default="datalab_csv")
@@ -233,6 +345,8 @@ def main():
                 dimensions = EXCLUDED.dimensions
         """, rows, page_size=1000)
         refresh_coords(cur)
+        refresh_dong_coords(cur)
+        geocode_missing_dong_coords(cur)
         conn.commit()
         print(f"적재/갱신 완료: {len(rows):,}개 지표 행")
     except Exception:

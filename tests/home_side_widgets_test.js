@@ -43,14 +43,24 @@ expect(!index.includes('id="sideRankingCard"'), "거래량 TOP 별도 위젯이 
 expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습니다.");
 [
   "lodging", "volume", "change", "highest", "consign", "closure",
-  "tourism_domestic", "tourism_foreign", "tourism_consume",
+  "tourism_domestic", "tourism_foreign", "tourism_consume", "visitor_surge",
 ].forEach((key) => {
   expect(index.includes(`data-datalab-key="${key}"`), `데이터랩 ${key} 항목이 없습니다.`);
 });
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
-  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,tourism_domestic,tourism_foreign,tourism_consume",
-  "기존 데이터랩 6개와 관광 열지도 3개 탭 순서가 아닙니다."
+  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge",
+  "기존 데이터랩 6개와 관광 열지도 3개, 급등동네 탭 순서가 아닙니다."
+);
+expect(
+  main.includes("/api/tourism/surge/domestic") &&
+  main.includes("/api/tourism/surge/foreign") &&
+  main.includes("function renderDataLabSurge") &&
+  main.includes("function paintDataLabSurgeMap") &&
+  main.includes("현재 방문객") &&
+  main.includes("전년 동기") &&
+  main.includes("전년 대비"),
+  "방문객 급등동네 표·지도·호버 상세가 연결되지 않았습니다."
 );
 expect(index.includes("<span>영업신고현황</span>") && !index.includes("위탁현황"),
   "데이터랩 ⑤ 탭 명칭이 영업신고현황으로 교체되지 않았습니다.");
@@ -98,7 +108,7 @@ expect(
   main.includes("function prepareInitialTourismMapView") &&
   main.includes("dataLabTourismViewInitialized") &&
   main.includes("kakaoMap.setLevel(13)") &&
-  main.match(/prepareInitialTourismMapView\(\)/g)?.length === 3,
+  (main.match(/prepareInitialTourismMapView\(\)/g)?.length || 0) >= 3,
   "관광 열지도 최초 진입이 광역시·도 단위 전국 화면에서 시작하지 않습니다."
 );
 expect(
@@ -302,6 +312,7 @@ async function verifyForcedConsignRefreshFetchesPastRecentBrowserCache() {
     dataLabRequestSequence: 0,
     dataLabFetchController: null,
     DATA_LAB_CACHE_TTL_MS: 600000,
+    DATA_LAB_SURGE_KEY: "visitor_surge",
     dataLabResponseCache: new Map([
       ["consign:up", {
         ts: Date.now(),

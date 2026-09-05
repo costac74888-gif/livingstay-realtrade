@@ -29426,6 +29426,95 @@ def tourism_heatmap_consume():
     ))
 
 
+def _tourism_surge_payload(stat_type, label):
+    """최신 방문자 급등동네 TOP 10과 행정동 중심 좌표를 반환한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            WITH latest AS (
+                SELECT source_file
+                FROM tourism_stats
+                WHERE stat_type = %s
+                ORDER BY COALESCE(split_part(source_period, '-', 2), '') DESC,
+                         source_file DESC
+                LIMIT 1
+            ),
+            source_rows AS (
+                SELECT
+                    t.sido_name,
+                    t.sgg_name,
+                    t.ref_yearmonth,
+                    t.source_period,
+                    t.dimensions->>'행정동명' AS dong_name,
+                    NULLIF(t.dimensions->>'순위', '')::INTEGER AS rank,
+                    t.dimensions->>'조회일자' AS query_period,
+                    MAX(t.metric_value) FILTER (WHERE t.metric_name = '관광객수') AS current_visitors,
+                    MAX(t.metric_value) FILTER (WHERE t.metric_name = '전년동기관광객수') AS previous_year_visitors,
+                    MAX(t.metric_value) FILTER (WHERE t.metric_name = '증감율') AS growth_rate
+                FROM tourism_stats t
+                JOIN latest l ON l.source_file = t.source_file
+                WHERE t.stat_type = %s
+                GROUP BY t.sido_name, t.sgg_name, t.ref_yearmonth, t.source_period,
+                         t.dimensions->>'행정동명', t.dimensions->>'순위',
+                         t.dimensions->>'조회일자'
+            )
+            SELECT s.*, c.lat, c.lng, c.building_count
+            FROM source_rows s
+            LEFT JOIN tourism_dong_coords c
+              ON c.sido_name = s.sido_name
+             AND c.sgg_name = s.sgg_name
+             AND c.dong_name = s.dong_name
+            ORDER BY s.rank NULLS LAST, s.growth_rate DESC
+            LIMIT 10
+        """, (stat_type, stat_type))
+        items = []
+        for row in cur.fetchall():
+            items.append({
+                "rank": int(row["rank"] or len(items) + 1),
+                "sido": row["sido_name"],
+                "sgg": row["sgg_name"],
+                "dong": row["dong_name"],
+                "lat": float(row["lat"]) if row["lat"] is not None else None,
+                "lng": float(row["lng"]) if row["lng"] is not None else None,
+                "building_count": int(row["building_count"] or 0),
+                "current_visitors": float(row["current_visitors"] or 0),
+                "previous_year_visitors": float(row["previous_year_visitors"] or 0),
+                "growth_rate": float(row["growth_rate"] or 0),
+                "ref_yearmonth": row["ref_yearmonth"],
+                "query_period": row["query_period"],
+                "source_period": row["source_period"],
+            })
+        mapped_count = sum(
+            item["lat"] is not None and item["lng"] is not None for item in items
+        )
+        return {
+            "ok": True,
+            "type": stat_type,
+            "label": label,
+            "items": items,
+            "mapped_count": mapped_count,
+            "unmapped_count": len(items) - mapped_count,
+            "source": "한국관광 데이터랩",
+            "note": "전국 전체 동 분포가 아닌 전년 동기 대비 방문자 급등 TOP 10입니다.",
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/tourism/surge/domestic")
+@limiter.limit("30 per minute")
+def tourism_surge_domestic():
+    return jsonify(_tourism_surge_payload("surge_domestic_dong", "내국인 방문자 급등동네"))
+
+
+@app.route("/api/tourism/surge/foreign")
+@limiter.limit("30 per minute")
+def tourism_surge_foreign():
+    return jsonify(_tourism_surge_payload("surge_foreign_dong", "외국인 방문자 급등동네"))
+
+
 @app.route("/api/stats/price-change-top")
 @limiter.limit("30 per minute")
 def stats_price_change_top(_direction=None, _as_payload=False):

@@ -524,6 +524,27 @@ def check_datalab_items(payload):
     return None
 
 
+def check_tourism_surge(payload):
+    """방문자 급등동네 API: TOP 10 원본 수치와 지도 좌표."""
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return "응답이 성공 객체가 아님"
+    items = payload.get("items")
+    if not isinstance(items, list) or len(items) > 10:
+        return "'items'가 TOP 10 배열이 아님"
+    required = {
+        "rank", "sido", "sgg", "dong", "lat", "lng",
+        "current_visitors", "previous_year_visitors", "growth_rate",
+    }
+    for item in items:
+        if not required <= set(item):
+            return "급등동네 필수 수치·좌표 필드가 없음"
+        if item["lat"] is None or item["lng"] is None:
+            return "지도에 표시할 행정동 좌표가 없음"
+    if payload.get("unmapped_count") != 0:
+        return "좌표 미연결 급등동네가 남아 있음"
+    return None
+
+
 def check_datalab_consign(payload):
     """/api/stats/consign-by-sido: 시도별 영업신고현황과 전국 합계."""
     if not isinstance(payload, dict) or payload.get("ok") is not True:
@@ -742,6 +763,8 @@ CHECKS = [
     ("/api/stats/highest-price-top?order=lowest", check_datalab_items),
     ("/api/stats/closure-rate-by-region", check_datalab_items),
     ("/api/stats/consign-by-sido", check_datalab_consign),
+    ("/api/tourism/surge/domestic", check_tourism_surge),
+    ("/api/tourism/surge/foreign", check_tourism_surge),
 ]
 
 

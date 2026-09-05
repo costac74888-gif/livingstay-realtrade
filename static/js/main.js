@@ -3113,6 +3113,9 @@ let dataLabTourismZoomHandler = null;
 let dataLabTourismZoomTimer = null;
 let dataLabTourismViewInitialized = false;
 const DATA_LAB_TOURISM_KEYS = new Set(["tourism_domestic", "tourism_foreign", "tourism_consume"]);
+const DATA_LAB_SURGE_KEY = "visitor_surge";
+let dataLabSurgeMode = "domestic";
+let dataLabSurgeInfoOverlay = null;
 
 function dataLabNum(value){
   return Number(value || 0).toLocaleString("ko-KR");
@@ -3195,6 +3198,10 @@ function clearDataLabTourismOverlays(){
     try { dataLabTourismInfoOverlay.setMap(null); } catch(e) {}
     dataLabTourismInfoOverlay = null;
   }
+  if (dataLabSurgeInfoOverlay) {
+    try { dataLabSurgeInfoOverlay.setMap(null); } catch(e) {}
+    dataLabSurgeInfoOverlay = null;
+  }
 }
 
 function clearDataLabTourismMap(){
@@ -3208,6 +3215,82 @@ function clearDataLabTourismMap(){
     try { kakao.maps.event.removeListener(kakaoMap, "zoom_changed", dataLabTourismZoomHandler); } catch(e) {}
   }
   dataLabTourismZoomHandler = null;
+}
+
+function dataLabSurgeValue(item, keys){
+  for (const key of keys) {
+    const value = Number(item && item[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function dataLabSurgeItems(data){
+  return (Array.isArray(data && data.items) ? data.items : []).map(item => {
+    const current = dataLabSurgeValue(item, ["current_visitors","current_value","visitor_count","value"]);
+    const previous = dataLabSurgeValue(item, ["previous_year_visitors","prior_year_visitors","last_year_visitors","last_year_value","previous_value","prior_value"]);
+    const growthRaw = dataLabSurgeValue(item, ["growth_rate","yoy_growth","year_over_year","yoy_percent","growth_pct"]);
+    const growth = growthRaw || (previous ? (current - previous) / previous * 100 : 0);
+    return Object.assign({}, item, { current, previous, growth });
+  });
+}
+
+function renderDataLabSurge(data){
+  const mode = dataLabSurgeMode === "foreign" ? "foreign" : "domestic";
+  const sourceData = data && data[mode] && typeof data[mode] === "object" ? data[mode] : data;
+  const items = dataLabSurgeItems(sourceData).sort((a,b) => Number(a.rank || 99) - Number(b.rank || 99));
+  const period = items[0]?.query_period || dataLabTourismPeriod(sourceData);
+  const source = sourceData.source || "한국관광 데이터랩";
+  const label = mode === "foreign" ? "외국인 방문객" : "국내 방문객";
+  return `<div class="datalab-surge" data-surge-mode="${mode}">
+    <div class="datalab-surge-head"><div><div class="datalab-surge-title">방문객 급증 동네</div>
+      <div class="datalab-surge-caption">${escapeHtml(source)} · ${escapeHtml(period)} · 전년 동기 대비</div></div>
+      <div class="datalab-surge-switch" role="group" aria-label="방문객 유형">
+        <button type="button" data-surge-mode="domestic" class="${mode === "domestic" ? "active" : ""}" aria-pressed="${mode === "domestic"}">내국인</button>
+        <button type="button" data-surge-mode="foreign" class="${mode === "foreign" ? "active" : ""}" aria-pressed="${mode === "foreign"}">외국인</button>
+      </div></div>
+    <div class="datalab-surge-note">${escapeHtml(label)} 기준 상승폭이 큰 지역입니다. 지도 원을 가리키면 현재·전년 방문객과 성장률을 확인할 수 있습니다.</div>
+    <div class="datalab-table-wrap"><table class="datalab-surge-table"><thead><tr><th>순위·동네</th><th>현재</th><th>전년</th><th>증가</th></tr></thead>
+      <tbody>${items.slice(0, 10).map(item => `<tr><td><b>${dataLabNum(item.rank)}</b> ${escapeHtml([item.sido, item.sgg, item.dong].filter(Boolean).join(" "))}${item.lat == null ? '<small class="datalab-surge-unmapped">좌표 확인중</small>' : ""}</td><td>${dataLabNum(item.current)}</td><td>${dataLabNum(item.previous)}</td><td class="datalab-surge-growth">+${item.growth.toFixed(1)}%</td></tr>`).join("") || '<tr><td colspan="4">표시할 지역 데이터가 없습니다.</td></tr>'}</tbody>
+    </table></div>
+    ${sourceData.note ? `<div class="datalab-heatmap-note">${escapeHtml(sourceData.note)}</div>` : ""}
+  </div>`;
+}
+
+function paintDataLabSurgeMap(data){
+  clearDataLabTourismOverlays();
+  const sourceData = data && data[dataLabSurgeMode] && typeof data[dataLabSurgeMode] === "object" ? data[dataLabSurgeMode] : data;
+  const items = dataLabSurgeItems(sourceData)
+    .filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng)))
+    .sort((a,b) => Number(a.rank || 99) - Number(b.rank || 99)).slice(0, 10);
+  if (!(window.kakao && kakao.maps && kakaoMap && kakao.maps.CustomOverlay)) return;
+  const maxGrowth = Math.max(1, ...items.map(item => Math.max(0, item.growth)));
+  items.forEach((item, index) => {
+    const maxVisitors = Math.max(1, ...items.map(row => Math.max(0, row.current)));
+    const diameter = 38 + Math.sqrt(Math.max(0, item.current) / maxVisitors) * 58;
+    const bubble = document.createElement("button");
+    bubble.type = "button"; bubble.className = "datalab-surge-map-bubble";
+    bubble.style.setProperty("--surge-diameter", `${diameter}px`);
+    bubble.style.setProperty("--surge-opacity", `${(.58 + .32 * Math.max(0, item.growth) / maxGrowth).toFixed(2)}`);
+    bubble.innerHTML = `<span>${escapeHtml(item.dong || "동네")}</span><strong>+${Math.max(0, item.growth).toFixed(1)}%</strong>`;
+    const name = item.umd_nm || item.dong || item.sgg || item.name || "지역 미상";
+    bubble.setAttribute("aria-label", `${name}, 현재 ${dataLabNum(item.current)}명, 전년 ${dataLabNum(item.previous)}명, 성장률 ${item.growth.toFixed(1)}%`);
+    const position = new kakao.maps.LatLng(Number(item.lat), Number(item.lng));
+    const overlay = new kakao.maps.CustomOverlay({position, content:bubble, yAnchor:.5, zIndex:30});
+    const showInfo = (select = false) => {
+      if (select) { document.querySelectorAll(".datalab-surge-map-bubble.is-selected").forEach(el => el.classList.remove("is-selected")); bubble.classList.add("is-selected"); overlay.setZIndex(60); }
+      if (dataLabSurgeInfoOverlay) dataLabSurgeInfoOverlay.setMap(null);
+      const info = document.createElement("div"); info.className = "datalab-surge-info";
+      info.innerHTML = `<strong>${escapeHtml([item.sido, item.sgg, name].filter(Boolean).join(" "))}</strong><span>${dataLabNum(item.rank || index + 1)}위 · ${dataLabSurgeMode === "foreign" ? "외국인" : "내국인"} 방문객</span><span>현재 방문객 ${dataLabNum(item.current)}명</span><span>전년 동기 ${dataLabNum(item.previous)}명</span><span>전년 대비 +${item.growth.toFixed(1)}%</span><span>집계 기간 ${escapeHtml(item.query_period || dataLabTourismPeriod(sourceData))}</span>`;
+      dataLabSurgeInfoOverlay = new kakao.maps.CustomOverlay({position, content:info, yAnchor:1.06, zIndex:40}); dataLabSurgeInfoOverlay.setMap(kakaoMap);
+    };
+    if (window.matchMedia("(hover: hover)").matches) {
+      bubble.addEventListener("mouseenter", () => showInfo(false));
+      bubble.addEventListener("mouseleave", () => { if (!bubble.classList.contains("is-selected") && dataLabSurgeInfoOverlay) { dataLabSurgeInfoOverlay.setMap(null); dataLabSurgeInfoOverlay = null; }});
+    }
+    bubble.addEventListener("click", () => showInfo(true));
+    overlay.setMap(kakaoMap); dataLabTourismOverlays.push(overlay);
+  });
 }
 
 function dataLabTourismNumber(value){
@@ -3732,17 +3815,27 @@ function bindDataLabControls(content){
   content.querySelectorAll("[data-datalab-price-order]").forEach(button => {
     button.addEventListener("click", () => loadDataLab("highest", button.dataset.datalabPriceOrder));
   });
+  content.querySelectorAll("[data-surge-mode]").forEach(button => {
+    button.addEventListener("click", () => {
+      dataLabSurgeMode = button.dataset.surgeMode;
+      const cached = dataLabResponseCache.get("visitor_surge:up");
+      if (!cached) return;
+      content.innerHTML = renderDataLabSurge(cached.data);
+      bindDataLabControls(content);
+      paintDataLabSurgeMap(cached.data);
+    });
+  });
 }
 
 function showTourismMapOnMobile(key){
-  if (!DATA_LAB_TOURISM_KEYS.has(key) || !window.matchMedia("(max-width: 980px)").matches) return;
+  if (!(DATA_LAB_TOURISM_KEYS.has(key) || key === DATA_LAB_SURGE_KEY) || !window.matchMedia("(max-width: 980px)").matches) return;
   const panel = document.querySelector(".side-panel");
   const toggle = document.getElementById("btnTogglePanel");
   if (!panel || !toggle) return;
   toggle.dataset.tourismMapActive = "true";
   if (panel.classList.contains("open")) toggle.click();
   toggle.innerHTML = '☰ <span class="htoggle-label">데이터랩</span>';
-  toggle.setAttribute("aria-label", "관광 데이터랩 패널 열기");
+  toggle.setAttribute("aria-label", key === DATA_LAB_SURGE_KEY ? "방문객 급증 지도 열기" : "관광 데이터랩 패널 열기");
 }
 
 function resetTourismMapMobileToggle(){
@@ -3770,7 +3863,50 @@ async function loadDataLab(key, option = "up", {
   const content = document.getElementById("dataLabContent");
   if (!content) return;
   clearDataLabTourismMap();
-  if (!DATA_LAB_TOURISM_KEYS.has(key)) resetTourismMapMobileToggle();
+  if (key === DATA_LAB_SURGE_KEY) {
+    const cached = dataLabResponseCache.get("visitor_surge:up");
+    setDataLabActive(key);
+    if (cached && !forceRefresh && Date.now() - cached.ts < DATA_LAB_CACHE_TTL_MS) {
+      content.innerHTML = renderDataLabSurge(cached.data);
+      bindDataLabControls(content);
+      prepareInitialTourismMapView();
+      paintDataLabSurgeMap(cached.data);
+      showTourismMapOnMobile(key);
+      return;
+    }
+    const requestId = ++dataLabRequestSequence;
+    if (dataLabFetchController) dataLabFetchController.abort();
+    const controller = new AbortController();
+    dataLabFetchController = controller;
+    setDataLabTabLoading(key, true, requestId);
+    if (!background) content.innerHTML = dataLabLoadingHTML();
+    try {
+      const [domesticResponse, foreignResponse] = await Promise.all([
+        fetch("/api/tourism/surge/domestic", { signal: controller.signal }),
+        fetch("/api/tourism/surge/foreign", { signal: controller.signal }),
+      ]);
+      const [domestic, foreign] = await Promise.all([domesticResponse.json(), foreignResponse.json()]);
+      if (requestId !== dataLabRequestSequence) return;
+      if (!domesticResponse.ok || !foreignResponse.ok || !domestic.ok || !foreign.ok) throw new Error("surge request failed");
+      const data = { domestic, foreign };
+      dataLabResponseCache.set("visitor_surge:up", { ts: Date.now(), data });
+      content.innerHTML = renderDataLabSurge(data);
+      bindDataLabControls(content);
+      prepareInitialTourismMapView();
+      paintDataLabSurgeMap(data);
+      showTourismMapOnMobile(key);
+    } catch (error) {
+      if (error.name !== "AbortError" && requestId === dataLabRequestSequence) {
+        content.innerHTML = dataLabErrorHTML();
+        content.querySelector("[data-datalab-retry]")?.addEventListener("click", () => loadDataLab(key));
+      }
+    } finally {
+      setDataLabTabLoading(key, false, requestId);
+      if (dataLabFetchController === controller) dataLabFetchController = null;
+    }
+    return;
+  }
+  if (!DATA_LAB_TOURISM_KEYS.has(key) && key !== DATA_LAB_SURGE_KEY) resetTourismMapMobileToggle();
   const requestId = ++dataLabRequestSequence;
   setDataLabActive(key);
   const urls = {
