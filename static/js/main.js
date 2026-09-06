@@ -7991,7 +7991,7 @@ function renderBuildingLodgingOperators(items, lodgingType, buildingId){
     if (Number.isInteger(Number(buildingId)) && Number(buildingId) > 0) params.set("building_id", String(buildingId));
     box.innerHTML = `<div class="operator-banner operator-banner-empty">
       <div class="operator-banner-copy"><strong>이 시설을 운영하고 계신가요?</strong>
-        <span>운영 정보를 직접 알리고 예약 연결을 관리해 보세요.</span></div>
+        <span>홈페이지를 등록하거나, 운영 정보를 직접 알리고 예약 연결을 관리해 보세요.</span></div>
       <a class="operator-banner-cta" href="/apply/lodging-operator?${params.toString()}">운영 파트너 등록</a>
     </div>`;
     return;
