@@ -109,6 +109,13 @@ class AnnualTourismRosterTests(unittest.TestCase):
         self.assertEqual(result["blocking_conflicts"], 0)
         self.assertEqual(result["review_count"], 1)
 
+    def test_conflict_evidence_is_saved_as_unlinked_for_legacy_production_schema(self):
+        values = roster._evidence_values(11, {
+            "matched_building_id": None,
+            "cross_check_status": "conflict",
+        })
+        self.assertEqual(values, (11, None, "review_conflict", "unmatched"))
+
     def test_breakdown_keeps_only_permit_and_room_aggregates(self):
         result = roster._breakdown([
             {"subtype": "관광호텔업", "room_count": 2},

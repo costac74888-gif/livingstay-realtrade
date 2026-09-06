@@ -1660,10 +1660,10 @@
             </div>
             <div class="annual-roster-actions">
               <input id="annualTourismRosterFile" type="file" accept=".xlsx" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>
-              <button type="button" class="admin-btn" id="annualTourismRosterPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "파일 검사·임시저장" : "운영 관리자 전용"}</button>
-              <button type="button" class="admin-btn" id="annualTourismRosterApply" disabled>홈페이지에 최종 적용</button>
+              <button type="button" class="admin-btn" id="annualTourismRosterPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "파일 검사·저장·홈페이지 적용" : "운영 관리자 전용"}</button>
+              <button type="button" class="admin-btn" id="annualTourismRosterApply" disabled style="display:none" aria-hidden="true">자동 적용</button>
             </div>
-            <div id="annualTourismRosterSummary" class="annual-roster-summary" role="status">파일 검사·임시저장을 누르면 적용 대기 원장으로 24시간 유지됩니다. 숫자를 확인한 뒤 ‘홈페이지에 최종 적용’을 누르세요.</div>
+            <div id="annualTourismRosterSummary" class="annual-roster-summary" role="status">파일을 선택하고 적용 버튼을 누르면 형식·연도·건물 연결을 검사한 뒤 원장을 저장하고 홈페이지에 자동 적용합니다. 충돌·미연결은 건물에 연결하지 않습니다.</div>
           </section>
         </section>
         <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
@@ -1834,26 +1834,24 @@
           const d = await response.json().catch(() => ({}));
           if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
           annualTourismRosterToken = d.token;
-          summary.innerHTML = renderAnnualRosterSummary(d, "검사·임시저장 완료 · 충돌·미연결은 건물에 연결하지 않음 · 운영 DB 적용 대기");
-          apply.disabled = !annualTourismRosterToken || d.safe !== true;
-        } catch (error) {
-          summary.textContent = `미리보기 실패: ${error.message}`;
-        } finally { preview.disabled = false; }
-      };
-      apply.onclick = async () => {
-        if (!annualTourismRosterToken || !confirm("미리보기 결과를 운영 DB와 실제 홈페이지에 적용할까요?")) return;
-        apply.disabled = true; summary.textContent = "연간 공식 원장을 적용하는 중…";
-        try {
-          const response = await fetch("/api/admin/annual-tourism-roster/apply", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ token: annualTourismRosterToken }) });
-          if (response.status === 401) { window.location.href = "/admin/login"; return; }
-          const d = await response.json().catch(() => ({}));
-          if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
-          summary.innerHTML = renderAnnualRosterSummary(d, "운영 DB 적용 완료");
+          summary.innerHTML = renderAnnualRosterSummary(d, "파일 검사 완료 · 원장을 저장하고 홈페이지에 적용하는 중…");
+          if (!annualTourismRosterToken || d.safe !== true) throw new Error("검사 결과를 적용할 수 없습니다.");
+          const applyResponse = await fetch("/api/admin/annual-tourism-roster/apply", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ token: annualTourismRosterToken }),
+          });
+          if (applyResponse.status === 401) { window.location.href = "/admin/login"; return; }
+          const applied = await applyResponse.json().catch(() => ({}));
+          if (!applyResponse.ok || !applied.ok) {
+            throw new Error(applied.message || `response status ${applyResponse.status}`);
+          }
+          summary.innerHTML = renderAnnualRosterSummary(applied, "저장·홈페이지 적용 완료");
           annualTourismRosterToken = null;
           loadAnnualTourismRosterCurrent();
         } catch (error) {
-          summary.textContent = `적용 실패: ${error.message}`;
-        } finally { apply.disabled = true; }
+          summary.textContent = `저장·홈페이지 적용 실패: ${error.message}`;
+        } finally { preview.disabled = false; apply.disabled = true; }
       };
     }
 

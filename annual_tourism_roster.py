@@ -282,6 +282,14 @@ def cross_check_rows(conn, rows):
     }
 
 
+def _evidence_values(entry_id, row):
+    """Persist only schema-compatible linkage states; retain review detail in the stage manifest."""
+    status = row["cross_check_status"]
+    persisted_status = status if status in ("matched", "unmatched") else "unmatched"
+    method = "name_and_address_exact" if status == "matched" else f"review_{status}"
+    return entry_id, row["matched_building_id"], method, persisted_status
+
+
 def store_preview(conn, file, owner, reference_year, next_collection_year, source_name):
     token, owner, manifest, summary = preview(
         file, owner, reference_year, next_collection_year, source_name
@@ -393,8 +401,7 @@ def apply(conn, token, owner):
                        WHERE version_id=%s""", (version_id,))
         entry_ids = {row["source_row_number"]: row["id"] for row in cur.fetchall()}
         evidence = [
-            (entry_ids[row["row_number"]], row["matched_building_id"],
-             "name_and_address_exact", row["cross_check_status"])
+            _evidence_values(entry_ids[row["row_number"]], row)
             for row in checked_rows
         ]
         execute_values(cur, """INSERT INTO annual_tourism_roster_building_evidence
