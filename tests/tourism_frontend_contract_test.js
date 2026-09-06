@@ -41,11 +41,18 @@ expect(main.includes('b.lodging_type === "에어비앤비"') &&
   main.includes("TOP3 방문국"),
   "에어비앤비 외국인 방문 활성 배지가 없습니다.");
 expect(main.includes("/tourism-stats") &&
-  main.includes('new Set(["캠핑", "농어촌민박", "한옥"])') &&
-  main.includes('id = "bTourismAttractions"') &&
+  main.includes('id="bTourismDataCard"') &&
+  main.includes('id="bBuildingTitleRow"') &&
+  main.includes("내국인 방문 급상승") &&
+  main.includes("외국인 방문 급상승") &&
+  main.includes("regional_metrics") &&
+  main.includes("function _formatTourismPeriod") &&
+  main.includes("지역 인기 관광지") &&
+  !main.includes('new Set(["캠핑", "농어촌민박", "한옥"])') &&
   main.includes("_isActiveBuilding(buildingId, requestToken)"),
-  "적격 상세의 주변 인기 관광지 조회/멱등성 계약이 없습니다.");
-expect(css.includes(".b-tourism-attractions") && css.includes(".b-foreign-visitor-badge"),
+  "전체 건물 상세의 관광데이터·급상승 뱃지 조회 계약이 없습니다.");
+expect(css.includes(".b-tourism-attractions") && css.includes(".b-foreign-visitor-badge") &&
+  css.includes(".b-tourism-surge-badge") && css.includes(".b-tourism-metrics"),
   "관광 상세 보조 정보 스타일이 CSS에 없습니다.");
 expect(html.includes('data-datalab-key="lodging_rank"') &&
   html.includes("검색TOP100") &&

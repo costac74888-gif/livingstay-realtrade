@@ -128,12 +128,17 @@ class TourismApiContractTests(unittest.TestCase):
         )
         self.assertIsNone(_search_ranking_fallback_centroid("서울특별시", "없는구"))
 
-    def test_detail_and_attraction_route_contracts_are_type_scoped(self):
+    def test_detail_and_attraction_route_contracts_include_all_buildings(self):
         self.assertIn('building.get("lodging_type") == "에어비앤비"', self.source)
         self.assertIn('"tourism_foreign_ratio"', self.source)
         self.assertIn('"foreign_top3"', self.source)
         self.assertIn('"/api/building/<int:building_id>/tourism-stats"', self.source)
-        self.assertIn('{"캠핑", "농어촌민박", "한옥"}', self.source)
+        self.assertIn('"regional_metrics": {}', self.source)
+        self.assertIn('"surge_badges": []', self.source)
+        self.assertIn('"내국인 방문 급상승"', self.source)
+        self.assertNotIn('building["lodging_type"] not in {"캠핑", "농어촌민박", "한옥"}', self.source)
+        self.assertIn("trim(t.dimensions->>'행정동명') = %s", self.source)
+        self.assertNotIn("regexp_replace(trim(t.dimensions->>'행정동명'), '[0-9]+동$'", self.source)
         self.assertIn('"/api/tourism/attractions/top20"', self.source)
         self.assertIn("max_rank=20", self.source)
         self.assertIn('"sgg_office_fallback"', self.source)

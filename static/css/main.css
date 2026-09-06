@@ -441,11 +441,24 @@
      white-space:nowrap;
    }
    .b-foreign-visitor-hint{flex-basis:100%; margin-top:-2px; color:var(--ink-soft); font-size:11.5px;}
+   .b-tourism-data-card{scroll-margin-top:72px;}
+   .b-tourism-surge-badge{display:inline-flex;align-items:center;min-height:22px;padding:2px 8px;border:1px solid;text-decoration:none;border-radius:999px;font-size:10.5px;font-weight:800;line-height:1.25;white-space:nowrap;}
+   .b-tourism-surge-badge.is-domestic{border-color:#e1c479;background:#fff8df;color:#7a5a09;}
+   .b-tourism-surge-badge.is-foreign{border-color:#9bbce7;background:#edf5ff;color:#245f9d;}
+   .b-tourism-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px;}
+   .b-tourism-metric{min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fafbfc;}
+   .b-tourism-metric small{display:block;margin-bottom:3px;color:var(--ink-soft);font-size:10.5px;}
+   .b-tourism-metric strong{display:block;overflow:hidden;color:var(--ink);font:700 14px/1.3 'JetBrains Mono',monospace;text-overflow:ellipsis;white-space:nowrap;}
+   .b-tourism-metric>span{display:block;margin-top:3px;color:var(--ink-soft2,#999);font-size:9.5px;}
+   .b-tourism-comment{margin:10px 0 0;padding:10px 11px;border-radius:8px;background:var(--brass-tint);color:var(--ink);font-size:11.5px;line-height:1.65;}
+   .b-tourism-source-note{margin:9px 0 0;color:var(--ink-soft);font-size:10.5px;line-height:1.5;}
    .b-tourism-attractions{margin-top:12px; padding-top:12px; border-top:1px solid var(--line);}
    .b-tourism-attractions-title{margin:0 0 7px; color:var(--ink); font-size:12px; font-weight:700;}
+   .b-tourism-attractions-title span{margin-left:4px;color:var(--ink-soft2,#999);font-size:9.5px;font-weight:500;}
    .b-tourism-attractions-list{display:flex; flex-direction:column; gap:5px; margin:0; padding:0; list-style:none;}
    .b-tourism-attractions-list li{color:var(--ink-soft); font-size:11.5px; line-height:1.4;}
    .b-tourism-attractions-rank{display:inline-block; min-width:20px; color:var(--brass-dark); font-weight:800;}
+   @media(max-width:420px){.b-tourism-surge-badge{font-size:10px;padding-inline:7px}.b-tourism-metrics{grid-template-columns:1fr 1fr}}
   .map-measure-label{
     padding:4px 7px; border:1px solid #EAD9B8; border-radius:6px;
     background:#fff; color:var(--brass-dark); box-shadow:0 2px 7px rgba(22,32,46,.22);

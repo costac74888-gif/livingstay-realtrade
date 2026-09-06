@@ -30630,25 +30630,116 @@ def get_building_lodging_rank(building_id):
 @app.route("/api/building/<int:building_id>/tourism-stats")
 @limiter.limit("60 per minute")
 def get_building_tourism_stats(building_id):
-    """캠핑·농어촌민박·한옥 건물의 같은 시군구 관광지 검색 TOP 3."""
+    """모든 건물의 지역 관광지표와 급등동네·인기 관광지를 반환한다."""
     conn = None
     cur = None
     try:
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
-            SELECT lodging_type, sgg_text
+            SELECT lodging_type, sgg_text, umd_nm
             FROM master_buildings
             WHERE id = %s
         """, (building_id,))
         building = cur.fetchone()
         if not building:
             return jsonify({"error": "not found"}), 404
-        payload = {"building_id": building_id, "nearby_attractions": []}
-        if building["lodging_type"] not in {"캠핑", "농어촌민박", "한옥"}:
-            return jsonify(payload)
+        payload = {
+            "building_id": building_id,
+            "source": "한국관광 데이터랩",
+            "regional_metrics": {},
+            "surge_badges": [],
+            "nearby_attractions": [],
+        }
+        region_key = _building_tourism_region_key(building)
+        latest_order = tourism_stats_importer.latest_source_order_sql("t")
+
+        metric_specs = (
+            ("domestic_visitors", "visitor_sgg", "기초지자체 방문자 수"),
+            ("foreign_visitors", "foreign_sgg", "기초지자체 방문자 수"),
+            ("tourism_searches", "search_sgg", "기초지자체 검색건수"),
+            ("tourism_consumption_share", "consumption_region", "기초지자체 지출액 비율(%)"),
+        )
+        stat_types = [spec[1] for spec in metric_specs]
+        cur.execute(f"""
+            WITH latest AS (
+                SELECT DISTINCT ON (t.stat_type) t.stat_type, t.source_file
+                FROM tourism_stats t
+                WHERE t.stat_type = ANY(%s)
+                ORDER BY t.stat_type, {latest_order}
+            )
+            SELECT t.stat_type, t.metric_name, t.metric_value, t.source_period
+            FROM tourism_stats t
+            JOIN latest l USING (stat_type, source_file)
+            WHERE regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s
+              AND regexp_replace(trim(t.sgg_name), '\\s+', '', 'g') = %s
+              AND (t.stat_type, t.metric_name) IN (
+                  ('visitor_sgg', '기초지자체 방문자 수'),
+                  ('foreign_sgg', '기초지자체 방문자 수'),
+                  ('search_sgg', '기초지자체 검색건수'),
+                  ('consumption_region', '기초지자체 지출액 비율(%%)')
+              )
+            ORDER BY t.metric_value DESC NULLS LAST
+        """, (stat_types, *region_key))
+        metric_rows = cur.fetchall()
+        metric_key_by_spec = {
+            (stat_type, metric_name): key
+            for key, stat_type, metric_name in metric_specs
+        }
+        for metric_row in metric_rows:
+            key = metric_key_by_spec.get((metric_row["stat_type"], metric_row["metric_name"]))
+            if key and key not in payload["regional_metrics"] and metric_row["metric_value"] is not None:
+                payload["regional_metrics"][key] = {
+                    "value": float(metric_row["metric_value"]),
+                    "source_period": metric_row["source_period"],
+                }
+
+        dong_name = str(building.get("umd_nm") or "").strip()
+        if dong_name:
+            surge_types = ["surge_domestic_dong", "surge_foreign_dong"]
+            cur.execute(f"""
+                WITH latest AS (
+                    SELECT DISTINCT ON (t.stat_type) t.stat_type, t.source_file
+                    FROM tourism_stats t
+                    WHERE t.stat_type = ANY(%s)
+                    ORDER BY t.stat_type, {latest_order}
+                )
+                SELECT
+                    t.stat_type,
+                    t.ref_yearmonth,
+                    t.source_period,
+                    t.dimensions->>'행정동명' AS tourism_dong_name,
+                    NULLIF(trim(t.dimensions->>'순위'), '')::INTEGER AS rank,
+                    MAX(t.metric_value) FILTER (WHERE t.metric_name = '관광객수') AS current_visitors,
+                    MAX(t.metric_value) FILTER (WHERE t.metric_name = '전년동기관광객수') AS previous_year_visitors,
+                    MAX(t.metric_value) FILTER (WHERE t.metric_name = '증감율') AS growth_rate
+                FROM tourism_stats t
+                JOIN latest l USING (stat_type, source_file)
+                WHERE regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s
+                  AND regexp_replace(trim(t.sgg_name), '\\s+', '', 'g') = %s
+                  AND trim(t.dimensions->>'행정동명') = %s
+                GROUP BY t.stat_type, t.ref_yearmonth, t.source_period,
+                         t.dimensions->>'행정동명', t.dimensions->>'순위'
+                ORDER BY rank NULLS LAST
+            """, (surge_types, *region_key, dong_name))
+            for surge_row in cur.fetchall():
+                if surge_row["rank"] is None:
+                    continue
+                is_foreign = surge_row["stat_type"] == "surge_foreign_dong"
+                payload["surge_badges"].append({
+                    "audience": "foreign" if is_foreign else "domestic",
+                    "label": "외국인 방문 급상승" if is_foreign else "내국인 방문 급상승",
+                    "rank": int(surge_row["rank"]),
+                    "dong_name": surge_row["tourism_dong_name"],
+                    "growth_rate": float(surge_row["growth_rate"] or 0),
+                    "current_visitors": float(surge_row["current_visitors"] or 0),
+                    "previous_year_visitors": float(surge_row["previous_year_visitors"] or 0),
+                    "ref_yearmonth": surge_row["ref_yearmonth"],
+                    "source_period": surge_row["source_period"],
+                })
+
         rows = _search_ranking_rows(
-            cur, _building_tourism_region_key(building), limit=3
+            cur, region_key, limit=3
         )
         payload["nearby_attractions"] = [
             {

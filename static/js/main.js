@@ -6123,6 +6123,7 @@ function buildingPanelSkeleton(buildingId){
     </section>
     <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
     <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
+    <section class="side-card b-tourism-data-card" id="bTourismDataCard" style="display:none;"></section>
 
     <section class="side-card" id="bAreaFilterCard" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
@@ -6340,19 +6341,28 @@ function _renderDetailCards(b, buildingId){
   _loadDetailTourismStats(b, buildingId);
 }
 
-function _detailTourismAttractionsTarget(b){
-  // B 유형은 운영정보 탭, 그 외에는 해당 시설 안내 카드에 붙인다.
-  return document.getElementById("bOperationsPanel") || document.getElementById("bCampCard");
+function _removeDetailTourismAttractions(){
+  document.querySelectorAll(".b-tourism-surge-badge").forEach(node => node.remove());
+  const card = document.getElementById("bTourismDataCard");
+  if (card) {
+    card.innerHTML = "";
+    card.style.display = "none";
+  }
 }
 
-function _removeDetailTourismAttractions(){
-  document.getElementById("bTourismAttractions")?.remove();
+function _formatTourismPeriod(value){
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})(\d{2})(?:-(\d{4})(\d{2}))?$/);
+  if (!match) return raw;
+  const start = `${match[1]}년 ${Number(match[2])}월`;
+  if (!match[3]) return start;
+  const end = `${match[3]}년 ${Number(match[4])}월`;
+  return start === end ? start : `${start}~${end}`;
 }
 
 async function _loadDetailTourismStats(b, buildingId){
-  const eligible = new Set(["캠핑", "농어촌민박", "한옥"]);
   _removeDetailTourismAttractions();
-  if (!eligible.has(b?.lodging_type) || !buildingId) return;
+  if (!buildingId) return;
   const requestToken = _buildingDetailRequestToken;
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/tourism-stats`);
@@ -6360,23 +6370,71 @@ async function _loadDetailTourismStats(b, buildingId){
     if (!response.ok || !_isActiveBuilding(buildingId, requestToken)) return;
     const attractions = Array.isArray(data.attractions) ? data.attractions
       : (Array.isArray(data.nearby_attractions) ? data.nearby_attractions : []);
-    if (!attractions.length) return;
-    const target = _detailTourismAttractionsTarget(b);
-    if (!target) return;
-    _removeDetailTourismAttractions();
+    const metrics = data.regional_metrics && typeof data.regional_metrics === "object"
+      ? data.regional_metrics : {};
+    const surges = Array.isArray(data.surge_badges) ? data.surge_badges : [];
+    const titleRow = document.getElementById("bBuildingTitleRow");
+    if (titleRow) {
+      surges.forEach(item => {
+        const audience = item.audience === "foreign" ? "foreign" : "domestic";
+        const label = audience === "foreign" ? "외국인 방문 급상승" : "내국인 방문 급상승";
+        const rank = Number(item.rank);
+        if (!Number.isFinite(rank) || rank < 1) return;
+        const badge = document.createElement("a");
+        badge.className = `b-tourism-surge-badge is-${audience}`;
+        badge.href = "#bTourismDataCard";
+        badge.textContent = `${label} TOP ${rank}`;
+        badge.title = `${item.dong_name || "해당 지역"} · 전년 동월 대비 ${Number(item.growth_rate || 0).toLocaleString("ko-KR", {maximumFractionDigits:1})}%`;
+        titleRow.appendChild(badge);
+      });
+    }
+    const card = document.getElementById("bTourismDataCard");
+    if (!card) return;
+    const metricSpecs = [
+      ["domestic_visitors", "내국인 방문자", "명"],
+      ["foreign_visitors", "외국인 방문자", "명"],
+      ["tourism_searches", "관광 검색", "회"],
+      ["tourism_consumption_share", "관광소비 비중", "%"],
+    ];
+    const metricRows = metricSpecs.map(([key, label, unit]) => {
+      const value = Number(metrics[key]?.value);
+      if (!Number.isFinite(value)) return "";
+      const formatted = value.toLocaleString("ko-KR", {
+        maximumFractionDigits: unit === "%" ? 1 : 0,
+      });
+      const period = _formatTourismPeriod(metrics[key]?.source_period);
+      return `<div class="b-tourism-metric"><small>${label}</small><strong>${formatted}${unit}</strong>${period ? `<span>${escapeHtml(period)}</span>` : ""}</div>`;
+    }).filter(Boolean);
     const rows = attractions.slice(0, 5).map((item, index) => {
       const rank = Number.isFinite(Number(item.rank)) ? Number(item.rank) : index + 1;
       const name = String(item.name ?? item.place_name ?? item.attraction_name ?? "").trim();
       return name ? `<li><span class="b-tourism-attractions-rank">${rank}위</span>${escapeHtml(name)}</li>` : "";
     }).filter(Boolean);
-    if (!rows.length) return;
-    const section = document.createElement("section");
-    section.id = "bTourismAttractions";
-    section.className = "b-tourism-attractions";
-    section.setAttribute("aria-label", "주변 인기 관광지");
-    section.innerHTML = `<h2 class="b-tourism-attractions-title">주변 인기 관광지</h2>
-      <ol class="b-tourism-attractions-list">${rows.join("")}</ol>`;
-    target.appendChild(section);
+    if (!metricRows.length && !surges.length && !rows.length) return;
+    const attractionPeriod = _formatTourismPeriod(
+      attractions.find(item => item?.source_period)?.source_period || ""
+    );
+    const summaryParts = [];
+    const domesticValue = Number(metrics.domestic_visitors?.value);
+    const foreignValue = Number(metrics.foreign_visitors?.value);
+    const searchValue = Number(metrics.tourism_searches?.value);
+    if (Number.isFinite(domesticValue)) summaryParts.push(`내국인 방문자 ${domesticValue.toLocaleString("ko-KR", {maximumFractionDigits:0})}명`);
+    if (Number.isFinite(foreignValue)) summaryParts.push(`외국인 방문자 ${foreignValue.toLocaleString("ko-KR", {maximumFractionDigits:0})}명`);
+    if (Number.isFinite(searchValue)) summaryParts.push(`관광 검색 ${searchValue.toLocaleString("ko-KR", {maximumFractionDigits:0})}회`);
+    const surgeSummary = surges.map(item => {
+      const who = item.audience === "foreign" ? "외국인" : "내국인";
+      return `${who} 방문이 전년 동월보다 ${Number(item.growth_rate || 0).toLocaleString("ko-KR", {maximumFractionDigits:1})}% 증가해 급상승 TOP ${item.rank}`;
+    });
+    card.innerHTML = `
+      <div class="side-card-title">관광데이터 <span class="side-sub">한국관광 데이터랩</span></div>
+      ${metricRows.length ? `<div class="b-tourism-metrics">${metricRows.join("")}</div>` : ""}
+      ${(summaryParts.length || surgeSummary.length) ? `<p class="b-tourism-comment">${escapeHtml([...summaryParts, ...surgeSummary].join(". "))}.</p>` : ""}
+      ${rows.length ? `<section id="bTourismAttractions" class="b-tourism-attractions" aria-label="지역 인기 관광지">
+        <h2 class="b-tourism-attractions-title">지역 인기 관광지${attractionPeriod ? ` <span>${escapeHtml(attractionPeriod)}</span>` : ""}</h2>
+        <ol class="b-tourism-attractions-list">${rows.join("")}</ol>
+      </section>` : ""}
+      <p class="b-tourism-source-note">건물 자체 실적이 아닌 해당 지역의 관광 동향입니다.</p>`;
+    card.style.display = "";
   } catch (e) {
     // 관광 보조 정보 실패는 상세 기본 정보 렌더링에 영향을 주지 않는다.
   }
@@ -6531,7 +6589,7 @@ async function loadBuildingHeader(id){
       <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
       <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
     </div>` : ""}
-    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+    <div id="bBuildingTitleRow" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
       ${lodgingNameTag}
