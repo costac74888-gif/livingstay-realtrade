@@ -109,6 +109,14 @@
    .tdl-status{display:inline-flex;align-items:center;border-radius:999px;padding:3px 7px;font-size:10.5px;font-weight:800;white-space:nowrap}.tdl-status-overdue,.tdl-status-missing{background:#FDE9E6;color:#A2372D}.tdl-status-due_soon{background:#FFF3D8;color:#8A5C12}.tdl-status-current{background:#E7F3EA;color:#287044}.tdl-status-history{background:#EEF0F2;color:#697482}.tdl-status-unknown{background:#F4F1EA;color:#76684F}
    .tdl-upload{display:grid;grid-template-columns:minmax(240px,1fr) auto auto;gap:8px;align-items:center;padding:12px 13px;background:#FFFCF4;border-top:1px solid #E9E0CE}.tdl-upload-note{font-size:11px;color:var(--tdl-muted);line-height:1.5;grid-column:1/-1}.tdl-feedback{font-size:12px;min-height:18px;color:var(--tdl-muted);margin-top:8px}.tdl-feedback.is-error{color:#A2372D}.tdl-feedback.is-ok{color:#287044}
     .annual-roster{margin-top:14px;border:1px solid #DCCFB8;border-radius:8px;background:#FFFEFB;padding:12px 13px}.annual-roster h4{margin:0 0 4px;color:var(--tdl-ink);font-size:13px}.annual-roster p{margin:0 0 9px;color:var(--tdl-muted);font-size:11.5px;line-height:1.55}.annual-roster-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.annual-roster-summary{margin-top:9px;color:var(--tdl-muted);font-size:12px;line-height:1.6}.annual-roster-summary table{width:100%;border-collapse:collapse;margin-top:7px;font-size:11.5px}.annual-roster-summary th,.annual-roster-summary td{padding:5px 7px;border-bottom:1px solid #E9E0CE;text-align:right}.annual-roster-summary th:first-child,.annual-roster-summary td:first-child{text-align:left}.annual-roster.is-disabled{opacity:.68}
+    .annual-roster-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:11px 0 9px;padding:10px;border:1px solid #E9E0CE;border-radius:7px;background:#FBF8F0}
+    .annual-roster-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .annual-roster-field label{font-size:11px;font-weight:800;color:var(--tdl-ink)}
+    .annual-roster-field input{width:100%;height:32px;box-sizing:border-box;border:1px solid #D6CBB8;border-radius:5px;background:#fff;padding:0 8px;color:var(--tdl-ink);font:12px inherit}
+    .annual-roster-field input:focus{outline:2px solid #F3EAD9;border-color:var(--tdl-brass)}
+    .annual-roster-field input:invalid{border-color:#C8796D}
+    .annual-roster-field small{color:var(--tdl-muted);font-size:10px;font-weight:400;line-height:1.35}
+    @media(max-width:760px){.annual-roster-fields{grid-template-columns:1fr}.annual-roster-field input{max-width:none}}
    .tdl-empty{padding:34px 14px;text-align:center;color:var(--tdl-muted);font-size:12px}.tdl-loading{padding:28px;color:var(--tdl-muted);font-size:12px}
    @media(max-width:760px){.tdl-summary{grid-template-columns:repeat(2,1fr)}.tdl-filters{grid-template-columns:1fr 1fr}.tdl-upload{grid-template-columns:1fr 1fr}.tdl-upload input{grid-column:1/-1}}
    @media(max-width:450px){.tdl-filters{grid-template-columns:1fr}.tdl-title{font-size:20px}}
@@ -1633,6 +1641,23 @@
             <h4 id="annualTourismRosterTitle">연간 공식 관광숙박업 원장 XLSX</h4>
             <p>공식 관광숙박업 원장을 별도 배치로 미리 확인한 뒤 운영 DB에 반영합니다. 기존 연결과 충돌·누락은 적용 전에 확인하세요.</p>
             <div id="annualTourismRosterCurrent" class="annual-roster-summary" role="status"><b>현재 홈페이지 적용 현황</b><div>불러오는 중…</div></div>
+            <div class="annual-roster-fields" aria-label="연간 원장 자료 정보">
+              <div class="annual-roster-field">
+                <label for="annualTourismRosterReferenceYear">적용 자료 기준연도</label>
+                <input id="annualTourismRosterReferenceYear" name="reference_year" type="number" min="2000" max="2100" value="2025" required>
+                <small>이번 파일에 담긴 자료의 기준연도</small>
+              </div>
+              <div class="annual-roster-field">
+                <label for="annualTourismRosterNextCollectionYear">다음 수집 예정연도</label>
+                <input id="annualTourismRosterNextCollectionYear" name="next_collection_year" type="number" min="2000" max="2100" value="2026" required>
+                <small>다음 연간 원장 수집을 계획할 연도</small>
+              </div>
+              <div class="annual-roster-field">
+                <label for="annualTourismRosterSourceName">수집 출처</label>
+                <input id="annualTourismRosterSourceName" name="source_name" type="text" value="문화체육관광부 관광숙박업 등록현황" maxlength="200" required>
+                <small>관리자와 현재 적용 현황에 표시됩니다</small>
+              </div>
+            </div>
             <div class="annual-roster-actions">
               <input id="annualTourismRosterFile" type="file" accept=".xlsx" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>
               <button type="button" class="admin-btn" id="annualTourismRosterPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "원장 미리보기" : "운영 관리자 전용"}</button>
@@ -1726,6 +1751,11 @@
     function renderAnnualRosterSummary(d, prefix) {
       const counts = d.counts || d.summary || d;
       const crossCheck = d.building_cross_check || counts.building_cross_check || counts;
+      const metadata = [
+        ["적용 자료 기준연도", d.reference_year ?? d.reference_date ?? "-"],
+        ["다음 수집 예정연도", d.next_collection_year ?? "-"],
+        ["수집 출처", d.source_name ?? "-"],
+      ];
       const rows = [
         ["전체 원장 행", annualRosterCount(counts, ["total_rows", "rows", "input_rows"])],
         ["영업중 등록사업장", annualRosterCount(counts, ["active_facilities", "permit_count"])],
@@ -1735,14 +1765,16 @@
         ["ambiguous", annualRosterCount(crossCheck, ["ambiguous", "ambiguous_count"])],
         ["conflict", annualRosterCount(crossCheck, ["conflict", "conflicts", "conflict_count"])],
       ];
-      return `<b>${escapeText(prefix || "미리보기")}</b><table><tbody>${rows.map(([label, value]) => `<tr><th>${escapeText(label)}</th><td>${Number(value).toLocaleString("ko-KR")}</td></tr>`).join("")}</tbody></table>${d.message ? `<div>${escapeText(d.message)}</div>` : ""}`;
+      const metadataRows = metadata.map(([label, value]) => `<tr><th>${escapeText(label)}</th><td>${escapeText(value)}</td></tr>`).join("");
+      return `<b>${escapeText(prefix || "미리보기")}</b><table><tbody>${metadataRows}${rows.map(([label, value]) => `<tr><th>${escapeText(label)}</th><td>${Number(value).toLocaleString("ko-KR")}</td></tr>`).join("")}</tbody></table>${d.message ? `<div>${escapeText(d.message)}</div>` : ""}`;
     }
     function renderAnnualRosterCurrent(d) {
       if (!d.applied) return `<b>현재 홈페이지 적용 현황</b><div style="margin-top:6px;">${escapeText(d.message || "승인·적용된 공식 원장이 없습니다.")}</div>`;
       const rows = [
         ["적용 등록사업장", `${Number(d.permit_count || 0).toLocaleString("ko-KR")}개`],
         ["적용 객실 수", `${Number(d.room_count || 0).toLocaleString("ko-KR")}실`],
-        ["자료 기준일", d.reference_date || "-"],
+        ["적용 자료 기준연도", d.reference_year ?? d.reference_date ?? "-"],
+        ["다음 수집 예정연도", d.next_collection_year ?? "-"],
         ["수집 출처", d.source_name || "-"],
         ["원본 파일", d.source_file || "-"],
         ["운영 적용 시각", d.approved_at || "-"],
@@ -1767,11 +1799,22 @@
       const preview = document.getElementById("annualTourismRosterPreview");
       const apply = document.getElementById("annualTourismRosterApply");
       const summary = document.getElementById("annualTourismRosterSummary");
-      if (!file || !preview || !apply || !summary) return;
+      const referenceYear = document.getElementById("annualTourismRosterReferenceYear");
+      const nextCollectionYear = document.getElementById("annualTourismRosterNextCollectionYear");
+      const sourceName = document.getElementById("annualTourismRosterSourceName");
+      if (!file || !preview || !apply || !summary || !referenceYear || !nextCollectionYear || !sourceName) return;
       loadAnnualTourismRosterCurrent();
       preview.onclick = async () => {
         if (!file.files.length) { summary.textContent = "연간 공식 원장 XLSX 파일을 선택하세요."; return; }
-        const body = new FormData(); body.append("file", file.files[0]);
+        if (!referenceYear.reportValidity() || !nextCollectionYear.reportValidity() || !sourceName.reportValidity()) {
+          summary.textContent = "적용 자료 기준연도·다음 수집 예정연도·수집 출처를 입력하세요.";
+          return;
+        }
+        const body = new FormData();
+        body.append("file", file.files[0]);
+        body.append("reference_year", referenceYear.value);
+        body.append("next_collection_year", nextCollectionYear.value);
+        body.append("source_name", sourceName.value.trim());
         preview.disabled = true; apply.disabled = true; annualTourismRosterToken = null;
         summary.textContent = "원장 형식·주소 연결·충돌을 검사하는 중…";
         try {

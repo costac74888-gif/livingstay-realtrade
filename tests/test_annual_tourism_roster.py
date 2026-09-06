@@ -63,6 +63,30 @@ class AnnualTourismRosterTests(unittest.TestCase):
         with patch.dict(os.environ, {"REPLIT_DEPLOYMENT": "1"}, clear=False):
             roster.assert_production_connection(MagicMock())
 
+    def test_preview_requires_metadata_that_matches_workbook_year(self):
+        raw = workbook_bytes(
+            ["업종", "시설개요", "객실수", "영업상태"],
+            ["관광호텔업", "테스트 호텔", 2, "영업중"],
+        )
+        file = MagicMock(filename="2025년_관광숙박업.xlsx")
+        file.read.return_value = raw
+        _, _, manifest, summary = roster.preview(
+            file, 7, "2025", "2026", "문화체육관광부 공개 명부"
+        )
+        self.assertEqual(manifest["next_collection_year"], 2026)
+        self.assertEqual(manifest["source_name"], "문화체육관광부 공개 명부")
+        self.assertEqual(summary["reference_year"], 2025)
+
+    def test_metadata_rejects_invalid_year_order_source_and_workbook_mismatch(self):
+        with self.assertRaisesRegex(ValueError, "2000~2100"):
+            roster.validate_metadata("1999", "2025", "출처", 2025)
+        with self.assertRaisesRegex(ValueError, "다음 수집"):
+            roster.validate_metadata("2025", "2024", "출처", 2025)
+        with self.assertRaisesRegex(ValueError, "출처명"):
+            roster.validate_metadata("2025", "2025", "", 2025)
+        with self.assertRaisesRegex(ValueError, "XLSX"):
+            roster.validate_metadata("2024", "2025", "출처", 2025)
+
     def test_breakdown_keeps_only_permit_and_room_aggregates(self):
         result = roster._breakdown([
             {"subtype": "관광호텔업", "room_count": 2},

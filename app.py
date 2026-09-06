@@ -31925,7 +31925,10 @@ def annual_tourism_roster_preview():
         conn = get_conn()
         annual_tourism_roster.assert_production_connection(conn)
         result = annual_tourism_roster.store_preview(
-            conn, request.files.get("file"), session.get("admin_user_id")
+            conn, request.files.get("file"), session.get("admin_user_id"),
+            request.form.get("reference_year"),
+            request.form.get("next_collection_year"),
+            request.form.get("source_name"),
         )
         return jsonify({"ok": True, **result})
     except (ValueError, RuntimeError) as exc:
@@ -31959,8 +31962,9 @@ def annual_tourism_roster_status():
             "sub_rows": approved["sub_rows"],
             "reference_year": source["reference_year"],
             "reference_date": f'{int(source["reference_year"]):04d}-12-31',
-            "source_name": "연간 공식 관광숙박업 등록현황 XLSX(관리자 승인)",
+            "source_name": source["source_name"],
             "source_file": source["source_file"],
+            "next_collection_year": source["next_collection_year"],
             "approved_at": source["approved_at"],
             "building_cross_check": source["building_cross_check"],
         })

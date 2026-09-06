@@ -23,6 +23,8 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
         result = {
             "token": "preview-token", "total_rows": 1, "active_facilities": 1,
             "active_rooms": 2, "inactive_count": 0, "review_count": 0,
+            "reference_year": 2025, "next_collection_year": 2026,
+            "source_name": "문화체육관광부 공개 명부",
             "building_cross_check": {"matched": 0, "unmatched": 1, "ambiguous": 0, "conflict": 0},
         }
         with patch.object(application, "get_conn", return_value=conn), \
@@ -30,10 +32,14 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
              patch.object(application.annual_tourism_roster, "store_preview", return_value=result) as preview:
             response = self.client.post("/api/admin/annual-tourism-roster/preview", data={
                 "file": (io.BytesIO(b"PK\x03\x04"), "2025년_관광숙박업.xlsx"),
+                "reference_year": "2025",
+                "next_collection_year": "2026",
+                "source_name": "문화체육관광부 공개 명부",
             })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"ok": True, **result})
         self.assertEqual(preview.call_args.args[2], 7)
+        self.assertEqual(preview.call_args.args[3:], ("2025", "2026", "문화체육관광부 공개 명부"))
         conn.close.assert_called_once()
 
     def test_apply_returns_production_guard_as_explicit_client_error(self):
@@ -56,6 +62,8 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
             "sub_rows": [],
             "source": {
                 "reference_year": 2025,
+                "next_collection_year": 2026,
+                "source_name": "문화체육관광부 공개 명부",
                 "source_file": "2025년말_관광숙박업_등록현황.xlsx",
                 "approved_at": "2026-09-06 12:00:00+00",
                 "building_cross_check": {"matched": 1550, "unmatched": 1379},
@@ -71,7 +79,8 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
         self.assertEqual(payload["room_count"], 219621)
         self.assertEqual(payload["reference_date"], "2025-12-31")
         self.assertEqual(payload["source_file"], approved["source"]["source_file"])
-        self.assertIn("공식 관광숙박업", payload["source_name"])
+        self.assertEqual(payload["source_name"], approved["source"]["source_name"])
+        self.assertEqual(payload["next_collection_year"], 2026)
         conn.close.assert_called_once()
 
 

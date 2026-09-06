@@ -21,6 +21,7 @@ from addr_norm import normalize_jibun_prefix, normalize_road_prefix
 
 MAX_FILE_BYTES = 25 * 1024**2
 MAX_ROWS = 100_000
+MAX_SOURCE_NAME_LENGTH = 200
 _STAGE_TTL_SECONDS = 600
 _YEAR_RE = re.compile(r"(?<!\d)((?:20)?\d{2})(?:년|[-./]\s*12|$)")
 _SUBTYPE_MAP = {
@@ -50,6 +51,37 @@ def _safe_filename(name):
 
 def _text(value):
     return str(value or "").strip()
+
+
+def _year(value, label):
+    """Accept only an explicit four-digit annual-roster year."""
+    raw = _text(value)
+    if not re.fullmatch(r"\d{4}", raw):
+        raise ValueError(f"{label}은 2000~2100년의 네 자리 숫자로 입력해야 합니다.")
+    year = int(raw)
+    if not 2000 <= year <= 2100:
+        raise ValueError(f"{label}은 2000~2100년 범위여야 합니다.")
+    return year
+
+
+def validate_metadata(reference_year, next_collection_year, source_name, workbook_year):
+    """Validate human-entered collection metadata against the parsed workbook."""
+    reference_year = _year(reference_year, "기준 연도")
+    next_collection_year = _year(next_collection_year, "다음 수집 연도")
+    source_name = _text(source_name)
+    if not source_name or len(source_name) > MAX_SOURCE_NAME_LENGTH:
+        raise ValueError(
+            f"수집 출처명은 1~{MAX_SOURCE_NAME_LENGTH}자의 비어 있지 않은 텍스트여야 합니다."
+        )
+    if next_collection_year < reference_year:
+        raise ValueError("다음 수집 연도는 기준 연도보다 같거나 커야 합니다.")
+    if reference_year != workbook_year:
+        raise ValueError("입력한 기준 연도가 XLSX 파일명에서 확인한 기준 연도와 다릅니다.")
+    return {
+        "reference_year": reference_year,
+        "next_collection_year": next_collection_year,
+        "source_name": source_name,
+    }
 
 
 def _integer(value):
@@ -166,19 +198,22 @@ def parse_xlsx(filename, raw):
     return (year + 2000 if year < 100 else year), parsed, headers
 
 
-def preview(file, owner):
+def preview(file, owner, reference_year, next_collection_year, source_name):
     owner = _actor(owner)
     if file is None:
         raise ValueError("XLSX 파일이 필요합니다.")
     filename, raw = file.filename or "", file.read()
     year, rows, headers = parse_xlsx(filename, raw)
+    metadata = validate_metadata(
+        reference_year, next_collection_year, source_name, year
+    )
     digest = hashlib.sha256(raw).hexdigest()
     token = secrets.token_urlsafe(32)
-    manifest = {"year": year, "source_file": filename, "sha256": digest,
+    manifest = {"year": year, **metadata, "source_file": filename, "sha256": digest,
                 "headers": headers, "rows": rows}
     active = [row for row in rows if row["is_active"]]
     return token, owner, manifest, {
-        "reference_year": year, "source_file": filename, "sha256": digest,
+        **metadata, "source_file": filename, "sha256": digest,
         "total_rows": len(rows), "active_facilities": len(active),
         "active_facility_count": len(active),
         "active_rooms": sum(row["room_count"] for row in active),
@@ -247,8 +282,10 @@ def cross_check_rows(conn, rows):
     }
 
 
-def store_preview(conn, file, owner):
-    token, owner, manifest, summary = preview(file, owner)
+def store_preview(conn, file, owner, reference_year, next_collection_year, source_name):
+    token, owner, manifest, summary = preview(
+        file, owner, reference_year, next_collection_year, source_name
+    )
     checked_rows, evidence = cross_check_rows(conn, manifest["rows"])
     manifest["rows"] = checked_rows
     manifest["cross_check"] = evidence
@@ -293,17 +330,27 @@ def apply(conn, token, owner):
             raise ValueError("미리보기 토큰이 없거나 이미 적용·만료되었습니다.")
         manifest = stage["manifest"]
         year, source_file, digest = manifest["year"], manifest["source_file"], manifest["sha256"]
+        metadata = validate_metadata(
+            manifest.get("reference_year"),
+            manifest.get("next_collection_year"),
+            manifest.get("source_name"),
+            year,
+        )
         # Do this before creating/changing a version.  The check is repeated
         # even though preview recorded it, because the master may have changed.
         checked_rows, check = cross_check_rows(conn, manifest["rows"])
         if check["ambiguous"] or check["conflict"]:
             raise ValueError("건물 대조에 모호 또는 충돌 행이 있어 적용할 수 없습니다.")
         cur.execute("""INSERT INTO annual_tourism_roster_versions
-          (reference_year, source_file, source_sha256, approved_by, approved_at, status)
-          VALUES (%s,%s,%s,%s,NOW(),'approved')
+          (reference_year, next_collection_year, source_name, source_file, source_sha256,
+           approved_by, approved_at, status)
+          VALUES (%s,%s,%s,%s,%s,%s,NOW(),'approved')
           ON CONFLICT (reference_year, source_sha256) DO UPDATE
-          SET approved_by=EXCLUDED.approved_by, approved_at=NOW(), status='approved'
-          RETURNING id""", (year, source_file, digest, owner))
+          SET next_collection_year=EXCLUDED.next_collection_year,
+              source_name=EXCLUDED.source_name, approved_by=EXCLUDED.approved_by,
+              approved_at=NOW(), status='approved'
+          RETURNING id""", (year, metadata["next_collection_year"],
+                             metadata["source_name"], source_file, digest, owner))
         version_id = cur.fetchone()["id"]
         cur.execute("DELETE FROM annual_tourism_roster_entries WHERE version_id=%s", (version_id,))
         values = [(version_id, r["row_number"], r["sido_name"], r["sgg_name"],
@@ -330,7 +377,7 @@ def apply(conn, token, owner):
         cur.execute("""UPDATE annual_tourism_roster_stages SET state='applied', applied_at=NOW()
                        WHERE token=%s""", (token,))
         conn.commit()
-        return {"version_id": version_id, "reference_year": year, "applied_rows": len(values),
+        return {"version_id": version_id, **metadata, "applied_rows": len(values),
                 "building_cross_check": check}
     except Exception:
         conn.rollback()
@@ -344,17 +391,20 @@ def latest_approved_stats(conn):
     cur = conn.cursor()
     try:
         cur.execute("""WITH version AS (
-              SELECT id, reference_year, source_file, source_sha256, approved_at
+              SELECT id, reference_year, next_collection_year, source_name, source_file,
+                     source_sha256, approved_at
               FROM annual_tourism_roster_versions WHERE status='approved'
               ORDER BY reference_year DESC, approved_at DESC, id DESC LIMIT 1
-            ) SELECT v.reference_year, v.source_file, v.source_sha256, v.approved_at::text,
+            ) SELECT v.reference_year, v.next_collection_year, v.source_name, v.source_file,
+                     v.source_sha256, v.approved_at::text,
                      e.subtype, COUNT(*)::int AS permit_count,
                      COALESCE(SUM(e.room_count),0)::int AS room_count,
                      COUNT(DISTINCT x.master_building_id)::int AS linked_building_count
               FROM version v JOIN annual_tourism_roster_entries e ON e.version_id=v.id
               LEFT JOIN annual_tourism_roster_building_evidence x ON x.entry_id=e.id
               WHERE e.is_active
-              GROUP BY v.reference_year,v.source_file,v.source_sha256,v.approved_at,e.subtype
+               GROUP BY v.reference_year,v.next_collection_year,v.source_name,v.source_file,
+                        v.source_sha256,v.approved_at,e.subtype
               ORDER BY e.subtype""")
         rows = [dict(row) for row in cur.fetchall()]
         cur.execute("""SELECT x.match_status, COUNT(*)::int AS count
@@ -376,6 +426,8 @@ def latest_approved_stats(conn):
                           "room_count": row["room_count"],
                           "linked_building_count": row["linked_building_count"]} for row in rows],
             "source": {"reference_year": rows[0]["reference_year"],
+                        "next_collection_year": rows[0]["next_collection_year"],
+                        "source_name": rows[0]["source_name"],
                        "source_file": rows[0]["source_file"],
                        "source_sha256": rows[0]["source_sha256"],
                        "approved_at": rows[0]["approved_at"],

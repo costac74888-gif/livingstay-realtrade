@@ -24,7 +24,17 @@ for (const text of [
   "response status",
   "response.ok",
   "response.status === 401",
-  "<table class=\"dg-table\""
+  "<table class=\"dg-table\"",
+  "적용 자료 기준연도",
+  "다음 수집 예정연도",
+  "수집 출처",
+  "annualTourismRosterReferenceYear",
+  "annualTourismRosterNextCollectionYear",
+  "annualTourismRosterSourceName",
+  'body.append("reference_year", referenceYear.value)',
+  'body.append("next_collection_year", nextCollectionYear.value)',
+  'body.append("source_name", sourceName.value.trim())',
+  "d.next_collection_year",
 ]) {
   if (!html.includes(text)) throw new Error(`missing Data Lab admin UI: ${text}`);
 }
