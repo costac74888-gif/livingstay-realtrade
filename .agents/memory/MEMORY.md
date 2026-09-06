@@ -82,4 +82,3 @@
 - [JS 소스 추출 테스트](js-source-extraction-tests.md) — 함수 본문을 VM 테스트로 추출할 때 접두 이름이 아닌 전체 시그니처로 시작점을 고정한다.
 - [Publish의 enum CHECK 변환](publish-enum-check-normalization.md) — standalone IN 제약은 ANY(ARRAY) 정규화 뒤 괄호가 깨질 수 있어 게시 SQL을 반드시 재확인한다.
 - [숙박 허가업종과 예약 플랫폼 분리](lodging-permit-vs-platform.md) — 외국인관광 도시민박업은 법적 업종이며 Airbnb는 예약 채널이므로 통계·표시·판정을 분리한다.
-- [관광숙박 검색순위 공동순위](tourism-lodging-rank-ties.md) — TOP500 원본은 공동순위가 있어 순위값 500개가 유일하지 않지만 목록 99행·지도 401행으로 구간 검증한다.

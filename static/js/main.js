@@ -3437,27 +3437,59 @@ function dataLabRankList(items, makeMeta, makeValue){
 }
 
 function renderDataLabLodgingRank(data){
-  const items = Array.isArray(data?.items) ? data.items.slice(0, 99) : [];
+  const items = Array.isArray(data?.items) ? data.items.slice(0, 100) : [];
   const cells = items.map(item => {
     const placeName = escapeHtml(item.place_name || item.building_name || "시설명 미확인");
+    const sgg = escapeHtml(item.sgg || "");
     const searchCount = Number(item.search_count);
     const value = Number.isFinite(searchCount) && searchCount > 0
       ? `${dataLabNum(searchCount)}회`
       : "";
     const buildingId = Number(item.building_id || item.master_building_id);
-    const linked = Number.isInteger(buildingId) && buildingId > 0;
     return `<div class="datalab-lodging-rank-cell">
-      ${linked
-        ? `<button type="button" class="datalab-building" onclick="openBuildingDetail(${buildingId});return false;" title="${placeName}">${placeName}</button>`
-        : `<span class="datalab-building datalab-building-disabled" title="${placeName}">${placeName}</span>`}
+      <button type="button" class="datalab-building" data-lodging-rank-building
+        data-building-id="${Number.isInteger(buildingId) && buildingId > 0 ? buildingId : ""}"
+        data-place-name="${placeName}" data-sgg="${sgg}" title="${placeName}">${placeName}</button>
       <span class="datalab-value">${value}</span>
     </div>`;
   }).join("");
   return `<div class="datalab-heading">
-      <strong>🏨 검색TOP500</strong><span class="datalab-caption">상호·검색수 1~99위</span>
+      <strong>🏨 검색TOP100</strong><span class="datalab-caption">상호·검색수 1~100위</span>
     </div>
-    <div class="datalab-lodging-rank-grid">${cells || '<div class="side-empty">표시할 검색순위가 없습니다.</div>'}</div>
-    <div class="datalab-map-remainder-note">나머지 401개는 지도에서 확인하세요</div>`;
+    <div class="datalab-lodging-rank-grid">${cells || '<div class="side-empty">표시할 검색순위가 없습니다.</div>'}</div>`;
+}
+
+function bindDataLabLodgingRankBuildings(content){
+  content.querySelectorAll("[data-lodging-rank-building]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const buildingId = Number(button.dataset.buildingId);
+      if (Number.isInteger(buildingId) && buildingId > 0) {
+        openBuildingDetail(buildingId);
+        return;
+      }
+      const placeName = button.dataset.placeName || "";
+      const sgg = button.dataset.sgg || "";
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/buildings/search?q=${encodeURIComponent(placeName)}`);
+        const data = await response.json();
+        const normalize = value => String(value || "").toLowerCase().replace(/[^0-9a-z가-힣]/g, "");
+        const exact = (data.items || []).filter(item =>
+          normalize(item.building_name) === normalize(placeName) &&
+          (!sgg || String(item.sgg_text || "").includes(sgg))
+        );
+        if (exact.length === 1 && exact[0].id) {
+          openBuildingDetail(exact[0].id);
+          return;
+        }
+        alert("연결된 건물 상세정보를 찾지 못했습니다.");
+      } catch(e) {
+        alert("건물 상세정보를 불러오지 못했습니다.");
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 }
 
 function clearDataLabLodgingRankOverlays(){
@@ -3562,16 +3594,13 @@ function paintDataLabLodgingRankMap(data){
 async function loadDataLabLodgingRank({ forceRefresh = false } = {}){
   const content = document.getElementById("dataLabContent");
   if (!content) return;
-  clearDataLabTourismMap();
   resetTourismMapMobileToggle();
   setDataLabActive(DATA_LAB_LODGING_RANK_KEY);
-  activateDataLabLodgingRankMap();
-  const cacheKey = "lodging_rank:top500";
+  const cacheKey = "lodging_rank:top100";
   const cached = dataLabResponseCache.get(cacheKey);
   if (!forceRefresh && cached && Date.now() - cached.ts < DATA_LAB_CACHE_TTL_MS) {
-    content.innerHTML = renderDataLabLodgingRank(cached.data.top);
-    paintDataLabLodgingRankMap(cached.data.all);
-    showTourismMapOnMobile(DATA_LAB_LODGING_RANK_KEY);
+    content.innerHTML = renderDataLabLodgingRank(cached.data);
+    bindDataLabLodgingRankBuildings(content);
     return;
   }
   const requestId = ++dataLabRequestSequence;
@@ -3581,18 +3610,13 @@ async function loadDataLabLodgingRank({ forceRefresh = false } = {}){
   setDataLabTabLoading(DATA_LAB_LODGING_RANK_KEY, true, requestId);
   content.innerHTML = dataLabLoadingHTML();
   try {
-    const [topResponse, allResponse] = await Promise.all([
-      fetch("/api/tourism/lodging-rank/top99", { signal: controller.signal }),
-      fetch("/api/tourism/lodging-rank/all", { signal: controller.signal }),
-    ]);
-    const [top, all] = await Promise.all([topResponse.json(), allResponse.json()]);
+    const topResponse = await fetch("/api/tourism/lodging-rank/top100", { signal: controller.signal });
+    const top = await topResponse.json();
     if (requestId !== dataLabRequestSequence || dataLabActiveKey !== DATA_LAB_LODGING_RANK_KEY) return;
-    if (!topResponse.ok || !allResponse.ok || !top.ok || !all.ok) throw new Error("lodging rank request failed");
-    const data = { top, all };
-    dataLabResponseCache.set(cacheKey, { ts: Date.now(), data });
+    if (!topResponse.ok || !top.ok) throw new Error("lodging rank request failed");
+    dataLabResponseCache.set(cacheKey, { ts: Date.now(), data: top });
     content.innerHTML = renderDataLabLodgingRank(top);
-    paintDataLabLodgingRankMap(all);
-    showTourismMapOnMobile(DATA_LAB_LODGING_RANK_KEY);
+    bindDataLabLodgingRankBuildings(content);
   } catch (error) {
     if (error.name !== "AbortError" && requestId === dataLabRequestSequence) {
       content.innerHTML = dataLabErrorHTML();
@@ -4265,14 +4289,14 @@ function bindDataLabControls(content){
 }
 
 function showTourismMapOnMobile(key){
-  if (!(DATA_LAB_TOURISM_KEYS.has(key) || key === DATA_LAB_SURGE_KEY || key === DATA_LAB_LODGING_RANK_KEY) || !window.matchMedia("(max-width: 980px)").matches) return;
+  if (!(DATA_LAB_TOURISM_KEYS.has(key) || key === DATA_LAB_SURGE_KEY) || !window.matchMedia("(max-width: 980px)").matches) return;
   const panel = document.querySelector(".side-panel");
   const toggle = document.getElementById("btnTogglePanel");
   if (!panel || !toggle) return;
   toggle.dataset.tourismMapActive = "true";
   if (panel.classList.contains("open")) toggle.click();
   toggle.innerHTML = '☰ <span class="htoggle-label">데이터랩</span>';
-  toggle.setAttribute("aria-label", key === DATA_LAB_SURGE_KEY ? "방문객 급증 지도 열기" : key === DATA_LAB_LODGING_RANK_KEY ? "검색 TOP500 지도 열기" : "관광 데이터랩 패널 열기");
+  toggle.setAttribute("aria-label", key === DATA_LAB_SURGE_KEY ? "방문객 급증 지도 열기" : "관광 데이터랩 패널 열기");
 }
 
 function resetTourismMapMobileToggle(){

@@ -48,27 +48,25 @@ expect(main.includes("/tourism-stats") &&
 expect(css.includes(".b-tourism-attractions") && css.includes(".b-foreign-visitor-badge"),
   "관광 상세 보조 정보 스타일이 CSS에 없습니다.");
 expect(html.includes('data-datalab-key="lodging_rank"') &&
-  html.includes("검색TOP500") &&
+  html.includes("검색TOP100") &&
   !html.includes('data-datalab-key="closure"'),
-  "폐업 현황을 대체하는 검색TOP500 데이터랩 버튼이 없습니다.");
-expect(main.includes('fetch("/api/tourism/lodging-rank/top99"') &&
-  main.includes('fetch("/api/tourism/lodging-rank/all"') &&
-  main.includes("나머지 401개는 지도에서 확인하세요") &&
-  main.includes("Number(item.rank) > 99") &&
-  main.includes("Number(item.rank) <= 500"),
-  "검색TOP500의 99개 목록·401개 지도 안내 계약이 없습니다.");
-expect(main.includes("activateDataLabLodgingRankMap") &&
-  main.includes("_beginMapLayerSwap()") &&
-  main.includes("clearDataLabLodgingRankMap({ restoreNormal: true })") &&
-  main.includes("restoreFromLodgingRank"),
-  "검색TOP500 진입·이탈 시 기존 지도 포인트 교체/복원 계약이 없습니다.");
+  "폐업 현황을 대체하는 검색TOP100 데이터랩 버튼이 없습니다.");
+expect(main.includes('fetch("/api/tourism/lodging-rank/top100"') &&
+  !main.includes('fetch("/api/tourism/lodging-rank/all"') &&
+  !main.includes("나머지 401개는 지도에서 확인하세요") &&
+  main.includes("bindDataLabLodgingRankBuildings") &&
+  main.includes('fetch(`/api/buildings/search?q='),
+  "검색TOP100 목록·건물 상세 연결 계약이 없습니다.");
+const lodgingRankLoader = main.slice(
+  main.indexOf("async function loadDataLabLodgingRank"),
+  main.indexOf("function clearDataLabTourismOverlays")
+);
+expect(!lodgingRankLoader.includes("activateDataLabLodgingRankMap") &&
+  !lodgingRankLoader.includes("paintDataLabLodgingRankMap") &&
+  !lodgingRankLoader.includes("showTourismMapOnMobile"),
+  "검색TOP100 진입 시 순위 지도 레이어를 표시하고 있습니다.");
 expect(css.includes(".datalab-lodging-rank-grid") &&
   css.includes("grid-template-columns:repeat(3,minmax(0,1fr))") &&
-  css.includes(".datalab-rank-map-point") &&
-  css.includes(".datalab-map-remainder-note"),
-  "검색TOP500 3열 목록·지도 포인트·나머지 401개 안내 스타일이 없습니다.");
-expect(main.includes('item.coordinate_scope === "sido_representative"') &&
-  main.includes("시도 대표 위치") &&
-  main.includes("시군구 대표 위치"),
-  "호텔 실제 좌표가 없을 때 대표 위치라는 안내가 없습니다.");
+  css.includes(".datalab-lodging-rank-cell"),
+  "검색TOP100 3열 목록 스타일이 없습니다.");
 console.log("tourism frontend contract checks passed");
