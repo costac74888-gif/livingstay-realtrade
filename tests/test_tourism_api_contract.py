@@ -9,6 +9,7 @@ from app import (
     _search_ranking_fallback_centroid,
     _tourism_region_key,
 )
+from import_tourism_stats import _verified_admin_dong
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,6 +140,7 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertNotIn('building["lodging_type"] not in {"캠핑", "농어촌민박", "한옥"}', self.source)
         self.assertIn("trim(t.dimensions->>'행정동명') = %s", self.source)
         self.assertNotIn("regexp_replace(trim(t.dimensions->>'행정동명'), '[0-9]+동$'", self.source)
+        self.assertIn("FROM tourism_building_dong_matches match", self.source)
         self.assertIn('"/api/tourism/attractions/top20"', self.source)
         self.assertIn("max_rank=20", self.source)
         self.assertIn('"sgg_office_fallback"', self.source)
@@ -148,6 +150,104 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertIn("idx_tourism_stats_lodging_rank_latest", schema)
         self.assertIn("idx_tourism_stats_lodging_rank_source", schema)
         self.assertIn("idx_tourism_stats_lodging_rank_building_source", schema)
+
+    def test_surge_dong_verification_handles_exact_split_and_ambiguous_cases(self):
+        exact = [{
+            "region_type": "H",
+            "region_1depth_name": "경기도",
+            "region_2depth_name": "하남시",
+            "region_3depth_name": "덕풍동",
+        }]
+        split = [{
+            "region_type": "H",
+            "region_1depth_name": "경기도",
+            "region_2depth_name": "하남시",
+            "region_3depth_name": "덕풍3동",
+        }]
+        ambiguous = split + [{
+            "region_type": "H",
+            "region_1depth_name": "경기도",
+            "region_2depth_name": "하남시",
+            "region_3depth_name": "덕풍2동",
+        }]
+        self.assertEqual(_verified_admin_dong(exact, "경기", "하남시", {"덕풍동"}), "덕풍동")
+        self.assertEqual(_verified_admin_dong(split, "경기", "하남시", {"덕풍1동", "덕풍3동"}), "덕풍3동")
+        self.assertIsNone(_verified_admin_dong(split, "경기", "하남시", {"덕풍1동"}))
+        self.assertIsNone(_verified_admin_dong(ambiguous, "경기", "하남시", {"덕풍2동", "덕풍3동"}))
+        self.assertIsNone(_verified_admin_dong(
+            split + [{
+                "region_type": "H",
+                "region_1depth_name": "경기도",
+                "region_2depth_name": "하남시",
+                "region_3depth_name": "신장1동",
+            }],
+            "경기", "하남시", {"덕풍3동"},
+        ))
+
+    def test_split_dong_badge_query_is_bound_to_building_and_current_coordinates(self):
+        class Cursor:
+            def __init__(self):
+                self.queries = []
+
+            def execute(self, query, params=None):
+                self.queries.append((query, params))
+
+            def fetchone(self):
+                return {
+                    "lodging_type": None,
+                    "sgg_text": "경기도 하남시",
+                    "umd_nm": "덕풍동",
+                    "lat": 37.55,
+                    "lng": 127.20,
+                }
+
+            def fetchall(self):
+                query = self.queries[-1][0]
+                if "tourism_building_dong_matches match" in query:
+                    return [{
+                        "stat_type": "surge_domestic_dong",
+                        "ref_yearmonth": "202608",
+                        "source_period": "202608",
+                        "tourism_dong_name": "덕풍3동",
+                        "rank": 2,
+                        "current_visitors": 100,
+                        "previous_year_visitors": 50,
+                        "growth_rate": 100,
+                    }]
+                return []
+
+            def close(self):
+                pass
+
+        class Connection:
+            def __init__(self):
+                self.cursor_value = Cursor()
+
+            def cursor(self):
+                return self.cursor_value
+
+        connection = Connection()
+        with patch.object(app_module, "get_conn", return_value=connection), \
+             patch.object(app_module, "release_conn"):
+            response = app_module.app.test_client().get("/api/building/77/tourism-stats")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["surge_badges"][0]["dong_name"], "덕풍3동")
+        surge_query, surge_params = next(
+            item for item in connection.cursor_value.queries
+            if "tourism_building_dong_matches match" in item[0]
+        )
+        self.assertIn("match.building_lat = %s", surge_query)
+        self.assertIn("match.building_lng = %s", surge_query)
+        self.assertEqual(surge_params[-6:], (77, "경기", "하남시", "덕풍동", 37.55, 127.20))
+
+    def test_production_boot_creates_verified_building_dong_crosswalk(self):
+        schema_helper = (ROOT / "scripts" / "ensure_tourism_datalab_schema.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("CREATE TABLE IF NOT EXISTS tourism_building_dong_matches", schema_helper)
+        self.assertIn("idx_tourism_building_dong_matches_region", schema_helper)
+        self.assertIn("table_name='tourism_building_dong_matches'", schema_helper)
 
     def test_lodging_rank_routes_use_one_latest_source_and_safe_counts(self):
         class Cursor:

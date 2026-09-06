@@ -30637,7 +30637,7 @@ def get_building_tourism_stats(building_id):
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
-            SELECT lodging_type, sgg_text, umd_nm
+            SELECT lodging_type, sgg_text, umd_nm, lat, lng
             FROM master_buildings
             WHERE id = %s
         """, (building_id,))
@@ -30717,11 +30717,28 @@ def get_building_tourism_stats(building_id):
                 JOIN latest l USING (stat_type, source_file)
                 WHERE regexp_replace(t.sido_name, '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s
                   AND regexp_replace(trim(t.sgg_name), '\\s+', '', 'g') = %s
-                  AND trim(t.dimensions->>'행정동명') = %s
+                  AND (
+                      trim(t.dimensions->>'행정동명') = %s
+                      OR EXISTS (
+                          SELECT 1
+                          FROM tourism_building_dong_matches match
+                          WHERE match.building_id = %s
+                            AND regexp_replace(match.sido_name,
+                                  '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s
+                            AND regexp_replace(trim(match.sgg_name), '\\s+', '', 'g') = %s
+                            AND match.legal_dong_name = %s
+                            AND match.admin_dong_name = trim(t.dimensions->>'행정동명')
+                            AND match.building_lat = %s
+                            AND match.building_lng = %s
+                      )
+                  )
                 GROUP BY t.stat_type, t.ref_yearmonth, t.source_period,
                          t.dimensions->>'행정동명', t.dimensions->>'순위'
                 ORDER BY rank NULLS LAST
-            """, (surge_types, *region_key, dong_name))
+            """, (
+                surge_types, *region_key, dong_name,
+                building_id, *region_key, dong_name, building.get("lat"), building.get("lng"),
+            ))
             for surge_row in cur.fetchall():
                 if surge_row["rank"] is None:
                     continue

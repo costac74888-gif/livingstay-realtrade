@@ -999,6 +999,114 @@ def geocode_missing_dong_coords(cur):
         print(f"행정동 좌표 보완: {resolved}/{len(missing)}곳")
 
 
+def _normalized_tourism_region_name(value):
+    return re.sub(r"(특별자치도|특별자치시|특별시|광역시|도|시)$", "", str(value or "").strip())
+
+
+def _verified_admin_dong(documents, sido, sgg, allowed_dongs):
+    """좌표 API 응답에서 대상 지역의 유일한 행정동(H)만 반환한다."""
+    expected_sido = _normalized_tourism_region_name(sido)
+    expected_sgg = re.sub(r"\s+", "", str(sgg or "").strip())
+    allowed = {str(name or "").strip() for name in allowed_dongs}
+    region_dongs = {
+        str(item.get("region_3depth_name") or "").strip()
+        for item in (documents or [])
+        if item.get("region_type") == "H"
+        and _normalized_tourism_region_name(item.get("region_1depth_name")) == expected_sido
+        and re.sub(r"\s+", "", str(item.get("region_2depth_name") or "").strip()) == expected_sgg
+    }
+    if len(region_dongs) != 1:
+        return None
+    admin_dong = next(iter(region_dongs))
+    return admin_dong if admin_dong in allowed else None
+
+
+def refresh_building_dong_matches(cur):
+    """숫자 분동 후보 건물을 좌표 기반 행정동으로 검증해 교차표를 갱신한다."""
+    api_key = os.environ.get("KAKAO_REST_API_KEY")
+    if not api_key:
+        print("경고: KAKAO_REST_API_KEY가 없어 분동 건물 검증을 건너뜁니다.")
+        return
+    cur.execute("""
+        WITH requested AS (
+            SELECT DISTINCT
+                sido_name,
+                sgg_name,
+                trim(dimensions->>'행정동명') AS admin_dong_name,
+                regexp_replace(trim(dimensions->>'행정동명'), '[0-9]+동$', '동') AS legal_dong_name
+            FROM tourism_stats
+            WHERE stat_type IN ('surge_domestic_dong', 'surge_foreign_dong')
+              AND trim(dimensions->>'행정동명') ~ '[0-9]+동$'
+        )
+        SELECT
+            m.id AS building_id, m.lat, m.lng, trim(m.umd_nm) AS legal_dong_name,
+            r.sido_name, r.sgg_name,
+            array_agg(DISTINCT r.admin_dong_name ORDER BY r.admin_dong_name) AS allowed_dongs
+        FROM requested r
+        JOIN master_buildings m
+          ON regexp_replace(split_part(trim(m.sgg_text), ' ', 1),
+               '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') =
+             regexp_replace(r.sido_name,
+               '(특별자치도|특별자치시|특별시|광역시|도|시)$', '')
+         AND regexp_replace(trim(m.sgg_text), '^\\S+\\s+', '') = r.sgg_name
+         AND trim(m.umd_nm) = r.legal_dong_name
+        LEFT JOIN tourism_building_dong_matches existing
+          ON existing.building_id = m.id
+         AND existing.building_lat = m.lat
+         AND existing.building_lng = m.lng
+        WHERE m.lat IS NOT NULL AND m.lng IS NOT NULL
+          AND existing.building_id IS NULL
+        GROUP BY m.id, m.lat, m.lng, trim(m.umd_nm), r.sido_name, r.sgg_name
+        ORDER BY m.id
+    """)
+    candidates = cur.fetchall()
+    verified = 0
+    for row in candidates:
+        url = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?" + urllib.parse.urlencode({
+            "x": row["lng"],
+            "y": row["lat"],
+        })
+        request = urllib.request.Request(
+            url,
+            headers={"Authorization": f"KakaoAK {api_key}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                payload = json.load(response)
+            admin_dong = _verified_admin_dong(
+                payload.get("documents"), row["sido_name"], row["sgg_name"], row["allowed_dongs"]
+            )
+            if not admin_dong:
+                cur.execute(
+                    "DELETE FROM tourism_building_dong_matches WHERE building_id = %s",
+                    (row["building_id"],),
+                )
+                continue
+            cur.execute("""
+                INSERT INTO tourism_building_dong_matches
+                    (building_id, sido_name, sgg_name, legal_dong_name, admin_dong_name,
+                     building_lat, building_lng, verification_source, verified_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'kakao_coord2regioncode', NOW())
+                ON CONFLICT (building_id) DO UPDATE SET
+                    sido_name = EXCLUDED.sido_name,
+                    sgg_name = EXCLUDED.sgg_name,
+                    legal_dong_name = EXCLUDED.legal_dong_name,
+                    admin_dong_name = EXCLUDED.admin_dong_name,
+                    building_lat = EXCLUDED.building_lat,
+                    building_lng = EXCLUDED.building_lng,
+                    verification_source = EXCLUDED.verification_source,
+                    verified_at = NOW()
+            """, (
+                row["building_id"], row["sido_name"], row["sgg_name"], row["legal_dong_name"],
+                admin_dong, row["lat"], row["lng"],
+            ))
+            verified += 1
+        except Exception as exc:
+            print(f"분동 건물 검증 실패: building_id={row['building_id']} ({type(exc).__name__})")
+    if candidates:
+        print(f"분동 건물 검증: {verified}/{len(candidates)}개")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", default="datalab_csv")
@@ -1042,6 +1150,7 @@ def main():
         refresh_coords(cur)
         refresh_dong_coords(cur)
         geocode_missing_dong_coords(cur)
+        refresh_building_dong_matches(cur)
         conn.commit()
         print(f"적재/갱신 완료: {len(rows):,}개 지표 행")
     except Exception:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create only the shared Tourism Data Lab staging schema for production boot."""
+"""Create the small Tourism Data Lab schemas required by production routes."""
 import os
 import sys
 import psycopg2
@@ -20,6 +20,19 @@ CREATE TABLE IF NOT EXISTS tourism_datalab_stages (
 );
 CREATE INDEX IF NOT EXISTS idx_tourism_datalab_stages_expiry
  ON tourism_datalab_stages (expires_at) WHERE state IN ('previewed','failed');
+CREATE TABLE IF NOT EXISTS tourism_building_dong_matches (
+ building_id INTEGER PRIMARY KEY REFERENCES master_buildings(id) ON DELETE CASCADE,
+ sido_name TEXT NOT NULL,
+ sgg_name TEXT NOT NULL,
+ legal_dong_name TEXT NOT NULL,
+ admin_dong_name TEXT NOT NULL,
+ building_lat DOUBLE PRECISION NOT NULL,
+ building_lng DOUBLE PRECISION NOT NULL,
+ verification_source TEXT NOT NULL DEFAULT 'kakao_coord2regioncode',
+ verified_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tourism_building_dong_matches_region
+ ON tourism_building_dong_matches(sido_name, sgg_name, admin_dong_name);
 """
 VERIFY = """
 SELECT
@@ -39,6 +52,16 @@ SELECT
     AND pg_get_constraintdef(oid) LIKE '%applied%'
     AND pg_get_constraintdef(oid) LIKE '%failed%')
  AND to_regclass(current_schema() || '.idx_tourism_datalab_stages_expiry') IS NOT NULL
+ AND (SELECT COUNT(*) = 9 FROM information_schema.columns
+   WHERE table_schema=current_schema() AND table_name='tourism_building_dong_matches'
+     AND column_name = ANY(ARRAY['building_id','sido_name','sgg_name','legal_dong_name',
+                                 'admin_dong_name','building_lat','building_lng',
+                                 'verification_source','verified_at']))
+ AND EXISTS (
+  SELECT 1 FROM pg_constraint
+  WHERE conrelid='tourism_building_dong_matches'::regclass AND contype='f'
+    AND confrelid='master_buildings'::regclass AND pg_get_constraintdef(oid) LIKE '%ON DELETE CASCADE%')
+ AND to_regclass(current_schema() || '.idx_tourism_building_dong_matches_region') IS NOT NULL
 """
 def main():
     url = os.environ.get("DATABASE_URL")
@@ -50,7 +73,7 @@ def main():
         cur.execute("SELECT pg_advisory_xact_lock(%s)",(LOCK_KEY,))
         cur.execute(DDL)
         cur.execute(VERIFY)
-        if not cur.fetchone()[0]: raise RuntimeError("tourism_datalab_stages verification failed")
+        if not cur.fetchone()[0]: raise RuntimeError("tourism Data Lab schema verification failed")
         conn.commit()
     except Exception:
         conn.rollback()
