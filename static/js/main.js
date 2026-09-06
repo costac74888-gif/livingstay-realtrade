@@ -6031,7 +6031,7 @@ function _renderApprovedRosterOperatingInfo(b){
       const isCamping = info.official_site_count != null
         || info.camping_site_composition != null;
       const sourceLabel = info.source_category === "annual_tourism_roster"
-        ? `승인 관광숙박 명부 · ${info.source_name || "출처 미상"}`
+        ? "관광숙박업 등록현황(문체부)"
         : info.source_name;
       const sourceDate = info.reference_year ? `${info.reference_year}년`
         : value(info.source_updated_at);
@@ -6212,12 +6212,16 @@ function buildingPanelSkeleton(buildingId){
     <section class="side-card" id="bSignalCard">
       <div class="side-empty">불러오는 중…</div>
     </section>
-    <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
-    <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
     <section class="side-card" id="bApprovedRosterOperatingCard" style="display:none;">
       <div id="bApprovedRosterOperatingBody"></div>
     </section>
     <section class="side-card b-tourism-data-card" id="bTourismDataCard" style="display:none;"></section>
+    <div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보" style="display:none;">
+      <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
+      <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
+    </div>
+    <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
+    <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
 
     <section class="side-card" id="bAreaFilterCard" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
@@ -6688,10 +6692,6 @@ async function loadBuildingHeader(id){
     ${STRUCTURE_A_TYPES.includes(b.lodging_type)
       ? _reservationBar(b, false)
       : ""}
-    ${STRUCTURE_B_TYPES.includes(b.lodging_type) ? `<div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보">
-      <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
-      <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
-    </div>` : ""}
     <div id="bBuildingTitleRow" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 id="bBuildingTitle" data-property-name="${escapeHtml(bName)}" data-operating-name="${escapeHtml(operatingName)}" style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(operatingName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
@@ -6744,6 +6744,10 @@ async function loadBuildingHeader(id){
     </button>
     ${canFav ? `<div id="bFavHint" style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;text-align:center;">저장하면 새 실거래를 이메일로 알려드립니다</div>` : ""}`;
   renderPhotoSlider(buildingPhotos);
+  const inlineTypeTabs = document.getElementById("bInlineTypeTabs");
+  if (inlineTypeTabs) {
+    inlineTypeTabs.style.display = STRUCTURE_B_TYPES.includes(b.lodging_type) ? "" : "none";
+  }
   _setupBuildingPanels(b.lodging_type);
   const reservationCard = document.getElementById("bReservationCard");
   if (reservationCard) {

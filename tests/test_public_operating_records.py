@@ -104,14 +104,14 @@ class PublicOperatingRecordTests(unittest.TestCase):
 
     def test_every_imported_source_prefix_has_an_explicit_public_label(self):
         expected = {
-            "TOURISM:1": "관광숙박업 CSV",
+            "TOURISM:1": "관광숙박업 등록현황(문체부)",
             "PENSION:1": "관광펜션업 CSV",
             "RURAL:1": "농어촌민박업 CSV",
             "AIRBNB:1": "외국인관광도시민박업 CSV",
             "HANOK:1": "한옥체험업 CSV",
             "CAMPING:1": "고캠핑 API",
             "CAMPING:1:2": "정부 야영장 CSV",
-            "3491000-201-2017-00009": "숙박업 정부원본",
+            "3491000-201-2017-00009": "숙박업 영업신고 원장(행안부)",
         }
         for permit_number, label in expected.items():
             with self.subTest(permit_number=permit_number):

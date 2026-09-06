@@ -10,6 +10,12 @@ expect(main.includes('const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "�
 expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("airbnb_url")') && main.includes("campingReservationUrl"), "운영자 우선·캠핑 예약 URL 보조 우선순위가 없습니다.");
 expect(!main.includes('|| firstValid("gocamping_url")'), "고캠핑 정보 링크가 예약 URL 우선순위에 남아 있습니다.");
 expect(main.includes('data-panel="operations"') && main.includes('data-panel="property"'), "운영정보/부동산정보 탭이 없습니다.");
+expect(
+  main.indexOf('id="bTourismDataCard"') < main.indexOf('id="bInlineTypeTabs"') &&
+  main.indexOf('id="bInlineTypeTabs"') < main.indexOf('id="bOperationsPanel"') &&
+  main.indexOf('id="bInlineTypeTabs"') < main.indexOf('id="bPropertyPanel"'),
+  "운영정보·부동산정보 탭과 패널이 지역 인기 관광지를 포함한 관광데이터 다음에 배치되지 않았습니다.",
+);
 expect(main.includes("window.__openBuildingId === Number(id)") && main.includes("_buildingDetailRequestToken === requestToken"), "건물 전환 시 오래된 응답 차단이 없습니다.");
 expect(main.includes('href="https://jnjclub.co.kr/"') && main.includes('/static/banner_biz_report.png'), "행정운영 영업신고업소 아래 숙박업등록 배너가 없습니다.");
 expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizReportBannerHtml;"), "미준공 건물의 행정운영에 숙박업등록 배너가 없습니다.");
@@ -72,7 +78,7 @@ expect(
   main.includes("등록명칭") &&
   main.includes("법정 업종") &&
   main.includes("공식 객실수") &&
-  main.includes("승인 관광숙박 명부"),
+  main.includes("관광숙박업 등록현황(문체부)"),
   "승인 명부 기반 운영정보 라벨이 없습니다.",
 );
 expect(

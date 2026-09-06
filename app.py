@@ -19767,7 +19767,7 @@ def _admin_lodging_source_label(permit_number):
     if permit.startswith("CAMPING:"):
         return "고캠핑 API" if permit.count(":") == 1 else "정부 야영장 CSV"
     source_by_prefix = {
-        "TOURISM:": "관광숙박업 CSV",
+        "TOURISM:": "관광숙박업 등록현황(문체부)",
         "PENSION:": "관광펜션업 CSV",
         "RURAL:": "농어촌민박업 CSV",
         "AIRBNB:": "외국인관광도시민박업 CSV",
@@ -19776,7 +19776,7 @@ def _admin_lodging_source_label(permit_number):
     for prefix, label in source_by_prefix.items():
         if permit.startswith(prefix):
             return label
-    return "숙박업 정부원본"
+    return "숙박업 영업신고 원장(행안부)"
 
 
 def _public_lodging_registry_records(cur, building):
@@ -19875,7 +19875,7 @@ def _public_annual_operating_records(cur, building_id):
         "camping_caravan_site_count": None,
         "camping_site_composition": None,
         "source_category": "annual_tourism_roster",
-        "source_name": row.get("source"),
+        "source_name": "관광숙박업 등록현황(문체부)",
         "source_updated_at": row.get("reference_year"),
         "reference_year": row.get("reference_year"),
     } for row in annual_tourism_roster.latest_linked_operating_records(cur, building_id)]
