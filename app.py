@@ -31935,6 +31935,43 @@ def annual_tourism_roster_preview():
             conn.close()
 
 
+@app.route("/api/admin/annual-tourism-roster/status")
+@require_admin
+@limiter.limit("20 per minute")
+def annual_tourism_roster_status():
+    """Show the exact approved annual roster currently driving public metrics."""
+    conn = None
+    try:
+        conn = get_conn()
+        approved = annual_tourism_roster.latest_approved_stats(conn)
+        if not approved:
+            return jsonify({
+                "ok": True,
+                "applied": False,
+                "message": "아직 승인·적용된 연간 공식 관광숙박업 원장이 없습니다.",
+            })
+        source = approved["source"]
+        return jsonify({
+            "ok": True,
+            "applied": True,
+            "permit_count": approved["permit_count"],
+            "room_count": approved["room_count"],
+            "sub_rows": approved["sub_rows"],
+            "reference_year": source["reference_year"],
+            "reference_date": f'{int(source["reference_year"]):04d}-12-31',
+            "source_name": "연간 공식 관광숙박업 등록현황 XLSX(관리자 승인)",
+            "source_file": source["source_file"],
+            "approved_at": source["approved_at"],
+            "building_cross_check": source["building_cross_check"],
+        })
+    except Exception:
+        app.logger.exception("annual tourism roster status lookup failed")
+        return jsonify({"ok": False, "message": "현재 적용 원장 정보를 불러오지 못했습니다."}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.route("/api/admin/annual-tourism-roster/apply", methods=["POST"])
 @require_admin
 @limiter.limit("2 per minute")

@@ -48,6 +48,32 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
         self.assertIn("운영 서버", response.get_json()["message"])
         conn.close.assert_called_once()
 
+    def test_status_returns_applied_numbers_reference_date_and_source(self):
+        conn = MagicMock()
+        approved = {
+            "permit_count": 2929,
+            "room_count": 219621,
+            "sub_rows": [],
+            "source": {
+                "reference_year": 2025,
+                "source_file": "2025년말_관광숙박업_등록현황.xlsx",
+                "approved_at": "2026-09-06 12:00:00+00",
+                "building_cross_check": {"matched": 1550, "unmatched": 1379},
+            },
+        }
+        with patch.object(application, "get_conn", return_value=conn), \
+             patch.object(application.annual_tourism_roster, "latest_approved_stats",
+                          return_value=approved):
+            response = self.client.get("/api/admin/annual-tourism-roster/status")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["permit_count"], 2929)
+        self.assertEqual(payload["room_count"], 219621)
+        self.assertEqual(payload["reference_date"], "2025-12-31")
+        self.assertEqual(payload["source_file"], approved["source"]["source_file"])
+        self.assertIn("공식 관광숙박업", payload["source_name"])
+        conn.close.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

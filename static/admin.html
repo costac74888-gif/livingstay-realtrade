@@ -1632,6 +1632,7 @@
           <section class="annual-roster ${ADMIN_IS_PRODUCTION_ENV ? "" : "is-disabled"}" aria-labelledby="annualTourismRosterTitle">
             <h4 id="annualTourismRosterTitle">연간 공식 관광숙박업 원장 XLSX</h4>
             <p>공식 관광숙박업 원장을 별도 배치로 미리 확인한 뒤 운영 DB에 반영합니다. 기존 연결과 충돌·누락은 적용 전에 확인하세요.</p>
+            <div id="annualTourismRosterCurrent" class="annual-roster-summary" role="status"><b>현재 홈페이지 적용 현황</b><div>불러오는 중…</div></div>
             <div class="annual-roster-actions">
               <input id="annualTourismRosterFile" type="file" accept=".xlsx" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>
               <button type="button" class="admin-btn" id="annualTourismRosterPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "원장 미리보기" : "운영 관리자 전용"}</button>
@@ -1736,12 +1737,38 @@
       ];
       return `<b>${escapeText(prefix || "미리보기")}</b><table><tbody>${rows.map(([label, value]) => `<tr><th>${escapeText(label)}</th><td>${Number(value).toLocaleString("ko-KR")}</td></tr>`).join("")}</tbody></table>${d.message ? `<div>${escapeText(d.message)}</div>` : ""}`;
     }
+    function renderAnnualRosterCurrent(d) {
+      if (!d.applied) return `<b>현재 홈페이지 적용 현황</b><div style="margin-top:6px;">${escapeText(d.message || "승인·적용된 공식 원장이 없습니다.")}</div>`;
+      const rows = [
+        ["적용 등록사업장", `${Number(d.permit_count || 0).toLocaleString("ko-KR")}개`],
+        ["적용 객실 수", `${Number(d.room_count || 0).toLocaleString("ko-KR")}실`],
+        ["자료 기준일", d.reference_date || "-"],
+        ["수집 출처", d.source_name || "-"],
+        ["원본 파일", d.source_file || "-"],
+        ["운영 적용 시각", d.approved_at || "-"],
+      ];
+      return `<b>현재 홈페이지 적용 현황</b><table><tbody>${rows.map(([label, value]) => `<tr><th>${escapeText(label)}</th><td>${escapeText(value)}</td></tr>`).join("")}</tbody></table>`;
+    }
+    async function loadAnnualTourismRosterCurrent() {
+      const current = document.getElementById("annualTourismRosterCurrent");
+      if (!current) return;
+      try {
+        const response = await fetch("/api/admin/annual-tourism-roster/status");
+        if (response.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await response.json().catch(() => ({}));
+        if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
+        current.innerHTML = renderAnnualRosterCurrent(d);
+      } catch (error) {
+        current.textContent = `현재 적용 현황을 불러오지 못했습니다: ${error.message}`;
+      }
+    }
     function setupAnnualTourismRoster() {
       const file = document.getElementById("annualTourismRosterFile");
       const preview = document.getElementById("annualTourismRosterPreview");
       const apply = document.getElementById("annualTourismRosterApply");
       const summary = document.getElementById("annualTourismRosterSummary");
       if (!file || !preview || !apply || !summary) return;
+      loadAnnualTourismRosterCurrent();
       preview.onclick = async () => {
         if (!file.files.length) { summary.textContent = "연간 공식 원장 XLSX 파일을 선택하세요."; return; }
         const body = new FormData(); body.append("file", file.files[0]);
@@ -1771,6 +1798,7 @@
           if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
           summary.innerHTML = renderAnnualRosterSummary(d, "운영 DB 적용 완료");
           annualTourismRosterToken = null;
+          loadAnnualTourismRosterCurrent();
         } catch (error) {
           summary.textContent = `적용 실패: ${error.message}`;
         } finally { apply.disabled = true; }
