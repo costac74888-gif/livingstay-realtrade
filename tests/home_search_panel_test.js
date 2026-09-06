@@ -92,7 +92,9 @@ expect(
 expect(
   main.includes('onclick="openBuildingDetail(${Number(b.id)}); return false;"') &&
   main.includes("function closeMapSearchbar()") &&
-  main.includes("closeMapSearchbar();"),
+  main.includes("closeMapSearchbar();") &&
+  main.includes("function scrollHomeListsToStart()") &&
+  main.includes('window.scrollTo({ top: 0, behavior: "auto" });'),
   "최근검색과 모바일 지도위치가 공통 상세 이동·검색바 닫기 동작을 사용하지 않습니다."
 );
 

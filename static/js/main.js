@@ -8128,6 +8128,15 @@ function renderBuildingPanel(id){
 }
 
 // 기본(홈) 좌측 패널로 되돌린다.
+function scrollHomeListsToStart(){
+  const panel = document.querySelector(".side-panel");
+  if (panel) panel.scrollTop = 0;
+  window.scrollTo({ top: 0, behavior: "auto" });
+  requestAnimationFrame(() => {
+    if (panel) panel.scrollTop = 0;
+  });
+}
+
 function restoreDefaultPanel(returnDataLabKey = ""){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
@@ -8147,7 +8156,11 @@ function restoreDefaultPanel(returnDataLabKey = ""){
   }
   initDefaultSidePanel();
   if (returnDataLabKey) {
-    setTimeout(() => loadDataLab(returnDataLabKey), 0);
+    setTimeout(() => {
+      Promise.resolve(loadDataLab(returnDataLabKey)).finally(scrollHomeListsToStart);
+    }, 0);
+  } else {
+    scrollHomeListsToStart();
   }
 }
 
