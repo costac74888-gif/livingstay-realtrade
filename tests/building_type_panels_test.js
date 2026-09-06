@@ -14,7 +14,7 @@ expect(main.includes("window.__openBuildingId === Number(id)") && main.includes(
 expect(main.includes('href="https://jnjclub.co.kr/"') && main.includes('/static/banner_biz_report.png'), "행정운영 영업신고업소 아래 숙박업등록 배너가 없습니다.");
 expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizReportBannerHtml;"), "미준공 건물의 행정운영에 숙박업등록 배너가 없습니다.");
 expect(main.includes("${lodgingListHtml}\n      ${bizReportBannerHtml}"), "영업상호 목록 다음에 숙박업등록 배너가 배치되지 않았습니다.");
-expect(main.includes('operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"]'), "운영자 정보 고지가 운영정보 맨 아래에 배치되지 않았습니다.");
+expect(main.includes('operations: ["bApprovedRosterOperatingCard", "bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"]'), "운영자 정보 고지가 운영정보 맨 아래에 배치되지 않았습니다.");
 expect(main.includes("_reservationBar(b, false)"), "생활·관광·일반숙박의 미연결 예약 안내가 숨겨지지 않았습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
@@ -66,5 +66,22 @@ expect(main.includes("FacilityIcons.html(item") && main.includes("_bookingTarget
 expect(manage.includes("badges:selectedBadges") && !manage.includes("approved_badges") && !manage.includes("evidence_url") && !manage.includes("관리자 검증 필요"), "운영자 인증 선택 저장 정책이 올바르지 않습니다.");
 expect(main.includes("일부 운영정보와 인증 표시는 시설 운영자가 직접 등록한 내용이며, 실제 정보와 다를 수 있습니다."), "운영자 정보 고지 문구가 없습니다.");
 expect(main.includes('id="bOperatorInfoDisclaimer"') && main.includes('Boolean(op.operator_supplied_info)'), "운영자 입력이 있을 때만 맨 아래 고지가 표시되지 않습니다.");
+expect(
+  main.includes("function _renderApprovedRosterOperatingInfo") &&
+  main.includes("bApprovedRosterOperatingCard") &&
+  main.includes("등록명칭") &&
+  main.includes("법정 업종") &&
+  main.includes("공식 객실수") &&
+  main.includes("승인 관광숙박 명부"),
+  "승인 명부 기반 운영정보 라벨이 없습니다.",
+);
+expect(
+  main.includes("data-property-name=") &&
+  main.includes("data-operating-name=") &&
+  main.includes("title.dataset.operatingName") &&
+  main.includes("title.dataset.propertyName"),
+  "운영정보와 부동산정보의 명칭 출처가 분리되지 않았습니다.",
+);
+expect(main.includes("운영형태 · 사이트 구성"), "캠핑 사이트 구성이 법정 업종처럼 표시됩니다.");
 
 console.log("OK  건물 유형별 상세 패널 회귀 점검");

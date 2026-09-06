@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-06-07"
+SCHEMA_VERSION = "2026-09-06-09"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -654,6 +654,12 @@ def _run_init_db():
         address_norm TEXT NOT NULL DEFAULT '', subtype TEXT NOT NULL, raw_subtype TEXT NOT NULL DEFAULT '',
         raw_status TEXT NOT NULL DEFAULT '', is_active BOOLEAN NOT NULL DEFAULT FALSE,
         room_count INTEGER NOT NULL DEFAULT 0 CHECK (room_count >= 0),
+        tourism_operator_name TEXT NOT NULL DEFAULT '',
+        hotel_grade TEXT NOT NULL DEFAULT '', grade_date TEXT NOT NULL DEFAULT '',
+        floor_count TEXT NOT NULL DEFAULT '', land_area TEXT NOT NULL DEFAULT '',
+        gross_floor_area TEXT NOT NULL DEFAULT '',
+        registration_number TEXT NOT NULL DEFAULT '', registration_date TEXT NOT NULL DEFAULT '',
+        approval_date TEXT NOT NULL DEFAULT '',
         UNIQUE(version_id, source_row_number)
     )
     """)
@@ -680,6 +686,17 @@ def _run_init_db():
     cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS address_norm TEXT NOT NULL DEFAULT ''")
     cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS raw_status TEXT NOT NULL DEFAULT ''")
     cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE")
+    # Keep published operating facts in their approved-source table.  They are
+    # intentionally not copied into master_buildings or lodging_registry.
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS tourism_operator_name TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS hotel_grade TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS grade_date TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS floor_count TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS land_area TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS gross_floor_area TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS registration_number TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS registration_date TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS approval_date TEXT NOT NULL DEFAULT ''")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS annual_tourism_roster_stages (
         token TEXT PRIMARY KEY, admin_user_id INTEGER NOT NULL,
@@ -1012,6 +1029,65 @@ def _run_init_db():
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'operator'")
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
+    # Administrator-authored manuals are Markdown source only.  Rendering is a
+    # client concern and must never make stored HTML trusted.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS policy_documents (
+        id BIGSERIAL PRIMARY KEY,
+        document_code TEXT NOT NULL UNIQUE CHECK (char_length(document_code) BETWEEN 1 AND 80),
+        title TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+        category TEXT NOT NULL CHECK (category IN ('operations', 'data', 'privacy', 'product', 'other')),
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+        version TEXT NOT NULL CHECK (char_length(version) BETWEEN 1 AND 40),
+        body_markdown TEXT NOT NULL CHECK (char_length(body_markdown) BETWEEN 1 AND 100000),
+        effective_date DATE,
+        created_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        updated_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        published_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        published_at TIMESTAMPTZ
+    )""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS policy_document_revisions (
+        id BIGSERIAL PRIMARY KEY,
+        policy_document_id BIGINT NOT NULL REFERENCES policy_documents(id) ON DELETE CASCADE,
+        revision_number INTEGER NOT NULL CHECK (revision_number >= 1),
+        action TEXT NOT NULL CHECK (action IN ('created', 'updated', 'published', 'archived')),
+        title TEXT NOT NULL, category TEXT NOT NULL, status TEXT NOT NULL,
+        version TEXT NOT NULL, body_markdown TEXT NOT NULL, effective_date DATE,
+        change_note TEXT NOT NULL DEFAULT '' CHECK (char_length(change_note) <= 1000),
+        actor_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(policy_document_id, revision_number)
+    )""")
+    cur.execute("""CREATE INDEX IF NOT EXISTS idx_policy_documents_browse
+                   ON policy_documents(category, status, updated_at DESC)""")
+    cur.execute("""CREATE INDEX IF NOT EXISTS idx_policy_revisions_document
+                   ON policy_document_revisions(policy_document_id, revision_number DESC)""")
+    cur.execute("""
+        INSERT INTO policy_documents
+          (document_code, title, category, status, version, body_markdown, effective_date)
+        VALUES
+          ('POL-OPERATING-PROPERTY-001', '운영 정보와 부동산 정보 분리 분류 정책',
+           'data', 'published', 'V.01.0',
+           '# 운영 정보와 부동산 정보 분리 분류 정책\n\n숙박시장 주요 지표는 활성 등록 사업체와 공식 객실·사이트 수이다. 건물 수와 건축물대장 호수는 보조적인 부동산·매칭 지표다.\n\n운영 탭은 공식 등록 시설명, 법정 업종, 등급, 공식 재고만 표시한다. 부동산 탭은 건축물대장 명칭·용도·면적·거래를 표시하며 도메인 간 값을 묵시적으로 대체하지 않는다.\n\n캠핑의 법정 업종은 일반·자동차·글램핑·카라반·복합의 운영 사이트 구성과 별도로 표시한다. 값이 충돌하면 각 출처와 기준일을 나란히 표시한다.',
+            DATE '2026-09-07')
+        ON CONFLICT (document_code) DO NOTHING
+    """)
+    cur.execute("""
+        INSERT INTO policy_document_revisions
+          (policy_document_id, revision_number, action, title, category, status,
+           version, body_markdown, effective_date, change_note)
+        SELECT id, 1, 'created', title, category, status, version, body_markdown,
+               effective_date, '초기 정책 등록'
+        FROM policy_documents p
+        WHERE p.document_code = 'POL-OPERATING-PROPERTY-001'
+          AND NOT EXISTS (
+              SELECT 1 FROM policy_document_revisions r
+              WHERE r.policy_document_id = p.id
+          )
+    """)
     # Shared one-time Data Lab staging. It contains only validated canonical
     # metrics/metadata, never portal credentials or untrusted archive bytes.
     cur.execute("""

@@ -144,6 +144,7 @@
         <button class="admin-menu-item" data-menu="notices">공지사항 관리</button>
         <button class="admin-menu-item" data-menu="popups">팝업관리</button>
         <button class="admin-menu-item" data-menu="legal">약관 관리</button>
+        <button class="admin-menu-item" data-menu="policies">매뉴얼(정책) 관리</button>
         <button class="admin-menu-item" data-menu="requests">수정요청 이력</button>
         <button class="admin-menu-item" data-menu="brokers">인근 중개업소 후보</button>
         <button class="admin-menu-item" data-menu="lodgings">미등록 위탁운영 후보</button>
@@ -8427,6 +8428,7 @@
       if (menuKey === "revenue") { showRevenue(); return; }
       if (menuKey === "members") { showMembers(); return; }
       if (menuKey === "legal") { showLegal(); return; }
+      if (menuKey === "policies") { showPolicies(); return; }
       if (menuKey === "datasync") { showDataSync(); return; }
       if (menuKey === "brokers") { showBrokers(); return; }
       if (menuKey === "lodgings") { showLodgings(); return; }
@@ -8440,6 +8442,23 @@
       if (menuKey === "buildings") { showBuildings(); return; }
       if (menuKey === "presale") { showPresale(); return; }
       showGrid(menuKey);
+    }
+
+    async function showPolicies() {
+      const grid=document.getElementById("grid");
+      grid.innerHTML=`<section class="member-detail-card"><h2 class="member-detail-card-title">매뉴얼(정책) 관리</h2><p style="color:var(--ink-soft)">Markdown 원본과 개정 이력을 관리합니다. HTML은 신뢰된 본문으로 처리되지 않습니다.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><select id="policyCategory" class="member-edit-input"><option value="">전체 분류</option><option value="operations">운영</option><option value="data">데이터</option><option value="privacy">개인정보</option><option value="product">제품</option><option value="other">기타</option></select><select id="policyStatus" class="member-edit-input"><option value="">전체 상태</option><option value="draft">초안</option><option value="published">게시</option><option value="archived">보관</option></select><input id="policySearch" class="member-edit-input" placeholder="제목·문서 코드·본문 검색"><button id="policyReload" class="admin-btn">검색</button><button id="policyNew" class="admin-btn admin-btn-primary">새 정책</button></div>
+       <div style="display:grid;grid-template-columns:minmax(260px,1fr) minmax(420px,2fr);gap:14px"><div id="policyList">불러오는 중…</div><form id="policyForm" style="display:grid;gap:8px"><div id="policyMessage" role="status"></div><input type="hidden" name="id"><label>문서 코드<input name="document_code" class="member-edit-input" required maxlength="80"></label><label>제목<input name="title" class="member-edit-input" required maxlength="200"></label><div style="display:flex;gap:8px"><label style="flex:1">분류<select name="category" class="member-edit-input"><option value="operations">운영</option><option value="data">데이터</option><option value="privacy">개인정보</option><option value="product">제품</option><option value="other">기타</option></select></label><label style="flex:1">상태<input name="status" class="member-edit-input" value="draft" readonly aria-describedby="policyStatusHelp"><small id="policyStatusHelp">상태는 아래 게시·보관 작업으로만 변경됩니다.</small></label></div><div style="display:flex;gap:8px"><label style="flex:1">버전<input name="version" class="member-edit-input" required maxlength="40"></label><label style="flex:1">시행일<input name="effective_date" type="date" class="member-edit-input"></label></div><label>Markdown 본문<textarea name="body_markdown" class="member-edit-input" rows="12" required maxlength="100000"></textarea></label><label>변경 메모<textarea name="change_note" class="member-edit-input" rows="2" maxlength="1000"></textarea></label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="admin-btn admin-btn-primary">저장</button><button type="button" id="policyPublish" class="admin-btn">게시</button><button type="button" id="policyArchive" class="admin-btn">보관</button></div><div><b>개정 이력</b><div id="policyRevisions">문서를 선택하세요.</div></div></form></div></section>`;
+      const $=id=>document.getElementById(id), form=$("policyForm"), msg=$("policyMessage");
+      const api=async(url,opt={})=>{const r=await fetch(url,{credentials:"same-origin",...opt});if(r.status===401){location.href="/admin/login";throw Error("로그인이 필요합니다.");}const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.message||"요청에 실패했습니다.");return d;};
+      const esc=window.dgEscape||((s)=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])));
+      let selected=null;
+       const reset=()=>{selected=null;form.reset();form.elements.id.value="";form.elements.status.value="draft";$("policyRevisions").textContent="문서를 선택하세요.";msg.textContent="새 정책을 작성합니다.";};
+      const open=async id=>{try{const d=await api("/api/admin/policies/"+id);selected=d.policy;for(const k of ["id","document_code","title","category","status","version","body_markdown","effective_date"])if(form.elements[k])form.elements[k].value=d.policy[k]||"";$("policyRevisions").innerHTML=(d.revisions||[]).map(r=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><b>${esc(r.revision_number)}. ${esc(r.action)}</b> · ${esc(r.version)} · ${esc(String(r.created_at||"").slice(0,16))}<br><span style="color:var(--ink-soft)">${esc(r.change_note||"메모 없음")}</span></div>`).join("")||"이력이 없습니다.";}catch(e){msg.textContent=e.message;}};
+      const load=async()=>{const p=new URLSearchParams();if($("policyCategory").value)p.set("category",$("policyCategory").value);if($("policyStatus").value)p.set("status",$("policyStatus").value);if($("policySearch").value.trim())p.set("q",$("policySearch").value.trim());try{const d=await api("/api/admin/policies?"+p);$("policyList").innerHTML=(d.items||[]).map(x=>`<button class="member-bld-item" data-policy-id="${x.id}" style="width:100%;text-align:left"><b>${esc(x.title)}</b><span>${esc(x.document_code)} · ${esc(x.status)} · ${esc(x.version)}</span></button>`).join("")||"조건에 맞는 정책이 없습니다.";$("policyList").querySelectorAll("[data-policy-id]").forEach(b=>b.onclick=()=>open(b.dataset.policyId));}catch(e){$("policyList").textContent=e.message;}};
+      form.onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form));delete data.id;try{const d=await api(selected?"/api/admin/policies/"+selected.id:"/api/admin/policies",{method:selected?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});msg.textContent="저장했습니다.";await load();await open(d.id||selected.id);}catch(err){msg.textContent=err.message;}};
+      const action=name=>async()=>{if(!selected){msg.textContent="먼저 정책을 선택하거나 저장하세요.";return;}try{await api(`/api/admin/policies/${selected.id}/${name}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({change_note:form.change_note.value})});msg.textContent=name==="publish"?"게시했습니다.":"보관했습니다.";await load();await open(selected.id);}catch(e){msg.textContent=e.message;}};
+      $("policyPublish").onclick=action("publish");$("policyArchive").onclick=action("archive");$("policyNew").onclick=reset;$("policyReload").onclick=load;["policyCategory","policyStatus"].forEach(id=>$(id).onchange=load);load();reset();
     }
 
     async function showPresale() {

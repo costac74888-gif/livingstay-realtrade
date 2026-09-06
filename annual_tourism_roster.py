@@ -130,6 +130,15 @@ def _column(headers, *terms):
     return None
 
 
+def _last_column(headers, *terms):
+    """Return the final matching column (published sheets repeat address headings)."""
+    matches = [
+        index for index, header in enumerate(headers)
+        if any(term in _header_key(header) for term in terms)
+    ]
+    return matches[-1] if matches else None
+
+
 def parse_xlsx(filename, raw):
     """Parse the published annual workbook without trusting formulas/macros."""
     if not _safe_filename(filename) or not raw or len(raw) > MAX_FILE_BYTES:
@@ -148,14 +157,32 @@ def parse_xlsx(filename, raw):
     # The official fixture uses merged, two-level headings.  Locate the
     # physical header row rather than assuming row 1, while retaining only
     # one predictable data boundary.
-    leading = [list(row) for _, row in zip(range(10), rows)]
+    leading = [list(row) for _, row in zip(range(15), rows)]
     header_at = next((index for index, row in enumerate(leading)
                       if _column([_text(v) for v in row], "업종") is not None), None)
     if header_at is None:
         raise ValueError("필수 헤더(업종, 영업상태, 객실수)를 찾을 수 없습니다.")
-    header_end = next((index for index in range(header_at, min(len(leading), header_at + 3))
-                       if _column([_text(v) for v in leading[index]], "객실") is not None), None)
-    if header_end is None:
+    header_terms = (
+        "업종", "객실수", "영업상태", "주소", "소재지", "업체명",
+        "등록명칭", "관광사업자명", "등록번호", "등록일자", "등록일",
+        "등급", "호텔등급", "등급부여일", "층수", "대지면적",
+        "건축연면적", "연면적", "승인일자", "승인일", "시도", "시군구",
+    )
+    header_rows = [
+        index for index in range(header_at, min(len(leading), header_at + 4))
+        if any(
+            any(term in _header_key(value) for term in header_terms)
+            for value in leading[index] if _text(value)
+        )
+        and _column([_text(v) for v in leading[index]], "영업중", "관광호텔업") is None
+    ]
+    header_end = max(header_rows) if header_rows else None
+    if header_end is None or _column(
+        [" ".join(_text(leading[level][column]) if column < len(leading[level]) else ""
+                  for level in range(header_at, header_end + 1))
+         for column in range(max(len(row) for row in leading[header_at:header_end + 1]))],
+        "객실"
+    ) is None:
         raise ValueError("필수 헤더(업종, 영업상태, 객실수)를 찾을 수 없습니다.")
     headers = [
         " ".join(_text(leading[level][column]) if column < len(leading[level]) else ""
@@ -166,8 +193,14 @@ def parse_xlsx(filename, raw):
     subtype_col = _column(headers, "업종", "관광숙박업종")
     region1_col = _column(headers, "지역1", "시도")
     region2_col = _column(headers, "지역2", "시군구")
-    facility_col = _column(headers, "시설개요", "시설명", "관광사업자명")
-    address_col = _column(headers, "주소")
+    # 업체명(등록명칭) is the legal facility name used for conservative
+    # linkage.  관광사업자명 is a separate operator field, never a fallback
+    # that can silently change the registered facility name.
+    facility_col = _column(headers, "업체명등록명칭", "등록명칭", "업체명", "시설개요", "시설명")
+    operator_col = _column(headers, "관광사업자명")
+    # The 2025 publication has more than one address-looking heading.  Its
+    # final address column is the complete, publishable address.
+    address_col = _last_column(headers, "주소", "소재지")
     status_col = _column(headers, "영업상태")
     rooms_col = _column(headers, "객실수", "객실")
     if subtype_col is None or rooms_col is None or status_col is None:
@@ -189,9 +222,18 @@ def parse_xlsx(filename, raw):
         parsed.append({
             "row_number": row_number, "sido_name": at(region1_col),
             "sgg_name": at(region2_col), "facility_name": at(facility_col),
+            "tourism_operator_name": at(operator_col),
             "address": at(address_col), "address_norm": _address_key(at(address_col)) or "",
             "subtype": _subtype(raw_subtype), "raw_subtype": raw_subtype,
             "room_count": _integer(at(rooms_col)), "raw_status": raw_status,
+            "hotel_grade": at(_column(headers, "호텔등급", "등급")),
+            "grade_date": at(_column(headers, "등급부여일", "등급일자", "등급일")),
+            "floor_count": at(_column(headers, "층수", "층")),
+            "land_area": at(_column(headers, "대지면적")),
+            "gross_floor_area": at(_column(headers, "연면적", "총면적")),
+            "registration_number": at(_column(headers, "등록번호")),
+            "registration_date": at(_column(headers, "등록일자", "등록일")),
+            "approval_date": at(_column(headers, "승인일자", "승인일", "허가일자", "허가일")),
             # Published roster policy is intentionally exact: 휴업/영업종료/
             # blank values are not silently included in active metrics.
             "is_active": raw_status == "영업중",
@@ -400,12 +442,17 @@ def apply(conn, token, owner):
         version_id = cur.fetchone()["id"]
         cur.execute("DELETE FROM annual_tourism_roster_entries WHERE version_id=%s", (version_id,))
         values = [(version_id, r["row_number"], r["sido_name"], r["sgg_name"],
-                   r["facility_name"], r["address"], r["address_norm"], r["subtype"],
-                   r["raw_subtype"], r["raw_status"], r["is_active"], r["room_count"])
+                    r["facility_name"], r["tourism_operator_name"], r["address"], r["address_norm"], r["subtype"],
+                    r["raw_subtype"], r["raw_status"], r["is_active"], r["room_count"],
+                    r["hotel_grade"], r["grade_date"], r["floor_count"], r["land_area"],
+                    r["gross_floor_area"], r["registration_number"], r["registration_date"],
+                    r["approval_date"])
                   for r in manifest["rows"]]
         execute_values(cur, """INSERT INTO annual_tourism_roster_entries
-          (version_id,source_row_number,sido_name,sgg_name,facility_name,address,address_norm,
-           subtype,raw_subtype,raw_status,is_active,room_count)
+          (version_id,source_row_number,sido_name,sgg_name,facility_name,tourism_operator_name,
+            address,address_norm,subtype,raw_subtype,raw_status,is_active,room_count,
+            hotel_grade,grade_date,floor_count,land_area,gross_floor_area,registration_number,
+            registration_date,approval_date)
           VALUES %s""", values)
         cur.execute("""SELECT id, source_row_number FROM annual_tourism_roster_entries
                        WHERE version_id=%s""", (version_id,))
@@ -491,14 +538,19 @@ def latest_approved_stats(conn):
                                                 "unmatched": evidence.get("unmatched", 0)}}}
 
 
-def latest_linked_subtypes(cur, building_id):
-    """Public-safe legal subtype evidence for one conservatively linked building."""
-    cur.execute("""SELECT DISTINCT e.subtype
+def latest_linked_operating_info(cur, building_id):
+    """Public-safe operating facts from the current exactly-linked approved roster."""
+    cur.execute("""SELECT e.facility_name, e.subtype, e.hotel_grade,
+                         e.registration_number, e.room_count AS official_room_count,
+                         e.address, v.reference_year, v.source_name AS source
       FROM annual_tourism_roster_building_evidence x
       JOIN annual_tourism_roster_entries e ON e.id=x.entry_id
       JOIN annual_tourism_roster_versions v ON v.id=e.version_id
-      WHERE x.master_building_id=%s AND x.match_status='matched' AND e.is_active
+      WHERE x.master_building_id=%s AND x.match_status='matched'
+        AND x.match_method='name_and_address_exact' AND e.is_active
         AND v.id=(SELECT id FROM annual_tourism_roster_versions WHERE status='approved'
                   ORDER BY reference_year DESC, approved_at DESC, id DESC LIMIT 1)
-      ORDER BY e.subtype""", (building_id,))
-    return [row["subtype"] for row in cur.fetchall()]
+      ORDER BY e.source_row_number
+      LIMIT 1""", (building_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None

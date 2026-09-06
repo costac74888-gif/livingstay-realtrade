@@ -26,6 +26,14 @@ FONT = Path("/nix/store/1wd0fbh9pwn9cna5vkj762b72yw974qp-nanum-20200506/share/fo
 BOLD = FONT.with_name("NanumBarunGothicBold.ttf")
 
 
+def release_identity(md: str) -> tuple[str, str]:
+    version_match = re.search(r"^\*\*버전:\*\*\s*(\S+)\s*$", md, re.M)
+    date_match = re.search(r"^\*\*기준일·시행일:\*\*\s*(\d{4}-\d{2}-\d{2})\s*$", md, re.M)
+    if not version_match or not date_match:
+        raise ValueError("종합매뉴얼에서 버전 또는 기준일·시행일을 찾을 수 없습니다.")
+    return version_match.group(1), date_match.group(1)
+
+
 def inline(value: str) -> str:
     value = html.escape(value)
     value = re.sub(r"`([^`]+)`", r"<code>\1</code>", value)
@@ -109,6 +117,7 @@ def markdown_to_html(md: str) -> str:
 
 
 def build_html(md: str, path: Path) -> None:
+    version, _ = release_identity(md)
     css = """
     @font-face{font-family:PolicyKR;src:url('file://%s')}@font-face{font-family:PolicyKR;src:url('file://%s');font-weight:700}
     @page{size:A4;margin:16mm 15mm 18mm;@bottom-center{content:counter(page) " / " counter(pages);font-size:8pt;color:#667}}
@@ -118,11 +127,12 @@ def build_html(md: str, path: Path) -> None:
     th{background:#17324d;color:#fff}th,td{border:1px solid #b9c4cf;padding:4px 5px;vertical-align:top}pre{white-space:pre-wrap;background:#17202b;color:white;padding:9px}
     code{background:#eef1f4;padding:1px 3px}pre code{background:transparent}.toc{break-after:page}.toc a{color:#17324d;text-decoration:none}a{color:#165a92}
     """ % (FONT, BOLD)
-    document = f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>홈앤스테이 종합매뉴얼 V.01.0</title><style>{css}</style></head><body>{markdown_to_html(md)}</body></html>'
+    document = f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>홈앤스테이 종합매뉴얼 {html.escape(version)}</title><style>{css}</style></head><body>{markdown_to_html(md)}</body></html>'
     path.write_text(document, encoding="utf-8")
 
 
 def build_pdf(md: str, path: Path) -> None:
+    version, effective_date = release_identity(md)
     doc = fitz.open()
     font = str(FONT)
     bold = str(BOLD)
@@ -160,7 +170,7 @@ def build_pdf(md: str, path: Path) -> None:
             page.insert_text((48, y), part, fontname=face, fontsize=size, color=(.08, .15, .22))
             y += lead if index == 0 else size + 3
     page.insert_text((280, 820), str(page_no), fontname="KR", fontsize=8, color=(.35, .4, .45))
-    doc.set_metadata({"title": "홈앤스테이 종합 운영·통계·공개정책 매뉴얼", "author": "홈앤스테이", "subject": "V.01.0 / 2026-09-04"})
+    doc.set_metadata({"title": "홈앤스테이 종합 운영·통계·공개정책 매뉴얼", "author": "홈앤스테이", "subject": f"{version} / {effective_date}"})
     doc.save(path, deflate=True)
 
 
@@ -231,18 +241,21 @@ def build_register_xlsx(csv_path: Path, output: Path) -> None:
 
 def validate(outputs: list[Path], zip_path: Path) -> str:
     md = SOURCE.read_text(encoding="utf-8")
-    required = ["## 1.", "## 11.", "### 4.8", "### 6.7", "### 10.3", "일반야영", "자동차야영", "글램핑", "카라반", "부록 A. 공통 용어집", "상태별 처리표", "기준선·dry-run·승인·장애 기록 양식"]
+    version, effective_date = release_identity(md)
+    required = ["## 1.", "## 11.", "### 4.8", "### 6.7", "### 7.4", "활성 등록 사업체 수", "조용히 fallback", "캠핑의 법정 업종", "일반야영", "자동차야영", "글램핑", "카라반", "부록 A. 공통 용어집", "상태별 처리표", "기준선·dry-run·승인·장애 기록 양식"]
     assert all(token in md for token in required)
     headings = [int(x) for x in re.findall(r"^## (\d+)\.", md, re.M)]
     assert headings == list(range(1, 13)), headings
     pdf = fitz.open(outputs[2]); pdf_text = "".join(page.get_text() for page in pdf)
     assert "홈앤스테이" in pdf_text and "카라반" in pdf_text
+    assert pdf.metadata.get("subject") == f"{version} / {effective_date}"
     with zipfile.ZipFile(outputs[1]) as z:
         assert z.testzip() is None and "word/document.xml" in z.namelist()
         docx_xml = z.read("word/document.xml").decode("utf-8")
         assert "홈앤스테이" in docx_xml and docx_xml.count("<w:tbl>") >= 10
     html_text = outputs[0].read_text(encoding="utf-8")
     assert html_text.count('href="#') >= 12 and "PolicyKR" in html_text
+    assert f"<title>홈앤스테이 종합매뉴얼 {version}</title>" in html_text
     with zipfile.ZipFile(zip_path) as z:
         assert z.testzip() is None
         names = set(z.namelist())
@@ -259,7 +272,9 @@ def validate(outputs: list[Path], zip_path: Path) -> str:
         "docx_package_and_korean_text=PASS",
         f"docx_tables={docx_xml.count('<w:tbl>')}",
         "zip_crc_and_required_files=PASS",
+        f"release_identity={version}/{effective_date}=PASS",
         "camping_facility_and_four_site_categories=PASS",
+        "operating_property_classification_policy=PASS",
     ]
     return "\n".join(report) + "\n"
 

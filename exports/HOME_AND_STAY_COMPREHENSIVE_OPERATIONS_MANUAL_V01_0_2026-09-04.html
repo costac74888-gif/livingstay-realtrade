@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>홈앤스테이 종합매뉴얼 V.01.0</title><style>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>홈앤스테이 종합매뉴얼 V.01.1.1</title><style>
     @font-face{font-family:PolicyKR;src:url('file:///nix/store/1wd0fbh9pwn9cna5vkj762b72yw974qp-nanum-20200506/share/fonts/NanumBarunGothic.ttf')}@font-face{font-family:PolicyKR;src:url('file:///nix/store/1wd0fbh9pwn9cna5vkj762b72yw974qp-nanum-20200506/share/fonts/NanumBarunGothicBold.ttf');font-weight:700}
     @page{size:A4;margin:16mm 15mm 18mm;@bottom-center{content:counter(page) " / " counter(pages);font-size:8pt;color:#667}}
     *{box-sizing:border-box}body{font-family:PolicyKR,'Malgun Gothic',sans-serif;color:#18212f;font-size:9.4pt;line-height:1.55;max-width:190mm;margin:auto}
@@ -9,9 +9,9 @@
     </style></head><body><h1 id="홈앤스테이-종합-운영-통계-공개정책-매뉴얼">홈앤스테이 종합 운영·통계·공개정책 매뉴얼</h1><nav class="toc"><h2>문서 목차</h2><ol><li><a href="#목차">목차</a></li><li><a href="#1-문서-목적과-사용법">1. 문서 목적과 사용법</a></li><li><a href="#2-공통-원칙과-환경-경계">2. 공통 원칙과 환경 경계</a></li><li><a href="#3-데이터-원본과-공통-계약">3. 데이터 원본과 공통 계약</a></li><li><a href="#4-수집-동기화-운영">4. 수집·동기화 운영</a></li><li><a href="#5-staging-검증-승격">5. staging·검증·승격</a></li><li><a href="#6-원본별-운영-기준">6. 원본별 운영 기준</a></li><li><a href="#7-통계-산식과-공개-정책">7. 통계 산식과 공개 정책</a></li><li><a href="#8-공개-데이터-개인정보-보호">8. 공개 데이터·개인정보 보호</a></li><li><a href="#9-캐시-지도-사진-갱신">9. 캐시·지도·사진 갱신</a></li><li><a href="#10-관리자-운영과-장애-대응">10. 관리자 운영과 장애 대응</a></li><li><a href="#11-배포-검증-문서관리">11. 배포·검증·문서관리</a></li><li><a href="#12-부록">12. 부록</a></li></ol></nav>
 <p><strong>문서 ID:</strong> MAN-COMPREHENSIVE-001</p>
 <p><strong>문서 유형:</strong> P0 종합매뉴얼</p>
-<p><strong>버전:</strong> V.01.0</p>
+<p><strong>버전:</strong> V.01.1.1</p>
 <p><strong>상태:</strong> 현행</p>
-<p><strong>기준일·시행일:</strong> 2026-09-04</p>
+<p><strong>기준일·시행일:</strong> 2026-09-07</p>
 <p><strong>대상:</strong> 데이터 운영자, 승인 관리자, 통계·공개 API 담당자, 개인정보·사진 담당자</p>
 <p><strong>상위 정책:</strong> POL-DATA-003, POL-EXPOSURE-001</p>
 <p><strong>편찬 기준:</strong> BASE-MANUAL-001</p>
@@ -179,6 +179,13 @@
 <h3 id="7-3-공개-내부-분리">7.3 공개·내부 분리</h3>
 <p>공개에는 최종 건물·시설·업체·객실·사이트 합계와 최종 신고율만 제공한다. 비활성 상태별 수, 내부 분자·분모, 관리번호·원본·검토 메모·매칭 신뢰도는 관리자 전용이다.</p>
 <hr>
+<h3 id="7-4-운영-정보와-부동산-정보-분리-정책">7.4 운영 정보와 부동산 정보 분리 정책</h3>
+<p>#### 7.4.1 지표와 탭의 권위</p>
+<p>숙박시장 1차 지표는 <strong>활성 등록 사업체 수</strong>와 <strong>공식 객실·사이트 수</strong>다. 건물 수와 건축물대장 호수·등록 단위는 부동산 규모 또는 매칭 품질을 보조하는 2차 지표이며, 영업 규모의 대체값으로 쓰지 않는다.</p>
+<p>운영 탭은 공식 등록 시설명, 법정 업종, 등급, 공식 재고(객실·사이트)만 표시한다. 부동산 탭은 건축물대장 명칭·용도·면적과 실거래를 표시한다. 어느 탭도 다른 도메인의 값을 조용히 fallback하거나 덮어쓰지 않는다.</p>
+<p>#### 7.4.2 캠핑과 충돌 표기</p>
+<p>캠핑의 법정 업종은 일반야영장업·자동차야영장업 등 허가 분류이고, 일반·자동차·글램핑·카라반·복합은 사이트 구성에 따른 운영 유형이다. 두 분류는 별도 필드로 유지한다. 서로 다른 원본의 값이 충돌하면 하나를 임의 선택하지 않고 출처와 기준일을 각각 표시한다.</p>
+<hr>
 <h2 id="8-공개-데이터-개인정보-보호">8. 공개 데이터·개인정보 보호</h2>
 <h3 id="8-1-최소-공개">8.1 최소 공개</h3>
 <p>공개, 로그인, 소유자, 배정 중개사, 관리자의 projection을 분리한다. 관리자 객체를 공개 route에서 필터 없이 재사용하지 않는다. 권한·소유권·공개범위를 확인할 수 없으면 응답하지 않는다.</p>
@@ -246,6 +253,7 @@
 <table>
 <tr><th>버전</th><th>시행일</th><th>변경</th></tr>
 <tr><td>V.01.0</td><td>2026-09-04</td><td>데이터 수집·동기화, 숙박 통계·공개, 개인정보, 사진 정책과 운영 체크리스트를 11개 장으로 통합</td></tr>
+<tr><td>V.01.1.1</td><td>2026-09-07</td><td>운영 지표와 부동산·매칭 지표의 분리, 탭별 원본 경계와 캠핑 분류·충돌 표기 정책 추가</td></tr>
 </table>
 <hr>
 <h2 id="12-부록">12. 부록</h2>

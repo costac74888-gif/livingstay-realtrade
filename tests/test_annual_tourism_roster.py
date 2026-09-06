@@ -22,6 +22,28 @@ def workbook_bytes(headers, row):
 
 
 class AnnualTourismRosterTests(unittest.TestCase):
+    def test_parses_2025_style_merged_headers_and_final_address(self):
+        book = Workbook()
+        sheet = book.active
+        sheet.append(["번호", "업종", "등록사항", None, None, "등급", None, "시설현황", None, None, "승인사항", None, "주소", None, "객실수", "영업상태"])
+        sheet.append([None, None, "업체명", "관광사업자명", "등록번호", "호텔등급", "등급부여일", "층수(지하~지상)", "대지면적", "건축연면적", "승인일자", "등록일자", "시군구", "주소", None, None])
+        for merged_range in ("C1:E1", "F1:G1", "H1:J1", "K1:L1", "M1:N1"):
+            sheet.merge_cells(merged_range)
+        sheet.append([1, "관광호텔업", "등록 호텔", "운영 법인", "제-25-1", "5성", "2025. 1. 2.", "지하2층~지상10층", "1,000㎡", "9,000㎡", "2025. 1. 1.", "2025. 1. 2.", "중구", "서울 중구 세종대로 1", 120, "영업중"])
+        output = io.BytesIO()
+        book.save(output)
+        _, rows, _ = roster.parse_xlsx("2025년_관광숙박업.xlsx", output.getvalue())
+        row = rows[0]
+        self.assertEqual(row["facility_name"], "등록 호텔")
+        self.assertEqual(row["tourism_operator_name"], "운영 법인")
+        self.assertEqual(row["address"], "서울 중구 세종대로 1")
+        self.assertEqual(row["hotel_grade"], "5성")
+        self.assertEqual(row["grade_date"], "2025. 1. 2.")
+        self.assertEqual(row["floor_count"], "지하2층~지상10층")
+        self.assertEqual(row["land_area"], "1,000㎡")
+        self.assertEqual(row["gross_floor_area"], "9,000㎡")
+        self.assertEqual(row["registration_number"], "제-25-1")
+
     def test_parses_official_style_columns_and_normalizes_short_year(self):
         raw = workbook_bytes(
             ["번호", "지역1\n(시도)", "지역2\n(시군구)", "업종", "시설개요", "주소", "객실수(실)", "영업상태"],
@@ -130,6 +152,21 @@ class AnnualTourismRosterTests(unittest.TestCase):
     def test_legal_water_and_medical_tourism_subtypes_are_preserved(self):
         self.assertEqual(roster._subtype("수상관광호텔업"), "수상관광호텔업")
         self.assertEqual(roster._subtype("의료관광호텔업"), "의료관광호텔업")
+
+    def test_public_operating_projection_is_exact_active_and_approved_only(self):
+        cur = MagicMock()
+        cur.fetchone.return_value = {
+            "facility_name": "등록 호텔", "subtype": "관광호텔업",
+            "hotel_grade": "5성", "registration_number": "1",
+            "official_room_count": 100, "address": "서울 중구 1",
+            "reference_year": 2025, "source": "공식 명부",
+        }
+        result = roster.latest_linked_operating_info(cur, 9)
+        self.assertEqual(result["facility_name"], "등록 호텔")
+        sql = cur.execute.call_args.args[0]
+        self.assertIn("x.match_method='name_and_address_exact'", sql)
+        self.assertIn("e.is_active", sql)
+        self.assertIn("status='approved'", sql)
 
 
 if __name__ == "__main__":

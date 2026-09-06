@@ -1780,6 +1780,7 @@ def get_building(building_id):
                mb.building_name_candidate_count, mb.building_name_pending_base,
                mb.road_address, mb.jibun_address,
                mb.lodging_type, mb.lodging_type_detail, mb.lodging_subtype,
+               mb.building_use_type, mb.building_use_detail,
                mb.building_status, mb.completion_expected_date,
                mb.permit_day, mb.actual_start_day,
                mb.arch_area, mb.bc_rat, mb.vl_rat,
@@ -1806,10 +1807,26 @@ def get_building(building_id):
         return jsonify({"error": "not found"}), 404
 
     building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
-    # Approved annual roster evidence supplements this response only.  It does
-    # not classify or mutate the master building's lodging type.
-    building["approved_annual_tourism_subtypes"] = (
-        annual_tourism_roster.latest_linked_subtypes(cur, building_id)
+    # Property information is sourced exclusively from the building master.
+    # Do not let approved operating-roster facts overwrite these register
+    # fields, even when their names or addresses differ.
+    building["property_info"] = {
+        "building_name": building["building_name"],
+        "road_address": building["road_address"],
+        "jibun_address": building["jibun_address"],
+        "building_use_type": building.get("building_use_type"),
+        "building_use_detail": building.get("building_use_detail"),
+        "main_purps_nm": building.get("main_purps_nm"),
+        "use_approval_date": building.get("use_apr_day"),
+        "ground_floor_count": building.get("grnd_flr_cnt"),
+        "underground_floor_count": building.get("ugrnd_flr_cnt"),
+        "land_area": building.get("plat_area"),
+        "gross_floor_area": building.get("tot_area"),
+    }
+    # Approved roster evidence supplements this response only.  It is a
+    # public-safe operating-information projection, never a master mutation.
+    building["operating_info"] = annual_tourism_roster.latest_linked_operating_info(
+        cur, building_id
     )
 
     # 상세 자체는 캐시된 무료·보유 사진만 즉시 반환한다. TourAPI 신규 조회는
@@ -7282,6 +7299,191 @@ def admin_legal_update(doc_type):
         conn.close()
     return jsonify({"ok": True})
 
+
+# ---- 관리자 정책/매뉴얼 (Markdown only; stored text is never trusted HTML) ----
+_POLICY_CATEGORIES = {"operations", "data", "privacy", "product", "other"}
+_POLICY_STATUSES = {"draft", "published", "archived"}
+
+
+def _policy_payload(data, current=None):
+    """Validate a complete policy snapshot, optionally merging a partial edit."""
+    values = dict(current or {})
+    for key in ("document_code", "title", "category", "status", "version",
+                "body_markdown", "effective_date"):
+        if key in data:
+            values[key] = data[key]
+    for key, maximum in (("document_code", 80), ("title", 200), ("version", 40),
+                         ("body_markdown", 100000)):
+        value = str(values.get(key) or "").strip()
+        if not value or len(value) > maximum:
+            raise ValueError(f"{key} 값을 1~{maximum}자로 입력해주세요.")
+        values[key] = value
+    values["category"] = str(values.get("category") or "").strip()
+    values["status"] = str(values.get("status") or "").strip()
+    if values["category"] not in _POLICY_CATEGORIES:
+        raise ValueError("허용되지 않는 정책 분류입니다.")
+    if values["status"] not in _POLICY_STATUSES:
+        raise ValueError("허용되지 않는 상태입니다.")
+    raw_date = values.get("effective_date")
+    if raw_date in (None, ""):
+        values["effective_date"] = None
+    else:
+        raw_date = str(raw_date)
+        if len(raw_date) != 10:
+            raise ValueError("시행일은 YYYY-MM-DD 형식이어야 합니다.")
+        try:
+            datetime.strptime(raw_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("시행일이 올바른 날짜가 아닙니다.")
+        values["effective_date"] = raw_date
+    return values
+
+
+def _policy_revision(cur, policy_id, snapshot, action, note, actor_id):
+    note = str(note or "").strip()
+    if len(note) > 1000:
+        raise ValueError("변경 메모는 1,000자 이하여야 합니다.")
+    cur.execute("SELECT COALESCE(MAX(revision_number), 0) + 1 AS next_revision "
+                "FROM policy_document_revisions WHERE policy_document_id=%s", (policy_id,))
+    revision = cur.fetchone()["next_revision"]
+    cur.execute("""
+        INSERT INTO policy_document_revisions
+          (policy_document_id, revision_number, action, title, category, status,
+           version, body_markdown, effective_date, change_note, actor_id)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (policy_id, revision, action, snapshot["title"], snapshot["category"],
+          snapshot["status"], snapshot["version"], snapshot["body_markdown"],
+          snapshot["effective_date"], note, actor_id))
+
+
+@app.route("/api/admin/policies")
+@require_admin
+def admin_policy_list():
+    category, status = request.args.get("category", ""), request.args.get("status", "")
+    query = (request.args.get("q") or "").strip()
+    if category and category not in _POLICY_CATEGORIES or status and status not in _POLICY_STATUSES:
+        return jsonify({"ok": False, "message": "필터 값이 올바르지 않습니다."}), 400
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        clauses, params = ["TRUE"], []
+        if category: clauses.append("category=%s"); params.append(category)
+        if status: clauses.append("status=%s"); params.append(status)
+        if query:
+            clauses.append("(title ILIKE %s OR document_code ILIKE %s OR body_markdown ILIKE %s)")
+            params.extend([f"%{query}%"] * 3)
+        cur.execute("""SELECT id, document_code, title, category, status, version,
+                       effective_date, created_at, updated_at, published_at
+                       FROM policy_documents WHERE """ + " AND ".join(clauses) +
+                    " ORDER BY updated_at DESC, id DESC", params)
+        return jsonify({"ok": True, "items": cur.fetchall()})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/policies/<int:policy_id>")
+@require_admin
+def admin_policy_get(policy_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM policy_documents WHERE id=%s", (policy_id,))
+        policy = cur.fetchone()
+        if not policy:
+            return jsonify({"ok": False, "message": "정책을 찾을 수 없습니다."}), 404
+        cur.execute("""SELECT id, revision_number, action, title, category, status,
+                       version, body_markdown, effective_date, change_note, actor_id, created_at
+                       FROM policy_document_revisions WHERE policy_document_id=%s
+                       ORDER BY revision_number DESC""", (policy_id,))
+        return jsonify({"ok": True, "policy": policy, "revisions": cur.fetchall()})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/policies", methods=["POST"])
+@require_admin
+def admin_policy_create():
+    try:
+        data = request.get_json(silent=True) or {}
+        if data.get("status", "draft") != "draft":
+            raise ValueError("새 정책은 초안으로 저장한 뒤 게시 작업을 사용해주세요.")
+        data["status"] = "draft"
+        values = _policy_payload(data)
+        actor_id = session.get("admin_user_id")
+        conn = get_conn(); cur = conn.cursor()
+        try:
+            cur.execute("""INSERT INTO policy_documents
+                (document_code,title,category,status,version,body_markdown,effective_date,created_by,updated_by,published_by,published_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                CASE WHEN %s='published' THEN %s END, CASE WHEN %s='published' THEN NOW() END) RETURNING id""",
+                (values["document_code"], values["title"], values["category"], values["status"],
+                 values["version"], values["body_markdown"], values["effective_date"], actor_id, actor_id,
+                 values["status"], actor_id, values["status"]))
+            policy_id = cur.fetchone()["id"]
+            _policy_revision(cur, policy_id, values, "created",
+                             data.get("change_note"), actor_id)
+            conn.commit()
+            return jsonify({"ok": True, "id": policy_id}), 201
+        except Exception:
+            conn.rollback(); raise
+        finally:
+            cur.close(); conn.close()
+    except ValueError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except psycopg2.IntegrityError:
+        return jsonify({"ok": False, "message": "문서 코드는 이미 사용 중입니다."}), 409
+
+
+@app.route("/api/admin/policies/<int:policy_id>", methods=["PUT"])
+@require_admin
+def admin_policy_update(policy_id):
+    data = request.get_json(silent=True) or {}
+    actor_id = session.get("admin_user_id"); conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM policy_documents WHERE id=%s FOR UPDATE", (policy_id,))
+        current = cur.fetchone()
+        if not current:
+            return jsonify({"ok": False, "message": "정책을 찾을 수 없습니다."}), 404
+        if "status" in data and data["status"] != current["status"]:
+            raise ValueError("상태 변경은 게시 또는 보관 작업을 사용해주세요.")
+        values = _policy_payload(data, current)
+        cur.execute("""UPDATE policy_documents SET document_code=%s,title=%s,category=%s,status=%s,
+                       version=%s,body_markdown=%s,effective_date=%s,updated_by=%s,updated_at=NOW()
+                       WHERE id=%s""", (values["document_code"], values["title"], values["category"],
+                       values["status"], values["version"], values["body_markdown"],
+                       values["effective_date"], actor_id, policy_id))
+        _policy_revision(cur, policy_id, values, "updated", data.get("change_note"), actor_id)
+        conn.commit(); return jsonify({"ok": True, "id": policy_id})
+    except ValueError as exc:
+        conn.rollback(); return jsonify({"ok": False, "message": str(exc)}), 400
+    except psycopg2.IntegrityError:
+        conn.rollback(); return jsonify({"ok": False, "message": "문서 코드는 이미 사용 중입니다."}), 409
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/policies/<int:policy_id>/<action>", methods=["POST"])
+@require_admin
+def admin_policy_action(policy_id, action):
+    if action not in ("publish", "archive"):
+        return jsonify({"ok": False, "message": "지원하지 않는 작업입니다."}), 404
+    data = request.get_json(silent=True) or {}; actor_id = session.get("admin_user_id")
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM policy_documents WHERE id=%s FOR UPDATE", (policy_id,))
+        values = cur.fetchone()
+        if not values:
+            return jsonify({"ok": False, "message": "정책을 찾을 수 없습니다."}), 404
+        values = dict(values); values["status"] = "published" if action == "publish" else "archived"
+        cur.execute("""UPDATE policy_documents SET status=%s, updated_by=%s, updated_at=NOW(),
+                       published_by=CASE WHEN %s='published' THEN %s ELSE published_by END,
+                       published_at=CASE WHEN %s='published' THEN NOW() ELSE published_at END WHERE id=%s""",
+                    (values["status"], actor_id, values["status"], actor_id, values["status"], policy_id))
+        _policy_revision(cur, policy_id, values, "published" if action == "publish" else "archived",
+                         data.get("change_note"), actor_id)
+        conn.commit(); return jsonify({"ok": True, "id": policy_id, "status": values["status"]})
+    except ValueError as exc:
+        conn.rollback(); return jsonify({"ok": False, "message": str(exc)}), 400
+    finally:
+        cur.close(); conn.close()
 
 # =====================================================================
 # 일반 회원(users) 인증 — 이메일/비밀번호 + 카카오 소셜 로그인

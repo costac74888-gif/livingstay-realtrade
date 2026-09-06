@@ -5894,7 +5894,7 @@ function _renderCampingSection(b){
         ? `<a class="camp-gocamping-chip" href="${escapeHtml(infoUrl)}" target="_blank" rel="noopener noreferrer" title="고캠핑에서 이 캠핑장 상세 보기">고캠핑</a>`
         : `<span>${escapeHtml(String(item))}</span>`).join("")}</div>` : ""}
     ${sites.length ? `
-      <div class="camp-section-label">사이트 구성</div>
+      <div class="camp-section-label">운영형태 · 사이트 구성</div>
       <div class="camp-site-grid">${sites.map(([label, count]) => `
         <div class="camp-site-item">
           ${FacilityIcons.html(label, "camp-site-icon")}
@@ -5993,6 +5993,32 @@ function _renderNonCampingOperations(b){
   card.style.display = "";
 }
 
+function _renderApprovedRosterOperatingInfo(b){
+  const card = document.getElementById("bApprovedRosterOperatingCard");
+  const body = document.getElementById("bApprovedRosterOperatingBody");
+  const info = b.operating_info;
+  if (!card || !body) return;
+  if (!info || !info.facility_name) {
+    card.style.display = "none"; body.innerHTML = "";
+    return;
+  }
+  const facts = [
+    ["법정 업종", info.subtype],
+    ["호텔 등급", info.hotel_grade],
+    ["공식 객실수", Number.isFinite(Number(info.official_room_count)) ? `${Number(info.official_room_count).toLocaleString("ko-KR")}실` : ""],
+    ["등록번호", info.registration_number],
+  ].filter(([, value]) => value != null && String(value).trim() !== "");
+  const source = [info.source, info.reference_year ? `${info.reference_year}년` : ""]
+    .filter(Boolean).join(" · ");
+  body.innerHTML = `
+    <div class="b-ops-source-label">승인 관광숙박 명부 <span>${escapeHtml(source || "출처 미상")}</span></div>
+    <div class="camp-facts b-ops-facts">
+      <div><small>등록명칭</small><b>${escapeHtml(info.facility_name)}</b></div>
+      ${facts.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><b>${escapeHtml(String(value))}</b></div>`).join("")}
+    </div>`;
+  card.style.display = "";
+}
+
 const STRUCTURE_A_TYPES = ["생활"];
 const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"];
 let _buildingDetailRequestToken = 0;
@@ -6082,7 +6108,7 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"],
+    operations: ["bApprovedRosterOperatingCard", "bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
@@ -6108,6 +6134,10 @@ function _setupBuildingPanels(type){
     });
     const showOps = tab.dataset.panel === "operations";
     opPanel.hidden = !showOps; propPanel.hidden = showOps;
+    const title = document.getElementById("bBuildingTitle");
+    if (title) title.textContent = showOps
+      ? (title.dataset.operatingName || title.dataset.propertyName || "(건물명 미확인)")
+      : (title.dataset.propertyName || "(건물명 미확인)");
   };
   tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => activateTab(tab));
@@ -6143,6 +6173,9 @@ function buildingPanelSkeleton(buildingId){
     </section>
     <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
     <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
+    <section class="side-card" id="bApprovedRosterOperatingCard" style="display:none;">
+      <div id="bApprovedRosterOperatingBody"></div>
+    </section>
     <section class="side-card b-tourism-data-card" id="bTourismDataCard" style="display:none;"></section>
 
     <section class="side-card" id="bAreaFilterCard" style="padding:10px 14px;">
@@ -6505,10 +6538,11 @@ async function loadBuildingHeader(id){
   if (!_isActiveBuilding(id, requestToken)) return;
 
 
+  const operatingInfo = b.operating_info || null;
   const isPreCompletion = b.building_status && b.building_status !== "완공";
   const hasType = !!(b.lodging_type && b.lodging_type !== "mixed_use_excluded");
   const typeBadge = hasType
-    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>`
+    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(operatingInfo?.subtype || detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>`
     : "";
   const preBadge = isPreCompletion
     ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:#9AA5B1; padding:2px 9px; border-radius:6px; vertical-align:middle; margin-left:${hasType ? "5px" : "0"};">🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}</span>`
@@ -6541,7 +6575,10 @@ async function loadBuildingHeader(id){
   } else if (b.lodging_type !== "일반" && lodgingRoomTotal != null && unitsNum && unitsNum > 0) {
     headerRate = Number((lodgingRoomTotal * 100 / unitsNum).toFixed(1)).toLocaleString('ko-KR') + "%";
   }
-  const bName = b.display_building_name || b.building_name || "(건물명 미확인)";
+  // bName remains the building-register name for property, deals and requests.
+  // The approved roster's registered facility name is shown only in operations.
+  const bName = b.display_building_name || b.property_info?.building_name || b.building_name || "(건물명 미확인)";
+  const operatingName = operatingInfo?.facility_name || bName;
   loadPresaleDetailBanner(id, bName, requestToken);
   const lodgingNameTag = b.building_name_report_display
     ? `<span title="건축물대장 명칭이 확인되지 않아 현재 활성 영업신고 중 객실 수가 가장 많은 사업장명을 대표로 표시합니다." style="font-size:11px; font-weight:600; color:#386641; background:#edf7ee; border:1px solid #b9dec0; border-radius:10px; padding:2px 8px; white-space:nowrap;">영업신고(최다) 기준</span>`
@@ -6610,7 +6647,7 @@ async function loadBuildingHeader(id){
       <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
     </div>` : ""}
     <div id="bBuildingTitleRow" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-      <h1 style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(bName)}</h1>
+      <h1 id="bBuildingTitle" data-property-name="${escapeHtml(bName)}" data-operating-name="${escapeHtml(operatingName)}" style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(operatingName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
       ${lodgingNameTag}
       ${badge}
@@ -7648,6 +7685,7 @@ async function loadBuildingHeader(id){
     const card = document.getElementById(cardId);
     if (card) card.style.display = showTransactions ? "" : "none";
   });
+  _renderApprovedRosterOperatingInfo(b);
   _renderCampingSection(b);
   _renderNonCampingOperations(b);
   renderBuildingLodgingOperators(b.lodging_operators || [], b.lodging_type, id);
