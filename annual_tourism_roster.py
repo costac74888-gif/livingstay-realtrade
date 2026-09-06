@@ -22,7 +22,7 @@ from addr_norm import normalize_jibun_prefix, normalize_road_prefix
 MAX_FILE_BYTES = 25 * 1024**2
 MAX_ROWS = 100_000
 MAX_SOURCE_NAME_LENGTH = 200
-_STAGE_TTL_SECONDS = 600
+_STAGE_TTL_SECONDS = 24 * 60 * 60
 _YEAR_RE = re.compile(r"(?<!\d)((?:20)?\d{2})(?:년|[-./]\s*12|$)")
 _SUBTYPE_MAP = {
     "수상관광호텔": "수상관광호텔업", "의료관광호텔": "의료관광호텔업",
@@ -289,11 +289,12 @@ def store_preview(conn, file, owner, reference_year, next_collection_year, sourc
     checked_rows, evidence = cross_check_rows(conn, manifest["rows"])
     manifest["rows"] = checked_rows
     manifest["cross_check"] = evidence
+    manifest["summary"] = summary
     cur = conn.cursor()
     try:
         cur.execute("""INSERT INTO annual_tourism_roster_stages
           (token, admin_user_id, manifest, expires_at, state)
-          VALUES (%s,%s,%s::jsonb,NOW() + interval '10 minutes','previewed')""",
+          VALUES (%s,%s,%s::jsonb,NOW() + interval '24 hours','previewed')""",
           (token, owner, json.dumps(manifest, ensure_ascii=False)))
         conn.commit()
     except Exception:
@@ -301,11 +302,40 @@ def store_preview(conn, file, owner, reference_year, next_collection_year, sourc
         raise
     finally:
         cur.close()
-    blocking_conflicts = evidence["ambiguous"] + evidence["conflict"]
     return {"token": token, "expires_in_seconds": _STAGE_TTL_SECONDS,
-            "safe": blocking_conflicts == 0,
-            "blocking_conflicts": blocking_conflicts,
+            "safe": True,
+            "blocking_conflicts": 0,
+            "review_count": evidence["ambiguous"] + evidence["conflict"],
             "building_cross_check": evidence, **summary}
+
+
+def latest_pending_preview(conn, owner):
+    """Return the current admin's latest resumable inspected roster."""
+    owner = _actor(owner)
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT token, manifest, expires_at::text
+          FROM annual_tourism_roster_stages
+          WHERE admin_user_id=%s AND state='previewed' AND expires_at > NOW()
+          ORDER BY created_at DESC LIMIT 1""", (owner,))
+        row = cur.fetchone()
+    finally:
+        cur.close()
+    if not row:
+        return None
+    manifest = row["manifest"]
+    evidence = manifest.get("cross_check") or {}
+    summary = manifest.get("summary") or {}
+    return {
+        "token": row["token"], "expires_at": row["expires_at"], "safe": True,
+        "blocking_conflicts": 0,
+        "review_count": int(evidence.get("ambiguous") or 0) + int(evidence.get("conflict") or 0),
+        "reference_year": manifest.get("reference_year"),
+        "next_collection_year": manifest.get("next_collection_year"),
+        "source_name": manifest.get("source_name"),
+        "source_file": manifest.get("source_file"),
+        "building_cross_check": evidence, **summary,
+    }
 
 
 def assert_production_connection(conn):
@@ -339,8 +369,6 @@ def apply(conn, token, owner):
         # Do this before creating/changing a version.  The check is repeated
         # even though preview recorded it, because the master may have changed.
         checked_rows, check = cross_check_rows(conn, manifest["rows"])
-        if check["ambiguous"] or check["conflict"]:
-            raise ValueError("건물 대조에 모호 또는 충돌 행이 있어 적용할 수 없습니다.")
         cur.execute("""INSERT INTO annual_tourism_roster_versions
           (reference_year, next_collection_year, source_name, source_file, source_sha256,
            approved_by, approved_at, status)

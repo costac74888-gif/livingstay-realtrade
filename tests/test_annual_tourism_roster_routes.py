@@ -71,7 +71,9 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
         }
         with patch.object(application, "get_conn", return_value=conn), \
              patch.object(application.annual_tourism_roster, "latest_approved_stats",
-                          return_value=approved):
+                           return_value=approved), \
+             patch.object(application.annual_tourism_roster, "latest_pending_preview",
+                          return_value=None):
             response = self.client.get("/api/admin/annual-tourism-roster/status")
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()

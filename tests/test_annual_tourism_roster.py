@@ -87,6 +87,28 @@ class AnnualTourismRosterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "XLSX"):
             roster.validate_metadata("2024", "2025", "출처", 2025)
 
+    def test_preview_allows_unlinked_and_conflicting_rows_for_aggregate_apply(self):
+        conn = MagicMock()
+        manifest = {"rows": [{"subtype": "관광호텔업"}]}
+        summary = {"total_rows": 1}
+        evidence = {
+            "matched": 0, "unmatched": 0, "ambiguous": 0, "conflict": 1,
+            "linked_building_count": 0, "subtype_linked_buildings": [],
+        }
+        with patch.object(
+            roster, "preview",
+            return_value=("token", 7, manifest, summary),
+        ), patch.object(
+            roster, "cross_check_rows",
+            return_value=([{"subtype": "관광호텔업"}], evidence),
+        ):
+            result = roster.store_preview(
+                conn, MagicMock(), 7, "2025", "2026", "공식 원장"
+            )
+        self.assertTrue(result["safe"])
+        self.assertEqual(result["blocking_conflicts"], 0)
+        self.assertEqual(result["review_count"], 1)
+
     def test_breakdown_keeps_only_permit_and_room_aggregates(self):
         result = roster._breakdown([
             {"subtype": "관광호텔업", "room_count": 2},

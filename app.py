@@ -31947,10 +31947,14 @@ def annual_tourism_roster_status():
     try:
         conn = get_conn()
         approved = annual_tourism_roster.latest_approved_stats(conn)
+        pending = annual_tourism_roster.latest_pending_preview(
+            conn, session.get("admin_user_id")
+        )
         if not approved:
             return jsonify({
                 "ok": True,
                 "applied": False,
+                "pending_preview": pending,
                 "message": "아직 승인·적용된 연간 공식 관광숙박업 원장이 없습니다.",
             })
         source = approved["source"]
@@ -31967,6 +31971,7 @@ def annual_tourism_roster_status():
             "next_collection_year": source["next_collection_year"],
             "approved_at": source["approved_at"],
             "building_cross_check": source["building_cross_check"],
+            "pending_preview": pending,
         })
     except Exception:
         app.logger.exception("annual tourism roster status lookup failed")

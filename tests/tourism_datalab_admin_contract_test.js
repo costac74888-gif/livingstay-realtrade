@@ -35,6 +35,10 @@ for (const text of [
   'body.append("next_collection_year", nextCollectionYear.value)',
   'body.append("source_name", sourceName.value.trim())',
   "d.next_collection_year",
+  "충돌·미연결은 건물에 연결하지 않음",
+  "파일 검사·임시저장",
+  "홈페이지에 최종 적용",
+  "적용 대기 원장 유지 중",
 ]) {
   if (!html.includes(text)) throw new Error(`missing Data Lab admin UI: ${text}`);
 }

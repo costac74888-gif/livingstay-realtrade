@@ -1660,10 +1660,10 @@
             </div>
             <div class="annual-roster-actions">
               <input id="annualTourismRosterFile" type="file" accept=".xlsx" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>
-              <button type="button" class="admin-btn" id="annualTourismRosterPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "원장 미리보기" : "운영 관리자 전용"}</button>
-              <button type="button" class="admin-btn" id="annualTourismRosterApply" disabled>미리보기 후 적용</button>
+              <button type="button" class="admin-btn" id="annualTourismRosterPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "파일 검사·임시저장" : "운영 관리자 전용"}</button>
+              <button type="button" class="admin-btn" id="annualTourismRosterApply" disabled>홈페이지에 최종 적용</button>
             </div>
-            <div id="annualTourismRosterSummary" class="annual-roster-summary" role="status">파일을 선택하면 신규·갱신·충돌·연결 건수를 확인할 수 있습니다.</div>
+            <div id="annualTourismRosterSummary" class="annual-roster-summary" role="status">파일 검사·임시저장을 누르면 적용 대기 원장으로 24시간 유지됩니다. 숫자를 확인한 뒤 ‘홈페이지에 최종 적용’을 누르세요.</div>
           </section>
         </section>
         <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
@@ -1790,6 +1790,17 @@
         const d = await response.json().catch(() => ({}));
         if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
         current.innerHTML = renderAnnualRosterCurrent(d);
+        const pending = d.pending_preview;
+        const summary = document.getElementById("annualTourismRosterSummary");
+        const apply = document.getElementById("annualTourismRosterApply");
+        if (pending && pending.token && summary && apply && !annualTourismRosterToken) {
+          annualTourismRosterToken = pending.token;
+          summary.innerHTML = renderAnnualRosterSummary(
+            pending,
+            `적용 대기 원장 유지 중 · ${pending.source_file || "원본 파일"}`
+          );
+          apply.disabled = false;
+        }
       } catch (error) {
         current.textContent = `현재 적용 현황을 불러오지 못했습니다: ${error.message}`;
       }
@@ -1823,10 +1834,8 @@
           const d = await response.json().catch(() => ({}));
           if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
           annualTourismRosterToken = d.token;
-          summary.innerHTML = renderAnnualRosterSummary(d, "안전 미리보기 완료 · 운영 DB 반영 예정");
-          const blockingConflicts = annualRosterCount(d, ["blocking_conflicts", "blocking_conflict_count"])
-            || annualRosterCount(d.counts || {}, ["blocking_conflicts", "blocking_conflict_count"]);
-          apply.disabled = !annualTourismRosterToken || d.safe !== true || blockingConflicts > 0;
+          summary.innerHTML = renderAnnualRosterSummary(d, "검사·임시저장 완료 · 충돌·미연결은 건물에 연결하지 않음 · 운영 DB 적용 대기");
+          apply.disabled = !annualTourismRosterToken || d.safe !== true;
         } catch (error) {
           summary.textContent = `미리보기 실패: ${error.message}`;
         } finally { preview.disabled = false; }
