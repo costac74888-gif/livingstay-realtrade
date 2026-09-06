@@ -54,14 +54,14 @@ class AnnualTourismRosterTests(unittest.TestCase):
         self.assertEqual(sum(row["room_count"] for row in active), 219621)
 
     def test_production_guard_rejects_non_production_database(self):
-        target, production = MagicMock(), MagicMock()
-        target.cursor.return_value.fetchone.return_value = ("dev", "host", 1)
-        production.cursor.return_value.fetchone.return_value = ("prod", "host", 1)
-        with patch.dict(os.environ, {"PROD_DATABASE_URL": "postgres://prod"}, clear=False), \
-             patch("annual_tourism_roster.psycopg2.connect", return_value=production):
+        target = MagicMock()
+        with patch.dict(os.environ, {"REPLIT_DEPLOYMENT": "0"}, clear=False):
             with self.assertRaisesRegex(RuntimeError, "운영 서버"):
                 roster.assert_production_connection(target)
-        production.close.assert_called_once()
+
+    def test_production_guard_accepts_published_runtime(self):
+        with patch.dict(os.environ, {"REPLIT_DEPLOYMENT": "1"}, clear=False):
+            roster.assert_production_connection(MagicMock())
 
     def test_breakdown_keeps_only_permit_and_room_aggregates(self):
         result = roster._breakdown([

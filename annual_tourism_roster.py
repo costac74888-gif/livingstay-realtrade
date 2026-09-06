@@ -15,7 +15,6 @@ import secrets
 from datetime import datetime
 from itertools import chain
 
-import psycopg2
 from openpyxl import load_workbook
 from psycopg2.extras import execute_values
 from addr_norm import normalize_jibun_prefix, normalize_road_prefix
@@ -274,22 +273,11 @@ def store_preview(conn, file, owner):
 
 def assert_production_connection(conn):
     """Annual approved-source writes are deliberately production-only."""
-    url = os.environ.get("PROD_DATABASE_URL")
-    if not url:
-        raise RuntimeError("운영 DB 식별 정보가 없어 승인 명부 적용을 차단했습니다.")
-    prod = psycopg2.connect(url, connect_timeout=5)
-    try:
-        def fingerprint(connection):
-            cursor = connection.cursor()
-            try:
-                cursor.execute("SELECT current_database(), inet_server_addr()::text, inet_server_port()")
-                return tuple(cursor.fetchone())
-            finally:
-                cursor.close()
-        if fingerprint(conn) != fingerprint(prod):
-            raise RuntimeError("승인 연간 관광숙박 명부는 운영 서버에서만 적용할 수 있습니다.")
-    finally:
-        prod.close()
+    # Replit sets this only inside a published app. Comparing DATABASE_URL with
+    # a separately stored PROD_DATABASE_URL is unreliable because the same
+    # production database can be reached through different proxy endpoints.
+    if os.environ.get("REPLIT_DEPLOYMENT") != "1":
+        raise RuntimeError("승인 연간 관광숙박 명부는 운영 서버에서만 적용할 수 있습니다.")
 
 
 def apply(conn, token, owner):
