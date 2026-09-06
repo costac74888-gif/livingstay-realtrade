@@ -60,7 +60,7 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('operator-banner-cta', self.main_source)
         self.assertIn('운영 파트너 등록', self.main_source)
         self.assertIn(
-            'operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"]',
+            'operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"]',
             self.main_source,
         )
 

@@ -5927,14 +5927,17 @@ function _operatorJson(value){
 function _renderNonCampingOperations(b){
   const card = document.getElementById("bNonCampingOperationsCard");
   const body = document.getElementById("bNonCampingOperationsBody");
+  const disclaimer = document.getElementById("bOperatorInfoDisclaimer");
   if (!card || !body) return;
   const type = b.lodging_type;
   if (type === "캠핑" || !["일반","관광","에어비앤비","농어촌민박","한옥"].includes(type)) {
-    card.style.display = "none"; body.innerHTML = ""; return;
+    card.style.display = "none"; body.innerHTML = "";
+    if (disclaimer) disclaimer.style.display = "none";
+    return;
   }
   const op = (Array.isArray(b.lodging_operators) ? b.lodging_operators : [])[0] || {};
   const homepage = _publicHttpUrl(op.homepage_url);
-  const phone = String(op.phone || op.facility_phone || b.lr_phone || "").trim();
+  const phone = String(op.facility_phone || b.lr_phone || "").trim();
   const facts = {
     "일반":[["총 객실수",b.lr_room_count,"실"],["양실",b.lr_western_rooms,"실"],["한실",b.lr_korean_rooms,"실"],["지상층수",b.lr_floors_above,"층"],["시설면적",b.lr_facility_area,"㎡"]],
     "관광":[["총 객실수",b.lr_room_count,"실"],["지상층수",b.lr_floors_above,"층"],["지하층수",b.lr_floors_below,"층"],["시설면적",b.lr_facility_area,"㎡"],["주변환경",b.lr_surroundings,""]],
@@ -5944,11 +5947,9 @@ function _renderNonCampingOperations(b){
   }[type].filter(([,v]) => v != null && String(v) !== "" && v !== 0);
   const amenities = _operatorJson(op.amenities);
   if (type === "농어촌민박" && b.lr_breakfast_yn === "Y" && !amenities.includes("조식")) amenities.unshift("조식");
-  const badgeValues = _operatorJson(op.approved_badges || op.certifications || op.badges);
-  const badges = badgeValues.filter(v => typeof v === "string" ? v : v?.approved === true).map(v => typeof v === "string" ? v : v.label).filter(Boolean);
-  const target = _bookingTarget(b);
+  const badges = _operatorJson(op.badge_labels).filter(v => typeof v === "string" && v.trim());
+  const operatorSupplied = Boolean(op.operator_supplied_info);
   const typeMap = {"에어비앤비":"airbnb","농어촌민박":"rural","한옥":"hanok","일반":"living","관광":"living"};
-  const manageHref = `/lodging-operator/manage?type=${typeMap[type]}${b.building_id ? `&building_id=${encodeURIComponent(b.building_id)}` : ""}`;
   body.innerHTML = `
     ${(homepage || phone) ? `<div class="b-ops-quick-actions">
       ${homepage ? `<a href="${escapeHtml(homepage)}" target="_blank" rel="noopener noreferrer" aria-label="홈페이지 열기">${Icons.home(15)}<span>홈페이지</span></a>` : ""}
@@ -5957,16 +5958,15 @@ function _renderNonCampingOperations(b){
     <div class="b-ops-source-label">${type === "에어비앤비" ? "신고·운영 정보" : "영업신고 기준"} <span>정부 공개자료</span></div>
     ${facts.length ? `<div class="camp-facts b-ops-facts">${facts.map(([k,v,u]) => `<div><small>${escapeHtml(k)}</small><b>${escapeHtml(String(v))}${u}</b></div>`).join("")}</div>` : ""}
     ${amenities.length ? `<div class="camp-section-label">편의시설 <span class="b-ops-live">운영자 등록</span></div><div class="camp-amenities b-ops-amenities">${amenities.map(item => `<span>${FacilityIcons.html(item, "facility-icon")}<span>${escapeHtml(item)}</span></span>`).join("")}</div>` : ""}
-    ${badges.length ? `<div class="b-ops-badges" aria-label="승인된 인증"><strong>${Icons.compass(14)} 인증</strong>${badges.map(x => `<span>${escapeHtml(x)}</span>`).join("")}</div>` : ""}
+    ${badges.length ? `<div class="b-ops-badges" aria-label="운영자 등록 인증"><strong>${Icons.compass(14)} 인증</strong>${badges.map(x => `<span>${escapeHtml(x)}</span>`).join("")}</div>` : ""}
     ${type === "에어비앤비" && _publicHttpUrl(op.airbnb_url) ? `<a class="b-ops-airbnb" href="${escapeHtml(_publicHttpUrl(op.airbnb_url))}" target="_blank" rel="noopener noreferrer">${Icons.compass(14)} 에어비앤비에서 보기</a>` : ""}
-    ${_reservationBar(b, false)}
-    ${!target ? `<div class="b-ops-booking-empty">예약 링크 미연결 <a href="${manageHref}">운영자이신가요?</a></div>` : ""}
-    <div class="operator-banner operator-banner-empty b-ops-partner"><div class="operator-banner-copy"><strong>이 시설을 운영하고 계신가요?</strong><span>연락처와 예약 정보를 직접 관리해 보세요.</span></div><a class="operator-banner-cta" href="${manageHref}">운영 파트너 등록</a></div>
+    ${op.intro_text ? `<div class="b-ops-intro"><span>운영자 등록</span>${escapeHtml(op.intro_text)}</div>` : ""}
   `;
+  if (disclaimer) disclaimer.style.display = operatorSupplied ? "" : "none";
   card.style.display = "";
 }
 
-const STRUCTURE_A_TYPES = ["생활", "관광", "일반"];
+const STRUCTURE_A_TYPES = ["생활"];
 const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"];
 let _buildingDetailRequestToken = 0;
 let _buildingTrendRequestSeq = 0;
@@ -6049,7 +6049,7 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard"],
+    operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
@@ -6167,6 +6167,7 @@ function buildingPanelSkeleton(buildingId){
     <section class="side-card" id="bLodgingOperatorCard" style="display:none;">
       <div class="side-card-title">시설 운영 파트너</div><div id="bLodgingOperatorBox"></div>
     </section>
+    <p id="bOperatorInfoDisclaimer" class="b-ops-disclaimer" style="display:none;">일부 운영정보와 인증 표시는 시설 운영자가 직접 등록한 내용이며, 실제 정보와 다를 수 있습니다.</p>
     <section class="side-card" id="bReservationCard" style="display:none;"></section>
     <section class="side-card" id="bOperatorSupportCard" style="display:none;">
       <div class="side-card-title">운영지원 파트너</div><div id="bOperatorBox"></div>
@@ -7968,10 +7969,10 @@ function renderBuildingLodgingOperators(items, lodgingType, buildingId){
   const card = document.getElementById("bLodgingOperatorCard");
   const box = document.getElementById("bLodgingOperatorBox");
   if (!card || !box) return;
-  const typeMap = { "에어비앤비":"airbnb", "캠핑":"camping", "농어촌민박":"rural", "한옥":"hanok", "생활":"living" };
+  const typeMap = { "에어비앤비":"airbnb", "캠핑":"camping", "농어촌민박":"rural", "한옥":"hanok", "생활":"living", "일반":"living", "관광":"tourism" };
   if (!typeMap[lodgingType]) { card.style.display = "none"; return; }
   card.style.display = "";
-  const labels = {airbnb:"에어비앤비 호스트",camping:"캠핑 운영파트너",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"생숙 운영자"};
+  const labels = {airbnb:"에어비앤비 호스트",camping:"캠핑 운영파트너",rural:"농어촌민박 운영자",hanok:"한옥 운영자",living:"숙박 운영자",tourism:"관광숙박 운영자"};
   if (!items.length) {
     const params = new URLSearchParams({ type: typeMap[lodgingType] });
     if (Number.isInteger(Number(buildingId)) && Number(buildingId) > 0) params.set("building_id", String(buildingId));

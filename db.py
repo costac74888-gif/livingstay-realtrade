@@ -2242,6 +2242,7 @@ def _run_init_db():
             booking_url TEXT, airbnb_url TEXT, airbnb_urls JSONB, gocamping_url TEXT,
             facility_phone TEXT, homepage_url TEXT,
             intro_text TEXT, amenities JSONB NOT NULL DEFAULT '[]'::jsonb,
+            badges JSONB NOT NULL DEFAULT '[]'::jsonb,
             photo_url TEXT, doc_biz_reg_url TEXT, doc_biz_license_url TEXT,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
             approved_at TIMESTAMPTZ, approved_by INTEGER REFERENCES admin_users(id), reject_reason TEXT,
@@ -2254,26 +2255,7 @@ def _run_init_db():
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS facility_phone TEXT")
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS homepage_url TEXT")
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS amenities JSONB NOT NULL DEFAULT '[]'::jsonb")
-    # 증빙은 공개 운영자 프로필과 분리한다. 승인된 claim만 공개 label로 투영한다.
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS operator_lodging_badge_claims (
-            id SERIAL PRIMARY KEY,
-            operator_lodging_id INTEGER NOT NULL REFERENCES operator_lodging(id) ON DELETE CASCADE,
-            badge_type TEXT NOT NULL CHECK (badge_type IN
-                ('tourism_quality', 'airbnb_guest_favorite', 'exemplary_business', 'kta_certified')),
-            evidence_url TEXT, evidence_description TEXT,
-            status TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending', 'approved', 'rejected')),
-            reviewed_at TIMESTAMPTZ, reviewed_by INTEGER REFERENCES admin_users(id),
-            reject_reason TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE(operator_lodging_id, badge_type)
-        )
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_op_lodging_badge_claims_review
-        ON operator_lodging_badge_claims(status, created_at)
-    """)
+    cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS badges JSONB NOT NULL DEFAULT '[]'::jsonb")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_permit_unique ON operator_lodging(permit_no)")

@@ -97,7 +97,8 @@ expect(
 );
 expect(main.includes("operator-banner-cta") && main.includes("운영 파트너 등록"), "운영 파트너 CTA 배너가 없습니다.");
 expect(
-  main.includes('operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"]'),
+  main.includes('operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"]') &&
+    main.includes('if (disclaimer) disclaimer.style.display = "none"'),
   "운영 파트너 등록 배너가 캠핑 상세의 맨 아래에 배치되지 않았습니다.",
 );
 expect(

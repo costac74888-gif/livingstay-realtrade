@@ -2212,7 +2212,7 @@ def get_building(building_id):
     # 영업신고 대표자가 승인한 공개 운영자 카드만 반환한다. 신청/반려 정보나
     # 사업자번호·신고번호는 개인정보 및 심사 정보이므로 절대 상세 API에 싣지 않는다.
     cur.execute("""
-        SELECT id, lodging_op_type, biz_name, rep_name, phone, photo_url, amenities,
+        SELECT id, lodging_op_type, biz_name, rep_name, phone, photo_url, amenities, badges,
                booking_url, airbnb_url, gocamping_url, intro_text,
                facility_phone, homepage_url
         FROM operator_lodging
@@ -2221,20 +2221,17 @@ def get_building(building_id):
         LIMIT 3
     """, [building_id])
     lodging_operator_rows = [dict(row) for row in cur.fetchall()]
-    if lodging_operator_rows:
-        operator_ids = [row["id"] for row in lodging_operator_rows]
-        cur.execute("""
-            SELECT operator_lodging_id, badge_type
-            FROM operator_lodging_badge_claims
-            WHERE operator_lodging_id = ANY(%s) AND status='approved'
-        """, [operator_ids])
-        badge_labels = {}
-        for badge in cur.fetchall():
-            badge_labels.setdefault(badge["operator_lodging_id"], []).append(
-                _LODGING_BADGE_LABELS[badge["badge_type"]]
-            )
-        for operator in lodging_operator_rows:
-            operator["badge_labels"] = badge_labels.get(operator["id"], [])
+    for operator in lodging_operator_rows:
+        operator["amenities"] = _lodging_amenities(operator.get("amenities")) or []
+        operator["badges"] = _lodging_badges(operator.get("badges")) or []
+        operator["badge_labels"] = [
+            _LODGING_BADGE_LABELS[badge] for badge in operator["badges"]
+        ]
+        operator["operator_supplied_info"] = bool(
+            operator["amenities"] or operator["badges"]
+            or operator.get("booking_url") or operator.get("intro_text")
+            or operator.get("facility_phone") or operator.get("homepage_url")
+        )
 
     # 고캠핑 basedList 원장을 대표 원장으로 사용한다. 정부 CSV 원장과 함께
     # 매칭된 경우 사이트·편의시설 메타데이터가 가장 충실한 행을 우선한다.
@@ -5697,19 +5694,23 @@ def _current_lodging_operator(cur):
     cur.execute("""
         SELECT id, lodging_op_type, biz_name, rep_name, phone, booking_url, airbnb_url,
                airbnb_urls, intro_text, photo_url, master_building_id,
-               lodging_reg_id, facility_phone, homepage_url, amenities
+               lodging_reg_id, facility_phone, homepage_url, amenities, badges
         FROM operator_lodging WHERE user_id=%s AND status='approved'
     """, [user["id"]])
     return cur.fetchone()
 
 
-# 공개 인증은 관리자가 검토한 allowlist claim만 label로 노출한다. URL과 설명은
-# 심사 증빙이므로 운영자 본인·관리자 외에는 절대 반환하지 않는다.
+# 운영자가 고를 수 있는 고정 인증 label. 자유 문구는 저장·공개하지 않는다.
 _LODGING_BADGE_LABELS = {
     "tourism_quality": "한국관광 품질인증",
     "airbnb_guest_favorite": "에어비앤비 게스트 선호",
     "exemplary_business": "모범업소",
     "kta_certified": "한국관광공사 인증",
+}
+_LODGING_AMENITY_LABELS = {
+    "와이파이", "주차", "에어컨", "TV", "세탁기", "조식", "전기", "온수",
+    "바베큐", "반려동물", "수영장", "산책로", "낚시", "텃밭", "사우나",
+    "냉장고", "전자레인지", "장애인편의", "외국어안내", "금연",
 }
 _LODGING_AMENITY_MAX = 30
 
@@ -5725,11 +5726,23 @@ def _lodging_amenities(value):
         if not isinstance(raw, str):
             return None
         item = " ".join(raw.split())
-        if not item or len(item) > 40 or item in items:
+        if item not in _LODGING_AMENITY_LABELS or item in items:
             return None
         items.append(item)
     return items
 
+
+def _lodging_badges(value):
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > len(_LODGING_BADGE_LABELS):
+        return None
+    badges = []
+    for badge in value:
+        if badge not in _LODGING_BADGE_LABELS or badge in badges:
+            return None
+        badges.append(badge)
+    return badges
 
 @app.route("/api/lodging-operator/me", methods=["GET", "PUT"])
 def lodging_operator_me():
@@ -5745,13 +5758,33 @@ def lodging_operator_me():
             item["photo_src"] = f"/api/lodging-operator/photo/{item['id']}" if item.pop("photo_url", None) else None
             item["source_facility_phone"] = None
             item["source_homepage_url"] = None
-            if item["lodging_op_type"] == "camping" and item.get("lodging_reg_id"):
+            for field in (
+                "phone", "room_count", "western_rooms", "korean_rooms",
+                "facility_area", "toilet_count", "toilet_type", "breakfast_yn",
+                "house_area", "zone_type", "surroundings", "floors_above",
+                "floors_below", "region_name",
+            ):
+                item[f"lr_{field}"] = None
+            if item.get("lodging_reg_id"):
                 cur.execute("""
-                    SELECT phone, gocamping_detail
+                    SELECT phone, room_count, western_rooms, korean_rooms,
+                           facility_area, toilet_count, toilet_type, breakfast_yn,
+                           house_area, zone_type, surroundings, floors_above,
+                           floors_below, region_name, gocamping_detail
                     FROM lodging_registry
                     WHERE id=%s
                 """, [item["lodging_reg_id"]])
                 source = cur.fetchone()
+                if source:
+                    for field in (
+                        "phone", "room_count", "western_rooms", "korean_rooms",
+                        "facility_area", "toilet_count", "toilet_type",
+                        "breakfast_yn", "house_area", "zone_type",
+                        "surroundings", "floors_above", "floors_below",
+                        "region_name",
+                    ):
+                        item[f"lr_{field}"] = source.get(field)
+            if item["lodging_op_type"] == "camping" and item.get("lodging_reg_id"):
                 if source:
                     source_detail = source.get("gocamping_detail") or {}
                     if isinstance(source_detail, str):
@@ -5767,20 +5800,10 @@ def lodging_operator_me():
                     item["source_homepage_url"] = _public_http_url(
                         source_detail.get("homepage_url")
                     )
-            cur.execute("""
-                SELECT badge_type, status, reject_reason
-                FROM operator_lodging_badge_claims
-                WHERE operator_lodging_id=%s
-                ORDER BY id
-            """, [item["id"]])
-            item["badge_claims"] = [
-                {
-                    "badge_type": claim["badge_type"],
-                    "label": _LODGING_BADGE_LABELS[claim["badge_type"]],
-                    "status": claim["status"],
-                    "reject_reason": claim["reject_reason"],
-                }
-                for claim in cur.fetchall()
+            item["badges"] = _lodging_badges(item.get("badges")) or []
+            item["badge_options"] = [
+                {"code": code, "label": label}
+                for code, label in _LODGING_BADGE_LABELS.items()
             ]
             return jsonify({"ok": True, "item": item})
         data = request.get_json(force=True, silent=True) or {}
@@ -5796,9 +5819,6 @@ def lodging_operator_me():
             return jsonify({"ok": False, "message": "공개 링크 형식이 올바르지 않습니다."}), 400
         if data.get("facility_phone") and not _validate_phone_digits(facility_phone):
             return jsonify({"ok": False, "message": "시설 전화번호를 정확히 입력해주세요."}), 400
-        if op["lodging_op_type"] != "camping":
-            facility_phone = ""
-            homepage_url = None
         if op["lodging_op_type"] == "airbnb" and not airbnb:
             return jsonify({"ok": False, "message": "에어비앤비 운영자는 리스팅 URL이 필요합니다."}), 400
         intro = (data.get("intro_text") or "").strip()
@@ -5807,59 +5827,22 @@ def lodging_operator_me():
         amenities = _lodging_amenities(data.get("amenities", []))
         if amenities is None:
             return jsonify({"ok": False, "message": "편의시설은 중복 없는 30개 이하의 짧은 항목이어야 합니다."}), 400
+        badges = _lodging_badges(data.get("badges", []))
+        if badges is None:
+            return jsonify({"ok": False, "message": "인증 뱃지는 제공된 목록에서 중복 없이 선택해주세요."}), 400
         cur.execute("""UPDATE operator_lodging SET booking_url=%s, airbnb_url=%s,
                        airbnb_urls=%s, intro_text=%s, facility_phone=%s,
-                       homepage_url=%s, amenities=%s, updated_at=NOW() WHERE id=%s""",
+                       homepage_url=%s, amenities=%s, badges=%s, updated_at=NOW() WHERE id=%s""",
                     [booking, airbnb, json.dumps(extra, ensure_ascii=False) if extra else None,
                       intro or None, facility_phone or None, homepage_url,
-                      json.dumps(amenities, ensure_ascii=False), op["id"]])
+                      json.dumps(amenities, ensure_ascii=False),
+                      json.dumps(badges, ensure_ascii=False), op["id"]])
         conn.commit()
         return jsonify({"ok": True})
     finally:
         cur.close()
         conn.close()
 
-
-@app.route("/api/lodging-operator/me/badges", methods=["POST"])
-def lodging_operator_badge_submit():
-    """운영자가 공식 인증 claim과 증빙을 제출한다; 공개 전에는 항상 pending이다."""
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        op = _current_lodging_operator(cur)
-        if not op:
-            return jsonify(ok=False, message="승인된 숙박 운영자 로그인이 필요합니다."), 401
-        data = request.get_json(force=True, silent=True) or {}
-        badge_type = str(data.get("badge_type") or "").strip()
-        if badge_type not in _LODGING_BADGE_LABELS:
-            return jsonify(ok=False, message="지원하지 않는 인증 뱃지입니다."), 400
-        evidence_url = _public_http_url(data.get("evidence_url"))
-        if data.get("evidence_url") and not evidence_url:
-            return jsonify(ok=False, message="증빙 URL 형식이 올바르지 않습니다."), 400
-        description = " ".join(str(data.get("evidence_description") or "").split())
-        if len(description) > 500:
-            return jsonify(ok=False, message="증빙 설명은 500자 이내여야 합니다."), 400
-        if not evidence_url and not description:
-            return jsonify(ok=False, message="증빙 URL 또는 설명을 입력해주세요."), 400
-        cur.execute("""
-            INSERT INTO operator_lodging_badge_claims
-                (operator_lodging_id, badge_type, evidence_url, evidence_description, status,
-                 reviewed_at, reviewed_by, reject_reason, updated_at)
-            VALUES (%s, %s, %s, %s, 'pending', NULL, NULL, NULL, NOW())
-            ON CONFLICT (operator_lodging_id, badge_type) DO UPDATE SET
-                evidence_url=EXCLUDED.evidence_url,
-                evidence_description=EXCLUDED.evidence_description, status='pending',
-                reviewed_at=NULL, reviewed_by=NULL, reject_reason=NULL, updated_at=NOW()
-        """, [op["id"], badge_type, evidence_url, description or None])
-        conn.commit()
-        return jsonify(ok=True, message="인증 증빙이 검토 대기 상태로 제출되었습니다.")
-    except Exception:
-        conn.rollback()
-        app.logger.exception("숙박 운영자 인증 claim 저장 실패")
-        return jsonify(ok=False, message="인증 증빙 저장 중 오류가 발생했습니다."), 500
-    finally:
-        cur.close()
-        conn.close()
 
 
 @app.route("/api/lodging-operator/photo", methods=["POST", "DELETE"])

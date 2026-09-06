@@ -1282,9 +1282,9 @@
   .b-ops-badges strong{display:inline-flex;align-items:center;gap:4px;margin-right:2px}
   .b-ops-badges span{padding:3px 7px;border-radius:999px;background:#f2e5ca;color:#76551f}
   .b-ops-airbnb{display:flex;align-items:center;gap:6px;padding:9px 10px;border-radius:8px;background:#fff0f0;border:1px solid #f1c9ca;color:#b32a30;text-decoration:none;font-size:12px;font-weight:700;margin-bottom:8px}
-  .b-ops-booking-empty{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#f8f9fa;color:var(--ink-soft);font-size:11px;margin-bottom:8px}
-  .b-ops-booking-empty a{margin-left:auto;color:var(--brass-dark);font-weight:700}
-  .b-ops-partner{margin-top:10px!important}
+  .b-ops-intro{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fbfaf7;color:var(--ink);font-size:11.5px;line-height:1.6;white-space:pre-line}
+  .b-ops-intro span{display:block;margin-bottom:3px;color:#18765b;font-size:10px;font-weight:700}
+  .b-ops-disclaimer{margin:0;padding:10px 14px;border-top:1px solid var(--line);color:var(--ink-soft);font-size:10px;line-height:1.5}
 .camp-seasons span{background:#e1f5ee;border-color:#5dcaa5;color:#0f6e56}
 .camp-reservation{display:flex;justify-content:center;margin-top:14px;padding:11px;border-radius:8px;background:#1d9e75;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
 .camp-quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0 0 13px}.camp-contact-btn{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;padding:10px 5px;border:1px solid #9bcfc0;border-radius:8px;background:#eef8f5;color:#176c58;font-size:11px;font-weight:700;text-decoration:none}.camp-contact-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.camp-contact-btn:not(.is-disabled):hover{border-color:#52a991;background:#def3ec}.camp-contact-btn:focus-visible{outline:2px solid #176c58;outline-offset:2px}.camp-contact-btn.is-disabled{border-color:var(--line);background:#f4f4f2;color:#a2a29d;cursor:not-allowed}.camp-gocamping-btn:not(.is-disabled){border-color:#d8c9a0;background:#fffdf7;color:#6c5421}

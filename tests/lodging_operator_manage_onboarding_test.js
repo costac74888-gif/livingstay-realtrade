@@ -10,6 +10,6 @@ expect(manage.includes("applyAction.hidden=false"), "운영자 관리 접근 실
 expect(manage.includes("allowedTypes.has(requestedType)"), "허용된 숙박 유형만 신청 화면에 전달하지 않습니다.");
 expect(manage.includes("`/apply/lodging-operator?type=${requestedType}`"), "운영자 등록 신청 링크에 숙박 유형이 전달되지 않습니다.");
 expect(apply.includes("<title>운영자등록 | 홈앤스테이</title>"), "운영자 등록 화면의 문서 제목이 올바르지 않습니다.");
-expect(apply.includes(">운영자등록</h1>"), "운영자 등록 화면의 제목이 올바르지 않습니다.");
+expect(apply.includes("1. 숙박시설 운영자 등록"), "운영자 등록 화면의 제목이 올바르지 않습니다.");
 
 console.log("OK  미승인 숙박 운영자 등록 안내 회귀 점검");

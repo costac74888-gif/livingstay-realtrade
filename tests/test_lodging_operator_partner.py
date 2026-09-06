@@ -38,6 +38,37 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
     def test_schema_version_advances_for_airbnb_urls_migration(self):
         self.assertGreater(db.SCHEMA_VERSION, "2026-09-04-03")
 
+    def test_operating_info_schema_and_public_boundary_are_present(self):
+        schema = (Path(ROOT) / "db.py").read_text(encoding="utf-8")
+        app_source = (Path(ROOT) / "app.py").read_text(encoding="utf-8")
+        for field in (
+            "western_rooms", "korean_rooms", "toilet_count", "toilet_type",
+            "breakfast_yn", "house_area", "zone_type", "surroundings",
+            "floors_above", "floors_below",
+        ):
+            self.assertIn(field, schema)
+            self.assertIn(field, app_source)
+        self.assertIn("badges JSONB", schema)
+        self.assertIn("_LODGING_BADGE_LABELS", app_source)
+        self.assertNotIn("operator_lodging_badge_claims", schema)
+        self.assertGreater(db.SCHEMA_VERSION, "2026-09-06-01")
+
+    def test_operator_badges_are_strictly_allowlisted(self):
+        self.assertEqual(
+            app_module._lodging_badges(["tourism_quality", "kta_certified"]),
+            ["tourism_quality", "kta_certified"],
+        )
+        self.assertIsNone(app_module._lodging_badges(["임의 인증"]))
+        self.assertIsNone(app_module._lodging_badges(["tourism_quality", "tourism_quality"]))
+
+    def test_operator_amenities_are_strictly_allowlisted(self):
+        self.assertEqual(
+            app_module._lodging_amenities(["와이파이", "주차"]),
+            ["와이파이", "주차"],
+        )
+        self.assertIsNone(app_module._lodging_amenities(["임의 시설"]))
+        self.assertIsNone(app_module._lodging_amenities(["주차", "주차"]))
+
     def test_schema_has_secure_phone_challenge_and_gallery(self):
         source = (Path(ROOT) / "db.py").read_text(encoding="utf-8")
         self.assertIn("lodging_operator_phone_challenges", source)

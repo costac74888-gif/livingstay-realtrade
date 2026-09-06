@@ -1192,6 +1192,16 @@ def _to_int(v):
         return 0
 
 
+def _optional_int(v):
+    """원본에 없는 값은 0으로 만들어 내지 않고 NULL로 보관한다."""
+    if v is None or not str(v).strip():
+        return None
+    try:
+        return int(str(v).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _korean_today():
     """알림 중복 키는 서비스 기준일(KST)로 고정한다."""
     return (datetime.utcnow() + timedelta(hours=9)).date()
@@ -1352,9 +1362,10 @@ def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
     road_address = (it.get("ROAD_NM_ADDR") or "").strip() or None
     jibun_address = (it.get("LOTNO_ADDR") or "").strip() or None
     permit_number = _permit_number_for_item(it, biz_name, road_address, jibun_address)
-    korean_rooms = _to_int(it.get("KSRM_CNT"))
-    western_rooms = _to_int(it.get("WSRM_CNT"))
-    room_count = korean_rooms + western_rooms
+    korean_rooms = _optional_int(it.get("KSRM_CNT"))
+    western_rooms = _optional_int(it.get("WSRM_CNT"))
+    # 기존 총 객실수 계산(빈 원본 값은 0)은 유지한다.
+    room_count = (korean_rooms or 0) + (western_rooms or 0)
     status_name = (it.get("SALS_STTS_NM") or "").strip() or None
     status_detail = (it.get("DTL_SALS_STTS_NM") or "").strip() or None
     cur.execute("""
