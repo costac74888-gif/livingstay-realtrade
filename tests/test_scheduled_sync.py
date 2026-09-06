@@ -56,10 +56,22 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         self.assertEqual(stages["building_registry"]["state"], "pending")
         self.assertEqual(stages["building_permits"]["state"], "skipped")
         self.assertEqual(stages["camping"]["state"], "pending")
+        self.assertEqual(stages["gocamping_web"]["state"], "skipped")
         self.assertEqual(stages["rural"]["state"], "pending")
         self.assertEqual(stages["hanok"]["state"], "pending")
         self.assertEqual(stages["building_geocode"]["state"], "pending")
         self.assertEqual(stages["title_info"]["state"], "pending")
+
+    def test_gocamping_web_enrichment_runs_weekly_with_bounded_batch(self):
+        stage = scheduled_sync.STAGE_MAP["gocamping_web"]
+        self.assertFalse(stage.is_due(0))
+        self.assertTrue(stage.is_due(6))
+        self.assertEqual(stage.command[0], "backfill_gocamping_web.py")
+        self.assertIn("300", stage.command)
+        self.assertIn(
+            "admin:gocamping_web_backfill:status",
+            stage.blocking_status_keys,
+        )
 
     def test_manual_full_run_ignores_scheduled_weekday_cadence(self):
         stages = scheduled_sync.prepare_stage_statuses(

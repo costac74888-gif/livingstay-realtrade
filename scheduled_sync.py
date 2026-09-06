@@ -315,6 +315,30 @@ STAGES = (
         metric_label="운영 숙박 원장",
     ),
     Stage(
+        "gocamping_web",
+        "고캠핑 홈페이지·상세 보강",
+        "숙박",
+        (
+            "backfill_gocamping_web.py",
+            "--max-details", "300",
+            "--workers", "6",
+            "--sleep", "0.2",
+        ),
+        "매주 일",
+        weekdays=(6,),
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM lodging_registry "
+            "WHERE permit_number LIKE 'CAMPING:%%' "
+            "AND gocamping_detail IS NOT NULL"
+        ),
+        metric_label="웹 상세 확보",
+        target_query=(
+            "SELECT COUNT(*) AS c FROM lodging_registry "
+            "WHERE permit_number LIKE 'CAMPING:%%'"
+        ),
+        blocking_status_keys=("admin:gocamping_web_backfill:status",),
+    ),
+    Stage(
         "brokers",
         "공인중개사 사무소",
         "중개·상가",
