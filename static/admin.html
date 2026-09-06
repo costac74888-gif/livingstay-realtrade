@@ -1613,10 +1613,10 @@
           <h3 class="stats-card-title">관광 데이터랩 갱신 · ${ADMIN_IS_PRODUCTION_ENV ? "운영 DB" : "개발 DB"}</h3>
           <p class="stats-card-hint">로그인·약관·기간/메뉴 선택이 필요한 공식 포털이므로 다운로드는 수동입니다. 미리보기는 DB를 바꾸지 않고, 적용은 1회만 가능합니다.</p>
           <div class="ds-scope-notice ${ADMIN_IS_PRODUCTION_ENV ? "is-production" : ""}" id="tourismTop100Scope">
-            <b>현재 조회·적용 대상: ${ADMIN_IS_PRODUCTION_ENV ? "운영 DB · 실제 홈페이지" : "개발 DB · 검증 전용"}</b><br>
+            <b>현재 조회·적용 대상: ${ADMIN_IS_PRODUCTION_ENV ? "운영 DB · 실제 홈페이지" : "개발 DB · 조회 전용"}</b><br>
             ${ADMIN_IS_PRODUCTION_ENV
-              ? "이 화면의 목록은 운영 DB 원본 이력입니다. 여기서 적용하면 실제 홈페이지 데이터가 즉시 바뀝니다. 개발 관리자에서 검증한 동일 파일만 최종 적용하세요."
-              : "이 화면의 목록은 개발 DB 원본 이력입니다. 여기서 적용해도 실제 홈페이지는 바뀌지 않습니다. 검증 완료 후 운영 관리자에서 동일 파일을 다시 미리보기·적용하세요."}<br>
+              ? "19개 관광데이터 원본은 이 운영 관리자 한 곳에서만 추가·업데이트합니다. 파일 선택 → 안전 미리보기 → 운영 DB·실제 홈페이지에 적용 순서로 진행하세요."
+              : "개발 관리자에서는 관광데이터 원본을 추가·업데이트하지 않습니다. 실제 업데이트는 운영 관리자 → 관광 데이터랩 원본에서만 진행하세요."}<br>
             검색TOP100 상세주소 CSV는 1~100위와 도로명주소 100개를 모두 검사합니다.
           </div>
           <p style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;">
@@ -1624,9 +1624,9 @@
             <a class="admin-btn" href="/api/admin/tourism-datalab/checklist.xlsx">정기 다운로드 체크리스트</a>
           </p>
           <label style="font-size:13px;font-weight:700;">관광데이터 ZIP/CSV 추가 (최대 10개)</label>
-          <input id="tourismDatalabFiles" type="file" accept=".zip,.csv" multiple style="display:block;margin:7px 0;">
-          <button type="button" class="admin-btn" id="tourismDatalabPreview">${ADMIN_IS_PRODUCTION_ENV ? "운영 DB" : "개발 DB"} 안전 미리보기</button>
-          <button type="button" class="admin-btn" id="tourismDatalabApply" disabled>${ADMIN_IS_PRODUCTION_ENV ? "운영 DB·실제 홈페이지에 적용" : "개발 DB에 적용(검증용)"}</button>
+          <input id="tourismDatalabFiles" type="file" accept=".zip,.csv" multiple ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"} style="display:block;margin:7px 0;">
+          <button type="button" class="admin-btn" id="tourismDatalabPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "운영 DB 안전 미리보기" : "개발에서는 업데이트하지 않음"}</button>
+          <button type="button" class="admin-btn" id="tourismDatalabApply" disabled>${ADMIN_IS_PRODUCTION_ENV ? "운영 DB·실제 홈페이지에 적용" : "운영 관리자에서만 적용 가능"}</button>
           <div id="tourismDatalabResult" class="stats-card-hint" style="margin-top:10px;">최신 커버리지를 불러오는 중…</div>
         </section>
         <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
@@ -1711,10 +1711,10 @@
       const envLabel = ADMIN_IS_PRODUCTION_ENV ? "운영 DB" : "개발 DB";
       const scopeTitle = ADMIN_IS_PRODUCTION_ENV
         ? "현재 목록: 운영 DB 원본 이력 · 적용 대상: 실제 홈페이지"
-        : "현재 목록: 개발 DB 원본 이력 · 적용 대상: 개발 검증 DB";
+        : "현재 목록: 개발 DB 참고용 · 원본 업데이트 불가";
       const scopeGuide = ADMIN_IS_PRODUCTION_ENV
-        ? "향후 정기 업데이트의 최종 반영은 이 운영 관리자 화면에서 합니다. 먼저 개발 관리자에서 동일 파일을 검증한 뒤, 여기서 다시 미리보기하고 적용하세요."
-        : "이 화면의 미리보기·적용은 개발 DB 검증용입니다. 실제 홈페이지는 바뀌지 않습니다. 검증 후 운영 관리자에서 동일 파일을 다시 미리보기하고 적용하세요.";
+        ? "19개 관광데이터 원본은 이 운영 관리자 한 곳에서만 추가·업데이트합니다. 아래에서 파일 선택 → 안전 미리보기 → 운영 DB·실제 홈페이지에 적용 순서로 한 번만 진행하세요."
+        : "개발 관리자에는 파일을 넣지 않습니다. 실제 업데이트는 운영 관리자 → 관광 데이터랩 원본에서만 진행하세요.";
       mount.innerHTML = `
         <div class="tdl-page">
           <div class="tdl-toolbar">
@@ -1746,10 +1746,10 @@
             </div>
             <div id="tdlTable" class="tdl-table-wrap"><div class="tdl-loading">목록을 불러오는 중…</div></div>
             <div class="tdl-upload">
-              <input id="tdlFiles" type="file" accept=".zip,.csv" multiple aria-label="관광 데이터 파일 선택">
-              <button type="button" class="admin-btn" id="tdlPreview">${envLabel} 안전 미리보기</button>
-              <button type="button" class="admin-btn admin-btn-primary" id="tdlApply" disabled>${ADMIN_IS_PRODUCTION_ENV ? "운영 DB·실제 홈페이지에 적용" : "개발 DB에 적용(검증용)"}</button>
-              <div class="tdl-upload-note">ZIP/CSV 최대 10개 · 미리보기는 DB를 변경하지 않습니다. 적용 버튼은 <b>${envLabel}</b>만 변경합니다.</div>
+              <input id="tdlFiles" type="file" accept=".zip,.csv" multiple aria-label="관광 데이터 파일 선택" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>
+              <button type="button" class="admin-btn" id="tdlPreview" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "운영 DB 안전 미리보기" : "개발에서는 업데이트하지 않음"}</button>
+              <button type="button" class="admin-btn admin-btn-primary" id="tdlApply" disabled>${ADMIN_IS_PRODUCTION_ENV ? "운영 DB·실제 홈페이지에 적용" : "운영 관리자에서만 적용 가능"}</button>
+              <div class="tdl-upload-note">${ADMIN_IS_PRODUCTION_ENV ? "ZIP/CSV 최대 10개 · 미리보기는 DB를 변경하지 않습니다. 미리보기 확인 후 적용하면 실제 홈페이지가 업데이트됩니다." : "개발 화면은 조회 전용입니다. 원본 추가·업데이트는 운영 관리자에서만 가능합니다."}</div>
               <div id="tdlFeedback" class="tdl-feedback" style="grid-column:1/-1" role="status"></div>
             </div>
           </section>
