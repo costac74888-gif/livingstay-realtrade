@@ -78,6 +78,38 @@ class TourismApiContractTests(unittest.TestCase):
             [documents[0], {**documents[0], "road_address_name": "인천광역시 중구 영종해안남로 1"}],
         )), 2)
 
+    def test_exact_datalab_address_survives_district_split(self):
+        document = {
+            "address_name": "인천 영종구 공항문화로 127",
+            "x": "126.3891",
+            "y": "37.4655",
+            "road_address": {"address_name": "인천 영종구 공항문화로 127"},
+            "address": {"address_name": "인천 영종구 운서동 2955-74"},
+        }
+        result = app_module._lodging_rank_exact_address_document(
+            "인천광역시 중구 공항문화로 127", [document]
+        )
+        self.assertEqual(result["road_address_name"], "인천 영종구 공항문화로 127")
+        self.assertEqual(result["address_name"], "인천 영종구 운서동 2955-74")
+
+    def test_exact_datalab_address_rejects_multiple_or_different_results(self):
+        matching = {
+            "address_name": "인천 영종구 공항문화로 127",
+            "x": "126.3891",
+            "y": "37.4655",
+            "road_address": {"address_name": "인천 영종구 공항문화로 127"},
+        }
+        different = {
+            **matching,
+            "road_address": {"address_name": "인천 영종구 공항문화로 128"},
+        }
+        self.assertIsNone(app_module._lodging_rank_exact_address_document(
+            "인천광역시 중구 공항문화로 127", [different]
+        ))
+        self.assertIsNone(app_module._lodging_rank_exact_address_document(
+            "인천광역시 중구 공항문화로 127", [matching, matching]
+        ))
+
     def test_region_key_normalizes_sido_suffix_and_sgg_whitespace(self):
         self.assertEqual(
             _tourism_region_key("서울특별시", "강남 구"),

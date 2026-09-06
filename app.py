@@ -30354,6 +30354,7 @@ def _lodging_search_rank_item(row):
 
 
 _KAKAO_LOCAL_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
+_KAKAO_LOCAL_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json"
 _LODGING_RANK_LOCATION_CACHE = {}
 _LODGING_RANK_LOCATION_CACHE_TTL = 86400
 
@@ -30396,6 +30397,48 @@ def _lodging_rank_kakao_candidates(place_name, sido, sgg, documents):
         ):
             candidates.append(item)
     return candidates
+
+
+def _lodging_rank_exact_address_document(expected_road_address, documents):
+    """Flatten one Kakao address result for an exact Data Lab road address.
+
+    Kakao can normalize a pre-split district such as 인천 중구 to its current
+    district, so matching uses the road name/number portion rather than requiring
+    the old and current district labels to be identical.
+    """
+    def road_identity(value):
+        text = str(value or "").strip()
+        province = _tourism_region_key(text.split(None, 1)[0] if text else "", "")[0]
+        road = re.search(
+            r"([가-힣A-Za-z0-9·.]+(?:대로|로|길)\s*\d+(?:-\d+)?)",
+            text,
+        )
+        if not province or not road:
+            return None
+        road_key = re.sub(r"[^0-9가-힣A-Za-z-]", "", road.group(1)).lower()
+        return province, road_key
+
+    expected_key = road_identity(expected_road_address)
+    if not expected_key:
+        return None
+    matches = []
+    for item in documents or []:
+        road = item.get("road_address") or {}
+        address = item.get("address") or {}
+        road_address = str(
+            road.get("address_name") or item.get("road_address_name") or ""
+        ).strip()
+        if road_identity(road_address) != expected_key:
+            continue
+        matches.append({
+            "road_address_name": road_address,
+            "address_name": str(
+                address.get("address_name") or item.get("address_name") or ""
+            ).strip(),
+            "x": item.get("x"),
+            "y": item.get("y"),
+        })
+    return matches[0] if len(matches) == 1 else None
 
 
 def _lodging_rank_master_by_address(cur, document, sgg):
@@ -30460,31 +30503,49 @@ def tourism_lodging_rank_location():
         client_id = os.environ.get("KAKAO_REST_API_KEY", "").strip()
         if not client_id:
             return jsonify({"ok": False, "message": "지도 위치 검색을 사용할 수 없습니다."}), 503
-        search_names = [place_name]
-        if place_name.endswith("점") and len(place_name) > 3:
-            search_names.append(place_name[:-1])
+        dimensions = source_row.get("dimensions") or {}
+        verified_road_address = str(dimensions.get("road_address") or "").strip()
         document = None
-        for search_name in search_names:
+        if verified_road_address:
             response = requests.get(
-                _KAKAO_LOCAL_KEYWORD_URL,
+                _KAKAO_LOCAL_ADDRESS_URL,
                 headers={"Authorization": f"KakaoAK {client_id}"},
-                params={"query": " ".join(filter(None, (search_name, sido, sgg))), "size": 5},
+                params={"query": verified_road_address, "size": 5},
                 timeout=5,
             )
             response.raise_for_status()
-            documents = response.json().get("documents", [])
-            candidates = _lodging_rank_kakao_candidates(
-                search_name, sido, sgg, documents
+            document = _lodging_rank_exact_address_document(
+                verified_road_address, response.json().get("documents", [])
             )
-            # Do not collapse same-brand branches by a shared address/name:
-            # a public read endpoint must not choose an unverified building.
-            document = candidates[0] if len(candidates) == 1 else None
-            if document is not None:
-                break
+        search_names = [place_name]
+        if place_name.endswith("점") and len(place_name) > 3:
+            search_names.append(place_name[:-1])
+        if document is None:
+            for search_name in search_names:
+                response = requests.get(
+                    _KAKAO_LOCAL_KEYWORD_URL,
+                    headers={"Authorization": f"KakaoAK {client_id}"},
+                    params={"query": " ".join(filter(None, (search_name, sido, sgg))), "size": 5},
+                    timeout=5,
+                )
+                response.raise_for_status()
+                documents = response.json().get("documents", [])
+                candidates = _lodging_rank_kakao_candidates(
+                    search_name, sido, sgg, documents
+                )
+                # Do not collapse same-brand branches by a shared address/name:
+                # a public read endpoint must not choose an unverified building.
+                document = candidates[0] if len(candidates) == 1 else None
+                if document is not None:
+                    break
         if document is None:
             return jsonify({"ok": False, "message": "정확한 숙소 위치를 찾지 못했습니다."}), 404
 
-        master = _lodging_rank_master_by_address(cur, document, sgg)
+        # Exact Data Lab road-address evidence remains valid across district
+        # splits, so do not reject a current master solely for its new sgg name.
+        master = _lodging_rank_master_by_address(
+            cur, document, "" if verified_road_address else sgg
+        )
         if master:
             payload = {
                 "ok": True,
