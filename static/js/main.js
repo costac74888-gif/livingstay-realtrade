@@ -4081,7 +4081,7 @@ function renderDataLabLodging(data){
       : "";
     const base = `
       <tr class="${tourismSubtypeRows ? "datalab-tourism-breakdown" : ""}">
-        <td>${tourismSubtypeRows ? `<button type="button" class="datalab-row-toggle" data-tourism-collapse aria-expanded="false"><span class="datalab-collapse-label">펼치기</span></button>` : ""}${escapeHtml(displayType)}</td>
+        <td>${tourismSubtypeRows ? `<button type="button" class="datalab-row-toggle" data-tourism-collapse aria-expanded="false" aria-label="관광숙박 세부업종 보기"><span class="datalab-collapse-label" aria-hidden="true"></span></button>` : ""}${escapeHtml(displayType)}</td>
         <td>${dataLabNum(displayedBuildingCount)}</td>
         <td>${dataLabNum(displayedUnits)}</td>
         <td>${dataLabNum(row.biz_count)}</td>
@@ -4302,8 +4302,7 @@ function bindDataLabControls(content){
       section.classList.toggle("is-tourism-collapsed", !expanded);
       section.querySelectorAll(".datalab-tourism-legal-row").forEach(row => row.hidden = !expanded);
       button.setAttribute("aria-expanded", String(expanded));
-      const label = button.querySelector(".datalab-collapse-label");
-      if (label) label.textContent = expanded ? "접기" : "펼치기";
+      button.setAttribute("aria-label", expanded ? "관광숙박 세부업종 숨기기" : "관광숙박 세부업종 보기");
     });
   });
   content.querySelectorAll("[data-datalab-collapse]").forEach(button => {
