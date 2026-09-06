@@ -7128,6 +7128,12 @@ def guide_page():
     return _serve_static_html("guide.html")
 
 
+@app.route("/analysis")
+def analysis_page():
+    """관광수요·실거래 비교 화면."""
+    return _serve_static_html("analysis.html")
+
+
 @app.route("/notices")
 def notices_page():
     """공지사항 페이지 (현재는 정적 안내만)."""
@@ -30558,6 +30564,307 @@ def tourism_heatmap_domestic():
     return jsonify(_tourism_heatmap_payload(
         "visitor_sgg", "기초지자체 방문자 수", "국내 방문자", "명"
     ))
+
+
+_ANALYSIS_PERIODS = (6, 12, 24)
+_ANALYSIS_MAX_ITEMS = 500
+
+
+def _analysis_float(value):
+    """JSON 응답에 Decimal/psycopg2 수치가 남지 않게 한다."""
+    return float(value) if value is not None else None
+
+
+def _analysis_growth(current_value, previous_value):
+    """두 실제 관측값이 있을 때만 증감률을 계산한다."""
+    if current_value is None or previous_value is None or previous_value <= 0:
+        return None
+    return (current_value - previous_value) / previous_value * 100.0
+
+
+def _analysis_quadrant(tourism_demand, price_change, tourism_baseline=50, price_baseline=0):
+    if tourism_demand is None or price_change is None:
+        return "비교 표본 부족"
+    if tourism_demand >= tourism_baseline and price_change >= price_baseline:
+        return "수요·가격 동반 강세"
+    if tourism_demand < tourism_baseline and price_change >= price_baseline:
+        return "가격 선행"
+    if tourism_demand >= tourism_baseline and price_change < price_baseline:
+        return "관광수요 대비 가격 낮음"
+    return "수요·가격 관망"
+
+
+def _analysis_tourism_demand_by_sgg(cur):
+    """최근 시군구 방문자 원장의 실제 방문자 수를 전국 백분위 지수로 환산한다."""
+    cur.execute("""
+        WITH latest_file AS (
+            SELECT source_file, source_period
+            FROM tourism_stats
+            WHERE stat_type = 'visitor_sgg'
+              AND metric_name = '기초지자체 방문자 수'
+              AND metric_value > 0
+              AND source_file IS NOT NULL
+            ORDER BY source_period DESC NULLS LAST,
+                     collected_at DESC NULLS LAST, source_file DESC
+            LIMIT 1
+        ), latest AS (
+            SELECT DISTINCT ON (
+                regexp_replace(trim(COALESCE(sido_name, '')),
+                    '(특별자치도|특별자치시|특별시|광역시|도|시)$', ''),
+                regexp_replace(trim(COALESCE(sgg_name, '')), '\\s+', '', 'g')
+            )
+                regexp_replace(trim(COALESCE(sido_name, '')),
+                    '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                regexp_replace(trim(COALESCE(sgg_name, '')), '\\s+', '', 'g') AS sgg,
+                metric_value::double precision AS visitor_count,
+                t.source_period
+            FROM tourism_stats t
+            JOIN latest_file lf ON lf.source_file = t.source_file
+            WHERE t.stat_type = 'visitor_sgg'
+              AND metric_name = '기초지자체 방문자 수'
+              AND metric_value > 0
+            ORDER BY
+                regexp_replace(trim(COALESCE(sido_name, '')),
+                    '(특별자치도|특별자치시|특별시|광역시|도|시)$', ''),
+                regexp_replace(trim(COALESCE(sgg_name, '')), '\\s+', '', 'g'),
+                collected_at DESC NULLS LAST, id DESC
+        ), ranked AS (
+            SELECT sido, sgg, visitor_count, source_period,
+                   percent_rank() OVER (ORDER BY visitor_count) * 100.0 AS demand_index
+            FROM latest
+        )
+        SELECT sido, sgg, visitor_count, source_period, demand_index
+        FROM ranked
+    """)
+    return {
+        (row["sido"], row["sgg"]): {
+            "index": _analysis_float(row["demand_index"]),
+            "visitor_count": _analysis_float(row["visitor_count"]),
+            "source_period": row["source_period"],
+        }
+        for row in cur.fetchall()
+    }
+
+
+@app.route("/api/analysis/assets")
+@limiter.limit("30 per minute")
+def analysis_assets():
+    """Public, conservative building-level tourism × transaction comparison."""
+    raw_period = request.args.get("period_months", "").strip()
+    if raw_period:
+        try:
+            period_months = int(raw_period)
+        except ValueError:
+            return jsonify({"ok": False, "message": "period_months는 6, 12, 24 중 하나여야 합니다."}), 400
+        if period_months not in _ANALYSIS_PERIODS:
+            return jsonify({"ok": False, "message": "period_months는 6, 12, 24 중 하나여야 합니다."}), 400
+    else:
+        period_months = 12
+
+    sido = sido_core(request.args.get("sido", "").strip())
+    sgg = "".join(request.args.get("sgg", "").strip().split())
+    lodging_type = request.args.get("lodging_type", "").strip()
+    if len(lodging_type) > 40:
+        return jsonify({"ok": False, "message": "lodging_type 값이 올바르지 않습니다."}), 400
+
+    where = ["mb.lodging_type IS DISTINCT FROM 'mixed_use_excluded'"]
+    params = []
+    if sido:
+        where.append("""regexp_replace(split_part(trim(COALESCE(mb.sgg_text, '')), ' ', 1),
+                       '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') = %s""")
+        params.append(sido)
+    if sgg:
+        where.append("""regexp_replace(trim(regexp_replace(COALESCE(mb.sgg_text, ''),
+                       '^\\S+\\s*', '')), '\\s+', '', 'g') = %s""")
+        params.append(sgg)
+    if lodging_type:
+        where.append("mb.lodging_type = %s")
+        params.append(lodging_type)
+    where_sql = " AND ".join(where)
+
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        # Options intentionally come from the same public master population,
+        # never from unlinked transaction names.
+        cur.execute(f"""
+            SELECT DISTINCT
+                   regexp_replace(split_part(trim(COALESCE(sgg_text, '')), ' ', 1),
+                     '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                   regexp_replace(trim(regexp_replace(COALESCE(sgg_text, ''),
+                     '^\\S+\\s*', '')), '\\s+', '', 'g') AS sgg,
+                   lodging_type
+            FROM master_buildings
+            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+        """)
+        option_rows = cur.fetchall()
+        cur.execute(f"""
+            SELECT COUNT(*) AS count
+            FROM master_buildings mb
+            WHERE {where_sql}
+        """, params)
+        registered_buildings = int(cur.fetchone()["count"] or 0)
+
+        cur.execute(f"""
+            WITH candidates AS MATERIALIZED (
+                SELECT mb.id, mb.building_name, mb.road_address, mb.jibun_address,
+                       mb.sgg_cd, mb.umd_nm, mb.jibun, mb.lodging_type, mb.lat, mb.lng,
+                       regexp_replace(split_part(trim(COALESCE(mb.sgg_text, '')), ' ', 1),
+                         '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                       regexp_replace(trim(regexp_replace(COALESCE(mb.sgg_text, ''),
+                         '^\\S+\\s*', '')), '\\s+', '', 'g') AS sgg,
+                       COUNT(*) AS current_count
+                FROM transactions current_t
+                JOIN master_buildings mb ON mb.sgg_cd = current_t.sgg_cd
+                    AND mb.umd_nm = current_t.umd_nm AND mb.jibun = current_t.jibun
+                WHERE {where_sql}
+                  AND mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM master_buildings duplicate_mb
+                      WHERE duplicate_mb.sgg_cd = mb.sgg_cd
+                        AND duplicate_mb.umd_nm = mb.umd_nm
+                        AND duplicate_mb.jibun = mb.jibun
+                        AND duplicate_mb.id <> mb.id
+                  )
+                  AND current_t.transaction_scope = 'unit'
+                  AND current_t.match_confidence = 'exact'
+                  AND current_t.price > 0 AND current_t.area > 0
+                  AND current_t.deal_date ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
+                  AND current_t.deal_date >= to_char(
+                      CURRENT_DATE - make_interval(months => %s), 'YYYY-MM-DD')
+                  AND current_t.deal_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+                GROUP BY mb.id
+                ORDER BY current_count DESC, mb.id
+                LIMIT %s
+            ), exact_tx AS (
+                SELECT s.id AS building_id,
+                       t.price::double precision / NULLIF(t.area, 0) AS price_per_sqm,
+                       t.price::double precision AS price, t.deal_date,
+                       t.id AS transaction_id
+                FROM candidates s
+                JOIN transactions t ON t.sgg_cd = s.sgg_cd
+                    AND t.umd_nm = s.umd_nm AND t.jibun = s.jibun
+                WHERE s.sgg_cd IS NOT NULL AND s.umd_nm IS NOT NULL AND s.jibun IS NOT NULL
+                  AND t.transaction_scope = 'unit'
+                  AND t.match_confidence = 'exact'
+                  AND t.price > 0 AND t.area > 0
+                  AND t.deal_date ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
+            ), aggregates AS (
+                SELECT building_id,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_sqm)
+                      FILTER (WHERE deal_date >= to_char(CURRENT_DATE - make_interval(months => %s), 'YYYY-MM-DD')
+                                      AND deal_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')) AS current_median,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_sqm)
+                      FILTER (WHERE deal_date >= to_char(CURRENT_DATE - make_interval(months => %s * 2), 'YYYY-MM-DD')
+                                      AND deal_date < to_char(CURRENT_DATE - make_interval(months => %s), 'YYYY-MM-DD')) AS previous_median,
+                    COUNT(*) FILTER (WHERE deal_date >= to_char(CURRENT_DATE - make_interval(months => %s), 'YYYY-MM-DD')
+                                      AND deal_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')) AS current_count,
+                    COUNT(*) FILTER (WHERE deal_date >= to_char(CURRENT_DATE - make_interval(months => %s * 2), 'YYYY-MM-DD')
+                                      AND deal_date < to_char(CURRENT_DATE - make_interval(months => %s), 'YYYY-MM-DD')) AS previous_count,
+                    MAX(price_per_sqm) AS historical_peak
+                FROM exact_tx GROUP BY building_id
+            ), latest AS (
+                SELECT DISTINCT ON (building_id) building_id, price, price_per_sqm, deal_date
+                FROM exact_tx ORDER BY building_id, deal_date DESC, transaction_id DESC
+            )
+            SELECT s.*, a.current_median, a.previous_median, a.current_count, a.previous_count,
+                   a.historical_peak, l.price AS latest_price, l.price_per_sqm,
+                   l.deal_date AS last_deal_date
+            FROM candidates s
+            JOIN aggregates a ON a.building_id = s.id
+            LEFT JOIN latest l ON l.building_id = s.id
+            ORDER BY a.current_count DESC, s.id
+        """, params + [
+            period_months, _ANALYSIS_MAX_ITEMS,
+            period_months, period_months, period_months, period_months,
+            period_months, period_months,
+        ])
+        rows = cur.fetchall()
+        tourism_demand = _analysis_tourism_demand_by_sgg(cur)
+
+        items = []
+        for row in rows:
+            current_median = _analysis_float(row["current_median"])
+            previous_median = _analysis_float(row["previous_median"])
+            price_change = _analysis_growth(current_median, previous_median)
+            key = (row["sido"], row["sgg"])
+            demand = tourism_demand.get(key) or {}
+            demand_index = demand.get("index")
+            latest_per_sqm = _analysis_float(row["price_per_sqm"])
+            peak = _analysis_float(row["historical_peak"])
+            peak_gap = _analysis_growth(latest_per_sqm, peak)
+            direct = current_median is not None and previous_median is not None
+            items.append({
+                "building_id": row["id"], "name": row["building_name"],
+                "address": row["road_address"] or row["jibun_address"] or "",
+                "sido": row["sido"], "sgg": row["sgg"], "lodging_type": row["lodging_type"],
+                "lat": _analysis_float(row["lat"]), "lng": _analysis_float(row["lng"]),
+                "tourism_demand_index": demand_index,
+                "tourism_visitor_count": demand.get("visitor_count"),
+                "tourism_period": demand.get("source_period"),
+                "price_change": price_change,
+                "transaction_count": int(row["current_count"] or 0),
+                "previous_transaction_count": int(row["previous_count"] or 0),
+                "latest_price": _analysis_float(row["latest_price"]),
+                "price_per_sqm": latest_per_sqm, "peak_gap": peak_gap,
+                "last_deal_date": row["last_deal_date"],
+                "sample_level": "direct" if direct else "insufficient",
+                "tourism_source": ("한국관광 데이터랩 · 시군구 국내 방문자 수 전국 백분위"
+                                   if demand_index is not None else "연결 가능한 시군구 관광 원자료 없음"),
+                "price_source": ("국토교통부 실거래가 공개시스템 · 주소키 정확 일치 호실 거래"
+                                 if direct else "동기간 가격 표본 부족"),
+            })
+
+        valid_price = [item["price_change"] for item in items if item["price_change"] is not None]
+        valid_tourism = [item["tourism_demand_index"] for item in items if item["tourism_demand_index"] is not None]
+        def median(values):
+            return sorted(values)[len(values) // 2] if len(values) % 2 else (
+                sorted(values)[len(values) // 2 - 1] + sorted(values)[len(values) // 2]) / 2 if values else None
+        selected_sidos = sorted({r["sido"] for r in option_rows if r["sido"]})
+        selected_sggs = sorted({r["sgg"] for r in option_rows if r["sgg"] and (not sido or r["sido"] == sido)})
+        selected_types = sorted({r["lodging_type"] for r in option_rows if r["lodging_type"]})
+        tourism_baseline = median(valid_tourism)
+        price_baseline = median(valid_price)
+        for item in items:
+            item["quadrant"] = _analysis_quadrant(
+                item["tourism_demand_index"], item["price_change"],
+                tourism_baseline if tourism_baseline is not None else 50,
+                price_baseline if price_baseline is not None else 0,
+            )
+        return jsonify({
+            "ok": True, "generated_at": datetime.now(timezone.utc).isoformat(),
+            "filters": {
+                "sidos": [{"value": value, "label": value} for value in selected_sidos],
+                "sggs": [{"value": value, "label": value} for value in selected_sggs],
+                "lodging_types": [{"value": value, "label": value} for value in selected_types],
+                "period_options": [{"value": str(value), "label": f"최근 {value}개월"} for value in _ANALYSIS_PERIODS],
+            },
+            "summary": {
+                "registered_buildings": registered_buildings,
+                "transaction_count": sum(item["transaction_count"] for item in items),
+                "analyzed_buildings": sum(1 for item in items if item["price_change"] is not None),
+                "direct_sample_buildings": sum(1 for item in items if item["sample_level"] == "direct"),
+            },
+            "baselines": {"tourism_demand_index": tourism_baseline, "price_change": price_baseline},
+            "items": items,
+            "methodology": {
+                "tourism": "한국관광 데이터랩 최근 시군구 국내 방문자 수를 전국 시군구 백분위(0~100)로 환산한 관광수요 지수",
+                "price": "국토교통부 공개 실거래가 중 시군구코드·법정동·지번이 모두 정확히 일치한 호실 거래의 ㎡당 중앙값",
+                "warning": "관광수요 지수의 기준기간과 실거래 선택기간은 서로 다를 수 있습니다. 가격 표본이 현재·직전 양 기간에 있는 건물만 변동률을 표시하며 최대 500건까지 제공합니다.",
+            },
+        })
+    except psycopg2_errors.UndefinedTable:
+        return jsonify({"ok": False, "message": "분석용 원자료를 아직 준비 중입니다."}), 503
+    except Exception:
+        app.logger.exception("자산 분석 API 조회 실패")
+        return jsonify({"ok": False, "message": "분석 자료를 조회하는 중 오류가 발생했습니다."}), 500
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
 
 @app.route("/api/tourism/heatmap/foreign")
