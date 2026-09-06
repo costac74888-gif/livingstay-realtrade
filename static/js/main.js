@@ -5782,14 +5782,6 @@ function _campingAnimalLabel(value){
   return `반려동물 동반 ${policy}`;
 }
 
-function _campingDetailEntries(value){
-  if (Array.isArray(value)) return value.map(item => {
-    if (item && typeof item === "object") return [item.label || item.name || item.key, item.value ?? item.content];
-    return [String(item), ""];
-  }).filter(([label]) => label);
-  return value && typeof value === "object" ? Object.entries(value) : [];
-}
-
 function _renderCampingSection(b){
   const card = document.getElementById("bCampCard");
   const body = document.getElementById("bCampBody");
@@ -5823,12 +5815,10 @@ function _renderCampingSection(b){
     ["개수대", camp.sink_count ?? b.camping_wtrpl_co, "개"],
     ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
   ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
-  const details = _campingDetailEntries(camp.detail_fields);
   // 대표 사진은 상단 건물 사진 슬라이더가 고캠핑 사진 전체를 제공한다.
   // 안내 카드 안에서는 같은 이미지를 다시 노출하지 않는다.
   const hasContent = sites.length || amenities.length || seasons.length || chips.length
-    || facts.length || details.length || infoUrl || camp.intro || camp.summary
-    || camp.homepage_url || camp.phone || camp.address || camp.directions;
+    || facts.length || infoUrl || camp.homepage_url || camp.phone;
   if (!hasContent) {
     card.style.display = "none";
     body.innerHTML = "";
@@ -5836,7 +5826,6 @@ function _renderCampingSection(b){
   }
 
   body.innerHTML = `
-    ${camp.summary || camp.intro ? `<div class="camp-intro">${escapeHtml(camp.summary || camp.intro)}</div>` : ""}
     <div class="camp-quick-actions">
       ${infoUrl
         ? `<a class="camp-contact-btn camp-gocamping-btn" href="${escapeHtml(infoUrl)}" target="_blank" rel="noopener noreferrer" title="고캠핑에서 이 캠핑장 상세 보기">⛺ <span>고캠핑</span></a>`
@@ -5848,7 +5837,6 @@ function _renderCampingSection(b){
         ? `<a class="camp-contact-btn camp-phone-btn" href="tel:${escapeHtml(camp.phone)}" title="${escapeHtml(camp.phone)}" aria-label="전화번호 ${escapeHtml(camp.phone)}로 전화">☎️ <span>전화번호</span></a>`
         : `<span class="camp-contact-btn camp-phone-btn is-disabled" aria-disabled="true" title="전화번호가 등록되지 않았습니다">☎️ <span>전화번호</span></span>`}
     </div>
-    ${camp.address ? `<dl class="camp-contact"><div><dt>주소</dt><dd>${escapeHtml(camp.address)}</dd></div></dl>` : ""}
     ${chips.length ? `<div class="camp-chips">${chips.map(item =>
       String(item) === "고캠핑" && infoUrl
         ? `<a class="camp-gocamping-chip" href="${escapeHtml(infoUrl)}" target="_blank" rel="noopener noreferrer" title="고캠핑에서 이 캠핑장 상세 보기">고캠핑</a>`
@@ -5875,8 +5863,6 @@ function _renderCampingSection(b){
       <div class="camp-section-label">운영 기간</div>
       <div class="camp-chips camp-seasons">${seasons.map(item =>
         `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
-    ${camp.directions ? `<div class="camp-detail-block"><div class="camp-section-label">찾아오는 길</div><p>${escapeHtml(camp.directions)}</p></div>` : ""}
-    ${details.length ? `<div class="camp-detail-block"><div class="camp-section-label">상세 운영정보</div><dl class="camp-detail-list">${details.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl></div>` : ""}
     ${camp.updated_at ? `<div class="camp-updated">정보 업데이트 ${escapeHtml(String(camp.updated_at))}</div>` : ""}
   `;
   body.querySelectorAll("[data-camp-photo-index]").forEach(button => {
