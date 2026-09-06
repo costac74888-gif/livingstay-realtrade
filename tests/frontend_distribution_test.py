@@ -132,6 +132,14 @@ def main() -> None:
         or f"/static/dist/{release_id}/js/inline-apply_presale-" not in presale_apply.get_data(as_text=True)
     ):
         fail("배포 모드 분양 등록 안내 화면이 현재 릴리스에서 정상 제공되지 않음")
+    menu = client.get("/menu")
+    menu_html = menu.get_data(as_text=True)
+    if (
+        menu.status_code != 200
+        or 'href="/apply/lodging-operator">🏨 운영사 등록신청</a>' not in menu_html
+        or 'href="/apply/presale">🏗️ 분양사 등록신청</a>' not in menu_html
+    ):
+        fail("모바일 파트너 메뉴에 운영사·분양사 등록신청 링크가 없음")
 
     if client.get("/static/js/main.js").status_code != 404:
         fail("배포 모드에서 원본 main.js가 404가 아님")
