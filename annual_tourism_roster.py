@@ -32,6 +32,16 @@ _SUBTYPE_MAP = {
     "소형호텔": "소형호텔업", "한국전통호텔": "한국전통호텔업",
     "가족호텔": "가족호텔업",
 }
+TOURISM_LEGAL_SUBTYPES = (
+    "관광호텔업",
+    "수상관광호텔업",
+    "한국전통호텔업",
+    "가족호텔업",
+    "호스텔업",
+    "소형호텔업",
+    "의료관광호텔업",
+    "휴양콘도미니엄업",
+)
 
 
 def _actor(value):
@@ -455,11 +465,22 @@ def latest_approved_stats(conn):
         cur.close()
     if not rows:
         return None
+    row_by_subtype = {row["subtype"]: row for row in rows}
+    ordered_subtypes = list(TOURISM_LEGAL_SUBTYPES)
+    ordered_subtypes.extend(
+        subtype for subtype in sorted(row_by_subtype)
+        if subtype not in TOURISM_LEGAL_SUBTYPES
+    )
     return {"permit_count": sum(row["permit_count"] for row in rows),
             "room_count": sum(row["room_count"] for row in rows),
-            "sub_rows": [{"type": row["subtype"], "permit_count": row["permit_count"],
-                          "room_count": row["room_count"],
-                          "linked_building_count": row["linked_building_count"]} for row in rows],
+            "sub_rows": [{
+                "type": subtype,
+                "permit_count": row_by_subtype.get(subtype, {}).get("permit_count", 0),
+                "room_count": row_by_subtype.get(subtype, {}).get("room_count", 0),
+                "linked_building_count": row_by_subtype.get(subtype, {}).get(
+                    "linked_building_count", 0
+                ),
+            } for subtype in ordered_subtypes],
             "source": {"reference_year": rows[0]["reference_year"],
                         "next_collection_year": rows[0]["next_collection_year"],
                         "source_name": rows[0]["source_name"],

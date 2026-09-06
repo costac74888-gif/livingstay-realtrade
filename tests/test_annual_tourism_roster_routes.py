@@ -85,6 +85,39 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
         self.assertEqual(payload["next_collection_year"], 2026)
         conn.close.assert_called_once()
 
+    def test_override_updates_total_delta_and_public_tourism_breakdown(self):
+        base = {
+            "ok": True,
+            "rows": [
+                {"type": "전체", "permit_count": 85098, "room_count": 1015152},
+                {"type": "관광", "building_count": 765, "units": 19678,
+                 "permit_count": 939, "room_count": 110461, "report_rate": 74.1},
+            ],
+        }
+        approved = {
+            "permit_count": 2929,
+            "room_count": 219621,
+            "sub_rows": [
+                {"type": "호스텔업", "permit_count": 1396, "room_count": 18952,
+                 "linked_building_count": 2},
+                {"type": "수상관광호텔업", "permit_count": 0, "room_count": 0,
+                 "linked_building_count": 0},
+            ],
+            "source": {"reference_year": 2025},
+        }
+        with patch.object(application, "get_conn", return_value=MagicMock()), \
+             patch.object(application.annual_tourism_roster, "latest_approved_stats",
+                          return_value=approved):
+            result = application._apply_annual_tourism_roster_override(base)
+        total, tourism = result["rows"]
+        self.assertEqual(total["permit_count"], 87088)
+        self.assertEqual(total["room_count"], 1124312)
+        public = application._public_lodging_stats_payload(result)
+        public_tourism = public["rows"][1]
+        self.assertEqual(public_tourism["sub_rows"][0]["type"], "호스텔업")
+        self.assertEqual(public_tourism["sub_rows"][0]["building_count"], 2)
+        self.assertEqual(public_tourism["sub_rows"][1]["type"], "수상관광호텔업")
+
 
 if __name__ == "__main__":
     unittest.main()

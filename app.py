@@ -20746,7 +20746,7 @@ def _lodging_count_summary_payload():
 
 
 def _apply_annual_tourism_roster_override(payload):
-    """Override only approved tourism permit/room metrics; never building data."""
+    """Replace approved tourism metrics and carry their delta into the total row."""
     conn = None
     try:
         conn = get_conn()
@@ -20761,16 +20761,30 @@ def _apply_annual_tourism_roster_override(payload):
         return payload
     result = dict(payload)
     rows = [dict(row) for row in result.get("rows", [])]
+    total_row = next((row for row in rows if row.get("type") == "전체"), None)
     for row in rows:
         if row.get("type") != "관광":
             continue
-        # The roster is aggregate evidence: keep all master-derived fields and
-        # overwrite the two explicitly approved tourism metrics only.
+        previous_permits = int(row.get("permit_count") or 0)
+        previous_rooms = int(row.get("room_count") or 0)
         row["permit_count"] = approved["permit_count"]
         row["room_count"] = approved["room_count"]
         row["sub_rows"] = approved["sub_rows"]
         row["source_metadata"] = approved["source"]
         row["metric_source"] = "approved_annual_tourism_roster"
+        if total_row is not None:
+            # 전체 행은 기존 중복제거 기준을 유지하되, 관광 원장을 교체한 차이만
+            # 반영한다. 건물수·호실수·신고율은 계속 마스터 연결 기준이다.
+            total_row["permit_count"] = max(
+                0,
+                int(total_row.get("permit_count") or 0)
+                - previous_permits + int(approved["permit_count"] or 0),
+            )
+            total_row["room_count"] = max(
+                0,
+                int(total_row.get("room_count") or 0)
+                - previous_rooms + int(approved["room_count"] or 0),
+            )
         break
     result["rows"] = rows
     return result
@@ -21249,7 +21263,10 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
     def compact_row(row: dict, *, is_sub_row=False) -> dict:
         compact = {
             "type": row.get("type"),
-            "building_count": row.get("building_count", 0),
+            "building_count": row.get(
+                "building_count",
+                row.get("linked_building_count", 0) if is_sub_row else 0,
+            ),
             "units": None if is_sub_row else row.get("units", 0),
             "biz_count": row.get("permit_count", 0),
             "room_count": row.get("room_count", 0),
@@ -21278,7 +21295,7 @@ def _public_lodging_stats_payload(payload: dict) -> dict:
         if row.get("type") not in _PUBLIC_LODGING_STATS_TYPES:
             continue
         compact = compact_row(row)
-        if row.get("type") == REPORT_RATE_EXCLUDED_LODGING_TYPE:
+        if row.get("type") in {REPORT_RATE_EXCLUDED_LODGING_TYPE, "관광"}:
             compact["sub_rows"] = [
                 compact_row(sub, is_sub_row=True)
                 for sub in (row.get("sub_rows") or [])
