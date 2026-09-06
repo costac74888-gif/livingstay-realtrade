@@ -8008,6 +8008,7 @@ function renderBuildingLodgingOperators(items, lodgingType, buildingId){
 function renderBuildingPanel(id){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  closeMapSearchbar();
   window.__openBuildingId = Number(id);
   _buildingDetailRequestToken += 1;
   clearMapLocationTarget();
@@ -8139,6 +8140,7 @@ function restoreDefaultPanel(returnDataLabKey = ""){
   panel.classList.remove("panel-collapsed");
   panel.classList.remove("open");
   panel.innerHTML = DEFAULT_SIDE_PANEL_HTML;
+  closeMapSearchbar();
   if (typeof window.livingstaySetPanelToggle === "function") {
     const compact = window.matchMedia && window.matchMedia("(max-width: 980px)").matches;
     window.livingstaySetPanelToggle(!compact);

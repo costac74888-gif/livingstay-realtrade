@@ -38,13 +38,13 @@ expect(
   "모바일 검색바 폭 확장·관심단지 줄바꿈 CSS가 없습니다."
 );
 expect(
-  main.includes("const visibleKeys = favs.slice(0, 3);") &&
+  main.includes("const visibleKeys = mobile && _favMobileExpanded ? favs : favs.slice(0, 3);") &&
   main.includes("const hiddenKeys = favs.slice(3);") &&
   main.includes("`+더보기(${hiddenKeys.length})`") &&
   main.includes("fav-overflow-popover") &&
-  main.includes("closeFavOverflowPopover();\n    try {") &&
+  main.includes("closeFavOverflowPopover();\n    const knownBuildingId") &&
   main.includes("_favOverflowPopoverButton.setAttribute(\"aria-expanded\", \"false\")") &&
-  main.includes("window.openBuildingDetail = function(id){\n  closeFavOverflowPopover();"),
+    main.includes("window.openBuildingDetail = function(id, options = {}){\n  closeFavOverflowPopover();"),
   "관심단지 4개 제한 또는 더보기 팝오버 로직이 없습니다."
 );
 expect(

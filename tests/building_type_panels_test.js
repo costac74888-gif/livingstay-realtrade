@@ -27,7 +27,8 @@ expect(main.includes('class="bld-photo-actions bld-photo-actions-left"') && main
 expect(
   main.includes('aria-label="이전 목록으로"') &&
   main.includes("history.state?.buildingId === Number(id)") &&
-  main.includes("restoreDefaultPanel(event.state?.returnDataLabKey || \"\")"),
+  main.includes("restoreDefaultPanel(event.state?.returnDataLabKey || \"\")") &&
+  main.includes('panel.innerHTML = DEFAULT_SIDE_PANEL_HTML;\n  closeMapSearchbar();'),
   "사진 위 뒤로가기와 브라우저 뒤로가기가 이전 목록 상태를 복원하지 않습니다.",
 );
 expect(main.includes('class="bld-photo-empty-logo"') && main.includes('/static/home_stay_footer_logo.png'), "사진 없음 상단 바의 가로 로고가 없습니다.");
