@@ -31444,11 +31444,17 @@ def get_building_tourism_stats(building_id):
         payload = {
             "building_id": building_id,
             "source": "한국관광 데이터랩",
+            "region": {},
             "regional_metrics": {},
             "surge_badges": [],
             "nearby_attractions": [],
         }
         region_key = _building_tourism_region_key(building)
+        payload["region"] = {
+            "sido": region_key[0],
+            "sgg": region_key[1],
+            "scope_label": " ".join(part for part in region_key if part),
+        }
         latest_order = tourism_stats_importer.latest_source_order_sql("t")
 
         metric_specs = (

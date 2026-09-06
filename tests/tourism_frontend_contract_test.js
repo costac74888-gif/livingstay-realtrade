@@ -47,12 +47,18 @@ expect(main.includes("/tourism-stats") &&
   main.includes("외국인 방문 급상승") &&
   main.includes("regional_metrics") &&
   main.includes("function _formatTourismPeriod") &&
+  main.includes("지역 관광통계") &&
+  main.includes("지역 기준") &&
+  main.includes("이 건물 통계") &&
+  main.includes("개별 건물의 방문자·관광 검색·관광소비 실적은 현재 제공되지 않습니다.") &&
+  !main.includes("b-tourism-comment") &&
   main.includes("지역 인기 관광지") &&
   !main.includes('new Set(["캠핑", "농어촌민박", "한옥"])') &&
   main.includes("_isActiveBuilding(buildingId, requestToken)"),
   "전체 건물 상세의 관광데이터·급상승 뱃지 조회 계약이 없습니다.");
 expect(css.includes(".b-tourism-attractions") && css.includes(".b-foreign-visitor-badge") &&
-  css.includes(".b-tourism-surge-badge") && css.includes(".b-tourism-metrics"),
+  css.includes(".b-tourism-surge-badge") && css.includes(".b-tourism-metrics") &&
+  css.includes(".b-tourism-region-scope") && css.includes(".b-tourism-building-scope"),
   "관광 상세 보조 정보 스타일이 CSS에 없습니다.");
 expect(html.includes('data-datalab-key="lodging_rank"') &&
   html.includes("검색TOP100") &&

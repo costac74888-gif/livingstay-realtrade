@@ -6516,26 +6516,22 @@ async function _loadDetailTourismStats(b, buildingId){
     const attractionPeriod = _formatTourismPeriod(
       attractions.find(item => item?.source_period)?.source_period || ""
     );
-    const summaryParts = [];
-    const domesticValue = Number(metrics.domestic_visitors?.value);
-    const foreignValue = Number(metrics.foreign_visitors?.value);
-    const searchValue = Number(metrics.tourism_searches?.value);
-    if (Number.isFinite(domesticValue)) summaryParts.push(`내국인 방문자 ${domesticValue.toLocaleString("ko-KR", {maximumFractionDigits:0})}명`);
-    if (Number.isFinite(foreignValue)) summaryParts.push(`외국인 방문자 ${foreignValue.toLocaleString("ko-KR", {maximumFractionDigits:0})}명`);
-    if (Number.isFinite(searchValue)) summaryParts.push(`관광 검색 ${searchValue.toLocaleString("ko-KR", {maximumFractionDigits:0})}회`);
-    const surgeSummary = surges.map(item => {
-      const who = item.audience === "foreign" ? "외국인" : "내국인";
-      return `${who} 방문이 전년 동월보다 ${Number(item.growth_rate || 0).toLocaleString("ko-KR", {maximumFractionDigits:1})}% 증가해 급상승 TOP ${item.rank}`;
-    });
+    const regionLabel = String(data.region?.scope_label || data.region?.sgg || "해당 지역").trim();
     card.innerHTML = `
-      <div class="side-card-title">관광데이터 <span class="side-sub">한국관광 데이터랩</span></div>
+      <div class="side-card-title">지역 관광통계 <span class="side-sub">한국관광 데이터랩</span></div>
+      <div class="b-tourism-region-scope">
+        <strong>${escapeHtml(regionLabel)} 지역 기준</strong>
+        <span>아래 수치는 선택한 건물의 방문자·매출 실적이 아닙니다.</span>
+      </div>
       ${metricRows.length ? `<div class="b-tourism-metrics">${metricRows.join("")}</div>` : ""}
-      ${(summaryParts.length || surgeSummary.length) ? `<p class="b-tourism-comment">${escapeHtml([...summaryParts, ...surgeSummary].join(". "))}.</p>` : ""}
       ${rows.length ? `<section id="bTourismAttractions" class="b-tourism-attractions" aria-label="지역 인기 관광지">
         <h2 class="b-tourism-attractions-title">지역 인기 관광지${attractionPeriod ? ` <span>${escapeHtml(attractionPeriod)}</span>` : ""}</h2>
         <ol class="b-tourism-attractions-list">${rows.join("")}</ol>
       </section>` : ""}
-      <p class="b-tourism-source-note">건물 자체 실적이 아닌 해당 지역의 관광 동향입니다.</p>`;
+      <section class="b-tourism-building-scope" aria-label="이 건물 통계 제공 범위">
+        <h2>이 건물 통계</h2>
+        <p>개별 건물의 방문자·관광 검색·관광소비 실적은 현재 제공되지 않습니다.</p>
+      </section>`;
     card.style.display = "";
   } catch (e) {
     // 관광 보조 정보 실패는 상세 기본 정보 렌더링에 영향을 주지 않는다.
