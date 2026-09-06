@@ -192,12 +192,28 @@ def fetch_web_list(session):
     return rows
 
 
-def _load_candidates(cur, building_id=None):
+def _load_candidates(cur, building_id=None, refresh_existing=False):
     params = []
     building_filter = ""
     if building_id is not None:
         building_filter = " AND applied_building_id=%s"
         params.append(building_id)
+    refresh_filter = """
+            AND NULLIF(BTRIM(lr.road_address), '') IS NOT NULL
+    """ if refresh_existing else """
+            AND (
+                 checked.key IS NULL
+                 OR lr.gocamping_content_id IS NULL
+                 OR lr.gocamping_detail IS NULL
+            )
+            AND (
+                 NULLIF(BTRIM(lr.camping_reservation_url), '') IS NULL
+                 OR NULLIF(BTRIM(lr.camping_first_image_url), '') IS NULL
+                 OR COALESCE(jsonb_array_length(lr.camping_image_urls), 0) = 0
+                 OR lr.gocamping_content_id IS NULL
+                 OR lr.gocamping_detail IS NULL
+            )
+    """
     cur.execute(f"""
         SELECT lr.id, lr.permit_number, lr.biz_name, lr.road_address,
                lr.applied_building_id,
@@ -208,18 +224,7 @@ def _load_candidates(cur, building_id=None):
             ON checked.key = 'gocamping_web_checked:' || lr.id::text
          WHERE lr.permit_number LIKE 'CAMPING:%%:%%'
            AND lr.biz_status_name = '영업/정상'
-           AND (
-                checked.key IS NULL
-                OR lr.gocamping_content_id IS NULL
-                OR lr.gocamping_detail IS NULL
-           )
-           AND (
-                NULLIF(BTRIM(lr.camping_reservation_url), '') IS NULL
-                OR NULLIF(BTRIM(lr.camping_first_image_url), '') IS NULL
-                OR COALESCE(jsonb_array_length(lr.camping_image_urls), 0) = 0
-                OR lr.gocamping_content_id IS NULL
-                OR lr.gocamping_detail IS NULL
-           )
+           {refresh_filter}
            {building_filter}
     """, params)
     return cur.fetchall()
@@ -283,7 +288,7 @@ def _write_run_status(cur, status_key, run_id, payload):
 
 def run(
     *, building_id=None, max_details=300, sleep_sec=0.2, dry_run=False,
-    workers=6, status_key=None, run_id=None,
+    workers=6, status_key=None, run_id=None, refresh_existing=False,
 ):
     conn = get_conn()
     cur = conn.cursor()
@@ -296,13 +301,16 @@ def run(
     started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     status = {
         "run_id": run_id, "state": "running", "dry_run": bool(dry_run),
+        "refresh_existing": bool(refresh_existing),
         "started_at": started_at, "finished_at": None,
         "current": 0, "target": 0, "counters": counters, "error": None,
     }
     try:
         web_rows = fetch_web_list(session)
         counters["web_items"] = len(web_rows)
-        candidates = _load_candidates(cur, building_id)
+        candidates = _load_candidates(
+            cur, building_id, refresh_existing=refresh_existing
+        )
         counters["candidates"] = len(candidates)
 
         matched, counters["ambiguous"] = match_web_rows(candidates, web_rows)
@@ -336,17 +344,30 @@ def run(
                     existing = current.get("camping_image_urls") or []
                     if isinstance(existing, str):
                         existing = json.loads(existing)
+                    image_sources = (
+                        detail["image_urls"]
+                        if refresh_existing
+                        else list(existing) + detail["image_urls"]
+                    )
                     images = []
-                    for url in list(existing) + detail["image_urls"]:
+                    for url in image_sources:
                         if _public_url(url) and url not in images:
                             images.append(url)
                     reservation = (
-                        current.get("camping_reservation_url")
-                        or detail["reservation_url"]
+                        detail["reservation_url"]
+                        if refresh_existing
+                        else (
+                            current.get("camping_reservation_url")
+                            or detail["reservation_url"]
+                        )
                     )
                     first_image = (
-                        current.get("camping_first_image_url")
-                        or (images[0] if images else None)
+                        (images[0] if images else None)
+                        if refresh_existing
+                        else (
+                            current.get("camping_first_image_url")
+                            or (images[0] if images else None)
+                        )
                     )
                     if not dry_run:
                         cur.execute("""
@@ -393,22 +414,27 @@ def run(
                                SET gocamping_content_id=%s,
                                    gocamping_detail=%s::jsonb,
                                    gocamping_detail_fetched_at=NOW(),
-                                   camping_reservation_url=COALESCE(
-                                       camping_reservation_url, %s
-                                   ),
-                                   camping_first_image_url=COALESCE(
-                                       camping_first_image_url, %s
-                                   ),
+                                    camping_reservation_url=CASE
+                                        WHEN %s THEN %s
+                                        ELSE COALESCE(camping_reservation_url, %s)
+                                    END,
+                                    camping_first_image_url=CASE
+                                        WHEN %s THEN %s
+                                        ELSE COALESCE(camping_first_image_url, %s)
+                                    END,
                                    camping_image_urls=CASE
-                                       WHEN COALESCE(jsonb_array_length(camping_image_urls), 0)=0
+                                        WHEN %s
+                                          OR COALESCE(jsonb_array_length(camping_image_urls), 0)=0
                                        THEN %s::jsonb
                                        ELSE camping_image_urls
                                    END,
                                    updated_at=NOW()
                              WHERE permit_number=%s
                         """, (
-                            web["content_id"], payload_json, reservation, first_image,
-                            json.dumps(images, ensure_ascii=False),
+                            web["content_id"], payload_json,
+                            refresh_existing, reservation, reservation,
+                            refresh_existing, first_image, first_image,
+                            refresh_existing, json.dumps(images, ensure_ascii=False),
                             f"CAMPING:{web['content_id']}",
                         ))
                     if not dry_run:
@@ -422,6 +448,7 @@ def run(
                             json.dumps({
                                 "content_id": web["content_id"],
                                 "match": match_reason,
+                                "refresh_existing": bool(refresh_existing),
                                 "has_reservation": bool(reservation),
                                 "image_count": len(images),
                             }, ensure_ascii=False),
@@ -483,6 +510,11 @@ def main():
     parser.add_argument("--sleep", type=float, default=0.2)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--refresh-existing",
+        action="store_true",
+        help="이미 수집된 시설도 고캠핑 웹 최신값으로 다시 동기화",
+    )
     parser.add_argument("--status-key")
     parser.add_argument("--run-id")
     args = parser.parse_args()
@@ -494,6 +526,7 @@ def main():
         workers=max(1, min(args.workers, 8)),
         status_key=args.status_key,
         run_id=args.run_id,
+        refresh_existing=args.refresh_existing,
     )
 
 

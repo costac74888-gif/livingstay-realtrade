@@ -9,6 +9,7 @@ for (const id of [
   "gocampingWebBackfillStatus",
   "gocampingWebDryRunBtn",
   "gocampingWebRunBtn",
+  "gocampingWebSyncBtn",
   "gocampingWebRetryBtn",
   "gocampingWebRefreshBtn"
 ]) {
@@ -21,4 +22,7 @@ expect(app.includes("start_new_session=True"), "detached 실행 누락");
 expect(worker.includes("--status-key") && worker.includes("--run-id"), "worker fencing 인자 누락");
 expect(worker.includes("실행 소유권이 변경되어 중단"), "run ID fencing 누락");
 expect(worker.includes("gocamping_records"), "전체 웹 원본 저장 누락");
+expect(admin.includes("전체 최신화 동기화"), "기존 자료 재동기화 버튼 누락");
+expect(app.includes("refresh_existing"), "전체 최신화 API 옵션 누락");
+expect(worker.includes("--refresh-existing"), "전체 최신화 worker 옵션 누락");
 console.log("OK gocamping web admin contract");

@@ -23182,6 +23182,9 @@ def _admin_gocamping_web_backfill_status():
                 COUNT(*) FILTER (WHERE gocamping_content_id IS NOT NULL) AS linked_total,
                 COUNT(*) FILTER (WHERE gocamping_detail IS NOT NULL) AS detailed_total,
                 COUNT(*) FILTER (
+                    WHERE NULLIF(BTRIM(gocamping_detail ->> 'homepage_url'), '') IS NOT NULL
+                ) AS homepage_total,
+                COUNT(*) FILTER (
                     WHERE camping_reservation_url ~ '^https?://'
                 ) AS reservation_total,
                 COUNT(*) FILTER (
@@ -23217,6 +23220,7 @@ def _admin_gocamping_web_backfill_status():
         "current": int(status.get("current") or 0),
         "target": int(status.get("target") or 0),
         "dry_run": bool(status.get("dry_run")),
+        "refresh_existing": bool(status.get("refresh_existing")),
         "counters": status.get("counters") if isinstance(status.get("counters"), dict) else {},
         "error": status.get("error"),
         "totals": {key: int(value or 0) for key, value in totals.items()},
@@ -23235,6 +23239,7 @@ def admin_gocamping_web_backfill_status():
 def admin_gocamping_web_backfill_run():
     body = request.get_json(silent=True) or {}
     dry_run = bool(body.get("dry_run"))
+    refresh_existing = bool(body.get("refresh_existing"))
     try:
         max_details = max(1, min(int(body.get("max_details") or 5000), 5000))
     except (TypeError, ValueError):
@@ -23242,6 +23247,7 @@ def admin_gocamping_web_backfill_run():
     run_id = _secrets.token_hex(8)
     status = {
         "run_id": run_id, "state": "running", "dry_run": dry_run,
+        "refresh_existing": refresh_existing,
         "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "finished_at": None, "current": 0, "target": 0,
         "counters": {}, "error": None,
@@ -23273,6 +23279,8 @@ def admin_gocamping_web_backfill_run():
         ]
         if dry_run:
             args.append("--dry-run")
+        if refresh_existing:
+            args.append("--refresh-existing")
         proc = subprocess.Popen(
             args, cwd=base_dir, env=os.environ.copy(), start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -23297,7 +23305,12 @@ def admin_gocamping_web_backfill_run():
             cur.close()
             conn.close()
         return jsonify({"ok": False, "message": "고캠핑 웹 상세 수집을 시작하지 못했습니다."}), 500
-    return jsonify({"ok": True, "started_at": status["started_at"], "dry_run": dry_run}), 202
+    return jsonify({
+        "ok": True,
+        "started_at": status["started_at"],
+        "dry_run": dry_run,
+        "refresh_existing": refresh_existing,
+    }), 202
 
 
 # ---- 건축HUB 전국 건물 발견(sync_brhub.py) 관리자 실행 ----

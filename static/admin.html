@@ -4821,18 +4821,20 @@
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecGocampingWeb">
           <div class="legal-admin-head">
-            <h2 class="legal-admin-title">고캠핑 웹 상세정보 전체 보강</h2>
+            <h2 class="legal-admin-title">고캠핑 데이터 동기화</h2>
           </div>
           <p class="legal-admin-hint">
             고캠핑 공개 웹 목록과 시설명·주소가 양쪽에서 각각 한 건인 시설만 연결해
-            정확한 콘텐츠 ID, 예약 링크, 전체 사진, 소개와 상세 시설정보를 저장합니다.
-            사전조회는 DB를 변경하지 않으며 실제 실행은 백그라운드에서 재개 가능하게 처리됩니다.
+            정확한 콘텐츠 ID, 홈페이지, 전화번호, 예약 링크, 전체 사진, 소개와 상세 시설정보를 저장합니다.
+            <b>전체 최신화 동기화</b>는 이미 수집한 시설도 다시 확인해 등록자가 변경한 내용을 반영합니다.
+            시설명·주소가 양쪽에서 각각 한 건인 경우만 갱신하며, 실행은 백그라운드에서 재개 가능합니다.
           </p>
           <div id="gocampingWebBackfillStatus" class="geo-status">현황 불러오는 중…</div>
           <div class="legal-admin-actions">
             <span id="gocampingWebBackfillMsg" class="legal-msg" role="alert"></span>
-            <button id="gocampingWebDryRunBtn" class="admin-btn">변경 대상 사전조회</button>
-            <button id="gocampingWebRunBtn" class="admin-btn admin-btn-primary">전체 상세 보강 실행</button>
+            <button id="gocampingWebDryRunBtn" class="admin-btn">전체 최신화 사전조회</button>
+            <button id="gocampingWebRunBtn" class="admin-btn">신규·누락 보강</button>
+            <button id="gocampingWebSyncBtn" class="admin-btn admin-btn-primary">전체 최신화 동기화</button>
             <button id="gocampingWebRetryBtn" class="admin-btn">실패·미완료 재시도</button>
             <button id="gocampingWebRefreshBtn" class="admin-btn">상태 새로고침</button>
           </div>
@@ -4989,9 +4991,10 @@
       document.getElementById("brokerGeoRunBtn").addEventListener("click", runBrokerGeocode);
       document.getElementById("lodgingSyncRunBtn").addEventListener("click", runLodgingSync);
       document.getElementById("campingImageBackfillRunBtn").addEventListener("click", runCampingImageBackfill);
-      document.getElementById("gocampingWebDryRunBtn").addEventListener("click", () => runGocampingWebBackfill(true));
-      document.getElementById("gocampingWebRunBtn").addEventListener("click", () => runGocampingWebBackfill(false));
-      document.getElementById("gocampingWebRetryBtn").addEventListener("click", () => runGocampingWebBackfill(false));
+      document.getElementById("gocampingWebDryRunBtn").addEventListener("click", () => runGocampingWebBackfill(true, true));
+      document.getElementById("gocampingWebRunBtn").addEventListener("click", () => runGocampingWebBackfill(false, false));
+      document.getElementById("gocampingWebSyncBtn").addEventListener("click", () => runGocampingWebBackfill(false, true));
+      document.getElementById("gocampingWebRetryBtn").addEventListener("click", () => runGocampingWebBackfill(false, false));
       document.getElementById("gocampingWebRefreshBtn").addEventListener("click", loadGocampingWebBackfillStatus);
       document.getElementById("lodgingImportPreviewBtn").addEventListener("click", previewLodgingImport);
       document.getElementById("permitsSyncRunBtn").addEventListener("click", runPermitsSync);
@@ -5377,18 +5380,18 @@
       const c = d.counters || {};
       const t = d.totals || {};
       const state = ({
-        running: d.dry_run ? "사전조회 중" : "상세 보강 중",
-        done: d.dry_run ? "사전조회 완료" : "완료",
+        running: d.dry_run ? "사전조회 중" : (d.refresh_existing ? "전체 최신화 중" : "신규·누락 보강 중"),
+        done: d.dry_run ? "사전조회 완료" : (d.refresh_existing ? "전체 최신화 완료" : "신규·누락 보강 완료"),
         failed: "실패", stale: "응답 지연 · 재시도 가능"
       }[d.state] || "대기");
       box.innerHTML = [
         `<div class="geo-stat-row"><b>상태:</b> ${dgEscape(state)}${d.heartbeat_at ? ` · 마지막 신호 ${dgEscape(d.heartbeat_at)}` : ""}</div>`,
         `<div class="geo-stat-row"><b>실행 진행:</b> ${num(d.current)}/${num(d.target)} · 매칭 ${num(c.matched)} · 갱신 ${num(c.updated)} · 실패 ${num(c.failed)} · 모호 후보 ${num(c.ambiguous)}</div>`,
-        `<div class="geo-stat-row"><b>전체 보유:</b> 캠핑 원장 ${num(t.camping_total)} · 콘텐츠 ID ${num(t.linked_total)} · 웹 상세 ${num(t.detailed_total)} · 예약 링크 ${num(t.reservation_total)}</div>`,
+        `<div class="geo-stat-row"><b>전체 보유:</b> 캠핑 원장 ${num(t.camping_total)} · 콘텐츠 ID ${num(t.linked_total)} · 웹 상세 ${num(t.detailed_total)} · 홈페이지 ${num(t.homepage_total)} · 예약 링크 ${num(t.reservation_total)}</div>`,
         `<div class="geo-stat-row"><b>사진:</b> 시설 ${num(t.photo_facility_total)}곳 · 전체 ${num(t.photo_total)}장</div>`,
         d.error ? `<div class="geo-error">${dgEscape(d.error)}</div>` : ""
       ].join("");
-      ["gocampingWebDryRunBtn", "gocampingWebRunBtn", "gocampingWebRetryBtn"].forEach(id => {
+      ["gocampingWebDryRunBtn", "gocampingWebRunBtn", "gocampingWebSyncBtn", "gocampingWebRetryBtn"].forEach(id => {
         const button = document.getElementById(id);
         if (button) button.disabled = Boolean(d.running);
       });
@@ -5411,20 +5414,26 @@
         box.textContent = "고캠핑 웹 상세 수집 현황을 불러오지 못했습니다.";
       }
     }
-    async function runGocampingWebBackfill(dryRun) {
+    async function runGocampingWebBackfill(dryRun, refreshExisting) {
       const msg = document.getElementById("gocampingWebBackfillMsg");
       msg.textContent = "";
       try {
         const res = await fetch("/api/admin/gocamping-web-backfill", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({dry_run: Boolean(dryRun), max_details: 5000})
+          body: JSON.stringify({
+            dry_run: Boolean(dryRun),
+            refresh_existing: Boolean(refreshExisting),
+            max_details: 5000
+          })
         });
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         const d = await res.json().catch(() => ({}));
         if (!res.ok || !d.ok) throw new Error(d.message || "수집을 시작하지 못했습니다.");
         msg.style.color = "#52606d";
-        msg.textContent = dryRun ? "변경 대상 사전조회를 시작했습니다." : "전체 상세 보강을 시작했습니다.";
+        msg.textContent = dryRun
+          ? "전체 최신화 대상 사전조회를 시작했습니다."
+          : (refreshExisting ? "전체 최신화 동기화를 시작했습니다." : "신규·누락 보강을 시작했습니다.");
         await loadGocampingWebBackfillStatus();
         if (!gocampingWebBackfillTimer) {
           gocampingWebBackfillTimer = setInterval(loadGocampingWebBackfillStatus, 5000);

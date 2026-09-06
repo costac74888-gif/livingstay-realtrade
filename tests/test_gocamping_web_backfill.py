@@ -4,6 +4,27 @@ import backfill_gocamping_web as web
 
 
 class GoCampingWebBackfillTests(unittest.TestCase):
+    def test_refresh_existing_loads_active_rows_even_when_detail_exists(self):
+        class Cursor:
+            def execute(self, query, params):
+                self.query = query
+                self.params = params
+
+            def fetchall(self):
+                return []
+
+        cur = Cursor()
+        web._load_candidates(cur, refresh_existing=True)
+        self.assertIn("NULLIF(BTRIM(lr.road_address), '') IS NOT NULL", cur.query)
+        self.assertNotIn("lr.gocamping_detail IS NULL", cur.query)
+
+    def test_refresh_mode_is_exposed_as_a_distinct_cli_operation(self):
+        with open("backfill_gocamping_web.py", encoding="utf-8") as source:
+            worker = source.read()
+        self.assertIn("--refresh-existing", worker)
+        self.assertIn("if refresh_existing", worker)
+        self.assertIn("WHEN %s THEN %s", worker)
+
     def test_parses_list_identity_address_and_image(self):
         page = """
         <div class="list-item ">
