@@ -11,16 +11,21 @@ expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("
 expect(!main.includes('|| firstValid("gocamping_url")'), "고캠핑 정보 링크가 예약 URL 우선순위에 남아 있습니다.");
 expect(main.includes('data-panel="operations"') && main.includes('data-panel="property"'), "운영정보/부동산정보 탭이 없습니다.");
 expect(
-  main.indexOf('id="bTourismDataCard"') < main.indexOf('id="bInlineTypeTabs"') &&
   main.indexOf('id="bInlineTypeTabs"') < main.indexOf('id="bOperationsPanel"') &&
-  main.indexOf('id="bInlineTypeTabs"') < main.indexOf('id="bPropertyPanel"'),
-  "운영정보·부동산정보 탭과 패널이 지역 인기 관광지를 포함한 관광데이터 다음에 배치되지 않았습니다.",
+  main.indexOf('id="bInlineTypeTabs"') < main.indexOf('id="bPropertyPanel"') &&
+  main.indexOf('id="bPartnerBannerCard"') > main.indexOf('id="bPropertyPanel"'),
+  "운영정보·부동산정보 탭 또는 마지막 파트너 배너의 기본 배치가 올바르지 않습니다.",
 );
 expect(main.includes("window.__openBuildingId === Number(id)") && main.includes("_buildingDetailRequestToken === requestToken"), "건물 전환 시 오래된 응답 차단이 없습니다.");
 expect(main.includes('href="https://jnjclub.co.kr/"') && main.includes('/static/banner_biz_report.png'), "행정운영 영업신고업소 아래 숙박업등록 배너가 없습니다.");
 expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizReportBannerHtml;"), "미준공 건물의 행정운영에 숙박업등록 배너가 없습니다.");
 expect(main.includes("${lodgingListHtml}\n      ${bizReportBannerHtml}"), "영업상호 목록 다음에 숙박업등록 배너가 배치되지 않았습니다.");
-expect(main.includes('operations: ["bApprovedRosterOperatingCard", "bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"]'), "운영자 정보 고지가 운영정보 맨 아래에 배치되지 않았습니다.");
+expect(
+  main.includes('"bReservationCard", "bTourismDataCard", "bLodgingOperatorCard"') &&
+  main.includes('"bOperatorInfoDisclaimer"') &&
+  !main.includes('"bStoresCard", "bPartnerBannerCard"'),
+  "운영정보의 예약·관광통계·시설운영파트너 순서 또는 마지막 파트너 배너 배치가 올바르지 않습니다.",
+);
 expect(main.includes("_reservationBar(b, false)"), "생활·관광·일반숙박의 미연결 예약 안내가 숨겨지지 않았습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
@@ -95,6 +100,7 @@ expect(
 expect(
   main.includes("const operatingTypeLabel = isAnnualTourismPrimary") &&
   main.includes('? "관광숙박"') &&
+  main.includes(': ""') &&
   main.includes("operatingPrimary?.legal_category") &&
   main.includes("operatingPrimary?.hotel_grade") &&
   main.includes("b.property_info?.main_purps_nm"),

@@ -6149,11 +6149,15 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bApprovedRosterOperatingCard", "bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"],
+    operations: [
+      "bApprovedRosterOperatingCard", "bCampCard", "bNonCampingOperationsCard",
+      "bReservationCard", "bTourismDataCard", "bLodgingOperatorCard",
+      "bOperatorInfoDisclaimer",
+    ],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
-      "bListingsCard", "bBldgInfoCard", "bAgentCard", "bStoresCard", "bPartnerBannerCard",
+      "bListingsCard", "bBldgInfoCard", "bAgentCard", "bStoresCard",
     ],
   };
   const opPanel = document.getElementById("bOperationsPanel");
@@ -6607,7 +6611,7 @@ async function loadBuildingHeader(id){
   const isAnnualTourismPrimary = operatingPrimary?.source_category === "annual_tourism_roster";
   const operatingTypeLabel = isAnnualTourismPrimary
     ? "관광숙박"
-    : detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status);
+    : "";
   const operatingLegalLabel = String(operatingPrimary?.legal_category || operatingInfo?.subtype || "")
     .trim().replace(/업$/, "");
   const operatingGradeLabel = String(operatingPrimary?.hotel_grade || operatingInfo?.hotel_grade || "").trim();
