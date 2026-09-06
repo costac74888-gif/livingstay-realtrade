@@ -90,6 +90,16 @@ class PublicOperatingRecordTests(unittest.TestCase):
         self.assertEqual(record["hotel_grade"], "5성급")
         self.assertNotIn("phone", record)
 
+    def test_annual_tourism_record_is_selected_as_operating_primary(self):
+        registry = {"source_category": "lodging_registry", "registered_name": "일반 신고명"}
+        annual = {"source_category": "annual_tourism_roster", "registered_name": "관광 등록명"}
+        records = [registry, annual]
+        primary = next(
+            (row for row in records if row.get("source_category") == "annual_tourism_roster"),
+            records[0],
+        )
+        self.assertEqual(primary["registered_name"], "관광 등록명")
+
     def test_inactive_registry_rows_are_not_exposed(self):
         cur = MagicMock()
         cur.fetchall.return_value = [

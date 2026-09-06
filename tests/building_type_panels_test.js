@@ -85,8 +85,20 @@ expect(
   main.includes("data-property-name=") &&
   main.includes("data-operating-name=") &&
   main.includes("title.dataset.operatingName") &&
-  main.includes("title.dataset.propertyName"),
+  main.includes("title.dataset.propertyName") &&
+  main.includes('id="bOperatingBadges"') &&
+  main.includes('id="bPropertyBadges"') &&
+  main.includes("operatingBadges.hidden = !showOps") &&
+  main.includes("propertyBadges.hidden = showOps"),
   "운영정보와 부동산정보의 명칭 출처가 분리되지 않았습니다.",
+);
+expect(
+  main.includes("const operatingTypeLabel = isAnnualTourismPrimary") &&
+  main.includes('? "관광숙박"') &&
+  main.includes("operatingPrimary?.legal_category") &&
+  main.includes("operatingPrimary?.hotel_grade") &&
+  main.includes("b.property_info?.main_purps_nm"),
+  "운영 탭의 관광숙박·법정업종·호텔등급과 부동산 탭의 건축물대장 용도 뱃지가 분리되지 않았습니다.",
 );
 expect(main.includes("운영형태 · 사이트 구성"), "캠핑 사이트 구성이 법정 업종처럼 표시됩니다.");
 expect(

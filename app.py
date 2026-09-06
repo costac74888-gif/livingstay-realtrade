@@ -1831,8 +1831,14 @@ def get_building(building_id):
     building["operating_records"] = _deduplicate_public_operating_records(
         registry_records + annual_records
     )
-    building["operating_primary"] = (
-        building["operating_records"][0] if building["operating_records"] else None
+    # 관광숙박 승인 원장이 있으면 운영정보의 대표 명칭·업종·등급으로 우선한다.
+    # 다른 영업신고 원장은 삭제하지 않고 operating_records에 모두 보존한다.
+    building["operating_primary"] = next(
+        (
+            record for record in building["operating_records"]
+            if record.get("source_category") == "annual_tourism_roster"
+        ),
+        building["operating_records"][0] if building["operating_records"] else None,
     )
     building["operating_record_count"] = len(building["operating_records"])
     # Compatibility field for existing clients: annual roster only.

@@ -6179,6 +6179,10 @@ function _setupBuildingPanels(type){
     if (title) title.textContent = showOps
       ? (title.dataset.operatingName || title.dataset.propertyName || "(건물명 미확인)")
       : (title.dataset.propertyName || "(건물명 미확인)");
+    const operatingBadges = document.getElementById("bOperatingBadges");
+    const propertyBadges = document.getElementById("bPropertyBadges");
+    if (operatingBadges) operatingBadges.hidden = !showOps;
+    if (propertyBadges) propertyBadges.hidden = showOps;
   };
   tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => activateTab(tab));
@@ -6588,15 +6592,32 @@ async function loadBuildingHeader(id){
     ? b.operating_records[0] : null);
   const isPreCompletion = b.building_status && b.building_status !== "완공";
   const hasType = !!(b.lodging_type && b.lodging_type !== "mixed_use_excluded");
-  const typeBadge = hasType
-    ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${markerColor(b.lodging_type, b.building_status)}; padding:2px 9px; border-radius:6px; vertical-align:middle;">${escapeHtml(operatingInfo?.subtype || detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status))}</span>`
+  const headerBadge = (label, color = "#6B7280") => label
+    ? `<span style="display:inline-block;font-size:10.5px;font-weight:700;color:#fff;background:${color};padding:2px 9px;border-radius:6px;vertical-align:middle;">${escapeHtml(label)}</span>`
     : "";
+  const isAnnualTourismPrimary = operatingPrimary?.source_category === "annual_tourism_roster";
+  const operatingTypeLabel = isAnnualTourismPrimary
+    ? "관광숙박"
+    : detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status);
+  const operatingLegalLabel = String(operatingPrimary?.legal_category || operatingInfo?.subtype || "")
+    .trim().replace(/업$/, "");
+  const operatingGradeLabel = String(operatingPrimary?.hotel_grade || operatingInfo?.hotel_grade || "").trim();
+  const operatingBadgeLabels = [...new Set(
+    [operatingTypeLabel, operatingLegalLabel, operatingGradeLabel].filter(Boolean)
+  )];
+  const operatingBadges = operatingBadgeLabels.map((label, index) =>
+    headerBadge(label, index === 0 ? markerColor(isAnnualTourismPrimary ? "관광" : b.lodging_type, b.building_status) : (index === 2 ? "#A66A18" : "#457B9D"))
+  ).join("");
+  const propertyUseLabel = b.property_info?.main_purps_nm
+    || b.property_info?.building_use_detail
+    || b.property_info?.building_use_type
+    || (hasType ? detailBadgeLabel(b.lodging_type, b.lodging_subtype, b.building_status) : "미분류");
+  const propertyBadges = headerBadge(propertyUseLabel, hasType
+    ? markerColor(b.lodging_type, b.building_status)
+    : LODGING_COLORS["미분류"]);
   const preBadge = isPreCompletion
     ? `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:#9AA5B1; padding:2px 9px; border-radius:6px; vertical-align:middle; margin-left:${hasType ? "5px" : "0"};">🏗 준공예정 ${b.completion_expected_date ? escapeHtml(String(b.completion_expected_date)) : "미정"}</span>`
     : "";
-  const badge = hasType || isPreCompletion
-    ? `${typeBadge}${preBadge}`
-    : `<span style="display:inline-block; font-size:10.5px; font-weight:700; color:#fff; background:${LODGING_COLORS["미분류"]}; padding:2px 9px; border-radius:6px; vertical-align:middle;">미분류</span>`;
   const foreignVisitorActive = b.lodging_type === "에어비앤비"
     && Number.isFinite(Number(b.tourism_foreign_ratio))
     && Number(b.tourism_foreign_ratio) >= .5;
@@ -6695,9 +6716,8 @@ async function loadBuildingHeader(id){
     <div id="bBuildingTitleRow" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 id="bBuildingTitle" data-property-name="${escapeHtml(bName)}" data-operating-name="${escapeHtml(operatingName)}" style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(operatingName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
-      ${lodgingNameTag}
-      ${badge}
-      ${foreignVisitorHtml}
+      <span id="bOperatingBadges" style="display:contents;">${lodgingNameTag}${operatingBadges}${foreignVisitorHtml}</span>
+      <span id="bPropertyBadges" style="display:contents;" hidden>${propertyBadges}${preBadge}</span>
     </div>
     ${(b.road_address || b.jibun_address || b.zip_code) ? `
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">
