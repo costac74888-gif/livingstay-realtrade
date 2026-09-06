@@ -64,6 +64,14 @@ class _RunOwnershipLost(RuntimeError):
     """재접속 중 app_meta 실행 lease가 다른 run_id로 넘어갔다."""
 
 
+class _ProviderFailure(RuntimeError):
+    """연속된 외부 표제부 API 오류로 안전하게 중단한 실행."""
+
+    def __init__(self, message, *, ok, empty, skip, err):
+        super().__init__(message)
+        self.counts = (ok, empty, skip, err)
+
+
 def _is_connection_lost(exc, conn):
     """API 오류와 DB 연결 단절을 구분한다.
 
@@ -117,6 +125,36 @@ def _update_reconnect_status(status_key, run_id, updates):
         _write_status(status_key, status, run_id)
     except Exception as e:
         print(f"[title-info] 재접속 상태 저장 실패: {_mask_key(e)[:300]}", flush=True)
+
+
+def _update_progress_status(status_key, run_id, *, processed, total, ok, empty,
+                            skip, err, last_item_error=None):
+    """건물 단위 체크포인트와 함께 관리자용 진행 상태도 남긴다.
+
+    API가 오래 타임아웃되어도 별도 하트비트가 단순 updated_at만 만지는 것보다
+    마지막으로 어느 지점까지 처리됐는지와 실제 오류 원인을 확인할 수 있다.
+    상태 DB가 잠시 불안정한 경우에는 이미 진행 중인 백필을 중단시키지 않는다.
+    """
+    if not status_key or run_id is None:
+        return
+    updates = {
+        "processed": processed,
+        "total": total,
+        "ok": ok,
+        "empty": empty,
+        "skip": skip,
+        "err": err,
+    }
+    if last_item_error:
+        updates["last_item_error"] = _mask_key(last_item_error)[:500]
+    try:
+        status = _read_status(status_key) or {}
+        if status.get("run_id") != run_id:
+            return
+        status.update(updates)
+        _write_status(status_key, status, run_id)
+    except Exception as e:
+        print(f"[title-info] 진행 상태 저장 실패: {_mask_key(e)[:300]}", flush=True)
 
 
 def _reconnect_connection(conn, cur, *, status_key=None, run_id=None,
@@ -419,6 +457,15 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
     changed = 0
     consec_err = 0
     stop_for_errors = False
+    last_item_error = None
+    # 성공 응답(빈 표제부 포함) 없이 API가 모두 실패한 실행에서는, API 결과와
+    # 무관한 자동 명칭 재정리를 수행하지 않는다.
+    api_response_count = 0
+
+    _update_progress_status(
+        status_key, run_id, processed=0, total=total, ok=n_ok, empty=n_empty,
+        skip=n_skip, err=n_err,
+    )
 
     for i, b in enumerate(targets, 1):
         # run_id 펜싱: 다른 실행이 상태를 가져갔으면 즉시 중단 (split-brain 방지)
@@ -460,6 +507,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 plat_gb, bun, ji = parse_jibun(b["jibun"])
                 rows = _fetch_title_rows(b["sgg_cd"], bjd, plat_gb, bun, ji)
                 consec_err = 0  # 성공적으로 응답 받음
+                api_response_count += 1
                 rep = _pick_representative(rows)
                 if not rep:
                     row_changed = 0
@@ -576,25 +624,45 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 n_err += 1
                 consec_err += 1
                 item_done = True
-                print(f"  [{i}/{total}] ERR  id={bid} {name} — {type(e).__name__}: {_mask_key(e)}", flush=True)
+                last_item_error = (
+                    f"{type(e).__name__}: {_mask_key(e)}"
+                )[:500]
+                print(f"  [{i}/{total}] ERR  id={bid} {name} — {last_item_error}", flush=True)
                 if consec_err >= 10:
                     print("[중단] 연속 오류 10건 — API 쿼터 소진/장애 추정. 남은 건은 나중에 재실행하세요.", flush=True)
                     stop_for_errors = True
 
+        processed = n_ok + n_empty + n_skip + n_err
+        _update_progress_status(
+            status_key, run_id, processed=processed, total=total, ok=n_ok,
+            empty=n_empty, skip=n_skip, err=n_err,
+            last_item_error=last_item_error,
+        )
         if i % 20 == 0:
             print(f"  ...진행 {i}/{total} (OK={n_ok} EMPTY={n_empty} SKIP={n_skip} ERR={n_err})", flush=True)
         if stop_for_errors:
-            break
+            message = (
+                "건축HUB 표제부 API가 연속 10건 실패하여 중단했습니다. "
+                f"마지막 오류: {last_item_error or '원인 미상'} "
+                "(실패한 행은 완료 처리하지 않았으므로 복구 후 재실행할 수 있습니다.)"
+            )
+            raise _ProviderFailure(
+                message, ok=n_ok, empty=n_empty, skip=n_skip, err=n_err
+            )
         time.sleep(sleep)
 
-    while True:
-        try:
-            renamed = refresh_auto_building_names(conn)
-            break
-        except Exception as e:
-            if not _is_connection_lost(e, conn):
-                raise
-            reconnect_after(e)
+    renamed = 0
+    if api_response_count:
+        while True:
+            try:
+                renamed = refresh_auto_building_names(conn)
+                break
+            except Exception as e:
+                if not _is_connection_lost(e, conn):
+                    raise
+                reconnect_after(e)
+    else:
+        print("[title-info] 성공한 표제부 API 응답이 없어 자동명칭 갱신을 건너뜁니다.", flush=True)
     changed += renamed
     if changed > 0:
         try:
@@ -650,6 +718,8 @@ def main():
             pk_only=args.fill_pk, status_key=args.status_key, run_id=run_id)
     except Exception as e:
         connection_failed = isinstance(e, _DatabaseReconnectExhausted)
+        if isinstance(e, _ProviderFailure):
+            n_ok, n_empty, n_skip, n_err = e.counts
         error = _mask_key(e)[:500]
         print(f"[title-info] 실패: {error}")
 

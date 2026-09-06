@@ -85,3 +85,4 @@
 - [관광 검색순위 장소 연결](tourism-rank-place-linking.md) — 검색순위 지역명은 행정구역 개편 뒤 낡을 수 있어 상호를 검증하고, 건물 연결은 정확한 주소일 때만 허용한다.
 - [운영자 등록 숙박정보 표시](operator-supplied-lodging-info.md) — 운영자 편의시설·인증은 고정 선택지만 즉시 공개하며, 표시 시 운영정보 끝에 운영자 직접 등록 고지를 붙인다.
 - [관광 급등동네 건물 매칭](tourism-surge-building-matching.md) — 행정동·법정동 이름이 정확히 같을 때만 건물에 급등 뱃지를 붙이고, 지표별 자료기간을 따로 표시한다.
+- [외부 API 백필 체크포인트](external-api-backfill-checkpoints.md) — autoscale 백필은 DB lease로 소유권을 fence하고, API 호출 한도는 요청 전에 DB에 예약한다.

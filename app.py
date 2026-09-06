@@ -17197,6 +17197,15 @@ def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=3
             "reconnect_failures": 0,
             "last_reconnect_at": None,
             "last_reconnect_error": None,
+            # 장시간 외부 API 작업은 러너가 실제 진행 수치를 덮어쓴다.
+            # 시작 시 이전 실행의 오류/진행 정보가 잠시 보이지 않게 초기화한다.
+            "processed": 0,
+            "total": None,
+            "ok": 0,
+            "empty": 0,
+            "skip": 0,
+            "err": 0,
+            "last_item_error": None,
         }
         cur.execute(f"""
             INSERT INTO app_meta (key, value, updated_at)
@@ -17601,9 +17610,18 @@ def admin_datasync_overview():
             FROM master_buildings
         """)
         c = cur.fetchone()
-        cur.execute("SELECT key, updated_at FROM app_meta WHERE key = ANY(%s)",
-                    (["scheduled_sync_status"],))
-        metas = {r["key"]: r["updated_at"] for r in cur.fetchall()}
+        cur.execute("SELECT key, value, updated_at FROM app_meta WHERE key = ANY(%s)",
+                    (["scheduled_sync_status", "zip_code_backfill_status"],))
+        meta_rows = {r["key"]: r for r in cur.fetchall()}
+        metas = {key: row["updated_at"] for key, row in meta_rows.items()}
+        zip_status = None
+        zip_meta = meta_rows.get("zip_code_backfill_status")
+        if zip_meta and zip_meta["value"]:
+            try:
+                zip_status = json.loads(zip_meta["value"])
+                zip_status["status_updated_at"] = _kst_label(zip_meta["updated_at"])
+            except (TypeError, ValueError):
+                zip_status = None
     finally:
         cur.close()
         conn.close()
@@ -17626,6 +17644,7 @@ def admin_datasync_overview():
         "missing_title": c["missing_title"],
         "zip_filled": c["zip_filled"],
         "zip_total": c["zip_total"],
+        "zip_status": zip_status,
         "stale_syncs": stale_syncs,
         "booted_at": _kst_label(_APP_STARTED_AT),
     })
@@ -32309,6 +32328,7 @@ _resume_interrupted_scheduled_sync()
 
 # ---- 우편번호 백필 일일 자동 실행 (소량, 사람 개입 없이 서서히 완료) ----
 _ZIP_BACKFILL_AUTO_KEY = "zip_backfill_auto"
+_ZIP_BACKFILL_STATUS_KEY = "zip_code_backfill_status"
 _ZIP_BACKFILL_AUTO_CAP = 5000
 
 
@@ -32328,8 +32348,12 @@ def _zip_backfill_auto_loop():
                     SELECT
                         (SELECT COUNT(*) FROM master_buildings
                          WHERE zip_code IS NULL AND road_address IS NOT NULL) AS remaining,
-                        (SELECT value FROM app_meta WHERE key = %s) AS auto_meta
-                """, (_ZIP_BACKFILL_AUTO_KEY,))
+                        (SELECT value FROM app_meta WHERE key = %s) AS auto_meta,
+                        (SELECT value FROM app_meta WHERE key = %s) AS worker_meta,
+                        (SELECT EXTRACT(EPOCH FROM (NOW() - updated_at))
+                           FROM app_meta WHERE key = %s) AS worker_age
+                """, (_ZIP_BACKFILL_AUTO_KEY, _ZIP_BACKFILL_STATUS_KEY,
+                      _ZIP_BACKFILL_STATUS_KEY))
                 row = cur.fetchone()
             finally:
                 cur.close()
@@ -32347,8 +32371,23 @@ def _zip_backfill_auto_loop():
                 except Exception:
                     pass
 
-            if last_date != today:
-                # 원자 UPSERT: 멀티 워커 중 오늘 날짜로 처음 쓰는 워커만 성공
+            worker = {}
+            if row and row["worker_meta"]:
+                try:
+                    worker = json.loads(row["worker_meta"])
+                except (TypeError, ValueError):
+                    worker = {}
+            worker_date = worker.get("date")
+            calls_today = int(worker.get("calls_today") or 0) if worker_date == today else 0
+            worker_recent = (
+                worker.get("state") == "running"
+                and row["worker_age"] is not None
+                and float(row["worker_age"]) < 10 * 60
+            )
+
+            if calls_today < _ZIP_BACKFILL_AUTO_CAP and not worker_recent:
+                # 원자 UPSERT: 날짜가 바뀌었거나 기존 실행 잠금이 오래된 경우
+                # 멀티 워커 중 하나만 중단 작업을 재개한다.
                 conn2 = get_conn()
                 cur2 = conn2.cursor()
                 try:
@@ -32358,6 +32397,7 @@ def _zip_backfill_auto_loop():
                         ON CONFLICT (key) DO UPDATE
                           SET value = EXCLUDED.value, updated_at = NOW()
                           WHERE (app_meta.value::jsonb ->> 'date') IS DISTINCT FROM %s
+                             OR app_meta.updated_at < NOW() - INTERVAL '10 minutes'
                     """, (_ZIP_BACKFILL_AUTO_KEY,
                           json.dumps({"date": today, "state": "started"}),
                           today))
@@ -32380,6 +32420,7 @@ def _zip_backfill_auto_loop():
                             cwd=base_dir, start_new_session=True,
                             stdout=log_f, stderr=log_f,
                         )
+                        log_f.close()
                         app.logger.info("[zip-auto] 우편번호 백필 자동 실행 시작 (cap=%d, remaining=%d)",
                                        _ZIP_BACKFILL_AUTO_CAP, remaining)
                     except Exception:

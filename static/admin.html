@@ -3061,6 +3061,12 @@
       const running = s.state === "running";
       if (running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(s.started_at || "-")})</div>`);
+         if (s.total != null) {
+           rows.push(`<div class="geo-stat-row"><b>진행:</b> ${num(s.processed || 0)} / ${num(s.total)}건 · 성공 ${num(s.ok || 0)} / 표제부없음 ${num(s.empty || 0)} / 건너뜀 ${num(s.skip || 0)} / 오류 ${num(s.err || 0)}</div>`);
+         }
+         if (s.last_item_error) {
+           rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 API 오류:</b> ${dgEscape(s.last_item_error)}</div>`);
+         }
         if (s.connection_state === "reconnecting") {
           rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>DB 연결:</b> 재접속 중… (${num(s.reconnect_attempts || 0)}회 시도)</div>`);
         } else if (s.reconnect_count) {
@@ -3074,6 +3080,12 @@
           if (s.reconnect_count) rows.push(`<div class="geo-stat-row"><b>DB 연결:</b> 재접속 ${num(s.reconnect_count)}회 성공</div>`);
         } else if (s.state === "failed" || s.state === "stale") {
           rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 실행 실패:</b> ${dgEscape(s.error || "원인 미상(중단됨)")}</div>`);
+          if (s.total != null) {
+            rows.push(`<div class="geo-stat-row"><b>중단 시 진행:</b> ${num(s.processed || 0)} / ${num(s.total)}건 · 성공 ${num(s.ok || 0)} / 표제부없음 ${num(s.empty || 0)} / 건너뜀 ${num(s.skip || 0)} / 오류 ${num(s.err || 0)}</div>`);
+          }
+          if (s.last_item_error) {
+            rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 API 오류:</b> ${dgEscape(s.last_item_error)}</div>`);
+          }
           if (s.connection_state === "failed" && s.last_reconnect_error) {
             rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>DB 연결:</b> ${dgEscape(s.last_reconnect_error)}</div>`);
           }
@@ -3725,7 +3737,11 @@
             const pct = Math.round(d.zip_filled / d.zip_total * 100);
             const barFill = `<span style="display:block;width:${pct}%;height:100%;background:var(--brass);border-radius:4px"></span>`;
             const bar = `<span style="display:inline-block;width:120px;height:6px;background:#eee;border-radius:4px;vertical-align:middle;margin:0 8px">${barFill}</span>`;
-            zipEl.innerHTML = `${num(d.zip_filled)} / ${num(d.zip_total)}건 채움${bar}${pct}% · 매일 자동 실행 (1일 최대 5,000건)`;
+              const zs = d.zip_status || {};
+              const calls = Number(zs.calls_today || 0);
+              const state = zs.state === "running" ? "실행 중" : zs.state === "failed" ? "오류 후 자동 재개 대기" : "자동 재개 대기";
+              const error = zs.last_error ? `<div style="margin-top:5px;color:#b3261e">최근 오류: ${escapeText(zs.last_error)}</div>` : "";
+              zipEl.innerHTML = `${num(d.zip_filled)} / ${num(d.zip_total)}건 채움${bar}${pct}% · ${state} · 오늘 ${num(calls)}/5,000회${error}`;
           }
         }
 

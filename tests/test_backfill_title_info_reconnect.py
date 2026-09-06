@@ -302,6 +302,52 @@ class BackfillReconnectTests(unittest.TestCase):
         )
         replacement_conn.commit.assert_called_once_with()
 
+    def test_consecutive_provider_errors_fail_with_progress_and_keep_checkpoints_open(self):
+        """10회 연속 API 장애는 done으로 끝내지 않고, 각 행을 미백필로 남긴다."""
+        conn = MagicMock()
+        conn.closed = 0
+        cur = MagicMock()
+        targets = [_building(i) for i in range(1, 11)]
+        cur.fetchall.return_value = targets
+        bjdong = MagicMock()
+        bjdong.find_bjdong_cd.return_value = "10100"
+        status = {"run_id": "provider-run", "state": "running"}
+        writes = []
+
+        def capture_status(_key, payload, _run_id):
+            writes.append(dict(payload))
+
+        with (
+            patch.object(
+                title_info, "_fetch_title_rows",
+                side_effect=RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
+            ),
+            patch.object(title_info, "_read_status", return_value=status),
+            patch.object(title_info, "_write_status", side_effect=capture_status),
+            patch.object(title_info, "refresh_auto_building_names") as refresh,
+        ):
+            with self.assertRaises(title_info._ProviderFailure) as raised:
+                title_info._run_with_open_connection(
+                    only_missing=True,
+                    sleep=0,
+                    status_key="title-info-status",
+                    run_id="provider-run",
+                    bjdong=bjdong,
+                    conn=conn,
+                    cur=cur,
+                )
+
+        failure = raised.exception
+        self.assertEqual(failure.counts, (0, 0, 0, 10))
+        self.assertIn("연속 10건 실패", str(failure))
+        self.assertEqual(cur.execute.call_count, 1)  # 대상 조회 외 완료 UPDATE 없음
+        self.assertFalse(conn.commit.called)
+        refresh.assert_not_called()
+        self.assertEqual(writes[-1]["processed"], 10)
+        self.assertEqual(writes[-1]["total"], 10)
+        self.assertEqual(writes[-1]["err"], 10)
+        self.assertIn("apis.data.go.kr", writes[-1]["last_item_error"])
+
 
 if __name__ == "__main__":
     unittest.main()
