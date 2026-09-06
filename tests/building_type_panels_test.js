@@ -83,5 +83,17 @@ expect(
   "운영정보와 부동산정보의 명칭 출처가 분리되지 않았습니다.",
 );
 expect(main.includes("운영형태 · 사이트 구성"), "캠핑 사이트 구성이 법정 업종처럼 표시됩니다.");
+expect(
+  main.includes("operating_records") &&
+  main.includes("공식 영업·운영 정보") &&
+  main.includes("사이트 구성 운영형태") &&
+  main.includes("official_site_count"),
+  "통합 공개 영업정보 다중 레코드·캠핑 사이트 구분 계약이 없습니다.",
+);
+expect(
+  main.includes("호텔 등급") &&
+  !main.includes("<dt>전화</dt>"),
+  "공개 운영정보는 호텔등급을 보존하고 전화번호를 노출하지 않아야 합니다.",
+);
 
 console.log("OK  건물 유형별 상세 패널 회귀 점검");

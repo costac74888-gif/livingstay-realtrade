@@ -538,11 +538,27 @@ def latest_approved_stats(conn):
                                                 "unmatched": evidence.get("unmatched", 0)}}}
 
 
-def latest_linked_operating_info(cur, building_id):
-    """Public-safe operating facts from the current exactly-linked approved roster."""
+def latest_linked_operating_records(cur, building_id):
+    """Public-safe facts from every exactly-linked current approved roster row."""
     cur.execute("""SELECT e.facility_name, e.subtype, e.hotel_grade,
                          e.registration_number, e.room_count AS official_room_count,
                          e.address, v.reference_year, v.source_name AS source
+      FROM annual_tourism_roster_building_evidence x
+      JOIN annual_tourism_roster_entries e ON e.id=x.entry_id
+      JOIN annual_tourism_roster_versions v ON v.id=e.version_id
+      WHERE x.master_building_id=%s AND x.match_status='matched'
+        AND x.match_method='name_and_address_exact' AND e.is_active
+        AND v.id=(SELECT id FROM annual_tourism_roster_versions WHERE status='approved'
+                  ORDER BY reference_year DESC, approved_at DESC, id DESC LIMIT 1)
+       ORDER BY e.source_row_number""", (building_id,))
+    return [dict(row) for row in cur.fetchall()]
+
+
+def latest_linked_operating_info(cur, building_id):
+    """Backward-compatible first approved-roster operating fact."""
+    cur.execute("""SELECT e.facility_name, e.subtype, e.hotel_grade,
+                          e.registration_number, e.room_count AS official_room_count,
+                          e.address, v.reference_year, v.source_name AS source
       FROM annual_tourism_roster_building_evidence x
       JOIN annual_tourism_roster_entries e ON e.id=x.entry_id
       JOIN annual_tourism_roster_versions v ON v.id=e.version_id

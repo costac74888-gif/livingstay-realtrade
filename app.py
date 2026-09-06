@@ -1823,8 +1823,19 @@ def get_building(building_id):
         "land_area": building.get("plat_area"),
         "gross_floor_area": building.get("tot_area"),
     }
-    # Approved roster evidence supplements this response only.  It is a
-    # public-safe operating-information projection, never a master mutation.
+    # Operating records are separate from building-register property facts.
+    # Both sources are active/public-safe only; registry linkage is exact
+    # normalized address (road first, jibun fallback).
+    registry_records = _public_lodging_registry_records(cur, building)
+    annual_records = _public_annual_operating_records(cur, building_id)
+    building["operating_records"] = _deduplicate_public_operating_records(
+        registry_records + annual_records
+    )
+    building["operating_primary"] = (
+        building["operating_records"][0] if building["operating_records"] else None
+    )
+    building["operating_record_count"] = len(building["operating_records"])
+    # Compatibility field for existing clients: annual roster only.
     building["operating_info"] = annual_tourism_roster.latest_linked_operating_info(
         cur, building_id
     )
@@ -19766,6 +19777,142 @@ def _admin_lodging_source_label(permit_number):
         if permit.startswith(prefix):
             return label
     return "숙박업 정부원본"
+
+
+def _public_lodging_registry_records(cur, building):
+    """Return active, address-exact registry records safe for public display.
+
+    This deliberately uses the admin attachment rule: road key first, and
+    jibun only if *no* road-address registry row exists.  It never applies a
+    name/fuzzy match and intentionally retains separate permit rows.
+    """
+    road_key = addr_norm.normalize_road_prefix(building.get("road_address"))
+    jibun_key = addr_norm.normalize_jibun_prefix(
+        building.get("jibun_address") or building.get("road_address")
+    )
+    rows = []
+    match_method = None
+    if road_key:
+        cur.execute("""
+            SELECT biz_name, permit_number, permit_date, biz_status_name,
+                   biz_status_detail, room_count, camping_site_count,
+                   camping_general_site_count, camping_auto_site_count,
+                    camping_glamping_site_count, camping_caravan_site_count,
+                    camping_classification, hygiene_type, road_address,
+                   jibun_address, source_updated_at
+            FROM lodging_registry
+            WHERE road_norm = %s
+            ORDER BY source_updated_at DESC NULLS LAST, permit_number
+        """, [road_key])
+        rows = cur.fetchall()
+        match_method = "road" if rows else None
+    if not rows and jibun_key:
+        cur.execute("""
+            SELECT biz_name, permit_number, permit_date, biz_status_name,
+                   biz_status_detail, room_count, camping_site_count,
+                   camping_general_site_count, camping_auto_site_count,
+                    camping_glamping_site_count, camping_caravan_site_count,
+                    camping_classification, hygiene_type, road_address,
+                   jibun_address, source_updated_at
+            FROM lodging_registry
+            WHERE jibun_norm = %s
+            ORDER BY source_updated_at DESC NULLS LAST, permit_number
+        """, [jibun_key])
+        rows = cur.fetchall()
+        match_method = "jibun" if rows else None
+    records = []
+    for raw in rows:
+        row = dict(raw)
+        # Linkage selection happens above before this exposure filter, exactly
+        # like the admin address attachment.  Thus a closed road-address row
+        # cannot cause an unrelated jibun-address business to leak in.
+        if row.get("biz_status_name") != ACTIVE_LODGING_STATUS:
+            continue
+        records.append({
+            "record_type": "lodging_registry",
+            "registered_name": row.get("biz_name"),
+            "legal_category": row.get("hygiene_type"),
+            "permit_number": row.get("permit_number"),
+            "active_status": row.get("biz_status_name"),
+            "status_detail": row.get("biz_status_detail"),
+            "permit_date": row.get("permit_date"),
+            "official_road_address": row.get("road_address"),
+            "official_jibun_address": row.get("jibun_address"),
+            "official_room_count": row.get("room_count"),
+            "official_site_count": row.get("camping_site_count"),
+            "camping_general_site_count": row.get("camping_general_site_count"),
+            "camping_auto_site_count": row.get("camping_auto_site_count"),
+            "camping_glamping_site_count": row.get("camping_glamping_site_count"),
+            "camping_caravan_site_count": row.get("camping_caravan_site_count"),
+            # This is an operating/site composition, not a legal classification.
+            "camping_site_composition": row.get("camping_classification"),
+            "source_category": "lodging_registry",
+            "source_name": _admin_lodging_source_label(row.get("permit_number")),
+            "source_updated_at": row.get("source_updated_at"),
+            "address_match_method": match_method,
+        })
+    return records
+
+
+def _public_annual_operating_records(cur, building_id):
+    """Adapt exact approved annual evidence without mixing it into registry facts."""
+    return [{
+        "record_type": "annual_tourism_roster",
+        "registered_name": row.get("facility_name"),
+        "legal_category": row.get("subtype"),
+        "hotel_grade": row.get("hotel_grade"),
+        "permit_number": row.get("registration_number"),
+        "active_status": ACTIVE_LODGING_STATUS,
+        "status_detail": None,
+        "permit_date": None,
+        "official_road_address": row.get("address"),
+        "official_jibun_address": None,
+        "official_room_count": row.get("official_room_count"),
+        "official_site_count": None,
+        "camping_general_site_count": None,
+        "camping_auto_site_count": None,
+        "camping_glamping_site_count": None,
+        "camping_caravan_site_count": None,
+        "camping_site_composition": None,
+        "source_category": "annual_tourism_roster",
+        "source_name": row.get("source"),
+        "source_updated_at": row.get("reference_year"),
+        "reference_year": row.get("reference_year"),
+    } for row in annual_tourism_roster.latest_linked_operating_records(cur, building_id)]
+
+
+def _deduplicate_public_operating_records(records):
+    """Conservatively merge only identical permit, or normalized name+address."""
+    seen, result = {}, []
+    for record in records:
+        permit = str(record.get("permit_number") or "").strip()
+        name = addr_norm.normalize_name(record.get("registered_name"))
+        address = (addr_norm.normalize_road_prefix(record.get("official_road_address"))
+                   or addr_norm.normalize_jibun_prefix(record.get("official_jibun_address")))
+        key = ("permit", permit) if permit else ("name_address", name, address)
+        # Empty name/address is not a sufficiently strong fallback key.
+        if key[0] == "name_address" and (not name or not address):
+            key = ("unique", len(result))
+        existing = seen.get(key)
+        if existing:
+            variants = existing.setdefault("source_variants", [dict(existing)])
+            variants.append(dict(record))
+            existing.setdefault("source_provenance", [existing["source_name"]])
+            if record["source_name"] not in existing["source_provenance"]:
+                existing["source_provenance"].append(record["source_name"])
+            # Approved exact annual evidence is authoritative for its own
+            # fields.  Keep the complete registry variant rather than filling
+            # annual nulls from it across source domains.
+            if record.get("record_type") == "annual_tourism_roster":
+                record["source_variants"] = variants
+                record["source_provenance"] = existing["source_provenance"]
+                result[result.index(existing)] = record
+                seen[key] = record
+            continue
+        record["source_provenance"] = [record["source_name"]]
+        seen[key] = record
+        result.append(record)
+    return result
 
 
 def _building_ids_by_lodging_status(where_sql, params, status_filter):
