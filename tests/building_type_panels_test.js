@@ -24,6 +24,12 @@ expect(
   "매물내놓기·매수의뢰 비공개 진행 안내가 없습니다.",
 );
 expect(main.includes('class="bld-photo-actions bld-photo-actions-left"') && main.includes('class="bld-photo-actions bld-photo-actions-right"'), "사진 위 뒤로가기·관심·공유 버튼이 없습니다.");
+expect(
+  main.includes('aria-label="이전 목록으로"') &&
+  main.includes("history.state?.buildingId === Number(id)") &&
+  main.includes("restoreDefaultPanel(event.state?.returnDataLabKey || \"\")"),
+  "사진 위 뒤로가기와 브라우저 뒤로가기가 이전 목록 상태를 복원하지 않습니다.",
+);
 expect(main.includes('class="bld-photo-empty-logo"') && main.includes('/static/home_stay_footer_logo.png'), "사진 없음 상단 바의 가로 로고가 없습니다.");
 expect(main.includes('id="bMapBtn" class="b-map-return-btn"'), "우편번호 줄의 지도위치 버튼이 없습니다.");
 expect(

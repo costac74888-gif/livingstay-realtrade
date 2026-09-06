@@ -3446,11 +3446,12 @@ function renderDataLabLodgingRank(data){
       ? `${dataLabNum(searchCount)}회`
       : "";
     const buildingId = Number(item.building_id || item.master_building_id);
+    const hasBuilding = Number.isInteger(buildingId) && buildingId > 0;
     return `<div class="datalab-lodging-rank-cell">
       <button type="button" class="datalab-building" data-lodging-rank-building
-        data-building-id="${Number.isInteger(buildingId) && buildingId > 0 ? buildingId : ""}"
+        data-building-id="${hasBuilding ? buildingId : ""}"
         data-place-name="${placeName}" data-sido="${escapeHtml(item.sido || "")}"
-        data-sgg="${sgg}" title="${placeName}">${placeName}</button>
+        data-sgg="${sgg}" title="${placeName} · ${hasBuilding ? "건물 상세 보기" : "지도 위치 보기"}">${placeName}</button>
       <span class="datalab-value">${value}</span>
     </div>`;
   }).join("");
@@ -3465,7 +3466,7 @@ function bindDataLabLodgingRankBuildings(content){
     button.addEventListener("click", async () => {
       const buildingId = Number(button.dataset.buildingId);
       if (Number.isInteger(buildingId) && buildingId > 0) {
-        openBuildingDetail(buildingId);
+        openBuildingDetail(buildingId, { returnDataLabKey: DATA_LAB_LODGING_RANK_KEY });
         return;
       }
       const placeName = button.dataset.placeName || "";
@@ -3484,7 +3485,7 @@ function bindDataLabLodgingRankBuildings(content){
         }
         const resolvedBuildingId = Number(data.building_id);
         if (Number.isInteger(resolvedBuildingId) && resolvedBuildingId > 0) {
-          openBuildingDetail(resolvedBuildingId);
+          openBuildingDetail(resolvedBuildingId, { returnDataLabKey: DATA_LAB_LODGING_RANK_KEY });
           return;
         }
         const lat = Number(data.lat);
@@ -3501,6 +3502,7 @@ function bindDataLabLodgingRankBuildings(content){
           lat,
           lng,
         });
+        showFallbackToast("건물 마스터가 없어 상세 대신 지도 위치를 표시했습니다.");
         if (window.matchMedia("(max-width: 980px)").matches) {
           const panel = document.querySelector(".side-panel");
           const toggle = document.getElementById("btnTogglePanel");
@@ -5260,7 +5262,7 @@ function buildingPhotoSliderHtml(){
     <div id="bldPhotoWrap" class="bld-photo-wrap is-empty"></div>
     <img class="bld-photo-empty-logo" src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY">
     <div class="bld-photo-actions bld-photo-actions-left">
-      <button type="button" id="btnBackToList" class="bld-photo-action" aria-label="전체 목록으로" title="전체 목록으로">←</button>
+      <button type="button" id="btnBackToList" class="bld-photo-action" aria-label="이전 목록으로" title="이전 목록으로">←</button>
     </div>
     <div class="bld-photo-actions bld-photo-actions-right">
       <button type="button" id="bFavBtn" class="bld-photo-action" aria-label="관심저장" title="관심저장">${Icons.heart(18)}</button>
@@ -8021,8 +8023,13 @@ function renderBuildingPanel(id){
     window.livingstaySetPanelToggle(true);
   }
 
-  // "← 전체 목록으로" 링크: 기본 패널 복귀 + URL "/"
+  // 사진 위 뒤로가기는 브라우저 뒤로가기와 같은 기록을 사용한다.
+  // 검색TOP100에서 열었으면 해당 목록 상태가 들어 있는 이전 history entry로 복귀한다.
   const closeDetail = () => {
+    if (history.state?.buildingId === Number(id) && history.length > 1) {
+      history.back();
+      return;
+    }
     history.pushState({}, "", "/");
     if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
     restoreDefaultPanel();
@@ -8120,7 +8127,7 @@ function renderBuildingPanel(id){
 }
 
 // 기본(홈) 좌측 패널로 되돌린다.
-function restoreDefaultPanel(){
+function restoreDefaultPanel(returnDataLabKey = ""){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
   window.__openBuildingId = null;
@@ -8137,11 +8144,22 @@ function restoreDefaultPanel(){
     window.livingstaySetPanelToggle(!compact);
   }
   initDefaultSidePanel();
+  if (returnDataLabKey) {
+    setTimeout(() => loadDataLab(returnDataLabKey), 0);
+  }
 }
 
 // InfoWindow "상세보기 →" 클릭 → 페이지 이동 없이 패널 전환 + URL만 교체
-window.openBuildingDetail = function(id){
+window.openBuildingDetail = function(id, options = {}){
   closeFavOverflowPopover();
+  const returnDataLabKey = options?.returnDataLabKey || "";
+  if (returnDataLabKey) {
+    history.replaceState(
+      { ...(history.state || {}), returnDataLabKey },
+      "",
+      location.href,
+    );
+  }
   history.pushState({ buildingId: id }, "", "/building/" + id);
   if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + id });
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
@@ -8150,13 +8168,13 @@ window.openBuildingDetail = function(id){
 };
 
 // 브라우저 뒤로/앞으로 가기 대응
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", event => {
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) {
     renderBuildingPanel(Number(m[1]));
     if (typeof gtag === "function") gtag("event", "page_view", { page_path: location.pathname });
   } else {
-    restoreDefaultPanel();
+    restoreDefaultPanel(event.state?.returnDataLabKey || "");
     if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
   }
 });
