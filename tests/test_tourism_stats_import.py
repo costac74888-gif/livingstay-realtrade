@@ -51,6 +51,9 @@ class TourismStatsImporterTests(unittest.TestCase):
             importer.detect_type("관광숙박_검색순위_202601-202602.csv"),
             "lodging_search_rank",
         )
+        self.assertTrue(importer.is_lodging_top100_address_file(
+            "숙박시설_검색순위_TOP100_상세주소_1788686669991.csv"
+        ))
         self.assertEqual(
             importer.detect_type(
                 "20260905141202_지역별_관광지_검색순위.csv"
@@ -169,6 +172,65 @@ class TourismStatsImporterTests(unittest.TestCase):
         self.assertEqual(dimensions["sub_category"], "호텔")
         self.assertEqual(dimensions["mid_category"], "숙박")
 
+    def test_lodging_rank_preserves_collected_road_address(self):
+        row = lodging_row(**{"도로명주소": "서울특별시 중구 세종대로 1"})
+        built = importer.build_lodging_rank_row(row, "x.csv::x.csv", None)
+        self.assertEqual(
+            json.loads(built[9])["road_address"],
+            "서울특별시 중구 세종대로 1",
+        )
+
+    def test_detailed_top100_contract_is_enforced_in_shared_importer(self):
+        rows = [
+            {
+                "순위": str(rank),
+                "광역시/도": "서울특별시",
+                "시/군/구": "중구",
+                "관광지명": f"호텔{rank}",
+                "중분류 카테고리": "숙박",
+                "검색건수": str(1000 - rank),
+                "도로명주소": f"서울특별시 중구 테스트로 {rank}",
+            }
+            for rank in range(1, 101)
+        ]
+        name = "숙박시설_검색순위_TOP100_상세주소.csv"
+        metric, kind, skipped = importer.build_member_metric_rows(
+            name, name, rows, None
+        )
+        self.assertEqual((kind, len(metric), skipped), (
+            "lodging_search_rank", 100, 0,
+        ))
+        invalid_sets = [
+            rows[:-1],
+            [{**row, "순위": "1"} if index == 50 else row
+             for index, row in enumerate(rows)],
+            [{**row, "도로명주소": ""} if index == 0 else row
+             for index, row in enumerate(rows)],
+            [{**row, "검색건수": ""} if index == 42 else row
+             for index, row in enumerate(rows)],
+        ]
+        for invalid in invalid_sets:
+            with self.subTest(rows=len(invalid)):
+                with self.assertRaises(ValueError):
+                    importer.build_member_metric_rows(
+                        name, name, invalid, None
+                    )
+
+    def test_non_dedicated_lodging_csv_may_include_optional_address_column(self):
+        rows = [{
+            **lodging_row(),
+            "도로명주소": "강원특별자치도 강릉시 테스트로 1",
+        }]
+        metric, kind, skipped = importer.build_member_metric_rows(
+            "관광숙박 검색순위.csv",
+            "관광숙박 검색순위.csv",
+            rows,
+            None,
+        )
+        self.assertEqual((kind, len(metric), skipped), (
+            "lodging_search_rank", 1, 0,
+        ))
+
     def test_region_core_sql_normalizes_province_aliases(self):
         expression = importer.region_core_sql("source_sido", "source_sgg")
         self.assertIn("특별자치도|특별자치시|특별시|광역시|도|시", expression)
@@ -177,7 +239,7 @@ class TourismStatsImporterTests(unittest.TestCase):
         self.assertIn("'^경상', '경'", expression)
         self.assertIn("전남광주통합특별시", expression)
 
-    def test_building_matching_requires_kakao_confirmed_address_not_business_name(self):
+    def test_building_matching_requires_verified_address_not_business_name(self):
         cur = FakeCursor()
         sources = ["new.zip::관광숙박 검색순위.csv"]
 
@@ -194,6 +256,36 @@ class TourismStatsImporterTests(unittest.TestCase):
         self.assertIn("kakao_confirmed_address", cur.calls[1][0])
         self.assertNotIn("building_name", cur.calls[1][0])
         self.assertNotIn("LIKE '%%'", cur.calls[1][0])
+
+    def test_collected_road_address_uniquely_links_existing_building(self):
+        class AddressCursor(FakeCursor):
+            def execute(self, sql, params=None):
+                super().execute(sql, params)
+                if "SET master_building_id" in sql:
+                    self.rowcount = 1
+
+            def fetchall(self):
+                if "FROM tourism_stats" in self.calls[-1][0]:
+                    return [{
+                        "id": 44,
+                        "dimensions": {
+                            "road_address": "서울특별시 중구 세종대로 1",
+                        },
+                    }]
+                return [{
+                    "id": 10,
+                    "road_address": "서울특별시 중구 세종대로 1",
+                    "jibun_address": None,
+                }]
+
+        cur = AddressCursor()
+        result = importer.match_lodging_rank_to_buildings(cur, ["rank.csv"])
+
+        self.assertEqual(result, {"total": 9, "address": 1, "unmatched": 8})
+        update = next(
+            call for call in cur.calls if "SET master_building_id" in call[0]
+        )
+        self.assertEqual(update[1], (10, 44))
 
     def test_same_address_multi_building_complex_is_not_arbitrarily_linked(self):
         class ComplexCursor(FakeCursor):

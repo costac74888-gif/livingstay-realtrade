@@ -32,6 +32,8 @@ from building_registry import (
 TYPE_RULES = (
     # This must precede the generic attraction-ranking rule below: the two
     # exports have similarly named filenames but describe different entities.
+    ("숙박시설_검색순위_TOP100_상세주소", "lodging_search_rank"),
+    ("숙박시설 검색순위 TOP100 상세주소", "lodging_search_rank"),
     ("관광숙박_검색순위", "lodging_search_rank"),
     ("관광숙박 검색순위", "lodging_search_rank"),
     ("방문자 급등동네(내국인)", "surge_domestic_dong"),
@@ -80,6 +82,7 @@ LODGING_RANK_FIELDS = {
     ),
     "search_count": ("검색건수",),
     "rank": ("검색순위", "순위"),
+    "road_address": ("도로명주소", "상세주소"),
 }
 
 FIELD_MAP = {
@@ -182,6 +185,40 @@ def lodging_rank_value(row, field):
     return None
 
 
+def is_lodging_top100_address_file(filename):
+    normalized = re.sub(
+        r"[\s_-]+", "", os.path.basename(str(filename or ""))
+    ).lower()
+    return "숙박시설검색순위top100상세주소" in normalized
+
+
+def validate_lodging_top100_address_rows(filename, rows):
+    """Enforce the dedicated detailed-address export in every import path."""
+    if not is_lodging_top100_address_file(filename):
+        return
+    ranks = [number(lodging_rank_value(row, "rank")) for row in rows]
+    missing_required = [
+        index
+        for index, row in enumerate(rows, start=2)
+        if not lodging_rank_value(row, "place_name")
+        or not lodging_rank_value(row, "search_count")
+        or not lodging_rank_value(row, "road_address")
+    ]
+    if (
+        len(rows) != 100
+        or set(ranks) != set(range(1, 101))
+        or missing_required
+    ):
+        details = (
+            f" 필수값 누락 행: {missing_required[:5]}"
+            if missing_required else ""
+        )
+        raise ValueError(
+            f"{filename}: 상세주소 TOP100은 정확한 1~100위와 "
+            f"관광지명·검색건수·도로명주소 100개가 모두 필요합니다.{details}"
+        )
+
+
 def build_lodging_rank_row(row, source_file, period, row_index=None):
     """Build the one canonical metric emitted by a lodging-rank CSV row."""
     place_name = lodging_rank_value(row, "place_name")
@@ -191,8 +228,14 @@ def build_lodging_rank_row(row, source_file, period, row_index=None):
     sido, sgg = normalize_region(row.get("광역시/도"), row.get("시/군/구"))
     dimensions = {
         key: lodging_rank_value(row, key)
-        for key in ("datalab_id", "place_name", "sub_category", "mid_category", "search_count")
+        for key in (
+            "datalab_id", "place_name", "sub_category", "mid_category",
+            "search_count",
+        )
     }
+    road_address = lodging_rank_value(row, "road_address")
+    if road_address:
+        dimensions["road_address"] = road_address
     datalab_id = dimensions["datalab_id"]
     identity_key = (
         [
@@ -329,6 +372,8 @@ def build_member_metric_rows(source_file, filename, csv_rows, period):
     stat_type = detect_type_from_rows(filename, csv_rows)
     if not stat_type:
         return [], None, len(csv_rows)
+    if stat_type == "lodging_search_rank":
+        validate_lodging_top100_address_rows(filename, csv_rows)
     output, skipped = [], 0
     for row_index, row in enumerate(csv_rows, 2):
         if stat_type == "lodging_search_rank":
@@ -449,6 +494,7 @@ def verify_latest_top100_lodging_addresses(cur):
         WHERE t.stat_type = 'lodging_search_rank'
           AND t.master_building_id IS NULL
           AND t.metric_value > 0 AND t.metric_value <= 100
+          AND NULLIF(t.dimensions->>'road_address', '') IS NULL
           AND NULLIF(t.dimensions->>'kakao_confirmed_address', '') IS NULL
         ORDER BY t.metric_value, t.id
         LIMIT 100
@@ -620,16 +666,23 @@ def enrich_latest_top100_lodging_buildings(
         WHERE t.stat_type = 'lodging_search_rank'
           AND t.master_building_id IS NULL
           AND t.metric_value > 0 AND t.metric_value <= 100
-          AND NULLIF(t.dimensions->>'kakao_confirmed_address', '') IS NOT NULL
+          AND (
+              NULLIF(t.dimensions->>'road_address', '') IS NOT NULL
+              OR NULLIF(t.dimensions->>'kakao_confirmed_address', '') IS NOT NULL
+          )
         ORDER BY t.metric_value, t.id LIMIT 100
     """)
     pending = [dict(row) for row in cur.fetchall()]
     created = manual_review = 0
     for stat in pending:
         dimensions = stat.get("dimensions") or {}
-        road_address = (dimensions.get("kakao_confirmed_road_address") or "").strip()
+        road_address = (
+            dimensions.get("road_address")
+            or dimensions.get("kakao_confirmed_road_address")
+            or ""
+        ).strip()
         if not road_address:
-            _set_lodging_match_review(cur, stat["id"], "kakao_road_address_missing")
+            _set_lodging_match_review(cur, stat["id"], "verified_road_address_missing")
             manual_review += 1
             continue
         try:
@@ -741,7 +794,7 @@ def enrich_latest_top100_lodging_buildings(
 
 
 def match_lodging_rank_to_buildings(cur, source_files):
-    """Attach rank rows only when a Kakao-confirmed address has one HUB match.
+    """Attach rank rows only when a verified road address has one master match.
 
     Same-address multi-building complexes intentionally remain unlinked for
     manual review.  Selecting an arbitrary/nearest tower would make the detail
@@ -766,7 +819,10 @@ def match_lodging_rank_to_buildings(cur, source_files):
         FROM tourism_stats
         WHERE stat_type = %s AND source_file = ANY(%s)
           AND master_building_id IS NULL
-          AND NULLIF(dimensions->>'kakao_confirmed_address', '') IS NOT NULL
+          AND (
+              NULLIF(dimensions->>'road_address', '') IS NOT NULL
+              OR NULLIF(dimensions->>'kakao_confirmed_address', '') IS NOT NULL
+          )
     """, scope)
     stats = [dict(row) for row in cur.fetchall()]
     cur.execute("""
@@ -788,7 +844,8 @@ def match_lodging_rank_to_buildings(cur, source_files):
         dimensions = stat.get("dimensions") or {}
         candidates = set()
         road_key = addr_norm.normalize_road_prefix(
-            dimensions.get("kakao_confirmed_road_address")
+            dimensions.get("road_address")
+            or dimensions.get("kakao_confirmed_road_address")
         )
         jibun_key = addr_norm.normalize_jibun_prefix(
             dimensions.get("kakao_confirmed_jibun_address")
@@ -814,7 +871,7 @@ def match_lodging_rank_to_buildings(cur, source_files):
     }
     print(
         "관광숙박 검색순위 건물 매칭: "
-        f"전체 {total}, 카카오 확인 주소 {address}, 미매칭 {result['unmatched']}"
+        f"전체 {total}, 상세주소 일치 {address}, 미매칭 {result['unmatched']}"
     )
     return result
 

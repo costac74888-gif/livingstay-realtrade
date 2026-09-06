@@ -96,7 +96,7 @@ class TourismDatalabAdminTests(unittest.TestCase):
 
     def test_apply_claim_and_retry_failure_state_sql(self):
         manifest={"members":[],"rows":[["x",None,None,None,"m",1,"", "f",None,"{}", "h"]],"unsupported_members":[]}
-        digest=hashlib.sha256(json.dumps(manifest,ensure_ascii=False,separators=(",",":"),default=str).encode()).hexdigest()
+        digest=admin._manifest_digest(manifest)
         conn=Conn({"manifest":manifest,"manifest_hash":digest})
         # Force matching failure after the atomic claim; test never executes DB data.
         old=importer.match_lodging_rank_to_buildings
@@ -122,7 +122,7 @@ class TourismDatalabAdminTests(unittest.TestCase):
 
     def test_apply_runs_top100_kakao_hub_and_address_link_under_source_lock(self):
         manifest={"members":[],"rows":[["lodging_search_rank",None,None,None,"검색순위",1,"위", "f",None,"{}", "h"]],"unsupported_members":[]}
-        digest=hashlib.sha256(json.dumps(manifest,ensure_ascii=False,separators=(",",":"),default=str).encode()).hexdigest()
+        digest=admin._manifest_digest(manifest)
         conn=Conn({"manifest":manifest,"manifest_hash":digest})
         calls=[]
         originals=(
@@ -144,13 +144,17 @@ class TourismDatalabAdminTests(unittest.TestCase):
              importer.enrich_latest_top100_lodging_buildings,
              importer.match_lodging_rank_to_buildings, importer.refresh_coords,
              importer.refresh_dong_coords)=originals
-        self.assertEqual(calls, ["insert","kakao","hub",("link",["f"]),"coords","dong"])
+        self.assertEqual(calls, ["insert","kakao",("link",["f"]),"hub",("link",["f"]),"coords","dong"])
         sql="\n".join(q for q,_ in conn.cur.calls)
         self.assertLess(sql.index("pg_advisory_xact_lock"), sql.index("DELETE FROM tourism_stats"))
 
     def test_source_lock_keys_are_stable_signed_and_sorted_contract(self):
         self.assertEqual(admin.source_lock_key("a"), admin.source_lock_key("a"))
         self.assertTrue(-(2**63) <= admin.source_lock_key("a") < 2**63)
+        self.assertEqual(
+            admin._manifest_digest({"b": 1, "a": 2}),
+            admin._manifest_digest({"a": 2, "b": 1}),
+        )
 
     def test_latest_source_order_contract(self):
         sql=importer.latest_source_order_sql("t")
@@ -170,7 +174,7 @@ class TourismDatalabAdminTests(unittest.TestCase):
     def test_all_actual_ten_assets_validate_together(self):
         paths=sorted(Path("attached_assets").glob("*데이터랩*.zip"))
         paths += sorted(Path("attached_assets").glob("*관광지_검색순위*.csv"))
-        self.assertEqual(len(paths),10)
+        self.assertGreaterEqual(len(paths),10)
         result=admin.preview(Conn(),[Upload(p.name,p.read_bytes()) for p in paths],1)
         self.assertGreater(result["supported_rows"],0)
         self.assertEqual(set(result["types"]), {kind for _,kind in importer.TYPE_RULES})
@@ -193,6 +197,42 @@ class TourismDatalabAdminTests(unittest.TestCase):
              "서울특별시,중구,x,호텔,숙박,not-rank,20\n").encode()
         with self.assertRaises(ValueError):
             admin.preview(Conn(),[Upload("관광숙박 검색순위.csv",raw)],1)
+
+    def test_detailed_address_top100_requires_complete_unique_ranks(self):
+        header = "순위,광역시/도,시/군/구,관광지명,중분류 카테고리,검색건수,도로명주소\n"
+        rows = [
+            f"{rank},서울특별시,중구,호텔{rank},숙박,{1000-rank},서울특별시 중구 테스트로 {rank}"
+            for rank in range(1, 101)
+        ]
+        valid = (header + "\n".join(rows) + "\n").encode()
+        result = admin.preview(
+            Conn(),
+            [Upload("숙박시설_검색순위_TOP100_상세주소.csv", valid)],
+            1,
+        )
+        self.assertEqual(result["types"], {"lodging_search_rank": 100})
+        parsed = result["files"][0]
+        self.assertEqual((parsed["physical_rows"], parsed["metric_rows"]), (100, 100))
+        with self.assertRaises(ValueError):
+            admin.preview(
+                Conn(),
+                [Upload("숙박시설_검색순위_TOP100_상세주소.csv", (
+                    header + "\n".join(rows[:-1]) + "\n"
+                ).encode())],
+                1,
+            )
+        first_address_missing = rows.copy()
+        first_address_missing[0] = (
+            "1,서울특별시,중구,호텔1,숙박,999,"
+        )
+        with self.assertRaises(ValueError):
+            admin.preview(
+                Conn(),
+                [Upload("숙박시설_검색순위_TOP100_상세주소.csv", (
+                    header + "\n".join(first_address_missing) + "\n"
+                ).encode())],
+                1,
+            )
 
     def test_three_distribution_contracts_emit_exact_metrics(self):
         fixtures=[

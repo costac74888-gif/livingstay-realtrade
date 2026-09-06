@@ -35,6 +35,19 @@ def source_lock_key(source_file):
     """Stable signed bigint key for PostgreSQL transaction advisory locks."""
     return int.from_bytes(hashlib.sha256(source_file.encode()).digest()[:8], "big", signed=True)
 
+
+def _manifest_digest(manifest):
+    """Hash JSONB manifests independently of PostgreSQL object-key ordering."""
+    canonical = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _csv_rows(name, raw):
     for encoding in ("utf-8-sig", "cp949"):
         try: text = raw.decode(encoding); break
@@ -115,7 +128,7 @@ def preview(conn, files, owner):
     if not all_rows:
         raise ValueError("지원되는 정규 지표 행이 없는 업로드입니다.")
     manifest = {"members": members, "rows": all_rows, "unsupported_members": unsupported}
-    digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str).encode()).hexdigest()
+    digest = _manifest_digest(manifest)
     cur = conn.cursor()
     try:
         token = secrets.token_urlsafe(32)
@@ -142,9 +155,7 @@ def apply(conn, token, owner):
         stage = cur.fetchone()
         if not stage: raise ValueError("미리보기 토큰이 없거나 이미 적용·만료되었습니다.")
         manifest = stage["manifest"]
-        actual_hash = hashlib.sha256(
-            json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str).encode()
-        ).hexdigest()
+        actual_hash = _manifest_digest(manifest)
         if not hmac.compare_digest(str(stage["manifest_hash"]), actual_hash):
             raise ValueError("미리보기 무결성 검증에 실패했습니다.")
         rows = manifest["rows"]; sources = sorted({x[7] for x in rows})
@@ -157,6 +168,7 @@ def apply(conn, token, owner):
         # CLI importer.  These calls run after the source advisory locks and
         # before this transaction is committed; no public GET mutates links.
         importer.verify_latest_top100_lodging_addresses(cur)
+        importer.match_lodging_rank_to_buildings(cur, sources)
         importer.enrich_latest_top100_lodging_buildings(cur)
         importer.match_lodging_rank_to_buildings(cur, sources)
         importer.refresh_coords(cur); importer.refresh_dong_coords(cur)
