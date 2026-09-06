@@ -30245,6 +30245,214 @@ def _lodging_search_rank_item(row):
     }
 
 
+_KAKAO_LOCAL_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
+_LODGING_RANK_LOCATION_CACHE = {}
+_LODGING_RANK_LOCATION_CACHE_TTL = 86400
+
+
+def _lodging_rank_place_matches(expected, candidate):
+    expected_key = addr_norm.normalize_name(expected) or ""
+    candidate_key = addr_norm.normalize_name(candidate) or ""
+    if not expected_key or not candidate_key:
+        return False
+    if (
+        expected_key == candidate_key
+        or (len(expected_key) >= 5 and expected_key in candidate_key)
+        or (len(candidate_key) >= 5 and candidate_key in expected_key)
+    ):
+        return True
+    if min(len(expected_key), len(candidate_key)) < 6:
+        return False
+    expected_pairs = {expected_key[i:i + 2] for i in range(len(expected_key) - 1)}
+    candidate_pairs = {candidate_key[i:i + 2] for i in range(len(candidate_key) - 1)}
+    union = expected_pairs | candidate_pairs
+    return bool(union) and len(expected_pairs & candidate_pairs) / len(union) >= 0.6
+
+
+def _lodging_rank_unique_master_candidate(cur, place_name, sido, sgg):
+    """상호·지역이 유일하게 맞는 기존 마스터 건물만 반환한다."""
+    place_key = addr_norm.normalize_name(place_name)
+    if not place_key:
+        return None
+    cur.execute("""
+        SELECT id, building_name
+        FROM master_buildings
+        WHERE building_name <> '-'
+          AND building_name <> '.'
+          AND (%s = '' OR sgg_text ILIKE %s)
+          AND (
+               regexp_replace(lower(building_name), '[^0-9a-z가-힣]', '', 'g') = %s
+            OR (
+                 length(%s) >= 5
+                 AND (
+                      regexp_replace(lower(building_name), '[^0-9a-z가-힣]', '', 'g') LIKE '%%' || %s || '%%'
+                   OR %s LIKE '%%' || regexp_replace(lower(building_name), '[^0-9a-z가-힣]', '', 'g') || '%%'
+                 )
+               )
+          )
+        ORDER BY id
+        LIMIT 3
+    """, (sgg, f"%{sgg}%", place_key, place_key, place_key, place_key))
+    candidates = [dict(row) for row in cur.fetchall()]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _lodging_rank_master_by_address(cur, document, sgg):
+    """카카오가 확인한 주소와 정확히 같은 마스터 건물을 고른다."""
+    road_key = addr_norm.normalize_road_prefix(document.get("road_address_name"))
+    jibun_key = addr_norm.normalize_jibun_prefix(document.get("address_name"))
+    if not road_key and not jibun_key:
+        return None
+    cur.execute("""
+        SELECT id, building_name, road_address, jibun_address, lat, lng
+        FROM master_buildings
+        WHERE (%s = '' OR sgg_text ILIKE %s)
+        ORDER BY id
+    """, (sgg, f"%{sgg}%"))
+    matches = []
+    for row in cur.fetchall():
+        item = dict(row)
+        same_road = road_key and addr_norm.normalize_road_prefix(item.get("road_address")) == road_key
+        same_jibun = jibun_key and addr_norm.normalize_jibun_prefix(item.get("jibun_address")) == jibun_key
+        if same_road or same_jibun:
+            matches.append(item)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        try:
+            target_lat = float(document.get("y"))
+            target_lng = float(document.get("x"))
+            located = [
+                item for item in matches
+                if item.get("lat") is not None and item.get("lng") is not None
+            ]
+            if located:
+                located.sort(key=lambda item:
+                    (float(item["lat"]) - target_lat) ** 2
+                    + (float(item["lng"]) - target_lng) ** 2
+                )
+                return located[0]
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+@app.route("/api/tourism/lodging-rank/location")
+@limiter.limit("20 per minute")
+def tourism_lodging_rank_location():
+    """TOP100 상호를 기존 건물 상세 또는 카카오의 정확한 위치로 연결한다."""
+    place_name = (request.args.get("q") or "").strip()
+    sido = (request.args.get("sido") or "").strip()
+    sgg = (request.args.get("sgg") or "").strip()
+    if len(place_name) < 2 or len(place_name) > 100:
+        return jsonify({"ok": False, "message": "숙소명을 확인해주세요."}), 400
+
+    cache_key = (place_name, sido, sgg)
+    cached = _LODGING_RANK_LOCATION_CACHE.get(cache_key)
+    if cached and time.time() - cached["ts"] < _LODGING_RANK_LOCATION_CACHE_TTL:
+        return jsonify(cached["payload"])
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        rows = _lodging_search_rank_rows(cur, limit=100, max_rank=100)
+        source_row = next((
+            row for row in rows
+            if _lodging_rank_place_matches(
+                place_name,
+                (row.get("dimensions") or {}).get("place_name"),
+            )
+            and (not sido or row.get("sido_name") == sido)
+            and (not sgg or row.get("sgg_name") == sgg)
+        ), None)
+        if source_row is None:
+            return jsonify({"ok": False, "message": "TOP100 숙소를 확인하지 못했습니다."}), 404
+
+        existing = _lodging_rank_unique_master_candidate(cur, place_name, sido, sgg)
+        if existing:
+            payload = {
+                "ok": True,
+                "building_id": existing["id"],
+                "place_name": place_name,
+            }
+            _LODGING_RANK_LOCATION_CACHE[cache_key] = {"ts": time.time(), "payload": payload}
+            return jsonify(payload)
+
+        client_id = os.environ.get("KAKAO_REST_API_KEY", "").strip()
+        if not client_id:
+            return jsonify({"ok": False, "message": "지도 위치 검색을 사용할 수 없습니다."}), 503
+        search_names = [place_name]
+        if place_name.endswith("점") and len(place_name) > 3:
+            search_names.append(place_name[:-1])
+        document = None
+        for search_name in search_names:
+            response = requests.get(
+                _KAKAO_LOCAL_KEYWORD_URL,
+                headers={"Authorization": f"KakaoAK {client_id}"},
+                params={"query": " ".join(filter(None, (search_name, sido, sgg))), "size": 5},
+                timeout=5,
+            )
+            response.raise_for_status()
+            documents = response.json().get("documents", [])
+            document = next((
+                item for item in documents
+                if _lodging_rank_place_matches(search_name, item.get("place_name"))
+            ), None)
+            if document is None and documents:
+                address_counts = {}
+                for item in documents:
+                    address = str(
+                        item.get("road_address_name")
+                        or item.get("address_name")
+                        or ""
+                    ).strip()
+                    if address:
+                        address_counts[address] = address_counts.get(address, 0) + 1
+                common_address = next((
+                    address for address, count in address_counts.items()
+                    if count >= 3
+                ), None)
+                if common_address:
+                    document = next(item for item in documents if str(
+                        item.get("road_address_name")
+                        or item.get("address_name")
+                        or ""
+                    ).strip() == common_address)
+            if document is not None:
+                break
+        if document is None:
+            return jsonify({"ok": False, "message": "정확한 숙소 위치를 찾지 못했습니다."}), 404
+
+        master = _lodging_rank_master_by_address(cur, document, sgg)
+        if master:
+            payload = {
+                "ok": True,
+                "building_id": master["id"],
+                "place_name": place_name,
+            }
+        else:
+            payload = {
+                "ok": True,
+                "building_id": None,
+                "place_name": place_name,
+                "address": str(
+                    document.get("road_address_name")
+                    or document.get("address_name")
+                    or ""
+                ).strip(),
+                "lat": float(document["y"]),
+                "lng": float(document["x"]),
+            }
+        _LODGING_RANK_LOCATION_CACHE[cache_key] = {"ts": time.time(), "payload": payload}
+        return jsonify(payload)
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        app.logger.warning("[lodging-rank] 위치 연결 실패: %s", place_name, exc_info=True)
+        return jsonify({"ok": False, "message": "숙소 위치를 불러오지 못했습니다."}), 502
+    finally:
+        cur.close()
+        release_conn(conn)
+
+
 @app.route("/api/tourism/lodging-rank/top99")
 @limiter.limit("30 per minute")
 def tourism_lodging_rank_top99():

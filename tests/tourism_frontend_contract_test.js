@@ -55,7 +55,9 @@ expect(main.includes('fetch("/api/tourism/lodging-rank/top100"') &&
   !main.includes('fetch("/api/tourism/lodging-rank/all"') &&
   !main.includes("나머지 401개는 지도에서 확인하세요") &&
   main.includes("bindDataLabLodgingRankBuildings") &&
-  main.includes('fetch(`/api/buildings/search?q='),
+  main.includes('fetch(`/api/tourism/lodging-rank/location?${params}`)') &&
+  main.includes("showDataLabBuildingHighlight") &&
+  main.includes('id: `lodging-rank:${placeName}`'),
   "검색TOP100 목록·건물 상세 연결 계약이 없습니다.");
 const lodgingRankLoader = main.slice(
   main.indexOf("async function loadDataLabLodgingRank"),

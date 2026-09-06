@@ -3449,7 +3449,8 @@ function renderDataLabLodgingRank(data){
     return `<div class="datalab-lodging-rank-cell">
       <button type="button" class="datalab-building" data-lodging-rank-building
         data-building-id="${Number.isInteger(buildingId) && buildingId > 0 ? buildingId : ""}"
-        data-place-name="${placeName}" data-sgg="${sgg}" title="${placeName}">${placeName}</button>
+        data-place-name="${placeName}" data-sido="${escapeHtml(item.sido || "")}"
+        data-sgg="${sgg}" title="${placeName}">${placeName}</button>
       <span class="datalab-value">${value}</span>
     </div>`;
   }).join("");
@@ -3471,20 +3472,42 @@ function bindDataLabLodgingRankBuildings(content){
       const sgg = button.dataset.sgg || "";
       button.disabled = true;
       try {
-        const response = await fetch(`/api/buildings/search?q=${encodeURIComponent(placeName)}`);
+        const params = new URLSearchParams({
+          q: placeName,
+          sido: button.dataset.sido || "",
+          sgg,
+        });
+        const response = await fetch(`/api/tourism/lodging-rank/location?${params}`);
         const data = await response.json();
-        const normalize = value => String(value || "").toLowerCase().replace(/[^0-9a-z가-힣]/g, "");
-        const exact = (data.items || []).filter(item =>
-          normalize(item.building_name) === normalize(placeName) &&
-          (!sgg || String(item.sgg_text || "").includes(sgg))
-        );
-        if (exact.length === 1 && exact[0].id) {
-          openBuildingDetail(exact[0].id);
+        if (!response.ok || !data.ok) {
+          throw new Error(data.message || "숙소 위치를 찾지 못했습니다.");
+        }
+        const resolvedBuildingId = Number(data.building_id);
+        if (Number.isInteger(resolvedBuildingId) && resolvedBuildingId > 0) {
+          openBuildingDetail(resolvedBuildingId);
           return;
         }
-        alert("연결된 건물 상세정보를 찾지 못했습니다.");
+        const lat = Number(data.lat);
+        const lng = Number(data.lng);
+        if (!kakaoMap || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+          throw new Error("정확한 숙소 위치를 찾지 못했습니다.");
+        }
+        kakaoMap.setLevel(3);
+        kakaoMap.setCenter(new kakao.maps.LatLng(lat, lng));
+        await Promise.resolve(updateMapForZoom(mapFiltersFromState(), { force: true }));
+        showDataLabBuildingHighlight({
+          id: `lodging-rank:${placeName}`,
+          name: data.place_name || placeName,
+          lat,
+          lng,
+        });
+        if (window.matchMedia("(max-width: 980px)").matches) {
+          const panel = document.querySelector(".side-panel");
+          const toggle = document.getElementById("btnTogglePanel");
+          if (panel?.classList.contains("open") && toggle) toggle.click();
+        }
       } catch(e) {
-        alert("건물 상세정보를 불러오지 못했습니다.");
+        alert(e.message || "건물 상세정보를 불러오지 못했습니다.");
       } finally {
         button.disabled = false;
       }

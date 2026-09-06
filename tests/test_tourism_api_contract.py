@@ -21,6 +21,18 @@ class TourismApiContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (ROOT / "app.py").read_text(encoding="utf-8")
 
+    def test_lodging_rank_place_name_variants_match_safely(self):
+        self.assertTrue(app_module._lodging_rank_place_matches(
+            "신라호텔서울", "서울신라호텔"
+        ))
+        self.assertTrue(app_module._lodging_rank_place_matches(
+            "그랜드인터컨티넨탈호텔서울파르나스",
+            "그랜드 인터컨티넨탈 서울 파르나스",
+        ))
+        self.assertFalse(app_module._lodging_rank_place_matches(
+            "신라호텔서울", "신라모텔서울"
+        ))
+
     def test_region_key_normalizes_sido_suffix_and_sgg_whitespace(self):
         self.assertEqual(
             _tourism_region_key("서울특별시", "강남 구"),
