@@ -43,6 +43,16 @@ expect(
   "예약 미연결 운영자 연결 링크에 숙박 유형과 건물이 함께 전달되지 않습니다.",
 );
 expect(main.includes('aria-controls="bOperationsPanel"') && main.includes('role="tabpanel"'), "탭과 패널의 접근성 연결이 없습니다.");
+expect(
+  main.includes('const phone = String(b.lr_phone || op.facility_phone || "").trim();') &&
+  main.includes('class="camp-quick-actions b-ops-contact-actions"') &&
+  main.includes('class="camp-contact-btn camp-homepage-btn"') &&
+  main.includes('class="camp-contact-btn camp-phone-btn"') &&
+  main.includes("운영자가 홈페이지를 등록하면 연결됩니다") &&
+  main.includes("정부 공개자료에 전화번호가 없습니다") &&
+  css.includes(".b-ops-contact-actions{grid-template-columns:repeat(2,minmax(0,1fr))}"),
+  "비캠핑 운영정보의 공통 홈페이지·전화 버튼 또는 CSV 전화 우선순위가 없습니다.",
+);
 expect(main.includes("_buildingDetailRequestToken") && main.includes("_isActiveBuilding(id, requestToken)"), "비동기 상세 응답의 요청 세대 차단이 없습니다.");
 expect(main.includes("_buildingTrendRequestSeq") && main.includes("_buildingTxRequestSeq"), "동일 건물의 실거래 재조회 순서 차단이 없습니다.");
 expect(main.includes("b.camping?.reservation_url") && main.includes("b.camping_resve_url") && main.includes("safeBookingUrl(b.booking_url)"), "예약 후보의 HTTP(S) 검증 또는 구형 캠핑 URL 호환이 누락됐습니다.");

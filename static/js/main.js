@@ -5937,9 +5937,11 @@ function _renderNonCampingOperations(b){
     if (disclaimer) disclaimer.style.display = "none";
     return;
   }
-  const op = (Array.isArray(b.lodging_operators) ? b.lodging_operators : [])[0] || {};
+  const typeMap = {"에어비앤비":"airbnb","농어촌민박":"rural","한옥":"hanok","일반":"living","관광":"living"};
+  const operators = Array.isArray(b.lodging_operators) ? b.lodging_operators : [];
+  const op = operators.find(item => item.lodging_op_type === typeMap[type]) || operators[0] || {};
   const homepage = _publicHttpUrl(op.homepage_url);
-  const phone = String(op.facility_phone || b.lr_phone || "").trim();
+  const phone = String(b.lr_phone || op.facility_phone || "").trim();
   const facts = {
     "일반":[["총 객실수",b.lr_room_count,"실"],["양실",b.lr_western_rooms,"실"],["한실",b.lr_korean_rooms,"실"],["지상층수",b.lr_floors_above,"층"],["시설면적",b.lr_facility_area,"㎡"]],
     "관광":[["총 객실수",b.lr_room_count,"실"],["지상층수",b.lr_floors_above,"층"],["지하층수",b.lr_floors_below,"층"],["시설면적",b.lr_facility_area,"㎡"],["주변환경",b.lr_surroundings,""]],
@@ -5951,12 +5953,15 @@ function _renderNonCampingOperations(b){
   if (type === "농어촌민박" && b.lr_breakfast_yn === "Y" && !amenities.includes("조식")) amenities.unshift("조식");
   const badges = _operatorJson(op.badge_labels).filter(v => typeof v === "string" && v.trim());
   const operatorSupplied = Boolean(op.operator_supplied_info);
-  const typeMap = {"에어비앤비":"airbnb","농어촌민박":"rural","한옥":"hanok","일반":"living","관광":"living"};
   body.innerHTML = `
-    ${(homepage || phone) ? `<div class="b-ops-quick-actions">
-      ${homepage ? `<a href="${escapeHtml(homepage)}" target="_blank" rel="noopener noreferrer" aria-label="홈페이지 열기">${Icons.home(15)}<span>홈페이지</span></a>` : ""}
-      ${phone ? `<a href="tel:${escapeHtml(phone.replace(/[^\d+]/g,""))}" aria-label="${escapeHtml(phone)}로 전화">${Icons.messageCircle(15)}<span>${escapeHtml(phone)}</span></a>` : ""}
-    </div>` : ""}
+    <div class="camp-quick-actions b-ops-contact-actions">
+      ${homepage
+        ? `<a class="camp-contact-btn camp-homepage-btn" href="${escapeHtml(homepage)}" target="_blank" rel="noopener noreferrer" aria-label="홈페이지 열기">🏠 <span>홈페이지</span></a>`
+        : `<span class="camp-contact-btn camp-homepage-btn is-disabled" aria-disabled="true" title="운영자가 홈페이지를 등록하면 연결됩니다">🏠 <span>홈페이지</span></span>`}
+      ${phone
+        ? `<a class="camp-contact-btn camp-phone-btn" href="tel:${escapeHtml(phone.replace(/[^\d+]/g,""))}" title="${escapeHtml(phone)}" aria-label="전화번호 ${escapeHtml(phone)}로 전화">☎️ <span>전화번호</span></a>`
+        : `<span class="camp-contact-btn camp-phone-btn is-disabled" aria-disabled="true" title="정부 공개자료에 전화번호가 없습니다">☎️ <span>전화번호</span></span>`}
+    </div>
     <div class="b-ops-source-label">${type === "에어비앤비" ? "신고·운영 정보" : "영업신고 기준"} <span>정부 공개자료</span></div>
     ${facts.length ? `<div class="camp-facts b-ops-facts">${facts.map(([k,v,u]) => `<div><small>${escapeHtml(k)}</small><b>${escapeHtml(String(v))}${u}</b></div>`).join("")}</div>` : ""}
     ${amenities.length ? `<div class="camp-section-label">편의시설 <span class="b-ops-live">운영자 등록</span></div><div class="camp-amenities b-ops-amenities">${amenities.map(item => `<span>${FacilityIcons.html(item, "facility-icon")}<span>${escapeHtml(item)}</span></span>`).join("")}</div>` : ""}
