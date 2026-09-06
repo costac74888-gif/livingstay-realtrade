@@ -25,17 +25,16 @@ class FakeCursor:
     def __init__(self):
         self.calls = []
         self.rowcount = 0
-        self._updates = iter((3, 2))
 
     def execute(self, sql, params=None):
         self.calls.append((sql, params))
-        if "SELECT COUNT(*)" in sql:
-            self.rowcount = 1
-        else:
-            self.rowcount = next(self._updates)
+        self.rowcount = 0
 
     def fetchone(self):
-        return (9,)
+        return {"total": 9}
+
+    def fetchall(self):
+        return []
 
 
 class TourismStatsImporterTests(unittest.TestCase):
@@ -178,27 +177,186 @@ class TourismStatsImporterTests(unittest.TestCase):
         self.assertIn("'^경상', '경'", expression)
         self.assertIn("전남광주통합특별시", expression)
 
-    def test_building_matching_is_limited_to_lodging_rows_and_imported_sources(self):
+    def test_building_matching_requires_kakao_confirmed_address_not_business_name(self):
         cur = FakeCursor()
         sources = ["new.zip::관광숙박 검색순위.csv"]
 
         result = importer.match_lodging_rank_to_buildings(cur, sources)
 
         self.assertEqual(result, {
-            "total": 9, "exact": 3, "containment": 2, "unmatched": 4,
+            "total": 9, "address": 0, "unmatched": 9,
         })
         self.assertEqual(len(cur.calls), 3)
-        for sql, params in cur.calls:
+        for sql, params in cur.calls[:2]:
             self.assertEqual(params, ("lodging_search_rank", sources))
             self.assertIn("source_file = ANY(%s)", sql)
             self.assertIn("stat_type = %s", sql)
-            self.assertNotIn("LIMIT 1", sql.upper())
-        self.assertIn("SET master_building_id = c.building_id", cur.calls[1][0])
-        self.assertIn("t.master_building_id IS NULL", cur.calls[2][0])
-        self.assertIn("'^경상', '경'", cur.calls[1][0])
-        self.assertIn("LIKE '%%'", cur.calls[2][0])
-        self.assertIn("HAVING COUNT(DISTINCT b.id) = 1", cur.calls[1][0])
-        self.assertIn("length(", cur.calls[2][0])
+        self.assertIn("kakao_confirmed_address", cur.calls[1][0])
+        self.assertNotIn("building_name", cur.calls[1][0])
+        self.assertNotIn("LIKE '%%'", cur.calls[1][0])
+
+    def test_same_address_multi_building_complex_is_not_arbitrarily_linked(self):
+        class ComplexCursor(FakeCursor):
+            def fetchall(self):
+                if "FROM tourism_stats" in self.calls[-1][0]:
+                    return [{
+                        "id": 44,
+                        "dimensions": {
+                            "kakao_confirmed_address": "서울 중구 세종대로 1",
+                            "kakao_confirmed_road_address": "서울 중구 세종대로 1",
+                            "kakao_confirmed_jibun_address": "",
+                        },
+                    }]
+                return [
+                    {"id": 10, "road_address": "서울특별시 중구 세종대로 1", "jibun_address": None},
+                    {"id": 11, "road_address": "서울특별시 중구 세종대로 1", "jibun_address": None},
+                ]
+
+        cur = ComplexCursor()
+        result = importer.match_lodging_rank_to_buildings(cur, ["rank.csv"])
+
+        self.assertEqual(result, {"total": 9, "address": 0, "unmatched": 9})
+        self.assertFalse(any(
+            "SET master_building_id" in sql for sql, _params in cur.calls
+        ))
+
+    def test_latest_top100_address_verification_is_bounded_and_persists_evidence(self):
+        source = Path(importer.__file__).read_text(encoding="utf-8")
+        start = source.index("def verify_latest_top100_lodging_addresses")
+        end = source.index("\n\n_KAKAO_LOCAL_KEYWORD_URL", start)
+        function = source[start:end]
+        self.assertIn("t.metric_value <= 100", function)
+        self.assertIn("LIMIT 100", function)
+        self.assertIn("kakao_confirmed_address", function)
+        self.assertIn("KakaoAK", function)
+
+    def test_kakao_branch_candidates_require_source_region_and_one_result(self):
+        documents = [
+            {
+                "place_name": "인스파이어 엔터테인먼트 리조트",
+                "road_address_name": "인천광역시 중구 공항문화로 127",
+            },
+            {
+                "place_name": "인스파이어 엔터테인먼트 리조트 서울점",
+                "road_address_name": "서울특별시 중구 세종대로 1",
+            },
+        ]
+        eligible = importer._verified_kakao_candidates(
+            "인스파이어 엔터테인먼트 리조트", "인천광역시", "중구", documents
+        )
+        self.assertEqual(eligible, [documents[0]])
+        # Two in-region branch candidates are intentionally not collapsed by
+        # a business name or a shared chain brand.
+        self.assertEqual(len(importer._verified_kakao_candidates(
+            "인스파이어 엔터테인먼트 리조트", "인천광역시", "중구",
+            [documents[0], {**documents[0], "road_address_name": "인천광역시 중구 영종해안남로 1"}],
+        )), 2)
+
+    def test_unique_verified_hub_lodging_is_created_then_address_linked(self):
+        dimensions = {
+            "kakao_confirmed_address": "인천광역시 중구 공항문화로 127",
+            "kakao_confirmed_road_address": "인천광역시 중구 공항문화로 127",
+            "kakao_confirmed_jibun_address": "인천광역시 중구 운서동 2955-74",
+            "kakao_x": "126.45", "kakao_y": "37.46",
+        }
+
+        class Cursor:
+            def __init__(self):
+                self.calls, self.rowcount = [], 0
+                self.created = False
+
+            def execute(self, sql, params=None):
+                self.calls.append((sql, params))
+                self.rowcount = int("INSERT INTO master_buildings" in sql or
+                                    "SET master_building_id" in sql)
+                if "INSERT INTO master_buildings" in sql:
+                    self.created = True
+
+            def fetchone(self):
+                return {"total": 1}
+
+            def fetchall(self):
+                sql = self.calls[-1][0]
+                if "SELECT t.id, t.dimensions" in sql:
+                    return [{"id": 44, "dimensions": dimensions}]
+                if "WHERE mgm_bldrgst_pk" in sql:
+                    return []
+                if "SELECT id, dimensions" in sql:
+                    return [{"id": 44, "dimensions": dimensions}]
+                if "FROM master_buildings" in sql:
+                    return ([{
+                        "id": 77, "road_address": "인천광역시 중구 공항문화로 127",
+                        "jibun_address": "인천광역시 중구 운서동 2955-74",
+                    }] if self.created else [])
+                return []
+
+        class Bjdong:
+            def find_bjdong_cd(self, sgg_cd, umd_nm):
+                self.args = (sgg_cd, umd_nm)
+                return "10100000"
+
+            def sgg_text(self, sgg_cd):
+                return "인천광역시 중구"
+
+        title_rows = [{
+            "mgmBldrgstPk": "hub-77", "mainPurpsCdNm": "숙박시설",
+            "etcPurps": "관광호텔", "bldNm": "인스파이어 엔터테인먼트 리조트", "dongNm": "",
+            "hoCnt": "120", "newPlatPlc": "인천광역시 중구 공항문화로 127",
+            "platPlc": "인천광역시 중구 운서동 2955-74",
+        }]
+        cur = Cursor()
+        result = importer.enrich_latest_top100_lodging_buildings(
+            cur, Bjdong(),
+            road_to_jibun_fn=lambda _road: {
+                "admCd": "2811000000", "emdNm": "운서동",
+                "lnbrMnnm": "2955", "lnbrSlno": "74", "mtYn": "0",
+            },
+            fetch_title_rows_fn=lambda *_args: title_rows,
+        )
+        linked = importer.match_lodging_rank_to_buildings(cur, ["rank.csv"])
+
+        self.assertEqual(result, {"checked": 1, "created": 1, "manual_review": 0})
+        self.assertEqual(linked, {"total": 1, "address": 1, "unmatched": 0})
+        self.assertTrue(any("INSERT INTO master_buildings" in sql for sql, _ in cur.calls))
+        self.assertTrue(any("SET master_building_id" in sql for sql, _ in cur.calls))
+
+    def test_ambiguous_hub_lodging_towers_remain_manual_review(self):
+        class Cursor:
+            def __init__(self):
+                self.calls, self.rowcount = [], 0
+
+            def execute(self, sql, params=None):
+                self.calls.append((sql, params))
+                self.rowcount = 0
+
+            def fetchall(self):
+                return [{
+                    "id": 44,
+                    "dimensions": {"kakao_confirmed_road_address": "서울 중구 세종대로 1"},
+                }]
+
+        class Bjdong:
+            def find_bjdong_cd(self, *_args):
+                return "10100000"
+
+        rows = [
+            {"mgmBldrgstPk": "tower-a", "mainPurpsCdNm": "숙박시설"},
+            {"mgmBldrgstPk": "tower-b", "mainPurpsCdNm": "숙박시설"},
+        ]
+        cur = Cursor()
+        result = importer.enrich_latest_top100_lodging_buildings(
+            cur, Bjdong(),
+            road_to_jibun_fn=lambda _road: {
+                "admCd": "1114000000", "emdNm": "태평로1가", "lnbrMnnm": "1",
+            },
+            fetch_title_rows_fn=lambda *_args: rows,
+        )
+
+        self.assertEqual(result, {"checked": 1, "created": 0, "manual_review": 1})
+        review = [params for sql, params in cur.calls
+                  if "lodging_match_review_reason" in sql]
+        self.assertEqual(review[0][0], "building_hub_lodging_identity_ambiguous")
+        self.assertFalse(any("INSERT INTO master_buildings" in sql for sql, _ in cur.calls))
 
 
 if __name__ == "__main__":

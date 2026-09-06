@@ -33,6 +33,50 @@ class TourismApiContractTests(unittest.TestCase):
             "신라호텔서울", "신라모텔서울"
         ))
 
+    def test_lodging_rank_address_match_never_chooses_a_complex_tower_by_name_or_distance(self):
+        class Cursor:
+            def execute(self, query, params=None):
+                self.query = query
+
+            def fetchall(self):
+                return [
+                    {
+                        "id": 10, "building_name": "A동", "lat": 37.5, "lng": 127.0,
+                        "road_address": "서울특별시 중구 세종대로 1", "jibun_address": None,
+                    },
+                    {
+                        "id": 11, "building_name": "B동", "lat": 37.50001, "lng": 127.0,
+                        "road_address": "서울특별시 중구 세종대로 1", "jibun_address": None,
+                    },
+                ]
+
+        self.assertIsNone(app_module._lodging_rank_master_by_address(Cursor(), {
+            "road_address_name": "서울 중구 세종대로 1",
+            "address_name": "",
+            "x": "127.0",
+            "y": "37.5",
+        }, "중구"))
+        self.assertNotIn("def _lodging_rank_unique_master_candidate", self.source)
+
+    def test_public_kakao_resolution_rejects_out_of_region_or_multiple_branches(self):
+        documents = [
+            {
+                "place_name": "인스파이어 엔터테인먼트 리조트",
+                "road_address_name": "인천광역시 중구 공항문화로 127",
+            },
+            {
+                "place_name": "인스파이어 엔터테인먼트 리조트 서울점",
+                "road_address_name": "서울특별시 중구 세종대로 1",
+            },
+        ]
+        self.assertEqual(app_module._lodging_rank_kakao_candidates(
+            "인스파이어 엔터테인먼트 리조트", "인천광역시", "중구", documents
+        ), [documents[0]])
+        self.assertEqual(len(app_module._lodging_rank_kakao_candidates(
+            "인스파이어 엔터테인먼트 리조트", "인천광역시", "중구",
+            [documents[0], {**documents[0], "road_address_name": "인천광역시 중구 영종해안남로 1"}],
+        )), 2)
+
     def test_region_key_normalizes_sido_suffix_and_sgg_whitespace(self):
         self.assertEqual(
             _tourism_region_key("서울특별시", "강남 구"),

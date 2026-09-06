@@ -15,7 +15,18 @@ import zipfile
 from pathlib import Path
 
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2.extras import RealDictCursor, execute_values
+
+import addr_norm
+from address_utils import BjdongMap, normalize_umd_nm, parse_jibun, road_to_jibun
+from building_registry import (
+    _fetch_title_rows,
+    _find_categories,
+    _hocnt,
+    _title_row_to_dict,
+    extract_tourist_subtype,
+    resolve_api_building_name,
+)
 
 
 TYPE_RULES = (
@@ -371,82 +382,439 @@ def build_rows(paths):
     return output, skipped
 
 
+def _lodging_rank_place_matches(expected, candidate):
+    """Require the Kakao result to identify the requested lodging, not just a region."""
+    expected_key = normalize_place_name(expected) or ""
+    candidate_key = normalize_place_name(candidate) or ""
+    if not expected_key or not candidate_key:
+        return False
+    return (
+        expected_key == candidate_key
+        or (len(expected_key) >= 5 and expected_key in candidate_key)
+        or (len(candidate_key) >= 5 and candidate_key in expected_key)
+    )
+
+
+def _kakao_address_matches_source_region(address, sido, sgg):
+    """Reject Kakao branch/chain hits outside the rank row's reported region."""
+    address_key = normalize_place_name(address) or ""
+    sgg_key = normalize_place_name(sgg) or ""
+    if not address_key or not sgg_key or sgg_key not in address_key:
+        return False
+    sido_key = re.sub(
+        r"(특별자치도|특별자치시|특별시|광역시|도|시)$", "",
+        normalize_place_name(sido) or "",
+    )
+    sido_key = re.sub(r"^전라", "전", sido_key)
+    sido_key = re.sub(r"^충청", "충", sido_key)
+    sido_key = re.sub(r"^경상", "경", sido_key)
+    return bool(sido_key) and sido_key in address_key
+
+
+def _verified_kakao_candidates(place_name, sido, sgg, documents):
+    """Filter Kakao keyword hits by both lodging identity and returned region."""
+    return [
+        item for item in documents
+        if _lodging_rank_place_matches(place_name, item.get("place_name"))
+        and (item.get("road_address_name") or item.get("address_name"))
+        and _kakao_address_matches_source_region(
+            item.get("road_address_name") or item.get("address_name"), sido, sgg
+        )
+    ]
+
+
+def verify_latest_top100_lodging_addresses(cur):
+    """Save Kakao-confirmed addresses for unlinked rows in the latest TOP100.
+
+    Kakao has no multi-keyword endpoint, so this deliberately reads the bounded
+    TOP100 set once and checks it as one import batch.  The result is evidence
+    for the later address-only building match; a business name is never used as
+    a building-link key.
+    """
+    api_key = os.environ.get("KAKAO_REST_API_KEY", "").strip()
+    if not api_key:
+        print("경고: KAKAO_REST_API_KEY가 없어 TOP100 미연결 숙소 주소 확인을 건너뜁니다.")
+        return {"checked": 0, "confirmed": 0}
+    cur.execute(f"""
+        WITH latest AS (
+            SELECT source_file
+            FROM tourism_stats t
+            WHERE stat_type = 'lodging_search_rank'
+            ORDER BY {latest_source_order_sql("t")}
+            LIMIT 1
+        )
+        SELECT t.id, t.sido_name, t.sgg_name, t.dimensions->>'place_name' AS place_name
+        FROM tourism_stats t
+        JOIN latest l ON l.source_file = t.source_file
+        WHERE t.stat_type = 'lodging_search_rank'
+          AND t.master_building_id IS NULL
+          AND t.metric_value > 0 AND t.metric_value <= 100
+          AND NULLIF(t.dimensions->>'kakao_confirmed_address', '') IS NULL
+        ORDER BY t.metric_value, t.id
+        LIMIT 100
+    """)
+    pending = cur.fetchall()
+    confirmed = 0
+    for raw in pending:
+        row = dict(raw)
+        place_name = (row.get("place_name") or "").strip()
+        if not place_name:
+            continue
+        try:
+            request = urllib.request.Request(
+                _KAKAO_LOCAL_KEYWORD_URL + "?" + urllib.parse.urlencode({
+                    "query": " ".join(filter(None, (
+                        place_name, row.get("sido_name"), row.get("sgg_name"),
+                    ))),
+                    "size": 5,
+                }),
+                headers={"Authorization": f"KakaoAK {api_key}"},
+            )
+            with urllib.request.urlopen(request, timeout=8) as response:
+                documents = json.load(response).get("documents") or []
+        except Exception as exc:
+            print(f"TOP100 숙소 주소 확인 실패: {place_name} ({type(exc).__name__})")
+            continue
+        eligible = _verified_kakao_candidates(
+            place_name, row.get("sido_name"), row.get("sgg_name"), documents
+        )
+        # A chain can return similarly named branches.  Even two results at a
+        # similarly formatted address are not proof that they denote one
+        # facility, so accept one verified Kakao candidate only.
+        if len(eligible) != 1:
+            _set_lodging_match_review(
+                cur, row["id"],
+                ("kakao_candidate_address_ambiguous" if eligible
+                 else "kakao_candidate_not_verified"),
+                {"eligible_candidate_count": len(eligible), "addresses": [
+                    str(item.get("road_address_name") or item.get("address_name") or "")
+                    for item in eligible
+                ]},
+            )
+            continue
+        document = eligible[0]
+        address = str(
+            document.get("road_address_name") or document.get("address_name") or ""
+        ).strip()
+        if not address:
+            continue
+        cur.execute("""
+            UPDATE tourism_stats
+            SET dimensions = dimensions || jsonb_build_object(
+                'kakao_confirmed_address', %s,
+                'kakao_confirmed_road_address', %s,
+                'kakao_confirmed_jibun_address', %s,
+                'kakao_x', %s,
+                'kakao_y', %s
+            )
+            WHERE id = %s
+              AND master_building_id IS NULL
+        """, (
+            address,
+            str(document.get("road_address_name") or "").strip() or None,
+            str(document.get("address_name") or "").strip() or None,
+            str(document.get("x") or "").strip() or None,
+            str(document.get("y") or "").strip() or None,
+            row["id"],
+        ))
+        confirmed += cur.rowcount
+    print(f"TOP100 미연결 숙소 카카오 주소 확인: {confirmed}/{len(pending)}건")
+    return {"checked": len(pending), "confirmed": confirmed}
+
+
+_KAKAO_LOCAL_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
+
+
+def _set_lodging_match_review(cur, stat_id, reason, evidence=None):
+    """Persist an auditable, retry-safe reason instead of guessing a tower."""
+    cur.execute("""
+        UPDATE tourism_stats
+        SET dimensions = dimensions || jsonb_build_object(
+            'lodging_match_review_reason', %s,
+            'lodging_match_review_evidence', %s::jsonb
+        )
+        WHERE id = %s AND master_building_id IS NULL
+    """, (reason, json.dumps(evidence or {}, ensure_ascii=False), stat_id))
+
+
+def _hub_lodging_identities(title_rows):
+    """Return all distinct lodging-building identities at one verified parcel."""
+    identities = {}
+    for row in title_rows:
+        text = f"{row.get('mainPurpsCdNm', '')} {row.get('etcPurps', '')}"
+        if "숙박" not in text:
+            continue
+        # The HUB management PK is stable across refreshes.  Do not fall back
+        # to a display/tourism business name: an absent HUB identity is manual.
+        identity = (row.get("mgmBldrgstPk") or "").strip()
+        if not identity:
+            continue
+        identities.setdefault(identity, []).append(row)
+    return identities
+
+
+def _classify_hub_title_snapshot(title_rows, identities):
+    """Classify/reselect solely from the fetched HUB snapshot.
+
+    ``classify_lodging_type`` may fetch a newer title/floor snapshot.  That can
+    disagree with the management identity checked immediately above, so this
+    conservative path accepts only title-row evidence and leaves floor-only
+    classification for manual review.
+    """
+    if len(identities) != 1:
+        return None, "", None, None, "lodging identity is not unique"
+    identity, rows = next(iter(identities.items()))
+    representative = _title_row_to_dict(max(rows, key=_hocnt))
+    categories, details = set(), []
+    for row in title_rows:
+        text = f"{row.get('mainPurpsCdNm', '')} {row.get('etcPurps', '')}".strip()
+        categories |= _find_categories(text)
+        if text:
+            details.append(text)
+    if len(categories) > 1:
+        return None, "", None, None, "title snapshot has mixed lodging categories"
+    if categories:
+        label = next(iter(categories))
+        subtype = next((
+            extract_tourist_subtype(
+                f"{row.get('mainPurpsCdNm', '')} {row.get('etcPurps', '')}"
+            )
+            for row in title_rows
+            if extract_tourist_subtype(
+                f"{row.get('mainPurpsCdNm', '')} {row.get('etcPurps', '')}"
+            )
+        ), None)
+        return label, " / ".join(sorted(set(details))), subtype, representative, "title snapshot"
+    # Explicit 숙박 primary use is sufficient for the registry's general-
+    # lodging fallback, without relying on a second floor API call.
+    if all("숙박" in (row.get("mainPurpsCdNm") or "") for row in rows):
+        return "일반", " / ".join(sorted(set(details))), None, representative, "title snapshot lodging fallback"
+    return None, "", None, None, "title snapshot requires floor-dependent classification"
+
+
+def enrich_latest_top100_lodging_buildings(
+        cur, bjdong=None, *, road_to_jibun_fn=road_to_jibun,
+        fetch_title_rows_fn=_fetch_title_rows):
+    """Create only one unambiguous lodging HUB building for confirmed TOP100.
+
+    The Kakao road address is converted to a legal parcel before calling
+    Building HUB.  A parcel with multiple lodging management-building IDs is
+    not resolved by business name, title name, or coordinates; it is recorded
+    for manual review.  ``bjdong`` and API callables are injectable for tests.
+    """
+    if bjdong is None:
+        code_path = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
+        if not os.path.exists(code_path):
+            print("경고: 법정동 코드 파일이 없어 TOP100 건축HUB 보완을 건너뜁니다.")
+            return {"checked": 0, "created": 0, "manual_review": 0}
+        bjdong = BjdongMap(code_path)
+    cur.execute(f"""
+        WITH latest AS (
+            SELECT source_file FROM tourism_stats t
+            WHERE stat_type = 'lodging_search_rank'
+            ORDER BY {latest_source_order_sql("t")}
+            LIMIT 1
+        )
+        SELECT t.id, t.dimensions
+        FROM tourism_stats t JOIN latest l ON l.source_file = t.source_file
+        WHERE t.stat_type = 'lodging_search_rank'
+          AND t.master_building_id IS NULL
+          AND t.metric_value > 0 AND t.metric_value <= 100
+          AND NULLIF(t.dimensions->>'kakao_confirmed_address', '') IS NOT NULL
+        ORDER BY t.metric_value, t.id LIMIT 100
+    """)
+    pending = [dict(row) for row in cur.fetchall()]
+    created = manual_review = 0
+    for stat in pending:
+        dimensions = stat.get("dimensions") or {}
+        road_address = (dimensions.get("kakao_confirmed_road_address") or "").strip()
+        if not road_address:
+            _set_lodging_match_review(cur, stat["id"], "kakao_road_address_missing")
+            manual_review += 1
+            continue
+        try:
+            parcel = road_to_jibun_fn(road_address)
+        except Exception as exc:
+            _set_lodging_match_review(
+                cur, stat["id"], "road_to_jibun_failed", {"error": type(exc).__name__}
+            )
+            manual_review += 1
+            continue
+        if not parcel:
+            _set_lodging_match_review(cur, stat["id"], "road_to_jibun_not_found")
+            manual_review += 1
+            continue
+        sgg_cd = str(parcel.get("admCd") or "")[:5]
+        umd_nm = (parcel.get("emdNm") or "").strip()
+        main = str(parcel.get("lnbrMnnm") or "").strip()
+        sub = str(parcel.get("lnbrSlno") or "").strip()
+        if not (sgg_cd and umd_nm and main):
+            _set_lodging_match_review(cur, stat["id"], "road_to_jibun_incomplete")
+            manual_review += 1
+            continue
+        bjdong_cd = bjdong.find_bjdong_cd(sgg_cd, umd_nm)
+        if not bjdong_cd:
+            _set_lodging_match_review(cur, stat["id"], "building_hub_bjdong_not_found")
+            manual_review += 1
+            continue
+        jibun = f"{'산 ' if str(parcel.get('mtYn') or '') == '1' else ''}{main}"
+        if sub and sub != "0":
+            jibun += f"-{sub}"
+        plat_gb, bun, ji = parse_jibun(jibun)
+        try:
+            title_rows = fetch_title_rows_fn(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+        except Exception as exc:
+            _set_lodging_match_review(
+                cur, stat["id"], "building_hub_title_failed", {"error": type(exc).__name__}
+            )
+            manual_review += 1
+            continue
+        identities = _hub_lodging_identities(title_rows)
+        if len(identities) != 1:
+            _set_lodging_match_review(cur, stat["id"], "building_hub_lodging_identity_ambiguous", {
+                "lodging_identity_count": len(identities),
+                "lodging_management_ids": sorted(identities),
+            })
+            manual_review += 1
+            continue
+        identity, rows = next(iter(identities.items()))
+        label, detail, subtype, representative, classification_reason = (
+            _classify_hub_title_snapshot(title_rows, identities)
+        )
+        if label not in {"생활", "관광", "일반"}:
+            _set_lodging_match_review(cur, stat["id"], "building_hub_title_classification_uncertain", {
+                "classification": label, "reason": classification_reason,
+                "management_id": identity,
+            })
+            manual_review += 1
+            continue
+        building_name = resolve_api_building_name(representative)
+        if not building_name:
+            _set_lodging_match_review(cur, stat["id"], "building_hub_building_name_missing", {
+                "management_id": identity,
+            })
+            manual_review += 1
+            continue
+        # mgmBldrgstPk is the Building HUB identity.  The schema intentionally
+        # does not impose it as a global unique key, so inspect duplicates
+        # rather than relying on an invalid ON CONFLICT target.
+        cur.execute("""
+            SELECT id FROM master_buildings WHERE mgm_bldrgst_pk = %s ORDER BY id
+        """, (identity,))
+        existing = cur.fetchall()
+        if len(existing) > 1:
+            _set_lodging_match_review(cur, stat["id"], "building_hub_identity_duplicate", {
+                "management_id": identity, "master_building_count": len(existing),
+            })
+            manual_review += 1
+            continue
+        if existing:
+            cur.execute("""
+                UPDATE master_buildings
+                SET road_address = COALESCE(road_address, %s),
+                    jibun_address = COALESCE(jibun_address, %s)
+                WHERE id = %s
+            """, (
+                road_address,
+                representative.get("plat_plc") or dimensions.get("kakao_confirmed_jibun_address"),
+                dict(existing[0])["id"],
+            ))
+            continue
+        cur.execute("""
+            INSERT INTO master_buildings
+                (building_name, road_address, jibun_address, sgg_text, sgg_cd,
+                 umd_nm, jibun, units, source, verified_at, lodging_type,
+                 lodging_type_detail, lodging_subtype, mgm_bldrgst_pk, lat, lng)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'tourism_verified', NOW(),
+                    %s, %s, %s, %s, %s, %s)
+        """, (
+            building_name, road_address,
+            representative.get("plat_plc") or dimensions.get("kakao_confirmed_jibun_address"),
+            bjdong.sgg_text(sgg_cd) or "", sgg_cd, normalize_umd_nm(umd_nm), jibun,
+            representative.get("ho_cnt") or 0, label, detail, subtype, identity,
+            float(dimensions["kakao_y"]) if dimensions.get("kakao_y") else None,
+            float(dimensions["kakao_x"]) if dimensions.get("kakao_x") else None,
+        ))
+        created += cur.rowcount
+    print(f"TOP100 건축HUB 보완: 생성 {created}/{len(pending)}, 수동검토 {manual_review}")
+    return {"checked": len(pending), "created": created, "manual_review": manual_review}
+
+
 def match_lodging_rank_to_buildings(cur, source_files):
-    """Attach only unambiguous, same-region lodging-rank rows to buildings."""
+    """Attach rank rows only when a Kakao-confirmed address has one HUB match.
+
+    Same-address multi-building complexes intentionally remain unlinked for
+    manual review.  Selecting an arbitrary/nearest tower would make the detail
+    link look authoritative while being unsafe.
+    """
     if not source_files:
-        return {"total": 0, "exact": 0, "containment": 0, "unmatched": 0}
+        return {"total": 0, "address": 0, "unmatched": 0}
     scope = ("lodging_search_rank", source_files)
     cur.execute("""
-        SELECT COUNT(*)
+        SELECT COUNT(*) AS total
         FROM tourism_stats
         WHERE stat_type = %s AND source_file = ANY(%s)
     """, scope)
-    total = cur.fetchone()[0]
-    building_sido = region_core_sql(
-        "split_part(trim(b.sgg_text), ' ', 1)",
-        "regexp_replace(trim(b.sgg_text), '^\\S+\\s+', '')",
+    count_row = cur.fetchone()
+    total = (
+        count_row["total"]
+        if isinstance(count_row, dict)
+        else count_row[0]
     )
-    tourism_sido = region_core_sql("t.sido_name", "t.sgg_name")
-    # A candidate is eligible only if both normalized region components agree.
-    # GROUP BY/HAVING deliberately rejects ambiguity rather than choosing an
-    # arbitrary building.
-    cur.execute(f"""
-        WITH candidates AS (
-            SELECT t.id AS tourism_stat_id, MIN(b.id) AS building_id
-            FROM tourism_stats t
-            JOIN master_buildings b
-              ON {building_sido} = {tourism_sido}
-             AND regexp_replace(lower(regexp_replace(trim(b.sgg_text), '^\\S+\\s+', '')), '\\s+', '', 'g')
-                 = regexp_replace(lower(coalesce(t.sgg_name, '')), '\\s+', '', 'g')
-             AND regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g')
-                 = regexp_replace(lower(coalesce(t.dimensions->>'place_name', '')), '[^0-9가-힣a-z]', '', 'g')
-            WHERE t.stat_type = %s AND t.source_file = ANY(%s)
-              AND t.master_building_id IS NULL
-            GROUP BY t.id
-            HAVING COUNT(DISTINCT b.id) = 1
-        )
-        UPDATE tourism_stats t
-        SET master_building_id = c.building_id
-        FROM candidates c
-        WHERE t.id = c.tourism_stat_id
+    cur.execute("""
+        SELECT id, dimensions
+        FROM tourism_stats
+        WHERE stat_type = %s AND source_file = ANY(%s)
+          AND master_building_id IS NULL
+          AND NULLIF(dimensions->>'kakao_confirmed_address', '') IS NOT NULL
     """, scope)
-    exact = cur.rowcount
-    cur.execute(f"""
-        WITH candidates AS (
-            SELECT t.id AS tourism_stat_id, MIN(b.id) AS building_id
-            FROM tourism_stats t
-            JOIN master_buildings b
-              ON {building_sido} = {tourism_sido}
-             AND regexp_replace(lower(regexp_replace(trim(b.sgg_text), '^\\S+\\s+', '')), '\\s+', '', 'g')
-                 = regexp_replace(lower(coalesce(t.sgg_name, '')), '\\s+', '', 'g')
-            WHERE t.stat_type = %s AND t.source_file = ANY(%s)
-              AND t.master_building_id IS NULL
-              AND length(regexp_replace(lower(coalesce(t.dimensions->>'place_name', '')), '[^0-9가-힣a-z]', '', 'g')) >= 4
-              AND length(regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g')) >= 4
-              AND (
-                    regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g')
-                    LIKE '%%' || regexp_replace(lower(t.dimensions->>'place_name'), '[^0-9가-힣a-z]', '', 'g') || '%%'
-                 OR regexp_replace(lower(t.dimensions->>'place_name'), '[^0-9가-힣a-z]', '', 'g')
-                    LIKE '%%' || regexp_replace(lower(b.building_name), '[^0-9가-힣a-z]', '', 'g') || '%%'
-              )
-            GROUP BY t.id
-            HAVING COUNT(DISTINCT b.id) = 1
+    stats = [dict(row) for row in cur.fetchall()]
+    cur.execute("""
+        SELECT id, road_address, jibun_address
+        FROM master_buildings
+        WHERE road_address IS NOT NULL OR jibun_address IS NOT NULL
+    """)
+    road_matches, jibun_matches = {}, {}
+    for raw in cur.fetchall():
+        building = dict(raw)
+        road_key = addr_norm.normalize_road_prefix(building.get("road_address"))
+        jibun_key = addr_norm.normalize_jibun_prefix(building.get("jibun_address"))
+        if road_key:
+            road_matches.setdefault(road_key, set()).add(building["id"])
+        if jibun_key:
+            jibun_matches.setdefault(jibun_key, set()).add(building["id"])
+    updates = []
+    for stat in stats:
+        dimensions = stat.get("dimensions") or {}
+        candidates = set()
+        road_key = addr_norm.normalize_road_prefix(
+            dimensions.get("kakao_confirmed_road_address")
         )
-        UPDATE tourism_stats t
-        SET master_building_id = c.building_id
-        FROM candidates c
-        WHERE t.id = c.tourism_stat_id
-    """, scope)
-    containment = cur.rowcount
+        jibun_key = addr_norm.normalize_jibun_prefix(
+            dimensions.get("kakao_confirmed_jibun_address")
+        )
+        if road_key:
+            candidates.update(road_matches.get(road_key, set()))
+        if jibun_key:
+            candidates.update(jibun_matches.get(jibun_key, set()))
+        if len(candidates) == 1:
+            updates.append((next(iter(candidates)), stat["id"]))
+    address = 0
+    for building_id, stat_id in updates:
+        cur.execute("""
+            UPDATE tourism_stats
+            SET master_building_id = %s
+            WHERE id = %s AND master_building_id IS NULL
+        """, (building_id, stat_id))
+        address += cur.rowcount
     result = {
         "total": total,
-        "exact": exact,
-        "containment": containment,
-        "unmatched": total - exact - containment,
+        "address": address,
+        "unmatched": total - address,
     }
     print(
         "관광숙박 검색순위 건물 매칭: "
-        f"전체 {total}, 정확 {exact}, 포함 {containment}, 미매칭 {result['unmatched']}"
+        f"전체 {total}, 카카오 확인 주소 {address}, 미매칭 {result['unmatched']}"
     )
     return result
 
@@ -596,7 +964,7 @@ def main():
         raise SystemExit(f"{root}에 ZIP 또는 CSV가 없습니다.")
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         source_files = sorted({row[7] for row in rows})
         cur.execute(
             "DELETE FROM tourism_stats WHERE source_file = ANY(%s)",
@@ -611,6 +979,8 @@ def main():
                 metric_value = EXCLUDED.metric_value,
                 dimensions = EXCLUDED.dimensions
         """, rows, page_size=1000)
+        verify_latest_top100_lodging_addresses(cur)
+        enrich_latest_top100_lodging_buildings(cur)
         match_lodging_rank_to_buildings(cur, source_files)
         refresh_coords(cur)
         refresh_dong_coords(cur)

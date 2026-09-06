@@ -30377,36 +30377,33 @@ def _lodging_rank_place_matches(expected, candidate):
     return bool(union) and len(expected_pairs & candidate_pairs) / len(union) >= 0.6
 
 
-def _lodging_rank_unique_master_candidate(cur, place_name, sido, sgg):
-    """상호·지역이 유일하게 맞는 기존 마스터 건물만 반환한다."""
-    place_key = addr_norm.normalize_name(place_name)
-    if not place_key:
-        return None
-    cur.execute("""
-        SELECT id, building_name
-        FROM master_buildings
-        WHERE building_name <> '-'
-          AND building_name <> '.'
-          AND (%s = '' OR sgg_text ILIKE %s)
-          AND (
-               regexp_replace(lower(building_name), '[^0-9a-z가-힣]', '', 'g') = %s
-            OR (
-                 length(%s) >= 5
-                 AND (
-                      regexp_replace(lower(building_name), '[^0-9a-z가-힣]', '', 'g') LIKE '%%' || %s || '%%'
-                   OR %s LIKE '%%' || regexp_replace(lower(building_name), '[^0-9a-z가-힣]', '', 'g') || '%%'
-                 )
-               )
-          )
-        ORDER BY id
-        LIMIT 3
-    """, (sgg, f"%{sgg}%", place_key, place_key, place_key, place_key))
-    candidates = [dict(row) for row in cur.fetchall()]
-    return candidates[0] if len(candidates) == 1 else None
+def _lodging_rank_kakao_candidates(place_name, sido, sgg, documents):
+    """Return only Kakao hits in the rank row's normalized administrative area."""
+    sgg_key = addr_norm.normalize_name(sgg) or ""
+    sido_key = addr_norm.normalize_name(sido) or ""
+    sido_key = re.sub(r"(특별자치도|특별자치시|특별시|광역시|도|시)$", "", sido_key)
+    sido_key = re.sub(r"^전라", "전", sido_key)
+    sido_key = re.sub(r"^충청", "충", sido_key)
+    sido_key = re.sub(r"^경상", "경", sido_key)
+    candidates = []
+    for item in documents:
+        address = str(item.get("road_address_name") or item.get("address_name") or "").strip()
+        address_key = addr_norm.normalize_name(address) or ""
+        if (
+            _lodging_rank_place_matches(place_name, item.get("place_name"))
+            and sgg_key and sgg_key in address_key
+            and sido_key and sido_key in address_key
+        ):
+            candidates.append(item)
+    return candidates
 
 
 def _lodging_rank_master_by_address(cur, document, sgg):
-    """카카오가 확인한 주소와 정확히 같은 마스터 건물을 고른다."""
+    """카카오 확인 주소와 유일하게 같은 마스터 건물만 고른다.
+
+    같은 주소에 여러 동이 있는 복합단지는 임의의 가까운 동을 고르지 않고
+    수동 검토로 남긴다. TOP100 일괄 동기화도 이와 같은 안전 규칙을 쓴다.
+    """
     road_key = addr_norm.normalize_road_prefix(document.get("road_address_name"))
     jibun_key = addr_norm.normalize_jibun_prefix(document.get("address_name"))
     if not road_key and not jibun_key:
@@ -30426,22 +30423,6 @@ def _lodging_rank_master_by_address(cur, document, sgg):
             matches.append(item)
     if len(matches) == 1:
         return matches[0]
-    if len(matches) > 1:
-        try:
-            target_lat = float(document.get("y"))
-            target_lng = float(document.get("x"))
-            located = [
-                item for item in matches
-                if item.get("lat") is not None and item.get("lng") is not None
-            ]
-            if located:
-                located.sort(key=lambda item:
-                    (float(item["lat"]) - target_lat) ** 2
-                    + (float(item["lng"]) - target_lng) ** 2
-                )
-                return located[0]
-        except (TypeError, ValueError):
-            pass
     return None
 
 
@@ -30476,16 +30457,6 @@ def tourism_lodging_rank_location():
         if source_row is None:
             return jsonify({"ok": False, "message": "TOP100 숙소를 확인하지 못했습니다."}), 404
 
-        existing = _lodging_rank_unique_master_candidate(cur, place_name, sido, sgg)
-        if existing:
-            payload = {
-                "ok": True,
-                "building_id": existing["id"],
-                "place_name": place_name,
-            }
-            _LODGING_RANK_LOCATION_CACHE[cache_key] = {"ts": time.time(), "payload": payload}
-            return jsonify(payload)
-
         client_id = os.environ.get("KAKAO_REST_API_KEY", "").strip()
         if not client_id:
             return jsonify({"ok": False, "message": "지도 위치 검색을 사용할 수 없습니다."}), 503
@@ -30502,30 +30473,12 @@ def tourism_lodging_rank_location():
             )
             response.raise_for_status()
             documents = response.json().get("documents", [])
-            document = next((
-                item for item in documents
-                if _lodging_rank_place_matches(search_name, item.get("place_name"))
-            ), None)
-            if document is None and documents:
-                address_counts = {}
-                for item in documents:
-                    address = str(
-                        item.get("road_address_name")
-                        or item.get("address_name")
-                        or ""
-                    ).strip()
-                    if address:
-                        address_counts[address] = address_counts.get(address, 0) + 1
-                common_address = next((
-                    address for address, count in address_counts.items()
-                    if count >= 3
-                ), None)
-                if common_address:
-                    document = next(item for item in documents if str(
-                        item.get("road_address_name")
-                        or item.get("address_name")
-                        or ""
-                    ).strip() == common_address)
+            candidates = _lodging_rank_kakao_candidates(
+                search_name, sido, sgg, documents
+            )
+            # Do not collapse same-brand branches by a shared address/name:
+            # a public read endpoint must not choose an unverified building.
+            document = candidates[0] if len(candidates) == 1 else None
             if document is not None:
                 break
         if document is None:

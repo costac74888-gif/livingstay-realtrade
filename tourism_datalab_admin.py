@@ -153,7 +153,13 @@ def apply(conn, token, owner):
         cur.execute("DELETE FROM tourism_stats WHERE source_file = ANY(%s)", (sources,))
         execute_values(cur, """INSERT INTO tourism_stats (stat_type,sido_name,sgg_name,ref_yearmonth,metric_name,metric_value,unit,source_file,source_period,dimensions,row_hash)
           VALUES %s ON CONFLICT (row_hash) DO UPDATE SET metric_value=EXCLUDED.metric_value,dimensions=EXCLUDED.dimensions""", rows, page_size=1000)
-        importer.match_lodging_rank_to_buildings(cur, sources); importer.refresh_coords(cur); importer.refresh_dong_coords(cur)
+        # Keep admin uploads on the same transactional resolution path as the
+        # CLI importer.  These calls run after the source advisory locks and
+        # before this transaction is committed; no public GET mutates links.
+        importer.verify_latest_top100_lodging_addresses(cur)
+        importer.enrich_latest_top100_lodging_buildings(cur)
+        importer.match_lodging_rank_to_buildings(cur, sources)
+        importer.refresh_coords(cur); importer.refresh_dong_coords(cur)
         cur.execute("UPDATE tourism_datalab_stages SET state='applied', applied_at=NOW(), error_message=NULL WHERE token=%s", (token,))
         conn.commit(); return {"applied_rows": len(rows), "source_files": len(sources)}
     except Exception as exc:

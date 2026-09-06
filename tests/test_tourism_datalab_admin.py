@@ -100,19 +100,53 @@ class TourismDatalabAdminTests(unittest.TestCase):
         conn=Conn({"manifest":manifest,"manifest_hash":digest})
         # Force matching failure after the atomic claim; test never executes DB data.
         old=importer.match_lodging_rank_to_buildings
+        old_verify=importer.verify_latest_top100_lodging_addresses
+        old_enrich=importer.enrich_latest_top100_lodging_buildings
         old_values=admin.execute_values
         importer.match_lodging_rank_to_buildings=lambda *a: (_ for _ in ()).throw(RuntimeError("boom"))
+        importer.verify_latest_top100_lodging_addresses=lambda *a: None
+        importer.enrich_latest_top100_lodging_buildings=lambda *a: None
         admin.execute_values=lambda *a, **k: None
         try:
             with self.assertRaises(RuntimeError): admin.apply(conn,"t",1)
         finally:
             importer.match_lodging_rank_to_buildings=old
+            importer.verify_latest_top100_lodging_addresses=old_verify
+            importer.enrich_latest_top100_lodging_buildings=old_enrich
             admin.execute_values=old_values
         calls="\n".join(q for q,_ in conn.cur.calls)
         self.assertIn("state='applying'",calls); self.assertIn("state IN ('previewed','failed')",calls)
         self.assertIn("pg_advisory_xact_lock",calls)
         self.assertLess(calls.index("pg_advisory_xact_lock"), calls.index("DELETE FROM tourism_stats"))
         self.assertGreaterEqual(conn.rollbacks,1)
+
+    def test_apply_runs_top100_kakao_hub_and_address_link_under_source_lock(self):
+        manifest={"members":[],"rows":[["lodging_search_rank",None,None,None,"검색순위",1,"위", "f",None,"{}", "h"]],"unsupported_members":[]}
+        digest=hashlib.sha256(json.dumps(manifest,ensure_ascii=False,separators=(",",":"),default=str).encode()).hexdigest()
+        conn=Conn({"manifest":manifest,"manifest_hash":digest})
+        calls=[]
+        originals=(
+            admin.execute_values, importer.verify_latest_top100_lodging_addresses,
+            importer.enrich_latest_top100_lodging_buildings,
+            importer.match_lodging_rank_to_buildings, importer.refresh_coords,
+            importer.refresh_dong_coords,
+        )
+        admin.execute_values=lambda *a, **k: calls.append("insert")
+        importer.verify_latest_top100_lodging_addresses=lambda cur: calls.append("kakao")
+        importer.enrich_latest_top100_lodging_buildings=lambda cur: calls.append("hub")
+        importer.match_lodging_rank_to_buildings=lambda cur, sources: calls.append(("link", sources))
+        importer.refresh_coords=lambda cur: calls.append("coords")
+        importer.refresh_dong_coords=lambda cur: calls.append("dong")
+        try:
+            admin.apply(conn,"t",1)
+        finally:
+            (admin.execute_values, importer.verify_latest_top100_lodging_addresses,
+             importer.enrich_latest_top100_lodging_buildings,
+             importer.match_lodging_rank_to_buildings, importer.refresh_coords,
+             importer.refresh_dong_coords)=originals
+        self.assertEqual(calls, ["insert","kakao","hub",("link",["f"]),"coords","dong"])
+        sql="\n".join(q for q,_ in conn.cur.calls)
+        self.assertLess(sql.index("pg_advisory_xact_lock"), sql.index("DELETE FROM tourism_stats"))
 
     def test_source_lock_keys_are_stable_signed_and_sorted_contract(self):
         self.assertEqual(admin.source_lock_key("a"), admin.source_lock_key("a"))
