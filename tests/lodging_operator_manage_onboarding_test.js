@@ -9,6 +9,12 @@ expect(manage.includes('id="applyLink"') && manage.includes("운영자 등록 �
 expect(manage.includes("applyAction.hidden=false"), "운영자 관리 접근 실패 후 등록 신청 버튼이 표시되지 않습니다.");
 expect(manage.includes("allowedTypes.has(requestedType)"), "허용된 숙박 유형만 신청 화면에 전달하지 않습니다.");
 expect(manage.includes("`/apply/lodging-operator?type=${requestedType}`"), "운영자 등록 신청 링크에 숙박 유형이 전달되지 않습니다.");
+expect(
+  apply.includes("chooseBuilding(buildingId).then(valid=>") &&
+  apply.includes("steps[0].hidden=true") &&
+  apply.includes("document.querySelector('[data-step=\"3\"] .back').hidden=true;show(3)"),
+  "상세페이지에서 시설과 유형이 전달된 신청은 시설 선택 단계를 건너뛰지 않습니다.",
+);
 expect(apply.includes("<title>운영자등록 | 홈앤스테이</title>"), "운영자 등록 화면의 문서 제목이 올바르지 않습니다.");
 expect(apply.includes("1. 숙박시설 운영자 등록"), "운영자 등록 화면의 제목이 올바르지 않습니다.");
 
