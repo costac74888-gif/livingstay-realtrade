@@ -10,3 +10,5 @@ Rule: an `ALTER TABLE ... ADD COLUMN ... REFERENCES master_buildings(id)` (or an
 **How to apply:** before applying schema changes with FK references to hot tables, check pg_locks/pg_blocking_pids; if blocked, `pg_terminate_backend` the sync session (scripts are retry-safe via failure queue) and kill stacked waiters, then run init_db manually and restart the app. Consider `SET lock_timeout` to fail fast instead of queueing.
 
 **Safe path while syncs run:** for small DDL not touching master_buildings (e.g. ALTER on agents/operators), apply it manually with `SET lock_timeout='5s'` and then `UPDATE app_meta SET value=SCHEMA_VERSION WHERE key='schema_version'` so the app boots via the fast path without re-running full DDL.
+
+**Post-merge setup rule:** tests/build steps that import `app` must set `SKIP_STARTUP_SCHEMA_INIT=1`. Post-merge setup runs before workflow reconciliation, so the old app and validations may still hold DB locks; accidental DDL during a frontend test can deadlock and consume the setup timeout. Let the reconciled app restart apply schema, then verify the DB schema version explicitly.
