@@ -11,8 +11,12 @@ function expect(condition, message) {
 
 expect(main.includes("_publicHttpUrl(camp.info_url) || _publicHttpUrl(camp.source_url)"), "공식 링크 fallback 계약이 잘못되었습니다.");
 expect(main.includes("function openBuildingPhotoGallery") && main.includes('aria-modal", "true"'), "접근 가능한 전체 사진 모달이 없습니다.");
-expect(!main.includes("function _campingDetailEntries") && !main.includes("camp.detail_fields"), "고캠핑 원문 상세 필드가 공개 화면에 렌더링되면 안 됩니다.");
+expect(main.includes("CAMPING_DETAIL_LABELS") && main.includes("camp.detail_fields"), "허용된 캠핑 상세 운영정보 렌더링 계약이 없습니다.");
 expect(!main.includes('class="camp-intro"') && !main.includes('class="camp-contact"'), "고캠핑 원문 소개·중복 주소가 공개 화면에 렌더링되면 안 됩니다.");
+expect(main.includes('href="tel:${escapeHtml(camp.phone)}"'), "상세 문의처 전화 연결이 없습니다.");
+expect(main.includes(">홈페이지 바로가기</a>"), "상세 홈페이지 연결이 없습니다.");
+expect(main.includes("_campingReservationMethodHtml(item.value, reservationUrl)"), "상세 온라인 예약방법 연결이 없습니다.");
+expect(!main.includes('"예약페이지",'), "중복 예약페이지 행은 허용 목록에서 제외해야 합니다.");
 expect(css.includes(".b-photo-gallery") && !main.includes("class=\"camp-gallery-strip\""), "중복 캠핑 사진 스트립이 남아 있습니다.");
 expect(facilityIcons.includes("window.FacilityIcons") && facilityIcons.includes("일반 야영"), "공용 시설 아이콘 라이브러리가 없습니다.");
 expect(main.includes("FacilityIcons.html(item)") && main.includes(">고캠핑</a>"), "시설 아이콘·고캠핑 라벨 계약이 없습니다.");

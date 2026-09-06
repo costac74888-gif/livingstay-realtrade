@@ -5782,6 +5782,33 @@ function _campingAnimalLabel(value){
   return `반려동물 동반 ${policy}`;
 }
 
+const CAMPING_DETAIL_LABELS = new Set([
+  "문의처", "캠핑장유형", "운영기간", "운영일", "홈페이지", "예약방법",
+  "주변이용가능시설", "주요시설", "기타정보", "사이트간격",
+  "바닥형태(단위:면)", "캠핑장비대여", "반려동물출입", "화로대",
+  "안전시설현황",
+]);
+
+function _campingDetailEntries(value){
+  if (!Array.isArray(value)) return [];
+  return value.map(item => {
+    const label = String(item?.label || item?.name || item?.key || "").trim();
+    const value = String(item?.value ?? item?.content ?? "").trim();
+    const key = label.replace(/\s+/g, "");
+    return {label, value, key};
+  }).filter(item => item.value && CAMPING_DETAIL_LABELS.has(item.key));
+}
+
+function _campingReservationMethodHtml(value, reservationUrl){
+  const parts = String(value || "").split(",").map(item => item.trim()).filter(Boolean);
+  return parts.map(part => {
+    const safe = escapeHtml(part);
+    return reservationUrl && part.includes("온라인")
+      ? `<a href="${escapeHtml(reservationUrl)}" target="_blank" rel="noopener noreferrer">${safe}</a>`
+      : safe;
+  }).join(", ");
+}
+
 function _renderCampingSection(b){
   const card = document.getElementById("bCampCard");
   const body = document.getElementById("bCampBody");
@@ -5815,10 +5842,13 @@ function _renderCampingSection(b){
     ["개수대", camp.sink_count ?? b.camping_wtrpl_co, "개"],
     ["전체면적", camp.facility_area ?? b.camping_area, "㎡"],
   ].filter(([, value]) => value != null && value !== "" && Number(value) > 0);
+  const details = _campingDetailEntries(camp.detail_fields);
+  const homepageUrl = _publicHttpUrl(camp.homepage_url);
+  const reservationUrl = _publicHttpUrl(camp.reservation_url);
   // 대표 사진은 상단 건물 사진 슬라이더가 고캠핑 사진 전체를 제공한다.
   // 안내 카드 안에서는 같은 이미지를 다시 노출하지 않는다.
   const hasContent = sites.length || amenities.length || seasons.length || chips.length
-    || facts.length || infoUrl || camp.homepage_url || camp.phone;
+    || facts.length || details.length || infoUrl || camp.homepage_url || camp.phone;
   if (!hasContent) {
     card.style.display = "none";
     body.innerHTML = "";
@@ -5863,6 +5893,17 @@ function _renderCampingSection(b){
       <div class="camp-section-label">운영 기간</div>
       <div class="camp-chips camp-seasons">${seasons.map(item =>
         `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
+    ${details.length ? `<div class="camp-detail-block"><div class="camp-section-label">상세 운영정보</div><dl class="camp-detail-list">${details.map(item => {
+      let valueHtml = escapeHtml(item.value);
+      if (item.key === "문의처" && camp.phone) {
+        valueHtml = `<a href="tel:${escapeHtml(camp.phone)}">${escapeHtml(camp.phone)}</a>`;
+      } else if (item.key === "홈페이지" && homepageUrl) {
+        valueHtml = `<a href="${escapeHtml(homepageUrl)}" target="_blank" rel="noopener noreferrer">홈페이지 바로가기</a>`;
+      } else if (item.key === "예약방법") {
+        valueHtml = _campingReservationMethodHtml(item.value, reservationUrl);
+      }
+      return `<div><dt>${escapeHtml(item.label)}</dt><dd>${valueHtml}</dd></div>`;
+    }).join("")}</dl></div>` : ""}
     ${camp.updated_at ? `<div class="camp-updated">정보 업데이트 ${escapeHtml(String(camp.updated_at))}</div>` : ""}
   `;
   body.querySelectorAll("[data-camp-photo-index]").forEach(button => {
