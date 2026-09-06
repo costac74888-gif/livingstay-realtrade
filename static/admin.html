@@ -402,7 +402,7 @@
           html += `<tr style="background:${bg};${isTotal ? "font-weight:700;" : ""}border-bottom:1px solid #EEE;">`;
           for (const c of COLS) html += c.fmt(row);
           html += `</tr>`;
-          if (row.type === "일반" && Array.isArray(row.sub_rows)) {
+          if ((row.type === "일반" || row.type === "관광") && Array.isArray(row.sub_rows)) {
             row.sub_rows.forEach((sub) => {
               html += `<tr style="background:#FCFCFC;border-bottom:1px solid #F0F0F0;">${subRowCells(sub)}</tr>`;
             });
