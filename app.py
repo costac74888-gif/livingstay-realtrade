@@ -31734,6 +31734,36 @@ def tourism_datalab_coverage():
         if conn: conn.close()
 
 
+@app.route("/api/admin/tourism-datalab/collections")
+@require_admin
+@limiter.limit("20 per minute")
+def tourism_datalab_collections():
+    """Persistent upload history and official monthly update reminders."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT stat_type, source_file, source_period,
+                   MAX(ref_yearmonth) AS max_ref_yearmonth,
+                   MIN(collected_at)::text AS collected_at,
+                   COUNT(*) AS rows
+            FROM tourism_stats
+            WHERE stat_type = ANY(%s)
+            GROUP BY stat_type, source_file, source_period
+            ORDER BY MIN(collected_at) DESC, source_file
+        """, (list(tourism_datalab_admin.COLLECTION_POLICIES),))
+        return jsonify({
+            "ok": True,
+            **tourism_datalab_admin.collection_inventory(cur.fetchall()),
+        })
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 @app.route("/api/admin/tourism-datalab/preview", methods=["POST"])
 @require_admin
 @limiter.limit("6 per minute")

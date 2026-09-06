@@ -3,6 +3,7 @@ import io
 import json
 import unittest
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import import_tourism_stats as importer
@@ -35,6 +36,101 @@ def zipped(entries):
     return stream.getvalue()
 
 class TourismDatalabAdminTests(unittest.TestCase):
+    def test_collection_inventory_computes_official_due_dates_and_history(self):
+        rows = [
+            {
+                "stat_type": "visitor_sgg",
+                "source_file": "vis-new.zip::visitor.csv",
+                "source_period": "202507-202606",
+                "max_ref_yearmonth": "202606",
+                "collected_at": "2026-09-05 01:00:00+00",
+                "rows": 458,
+            },
+            {
+                "stat_type": "visitor_sgg",
+                "source_file": "vis-old.zip::visitor.csv",
+                "source_period": "202406-202505",
+                "max_ref_yearmonth": "202505",
+                # Re-uploaded later, but normal metrics remain period-first.
+                "collected_at": "2026-09-06 02:00:00+00",
+                "rows": 458,
+            },
+            {
+                "stat_type": "consumption_region",
+                "source_file": "card.zip::spend.csv",
+                "source_period": "202508-202607",
+                "max_ref_yearmonth": "202607",
+                "collected_at": "2026-09-05 02:00:00+00",
+                "rows": 466,
+            },
+            {
+                "stat_type": "search_sgg",
+                "source_file": "nav.zip::search.csv",
+                "source_period": "202509-202608",
+                "max_ref_yearmonth": "202608",
+                "collected_at": "2026-09-06 01:00:00+00",
+                "rows": 466,
+            },
+        ]
+        result = admin.collection_inventory(rows, today=date(2026, 9, 6))
+        by_type = {}
+        for item in result["items"]:
+            by_type.setdefault(item["stat_type"], []).append(item)
+        self.assertEqual(by_type["visitor_sgg"][0]["next_update_date"], "2026-08-04")
+        self.assertEqual(by_type["visitor_sgg"][0]["status"], "overdue")
+        self.assertEqual(by_type["visitor_sgg"][1]["status"], "history")
+        self.assertEqual(by_type["consumption_region"][0]["next_update_date"], "2026-09-11")
+        self.assertEqual(by_type["consumption_region"][0]["status"], "due_soon")
+        self.assertEqual(by_type["search_sgg"][0]["next_update_date"], "2026-10-06")
+        self.assertEqual(by_type["search_sgg"][0]["status"], "current")
+        self.assertEqual(result["summary"]["categories"], 19)
+        self.assertGreater(result["summary"]["missing"], 0)
+        self.assertIn("datalab.visitkorea.or.kr", result["official_guide_url"])
+
+    def test_collection_inventory_uses_collection_time_for_search_ranking(self):
+        rows = [
+            {
+                "stat_type": "search_ranking",
+                "source_file": "older-upload.zip::rank.csv",
+                "source_period": "202501-202512",
+                "max_ref_yearmonth": "202512",
+                "collected_at": "2026-01-01 01:00:00+00",
+                "rows": 500,
+            },
+            {
+                "stat_type": "search_ranking",
+                "source_file": "new-upload.zip::rank.csv",
+                "source_period": "202401-202411",
+                "max_ref_yearmonth": "202411",
+                "collected_at": "2026-02-01 01:00:00+00",
+                "rows": 500,
+            },
+        ]
+        result = admin.collection_inventory(rows, today=date(2026, 2, 2))
+        items = [
+            item for item in result["items"]
+            if item["stat_type"] == "search_ranking"
+        ]
+        self.assertEqual(items[0]["archive_name"], "new-upload.zip")
+        self.assertTrue(items[0]["is_latest"])
+        self.assertEqual(items[1]["status"], "history")
+
+    def test_collection_inventory_marks_unknown_baseline_for_manual_check(self):
+        result = admin.collection_inventory([{
+            "stat_type": "lodging_search_rank",
+            "source_file": "top100.csv::top100.csv",
+            "source_period": None,
+            "max_ref_yearmonth": None,
+            "collected_at": "2026-09-06 01:00:00+00",
+            "rows": 100,
+        }], today=date(2026, 9, 6))
+        item = next(
+            row for row in result["items"]
+            if row["stat_type"] == "lodging_search_rank"
+        )
+        self.assertEqual(item["status"], "unknown")
+        self.assertIsNone(item["next_update_date"])
+
     def test_owner_rejects_missing_bool_and_string(self):
         for value in (None, True, "1", 0):
             with self.assertRaises(ValueError): admin.preview(Conn(), [Upload("x.csv",RAW)], value)

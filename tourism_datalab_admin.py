@@ -1,6 +1,7 @@
 """Validation and PostgreSQL-backed one-time staging for Data Lab uploads."""
-import csv, hashlib, hmac, io, json, os, re, stat, zipfile, secrets
-from datetime import timedelta
+import calendar, csv, hashlib, hmac, io, json, os, re, stat, zipfile, secrets
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import import_tourism_stats as importer
 from psycopg2.extras import execute_values
@@ -22,6 +23,31 @@ HEADER_CONTRACTS = {
  "lodging_sector":("업종명","기준년도","숙박영업현황수","분포율"), "camping_sector":("업종명","기준년도","현황수","분포율"),
  "camping_site_type":("업종명","기준년도","현황수"),
 }
+
+COLLECTION_POLICIES = {
+    "visitor_sgg": ("방문자·이동통신", "지역별 방문자 수(기초)", "KT 이동통신", 4),
+    "visitor_sido": ("방문자·이동통신", "지역별 방문자 수(광역)", "KT 이동통신", 4),
+    "visitor_trend": ("방문자·이동통신", "방문자 수 추이", "KT 이동통신", 4),
+    "foreign_sgg": ("방문자·이동통신", "외국인 방문자 수(기초)", "KT 이동통신", 4),
+    "foreign_sido": ("방문자·이동통신", "외국인 방문자 수(광역)", "KT 이동통신", 4),
+    "foreign_trend": ("방문자·이동통신", "외국인 방문자 수 추이", "KT 이동통신", 4),
+    "foreign_country": ("방문자·이동통신", "외국인 방문자 거주국", "KT 이동통신", 4),
+    "surge_domestic_dong": ("방문자·이동통신", "내국인 방문 급등동네", "KT 이동통신", 4),
+    "surge_foreign_dong": ("방문자·이동통신", "외국인 방문 급등동네", "KT 이동통신", 4),
+    "consumption_region": ("관광소비·신용카드", "지역별 관광지출액", "신한카드", 11),
+    "consumption_trend": ("관광소비·신용카드", "관광소비 추이", "신한카드", 11),
+    "consumption_sector": ("관광소비·신용카드", "업종별 관광지출액", "신한카드", 11),
+    "search_sgg": ("관광검색·내비게이션", "지역별 검색건수", "TMAP 내비게이션", 6),
+    "search_trend": ("관광검색·내비게이션", "검색건수 추이", "TMAP 내비게이션", 6),
+    "search_ranking": ("관광검색·내비게이션", "지역별 관광지 검색순위", "TMAP 내비게이션", 6),
+    "lodging_search_rank": ("관광검색·내비게이션", "숙박시설 검색TOP100", "TMAP 내비게이션", 6),
+    "lodging_sector": ("관광사업체", "숙박업종별 분포", "한국관광공사", 6),
+    "camping_sector": ("관광사업체", "캠핑장 업종별 분포", "한국관광공사", 6),
+    "camping_site_type": ("관광사업체", "캠핑사이트 유형별 현황", "한국관광공사", 6),
+}
+OFFICIAL_UPDATE_GUIDE_URL = (
+    "https://datalab.visitkorea.or.kr/datalab/portal/getMetaInfoList.do"
+)
 
 def _owner(owner):
     if isinstance(owner, bool) or not isinstance(owner, int) or owner <= 0:
@@ -46,6 +72,136 @@ def _manifest_digest(manifest):
         default=str,
     )
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _month_add(year, month, offset):
+    zero_based = year * 12 + month - 1 + offset
+    return zero_based // 12, zero_based % 12 + 1
+
+
+def _baseline_end_month(source_period, max_ref_yearmonth):
+    candidates = re.findall(
+        r"(?<!\d)(20\d{2})[-./]?([01]\d)(?!\d)",
+        str(source_period or ""),
+    )
+    if candidates:
+        year, month = map(int, candidates[-1])
+        return (year, month) if 1 <= month <= 12 else None
+    match = re.search(
+        r"(?<!\d)(20\d{2})[-./]?([01]\d)(?!\d)",
+        str(max_ref_yearmonth or ""),
+    )
+    if not match:
+        return None
+    year, month = map(int, match.groups())
+    return (year, month) if 1 <= month <= 12 else None
+
+
+def _next_monthly_release(source_period, max_ref_yearmonth, update_day):
+    baseline = _baseline_end_month(source_period, max_ref_yearmonth)
+    if not baseline:
+        return None
+    # Monthly providers publish the previous month on the next month's
+    # official update day.  The next not-yet-collected baseline therefore
+    # becomes available two calendar months after the latest baseline.
+    year, month = _month_add(*baseline, 2)
+    return date(year, month, min(update_day, calendar.monthrange(year, month)[1]))
+
+
+def _source_history_order(row):
+    """Mirror import_tourism_stats.latest_source_order_sql in Python."""
+    stat_type = str(row.get("stat_type") or "")
+    source_period = str(row.get("source_period") or "")
+    start_period, separator, end_period = source_period.partition("-")
+    collected_at = str(row.get("collected_at") or "")
+    source_file = str(row.get("source_file") or "")
+    if stat_type == "search_ranking":
+        return (
+            collected_at, "", "", collected_at, source_file, source_period
+        )
+    return (
+        "", end_period if separator else "", start_period if separator else "",
+        collected_at, source_file, source_period,
+    )
+
+
+def collection_inventory(raw_rows, today=None):
+    """Build the admin collection board from append-only tourism source rows."""
+    today = today or datetime.now(ZoneInfo("Asia/Seoul")).date()
+    rows = [dict(row) for row in raw_rows]
+    by_type = {}
+    for row in rows:
+        by_type.setdefault(row["stat_type"], []).append(row)
+    items = []
+    for stat_type, policy in COLLECTION_POLICIES.items():
+        group, label, provider, update_day = policy
+        histories = sorted(
+            by_type.get(stat_type, []),
+            key=_source_history_order,
+            reverse=True,
+        )
+        if not histories:
+            items.append({
+                "stat_type": stat_type, "group": group, "label": label,
+                "provider": provider, "update_day": update_day,
+                "archive_name": None, "file_name": None, "source_period": None,
+                "baseline_date": None, "collected_at": None, "rows": 0,
+                "next_update_date": None, "status": "missing",
+                "is_latest": True,
+            })
+            continue
+        for index, row in enumerate(histories):
+            source_file = row.get("source_file") or ""
+            archive_name, separator, member_name = source_file.partition("::")
+            baseline = _baseline_end_month(
+                row.get("source_period"), row.get("max_ref_yearmonth")
+            )
+            next_release = _next_monthly_release(
+                row.get("source_period"), row.get("max_ref_yearmonth"), update_day
+            )
+            is_latest = index == 0
+            if not is_latest:
+                status = "history"
+            elif next_release is None:
+                status = "unknown"
+            elif next_release < today:
+                status = "overdue"
+            elif next_release <= today + timedelta(days=7):
+                status = "due_soon"
+            else:
+                status = "current"
+            items.append({
+                "stat_type": stat_type, "group": group, "label": label,
+                "provider": provider, "update_day": update_day,
+                "archive_name": archive_name or None,
+                "file_name": member_name if separator else archive_name or None,
+                "source_period": row.get("source_period"),
+                "baseline_date": (
+                    f"{baseline[0]:04d}-{baseline[1]:02d}" if baseline else None
+                ),
+                "collected_at": row.get("collected_at"),
+                "rows": int(row.get("rows") or 0),
+                "next_update_date": next_release.isoformat() if next_release else None,
+                "status": status, "is_latest": is_latest,
+            })
+    latest = [item for item in items if item["is_latest"]]
+    return {
+        "items": items,
+        "groups": sorted({item["group"] for item in latest}),
+        "providers": sorted({item["provider"] for item in latest}),
+        "summary": {
+            "categories": len(latest),
+            "archives": len({
+                item["archive_name"] for item in items if item["archive_name"]
+            }),
+            "overdue": sum(item["status"] == "overdue" for item in latest),
+            "due_soon": sum(item["status"] == "due_soon" for item in latest),
+            "missing": sum(item["status"] == "missing" for item in latest),
+            "unknown": sum(item["status"] == "unknown" for item in latest),
+        },
+        "official_guide_url": OFFICIAL_UPDATE_GUIDE_URL,
+        "as_of": today.isoformat(),
+    }
 
 
 def _csv_rows(name, raw):

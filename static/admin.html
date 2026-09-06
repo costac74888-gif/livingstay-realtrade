@@ -89,6 +89,28 @@
    .presale-field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;font-weight:700;color:var(--ink-soft)}
    .presale-field .member-edit-input{margin:0}
    @media(max-width:700px){#presaleForm,#promotionForm{grid-template-columns:1fr!important}.presale-field[style]{grid-column:auto!important}}
+   /* === 관광 데이터랩 운영 보드 === */
+   .tdl-page{--tdl-ink:#16202E;--tdl-muted:#697482;--tdl-line:#DDE1E6;--tdl-paper:#FCFBF8;--tdl-brass:#B4863F;color:var(--tdl-ink)}
+   .tdl-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+   .tdl-toolbar-copy{min-width:240px}.tdl-kicker{font-size:11px;letter-spacing:.08em;color:var(--tdl-brass);font-weight:800;text-transform:uppercase;margin-bottom:3px}
+   .tdl-title{margin:0;font-size:22px;letter-spacing:-.03em}.tdl-sub{margin:5px 0 0;color:var(--tdl-muted);font-size:12.5px}
+   .tdl-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+   .tdl-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:9px;margin-bottom:12px}
+   .tdl-stat{background:var(--tdl-paper);border:1px solid var(--tdl-line);border-radius:8px;padding:11px 12px}
+   .tdl-stat-label{display:block;color:var(--tdl-muted);font-size:11px;margin-bottom:5px}.tdl-stat-value{font-size:20px;font-weight:800;letter-spacing:-.04em}
+   .tdl-stat-alert{border-color:#E5B6AF;background:#FFF8F6}.tdl-stat-alert .tdl-stat-value{color:#A2372D}
+   .tdl-card{background:#fff;border:1px solid var(--tdl-line);border-radius:9px;overflow:hidden}
+   .tdl-card-head{padding:11px 13px;border-bottom:1px solid var(--tdl-line);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+   .tdl-tabs{display:flex;gap:4px;overflow:auto;padding:4px;background:#F2F0EB;border-radius:7px}.tdl-tab{border:0;background:transparent;color:var(--tdl-muted);padding:7px 11px;border-radius:5px;font:600 12px inherit;white-space:nowrap;cursor:pointer}.tdl-tab:hover{color:var(--tdl-ink)}.tdl-tab.is-active{background:#fff;color:var(--tdl-ink);box-shadow:0 1px 3px #1d27320d}
+   .tdl-filters{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:7px;padding:10px 13px;background:#FBFAF7;border-bottom:1px solid var(--tdl-line)}
+   .tdl-input,.tdl-select{box-sizing:border-box;width:100%;height:32px;border:1px solid #D6DCE2;border-radius:5px;background:#fff;padding:0 9px;color:var(--tdl-ink);font:12px inherit}.tdl-input:focus,.tdl-select:focus{outline:2px solid #F3EAD9;border-color:var(--tdl-brass)}
+   .tdl-table-wrap{overflow-x:auto}.tdl-table{width:100%;min-width:1120px;border-collapse:collapse;font-size:11.5px}.tdl-table th{background:#F0EBE1;color:#4B5662;padding:8px 9px;text-align:left;white-space:nowrap;border-bottom:1px solid #D4C9B0;font-weight:800}.tdl-table td{padding:8px 9px;border-bottom:1px solid #EEF0F2;vertical-align:top;line-height:1.4}.tdl-table tbody tr:hover{background:#FFFCF4}.tdl-table tbody tr:last-child td{border-bottom:0}
+   .tdl-main-label{font-weight:750;color:var(--tdl-ink)}.tdl-subtext{color:var(--tdl-muted);font-size:10.5px;margin-top:2px;word-break:break-all}.tdl-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;word-break:break-all}
+   .tdl-status{display:inline-flex;align-items:center;border-radius:999px;padding:3px 7px;font-size:10.5px;font-weight:800;white-space:nowrap}.tdl-status-overdue,.tdl-status-missing{background:#FDE9E6;color:#A2372D}.tdl-status-due_soon{background:#FFF3D8;color:#8A5C12}.tdl-status-current{background:#E7F3EA;color:#287044}.tdl-status-history{background:#EEF0F2;color:#697482}.tdl-status-unknown{background:#F4F1EA;color:#76684F}
+   .tdl-upload{display:grid;grid-template-columns:minmax(240px,1fr) auto auto;gap:8px;align-items:center;padding:12px 13px;background:#FFFCF4;border-top:1px solid #E9E0CE}.tdl-upload-note{font-size:11px;color:var(--tdl-muted);line-height:1.5;grid-column:1/-1}.tdl-feedback{font-size:12px;min-height:18px;color:var(--tdl-muted);margin-top:8px}.tdl-feedback.is-error{color:#A2372D}.tdl-feedback.is-ok{color:#287044}
+   .tdl-empty{padding:34px 14px;text-align:center;color:var(--tdl-muted);font-size:12px}.tdl-loading{padding:28px;color:var(--tdl-muted);font-size:12px}
+   @media(max-width:760px){.tdl-summary{grid-template-columns:repeat(2,1fr)}.tdl-filters{grid-template-columns:1fr 1fr}.tdl-upload{grid-template-columns:1fr 1fr}.tdl-upload input{grid-column:1/-1}}
+   @media(max-width:450px){.tdl-filters{grid-template-columns:1fr}.tdl-title{font-size:20px}}
   </style>
 </head>
 <body>
@@ -105,6 +127,7 @@
         <button class="admin-menu-item" data-menu="buildings">건물마스터</button>
         <button class="admin-menu-item" data-menu="user-stats">이용자 현황</button>
         <button class="admin-menu-item" data-menu="warehouse">데이터 원본 창고</button>
+         <button class="admin-menu-item" data-menu="tourism-datalab">관광 데이터랩 원본</button>
         <button class="admin-menu-item" data-menu="datasync">데이터 동기화</button>
         <button class="admin-menu-item" data-menu="members">회원관리</button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
@@ -1678,6 +1701,146 @@
           tourismDatalabToken = null; result.textContent = `적용 완료: ${d.applied_rows}개 지표 행, ${d.source_files}개 원본`;
         } catch (e) { result.textContent = `적용 실패: ${e.message}`; }
       };
+    }
+
+    /* 별도 메뉴: 관광 데이터랩 원본의 지연·누락을 한 화면에서 점검한다. */
+    function showTourismDatalab() {
+      destroyStatsCharts();
+      mount.innerHTML = `
+        <div class="tdl-page">
+          <div class="tdl-toolbar">
+            <div class="tdl-toolbar-copy">
+              <div class="tdl-kicker">Source control / Tourism Datalab</div>
+              <h2 class="tdl-title">관광 데이터랩 원본</h2>
+              <p class="tdl-sub">한국관광 데이터랩 원본의 누락과 지연을 확인하고, 검증된 파일만 명시적으로 적용합니다.</p>
+              <p class="tdl-sub"><b>공식 월 갱신 기준:</b> 이동통신 4일 · 내비게이션 6일 · 신용카드 11일 · 관광사업체 6일(각 전월 자료). 자료 수급 상황에 따라 변동될 수 있습니다.</p>
+            </div>
+            <div class="tdl-actions">
+              <a id="tdlGuide" class="admin-btn" href="#" target="_blank" rel="noopener noreferrer">공식 이용 안내</a>
+              <button type="button" class="admin-btn" id="tdlRefresh">새로고침</button>
+            </div>
+          </div>
+          <div id="tdlSummary" class="tdl-summary"><div class="tdl-loading">요약을 불러오는 중…</div></div>
+          <section class="tdl-card">
+            <div class="tdl-card-head">
+              <div id="tdlTabs" class="tdl-tabs" role="tablist"></div>
+              <span id="tdlAsOf" class="stats-card-hint"></span>
+            </div>
+            <div class="tdl-filters">
+              <input id="tdlSearch" class="tdl-input" type="search" placeholder="파일명·압축파일명·지표 검색" aria-label="파일 검색">
+              <select id="tdlProvider" class="tdl-select" aria-label="수집처"><option value="">모든 수집처</option></select>
+              <select id="tdlStatus" class="tdl-select" aria-label="상태"><option value="">모든 상태</option><option value="overdue">지연</option><option value="due_soon">예정 임박</option><option value="current">최신</option><option value="unknown">확인 필요</option><option value="missing">누락</option><option value="history">이력</option></select>
+              <select id="tdlLatest" class="tdl-select" aria-label="최신 여부"><option value="">최신·이력 모두</option><option value="latest">최신만</option><option value="history">이력만</option></select>
+            </div>
+            <div id="tdlTable" class="tdl-table-wrap"><div class="tdl-loading">목록을 불러오는 중…</div></div>
+            <div class="tdl-upload">
+              <input id="tdlFiles" type="file" accept=".zip,.csv" multiple aria-label="관광 데이터 파일 선택">
+              <button type="button" class="admin-btn" id="tdlPreview">안전 미리보기</button>
+              <button type="button" class="admin-btn admin-btn-primary" id="tdlApply" disabled>명시적으로 적용</button>
+              <div class="tdl-upload-note">ZIP/CSV 최대 10개 · 미리보기는 DB를 변경하지 않습니다. 적용 전 파일·행수·지원 지표를 반드시 확인하세요.</div>
+              <div id="tdlFeedback" class="tdl-feedback" style="grid-column:1/-1" role="status"></div>
+            </div>
+          </section>
+        </div>`;
+      const state = { items: [], group: "", providers: [], token: null };
+      const $ = (id) => document.getElementById(id);
+      const statusLabel = { overdue:"지연", due_soon:"예정 임박", current:"최신", unknown:"확인 필요", missing:"누락", history:"이력" };
+      const formatDate = (value) => value ? String(value).replace("T", " ").replace(/(\.\d+)?Z$/, "") : "-";
+      const formatRows = (value) => value == null || value === "" ? "-" : Number(value).toLocaleString("ko-KR");
+      const optionValue = (v) => typeof v === "object" ? (v.value ?? v.name ?? v.label ?? "") : v;
+      const optionLabel = (v) => typeof v === "object" ? (v.label ?? v.name ?? v.value ?? "") : v;
+      function setFeedback(text, kind) { const el = $("tdlFeedback"); el.textContent = text || ""; el.className = `tdl-feedback${kind ? ` is-${kind}` : ""}`; }
+      function renderTable() {
+        const query = $("tdlSearch").value.trim().toLowerCase();
+        const provider = $("tdlProvider").value, status = $("tdlStatus").value, latest = $("tdlLatest").value;
+        const rows = state.items.filter((item) => {
+          const haystack = [item.file_name,item.archive_name,item.label,item.stat_type,item.provider].join(" ").toLowerCase();
+          return (!state.group || item.group === state.group) && (!query || haystack.includes(query)) &&
+            (!provider || item.provider === provider) && (!status || item.status === status) &&
+            (!latest || (latest === "latest" ? item.is_latest : !item.is_latest));
+        });
+        if (!rows.length) { $("tdlTable").innerHTML = '<div class="tdl-empty">조건에 맞는 원본이 없습니다.<br>필터를 조정하거나 새로고침해 주세요.</div>'; return; }
+        $("tdlTable").innerHTML = `<table class="tdl-table"><thead><tr>
+          <th>지표·수집분류</th><th>수집처</th><th>데이터 파일명</th><th>압축파일명</th><th>수집일자</th><th>기준일자</th><th>업데이트 예정일</th><th style="text-align:right">행수</th><th>상태</th>
+        </tr></thead><tbody>${rows.map((item) => `<tr>
+          <td><div class="tdl-main-label">${escapeText(item.label || item.stat_type || "-")}</div><div class="tdl-subtext">${escapeText(item.group || "-")} · ${escapeText(item.stat_type || "-")}</div></td>
+          <td>${escapeText(item.provider || "-")}</td>
+          <td class="tdl-mono">${escapeText(item.file_name || "-")}</td>
+          <td class="tdl-mono">${escapeText(item.archive_name || "-")}</td>
+          <td>${escapeText(formatDate(item.collected_at))}</td>
+          <td>${escapeText(item.baseline_date || item.source_period || "기준월 확인 필요")}</td>
+          <td>${escapeText(item.next_update_date || (item.update_day ? `매월 ${item.update_day}일 · 기준월 확인 필요` : "-"))}</td>
+          <td style="text-align:right">${escapeText(formatRows(item.rows))}</td>
+          <td><span class="tdl-status tdl-status-${escapeText(item.status || "unknown")}">${escapeText(statusLabel[item.status] || item.status || "확인 필요")}</span></td>
+        </tr>`).join("")}</tbody></table>`;
+      }
+      function renderTabs(groups) {
+        const all = [{ value:"", label:"전체" }].concat((groups || []).map((g) => ({ value:optionValue(g), label:optionLabel(g) })));
+        $("tdlTabs").innerHTML = all.map((tab) => `<button type="button" class="tdl-tab${state.group === tab.value ? " is-active" : ""}" data-group="${escapeText(tab.value)}" role="tab">${escapeText(tab.label || "미분류")}</button>`).join("");
+        $("tdlTabs").querySelectorAll("[data-group]").forEach((button) => button.addEventListener("click", () => { state.group = button.dataset.group; renderTabs(groups); renderTable(); }));
+      }
+      async function load() {
+        $("tdlTable").innerHTML = '<div class="tdl-loading">목록을 불러오는 중…</div>';
+        try {
+          const response = await fetch("/api/admin/tourism-datalab/collections");
+          if (response.status === 401) { window.location.href = "/admin/login"; return; }
+          if (!response.ok) throw new Error("목록을 불러오지 못했습니다.");
+          const data = await response.json();
+          if (!data.ok) throw new Error(data.message || "목록을 불러오지 못했습니다.");
+          state.items = Array.isArray(data.items) ? data.items : [];
+          state.providers = data.providers || [];
+          $("tdlProvider").innerHTML = '<option value="">모든 수집처</option>' + state.providers.map((p) => `<option value="${escapeText(optionValue(p))}">${escapeText(optionLabel(p))}</option>`).join("");
+          renderTabs(data.groups || []);
+          const summary = data.summary || {};
+          const count = (key, fallback) => summary[key] ?? fallback;
+          $("tdlSummary").innerHTML = [
+            ["수집 원본", count("archives", state.items.filter(x => x.archive_name).length), ""],
+            ["관리 분류", count("categories", state.items.filter(x => x.is_latest).length), ""],
+            ["지연", count("overdue", state.items.filter(x => x.status === "overdue").length), "tdl-stat-alert"],
+            ["예정 임박", count("due_soon", state.items.filter(x => x.status === "due_soon").length), ""],
+            ["확인 필요·누락", count("unknown", state.items.filter(x => x.status === "unknown").length) + count("missing", state.items.filter(x => x.status === "missing").length), "tdl-stat-alert"]
+          ].map(([label,value,klass]) => `<div class="tdl-stat ${klass}"><span class="tdl-stat-label">${label}</span><span class="tdl-stat-value">${escapeText(formatRows(value))}</span></div>`).join("");
+          $("tdlAsOf").textContent = data.as_of ? `기준 ${formatDate(data.as_of)}` : `${state.items.length.toLocaleString("ko-KR")}개 항목`;
+          if (data.official_guide_url) $("tdlGuide").href = data.official_guide_url;
+          renderTable();
+        } catch (error) {
+          $("tdlSummary").innerHTML = `<div class="tdl-empty" style="grid-column:1/-1">${escapeText(error.message)} <button type="button" class="admin-btn" id="tdlRetry">다시 시도</button></div>`;
+          $("tdlTable").innerHTML = "";
+          const retry = $("tdlRetry"); if (retry) retry.onclick = load;
+        }
+      }
+      ["tdlSearch","tdlProvider","tdlStatus","tdlLatest"].forEach((id) => $(id).addEventListener("input", renderTable));
+      $("tdlRefresh").onclick = () => { setFeedback("최신 목록을 확인하는 중…"); load().then(() => setFeedback("목록을 새로 불러왔습니다.", "ok")); };
+      let previewButton = $("tdlPreview"), applyButton = $("tdlApply");
+      previewButton.onclick = async () => {
+        const files = $("tdlFiles").files;
+        if (!files.length) { setFeedback("ZIP 또는 CSV 파일을 선택하세요.", "error"); return; }
+        const body = new FormData(); [...files].slice(0, 10).forEach((file) => body.append("files", file));
+        previewButton.disabled = true; applyButton.disabled = true; state.token = null; setFeedback("안전성 및 CSV 형식을 검사하는 중…");
+        try {
+          const response = await fetch("/api/admin/tourism-datalab/preview", { method:"POST", body });
+          if (response.status === 401) { window.location.href="/admin/login"; return; }
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) throw new Error(data.message || "미리보기에 실패했습니다.");
+          state.token = data.token; applyButton.disabled = !(data.supported_rows > 0);
+          const fileInfo = (data.files || []).map((file) => `${file.name} · 지표 ${formatRows(file.metric_rows)}행`).join(" / ");
+          setFeedback(`미리보기 완료 · 지원 지표 ${formatRows(data.supported_rows)}행${fileInfo ? ` · ${fileInfo}` : ""}. 아래 적용 버튼으로 확정하세요.`, "ok");
+        } catch (error) { setFeedback(`미리보기 실패: ${error.message}`, "error"); }
+        finally { previewButton.disabled = false; }
+      };
+      applyButton.onclick = async () => {
+        const target = ADMIN_IS_PRODUCTION_ENV ? "운영 DB와 실제 홈페이지" : "개발 DB";
+        if (!state.token || !window.confirm(`미리보기한 원본을 ${target}에 적용합니다. 계속하시겠습니까?`)) return;
+        applyButton.disabled = true; setFeedback("검증된 원본을 트랜잭션으로 적용하는 중…");
+        try {
+          const response = await fetch("/api/admin/tourism-datalab/apply", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ token:state.token }) });
+          if (response.status === 401) { window.location.href="/admin/login"; return; }
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) throw new Error(data.message || "적용에 실패했습니다.");
+          state.token = null; setFeedback(`적용 완료 · 지표 ${formatRows(data.applied_rows)}행 · 원본 ${formatRows(data.source_files)}개. 목록을 갱신했습니다.`, "ok"); await load();
+        } catch (error) { setFeedback(`적용 실패: ${error.message}`, "error"); applyButton.disabled = false; }
+      };
+      load();
     }
 
     function renderStats(d, mapBld) {
@@ -8082,6 +8245,7 @@
       if (menuKey === "stats") { showStats(menuKey); return; }
       if (menuKey === "user-stats") { showUserStats(); return; }
       if (menuKey === "warehouse") { showWarehouse(); return; }
+       if (menuKey === "tourism-datalab") { showTourismDatalab(); return; }
       if (menuKey === "revenue") { showRevenue(); return; }
       if (menuKey === "members") { showMembers(); return; }
       if (menuKey === "legal") { showLegal(); return; }
