@@ -113,6 +113,13 @@
   function markerColor(v, status){ return window.LodgingTypes.color(v, status); }
   function badgeLabel(v, status){ return window.LodgingTypes.badge(v, null, status); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+  function tourismLegalSubtypeLabels(b){
+    const raw = b.approved_annual_tourism_subtypes || b.tourism_legal_subtypes || b.tourism_legal_subtype_names || b.tourism_legal_subtype || b.tourism_subtypes || b.lodging_legal_subtypes || b.lodging_subtypes;
+    const values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return values.map(v => typeof v === "object" ? (v.label || v.name || v.type || v.subtype) : v)
+      .map(v => String(v || "").trim()).filter(Boolean)
+      .filter((v, i, all) => all.indexOf(v) === i);
+  }
 
   const buildingId = Number(location.pathname.split("/").pop());
   const headerCard = document.getElementById("headerCard");
@@ -136,6 +143,9 @@
     }
     const color = markerColor(b.lodging_type, b.building_status);
     const badge = `<span style="display:inline-block; font-size:8.8px; font-weight:700; color:${color}; vertical-align:middle;">${esc(badgeLabel(b.lodging_type, b.building_status))}</span>`;
+    const tourismSubtypeBadges = tourismLegalSubtypeLabels(b).map(label =>
+      `<span style="display:inline-block;font-size:10px;font-weight:700;color:#0f766e;background:#E5F5F1;border:1px solid #9AD8CC;border-radius:999px;padding:2px 7px;line-height:1.25;">${esc(label)}</span>`
+    ).join("");
     const units = b.units != null ? Number(b.units).toLocaleString('ko-KR') + "실" : "-";
     // 정상영업 신고객실수·미신고·신고율은 원본 중복을 통합한 객실수 합계를 사용한다.
     // 일반숙박은 units와 객실수가 비교 대상이 아니므로 객실수 절대값만 표시한다.
@@ -162,7 +172,7 @@
     headerCard.innerHTML = `
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
         <h1 style="font-size:20px; font-weight:700; color:var(--ink); margin:0;">${esc(b.building_name || "(건물명 미확인)")}</h1>
-        ${badge}
+        ${badge}${tourismSubtypeBadges ? `<span style="display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center;">${tourismSubtypeBadges}</span>` : ""}
       </div>
       <div style="font-size:13px; color:var(--ink-soft); margin-bottom:4px;">${esc(b.road_address || "주소 미확인")}</div>
       ${b.lodging_type_detail ? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:16px;">${esc(b.lodging_type_detail)}</div>` : `<div style="margin-bottom:16px;"></div>`}

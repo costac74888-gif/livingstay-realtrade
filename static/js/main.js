@@ -4068,16 +4068,27 @@ function renderDataLabLodging(data){
       ? row.camping_site_count
       : row.units;
     const displayType = lodgingLabelKo(row.type);
+    const tourismSubtypeRows = row.type === "관광"
+      ? (Array.isArray(row.sub_rows || row.legal_subtypes || row.tourism_legal_subtypes || row.tourism_sub_rows || row.legal_subtype_rows)
+        ? (row.sub_rows || row.legal_subtypes || row.tourism_legal_subtypes || row.tourism_sub_rows || row.legal_subtype_rows)
+        : Object.entries(row.legal_subtypes || row.tourism_legal_subtypes || {}).map(([name, values]) => ({ name, ...(values || {}) }))).map(sub => {
+          const label = sub.type || sub.name || sub.legal_subtype || sub.subtype || "-";
+          const businesses = sub.biz_count ?? sub.business_count ?? sub.registered_businesses ?? sub.registered_business_count;
+          const rooms = sub.room_count ?? sub.rooms ?? sub.registered_rooms ?? sub.registered_room_count;
+          const buildings = sub.building_count ?? sub.linked_building_count ?? sub.linked_buildings ?? sub.linked_building_count;
+          return `<tr class="datalab-sub-row datalab-tourism-legal-row" hidden><td class="datalab-sub-name">${escapeHtml(label)}</td><td>${dataLabNum(buildings)}</td><td>-</td><td>${dataLabNum(businesses)}</td><td>${dataLabNum(rooms)}</td><td>-</td></tr>`;
+        }).join("")
+      : "";
     const base = `
-      <tr>
-        <td>${escapeHtml(displayType)}</td>
+      <tr class="${tourismSubtypeRows ? "datalab-tourism-breakdown" : ""}">
+        <td>${tourismSubtypeRows ? `<button type="button" class="datalab-row-toggle" data-tourism-collapse aria-expanded="false"><span class="datalab-collapse-label">펼치기</span></button>` : ""}${escapeHtml(displayType)}</td>
         <td>${dataLabNum(displayedBuildingCount)}</td>
         <td>${dataLabNum(displayedUnits)}</td>
         <td>${dataLabNum(row.biz_count)}</td>
         <td>${dataLabNum(row.room_count)}</td>
         <td title="${rateTitle(row)}">${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
       </tr>`;
-    const subRows = (row.sub_rows || []).map(sub => `
+    const subRows = row.type === "관광" ? "" : (row.sub_rows || []).map(sub => `
       <tr class="datalab-sub-row">
         <td class="datalab-sub-name">${escapeHtml(sub.type)}</td>
         <td>${dataLabNum(sub.building_count)}</td>
@@ -4086,16 +4097,15 @@ function renderDataLabLodging(data){
         <td>${dataLabNum(sub.room_count)}</td>
         <td>${sub.report_rate == null ? "-" : `${sub.report_rate}%`}</td>
       </tr>`).join("");
-    return base + campingSubRows + subRows;
+    return base + tourismSubtypeRows + campingSubRows + subRows;
   }).join("");
   return `
     <div class="datalab-heading">
       <strong>① 전국 숙박 허가·영업신고 통계</strong><span class="datalab-caption">현재수집 기준</span>
     </div>
-    <p class="datalab-permit-note">정부 원장의 허가 업종 통계입니다. ‘외국인관광 도시민박업’ 수치는 Airbnb 등록 숙소 수가 아니며, 지역이 0건이어도 해당 지역에 Airbnb 숙소가 없다는 뜻은 아닙니다.</p>
     <div class="datalab-table-wrap">
       <table class="datalab-table">
-        <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수<small>(시설수)</small></span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th title="현재 정상영업 중인 신고업체 수입니다."><span class="datalab-head-stack">신고업체<small>(정상)</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>
+        <thead><tr><th><span class="datalab-head-stack">구분</span></th><th><span class="datalab-head-stack">건물수(캠핑시설수)</span></th><th title="건축물대장 표제부 hoCnt 합계입니다. 생활 외 유형은 신고객실수와 직접 비교하지 않습니다."><span class="datalab-head-stack">호실수<small>(사이트수)</small></span></th><th title="현재 정상영업 중인 신고업체 수입니다."><span class="datalab-head-stack">신고업체<small>(정상)</small></span></th><th><span class="datalab-head-stack">신고객실수<small>(사이트수)</small></span></th><th title="생활은 객실 기준, 일반은 업체 기준, 캠핑은 시설 매칭 기준, 그 밖의 유형은 건물 커버리지 기준입니다."><span class="datalab-head-stack">신고율</span></th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
@@ -4285,6 +4295,17 @@ function dataLabErrorHTML(){
 
 function bindDataLabControls(content){
   bindDataLabBuildingButtons(content);
+  content.querySelectorAll("[data-tourism-collapse]").forEach(button => {
+    button.addEventListener("click", () => {
+      const section = button.closest("table");
+      const expanded = button.getAttribute("aria-expanded") !== "true";
+      section.classList.toggle("is-tourism-collapsed", !expanded);
+      section.querySelectorAll(".datalab-tourism-legal-row").forEach(row => row.hidden = !expanded);
+      button.setAttribute("aria-expanded", String(expanded));
+      const label = button.querySelector(".datalab-collapse-label");
+      if (label) label.textContent = expanded ? "접기" : "펼치기";
+    });
+  });
   content.querySelectorAll("[data-datalab-collapse]").forEach(button => {
     button.addEventListener("click", () => {
       const section = button.closest(".datalab-heatmap-top");

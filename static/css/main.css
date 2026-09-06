@@ -642,6 +642,9 @@
   .datalab-table .datalab-sub-row td{background:#FAFAFA; color:var(--ink-soft); font-size:9.5px;}
    .datalab-table .datalab-sub-name{padding-left:16px; position:relative;}
    .datalab-table .datalab-sub-name::before{content:"└"; position:absolute; left:5px; color:#AAA18F;}
+   .datalab-row-toggle{border:0;background:transparent;color:var(--brass-dark);font-size:10px;font-weight:700;padding:0 4px 0 0;cursor:pointer;}
+   .datalab-row-toggle:hover{text-decoration:underline;}
+   .datalab-tourism-legal-row[hidden]{display:none;}
   .datalab-list{display:flex; flex-direction:column; border-top:1px solid var(--line);}
   .datalab-list-item{display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:5px; align-items:center; padding:7px 2px; border-bottom:1px solid var(--line);}
   .datalab-rank{font:700 10px 'JetBrains Mono',monospace; color:var(--brass-dark); text-align:center;}

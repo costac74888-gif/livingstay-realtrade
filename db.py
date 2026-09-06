@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-06-03"
+SCHEMA_VERSION = "2026-09-06-05"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -624,6 +624,56 @@ def _run_init_db():
         collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
     """)
+    # Approved annual tourism-accommodation workbooks are a separate,
+    # production-only aggregate evidence source.  They must never rewrite
+    # master_buildings, lodging_registry, or the Tourism Data Lab CSV store.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS annual_tourism_roster_versions (
+        id BIGSERIAL PRIMARY KEY,
+        reference_year INTEGER NOT NULL CHECK (reference_year BETWEEN 2000 AND 2100),
+        source_file TEXT NOT NULL,
+        source_sha256 TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('approved', 'superseded')),
+        approved_by INTEGER,
+        approved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(reference_year, source_sha256)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS annual_tourism_roster_entries (
+        id BIGSERIAL PRIMARY KEY,
+        version_id BIGINT NOT NULL REFERENCES annual_tourism_roster_versions(id) ON DELETE CASCADE,
+        source_row_number INTEGER NOT NULL,
+        sido_name TEXT NOT NULL DEFAULT '', sgg_name TEXT NOT NULL DEFAULT '',
+        facility_name TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
+        address_norm TEXT NOT NULL DEFAULT '', subtype TEXT NOT NULL, raw_subtype TEXT NOT NULL DEFAULT '',
+        raw_status TEXT NOT NULL DEFAULT '', is_active BOOLEAN NOT NULL DEFAULT FALSE,
+        room_count INTEGER NOT NULL DEFAULT 0 CHECK (room_count >= 0),
+        UNIQUE(version_id, source_row_number)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS annual_tourism_roster_building_evidence (
+        entry_id BIGINT PRIMARY KEY REFERENCES annual_tourism_roster_entries(id) ON DELETE CASCADE,
+        master_building_id INTEGER REFERENCES master_buildings(id) ON DELETE SET NULL,
+        match_method TEXT NOT NULL, match_status TEXT NOT NULL CHECK (match_status IN ('matched', 'unmatched')),
+        checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+    # A brief v04 deployment may already have created the entry table.
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS address_norm TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS raw_status TEXT NOT NULL DEFAULT ''")
+    cur.execute("ALTER TABLE annual_tourism_roster_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS annual_tourism_roster_stages (
+        token TEXT PRIMARY KEY, admin_user_id INTEGER NOT NULL,
+        manifest JSONB NOT NULL, state TEXT NOT NULL CHECK (state IN ('previewed', 'applying', 'applied')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL,
+        applied_at TIMESTAMPTZ
+    )
+    """)
+    cur.execute("""CREATE INDEX IF NOT EXISTS idx_annual_tourism_roster_latest
+                   ON annual_tourism_roster_versions(status, reference_year DESC, approved_at DESC)""")
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_tourism_stats_lookup
         ON tourism_stats(stat_type, sido_name, sgg_name, ref_yearmonth)

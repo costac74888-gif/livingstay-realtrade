@@ -96,6 +96,7 @@ import building_registry
 import lodging_staging
 import lodging_promotion
 import tourism_datalab_admin
+import annual_tourism_roster
 import import_tourism_stats as tourism_stats_importer
 from utils.photo_validate import validate_photo
 from lodging_matching import (
@@ -1805,6 +1806,11 @@ def get_building(building_id):
         return jsonify({"error": "not found"}), 404
 
     building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
+    # Approved annual roster evidence supplements this response only.  It does
+    # not classify or mutate the master building's lodging type.
+    building["approved_annual_tourism_subtypes"] = (
+        annual_tourism_roster.latest_linked_subtypes(cur, building_id)
+    )
 
     # 상세 자체는 캐시된 무료·보유 사진만 즉시 반환한다. TourAPI 신규 조회는
     # 별도 온디맨드 API가 담당해 건물 정보 렌더링을 외부 API 응답으로 막지 않는다.
@@ -20720,6 +20726,37 @@ def _lodging_count_summary_payload():
     }
 
 
+def _apply_annual_tourism_roster_override(payload):
+    """Override only approved tourism permit/room metrics; never building data."""
+    conn = None
+    try:
+        conn = get_conn()
+        approved = annual_tourism_roster.latest_approved_stats(conn)
+    except Exception:
+        app.logger.exception("approved annual tourism roster stats lookup failed")
+        return payload
+    finally:
+        if conn:
+            conn.close()
+    if not approved:
+        return payload
+    result = dict(payload)
+    rows = [dict(row) for row in result.get("rows", [])]
+    for row in rows:
+        if row.get("type") != "관광":
+            continue
+        # The roster is aggregate evidence: keep all master-derived fields and
+        # overwrite the two explicitly approved tourism metrics only.
+        row["permit_count"] = approved["permit_count"]
+        row["room_count"] = approved["room_count"]
+        row["sub_rows"] = approved["sub_rows"]
+        row["source_metadata"] = approved["source"]
+        row["metric_source"] = "approved_annual_tourism_roster"
+        break
+    result["rows"] = rows
+    return result
+
+
 def _lodging_full_stats_payload():
     """건물마스터 용도별 세부 통계표 — 항상 전체 데이터 기준 (필터 무관, 5분 캐시)."""
     global _bld_full_stats_cache
@@ -20727,7 +20764,7 @@ def _lodging_full_stats_payload():
     if master_payload is not None:
         # total_building_cnt는 지도와 관리자 통계가 공유하는 내부 기준값이다.
         # 기존 관리자/공개 응답 구조는 유지하기 위해 외부 응답에서는 숨긴다.
-        response_payload = dict(master_payload)
+        response_payload = _apply_annual_tourism_roster_override(master_payload)
         response_payload.pop("total_building_cnt", None)
         response_payload.pop("building_count_by_type", None)
         return jsonify(response_payload)
@@ -21162,6 +21199,7 @@ def _lodging_full_stats_payload():
         # 지도 범례의 세부 분포도 동일한 캐시 시점으로 유지한다.
         "building_count_by_type": building_count_by_type,
     }
+    result = _apply_annual_tourism_roster_override(result)
     _bld_full_stats_cache = {"ts": now, "data": result}
     if _master_stats_is_rebuilding():
         return jsonify(result)
@@ -31875,6 +31913,52 @@ def tourism_datalab_apply():
     except Exception:
         app.logger.exception("tourism Data Lab apply failed")
         return jsonify({"ok": False, "message": "적용에 실패했습니다. 원본은 반영되지 않았습니다."}), 500
+
+
+@app.route("/api/admin/annual-tourism-roster/preview", methods=["POST"])
+@require_admin
+@limiter.limit("4 per minute")
+def annual_tourism_roster_preview():
+    """Safely stage, but do not import, an approved annual XLSX roster."""
+    conn = None
+    try:
+        conn = get_conn()
+        annual_tourism_roster.assert_production_connection(conn)
+        result = annual_tourism_roster.store_preview(
+            conn, request.files.get("file"), session.get("admin_user_id")
+        )
+        return jsonify({"ok": True, **result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/admin/annual-tourism-roster/apply", methods=["POST"])
+@require_admin
+@limiter.limit("2 per minute")
+def annual_tourism_roster_apply():
+    """Production-only approval; no master-building or registry mutation."""
+    global _bld_full_stats_cache
+    payload = request.get_json(silent=True) or {}
+    conn = None
+    try:
+        conn = get_conn()
+        result = annual_tourism_roster.apply(
+            conn, str(payload.get("token") or ""), session.get("admin_user_id")
+        )
+        _bld_full_stats_cache = {"ts": 0.0, "data": None}
+        mark_master_stats_invalidated("annual_tourism_roster_approved")
+        return jsonify({"ok": True, **result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception:
+        app.logger.exception("annual tourism roster apply failed")
+        return jsonify({"ok": False, "message": "승인 명부 적용에 실패했습니다. 원본은 반영되지 않았습니다."}), 500
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.route("/api/admin/tourism-datalab/checklist.xlsx")
