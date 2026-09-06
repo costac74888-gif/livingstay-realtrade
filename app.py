@@ -31446,6 +31446,7 @@ def get_building_tourism_stats(building_id):
             "source": "한국관광 데이터랩",
             "region": {},
             "regional_metrics": {},
+            "building_lodging_rank": None,
             "surge_badges": [],
             "nearby_attractions": [],
         }
@@ -31496,6 +31497,14 @@ def get_building_tourism_stats(building_id):
                     "value": float(metric_row["metric_value"]),
                     "source_period": metric_row["source_period"],
                 }
+
+        lodging_rank_rows = _lodging_search_rank_rows(
+            cur, limit=1, max_rank=500, building_id=building_id
+        )
+        if lodging_rank_rows:
+            payload["building_lodging_rank"] = _lodging_search_rank_item(
+                lodging_rank_rows[0]
+            )
 
         dong_name = str(building.get("umd_nm") or "").strip()
         if dong_name:

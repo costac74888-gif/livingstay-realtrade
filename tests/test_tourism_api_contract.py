@@ -167,6 +167,11 @@ class TourismApiContractTests(unittest.TestCase):
         self.assertIn('"foreign_top3"', self.source)
         self.assertIn('"/api/building/<int:building_id>/tourism-stats"', self.source)
         self.assertIn('"regional_metrics": {}', self.source)
+        self.assertIn('"building_lodging_rank": None', self.source)
+        self.assertIn(
+            "cur, limit=1, max_rank=500, building_id=building_id",
+            self.source,
+        )
         self.assertIn('"surge_badges": []', self.source)
         self.assertIn('"내국인 방문 급상승"', self.source)
         self.assertNotIn('building["lodging_type"] not in {"캠핑", "농어촌민박", "한옥"}', self.source)

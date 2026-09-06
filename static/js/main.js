@@ -6474,6 +6474,8 @@ async function _loadDetailTourismStats(b, buildingId){
       : (Array.isArray(data.nearby_attractions) ? data.nearby_attractions : []);
     const metrics = data.regional_metrics && typeof data.regional_metrics === "object"
       ? data.regional_metrics : {};
+    const lodgingRank = data.building_lodging_rank && typeof data.building_lodging_rank === "object"
+      ? data.building_lodging_rank : null;
     const surges = Array.isArray(data.surge_badges) ? data.surge_badges : [];
     const titleRow = document.getElementById("bBuildingTitleRow");
     if (titleRow) {
@@ -6512,7 +6514,11 @@ async function _loadDetailTourismStats(b, buildingId){
       const name = String(item.name ?? item.place_name ?? item.attraction_name ?? "").trim();
       return name ? `<li><span class="b-tourism-attractions-rank">${rank}위</span>${escapeHtml(name)}</li>` : "";
     }).filter(Boolean);
-    if (!metricRows.length && !surges.length && !rows.length) return;
+    const lodgingRankNumber = Number(lodgingRank?.rank);
+    const lodgingSearchCount = Number(lodgingRank?.search_count);
+    const hasLodgingRank = Number.isInteger(lodgingRankNumber)
+      && lodgingRankNumber >= 1 && lodgingRankNumber <= 500;
+    if (!metricRows.length && !surges.length && !rows.length && !hasLodgingRank) return;
     const attractionPeriod = _formatTourismPeriod(
       attractions.find(item => item?.source_period)?.source_period || ""
     );
@@ -6530,7 +6536,14 @@ async function _loadDetailTourismStats(b, buildingId){
       </section>` : ""}
       <section class="b-tourism-building-scope" aria-label="이 건물 통계 제공 범위">
         <h2>이 건물 통계</h2>
-        <p>개별 건물의 방문자·관광 검색·관광소비 실적은 현재 제공되지 않습니다.</p>
+        ${hasLodgingRank ? `<div class="b-tourism-building-rank">
+          <small>숙박시설 검색순위</small>
+          <strong>TOP500 중 ${lodgingRankNumber.toLocaleString("ko-KR")}위</strong>
+          ${Number.isFinite(lodgingSearchCount) ? `<span>검색량 ${lodgingSearchCount.toLocaleString("ko-KR", {maximumFractionDigits:0})}회</span>` : ""}
+        </div>` : ""}
+        <p>${hasLodgingRank
+          ? "한국관광 데이터랩에서 이 건물에 정확히 연결된 숙박시설 검색 결과입니다. 개별 방문자·관광소비 실적은 제공되지 않습니다."
+          : "개별 건물의 방문자·관광 검색·관광소비 실적은 현재 제공되지 않습니다."}</p>
       </section>`;
     card.style.display = "";
   } catch (e) {
