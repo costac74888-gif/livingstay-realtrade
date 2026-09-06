@@ -45,6 +45,10 @@ def parse_row(row):
     data["hygiene_type"] = HYGIENE_TYPE_FIXED
     data["lodging_type"] = LODGING_TYPE_FIXED
     data["master_source"] = MASTER_SOURCE
+    # 표준 인허가 원본에 존재하는 경우에만 보관하며, 없는 CSV에는 NULL로 남긴다.
+    data["surroundings"] = common._text(row.get("주변환경명"))
+    data["floors_above"] = common._integer(row.get("지상층수"))
+    data["floors_below"] = common._integer(row.get("지하층수"))
     return data if data["permit_number"] else None
 
 

@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-06-01"
+SCHEMA_VERSION = "2026-09-06-02"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2195,6 +2195,16 @@ def _run_init_db():
         bld_use_nm TEXT,                    -- 건물용도명 (외국인관광도시민박업 원본)
         facility_area NUMERIC,              -- 시설규모(m²)
         region_name TEXT,                   -- 지역구분명
+        western_rooms INTEGER,              -- 원본 양실수
+        korean_rooms INTEGER,               -- 원본 한실수
+        toilet_count INTEGER,               -- 원본 화장실수
+        toilet_type TEXT,                   -- 원본 화장실종류명
+        breakfast_yn TEXT,                  -- 원본 조식제공여부
+        house_area NUMERIC,                 -- 원본 주택면적(m²)
+        zone_type TEXT,                     -- 원본 용도지역
+        surroundings TEXT,                  -- 원본 주변환경명
+        floors_above INTEGER,               -- 원본 지상층수
+        floors_below INTEGER,               -- 원본 지하층수
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     )
@@ -2209,6 +2219,18 @@ def _run_init_db():
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS bld_use_nm TEXT")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS facility_area NUMERIC")
     cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS region_name TEXT")
+    # 운영정보는 각 인허가 원본이 실제 제공하는 값만 보관한다. 캠핑 전용 열과
+    # 섞지 않아 기존 고캠핑 우선순위와 통계를 바꾸지 않는다.
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS western_rooms INTEGER")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS korean_rooms INTEGER")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS toilet_count INTEGER")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS toilet_type TEXT")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS breakfast_yn TEXT")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS house_area NUMERIC")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS zone_type TEXT")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS surroundings TEXT")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS floors_above INTEGER")
+    cur.execute("ALTER TABLE lodging_registry ADD COLUMN IF NOT EXISTS floors_below INTEGER")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS operator_lodging (
             id SERIAL PRIMARY KEY,
@@ -2219,7 +2241,8 @@ def _run_init_db():
             biz_name TEXT NOT NULL, rep_name TEXT, phone TEXT, biz_no TEXT, permit_no TEXT NOT NULL,
             booking_url TEXT, airbnb_url TEXT, airbnb_urls JSONB, gocamping_url TEXT,
             facility_phone TEXT, homepage_url TEXT,
-            intro_text TEXT, photo_url TEXT, doc_biz_reg_url TEXT, doc_biz_license_url TEXT,
+            intro_text TEXT, amenities JSONB NOT NULL DEFAULT '[]'::jsonb,
+            photo_url TEXT, doc_biz_reg_url TEXT, doc_biz_license_url TEXT,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
             approved_at TIMESTAMPTZ, approved_by INTEGER REFERENCES admin_users(id), reject_reason TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -2230,6 +2253,27 @@ def _run_init_db():
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS doc_biz_license_url TEXT")
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS facility_phone TEXT")
     cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS homepage_url TEXT")
+    cur.execute("ALTER TABLE operator_lodging ADD COLUMN IF NOT EXISTS amenities JSONB NOT NULL DEFAULT '[]'::jsonb")
+    # 증빙은 공개 운영자 프로필과 분리한다. 승인된 claim만 공개 label로 투영한다.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operator_lodging_badge_claims (
+            id SERIAL PRIMARY KEY,
+            operator_lodging_id INTEGER NOT NULL REFERENCES operator_lodging(id) ON DELETE CASCADE,
+            badge_type TEXT NOT NULL CHECK (badge_type IN
+                ('tourism_quality', 'airbnb_guest_favorite', 'exemplary_business', 'kta_certified')),
+            evidence_url TEXT, evidence_description TEXT,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'rejected')),
+            reviewed_at TIMESTAMPTZ, reviewed_by INTEGER REFERENCES admin_users(id),
+            reject_reason TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(operator_lodging_id, badge_type)
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_op_lodging_badge_claims_review
+        ON operator_lodging_badge_claims(status, created_at)
+    """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_building ON operator_lodging(master_building_id) WHERE status = 'approved'")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_op_lodging_type ON operator_lodging(lodging_op_type, status)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_permit_unique ON operator_lodging(permit_no)")

@@ -104,6 +104,12 @@ def parse_row(row):
             common._text(row.get("주택면적"))
             or common._text(row.get("소재지면적"))
         ),
+        # 이 원본에 실제 포함될 수 있는 농어촌민박 신고 필드만 읽는다.
+        "toilet_count": common._integer(row.get("화장실수")),
+        "toilet_type": common._text(row.get("화장실종류명")),
+        "breakfast_yn": common._text(row.get("조식제공여부")),
+        "house_area": common._decimal(row.get("주택면적")),
+        "zone_type": common._text(row.get("용도지역")),
         "phone": common._phone(row.get("전화번호")),
         "jibun_address": jibun_address,
         "region_name": None,

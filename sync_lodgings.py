@@ -1352,15 +1352,17 @@ def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
     road_address = (it.get("ROAD_NM_ADDR") or "").strip() or None
     jibun_address = (it.get("LOTNO_ADDR") or "").strip() or None
     permit_number = _permit_number_for_item(it, biz_name, road_address, jibun_address)
-    room_count = _to_int(it.get("KSRM_CNT")) + _to_int(it.get("WSRM_CNT"))
+    korean_rooms = _to_int(it.get("KSRM_CNT"))
+    western_rooms = _to_int(it.get("WSRM_CNT"))
+    room_count = korean_rooms + western_rooms
     status_name = (it.get("SALS_STTS_NM") or "").strip() or None
     status_detail = (it.get("DTL_SALS_STTS_NM") or "").strip() or None
     cur.execute("""
         INSERT INTO lodging_registry
             (biz_name, permit_number, road_address, jibun_address, permit_date,
-             biz_status_name, biz_status_detail, room_count, hygiene_type, phone,
+              biz_status_name, biz_status_detail, room_count, western_rooms, korean_rooms, hygiene_type, phone,
              road_norm, jibun_norm, biz_name_norm, source_updated_at, updated_at)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
             road_address = EXCLUDED.road_address,
@@ -1369,6 +1371,8 @@ def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
             biz_status_name = EXCLUDED.biz_status_name,
             biz_status_detail = EXCLUDED.biz_status_detail,
             room_count = EXCLUDED.room_count,
+            western_rooms = EXCLUDED.western_rooms,
+            korean_rooms = EXCLUDED.korean_rooms,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
@@ -1384,6 +1388,8 @@ def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
              lodging_registry.biz_status_name,
              lodging_registry.biz_status_detail,
              lodging_registry.room_count,
+              lodging_registry.western_rooms,
+              lodging_registry.korean_rooms,
              lodging_registry.hygiene_type,
              lodging_registry.phone,
              lodging_registry.road_norm,
@@ -1398,6 +1404,8 @@ def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
              EXCLUDED.biz_status_name,
              EXCLUDED.biz_status_detail,
              EXCLUDED.room_count,
+              EXCLUDED.western_rooms,
+              EXCLUDED.korean_rooms,
              EXCLUDED.hygiene_type,
              EXCLUDED.phone,
              EXCLUDED.road_norm,
@@ -1408,7 +1416,7 @@ def _upsert(cur, it, *, building_id=None, permit_alerts_enabled=False):
     """, (biz_name, permit_number, road_address, jibun_address,
           (it.get("LCPMT_YMD") or "").strip() or None,
            status_name, status_detail,
-          room_count, hygiene,
+           room_count, western_rooms, korean_rooms, hygiene,
           (it.get("TELNO") or "").strip() or None,
           normalize_road_prefix(road_address),
           normalize_jibun_prefix(jibun_address),

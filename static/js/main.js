@@ -5912,8 +5912,62 @@ function _renderCampingSection(b){
   card.style.display = "";
 }
 
+const NON_CAMPING_AMENITY_ICONS = {
+  "와이파이":"wifi", "주차":"car", "에어컨":"air-conditioning", "TV":"device-tv",
+  "세탁기":"wash", "조식":"coffee", "전기":"plug", "온수":"droplet",
+  "바베큐":"flame", "반려동물":"paw", "수영장":"swimming-pool", "산책로":"walk",
+  "낚시":"fish", "텃밭":"plant", "사우나":"bath", "냉장고":"fridge",
+  "전자레인지":"microwave", "장애인편의":"accessible", "외국어안내":"language", "금연":"smoking-no"
+};
+function _operatorJson(value){
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch (_) { return []; }
+}
+function _renderNonCampingOperations(b){
+  const card = document.getElementById("bNonCampingOperationsCard");
+  const body = document.getElementById("bNonCampingOperationsBody");
+  if (!card || !body) return;
+  const type = b.lodging_type;
+  if (type === "캠핑" || !["일반","관광","에어비앤비","농어촌민박","한옥"].includes(type)) {
+    card.style.display = "none"; body.innerHTML = ""; return;
+  }
+  const op = (Array.isArray(b.lodging_operators) ? b.lodging_operators : [])[0] || {};
+  const homepage = _publicHttpUrl(op.homepage_url);
+  const phone = String(op.phone || op.facility_phone || b.lr_phone || "").trim();
+  const facts = {
+    "일반":[["총 객실수",b.lr_room_count,"실"],["양실",b.lr_western_rooms,"실"],["한실",b.lr_korean_rooms,"실"],["지상층수",b.lr_floors_above,"층"],["시설면적",b.lr_facility_area,"㎡"]],
+    "관광":[["총 객실수",b.lr_room_count,"실"],["지상층수",b.lr_floors_above,"층"],["지하층수",b.lr_floors_below,"층"],["시설면적",b.lr_facility_area,"㎡"],["주변환경",b.lr_surroundings,""]],
+    "에어비앤비":[["신고 객실수",b.lr_room_count,"실"],["시설면적",b.lr_facility_area,"㎡"],["지역구분",b.lr_region_name,""]],
+    "농어촌민박":[["신고 객실수",b.lr_room_count,"실"],["화장실수",b.lr_toilet_count,"개"],["주택면적",b.lr_house_area,"㎡"],["화장실 형태",b.lr_toilet_type,""],["용도지역",b.lr_zone_type,""],["조식 제공",b.lr_breakfast_yn === "Y" ? "제공" : null,""]],
+    "한옥":[["신고 객실수",b.lr_room_count,"실"],["시설면적",b.lr_facility_area,"㎡"],["지상층수",b.lr_floors_above,"층"],["주변환경",b.lr_surroundings,""]]
+  }[type].filter(([,v]) => v != null && String(v) !== "" && v !== 0);
+  const amenities = _operatorJson(op.amenities);
+  if (type === "농어촌민박" && b.lr_breakfast_yn === "Y" && !amenities.includes("조식")) amenities.unshift("조식");
+  const badgeValues = _operatorJson(op.approved_badges || op.certifications || op.badges);
+  const badges = badgeValues.filter(v => typeof v === "string" ? v : v?.approved === true).map(v => typeof v === "string" ? v : v.label).filter(Boolean);
+  const target = _bookingTarget(b);
+  const typeMap = {"에어비앤비":"airbnb","농어촌민박":"rural","한옥":"hanok","일반":"living","관광":"living"};
+  const manageHref = `/lodging-operator/manage?type=${typeMap[type]}${b.building_id ? `&building_id=${encodeURIComponent(b.building_id)}` : ""}`;
+  body.innerHTML = `
+    ${(homepage || phone) ? `<div class="b-ops-quick-actions">
+      ${homepage ? `<a href="${escapeHtml(homepage)}" target="_blank" rel="noopener noreferrer" aria-label="홈페이지 열기">${Icons.home(15)}<span>홈페이지</span></a>` : ""}
+      ${phone ? `<a href="tel:${escapeHtml(phone.replace(/[^\d+]/g,""))}" aria-label="${escapeHtml(phone)}로 전화">${Icons.messageCircle(15)}<span>${escapeHtml(phone)}</span></a>` : ""}
+    </div>` : ""}
+    <div class="b-ops-source-label">${type === "에어비앤비" ? "신고·운영 정보" : "영업신고 기준"} <span>정부 공개자료</span></div>
+    ${facts.length ? `<div class="camp-facts b-ops-facts">${facts.map(([k,v,u]) => `<div><small>${escapeHtml(k)}</small><b>${escapeHtml(String(v))}${u}</b></div>`).join("")}</div>` : ""}
+    ${amenities.length ? `<div class="camp-section-label">편의시설 <span class="b-ops-live">운영자 등록</span></div><div class="camp-amenities b-ops-amenities">${amenities.map(item => `<span>${FacilityIcons.html(item, "facility-icon")}<span>${escapeHtml(item)}</span></span>`).join("")}</div>` : ""}
+    ${badges.length ? `<div class="b-ops-badges" aria-label="승인된 인증"><strong>${Icons.compass(14)} 인증</strong>${badges.map(x => `<span>${escapeHtml(x)}</span>`).join("")}</div>` : ""}
+    ${type === "에어비앤비" && _publicHttpUrl(op.airbnb_url) ? `<a class="b-ops-airbnb" href="${escapeHtml(_publicHttpUrl(op.airbnb_url))}" target="_blank" rel="noopener noreferrer">${Icons.compass(14)} 에어비앤비에서 보기</a>` : ""}
+    ${_reservationBar(b, false)}
+    ${!target ? `<div class="b-ops-booking-empty">예약 링크 미연결 <a href="${manageHref}">운영자이신가요?</a></div>` : ""}
+    <div class="operator-banner operator-banner-empty b-ops-partner"><div class="operator-banner-copy"><strong>이 시설을 운영하고 계신가요?</strong><span>연락처와 예약 정보를 직접 관리해 보세요.</span></div><a class="operator-banner-cta" href="${manageHref}">운영 파트너 등록</a></div>
+  `;
+  card.style.display = "";
+}
+
 const STRUCTURE_A_TYPES = ["생활", "관광", "일반"];
-const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥"];
+const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"];
 let _buildingDetailRequestToken = 0;
 let _buildingTrendRequestSeq = 0;
 let _buildingTxRequestSeq = 0;
@@ -5995,7 +6049,7 @@ function _reservationBar(b, includeConnection = true){
 function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
-    operations: ["bCampCard", "bReservationCard", "bLodgingOperatorCard"],
+    operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard"],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
@@ -6095,6 +6149,10 @@ function buildingPanelSkeleton(buildingId){
     <section class="side-card" id="bCampCard" style="display:none;">
       <div class="side-card-title">캠핑장 안내</div>
       <div id="bCampBody"></div>
+    </section>
+    <section class="side-card" id="bNonCampingOperationsCard" style="display:none;">
+      <div class="side-card-title">운영정보 <span class="side-sub">신뢰 가능한 시설 정보</span></div>
+      <div id="bNonCampingOperationsBody"></div>
     </section>
 
     <section class="side-card" id="bListingsCard" style="display:none;">
@@ -7499,6 +7557,7 @@ async function loadBuildingHeader(id){
     if (card) card.style.display = showTransactions ? "" : "none";
   });
   _renderCampingSection(b);
+  _renderNonCampingOperations(b);
   renderBuildingLodgingOperators(b.lodging_operators || [], b.lodging_type, id);
   renderBuildingAgents(showTransactions ? (b.agents || (b.agent ? [b.agent] : [])) : [], b.more_agents || [], id, bName, b.building_status);
 

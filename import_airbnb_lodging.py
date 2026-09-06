@@ -331,6 +331,16 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             if isinstance(data.get("camping_image_urls"), list)
             else data.get("camping_image_urls")
         ),
+        "western_rooms": data.get("western_rooms"),
+        "korean_rooms": data.get("korean_rooms"),
+        "toilet_count": data.get("toilet_count"),
+        "toilet_type": data.get("toilet_type"),
+        "breakfast_yn": data.get("breakfast_yn"),
+        "house_area": data.get("house_area"),
+        "zone_type": data.get("zone_type"),
+        "surroundings": data.get("surroundings"),
+        "floors_above": data.get("floors_above"),
+        "floors_below": data.get("floors_below"),
     }
     applied_building_update = (
         "applied_building_id = NULL"
@@ -350,6 +360,8 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             camping_toilet_count, camping_shower_count, camping_sink_count,
             camping_operating_seasons, camping_animal_policy,
             camping_reservation_url, camping_first_image_url, camping_image_urls
+            , western_rooms, korean_rooms, toilet_count, toilet_type, breakfast_yn,
+            house_area, zone_type, surroundings, floors_above, floors_below
         ) VALUES (
             %(permit_number)s, %(biz_name)s, %(road_address)s, %(jibun_address)s,
             %(permit_date)s, %(biz_status_name)s, %(biz_status_detail)s,
@@ -362,6 +374,8 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
             %(camping_toilet_count)s, %(camping_shower_count)s, %(camping_sink_count)s,
             %(camping_operating_seasons)s, %(camping_animal_policy)s,
             %(camping_reservation_url)s, %(camping_first_image_url)s, %(camping_image_urls)s
+            , %(western_rooms)s, %(korean_rooms)s, %(toilet_count)s, %(toilet_type)s, %(breakfast_yn)s,
+            %(house_area)s, %(zone_type)s, %(surroundings)s, %(floors_above)s, %(floors_below)s
         )
         ON CONFLICT (permit_number) DO UPDATE SET
             biz_name = EXCLUDED.biz_name,
@@ -393,6 +407,16 @@ def _upsert_registry(cur, data, *, reset_applied_building_id=True):
                 THEN lodging_registry.camping_image_urls
                 ELSE EXCLUDED.camping_image_urls
             END,
+            western_rooms = EXCLUDED.western_rooms,
+            korean_rooms = EXCLUDED.korean_rooms,
+            toilet_count = EXCLUDED.toilet_count,
+            toilet_type = EXCLUDED.toilet_type,
+            breakfast_yn = EXCLUDED.breakfast_yn,
+            house_area = EXCLUDED.house_area,
+            zone_type = EXCLUDED.zone_type,
+            surroundings = EXCLUDED.surroundings,
+            floors_above = EXCLUDED.floors_above,
+            floors_below = EXCLUDED.floors_below,
             hygiene_type = EXCLUDED.hygiene_type,
             phone = EXCLUDED.phone,
             road_norm = EXCLUDED.road_norm,
@@ -438,6 +462,9 @@ def _assert_schema(cur):
         "camping_reservation_url",
         "camping_first_image_url",
         "camping_image_urls",
+        "western_rooms", "korean_rooms", "toilet_count", "toilet_type",
+        "breakfast_yn", "house_area", "zone_type", "surroundings",
+        "floors_above", "floors_below",
     ]])
     found = {row["column_name"] for row in cur.fetchall()}
     required = {
@@ -462,6 +489,9 @@ def _assert_schema(cur):
         "camping_reservation_url",
         "camping_first_image_url",
         "camping_image_urls",
+        "western_rooms", "korean_rooms", "toilet_count", "toilet_type",
+        "breakfast_yn", "house_area", "zone_type", "surroundings",
+        "floors_above", "floors_below",
     }
     missing = required - found
     if missing:
