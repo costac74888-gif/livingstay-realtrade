@@ -4052,7 +4052,7 @@ function renderDataLabLodging(data){
           ["카라반", mergeCampingDetails("caravan_only")],
           ["복합·미확인", mergeCampingDetails("confirmed_mixed", "unknown")],
         ].map(([type, detail]) => `
-          <tr class="datalab-sub-row">
+          <tr class="datalab-sub-row datalab-breakdown-row" data-lodging-breakdown-row="camping" hidden>
             <td class="datalab-sub-name">${escapeHtml(type)}</td>
             <td>${dataLabNum(detail.facilityCount)}</td>
             <td>${dataLabNum(detail.siteCount)}</td>
@@ -4076,20 +4076,11 @@ function renderDataLabLodging(data){
           const businesses = sub.biz_count ?? sub.business_count ?? sub.registered_businesses ?? sub.registered_business_count;
           const rooms = sub.room_count ?? sub.rooms ?? sub.registered_rooms ?? sub.registered_room_count;
           const buildings = sub.building_count ?? sub.linked_building_count ?? sub.linked_buildings ?? sub.linked_building_count;
-          return `<tr class="datalab-sub-row datalab-tourism-legal-row" hidden><td class="datalab-sub-name">${escapeHtml(label)}</td><td>${dataLabNum(buildings)}</td><td>-</td><td>${dataLabNum(businesses)}</td><td>${dataLabNum(rooms)}</td><td>-</td></tr>`;
+           return `<tr class="datalab-sub-row datalab-breakdown-row" data-lodging-breakdown-row="tourism" hidden><td class="datalab-sub-name">${escapeHtml(label)}</td><td>${dataLabNum(buildings)}</td><td>-</td><td>${dataLabNum(businesses)}</td><td>${dataLabNum(rooms)}</td><td>-</td></tr>`;
         }).join("")
       : "";
-    const base = `
-      <tr class="${tourismSubtypeRows ? "datalab-tourism-breakdown" : ""}">
-        <td>${tourismSubtypeRows ? `<button type="button" class="datalab-row-toggle" data-tourism-collapse aria-expanded="false" aria-label="관광숙박 세부업종 보기"><span class="datalab-collapse-label" aria-hidden="true"></span></button>` : ""}${escapeHtml(displayType)}</td>
-        <td>${dataLabNum(displayedBuildingCount)}</td>
-        <td>${dataLabNum(displayedUnits)}</td>
-        <td>${dataLabNum(row.biz_count)}</td>
-        <td>${dataLabNum(row.room_count)}</td>
-        <td title="${rateTitle(row)}">${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
-      </tr>`;
     const subRows = row.type === "관광" ? "" : (row.sub_rows || []).map(sub => `
-      <tr class="datalab-sub-row">
+      <tr class="datalab-sub-row datalab-breakdown-row" data-lodging-breakdown-row="general" hidden>
         <td class="datalab-sub-name">${escapeHtml(sub.type)}</td>
         <td>${dataLabNum(sub.building_count)}</td>
         <td>-</td>
@@ -4097,6 +4088,19 @@ function renderDataLabLodging(data){
         <td>${dataLabNum(sub.room_count)}</td>
         <td>${sub.report_rate == null ? "-" : `${sub.report_rate}%`}</td>
       </tr>`).join("");
+    const breakdownKind = tourismSubtypeRows ? "tourism"
+      : campingSubRows ? "camping"
+      : subRows ? "general"
+      : "";
+    const base = `
+      <tr class="${breakdownKind ? "datalab-lodging-breakdown" : ""}">
+        <td>${breakdownKind ? `<button type="button" class="datalab-row-toggle" data-lodging-collapse="${breakdownKind}" data-lodging-label="${escapeHtml(displayType)}" aria-expanded="false" aria-label="${escapeHtml(displayType)} 세부항목 보기"><span class="datalab-collapse-label" aria-hidden="true"></span></button>` : ""}${escapeHtml(displayType)}</td>
+        <td>${dataLabNum(displayedBuildingCount)}</td>
+        <td>${dataLabNum(displayedUnits)}</td>
+        <td>${dataLabNum(row.biz_count)}</td>
+        <td>${dataLabNum(row.room_count)}</td>
+        <td title="${rateTitle(row)}">${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
+      </tr>`;
     return base + tourismSubtypeRows + campingSubRows + subRows;
   }).join("");
   return `
@@ -4295,14 +4299,17 @@ function dataLabErrorHTML(){
 
 function bindDataLabControls(content){
   bindDataLabBuildingButtons(content);
-  content.querySelectorAll("[data-tourism-collapse]").forEach(button => {
+  content.querySelectorAll("[data-lodging-collapse]").forEach(button => {
     button.addEventListener("click", () => {
       const section = button.closest("table");
+      const group = button.dataset.lodgingCollapse;
+      const label = button.dataset.lodgingLabel || "숙박";
       const expanded = button.getAttribute("aria-expanded") !== "true";
-      section.classList.toggle("is-tourism-collapsed", !expanded);
-      section.querySelectorAll(".datalab-tourism-legal-row").forEach(row => row.hidden = !expanded);
+      section.querySelectorAll("[data-lodging-breakdown-row]").forEach(row => {
+        if (row.dataset.lodgingBreakdownRow === group) row.hidden = !expanded;
+      });
       button.setAttribute("aria-expanded", String(expanded));
-      button.setAttribute("aria-label", expanded ? "관광숙박 세부업종 숨기기" : "관광숙박 세부업종 보기");
+      button.setAttribute("aria-label", `${label} 세부항목 ${expanded ? "숨기기" : "보기"}`);
     });
   });
   content.querySelectorAll("[data-datalab-collapse]").forEach(button => {
