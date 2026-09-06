@@ -6033,7 +6033,13 @@ function _reservationBar(b, includeConnection = true){
   if (!target) {
     const typeMap = {에어비앤비:"airbnb", 캠핑:"camping", 농어촌민박:"rural", 한옥:"hanok", 생활:"living"};
     const manageType = typeMap[b?.lodging_type];
-    const manageHref = `/lodging-operator/manage${manageType ? `?type=${manageType}` : ""}`;
+    const manageParams = new URLSearchParams();
+    if (manageType) manageParams.set("type", manageType);
+    if (Number.isInteger(Number(b?.building_id)) && Number(b.building_id) > 0) {
+      manageParams.set("building_id", String(Number(b.building_id)));
+    }
+    const manageQuery = manageParams.toString();
+    const manageHref = `/lodging-operator/manage${manageQuery ? `?${manageQuery}` : ""}`;
     return includeConnection ? `
       <div class="b-reservation-bar is-empty" role="group" aria-label="예약 및 운영자 연결">
         <div><strong>예약 링크 미연결</strong><span>운영자라면 예약 사이트를 직접 연결할 수 있습니다.</span></div>
