@@ -54,6 +54,7 @@ function fixture(incompleteSelected = false) {
     payload.items[0].price_change = 0.8;
     payload.items[0].quadrant = "관광 비교기간 부족";
     payload.items[0].transaction_count = 229;
+    payload.items.push(item(301, "비선택 극단값", "경상남도", "통영시", null, 4464, "관광 비교기간 부족"));
   }
   return payload;
 }
@@ -173,12 +174,15 @@ async function run() {
       const layout = window.__analysisChartLayout;
       return {
         selected: layout.points.find((point) => point.selected),
+        pointIds: layout.points.map((point) => point.id),
         baseline: layout.baseline,
         detail: document.querySelector(".detail-quadrant").textContent,
         transactionCount: document.querySelector(".detail-metrics").textContent,
       };
     });
     expect(incompleteResult.selected.radius === 10, "비교기간 부족 선택 건물의 점 크기가 유지되지 않았습니다.");
+    expect(!incompleteResult.pointIds.includes("301"),
+      "비선택 표본 부족 건물이 축 범위를 왜곡하고 있습니다.");
     expect(Math.abs(incompleteResult.selected.x - incompleteResult.baseline.x) < 0.6,
       "관광 비교기간 부족 건물이 관광 0% 기준선에 표시되지 않았습니다.");
     expect(Math.abs(incompleteResult.selected.y - incompleteResult.baseline.y) > 0.6,

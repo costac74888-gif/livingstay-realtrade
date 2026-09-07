@@ -97,6 +97,7 @@ expect(
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")
+    && js.includes('String(i.building_id)===String(state.selected)')
     && js.includes('if(c.raw.incomplete)return"#758596"')
     && js.includes('points[idx].incomplete?"#758596"')
     && js.includes('tourism==null?(baselineX==null?0:baselineX):tourism')
