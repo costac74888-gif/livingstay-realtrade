@@ -424,6 +424,11 @@ async function run() {
       && Math.abs(operationResult.operationLayout.baselinePixelY
         - operationResult.operationLayout.chartCenterY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
+    await page.click("#operationRentalGuide");
+    expect(await page.getAttribute("#rentalTab", "aria-selected") === "true"
+      && !await page.locator("#rentalAnalysis").evaluate((el) => el.classList.contains("hidden")),
+      "장기임대 안내에서 임대수익분석으로 이동하지 못했습니다.");
+    await page.click("#operationTab");
     uploadHasOccupancyBasis = false;
     await page.setInputFiles("#operationFiles", {
       name: "missing-period.csv",
