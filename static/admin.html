@@ -683,6 +683,17 @@
             options: ["생활", "관광", "일반", "에어비앤비", "농어촌민박",
                       "캠핑", "한옥", "복합", "준공전", "미분류"] },
           { key: "units", label: "총호실수", sortable: true, editable: true, type: "number" },
+          { key: "lodging_room_total", label: "객실수(영업신고)", clientSort: true,
+            sortValue: (row) => row.lodging_room_has_value
+              ? Number(row.lodging_room_total || 0) : null,
+            render: (v, row) => {
+              if (!row.lodging_room_has_value) {
+                return `<span style="color:var(--ink-soft);">미확인</span>`;
+              }
+              const partial = !row.lodging_room_known;
+              return `<span style="font-weight:600;" title="${partial ? "일부 영업신고의 객실수만 확인됨" : "정상영업 신고자료 객실수"}">` +
+                `${Number(v || 0).toLocaleString()}실${partial ? " (일부 확인)" : ""}</span>`;
+            } },
           { key: "favorite_count", label: "관심저장", sortable: true,
             render: (v, row) => v > 0
               ? `<a href="/api/admin/buildings/${row.id}/favorites/export.xlsx" style="color:var(--brass-dark);font-weight:700;text-decoration:none;" title="관심저장 회원 명단 다운로드">${v}명 📥</a>`
@@ -691,7 +702,7 @@
             render: (v, row) => v > 0
               ? `<span class="dg-badge dg-badge-ok" title="${row.premium_expires_at ? '만료 ' + dgEscape(row.premium_expires_at) : '무기한'}">${v > 1 ? v + "명 보유" : "보유"}</span>`
               : `<span style="color:var(--ink-soft);">-</span>` },
-          // 표시 순서: 입점부동산 → 영업사업장 → 신고율 / 객실수 → 입점상가
+          // 표시 순서: 호실수 → 영업신고 객실수 → 입점부동산 → 영업사업장 → 신고율 → 입점상가
           // 입점부동산: 주소 일치 데이터 우선, 없을 때만 입점업소 참고 수를 표시.
           { key: "store_realty_count", label: "입점부동산", sortable: false,
             render: (v, row) => {
@@ -714,15 +725,12 @@
                 `padding:2px 8px;font-size:11.5px;cursor:pointer;white-space:nowrap;">` +
                 `🏢 ${row.lodging_count}건 펼치기</button>`;
             } },
-          { key: "report_rate", label: "신고율 / 객실수", clientSort: true,
-            sortValue: (row) => row.lodging_metric === "room_count"
-              ? (row.lodging_room_known ? Number(row.lodging_room_total || 0) : null)
-              : (row.units && row.lodging_room_known ? Number(row.lodging_room_total || 0) / Number(row.units) : null),
+          { key: "report_rate", label: "신고율", clientSort: true,
+            sortValue: (row) => row.lodging_metric === "report_rate" && row.units && row.lodging_room_known
+              ? Number(row.lodging_room_total || 0) / Number(row.units) : null,
             render: (_, row) => {
+              if (row.lodging_metric !== "report_rate") return `<span style="color:var(--ink-soft);">-</span>`;
               if (!row.lodging_room_known) return `<span style="color:var(--ink-soft);">미확인</span>`;
-              if (row.lodging_metric === "room_count") {
-                return `<span style="font-weight:600;">${Number(row.lodging_room_total || 0).toLocaleString()}실</span>`;
-              }
               if (!row.units) return `<span style="color:var(--ink-soft);">-</span>`;
               // 신고율은 lodging_registry의 비폐업 객실수 합계만 사용한다.
               const rate = Math.round((row.lodging_room_total || 0) / row.units * 1000) / 10;
@@ -770,6 +778,8 @@
           building_name:       () => `<strong style="font-size:12px;">합계</strong>`,
           units:               (t) => t.total_units != null
                                       ? `<strong>${t.total_units.toLocaleString()}</strong>` : "",
+          lodging_room_total:  (t) => t.total_biz_units != null
+                                      ? `<strong>${t.total_biz_units.toLocaleString()}실</strong>` : "",
           favorite_count:      (t) => t.total_favorites != null
                                       ? `<strong>${t.total_favorites.toLocaleString()}</strong>` : "",
           priority_badge_count:(t) => t.total_badges != null

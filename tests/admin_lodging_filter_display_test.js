@@ -24,6 +24,20 @@ expect(
   "다중 활성 신고의 객실 수가 일부 누락돼도 정확한 합계로 표시될 수 있습니다.",
 );
 expect(
+  app.includes('it["lodging_room_has_value"] = any('),
+  "영업신고 객실수가 일부라도 있으면 건물 목록에 표시할 수 없습니다.",
+);
+expect(
+  admin.indexOf('{ key: "lodging_room_total", label: "객실수(영업신고)"') >
+    admin.indexOf('{ key: "units", label: "총호실수"') &&
+    admin.indexOf('{ key: "lodging_room_total", label: "객실수(영업신고)"') <
+    admin.indexOf('{ key: "favorite_count", label: "관심저장"') &&
+    admin.includes('{ key: "report_rate", label: "신고율"') &&
+    !admin.includes('label: "신고율 / 객실수"') &&
+    admin.includes('" (일부 확인)"'),
+  "총호실수 옆 영업신고 객실수 또는 분리된 신고율 열이 없습니다.",
+);
+expect(
   admin.includes('row.display_building_name || v') &&
     admin.includes("영업신고 기준") &&
     admin.includes(">객실수</th>") &&

@@ -20327,6 +20327,10 @@ def admin_buildings_list():
             (lr.get("room_count") or 0)
             for lr in deduplicated_active_lodgings
         )
+        it["lodging_room_has_value"] = any(
+            lr.get("room_count") is not None
+            for lr in deduplicated_active_lodgings
+        )
         it["lodging_room_known"] = bool(deduplicated_active_lodgings) and all(
             lr.get("room_count") is not None
             for lr in deduplicated_active_lodgings
@@ -22392,13 +22396,14 @@ def admin_buildings_export():
     wb = Workbook(); ws = wb.active; ws.title = "건물마스터"
 
     # ── 헤더 ────────────────────────────────────────────────────────────────
-    # 컬럼 순서: 건물정보 / 입점부동산 / 입점상가수(첫행만) / 영업사업장 / 집계 / 메타
+    # 컬럼 순서: 건물정보·호실수·영업신고 객실수 / 입점부동산 / 입점상가수 /
+    # 영업사업장 / 신고율 / 메타
     headers = [
-        "건물명", "도로명주소", "용도", "총호실수", "관심저장", "단지뱃지",
+        "건물명", "도로명주소", "용도", "총호실수", "객실수(영업신고)", "관심저장", "단지뱃지",
         "입점부동산_업체명", "입점부동산_호번호",
         "입점상가수",          # 첫 번째 행에만 표시, 나머지 반복 행은 빈칸
         "영업사업장_업체명", "신고번호", "객실수", "상태", "신고일", "전화", "원본주소", "갱신일",
-        "입점부동산수", "신고 지표(생활=신고율, 그 외=객실수)",
+        "입점부동산수", "신고율",
         "ID", "시군구", "읍면동", "지번", "지번주소", "용도상세",
         "등록된입점부동산(구 realty_store_name)",
     ]
@@ -22420,10 +22425,20 @@ def admin_buildings_export():
             (lr.get("room_count") or 0)
             for lr in active_lodgings
         )
+        active_rooms_value = (
+            active_rooms
+            if any(lr.get("room_count") is not None for lr in active_lodgings)
+            else None
+        )
         report_metric = (
             round(active_rooms / units * 100, 1)
-            if uses_lodging_report_rate(r.get("lodging_type")) and units
-            else f"{active_rooms}실"
+            if (
+                uses_lodging_report_rate(r.get("lodging_type"))
+                and units
+                and active_lodgings
+                and all(lr.get("room_count") is not None for lr in active_lodgings)
+            )
+            else None
         )
         n_rows        = max(len(realty_list), len(lr_list), 1)
         store_count   = r["store_count"] or None      # 입점상가수: 첫 행만
@@ -22443,6 +22458,7 @@ def admin_buildings_export():
             # 건물 공통 정보는 모든 행에 반복
             row_vals = [
                 r["building_name"], r["road_address"], r["lodging_type"], units,
+                active_rooms_value,
                 r["favorite_count"] or 0,
                 (f"{r['priority_badge_count']}명 보유" if r.get('priority_badge_count', 0) > 1 else "보유") if r.get('priority_badge_count') else None,
             ] + [
