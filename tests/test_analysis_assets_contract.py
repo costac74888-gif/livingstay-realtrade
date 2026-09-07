@@ -18,13 +18,13 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn('"period_options"', self.endpoint)
 
     def test_price_linkage_is_exact_and_unit_only(self):
-        self.assertIn("AND duplicate_mb.id <> mb.id", self.endpoint)
-        self.assertIn("AND NOT EXISTS (", self.endpoint)
-        self.assertIn("t.sgg_cd = s.sgg_cd", self.endpoint)
-        self.assertIn("t.umd_nm = s.umd_nm AND t.jibun = s.jibun", self.endpoint)
-        self.assertIn("t.transaction_scope = 'unit'", self.endpoint)
-        self.assertIn("t.match_confidence = 'exact'", self.endpoint)
-        self.assertIn("t.price > 0 AND t.area > 0", self.endpoint)
+        self.assertIn("NOT EXISTS (", self.endpoint)
+        self.assertIn("duplicate.id<>mb.id", self.endpoint)
+        self.assertIn("mb.sgg_cd=t.sgg_cd", self.endpoint)
+        self.assertIn("mb.umd_nm=t.umd_nm AND mb.jibun=t.jibun", self.endpoint)
+        self.assertIn("transaction_scope = 'unit'", self.endpoint)
+        self.assertIn("match_confidence = 'exact'", self.endpoint)
+        self.assertIn("price > 0 AND area > 0", self.endpoint)
         self.assertNotIn("building_name ILIKE", self.endpoint)
 
     def test_missing_comparable_samples_remain_null(self):
@@ -35,19 +35,23 @@ class AnalysisAssetsContractTests(unittest.TestCase):
 
     def test_tourism_axis_uses_real_visitor_percentile_not_fake_growth(self):
         self.assertIn("metric_name = '기초지자체 방문자 수'", self.source)
-        self.assertIn("JOIN latest_file lf ON lf.source_file = t.source_file", self.source)
+        self.assertIn("JOIN latest_file USING (source_file)", self.source)
         self.assertIn("percent_rank() OVER (ORDER BY visitor_count)", self.source)
         self.assertIn('"tourism_demand_index": demand_index', self.endpoint)
+
+    def test_growth_axis_requires_complete_current_and_previous_months(self):
+        self.assertIn("previous_months", self.source)
+        self.assertIn("current_months = %s", self.source)
+        self.assertIn('tourism_axis not in {"index", "growth"}', self.endpoint)
+        self.assertIn('"tourism_growth": demand.get("growth")', self.endpoint)
+        self.assertIn('"tourism_comparison_complete"', self.endpoint)
 
     def test_public_population_excludes_mixed_use_and_is_capped(self):
         self.assertIn("lodging_type IS DISTINCT FROM 'mixed_use_excluded'", self.endpoint)
         self.assertIn("LIMIT %s", self.endpoint)
         self.assertIn("_ANALYSIS_MAX_ITEMS", self.endpoint)
-        self.assertLess(
-            self.endpoint.index("LIMIT %s"),
-            self.endpoint.index("), exact_tx AS ("),
-            "current-period candidates must be capped before historical aggregation",
-        )
+        self.assertIn("WITH recent_tx AS MATERIALIZED", self.endpoint)
+        self.assertIn("CURRENT_DATE - make_interval(months => %s * 2)", self.endpoint)
 
 
 if __name__ == "__main__":

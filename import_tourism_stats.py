@@ -310,6 +310,74 @@ def source_period_name(name):
     return f"{match.group(1)}-{match.group(2)}" if match else None
 
 
+def normalize_yearmonth(value):
+    """Return a strict YYYYMM reference month or None."""
+    text = re.sub(r"[^0-9]", "", str(value or "").strip())
+    if not re.fullmatch(r"20\d{4}", text):
+        return None
+    return text if 1 <= int(text[4:6]) <= 12 else None
+
+
+def _period_months(period):
+    match = re.fullmatch(r"(20\d{4})-(20\d{4})", str(period or ""))
+    if not match:
+        return []
+    start, end = match.groups()
+    sy, sm, ey, em = int(start[:4]), int(start[4:]), int(end[:4]), int(end[4:])
+    if not (1 <= sm <= 12 and 1 <= em <= 12) or (sy, sm) > (ey, em):
+        return []
+    months = []
+    year, month = sy, sm
+    while (year, month) <= (ey, em):
+        months.append(f"{year:04d}{month:02d}")
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
+
+
+def validate_monthly_visitor_rows(filename, csv_rows, period):
+    """Validate semantic uniqueness and complete monthly region coverage."""
+    if not csv_rows or "기준년월" not in csv_rows[0]:
+        return None
+    seen, regions_by_month = set(), {}
+    for row_index, row in enumerate(csv_rows, 2):
+        month = normalize_yearmonth(row.get("기준년월"))
+        sido, sgg = normalize_region(row.get("광역지자체명"), row.get("기초지자체명"))
+        if not month or not sido or not sgg:
+            raise ValueError(f"{filename} {row_index}행: 기준년월·시도·시군구가 올바르지 않습니다.")
+        for metric_name in ("기초지자체 방문자 수", "기초지자체 방문자 비율"):
+            if number(row.get(metric_name)) is None:
+                raise ValueError(f"{filename} {row_index}행: {metric_name} 값이 올바르지 않습니다.")
+        key = (month, sido, sgg)
+        if key in seen:
+            raise ValueError(f"{filename}: 중복 지역·기준월 원장 {month} {sido} {sgg}")
+        seen.add(key)
+        regions_by_month.setdefault(month, set()).add((sido, sgg))
+    expected_months = _period_months(period)
+    actual_months = sorted(regions_by_month)
+    if expected_months and actual_months != expected_months:
+        missing = sorted(set(expected_months) - set(actual_months))
+        raise ValueError(f"{filename}: 원본 기간의 누락 기준월이 있습니다: {', '.join(missing[:6])}")
+    contiguous_months = _period_months(f"{actual_months[0]}-{actual_months[-1]}")
+    if actual_months != contiguous_months:
+        missing = sorted(set(contiguous_months) - set(actual_months))
+        raise ValueError(f"{filename}: 누락 기준월이 있습니다: {', '.join(missing[:6])}")
+    expected_regions = set.union(*regions_by_month.values())
+    incomplete = {
+        month: sorted(expected_regions - regions)
+        for month, regions in regions_by_month.items()
+        if regions != expected_regions
+    }
+    if incomplete:
+        month = sorted(incomplete)[0]
+        names = ", ".join(f"{s} {g}" for s, g in incomplete[month][:5])
+        raise ValueError(f"{filename}: {month} 누락 지역이 있습니다: {names}")
+    return {
+        "months": actual_months,
+        "region_count": len(expected_regions),
+        "latest_month": actual_months[-1],
+    }
+
+
 def iter_csvs(paths):
     for path in paths:
         if path.suffix.lower() == ".zip":
@@ -331,7 +399,8 @@ def generic_fields(stat_type, row):
         )
     if stat_type in FIELD_MAP:
         (sido_key, sgg_key), metrics = FIELD_MAP[stat_type]
-        return row.get(sido_key), row.get(sgg_key) if sgg_key else None, None, metrics
+        ref = row.get("기준년월") if stat_type == "visitor_sgg" else None
+        return row.get(sido_key), row.get(sgg_key) if sgg_key else None, ref, metrics
     if stat_type == "visitor_trend":
         return row.get("광역지자체"), None, row.get("기준년월"), (("방문자 수", "명"),)
     if stat_type == "foreign_trend":
@@ -374,6 +443,8 @@ def build_member_metric_rows(source_file, filename, csv_rows, period):
         return [], None, len(csv_rows)
     if stat_type == "lodging_search_rank":
         validate_lodging_top100_address_rows(filename, csv_rows)
+    if stat_type == "visitor_sgg":
+        validate_monthly_visitor_rows(filename, csv_rows, period)
     output, skipped = [], 0
     for row_index, row in enumerate(csv_rows, 2):
         if stat_type == "lodging_search_rank":
@@ -384,6 +455,7 @@ def build_member_metric_rows(source_file, filename, csv_rows, period):
                 skipped += 1
             continue
         sido, sgg, ref, metrics = generic_fields(stat_type, row)
+        ref = normalize_yearmonth(ref) if ref else None
         sido, sgg = normalize_region(sido, sgg)
         dimensions = {k: v for k, v in row.items() if v not in (None, "")}
         before = len(output)
@@ -398,7 +470,12 @@ def build_member_metric_rows(source_file, filename, csv_rows, period):
             skipped += 1
             continue
         for metric_name, unit, value in parsed_metrics:
-            identity = json.dumps([source_file, stat_type, row_index, metric_name], ensure_ascii=False)
+            identity_key = (
+                [ref, sido, sgg, metric_name]
+                if stat_type == "visitor_sgg" and ref
+                else [row_index, metric_name]
+            )
+            identity = json.dumps([source_file, stat_type, identity_key], ensure_ascii=False)
             output.append((stat_type, sido, sgg, ref, metric_name, value, unit,
                            source_file, period, json.dumps(dimensions, ensure_ascii=False),
                            hashlib.sha256(identity.encode()).hexdigest()))

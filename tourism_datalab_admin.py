@@ -181,6 +181,10 @@ def collection_inventory(raw_rows, today=None):
                 ),
                 "collected_at": row.get("collected_at"),
                 "rows": int(row.get("rows") or 0),
+                "latest_ref_yearmonth": row.get("max_ref_yearmonth"),
+                "region_count": int(row.get("region_count") or 0),
+                "missing_region_count": int(row.get("missing_region_count") or 0),
+                "missing_regions": list(row.get("missing_regions") or []),
                 "next_update_date": next_release.isoformat() if next_release else None,
                 "status": status, "is_latest": is_latest,
             })

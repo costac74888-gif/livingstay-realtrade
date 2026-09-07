@@ -45,6 +45,9 @@ class TourismDatalabAdminTests(unittest.TestCase):
                 "max_ref_yearmonth": "202606",
                 "collected_at": "2026-09-05 01:00:00+00",
                 "rows": 458,
+                "region_count": 229,
+                "missing_region_count": 2,
+                "missing_regions": ["서울특별시 중구", "강원특별자치도 강릉시"],
             },
             {
                 "stat_type": "visitor_sgg",
@@ -78,6 +81,9 @@ class TourismDatalabAdminTests(unittest.TestCase):
             by_type.setdefault(item["stat_type"], []).append(item)
         self.assertEqual(by_type["visitor_sgg"][0]["next_update_date"], "2026-08-04")
         self.assertEqual(by_type["visitor_sgg"][0]["status"], "overdue")
+        self.assertEqual(by_type["visitor_sgg"][0]["latest_ref_yearmonth"], "202606")
+        self.assertEqual(by_type["visitor_sgg"][0]["missing_region_count"], 2)
+        self.assertEqual(len(by_type["visitor_sgg"][0]["missing_regions"]), 2)
         self.assertEqual(by_type["visitor_sgg"][1]["status"], "history")
         self.assertEqual(by_type["consumption_region"][0]["next_update_date"], "2026-09-11")
         self.assertEqual(by_type["consumption_region"][0]["status"], "due_soon")

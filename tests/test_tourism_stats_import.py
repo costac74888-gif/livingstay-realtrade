@@ -38,6 +38,52 @@ class FakeCursor:
 
 
 class TourismStatsImporterTests(unittest.TestCase):
+    def test_monthly_visitor_rows_preserve_month_and_semantic_identity(self):
+        rows = [
+            {"기준년월": month, "광역지자체명": sido, "기초지자체명": sgg,
+             "기초지자체 방문자 수": value, "기초지자체 방문자 비율": "10"}
+            for month, value in (("202601", "100"), ("202602", "110"))
+            for sido, sgg in (("서울특별시", "중구"), ("강원특별자치도", "강릉시"))
+        ]
+        built, kind, skipped = importer.build_member_metric_rows(
+            "monthly.zip::지역별 방문자 수(기초지자체별).csv",
+            "지역별 방문자 수(기초지자체별).csv",
+            rows,
+            "202601-202602",
+        )
+        self.assertEqual(kind, "visitor_sgg")
+        self.assertEqual(skipped, 0)
+        self.assertEqual({row[3] for row in built}, {"202601", "202602"})
+        self.assertEqual(len({row[10] for row in built}), len(built))
+
+    def test_monthly_visitor_rows_reject_duplicate_missing_month_and_region(self):
+        base = [
+            {"기준년월": month, "광역지자체명": "서울특별시",
+             "기초지자체명": sgg, "기초지자체 방문자 수": "100",
+             "기초지자체 방문자 비율": "10"}
+            for month in ("202601", "202602")
+            for sgg in ("중구", "종로구")
+        ]
+        with self.assertRaisesRegex(ValueError, "중복 지역"):
+            importer.validate_monthly_visitor_rows("x.csv", base + [base[0]], None)
+        invalid = [dict(row) for row in base]
+        invalid[0]["기초지자체 방문자 수"] = ""
+        with self.assertRaisesRegex(ValueError, "방문자 수"):
+            importer.validate_monthly_visitor_rows("x.csv", invalid, None)
+        with self.assertRaisesRegex(ValueError, "누락 기준월"):
+            importer.validate_monthly_visitor_rows(
+                "x.csv", [row for row in base if row["기준년월"] != "202602"],
+                "202601-202602",
+            )
+        with self.assertRaisesRegex(ValueError, "누락 지역"):
+            importer.validate_monthly_visitor_rows(
+                "x.csv",
+                [row for row in base if not (
+                    row["기준년월"] == "202602" and row["기초지자체명"] == "종로구"
+                )],
+                None,
+            )
+
     def test_lodging_rank_filename_is_separate_from_generic_ranking(self):
         self.assertEqual(
             importer.detect_type("지역별 관광지 검색순위_202601-202602.csv"),
