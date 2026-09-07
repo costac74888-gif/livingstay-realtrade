@@ -129,6 +129,7 @@ async function run() {
          }),
          detailButtons: Array.from(document.querySelectorAll("#detailCard .detail-actions .am-btn")).map((node) => node.textContent.trim()),
          detailSections: Array.from(document.querySelectorAll("#detailCard .detail-analysis, #detailCard .quadrant-guide, #detailCard .detail-disclaimer, #detailCard .detail-section-title")).map((node) => node.textContent.trim()),
+         recommendations: Array.from(document.querySelectorAll("#recommendationRows tr[data-id]")).map((node) => node.dataset.id),
         loggedInWorkspace: !document.getElementById("workspace").classList.contains("hidden"),
       };
       });
@@ -144,6 +145,8 @@ async function run() {
     expect(result.detailSections.some((text) => text.includes("해당 사분면 설명"))
       && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
+    expect(result.recommendations.length > 0 && result.recommendations.length <= 5,
+      "추천 단지 TOP 5에 저평가 알짜 후보가 표시되지 않았습니다.");
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
     expect(Math.abs(baseline.y - baseline.quadrantBottom[0]) < 0.6 && Math.abs(baseline.y - baseline.quadrantBottom[1]) < 0.6,

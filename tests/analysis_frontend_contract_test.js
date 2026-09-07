@@ -113,8 +113,14 @@ expect(
 expect(
   html.includes("추천 단지 TOP 5") && html.includes("④</i> 저평가 알짜 지역 중심")
     && html.includes('id="recommendationRows"') && js.includes("renderRecommendations")
-    && js.includes('i.quadrant==="저평가 알짜"'),
+    && js.includes('i.quadrant==="저평가 알짜"') && js.includes("demandBase")
+    && js.includes('growth==null?"자료 부족"'),
   "저평가 알짜 중심 추천 단지 TOP 5가 없습니다.",
+);
+expect(
+  js.includes("if(loadSeq===0&&!state.payload)load()")
+    && js.includes("기존 분석 유지 · 갱신 실패"),
+  "초기 중복 요청 차단 또는 후속 갱신 실패 시 정상 화면 보존이 없습니다.",
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")
