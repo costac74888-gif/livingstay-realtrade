@@ -30942,6 +30942,131 @@ def _analysis_tourism_demand_by_sgg(cur, period_months):
     return result
 
 
+def _analysis_selected_trajectory(cur, building_id, period_months, tourism_axis):
+    """Monthly transaction medians joined only to observed tourism months."""
+    if not building_id:
+        return []
+    cur.execute("""
+        WITH target AS (
+            SELECT id, sgg_cd, umd_nm, jibun,
+                   regexp_replace(split_part(trim(COALESCE(sgg_text, '')), ' ', 1),
+                     '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                   regexp_replace(trim(regexp_replace(COALESCE(sgg_text, ''),
+                     '^\\S+\\s*', '')), '\\s+', '', 'g') AS sgg
+            FROM master_buildings WHERE id = %s
+        )
+        SELECT t.id, t.deal_date, t.price::double precision AS price,
+               t.area::double precision AS area,
+               t.price::double precision / NULLIF(t.area, 0) AS price_per_sqm,
+               target.sido, target.sgg
+        FROM transactions t JOIN target
+          ON target.sgg_cd=t.sgg_cd AND target.umd_nm=t.umd_nm
+         AND target.jibun=t.jibun
+        WHERE t.transaction_scope='unit' AND t.match_confidence='exact'
+          AND t.price > 0 AND t.area > 0
+          AND t.deal_date ~ '^\\d{4}-\\d{2}-\\d{2}$'
+          AND t.deal_date >= to_char(
+            CURRENT_DATE - make_interval(months => %s * 2), 'YYYY-MM-DD')
+          AND t.deal_date <= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+          AND NOT EXISTS (
+            SELECT 1 FROM master_buildings duplicate
+            WHERE duplicate.sgg_cd=target.sgg_cd
+              AND duplicate.umd_nm=target.umd_nm AND duplicate.jibun=target.jibun
+              AND duplicate.id<>target.id)
+        ORDER BY t.deal_date, t.id
+    """, (building_id, period_months))
+    transactions = [dict(row) for row in cur.fetchall()]
+    if not transactions:
+        return []
+
+    sido, sgg = transactions[0]["sido"], transactions[0]["sgg"]
+    cur.execute("""
+        WITH normalized AS (
+          SELECT regexp_replace(trim(COALESCE(sido_name, '')),
+                   '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                 regexp_replace(trim(COALESCE(sgg_name, '')), '\\s+', '', 'g') AS sgg,
+                 COALESCE(ref_yearmonth,
+                   CASE WHEN dimensions->>'기준년월' ~ '^20[0-9]{4}$'
+                        THEN dimensions->>'기준년월' END) AS ref_month,
+                 metric_value::double precision AS visitors, collected_at, id
+          FROM tourism_stats
+          WHERE stat_type='visitor_sgg' AND metric_name='기초지자체 방문자 수'
+            AND metric_value >= 0
+        ), latest AS (
+          SELECT DISTINCT ON (sido, sgg, ref_month)
+                 sido, sgg, ref_month, visitors
+          FROM normalized WHERE ref_month IS NOT NULL
+          ORDER BY sido, sgg, ref_month, collected_at DESC, id DESC
+        ), ranked AS (
+          SELECT *, percent_rank() OVER (
+                   PARTITION BY ref_month ORDER BY visitors) * 100.0 AS demand_index
+          FROM latest
+        )
+        SELECT ref_month, visitors, demand_index
+        FROM ranked WHERE sido=%s AND sgg=%s ORDER BY ref_month
+    """, (sido, sgg))
+    tourism_rows = [dict(row) for row in cur.fetchall()]
+    tourism = {row["ref_month"]: row for row in tourism_rows}
+
+    grouped = {}
+    for tx in transactions:
+        month = tx["deal_date"][:7].replace("-", "")
+        grouped.setdefault(month, []).append(tx)
+
+    def month_offset(yyyymm, offset):
+        value = datetime.strptime(yyyymm + "01", "%Y%m%d")
+        absolute = value.year * 12 + value.month - 1 + offset
+        return f"{absolute // 12:04d}{absolute % 12 + 1:02d}"
+
+    points = []
+    previous_median = None
+    for month in sorted(grouped):
+        raw = grouped[month]
+        prices = sorted(float(tx["price_per_sqm"]) for tx in raw)
+        middle = len(prices) // 2
+        monthly_median = (
+            prices[middle] if len(prices) % 2
+            else (prices[middle - 1] + prices[middle]) / 2
+        )
+        price_change = _analysis_growth(monthly_median, previous_median)
+        tourism_value = None
+        tourism_complete = False
+        if tourism_axis == "index":
+            observed = tourism.get(month)
+            if observed is not None:
+                tourism_value = _analysis_float(observed["demand_index"])
+                tourism_complete = True
+        else:
+            current_months = [month_offset(month, -offset) for offset in range(period_months)]
+            previous_months = [
+                month_offset(month, -(period_months + offset))
+                for offset in range(period_months)
+            ]
+            if all(value in tourism for value in current_months + previous_months):
+                current = sum(float(tourism[value]["visitors"]) for value in current_months)
+                previous = sum(float(tourism[value]["visitors"]) for value in previous_months)
+                tourism_value = _analysis_growth(current, previous)
+                tourism_complete = tourism_value is not None
+        points.append({
+            "month": month,
+            "tourism_month": month if month in tourism else None,
+            "tourism_value": tourism_value,
+            "tourism_complete": tourism_complete,
+            "price_per_sqm_median": monthly_median,
+            "previous_price_per_sqm_median": previous_median,
+            "price_change": price_change,
+            "transaction_count": len(raw),
+            "transactions": [{
+                "deal_date": tx["deal_date"],
+                "price": _analysis_float(tx["price"]),
+                "area": _analysis_float(tx["area"]),
+                "price_per_sqm": _analysis_float(tx["price_per_sqm"]),
+            } for tx in raw],
+        })
+        previous_median = monthly_median
+    return points
+
+
 @app.route("/api/analysis/building-search")
 @limiter.limit("60 per minute")
 def analysis_building_search():
@@ -31249,6 +31374,9 @@ def analysis_assets():
             (item for item in items if item["building_id"] == building_id),
             None,
         )
+        trajectory = _analysis_selected_trajectory(
+            cur, building_id, period_months, tourism_axis
+        ) if selected_item else []
         tourism_span = max(
             [abs(value - tourism_baseline) for value in valid_tourism] or [1]
         ) or 1
@@ -31308,6 +31436,17 @@ def analysis_assets():
                 "price_change": price_baseline,
             },
             "tourism_axis": tourism_axis,
+            "trajectory": trajectory,
+            "trajectory_methodology": {
+                "price": "거래월별 ㎡당 실거래가 중앙값의 직전 거래월 대비 증감률",
+                "tourism": (
+                    f"각 거래월 종료 기준 최근 {period_months}개월 방문자 합계의 "
+                    f"직전 {period_months}개월 대비 증감률"
+                    if tourism_axis == "growth"
+                    else "각 거래월 시군구 방문자 수의 전국 백분위"
+                ),
+                "missing": "필요한 관광 월자료가 모두 없으면 값을 만들지 않고 회색 누락점으로 표시",
+            },
             "items": items,
             "methodology": {
                 "tourism": "한국관광 데이터랩 월별 시군구 국내 방문자 수의 전국 백분위 지수 또는 선택기간 대비 직전 동기간 실제 증감률",

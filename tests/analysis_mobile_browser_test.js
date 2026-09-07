@@ -33,13 +33,19 @@ function item(id, name, sido, sgg, growth, price, quadrant, representative = fal
   };
 }
 
-function fixture(incompleteSelected = false) {
+function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) {
   const payload = {
     generated_at: "2026-09-07T00:00:00Z",
     baselines: { tourism_growth: 17, tourism_demand_index: 53, price_change: 12 },
     filters: { sidos: ["강원특별자치도"], sggs: ["속초시"], lodging_types: [], period_options: [] },
     summary: { registered_buildings: 7, transaction_count: 20, analyzed_buildings: 7, analysis_sample_transaction_count: 20 },
     methodology: {},
+    trajectory_methodology: { price: "월별 ㎡당 중앙값", tourism: "거래월 관광자료", missing: "관광자료 누락은 회색 표시" },
+    trajectory: [
+      { month: "202601", tourism_month: "202601", tourism_value: -8, price_change: -5, price_per_sqm_median: 410, previous_price_per_sqm_median: 431.6, transaction_count: 2, transactions: [{ deal_date: "2026-01-03", price: 41000, area: 100, price_per_sqm: 410 }] },
+      { month: "202603", tourism_month: null, tourism_value: null, price_change: 12, price_per_sqm_median: 459.2, previous_price_per_sqm_median: 410, transaction_count: 1, transactions: [{ deal_date: "2026-03-10", price: 45920, area: 100, price_per_sqm: 459.2 }] },
+      { month: "202606", tourism_month: "202606", tourism_value: 14, price_change: 18, price_per_sqm_median: 541.9, previous_price_per_sqm_median: 459.2, transaction_count: 3, transactions: [{ deal_date: "2026-06-22", price: 54190, area: 100, price_per_sqm: 541.9 }] },
+    ],
     items: [
       item(SELECTED_ID, "선택 테스트 자산", "강원특별자치도", "속초시", 14, 18, "슈퍼 에셋"),
       item(102, "같은 지역 비교", "강원특별자치도", "속초시", -13, 10, "가격 선행과열"),
@@ -55,6 +61,10 @@ function fixture(incompleteSelected = false) {
     payload.items[0].quadrant = "관광 비교기간 부족";
     payload.items[0].transaction_count = 229;
     payload.items.push(item(301, "비선택 극단값", "경상남도", "통영시", null, 4464, "관광 비교기간 부족"));
+  }
+  if (incompleteFinalTrajectory) {
+    payload.trajectory[2].tourism_month = null;
+    payload.trajectory[2].tourism_value = null;
   }
   return payload;
 }
@@ -78,26 +88,28 @@ async function run() {
   const page = await context.newPage();
   const errors = [];
   let incompleteSelected = false;
+  let incompleteFinalTrajectory = false;
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return json(route, { logged_in: true, user: { id: 1, name: "테스트 회원" } });
-    if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected));
+    if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected, incompleteFinalTrajectory));
     if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
     if (url.pathname.endsWith("/photos")) return json(route, { photos: [] });
     return json(route, { ok: true, items: [] });
   });
 
   try {
-    for (const width of [390, 320]) {
-      await page.setViewportSize({ width, height: width === 390 ? 844 : 720 });
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: width === 1280 ? 900 : width === 390 ? 844 : 720 });
       const response = await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
-      expect(response && response.ok(), `${width}px 인증 모바일 투자분석 화면을 열지 못했습니다.`);
+      expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
       await page.waitForFunction(() => {
         const layout = window.__analysisChartLayout;
-        return layout && layout.ready && layout.labels && layout.labels.length === 4
+        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 53
+          && layout.labels && layout.labels.length === 4
           && layout.points && layout.points.some((point) => point.selected);
       });
 
@@ -164,7 +176,59 @@ async function run() {
         expect(!overlaps(labels[i], labels[j]), `대표 라벨 ${labels[i].id}와 ${labels[j].id}가 겹칩니다.`);
       }
       }
+      await page.selectOption("#selTourismAxis", "growth");
+      await page.click("#applyBtn");
+      await page.waitForFunction(() => {
+        const layout = window.__analysisChartLayout;
+        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 0;
+      });
+      await page.getByRole("button", { name: "거래 이동" }).click();
+      await page.waitForFunction(() => window.__analysisChartLayout && window.__analysisChartLayout.mode === "trajectory");
+      const trail = await page.evaluate(() => ({
+        layout: window.__analysisChartLayout,
+        note: document.getElementById("trajectoryNote").textContent,
+        pressed: document.querySelector('[data-mode="trajectory"]').getAttribute("aria-pressed"),
+      }));
+      expect(trail.pressed === "true", `${width}px 거래 이동 토글 상태가 노출되지 않았습니다.`);
+      expect(trail.layout.trajectory.length === 3, `${width}px 월별 거래 궤적이 모두 표시되지 않았습니다.`);
+      expect(trail.layout.trajectory.filter((point) => point.latest).length === 1, `${width}px 최신점이 하나로 강조되지 않았습니다.`);
+      expect(trail.layout.trajectory.some((point) => point.incomplete), `${width}px 관광자료 누락점이 보존되지 않았습니다.`);
+      expect(trail.layout.trajectoryLineBreaks === 1 && trail.layout.missingMarkers === 1,
+        `${width}px 누락 관측이 선에서 끊기거나 회색 표식으로 분리되지 않았습니다.`);
+      expect(trail.layout.axis.xMin < -8 && trail.layout.axis.xMax > 14
+        && trail.layout.axis.yMin < 0 && trail.layout.axis.yMax > 0,
+        `${width}px 거래 궤적 축 범위가 완전한 관측점을 포함하지 않습니다.`);
+      expect(trail.note.includes("월별 ㎡당 중앙값") && trail.note.includes("관광자료 누락"), `${width}px 궤적 산식 또는 누락 기준이 표시되지 않았습니다.`);
+      const tooltipLines = await page.evaluate(() => {
+        const callback = Chart.getChart("scatterChart").options.plugins.tooltip.callbacks.label;
+        const raw = Chart.getChart("scatterChart").data.datasets[0].data[2];
+        return callback({ raw });
+      });
+      expect(tooltipLines.some((line) => line.includes("거래금액 54,190만원") && line.includes("100㎡")),
+        `${width}px 원거래 툴팁에 거래금액과 면적이 없습니다.`);
+      await page.getByRole("button", { name: "현재 위치" }).click();
+      await page.waitForFunction(() => window.__analysisChartLayout && window.__analysisChartLayout.mode === "current");
     }
+    incompleteFinalTrajectory = true;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "거래 이동" }).click();
+    await page.waitForFunction(() => window.__analysisChartLayout && window.__analysisChartLayout.mode === "trajectory");
+    const latestMissing = await page.evaluate(() => {
+      const chart = Chart.getChart("scatterChart");
+      const raw = chart.data.datasets[1].data.find((point) => point.latest);
+      const dataset = chart.data.datasets[1];
+      return {
+        radius: dataset.pointRadius({ raw }),
+        border: dataset.pointBorderColor({ raw }),
+        borderWidth: dataset.pointBorderWidth({ raw }),
+        color: dataset.pointBackgroundColor,
+      };
+    });
+    expect(latestMissing.radius === 9 && latestMissing.border === "#102a43"
+      && latestMissing.borderWidth === 3 && latestMissing.color === "#9aa7b4",
+      "관광자료가 없는 최신 거래월이 회색 의미를 유지한 채 최신점으로 강조되지 않았습니다.");
+    incompleteFinalTrajectory = false;
     incompleteSelected = true;
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
     await page.selectOption("#selTourismAxis", "growth");

@@ -96,6 +96,14 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("transaction_cache_date, period_months, sido, sgg", self.endpoint)
         self.assertIn('"comparison-cohort-v2"', self.endpoint)
 
+    def test_selected_trajectory_uses_monthly_unit_price_medians_without_imputation(self):
+        self.assertIn("_analysis_selected_trajectory(", self.endpoint)
+        self.assertIn('"trajectory": trajectory', self.endpoint)
+        self.assertIn('"price_per_sqm_median"', self.source)
+        self.assertIn('"transactions": [{', self.source)
+        self.assertIn("if all(value in tourism for value in current_months + previous_months)", self.source)
+        self.assertIn('"tourism_value": tourism_value', self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
