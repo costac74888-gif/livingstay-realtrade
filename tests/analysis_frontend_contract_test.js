@@ -165,6 +165,10 @@ expect(
     && operationJs.includes("building.display_building_name || building.building_name")
     && operationJs.includes("comparisonPoints: benchmarks.length")
     && html.includes('id="operationAdrBaseline"') && html.includes("운영분석 산정근거")
+    && html.includes("[가상 산정 예시] A 생활숙박시설")
+    && html.includes("Percentile Rank·백분위 순위")
+    && html.includes("[가상 산정 예시] B 숙박시설의 30일 운영실적")
+    && html.includes("Revenue per Available Room·판매가능객실당매출")
     && html.includes("해당 지역 우수 숙박 운영지표 TOP 5"),
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",
 );
