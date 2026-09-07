@@ -30881,20 +30881,20 @@ def _analysis_growth(current_value, previous_value):
     return (current_value - previous_value) / previous_value * 100.0
 
 
-def _analysis_quadrant(tourism_demand, price_change, tourism_baseline=50, price_baseline=0):
-    if tourism_demand is None and price_change is None:
-        return "관광·가격 비교기간 부족"
+def _analysis_quadrant(tourism_demand, peer_price_gap, tourism_baseline=50, price_baseline=0):
+    if tourism_demand is None and peer_price_gap is None:
+        return "관광·가격 비교자료 부족"
     if tourism_demand is None:
-        return "관광 비교기간 부족"
-    if price_change is None:
-        return "가격 비교기간 부족"
-    if tourism_demand >= tourism_baseline and price_change >= price_baseline:
-        return "슈퍼 에셋"
-    if tourism_demand < tourism_baseline and price_change >= price_baseline:
-        return "가격 선행과열"
-    if tourism_demand >= tourism_baseline and price_change < price_baseline:
-        return "저평가 알짜"
-    return "침체·약세"
+        return "관광 비교자료 부족"
+    if peer_price_gap is None:
+        return "유사자산 비교자료 부족"
+    if tourism_demand >= tourism_baseline and peer_price_gap >= price_baseline:
+        return "수요 프리미엄"
+    if tourism_demand < tourism_baseline and peer_price_gap >= price_baseline:
+        return "가격 부담"
+    if tourism_demand >= tourism_baseline and peer_price_gap < price_baseline:
+        return "수요 대비 저평가 후보"
+    return "저가·수요 확인 필요"
 
 
 def _analysis_source_version(cur, *source_names):
@@ -31270,7 +31270,7 @@ def analysis_assets():
     lodging_type = request.args.get("lodging_type", "").strip()
     raw_building_id = request.args.get("building_id", "").strip()
     building_id = None
-    tourism_axis = request.args.get("tourism_axis", "growth").strip()
+    tourism_axis = request.args.get("tourism_axis", "index").strip()
     if raw_building_id:
         try:
             building_id = int(raw_building_id)
@@ -31339,7 +31339,7 @@ def analysis_assets():
         transaction_cache_key = hashlib.sha256(json.dumps(
             [
                 transaction_cache_date, period_months, sido, sgg,
-                lodging_type, building_id, "comparison-cohort-v2",
+                lodging_type, building_id, "peer-price-cohort-v1",
             ],
             ensure_ascii=False, separators=(",", ":"),
         ).encode("utf-8")).hexdigest()
@@ -31375,7 +31375,7 @@ def analysis_assets():
                 FROM recent_tx t
                 JOIN master_buildings mb ON mb.sgg_cd=t.sgg_cd
                   AND mb.umd_nm=t.umd_nm AND mb.jibun=t.jibun
-                WHERE {where_sql}
+                WHERE mb.lodging_type IS DISTINCT FROM 'mixed_use_excluded'
                   AND NOT EXISTS (
                     SELECT 1 FROM master_buildings duplicate
                     WHERE duplicate.sgg_cd=mb.sgg_cd
@@ -31416,7 +31416,7 @@ def analysis_assets():
                      cohort.current_count DESC, cohort.id
             LIMIT %s
             """, [
-                period_months, *params,
+                period_months,
                 period_months, period_months, period_months, period_months,
                 building_id,
                 _ANALYSIS_MAX_ITEMS,
@@ -31428,18 +31428,87 @@ def analysis_assets():
             )
         tourism_demand = _analysis_tourism_demand_by_sgg(cur, period_months)
 
-        items = []
+        def median(values):
+            values = sorted(value for value in values if value is not None)
+            if not values:
+                return None
+            middle = len(values) // 2
+            return values[middle] if len(values) % 2 else (
+                values[middle - 1] + values[middle]
+            ) / 2
+
+        prepared_rows = []
         for row in rows:
-            current_median = _analysis_float(row["current_median"])
-            previous_median = _analysis_float(row["previous_median"])
-            price_change = _analysis_growth(current_median, previous_median)
+            prepared = dict(row)
+            prepared["current_median_value"] = _analysis_float(row["current_median"])
+            prepared_rows.append(prepared)
+        display_rows = [
+            row for row in prepared_rows
+            if (not sido or row["sido"] == sido)
+            and (not sgg or row["sgg"] == sgg)
+            and (not lodging_type or row["lodging_type"] == lodging_type)
+        ]
+
+        items = []
+        for row in display_rows:
+            current_median = row["current_median_value"]
             key = (row["sido"], row["sgg"])
             demand = tourism_demand.get(key) or {}
             demand_index = demand.get("index")
             latest_per_sqm = _analysis_float(row["price_per_sqm"])
             peak = _analysis_float(row["historical_peak"])
             peak_gap = _analysis_growth(latest_per_sqm, peak)
-            direct = current_median is not None and previous_median is not None
+            peer_candidates = [
+                (
+                    "시군구·동일유형",
+                    [
+                        other for other in prepared_rows
+                        if other["id"] != row["id"]
+                        and other["sgg"] == row["sgg"]
+                        and other["lodging_type"] == row["lodging_type"]
+                        and other["current_median_value"] is not None
+                    ],
+                    5,
+                ),
+                (
+                    "시도·동일유형",
+                    [
+                        other for other in prepared_rows
+                        if other["id"] != row["id"]
+                        and other["sido"] == row["sido"]
+                        and other["lodging_type"] == row["lodging_type"]
+                        and other["current_median_value"] is not None
+                    ],
+                    10,
+                ),
+                (
+                    "전국·동일유형",
+                    [
+                        other for other in prepared_rows
+                        if other["id"] != row["id"]
+                        and other["lodging_type"] == row["lodging_type"]
+                        and other["current_median_value"] is not None
+                    ],
+                    20,
+                ),
+            ]
+            peer_scope = None
+            peer_rows = []
+            for scope, candidates, minimum in peer_candidates:
+                if len(candidates) >= minimum:
+                    peer_scope, peer_rows = scope, candidates
+                    break
+            peer_median = median([
+                peer["current_median_value"] for peer in peer_rows
+            ])
+            peer_price_gap = _analysis_growth(current_median, peer_median)
+            current_count = int(row["current_count"] or 0)
+            if peer_price_gap is None:
+                sample_level = "비교자료 부족"
+            elif current_count >= 3:
+                sample_level = "표본 양호"
+            else:
+                sample_level = "표본 주의"
             items.append({
                 "building_id": row["id"], "name": row["building_name"],
                 "address": row["road_address"] or row["jibun_address"] or "",
@@ -31450,45 +31519,42 @@ def analysis_assets():
                 "tourism_comparison_complete": bool(demand.get("comparison_complete")),
                 "tourism_visitor_count": demand.get("visitor_count"),
                 "tourism_period": demand.get("source_period"),
-                "price_change": price_change,
-                "transaction_count": int(row["current_count"] or 0),
+                "peer_price_gap": peer_price_gap,
+                "peer_price_median": peer_median,
+                "building_period_price_median": current_median,
+                "peer_building_count": len(peer_rows),
+                "peer_scope": peer_scope,
+                "transaction_count": current_count,
                 "previous_transaction_count": int(row["previous_count"] or 0),
                 "latest_price": _analysis_float(row["latest_price"]),
                 "price_per_sqm": latest_per_sqm, "peak_gap": peak_gap,
                 "last_deal_date": row["last_deal_date"],
-                "sample_level": "direct" if direct else "insufficient",
+                "sample_level": sample_level,
                 "tourism_source": ("한국관광 데이터랩 · 시군구 국내 방문자 수 전국 백분위"
                                    if demand_index is not None else "연결 가능한 시군구 관광 원자료 없음"),
-                "price_source": ("국토교통부 실거래가 공개시스템 · 주소키 정확 일치 호실 거래"
-                                 if direct else "동기간 가격 표본 부족"),
+                "price_source": (
+                    f"국토교통부 실거래가 · 최근 {period_months}개월 "
+                    f"{peer_scope} 비교 건물 {len(peer_rows)}개 중앙값"
+                    if peer_scope else "유사자산 비교 건물 부족"
+                ),
             })
 
-        tourism_key = "tourism_growth" if tourism_axis == "growth" else "tourism_demand_index"
+        tourism_key = "tourism_demand_index"
         comparable_items = [
             item for item in items
-            if item[tourism_key] is not None and item["price_change"] is not None
+            if item[tourism_key] is not None and item["peer_price_gap"] is not None
         ]
-        valid_price = [item["price_change"] for item in comparable_items]
+        valid_price = [item["peer_price_gap"] for item in comparable_items]
         valid_tourism = [item[tourism_key] for item in comparable_items]
-        def median(values):
-            return sorted(values)[len(values) // 2] if len(values) % 2 else (
-                sorted(values)[len(values) // 2 - 1] + sorted(values)[len(values) // 2]) / 2 if values else None
         selected_sidos = sorted({r["sido"] for r in option_rows if r["sido"]})
         selected_sggs = sorted({r["sgg"] for r in option_rows if r["sgg"] and (not sido or r["sido"] == sido)})
         selected_types = sorted({r["lodging_type"] for r in option_rows if r["lodging_type"]})
-        tourism_baseline = (
-            0 if tourism_axis == "growth" else median(valid_tourism)
-        )
-        price_baseline = (
-            0 if tourism_axis == "growth" else median(valid_price)
-        )
+        tourism_baseline = 50
+        price_baseline = 0
         for item in items:
             item["quadrant"] = _analysis_quadrant(
-                item[tourism_key], item["price_change"],
-                tourism_baseline if tourism_baseline is not None else (
-                    0 if tourism_axis == "growth" else 50
-                ),
-                price_baseline if price_baseline is not None else 0,
+                item[tourism_key], item["peer_price_gap"],
+                tourism_baseline, price_baseline,
             )
             item["is_representative"] = False
         selected_item = next(
@@ -31504,13 +31570,15 @@ def analysis_assets():
         price_span = max(
             [abs(value - price_baseline) for value in valid_price] or [1]
         ) or 1
-        for quadrant in ("슈퍼 에셋", "가격 선행과열", "침체·약세", "저평가 알짜"):
+        for quadrant in (
+            "수요 프리미엄", "가격 부담",
+            "저가·수요 확인 필요", "수요 대비 저평가 후보",
+        ):
             candidates = [
                 item for item in comparable_items
                 if item["quadrant"] == quadrant
                 and item["building_id"] != building_id
-                and item["transaction_count"] >= 2
-                and item["previous_transaction_count"] >= 2
+                and item["sample_level"] == "표본 양호"
                 and (
                     not selected_item
                     or (item["sido"], item["sgg"])
@@ -31520,7 +31588,7 @@ def analysis_assets():
             if selected_item and candidates:
                 representative = min(candidates, key=lambda item: (
                     abs(item[tourism_key] - tourism_baseline) / tourism_span
-                    + abs(item["price_change"] - price_baseline) / price_span,
+                    + abs(item["peer_price_gap"] - price_baseline) / price_span,
                     -item["transaction_count"],
                     item["building_id"],
                 ))
@@ -31538,7 +31606,6 @@ def analysis_assets():
                 "tourism_axis": tourism_axis,
                 "tourism_axis_options": [
                     {"value": "index", "label": "관광수요 지수"},
-                    {"value": "growth", "label": "실제 동기간 증감률"},
                 ],
             },
             "summary": {
@@ -31548,13 +31615,13 @@ def analysis_assets():
                 "analysis_sample_transaction_count": sum(
                     item["transaction_count"] for item in items
                 ),
-                "analyzed_buildings": sum(1 for item in items if item["price_change"] is not None),
-                "direct_sample_buildings": sum(1 for item in items if item["sample_level"] == "direct"),
+                "analyzed_buildings": sum(1 for item in items if item["peer_price_gap"] is not None),
+                "direct_sample_buildings": sum(1 for item in items if item["sample_level"] == "표본 양호"),
             },
             "baselines": {
-                "tourism_demand_index": tourism_baseline if tourism_axis == "index" else None,
-                "tourism_growth": tourism_baseline if tourism_axis == "growth" else None,
-                "price_change": price_baseline,
+                "tourism_demand_index": tourism_baseline,
+                "tourism_growth": None,
+                "peer_price_gap": price_baseline,
             },
             "tourism_axis": tourism_axis,
             "trajectory": trajectory,
@@ -31570,9 +31637,9 @@ def analysis_assets():
             },
             "items": items,
             "methodology": {
-                "tourism": "한국관광 데이터랩 월별 시군구 국내 방문자 수의 전국 백분위 지수 또는 선택기간 대비 직전 동기간 실제 증감률",
-                "price": "국토교통부 공개 실거래가 중 시군구코드·법정동·지번이 모두 정확히 일치한 호실 거래의 ㎡당 중앙값",
-                "warning": "관광수요 지수의 기준기간과 실거래 선택기간은 서로 다를 수 있습니다. 가격 표본이 현재·직전 양 기간에 있는 건물만 변동률을 표시하며 최대 500건까지 제공합니다.",
+                "tourism": "한국관광 데이터랩 시군구 국내 방문자 수의 전국 백분위 지수",
+                "price": f"최근 {period_months}개월 건물 ㎡당 중앙가격과 유사자산 중앙가격의 차이",
+                "warning": "가격은 시군구·동일유형을 우선하고 표본이 부족하면 시도, 전국 동일유형 순으로 비교합니다. 건물별 중앙값을 한 번씩 사용하며 최대 500개 건물을 제공합니다.",
             },
         })
     except psycopg2_errors.UndefinedTable:

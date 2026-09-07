@@ -45,13 +45,12 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("price > 0 AND area > 0", self.endpoint)
         self.assertNotIn("building_name ILIKE", self.endpoint)
 
-    def test_missing_comparable_samples_remain_null(self):
-        # Price change requires a positive previous observation and cannot
-        # manufacture a percentage from a missing or zero denominator.
+    def test_peer_price_requires_a_real_comparable_median(self):
         self.assertIn("previous_value <= 0", self.source)
-        self.assertIn('"price_change": price_change', self.endpoint)
-        self.assertIn('return "관광 비교기간 부족"', self.source)
-        self.assertIn('return "가격 비교기간 부족"', self.source)
+        self.assertIn('"peer_price_gap": peer_price_gap', self.endpoint)
+        self.assertIn('"peer_price_median": peer_median', self.endpoint)
+        self.assertIn('return "관광 비교자료 부족"', self.source)
+        self.assertIn('return "유사자산 비교자료 부족"', self.source)
 
     def test_tourism_axis_uses_real_visitor_percentile_not_fake_growth(self):
         self.assertIn("metric_name = '기초지자체 방문자 수'", self.source)
@@ -59,25 +58,34 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("percent_rank() OVER (ORDER BY visitor_count)", self.source)
         self.assertIn('"tourism_demand_index": demand_index', self.endpoint)
 
-    def test_growth_axis_requires_complete_current_and_previous_months(self):
-        self.assertIn("previous_months", self.source)
-        self.assertIn("current_months = %s", self.source)
+    def test_tourism_index_is_the_default_public_axis(self):
         self.assertIn('tourism_axis not in {"index", "growth"}', self.endpoint)
-        self.assertIn('"tourism_growth": demand.get("growth")', self.endpoint)
-        self.assertIn('"tourism_comparison_complete"', self.endpoint)
-        self.assertIn('request.args.get("tourism_axis", "growth")', self.endpoint)
+        self.assertIn('request.args.get("tourism_axis", "index")', self.endpoint)
+        self.assertIn('tourism_key = "tourism_demand_index"', self.endpoint)
 
     def test_quadrants_use_the_exact_plotted_comparison_population(self):
         self.assertIn("comparable_items = [", self.endpoint)
         self.assertIn(
-            'item[tourism_key] is not None and item["price_change"] is not None',
+            'item[tourism_key] is not None and item["peer_price_gap"] is not None',
             self.endpoint,
         )
-        self.assertIn('0 if tourism_axis == "growth" else median(valid_tourism)', self.endpoint)
-        self.assertIn('0 if tourism_axis == "growth" else median(valid_price)', self.endpoint)
+        self.assertIn("tourism_baseline = 50", self.endpoint)
+        self.assertIn("price_baseline = 0", self.endpoint)
         self.assertIn('"is_representative"', self.endpoint)
-        self.assertIn('item["transaction_count"] >= 2', self.endpoint)
-        self.assertIn('item["previous_transaction_count"] >= 2', self.endpoint)
+        self.assertIn('item["sample_level"] == "표본 양호"', self.endpoint)
+
+    def test_peer_hierarchy_and_sample_levels_are_explicit(self):
+        self.assertIn('"시군구·동일유형"', self.endpoint)
+        self.assertIn('"시도·동일유형"', self.endpoint)
+        self.assertIn('"전국·동일유형"', self.endpoint)
+        self.assertIn("display_rows = [", self.endpoint)
+        self.assertIn(
+            "WHERE mb.lodging_type IS DISTINCT FROM 'mixed_use_excluded'",
+            self.endpoint,
+        )
+        self.assertIn('current_count >= 3', self.endpoint)
+        self.assertIn('"표본 주의"', self.endpoint)
+        self.assertIn('"비교자료 부족"', self.endpoint)
 
     def test_public_population_excludes_mixed_use_and_is_capped(self):
         self.assertIn("lodging_type IS DISTINCT FROM 'mixed_use_excluded'", self.endpoint)
@@ -94,7 +102,7 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("_analysis_store_payload(", self.source)
         self.assertIn("SELECT CURRENT_DATE::text AS cache_date", self.endpoint)
         self.assertIn("transaction_cache_date, period_months, sido, sgg", self.endpoint)
-        self.assertIn('"comparison-cohort-v2"', self.endpoint)
+        self.assertIn('"peer-price-cohort-v1"', self.endpoint)
 
     def test_selected_trajectory_uses_monthly_unit_price_medians_without_imputation(self):
         self.assertIn("_analysis_selected_trajectory(", self.endpoint)

@@ -74,7 +74,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 19 python -u run_tourapi_full_collection.py"
+args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 19 python -u backfill_tourapi_images.py --retry-failures --sleep 0.8 --retry-rounds 40 --retry-base-delay 60 --retry-max-delay 3600"
 
 [[workflows.workflow]]
 name = "Fast Sync"

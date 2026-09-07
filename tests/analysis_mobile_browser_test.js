@@ -27,16 +27,18 @@ function chromiumExecutable() {
 function item(id, name, sido, sgg, growth, price, quadrant, representative = false) {
   return {
     building_id: id, name, sido, sgg, address: `${sido} ${sgg}`,
-    lodging_type: "생활숙박시설", tourism_growth: growth,
-    tourism_demand_index: 50 + growth, price_change: price, quadrant,
-    is_representative: representative, transaction_count: 3,
+    lodging_type: "생활숙박시설", tourism_growth: null,
+    tourism_demand_index: 50 + growth, peer_price_gap: price, quadrant,
+    peer_price_median: 200, building_period_price_median: 200 * (1 + price / 100),
+    peer_scope: "시군구·동일유형", peer_building_count: 8, sample_level: "표본 양호",
+    is_representative: representative, transaction_count: 3, last_deal_date: "2026-08-12",
   };
 }
 
 function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) {
   const payload = {
     generated_at: "2026-09-07T00:00:00Z",
-    baselines: { tourism_growth: 17, tourism_demand_index: 53, price_change: 12 },
+    baselines: { tourism_growth: null, tourism_demand_index: 50, peer_price_gap: 0 },
     filters: { sidos: ["강원특별자치도"], sggs: ["속초시"], lodging_types: [], period_options: [] },
     summary: { registered_buildings: 7, transaction_count: 20, analyzed_buildings: 7, analysis_sample_transaction_count: 20 },
     methodology: {},
@@ -47,23 +49,23 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
       { month: "202606", tourism_month: "202606", tourism_value: 14, price_change: 18, price_per_sqm_median: 541.9, previous_price_per_sqm_median: 459.2, transaction_count: 3, transactions: [{ deal_date: "2026-06-22", price: 54190, area: 100, price_per_sqm: 541.9 }] },
     ],
     items: [
-      item(SELECTED_ID, "선택 테스트 자산", "강원특별자치도", "속초시", 14, 18, "슈퍼 에셋"),
-      item(102, "같은 지역 비교", "강원특별자치도", "속초시", -13, 10, "가격 선행과열"),
-      item(201, "가격선행과열대표자산", "서울특별시", "중구", -24, 27, "가격 선행과열", true),
-      item(202, "관광가격동반상승대표", "부산광역시", "해운대구", 25, 24, "슈퍼 에셋", true),
-      item(203, "관광가격동반하락대표", "전라남도", "목포시", -22, -25, "침체·약세", true),
-      item(204, "관광상승저평가대표자산", "제주특별자치도", "제주시", 23, -22, "저평가 알짜", true),
+      item(SELECTED_ID, "선택 테스트 자산", "강원특별자치도", "속초시", 14, 18, "수요 프리미엄"),
+      item(102, "같은 지역 비교", "강원특별자치도", "속초시", -13, 10, "가격 부담"),
+      item(201, "가격부담대표자산", "서울특별시", "중구", -24, 27, "가격 부담", true),
+      item(202, "수요프리미엄대표", "부산광역시", "해운대구", 25, 24, "수요 프리미엄", true),
+      item(203, "저가수요확인대표", "전라남도", "목포시", -22, -25, "저가·수요 확인 필요", true),
+      item(204, "수요대비저평가대표", "제주특별자치도", "제주시", 23, -22, "수요 대비 저평가 후보", true),
     ],
   };
   for (let id = 401; id <= 408; id += 1) {
     payload.items.push(item(id, `추가 비교 자산 ${id}`, "경기도", "가평군", id - 400, (id - 404) * 2, "비교 자산"));
   }
   if (incompleteSelected) {
-    payload.items[0].tourism_growth = null;
-    payload.items[0].price_change = 0.8;
-    payload.items[0].quadrant = "관광 비교기간 부족";
+    payload.items[0].tourism_demand_index = null;
+    payload.items[0].peer_price_gap = 0.8;
+    payload.items[0].quadrant = "관광 비교자료 부족";
     payload.items[0].transaction_count = 229;
-    payload.items.push(item(301, "비선택 극단값", "경상남도", "통영시", null, 4464, "관광 비교기간 부족"));
+    payload.items.push(item(301, "비선택 극단값", "경상남도", "통영시", null, 4464, "관광 비교자료 부족"));
   }
   if (incompleteFinalTrajectory) {
     payload.trajectory[2].tourism_month = null;
@@ -148,7 +150,7 @@ async function run() {
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
       await page.waitForFunction(() => {
         const layout = window.__analysisChartLayout;
-        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 0
+        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 50
           && layout.labels && layout.labels.length === 4
           && layout.points && layout.points.some((point) => point.selected);
       });
@@ -175,7 +177,7 @@ async function run() {
       });
 
       expect(result.loggedInWorkspace, `${width}px 로그인 상태인데 분석 작업영역이 표시되지 않았습니다.`);
-    expect(result.baselineText[0] === "0%" && result.baselineText[1] === "0%", "기본 외지인 방문객 증가율 기준선이 0%가 아닙니다.");
+    expect(result.baselineText[0] === "50" && result.baselineText[1] === "0%", "관광수요 50점·유사자산 가격 0% 기준선 표시가 다릅니다.");
     const { baseline, points, labels } = result.layout;
     expect(result.quadrants.length === 4 && result.quadrants.every((quad) => quad.text !== ""),
       "그래프의 ①~④ 사분면 설명문구가 누락됐습니다.");
@@ -184,17 +186,17 @@ async function run() {
       && result.quadrants[3].labelLeft >= result.quadrants[3].left + 8
       && result.quadrants[3].labelLeft < result.quadrants[3].left + result.quadrants[3].width,
       "①·④ 설명문구가 해당 사분면 안에 표시되지 않았습니다.");
-    expect(result.detailSections.some((text) => text.includes("해당 사분면 설명"))
+    expect(result.detailSections.some((text) => text.includes("현재 수요·상대가격 위치"))
       && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
     expect(result.recommendations.length > 0 && result.recommendations.length <= 5,
-      "추천 단지 TOP 5에 저평가 알짜 후보가 표시되지 않았습니다.");
+      "가격 매력 후보 TOP 5에 수요 대비 저평가 후보가 표시되지 않았습니다.");
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
     expect(Math.abs(baseline.y - baseline.quadrantBottom[0]) < 0.6 && Math.abs(baseline.y - baseline.quadrantBottom[1]) < 0.6,
       "가로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
-    expect(baseline.valueX === 0 && baseline.valueY === 0,
-      "기본 외지인 방문객 증가율 차트의 점선이 실제 0% 좌표를 사용하지 않습니다.");
+    expect(baseline.valueX === 50 && baseline.valueY === 0,
+      "관광수요 50점·유사자산 가격 0% 기준선이 적용되지 않았습니다.");
 
     const selected = points.find((point) => point.selected);
     const nearby = points.find((point) => point.sameRegion && !point.selected);
@@ -205,10 +207,10 @@ async function run() {
       expect(representatives.length === 4 && representatives.every((point) => point.radius === 8),
       "사분면 대표 표본 네 개의 표시 크기가 다릅니다.");
       const expectedRepresentatives = {
-        201: { quadrant: "가격 선행과열", color: "#df5b57", name: "가격선행과열대표자산", region: "중구" },
-        202: { quadrant: "슈퍼 에셋", color: "#168cc4", name: "관광가격동반상승대표", region: "해운대구" },
-        203: { quadrant: "침체·약세", color: "#758596", name: "관광가격동반하락대표", region: "목포시" },
-        204: { quadrant: "저평가 알짜", color: "#2aa96f", name: "관광상승저평가대표자산", region: "제주시" },
+        201: { quadrant: "가격 부담", color: "#df5b57", name: "가격부담대표자산", region: "중구" },
+        202: { quadrant: "수요 프리미엄", color: "#168cc4", name: "수요프리미엄대표", region: "해운대구" },
+        203: { quadrant: "저가·수요 확인 필요", color: "#758596", name: "저가수요확인대표", region: "목포시" },
+        204: { quadrant: "수요 대비 저평가 후보", color: "#2aa96f", name: "수요대비저평가대표", region: "제주시" },
       };
       representatives.forEach((point) => expect(
         expectedRepresentatives[point.id] && point.color === expectedRepresentatives[point.id].color,
@@ -232,62 +234,9 @@ async function run() {
         expect(!overlaps(labels[i], labels[j]), `대표 라벨 ${labels[i].id}와 ${labels[j].id}가 겹칩니다.`);
       }
       }
-      await page.selectOption("#selTourismAxis", "growth");
-      await page.click("#applyBtn");
-      await page.waitForFunction(() => {
-        const layout = window.__analysisChartLayout;
-        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 0;
-      });
-      await page.getByRole("button", { name: "거래 이동" }).click();
-      await page.waitForFunction(() => window.__analysisChartLayout && window.__analysisChartLayout.mode === "trajectory");
-      const trail = await page.evaluate(() => ({
-        layout: window.__analysisChartLayout,
-        note: document.getElementById("trajectoryNote").textContent,
-        pressed: document.querySelector('[data-mode="trajectory"]').getAttribute("aria-pressed"),
-      }));
-      expect(trail.pressed === "true", `${width}px 거래 이동 토글 상태가 노출되지 않았습니다.`);
-      expect(trail.layout.trajectory.length === 3, `${width}px 월별 거래 궤적이 모두 표시되지 않았습니다.`);
-      expect(trail.layout.trajectory.filter((point) => point.latest).length === 1, `${width}px 최신점이 하나로 강조되지 않았습니다.`);
-      expect(trail.layout.trajectory.some((point) => point.incomplete), `${width}px 관광자료 누락점이 보존되지 않았습니다.`);
-      expect(trail.layout.trajectoryLineBreaks === 1 && trail.layout.missingMarkers === 1,
-        `${width}px 누락 관측이 선에서 끊기거나 회색 표식으로 분리되지 않았습니다.`);
-      expect(trail.layout.axis.xMin < -8 && trail.layout.axis.xMax > 14
-        && trail.layout.axis.yMin < 0 && trail.layout.axis.yMax > 0,
-        `${width}px 거래 궤적 축 범위가 완전한 관측점을 포함하지 않습니다.`);
-      expect(trail.note.includes("월별 ㎡당 중앙값") && trail.note.includes("관광자료 누락"), `${width}px 궤적 산식 또는 누락 기준이 표시되지 않았습니다.`);
-      const tooltipLines = await page.evaluate(() => {
-        const callback = Chart.getChart("scatterChart").options.plugins.tooltip.callbacks.label;
-        const raw = Chart.getChart("scatterChart").data.datasets[0].data[2];
-        return callback({ raw });
-      });
-      expect(tooltipLines.some((line) => line.includes("거래금액 54,190만원") && line.includes("100㎡")),
-        `${width}px 원거래 툴팁에 거래금액과 면적이 없습니다.`);
-      await page.getByRole("button", { name: "현재 위치" }).click();
-      await page.waitForFunction(() => window.__analysisChartLayout && window.__analysisChartLayout.mode === "current");
     }
-    incompleteFinalTrajectory = true;
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "거래 이동" }).click();
-    await page.waitForFunction(() => window.__analysisChartLayout && window.__analysisChartLayout.mode === "trajectory");
-    const latestMissing = await page.evaluate(() => {
-      const chart = Chart.getChart("scatterChart");
-      const raw = chart.data.datasets[1].data.find((point) => point.latest);
-      const dataset = chart.data.datasets[1];
-      return {
-        radius: dataset.pointRadius({ raw }),
-        border: dataset.pointBorderColor({ raw }),
-        borderWidth: dataset.pointBorderWidth({ raw }),
-        color: dataset.pointBackgroundColor,
-      };
-    });
-    expect(latestMissing.radius === 9 && latestMissing.border === "#102a43"
-      && latestMissing.borderWidth === 3 && latestMissing.color === "#9aa7b4",
-      "관광자료가 없는 최신 거래월이 회색 의미를 유지한 채 최신점으로 강조되지 않았습니다.");
-    incompleteFinalTrajectory = false;
     incompleteSelected = true;
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
-    await page.selectOption("#selTourismAxis", "growth");
     await page.evaluate(() => {
       if (window.__analysisChartLayout) window.__analysisChartLayout.ready = false;
       document.getElementById("selTourismAxis").dispatchEvent(new Event("change", { bubbles: true }));
@@ -316,7 +265,7 @@ async function run() {
       "관광 비교기간 부족 건물이 중앙 기준선에 겹쳐 표시됐습니다.");
     expect(Math.abs(incompleteResult.selected.y - incompleteResult.baseline.y) > 0.6,
       "가격변동 값이 있는 건물이 중앙점으로 잘못 표시됐습니다.");
-    expect(incompleteResult.detail.includes("관광 비교기간 부족"),
+    expect(incompleteResult.detail.includes("관광 비교자료 부족"),
       "부족한 비교축이 관광 자료임을 구체적으로 안내하지 않습니다.");
     expect(incompleteResult.transactionCount.includes("229건"),
       "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
