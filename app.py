@@ -30761,8 +30761,12 @@ def _analysis_growth(current_value, previous_value):
 
 
 def _analysis_quadrant(tourism_demand, price_change, tourism_baseline=50, price_baseline=0):
-    if tourism_demand is None or price_change is None:
-        return "비교 표본 부족"
+    if tourism_demand is None and price_change is None:
+        return "관광·가격 비교기간 부족"
+    if tourism_demand is None:
+        return "관광 비교기간 부족"
+    if price_change is None:
+        return "가격 비교기간 부족"
     if tourism_demand >= tourism_baseline and price_change >= price_baseline:
         return "슈퍼 에셋"
     if tourism_demand < tourism_baseline and price_change >= price_baseline:

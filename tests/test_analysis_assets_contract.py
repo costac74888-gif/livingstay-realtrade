@@ -50,6 +50,8 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         # manufacture a percentage from a missing or zero denominator.
         self.assertIn("previous_value <= 0", self.source)
         self.assertIn('"price_change": price_change', self.endpoint)
+        self.assertIn('return "관광 비교기간 부족"', self.source)
+        self.assertIn('return "가격 비교기간 부족"', self.source)
 
     def test_tourism_axis_uses_real_visitor_percentile_not_fake_growth(self):
         self.assertIn("metric_name = '기초지자체 방문자 수'", self.source)

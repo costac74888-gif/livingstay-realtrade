@@ -33,8 +33,8 @@ function item(id, name, sido, sgg, growth, price, quadrant, representative = fal
   };
 }
 
-function fixture() {
-  return {
+function fixture(incompleteSelected = false) {
+  const payload = {
     generated_at: "2026-09-07T00:00:00Z",
     baselines: { tourism_growth: 17, tourism_demand_index: 53, price_change: 12 },
     filters: { sidos: ["강원특별자치도"], sggs: ["속초시"], lodging_types: [], period_options: [] },
@@ -49,6 +49,13 @@ function fixture() {
       item(204, "관광상승저평가대표자산", "제주특별자치도", "제주시", 23, -22, "저평가 알짜", true),
     ],
   };
+  if (incompleteSelected) {
+    payload.items[0].tourism_growth = null;
+    payload.items[0].price_change = 0.8;
+    payload.items[0].quadrant = "관광 비교기간 부족";
+    payload.items[0].transaction_count = 229;
+  }
+  return payload;
 }
 
 function overlaps(a, b) {
@@ -69,13 +76,14 @@ async function run() {
   });
   const page = await context.newPage();
   const errors = [];
+  let incompleteSelected = false;
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return json(route, { logged_in: true, user: { id: 1, name: "테스트 회원" } });
-    if (url.pathname === "/api/analysis/assets") return json(route, fixture());
+    if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected));
     if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
     if (url.pathname.endsWith("/photos")) return json(route, { photos: [] });
     return json(route, { ok: true, items: [] });
@@ -154,6 +162,31 @@ async function run() {
       }
       }
     }
+    incompleteSelected = true;
+    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => {
+      const layout = window.__analysisChartLayout;
+      return layout && layout.ready && layout.points
+        && layout.points.some((point) => point.selected && point.color === "#758596");
+    });
+    const incompleteResult = await page.evaluate(() => {
+      const layout = window.__analysisChartLayout;
+      return {
+        selected: layout.points.find((point) => point.selected),
+        baseline: layout.baseline,
+        detail: document.querySelector(".detail-quadrant").textContent,
+        transactionCount: document.querySelector(".detail-metrics").textContent,
+      };
+    });
+    expect(incompleteResult.selected.radius === 10, "비교기간 부족 선택 건물의 점 크기가 유지되지 않았습니다.");
+    expect(Math.abs(incompleteResult.selected.x - incompleteResult.baseline.x) < 0.6,
+      "관광 비교기간 부족 건물이 관광 0% 기준선에 표시되지 않았습니다.");
+    expect(Math.abs(incompleteResult.selected.y - incompleteResult.baseline.y) > 0.6,
+      "가격변동 값이 있는 건물이 중앙점으로 잘못 표시됐습니다.");
+    expect(incompleteResult.detail.includes("관광 비교기간 부족"),
+      "부족한 비교축이 관광 자료임을 구체적으로 안내하지 않습니다.");
+    expect(incompleteResult.transactionCount.includes("229건"),
+      "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {

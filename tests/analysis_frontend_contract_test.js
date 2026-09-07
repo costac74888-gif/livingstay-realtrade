@@ -95,5 +95,13 @@ expect(
     && js.includes("__analysisChartLayout") && js.includes("candidates.find"),
   "모바일 실렌더링 검증용 0% 기준선 또는 대표 라벨 충돌 회피 계약이 없습니다.",
 );
+expect(
+  js.includes("incomplete=tourism==null||price==null")
+    && js.includes('if(c.raw.incomplete)return"#758596"')
+    && js.includes('points[idx].incomplete?"#758596"')
+    && js.includes('tourism==null?(baselineX==null?0:baselineX):tourism')
+    && js.includes('price==null?(baselineY==null?0:baselineY):symlog(price)'),
+  "비교기간이 부족한 선택 건물의 회색 기준선 점 표시가 없습니다.",
+);
 
 console.log("analysis frontend contract checks passed");
