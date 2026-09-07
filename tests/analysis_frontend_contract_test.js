@@ -168,6 +168,12 @@ expect(
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",
 );
 expect(
+  html.includes("<h1>홈앤스테이 숙박자산 분석</h1>")
+    && html.includes("부동산투자·임대수익·숙박운영을 함께 분석합니다.")
+    && !html.includes("홈앤스테이 숙박자산 지도"),
+  "상단 소개 문구가 세 가지 숙박자산 분석을 반영하지 않습니다.",
+);
+expect(
   html.includes('id="rentalPurchasePrice"')
     && html.includes('id="rentalDeposit"')
     && html.includes('id="rentalMonthlyRent"')
