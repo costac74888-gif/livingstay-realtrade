@@ -54,6 +54,12 @@ expect(
   "왼쪽 사분면 설명이 Y축 눈금 밖의 그래프 안쪽에 배치되지 않았습니다.",
 );
 expect(
+  js.includes("place(quadrants[0],0,0,xp,yp)")
+    && js.includes("place(quadrants[1],xp,0,c.width-xp,yp)")
+    && js.includes("place(quadrants[3],xp,yp,c.width-xp,c.height-yp)"),
+  "사분면 배경 경계가 실제 중앙 기준선 위치를 따르지 않습니다.",
+);
+expect(
   js.includes("window.print()") && js.includes("navigator.share")
     && js.includes('location.origin+"/analysis?building_id="')
     && css.includes("@media print"),
