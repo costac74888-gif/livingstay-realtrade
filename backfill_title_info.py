@@ -54,6 +54,9 @@ from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEA
 BJDONG_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
 MAX_DB_RECONNECT_ATTEMPTS = 3
 DB_RECONNECT_DELAY_SEC = 5.0
+PROVIDER_RETRY_MAX = 6
+PROVIDER_RETRY_BASE_SEC = 30.0
+PROVIDER_RETRY_MAX_SEC = 600.0
 
 
 class _DatabaseReconnectExhausted(RuntimeError):
@@ -70,6 +73,19 @@ class _ProviderFailure(RuntimeError):
     def __init__(self, message, *, ok, empty, skip, err):
         super().__init__(message)
         self.counts = (ok, empty, skip, err)
+
+
+def _is_transient_provider_error(exc):
+    """공공 API의 일시 연결 장애와 영구적인 데이터 오류를 구분한다."""
+    name = type(exc).__name__.lower()
+    message = str(exc).lower()
+    return (
+        any(marker in name for marker in ("timeout", "connection"))
+        or any(marker in message for marker in (
+            "timed out", "timeout", "connection reset", "connection aborted",
+            "temporary failure", "remote disconnected", "max retries exceeded",
+        ))
+    )
 
 
 def _is_connection_lost(exc, conn):
@@ -128,7 +144,7 @@ def _update_reconnect_status(status_key, run_id, updates):
 
 
 def _update_progress_status(status_key, run_id, *, processed, total, ok, empty,
-                            skip, err, last_item_error=None):
+                            skip, err, last_item_error=None, **extra):
     """건물 단위 체크포인트와 함께 관리자용 진행 상태도 남긴다.
 
     API가 오래 타임아웃되어도 별도 하트비트가 단순 updated_at만 만지는 것보다
@@ -147,6 +163,7 @@ def _update_progress_status(status_key, run_id, *, processed, total, ok, empty,
     }
     if last_item_error:
         updates["last_item_error"] = _mask_key(last_item_error)[:500]
+    updates.update(extra)
     try:
         status = _read_status(status_key) or {}
         if status.get("run_id") != run_id:
@@ -483,6 +500,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 break
         bid, name = b["id"], b["building_name"]
         item_done = False
+        provider_retry_attempt = 0
         while not item_done:
             try:
                 bjd = bjdong.find_bjdong_cd(b["sgg_cd"], b["umd_nm"])
@@ -617,6 +635,32 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 if _is_connection_lost(e, conn):
                     reconnect_after(e)
                     continue
+                if _is_transient_provider_error(e):
+                    provider_retry_attempt += 1
+                    last_item_error = (
+                        f"{type(e).__name__}: {_mask_key(e)}"
+                    )[:500]
+                    if provider_retry_attempt <= PROVIDER_RETRY_MAX:
+                        wait_sec = min(
+                            PROVIDER_RETRY_BASE_SEC * (2 ** (provider_retry_attempt - 1)),
+                            PROVIDER_RETRY_MAX_SEC,
+                        )
+                        _update_progress_status(
+                            status_key, run_id,
+                            processed=n_ok + n_empty + n_skip + n_err,
+                            total=total, ok=n_ok, empty=n_empty, skip=n_skip, err=n_err,
+                            last_item_error=last_item_error,
+                            provider_state="waiting",
+                            provider_retry_attempt=provider_retry_attempt,
+                            provider_retry_wait_seconds=int(wait_sec),
+                        )
+                        print(
+                            f"  [{i}/{total}] WAIT id={bid} {name} — 외부 API 연결 장애, "
+                            f"{int(wait_sec)}초 후 재시도 ({provider_retry_attempt}/{PROVIDER_RETRY_MAX})",
+                            flush=True,
+                        )
+                        time.sleep(wait_sec)
+                        continue
                 try:
                     conn.rollback()
                 except Exception:
@@ -628,8 +672,8 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     f"{type(e).__name__}: {_mask_key(e)}"
                 )[:500]
                 print(f"  [{i}/{total}] ERR  id={bid} {name} — {last_item_error}", flush=True)
-                if consec_err >= 10:
-                    print("[중단] 연속 오류 10건 — API 쿼터 소진/장애 추정. 남은 건은 나중에 재실행하세요.", flush=True)
+                if provider_retry_attempt > PROVIDER_RETRY_MAX or consec_err >= 10:
+                    print("[중단] 외부 API 재접속 한도 소진 — 체크포인트를 유지하고 종료합니다.", flush=True)
                     stop_for_errors = True
 
         processed = n_ok + n_empty + n_skip + n_err
@@ -637,12 +681,15 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
             status_key, run_id, processed=processed, total=total, ok=n_ok,
             empty=n_empty, skip=n_skip, err=n_err,
             last_item_error=last_item_error,
+            provider_state=None,
+            provider_retry_attempt=0,
+            provider_retry_wait_seconds=0,
         )
         if i % 20 == 0:
             print(f"  ...진행 {i}/{total} (OK={n_ok} EMPTY={n_empty} SKIP={n_skip} ERR={n_err})", flush=True)
         if stop_for_errors:
             message = (
-                "건축HUB 표제부 API가 연속 10건 실패하여 중단했습니다. "
+                "건축HUB 표제부 API 재접속이 반복 실패하여 중단했습니다. "
                 f"마지막 오류: {last_item_error or '원인 미상'} "
                 "(실패한 행은 완료 처리하지 않았으므로 복구 후 재실행할 수 있습니다.)"
             )

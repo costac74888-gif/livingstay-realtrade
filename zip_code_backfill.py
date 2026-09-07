@@ -34,6 +34,9 @@ from stats_cache import mark_master_stats_invalidated
 # the file only to import a pre-existing local checkpoint once.
 PROGRESS_FILE = "zip_code_backfill_progress.json"
 PROGRESS_META_KEY = "zip_code_backfill_status"
+PROVIDER_RETRY_MAX = 6
+PROVIDER_RETRY_BASE_SEC = 30.0
+PROVIDER_RETRY_MAX_SEC = 600.0
 LEASE_STALE_MINUTES = 10
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("PROD_DATABASE_URL", "")
 _CURRENT_RUN_ID = None
@@ -142,7 +145,8 @@ def acquire_lease(conn, run_id=None):
                 )
             )::text,
             updated_at = NOW()
-            WHERE (app_meta.value::jsonb ->> 'state') IS DISTINCT FROM 'running'
+             WHERE COALESCE(app_meta.value::jsonb ->> 'state', 'idle')
+                       NOT IN ('running', 'waiting_provider')
                OR app_meta.updated_at < NOW() - INTERVAL '{LEASE_STALE_MINUTES} minutes'
             RETURNING value
         """, (
@@ -168,6 +172,18 @@ def datetime_now():
     """UTC ISO time keeps status useful even when app and batch hosts differ."""
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+def _is_transient_provider_error(error):
+    name = type(error).__name__.lower()
+    message = str(error).lower()
+    return (
+        any(marker in name for marker in ("timeout", "connection"))
+        or any(marker in message for marker in (
+            "timed out", "timeout", "connection reset", "connection aborted",
+            "temporary failure", "remote disconnected", "max retries exceeded",
+        ))
+    )
 
 
 def _save_progress_cursor(cur, prog):
@@ -236,6 +252,9 @@ def _attempt_address(conn, cur, prog, row, road_to_jibun):
         # UPDATE failures leave psycopg2's transaction aborted. Roll back
         # before the caller stores the consumed call and advanced checkpoint.
         conn.rollback()
+        if _is_transient_provider_error(error):
+            prog["last_error"] = f"id={bid} {type(error).__name__}: {str(error)[:500]}"
+            return "retry", error, False
         prog["last_id"] = bid
         prog["in_flight_id"] = None
         prog["last_error"] = f"id={bid} {type(error).__name__}: {str(error)[:500]}"
@@ -309,22 +328,56 @@ def main_impl():
     rows = cur.fetchall()
 
     n_ok = n_empty = n_err = 0
+    stopped_for_cap = False
     for i, row in enumerate(rows, 1):
         if args.limit and n_ok + n_empty + n_err >= args.limit:
             print(f"[중단] --limit {args.limit} 도달")
             break
         if prog["calls_today"] >= args.daily_cap:
             print(f"[중단] 일일캡({args.daily_cap}) 도달 — 내일 이어서 실행하세요.")
+            stopped_for_cap = True
             break
 
         bid = row["id"]
         name = row["building_name"] or "-"
-        if not _reserve_attempt(conn, prog, bid, args.daily_cap):
-            print(f"[중단] 일일캡({args.daily_cap}) 도달 — 내일 이어서 실행하세요.")
+        provider_retry_attempt = 0
+        while True:
+            if not _reserve_attempt(conn, prog, bid, args.daily_cap):
+                print(f"[중단] 일일캡({args.daily_cap}) 도달 — 다음 실행에서 같은 건물부터 이어집니다.")
+                outcome, detail, changed = "capped", None, False
+                stopped_for_cap = True
+                break
+            outcome, detail, changed = _attempt_address(
+                conn, cur, prog, row, road_to_jibun
+            )
+            if outcome != "retry":
+                break
+            provider_retry_attempt += 1
+            prog.update(
+                state="waiting_provider",
+                provider_retry_attempt=provider_retry_attempt,
+                provider_retry_building_id=bid,
+            )
+            save_progress(conn, prog)
+            if provider_retry_attempt >= PROVIDER_RETRY_MAX:
+                raise RuntimeError(
+                    "JUSO API 재접속이 반복 실패했습니다. "
+                    "현재 건물 체크포인트를 유지하고 다음 자동 실행에서 재시도합니다. "
+                    f"마지막 오류: {type(detail).__name__}: {detail}"
+                )
+            wait_sec = min(
+                PROVIDER_RETRY_BASE_SEC * (2 ** (provider_retry_attempt - 1)),
+                PROVIDER_RETRY_MAX_SEC,
+            )
+            print(
+                f"  [{i}/{len(rows)}] WAIT id={bid} {name[:30]} — JUSO 연결 장애, "
+                f"{int(wait_sec)}초 후 재시도 ({provider_retry_attempt}/{PROVIDER_RETRY_MAX})",
+                flush=True,
+            )
+            time.sleep(wait_sec)
+            prog["state"] = "running"
+        if outcome == "capped":
             break
-        outcome, detail, changed = _attempt_address(
-            conn, cur, prog, row, road_to_jibun
-        )
         if outcome == "ok":
             if changed:
                 try:
@@ -363,7 +416,11 @@ def main_impl():
     # Only mark a child complete after its final DB work/reporting succeeds.
     conn3 = get_conn()
     _configure_timeouts(conn3)
-    prog.update(state="done", done=True, heartbeat=datetime_now())
+    prog.update(
+        state="partial" if stopped_for_cap else "done",
+        done=not stopped_for_cap,
+        heartbeat=datetime_now(),
+    )
     save_progress(conn3, prog)
     conn3.close()
 

@@ -34121,7 +34121,7 @@ def _zip_backfill_auto_loop():
             worker_date = worker.get("date")
             calls_today = int(worker.get("calls_today") or 0) if worker_date == today else 0
             worker_recent = (
-                worker.get("state") == "running"
+                worker.get("state") in {"running", "waiting_provider"}
                 and row["worker_age"] is not None
                 and float(row["worker_age"]) < 10 * 60
             )

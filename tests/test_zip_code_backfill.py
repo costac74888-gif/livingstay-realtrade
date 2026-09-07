@@ -82,6 +82,29 @@ class ZipCodeBackfillProgressTests(unittest.TestCase):
         self.assertEqual(conn.rollbacks, 1)
         self.assertIsNone(progress["in_flight_id"])
 
+    def test_provider_timeout_keeps_checkpoint_for_same_address_retry(self):
+        class Connection:
+            def rollback(self):
+                pass
+
+        class ProviderTimeout(TimeoutError):
+            pass
+
+        progress = {
+            "calls_today": 4, "last_id": 10, "completed": 2,
+            "run_id": "worker-1", "in_flight_id": 11,
+        }
+        outcome, error, changed = zip_backfill._attempt_address(
+            Connection(), object(), progress,
+            {"id": 11, "road_address": "서울 테스트로 1"},
+            mock.Mock(side_effect=ProviderTimeout("connection timed out")),
+        )
+        self.assertEqual(outcome, "retry")
+        self.assertIsInstance(error, ProviderTimeout)
+        self.assertFalse(changed)
+        self.assertEqual(progress["last_id"], 10)
+        self.assertEqual(progress["in_flight_id"], 11)
+
     def test_crash_after_reservation_leaves_quota_charged_for_takeover(self):
         durable = {}
         progress = {
@@ -132,6 +155,11 @@ class ZipCodeBackfillProgressTests(unittest.TestCase):
             })
         self.assertIn("value::jsonb ->> 'run_id' = %s", cur.sql)
         self.assertEqual(cur.params[-1], "old-worker")
+
+    def test_provider_wait_state_keeps_worker_lease(self):
+        with open("zip_code_backfill.py", encoding="utf-8") as source_file:
+            source = source_file.read()
+        self.assertIn("NOT IN ('running', 'waiting_provider')", source)
 
 
 if __name__ == "__main__":
