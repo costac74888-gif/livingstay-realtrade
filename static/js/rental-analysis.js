@@ -7,7 +7,7 @@
   var taxManuallyEdited = false;
   var ids = [
     "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
-    "rentalVacancyRate", "rentalAcquisitionCost", "rentalPropertyTax",
+    "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
     "rentalManagementCost", "rentalOtherCost", "rentalLoanAmount",
     "rentalLoanRate", "rentalLoanYears",
   ];
@@ -61,7 +61,9 @@
     var deposit = n("rentalDeposit");
     var rent = n("rentalMonthlyRent");
     var vacancy = Math.min(100, Math.max(0, n("rentalVacancyRate"))) / 100;
-    var acquisition = n("rentalAcquisitionCost");
+    var acquisitionTax = n("rentalAcquisitionTax");
+    var brokerFee = n("rentalBrokerFee");
+    var acquisition = acquisitionTax + brokerFee;
     var tax = n("rentalPropertyTax");
     var costs = tax + n("rentalManagementCost") + n("rentalOtherCost");
     var loan = n("rentalLoanAmount");
@@ -101,6 +103,13 @@
     $("rentalTaxHint").textContent = estimated
       ? "비주거용 추정 과세표준·부가세목 적용: 연 " + money(estimated, 1)
       : "매입가 입력 시 자동 추정되며 직접 수정할 수 있습니다.";
+  }
+  function updateAcquisitionCosts() {
+    var purchasePrice = n("rentalPurchasePrice");
+    $("rentalAcquisitionTax").value = purchasePrice
+      ? String(Math.round(purchasePrice * 0.046 * 10) / 10) : "";
+    $("rentalBrokerFee").value = purchasePrice
+      ? String(Math.round(purchasePrice * 0.009 * 10) / 10) : "";
   }
   async function loadBuilding() {
     var id = new URLSearchParams(location.search).get("building_id");
@@ -164,7 +173,10 @@
         marketPriceManuallyEdited = true;
         if ($(id).value) $("rentalMarketPriceHint").textContent = "사용자가 직접 입력한 실거래 기준가입니다.";
       }
-      if (id === "rentalPurchasePrice") updateEstimatedTax();
+      if (id === "rentalPurchasePrice") {
+        updateAcquisitionCosts();
+        updateEstimatedTax();
+      }
       calculate();
     });
   });

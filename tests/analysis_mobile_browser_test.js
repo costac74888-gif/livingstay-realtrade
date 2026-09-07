@@ -383,6 +383,12 @@ async function run() {
       && rentalTransactionRequest.includes("size=1"),
       "선택 건물의 최근 호실 실거래가가 자동 반영되지 않았습니다.");
     await page.fill("#rentalPurchasePrice", "10000");
+    const acquisitionCosts = await page.evaluate(() => ({
+      acquisitionTax: document.getElementById("rentalAcquisitionTax").value,
+      brokerFee: document.getElementById("rentalBrokerFee").value,
+    }));
+    expect(acquisitionCosts.acquisitionTax === "460" && acquisitionCosts.brokerFee === "90",
+      "매입가 기준 취득세 4.6%와 중개보수 0.9%가 자동 계산되지 않았습니다.");
     await page.fill("#rentalMarketPrice", "11000");
     await page.fill("#rentalDeposit", "300");
     await page.fill("#rentalMonthlyRent", "50");
@@ -404,7 +410,7 @@ async function run() {
       "재산세·대출·현재 실거래를 반영한 임대수익 결과가 없습니다.");
     expect(Math.abs(rentalResult.calculation.annualRent - 600) < 0.01
       && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
-      && Math.abs(rentalResult.calculation.invested - 3700) < 0.01,
+      && Math.abs(rentalResult.calculation.invested - 4250) < 0.01,
       "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");
     await page.click("#operationTab");
     await page.fill("#buildingSearch", "선택 테스트");

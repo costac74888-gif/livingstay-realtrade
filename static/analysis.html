@@ -89,7 +89,8 @@
           <label><span>임차인 보증금</span><div><input id="rentalDeposit" type="number" min="0" step="10" placeholder="예: 300"><b>만원</b></div></label>
           <label><span>월 임대료</span><div><input id="rentalMonthlyRent" type="number" min="0" step="1" placeholder="예: 50"><b>만원</b></div></label>
           <label><span>예상 공실률</span><div><input id="rentalVacancyRate" type="number" min="0" max="100" step="0.1" value="5"><b>%</b></div></label>
-          <label><span>취득 부대비용</span><div><input id="rentalAcquisitionCost" type="number" min="0" step="10" placeholder="취득세·중개비"><b>만원</b></div></label>
+          <label><span>취득세 등 (4.6%)</span><div><input id="rentalAcquisitionTax" type="number" min="0" step="0.1" readonly placeholder="매입가로 자동계산"><b>만원</b></div><small>본인 매입가 × 4.6%</small></label>
+          <label><span>중개보수 (0.9%)</span><div><input id="rentalBrokerFee" type="number" min="0" step="0.1" readonly placeholder="매입가로 자동계산"><b>만원</b></div><small>본인 매입가 × 0.9%</small></label>
         </div>
       </div>
       <div class="rental-group">
