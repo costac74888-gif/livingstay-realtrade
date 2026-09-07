@@ -1,0 +1,64 @@
+.analysis-heading-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  flex: none;
+}
+
+.analysis-heading .analysis-tabs {
+  gap: 10px;
+}
+
+.analysis-heading .analysis-tabs button {
+  min-width: 156px;
+  height: 54px;
+  border: 0;
+  border-radius: 13px;
+  color: #fff;
+  font-size: 16px;
+  box-shadow: 0 9px 22px rgba(16, 42, 67, .16);
+}
+
+.analysis-heading .analysis-tabs button:first-child {
+  border-radius: 13px;
+  background: #e15d52;
+}
+
+.analysis-heading .analysis-tabs button:last-child {
+  margin-left: 0;
+  border-radius: 13px;
+  background: #2e86d1;
+}
+
+.analysis-heading .analysis-tabs button.active {
+  outline: 4px solid rgba(16, 42, 67, .14);
+  transform: translateY(-2px);
+}
+
+.q-top-right,
+.q-bottom-right {
+  padding-left: 17px;
+}
+
+@media (max-width: 650px) {
+  .analysis-heading-actions {
+    align-items: stretch;
+    margin-top: 14px;
+  }
+
+  .analysis-heading .analysis-tabs {
+    margin-top: 0;
+  }
+
+  .analysis-heading .analysis-tabs button {
+    min-width: 0;
+    height: 48px;
+    font-size: 14px;
+  }
+
+  .q-top-right,
+  .q-bottom-right {
+    padding-left: 9px;
+  }
+}

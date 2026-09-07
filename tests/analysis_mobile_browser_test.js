@@ -155,9 +155,11 @@ async function run() {
     const { baseline, points, labels } = result.layout;
     expect(result.quadrants.length === 4 && result.quadrants.every((quad) => quad.text !== ""),
       "그래프의 ①~④ 사분면 설명문구가 누락됐습니다.");
-    expect(result.quadrants[1].labelLeft > result.quadrants[1].left + result.quadrants[1].width * 0.4
-      && result.quadrants[3].labelLeft > result.quadrants[3].left + result.quadrants[3].width * 0.4,
-      "①·④ 설명문구가 그래프 우측 빈 공간으로 이동하지 않았습니다.");
+    expect(result.quadrants[1].labelLeft >= result.quadrants[1].left + 8
+      && result.quadrants[1].labelLeft < result.quadrants[1].left + result.quadrants[1].width
+      && result.quadrants[3].labelLeft >= result.quadrants[3].left + 8
+      && result.quadrants[3].labelLeft < result.quadrants[3].left + result.quadrants[3].width,
+      "①·④ 설명문구가 해당 사분면 안에 표시되지 않았습니다.");
     expect(result.detailSections.some((text) => text.includes("해당 사분면 설명"))
       && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
@@ -277,16 +279,17 @@ async function run() {
       return {
         selected: layout.points.find((point) => point.selected),
         pointIds: layout.points.map((point) => point.id),
+        incompletePoints: layout.points.filter((point) => point.color === "#758596" || point.color === "#b8c1ca"),
         baseline: layout.baseline,
         detail: document.querySelector(".quadrant-guide").textContent,
         transactionCount: document.querySelector(".detail-metrics").textContent,
       };
     });
     expect(incompleteResult.selected.radius === 10, "비교기간 부족 선택 건물의 점 크기가 유지되지 않았습니다.");
-    expect(!incompleteResult.pointIds.includes("301"),
-      "비선택 표본 부족 건물이 축 범위를 왜곡하고 있습니다.");
-    expect(Math.abs(incompleteResult.selected.x - incompleteResult.baseline.x) < 0.6,
-      "관광 비교기간 부족 건물이 관광 0% 기준선에 표시되지 않았습니다.");
+    expect(incompleteResult.pointIds.includes("301") && incompleteResult.incompletePoints.length > 1,
+      "비선택 표본 부족 건물의 회색 점이 표시되지 않았습니다.");
+    expect(Math.abs(incompleteResult.selected.x - incompleteResult.baseline.x) > 0.6,
+      "관광 비교기간 부족 건물이 중앙 기준선에 겹쳐 표시됐습니다.");
     expect(Math.abs(incompleteResult.selected.y - incompleteResult.baseline.y) > 0.6,
       "가격변동 값이 있는 건물이 중앙점으로 잘못 표시됐습니다.");
     expect(incompleteResult.detail.includes("관광 비교기간 부족"),

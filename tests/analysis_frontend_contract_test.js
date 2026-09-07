@@ -4,6 +4,7 @@ const html = fs.readFileSync("static/analysis.html", "utf8");
 const js = fs.readFileSync("static/js/analysis.js", "utf8");
 const css = fs.readFileSync("static/css/analysis.css", "utf8");
 const mobileCss = fs.readFileSync("static/css/analysis-mobile.css", "utf8");
+const chartCss = fs.readFileSync("static/css/analysis-chart-fixes.css", "utf8");
 const menu = fs.readFileSync("static/menu.html", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
@@ -44,7 +45,7 @@ expect(
   "전체 실거래와 분석 표본 거래가 분리되지 않았습니다.",
 );
 expect(
-  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?5.5:i.is_representative?8:4")
+  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?5.5:i.is_representative?8:c.raw.incomplete?4.5:4")
     && css.includes(".selected-pulse") && css.includes("@keyframes selectedAssetPulse"),
   "선택 건물 점의 두 배 강조와 점멸 효과가 없습니다.",
 );
@@ -56,8 +57,8 @@ expect(
 );
 expect(
   html.includes('id="quadTopLeft"') && html.includes('id="quadBottomLeft"')
-    && css.includes(".q-top-right{padding-left:52%")
-    && css.includes(".q-bottom-right{padding-left:52%"),
+    && chartCss.includes(".q-top-right")
+    && chartCss.includes("padding-left: 17px"),
   "②·③ 설명 유지 또는 ①·④의 그래프 우측 빈 공간 이동이 반영되지 않았습니다.",
 );
 expect(
@@ -87,7 +88,7 @@ expect(
 expect(
   html.includes("가격 선행 지역") && html.includes("기타 단지")
     && js.includes('sameRegion(i)?"#168f91"')
-    && js.includes("i.is_representative?8:4")
+    && js.includes("i.is_representative?8:c.raw.incomplete?4.5:4")
     && js.includes("representativeLabelsPlugin"),
   "사분면 설명 또는 지역·대표 표본 색상 구분이 없습니다.",
 );
@@ -129,13 +130,13 @@ expect(
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")
-    && js.includes("priceDisplayCap") && js.includes("Math.abs(price)<=priceDisplayCap")
+    && js.includes("priceDisplayCap") && js.includes("Math.abs(price)>priceDisplayCap")
     && js.includes('String(i.building_id)===String(state.selected)')
-    && js.includes('if(c.raw.incomplete)return"#758596"')
+    && js.includes('if(c.raw.incomplete)return c.raw.displayOnly?"#b8c1ca":"#758596"')
     && js.includes('points[idx].incomplete?"#758596"')
-    && js.includes('tourism==null?(baselineX==null?0:baselineX):tourism')
-    && js.includes('price==null?(baselineY==null?0:baselineY):symlog(price)'),
-  "비교기간이 부족한 선택 건물의 회색 기준선 점 표시가 없습니다.",
+    && js.includes("displayOffset(i.building_id")
+    && js.includes("displayOnly=tourism==null&&price==null"),
+  "비교기간이 부족한 건물의 회색 분산 표시가 없습니다.",
 );
 expect(
   js.includes('priceOnly=true') && js.includes("가격 저평가 후보")
