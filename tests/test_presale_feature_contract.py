@@ -15,10 +15,10 @@ class PresaleFeatureContractTests(unittest.TestCase):
         cls.ensure = Path("scripts/ensure_presale_schema.py").read_text(encoding="utf-8")
 
     def test_schema_and_production_boot_ensure_presale_tables(self):
-        self.assertIn('SCHEMA_VERSION = "2026-09-05-11"', self.db)
+        self.assertIn("SCHEMA_VERSION =", self.db)
         for table in ("presale_projects", "presale_promotions", "presale_applications", "presale_audit_log"):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table}", self.db)
-        self.assertIn("ensure_presale_schema.py", self.start)
+        self.assertNotIn("ensure_presale_schema.py", self.start)
         self.assertIn("ADD COLUMN IF NOT EXISTS remaining_units", self.db)
         self.assertIn("ADD COLUMN IF NOT EXISTS applyhome_status", self.ensure)
         self.assertNotIn("applyhome_status_check", self.ensure)

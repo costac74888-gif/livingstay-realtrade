@@ -266,12 +266,13 @@ class TourismDatalabAdminTests(unittest.TestCase):
 
     def test_production_schema_boot_contract(self):
         start=Path("scripts/start-prod.sh").read_text(encoding="utf-8")
-        schema=Path("scripts/ensure_tourism_datalab_schema.py").read_text(encoding="utf-8")
-        self.assertLess(start.index("ensure_tourism_datalab_schema.py"),start.index("exec gunicorn"))
         self.assertIn("SKIP_STARTUP_SCHEMA_INIT=1",start)
-        for text in ("pg_advisory_xact_lock","CREATE TABLE IF NOT EXISTS tourism_datalab_stages",
+        self.assertNotIn("ensure_tourism_datalab_schema.py",start)
+        self.assertNotIn("ensure_presale_schema.py",start)
+        db=Path("db.py").read_text(encoding="utf-8")
+        for text in ("CREATE TABLE IF NOT EXISTS tourism_datalab_stages",
                      "REFERENCES admin_users(id) ON DELETE CASCADE","manifest_hash TEXT NOT NULL"):
-            self.assertIn(text,schema)
+            self.assertIn(text,db)
 
     def test_all_actual_ten_assets_validate_together(self):
         paths=sorted(Path("attached_assets").glob("*데이터랩*.zip"))

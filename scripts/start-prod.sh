@@ -10,9 +10,6 @@ export DATABASE_URL="$PROD_DATABASE_URL"
 export SERVE_MINIFIED_ASSETS=1
 export SKIP_STARTUP_SCHEMA_INIT=1
 
-python3 scripts/ensure_tourism_datalab_schema.py
-python3 scripts/ensure_presale_schema.py
-
 exec gunicorn \
   --bind 0.0.0.0:5000 \
   --reuse-port \
