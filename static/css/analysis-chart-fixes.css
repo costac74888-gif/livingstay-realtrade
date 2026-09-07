@@ -51,6 +51,34 @@
   margin-bottom: 16px;
 }
 
+.operation-building-confirm {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #eef6ff;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysis-shell.operation-mode .operation-building-confirm {
+  display: flex;
+}
+
+.operation-building-confirm button:disabled {
+  cursor: default;
+  opacity: .5;
+  transform: none;
+}
+
+.operation-selected-pulse {
+  z-index: 4;
+}
+
 .operation-lodging-choice select {
   width: 100%;
   height: 36px;

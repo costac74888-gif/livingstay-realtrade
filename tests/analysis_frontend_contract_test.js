@@ -150,7 +150,9 @@ expect(
     && html.includes('id="operationInputs"') && html.includes('id="operationChart"')
     && js.includes("lodging_room_total") && js.includes("operationBenchmarks")
     && html.includes('id="operationLodging"') && html.includes('id="operationRoomCountInput"')
+    && html.includes('id="operationBuildingApply"') && html.includes('id="operationSelectedPulse"')
     && operationJs.includes('average("adr")') && operationJs.includes("officialRooms")
+    && operationJs.includes("comparisonPoints: benchmarks.length")
     && html.includes('id="operationAdrBaseline"') && html.includes("운영분석 산정근거")
     && html.includes("해당 지역 우수 숙박 운영지표 TOP 5"),
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",

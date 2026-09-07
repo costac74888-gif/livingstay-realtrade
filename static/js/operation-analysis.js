@@ -5,6 +5,7 @@
   var benchmarks = [];
   var region = "";
   var loadSequence = 0;
+  var pendingBuildingResult = null;
 
   function $(id) { return document.getElementById(id); }
   function number(value) {
@@ -48,6 +49,12 @@
     var operation = new URLSearchParams(location.search).get("mode") === "operation"
       || $("operationTab").getAttribute("aria-selected") === "true";
     document.querySelector(".analysis-shell").classList.toggle("operation-mode", operation);
+  }
+  function setBuildingStatus(name, ready) {
+    $("operationBuildingStatus").textContent = name
+      ? (ready ? "선택 건물 · " : "선택 예정 · ") + name
+      : "검색 결과에서 건물을 선택해 주세요.";
+    $("operationBuildingApply").disabled = !pendingBuildingResult;
   }
   function renderLodgingOptions() {
     var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
@@ -155,13 +162,17 @@
     var yDeviation = Math.max.apply(null, points.map(function (item) {
       return Math.abs(number(item.occ) - baseOcc);
     }).concat([15]));
+    var pulse = $("operationSelectedPulse");
+    pulse.style.display = "none";
     new Chart(canvas, {
       type: "scatter",
       data: { datasets: [{
         data: points.map(function (item) { return { x: item.adr, y: item.occ, item: item }; }),
-        pointRadius: function (context) { return context.raw.item.selected ? 10 : 6; },
-        pointBackgroundColor: function (context) { return context.raw.item.selected ? "#102a43" : "#9badbd"; },
-        pointBorderColor: "#fff", pointBorderWidth: 2,
+        pointRadius: function (context) { return context.raw.item.selected ? 11 : 7; },
+        pointHoverRadius: function (context) { return context.raw.item.selected ? 13 : 9; },
+        pointBackgroundColor: function (context) { return context.raw.item.selected ? "#102a43" : "#8798a8"; },
+        pointBorderColor: "#fff",
+        pointBorderWidth: function (context) { return context.raw.item.selected ? 3 : 1.5; },
       }] },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -200,6 +211,24 @@
           context.fillText("지역 평균 OCC " + format(baseOcc, 1) + "%", chart.chartArea.left + 6, y - 7);
           context.restore();
         },
+        afterDatasetsDraw: function (chart) {
+          var selectedIndex = points.findIndex(function (item) { return item.selected; });
+          var element = selectedIndex >= 0 && chart.getDatasetMeta(0).data[selectedIndex];
+          if (!element) {
+            pulse.style.display = "none";
+            return;
+          }
+          pulse.style.display = "block";
+          pulse.style.left = element.x + "px";
+          pulse.style.top = element.y + "px";
+          pulse.style.setProperty("--pulse-color", "#102a43");
+          window.__operationChartLayout = {
+            selectedRadius: 11,
+            comparisonPoints: benchmarks.length,
+            comparisonColor: "#8798a8",
+            pulseVisible: true,
+          };
+        },
       }],
     });
   }
@@ -226,6 +255,7 @@
       building = results[0];
       benchmarks = results[1] && Array.isArray(results[1].items) ? results[1].items : [];
       region = results[1] && results[1].sido || "";
+      setBuildingStatus(building.display_building_name || building.building_name || "선택 건물", true);
       renderLodgingOptions();
       renderChart();
     }).catch(function () {});
@@ -234,6 +264,32 @@
   $("operationLodging").addEventListener("change", function () {
     renderRoomCount();
     setTimeout(renderChart, 0);
+  });
+  document.addEventListener("click", function (event) {
+    var result = event.target.closest && event.target.closest("#searchResults .search-result");
+    if (!result || !$("operationTab").classList.contains("active")
+        || result.dataset.operationConfirmed === "true") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    pendingBuildingResult = result;
+    setBuildingStatus(
+      result.dataset.name || result.querySelector("b") && result.querySelector("b").textContent,
+      false
+    );
+  }, true);
+  $("operationBuildingApply").addEventListener("click", function () {
+    if (!pendingBuildingResult) return;
+    var result = pendingBuildingResult;
+    pendingBuildingResult = null;
+    result.dataset.operationConfirmed = "true";
+    result.click();
+    setTimeout(function () {
+      var query = new URLSearchParams(location.search);
+      query.set("mode", "operation");
+      history.replaceState({}, "", "/analysis?" + query.toString());
+      setModeClass();
+      load();
+    }, 0);
   });
   new MutationObserver(function () {
     if (!building || !selectedLodging()) return;

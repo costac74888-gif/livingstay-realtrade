@@ -95,6 +95,14 @@ async function run() {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return json(route, { logged_in: true, user: { id: 1, name: "테스트 회원" } });
+    if (url.pathname === "/api/analysis/building-search") return json(route, {
+      items: [{
+        building_id: SELECTED_ID,
+        name: "선택 테스트 자산",
+        lodging_type: "생활숙박시설",
+        address: "강원특별자치도 속초시 테스트로 1",
+      }],
+    });
     if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected, incompleteFinalTrajectory));
     if (url.pathname === "/api/analysis/operation-benchmarks") return json(route, {
       ok: true, sido: "강원",
@@ -319,6 +327,7 @@ async function run() {
       lodgingOptions: document.querySelectorAll("#operationLodging option").length,
       adrBaseline: document.getElementById("operationAdrBaseline").textContent,
       hiddenFilters: getComputedStyle(document.getElementById("analysisFilter")).display === "none",
+      operationLayout: window.__operationChartLayout,
     }));
     expect(operationResult.operationVisible && operationResult.propertyHidden && operationResult.selectedTab === "true",
       "운영분석 탭 전환 상태가 올바르지 않습니다.");
@@ -333,6 +342,22 @@ async function run() {
       "자동 입력된 신고 객실 수를 사용자가 임의 수정할 수 없습니다.");
     expect(operationResult.adrBaseline.includes("원") && operationResult.hiddenFilters,
       "지역 평균 기준선 또는 운영분석의 불필요한 주소 필터 숨김이 적용되지 않았습니다.");
+    expect(operationResult.operationLayout.comparisonPoints === 6
+      && operationResult.operationLayout.comparisonColor === "#8798a8"
+      && operationResult.operationLayout.selectedRadius === 11
+      && operationResult.operationLayout.pulseVisible,
+    "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
+    await page.fill("#buildingSearch", "선택 테스트");
+    await page.waitForSelector("#searchResults .search-result");
+    await page.click("#searchResults .search-result");
+    const pendingBuilding = await page.evaluate(() => ({
+      status: document.getElementById("operationBuildingStatus").textContent,
+      disabled: document.getElementById("operationBuildingApply").disabled,
+    }));
+    expect(pendingBuilding.status.includes("선택 예정") && !pendingBuilding.disabled,
+      "검색 결과를 확인한 뒤 건물 선택 버튼으로 확정하는 흐름이 없습니다.");
+    await page.click("#operationBuildingApply");
+    await page.waitForFunction(() => new URLSearchParams(location.search).get("mode") === "operation");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {
