@@ -251,6 +251,70 @@ def _members(filename, raw):
             return result
     except zipfile.BadZipFile as exc: raise ValueError("손상된 ZIP입니다.") from exc
 
+def validated_monthly_visitor_manifest(filename, raw):
+    """Validate one approved monthly visitor archive without staging it."""
+    if not _safe_name(filename):
+        raise ValueError("승인 원본 파일명이 안전하지 않습니다.")
+    if len(raw) > MAX_FILE_BYTES:
+        raise ValueError("승인 원본 파일 크기 한도를 초과했습니다.")
+    period = importer.source_period_name(filename)
+    if not period:
+        raise ValueError("승인 원본 파일명에 _YYYYMM-YYYYMM_ 기간이 필요합니다.")
+    members, rows = [], []
+    for member, content in _members(filename, raw):
+        source = f"{filename}::{member}"
+        physical = _csv_rows(member, content)
+        built, kind, skipped = importer.build_member_metric_rows(
+            source, member, physical, period
+        )
+        if kind != "visitor_sgg":
+            continue
+        missing = [x for x in HEADER_CONTRACTS[kind] if x not in physical[0]]
+        if missing:
+            raise ValueError(f"{member}: 필수 헤더 누락: {', '.join(missing)}")
+        if skipped:
+            raise ValueError(f"{member}: 지표 없는 물리 행 {skipped}개가 있습니다.")
+        members.append({
+            "source_file": source,
+            "name": member,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "physical_rows": len(physical),
+            "metric_rows": len(built),
+            "stat_type": kind,
+        })
+        rows.extend(built)
+    if len(members) != 1:
+        raise ValueError("월간 승인 원본에는 시군구 방문자 CSV가 정확히 1개 있어야 합니다.")
+    hashes = [row[10] for row in rows]
+    if not rows or len(hashes) != len(set(hashes)):
+        raise ValueError("월간 승인 원본의 지표 행이 없거나 중복되었습니다.")
+    return {"members": members, "rows": rows, "unsupported_members": []}
+
+def apply_validated_monthly_manifest(conn, manifest):
+    """Atomically replace only the validated source; rollback preserves the ledger."""
+    rows = manifest["rows"]
+    sources = sorted({row[7] for row in rows})
+    if not rows or any(row[0] != "visitor_sgg" for row in rows) or len(sources) != 1:
+        raise ValueError("검증된 월간 시군구 방문자 원본만 자동 반영할 수 있습니다.")
+    cur = conn.cursor()
+    try:
+        for source in sources:
+            cur.execute("SELECT pg_advisory_xact_lock(%s)", (source_lock_key(source),))
+        cur.execute("DELETE FROM tourism_stats WHERE source_file = ANY(%s)", (sources,))
+        execute_values(cur, """INSERT INTO tourism_stats
+          (stat_type,sido_name,sgg_name,ref_yearmonth,metric_name,metric_value,unit,
+           source_file,source_period,dimensions,row_hash)
+          VALUES %s ON CONFLICT (row_hash) DO UPDATE SET
+          metric_value=EXCLUDED.metric_value, dimensions=EXCLUDED.dimensions""",
+          rows, page_size=1000)
+        conn.commit()
+        return {"applied_rows": len(rows), "source_file": sources[0]}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+
 def preview(conn, files, owner):
     owner = _owner(owner)
     if not files or len(files) > MAX_FILES: raise ValueError("파일은 1~10개만 허용됩니다.")

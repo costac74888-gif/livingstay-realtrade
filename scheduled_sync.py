@@ -60,6 +60,7 @@ SECRET_ENV_NAMES = (
     "DATA_GO_KR_BROKER_API_KEY",
     "JUSO_API_KEY",
     "KAKAO_REST_API_KEY",
+    "TOURISM_DATALAB_MONTHLY_MANIFEST_URL",
 )
 
 
@@ -337,6 +338,20 @@ STAGES = (
             "WHERE permit_number LIKE 'CAMPING:%%'"
         ),
         blocking_status_keys=("admin:gocamping_web_backfill:status",),
+    ),
+    Stage(
+        "tourism_monthly",
+        "월간 관광 시군구 방문자 원본",
+        "관광",
+        ("sync_tourism_monthly.py",),
+        "매주 월",
+        weekdays=(0,),
+        metric_query=(
+            "SELECT COUNT(*) AS c FROM tourism_stats "
+            "WHERE stat_type = 'visitor_sgg'"
+        ),
+        metric_label="월간 방문자 지표",
+        blocking_status_keys=("tourism_monthly_sync_status",),
     ),
     Stage(
         "brokers",

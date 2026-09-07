@@ -17293,6 +17293,7 @@ _SCHEDULED_SYNC_STAGES = (
     ("pension", "관광펜션업", "숙박", "매일"),
     ("lodging_compare", "숙박 운영 병행 비교", "숙박", "매일"),
     ("lodging_promotion", "숙박 승인 원장 자동 반영", "숙박", "매일"),
+    ("tourism_monthly", "월간 관광 시군구 방문자 원본", "관광", "매주 월"),
     ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
     ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
